@@ -94,7 +94,7 @@ docs/                    文档，索引见 docs/README.md；design/ 下是中�
 - **发版**：
   1. `npm run release:prepare -- 0.2.0`（或 `patch` / `minor` / `major`）：改根和 `apps/desktop` 的 package.json 和锁文件里的版本号，只把这三个文件提交成「Release v0.2.0」，再打附注 tag `v0.2.0`；不推送。这三个文件有未提交改动、或暂存区里有别的东西时直接拒绝。`--dry-run` 只看不改。
   2. 推 tag（`git push origin main v0.2.0`）触发 `.github/workflows/release.yml`：在 windows-latest 上跑检查，再 `npm run dist` 出按用户安装包和便携版，用 `GITHUB_TOKEN` 建 GitHub Release，附上安装包、blockmap、便携版和 `latest.yml`。
-  - **官方插件随 Release 发**：`npm run pack:plugins`（`scripts/release/pack-plugins.mjs`）把 `plugins/` 下每个带 `manifest.json` 的文件夹用 `@spica/plugins` 的 `packPlugin` 打成 `<名字>-<版本>.zip`，旁边写 `.zip.sha256`（`sha256sum -c` 能验），最后 `writeIndex` 生成 `index.json`，都放在 `out/plugins/`。三样一起作为 Release 资产上传，所以 Release 的 `index.json` 网址可以直接当 HTTP 插件源：在 设置 › 插件 粘进去，就会列出这一版的全部官方插件，安装前逐个核对 SHA-256。Release 说明里会自动写上这个网址。
+  - **官方插件随 Release 发**：`npm run pack:plugins`（`scripts/release/pack-plugins.mjs`）把 `plugins/` 下每个带 `manifest.json` 的文件夹（`example-eval` 除外：它是给开发者的模板，装进应用什么都不做）用 `@spica/plugins` 的 `packPlugin` 打成 `<名字>-<版本>.zip`，旁边写 `.zip.sha256`（`sha256sum -c` 能验），最后 `writeIndex` 生成 `index.json`，都放在 `out/plugins/`。三样一起作为 Release 资产上传，所以 Release 的 `index.json` 网址可以直接当 HTTP 插件源：在 设置 › 插件 粘进去，就会列出这一版的全部官方插件，安装前逐个核对 SHA-256。Release 说明里会自动写上这个网址。
   - **试跑不发布**：推一个名字以 `ci/release-dryrun` 开头的分支，跑同一套检查和 `npm run dist`，安装包、便携版、blockmap、`latest.yml` 和官方插件的 zip、`.sha256`、`index.json` 只作为 workflow artifacts 上传（保留 7 天），不建 Release、不打 tag；版本号用 `apps/desktop/package.json` 里的。
   - 版本号以 tag 为准：tag 和 package.json 对不上时按 tag 出包并留一条警告。带 `-` 的版本（如 `0.2.0-beta.1`）标成预发布。
   - 没有代码签名证书，出的是未签名包（Windows 首次运行可能提示「未知发布者」）。

@@ -4,7 +4,8 @@
 //   npm run pack:plugins                 # into out/plugins/
 //   npm run pack:plugins -- --out <dir>
 //
-// For each folder in plugins/ that has a manifest.json, writes:
+// For each folder in plugins/ that has a manifest.json (except templates listed
+// in NOT_SHIPPED), writes:
 //   <name>-<version>.zip          the plugin package (@spica/plugins packPlugin)
 //   <name>-<version>.zip.sha256   "<sha256>  <file name>", checkable with sha256sum -c
 // and then index.json for the whole folder. Uploaded next to each other (for
@@ -20,11 +21,17 @@ const args = process.argv.slice(2);
 const outArg = args.indexOf('--out');
 const outDir = resolve(root, outArg >= 0 && args[outArg + 1] ? args[outArg + 1] : 'out/plugins');
 
+// Folders kept in the repository as templates for developers but not shipped:
+// installed from a zip they would do nothing.
+const NOT_SHIPPED = new Set(['example-eval']);
+
 const pluginsDir = join(root, 'plugins');
-const folders = readdirSync(pluginsDir, { withFileTypes: true })
+const all = readdirSync(pluginsDir, { withFileTypes: true })
   .filter((e) => e.isDirectory() && existsSync(join(pluginsDir, e.name, 'manifest.json')))
   .map((e) => e.name)
   .sort();
+const folders = all.filter((f) => !NOT_SHIPPED.has(f));
+for (const f of all.filter((f) => NOT_SHIPPED.has(f))) console.log(`${f}: template, not shipped`);
 if (folders.length === 0) {
   console.error('pack:plugins: no plugin folders with a manifest.json under plugins/.');
   process.exit(1);
