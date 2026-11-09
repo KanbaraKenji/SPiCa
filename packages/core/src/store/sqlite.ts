@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS messages_session ON messages(session_id, seq);
 CREATE TABLE IF NOT EXISTS tool_calls (
   session_id TEXT NOT NULL, message_id TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, input TEXT,
-  status TEXT NOT NULL, result TEXT, started_at TEXT NOT NULL, ended_at TEXT,
+  status TEXT NOT NULL, result TEXT, started_at TEXT NOT NULL, ended_at TEXT, cards TEXT,
   PRIMARY KEY (session_id, message_id, id)
 );
 CREATE TABLE IF NOT EXISTS queued (
@@ -63,11 +63,18 @@ export class SqliteStore implements Store {
     this.#db = new DatabaseSync(path);
     this.#db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = OFF;');
     this.#db.exec(SCHEMA);
+    this.#migrate();
     const v = this.#db.prepare('SELECT value FROM meta WHERE key = ?').get('schema_version') as Row | undefined;
     if (!v) this.#db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', String(SCHEMA_VERSION));
     else if (Number(v.value) > SCHEMA_VERSION) throw new Error(`database schema ${String(v.value)} is newer than this build (${SCHEMA_VERSION})`);
     this.#traceSeq = Number((this.#db.prepare('SELECT COALESCE(MAX(seq), 0) AS m FROM traces').get() as Row).m);
     this.#queueSeq = Number((this.#db.prepare('SELECT COALESCE(MAX(pos), 0) AS m FROM queued').get() as Row).m);
+  }
+
+  /** Additive migrations for databases created by earlier builds. */
+  #migrate(): void {
+    const cols = (this.#db.prepare('PRAGMA table_info(tool_calls)').all() as Row[]).map((r) => String(r.name));
+    if (!cols.includes('cards')) this.#db.exec('ALTER TABLE tool_calls ADD COLUMN cards TEXT');
   }
 
   #q(sql: string): StatementSync {
@@ -118,11 +125,12 @@ export class SqliteStore implements Store {
   // tool calls -----------------------------------------------------------------
   upsertToolCall(r: ToolCallRecord): void {
     this.#q(
-      `INSERT INTO tool_calls (session_id, message_id, id, name, input, status, result, started_at, ended_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO tool_calls (session_id, message_id, id, name, input, status, result, started_at, ended_at, cards)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(session_id, message_id, id) DO UPDATE SET name = excluded.name, input = excluded.input,
-         status = excluded.status, result = excluded.result, started_at = excluded.started_at, ended_at = excluded.ended_at`,
-    ).run(r.sessionId, r.messageId, r.id, r.name, json(r.input ?? null), r.status, r.result ?? null, r.startedAt, r.endedAt ?? null);
+         status = excluded.status, result = excluded.result, started_at = excluded.started_at, ended_at = excluded.ended_at,
+         cards = excluded.cards`,
+    ).run(r.sessionId, r.messageId, r.id, r.name, json(r.input ?? null), r.status, r.result ?? null, r.startedAt, r.endedAt ?? null, r.cards ? json(r.cards) : null);
   }
   listToolCalls(sessionId: string, messageId?: string): ToolCallRecord[] {
     const rows = messageId
@@ -136,6 +144,7 @@ export class SqliteStore implements Store {
       input: opt(row.input) ?? null,
       status: String(row.status) as ToolCallRecord['status'],
       ...(row.result !== null ? { result: String(row.result) } : {}),
+      ...(row.cards !== null && row.cards !== undefined ? { cards: parse<NonNullable<ToolCallRecord['cards']>>(row.cards) } : {}),
       startedAt: String(row.started_at),
       ...(row.ended_at !== null ? { endedAt: String(row.ended_at) } : {}),
     }));
