@@ -156,6 +156,20 @@ export class AgentStore {
     await this.#guard(() => this.#api.confirm(id, callId, approved));
   }
 
+  /** Creates a project (the core attaches its manager) and opens the manager's conversation. Resolves to a problem in words, or null. */
+  async createProject(input: { name: string; folder?: string; brief?: string }): Promise<string | null> {
+    if (!this.#api.createProject) return '这个版本还不能建项目。';
+    try {
+      const p = await this.#api.createProject(input);
+      this.state.set((v) => ({ ...v, projects: [p, ...v.projects.filter((x) => x.id !== p.id)] }));
+      await this.#refreshSessions();
+      await this.open(p.managerSessionId);
+      return null;
+    } catch (err) {
+      return friendlyError(err);
+    }
+  }
+
   /** Loads a project's recent activity once (live entries keep coming as events). */
   async loadProject(projectId: string): Promise<void> {
     if (!this.#api.getProject || this.state.get().activity[projectId]) return;

@@ -32,6 +32,8 @@ export interface DesktopBridge extends SpicaBridge {
   zoom(step: 'in' | 'out' | 'reset'): void;
   /** Opens a file a session referenced (relative to its working folder). Resolves to an error text, or null on success. */
   openFile(sessionId: string, path: string): Promise<string | null>;
+  /** Windows' own folder picker. Resolves to the chosen path, or null when cancelled. */
+  pickFolder(): Promise<string | null>;
   plugins: {
     run(cmd: PluginsCommand): Promise<PluginsResult>;
     onChanged(listener: () => void): () => void;

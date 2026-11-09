@@ -10,6 +10,8 @@ export const DesktopChannel = {
   SettingsChanged: 'spica:settings:changed',
   GetShellState: 'spica:shell:get',
   OpenFile: 'spica:file:open',
+  /** invoke: () -> chosen folder path or null */
+  PickFolder: 'spica:folder:pick',
   /** invoke: PluginsCommand -> PluginsResult */
   Plugins: 'spica:plugins',
   /** main -> renderer: plugins changed on their own (server crashed, ...) */

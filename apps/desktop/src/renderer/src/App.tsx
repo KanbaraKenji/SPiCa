@@ -9,6 +9,7 @@ import { Sidebar } from './shell/Sidebar';
 import { DetailPanel } from './shell/DetailPanel';
 import { Conversation, type ConversationActions } from './chat/Conversation';
 import { SettingsView, type SettingsTab } from './settings/SettingsView';
+import { NewProjectDialog } from './shell/NewProjectDialog';
 import { Icon } from './ui/Icon';
 import { SpicaBanner, SpicaMark } from '@spica/brand/react';
 
@@ -30,6 +31,7 @@ export function App({ bridge, shell, agent }: AppProps) {
   const [floating, setFloating] = useState<Floating>(null);
   const [view, setView] = useState<View>('chat');
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('appearance');
+  const [newProject, setNewProject] = useState(false);
   // Whether any model is configured; checked at start and whenever settings close.
   const [modelReady, setModelReady] = useState<boolean | null>(null);
   useEffect(() => {
@@ -179,6 +181,7 @@ export function App({ bridge, shell, agent }: AppProps) {
               setFloating(null);
             }}
             settingsOpen={view === 'settings'}
+            {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject(true) } : {})}
           />
         </div>
       ) : null}
@@ -265,6 +268,22 @@ export function App({ bridge, shell, agent }: AppProps) {
       </div>
 
       {floating === 'left' ? <div className="scrim scrim-panel scrim-app" onMouseDown={() => setFloating(null)} aria-hidden /> : null}
+
+      {newProject ? (
+        <NewProjectDialog
+          onPickFolder={() => bridge.pickFolder()}
+          onCreate={async (input) => {
+            const problem = await agent.createProject(input);
+            if (!problem) {
+              setNewProject(false);
+              setView('chat');
+              setFloating(null);
+            }
+            return problem;
+          }}
+          onClose={() => setNewProject(false)}
+        />
+      ) : null}
     </div>
   );
 }

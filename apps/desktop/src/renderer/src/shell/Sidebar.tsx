@@ -12,6 +12,8 @@ export interface SidebarProps {
   activeId: string | null;
   onOpen(id: string): void;
   onNewChat(): void;
+  /** Absent when the backend cannot create projects. */
+  onNewProject?: () => void;
   onSettings(): void;
   settingsOpen: boolean;
 }
@@ -85,7 +87,7 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
   );
 }
 
-export function Sidebar({ sessions, activeId, onOpen, onNewChat, onSettings, settingsOpen }: SidebarProps) {
+export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, onSettings, settingsOpen }: SidebarProps) {
   const { chats, projects, childrenOf } = useMemo(() => {
     const chats = sessions.filter((s) => s.role === 'top' && !s.parentId).sort(byRecent);
     // A project is a project-manager session, wherever it was started from.
@@ -128,9 +130,16 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onSettings, set
             ))}
           </section>
         ) : null}
-        {projects.length ? (
+        {projects.length || onNewProject ? (
           <section className="tree-section">
-            <h2 className="tree-heading">项目</h2>
+            <div className="tree-heading-row">
+              <h2 className="tree-heading">项目</h2>
+              {onNewProject ? (
+                <button type="button" className="icon-btn tree-heading-btn" onClick={onNewProject} aria-label="新项目" title="新项目">
+                  <Icon name="plus" size={14} />
+                </button>
+              ) : null}
+            </div>
             {projects.map((p) => (
               <Node key={p.id} s={p} depth={0} tree={tree} />
             ))}
