@@ -51,6 +51,15 @@ export interface SplashFinish {
   diveSwing: number;
   /** 半径收缩的指数：2 = 先沿轨道走、最后才直冲花心；越接近 1 越早往里卷（像螺线） */
   diveCurl: number;
+  /**
+   * 扩轨期间轨道形状的渐变（扩轨结束后保持，扎心也按它走）：
+   * bigRound 椭圆变圆的程度（0 = 保持加载时的偏心率，1 = 正圆）；
+   * bigUniform 近快远慢变成匀角速度的程度（0 = 开普勒近快远慢，1 = 匀角速度，椭圆形状不变）；
+   * bigRoll 轨道在屏幕上的倾角（度，加载时是 SPLASH_ORBIT.roll，扩轨时平滑过渡到这个值）
+   */
+  bigRound: number;
+  bigUniform: number;
+  bigRoll: number;
   /** 拖尾：收尾时光迹拖多长（秒）、从 ready 后多久开始拉长、拉长用时；加载中的短拖尾长度与浓度 */
   trail: number;
   trailStart: number;
@@ -73,18 +82,22 @@ export interface SplashFinish {
 }
 
 export const SPLASH_FINISH: Readonly<SplashFinish> = Object.freeze({
-  // 顺序定死：加速扩轨（带拖尾）→ 大半径上快转一圈多 → 蓝星转到字标右上方的弯角（最慢的那一点）时顺弧向下扎进花心，一路加速。
-  // 6.65 倍转速让 ready 到扎入（1.2 秒）比只转 3 倍时多转约一圈，扎入、合心的时刻不变
+  // 顺序定死：加速扩轨（带拖尾）→ 大半径上快转一圈多 → 蓝星转到字标右上方的弯角时顺弧向下扎进花心，一路加速。
+  // 扩轨时椭圆平滑变圆（bigRound: 1）：加载时两颗星各走一条以花心为焦点的椭圆，彼此错开；放大后会交叉成几圈乱线，
+  // 变圆后两颗星走同一条以花心为中心的轨道。6.24 倍转速让扎入、合心的时刻不变
   expand: 0.6,
   bigRadius: 1.8,
-  bigSpeed: 6.65,
-  bigTurns: 1.13,
+  bigSpeed: 6.24,
+  bigTurns: 1.063,
   diveAngle: 63,
   diveStar: 'primary',
   collapse: 0.175,
-  diveArc: 0.22,
+  diveArc: 0.28,
   diveSwing: 0,
   diveCurl: 1.4,
+  bigRound: 1,
+  bigUniform: 0,
+  bigRoll: -18,
   trail: 0.35,
   trailStart: 0,
   trailFadeIn: 0.3,
@@ -143,7 +156,7 @@ export function splashSchedule(options: SplashOptions = {}, readyAt: number | nu
     // 大半径段开始时的平近点角（单位：圈）
     const expandExtra = F.expand > 0 ? F.expand * (F.bigSpeed - 1) * smoothArea(1) : 0;
     const m0 = (readyAt + F.expand + expandExtra) / period;
-    const want = diveTargetTurns(e, F.diveAngle, F.diveStar);
+    const want = diveTargetTurns(e * (1 - F.bigRound), F.bigUniform, F.bigRoll, F.diveAngle, F.diveStar);
     const end = m0 + F.bigTurns;
     const shift = ((((want - end) % 1) + 1.5) % 1) - 0.5; // 落在 [-0.5, 0.5)
     turns = F.bigTurns + shift;
@@ -160,8 +173,8 @@ export function splashSchedule(options: SplashOptions = {}, readyAt: number | nu
 
 /** 前面那颗星在屏幕方位 angle（度）时的平近点角（单位：圈，0..1），按偏心率与方位缓存 */
 const diveTargetCache = new Map<string, number>();
-function diveTargetTurns(e: number, angle: number, star: 'primary' | 'companion'): number {
-  const key = `${e}|${angle}|${star}`;
+function diveTargetTurns(e: number, uniform: number, roll: number, angle: number, star: 'primary' | 'companion'): number {
+  const key = `${e}|${uniform}|${roll}|${angle}|${star}`;
   const hit = diveTargetCache.get(key);
   if (hit !== undefined) return hit;
   // 先只在前半圈找；前半圈够不到这个方位（误差超过 2°，例如 63° 的右上方转弯处）时，放宽到刚从侧面转过来的那一段
@@ -170,12 +183,10 @@ function diveTargetTurns(e: number, angle: number, star: 'primary' | 'companion'
   for (const backLimit of [0, -0.45]) {
     for (let i = 0; i < 1440; i++) {
       const turns = i / 1440;
-      const kp = keplerPosition(2 * Math.PI * turns, e);
-      const px = kp.r * Math.cos(kp.angle + Math.PI / 2);
-      const py = kp.r * Math.sin(kp.angle + Math.PI / 2);
+      const { px, py } = planeAt(2 * Math.PI * turns, 1, e, uniform);
       const [x, y] = star === 'primary' ? [px, py] : [-px, -py];
       if (y < backLimit * Math.hypot(x, y)) continue;
-      const p = project(x, y, 1);
+      const p = project(x, y, 1, roll);
       const ang = (((Math.atan2(p.x - SPLASH_LAYOUT.cx, -(p.y - SPLASH_LAYOUT.cy)) * 180) / Math.PI) + 360) % 360;
       const diff = Math.abs(ang - angle);
       const err = Math.min(diff, 360 - diff);
@@ -257,22 +268,41 @@ function ctxOf(options: SplashOptions, readyAt: number | null): Ctx {
   };
 }
 
-/** 蓝星在轨道平面上的位置（扎心之前；伴星是它关于花心的对称点） */
-function orbitPlane(tt: number, c: Ctx): { px: number; py: number } {
-  const uu = c.readyAt !== null && tt >= c.readyAt ? tt - c.readyAt : 0;
-  const M = (2 * Math.PI * (tt + orbitExtraTime(uu, c.F, c.S))) / c.period;
-  return planeAt(M, SPLASH_ORBIT.semiMajor * radiusScale(uu, c.F, c.S), c.e);
+/** 轨道形状在 ready 后 u 秒时的状态：偏心率、匀角速度程度、倾角（度）。扩轨期间平滑过渡，之后保持 */
+function shapeAt(u: number, c: Ctx): { e: number; uniform: number; roll: number } {
+  const F = c.F;
+  const w = u <= 0 ? 0 : F.expand > 0 ? smooth(clamp(u / F.expand)) : 1;
+  return { e: c.e * (1 - F.bigRound * w), uniform: F.bigUniform * w, roll: lerp(SPLASH_ORBIT.roll, F.bigRoll, w) };
 }
 
-function planeAt(M: number, a: number, e: number): { px: number; py: number } {
+/** 蓝星在轨道平面上的位置与此刻的倾角（扎心之前；伴星是它关于花心的对称点） */
+function orbitPlane(tt: number, c: Ctx): { px: number; py: number; roll: number } {
+  const uu = c.readyAt !== null && tt >= c.readyAt ? tt - c.readyAt : 0;
+  const M = (2 * Math.PI * (tt + orbitExtraTime(uu, c.F, c.S))) / c.period;
+  const sh = shapeAt(uu, c);
+  return { ...planeAt(M, SPLASH_ORBIT.semiMajor * radiusScale(uu, c.F, c.S), sh.e, sh.uniform), roll: sh.roll };
+}
+
+/**
+ * 平近点角 M → 平面位置。uniform = 0 按开普勒（近快远慢）；uniform = 1 角度随 M 匀速走，
+ * 但仍落在同一个椭圆上（半径按椭圆方程 r = (1-e²)/(1+e·cosν) 取）
+ */
+function planeAt(M: number, a: number, e: number, uniform = 0): { px: number; py: number } {
   const kp = keplerPosition(M, e);
-  return { px: a * kp.r * Math.cos(kp.angle + Math.PI / 2), py: a * kp.r * Math.sin(kp.angle + Math.PI / 2) };
+  let nu = kp.angle;
+  let r = kp.r;
+  if (uniform > 0) {
+    const d = Math.atan2(Math.sin(kp.angle - M), Math.cos(kp.angle - M)); // 开普勒角比匀速角多走的那一点（-π..π）
+    nu = M + d * (1 - uniform);
+    r = (1 - e * e) / (1 + e * Math.cos(nu));
+  }
+  return { px: a * r * Math.cos(nu + Math.PI / 2), py: a * r * Math.sin(nu + Math.PI / 2) };
 }
 
 /** 平面坐标 → 屏幕像素（不含花心偏移，只用来量长度） */
-function screenOf(px: number, py: number): [number, number] {
+function screenOf(px: number, py: number, rollDeg: number): [number, number] {
   const ey = py * SPLASH_ORBIT.squash;
-  const roll = rad(SPLASH_ORBIT.roll);
+  const roll = rad(rollDeg);
   return [K * (px * Math.cos(roll) - ey * Math.sin(roll)), K * (px * Math.sin(roll) + ey * Math.cos(roll))];
 }
 
@@ -287,7 +317,7 @@ interface Dive {
   R: number;
   L: number;
   /** τ（扎心后的秒数）→ 平面坐标、路线参数 x、屏幕线速度 */
-  at(tau: number): { px: number; py: number; x: number; speed: number };
+  at(tau: number): { px: number; py: number; roll: number; x: number; speed: number };
 }
 
 const DIVE_SAMPLES = 1200;
@@ -296,22 +326,23 @@ function diveOf(c: Ctx, options: SplashOptions): Dive {
   const key = JSON.stringify([options, c.readyAt]);
   const hit = diveCache.get(key);
   if (hit) return hit;
-  const { F, S, period, e } = c;
+  const { F, S, period } = c;
   const tc = (c.readyAt ?? 0) + S.collapseStart;
+  const fin = shapeAt(S.collapseStart, c);
   const M0 = (2 * Math.PI * (tc + orbitExtraTime(S.collapseStart, F, S))) / period;
   const a0 = SPLASH_ORBIT.semiMajor * F.bigRadius;
   const swingK = (27 / 4) * F.diveSwing;
   const shape = (x: number) => {
     const M = M0 + 2 * Math.PI * F.diveArc * (1 - (1 - x) ** 3);
     const r = (1 - x ** F.diveCurl) * (1 + swingK * x * x * (1 - x));
-    return planeAt(M, a0 * r, e);
+    return planeAt(M, a0 * r, fin.e, fin.uniform);
   };
   // 弧长表（屏幕像素）
   const lens = [0];
-  let prev = screenOf(shape(0).px, shape(0).py);
+  let prev = screenOf(shape(0).px, shape(0).py, fin.roll);
   for (let i = 1; i <= DIVE_SAMPLES; i++) {
     const p = shape(i / DIVE_SAMPLES);
-    const q = screenOf(p.px, p.py);
+    const q = screenOf(p.px, p.py, fin.roll);
     lens.push(lens[i - 1]! + Math.hypot(q[0] - prev[0], q[1] - prev[1]));
     prev = q;
   }
@@ -321,8 +352,8 @@ function diveOf(c: Ctx, options: SplashOptions): Dive {
   const speedAt = (tt: number) => {
     const p1 = orbitPlane(tt - h, c);
     const p2 = orbitPlane(tt, c);
-    const s1 = screenOf(p1.px, p1.py);
-    const s2 = screenOf(p2.px, p2.py);
+    const s1 = screenOf(p1.px, p1.py, p1.roll);
+    const s2 = screenOf(p2.px, p2.py, p2.roll);
     return Math.hypot(s2[0] - s1[0], s2[1] - s1[1]) / h;
   };
   const v0 = speedAt(tc);
@@ -349,7 +380,7 @@ function diveOf(c: Ctx, options: SplashOptions): Dive {
       }
       const span = lens[hi]! - lens[lo]!;
       const x = (lo + (span > 0 ? clamp((dist - lens[lo]!) / span) : 0)) / DIVE_SAMPLES;
-      return { ...shape(x), x, speed: v0 * (1 + alpha * y + beta * y * y) };
+      return { ...shape(x), roll: fin.roll, x, speed: v0 * (1 + alpha * y + beta * y * y) };
     },
   };
   if (diveCache.size > 64) diveCache.clear();
@@ -437,9 +468,9 @@ export function keplerPosition(M: number, e: number): { r: number; angle: number
 }
 
 /** 轨道平面上（相对花心）的一点 → 屏幕位置与纵深 depth（-1 后 … 1 前） */
-function project(px: number, py: number, depthRef: number) {
+function project(px: number, py: number, depthRef: number, rollDeg: number = SPLASH_ORBIT.roll) {
   const ey = py * SPLASH_ORBIT.squash;
-  const roll = rad(SPLASH_ORBIT.roll);
+  const roll = rad(rollDeg);
   const lx = px * Math.cos(roll) - ey * Math.sin(roll);
   const ly = px * Math.sin(roll) + ey * Math.cos(roll);
   return {
@@ -570,8 +601,8 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
   const starsAt = (tt: number) => {
     const uu = readyAt !== null && tt >= readyAt ? tt - readyAt : 0;
     if (uu >= S.merge) return null;
-    const { px, py } = uu >= S.collapseStart ? diveOf(ctx, options).at(uu - S.collapseStart) : orbitPlane(tt, ctx);
-    return [project(px, py, depthRef), project(-px, -py, depthRef)] as const;
+    const { px, py, roll } = uu >= S.collapseStart ? diveOf(ctx, options).at(uu - S.collapseStart) : orbitPlane(tt, ctx);
+    return [project(px, py, depthRef, roll), project(-px, -py, depthRef, roll)] as const;
   };
 
   const stars: SplashStar[] = [];
