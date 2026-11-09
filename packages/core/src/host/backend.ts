@@ -14,6 +14,7 @@ import { Runtime } from '../runtime.ts';
 import { SqliteStore } from '../store/sqlite.ts';
 import type { FileExtractor } from '../tools/types.ts';
 import { jsonSearchBackend, type JsonSearchBackendOptions } from '../tools/web-tools.ts';
+import type { McpTool } from '../mcp/server.ts';
 import { BackendServer } from './server.ts';
 
 /** One model endpoint, as the settings page stores it (keys included; sent over the port, never via files or env). */
@@ -51,6 +52,22 @@ export interface BackendConfig {
   search?: JsonSearchBackendOptions;
   /** Module specifiers that export createExtractors(): FileExtractor[] (e.g. '@spica/extract'). */
   extractorModules?: string[];
+  /**
+   * Modules that export attachBackend(runtime, options) (e.g. '@spica/plugins'),
+   * called after restore(). Keeps the core free of a dependency on them.
+   */
+  extensions?: { module: string; options?: unknown }[];
+}
+
+/** What attachBackend() of an extension module returns. */
+export interface BackendExtension {
+  /** Extra tools on Spica's MCP service. */
+  mcpTools?: McpTool[];
+  /** Extra methods on the backend port (for the desktop shell). */
+  methods?: Record<string, (...params: unknown[]) => unknown>;
+  warnings?: string[];
+  /** Called on shutdown before the runtime closes (stop plugin processes, ...). */
+  close?(): Promise<void>;
 }
 
 export function createProvider(c: ProviderConfig): Provider {
@@ -130,6 +147,8 @@ export interface Backend {
   server: BackendServer;
   restored: ReturnType<Runtime['restore']>;
   warnings: string[];
+  /** Tools contributed by extensions, for serveMcp({ extraTools }). */
+  mcpTools: McpTool[];
   close(): Promise<void>;
 }
 
@@ -165,8 +184,24 @@ export async function startBackend(cfg: BackendConfig): Promise<Backend> {
     });
     warnings.push(...runtime.workflowErrors);
     const restored = runtime.restore();
+    const extensions: BackendExtension[] = [];
+    for (const ext of cfg.extensions ?? []) {
+      try {
+        const mod = (await import(ext.module)) as { attachBackend?: (rt: Runtime, options: unknown) => BackendExtension | Promise<BackendExtension> };
+        if (typeof mod.attachBackend !== 'function') {
+          warnings.push(`extension ${ext.module} has no attachBackend()`);
+          continue;
+        }
+        const attached = await mod.attachBackend(runtime, ext.options);
+        extensions.push(attached);
+        warnings.push(...(attached.warnings ?? []));
+      } catch (err) {
+        warnings.push(`extension ${ext.module} could not be attached: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
     const server = new BackendServer(runtime, {
       extraMethods: {
+        ...Object.assign({}, ...extensions.map((e) => e.methods ?? {})),
         /** Test connection with a provider config from the settings form. */
         probeProvider: (config: unknown, model: unknown) =>
           probeProvider(createProvider(config as ProviderConfig), { model: String(model), tracer: runtime.tracer }),
@@ -178,10 +213,12 @@ export async function startBackend(cfg: BackendConfig): Promise<Backend> {
       server,
       restored,
       warnings,
+      mcpTools: extensions.flatMap((e) => e.mcpTools ?? []),
       close: async () => {
         if (closed) return;
         closed = true;
         server.close();
+        for (const e of extensions) await e.close?.().catch(() => undefined);
         await runtime.close();
         unlock();
       },

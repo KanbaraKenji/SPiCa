@@ -75,6 +75,6 @@ export { DEFAULT_RETRY, type RetryPolicy } from './providers/http.ts';
 export { probeProvider, type ProbeOptions } from './providers/probe.ts';
 export { BackendServer, type BackendServerOptions } from './host/server.ts';
 export { connectBackend, BackendError, type BackendClient } from './host/client.ts';
-export { startBackend, createProvider, lockDatabase, type Backend, type BackendConfig, type ProviderConfig } from './host/backend.ts';
+export { startBackend, createProvider, lockDatabase, type Backend, type BackendConfig, type BackendExtension, type ProviderConfig } from './host/backend.ts';
 export { electronPort, nodePort, type PortLike, type WireMessage, type WireRequest, type WireResponse, type WireEvent, type WireReady } from './host/wire.ts';
-export { serveMcp, spicaMcpTools } from './mcp/server.ts';
+export { serveMcp, spicaMcpTools, type McpTool } from './mcp/server.ts';

@@ -161,21 +161,29 @@ export class McpStdioClient {
   }
 
   /**
-   * Stop the server. Resolves when the process has exited (so its files can
-   * be deleted right after, which matters on Windows).
+   * Stop the server the way the MCP stdio transport describes: close its
+   * stdin, give it `graceMs` to exit on its own (so it can clean up), then
+   * kill it. Resolves when the process has exited (so its files can be
+   * deleted right after, which matters on Windows).
    */
-  close(): Promise<void> {
+  close(graceMs = 3000): Promise<void> {
     this.#closing = true;
     const child = this.#child;
     if (!this.#closed) this.#fail(new Error(`MCP server "${this.config.name}" was disconnected`));
     if (!child || child.exitCode !== null || child.signalCode !== null) return this.#exited;
     try {
       child.stdin.end();
-      child.kill();
     } catch {
       // already gone
     }
-    return this.#exited;
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        // already gone
+      }
+    }, graceMs);
+    return this.#exited.finally(() => clearTimeout(timer));
   }
 
   #onData(chunk: string): void {
