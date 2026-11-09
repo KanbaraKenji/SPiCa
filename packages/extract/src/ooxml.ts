@@ -23,7 +23,7 @@ export function openPackage(bytes: Uint8Array, what: string): ZipParts {
     });
   } catch (err) {
     if (err instanceof ExtractError) throw err;
-    throw new ExtractError(`Not a readable ${what} (the file may be damaged, encrypted, or not really a ${what}).`);
+    throw new ExtractError(`Not a readable ${what} (the file may be damaged, password protected, or in another format).`);
   }
   if (!parts['[Content_Types].xml']) {
     throw new ExtractError(`Not a readable ${what} (the package has no [Content_Types].xml).`);
