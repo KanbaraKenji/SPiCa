@@ -52,7 +52,6 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async exportTraces(filter) {
       return rt.exportTraces(filter);
     },
-
     async getTopSession() {
       return rt.top().info();
     },

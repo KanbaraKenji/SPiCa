@@ -80,5 +80,6 @@ export { connectBackend, BackendError, type BackendClient } from './host/client.
 export { startBackend, applySettings, createProvider, lockDatabase, type SettingsPatch, type Backend, type BackendConfig, type BackendExtension, type BackendHost, type ProviderConfig } from './host/backend.ts';
 export { runUtilityEntry } from './host/utility-entry.ts';
 export { electronPort, nodePort, type PortLike, type WireMessage, type WireRequest, type WireResponse, type WireEvent, type WireReady } from './host/wire.ts';
-export { serveMcp, spicaMcpTools, type McpTool } from './mcp/server.ts';
+export { serveMcp, spicaMcpTools, mcpDispatcher, type McpTool, type McpServeOptions } from './mcp/server.ts';
+export { serveMcpHttp, newMcpToken, type McpHttpOptions, type McpHttpServer } from './mcp/http.ts';
 export { MailPipeline, triageMailTool, parseToolJson, type MailConfig, type MailSource } from './mail.ts';

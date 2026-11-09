@@ -165,12 +165,21 @@ export function spicaMcpTools(rt: Runtime, events: CoreEvent[]): McpTool[] {
   ];
 }
 
-/** Serve the MCP protocol (newline-delimited JSON-RPC) on the given streams. */
-export function serveMcp(
-  rt: Runtime,
-  io: { input: Readable; output: Writable },
-  opts: { bufferSize?: number; name?: string; extraTools?: McpTool[] } = {},
-): { close(): void } {
+export interface McpServeOptions {
+  /** Events kept for spica_events (default 5000). */
+  bufferSize?: number;
+  name?: string;
+  /** Tools added by extensions (e.g. the plugin package). */
+  extraTools?: McpTool[];
+}
+
+type RpcMessage = { jsonrpc?: string; id?: number | string | null; method?: string; params?: Record<string, unknown> };
+
+/**
+ * The transport-independent part of the MCP service: one JSON-RPC message in,
+ * the reply out (undefined for notifications). Shared by stdio and HTTP.
+ */
+export function mcpDispatcher(rt: Runtime, opts: McpServeOptions = {}): { handle(msg: unknown): Promise<unknown>; close(): void } {
   const events: CoreEvent[] = [];
   const size = opts.bufferSize ?? 5000;
   const off = rt.events.on((e) => {
@@ -178,18 +187,12 @@ export function serveMcp(
     if (events.length > size) events.splice(0, events.length - size);
   });
   const tools = [...spicaMcpTools(rt, events), ...(opts.extraTools ?? [])];
-  const send = (msg: unknown) => io.output.write(`${JSON.stringify(msg)}\n`);
-  const rl = createInterface({ input: io.input });
-  rl.on('line', (line) => {
-    let msg: { id?: number | string; method?: string; params?: Record<string, unknown> };
-    try {
-      msg = JSON.parse(line) as typeof msg;
-    } catch {
-      return;
-    }
-    if (msg.id === undefined) return; // notifications
-    const reply = (result: unknown) => send({ jsonrpc: '2.0', id: msg.id, result });
-    const fail = (code: number, message: string) => send({ jsonrpc: '2.0', id: msg.id, error: { code, message } });
+  const handle = async (raw: unknown): Promise<unknown> => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'invalid request' } };
+    const msg = raw as RpcMessage;
+    if (msg.id === undefined || msg.id === null) return undefined; // notifications
+    const reply = (result: unknown) => ({ jsonrpc: '2.0', id: msg.id, result });
+    const fail = (code: number, message: string) => ({ jsonrpc: '2.0', id: msg.id, error: { code, message } });
     switch (msg.method) {
       case 'initialize':
         return reply({
@@ -205,22 +208,42 @@ export function serveMcp(
         const name = String(msg.params?.name ?? '');
         const tool = tools.find((t) => t.name === name);
         if (!tool) return fail(-32602, `unknown tool ${name}`);
-        tool.run((msg.params?.arguments ?? {}) as Record<string, unknown>).then(
-          (result) => {
-            const value = result === undefined ? { ok: true } : result;
-            reply({ content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }], structuredContent: typeof value === 'object' && !Array.isArray(value) ? value : { value } });
-          },
-          (err: unknown) => reply({ content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }], isError: true }),
-        );
-        return;
+        try {
+          const result = await tool.run((msg.params?.arguments ?? {}) as Record<string, unknown>);
+          const value = result === undefined ? { ok: true } : result;
+          return reply({
+            content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }],
+            structuredContent: typeof value === 'object' && !Array.isArray(value) ? value : { value },
+          });
+        } catch (err) {
+          return reply({ content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }], isError: true });
+        }
       }
       default:
         return fail(-32601, `method not found: ${String(msg.method)}`);
     }
+  };
+  return { handle, close: off };
+}
+
+/** Serve the MCP protocol (newline-delimited JSON-RPC) on the given streams. */
+export function serveMcp(rt: Runtime, io: { input: Readable; output: Writable }, opts: McpServeOptions = {}): { close(): void } {
+  const dispatcher = mcpDispatcher(rt, opts);
+  const rl = createInterface({ input: io.input });
+  rl.on('line', (line) => {
+    let msg: unknown;
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      return;
+    }
+    void dispatcher.handle(msg).then((reply) => {
+      if (reply !== undefined) io.output.write(`${JSON.stringify(reply)}\n`);
+    });
   });
   return {
     close: () => {
-      off();
+      dispatcher.close();
       rl.close();
     },
   };

@@ -116,7 +116,7 @@
 - **web_fetch**：只收 http / https，内网地址照常放行（访问内网站点正是用途）；最多 5 次跳转、30 秒超时、最多下 5 MB；HTML 转纯文本（去脚本样式，保留标题、列表、链接）；二进制不显示；记 `kind: 'fetch'` 记录（目标是被抓的主机名，带字节数）。
 - **web_search**：接口可插（`SearchBackend`），内核自带一个通用的「GET 返回 JSON」适配器（`jsonSearchBackend`：URL 模板、结果数组路径、字段映射）。没配搜索接口时不出现；会话用的模型自带托管搜索（如 Anthropic）且开着时也不出现，改用托管搜索。记 `kind: 'search'` 记录。
 - **suggest_actions**：模型给出几个「下一步」按钮，发 `suggest.actions` 事件，不等用户选；用户点哪个，外壳就把它的 prompt 当用户消息发进会话。
-- **MCP 客户端**（`src/mcp/client.ts`，stdio）：起进程（windowsHide）→ initialize → notifications/initialized → tools/list（支持翻页）→ tools/call；中断时发 `notifications/cancelled`；工具名 `<server>__<tool>`；服务端标了 destructiveHint 的工具默认要确认；工具挂在来源 `mcp:<name>` 或插件给的来源下，`unregisterSource` 一并停掉进程；`onExit`（是否意料之中、退出码、stderr 末尾）和 `stderrLog` 给插件做重启和日志；`Runtime.close()` 停掉所有 server。记 `kind: 'mcp'` 记录。HTTP 传输以后再加。
+- **MCP 客户端**（`src/mcp/client.ts`，stdio）：起进程（windowsHide）→ initialize → notifications/initialized → tools/list（支持翻页）→ tools/call；中断时发 `notifications/cancelled`；工具名 `<server>__<tool>`；服务端标了 destructiveHint 的工具默认要确认；工具挂在来源 `mcp:<name>` 或插件给的来源下，`unregisterSource` 一并停掉进程；`onExit`（是否意料之中、退出码、stderr 末尾）和 `stderrLog` 给插件做重启和日志；`Runtime.close()` 停掉所有 server。记 `kind: 'mcp'` 记录。（这是连别人的 MCP server 的客户端，只做 stdio；Spica 自己对外的 MCP 服务另有 HTTP 传输，见 12b 节。）
 
 ## 8. 会话树与回传
 
@@ -277,6 +277,15 @@
 - `utility-entry.ts`：Electron `utilityProcess.fork()` 的入口。主进程发 `{type:'start', config}` 并附一个 MessagePort；之后可以用 `{type:'connect'}` 再接一个端口（窗口重载后），用 `{type:'shutdown'}` 正常退出。内核回 `{type:'started', restored, warnings}` 或 `{type:'failed', code, message}`。
 - `scripts/electron/host-check.ts`：在真 Electron 里 fork、跑一轮、杀掉、重启、确认历史还在、正常退出，五项都通过（`npm run check:electron-host -w @spica/core`）。
 - `mcp-main.ts` + `mcp/server.ts`：stdio MCP 服务（`node src/host/mcp-main.ts --config backend.json`）。工具见下文；库被别的进程占着时直接拒绝并说明原因。
+- **MCP 的 HTTP 传输（M7，`src/mcp/http.ts`）**：给远程 Agent 调试、另一台机器或容器里的评测用。stdio 和 HTTP 共用一个 `mcpDispatcher`，工具完全一样。
+  - 用法：独立进程 `node src/host/mcp-main.ts --config backend.json --http [--port N] [--host H] [--allow-remote] [--token-file 路径]`；桌面端开着时，库被它占着，独立进程开不了，就在后台配置里加 `mcpHttp: { port?, host?, allowRemote?, tokenEnv?, tokenFile? }`，由正在跑的后台一起提供。端口方法 `mcpHttp()` 只回地址和令牌文件路径，不回令牌。
+  - 协议：MCP「Streamable HTTP」的子集。`POST /mcp`，一条 JSON-RPC 或一批，回 JSON；通知回 202。不做服务端推送（GET 回 405），不发 `Mcp-Session-Id`（每个请求自成一体，事件靠 `spica_events` 按 seq 取）。`spica_run` 会等很久，所以不设请求超时。
+  - **安全边界**：
+    1. 默认只听 `127.0.0.1`；要听别的地址必须同时给 `allowRemote`，否则启动就报错。开了远程等于把「替你跑命令、读写文件、花模型钱」交给知道令牌的人，而且是明文 HTTP：只在可信网络里用，或者放在 SSH 隧道 / 反向代理（TLS）后面。
+    2. 每个请求都要 `Authorization: Bearer <令牌>`，先验令牌再看别的（不读正文），比较用定长摘要 + `timingSafeEqual`。令牌至少 16 个字符；不给就生成 256 位随机令牌。来源：环境变量（独立进程是 `SPICA_MCP_TOKEN`，后台配置里是 `tokenEnv` 指定的名字），没有就生成；生成的写进 `--token-file` / `tokenFile`（权限 600），没给文件时在 stderr 只显示一次。令牌不进可追溯记录、事件、导出的使用日志；`SPICA_` 开头的环境变量本来就不传给子进程。
+    3. 只听本机时，`Origin` 或 `Host` 不是本机的请求一律 403：防网页借 DNS 重绑定打到本机服务。
+    4. 只收 `application/json`，单个请求最多 4 MB。
+  - 测试（`src/mcp/http.test.ts`）：没令牌 / 错令牌 401 且什么都没跑；带令牌能 initialize、列工具、`spica_run` 跑通、批量请求；令牌不出现在记录、事件、导出里；别的站点的 Origin / Host 403，GET 405，非 JSON 415，超大 413；不给 `allowRemote` 不能听 0.0.0.0，短令牌拒绝；后台配置起 HTTP、写令牌文件、端口上查到地址但查不到令牌。另外手动起过一次 `mcp-main --http`：带令牌列出 24 个工具，不带令牌 401。
 - **扩展模块**：`BackendConfig.extensions: {module, options}[]`，模块导出 `attachBackend(runtime, options)`，返回 `{ mcpTools?, methods?, warnings?, close? }`：工具加到 MCP 服务上，方法加到后端端口上，关闭时先于 runtime 调 `close()`。插件包就是这样把安装 / 启用 / 停用 / 列表挂上来的（内核不依赖插件包）。`spica_list_tools` 列当前工具和来源。
 - **还没做**：主进程监护（重启退避、`shutdown`、把 `createAgentApi` 换成 `connectBackend`）在 apps/desktop，归桌面外壳，按上面的消息做即可；HTTP 传输（可选）。
 - **运行中改设置，不重启后台**：端口上的 `configure(patch)`（`SettingsPatch`）一次可改：provider 全量列表（新的加、改的换、没列的删；限流器和排队的人保留）、新会话的默认 provider / 模型、限流并发和每分钟请求数、花费上限和价表、流程文件夹（重读并返回问题）、界面语言、搜索接口（`null` 去掉 web_search）、邮件设置（开关、间隔、批量、忽略规则、分拣规则和模板）。发 `runtime.configured { changed, warnings }`；邮件另发 `mail.configured { settings, running }`。正在跑的会话保留自己的 provider 和模型；它用的 provider 被删了，下一次调用会以「unknown provider」的错误结束，不会卡住。`mailSettings()` 返回当前邮件设置、是否在轮询、有哪些来源。
@@ -391,7 +400,7 @@
 **下一步**：
 1. 桌面外壳：主进程用 `utilityProcess.fork(packages/core/src/host/utility-entry.ts)` 起内核，按 12b 节的消息接 `connectBackend`，崩了退避重启（1/2/5 秒，1 分钟最多 5 次）；设置页「测试连接」调 `call('probeProvider', 配置, 模型)`。
 2. J6 已由插件系统经 MCP 跑通（751a20b，`journey:j6` 在插件包里）。
-3. 内核：HTTP 传输（127.0.0.1 + 令牌，可选）；AgentApi 的项目命令在 protocol 里改成必选（外壳实现后）。
+3. 内核：AgentApi 的项目命令在 protocol 里改成必选（外壳实现后）。HTTP 传输已在 M7 做完（12b 节）。
 
 **注意**：
 - 只 add 自己的路径（packages/core、packages/protocol、本文档）；改 package.json 要和锁文件同一个提交。
