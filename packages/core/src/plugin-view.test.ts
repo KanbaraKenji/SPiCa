@@ -102,6 +102,24 @@ describe('callPluginTool', () => {
     await expect(rt.callPluginTool('notes', 'mail__send', {}, { confirmed: true })).rejects.toThrow(/has no tool/);
   });
 
+  it('works on a fresh install with no model configured, and creates no session', async () => {
+    const rt = makeRuntime(gw, { providers: [], defaults: { providerId: 'none', model: 'none', maxTokens: 64 } });
+    const events = captureEvents(rt);
+    const ran: string[] = [];
+    plugin(rt, ran);
+    expect(await rt.callPluginTool('notes', 'read_note', { id: 'n' })).toMatchObject({ isError: false });
+    // a card can still be shown and answered without any session
+    const api = createAgentApi(rt);
+    const p = api.callPluginTool!('notes', 'delete_note', { id: 'd' });
+    await until(() => events.some((e) => e.type === 'confirm.request'));
+    const ask = events.find((e) => e.type === 'confirm.request')!;
+    expect(ask.sessionId).toBe('');
+    await api.confirm('', ask.type === 'confirm.request' ? ask.callId : '', true);
+    expect(await p).toMatchObject({ isError: false });
+    expect(ran).toEqual(['notes__read_note:n:view:notes', 'notes__delete_note:d:view:notes:user']);
+    expect(rt.sessions()).toEqual([]);
+  });
+
   it('calls of one plugin share a small limiter', async () => {
     const rt = makeRuntime(gw);
     const ran: string[] = [];

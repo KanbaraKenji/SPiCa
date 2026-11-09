@@ -25,6 +25,7 @@ import type {
   Message,
   ProjectDetail,
   PluginToolResult,
+  SessionInfo,
   ProjectInfo,
   ProjectActivityKind,
   ProjectLogEntry,
@@ -455,8 +456,11 @@ export class Runtime implements RuntimeInternals {
 
   /** The single top-level agent session (created on first call). */
   top(): Session {
-    const existing = this.sessions().find((s) => s.info().role === 'top' && s.parentId === null && s.info().templateId === 'top');
-    return existing ?? this.createSession({ templateId: 'top' });
+    return this.#existingTop() ?? this.createSession({ templateId: 'top' });
+  }
+
+  #existingTop(): Session | undefined {
+    return this.sessions().find((s) => s.info().role === 'top' && s.parentId === null && s.info().templateId === 'top');
   }
 
   get workflows(): ReadonlyMap<string, WorkflowDef> {
@@ -562,14 +566,31 @@ export class Runtime implements RuntimeInternals {
     const name = entry.tool.spec.name;
     const session = opts.sessionId ? this.session(opts.sessionId) : undefined;
     if (opts.sessionId && !session) throw new Error(`unknown session: ${opts.sessionId}`);
-    const host = session ?? this.top();
+    // no model is involved: use the default top-level thread if there is one, never create it (that needs a provider)
+    const host = session ?? this.#existingTop();
+    const now = isoNow();
+    const cwd = host?.config.cwd ?? this.#opts.cwd ?? process.cwd();
+    const hookSession: SessionInfo = host?.info() ?? {
+      id: `view:${pluginId}`,
+      parentId: null,
+      parentChain: [],
+      role: 'top',
+      title: null,
+      status: 'idle',
+      providerId: '',
+      model: '',
+      cwd,
+      costUsd: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
     const tool = entry.tool;
     const invalid = validateInput(tool.spec.inputSchema, args ?? {});
     if (invalid) return { content: `Invalid input for ${name}: ${invalid}.`, isError: true };
     const callId = newId('view');
     const { decision, input } = await this.hooks.beforeTool(
       { callId, name, input: args ?? {}, irreversible: !!tool.irreversible },
-      { session: host.info(), runId: `view:${pluginId}`, turn: 0 },
+      { session: hookSession, runId: `view:${pluginId}`, turn: 0 },
     );
     if (decision.action === 'deny') return { content: `Blocked: ${decision.reason}`, isError: true };
     let confirmedBy: 'user' | 'view' | undefined;
@@ -590,7 +611,7 @@ export class Runtime implements RuntimeInternals {
       const r = await tool.execute((input ?? {}) as Record<string, unknown>, {
         sessionId: session?.id ?? '',
         parentChain: session?.parentChain ?? [],
-        cwd: host.config.cwd,
+        cwd,
         signal: AbortSignal.timeout(120_000),
         tracer: this.tracer,
         extractors: this.extractors,
@@ -616,18 +637,20 @@ export class Runtime implements RuntimeInternals {
     return true;
   }
 
-  #askView(host: Session, callId: string, name: string, input: unknown, reason: string): Promise<boolean> {
+  #askView(host: Session | undefined, callId: string, name: string, input: unknown, reason: string): Promise<boolean> {
+    // without any session yet the card goes out on the runtime ('' session id); the UI shows it anyway
+    const where = { sessionId: host?.id ?? '', parentChain: host?.parentChain ?? [] };
     return new Promise((resolve) => {
       const timer = setTimeout(() => finish(false), 10 * 60_000); // nobody answered: no
       timer.unref?.();
       const finish = (approved: boolean) => {
         clearTimeout(timer);
         this.#viewConfirms.delete(callId);
-        this.events.emit({ sessionId: host.id, parentChain: host.parentChain }, { type: 'confirm.resolved', callId, approved });
+        this.events.emit(where, { type: 'confirm.resolved', callId, approved });
         resolve(approved);
       };
       this.#viewConfirms.set(callId, finish);
-      this.events.emit({ sessionId: host.id, parentChain: host.parentChain }, { type: 'confirm.request', callId, name, input, reason, cause: 'plugin_view' });
+      this.events.emit(where, { type: 'confirm.request', callId, name, input, reason, cause: 'plugin_view' });
     });
   }
 
