@@ -884,7 +884,14 @@ export class PluginManager {
       // Through the core: hooks apply (e.g. a plugin's own path guard), the call
       // is traced, and the core says when a confirmation is needed (declared
       // irreversible via our permission hook, destructiveHint, or another hook).
-      const out = await this.#host.callPluginTool(plugin, full, input, { confirmed: opts.confirmed === true });
+      let out: Awaited<ReturnType<NonNullable<PluginHost['callPluginTool']>>>;
+      try {
+        out = await this.#host.callPluginTool(plugin, full, input, { confirmed: opts.confirmed === true });
+      } catch (err) {
+        // The page always gets a result, never an exception.
+        void this.#log(plugin, `page ${viewId} could not call ${tool}: ${err instanceof Error ? err.message : String(err)}`);
+        return fail('CALL_FAILED', `没能调用 ${tool}，详情在插件日志里。`);
+      }
       if (out.needsConfirmation || out.declined) {
         // Our permission hook gives a Chinese reason; the core's default is English.
         const why = /[一-鿿]/.test(out.content) ? out.content : `「${a.manifest.displayName}」的这个操作不可撤销`;
