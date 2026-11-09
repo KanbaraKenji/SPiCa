@@ -1,5 +1,5 @@
 // The window: title bar, left sidebar, main pane (conversation or settings), right detail panel.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DesktopBridge } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
@@ -16,7 +16,7 @@ import { MailStore, useMail } from './store/mail';
 import { needsYou, unseenByManager } from '../../shared/mail';
 import type { MailItem } from '@spica/protocol';
 import { Icon } from './ui/Icon';
-import { SpicaBanner, SpicaMark } from '@spica/brand/react';
+import { SpicaBanner } from '@spica/brand/react';
 
 export interface AppProps {
   version?: string;
@@ -72,11 +72,15 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   }, [bridge, view]);
   const layout = computeLayout(width, settings.panels, floating);
 
+  // The sidebar slid out from the left edge (see below).
+  const [peeking, setPeeking] = useState(false);
   const toggle = useCallback(
     (side: 'left' | 'right') => {
       const next = toggleAction(side, window.innerWidth, shell.settings.panels, floating);
       if (next.prefs !== shell.settings.panels) shell.update({ panels: next.prefs });
       setFloating(next.floating);
+      // Opened or closed on purpose: no longer a peek from the edge.
+      setPeeking(false);
     },
     [floating, shell],
   );
@@ -95,6 +99,32 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [toggle, floating, view]);
+
+  // Sidebar collapsed: resting the pointer on the window's left edge slides it out
+  // for a moment (like Claude Desktop); it goes away once the pointer leaves it.
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearPeekTimer = () => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    peekTimer.current = null;
+  };
+  const peekSoon = () => {
+    clearPeekTimer();
+    peekTimer.current = setTimeout(() => {
+      setPeeking(true);
+      setFloating('left');
+    }, 120);
+  };
+  const unpeekSoon = () => {
+    clearPeekTimer();
+    if (!peekOpen) return;
+    peekTimer.current = setTimeout(() => {
+      setPeeking(false);
+      setFloating((f) => (f === 'left' ? null : f));
+    }, 300);
+  };
+  useEffect(() => clearPeekTimer, []);
+  // Only a sidebar the edge opened goes away on its own.
+  const peekOpen = peeking && floating === 'left';
 
   // A floating panel closes when you press anywhere else. No dark layer behind it: the
   // window stays as it was, and that press still reaches what it was meant for.
@@ -227,8 +257,12 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // main pane and the detail panel.
   return (
     <div className="app" data-left={layout.left} data-right={view === 'chat' ? layout.right : 'hidden'}>
+      {layout.left === 'hidden' ? <div className="peek-edge" onMouseEnter={peekSoon} onMouseLeave={clearPeekTimer} aria-hidden /> : null}
       {leftShown ? (
-        <div className={`panel panel-left is-${layout.left}`}>
+        <div
+          className={`panel panel-left is-${layout.left}`}
+          {...(peekOpen ? { onMouseEnter: clearPeekTimer, onMouseLeave: unpeekSoon } : {})}
+        >
           <div className="sidebar-head">
             <SpicaBanner height={22} className="sidebar-brand" />
             {sidebarToggle}
@@ -273,14 +307,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
 
       <div className="column">
       <header className="titlebar">
-        {layout.left === 'docked' ? null : (
-          <div className="titlebar-left">
-            <span className="titlebar-brand" aria-hidden>
-              <SpicaMark size={18} />
-            </span>
-            {sidebarToggle}
-          </div>
-        )}
+        {layout.left === 'docked' ? null : <div className="titlebar-left">{sidebarToggle}</div>}
         <div className="titlebar-title">
           {view === 'chat' && parent ? (
             <>

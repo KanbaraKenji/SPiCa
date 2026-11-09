@@ -2747,3 +2747,14 @@ button.tree-twisty:hover {
   font-size: 13px;
   color: var(--spica-muted);
 }
+
+/* Sidebar collapsed: an invisible strip on the window's left edge; resting the
+   pointer there slides the sidebar out. Below the title bar, which drags the window. */
+.peek-edge {
+  position: fixed;
+  left: 0;
+  top: var(--spica-titlebar-h);
+  bottom: 0;
+  width: 8px;
+  z-index: 15;
+}
