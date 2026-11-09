@@ -7,7 +7,8 @@
  *   轨道是开普勒椭圆，近快远慢，最近点朝前。花标和字标跟双星同一个节拍呼吸、起伏，
  *   但不和星的位置一一对应（不再「星扫到哪片、哪片亮」）。
  * - 加载完成（ready）后的收尾（每一步时长都是参数 SPLASH_FINISH）：
- *   ①② 扩轨、大半径绕圈（缺省时长为 0，即不做）；③ 双星从当前位置沿内螺旋加速飞进花心，拖尾拉长，合一消失；
+ *   ① 扩轨：双星平滑加速，轨道放大到 1.8 倍，拖尾拉长；② 大半径上绕两圈；
+ *   ③ 两圈一结束，双星从当时位置沿一小段短弧直接扎进花心（不再转圈，越扎越快），合一消失；
  *   ④ 合一那一帧起，花标从花心向外把实色填满：两道细环先行、实色随后跟上（圆形遮罩，轮廓不动）；
  *   ⑤ 一道光扫过字标，经过处字由暗变亮、闪一下辉光再回稳；⑥ 停住；⑦ 整层淡出。
  * - 短版（每天第二次起）：花标和字标淡入、停住、淡出，总长约 1 秒，不放星点。见 splashBriefFrame。
@@ -36,7 +37,7 @@ export interface SplashFinish {
   bigSpeed: number;
   /** ② 大半径上再绕几圈（用时 = 圈数 × 一圈秒数 ÷ bigSpeed） */
   bigTurns: number;
-  /** ③ 收心：用时、合一那一刻双星转速是平时的几倍 */
+  /** ③ 扎心：用时；转速从 bigSpeed 按 (1-x)² 衰减到 collapseSpeed（0 = 不再转圈，只走一小段短弧），半径缓入加速缩到 0 */
   collapse: number;
   collapseSpeed: number;
   /** 拖尾：收尾时光迹拖多长（秒）、从 ready 后多久开始拉长、拉长用时；加载中的短拖尾长度与浓度 */
@@ -61,13 +62,13 @@ export interface SplashFinish {
 }
 
 export const SPLASH_FINISH: Readonly<SplashFinish> = Object.freeze({
-  // 不再扩轨、不再大半径绕圈：ready 一到，双星从当前位置沿内螺旋直接飞进花心
-  expand: 0,
-  bigRadius: 1,
-  bigSpeed: 1,
-  bigTurns: 0,
-  collapse: 0.8,
-  collapseSpeed: 3,
+  // 顺序定死：加速扩轨（带拖尾）→ 大半径绕两圈 → 两圈一结束，从当时位置沿短弧直接扎进花心（不再转圈）
+  expand: 0.5,
+  bigRadius: 1.8,
+  bigSpeed: 3.5,
+  bigTurns: 2,
+  collapse: 0.35,
+  collapseSpeed: 0,
   trail: 0.35,
   trailStart: 0,
   trailFadeIn: 0.3,
@@ -152,7 +153,8 @@ function orbitMultiplier(u: number, F: SplashFinish, S: SplashSchedule): number 
   if (u <= 0) return 1;
   if (u < S.bigStart) return 1 + (F.bigSpeed - 1) * smooth(u / F.expand);
   if (u < S.collapseStart) return F.bigSpeed;
-  return F.bigSpeed + (F.collapseSpeed - F.bigSpeed) * easeIn(Math.min((u - S.collapseStart) / F.collapse, 1));
+  const x = Math.min((u - S.collapseStart) / F.collapse, 1);
+  return F.collapseSpeed + (F.bigSpeed - F.collapseSpeed) * (1 - x) ** 2;
 }
 
 /** ∫0^u (倍率 - 1) du：加速带来的「额外走过的时间」 */
@@ -164,8 +166,9 @@ function orbitExtraTime(u: number, F: SplashFinish, S: SplashSchedule): number {
   const b = Math.min(u, S.collapseStart) - S.bigStart;
   extra += b * (F.bigSpeed - 1);
   if (u <= S.collapseStart) return extra;
-  const c = Math.min(u, S.merge) - S.collapseStart;
-  extra += c * (F.bigSpeed - 1) + (F.collapseSpeed - F.bigSpeed) * F.collapse * easeInArea(c / F.collapse);
+  const x = (Math.min(u, S.merge) - S.collapseStart) / F.collapse;
+  // ∫ [cs + (bs-cs)(1-s)²] ds = cs·x + (bs-cs)(1-(1-x)³)/3，再减去「平时速度 1」那部分
+  extra += F.collapse * (F.collapseSpeed * x + ((F.bigSpeed - F.collapseSpeed) * (1 - (1 - x) ** 3)) / 3 - x);
   if (u > S.merge) extra += (u - S.merge) * (F.collapseSpeed - 1);
   return extra;
 }

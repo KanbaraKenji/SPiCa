@@ -104,20 +104,24 @@ describe('收尾', () => {
     expect(SPLASH_FINISH_AFTER).toBeCloseTo(S.end, 9);
   });
 
-  it('收尾不再扩轨、不绕圈：ready 一到半径就只缩不涨，0.8 秒内飞进花心，转过不到半圈', () => {
-    expect(S.bigStart).toBe(0);
-    expect(S.collapseStart).toBe(0);
-    expect(S.merge).toBeCloseTo(0.8, 9);
-    let prev = 1;
-    for (let t = R; t < R + S.merge; t += 0.01) {
-      const k = splashOrbitScale(t, R);
-      expect(k).toBeLessThanOrEqual(prev + 1e-12);
-      prev = k;
-    }
-    let turns = 0;
-    const dt = 0.0005;
-    for (let t = R; t < R + S.merge; t += dt) turns += (splashSpeeds(t, R).orbit * dt) / SPLASH_TIMING.orbitPeriod;
-    expect(turns).toBeLessThan(0.5);
+  it('顺序定死：扩轨 → 大半径绕满 2 圈 → 两圈一结束直接扎进花心（≤ 0.4 秒，只走一小段短弧）', () => {
+    const F = SPLASH_FINISH;
+    expect(S.bigStart).toBeCloseTo(F.expand, 9);
+    expect(splashOrbitScale(R + S.bigStart + 0.01, R)).toBeCloseTo(F.bigRadius, 6);
+    const dt = 0.0002;
+    let big = 0;
+    for (let t = R + S.bigStart; t < R + S.collapseStart; t += dt) big += (splashSpeeds(t, R).orbit * dt) / SPLASH_TIMING.orbitPeriod;
+    expect(big).toBeCloseTo(2, 2);
+    expect(S.merge - S.collapseStart).toBeLessThanOrEqual(0.4);
+    let dive = 0;
+    for (let t = R + S.collapseStart; t < R + S.merge; t += dt) dive += (splashSpeeds(t, R).orbit * dt) / SPLASH_TIMING.orbitPeriod;
+    expect(dive * 360).toBeLessThan(60); // 扎心时转过不到 60°
+    // 扎心时半径只缩不涨、越缩越快
+    const k1 = splashOrbitScale(R + S.collapseStart + 0.1, R);
+    const k2 = splashOrbitScale(R + S.collapseStart + 0.2, R);
+    const k3 = splashOrbitScale(R + S.collapseStart + 0.3, R);
+    expect(F.bigRadius - k1).toBeLessThan(k1 - k2);
+    expect(k1 - k2).toBeLessThan(k2 - k3);
   });
 
   it('拖尾：加载中短而淡，收尾拉长变浓，合心后消失', () => {
@@ -181,7 +185,7 @@ describe('收尾', () => {
     expect(prev).toEqual({ orbit: 1, starfield: 1 });
     for (let t = R; t < R + S.end; t += 0.001) {
       const s = splashSpeeds(t, R);
-      expect(Math.abs(s.orbit - prev.orbit)).toBeLessThan(0.02);
+      expect(Math.abs(s.orbit - prev.orbit)).toBeLessThan(0.03);
       expect(Math.abs(s.starfield - prev.starfield)).toBeLessThan(0.02);
       prev = s;
     }
