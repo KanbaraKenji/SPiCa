@@ -4,7 +4,7 @@
 // minute). The window never goes down with it: calls wait while it restarts,
 // and the restarted core restores every session from the database.
 import { MessageChannelMain, utilityProcess, type UtilityProcess } from 'electron';
-import { connectBackend, electronPort, type BackendClient, type ProviderConfig } from '@spica/core';
+import { connectBackend, electronPort, type BackendClient, type ProviderConfig, type SettingsPatch } from '@spica/core';
 export { toProviderConfig } from './to-config';
 import type { AgentApi, CoreEvent, ProbeResult } from '@spica/protocol';
 import type { PluginsCommand, PluginsResult } from '../../shared/plugins';
@@ -150,17 +150,25 @@ export class ProcessBackend implements AgentBackend {
   createProject: NonNullable<AgentApi['createProject']> = (...a) => this.call('createProject', ...a);
   listProjects: NonNullable<AgentApi['listProjects']> = () => this.call('listProjects');
   getProject: NonNullable<AgentApi['getProject']> = (...a) => this.call('getProject', ...a);
+  listMail: NonNullable<AgentApi['listMail']> = (...a) => this.call('listMail', ...a);
+  pollMail: NonNullable<AgentApi['pollMail']> = () => this.call('pollMail');
+  mailFeedback: NonNullable<AgentApi['mailFeedback']> = (...a) => this.call('mailFeedback', ...a);
 
   onEvent(listener: (event: CoreEvent) => void): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
   }
 
-  /** The settings page changed models: send the whole current list and default (from config()). */
+  /** The settings page changed models: send the whole current list and the default (from config()). */
   configure(): { id: string; reason: string }[] {
     const cfg = this.#o.config();
-    void this.call('setProviders', cfg.core.providers, cfg.current).catch(() => undefined);
+    void this.apply({ providers: cfg.core.providers, defaults: cfg.core.defaults }).catch(() => undefined);
     return [];
+  }
+
+  /** Changes settings in the running core (its configure: models, mail, workflow folder...). */
+  apply(patch: SettingsPatch): Promise<{ changed: string[]; warnings: string[] }> {
+    return this.call('configure', patch);
   }
 
   probe(config: ProviderConfig, model: string): Promise<ProbeResult> {
@@ -169,6 +177,11 @@ export class ProcessBackend implements AgentBackend {
 
   plugins(cmd: PluginsCommand): Promise<PluginsResult> {
     return this.call<PluginsResult>('plugins', cmd);
+  }
+
+  /** Workflows the core read at start, and files it could not read. */
+  workflows(): Promise<{ names: string[]; errors: string[] }> {
+    return this.call('workflows');
   }
 
   dispose(): void {

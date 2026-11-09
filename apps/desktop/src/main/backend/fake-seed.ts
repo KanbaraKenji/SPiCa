@@ -61,11 +61,11 @@ export function buildSeed(now: Date): Seed {
 
   const chat = session(SEED_IDS.chat, 'top', '看一下样机评审资料', 'idle', null, 4, 0.0042, 'D:\\工作\\样机评审');
   const chat2 = session(SEED_IDS.chat2, 'top', '整理本周来信', 'idle', null, 180, 0.0019);
-  const pm = session(SEED_IDS.pm, 'manager', '新品样机评审', 'thinking', null, 1, 0.0213, 'D:\\工作\\样机评审');
+  const pm = { ...session(SEED_IDS.pm, 'manager', '新品样机评审', 'thinking', null, 1, 0.0213, 'D:\\工作\\样机评审'), projectId: 'p-review' };
   const quotes = session(SEED_IDS.quotes, 'worker', '整理供应商报价', 'tool', pm, 1, 0.0061);
   const tests = session(SEED_IDS.tests, 'worker', '汇总测试报告', 'queued', pm, 2, 0.0008);
   const minutes = session(SEED_IDS.minutes, 'worker', '起草评审纪要', 'awaiting_answer', pm, 3, 0.0034);
-  const pm2 = session(SEED_IDS.pm2, 'manager', '年度预算', 'idle', null, 1440, 0.0105, 'D:\\工作\\年度预算');
+  const pm2 = { ...session(SEED_IDS.pm2, 'manager', '年度预算', 'idle', null, 1440, 0.0105, 'D:\\工作\\年度预算'), projectId: 'p-budget' };
   const budget = session(SEED_IDS.budget, 'worker', '核对三季度支出', 'done', pm2, 1450, 0.0047);
 
   let n = 0;

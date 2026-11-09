@@ -12,6 +12,8 @@ export function humanError(raw: string): string {
   if (/\b5\d\d\b|overloaded|bad gateway|service unavailable/.test(m)) return '模型服务暂时出错了，稍后再试。';
   if (/timeout|timed out|etimedout/.test(m)) return '模型接口太久没有回应，稍后再试。';
   if (/fetch failed|econnrefused|enotfound|network|socket/.test(m)) return '连不上模型接口，请检查网络或接口地址。';
+  if (/reassign needs an existing projectid/.test(m)) return '那个项目已经不在了，换一个项目试试。';
+  if (/unknown mail/.test(m)) return '这封信已经不在了，刷新一下收件箱。';
   if (/unknown provider/.test(m)) return '还没有配置模型，先到 设置 › 模型 里添加一个。';
   if (/unknown model|invalid model/.test(m)) return '找不到这个模型，请检查模型名称。';
   return `出错了：${raw}`;

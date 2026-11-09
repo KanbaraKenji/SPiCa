@@ -33,4 +33,6 @@ export const DesktopChannel = {
   DeleteProvider: 'spica:providers:delete',
   SetDefaultProvider: 'spica:providers:default',
   TestProvider: 'spica:providers:test',
+  /** invoke: 'state' | 'open' -> WorkflowsState */
+  Workflows: 'spica:workflows',
 } as const;

@@ -12,6 +12,18 @@ export interface ProviderList {
   problems: Record<string, string>;
 }
 
+/** Settings > 常规: the workflow folder and what the core read from it. */
+export interface WorkflowsState {
+  /** Folder in use (the user's choice, else Documents\Spica\workflows). */
+  dir: string;
+  /** Workflow names read from it. */
+  names: string[];
+  /** Files that could not be read, in words. */
+  problems: string[];
+  /** Result of the last command (e.g. the folder could not be opened); empty when fine. */
+  message?: string;
+}
+
 /** The core's own process: starting, running, coming back after a crash, or given up. */
 export type BackendState = { state: 'starting' | 'ready' | 'recovering' } | { state: 'failed'; message: string };
 
@@ -36,8 +48,8 @@ export interface DesktopBridge extends SpicaBridge {
   zoom(step: 'in' | 'out' | 'reset'): void;
   /** Opens a file a session referenced (relative to its working folder). Resolves to an error text, or null on success. */
   openFile(sessionId: string, path: string): Promise<string | null>;
-  /** Windows' own folder picker. Resolves to the chosen path, or null when cancelled. */
-  pickFolder(): Promise<string | null>;
+  /** Windows' own folder picker, with `title` on it. Resolves to the chosen path, or null when cancelled. */
+  pickFolder(title?: string): Promise<string | null>;
   backend: {
     status(): Promise<BackendState>;
     onStatus(listener: (s: BackendState) => void): () => void;
@@ -51,6 +63,9 @@ export interface DesktopBridge extends SpicaBridge {
   plugins: {
     run(cmd: PluginsCommand): Promise<PluginsResult>;
     onChanged(listener: () => void): () => void;
+  };
+  workflows: {
+    run(op: 'state' | 'open' | 'reload'): Promise<WorkflowsState>;
   };
   providers: {
     list(): Promise<ProviderList>;

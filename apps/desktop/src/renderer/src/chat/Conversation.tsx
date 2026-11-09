@@ -1,6 +1,6 @@
 // The main pane: the transcript of one session, streamed live, and its input box.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { SessionInfo } from '@spica/protocol';
+import type { MailItem, SessionInfo } from '@spica/protocol';
 import { filesOf, isRunning, type Block, type Item, type Transcript } from '../store/transcript';
 import { SpicaMark } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
@@ -16,6 +16,36 @@ export interface ConversationActions {
   openFile(path: string): void;
   openSession(id: string): void;
   resume(): void;
+  /** Mail by id, for 「收到来信」 in a project's conversation. */
+  mailById?: (id: string) => MailItem | undefined;
+  openInbox?: () => void;
+}
+
+function MailNote({ ids, actions }: { ids: string[]; actions: ConversationActions }) {
+  const mails = ids.map((id) => actions.mailById?.(id)).filter((m): m is MailItem => m !== undefined);
+  return (
+    <div className="turn-mail">
+      <p className="turn-mail-head">
+        <Icon name="inbox" size={14} />
+        <span>收到 {ids.length} 封来信</span>
+        {actions.openInbox ? (
+          <button type="button" className="text-btn" onClick={actions.openInbox}>
+            去收件箱
+          </button>
+        ) : null}
+      </p>
+      {mails.length ? (
+        <ul className="turn-mail-list">
+          {mails.map((m) => (
+            <li key={m.id}>
+              <span className="turn-mail-from">{m.fromName || m.fromAddress || '—'}</span>
+              <span className="turn-mail-subject">{m.subject || '（没有主题）'}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 type Segment = { kind: 'tools'; blocks: Extract<Block, { type: 'tool' }>[] } | { kind: 'one'; block: Exclude<Block, { type: 'tool' }> };
@@ -160,6 +190,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                     <p className="turn-user-text">{item.text}</p>
                   </div>
                 );
+              if (item.kind === 'mail') return <MailNote key={item.id} ids={item.mailIds} actions={actions} />;
               if (item.kind === 'note')
                 return item.child ? (
                   <ChildNoteCard key={item.id} note={item.child} onOpen={actions.openSession} />

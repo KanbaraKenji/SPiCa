@@ -2370,3 +2370,328 @@ button.tree-twisty:hover {
 .about-install {
   margin-top: 10px;
 }
+
+/* ---------- Inbox (收件箱) ---------- */
+
+.side-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--spica-muted);
+}
+
+/* Words after a row title (e.g. 有新来信): plain colored text, not a button. */
+.tree-note {
+  flex: none;
+  font-size: 12px;
+  color: var(--spica-accent-text);
+}
+
+.inbox {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.inbox-column {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 24px 40px;
+}
+
+.inbox-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.inbox-tabs {
+  margin-bottom: 0;
+}
+
+.inbox-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.inbox-problem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 8px 8px 12px;
+  border-radius: var(--radius-m);
+  background: var(--spica-danger-soft);
+  color: var(--spica-danger);
+  font-size: 13px;
+}
+
+.inbox-empty {
+  padding: 48px 0;
+  text-align: center;
+  color: var(--spica-muted);
+}
+
+.inbox-empty-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--spica-ink);
+}
+
+.inbox-empty .settings-hint {
+  margin: 0 auto;
+  max-width: 420px;
+}
+
+.mail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mail-card {
+  padding: 12px 16px;
+  border-radius: var(--radius-l);
+  border: 1px solid var(--spica-border);
+  background: var(--spica-surface);
+}
+
+.mail-card.is-open {
+  border-color: var(--spica-border-strong);
+}
+
+.mail-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.mail-from {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--spica-muted);
+}
+
+.mail-time {
+  flex: none;
+  color: var(--spica-faint);
+}
+
+.mail-subject {
+  margin: 4px 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.mail-preview {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--spica-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-verdict {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+/* Where the mail went: colored text with a dot, never a pill (not clickable). */
+.mail-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.mail-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.mail-tag.is-pending::before {
+  display: none;
+}
+
+.mail-tag.is-project {
+  color: var(--spica-accent-text);
+}
+
+.mail-tag.is-new {
+  color: var(--spica-warning);
+}
+
+.mail-tag.is-ignore,
+.mail-tag.is-pending {
+  color: var(--spica-muted);
+}
+
+.mail-reason {
+  color: var(--spica-muted);
+  overflow-wrap: anywhere;
+}
+
+.mail-sure {
+  color: var(--spica-faint);
+}
+
+.mail-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mail-handled {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 4px;
+  font-size: 13px;
+  color: var(--spica-success);
+}
+
+.btn-plain {
+  border-color: transparent;
+  background: transparent;
+  color: var(--spica-accent-text);
+}
+
+/* A text-only button inside a sentence: accent color, no underline. */
+.text-btn {
+  margin-left: 6px;
+  padding: 0 2px;
+  border-radius: var(--radius-s);
+  color: var(--spica-accent-text);
+}
+
+.text-btn:hover {
+  background: var(--spica-hover);
+}
+
+/* 收到来信 in a project's conversation */
+.turn-mail {
+  padding: 10px 14px;
+  border-radius: var(--radius-l);
+  border: 1px solid var(--spica-border);
+  background: var(--spica-surface);
+  font-size: 13px;
+}
+
+.turn-mail-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--spica-muted);
+}
+
+.turn-mail-head .text-btn {
+  margin-left: auto;
+}
+
+.turn-mail-list {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.turn-mail-list li {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.turn-mail-from {
+  flex: none;
+  color: var(--spica-muted);
+}
+
+.turn-mail-subject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Settings > 常规 */
+.interval-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.rule-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.rule-input {
+  height: auto;
+  padding: 8px 10px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.rule-hint {
+  margin: 8px 0 0;
+}
+
+.rule-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.row-buttons {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.path-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-problems {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+@media (max-width: 640px) {
+  .rule-grid {
+    grid-template-columns: 1fr;
+  }
+}

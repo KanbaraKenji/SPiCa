@@ -59,8 +59,18 @@ function noteItem(m: Message): Item {
   return child ? { kind: 'note', id: m.id, text: child.text, child } : { kind: 'note', id: m.id, text: textOf(m) };
 }
 
+/** Mail the core handed to a project manager (meta.mails on its message): ids into the inbox. */
+export function mailIdsOf(m: Message): string[] | undefined {
+  const mails = m.meta?.mails;
+  if (m.meta?.author !== 'parent' || !Array.isArray(mails)) return undefined;
+  const ids = mails.map((x) => (x && typeof x === 'object' ? (x as { id?: unknown }).id : undefined)).filter((x): x is string => typeof x === 'string');
+  return ids.length ? ids : undefined;
+}
+
 export type Item =
   | { kind: 'user'; id: string; text: string; steer: boolean }
+  /** New mail for this project (the core's English instructions to the agent are not shown). */
+  | { kind: 'mail'; id: string; mailIds: string[] }
   | { kind: 'note'; id: string; text: string; child?: ChildNote }
   | { kind: 'response'; id: string; blocks: Block[]; interrupted: boolean };
 
@@ -205,7 +215,9 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
       continue;
     }
     const text = textOf(m);
-    if (m.kind === 'user' || m.kind === 'steer') items.push({ kind: 'user', id: m.id, text, steer: m.kind === 'steer' });
+    const mailIds = mailIdsOf(m);
+    if (mailIds) items.push({ kind: 'mail', id: m.id, mailIds });
+    else if (m.kind === 'user' || m.kind === 'steer') items.push({ kind: 'user', id: m.id, text, steer: m.kind === 'steer' });
     else items.push(noteItem(m));
   }
   const t: Transcript = { items, ...(Object.keys(cards).length ? { fileCards: cards } : {}) };
@@ -247,7 +259,10 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
   switch (e.type) {
     case 'message': {
       const m = e.message;
-      if (m.role === 'user' && (m.kind === 'user' || m.kind === 'steer')) {
+      const mailIds = m.role === 'user' ? mailIdsOf(m) : undefined;
+      if (mailIds) {
+        if (!items.some((i) => i.id === m.id)) items.push({ kind: 'mail', id: m.id, mailIds });
+      } else if (m.role === 'user' && (m.kind === 'user' || m.kind === 'steer')) {
         if (!items.some((i) => i.id === m.id)) items.push({ kind: 'user', id: m.id, text: textOf(m), steer: m.kind === 'steer' });
         if (t.queued?.some((q) => q.id === m.id)) t.queued = t.queued.filter((q) => q.id !== m.id);
       } else if (m.role === 'user' && (m.kind === 'relay' || m.kind === 'report' || m.kind === 'note')) {

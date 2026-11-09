@@ -23,6 +23,7 @@ const PATHS = {
   question: 'M6 6.2a2 2 0 1 1 2.7 1.9c-.5.2-.7.6-.7 1.1v.6 M8 11.6v.2',
   arrowRight: 'M3 8h10 M9 4l4 4-4 4',
   dot: 'M8 7.2a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6z',
+  inbox: 'M2.5 9.5l1.8-6h7.4l1.8 6v3h-11z M2.5 9.5h3.2l.8 1.5h3l.8-1.5h3.2',
 } as const;
 
 export type IconName = keyof typeof PATHS;

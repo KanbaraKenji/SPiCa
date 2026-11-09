@@ -13,6 +13,18 @@ export interface PanelPrefs {
 /** When the full opening animation plays: the first launch each day, every launch, or never. */
 export type SplashMode = 'daily' | 'always' | 'never';
 
+/** Sorting incoming mail into projects (the core's mail pipeline). */
+export interface MailPrefs {
+  enabled: boolean;
+  /** How often new mail is fetched, in minutes. */
+  intervalMinutes: number;
+  /** Mail ignored without asking the model: each line is text it contains, or /a pattern/. */
+  ignore: { from: string[]; subject: string[] };
+}
+
+/** Choices offered for the mail interval, in minutes. */
+export const MAIL_INTERVALS = [5, 15, 30, 60] as const;
+
 export interface ShellSettings {
   skin: SkinChoice;
   customSkins: Skin[];
@@ -27,6 +39,11 @@ export interface ShellSettings {
   dismissedNotices: string[];
   /** Last announcements fetched, so they show at once on the next launch. */
   noticesCache: Notice[];
+  mail: MailPrefs;
+  /** Folder of workflow files; empty = Documents\Spica\workflows. */
+  workflowsDir: string;
+  /** When the user last opened each project manager's conversation (ISO), for 「有新来信」. */
+  mailSeen: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: ShellSettings = {
@@ -39,6 +56,9 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   updateSource: '',
   dismissedNotices: [],
   noticesCache: [],
+  mail: { enabled: true, intervalMinutes: 5, ignore: { from: [], subject: [] } },
+  workflowsDir: '',
+  mailSeen: {},
 };
 
 /** Local calendar date, YYYY-MM-DD. */
@@ -85,7 +105,30 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const updateSource = typeof v.updateSource === 'string' ? v.updateSource.trim().slice(0, 500) : '';
   const dismissedNotices = Array.isArray(v.dismissedNotices) ? v.dismissedNotices.filter((x): x is string => typeof x === 'string').slice(-200) : [];
   const noticesCache = parseNotices({ announcements: v.noticesCache });
-  return { skin, customSkins, zoom, panels, splash, splashShownOn, updateSource, dismissedNotices, noticesCache };
+  const m = v.mail && typeof v.mail === 'object' ? (v.mail as Record<string, unknown>) : {};
+  const interval = typeof m.intervalMinutes === 'number' && Number.isFinite(m.intervalMinutes) ? Math.round(m.intervalMinutes) : 5;
+  const ig = m.ignore && typeof m.ignore === 'object' ? (m.ignore as Record<string, unknown>) : {};
+  const rules = (x: unknown) =>
+    Array.isArray(x)
+      ? x
+          .filter((r): r is string => typeof r === 'string')
+          .map((r) => r.trim().slice(0, 200))
+          .filter(Boolean)
+          .slice(0, 100)
+      : [];
+  const mail: MailPrefs = {
+    enabled: typeof m.enabled === 'boolean' ? m.enabled : true,
+    intervalMinutes: Math.min(24 * 60, Math.max(1, interval)),
+    ignore: { from: rules(ig.from), subject: rules(ig.subject) },
+  };
+  const workflowsDir = typeof v.workflowsDir === 'string' ? v.workflowsDir.trim().slice(0, 500) : '';
+  const seenRaw = v.mailSeen && typeof v.mailSeen === 'object' ? (v.mailSeen as Record<string, unknown>) : {};
+  const mailSeen = Object.fromEntries(
+    Object.entries(seenRaw)
+      .filter((e): e is [string, string] => typeof e[1] === 'string' && !Number.isNaN(Date.parse(e[1])))
+      .slice(-500),
+  );
+  return { skin, customSkins, zoom, panels, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, mailSeen };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

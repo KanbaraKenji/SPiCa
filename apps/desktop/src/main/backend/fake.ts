@@ -8,6 +8,9 @@ import type {
   CoreEvent,
   CoreEventBody,
   CreateSessionRequest,
+  MailFeedback,
+  MailItem,
+  MailPollResult,
   Message,
   MessageKind,
   PendingItem,
@@ -18,6 +21,7 @@ import type {
 } from '@spica/protocol';
 import type { AgentBackend } from './types';
 import { buildSeed, fakeCard } from './fake-seed';
+import { FakeMailbox } from './fake-mail';
 import { isoAt } from './time';
 
 export interface FakeBackendOptions {
@@ -63,10 +67,17 @@ export class FakeBackend implements AgentBackend {
   #pending = new Map<string, PendingItem[]>();
   #runs = new Map<string, Run>();
   #globalCost = 0;
+  readonly #mail: FakeMailbox;
 
   constructor(options: FakeBackendOptions = {}) {
     this.#speed = options.speed ?? 1;
     this.#now = options.now ?? (() => new Date());
+    this.#mail = new FakeMailbox(
+      this.#now,
+      (sid, body) => this.#emit(sid, body),
+      (ms) => new Promise((r) => setTimeout(r, ms * this.#speed)),
+      options.seed ?? true,
+    );
     if (options.seed ?? true) {
       const seed = buildSeed(this.#now());
       for (const s of seed.sessions) this.#sessions.set(s.id, s);
@@ -228,6 +239,18 @@ export class FakeBackend implements AgentBackend {
 
   async abort(sessionId: string): Promise<void> {
     this.#runs.get(sessionId)?.controller.abort();
+  }
+
+  async listMail(filter?: Parameters<NonNullable<AgentBackend['listMail']>>[0]): Promise<MailItem[]> {
+    return this.#mail.list(filter);
+  }
+
+  pollMail(): Promise<MailPollResult> {
+    return this.#mail.poll();
+  }
+
+  async mailFeedback(mailId: string, fb: { action: MailFeedback['action']; projectId?: string }): Promise<MailItem> {
+    return this.#mail.feedback(mailId, fb);
   }
 
   async exportTraces(): Promise<string> {

@@ -12,11 +12,13 @@ export interface NewProjectDialogProps {
   onPickFolder(): Promise<string | null>;
   onCreate(input: NewProjectInput): Promise<string | null>;
   onClose(): void;
+  /** Prefilled name (e.g. what the mail sorting suggested). */
+  initialName?: string;
 }
 
-export function NewProjectDialog({ onPickFolder, onCreate, onClose }: NewProjectDialogProps) {
+export function NewProjectDialog({ onPickFolder, onCreate, onClose, initialName = '' }: NewProjectDialogProps) {
   const id = useId();
-  const [name, setName] = useState('');
+  const [name, setName] = useState(initialName);
   const [folder, setFolder] = useState('');
   const [brief, setBrief] = useState('');
   const [error, setError] = useState('');
