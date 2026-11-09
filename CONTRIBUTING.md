@@ -79,7 +79,8 @@ A hit fails with the file and line; the word itself is never printed.
    commits it and creates the tag `v0.2.0` locally.
 2. Pushing the tag (`git push origin main v0.2.0`) runs
    `.github/workflows/release.yml`, which builds the per-user installer and the portable
-   exe on Windows and publishes them as a GitHub Release.
+   exe on Windows, packs every plugin in `plugins/` (`npm run pack:plugins`: zip,
+   `.sha256` and `index.json`) and publishes them all as a GitHub Release.
 
 To try the build without publishing anything, push a branch whose name starts with
 `ci/release-dryrun`: the same workflow runs and the packages are attached to the run as

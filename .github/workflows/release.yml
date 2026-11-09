@@ -1,8 +1,8 @@
 name: Release
 
 # Two ways in:
-#   - Push a tag like v0.2.0: build the Windows packages and publish them as a
-#     GitHub Release. Prepare the tag locally with: npm run release:prepare -- 0.2.0
+#   - Push a tag like v0.2.0: build the Windows packages and the official plugin
+#     zips (with SHA-256 files and index.json) and publish them as a GitHub Release. Prepare the tag locally with: npm run release:prepare -- 0.2.0
 #   - Push a branch named ci/release-dryrun*: the same build, but the packages
 #     are only uploaded as workflow artifacts. No Release, no tag.
 on:
@@ -63,6 +63,11 @@ jobs:
       # see apps/desktop/electron-builder.yml.
       - run: npm run dist
 
+      # Official plugins: <name>-<version>.zip and .zip.sha256 for each folder in
+      # plugins/, plus index.json, into out/plugins/ (scripts/release/pack-plugins.mjs).
+      # On the Release, the index.json URL works as an HTTP plugin source.
+      - run: npm run pack:plugins
+
       - name: Check the packages
         shell: bash
         run: |
@@ -71,6 +76,10 @@ jobs:
           for f in "Spica-Setup-$SPICA_VERSION.exe" "Spica-Setup-$SPICA_VERSION.exe.blockmap" "Spica-Portable-$SPICA_VERSION.exe" latest.yml; do
             [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
           done
+          cd "$GITHUB_WORKSPACE/out/plugins"
+          ls -la
+          [ -f index.json ] || { echo "::error::missing out/plugins/index.json"; exit 1; }
+          sha256sum -c *.zip.sha256
 
       - name: Upload the packages (dry run)
         if: github.ref_type == 'branch'
@@ -82,6 +91,9 @@ jobs:
             apps/desktop/release/Spica-Setup-${{ env.SPICA_VERSION }}.exe.blockmap
             apps/desktop/release/Spica-Portable-${{ env.SPICA_VERSION }}.exe
             apps/desktop/release/latest.yml
+            out/plugins/*.zip
+            out/plugins/*.zip.sha256
+            out/plugins/index.json
           if-no-files-found: error
           retention-days: 7
 
@@ -91,14 +103,33 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd apps/desktop/release
           prerelease=""
           case "$SPICA_VERSION" in *-*) prerelease="--prerelease" ;; esac
+          notes="$RUNNER_TEMP/release-notes.md"
+          {
+            echo "## Install"
+            echo
+            echo "- \`Spica-Setup-$SPICA_VERSION.exe\`: installs for the current user, no administrator rights needed."
+            echo "- \`Spica-Portable-$SPICA_VERSION.exe\`: runs without installing."
+            echo
+            echo "## Official plugins"
+            echo
+            echo "In Spica, open Settings › Plugins (设置 › 插件) and paste this address into the install box:"
+            echo
+            echo "    https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/index.json"
+            echo
+            echo "Spica lists the plugins below and checks each one's SHA-256 before installing. You can also download a \`.zip\` and paste its path instead."
+            echo
+          } > "$notes"
           gh release create "$GITHUB_REF_NAME" \
-            "Spica-Setup-$SPICA_VERSION.exe" \
-            "Spica-Setup-$SPICA_VERSION.exe.blockmap" \
-            "Spica-Portable-$SPICA_VERSION.exe" \
-            latest.yml \
+            "apps/desktop/release/Spica-Setup-$SPICA_VERSION.exe" \
+            "apps/desktop/release/Spica-Setup-$SPICA_VERSION.exe.blockmap" \
+            "apps/desktop/release/Spica-Portable-$SPICA_VERSION.exe" \
+            apps/desktop/release/latest.yml \
+            out/plugins/*.zip \
+            out/plugins/*.zip.sha256 \
+            out/plugins/index.json \
             --repo "$GITHUB_REPOSITORY" \
             --title "Spica $GITHUB_REF_NAME" \
+            --notes-file "$notes" \
             --generate-notes $prerelease
