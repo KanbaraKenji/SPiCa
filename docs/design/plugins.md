@@ -159,7 +159,7 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 | 不可逆动作 | `permissions.irreversible` 里的工具一律要确认；MCP 的 `destructiveHint` 内核也默认要确认 | 插件可在设置里被用户改成「自动执行」 |
 | 工作文件夹 | `permissions.workspace` 只声明、展示 | 插件包挂 `beforeTool`：参数里出现的路径不在会话工作文件夹内就拒绝，`read` 的插件写文件也拒绝 |
 | 网络 | `permissions.network` 只声明、展示 | 视需要给 server 注入代理并按名单放行 |
-| 环境变量 | 内核启动 server 时继承宿主环境（含代理设置） | 改成白名单继承，避免把宿主里的密钥带给插件进程（已向内核提出） |
+| 环境变量 | 插件进程只继承白名单（`PLUGIN_INHERIT_ENV`：PATH、系统目录、TEMP、用户目录、代理变量等），像密钥的名字（SPICA_ 开头、含 KEY / SECRET / TOKEN / PASSWORD / CREDENTIAL）内核一律不传；有测试 | — |
 | 来源可信 | HTTP 来源每个包必须有 SHA-256，不对拒装；共享盘有索引就校验 | 包签名 |
 
 ## 8. 分发与更新
@@ -201,10 +201,19 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 
 | 日期 | 测试 | 冒烟 |
 |---|---|---|
-| 2026-11-09 | 3 个测试文件 29 条全过：清单校验与人话提示、路径越界与控制台脚本拒绝、J6 全撤销（工具、钩子、注入、进程）、describe、不可逆确认、模拟模式切换、重启后恢复、钩子加载失败整体回滚、未声明钩子不挂、钩子抛错不影响运行、崩溃重启上限、server 起不来、清单错误和版本不兼容拒装、zip 往返与越界、打包可复现与校验、Windows 压缩文件夹、共享盘扫描、来源不可达、共享盘更新与回滚（数据保留）、HTTP 索引 + 校验和（篡改拒装、无校验和拒装）、坏新版自动退回、装用户选的 zip | `npm run smoke:plugins -w @spica/plugins`：装上 → 工具立刻出现（server 启动约 0.2 秒）→ 调用 → 模拟模式开关 → 停用 → 工具消失，13 项全过；`smoke:plugins:model`：DeepSeek flash 自己调 `notes__read_note` 并正确复述笔记。示例 server 用 Electron 45 自带 Node（`ELECTRON_RUN_AS_NODE=1`）直接跑通握手和工具列表 |
+| 2026-11-09 | 3 个测试文件 31 条全过（另加：重启 server 不误撤同插件的技能工具、插件进程拿不到白名单外的环境变量）：清单校验与人话提示、路径越界与控制台脚本拒绝、J6 全撤销（工具、钩子、注入、进程）、describe、不可逆确认、模拟模式切换、重启后恢复、钩子加载失败整体回滚、未声明钩子不挂、钩子抛错不影响运行、崩溃重启上限、server 起不来、清单错误和版本不兼容拒装、zip 往返与越界、打包可复现与校验、Windows 压缩文件夹、共享盘扫描、来源不可达、共享盘更新与回滚（数据保留）、HTTP 索引 + 校验和（篡改拒装、无校验和拒装）、坏新版自动退回、装用户选的 zip | `npm run smoke:plugins -w @spica/plugins`：装上 → 工具立刻出现（server 启动约 0.2 秒）→ 调用 → 模拟模式开关 → 停用 → 工具消失，13 项全过；`smoke:plugins:model`：DeepSeek flash 自己调 `notes__read_note` 并正确复述笔记。示例 server 用 Electron 45 自带 Node（`ELECTRON_RUN_AS_NODE=1`）直接跑通握手和工具列表 |
 
 ## 11. 故意没做的
 
 - 视图渲染、插件设置表单（MCPB 的 `user_config`）、包签名、工作文件夹 / 网络的强制拦截、宿主托管 Python：见上文「以后」。
 - 外壳的插件页、模拟模式标记、来源设置：归桌面外壳，本包只给接口和事件。
 - 官方 Outlook 插件：另开话题。
+
+## 12. 交接（2026-11-09）
+
+- **做了什么**：`@spica/plugins`（清单、文件夹、启用 / 停用全撤、失败回滚、崩溃重启上限、模拟模式、describe()、zip 打包与校验、共享盘 / HTTP 来源、更新与回滚、环境变量白名单）；示例插件 `plugins/example-notes`；J6 冒烟 `npm run smoke:plugins -w @spica/plugins`（13 项）和真模型版 `smoke:plugins:model`；本文和作者指南。提交 2caf365、6064913 和本次。
+- **内核配合**（已提交 e473a9d）：`connectMcp(config, { source })`、`onExit`、`stderrLog`、可等待的 `disconnect()`、单个 server 只撤自己的工具、`inheritEnv` 白名单。
+- **故意没做**：插件页界面与模拟数据标记（归桌面外壳，接口见第 9 节）；工作文件夹 / 网络权限的强制拦截；插件设置表单（MCPB 的 user_config）；包签名；宿主托管 Python（方案见第 5 节，何时做待他拍板）；视图渲染。
+- **下一步**：外壳在主进程建 `PluginManager`（插件根 `%APPDATA%Spicaplugins`，传 Electron 的 `net.fetch` 给来源）并做插件页；之后官方 Outlook 插件按本格式写。
+- **他该看什么**：跑 J6 冒烟看 13 行 ✓；翻 `plugins/example-notes` 看一个插件长什么样。
+- **注意**：插件测试要起真进程，机器很忙时默认 5 秒会超时，测试文件里已放宽到 30 秒。

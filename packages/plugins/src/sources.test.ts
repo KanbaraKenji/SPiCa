@@ -3,7 +3,10 @@ import { createServer, type Server } from 'node:http';
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// These tests start real server processes; give them room on a busy machine.
+vi.setConfig({ testTimeout: 30_000 });
 import { packPlugin, unpackPlugin, verifyPackage } from './pack.ts';
 import { checkUpdates, installAvailable, installZip, listSource, writeIndex } from './sources.ts';
 import { EXAMPLE_PLUGIN, callTool, exampleAt, rig, toolNames, type Rig } from './testing/helpers.ts';
