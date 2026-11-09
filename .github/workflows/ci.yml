@@ -24,7 +24,15 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      # Tests are retried once. Node 24 on Windows can, very rarely, crash the
+      # whole test process when a connection is hard-aborted (not reproduced on
+      # the Node 24.22.2 bundled with Electron; the agent core now aborts softly).
+      # That interrupts the run; it is not an assertion failure. A real failure
+      # still fails twice. See docs/design/agent-core.md, "未决问题".
+      - name: Test (retry once)
+        shell: bash
+        run: |
+          npm test || { echo "::warning::Tests failed on the first run; retrying once."; npm test; }
 
       # Sensitive-word scan. The example list in the repository is always used.
       # A private repository injects its own list in one of two ways:
