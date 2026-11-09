@@ -2,6 +2,7 @@
 import type { ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
 import { filesOf, type Block, type Transcript } from '../store/transcript';
 import { Icon } from '../ui/Icon';
+import { activityText } from './activity';
 import { fileFolder, fileName, formatDuration, formatUsd, toolLabel, toolTarget } from '../chat/format';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
@@ -19,14 +20,6 @@ export interface DetailPanelProps {
   onClose?: () => void;
 }
 
-const ACTIVITY_LABEL: Record<ProjectLogEntry['kind'], string> = {
-  file_write: '写了文件',
-  file_edit: '改了文件',
-  command: '运行命令',
-  stage: '阶段',
-  decision: '定了',
-  note: '记了',
-};
 
 function clock(iso: string): string {
   const d = new Date(iso);
@@ -104,11 +97,9 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
             {activity.length ? (
               <ul className="detail-list">
                 {activity.slice(0, 12).map((a) => (
-                  <li key={a.id} className="activity-item" title={a.path ?? a.summary}>
+                  <li key={a.id} className="activity-item" title={activityText(a)}>
                     <span className="activity-time">{clock(a.at)}</span>
-                    <span className="activity-text">
-                      <span className="detail-item-sub">{ACTIVITY_LABEL[a.kind] ?? a.kind}</span> {a.summary}
-                    </span>
+                    <span className="activity-text">{activityText(a)}</span>
                   </li>
                 ))}
               </ul>
