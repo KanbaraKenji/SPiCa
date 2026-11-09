@@ -1,0 +1,13 @@
+{
+  "name": "@spica/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spica agent core: the agent loop, built-in tools and multi-agent runtime.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@spica/desktop",
+  "productName": "Spica",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spica desktop shell (Electron).",
+  "license": "Apache-2.0",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json"
+  },
+  "devDependencies": {
+    "@spica/protocol": "*",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "electron": "45.2.3",
+    "electron-vite": "6.0.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "vite": "8.3.6"
+  }
+}

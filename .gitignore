@@ -31,5 +31,5 @@ ledger-archive/
 scripts/dev/open-subsession.ps1
 
 # Brand source assets: pending decision on whether they ship in this repo.
-# The app draws its mark from code (apps/desktop/src/renderer/src/SpicaMark.tsx).
+# The app draws its mark from code (apps/desktop/src/renderer/src/mark/).
 branding/
