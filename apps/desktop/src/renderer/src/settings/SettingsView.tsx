@@ -5,7 +5,7 @@ import { Appearance } from './Appearance';
 import { Models, type ProvidersApi } from './Models';
 import { Plugins, type PluginsApi } from './Plugins';
 import { About } from './About';
-import { General, type WorkflowsApi } from './General';
+import { General, type GeneralProps, type WorkflowsApi } from './General';
 import type { UpdateState } from '../../../shared/updates';
 
 export type SettingsTab = 'general' | 'appearance' | 'models' | 'plugins' | 'about';
@@ -31,9 +31,12 @@ export interface SettingsViewProps {
   workflows: WorkflowsApi;
   pickFolder(): Promise<string | null>;
   onBackendRestarted(listener: () => void): () => void;
+  projects: GeneralProps['projects'];
+  exportUsageLog: GeneralProps['exportUsageLog'];
+  showInFolder: GeneralProps['showInFolder'];
 }
 
-export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, workflows, pickFolder, onBackendRestarted }: SettingsViewProps) {
+export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder }: SettingsViewProps) {
   const { settings } = useShell(shell);
   return (
     <div className="settings">
@@ -56,7 +59,16 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
         </div>
         <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
           {tab === 'general' ? (
-            <General settings={settings} onChange={(p) => shell.update(p)} workflows={workflows} pickFolder={pickFolder} onBackendRestarted={onBackendRestarted} />
+            <General
+              settings={settings}
+              onChange={(p) => shell.update(p)}
+              workflows={workflows}
+              pickFolder={pickFolder}
+              onBackendRestarted={onBackendRestarted}
+              projects={projects}
+              exportUsageLog={exportUsageLog}
+              showInFolder={showInFolder}
+            />
           ) : tab === 'appearance' ? (
             <Appearance settings={settings} activeSkin={shell.activeSkin()} onChange={(p) => shell.update(p)} />
           ) : tab === 'models' ? (

@@ -1,8 +1,10 @@
-// Settings > 常规: mail sorting (on / off, how often, what to ignore) and the
-// folder workflow files are read from.
+// Settings > 常规: mail sorting (on / off, how often, what to ignore), the
+// folder workflow files are read from, and exporting the usage log.
 import { useCallback, useEffect, useState } from 'react';
 import { MAIL_INTERVALS, type MailPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
-import type { WorkflowsState } from '../../../shared/bridge';
+import type { UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
+import { ContextMenu } from '../ui/ContextMenu';
+import { Icon } from '../ui/Icon';
 import { Switch } from './Plugins';
 
 export interface WorkflowsApi {
@@ -16,6 +18,114 @@ export interface GeneralProps {
   pickFolder(): Promise<string | null>;
   /** Subscribes to the core coming back (it re-reads the workflow folder then). */
   onBackendRestarted(listener: () => void): () => void;
+  /** Projects to pick from when exporting the usage log. */
+  projects: { id: string; name: string }[];
+  exportUsageLog(req: UsageLogRequest): Promise<UsageLogResult>;
+  showInFolder(path: string): void;
+  /** For tests. */
+  now?: Date;
+}
+
+type Range = 'all' | 'today' | 'week' | 'month';
+const RANGES: [Range, string][] = [
+  ['all', '全部'],
+  ['today', '今天'],
+  ['week', '最近 7 天'],
+  ['month', '最近 30 天'],
+];
+
+/** Start of the range (local midnight), as ISO; nothing for 全部. */
+export function rangeStart(range: Range, now: Date = new Date()): string | undefined {
+  if (range === 'all') return undefined;
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  if (range === 'week') d.setDate(d.getDate() - 6);
+  if (range === 'month') d.setDate(d.getDate() - 29);
+  return d.toISOString();
+}
+
+function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps) {
+  const [projectId, setProjectId] = useState('');
+  const [range, setRange] = useState<Range>('all');
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<UsageLogResult>(null);
+  const project = projects.find((p) => p.id === projectId);
+  const run = async () => {
+    setBusy(true);
+    setResult(null);
+    const from = rangeStart(range, now);
+    try {
+      setResult(await exportUsageLog({ ...(project ? { projectId: project.id } : {}), ...(from ? { from } : {}) }));
+    } catch {
+      setResult({ error: '没有导出成功，请稍后再试。' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="settings-group">
+      <h3 className="settings-subheading">使用日志</h3>
+      <p className="settings-hint">对话、工具调用、项目动态和来信的完整记录，存成一个文件（.jsonl）。模型密钥和接口地址不会写进去。</p>
+      {projects.length ? (
+        <div className="interval-row">
+          <span className="field-label">项目</span>
+          <button
+            type="button"
+            className="btn"
+            aria-haspopup="menu"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setMenu({ x: r.left, y: r.bottom + 4 });
+            }}
+          >
+            {project?.name ?? '全部项目'}
+            <Icon name="chevronDown" size={12} />
+          </button>
+        </div>
+      ) : null}
+      <div className="interval-row">
+        <span className="field-label">时间</span>
+        <div className="segmented" role="radiogroup" aria-label="时间">
+          {RANGES.map(([r, label]) => (
+            <button key={r} type="button" role="radio" aria-checked={range === r} className={range === r ? 'segment is-on' : 'segment'} onClick={() => setRange(r)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="rule-actions">
+        <button type="button" className="btn" disabled={busy} onClick={() => void run()}>
+          {busy ? <span className="spinner" aria-hidden /> : null}
+          导出…
+        </button>
+      </div>
+      {result && 'error' in result ? <p className="provider-result is-bad plugin-note">{result.error}</p> : null}
+      {result && 'file' in result ? (
+        <div className="setting-row usage-result">
+          <div className="setting-text">
+            <span className="setting-title">{result.records ? `已导出 ${result.records.toLocaleString('zh-CN')} 条记录` : '这段时间没有记录，文件里只有表头'}</span>
+            <span className="settings-hint path-text" title={result.file}>
+              {result.file}
+            </span>
+          </div>
+          <div className="row-buttons">
+            <button type="button" className="btn" onClick={() => showInFolder(result.file)}>
+              在文件夹中显示
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {menu ? (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={[{ id: '', name: '全部项目' }, ...projects].map((p) => ({ label: p.name, onSelect: () => setProjectId(p.id) }))}
+          onClose={() => setMenu(null)}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 const lines = (text: string) =>
@@ -155,6 +265,7 @@ export function General(props: GeneralProps) {
       </div>
       <IgnoreRules key={JSON.stringify(mail.ignore)} mail={mail} onSave={(ignore) => setMail({ ignore })} />
       <Workflows {...props} />
+      <UsageLog {...props} />
     </section>
   );
 }

@@ -37,6 +37,16 @@ export interface ShellState {
   automated: boolean;
 }
 
+/** 导出使用日志: which project (none = all) and which days (ISO, inclusive; none = from the start / until now). */
+export interface UsageLogRequest {
+  projectId?: string;
+  from?: string;
+  to?: string;
+}
+
+/** null: the save dialog was cancelled. */
+export type UsageLogResult = { file: string; records: number } | { error: string } | null;
+
 export interface DesktopBridge extends SpicaBridge {
   /** The agent backend (fake until the core's first milestone; same interface either way). */
   agent: AgentApi;
@@ -50,6 +60,10 @@ export interface DesktopBridge extends SpicaBridge {
   openFile(sessionId: string, path: string): Promise<string | null>;
   /** Windows' own folder picker, with `title` on it. Resolves to the chosen path, or null when cancelled. */
   pickFolder(title?: string): Promise<string | null>;
+  /** Asks where to save, then writes the usage log (JSON Lines; keys and addresses removed by the core). */
+  exportUsageLog(req: UsageLogRequest): Promise<UsageLogResult>;
+  /** Shows a file selected in Explorer. */
+  showInFolder(path: string): void;
   backend: {
     status(): Promise<BackendState>;
     onStatus(listener: (s: BackendState) => void): () => void;
