@@ -1,6 +1,6 @@
 # Agent 内核设计（`@spica/core`）
 
-> 状态：M1–M3 已完成（2026-11-09）。M1：主循环、两种接入、事件流、可追溯记录、文件工具；M2：钩子六位置、会话树与回传、两种插话、确认与提问卡、限流与花费上限；M3：run_command、web_fetch、web_search、MCP 客户端、wso2、sqlite 存储与重启恢复。下一步 M4「项目与三层团队」、M5「后端接口（MCP 服务）」。
+> 状态：M1–M4 已完成（2026-11-09）。M1：主循环、两种接入、事件流、可追溯记录、文件工具；M2：钩子六位置、会话树与回传、两种插话、确认与提问卡、限流与花费上限；M3：run_command、web_fetch、web_search、MCP 客户端、wso2、sqlite 存储与重启恢复；M4：项目与三层团队。下一步 M5「后端进程与 MCP 服务」（12b 节）。
 > 需求来源：立项书「定位」「硬规则」「模型接入」「Harness」「数据与外壳」「首版验收」；主循环纯自写（不试接 Pi）。
 
 ## 1. 总览与架构图
@@ -176,7 +176,7 @@
 - 常驻成员：角色模板、记忆接口（读写由插件实现）、专属工具表三个可选字段；可追溯记录完整可导出，将来做成员记忆用。
 - 评测插件：只走公开接口和事件流（与 MCP 服务同一套），不碰内核内部。
 
-## 12a. 项目与三层团队（M4，先设计后实现）
+## 12a. 项目与三层团队（M4，已实现）
 
 立项书的卖点在内核里变成一等概念：**项目 = 一个文件夹 + 一个常驻的项目经理会话**，顶层会话管所有项目。
 
@@ -191,7 +191,7 @@
 - 会话记录多一个 `projectId`（项目经理和它开出的子 Agent 都带），工作文件夹默认就是项目文件夹。
 - 顶层会话全局只有一个：`runtime.top()` 没有就建、有就返回。项目经理的父会话是顶层，子 Agent 的父会话是项目经理（三层就是会话树）。
 
-**流程与工作对象从文件读**：一个流程一个 JSON 文件（不引第三方 YAML 库），放在 `workflowsDir`（部署配置，默认带一个示例 `docs/examples/workflows/product-development.json`）：
+**流程与工作对象从文件读**：一个流程一个 JSON 文件（不引第三方 YAML 库），放在 `workflowsDir`（部署配置；示例在 `packages/core/examples/workflows/product-development.json`）。坏文件按文件名报出来（`runtime.workflowErrors`）并跳过，不影响其他文件：
 
 ```json
 {
@@ -222,6 +222,12 @@
 | 项目经理 | `project_status` | 本项目的流程、当前阶段的目标和出口条件、工作对象树 |
 | 项目经理 | `set_stage {stage, note}` | 换阶段（只能是流程文件里的阶段），记一条 stage 关键操作，回传给顶层 |
 | 项目经理 | `add_work_object {level, name, parent?}` / `list_work_objects` | 维护工作对象（层级按流程文件校验） |
+
+**谁看得见哪些工具**：顶层工具只给 `role: top` 的会话（单独的顶层会话，以及界面里没有父会话的普通对话：任何顶层对话都可以建项目，项目经理的父会话始终是那个唯一的顶层会话）；项目工具只给带 `projectId` 的会话（项目经理和它的子 Agent）。
+
+**每轮的项目提示**：内核自带钩子 `core:project`，给项目里的会话在系统提示后面加一行「你为哪个项目工作、文件夹、流程、当前阶段和目标」，阶段一变下一轮就是新的。
+
+**子会话里用户的改动优先**（统筹定，J4 要验的点）：带队的会话（顶层、项目经理、任何有子会话的会话）系统提示里每轮都有一条规则：收到「用户在子会话里说了 / 定了什么」的备注时，它优先于原计划，要套用到总体结论，并在回答里说明是按用户在子会话里的改动调整的。
 
 **关键操作记录**：项目内的会话 write_file / edit_file 成功、run_command 执行、set_stage、record_decision 时自动记一条 `project_log`，发 `project.activity` 事件；顶层的 `list_projects` / `open_project` 读它。项目经理和子 Agent 的完整交互照旧进 `messages`。
 
@@ -282,28 +288,24 @@
 
 | 里程碑 | 日期 | 测试 | 真模型冒烟 |
 |---|---|---|---|
+| M4 | 2026-11-09 | 16 个测试文件 130 条全过（新增：流程文件校验、角色模板、建项目与三层父子关系、阶段校验与回传、工作对象层级、关键操作记录、项目跨重启、工具按角色可见、项目提示、带队规则、AgentApi 项目命令） | DeepSeek flash 项目冒烟（`npm run smoke:project -w @spica/core`）：顶层建项目 → 项目经理并行开两个子 Agent → 用户在 B 里说「只看付款和认证、不看价格」→ 项目经理按这两项给结论，并写明「在 supplier-b 会话里用户说……所以我调整了建议」；它的决定也回传到顶层；13 次调用约 0.0065 USD |
 | M3 | 2026-11-09 | 15 个测试文件 112 条全过（新增：sqlite 存储、正常关闭 / 提问卡 / 会话树跨重启、两种强杀、wso2 token 流程、run_command、web_fetch / web_search、MCP 客户端、文件卡、提取器请求） | DeepSeek flash：读文件→grep→答对，2 次调用约 0.0005 USD；团队冒烟仍通过（9 次调用约 0.004 USD） |
 | M2 | 2026-11-09 | 10 个测试文件 72 条全过（新增：钩子六位置与撤销、两种插话、确认与提问卡、会话树与回传、限流与花费上限、AgentApi 适配） | DeepSeek flash 团队冒烟（`npm run smoke:team -w @spica/core`）：项目经理并行开两个子 Agent 各读一份报价，用户中途进 B 改方向「只看付款和认证」，回传到项目经理，项目经理的结论明确按这次改动写；9 次调用约 0.004 USD |
 | M1 | 2026-11-09 | 5 个测试文件 40 条全过（流式解析、两种 provider 往返、重试 / 不重试 / 中止、文件工具、读文件→grep→回答整条循环、父链） | DeepSeek flash：read_file + grep 并行 → 正确回答，2 次调用约 0.0006 USD；Haiku 5.5：同样通过，2 次调用约 0.0004 USD，第二次命中缓存 1491 token |
 
-## 15. 交接（2026-11-09，用量快到上限时存档）
+## 15. 交接（2026-11-09 更新）
 
-**状态**：M1–M3 完成并回报；M4 做到第 1 步。工作区里 packages/core、packages/protocol、本文档**没有未提交的改动**（最后提交 2d5386e）。根目录 lint、typecheck、test 在 2d5386e 时全绿。
+**状态**：M1–M4 完成并回报。工作区里 packages/core、packages/protocol、本文档没有未提交的改动。提交前用一个小脚本把关：根目录 lint、typecheck 和内核测试都绿才提交（内核测试遇到 Node 的 0xC0000409 崩溃会自动重跑一次）。
 
-**M4 已做**（2d5386e）：protocol 里的项目类型（ProjectInfo、ProjectDetail、ProjectLogEntry、WorkObject、WorkflowDef、CreateProjectRequest）和事件（project.created / project.updated / project.activity）；AgentApi 的四个项目命令先标成可选（getTopSession、createProject、listProjects、getProject；桌面外壳已经在用这些名字）；两种存储都有 projects、project_log、work_objects 三张表和读写方法（还没有测试）。SessionConfig 多了 projectId，SessionInfo 多了 projectId。
-
-**M4 下一步，按顺序**（设计见 12a 节）：
-1. `src/projects.ts`：流程文件加载（`workflowsDir` + `workflows` 选项，JSON），示例放 `packages/core/examples/workflows/product-development.json`（12a 节写的是 docs/examples，改到包里，文档跟着改）；角色模板 `top`、`project-manager`（`templates` 选项，`createSession({templateId})` 套用）。
-2. Runtime：`top()`（全局唯一顶层会话）、`createProject`（建文件夹、建项目经理会话：父会话是顶层、cwd 是项目文件夹、带 projectId、模板 project-manager，有 brief 就发过去）、`listProjects`、`getProject`、`setStage`、工作对象增查（按流程层级校验）；子会话继承 projectId；`restore()` 不用改（项目都在库里）。
-3. 关键操作记录：项目内会话的 write_file / edit_file / run_command 成功、set_stage、record_decision 时写 project_log，发 project.activity。挂点：在 `Session.#execute` 之后加一个 `rt.onToolDone(session, call, result)`。
-4. 工具：顶层 create_project / list_projects / open_project；项目经理 project_status / set_stage / add_work_object / list_work_objects。用 `ToolEnv` 加 `role`、`projectId` 来控制谁看得见。
-5. 「子会话里用户的改动优先」（统筹已定）：系统提示规定用户在任何子会话里的要求和改动优先于父会话原计划；父会话收到 relay / decision 备注后要套用到总体结论，并说明是按用户在子会话里的改动调整的。像 languageLine 那样，在有子会话的会话里每轮加上；冒烟里加一条覆盖。
-6. api.ts 实现四个项目命令，并把它们在 AgentApi 里改回必选（通知桌面外壳）。
-7. 测试：项目建立、三层父子关系、流程与阶段校验、工作对象层级、关键操作记录、重启后项目还在、工具按角色可见；DeepSeek 冒烟：顶层建项目 → 项目经理开两个子 Agent → 用户在子会话改方向 → 项目经理结论按改动写。
-
-**之后**：M5（12b 节：utilityProcess + 端口通道 + 监护恢复 + MCP 服务 stdio/HTTP + 测试连接探针）。
+**下一步 M5**（设计见 12b 节）：
+1. 内核进程入口：`packages/core/src/host/`：在 utilityProcess 里起 Runtime + SqliteStore + `restore()`，接主进程的 MessagePort，按 `{id, method, params}` 调 AgentApi，事件原样推送；内存里留最近几千条事件，提供 `eventsSince(seq)`。
+2. 端口客户端：实现同一个 `AgentApi` 接口，给桌面主进程用（外壳把 `createAgentApi(runtime)` 换成它）。
+3. 监护：主进程按退避重启（1/2/5 秒，1 分钟最多 5 次），正常退出发 `shutdown`。这部分代码在 apps/desktop，归桌面外壳；内核只提供入口和客户端，并写清楚协议。
+4. MCP 服务：stdio（`--mcp`）必做，本机 HTTP（127.0.0.1 + 令牌）可选；每个 AgentApi 方法一个工具，加 `spica_run`（发一句、等运行结束、回结果）和 `spica_events`；库锁文件防两个进程同时写。
+5. 测试连接探针 `probeProvider(配置)`：最小请求，回延迟、模型名、人话错误，不进会话。
+6. 之后：AgentApi 的项目命令在 protocol 里改成必选（先让外壳实现）；J2–J7 经 MCP 服务自动跑一遍。
 
 **注意**：
-- 每次提交前跑根目录 `npm run lint`、`npm run typecheck`、`npm test`；只 add 自己的路径（packages/core、packages/protocol、本文档）；改 package.json 要和锁文件同一个提交。
-- 用 Python 改文件时，`\n` 这类转义容易被写成真换行，改完先 typecheck。
-- 全量测试偶发被 Node 的 0xC0000409 打断（见 13 节），断言本身不失败；重跑即可。
+- 只 add 自己的路径（packages/core、packages/protocol、本文档）；改 package.json 要和锁文件同一个提交。
+- 用 Python 改文件时 `\n` 这类转义容易被写成真换行，改完先 typecheck；在 Windows 上用 Edit 工具最稳。
+- 全量测试偶发被 Node 的 0xC0000409 打断（见 13 节），断言本身不失败。
