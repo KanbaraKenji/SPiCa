@@ -388,6 +388,8 @@ export interface CreateSessionRequest {
   locale?: string;
   /** Apply a role template (system prompt, tools, model). Explicit fields win. */
   templateId?: string;
+  /** Attach the session to a project (sub-agents inherit their parent's project). */
+  projectId?: string;
 }
 
 export interface SendResult {
