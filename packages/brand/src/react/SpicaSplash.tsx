@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
 import { MARK_CENTER, MARK_GEOMETRY, MARK_VIEWBOX, fmt, sparklePath } from '../geometry.ts';
-import { SPLASH_LAYOUT, SPLASH_STAGE, splashFrame, splashStaticFrame, starfield, type SplashFrame } from '../splash.ts';
+import { SPLASH_LAYOUT, SPLASH_STAGE, SPLASH_TEMPOS, splashFrame, splashStaticFrame, starfield, type SplashFrame } from '../splash.ts';
 import { WORDMARK } from '../wordmark.ts';
 
 export interface SpicaSplashProps {
@@ -9,6 +9,8 @@ export interface SpicaSplashProps {
   /** 收尾播完、整层淡出后回调；调用方在这里卸载组件 */
   onDone?: () => void;
   theme?: 'dark' | 'light';
+  /** 双星转一圈的秒数；缺省与背景同拍（SPLASH_TEMPOS.sync） */
+  orbitPeriod?: number;
   /** 横标下方的小字（例如版本号） */
   caption?: ReactNode;
   className?: string;
@@ -19,18 +21,36 @@ const C = fmt(MARK_CENTER);
 const L = SPLASH_LAYOUT;
 const STAR_R = 7;
 const STAR_SPARKLE = sparklePath(0, 0, STAR_R * 2.4, 0.16);
-/** 同时最多三颗：蓝星、伴星、掠字的光 */
+/** 同时最多三颗：蓝星、伴星、掠字的光。每颗在花标后面、前面各有一个位置，按纵深切换 */
 const STAR_SLOTS = 3;
+
+/** 一组星的位置（后面一组画在花标下面，前面一组画在最上面） */
+function starSlots(refs: { current: Array<SVGGElement | null> }, id: string) {
+  return Array.from({ length: STAR_SLOTS }, (_, i) => (
+    <g
+      key={i}
+      ref={(el) => {
+        refs.current[i] = el;
+      }}
+      className="spica-splash-star"
+      opacity="0"
+    >
+      <circle className="spica-splash-star-halo" r={STAR_R * 2.6} fill={`url(#${id}-star)`} opacity="0.5" />
+      <path className="spica-splash-star-shape" d={STAR_SPARKLE} />
+      <circle className="spica-splash-star-core" r={STAR_R * 0.55} />
+    </g>
+  ));
+}
 
 function reducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 }
 
 /**
- * 开机画面「暗处亮起 · 双星互绕」。铺满父元素（父元素需要定位）。
+ * 开机画面「暗处亮起 · 双星环绕」。铺满父元素（父元素需要定位）。
  * 时间线在 splash.ts，这里只负责按帧把状态写到 SVG 和画布上。
  */
-export function SpicaSplash({ ready, onDone, theme = 'dark', caption, className, style }: SpicaSplashProps) {
+export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLASH_TEMPOS.sync, caption, className, style }: SpicaSplashProps) {
   const id = useId().replace(/:/g, '');
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -40,7 +60,9 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', caption, className,
   const hubRef = useRef<SVGCircleElement>(null);
   const petalRefs = useRef<Array<SVGGElement | null>>([]);
   const letterRefs = useRef<Array<SVGGElement | null>>([]);
-  const starRefs = useRef<Array<SVGGElement | null>>([]);
+  const maskRef = useRef<SVGGElement>(null);
+  const backStarRefs = useRef<Array<SVGGElement | null>>([]);
+  const frontStarRefs = useRef<Array<SVGGElement | null>>([]);
   const readyAtRef = useRef<number | null>(null);
   const t0Ref = useRef<number>(0);
   const onDoneRef = useRef(onDone);
@@ -68,6 +90,7 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', caption, className,
       glowRef.current?.setAttribute('opacity', fmt(f.glow));
       hubRef.current?.setAttribute('r', fmt(MARK_GEOMETRY.params.hubRadius * f.hubScale));
       hubRef.current?.setAttribute('opacity', fmt(f.appear));
+      maskRef.current?.setAttribute('opacity', fmt(f.appear));
       const sh = shockRef.current;
       if (sh) {
         sh.setAttribute('r', fmt(f.shock?.r ?? 0));
@@ -87,13 +110,16 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', caption, className,
         g.setAttribute('transform', `translate(0 ${fmt(l.dy / L.wordScale)})`);
       });
       for (let i = 0; i < STAR_SLOTS; i++) {
-        const g = starRefs.current[i];
-        if (!g) continue;
         const s = f.stars[i];
-        g.setAttribute('opacity', fmt(s?.opacity ?? 0));
-        if (s) {
-          g.setAttribute('transform', `translate(${fmt(s.x)} ${fmt(s.y)})`);
-          g.setAttribute('class', s.companion ? 'spica-splash-star spica-splash-star--companion' : 'spica-splash-star');
+        for (const [refs, isFront] of [[backStarRefs, false], [frontStarRefs, true]] as const) {
+          const g = refs.current[i];
+          if (!g) continue;
+          const on = s !== undefined && s.front === isFront;
+          g.setAttribute('opacity', fmt(on ? s.opacity : 0));
+          if (on) {
+            g.setAttribute('transform', `translate(${fmt(s.x)} ${fmt(s.y)}) scale(${fmt(s.scale)})`);
+            g.setAttribute('class', s.companion ? 'spica-splash-star spica-splash-star--companion' : 'spica-splash-star');
+          }
         }
       }
     };
@@ -133,7 +159,7 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', caption, className,
     let finished = false;
     const tick = (now: number) => {
       const t = (now - t0Ref.current) / 1000;
-      const f = splashFrame(t, readyAtRef.current);
+      const f = splashFrame(t, readyAtRef.current, { orbitPeriod });
       apply(f);
       if (ctx) {
         const w = canvas.width;
@@ -165,8 +191,8 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', caption, className,
       cancelAnimationFrame(raf);
       ro?.disconnect();
     };
-    // 换主题时重启循环（重新读颜色）；ready 通过 ref 传进循环，不触发重启
-  }, [theme]);
+    // 换主题或节奏时重启循环；ready 通过 ref 传进循环，不触发重启
+  }, [theme, orbitPeriod]);
 
   const markTransform = `translate(${fmt(L.cx)} ${fmt(L.cy)}) scale(${fmt(L.markScale)}) translate(-${C} -${C})`;
   const wordTransform = `translate(${fmt(L.wordX)} ${fmt(L.wordY)}) scale(${fmt(L.wordScale)})`;
@@ -199,8 +225,16 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', caption, className,
             <stop offset="1" className="spica-splash-glow-edge" />
           </radialGradient>
         </defs>
-        <circle ref={glowRef} cx={fmt(L.cx)} cy={fmt(L.cy)} r={fmt((SPLASH_STAGE.height * 0.36 * 70) / MARK_VIEWBOX)} fill={`url(#${id}-glow)`} opacity="0" />
+        <circle ref={glowRef} className="spica-splash-glow" cx={fmt(L.cx)} cy={fmt(L.cy)} r={fmt((SPLASH_STAGE.height * 0.36 * 70) / MARK_VIEWBOX)} fill={`url(#${id}-glow)`} opacity="0" />
+        {starSlots(backStarRefs, id)}
         <g transform={markTransform}>
+          {/* 底色剪影：花瓣暗下去时也挡住后面的星（同一组路径，只当遮挡，不改轮廓） */}
+          <g ref={maskRef} className="spica-splash-mask" opacity="0">
+            {MARK_GEOMETRY.petals.map((p) => (
+              <path key={p.index} transform={`rotate(${p.angle} ${C} ${C})`} d={p.d} />
+            ))}
+            <circle cx={C} cy={C} r={fmt(MARK_GEOMETRY.params.hubRadius)} />
+          </g>
           {MARK_GEOMETRY.petals.map((p, i) => (
             <g
               key={p.index}
@@ -239,20 +273,7 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', caption, className,
             </g>
           ))}
         </g>
-        {Array.from({ length: STAR_SLOTS }, (_, i) => (
-          <g
-            key={i}
-            ref={(el) => {
-              starRefs.current[i] = el;
-            }}
-            className="spica-splash-star"
-            opacity="0"
-          >
-            <circle r={STAR_R * 2.6} fill={`url(#${id}-star)`} opacity="0.5" />
-            <path className="spica-splash-star-shape" d={STAR_SPARKLE} />
-            <circle className="spica-splash-star-core" r={STAR_R * 0.55} />
-          </g>
-        ))}
+        {starSlots(frontStarRefs, id)}
       </svg>
       {caption ? <div className="spica-splash-caption">{caption}</div> : null}
     </div>
