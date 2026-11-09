@@ -45,7 +45,10 @@ portable:
   artifactName: Spica-Portable-${version}.${ext}
 # latest.yml (version, file name, sha512) is written next to the installer; the
 # app's updater reads it from the update source. The URL here is a placeholder
-# and is not used by the app.
+# and is not used by the app. The channel is fixed: without it a pre-release
+# version such as 0.1.0-rc.1 is written as rc.yml, which neither the updater
+# nor the release workflow looks for.
 publish:
   provider: generic
   url: https://updates.example.invalid/spica
+  channel: latest
