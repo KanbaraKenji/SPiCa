@@ -61,6 +61,7 @@ export async function postWithRetry(opts: PostOptions): Promise<Response> {
       clearTimeout(timer);
       opts.signal.removeEventListener('abort', onOuterAbort);
       if (opts.signal.aborted) throw abortError(opts.signal);
+      if (err instanceof ProviderError && !err.retryable) throw err; // e.g. rejected credentials
       const reason = err instanceof Error ? `${err.name}: ${err.message}` : 'network error';
       lastError = new ProviderError(redact(`request failed (${reason})`, opts.secrets), { retryable: true });
       if (attempt < opts.retry.maxAttempts) {

@@ -21,6 +21,8 @@ beforeEach(async () => {
     tracer: new Tracer(new MemoryStore()),
     extractors: [],
     services: {},
+    callId: 'c',
+    emit: () => {},
   };
   await mkdir(join(dir, 'src', 'deep'), { recursive: true });
   await mkdir(join(dir, 'node_modules', 'pkg'), { recursive: true });

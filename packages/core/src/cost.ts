@@ -32,6 +32,9 @@ export const DEFAULT_PRICES: PriceTable = {
   },
 };
 
+/** Used when nothing in the price table matches: high on purpose. */
+export const FALLBACK_PRICE: ModelPrice = { input: 10, output: 50, unverified: true };
+
 export interface Limits {
   globalUsd?: number;
   perSessionUsd?: number;
@@ -80,19 +83,21 @@ export class CostLedger {
     this.#budget = budget;
   }
 
-  price(providerId: string, providerKind: string, model: string): ModelPrice | undefined {
-    for (const key of [providerId, providerKind]) {
-      const table = this.#prices[key];
-      if (!table) continue;
-      const p = table[model] ?? table['*'];
-      if (p) return p;
-    }
-    return undefined;
+  /**
+   * Price for a model: exact model under the provider id, then under the
+   * provider kind; then the `*` rows of those; then the table-wide `*`
+   * entry; finally a deliberately high fallback, so an unpriced model can
+   * never make the limits look free.
+   */
+  price(providerId: string, providerKind: string, model: string): ModelPrice {
+    const tables = [this.#prices[providerId], this.#prices[providerKind]];
+    for (const t of tables) if (t?.[model]) return t[model]!;
+    for (const t of tables) if (t?.['*']) return t['*']!;
+    return this.#prices['*']?.['*'] ?? FALLBACK_PRICE;
   }
 
   estimate(scope: Pick<CostScope, 'providerId' | 'providerKind' | 'model'>, usage: Usage): number {
     const p = this.price(scope.providerId, scope.providerKind, scope.model);
-    if (!p) return 0;
     const cacheRead = usage.cacheReadTokens ?? 0;
     const cacheWrite = usage.cacheWriteTokens ?? 0;
     // Anthropic reports cached tokens separately from input_tokens; OpenAI-style

@@ -128,3 +128,14 @@ describe('CostLedger', () => {
     expect(ledger.estimate({ providerId: 'x', providerKind: 'openai-compatible', model: 'm' }, { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 400_000 })).toBeCloseTo(0.64);
   });
 });
+
+describe('price lookup', () => {
+  it('never prices an unknown provider or model at zero', () => {
+    const custom = new CostLedger({ mine: { 'known-model': { input: 1, output: 1 } } });
+    expect(custom.price('mine', 'openai-compatible', 'known-model')).toEqual({ input: 1, output: 1 });
+    expect(custom.price('other', 'wso2', 'mystery')).toMatchObject({ input: 10, output: 50, unverified: true });
+    const defaults = new CostLedger();
+    // exact model under the kind wins over a '*' row under the id
+    expect(defaults.price('anthropic-prod', 'anthropic', 'claude-haiku-5-5')).toMatchObject({ input: 0.1 });
+  });
+});

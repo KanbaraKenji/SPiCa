@@ -1,5 +1,5 @@
 // Tool contract and registry.
-import type { ToolSpec } from '../types.ts';
+import type { CoreEventBody, ToolSpec } from '../types.ts';
 import type { Tracer } from '../trace.ts';
 
 export interface ToolContext {
@@ -13,6 +13,10 @@ export interface ToolContext {
   extractors: FileExtractor[];
   /** Runtime services for tools that act on sessions (spawn, message, ...). */
   services: Record<string, unknown>;
+  /** Id of the current tool call. */
+  callId: string;
+  /** Publish an event on behalf of this session (e.g. a card for the UI). */
+  emit(body: CoreEventBody): void;
 }
 
 export interface ToolOutput {

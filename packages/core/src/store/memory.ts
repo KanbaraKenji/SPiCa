@@ -8,6 +8,7 @@ export class MemoryStore implements Store {
   readonly #sessions = new Map<string, SessionRecord>();
   readonly #messages = new Map<string, Message[]>();
   readonly #toolCalls = new Map<string, ToolCallRecord>();
+  readonly #queued = new Map<string, Message[]>();
   readonly #pending = new Map<string, PendingRecord>();
   readonly #relays: RelayRecord[] = [];
   readonly #traces: TraceRecord[] = [];
@@ -38,10 +39,24 @@ export class MemoryStore implements Store {
   }
 
   upsertToolCall(rec: ToolCallRecord): void {
-    this.#toolCalls.set(rec.id, clone(rec));
+    this.#toolCalls.set(`${rec.sessionId}|${rec.messageId}|${rec.id}`, clone(rec));
   }
-  listToolCalls(sessionId: string): ToolCallRecord[] {
-    return [...this.#toolCalls.values()].filter((t) => t.sessionId === sessionId).map(clone);
+  listToolCalls(sessionId: string, messageId?: string): ToolCallRecord[] {
+    return [...this.#toolCalls.values()]
+      .filter((t) => t.sessionId === sessionId && (!messageId || t.messageId === messageId))
+      .map(clone);
+  }
+
+  putQueued(msg: Message): void {
+    const list = this.#queued.get(msg.sessionId) ?? [];
+    list.push(clone(msg));
+    this.#queued.set(msg.sessionId, list);
+  }
+  deleteQueued(sessionId: string, messageId: string): void {
+    this.#queued.set(sessionId, (this.#queued.get(sessionId) ?? []).filter((m) => m.id !== messageId));
+  }
+  listQueued(sessionId: string): Message[] {
+    return (this.#queued.get(sessionId) ?? []).map(clone);
   }
 
   putPending(rec: PendingRecord): void {
