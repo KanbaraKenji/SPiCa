@@ -5,10 +5,13 @@
 //   plugins(cmd)                    the plugin page, incl. shared-folder / web sources and updates
 //   workflows()                     what the core read from the workflow folder
 //   usageLog({ filter, file })      the core's usage log written to a file (设置 › 常规)
+//   mcpHttpStart / Stop / State     Spica's MCP service over HTTP for scripts on this machine
+//                                   (设置 › 常规 › 开发者; loopback only, token in a file)
 // Models, mail and the workflow folder change through the core's own
 // configure(patch) (no restart).
-import { writeFile } from 'node:fs/promises';
-import type { Runtime } from '@spica/core';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { serveMcpHttp, type McpHttpServer, type Runtime } from '@spica/core';
 import { attachBackend as attachPlugins } from '@spica/plugins';
 import { RealPluginService } from '../main/plugins/service';
 import type { PluginsCommand } from '../shared/plugins';
@@ -16,7 +19,14 @@ import type { PluginsCommand } from '../shared/plugins';
 export interface DesktopHostOptions {
   pluginRoot: string;
   pluginSourcesFile: string;
+  /** Where local scripts find the HTTP MCP service ({ url, tokenFile, pid, startedAt }); absent: no such service. */
+  mcpInfoFile?: string;
+  /** The bearer token, one line, readable by this user only. */
+  mcpTokenFile?: string;
 }
+
+/** Tried first, so scripts usually find the same address; any free port when it is taken. */
+export const MCP_HTTP_PORT = 47820;
 
 interface ParentPort {
   postMessage(v: unknown): void;
@@ -35,6 +45,30 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
   const parent = (process as unknown as { parentPort?: ParentPort }).parentPort;
   page.onChange(() => parent?.postMessage({ type: 'plugins.changed' }));
 
+  let http: McpHttpServer | undefined;
+  const httpState = () => (http ? { url: http.url, port: http.port, tokenFile: options.mcpTokenFile ?? null } : null);
+  const stopHttp = async () => {
+    const h = http;
+    http = undefined;
+    if (options.mcpInfoFile) await rm(options.mcpInfoFile, { force: true }).catch(() => undefined);
+    await h?.close().catch(() => undefined);
+  };
+  const startHttp = async () => {
+    if (http || !options.mcpInfoFile || !options.mcpTokenFile) return httpState();
+    const opts = { extraTools: plugins.mcpTools, host: '127.0.0.1' };
+    try {
+      http = await serveMcpHttp(rt, { ...opts, port: MCP_HTTP_PORT });
+    } catch {
+      http = await serveMcpHttp(rt, { ...opts, port: 0 });
+    }
+    await mkdir(dirname(options.mcpTokenFile), { recursive: true });
+    await writeFile(options.mcpTokenFile, `${http.token}\n`, { mode: 0o600 });
+    // The token never goes into this file, only where to read it.
+    const info = { url: http.url, tokenFile: options.mcpTokenFile, pid: process.pid, startedAt: new Date().toISOString() };
+    await writeFile(options.mcpInfoFile, `${JSON.stringify(info, null, 2)}\n`, 'utf8');
+    return httpState();
+  };
+
   return {
     mcpTools: plugins.mcpTools,
     warnings: plugins.warnings,
@@ -42,6 +76,12 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
       ...plugins.methods,
       plugins: (cmd: unknown) => page.run(cmd as PluginsCommand),
       workflows: () => ({ names: [...rt.workflows.values()].map((w) => w.name), errors: [...rt.workflowErrors] }),
+      mcpHttpStart: () => startHttp(),
+      mcpHttpStop: async () => {
+        await stopHttp();
+        return null;
+      },
+      mcpHttpState: () => httpState(),
       usageLog: async (req: { filter: { projectId?: string; from?: string; to?: string }; file: string }) => {
         const text = rt.exportUsageLog(req.filter ?? {});
         await writeFile(req.file, text ? `${text}\n` : '', 'utf8');
@@ -50,6 +90,9 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
         return { file: req.file, records: Math.max(0, lines - 1) };
       },
     },
-    close: () => plugins.close(),
+    close: async () => {
+      await stopHttp();
+      await plugins.close();
+    },
   };
 }

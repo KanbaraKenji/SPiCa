@@ -89,6 +89,8 @@ export interface ShellSettings {
   /** Projects pinned to the top of the sidebar (project ids, in the order they were pinned). */
   pinnedProjects: string[];
   network: NetworkPrefs;
+  /** 允许本机脚本连接 Spica（开发者）: MCP over HTTP on 127.0.0.1 with a token file. Off by default. */
+  localConnect: boolean;
 }
 
 export const DEFAULT_SETTINGS: ShellSettings = {
@@ -106,6 +108,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   workflowsDir: '',
   pinnedProjects: [],
   network: DEFAULT_NETWORK,
+  localConnect: false,
   mailSeen: {},
 };
 
@@ -195,7 +198,8 @@ export function sanitizeSettings(value: unknown): ShellSettings {
     caFile: text(nw.caFile, 500),
     useSystemCa: typeof nw.useSystemCa === 'boolean' ? nw.useSystemCa : true,
   };
-  return { network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, mailSeen, pinnedProjects };
+  const localConnect = v.localConnect === true;
+  return { localConnect, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, mailSeen, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

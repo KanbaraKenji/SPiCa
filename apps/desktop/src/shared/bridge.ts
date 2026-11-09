@@ -53,6 +53,13 @@ export interface NetworkState {
   problems: string[];
 }
 
+/** 设置 › 常规 › 开发者: where local scripts reach Spica (the token stays in its file). */
+export interface LocalConnectInfo {
+  url: string;
+  port: number;
+  tokenFile: string | null;
+}
+
 /** 导出使用日志: which project (none = all) and which days (ISO, inclusive; none = from the start / until now). */
 export interface UsageLogRequest {
   projectId?: string;
@@ -85,6 +92,8 @@ export interface DesktopBridge extends SpicaBridge {
   /** A file of this session (relative paths are in its folder), ready for the right panel. */
   preview(sessionId: string | null, path: string): Promise<PreviewInfo>;
   network(): Promise<NetworkState | null>;
+  /** Whether local scripts can connect now, and where; null when off (or not possible). */
+  localConnect(): Promise<LocalConnectInfo | null>;
   /** Plugin pages (views/<id>.json of enabled plugins). */
   pluginViews: {
     list(): Promise<PluginView[]>;

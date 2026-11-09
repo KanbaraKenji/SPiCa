@@ -37,9 +37,10 @@ export interface SettingsViewProps {
   mailModel?: string;
   networkState?: GeneralProps['networkState'];
   pickFiles?: GeneralProps['pickFiles'];
+  localConnect?: GeneralProps['localConnect'];
 }
 
-export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles }: SettingsViewProps) {
+export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect }: SettingsViewProps) {
   const { settings } = useShell(shell);
   return (
     <div className="settings">
@@ -74,6 +75,7 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
               {...(mailModel ? { mailModel } : {})}
               {...(networkState ? { networkState } : {})}
               {...(pickFiles ? { pickFiles } : {})}
+              {...(localConnect ? { localConnect } : {})}
             />
           ) : tab === 'appearance' ? (
             <Appearance settings={settings} activeSkin={shell.activeSkin()} onChange={(p) => shell.update(p)} />
