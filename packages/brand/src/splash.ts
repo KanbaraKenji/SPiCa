@@ -37,6 +37,10 @@ export interface SplashFinish {
   bigSpeed: number;
   /** ② 大半径上再绕几圈（用时 = 圈数 × 一圈秒数 ÷ bigSpeed） */
   bigTurns: number;
+  /** 大半径段结束、开始扎心时，前面那颗星在屏幕上的方位（从 12 点钟顺时针的度数；92 = 字标一侧）。alignDive 按它微调圈数 */
+  diveAngle: number;
+  /** 由哪颗星领头扎入（在前面、处在 diveAngle 方位）：primary = 蓝星，companion = 白色伴星 */
+  diveStar: 'primary' | 'companion';
   /** ③ 扎心：用时；转速从 bigSpeed 按 (1-x)² 衰减到 collapseSpeed（0 = 不再转圈，只走一小段短弧），半径缓入加速缩到 0 */
   collapse: number;
   collapseSpeed: number;
@@ -68,6 +72,8 @@ export const SPLASH_FINISH: Readonly<SplashFinish> = Object.freeze({
   bigRadius: 1.8,
   bigSpeed: 3,
   bigTurns: 0.94,
+  diveAngle: 92,
+  diveStar: 'companion',
   collapse: 0.35,
   collapseSpeed: 0,
   trail: 0.35,
@@ -128,7 +134,7 @@ export function splashSchedule(options: SplashOptions = {}, readyAt: number | nu
     // 大半径段开始时的平近点角（单位：圈）
     const expandExtra = F.expand > 0 ? F.expand * (F.bigSpeed - 1) * smoothArea(1) : 0;
     const m0 = (readyAt + F.expand + expandExtra) / period;
-    const want = diveTargetTurns(e);
+    const want = diveTargetTurns(e, F.diveAngle, F.diveStar);
     const end = m0 + F.bigTurns;
     const shift = ((((want - end) % 1) + 1.5) % 1) - 0.5; // 落在 [-0.5, 0.5)
     turns = F.bigTurns + shift;
@@ -142,10 +148,11 @@ export function splashSchedule(options: SplashOptions = {}, readyAt: number | nu
   return { bigStart, collapseStart, merge, fillEnd, sweepStart, sweepEnd, fadeStart, end: fadeStart + F.fadeOut };
 }
 
-/** 前面那颗星在屏幕右侧（约 3 点钟）时的平近点角（单位：圈，0..1），按偏心率缓存 */
-const diveTargetCache = new Map<number, number>();
-function diveTargetTurns(e: number): number {
-  const hit = diveTargetCache.get(e);
+/** 前面那颗星在屏幕方位 angle（度）时的平近点角（单位：圈，0..1），按偏心率与方位缓存 */
+const diveTargetCache = new Map<string, number>();
+function diveTargetTurns(e: number, angle: number, star: 'primary' | 'companion'): number {
+  const key = `${e}|${angle}|${star}`;
+  const hit = diveTargetCache.get(key);
   if (hit !== undefined) return hit;
   let best = 0;
   let bestErr = Infinity;
@@ -154,18 +161,20 @@ function diveTargetTurns(e: number): number {
     const kp = keplerPosition(2 * Math.PI * turns, e);
     const px = kp.r * Math.cos(kp.angle + Math.PI / 2);
     const py = kp.r * Math.sin(kp.angle + Math.PI / 2);
-    for (const [x, y] of [[px, py], [-px, -py]] as const) {
-      if (y < 0) continue; // 只要在前面的那颗
+    const [x, y] = star === 'primary' ? [px, py] : [-px, -py];
+    {
+      if (y < 0) continue; // 领头的那颗要在前面
       const p = project(x, y, 1);
-      const ang = (Math.atan2(p.x - SPLASH_LAYOUT.cx, -(p.y - SPLASH_LAYOUT.cy)) * 180) / Math.PI;
-      const err = Math.abs(ang - 92);
+      const ang = (((Math.atan2(p.x - SPLASH_LAYOUT.cx, -(p.y - SPLASH_LAYOUT.cy)) * 180) / Math.PI) + 360) % 360;
+      const diff = Math.abs(ang - angle);
+      const err = Math.min(diff, 360 - diff);
       if (err < bestErr) {
         bestErr = err;
         best = turns;
       }
     }
   }
-  diveTargetCache.set(e, best);
+  diveTargetCache.set(key, best);
   return best;
 }
 

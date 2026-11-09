@@ -15,7 +15,9 @@ const FPS = Number(fpsArg);
 const W = SPLASH_STAGE.width, H = SPLASH_STAGE.height;
 const T = theme === 'dark'
   ? { bg: '#0B0F19', ink: '#F1F5F9', acc: '#62A9FF', star: '#DCE8FF', companion: '#E8F0FF', core: '#FFFFFF', glow: 0.55, vign: true }
-  : { bg: '#F7F9FC', ink: '#0F172A', acc: '#2F7DE1', star: '#9DB8E0', companion: '#4F74B0', core: '#F7F9FC', glow: 0, vign: false };
+  : { bg: '#F7F9FC', ink: '#0F172A', acc: '#2F7DE1', star: '#9DB8E0', companion: '#1B3F7A', core: null, glow: 0, vign: false };
+// 可选：SPLASH_OPTIONS 环境变量传 JSON（例如 {"finish":{"bigTurns":0.7,"diveAngle":222}}），用来出对比档
+const OPTS = process.env.SPLASH_OPTIONS ? JSON.parse(process.env.SPLASH_OPTIONS) : {};
 const C = MARK_CENTER;
 const STAR_R = 7;
 const SPARK = sparklePath(0, 0, STAR_R * 2.4, 0.16);
@@ -31,7 +33,7 @@ const defs = `<defs>
 function starEl(s) {
   if (s.opacity <= 0.005) return '';
   const halo = theme === 'dark' ? `<circle r="${STAR_R * 2.6}" fill="url(#sg)" opacity="0.5"/>` : '';
-  return `<g transform="translate(${f2(s.x)} ${f2(s.y)}) scale(${f2(s.scale)})" opacity="${s.opacity.toFixed(3)}">${halo}<path d="${SPARK}" fill="${s.companion ? T.companion : T.acc}"/><circle r="${STAR_R * 0.55}" fill="${T.core}"/></g>`;
+  return `<g transform="translate(${f2(s.x)} ${f2(s.y)}) scale(${f2(s.scale)})" opacity="${s.opacity.toFixed(3)}">${halo}<path d="${SPARK}" fill="${s.companion ? T.companion : T.acc}"/><circle r="${STAR_R * 0.55}" fill="${T.core ?? (s.companion ? T.companion : T.acc)}"/></g>`;
 }
 function trailEl(d) {
   if (d.opacity <= 0.005) return '';
@@ -44,9 +46,9 @@ const letterBody = (s, color) => s.kind === 'fill'
 
 function frame(t) {
   const ready = t >= readyAt ? readyAt : null;
-  const f = splashFrame(t, ready);
+  const f = splashFrame(t, ready, OPTS);
   const out = [];
-  for (const s of starfield(t, ready, W, H, 1)) {
+  for (const s of starfield(t, ready, W, H, 1, OPTS)) {
     if (s.opacity <= 0.005) continue;
     out.push(`<line x1="${f2(s.x1)}" y1="${f2(s.y1)}" x2="${f2(s.x2)}" y2="${f2(s.y2)}" stroke="${s.accent ? T.acc : T.star}" stroke-width="${f2(s.width)}" stroke-linecap="round" opacity="${(s.opacity * f.layer).toFixed(3)}"/>`);
   }
