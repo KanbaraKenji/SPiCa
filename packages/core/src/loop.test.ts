@@ -60,13 +60,14 @@ describe('agent loop', () => {
     expect(traces).toHaveLength(3);
     for (const t of traces) {
       expect(t).toMatchObject({ kind: 'model', sessionId: s.id, initiator: 'model', status: 'ok', attempts: 1 });
-      expect(t.target).toMatch(/^127\.0\.0\.1:\d+$/);
+      expect(t.target).toBe('fake-openai'); // provider id, not the endpoint address
       expect(t.durationMs).toBeGreaterThanOrEqual(0);
     }
     expect(traces.map((t) => t.inputTokens)).toEqual([200, 300, 400]);
     const jsonl = rt.exportTraces();
     expect(jsonl.split('\n')).toHaveLength(3);
     expect(jsonl).not.toContain('test-key');
+    expect(jsonl).not.toContain('127.0.0.1');
     expect(rt.ledger.sessionUsd(s.id)).toBeGreaterThan(0);
   });
 

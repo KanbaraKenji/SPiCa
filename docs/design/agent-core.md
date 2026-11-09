@@ -107,7 +107,7 @@
 
 ## 10. 可追溯记录与花费
 
-- 每次对外请求一条 `TraceRecord`：开始时间、耗时、kind（model / search / fetch / mcp / auth）、会话 id、父链、发起者（model / tool:名字 / plugin:id / runtime）、主机名、模型、token（含缓存读写）或字节、花费估算、状态、HTTP 状态、尝试次数、脱敏后的错误。**不记请求头和正文**。
+- 每次对外请求一条 `TraceRecord`：开始时间、耗时、kind（model / search / fetch / mcp / auth）、会话 id、父链、发起者（model / tool:名字 / plugin:id / runtime）、目标（默认是 provider id；部署时设 `traceHost: true` 才记主机名，从不记完整地址）、模型、token（含缓存读写）或字节、花费估算、状态、HTTP 状态、尝试次数、脱敏后的错误。**不记请求头和正文**。
 - 价表是数据（`src/cost.ts`，按 provider id 或种类、模型查，`*` 兜底，可整体覆盖）。Claude 的价格按官方表；DeepSeek 两个模型的价格是占位，标 `unverified`，待核实（不影响上限生效，只影响估算准不准）。
 - 上限：全局、单会话、单次运行、单次调用，外加按 provider 单独设。策略是**不开始一次可能越线的调用**：按「估算输入 + maxTokens 全用完」算最坏花费，超了就停（`budget.stop` 事件写明花了多少、上限多少）。超过警戒线（默认 80%）的累计在 `cost` 事件里带 warning。
 - 开发配置（冒烟脚本里）：Anthropic 全局 100 USD、单次 2 USD，单次运行 1 USD。重启后的累计从存储里的记录回填（M3）。
@@ -116,7 +116,7 @@
 ## 11. 存储与恢复
 
 - 先定 `Store` 接口，M1 用内存实现，M3 换 `node:sqlite`（Node 24 自带、无需本机编译）。
-- 表（打算）：`sessions`（id、parent_id、role、title、status、config、created_at）、`messages`（id、session_id、seq、role、content_json、meta_json）、`tool_calls`（id、session_id、message_id、name、args、result、status、started_at、ended_at）、`pending`（等确认 / 等回答，session_id、kind、payload、created_at）、`traces`（每次对外请求一行）、`relays`（子→父回传）。
+- 表（打算）：`sessions`（id、parent_id、role、title、status、config、created_at）、`messages`（id、session_id、seq、role、content_json、meta_json）、`tool_calls`（id、session_id、message_id、name、args、result、status、started_at、ended_at；同一轮里已执行的工具结果存在这里，所以等确认时重启也不丢）、`pending`（等确认 / 等回答：session_id、call_id、message_id、item_json）、`traces`（每次对外请求一行）、`relays`（子→父回传）。
 - 恢复：重开时读回会话树和消息；`pending` 里的会话恢复成「等确认 / 等回答」，答复到了从断点继续；运行中被强杀的会话标成「已中断」，可续跑。
 
 ## 12. 给常驻成员和评测插件留的口
@@ -134,4 +134,4 @@
 
 | 里程碑 | 日期 | 测试 | 真模型冒烟 |
 |---|---|---|---|
-| M1 | 2026-11-09 | 5 个测试文件 39 条全过（流式解析、两种 provider 往返、重试 / 不重试 / 中止、文件工具、读文件→grep→回答整条循环、父链） | DeepSeek flash：read_file + grep 并行 → 正确回答，2 次调用约 0.0006 USD；Haiku 5.5：同样通过，2 次调用约 0.0004 USD，第二次命中缓存 1491 token |
+| M1 | 2026-11-09 | 5 个测试文件 40 条全过（流式解析、两种 provider 往返、重试 / 不重试 / 中止、文件工具、读文件→grep→回答整条循环、父链） | DeepSeek flash：read_file + grep 并行 → 正确回答，2 次调用约 0.0006 USD；Haiku 5.5：同样通过，2 次调用约 0.0004 USD，第二次命中缓存 1491 token |

@@ -354,7 +354,7 @@ export class Session {
         sessionId: this.id,
         parentChain: this.parentChain,
         initiator: 'model',
-        target: provider.host,
+        target: provider.traceTarget,
         providerId: provider.id,
         model: request.model,
       });

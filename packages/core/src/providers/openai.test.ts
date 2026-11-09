@@ -98,6 +98,12 @@ describe('OpenAICompatibleProvider', () => {
     await expect(p).rejects.toThrow();
   });
 
+  it('records the provider id as trace target unless traceHost is set', () => {
+    expect(openaiProvider(gw).traceTarget).toBe('fake-openai');
+    const withHost = new OpenAICompatibleProvider({ id: 'x', baseUrl: `${gw.baseUrl}/v1`, traceHost: true });
+    expect(withHost.traceTarget).toMatch(/^127\.0\.0\.1:\d+$/);
+  });
+
   it('sends tools as functions and the max-tokens field name can be changed', async () => {
     const p = new OpenAICompatibleProvider({ id: 'x', baseUrl: `${gw.baseUrl}/v1`, apiKey: 'test-key-123456', maxTokensField: 'max_completion_tokens' });
     gw.enqueue({ text: 'ok' });

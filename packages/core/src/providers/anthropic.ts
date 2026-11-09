@@ -33,13 +33,15 @@ export interface AnthropicOptions {
   webSearch?: boolean;
   /** Fields merged into every request body (thinking, output_config, ...). */
   bodyDefaults?: Record<string, unknown>;
+  /** Record the endpoint host name in traces instead of the provider id. Default false. */
+  traceHost?: boolean;
   fetchImpl?: typeof fetch;
 }
 
 export class AnthropicProvider implements Provider {
   readonly id: string;
   readonly kind = 'anthropic';
-  readonly host: string;
+  readonly traceTarget: string;
   readonly capabilities: { serverWebSearch: boolean };
   readonly #opts: AnthropicOptions;
   readonly #auth: AuthSource | undefined;
@@ -49,7 +51,7 @@ export class AnthropicProvider implements Provider {
     this.id = opts.id;
     this.#opts = opts;
     this.#baseUrl = (opts.baseUrl ?? 'https://api.anthropic.com/v1').replace(/\/+$/, '');
-    this.host = hostOf(this.#baseUrl);
+    this.traceTarget = opts.traceHost ? hostOf(this.#baseUrl) : opts.id;
     this.capabilities = { serverWebSearch: opts.webSearch ?? true };
     this.#auth = opts.auth ?? (opts.apiKey ? staticAuth({ 'x-api-key': opts.apiKey }) : undefined);
   }
