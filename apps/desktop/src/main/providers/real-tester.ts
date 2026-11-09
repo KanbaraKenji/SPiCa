@@ -1,42 +1,53 @@
-// "测试连接" for real: one tiny model call with the settings in the form (no
-// retries, 20 s limit). Nothing is saved; the key never leaves the main process.
-// The core will offer a probe API later; swapping to it only changes this file.
-import type { Message } from '@spica/protocol';
-import { humanError } from '../../shared/errors';
-import { validateDraft } from '../../shared/providers';
+// "测试连接" for real, through the core's probe: one minimal request outside
+// any session (no retries, 20 s limit). The core returns a category; the words,
+// and which field of the form to look at, are written here.
+import { probeProvider } from '@spica/core';
+import type { ProbeResult } from '@spica/protocol';
+import { secretLabel, validateDraft, type ProviderDraft } from '../../shared/providers';
 import { buildProvider } from '../backend/core';
 import type { ConnectionTester } from './tester';
 
 const TIMEOUT_MS = 20_000;
 
+/** The result in words a non-developer can act on, pointing at the field to fix. */
+export function probeMessage(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' | 'model'>): string {
+  const model = draft.model.trim();
+  const url = draft.kind === 'wso2' ? '「网关地址」' : '「接口地址」';
+  if (r.ok) {
+    const ms = r.firstByteMs ?? r.latencyMs;
+    return `连得上，模型「${r.model || model}」可以用（${Math.max(1, Math.round(ms))} 毫秒开始回应）。`;
+  }
+  switch (r.errorCode) {
+    case 'auth':
+      return draft.kind === 'wso2' ? '取不到 token：请检查「Client ID」和「Client Secret」，以及「取 token 地址」。' : `密钥不对或已失效：请检查「${secretLabel(draft.kind)}」。`;
+    case 'not_found':
+      return `找不到模型「${model}」或这个地址：请检查「模型」和${url}。`;
+    case 'bad_request':
+      return `请求被拒绝了，多半是模型名不对：请检查「模型」（现在填的是「${model}」）。`;
+    case 'rate_limited':
+      return '接口太忙（被限流了），稍后再试；一直这样的话，把「同时请求」「每分钟请求」调小。';
+    case 'server':
+      return `模型服务出错了${r.httpStatus ? `（${r.httpStatus}）` : ''}，稍后再试。`;
+    case 'network':
+      return draft.kind === 'wso2' ? `连不上：请检查网络、${url}和「取 token 地址」。` : `连不上：请检查网络和${url}。`;
+    case 'timeout':
+      return `等了 ${TIMEOUT_MS / 1000} 秒没有回应：请检查网络和${url}。`;
+    case 'aborted':
+      return '已取消。';
+    default:
+      return '没有连上，请检查表单里的各项再试一次。';
+  }
+}
+
 export function createRealTester(): ConnectionTester {
-  return async (draft, savedSecret) => {
+  return async (draft, savedSecret, signal) => {
     const errors = validateDraft(draft, Boolean(savedSecret));
     const first = Object.values(errors)[0];
     if (first) return { ok: false, message: first };
     const secret = draft.secret?.trim() || savedSecret || '';
     const built = buildProvider({ ...draft, id: 'connection-test', secret }, { retry: { maxAttempts: 1, baseDelayMs: 0, maxDelayMs: 0 } });
     if (typeof built === 'string') return { ok: false, message: built };
-    const ping: Message = {
-      id: 'ping',
-      sessionId: 'connection-test',
-      seq: 1,
-      role: 'user',
-      kind: 'user',
-      content: [{ type: 'text', text: 'Reply with OK.' }],
-      createdAt: new Date().toISOString(),
-    };
-    const signal = AbortSignal.timeout(TIMEOUT_MS);
-    try {
-      for await (const ev of built.stream({ model: draft.model.trim(), system: '', messages: [ping], tools: [], maxTokens: 16 }, { signal })) {
-        if (ev.type === 'response') break;
-      }
-      return { ok: true, message: `连得上，模型「${draft.model.trim()}」可以用。` };
-    } catch (err) {
-      if (signal.aborted) return { ok: false, message: '模型接口太久没有回应，稍后再试。' };
-      const e = err as { message?: string; status?: number };
-      const raw = `${e.status ? `HTTP ${e.status} ` : ''}${e.message ?? String(err)}`;
-      return { ok: false, message: humanError(raw) };
-    }
+    const r = await probeProvider(built, { model: draft.model.trim(), timeoutMs: TIMEOUT_MS, ...(signal ? { signal } : {}) });
+    return { ok: r.ok, message: probeMessage(r, draft) };
   };
 }

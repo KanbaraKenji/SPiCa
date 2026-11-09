@@ -2,7 +2,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { emptyDraft } from '../../shared/providers';
-import { createRealTester } from './real-tester';
+import { createRealTester, probeMessage } from './real-tester';
 
 let server: Server;
 let base = '';
@@ -34,7 +34,7 @@ describe('real connection tester', () => {
   const test = createRealTester();
 
   it('says the key is wrong on 401', async () => {
-    expect(await test(draft('made-up'), undefined)).toEqual({ ok: false, message: '模型密钥不对或已失效，请检查模型设置。' });
+    expect(await test(draft('made-up'), undefined)).toEqual({ ok: false, message: '密钥不对或已失效：请检查「API Key」。' });
   });
 
   it('passes when the model answers', async () => {
@@ -49,5 +49,17 @@ describe('real connection tester', () => {
 
   it('checks the form before calling anything', async () => {
     expect(await test({ ...draft('k'), model: '' }, undefined)).toEqual({ ok: false, message: '填要用的模型名' });
+  });
+});
+
+describe('probeMessage', () => {
+  it('points at the field to fix for each kind of failure', () => {
+    const openai = { kind: 'openai' as const, model: 'm1' };
+    const wso2 = { kind: 'wso2' as const, model: 'm1' };
+    expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'auth' }, wso2)).toContain('Client Secret');
+    expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'not_found' }, openai)).toBe('找不到模型「m1」或这个地址：请检查「模型」和「接口地址」。');
+    expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'network' }, wso2)).toContain('取 token 地址');
+    expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'rate_limited' }, openai)).toContain('同时请求');
+    expect(probeMessage({ ok: true, latencyMs: 900, firstByteMs: 420, model: 'm1-2026' }, openai)).toBe('连得上，模型「m1-2026」可以用（420 毫秒开始回应）。');
   });
 });
