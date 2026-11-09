@@ -181,6 +181,7 @@ export function App({ bridge, shell, agent }: AppProps) {
               setFloating(null);
             }}
             settingsOpen={view === 'settings'}
+            topId={state.topId}
             {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject(true) } : {})}
           />
         </div>

@@ -28,6 +28,17 @@ describe('Sidebar', () => {
     expect(projectSummary([])).toBe('');
   });
 
+  it('puts the other assistant threads under the default one', () => {
+    const sessions = seed.sessions.map((s) => (s.id === SEED_IDS.chat ? { ...s, title: '助理' } : s));
+    render(<Sidebar sessions={sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} topId={SEED_IDS.chat} />);
+    expect(screen.queryByRole('heading', { name: '对话' })).toBeNull();
+    const top = screen.getByRole('button', { name: '收起 助理' });
+    expect(top.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('button', { name: '整理本周来信' })).toBeTruthy();
+    fireEvent.click(top);
+    expect(screen.queryByRole('button', { name: '整理本周来信' })).toBeNull();
+  });
+
   it('collapsing a project shows the summary instead of children', () => {
     render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} />);
     fireEvent.click(screen.getByRole('button', { name: '收起 新品样机评审' }));

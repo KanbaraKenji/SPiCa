@@ -16,6 +16,8 @@ export interface SidebarProps {
   onNewProject?: () => void;
   onSettings(): void;
   settingsOpen: boolean;
+  /** The assistant's default thread (getTopSession); other top-level threads are listed under it. */
+  topId?: string | null;
 }
 
 function byRecent(a: SessionInfo, b: SessionInfo): number {
@@ -45,6 +47,8 @@ interface TreeProps {
   expanded: Record<string, boolean>;
   setExpanded(id: string, open: boolean): void;
   onOpen(id: string): void;
+  /** Rows that start expanded no matter what runs below them. */
+  openByDefault: ReadonlySet<string>;
 }
 
 function descendantsOf(id: string, childrenOf: Map<string, SessionInfo[]>): SessionInfo[] {
@@ -63,7 +67,8 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
   const kids = tree.childrenOf.get(s.id) ?? [];
   const all = kids.length ? descendantsOf(s.id, tree.childrenOf) : [];
   // Rows with something going on below them (or the open session) start expanded.
-  const open = s.id in tree.expanded ? tree.expanded[s.id] === true : all.some((k) => isRunning(k.status) || k.id === tree.activeId);
+  const open =
+    s.id in tree.expanded ? tree.expanded[s.id] === true : tree.openByDefault.has(s.id) || all.some((k) => isRunning(k.status) || k.id === tree.activeId);
   const summary = kids.length && !open ? projectSummary(all) : '';
   const active = !tree.settingsOpen && s.id === tree.activeId;
   const name = s.title ?? '';
@@ -87,8 +92,8 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
   );
 }
 
-export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, onSettings, settingsOpen }: SidebarProps) {
-  const { chats, projects, childrenOf } = useMemo(() => {
+export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, onSettings, settingsOpen, topId = null }: SidebarProps) {
+  const { chats, projects, childrenOf, top } = useMemo(() => {
     const chats = sessions.filter((s) => s.role === 'top' && !s.parentId).sort(byRecent);
     // A project is a project-manager session, wherever it was started from.
     const projects = sessions.filter((s) => s.role === 'manager').sort(byRecent);
@@ -100,8 +105,12 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, o
       childrenOf.set(s.parentId, list);
     }
     for (const list of childrenOf.values()) list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    return { chats, projects, childrenOf };
-  }, [sessions]);
+    // The assistant is one role with many threads: its default thread is the row,
+    // the other threads (新对话) sit under it, newest first.
+    const top = topId ? chats.find((s) => s.id === topId) : undefined;
+    if (top) childrenOf.set(top.id, [...chats.filter((s) => s.id !== top.id), ...(childrenOf.get(top.id) ?? [])]);
+    return { chats, projects, childrenOf, top };
+  }, [sessions, topId]);
 
   const [expanded, setExpandedState] = useState<Record<string, boolean>>({});
   const tree: TreeProps = {
@@ -111,6 +120,7 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, o
     expanded,
     setExpanded: (id, open) => setExpandedState((e) => ({ ...e, [id]: open })),
     onOpen,
+    openByDefault: new Set(top ? [top.id] : []),
   };
 
   return (
@@ -122,7 +132,11 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, o
         </button>
       </div>
       <div className="sidebar-scroll">
-        {chats.length ? (
+        {top ? (
+          <section className="tree-section" aria-label="助理">
+            <Node s={top} depth={0} tree={tree} />
+          </section>
+        ) : chats.length ? (
           <section className="tree-section">
             <h2 className="tree-heading">对话</h2>
             {chats.map((s) => (
