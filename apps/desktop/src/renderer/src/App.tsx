@@ -96,6 +96,20 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     return () => window.removeEventListener('keydown', onKey);
   }, [toggle, floating, view]);
 
+  // A floating panel closes when you press anywhere else. No dark layer behind it: the
+  // window stays as it was, and that press still reaches what it was meant for.
+  useEffect(() => {
+    if (!floating) return;
+    const onDown = (e: MouseEvent) => {
+      const el = e.target instanceof Element ? e.target : null;
+      // Its own toggle button flips it itself.
+      if (el?.closest('.panel.is-floating, [data-panel-toggle]')) return;
+      setFloating(null);
+    };
+    window.addEventListener('mousedown', onDown, true);
+    return () => window.removeEventListener('mousedown', onDown, true);
+  }, [floating]);
+
   // A notice belongs to what was on screen; moving elsewhere clears it, and it fades after a while.
   useEffect(() => {
     agent.dismissNotice();
@@ -203,7 +217,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const title = view === 'settings' ? '设置' : view === 'inbox' ? '收件箱' : (session?.title ?? '');
 
   const sidebarToggle = (
-    <button type="button" className={leftShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('left')} aria-label={leftShown ? '收起侧栏' : '展开侧栏'} aria-pressed={leftShown} title="侧栏（Ctrl+B）">
+    <button type="button" data-panel-toggle className={leftShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('left')} aria-label={leftShown ? '收起侧栏' : '展开侧栏'} aria-pressed={leftShown} title="侧栏（Ctrl+B）">
       <Icon name="sidebar" />
     </button>
   );
@@ -288,7 +302,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         />
         <div className="titlebar-right">
           {view === 'chat' ? (
-            <button type="button" className={rightShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('right')} aria-label={rightShown ? '收起详情' : '展开详情'} aria-pressed={rightShown} title="详情（Ctrl+Alt+B）">
+            <button type="button" data-panel-toggle className={rightShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('right')} aria-label={rightShown ? '收起详情' : '展开详情'} aria-pressed={rightShown} title="详情（Ctrl+Alt+B）">
               <Icon name="detail" />
             </button>
           ) : null}
@@ -376,11 +390,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           </div>
         ) : null}
 
-        {floating === 'right' ? <div className="scrim scrim-panel" onMouseDown={() => setFloating(null)} aria-hidden /> : null}
       </div>
       </div>
 
-      {floating === 'left' ? <div className="scrim scrim-panel scrim-app" onMouseDown={() => setFloating(null)} aria-hidden /> : null}
 
       {newProject ? (
         <NewProjectDialog

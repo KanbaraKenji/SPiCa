@@ -248,19 +248,6 @@ a:hover {
   right: 0;
 }
 
-.scrim-panel {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  background: var(--spica-scrim);
-}
-
-/* A floating sidebar covers the title bar too, so its scrim does as well
-   (the native caption buttons stay usable on top). */
-.scrim-app {
-  z-index: 25;
-}
-
 .panel-left.is-floating {
   z-index: 30;
 }
