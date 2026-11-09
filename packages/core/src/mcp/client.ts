@@ -249,6 +249,7 @@ export function mcpTools(client: McpStdioClient, infos: McpToolInfo[], tracer: T
         parentChain: ctx.parentChain,
         initiator: ctx.initiator ?? `tool:${mcpToolName(server, info.name)}`,
         target: server,
+        ...(ctx.confirmedBy ? { confirmedBy: ctx.confirmedBy } : {}),
       });
       try {
         const r = await client.callTool(info.name, input, ctx.signal);

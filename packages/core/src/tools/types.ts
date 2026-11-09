@@ -19,6 +19,8 @@ export interface ToolContext {
   emit(body: CoreEventBody): void;
   /** Who started the call, for traceable records (default `tool:<name>`; a plugin view is `view:<plugin>`). */
   initiator?: string;
+  /** The call needed confirmation and got it (recorded in its traceable record). */
+  confirmedBy?: 'user' | 'view';
 }
 
 export interface ToolOutput {

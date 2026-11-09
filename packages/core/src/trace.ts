@@ -13,6 +13,7 @@ export interface TraceStart {
   target: string;
   providerId?: string;
   model?: string;
+  confirmedBy?: 'user' | 'view';
 }
 
 export type TraceFinish = Partial<

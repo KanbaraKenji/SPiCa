@@ -546,10 +546,20 @@ export class Runtime implements RuntimeInternals {
    * cause plugin_view). Calls of one plugin share a small limiter; MCP tools
    * leave their traceable record with initiator `view:<plugin>`.
    */
-  async callPluginTool(pluginId: string, toolName: string, args: Record<string, unknown>, opts: { sessionId?: string } = {}): Promise<PluginToolResult> {
-    const name = toolName.startsWith(`${pluginId}__`) ? toolName : `${pluginId}__${toolName}`;
-    const entry = this.tools.entries().find((e) => e.tool.spec.name === name);
-    if (!entry || entry.source !== `plugin:${pluginId}`) throw new Error(`plugin ${pluginId} has no tool ${toolName}`);
+  async callPluginTool(
+    pluginId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+    opts: { sessionId?: string; confirmed?: boolean } = {},
+  ): Promise<PluginToolResult> {
+    // the full name as registered (any of the plugin's servers), or the bare name under the plugin's prefix;
+    // either way it must have been registered by this plugin
+    const entries = this.tools.entries();
+    const entry = [toolName, `${pluginId}__${toolName}`]
+      .map((n) => entries.find((e) => e.tool.spec.name === n))
+      .find((e) => e?.source === `plugin:${pluginId}`);
+    if (!entry) throw new Error(`plugin ${pluginId} has no tool ${toolName}`);
+    const name = entry.tool.spec.name;
     const session = opts.sessionId ? this.session(opts.sessionId) : undefined;
     if (opts.sessionId && !session) throw new Error(`unknown session: ${opts.sessionId}`);
     const host = session ?? this.top();
@@ -562,10 +572,16 @@ export class Runtime implements RuntimeInternals {
       { session: host.info(), runId: `view:${pluginId}`, turn: 0 },
     );
     if (decision.action === 'deny') return { content: `Blocked: ${decision.reason}`, isError: true };
+    let confirmedBy: 'user' | 'view' | undefined;
     if (tool.irreversible || decision.action === 'confirm') {
-      const reason = decision.action === 'confirm' && !decision.byDefault && decision.reason ? decision.reason : 'a plugin view asks to run an irreversible action';
-      const ok = await this.#askView(host, callId, name, input, reason);
-      if (!ok) return { content: 'The user declined this action.', isError: true, declined: true };
+      if (opts.confirmed === true) {
+        confirmedBy = 'view'; // the view asked the user itself
+      } else {
+        const reason = decision.action === 'confirm' && !decision.byDefault && decision.reason ? decision.reason : 'a plugin view asks to run an irreversible action';
+        const ok = await this.#askView(host, callId, name, input, reason);
+        if (!ok) return { content: 'The user declined this action.', isError: true, declined: true };
+        confirmedBy = 'user';
+      }
     }
     const lease = await this.#viewLimiter(pluginId).acquire();
     try {
@@ -580,6 +596,7 @@ export class Runtime implements RuntimeInternals {
         callId,
         emit: () => {},
         initiator: `view:${pluginId}`,
+        ...(confirmedBy ? { confirmedBy } : {}),
       });
       return { content: r.content, isError: !!r.isError };
     } catch (err) {

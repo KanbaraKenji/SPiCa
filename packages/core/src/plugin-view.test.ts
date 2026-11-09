@@ -25,7 +25,7 @@ function plugin(rt: Runtime, ran: string[], opts: { slowMs?: number } = {}) {
       stats.maxActive = Math.max(stats.maxActive, active);
       if (opts.slowMs) await new Promise((r) => setTimeout(r, opts.slowMs));
       active--;
-      ran.push(`${name}:${String(input.id ?? '')}:${ctx.initiator ?? ''}`);
+      ran.push(`${name}:${String(input.id ?? '')}:${ctx.initiator ?? ''}${ctx.confirmedBy ? `:${ctx.confirmedBy}` : ''}`);
       return { content: JSON.stringify({ note: `note ${String(input.id ?? '')}` }) };
     },
     ...extra,
@@ -33,6 +33,8 @@ function plugin(rt: Runtime, ran: string[], opts: { slowMs?: number } = {}) {
   rt.tools.register(tool('notes__read_note'), 'plugin:notes');
   rt.tools.register(tool('notes__delete_note', { irreversible: true }), 'plugin:notes');
   rt.tools.register(tool('mail__send'), 'plugin:mail');
+  // a second server of the notes plugin, named differently
+  rt.tools.register(tool('notes-sync__push', { irreversible: true }), 'plugin:notes');
   return stats;
 }
 
@@ -75,11 +77,24 @@ describe('callPluginTool', () => {
     const ask2 = events.filter((e) => e.type === 'confirm.request')[1]!;
     await api.confirm(top.id, ask2.type === 'confirm.request' ? ask2.callId : '', true);
     expect(await again).toMatchObject({ isError: false });
-    expect(ran).toEqual(['notes__delete_note:y:view:notes']);
+    expect(ran).toEqual(['notes__delete_note:y:view:notes:user']);
     expect(events.filter((e) => e.type === 'confirm.resolved').map((e) => (e.type === 'confirm.resolved' ? e.approved : null))).toEqual([false, true]);
 
     rt.hooks.register('policy', { beforeTool: (c) => (c.name === 'notes__read_note' ? { action: 'deny', reason: 'not today' } : undefined) });
     expect(await api.callPluginTool!('notes', 'read_note', {})).toEqual({ content: 'Blocked: not today', isError: true });
+  });
+
+  it('full tool names of any of the plugin servers work; confirmed: true runs without asking again', async () => {
+    const rt = makeRuntime(gw);
+    const events = captureEvents(rt);
+    const ran: string[] = [];
+    plugin(rt, ran);
+    expect((await rt.callPluginTool('notes', 'notes__read_note', { id: 'f' })).isError).toBe(false);
+    expect(await rt.callPluginTool('notes', 'notes-sync__push', { id: 'p' }, { confirmed: true })).toMatchObject({ isError: false });
+    expect(ran).toEqual(['notes__read_note:f:view:notes', 'notes-sync__push:p:view:notes:view']);
+    expect(events.some((e) => e.type === 'confirm.request')).toBe(false);
+    // a full name that belongs to another plugin is still refused
+    await expect(rt.callPluginTool('notes', 'mail__send', {}, { confirmed: true })).rejects.toThrow(/has no tool/);
   });
 
   it('calls of one plugin share a small limiter', async () => {

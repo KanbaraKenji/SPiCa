@@ -244,6 +244,8 @@ export interface AttachmentMeta {
   file?: FileCardMeta;
   /** Why it could not be read (English, for logs). */
   error?: string;
+  /** For a call that needed confirmation: who gave it ('user' = the confirmation card, 'view' = a plugin view that asked the user itself). */
+  confirmedBy?: 'user' | 'view';
 }
 
 /** An open question or confirmation the session is waiting on. */
@@ -564,7 +566,8 @@ export interface AgentApi {
    * Irreversible tools (and tools a hook wants confirmed) ask the user first: confirm.request with cause 'plugin_view'
    * on `sessionId` (or the default top-level thread); answer it with confirm(sameSessionId, callId, approved).
    */
-  callPluginTool?(pluginId: string, toolName: string, args: Record<string, unknown>, opts?: { sessionId?: string }): Promise<PluginToolResult>;
+  /** `confirmed`: the view already asked the user; run without another confirmation (recorded as confirmedBy 'view'). */
+  callPluginTool?(pluginId: string, toolName: string, args: Record<string, unknown>, opts?: { sessionId?: string; confirmed?: boolean }): Promise<PluginToolResult>;
   // Mail pipeline (M6): optional until the desktop shell implements them.
   listMail?(filter?: { status?: MailItem['status']; projectId?: string; limit?: number }): Promise<MailItem[]>;
   /** Fetch and triage now (otherwise it runs on its interval). */
