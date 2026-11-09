@@ -1,6 +1,7 @@
 // Company network: a proxy (with exceptions and login), extra trusted CAs for
 // TLS inspection, readable error codes, and WSO2 failures told apart.
 import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer as createHttp, request as httpRequest, type Server } from 'node:http';
 import { createServer as createHttps } from 'node:https';
@@ -77,8 +78,24 @@ async function startProxy(opts: { user?: string; pass?: string } = {}) {
 function makeCerts(at: string): { ca: string; cert: string; key: string } | undefined {
   try {
     const run = (...args: string[]) => execFileSync('openssl', args, { cwd: at, stdio: 'pipe', env: { ...process.env, OPENSSL_CONF: join(at, 'o.cnf') } });
-    execFileSync('node', ['-e', `require('fs').writeFileSync(${JSON.stringify(join(at, 'o.cnf'))}, '[req]\\ndistinguished_name=dn\\n[dn]\\n[ext]\\nsubjectAltName=DNS:localhost,IP:127.0.0.1\\nbasicConstraints=CA:FALSE\\n')`]);
-    run('req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'ca.key', '-out', 'ca.pem', '-days', '2', '-subj', '/CN=Spica Test CA', '-config', 'o.cnf');
+    // The CA states that it is one. Without explicit extensions OpenSSL 1.1 writes a v1
+    // certificate (a CA by convention) but OpenSSL 3 a v3 one without basicConstraints,
+    // which Node refuses as an issuer (INVALID_PURPOSE, "unsuitable certificate purpose").
+    const cnf = [
+      '[req]',
+      'distinguished_name=dn',
+      '[dn]',
+      '[ca_ext]',
+      'basicConstraints=critical,CA:TRUE',
+      'keyUsage=critical,keyCertSign,cRLSign',
+      'subjectKeyIdentifier=hash',
+      '[ext]',
+      'subjectAltName=DNS:localhost,IP:127.0.0.1',
+      'basicConstraints=CA:FALSE',
+      '',
+    ].join('\n');
+    writeFileSync(join(at, 'o.cnf'), cnf);
+    run('req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'ca.key', '-out', 'ca.pem', '-days', '2', '-subj', '/CN=Spica Test CA', '-config', 'o.cnf', '-extensions', 'ca_ext');
     run('req', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'srv.key', '-out', 'srv.csr', '-subj', '/CN=localhost', '-config', 'o.cnf');
     run('x509', '-req', '-in', 'srv.csr', '-CA', 'ca.pem', '-CAkey', 'ca.key', '-CAcreateserial', '-out', 'srv.pem', '-days', '2', '-extfile', 'o.cnf', '-extensions', 'ext');
     return { ca: join(at, 'ca.pem'), cert: join(at, 'srv.pem'), key: join(at, 'srv.key') };
