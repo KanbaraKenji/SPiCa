@@ -17,7 +17,7 @@
     "smoke:claude": "node --env-file=../../.env.local scripts/smoke.ts claude",
     "smoke:team": "node --env-file=../../.env.local scripts/smoke-team.ts",
     "smoke:project": "node --env-file=../../.env.local scripts/smoke-project.ts",
-    "journeys": "node --env-file=../../.env.local scripts/journeys.ts",
+    "journeys": "node --env-file=../../.env.local ../../plugins/example-eval/src/run.ts --only J2,J3,J4,J5,J7",
     "export:log": "node scripts/export-log.ts",
     "smoke:mail": "node --env-file=../../.env.local scripts/smoke-mail.ts",
     "check:electron-host": "electron scripts/electron/host-check.ts"

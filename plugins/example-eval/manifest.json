@@ -1,0 +1,17 @@
+{
+  "manifest_version": 1,
+  "name": "eval",
+  "version": "0.1.0",
+  "display_name": "Evaluation (example)",
+  "description": "Runs Spica's acceptance journeys through its MCP service and writes a Markdown report. A template for evaluation plugins; it adds no tools to the agents.",
+  "author": { "name": "Spica contributors" },
+  "license": "Apache-2.0",
+  "compatibility": { "spica": ">=0.1.0" },
+  "permissions": {
+    "network": [],
+    "workspace": "none",
+    "irreversible": [],
+    "hooks": []
+  },
+  "mock": { "supported": false }
+}
