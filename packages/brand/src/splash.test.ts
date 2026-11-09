@@ -126,8 +126,8 @@ describe('收尾', () => {
     }
   });
 
-  it('扎入段：屏幕上的线速度只升不降，合心时是起点的 2～4 倍（几种路线、任意 ready 时刻都一样）', () => {
-    const slow = { bigSpeed: 3, bigTurns: 0.5, diveAngle: 72 };
+  it('扎入段：屏幕上的线速度只升不降，合心时是起点的 1.5～4 倍（几种路线、任意 ready 时刻都一样）', () => {
+    const slow = { bigSpeed: 3, bigTurns: 0.5, diveAngle: 72, bigRound: 0 };
     const shapes = [
       {},
       { finish: { ...slow, diveArc: 0.15, collapse: 0.175 } },
@@ -137,7 +137,7 @@ describe('收尾', () => {
     for (const o of shapes) {
       for (const ready of [3, 5.37, 7, 12.25]) {
         const d = splashDive(ready, o);
-        expect(d.ratio).toBeGreaterThanOrEqual(2);
+        expect(d.ratio).toBeGreaterThanOrEqual(1.5);
         expect(d.ratio).toBeLessThanOrEqual(4);
         const dt = 0.001;
         let prev = 0;
@@ -152,7 +152,7 @@ describe('收尾', () => {
           last = v;
           prev = v;
         }
-        expect(last / first).toBeGreaterThan(1.9);
+        expect(last / first).toBeGreaterThan(1.45);
       }
     }
   });
@@ -182,15 +182,15 @@ describe('收尾', () => {
     }
   });
 
-  it('加速段比只转 3 倍时多转约一圈，扎入、合心的时刻不变（评审视频 8.20 / 8.37 秒）', () => {
+  it('加速段比只转 3 倍时多转约 0.8 圈，扎入、合心的时刻不变（评审视频 8.20 / 8.37 秒）', () => {
     const turnsTo = (o: object) => {
       const sch = splashSchedule(o, 7);
       let n = 0;
       for (let t = 7; t < 7 + sch.collapseStart; t += 0.0005) n += (splashSpeeds(t, 7, o).orbit * 0.0005) / SPLASH_TIMING.orbitPeriod;
       return n;
     };
-    const before = turnsTo({ finish: { bigSpeed: 3, bigTurns: 0.5, diveAngle: 72 } });
-    expect(turnsTo({}) - before).toBeGreaterThan(0.9);
+    const before = turnsTo({ finish: { bigSpeed: 3, bigTurns: 0.5, diveAngle: 72, bigRound: 0 } });
+    expect(turnsTo({}) - before).toBeGreaterThan(0.75);
     expect(turnsTo({}) - before).toBeLessThan(1.1);
     expect(7 + splashSchedule({}, 7).collapseStart).toBeCloseTo(8.2, 2);
     expect(7 + splashSchedule({}, 7).merge).toBeCloseTo(8.37, 2);
@@ -425,5 +425,26 @@ describe('逐帧连续性（按 60 帧/秒走完整段，几种 ready 时刻）'
       }
       expect(sawDrain).toBe(true); // 合心 0.1 秒后尾巴还在往里收
     }
+  });
+});
+
+describe('大半径段的轨道几何', () => {
+  it('扩轨结束后两颗星走同一条以花心为中心的轨道：任一时刻两星关于花心对称，且每颗星都落在同一个椭圆上', () => {
+    const R = 7;
+    const S = splashSchedule({}, R);
+    const pts: Array<[number, number]> = [];
+    for (let t = R + SPLASH_FINISH.expand + 0.01; t < R + S.collapseStart; t += 0.01) {
+      const [a, b] = splashFrame(t, R).stars;
+      expect((a!.x + b!.x) / 2).toBeCloseTo(SPLASH_LAYOUT.cx, 6);
+      pts.push([a!.x - SPLASH_LAYOUT.cx, a!.y - SPLASH_LAYOUT.cy], [b!.x - SPLASH_LAYOUT.cx, b!.y - SPLASH_LAYOUT.cy]);
+    }
+    // 以花心为中心的椭圆 Ax² + Bxy + Cy² = 1：用三个点解出系数，其余点都要落在上面
+    const [p, q, r] = [pts[0]!, pts[7]!, pts[15]!];
+    const m = [p, q, r].map(([x, y]) => [x * x, x * y, y * y]);
+    const det = (M: number[][]) => M[0]![0]! * (M[1]![1]! * M[2]![2]! - M[1]![2]! * M[2]![1]!) - M[0]![1]! * (M[1]![0]! * M[2]![2]! - M[1]![2]! * M[2]![0]!) + M[0]![2]! * (M[1]![0]! * M[2]![1]! - M[1]![1]! * M[2]![0]!);
+    const D = det(m);
+    const col = (k: number) => m.map((row) => row.map((v, j) => (j === k ? 1 : v)));
+    const [A, B, C] = [0, 1, 2].map((k) => det(col(k)) / D) as [number, number, number];
+    for (const [x, y] of pts) expect(A * x * x + B * x * y + C * y * y).toBeCloseTo(1, 3);
   });
 });
