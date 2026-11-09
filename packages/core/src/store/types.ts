@@ -90,6 +90,8 @@ export interface Store {
   upsertSession(rec: SessionRecord): void;
   getSession(id: string): SessionRecord | undefined;
   listSessions(): SessionRecord[];
+  /** Remove a session and what belongs to it: messages, tool calls, queued and pending items, relays it is part of. Traceable records stay (spending history). */
+  deleteSession(id: string): void;
 
   appendMessage(msg: Message): void;
   updateMessage(msg: Message): void;
@@ -112,6 +114,8 @@ export interface Store {
   listRelays(parentId: string): RelayRecord[];
 
   upsertProject(p: ProjectInfo): void;
+  /** Remove a project, its activity log, its work objects and the sender memory that points at it. */
+  deleteProject(id: string): void;
   getProject(id: string): ProjectInfo | undefined;
   listProjects(): ProjectInfo[];
   appendProjectLog(e: ProjectLogEntry): void;

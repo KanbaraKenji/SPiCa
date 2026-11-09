@@ -321,6 +321,34 @@ export class SqliteStore implements Store {
        ON CONFLICT(address) DO UPDATE SET project_id = excluded.project_id, decision = excluded.decision, updated_at = excluded.updated_at`,
     ).run(address.toLowerCase(), d.decision === 'project' ? d.projectId : null, d.decision, new Date().toISOString());
   }
+  deleteProject(id: string): void {
+    this.#db.exec('BEGIN');
+    try {
+      this.#q('DELETE FROM projects WHERE id = ?').run(id);
+      this.#q('DELETE FROM project_log WHERE project_id = ?').run(id);
+      this.#q('DELETE FROM work_objects WHERE project_id = ?').run(id);
+      this.#q("DELETE FROM mail_senders WHERE decision = 'project' AND project_id = ?").run(id);
+      this.#db.exec('COMMIT');
+    } catch (err) {
+      this.#db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+  deleteSession(id: string): void {
+    this.#db.exec('BEGIN');
+    try {
+      this.#q('DELETE FROM sessions WHERE id = ?').run(id);
+      this.#q('DELETE FROM messages WHERE session_id = ?').run(id);
+      this.#q('DELETE FROM tool_calls WHERE session_id = ?').run(id);
+      this.#q('DELETE FROM queued WHERE session_id = ?').run(id);
+      this.#q('DELETE FROM pending WHERE session_id = ?').run(id);
+      this.#q('DELETE FROM relays WHERE parent_id = ? OR child_id = ?').run(id, id);
+      this.#db.exec('COMMIT');
+    } catch (err) {
+      this.#db.exec('ROLLBACK');
+      throw err;
+    }
+  }
   getSenderDecision(address: string): SenderDecision | undefined {
     const row = this.#q('SELECT project_id, decision FROM mail_senders WHERE address = ?').get(address.toLowerCase()) as Row | undefined;
     if (!row) return undefined;

@@ -42,6 +42,8 @@ const API: Record<keyof AgentApi, true> = {
   createProject: true,
   listProjects: true,
   getProject: true,
+  renameProject: true,
+  deleteProject: true,
   listMail: true,
   pollMail: true,
   mailFeedback: true,

@@ -351,6 +351,10 @@ export type CoreEventBody =
   /** Emitted on the top-level session. */
   | { type: 'project.created'; project: ProjectInfo }
   | { type: 'project.updated'; project: ProjectInfo }
+  /** The project's records were removed from Spica (its folder and files were not touched). Emitted on the top-level session. */
+  | { type: 'project.deleted'; projectId: string }
+  /** A session was removed (with its project). Emitted with the removed session's id. */
+  | { type: 'session.deleted' }
   /** A key action inside a project (emitted on the session that did it). */
   | { type: 'project.activity'; entry: ProjectLogEntry }
   /** Mail pipeline (emitted on the mail triage thread). */
@@ -532,6 +536,14 @@ export interface AgentApi {
   createProject?(req: CreateProjectRequest): Promise<ProjectInfo>;
   listProjects?(): Promise<ProjectInfo[]>;
   getProject?(projectId: string): Promise<ProjectDetail | undefined>;
+  /** Rename a project; its manager session takes the same title. */
+  renameProject?(projectId: string, name: string): Promise<ProjectInfo>;
+  /**
+   * Remove a project from Spica: the project, its manager and every session under it, its activity log and work
+   * objects. The project folder and its files are not touched. Running sessions are stopped first. Mail filed under it
+   * becomes a "new matter" again and the sender memory that pointed at it is forgotten. Traceable records stay.
+   */
+  deleteProject?(projectId: string): Promise<void>;
   // Mail pipeline (M6): optional until the desktop shell implements them.
   listMail?(filter?: { status?: MailItem['status']; projectId?: string; limit?: number }): Promise<MailItem[]>;
   /** Fetch and triage now (otherwise it runs on its interval). */

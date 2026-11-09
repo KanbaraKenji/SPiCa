@@ -110,6 +110,13 @@ export function spicaMcpTools(rt: Runtime, events: CoreEvent[]): McpTool[] {
     { name: 'spica_create_project', description: 'Create a project (folder + project manager).', inputSchema: obj({ name: str, folder: str, workflow: str, brief: str }, ['name']), run: (a) => api.createProject!({ name: String(a.name), ...(a.folder ? { folder: String(a.folder) } : {}), ...(a.workflow ? { workflowId: String(a.workflow) } : {}), ...(a.brief ? { brief: String(a.brief) } : {}) }) },
     { name: 'spica_list_projects', description: 'All projects.', inputSchema: obj({}), run: () => api.listProjects!() },
     { name: 'spica_get_project', description: 'A project with workflow, work objects, recent key actions, manager and sub-agents.', inputSchema: obj({ project_id: str }, ['project_id']), run: (a) => api.getProject!(String(a.project_id)) },
+    { name: 'spica_rename_project', description: 'Rename a project (its manager session takes the same title).', inputSchema: obj({ project_id: str, name: str }, ['project_id', 'name']), run: (a) => api.renameProject!(String(a.project_id), String(a.name)) },
+    {
+      name: 'spica_delete_project',
+      description: 'Remove a project from Spica: project, manager and all sessions under it, activity log. The folder and its files are not touched; mail filed under it becomes a new matter again.',
+      inputSchema: obj({ project_id: str }, ['project_id']),
+      run: (a) => api.deleteProject!(String(a.project_id)),
+    },
     {
       name: 'spica_run',
       description:

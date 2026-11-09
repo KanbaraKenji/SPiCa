@@ -293,6 +293,36 @@ export class FakeBackend implements AgentBackend {
     return structuredClone({ ...p, workflow: null, objects: [], recentLog: [], manager, agents });
   }
 
+  async renameProject(projectId: string, name: string): Promise<ProjectInfo> {
+    const p = this.#projects.get(projectId);
+    if (!p) throw new Error(`unknown project: ${projectId}`);
+    const n = name.trim();
+    if (!n) throw new Error('a project needs a name');
+    Object.assign(p, { name: n, updatedAt: isoAt(this.#now()) });
+    await this.renameSession(p.managerSessionId, n);
+    return structuredClone(p);
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    const p = this.#projects.get(projectId);
+    if (!p) throw new Error(`unknown project: ${projectId}`);
+    const ids = new Set([p.managerSessionId]);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const s of this.#sessions.values()) {
+        if (s.parentId && ids.has(s.parentId) && !ids.has(s.id)) {
+          ids.add(s.id);
+          grew = true;
+        }
+      }
+    }
+    for (const id of ids) {
+      this.#runs.get(id)?.controller.abort();
+      this.#sessions.delete(id);
+    }
+    this.#projects.delete(projectId);
+  }
+
   async createProject(req: CreateProjectRequest): Promise<ProjectInfo> {
     const name = req.name.trim();
     if (!name) throw new Error('project name is required');
