@@ -1,6 +1,14 @@
 // Type definitions for Spica's backend API and events.
 // Every feature is a backend API first; the desktop UI and the MCP server
-// are both clients of these contracts. Only the first entries live here so far.
+// are both clients of these contracts.
+//
+// This file must stay dependency-free and runtime-agnostic (it is used by the
+// Electron main process, the renderer and the agent core). Keep it a single
+// file with no relative imports.
+
+// ---------------------------------------------------------------------------
+// App shell
+// ---------------------------------------------------------------------------
 
 /** Basic information about the running application. */
 export interface AppInfo {
@@ -19,3 +27,307 @@ export interface SpicaBridge {
 export const IpcChannel = {
   AppInfo: 'spica:app-info',
 } as const;
+
+// ---------------------------------------------------------------------------
+// Messages
+// ---------------------------------------------------------------------------
+
+/** A piece of message content. Spica's own format, not any vendor's wire format. */
+export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock | OpaqueBlock;
+
+export interface TextBlock {
+  type: 'text';
+  text: string;
+}
+
+export interface ThinkingBlock {
+  type: 'thinking';
+  text: string;
+  /** Opaque provider data that must be echoed back unchanged (e.g. a signature). */
+  signature?: string;
+  /** Provider id that produced the block; other providers drop it when serializing. */
+  provider?: string;
+  redacted?: boolean;
+}
+
+export interface ToolUseBlock {
+  type: 'tool_use';
+  id: string;
+  name: string;
+  input: unknown;
+}
+
+export interface ToolResultBlock {
+  type: 'tool_result';
+  toolUseId: string;
+  /** Result text as the model saw it (first line is the fetch time). */
+  content: string;
+  isError?: boolean;
+}
+
+/**
+ * A vendor-specific block carried verbatim (e.g. results of a model-hosted
+ * tool). It is echoed back only to the provider that produced it; other
+ * providers see `text` instead, or nothing. UIs should render `text`.
+ */
+export interface OpaqueBlock {
+  type: 'opaque';
+  provider: string;
+  data: unknown;
+  text?: string;
+}
+
+/**
+ * Why a message exists. `user` and `assistant` are real turns; the others are
+ * written by the runtime and shown to the model as labelled user-side notes.
+ */
+export type MessageKind =
+  | 'user' // the task or a message typed into this session
+  | 'assistant' // produced by the model
+  | 'tool_results' // results of tool calls
+  | 'steer' // user message inserted while a run was in progress
+  | 'relay' // note relayed from a child session (what the user said / decided there)
+  | 'report' // a child session's final report, delivered to its parent
+  | 'note'; // other runtime note
+
+/** Who wrote a user-side message. */
+export type Author = 'user' | 'parent' | 'child' | 'runtime' | 'plugin';
+
+export interface Message {
+  id: string;
+  sessionId: string;
+  /** Monotonic position inside the session. */
+  seq: number;
+  role: 'user' | 'assistant';
+  kind: MessageKind;
+  content: ContentBlock[];
+  /** ISO 8601 with offset. */
+  createdAt: string;
+  /** Assistant only: opaque per-provider fields to echo back on later turns. */
+  providerExtras?: Record<string, unknown>;
+  /**
+   * Metadata. Common keys: `author` (Author), `interrupted` (true when a
+   * stream was cut by an interrupt), `fromSessionId`, `decision` (true for a
+   * decision-change note).
+   */
+  meta?: Record<string, unknown>;
+}
+
+/** JSON schema for tool input (kept loose on purpose). */
+export type JsonSchema = Record<string, unknown>;
+
+/** What the model sees about a tool. */
+export interface ToolSpec {
+  name: string;
+  description: string;
+  inputSchema: JsonSchema;
+}
+
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+}
+
+export type StopReason = 'end' | 'tool_use' | 'max_tokens' | 'refusal' | 'pause' | 'other';
+
+// ---------------------------------------------------------------------------
+// Sessions
+// ---------------------------------------------------------------------------
+
+/** Place in the team: top-level agent, project manager, or sub-agent. */
+export type AgentRole = 'top' | 'manager' | 'worker';
+
+export type SessionStatus =
+  | 'idle' // nothing running, ready for input
+  | 'queued' // waiting for a rate-limit slot
+  | 'thinking' // model request in flight
+  | 'tool' // running tools
+  | 'awaiting_confirm' // an irreversible action needs the user's approval
+  | 'awaiting_answer' // ask_user card waiting for the user's answer
+  | 'done' // a one-off sub-agent finished and reported
+  | 'error'
+  | 'aborted'
+  | 'interrupted'; // the app stopped mid-run; can be resumed
+
+export interface SessionInfo {
+  id: string;
+  parentId: string | null;
+  /** Ancestors, nearest parent first. */
+  parentChain: string[];
+  role: AgentRole;
+  title: string;
+  status: SessionStatus;
+  providerId: string;
+  model: string;
+  /** Working folder for file tools. */
+  cwd: string;
+  costUsd: number;
+  createdAt: string;
+  updatedAt: string;
+  /** Reserved for persistent members: role template id (not used in v1). */
+  templateId?: string;
+}
+
+/** An open question or confirmation the session is waiting on. */
+export type PendingItem =
+  | { kind: 'confirm'; callId: string; toolName: string; input: unknown; reason: string; createdAt: string }
+  | { kind: 'ask'; callId: string; question: string; options?: string[]; createdAt: string };
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+export interface EventBase {
+  /** Global monotonic sequence number (for replay after reconnect). */
+  seq: number;
+  /** ISO 8601 timestamp with offset. */
+  at: string;
+  sessionId: string;
+  /** Ancestor session ids, nearest parent first. */
+  parentChain: string[];
+}
+
+export type RunEndReason =
+  | 'completed'
+  | 'max_turns'
+  | 'budget'
+  | 'aborted'
+  | 'error'
+  | 'awaiting_confirm'
+  | 'awaiting_answer';
+
+export type CostScopeName = 'call' | 'run' | 'session' | 'global';
+
+export type CoreEventBody =
+  /** Session state changed. */
+  | { type: 'status'; status: SessionStatus; detail?: string }
+  /** Waiting for a rate-limit slot; position is 1-based. */
+  | { type: 'queue'; position: number; waitingFor: string }
+  /** Streaming answer text. */
+  | { type: 'text.delta'; delta: string }
+  /** Streaming reasoning text (when the model exposes it). */
+  | { type: 'thinking.delta'; delta: string }
+  /** A model has started writing a tool call (arguments still streaming). */
+  | { type: 'tool.call'; callId: string; name: string }
+  /** A complete message was appended to the session. */
+  | { type: 'message'; message: Message }
+  /** A plugin hook changed a message after it had been streamed. */
+  | { type: 'message.replaced'; messageId: string; content: ContentBlock[] }
+  | { type: 'tool.start'; callId: string; name: string; input: unknown }
+  | {
+      type: 'tool.end';
+      callId: string;
+      name: string;
+      isError: boolean;
+      /** First part of the result, for collapsed views. */
+      preview: string;
+      durationMs: number;
+    }
+  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string }
+  | { type: 'confirm.resolved'; callId: string; approved: boolean }
+  | { type: 'ask.request'; callId: string; question: string; options?: string[] }
+  | { type: 'ask.resolved'; callId: string; answer: string }
+  /** Tokens and estimated cost of one model call. */
+  | { type: 'usage'; usage: Usage; costUsd: number; providerId: string; model: string }
+  /** Running totals; `warning` when a total passes the warning threshold of its limit. */
+  | { type: 'cost'; scope: CostScopeName; spentUsd: number; limitUsd?: number; warning: boolean }
+  /** A spending limit stopped the run. */
+  | { type: 'budget.stop'; scope: string; spentUsd: number; limitUsd: number; message: string }
+  /** A traceable external request finished. */
+  | { type: 'trace'; record: TraceRecord }
+  | { type: 'steer.queued'; messageId: string; mode: SteerMode }
+  | { type: 'steer.applied'; messageIds: string[] }
+  | { type: 'child.spawned'; childId: string; title: string }
+  | { type: 'child.report'; childId: string; summary: string }
+  /** A note from a child session was added to this (parent) session. */
+  | { type: 'relay'; fromSessionId: string; note: string }
+  /** One model call + its tool calls. */
+  | { type: 'turn.start'; turn: number }
+  | { type: 'turn.end'; turn: number }
+  /** A run (from an input until the agent stops) ended. */
+  | { type: 'run.end'; reason: RunEndReason; detail?: string }
+  | { type: 'error'; message: string; retryable?: boolean };
+
+export type CoreEvent = EventBase & CoreEventBody;
+export type CoreEventType = CoreEvent['type'];
+
+// ---------------------------------------------------------------------------
+// Traceable records
+// ---------------------------------------------------------------------------
+
+export type TraceKind = 'model' | 'search' | 'fetch' | 'mcp' | 'auth' | 'other';
+
+/**
+ * One external request (model, search, web fetch, MCP, token endpoint).
+ * Never contains request headers, bodies, keys or full URLs.
+ */
+export interface TraceRecord {
+  id: string;
+  kind: TraceKind;
+  startedAt: string;
+  durationMs: number;
+  sessionId: string | null;
+  parentChain: string[];
+  /** Who started it: "model", "tool:web_fetch", "plugin:<id>", "runtime". */
+  initiator: string;
+  providerId?: string;
+  /** Host name only. */
+  target: string;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  bytes?: number;
+  costUsd?: number;
+  status: 'ok' | 'error' | 'aborted';
+  httpStatus?: number;
+  attempts?: number;
+  error?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Commands (the backend API; the MCP server and the UI both call these)
+// ---------------------------------------------------------------------------
+
+export type SteerMode = 'next' | 'interrupt';
+
+export interface CreateSessionRequest {
+  parentId?: string;
+  role?: AgentRole;
+  title?: string;
+  /** System prompt; a default is used when omitted. */
+  system?: string;
+  providerId?: string;
+  model?: string;
+  maxTokens?: number;
+  cwd?: string;
+  /** Allow-list of tool names; all registered tools when omitted. */
+  tools?: string[];
+  maxTurns?: number;
+}
+
+export interface SendResult {
+  messageId: string;
+  /** True when the message started a run; false when it was queued into a running one. */
+  started: boolean;
+}
+
+export interface AgentApi {
+  createSession(req: CreateSessionRequest): Promise<SessionInfo>;
+  listSessions(): Promise<SessionInfo[]>;
+  getSession(sessionId: string): Promise<SessionInfo | undefined>;
+  getMessages(sessionId: string): Promise<Message[]>;
+  getPending(sessionId: string): Promise<PendingItem[]>;
+  /** User message. Starts a run if idle; otherwise applied at the next turn boundary. */
+  send(sessionId: string, text: string): Promise<SendResult>;
+  /** Insert a message into a running session; `interrupt` cuts the current model stream first. */
+  steer(sessionId: string, text: string, mode: SteerMode): Promise<SendResult>;
+  answer(sessionId: string, callId: string, answer: string): Promise<void>;
+  confirm(sessionId: string, callId: string, approved: boolean): Promise<void>;
+  abort(sessionId: string): Promise<void>;
+  /** Traceable records as JSON Lines. */
+  exportTraces(filter?: { sessionId?: string }): Promise<string>;
+}
