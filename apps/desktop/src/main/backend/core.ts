@@ -3,6 +3,7 @@
 // providers saved on the settings page; keys stay in the main process.
 import { AnthropicProvider, createAgentApi, OpenAICompatibleProvider, Runtime, SqliteStore, Wso2Provider, type Provider, type RetryPolicy } from '@spica/core';
 import type { CreateSessionRequest } from '@spica/protocol';
+import { createExtractors } from '@spica/extract';
 import type { AgentBackend } from './types';
 import type { ModelEnv } from './model-env';
 import type { ResolvedProvider } from '../../shared/providers';
@@ -33,7 +34,7 @@ export function buildProvider(p: ResolvedProvider, opts: { retry?: RetryPolicy }
   }
 }
 
-export function createCoreBackend({ env, cwd, dbPath }: CoreBackendOptions): AgentBackend {
+export function createCoreBackend({ env, cwd, dbPath }: CoreBackendOptions): AgentBackend & { runtime: Runtime } {
   const providers: Provider[] = [];
   if (env.openai) providers.push(new OpenAICompatibleProvider({ id: 'openai', baseUrl: env.openai.baseUrl, apiKey: env.openai.apiKey }));
   if (env.anthropic) providers.push(new AnthropicProvider({ id: 'anthropic', apiKey: env.anthropic.apiKey }));
@@ -55,6 +56,8 @@ export function createCoreBackend({ env, cwd, dbPath }: CoreBackendOptions): Age
     cwd,
     // The interface is Chinese; the core tells the model to answer in the user's language.
     locale: 'zh-CN',
+    // read_file understands PDF, Word, Excel, PowerPoint and CSV, and reports a file card for each.
+    extractors: createExtractors(),
     ...(dbPath ? { store: new SqliteStore(dbPath) } : {}),
     // Development limits (see docs/design/agent-core.md §10): Anthropic 100 USD total, 2 USD per call.
     budget: { perProvider: { anthropic: { globalUsd: 100, perCallUsd: 2 } }, perRunUsd: 1 },
@@ -67,6 +70,7 @@ export function createCoreBackend({ env, cwd, dbPath }: CoreBackendOptions): Age
 
   return {
     ...api,
+    runtime,
     async createSession(req: CreateSessionRequest) {
       if (req.providerId || req.parentId || !current) return api.createSession(req);
       return api.createSession({ ...req, providerId: current.providerId, model: current.model });
