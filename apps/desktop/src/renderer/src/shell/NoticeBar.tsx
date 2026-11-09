@@ -2,7 +2,8 @@
 // restart, or an administrator's announcement. It floats over the content
 // (nothing below moves when it appears or goes away) and can be closed.
 import { useEffect, useState } from 'react';
-import type { DesktopBridge } from '../../../shared/bridge';
+import type { BackendState, DesktopBridge } from '../../../shared/bridge';
+import type { AgentStore } from '../store/agent';
 import { activeNotices, type Notice, type UpdateState } from '../../../shared/updates';
 import type { ShellSettings } from '../../../shared/settings';
 import { Icon } from '../ui/Icon';
@@ -26,18 +27,60 @@ export function useUpdateState(bridge: DesktopBridge): UpdateState | null {
   return state;
 }
 
+/** The core's process; after it comes back from a crash, sessions are reloaded. */
+export function useBackendState(bridge: DesktopBridge, agent: AgentStore): BackendState | null {
+  const [state, setState] = useState<BackendState | null>(null);
+  useEffect(() => {
+    let alive = true;
+    bridge.backend
+      .status()
+      .then((s) => {
+        if (alive) setState(s);
+      })
+      .catch(() => {});
+    const offStatus = bridge.backend.onStatus(setState);
+    const offRestart = bridge.backend.onRestarted(() => void agent.reloadAll());
+    return () => {
+      alive = false;
+      offStatus();
+      offRestart();
+    };
+  }, [bridge, agent]);
+  return state;
+}
+
 export interface NoticeBarProps {
+  backend?: BackendState | null;
+  onRetryBackend?: () => void;
   update: UpdateState | null;
   settings: ShellSettings;
   onInstall(): void;
   onDismissNotice(id: string): void;
 }
 
-export function NoticeBar({ update, settings, onInstall, onDismissNotice }: NoticeBarProps) {
+export function NoticeBar({ backend, onRetryBackend, update, settings, onInstall, onDismissNotice }: NoticeBarProps) {
   const [updateClosed, setUpdateClosed] = useState<string | null>(null);
   const showUpdate = update?.status === 'ready' && update.available && updateClosed !== update.available;
   const notice: Notice | undefined = activeNotices(settings.noticesCache, settings.dismissedNotices)[0];
 
+  if (backend?.state === 'recovering') {
+    return (
+      <div className="notice-bar is-warning" role="status">
+        <span className="spinner" aria-hidden />
+        <span className="notice-text">后台正在恢复，马上就好</span>
+      </div>
+    );
+  }
+  if (backend?.state === 'failed') {
+    return (
+      <div className="notice-bar is-warning" role="alert">
+        <span className="notice-text">{backend.message}</span>
+        <button type="button" className="btn btn-small" onClick={onRetryBackend}>
+          重试
+        </button>
+      </div>
+    );
+  }
   if (showUpdate && update?.available) {
     return (
       <div className="notice-bar" role="status">

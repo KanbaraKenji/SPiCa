@@ -13,14 +13,18 @@ import type { ProviderDraft, ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
-import { PluginManager, runtimeHost } from '@spica/plugins';
-import { RealPluginService, type PluginService } from './plugins/service';
+import type { PluginService } from './plugins/types';
 import { FakePluginService } from './plugins/fake';
 import { UpdateService } from './update/service';
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import type { PluginsCommand } from '../shared/plugins';
-import { chooseBackend, createBackend } from './backend';
+import { chooseBackend, type AgentBackend } from './backend';
+import { FakeBackend } from './backend/fake';
+import { ProcessBackend, type BackendStatus } from './backend/process';
+import { toProviderConfig } from './backend/to-config';
+import type { ProviderConfig } from '@spica/core';
+import type { DesktopBackendConfig } from '../backend/config';
 import { readModelEnv } from './backend/model-env';
 import { SettingsStore } from './settings-store';
 import { captureOnce, runShots } from './shots';
@@ -60,13 +64,56 @@ const modelEnv = app.isPackaged || automated || process.env.SPICA_DEV_MODELS ===
 const backendKind = chooseBackend({ requested: process.env.SPICA_BACKEND, automated });
 const workDir = join(app.getPath('documents'), 'Spica');
 if (backendKind === 'core') mkdirSync(workDir, { recursive: true });
-const backend = createBackend(backendKind, {
-  fake: { speed: automated ? 0 : 1 },
-  env: modelEnv,
-  cwd: workDir,
-  dbPath: join(app.getPath('userData'), 'spica.db'),
-});
-console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core' : 'fake (demo data)'}`);
+const pluginRoot = join(app.getPath('userData'), 'plugins');
+
+/** Everything the core's process needs, built from the current settings at every (re)start. */
+function backendConfig(): DesktopBackendConfig {
+  const envConfigs: ProviderConfig[] = [];
+  if (modelEnv.openai) envConfigs.push({ id: 'openai', kind: 'openai-compatible', baseUrl: modelEnv.openai.baseUrl, apiKey: modelEnv.openai.apiKey, limits: { maxConcurrent: 4, requestsPerMinute: 60 } });
+  if (modelEnv.anthropic) envConfigs.push({ id: 'anthropic', kind: 'anthropic', apiKey: modelEnv.anthropic.apiKey, limits: { maxConcurrent: 2, requestsPerMinute: 30 } });
+  const saved = providers.resolved();
+  const def = providers.defaultId();
+  const envModel: Record<string, string> = {};
+  if (modelEnv.openai) envModel.openai = modelEnv.openai.model;
+  if (modelEnv.anthropic) envModel.anthropic = modelEnv.anthropic.model;
+  const chosen = saved.find((p) => p.id === def);
+  const current = chosen ? { providerId: chosen.id, model: chosen.model } : def && envModel[def] ? { providerId: def, model: envModel[def] } : null;
+  return {
+    core: {
+      dbPath: join(app.getPath('userData'), 'spica.db'),
+      providers: [...envConfigs, ...saved.map(toProviderConfig)],
+      // An empty provider id makes session creation fail; the UI then says "还没有配置模型".
+      defaults: { providerId: current?.providerId ?? '', model: current?.model ?? '', maxTokens: 4096, maxTurns: 30 },
+      cwd: workDir,
+      locale: 'zh-CN',
+      // Development limits (see docs/design/agent-core.md §10): Anthropic 100 USD total, 2 USD per call.
+      budget: { perProvider: { anthropic: { globalUsd: 100, perCallUsd: 2 } }, perRunUsd: 1 },
+    },
+    current,
+    pluginRoot,
+    pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'),
+  };
+}
+
+function sendToWindow(channel: string, ...args: unknown[]): void {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, ...args);
+}
+
+let backendStatus: BackendStatus = { state: backendKind === 'core' ? 'starting' : 'ready' };
+const backend: AgentBackend =
+  backendKind === 'core'
+    ? new ProcessBackend({
+        entry: join(__dirname, 'backend.js'),
+        config: backendConfig,
+        onStatus: (s) => {
+          backendStatus = s;
+          sendToWindow(DesktopChannel.BackendStatus, s);
+        },
+        onRestarted: () => sendToWindow(DesktopChannel.BackendRestarted),
+        onPluginsChanged: () => sendToWindow(DesktopChannel.PluginsChanged),
+      })
+    : new FakeBackend({ speed: automated ? 0 : 1 });
+console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own process)' : 'fake (demo data)'}`);
 const settings = new SettingsStore(app.getPath('userData'), { persist: !automated });
 const providers = new ProviderStore(
   app.getPath('userData'),
@@ -78,7 +125,8 @@ const providers = new ProviderStore(
   () => envProviders().map((p) => p.id),
 );
 // Screenshots and tests never touch the network; a normal run really calls the model.
-const testConnection = automated ? createFakeTester({ delayMs: 0 }) : createRealTester();
+const testConnection =
+  backend instanceof ProcessBackend ? createRealTester((config, model) => backend.probe(config, model)) : createFakeTester({ delayMs: automated ? 0 : 700 });
 let providerProblems: Record<string, string> = {};
 
 /** Models from the developer's .env.local, shown read-only on the settings page. */
@@ -319,22 +367,26 @@ ipcMain.on(DesktopChannel.Zoom, (_e, step: unknown) => {
 });
 
 // Plugins live per user (no admin rights needed): %APPDATA%\Spica\plugins.
-const pluginRoot = join(app.getPath('userData'), 'plugins');
-const pluginService: PluginService = backend.runtime
-  ? new RealPluginService({
-      manager: new PluginManager({ host: runtimeHost(backend.runtime), root: pluginRoot }),
-      root: pluginRoot,
-      sourcesFile: join(app.getPath('userData'), 'plugin-sources.json'),
-      openFolder: async (p) => {
-        mkdirSync(p, { recursive: true });
-        return shell.openPath(p);
-      },
-      fetch: (url, init) => net.fetch(url, init),
-    })
-  : new FakePluginService(pluginRoot);
+// The plugin manager lives with the core in its process; the page talks to it over the port.
+const pluginService: PluginService =
+  backend instanceof ProcessBackend
+    ? {
+        start: async () => {},
+        dispose: async () => {},
+        onChange: () => () => {},
+        run: async (cmd) => {
+          if (cmd.op !== 'openRoot') return backend.plugins(cmd);
+          mkdirSync(pluginRoot, { recursive: true });
+          const err = await shell.openPath(pluginRoot);
+          const r = await backend.plugins({ op: 'state' });
+          return err ? { ...r, ok: false, message: `打不开这个文件夹：${err}` } : r;
+        },
+      }
+    : new FakePluginService(pluginRoot);
 ipcMain.handle(DesktopChannel.Plugins, (_e, cmd: PluginsCommand) => pluginService.run(cmd));
-pluginService.onChange(() => {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DesktopChannel.PluginsChanged);
+ipcMain.handle(DesktopChannel.BackendStatus, () => backendStatus);
+ipcMain.on(DesktopChannel.BackendRetry, () => {
+  if (backend instanceof ProcessBackend) backend.retry();
 });
 
 ipcMain.handle(DesktopChannel.ListProviders, () => providerList());
@@ -375,7 +427,8 @@ nativeTheme.on('updated', () => {
 
 void app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
-  applyProviders();
+  if (backend instanceof ProcessBackend) void backend.start();
+  else applyProviders();
   void pluginService.start().catch(() => {
     // Problems show up per plugin on the plugin page.
   });
@@ -402,12 +455,11 @@ app.on('before-quit', (e) => {
   // Plugin servers are child processes: stop them before the app goes away.
   quitting = true;
   e.preventDefault();
-  void Promise.race([pluginService.dispose(), new Promise((r) => setTimeout(r, 5000))])
+  // The core closes cleanly (running sessions become "interrupted", plugin servers stop).
+  const stop = backend instanceof ProcessBackend ? backend.shutdown() : pluginService.dispose().then(() => backend.dispose());
+  void Promise.race([stop, new Promise((r) => setTimeout(r, 6000))])
     .catch(() => {})
-    .finally(() => {
-      backend.dispose();
-      app.quit();
-    });
+    .finally(() => app.quit());
 });
 
 app.on('window-all-closed', () => {

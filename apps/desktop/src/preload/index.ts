@@ -2,7 +2,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IpcChannel, type AgentApi, type AppInfo, type CoreEvent } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
-import type { DesktopBridge, ProviderList, ShellState } from '../shared/bridge';
+import type { BackendState, DesktopBridge, ProviderList, ShellState } from '../shared/bridge';
 import type { ProviderDraft, TestResult } from '../shared/providers';
 import type { PluginsCommand, PluginsResult } from '../shared/plugins';
 import type { UpdateState } from '../shared/updates';
@@ -48,6 +48,12 @@ const bridge: DesktopBridge = {
   zoom: (step) => ipcRenderer.send(DesktopChannel.Zoom, step),
   pickFolder: () => ipcRenderer.invoke(DesktopChannel.PickFolder) as Promise<string | null>,
   openFile: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.OpenFile, sessionId, path) as Promise<string | null>,
+  backend: {
+    status: () => ipcRenderer.invoke(DesktopChannel.BackendStatus) as Promise<BackendState>,
+    onStatus: (listener) => subscribe<BackendState>(DesktopChannel.BackendStatus, listener),
+    onRestarted: (listener) => subscribe<void>(DesktopChannel.BackendRestarted, () => listener()),
+    retry: () => ipcRenderer.send(DesktopChannel.BackendRetry),
+  },
   updates: {
     run: (op) => ipcRenderer.invoke(DesktopChannel.Update, op) as Promise<UpdateState>,
     onChanged: (listener) => subscribe<UpdateState>(DesktopChannel.UpdateChanged, listener),

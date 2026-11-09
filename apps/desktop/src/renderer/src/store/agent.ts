@@ -199,6 +199,20 @@ export class AgentStore {
     }
   }
 
+  /** The core restarted after a crash: everything comes back from its database. */
+  async reloadAll(): Promise<void> {
+    const active = this.state.get().activeId;
+    this.state.set((v) => ({ ...v, transcripts: {}, activity: {} }));
+    void this.#refreshProjects();
+    try {
+      const sessions = await this.#api.listSessions();
+      this.state.set((v) => ({ ...v, sessions }));
+      if (active) await this.load(active);
+    } catch (err) {
+      this.state.set((v) => ({ ...v, notice: friendlyError(err) }));
+    }
+  }
+
   dismissNotice(): void {
     this.state.set((v) => ({ ...v, notice: undefined }));
   }
