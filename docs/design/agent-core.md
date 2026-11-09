@@ -288,6 +288,45 @@
 - 同时只能有一个进程写库：程序开着时 stdio 方式会发现锁（库旁的锁文件带进程号），改为连到正在运行的那个实例的本机 HTTP。
 - **测试连接探针**：`probeProvider(配置)` 按给定 provider 配置发一次最小请求（一句 ping、max_tokens 很小），返回是否成功、延迟、服务端报的模型名、人话错误；不进任何会话，记一条 `initiator: 'runtime:probe'` 的可追溯记录。外壳设置页的「测试连接」直接调它。
 
+## 12c. 邮件流水线（M6）
+
+立项书卖点第一条：来信自动归入对应项目，由该项目的项目经理给出建议并持续跟进。内核只认「邮件来源」这个抽象，不认识哪家邮箱。
+
+```
+邮件类插件的工具 ──(内核按间隔直接调用，不经模型)──► 新来信存进 mail_items
+      ▼
+分拣线程（顶层的专用线程，模板 mail-triage）：一批信 + 项目清单 + 发件人记忆 ──► triage_mail 工具（结构化结果）
+      ▼
+归到项目的 ──► 发给该项目经理（父会话发话，带邮件 id）──► 项目经理用 suggest_actions 给建议，回信只用插件的草稿工具，不发送
+新事务 / 忽略 ──► 只记下来，界面上给用户看
+      ▼
+用户在界面上采纳 / 忽略 / 改归属 ──► 写回 mail_items 和「发件人 → 项目」记忆，下一批分拣用
+```
+
+**邮件来源**（配置或扩展注入，`runtime.mail.addSource()`）：`{ id, listTool, readTool, listArgs?, fields? }`。
+- `listTool` / `readTool` 是插件工具名（例如 Outlook 插件的 `outlook__list_messages` / `outlook__read_message`）；`listArgs` 默认 `{ unread_only: true, limit: 50 }`；`fields` 把结果里的字段名映射成内核的（默认 `id`、`from_name`、`from_address`、`subject`、`received`、`preview`）。
+- 工具不在（插件没装 / 停用）时这个来源跳过，不报错；插件的模拟模式照样能跑通整条链。
+- 结果文本里 JSON 前面的 `[…]` 提示行（模拟模式、取数时间）先去掉再解析。
+- 读信不标已读（插件已定）；内核按邮件 id 去重，同一封只分拣一次。
+
+**后台任务**：`mail: { enabled, intervalMinutes (默认 5), batchSize (默认 20), triageTemplateId?, rules? }`。启动后先跑一次，之后按间隔跑；上一轮没结束就跳过这一轮；`pollMail()` 可以手动触发。没有任何邮件来源时不启动。
+
+**分拣**：
+- 分拣线程是一个顶层线程（模板 `mail-triage`，可被部署覆盖），工具只有 `triage_mail`、`list_projects`、`open_project` 和来源的读信工具。
+- 每批发一条消息：项目清单（id、名字、阶段）、这批信（mail id、发件人、主题、时间、预览）、发件人记忆（「这个发件人以前被你归到项目 X」）、部署或插件注入的分拣规则（`mail.rules` 文本，或插件用 `inject` 钩子加）。
+- 模型必须调 `triage_mail { results: [{ mail_id, decision: 'project' | 'new' | 'ignore', project_id?, suggestion?, reason, confidence }] }`。内核校验（项目存在、每封信都有结果），写进 `mail_items`，发 `mail.triaged` 事件。
+- **发件人记忆**（最简单的一版）：用户确认过（采纳或改归属）的发件人，下次直接归到同一个项目，不问模型，理由写「同一发件人此前由你归到该项目」，置信度 1。
+
+**转给项目经理**：内核以父会话的身份给项目经理发一条消息（`meta.mail` 带邮件 id 和来源），内容是发件人、主题、时间、预览，以及要求：先用读信工具看全文，用 `suggest_actions` 给用户几个下一步；起草回复只用插件的草稿工具，不发送；移动、标记照插件已定的确认规则。发 `mail.routed` 事件。
+
+**用户处理**：`mailFeedback(mailId, { action: 'accept' | 'ignore' | 'reassign', projectId? })`。改归属时转给新的项目经理；采纳和改归属更新发件人记忆；全部写进 `mail_items.feedback`，发 `mail.feedback` 事件。
+
+**数据**：`mail_items`（id = 来源:邮件 id、来源、邮件 id、发件人名和地址、主题、时间、预览、状态 new / triaged / routed / ignored、分拣结果 JSON、用户处理 JSON、时间戳）；`mail_senders`（发件人地址、项目 id、更新时间）。
+
+**接口与事件**：AgentApi 加 `listMail(filter)`、`pollMail()`、`mailFeedback()`（先可选）；事件 `mail.polled`、`mail.triaged`、`mail.routed`、`mail.feedback`，都带结构化字段，界面自己写中文。
+
+**不做的**：内核不发邮件、不认任何公司的邮箱或规则；归类规则只能由配置或插件注入。
+
 ## 13. 未决问题
 
 - 「收到响应后改响应」与逐字流出的矛盾：默认先流给界面、响应完整后再交钩子；钩子若改了内容，发一个 `message.replaced` 事件让界面替换。是否需要「缓冲模式」由插件声明。
