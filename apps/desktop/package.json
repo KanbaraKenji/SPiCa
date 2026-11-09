@@ -19,6 +19,7 @@
   "devDependencies": {
     "@spica/brand": "*",
     "@spica/core": "*",
+    "@spica/extract": "*",
     "@spica/protocol": "*",
     "@testing-library/dom": "10.4.2",
     "@testing-library/react": "16.3.3",
