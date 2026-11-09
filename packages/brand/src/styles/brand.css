@@ -1,2 +1,3 @@
 /* @spica/brand 的全部样式入口：import '@spica/brand/styles.css' */
 @import './mark.css';
+@import './splash.css';

@@ -32,3 +32,17 @@ export {
   wordmarkSvg,
   type MarkSvgOptions,
 } from './svg.ts';
+export {
+  SPLASH_FINISH_AFTER,
+  SPLASH_LAYOUT,
+  SPLASH_STAGE,
+  SPLASH_TIMING,
+  STARFIELD_COUNT,
+  STARFIELD_MAX_SPEED,
+  splashFrame,
+  splashStaticFrame,
+  starfield,
+  type SplashFrame,
+  type SplashStar,
+  type StarStreak,
+} from './splash.ts';
