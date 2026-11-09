@@ -1,0 +1,45 @@
+/* Colours come from Spica (--spica-*), re-injected when the theme changes.
+   The fallbacks only matter when the page is opened outside Spica. */
+:root {
+  color-scheme: light dark;
+  --bg: var(--spica-bg, #ffffff);
+  --surface: var(--spica-surface, #f4f4f5);
+  --fg: var(--spica-fg, #18181b);
+  --muted: var(--spica-muted, #71717a);
+  --border: var(--spica-border, #e4e4e7);
+  --accent: var(--spica-accent, #2563eb);
+  --danger: var(--spica-danger, #dc2626);
+  --radius: var(--spica-radius, 6px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: var(--spica-bg, #18181b);
+    --surface: var(--spica-surface, #27272a);
+    --fg: var(--spica-fg, #f4f4f5);
+    --muted: var(--spica-muted, #a1a1aa);
+    --border: var(--spica-border, #3f3f46);
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--spica-font, system-ui, sans-serif); }
+.layout { display: flex; height: 100%; }
+.list { width: 200px; flex: none; border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+.list-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; font-weight: 600; }
+#notes { list-style: none; margin: 0; padding: 0 6px 6px; overflow: auto; }
+#notes button { width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px; border-radius: var(--radius); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#notes button:hover { background: var(--surface); }
+#notes button[aria-current="true"] { background: var(--surface); font-weight: 600; }
+.editor { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 10px; min-width: 0; }
+input, textarea { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; }
+textarea { flex: 1; resize: none; }
+.actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+button { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 12px; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.danger { color: var(--danger); }
+button:disabled { opacity: .5; cursor: default; }
+.muted { color: var(--muted); margin: 0; padding: 0 10px; }
+@media (max-width: 480px) {
+  .layout { flex-direction: column; }
+  .list { width: auto; max-height: 40%; border-right: 0; border-bottom: 1px solid var(--border); }
+}

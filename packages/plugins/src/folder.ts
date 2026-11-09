@@ -47,13 +47,20 @@ export interface HookModuleDef {
   file: string;
 }
 
+export const VIEW_PLACEMENTS = ['sidebar', 'panel'] as const;
+
 export interface ViewDef {
+  /** File name without .json, e.g. "notebook". */
   id: string;
   title: string;
-  /** Where the shell may show it. Rendering comes later; only the format is fixed now. */
-  placement: 'sidebar' | 'detail' | 'settings';
-  /** HTML entry inside the plugin folder. */
+  /** Where the shell shows it: a sidebar entry of its own, or a panel beside the conversation. */
+  placement: (typeof VIEW_PLACEMENTS)[number];
+  /** HTML entry, relative to the plugin folder (forward slashes). */
   entry: string;
+  /** SVG icon, relative to the plugin folder. */
+  icon?: string;
+  /** Tools of this plugin the page may call (names as the server lists them); undefined = all of them. */
+  tools?: string[];
 }
 
 export interface PluginFolder {
@@ -194,25 +201,48 @@ export async function readPluginFolder(root: string): Promise<PluginFolder> {
     }
   }
 
-  // views/<id>.json (format only)
+  // views/<id>.json: pages the shell renders in a sandbox
   for (const e of await list(join(root, 'views'))) {
     if (e.isDir || !e.name.endsWith('.json')) continue;
     const id = e.name.slice(0, -5);
     const where = `views/${e.name}`;
     let v: Record<string, unknown>;
     try {
-      v = JSON.parse(await readFile(join(root, 'views', e.name), 'utf8')) as Record<string, unknown>;
+      v = JSON.parse(stripBom(await readFile(join(root, 'views', e.name), 'utf8'))) as Record<string, unknown>;
     } catch {
       issue(where, '视图声明不是合法的 JSON。');
       continue;
     }
-    const placement = v.placement ?? 'detail';
-    const entry = typeof v.entry === 'string' ? insidePlugin(out.root, v.entry) : undefined;
-    if (typeof v.title !== 'string' || !v.title) issue(where, '视图缺少 title。');
-    else if (placement !== 'sidebar' && placement !== 'detail' && placement !== 'settings') {
-      issue(where, '视图的 placement 只能是 sidebar、detail 或 settings。');
-    } else if (!entry) issue(where, '视图的 entry 要写插件文件夹里的相对路径，例如 "views/panel.html"。');
-    else out.views.push({ id, title: v.title, placement, entry });
+    const before = out.issues.length;
+    const relFile = async (field: string, value: unknown, ext: RegExp, example: string): Promise<string | undefined> => {
+      if (value === undefined) return undefined;
+      const abs = typeof value === 'string' ? insidePlugin(out.root, value) : undefined;
+      if (!abs) issue(where, `${field} 要写插件文件夹里的相对路径，不能用 .. 或绝对路径，例如 "${example}"。`);
+      else if (!ext.test(value as string)) issue(where, `${field} 要指向 ${example.slice(example.lastIndexOf('.'))} 文件。`);
+      else if (!(await exists(abs))) issue(where, `${field} 指向的 ${value as string} 不存在。`);
+      else return relative(out.root, abs).split(sep).join('/');
+      return undefined;
+    };
+    if (!/^[a-z][a-z0-9-]{0,31}$/.test(id)) issue(where, '视图文件名只能用小写字母、数字和 -，例如 views/notebook.json。');
+    if (typeof v.title !== 'string' || !v.title.trim()) issue(where, '视图缺少 title。');
+    const placement = v.placement ?? 'sidebar';
+    if (!(VIEW_PLACEMENTS as readonly unknown[]).includes(placement)) issue(where, `视图的 placement 只能是 ${VIEW_PLACEMENTS.join(' 或 ')}。`);
+    if (v.entry === undefined) issue(where, '视图缺少 entry，例如 "ui/index.html"。');
+    const entry = await relFile('entry', v.entry, /\.html?$/i, 'ui/index.html');
+    const icon = await relFile('icon', v.icon, /\.svg$/i, 'ui/icon.svg');
+    let tools: string[] | undefined;
+    const perm = v.permissions as { tools?: unknown } | undefined;
+    if (perm !== undefined) {
+      if (typeof perm !== 'object' || perm === null || Array.isArray(perm)) issue(where, 'permissions 要写成 { "tools": ["工具名", ...] }。');
+      else if (perm.tools !== undefined) {
+        if (!Array.isArray(perm.tools) || perm.tools.some((t) => typeof t !== 'string' || !t || t.includes('__'))) {
+          issue(where, 'permissions.tools 是本插件工具的原名列表（不带插件前缀），例如 ["list_notes"]。');
+        } else tools = [...new Set(perm.tools as string[])];
+      }
+    }
+    if (out.issues.length === before && entry) {
+      out.views.push({ id, title: (v.title as string).trim(), placement: placement as ViewDef['placement'], entry, ...(icon ? { icon } : {}), ...(tools ? { tools } : {}) });
+    }
   }
 
   // A mail declaration must point at one MCP server.

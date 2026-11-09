@@ -4,12 +4,12 @@
 // Disable undoes the same steps in reverse, then withdraws anything still
 // registered under the plugin's source as a backstop. A failed enable is
 // rolled back the same way, so a plugin is either fully on or fully off.
-import { appendFile, cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { appendFile, cp, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Hooks, Tool } from '@spica/core';
 import type { HookModule, PluginContext } from './authoring.ts';
-import { expandCommand, hasErrors, readPluginFolder, type CommandDef, type PluginFolder, type ServerDef } from './folder.ts';
+import { expandCommand, hasErrors, insidePlugin, readPluginFolder, type CommandDef, type PluginFolder, type ServerDef, type ViewDef } from './folder.ts';
 import type { McpExit, McpHandle, McpLaunch, PluginHost } from './host.ts';
 import { HOOK_KINDS, compareVersions, satisfies, type HookKind, type Issue, type PluginManifest } from './manifest.ts';
 
@@ -68,7 +68,7 @@ export interface PluginDescription {
   tools: string[];
   hooks: { module: string; kinds: HookKind[] }[];
   servers: { id: string; kind: 'mcp' | 'service'; runtime: 'node' | 'binary'; status: ServerStatus; restarts: number; tools: string[]; lastError?: string }[];
-  views: { id: string; title: string; placement: string }[];
+  views: { id: string; title: string; placement: ViewDef['placement']; entry: string; icon?: string; tools?: string[] }[];
   /** Set while the plugin is enabled and registered as a mail source. */
   mail?: { listTool: string; readTool: string };
   issues: Issue[];
@@ -83,6 +83,29 @@ export type PluginEvent =
   | { type: 'server.status'; name: string; server: string; status: ServerStatus; message?: string }
   | { type: 'hook.error'; name: string; module: string; kind: HookKind; message: string }
   | { type: 'mock.changed'; on: boolean };
+
+/** A page of an enabled plugin, for the shell (see views()). */
+export interface PluginView {
+  plugin: string;
+  pluginTitle: string;
+  id: string;
+  title: string;
+  placement: ViewDef['placement'];
+  /** Relative to the plugin folder; serve it with resolveViewFile(). */
+  entry: string;
+  icon?: string;
+  /** Tool names (as the plugin's server lists them) the page may call right now. */
+  tools: string[];
+  /** Of those, the ones the user must confirm first. */
+  irreversible: string[];
+}
+
+export interface ViewCallResult {
+  content: string;
+  /** content parsed as JSON, when it is JSON. */
+  data?: unknown;
+  isError: boolean;
+}
 
 export interface PluginManagerOptions {
   host: PluginHost;
@@ -754,7 +777,7 @@ export class PluginManager {
           ...(run?.lastError ? { lastError: run.lastError } : {}),
         };
       }),
-      views: (folder?.views ?? []).map((v) => ({ id: v.id, title: v.title, placement: v.placement })),
+      views: (folder?.views ?? []).map((v) => ({ id: v.id, title: v.title, placement: v.placement, entry: v.entry, ...(v.icon ? { icon: v.icon } : {}), ...(v.tools ? { tools: v.tools } : {}) })),
       ...(a?.mail ? { mail: a.mail } : {}),
       issues: folder?.issues ?? [],
     };
@@ -777,6 +800,92 @@ export class PluginManager {
     const a = plugin ? this.#active.get(plugin) : undefined;
     const cmd: CommandDef | undefined = a?.folder.commands.find((c) => c.id === id);
     return cmd ? expandCommand(cmd, args) : undefined;
+  }
+
+  // ---------- views (pages the shell renders) ----------
+
+  /** Bare tool name → full registered name, for every running server of the plugin (service tools included). */
+  #ownTools(a: Active): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const r of a.servers) {
+      for (const full of r.handle?.tools ?? []) {
+        const bare = full.slice(r.launchName.length + 2);
+        if (full.startsWith(`${r.launchName}__`) && !out.has(bare)) out.set(bare, full);
+      }
+    }
+    return out;
+  }
+
+  #viewTools(a: Active, v: ViewDef): string[] {
+    const own = [...this.#ownTools(a).keys()];
+    return v.tools ? v.tools.filter((t) => own.includes(t)) : own;
+  }
+
+  /** Pages of the enabled plugins. Changes come with plugin.enabled / plugin.disabled / server.status events. */
+  views(): PluginView[] {
+    const out: PluginView[] = [];
+    for (const a of this.#active.values()) {
+      for (const v of a.folder.views) {
+        const tools = this.#viewTools(a, v);
+        out.push({
+          plugin: a.manifest.name,
+          pluginTitle: a.manifest.displayName,
+          id: v.id,
+          title: v.title,
+          placement: v.placement,
+          entry: v.entry,
+          ...(v.icon ? { icon: v.icon } : {}),
+          tools,
+          irreversible: tools.filter((t) => a.manifest.permissions.irreversible.includes(t)),
+        });
+      }
+    }
+    return out.sort((x, y) => x.plugin.localeCompare(y.plugin) || x.id.localeCompare(y.id));
+  }
+
+  /**
+   * Absolute path of a file a plugin page asks for, or undefined when the
+   * plugin is not enabled or the path leaves the plugin folder or is not a
+   * file. Pages may load any file of their own plugin and nothing else.
+   */
+  async resolveViewFile(plugin: string, relPath: string): Promise<string | undefined> {
+    const a = this.#active.get(plugin);
+    if (!a || a.folder.views.length === 0) return undefined;
+    const abs = insidePlugin(a.folder.root, relPath.replace(/^[\\/]+/, ''));
+    if (!abs) return undefined;
+    try {
+      return (await stat(abs)).isFile() ? abs : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * A plugin page calls one of its own plugin's tools. Only tools the view
+   * declares (default: all of the plugin's); irreversible ones need
+   * `confirmed` (the shell asks the user, then calls again).
+   */
+  async viewCall(plugin: string, viewId: string, tool: string, args: Record<string, unknown> = {}, opts: { confirmed?: boolean } = {}): Promise<ViewCallResult> {
+    const fail = (code: string, text: string): ViewCallResult => ({ content: `[${code}] ${text}`, isError: true });
+    const a = this.#active.get(plugin);
+    if (!a) return fail('PLUGIN_DISABLED', `插件「${plugin}」没有启用。`);
+    const v = a.folder.views.find((x) => x.id === viewId);
+    if (!v) return fail('VIEW_NOT_FOUND', `插件「${a.manifest.displayName}」没有叫 ${viewId} 的页面。`);
+    const full = this.#ownTools(a).get(tool);
+    if (!full) return fail('TOOL_NOT_FOUND', `插件「${a.manifest.displayName}」现在没有 ${tool} 这个工具（server 可能还没起来）。`);
+    if (v.tools && !v.tools.includes(tool)) return fail('TOOL_NOT_ALLOWED', `这个页面没有声明可以调 ${tool}（views/${viewId}.json 的 permissions.tools）。`);
+    if (a.manifest.permissions.irreversible.includes(tool) && opts.confirmed !== true) {
+      return fail('CONFIRM_REQUIRED', `「${a.manifest.displayName}」声明这个操作不可撤销，需要你确认。`);
+    }
+    if (!this.#host.invokeTool) return fail('UNSUPPORTED', '这个版本的 Spica 内核还不能从页面直接调工具。');
+    const r = await this.#host.invokeTool(full, args && typeof args === 'object' ? args : {});
+    let data: unknown;
+    try {
+      data = JSON.parse(r.content);
+    } catch {
+      data = undefined;
+    }
+    return { content: r.content, isError: r.isError, ...(data !== undefined ? { data } : {}) };
   }
 
   /** Installed version of a plugin, if any (for update checks). */

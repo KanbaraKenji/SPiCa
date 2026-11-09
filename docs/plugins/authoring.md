@@ -113,6 +113,41 @@ export default (ctx) => ({
 - 钩子抛错不会让对话崩掉，只会记进日志。但它这一次就等于没生效。
 - 只收 `.js` / `.mjs`。用 TypeScript 写的先编译。
 
+## 5b. 加一个页面（可选）
+
+插件可以带自己的界面，Spica 把它放进侧栏（`sidebar`）或对话旁边的面板（`panel`）。声明 `todo/views/board.json`：
+
+```json
+{
+  "title": "To-do board",
+  "entry": "ui/index.html",
+  "placement": "sidebar",
+  "icon": "ui/icon.svg",
+  "permissions": { "tools": ["list", "add"] }
+}
+```
+
+页面就是普通的 HTML + JS，用 Spica 注入的 `window.spica` 调你自己的工具：
+
+```js
+const r = await window.spica.callTool('list', {});   // 工具原名，不带 todo__ 前缀
+if (r.isError) showError(r.content); else render(r.data ?? r.content);
+```
+
+| `window.spica` | 作用 |
+|---|---|
+| `callTool(工具, 参数)` | → `{ content, data?, isError }`；结果是 JSON 时 `data` 是解析好的对象 |
+| `onEvent(fn)` | 收 `{ type: 'theme' }`（换了明暗）、`{ type: 'plugin.changed' }`；返回取消函数 |
+| `theme` | `{ mode: 'light' \| 'dark' }` |
+| `openFile(路径)` | 在 Spica 右栏预览文件（只限本插件目录里的，或这次会话里见过的） |
+| `notify(文字, { kind })` | 弹一条提示，`kind` 是 `info` 或 `error` |
+
+- 颜色用 Spica 注入的 CSS 变量：`--spica-bg`、`--spica-surface`、`--spica-fg`、`--spica-muted`、`--spica-border`、`--spica-accent`、`--spica-danger`、`--spica-font`、`--spica-radius`。换明暗时它们会自动变，不用自己判断。
+- 沙箱限制：页面里没有 Node，不能 `require`、不能读写文件；只能加载本插件目录里的文件（不能用 CDN，脚本和样式都放进插件）；只能调本插件的工具，写了 `permissions.tools` 就只能调列出的那几个。
+- `permissions.irreversible` 里的工具，页面调用时 Spica 会先弹确认框；用户拒绝时 `isError` 为真，`content` 以 `[CONFIRM_REQUIRED]` 开头。
+- 页面能调常驻进程（`services/`）的工具：这类工具不给模型、只给自己的页面用，适合做界面专用的接口。
+- 完整例子：`plugins/example-notes/views/notebook.json` 和 `ui/`。
+
 ## 6. 模拟模式
 
 公司内网的接口在家里连不上时，开发者会打开 Spica 的模拟模式。你的 server 读 `SPICA_MOCK`：

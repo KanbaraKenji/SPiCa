@@ -46,6 +46,8 @@ export interface PluginHost {
   toolNames(): string[];
   /** Add a mail source to the core's mail pipeline; returns a remover. Absent when the core has no mail pipeline. */
   addMailSource?(src: MailSourceSpec): () => void;
+  /** Run a registered tool directly, outside any conversation (plugin pages). Absent on older cores. */
+  invokeTool?(name: string, input: Record<string, unknown>): Promise<{ content: string; isError: boolean }>;
 }
 
 /** Mirrors @spica/core's MailSource. */
@@ -67,6 +69,7 @@ export interface RuntimeLike {
   unregisterSource(source: string): unknown;
   connectMcp?(config: McpLaunch, opts?: { source?: string }): Promise<{ tools: string[]; disconnect: () => void | Promise<void> }>;
   mail?: { addSource(src: MailSourceSpec): () => void };
+  invokeTool?(name: string, input: Record<string, unknown>): Promise<{ content: string; isError: boolean }>;
 }
 
 export function runtimeHost(rt: RuntimeLike): PluginHost {
@@ -84,5 +87,6 @@ export function runtimeHost(rt: RuntimeLike): PluginHost {
     },
     toolNames: () => rt.tools.list({ providerId: '', serverWebSearch: true }).map((t) => t.spec.name),
     ...(rt.mail ? { addMailSource: (src: MailSourceSpec) => rt.mail!.addSource(src) } : {}),
+    ...(rt.invokeTool ? { invokeTool: (name: string, input: Record<string, unknown>) => rt.invokeTool!(name, input) } : {}),
   };
 }
