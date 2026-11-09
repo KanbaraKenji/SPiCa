@@ -7,8 +7,10 @@
   "license": "Apache-2.0",
   "main": "./out/main/index.js",
   "scripts": {
+    "predev": "install-electron",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "prepreview": "install-electron",
     "preview": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json"
   },

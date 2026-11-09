@@ -36,7 +36,7 @@ docs/screenshots/        给人看的截图（skeleton.png 等）
 | 工作区包写在 devDependencies | electron-vite 默认把 `dependencies` 当外部依赖、运行时去 node_modules 找；`@spica/*` 是 TS 源码，必须打包进去，所以放 devDependencies。真正运行时要的第三方库才放 `dependencies`。 |
 | 界面只通过 preload 桥调后端 | renderer 开 sandbox + contextIsolation，不能直接碰 Node；所有能力都是后端接口，界面只是外壳，和「接口先行」一致。 |
 | 花标用代码现画 | 几何（瓣形、40° 间隔、长瓣 0/120/240°、轴半径 4.5、放大 1.15、花心 (32,37)）集中在 `mark/geometry.ts`，有测试锁住与参考 SVG 一致；短瓣和轴用 `currentColor`，长瓣用 `--spica-accent`，系统明暗、以后换皮肤都不用新图。 |
-| Electron 45 | 当前稳定版。注意它不再在 `npm install` 时下载本体，第一次 `npm run dev` 会自动下载（约 100 MB），之后不再下。 |
+| Electron 45 | 当前稳定版。它不再在 `npm install` 时下载本体，而 electron-vite 找不到本体会直接报错；所以 `apps/desktop` 加了 `predev` / `prepreview`（`install-electron`），第一次 `npm run dev` 时下载（约 100 MB），之后秒过。CI 不开窗口，不下载。 |
 
 ## 加一个新包
 
