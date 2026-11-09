@@ -200,8 +200,10 @@ export interface SessionInfo {
   costUsd: number;
   createdAt: string;
   updatedAt: string;
-  /** Reserved for persistent members: role template id (not used in v1). */
+  /** Role template the session was created from (e.g. 'top', 'project-manager'). */
   templateId?: string;
+  /** Project the session works for (project manager and its sub-agents). */
+  projectId?: string;
 }
 
 /** An open question or confirmation the session is waiting on. */
@@ -281,6 +283,11 @@ export type CoreEventBody =
   | { type: 'steer.queued'; messageId: string; mode: SteerMode }
   | { type: 'steer.applied'; messageIds: string[] }
   | { type: 'child.spawned'; childId: string; title: string | null }
+  /** Emitted on the top-level session. */
+  | { type: 'project.created'; project: ProjectInfo }
+  | { type: 'project.updated'; project: ProjectInfo }
+  /** A key action inside a project (emitted on the session that did it). */
+  | { type: 'project.activity'; entry: ProjectLogEntry }
   | { type: 'session.renamed'; title: string | null }
   | { type: 'child.report'; childId: string; summary: string }
   /** A note from a child session was added to this (parent) session. */
@@ -379,6 +386,8 @@ export interface CreateSessionRequest {
   maxTurns?: number;
   /** Interface language (BCP 47) the agent uses until the user writes; default zh-CN. */
   locale?: string;
+  /** Apply a role template (system prompt, tools, model). Explicit fields win. */
+  templateId?: string;
 }
 
 export interface SendResult {
@@ -406,4 +415,77 @@ export interface AgentApi {
   abort(sessionId: string): Promise<void>;
   /** Traceable records as JSON Lines. */
   exportTraces(filter?: { sessionId?: string }): Promise<string>;
+  // Project commands (M4, in progress): optional until the core implements them.
+  /** The top-level agent session (created on first call). */
+  getTopSession?(): Promise<SessionInfo>;
+  createProject?(req: CreateProjectRequest): Promise<ProjectInfo>;
+  listProjects?(): Promise<ProjectInfo[]>;
+  getProject?(projectId: string): Promise<ProjectDetail | undefined>;
+}
+
+// ---------------------------------------------------------------------------
+// Projects (project = a folder + a persistent project-manager session)
+// ---------------------------------------------------------------------------
+
+/** A workflow file: stages and work-object levels. Swapping files adapts Spica to another team. */
+export interface WorkflowDef {
+  id: string;
+  name: string;
+  stages: { id: string; name: string; goal?: string; exitCriteria?: string[] }[];
+  /** Work-object levels; `parent` names the level above (any depth). */
+  objectLevels?: { id: string; name: string; parent?: string }[];
+}
+
+export interface ProjectInfo {
+  id: string;
+  name: string;
+  /** Absolute path of the project folder. */
+  folder: string;
+  managerSessionId: string;
+  workflowId: string | null;
+  /** Current stage id (null when the project has no workflow). */
+  stage: string | null;
+  status: 'active' | 'archived';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkObject {
+  id: string;
+  projectId: string;
+  level: string;
+  name: string;
+  parentId: string | null;
+  data?: Record<string, unknown>;
+  createdAt: string;
+}
+
+/** A key action inside a project, kept for the top-level agent (system-level record). */
+export interface ProjectLogEntry {
+  id: string;
+  projectId: string;
+  sessionId: string;
+  at: string;
+  kind: 'file_write' | 'file_edit' | 'command' | 'stage' | 'decision' | 'note';
+  summary: string;
+  path?: string;
+}
+
+export interface ProjectDetail extends ProjectInfo {
+  workflow: WorkflowDef | null;
+  objects: WorkObject[];
+  /** Newest first. */
+  recentLog: ProjectLogEntry[];
+  manager: SessionInfo;
+  /** Sub-agents of the manager. */
+  agents: SessionInfo[];
+}
+
+export interface CreateProjectRequest {
+  name: string;
+  /** Absolute, or relative to the deployment's projects folder. Created if missing. Default: the name. */
+  folder?: string;
+  workflowId?: string;
+  /** First task for the project manager. */
+  brief?: string;
 }
