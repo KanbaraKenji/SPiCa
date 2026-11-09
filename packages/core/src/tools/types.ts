@@ -110,6 +110,11 @@ export class ToolRegistry {
     return this.#tools.get(name)?.tool;
   }
 
+  /** Every registered tool with the source that registered it. */
+  entries(): { tool: Tool; source: string }[] {
+    return [...this.#tools.values()].map((e) => ({ tool: e.tool, source: e.source }));
+  }
+
   /** Tools visible to a session: allow-list (if any) and availability check. */
   list(env: ToolEnv, allow?: readonly string[]): Tool[] {
     return [...this.#tools.values()]

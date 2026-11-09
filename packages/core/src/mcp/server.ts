@@ -6,7 +6,8 @@ import { createAgentApi } from '../api.ts';
 import type { Runtime } from '../runtime.ts';
 import type { CoreEvent, Message } from '../types.ts';
 
-interface McpTool {
+/** A tool on Spica's MCP service. Extensions (e.g. the plugin package) add their own. */
+export interface McpTool {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
@@ -115,19 +116,29 @@ export function spicaMcpTools(rt: Runtime, events: CoreEvent[]): McpTool[] {
           .slice(0, Math.max(1, Number(a.limit ?? 500)));
       },
     },
+    {
+      name: 'spica_list_tools',
+      description: 'The tools agents can use right now (name, source, whether they need confirmation). Plugins add and remove tools here.',
+      inputSchema: obj({}),
+      run: async () => rt.tools.entries().map((e) => ({ name: e.tool.spec.name, source: e.source, irreversible: !!e.tool.irreversible, description: e.tool.spec.description })),
+    },
     { name: 'spica_export_traces', description: 'Traceable records (JSON Lines).', inputSchema: obj({ session_id: str }), run: (a) => api.exportTraces(a.session_id ? { sessionId: String(a.session_id) } : undefined) },
   ];
 }
 
 /** Serve the MCP protocol (newline-delimited JSON-RPC) on the given streams. */
-export function serveMcp(rt: Runtime, io: { input: Readable; output: Writable }, opts: { bufferSize?: number; name?: string } = {}): { close(): void } {
+export function serveMcp(
+  rt: Runtime,
+  io: { input: Readable; output: Writable },
+  opts: { bufferSize?: number; name?: string; extraTools?: McpTool[] } = {},
+): { close(): void } {
   const events: CoreEvent[] = [];
   const size = opts.bufferSize ?? 5000;
   const off = rt.events.on((e) => {
     events.push(e);
     if (events.length > size) events.splice(0, events.length - size);
   });
-  const tools = spicaMcpTools(rt, events);
+  const tools = [...spicaMcpTools(rt, events), ...(opts.extraTools ?? [])];
   const send = (msg: unknown) => io.output.write(`${JSON.stringify(msg)}\n`);
   const rl = createInterface({ input: io.input });
   rl.on('line', (line) => {

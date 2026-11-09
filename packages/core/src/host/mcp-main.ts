@@ -23,7 +23,7 @@ startBackend(config).then(
   (backend) => {
     for (const w of backend.warnings) process.stderr.write(`[spica] ${w}\n`);
     process.stderr.write(`[spica] ready: ${backend.restored.sessions} sessions restored\n`);
-    const server = serveMcp(backend.runtime, { input: process.stdin, output: process.stdout });
+    const server = serveMcp(backend.runtime, { input: process.stdin, output: process.stdout }, { extraTools: backend.mcpTools });
     const stop = () => {
       server.close();
       backend.close().then(

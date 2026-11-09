@@ -1,7 +1,7 @@
 // Spica's own MCP service over stdio, driven by Spica's MCP client.
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FakeGateway } from '../testing/fake-gateway.ts';
 import { startGateway, tempDir } from '../testing/helpers.ts';
@@ -77,5 +77,25 @@ describe('Spica MCP service (stdio)', () => {
     } finally {
       await c2.close();
     }
+  }, 60_000);
+});
+
+describe('extensions', () => {
+  it('an extension module adds MCP tools and agent tools, and is closed on shutdown', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const marker = join(dir, 'ext-closed.txt');
+    const ext = pathToFileURL(fileURLToPath(new URL('../testing/fake-extension.mjs', import.meta.url))).href;
+    const base = JSON.parse(await readFile(cfgPath, 'utf8')) as Record<string, unknown>;
+    await writeFile(cfgPath, JSON.stringify({ ...base, extensions: [{ module: ext, options: { word: 'hi', marker } }, { module: 'spica-no-such-extension' }] }));
+    const c = await start();
+    try {
+      expect(await call(c, 'spica_ext_ping')).toEqual({ pong: 'hi' });
+      const tools = (await call(c, 'spica_list_tools')) as unknown as { name: string; source: string }[];
+      expect(tools.find((t) => t.name === 'ext_tool')).toMatchObject({ source: 'ext:test' });
+      expect(tools.find((t) => t.name === 'read_file')).toMatchObject({ source: 'core' });
+    } finally {
+      await c.close();
+    }
+    expect(await readFile(marker, 'utf8')).toBe('closed');
   }, 60_000);
 });
