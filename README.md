@@ -27,6 +27,7 @@ A window opens showing the Spica mark, the name and the version.
 | `npm run typecheck` | TypeScript type check for every workspace |
 | `npm test` | Run unit tests (Vitest) |
 | `npm run scan:sensitive` | Scan tracked files for sensitive words |
+| `npm run smoke:deepseek` / `smoke:claude` | Live smoke test of the agent core against a real model (needs `.env.local`) |
 
 ## Repository layout
 
