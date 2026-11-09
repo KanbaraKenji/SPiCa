@@ -268,3 +268,59 @@ describe('team rule', () => {
     }
   });
 });
+
+describe('top-level threads', () => {
+  let gw: FakeGateway;
+  let dir: string;
+  let cleanup: () => Promise<void>;
+  beforeEach(async () => {
+    gw = await startGateway();
+    ({ dir, cleanup } = await tempDir());
+  });
+  afterEach(async () => {
+    await gw.stop();
+    await cleanup();
+  });
+
+  it('every parentless session is a thread of the top-level agent', () => {
+    const r = makeRuntime(gw, { cwd: dir });
+    const a = r.createSession();
+    const b = r.createSession();
+    expect([a.info().templateId, b.info().templateId]).toEqual(['top', 'top']);
+    expect(r.top().id).toBe(a.id); // the default thread is the oldest one
+    expect(r.createSession({ role: 'worker' }).info().templateId).toBeUndefined();
+  });
+
+  it('another thread can wait for a project manager it did not parent, and gets the report inline', async () => {
+    gw.onRequest((req) => {
+      const all = JSON.stringify(req.body.messages);
+      if (all.includes('THREAD-2') && !all.includes('Created project')) {
+        return { toolCalls: [{ id: 'c1', name: 'create_project', args: { name: 'Q', brief: 'PM-JOB' } }] };
+      }
+      if (all.includes('THREAD-2') && !all.includes('finished')) return { toolCalls: [{ id: 'w1', name: 'wait_agents', args: {} }] };
+      if (all.includes('PM-JOB')) return { text: 'PM-REPORT-TEXT', delayMs: 100 };
+      return { text: 'thread done' };
+    });
+    const r = makeRuntime(gw, { cwd: dir });
+    r.top(); // default thread exists first
+    const thread2 = r.createSession();
+    const res = await thread2.send('THREAD-2 start a project and wait for it').done;
+    expect(res.reason).toBe('completed');
+    const waitResult = JSON.stringify(thread2.messages().filter((m) => m.kind === 'tool_results').at(-1)!.content);
+    expect(waitResult).toContain('All requested sub-agents have finished');
+    expect(waitResult).toContain('PM-REPORT-TEXT');
+    const pm = r.session(r.listProjects()[0]!.managerSessionId)!;
+    expect(pm.parentId).toBe(r.top().id);
+    expect(r.canDirect(thread2.id, pm.id)).toBe(true);
+    expect(r.canDirect(r.createSession({ role: 'worker' }).id, pm.id)).toBe(false);
+  });
+
+  it('commands that only sleep are refused before any confirmation, with a pointer to wait_agents', async () => {
+    gw.enqueue({ toolCalls: [{ id: 'z1', name: 'run_command', args: { command: 'Start-Sleep -Seconds 45' } }] }, { text: 'ok' });
+    const r = makeRuntime(gw, { cwd: dir });
+    const s = r.createSession();
+    const res = await s.send('wait a bit').done;
+    expect(res.reason).toBe('completed'); // no awaiting_confirm
+    expect(JSON.stringify(s.messages()[2]!.content)).toContain('use wait_agents');
+  });
+});
