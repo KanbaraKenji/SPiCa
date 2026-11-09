@@ -88,10 +88,16 @@ function backendConfig(): DesktopBackendConfig {
       locale: 'zh-CN',
       // Development limits (see docs/design/agent-core.md §10): Anthropic 100 USD total, 2 USD per call.
       budget: { perProvider: { anthropic: { globalUsd: 100, perCallUsd: 2 } }, perRunUsd: 1 },
+      // Linked into the backend entry; named here as the core expects.
+      extractorModules: ['@spica/extract'],
+      extensions: [
+        {
+          module: '@spica/desktop-host',
+          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), current },
+        },
+      ],
     },
     current,
-    pluginRoot,
-    pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'),
   };
 }
 

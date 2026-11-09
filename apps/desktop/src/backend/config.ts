@@ -1,13 +1,9 @@
-// What the main process sends the backend process at start.
+// What the main process prepares for the backend process at every (re)start.
 import type { BackendConfig } from '@spica/core';
 
 export interface DesktopBackendConfig {
-  /** Passed to startBackend (providers, defaults, database, folders, budget...). */
+  /** Sent as the start message's config (providers, defaults, database, modules, extensions...). */
   core: BackendConfig;
   /** Default model for new top-level sessions; null when none is configured. */
   current: { providerId: string; model: string } | null;
-  /** %APPDATA%\Spica\plugins */
-  pluginRoot: string;
-  /** Where the plugin page remembers shared folders / index URLs. */
-  pluginSourcesFile: string;
 }
