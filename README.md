@@ -126,7 +126,7 @@ Chinese) and the working example in [plugins/example-notes](plugins/example-note
   an assertion failure, a rerun passes; the core avoids it by cancelling the reader
   instead of aborting the connection when the user stops, and the Node bundled with the
   Spica desktop app (Electron 45, Node 24.22.2) does not reproduce it (see
-  [docs/design/agent-core.md](docs/design/agent-core.md) §13). CI retries the test step
+  [docs/design/agent-core.md](docs/design/agent-core.md) §20). CI retries the test step
   once for this reason.
 
 ## Contributing
