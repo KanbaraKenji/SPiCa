@@ -73,14 +73,15 @@ describe('run_command', () => {
   it('spills long output to a file and returns head and tail', async () => {
     const spill = join(dir, 'spill');
     const t = createRunCommandTool({ maxOutputChars: 2000, spillDir: spill });
-    const r = await t.execute({ command: cmd('1..5000 | ForEach-Object { "line $_" }', 'seq 1 5000 | sed "s/^/line /"') }, ctx());
+    // A foreach statement is much faster than a ForEach-Object pipeline in Windows PowerShell.
+    const r = await t.execute({ command: cmd('foreach ($i in 1..5000) { "line $i" }', 'seq 1 5000 | sed "s/^/line /"'), timeout_seconds: 50 }, ctx());
     expect(r.content).toContain('line 1\n');
     expect(r.content).toContain('line 5000');
     expect(r.content).toMatch(/characters omitted/);
     const path = /saved to (.+?);/.exec(r.content)![1]!;
     const full = await readFile(path, 'utf8');
     expect(full.split('\n').filter(Boolean)).toHaveLength(5000);
-  }, 20_000);
+  }, 60_000);
 });
 
 describe('child process environment', () => {
