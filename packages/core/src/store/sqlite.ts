@@ -5,6 +5,7 @@ import { dirname } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
 import type { Message, ProjectInfo, ProjectLogEntry, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, SessionRecord, Store, ToolCallRecord } from './types.ts';
+import { projectLogEntry } from '../projects.ts';
 
 const SCHEMA_VERSION = 1;
 
@@ -49,7 +50,7 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 CREATE TABLE IF NOT EXISTS project_log (
   id TEXT PRIMARY KEY, project_id TEXT NOT NULL, session_id TEXT NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL,
-  summary TEXT NOT NULL, path TEXT
+  summary TEXT NOT NULL, path TEXT, detail TEXT
 );
 CREATE INDEX IF NOT EXISTS project_log_project ON project_log(project_id, at);
 CREATE TABLE IF NOT EXISTS work_objects (
@@ -89,6 +90,8 @@ export class SqliteStore implements Store {
   #migrate(): void {
     const cols = (this.#db.prepare('PRAGMA table_info(tool_calls)').all() as Row[]).map((r) => String(r.name));
     if (!cols.includes('cards')) this.#db.exec('ALTER TABLE tool_calls ADD COLUMN cards TEXT');
+    const logCols = (this.#db.prepare('PRAGMA table_info(project_log)').all() as Row[]).map((r) => String(r.name));
+    if (!logCols.includes('detail')) this.#db.exec('ALTER TABLE project_log ADD COLUMN detail TEXT');
   }
 
   #q(sql: string): StatementSync {
@@ -232,26 +235,32 @@ export class SqliteStore implements Store {
     return (this.#q('SELECT * FROM projects ORDER BY created_at, rowid').all() as Row[]).map(toProject);
   }
   appendProjectLog(e: ProjectLogEntry): void {
-    this.#q('INSERT INTO project_log (id, project_id, session_id, at, kind, summary, path) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    // column `path` holds the entry's target
+    this.#q('INSERT INTO project_log (id, project_id, session_id, at, kind, summary, path, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
       e.id,
       e.projectId,
       e.sessionId,
       e.at,
-      e.kind,
+      e.action,
       e.summary,
-      e.path ?? null,
+      e.target ?? null,
+      e.detail ?? null,
     );
   }
   listProjectLog(projectId: string, limit = 50): ProjectLogEntry[] {
-    return (this.#q('SELECT * FROM project_log WHERE project_id = ? ORDER BY rowid DESC LIMIT ?').all(projectId, limit) as Row[]).map((r) => ({
-      id: String(r.id),
-      projectId: String(r.project_id),
-      sessionId: String(r.session_id),
-      at: String(r.at),
-      kind: String(r.kind) as ProjectLogEntry['kind'],
-      summary: String(r.summary),
-      ...(r.path !== null ? { path: String(r.path) } : {}),
-    }));
+    return (this.#q('SELECT * FROM project_log WHERE project_id = ? ORDER BY rowid DESC LIMIT ?').all(projectId, limit) as Row[]).map((r) =>
+      projectLogEntry({
+        id: String(r.id),
+        projectId: String(r.project_id),
+        sessionId: String(r.session_id),
+        at: String(r.at),
+        // the `kind` column holds the action; early entries used underscores
+        action: String(r.kind).replace('file_write', 'file.write').replace('file_edit', 'file.edit') as ProjectLogEntry['action'],
+        summary: String(r.summary),
+        ...(r.path !== null ? { target: String(r.path) } : {}),
+        ...(r.detail !== null && r.detail !== undefined ? { detail: String(r.detail) } : {}),
+      }),
+    );
   }
   upsertWorkObject(o: WorkObject): void {
     this.#q(

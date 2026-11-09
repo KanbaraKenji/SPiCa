@@ -119,6 +119,12 @@
 
 ## 8. 会话树与回传
 
+**会话模型：角色与线程**（统筹定）
+- 「顶层」是一个**角色**，可以有多个对话线程。界面里的「新对话」就是再开一个顶层线程（没有父会话的会话自动套用 `top` 模板）。每个线程都看得到所有项目，靠的是 `list_projects` / `open_project` 等工具，不靠上下文。`getTopSession()` / `runtime.top()` 返回默认线程（最早的那个顶层线程；界面在左栏显示为「助理」，可以改名，名字由界面定，内核不起名）。
+- 「项目经理」同理是一个角色：一个项目一个常驻线程，父会话是默认顶层线程。
+- 任何顶层线程都可以给任何项目经理和它的子 Agent 发话（`message_agent`）、等它们（`wait_agents`）。项目经理的回报写进它的父会话（默认顶层线程）；别的顶层线程等它时，回报直接出现在 `wait_agents` 的结果里。
+- 等子任务只用 `wait_agents`：内核自带的守卫会在弹确认卡之前拒绝只做 sleep 的命令（Start-Sleep、sleep、timeout ……），并提示用 `wait_agents`。
+
 - 会话有 `id`、`parentId`、角色（top / manager / worker），各自有上下文、状态、花费；事件和可追溯记录都带父链。
 - 父会话用工具管子会话（`src/tools/agent-tools.ts`）：
   - `spawn_agent {title, task}`：开子会话并把任务作为「父会话写的」第一条消息发过去，立即返回 id，多个子会话并行跑（受同一个限流器约束）。
@@ -229,7 +235,7 @@
 
 **子会话里用户的改动优先**（统筹定，J4 要验的点）：带队的会话（顶层、项目经理、任何有子会话的会话）系统提示里每轮都有一条规则：收到「用户在子会话里说了 / 定了什么」的备注时，它优先于原计划，要套用到总体结论，并在回答里说明是按用户在子会话里的改动调整的。
 
-**关键操作记录**：项目内的会话 write_file / edit_file 成功、run_command 执行、set_stage、record_decision 时自动记一条 `project_log`，发 `project.activity` 事件；顶层的 `list_projects` / `open_project` 读它。项目经理和子 Agent 的完整交互照旧进 `messages`。
+**关键操作记录**：项目内的会话 write_file / edit_file 成功、run_command 执行、set_stage、record_decision、开子 Agent、子 Agent 回报时自动记一条 `project_log`，发 `project.activity` 事件；顶层的 `list_projects` / `open_project` 读它。条目是结构化的：`action`（file.write / file.edit / file.delete / command / child.spawn / child.report / decision / stage / note）、`target`（相对项目文件夹的路径、命令、子 Agent 名或阶段 id）、`detail`；界面按这些拼中文，`summary` 是写给模型看的英文。旧字段 `kind` / `path` 暂留，外壳切过去后删。项目经理和子 Agent 的完整交互照旧进 `messages`。
 
 **角色模板（给常驻成员留的口）**：`RoleTemplate {id, name, system, tools?, providerId?, model?}`，部署时注册；`createSession({ templateId })` 套用。内置两个：`top`（顶层）和 `project-manager`。常驻成员以后就是「带模板 + 记忆接口的长期会话」，首版不做记忆。
 

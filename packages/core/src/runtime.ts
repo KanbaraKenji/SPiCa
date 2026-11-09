@@ -24,15 +24,15 @@ import type {
   Message,
   ProjectDetail,
   ProjectInfo,
-  ProjectLogEntry,
+  ProjectActivityKind,
   SessionStatus,
   WorkflowDef,
   WorkObject,
 } from './types.ts';
 import { mkdirSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import { newId } from './util.ts';
-import { BUILTIN_TEMPLATES, loadWorkflows, type RoleTemplate } from './projects.ts';
+import { BUILTIN_TEMPLATES, loadWorkflows, projectLogEntry, type RoleTemplate } from './projects.ts';
 
 export interface RuntimeOptions {
   providers: Provider[];
@@ -236,6 +236,9 @@ export class Runtime implements RuntimeInternals {
         { sessionId: parent.id, parentChain: parent.parentChain },
         { type: 'child.spawned', childId: s.id, title: record.title },
       );
+      if (parent.info().projectId && config.projectId) {
+        this.logProjectActivity(parent, 'child.spawn', `Started sub-agent ${record.title ?? s.id}`, record.title ?? undefined, s.id);
+      }
     }
     this.events.emit({ sessionId: s.id, parentChain: s.parentChain }, { type: 'status', status: 'idle' });
     return s;
@@ -339,6 +342,10 @@ export class Runtime implements RuntimeInternals {
     const parent = this.session(session.parentId);
     if (!parent) return;
     this.store.appendRelay(this.#relayRecord(parent.id, session.id, 'report', report));
+    if (session.info().projectId) {
+      const title = session.info().title;
+      this.logProjectActivity(session, 'child.report', `Sub-agent ${title ?? session.id} reported`, title ?? undefined, report.slice(0, 200));
+    }
     this.events.emit({ sessionId: parent.id, parentChain: parent.parentChain }, { type: 'child.report', childId: session.id, summary: report.slice(0, 500) });
     parent.addNote('report', `[Report from sub-agent ${label(session)}]\n${report}`, { ...this.#noteMeta(session, 'report', report) });
   }
@@ -439,7 +446,7 @@ export class Runtime implements RuntimeInternals {
     this.store.upsertProject(updated);
     const by = this.session(bySessionId) ?? this.session(p.managerSessionId);
     const summary = `Stage changed to "${stage.name}"${note ? `: ${note}` : ''}`;
-    if (by) this.logProjectActivity(by, 'stage', summary);
+    if (by) this.logProjectActivity(by, 'stage', summary, stage.id, note);
     const manager = this.session(p.managerSessionId);
     if (manager) this.recordDecision(manager.id, `Project "${p.name}": ${summary}`, 'agent');
     const top = this.top();
@@ -473,11 +480,23 @@ export class Runtime implements RuntimeInternals {
     return o;
   }
 
-  /** Record a key action inside a project (for the top-level agent) and emit project.activity. */
-  logProjectActivity(session: Session, kind: ProjectLogEntry['kind'], summary: string, path?: string): void {
+  /**
+   * Record a key action inside a project (for the top-level agent) and emit
+   * project.activity. `summary` is English for the model; UIs use kind/target/detail.
+   */
+  logProjectActivity(session: Session, action: ProjectActivityKind, summary: string, target?: string, detail?: string): void {
     const projectId = session.info().projectId;
     if (!projectId) return;
-    const entry: ProjectLogEntry = { id: newId('plog'), projectId, sessionId: session.id, at: isoNow(), kind, summary: summary.slice(0, 500), ...(path ? { path } : {}) };
+    const entry = projectLogEntry({
+      id: newId('plog'),
+      projectId,
+      sessionId: session.id,
+      at: isoNow(),
+      action,
+      ...(target ? { target: target.slice(0, 500) } : {}),
+      ...(detail ? { detail: detail.slice(0, 500) } : {}),
+      summary: summary.slice(0, 500),
+    });
     this.store.appendProjectLog(entry);
     this.events.emit({ sessionId: session.id, parentChain: session.parentChain }, { type: 'project.activity', entry });
   }
@@ -486,11 +505,26 @@ export class Runtime implements RuntimeInternals {
   onToolDone(session: Session, call: { name: string; input: unknown }, result: { isError: boolean }): void {
     if (result.isError || !session.info().projectId) return;
     const input = (call.input ?? {}) as Record<string, unknown>;
-    const path = typeof input.path === 'string' ? input.path : undefined;
-    if (call.name === 'write_file') this.logProjectActivity(session, 'file_write', `Wrote ${path ?? 'a file'}`, path);
-    else if (call.name === 'edit_file') this.logProjectActivity(session, 'file_edit', `Edited ${path ?? 'a file'}`, path);
-    else if (call.name === 'run_command') this.logProjectActivity(session, 'command', `Ran: ${String(input.command ?? '').slice(0, 200)}`);
-    else if (call.name === 'record_decision') this.logProjectActivity(session, 'decision', String(input.decision ?? ''));
+    const path = typeof input.path === 'string' ? this.#projectRelative(session, input.path) : undefined;
+    if (call.name === 'write_file') this.logProjectActivity(session, 'file.write', `Wrote ${path ?? 'a file'}`, path);
+    else if (call.name === 'edit_file') this.logProjectActivity(session, 'file.edit', `Edited ${path ?? 'a file'}`, path);
+    else if (call.name === 'run_command') {
+      const cmd = String(input.command ?? '').slice(0, 200);
+      this.logProjectActivity(session, 'command', `Ran: ${cmd}`, cmd);
+    } else if (call.name === 'record_decision') {
+      const d = String(input.decision ?? '');
+      this.logProjectActivity(session, 'decision', `Decision: ${d}`, undefined, d);
+    }
+  }
+
+  /** A path as seen from the project folder (absolute when it is outside). */
+  #projectRelative(session: Session, p: string): string {
+    const projectId = session.info().projectId;
+    const folder = projectId ? this.store.getProject(projectId)?.folder : undefined;
+    const abs = isAbsolute(p) ? p : join(session.config.cwd, p);
+    if (!folder) return p;
+    const rel = relative(folder, abs);
+    return rel && !rel.startsWith('..') && !isAbsolute(rel) ? rel.split('\\').join('/') : abs;
   }
 
   lastReport(sessionId: string): string | undefined {
