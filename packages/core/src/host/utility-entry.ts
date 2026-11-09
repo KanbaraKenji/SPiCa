@@ -14,7 +14,7 @@
 //   main → backend  { type: 'shutdown' }          → runs close() (runs become interrupted), then exits 0
 //   backend → main  { type: 'started', restored, warnings } | { type: 'failed', code, message }
 // The main process restarts the backend if it exits unexpectedly; restore()
-// then brings sessions back (see docs/design/agent-core.md, 12b).
+// then brings sessions back (see docs/design/agent-core.md §17).
 import { startBackend, type Backend, type BackendConfig, type BackendHost } from './backend.ts';
 import { electronPort } from './wire.ts';
 

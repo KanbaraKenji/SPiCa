@@ -23,7 +23,7 @@ npm run eval -w @spica/plugin-example-eval -- --only J2,J5
 ```
 
 Against a Spica that is already running with MCP over HTTP (see
-`docs/design/agent-core.md` §12b; J2–J4 and J7 are skipped because they need sample
+`docs/design/agent-core.md` §18; J2–J4 and J7 are skipped because they need sample
 files next to Spica or a restart):
 
 ```

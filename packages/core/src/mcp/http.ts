@@ -4,7 +4,7 @@
 // initiated stream (GET answers 405) and no session ids (the service is
 // stateless per request; spica_events gives the event history instead).
 //
-// Security boundary (docs/design/agent-core.md §12b):
+// Security boundary (docs/design/agent-core.md §18):
 // - binds 127.0.0.1 unless another host is given AND allowRemote is set;
 // - every request needs `Authorization: Bearer <token>` (checked first, in
 //   constant time); the token is never written to traces, events or logs;

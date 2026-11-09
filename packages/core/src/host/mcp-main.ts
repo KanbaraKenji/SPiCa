@@ -7,7 +7,7 @@
 // HTTP: add `--http [--port <n>] [--host <h>] [--allow-remote] [--token-file <path>]`.
 //   The bearer token comes from SPICA_MCP_TOKEN, or is generated; a generated
 //   token is written to --token-file, or printed once on stderr when no file is
-//   given. Loopback only unless --allow-remote (see docs/design/agent-core.md §12b).
+//   given. Loopback only unless --allow-remote (see docs/design/agent-core.md §18).
 import { readFileSync } from 'node:fs';
 import { serveMcp } from '../mcp/server.ts';
 import { startBackend, type BackendConfig, type ProviderConfig } from './backend.ts';
