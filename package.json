@@ -21,7 +21,13 @@
     "test": "vitest run",
     "scan:sensitive": "node scripts/sensitive-words/scan.mjs",
     "smoke:deepseek": "npm run smoke:deepseek -w @spica/core",
-    "smoke:claude": "npm run smoke:claude -w @spica/core"
+    "smoke:claude": "npm run smoke:claude -w @spica/core",
+    "journeys": "npm run journeys -w @spica/core",
+    "journey:j6": "npm run journey:j6 -w @spica/plugins",
+    "shots": "npm run shots -w @spica/desktop",
+    "acceptance": "node scripts/acceptance.mjs",
+    "dist": "npm run dist -w @spica/desktop",
+    "release:prepare": "node scripts/release/prepare.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
