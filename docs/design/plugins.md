@@ -222,6 +222,6 @@ J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型�
 - **内核配合**（已提交 e473a9d）：`connectMcp(config, { source })`、`onExit`、`stderrLog`、可等待的 `disconnect()`、单个 server 只撤自己的工具、`inheritEnv` 白名单。
 - **故意没做**：插件页界面与模拟数据标记（归桌面外壳，接口见第 9 节）；工作文件夹 / 网络权限的强制拦截；插件设置表单（MCPB 的 user_config）；包签名；宿主托管 Python（方案见第 5 节，何时做待他拍板）；视图渲染。
 - **J6 经 MCP**：`npm run journey:j6 -w @spica/plugins`，7 项全过（DeepSeek flash）。
-- **下一步**：外壳经后端端口的 plugin* 方法做插件页，不用自己建 `PluginManager`；插件根建议 `%APPDATA%Spicaplugins`，写进后端配置的 extensions.options.root。之后官方 Outlook 插件按本格式写。
+- **下一步**：外壳经后端端口的 plugin* 方法做插件页，不用自己建 `PluginManager`；插件根建议 `%APPDATA%\Spica\plugins`，写进后端配置的 extensions.options.root。之后官方 Outlook 插件按本格式写。
 - **他该看什么**：跑 J6 冒烟看 13 行 ✓；翻 `plugins/example-notes` 看一个插件长什么样。
 - **注意**：插件测试要起真进程，机器很忙时默认 5 秒会超时，测试文件里已放宽到 30 秒。
