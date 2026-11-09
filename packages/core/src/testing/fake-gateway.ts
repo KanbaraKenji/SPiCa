@@ -76,7 +76,11 @@ export class FakeGateway {
 
   async stop(): Promise<void> {
     for (const res of this.#open) res.destroy();
-    await new Promise<void>((r) => (this.#server ? this.#server.close(() => r()) : r()));
+    await new Promise<void>((r) => {
+      if (!this.#server) return r();
+      this.#server.close(() => r());
+      this.#server.closeAllConnections(); // do not wait for keep-alive sockets
+    });
   }
 
   enqueue(...replies: ScriptedReply[]): this {
