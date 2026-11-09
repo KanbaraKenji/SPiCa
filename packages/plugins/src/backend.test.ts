@@ -63,7 +63,10 @@ describe('plugin tools on the MCP service', () => {
     };
     const m = ext.methods;
     await ext.mcpTools.find((t) => t.name === 'spica_plugin_install')!.run({ path: EXAMPLE_PLUGIN, enable: true });
-    expect(await m.pluginViews!()).toMatchObject([{ plugin: 'notes', id: 'notebook', entry: 'ui/index.html' }]);
+    expect(await m.pluginViews!()).toMatchObject([
+      { plugin: 'notes', id: 'notebook', entry: 'ui/index.html', placement: 'sidebar' },
+      { plugin: 'notes', id: 'quick-note', entry: 'ui/quick-note.html', placement: 'panel' },
+    ]);
     expect(await m.pluginViewFile!({ plugin: 'notes', path: 'ui/index.html' })).toMatch(/[\\/]ui[\\/]index\.html$/);
     expect(await m.pluginViewFile!({ plugin: 'notes', path: '../state.json' })).toBeNull();
     expect(await m.pluginViewCall!({ plugin: 'notes', view: 'notebook', tool: 'write_note', args: { title: 'a', text: 'b' } })).toMatchObject({ isError: false });
