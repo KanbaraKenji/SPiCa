@@ -3,7 +3,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
-import type { Message, TraceRecord } from '../types.ts';
+import type { Message, ProjectInfo, ProjectLogEntry, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const SCHEMA_VERSION = 1;
@@ -43,6 +43,20 @@ CREATE TABLE IF NOT EXISTS traces (
   data TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS traces_session ON traces(session_id, seq);
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, folder TEXT NOT NULL, manager_session_id TEXT NOT NULL,
+  workflow_id TEXT, stage TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS project_log (
+  id TEXT PRIMARY KEY, project_id TEXT NOT NULL, session_id TEXT NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL,
+  summary TEXT NOT NULL, path TEXT
+);
+CREATE INDEX IF NOT EXISTS project_log_project ON project_log(project_id, at);
+CREATE TABLE IF NOT EXISTS work_objects (
+  id TEXT PRIMARY KEY, project_id TEXT NOT NULL, level TEXT NOT NULL, name TEXT NOT NULL, parent_id TEXT,
+  data TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS work_objects_project ON work_objects(project_id);
 `;
 
 type Row = Record<string, unknown>;
@@ -201,6 +215,62 @@ export class SqliteStore implements Store {
     return rows.map((r) => parse<TraceRecord>(r.data));
   }
 
+  // projects -------------------------------------------------------------------
+  upsertProject(p: ProjectInfo): void {
+    this.#q(
+      `INSERT INTO projects (id, name, folder, manager_session_id, workflow_id, stage, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, folder = excluded.folder, manager_session_id = excluded.manager_session_id,
+         workflow_id = excluded.workflow_id, stage = excluded.stage, status = excluded.status, updated_at = excluded.updated_at`,
+    ).run(p.id, p.name, p.folder, p.managerSessionId, p.workflowId, p.stage, p.status, p.createdAt, p.updatedAt);
+  }
+  getProject(id: string): ProjectInfo | undefined {
+    const row = this.#q('SELECT * FROM projects WHERE id = ?').get(id) as Row | undefined;
+    return row && toProject(row);
+  }
+  listProjects(): ProjectInfo[] {
+    return (this.#q('SELECT * FROM projects ORDER BY created_at, rowid').all() as Row[]).map(toProject);
+  }
+  appendProjectLog(e: ProjectLogEntry): void {
+    this.#q('INSERT INTO project_log (id, project_id, session_id, at, kind, summary, path) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      e.id,
+      e.projectId,
+      e.sessionId,
+      e.at,
+      e.kind,
+      e.summary,
+      e.path ?? null,
+    );
+  }
+  listProjectLog(projectId: string, limit = 50): ProjectLogEntry[] {
+    return (this.#q('SELECT * FROM project_log WHERE project_id = ? ORDER BY rowid DESC LIMIT ?').all(projectId, limit) as Row[]).map((r) => ({
+      id: String(r.id),
+      projectId: String(r.project_id),
+      sessionId: String(r.session_id),
+      at: String(r.at),
+      kind: String(r.kind) as ProjectLogEntry['kind'],
+      summary: String(r.summary),
+      ...(r.path !== null ? { path: String(r.path) } : {}),
+    }));
+  }
+  upsertWorkObject(o: WorkObject): void {
+    this.#q(
+      `INSERT INTO work_objects (id, project_id, level, name, parent_id, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET level = excluded.level, name = excluded.name, parent_id = excluded.parent_id, data = excluded.data`,
+    ).run(o.id, o.projectId, o.level, o.name, o.parentId, o.data ? json(o.data) : null, o.createdAt);
+  }
+  listWorkObjects(projectId: string): WorkObject[] {
+    return (this.#q('SELECT * FROM work_objects WHERE project_id = ? ORDER BY rowid').all(projectId) as Row[]).map((r) => ({
+      id: String(r.id),
+      projectId: String(r.project_id),
+      level: String(r.level),
+      name: String(r.name),
+      parentId: r.parent_id === null ? null : String(r.parent_id),
+      ...(r.data !== null ? { data: parse<Record<string, unknown>>(r.data) } : {}),
+      createdAt: String(r.created_at),
+    }));
+  }
+
   close(): void {
     if (this.#db.isOpen) this.#db.close();
   }
@@ -214,6 +284,20 @@ function toSession(r: Row): SessionRecord {
     title: r.title === null ? null : String(r.title),
     status: String(r.status) as SessionRecord['status'],
     config: parse(r.config),
+    createdAt: String(r.created_at),
+    updatedAt: String(r.updated_at),
+  };
+}
+
+function toProject(r: Row): ProjectInfo {
+  return {
+    id: String(r.id),
+    name: String(r.name),
+    folder: String(r.folder),
+    managerSessionId: String(r.manager_session_id),
+    workflowId: r.workflow_id === null ? null : String(r.workflow_id),
+    stage: r.stage === null ? null : String(r.stage),
+    status: String(r.status) as ProjectInfo['status'],
     createdAt: String(r.created_at),
     updatedAt: String(r.updated_at),
   };

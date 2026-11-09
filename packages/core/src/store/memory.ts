@@ -1,5 +1,5 @@
 // In-memory store (tests and ephemeral runs).
-import type { Message, TraceRecord } from '../types.ts';
+import type { Message, ProjectInfo, ProjectLogEntry, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -12,6 +12,32 @@ export class MemoryStore implements Store {
   readonly #pending = new Map<string, PendingRecord>();
   readonly #relays: RelayRecord[] = [];
   readonly #traces: TraceRecord[] = [];
+  readonly #projects = new Map<string, ProjectInfo>();
+  readonly #projectLog: ProjectLogEntry[] = [];
+  readonly #objects = new Map<string, WorkObject>();
+
+  upsertProject(p: ProjectInfo): void {
+    this.#projects.set(p.id, clone(p));
+  }
+  getProject(id: string): ProjectInfo | undefined {
+    const p = this.#projects.get(id);
+    return p && clone(p);
+  }
+  listProjects(): ProjectInfo[] {
+    return [...this.#projects.values()].map(clone);
+  }
+  appendProjectLog(e: ProjectLogEntry): void {
+    this.#projectLog.push(clone(e));
+  }
+  listProjectLog(projectId: string, limit = 50): ProjectLogEntry[] {
+    return this.#projectLog.filter((e) => e.projectId === projectId).reverse().slice(0, limit).map(clone);
+  }
+  upsertWorkObject(o: WorkObject): void {
+    this.#objects.set(o.id, clone(o));
+  }
+  listWorkObjects(projectId: string): WorkObject[] {
+    return [...this.#objects.values()].filter((o) => o.projectId === projectId).map(clone);
+  }
 
   upsertSession(rec: SessionRecord): void {
     this.#sessions.set(rec.id, clone(rec));

@@ -1,7 +1,7 @@
 // Storage contract. The database is the source of truth for sessions,
 // messages, tool calls, pending questions, relays and traceable records.
 // Synchronous on purpose: the default backend is embedded SQLite.
-import type { AgentRole, Message, PendingItem, SessionStatus, TraceRecord } from '../types.ts';
+import type { AgentRole, Message, PendingItem, ProjectInfo, ProjectLogEntry, SessionStatus, TraceRecord, WorkObject } from '../types.ts';
 
 export interface SessionRecord {
   id: string;
@@ -29,8 +29,10 @@ export interface SessionConfig {
   temperature?: number;
   /** Enable model-hosted web search when the provider has it. */
   serverWebSearch?: boolean;
-  /** Reserved for persistent members (role template, memory, own tools). */
+  /** Role template the session was created from. */
   templateId?: string;
+  /** Project the session works for (manager and its sub-agents). */
+  projectId?: string;
   memoryId?: string;
 }
 
@@ -99,6 +101,15 @@ export interface Store {
 
   appendRelay(rec: RelayRecord): void;
   listRelays(parentId: string): RelayRecord[];
+
+  upsertProject(p: ProjectInfo): void;
+  getProject(id: string): ProjectInfo | undefined;
+  listProjects(): ProjectInfo[];
+  appendProjectLog(e: ProjectLogEntry): void;
+  /** Newest first. */
+  listProjectLog(projectId: string, limit?: number): ProjectLogEntry[];
+  upsertWorkObject(o: WorkObject): void;
+  listWorkObjects(projectId: string): WorkObject[];
 
   appendTrace(rec: TraceRecord): void;
   listTraces(filter?: { sessionId?: string }): TraceRecord[];
