@@ -30,6 +30,24 @@ export interface MailConfig {
   triageTemplateId?: string;
   /** Extra sorting rules for the triage agent (deployment or plugin supplied). */
   rules?: string;
+  /**
+   * Mail ignored without asking the model. Each entry is a case-insensitive
+   * substring, or a regular expression written as /pattern/flags.
+   */
+  ignore?: { from?: string[]; subject?: string[] };
+}
+
+/** Does `text` match one rule entry (substring, or /regex/flags)? */
+export function matchesRule(text: string, rule: string): boolean {
+  const re = /^\/(.+)\/([a-z]*)$/.exec(rule);
+  if (re) {
+    try {
+      return new RegExp(re[1]!, re[2]!.includes('i') ? re[2] : `${re[2]}i`).test(text);
+    } catch {
+      return false;
+    }
+  }
+  return text.toLowerCase().includes(rule.toLowerCase());
 }
 
 const DEFAULT_FIELDS = { list: 'messages', id: 'id', fromName: 'from_name', fromAddress: 'from_address', subject: 'subject', received: 'received', preview: 'preview' };
@@ -97,6 +115,7 @@ export class MailPipeline {
     const sources = this.activeSources;
     if (sources.length === 0) return result;
     const thread = this.thread();
+    thread.setTools(this.#threadTools());
     for (const src of sources) {
       const f = { ...DEFAULT_FIELDS, ...src.fields };
       const out = await this.#rt.invokeTool(src.listTool, { unread_only: true, limit: 50, ...src.listArgs }, thread);
@@ -141,12 +160,24 @@ export class MailPipeline {
     }
 
     const waiting = this.#rt.store.listMail({ status: 'new' });
-    // 1. Same sender as a mail the user assigned before: route without asking the model.
+    // 1. Decided without asking the model: configured ignore rules, then what the
+    //    user did with mail from the same sender before.
     const toModel: MailItem[] = [];
+    const ign = this.#cfg.ignore ?? {};
     for (const item of waiting) {
-      const projectId = item.fromAddress ? this.#rt.store.getSenderProject(item.fromAddress) : undefined;
-      if (projectId && this.#rt.store.getProject(projectId)) {
-        this.#setTriage(item, { decision: 'project', projectId, reason: 'same sender as an earlier mail you put in this project', confidence: 1, by: 'sender_memory', at: isoNow() }, thread);
+      const from = `${item.fromName ?? ''} <${item.fromAddress ?? ''}>`;
+      const rule = (ign.from ?? []).find((r) => matchesRule(from, r)) ?? (ign.subject ?? []).find((r) => matchesRule(item.subject, r));
+      if (rule) {
+        this.#setTriage(item, { decision: 'ignore', reason: `matches the ignore rule ${rule}`, confidence: 1, by: 'rule', at: isoNow() }, thread);
+        result.triaged++;
+        continue;
+      }
+      const known = item.fromAddress ? this.#rt.store.getSenderDecision(item.fromAddress) : undefined;
+      if (known?.decision === 'project' && this.#rt.store.getProject(known.projectId)) {
+        this.#setTriage(item, { decision: 'project', projectId: known.projectId, reason: 'same sender as an earlier mail you put in this project', confidence: 1, by: 'sender_memory', at: isoNow() }, thread);
+        result.triaged++;
+      } else if (known?.decision === 'ignore') {
+        this.#setTriage(item, { decision: 'ignore', reason: 'you ignored mail from this sender before', confidence: 1, by: 'sender_memory', at: isoNow() }, thread);
         result.triaged++;
       } else {
         toModel.push(item);
@@ -172,8 +203,12 @@ export class MailPipeline {
     const tpl = this.#cfg.triageTemplateId ?? 'mail-triage';
     const existing = this.#rt.sessions().find((s) => s.parentId === null && s.info().templateId === tpl);
     if (existing) return existing;
-    const readTools = [...new Set(this.#sources.map((s) => s.readTool))];
-    return this.#rt.createSession({ templateId: tpl, tools: ['triage_mail', 'list_projects', 'open_project', ...readTools] });
+    return this.#rt.createSession({ templateId: tpl, tools: this.#threadTools() });
+  }
+
+  /** The triage thread sees triage_mail, the project list and the read tools of the active sources. */
+  #threadTools(): string[] {
+    return ['triage_mail', 'list_projects', 'open_project', ...new Set(this.activeSources.map((s) => s.readTool))];
   }
 
   #batchMessage(batch: MailItem[]): string {
@@ -186,7 +221,8 @@ export class MailPipeline {
       '',
       'Mail:',
       ...batch.map((m) => {
-        const known = m.fromAddress ? this.#rt.store.getSenderProject(m.fromAddress) : undefined;
+        const d = m.fromAddress ? this.#rt.store.getSenderDecision(m.fromAddress) : undefined;
+        const known = d?.decision === 'project' ? d.projectId : undefined;
         return [
           `- mail_id: ${m.id}`,
           `  from: ${m.fromName ?? ''} <${m.fromAddress ?? ''}>`,
@@ -305,11 +341,16 @@ export class MailPipeline {
     let updated: MailItem = { ...item, feedback, updatedAt: isoNow() };
     if (fb.action === 'ignore') {
       updated = { ...updated, status: 'ignored' };
+      if (item.fromAddress) this.#rt.store.setSenderDecision(item.fromAddress, { decision: 'ignore' });
     } else if (fb.action === 'accept') {
-      if (item.triage?.projectId && item.fromAddress) this.#rt.store.setSenderProject(item.fromAddress, item.triage.projectId);
+      if (item.fromAddress && item.triage?.decision === 'project' && item.triage.projectId) {
+        this.#rt.store.setSenderDecision(item.fromAddress, { decision: 'project', projectId: item.triage.projectId });
+      } else if (item.fromAddress && item.triage?.decision === 'ignore') {
+        this.#rt.store.setSenderDecision(item.fromAddress, { decision: 'ignore' });
+      }
     } else {
       if (!fb.projectId || !this.#rt.store.getProject(fb.projectId)) throw new Error('reassign needs an existing projectId');
-      if (item.fromAddress) this.#rt.store.setSenderProject(item.fromAddress, fb.projectId);
+      if (item.fromAddress) this.#rt.store.setSenderDecision(item.fromAddress, { decision: 'project', projectId: fb.projectId });
       updated = {
         ...updated,
         status: 'triaged',

@@ -4,7 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
 import type { MailItem, Message, ProjectInfo, ProjectLogEntry, TraceRecord, WorkObject } from '../types.ts';
-import type { PendingRecord, RelayRecord, SessionRecord, Store, ToolCallRecord } from './types.ts';
+import type { PendingRecord, RelayRecord, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const SCHEMA_VERSION = 1;
 
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS mail_items (
 );
 CREATE INDEX IF NOT EXISTS mail_items_status ON mail_items(status, created_at);
 CREATE TABLE IF NOT EXISTS mail_senders (
-  address TEXT PRIMARY KEY, project_id TEXT NOT NULL, updated_at TEXT NOT NULL
+  address TEXT PRIMARY KEY, project_id TEXT, updated_at TEXT NOT NULL, decision TEXT NOT NULL DEFAULT 'project'
 );
 `;
 
@@ -98,6 +98,8 @@ export class SqliteStore implements Store {
     if (!cols.includes('cards')) this.#db.exec('ALTER TABLE tool_calls ADD COLUMN cards TEXT');
     const logCols = (this.#db.prepare('PRAGMA table_info(project_log)').all() as Row[]).map((r) => String(r.name));
     if (!logCols.includes('detail')) this.#db.exec('ALTER TABLE project_log ADD COLUMN detail TEXT');
+    const senderCols = (this.#db.prepare('PRAGMA table_info(mail_senders)').all() as Row[]).map((r) => String(r.name));
+    if (!senderCols.includes('decision')) this.#db.exec("ALTER TABLE mail_senders ADD COLUMN decision TEXT NOT NULL DEFAULT 'project'");
   }
 
   #q(sql: string): StatementSync {
@@ -303,15 +305,16 @@ export class SqliteStore implements Store {
     ).all(filter.status ?? null, filter.status ?? null, filter.projectId ?? null, filter.projectId ?? null, filter.limit ?? 1000) as Row[];
     return rows.map((r) => parse<MailItem>(r.data));
   }
-  setSenderProject(address: string, projectId: string): void {
+  setSenderDecision(address: string, d: SenderDecision): void {
     this.#q(
-      `INSERT INTO mail_senders (address, project_id, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT(address) DO UPDATE SET project_id = excluded.project_id, updated_at = excluded.updated_at`,
-    ).run(address.toLowerCase(), projectId, new Date().toISOString());
+      `INSERT INTO mail_senders (address, project_id, decision, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(address) DO UPDATE SET project_id = excluded.project_id, decision = excluded.decision, updated_at = excluded.updated_at`,
+    ).run(address.toLowerCase(), d.decision === 'project' ? d.projectId : null, d.decision, new Date().toISOString());
   }
-  getSenderProject(address: string): string | undefined {
-    const row = this.#q('SELECT project_id FROM mail_senders WHERE address = ?').get(address.toLowerCase()) as Row | undefined;
-    return row ? String(row.project_id) : undefined;
+  getSenderDecision(address: string): SenderDecision | undefined {
+    const row = this.#q('SELECT project_id, decision FROM mail_senders WHERE address = ?').get(address.toLowerCase()) as Row | undefined;
+    if (!row) return undefined;
+    return row.decision === 'ignore' ? { decision: 'ignore' } : { decision: 'project', projectId: String(row.project_id) };
   }
 
   close(): void {

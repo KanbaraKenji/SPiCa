@@ -3,6 +3,8 @@
 // Synchronous on purpose: the default backend is embedded SQLite.
 import type { AgentRole, MailItem, Message, PendingItem, ProjectInfo, ProjectLogEntry, SessionStatus, TraceRecord, WorkObject } from '../types.ts';
 
+export type SenderDecision = { decision: 'project'; projectId: string } | { decision: 'ignore' };
+
 export interface SessionRecord {
   id: string;
   parentId: string | null;
@@ -115,9 +117,9 @@ export interface Store {
   getMail(id: string): MailItem | undefined;
   /** Oldest first. */
   listMail(filter?: { status?: MailItem['status']; projectId?: string; limit?: number }): MailItem[];
-  /** Sender memory: the project the user put this sender's mail in. */
-  setSenderProject(address: string, projectId: string): void;
-  getSenderProject(address: string): string | undefined;
+  /** Sender memory: what the user did with this sender's mail (put it in a project, or ignored it). */
+  setSenderDecision(address: string, d: SenderDecision): void;
+  getSenderDecision(address: string): SenderDecision | undefined;
 
   appendTrace(rec: TraceRecord): void;
   listTraces(filter?: { sessionId?: string }): TraceRecord[];

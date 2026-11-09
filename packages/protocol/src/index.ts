@@ -465,8 +465,11 @@ export interface MailTriage {
   reason: string;
   /** 0..1 */
   confidence: number;
-  /** model = the triage agent decided; sender_memory = same sender as a mail the user assigned before. */
-  by: 'model' | 'sender_memory';
+  /**
+   * model = the triage agent decided; sender_memory = the user handled mail from
+   * this sender before (assigned or ignored); rule = a configured ignore rule.
+   */
+  by: 'model' | 'sender_memory' | 'rule';
   at: string;
 }
 

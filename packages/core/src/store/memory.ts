@@ -1,6 +1,6 @@
 // In-memory store (tests and ephemeral runs).
 import type { MailItem, Message, ProjectInfo, ProjectLogEntry, TraceRecord, WorkObject } from '../types.ts';
-import type { PendingRecord, RelayRecord, SessionRecord, Store, ToolCallRecord } from './types.ts';
+import type { PendingRecord, RelayRecord, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -16,7 +16,7 @@ export class MemoryStore implements Store {
   readonly #projectLog: ProjectLogEntry[] = [];
   readonly #objects = new Map<string, WorkObject>();
   readonly #mail = new Map<string, MailItem>();
-  readonly #senders = new Map<string, string>();
+  readonly #senders = new Map<string, SenderDecision>();
 
   upsertMail(m: MailItem): void {
     this.#mail.set(m.id, clone(m));
@@ -31,11 +31,12 @@ export class MemoryStore implements Store {
       .slice(0, filter.limit ?? 1000)
       .map(clone);
   }
-  setSenderProject(address: string, projectId: string): void {
-    this.#senders.set(address.toLowerCase(), projectId);
+  setSenderDecision(address: string, d: SenderDecision): void {
+    this.#senders.set(address.toLowerCase(), clone(d));
   }
-  getSenderProject(address: string): string | undefined {
-    return this.#senders.get(address.toLowerCase());
+  getSenderDecision(address: string): SenderDecision | undefined {
+    const d = this.#senders.get(address.toLowerCase());
+    return d && clone(d);
   }
 
   upsertProject(p: ProjectInfo): void {
