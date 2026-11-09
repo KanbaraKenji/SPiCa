@@ -27,7 +27,8 @@
     "shots": "npm run shots -w @spica/desktop",
     "acceptance": "node scripts/acceptance.mjs",
     "dist": "npm run dist -w @spica/desktop",
-    "release:prepare": "node scripts/release/prepare.mjs"
+    "release:prepare": "node scripts/release/prepare.mjs",
+    "pack:plugins": "node scripts/release/pack-plugins.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

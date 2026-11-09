@@ -42,6 +42,47 @@ Around that team:
 
 ## Quick start
 
+The interface is in Chinese for now; menu names are given in both languages below.
+
+### Install from a release
+
+1. Open the [Releases](https://github.com/KanbaraKenji/SPiCa/releases) page and pick the
+   newest release (early builds are marked *Pre-release*).
+2. Download one of:
+   - `Spica-Setup-<version>.exe`: installs for the current user only
+     (`%LOCALAPPDATA%\Programs\Spica`), no administrator rights needed;
+   - `Spica-Portable-<version>.exe`: runs without installing.
+3. The builds are not code-signed yet, so Windows may show "Windows protected your PC".
+   Choose **More info › Run anyway**.
+4. Add a model under **Settings › Models** (设置 › 模型).
+
+### Install the official plugins
+
+Each release also carries the official plugins as zips, each with a `.sha256` file, and an
+`index.json` that lists them all.
+
+- **All at once (checksums checked):** open **Settings › Plugins** (设置 › 插件), paste the
+  release's `index.json` address into the install box and press **Install** (安装):
+
+  ```
+  https://github.com/KanbaraKenji/SPiCa/releases/download/<tag>/index.json
+  ```
+
+  Spica lists the plugins in that release; press **Install** next to the ones you want.
+  It checks each package's SHA-256 before installing. The exact address is also in the
+  release notes.
+- **One zip:** download for example `outlook-<version>.zip`, then paste the zip's full
+  path into the same install box. To check the download first:
+  `certutil -hashfile outlook-<version>.zip SHA256` and compare with the `.sha256` file.
+
+| Plugin | What it does |
+| --- | --- |
+| `outlook` | Reads mail from the classic Outlook desktop app, helps sort it into projects and drafts replies; never sends. Turn on mock mode (模拟模式) to try it with a fictional mailbox |
+| `notes` | Example plugin: a local notebook and a fictional sample catalog; shows every part of a plugin |
+| `eval` | Template for evaluation plugins; adds no tools to the agents |
+
+### Run from source
+
 Requirements: Windows 10 or 11 and Node.js 24. No administrator rights needed.
 
 ```sh
@@ -52,12 +93,7 @@ npm run dev
 ```
 
 The first `npm run dev` downloads the Electron runtime (about 100 MB) once. When the
-window opens, add a model under **Settings › Models** (设置 › 模型; the interface is in
-Chinese for now).
-
-To install a built version instead, download `Spica-Setup-<version>.exe` (per-user
-installer) or `Spica-Portable-<version>.exe` from the
-[Releases](https://github.com/KanbaraKenji/SPiCa/releases) page.
+window opens, add a model under **Settings › Models** (设置 › 模型).
 
 ## Architecture
 
@@ -88,6 +124,7 @@ Design documents are in Chinese; start at [docs/README.md](docs/README.md).
 | `npm test` | Unit and integration tests (Vitest, fake model gateway, no keys needed) |
 | `npm run scan:sensitive` | Scan the repository for sensitive words |
 | `npm run acceptance` | Run the automated acceptance journeys and write a summary |
+| `npm run pack:plugins` | Pack the official plugins into zips with SHA-256 files and `index.json` (`out/plugins/`) |
 | `npm run release:prepare -- <version>` | Set the version, commit and tag a release (does not push) |
 
 ## Acceptance journeys
