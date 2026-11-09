@@ -1,0 +1,7 @@
+{
+  "runtime": "node",
+  "entry": "server/index.js",
+  "description": "Outlook mail tools (PowerShell + Outlook COM; mock mailbox in mock mode).",
+  "timeout_seconds": 60,
+  "restart": { "max_restarts": 3, "window_seconds": 60 }
+}

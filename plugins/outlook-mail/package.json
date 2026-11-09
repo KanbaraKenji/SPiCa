@@ -1,0 +1,16 @@
+{
+  "name": "@spica/plugin-outlook-mail",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Official optional Spica plugin: read mail from the local classic Outlook over COM, sort it and draft replies; mock mode with a fictional mailbox.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --root ../.. plugins/outlook-mail",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "@spica/core": "*",
+    "@spica/plugins": "*"
+  }
+}

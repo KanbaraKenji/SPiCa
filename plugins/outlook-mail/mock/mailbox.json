@@ -1,0 +1,255 @@
+{
+  "about": "Fictional sample mailbox for mock mode. Maple Lane Studio is a made-up small studio; every person, company and address here is invented (example domains only). Dates are shifted at load time so the newest message lands on today.",
+  "account": { "display_name": "Alex Chen", "address": "alex.chen@maplelane.example" },
+  "folders": [
+    { "path": "Inbox", "alias": "inbox" },
+    { "path": "Inbox/Website Refresh" },
+    { "path": "Drafts", "alias": "drafts" },
+    { "path": "Sent Items", "alias": "sent" },
+    { "path": "Deleted Items", "alias": "deleted" },
+    { "path": "Junk Email", "alias": "junk" },
+    { "path": "Archive" }
+  ],
+  "messages": [
+    {
+      "id": "mock-001", "folder": "Inbox", "kind": "mail", "unread": true, "importance": "normal",
+      "from_name": "纸叶办公用品", "from_address": "orders@paperleaf.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "订单确认：PL-2207 办公用品", "received": "2026-11-09T09:12:00+08:00", "categories": [],
+      "body": "陈先生您好，\n\n您的订单 PL-2207 已确认，预计 11 月 12 日送达：\n- A4 复印纸 10 包\n- 白板笔 2 盒\n- 文件夹 30 个\n\n合计 ¥ 486.00，明细见附件。如需修改请在明天中午前回复本邮件。\n\n纸叶办公用品 客服部",
+      "attachments": [{ "name": "order-PL-2207.csv", "content": "item,qty,unit_price\nA4 copy paper (pack),10,32.00\nWhiteboard markers (box),2,18.00\nDocument folder,30,4.40\n" }]
+    },
+    {
+      "id": "mock-002", "folder": "Inbox", "kind": "mail", "unread": true, "importance": "normal",
+      "from_name": "Priya Nair", "from_address": "priya@brightprint.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "Quote BP-1180: open house flyers and posters", "received": "2026-11-05T16:40:00+08:00", "categories": [],
+      "body": "Hi Alex,\n\nThanks for the brief. Our quote for the Spring Open House print run is attached:\n- 500 A5 flyers, two-sided\n- 20 A2 posters\n\nTotal 2,350.00, valid for 14 days. Proofs within two working days of approval.\n\nBest,\nPriya\nBrightPrint",
+      "attachments": [{ "name": "quote-BP-1180.csv", "content": "item,qty,price\nA5 flyer two-sided,500,1450.00\nA2 poster,20,900.00\n" }]
+    },
+    {
+      "id": "mock-003", "folder": "Inbox", "kind": "mail", "unread": true, "importance": "high",
+      "from_name": "迅捷搬家 王经理", "from_address": "wang@swiftmove.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "办公室搬迁报价（SM-3306）", "received": "2026-11-08T11:05:00+08:00", "categories": [],
+      "body": "陈先生：\n\n按上周看场的情况，报价如下（详见附件）：\n1. 家具拆装与搬运：2 辆车，1 天\n2. 电脑与显示器专用包装：18 套\n3. 周六作业加收 10%\n\n总价 ¥ 7,800，如确认请回复，我们安排 11 月 22 日（周六）进场。\n\n王经理",
+      "attachments": [{ "name": "quote-SM-3306.txt", "content": "Office move quote SM-3306\nTrucks: 2 x 1 day\nIT packing kits: 18\nSaturday surcharge: 10%\nTotal: 7800\n" }]
+    },
+    {
+      "id": "mock-004", "folder": "Inbox", "kind": "meeting", "unread": true, "importance": "normal",
+      "from_name": "Jordan Lee", "from_address": "jordan.lee@maplelane.example",
+      "to": ["alex.chen@maplelane.example", "mei.lin@maplelane.example"], "cc": [],
+      "subject": "Invitation: Website Refresh kickoff (Thu 10:00–11:00)", "received": "2026-11-07T14:20:00+08:00", "categories": [],
+      "body": "Kickoff for the Website Refresh project.\n\nAgenda:\n1. Goals and success measures\n2. Page list and owners\n3. Timeline to launch\n\nRoom: Meeting Room B / online link in the invite.",
+      "attachments": [{ "name": "invite.ics", "content": "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:Website Refresh kickoff\nLOCATION:Meeting Room B\nEND:VEVENT\nEND:VCALENDAR\n" }]
+    },
+    {
+      "id": "mock-005", "folder": "Inbox", "kind": "mail", "unread": false, "importance": "normal",
+      "from_name": "IT 服务台", "from_address": "it-helpdesk@maplelane.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "提醒：您的登录密码将在 5 天后过期", "received": "2026-11-04T08:00:00+08:00", "categories": [],
+      "body": "您的工作账号密码将在 5 天后过期。请在电脑上按 Ctrl+Alt+Del 选择「更改密码」。\n\n这是系统自动发送的邮件，请勿回复。",
+      "attachments": []
+    },
+    {
+      "id": "mock-006", "folder": "Inbox", "kind": "mail", "unread": true, "importance": "normal",
+      "from_name": "Backup Service", "from_address": "backup-noreply@maplelane.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "Nightly backup report: completed with 1 warning", "received": "2026-11-09T03:15:00+08:00", "categories": [],
+      "body": "Nightly backup finished at 03:14.\n\nJobs: 4 succeeded, 0 failed, 1 warning\nWarning: share \"design-archive\" skipped 3 files that were open.\n\nThis message was sent automatically.",
+      "attachments": []
+    },
+    {
+      "id": "mock-007", "folder": "Inbox", "kind": "report", "unread": true, "importance": "normal",
+      "from_name": "Mail Delivery System", "from_address": "postmaster@maplelane.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "Undeliverable: Re: Catering menu for the open house", "received": "2026-11-06T10:02:00+08:00", "categories": [],
+      "body": "Your message to events@greencup.example could not be delivered.\n\nReason: the recipient's mailbox does not exist.\n\nOriginal subject: Re: Catering menu for the open house",
+      "attachments": []
+    },
+    {
+      "id": "mock-008", "folder": "Inbox", "kind": "mail", "unread": true, "importance": "normal",
+      "from_name": "赵晓雨", "from_address": "xiaoyu.zhao@mail.example",
+      "to": ["hello@maplelane.example"], "cc": [],
+      "subject": "咨询：春季开放日的工作坊能团体报名吗？", "received": "2026-11-08T20:31:00+08:00", "categories": [],
+      "body": "您好，\n\n在网上看到你们春季开放日有手作工作坊。我们是一个 12 人的读书会，想问：\n1. 能不能团体报名？\n2. 有没有团体价？\n3. 下午场还有位置吗？\n\n谢谢！\n赵晓雨",
+      "attachments": []
+    },
+    {
+      "id": "mock-009", "folder": "Inbox", "kind": "mail", "unread": true, "importance": "high",
+      "from_name": "CloudNest Billing", "from_address": "billing@cloudnest.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "Action needed: hosting plan renews in 7 days", "received": "2026-11-06T07:45:00+08:00", "categories": [],
+      "body": "Hello,\n\nYour hosting plan for maplelane.example renews in 7 days. The invoice is attached.\nIf you are moving the site during the refresh, change or cancel the plan before the renewal date.\n\nCloudNest Billing",
+      "attachments": [{ "name": "invoice-CN-5521.csv", "content": "item,period,amount\nBusiness hosting,12 months,1188.00\nDaily backups,12 months,240.00\n" }]
+    },
+    {
+      "id": "mock-010", "folder": "Inbox", "kind": "mail", "unread": false, "importance": "normal",
+      "from_name": "林美", "from_address": "mei.lin@maplelane.example",
+      "to": ["alex.chen@maplelane.example"], "cc": ["jordan.lee@maplelane.example"],
+      "subject": "首页设计稿第二版意见", "received": "2026-11-05T18:12:00+08:00", "categories": ["Website Refresh"],
+      "body": "Alex：\n\n第二版首页我看过了，意见整理在附件里。主要三点：\n1. 首屏的标题太长，手机上要折三行\n2. 「预约参观」按钮颜色和背景太接近\n3. 作品集图片建议换成近一年的\n\n周四开会前能出第三版吗？\n\n美",
+      "attachments": [{ "name": "homepage-notes.txt", "content": "Homepage v2 notes\n1. Hero title too long on phones\n2. Booking button contrast too low\n3. Portfolio images: use this year's work\n" }]
+    },
+    {
+      "id": "mock-011", "folder": "Inbox", "kind": "mail", "unread": false, "importance": "low",
+      "from_name": "Design Weekly", "from_address": "newsletter@designweekly.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "Design Weekly #212: small studios, big portfolios", "received": "2026-11-03T06:00:00+08:00", "categories": [],
+      "body": "This week: how small studios present their work, five portfolio layouts, and a reader Q&A on pricing workshops.\n\nUnsubscribe at any time from the link in the footer.",
+      "attachments": []
+    },
+    {
+      "id": "mock-012", "folder": "Inbox", "kind": "mail", "unread": false, "importance": "normal",
+      "from_name": "人事 HR", "from_address": "hr@maplelane.example",
+      "to": ["all@maplelane.example"], "cc": [],
+      "subject": "年假安排提醒：请在 11 月 30 日前提交", "received": "2026-11-02T09:30:00+08:00", "categories": [],
+      "body": "各位同事：\n\n今年剩余年假请在 11 月 30 日前在请假系统里提交安排，未提交的将按规定顺延。\n\n人事",
+      "attachments": []
+    },
+    {
+      "id": "mock-013", "folder": "Inbox", "kind": "mail", "unread": true, "importance": "normal",
+      "from_name": "Sam Ortiz", "from_address": "sam@greencup.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "Catering options for your open house", "received": "2026-11-07T09:50:00+08:00", "categories": [],
+      "body": "Hi Alex,\n\nAs promised, three menu options for about 80 guests are attached. Option B (finger food and two hot drinks) is the most popular for afternoon events.\n\nPlease note our events address has changed to sam@greencup.example.\n\nSam\nGreenCup Catering",
+      "attachments": [{ "name": "menu-options.txt", "content": "Option A: pastries and coffee, 18 per guest\nOption B: finger food and two hot drinks, 26 per guest\nOption C: light lunch buffet, 39 per guest\n" }]
+    },
+    {
+      "id": "mock-014", "folder": "Inbox", "kind": "mail", "unread": true, "importance": "normal",
+      "from_name": "纸叶办公用品", "from_address": "orders@paperleaf.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "缺货通知：打印机墨盒（订单 PL-2199）", "received": "2026-11-08T15:22:00+08:00", "categories": [],
+      "body": "陈先生您好，\n\n订单 PL-2199 中的黑色墨盒（2 支）暂时缺货，预计下周三到货。\n您可以选择：A. 等到货一起发；B. 先发其余商品，墨盒单独发；C. 取消墨盒。\n\n请回复您的选择。",
+      "attachments": []
+    },
+    {
+      "id": "mock-015", "folder": "Inbox", "kind": "meeting", "unread": true, "importance": "normal",
+      "from_name": "周凯", "from_address": "kai.zhou@maplelane.example",
+      "to": ["alex.chen@maplelane.example"], "cc": ["all@maplelane.example"],
+      "subject": "会议邀请：办公室搬迁协调会（周二 15:00）", "received": "2026-11-09T10:40:00+08:00", "categories": [],
+      "body": "议题：\n1. 搬迁日期和搬家公司确认\n2. 各组打包清单\n3. 新办公室网络与门禁\n\n地点：大会议室",
+      "attachments": [{ "name": "invite.ics", "content": "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:Office move coordination\nLOCATION:Main meeting room\nEND:VEVENT\nEND:VCALENDAR\n" }]
+    },
+    {
+      "id": "mock-016", "folder": "Inbox", "kind": "mail", "unread": false, "importance": "normal",
+      "from_name": "Kai Zhou", "from_address": "kai.zhou@maplelane.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "Floor plan v2 for the new office", "received": "2026-11-04T17:05:00+08:00", "categories": ["Office Move"],
+      "body": "Alex,\n\nUpdated floor plan attached. Changes from v1: the workshop table moves next to the window, and the printer goes into the storage room.\n\nKai",
+      "attachments": [{ "name": "floor-plan-v2.txt", "content": "Floor plan v2\nZone A: desks x 12\nZone B: workshop table (window side)\nStorage: printer, supplies\n" }]
+    },
+    {
+      "id": "mock-017", "folder": "Inbox", "kind": "mail", "unread": true, "importance": "normal",
+      "from_name": "报销系统", "from_address": "expenses-noreply@maplelane.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "待审批：10 月报销单 3 张", "received": "2026-11-07T08:10:00+08:00", "categories": [],
+      "body": "您有 3 张报销单待审批：\n- 周凯 交通费 ¥ 126.00\n- 林美 素材采购 ¥ 398.00\n- Jordan Lee 会议茶点 ¥ 210.00\n\n请登录报销系统处理。此邮件由系统自动发送。",
+      "attachments": []
+    },
+    {
+      "id": "mock-018", "folder": "Inbox", "kind": "mail", "unread": false, "importance": "normal",
+      "from_name": "Daniel Brooks", "from_address": "daniel.brooks@mail.example",
+      "to": ["hello@maplelane.example"], "cc": [],
+      "subject": "Feedback on the October workshop", "received": "2026-11-03T21:14:00+08:00", "categories": [],
+      "body": "Hello,\n\nThank you for the October workshop. The materials were great; the room was a bit crowded for 15 people. Will there be a follow-up session next spring?\n\nDaniel",
+      "attachments": []
+    },
+    {
+      "id": "mock-019", "folder": "Junk Email", "kind": "mail", "unread": true, "importance": "high",
+      "from_name": "Mailbox Admin", "from_address": "admin@mailbox-verify.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "Your mailbox is full — verify your account now", "received": "2026-11-08T02:47:00+08:00", "categories": [],
+      "body": "Your mailbox has exceeded its limit. Click the link below within 24 hours to verify your password or your account will be closed.",
+      "attachments": []
+    },
+    {
+      "id": "mock-020", "folder": "Inbox", "kind": "mail", "unread": false, "importance": "normal",
+      "from_name": "会议室预订", "from_address": "rooms-noreply@maplelane.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "预订成功：会议室 B，周四 10:00–11:00", "received": "2026-11-07T14:22:00+08:00", "categories": [],
+      "body": "您已成功预订会议室 B（周四 10:00–11:00）。如需取消，请提前 2 小时操作。",
+      "attachments": []
+    },
+    {
+      "id": "mock-021", "folder": "Inbox", "kind": "mail", "unread": true, "importance": "normal",
+      "from_name": "Priya Nair", "from_address": "priya@brightprint.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "Revised quote BP-1180 r2 (posters on recycled paper)", "received": "2026-11-08T13:30:00+08:00", "categories": [],
+      "body": "Hi Alex,\n\nAs requested, the posters are now on recycled paper. Revised total 2,410.00; everything else unchanged. This replaces the earlier quote.\n\nPriya",
+      "attachments": [{ "name": "quote-BP-1180-r2.csv", "content": "item,qty,price\nA5 flyer two-sided,500,1450.00\nA2 poster recycled,20,960.00\n" }]
+    },
+    {
+      "id": "mock-022", "folder": "Inbox", "kind": "mail", "unread": true, "importance": "normal",
+      "from_name": "Mei Lin", "from_address": "mei.lin@maplelane.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "Copy for the About page (draft)", "received": "2026-11-09T08:25:00+08:00", "categories": [],
+      "body": "Alex,\n\nFirst draft of the About page copy is attached. I kept it under 200 words. Can you check the studio history paragraph before Thursday?\n\nMei",
+      "attachments": [{ "name": "about-page-draft.txt", "content": "Maple Lane Studio started as a two-person workshop and now runs classes, commissions and an open house every spring.\n" }]
+    },
+    {
+      "id": "mock-023", "folder": "Inbox", "kind": "mail", "unread": true, "importance": "normal",
+      "from_name": "新园物业 客服", "from_address": "service@newpark-property.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "新办公室钥匙与门禁卡交接时间", "received": "2026-11-08T16:50:00+08:00", "categories": [],
+      "body": "陈先生：\n\n新办公室（3 楼 302）的钥匙和门禁卡可于 11 月 20 日 9:00–17:00 到物业前台领取，请携带租赁合同复印件。门禁卡共 12 张。\n\n新园物业",
+      "attachments": []
+    },
+    {
+      "id": "mock-024", "folder": "Inbox", "kind": "mail", "unread": false, "importance": "normal",
+      "from_name": "IT Helpdesk", "from_address": "it-helpdesk@maplelane.example",
+      "to": ["all@maplelane.example"], "cc": [],
+      "subject": "Scheduled maintenance this Saturday 08:00–12:00", "received": "2026-11-05T12:00:00+08:00", "categories": [],
+      "body": "The file server and printer queue will be offline this Saturday 08:00–12:00 for updates. Save your work to your laptop before Friday evening.",
+      "attachments": []
+    },
+    {
+      "id": "mock-025", "folder": "Sent Items", "kind": "mail", "unread": false, "importance": "normal",
+      "from_name": "Alex Chen", "from_address": "alex.chen@maplelane.example",
+      "to": ["wang@swiftmove.example"], "cc": [],
+      "subject": "Re: 看场时间", "received": "2026-11-03T10:15:00+08:00", "categories": [],
+      "body": "王经理：\n\n周五下午两点可以，地址是现办公室 5 楼。到了打我电话。\n\nAlex",
+      "attachments": []
+    },
+    {
+      "id": "mock-026", "folder": "Sent Items", "kind": "mail", "unread": false, "importance": "normal",
+      "from_name": "Alex Chen", "from_address": "alex.chen@maplelane.example",
+      "to": ["all@maplelane.example"], "cc": [],
+      "subject": "Open house volunteer sign-up", "received": "2026-11-04T11:00:00+08:00", "categories": [],
+      "body": "Hi all,\n\nWe need six volunteers for the Spring Open House (reception, workshop help, tidy-up). Reply with your preferred slot by Friday.\n\nAlex",
+      "attachments": []
+    },
+    {
+      "id": "mock-027", "folder": "Drafts", "kind": "mail", "unread": false, "importance": "normal",
+      "from_name": "Alex Chen", "from_address": "alex.chen@maplelane.example",
+      "to": ["jordan.lee@maplelane.example"], "cc": [],
+      "subject": "Website Refresh timeline (draft)", "received": "2026-11-06T17:40:00+08:00", "categories": [],
+      "body": "Jordan,\n\nRough timeline: design sign-off end of month, build two weeks, launch before the open house.\n\n(unfinished)",
+      "attachments": []
+    },
+    {
+      "id": "mock-028", "folder": "Inbox/Website Refresh", "kind": "mail", "unread": false, "importance": "normal",
+      "from_name": "Domain Desk", "from_address": "support@domaindesk.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "Domain transfer request received for maplelane.example", "received": "2026-11-02T15:30:00+08:00", "categories": ["Website Refresh"],
+      "body": "We received a transfer request for maplelane.example. No action is needed if you started it. The transfer completes in 5–7 days.",
+      "attachments": []
+    },
+    {
+      "id": "mock-029", "folder": "Inbox/Website Refresh", "kind": "mail", "unread": false, "importance": "normal",
+      "from_name": "Jordan Lee", "from_address": "jordan.lee@maplelane.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "网站结构草案", "received": "2026-11-04T10:05:00+08:00", "categories": ["Website Refresh"],
+      "body": "Alex，\n\n网站结构草案在附件里：首页、作品、课程、开放日、关于我们、联系。课程页要不要放报名入口，周四一起定。\n\nJordan",
+      "attachments": [{ "name": "sitemap.txt", "content": "Home\nWork\nClasses\nOpen House\nAbout\nContact\n" }]
+    },
+    {
+      "id": "mock-030", "folder": "Archive", "kind": "mail", "unread": false, "importance": "normal",
+      "from_name": "纸叶办公用品", "from_address": "orders@paperleaf.example",
+      "to": ["alex.chen@maplelane.example"], "cc": [],
+      "subject": "第三季度采购汇总", "received": "2026-11-02T10:00:00+08:00", "categories": [],
+      "body": "陈先生您好，\n\n附上贵司第三季度的采购汇总：共 6 笔订单，合计 ¥ 3,214.00。\n\n纸叶办公用品",
+      "attachments": [{ "name": "q3-summary.csv", "content": "order,amount\nPL-2101,420.00\nPL-2118,612.00\nPL-2133,388.00\nPL-2150,705.00\nPL-2166,541.00\nPL-2180,548.00\n" }]
+    }
+  ]
+}
