@@ -5,13 +5,13 @@
 //
 // Opens the database read-only, so it also works while the app is running.
 // Redacted: key-looking strings, every provider key / client secret /
-// endpoint address in --config, and the values of secret-looking environment
-// variables (run with --env-file=… to have the deployment's keys removed too).
+// endpoint address in --config, and the values of environment variables whose
+// names say key / secret / token / password / URL (run with --env-file=… to have
+// the deployment's keys and endpoints removed too; model names stay).
 import { readFileSync, writeFileSync } from 'node:fs';
 import { exportUsageLog } from '../src/export.ts';
 import type { BackendConfig } from '../src/host/backend.ts';
 import { SqliteStore } from '../src/store/sqlite.ts';
-import { SECRET_ENV } from '../src/util.ts';
 
 const args = process.argv.slice(2);
 const opt = (name: string) => {
@@ -34,8 +34,10 @@ const addUrl = (u: string | undefined) => {
     // not a URL
   }
 };
+/** Names whose values are credentials or endpoints (not "every SPICA_ variable": model names must survive). */
+const SECRET_VALUE_NAME = /(API_?KEY|SECRET|TOKEN|PASSW(OR)?D|CREDENTIAL|PRIVATE_?KEY|BASE_?URL|ENDPOINT)/i;
 for (const [name, value] of Object.entries(process.env)) {
-  if (!value || value.length < 8 || !SECRET_ENV.test(name)) continue;
+  if (!value || value.length < 8 || !SECRET_VALUE_NAME.test(name)) continue;
   secrets.add(value);
   if (/^https?:\/\//i.test(value)) addUrl(value);
 }

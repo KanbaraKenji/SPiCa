@@ -120,12 +120,13 @@ describe('usage log export', () => {
     const script = fileURLToPath(new URL('../scripts/export-log.ts', import.meta.url));
     const out = execFileSync(process.execPath, [script, '--db', join(dir, 'db', 'spica.db'), '--project', a.id], {
       encoding: 'utf8',
-      env: { ...process.env, SPICA_TEST_GATEWAY_URL: `${gw.baseUrl}/v1`, SPICA_TEST_KEY: 'test-key-123456' },
+      env: { ...process.env, SPICA_TEST_BASE_URL: `${gw.baseUrl}/v1`, SPICA_TEST_API_KEY: 'test-key-123456', SPICA_TEST_MODEL: 'fake-model' },
     });
     const viaCli = parse(out.trim());
     expect(viaCli.length).toBe(viaMcp.length);
     expect(out).not.toContain('test-key-123456');
     expect(out).not.toContain(gw.baseUrl.replace('http://', ''));
+    expect(out).toContain('"model":"fake-model"'); // a model name is not a secret
 
     const ro = new SqliteStore(join(dir, 'db', 'spica.db'), { readOnly: true });
     try {

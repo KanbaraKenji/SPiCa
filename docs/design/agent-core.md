@@ -171,7 +171,7 @@
 
 - **入口**：`Runtime.exportUsageLog(filter)`；MCP 工具 `spica_export_usage_log {project_id?, from?, to?}`；命令行 `node packages/core/scripts/export-log.ts --db <spica.db> [--project <id>] [--from <ISO>] [--to <ISO>] [--config <backend.json>] [--out <文件>]`。命令行用只读方式打开数据库（`new SqliteStore(path, { readOnly: true })`，不改表、写入会报错），所以桌面端开着时也能导。
 - **筛选**：`projectId` = 这个项目的项目经理、`config.projectId` 是它的会话，以及这些会话下面的所有子会话；它的项目动态和来信。`from` / `to` 含两端，ISO 8601，任意时区（按时间点比，不按字符串比）。会话按「创建 ≤ to 且最后更新 ≥ from」入选，其余记录按各自的时间。不筛项目时，另带不属于任何会话的请求记录（取 token、邮件轮询）。
-- **去敏**（在序列化之前对每个字段的值做，避免转义后的 `"api_key": "…"` 漏网）：所有 provider 的 key、client secret、client id、端点地址和它的主机名（`Provider.secrets()`，provider 被删后仍记着）；看起来像密钥的串（`sk-…`、Bearer / Basic 后面的值、AWS / Google / GitHub / Slack 的 key 格式、JWT、私钥块、URL 里的 `用户:密码@`、`api_key= / password: / token= / secret=` 这类键值）；字段名本身是 `apiKey`、`password`、`token`、`authorization`、`cookie` 等的，值整个换掉。命令行另把名字像密钥的环境变量（`SPICA_*`、`*KEY*`、`*TOKEN*`…）的值和 `--config` 里的 key / 地址都当成要去掉的值，所以用 `--env-file=.env.local` 跑时，本机部署的 key 和地址也去掉。超过 2 万字符的文本截断并注明原长度。
+- **去敏**（在序列化之前对每个字段的值做，避免转义后的 `"api_key": "…"` 漏网）：所有 provider 的 key、client secret、client id、端点地址和它的主机名（`Provider.secrets()`，provider 被删后仍记着）；看起来像密钥的串（`sk-…`、Bearer / Basic 后面的值、AWS / Google / GitHub / Slack 的 key 格式、JWT、私钥块、URL 里的 `用户:密码@`、`api_key= / password: / token= / secret=` 这类键值）；字段名本身是 `apiKey`、`password`、`token`、`authorization`、`cookie` 等的，值整个换掉。命令行另把名字里带 KEY / SECRET / TOKEN / PASSWORD / CREDENTIAL / BASE_URL / ENDPOINT 的环境变量的值和 `--config` 里的 key / 地址都当成要去掉的值，所以用 `--env-file=.env.local` 跑时，本机部署的 key 和地址也去掉，模型名（`SPICA_OPENAI_MODEL`）留着。超过 2 万字符的文本截断并注明原长度。
 - **格式**：第一行是 header，其余每行一条记录，`type` 区分。`schemaVersion` 只在字段含义变化或删字段时加一；新增字段不加版本，读的人要忽略不认识的字段。
 
 | type | 字段 |
@@ -397,7 +397,7 @@
 
 ## 15. 交接（2026-11-09 更新）
 
-**状态**：M1–M4 完成并回报。工作区里 packages/core、packages/protocol、本文档没有未提交的改动。提交前用一个小脚本把关：根目录 lint、typecheck 和内核测试都绿才提交（内核测试遇到 Node 的 0xC0000409 崩溃会自动重跑一次）。
+**状态**：M1–M7 完成并回报（M7：并行花费上限、停用工具、使用日志导出、MCP 的 HTTP 传输、评测插件 plugins/example-eval）。工作区里 packages/core、packages/protocol、本文档没有未提交的改动。提交前用一个小脚本把关：根目录 lint、typecheck 和内核测试都绿才提交（内核测试遇到 Node 的 0xC0000409 崩溃会自动重跑一次）。
 
 **下一步**：
 1. 桌面外壳：主进程用 `utilityProcess.fork(packages/core/src/host/utility-entry.ts)` 起内核，按 12b 节的消息接 `connectBackend`，崩了退避重启（1/2/5 秒，1 分钟最多 5 次）；设置页「测试连接」调 `call('probeProvider', 配置, 模型)`。
