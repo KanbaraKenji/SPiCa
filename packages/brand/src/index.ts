@@ -1,0 +1,34 @@
+// @spica/brand：Spica 花标的几何、颜色、SVG 构造器（不依赖 React）。
+// React 组件从 '@spica/brand/react' 引入；动效样式 import '@spica/brand/styles.css'。
+export {
+  ACCENT_LOCK_CLICKS,
+  MARK_CENTER,
+  MARK_GEOMETRY,
+  MARK_PARAMS,
+  MARK_VIEWBOX,
+  PETAL_BASE_Y,
+  PETAL_COUNT,
+  PETAL_STEP_DEG,
+  SPARKLES,
+  TASKBAR_PARAMS,
+  fmt,
+  markGeometry,
+  petalPath,
+  sparklePath,
+  type MarkGeometry,
+  type MarkParams,
+  type Petal,
+} from './geometry.ts';
+export { BRAND_COLORS, CSS_VARS, type ThemeColors } from './tokens.ts';
+export { WORDMARK, type Wordmark, type WordmarkShape } from './wordmark.ts';
+export {
+  BANNER_LAYOUT,
+  bannerSvg,
+  markBody,
+  markSvg,
+  taskbarSvg,
+  tileIconSvg,
+  wordmarkBody,
+  wordmarkSvg,
+  type MarkSvgOptions,
+} from './svg.ts';
