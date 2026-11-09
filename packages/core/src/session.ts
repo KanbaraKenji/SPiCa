@@ -1199,6 +1199,7 @@ const GUARD_REASON: Record<GuardCause, string> = {
   untrusted_turn: 'the agent is acting on outside content (mail, web page, file or plugin data); irreversible actions need your confirmation',
   outside_link: 'this link comes from outside content (e.g. a mail), not from you',
   sensitive_file: 'reading a credential file while acting on outside content',
+  plugin_view: 'a plugin view asks to run an irreversible action',
 };
 
 export const TEAM_RULE =

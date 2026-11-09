@@ -17,6 +17,8 @@ export interface ToolContext {
   callId: string;
   /** Publish an event on behalf of this session (e.g. a card for the UI). */
   emit(body: CoreEventBody): void;
+  /** Who started the call, for traceable records (default `tool:<name>`; a plugin view is `view:<plugin>`). */
+  initiator?: string;
 }
 
 export interface ToolOutput {
