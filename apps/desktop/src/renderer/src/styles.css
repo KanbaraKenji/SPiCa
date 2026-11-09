@@ -1092,8 +1092,8 @@ button.tree-twisty:hover {
 }
 
 .file-card {
-  width: 220px;
-  max-width: 100%;
+  min-width: 220px;
+  max-width: min(360px, 100%);
   display: flex;
   align-items: center;
   gap: 10px;

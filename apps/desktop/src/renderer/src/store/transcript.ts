@@ -396,8 +396,13 @@ export function fileCardLine(card: FileCardMeta): string {
   if (card.sheets?.length) parts.push(`${card.sheets.length} 个表`);
   if (card.slideCount) parts.push(`${card.slideCount} 页幻灯片`);
   const r = card.read;
-  if (r.pages) parts.push(`读了第 ${r.pages} 页`);
-  else if (r.sheet) parts.push(`读了「${r.sheet}」${r.range ?? (r.rows ? `第 ${r.rows} 行` : '')}`);
+  const sheetsRead = r.sheet ? r.sheet.split(/,\s*/).filter(Boolean) : [];
+  const wholeFile =
+    (r.pages !== undefined && card.pageCount !== undefined && (r.pages === `1-${card.pageCount}` || (card.pageCount === 1 && r.pages === '1'))) ||
+    (card.sheets !== undefined && sheetsRead.length === card.sheets.length && !r.rows && !r.range);
+  if (wholeFile && !card.truncated) parts.push('全部读了');
+  else if (r.pages) parts.push(`读了第 ${r.pages} 页`);
+  else if (r.sheet) parts.push(`读了「${sheetsRead.join('、')}」${r.range ?? (r.rows ? `第 ${r.rows} 行` : '')}`);
   else if (r.range) parts.push(`读了 ${r.range}`);
   else if (r.rows) parts.push(`读了第 ${r.rows} 行`);
   if (card.noTextLayer) parts.push('扫描件，读不出文字');

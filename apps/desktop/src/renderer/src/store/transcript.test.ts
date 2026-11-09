@@ -66,6 +66,8 @@ describe('file cards', () => {
     const at = '2026-11-09T10:00:00+08:00';
     const base = { path: 'D:\\a', name: 'a', sizeBytes: 1, modifiedAt: at, extractedAt: at };
     expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 30, read: { pages: '1-5' }, truncated: true })).toBe('PDF · 30 页 · 读了第 1-5 页 · 没读完');
+    expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 3, read: { pages: '1-3' } })).toBe('PDF · 3 页 · 全部读了');
+    expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: 'A', rows: 1, cols: 1 }, { name: 'B', rows: 1, cols: 1 }], read: { sheet: 'A, B' } })).toBe('Excel · 2 个表 · 全部读了');
     expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: '报价', rows: 3, cols: 2 }], read: { sheet: '报价', rows: '1-3' } })).toBe('Excel · 1 个表 · 读了「报价」第 1-3 行');
     expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 2, read: {}, noTextLayer: true })).toBe('PDF · 2 页 · 扫描件，读不出文字');
   });
