@@ -50,7 +50,8 @@ export interface ToolCallRecord {
   messageId: string;
   name: string;
   input: unknown;
-  status: 'running' | 'ok' | 'error' | 'denied' | 'pending';
+  /** `unavailable`: the model called a tool that does not exist (any more); nothing ran. */
+  status: 'running' | 'ok' | 'error' | 'denied' | 'pending' | 'unavailable';
   result?: string;
   /** Cards the call produced (file card, suggestions), copied into the tool_results message. */
   cards?: ToolCallCards;

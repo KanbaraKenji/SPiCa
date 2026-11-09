@@ -340,6 +340,7 @@ export class Session {
       ...(cfg.templateId ? { templateId: cfg.templateId } : {}),
     };
       const tools = this.#rt.tools.list(env, cfg.tools);
+      this.#noteToolsGone(new Set(tools.map((t) => t.spec.name)));
       const injections = await this.#rt.hooks.injections(hctx);
       let draft: RequestDraft = {
         segments: buildSegments(
@@ -625,7 +626,14 @@ export class Session {
         this.#rt.store.upsertToolCall({ ...rec, status, result: content, endedAt: isoNow(), ...(cards ? { cards } : {}) });
       };
       if (!tool) {
-        finish(`Unknown tool "${call.name}". Available tools: ${[...visible].join(', ')}.`, true, 'error');
+        const gone = this.#rt.tools.removedFrom(call.name) !== undefined || this.#calledBefore(call.name, assistant.id);
+        finish(
+          gone
+            ? `Tool "${call.name}" is no longer available (it was turned off or removed). Nothing was run. Do not call it again; if the task needs it, tell the user.`
+            : `Unknown tool "${call.name}". Available tools: ${[...visible].join(', ')}.`,
+          true,
+          'unavailable',
+        );
         return;
       }
       const invalid = validateInput(tool.spec.inputSchema, call.input);
@@ -868,6 +876,44 @@ export class Session {
     else this.#rt.store.appendMessage(message);
     this.#emit({ type: 'message', message });
     return message;
+  }
+
+  /** Whether an earlier assistant message (not `exceptId`) called this tool. */
+  #calledBefore(name: string, exceptId: string): boolean {
+    return this.#messages.some((m) => m.id !== exceptId && m.role === 'assistant' && m.content.some((b) => b.type === 'tool_use' && b.name === name));
+  }
+
+  /**
+   * Tools this session used earlier that are gone now (a plugin was turned
+   * off): tell the model once, as a runtime note, so it does not keep calling
+   * them from what it sees in the history.
+   */
+  #noteToolsGone(visible: Set<string>): void {
+    const lastUse = new Map<string, number>();
+    const lastNote = new Map<string, number>();
+    // calls that were refused as unavailable do not count: the model was already told in their result
+    const refused = new Set(this.#rt.store.listToolCalls(this.id).filter((c) => c.status === 'unavailable').map((c) => `${c.messageId}|${c.id}`));
+    for (const m of this.#messages) {
+      if (m.role === 'assistant') for (const b of m.content) if (b.type === 'tool_use' && !refused.has(`${m.id}|${b.id}`)) lastUse.set(b.name, m.seq);
+      const said = m.meta?.toolsUnavailable;
+      if (Array.isArray(said)) for (const n of said) lastNote.set(String(n), m.seq);
+    }
+    // only tools this runtime saw being taken away (not, say, one whose plugin has not started yet after a restart)
+    const gone = [...lastUse]
+      .filter(([name, seq]) => !visible.has(name) && this.#rt.tools.removedFrom(name) !== undefined && (lastNote.get(name) ?? -1) < seq)
+      .map(([name]) => name);
+    if (gone.length === 0) return;
+    this.#append({
+      role: 'user',
+      kind: 'note',
+      content: [
+        {
+          type: 'text',
+          text: `[System note] These tools are no longer available (turned off or removed): ${gone.join(', ')}. Do not call them. If the task needs them, tell the user.`,
+        },
+      ],
+      meta: { author: 'runtime', toolsUnavailable: gone },
+    });
   }
 
   /** The user has typed at least one message in this session (not the system or another agent). */

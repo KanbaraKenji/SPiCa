@@ -130,6 +130,8 @@ export interface Message {
 
 /** Known metadata keys on messages. Everything a UI shows must be rebuildable from history. */
 export interface MessageMeta {
+  /** Runtime note: tools the session used before that are gone now (names). */
+  toolsUnavailable?: string[];
   /** One of Author; typed loosely so older callers that build plain objects still compile. */
   author?: Author | (string & {});
   /** Assistant text saved while it was streaming. */
