@@ -1,5 +1,5 @@
 // Right panel: details of the open session (tool calls, files, cost).
-import type { SessionInfo } from '@spica/protocol';
+import type { ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
 import { filesOf, type Block, type Transcript } from '../store/transcript';
 import { Icon } from '../ui/Icon';
 import { fileFolder, fileName, formatDuration, formatUsd, toolLabel, toolTarget } from '../chat/format';
@@ -13,12 +13,29 @@ export interface DetailPanelProps {
   globalCostUsd: number;
   onOpenFile(path: string): void;
   onOpenSession(id: string): void;
+  /** Set when the session belongs to a project. */
+  project?: ProjectInfo | undefined;
+  activity?: ProjectLogEntry[];
   onClose?: () => void;
+}
+
+const ACTIVITY_LABEL: Record<ProjectLogEntry['kind'], string> = {
+  file_write: '写了文件',
+  file_edit: '改了文件',
+  command: '运行命令',
+  stage: '阶段',
+  decision: '定了',
+  note: '记了',
+};
+
+function clock(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 const ROLE_LABEL: Record<SessionInfo['role'], string> = { top: '对话', manager: '项目经理', worker: '子任务' };
 
-export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onOpenSession, onClose }: DetailPanelProps) {
+export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onOpenSession, project, activity = [], onClose }: DetailPanelProps) {
   const blocks = transcript.items.flatMap((i) => (i.kind === 'response' ? i.blocks : []));
   const tools = blocks.filter((b): b is ToolBlock => b.type === 'tool');
   const files = filesOf(blocks, transcript.fileCards);
@@ -50,15 +67,54 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
                   </dd>
                 </>
               ) : null}
-              {session.cwd ? (
+              {project ? (
+                <>
+                  <dt>项目</dt>
+                  <dd>
+                    {project.managerSessionId === session.id ? (
+                      project.name
+                    ) : (
+                      <button type="button" className="link-btn" onClick={() => onOpenSession(project.managerSessionId)}>
+                        {project.name}
+                      </button>
+                    )}
+                  </dd>
+                </>
+              ) : null}
+              {project?.folder || session.cwd ? (
                 <>
                   <dt>文件夹</dt>
-                  <dd className="detail-path" title={session.cwd}>
-                    {session.cwd}
+                  <dd className="detail-folder">
+                    <span className="detail-path" title={project?.folder ?? session.cwd}>
+                      {project?.folder ?? session.cwd}
+                    </span>
+                    <button type="button" className="link-btn" onClick={() => onOpenFile(project?.folder ?? session.cwd)}>
+                      打开
+                    </button>
                   </dd>
                 </>
               ) : null}
             </dl>
+          </section>
+        ) : null}
+
+        {project ? (
+          <section className="detail-section">
+            <h3 className="detail-title">项目动态</h3>
+            {activity.length ? (
+              <ul className="detail-list">
+                {activity.slice(0, 12).map((a) => (
+                  <li key={a.id} className="activity-item" title={a.path ?? a.summary}>
+                    <span className="activity-time">{clock(a.at)}</span>
+                    <span className="activity-text">
+                      <span className="detail-item-sub">{ACTIVITY_LABEL[a.kind] ?? a.kind}</span> {a.summary}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="detail-empty">—</p>
+            )}
           </section>
         ) : null}
 
