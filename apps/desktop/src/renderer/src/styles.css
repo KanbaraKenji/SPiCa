@@ -2758,3 +2758,48 @@ button.tree-twisty:hover {
   width: 8px;
   z-index: 15;
 }
+
+/* The edge between a docked side panel and the conversation: drag to resize. */
+.panel.is-docked {
+  position: relative;
+}
+
+.panel-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 6;
+  width: 7px;
+  cursor: col-resize;
+  -webkit-app-region: no-drag;
+}
+
+.panel-resizer.is-left {
+  right: -4px;
+}
+
+.panel-resizer.is-right {
+  left: -4px;
+}
+
+/* A thin line shows which edge moves, only while hovered, focused or dragged. */
+.panel-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: transparent;
+  transition: background 120ms;
+}
+
+.panel-resizer:hover::after,
+.panel-resizer:focus-visible::after,
+.panel-resizer:active::after {
+  background: var(--spica-accent);
+}
+
+.panel-resizer:focus-visible {
+  outline: none;
+}

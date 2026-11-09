@@ -10,6 +10,22 @@ export interface PanelPrefs {
   right: boolean;
 }
 
+/** Widths the user dragged the side panels to (CSS px). */
+export interface PanelWidths {
+  left: number;
+  right: number;
+}
+
+export const PANEL_LIMITS = {
+  left: { min: 200, max: 440, initial: 264 },
+  right: { min: 240, max: 600, initial: 300 },
+} as const;
+
+export function clampPanelWidth(side: 'left' | 'right', width: number): number {
+  const l = PANEL_LIMITS[side];
+  return Number.isFinite(width) ? Math.round(Math.min(l.max, Math.max(l.min, width))) : l.initial;
+}
+
 /** When the full opening animation plays: the first launch each day, every launch, or never. */
 export type SplashMode = 'daily' | 'always' | 'never';
 
@@ -30,6 +46,7 @@ export interface ShellSettings {
   customSkins: Skin[];
   zoom: number;
   panels: PanelPrefs;
+  panelWidths: PanelWidths;
   splash: SplashMode;
   /** Local date (YYYY-MM-DD) the full animation last played. */
   splashShownOn: string | null;
@@ -53,6 +70,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   customSkins: [],
   zoom: DEFAULT_ZOOM,
   panels: { left: true, right: true },
+  panelWidths: { left: PANEL_LIMITS.left.initial, right: PANEL_LIMITS.right.initial },
   splash: 'daily',
   splashShownOn: null,
   updateSource: '',
@@ -134,7 +152,12 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const pinnedProjects = Array.isArray(v.pinnedProjects)
     ? [...new Set(v.pinnedProjects.filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 200))].slice(0, 200)
     : [];
-  return { skin, customSkins, zoom, panels, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, mailSeen, pinnedProjects };
+  const w = v.panelWidths && typeof v.panelWidths === 'object' ? (v.panelWidths as Record<string, unknown>) : {};
+  const panelWidths: PanelWidths = {
+    left: clampPanelWidth('left', typeof w.left === 'number' ? w.left : PANEL_LIMITS.left.initial),
+    right: clampPanelWidth('right', typeof w.right === 'number' ? w.right : PANEL_LIMITS.right.initial),
+  };
+  return { skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, mailSeen, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {
