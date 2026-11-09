@@ -138,6 +138,7 @@ export function splashSchedule(options: SplashOptions = {}, readyAt: number | nu
     const end = m0 + F.bigTurns;
     const shift = ((((want - end) % 1) + 1.5) % 1) - 0.5; // 落在 [-0.5, 0.5)
     turns = F.bigTurns + shift;
+    if (turns < 0.05) turns += 1; // 圈数很少时（如 0.2 圈）不能算成负的：补一圈
   }
   const collapseStart = bigStart + (turns * period) / F.bigSpeed;
   const merge = collapseStart + F.collapse;

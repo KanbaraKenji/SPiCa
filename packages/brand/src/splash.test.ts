@@ -149,17 +149,27 @@ describe('收尾', () => {
     }
   });
 
-  it('对比档 0.7 圈：大半径段结束时蓝星在前面（左下方），从那一侧扎入；ready 时刻任意都稳定', () => {
-    const o = { finish: { bigTurns: 0.7, diveAngle: 222, diveStar: 'primary' as const } };
+  it('对比档 B（约 0.5 圈）：蓝星在前、走到字标右上方时从右侧扎入；ready 时刻任意都稳定', () => {
+    const o = { finish: { bigTurns: 0.5, diveAngle: 72, diveStar: 'primary' as const } };
     for (const ready of [3, 5.37, 7, 12.25]) {
       const s = splashSchedule(o, ready);
+      const turns = ((s.collapseStart - s.bigStart) * SPLASH_FINISH.bigSpeed) / SPLASH_TIMING.orbitPeriod;
+      expect(turns).toBeGreaterThanOrEqual(0.05);
       const [blue, white] = splashFrame(ready + s.collapseStart, ready, o).stars;
       expect(blue!.front).toBe(true);
       expect(white!.front).toBe(false);
-      expect(blue!.x).toBeLessThan(SPLASH_LAYOUT.cx);
-      expect(blue!.y).toBeGreaterThan(SPLASH_LAYOUT.cy);
+      expect(blue!.x).toBeGreaterThan(SPLASH_LAYOUT.cx + 100); // 右侧
+      expect(blue!.y).toBeLessThan(SPLASH_LAYOUT.cy); // 上半
     }
-    expect(7 + splashSchedule(o, 7).collapseStart).toBeCloseTo(8.42, 1);
+    expect(7 + splashSchedule(o, 7).collapseStart).toBeCloseTo(8.2, 1);
+  });
+
+  it('圈数很少时不会算成负的', () => {
+    const o = { finish: { bigTurns: 0.1, diveAngle: 72, diveStar: 'primary' as const } };
+    for (const ready of [0, 1.3, 2.9, 4.4]) {
+      const s = splashSchedule(o, ready);
+      expect(s.collapseStart).toBeGreaterThan(s.bigStart);
+    }
   });
 
   it('双星从各自所在的一侧飞进花心（两条弧线，始终关于花心对称）', () => {
