@@ -15,7 +15,9 @@ export interface Skin {
 }
 
 export const LIGHT_SKIN: Skin = { id: 'light', name: '浅色', bg: '#f7f8fa', accent: '#2f7de1', builtin: true };
-export const DARK_SKIN: Skin = { id: 'dark', name: '深色', bg: '#15171c', accent: '#62a9ff', builtin: true };
+// Dark follows Claude Desktop's layering: a warm neutral grey for the conversation,
+// side panels one step darker, the input and menus one step lighter, warm off-white text.
+export const DARK_SKIN: Skin = { id: 'dark', name: '深色', bg: '#262624', accent: '#62a9ff', builtin: true };
 export const BUILTIN_SKINS: readonly Skin[] = [LIGHT_SKIN, DARK_SKIN];
 
 /** `system` follows the OS light/dark setting with the two built-in skins. */
@@ -75,7 +77,7 @@ export function contrast(a: string, b: string): number {
 }
 
 const LIGHT_INK = '#111827';
-const DARK_INK = '#e7eaf0';
+const DARK_INK = '#ecebe5';
 
 /** Light or dark, whichever ink reads better on the background. */
 export function schemeOf(bg: string): Scheme {
@@ -106,17 +108,18 @@ export function deriveTokens(skin: Skin): Tokens {
   const success = dark ? '#4ade80' : '#15803d';
   return {
     '--spica-bg': bg,
-    // Window chrome: title bar and side panels sit one step away from the main pane.
-    '--spica-chrome': mix(bg, ink, dark ? 0.035 : 0.03),
-    '--spica-surface': dark ? mix(bg, ink, 0.05) : mix(bg, '#ffffff', 0.7),
-    '--spica-raised': dark ? mix(bg, ink, 0.08) : '#ffffff',
-    '--spica-input': dark ? mix(bg, ink, 0.04) : '#ffffff',
+    // Window chrome: title bar and side panels sit one step away from the main pane
+    // (darker in dark mode, like Claude; a touch grayer in light mode).
+    '--spica-chrome': dark ? mix(bg, '#000000', 0.2) : mix(bg, ink, 0.03),
+    '--spica-surface': dark ? mix(bg, ink, 0.04) : mix(bg, '#ffffff', 0.7),
+    '--spica-raised': dark ? mix(bg, ink, 0.07) : '#ffffff',
+    '--spica-input': dark ? mix(bg, ink, 0.06) : '#ffffff',
     '--spica-border': mix(bg, ink, dark ? 0.12 : 0.11),
     '--spica-border-strong': mix(bg, ink, dark ? 0.22 : 0.2),
     '--spica-hover': mix(bg, ink, dark ? 0.07 : 0.055),
     '--spica-active': mix(bg, ink, dark ? 0.11 : 0.09),
     // What you wrote, in the conversation: a filled block, no border.
-    '--spica-bubble': mix(bg, ink, dark ? 0.09 : 0.06),
+    '--spica-bubble': dark ? mix(bg, '#000000', 0.3) : mix(bg, ink, 0.06),
     '--spica-ink': ink,
     '--spica-muted': readable(mix(ink, bg, dark ? 0.36 : 0.4), bg, ink, 4.5),
     '--spica-faint': readable(mix(ink, bg, dark ? 0.56 : 0.6), bg, ink, 2.6),
