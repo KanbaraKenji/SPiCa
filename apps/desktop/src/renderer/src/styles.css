@@ -201,6 +201,7 @@ a:hover {
 
 .panel-right {
   width: 300px;
+  border-top: 1px solid var(--spica-border);
 }
 
 .panel.is-floating {
@@ -236,14 +237,15 @@ a:hover {
   border-top: 1px solid var(--spica-border);
 }
 
+/* Frame lines: one straight line under the title bar from the sidebar's
+   edge to the window's right edge (over the main pane and the detail panel),
+   and straight full-height lines between the panes. Square corners. */
 .app[data-left='docked'] .main {
   border-left: 1px solid var(--spica-border);
-  border-top-left-radius: var(--radius-l);
 }
 
 .app[data-right='docked'] .main {
   border-right: 1px solid var(--spica-border);
-  border-top-right-radius: var(--radius-l);
 }
 
 /* ---------- Buttons ---------- */
