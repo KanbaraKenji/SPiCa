@@ -140,6 +140,18 @@ export class Runtime implements RuntimeInternals {
       ...projectTools,
     ];
     for (const t of opts.tools ?? defaults) this.tools.register(t, 'core');
+    // Waiting is done with wait_agents: refuse commands that only sleep, before
+    // they reach the confirmation card.
+    this.hooks.register('core:guard', {
+      beforeTool: (call) => {
+        if (call.name !== 'run_command') return;
+        const cmd = String((call.input as { command?: unknown } | null)?.command ?? '').trim();
+        if (/^(start-sleep|sleep|timeout(\.exe)?|ping\s+(-n|-c)\s+\d+\s+(127\.0\.0\.1|localhost))\b[^;&|]*$/i.test(cmd)) {
+          return { action: 'deny', reason: 'do not wait with sleep commands; use wait_agents to wait for sub-agents or project managers' };
+        }
+        return undefined;
+      },
+    });
     // Sessions inside a project see their project and stage every turn.
     this.hooks.register('core:project', {
       inject: (ctx) => {
@@ -181,7 +193,11 @@ export class Runtime implements RuntimeInternals {
     const d = this.#opts.defaults;
     const parent = req.parentId ? this.session(req.parentId) : undefined;
     if (req.parentId && !parent) throw new Error(`unknown parent session: ${req.parentId}`);
-    const tpl = req.templateId ? this.template(req.templateId) : undefined;
+    // A session without a parent is a thread of the top-level agent: it uses the
+    // 'top' template unless told otherwise (one role, many conversation threads).
+    const implicitTop = !parent && !req.templateId && (req.role ?? 'top') === 'top';
+    const templateId = req.templateId ?? (implicitTop ? 'top' : undefined);
+    const tpl = templateId ? this.template(templateId) : undefined;
     if (req.templateId && !tpl) throw new Error(`unknown role template: ${req.templateId}`);
     const now = isoNow();
     const role: AgentRole = req.role ?? tpl?.role ?? (parent ? 'worker' : 'top');
@@ -240,6 +256,43 @@ export class Runtime implements RuntimeInternals {
 
   hasChildren(id: string): boolean {
     return this.sessions().some((s) => s.parentId === id);
+  }
+
+  /** All sessions below `id` in the tree. */
+  descendants(id: string): Session[] {
+    const out: Session[] = [];
+    const walk = (pid: string) => {
+      for (const c of this.children(pid)) {
+        out.push(c);
+        walk(c.id);
+      }
+    };
+    walk(id);
+    return out;
+  }
+
+  /**
+   * Sessions `callerId` may message or wait for: its own sub-agents (any
+   * depth), and for any top-level thread also every project manager and the
+   * manager's sub-agents.
+   */
+  directable(callerId: string): Session[] {
+    const caller = this.session(callerId);
+    if (!caller) return [];
+    const own = this.descendants(callerId);
+    if (caller.info().role !== 'top') return own;
+    const seen = new Set(own.map((s) => s.id));
+    for (const s of this.sessions()) {
+      if (!seen.has(s.id) && s.id !== callerId && s.info().projectId) {
+        own.push(s);
+        seen.add(s.id);
+      }
+    }
+    return own;
+  }
+
+  canDirect(callerId: string, targetId: string): boolean {
+    return this.directable(callerId).some((s) => s.id === targetId);
   }
 
   children(id: string): Session[] {

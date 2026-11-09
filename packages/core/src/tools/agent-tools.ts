@@ -65,7 +65,9 @@ export const spawnAgentTool: Tool = {
 export const messageAgentTool: Tool = {
   spec: {
     name: 'message_agent',
-    description: 'Send a message to one of your sub-agents. If it is busy, the message is applied at its next step.',
+    description:
+      'Send a message to one of your sub-agents (the top-level agent can also message any project manager and its ' +
+      'sub-agents). If it is busy, the message is applied at its next step.',
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'string' }, text: { type: 'string' } },
@@ -75,7 +77,7 @@ export const messageAgentTool: Tool = {
   async execute(input, ctx) {
     const rt = runtimeOf(ctx);
     const child = rt.session(String(input.id));
-    if (!child || child.parentId !== ctx.sessionId) {
+    if (!child || !rt.canDirect(ctx.sessionId, child.id)) {
       return { content: `No sub-agent with id ${String(input.id)} belongs to you.`, isError: true };
     }
     const h = child.send(String(input.text), { author: 'parent' });
@@ -88,9 +90,10 @@ export const waitAgentsTool: Tool = {
   spec: {
     name: 'wait_agents',
     description:
-      'Wait until your sub-agents finish their current work. Each finished report is added to your conversation ' +
-        'as a report note right after this result. ' +
-      'Without ids, waits for all of your sub-agents that are still working.',
+      'Wait until sub-agents finish their current work: your own sub-agents, or (for the top-level agent) project managers ' +
+      'and their sub-agents. Reports of your own sub-agents arrive as report notes right after this result; other reports ' +
+      'are included in the result. Without ids, waits for everything you can wait for that is still working. ' +
+      'Always use this to wait; never wait with sleep commands.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -101,21 +104,28 @@ export const waitAgentsTool: Tool = {
   },
   async execute(input, ctx) {
     const rt = runtimeOf(ctx);
-    const mine = rt.children(ctx.sessionId);
-    const ids = Array.isArray(input.ids) ? input.ids.map(String) : mine.map((c) => c.id);
-    const targets = ids.map((id) => mine.find((c) => c.id === id));
-    if (targets.some((t) => !t)) return { content: 'Some ids are not your sub-agents.', isError: true };
+    const reachable = rt.directable(ctx.sessionId);
+    const ids = Array.isArray(input.ids)
+      ? input.ids.map(String)
+      : reachable.filter((s) => s.running || s.pending().length > 0 || s.parentId === ctx.sessionId).map((s) => s.id);
+    const targets = ids.map((id) => reachable.find((c) => c.id === id));
+    if (targets.some((t) => !t)) return { content: 'Some ids are not sub-agents or project managers you can wait for.', isError: true };
+    if (targets.length === 0) return { content: 'Nothing to wait for: no sub-agent or project manager is working.' };
     const timeoutMs = Math.max(1, Number(input.timeout_seconds ?? 900)) * 1000;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<'timeout'>((r) => (timer = setTimeout(() => r('timeout'), timeoutMs)));
     const aborted = new Promise<'aborted'>((r) => ctx.signal.addEventListener('abort', () => r('aborted'), { once: true }));
     const outcome = await Promise.race([Promise.all(targets.map((t) => t!.settled())).then(() => 'done' as const), timeout, aborted]);
     clearTimeout(timer);
-    // Reports themselves arrive as report notes right after this result.
+    // Own sub-agents' reports arrive as report notes right after this result;
+    // reports that went to another session (e.g. a project manager's) are included here.
     const lines = targets.map((t) => {
       const info = t!.info();
-      const delivered = rt.lastReport(t!.id) !== undefined;
-      return `- ${info.title ?? 'Sub-agent'} (${info.id}): ${info.status}${delivered ? ', report delivered as a note' : ', no report yet'}`;
+      const report = rt.lastReport(t!.id);
+      const head = `- ${info.title ?? 'Sub-agent'} (${info.id}): ${info.status}`;
+      if (report === undefined) return `${head}, no report yet`;
+      if (info.parentId === ctx.sessionId) return `${head}, report delivered as a note`;
+      return `${head}. Report:\n${report}`;
     });
     const head =
       outcome === 'done'
