@@ -37,7 +37,7 @@ export interface SplashFinish {
   bigSpeed: number;
   /** ② 大半径上再绕几圈（用时 = 圈数 × 一圈秒数 ÷ bigSpeed） */
   bigTurns: number;
-  /** 大半径段结束、开始扎心时，前面那颗星在屏幕上的方位（从 12 点钟顺时针的度数；92 = 字标一侧）。alignDive 按它微调圈数 */
+  /** 大半径段结束、开始扎心时，领头那颗星在屏幕上的方位（从 12 点钟顺时针的度数；63 = 字标右上方的弯角，92 = 字标一侧）。alignDive 按它微调圈数 */
   diveAngle: number;
   /** 由哪颗星领头扎入（在前面、处在 diveAngle 方位）：primary = 蓝星，companion = 白色伴星 */
   diveStar: 'primary' | 'companion';
@@ -73,15 +73,16 @@ export interface SplashFinish {
 }
 
 export const SPLASH_FINISH: Readonly<SplashFinish> = Object.freeze({
-  // 顺序定死：加速扩轨（带拖尾）→ 大半径上绕约半圈 → 蓝星在前、走到字标右上方时顺弧向下扎进花心，一路加速。
+  // 顺序定死：加速扩轨（带拖尾）→ 大半径上快转一圈多 → 蓝星转到字标右上方的弯角（最慢的那一点）时顺弧向下扎进花心，一路加速。
+  // 6.65 倍转速让 ready 到扎入（1.2 秒）比只转 3 倍时多转约一圈，扎入、合心的时刻不变
   expand: 0.6,
   bigRadius: 1.8,
-  bigSpeed: 3,
-  bigTurns: 0.5,
-  diveAngle: 72,
+  bigSpeed: 6.65,
+  bigTurns: 1.13,
+  diveAngle: 63,
   diveStar: 'primary',
   collapse: 0.175,
-  diveArc: 0.15,
+  diveArc: 0.22,
   diveSwing: 0,
   diveCurl: 1.4,
   trail: 0.35,
@@ -163,16 +164,17 @@ function diveTargetTurns(e: number, angle: number, star: 'primary' | 'companion'
   const key = `${e}|${angle}|${star}`;
   const hit = diveTargetCache.get(key);
   if (hit !== undefined) return hit;
+  // 先只在前半圈找；前半圈够不到这个方位（误差超过 2°，例如 63° 的右上方转弯处）时，放宽到刚从侧面转过来的那一段
   let best = 0;
   let bestErr = Infinity;
-  for (let i = 0; i < 1440; i++) {
-    const turns = i / 1440;
-    const kp = keplerPosition(2 * Math.PI * turns, e);
-    const px = kp.r * Math.cos(kp.angle + Math.PI / 2);
-    const py = kp.r * Math.sin(kp.angle + Math.PI / 2);
-    const [x, y] = star === 'primary' ? [px, py] : [-px, -py];
-    {
-      if (y < 0) continue; // 领头的那颗要在前面
+  for (const backLimit of [0, -0.45]) {
+    for (let i = 0; i < 1440; i++) {
+      const turns = i / 1440;
+      const kp = keplerPosition(2 * Math.PI * turns, e);
+      const px = kp.r * Math.cos(kp.angle + Math.PI / 2);
+      const py = kp.r * Math.sin(kp.angle + Math.PI / 2);
+      const [x, y] = star === 'primary' ? [px, py] : [-px, -py];
+      if (y < backLimit * Math.hypot(x, y)) continue;
       const p = project(x, y, 1);
       const ang = (((Math.atan2(p.x - SPLASH_LAYOUT.cx, -(p.y - SPLASH_LAYOUT.cy)) * 180) / Math.PI) + 360) % 360;
       const diff = Math.abs(ang - angle);
@@ -182,6 +184,7 @@ function diveTargetTurns(e: number, angle: number, star: 'primary' | 'companion'
         best = turns;
       }
     }
+    if (bestErr <= 2) break;
   }
   diveTargetCache.set(key, best);
   return best;
