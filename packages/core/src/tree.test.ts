@@ -73,8 +73,10 @@ describe('session tree', () => {
     expect(events.filter((e) => e.type === 'child.report' && e.sessionId === pm.id)).toHaveLength(2);
     expect(a!.status).toBe('done');
     expect(b!.status).toBe('done');
-    // Reports reached the manager through wait_agents only (no duplicate report notes).
-    expect(pm.messages().filter((m) => m.kind === 'report')).toHaveLength(0);
+    // Every report is a report message in the manager, with structured meta for the UI.
+    const reports = pm.messages().filter((m) => m.kind === 'report');
+    expect(reports.map((m) => m.meta?.fromSessionId).sort()).toEqual([a!.id, b!.id].sort());
+    expect(reports.every((m) => m.meta?.kind === 'report' && typeof m.meta.text === 'string')).toBe(true);
     // The relay note sits after the wait_agents result, at a turn boundary.
     const kinds = pm.messages().map((m) => m.kind);
     expect(kinds.indexOf('relay')).toBeGreaterThan(kinds.lastIndexOf('tool_results'));
@@ -139,7 +141,7 @@ describe('session tree', () => {
     const all = JSON.stringify(lead.messages().map((m) => m.content)); // what the model sees
     expect(all.split('QUICK-REPORT-TEXT')).toHaveLength(2); // exactly once
     expect(lead.messages().find((m) => m.kind === 'report')!.meta).toMatchObject({ kind: 'report', fromTitle: 'Quick', text: 'QUICK-REPORT-TEXT' });
-    expect(all).toContain('report already in your context');
+    expect(all).toContain('report delivered as a note');
   });
 
   it('sessions have no invented display name and can be renamed', async () => {

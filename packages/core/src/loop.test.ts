@@ -154,6 +154,18 @@ describe('agent loop', () => {
     expect(second[2]!.content[0]!.type).toBe('tool_result');
   });
 
+  it('tells the model to answer in the user language, interface language first', async () => {
+    gw.onRequest(() => ({ text: 'ok' }));
+    const rt = makeRuntime(gw, { cwd: dir, locale: 'ja-JP' });
+    await rt.createSession().send('hi').done;
+    await rt.createSession({ locale: 'en-US' }).send('hi').done;
+    const sys = (i: number) => (gw.requests[i]!.body.messages as { content: string }[])[0]!.content;
+    expect(sys(0)).toContain("Reply in the language of the user's latest message");
+    expect(sys(0)).toContain('interface language: ja-JP');
+    expect(sys(1)).toContain('interface language: en-US');
+    expect(makeRuntime(gw).createSession().config.locale).toBe('zh-CN');
+  });
+
   it('child sessions carry their parent chain in events and traces', async () => {
     gw.onRequest(() => ({ text: 'hi' }));
     const rt = makeRuntime(gw, { cwd: dir });

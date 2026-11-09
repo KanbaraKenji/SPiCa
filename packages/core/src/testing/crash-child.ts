@@ -1,12 +1,13 @@
 // Helper process for the hard-kill recovery test (run with plain `node`).
-// argv: <dbPath> <gatewayBaseUrl> <cwd>
-// Starts a run whose tool never returns, queues a steer, prints READY, then
-// waits to be killed.
+// argv: <dbPath> <gatewayBaseUrl> <cwd> [tool|stream]
+// tool: starts a run whose tool never returns, queues a steer, prints READY.
+// stream: prints READY once the model has streamed some text (the stream then stalls).
+// Then waits to be killed.
 import { OpenAICompatibleProvider } from '../providers/openai.ts';
 import { Runtime } from '../runtime.ts';
 import { SqliteStore } from '../store/sqlite.ts';
 
-const [dbPath, baseUrl, cwd] = process.argv.slice(2) as [string, string, string];
+const [dbPath, baseUrl, cwd, mode = 'tool'] = process.argv.slice(2) as [string, string, string, string?];
 const rt = new Runtime({
   providers: [new OpenAICompatibleProvider({ id: 'fake-openai', baseUrl: `${baseUrl}/v1`, apiKey: 'test-key-123456' })],
   defaults: { providerId: 'fake-openai', model: 'fake-model', maxTokens: 256 },
@@ -24,6 +25,11 @@ const rt = new Runtime({
     },
   ],
 });
+if (mode === 'stream') {
+  rt.events.on((e) => {
+    if (e.type === 'text.delta') setTimeout(() => process.stdout.write('READY\n'), 300);
+  });
+}
 const s = rt.createSession({ title: 'crash victim' });
 s.send('start the long job');
 setInterval(() => {}, 1000); // stay alive until killed

@@ -125,9 +125,10 @@ export interface Message {
   /** Assistant only: opaque per-provider fields to echo back on later turns. */
   providerExtras?: Record<string, unknown>;
   /**
-   * Metadata. Common keys: `author` (Author), `interrupted` (true when a
-   * stream was cut by an interrupt), `fromSessionId`, `decision` (true for a
-   * decision-change note).
+   * Metadata. Common keys: `author` (Author); `partial` (assistant text saved
+   * while streaming); `interrupted` (the stream was cut: user interrupt, error
+   * or app crash; show it as interrupted); relay / report notes carry
+   * ChildNoteMeta.
    */
   meta?: Record<string, unknown>;
 }
@@ -339,6 +340,8 @@ export interface CreateSessionRequest {
   /** Allow-list of tool names; all registered tools when omitted. */
   tools?: string[];
   maxTurns?: number;
+  /** Interface language (BCP 47) the agent uses until the user writes; default zh-CN. */
+  locale?: string;
 }
 
 export interface SendResult {

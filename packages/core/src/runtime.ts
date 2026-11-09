@@ -10,6 +10,8 @@ import { MemoryStore } from './store/memory.ts';
 import type { RelayRecord, SessionConfig, SessionRecord, Store } from './store/types.ts';
 import { agentTools } from './tools/agent-tools.ts';
 import { createRunCommandTool } from './tools/command-tool.ts';
+import { createWebFetchTool, createWebSearchTool, type SearchBackend } from './tools/web-tools.ts';
+import { connectMcp, type McpServerConfig, type McpStdioClient } from './mcp/client.ts';
 import { fileTools } from './tools/fs-tools.ts';
 import { ToolRegistry, type FileExtractor, type Tool } from './tools/types.ts';
 import { Tracer } from './trace.ts';
@@ -32,6 +34,12 @@ export interface RuntimeOptions {
   cwd?: string;
   /** Where run_command saves outputs too long to return (default: a temp folder). */
   spillDir?: string;
+  /** Search backend for web_search. Without one (and without hosted search) the tool is not offered. */
+  search?: SearchBackend;
+  /** Use the model's own hosted web search when the provider has it. Default true. */
+  hostedWebSearch?: boolean;
+  /** Interface language for new sessions (BCP 47). Default zh-CN. */
+  locale?: string;
 }
 
 /** What sessions need from the runtime. Not part of the public API. */
@@ -75,10 +83,8 @@ export class Runtime implements RuntimeInternals {
   readonly #limiters = new Map<string, RateLimiter>();
   readonly #sessions = new Map<string, Session>();
   readonly #opts: RuntimeOptions;
-  readonly #awaited = new Map<string, number>();
+  readonly #mcp = new Map<string, { client: McpStdioClient; disconnect: () => void }>();
   readonly #reports = new Map<string, string>();
-  /** Children whose latest report already reached the parent as a note. */
-  readonly #reportNoted = new Set<string>();
 
   constructor(opts: RuntimeOptions) {
     this.#opts = opts;
@@ -87,7 +93,13 @@ export class Runtime implements RuntimeInternals {
     this.ledger = new CostLedger(opts.prices ?? DEFAULT_PRICES, opts.budget ?? {});
     this.extractors = [...(opts.extractors ?? [])];
     for (const p of opts.providers) this.addProvider(p, opts.limits?.[p.id]);
-    const defaults = [...fileTools, createRunCommandTool(opts.spillDir ? { spillDir: opts.spillDir } : {}), ...agentTools];
+    const defaults = [
+      ...fileTools,
+      createRunCommandTool(opts.spillDir ? { spillDir: opts.spillDir } : {}),
+      createWebFetchTool(),
+      ...(opts.search ? [createWebSearchTool(opts.search)] : []),
+      ...agentTools,
+    ];
     for (const t of opts.tools ?? defaults) this.tools.register(t, 'core');
   }
 
@@ -125,9 +137,13 @@ export class Runtime implements RuntimeInternals {
       maxTokens: req.maxTokens ?? d.maxTokens,
       cwd: req.cwd ?? parent?.config.cwd ?? this.#opts.cwd ?? process.cwd(),
       maxTurns: req.maxTurns ?? d.maxTurns ?? 50,
-      ...(req.tools ? { tools: req.tools } : {}),
+      locale: req.locale ?? parent?.config.locale ?? this.#opts.locale ?? 'zh-CN',
+      serverWebSearch: false,
+      // A sub-agent gets its parent's tool allow-list unless told otherwise.
+      ...((req.tools ?? parent?.config.tools) ? { tools: req.tools ?? parent?.config.tools } : {}),
     };
-    this.provider(config.providerId); // fail fast
+    const provider = this.provider(config.providerId); // fail fast
+    config.serverWebSearch = (this.#opts.hostedWebSearch ?? true) && provider.capabilities.serverWebSearch;
     const record: SessionRecord = {
       id: newId('ses'),
       parentId: parent?.id ?? null,
@@ -191,19 +207,19 @@ export class Runtime implements RuntimeInternals {
 
   onStatus(): void {}
 
-  /** A child's finished run becomes its report to the parent. */
+  /**
+   * A child's finished run becomes its report: always written into the
+   * parent as a `report` message (ChildNoteMeta), at the parent's next turn
+   * boundary if it is running (e.g. inside wait_agents) or right away if idle.
+   */
   onRunEnd(session: Session, result: RunResult): void {
     if (!session.parentId || result.reason !== 'completed') return;
     const report = result.text || '(finished without a written report)';
     this.#reports.set(session.id, report);
-    this.#reportNoted.delete(session.id);
     const parent = this.session(session.parentId);
     if (!parent) return;
     this.store.appendRelay(this.#relayRecord(parent.id, session.id, 'report', report));
     this.events.emit({ sessionId: parent.id, parentChain: parent.parentChain }, { type: 'child.report', childId: session.id, summary: report.slice(0, 500) });
-    // A parent blocked in wait_agents gets the report as the tool result instead.
-    if ((this.#awaited.get(session.id) ?? 0) > 0) return;
-    this.#reportNoted.add(session.id);
     parent.addNote('report', `[Report from sub-agent ${label(session)}]\n${report}`, { ...this.#noteMeta(session, 'report', report) });
   }
 
@@ -219,19 +235,6 @@ export class Runtime implements RuntimeInternals {
       ...this.#noteMeta(s, 'decision', decision),
       by,
     });
-  }
-
-  /** wait_agents marks children it is waiting for; returns a release function. */
-  markAwaited(ids: string[]): () => void {
-    for (const id of ids) this.#awaited.set(id, (this.#awaited.get(id) ?? 0) + 1);
-    return () => {
-      for (const id of ids) this.#awaited.set(id, Math.max(0, (this.#awaited.get(id) ?? 1) - 1));
-    };
-  }
-
-  /** True when the child's latest report was already added to the parent's context as a note. */
-  reportAlreadyNoted(sessionId: string): boolean {
-    return this.#reportNoted.has(sessionId);
   }
 
   lastReport(sessionId: string): string | undefined {
@@ -297,7 +300,13 @@ export class Runtime implements RuntimeInternals {
       if (status === 'interrupted') interrupted.push(rec.id);
       const record = status === rec.status ? rec : { ...rec, status, updatedAt: isoNow() };
       if (record !== rec) this.store.upsertSession(record);
-      const s = new Session(this, record, this.store.listMessages(rec.id), { lastInputTokens: lastInput.get(rec.id) ?? 0 });
+      const messages = this.store.listMessages(rec.id).map((m) => {
+        if (m.meta?.partial !== true || m.meta.interrupted === true) return m;
+        const fixed = { ...m, meta: { ...m.meta, interrupted: true } };
+        this.store.updateMessage(fixed); // a stream cut off by the crash
+        return fixed;
+      });
+      const s = new Session(this, record, messages, { lastInputTokens: lastInput.get(rec.id) ?? 0 });
       this.#sessions.set(s.id, s);
       count++;
     }
@@ -312,9 +321,22 @@ export class Runtime implements RuntimeInternals {
     return { sessions: count, interrupted, awaiting };
   }
 
-  /** Stop all runs (they become `interrupted`, resumable after restart) and close the store. */
+  /** Start an MCP server (stdio) and add its tools; they disappear again on disconnect. */
+  async connectMcp(config: McpServerConfig): Promise<{ tools: string[]; disconnect: () => void }> {
+    if (this.#mcp.has(config.name)) throw new Error(`MCP server "${config.name}" is already connected`);
+    const h = await connectMcp(this.tools, this.tracer, config);
+    const disconnect = () => {
+      h.disconnect();
+      this.#mcp.delete(config.name);
+    };
+    this.#mcp.set(config.name, { client: h.client, disconnect });
+    return { tools: h.tools, disconnect };
+  }
+
+  /** Stop all runs (they become `interrupted`, resumable after restart), stop MCP servers, close the store. */
   async close(): Promise<void> {
     await Promise.all([...this.#sessions.values()].map((s) => s.shutdown()));
+    for (const m of [...this.#mcp.values()]) m.disconnect();
     this.store.close();
   }
 }

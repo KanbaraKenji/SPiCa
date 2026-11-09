@@ -94,7 +94,8 @@ rt.events.on((e: CoreEvent) => {
   }
 });
 
-const session = rt.createSession({ title: `smoke ${which}` });
+// Only the tools this smoke measures (run_command would pause for confirmation).
+const session = rt.createSession({ title: `smoke ${which}`, tools: ['read_file', 'grep', 'glob', 'list_dir'] });
 const result = await session.send(
   'In the working folder there is a file notes.txt. First read it with read_file. ' +
     'Then run grep once for the pattern "Owner" across the folder. ' +

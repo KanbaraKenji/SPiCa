@@ -47,6 +47,17 @@ export {
   recordDecisionTool,
 } from './tools/agent-tools.ts';
 export { createRunCommandTool, runCommandTool, type CommandToolOptions } from './tools/command-tool.ts';
+export {
+  createWebFetchTool,
+  createWebSearchTool,
+  jsonSearchBackend,
+  htmlToText,
+  webFetchTool,
+  type SearchBackend,
+  type SearchResult,
+  type JsonSearchBackendOptions,
+} from './tools/web-tools.ts';
+export { McpStdioClient, connectMcp, mcpTools, mcpToolName, type McpServerConfig, type McpToolInfo } from './mcp/client.ts';
 export { fileTools, readFileTool, writeFileTool, editFileTool, listDirTool, globTool, grepTool } from './tools/fs-tools.ts';
 export { OpenAICompatibleProvider, type OpenAICompatibleOptions } from './providers/openai.ts';
 export { AnthropicProvider, type AnthropicOptions } from './providers/anthropic.ts';

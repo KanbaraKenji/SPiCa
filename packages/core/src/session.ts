@@ -36,6 +36,7 @@ export interface SendHandle {
 }
 
 const MAX_PARALLEL_TOOLS = 8;
+const PARTIAL_SAVE_MS = 1000;
 const RESULT_PREVIEW = 200;
 const MAX_RESULT_CHARS = 100_000;
 
@@ -325,7 +326,7 @@ export class Session {
       const tools = this.#rt.tools.list(env, cfg.tools);
       const injections = await this.#rt.hooks.injections(hctx);
       let draft: RequestDraft = {
-        segments: buildSegments(cfg.system, this.#messages, injections),
+        segments: buildSegments(`${cfg.system}\n\n${languageLine(cfg.locale)}`, this.#messages, injections),
         tools: tools.map((t) => t.spec),
         params: {
           providerId: cfg.providerId,
@@ -396,6 +397,49 @@ export class Session {
       const callInfo: CallInfo = { attempts: 0 };
       let response: ModelResponse | undefined;
       let partialText = '';
+      // The answer so far is saved about once a second (meta.partial), so a
+      // hard kill keeps what the user already saw.
+      const partial = { id: newId('msg'), seq: this.#nextSeq(), saved: false, savedLen: 0, at: -Infinity, createdAt: isoNow() };
+      let partialTimer: ReturnType<typeof setTimeout> | undefined;
+      const stopPartialTimer = () => {
+        clearTimeout(partialTimer);
+        partialTimer = undefined;
+      };
+      const savePartial = (force = false) => {
+        if (partialText.length === partial.savedLen) return;
+        const wait = PARTIAL_SAVE_MS - (performance.now() - partial.at);
+        if (!force && wait > 0) {
+          // throttled: make sure the latest text is saved even if the stream stalls
+          partialTimer ??= setTimeout(() => {
+            partialTimer = undefined;
+            savePartial(true);
+          }, wait);
+          return;
+        }
+        const msg: Message = {
+          id: partial.id,
+          sessionId: this.id,
+          seq: partial.seq,
+          role: 'assistant',
+          kind: 'assistant',
+          content: [{ type: 'text', text: partialText }],
+          createdAt: partial.createdAt,
+          meta: { partial: true },
+        };
+        if (partial.saved) this.#rt.store.updateMessage(msg);
+        else this.#rt.store.appendMessage(msg);
+        partial.saved = true;
+        partial.savedLen = partialText.length;
+        partial.at = performance.now();
+      };
+      const keepPartial = (meta: Record<string, unknown>) => {
+        stopPartialTimer();
+        if (!partialText) return;
+        this.#append(
+          { id: partial.id, createdAt: partial.createdAt, role: 'assistant', kind: 'assistant', content: [{ type: 'text', text: partialText }], meta },
+          { seq: partial.seq, persisted: partial.saved },
+        );
+      };
       try {
         for await (const ev of provider.stream(request, {
           signal,
@@ -405,6 +449,7 @@ export class Session {
           if (ev.type === 'text') {
             partialText += ev.delta;
             this.#emit({ type: 'text.delta', delta: ev.delta });
+            savePartial();
           } else if (ev.type === 'thinking') {
             this.#emit({ type: 'thinking.delta', delta: ev.delta });
           } else if (ev.type === 'tool_call') {
@@ -414,12 +459,11 @@ export class Session {
           }
         }
       } catch (err) {
+        stopPartialTimer();
         lease.release();
         if (signal.aborted || isAbortError(err)) {
           trace.finish({ status: 'aborted', attempts: callInfo.attempts, ...(callInfo.httpStatus ? { httpStatus: callInfo.httpStatus } : {}) });
-          if (partialText) {
-            this.#append({ role: 'assistant', kind: 'assistant', content: [{ type: 'text', text: partialText }], meta: { interrupted: true } });
-          }
+          keepPartial({ interrupted: true });
           this.#emit({ type: 'turn.end', turn });
           if (this.#interrupt && !runAbort.signal.aborted) continue;
           return end('aborted', String(runAbort.signal.reason?.message ?? 'aborted'));
@@ -432,8 +476,10 @@ export class Session {
           ...(err instanceof ProviderError && err.status ? { httpStatus: err.status } : {}),
         });
         this.#emit({ type: 'error', message, retryable: err instanceof ProviderError && err.retryable });
+        keepPartial({ interrupted: true, error: true });
         return end('error', message);
       }
+      stopPartialTimer();
       lease.release();
       if (!response) {
         trace.finish({ status: 'error', error: 'stream ended without a response', attempts: callInfo.attempts });
@@ -464,13 +510,18 @@ export class Session {
       // 6. Plugins may rewrite the complete response.
       const streamed = JSON.stringify(response.content);
       response = await this.#rt.hooks.afterResponse(response, hctx);
-      const assistant = this.#append({
-        role: 'assistant',
-        kind: 'assistant',
-        content: response.content,
-        meta: { model: response.model, stopReason: response.stopReason, ...(response.rawStopReason ? { rawStopReason: response.rawStopReason } : {}) },
-        ...(response.providerExtras ? { providerExtras: response.providerExtras } : {}),
-      });
+      const assistant = this.#append(
+        {
+          id: partial.id,
+          createdAt: partial.createdAt,
+          role: 'assistant',
+          kind: 'assistant',
+          content: response.content,
+          meta: { model: response.model, stopReason: response.stopReason, ...(response.rawStopReason ? { rawStopReason: response.rawStopReason } : {}) },
+          ...(response.providerExtras ? { providerExtras: response.providerExtras } : {}),
+        },
+        { seq: partial.seq, persisted: partial.saved },
+      );
       if (JSON.stringify(response.content) !== streamed) {
         this.#emit({ type: 'message.replaced', messageId: assistant.id, content: response.content });
       }
@@ -719,19 +770,26 @@ export class Session {
   // Helpers
   // ---------------------------------------------------------------------------
 
-  #append(m: Omit<Message, 'id' | 'sessionId' | 'seq' | 'createdAt'> & Partial<Pick<Message, 'id' | 'createdAt'>>): Message {
-    const last = this.#messages[this.#messages.length - 1];
+  #append(
+    m: Omit<Message, 'id' | 'sessionId' | 'seq' | 'createdAt'> & Partial<Pick<Message, 'id' | 'createdAt'>>,
+    opts: { seq?: number; persisted?: boolean } = {},
+  ): Message {
     const message: Message = {
       ...m,
       id: m.id ?? newId('msg'),
       sessionId: this.id,
-      seq: (last?.seq ?? 0) + 1,
+      seq: opts.seq ?? this.#nextSeq(),
       createdAt: m.createdAt ?? isoNow(),
     };
     this.#messages.push(message);
-    this.#rt.store.appendMessage(message);
+    if (opts.persisted) this.#rt.store.updateMessage(message);
+    else this.#rt.store.appendMessage(message);
     this.#emit({ type: 'message', message });
     return message;
+  }
+
+  #nextSeq(): number {
+    return (this.#messages[this.#messages.length - 1]?.seq ?? 0) + 1;
   }
 
   #setStatus(status: SessionStatus, detail?: string): void {
@@ -765,6 +823,14 @@ export class Session {
     for (const fn of w) fn(r);
     if (!this.#run && !this.#hasPending()) for (const fn of this.#settleWaiters.splice(0)) fn();
   }
+}
+
+/** Answer in the user's language; before the user has written, use the interface language. */
+export function languageLine(locale: string | undefined): string {
+  return (
+    "Reply in the language of the user's latest message. When there is no user message yet, or it is unclear, " +
+    `use the interface language: ${locale ?? 'zh-CN'}.`
+  );
 }
 
 function textOf(content: ContentBlock[]): string {

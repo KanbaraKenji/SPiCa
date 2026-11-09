@@ -125,6 +125,28 @@ describe('recovery', () => {
     await rt2.close();
   });
 
+  it('hard kill mid-stream: the text already shown survives and is marked interrupted', async () => {
+    const path = join(dir, 'spica.db');
+    gw.enqueue({ text: ['Here is the first half of the answer', ' and the rest'], hangAfterChunks: 1 }, { text: 'continued' });
+    const script = fileURLToPath(new URL('./testing/crash-child.ts', import.meta.url));
+    const child = spawn(process.execPath, [script, path, gw.baseUrl, dir, 'stream'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    child.stdout.on('data', (d: Buffer) => (out += d.toString()));
+    await until(() => out.includes('READY') || child.exitCode !== null, 15_000);
+    const exited = new Promise((r) => child.once('exit', r));
+    child.kill('SIGKILL');
+    await exited;
+
+    const rt = makeRuntime(gw, { store: new SqliteStore(path), cwd: dir });
+    const { interrupted } = rt.restore();
+    const s = rt.session(interrupted[0]!)!;
+    const msgs = s.messages();
+    expect(msgs.map(textOf)).toEqual(['start the long job', 'Here is the first half of the answer']);
+    expect(msgs[1]!.meta).toMatchObject({ partial: true, interrupted: true });
+    expect((await s.resume()!).text).toBe('continued');
+    await rt.close();
+  }, 30_000);
+
   it('hard kill mid-tool: restore keeps the transcript and the queued message, resume continues', async () => {
     const path = join(dir, 'spica.db');
     gw.enqueue({ toolCalls: [{ id: 'h1', name: 'hang', args: {} }], usage: { input: 500, output: 5 } }, { text: 'picked up after the crash' });

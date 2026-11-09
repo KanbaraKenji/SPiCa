@@ -88,7 +88,8 @@ export const waitAgentsTool: Tool = {
   spec: {
     name: 'wait_agents',
     description:
-      'Wait until your sub-agents finish their current work and return their reports. ' +
+      'Wait until your sub-agents finish their current work. Each finished report is added to your conversation ' +
+        'as a report note right after this result. ' +
       'Without ids, waits for all of your sub-agents that are still working.',
     inputSchema: {
       type: 'object',
@@ -105,25 +106,24 @@ export const waitAgentsTool: Tool = {
     const targets = ids.map((id) => mine.find((c) => c.id === id));
     if (targets.some((t) => !t)) return { content: 'Some ids are not your sub-agents.', isError: true };
     const timeoutMs = Math.max(1, Number(input.timeout_seconds ?? 900)) * 1000;
-    const release = rt.markAwaited(ids);
-    try {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeout = new Promise<'timeout'>((r) => (timer = setTimeout(() => r('timeout'), timeoutMs)));
-      const aborted = new Promise<'aborted'>((r) => ctx.signal.addEventListener('abort', () => r('aborted'), { once: true }));
-      const outcome = await Promise.race([Promise.all(targets.map((t) => t!.settled())).then(() => 'done' as const), timeout, aborted]);
-      clearTimeout(timer);
-      const lines = targets.map((t) => {
-        const info = t!.info();
-        const report = rt.reportAlreadyNoted(t!.id)
-          ? '(report already in your context as a note from this sub-agent)'
-          : rt.lastReport(t!.id);
-        return `## ${info.title ?? 'Sub-agent'} (${info.id}) — ${info.status}\n${report ?? '(no report yet)'}`;
-      });
-      const head = outcome === 'done' ? 'All requested sub-agents have finished.' : outcome === 'timeout' ? 'Stopped waiting (timeout); some sub-agents are still working.' : 'Stopped waiting (interrupted).';
-      return { content: `${head}\n\n${lines.join('\n\n')}`, isError: outcome !== 'done' };
-    } finally {
-      release();
-    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<'timeout'>((r) => (timer = setTimeout(() => r('timeout'), timeoutMs)));
+    const aborted = new Promise<'aborted'>((r) => ctx.signal.addEventListener('abort', () => r('aborted'), { once: true }));
+    const outcome = await Promise.race([Promise.all(targets.map((t) => t!.settled())).then(() => 'done' as const), timeout, aborted]);
+    clearTimeout(timer);
+    // Reports themselves arrive as report notes right after this result.
+    const lines = targets.map((t) => {
+      const info = t!.info();
+      const delivered = rt.lastReport(t!.id) !== undefined;
+      return `- ${info.title ?? 'Sub-agent'} (${info.id}): ${info.status}${delivered ? ', report delivered as a note' : ', no report yet'}`;
+    });
+    const head =
+      outcome === 'done'
+        ? 'All requested sub-agents have finished.'
+        : outcome === 'timeout'
+          ? 'Stopped waiting (timeout); some sub-agents are still working.'
+          : 'Stopped waiting (interrupted).';
+    return { content: `${head}\n${lines.join('\n')}`, isError: outcome !== 'done' };
   },
 };
 
