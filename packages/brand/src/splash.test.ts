@@ -21,7 +21,7 @@ import { MARK_GEOMETRY } from './geometry.ts';
 import { SpicaSplash } from './react/SpicaSplash.tsx';
 
 const R = 5; // 测试里 ready 的时刻
-const S = splashSchedule();
+const S = splashSchedule({}, R);
 
 describe('加载中', () => {
   it('没 ready 就一直循环，不会结束', () => {
@@ -95,13 +95,14 @@ describe('收尾', () => {
   it('时间表按顺序首尾相接，扫字 0.6～0.9 秒', () => {
     const F = SPLASH_FINISH;
     expect(S.bigStart).toBeCloseTo(F.expand, 9);
-    expect(S.collapseStart - S.bigStart).toBeCloseTo((F.bigTurns * SPLASH_TIMING.orbitPeriod) / F.bigSpeed, 9);
+    const N = splashSchedule(); // 不给 ready 时按名义圈数
+    expect(N.collapseStart - N.bigStart).toBeCloseTo((F.bigTurns * SPLASH_TIMING.orbitPeriod) / F.bigSpeed, 9);
     expect(S.merge - S.collapseStart).toBeCloseTo(F.collapse, 9);
     expect(S.fillEnd - S.merge).toBeCloseTo(F.fill, 9);
     expect(S.sweepEnd - S.sweepStart).toBeCloseTo(F.sweep, 9);
     expect(F.sweep).toBeGreaterThanOrEqual(0.6);
     expect(F.sweep).toBeLessThanOrEqual(0.9);
-    expect(SPLASH_FINISH_AFTER).toBeCloseTo(S.end, 9);
+    expect(SPLASH_FINISH_AFTER).toBeCloseTo(splashSchedule().end, 9);
   });
 
   it('顺序定死：扩轨 → 大半径绕 bigTurns 圈 → 一结束就直接扎进花心（≤ 0.4 秒，只走一小段短弧）', () => {
@@ -111,9 +112,10 @@ describe('收尾', () => {
     const dt = 0.0002;
     let big = 0;
     for (let t = R + S.bigStart; t < R + S.collapseStart; t += dt) big += (splashSpeeds(t, R).orbit * dt) / SPLASH_TIMING.orbitPeriod;
-    expect(big).toBeCloseTo(F.bigTurns, 2);
-    // 评审视频 7 秒模拟加载：大半径段在第 9.0 秒结束
-    expect(7 + S.collapseStart).toBeCloseTo(9.0, 6);
+    expect(big).toBeCloseTo(((S.collapseStart - S.bigStart) * F.bigSpeed) / SPLASH_TIMING.orbitPeriod, 2);
+    expect(Math.abs(big - F.bigTurns)).toBeLessThanOrEqual(0.5);
+    // 评审视频 7 秒模拟加载：大半径段在约第 8.7 秒结束
+    expect(7 + splashSchedule({}, 7).collapseStart).toBeCloseTo(8.7, 1);
     expect(S.merge - S.collapseStart).toBeLessThanOrEqual(0.4);
     let dive = 0;
     for (let t = R + S.collapseStart; t < R + S.merge; t += dt) dive += (splashSpeeds(t, R).orbit * dt) / SPLASH_TIMING.orbitPeriod;
@@ -134,6 +136,17 @@ describe('收尾', () => {
     expect(load.length).toBeGreaterThan(10);
     expect(Math.max(...load.map((d) => d.opacity))).toBeLessThan(Math.max(...finish.map((d) => d.opacity)));
     expect(splashFrame(R + S.merge + 0.01, R).trails).toHaveLength(0);
+  });
+
+  it('不管加载在哪一刻完成，大半径段结束时前面那颗星都在屏幕右侧（字标一侧），圈数只在 ±0.5 圈内微调', () => {
+    for (const ready of [3, 4.1, 5.37, 7, 8.8, 12.25, 30]) {
+      const s = splashSchedule({}, ready);
+      const turns = ((s.collapseStart - s.bigStart) * SPLASH_FINISH.bigSpeed) / SPLASH_TIMING.orbitPeriod;
+      expect(Math.abs(turns - SPLASH_FINISH.bigTurns)).toBeLessThanOrEqual(0.5);
+      const [a, b] = splashFrame(ready + s.collapseStart, ready).stars;
+      const front = a!.front ? a! : b!;
+      expect(front.x).toBeGreaterThan(SPLASH_LAYOUT.cx + 50);
+    }
   });
 
   it('双星从各自所在的一侧飞进花心（两条弧线，始终关于花心对称）', () => {
@@ -235,7 +248,7 @@ describe('背景星点', () => {
     }
   });
 
-  it('可以指定原点：所有星点都从花心向外飞', () => {
+  it('可以指定原点（缺省是窗口正中央）', () => {
     const o = { x: SPLASH_LAYOUT.cx, y: SPLASH_LAYOUT.cy };
     for (const s of starfield(4, null, 1280, 720, 1, {}, o)) {
       const a1 = Math.atan2(s.y1 - o.y, s.x1 - o.x);

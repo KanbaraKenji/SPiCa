@@ -46,7 +46,7 @@ function frame(t) {
   const ready = t >= readyAt ? readyAt : null;
   const f = splashFrame(t, ready);
   const out = [];
-  for (const s of starfield(t, ready, W, H, 1, {}, { x: L.cx, y: L.cy })) {
+  for (const s of starfield(t, ready, W, H, 1)) {
     if (s.opacity <= 0.005) continue;
     out.push(`<line x1="${f2(s.x1)}" y1="${f2(s.y1)}" x2="${f2(s.x2)}" y2="${f2(s.y2)}" stroke="${s.accent ? T.acc : T.star}" stroke-width="${f2(s.width)}" stroke-linecap="round" opacity="${(s.opacity * f.layer).toFixed(3)}"/>`);
   }
