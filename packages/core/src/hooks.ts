@@ -85,8 +85,9 @@ export class HookRegistry {
     return before - this.#entries.length;
   }
 
+  /** Sources registered by plugins (the core's own hooks, `core:*`, are not listed). */
   get sources(): string[] {
-    return [...new Set(this.#entries.map((e) => e.source))];
+    return [...new Set(this.#entries.map((e) => e.source))].filter((s) => !s.startsWith('core:'));
   }
 
   async injections(ctx: HookContext): Promise<Injection[]> {

@@ -25,6 +25,7 @@ import type {
   ProjectDetail,
   ProjectInfo,
   ProjectActivityKind,
+  ProjectLogEntry,
   SessionStatus,
   WorkflowDef,
   WorkObject,
@@ -32,7 +33,7 @@ import type {
 import { mkdirSync } from 'node:fs';
 import { isAbsolute, join, relative } from 'node:path';
 import { newId } from './util.ts';
-import { BUILTIN_TEMPLATES, loadWorkflows, projectLogEntry, type RoleTemplate } from './projects.ts';
+import { BUILTIN_TEMPLATES, loadWorkflows, type RoleTemplate } from './projects.ts';
 
 export interface RuntimeOptions {
   providers: Provider[];
@@ -487,7 +488,7 @@ export class Runtime implements RuntimeInternals {
   logProjectActivity(session: Session, action: ProjectActivityKind, summary: string, target?: string, detail?: string): void {
     const projectId = session.info().projectId;
     if (!projectId) return;
-    const entry = projectLogEntry({
+    const entry: ProjectLogEntry = {
       id: newId('plog'),
       projectId,
       sessionId: session.id,
@@ -496,7 +497,7 @@ export class Runtime implements RuntimeInternals {
       ...(target ? { target: target.slice(0, 500) } : {}),
       ...(detail ? { detail: detail.slice(0, 500) } : {}),
       summary: summary.slice(0, 500),
-    });
+    };
     this.store.appendProjectLog(entry);
     this.events.emit({ sessionId: session.id, parentChain: session.parentChain }, { type: 'project.activity', entry });
   }
