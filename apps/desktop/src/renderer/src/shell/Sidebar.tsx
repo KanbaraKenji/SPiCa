@@ -123,14 +123,9 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
   const name = s.title ?? '';
   return (
     <>
-      <div className={active ? 'tree-row is-active' : 'tree-row'} style={{ paddingLeft: 2 + depth * 18 }}>
-        {kids.length ? (
-          <button type="button" className="tree-twisty" aria-label={open ? `收起 ${name}` : `展开 ${name}`} aria-expanded={open} onClick={() => tree.setExpanded(s.id, !open)}>
-            <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
-          </button>
-        ) : (
-          <span className="tree-twisty" aria-hidden />
-        )}
+      {/* Text lines up with the section heading; each level in is one step. The expand
+          arrow sits at the right end, only on rows that have something under them. */}
+      <div className={active ? 'tree-row is-active' : 'tree-row'} style={{ paddingLeft: depth * 16 }}>
         {tree.editing === s.id ? (
           <RenameField initial={name} onDone={(v) => tree.finishRename(s, v)} />
         ) : (
@@ -157,6 +152,11 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
             {summary ? <span className={/等你/.test(summary) ? 'tree-summary is-waiting' : 'tree-summary'}>{summary}</span> : <StatusMark status={s.status} />}
           </button>
         )}
+        {kids.length ? (
+          <button type="button" className="tree-twisty" aria-label={open ? `收起 ${name}` : `展开 ${name}`} aria-expanded={open} onClick={() => tree.setExpanded(s.id, !open)}>
+            <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
+          </button>
+        ) : null}
       </div>
       {open ? kids.map((k) => <Node key={k.id} s={k} depth={depth + 1} tree={tree} />) : null}
     </>
