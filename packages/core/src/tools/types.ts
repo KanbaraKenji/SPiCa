@@ -1,0 +1,109 @@
+// Tool contract and registry.
+import type { ToolSpec } from '../types.ts';
+import type { Tracer } from '../trace.ts';
+
+export interface ToolContext {
+  sessionId: string;
+  parentChain: string[];
+  /** Working folder; relative paths resolve against it. */
+  cwd: string;
+  signal: AbortSignal;
+  tracer: Tracer;
+  /** Content extractors for non-text files (PDF, Word, ...), registered by plugins. */
+  extractors: FileExtractor[];
+  /** Runtime services for tools that act on sessions (spawn, message, ...). */
+  services: Record<string, unknown>;
+}
+
+export interface ToolOutput {
+  content: string;
+  isError?: boolean;
+}
+
+export interface Tool {
+  spec: ToolSpec;
+  /** Irreversible actions (sending mail, writing external systems) need confirmation by default. */
+  irreversible?: boolean;
+  /**
+   * `ask`: the call pauses the run until the user answers (ask_user).
+   * The tool's execute() is not called; the answer becomes the result.
+   */
+  interaction?: 'ask';
+  /** Hide the tool when this returns false (e.g. no search backend configured). */
+  available?(env: ToolEnv): boolean;
+  execute(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput>;
+}
+
+export interface ToolEnv {
+  providerId: string;
+  /** The provider offers model-hosted web search and the session enabled it. */
+  serverWebSearch: boolean;
+}
+
+export interface FileExtractor {
+  /** Lower-case extensions including the dot, e.g. ['.pdf']. */
+  extensions: string[];
+  extract(path: string, signal: AbortSignal): Promise<string>;
+}
+
+interface ToolEntry {
+  tool: Tool;
+  source: string;
+}
+
+export class ToolRegistry {
+  readonly #tools = new Map<string, ToolEntry>();
+
+  register(tool: Tool, source = 'core'): () => void {
+    if (this.#tools.has(tool.spec.name)) throw new Error(`tool already registered: ${tool.spec.name}`);
+    const entry = { tool, source };
+    this.#tools.set(tool.spec.name, entry);
+    return () => {
+      if (this.#tools.get(tool.spec.name) === entry) this.#tools.delete(tool.spec.name);
+    };
+  }
+
+  unregisterSource(source: string): number {
+    let n = 0;
+    for (const [name, e] of this.#tools) {
+      if (e.source === source) {
+        this.#tools.delete(name);
+        n++;
+      }
+    }
+    return n;
+  }
+
+  get(name: string): Tool | undefined {
+    return this.#tools.get(name)?.tool;
+  }
+
+  /** Tools visible to a session: allow-list (if any) and availability check. */
+  list(env: ToolEnv, allow?: readonly string[]): Tool[] {
+    return [...this.#tools.values()]
+      .map((e) => e.tool)
+      .filter((t) => !allow || allow.includes(t.spec.name))
+      .filter((t) => !t.available || t.available(env));
+  }
+}
+
+/** Minimal input validation against the tool's JSON schema (required + primitive types). */
+export function validateInput(schema: Record<string, unknown>, input: unknown): string | undefined {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) return 'input must be a JSON object';
+  const obj = input as Record<string, unknown>;
+  if ('__invalid_json__' in obj) return 'arguments were not valid JSON';
+  const required = Array.isArray(schema.required) ? (schema.required as string[]) : [];
+  for (const key of required) if (obj[key] === undefined) return `missing required field "${key}"`;
+  const props = (schema.properties ?? {}) as Record<string, { type?: string | string[] }>;
+  for (const [key, value] of Object.entries(obj)) {
+    const t = props[key]?.type;
+    if (!t || value === undefined || value === null) continue;
+    const types = Array.isArray(t) ? t : [t];
+    const actual = Array.isArray(value) ? 'array' : typeof value;
+    const ok = types.some(
+      (x) => x === actual || (x === 'integer' && Number.isInteger(value)) || (x === 'number' && actual === 'number'),
+    );
+    if (!ok) return `field "${key}" should be ${types.join(' or ')}, got ${actual}`;
+  }
+  return undefined;
+}
