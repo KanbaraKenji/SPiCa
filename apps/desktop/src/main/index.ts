@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve as resolvePath } from 'node:path';
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, net, safeStorage, shell } from 'electron';
 import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
 import { deriveTokens, resolveSkin, schemeOf } from '../shared/skin';
@@ -13,6 +13,10 @@ import type { ProviderDraft, ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
+import { PluginManager, runtimeHost } from '@spica/plugins';
+import { RealPluginService, type PluginService } from './plugins/service';
+import { FakePluginService } from './plugins/fake';
+import type { PluginsCommand } from '../shared/plugins';
 import { chooseBackend, createBackend } from './backend';
 import { readModelEnv } from './backend/model-env';
 import { SettingsStore } from './settings-store';
@@ -249,6 +253,25 @@ ipcMain.on(DesktopChannel.Zoom, (_e, step: unknown) => {
   else if (step === 'in' || step === 'out') applyZoom(mainWindow, stepZoom(settings.get().zoom, step));
 });
 
+// Plugins live per user (no admin rights needed): %APPDATA%\Spica\plugins.
+const pluginRoot = join(app.getPath('userData'), 'plugins');
+const pluginService: PluginService = backend.runtime
+  ? new RealPluginService({
+      manager: new PluginManager({ host: runtimeHost(backend.runtime), root: pluginRoot }),
+      root: pluginRoot,
+      sourcesFile: join(app.getPath('userData'), 'plugin-sources.json'),
+      openFolder: async (p) => {
+        mkdirSync(p, { recursive: true });
+        return shell.openPath(p);
+      },
+      fetch: (url, init) => net.fetch(url, init),
+    })
+  : new FakePluginService(pluginRoot);
+ipcMain.handle(DesktopChannel.Plugins, (_e, cmd: PluginsCommand) => pluginService.run(cmd));
+pluginService.onChange(() => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DesktopChannel.PluginsChanged);
+});
+
 ipcMain.handle(DesktopChannel.ListProviders, () => providerList());
 ipcMain.handle(DesktopChannel.SaveProvider, (_e, draft: ProviderDraft) => {
   providers.save(draft);
@@ -288,6 +311,9 @@ nativeTheme.on('updated', () => {
 void app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   applyProviders();
+  void pluginService.start().catch(() => {
+    // Problems show up per plugin on the plugin page.
+  });
   mainWindow = createMainWindow();
   syncNativeChrome(mainWindow, settings.get());
   if (shotsDir) void runShots(mainWindow, settings, shotsDir);
@@ -297,9 +323,19 @@ void app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => {
+let quitting = false;
+app.on('before-quit', (e) => {
   settings.flush();
-  backend.dispose();
+  if (quitting) return;
+  // Plugin servers are child processes: stop them before the app goes away.
+  quitting = true;
+  e.preventDefault();
+  void Promise.race([pluginService.dispose(), new Promise((r) => setTimeout(r, 5000))])
+    .catch(() => {})
+    .finally(() => {
+      backend.dispose();
+      app.quit();
+    });
 });
 
 app.on('window-all-closed', () => {

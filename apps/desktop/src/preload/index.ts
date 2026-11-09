@@ -4,6 +4,7 @@ import { IpcChannel, type AgentApi, type AppInfo, type CoreEvent } from '@spica/
 import { DesktopChannel } from '../shared/ipc';
 import type { DesktopBridge, ProviderList, ShellState } from '../shared/bridge';
 import type { ProviderDraft, TestResult } from '../shared/providers';
+import type { PluginsCommand, PluginsResult } from '../shared/plugins';
 import type { SettingsPatch, ShellSettings } from '../shared/settings';
 
 function call<K extends keyof AgentApi>(method: K) {
@@ -41,6 +42,10 @@ const bridge: DesktopBridge = {
   onSettingsChanged: (listener) => subscribe<ShellSettings>(DesktopChannel.SettingsChanged, listener),
   zoom: (step) => ipcRenderer.send(DesktopChannel.Zoom, step),
   openFile: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.OpenFile, sessionId, path) as Promise<string | null>,
+  plugins: {
+    run: (cmd: PluginsCommand) => ipcRenderer.invoke(DesktopChannel.Plugins, cmd) as Promise<PluginsResult>,
+    onChanged: (listener) => subscribe<void>(DesktopChannel.PluginsChanged, () => listener()),
+  },
   providers: {
     list: () => ipcRenderer.invoke(DesktopChannel.ListProviders) as Promise<ProviderList>,
     save: (draft: ProviderDraft) => ipcRenderer.invoke(DesktopChannel.SaveProvider, draft) as Promise<ProviderList>,
