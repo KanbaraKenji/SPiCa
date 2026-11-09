@@ -14,6 +14,17 @@ const TIMEOUT_MS = 20_000;
 
 /** The result in words a non-developer can act on, pointing at the field to fix. */
 export function probeMessage(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' | 'model'>): string {
+  const advice = probeAdvice(r, draft);
+  // The core names the cause (取 token 失败：… / 调模型失败：…, TLS, proxy...); ours says which field to check.
+  const hint = r.ok ? '' : (r.hint ?? '').trim();
+  if (!hint) return advice;
+  // For a wrong key / model / request ours repeats the core's cause before its colon: keep only what to check.
+  const repeats = r.errorCode === 'auth' || r.errorCode === 'not_found' || r.errorCode === 'bad_request';
+  const check = repeats ? (/：(请检查.+)$/.exec(advice)?.[1] ?? advice) : advice;
+  return `${hint.replace(/[。.]$/, '')}。${check}`;
+}
+
+function probeAdvice(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' | 'model'>): string {
   const model = draft.model.trim();
   const url = draft.kind === 'wso2' ? '「网关地址」' : '「接口地址」';
   if (r.ok) {

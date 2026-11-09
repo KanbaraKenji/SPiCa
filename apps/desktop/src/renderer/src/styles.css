@@ -3085,3 +3085,22 @@ button.tree-twisty:hover {
 .panel-right {
   flex-direction: column;
 }
+
+.net-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.net-ca {
+  margin-top: 12px;
+}
+
+.net-now {
+  margin-top: 8px;
+}
+
+.settings-group .setting-row + .setting-row {
+  margin-top: 8px;
+}

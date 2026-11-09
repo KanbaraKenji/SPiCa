@@ -8,7 +8,8 @@ import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
 import { deriveTokens, resolveSkin, schemeOf } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
-import { mailForCore, type ShellSettings } from '../shared/settings';
+import { mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
+import type { NetworkState } from '../shared/bridge';
 import type { ProviderList, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import type { ProviderDraft, ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
@@ -104,6 +105,7 @@ function backendConfig(): DesktopBackendConfig {
       workflowsDir: workflowsDir(),
       // Mail sources come from mail plugins (they register themselves); here only on / off and the interval.
       mail: mailForCore(settings.get().mail),
+      network: networkForCore(settings.get().network),
       // Development limits (see docs/design/agent-core.md §10): Anthropic 100 USD total, 2 USD per call.
       budget: { perProvider: { anthropic: { globalUsd: 100, perCallUsd: 2 } }, perRunUsd: 1 },
       // Linked into the backend entry; named here as the core expects.
@@ -372,6 +374,15 @@ ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unkn
   return readPreview(full, previewFiles);
 });
 
+ipcMain.handle(DesktopChannel.Network, async (): Promise<NetworkState | null> => {
+  if (!(backend instanceof ProcessBackend)) return null;
+  try {
+    return { ...(await backend.networkSettings()), problems: networkProblems };
+  } catch {
+    return null;
+  }
+});
+
 // Plugin pages: only through the plugin manager, which knows the plugin's folder and its pages' tools.
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 ipcMain.handle(DesktopChannel.PluginViews, async (): Promise<PluginView[]> => {
@@ -480,12 +491,30 @@ settings.onChange((s) => {
 // Mail and the workflow folder change in the running core (its configure): no restart.
 let lastMail = JSON.stringify(settings.get().mail);
 let lastWorkflowsDir = workflowsDir();
+let lastNetwork = JSON.stringify(settings.get().network);
+/** Problems the core reported for the network settings (e.g. a certificate file it cannot read), in words. */
+let networkProblems: string[] = [];
+function networkProblem(raw: string): string {
+  if (/ca|certificate|pem/i.test(raw)) return `读不了证书文件：${settings.get().network.caFile || raw}`;
+  if (/proxy/i.test(raw)) return `代理地址不对：${settings.get().network.proxy || raw}`;
+  return `网络设置有问题：${raw}`;
+}
 settings.onChange((s) => {
   if (!(backend instanceof ProcessBackend)) return;
   const mail = JSON.stringify(s.mail);
   if (mail !== lastMail) {
     lastMail = mail;
     void backend.apply({ mail: mailForCore(s.mail) }).catch(() => undefined);
+  }
+  const net = JSON.stringify(s.network);
+  if (net !== lastNetwork) {
+    lastNetwork = net;
+    void backend
+      .apply({ network: networkForCore(s.network) })
+      .then((r) => {
+        networkProblems = r.warnings.map(networkProblem);
+      })
+      .catch(() => undefined);
   }
   const dir = workflowsDir();
   if (dir !== lastWorkflowsDir) {

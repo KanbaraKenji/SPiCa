@@ -185,6 +185,11 @@ export class ProcessBackend implements AgentBackend {
   }
 
   /** Workflows the core read at start, and files it could not read. */
+  /** Network settings in force now (no proxy password). */
+  networkSettings(): Promise<{ proxy: string | null; noProxy: string[]; caFile: string | null; useSystemCa: boolean }> {
+    return this.call('networkSettings');
+  }
+
   /** Plugin pages (the plugin manager's methods, in the core's process). */
   pluginViews(): Promise<PluginView[]> {
     return this.call('pluginViews');
