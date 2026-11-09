@@ -5,6 +5,7 @@ import { MAIL_INTERVALS, type MailPrefs, type SettingsPatch, type ShellSettings 
 import type { UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
+import { ConfirmDialog } from '../ui/Dialog';
 import { Switch } from './Plugins';
 
 export interface WorkflowsApi {
@@ -24,6 +25,8 @@ export interface GeneralProps {
   showInFolder(path: string): void;
   /** For tests. */
   now?: Date;
+  /** The model mail goes to for sorting, in words (e.g. 「DeepSeek · deepseek-chat」); empty when none is set. */
+  mailModel?: string;
 }
 
 type Range = 'all' | 'today' | 'week' | 'month';
@@ -230,9 +233,10 @@ function Workflows({ settings, onChange, workflows, pickFolder, onBackendRestart
 }
 
 export function General(props: GeneralProps) {
-  const { settings, onChange } = props;
+  const { settings, onChange, mailModel = '' } = props;
   const mail = settings.mail;
   const setMail = (patch: Partial<MailPrefs>) => onChange({ mail: { ...mail, ...patch } });
+  const [askingMail, setAskingMail] = useState(false);
   return (
     <section className="settings-section">
       <div className="settings-group">
@@ -242,7 +246,7 @@ export function General(props: GeneralProps) {
             <span className="setting-title">把来信分到项目</span>
             <span className="settings-hint">邮件插件拿到的新来信，按项目分好交给项目经理，在「收件箱」里确认。只给建议，不会替你发信。</span>
           </div>
-          <Switch on={mail.enabled} label="把来信分到项目" onChange={(enabled) => setMail({ enabled })} />
+          <Switch on={mail.enabled} label="把来信分到项目" onChange={(enabled) => (enabled ? setAskingMail(true) : setMail({ enabled: false }))} />
         </div>
         <div className="interval-row">
           <span className="field-label">多久查一次</span>
@@ -263,6 +267,18 @@ export function General(props: GeneralProps) {
           </div>
         </div>
       </div>
+      {askingMail ? (
+        <ConfirmDialog
+          title="把来信交给模型分拣？"
+          detail={`打开后，邮件插件读到的新来信（发件人、主题和正文开头）会发给${mailModel ? `「${mailModel}」` : '当前设置的模型'}分拣；归到项目的信，项目经理会用它自己对话的模型去读。用公司邮箱时，请确认这个模型可以处理公司邮件。Spica 只给建议，不会替你发信。`}
+          confirmLabel="打开"
+          onCancel={() => setAskingMail(false)}
+          onConfirm={() => {
+            setAskingMail(false);
+            setMail({ enabled: true, consentedAt: new Date().toISOString() });
+          }}
+        />
+      ) : null}
       <IgnoreRules key={JSON.stringify(mail.ignore)} mail={mail} onSave={(ignore) => setMail({ ignore })} />
       <Workflows {...props} />
       <UsageLog {...props} />

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MailItem } from '@spica/protocol';
 import { mailTime, needsYou, reasonOf, surenessOf, unseenByManager, verdictOf } from './mail';
-import { sanitizeSettings } from './settings';
+import { mailForCore, sanitizeSettings } from './settings';
 
 const base: MailItem = {
   id: 'src:1',
@@ -69,9 +69,13 @@ describe('mailTime', () => {
 
 describe('mail settings', () => {
   it('defaults to on every 5 minutes and cleans what it reads', () => {
-    expect(sanitizeSettings({}).mail).toEqual({ enabled: true, intervalMinutes: 5, ignore: { from: [], subject: [] } });
+    // Off until the user turns it on and agrees; an old "on" without the agreement counts as off.
+    expect(sanitizeSettings({}).mail).toEqual({ enabled: false, consentedAt: null, intervalMinutes: 5, ignore: { from: [], subject: [] } });
+    expect(sanitizeSettings({ mail: { enabled: true } }).mail.enabled).toBe(false);
+    expect(sanitizeSettings({ mail: { enabled: true, consentedAt: '2026-11-10T01:00:00+08:00' } }).mail.enabled).toBe(true);
+    expect(mailForCore({ enabled: true, consentedAt: null, intervalMinutes: 5, ignore: { from: [], subject: [] } })).toEqual({ enabled: false, intervalMinutes: 5, ignore: { from: [], subject: [] } });
     const s = sanitizeSettings({ mail: { enabled: false, intervalMinutes: 0, ignore: { from: [' news@ ', '', 3], subject: 'x' } }, workflowsDir: ' D:\\流程 ', mailSeen: { a: 'nope', b: '2026-11-09T10:00:00Z' } });
-    expect(s.mail).toEqual({ enabled: false, intervalMinutes: 1, ignore: { from: ['news@'], subject: [] } });
+    expect(s.mail).toEqual({ enabled: false, consentedAt: null, intervalMinutes: 1, ignore: { from: ['news@'], subject: [] } });
     expect(s.workflowsDir).toBe('D:\\流程');
     expect(s.mailSeen).toEqual({ b: '2026-11-09T10:00:00Z' });
   });

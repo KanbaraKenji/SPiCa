@@ -255,13 +255,18 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       .catch((err: unknown) => agent.state.set((v) => ({ ...v, notice: friendlyError(err) })));
   };
   const id = state.activeId;
+  const usingDefaultModel = models.find((p) => p.isDefault) ?? models[0];
+
+  // The model mail is sorted with (the core says so in mail.configured; else the default model).
+  const triage = mail.triageModel ?? (usingDefaultModel ? { providerId: usingDefaultModel.id, model: usingDefaultModel.model } : null);
+  const mailModelLabel = triage ? `${models.find((p) => p.id === triage.providerId)?.name ?? triage.providerId} · ${triage.model}` : '';
 
   // The input box's controls: what the next message goes out with.
   const draft = state.draft;
   const topCwd = state.sessions.find((s) => s.id === state.topId)?.cwd ?? '';
   const modelOptions = models.flatMap((p) => [...new Set([p.model, p.strongModel].filter(Boolean))].map((m) => ({ providerId: p.id, model: m, label: `${p.name} · ${m}` })));
   const using = session ? { providerId: session.providerId, model: session.model } : draft.providerId && draft.model ? { providerId: draft.providerId, model: draft.model } : null;
-  const usingDefault = models.find((p) => p.isDefault) ?? models[0];
+  const usingDefault = usingDefaultModel;
   const shown = using ?? (usingDefault ? { providerId: usingDefault.id, model: usingDefault.model } : null);
   const composerTools: ComposerTools = {
     pickFiles: () => bridge.pickFiles('添加附件'),
@@ -429,6 +434,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               projects={inboxProjects}
               exportUsageLog={bridge.exportUsageLog}
               showInFolder={bridge.showInFolder}
+              mailModel={mailModelLabel}
             />
           ) : view === 'inbox' ? (
             <InboxView

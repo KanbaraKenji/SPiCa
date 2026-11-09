@@ -18,6 +18,7 @@ const view = (over: Partial<MailView> = {}): MailView => ({
   problem: '',
   threadId: null,
   flagged: [],
+  triageModel: null,
   ...over,
 });
 

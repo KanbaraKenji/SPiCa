@@ -7,7 +7,7 @@ import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
 import { deriveTokens, resolveSkin, schemeOf } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
-import type { ShellSettings } from '../shared/settings';
+import { mailForCore, type ShellSettings } from '../shared/settings';
 import type { ProviderList, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import type { ProviderDraft, ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
@@ -98,7 +98,7 @@ function backendConfig(): DesktopBackendConfig {
       locale: 'zh-CN',
       workflowsDir: workflowsDir(),
       // Mail sources come from mail plugins (they register themselves); here only on / off and the interval.
-      mail: { ...settings.get().mail },
+      mail: mailForCore(settings.get().mail),
       // Development limits (see docs/design/agent-core.md §10): Anthropic 100 USD total, 2 USD per call.
       budget: { perProvider: { anthropic: { globalUsd: 100, perCallUsd: 2 } }, perRunUsd: 1 },
       // Linked into the backend entry; named here as the core expects.
@@ -417,7 +417,7 @@ settings.onChange((s) => {
   const mail = JSON.stringify(s.mail);
   if (mail !== lastMail) {
     lastMail = mail;
-    void backend.apply({ mail: { ...s.mail } }).catch(() => undefined);
+    void backend.apply({ mail: mailForCore(s.mail) }).catch(() => undefined);
   }
   const dir = workflowsDir();
   if (dir !== lastWorkflowsDir) {
