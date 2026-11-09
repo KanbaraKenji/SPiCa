@@ -51,7 +51,9 @@ const shotsDir = process.env.SPICA_SHOTS;
 const automated = Boolean(capturePath || shotsDir);
 
 app.setName(APP_NAME);
-const APP_USER_MODEL_ID = 'dev.spica.desktop';
+// The development build has its own id: with the same one as an installed Spica,
+// Windows groups its window under that shortcut and shows the shortcut's icon.
+const APP_USER_MODEL_ID = app.isPackaged ? 'dev.spica.desktop' : 'dev.spica.desktop.dev';
 if (process.platform === 'win32') app.setAppUserModelId(APP_USER_MODEL_ID);
 // Screenshots must not read or change the user's own settings.
 //   SPICA_USER_DATA=<dir>    use another settings folder (manual checks without touching your own)
