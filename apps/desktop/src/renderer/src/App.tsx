@@ -614,6 +614,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               project={project}
               activity={project ? (state.activity[project.id] ?? []) : []}
               onClose={layout.right === 'floating' ? () => setFloating(null) : undefined}
+              hideHeading={panelPages.length > 0}
             />
             )}
           </div>
