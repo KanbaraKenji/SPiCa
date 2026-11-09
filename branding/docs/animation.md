@@ -87,8 +87,9 @@ ready 到整层消失共 6.0 秒（`SPLASH_FINISH_AFTER`）。
 - 组件 `<SpicaSplash>` 同步（新增 `speedRatio`、`finish` 参数），品牌包测试全过。
 - 高清短片渲染脚本 `packages/brand/scripts/render-splash-video.mjs`（1280×720、60fps，可按帧段并行）。
 
-还没做：
-- 第四版高清 mp4（明暗各一）正在渲染；点选页（mp4 内嵌播放 + 改动表 + 收尾时间表 + 「行不行」一题）已搭好骨架，还没发给他。
-- 还没在 Electron 里实跑第四版组件。
+- 第四版高清 mp4 明暗各一已出（`docs/screenshots/brand/boot-v4-kepler-*-1280p60.mp4`），点选页（mp4 内嵌播放 + 改动表 + 收尾时间表 + 「行不行」一题）已发他。
 
-下一步第一件事：用 `render-splash-video.mjs` 出明暗两段 mp4（readyAt 7、共 810 帧），放进 `docs/screenshots/brand/`，发点选页问「行不行」。
+还没做：
+- 还没在 Electron 里实跑第四版组件（`npm run preview:splash -w @spica/brand -- <目录> dark|light`）。
+
+下一步第一件事：等他回第四版「行不行」；回「还要改」就按他点名的那一步改 `SPLASH_FINISH` 或 `speedRatio` 里对应的数，再用 `render-splash-video.mjs` 出同规格视频。
