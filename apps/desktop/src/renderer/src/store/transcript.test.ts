@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CoreEvent } from '@spica/protocol';
 import { FakeBackend } from '../../../main/backend/fake';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
-import { applyEvent, askAnswer, filesOf, fromHistory, humanError, resultBody, type Transcript } from './transcript';
+import { applyEvent, askAnswer, fileCardLine, filesOf, fromHistory, humanError, resultBody, type Transcript } from './transcript';
 
 describe('fromHistory', () => {
   const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
@@ -46,6 +46,35 @@ describe('notes from sub-agents', () => {
       { kind: 'note', id: 'n1', text: '春风拂面。', child: { kind: 'report', fromSessionId: 's-1', fromTitle: '写春天', text: '春风拂面。' } },
       { kind: 'note', id: 'n2', text: '普通备注' },
     ]);
+  });
+});
+
+describe('file cards', () => {
+  const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
+
+  it('uses the core file details when there are some, and the path argument otherwise', () => {
+    const t = fromHistory(seed.messages[SEED_IDS.chat]!);
+    const r = t.items[1];
+    if (r?.kind !== 'response') throw new Error('expected response');
+    const files = filesOf(r.blocks, t.fileCards);
+    expect(files.map((f) => f.card?.name)).toEqual(['需求说明.docx', '测试报告.pdf']);
+    expect(files[1]?.path).toBe('D:\\工作\\样机评审\\测试报告.pdf');
+    expect(filesOf(r.blocks).map((f) => f.path)).toEqual(['需求说明.docx', '测试报告.pdf']);
+  });
+
+  it('says what was read in one line', () => {
+    const at = '2026-11-09T10:00:00+08:00';
+    const base = { path: 'D:\\a', name: 'a', sizeBytes: 1, modifiedAt: at, extractedAt: at };
+    expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 30, read: { pages: '1-5' }, truncated: true })).toBe('PDF · 30 页 · 读了第 1-5 页 · 没读完');
+    expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: '报价', rows: 3, cols: 2 }], read: { sheet: '报价', rows: '1-3' } })).toBe('Excel · 1 个表 · 读了「报价」第 1-3 行');
+    expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 2, read: {}, noTextLayer: true })).toBe('PDF · 2 页 · 扫描件，读不出文字');
+  });
+
+  it('keeps file details that arrive as events', () => {
+    const at = '2026-11-09T10:00:00+08:00';
+    const file = { path: 'D:\\b.txt', name: 'b.txt', kind: 'text' as const, sizeBytes: 3, modifiedAt: at, extractedAt: at, read: { rows: '1-3' } };
+    const t = applyEvent({ items: [] }, { seq: 1, at, sessionId: 's', parentChain: [], type: 'file.card', callId: 'c1', file });
+    expect(t.fileCards).toEqual({ c1: file });
   });
 });
 

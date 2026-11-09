@@ -21,7 +21,7 @@ const ROLE_LABEL: Record<SessionInfo['role'], string> = { top: '对话', manager
 export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onOpenSession, onClose }: DetailPanelProps) {
   const blocks = transcript.items.flatMap((i) => (i.kind === 'response' ? i.blocks : []));
   const tools = blocks.filter((b): b is ToolBlock => b.type === 'tool');
-  const files = filesOf(blocks);
+  const files = filesOf(blocks, transcript.fileCards);
   return (
     <aside className="detail" aria-label="详情">
       <header className="detail-head">

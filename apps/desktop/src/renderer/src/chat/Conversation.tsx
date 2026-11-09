@@ -32,9 +32,9 @@ function segments(blocks: Block[]): Segment[] {
   return out;
 }
 
-function Response({ item, live, actions }: { item: Extract<Item, { kind: 'response' }>; live: boolean; actions: ConversationActions }) {
+function Response({ item, live, actions, cards }: { item: Extract<Item, { kind: 'response' }>; live: boolean; actions: ConversationActions; cards: Transcript['fileCards'] }) {
   const segs = segments(item.blocks);
-  const files = filesOf(item.blocks);
+  const files = filesOf(item.blocks, cards);
   return (
     <div className="turn-response">
       {segs.map((s, i) => {
@@ -56,7 +56,7 @@ function Response({ item, live, actions }: { item: Extract<Item, { kind: 'respon
         }
       })}
       {live ? null : <FileCards files={files} onOpen={actions.openFile} />}
-      {item.interrupted ? <p className="turn-note">已停止</p> : null}
+      {item.interrupted ? <p className="turn-note">（中断）</p> : null}
     </div>
   );
 }
@@ -168,7 +168,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                     {item.text}
                   </p>
                 );
-              return <Response key={item.id} item={item} live={running && i === lastIndex} actions={actions} />;
+              return <Response key={item.id} item={item} live={running && i === lastIndex} actions={actions} cards={transcript.fileCards} />;
             })}
             <StatusLine transcript={transcript} />
             {session?.status === 'interrupted' && !running ? (
