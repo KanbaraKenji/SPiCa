@@ -22,6 +22,26 @@ describe('Sidebar', () => {
     expect(screen.getByRole('button', { name: /核对三季度支出/ })).toBeTruthy();
   });
 
+  it('shows the inbox with what waits, and 有新来信 on a project', () => {
+    const onInbox = vi.fn();
+    render(
+      <Sidebar
+        sessions={seed.sessions}
+        activeId={SEED_IDS.chat}
+        onOpen={vi.fn()}
+        onNewChat={vi.fn()}
+        onSettings={vi.fn()}
+        settingsOpen={false}
+        inbox={{ count: 3, open: false, onOpen: onInbox }}
+        notes={new Map([[SEED_IDS.pm2, '有新来信']])}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /收件箱/ }));
+    expect(onInbox).toHaveBeenCalled();
+    expect(screen.getByLabelText('3 封待确认')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /年度预算.*有新来信/ })).toBeTruthy();
+  });
+
   it('summarises a collapsed project with only non-zero counts', () => {
     const kids = seed.sessions.filter((s) => s.parentId === SEED_IDS.pm);
     expect(projectSummary(kids)).toBe('1 个等你 · 1 个在跑 · 1 个排队');

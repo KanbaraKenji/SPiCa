@@ -21,6 +21,10 @@ export interface SidebarProps {
   topId?: string | null;
   /** Sets a session's name; an empty name goes back to the automatic one. Absent: no renaming. */
   onRename?: (id: string, title: string | null) => void;
+  /** The 收件箱 row; absent when the backend has no mail. `count` = mails waiting for the user. */
+  inbox?: { count: number; open: boolean; onOpen(): void };
+  /** Short words after a row's title, by session id (e.g. 「有新来信」 on a project). */
+  notes?: ReadonlyMap<string, string>;
 }
 
 function byRecent(a: SessionInfo, b: SessionInfo): number {
@@ -56,6 +60,7 @@ interface TreeProps {
   editing: string | null;
   startRename?: (s: SessionInfo, at?: { x: number; y: number }) => void;
   finishRename(s: SessionInfo, value: string | null): void;
+  notes?: ReadonlyMap<string, string>;
 }
 
 /** Projects are renamed through the project, not the manager's session. */
@@ -148,6 +153,7 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
             title={name}
           >
             <span className="tree-title">{name}</span>
+            {tree.notes?.get(s.id) && !active ? <span className="tree-note">{tree.notes.get(s.id)}</span> : null}
             {summary ? <span className={/等你/.test(summary) ? 'tree-summary is-waiting' : 'tree-summary'}>{summary}</span> : <StatusMark status={s.status} />}
           </button>
         )}
@@ -157,7 +163,7 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
   );
 }
 
-export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, onSettings, settingsOpen, topId = null, onRename }: SidebarProps) {
+export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, onSettings, settingsOpen, topId = null, onRename, inbox, notes }: SidebarProps) {
   const { chats, projects, childrenOf, top } = useMemo(() => {
     const chats = sessions.filter((s) => s.role === 'top' && !s.parentId).sort(byRecent);
     // A project is a project-manager session, wherever it was started from.
@@ -183,7 +189,9 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, o
   const tree: TreeProps = {
     childrenOf,
     activeId,
-    settingsOpen,
+    // Another view (settings, inbox) is open: no row is the current one.
+    settingsOpen: settingsOpen || Boolean(inbox?.open),
+    ...(notes ? { notes } : {}),
     expanded,
     setExpanded: (id, open) => setExpandedState((e) => ({ ...e, [id]: open })),
     onOpen,
@@ -212,6 +220,17 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, o
           <Icon name="plus" />
           <span>新对话</span>
         </button>
+        {inbox ? (
+          <button type="button" className={inbox.open ? 'side-action is-active' : 'side-action'} onClick={inbox.onOpen} aria-current={inbox.open ? 'page' : undefined}>
+            <Icon name="inbox" />
+            <span>收件箱</span>
+            {inbox.count ? (
+              <span className="side-count" aria-label={`${inbox.count} 封待确认`}>
+                {inbox.count}
+              </span>
+            ) : null}
+          </button>
+        ) : null}
       </div>
       <div className="sidebar-scroll">
         {top ? (

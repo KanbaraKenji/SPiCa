@@ -4,6 +4,6 @@ import type { BackendConfig } from '@spica/core';
 export interface DesktopBackendConfig {
   /** Sent as the start message's config (providers, defaults, database, modules, extensions...). */
   core: BackendConfig;
-  /** Default model for new top-level sessions; null when none is configured. */
+  /** Default model for new sessions; null when none is configured. */
   current: { providerId: string; model: string } | null;
 }

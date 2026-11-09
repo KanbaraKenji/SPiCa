@@ -8,7 +8,7 @@ import { DesktopChannel } from '../shared/ipc';
 import { deriveTokens, resolveSkin, schemeOf } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
 import type { ShellSettings } from '../shared/settings';
-import type { ProviderList, ShellState } from '../shared/bridge';
+import type { ProviderList, ShellState, WorkflowsState } from '../shared/bridge';
 import type { ProviderDraft, ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
@@ -63,7 +63,12 @@ if (forcedTheme === 'dark' || forcedTheme === 'light') nativeTheme.themeSource =
 const modelEnv = app.isPackaged || automated || process.env.SPICA_DEV_MODELS === '0' ? {} : readModelEnv(resolvePath(app.getAppPath(), '../../.env.local'));
 const backendKind = chooseBackend({ requested: process.env.SPICA_BACKEND, automated });
 const workDir = join(app.getPath('documents'), 'Spica');
-if (backendKind === 'core') mkdirSync(workDir, { recursive: true });
+/** Where workflow files live unless the user picked another folder (设置 › 常规). */
+const defaultWorkflowsDir = join(workDir, 'workflows');
+if (backendKind === 'core') mkdirSync(defaultWorkflowsDir, { recursive: true });
+function workflowsDir(): string {
+  return settings.get().workflowsDir || defaultWorkflowsDir;
+}
 const pluginRoot = join(app.getPath('userData'), 'plugins');
 
 /** Everything the core's process needs, built from the current settings at every (re)start. */
@@ -86,6 +91,9 @@ function backendConfig(): DesktopBackendConfig {
       defaults: { providerId: current?.providerId ?? '', model: current?.model ?? '', maxTokens: 4096, maxTurns: 30 },
       cwd: workDir,
       locale: 'zh-CN',
+      workflowsDir: workflowsDir(),
+      // Mail sources come from mail plugins (they register themselves); here only on / off and the interval.
+      mail: { ...settings.get().mail },
       // Development limits (see docs/design/agent-core.md §10): Anthropic 100 USD total, 2 USD per call.
       budget: { perProvider: { anthropic: { globalUsd: 100, perCallUsd: 2 } }, perRunUsd: 1 },
       // Linked into the backend entry; named here as the core expects.
@@ -93,7 +101,7 @@ function backendConfig(): DesktopBackendConfig {
       extensions: [
         {
           module: '@spica/desktop-host',
-          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), current },
+          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json') },
         },
       ],
     },
@@ -176,6 +184,9 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'createProject',
   'listProjects',
   'getProject',
+  'listMail',
+  'pollMail',
+  'mailFeedback',
 ]);
 
 let mainWindow: BrowserWindow | undefined;
@@ -360,8 +371,64 @@ settings.onChange((s) => {
   void refreshNotices();
 });
 
-ipcMain.handle(DesktopChannel.PickFolder, async (): Promise<string | null> => {
-  const opts: Electron.OpenDialogOptions = { title: '选择项目文件夹', properties: ['openDirectory', 'createDirectory'] };
+// Mail and the workflow folder change in the running core (its configure): no restart.
+let lastMail = JSON.stringify(settings.get().mail);
+let lastWorkflowsDir = workflowsDir();
+settings.onChange((s) => {
+  if (!(backend instanceof ProcessBackend)) return;
+  const mail = JSON.stringify(s.mail);
+  if (mail !== lastMail) {
+    lastMail = mail;
+    void backend.apply({ mail: { ...s.mail } }).catch(() => undefined);
+  }
+  const dir = workflowsDir();
+  if (dir !== lastWorkflowsDir) {
+    lastWorkflowsDir = dir;
+    workflowsApplied = backend.apply({ workflowsDir: dir }).catch(() => undefined);
+  }
+});
+/** The last workflow folder change, so the settings page reads the new folder's result. */
+let workflowsApplied: Promise<unknown> = Promise.resolve();
+
+ipcMain.handle(DesktopChannel.Workflows, async (_e, op: unknown): Promise<WorkflowsState> => {
+  const dir = workflowsDir();
+  let message = '';
+  if (op === 'reload' && backend instanceof ProcessBackend) workflowsApplied = backend.apply({ workflowsDir: dir }).catch(() => undefined);
+  await workflowsApplied;
+  if (op === 'open') {
+    if (dir === defaultWorkflowsDir) mkdirSync(dir, { recursive: true });
+    const err = existsSync(dir) ? await shell.openPath(dir) : '文件夹不存在';
+    if (err) message = `打不开这个文件夹：${err}`;
+  }
+  if (!(backend instanceof ProcessBackend)) return { dir, names: ['产品开发（示例）'], problems: [], ...(message ? { message } : {}) };
+  try {
+    const w = await backend.workflows();
+    return { dir, names: w.names, problems: w.errors.map(workflowProblem), ...(message ? { message } : {}) };
+  } catch (err) {
+    return { dir, names: [], problems: [], message: message || friendly(err) };
+  }
+});
+
+/** The core's workflow loading errors, in words. */
+function workflowProblem(raw: string): string {
+  const folder = /^workflows folder (.+?): .*ENOENT/.exec(raw);
+  if (folder) return `找不到这个文件夹：${folder[1]}`;
+  const json = /^workflow (.+?): not valid JSON/.exec(raw);
+  if (json) return `${json[1]} 不是有效的 JSON，没有读进来。`;
+  const dup = /^workflow (.+?): id "(.+?)" is already defined/.exec(raw);
+  if (dup) return `${dup[1]}：编号「${dup[2]}」和别的工作流重复，没有读进来。`;
+  const other = /^workflow (.+?): (.*)$/.exec(raw);
+  if (other) return `${other[1]} 没有读进来：${other[2]}`;
+  return raw;
+}
+
+function friendly(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /[\u4e00-\u9fff]/.test(msg) ? msg : '后台没有响应，请稍后再试。';
+}
+
+ipcMain.handle(DesktopChannel.PickFolder, async (_e, title: unknown): Promise<string | null> => {
+  const opts: Electron.OpenDialogOptions = { title: typeof title === 'string' && title ? title.slice(0, 60) : '选择文件夹', properties: ['openDirectory', 'createDirectory'] };
   const r = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts);
   return r.canceled ? null : (r.filePaths[0] ?? null);
 });

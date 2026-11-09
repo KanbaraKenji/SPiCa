@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CoreEvent } from '@spica/protocol';
+import type { CoreEvent, Message } from '@spica/protocol';
 import { FakeBackend } from '../../../main/backend/fake';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
 import { applyEvent, askAnswer, fileCardLine, filesOf, fromHistory, humanError, resultBody, type Transcript } from './transcript';
@@ -25,6 +25,24 @@ describe('fromHistory', () => {
     const ask = r.blocks.find((b) => b.type === 'ask');
     expect(ask).toMatchObject({ question: '纪要按哪种口径写？', options: ['只写结论', '结论加讨论过程', '按议题逐条写'] });
     expect(ask?.type === 'ask' ? ask.answer : 'x').toBeUndefined();
+  });
+});
+
+describe('mail handed to a project manager', () => {
+  it('shows as 收到来信, not as the core’s English instructions', () => {
+    const msg: Message = {
+      id: 'm1',
+      seq: 1,
+      sessionId: 's',
+      role: 'user' as const,
+      kind: 'user' as const,
+      content: [{ type: 'text' as const, text: 'New mail for this project.' }],
+      createdAt: '2026-11-09T10:00:00+08:00',
+      meta: { author: 'parent', mails: [{ id: 'src:1', sourceId: 'src', messageId: '1' }] },
+    };
+    expect(fromHistory([msg]).items).toEqual([{ kind: 'mail', id: 'm1', mailIds: ['src:1'] }]);
+    const live = applyEvent({ items: [] }, { type: 'message', message: msg, seq: 1, at: msg.createdAt, sessionId: 's', parentChain: [] } as CoreEvent);
+    expect(live.items[0]?.kind).toBe('mail');
   });
 });
 

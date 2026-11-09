@@ -165,11 +165,12 @@ export class AgentStore {
   }
 
   /** Creates a project (the core attaches its manager) and opens the manager's conversation. Resolves to a problem in words, or null. */
-  async createProject(input: { name: string; folder?: string; brief?: string }): Promise<string | null> {
+  async createProject(input: { name: string; folder?: string; brief?: string }, after?: (p: ProjectInfo) => Promise<void>): Promise<string | null> {
     if (!this.#api.createProject) return '这个版本还不能建项目。';
     try {
       const p = await this.#api.createProject(input);
       this.state.set((v) => ({ ...v, projects: [p, ...v.projects.filter((x) => x.id !== p.id)] }));
+      if (after) await after(p);
       await this.#refreshSessions();
       await this.open(p.managerSessionId);
       return null;

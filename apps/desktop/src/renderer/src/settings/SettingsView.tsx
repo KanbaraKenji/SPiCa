@@ -1,15 +1,17 @@
-// Settings page, shown in the main pane: 外观 and 模型 as two tabs.
+// Settings page, shown in the main pane: 常规 / 外观 / 模型 / 插件 / 关于 as tabs.
 import type { ShellStore } from '../store/shell';
 import { useShell } from '../store/shell';
 import { Appearance } from './Appearance';
 import { Models, type ProvidersApi } from './Models';
 import { Plugins, type PluginsApi } from './Plugins';
 import { About } from './About';
+import { General, type WorkflowsApi } from './General';
 import type { UpdateState } from '../../../shared/updates';
 
-export type SettingsTab = 'appearance' | 'models' | 'plugins' | 'about';
+export type SettingsTab = 'general' | 'appearance' | 'models' | 'plugins' | 'about';
 
 const TABS: { id: SettingsTab; label: string }[] = [
+  { id: 'general', label: '常规' },
   { id: 'appearance', label: '外观' },
   { id: 'models', label: '模型' },
   { id: 'plugins', label: '插件' },
@@ -26,9 +28,12 @@ export interface SettingsViewProps {
   onInstallUpdate(): void;
   tab: SettingsTab;
   onTab(tab: SettingsTab): void;
+  workflows: WorkflowsApi;
+  pickFolder(): Promise<string | null>;
+  onBackendRestarted(listener: () => void): () => void;
 }
 
-export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab }: SettingsViewProps) {
+export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, workflows, pickFolder, onBackendRestarted }: SettingsViewProps) {
   const { settings } = useShell(shell);
   return (
     <div className="settings">
@@ -50,7 +55,9 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
           ))}
         </div>
         <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-          {tab === 'appearance' ? (
+          {tab === 'general' ? (
+            <General settings={settings} onChange={(p) => shell.update(p)} workflows={workflows} pickFolder={pickFolder} onBackendRestarted={onBackendRestarted} />
+          ) : tab === 'appearance' ? (
             <Appearance settings={settings} activeSkin={shell.activeSkin()} onChange={(p) => shell.update(p)} />
           ) : tab === 'models' ? (
             <Models api={providers} />

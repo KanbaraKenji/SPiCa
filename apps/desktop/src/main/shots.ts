@@ -47,6 +47,8 @@ export async function runShots(win: BrowserWindow, settings: SettingsStore, dir:
     win.setPosition(0, 0);
     win.showInactive();
     let count = 0;
+    // The window loads before the app has mounted; switching views needs the hook.
+    for (let i = 0; i < 100 && !(await win.webContents.executeJavaScript('Boolean(window.__spicaShots)', true)); i++) await new Promise((r) => setTimeout(r, 100));
     for (const view of SHOT_VIEWS) {
       await win.webContents.executeJavaScript(`window.__spicaShots?.setView(${JSON.stringify(view)})`, true);
       for (const skin of SHOT_SKINS) {

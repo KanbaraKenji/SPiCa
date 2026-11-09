@@ -39,6 +39,8 @@ export function activityText(e: EntryFields): string {
     case 'stage':
       return `${t ? `进入阶段${q(t)}` : '换了阶段'}${d ? `：${d}` : ''}`;
     case 'note':
+      // The mail pipeline logs a received mail as a note: subject + mail id (<source>:<id>).
+      if (t && d && /^[\w.-]+:\S+$/.test(d)) return `收到来信${q(t)}`;
       return `记了：${d ?? t ?? ''}`.replace(/：$/, '');
     default:
       return d ?? t ?? '';

@@ -11,6 +11,10 @@ import { Conversation, type ConversationActions } from './chat/Conversation';
 import { SettingsView, type SettingsTab } from './settings/SettingsView';
 import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
+import { InboxView, type InboxProject } from './shell/InboxView';
+import { MailStore, useMail } from './store/mail';
+import { needsYou, unseenByManager } from '../../shared/mail';
+import type { MailItem } from '@spica/protocol';
 import { Icon } from './ui/Icon';
 import { SpicaBanner, SpicaMark } from '@spica/brand/react';
 
@@ -19,21 +23,33 @@ export interface AppProps {
   bridge: DesktopBridge;
   shell: ShellStore;
   agent: AgentStore;
+  /** Created here when not given (tests pass their own). */
+  mail?: MailStore;
 }
 
-type View = 'chat' | 'settings';
+type View = 'chat' | 'settings' | 'inbox';
+
+/** Role template of the core's mail sorting thread; it lives in the inbox, not the sidebar. */
+const MAIL_TRIAGE_TEMPLATE = 'mail-triage';
 
 /** What the core's standing top-level agent is called until someone renames it. */
 const TOP_AGENT_TITLE = '助理';
 
-export function App({ bridge, shell, agent, version = '' }: AppProps) {
+export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppProps) {
   const { settings } = useShell(shell);
   const state = useAgent(agent);
+  const [mailStore] = useState(() => mailProp ?? new MailStore(bridge));
+  const mail = useMail(mailStore);
+  useEffect(() => {
+    void mailStore.reload();
+    return bridge.backend.onRestarted(() => void mailStore.reload());
+  }, [bridge, mailStore]);
   const width = useViewportWidth();
   const [floating, setFloating] = useState<Floating>(null);
   const [view, setView] = useState<View>('chat');
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>('appearance');
-  const [newProject, setNewProject] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
+  /** The new-project dialog; from a 「新事务」 mail it carries the mail and the suggested name. */
+  const [newProject, setNewProject] = useState<null | { name?: string; mailId?: string }>(null);
   const update = useUpdateState(bridge);
   const backendState = useBackendState(bridge, agent);
   const installUpdate = () => void bridge.updates.run('install');
@@ -73,7 +89,7 @@ export function App({ bridge, shell, agent, version = '' }: AppProps) {
         toggle(e.altKey ? 'right' : 'left');
       } else if (e.key === 'Escape' && !e.defaultPrevented) {
         if (floating) setFloating(null);
-        else if (view === 'settings') setView('chat');
+        else if (view !== 'chat') setView('chat');
       }
     };
     window.addEventListener('keydown', onKey);
@@ -94,9 +110,9 @@ export function App({ bridge, shell, agent, version = '' }: AppProps) {
   useEffect(() => {
     window.__spicaShots = {
       setView: (v) => {
-        const tab: SettingsTab | null = v === 'settings' ? 'appearance' : v === 'models' || v === 'plugins' || v === 'about' ? v : null;
+        const tab: SettingsTab | null = v === 'settings' ? 'appearance' : v === 'models' || v === 'plugins' || v === 'about' || v === 'general' ? v : null;
         if (tab) setSettingsTab(tab);
-        setView(tab ? 'settings' : 'chat');
+        setView(tab ? 'settings' : v === 'inbox' ? 'inbox' : 'chat');
       },
     };
     return () => {
@@ -107,11 +123,32 @@ export function App({ bridge, shell, agent, version = '' }: AppProps) {
   // A project manager is shown under its project's name.
   const sessions = useMemo(() => {
     const byManager = new Map(state.projects.map((p) => [p.managerSessionId, p.name]));
-    return state.sessions.map((s) => ({
+    return state.sessions.filter((s) => s.templateId !== MAIL_TRIAGE_TEMPLATE && s.id !== mail.threadId).map((s) => ({
       ...s,
       title: byManager.get(s.id) ?? (s.id === state.topId && !s.title ? TOP_AGENT_TITLE : displayTitle(s, state.firstLines)),
     }));
-  }, [state.sessions, state.firstLines, state.projects, state.topId]);
+  }, [state.sessions, state.firstLines, state.projects, state.topId, mail.threadId]);
+  // Projects for the inbox: the core's list, plus any project manager it did not list (demo data).
+  const inboxProjects = useMemo<InboxProject[]>(() => {
+    const out: InboxProject[] = state.projects.filter((p) => p.status === 'active').map((p) => ({ id: p.id, name: p.name, managerSessionId: p.managerSessionId }));
+    for (const s of sessions) {
+      if (s.role === 'manager' && s.projectId && !out.some((p) => p.id === s.projectId)) out.push({ id: s.projectId, name: s.title ?? '', managerSessionId: s.id });
+    }
+    return out;
+  }, [state.projects, sessions]);
+  const unseen = useMemo(() => unseenByManager(mail.items, settings.mailSeen), [mail.items, settings.mailSeen]);
+  const sidebarNotes = useMemo(() => new Map([...unseen.keys()].map((sid) => [sid, '有新来信'])), [unseen]);
+  const inboxCount = mail.items.filter(needsYou).length;
+  // Looking at a project's conversation clears its 「有新来信」.
+  useEffect(() => {
+    if (view === 'chat' && state.activeId && unseen.has(state.activeId)) {
+      shell.update({ mailSeen: { ...shell.settings.mailSeen, [state.activeId]: new Date().toISOString() } });
+    }
+  }, [view, state.activeId, unseen, shell]);
+  const mailById = useMemo(() => {
+    const map = new Map(mail.items.map((m) => [m.id, m]));
+    return (mid: string): MailItem | undefined => map.get(mid);
+  }, [mail.items]);
   const session = sessions.find((s) => s.id === state.activeId);
   const parent = session?.parentId ? sessions.find((s) => s.id === session.parentId) : undefined;
   const transcript = agent.transcript(state.activeId);
@@ -149,11 +186,12 @@ export function App({ bridge, shell, agent, version = '' }: AppProps) {
     openFile,
     openSession: (sid) => openSession(sid),
     resume: () => id && void agent.resume(id),
+    ...(mail.supported ? { mailById, openInbox: () => setView('inbox') } : {}),
   };
 
   const leftShown = layout.left !== 'hidden';
   const rightShown = layout.right !== 'hidden';
-  const title = view === 'settings' ? '设置' : (session?.title ?? '');
+  const title = view === 'settings' ? '设置' : view === 'inbox' ? '收件箱' : (session?.title ?? '');
 
   const sidebarToggle = (
     <button type="button" className={leftShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('left')} aria-label={leftShown ? '收起侧栏' : '展开侧栏'} aria-pressed={leftShown} title="侧栏（Ctrl+B）">
@@ -188,7 +226,20 @@ export function App({ bridge, shell, agent, version = '' }: AppProps) {
             settingsOpen={view === 'settings'}
             topId={state.topId}
             onRename={(sid, title) => void agent.rename(sid, title)}
-            {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject(true) } : {})}
+            {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject({}) } : {})}
+            {...(mail.supported
+              ? {
+                  inbox: {
+                    count: inboxCount,
+                    open: view === 'inbox',
+                    onOpen: () => {
+                      setView((v) => (v === 'inbox' ? 'chat' : 'inbox'));
+                      setFloating(null);
+                    },
+                  },
+                  notes: sidebarNotes,
+                }
+              : {})}
           />
         </div>
       ) : null}
@@ -248,6 +299,28 @@ export function App({ bridge, shell, agent, version = '' }: AppProps) {
               onInstallUpdate={installUpdate}
               tab={settingsTab}
               onTab={setSettingsTab}
+              workflows={bridge.workflows}
+              pickFolder={() => bridge.pickFolder('选择工作流文件夹')}
+              onBackendRestarted={bridge.backend.onRestarted}
+            />
+          ) : view === 'inbox' ? (
+            <InboxView
+              mail={mail}
+              prefs={settings.mail}
+              projects={inboxProjects}
+              onPoll={() => void mailStore.pollNow()}
+              onAccept={(mid) => void mailStore.feedback(mid, 'accept')}
+              onIgnore={(mid) => void mailStore.feedback(mid, 'ignore')}
+              onMove={(mid, pid) => void mailStore.feedback(mid, 'reassign', pid)}
+              {...(bridge.agent.createProject && !shell.demo
+                ? { onNewProject: (m: MailItem) => setNewProject({ mailId: m.id, ...(m.triage?.suggestion ? { name: m.triage.suggestion } : {}) }) }
+                : {})}
+              onOpenSession={openSession}
+              onOpenSettings={() => {
+                setSettingsTab('general');
+                setView('settings');
+              }}
+              onDismissProblem={() => mailStore.dismissProblem()}
             />
           ) : state.loaded ? (
             <Conversation
@@ -298,17 +371,20 @@ export function App({ bridge, shell, agent, version = '' }: AppProps) {
 
       {newProject ? (
         <NewProjectDialog
-          onPickFolder={() => bridge.pickFolder()}
+          {...(newProject.name ? { initialName: newProject.name } : {})}
+          onPickFolder={() => bridge.pickFolder('选择项目文件夹')}
           onCreate={async (input) => {
-            const problem = await agent.createProject(input);
+            const mailId = newProject.mailId;
+            // A project started from a mail: the mail moves into it (its manager gets it).
+            const problem = await agent.createProject(input, mailId ? (p) => mailStore.feedback(mailId, 'reassign', p.id) : undefined);
             if (!problem) {
-              setNewProject(false);
+              setNewProject(null);
               setView('chat');
               setFloating(null);
             }
             return problem;
           }}
-          onClose={() => setNewProject(false)}
+          onClose={() => setNewProject(null)}
         />
       ) : null}
     </div>

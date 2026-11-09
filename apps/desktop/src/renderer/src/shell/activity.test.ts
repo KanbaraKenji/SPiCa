@@ -7,6 +7,7 @@ describe('activityText', () => {
     expect(activityText({ action: 'file.edit', target: 'docs/plan.md' })).toBe('改了 docs/plan.md');
     expect(activityText({ action: 'file.delete', target: 'old.txt' })).toBe('删了 old.txt');
     expect(activityText({ action: 'command', target: 'npm test' })).toBe('运行了 npm test');
+    expect(activityText({ action: 'note', target: '办公室搬迁报价', detail: 'outlook:mock-015' })).toBe('收到来信「办公室搬迁报价」');
     expect(activityText({ action: 'child.spawn', target: '整理报价' })).toBe('开了子任务「整理报价」');
     expect(activityText({ action: 'child.report', target: '整理报价', detail: '三家都回价了' })).toBe('子任务「整理报价」回报：三家都回价了');
     expect(activityText({ action: 'decision', detail: '选北方零件' })).toBe('定了：选北方零件');

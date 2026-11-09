@@ -2,7 +2,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IpcChannel, type AgentApi, type AppInfo, type CoreEvent } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
-import type { BackendState, DesktopBridge, ProviderList, ShellState } from '../shared/bridge';
+import type { BackendState, DesktopBridge, ProviderList, ShellState, WorkflowsState } from '../shared/bridge';
 import type { ProviderDraft, TestResult } from '../shared/providers';
 import type { PluginsCommand, PluginsResult } from '../shared/plugins';
 import type { UpdateState } from '../shared/updates';
@@ -36,6 +36,9 @@ const agent: AgentApi = {
   createProject: call('createProject'),
   listProjects: call('listProjects'),
   getProject: call('getProject'),
+  listMail: call('listMail'),
+  pollMail: call('pollMail'),
+  mailFeedback: call('mailFeedback'),
 };
 
 const bridge: DesktopBridge = {
@@ -46,7 +49,7 @@ const bridge: DesktopBridge = {
   updateSettings: (patch: SettingsPatch) => ipcRenderer.invoke(DesktopChannel.UpdateSettings, patch) as Promise<ShellSettings>,
   onSettingsChanged: (listener) => subscribe<ShellSettings>(DesktopChannel.SettingsChanged, listener),
   zoom: (step) => ipcRenderer.send(DesktopChannel.Zoom, step),
-  pickFolder: () => ipcRenderer.invoke(DesktopChannel.PickFolder) as Promise<string | null>,
+  pickFolder: (title) => ipcRenderer.invoke(DesktopChannel.PickFolder, title) as Promise<string | null>,
   openFile: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.OpenFile, sessionId, path) as Promise<string | null>,
   backend: {
     status: () => ipcRenderer.invoke(DesktopChannel.BackendStatus) as Promise<BackendState>,
@@ -61,6 +64,9 @@ const bridge: DesktopBridge = {
   plugins: {
     run: (cmd: PluginsCommand) => ipcRenderer.invoke(DesktopChannel.Plugins, cmd) as Promise<PluginsResult>,
     onChanged: (listener) => subscribe<void>(DesktopChannel.PluginsChanged, () => listener()),
+  },
+  workflows: {
+    run: (op) => ipcRenderer.invoke(DesktopChannel.Workflows, op) as Promise<WorkflowsState>,
   },
   providers: {
     list: () => ipcRenderer.invoke(DesktopChannel.ListProviders) as Promise<ProviderList>,
