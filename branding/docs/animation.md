@@ -91,4 +91,4 @@ ready 到整层消失共约 5.8 秒（`SPLASH_FINISH_AFTER`）。浅色版同样
 
 已做完、已提交：浅色版两颗星改成实心（蓝星强调色中蓝、伴星深蓝 #1B3F7A，内核同色不挖空）；`alignDive` 加了扎入方位 `diveAngle` 和领头星 `diveStar`。对比档 B = `{ bigTurns: 0.7, diveAngle: 222, diveStar: 'primary' }`（蓝星在前，从左下扎入），缺省仍是 A（0.94 圈、白星从字标侧）。对比视频 `docs/screenshots/brand/boot-v12-{A,B}-{dark,light}-1280p60.mp4`，二选一页已发他。
 
-下一步第一件事：他选 B 就把 `SPLASH_FINISH` 的 bigTurns / diveAngle / diveStar 改成 B 的三个值、更新时间表和测试；选 A 不用动代码。
+下一步第一件事：他选 B 就把 `SPLASH_FINISH` 的 bigTurns / diveAngle / diveStar 改成 B 的三个值、更新时间表和测试；选 A 不用动代码。然后按统筹定的仓库体积规矩收口：定稿版开机视频（明暗各一）放进 `docs/screenshots/brand/`，其余历次评审视频 `git rm`（正常提交，不改历史；已复制到仓库外 `K:\spica-reviewrand\` 留档）。以后评审短片不再进仓库，只走点选页和 SendUserFile。
