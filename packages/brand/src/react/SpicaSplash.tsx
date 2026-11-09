@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
 import { MARK_CENTER, MARK_GEOMETRY, MARK_VIEWBOX, fmt, sparklePath } from '../geometry.ts';
-import { SPLASH_LAYOUT, SPLASH_STAGE, SPLASH_TEMPOS, splashFrame, splashStaticFrame, starfield, type SplashFinishCurve, type SplashFrame } from '../splash.ts';
+import { SPLASH_LAYOUT, SPLASH_STAGE, SPLASH_TIMING, splashFrame, splashStaticFrame, starfield, type SplashFinish, type SplashFrame } from '../splash.ts';
 import { WORDMARK } from '../wordmark.ts';
 
 export interface SpicaSplashProps {
@@ -9,10 +9,12 @@ export interface SpicaSplashProps {
   /** 收尾播完、整层淡出后回调；调用方在这里卸载组件 */
   onDone?: () => void;
   theme?: 'dark' | 'light';
-  /** 双星转一圈的秒数；缺省与背景同拍（SPLASH_TEMPOS.sync） */
+  /** 双星转一圈的秒数（缺省 4 秒） */
   orbitPeriod?: number;
-  /** 收尾加速曲线（缺省 SPLASH_FINISH_CURVE：1.4 秒缓入加速到 4 倍转速后合一） */
-  finish?: Partial<SplashFinishCurve>;
+  /** 双星快慢比：离花心最近时的速度 ÷ 最远时（缺省 2；1 = 匀速） */
+  speedRatio?: number;
+  /** 收尾各步时长（缺省 SPLASH_FINISH） */
+  finish?: Partial<SplashFinish>;
   /** 横标下方的小字（例如版本号） */
   caption?: ReactNode;
   className?: string;
@@ -52,7 +54,7 @@ function reducedMotion(): boolean {
  * 开机画面「暗处亮起 · 双星环绕」。铺满父元素（父元素需要定位）。
  * 时间线在 splash.ts，这里只负责按帧把状态写到 SVG 和画布上。
  */
-export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLASH_TEMPOS.sync, finish, caption, className, style }: SpicaSplashProps) {
+export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLASH_TIMING.orbitPeriod, speedRatio, finish, caption, className, style }: SpicaSplashProps) {
   const id = useId().replace(/:/g, '');
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -165,7 +167,7 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLAS
     let finished = false;
     const tick = (now: number) => {
       const t = (now - t0Ref.current) / 1000;
-      const opts = { orbitPeriod, finish: finishRef.current };
+      const opts = { orbitPeriod, speedRatio, finish: finishRef.current };
       const f = splashFrame(t, readyAtRef.current, opts);
       apply(f);
       if (ctx) {
@@ -199,7 +201,7 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLAS
       ro?.disconnect();
     };
     // 换主题或节奏时重启循环；ready 通过 ref 传进循环，不触发重启
-  }, [theme, orbitPeriod]);
+  }, [theme, orbitPeriod, speedRatio]);
 
   const markTransform = `translate(${fmt(L.cx)} ${fmt(L.cy)}) scale(${fmt(L.markScale)}) translate(-${C} -${C})`;
   const wordTransform = `translate(${fmt(L.wordX)} ${fmt(L.wordY)}) scale(${fmt(L.wordScale)})`;
