@@ -1,11 +1,16 @@
 name: Release
 
-# Pushing a tag like v0.2.0 builds the Windows packages and publishes them as a
-# GitHub Release. Prepare the tag locally with: npm run release:prepare -- 0.2.0
+# Two ways in:
+#   - Push a tag like v0.2.0: build the Windows packages and publish them as a
+#     GitHub Release. Prepare the tag locally with: npm run release:prepare -- 0.2.0
+#   - Push a branch named ci/release-dryrun*: the same build, but the packages
+#     are only uploaded as workflow artifacts. No Release, no tag.
 on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'ci/release-dryrun*'
 
 permissions:
   contents: write
@@ -26,16 +31,22 @@ jobs:
 
       - run: npm ci
 
-      # The tag is the version. If package.json disagrees (tag pushed without
-      # release:prepare), the packages still carry the tag's version.
-      - name: Take the version from the tag
+      # On a tag, the tag is the version: if package.json disagrees (tag pushed
+      # without release:prepare), the packages still carry the tag's version.
+      # On a dry-run branch, the version in apps/desktop/package.json is used.
+      - name: Decide the version
         shell: bash
         run: |
-          version="${GITHUB_REF_NAME#v}"
           current="$(node -p "require('./apps/desktop/package.json').version")"
-          if [ "$current" != "$version" ]; then
-            echo "::warning::apps/desktop/package.json says $current, tag says $version; building $version."
-            node -e "const f='apps/desktop/package.json';const fs=require('fs');const p=JSON.parse(fs.readFileSync(f,'utf8'));p.version='$version';fs.writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+            if [ "$current" != "$version" ]; then
+              echo "::warning::apps/desktop/package.json says $current, tag says $version; building $version."
+              node -e "const f='apps/desktop/package.json';const fs=require('fs');const p=JSON.parse(fs.readFileSync(f,'utf8'));p.version='$version';fs.writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+            fi
+          else
+            version="$current"
+            echo "Dry run on $GITHUB_REF_NAME: building $version, nothing will be published."
           fi
           echo "SPICA_VERSION=$version" >> "$GITHUB_ENV"
 
@@ -52,25 +63,42 @@ jobs:
       # see apps/desktop/electron-builder.yml.
       - run: npm run dist
 
+      - name: Check the packages
+        shell: bash
+        run: |
+          cd apps/desktop/release
+          ls -la
+          for f in "Spica-Setup-$SPICA_VERSION.exe" "Spica-Setup-$SPICA_VERSION.exe.blockmap" "Spica-Portable-$SPICA_VERSION.exe" latest.yml; do
+            [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
+          done
+
+      - name: Upload the packages (dry run)
+        if: github.ref_type == 'branch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: spica-${{ env.SPICA_VERSION }}-dryrun
+          path: |
+            apps/desktop/release/Spica-Setup-${{ env.SPICA_VERSION }}.exe
+            apps/desktop/release/Spica-Setup-${{ env.SPICA_VERSION }}.exe.blockmap
+            apps/desktop/release/Spica-Portable-${{ env.SPICA_VERSION }}.exe
+            apps/desktop/release/latest.yml
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Publish the GitHub Release
+        if: github.ref_type == 'tag'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd apps/desktop/release
-          ls -la
-          files=(
-            "Spica-Setup-$SPICA_VERSION.exe"
-            "Spica-Setup-$SPICA_VERSION.exe.blockmap"
-            "Spica-Portable-$SPICA_VERSION.exe"
-            latest.yml
-          )
-          for f in "${files[@]}"; do
-            [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
-          done
           prerelease=""
           case "$SPICA_VERSION" in *-*) prerelease="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+          gh release create "$GITHUB_REF_NAME" \
+            "Spica-Setup-$SPICA_VERSION.exe" \
+            "Spica-Setup-$SPICA_VERSION.exe.blockmap" \
+            "Spica-Portable-$SPICA_VERSION.exe" \
+            latest.yml \
             --repo "$GITHUB_REPOSITORY" \
             --title "Spica $GITHUB_REF_NAME" \
             --generate-notes $prerelease
