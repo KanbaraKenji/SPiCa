@@ -1586,3 +1586,39 @@ button.tree-twisty:hover {
   font-size: 12px;
   color: var(--spica-faint);
 }
+
+/* Messages sent during a run, waiting for the next step */
+.queued {
+  flex: none;
+  max-width: 760px;
+  width: calc(100% - 48px);
+  margin: 0 auto 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.queued-item {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--radius-m);
+  border: 1px dashed var(--spica-border-strong);
+  background: var(--spica-surface);
+  font-size: 13px;
+}
+
+.queued-tag {
+  flex: none;
+  font-size: 12px;
+  color: var(--spica-muted);
+}
+
+.queued-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

@@ -50,6 +50,8 @@ export interface Transcript {
   run?: RunState;
   lastRun?: FinishedRun;
   error?: string;
+  /** Messages sent while a run was going, not yet taken in by the agent. */
+  queued?: { id: string; text: string }[];
 }
 
 export const EMPTY_TRANSCRIPT: Transcript = { items: [] };
@@ -90,7 +92,13 @@ function asAsk(callId: string, input: unknown): Block {
 export function resultBody(content: string): string {
   const nl = content.indexOf('\n');
   const first = nl < 0 ? content : content.slice(0, nl);
-  return /^\d{4}-\d{2}-\d{2}T/.test(first) ? (nl < 0 ? '' : content.slice(nl + 1)) : content;
+  // The core writes "[fetched at <ISO>]"; older/fake results use a bare ISO line.
+  return /^(\[fetched at [^\]]*\]|\d{4}-\d{2}-\d{2}T\S*)\s*$/.test(first) ? (nl < 0 ? '' : content.slice(nl + 1)) : content;
+}
+
+/** The user's answer inside an ask_user result ("User answered: X" from the core). */
+export function askAnswer(content: string): string {
+  return resultBody(content).replace(/^User answered:\s*/, '');
 }
 
 function lastResponse(items: Item[], id: string): Extract<Item, { kind: 'response' }> {
@@ -145,7 +153,7 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
           continue;
         }
         const ask = findBlock(items, 'ask', b.toolUseId);
-        if (ask) ask.answer = resultBody(b.content);
+        if (ask) ask.answer = askAnswer(b.content);
       }
       continue;
     }
@@ -194,6 +202,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       const m = e.message;
       if (m.role === 'user' && (m.kind === 'user' || m.kind === 'steer')) {
         if (!items.some((i) => i.id === m.id)) items.push({ kind: 'user', id: m.id, text: textOf(m), steer: m.kind === 'steer' });
+        if (t.queued?.some((q) => q.id === m.id)) t.queued = t.queued.filter((q) => q.id !== m.id);
       } else if (m.role === 'user' && (m.kind === 'relay' || m.kind === 'report' || m.kind === 'note')) {
         if (!items.some((i) => i.id === m.id)) items.push({ kind: 'note', id: m.id, text: textOf(m) });
       } else if (m.role === 'assistant' && m.meta?.interrupted === true) {

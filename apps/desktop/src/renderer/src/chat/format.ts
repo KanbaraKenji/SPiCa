@@ -12,6 +12,11 @@ const LABELS: Record<string, string> = {
   web_search: '网页搜索',
   send_email: '发送邮件',
   ask_user: '向你提问',
+  spawn_agent: '开子任务',
+  message_agent: '给子任务发消息',
+  wait_agents: '等子任务完成',
+  record_decision: '记下决定',
+  suggest_actions: '给出建议',
 };
 
 export function toolLabel(name: string): string {
@@ -22,9 +27,9 @@ export function toolLabel(name: string): string {
 export function toolTarget(input: unknown): string {
   if (!input || typeof input !== 'object') return '';
   const v = input as Record<string, unknown>;
-  for (const key of ['path', 'pattern', 'query', 'command', 'url', 'to', 'subject']) {
+  for (const key of ['path', 'pattern', 'query', 'command', 'url', 'to', 'subject', 'title', 'decision', 'text']) {
     const value = v[key];
-    if (typeof value === 'string' && value) return value === '.' ? '工作文件夹' : value;
+    if (typeof value === 'string' && value) return value === '.' ? '工作文件夹' : value.length > 60 ? `${value.slice(0, 60)}…` : value;
   }
   return '';
 }
@@ -64,4 +69,11 @@ export function formatUsd(usd: number): string {
   if (usd === 0) return '$0';
   if (usd < 1) return `$${usd.toFixed(4)}`;
   return `$${usd.toFixed(2)}`;
+}
+
+/** What a confirmation is about, in the user's words: the backend's reason when it is already plain Chinese, else verb + target. */
+export function confirmTitle(name: string, input: unknown, reason: string): string {
+  if (/[一-鿿]/.test(reason)) return reason;
+  const target = toolTarget(input);
+  return target ? `${toolLabel(name)}：${target}` : toolLabel(name);
 }

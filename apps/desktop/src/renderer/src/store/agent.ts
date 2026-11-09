@@ -112,7 +112,17 @@ export class AgentStore {
         target = s.id;
         this.state.set((v) => ({ ...v, sessions: [s, ...v.sessions], activeId: s.id, transcripts: { ...v.transcripts, [s.id]: { items: [] } } }));
       }
-      await this.#api.send(target, text);
+      const result = await this.#api.send(target, text);
+      if (!result.started) {
+        // Queued into a running session: keep it visible until the agent takes it in.
+        const sid = target;
+        this.state.set((v) => {
+          const t = v.transcripts[sid];
+          if (!t || t.items.some((i) => i.id === result.messageId)) return v;
+          const queued = [...(t.queued ?? []), { id: result.messageId, text }];
+          return { ...v, transcripts: { ...v.transcripts, [sid]: { ...t, queued } } };
+        });
+      }
     });
   }
 
