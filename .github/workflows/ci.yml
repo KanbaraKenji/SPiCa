@@ -28,7 +28,7 @@ jobs:
       # whole test process when a connection is hard-aborted (not reproduced on
       # the Node 24.22.2 bundled with Electron; the agent core now aborts softly).
       # That interrupts the run; it is not an assertion failure. A real failure
-      # still fails twice. See docs/design/agent-core.md, "未决问题".
+      # still fails twice. See docs/design/agent-core.md §20 "已知问题与限制".
       - name: Test (retry once)
         shell: bash
         run: |
