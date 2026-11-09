@@ -15,9 +15,23 @@ import { connectMcp, type McpServerConfig, type McpStdioClient } from './mcp/cli
 import { fileTools } from './tools/fs-tools.ts';
 import { ToolRegistry, type FileExtractor, type Tool } from './tools/types.ts';
 import { Tracer } from './trace.ts';
-import type { AgentRole, ChildNoteMeta, CreateSessionRequest, Message, SessionStatus } from './types.ts';
+import type {
+  AgentRole,
+  ChildNoteMeta,
+  CreateProjectRequest,
+  CreateSessionRequest,
+  Message,
+  ProjectDetail,
+  ProjectInfo,
+  ProjectLogEntry,
+  SessionStatus,
+  WorkflowDef,
+  WorkObject,
+} from './types.ts';
+import { mkdirSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import { newId } from './util.ts';
-import { BUILTIN_TEMPLATES, type RoleTemplate } from './projects.ts';
+import { BUILTIN_TEMPLATES, loadWorkflows, type RoleTemplate } from './projects.ts';
 
 export interface RuntimeOptions {
   providers: Provider[];
@@ -43,6 +57,12 @@ export interface RuntimeOptions {
   locale?: string;
   /** Role templates in addition to the built-in 'top' and 'project-manager' (same id replaces). */
   templates?: RoleTemplate[];
+  /** Folder of workflow JSON files (stages, work-object levels). */
+  workflowsDir?: string;
+  /** Workflow definitions given directly (validated like files). */
+  workflows?: unknown[];
+  /** Where new project folders go when no absolute folder is given. Default: cwd. */
+  projectsRoot?: string;
 }
 
 /** What sessions need from the runtime. Not part of the public API. */
@@ -61,12 +81,23 @@ export interface RuntimeInternals {
   onUserMessage(session: Session, message: Message): void;
   onStatus(session: Session, status: SessionStatus): void;
   onRunEnd(session: Session, result: RunResult): void;
+  onToolDone(session: Session, call: { name: string; input: unknown }, result: { isError: boolean }): void;
 }
 
 /** How a session is named in text written for the model. */
 function label(s: Session): string {
   const title = s.info().title;
   return title ? `"${title}" (${s.id})` : s.id;
+}
+
+/** Folder name for a project: keeps the name, drops characters Windows does not allow. */
+function safeFolderName(name: string): string {
+  const cleaned = [...name]
+    .map((ch) => (ch.charCodeAt(0) < 32 || '<>:"/\\|?*'.includes(ch) ? '_' : ch))
+    .join('')
+    .replace(/[. ]+$/, '')
+    .trim();
+  return cleaned || 'project';
 }
 
 export const DEFAULT_SYSTEM_PROMPT =
@@ -86,11 +117,13 @@ export class Runtime implements RuntimeInternals {
   readonly #limiters = new Map<string, RateLimiter>();
   readonly #sessions = new Map<string, Session>();
   readonly #opts: RuntimeOptions;
+  readonly #workflows: { workflows: Map<string, WorkflowDef>; errors: string[] };
   readonly #mcp = new Map<string, { client: McpStdioClient; source: string; disconnect: () => Promise<void> }>();
   readonly #reports = new Map<string, string>();
 
   constructor(opts: RuntimeOptions) {
     this.#opts = opts;
+    this.#workflows = loadWorkflows(opts.workflowsDir, opts.workflows ?? []);
     this.store = opts.store ?? new MemoryStore();
     this.tracer = new Tracer(this.store, this.events);
     this.ledger = new CostLedger(opts.prices ?? DEFAULT_PRICES, opts.budget ?? {});
@@ -248,6 +281,142 @@ export class Runtime implements RuntimeInternals {
       ...this.#noteMeta(s, 'decision', decision),
       by,
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Projects: a folder + a persistent project-manager session under the top-level agent
+  // ---------------------------------------------------------------------------
+
+  /** The single top-level agent session (created on first call). */
+  top(): Session {
+    const existing = this.sessions().find((s) => s.info().role === 'top' && s.parentId === null && s.info().templateId === 'top');
+    return existing ?? this.createSession({ templateId: 'top' });
+  }
+
+  get workflows(): ReadonlyMap<string, WorkflowDef> {
+    return this.#workflows.workflows;
+  }
+
+  /** Problems found while loading workflow files (shown to the user by the UI). */
+  get workflowErrors(): readonly string[] {
+    return this.#workflows.errors;
+  }
+
+  createProject(req: CreateProjectRequest): ProjectInfo {
+    const name = req.name.trim();
+    if (!name) throw new Error('a project needs a name');
+    const rootDir = this.#opts.projectsRoot ?? this.#opts.cwd ?? process.cwd();
+    const folder = req.folder ? (isAbsolute(req.folder) ? req.folder : join(rootDir, req.folder)) : join(rootDir, safeFolderName(name));
+    let workflow: WorkflowDef | undefined;
+    if (req.workflowId) {
+      workflow = this.#workflows.workflows.get(req.workflowId);
+      if (!workflow) throw new Error(`unknown workflow "${req.workflowId}"; known: ${[...this.#workflows.workflows.keys()].join(', ') || 'none'}`);
+    }
+    mkdirSync(folder, { recursive: true });
+    const top = this.top();
+    const id = newId('prj');
+    const manager = this.createSession({ parentId: top.id, templateId: 'project-manager', title: name, cwd: folder, projectId: id });
+    const now = isoNow();
+    const project: ProjectInfo = {
+      id,
+      name,
+      folder,
+      managerSessionId: manager.id,
+      workflowId: workflow?.id ?? null,
+      stage: workflow?.stages[0]?.id ?? null,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.store.upsertProject(project);
+    this.events.emit({ sessionId: top.id, parentChain: [] }, { type: 'project.created', project });
+    if (req.brief?.trim()) manager.send(req.brief, { author: 'parent' });
+    return project;
+  }
+
+  listProjects(): ProjectInfo[] {
+    return this.store.listProjects();
+  }
+
+  getProject(projectId: string): ProjectDetail | undefined {
+    const p = this.store.getProject(projectId);
+    if (!p) return undefined;
+    const manager = this.session(p.managerSessionId);
+    if (!manager) return undefined;
+    return {
+      ...p,
+      workflow: p.workflowId ? (this.#workflows.workflows.get(p.workflowId) ?? null) : null,
+      objects: this.store.listWorkObjects(projectId),
+      recentLog: this.store.listProjectLog(projectId, 20),
+      manager: manager.info(),
+      agents: this.children(manager.id).map((c) => c.info()),
+    };
+  }
+
+  /** Move a project to another stage of its workflow; relayed to the top-level agent. */
+  setStage(projectId: string, stageId: string, note: string | undefined, bySessionId: string): ProjectInfo {
+    const p = this.store.getProject(projectId);
+    if (!p) throw new Error(`unknown project: ${projectId}`);
+    const wf = p.workflowId ? this.#workflows.workflows.get(p.workflowId) : undefined;
+    if (!wf) throw new Error('this project has no workflow, so it has no stages');
+    const stage = wf.stages.find((s) => s.id === stageId || s.name === stageId);
+    if (!stage) throw new Error(`unknown stage "${stageId}"; stages: ${wf.stages.map((s) => s.id).join(', ')}`);
+    const updated: ProjectInfo = { ...p, stage: stage.id, updatedAt: isoNow() };
+    this.store.upsertProject(updated);
+    const by = this.session(bySessionId) ?? this.session(p.managerSessionId);
+    const summary = `Stage changed to "${stage.name}"${note ? `: ${note}` : ''}`;
+    if (by) this.logProjectActivity(by, 'stage', summary);
+    const manager = this.session(p.managerSessionId);
+    if (manager) this.recordDecision(manager.id, `Project "${p.name}": ${summary}`, 'agent');
+    const top = this.top();
+    this.events.emit({ sessionId: top.id, parentChain: [] }, { type: 'project.updated', project: updated });
+    return updated;
+  }
+
+  addWorkObject(projectId: string, obj: { level: string; name: string; parentId?: string | null; data?: Record<string, unknown> }): WorkObject {
+    const p = this.store.getProject(projectId);
+    if (!p) throw new Error(`unknown project: ${projectId}`);
+    const levels = (p.workflowId ? this.#workflows.workflows.get(p.workflowId)?.objectLevels : undefined) ?? [];
+    const level = levels.find((l) => l.id === obj.level || l.name === obj.level);
+    if (levels.length > 0 && !level) throw new Error(`unknown level "${obj.level}"; levels: ${levels.map((l) => l.id).join(', ')}`);
+    const levelId = level?.id ?? obj.level;
+    const existing = this.store.listWorkObjects(projectId);
+    const parent = obj.parentId ? existing.find((o) => o.id === obj.parentId) : undefined;
+    if (obj.parentId && !parent) throw new Error(`unknown parent object: ${obj.parentId}`);
+    if (level?.parent && !parent) throw new Error(`a "${level.id}" belongs under a "${level.parent}"; give parent_id`);
+    if (level && parent && level.parent !== parent.level) throw new Error(`a "${level.id}" belongs under a "${level.parent ?? 'nothing'}", not a "${parent.level}"`);
+    const o: WorkObject = {
+      id: newId('obj'),
+      projectId,
+      level: levelId,
+      name: obj.name.trim(),
+      parentId: parent?.id ?? null,
+      ...(obj.data ? { data: obj.data } : {}),
+      createdAt: isoNow(),
+    };
+    if (!o.name) throw new Error('a work object needs a name');
+    this.store.upsertWorkObject(o);
+    return o;
+  }
+
+  /** Record a key action inside a project (for the top-level agent) and emit project.activity. */
+  logProjectActivity(session: Session, kind: ProjectLogEntry['kind'], summary: string, path?: string): void {
+    const projectId = session.info().projectId;
+    if (!projectId) return;
+    const entry: ProjectLogEntry = { id: newId('plog'), projectId, sessionId: session.id, at: isoNow(), kind, summary: summary.slice(0, 500), ...(path ? { path } : {}) };
+    this.store.appendProjectLog(entry);
+    this.events.emit({ sessionId: session.id, parentChain: session.parentChain }, { type: 'project.activity', entry });
+  }
+
+  /** Called after each tool call: key actions in a project go to the project log. */
+  onToolDone(session: Session, call: { name: string; input: unknown }, result: { isError: boolean }): void {
+    if (result.isError || !session.info().projectId) return;
+    const input = (call.input ?? {}) as Record<string, unknown>;
+    const path = typeof input.path === 'string' ? input.path : undefined;
+    if (call.name === 'write_file') this.logProjectActivity(session, 'file_write', `Wrote ${path ?? 'a file'}`, path);
+    else if (call.name === 'edit_file') this.logProjectActivity(session, 'file_edit', `Edited ${path ?? 'a file'}`, path);
+    else if (call.name === 'run_command') this.logProjectActivity(session, 'command', `Ran: ${String(input.command ?? '').slice(0, 200)}`);
+    else if (call.name === 'record_decision') this.logProjectActivity(session, 'decision', String(input.decision ?? ''));
   }
 
   lastReport(sessionId: string): string | undefined {
