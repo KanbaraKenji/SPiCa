@@ -181,6 +181,15 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
     if (m.kind === 'tool_results') {
       const stored = m.meta?.fileCards;
       if (stored && typeof stored === 'object') Object.assign(cards, stored as Record<string, FileCardMeta>);
+      // Suggestion cards as the core stored them (they win over the tool call's raw input).
+      const suggested = m.meta?.suggestedActions as Record<string, { title: string; actions: SuggestAction[] }> | undefined;
+      for (const [callId, sa] of Object.entries(suggested ?? {})) {
+        const b = findBlock(items, 'suggest', callId);
+        if (b) {
+          b.title = sa.title;
+          b.actions = sa.actions.map((a) => ({ label: a.label, prompt: a.prompt }));
+        }
+      }
       for (const b of m.content) {
         if (b.type !== 'tool_result') continue;
         const tool = findBlock(items, 'tool', b.toolUseId);
