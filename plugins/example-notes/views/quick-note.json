@@ -1,0 +1,7 @@
+{
+  "title": "Quick note",
+  "entry": "ui/quick-note.html",
+  "placement": "panel",
+  "icon": "ui/icon.svg",
+  "permissions": { "tools": ["read_note", "write_note"] }
+}

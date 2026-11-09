@@ -178,6 +178,7 @@ describe('views (plugin pages)', () => {
     await pm.install(EXAMPLE_PLUGIN);
     expect(pm.describe('notes').views).toEqual([
       { id: 'notebook', title: 'Notebook', placement: 'sidebar', entry: 'ui/index.html', icon: 'ui/icon.svg', tools: ['list_notes', 'read_note', 'write_note', 'delete_note'] },
+      { id: 'quick-note', title: 'Quick note', placement: 'panel', entry: 'ui/quick-note.html', icon: 'ui/icon.svg', tools: ['read_note', 'write_note'] },
     ]);
     expect(pm.views()).toEqual([]);
     expect(await pm.resolveViewFile('notes', 'ui/index.html')).toBeUndefined();
@@ -194,6 +195,17 @@ describe('views (plugin pages)', () => {
         icon: 'ui/icon.svg',
         tools: ['list_notes', 'read_note', 'write_note', 'delete_note'],
         irreversible: ['delete_note'],
+      },
+      {
+        plugin: 'notes',
+        pluginTitle: 'Notes (example)',
+        id: 'quick-note',
+        title: 'Quick note',
+        placement: 'panel',
+        entry: 'ui/quick-note.html',
+        icon: 'ui/icon.svg',
+        tools: ['read_note', 'write_note'],
+        irreversible: [],
       },
     ]);
     const root = join(pm.installDir('notes', '0.1.0'));
@@ -223,6 +235,9 @@ describe('views (plugin pages)', () => {
     expect((await pm.viewCall('notes', 'notebook', 'search_catalog', { query: 'x' })).content).toMatch(/^\[TOOL_NOT_ALLOWED\]/);
     expect((await pm.viewCall('notes', 'notebook', 'skill')).content).toMatch(/^\[TOOL_NOT_FOUND\]/);
     expect((await pm.viewCall('notes', 'nope', 'list_notes')).content).toMatch(/^\[VIEW_NOT_FOUND\]/);
+    // The panel may only read and write.
+    expect((await pm.viewCall('notes', 'quick-note', 'delete_note', { title: 'page' }, { confirmed: true })).content).toMatch(/^\[TOOL_NOT_ALLOWED\]/);
+    expect((await pm.viewCall('notes', 'quick-note', 'write_note', { title: 'Inbox', text: 'one line' })).isError).toBe(false);
 
     const asked = await pm.viewCall('notes', 'notebook', 'delete_note', { title: 'page' });
     expect(asked).toMatchObject({ isError: true, content: expect.stringMatching(/^\[CONFIRM_REQUIRED\]/) });

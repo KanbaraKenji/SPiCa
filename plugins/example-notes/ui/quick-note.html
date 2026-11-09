@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quick note</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="panel">
+  <form id="form" class="quick">
+    <textarea id="line" rows="3" placeholder="边聊边记一笔，追加到笔记「Inbox」"></textarea>
+    <div class="actions">
+      <button type="submit" class="primary">记下</button>
+      <span id="status" class="muted" role="status"></span>
+    </div>
+  </form>
+  <h2 class="panel-title">Inbox</h2>
+  <pre id="inbox" class="inbox"></pre>
+  <script src="quick-note.js"></script>
+</body>
+</html>
