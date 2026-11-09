@@ -4,6 +4,7 @@ import type { AgentApi, CoreEvent, SpicaBridge } from '@spica/protocol';
 import type { SettingsPatch, ShellSettings } from './settings';
 import type { ProviderDraft, ProviderView, TestResult } from './providers';
 import type { PluginsCommand, PluginsResult } from './plugins';
+import type { UpdateState } from './updates';
 
 /** Saved model providers plus, per id, why one cannot be used right now. */
 export interface ProviderList {
@@ -34,6 +35,10 @@ export interface DesktopBridge extends SpicaBridge {
   openFile(sessionId: string, path: string): Promise<string | null>;
   /** Windows' own folder picker. Resolves to the chosen path, or null when cancelled. */
   pickFolder(): Promise<string | null>;
+  updates: {
+    run(op: 'state' | 'check' | 'install'): Promise<UpdateState>;
+    onChanged(listener: (s: UpdateState) => void): () => void;
+  };
   plugins: {
     run(cmd: PluginsCommand): Promise<PluginsResult>;
     onChanged(listener: () => void): () => void;

@@ -10,10 +10,12 @@ import { DetailPanel } from './shell/DetailPanel';
 import { Conversation, type ConversationActions } from './chat/Conversation';
 import { SettingsView, type SettingsTab } from './settings/SettingsView';
 import { NewProjectDialog } from './shell/NewProjectDialog';
+import { NoticeBar, useUpdateState } from './shell/NoticeBar';
 import { Icon } from './ui/Icon';
 import { SpicaBanner, SpicaMark } from '@spica/brand/react';
 
 export interface AppProps {
+  version?: string;
   bridge: DesktopBridge;
   shell: ShellStore;
   agent: AgentStore;
@@ -24,7 +26,7 @@ type View = 'chat' | 'settings';
 /** What the core's standing top-level agent is called until someone renames it. */
 const TOP_AGENT_TITLE = '助理';
 
-export function App({ bridge, shell, agent }: AppProps) {
+export function App({ bridge, shell, agent, version = '' }: AppProps) {
   const { settings } = useShell(shell);
   const state = useAgent(agent);
   const width = useViewportWidth();
@@ -32,6 +34,8 @@ export function App({ bridge, shell, agent }: AppProps) {
   const [view, setView] = useState<View>('chat');
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('appearance');
   const [newProject, setNewProject] = useState(false);
+  const update = useUpdateState(bridge);
+  const installUpdate = () => void bridge.updates.run('install');
   // Whether any model is configured; checked at start and whenever settings close.
   const [modelReady, setModelReady] = useState<boolean | null>(null);
   useEffect(() => {
@@ -89,7 +93,7 @@ export function App({ bridge, shell, agent }: AppProps) {
   useEffect(() => {
     window.__spicaShots = {
       setView: (v) => {
-        const tab: SettingsTab | null = v === 'settings' ? 'appearance' : v === 'models' || v === 'plugins' ? v : null;
+        const tab: SettingsTab | null = v === 'settings' ? 'appearance' : v === 'models' || v === 'plugins' || v === 'about' ? v : null;
         if (tab) setSettingsTab(tab);
         setView(tab ? 'settings' : 'chat');
       },
@@ -223,7 +227,17 @@ export function App({ bridge, shell, agent }: AppProps) {
       <div className="body">
         <main className="main">
           {view === 'settings' ? (
-            <SettingsView shell={shell} providers={bridge.providers} plugins={bridge.plugins} tab={settingsTab} onTab={setSettingsTab} />
+            <SettingsView
+              shell={shell}
+              providers={bridge.providers}
+              plugins={bridge.plugins}
+              version={version}
+              update={update}
+              onCheckUpdate={() => void bridge.updates.run('check')}
+              onInstallUpdate={installUpdate}
+              tab={settingsTab}
+              onTab={setSettingsTab}
+            />
           ) : state.loaded ? (
             <Conversation
               session={session}
@@ -239,6 +253,12 @@ export function App({ bridge, shell, agent }: AppProps) {
           ) : (
             <div className="conversation" />
           )}
+          <NoticeBar
+            update={update}
+            settings={settings}
+            onInstall={installUpdate}
+            onDismissNotice={(nid) => shell.update({ dismissedNotices: [...settings.dismissedNotices, nid] })}
+          />
           {state.notice ? (
             <div className="toast" role="alert">
               <span>{state.notice}</span>

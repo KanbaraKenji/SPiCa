@@ -28,7 +28,7 @@ async function start(el: HTMLElement): Promise<void> {
   createRoot(el).render(
     <StrictMode>
       <Root splash={splash} ready={ready} version={version}>
-        <App bridge={bridge} shell={shell} agent={agent} />
+        <App bridge={bridge} shell={shell} agent={agent} version={version} />
       </Root>
     </StrictMode>,
   );

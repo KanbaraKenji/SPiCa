@@ -2312,3 +2312,58 @@ button.tree-twisty:hover {
 .splash-hint {
   margin: 8px 0 0;
 }
+
+/* Update / announcement line at the top of the main pane. It floats, so
+   nothing below moves when it appears or goes away. */
+.notice-bar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 35;
+  width: min(760px, calc(100% - 32px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 14px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--spica-border);
+  background: var(--spica-raised);
+  box-shadow: var(--spica-shadow);
+  font-size: 13px;
+}
+
+.notice-bar.is-warning {
+  border-color: var(--spica-warning);
+  background: var(--spica-warning-soft);
+}
+
+.notice-icon {
+  flex: none;
+  color: var(--spica-success);
+}
+
+.notice-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.notice-link {
+  flex: none;
+}
+
+.notice-close {
+  width: 26px;
+  height: 26px;
+}
+
+.about-hint {
+  margin: 8px 0 0;
+}
+
+.about-install {
+  margin-top: 10px;
+}

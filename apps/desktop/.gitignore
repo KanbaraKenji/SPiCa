@@ -1,0 +1,2 @@
+# A company's own packaging settings stay out of the open-source repo.
+deploy.json
