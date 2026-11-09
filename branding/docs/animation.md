@@ -88,4 +88,6 @@ ready 到整层消失共约 7.8 秒（`SPLASH_FINISH_AFTER`）。浅色版同样
 
 已做完、已提交：时间线按上面的收尾时间表重排；组件 `<SpicaSplash>` 同步（水波遮罩、涟漪、拖尾、字的辉光层、`mode`）；视频渲染脚本同步；品牌包测试全过。
 
-下一步第一件事：用 `packages/brand/scripts/render-splash-video.mjs` 出明暗两段 60fps mp4（readyAt 7，共约 890 帧，单个文件 < 10 MB），留档到 `docs/screenshots/brand/`，发点选页问「行不行」。
+第七版 60fps 视频已出（`docs/screenshots/brand/boot-v7-*-1280p60.mp4`），点选页已发他。
+
+下一步第一件事：等他回第七版「行不行」；还要改就只动 `SPLASH_FINISH` 里他点名的那一步，再用 `render-splash-video.mjs` 出同规格视频（readyAt 7、900 帧）。
