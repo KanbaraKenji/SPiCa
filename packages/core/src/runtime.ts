@@ -9,6 +9,7 @@ import { Session, type RunResult } from './session.ts';
 import { MemoryStore } from './store/memory.ts';
 import type { RelayRecord, SessionConfig, SessionRecord, Store } from './store/types.ts';
 import { agentTools } from './tools/agent-tools.ts';
+import { MailPipeline, triageMailTool, type MailConfig } from './mail.ts';
 import { projectTools } from './tools/project-tools.ts';
 import { createRunCommandTool } from './tools/command-tool.ts';
 import { createWebFetchTool, createWebSearchTool, type SearchBackend } from './tools/web-tools.ts';
@@ -65,6 +66,8 @@ export interface RuntimeOptions {
   workflows?: unknown[];
   /** Where new project folders go when no absolute folder is given. Default: cwd. */
   projectsRoot?: string;
+  /** Mail pipeline (sources, interval, triage). Polling starts only with mail.start(). */
+  mail?: MailConfig;
 }
 
 /** What sessions need from the runtime. Not part of the public API. */
@@ -120,6 +123,8 @@ export class Runtime implements RuntimeInternals {
   readonly #limiters = new Map<string, RateLimiter>();
   readonly #sessions = new Map<string, Session>();
   readonly #opts: RuntimeOptions;
+  /** Incoming mail → triage → project managers. */
+  readonly mail: MailPipeline;
   readonly #workflows: { workflows: Map<string, WorkflowDef>; errors: string[] };
   readonly #mcp = new Map<string, { client: McpStdioClient; source: string; disconnect: () => Promise<void> }>();
   readonly #reports = new Map<string, string>();
@@ -127,6 +132,7 @@ export class Runtime implements RuntimeInternals {
   constructor(opts: RuntimeOptions) {
     this.#opts = opts;
     this.#workflows = loadWorkflows(opts.workflowsDir, opts.workflows ?? []);
+    this.mail = new MailPipeline(this, opts.mail ?? {});
     this.store = opts.store ?? new MemoryStore();
     this.tracer = new Tracer(this.store, this.events);
     this.ledger = new CostLedger(opts.prices ?? DEFAULT_PRICES, opts.budget ?? {});
@@ -139,6 +145,7 @@ export class Runtime implements RuntimeInternals {
       ...(opts.search ? [createWebSearchTool(opts.search)] : []),
       ...agentTools,
       ...projectTools,
+      triageMailTool,
     ];
     for (const t of opts.tools ?? defaults) this.tools.register(t, 'core');
     // Waiting is done with wait_agents: refuse commands that only sleep, before
@@ -533,6 +540,32 @@ export class Runtime implements RuntimeInternals {
   }
 
   /**
+   * Run a registered tool directly (not through a model), e.g. the mail
+   * pipeline calling a plugin's list tool. Hooks and confirmation do not
+   * apply, so use it only for read-only tools.
+   */
+  async invokeTool(name: string, input: Record<string, unknown>, session?: Session): Promise<{ content: string; isError: boolean }> {
+    const tool = this.tools.get(name);
+    if (!tool) return { content: `unknown tool ${name}`, isError: true };
+    try {
+      const r = await tool.execute(input, {
+        sessionId: session?.id ?? 'runtime',
+        parentChain: session?.parentChain ?? [],
+        cwd: session?.config.cwd ?? this.#opts.cwd ?? process.cwd(),
+        signal: AbortSignal.timeout(120_000),
+        tracer: this.tracer,
+        extractors: this.extractors,
+        services: { runtime: this },
+        callId: newId('call'),
+        emit: () => {},
+      });
+      return { content: r.content, isError: !!r.isError };
+    } catch (err) {
+      return { content: err instanceof Error ? err.message : String(err), isError: true };
+    }
+  }
+
+  /**
    * Withdraw everything a plugin registered: hooks, tools, and the MCP servers
    * it connected. Hooks and tools are gone immediately; await `stopped` before
    * deleting the plugin's files (server processes are still exiting).
@@ -640,6 +673,7 @@ export class Runtime implements RuntimeInternals {
 
   /** Stop all runs (they become `interrupted`, resumable after restart), stop MCP servers, close the store. */
   async close(): Promise<void> {
+    this.mail.stop();
     await Promise.all([...this.#sessions.values()].map((s) => s.shutdown()));
     await Promise.all([...this.#mcp.values()].map((m) => m.disconnect()));
     this.store.close();

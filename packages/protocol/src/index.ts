@@ -288,6 +288,11 @@ export type CoreEventBody =
   | { type: 'project.updated'; project: ProjectInfo }
   /** A key action inside a project (emitted on the session that did it). */
   | { type: 'project.activity'; entry: ProjectLogEntry }
+  /** Mail pipeline (emitted on the mail triage thread). */
+  | { type: 'mail.polled'; sourceId: string; fetched: number; added: number }
+  | { type: 'mail.triaged'; item: MailItem }
+  | { type: 'mail.routed'; item: MailItem; managerSessionId: string }
+  | { type: 'mail.feedback'; item: MailItem }
   | { type: 'session.renamed'; title: string | null }
   | { type: 'child.report'; childId: string; summary: string }
   /** A note from a child session was added to this (parent) session. */
@@ -439,6 +444,62 @@ export interface AgentApi {
   createProject?(req: CreateProjectRequest): Promise<ProjectInfo>;
   listProjects?(): Promise<ProjectInfo[]>;
   getProject?(projectId: string): Promise<ProjectDetail | undefined>;
+  // Mail pipeline (M6): optional until the desktop shell implements them.
+  listMail?(filter?: { status?: MailItem['status']; projectId?: string; limit?: number }): Promise<MailItem[]>;
+  /** Fetch and triage now (otherwise it runs on its interval). */
+  pollMail?(): Promise<MailPollResult>;
+  /** The user's handling of a triaged mail; teaches the sender memory. */
+  mailFeedback?(mailId: string, feedback: { action: MailFeedback['action']; projectId?: string }): Promise<MailItem>;
+}
+
+// ---------------------------------------------------------------------------
+// Mail pipeline: incoming mail sorted into projects
+// ---------------------------------------------------------------------------
+
+export interface MailTriage {
+  /** project = belongs to a project; new = a new matter (maybe a new project); ignore = nothing to do. */
+  decision: 'project' | 'new' | 'ignore';
+  projectId?: string;
+  /** For `new`: what the agent suggests (e.g. a project name). */
+  suggestion?: string;
+  reason: string;
+  /** 0..1 */
+  confidence: number;
+  /** model = the triage agent decided; sender_memory = same sender as a mail the user assigned before. */
+  by: 'model' | 'sender_memory';
+  at: string;
+}
+
+export interface MailFeedback {
+  action: 'accept' | 'ignore' | 'reassign';
+  projectId?: string;
+  at: string;
+}
+
+export interface MailItem {
+  /** `<sourceId>:<messageId>` */
+  id: string;
+  sourceId: string;
+  messageId: string;
+  fromName?: string;
+  fromAddress?: string;
+  subject: string;
+  receivedAt?: string;
+  preview?: string;
+  status: 'new' | 'triaged' | 'routed' | 'ignored';
+  triage?: MailTriage;
+  feedback?: MailFeedback;
+  /** Project-manager session it was sent to. */
+  routedTo?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MailPollResult {
+  fetched: number;
+  added: number;
+  triaged: number;
+  routed: number;
 }
 
 // ---------------------------------------------------------------------------

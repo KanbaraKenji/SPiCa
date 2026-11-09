@@ -3,7 +3,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
-import type { Message, ProjectInfo, ProjectLogEntry, TraceRecord, WorkObject } from '../types.ts';
+import type { MailItem, Message, ProjectInfo, ProjectLogEntry, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const SCHEMA_VERSION = 1;
@@ -57,6 +57,13 @@ CREATE TABLE IF NOT EXISTS work_objects (
   data TEXT, created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS work_objects_project ON work_objects(project_id);
+CREATE TABLE IF NOT EXISTS mail_items (
+  id TEXT PRIMARY KEY, source_id TEXT NOT NULL, status TEXT NOT NULL, project_id TEXT, created_at TEXT NOT NULL, data TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS mail_items_status ON mail_items(status, created_at);
+CREATE TABLE IF NOT EXISTS mail_senders (
+  address TEXT PRIMARY KEY, project_id TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 `;
 
 type Row = Record<string, unknown>;
@@ -277,6 +284,34 @@ export class SqliteStore implements Store {
       ...(r.data !== null ? { data: parse<Record<string, unknown>>(r.data) } : {}),
       createdAt: String(r.created_at),
     }));
+  }
+
+  // mail ------------------------------------------------------------------------
+  upsertMail(m: MailItem): void {
+    this.#q(
+      `INSERT INTO mail_items (id, source_id, status, project_id, created_at, data) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET status = excluded.status, project_id = excluded.project_id, data = excluded.data`,
+    ).run(m.id, m.sourceId, m.status, m.triage?.projectId ?? null, m.createdAt, json(m));
+  }
+  getMail(id: string): MailItem | undefined {
+    const row = this.#q('SELECT data FROM mail_items WHERE id = ?').get(id) as Row | undefined;
+    return row && parse<MailItem>(row.data);
+  }
+  listMail(filter: { status?: MailItem['status']; projectId?: string; limit?: number } = {}): MailItem[] {
+    const rows = this.#q(
+      `SELECT data FROM mail_items WHERE (? IS NULL OR status = ?) AND (? IS NULL OR project_id = ?) ORDER BY created_at, rowid LIMIT ?`,
+    ).all(filter.status ?? null, filter.status ?? null, filter.projectId ?? null, filter.projectId ?? null, filter.limit ?? 1000) as Row[];
+    return rows.map((r) => parse<MailItem>(r.data));
+  }
+  setSenderProject(address: string, projectId: string): void {
+    this.#q(
+      `INSERT INTO mail_senders (address, project_id, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(address) DO UPDATE SET project_id = excluded.project_id, updated_at = excluded.updated_at`,
+    ).run(address.toLowerCase(), projectId, new Date().toISOString());
+  }
+  getSenderProject(address: string): string | undefined {
+    const row = this.#q('SELECT project_id FROM mail_senders WHERE address = ?').get(address.toLowerCase()) as Row | undefined;
+    return row ? String(row.project_id) : undefined;
   }
 
   close(): void {

@@ -44,6 +44,8 @@ export interface ToolEnv {
   role?: import('../types.ts').AgentRole;
   /** Set when the session works for a project. */
   projectId?: string;
+  /** Role template of the session (e.g. 'mail-triage'). */
+  templateId?: string;
   /** The provider offers model-hosted web search and the session enabled it. */
   serverWebSearch: boolean;
 }

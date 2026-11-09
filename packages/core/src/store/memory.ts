@@ -1,5 +1,5 @@
 // In-memory store (tests and ephemeral runs).
-import type { Message, ProjectInfo, ProjectLogEntry, TraceRecord, WorkObject } from '../types.ts';
+import type { MailItem, Message, ProjectInfo, ProjectLogEntry, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -15,6 +15,28 @@ export class MemoryStore implements Store {
   readonly #projects = new Map<string, ProjectInfo>();
   readonly #projectLog: ProjectLogEntry[] = [];
   readonly #objects = new Map<string, WorkObject>();
+  readonly #mail = new Map<string, MailItem>();
+  readonly #senders = new Map<string, string>();
+
+  upsertMail(m: MailItem): void {
+    this.#mail.set(m.id, clone(m));
+  }
+  getMail(id: string): MailItem | undefined {
+    const m = this.#mail.get(id);
+    return m && clone(m);
+  }
+  listMail(filter: { status?: MailItem['status']; projectId?: string; limit?: number } = {}): MailItem[] {
+    return [...this.#mail.values()]
+      .filter((m) => (!filter.status || m.status === filter.status) && (!filter.projectId || m.triage?.projectId === filter.projectId))
+      .slice(0, filter.limit ?? 1000)
+      .map(clone);
+  }
+  setSenderProject(address: string, projectId: string): void {
+    this.#senders.set(address.toLowerCase(), projectId);
+  }
+  getSenderProject(address: string): string | undefined {
+    return this.#senders.get(address.toLowerCase());
+  }
 
   upsertProject(p: ProjectInfo): void {
     this.#projects.set(p.id, clone(p));

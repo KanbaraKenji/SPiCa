@@ -1,7 +1,7 @@
 // Storage contract. The database is the source of truth for sessions,
 // messages, tool calls, pending questions, relays and traceable records.
 // Synchronous on purpose: the default backend is embedded SQLite.
-import type { AgentRole, Message, PendingItem, ProjectInfo, ProjectLogEntry, SessionStatus, TraceRecord, WorkObject } from '../types.ts';
+import type { AgentRole, MailItem, Message, PendingItem, ProjectInfo, ProjectLogEntry, SessionStatus, TraceRecord, WorkObject } from '../types.ts';
 
 export interface SessionRecord {
   id: string;
@@ -110,6 +110,14 @@ export interface Store {
   listProjectLog(projectId: string, limit?: number): ProjectLogEntry[];
   upsertWorkObject(o: WorkObject): void;
   listWorkObjects(projectId: string): WorkObject[];
+
+  upsertMail(m: MailItem): void;
+  getMail(id: string): MailItem | undefined;
+  /** Oldest first. */
+  listMail(filter?: { status?: MailItem['status']; projectId?: string; limit?: number }): MailItem[];
+  /** Sender memory: the project the user put this sender's mail in. */
+  setSenderProject(address: string, projectId: string): void;
+  getSenderProject(address: string): string | undefined;
 
   appendTrace(rec: TraceRecord): void;
   listTraces(filter?: { sessionId?: string }): TraceRecord[];
