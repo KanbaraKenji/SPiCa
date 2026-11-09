@@ -52,5 +52,17 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async exportTraces(filter) {
       return rt.exportTraces(filter);
     },
+    async getTopSession() {
+      return rt.top().info();
+    },
+    async createProject(req) {
+      return rt.createProject(req);
+    },
+    async listProjects() {
+      return rt.listProjects();
+    },
+    async getProject(projectId) {
+      return rt.getProject(projectId);
+    },
   };
 }

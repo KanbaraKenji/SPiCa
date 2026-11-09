@@ -181,5 +181,13 @@ describe('AgentApi adapter', () => {
     expect(msgs.map((m) => m.kind)).toEqual(['user', 'assistant']);
     expect((await api.listSessions()).map((s) => s.title)).toEqual(['via api']);
     expect((await api.exportTraces()).split('\n')).toHaveLength(1);
+    const top = await api.getTopSession!();
+    expect(top.role).toBe('top');
+    const { tmpdir } = await import('node:os');
+    const { rm } = await import('node:fs/promises');
+    const p = await api.createProject!({ name: 'Via API', folder: `${tmpdir()}/spica-api-${Date.now()}` });
+    expect((await api.listProjects!()).map((x) => x.id)).toEqual([p.id]);
+    expect((await api.getProject!(p.id))?.manager.parentId).toBe(top.id);
+    await rm(p.folder, { recursive: true, force: true });
   });
 });
