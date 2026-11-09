@@ -34,6 +34,7 @@ describe('ConfirmCard', () => {
   it('says only what is being confirmed and reports the decision', () => {
     const onDecide = vi.fn();
     render(<ConfirmCard block={{ type: 'confirm', callId: 'c2', name: 'send_email', input: {}, reason: '发送邮件给「项目组」' }} onDecide={onDecide} />);
+    expect(document.querySelector('.card-why')).toBeNull();
     expect(screen.getByText('发送邮件给「项目组」')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '允许' }));
     expect(onDecide).toHaveBeenCalledWith(true);

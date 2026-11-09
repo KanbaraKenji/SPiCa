@@ -5,7 +5,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, type Block, type ChildNote, type FileRef } from '../store/transcript';
 import { Icon } from '../ui/Icon';
-import { confirmTitle, fileFolder, fileName, formatDuration, toolLabel, toolTarget } from './format';
+import { confirmTitle, fileFolder, fileName, formatDuration, GUARD_CAUSE_TEXT, toolLabel, toolTarget } from './format';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
 
@@ -181,6 +181,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         <Icon name="tool" size={16} className="card-head-icon" />
         <span className="card-title">{confirmTitle(block.name, block.input, block.reason)}</span>
       </header>
+      {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
       {decided ? (
         <p className="card-answer">
           <Icon name={block.approved ? 'check' : 'close'} size={14} />

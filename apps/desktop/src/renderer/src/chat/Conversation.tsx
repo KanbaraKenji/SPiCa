@@ -1,5 +1,5 @@
 // The main pane: the transcript of one session, streamed live, and its input box.
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MailItem, SessionInfo } from '@spica/protocol';
 import { filesOf, isRunning, type Block, type Item, type Transcript } from '../store/transcript';
 import { SpicaMark } from '@spica/brand/react';
@@ -7,6 +7,7 @@ import { Icon } from '../ui/Icon';
 import { AskCard, ChildNoteCard, ConfirmCard, FileCards, MarkdownText, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
 import { Composer } from './Composer';
 import { StatusLine } from './StatusLine';
+import { GUARD_FLAG_TEXT } from './format';
 
 export interface ConversationActions {
   send(text: string): void;
@@ -21,7 +22,7 @@ export interface ConversationActions {
   openInbox?: () => void;
 }
 
-function MailNote({ ids, actions }: { ids: string[]; actions: ConversationActions }) {
+function MailNote({ ids, flagged = [], actions }: { ids: string[]; flagged?: string[] | undefined; actions: ConversationActions }) {
   const mails = ids.map((id) => actions.mailById?.(id)).filter((m): m is MailItem => m !== undefined);
   return (
     <div className="turn-mail">
@@ -40,6 +41,7 @@ function MailNote({ ids, actions }: { ids: string[]; actions: ConversationAction
             <li key={m.id}>
               <span className="turn-mail-from">{m.fromName || m.fromAddress || '—'}</span>
               <span className="turn-mail-subject">{m.subject || '（没有主题）'}</span>
+              {flagged.includes(m.id) ? <span className="guard-note">{GUARD_FLAG_TEXT.mail}</span> : null}
             </li>
           ))}
         </ul>
@@ -68,7 +70,20 @@ function Response({ item, live, actions, cards }: { item: Extract<Item, { kind: 
   return (
     <div className="turn-response">
       {segs.map((s, i) => {
-        if (s.kind === 'tools') return <ToolGroup key={s.blocks[0]?.callId ?? i} blocks={s.blocks} />;
+        if (s.kind === 'tools') {
+          // Outside content that carried instructions: one quiet line per kind, under the tools.
+          const kinds = [...new Set(s.blocks.map((b) => b.flagged).filter((k): k is NonNullable<typeof k> => Boolean(k)))];
+          return (
+            <Fragment key={s.blocks[0]?.callId ?? i}>
+              <ToolGroup blocks={s.blocks} />
+              {kinds.map((k) => (
+                <p key={k} className="turn-note guard-note">
+                  {GUARD_FLAG_TEXT[k]}
+                </p>
+              ))}
+            </Fragment>
+          );
+        }
         const b = s.block;
         switch (b.type) {
           case 'text':
@@ -198,7 +213,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                     <p className="turn-user-text">{item.text}</p>
                   </div>
                 );
-              if (item.kind === 'mail') return <MailNote key={item.id} ids={item.mailIds} actions={actions} />;
+              if (item.kind === 'mail') return <MailNote key={item.id} ids={item.mailIds} flagged={item.flagged} actions={actions} />;
               if (item.kind === 'note')
                 return item.child ? (
                   <ChildNoteCard key={item.id} note={item.child} onOpen={actions.openSession} />

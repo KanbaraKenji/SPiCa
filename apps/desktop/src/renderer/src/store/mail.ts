@@ -5,6 +5,10 @@ import { useSyncExternalStore } from 'react';
 import type { AgentApi, CoreEvent, MailFeedback, MailItem } from '@spica/protocol';
 import { Store } from './external';
 import { friendlyError } from './agent';
+import { flaggedMailIds } from './transcript';
+
+/** Template of the pipeline's own thread (it is a top-level session). */
+const TRIAGE_TEMPLATE = 'mail-triage';
 
 export interface MailView {
   /** False when this backend has no mail pipeline. */
@@ -19,6 +23,8 @@ export interface MailView {
   problem: string;
   /** The pipeline's own thread (hidden from the sidebar). */
   threadId: string | null;
+  /** Mail whose text carried instructions (the core flagged them and told the model to ignore them). */
+  flagged: string[];
 }
 
 export interface MailSource {
@@ -40,6 +46,7 @@ export class MailStore {
       lastPolledAt: null,
       problem: '',
       threadId: null,
+      flagged: [],
     });
     source.onAgentEvent((e) => this.#onEvent(e));
   }
@@ -50,6 +57,7 @@ export class MailStore {
     try {
       const items = await this.#api.listMail({ limit: 500 });
       this.state.set((v) => ({ ...v, items, loaded: true }));
+      void this.#loadFlags();
     } catch (err) {
       this.state.set((v) => ({ ...v, loaded: true, problem: friendlyError(err) }));
     }
@@ -80,6 +88,26 @@ export class MailStore {
     }
   }
 
+  /** Which mails were flagged, rebuilt from the triage thread's history (the core marks the messages it fenced). */
+  async #loadFlags(): Promise<void> {
+    try {
+      let thread = this.state.get().threadId;
+      if (!thread) thread = (await this.#api.listSessions()).find((s) => s.templateId === TRIAGE_TEMPLATE && !s.parentId)?.id ?? null;
+      if (!thread) return;
+      const ids = (await this.#api.getMessages(thread)).flatMap((m) => flaggedMailIds(m.meta?.untrusted));
+      if (ids.length) this.#flag(ids);
+    } catch {
+      // A mark, not essential: the inbox works without it.
+    }
+  }
+
+  #flag(ids: string[]): void {
+    this.state.set((v) => {
+      const add = ids.filter((id) => !v.flagged.includes(id));
+      return add.length ? { ...v, flagged: [...v.flagged, ...add] } : v;
+    });
+  }
+
   dismissProblem(): void {
     this.state.set((v) => ({ ...v, problem: '' }));
   }
@@ -96,6 +124,8 @@ export class MailStore {
     if (e.type === 'mail.triaged' || e.type === 'mail.routed' || e.type === 'mail.feedback') {
       this.#upsert(e.item);
       if (this.state.get().threadId !== e.sessionId) this.state.set((v) => ({ ...v, threadId: e.sessionId }));
+    } else if (e.type === 'guard.flagged' && e.note.kind === 'mail') {
+      this.#flag(flaggedMailIds([e.note]));
     } else if (e.type === 'mail.polled') {
       this.state.set((v) => ({ ...v, threadId: e.sessionId, lastPolledAt: e.at }));
       // New mail is stored before it is sorted; fetch it so it shows as 「正在分类」.
