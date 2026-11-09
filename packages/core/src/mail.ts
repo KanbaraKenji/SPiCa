@@ -5,7 +5,8 @@ import { isoNow } from './events.ts';
 import type { Runtime } from './runtime.ts';
 import type { Session } from './session.ts';
 import type { Tool } from './tools/types.ts';
-import type { MailFeedback, MailItem, MailPollResult, MailTriage } from './types.ts';
+import type { GuardNote, MailFeedback, MailItem, MailPollResult, MailTriage } from './types.ts';
+import { fence } from './guard.ts';
 
 export interface MailSource {
   id: string;
@@ -216,7 +217,9 @@ export class MailPipeline {
     for (let i = 0; i < toModel.length; i += size) {
       const batch = toModel.slice(i, i + size);
       this.#batch = new Set(batch.map((b) => b.id));
-      await thread.send(this.#batchMessage(batch), { author: 'runtime', kind: 'user' }).done;
+      const msg = this.#batchMessage(batch);
+      this.#flag(thread, msg.notes);
+      await thread.send(msg.text, { author: 'runtime', kind: 'user', meta: { untrusted: msg.notes } }).done;
       // The agent answered without (complete) triage_mail results: ask once more, naming the mails.
       const open = batch.filter((m) => this.#rt.store.getMail(m.id)?.status === 'new').map((m) => m.id);
       if (open.length > 0) {
@@ -244,7 +247,26 @@ export class MailPipeline {
     return ['triage_mail', 'list_projects', 'open_project', ...new Set(this.activeSources.map((s) => s.readTool))];
   }
 
-  #batchMessage(batch: MailItem[]): string {
+  /** What came from the sender (name, address, subject, preview) is fenced as data; ids and our notes stay outside. */
+  #fencedMail(m: MailItem, indent: string): { text: string; note: GuardNote } {
+    const raw = [
+      `from: ${m.fromName ?? ''} <${m.fromAddress ?? ''}>`,
+      `subject: ${m.subject}`,
+      m.receivedAt ? `received: ${m.receivedAt}` : '',
+      m.preview ? `preview: ${m.preview}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const f = fence(raw, 'mail', `mail:${m.id}`);
+    return { text: f.text.replace(/^/gm, indent), note: f.note };
+  }
+
+  #flag(thread: Session, notes: GuardNote[]): void {
+    for (const note of notes) if (note.signals.length) this.#emit(thread, { type: 'guard.flagged', note });
+  }
+
+  #batchMessage(batch: MailItem[]): { text: string; notes: GuardNote[] } {
+    const notes: GuardNote[] = [];
     const projects = this.#rt.listProjects().filter((p) => p.status === 'active');
     const lines = [
       `New mail to sort (${batch.length}). Call triage_mail once with a result for every mail_id.`,
@@ -256,12 +278,11 @@ export class MailPipeline {
       ...batch.map((m) => {
         const d = m.fromAddress ? this.#rt.store.getSenderDecision(m.fromAddress) : undefined;
         const known = d?.decision === 'project' ? d.projectId : undefined;
+        const f = this.#fencedMail(m, '  ');
+        notes.push(f.note);
         return [
           `- mail_id: ${m.id}`,
-          `  from: ${m.fromName ?? ''} <${m.fromAddress ?? ''}>`,
-          `  subject: ${m.subject}`,
-          m.receivedAt ? `  received: ${m.receivedAt}` : '',
-          m.preview ? `  preview: ${m.preview}` : '',
+          f.text,
           known ? `  note: mail from this sender was put in project ${known} before` : '',
         ]
           .filter(Boolean)
@@ -269,7 +290,7 @@ export class MailPipeline {
       }),
     ];
     if (this.#cfg.rules?.trim()) lines.push('', 'Additional sorting rules:', this.#cfg.rules.trim());
-    return lines.join('\n');
+    return { text: lines.join('\n'), notes };
   }
 
   /** Called by the triage_mail tool. Returns problems for the model to fix (empty when all applied). */
@@ -333,28 +354,30 @@ export class MailPipeline {
       const manager = project && this.#rt.session(project.managerSessionId);
       if (!project || !manager) continue;
       const readTools = [...new Set(list.map((m) => this.#sources.find((s) => s.id === m.sourceId)?.readTool).filter(Boolean))];
+      const notes: GuardNote[] = [];
       const text = [
         list.length === 1 ? 'New mail for this project.' : `${list.length} new mails for this project.`,
         '',
-        ...list.map((m, k) =>
-          [
-            `${k + 1}. Subject: ${m.subject}`,
-            `   From: ${m.fromName ?? ''} <${m.fromAddress ?? ''}>`,
-            m.receivedAt ? `   Received: ${m.receivedAt}` : '',
-            m.preview ? `   Preview: ${m.preview}` : '',
-            `   Mail id: ${m.messageId}`,
-            m.triage?.reason ? `   Why it was put here: ${m.triage.reason}` : '',
+        ...list.map((m, k) => {
+          const f = this.#fencedMail(m, '   ');
+          notes.push(f.note);
+          return [
+            `${k + 1}. Mail id: ${m.messageId}`,
+            f.text,
+            // the triage agent's reason can quote the mail: fenced too
+            m.triage?.reason ? `   Why it was put here: ${fence(m.triage.reason, 'mail', `triage:${m.id}`).text}` : '',
           ]
             .filter(Boolean)
-            .join('\n'),
-        ),
+            .join('\n');
+        }),
         '',
         `Read the mails${readTools.length ? ` (with ${readTools.join(', ')})` : ''}, then give the user a few next steps with ` +
           "suggest_actions. If a reply is needed, write it only as a draft with the mail plugin's draft tool; never send mail. " +
           "Moving or marking mail follows the plugin's confirmation rules.",
         `Write to the user in ${manager.config.locale ?? 'zh-CN'}, including any short remark before you use tools.`,
       ].join('\n');
-      manager.send(text, { author: 'parent', meta: { mails: list.map((m) => ({ id: m.id, sourceId: m.sourceId, messageId: m.messageId })) } });
+      this.#flag(manager, notes);
+      manager.send(text, { author: 'parent', meta: { mails: list.map((m) => ({ id: m.id, sourceId: m.sourceId, messageId: m.messageId })), untrusted: notes } });
       for (const m of list) {
         const done: MailItem = { ...m, status: 'routed', routedTo: manager.id, updatedAt: isoNow() };
         this.#rt.store.upsertMail(done);

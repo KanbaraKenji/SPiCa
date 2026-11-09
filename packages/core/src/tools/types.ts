@@ -33,6 +33,12 @@ export interface Tool {
    * The tool's execute() is not called; the answer becomes the result.
    */
   interaction?: 'ask';
+  /** The result is outside content (web page, file text, plugin data): it reaches the model fenced as data. */
+  untrusted?: import('../types.ts').UntrustedKind;
+  /** The link the call opens (web_fetch), for the outside-link check. */
+  targetUrl?(input: Record<string, unknown>): string | undefined;
+  /** The file the call reads (read_file), for the credential-file check. */
+  targetPath?(input: Record<string, unknown>): string | undefined;
   /** Hide the tool when this returns false (e.g. no search backend configured). */
   available?(env: ToolEnv): boolean;
   execute(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput>;

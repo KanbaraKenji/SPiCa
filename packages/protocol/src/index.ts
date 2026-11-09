@@ -132,6 +132,10 @@ export interface Message {
 export interface MessageMeta {
   /** Runtime note: tools the session used before that are gone now (names). */
   toolsUnavailable?: string[];
+  /** The message carries outside content (e.g. forwarded mail), fenced as data. */
+  untrusted?: GuardNote[];
+  /** tool_results: outside content per tool call id. */
+  guard?: Record<string, GuardNote>;
   /** One of Author; typed loosely so older callers that build plain objects still compile. */
   author?: Author | (string & {});
   /** Assistant text saved while it was streaming. */
@@ -209,8 +213,27 @@ export interface SessionInfo {
 }
 
 /** An open question or confirmation the session is waiting on. */
+/** Where untrusted content came from. */
+export type UntrustedKind = 'mail' | 'web' | 'file' | 'mcp';
+
+/** What the guard noticed in one piece of outside content. */
+export interface GuardNote {
+  kind: UntrustedKind;
+  /** Tool name or mail id it came from. */
+  source: string;
+  /** Instruction-like patterns found: override, role, address_agent, exfiltrate, secret_file, run_command, mail_action. */
+  signals: string[];
+}
+
+/**
+ * Why the guard asked for confirmation: untrusted_turn = an irreversible action after outside content (even when a
+ * plugin set it to automatic); outside_link = opening a link that came from outside content; sensitive_file = reading a
+ * credential file after outside content.
+ */
+export type GuardCause = 'untrusted_turn' | 'outside_link' | 'sensitive_file';
+
 export type PendingItem =
-  | { kind: 'confirm'; callId: string; toolName: string; input: unknown; reason: string; createdAt: string }
+  | { kind: 'confirm'; callId: string; toolName: string; input: unknown; reason: string; cause?: GuardCause; createdAt: string }
   | { kind: 'ask'; callId: string; question: string; options?: string[]; createdAt: string };
 
 // ---------------------------------------------------------------------------
@@ -265,7 +288,9 @@ export type CoreEventBody =
       preview: string;
       durationMs: number;
     }
-  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string }
+  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause }
+  /** Outside content (mail, web page, file, plugin tool) contained text that looks like instructions. */
+  | { type: 'guard.flagged'; note: GuardNote; callId?: string }
   | { type: 'confirm.resolved'; callId: string; approved: boolean }
   | { type: 'ask.request'; callId: string; question: string; options?: string[] }
   | { type: 'ask.resolved'; callId: string; answer: string }

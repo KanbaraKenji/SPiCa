@@ -36,6 +36,8 @@ function isBinary(buf: Buffer): boolean {
 }
 
 export const readFileTool: Tool = {
+  untrusted: 'file',
+  targetPath: (input) => (typeof input.path === 'string' ? input.path : undefined),
   spec: {
     name: 'read_file',
     description:
@@ -276,6 +278,7 @@ const MAX_GREP = 200;
 const MAX_GREP_FILE_BYTES = 5_000_000;
 
 export const grepTool: Tool = {
+  untrusted: 'file',
   spec: {
     name: 'grep',
     description:

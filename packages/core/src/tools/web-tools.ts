@@ -19,6 +19,8 @@ export interface WebFetchOptions {
 export function createWebFetchTool(opts: WebFetchOptions = {}): Tool {
   const doFetch = opts.fetchImpl ?? fetch;
   return {
+    untrusted: 'web',
+    targetUrl: (input) => (typeof input.url === 'string' ? input.url : undefined),
     spec: {
       name: 'web_fetch',
       description:
@@ -235,6 +237,7 @@ function pick(obj: unknown, path: string): unknown {
  */
 export function createWebSearchTool(backend: SearchBackend): Tool {
   return {
+    untrusted: 'web',
     spec: {
       name: 'web_search',
       description:

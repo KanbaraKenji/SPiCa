@@ -20,6 +20,7 @@
     "journeys": "node --env-file=../../.env.local ../../plugins/example-eval/src/run.ts --only J2,J3,J4,J5,J7",
     "export:log": "node scripts/export-log.ts",
     "smoke:mail": "node --env-file=../../.env.local scripts/smoke-mail.ts",
+    "smoke:guard": "node --env-file=../../.env.local scripts/smoke-guard.ts",
     "check:electron-host": "electron scripts/electron/host-check.ts"
   },
   "dependencies": {

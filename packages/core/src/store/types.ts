@@ -41,6 +41,8 @@ export interface SessionConfig {
 export interface ToolCallCards {
   fileCard?: import('../types.ts').FileCardMeta;
   suggestion?: { title: string; actions: import('../types.ts').SuggestedAction[] };
+  /** The result was outside content and went to the model fenced as data. */
+  guard?: import('../types.ts').GuardNote;
 }
 
 /** Keyed by (sessionId, messageId, id): some gateways reuse call ids across turns. */

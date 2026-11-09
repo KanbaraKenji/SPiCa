@@ -95,6 +95,7 @@ export interface RuntimeInternals {
   onRunEnd(session: Session, result: RunResult): void;
   onToolDone(session: Session, call: { name: string; input: unknown }, result: { isError: boolean }): void;
   hasChildren(sessionId: string): boolean;
+  session(id: string): Session | undefined;
 }
 
 /** How a session is named in text written for the model. */
