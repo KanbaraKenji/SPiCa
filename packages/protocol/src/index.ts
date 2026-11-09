@@ -93,6 +93,25 @@ export type MessageKind =
 /** Who wrote a user-side message. */
 export type Author = 'user' | 'parent' | 'child' | 'runtime' | 'plugin';
 
+/**
+ * Structured metadata on notes that come from a child session (message kinds
+ * `relay` and `report`). The message text is written for the model; UIs
+ * should render from these fields instead of parsing the text.
+ */
+export interface ChildNoteMeta {
+  author: 'child';
+  /** report = the child's final answer; relay = what the user wrote there; decision = a decision made or changed there. */
+  kind: 'report' | 'relay' | 'decision';
+  fromSessionId: string;
+  fromTitle: string | null;
+  /** When it happened in the child (ISO 8601 with offset). */
+  at: string;
+  /** The original words: the user's message, the decision, or the report. */
+  text: string;
+  /** For decisions: recorded by the user directly or by the agent. */
+  by?: 'user' | 'agent';
+}
+
 export interface Message {
   id: string;
   sessionId: string;
@@ -157,7 +176,8 @@ export interface SessionInfo {
   /** Ancestors, nearest parent first. */
   parentChain: string[];
   role: AgentRole;
-  title: string;
+  /** Display name; null until someone names it (the UI decides what to show). */
+  title: string | null;
   status: SessionStatus;
   providerId: string;
   model: string;
@@ -244,7 +264,8 @@ export type CoreEventBody =
   | { type: 'trace'; record: TraceRecord }
   | { type: 'steer.queued'; messageId: string; mode: SteerMode }
   | { type: 'steer.applied'; messageIds: string[] }
-  | { type: 'child.spawned'; childId: string; title: string }
+  | { type: 'child.spawned'; childId: string; title: string | null }
+  | { type: 'session.renamed'; title: string | null }
   | { type: 'child.report'; childId: string; summary: string }
   /** A note from a child session was added to this (parent) session. */
   | { type: 'relay'; fromSessionId: string; note: string }
@@ -337,6 +358,10 @@ export interface AgentApi {
   /** Insert a message into a running session; `interrupt` cuts the current model stream first. */
   steer(sessionId: string, text: string, mode: SteerMode): Promise<SendResult>;
   answer(sessionId: string, callId: string, answer: string): Promise<void>;
+  /** Set or clear the display name. */
+  renameSession(sessionId: string, title: string | null): Promise<SessionInfo>;
+  /** Continue a session left `interrupted` (e.g. after a restart). */
+  resume(sessionId: string): Promise<void>;
   confirm(sessionId: string, callId: string, approved: boolean): Promise<void>;
   abort(sessionId: string): Promise<void>;
   /** Traceable records as JSON Lines. */

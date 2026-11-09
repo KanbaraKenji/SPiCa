@@ -40,6 +40,12 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async confirm(id, callId, approved) {
       await get(id).confirm(callId, approved);
     },
+    async renameSession(id, title) {
+      return get(id).rename(title);
+    },
+    async resume(id) {
+      get(id).resume();
+    },
     async abort(id) {
       get(id).abort();
     },

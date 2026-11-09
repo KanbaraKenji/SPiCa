@@ -112,7 +112,14 @@ describe('session tree', () => {
     expect(texts.some((t) => t.includes('Use metric from now on'))).toBe(true);
     expect(texts.some((t) => t.includes('Decision recorded there: Units switched to metric'))).toBe(true);
     expect(texts.some((t) => t.includes('Decision made by the user there: Deadline moved to Friday'))).toBe(true);
-    expect(relays.filter((m) => m.meta?.decision === true)).toHaveLength(2);
+    const decisions = relays.filter((m) => m.meta?.kind === 'decision');
+    expect(decisions).toHaveLength(2);
+    // Structured fields for the UI: no need to parse the English note text.
+    expect(decisions.map((m) => m.meta)).toEqual([
+      expect.objectContaining({ author: 'child', kind: 'decision', fromSessionId: child.id, fromTitle: 'Specs', text: 'Units switched to metric', by: 'agent' }),
+      expect.objectContaining({ kind: 'decision', text: 'Deadline moved to Friday', by: 'user' }),
+    ]);
+    expect(relays[0]!.meta).toMatchObject({ kind: 'relay', text: 'Use metric from now on', at: expect.stringMatching(/T.*[+-]\d\d:\d\d$/) });
   });
 
   it('a child that finished before wait_agents is not reported twice', async () => {
@@ -129,9 +136,20 @@ describe('session tree', () => {
     const rt = makeRuntime(gw);
     const lead = rt.createSession({ role: 'manager' });
     await lead.send('LEAD').done;
-    const all = JSON.stringify(lead.messages());
+    const all = JSON.stringify(lead.messages().map((m) => m.content)); // what the model sees
     expect(all.split('QUICK-REPORT-TEXT')).toHaveLength(2); // exactly once
+    expect(lead.messages().find((m) => m.kind === 'report')!.meta).toMatchObject({ kind: 'report', fromTitle: 'Quick', text: 'QUICK-REPORT-TEXT' });
     expect(all).toContain('report already in your context');
+  });
+
+  it('sessions have no invented display name and can be renamed', async () => {
+    const rt = makeRuntime(gw);
+    const events = captureEvents(rt);
+    const s = rt.createSession();
+    expect(s.info().title).toBeNull();
+    expect(s.rename('  Budget review ').title).toBe('Budget review');
+    expect(s.rename('').title).toBeNull();
+    expect(events.filter((e) => e.type === 'session.renamed').map((e) => (e.type === 'session.renamed' ? e.title : 'x'))).toEqual(['Budget review', null]);
   });
 
   it('message_agent only reaches own children', async () => {

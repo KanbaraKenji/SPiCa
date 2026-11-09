@@ -35,11 +35,6 @@ export interface SendHandle {
   done: Promise<RunResult>;
 }
 
-interface QueuedSteer {
-  message: Message;
-  mode: SteerMode;
-}
-
 const MAX_PARALLEL_TOOLS = 8;
 const RESULT_PREVIEW = 200;
 const MAX_RESULT_CHARS = 100_000;
@@ -49,7 +44,6 @@ export class Session {
   readonly #rt: RuntimeInternals;
   #record: SessionRecord;
   #messages: Message[];
-  #queue: QueuedSteer[] = [];
   #run: Promise<RunResult> | undefined;
   #runAbort: AbortController | undefined;
   #turnAbort: AbortController | undefined;
@@ -59,11 +53,25 @@ export class Session {
   /** Input size of the last model call (context only grows within a run), used for budget pre-checks. */
   #lastInputTokens = 0;
 
-  constructor(rt: RuntimeInternals, record: SessionRecord, messages: Message[] = []) {
+  #shutdown = false;
+
+  constructor(rt: RuntimeInternals, record: SessionRecord, messages: Message[] = [], restored: { lastInputTokens?: number } = {}) {
     this.#rt = rt;
     this.id = record.id;
     this.#record = record;
     this.#messages = messages;
+    this.#lastInputTokens = restored.lastInputTokens ?? 0;
+  }
+
+  /**
+   * Stop for an application shutdown: the run ends as `interrupted` (not
+   * `aborted`) so it can be resumed after restart. Resolves when stopped.
+   */
+  async shutdown(): Promise<void> {
+    if (!this.#run) return;
+    this.#shutdown = true;
+    this.#runAbort?.abort(Object.assign(new Error('application shutting down'), { name: 'AbortError' }));
+    await this.#run.catch(() => undefined);
   }
 
   // ---------------------------------------------------------------------------
@@ -163,7 +171,7 @@ export class Session {
       createdAt: isoNow(),
       meta: { author: opts.author ?? 'user', steerMode: mode },
     };
-    this.#queue.push({ message, mode });
+    this.#rt.store.putQueued(message); // persisted: survives a crash before it is applied
     this.#emit({ type: 'steer.queued', messageId: message.id, mode });
     if (mode === 'interrupt' && this.#run) {
       this.#interrupt = true;
@@ -220,6 +228,14 @@ export class Session {
     return this.#maybeResume();
   }
 
+  /** Set or clear the display name. */
+  rename(title: string | null): SessionInfo {
+    this.#record = { ...this.#record, title: title && title.trim() !== '' ? title.trim() : null, updatedAt: isoNow() };
+    this.#rt.store.upsertSession(this.#record);
+    this.#emit({ type: 'session.renamed', title: this.#record.title });
+    return this.info();
+  }
+
   /** Continue a session left `interrupted` (e.g. after a restart). */
   resume(): Promise<RunResult> | undefined {
     if (this.#run || this.#hasPending()) return this.#run;
@@ -241,7 +257,7 @@ export class Session {
     };
     if (this.#run || this.#hasPending()) {
       // Keep tool_use / tool_result pairs intact: apply at the next turn boundary.
-      this.#queue.push({ message, mode: 'next' });
+      this.#rt.store.putQueued(message);
       return message;
     }
     return this.#append(message);
@@ -281,7 +297,9 @@ export class Session {
           : reason === 'budget'
             ? 'idle'
             : reason === 'aborted'
-              ? 'aborted'
+              ? this.#shutdown
+                ? 'interrupted'
+                : 'aborted'
               : reason === 'error'
                 ? 'error'
                 : reason;
@@ -461,7 +479,7 @@ export class Session {
       const calls = response.content.filter((b): b is ToolUseBlock => b.type === 'tool_use');
       if (calls.length === 0) {
         this.#emit({ type: 'turn.end', turn });
-        if (this.#queue.length > 0) continue; // a steer arrived during the last turn
+        if (this.#rt.store.listQueued(this.id).length > 0) continue; // a steer arrived during the last turn
         return end('completed');
       }
 
@@ -580,6 +598,8 @@ export class Session {
       tracer: this.#rt.tracer,
       extractors: this.#rt.extractors,
       services: this.#rt.services(this),
+      callId: draft.callId,
+      emit: (body) => this.#emit(body),
     };
     try {
       const r = await tool.execute((draft.input ?? {}) as Record<string, unknown>, ctx);
@@ -604,7 +624,7 @@ export class Session {
 
   /** Append the tool_results message for an assistant message, from the tool-call records. */
   #appendToolResults(assistant: Message): void {
-    const records = new Map(this.#rt.store.listToolCalls(this.id).map((r) => [r.id, r]));
+    const records = new Map(this.#rt.store.listToolCalls(this.id, assistant.id).map((r) => [r.id, r]));
     const content: ContentBlock[] = [];
     for (const b of assistant.content) {
       if (b.type !== 'tool_use') continue;
@@ -620,7 +640,7 @@ export class Session {
   }
 
   #resolveCall(p: PendingRecord, content: string, isError: boolean, status: ToolCallRecord['status'], stamped = false): void {
-    const rec = this.#rt.store.listToolCalls(this.id).find((r) => r.id === p.callId);
+    const rec = this.#rt.store.listToolCalls(this.id, p.messageId).find((r) => r.id === p.callId);
     const result = stamped ? content : `[fetched at ${isoNow()}]\n${content}`;
     this.#rt.store.upsertToolCall({
       ...(rec ?? {
@@ -661,7 +681,7 @@ export class Session {
     if (this.#messages.slice(idx + 1).some((m) => m.kind === 'tool_results')) return;
     const calls = last.content.filter((b): b is ToolUseBlock => b.type === 'tool_use');
     if (calls.length === 0) return;
-    const records = new Map(this.#rt.store.listToolCalls(this.id).map((r) => [r.id, r]));
+    const records = new Map(this.#rt.store.listToolCalls(this.id, last.id).map((r) => [r.id, r]));
     for (const c of calls) {
       const r = records.get(c.id);
       if (!r || r.status === 'running') {
@@ -682,11 +702,12 @@ export class Session {
   }
 
   #applyQueue(): void {
-    if (this.#queue.length === 0) return;
-    const items = this.#queue.splice(0);
+    const items = this.#rt.store.listQueued(this.id);
+    if (items.length === 0) return;
     const ids: string[] = [];
-    for (const { message } of items) {
+    for (const message of items) {
       const m = this.#append(message);
+      this.#rt.store.deleteQueued(this.id, message.id);
       if (m.kind !== 'steer') continue; // relay / report notes are not user steers
       ids.push(m.id);
       this.#rt.onUserMessage(this, m);

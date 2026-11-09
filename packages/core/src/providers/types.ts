@@ -65,6 +65,8 @@ export interface Provider {
    */
   readonly traceTarget: string;
   readonly capabilities: ProviderCapabilities;
+  /** Called once when the runtime adopts the provider (e.g. to trace token requests). */
+  attach?(services: { tracer: import('../trace.ts').Tracer }): void;
   stream(request: ModelRequest, ctx: ProviderCallContext): AsyncGenerator<ProviderEvent, void>;
 }
 

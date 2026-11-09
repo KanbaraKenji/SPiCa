@@ -12,7 +12,7 @@ import { agentTools } from './tools/agent-tools.ts';
 import { fileTools } from './tools/fs-tools.ts';
 import { ToolRegistry, type FileExtractor, type Tool } from './tools/types.ts';
 import { Tracer } from './trace.ts';
-import type { AgentRole, CreateSessionRequest, Message, SessionStatus } from './types.ts';
+import type { AgentRole, ChildNoteMeta, CreateSessionRequest, Message, SessionStatus } from './types.ts';
 import { newId } from './util.ts';
 
 export interface RuntimeOptions {
@@ -49,6 +49,12 @@ export interface RuntimeInternals {
   onRunEnd(session: Session, result: RunResult): void;
 }
 
+/** How a session is named in text written for the model. */
+function label(s: Session): string {
+  const title = s.info().title;
+  return title ? `"${title}" (${s.id})` : s.id;
+}
+
 export const DEFAULT_SYSTEM_PROMPT =
   'You are an agent in Spica, a desktop workbench. Use the available tools to inspect files and gather facts ' +
   'instead of guessing. Every tool result starts with the time the data was fetched; treat older results as ' +
@@ -83,6 +89,7 @@ export class Runtime implements RuntimeInternals {
 
   addProvider(p: Provider, limits?: LimiterConfig): void {
     this.#providers.set(p.id, p);
+    p.attach?.({ tracer: this.tracer });
     this.#limiters.set(p.id, new RateLimiter(limits ?? {}));
   }
 
@@ -121,7 +128,7 @@ export class Runtime implements RuntimeInternals {
       id: newId('ses'),
       parentId: parent?.id ?? null,
       role,
-      title: req.title ?? (role === 'top' ? 'Top-level agent' : 'Agent'),
+      title: req.title ?? null,
       status: 'idle',
       config,
       createdAt: now,
@@ -175,7 +182,7 @@ export class Runtime implements RuntimeInternals {
   onUserMessage(session: Session, message: Message): void {
     if (message.meta?.author !== 'user') return;
     const text = message.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
-    this.#relay(session, 'user_message', `The user wrote in that session: "${text}"`);
+    this.#relay(session, 'user_message', `The user wrote in that session: "${text}"`, this.#noteMeta(session, 'relay', text));
   }
 
   onStatus(): void {}
@@ -193,11 +200,7 @@ export class Runtime implements RuntimeInternals {
     // A parent blocked in wait_agents gets the report as the tool result instead.
     if ((this.#awaited.get(session.id) ?? 0) > 0) return;
     this.#reportNoted.add(session.id);
-    parent.addNote('report', `[Report from sub-agent "${session.info().title}" (${session.id})]
-${report}`, {
-      author: 'child',
-      fromSessionId: session.id,
-    });
+    parent.addNote('report', `[Report from sub-agent ${label(session)}]\n${report}`, { ...this.#noteMeta(session, 'report', report) });
   }
 
   /**
@@ -208,7 +211,10 @@ ${report}`, {
     const s = this.session(sessionId);
     if (!s) throw new Error(`unknown session: ${sessionId}`);
     this.events.emit({ sessionId, parentChain: s.parentChain }, { type: 'relay', fromSessionId: sessionId, note: `decision: ${decision}` });
-    this.#relay(s, 'decision', `Decision ${by === 'user' ? 'made by the user' : 'recorded'} there: ${decision}`);
+    this.#relay(s, 'decision', `Decision ${by === 'user' ? 'made by the user' : 'recorded'} there: ${decision}`, {
+      ...this.#noteMeta(s, 'decision', decision),
+      by,
+    });
   }
 
   /** wait_agents marks children it is waiting for; returns a release function. */
@@ -233,13 +239,17 @@ ${report}`, {
     return { hooks: this.hooks.unregisterSource(source), tools: this.tools.unregisterSource(source) };
   }
 
-  #relay(child: Session, kind: RelayRecord['kind'], body: string): void {
+  #noteMeta(child: Session, kind: ChildNoteMeta['kind'], text: string): ChildNoteMeta {
+    return { author: 'child', kind, fromSessionId: child.id, fromTitle: child.info().title, at: isoNow(), text };
+  }
+
+  #relay(child: Session, kind: RelayRecord['kind'], body: string, meta: ChildNoteMeta): void {
     if (!child.parentId) return;
     const parent = this.session(child.parentId);
     if (!parent) return;
-    const note = `[From sub-agent "${child.info().title}" (${child.id})] ${body}`;
-    this.store.appendRelay(this.#relayRecord(parent.id, child.id, kind, body));
-    parent.addNote('relay', note, { author: 'child', fromSessionId: child.id, ...(kind === 'decision' ? { decision: true } : {}) });
+    const note = `[From sub-agent ${label(child)}] ${body}`;
+    this.store.appendRelay(this.#relayRecord(parent.id, child.id, kind, meta.text));
+    parent.addNote('relay', note, { ...meta });
     this.events.emit({ sessionId: parent.id, parentChain: parent.parentChain }, { type: 'relay', fromSessionId: child.id, note });
   }
 
@@ -252,8 +262,55 @@ ${report}`, {
     return this.tracer.exportJsonl(filter);
   }
 
-  close(): void {
-    for (const s of this.#sessions.values()) s.abort('runtime closed');
+  /**
+   * Rebuild the session tree from the store after a restart. Sessions caught
+   * mid-run become `interrupted` (continue them with `session.resume()`);
+   * pending questions and confirmations are kept; queued steers are applied
+   * when the session runs again; cost totals are re-seeded from the records.
+   */
+  restore(): { sessions: number; interrupted: string[]; awaiting: string[] } {
+    const interrupted: string[] = [];
+    const awaiting: string[] = [];
+    const traces = this.store.listTraces();
+    const lastInput = new Map<string, number>();
+    for (const t of traces) {
+      if (t.kind !== 'model' || !t.sessionId || t.status !== 'ok') continue;
+      const kind = t.providerId ? this.#providers.get(t.providerId)?.kind : undefined;
+      const cached = kind === 'anthropic' ? (t.cacheReadTokens ?? 0) + (t.cacheWriteTokens ?? 0) : 0;
+      lastInput.set(t.sessionId, (t.inputTokens ?? 0) + cached);
+    }
+    let count = 0;
+    for (const rec of this.store.listSessions()) {
+      if (this.#sessions.has(rec.id)) continue;
+      let status = rec.status;
+      const pending = this.store.listPending(rec.id);
+      if (pending.length > 0) {
+        status = pending.some((p) => p.item.kind === 'confirm') ? 'awaiting_confirm' : 'awaiting_answer';
+        awaiting.push(rec.id);
+      } else if (status === 'thinking' || status === 'tool' || status === 'queued' || status === 'awaiting_confirm' || status === 'awaiting_answer') {
+        status = 'interrupted';
+      }
+      if (status === 'interrupted') interrupted.push(rec.id);
+      const record = status === rec.status ? rec : { ...rec, status, updatedAt: isoNow() };
+      if (record !== rec) this.store.upsertSession(record);
+      const s = new Session(this, record, this.store.listMessages(rec.id), { lastInputTokens: lastInput.get(rec.id) ?? 0 });
+      this.#sessions.set(s.id, s);
+      count++;
+    }
+    this.ledger.seed(
+      traces
+        .filter((t) => t.costUsd)
+        .map((t) => ({ providerId: t.providerId ?? 'unknown', ...(t.sessionId ? { sessionId: t.sessionId } : {}), costUsd: t.costUsd ?? 0 })),
+    );
+    for (const s of this.#sessions.values()) {
+      this.events.emit({ sessionId: s.id, parentChain: s.parentChain }, { type: 'status', status: s.status });
+    }
+    return { sessions: count, interrupted, awaiting };
+  }
+
+  /** Stop all runs (they become `interrupted`, resumable after restart) and close the store. */
+  async close(): Promise<void> {
+    await Promise.all([...this.#sessions.values()].map((s) => s.shutdown()));
     this.store.close();
   }
 }

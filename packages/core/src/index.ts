@@ -26,6 +26,7 @@ export { RateLimiter, type LimiterConfig, type Lease } from './limiter.ts';
 export {
   CostLedger,
   DEFAULT_PRICES,
+  FALLBACK_PRICE,
   type BudgetConfig,
   type BudgetCheck,
   type Limits,
@@ -39,6 +40,7 @@ export { ToolRegistry, validateInput, type FileExtractor, type Tool, type ToolCo
 export {
   agentTools,
   askUserTool,
+  suggestActionsTool,
   spawnAgentTool,
   messageAgentTool,
   waitAgentsTool,
@@ -47,6 +49,8 @@ export {
 export { fileTools, readFileTool, writeFileTool, editFileTool, listDirTool, globTool, grepTool } from './tools/fs-tools.ts';
 export { OpenAICompatibleProvider, type OpenAICompatibleOptions } from './providers/openai.ts';
 export { AnthropicProvider, type AnthropicOptions } from './providers/anthropic.ts';
+export { Wso2Provider, OAuthClientCredentials, type Wso2Options, type OAuthClientCredentialsOptions } from './providers/wso2.ts';
+export { SqliteStore } from './store/sqlite.ts';
 export {
   ProviderError,
   type AuthSource,

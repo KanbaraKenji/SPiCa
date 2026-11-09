@@ -12,6 +12,7 @@ import {
   type ProviderEvent,
 } from './types.ts';
 import type { ContentBlock, Message, StopReason, Usage } from '../types.ts';
+import { newId } from '../util.ts';
 
 export interface OpenAICompatibleOptions {
   id: string;
@@ -155,7 +156,7 @@ export async function* parseOpenAIStream(
         const idx = tc.index ?? 0;
         let acc = calls.get(idx);
         if (!acc) {
-          acc = { id: tc.id ?? `call_${idx}`, name: '', args: '' };
+          acc = { id: tc.id ?? newId('call'), name: '', args: '' };
           calls.set(idx, acc);
         }
         if (tc.id) acc.id = tc.id;

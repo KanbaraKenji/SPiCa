@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { captureEvents, makeRuntime, startGateway } from './testing/helpers.ts';
-import { askUserTool } from './tools/agent-tools.ts';
+import { askUserTool, suggestActionsTool } from './tools/agent-tools.ts';
 import type { Tool } from './tools/types.ts';
 
 let gw: FakeGateway;
@@ -121,6 +121,32 @@ describe('confirmation', () => {
     const last = s.messages().at(-1)!;
     expect(last.kind).toBe('tool_results');
     expect(sent).toEqual(['d@example.com']);
+  });
+});
+
+describe('suggest_actions', () => {
+  it('emits a card event and does not pause the run', async () => {
+    gw.enqueue(
+      {
+        toolCalls: [
+          {
+            id: 'sa1',
+            name: 'suggest_actions',
+            args: { title: 'Next steps', actions: [{ label: 'Draft reply', prompt: 'Draft a reply to the supplier' }, { label: 'bad' }] },
+          },
+        ],
+      },
+      { text: 'Here are some options.' },
+    );
+    const rt = makeRuntime(gw, { tools: [suggestActionsTool] });
+    const events = captureEvents(rt);
+    const r = await rt.createSession().send('what now?').done;
+    expect(r).toMatchObject({ reason: 'completed', text: 'Here are some options.' });
+    expect(events.find((e) => e.type === 'suggest.actions')).toMatchObject({
+      callId: 'sa1',
+      title: 'Next steps',
+      actions: [{ label: 'Draft reply', prompt: 'Draft a reply to the supplier' }],
+    });
   });
 });
 

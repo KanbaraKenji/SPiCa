@@ -79,7 +79,8 @@ export const messageAgentTool: Tool = {
       return { content: `No sub-agent with id ${String(input.id)} belongs to you.`, isError: true };
     }
     const h = child.send(String(input.text), { author: 'parent' });
-    return { content: h.started ? `Sent; ${child.info().title} started working on it.` : `Queued for ${child.info().title}; it will see it at its next step.` };
+    const name = child.info().title ?? child.id;
+    return { content: h.started ? `Sent; ${name} started working on it.` : `Queued for ${name}; it will see it at its next step.` };
   },
 };
 
@@ -116,7 +117,7 @@ export const waitAgentsTool: Tool = {
         const report = rt.reportAlreadyNoted(t!.id)
           ? '(report already in your context as a note from this sub-agent)'
           : rt.lastReport(t!.id);
-        return `## ${info.title} (${info.id}) — ${info.status}\n${report ?? '(no report yet)'}`;
+        return `## ${info.title ?? 'Sub-agent'} (${info.id}) — ${info.status}\n${report ?? '(no report yet)'}`;
       });
       const head = outcome === 'done' ? 'All requested sub-agents have finished.' : outcome === 'timeout' ? 'Stopped waiting (timeout); some sub-agents are still working.' : 'Stopped waiting (interrupted).';
       return { content: `${head}\n\n${lines.join('\n\n')}`, isError: outcome !== 'done' };
@@ -145,4 +146,39 @@ export const recordDecisionTool: Tool = {
   },
 };
 
-export const agentTools: Tool[] = [askUserTool, spawnAgentTool, messageAgentTool, waitAgentsTool, recordDecisionTool];
+export const suggestActionsTool: Tool = {
+  spec: {
+    name: 'suggest_actions',
+    description:
+      'Show the user a card of suggested next steps. Each action has a short label and the exact message that will be ' +
+      'sent as the request from the user if they click it. Does not wait for a choice; keep working or finish your answer.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Card heading, e.g. "Next steps".' },
+        actions: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { label: { type: 'string' }, prompt: { type: 'string' } },
+            required: ['label', 'prompt'],
+          },
+        },
+      },
+      required: ['title', 'actions'],
+    },
+  },
+  async execute(input, ctx) {
+    const raw = Array.isArray(input.actions) ? (input.actions as unknown[]) : [];
+    const actions = raw
+      .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
+      .map((a) => ({ label: String(a.label ?? '').trim(), prompt: String(a.prompt ?? '').trim() }))
+      .filter((a) => a.label && a.prompt)
+      .slice(0, 8);
+    if (actions.length === 0) return { content: 'No valid actions: each needs a label and a prompt.', isError: true };
+    ctx.emit({ type: 'suggest.actions', callId: ctx.callId, title: String(input.title ?? ''), actions });
+    return { content: `Showed ${actions.length} suggested action(s) to the user: ${actions.map((a) => a.label).join(' / ')}.` };
+  },
+};
+
+export const agentTools: Tool[] = [askUserTool, suggestActionsTool, spawnAgentTool, messageAgentTool, waitAgentsTool, recordDecisionTool];

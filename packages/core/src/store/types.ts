@@ -7,7 +7,7 @@ export interface SessionRecord {
   id: string;
   parentId: string | null;
   role: AgentRole;
-  title: string;
+  title: string | null;
   status: SessionStatus;
   /** Serializable session configuration (provider, model, tools, cwd, ...). */
   config: SessionConfig;
@@ -32,6 +32,7 @@ export interface SessionConfig {
   memoryId?: string;
 }
 
+/** Keyed by (sessionId, messageId, id): some gateways reuse call ids across turns. */
 export interface ToolCallRecord {
   id: string;
   sessionId: string;
@@ -75,7 +76,13 @@ export interface Store {
   listMessages(sessionId: string): Message[];
 
   upsertToolCall(rec: ToolCallRecord): void;
-  listToolCalls(sessionId: string): ToolCallRecord[];
+  /** All tool calls of a session, or only those issued by one assistant message. */
+  listToolCalls(sessionId: string, messageId?: string): ToolCallRecord[];
+
+  /** Messages waiting to be applied at the next turn boundary (steers, relay notes), in order. */
+  putQueued(msg: Message): void;
+  deleteQueued(sessionId: string, messageId: string): void;
+  listQueued(sessionId: string): Message[];
 
   putPending(rec: PendingRecord): void;
   deletePending(sessionId: string, callId: string): void;
