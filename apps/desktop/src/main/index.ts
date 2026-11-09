@@ -1,7 +1,7 @@
 // Main process of the Spica desktop shell.
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, resolve as resolvePath } from 'node:path';
+import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, safeStorage, shell } from 'electron';
 import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
@@ -43,6 +43,7 @@ function overlayHeight(zoom: number): number {
 //   SPICA_CAPTURE=<file.png> render the window once, save a PNG and quit
 //   SPICA_SHOTS=<dir>        render the screenshot matrix into <dir> and quit
 //   SPICA_BACKEND=fake|core  pick the backend (default: the real core; screenshots use the fake)
+//   SPICA_SAVE_TO=<dir>      save files (usage log) there without asking (not in installed builds)
 const forcedTheme = process.env.SPICA_THEME;
 const capturePath = process.env.SPICA_CAPTURE;
 const shotsDir = process.env.SPICA_SHOTS;
@@ -447,7 +448,13 @@ ipcMain.handle(DesktopChannel.UsageLog, async (_e, raw: unknown): Promise<UsageL
   const day = new Date().toLocaleDateString('sv-SE').replaceAll('-', '');
   mkdirSync(workDir, { recursive: true });
   const opts: Electron.SaveDialogOptions = { title: '导出使用日志', defaultPath: join(workDir, `使用日志-${day}.jsonl`), filters: [{ name: '使用日志', extensions: ['jsonl'] }] };
-  const pick = mainWindow ? await dialog.showSaveDialog(mainWindow, opts) : await dialog.showSaveDialog(opts);
+  // SPICA_SAVE_TO=<folder> (development only): skip the dialog, so scripts never leave one open.
+  const saveTo = app.isPackaged ? '' : (process.env.SPICA_SAVE_TO ?? '');
+  const pick = saveTo
+    ? { canceled: false, filePath: join(saveTo, basename(opts.defaultPath ?? 'usage-log.jsonl')) }
+    : mainWindow
+      ? await dialog.showSaveDialog(mainWindow, opts)
+      : await dialog.showSaveDialog(opts);
   if (pick.canceled || !pick.filePath) return null;
   try {
     if (backend instanceof ProcessBackend) return await backend.usageLog({ filter: req, file: pick.filePath });
