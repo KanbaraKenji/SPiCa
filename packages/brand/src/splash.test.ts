@@ -149,6 +149,19 @@ describe('收尾', () => {
     }
   });
 
+  it('对比档 0.7 圈：大半径段结束时蓝星在前面（左下方），从那一侧扎入；ready 时刻任意都稳定', () => {
+    const o = { finish: { bigTurns: 0.7, diveAngle: 222, diveStar: 'primary' as const } };
+    for (const ready of [3, 5.37, 7, 12.25]) {
+      const s = splashSchedule(o, ready);
+      const [blue, white] = splashFrame(ready + s.collapseStart, ready, o).stars;
+      expect(blue!.front).toBe(true);
+      expect(white!.front).toBe(false);
+      expect(blue!.x).toBeLessThan(SPLASH_LAYOUT.cx);
+      expect(blue!.y).toBeGreaterThan(SPLASH_LAYOUT.cy);
+    }
+    expect(7 + splashSchedule(o, 7).collapseStart).toBeCloseTo(8.42, 1);
+  });
+
   it('双星从各自所在的一侧飞进花心（两条弧线，始终关于花心对称）', () => {
     for (let t = R; t < R + S.merge - 0.02; t += 0.05) {
       const [a, b] = splashFrame(t, R).stars;

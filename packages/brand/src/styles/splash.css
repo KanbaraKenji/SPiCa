@@ -26,7 +26,7 @@
   --spica-splash-bg: #f7f9fc;
   --spica-splash-ink: #0f172a;
   --spica-splash-star: #9db8e0;
-  --spica-splash-companion: #4f74b0;
+  --spica-splash-companion: #1b3f7a; /* 浅底上的伴星用深蓝实心，蓝星用强调色（中蓝） */
   --spica-splash-accent: var(--spica-accent, #2f7de1);
   --spica-splash-glow: 0.12;
 }
@@ -114,8 +114,12 @@
 .spica-splash-star-core {
   fill: #fff;
 }
+/* 浅色：星是实心的，内核和星同色（不挖成底色的空心） */
 .spica-splash[data-theme='light'] .spica-splash-star-core {
-  fill: var(--spica-splash-bg);
+  fill: var(--spica-splash-accent);
+}
+.spica-splash[data-theme='light'] .spica-splash-star--companion .spica-splash-star-core {
+  fill: var(--spica-splash-companion);
 }
 
 .spica-splash-caption {
