@@ -22,6 +22,8 @@ export interface ProviderConfig {
   kind: 'openai-compatible' | 'anthropic' | 'wso2';
   baseUrl?: string;
   apiKey?: string;
+  /** Standalone mode: name of an environment variable holding the key (keeps keys out of config files). */
+  apiKeyEnv?: string;
   headers?: Record<string, string>;
   /** wso2 only. */
   oauth?: { tokenUrl: string; clientId: string; clientSecret: string; scope?: string; credentialsIn?: 'basic' | 'body' };
