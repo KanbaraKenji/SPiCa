@@ -62,6 +62,13 @@ describe('Appearance', () => {
     expect(latest.skin).toBe('system');
   });
 
+  it('chooses when the opening animation plays', () => {
+    render(<Harness />);
+    expect(screen.getByRole('radio', { name: '每天第一次' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByRole('radio', { name: '从不' }));
+    expect(latest.splash).toBe('never');
+  });
+
   it('zooms in steps and resets', () => {
     render(<Harness />);
     expect(screen.getByRole('button', { name: '恢复 100%' })).toHaveProperty('disabled', true);

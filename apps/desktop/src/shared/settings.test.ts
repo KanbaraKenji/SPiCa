@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPatch, DEFAULT_SETTINGS, sanitizeSettings } from './settings';
+import { applyPatch, DEFAULT_SETTINGS, localDay, sanitizeSettings, splashFor } from './settings';
 
 describe('sanitizeSettings', () => {
   it('turns garbage into defaults', () => {
@@ -25,5 +25,19 @@ describe('applyPatch', () => {
     const s = applyPatch(DEFAULT_SETTINGS, { panels: { left: false, right: true }, zoom: 1.5 });
     expect(s.panels.left).toBe(false);
     expect(s.zoom).toBe(1.5);
+  });
+});
+
+describe('opening animation', () => {
+  it('plays in full the first time each day, then only briefly', () => {
+    expect(splashFor({ splash: 'daily', splashShownOn: null }, '2026-11-09')).toBe('full');
+    expect(splashFor({ splash: 'daily', splashShownOn: '2026-11-09' }, '2026-11-09')).toBe('brief');
+    expect(splashFor({ splash: 'daily', splashShownOn: '2026-11-08' }, '2026-11-09')).toBe('full');
+    expect(splashFor({ splash: 'always', splashShownOn: '2026-11-09' }, '2026-11-09')).toBe('full');
+    expect(splashFor({ splash: 'never', splashShownOn: null }, '2026-11-09')).toBe('none');
+  });
+  it('uses the local date and keeps only valid values', () => {
+    expect(localDay(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05');
+    expect(sanitizeSettings({ splash: 'sometimes', splashShownOn: 'yesterday' })).toMatchObject({ splash: 'daily', splashShownOn: null });
   });
 });

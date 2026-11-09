@@ -2,9 +2,15 @@
 import { useState, type ReactNode } from 'react';
 import { BUILTIN_SKINS, DARK_SKIN, deriveTokens, LIGHT_SKIN, normalizeHex, type Skin, type SkinChoice } from '../../../shared/skin';
 import { DEFAULT_ZOOM, stepZoom, ZOOM_STEPS, zoomLabel } from '../../../shared/zoom';
-import type { SettingsPatch, ShellSettings } from '../../../shared/settings';
+import type { SettingsPatch, ShellSettings, SplashMode } from '../../../shared/settings';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
+
+const SPLASH_OPTIONS: { mode: SplashMode; label: string }[] = [
+  { mode: 'daily', label: '每天第一次' },
+  { mode: 'always', label: '每次' },
+  { mode: 'never', label: '从不' },
+];
 
 const ACCENT_PRESETS = ['#2f7de1', '#39c5bb', '#7c5cff', '#e0559a', '#e8833a', '#3aa55c'];
 
@@ -208,6 +214,25 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
           </button>
           <span className="settings-hint">Ctrl + 滚轮 也能缩放，Ctrl + 0 恢复</span>
         </div>
+      </div>
+
+      <div className="settings-group">
+        <h3 className="settings-subheading">开机动画</h3>
+        <div className="segmented" role="radiogroup" aria-label="开机动画">
+          {SPLASH_OPTIONS.map((o) => (
+            <button
+              key={o.mode}
+              type="button"
+              role="radio"
+              aria-checked={settings.splash === o.mode}
+              className={settings.splash === o.mode ? 'segment is-on' : 'segment'}
+              onClick={() => onChange({ splash: o.mode })}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        <p className="settings-hint splash-hint">播放时点一下或按任意键可以跳过</p>
       </div>
 
       {deleting ? <ConfirmDialog title={`删除皮肤「${deleting.name}」？`} confirmLabel="删除" danger onConfirm={() => remove(deleting)} onCancel={() => setDeleting(null)} /> : null}

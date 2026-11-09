@@ -2278,3 +2278,37 @@ button.tree-twisty:hover {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Later launches the same day: the mark flashes and fades (under 1 s). */
+.splash-brief {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--spica-bg);
+  color: var(--spica-ink);
+  animation: splash-brief 0.8s ease-in forwards;
+}
+
+@keyframes splash-brief {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-brief {
+    animation-duration: 0.2s;
+  }
+}
+
+.splash-hint {
+  margin: 8px 0 0;
+}

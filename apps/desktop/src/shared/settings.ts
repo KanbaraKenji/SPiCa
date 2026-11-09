@@ -9,11 +9,17 @@ export interface PanelPrefs {
   right: boolean;
 }
 
+/** When the full opening animation plays: the first launch each day, every launch, or never. */
+export type SplashMode = 'daily' | 'always' | 'never';
+
 export interface ShellSettings {
   skin: SkinChoice;
   customSkins: Skin[];
   zoom: number;
   panels: PanelPrefs;
+  splash: SplashMode;
+  /** Local date (YYYY-MM-DD) the full animation last played. */
+  splashShownOn: string | null;
 }
 
 export const DEFAULT_SETTINGS: ShellSettings = {
@@ -21,7 +27,21 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   customSkins: [],
   zoom: DEFAULT_ZOOM,
   panels: { left: true, right: true },
+  splash: 'daily',
+  splashShownOn: null,
 };
+
+/** Local calendar date, YYYY-MM-DD. */
+export function localDay(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Full animation, a brief flash of the mark, or nothing at all. */
+export function splashFor(s: Pick<ShellSettings, 'splash' | 'splashShownOn'>, today: string): 'full' | 'brief' | 'none' {
+  if (s.splash === 'never') return 'none';
+  if (s.splash === 'always') return 'full';
+  return s.splashShownOn === today ? 'brief' : 'full';
+}
 
 export type SettingsPatch = Partial<ShellSettings>;
 
@@ -50,7 +70,9 @@ export function sanitizeSettings(value: unknown): ShellSettings {
     left: typeof p.left === 'boolean' ? p.left : true,
     right: typeof p.right === 'boolean' ? p.right : true,
   };
-  return { skin, customSkins, zoom, panels };
+  const splash: SplashMode = v.splash === 'always' || v.splash === 'never' ? v.splash : 'daily';
+  const splashShownOn = typeof v.splashShownOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.splashShownOn) ? v.splashShownOn : null;
+  return { skin, customSkins, zoom, panels, splash, splashShownOn };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {
