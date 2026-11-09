@@ -7,7 +7,7 @@
  *   轨道是开普勒椭圆，近快远慢，最近点朝前。花标和字标跟双星同一个节拍呼吸、起伏，
  *   但不和星的位置一一对应（不再「星扫到哪片、哪片亮」）。
  * - 加载完成（ready）后的收尾（每一步时长都是参数 SPLASH_FINISH）：
- *   ① 扩轨：双星平滑加速，轨道放大到 1.8 倍，拖尾拉长；② 大半径上绕约 1.2 圈；
+ *   ① 扩轨：双星平滑加速，轨道放大到 1.8 倍，拖尾拉长；② 大半径上绕约 0.94 圈；
  *   ③ 大半径段一结束，双星从当时位置沿一小段短弧直接扎进花心（不再转圈，越扎越快），合一消失；
  *   ④ 合一那一帧起，花标从花心向外把实色填满：两道细环先行、实色随后跟上（圆形遮罩，轮廓不动）；
  *   ⑤ 一道光扫过字标，经过处字由暗变亮、闪一下辉光再回稳；⑥ 停住；⑦ 整层淡出。
@@ -62,11 +62,12 @@ export interface SplashFinish {
 }
 
 export const SPLASH_FINISH: Readonly<SplashFinish> = Object.freeze({
-  // 顺序定死：加速扩轨（带拖尾）→ 大半径上绕约 1.2 圈（1.4 秒）→ 从当时位置沿短弧直接扎进花心（不再有收心螺旋）
+  // 顺序定死：加速扩轨（带拖尾）→ 大半径上绕约 0.94 圈（1.1 秒）→ 从当时位置沿短弧直接扎进花心（不再有收心螺旋）。
+  // 0.94 圈让前面那颗星在大半径段结束时正好在字标一侧（屏幕右边），从右侧直接扎进花心
   expand: 0.6,
   bigRadius: 1.8,
   bigSpeed: 3,
-  bigTurns: 1.2,
+  bigTurns: 0.94,
   collapse: 0.35,
   collapseSpeed: 0,
   trail: 0.35,
@@ -95,6 +96,8 @@ export interface SplashOptions {
   speedRatio?: number;
   /** 收尾各步时长（缺省 SPLASH_FINISH） */
   finish?: Partial<SplashFinish>;
+  /** 大半径段的圈数是否按 ready 时刻微调，让扎心总从字标一侧开始（缺省 true） */
+  alignDive?: boolean;
 }
 
 export interface SplashSchedule {
@@ -109,18 +112,61 @@ export interface SplashSchedule {
   end: number;
 }
 
-/** 收尾各步的起止时刻（从 ready 算起） */
-export function splashSchedule(options: SplashOptions = {}): SplashSchedule {
+/**
+ * 收尾各步的起止时刻（从 ready 算起）。
+ * 给了 readyAt 时，大半径段的圈数会在 bigTurns 上下半圈内微调，让大半径段结束时前面那颗星正好在
+ * 屏幕右侧（字标一侧），从那一侧直接扎进花心——不管加载在哪一刻完成都一样。不给 readyAt 时按 bigTurns 算。
+ */
+export function splashSchedule(options: SplashOptions = {}, readyAt: number | null = null): SplashSchedule {
   const F = { ...SPLASH_FINISH, ...options.finish };
   const period = options.orbitPeriod ?? SPLASH_TIMING.orbitPeriod;
   const bigStart = F.expand;
-  const collapseStart = bigStart + (F.bigTurns * period) / F.bigSpeed;
+  let turns = F.bigTurns;
+  if (readyAt !== null && F.bigTurns > 0 && options.alignDive !== false) {
+    const k = Math.max(1, options.speedRatio ?? SPLASH_ORBIT_DEFAULTS.speedRatio);
+    const e = (k - 1) / (k + 1);
+    // 大半径段开始时的平近点角（单位：圈）
+    const expandExtra = F.expand > 0 ? F.expand * (F.bigSpeed - 1) * smoothArea(1) : 0;
+    const m0 = (readyAt + F.expand + expandExtra) / period;
+    const want = diveTargetTurns(e);
+    const end = m0 + F.bigTurns;
+    const shift = ((((want - end) % 1) + 1.5) % 1) - 0.5; // 落在 [-0.5, 0.5)
+    turns = F.bigTurns + shift;
+  }
+  const collapseStart = bigStart + (turns * period) / F.bigSpeed;
   const merge = collapseStart + F.collapse;
   const fillEnd = merge + F.fill;
   const sweepStart = fillEnd + F.sweepDelay;
   const sweepEnd = sweepStart + F.sweep;
   const fadeStart = sweepEnd + F.letterGlow + F.hold;
   return { bigStart, collapseStart, merge, fillEnd, sweepStart, sweepEnd, fadeStart, end: fadeStart + F.fadeOut };
+}
+
+/** 前面那颗星在屏幕右侧（约 3 点钟）时的平近点角（单位：圈，0..1），按偏心率缓存 */
+const diveTargetCache = new Map<number, number>();
+function diveTargetTurns(e: number): number {
+  const hit = diveTargetCache.get(e);
+  if (hit !== undefined) return hit;
+  let best = 0;
+  let bestErr = Infinity;
+  for (let i = 0; i < 1440; i++) {
+    const turns = i / 1440;
+    const kp = keplerPosition(2 * Math.PI * turns, e);
+    const px = kp.r * Math.cos(kp.angle + Math.PI / 2);
+    const py = kp.r * Math.sin(kp.angle + Math.PI / 2);
+    for (const [x, y] of [[px, py], [-px, -py]] as const) {
+      if (y < 0) continue; // 只要在前面的那颗
+      const p = project(x, y, 1);
+      const ang = (Math.atan2(p.x - SPLASH_LAYOUT.cx, -(p.y - SPLASH_LAYOUT.cy)) * 180) / Math.PI;
+      const err = Math.abs(ang - 92);
+      if (err < bestErr) {
+        bestErr = err;
+        best = turns;
+      }
+    }
+  }
+  diveTargetCache.set(e, best);
+  return best;
 }
 
 /** 完成后多久整层消失（相对 ready） */
@@ -185,7 +231,7 @@ function radiusScale(u: number, F: SplashFinish, S: SplashSchedule): number {
 export function splashSpeeds(t: number, readyAt: number | null, options: SplashOptions = {}): { orbit: number; starfield: number } {
   if (readyAt === null || t < readyAt) return { orbit: 1, starfield: 1 };
   const F = finishOf(options);
-  const S = splashSchedule(options);
+  const S = splashSchedule(options, readyAt);
   const u = t - readyAt;
   const orbit = orbitMultiplier(Math.min(u, S.merge), F, S);
   const starfield = u <= S.merge
@@ -197,7 +243,7 @@ export function splashSpeeds(t: number, readyAt: number | null, options: SplashO
 /** 某一时刻双星轨道半径是平时的几倍（给测试和时间表用） */
 export function splashOrbitScale(t: number, readyAt: number | null, options: SplashOptions = {}): number {
   if (readyAt === null || t < readyAt) return 1;
-  return radiusScale(t - readyAt, finishOf(options), splashSchedule(options));
+  return radiusScale(t - readyAt, finishOf(options), splashSchedule(options, readyAt));
 }
 
 // ---- 版面 ----
@@ -326,7 +372,7 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
   const k = Math.max(1, options.speedRatio ?? SPLASH_ORBIT_DEFAULTS.speedRatio);
   const e = (k - 1) / (k + 1);
   const F = finishOf(options);
-  const S = splashSchedule(options);
+  const S = splashSchedule(options, readyAt);
   const beat = period / 2;
   const n = WORDMARK.shapes.length;
   const appear = seg(t, SPLASH_TIMING.appear[0], SPLASH_TIMING.appear[1]);
@@ -518,7 +564,7 @@ const STAR_SEEDS: readonly StarSeed[] = (() => {
 function starTime(t: number, readyAt: number | null, options: SplashOptions = {}): number {
   if (readyAt === null || t < readyAt) return t;
   const F = finishOf(options);
-  const S = splashSchedule(options);
+  const S = splashSchedule(options, readyAt);
   const u = t - readyAt;
   const up = (F.starPeak - 1) * S.merge * easeInArea(Math.min(u / S.merge, 1));
   const down = u > S.merge ? (F.starPeak - 1) * F.starSettle * settleArea(Math.min((u - S.merge) / F.starSettle, 1)) : 0;
@@ -526,10 +572,11 @@ function starTime(t: number, readyAt: number | null, options: SplashOptions = {}
 }
 
 /**
- * 背景星点的光迹（像素坐标，按画布实际大小算）。所有星点都从花心向外飞（origin 传花心在画布上的位置）。
+ * 背景星点的光迹（像素坐标，按画布实际大小算）。星点从窗口正中央向外放射（透视点在窗口中心，不是花心）；
+ * 穿过花标区域时被花标挡住（花标在星点画布之上）。
  * 每颗星飘完全程的时间相同（SPLASH_TIMING.starfieldPeriod），起点相位各不相同。
  * @param scale 线宽倍率（高分屏传 devicePixelRatio × 舞台缩放）
- * @param origin 星点飞出的原点（缺省画布中心；组件和视频都传花心）
+ * @param origin 星点飞出的原点（缺省画布中心，组件和视频都用缺省）
  */
 export function starfield(
   t: number,
