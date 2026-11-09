@@ -81,6 +81,10 @@ A hit fails with the file and line; the word itself is never printed.
    `.github/workflows/release.yml`, which builds the per-user installer and the portable
    exe on Windows and publishes them as a GitHub Release.
 
+To try the build without publishing anything, push a branch whose name starts with
+`ci/release-dryrun`: the same workflow runs and the packages are attached to the run as
+artifacts (kept for 7 days) instead of a Release.
+
 ## License
 
 By contributing you agree that your contributions are licensed under the Apache License
