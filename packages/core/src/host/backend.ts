@@ -145,6 +145,62 @@ export function lockDatabase(dbPath: string): () => void {
   };
 }
 
+/** What the settings page can change while the backend runs (all optional). */
+export interface SettingsPatch {
+  /** The complete provider list: new ones are added, changed ones replaced, missing ones removed. */
+  providers?: ProviderConfig[];
+  defaults?: Partial<BackendConfig['defaults']>;
+  budget?: BudgetConfig;
+  prices?: PriceTable;
+  workflowsDir?: string;
+  locale?: string;
+  /** null removes web_search. */
+  search?: JsonSearchBackendOptions | null;
+  mail?: Omit<MailConfig, 'sources'>;
+}
+
+/** Apply a settings patch to a running runtime; emits runtime.configured. */
+export function applySettings(runtime: Runtime, patch: SettingsPatch): { changed: string[]; warnings: string[] } {
+  const changed: string[] = [];
+  const warnings: string[] = [];
+  if (patch.providers) {
+    const keep = new Set(patch.providers.map((p) => p.id));
+    for (const c of patch.providers) runtime.setProvider(createProvider(c), c.limits ?? {});
+    for (const id of runtime.providerIds) if (!keep.has(id)) runtime.removeProvider(id);
+    changed.push('providers');
+  }
+  if (patch.defaults) {
+    runtime.setDefaults(patch.defaults);
+    changed.push('defaults');
+  }
+  if (patch.budget) {
+    runtime.ledger.setBudget(patch.budget);
+    changed.push('budget');
+  }
+  if (patch.prices) {
+    runtime.ledger.setPrices(patch.prices);
+    changed.push('prices');
+  }
+  if (patch.workflowsDir !== undefined) {
+    warnings.push(...runtime.reloadWorkflows(patch.workflowsDir));
+    changed.push('workflows');
+  }
+  if (patch.locale) {
+    runtime.setLocale(patch.locale);
+    changed.push('locale');
+  }
+  if (patch.search !== undefined) {
+    runtime.setSearch(patch.search ? jsonSearchBackend(patch.search) : undefined);
+    changed.push('search');
+  }
+  if (patch.mail) {
+    runtime.mail.configure(patch.mail);
+    changed.push('mail');
+  }
+  runtime.events.emit({ sessionId: runtime.top().id, parentChain: [] }, { type: 'runtime.configured', changed, warnings });
+  return { changed, warnings };
+}
+
 export interface Backend {
   runtime: Runtime;
   server: BackendServer;
@@ -218,6 +274,10 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
     const server = new BackendServer(runtime, {
       extraMethods: {
         ...Object.assign({}, ...extensions.map((e) => e.methods ?? {})),
+        /** Change settings without restarting (see SettingsPatch). */
+        configure: (patch: unknown) => applySettings(runtime, (patch ?? {}) as SettingsPatch),
+        /** Current mail settings and whether polling runs. */
+        mailSettings: () => ({ ...runtime.mail.settings, running: runtime.mail.running, sources: runtime.mail.activeSources.map((s) => s.id) }),
         /** Test connection with a provider config from the settings form. */
         probeProvider: (config: unknown, model: unknown) =>
           probeProvider(createProvider(config as ProviderConfig), { model: String(model), tracer: runtime.tracer }),

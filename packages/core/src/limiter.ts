@@ -22,7 +22,7 @@ interface Waiter {
 }
 
 export class RateLimiter {
-  readonly #cfg: LimiterConfig;
+  #cfg: LimiterConfig;
   #active = 0;
   #starts: number[] = [];
   #queue: Waiter[] = [];
@@ -32,6 +32,20 @@ export class RateLimiter {
   constructor(cfg: LimiterConfig = {}, now: () => number = Date.now) {
     this.#cfg = cfg;
     this.#now = now;
+  }
+
+  /** Change the limits while running; waiters are released at once if the new limits allow it. */
+  configure(cfg: LimiterConfig): void {
+    this.#cfg = { ...cfg };
+    if (this.#timer) {
+      clearTimeout(this.#timer);
+      this.#timer = undefined;
+    }
+    this.#pump();
+  }
+
+  get config(): LimiterConfig {
+    return { ...this.#cfg };
   }
 
   get active(): number {

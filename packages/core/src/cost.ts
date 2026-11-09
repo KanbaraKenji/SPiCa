@@ -69,8 +69,8 @@ export interface CostRecord {
 }
 
 export class CostLedger {
-  readonly #prices: PriceTable;
-  readonly #budget: BudgetConfig;
+  #prices: PriceTable;
+  #budget: BudgetConfig;
   #global = 0;
   readonly #byProvider = new Map<string, number>();
   readonly #bySession = new Map<string, number>();
@@ -186,6 +186,20 @@ export class CostLedger {
         { scope: 'global', spentUsd: this.#global, ...(b.globalUsd !== undefined ? { limitUsd: b.globalUsd } : {}), warning: w(this.#global, b.globalUsd) },
       ],
     };
+  }
+
+  /** Change the spending limits while running (totals so far are kept). */
+  setBudget(budget: BudgetConfig): void {
+    this.#budget = budget;
+  }
+
+  /** Change the price table while running (only future calls use it). */
+  setPrices(prices: PriceTable): void {
+    this.#prices = prices;
+  }
+
+  get budget(): BudgetConfig {
+    return this.#budget;
   }
 
   get globalUsd(): number {
