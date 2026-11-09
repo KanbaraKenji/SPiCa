@@ -510,6 +510,12 @@ ipcMain.on(DesktopChannel.ShowInFolder, (_e, path: unknown) => {
   if (typeof path === 'string' && existsSync(path)) shell.showItemInFolder(path);
 });
 
+ipcMain.handle(DesktopChannel.PickFiles, async (_e, title: unknown): Promise<string[]> => {
+  const opts: Electron.OpenDialogOptions = { title: typeof title === 'string' && title ? title.slice(0, 60) : '选择文件', properties: ['openFile', 'multiSelections'] };
+  const r = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts);
+  return r.canceled ? [] : r.filePaths.slice(0, 20);
+});
+
 ipcMain.on(DesktopChannel.Zoom, (_e, step: unknown) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (step === 'reset') applyZoom(mainWindow, DEFAULT_ZOOM);

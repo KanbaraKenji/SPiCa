@@ -60,6 +60,10 @@ export interface DesktopBridge extends SpicaBridge {
   openFile(sessionId: string, path: string): Promise<string | null>;
   /** Windows' own folder picker, with `title` on it. Resolves to the chosen path, or null when cancelled. */
   pickFolder(title?: string): Promise<string | null>;
+  /** Windows' file picker for attachments: the chosen paths, empty when cancelled. */
+  pickFiles(title?: string): Promise<string[]>;
+  /** The path of a file dropped on the window ('' when it has none). */
+  pathForFile(file: File): string;
   /** Asks where to save, then writes the usage log (JSON Lines; keys and addresses removed by the core). */
   exportUsageLog(req: UsageLogRequest): Promise<UsageLogResult>;
   /** Shows a file selected in Explorer. */

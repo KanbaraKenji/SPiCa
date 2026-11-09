@@ -55,11 +55,15 @@ export function buildSeed(now: Date): Seed {
     model: 'fake-model',
     cwd: cwd || parent?.cwd || '',
     costUsd,
+    approvalMode: 'manual',
+    contextTokens: null,
+    contextWindow: null,
     createdAt: at(minutesAgo + 30),
     updatedAt: at(minutesAgo),
   });
 
   const chat = session(SEED_IDS.chat, 'top', '看一下样机评审资料', 'idle', null, 4, 0.0042, 'D:\\工作\\样机评审');
+  Object.assign(chat, { contextTokens: 23_400, contextWindow: 128_000 });
   const chat2 = session(SEED_IDS.chat2, 'top', '整理本周来信', 'idle', null, 180, 0.0019);
   const pm = { ...session(SEED_IDS.pm, 'manager', '新品样机评审', 'thinking', null, 1, 0.0213, 'D:\\工作\\样机评审'), projectId: 'p-review' };
   const quotes = session(SEED_IDS.quotes, 'worker', '整理供应商报价', 'tool', pm, 1, 0.0061);

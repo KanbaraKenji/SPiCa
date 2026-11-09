@@ -5,12 +5,12 @@ import { filesOf, isRunning, type Block, type Item, type Transcript } from '../s
 import { SpicaMark } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
 import { AskCard, ChildNoteCard, ConfirmCard, FileCards, MarkdownText, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
-import { Composer } from './Composer';
+import { Composer, type ComposerTools } from './Composer';
 import { StatusLine } from './StatusLine';
 import { GUARD_FLAG_TEXT } from './format';
 
 export interface ConversationActions {
-  send(text: string): void;
+  send(text: string, attachments?: string[]): void;
   stop(): void;
   answer(callId: string, answer: string): void;
   confirm(callId: string, approved: boolean): void;
@@ -185,6 +185,8 @@ export interface ConversationProps {
   onSetupModel?: () => void;
   /** Sub-agents under this conversation that wait for the user (a question or a confirmation). */
   waiting?: WaitingChild[];
+  /** Controls in the input box (attachments, folder, approval, model, context). */
+  composerTools?: ComposerTools;
 }
 
 export interface WaitingChild {
@@ -193,7 +195,7 @@ export interface WaitingChild {
   status: 'awaiting_confirm' | 'awaiting_answer';
 }
 
-export function Conversation({ session, transcript, actions, demo, needsModel = false, onSetupModel, waiting = [] }: ConversationProps) {
+export function Conversation({ session, transcript, actions, demo, needsModel = false, onSetupModel, waiting = [], composerTools }: ConversationProps) {
   const running = isRunning(transcript.run?.status) || isRunning(session?.status);
   const { ref, away, toBottom } = useStickToBottom(transcript);
   const items = transcript.items;
@@ -208,10 +210,20 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
             {items.map((item, i) => {
               if (item.kind === 'user')
                 return (
-                  <div key={item.id} className={item.steer ? 'turn-user is-steer' : 'turn-user'}>
-                    {item.steer ? <span className="turn-user-tag">插话</span> : null}
-                    <p className="turn-user-text">{item.text}</p>
-                  </div>
+                  <Fragment key={item.id}>
+                    <div className={item.steer ? 'turn-user is-steer' : 'turn-user'}>
+                      {item.steer ? <span className="turn-user-tag">插话</span> : null}
+                      <p className="turn-user-text">{item.text}</p>
+                    </div>
+                    {item.attachments?.length ? (
+                      <div className="turn-attachments">
+                        <FileCards
+                          files={item.attachments.map((a) => ({ path: a.path, tool: 'read_file', ...(a.file ? { card: a.file } : {}) }))}
+                          onOpen={actions.openFile}
+                        />
+                      </div>
+                    ) : null}
+                  </Fragment>
                 );
               if (item.kind === 'mail') return <MailNote key={item.id} ids={item.mailIds} flagged={item.flagged} actions={actions} />;
               if (item.kind === 'note')
@@ -270,7 +282,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
           ))}
         </div>
       ) : null}
-      <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} />
+      <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
       {demo ? <p className="composer-note">现在的回答是演示数据</p> : null}
     </div>
   );

@@ -41,6 +41,8 @@ export type Block =
       durationMs?: number;
       /** What came back looked like instructions (outside content); the core told the model to ignore them. */
       flagged?: UntrustedKind;
+      /** Irreversible, but ran without asking: the conversation's approval is automatic. */
+      autoApproved?: boolean;
     }
   | { type: 'ask'; callId: string; question: string; options: string[]; answer?: string }
   | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause }
@@ -101,8 +103,17 @@ function mailItem(m: Message, mailIds: string[]): Item {
   return flagged.length ? { kind: 'mail', id: m.id, mailIds, flagged } : { kind: 'mail', id: m.id, mailIds };
 }
 
+/** A file attached to a message you wrote (its text went to the model; the card is what you see). */
+export interface Attachment {
+  path: string;
+  name: string;
+  file?: FileCardMeta;
+  /** It could not be read. */
+  failed?: boolean;
+}
+
 export type Item =
-  | { kind: 'user'; id: string; text: string; steer: boolean }
+  | { kind: 'user'; id: string; text: string; steer: boolean; attachments?: Attachment[] }
   /** New mail for this project (the core's English instructions to the agent are not shown). */
   | { kind: 'mail'; id: string; mailIds: string[]; flagged?: string[] }
   | { kind: 'note'; id: string; text: string; child?: ChildNote }
@@ -141,9 +152,21 @@ const ASK_TOOL = 'ask_user';
 const SUGGEST_TOOL = 'suggest_actions';
 
 function textOf(message: Message): string {
+  // The text of attached files rides in their own content blocks: not part of what was typed.
+  const hidden = new Set((attachmentsOf(message) ?? []).map((a) => a.block).filter((b): b is number => typeof b === 'number'));
   return message.content
-    .map((b) => (b.type === 'text' ? b.text : b.type === 'opaque' ? (b.text ?? '') : ''))
+    .map((b, i) => (hidden.has(i) ? '' : b.type === 'text' ? b.text : b.type === 'opaque' ? (b.text ?? '') : ''))
     .join('');
+}
+
+function attachmentsOf(m: Message): { path: string; name: string; block: number | null; file?: FileCardMeta; error?: string }[] | undefined {
+  const list = m.meta?.attachments;
+  return Array.isArray(list) && list.length ? list : undefined;
+}
+
+function userItem(m: Message): Item {
+  const att = attachmentsOf(m)?.map((a): Attachment => ({ path: a.path, name: a.name, ...(a.file ? { file: a.file } : {}), ...(a.block === null ? { failed: true } : {}) }));
+  return { kind: 'user', id: m.id, text: textOf(m), steer: m.kind === 'steer', ...(att ? { attachments: att } : {}) };
 }
 
 function asSuggest(callId: string, input: unknown): Block {
@@ -243,6 +266,7 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
           tool.state = b.isError ? failedState(b.content) : 'done';
           const note = m.meta?.guard?.[b.toolUseId];
           if (note?.signals?.length) tool.flagged = note.kind;
+          if (m.meta?.autoApproved?.includes(b.toolUseId)) tool.autoApproved = true;
           continue;
         }
         const ask = findBlock(items, 'ask', b.toolUseId);
@@ -250,10 +274,9 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
       }
       continue;
     }
-    const text = textOf(m);
     const mailIds = mailIdsOf(m);
     if (mailIds) items.push(mailItem(m, mailIds));
-    else if (m.kind === 'user' || m.kind === 'steer') items.push({ kind: 'user', id: m.id, text, steer: m.kind === 'steer' });
+    else if (m.kind === 'user' || m.kind === 'steer') items.push(userItem(m));
     else items.push(noteItem(m));
   }
   const t: Transcript = { items, ...(Object.keys(cards).length ? { fileCards: cards } : {}) };
@@ -299,7 +322,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       if (mailIds) {
         if (!items.some((i) => i.id === m.id)) items.push(mailItem(m, mailIds));
       } else if (m.role === 'user' && (m.kind === 'user' || m.kind === 'steer')) {
-        if (!items.some((i) => i.id === m.id)) items.push({ kind: 'user', id: m.id, text: textOf(m), steer: m.kind === 'steer' });
+        if (!items.some((i) => i.id === m.id)) items.push(userItem(m));
         if (t.queued?.some((q) => q.id === m.id)) t.queued = t.queued.filter((q) => q.id !== m.id);
       } else if (m.role === 'user' && (m.kind === 'relay' || m.kind === 'report' || m.kind === 'note')) {
         if (!items.some((i) => i.id === m.id)) items.push(noteItem(m));
@@ -360,6 +383,11 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       if (!findBlock(items, 'confirm', e.callId)) {
         lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}) });
       }
+      return t;
+    }
+    case 'confirm.auto': {
+      const tool = findBlock(items, 'tool', e.callId);
+      if (tool) tool.autoApproved = true;
       return t;
     }
     case 'guard.flagged': {

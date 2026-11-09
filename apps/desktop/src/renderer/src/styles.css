@@ -1241,9 +1241,9 @@ button.tree-twisty:hover {
   max-width: 760px;
   margin: 0 auto;
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 10px 10px 10px 16px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 10px 8px 16px;
   border-radius: 16px;
   border: 1px solid var(--spica-border-strong);
   background: var(--spica-input);
@@ -1273,10 +1273,127 @@ button.tree-twisty:hover {
   color: var(--spica-faint);
 }
 
-.composer-actions {
+/* Controls under the text: attach / folder on the left, approval / model / context / send on the right. */
+.composer-bar {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-left: -6px;
+}
+
+.composer-left,
+.composer-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.composer-right {
   flex: none;
+}
+
+.composer-chip {
+  height: 28px;
+  max-width: 220px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-radius: var(--radius-m);
+  color: var(--spica-muted);
+  font-size: 13px;
+}
+
+.composer-chip:hover {
+  background: var(--spica-hover);
+  color: var(--spica-ink);
+}
+
+.composer-chip-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The model when there is nothing to switch to: plain text, not a button. */
+.composer-label {
+  padding: 0 8px;
+  font-size: 13px;
+  color: var(--spica-faint);
+  white-space: nowrap;
+}
+
+.composer-context {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--spica-faint);
+}
+
+.composer-context .ring-track {
+  fill: none;
+  stroke: var(--spica-border-strong);
+  stroke-width: 2;
+}
+
+.composer-context .ring-fill {
+  fill: none;
+  stroke: var(--spica-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.composer-context.is-full .ring-fill {
+  stroke: var(--spica-warning);
+}
+
+.composer-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.composer-file {
+  max-width: 240px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 0 8px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--spica-border);
+  background: var(--spica-surface);
+  font-size: 13px;
+}
+
+.composer-file-remove {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-s);
+  color: var(--spica-muted);
+}
+
+.composer-file-remove:hover {
+  background: var(--spica-hover);
+  color: var(--spica-ink);
+}
+
+/* Files attached to a message you wrote: under it, on the right. */
+.turn-attachments {
+  align-self: flex-end;
+  max-width: 85%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: -4px;
 }
 
 .composer-send {

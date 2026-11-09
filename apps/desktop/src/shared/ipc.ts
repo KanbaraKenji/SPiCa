@@ -35,6 +35,8 @@ export const DesktopChannel = {
   TestProvider: 'spica:providers:test',
   /** invoke: 'state' | 'open' -> WorkflowsState */
   Workflows: 'spica:workflows',
+  /** invoke: title -> string[] (Windows' file picker, several files; empty when cancelled) */
+  PickFiles: 'spica:pickFiles',
   /** invoke: UsageLogRequest -> UsageLogResult (asks where to save first) */
   UsageLog: 'spica:usageLog',
   /** send: a file path to show in Explorer */

@@ -69,7 +69,9 @@ function ToolRow({ block }: { block: ToolBlock }) {
   ) : block.state === 'timeout' ? (
     <span>还在做，先不等了</span>
   ) : block.durationMs !== undefined ? (
-    formatDuration(block.durationMs)
+    block.autoApproved ? `自动批准 · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs)
+  ) : block.autoApproved ? (
+    '自动批准'
   ) : null;
   const body = block.result ?? block.preview;
   return (

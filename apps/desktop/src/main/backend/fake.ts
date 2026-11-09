@@ -179,6 +179,9 @@ export class FakeBackend implements AgentBackend {
       model: req.model ?? 'fake-model',
       cwd: req.cwd ?? parent?.cwd ?? '',
       costUsd: 0,
+      approvalMode: req.approvalMode ?? parent?.approvalMode ?? 'manual',
+      contextTokens: null,
+      contextWindow: null,
       createdAt: at,
       updatedAt: at,
     };
@@ -244,12 +247,14 @@ export class FakeBackend implements AgentBackend {
   async setSessionModel(sessionId: string, providerId: string, model: string): Promise<SessionInfo> {
     const s = this.#requireSession(sessionId);
     Object.assign(s, { providerId, model, updatedAt: isoAt(this.#now()) });
+    this.#emit(sessionId, { type: 'session.updated', info: structuredClone(s) });
     return structuredClone(s);
   }
 
   async setApprovalMode(sessionId: string, mode: 'manual' | 'auto'): Promise<SessionInfo> {
     const s = this.#requireSession(sessionId);
     Object.assign(s, { approvalMode: mode, updatedAt: isoAt(this.#now()) });
+    this.#emit(sessionId, { type: 'session.updated', info: structuredClone(s) });
     return structuredClone(s);
   }
 
