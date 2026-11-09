@@ -89,8 +89,9 @@ try {
   await pm.setMock(false);
   const st = body(await use('outlook__status', {}));
   const o = st.outlook;
-  console.log(`     装了 ${o.installed ? '是' : '否'} · 有配置文件 ${o.profile ? '是' : '否'} · 开着 ${o.running ? '是' : '否'} · 邮箱 ${st.mailboxes.length} 个`);
-  if (o.installed && o.profile && o.running) {
+  console.log(`     经典版 ${o.classic_installed ? '是' : '否'} · 新版 ${o.new_outlook_installed ? '是' : '否'} · 有配置文件 ${o.profile ? '是' : '否'} · 开着 ${o.running ? '是' : '否'} · ${o.powershell_bits ?? '?'} 位 PowerShell · 邮箱 ${st.mailboxes.length} 个`);
+  check(typeof o.hint === 'string' && o.hint.length > 0, `状态：${o.state}`, o.hint);
+  if (o.state === 'ready') {
     const list = await use('outlook__list_messages', { limit: 5 });
     check(!list.isError, '读真收件箱列表', `${list.ms} ms`);
     const first = body(list)?.messages?.[0];

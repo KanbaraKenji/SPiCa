@@ -54,7 +54,7 @@ export class MockBackend {
   async status() {
     return {
       mode: 'mock',
-      outlook: { installed: true, profile: true, running: true, version: 'sample' },
+      outlook: { state: 'ready', classic_installed: true, profile: true, running: true, version: 'sample', hint: '模拟模式：用的是样例邮件，不是你的 Outlook。' },
       mailboxes: [{ name: this.account.display_name, address: this.account.address, default: true }],
     };
   }
