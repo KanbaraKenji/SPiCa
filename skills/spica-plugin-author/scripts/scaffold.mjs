@@ -121,7 +121,7 @@ if (isMain) {
     const r = await scaffold(o);
     console.log(`已生成 ${r.root}`);
     for (const f of r.files) console.log(`  ${f}`);
-    console.log('\n下一步：改 server/tools.js 和 server/backend.js，跑 node --test test/，再用 check.mjs 校验打包。');
+    console.log('\n下一步：改 server/tools.js 和 server/backend.js，跑 node --test，再用 check.mjs 校验打包。');
   } catch (err) {
     console.error(err.message);
     process.exit(1);

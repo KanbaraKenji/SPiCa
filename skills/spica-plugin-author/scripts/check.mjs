@@ -19,7 +19,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { StdioClient } from './lib/mcp.mjs';
+import { StdioClient, pluginEnv } from './lib/mcp.mjs';
 import { packageFiles, sha256, stripBom, writeZip } from './lib/pack.mjs';
 
 const NAME = /^[a-z][a-z0-9-]{1,23}$/;
@@ -167,7 +167,7 @@ export async function check(dir, opts = {}) {
           command: s.runtime === 'node' ? process.execPath : s.entry,
           args: s.runtime === 'node' ? [s.entry, ...s.args] : s.args,
           cwd: root,
-          env: { ...process.env, ...s.env, SPICA_MOCK: '1', SPICA_PLUGIN_NAME: m.name, SPICA_PLUGIN_VERSION: m.version, SPICA_PLUGIN_DIR: root, SPICA_PLUGIN_DATA: join(data, s.id) },
+          env: pluginEnv({ ...s.env, SPICA_MOCK: '1', SPICA_PLUGIN_NAME: m.name, SPICA_PLUGIN_VERSION: m.version, SPICA_PLUGIN_DIR: root, SPICA_PLUGIN_DATA: join(data, s.id) }),
           timeoutMs: 15_000,
         });
         try {

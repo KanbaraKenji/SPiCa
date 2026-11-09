@@ -12,7 +12,7 @@ import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { StdioClient } from './lib/mcp.mjs';
+import { StdioClient, pluginEnv } from './lib/mcp.mjs';
 import { stripBom } from './lib/pack.mjs';
 
 const THEMES = {
@@ -44,7 +44,7 @@ export async function startPreview(dir, opts = {}) {
         command: s.runtime === 'node' ? process.execPath : entry,
         args: s.runtime === 'node' ? [entry, ...(s.args ?? [])] : (s.args ?? []),
         cwd: root,
-        env: { ...process.env, ...(s.env ?? {}), SPICA_MOCK: opts.real ? '0' : '1', SPICA_PLUGIN_NAME: m.name, SPICA_PLUGIN_VERSION: m.version, SPICA_PLUGIN_DIR: root, SPICA_PLUGIN_DATA: join(data, f) },
+        env: pluginEnv({ ...(s.env ?? {}), SPICA_MOCK: opts.real ? '0' : '1', SPICA_PLUGIN_NAME: m.name, SPICA_PLUGIN_VERSION: m.version, SPICA_PLUGIN_DIR: root, SPICA_PLUGIN_DATA: join(data, f) }),
       });
       await client.initialize();
       for (const t of await client.listTools()) if (!tools.has(t.name)) tools.set(t.name, client);

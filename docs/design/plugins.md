@@ -250,3 +250,8 @@ J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型�
 - **下一步**：外壳经后端端口的 plugin* 方法做插件页，不用自己建 `PluginManager`；插件根建议 `%APPDATA%\Spica\plugins`，写进后端配置的 extensions.options.root。之后官方 Outlook 插件按本格式写。
 - **他该看什么**：跑 J6 冒烟看 13 行 ✓；翻 `plugins/example-notes` 看一个插件长什么样。
 - **注意**：插件测试要起真进程，机器很忙时默认 5 秒会超时，测试文件里已放宽到 30 秒。
+- **2026-11-10 补**：
+  - 插件包可用 `.spicaignore` 排除开发文件（1585374），Outlook 插件已加（8988ad1）。
+  - 插件页面定稿：`views/*.json`、`views()` / `resolveViewFile()` / `viewCall()`、后端端口 `pluginViews` / `pluginViewFile` / `pluginViewCall`，和桌面外壳对好的 `window.spica` 约定见第 2 节「视图」（fb0d42b）；示例插件有 sidebar 的 Notebook 和 panel 的 Quick note（eaa96f7）。
+  - 给公司端 Claude Code / Codex 用的 skill：`skills/spica-plugin-author`（脚手架、校验打包、安装、页面预览，7105d2f 起）；`packages/plugins/src/skill.test.ts` 用它从零做插件，经 stdio 和 HTTP 装进 Spica 再撤掉。
+  - 缺口：桌面版后端没开 HTTP MCP 服务（`mcpHttp`），所以 `install.mjs` 还连不上正在运行的桌面版；开发用独立的 `mcp-main` 能连，桌面版用户先在 设置 › 插件 粘 zip 路径装。
