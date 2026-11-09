@@ -26,6 +26,6 @@
     "@spica/protocol": "*",
     "docx": "9.15.3",
     "pdf-lib": "1.17.1",
-    "write-excel-file": "^4.1.1"
+    "write-excel-file": "4.1.1"
   }
 }
