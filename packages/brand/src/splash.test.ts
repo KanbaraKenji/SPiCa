@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
-import { SPLASH_FINISH_AFTER, SPLASH_FINISH_CURVE, SPLASH_LAYOUT, SPLASH_TEMPOS, SPLASH_TIMING, STARFIELD_COUNT, splashFrame, splashSpeeds, splashStaticFrame, starfield } from './splash.ts';
+import { SPLASH_FINISH, SPLASH_FINISH_AFTER, SPLASH_LAYOUT, SPLASH_TIMING, STARFIELD_COUNT, keplerPosition, splashFrame, splashSpeeds, splashStaticFrame, starfield } from './splash.ts';
 import { MARK_GEOMETRY } from './geometry.ts';
 import { SpicaSplash } from './react/SpicaSplash.tsx';
 
@@ -29,7 +29,7 @@ describe('开机画面时间线', () => {
   it('三维环绕：在前面时大、亮，在后面时小、暗', () => {
     let sawFront = false;
     let sawBack = false;
-    for (let t = 1.2; t < 1.2 + SPLASH_TEMPOS.sync; t += 0.1) {
+    for (let t = 1.2; t < 1.2 + SPLASH_TIMING.orbitPeriod; t += 0.1) {
       for (const s of splashFrame(t, null).stars) {
         if (s.front) {
           sawFront = true;
@@ -44,17 +44,41 @@ describe('开机画面时间线', () => {
     expect(sawFront && sawBack).toBe(true);
   });
 
-  it('双星周期锁在背景节拍上：同拍一圈 5 秒，慢档 10 秒', () => {
-    expect(SPLASH_TEMPOS.sync).toBe(SPLASH_TIMING.starfieldPeriod);
-    expect(SPLASH_TEMPOS.slow).toBe(SPLASH_TIMING.starfieldPeriod * 2);
-    for (const period of [SPLASH_TEMPOS.sync, SPLASH_TEMPOS.slow]) {
-      const a = splashFrame(1.5, null, { orbitPeriod: period }).stars[0]!;
-      const b = splashFrame(1.5 + period, null, { orbitPeriod: period }).stars[0]!;
-      expect(b.x).toBeCloseTo(a.x, 6);
-      expect(b.y).toBeCloseTo(a.y, 6);
-      const half = splashFrame(1.5 + period / 2, null, { orbitPeriod: period }).stars[0]!;
-      expect(Math.hypot(half.x - a.x, half.y - a.y)).toBeGreaterThan(10);
+  it('双星一圈 4 秒，背景星点仍 5 秒一程（不同拍）', () => {
+    expect(SPLASH_TIMING.orbitPeriod).toBe(4);
+    expect(SPLASH_TIMING.starfieldPeriod).toBe(5);
+    const a = splashFrame(1.5, null).stars[0]!;
+    const b = splashFrame(1.5 + 4, null).stars[0]!;
+    expect(b.x).toBeCloseTo(a.x, 6);
+    expect(b.y).toBeCloseTo(a.y, 6);
+  });
+
+  it('开普勒椭圆：最近点比最远点快约 2 倍，且最近点在前面', () => {
+    const near = keplerPosition(0, 1 / 3);
+    const far = keplerPosition(Math.PI, 1 / 3);
+    expect(near.r).toBeCloseTo(2 / 3, 6);
+    expect(far.r).toBeCloseTo(4 / 3, 6);
+    // 角速度 ∝ 1/r²，线速度比 = (1+e)/(1-e) = 2
+    const dt = 1e-4;
+    const speed = (t: number) => {
+      const p = splashFrame(t, null).stars[0]!;
+      const q = splashFrame(t + dt, null).stars[0]!;
+      return { v: Math.hypot(q.x - p.x, q.y - p.y) / dt, front: p.front };
+    };
+    let maxV = 0, minV = Infinity, maxFront = false;
+    for (let t = 1.2; t < 5.2; t += 0.01) {
+      const s = speed(t);
+      if (s.v > maxV) { maxV = s.v; maxFront = s.front; }
+      minV = Math.min(minV, s.v);
     }
+    expect(maxFront).toBe(true);
+    expect(maxV / minV).toBeGreaterThan(1.5);
+  });
+
+  it('快慢比 1 时退化成匀速圆周', () => {
+    const a = keplerPosition(1.234, 0);
+    expect(a.r).toBe(1);
+    expect(a.angle).toBeCloseTo(1.234, 9);
   });
 
   it('花瓣只动透明度和缩放：九片、缩放不小于 1、透明度在 0..1', () => {
@@ -74,10 +98,11 @@ describe('开机画面时间线', () => {
 
   it('ready 后：合一 → 九瓣全亮 → 逐字点亮 → 淡出结束', () => {
     const r = 3;
-    const merged = r + SPLASH_FINISH_CURVE.accel;
-    const bloomed = splashFrame(merged + SPLASH_TIMING.bloom[1] + 0.01, r);
+    const merged = r + SPLASH_FINISH.accel;
+    const F = SPLASH_FINISH;
+    const bloomed = splashFrame(merged + F.petalStart + 8 * F.petalStagger + F.petalEach + 0.01, r);
     for (const p of bloomed.petals) expect(p.opacity).toBeCloseTo(1, 5);
-    const lit = splashFrame(merged + SPLASH_TIMING.sweep[1] + 0.3, r);
+    const lit = splashFrame(merged + F.sweepStart + F.sweep + 0.3, r);
     for (const l of lit.letters) expect(l.opacity).toBeCloseTo(1, 5);
     expect(lit.stars).toHaveLength(0);
     expect(splashFrame(r + SPLASH_FINISH_AFTER - 0.01, r).finished).toBe(false);
@@ -118,7 +143,7 @@ describe('收尾加速曲线', () => {
 
   it('合一时转速到峰值，背景星点之后回落到平时速度', () => {
     const r = 5;
-    const c = SPLASH_FINISH_CURVE;
+    const c = SPLASH_FINISH;
     expect(splashSpeeds(r + c.accel, r).orbit).toBeCloseTo(c.orbitPeak, 6);
     expect(splashSpeeds(r + c.accel, r).starfield).toBeCloseTo(c.starPeak, 6);
     expect(splashSpeeds(r + c.accel + c.starSettle + 0.1, r).starfield).toBeCloseTo(1, 6);
@@ -128,7 +153,7 @@ describe('收尾加速曲线', () => {
     const r = 5;
     let prevStar = splashFrame(r - 0.004, null).stars[0]!;
     let prevBg = starfield(r - 0.004, null, 1280, 720);
-    for (let t = r; t < r + SPLASH_FINISH_CURVE.accel - 0.01; t += 0.004) {
+    for (let t = r; t < r + SPLASH_FINISH.accel - 0.01; t += 0.004) {
       const star = splashFrame(t, r).stars[0]!;
       expect(Math.hypot(star.x - prevStar.x, star.y - prevStar.y)).toBeLessThan(6);
       prevStar = star;
@@ -144,11 +169,24 @@ describe('收尾加速曲线', () => {
     }
   });
 
-  it('加速曲线可调：时长变了，结束时间跟着变', () => {
+  it('收尾时长可调：时长变了，结束时间跟着变', () => {
     const r = 5;
-    const f = splashFrame(r + 2.2 + SPLASH_TIMING.hold + SPLASH_TIMING.fadeOut, r, { finish: { accel: 2.2 } });
+    const F = SPLASH_FINISH;
+    const f = splashFrame(r + 2.6 + F.hold + F.fadeOut + 1e-6, r, { finish: { accel: 2.6 } });
     expect(f.finished).toBe(true);
-    expect(splashFrame(r + 2.2 + SPLASH_TIMING.hold, r, { finish: { accel: 2.2 } }).finished).toBe(false);
+    expect(splashFrame(r + 2.6 + F.hold, r, { finish: { accel: 2.6 } }).finished).toBe(false);
+  });
+
+  it('收尾放慢：九瓣逐片点亮 ≥ 1.2 秒、光掠过字标 ≥ 0.8 秒、整段约 6 秒', () => {
+    const F = SPLASH_FINISH;
+    expect(F.petalEach + 8 * F.petalStagger).toBeGreaterThanOrEqual(1.2);
+    expect(F.sweep).toBeGreaterThanOrEqual(0.8);
+    expect(SPLASH_FINISH_AFTER).toBeCloseTo(6, 6);
+    // 逐片：第一片亮满时最后一片还没亮满
+    const r = 5;
+    const f = splashFrame(r + F.accel + F.petalStart + F.petalEach + 0.01, r);
+    expect(f.petals[0]!.opacity).toBeCloseTo(1, 3);
+    expect(f.petals[8]!.opacity).toBeLessThan(0.99);
   });
 });
 
