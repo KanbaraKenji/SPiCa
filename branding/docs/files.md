@@ -36,9 +36,19 @@ SVG 是真矢量（可编辑路径），全部由 `packages/brand/src/` 的构�
 | `spica-win-dark.png` / `spica-win-light.png` | 无底窗口图标，256px |
 | `spica-banner-dark.png` / `spica-banner-light.png` | 横标位图，256px 高，带底色，宣传和文档用 |
 
+## 字体 `fonts/`
+
+| 文件 | 内容 |
+|---|---|
+| `Gelasio-Bold.ttf` | 字标用的开源字体（SIL OFL 1.1），上游原文件 |
+| `OFL.txt` | 字体许可证全文 |
+
+字标已转成路径写在 `packages/brand/src/wordmark.ts`，应用运行时不读字体文件；字体文件只用于重新生成字标。
+
 ## 生成脚本
 
 | 文件 | 作用 |
 |---|---|
 | `packages/brand/scripts/build.ts` | `brand:build` 入口：出 SVG、栅格化、打 ICO、写两处目录 |
 | `packages/brand/scripts/ico.ts` | PNG-in-ICO 打包 |
+| `packages/brand/scripts/wordmark-from-font.ts` | 把字体里的 Spica 转成路径，重写 `src/wordmark.ts` |
