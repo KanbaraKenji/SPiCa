@@ -11,13 +11,20 @@ export interface SuggestAction {
   prompt: string;
 }
 
-/** unavailable: the tool was turned off (its plugin stopped); the core ran nothing. */
-export type ToolState = 'pending' | 'running' | 'done' | 'error' | 'unavailable';
+/**
+ * unavailable: the tool was turned off (its plugin stopped); the core ran nothing.
+ * timeout: waiting for sub-tasks gave up while they keep working (not a failure).
+ */
+export type ToolState = 'pending' | 'running' | 'done' | 'error' | 'unavailable' | 'timeout';
 
 /** The core's answer to a call of a tool that was turned off (nothing was run). */
 const UNAVAILABLE = /Tool "[^"]+" is no longer available/;
+/** The core's answer when waiting for sub-tasks ran out of time; they are still working. */
+const WAIT_TIMEOUT = /Stopped waiting \(timeout\)/;
 function failedState(text: string | undefined): ToolState {
-  return text && UNAVAILABLE.test(text) ? 'unavailable' : 'error';
+  if (text && UNAVAILABLE.test(text)) return 'unavailable';
+  if (text && WAIT_TIMEOUT.test(text)) return 'timeout';
+  return 'error';
 }
 
 export type Block =

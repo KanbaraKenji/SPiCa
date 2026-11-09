@@ -50,7 +50,8 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
             <dl className="detail-facts">
               <dt>类型</dt>
               <dd>{ROLE_LABEL[session.role]}</dd>
-              {parent ? (
+              {/* A project's sub-task belongs to its manager, who is the project: say it once, under 项目. */}
+              {parent && !(project && project.managerSessionId === parent.id) ? (
                 <>
                   <dt>属于</dt>
                   <dd>

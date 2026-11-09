@@ -168,9 +168,17 @@ export interface ConversationProps {
   /** No model is configured yet: the empty state points to settings. */
   needsModel?: boolean;
   onSetupModel?: () => void;
+  /** Sub-agents under this conversation that wait for the user (a question or a confirmation). */
+  waiting?: WaitingChild[];
 }
 
-export function Conversation({ session, transcript, actions, demo, needsModel = false, onSetupModel }: ConversationProps) {
+export interface WaitingChild {
+  id: string;
+  title: string;
+  status: 'awaiting_confirm' | 'awaiting_answer';
+}
+
+export function Conversation({ session, transcript, actions, demo, needsModel = false, onSetupModel, waiting = [] }: ConversationProps) {
   const running = isRunning(transcript.run?.status) || isRunning(session?.status);
   const { ref, away, toBottom } = useStickToBottom(transcript);
   const items = transcript.items;
@@ -202,6 +210,16 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
               return <Response key={item.id} item={item} live={running && i === lastIndex} actions={actions} cards={transcript.fileCards} />;
             })}
             <StatusLine transcript={transcript} />
+            {waiting.map((w) => (
+              <div key={w.id} className="resume-row waiting-row" role="status">
+                <span>
+                  「{w.title}」{w.status === 'awaiting_confirm' ? '在等你确认' : '在等你回答'}
+                </span>
+                <button type="button" className="btn" onClick={() => actions.openSession(w.id)}>
+                  去处理
+                </button>
+              </div>
+            ))}
             {session?.status === 'interrupted' && !running ? (
               <div className="resume-row">
                 <span>上次没做完就中断了</span>

@@ -66,6 +66,8 @@ function ToolRow({ block }: { block: ToolBlock }) {
     <span className="text-danger">没有成功</span>
   ) : block.state === 'unavailable' ? (
     <span>已停用，未执行</span>
+  ) : block.state === 'timeout' ? (
+    <span>还在做，先不等了</span>
   ) : block.durationMs !== undefined ? (
     formatDuration(block.durationMs)
   ) : null;
@@ -109,7 +111,7 @@ export function FileCards({ files, onOpen }: { files: FileRef[]; onOpen(path: st
           <span className="file-card-text">
             <span className="file-card-name">{f.card?.name ?? fileName(f.path)}</span>
             <span className="file-card-sub">
-              {f.card ? fileCardLine(f.card) : `${f.tool === 'read_file' ? '读过' : '改过'}${fileFolder(f.path) ? ` · ${fileFolder(f.path)}` : ''}`}
+              {f.card ? fileCardLine(f.card) : `${f.tool === 'read_file' ? '读过' : f.tool === 'write_file' ? '写过' : '改过'}${fileFolder(f.path) ? ` · ${fileFolder(f.path)}` : ''}`}
             </span>
           </span>
         </button>
