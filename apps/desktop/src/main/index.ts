@@ -416,7 +416,10 @@ ipcMain.handle(DesktopChannel.PluginViewCall, async (_e, plugin: unknown, view: 
   try {
     return await backend.pluginViewCall({ plugin: str(plugin), view: str(view), tool: str(tool), args: args ?? {}, confirmed: confirmed === true });
   } catch (err) {
-    return { content: friendly(err), isError: true };
+    // The plugin's own words beat a generic "no answer": the page shows them to whoever is fixing the plugin.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[spica] plugin page call failed:', msg);
+    return { content: /[一-鿿]/.test(msg) ? msg : `插件没有完成这次调用：${msg.slice(0, 300)}`, isError: true };
   }
 });
 ipcMain.handle(DesktopChannel.PluginViewFile, async (_e, plugin: unknown, path: unknown): Promise<string | null> => {
