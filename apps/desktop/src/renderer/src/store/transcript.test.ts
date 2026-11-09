@@ -67,6 +67,45 @@ describe('notes from sub-agents', () => {
   });
 });
 
+describe('tools that were turned off', () => {
+  const msg = (over: Partial<Message>): Message => ({
+    id: 'x',
+    seq: 1,
+    sessionId: 's',
+    role: 'user',
+    kind: 'note',
+    content: [],
+    createdAt: '2026-11-09T10:00:00+08:00',
+    ...over,
+  });
+
+  it('says which tools are off in Chinese, and marks a call to one as not run', () => {
+    const note = msg({
+      id: 'n',
+      content: [{ type: 'text', text: '[System note] These tools are no longer available (turned off or removed): notes__add_note, read_file.' }],
+      meta: { author: 'runtime', toolsUnavailable: ['notes__add_note', 'read_file'] },
+    });
+    const call = msg({ id: 'a', seq: 2, role: 'assistant', kind: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'notes__add_note', input: { text: 'x' } }] });
+    const result = msg({
+      id: 'r',
+      seq: 3,
+      kind: 'tool_results',
+      content: [{ type: 'tool_result', toolUseId: 'c1', isError: true, content: 'Tool "notes__add_note" is no longer available (it was turned off or removed). Nothing was run.' }],
+    });
+    const t = fromHistory([note, call, result]);
+    expect(t.items[0]).toEqual({ kind: 'note', id: 'n', text: '这些工具已停用：notes__add_note、读取文件' });
+    const r = t.items[1];
+    expect(r?.kind === 'response' && r.blocks[0]?.type === 'tool' ? r.blocks[0].state : '').toBe('unavailable');
+    // Live: the same from tool.end.
+    let live: Transcript = { items: [] };
+    const ev = (body: object, seq: number) => ({ ...body, seq, at: '', sessionId: 's', parentChain: [] }) as unknown as CoreEvent;
+    live = applyEvent(live, ev({ type: 'tool.start', callId: 'c2', name: 'notes__add_note', input: {} }, 1));
+    live = applyEvent(live, ev({ type: 'tool.end', callId: 'c2', name: 'notes__add_note', isError: true, preview: 'Tool "notes__add_note" is no longer available', durationMs: 1 }, 2));
+    const lr = live.items[0];
+    expect(lr?.kind === 'response' && lr.blocks[0]?.type === 'tool' ? lr.blocks[0].state : '').toBe('unavailable');
+  });
+});
+
 describe('file cards', () => {
   const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
 

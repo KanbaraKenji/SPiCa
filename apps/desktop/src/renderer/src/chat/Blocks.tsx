@@ -60,7 +60,15 @@ function toolLine(b: ToolBlock): string {
 function ToolRow({ block }: { block: ToolBlock }) {
   const [open, setOpen] = useState(false);
   const running = block.state === 'running' || block.state === 'pending';
-  const meta = running ? <span className="spinner" aria-label="进行中" /> : block.state === 'error' ? <span className="text-danger">没有成功</span> : block.durationMs !== undefined ? formatDuration(block.durationMs) : null;
+  const meta = running ? (
+    <span className="spinner" aria-label="进行中" />
+  ) : block.state === 'error' ? (
+    <span className="text-danger">没有成功</span>
+  ) : block.state === 'unavailable' ? (
+    <span>已停用，未执行</span>
+  ) : block.durationMs !== undefined ? (
+    formatDuration(block.durationMs)
+  ) : null;
   const body = block.result ?? block.preview;
   return (
     <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={<Icon name="tool" size={14} />} label={toolLine(block)} meta={meta}>

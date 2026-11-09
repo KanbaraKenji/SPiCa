@@ -2,6 +2,7 @@
 // stream into what the conversation view draws. Pure functions, no React.
 import type { CoreEvent, FileCardMeta, Message, PendingItem, SessionStatus } from '@spica/protocol';
 import { humanError } from '../../../shared/errors';
+import { toolLabel } from '../chat/format';
 
 export { humanError } from '../../../shared/errors';
 
@@ -10,7 +11,14 @@ export interface SuggestAction {
   prompt: string;
 }
 
-export type ToolState = 'pending' | 'running' | 'done' | 'error';
+/** unavailable: the tool was turned off (its plugin stopped); the core ran nothing. */
+export type ToolState = 'pending' | 'running' | 'done' | 'error' | 'unavailable';
+
+/** The core's answer to a call of a tool that was turned off (nothing was run). */
+const UNAVAILABLE = /Tool "[^"]+" is no longer available/;
+function failedState(text: string | undefined): ToolState {
+  return text && UNAVAILABLE.test(text) ? 'unavailable' : 'error';
+}
 
 export type Block =
   | { type: 'text'; text: string }
@@ -55,6 +63,9 @@ export function childNoteOf(m: Message): ChildNote | undefined {
 }
 
 function noteItem(m: Message): Item {
+  // The core's note that tools this conversation used were turned off; its body is English for the model.
+  const gone = m.meta?.toolsUnavailable;
+  if (Array.isArray(gone) && gone.length) return { kind: 'note', id: m.id, text: `这些工具已停用：${gone.map((n) => toolLabel(String(n))).join('、')}` };
   const child = childNoteOf(m);
   return child ? { kind: 'note', id: m.id, text: child.text, child } : { kind: 'note', id: m.id, text: textOf(m) };
 }
@@ -206,7 +217,7 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
         if (tool) {
           tool.result = resultBody(b.content);
           tool.preview = tool.result.slice(0, 160);
-          tool.state = b.isError ? 'error' : 'done';
+          tool.state = b.isError ? failedState(b.content) : 'done';
           continue;
         }
         const ask = findBlock(items, 'ask', b.toolUseId);
@@ -314,7 +325,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     case 'tool.end': {
       const tool = findBlock(items, 'tool', e.callId);
       if (tool) {
-        tool.state = e.isError ? 'error' : 'done';
+        tool.state = e.isError ? failedState(e.preview) : 'done';
         tool.preview = e.preview;
         tool.durationMs = e.durationMs;
       }
