@@ -115,6 +115,8 @@ export function deriveTokens(skin: Skin): Tokens {
     '--spica-border-strong': mix(bg, ink, dark ? 0.22 : 0.2),
     '--spica-hover': mix(bg, ink, dark ? 0.07 : 0.055),
     '--spica-active': mix(bg, ink, dark ? 0.11 : 0.09),
+    // What you wrote, in the conversation: a filled block, no border.
+    '--spica-bubble': mix(bg, ink, dark ? 0.09 : 0.06),
     '--spica-ink': ink,
     '--spica-muted': readable(mix(ink, bg, dark ? 0.36 : 0.4), bg, ink, 4.5),
     '--spica-faint': readable(mix(ink, bg, dark ? 0.56 : 0.6), bg, ink, 2.6),

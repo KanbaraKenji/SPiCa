@@ -738,12 +738,15 @@ button.tree-twisty:hover {
   gap: 10px;
 }
 
+/* What you wrote: on the right, only as wide as the text needs (at most 85%). */
 .turn-user {
+  align-self: flex-end;
+  max-width: 85%;
   margin-top: 14px;
-  padding: 10px 14px;
-  border-radius: var(--radius-l);
-  background: var(--spica-surface);
-  border: 1px solid var(--spica-border);
+  padding: 10px 16px;
+  border-radius: 18px;
+  background: var(--spica-bubble);
+  border: 1px solid transparent;
 }
 
 .turn-user:first-child {
@@ -757,7 +760,7 @@ button.tree-twisty:hover {
 }
 
 .turn-user.is-steer {
-  border-style: dashed;
+  border: 1px dashed var(--spica-border-strong);
 }
 
 .turn-user-tag {
