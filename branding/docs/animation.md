@@ -91,4 +91,6 @@ ready 到整层消失共约 6.1 秒（`SPLASH_FINISH_AFTER`）。浅色版同样
 
 已做完、已提交：扩轨 0.6s、大半径 1.4s（约 1.2 圈，视频第 7.6～9.0 秒）、扎心 0.35s 短弧（转速 (1-x)² 衰减到 0）；填充 C、星点从花心飞出保持。
 
-下一步第一件事：用 `render-splash-video.mjs`（readyAt 7、约 830 帧）出明暗两段 60fps mp4，发点选页问「行不行」。
+第十版 60fps 视频已出（`docs/screenshots/brand/boot-v10-*-1280p60.mp4`），点选页已发他。
+
+下一步第一件事：等他回第十版「行不行」；还要改就按他说的视频时刻找到对应那一段，只调那一段的时长参数，用 `render-splash-video.mjs`（readyAt 7、820 帧）出同规格视频。
