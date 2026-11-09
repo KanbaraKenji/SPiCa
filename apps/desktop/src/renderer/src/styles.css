@@ -2173,3 +2173,51 @@ button.tree-twisty:hover {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* Sidebar section heading with an action (新项目) */
+.tree-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 4px;
+}
+
+.tree-heading-btn {
+  width: 24px;
+  height: 24px;
+}
+
+/* Dialogs that hold a small form */
+.dialog-form {
+  width: min(480px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-inline {
+  display: flex;
+  gap: 8px;
+}
+
+.form-inline .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.textarea {
+  height: auto;
+  padding: 8px 10px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.dialog-form .dialog-actions {
+  margin-top: 6px;
+}

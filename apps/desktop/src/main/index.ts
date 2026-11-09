@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve as resolvePath } from 'node:path';
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, net, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, safeStorage, shell } from 'electron';
 import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
 import { deriveTokens, resolveSkin, schemeOf } from '../shared/skin';
@@ -250,6 +250,12 @@ ipcMain.handle(DesktopChannel.OpenFile, async (_e, sessionId: unknown, path: unk
   if (!existsSync(full)) return `找不到文件：${full}`;
   const error = await shell.openPath(full);
   return error ? `打不开这个文件：${error}` : null;
+});
+
+ipcMain.handle(DesktopChannel.PickFolder, async (): Promise<string | null> => {
+  const opts: Electron.OpenDialogOptions = { title: '选择项目文件夹', properties: ['openDirectory', 'createDirectory'] };
+  const r = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts);
+  return r.canceled ? null : (r.filePaths[0] ?? null);
 });
 
 ipcMain.on(DesktopChannel.Zoom, (_e, step: unknown) => {

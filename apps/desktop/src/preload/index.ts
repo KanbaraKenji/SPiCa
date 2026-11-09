@@ -45,6 +45,7 @@ const bridge: DesktopBridge = {
   updateSettings: (patch: SettingsPatch) => ipcRenderer.invoke(DesktopChannel.UpdateSettings, patch) as Promise<ShellSettings>,
   onSettingsChanged: (listener) => subscribe<ShellSettings>(DesktopChannel.SettingsChanged, listener),
   zoom: (step) => ipcRenderer.send(DesktopChannel.Zoom, step),
+  pickFolder: () => ipcRenderer.invoke(DesktopChannel.PickFolder) as Promise<string | null>,
   openFile: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.OpenFile, sessionId, path) as Promise<string | null>,
   plugins: {
     run: (cmd: PluginsCommand) => ipcRenderer.invoke(DesktopChannel.Plugins, cmd) as Promise<PluginsResult>,
