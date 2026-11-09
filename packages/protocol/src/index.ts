@@ -321,6 +321,22 @@ export interface FileCardMeta {
   encoding?: string;
 }
 
+/** Result of a "test connection" probe (one minimal request outside any session). */
+export interface ProbeResult {
+  ok: boolean;
+  /** Whole request, in milliseconds. */
+  latencyMs: number;
+  /** Until the first streamed event (successful probes). */
+  firstByteMs?: number;
+  /** Model name the server reported. */
+  model?: string;
+  /** Failure category; UIs write their own message from it. */
+  errorCode?: 'auth' | 'not_found' | 'rate_limited' | 'server' | 'bad_request' | 'network' | 'timeout' | 'aborted';
+  httpStatus?: number;
+  /** Technical detail (redacted), for logs and "show details". */
+  message?: string;
+}
+
 export interface SuggestedAction {
   label: string;
   /** Sent as the user's message when the action is clicked. */
