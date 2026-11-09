@@ -28,6 +28,8 @@ export interface SpicaSplashProps {
   speedRatio?: number;
   /** 收尾各步时长（缺省 SPLASH_FINISH） */
   finish?: Partial<SplashFinish>;
+  /** 点一下或按任意键跳过：0.25 秒淡出后回调 onDone（缺省 true） */
+  skippable?: boolean;
   /** 横标下方的小字（例如版本号） */
   caption?: ReactNode;
   className?: string;
@@ -111,6 +113,7 @@ export function SpicaSplash({
   orbitPeriod = SPLASH_TIMING.orbitPeriod,
   speedRatio,
   finish,
+  skippable = true,
   caption,
   className,
   style,
@@ -133,6 +136,7 @@ export function SpicaSplash({
   const backTrailRefs = useRef<Array<SVGCircleElement | null>>([]);
   const frontTrailRefs = useRef<Array<SVGCircleElement | null>>([]);
   const readyAtRef = useRef<number | null>(null);
+  const skipAtRef = useRef<number | null>(null);
   const t0Ref = useRef<number>(0);
   const onDoneRef = useRef(onDone);
   useEffect(() => {
@@ -156,6 +160,24 @@ export function SpicaSplash({
     if (!root || !canvas) return;
     t0Ref.current = performance.now();
     if (ready && readyAtRef.current === null) readyAtRef.current = 0;
+
+    // 跳过：点一下或按任意键，从这一刻起 0.25 秒淡出
+    const SKIP_FADE = 0.25;
+    const skip = () => {
+      if (skippable && skipAtRef.current === null) skipAtRef.current = (performance.now() - t0Ref.current) / 1000;
+    };
+    root.addEventListener('pointerdown', skip);
+    window.addEventListener('keydown', skip);
+    const withSkip = (f: SplashFrame, t: number): SplashFrame => {
+      const at = skipAtRef.current;
+      if (at === null) return f;
+      const k = Math.min(1, Math.max(0, (t - at) / SKIP_FADE));
+      return { ...f, layer: f.layer * (1 - k), finished: f.finished || k >= 1 };
+    };
+    const unlisten = () => {
+      root.removeEventListener('pointerdown', skip);
+      window.removeEventListener('keydown', skip);
+    };
 
     const apply = (f: SplashFrame) => {
       layerRef.current?.style.setProperty('opacity', fmt(f.layer));
@@ -232,8 +254,8 @@ export function SpicaSplash({
       let raf = 0;
       const tick = (now: number) => {
         const t = (now - t0Ref.current) / 1000;
-        const f = splashBriefFrame(t, readyAtRef.current);
-        apply(still ? { ...splashStaticFrame(), finished: f.finished } : f);
+        const f = withSkip(splashBriefFrame(t, readyAtRef.current), t);
+        apply(still ? { ...splashStaticFrame(), layer: f.layer, finished: f.finished } : f);
         if (f.finished) {
           onDoneRef.current?.();
           return;
@@ -241,7 +263,10 @@ export function SpicaSplash({
         raf = requestAnimationFrame(tick);
       };
       raf = requestAnimationFrame(tick);
-      return () => cancelAnimationFrame(raf);
+      return () => {
+        cancelAnimationFrame(raf);
+        unlisten();
+      };
     }
 
     resize();
@@ -253,7 +278,7 @@ export function SpicaSplash({
     const tick = (now: number) => {
       const t = (now - t0Ref.current) / 1000;
       const opts = { orbitPeriod, speedRatio, finish: finishRef.current };
-      const f = splashFrame(t, readyAtRef.current, opts);
+      const f = withSkip(splashFrame(t, readyAtRef.current, opts), t);
       apply(f);
       if (ctx) {
         const w = canvas.width;
@@ -285,9 +310,10 @@ export function SpicaSplash({
     return () => {
       cancelAnimationFrame(raf);
       ro?.disconnect();
+      unlisten();
     };
     // 换主题、模式或节奏时重启；ready 通过 ref 传进循环，不触发重启
-  }, [theme, mode, orbitPeriod, speedRatio]);
+  }, [theme, mode, orbitPeriod, speedRatio, skippable]);
 
   const markTransform = `translate(${fmt(L.cx)} ${fmt(L.cy)}) scale(${fmt(L.markScale)}) translate(-${C} -${C})`;
   const wordTransform = `translate(${fmt(L.wordX)} ${fmt(L.wordY)}) scale(${fmt(L.wordScale)})`;
