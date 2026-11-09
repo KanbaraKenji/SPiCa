@@ -3,12 +3,23 @@
 // "已完成 · 用时" briefly, then goes away.
 import { useEffect, useState } from 'react';
 import type { Transcript } from '../store/transcript';
-import { SpicaMark } from '../mark/SpicaMark';
+import { SpicaMark } from '@spica/brand/react';
 import { formatClock, formatDuration, toolLabel } from './format';
 
 export const DONE_LINGER_MS = 1400;
 
 export type MarkState = 'think' | 'busy' | 'tool' | 'await' | 'done';
+
+function runningTool(t: Transcript): string | undefined {
+  const last = t.items[t.items.length - 1];
+  if (last?.kind === 'response') {
+    for (let i = last.blocks.length - 1; i >= 0; i--) {
+      const b = last.blocks[i];
+      if (b?.type === 'tool' && (b.state === 'running' || b.state === 'pending')) return b.name;
+    }
+  }
+  return t.run?.detail;
+}
 
 export function phaseOf(t: Transcript): { mark: MarkState; text: string } | null {
   const run = t.run;
@@ -16,8 +27,10 @@ export function phaseOf(t: Transcript): { mark: MarkState; text: string } | null
   switch (run.status) {
     case 'queued':
       return { mark: 'await', text: run.queuePosition ? `排队中，前面还有 ${Math.max(0, run.queuePosition - 1)} 个` : '排队中' };
-    case 'tool':
-      return { mark: 'tool', text: `正在${toolLabel(run.detail ?? '') || '调用工具'}` };
+    case 'tool': {
+      const name = runningTool(t);
+      return { mark: 'tool', text: name ? `正在${toolLabel(name)}` : '正在调用工具' };
+    }
     case 'awaiting_confirm':
       return { mark: 'await', text: '等你确认' };
     case 'awaiting_answer':
@@ -51,7 +64,7 @@ export function StatusLine({ transcript }: { transcript: Transcript }) {
   if (phase && transcript.run) {
     return (
       <div className="status-line" role="status" aria-live="polite">
-        <SpicaMark size={18} className={`spica-mark--${phase.mark}`} />
+        <SpicaMark size={18} state={phase.mark} />
         <span className="status-clock">{formatClock(now - transcript.run.startedAt)}</span>
         <span className="status-text">{phase.text}</span>
       </div>
@@ -59,8 +72,8 @@ export function StatusLine({ transcript }: { transcript: Transcript }) {
   }
   if (lingering && last) {
     return (
-      <div className="status-line is-done" role="status">
-        <SpicaMark size={18} className="spica-mark--done" />
+      <div className="status-line is-finished" role="status">
+        <SpicaMark size={18} state="done" />
         <span className="status-text">已完成 · 用时 {formatDuration(last.durationMs)}</span>
       </div>
     );

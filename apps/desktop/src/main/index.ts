@@ -1,15 +1,16 @@
 // Main process of the Spica desktop shell.
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve as resolvePath } from 'node:path';
-import { app, BrowserWindow, ipcMain, Menu, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, shell } from 'electron';
 import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
 import { deriveTokens, resolveSkin, schemeOf } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
 import type { ShellSettings } from '../shared/settings';
 import type { ShellState } from '../shared/bridge';
-import { createBackend } from './backend';
+import { chooseBackend, createBackend } from './backend';
+import { readModelEnv } from './backend/model-env';
 import { SettingsStore } from './settings-store';
 import { captureOnce, runShots } from './shots';
 
@@ -21,6 +22,7 @@ const TITLEBAR_HEIGHT = 40;
 //   SPICA_THEME=dark|light   force the color scheme instead of following the system
 //   SPICA_CAPTURE=<file.png> render the window once, save a PNG and quit
 //   SPICA_SHOTS=<dir>        render the screenshot matrix into <dir> and quit
+//   SPICA_BACKEND=fake|core  pick the backend (default: real core when .env.local has a model)
 const forcedTheme = process.env.SPICA_THEME;
 const capturePath = process.env.SPICA_CAPTURE;
 const shotsDir = process.env.SPICA_SHOTS;
@@ -35,7 +37,13 @@ else if (automated) app.setPath('userData', mkdtempSync(join(tmpdir(), 'spica-sh
 
 if (forcedTheme === 'dark' || forcedTheme === 'light') nativeTheme.themeSource = forcedTheme;
 
-const backend = createBackend({ speed: automated ? 0 : 1 });
+// Development model settings: the repository's .env.local, read here and nowhere else.
+const modelEnv = app.isPackaged ? {} : readModelEnv(resolvePath(app.getAppPath(), '../../.env.local'));
+const backendKind = chooseBackend({ requested: process.env.SPICA_BACKEND, automated, env: modelEnv });
+const workDir = join(app.getPath('documents'), 'Spica');
+if (backendKind === 'core') mkdirSync(workDir, { recursive: true });
+const backend = createBackend(backendKind, { fake: { speed: automated ? 0 : 1 }, env: modelEnv, cwd: workDir });
+console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core' : 'fake (demo data)'}`);
 const settings = new SettingsStore(app.getPath('userData'), { persist: !automated });
 if (forcedTheme === 'dark' || forcedTheme === 'light') settings.update({ skin: forcedTheme });
 
@@ -76,6 +84,15 @@ function syncNativeChrome(win: BrowserWindow, s: ShellSettings): void {
   }
 }
 
+/** Window / taskbar icon, matched to the Windows taskbar's own light or dark color. */
+function windowIcon(): Electron.NativeImage | undefined {
+  const variant = nativeTheme.shouldUseDarkColorsForSystemIntegratedUI ? 'dark' : 'light';
+  const file = join(app.getAppPath(), 'resources', 'branding', 'png', `spica-win-${variant}.png`);
+  if (!existsSync(file)) return undefined;
+  const image = nativeImage.createFromPath(file);
+  return image.isEmpty() ? undefined : image;
+}
+
 function applyZoom(win: BrowserWindow, factor: number): void {
   const zoom = clampZoom(factor);
   win.webContents.setZoomFactor(zoom);
@@ -91,6 +108,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: 480,
     minHeight: 360,
     title: APP_NAME,
+    ...(windowIcon() ? { icon: windowIcon() } : {}),
     show: false,
     backgroundColor: c.bg,
     titleBarStyle: 'hidden',
@@ -145,7 +163,7 @@ function createMainWindow(): BrowserWindow {
 }
 
 function shellState(): ShellState {
-  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors };
+  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated };
 }
 
 ipcMain.handle(IpcChannel.AppInfo, (): AppInfo => ({ name: APP_NAME, version: app.getVersion() }));
@@ -183,6 +201,8 @@ settings.onChange((s) => {
 });
 nativeTheme.on('updated', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
+  const icon = windowIcon();
+  if (icon) mainWindow.setIcon(icon);
   syncNativeChrome(mainWindow, settings.get());
   mainWindow.webContents.send(DesktopChannel.SettingsChanged, settings.get());
 });

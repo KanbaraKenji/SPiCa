@@ -1,7 +1,7 @@
 // Sessions and transcripts on the renderer side. Everything comes from the
 // backend through `window.spica.agent` and its event stream.
 import { useSyncExternalStore } from 'react';
-import type { AgentApi, CoreEvent, SessionInfo } from '@spica/protocol';
+import type { AgentApi, CoreEvent, Message, SessionInfo } from '@spica/protocol';
 import { Store } from './external';
 import { applyEvent, EMPTY_TRANSCRIPT, fromHistory, type Transcript } from './transcript';
 
@@ -12,6 +12,8 @@ export interface AgentView {
   transcripts: Record<string, Transcript>;
   /** Running total across all sessions, from `cost` events. */
   globalCostUsd: number;
+  /** First thing the user said in each session, used to name untitled sessions. */
+  firstLines: Record<string, string>;
   /** User-visible error from the last failed command. */
   notice?: string;
 }
@@ -21,6 +23,23 @@ export interface AgentSource {
   onAgentEvent(listener: (event: CoreEvent) => void): () => void;
 }
 
+export const NEW_CHAT_TITLE = '新对话';
+/** Titles the backend gives sessions nobody named yet. */
+const GENERIC_TITLES = new Set([NEW_CHAT_TITLE, 'Top-level agent', 'Agent', '']);
+
+/** What the sidebar and title bar call a session. */
+export function displayTitle(s: SessionInfo, firstLines: Record<string, string>): string {
+  if (!GENERIC_TITLES.has(s.title)) return s.title;
+  const first = firstLines[s.id]?.replace(/\s+/g, ' ').trim();
+  return first ? (first.length > 24 ? `${first.slice(0, 24)}…` : first) : NEW_CHAT_TITLE;
+}
+
+function firstUserText(messages: Message[]): string | undefined {
+  const m = messages.find((x) => x.role === 'user' && x.kind === 'user');
+  const b = m?.content.find((c) => c.type === 'text');
+  return b?.type === 'text' ? b.text : undefined;
+}
+
 export function friendlyError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   // Electron prefixes remote errors with "Error invoking remote method '...': Error: ".
@@ -28,7 +47,7 @@ export function friendlyError(err: unknown): string {
 }
 
 export class AgentStore {
-  readonly state = new Store<AgentView>({ sessions: [], loaded: false, activeId: null, transcripts: {}, globalCostUsd: 0 });
+  readonly state = new Store<AgentView>({ sessions: [], loaded: false, activeId: null, transcripts: {}, globalCostUsd: 0, firstLines: {} });
   readonly #api: AgentApi;
   #loading = new Set<string>();
 
@@ -64,7 +83,12 @@ export class AgentStore {
       const [messages, pending, info] = await Promise.all([this.#api.getMessages(id), this.#api.getPending(id), this.#api.getSession(id)]);
       const t = fromHistory(messages, pending);
       if (info && isLive(info.status)) t.run = { startedAt: Date.parse(info.updatedAt) || Date.now(), status: info.status };
-      this.state.set((v) => ({ ...v, transcripts: { ...v.transcripts, [id]: t } }));
+      const first = firstUserText(messages);
+      this.state.set((v) => ({
+        ...v,
+        transcripts: { ...v.transcripts, [id]: t },
+        firstLines: first && !v.firstLines[id] ? { ...v.firstLines, [id]: first } : v.firstLines,
+      }));
     } catch (err) {
       this.state.set((v) => ({ ...v, notice: friendlyError(err) }));
     } finally {
@@ -74,13 +98,22 @@ export class AgentStore {
 
   async newChat(): Promise<void> {
     await this.#guard(async () => {
-      const s = await this.#api.createSession({ role: 'top', title: '新对话' });
+      const s = await this.#api.createSession({ role: 'top', title: NEW_CHAT_TITLE });
       this.state.set((v) => ({ ...v, sessions: [s, ...v.sessions], activeId: s.id, transcripts: { ...v.transcripts, [s.id]: { items: [] } } }));
     });
   }
 
-  async send(id: string, text: string): Promise<void> {
-    await this.#guard(() => this.#api.send(id, text));
+  async send(id: string | null, text: string): Promise<void> {
+    await this.#guard(async () => {
+      let target = id;
+      if (!target) {
+        // Typing into the empty window starts a new conversation.
+        const s = await this.#api.createSession({ role: 'top', title: NEW_CHAT_TITLE });
+        target = s.id;
+        this.state.set((v) => ({ ...v, sessions: [s, ...v.sessions], activeId: s.id, transcripts: { ...v.transcripts, [s.id]: { items: [] } } }));
+      }
+      await this.#api.send(target, text);
+    });
   }
 
   async stop(id: string): Promise<void> {
@@ -122,10 +155,12 @@ export class AgentStore {
       const transcripts = current ? { ...v.transcripts, [e.sessionId]: applyEvent(current, e) } : v.transcripts;
       return { ...v, sessions, globalCostUsd, transcripts };
     });
-    if (e.type === 'child.spawned' || e.type === 'message') {
-      // New sessions or titles: refresh the tree (cheap; the list is small).
-      if (e.type === 'child.spawned' || this.state.get().sessions.find((s) => s.id === e.sessionId)?.title === '新对话') void this.#refreshSessions();
+    if (e.type === 'message' && e.message.role === 'user' && e.message.kind === 'user' && !this.state.get().firstLines[e.sessionId]) {
+      const first = firstUserText([e.message]);
+      if (first) this.state.set((v) => ({ ...v, firstLines: { ...v.firstLines, [e.sessionId]: first } }));
     }
+    // New sessions (a sub-agent was spawned): refresh the tree (cheap; the list is small).
+    if (e.type === 'child.spawned' || (e.type === 'status' && !this.state.get().sessions.some((s) => s.id === e.sessionId))) void this.#refreshSessions();
     if (e.type === 'run.end') void this.#reload(e.sessionId);
   }
 

@@ -2,7 +2,6 @@
 import type { SessionInfo } from '@spica/protocol';
 import { filesOf, type Block, type Transcript } from '../store/transcript';
 import { Icon } from '../ui/Icon';
-import { STATUS_LABEL } from '../ui/StatusMark';
 import { fileFolder, fileName, formatDuration, formatUsd, toolLabel, toolTarget } from '../chat/format';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
@@ -39,8 +38,6 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
             <dl className="detail-facts">
               <dt>类型</dt>
               <dd>{ROLE_LABEL[session.role]}</dd>
-              <dt>状态</dt>
-              <dd>{STATUS_LABEL[session.status]}</dd>
               {parent ? (
                 <>
                   <dt>属于</dt>

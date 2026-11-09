@@ -1,7 +1,7 @@
 // The window: title bar, left sidebar, main pane (conversation or settings), right detail panel.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DesktopBridge } from '../../shared/bridge';
-import { AgentStore, friendlyError, useAgent } from './store/agent';
+import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
 import { computeLayout, toggleAction, type Floating } from './shell/layout';
 import { useViewportWidth } from './shell/useViewportWidth';
@@ -10,7 +10,7 @@ import { DetailPanel } from './shell/DetailPanel';
 import { Conversation, type ConversationActions } from './chat/Conversation';
 import { SettingsView } from './settings/SettingsView';
 import { Icon } from './ui/Icon';
-import { SpicaMark } from './mark/SpicaMark';
+import { SpicaMark } from '@spica/brand/react';
 
 export interface AppProps {
   bridge: DesktopBridge;
@@ -60,8 +60,9 @@ export function App({ bridge, shell, agent }: AppProps) {
     };
   }, []);
 
-  const session = state.sessions.find((s) => s.id === state.activeId);
-  const parent = session?.parentId ? state.sessions.find((s) => s.id === session.parentId) : undefined;
+  const sessions = useMemo(() => state.sessions.map((s) => ({ ...s, title: displayTitle(s, state.firstLines) })), [state.sessions, state.firstLines]);
+  const session = sessions.find((s) => s.id === state.activeId);
+  const parent = session?.parentId ? sessions.find((s) => s.id === session.parentId) : undefined;
   const transcript = agent.transcript(state.activeId);
   const totalCost = useMemo(() => state.sessions.reduce((n, s) => n + s.costUsd, 0), [state.sessions]);
 
@@ -81,7 +82,7 @@ export function App({ bridge, shell, agent }: AppProps) {
   };
   const id = state.activeId;
   const actions: ConversationActions = {
-    send: (text) => id && void agent.send(id, text),
+    send: (text) => void agent.send(id, text),
     stop: () => id && void agent.stop(id),
     answer: (callId, a) => id && void agent.answer(id, callId, a),
     confirm: (callId, ok) => id && void agent.confirm(id, callId, ok),
@@ -129,7 +130,7 @@ export function App({ bridge, shell, agent }: AppProps) {
         {leftShown ? (
           <div className={`panel panel-left is-${layout.left}`}>
             <Sidebar
-              sessions={state.sessions}
+              sessions={sessions}
               activeId={state.activeId}
               onOpen={openSession}
               onNewChat={() => {
@@ -150,7 +151,7 @@ export function App({ bridge, shell, agent }: AppProps) {
           {view === 'settings' ? (
             <SettingsView shell={shell} />
           ) : state.loaded ? (
-            <Conversation session={session} transcript={transcript} actions={actions} />
+            <Conversation session={session} transcript={transcript} actions={actions} demo={shell.demo} />
           ) : (
             <div className="conversation" />
           )}

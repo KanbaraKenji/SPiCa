@@ -17,6 +17,8 @@
     "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json"
   },
   "devDependencies": {
+    "@spica/brand": "*",
+    "@spica/core": "*",
     "@spica/protocol": "*",
     "@testing-library/dom": "10.4.2",
     "@testing-library/react": "16.3.3",

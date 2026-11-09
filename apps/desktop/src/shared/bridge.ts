@@ -7,6 +7,8 @@ export interface ShellState {
   settings: ShellSettings;
   /** OS prefers dark (used when the skin follows the system). */
   systemDark: boolean;
+  /** True when no model is configured and the conversation runs on demo data. */
+  demo: boolean;
 }
 
 export interface DesktopBridge extends SpicaBridge {
