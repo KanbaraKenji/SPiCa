@@ -1,0 +1,191 @@
+// Start the backend: providers from a JSON-able config, SQLite store with a
+// single-writer lock, restore(), optional extractor modules. Used by the
+// Electron utilityProcess entry and by the stdio MCP server.
+import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import type { BudgetConfig, PriceTable } from '../cost.ts';
+import type { LimiterConfig } from '../limiter.ts';
+import { AnthropicProvider } from '../providers/anthropic.ts';
+import { OpenAICompatibleProvider } from '../providers/openai.ts';
+import { probeProvider } from '../providers/probe.ts';
+import type { Provider } from '../providers/types.ts';
+import { Wso2Provider } from '../providers/wso2.ts';
+import { Runtime } from '../runtime.ts';
+import { SqliteStore } from '../store/sqlite.ts';
+import type { FileExtractor } from '../tools/types.ts';
+import { jsonSearchBackend, type JsonSearchBackendOptions } from '../tools/web-tools.ts';
+import { BackendServer } from './server.ts';
+
+/** One model endpoint, as the settings page stores it (keys included; sent over the port, never via files or env). */
+export interface ProviderConfig {
+  id: string;
+  kind: 'openai-compatible' | 'anthropic' | 'wso2';
+  baseUrl?: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+  /** wso2 only. */
+  oauth?: { tokenUrl: string; clientId: string; clientSecret: string; scope?: string; credentialsIn?: 'basic' | 'body' };
+  limits?: LimiterConfig;
+  traceHost?: boolean;
+  /** openai-compatible / wso2: extra body fields and reasoning echo options. */
+  bodyDefaults?: Record<string, unknown>;
+  reasoning?: { field?: string; echo?: 'never' | 'tool_turns' | 'always' };
+  /** anthropic: model-hosted web search on/off. */
+  webSearch?: boolean;
+}
+
+export interface BackendConfig {
+  /** SQLite file; a `<dbPath>.lock` file guards against a second writer. */
+  dbPath: string;
+  providers: ProviderConfig[];
+  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number };
+  cwd?: string;
+  projectsRoot?: string;
+  workflowsDir?: string;
+  locale?: string;
+  budget?: BudgetConfig;
+  prices?: PriceTable;
+  spillDir?: string;
+  search?: JsonSearchBackendOptions;
+  /** Module specifiers that export createExtractors(): FileExtractor[] (e.g. '@spica/extract'). */
+  extractorModules?: string[];
+}
+
+export function createProvider(c: ProviderConfig): Provider {
+  switch (c.kind) {
+    case 'anthropic':
+      return new AnthropicProvider({
+        id: c.id,
+        ...(c.apiKey ? { apiKey: c.apiKey } : {}),
+        ...(c.baseUrl ? { baseUrl: c.baseUrl } : {}),
+        ...(c.headers ? { headers: c.headers } : {}),
+        ...(c.traceHost ? { traceHost: true } : {}),
+        ...(c.webSearch !== undefined ? { webSearch: c.webSearch } : {}),
+        ...(c.bodyDefaults ? { bodyDefaults: c.bodyDefaults } : {}),
+      });
+    case 'wso2':
+      if (!c.baseUrl || !c.oauth) throw new Error(`provider ${c.id}: wso2 needs baseUrl and oauth`);
+      return new Wso2Provider({
+        id: c.id,
+        baseUrl: c.baseUrl,
+        oauth: c.oauth,
+        ...(c.headers ? { headers: c.headers } : {}),
+        ...(c.traceHost ? { traceHost: true } : {}),
+        ...(c.bodyDefaults ? { bodyDefaults: c.bodyDefaults } : {}),
+        ...(c.reasoning ? { reasoning: c.reasoning } : {}),
+      });
+    case 'openai-compatible':
+      if (!c.baseUrl) throw new Error(`provider ${c.id}: baseUrl is required`);
+      return new OpenAICompatibleProvider({
+        id: c.id,
+        baseUrl: c.baseUrl,
+        ...(c.apiKey ? { apiKey: c.apiKey } : {}),
+        ...(c.headers ? { headers: c.headers } : {}),
+        ...(c.traceHost ? { traceHost: true } : {}),
+        ...(c.bodyDefaults ? { bodyDefaults: c.bodyDefaults } : {}),
+        ...(c.reasoning ? { reasoning: c.reasoning } : {}),
+      });
+    default:
+      throw new Error(`provider ${(c as ProviderConfig).id}: unknown kind ${(c as ProviderConfig).kind}`);
+  }
+}
+
+/** Take the single-writer lock for a database; throws when another live process holds it. */
+const heldHere = new Set<string>();
+
+export function lockDatabase(dbPath: string): () => void {
+  const key = resolve(dbPath).toLowerCase();
+  if (heldHere.has(key)) throw Object.assign(new Error(`database ${dbPath} is already open in this process`), { code: 'locked' });
+  mkdirSync(dirname(dbPath), { recursive: true });
+  const lock = `${dbPath}.lock`;
+  try {
+    const fd = openSync(lock, 'wx');
+    writeFileSync(fd, String(process.pid));
+    closeSync(fd);
+  } catch {
+    const pid = Number(readFileSync(lock, 'utf8').trim());
+    let alive = false;
+    try {
+      if (pid && pid !== process.pid) {
+        process.kill(pid, 0);
+        alive = true;
+      }
+    } catch {
+      alive = false;
+    }
+    if (alive) throw Object.assign(new Error(`database ${dbPath} is in use by process ${pid}`), { code: 'locked' });
+    writeFileSync(lock, String(process.pid)); // stale lock from a crashed process
+  }
+  heldHere.add(key);
+  return () => {
+    heldHere.delete(key);
+    rmSync(lock, { force: true });
+  };
+}
+
+export interface Backend {
+  runtime: Runtime;
+  server: BackendServer;
+  restored: ReturnType<Runtime['restore']>;
+  warnings: string[];
+  close(): Promise<void>;
+}
+
+export async function startBackend(cfg: BackendConfig): Promise<Backend> {
+  const unlock = lockDatabase(cfg.dbPath);
+  try {
+    const warnings: string[] = [];
+    const extractors: FileExtractor[] = [];
+    for (const spec of cfg.extractorModules ?? []) {
+      try {
+        const mod = (await import(spec)) as { createExtractors?: () => FileExtractor[] };
+        if (typeof mod.createExtractors === 'function') extractors.push(...mod.createExtractors());
+        else warnings.push(`extractor module ${spec} has no createExtractors()`);
+      } catch (err) {
+        warnings.push(`extractor module ${spec} could not be loaded: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    const providers = cfg.providers.map(createProvider);
+    const runtime = new Runtime({
+      providers,
+      defaults: cfg.defaults,
+      store: new SqliteStore(cfg.dbPath),
+      limits: Object.fromEntries(cfg.providers.filter((p) => p.limits).map((p) => [p.id, p.limits!])),
+      extractors,
+      ...(cfg.cwd ? { cwd: cfg.cwd } : {}),
+      ...(cfg.projectsRoot ? { projectsRoot: cfg.projectsRoot } : {}),
+      ...(cfg.workflowsDir ? { workflowsDir: cfg.workflowsDir } : {}),
+      ...(cfg.locale ? { locale: cfg.locale } : {}),
+      ...(cfg.budget ? { budget: cfg.budget } : {}),
+      ...(cfg.prices ? { prices: cfg.prices } : {}),
+      ...(cfg.spillDir ? { spillDir: cfg.spillDir } : {}),
+      ...(cfg.search ? { search: jsonSearchBackend(cfg.search) } : {}),
+    });
+    warnings.push(...runtime.workflowErrors);
+    const restored = runtime.restore();
+    const server = new BackendServer(runtime, {
+      extraMethods: {
+        /** Test connection with a provider config from the settings form. */
+        probeProvider: (config: unknown, model: unknown) =>
+          probeProvider(createProvider(config as ProviderConfig), { model: String(model), tracer: runtime.tracer }),
+      },
+    });
+    let closed = false;
+    return {
+      runtime,
+      server,
+      restored,
+      warnings,
+      close: async () => {
+        if (closed) return;
+        closed = true;
+        server.close();
+        await runtime.close();
+        unlock();
+      },
+    };
+  } catch (err) {
+    unlock();
+    throw err;
+  }
+}
