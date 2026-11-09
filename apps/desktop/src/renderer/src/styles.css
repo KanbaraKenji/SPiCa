@@ -1026,11 +1026,11 @@ button.tree-twisty:hover {
   border-color: color-mix(in srgb, var(--spica-accent) 45%, var(--spica-border));
 }
 
-.is-done {
+.card.is-done {
   background: var(--spica-surface);
 }
 
-.is-done .card-head-icon {
+.card.is-done .card-head-icon {
   color: var(--spica-muted);
 }
 
@@ -1565,85 +1565,24 @@ button.tree-twisty:hover {
   text-align: center;
 }
 
-/* ---------- Mark state animations (placeholders until @spica/brand) ----------
-   The outline never changes: only opacity, rotation and scale move. */
-.spica-mark {
-  flex: none;
+/* The mark and its state animations come from @spica/brand (styles.css). */
+.titlebar-brand .spica-mark,
+.status-line .spica-mark,
+.empty-chat .spica-mark {
   color: var(--spica-ink);
-  overflow: visible;
-}
-
-.spica-mark--think {
-  animation: mark-breathe 1.6s ease-in-out infinite;
-}
-
-.spica-mark--busy .petal {
-  animation: petal-chase 1.35s linear infinite;
-  animation-delay: calc(var(--i) * 0.15s);
-}
-
-.spica-mark--tool {
-  animation: mark-click 1.5s steps(1, end) infinite;
-}
-
-.spica-mark--await {
-  animation: mark-await 2s ease-in-out infinite;
-}
-
-.spica-mark--done {
-  animation: mark-done 0.8s ease-out 1;
-}
-
-@keyframes mark-breathe {
-  50% {
-    transform: scale(0.82);
-    opacity: 0.75;
-  }
-}
-
-@keyframes petal-chase {
-  0%,
-  60%,
-  100% {
-    opacity: 1;
-  }
-  20% {
-    opacity: 0.3;
-  }
-}
-
-@keyframes mark-click {
-  0% {
-    transform: rotate(0deg);
-  }
-  33.33% {
-    transform: rotate(120deg);
-  }
-  66.66% {
-    transform: rotate(240deg);
-  }
-}
-
-@keyframes mark-await {
-  50% {
-    opacity: 0.45;
-  }
-}
-
-@keyframes mark-done {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .spica-mark,
-  .spica-mark .petal,
   .spinner,
   .status-run {
     animation: none !important;
   }
+}
+
+.composer-note {
+  margin: -10px 0 0;
+  padding: 0 24px 10px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--spica-faint);
 }

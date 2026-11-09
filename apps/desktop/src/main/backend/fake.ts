@@ -427,22 +427,16 @@ export class FakeBackend implements AgentBackend {
           '报价单里还有两家供应商没回价，建议今天跟进一下。';
         await this.#stream(sessionId, 'text', answer, signal);
         blocks.push({ type: 'text', text: answer });
-        blocks.push(
-          ...(await this.#tool(
-            sessionId,
-            run,
-            'suggest_actions',
-            {
-              title: '接下来可以',
-              actions: [
-                { label: '起草催价邮件', prompt: '帮我起草一封催价邮件，发给还没回价的两家供应商' },
-                { label: '把要点整理成纪要', prompt: '把这些要点整理成评审纪要' },
-              ],
-            },
-            '已给出建议',
-            0,
-          )),
-        );
+        const suggest = {
+          title: '接下来可以',
+          actions: [
+            { label: '起草催价邮件', prompt: '帮我起草一封催价邮件，发给还没回价的两家供应商' },
+            { label: '把要点整理成纪要', prompt: '把这些要点整理成评审纪要' },
+          ],
+        };
+        const suggestId = this.#id('call');
+        this.#emit(sessionId, { type: 'suggest.actions', callId: suggestId, ...suggest });
+        blocks.push({ type: 'tool_use', id: suggestId, name: 'suggest_actions', input: suggest }, { type: 'tool_result', toolUseId: suggestId, content: '已给出建议' });
       }
       this.#commitAssistant(sessionId, blocks);
       this.#charge(sessionId, 3100, 260);

@@ -75,7 +75,7 @@ export function contrast(a: string, b: string): number {
 }
 
 const LIGHT_INK = '#111827';
-const DARK_INK = '#eef1f6';
+const DARK_INK = '#e7eaf0';
 
 /** Light or dark, whichever ink reads better on the background. */
 export function schemeOf(bg: string): Scheme {

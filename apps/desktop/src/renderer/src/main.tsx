@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { AgentStore } from './store/agent';
 import { ShellStore } from './store/shell';
+import '@spica/brand/styles.css';
 import './styles.css';
 
 const root = document.getElementById('root');

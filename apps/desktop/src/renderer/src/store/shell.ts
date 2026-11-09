@@ -14,9 +14,12 @@ export interface ShellView {
 export class ShellStore {
   readonly state: Store<ShellView>;
   readonly #bridge: DesktopBridge;
+  /** No model configured: the conversation runs on demo data. */
+  readonly demo: boolean;
 
   constructor(bridge: DesktopBridge, initial: ShellState) {
     this.#bridge = bridge;
+    this.demo = initial.demo;
     const media = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)').matches : initial.systemDark;
     this.state = new Store<ShellView>({ settings: initial.settings, systemDark: media });
     bridge.onSettingsChanged((settings) => this.#replace(settings));

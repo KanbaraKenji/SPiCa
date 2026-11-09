@@ -2,7 +2,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { SessionInfo } from '@spica/protocol';
 import { filesOf, isRunning, type Block, type Item, type Transcript } from '../store/transcript';
-import { SpicaMark } from '../mark/SpicaMark';
+import { SpicaMark } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
 import { AskCard, ConfirmCard, FileCards, MarkdownText, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
 import { Composer } from './Composer';
@@ -80,13 +80,33 @@ function useStickToBottom(dep: unknown) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // Only the user's own scrolling may unpin; layout changes (resize, zoom,
+    // re-wrapping) also fire scroll events and must not.
+    let userUntil = 0;
+    const markUser = () => {
+      userUntil = performance.now() + 800;
+    };
     const onScroll = () => {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-      stick.current = atBottom;
-      setAway(!atBottom);
+      if (atBottom) stick.current = true;
+      else if (performance.now() < userUntil) stick.current = false;
+      else if (stick.current) el.scrollTop = el.scrollHeight;
+      setAway(!stick.current);
     };
+    const userEvents = ['wheel', 'pointerdown', 'keydown', 'touchmove'] as const;
+    for (const t of userEvents) el.addEventListener(t, markUser, { passive: true });
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    // Resizing the window or zooming re-wraps text; stay at the bottom if we were there.
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
+      if (stick.current) el.scrollTop = el.scrollHeight;
+    }) : undefined;
+    ro?.observe(el);
+    if (el.firstElementChild) ro?.observe(el.firstElementChild);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      for (const t of userEvents) el.removeEventListener(t, markUser);
+      ro?.disconnect();
+    };
   }, []);
   const toBottom = () => {
     const el = ref.current;
@@ -97,7 +117,15 @@ function useStickToBottom(dep: unknown) {
   return { ref, away, toBottom };
 }
 
-export function Conversation({ session, transcript, actions }: { session: SessionInfo | undefined; transcript: Transcript; actions: ConversationActions }) {
+export interface ConversationProps {
+  session: SessionInfo | undefined;
+  transcript: Transcript;
+  actions: ConversationActions;
+  /** Show that answers are demo data (no model configured). */
+  demo?: boolean;
+}
+
+export function Conversation({ session, transcript, actions, demo }: ConversationProps) {
   const running = isRunning(transcript.run?.status) || isRunning(session?.status);
   const { ref, away, toBottom } = useStickToBottom(transcript);
   const items = transcript.items;
@@ -140,6 +168,7 @@ export function Conversation({ session, transcript, actions }: { session: Sessio
         </button>
       ) : null}
       <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} />
+      {demo ? <p className="composer-note">还没有配置模型，现在的回答是演示数据</p> : null}
     </div>
   );
 }

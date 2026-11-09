@@ -1,6 +1,6 @@
 # 桌面外壳设计（`apps/desktop`）
 
-> 状态：U1 骨架与皮肤完成；U2 对话区已在假后端上跑通，待接真内核；U3 未开始（2026-11-09）。
+> 状态：U1 骨架与皮肤完成；U2 对话区已接上真内核（DeepSeek 实测逐字流出）；U3 未开始（2026-11-09）。
 > 需求来源：立项书「定位」「界面」「数据与外壳」「硬环境约束」「首版验收」；界面禁区 `~/.claude/hoshi-ui-bans.md`。
 
 ## 1. 布局与区域
@@ -25,14 +25,17 @@
 ## 2. IPC 适配层（换真内核只动一个文件）
 
 ```
-renderer ──window.spica──► preload ──ipcMain──► main ──AgentBackend──► FakeBackend（现在）
-   │  (DesktopBridge)                              │                  CoreBackend（接内核后）
+renderer ──window.spica──► preload ──ipcMain──► main ──AgentBackend──► CoreBackend（@spica/core 的 Runtime）
+   │  (DesktopBridge)                              │                  FakeBackend（截图、测试、没配模型时）
    └◄────────── spica:agent-event（CoreEvent）◄─────┘
 ```
 
 - 合同用 `@spica/protocol`（内核发布）：`AgentApi` 是命令，`CoreEvent` 是事件。外壳自己的东西（设置、开文件）在 `src/shared/bridge.ts` 的 `DesktopBridge` 里，继承 protocol 的 `SpicaBridge`。
 - 主进程 `ipcMain.handle('spica:agent', method, args)` 只放行 `AgentApi` 的 11 个方法名，其余一律拒绝。
-- 后端选择只在 `src/main/backend/index.ts` 的 `createBackend()`；`AgentBackend = AgentApi + onEvent + dispose`。
+- 后端选择只在 `src/main/backend/index.ts`：`SPICA_BACKEND=fake|core` 强制；不指定时截图脚本用假后端，平常运行在配了模型时用真内核，没配模型用假后端，并在输入框下写一行「还没有配置模型，现在的回答是演示数据」。`AgentBackend = AgentApi + onEvent + dispose`。
+- 真内核 `CoreBackend`：`new Runtime({...})` + `createAgentApi(runtime)`，事件直接转发 `runtime.events`。模型配置现在只从仓库根 `.env.local` 读（`SPICA_OPENAI_*` / `SPICA_ANTHROPIC_*`），由主进程用 `util.parseEnv` 解析成普通对象，不写进 `process.env`、不进日志、不进渲染层；有 OpenAI 兼容配置时默认用它（DeepSeek），Anthropic 作为第二个 provider。设置页的模型表单（U3）以后接管。
+- 会话默认工作文件夹：`文档\Spica`（第一次用真内核时创建）。
+- 开发期花费上限沿用内核文档：Anthropic 总计 100 USD、单次 2 USD、单轮 1 USD。
 - 假后端 `FakeBackend`：不联网、不碰磁盘；带一套虚构的演示数据（2 个对话、2 个项目、4 个子任务，覆盖空闲 / 思考 / 调工具 / 排队 / 等你回答 / 已完成）；`speed: 0` 时脚本瞬间跑完（测试和截图用）。发消息里带「发送 / 确认」走确认流程，带「问 / 选」走提问流程，其余走「读文件 → 回答 → 建议」。
 
 ## 3. 事件到界面的映射
@@ -45,12 +48,12 @@ renderer ──window.spica──► preload ──ipcMain──► main ──A
 | `tool.call` / `tool.start` / `tool.end` | 工具行：动词 + 对象（「读取文件 需求说明.docx」）+ 用时；连续几个合成一行「调用了 N 个工具」，点开看每个的结果 |
 | `confirm.request` / `confirm.resolved` | 确认卡：只写要确认的是什么，「拒绝 / 允许」 |
 | `ask.request` / `ask.resolved` | 提问卡：选项按钮 + 自由回答 |
-| `tool.start` 且工具名 `suggest_actions` | 操作建议卡：点一条就把它对应的话发出去 |
+| `suggest.actions`（工具 `suggest_actions`） | 操作建议卡：点一条就把它对应的话发出去 |
 | 回答里 `read_file / write_file / edit_file` 的 `path` | 回答末尾的文件卡（点开用系统默认程序打开）；右侧栏「文件」同源 |
 | `status` / `queue` | 回答末尾的状态行：花标动效 + 本轮计时 + 阶段文案（排队中，前面还有 N 个 / 思考中 / 正在回复 / 正在读取文件 / 等你确认 / 等你回答）；结束后停 1.4 秒「已完成 · 用时」再收起 |
 | `cost`（session）/ `status` | 侧栏状态标记、详情的花费与状态 |
 | `run.end` | 重新取一次历史（`getMessages` + `getPending`）作准；测试保证流式结果与历史重建一致，不跳 |
-| `error` / `budget.stop` | 对话里一行红底人话提示；命令失败（IPC 抛错）在主窗顶部弹提示，可关 |
+| `error` / `budget.stop` | 对话里一行红底人话提示（401、429、余额、连不上等翻成中文，见 `humanError`）；内核自己在重试的（`retryable`）不打扰；命令失败（IPC 抛错）在主窗顶部弹提示，可关 |
 
 - 内部消息 → 界面的规则全在 `store/transcript.ts`（纯函数，有测试）：一轮里的多条助手消息合成一段回答；工具结果第一行的取数时间不显示。
 - 侧栏状态标记：转圈 = 在跑；虚线圈 = 排队；琥珀点 = 等你；红点 = 出错 / 中断；绿勾 = 子任务完成；空闲不显示。项目收起时在行尾写「1 个等你 · 1 个在跑 · 1 个排队」，展开时不重复。
@@ -98,7 +101,6 @@ npm run shots -w @spica/desktop -- settings  # 再加设置页 12 张
 - 侧栏拖拽改宽度、会话改名 / 删除 / 搜索：没人要，入口先不加。
 - 花标状态动效现在是占位 class（`spica-mark--think/busy/tool/await/done`），等 `@spica/brand` 交付后换成它的组件。
 - 开机动画：归「品牌字标」。
-- 「操作建议」靠约定的工具名 `suggest_actions`，protocol 里还没有对应的事件或内置工具，要请内核加。
 - 文件卡只认 `read_file / write_file / edit_file` 的 `path`，模型在正文里提到的文件不会变成卡片。
 - `body` 默认不可选中（界面像应用不像网页），对话正文、输入框、路径单独打开了选中。
 - 任务栏状态灯、彩蛋：不在三个里程碑里。
