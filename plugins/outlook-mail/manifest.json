@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "name": "outlook",
+  "version": "0.1.0",
+  "display_name": "Outlook mail",
+  "description": "Read mail from the classic Outlook desktop app on this computer, help sort it and draft replies. Never sends mail.",
+  "author": { "name": "Spica contributors" },
+  "license": "Apache-2.0",
+  "compatibility": { "spica": ">=0.1.0" },
+  "permissions": {
+    "network": [],
+    "workspace": "write",
+    "irreversible": ["move_messages"],
+    "hooks": ["beforeTool"]
+  },
+  "mock": {
+    "supported": true,
+    "description": "Answers from a fictional sample mailbox of 30 messages instead of Outlook; marks, moves and drafts last until the plugin restarts."
+  }
+}
