@@ -1,0 +1,6 @@
+# Example sensitive-word list. One word per line, case-insensitive substring match.
+# The open-source repository ships only these generic placeholders.
+# A private repository injects its real list through SPICA_SENSITIVE_WORDS or --words.
+ACME_INTERNAL_ONLY
+CONFIDENTIAL-PROJECT-X
+example-secret-codename

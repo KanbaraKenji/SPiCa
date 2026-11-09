@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: windows-latest
+    env:
+      # CI only lints, type-checks and tests; it never launches Electron.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
+      # Sensitive-word scan. The example list in the repository is always used.
+      # A private repository injects its own list in one of two ways:
+      #   1. a repository secret SPICA_SENSITIVE_WORDS_LIST holding the word list text, or
+      #   2. a repository variable SPICA_SENSITIVE_WORDS holding path(s) to list file(s)
+      #      that exist in its checkout (';'-separated on Windows runners).
+      - name: Sensitive-word scan
+        shell: bash
+        env:
+          WORDS_FROM_SECRET: ${{ secrets.SPICA_SENSITIVE_WORDS_LIST }}
+          WORDS_FROM_VAR: ${{ vars.SPICA_SENSITIVE_WORDS }}
+        run: |
+          lists="$WORDS_FROM_VAR"
+          if [ -n "$WORDS_FROM_SECRET" ]; then
+            secret_list="$RUNNER_TEMP/spica-sensitive-words.txt"
+            printf '%s\n' "$WORDS_FROM_SECRET" > "$secret_list"
+            lists="${lists:+$lists;}$secret_list"
+          fi
+          SPICA_SENSITIVE_WORDS="$lists" npm run scan:sensitive
