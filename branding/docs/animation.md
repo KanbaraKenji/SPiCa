@@ -87,4 +87,6 @@ ready 到整层消失共约 4.55 秒（`SPLASH_FINISH_AFTER`）。浅色版同�
 
 已做完、已提交：收尾去掉扩轨和大半径绕圈，双星从当前位置沿内螺旋 0.8 秒直接飞进花心；填充换成 C（细环 0.35、两道、先行，实色随后）；背景星点原点改到花心（组件按舞台缩放算出花心在画布上的位置）。品牌包测试全过。
 
-下一步第一件事：等他回第九版「行不行」；还要改就只动 `SPLASH_FINISH` 里他点名的那一步，用 `render-splash-video.mjs`（readyAt 9）出同规格视频。
+第九版 60fps 视频已出（`docs/screenshots/brand/boot-v9-*-1280p60.mp4`），点选页已发他。
+
+下一步第一件事：等他回第九版「行不行」；还要改就只动 `SPLASH_FINISH` 里他点名的那一步，用 `render-splash-video.mjs`（readyAt 9、840 帧）出同规格视频。
