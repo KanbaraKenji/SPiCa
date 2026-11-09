@@ -1722,7 +1722,9 @@ button.tree-twisty:hover {
 
 .tab {
   height: 30px;
-  padding: 0 16px;
+  /* Never break a label into a column of single characters (small window, 150%). */
+  white-space: nowrap;
+  padding: 0 clamp(8px, 3vw, 16px);
   border-radius: var(--radius-s);
   color: var(--spica-muted);
 }
@@ -1898,6 +1900,7 @@ button.tree-twisty:hover {
 
 .segment {
   height: 28px;
+  white-space: nowrap;
   padding: 0 12px;
   border-radius: var(--radius-s);
   color: var(--spica-muted);
@@ -2639,6 +2642,7 @@ button.tree-twisty:hover {
 /* Settings > 常规 */
 .interval-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   margin-top: 12px;
@@ -2671,8 +2675,18 @@ button.tree-twisty:hover {
 
 .row-buttons {
   display: flex;
-  flex: none;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+/* A row with several buttons (工作流, 使用日志 result): when narrow the buttons go
+   under the text instead of squeezing it to nothing or widening the page. */
+.setting-row:has(.row-buttons) {
+  flex-wrap: wrap;
+}
+
+.setting-row:has(.row-buttons) .setting-text {
+  flex: 1 1 14em;
 }
 
 .path-text {
