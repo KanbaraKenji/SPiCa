@@ -1,6 +1,6 @@
 // Packaging, shared-folder and HTTP sources, checksums, updates and rollback.
 import { createServer, type Server } from 'node:http';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -174,6 +174,5 @@ describe('sources, updates and rollback', () => {
     r = await rig();
     const d = await installZip(r.pm, await readFile(p.file), { kind: 'zip', location: p.file });
     expect(d).toMatchObject({ name: 'notes', version: '0.1.0', source: { kind: 'zip' } });
-    await mkdir(join(out, 'x'), { recursive: true });
   });
 });
