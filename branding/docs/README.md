@@ -63,7 +63,21 @@ Spica 的标志是一朵九片瓣的花，叫「九芒」。本目录是品牌�
 
 ## 字标
 
-字标写作首字母大写的 `Spica`。字体选定之前，`packages/brand/src/wordmark.ts` 里是几何占位版；选定后把字体轮廓转成路径替换进去，运行时不依赖字体文件。字体只用开源可商用的（SIL OFL 或同类），字体名、版本和授权记在本节。
+字标写作首字母大写的 `Spica`，字形取自开源字体 **Gelasio Bold**（Version 1.008，SorkinType，SIL Open Font License 1.1；和 Georgia 宽度一致、字形相近的开源衬线体）。小写 p 的碗和竖笔实接，没有缺口。
+
+- 字体文件和许可证：`branding/fonts/Gelasio-Bold.ttf`、`branding/fonts/OFL.txt`（上游 https://github.com/SorkinType/Gelasio 原文件，未改动）。
+- 运行时不用字体文件：`packages/brand/src/wordmark.ts` 里是转好的路径，每个字母一条，带它的水平中心（开机画面逐字点亮用）。
+- 坐标：大写字母高 64 单位，基线在 y = 64，p 的竖笔下伸 21。
+- 横标里字的大写高是花标框高的 0.5625（花标 64 见方，字大写高 36），在花标框里竖向居中，间距 16。
+
+换字体或调字距：
+
+```powershell
+npm run wordmark:from-font -w @spica/brand -- ../../branding/fonts/Gelasio-Bold.ttf   # 可再加字距，单位千分之一字号
+npm run brand:build
+```
+
+只接受静态字重的 TTF / OTF；可变字体先取出需要的字重。
 
 ## 在应用里使用
 
