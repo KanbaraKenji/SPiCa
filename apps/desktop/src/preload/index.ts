@@ -39,6 +39,10 @@ const agent: AgentApi = {
   listMail: call('listMail'),
   pollMail: call('pollMail'),
   mailFeedback: call('mailFeedback'),
+  renameProject: call('renameProject'),
+  deleteProject: call('deleteProject'),
+  setSessionModel: call('setSessionModel'),
+  setApprovalMode: call('setApprovalMode'),
 };
 
 const bridge: DesktopBridge = {

@@ -192,6 +192,10 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'listMail',
   'pollMail',
   'mailFeedback',
+  'renameProject',
+  'deleteProject',
+  'setSessionModel',
+  'setApprovalMode',
 ]);
 
 let mainWindow: BrowserWindow | undefined;

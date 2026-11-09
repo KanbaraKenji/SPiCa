@@ -14,6 +14,8 @@ export function humanError(raw: string): string {
   if (/fetch failed|econnrefused|enotfound|network|socket/.test(m)) return '连不上模型接口，请检查网络或接口地址。';
   if (/reassign needs an existing projectid/.test(m)) return '那个项目已经不在了，换一个项目试试。';
   if (/unknown mail/.test(m)) return '这封信已经不在了，刷新一下收件箱。';
+  if (/unknown project/.test(m)) return '这个项目已经不在了。';
+  if (/a project needs a name|project name is required/.test(m)) return '项目要有个名字。';
   if (/unknown provider/.test(m)) return '还没有配置模型，先到 设置 › 模型 里添加一个。';
   if (/unknown model|invalid model/.test(m)) return '找不到这个模型，请检查模型名称。';
   return `出错了：${raw}`;
