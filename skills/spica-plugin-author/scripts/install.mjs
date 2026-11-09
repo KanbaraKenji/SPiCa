@@ -73,7 +73,7 @@ async function connect(o, log) {
   }
   throw new Error(
     `${running.reason}\n` +
-      '办法：在 Spica 的 设置 › 常规 › 开发者 里打开「允许本机脚本连接 Spica（开发者）」后再跑一次；或者在 设置 › 插件 里粘贴 zip 的完整路径手动安装；' +
+      '办法：在 Spica 的 设置 › 常规 › 开发者 里打开「允许本机脚本连接 Spica」后再跑一次；或者在 设置 › 插件 里粘贴 zip 的完整路径手动安装；' +
       '开发时也可以用 --http 或 --stdio 连自己起的服务。见 references/connect.md。',
   );
 }

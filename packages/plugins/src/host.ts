@@ -46,8 +46,22 @@ export interface PluginHost {
   toolNames(): string[];
   /** Add a mail source to the core's mail pipeline; returns a remover. Absent when the core has no mail pipeline. */
   addMailSource?(src: MailSourceSpec): () => void;
-  /** Run a registered tool directly, outside any conversation (plugin pages). Absent on older cores. */
+  /** Run a registered tool directly, outside any conversation, without hooks (fallback for older cores). */
   invokeTool?(name: string, input: Record<string, unknown>): Promise<{ content: string; isError: boolean }>;
+  /**
+   * A plugin page calls one of its plugin's tools: hooks apply, the call is
+   * traced, confirmed: true means the page already asked the user. Absent on older cores.
+   */
+  callPluginTool?(plugin: string, tool: string, args: Record<string, unknown>, opts: { confirmed?: boolean }): Promise<PluginToolCallResult>;
+}
+
+/** Mirrors @spica/core's PluginToolResult. */
+export interface PluginToolCallResult {
+  content: string;
+  isError: boolean;
+  declined?: boolean;
+  /** With confirmed: false, a confirmation was needed: nothing ran, content says why. */
+  needsConfirmation?: boolean;
 }
 
 /** Mirrors @spica/core's MailSource. */
@@ -70,6 +84,7 @@ export interface RuntimeLike {
   connectMcp?(config: McpLaunch, opts?: { source?: string }): Promise<{ tools: string[]; disconnect: () => void | Promise<void> }>;
   mail?: { addSource(src: MailSourceSpec): () => void };
   invokeTool?(name: string, input: Record<string, unknown>): Promise<{ content: string; isError: boolean }>;
+  callPluginTool?(plugin: string, tool: string, args: Record<string, unknown>, opts?: { confirmed?: boolean }): Promise<PluginToolCallResult>;
 }
 
 export function runtimeHost(rt: RuntimeLike): PluginHost {
@@ -88,5 +103,8 @@ export function runtimeHost(rt: RuntimeLike): PluginHost {
     toolNames: () => rt.tools.list({ providerId: '', serverWebSearch: true }).map((t) => t.spec.name),
     ...(rt.mail ? { addMailSource: (src: MailSourceSpec) => rt.mail!.addSource(src) } : {}),
     ...(rt.invokeTool ? { invokeTool: (name: string, input: Record<string, unknown>) => rt.invokeTool!(name, input) } : {}),
+    ...(rt.callPluginTool
+      ? { callPluginTool: (plugin: string, tool: string, args: Record<string, unknown>, opts: { confirmed?: boolean }) => rt.callPluginTool!(plugin, tool, args, opts) }
+      : {}),
   };
 }

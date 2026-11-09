@@ -107,8 +107,8 @@ export const priority = 100; // 可选，小的先跑
 - 页面跑在沙箱里：没有 Node；自定义协议 `spica-plugin://<插件>/<路径>`，每次取文件都问 `pluginViewFile`，只给本插件目录里的文件；CSP `default-src spica-plugin:`，样式另放 `'unsafe-inline'`。
 - 外壳注入 `window.spica`：`callTool(工具原名, 参数)` → `{ content, data?, isError }`；`onEvent(fn)`（`{type:'theme'}`、`{type:'plugin.changed'}`），返回取消函数；`theme` → `{ mode: 'light' | 'dark' }`；`openFile(路径)`（只限本插件目录里的文件或这次会话见过的文件，在右栏预览）；`notify(文字, { kind? })`。
 - 主题：外壳往页面根元素注入 9 个 CSS 变量 `--spica-bg`、`--spica-surface`、`--spica-fg`、`--spica-muted`、`--spica-border`、`--spica-accent`、`--spica-danger`、`--spica-font`、`--spica-radius`，换明暗或皮肤时重新注入并发 `theme` 事件。
-- 调工具：外壳把 `callTool` 转给后端 `pluginViewCall`。插件包检查插件已启用、视图存在、工具是本插件的且在 `permissions.tools` 里；`permissions.irreversible` 里的工具没带 `confirmed: true` 时返回 `[CONFIRM_REQUIRED] …`，外壳弹 Spica 自己的确认框（「<插件名> 要执行 <工具>，确认吗？」），同意后带 `confirmed: true` 再调。工具经内核 `invokeTool` 直接执行（不走模型、不走钩子），所以页面也能调常驻进程的工具。
-- 失败结果的 `content` 以错误码开头：`PLUGIN_DISABLED`、`VIEW_NOT_FOUND`、`TOOL_NOT_FOUND`、`TOOL_NOT_ALLOWED`、`CONFIRM_REQUIRED`、`UNSUPPORTED`；工具自己报的错原样返回。
+- 调工具：外壳把 `callTool` 转给后端 `pluginViewCall`。插件包检查插件已启用、视图存在、工具是本插件的且在 `permissions.tools` 里；然后交给内核 `runtime.callPluginTool(插件, 完整工具名, 参数, { confirmed })`：不走模型，但**钩子照常生效**（例如 Outlook 插件把附件限制在项目文件夹里的 `beforeTool`），调用留痕（发起方 `view:<插件>`）。需要确认时（`permissions.irreversible` 经插件包的权限钩子返回 confirm、MCP 的 `destructiveHint`、或别的钩子要求确认），没带 `confirmed: true` 的调用什么都不执行，返回 `[CONFIRM_REQUIRED] 原因`；外壳弹 Spica 自己的确认框（「<插件名> 要执行 <工具>，确认吗？」），同意后带 `confirmed: true` 再调。钩子拒绝时返回钩子自己的错误码（如 `[PATH_NOT_ALLOWED]`），没有码时是 `[BLOCKED]`。常驻进程的工具对模型隐藏，但本插件的页面可以调（权限钩子认得 `view:<插件>` 发起的调用）。没有 `callPluginTool` 的旧内核退回 `invokeTool`（不走钩子）。
+- 失败结果的 `content` 以错误码开头：`PLUGIN_DISABLED`、`VIEW_NOT_FOUND`、`TOOL_NOT_FOUND`、`TOOL_NOT_ALLOWED`、`CONFIRM_REQUIRED`、`BLOCKED`（钩子拒绝且没给码）、`UNSUPPORTED`；工具自己报的错原样返回。
 - 停用：`views()` 不再列它，`pluginViewFile` 回 `null`，外壳收到 `plugins.changed` 关掉页面。
 
 ## 3. 扩展点总表
@@ -121,7 +121,7 @@ export const priority = 100; // 可选，小的先跑
 | 代码钩子 | `runtime.hooks.register(source, hooks, { priority })` | `plugin:<name>` |
 | 常驻进程 | 同 MCP，但插件包再挂一个 `beforeRequest` 把它的工具从工具表里拿掉、`beforeTool` 拒绝调用 | `plugin:<name>` |
 | 不可逆声明 | 插件包挂一个 `beforeTool`（优先级 10），对声明过的工具返回 `confirm` | `plugin:<name>` |
-| 视图 | 不进内核。`views()` 列出已启用插件的页面，外壳渲染；页面调工具走 `viewCall()` → 内核 `invokeTool` | — |
+| 视图 | 不进内核。`views()` 列出已启用插件的页面，外壳渲染；页面调工具走 `viewCall()` → 内核 `callPluginTool`（钩子生效、留痕） | — |
 
 server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes__write_note`），有多个时叫 `<插件>-<id>`；常驻进程一律 `<插件>-<id>`。
 
@@ -254,4 +254,4 @@ J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型�
   - 插件包可用 `.spicaignore` 排除开发文件（1585374），Outlook 插件已加（8988ad1）。
   - 插件页面定稿：`views/*.json`、`views()` / `resolveViewFile()` / `viewCall()`、后端端口 `pluginViews` / `pluginViewFile` / `pluginViewCall`，和桌面外壳对好的 `window.spica` 约定见第 2 节「视图」（fb0d42b）；示例插件有 sidebar 的 Notebook 和 panel 的 Quick note（eaa96f7）。
   - 给公司端 Claude Code / Codex 用的 skill：`skills/spica-plugin-author`（脚手架、校验打包、安装、页面预览，7105d2f 起）；`packages/plugins/src/skill.test.ts` 用它从零做插件，经 stdio 和 HTTP 装进 Spica 再撤掉。
-  - 本机连接：桌面版在 设置 › 常规 › 开发者 打开「允许本机脚本连接 Spica（开发者）」后写 `<userData>/mcp-http.json`（`{ url, tokenFile, pid, startedAt }`，令牌在 `<userData>/mcp-token`，关掉或退出时删），`install.mjs` 不带连接参数时就读它；没开时用 设置 › 插件 粘 zip 路径装。
+  - 本机连接：桌面版在 设置 › 常规 › 开发者 打开「允许本机脚本连接 Spica」后写 `<userData>/mcp-http.json`（`{ url, tokenFile, pid, startedAt }`，令牌在 `<userData>/mcp-token`，关掉或退出时删），`install.mjs` 不带连接参数时就读它；没开时用 设置 › 插件 粘 zip 路径装。

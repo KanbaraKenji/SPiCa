@@ -8,13 +8,15 @@ import { OpenAICompatibleProvider, Runtime } from '@spica/core';
 import { runtimeHost } from '../host.ts';
 import { PluginManager, type PluginEvent } from '../manager.ts';
 
+export const OUTLOOK_PLUGIN = fileURLToPath(new URL('../../../../plugins/outlook-mail', import.meta.url));
 export const EXAMPLE_PLUGIN = fileURLToPath(new URL('../../../../plugins/example-notes', import.meta.url));
 
-export function makeRuntime(baseUrl = 'http://127.0.0.1:9/v1'): Runtime {
+export function makeRuntime(baseUrl = 'http://127.0.0.1:9/v1', opts: { cwd?: string } = {}): Runtime {
   return new Runtime({
     providers: [new OpenAICompatibleProvider({ id: 'fake', baseUrl, apiKey: 'test-key-123456', retry: { maxAttempts: 1, baseDelayMs: 1, maxDelayMs: 1 } })],
     defaults: { providerId: 'fake', model: 'fake-model', maxTokens: 256 },
     tools: [],
+    ...(opts.cwd ? { cwd: opts.cwd } : {}),
   });
 }
 
