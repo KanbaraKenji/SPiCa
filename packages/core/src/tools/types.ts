@@ -87,13 +87,19 @@ interface ToolEntry {
 
 export class ToolRegistry {
   readonly #tools = new Map<string, ToolEntry>();
+  /** Tools that were registered and have been taken away (plugin turned off, MCP server gone), by source. */
+  readonly #removed = new Map<string, string>();
 
   register(tool: Tool, source = 'core'): () => void {
     if (this.#tools.has(tool.spec.name)) throw new Error(`tool already registered: ${tool.spec.name}`);
     const entry = { tool, source };
     this.#tools.set(tool.spec.name, entry);
+    this.#removed.delete(tool.spec.name);
     return () => {
-      if (this.#tools.get(tool.spec.name) === entry) this.#tools.delete(tool.spec.name);
+      if (this.#tools.get(tool.spec.name) === entry) {
+        this.#tools.delete(tool.spec.name);
+        this.#removed.set(tool.spec.name, source);
+      }
     };
   }
 
@@ -102,10 +108,16 @@ export class ToolRegistry {
     for (const [name, e] of this.#tools) {
       if (e.source === source) {
         this.#tools.delete(name);
+        this.#removed.set(name, source);
         n++;
       }
     }
     return n;
+  }
+
+  /** Source of a tool that existed and was removed; undefined if it never existed or is back. */
+  removedFrom(name: string): string | undefined {
+    return this.#removed.get(name);
   }
 
   get(name: string): Tool | undefined {

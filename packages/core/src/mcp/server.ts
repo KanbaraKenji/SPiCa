@@ -53,12 +53,20 @@ export function spicaMcpTools(rt: Runtime, events: CoreEvent[]): McpTool[] {
     const s = session(id);
     const msgs = s.messages().filter((m) => m.seq > fromSeq);
     const answer = [...msgs].reverse().find((m) => m.role === 'assistant' && m.content.some((b) => b.type === 'text' && b.text));
+    const records = rt.store.listToolCalls(id);
+    const calls = msgs.flatMap((m) =>
+      m.content.flatMap((b) =>
+        b.type === 'tool_use' ? [{ name: b.name, status: records.find((r) => r.messageId === m.id && r.id === b.id)?.status }] : [],
+      ),
+    );
     return {
       sessionId: id,
       status: s.status,
       answer: answer ? answer.content.map((b) => (b.type === 'text' ? b.text : '')).join('') : null,
       pending: s.pending(),
-      toolCalls: msgs.flatMap((m) => m.content.filter((b) => b.type === 'tool_use').map((b) => (b.type === 'tool_use' ? b.name : ''))),
+      // calls that ran; calls to tools that do not exist (any more) are listed apart
+      toolCalls: calls.filter((c) => c.status !== 'unavailable').map((c) => c.name),
+      unavailableToolCalls: calls.filter((c) => c.status === 'unavailable').map((c) => c.name),
       subAgents: rt.descendants(id).map((c) => ({ id: c.id, title: c.info().title, status: c.status })),
       costUsd: rt.ledger.sessionUsd(id),
     };

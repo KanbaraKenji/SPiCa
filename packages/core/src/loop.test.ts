@@ -2,6 +2,7 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { spicaMcpTools } from './mcp/server.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { anthropicProvider, captureEvents, makeRuntime, startGateway, tempDir } from './testing/helpers.ts';
 
@@ -171,6 +172,35 @@ describe('agent loop', () => {
     const last = (gw.requests.at(-1)!.body.messages as { content: string }[])[0]!.content;
     expect(last).toContain('Write everything for the user in the interface language: zh-CN');
     expect(last).not.toContain('latest message the user typed');
+  });
+
+  it('a tool that was turned off is refused cleanly and the model is told once', async () => {
+    const rt = makeRuntime(gw, { cwd: dir });
+    rt.tools.register({ spec: { name: 'notes__read_note', description: 'read', inputSchema: { type: 'object' } }, execute: async () => ({ content: 'plugins work' }) }, 'plugin:notes');
+    const run = spicaMcpTools(rt, []).find((t) => t.name === 'spica_run')!;
+    gw.enqueue({ toolCalls: [{ id: 'n1', name: 'notes__read_note', args: {} }] }, { text: 'It says plugins work.' });
+    const first = (await run.run({ text: 'read the note' })) as { sessionId: string; toolCalls: string[] };
+    expect(first.toolCalls).toEqual(['notes__read_note']);
+
+    rt.tools.unregisterSource('plugin:notes'); // the plugin is turned off
+    // the model still tries the old tool from what it sees in the history
+    gw.enqueue({ toolCalls: [{ id: 'n2', name: 'notes__read_note', args: {} }] }, { text: 'no notebook tool' }, { text: 'ok' });
+    const second = (await run.run({ session_id: first.sessionId, text: 'read it again' })) as { toolCalls: string[]; unavailableToolCalls: string[]; answer: string };
+    expect(second).toMatchObject({ toolCalls: [], unavailableToolCalls: ['notes__read_note'], answer: 'no notebook tool' });
+    const s = rt.session(first.sessionId)!;
+    const result = s.messages().filter((m) => m.kind === 'tool_results').at(-1)!.content[0]!;
+    expect(result.type === 'tool_result' && result.content).toMatch(/no longer available.*Nothing was run/);
+    expect(rt.store.listToolCalls(s.id).at(-1)!.status).toBe('unavailable');
+    // the request carried a runtime note before the user's words were answered, and no longer offered the tool
+    const req = gw.requests.at(-2)!.body as { messages: { role: string; content: string }[]; tools?: { function: { name: string } }[] };
+    expect((req.tools ?? []).some((t) => t.function.name === 'notes__read_note')).toBe(false);
+    expect(JSON.stringify(req.messages)).toContain('no longer available (turned off or removed): notes__read_note');
+    const notes = s.messages().filter((m) => m.meta?.toolsUnavailable);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatchObject({ kind: 'note', meta: { author: 'runtime', toolsUnavailable: ['notes__read_note'] } });
+    // said once: the next run adds no second note
+    await s.send('thanks').done;
+    expect(s.messages().filter((m) => m.meta?.toolsUnavailable)).toHaveLength(1);
   });
 
   it('child sessions carry their parent chain in events and traces', async () => {

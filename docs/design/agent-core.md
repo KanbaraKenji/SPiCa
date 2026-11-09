@@ -107,6 +107,7 @@
 - read_file 带行号、可按行分页，二进制文件没有提取器时报错；edit_file 按原文替换、要求唯一（或 replace_all），CRLF 文件接受 LF 参数；glob / grep 跳过 node_modules 和版本库目录，grep 用 JS 正则、纯 JS 实现，不依赖外部程序。
 - 结果第一行统一是 `[fetched at 2026-11-09T15:20:42.988+08:00]`（本地时间带时区），系统提示告诉模型旧结果可能过期；不缓存外部数据。
 - 工具输入先按 JSON schema 粗校验（必填、基本类型），不合格直接回错误结果。
+- **工具被停用之后**（插件停用、MCP server 断开）：每轮按当时的工具表发请求，停用的工具不再提供。注册表记着哪些工具是被撤掉的；会话里以前用过、现在被撤掉的工具，下一轮开始前写一条运行时备注（`kind: 'note'`，`meta.author: 'runtime'`、`meta.toolsUnavailable: [名字]`，正文给模型看：这些工具已停用，别再调，需要就告诉用户），同一批只说一次。模型照旧调了，结果是「这个工具已不可用，什么都没执行」，调用记录状态 `unavailable`；MCP 服务 `spica_run` / `spica_wait` 的 `toolCalls` 只列真执行了的，这类调用另列在 `unavailableToolCalls`。外壳显示这条备注时按 `meta.toolsUnavailable` 自己写文案，不显示正文。
 - 工具声明带 `irreversible`；带标记的默认走确认，插件可配成自动（钩子返回 `auto`），也可以给普通工具加确认。
 - 确认与提问卡的流程：同一轮里要确认的调用挂起，其余调用照常执行，结果先存进 `tool_calls` 表；会话状态转 `awaiting_confirm` / `awaiting_answer`，发 `confirm.request` / `ask.request`，本次运行结束（`run.end` 的原因写明在等什么）。用户 `confirm(callId, true/false)` 或 `answer(callId, 文字)` 后，全部挂起项都有了结果，就把这一轮所有结果按调用顺序合成一条 tool_results 消息，开始新的运行。拒绝的动作不执行，作为错误结果告诉模型「用户拒绝了，别重试」。
 - 因为挂起状态全在存储里（`pending` + `tool_calls`），不依赖内存里的 Promise，M3 接上 sqlite 后重启也能续上。
