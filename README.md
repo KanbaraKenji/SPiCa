@@ -79,7 +79,9 @@ Each release also carries the official plugins as zips, each with a `.sha256` fi
 | --- | --- |
 | `outlook` | Reads mail from the classic Outlook desktop app, helps sort it into projects and drafts replies; never sends. Turn on mock mode (模拟模式) to try it with a fictional mailbox |
 | `notes` | Example plugin: a local notebook and a fictional sample catalog; shows every part of a plugin |
-| `eval` | Template for evaluation plugins; adds no tools to the agents |
+
+The evaluation template in `plugins/example-eval` is for developers and is not shipped
+with releases.
 
 ### Run from source
 
