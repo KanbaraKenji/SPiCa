@@ -111,6 +111,43 @@ describe('tools that were turned off', () => {
   });
 });
 
+describe('attachments and automatic approval', () => {
+  it('shows what you typed without the attached file text, and the files as cards', () => {
+    const m: Message = {
+      id: 'u',
+      seq: 1,
+      sessionId: 's',
+      role: 'user',
+      kind: 'user',
+      createdAt: '',
+      content: [
+        { type: 'text', text: '看看这份报价' },
+        { type: 'text', text: '<untrusted_data kind="file">供应商 单价 ...</untrusted_data>' },
+      ],
+      meta: { attachments: [{ path: 'D:/资料/报价.xlsx', name: '报价.xlsx', block: 1 }, { path: 'D:/资料/坏.pdf', name: '坏.pdf', block: null, error: 'unreadable' }] },
+    };
+    expect(fromHistory([m]).items[0]).toEqual({
+      kind: 'user',
+      id: 'u',
+      text: '看看这份报价',
+      steer: false,
+      attachments: [
+        { path: 'D:/资料/报价.xlsx', name: '报价.xlsx' },
+        { path: 'D:/资料/坏.pdf', name: '坏.pdf', failed: true },
+      ],
+    });
+  });
+
+  it('marks a tool that ran without asking', () => {
+    let t: Transcript = { items: [] };
+    const ev = (body: object, seq: number) => ({ ...body, seq, at: '', sessionId: 's', parentChain: [] }) as unknown as CoreEvent;
+    t = applyEvent(t, ev({ type: 'tool.start', callId: 'd1', name: 'delete_note', input: {} }, 1));
+    t = applyEvent(t, ev({ type: 'confirm.auto', callId: 'd1', name: 'delete_note', input: {} }, 2));
+    const r = t.items[0];
+    expect(r?.kind === 'response' && r.blocks[0]?.type === 'tool' ? r.blocks[0].autoApproved : false).toBe(true);
+  });
+});
+
 describe('file cards', () => {
   const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
 

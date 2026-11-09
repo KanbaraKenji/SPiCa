@@ -11,6 +11,8 @@ import { useViewportWidth } from './shell/useViewportWidth';
 import { Sidebar } from './shell/Sidebar';
 import { DetailPanel } from './shell/DetailPanel';
 import { Conversation, type ConversationActions, type WaitingChild } from './chat/Conversation';
+import type { ComposerTools } from './chat/Composer';
+import type { ProviderView } from '../../shared/providers';
 import { SettingsView, type SettingsTab } from './settings/SettingsView';
 import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
@@ -60,13 +62,16 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const installUpdate = () => void bridge.updates.run('install');
   // Whether any model is configured; checked at start and whenever settings close.
   const [modelReady, setModelReady] = useState<boolean | null>(null);
+  const [models, setModels] = useState<ProviderView[]>([]);
   useEffect(() => {
     if (view !== 'chat') return;
     let alive = true;
     bridge.providers
       .list()
       .then((l) => {
-        if (alive) setModelReady(l.items.length > 0);
+        if (!alive) return;
+        setModelReady(l.items.length > 0);
+        setModels(l.items);
       })
       .catch(() => {
         if (alive) setModelReady(null);
@@ -250,8 +255,49 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       .catch((err: unknown) => agent.state.set((v) => ({ ...v, notice: friendlyError(err) })));
   };
   const id = state.activeId;
+
+  // The input box's controls: what the next message goes out with.
+  const draft = state.draft;
+  const topCwd = state.sessions.find((s) => s.id === state.topId)?.cwd ?? '';
+  const modelOptions = models.flatMap((p) => [...new Set([p.model, p.strongModel].filter(Boolean))].map((m) => ({ providerId: p.id, model: m, label: `${p.name} · ${m}` })));
+  const using = session ? { providerId: session.providerId, model: session.model } : draft.providerId && draft.model ? { providerId: draft.providerId, model: draft.model } : null;
+  const usingDefault = models.find((p) => p.isDefault) ?? models[0];
+  const shown = using ?? (usingDefault ? { providerId: usingDefault.id, model: usingDefault.model } : null);
+  const composerTools: ComposerTools = {
+    pickFiles: () => bridge.pickFiles('添加附件'),
+    pathForFile: bridge.pathForFile,
+    ...(session
+      ? {}
+      : {
+          folder: {
+            path: draft.cwd || topCwd,
+            name: (draft.cwd || topCwd).split(/[\\/]/).filter(Boolean).pop() || '默认文件夹',
+            onPick: () =>
+              void bridge.pickFolder('选择这个对话的工作文件夹').then((dir) => {
+                if (dir) agent.setDraft({ cwd: dir });
+              }),
+          },
+        }),
+    approval: session
+      ? { mode: session.approvalMode ?? 'manual', onChange: (m) => void agent.setApproval(session.id, m) }
+      : { mode: draft.approvalMode, onChange: (m) => agent.setDraft({ approvalMode: m }) },
+    ...(shown
+      ? {
+          model: {
+            label: shown.model,
+            options: modelOptions.map((o) => ({
+              label: o.label,
+              current: o.providerId === shown.providerId && o.model === shown.model,
+              onPick: () => (session ? void agent.setModel(session.id, o.providerId, o.model) : agent.setDraft({ providerId: o.providerId, model: o.model })),
+            })),
+          },
+        }
+      : {}),
+    ...(session && typeof session.contextTokens === 'number' ? { context: { tokens: session.contextTokens, window: session.contextWindow ?? null } } : {}),
+  };
+
   const actions: ConversationActions = {
-    send: (text) => void agent.send(id, text),
+    send: (text, files) => void agent.send(id, text, files ?? []),
     stop: () => id && void agent.stop(id),
     answer: (callId, a) => id && void agent.answer(id, callId, a),
     confirm: (callId, ok) => id && void agent.confirm(id, callId, ok),
@@ -411,6 +457,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               demo={shell.demo}
               needsModel={modelReady === false && !shell.demo}
               waiting={waiting}
+              composerTools={composerTools}
               onSetupModel={() => {
                 setSettingsTab('models');
                 setView('settings');

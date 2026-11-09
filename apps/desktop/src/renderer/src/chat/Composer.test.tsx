@@ -18,7 +18,7 @@ describe('Composer', () => {
     const { box, onSend } = setup();
     fireEvent.change(box, { target: { value: '你好' } });
     fireEvent.keyDown(box, { key: 'Enter' });
-    expect(onSend).toHaveBeenCalledWith('你好');
+    expect(onSend).toHaveBeenCalledWith('你好', []);
     expect((box as HTMLTextAreaElement).value).toBe('');
   });
 
@@ -45,5 +45,61 @@ describe('Composer', () => {
     const { onStop } = setup(true);
     fireEvent.click(screen.getByRole('button', { name: '停止' }));
     expect(onStop).toHaveBeenCalled();
+  });
+});
+
+describe('Composer controls', () => {
+  it('attaches picked files, shows them, lets one go, and sends the rest', async () => {
+    const onSend = vi.fn();
+    render(<Composer running={false} onSend={onSend} onStop={vi.fn()} sessionKey="att" tools={{ pickFiles: async () => ['D:/资料/报价.xlsx', 'D:/资料/纪要.docx'] }} />);
+    fireEvent.click(screen.getByRole('button', { name: '添加附件' }));
+    expect(await screen.findByText('报价.xlsx')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '去掉 纪要.docx' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '消息' }), { target: { value: '看看这份报价' } });
+    fireEvent.keyDown(screen.getByRole('textbox', { name: '消息' }), { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledWith('看看这份报价', ['D:/资料/报价.xlsx']);
+    expect(screen.queryByText('报价.xlsx')).toBeNull();
+  });
+
+  it('switches model and approval from small menus; shows how full the context is', () => {
+    const pickB = vi.fn();
+    const onApproval = vi.fn();
+    render(
+      <Composer
+        running={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        sessionKey="ctl"
+        tools={{
+          approval: { mode: 'manual', onChange: onApproval },
+          model: { label: 'deepseek-chat', options: [{ label: 'DeepSeek · deepseek-chat', current: true, onPick: vi.fn() }, { label: 'DeepSeek · deepseek-reasoner', current: false, onPick: pickB }] },
+          context: { tokens: 23_400, window: 128_000 },
+        }}
+      />,
+    );
+    expect(screen.getByRole('img', { name: '上下文已用 2.3 万 / 12.8 万（18%）' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /deepseek-chat/ }));
+    expect(screen.getByRole('menuitem', { name: 'DeepSeek · deepseek-chat（在用）' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'DeepSeek · deepseek-reasoner' }));
+    expect(pickB).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /每次确认/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '自动批准' }));
+    expect(onApproval).toHaveBeenCalledWith('auto');
+  });
+
+  it('a single model is plain text; an unknown window shows only the count; no folder once a conversation exists', () => {
+    render(
+      <Composer
+        running={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        sessionKey="one"
+        tools={{ model: { label: 'gpt-mini', options: [{ label: '公司网关 · gpt-mini', current: true, onPick: vi.fn() }] }, context: { tokens: 980, window: null } }}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /gpt-mini/ })).toBeNull();
+    expect(screen.getByText('gpt-mini')).toBeTruthy();
+    expect(screen.getByRole('img', { name: '上下文已用 980 token' })).toBeTruthy();
+    expect(screen.queryByTitle(/工作文件夹/)).toBeNull();
   });
 });

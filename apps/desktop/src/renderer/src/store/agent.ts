@@ -1,7 +1,7 @@
 // Sessions and transcripts on the renderer side. Everything comes from the
 // backend through `window.spica.agent` and its event stream.
 import { useSyncExternalStore } from 'react';
-import type { AgentApi, CoreEvent, Message, ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
+import type { AgentApi, ApprovalMode, CoreEvent, Message, ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
 import { Store } from './external';
 import { applyEvent, EMPTY_TRANSCRIPT, fromHistory, humanError, type Transcript } from './transcript';
 
@@ -21,6 +21,16 @@ export interface AgentView {
   activity: Record<string, ProjectLogEntry[]>;
   /** User-visible error from the last failed command. */
   notice?: string;
+  /** Choices in the empty window, used when its first message starts a conversation. */
+  draft: NewChatDraft;
+}
+
+/** What the input box offers before a conversation exists. Empty = the core's defaults. */
+export interface NewChatDraft {
+  cwd?: string;
+  providerId?: string;
+  model?: string;
+  approvalMode: ApprovalMode;
 }
 
 export interface AgentSource {
@@ -55,7 +65,7 @@ export function friendlyError(err: unknown): string {
 }
 
 export class AgentStore {
-  readonly state = new Store<AgentView>({ sessions: [], loaded: false, activeId: null, transcripts: {}, globalCostUsd: 0, firstLines: {}, projects: [], activity: {}, topId: null });
+  readonly state = new Store<AgentView>({ sessions: [], loaded: false, activeId: null, transcripts: {}, globalCostUsd: 0, firstLines: {}, projects: [], activity: {}, topId: null, draft: { approvalMode: 'manual' } });
   readonly #api: AgentApi;
   #loading = new Set<string>();
 
@@ -118,23 +128,32 @@ export class AgentStore {
     this.state.set((v) => ({ ...v, activeId: null }));
   }
 
-  async send(id: string | null, text: string): Promise<void> {
+  async send(id: string | null, text: string, attachments: string[] = []): Promise<void> {
     await this.#guard(async () => {
       let target = id;
       if (!target) {
         // Typing into the empty window: the assistant's own thread while it is still
-        // empty (first use), otherwise a new conversation.
-        const top = await this.#emptyTop();
+        // empty (first use, and no other folder was chosen), otherwise a new conversation.
+        const draft = this.state.get().draft;
+        const top = draft.cwd ? null : await this.#emptyTop();
         if (top) {
           target = top.id;
+          if (draft.providerId && draft.model && this.#api.setSessionModel) await this.#api.setSessionModel(top.id, draft.providerId, draft.model);
+          if (draft.approvalMode !== top.approvalMode && this.#api.setApprovalMode) await this.#api.setApprovalMode(top.id, draft.approvalMode);
           this.state.set((v) => ({ ...v, activeId: top.id, transcripts: { ...v.transcripts, [top.id]: v.transcripts[top.id] ?? { items: [] } } }));
         } else {
-          const s = await this.#api.createSession({ role: 'top' });
+          const s = await this.#api.createSession({
+            role: 'top',
+            ...(draft.cwd ? { cwd: draft.cwd } : {}),
+            ...(draft.providerId && draft.model ? { providerId: draft.providerId, model: draft.model } : {}),
+            approvalMode: draft.approvalMode,
+          });
           target = s.id;
           this.state.set((v) => ({ ...v, sessions: [s, ...v.sessions], activeId: s.id, transcripts: { ...v.transcripts, [s.id]: { items: [] } } }));
         }
+        this.state.set((v) => ({ ...v, draft: { approvalMode: v.draft.approvalMode } }));
       }
-      const result = await this.#api.send(target, text);
+      const result = await this.#api.send(target, text, attachments.length ? { attachments: attachments.map((path) => ({ path })) } : undefined);
       if (!result.started) {
         // Queued into a running session: keep it visible until the agent takes it in.
         const sid = target;
@@ -177,6 +196,29 @@ export class AgentStore {
     );
     const add = Object.fromEntries(found.filter((f): f is readonly [string, string] => Boolean(f[1])));
     if (Object.keys(add).length) this.state.set((v) => ({ ...v, firstLines: { ...add, ...v.firstLines } }));
+  }
+
+  /** Choices for the next new conversation (folder, model, approval). */
+  setDraft(patch: Partial<NewChatDraft>): void {
+    this.state.set((v) => ({ ...v, draft: { ...v.draft, ...patch } }));
+  }
+
+  /** Model for this conversation from its next step on (the core notes the change). */
+  async setModel(id: string, providerId: string, model: string): Promise<void> {
+    const api = this.#api;
+    if (!api.setSessionModel) return;
+    await this.#guard(async () => this.#replace(await api.setSessionModel!(id, providerId, model)));
+  }
+
+  /** manual: every irreversible step asks; auto: they run and are recorded (the guard's still ask). */
+  async setApproval(id: string, mode: ApprovalMode): Promise<void> {
+    const api = this.#api;
+    if (!api.setApprovalMode) return;
+    await this.#guard(async () => this.#replace(await api.setApprovalMode!(id, mode)));
+  }
+
+  #replace(info: SessionInfo): void {
+    this.state.set((v) => ({ ...v, sessions: v.sessions.map((s) => (s.id === info.id ? { ...s, ...info, title: s.title ?? info.title } : s)) }));
   }
 
   /** Names a session; null goes back to the automatic name. */
@@ -315,6 +357,7 @@ export class AgentStore {
       const transcripts = current ? { ...v.transcripts, [e.sessionId]: applyEvent(current, e) } : v.transcripts;
       return { ...v, sessions, globalCostUsd, transcripts };
     });
+    if (e.type === 'session.updated') this.#replace(e.info);
     if (e.type === 'session.deleted') {
       const gone = e.sessionId;
       this.state.set((v) => {
