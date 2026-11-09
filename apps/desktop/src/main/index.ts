@@ -6,6 +6,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, ne
 import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
+import { humanError } from '../shared/errors';
 import { deriveTokens, resolveSkin, schemeOf } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
 import { mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
@@ -419,7 +420,10 @@ ipcMain.handle(DesktopChannel.PluginViewCall, async (_e, plugin: unknown, view: 
     // The plugin's own words beat a generic "no answer": the page shows them to whoever is fixing the plugin.
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[spica] plugin page call failed:', msg);
-    return { content: /[一-鿿]/.test(msg) ? msg : `插件没有完成这次调用：${msg.slice(0, 300)}`, isError: true };
+    if (/[一-鿿]/.test(msg)) return { content: msg, isError: true };
+    // Known causes in words (e.g. no model configured yet), else the plugin's own message.
+    const human = humanError(msg);
+    return { content: human.startsWith('出错了：') ? `插件没有完成这次调用：${msg.slice(0, 300)}` : human, isError: true };
   }
 });
 ipcMain.handle(DesktopChannel.PluginViewFile, async (_e, plugin: unknown, path: unknown): Promise<string | null> => {
