@@ -104,27 +104,38 @@ describe('收尾', () => {
     expect(SPLASH_FINISH_AFTER).toBeCloseTo(S.end, 9);
   });
 
-  it('扩轨后轨道是平时的 1.8 倍，并在大半径上绕一圈半', () => {
-    expect(splashOrbitScale(R + S.bigStart + 0.01, R)).toBeCloseTo(SPLASH_FINISH.bigRadius, 6);
-    expect(splashOrbitScale(R + S.collapseStart - 0.01, R)).toBeCloseTo(SPLASH_FINISH.bigRadius, 6);
+  it('收尾不再扩轨、不绕圈：ready 一到半径就只缩不涨，0.8 秒内飞进花心，转过不到半圈', () => {
+    expect(S.bigStart).toBe(0);
+    expect(S.collapseStart).toBe(0);
+    expect(S.merge).toBeCloseTo(0.8, 9);
+    let prev = 1;
+    for (let t = R; t < R + S.merge; t += 0.01) {
+      const k = splashOrbitScale(t, R);
+      expect(k).toBeLessThanOrEqual(prev + 1e-12);
+      prev = k;
+    }
     let turns = 0;
     const dt = 0.0005;
-    for (let t = R + S.bigStart; t < R + S.collapseStart; t += dt) turns += (splashSpeeds(t, R).orbit * dt) / SPLASH_TIMING.orbitPeriod;
-    expect(turns).toBeCloseTo(1.5, 1);
+    for (let t = R; t < R + S.merge; t += dt) turns += (splashSpeeds(t, R).orbit * dt) / SPLASH_TIMING.orbitPeriod;
+    expect(turns).toBeLessThan(0.5);
   });
 
   it('拖尾：加载中短而淡，收尾拉长变浓，合心后消失', () => {
+    const F = SPLASH_FINISH;
+    expect(F.loadTrail).toBeLessThan(F.trail);
     const load = splashFrame(3, null).trails;
-    const finish = splashFrame(R + S.bigStart + 0.5, R).trails;
+    const finish = splashFrame(R + 0.4, R).trails;
     expect(load.length).toBeGreaterThan(10);
     expect(Math.max(...load.map((d) => d.opacity))).toBeLessThan(Math.max(...finish.map((d) => d.opacity)));
-    const span = (ds: typeof load) => Math.max(...ds.map((d) => d.x)) - Math.min(...ds.map((d) => d.x));
-    expect(span(load)).toBeLessThan(span(finish));
     expect(splashFrame(R + S.merge + 0.01, R).trails).toHaveLength(0);
   });
 
-  it('收心落在 ready 后约 3.15 秒（视频里 7 秒模拟加载 → 约第 10 秒）', () => {
-    expect(S.merge).toBeCloseTo(3.15, 2);
+  it('双星从各自所在的一侧飞进花心（两条弧线，始终关于花心对称）', () => {
+    for (let t = R; t < R + S.merge - 0.02; t += 0.05) {
+      const [a, b] = splashFrame(t, R).stars;
+      expect((a!.x + b!.x) / 2).toBeCloseTo(SPLASH_LAYOUT.cx, 6);
+      expect((a!.y + b!.y) / 2).toBeCloseTo(SPLASH_LAYOUT.cy, 6);
+    }
   });
 
   it('轴心：加载中半透明，合心后变实', () => {
@@ -214,6 +225,15 @@ describe('背景星点', () => {
     for (const s of lines) {
       const a1 = Math.atan2(s.y1 - 360, s.x1 - 640);
       const a2 = Math.atan2(s.y2 - 360, s.x2 - 640);
+      expect(Math.abs(Math.sin(a1 - a2))).toBeLessThan(1e-9);
+    }
+  });
+
+  it('可以指定原点：所有星点都从花心向外飞', () => {
+    const o = { x: SPLASH_LAYOUT.cx, y: SPLASH_LAYOUT.cy };
+    for (const s of starfield(4, null, 1280, 720, 1, {}, o)) {
+      const a1 = Math.atan2(s.y1 - o.y, s.x1 - o.x);
+      const a2 = Math.atan2(s.y2 - o.y, s.x2 - o.x);
       expect(Math.abs(Math.sin(a1 - a2))).toBeLessThan(1e-9);
     }
   });

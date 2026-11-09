@@ -7,9 +7,8 @@
  *   轨道是开普勒椭圆，近快远慢，最近点朝前。花标和字标跟双星同一个节拍呼吸、起伏，
  *   但不和星的位置一一对应（不再「星扫到哪片、哪片亮」）。
  * - 加载完成（ready）后的收尾（每一步时长都是参数 SPLASH_FINISH）：
- *   ① 扩轨：双星平滑加速，轨道放大到 1.8 倍，同时拖尾拉长；
- *   ② 大半径上再绕一圈半；③ 加速收向花心，合一消失；
- *   ④ 合一那一帧起，花标像水波一样从花心向外把实色填满（圆形遮罩扩散 + 两圈涟漪，轮廓不动）；
+ *   ①② 扩轨、大半径绕圈（缺省时长为 0，即不做）；③ 双星从当前位置沿内螺旋加速飞进花心，拖尾拉长，合一消失；
+ *   ④ 合一那一帧起，花标从花心向外把实色填满：两道细环先行、实色随后跟上（圆形遮罩，轮廓不动）；
  *   ⑤ 一道光扫过字标，经过处字由暗变亮、闪一下辉光再回稳；⑥ 停住；⑦ 整层淡出。
  * - 短版（每天第二次起）：花标和字标淡入、停住、淡出，总长约 1 秒，不放星点。见 splashBriefFrame。
  * 花瓣只动透明度和缩放，形状一笔不改。
@@ -62,15 +61,16 @@ export interface SplashFinish {
 }
 
 export const SPLASH_FINISH: Readonly<SplashFinish> = Object.freeze({
-  expand: 0.6,
-  bigRadius: 1.8,
-  bigSpeed: 3,
-  bigTurns: 1.5,
+  // 不再扩轨、不再大半径绕圈：ready 一到，双星从当前位置沿内螺旋直接飞进花心
+  expand: 0,
+  bigRadius: 1,
+  bigSpeed: 1,
+  bigTurns: 0,
   collapse: 0.8,
-  collapseSpeed: 5,
+  collapseSpeed: 3,
   trail: 0.35,
-  trailStart: 0.2,
-  trailFadeIn: 0.5,
+  trailStart: 0,
+  trailFadeIn: 0.3,
   loadTrail: 0.12,
   loadTrailStrength: 0.4,
   starPeak: 3,
@@ -159,7 +159,7 @@ function orbitMultiplier(u: number, F: SplashFinish, S: SplashSchedule): number 
 function orbitExtraTime(u: number, F: SplashFinish, S: SplashSchedule): number {
   if (u <= 0) return 0;
   const a = Math.min(u, S.bigStart);
-  let extra = F.expand * (F.bigSpeed - 1) * smoothArea(a / F.expand);
+  let extra = F.expand > 0 ? F.expand * (F.bigSpeed - 1) * smoothArea(a / F.expand) : 0;
   if (u <= S.bigStart) return extra;
   const b = Math.min(u, S.collapseStart) - S.bigStart;
   extra += b * (F.bigSpeed - 1);
@@ -385,14 +385,14 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
   const petalOpacity = appear * (PETAL_BASE + PETAL_PULSE * pulse(breathT, beat));
   const petals = MARK_GEOMETRY.petals.map(() => ({ opacity: petalOpacity, scale: 1 }));
 
-  // 水波填充：合一起，实色花标的圆形遮罩从花心扩到整朵花，带两圈涟漪
+  // 填充（定稿 C「细环先行」）：合一起，两道很细的环先扩出去，实色花标的圆形遮罩随后跟上
   const m = u - S.merge;
   let fill: SplashFrame['fill'] = null;
   if (done && m >= 0) {
-    const radius = L.fillRadius * outCubic(seg(m, 0, F.fill));
-    const ripples = [0, 0.28].map((lag) => {
-      const q = seg(m, lag * F.fill, F.fill * (1 + lag));
-      return { r: L.fillRadius * 1.25 * outCubic(q), opacity: q > 0 && q < 1 ? 0.55 * (1 - q) : 0 };
+    const radius = L.fillRadius * outCubic(seg(m, 0.1 * F.fill, F.fill));
+    const ripples = [0, 0.14].map((lag) => {
+      const q = seg(m, lag * F.fill, (lag + 0.7) * F.fill);
+      return { r: L.fillRadius * 1.15 * outCubic(q), opacity: q > 0 && q < 1 ? 0.7 * (1 - q) : 0 };
     });
     fill = { radius, ripples };
   }
@@ -523,16 +523,26 @@ function starTime(t: number, readyAt: number | null, options: SplashOptions = {}
 }
 
 /**
- * 背景星点的光迹（像素坐标，按画布实际大小算，中心在画布中心）。
+ * 背景星点的光迹（像素坐标，按画布实际大小算）。所有星点都从花心向外飞（origin 传花心在画布上的位置）。
  * 每颗星飘完全程的时间相同（SPLASH_TIMING.starfieldPeriod），起点相位各不相同。
  * @param scale 线宽倍率（高分屏传 devicePixelRatio × 舞台缩放）
+ * @param origin 星点飞出的原点（缺省画布中心；组件和视频都传花心）
  */
-export function starfield(t: number, readyAt: number | null, width: number, height: number, scale = 1, options: SplashOptions = {}): StarStreak[] {
+export function starfield(
+  t: number,
+  readyAt: number | null,
+  width: number,
+  height: number,
+  scale = 1,
+  options: SplashOptions = {},
+  origin: { x: number; y: number } = { x: width / 2, y: height / 2 },
+): StarStreak[] {
   const u = starTime(t, readyAt, options) / SPLASH_TIMING.starfieldPeriod;
   const fadeIn = seg(t, 0, 0.8);
-  const rMax = Math.hypot(width, height) / 2;
-  const cx = width / 2;
-  const cy = height / 2;
+  const cx = origin.x;
+  const cy = origin.y;
+  // 飞到离原点最远的那个角之外才算出画面
+  const rMax = Math.max(Math.hypot(cx, cy), Math.hypot(width - cx, cy), Math.hypot(cx, height - cy), Math.hypot(width - cx, height - cy));
   const trail = 0.035;
   return STAR_SEEDS.map((s) => {
     const life = (u + s.phase) % 1;

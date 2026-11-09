@@ -69,7 +69,7 @@
 .spica-splash-ripple {
   fill: none;
   stroke: var(--spica-splash-accent);
-  stroke-width: 0.8;
+  stroke-width: 0.35;
 }
 /* 双星拖尾 */
 .spica-splash-trail {
