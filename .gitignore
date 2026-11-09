@@ -1,0 +1,35 @@
+# Dependencies and build output
+node_modules/
+dist/
+out/
+release/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# Logs
+npm-debug.log*
+*.log
+
+# Local secrets: model keys never enter the repository
+.env
+.env.local
+.env.*.local
+
+# Editors and local tooling
+.idea/
+.vscode/
+.venv/
+.DS_Store
+Thumbs.db
+
+# Private working notes of the maintainer (not part of the open-source tree)
+PROMPT.md
+LEDGER.md
+ledger-briefs/
+ledger-archive/
+scripts/dev/open-subsession.ps1
+
+# Brand source assets: pending decision on whether they ship in this repo.
+# The app draws its mark from code (apps/desktop/src/renderer/src/SpicaMark.tsx).
+branding/
