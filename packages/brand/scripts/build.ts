@@ -14,7 +14,7 @@ import { Resvg } from '@resvg/resvg-js';
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bannerSvg, markSvg, taskbarSvg, tileIconSvg, wordmarkSvg } from '../src/svg.ts';
+import { BANNER_LAYOUT, bannerSvg, markSvg, taskbarSvg, tileIconSvg, wordmarkSvg } from '../src/svg.ts';
 import { BRAND_COLORS } from '../src/tokens.ts';
 import { buildIco } from './ico.ts';
 
@@ -25,8 +25,8 @@ const ICON_SIZES = [16, 24, 32, 48, 64, 128, 256, 512, 1024] as const;
 const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256] as const;
 /** 窗口图标兜底位图的边长 */
 const WIN_ICON_SIZE = 256;
-/** 横标位图倍率（64 高 × 4 = 256 高） */
-const BANNER_HEIGHT = 256;
+/** 横标位图倍率（画框 × 4，64 高的横标出 256 高） */
+const BANNER_SCALE = 4;
 
 const { dark, light } = BRAND_COLORS;
 
@@ -60,8 +60,7 @@ function rasterFiles(): Record<string, Uint8Array> {
   // 横标位图：带底色，宣传 / 文档用
   for (const [name, c] of [['dark', dark], ['light', light]] as const) {
     const svg = bannerSvg({ ink: c.ink, accent: c.accent, background: c.background });
-    const width = Math.round((BANNER_HEIGHT * Number(svg.match(/viewBox="0 0 ([\d.]+) 64"/)?.[1] ?? 0)) / 64);
-    out[`spica-banner-${name}.png`] = raster(svg, width);
+    out[`spica-banner-${name}.png`] = raster(svg, Math.round(BANNER_LAYOUT.width * BANNER_SCALE));
   }
   return out;
 }

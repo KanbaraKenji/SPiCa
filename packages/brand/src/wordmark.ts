@@ -17,15 +17,19 @@ export interface WordmarkShape {
 }
 
 export interface Wordmark {
-  /** 画框宽高（字标自身坐标）；height 即大写字母高度。每个 shape 是一个字母，按书写顺序排 */
+  /** 画框宽（字标自身坐标） */
   width: number;
+  /** 大写字母高（= 基线的 y）；每个 shape 是一个字母，按书写顺序排 */
   height: number;
+  /** 基线以下的下伸深度（p 的竖笔） */
+  descent: number;
   shapes: readonly WordmarkShape[];
 }
 
 export const WORDMARK: Wordmark = Object.freeze({
   width: 348,
   height: 64,
+  descent: 0,
   shapes: Object.freeze([
     // S
     {
