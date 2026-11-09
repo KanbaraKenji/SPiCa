@@ -2,7 +2,8 @@
 node_modules/
 dist/
 out/
-release/
+# Packaged installers (electron-builder output); not scripts/release/
+apps/*/release/
 coverage/
 *.tsbuildinfo
 .vite/
