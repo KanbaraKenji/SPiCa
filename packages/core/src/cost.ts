@@ -1,6 +1,7 @@
 // Cost estimation and spending limits.
 // Prices are data (USD per million tokens) and can be overridden per deployment.
 import type { Usage } from './types.ts';
+import { abortError } from './util.ts';
 
 export interface ModelPrice {
   input: number;
@@ -63,6 +64,20 @@ export type BudgetCheck =
   | { ok: true }
   | { ok: false; scope: string; spentUsd: number; limitUsd: number; message: string };
 
+/** Worst-case cost held for a call that has passed the check and not been recorded yet. */
+export interface Reservation {
+  readonly usd: number;
+  /** Give the held amount back (idempotent). `record()` does this for its scope's reservation. */
+  release(): void;
+}
+
+/**
+ * `wait`: the limit is only reached because of calls still running (counted at
+ * their worst case); once they are recorded at what they really cost, the call
+ * may fit. Wait with `released()` and try again.
+ */
+export type ReserveResult = ({ ok: true } & Reservation) | (Extract<BudgetCheck, { ok: false }> & { wait: boolean });
+
 export interface CostRecord {
   costUsd: number;
   totals: { scope: 'call' | 'run' | 'session' | 'global'; spentUsd: number; limitUsd?: number; warning: boolean }[];
@@ -77,6 +92,9 @@ export class CostLedger {
   readonly #byRun = new Map<string, number>();
   readonly #byProviderSession = new Map<string, number>();
   readonly #byProviderRun = new Map<string, number>();
+  /** Calls in flight: their worst case counts as spent until they are recorded. */
+  readonly #held = new Set<{ scope: CostScope; usd: number }>();
+  #onRelease: (() => void)[] = [];
 
   constructor(prices: PriceTable = DEFAULT_PRICES, budget: BudgetConfig = {}) {
     this.#prices = prices;
@@ -124,8 +142,57 @@ export class CostLedger {
     }
   }
 
-  /** Check limits before a call, using a worst-case estimate of its cost. */
+  /**
+   * Check the limits and, when the call may start, hold its worst-case cost
+   * until `record()` (or `release()` when the call fails or is cancelled).
+   * Many sessions start calls at the same time: without the hold they would
+   * all see the same total and pass together.
+   */
+  reserve(scope: CostScope, estInputTokens: number, maxTokens: number): ReserveResult {
+    const check = this.#check(scope, estInputTokens, maxTokens, true);
+    if (!check.ok) return { ...check, wait: this.#held.size > 0 && this.#check(scope, estInputTokens, maxTokens, false).ok };
+    const entry = { scope, usd: this.estimate(scope, { inputTokens: estInputTokens, outputTokens: maxTokens }) };
+    this.#held.add(entry);
+    return { ok: true, usd: entry.usd, release: () => this.#release(entry) };
+  }
+
+  /** Resolves the next time a held amount is given back or recorded (rejects on abort). */
+  released(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return Promise.reject(abortError(signal));
+    return new Promise((resolve, reject) => {
+      const done = () => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      };
+      const onAbort = () => {
+        this.#onRelease = this.#onRelease.filter((f) => f !== done);
+        reject(abortError(signal));
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      this.#onRelease.push(done);
+    });
+  }
+
+  #release(entry: { scope: CostScope; usd: number }): void {
+    if (!this.#held.delete(entry)) return;
+    const waiting = this.#onRelease;
+    this.#onRelease = [];
+    for (const f of waiting) f();
+  }
+
+  /** Worst-case cost held by calls in flight (all providers). */
+  get heldUsd(): number {
+    let sum = 0;
+    for (const h of this.#held) sum += h.usd;
+    return sum;
+  }
+
+  /** Check limits before a call, using a worst-case estimate of its cost (calls in flight count with their worst case). */
   precheck(scope: CostScope, estInputTokens: number, maxTokens: number): BudgetCheck {
+    return this.#check(scope, estInputTokens, maxTokens, true);
+  }
+
+  #check(scope: CostScope, estInputTokens: number, maxTokens: number, withHeld: boolean): BudgetCheck {
     // Policy: never start a call that could push any total past its limit.
     const worst = this.estimate(scope, { inputTokens: estInputTokens, outputTokens: maxTokens });
     const groups = [
@@ -135,9 +202,9 @@ export class CostLedger {
     for (const [label, limits] of groups) {
       if (!limits) continue;
       const checks: [string, number, number | undefined][] = [
-        ['global', this.#scopeTotal(label, 'global', scope), limits.globalUsd],
-        ['session', this.#scopeTotal(label, 'session', scope), limits.perSessionUsd],
-        ['run', this.#scopeTotal(label, 'run', scope), limits.perRunUsd],
+        ['global', this.#scopeTotal(label, 'global', scope, withHeld), limits.globalUsd],
+        ['session', this.#scopeTotal(label, 'session', scope, withHeld), limits.perSessionUsd],
+        ['run', this.#scopeTotal(label, 'run', scope, withHeld), limits.perRunUsd],
       ];
       for (const [kind, spent, limit] of checks) {
         if (limit !== undefined && spent + worst > limit) {
@@ -146,7 +213,7 @@ export class CostLedger {
             scope: `${label}:${kind}`,
             spentUsd: spent,
             limitUsd: limit,
-            message: `spending limit ${label}:${kind} reached: spent $${spent.toFixed(4)} of $${limit.toFixed(2)}, the next call could cost up to $${worst.toFixed(4)}`,
+            message: `spending limit ${label}:${kind} reached: spent $${spent.toFixed(4)} (calls still running counted at their worst case) of $${limit.toFixed(2)}, the next call could cost up to $${worst.toFixed(4)}`,
           };
         }
       }
@@ -167,6 +234,8 @@ export class CostLedger {
   }
 
   record(scope: CostScope, usage: Usage): CostRecord {
+    // the call is done: its hold is replaced by what it really cost
+    for (const h of [...this.#held]) if (h.scope === scope) this.#release(h);
     const cost = this.estimate(scope, usage);
     this.#global += cost;
     add(this.#byProvider, scope.providerId, cost);
@@ -214,7 +283,18 @@ export class CostLedger {
     return this.#byProvider.get(providerId) ?? 0;
   }
 
-  #scopeTotal(label: string, kind: 'global' | 'session' | 'run', s: CostScope): number {
+  #scopeTotal(label: string, kind: 'global' | 'session' | 'run', s: CostScope, withHeld: boolean): number {
+    let held = 0;
+    for (const h of withHeld ? this.#held : []) {
+      if (label !== 'all' && h.scope.providerId !== label) continue;
+      if (kind === 'session' && h.scope.sessionId !== s.sessionId) continue;
+      if (kind === 'run' && h.scope.runId !== s.runId) continue;
+      held += h.usd;
+    }
+    return held + this.#recorded(label, kind, s);
+  }
+
+  #recorded(label: string, kind: 'global' | 'session' | 'run', s: CostScope): number {
     if (label === 'all') {
       if (kind === 'global') return this.#global;
       if (kind === 'session') return this.#bySession.get(s.sessionId) ?? 0;

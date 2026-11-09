@@ -17,6 +17,8 @@ interface Waiter {
   resolve: (lease: Lease) => void;
   reject: (err: Error) => void;
   onPosition?: (position: number) => void;
+  /** Last position reported, so a waiter only hears about real changes. */
+  reported?: number;
   signal?: AbortSignal;
   onAbort?: () => void;
 }
@@ -77,7 +79,7 @@ export class RateLimiter {
       }
       this.#queue.push(waiter);
       this.#pump();
-      if (this.#queue.includes(waiter)) waiter.onPosition?.(this.#queue.length);
+      if (this.#queue.includes(waiter)) this.#report(waiter, this.#queue.length);
     });
   }
 
@@ -126,6 +128,12 @@ export class RateLimiter {
   }
 
   #notifyPositions(): void {
-    this.#queue.forEach((w, i) => w.onPosition?.(i + 1));
+    this.#queue.forEach((w, i) => this.#report(w, i + 1));
+  }
+
+  #report(w: Waiter, position: number): void {
+    if (w.reported === position) return;
+    w.reported = position;
+    w.onPosition?.(position);
   }
 }

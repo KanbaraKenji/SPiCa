@@ -386,12 +386,6 @@ export class Session {
         estimateTokens(request.system + JSON.stringify(request.messages) + JSON.stringify(request.tools)),
         this.#lastInputTokens,
       );
-      const check = this.#rt.ledger.precheck(scope, est, request.maxTokens);
-      if (!check.ok) {
-        this.#emit({ type: 'budget.stop', scope: check.scope, spentUsd: check.spentUsd, limitUsd: check.limitUsd, message: check.message });
-        return end('budget', check.message);
-      }
-
       // 3. Rate limiter shared by all sessions on this endpoint.
       let lease;
       try {
@@ -409,6 +403,33 @@ export class Session {
           continue;
         }
         return end('aborted');
+      }
+
+      // Checked once a slot is free, against what is spent plus the worst case
+      // of every call still running, so parallel sessions cannot overshoot together.
+      let hold = this.#rt.ledger.reserve(scope, est, request.maxTokens);
+      // Over the limit only because of calls still running: wait until they are
+      // recorded at their real cost, then check again (keeping the slot).
+      while (!hold.ok && hold.wait) {
+        this.#setStatus('queued', 'waiting for running calls to settle the spending limit');
+        try {
+          await this.#rt.ledger.released(signal);
+        } catch {
+          lease.release();
+          if (this.#interrupt && !runAbort.signal.aborted) {
+            this.#emit({ type: 'turn.end', turn });
+            turn--;
+            break;
+          }
+          return end('aborted');
+        }
+        hold = this.#rt.ledger.reserve(scope, est, request.maxTokens);
+      }
+      if (!hold.ok && hold.wait) continue; // interrupted while waiting: next turn with the steer
+      if (!hold.ok) {
+        lease.release();
+        this.#emit({ type: 'budget.stop', scope: hold.scope, spentUsd: hold.spentUsd, limitUsd: hold.limitUsd, message: hold.message });
+        return end('budget', hold.message);
       }
 
       // 4. Stream the model call.
@@ -489,6 +510,7 @@ export class Session {
       } catch (err) {
         stopPartialTimer();
         lease.release();
+        hold.release(); // nothing was reported back for this call
         if (signal.aborted || isAbortError(err)) {
           trace.finish({ status: 'aborted', attempts: callInfo.attempts, ...(callInfo.httpStatus ? { httpStatus: callInfo.httpStatus } : {}) });
           keepPartial({ interrupted: true });
@@ -510,6 +532,7 @@ export class Session {
       stopPartialTimer();
       lease.release();
       if (!response) {
+        hold.release();
         trace.finish({ status: 'error', error: 'stream ended without a response', attempts: callInfo.attempts });
         return end('error', 'model stream ended without a response');
       }
