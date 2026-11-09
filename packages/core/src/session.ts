@@ -324,7 +324,7 @@ export class Session {
       const hctx = this.#hookCtx(runId, turn);
 
       // 1. Assemble context by segment and let plugins change the request.
-      const env = { providerId: cfg.providerId, serverWebSearch: !!cfg.serverWebSearch };
+      const env = { providerId: cfg.providerId, serverWebSearch: !!cfg.serverWebSearch, role: this.#record.role, ...(cfg.projectId ? { projectId: cfg.projectId } : {}) };
       const tools = this.#rt.tools.list(env, cfg.tools);
       const injections = await this.#rt.hooks.injections(hctx);
       let draft: RequestDraft = {
@@ -551,7 +551,7 @@ export class Session {
   /** Run a turn's tool calls. Returns true when the run must pause for the user. */
   async #runTools(assistant: Message, calls: ToolUseBlock[], signal: AbortSignal, hctx: HookContext): Promise<boolean> {
     const cfg = this.#record.config;
-    const env = { providerId: cfg.providerId, serverWebSearch: !!cfg.serverWebSearch };
+    const env = { providerId: cfg.providerId, serverWebSearch: !!cfg.serverWebSearch, role: this.#record.role, ...(cfg.projectId ? { projectId: cfg.projectId } : {}) };
     const visible = new Set(this.#rt.tools.list(env, cfg.tools).map((t) => t.spec.name));
     const pending: PendingRecord[] = [];
 

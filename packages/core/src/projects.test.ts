@@ -183,3 +183,66 @@ describe('projects', () => {
     await rt2.close();
   });
 });
+
+describe('project tools', () => {
+  let gw: FakeGateway;
+  let dir: string;
+  let cleanup: () => Promise<void>;
+  beforeEach(async () => {
+    gw = await startGateway();
+    ({ dir, cleanup } = await tempDir());
+  });
+  afterEach(async () => {
+    await gw.stop();
+    await cleanup();
+  });
+  const names = (r: ReturnType<typeof makeRuntime>, s: ReturnType<ReturnType<typeof makeRuntime>['createSession']>) => {
+    const i = s.info();
+    return r.tools.list({ providerId: i.providerId, serverWebSearch: false, role: i.role, ...(i.projectId ? { projectId: i.projectId } : {}) }, s.config.tools).map((t) => t.spec.name);
+  };
+
+  it('top-level tools only for the top-level agent, project tools only inside a project', () => {
+    const r = makeRuntime(gw, { cwd: dir, workflowsDir: exampleDir });
+    const p = r.createProject({ name: 'P', workflowId: 'product-development' });
+    const topTools = names(r, r.top());
+    expect(topTools).toEqual(expect.arrayContaining(['create_project', 'list_projects', 'open_project', 'message_agent']));
+    expect(topTools).not.toContain('set_stage');
+    const pmTools = names(r, r.session(p.managerSessionId)!);
+    expect(pmTools).toEqual(expect.arrayContaining(['project_status', 'set_stage', 'add_work_object', 'list_work_objects', 'spawn_agent']));
+    expect(pmTools).not.toContain('create_project');
+    // a plain top-level chat may start projects; a sub-agent outside a project sees neither set
+    expect(names(r, r.createSession())).toContain('create_project');
+    const worker = names(r, r.createSession({ parentId: r.createSession().id }));
+    expect(worker).not.toContain('create_project');
+    expect(worker).not.toContain('project_status');
+  });
+
+  it('the top-level agent creates a project; the manager sees its project and uses the stage tools', async () => {
+    gw.onRequest((req) => {
+      const all = JSON.stringify(req.body.messages);
+      if (all.includes('TOP-ASK') && !all.includes('Created project')) {
+        return { toolCalls: [{ id: 'c1', name: 'create_project', args: { name: 'Lamp', workflow: 'product-development', brief: 'PM-BRIEF' } }] };
+      }
+      if (all.includes('PM-BRIEF') && !all.includes('Added [product]')) {
+        return { toolCalls: [{ id: 'a1', name: 'add_work_object', args: { level: 'product', name: 'Desk lamp' } }] };
+      }
+      if (all.includes('PM-BRIEF') && !all.includes('Stage is now')) {
+        return { toolCalls: [{ id: 's1', name: 'set_stage', args: { stage: 'pilot', note: 'samples ok' } }] };
+      }
+      return { text: 'done' };
+    });
+    const r = makeRuntime(gw, { cwd: dir, workflowsDir: exampleDir });
+    const top = r.top();
+    await top.send('TOP-ASK make a lamp project').done;
+    const p = r.listProjects()[0]!;
+    const pm = r.session(p.managerSessionId)!;
+    await pm.idle();
+    expect(r.getProject(p.id)).toMatchObject({ stage: 'pilot', objects: [{ name: 'Desk lamp', level: 'product' }] });
+    const pmRequest = gw.requests.find((q) => JSON.stringify(q.body.messages).includes('PM-BRIEF'))!;
+    const system = (pmRequest.body.messages as { content: string }[])[0]!.content;
+    expect(system).toContain(`You work for the project "Lamp" (${p.id})`);
+    expect(system).toContain('current stage: Sample (goal: Build samples that prove the function)');
+    // the stage change reached the top-level agent as a decision note
+    expect(top.messages().some((m) => m.kind === 'relay' && m.meta?.kind === 'decision')).toBe(true);
+  });
+});
