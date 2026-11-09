@@ -9,6 +9,7 @@ import { Session, type RunResult } from './session.ts';
 import { MemoryStore } from './store/memory.ts';
 import type { RelayRecord, SessionConfig, SessionRecord, Store } from './store/types.ts';
 import { agentTools } from './tools/agent-tools.ts';
+import { createRunCommandTool } from './tools/command-tool.ts';
 import { fileTools } from './tools/fs-tools.ts';
 import { ToolRegistry, type FileExtractor, type Tool } from './tools/types.ts';
 import { Tracer } from './trace.ts';
@@ -24,11 +25,13 @@ export interface RuntimeOptions {
   limits?: Record<string, LimiterConfig>;
   prices?: PriceTable;
   budget?: BudgetConfig;
-  /** Built-in tools to register. Default: file tools plus ask_user and the session-tree tools. */
+  /** Built-in tools to register. Default: file tools, run_command, ask_user, suggest_actions and the session-tree tools. */
   tools?: Tool[];
   extractors?: FileExtractor[];
   /** Default working folder for sessions. */
   cwd?: string;
+  /** Where run_command saves outputs too long to return (default: a temp folder). */
+  spillDir?: string;
 }
 
 /** What sessions need from the runtime. Not part of the public API. */
@@ -84,7 +87,8 @@ export class Runtime implements RuntimeInternals {
     this.ledger = new CostLedger(opts.prices ?? DEFAULT_PRICES, opts.budget ?? {});
     this.extractors = [...(opts.extractors ?? [])];
     for (const p of opts.providers) this.addProvider(p, opts.limits?.[p.id]);
-    for (const t of opts.tools ?? [...fileTools, ...agentTools]) this.tools.register(t, 'core');
+    const defaults = [...fileTools, createRunCommandTool(opts.spillDir ? { spillDir: opts.spillDir } : {}), ...agentTools];
+    for (const t of opts.tools ?? defaults) this.tools.register(t, 'core');
   }
 
   addProvider(p: Provider, limits?: LimiterConfig): void {

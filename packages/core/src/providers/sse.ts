@@ -19,12 +19,19 @@ export async function* parseSse(
   let buffer = '';
   let event = '';
   let data: string[] = [];
-  const onAbort = () => void reader.cancel().catch(() => {});
-  opts.signal?.addEventListener('abort', onAbort, { once: true });
+  // Cancellation: the caller's signal also aborts the fetch, which errors this
+  // stream; we do not cancel the reader from the abort listener as well.
+  // (Cancelling from both sides at once, plus releaseLock(), crashed Node 24 on
+  // Windows with 0xC0000409 in stress tests.)
+  let finished = false;
   try {
     for (;;) {
+      if (opts.signal?.aborted) break;
       const { value, done } = await readWithIdle(reader, opts.idleTimeoutMs);
-      if (done) break;
+      if (done) {
+        finished = true;
+        break;
+      }
       buffer += decoder.decode(value, { stream: true });
       let idx: number;
       while ((idx = nextLineEnd(buffer)) >= 0) {
@@ -52,8 +59,8 @@ export async function* parseSse(
     if (buffer.trim() !== '' && buffer.startsWith('data:')) data.push(buffer.slice(5).trimStart());
     if (data.length > 0) yield { event: event || 'message', data: data.join('\n') };
   } finally {
-    opts.signal?.removeEventListener('abort', onAbort);
-    reader.releaseLock();
+    // Stopped early (consumer returned, abort, error): release the body.
+    if (!finished) await reader.cancel().catch(() => {});
   }
   if (opts.signal?.aborted) {
     const reason: unknown = opts.signal.reason;
