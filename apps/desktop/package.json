@@ -12,6 +12,8 @@
     "build": "electron-vite build",
     "prepreview": "install-electron",
     "preview": "electron-vite preview",
+    "preshots": "install-electron",
+    "shots": "node scripts/shots.mjs",
     "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json"
   },
   "devDependencies": {
