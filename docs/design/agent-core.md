@@ -229,6 +229,38 @@
 
 **接口与事件**：AgentApi 加 `createProject`、`listProjects`、`getProject`；事件加 `project.created`、`project.updated`（阶段等）、`project.activity`。
 
+## 12b. 后端进程与 MCP 服务（M5 设计，统筹已定方向）
+
+**进程边界**：内核跑在 Electron 的 `utilityProcess` 里（用 Electron 自带的 Node），主进程只做监护和转发，界面在渲染进程。SQLite 只有内核进程打开，主进程和界面都不碰库。
+
+```
+渲染进程（界面） ──IPC──► 主进程（监护、转发、窗口） ──MessagePort──► 内核进程（Runtime + SqliteStore + MCP 服务）
+                                                                        └─ stdio / 本机 HTTP ──► 外部 MCP 客户端（评测、远程调试）
+```
+
+**消息通道**：主进程和内核进程之间用 `MessageChannelMain` 的一对端口，消息三种：
+
+| 方向 | 形状 | 用途 |
+|---|---|---|
+| 主 → 内核 | `{ id, method, params }` | 调 AgentApi 的方法（和现在的 `createAgentApi` 同一套名字和参数） |
+| 内核 → 主 | `{ id, result }` 或 `{ id, error: { code, message } }` | 回结果；错误是人话 + 代码 |
+| 内核 → 主 | `{ event: CoreEvent }` | 事件流原样推送（带全局 `seq`） |
+
+- 内核在内存里留最近几千条事件；界面断线重连时用 `eventsSince(seq)` 补齐，补不上（内核重启过）就重新拉 `listSessions` / `getMessages`，历史本身就能重建所有卡片。
+- **给外壳的改法**：现在主进程里直接 `createAgentApi(runtime)`；M5 换成一个实现同一 `AgentApi` 接口的「端口客户端」，界面一侧不用改。
+
+**监护与恢复**：
+- 内核进程意外退出：主进程按 1 秒、2 秒、5 秒退避重启（1 分钟内最多 5 次，超过就给界面一个「后台出错」的人话提示和「重试」），新进程启动后先 `restore()`：在跑的会话变「中断」，提问卡和确认卡都还在，界面显示「上次没做完就中断了 [继续]」。
+- 正常退出：主进程发 `shutdown`，内核 `close()`（在跑的会话标「中断」、停掉 MCP server、关库）后退出；5 秒没退就强杀。
+- 窗口始终不死：内核崩了只影响后台，界面保留已显示的内容并提示「正在恢复」。
+
+**本程序的 MCP 服务**（立项书「接口先行」：对外就是 MCP 服务，J2–J7 经它自动跑，评测插件走它）：
+- 同一个内核进程对内服务界面、对外当 MCP 服务，两边看到的是同一份会话和同一个事件流。
+- 传输：stdio 必有（`spica-core --mcp`，用 Electron 自带 Node 以 `ELECTRON_RUN_AS_NODE=1` 起，给评测和脚本用）；本机 HTTP 可选（只听 127.0.0.1，带随机令牌，令牌写在用户目录里），给远程调试和「程序开着时外部也想连」用。
+- 工具：每个 AgentApi 方法一个工具（`spica_create_session`、`spica_send`、`spica_steer`、`spica_answer`、`spica_confirm`、`spica_get_messages`、`spica_create_project` ……），外加两个方便自动化的：`spica_run`（发一句话并等这次运行结束，返回回答、工具调用摘要和花费）和 `spica_events {since}`（拉事件）。
+- 同时只能有一个进程写库：程序开着时 stdio 方式会发现锁（库旁的锁文件带进程号），改为连到正在运行的那个实例的本机 HTTP。
+- **测试连接探针**：`probeProvider(配置)` 按给定 provider 配置发一次最小请求（一句 ping、max_tokens 很小），返回是否成功、延迟、服务端报的模型名、人话错误；不进任何会话，记一条 `initiator: 'runtime:probe'` 的可追溯记录。外壳设置页的「测试连接」直接调它。
+
 ## 13. 未决问题
 
 - 「收到响应后改响应」与逐字流出的矛盾：默认先流给界面、响应完整后再交钩子；钩子若改了内容，发一个 `message.replaced` 事件让界面替换。是否需要「缓冲模式」由插件声明。
