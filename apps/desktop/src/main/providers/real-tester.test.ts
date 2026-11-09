@@ -66,6 +66,7 @@ describe('probeMessage', () => {
     expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'not_found' }, openai)).toBe('找不到模型「m1」或这个地址：请检查「模型」和「接口地址」。');
     expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'network' }, wso2)).toContain('取 token 地址');
     expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'rate_limited' }, openai)).toContain('同时请求');
-    expect(probeMessage({ ok: true, latencyMs: 900, firstByteMs: 420, model: 'm1-2026' }, openai)).toBe('连得上，模型「m1-2026」可以用（420 毫秒开始回应）。');
+    expect(probeMessage({ ok: true, latencyMs: 900, firstByteMs: 420, model: 'm1-2026' }, openai)).toBe('连得上，模型「m1」可以用（420 毫秒开始回应，服务端回报的型号是「m1-2026」）。');
+    expect(probeMessage({ ok: true, latencyMs: 900, firstByteMs: 420, model: 'm1' }, openai)).toBe('连得上，模型「m1」可以用（420 毫秒开始回应）。');
   });
 });

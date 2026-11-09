@@ -29,7 +29,9 @@ function probeAdvice(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' | 'model'
   const url = draft.kind === 'wso2' ? '「网关地址」' : '「接口地址」';
   if (r.ok) {
     const ms = r.firstByteMs ?? r.latencyMs;
-    return `连得上，模型「${r.model || model}」可以用（${Math.max(1, Math.round(ms))} 毫秒开始回应）。`;
+    // Say the model the user typed; the server's own name for it (an alias) only as an aside.
+    const alias = r.model && r.model !== model ? `，服务端回报的型号是「${r.model}」` : '';
+    return `连得上，模型「${model || r.model}」可以用（${Math.max(1, Math.round(ms))} 毫秒开始回应${alias}）。`;
   }
   switch (r.errorCode) {
     case 'auth':
