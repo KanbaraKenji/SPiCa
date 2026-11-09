@@ -1,9 +1,42 @@
 // Preload: the only bridge between the sandboxed renderer and the main process.
-import { contextBridge, ipcRenderer } from 'electron';
-import { IpcChannel, type AppInfo, type SpicaBridge } from '@spica/protocol';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { IpcChannel, type AgentApi, type AppInfo, type CoreEvent } from '@spica/protocol';
+import { DesktopChannel } from '../shared/ipc';
+import type { DesktopBridge, ShellState } from '../shared/bridge';
+import type { SettingsPatch, ShellSettings } from '../shared/settings';
 
-const bridge: SpicaBridge = {
+function call<K extends keyof AgentApi>(method: K) {
+  return ((...args: unknown[]) => ipcRenderer.invoke(DesktopChannel.Agent, method, args)) as AgentApi[K];
+}
+
+function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
+  const handler = (_e: IpcRendererEvent, value: T) => listener(value);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+}
+
+const agent: AgentApi = {
+  createSession: call('createSession'),
+  listSessions: call('listSessions'),
+  getSession: call('getSession'),
+  getMessages: call('getMessages'),
+  getPending: call('getPending'),
+  send: call('send'),
+  steer: call('steer'),
+  answer: call('answer'),
+  confirm: call('confirm'),
+  abort: call('abort'),
+  exportTraces: call('exportTraces'),
+};
+
+const bridge: DesktopBridge = {
   getAppInfo: () => ipcRenderer.invoke(IpcChannel.AppInfo) as Promise<AppInfo>,
+  agent,
+  onAgentEvent: (listener) => subscribe<CoreEvent>(DesktopChannel.AgentEvent, listener),
+  getShellState: () => ipcRenderer.invoke(DesktopChannel.GetShellState) as Promise<ShellState>,
+  updateSettings: (patch: SettingsPatch) => ipcRenderer.invoke(DesktopChannel.UpdateSettings, patch) as Promise<ShellSettings>,
+  onSettingsChanged: (listener) => subscribe<ShellSettings>(DesktopChannel.SettingsChanged, listener),
+  openFile: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.OpenFile, sessionId, path) as Promise<string | null>,
 };
 
 contextBridge.exposeInMainWorld('spica', bridge);

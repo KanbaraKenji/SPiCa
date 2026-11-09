@@ -1,8 +1,10 @@
-import type { SpicaBridge } from '@spica/protocol';
+import type { DesktopBridge } from '../shared/bridge';
 
 declare global {
   interface Window {
-    spica: SpicaBridge;
+    spica: DesktopBridge;
+    /** Present only while the screenshot script drives the window. */
+    __spicaShots?: { setView(view: string): void };
   }
 }
 
