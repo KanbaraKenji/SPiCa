@@ -11,3 +11,4 @@ MCP servers. The format is described in `docs/design/plugins.md`; the author gui
 | Folder | What it is |
 |---|---|
 | `example-notes` | Example plugin showing every part: a Node MCP server with mock data, a skill, a command and a hook |
+| `outlook-mail` | Reads mail from the local classic Outlook (PowerShell + COM), helps sort it and drafts replies — never sends; mock mode with 30 fictional messages |
