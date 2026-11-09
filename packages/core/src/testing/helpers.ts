@@ -27,6 +27,8 @@ export function makeRuntime(gw: FakeGateway, opts: Partial<RuntimeOptions> = {})
     providers: opts.providers ?? [openaiProvider(gw)],
     defaults: opts.defaults ?? { providerId: 'fake-openai', model: 'fake-model', maxTokens: 512 },
     ...opts,
+    // what a deployment registers from its provider configuration (startBackend does this)
+    redactions: ['test-key-123456', `${gw.baseUrl}/v1`, ...(opts.redactions ?? [])],
   });
 }
 

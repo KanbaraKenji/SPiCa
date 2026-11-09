@@ -4,6 +4,7 @@
 import type { ContentBlock, Message, UsageLogFilter } from './types.ts';
 import type { SessionRecord, Store } from './store/types.ts';
 import { isoNow } from './events.ts';
+import { homedir, tmpdir } from 'node:os';
 import { redactDeep } from './util.ts';
 
 export const USAGE_LOG_SCHEMA = 'spica.usage-log';
@@ -15,13 +16,26 @@ export type { UsageLogFilter };
 /** Text longer than this (tool results, file contents) is cut, with the original length noted. */
 const MAX_TEXT = 20_000;
 
-export function exportUsageLog(store: Store, filter: UsageLogFilter = {}, opts: { secrets?: readonly string[]; now?: string } = {}): string {
+export interface UsageLogOptions {
+  /** Values to remove (keys, endpoint addresses). */
+  secrets?: readonly string[];
+  now?: string;
+  /**
+   * Replace the user's folders in paths: the temp folder by %TEMP%, any
+   * C:\Users\<name> by %USERPROFILE%, so a log shared with the company does not
+   * carry user names. Default true; `home` / `temp` override the folders.
+   */
+  hidePaths?: boolean | { home?: string; temp?: string };
+}
+
+export function exportUsageLog(store: Store, filter: UsageLogFilter = {}, opts: UsageLogOptions = {}): string {
   return usageLogLines(store, filter, opts).join('\n');
 }
 
-export function usageLogLines(store: Store, filter: UsageLogFilter = {}, opts: { secrets?: readonly string[]; now?: string } = {}): string[] {
+export function usageLogLines(store: Store, filter: UsageLogFilter = {}, opts: UsageLogOptions = {}): string[] {
   const secrets = [...new Set(opts.secrets ?? [])].filter((s) => s.length >= 6).sort((a, b) => b.length - a.length);
-  const clean = (v: unknown): unknown => redactDeep(v, secrets);
+  const paths = opts.hidePaths === false ? (t: string) => t : pathHider(typeof opts.hidePaths === 'object' ? opts.hidePaths : {});
+  const clean = (v: unknown): unknown => mapStrings(redactDeep(v, secrets), paths);
   const from = filter.from ? Date.parse(filter.from) : -Infinity;
   const to = filter.to ? Date.parse(filter.to) : Infinity;
   if (Number.isNaN(from) || Number.isNaN(to)) throw new Error('from / to must be ISO 8601 dates');
@@ -151,4 +165,39 @@ function block(b: ContentBlock): Record<string, unknown>[] {
 
 function cut(text: string): string {
   return text.length <= MAX_TEXT ? text : `${text.slice(0, MAX_TEXT)}\n…[cut: ${text.length} chars in total]`;
+}
+
+/** Apply `f` to every string inside a JSON-like value (keys included). */
+function mapStrings(v: unknown, f: (s: string) => string): unknown {
+  if (typeof v === 'string') return f(v);
+  if (Array.isArray(v)) return v.map((x) => mapStrings(x, f));
+  if (v && typeof v === 'object') {
+    const o: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v)) o[f(k)] = mapStrings(x, f);
+    return o;
+  }
+  return v;
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Paths without user names: the temp folder first (it usually sits inside the
+ * user folder), then this user's folder, then any other C:\Users\<name>, or
+ * /home/<name> and /Users/<name>. Both slash styles, any letter case.
+ */
+export function pathHider(dirs: { home?: string; temp?: string } = {}): (text: string) => string {
+  const variants = (p: string) => {
+    const trimmed = p.replace(/[\\/]+$/, '');
+    return trimmed.length < 4 ? [] : [...new Set([trimmed, trimmed.replace(/\\/g, '/'), trimmed.replace(/\//g, '\\')])];
+  };
+  // a folder name only counts when it ends there (C:\Users\Ann must not eat C:\Users\Anna)
+  const exact = (dir: string, to: string) => variants(dir).map((v): [RegExp, string] => [new RegExp(`${escapeRe(v)}(?![^\\\\/\\s"'])`, 'gi'), to]);
+  const rules: [RegExp, string][] = [
+    ...exact(dirs.temp ?? tmpdir(), '%TEMP%'),
+    ...exact(dirs.home ?? homedir(), '%USERPROFILE%'),
+    [/\b[A-Za-z]:[\\/]Users[\\/][^\\/\s"'<>|:*?]+/gi, '%USERPROFILE%'],
+    [/(^|[\s"'(=])\/(?:home|Users)\/[^/\s"']+/g, '$1$HOME'],
+  ];
+  return (text) => rules.reduce((t, [re, to]) => t.replace(re, to), text);
 }

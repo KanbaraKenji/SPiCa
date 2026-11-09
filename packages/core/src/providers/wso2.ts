@@ -115,7 +115,6 @@ export interface Wso2Options extends Omit<OpenAICompatibleOptions, 'auth' | 'api
 export class Wso2Provider extends OpenAICompatibleProvider {
   override readonly kind: string = 'wso2';
   readonly #auth: OAuthClientCredentials;
-  readonly #oauth: Wso2Options['oauth'];
 
   constructor(opts: Wso2Options) {
     const auth = new OAuthClientCredentials({
@@ -125,12 +124,6 @@ export class Wso2Provider extends OpenAICompatibleProvider {
     });
     super({ ...opts, auth });
     this.#auth = auth;
-    this.#oauth = opts.oauth;
-  }
-
-  override secrets(): string[] {
-    const o = this.#oauth;
-    return [...super.secrets(), o.clientSecret, o.clientId, o.tokenUrl, hostOf(o.tokenUrl)].filter((v): v is string => !!v);
   }
 
   attach(services: { tracer: Tracer }): void {

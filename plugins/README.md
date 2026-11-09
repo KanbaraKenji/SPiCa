@@ -11,4 +11,5 @@ MCP servers. The format is described in `docs/design/plugins.md`; the author gui
 | Folder | What it is |
 |---|---|
 | `example-notes` | Example plugin showing every part: a Node MCP server with mock data, a skill, a command and a hook |
+| `example-eval` | Example evaluation plugin: runs the acceptance journeys J2–J7 only through Spica's MCP service (stdio, or HTTP to a running Spica) and writes a Markdown report with pass / fail, time and cost |
 | `outlook-mail` | Reads mail from the local classic Outlook (PowerShell + COM), helps sort it and drafts replies — never sends; mock mode with 30 fictional messages |

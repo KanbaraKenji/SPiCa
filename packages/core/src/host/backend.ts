@@ -80,6 +80,19 @@ export interface BackendExtension {
   close?(): Promise<void>;
 }
 
+/** What of a provider configuration must be redacted: keys, secrets, endpoints, long header values. */
+export function providerRedactions(c: ProviderConfig): (string | undefined)[] {
+  return [
+    c.apiKey,
+    c.apiKeyEnv ? process.env[c.apiKeyEnv] : undefined,
+    c.baseUrl,
+    ...Object.values(c.headers ?? {}).filter((v) => v.length >= 12),
+    c.oauth?.clientSecret,
+    c.oauth?.clientId,
+    c.oauth?.tokenUrl,
+  ];
+}
+
 export function createProvider(c: ProviderConfig): Provider {
   switch (c.kind) {
     case 'anthropic':
@@ -172,7 +185,10 @@ export function applySettings(runtime: Runtime, patch: SettingsPatch): { changed
   const warnings: string[] = [];
   if (patch.providers) {
     const keep = new Set(patch.providers.map((p) => p.id));
-    for (const c of patch.providers) runtime.setProvider(createProvider(c), c.limits ?? {});
+    for (const c of patch.providers) {
+      runtime.addRedactions(providerRedactions(c));
+      runtime.setProvider(createProvider(c), c.limits ?? {});
+    }
     for (const id of runtime.providerIds) if (!keep.has(id)) runtime.removeProvider(id);
     changed.push('providers');
   }
@@ -248,6 +264,7 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
     const providers = cfg.providers.map(createProvider);
     const runtime = new Runtime({
       providers,
+      redactions: cfg.providers.flatMap(providerRedactions),
       defaults: cfg.defaults,
       store: new SqliteStore(cfg.dbPath),
       limits: Object.fromEntries(cfg.providers.filter((p) => p.limits).map((p) => [p.id, p.limits!])),
