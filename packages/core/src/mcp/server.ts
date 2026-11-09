@@ -117,6 +117,24 @@ export function spicaMcpTools(rt: Runtime, events: CoreEvent[]): McpTool[] {
       },
     },
     {
+      name: 'spica_list_mail',
+      description: 'Mail seen by the mail pipeline, with triage results and the user handling.',
+      inputSchema: obj({ status: str, project_id: str, limit: { type: 'integer' } }),
+      run: (a) =>
+        api.listMail!({
+          ...(a.status ? { status: a.status as 'new' } : {}),
+          ...(a.project_id ? { projectId: String(a.project_id) } : {}),
+          ...(a.limit ? { limit: Number(a.limit) } : {}),
+        }),
+    },
+    { name: 'spica_poll_mail', description: 'Fetch new mail now, triage it and hand it to the project managers.', inputSchema: obj({}), run: () => api.pollMail!() },
+    {
+      name: 'spica_mail_feedback',
+      description: 'The user handling of a mail: accept, ignore, or reassign to project_id.',
+      inputSchema: obj({ mail_id: str, action: { type: 'string', enum: ['accept', 'ignore', 'reassign'] }, project_id: str }, ['mail_id', 'action']),
+      run: (a) => api.mailFeedback!(String(a.mail_id), { action: a.action as 'accept', ...(a.project_id ? { projectId: String(a.project_id) } : {}) }),
+    },
+    {
       name: 'spica_list_tools',
       description: 'The tools agents can use right now (name, source, whether they need confirmation). Plugins add and remove tools here.',
       inputSchema: obj({}),

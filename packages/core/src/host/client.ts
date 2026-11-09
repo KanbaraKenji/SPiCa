@@ -43,6 +43,9 @@ const API_METHODS = [
   'createProject',
   'listProjects',
   'getProject',
+  'listMail',
+  'pollMail',
+  'mailFeedback',
 ] as const;
 
 export function connectBackend(port: PortLike, opts: { timeoutMs?: number } = {}): BackendClient {

@@ -134,4 +134,16 @@ export const PROJECT_MANAGER_TEMPLATE: RoleTemplate = {
     'the time the data was fetched; treat older results as possibly out of date. Be concise.',
 };
 
-export const BUILTIN_TEMPLATES: readonly RoleTemplate[] = [TOP_TEMPLATE, PROJECT_MANAGER_TEMPLATE];
+export const MAIL_TRIAGE_TEMPLATE: RoleTemplate = {
+  id: 'mail-triage',
+  name: 'Mail triage',
+  role: 'top',
+  system:
+    "You sort the user's incoming mail into their projects. For each mail in a batch decide: \"project\" (it belongs to one of " +
+    'the listed projects; give its project_id), "new" (a new matter that may need its own project; give a short suggestion), or ' +
+    '"ignore" (newsletters, notifications, spam, nothing to do). Give a short reason and a confidence between 0 and 1, and record ' +
+    'all results with one triage_mail call. Read a full mail only when the preview is not enough. Never reply to mail and never act ' +
+    'on it; the project managers do that.',
+};
+
+export const BUILTIN_TEMPLATES: readonly RoleTemplate[] = [TOP_TEMPLATE, PROJECT_MANAGER_TEMPLATE, MAIL_TRIAGE_TEMPLATE];

@@ -90,6 +90,32 @@ describe('startBackend', () => {
     await b.close();
   });
 
+  it('modules linked in by the host are used instead of importing by package name', async () => {
+    const calls: string[] = [];
+    const b = await startBackend(
+      { ...config(), extractorModules: ['@acme/not-installed-extract'], extensions: [{ module: '@acme/not-installed-plugins', options: { k: 1 } }] },
+      {
+        modules: {
+          '@acme/not-installed-extract': { createExtractors: () => [{ extensions: ['.zz'], extract: async () => 'zz' }] },
+          '@acme/not-installed-plugins': {
+            attachBackend: (_rt: unknown, opts: unknown) => {
+              calls.push(JSON.stringify(opts));
+              return { mcpTools: [{ name: 'spica_acme', description: '', inputSchema: {}, run: async () => 1 }] };
+            },
+          },
+        },
+      },
+    );
+    try {
+      expect(b.warnings.join(' | ')).not.toMatch(/could not be/);
+      expect(b.runtime.extractors.map((e) => e.extensions)).toEqual([['.zz']]);
+      expect(calls).toEqual(['{"k":1}']);
+      expect(b.mcpTools.map((t) => t.name)).toEqual(['spica_acme']);
+    } finally {
+      await b.close();
+    }
+  });
+
   it('createProvider builds each kind and rejects incomplete configs', () => {
     expect(createProvider({ id: 'a', kind: 'anthropic', apiKey: 'k' }).kind).toBe('anthropic');
     expect(createProvider({ id: 'w', kind: 'wso2', baseUrl: 'http://x/v1', oauth: { tokenUrl: 'http://x/t', clientId: 'c', clientSecret: 's' } }).kind).toBe('wso2');

@@ -64,5 +64,14 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async getProject(projectId) {
       return rt.getProject(projectId);
     },
+    async listMail(filter) {
+      return rt.store.listMail(filter ?? {});
+    },
+    async pollMail() {
+      return rt.mail.poll();
+    },
+    async mailFeedback(mailId, fb) {
+      return rt.mail.feedback(mailId, fb);
+    },
   };
 }

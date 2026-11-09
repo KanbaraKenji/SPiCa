@@ -144,13 +144,13 @@ export class Session {
   // ---------------------------------------------------------------------------
 
   /** A message from the user (or the parent). Starts a run when idle; queued otherwise. */
-  send(text: string, opts: { author?: 'user' | 'parent'; kind?: MessageKind } = {}): SendHandle {
+  send(text: string, opts: { author?: 'user' | 'parent' | 'runtime'; kind?: MessageKind; meta?: Record<string, unknown> } = {}): SendHandle {
     if (this.#run || this.#hasPending()) return this.steer(text, 'next', opts);
     const msg = this.#append({
       role: 'user',
       kind: opts.kind ?? 'user',
       content: [{ type: 'text', text }],
-      meta: { author: opts.author ?? 'user' },
+      meta: { ...opts.meta, author: opts.author ?? 'user' },
     });
     this.#rt.onUserMessage(this, msg);
     const done = this.#startRun();
@@ -162,7 +162,7 @@ export class Session {
    * turn boundary; `interrupt` cuts the current model stream (or tool batch)
    * first, then applies it and continues.
    */
-  steer(text: string, mode: SteerMode, opts: { author?: 'user' | 'parent' } = {}): SendHandle {
+  steer(text: string, mode: SteerMode, opts: { author?: 'user' | 'parent' | 'runtime'; meta?: Record<string, unknown> } = {}): SendHandle {
     if (!this.#run && !this.#hasPending()) return this.send(text, opts);
     const message: Message = {
       id: newId('msg'),
@@ -172,7 +172,7 @@ export class Session {
       kind: 'steer',
       content: [{ type: 'text', text }],
       createdAt: isoNow(),
-      meta: { author: opts.author ?? 'user', steerMode: mode },
+      meta: { ...opts.meta, author: opts.author ?? 'user', steerMode: mode },
     };
     this.#rt.store.putQueued(message); // persisted: survives a crash before it is applied
     this.#emit({ type: 'steer.queued', messageId: message.id, mode });
@@ -324,7 +324,13 @@ export class Session {
       const hctx = this.#hookCtx(runId, turn);
 
       // 1. Assemble context by segment and let plugins change the request.
-      const env = { providerId: cfg.providerId, serverWebSearch: !!cfg.serverWebSearch, role: this.#record.role, ...(cfg.projectId ? { projectId: cfg.projectId } : {}) };
+      const env = {
+      providerId: cfg.providerId,
+      serverWebSearch: !!cfg.serverWebSearch,
+      role: this.#record.role,
+      ...(cfg.projectId ? { projectId: cfg.projectId } : {}),
+      ...(cfg.templateId ? { templateId: cfg.templateId } : {}),
+    };
       const tools = this.#rt.tools.list(env, cfg.tools);
       const injections = await this.#rt.hooks.injections(hctx);
       let draft: RequestDraft = {
@@ -555,7 +561,13 @@ export class Session {
   /** Run a turn's tool calls. Returns true when the run must pause for the user. */
   async #runTools(assistant: Message, calls: ToolUseBlock[], signal: AbortSignal, hctx: HookContext): Promise<boolean> {
     const cfg = this.#record.config;
-    const env = { providerId: cfg.providerId, serverWebSearch: !!cfg.serverWebSearch, role: this.#record.role, ...(cfg.projectId ? { projectId: cfg.projectId } : {}) };
+    const env = {
+      providerId: cfg.providerId,
+      serverWebSearch: !!cfg.serverWebSearch,
+      role: this.#record.role,
+      ...(cfg.projectId ? { projectId: cfg.projectId } : {}),
+      ...(cfg.templateId ? { templateId: cfg.templateId } : {}),
+    };
     const visible = new Set(this.#rt.tools.list(env, cfg.tools).map((t) => t.spec.name));
     const pending: PendingRecord[] = [];
 

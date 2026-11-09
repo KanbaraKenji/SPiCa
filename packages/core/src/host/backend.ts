@@ -15,6 +15,7 @@ import { SqliteStore } from '../store/sqlite.ts';
 import type { FileExtractor } from '../tools/types.ts';
 import { jsonSearchBackend, type JsonSearchBackendOptions } from '../tools/web-tools.ts';
 import type { McpTool } from '../mcp/server.ts';
+import type { MailConfig } from '../mail.ts';
 import { BackendServer } from './server.ts';
 
 /** One model endpoint, as the settings page stores it (keys included; sent over the port, never via files or env). */
@@ -57,6 +58,8 @@ export interface BackendConfig {
    * called after restore(). Keeps the core free of a dependency on them.
    */
   extensions?: { module: string; options?: unknown }[];
+  /** Mail pipeline; polling starts after the extensions are attached unless enabled is false. */
+  mail?: MailConfig;
 }
 
 /** What attachBackend() of an extension module returns. */
@@ -152,14 +155,25 @@ export interface Backend {
   close(): Promise<void>;
 }
 
-export async function startBackend(cfg: BackendConfig): Promise<Backend> {
+/**
+ * Code the host links in directly. `modules` maps the names used in
+ * `extractorModules` / `extensions[].module` to already-imported modules, so a
+ * packaged app (no node_modules) does not depend on dynamic import by package
+ * name; names missing here are imported by name (development).
+ */
+export interface BackendHost {
+  modules?: Record<string, unknown>;
+}
+
+export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): Promise<Backend> {
+  const load = async (spec: string): Promise<unknown> => host.modules?.[spec] ?? (await import(spec));
   const unlock = lockDatabase(cfg.dbPath);
   try {
     const warnings: string[] = [];
     const extractors: FileExtractor[] = [];
     for (const spec of cfg.extractorModules ?? []) {
       try {
-        const mod = (await import(spec)) as { createExtractors?: () => FileExtractor[] };
+        const mod = (await load(spec)) as { createExtractors?: () => FileExtractor[] };
         if (typeof mod.createExtractors === 'function') extractors.push(...mod.createExtractors());
         else warnings.push(`extractor module ${spec} has no createExtractors()`);
       } catch (err) {
@@ -181,13 +195,14 @@ export async function startBackend(cfg: BackendConfig): Promise<Backend> {
       ...(cfg.prices ? { prices: cfg.prices } : {}),
       ...(cfg.spillDir ? { spillDir: cfg.spillDir } : {}),
       ...(cfg.search ? { search: jsonSearchBackend(cfg.search) } : {}),
+      ...(cfg.mail ? { mail: cfg.mail } : {}),
     });
     warnings.push(...runtime.workflowErrors);
     const restored = runtime.restore();
     const extensions: BackendExtension[] = [];
     for (const ext of cfg.extensions ?? []) {
       try {
-        const mod = (await import(ext.module)) as { attachBackend?: (rt: Runtime, options: unknown) => BackendExtension | Promise<BackendExtension> };
+        const mod = (await load(ext.module)) as { attachBackend?: (rt: Runtime, options: unknown) => BackendExtension | Promise<BackendExtension> };
         if (typeof mod.attachBackend !== 'function') {
           warnings.push(`extension ${ext.module} has no attachBackend()`);
           continue;
@@ -199,6 +214,7 @@ export async function startBackend(cfg: BackendConfig): Promise<Backend> {
         warnings.push(`extension ${ext.module} could not be attached: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
+    if (cfg.mail && cfg.mail.enabled !== false) runtime.mail.start();
     const server = new BackendServer(runtime, {
       extraMethods: {
         ...Object.assign({}, ...extensions.map((e) => e.methods ?? {})),
