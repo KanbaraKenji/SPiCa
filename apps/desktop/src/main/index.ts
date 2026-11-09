@@ -2,7 +2,8 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, safeStorage, shell } from 'electron';
+import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
 import { deriveTokens, resolveSkin, schemeOf } from '../shared/skin';
@@ -29,6 +30,7 @@ import { readModelEnv } from './backend/model-env';
 import { SettingsStore } from './settings-store';
 import { captureOnce, runShots } from './shots';
 import { flatten, icoFromPngs, inkFor } from './icon';
+import { PREVIEW_SCHEME, PreviewFiles, readPreview } from './preview';
 
 const APP_NAME = 'Spica';
 /** Title bar height in CSS px at 100% zoom; must match `--spica-titlebar-h` in the renderer. */
@@ -284,6 +286,8 @@ function createMainWindow(): BrowserWindow {
       nodeIntegration: false,
       zoomFactor: s.zoom,
       spellcheck: false,
+      // The built-in PDF viewer, for previews in the right panel.
+      plugins: true,
     },
   });
 
@@ -347,6 +351,18 @@ ipcMain.handle(DesktopChannel.Agent, async (_e, method: unknown, args: unknown) 
   // Name the missing method, so a backend that lags behind the shell is easy to spot.
   if (!fn) throw new Error(`这个版本还不支持这个操作（${method}）。`);
   return fn.apply(backend, Array.isArray(args) ? args : []);
+});
+
+// Previews: files the user opened from a conversation, shown in the right panel.
+// The PDF viewer and images load them through spica-file://<token> (only those files).
+protocol.registerSchemesAsPrivileged([{ scheme: PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
+const previewFiles = new PreviewFiles();
+
+ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unknown) => {
+  const raw = typeof path === 'string' ? path : '';
+  const session = typeof sessionId === 'string' && sessionId ? await backend.getSession(sessionId).catch(() => undefined) : undefined;
+  const full = isAbsolute(raw) ? raw : resolvePath(session?.cwd || app.getPath('home'), raw);
+  return readPreview(full, previewFiles);
 });
 
 ipcMain.handle(DesktopChannel.OpenFile, async (_e, sessionId: unknown, path: unknown): Promise<string | null> => {
@@ -582,6 +598,10 @@ nativeTheme.on('updated', () => {
 
 void app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
+  protocol.handle(PREVIEW_SCHEME, (req) => {
+    const file = previewFiles.pathOf(req.url);
+    return file ? net.fetch(pathToFileURL(file).toString()) : new Response('', { status: 404 });
+  });
   if (backend instanceof ProcessBackend) void backend.start();
   else applyProviders();
   void pluginService.start().catch(() => {
