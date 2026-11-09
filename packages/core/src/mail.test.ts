@@ -209,6 +209,21 @@ describe('mail pipeline', () => {
     expect(other.mail.thread().config.system).toBe('MINE');
   });
 
+  it('stays off until the user turns it on, and says which model mail goes to', async () => {
+    const rt = makeRuntime(gw, { cwd: dir });
+    const events: import('./types.ts').CoreEvent[] = [];
+    rt.events.on((e) => events.push(e));
+    expect(rt.mail.start()).toBe(false); // nothing configured: off
+    expect(rt.mail.settings).toMatchObject({ enabled: false, triageModel: { providerId: 'fake-openai', model: 'fake-model' } });
+    rt.mail.configure({ intervalMinutes: 10 }); // changing the interval does not turn it on
+    expect(rt.mail.running).toBe(false);
+    rt.mail.configure({ enabled: true });
+    expect(rt.mail.running).toBe(true);
+    const on = events.filter((e) => e.type === 'mail.configured').at(-1);
+    expect(on).toMatchObject({ running: true, settings: { enabled: true, triageModel: { model: 'fake-model' } } });
+    rt.mail.stop();
+  });
+
   it('without a mail plugin nothing runs; start() respects enabled:false', async () => {
     const rt = makeRuntime(gw, { cwd: dir, mail: { enabled: false, sources: [{ id: 'x', listTool: 'missing__list', readTool: 'missing__read' }] } });
     expect(rt.mail.activeSources).toEqual([]);

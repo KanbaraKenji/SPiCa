@@ -4,6 +4,7 @@ export { EventBus, isoNow, type EventListener } from './events.ts';
 export { Runtime, DEFAULT_SYSTEM_PROMPT, type RuntimeOptions } from './runtime.ts';
 export { exportUsageLog, usageLogLines, USAGE_LOG_SCHEMA, USAGE_LOG_VERSION } from './export.ts';
 export { redact, redactDeep, SECRET_ENV } from './util.ts';
+export { configureNetwork, netFetch, networkStatus, proxyFor, NET_HINTS, netErrorCode, type NetworkConfig } from './net.ts';
 export { Session, type RunResult, type SendHandle } from './session.ts';
 export { createAgentApi } from './api.ts';
 export {

@@ -2,6 +2,7 @@
 import type { Tracer } from '../trace.ts';
 import type { ProbeResult } from '../types.ts';
 import { isAbortError, redact } from '../util.ts';
+import { NET_HINTS, netErrorCode } from '../net.ts';
 import { ProviderError, type Provider } from './types.ts';
 
 export interface ProbeOptions {
@@ -31,7 +32,14 @@ export async function probeProvider(provider: Provider, opts: ProbeOptions): Pro
   });
   const signal = AbortSignal.any([AbortSignal.timeout(opts.timeoutMs ?? 20_000), ...(opts.signal ? [opts.signal] : [])]);
   const info = { attempts: 0 };
+  let stage: 'token' | 'model' = 'model';
   try {
+    if (provider.checkAuth) {
+      // WSO2 and the like: get a token first, so a failure says which step broke
+      stage = 'token';
+      await provider.checkAuth(signal);
+      stage = 'model';
+    }
     let model: string | undefined;
     let firstByteMs: number | undefined;
     for await (const ev of provider.stream(
@@ -73,6 +81,17 @@ export async function probeProvider(provider: Provider, opts: ProbeOptions): Pro
                     ? 'auth'
                     : 'network';
     trace?.finish({ status: errorCode === 'aborted' ? 'aborted' : 'error', error: message, attempts: info.attempts, ...(status ? { httpStatus: status } : {}) });
-    return { ok: false, latencyMs, errorCode, ...(status ? { httpStatus: status } : {}), message };
+    const code = timedOut ? 'net.timeout' : err instanceof ProviderError && err.code ? err.code : isAbortError(err) ? undefined : netErrorCode(err);
+    const hint = code ? NET_HINTS[code] : undefined;
+    return {
+      ok: false,
+      latencyMs,
+      errorCode,
+      stage,
+      ...(code ? { code } : {}),
+      ...(hint ? { hint: stage === 'token' ? `取 token 失败：${hint}` : `调模型失败：${hint}` } : {}),
+      ...(status ? { httpStatus: status } : {}),
+      message,
+    };
   }
 }

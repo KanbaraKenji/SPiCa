@@ -3,6 +3,7 @@
 // before it expires, and fetched again once after a 401.
 import type { Tracer } from '../trace.ts';
 import { abortError } from '../util.ts';
+import { looksLikeHtml, htmlTitle, netErrorCode, netFetch } from '../net.ts';
 import { hostOf } from './http.ts';
 import { OpenAICompatibleProvider, type OpenAICompatibleOptions } from './openai.ts';
 import { ProviderError, type AuthSource } from './types.ts';
@@ -27,6 +28,8 @@ export class OAuthClientCredentials implements AuthSource {
   readonly #o: OAuthClientCredentialsOptions;
   #token: { value: string; expiresAt: number } | undefined;
   #inflight: Promise<string> | undefined;
+  /** Gateway clock minus ours, from the Date header of the last token response. */
+  #skewMs = 0;
   tracer: Tracer | undefined;
 
   constructor(opts: OAuthClientCredentialsOptions) {
@@ -35,6 +38,20 @@ export class OAuthClientCredentials implements AuthSource {
 
   async headers(signal: AbortSignal): Promise<Record<string, string>> {
     return { authorization: `Bearer ${await this.#get(signal)}` };
+  }
+
+  /** Get a fresh token now (test connection); throws a ProviderError with a wso2.* code. */
+  async check(signal: AbortSignal): Promise<void> {
+    this.#token = undefined;
+    await this.#get(signal);
+  }
+
+  diagnose(): { code: string; detail: string } {
+    const minutes = Math.round(this.#skewMs / 60_000);
+    if (Math.abs(this.#skewMs) > 5 * 60_000) {
+      return { code: 'wso2.clock_skew', detail: `this computer's clock is ${Math.abs(minutes)} minutes ${minutes > 0 ? 'behind' : 'ahead of'} the gateway` };
+    }
+    return { code: 'wso2.token_not_accepted', detail: 'the gateway rejected a freshly issued token: check the subscription of the application to this API' };
   }
 
   async refresh(signal: AbortSignal): Promise<boolean> {
@@ -77,7 +94,7 @@ export class OAuthClientCredentials implements AuthSource {
     }
     let res: Response;
     try {
-      res = await (o.fetchImpl ?? fetch)(o.tokenUrl, {
+      res = await (o.fetchImpl ?? netFetch)(o.tokenUrl, {
         method: 'POST',
         headers,
         body: form.toString(),
@@ -86,19 +103,36 @@ export class OAuthClientCredentials implements AuthSource {
     } catch (err) {
       trace?.finish({ status: signal.aborted ? 'aborted' : 'error', error: err instanceof Error ? err.message : String(err) });
       if (signal.aborted) throw abortError(signal);
-      throw new ProviderError('token endpoint unreachable', { retryable: true });
-    }
-    if (!res.ok) {
-      trace?.finish({ status: 'error', httpStatus: res.status, error: `token request rejected (HTTP ${res.status})` });
-      throw new ProviderError(`token request rejected (HTTP ${res.status}); check client id, secret and scope`, {
-        status: res.status,
-        retryable: res.status === 429 || res.status >= 500,
+      const net = netErrorCode(err);
+      throw new ProviderError(`token endpoint unreachable [wso2.token_unreachable / ${net}]`, {
+        retryable: !net.startsWith('tls.') && net !== 'proxy.auth',
+        code: net.startsWith('tls.') || net.startsWith('proxy.') ? net : 'wso2.token_unreachable',
       });
     }
-    const body = (await res.json().catch(() => ({}))) as { access_token?: unknown; expires_in?: unknown };
+    const date = Date.parse(res.headers.get('date') ?? '');
+    if (Number.isFinite(date)) this.#skewMs = date - Date.now();
+    const text = await res.text().catch(() => '');
+    const html = looksLikeHtml(res.headers.get('content-type'), text);
+    if (!res.ok) {
+      const code = html ? 'wso2.token_bad_response' : res.status === 429 || res.status >= 500 ? 'gateway.server' : 'wso2.token_rejected';
+      const what = html ? `an HTML page${htmlTitle(text) ? ` "${htmlTitle(text)}"` : ''}` : `HTTP ${res.status}`;
+      trace?.finish({ status: 'error', httpStatus: res.status, error: `token request rejected (${what})` });
+      throw new ProviderError(`token request rejected (HTTP ${res.status}) [${code}]; ${html ? `the token URL returned ${what}` : 'check client id, secret and scope'}`, {
+        status: res.status,
+        retryable: res.status === 429 || res.status >= 500,
+        code,
+      });
+    }
+    let body: { access_token?: unknown; expires_in?: unknown } = {};
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      // handled below
+    }
     if (typeof body.access_token !== 'string' || body.access_token === '') {
-      trace?.finish({ status: 'error', httpStatus: res.status, error: 'token response has no access_token' });
-      throw new ProviderError('token response has no access_token', { retryable: false });
+      const what = html ? `an HTML page${htmlTitle(text) ? ` "${htmlTitle(text)}"` : ''}` : text.trim() ? 'something that is not a token' : 'an empty body';
+      trace?.finish({ status: 'error', httpStatus: res.status, error: `token response has no access_token (${what})` });
+      throw new ProviderError(`token response has no access_token [wso2.token_bad_response]: the token URL returned ${what}`, { retryable: false, code: 'wso2.token_bad_response' });
     }
     const ttl = Number(body.expires_in);
     this.#token = { value: body.access_token, expiresAt: Date.now() + (Number.isFinite(ttl) && ttl > 0 ? ttl * 1000 : 3_600_000) };
@@ -128,5 +162,9 @@ export class Wso2Provider extends OpenAICompatibleProvider {
 
   attach(services: { tracer: Tracer }): void {
     this.#auth.tracer = services.tracer;
+  }
+
+  checkAuth(signal: AbortSignal): Promise<void> {
+    return this.#auth.check(signal);
   }
 }

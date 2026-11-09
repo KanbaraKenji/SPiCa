@@ -2,6 +2,7 @@
 // cancellation and one credential refresh after a 401.
 import { ProviderError, type AuthSource, type CallInfo } from './types.ts';
 import { abortError, redact, sleep } from '../util.ts';
+import { htmlTitle, httpErrorCode, looksLikeHtml, netErrorCode, netFetch } from '../net.ts';
 
 export interface RetryPolicy {
   /** Total attempts including the first one. */
@@ -33,7 +34,7 @@ export interface PostOptions {
  * Retries 408/409/429/5xx and network errors before any body is consumed.
  */
 export async function postWithRetry(opts: PostOptions): Promise<Response> {
-  const doFetch = opts.fetchImpl ?? fetch;
+  const doFetch = opts.fetchImpl ?? netFetch;
   let refreshed = false;
   let lastError: ProviderError | undefined;
   for (let attempt = 1; attempt <= opts.retry.maxAttempts; attempt++) {
@@ -81,8 +82,12 @@ export async function postWithRetry(opts: PostOptions): Promise<Response> {
       if (opts.signal.aborted) throw abortError(opts.signal);
       clearTimeout(timer);
       if (err instanceof ProviderError && !err.retryable) throw err; // e.g. rejected credentials
-      const reason = err instanceof Error ? `${err.name}: ${err.message}` : 'network error';
-      lastError = new ProviderError(redact(`request failed (${reason})`, opts.secrets), { retryable: true });
+      const reason = err instanceof Error ? `${err.name}: ${err.message}${causeText(err)}` : 'network error';
+      const code = err instanceof ProviderError && err.code ? err.code : netErrorCode(err);
+      // a certificate or proxy refusal will not fix itself by retrying
+      const retryable = !(code.startsWith('tls.') || code === 'proxy.auth' || code === 'proxy.refused');
+      lastError = new ProviderError(redact(`request failed [${code}] (${reason})`, opts.secrets), { retryable, code });
+      if (!retryable) throw lastError;
       if (attempt < opts.retry.maxAttempts) {
         const delay = backoff(opts.retry, attempt);
         opts.onRetry?.({ attempt, delayMs: delay, reason });
@@ -105,9 +110,17 @@ export async function postWithRetry(opts: PostOptions): Promise<Response> {
       }
     }
     const retryable = res.status === 408 || res.status === 409 || res.status === 429 || res.status >= 500;
-    lastError = new ProviderError(redact(`HTTP ${res.status}: ${text.slice(0, 500)}`, opts.secrets), {
+    const html = looksLikeHtml(res.headers.get('content-type'), text);
+    let code = httpErrorCode(res.status, res.headers.get('content-type'), text);
+    if (res.status === 401 && refreshed && opts.auth?.diagnose) code = opts.auth.diagnose().code;
+    const detail = html
+      ? `the gateway returned an HTML page${htmlTitle(text) ? ` "${htmlTitle(text)}"` : ''} instead of API data`
+      : text.slice(0, 500);
+    const extra = res.status === 401 && refreshed && opts.auth?.diagnose ? ` (${opts.auth.diagnose().detail})` : '';
+    lastError = new ProviderError(redact(`HTTP ${res.status} [${code}]: ${detail}${extra}`, opts.secrets), {
       status: res.status,
       retryable,
+      code,
     });
     if (!retryable || attempt >= opts.retry.maxAttempts) throw lastError;
     const delay = retryAfterMs(res) ?? backoff(opts.retry, attempt);
@@ -115,6 +128,13 @@ export async function postWithRetry(opts: PostOptions): Promise<Response> {
     await sleep(delay, opts.signal);
   }
   throw lastError ?? new ProviderError('request failed');
+}
+
+function causeText(err: Error): string {
+  const c = (err as { cause?: unknown }).cause;
+  if (!(c instanceof Error)) return '';
+  const code = (c as { code?: unknown }).code;
+  return ` <- ${typeof code === 'string' ? `${code} ` : ''}${c.message}`;
 }
 
 function backoff(p: RetryPolicy, attempt: number): number {

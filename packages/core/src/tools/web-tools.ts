@@ -1,6 +1,7 @@
 // web_fetch and web_search. External data is fetched fresh every time (no
 // cache); every request leaves a traceable record.
 import type { Tool, ToolContext } from './types.ts';
+import { netFetch } from '../net.ts';
 
 const MAX_BYTES = 5_000_000;
 const DEFAULT_MAX_CHARS = 40_000;
@@ -17,7 +18,7 @@ export interface WebFetchOptions {
 }
 
 export function createWebFetchTool(opts: WebFetchOptions = {}): Tool {
-  const doFetch = opts.fetchImpl ?? fetch;
+  const doFetch = opts.fetchImpl ?? netFetch;
   return {
     untrusted: 'web',
     targetUrl: (input) => (typeof input.url === 'string' ? input.url : undefined),
@@ -204,7 +205,7 @@ export function jsonSearchBackend(o: JsonSearchBackendOptions): SearchBackend {
     id: o.id,
     async search(query, { count, signal }) {
       const url = o.url.replace(/\{query\}/g, encodeURIComponent(query)).replace(/\{count\}/g, String(count));
-      const res = await (o.fetchImpl ?? fetch)(url, {
+      const res = await (o.fetchImpl ?? netFetch)(url, {
         headers: { accept: 'application/json', ...o.headers },
         signal: AbortSignal.any([signal, AbortSignal.timeout(o.timeoutMs ?? 20_000)]),
       });

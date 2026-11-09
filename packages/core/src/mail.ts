@@ -21,6 +21,7 @@ export interface MailSource {
 }
 
 export interface MailConfig {
+  /** Off unless the user turns it on: polling sends mail content to a model. */
   enabled?: boolean;
   /** Default 5. */
   intervalMinutes?: number;
@@ -89,9 +90,9 @@ export class MailPipeline {
     return this.#sources.filter((s) => this.#rt.tools.get(s.listTool));
   }
 
-  /** Start polling on the interval (and once right away). Returns false when disabled. */
+  /** Start polling on the interval (and once right away). Returns false unless the user turned mail on. */
   start(): boolean {
-    if (this.#cfg.enabled === false || this.#timer) return false;
+    if (this.#cfg.enabled !== true || this.#timer) return false;
     const minutes = this.#cfg.intervalMinutes ?? 5;
     const tick = () => void this.poll().catch(() => undefined);
     this.#timer = setInterval(tick, minutes * 60_000);
@@ -111,10 +112,21 @@ export class MailPipeline {
   }
 
   /** Current settings (sources are listed separately in activeSources). */
-  get settings(): Omit<MailConfig, 'sources'> {
+  get settings(): Omit<MailConfig, 'sources'> & { enabled: boolean; triageModel: { providerId: string; model: string } } {
     const { sources: _s, ...rest } = this.#cfg;
     void _s;
-    return { ...rest };
+    return { ...rest, enabled: this.#cfg.enabled === true, triageModel: this.triageModel };
+  }
+
+  /**
+   * The model the sorting sends mail content to (the triage template's model,
+   * else the defaults). Project managers then read their mail with their own
+   * model. The settings page names it when the user turns mail on.
+   */
+  get triageModel(): { providerId: string; model: string } {
+    const tpl = this.#rt.template(this.#cfg.triageTemplateId ?? 'mail-triage');
+    const d = this.#rt.defaults;
+    return { providerId: tpl?.providerId ?? d.providerId, model: tpl?.model ?? d.model };
   }
 
   /**
@@ -125,7 +137,7 @@ export class MailPipeline {
   configure(patch: Omit<MailConfig, 'sources'>): Omit<MailConfig, 'sources'> {
     const wasRunning = this.running;
     this.#cfg = { ...this.#cfg, ...patch };
-    const shouldRun = this.#cfg.enabled !== false && (wasRunning || patch.enabled === true);
+    const shouldRun = this.#cfg.enabled === true && (wasRunning || patch.enabled === true);
     if (this.running && (!shouldRun || patch.intervalMinutes !== undefined)) this.stop();
     if (shouldRun && !this.running) this.start();
     const settings = this.settings;
