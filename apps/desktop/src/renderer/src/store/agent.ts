@@ -77,6 +77,7 @@ export class AgentStore {
       const sessions = await this.#api.listSessions();
       const first = preferredId ?? sessions.find((s) => s.role === 'top')?.id ?? sessions[0]?.id ?? null;
       this.state.set((v) => ({ ...v, sessions, loaded: true, activeId: v.activeId ?? first }));
+      void this.#nameUntitled(sessions);
       if (first) await this.load(first);
     } catch (err) {
       this.state.set((v) => ({ ...v, loaded: true, notice: friendlyError(err) }));
@@ -121,10 +122,17 @@ export class AgentStore {
     await this.#guard(async () => {
       let target = id;
       if (!target) {
-        // Typing into the empty window starts a new conversation.
-        const s = await this.#api.createSession({ role: 'top' });
-        target = s.id;
-        this.state.set((v) => ({ ...v, sessions: [s, ...v.sessions], activeId: s.id, transcripts: { ...v.transcripts, [s.id]: { items: [] } } }));
+        // Typing into the empty window: the assistant's own thread while it is still
+        // empty (first use), otherwise a new conversation.
+        const top = await this.#emptyTop();
+        if (top) {
+          target = top.id;
+          this.state.set((v) => ({ ...v, activeId: top.id, transcripts: { ...v.transcripts, [top.id]: v.transcripts[top.id] ?? { items: [] } } }));
+        } else {
+          const s = await this.#api.createSession({ role: 'top' });
+          target = s.id;
+          this.state.set((v) => ({ ...v, sessions: [s, ...v.sessions], activeId: s.id, transcripts: { ...v.transcripts, [s.id]: { items: [] } } }));
+        }
       }
       const result = await this.#api.send(target, text);
       if (!result.started) {
@@ -138,6 +146,37 @@ export class AgentStore {
         });
       }
     });
+  }
+
+  /** The assistant's default thread when nothing was said in it yet (asks the core again if it failed at start, e.g. before a model was set). */
+  async #emptyTop(): Promise<SessionInfo | null> {
+    if (!this.#api.getTopSession) return null;
+    try {
+      const top = await this.#api.getTopSession();
+      this.state.set((v) => ({ ...v, topId: top.id, sessions: v.sessions.some((x) => x.id === top.id) ? v.sessions : [top, ...v.sessions] }));
+      const known = this.state.get().transcripts[top.id];
+      const count = known ? known.items.length : (await this.#api.getMessages(top.id)).length;
+      return count === 0 ? top : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Untitled conversations are named by their first line; after a restart that line comes from history. */
+  async #nameUntitled(sessions: SessionInfo[]): Promise<void> {
+    const known = this.state.get().firstLines;
+    const todo = sessions.filter((x) => x.role === 'top' && GENERIC_TITLES.has(x.title) && !known[x.id]).slice(0, 100);
+    const found = await Promise.all(
+      todo.map(async (x) => {
+        try {
+          return [x.id, firstUserText(await this.#api.getMessages(x.id))] as const;
+        } catch {
+          return [x.id, undefined] as const;
+        }
+      }),
+    );
+    const add = Object.fromEntries(found.filter((f): f is readonly [string, string] => Boolean(f[1])));
+    if (Object.keys(add).length) this.state.set((v) => ({ ...v, firstLines: { ...add, ...v.firstLines } }));
   }
 
   /** Names a session; null goes back to the automatic name. */
@@ -208,6 +247,7 @@ export class AgentStore {
     try {
       const sessions = await this.#api.listSessions();
       this.state.set((v) => ({ ...v, sessions }));
+      void this.#nameUntitled(sessions);
       if (active) await this.load(active);
     } catch (err) {
       this.state.set((v) => ({ ...v, notice: friendlyError(err) }));
