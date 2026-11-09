@@ -46,7 +46,7 @@ function frame(t) {
   const ready = t >= readyAt ? readyAt : null;
   const f = splashFrame(t, ready);
   const out = [];
-  for (const s of starfield(t, ready, W, H, 1)) {
+  for (const s of starfield(t, ready, W, H, 1, {}, { x: L.cx, y: L.cy })) {
     if (s.opacity <= 0.005) continue;
     out.push(`<line x1="${f2(s.x1)}" y1="${f2(s.y1)}" x2="${f2(s.x2)}" y2="${f2(s.y2)}" stroke="${s.accent ? T.acc : T.star}" stroke-width="${f2(s.width)}" stroke-linecap="round" opacity="${(s.opacity * f.layer).toFixed(3)}"/>`);
   }
@@ -59,7 +59,7 @@ function frame(t) {
   mark += `<g opacity="${(f.petals[0]?.opacity ?? 0).toFixed(3)}">${petalPaths(T.ink, T.acc)}</g>`;
   if (f.fill) {
     mark += `<clipPath id="fillclip"><circle cx="${C}" cy="${C}" r="${f.fill.radius.toFixed(3)}"/></clipPath><g clip-path="url(#fillclip)">${petalPaths(T.ink, T.acc)}</g>`;
-    for (const rp of f.fill.ripples) if (rp.opacity > 0.005) mark += `<circle cx="${C}" cy="${C}" r="${rp.r.toFixed(3)}" fill="none" stroke="${T.acc}" stroke-width="0.8" opacity="${rp.opacity.toFixed(3)}"/>`;
+    for (const rp of f.fill.ripples) if (rp.opacity > 0.005) mark += `<circle cx="${C}" cy="${C}" r="${rp.r.toFixed(3)}" fill="none" stroke="${T.acc}" stroke-width="0.35" opacity="${rp.opacity.toFixed(3)}"/>`;
   }
   mark += `<circle cx="${C}" cy="${C}" r="${(4.5 * f.hubScale).toFixed(3)}" fill="${T.ink}" opacity="${f.hubOpacity.toFixed(3)}"/>`;
   g.push(`<g transform="translate(${L.cx} ${L.cy}) scale(${L.markScale}) translate(-${C} -${C})">${mark}</g>`);

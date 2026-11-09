@@ -259,9 +259,11 @@ export function SpicaSplash({
         const w = canvas.width;
         const h = canvas.height;
         const scale = Math.min(w / SPLASH_STAGE.width, h / SPLASH_STAGE.height);
+        // 舞台按 meet 等比居中：花心在画布上的位置就是星点飞出的原点
+        const origin = { x: (w - SPLASH_STAGE.width * scale) / 2 + L.cx * scale, y: (h - SPLASH_STAGE.height * scale) / 2 + L.cy * scale };
         ctx.clearRect(0, 0, w, h);
         ctx.lineCap = 'round';
-        for (const s of starfield(t, readyAtRef.current, w, h, scale, opts)) {
+        for (const s of starfield(t, readyAtRef.current, w, h, scale, opts, origin)) {
           if (s.opacity <= 0.005) continue;
           ctx.globalAlpha = s.opacity;
           ctx.strokeStyle = s.accent ? colors.accent : colors.star;
