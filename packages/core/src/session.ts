@@ -328,7 +328,11 @@ export class Session {
       const tools = this.#rt.tools.list(env, cfg.tools);
       const injections = await this.#rt.hooks.injections(hctx);
       let draft: RequestDraft = {
-        segments: buildSegments(`${cfg.system}\n\n${languageLine(cfg.locale)}`, this.#messages, injections),
+        segments: buildSegments(
+          [cfg.system, languageLine(cfg.locale), this.#leadsOthers() ? TEAM_RULE : ''].filter(Boolean).join('\n\n'),
+          this.#messages,
+          injections,
+        ),
         tools: tools.map((t) => t.spec),
         params: {
           providerId: cfg.providerId,
@@ -815,6 +819,11 @@ export class Session {
     return message;
   }
 
+  /** Top-level agent, project manager, or any session that has sub-agents. */
+  #leadsOthers(): boolean {
+    return this.#record.role === 'top' || this.#record.role === 'manager' || this.#rt.hasChildren(this.id);
+  }
+
   #nextSeq(): number {
     return (this.#messages[this.#messages.length - 1]?.seq ?? 0) + 1;
   }
@@ -851,6 +860,15 @@ export class Session {
     if (!this.#run && !this.#hasPending()) for (const fn of this.#settleWaiters.splice(0)) fn();
   }
 }
+
+/**
+ * For sessions that lead sub-agents: what the user says or decides inside a
+ * sub-agent session overrides the original plan (project brief J4).
+ */
+export const TEAM_RULE =
+  'The user can talk to your sub-agents directly. When a note tells you what the user said or decided in a sub-agent ' +
+  'session, that takes priority over your original plan: apply it to your overall result, and say in your answer that ' +
+  'you adjusted it because of what the user said in that sub-agent session.';
 
 /** Answer in the user's language; before the user has written, use the interface language. */
 export function languageLine(locale: string | undefined): string {

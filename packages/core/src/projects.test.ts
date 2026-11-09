@@ -246,3 +246,25 @@ describe('project tools', () => {
     expect(top.messages().some((m) => m.kind === 'relay' && m.meta?.kind === 'decision')).toBe(true);
   });
 });
+
+describe('team rule', () => {
+  it('sessions that lead sub-agents are told that user changes in a sub-agent session take priority', async () => {
+    const gw = await startGateway();
+    try {
+      gw.onRequest(() => ({ text: 'ok' }));
+      const r = makeRuntime(gw);
+      const lead = r.createSession({ role: 'worker' }); // not a leader yet
+      await lead.send('one').done;
+      const child = r.createSession({ parentId: lead.id });
+      await lead.send('two').done;
+      await child.send('three', { author: 'parent' }).done;
+      const sys = (i: number) => (gw.requests[i]!.body.messages as { content: string }[])[0]!.content;
+      const { TEAM_RULE } = await import('./session.ts');
+      expect(sys(0)).not.toContain(TEAM_RULE);
+      expect(sys(1)).toContain(TEAM_RULE); // now it has a sub-agent
+      expect(sys(2)).not.toContain(TEAM_RULE); // the sub-agent itself leads no one
+    } finally {
+      await gw.stop();
+    }
+  });
+});

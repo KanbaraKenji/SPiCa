@@ -83,6 +83,7 @@ export interface RuntimeInternals {
   onStatus(session: Session, status: SessionStatus): void;
   onRunEnd(session: Session, result: RunResult): void;
   onToolDone(session: Session, call: { name: string; input: unknown }, result: { isError: boolean }): void;
+  hasChildren(sessionId: string): boolean;
 }
 
 /** How a session is named in text written for the model. */
@@ -235,6 +236,10 @@ export class Runtime implements RuntimeInternals {
 
   sessions(): Session[] {
     return [...this.#sessions.values()];
+  }
+
+  hasChildren(id: string): boolean {
+    return this.sessions().some((s) => s.parentId === id);
   }
 
   children(id: string): Session[] {
