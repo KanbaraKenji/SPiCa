@@ -26,9 +26,39 @@ export type Block =
   | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean }
   | { type: 'suggest'; callId: string; title: string; actions: SuggestAction[] };
 
+/** A note from a sub-agent (its report, what the user said there, or a decision made there). */
+export interface ChildNote {
+  kind: 'report' | 'relay' | 'decision';
+  fromSessionId: string;
+  fromTitle: string | null;
+  text: string;
+  by?: 'user' | 'agent';
+}
+
+/** Reads ChildNoteMeta from a message; undefined for other notes. */
+export function childNoteOf(m: Message): ChildNote | undefined {
+  const meta = m.meta;
+  if (!meta || meta.author !== 'child') return undefined;
+  const kind = meta.kind;
+  if (kind !== 'report' && kind !== 'relay' && kind !== 'decision') return undefined;
+  if (typeof meta.fromSessionId !== 'string' || typeof meta.text !== 'string') return undefined;
+  return {
+    kind,
+    fromSessionId: meta.fromSessionId,
+    fromTitle: typeof meta.fromTitle === 'string' ? meta.fromTitle : null,
+    text: meta.text,
+    ...(meta.by === 'user' || meta.by === 'agent' ? { by: meta.by } : {}),
+  };
+}
+
+function noteItem(m: Message): Item {
+  const child = childNoteOf(m);
+  return child ? { kind: 'note', id: m.id, text: child.text, child } : { kind: 'note', id: m.id, text: textOf(m) };
+}
+
 export type Item =
   | { kind: 'user'; id: string; text: string; steer: boolean }
-  | { kind: 'note'; id: string; text: string }
+  | { kind: 'note'; id: string; text: string; child?: ChildNote }
   | { kind: 'response'; id: string; blocks: Block[]; interrupted: boolean };
 
 export interface RunState {
@@ -159,7 +189,7 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
     }
     const text = textOf(m);
     if (m.kind === 'user' || m.kind === 'steer') items.push({ kind: 'user', id: m.id, text, steer: m.kind === 'steer' });
-    else items.push({ kind: 'note', id: m.id, text });
+    else items.push(noteItem(m));
   }
   const t: Transcript = { items };
   for (const p of pending) applyPending(t, p);
@@ -204,7 +234,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         if (!items.some((i) => i.id === m.id)) items.push({ kind: 'user', id: m.id, text: textOf(m), steer: m.kind === 'steer' });
         if (t.queued?.some((q) => q.id === m.id)) t.queued = t.queued.filter((q) => q.id !== m.id);
       } else if (m.role === 'user' && (m.kind === 'relay' || m.kind === 'report' || m.kind === 'note')) {
-        if (!items.some((i) => i.id === m.id)) items.push({ kind: 'note', id: m.id, text: textOf(m) });
+        if (!items.some((i) => i.id === m.id)) items.push(noteItem(m));
       } else if (m.role === 'assistant' && m.meta?.interrupted === true) {
         lastResponse(items, respId).interrupted = true;
       }

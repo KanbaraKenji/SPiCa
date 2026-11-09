@@ -8,7 +8,7 @@ import { useViewportWidth } from './shell/useViewportWidth';
 import { Sidebar } from './shell/Sidebar';
 import { DetailPanel } from './shell/DetailPanel';
 import { Conversation, type ConversationActions } from './chat/Conversation';
-import { SettingsView } from './settings/SettingsView';
+import { SettingsView, type SettingsTab } from './settings/SettingsView';
 import { Icon } from './ui/Icon';
 import { SpicaMark } from '@spica/brand/react';
 
@@ -26,6 +26,24 @@ export function App({ bridge, shell, agent }: AppProps) {
   const width = useViewportWidth();
   const [floating, setFloating] = useState<Floating>(null);
   const [view, setView] = useState<View>('chat');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('appearance');
+  // Whether any model is configured; checked at start and whenever settings close.
+  const [modelReady, setModelReady] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (view !== 'chat') return;
+    let alive = true;
+    bridge.providers
+      .list()
+      .then((l) => {
+        if (alive) setModelReady(l.items.length > 0);
+      })
+      .catch(() => {
+        if (alive) setModelReady(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [bridge, view]);
   const layout = computeLayout(width, settings.panels, floating);
 
   const toggle = useCallback(
@@ -54,7 +72,12 @@ export function App({ bridge, shell, agent }: AppProps) {
 
   // Screenshot script hook (only set when the script asks for a different view).
   useEffect(() => {
-    window.__spicaShots = { setView: (v) => setView(v === 'settings' ? 'settings' : 'chat') };
+    window.__spicaShots = {
+      setView: (v) => {
+        if (v === 'settings' || v === 'models') setSettingsTab(v === 'models' ? 'models' : 'appearance');
+        setView(v === 'settings' || v === 'models' ? 'settings' : 'chat');
+      },
+    };
     return () => {
       delete window.__spicaShots;
     };
@@ -87,6 +110,8 @@ export function App({ bridge, shell, agent }: AppProps) {
     answer: (callId, a) => id && void agent.answer(id, callId, a),
     confirm: (callId, ok) => id && void agent.confirm(id, callId, ok),
     openFile,
+    openSession: (sid) => openSession(sid),
+    resume: () => id && void agent.resume(id),
   };
 
   const leftShown = layout.left !== 'hidden';
@@ -149,9 +174,19 @@ export function App({ bridge, shell, agent }: AppProps) {
 
         <main className="main">
           {view === 'settings' ? (
-            <SettingsView shell={shell} />
+            <SettingsView shell={shell} providers={bridge.providers} tab={settingsTab} onTab={setSettingsTab} />
           ) : state.loaded ? (
-            <Conversation session={session} transcript={transcript} actions={actions} demo={shell.demo} />
+            <Conversation
+              session={session}
+              transcript={transcript}
+              actions={actions}
+              demo={shell.demo}
+              needsModel={modelReady === false && !shell.demo}
+              onSetupModel={() => {
+                setSettingsTab('models');
+                setView('settings');
+              }}
+            />
           ) : (
             <div className="conversation" />
           )}

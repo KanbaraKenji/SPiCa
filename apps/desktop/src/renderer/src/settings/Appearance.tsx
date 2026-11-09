@@ -145,10 +145,7 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
 
   const zoomIndex = ZOOM_STEPS.indexOf(settings.zoom as (typeof ZOOM_STEPS)[number]);
   return (
-    <section className="settings-section" aria-labelledby="set-appearance">
-      <h2 className="settings-heading" id="set-appearance">
-        外观
-      </h2>
+    <section className="settings-section">
 
       <div className="settings-group">
         <h3 className="settings-subheading">皮肤</h3>

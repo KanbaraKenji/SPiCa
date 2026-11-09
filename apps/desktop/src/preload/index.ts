@@ -2,7 +2,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IpcChannel, type AgentApi, type AppInfo, type CoreEvent } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
-import type { DesktopBridge, ShellState } from '../shared/bridge';
+import type { DesktopBridge, ProviderList, ShellState } from '../shared/bridge';
+import type { ProviderDraft, TestResult } from '../shared/providers';
 import type { SettingsPatch, ShellSettings } from '../shared/settings';
 
 function call<K extends keyof AgentApi>(method: K) {
@@ -24,6 +25,8 @@ const agent: AgentApi = {
   send: call('send'),
   steer: call('steer'),
   answer: call('answer'),
+  renameSession: call('renameSession'),
+  resume: call('resume'),
   confirm: call('confirm'),
   abort: call('abort'),
   exportTraces: call('exportTraces'),
@@ -37,6 +40,13 @@ const bridge: DesktopBridge = {
   updateSettings: (patch: SettingsPatch) => ipcRenderer.invoke(DesktopChannel.UpdateSettings, patch) as Promise<ShellSettings>,
   onSettingsChanged: (listener) => subscribe<ShellSettings>(DesktopChannel.SettingsChanged, listener),
   openFile: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.OpenFile, sessionId, path) as Promise<string | null>,
+  providers: {
+    list: () => ipcRenderer.invoke(DesktopChannel.ListProviders) as Promise<ProviderList>,
+    save: (draft: ProviderDraft) => ipcRenderer.invoke(DesktopChannel.SaveProvider, draft) as Promise<ProviderList>,
+    remove: (id: string) => ipcRenderer.invoke(DesktopChannel.DeleteProvider, id) as Promise<ProviderList>,
+    setDefault: (id: string) => ipcRenderer.invoke(DesktopChannel.SetDefaultProvider, id) as Promise<ProviderList>,
+    test: (draft: ProviderDraft) => ipcRenderer.invoke(DesktopChannel.TestProvider, draft) as Promise<TestResult>,
+  },
 };
 
 contextBridge.exposeInMainWorld('spica', bridge);

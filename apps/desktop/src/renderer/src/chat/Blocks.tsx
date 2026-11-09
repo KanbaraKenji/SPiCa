@@ -3,7 +3,7 @@
 import { memo, useState, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Block } from '../store/transcript';
+import type { Block, ChildNote } from '../store/transcript';
 import { Icon } from '../ui/Icon';
 import { confirmTitle, fileFolder, fileName, formatDuration, toolLabel, toolTarget } from './format';
 
@@ -201,6 +201,29 @@ export function SuggestCard({ block, onPick }: { block: Extract<Block, { type: '
           </button>
         ))}
       </div>
+    </section>
+  );
+}
+
+const NOTE_HEAD: Record<ChildNote['kind'], string> = {
+  report: '做完了，回报',
+  relay: '你在那边说',
+  decision: '那边定了',
+};
+
+/** A sub-agent's report, something the user said in a sub-session, or a decision made there. */
+export function ChildNoteCard({ note, onOpen }: { note: ChildNote; onOpen(id: string): void }) {
+  const from = note.fromTitle ?? '子任务';
+  const head = note.kind === 'decision' && note.by === 'user' ? '你在那边定了' : NOTE_HEAD[note.kind];
+  return (
+    <section className={`card note-card note-${note.kind}`} aria-label={`${from}：${head}`}>
+      <header className="note-head">
+        <button type="button" className="note-from" onClick={() => onOpen(note.fromSessionId)} title={`打开「${from}」`}>
+          {from}
+        </button>
+        <span className="note-kind">{head}</span>
+      </header>
+      {note.kind === 'report' ? <MarkdownText text={note.text} /> : <p className="note-text">{note.text}</p>}
     </section>
   );
 }

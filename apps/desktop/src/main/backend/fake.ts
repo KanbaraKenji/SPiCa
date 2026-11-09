@@ -142,7 +142,7 @@ export class FakeBackend implements AgentBackend {
       parentId: parent?.id ?? null,
       parentChain: parent ? [parent.id, ...parent.parentChain] : [],
       role,
-      title: req.title ?? '新对话',
+      title: req.title ?? null,
       status: 'idle',
       providerId: req.providerId ?? 'fake',
       model: req.model ?? 'fake-model',
@@ -175,11 +175,10 @@ export class FakeBackend implements AgentBackend {
   }
 
   async send(sessionId: string, text: string): Promise<SendResult> {
-    const session = this.#requireSession(sessionId);
+    this.#requireSession(sessionId);
     const run = this.#runs.get(sessionId);
     if (run) return this.steer(sessionId, text, 'next');
     const message = this.#append(sessionId, 'user', 'user', [{ type: 'text', text }], { author: 'user' });
-    if (session.title === '新对话') session.title = text.slice(0, 24);
     void this.#run(sessionId, text);
     return { messageId: message.id, started: true };
   }
@@ -201,6 +200,20 @@ export class FakeBackend implements AgentBackend {
     run.steers.push(message);
     this.#emit(sessionId, { type: 'steer.queued', messageId: message.id, mode });
     return { messageId: message.id, started: false };
+  }
+
+  async renameSession(sessionId: string, title: string | null): Promise<SessionInfo> {
+    const s = this.#requireSession(sessionId);
+    s.title = title?.trim() ? title.trim() : null;
+    s.updatedAt = isoAt(this.#now());
+    this.#emit(sessionId, { type: 'session.renamed', title: s.title });
+    return structuredClone(s);
+  }
+
+  async resume(sessionId: string): Promise<void> {
+    const s = this.#requireSession(sessionId);
+    if (s.status !== 'interrupted' || this.#runs.has(sessionId)) return;
+    void this.#run(sessionId, '', { resumeWith: '继续上次的' });
   }
 
   async answer(sessionId: string, callId: string, answer: string): Promise<void> {

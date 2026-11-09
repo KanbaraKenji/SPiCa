@@ -1,5 +1,6 @@
-// Left sidebar: conversations with the assistant, then each project with its
-// sub-agents. Every row opens that session's conversation.
+// Left sidebar: conversations with the assistant, then each project, each with
+// the sub-agents it started (at any depth). Every row opens that session's
+// conversation; the arrow in front only expands or collapses.
 import { useMemo, useState } from 'react';
 import type { SessionInfo } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
@@ -23,11 +24,11 @@ function waitingForYou(s: SessionInfo): boolean {
   return s.status === 'awaiting_answer' || s.status === 'awaiting_confirm';
 }
 
-/** Collapsed project summary: only counts that are not zero. */
-export function projectSummary(children: SessionInfo[]): string {
-  const running = children.filter((c) => c.status === 'thinking' || c.status === 'tool').length;
-  const queued = children.filter((c) => c.status === 'queued').length;
-  const waiting = children.filter(waitingForYou).length;
+/** Collapsed row summary over everything below it: only counts that are not zero. */
+export function projectSummary(descendants: SessionInfo[]): string {
+  const running = descendants.filter((c) => c.status === 'thinking' || c.status === 'tool').length;
+  const queued = descendants.filter((c) => c.status === 'queued').length;
+  const waiting = descendants.filter(waitingForYou).length;
   const parts: string[] = [];
   if (waiting) parts.push(`${waiting} 个等你`);
   if (running) parts.push(`${running} 个在跑`);
@@ -35,25 +36,59 @@ export function projectSummary(children: SessionInfo[]): string {
   return parts.join(' · ');
 }
 
-function Row({ s, active, depth, onOpen }: { s: SessionInfo; active: boolean; depth: number; onOpen(id: string): void }) {
+interface TreeProps {
+  childrenOf: Map<string, SessionInfo[]>;
+  activeId: string | null;
+  settingsOpen: boolean;
+  expanded: Record<string, boolean>;
+  setExpanded(id: string, open: boolean): void;
+  onOpen(id: string): void;
+}
+
+function descendantsOf(id: string, childrenOf: Map<string, SessionInfo[]>): SessionInfo[] {
+  const out: SessionInfo[] = [];
+  const walk = (pid: string) => {
+    for (const c of childrenOf.get(pid) ?? []) {
+      out.push(c);
+      walk(c.id);
+    }
+  };
+  walk(id);
+  return out;
+}
+
+function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreeProps }) {
+  const kids = tree.childrenOf.get(s.id) ?? [];
+  const all = kids.length ? descendantsOf(s.id, tree.childrenOf) : [];
+  // Rows with something going on below them (or the open session) start expanded.
+  const open = s.id in tree.expanded ? tree.expanded[s.id] === true : all.some((k) => isRunning(k.status) || k.id === tree.activeId);
+  const summary = kids.length && !open ? projectSummary(all) : '';
+  const active = !tree.settingsOpen && s.id === tree.activeId;
+  const name = s.title ?? '';
   return (
-    <button
-      type="button"
-      className={active ? 'tree-row is-active' : 'tree-row'}
-      style={{ paddingLeft: 10 + depth * 18 }}
-      onClick={() => onOpen(s.id)}
-      aria-current={active ? 'page' : undefined}
-      title={s.title}
-    >
-      <StatusMark status={s.status} />
-      <span className="tree-title">{s.title}</span>
-    </button>
+    <>
+      <div className={active ? 'tree-row is-active' : 'tree-row'} style={{ paddingLeft: 2 + depth * 18 }}>
+        {kids.length ? (
+          <button type="button" className="tree-twisty" aria-label={open ? `收起 ${name}` : `展开 ${name}`} aria-expanded={open} onClick={() => tree.setExpanded(s.id, !open)}>
+            <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
+          </button>
+        ) : (
+          <span className="tree-twisty" aria-hidden />
+        )}
+        <button type="button" className="tree-open" onClick={() => tree.onOpen(s.id)} aria-current={active ? 'page' : undefined} title={name}>
+          <span className="tree-title">{name}</span>
+          {summary ? <span className={/等你/.test(summary) ? 'tree-summary is-waiting' : 'tree-summary'}>{summary}</span> : <StatusMark status={s.status} />}
+        </button>
+      </div>
+      {open ? kids.map((k) => <Node key={k.id} s={k} depth={depth + 1} tree={tree} />) : null}
+    </>
   );
 }
 
 export function Sidebar({ sessions, activeId, onOpen, onNewChat, onSettings, settingsOpen }: SidebarProps) {
   const { chats, projects, childrenOf } = useMemo(() => {
     const chats = sessions.filter((s) => s.role === 'top' && !s.parentId).sort(byRecent);
+    // A project is a project-manager session, wherever it was started from.
     const projects = sessions.filter((s) => s.role === 'manager').sort(byRecent);
     const childrenOf = new Map<string, SessionInfo[]>();
     for (const s of sessions) {
@@ -66,12 +101,14 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onSettings, set
     return { chats, projects, childrenOf };
   }, [sessions]);
 
-  // Projects with something going on start expanded; the rest start collapsed.
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const isExpanded = (p: SessionInfo) => {
-    if (p.id in expanded) return expanded[p.id] === true;
-    const kids = childrenOf.get(p.id) ?? [];
-    return kids.some((k) => isRunning(k.status) || k.id === activeId);
+  const [expanded, setExpandedState] = useState<Record<string, boolean>>({});
+  const tree: TreeProps = {
+    childrenOf,
+    activeId,
+    settingsOpen,
+    expanded,
+    setExpanded: (id, open) => setExpandedState((e) => ({ ...e, [id]: open })),
+    onOpen,
   };
 
   return (
@@ -87,45 +124,16 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onSettings, set
           <section className="tree-section">
             <h2 className="tree-heading">对话</h2>
             {chats.map((s) => (
-              <Row key={s.id} s={s} depth={0} active={!settingsOpen && s.id === activeId} onOpen={onOpen} />
+              <Node key={s.id} s={s} depth={0} tree={tree} />
             ))}
           </section>
         ) : null}
         {projects.length ? (
           <section className="tree-section">
             <h2 className="tree-heading">项目</h2>
-            {projects.map((p) => {
-              const kids = childrenOf.get(p.id) ?? [];
-              const open = isExpanded(p);
-              const summary = open ? '' : projectSummary(kids);
-              const active = !settingsOpen && p.id === activeId;
-              return (
-                <div key={p.id} className="tree-project">
-                  <div className={active ? 'tree-row tree-project-row is-active' : 'tree-row tree-project-row'}>
-                    {kids.length ? (
-                      <button
-                        type="button"
-                        className="tree-twisty"
-                        aria-label={open ? `收起 ${p.title}` : `展开 ${p.title}`}
-                        aria-expanded={open}
-                        onClick={() => setExpanded((e) => ({ ...e, [p.id]: !open }))}
-                      >
-                        <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
-                      </button>
-                    ) : (
-                      <span className="tree-twisty" aria-hidden />
-                    )}
-                    <button type="button" className="tree-project-open" onClick={() => onOpen(p.id)} aria-current={active ? 'page' : undefined} title={p.title}>
-                      <span className="tree-title">{p.title}</span>
-                      {summary ? <span className={/等你/.test(summary) ? 'tree-summary is-waiting' : 'tree-summary'}>{summary}</span> : <StatusMark status={p.status} />}
-                    </button>
-                  </div>
-                  {open
-                    ? kids.map((k) => <Row key={k.id} s={k} depth={1} active={!settingsOpen && k.id === activeId} onOpen={onOpen} />)
-                    : null}
-                </div>
-              );
-            })}
+            {projects.map((p) => (
+              <Node key={p.id} s={p} depth={0} tree={tree} />
+            ))}
           </section>
         ) : null}
       </div>

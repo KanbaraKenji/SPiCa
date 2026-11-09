@@ -4,7 +4,7 @@ import type { SessionInfo } from '@spica/protocol';
 import { filesOf, isRunning, type Block, type Item, type Transcript } from '../store/transcript';
 import { SpicaMark } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
-import { AskCard, ConfirmCard, FileCards, MarkdownText, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
+import { AskCard, ChildNoteCard, ConfirmCard, FileCards, MarkdownText, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
 import { Composer } from './Composer';
 import { StatusLine } from './StatusLine';
 
@@ -14,6 +14,8 @@ export interface ConversationActions {
   answer(callId: string, answer: string): void;
   confirm(callId: string, approved: boolean): void;
   openFile(path: string): void;
+  openSession(id: string): void;
+  resume(): void;
 }
 
 type Segment = { kind: 'tools'; blocks: Extract<Block, { type: 'tool' }>[] } | { kind: 'one'; block: Exclude<Block, { type: 'tool' }> };
@@ -59,7 +61,17 @@ function Response({ item, live, actions }: { item: Extract<Item, { kind: 'respon
   );
 }
 
-function EmptyState({ session }: { session: SessionInfo | undefined }) {
+function EmptyState({ session, needsModel, onSetupModel }: { session: SessionInfo | undefined; needsModel: boolean; onSetupModel?: () => void }) {
+  if (needsModel)
+    return (
+      <div className="empty-chat">
+        <SpicaMark size={56} />
+        <p className="empty-chat-title">还没有配置模型</p>
+        <button type="button" className="btn btn-primary" onClick={onSetupModel}>
+          去设置模型
+        </button>
+      </div>
+    );
   return (
     <div className="empty-chat">
       <SpicaMark size={56} />
@@ -121,11 +133,14 @@ export interface ConversationProps {
   session: SessionInfo | undefined;
   transcript: Transcript;
   actions: ConversationActions;
-  /** Show that answers are demo data (no model configured). */
+  /** Show that answers are demo data (screenshots, tests). */
   demo?: boolean;
+  /** No model is configured yet: the empty state points to settings. */
+  needsModel?: boolean;
+  onSetupModel?: () => void;
 }
 
-export function Conversation({ session, transcript, actions, demo }: ConversationProps) {
+export function Conversation({ session, transcript, actions, demo, needsModel = false, onSetupModel }: ConversationProps) {
   const running = isRunning(transcript.run?.status) || isRunning(session?.status);
   const { ref, away, toBottom } = useStickToBottom(transcript);
   const items = transcript.items;
@@ -134,7 +149,7 @@ export function Conversation({ session, transcript, actions, demo }: Conversatio
     <div className="conversation">
       <div className="transcript" ref={ref}>
         {items.length === 0 && !running ? (
-          <EmptyState session={session} />
+          <EmptyState session={session} needsModel={needsModel} {...(onSetupModel ? { onSetupModel } : {})} />
         ) : (
           <div className="transcript-column">
             {items.map((item, i) => {
@@ -146,7 +161,9 @@ export function Conversation({ session, transcript, actions, demo }: Conversatio
                   </div>
                 );
               if (item.kind === 'note')
-                return (
+                return item.child ? (
+                  <ChildNoteCard key={item.id} note={item.child} onOpen={actions.openSession} />
+                ) : (
                   <p key={item.id} className="turn-note">
                     {item.text}
                   </p>
@@ -154,6 +171,14 @@ export function Conversation({ session, transcript, actions, demo }: Conversatio
               return <Response key={item.id} item={item} live={running && i === lastIndex} actions={actions} />;
             })}
             <StatusLine transcript={transcript} />
+            {session?.status === 'interrupted' && !running ? (
+              <div className="resume-row">
+                <span>上次没做完就中断了</span>
+                <button type="button" className="btn" onClick={actions.resume}>
+                  继续
+                </button>
+              </div>
+            ) : null}
             {transcript.error ? (
               <p className="turn-error" role="alert">
                 {transcript.error}
@@ -178,7 +203,7 @@ export function Conversation({ session, transcript, actions, demo }: Conversatio
         </div>
       ) : null}
       <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} />
-      {demo ? <p className="composer-note">还没有配置模型，现在的回答是演示数据</p> : null}
+      {demo ? <p className="composer-note">现在的回答是演示数据</p> : null}
     </div>
   );
 }

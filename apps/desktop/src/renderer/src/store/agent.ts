@@ -25,11 +25,11 @@ export interface AgentSource {
 
 export const NEW_CHAT_TITLE = '新对话';
 /** Titles the backend gives sessions nobody named yet. */
-const GENERIC_TITLES = new Set([NEW_CHAT_TITLE, 'Top-level agent', 'Agent', '']);
+const GENERIC_TITLES = new Set<string | null>([null, NEW_CHAT_TITLE, 'Top-level agent', 'Agent', '']);
 
 /** What the sidebar and title bar call a session. */
 export function displayTitle(s: SessionInfo, firstLines: Record<string, string>): string {
-  if (!GENERIC_TITLES.has(s.title)) return s.title;
+  if (s.title && !GENERIC_TITLES.has(s.title)) return s.title;
   const first = firstLines[s.id]?.replace(/\s+/g, ' ').trim();
   return first ? (first.length > 24 ? `${first.slice(0, 24)}…` : first) : NEW_CHAT_TITLE;
 }
@@ -98,7 +98,7 @@ export class AgentStore {
 
   async newChat(): Promise<void> {
     await this.#guard(async () => {
-      const s = await this.#api.createSession({ role: 'top', title: NEW_CHAT_TITLE });
+      const s = await this.#api.createSession({ role: 'top' });
       this.state.set((v) => ({ ...v, sessions: [s, ...v.sessions], activeId: s.id, transcripts: { ...v.transcripts, [s.id]: { items: [] } } }));
     });
   }
@@ -108,7 +108,7 @@ export class AgentStore {
       let target = id;
       if (!target) {
         // Typing into the empty window starts a new conversation.
-        const s = await this.#api.createSession({ role: 'top', title: NEW_CHAT_TITLE });
+        const s = await this.#api.createSession({ role: 'top' });
         target = s.id;
         this.state.set((v) => ({ ...v, sessions: [s, ...v.sessions], activeId: s.id, transcripts: { ...v.transcripts, [s.id]: { items: [] } } }));
       }
@@ -124,6 +124,10 @@ export class AgentStore {
         });
       }
     });
+  }
+
+  async resume(id: string): Promise<void> {
+    await this.#guard(() => this.#api.resume(id));
   }
 
   async stop(id: string): Promise<void> {
@@ -153,10 +157,11 @@ export class AgentStore {
   #onEvent(e: CoreEvent): void {
     this.state.set((v) => {
       let { sessions, globalCostUsd } = v;
-      if (e.type === 'status' || e.type === 'cost') {
+      if (e.type === 'status' || e.type === 'cost' || e.type === 'session.renamed') {
         sessions = sessions.map((s) => {
           if (s.id !== e.sessionId) return s;
           if (e.type === 'status') return { ...s, status: e.status, updatedAt: e.at };
+          if (e.type === 'session.renamed') return { ...s, title: e.title };
           return e.scope === 'session' ? { ...s, costUsd: e.spentUsd } : s;
         });
         if (e.type === 'cost' && e.scope === 'global') globalCostUsd = e.spentUsd;
