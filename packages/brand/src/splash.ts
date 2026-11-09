@@ -41,9 +41,16 @@ export interface SplashFinish {
   diveAngle: number;
   /** 由哪颗星领头扎入（在前面、处在 diveAngle 方位）：primary = 蓝星，companion = 白色伴星 */
   diveStar: 'primary' | 'companion';
-  /** ③ 扎心：用时；转速从 bigSpeed 按 (1-x)² 衰减到 collapseSpeed（0 = 不再转圈，只走一小段短弧），半径缓入加速缩到 0 */
+  /**
+   * ③ 扎心：用时（秒）；路线的形状——沿轨道方向再走多少（平近点角，单位：圈，越大弧越长）、
+   * 中途先往外甩多少（0 = 不甩，0.2 = 半径最多放大 20%）。
+   * 速度按屏幕上的线速度设计：从扎入那一刻的速度起只升不降（缓入曲线），终点是起点的几倍由路线长短和用时算出
+   */
   collapse: number;
-  collapseSpeed: number;
+  diveArc: number;
+  diveSwing: number;
+  /** 半径收缩的指数：2 = 先沿轨道走、最后才直冲花心；越接近 1 越早往里卷（像螺线） */
+  diveCurl: number;
   /** 拖尾：收尾时光迹拖多长（秒）、从 ready 后多久开始拉长、拉长用时；加载中的短拖尾长度与浓度 */
   trail: number;
   trailStart: number;
@@ -66,16 +73,17 @@ export interface SplashFinish {
 }
 
 export const SPLASH_FINISH: Readonly<SplashFinish> = Object.freeze({
-  // 顺序定死：加速扩轨（带拖尾）→ 大半径上绕约 0.94 圈（1.1 秒）→ 从当时位置沿短弧直接扎进花心（不再有收心螺旋）。
-  // 0.94 圈让前面那颗星在大半径段结束时正好在字标一侧（屏幕右边），从右侧直接扎进花心
+  // 顺序定死：加速扩轨（带拖尾）→ 大半径上绕约半圈 → 蓝星在前、走到字标右上方时顺弧向下扎进花心，一路加速。
   expand: 0.6,
   bigRadius: 1.8,
   bigSpeed: 3,
-  bigTurns: 0.94,
-  diveAngle: 92,
-  diveStar: 'companion',
-  collapse: 0.35,
-  collapseSpeed: 0,
+  bigTurns: 0.5,
+  diveAngle: 72,
+  diveStar: 'primary',
+  collapse: 0.175,
+  diveArc: 0.15,
+  diveSwing: 0,
+  diveCurl: 1.4,
   trail: 0.35,
   trailStart: 0,
   trailFadeIn: 0.3,
@@ -204,56 +212,182 @@ function finishOf(options: SplashOptions): SplashFinish {
   return { ...SPLASH_FINISH, ...options.finish };
 }
 
-/** 双星转速倍率（u = ready 后秒数）：扩轨平滑加到 bigSpeed → 大半径匀速 → 收心缓入加到 collapseSpeed */
+/** 双星转速倍率（u = ready 后秒数，只管扎心之前）：扩轨平滑加到 bigSpeed → 大半径匀速 */
 function orbitMultiplier(u: number, F: SplashFinish, S: SplashSchedule): number {
   if (u <= 0) return 1;
   if (u < S.bigStart) return 1 + (F.bigSpeed - 1) * smooth(u / F.expand);
-  if (u < S.collapseStart) return F.bigSpeed;
-  const x = Math.min((u - S.collapseStart) / F.collapse, 1);
-  return F.collapseSpeed + (F.bigSpeed - F.collapseSpeed) * (1 - x) ** 2;
+  return F.bigSpeed;
 }
 
-/** ∫0^u (倍率 - 1) du：加速带来的「额外走过的时间」 */
+/** ∫0^u (倍率 - 1) du：加速带来的「额外走过的时间」（扎心之前） */
 function orbitExtraTime(u: number, F: SplashFinish, S: SplashSchedule): number {
   if (u <= 0) return 0;
   const a = Math.min(u, S.bigStart);
-  let extra = F.expand > 0 ? F.expand * (F.bigSpeed - 1) * smoothArea(a / F.expand) : 0;
+  const extra = F.expand > 0 ? F.expand * (F.bigSpeed - 1) * smoothArea(a / F.expand) : 0;
   if (u <= S.bigStart) return extra;
-  const b = Math.min(u, S.collapseStart) - S.bigStart;
-  extra += b * (F.bigSpeed - 1);
-  if (u <= S.collapseStart) return extra;
-  const x = (Math.min(u, S.merge) - S.collapseStart) / F.collapse;
-  // ∫ [cs + (bs-cs)(1-s)²] ds = cs·x + (bs-cs)(1-(1-x)³)/3，再减去「平时速度 1」那部分
-  extra += F.collapse * (F.collapseSpeed * x + ((F.bigSpeed - F.collapseSpeed) * (1 - (1 - x) ** 3)) / 3 - x);
-  if (u > S.merge) extra += (u - S.merge) * (F.collapseSpeed - 1);
-  return extra;
+  return extra + (u - S.bigStart) * (F.bigSpeed - 1);
 }
 
-/** 轨道半径倍率：扩轨平滑放大 → 大半径 → 收心缓入缩到 0 */
+/** 轨道半径倍率（扎心之前）：扩轨平滑放大 → 大半径 */
 function radiusScale(u: number, F: SplashFinish, S: SplashSchedule): number {
   if (u <= 0) return 1;
   if (u < S.bigStart) return 1 + (F.bigRadius - 1) * smooth(u / F.expand);
-  if (u < S.collapseStart) return F.bigRadius;
-  return F.bigRadius * (1 - easeIn(Math.min((u - S.collapseStart) / F.collapse, 1)));
+  return F.bigRadius;
 }
 
-/** 某一时刻的速度倍率（相对平时）：双星转速、背景星点速度。给曲线图和测试用 */
+interface Ctx {
+  F: SplashFinish;
+  S: SplashSchedule;
+  period: number;
+  e: number;
+  readyAt: number | null;
+}
+
+function ctxOf(options: SplashOptions, readyAt: number | null): Ctx {
+  const k = Math.max(1, options.speedRatio ?? SPLASH_ORBIT_DEFAULTS.speedRatio);
+  return {
+    F: finishOf(options),
+    S: splashSchedule(options, readyAt),
+    period: options.orbitPeriod ?? SPLASH_TIMING.orbitPeriod,
+    e: (k - 1) / (k + 1),
+    readyAt,
+  };
+}
+
+/** 蓝星在轨道平面上的位置（扎心之前；伴星是它关于花心的对称点） */
+function orbitPlane(tt: number, c: Ctx): { px: number; py: number } {
+  const uu = c.readyAt !== null && tt >= c.readyAt ? tt - c.readyAt : 0;
+  const M = (2 * Math.PI * (tt + orbitExtraTime(uu, c.F, c.S))) / c.period;
+  return planeAt(M, SPLASH_ORBIT.semiMajor * radiusScale(uu, c.F, c.S), c.e);
+}
+
+function planeAt(M: number, a: number, e: number): { px: number; py: number } {
+  const kp = keplerPosition(M, e);
+  return { px: a * kp.r * Math.cos(kp.angle + Math.PI / 2), py: a * kp.r * Math.sin(kp.angle + Math.PI / 2) };
+}
+
+/** 平面坐标 → 屏幕像素（不含花心偏移，只用来量长度） */
+function screenOf(px: number, py: number): [number, number] {
+  const ey = py * SPLASH_ORBIT.squash;
+  const roll = rad(SPLASH_ORBIT.roll);
+  return [K * (px * Math.cos(roll) - ey * Math.sin(roll)), K * (px * Math.sin(roll) + ey * Math.cos(roll))];
+}
+
+/**
+ * 扎心段：路线 shape(x)（x 0→1，从扎入点到花心）先按屏幕像素量出弧长表，
+ * 再按线速度 v(y) = v0·(1 + αy + βy²)（y = τ/T）沿弧长走——速度只升不降；起点速度和加速度都接上大半径段，
+ * 终点倍数 R = 1 + α + β 由弧长 L 与用时 T 算出。
+ */
+interface Dive {
+  T: number;
+  v0: number;
+  R: number;
+  L: number;
+  /** τ（扎心后的秒数）→ 平面坐标、路线参数 x、屏幕线速度 */
+  at(tau: number): { px: number; py: number; x: number; speed: number };
+}
+
+const DIVE_SAMPLES = 1200;
+const diveCache = new Map<string, Dive>();
+function diveOf(c: Ctx, options: SplashOptions): Dive {
+  const key = JSON.stringify([options, c.readyAt]);
+  const hit = diveCache.get(key);
+  if (hit) return hit;
+  const { F, S, period, e } = c;
+  const tc = (c.readyAt ?? 0) + S.collapseStart;
+  const M0 = (2 * Math.PI * (tc + orbitExtraTime(S.collapseStart, F, S))) / period;
+  const a0 = SPLASH_ORBIT.semiMajor * F.bigRadius;
+  const swingK = (27 / 4) * F.diveSwing;
+  const shape = (x: number) => {
+    const M = M0 + 2 * Math.PI * F.diveArc * (1 - (1 - x) ** 3);
+    const r = (1 - x ** F.diveCurl) * (1 + swingK * x * x * (1 - x));
+    return planeAt(M, a0 * r, e);
+  };
+  // 弧长表（屏幕像素）
+  const lens = [0];
+  let prev = screenOf(shape(0).px, shape(0).py);
+  for (let i = 1; i <= DIVE_SAMPLES; i++) {
+    const p = shape(i / DIVE_SAMPLES);
+    const q = screenOf(p.px, p.py);
+    lens.push(lens[i - 1]! + Math.hypot(q[0] - prev[0], q[1] - prev[1]));
+    prev = q;
+  }
+  const L = lens[DIVE_SAMPLES]!;
+  // 起点速度与加速度：接上大半径段末尾的屏幕线速度，连加速度也接上（不在接口处「停一下再加速」）
+  const h = 1e-3;
+  const speedAt = (tt: number) => {
+    const p1 = orbitPlane(tt - h, c);
+    const p2 = orbitPlane(tt, c);
+    const s1 = screenOf(p1.px, p1.py);
+    const s2 = screenOf(p2.px, p2.py);
+    return Math.hypot(s2[0] - s1[0], s2[1] - s1[1]) / h;
+  };
+  const v0 = speedAt(tc);
+  const acc0 = (v0 - speedAt(tc - h)) / h;
+  const T = F.collapse;
+  // v(y) = v0·(1 + αy + βy²)，y = τ/T；α 接上加速度（减速时取 0），β 由弧长定：L = v0·T·(1 + α/2 + β/3)
+  const alpha = Math.max(0, (acc0 * T) / v0);
+  const beta = 3 * (L / (v0 * T) - 1 - alpha / 2);
+  const R = 1 + alpha + beta;
+  const dive: Dive = {
+    T,
+    v0,
+    R,
+    L,
+    at(tau) {
+      const y = clamp(tau / T);
+      const dist = v0 * T * (y + (alpha * y * y) / 2 + (beta * y ** 3) / 3);
+      let lo = 0;
+      let hi = DIVE_SAMPLES;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (lens[mid]! <= dist) lo = mid;
+        else hi = mid;
+      }
+      const span = lens[hi]! - lens[lo]!;
+      const x = (lo + (span > 0 ? clamp((dist - lens[lo]!) / span) : 0)) / DIVE_SAMPLES;
+      return { ...shape(x), x, speed: v0 * (1 + alpha * y + beta * y * y) };
+    },
+  };
+  if (diveCache.size > 64) diveCache.clear();
+  diveCache.set(key, dive);
+  return dive;
+}
+
+/** 扎心段的数据（起点速度、终点倍数、弧长），给对比图和测试用 */
+export function splashDive(readyAt: number, options: SplashOptions = {}): { start: number; end: number; v0: number; ratio: number; length: number } {
+  const c = ctxOf(options, readyAt);
+  const d = diveOf(c, options);
+  return { start: readyAt + c.S.collapseStart, end: readyAt + c.S.merge, v0: d.v0, ratio: d.R, length: d.L };
+}
+
+/** 某一时刻的速度倍率（相对平时）：双星转速（扎心段按屏幕线速度折算）、背景星点速度。给曲线图和测试用 */
 export function splashSpeeds(t: number, readyAt: number | null, options: SplashOptions = {}): { orbit: number; starfield: number } {
   if (readyAt === null || t < readyAt) return { orbit: 1, starfield: 1 };
-  const F = finishOf(options);
-  const S = splashSchedule(options, readyAt);
+  const c = ctxOf(options, readyAt);
+  const { F, S } = c;
   const u = t - readyAt;
-  const orbit = orbitMultiplier(Math.min(u, S.merge), F, S);
+  let orbit = orbitMultiplier(u, F, S);
+  if (u >= S.collapseStart) {
+    const d = diveOf(c, options);
+    orbit = (F.bigSpeed * d.at(Math.min(u, S.merge) - S.collapseStart).speed) / d.v0;
+  }
   const starfield = u <= S.merge
     ? 1 + (F.starPeak - 1) * easeIn(u / S.merge)
     : 1 + (F.starPeak - 1) * settleCurve(Math.min((u - S.merge) / F.starSettle, 1));
   return { orbit, starfield };
 }
 
-/** 某一时刻双星轨道半径是平时的几倍（给测试和时间表用） */
+/** 某一时刻双星离花心的距离是平时轨道的几倍（给测试和时间表用） */
 export function splashOrbitScale(t: number, readyAt: number | null, options: SplashOptions = {}): number {
   if (readyAt === null || t < readyAt) return 1;
-  return radiusScale(t - readyAt, finishOf(options), splashSchedule(options, readyAt));
+  const c = ctxOf(options, readyAt);
+  const u = t - readyAt;
+  if (u < c.S.collapseStart) return radiusScale(u, c.F, c.S);
+  if (u >= c.S.merge) return 0;
+  const x = diveOf(c, options).at(u - c.S.collapseStart).x;
+  const swingK = (27 / 4) * c.F.diveSwing;
+  return c.F.bigRadius * (1 - x ** c.F.diveCurl) * (1 + swingK * x * x * (1 - x));
 }
 
 // ---- 版面 ----
@@ -339,6 +473,17 @@ export interface SplashTrailDot {
   companion: boolean;
 }
 
+export interface SplashRibbon {
+  d: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  opacity: number;
+  front: boolean;
+  companion: boolean;
+}
+
 export interface SplashFrame {
   /** 整层透明度（淡出时 1 → 0） */
   layer: number;
@@ -356,6 +501,8 @@ export interface SplashFrame {
   stars: readonly SplashStar[];
   /** 双星拖尾的光点 */
   trails: readonly SplashTrailDot[];
+  /** 双星拖尾的连续光带（每颗星按在花前 / 花后切成一两段）：轮廓路径、渐隐方向（头 → 尾）、头部透明度 */
+  ribbons: readonly SplashRibbon[];
   /** 字母：透明度、上下位移（舞台像素）、辉光 0..1 */
   letters: ReadonlyArray<{ opacity: number; dy: number; glow: number }>;
   /** 收尾结束、可以移除 */
@@ -370,6 +517,32 @@ const LETTER_BASE = 0.22;
 const LETTER_WAVE = 0.3;
 /** 每颗星拖尾的光点数 */
 export const SPLASH_TRAIL_DOTS = 14;
+/** 光带每颗星取样的点数 */
+const RIBBON_SAMPLES = 32;
+/** 每颗星最多切成几段光带（花前 / 花后来回切换） */
+export const SPLASH_RIBBON_SLOTS = 4;
+
+type Pt = { x: number; y: number; depth: number };
+
+/** 一串点（头在前）→ 两侧按半宽外扩、尾部收尖的轮廓 */
+function ribbonPath(pts: readonly Pt[], half: readonly number[]): string {
+  const left: string[] = [];
+  const right: string[] = [];
+  for (let j = 0; j < pts.length; j++) {
+    const a = pts[Math.max(0, j - 1)]!;
+    const b = pts[Math.min(pts.length - 1, j + 1)]!;
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    dx /= len;
+    dy /= len;
+    const w = half[j]!;
+    const p = pts[j]!;
+    left.push(`${(p.x - dy * w).toFixed(2)} ${(p.y + dx * w).toFixed(2)}`);
+    right.push(`${(p.x + dy * w).toFixed(2)} ${(p.y - dx * w).toFixed(2)}`);
+  }
+  return `M${left.join('L')}L${right.reverse().join('L')}Z`;
+}
 
 /**
  * 某一时刻的画面状态。
@@ -391,19 +564,17 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
   const depthRef = SPLASH_ORBIT.semiMajor * (1 + e);
 
   // 双星在时刻 tt 的位置（拖尾用同一个函数回看过去的位置）；合一之后没有
+  const ctx: Ctx = { F, S, period, e, readyAt };
   const starsAt = (tt: number) => {
     const uu = readyAt !== null && tt >= readyAt ? tt - readyAt : 0;
     if (uu >= S.merge) return null;
-    const M = (2 * Math.PI * (tt + orbitExtraTime(uu, F, S))) / period;
-    const a = SPLASH_ORBIT.semiMajor * radiusScale(uu, F, S);
-    const kp = keplerPosition(M, e);
-    const px = a * kp.r * Math.cos(kp.angle + Math.PI / 2);
-    const py = a * kp.r * Math.sin(kp.angle + Math.PI / 2);
+    const { px, py } = uu >= S.collapseStart ? diveOf(ctx, options).at(uu - S.collapseStart) : orbitPlane(tt, ctx);
     return [project(px, py, depthRef), project(-px, -py, depthRef)] as const;
   };
 
   const stars: SplashStar[] = [];
   const trails: SplashTrailDot[] = [];
+  const ribbons: SplashRibbon[] = [];
   const pair = starsAt(t);
   if (pair) {
     pair.forEach((p, i) => {
@@ -436,6 +607,43 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
           });
         });
       }
+      // 光带：同一段时间按更密的取样连成一条，头宽尾尖，越快拉得越长
+      const lines: Pt[][] = [[pair[0]], [pair[1]]];
+      for (let j = 1; j <= RIBBON_SAMPLES; j++) {
+        const back = starsAt(t - (j / RIBBON_SAMPLES) * trailLen);
+        if (!back) break;
+        lines[0]!.push(back[0]);
+        lines[1]!.push(back[1]);
+      }
+      lines.forEach((line, i) => {
+        if (line.length < 3) return;
+        const n = line.length - 1;
+        const half = line.map((p, j) => 3.4 * (1 + 0.35 * p.depth) * (1 - j / n) ** 0.8);
+        // 按在花前 / 花后切段（相邻两段共用切点，不留缝）
+        let start = 0;
+        for (let j = 1; j <= n; j++) {
+          const split = j === n || line[j]!.depth >= 0 !== line[start]!.depth >= 0;
+          if (!split) continue;
+          const end = j;
+          const seg = line.slice(start, end + 1);
+          if (seg.length >= 2) {
+            const head = seg[0]!;
+            const tail = line[n]!;
+            ribbons.push({
+              d: ribbonPath(seg, half.slice(start, end + 1)),
+              // 渐隐方向按整条光带的头尾，切段后颜色仍连贯
+              x1: line[0]!.x,
+              y1: line[0]!.y,
+              x2: tail.x,
+              y2: tail.y,
+              opacity: trailOn * 0.6 * (0.6 + 0.4 * head.depth),
+              front: head.depth >= 0,
+              companion: i === 1,
+            });
+          }
+          start = end;
+        }
+      });
     }
   }
 
@@ -502,6 +710,7 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
     glow: clamp(0.12 + 0.4 * fillW),
     stars,
     trails,
+    ribbons,
     letters,
     finished: done && u >= S.end,
   };
@@ -519,6 +728,7 @@ export function splashStaticFrame(): SplashFrame {
     glow: 0.3,
     stars: [],
     trails: [],
+    ribbons: [],
     letters: WORDMARK.shapes.map(() => ({ opacity: 1, dy: 0, glow: 0 })),
     finished: false,
   };

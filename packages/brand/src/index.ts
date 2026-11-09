@@ -42,6 +42,7 @@ export {
   SPLASH_STAGE,
   SPLASH_TIMING,
   SPLASH_TRAIL_DOTS,
+  SPLASH_RIBBON_SLOTS,
   STARFIELD_COUNT,
   keplerPosition,
   splashBriefFrame,
@@ -50,6 +51,7 @@ export {
   splashOrbitScale,
   splashSchedule,
   splashSpeeds,
+  splashDive,
   splashStaticFrame,
   starfield,
   type SplashFinish,
@@ -58,5 +60,6 @@ export {
   type SplashSchedule,
   type SplashStar,
   type SplashTrailDot,
+  type SplashRibbon,
   type StarStreak,
 } from './splash.ts';

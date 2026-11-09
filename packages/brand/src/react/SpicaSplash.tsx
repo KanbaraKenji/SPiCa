@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 're
 import { MARK_CENTER, MARK_GEOMETRY, fmt, sparklePath } from '../geometry.ts';
 import {
   SPLASH_LAYOUT,
+  SPLASH_RIBBON_SLOTS,
   SPLASH_STAGE,
   SPLASH_TIMING,
   SPLASH_TRAIL_DOTS,
@@ -28,6 +29,8 @@ export interface SpicaSplashProps {
   speedRatio?: number;
   /** 收尾各步时长（缺省 SPLASH_FINISH） */
   finish?: Partial<SplashFinish>;
+  /** 双星拖尾：streak = 连续光带（缺省），dots = 一串光点 */
+  trailStyle?: 'streak' | 'dots';
   /** 点一下或按任意键跳过：0.25 秒淡出后回调 onDone（缺省 true） */
   skippable?: boolean;
   /** 横标下方的小字（例如版本号） */
@@ -79,6 +82,34 @@ function trailSlots(refs: Refs<SVGCircleElement>) {
   ));
 }
 
+/** 拖尾光带：每个位置一条路径 + 一个沿头尾方向渐隐的渐变 */
+function ribbonSlots(refs: Refs<SVGPathElement>, gradRefs: Refs<SVGLinearGradientElement>, id: string, layer: string) {
+  return Array.from({ length: SPLASH_RIBBON_SLOTS }, (_, i) => (
+    <g key={i}>
+      <linearGradient
+        ref={(el) => {
+          gradRefs.current[i] = el;
+        }}
+        id={`${id}-rb-${layer}-${i}`}
+        className="spica-splash-ribbon-grad"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" className="spica-splash-ribbon-head" />
+        <stop offset="1" className="spica-splash-ribbon-tail" />
+      </linearGradient>
+      <path
+        ref={(el) => {
+          refs.current[i] = el;
+        }}
+        className="spica-splash-ribbon"
+        fill={`url(#${id}-rb-${layer}-${i})`}
+        d=""
+        opacity="0"
+      />
+    </g>
+  ));
+}
+
 function petalPaths() {
   return (
     <>
@@ -113,6 +144,7 @@ export function SpicaSplash({
   orbitPeriod = SPLASH_TIMING.orbitPeriod,
   speedRatio,
   finish,
+  trailStyle = 'streak',
   skippable = true,
   caption,
   className,
@@ -135,6 +167,10 @@ export function SpicaSplash({
   const frontStarRefs = useRef<Array<SVGGElement | null>>([]);
   const backTrailRefs = useRef<Array<SVGCircleElement | null>>([]);
   const frontTrailRefs = useRef<Array<SVGCircleElement | null>>([]);
+  const backRibbonRefs = useRef<Array<SVGPathElement | null>>([]);
+  const frontRibbonRefs = useRef<Array<SVGPathElement | null>>([]);
+  const backRibbonGradRefs = useRef<Array<SVGLinearGradientElement | null>>([]);
+  const frontRibbonGradRefs = useRef<Array<SVGLinearGradientElement | null>>([]);
   const readyAtRef = useRef<number | null>(null);
   const skipAtRef = useRef<number | null>(null);
   const t0Ref = useRef<number>(0);
@@ -217,8 +253,31 @@ export function SpicaSplash({
           }
         }
       }
+      const dots = trailStyle === 'dots';
+      for (const [refs, grads, isFront] of [
+        [backRibbonRefs, backRibbonGradRefs, false],
+        [frontRibbonRefs, frontRibbonGradRefs, true],
+      ] as const) {
+        const list = dots ? [] : f.ribbons.filter((r) => r.front === isFront);
+        for (let i = 0; i < SPLASH_RIBBON_SLOTS; i++) {
+          const path = refs.current[i];
+          const grad = grads.current[i];
+          const r = list[i];
+          if (!path) continue;
+          path.setAttribute('opacity', fmt(r ? r.opacity : 0));
+          if (!r) continue;
+          path.setAttribute('d', r.d);
+          if (grad) {
+            grad.setAttribute('x1', fmt(r.x1));
+            grad.setAttribute('y1', fmt(r.y1));
+            grad.setAttribute('x2', fmt(r.x2));
+            grad.setAttribute('y2', fmt(r.y2));
+            grad.setAttribute('class', r.companion ? 'spica-splash-ribbon-grad spica-splash-ribbon-grad--companion' : 'spica-splash-ribbon-grad');
+          }
+        }
+      }
       for (let i = 0; i < TRAIL_SLOTS; i++) {
-        const d = f.trails[i];
+        const d = dots ? f.trails[i] : undefined;
         for (const [refs, isFront] of [[backTrailRefs, false], [frontTrailRefs, true]] as const) {
           const c = refs.current[i];
           if (!c) continue;
@@ -313,7 +372,7 @@ export function SpicaSplash({
       unlisten();
     };
     // 换主题、模式或节奏时重启；ready 通过 ref 传进循环，不触发重启
-  }, [theme, mode, orbitPeriod, speedRatio, skippable]);
+  }, [theme, mode, orbitPeriod, speedRatio, skippable, trailStyle]);
 
   const markTransform = `translate(${fmt(L.cx)} ${fmt(L.cy)}) scale(${fmt(L.markScale)}) translate(-${C} -${C})`;
   const wordTransform = `translate(${fmt(L.wordX)} ${fmt(L.wordY)}) scale(${fmt(L.wordScale)})`;
@@ -354,6 +413,7 @@ export function SpicaSplash({
           </filter>
         </defs>
         <circle ref={glowRef} className="spica-splash-glow" cx={fmt(L.cx)} cy={fmt(L.cy)} r={fmt(L.markScale * 61)} fill={`url(#${id}-glow)`} opacity="0" />
+        {ribbonSlots(backRibbonRefs, backRibbonGradRefs, id, 'b')}
         {trailSlots(backTrailRefs)}
         {starSlots(backStarRefs, id)}
         <g transform={markTransform}>
@@ -415,6 +475,7 @@ export function SpicaSplash({
             return <g key={i}>{theme === 'dark' ? [glow, letter] : [letter, glow]}</g>;
           })}
         </g>
+        {ribbonSlots(frontRibbonRefs, frontRibbonGradRefs, id, 'f')}
         {trailSlots(frontTrailRefs)}
         {starSlots(frontStarRefs, id)}
       </svg>
