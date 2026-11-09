@@ -18,6 +18,8 @@ const T = theme === 'dark'
   : { bg: '#F7F9FC', ink: '#0F172A', acc: '#2F7DE1', star: '#9DB8E0', companion: '#1B3F7A', core: null, glow: 0, vign: false };
 // 可选：SPLASH_OPTIONS 环境变量传 JSON（例如 {"finish":{"bigTurns":0.7,"diveAngle":222}}），用来出对比档
 const OPTS = process.env.SPLASH_OPTIONS ? JSON.parse(process.env.SPLASH_OPTIONS) : {};
+// 拖尾画法：streak = 连续光带（缺省），dots = 一串光点（SPLASH_TRAIL=dots）
+const TRAIL = process.env.SPLASH_TRAIL === 'dots' ? 'dots' : 'streak';
 const C = MARK_CENTER;
 const STAR_R = 7;
 const SPARK = sparklePath(0, 0, STAR_R * 2.4, 0.16);
@@ -39,6 +41,16 @@ function trailEl(d) {
   if (d.opacity <= 0.005) return '';
   return `<circle cx="${f2(d.x)}" cy="${f2(d.y)}" r="${f2(d.r)}" fill="${d.companion ? T.companion : T.acc}" opacity="${d.opacity.toFixed(3)}"/>`;
 }
+let ribbonId = 0;
+function ribbonEl(r) {
+  if (r.opacity <= 0.005) return '';
+  const id = `rb${ribbonId++}`;
+  const color = r.companion ? T.companion : T.acc;
+  return `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${f2(r.x1)}" y1="${f2(r.y1)}" x2="${f2(r.x2)}" y2="${f2(r.y2)}"><stop offset="0" stop-color="${color}" stop-opacity="1"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient><path d="${r.d}" fill="url(#${id})" opacity="${r.opacity.toFixed(3)}"/>`;
+}
+const trailEls = (f, front) => TRAIL === 'dots'
+  ? f.trails.filter((d) => d.front === front).map(trailEl)
+  : f.ribbons.filter((r) => r.front === front).map(ribbonEl);
 const petalPaths = (ink, acc) => MARK_GEOMETRY.petals.map((p) => `<path fill="${p.long ? acc : ink}" transform="rotate(${p.angle} ${C} ${C})" d="${p.d}"/>`).join('');
 const letterBody = (s, color) => s.kind === 'fill'
   ? `<path fill="${color}"${s.evenOdd ? ' fill-rule="evenodd"' : ''} d="${s.d}"/>`
@@ -54,7 +66,7 @@ function frame(t) {
   }
   const g = [];
   if (theme === 'dark') g.push(`<circle cx="${L.cx}" cy="${L.cy}" r="${f2(L.markScale * 61)}" fill="url(#glow)" opacity="${f.glow.toFixed(3)}"/>`);
-  for (const d of f.trails) if (!d.front) g.push(trailEl(d));
+  g.push(...trailEls(f, false));
   for (const s of f.stars) if (!s.front) g.push(starEl(s));
   // 花标：底色剪影（挡住后面的星）→ 呼吸中的暗花标 → 水波填充的实色花标（圆形遮罩）→ 涟漪 → 轴
   let mark = `<g opacity="${f.appear.toFixed(3)}">${petalPaths(T.bg, T.bg)}<circle cx="${C}" cy="${C}" r="4.5" fill="${T.bg}"/></g>`;
@@ -75,7 +87,7 @@ function frame(t) {
     word += theme === 'dark' ? glow + letter : letter + glow;
   });
   g.push(`<g transform="translate(${L.wordX} ${L.wordY}) scale(${L.wordScale})">${word}</g>`);
-  for (const d of f.trails) if (d.front) g.push(trailEl(d));
+  g.push(...trailEls(f, true));
   for (const s of f.stars) if (s.front) g.push(starEl(s));
   out.push(`<g opacity="${f.layer.toFixed(3)}">${g.join('')}</g>`);
   if (T.vign) out.push(`<rect width="${W}" height="${H}" fill="url(#vign)"/>`);

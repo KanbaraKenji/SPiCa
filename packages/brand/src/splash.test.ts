@@ -14,6 +14,8 @@ import {
   splashOrbitScale,
   splashSchedule,
   splashSpeeds,
+  splashDive,
+  SPLASH_RIBBON_SLOTS,
   splashStaticFrame,
   starfield,
 } from './splash.ts';
@@ -105,7 +107,7 @@ describe('收尾', () => {
     expect(SPLASH_FINISH_AFTER).toBeCloseTo(splashSchedule().end, 9);
   });
 
-  it('顺序定死：扩轨 → 大半径绕 bigTurns 圈 → 一结束就直接扎进花心（≤ 0.4 秒，只走一小段短弧）', () => {
+  it('顺序定死：扩轨 → 大半径绕约半圈 → 一结束就直接扎进花心（≤ 0.3 秒，离花心越来越近）', () => {
     const F = SPLASH_FINISH;
     expect(S.bigStart).toBeCloseTo(F.expand, 9);
     expect(splashOrbitScale(R + S.bigStart + 0.01, R)).toBeCloseTo(F.bigRadius, 6);
@@ -113,19 +115,40 @@ describe('收尾', () => {
     let big = 0;
     for (let t = R + S.bigStart; t < R + S.collapseStart; t += dt) big += (splashSpeeds(t, R).orbit * dt) / SPLASH_TIMING.orbitPeriod;
     expect(big).toBeCloseTo(((S.collapseStart - S.bigStart) * F.bigSpeed) / SPLASH_TIMING.orbitPeriod, 2);
-    expect(Math.abs(big - F.bigTurns)).toBeLessThanOrEqual(0.5);
-    // 评审视频 7 秒模拟加载：大半径段在约第 8.7 秒结束
-    expect(7 + splashSchedule({}, 7).collapseStart).toBeCloseTo(8.7, 1);
-    expect(S.merge - S.collapseStart).toBeLessThanOrEqual(0.4);
-    let dive = 0;
-    for (let t = R + S.collapseStart; t < R + S.merge; t += dt) dive += (splashSpeeds(t, R).orbit * dt) / SPLASH_TIMING.orbitPeriod;
-    expect(dive * 360).toBeLessThan(60); // 扎心时转过不到 60°
-    // 扎心时半径只缩不涨、越缩越快
-    const k1 = splashOrbitScale(R + S.collapseStart + 0.1, R);
-    const k2 = splashOrbitScale(R + S.collapseStart + 0.2, R);
-    const k3 = splashOrbitScale(R + S.collapseStart + 0.3, R);
-    expect(F.bigRadius - k1).toBeLessThan(k1 - k2);
-    expect(k1 - k2).toBeLessThan(k2 - k3);
+    // 评审视频 7 秒模拟加载：蓝星在约第 8.2 秒开始扎入
+    expect(7 + splashSchedule({}, 7).collapseStart).toBeCloseTo(8.2, 1);
+    expect(S.merge - S.collapseStart).toBeLessThanOrEqual(0.3);
+    let prev = Infinity;
+    for (let t = R + S.collapseStart; t < R + S.merge; t += 0.005) {
+      const k = splashOrbitScale(t, R);
+      expect(k).toBeLessThanOrEqual(prev + 1e-9);
+      prev = k;
+    }
+  });
+
+  it('扎入段：屏幕上的线速度只升不降，合心时是起点的 3～4 倍（几种路线、任意 ready 时刻都一样）', () => {
+    const shapes = [{}, { finish: { diveArc: 0.1, diveCurl: 2, collapse: 0.165 } }, { finish: { diveArc: 0.25, diveCurl: 1.3, collapse: 0.27 } }];
+    for (const o of shapes) {
+      for (const ready of [3, 5.37, 7, 12.25]) {
+        const d = splashDive(ready, o);
+        expect(d.ratio).toBeGreaterThanOrEqual(3);
+        expect(d.ratio).toBeLessThanOrEqual(4);
+        const dt = 0.001;
+        let prev = 0;
+        let first = 0;
+        let last = 0;
+        for (let t = d.start; t < d.end - dt; t += dt) {
+          const a = splashFrame(t, ready, o).stars[0]!;
+          const b = splashFrame(t + dt, ready, o).stars[0]!;
+          const v = Math.hypot(b.x - a.x, b.y - a.y) / dt;
+          expect(v).toBeGreaterThanOrEqual(prev - 1); // 1 像素/秒的数值误差
+          if (!first) first = v;
+          last = v;
+          prev = v;
+        }
+        expect(last / first).toBeGreaterThan(2.8);
+      }
+    }
   });
 
   it('拖尾：加载中短而淡，收尾拉长变浓，合心后消失', () => {
@@ -138,30 +161,28 @@ describe('收尾', () => {
     expect(splashFrame(R + S.merge + 0.01, R).trails).toHaveLength(0);
   });
 
-  it('不管加载在哪一刻完成，大半径段结束时前面那颗星都在屏幕右侧（字标一侧），圈数只在 ±0.5 圈内微调', () => {
+  it('不管加载在哪一刻完成，大半径段结束时都是蓝星在前、在字标右上方（圈数在 0.05～1.05 圈内微调）', () => {
     for (const ready of [3, 4.1, 5.37, 7, 8.8, 12.25, 30]) {
       const s = splashSchedule({}, ready);
       const turns = ((s.collapseStart - s.bigStart) * SPLASH_FINISH.bigSpeed) / SPLASH_TIMING.orbitPeriod;
-      expect(Math.abs(turns - SPLASH_FINISH.bigTurns)).toBeLessThanOrEqual(0.5);
-      const [a, b] = splashFrame(ready + s.collapseStart, ready).stars;
-      const front = a!.front ? a! : b!;
-      expect(front.x).toBeGreaterThan(SPLASH_LAYOUT.cx + 50);
-    }
-  });
-
-  it('对比档 B（约 0.5 圈）：蓝星在前、走到字标右上方时从右侧扎入；ready 时刻任意都稳定', () => {
-    const o = { finish: { bigTurns: 0.5, diveAngle: 72, diveStar: 'primary' as const } };
-    for (const ready of [3, 5.37, 7, 12.25]) {
-      const s = splashSchedule(o, ready);
-      const turns = ((s.collapseStart - s.bigStart) * SPLASH_FINISH.bigSpeed) / SPLASH_TIMING.orbitPeriod;
       expect(turns).toBeGreaterThanOrEqual(0.05);
-      const [blue, white] = splashFrame(ready + s.collapseStart, ready, o).stars;
+      expect(turns).toBeLessThanOrEqual(1.05);
+      const [blue, white] = splashFrame(ready + s.collapseStart, ready).stars;
       expect(blue!.front).toBe(true);
       expect(white!.front).toBe(false);
       expect(blue!.x).toBeGreaterThan(SPLASH_LAYOUT.cx + 100); // 右侧
       expect(blue!.y).toBeLessThan(SPLASH_LAYOUT.cy); // 上半
     }
-    expect(7 + splashSchedule(o, 7).collapseStart).toBeCloseTo(8.2, 1);
+  });
+
+  it('另一档（白星约 0.94 圈后从字标旁扎入）仍可用', () => {
+    const o = { finish: { bigTurns: 0.94, diveAngle: 92, diveStar: 'companion' as const } };
+    for (const ready of [3, 7, 12.25]) {
+      const s = splashSchedule(o, ready);
+      const [, white] = splashFrame(ready + s.collapseStart, ready, o).stars;
+      expect(white!.front).toBe(true);
+      expect(white!.x).toBeGreaterThan(SPLASH_LAYOUT.cx + 50);
+    }
   });
 
   it('圈数很少时不会算成负的', () => {
@@ -223,7 +244,9 @@ describe('收尾', () => {
     expect(prev).toEqual({ orbit: 1, starfield: 1 });
     for (let t = R; t < R + S.end; t += 0.001) {
       const s = splashSpeeds(t, R);
-      expect(Math.abs(s.orbit - prev.orbit)).toBeLessThan(0.03);
+      // 扎入段 0.2 秒内加速到 3～4 倍，单独由上面的「只升不降」检查
+      const diving = t > R + S.collapseStart && t <= R + S.merge + 0.001;
+      if (!diving) expect(Math.abs(s.orbit - prev.orbit)).toBeLessThan(0.03);
       expect(Math.abs(s.starfield - prev.starfield)).toBeLessThan(0.02);
       prev = s;
     }
@@ -305,5 +328,35 @@ describe('<SpicaSplash>', () => {
   it('短版模式标在根元素上', () => {
     const html = renderToStaticMarkup(createElement(SpicaSplash, { ready: true, mode: 'brief' }));
     expect(html).toContain('data-mode="brief"');
+  });
+});
+
+describe('拖尾光带', () => {
+  const R = 7;
+  const S = splashSchedule({}, R);
+  it('加载中和收尾都有光带，每层不超过位置数；合心后消失', () => {
+    for (const t of [2, 3.3, R + 0.4, R + S.collapseStart + 0.1]) {
+      const f = splashFrame(t, t >= R ? R : null);
+      expect(f.ribbons.length).toBeGreaterThan(0);
+      for (const front of [true, false]) expect(f.ribbons.filter((r) => r.front === front).length).toBeLessThanOrEqual(SPLASH_RIBBON_SLOTS);
+      for (const r of f.ribbons) expect(r.d).toMatch(/^M[\d.\s-]+L.*Z$/);
+    }
+    expect(splashFrame(R + S.merge + 0.01, R).ribbons).toHaveLength(0);
+  });
+
+  it('扎入时光带随速度拉长', () => {
+    // 光带长度 ≈ 轮廓周长的一半
+    const len = (t: number) =>
+      splashFrame(t, R)
+        .ribbons.filter((x) => !x.companion)
+        .reduce((sum, x) => {
+          const pts = x.d.replace(/[MZ]/g, '').split('L').map((p) => p.trim().split(/\s+/).map(Number));
+          let per = 0;
+          for (let i = 1; i < pts.length; i++) per += Math.hypot(pts[i]![0]! - pts[i - 1]![0]!, pts[i]![1]! - pts[i - 1]![1]!);
+          return sum + per / 2;
+        }, 0);
+    const before = len(R + S.collapseStart - 0.05);
+    const late = len(R + S.merge - 0.01);
+    expect(late).toBeGreaterThan(before * 1.3);
   });
 });
