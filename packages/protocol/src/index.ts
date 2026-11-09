@@ -229,6 +229,11 @@ export type CoreEventBody =
   | { type: 'confirm.resolved'; callId: string; approved: boolean }
   | { type: 'ask.request'; callId: string; question: string; options?: string[] }
   | { type: 'ask.resolved'; callId: string; answer: string }
+  /**
+   * Suggested next steps shown as a card (suggest_actions tool). The run does
+   * not wait; clicking an action sends its `prompt` as a user message.
+   */
+  | { type: 'suggest.actions'; callId: string; title: string; actions: SuggestedAction[] }
   /** Tokens and estimated cost of one model call. */
   | { type: 'usage'; usage: Usage; costUsd: number; providerId: string; model: string }
   /** Running totals; `warning` when a total passes the warning threshold of its limit. */
@@ -249,6 +254,12 @@ export type CoreEventBody =
   /** A run (from an input until the agent stops) ended. */
   | { type: 'run.end'; reason: RunEndReason; detail?: string }
   | { type: 'error'; message: string; retryable?: boolean };
+
+export interface SuggestedAction {
+  label: string;
+  /** Sent as the user's message when the action is clicked. */
+  prompt: string;
+}
 
 export type CoreEvent = EventBase & CoreEventBody;
 export type CoreEventType = CoreEvent['type'];
