@@ -274,6 +274,8 @@ export interface PluginToolResult {
   isError: boolean;
   /** The user said no to the confirmation (nothing ran). */
   declined?: boolean;
+  /** Called with confirmed: false and the tool needs the user's yes: nothing ran; `content` says why. Ask, then call again with confirmed: true. */
+  needsConfirmation?: boolean;
 }
 
 export type PendingItem =
@@ -566,7 +568,11 @@ export interface AgentApi {
    * Irreversible tools (and tools a hook wants confirmed) ask the user first: confirm.request with cause 'plugin_view'
    * on `sessionId` (or the default top-level thread); answer it with confirm(sameSessionId, callId, approved).
    */
-  /** `confirmed`: the view already asked the user; run without another confirmation (recorded as confirmedBy 'view'). */
+  /**
+   * `confirmed`: true = the view already asked the user, run without asking again (recorded as confirmedBy 'view');
+   * false = do not ask here: when a confirmation is needed, return at once with needsConfirmation; left out = ask with a
+   * confirm.request card and wait.
+   */
   callPluginTool?(pluginId: string, toolName: string, args: Record<string, unknown>, opts?: { sessionId?: string; confirmed?: boolean }): Promise<PluginToolResult>;
   // Mail pipeline (M6): optional until the desktop shell implements them.
   listMail?(filter?: { status?: MailItem['status']; projectId?: string; limit?: number }): Promise<MailItem[]>;

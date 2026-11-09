@@ -93,6 +93,11 @@ describe('callPluginTool', () => {
     expect(await rt.callPluginTool('notes', 'notes-sync__push', { id: 'p' }, { confirmed: true })).toMatchObject({ isError: false });
     expect(ran).toEqual(['notes__read_note:f:view:notes', 'notes-sync__push:p:view:notes:view']);
     expect(events.some((e) => e.type === 'confirm.request')).toBe(false);
+    // confirmed: false never waits: it says a confirmation is needed and runs nothing
+    expect(await rt.callPluginTool('notes', 'notes__delete_note', { id: 'q' }, { confirmed: false })).toMatchObject({ isError: true, needsConfirmation: true });
+    expect(await rt.callPluginTool('notes', 'read_note', { id: 'r' }, { confirmed: false })).toMatchObject({ isError: false }); // nothing to confirm
+    expect(ran).toEqual(['notes__read_note:f:view:notes', 'notes-sync__push:p:view:notes:view', 'notes__read_note:r:view:notes']);
+    expect(events.some((e) => e.type === 'confirm.request')).toBe(false);
     // a full name that belongs to another plugin is still refused
     await expect(rt.callPluginTool('notes', 'mail__send', {}, { confirmed: true })).rejects.toThrow(/has no tool/);
   });
