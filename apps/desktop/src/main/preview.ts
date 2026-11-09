@@ -1,0 +1,91 @@
+// File preview for the right panel: what kind a file is, its text (capped), or
+// a private URL (spica-file://) for the built-in PDF viewer and images. Only
+// files the user asked to preview get a URL; nothing else is reachable.
+import { randomUUID } from 'node:crypto';
+import { open, stat } from 'node:fs/promises';
+import { basename, extname } from 'node:path';
+import type { PreviewInfo } from '../shared/bridge';
+
+export const PREVIEW_SCHEME = 'spica-file';
+/** Text beyond this is not shown (the panel says so and offers the system program). */
+export const TEXT_LIMIT = 512 * 1024;
+
+const IMAGE = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico']);
+const MARKDOWN = new Set(['.md', '.markdown']);
+const HTML = new Set(['.html', '.htm']);
+const TEXT = new Set([
+  '.txt', '.log', '.csv', '.tsv', '.json', '.jsonl', '.xml', '.yaml', '.yml', '.ini', '.cfg', '.conf', '.toml', '.env.example',
+  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.java', '.c', '.cc', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs', '.rb', '.php',
+  '.sh', '.ps1', '.bat', '.cmd', '.sql', '.css', '.scss', '.less', '.vue', '.svelte', '.kt', '.swift', '.m', '.r', '.lua', '.pl', '.vb', '.bas',
+]);
+
+export type PreviewKind = PreviewInfo['kind'];
+
+export function kindOf(path: string): Exclude<PreviewKind, 'missing'> {
+  const ext = extname(path).toLowerCase();
+  if (ext === '.pdf') return 'pdf';
+  if (IMAGE.has(ext)) return 'image';
+  if (MARKDOWN.has(ext)) return 'markdown';
+  if (HTML.has(ext)) return 'html';
+  if (TEXT.has(ext) || ext === '') return 'text';
+  return 'unsupported';
+}
+
+/** UTF-8, or GB18030 when UTF-8 does not fit (Chinese text files saved by older Windows tools). */
+export function decodeText(bytes: Uint8Array): string {
+  const utf8 = new TextDecoder('utf-8').decode(bytes);
+  const bad = (utf8.match(/�/g) ?? []).length;
+  if (bad === 0 || bad < utf8.length / 200) return utf8;
+  try {
+    return new TextDecoder('gb18030').decode(bytes);
+  } catch {
+    return utf8;
+  }
+}
+
+/** Paths given out as spica-file://<token>; a token only ever maps to the one file. */
+export class PreviewFiles {
+  readonly #byToken = new Map<string, string>();
+
+  urlFor(path: string): string {
+    for (const [t, p] of this.#byToken) if (p === path) return `${PREVIEW_SCHEME}://f/${t}`;
+    const token = randomUUID();
+    this.#byToken.set(token, path);
+    if (this.#byToken.size > 200) this.#byToken.delete(this.#byToken.keys().next().value as string);
+    return `${PREVIEW_SCHEME}://f/${token}`;
+  }
+
+  /** The file behind a spica-file URL, or undefined. */
+  pathOf(url: string): string | undefined {
+    try {
+      const u = new URL(url);
+      return this.#byToken.get(u.pathname.replace(/^\/+/, ''));
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+export async function readPreview(path: string, files: PreviewFiles): Promise<PreviewInfo> {
+  const name = basename(path);
+  let size: number;
+  try {
+    const st = await stat(path);
+    if (!st.isFile()) return { kind: 'unsupported', name, path, size: 0, message: '这是一个文件夹，不是文件。' };
+    size = st.size;
+  } catch {
+    return { kind: 'missing', name, path, size: 0, message: '找不到这个文件，可能已经被移走或删掉了。' };
+  }
+  const kind = kindOf(path);
+  if (kind === 'pdf' || kind === 'image') return { kind, name, path, size, url: files.urlFor(path) };
+  if (kind === 'unsupported') return { kind, name, path, size, message: '这种文件还不能在这里预览。' };
+  const handle = await open(path, 'r');
+  try {
+    const length = Math.min(size, TEXT_LIMIT);
+    const buf = new Uint8Array(length);
+    await handle.read(buf, 0, length, 0);
+    return { kind, name, path, size, text: decodeText(buf), truncated: size > TEXT_LIMIT };
+  } finally {
+    await handle.close();
+  }
+}

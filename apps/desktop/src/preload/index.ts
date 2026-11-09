@@ -2,7 +2,7 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import { IpcChannel, type AgentApi, type AppInfo, type CoreEvent } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
-import type { BackendState, DesktopBridge, ProviderList, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
+import type { BackendState, DesktopBridge, PreviewInfo, ProviderList, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import type { ProviderDraft, TestResult } from '../shared/providers';
 import type { PluginsCommand, PluginsResult } from '../shared/plugins';
 import type { UpdateState } from '../shared/updates';
@@ -54,6 +54,7 @@ const bridge: DesktopBridge = {
   onSettingsChanged: (listener) => subscribe<ShellSettings>(DesktopChannel.SettingsChanged, listener),
   zoom: (step) => ipcRenderer.send(DesktopChannel.Zoom, step),
   pickFolder: (title) => ipcRenderer.invoke(DesktopChannel.PickFolder, title) as Promise<string | null>,
+  preview: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.Preview, sessionId, path) as Promise<PreviewInfo>,
   pickFiles: (title) => ipcRenderer.invoke(DesktopChannel.PickFiles, title) as Promise<string[]>,
   pathForFile: (file) => {
     try {

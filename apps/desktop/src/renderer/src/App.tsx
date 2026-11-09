@@ -6,6 +6,7 @@ import { ShellStore, useShell } from './store/shell';
 import { computeLayout, panelWidths, toggleAction, type Floating } from './shell/layout';
 import { Resizer } from './shell/Resizer';
 import { ConfirmDialog } from './ui/Dialog';
+import { FilePreview, usePreview } from './shell/FilePreview';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import { useViewportWidth } from './shell/useViewportWidth';
 import { Sidebar } from './shell/Sidebar';
@@ -55,6 +56,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   /** The new-project dialog; from a 「新事务」 mail it carries the mail and the suggested name. */
   const [newProject, setNewProject] = useState<null | { name?: string; mailId?: string }>(null);
+  /** The file shown in the right panel instead of the details, if any. */
+  const [preview, setPreview] = useState<{ sessionId: string | null; path: string } | null>(null);
+  const previewInfo = usePreview(bridge.preview, preview);
   /** The project the user asked to delete (waiting for the confirmation). */
   const [deletingProject, setDeletingProject] = useState<null | { id: string; name: string }>(null);
   const update = useUpdateState(bridge);
@@ -84,7 +88,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // Panel widths: what the user dragged them to (live while dragging), giving way when the window narrows.
   const [dragging, setDragging] = useState<{ side: 'left' | 'right'; width: number } | null>(null);
   // A main process older than this setting (dev build not restarted yet) does not send it.
-  const savedWidths = settings.panelWidths ?? DEFAULT_SETTINGS.panelWidths;
+  const savedWidths0 = settings.panelWidths ?? DEFAULT_SETTINGS.panelWidths;
+  // A preview needs room: the right panel is at least 520 wide while it shows one (if the window allows).
+  const savedWidths = preview ? { ...savedWidths0, right: Math.max(savedWidths0.right, 520) } : savedWidths0;
   const widths = panelWidths(width, layout, dragging ? { ...savedWidths, [dragging.side]: dragging.width } : savedWidths);
   const resizer = (side: 'left' | 'right') =>
     layout[side] === 'docked' ? (
@@ -92,7 +98,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         side={side}
         width={widths[side]}
         onPreview={(w) => setDragging(w === null ? null : { side, width: w })}
-        onCommit={(w) => shell.update({ panelWidths: { ...savedWidths, [side]: w } })}
+        onCommit={(w) => shell.update({ panelWidths: { ...savedWidths0, [side]: w } })}
       />
     ) : null;
 
@@ -245,6 +251,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     if (layout.left === 'floating') setFloating(null);
     void agent.open(id);
   };
+  // Files open in the right panel (read-only preview); 用系统程序打开 there hands them to Windows.
+  const previewFile = (path: string) => {
+    setPreview({ sessionId: state.activeId, path });
+    if (layout.right !== 'hidden') return;
+    const wanted = { ...settings.panels, right: true };
+    if (computeLayout(width, wanted).right === 'docked') shell.update({ panels: wanted });
+    else setFloating('right');
+  };
   const openFile = (path: string) => {
     if (!state.activeId) return;
     bridge
@@ -306,7 +320,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     stop: () => id && void agent.stop(id),
     answer: (callId, a) => id && void agent.answer(id, callId, a),
     confirm: (callId, ok) => id && void agent.confirm(id, callId, ok),
-    openFile,
+    openFile: previewFile,
     openSession: (sid) => openSession(sid),
     resume: () => id && void agent.resume(id),
     ...(mail.supported ? { mailById, openInbox: () => setView('inbox') } : {}),
@@ -485,17 +499,30 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         {rightShown && view === 'chat' ? (
           <div className={`panel panel-right is-${layout.right}`} style={{ width: widths.right }}>
             {resizer('right')}
+            {preview ? (
+              <FilePreview
+                info={previewInfo}
+                onOpenExternal={(p) => {
+                  if (preview.sessionId) {
+                    void bridge.openFile(preview.sessionId, p).then((err) => err && agent.state.set((v) => ({ ...v, notice: err })));
+                  }
+                }}
+                onClose={() => setPreview(null)}
+              />
+            ) : (
             <DetailPanel
               session={session}
               parent={parent}
               transcript={transcript}
               globalCostUsd={totalCost}
               onOpenFile={openFile}
+              onPreviewFile={previewFile}
               onOpenSession={openSession}
               project={project}
               activity={project ? (state.activity[project.id] ?? []) : []}
               onClose={layout.right === 'floating' ? () => setFloating(null) : undefined}
             />
+            )}
           </div>
         ) : null}
 

@@ -12,7 +12,10 @@ export interface DetailPanelProps {
   parent: SessionInfo | undefined;
   transcript: Transcript;
   globalCostUsd: number;
+  /** Opens a folder (or a file) with Windows. */
   onOpenFile(path: string): void;
+  /** Shows a file in the right panel; absent: files open with Windows. */
+  onPreviewFile?: (path: string) => void;
   onOpenSession(id: string): void;
   /** Set when the session belongs to a project. */
   project?: ProjectInfo | undefined;
@@ -28,7 +31,7 @@ function clock(iso: string): string {
 
 const ROLE_LABEL: Record<SessionInfo['role'], string> = { top: '对话', manager: '项目经理', worker: '子任务' };
 
-export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onOpenSession, project, activity = [], onClose }: DetailPanelProps) {
+export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose }: DetailPanelProps) {
   const blocks = transcript.items.flatMap((i) => (i.kind === 'response' ? i.blocks : []));
   const tools = blocks.filter((b): b is ToolBlock => b.type === 'tool');
   const files = filesOf(blocks, transcript.fileCards);
@@ -141,7 +144,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
             <ul className="detail-list">
               {files.map((f) => (
                 <li key={f.path}>
-                  <button type="button" className="detail-file" onClick={() => onOpenFile(f.path)} title={`打开 ${f.path}`}>
+                  <button type="button" className="detail-file" onClick={() => (onPreviewFile ?? onOpenFile)(f.path)} title={`查看 ${f.path}`}>
                     <Icon name="file" size={14} />
                     <span className="detail-file-name">{fileName(f.path)}</span>
                     {fileFolder(f.path) ? <span className="detail-item-sub">{fileFolder(f.path)}</span> : null}

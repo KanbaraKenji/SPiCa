@@ -37,6 +37,8 @@ export const DesktopChannel = {
   Workflows: 'spica:workflows',
   /** invoke: title -> string[] (Windows' file picker, several files; empty when cancelled) */
   PickFiles: 'spica:pickFiles',
+  /** invoke: (sessionId, path) -> PreviewInfo */
+  Preview: 'spica:preview',
   /** invoke: UsageLogRequest -> UsageLogResult (asks where to save first) */
   UsageLog: 'spica:usageLog',
   /** send: a file path to show in Explorer */

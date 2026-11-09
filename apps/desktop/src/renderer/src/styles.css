@@ -2920,3 +2920,112 @@ button.tree-twisty:hover {
 .panel-resizer:focus-visible {
   outline: none;
 }
+
+/* File preview in the right panel (read-only). */
+.preview {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--spica-bg);
+}
+
+.preview-head {
+  flex: none;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--spica-border);
+  color: var(--spica-muted);
+}
+
+.preview-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--spica-ink);
+  font-weight: 500;
+}
+
+.preview-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.preview-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: #ffffff;
+}
+
+.preview-md {
+  padding: 16px 20px;
+  user-select: text;
+}
+
+.preview-image-wrap {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+}
+
+.preview-image {
+  max-width: 100%;
+  height: auto;
+}
+
+.preview-code {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  user-select: text;
+}
+
+.preview-line {
+  display: flex;
+  white-space: pre;
+}
+
+.preview-ln {
+  flex: none;
+  width: 4.5em;
+  padding-right: 12px;
+  text-align: right;
+  color: var(--spica-faint);
+  user-select: none;
+}
+
+.preview-lt {
+  flex: 1;
+  padding-right: 16px;
+}
+
+.preview-note {
+  flex: none;
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--spica-muted);
+  background: var(--spica-warning-soft);
+}
+
+.preview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: var(--spica-muted);
+  text-align: center;
+}

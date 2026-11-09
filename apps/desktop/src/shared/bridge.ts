@@ -37,6 +37,12 @@ export interface ShellState {
   automated: boolean;
 }
 
+/** A file shown in the right panel: a URL for the PDF viewer / images, or its text (capped). */
+export type PreviewInfo =
+  | { kind: 'pdf' | 'image'; name: string; path: string; size: number; url: string }
+  | { kind: 'markdown' | 'text' | 'html'; name: string; path: string; size: number; text: string; truncated: boolean }
+  | { kind: 'unsupported' | 'missing'; name: string; path: string; size: number; message: string };
+
 /** 导出使用日志: which project (none = all) and which days (ISO, inclusive; none = from the start / until now). */
 export interface UsageLogRequest {
   projectId?: string;
@@ -66,6 +72,8 @@ export interface DesktopBridge extends SpicaBridge {
   pathForFile(file: File): string;
   /** Asks where to save, then writes the usage log (JSON Lines; keys and addresses removed by the core). */
   exportUsageLog(req: UsageLogRequest): Promise<UsageLogResult>;
+  /** A file of this session (relative paths are in its folder), ready for the right panel. */
+  preview(sessionId: string | null, path: string): Promise<PreviewInfo>;
   /** Shows a file selected in Explorer. */
   showInFolder(path: string): void;
   backend: {
