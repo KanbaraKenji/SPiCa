@@ -47,7 +47,12 @@ rt.events.on((e) => {
   if (e.type === 'run.end') log.push(`${at} run.end ${e.reason}`);
 });
 
-const pm = rt.createSession({ role: 'manager', title: 'PM' });
+// Explicit tools: sub-agents inherit this list (run_command would pause for confirmation).
+const pm = rt.createSession({
+  role: 'manager',
+  title: 'PM',
+  tools: ['read_file', 'grep', 'glob', 'list_dir', 'spawn_agent', 'message_agent', 'wait_agents', 'record_decision'],
+});
 const run = pm.send(
   'Compare the two supplier offers in this folder (supplier-a.md and supplier-b.md). ' +
     'Spawn one sub-agent per file to summarize it (each sub-agent should read its file), wait for both, ' +

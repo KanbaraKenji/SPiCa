@@ -24,6 +24,8 @@ export interface SessionConfig {
   /** Tool allow-list; undefined = all registered tools. */
   tools?: string[];
   maxTurns: number;
+  /** Interface language (BCP 47), used until the user writes. */
+  locale?: string;
   temperature?: number;
   /** Enable model-hosted web search when the provider has it. */
   serverWebSearch?: boolean;
