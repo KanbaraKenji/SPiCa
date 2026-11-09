@@ -1,0 +1,179 @@
+// Packaging, shared-folder and HTTP sources, checksums, updates and rollback.
+import { createServer, type Server } from 'node:http';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { packPlugin, unpackPlugin, verifyPackage } from './pack.ts';
+import { checkUpdates, installAvailable, installZip, listSource, writeIndex } from './sources.ts';
+import { EXAMPLE_PLUGIN, callTool, exampleAt, rig, toolNames, type Rig } from './testing/helpers.ts';
+import { readZip, writeZip } from './zip.ts';
+
+let r: Rig | undefined;
+const dirs: string[] = [];
+let server: Server | undefined;
+afterEach(async () => {
+  await r?.cleanup();
+  r = undefined;
+  await new Promise<void>((res) => (server ? server.close(() => res()) : res()));
+  server = undefined;
+  for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true });
+});
+
+async function temp(): Promise<string> {
+  const d = await mkdtemp(join(tmpdir(), 'spica-src-test-'));
+  dirs.push(d);
+  return d;
+}
+
+/** Serve a folder over HTTP on a random port. */
+async function serve(dir: string): Promise<string> {
+  server = createServer(async (req, res) => {
+    try {
+      const body = await readFile(join(dir, decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)));
+      res.writeHead(200).end(body);
+    } catch {
+      res.writeHead(404).end('not found');
+    }
+  });
+  await new Promise<void>((res) => server!.listen(0, '127.0.0.1', () => res()));
+  const addr = server.address() as { port: number };
+  return `http://127.0.0.1:${addr.port}/index.json`;
+}
+
+describe('zip and packages', () => {
+  it('round-trips files and refuses entries that escape the folder', () => {
+    const buf = writeZip([
+      { name: 'a.txt', data: Buffer.from('hello '.repeat(100)) },
+      { name: 'dir/b.bin', data: Buffer.from([0, 1, 2, 3]) },
+    ]);
+    expect(readZip(buf).map((e) => [e.name, e.data.length])).toEqual([
+      ['a.txt', 600],
+      ['dir/b.bin', 4],
+    ]);
+    expect(() => readZip(writeZip([{ name: '../evil.txt', data: Buffer.from('x') }]))).toThrow(/不安全的路径/);
+    expect(() => readZip(writeZip([{ name: 'C:/Windows/evil.txt', data: Buffer.from('x') }]))).toThrow(/不安全的路径/);
+    expect(() => readZip(Buffer.from('not a zip at all, just text'))).toThrow(/不是 zip 文件/);
+  });
+
+  it('packs the example plugin reproducibly and verifies it', async () => {
+    const out = await temp();
+    const a = await packPlugin(EXAMPLE_PLUGIN, out);
+    expect(a).toMatchObject({ name: 'notes', version: '0.1.0', file: join(out, 'notes-0.1.0.zip') });
+    const b = await packPlugin(EXAMPLE_PLUGIN, await temp());
+    expect(b.sha256).toBe(a.sha256);
+    const buf = await readFile(a.file);
+    expect(await verifyPackage(buf, a.sha256)).toMatchObject({ ok: true, folder: { manifest: { name: 'notes' } } });
+    const bad = await verifyPackage(buf, 'deadbeef');
+    expect(bad.ok).toBe(false);
+    expect(bad.folder.issues[0]!.message).toMatch(/校验和对不上/);
+  });
+
+  it('unpacks a zip whose files sit in one top folder (Windows "compressed folder")', async () => {
+    const files = ['manifest.json', 'mcp/notes.json', 'server/index.js', 'mock/catalog.json'];
+    const entries = await Promise.all(files.map(async (f) => ({ name: `notes-folder/${f}`, data: await readFile(join(EXAMPLE_PLUGIN, f)) })));
+    const target = await temp();
+    const folder = await unpackPlugin(writeZip(entries), target);
+    expect(folder.manifest?.name).toBe('notes');
+    expect(folder.issues).toEqual([]);
+  });
+});
+
+describe('sources, updates and rollback', () => {
+  it('shared folder without an index: finds plugin folders and zips', async () => {
+    const share = await temp();
+    await cp(EXAMPLE_PLUGIN, join(share, 'notes-src'), { recursive: true });
+    await packPlugin(await exampleAt('0.2.0'), share);
+    const list = await listSource({ kind: 'share', location: share });
+    expect(list.map((e) => [e.name, e.version, e.form]).sort()).toEqual([
+      ['notes', '0.1.0', 'folder'],
+      ['notes', '0.2.0', 'zip'],
+    ]);
+  });
+
+  it('missing shared folder and unreachable HTTP give plain messages', async () => {
+    await expect(listSource({ kind: 'share', location: 'Z:\\no\\such\\share' })).rejects.toThrow(/找不到共享文件夹/);
+    await expect(listSource({ kind: 'http', location: 'http://127.0.0.1:9/index.json', label: '测试源' })).rejects.toThrow(/连不上插件源 测试源/);
+  });
+
+  it('update from a shared folder, then roll back', async () => {
+    r = await rig();
+    await r.pm.install(EXAMPLE_PLUGIN);
+    await r.pm.enable('notes');
+    await callTool(r.rt, 'notes__write_note', { title: 'keep', text: 'survives updates' });
+
+    const share = await temp();
+    await packPlugin(await exampleAt('0.2.0'), share);
+    await packPlugin(await exampleAt('0.1.5'), share);
+    await writeIndex(share);
+    const src = { kind: 'share' as const, location: share };
+    const { updates, errors } = await checkUpdates(r.pm, [src]);
+    expect(errors).toEqual([]);
+    expect(updates.map((u) => [u.name, u.installed, u.available])).toEqual([['notes', '0.1.0', '0.2.0']]);
+
+    const d = await installAvailable(r.pm, updates[0]!.entry);
+    expect(d).toMatchObject({ version: '0.2.0', previousVersion: '0.1.0', enabled: true, source: { kind: 'share' } });
+    // Still enabled, tools still there, data kept.
+    expect(toolNames(r.rt)).toContain('notes__read_note');
+    expect((await callTool(r.rt, 'notes__read_note', { title: 'keep' })).content).toContain('survives updates');
+    expect((await checkUpdates(r.pm, [src])).updates).toEqual([]);
+
+    const back = await r.pm.rollback('notes');
+    expect(back).toMatchObject({ version: '0.1.0', previousVersion: '0.2.0', enabled: true });
+    expect(toolNames(r.rt)).toContain('notes__read_note');
+    expect((await callTool(r.rt, 'notes__read_note', { title: 'keep' })).content).toContain('survives updates');
+  });
+
+  it('HTTP source: index + zip with checksum; a tampered file is not installed', async () => {
+    const site = await temp();
+    await packPlugin(await exampleAt('0.3.0'), site);
+    await writeIndex(site);
+    const url = await serve(site);
+    r = await rig();
+    const list = await listSource({ kind: 'http', location: url });
+    expect(list).toMatchObject([{ name: 'notes', version: '0.3.0', location: url.replace('index.json', 'notes-0.3.0.zip') }]);
+    expect(list[0]!.sha256).toMatch(/^[0-9a-f]{64}$/);
+
+    // Tamper with the published zip: the checksum no longer matches.
+    const zipPath = join(site, 'notes-0.3.0.zip');
+    const good = await readFile(zipPath);
+    await writeFile(zipPath, Buffer.concat([good, Buffer.from('x')]));
+    await expect(installAvailable(r.pm, list[0]!)).rejects.toThrow(/校验和对不上/);
+    expect(r.pm.list()).toEqual([]);
+
+    await writeFile(zipPath, good);
+    const d = await installAvailable(r.pm, list[0]!);
+    expect(d).toMatchObject({ name: 'notes', version: '0.3.0', enabled: false, source: { kind: 'http' } });
+  });
+
+  it('HTTP entries without a checksum are refused', async () => {
+    const site = await temp();
+    await packPlugin(EXAMPLE_PLUGIN, site);
+    await writeFile(join(site, 'index.json'), JSON.stringify({ index_version: 1, plugins: [{ name: 'notes', version: '0.1.0', file: 'notes-0.1.0.zip' }] }));
+    const url = await serve(site);
+    r = await rig();
+    const [entry] = await listSource({ kind: 'http', location: url });
+    await expect(installAvailable(r.pm, entry!)).rejects.toThrow(/没有写校验和/);
+  });
+
+  it('a broken new version does not replace a working one', async () => {
+    r = await rig();
+    await r.pm.install(EXAMPLE_PLUGIN);
+    await r.pm.enable('notes');
+    const broken = await exampleAt('0.9.0');
+    await writeFile(join(broken, 'server', 'index.js'), 'process.exit(2);');
+    dirs.push(broken);
+    await expect(r.pm.install(broken)).rejects.toThrow(/新版本 0\.9\.0 启动失败，已退回 0\.1\.0/);
+    expect(r.pm.describe('notes')).toMatchObject({ version: '0.1.0', enabled: true });
+    expect(toolNames(r.rt)).toContain('notes__list_notes');
+  });
+
+  it('installs a zip the user picked', async () => {
+    const out = await temp();
+    const p = await packPlugin(EXAMPLE_PLUGIN, out);
+    r = await rig();
+    const d = await installZip(r.pm, await readFile(p.file), { kind: 'zip', location: p.file });
+    expect(d).toMatchObject({ name: 'notes', version: '0.1.0', source: { kind: 'zip' } });
+    await mkdir(join(out, 'x'), { recursive: true });
+  });
+});

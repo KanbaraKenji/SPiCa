@@ -1,0 +1,270 @@
+// Plugin manifest (`manifest.json` at the plugin root): types and validation.
+// The shape follows the MCPB manifest where the two overlap (name, version,
+// author, license, compatibility) and adds Spica's permission and mock fields.
+// Validation never throws: it returns issues with a plain-language message
+// (Chinese, shown to the user as-is) and the JSON path that is wrong.
+
+export const MANIFEST_FILE = 'manifest.json';
+export const MANIFEST_VERSION = 1;
+
+export type HookKind = 'inject' | 'beforeRequest' | 'afterResponse' | 'beforeTool' | 'afterTool';
+export const HOOK_KINDS: readonly HookKind[] = ['inject', 'beforeRequest', 'afterResponse', 'beforeTool', 'afterTool'];
+
+export interface PluginPermissions {
+  /** Hosts the plugin's processes may reach. Empty = none declared (informational for now). */
+  network: string[];
+  /** Access to the session's working folder (the project folder). */
+  workspace: 'none' | 'read' | 'write';
+  /** Tool names (as the server reports them) that need user confirmation by default. */
+  irreversible: string[];
+  /** Hook kinds the plugin's hook modules may register. Anything else is refused. */
+  hooks: HookKind[];
+}
+
+export interface PluginManifest {
+  manifestVersion: number;
+  /** Short id: lowercase letters, digits and '-', 2–24 characters. Also the tool-name prefix. */
+  name: string;
+  version: string;
+  displayName: string;
+  description: string;
+  author: { name: string; email?: string; url?: string };
+  license: string;
+  /** Compatible Spica versions, e.g. ">=0.1.0 <1.0.0" or "^0.1.0". */
+  spica: string;
+  permissions: PluginPermissions;
+  mock: { supported: boolean; description?: string };
+  homepage?: string;
+}
+
+export interface Issue {
+  /** Where the problem is: file plus JSON path, e.g. "manifest.json · version". */
+  where: string;
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+export const NAME_PATTERN = /^[a-z][a-z0-9-]{1,23}$/;
+const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
+
+/** Drop a leading byte-order mark (Notepad adds one). */
+export function stripBom(s: string): string {
+  return s.charCodeAt(0) === 0xfeff ? s.slice(1) : s;
+}
+
+export function isSemver(v: string): boolean {
+  return SEMVER.test(v);
+}
+
+/** Compare two semver strings: -1, 0 or 1. Invalid versions sort first. */
+export function compareVersions(a: string, b: string): number {
+  const pa = SEMVER.exec(a);
+  const pb = SEMVER.exec(b);
+  if (!pa || !pb) return pa ? 1 : pb ? -1 : 0;
+  for (let i = 1; i <= 3; i++) {
+    const d = Number(pa[i]) - Number(pb[i]);
+    if (d !== 0) return d < 0 ? -1 : 1;
+  }
+  const ra = pa[4];
+  const rb = pb[4];
+  if (ra === rb) return 0;
+  if (ra === undefined) return 1; // release > prerelease
+  if (rb === undefined) return -1;
+  const xa = ra.split('.');
+  const xb = rb.split('.');
+  for (let i = 0; i < Math.max(xa.length, xb.length); i++) {
+    const sa = xa[i];
+    const sb = xb[i];
+    if (sa === undefined) return -1;
+    if (sb === undefined) return 1;
+    const na = /^\d+$/.test(sa) ? Number(sa) : NaN;
+    const nb = /^\d+$/.test(sb) ? Number(sb) : NaN;
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) {
+      if (na !== nb) return na < nb ? -1 : 1;
+    } else if (sa !== sb) return sa < sb ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * Does `version` satisfy `range`? Supports space-separated comparators
+ * (>=, >, <=, <, =), caret (^1.2.3) and tilde (~1.2.3), and `*`.
+ */
+export function satisfies(version: string, range: string): boolean {
+  const parts = range.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return false;
+  return parts.every((p) => {
+    if (p === '*') return true;
+    const m = /^(>=|<=|>|<|=|\^|~)?(.+)$/.exec(p);
+    if (!m) return false;
+    const op = m[1] ?? '=';
+    const target = normalize(m[2]!);
+    if (!target) return false;
+    const c = compareVersions(version, target);
+    switch (op) {
+      case '>=':
+        return c >= 0;
+      case '>':
+        return c > 0;
+      case '<=':
+        return c <= 0;
+      case '<':
+        return c < 0;
+      case '=':
+        return c === 0;
+      case '^': {
+        const [maj, min] = target.split('.').map(Number) as [number, number];
+        const upper = maj > 0 ? `${maj + 1}.0.0` : `0.${min + 1}.0`;
+        return c >= 0 && compareVersions(version, upper) < 0;
+      }
+      case '~': {
+        const [maj, min] = target.split('.').map(Number) as [number, number];
+        return c >= 0 && compareVersions(version, `${maj}.${min + 1}.0`) < 0;
+      }
+    }
+    return false;
+  });
+}
+
+/** "1" → "1.0.0", "1.2" → "1.2.0"; returns undefined for garbage. */
+function normalize(v: string): string | undefined {
+  const bits = v.split('-')[0]!.split('.');
+  while (bits.length < 3) bits.push('0');
+  const out = bits.join('.') + (v.includes('-') ? v.slice(v.indexOf('-')) : '');
+  return isSemver(out) ? out : undefined;
+}
+
+type Json = Record<string, unknown>;
+const isObj = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** Parse the text of manifest.json. Returns the manifest when there are no errors. */
+export function parseManifest(text: string, where = MANIFEST_FILE): { manifest?: PluginManifest; issues: Issue[] } {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(stripBom(text));
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    return { issues: [{ where, severity: 'error', message: `清单不是合法的 JSON（${detail}）。检查有没有多余的逗号或缺了引号。` }] };
+  }
+  return validateManifest(raw, where);
+}
+
+export function validateManifest(raw: unknown, where = MANIFEST_FILE): { manifest?: PluginManifest; issues: Issue[] } {
+  const issues: Issue[] = [];
+  const err = (path: string, message: string) => issues.push({ where: `${where} · ${path}`, severity: 'error', message });
+  const warn = (path: string, message: string) => issues.push({ where: `${where} · ${path}`, severity: 'warning', message });
+  if (!isObj(raw)) {
+    err('(根)', '清单最外层应该是一个对象 { … }。');
+    return { issues };
+  }
+  const str = (key: string, required: boolean): string | undefined => {
+    const v = raw[key];
+    if (v === undefined || v === '') {
+      if (required) err(key, `缺少「${key}」。`);
+      return undefined;
+    }
+    if (typeof v !== 'string') {
+      err(key, `「${key}」应该是文字，现在是 ${typeof v}。`);
+      return undefined;
+    }
+    return v;
+  };
+
+  const mv = raw.manifest_version;
+  if (mv === undefined) err('manifest_version', `缺少「manifest_version」，现在只支持 ${MANIFEST_VERSION}。`);
+  else if (mv !== MANIFEST_VERSION) err('manifest_version', `不认识的清单版本 ${JSON.stringify(mv)}，这个 Spica 只支持 ${MANIFEST_VERSION}。`);
+
+  const name = str('name', true);
+  if (name !== undefined && !NAME_PATTERN.test(name)) {
+    err('name', `插件名「${name}」不合格：只能用小写字母、数字和 -，以字母开头，2 到 24 个字符（它会成为工具名的前缀）。`);
+  }
+  const version = str('version', true);
+  if (version !== undefined && !isSemver(version)) err('version', `版本号「${version}」不合格，应该像 1.2.3 这样三段数字。`);
+  const description = str('description', true);
+  const displayName = str('display_name', false);
+  const license = str('license', false);
+  if (license === undefined) warn('license', '没有写许可证（license），别人不知道能不能用。');
+  const homepage = str('homepage', false);
+
+  let author: PluginManifest['author'] | undefined;
+  if (typeof raw.author === 'string' && raw.author) author = { name: raw.author };
+  else if (isObj(raw.author) && typeof raw.author.name === 'string' && raw.author.name) {
+    author = { name: raw.author.name };
+    if (typeof raw.author.email === 'string') author.email = raw.author.email;
+    if (typeof raw.author.url === 'string') author.url = raw.author.url;
+  } else err('author', '缺少作者（author），写成 { "name": "…" }。');
+
+  let spica = '*';
+  const compat = raw.compatibility;
+  if (compat !== undefined) {
+    if (!isObj(compat)) err('compatibility', '「compatibility」应该是对象，例如 { "spica": ">=0.1.0" }。');
+    else if (compat.spica !== undefined) {
+      if (typeof compat.spica !== 'string' || !satisfiesParse(compat.spica)) {
+        err('compatibility.spica', `看不懂兼容范围 ${JSON.stringify(compat.spica)}，写成 ">=0.1.0" 或 "^0.1.0" 这样。`);
+      } else spica = compat.spica;
+    }
+  } else warn('compatibility', '没有声明兼容的 Spica 版本（compatibility.spica），默认当作都兼容。');
+
+  const permissions: PluginPermissions = { network: [], workspace: 'none', irreversible: [], hooks: [] };
+  const p = raw.permissions;
+  if (p !== undefined && !isObj(p)) err('permissions', '「permissions」应该是对象。');
+  if (isObj(p)) {
+    const list = (key: string): string[] => {
+      const v = p[key];
+      if (v === undefined) return [];
+      if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) {
+        err(`permissions.${key}`, `「permissions.${key}」应该是文字列表，例如 ["a", "b"]。`);
+        return [];
+      }
+      return v as string[];
+    };
+    permissions.network = list('network');
+    permissions.irreversible = list('irreversible');
+    const hooks = list('hooks');
+    for (const h of hooks) {
+      if (!(HOOK_KINDS as readonly string[]).includes(h)) err('permissions.hooks', `不认识的钩子「${h}」，可选：${HOOK_KINDS.join('、')}。`);
+    }
+    permissions.hooks = hooks.filter((h): h is HookKind => (HOOK_KINDS as readonly string[]).includes(h));
+    const ws = p.workspace;
+    if (ws !== undefined) {
+      if (ws === 'none' || ws === 'read' || ws === 'write') permissions.workspace = ws;
+      else err('permissions.workspace', `「permissions.workspace」只能是 "none"、"read" 或 "write"，现在是 ${JSON.stringify(ws)}。`);
+    }
+  }
+
+  const mock: PluginManifest['mock'] = { supported: false };
+  if (raw.mock !== undefined) {
+    if (!isObj(raw.mock) || typeof raw.mock.supported !== 'boolean') {
+      err('mock', '「mock」应该写成 { "supported": true, "description": "…" }。');
+    } else {
+      mock.supported = raw.mock.supported;
+      if (typeof raw.mock.description === 'string') mock.description = raw.mock.description;
+    }
+  }
+
+  if (issues.some((i) => i.severity === 'error')) return { issues };
+  const manifest: PluginManifest = {
+    manifestVersion: MANIFEST_VERSION,
+    name: name!,
+    version: version!,
+    displayName: displayName ?? name!,
+    description: description!,
+    author: author!,
+    license: license ?? 'UNLICENSED',
+    spica,
+    permissions,
+    mock,
+    ...(homepage ? { homepage } : {}),
+  };
+  return { manifest, issues };
+}
+
+function satisfiesParse(range: string): boolean {
+  // A range is valid if every comparator parses; test against a dummy version.
+  if (range.trim() === '') return false;
+  return range
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((p) => p === '*' || (/^(>=|<=|>|<|=|\^|~)?(.+)$/.test(p) && normalize(p.replace(/^(>=|<=|>|<|=|\^|~)/, '')) !== undefined));
+}

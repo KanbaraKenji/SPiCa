@@ -1,0 +1,26 @@
+{
+  "name": "@spica/plugins",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spica plugin system: plugin folders, manifests, enable/disable lifecycle, MCP server launch, packaging, distribution and mock mode.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/authoring.ts"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/plugins",
+    "smoke:plugins": "node scripts/smoke-j6.ts",
+    "smoke:plugins:model": "node --env-file=../../.env.local scripts/smoke-j6.ts --model"
+  },
+  "devDependencies": {
+    "@spica/core": "*"
+  }
+}
