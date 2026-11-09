@@ -1,0 +1,13 @@
+{
+  "name": "@spica/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Type definitions for Spica's backend API and events.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

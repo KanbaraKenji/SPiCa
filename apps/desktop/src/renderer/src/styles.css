@@ -1,0 +1,59 @@
+/* Color tokens. Values follow the mark's light/dark palettes. */
+:root {
+  color-scheme: light dark;
+  --spica-bg: #f7f8fa;
+  --spica-ink: #0f172a;
+  --spica-muted: #64748b;
+  --spica-accent: #2f7de1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --spica-bg: #0f1115;
+    --spica-ink: #f1f5f9;
+    --spica-muted: #94a3b8;
+    --spica-accent: #62a9ff;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--spica-bg);
+  color: var(--spica-ink);
+  font-family: 'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+.splash {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.name {
+  margin: 16px 0 0;
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.version {
+  margin: 0;
+  font-size: 13px;
+  color: var(--spica-muted);
+  font-variant-numeric: tabular-nums;
+}
