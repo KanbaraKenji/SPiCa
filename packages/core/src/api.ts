@@ -50,7 +50,11 @@ export function createAgentApi(rt: Runtime): AgentApi {
       get(id).answer(callId, answer);
     },
     async confirm(id, callId, approved) {
+      if (rt.resolveViewConfirm(callId, approved)) return; // a plugin view's confirmation
       await get(id).confirm(callId, approved);
+    },
+    async callPluginTool(pluginId, toolName, args, opts) {
+      return rt.callPluginTool(pluginId, toolName, args, opts);
     },
     async renameSession(id, title) {
       return get(id).rename(title);

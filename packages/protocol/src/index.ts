@@ -264,7 +264,15 @@ export interface GuardNote {
  * plugin set it to automatic); outside_link = opening a link that came from outside content; sensitive_file = reading a
  * credential file after outside content.
  */
-export type GuardCause = 'untrusted_turn' | 'outside_link' | 'sensitive_file';
+export type GuardCause = 'untrusted_turn' | 'outside_link' | 'sensitive_file' | 'plugin_view';
+
+/** What a plugin's own view gets back from callPluginTool (the tool's text as is). */
+export interface PluginToolResult {
+  content: string;
+  isError: boolean;
+  /** The user said no to the confirmation (nothing ran). */
+  declined?: boolean;
+}
 
 export type PendingItem =
   | { kind: 'confirm'; callId: string; toolName: string; input: unknown; reason: string; cause?: GuardCause; createdAt: string }
@@ -551,6 +559,12 @@ export interface AgentApi {
    * becomes a "new matter" again and the sender memory that pointed at it is forgotten. Traceable records stay.
    */
   deleteProject?(projectId: string): Promise<void>;
+  /**
+   * A plugin's view (its iframe) calls one of that plugin's own tools: no model, nothing in any session's history.
+   * Irreversible tools (and tools a hook wants confirmed) ask the user first: confirm.request with cause 'plugin_view'
+   * on `sessionId` (or the default top-level thread); answer it with confirm(sameSessionId, callId, approved).
+   */
+  callPluginTool?(pluginId: string, toolName: string, args: Record<string, unknown>, opts?: { sessionId?: string }): Promise<PluginToolResult>;
   // Mail pipeline (M6): optional until the desktop shell implements them.
   listMail?(filter?: { status?: MailItem['status']; projectId?: string; limit?: number }): Promise<MailItem[]>;
   /** Fetch and triage now (otherwise it runs on its interval). */

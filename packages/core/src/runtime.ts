@@ -15,7 +15,7 @@ import { createRunCommandTool } from './tools/command-tool.ts';
 import { createWebFetchTool, createWebSearchTool, type SearchBackend } from './tools/web-tools.ts';
 import { connectMcp, type McpServerConfig, type McpStdioClient } from './mcp/client.ts';
 import { fileTools } from './tools/fs-tools.ts';
-import { ToolRegistry, type FileExtractor, type Tool } from './tools/types.ts';
+import { ToolRegistry, validateInput, type FileExtractor, type Tool } from './tools/types.ts';
 import { Tracer } from './trace.ts';
 import type {
   AgentRole,
@@ -24,6 +24,7 @@ import type {
   CreateSessionRequest,
   Message,
   ProjectDetail,
+  PluginToolResult,
   ProjectInfo,
   ProjectActivityKind,
   ProjectLogEntry,
@@ -139,6 +140,8 @@ export class Runtime implements RuntimeInternals {
   #workflows: { workflows: Map<string, WorkflowDef>; errors: string[] };
   readonly #mcp = new Map<string, { client: McpStdioClient; source: string; disconnect: () => Promise<void> }>();
   readonly #reports = new Map<string, string>();
+  readonly #viewConfirms = new Map<string, (approved: boolean) => void>();
+  readonly #viewLimiters = new Map<string, RateLimiter>();
 
   constructor(opts: RuntimeOptions) {
     this.#opts = opts;
@@ -534,6 +537,85 @@ export class Runtime implements RuntimeInternals {
     const top = this.top();
     this.events.emit({ sessionId: top.id, parentChain: [] }, { type: 'project.updated', project: updated });
     return updated;
+  }
+
+  /**
+   * A plugin's view calls one of that plugin's own tools (checked by the
+   * source the tool was registered under). No model and no session history;
+   * hooks still apply, and irreversible tools ask the user (confirm.request,
+   * cause plugin_view). Calls of one plugin share a small limiter; MCP tools
+   * leave their traceable record with initiator `view:<plugin>`.
+   */
+  async callPluginTool(pluginId: string, toolName: string, args: Record<string, unknown>, opts: { sessionId?: string } = {}): Promise<PluginToolResult> {
+    const name = toolName.startsWith(`${pluginId}__`) ? toolName : `${pluginId}__${toolName}`;
+    const entry = this.tools.entries().find((e) => e.tool.spec.name === name);
+    if (!entry || entry.source !== `plugin:${pluginId}`) throw new Error(`plugin ${pluginId} has no tool ${toolName}`);
+    const session = opts.sessionId ? this.session(opts.sessionId) : undefined;
+    if (opts.sessionId && !session) throw new Error(`unknown session: ${opts.sessionId}`);
+    const host = session ?? this.top();
+    const tool = entry.tool;
+    const invalid = validateInput(tool.spec.inputSchema, args ?? {});
+    if (invalid) return { content: `Invalid input for ${name}: ${invalid}.`, isError: true };
+    const callId = newId('view');
+    const { decision, input } = await this.hooks.beforeTool(
+      { callId, name, input: args ?? {}, irreversible: !!tool.irreversible },
+      { session: host.info(), runId: `view:${pluginId}`, turn: 0 },
+    );
+    if (decision.action === 'deny') return { content: `Blocked: ${decision.reason}`, isError: true };
+    if (tool.irreversible || decision.action === 'confirm') {
+      const reason = decision.action === 'confirm' && !decision.byDefault && decision.reason ? decision.reason : 'a plugin view asks to run an irreversible action';
+      const ok = await this.#askView(host, callId, name, input, reason);
+      if (!ok) return { content: 'The user declined this action.', isError: true, declined: true };
+    }
+    const lease = await this.#viewLimiter(pluginId).acquire();
+    try {
+      const r = await tool.execute((input ?? {}) as Record<string, unknown>, {
+        sessionId: session?.id ?? '',
+        parentChain: session?.parentChain ?? [],
+        cwd: host.config.cwd,
+        signal: AbortSignal.timeout(120_000),
+        tracer: this.tracer,
+        extractors: this.extractors,
+        services: { runtime: this },
+        callId,
+        emit: () => {},
+        initiator: `view:${pluginId}`,
+      });
+      return { content: r.content, isError: !!r.isError };
+    } catch (err) {
+      return { content: `Tool failed: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+    } finally {
+      lease.release();
+    }
+  }
+
+  /** Answer a confirmation a plugin view asked for. False when the id is not one of those. */
+  resolveViewConfirm(callId: string, approved: boolean): boolean {
+    const waiting = this.#viewConfirms.get(callId);
+    if (!waiting) return false;
+    waiting(approved);
+    return true;
+  }
+
+  #askView(host: Session, callId: string, name: string, input: unknown, reason: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => finish(false), 10 * 60_000); // nobody answered: no
+      timer.unref?.();
+      const finish = (approved: boolean) => {
+        clearTimeout(timer);
+        this.#viewConfirms.delete(callId);
+        this.events.emit({ sessionId: host.id, parentChain: host.parentChain }, { type: 'confirm.resolved', callId, approved });
+        resolve(approved);
+      };
+      this.#viewConfirms.set(callId, finish);
+      this.events.emit({ sessionId: host.id, parentChain: host.parentChain }, { type: 'confirm.request', callId, name, input, reason, cause: 'plugin_view' });
+    });
+  }
+
+  #viewLimiter(pluginId: string): RateLimiter {
+    let l = this.#viewLimiters.get(pluginId);
+    if (!l) this.#viewLimiters.set(pluginId, (l = new RateLimiter({ maxConcurrent: 4, requestsPerMinute: 120 })));
+    return l;
   }
 
   /** Rename a project; its manager session takes the same title. */

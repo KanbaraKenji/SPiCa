@@ -245,9 +245,9 @@ export function mcpTools(client: McpStdioClient, infos: McpToolInfo[], tracer: T
     async execute(input, ctx) {
       const trace = tracer.start({
         kind: 'mcp',
-        sessionId: ctx.sessionId,
+        sessionId: ctx.sessionId || null,
         parentChain: ctx.parentChain,
-        initiator: `tool:${mcpToolName(server, info.name)}`,
+        initiator: ctx.initiator ?? `tool:${mcpToolName(server, info.name)}`,
         target: server,
       });
       try {

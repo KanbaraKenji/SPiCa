@@ -309,6 +309,10 @@ export class FakeBackend implements AgentBackend {
     return structuredClone(p);
   }
 
+  async callPluginTool(pluginId: string, toolName: string): Promise<{ content: string; isError: boolean }> {
+    return { content: `${pluginId}__${toolName} is not available in the fake backend`, isError: true };
+  }
+
   async deleteProject(projectId: string): Promise<void> {
     const p = this.#projects.get(projectId);
     if (!p) throw new Error(`unknown project: ${projectId}`);
