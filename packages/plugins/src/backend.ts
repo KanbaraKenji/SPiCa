@@ -124,6 +124,18 @@ export function pluginMethods(pm: PluginManager): Record<string, (...params: unk
     pluginsSetMock: (on) => pm.setMock(on === true),
     pluginCommands: () => pm.commands(),
     pluginExpandCommand: (name, args) => pm.expandCommand(String(name), args === undefined ? '' : String(args)),
+    // Plugin pages: the shell lists them, serves their files over its own
+    // protocol and relays window.spica.callTool here.
+    pluginViews: () => pm.views(),
+    pluginViewFile: async (req) => {
+      const r = (req ?? {}) as { plugin?: unknown; path?: unknown };
+      return (await pm.resolveViewFile(String(r.plugin ?? ''), String(r.path ?? ''))) ?? null;
+    },
+    pluginViewCall: (req) => {
+      const r = (req ?? {}) as { plugin?: unknown; view?: unknown; tool?: unknown; args?: unknown; confirmed?: unknown };
+      const args = r.args && typeof r.args === 'object' && !Array.isArray(r.args) ? (r.args as Record<string, unknown>) : {};
+      return pm.viewCall(String(r.plugin ?? ''), String(r.view ?? ''), String(r.tool ?? ''), args, { confirmed: r.confirmed === true });
+    },
   };
 }
 

@@ -52,4 +52,22 @@ describe('plugin tools on the MCP service', () => {
     expect(((await ext2.methods.pluginsList!()) as { name: string }[]).map((p) => p.name)).toEqual(['notes']);
     expect((await callTool(rt2, 'notes__search_catalog', { query: 'stars' })).content).toContain('Counting Stars');
   });
+
+  it('page methods for the shell: list pages, resolve files, call tools through the real runtime', async () => {
+    const rt = makeRuntime();
+    const root = await mkdtemp(join(tmpdir(), 'spica-backend-'));
+    const ext = await attachBackend(rt, { root });
+    cleanup = async () => {
+      await ext.close();
+      await rm(root, { recursive: true, force: true });
+    };
+    const m = ext.methods;
+    await ext.mcpTools.find((t) => t.name === 'spica_plugin_install')!.run({ path: EXAMPLE_PLUGIN, enable: true });
+    expect(await m.pluginViews!()).toMatchObject([{ plugin: 'notes', id: 'notebook', entry: 'ui/index.html' }]);
+    expect(await m.pluginViewFile!({ plugin: 'notes', path: 'ui/index.html' })).toMatch(/[\\/]ui[\\/]index\.html$/);
+    expect(await m.pluginViewFile!({ plugin: 'notes', path: '../state.json' })).toBeNull();
+    expect(await m.pluginViewCall!({ plugin: 'notes', view: 'notebook', tool: 'write_note', args: { title: 'a', text: 'b' } })).toMatchObject({ isError: false });
+    expect(await m.pluginViewCall!({ plugin: 'notes', view: 'notebook', tool: 'delete_note', args: { title: 'a' } })).toMatchObject({ content: expect.stringMatching(/^\[CONFIRM_REQUIRED\]/) });
+    expect(await m.pluginViewCall!({ plugin: 'notes', view: 'notebook', tool: 'delete_note', args: { title: 'a' }, confirmed: true })).toMatchObject({ isError: false });
+  });
 });

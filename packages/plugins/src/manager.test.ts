@@ -171,6 +171,115 @@ describe('mail source', () => {
   });
 });
 
+describe('views (plugin pages)', () => {
+  it('lists pages of enabled plugins, serves only their own files, and withdraws them on disable', async () => {
+    r = await rig();
+    const { pm } = r;
+    await pm.install(EXAMPLE_PLUGIN);
+    expect(pm.describe('notes').views).toEqual([
+      { id: 'notebook', title: 'Notebook', placement: 'sidebar', entry: 'ui/index.html', icon: 'ui/icon.svg', tools: ['list_notes', 'read_note', 'write_note', 'delete_note'] },
+    ]);
+    expect(pm.views()).toEqual([]);
+    expect(await pm.resolveViewFile('notes', 'ui/index.html')).toBeUndefined();
+
+    await pm.enable('notes');
+    expect(pm.views()).toEqual([
+      {
+        plugin: 'notes',
+        pluginTitle: 'Notes (example)',
+        id: 'notebook',
+        title: 'Notebook',
+        placement: 'sidebar',
+        entry: 'ui/index.html',
+        icon: 'ui/icon.svg',
+        tools: ['list_notes', 'read_note', 'write_note', 'delete_note'],
+        irreversible: ['delete_note'],
+      },
+    ]);
+    const root = join(pm.installDir('notes', '0.1.0'));
+    expect(await pm.resolveViewFile('notes', 'ui/app.js')).toBe(join(root, 'ui', 'app.js'));
+    expect(await pm.resolveViewFile('notes', '/ui/style.css')).toBe(join(root, 'ui', 'style.css'));
+    for (const bad of ['../state.json', 'ui/../../state.json', '..\\state.json', 'C:/Windows/win.ini', 'ui/missing.js', 'ui', '']) {
+      expect(await pm.resolveViewFile('notes', bad)).toBeUndefined();
+    }
+    expect(await pm.resolveViewFile('other', 'ui/app.js')).toBeUndefined();
+
+    await pm.disable('notes');
+    expect(pm.views()).toEqual([]);
+    expect(await pm.resolveViewFile('notes', 'ui/app.js')).toBeUndefined();
+  });
+
+  it('a page calls only its own declared tools; irreversible ones need confirmation', async () => {
+    r = await rig();
+    const { pm } = r;
+    await pm.install(EXAMPLE_PLUGIN);
+    expect(await pm.viewCall('notes', 'notebook', 'list_notes')).toMatchObject({ isError: true, content: expect.stringMatching(/^\[PLUGIN_DISABLED\]/) });
+    await pm.enable('notes');
+
+    expect(await pm.viewCall('notes', 'notebook', 'write_note', { title: 'page', text: 'from the page' })).toMatchObject({ isError: false, content: expect.stringContaining('Saved') });
+    expect(await pm.viewCall('notes', 'notebook', 'read_note', { title: 'page' })).toMatchObject({ isError: false, content: expect.stringContaining('from the page') });
+    expect((await pm.viewCall('notes', 'notebook', 'list_notes')).content).toContain('- page (');
+
+    expect((await pm.viewCall('notes', 'notebook', 'search_catalog', { query: 'x' })).content).toMatch(/^\[TOOL_NOT_ALLOWED\]/);
+    expect((await pm.viewCall('notes', 'notebook', 'skill')).content).toMatch(/^\[TOOL_NOT_FOUND\]/);
+    expect((await pm.viewCall('notes', 'nope', 'list_notes')).content).toMatch(/^\[VIEW_NOT_FOUND\]/);
+
+    const asked = await pm.viewCall('notes', 'notebook', 'delete_note', { title: 'page' });
+    expect(asked).toMatchObject({ isError: true, content: expect.stringMatching(/^\[CONFIRM_REQUIRED\]/) });
+    expect((await pm.viewCall('notes', 'notebook', 'read_note', { title: 'page' })).isError).toBe(false); // still there
+    expect(await pm.viewCall('notes', 'notebook', 'delete_note', { title: 'page' }, { confirmed: true })).toMatchObject({ isError: false });
+    expect((await pm.viewCall('notes', 'notebook', 'read_note', { title: 'page' })).isError).toBe(true);
+  });
+
+  it('JSON results come back parsed as data', async () => {
+    const server = `import { createInterface } from 'node:readline';
+      const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\\n');
+      createInterface({ input: process.stdin }).on('line', (l) => {
+        const m = JSON.parse(l);
+        if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 's' } } });
+        if (m.method === 'tools/list') send({ id: m.id, result: { tools: [{ name: 'stats', inputSchema: { type: 'object' } }] } });
+        if (m.method === 'tools/call') send({ id: m.id, result: { content: [{ type: 'text', text: JSON.stringify({ count: 3 }) }] } });
+      });`;
+    const dir = await writePlugin({
+      'manifest.json': manifest('paged'),
+      'mcp/s.json': { runtime: 'node', entry: 'srv.js' },
+      'srv.js': server,
+      'views/main.json': { title: 'Main', entry: 'ui/index.html' },
+      'ui/index.html': '<!doctype html><title>x</title>',
+    });
+    dirs.push(dir);
+    r = await rig();
+    await r.pm.install(dir);
+    await r.pm.enable('paged');
+    expect(r.pm.views()[0]).toMatchObject({ placement: 'sidebar', tools: ['stats'], irreversible: [] });
+    expect(await r.pm.viewCall('paged', 'main', 'stats')).toEqual({ content: '{"count":3}', data: { count: 3 }, isError: false });
+  });
+
+  it('wrong view declarations are explained', async () => {
+    const dir = await writePlugin({
+      'manifest.json': manifest('badview'),
+      'views/a.json': { title: 'A', entry: '../outside.html' },
+      'views/b.json': { title: 'B', entry: 'ui/b.html', placement: 'detail' },
+      'views/c.json': { title: 'C', entry: 'ui/missing.html' },
+      'views/d.json': { title: 'D', entry: 'ui/b.html', permissions: { tools: ['badview__x'] } },
+      'views/e.json': { title: 'E', entry: 'ui/b.html', icon: 'ui/b.html' },
+      'views/f.json': '{ not json',
+      'ui/b.html': '<!doctype html>',
+    });
+    dirs.push(dir);
+    r = await rig();
+    const check = await r.pm.check(dir);
+    const text = check.issues.map((i) => `${i.where}: ${i.message}`).join('\n');
+    expect(text).toMatch(/views\/a\.json: entry 要写插件文件夹里的相对路径/);
+    expect(text).toMatch(/views\/b\.json: 视图的 placement 只能是 sidebar 或 panel/);
+    expect(text).toMatch(/views\/c\.json: entry 指向的 ui\/missing\.html 不存在/);
+    expect(text).toMatch(/views\/d\.json: permissions\.tools 是本插件工具的原名列表/);
+    expect(text).toMatch(/views\/e\.json: icon 要指向 \.svg 文件/);
+    expect(text).toMatch(/views\/f\.json: 视图声明不是合法的 JSON/);
+    expect(check.views).toEqual([]);
+  });
+});
+
 describe('failures', () => {
   it('a hook that fails to load rolls back the whole enable: nothing left behind', async () => {
     const dir = await writePlugin({

@@ -20,7 +20,7 @@
   mcp/<id>.json             MCP server 声明（工具给模型用）
   services/<id>.json        常驻进程声明（也是 MCP server，默认不把工具给模型）
   hooks/*.js | *.mjs        代码钩子（ESM，默认导出钩子对象或工厂函数）
-  views/<id>.json           界面视图声明（只定格式，外壳以后渲染）
+  views/<id>.json           插件自带的页面（外壳在沙箱里渲染）
   mock/…                    模拟数据（约定，宿主不读）
   其余文件                  server 代码、可执行文件、node_modules 等
 ```
@@ -81,13 +81,35 @@ export const priority = 100; // 可选，小的先跑
 - 钩子类型和参数就是内核的 `Hooks`（`agent-core.md` 第 7 节），六个注入位置照用。
 - 只收 ESM `.js/.mjs`；放 `.ts` 会得到「先编译成 .js」的警告。Electron 45 自带的 Node 24.22 其实能跑 TS，但不对插件作者承诺，免得以后换运行时出问题。
 
-### 视图 `views/<id>.json`（只定格式）
+### 视图 `views/<id>.json`（插件自带的页面）
 
 ```json
-{ "title": "Notebook", "placement": "detail", "entry": "views/notebook.html" }
+{
+  "title": "Notebook",
+  "entry": "ui/index.html",
+  "placement": "sidebar",
+  "icon": "ui/icon.svg",
+  "permissions": { "tools": ["list_notes", "read_note", "write_note", "delete_note"] }
+}
 ```
 
-`placement`：`sidebar` / `detail` / `settings`。外壳以后用沙箱 iframe 渲染、通过消息桥调插件工具；现在只解析、在 `describe()` 里列出。
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `title` | 是 | 侧栏 / 面板上显示的名字 |
+| `entry` | 是 | 插件目录里的 `.html`，相对路径，不许 `..`、绝对路径，文件要存在 |
+| `placement` | 否 | `sidebar`（默认，侧栏里一个入口）/ `panel`（对话旁边的面板） |
+| `icon` | 否 | 插件目录里的 `.svg` |
+| `permissions.tools` | 否 | 页面能调的本插件工具（server 里的原名，不带前缀）；不写 = 本插件全部工具，常驻进程的工具也算 |
+
+视图文件名（不含 `.json`）就是视图 id：小写字母、数字、`-`。
+
+**外壳怎么渲染**（和桌面外壳对好的约定，2026-11-10）：
+- 页面跑在沙箱里：没有 Node；自定义协议 `spica-plugin://<插件>/<路径>`，每次取文件都问 `pluginViewFile`，只给本插件目录里的文件；CSP `default-src spica-plugin:`，样式另放 `'unsafe-inline'`。
+- 外壳注入 `window.spica`：`callTool(工具原名, 参数)` → `{ content, data?, isError }`；`onEvent(fn)`（`{type:'theme'}`、`{type:'plugin.changed'}`），返回取消函数；`theme` → `{ mode: 'light' | 'dark' }`；`openFile(路径)`（只限本插件目录里的文件或这次会话见过的文件，在右栏预览）；`notify(文字, { kind? })`。
+- 主题：外壳往页面根元素注入 9 个 CSS 变量 `--spica-bg`、`--spica-surface`、`--spica-fg`、`--spica-muted`、`--spica-border`、`--spica-accent`、`--spica-danger`、`--spica-font`、`--spica-radius`，换明暗或皮肤时重新注入并发 `theme` 事件。
+- 调工具：外壳把 `callTool` 转给后端 `pluginViewCall`。插件包检查插件已启用、视图存在、工具是本插件的且在 `permissions.tools` 里；`permissions.irreversible` 里的工具没带 `confirmed: true` 时返回 `[CONFIRM_REQUIRED] …`，外壳弹 Spica 自己的确认框（「<插件名> 要执行 <工具>，确认吗？」），同意后带 `confirmed: true` 再调。工具经内核 `invokeTool` 直接执行（不走模型、不走钩子），所以页面也能调常驻进程的工具。
+- 失败结果的 `content` 以错误码开头：`PLUGIN_DISABLED`、`VIEW_NOT_FOUND`、`TOOL_NOT_FOUND`、`TOOL_NOT_ALLOWED`、`CONFIRM_REQUIRED`、`UNSUPPORTED`；工具自己报的错原样返回。
+- 停用：`views()` 不再列它，`pluginViewFile` 回 `null`，外壳收到 `plugins.changed` 关掉页面。
 
 ## 3. 扩展点总表
 
@@ -99,7 +121,7 @@ export const priority = 100; // 可选，小的先跑
 | 代码钩子 | `runtime.hooks.register(source, hooks, { priority })` | `plugin:<name>` |
 | 常驻进程 | 同 MCP，但插件包再挂一个 `beforeRequest` 把它的工具从工具表里拿掉、`beforeTool` 拒绝调用 | `plugin:<name>` |
 | 不可逆声明 | 插件包挂一个 `beforeTool`（优先级 10），对声明过的工具返回 `confirm` | `plugin:<name>` |
-| 视图 | 只进 `describe()` | — |
+| 视图 | 不进内核。`views()` 列出已启用插件的页面，外壳渲染；页面调工具走 `viewCall()` → 内核 `invokeTool` | — |
 
 server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes__write_note`），有多个时叫 `<插件>-<id>`；常驻进程一律 `<插件>-<id>`。
 
@@ -161,6 +183,7 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 | 工作文件夹 | `permissions.workspace` 只声明、展示 | 插件包挂 `beforeTool`：参数里出现的路径不在会话工作文件夹内就拒绝，`read` 的插件写文件也拒绝 |
 | 网络 | `permissions.network` 只声明、展示 | 视需要给 server 注入代理并按名单放行 |
 | 环境变量 | 插件进程只继承白名单（`PLUGIN_INHERIT_ENV`：PATH、系统目录、TEMP、用户目录、代理变量等），像密钥的名字（SPICA_ 开头、含 KEY / SECRET / TOKEN / PASSWORD / CREDENTIAL）内核一律不传；有测试 | — |
+| 插件页面 | 沙箱里跑，没有 Node；只能取本插件目录里的文件；只能调本插件、本视图 `permissions.tools` 里的工具；`permissions.irreversible` 里的工具先由外壳弹确认框（只认清单里的声明，MCP 的 `destructiveHint` 不算） | 页面调用记进插件日志 |
 | 来源可信 | HTTP 来源每个包必须有 SHA-256，不对拒装；共享盘有索引就校验 | 包签名 |
 
 ## 8. 分发与更新
@@ -194,13 +217,14 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 | `setMock(on)`、`mock` | 模拟模式开关 |
 | `listSource`、`checkUpdates`、`installAvailable` | 来源、更新提示、一键更新 |
 | `commands()`、`expandCommand(name, args)` | 输入框里的 `/` 命令 |
+| `views()` → `PluginView[]`、`resolveViewFile(插件, 相对路径)`、`viewCall(插件, 视图, 工具, 参数, { confirmed })` | 插件页面：列表、取文件、调工具（见第 2 节「视图」） |
 | `on(listener)` → `PluginEvent` | `plugin.installed / uninstalled / enabled / disabled / error`、`server.status`、`hook.error`、`mock.changed` |
 
 所有面向用户的报错都是中文人话（`PluginError.message`，带 `issues` 明细）。
 
 **在后端进程里**：插件包是内核后端的一个扩展（`BackendConfig.extensions: [{ module: '@spica/plugins', options: { root } }]`），内核在 `restore()` 之后调 `attachBackend(runtime, options)`：建 `PluginManager`、`load()`，交回
 - 本程序 MCP 服务上的工具：`spica_plugins_list`、`spica_plugin_describe`、`spica_plugin_install {path, enable?}`（文件夹或 zip）、`spica_plugin_enable` / `disable` / `uninstall` / `rollback {name}`、`spica_plugins_set_mock {on}`；当前工具表用内核的 `spica_list_tools`。
-- 后端端口上的方法（外壳插件页走同一个进程）：`pluginsList`、`pluginDescribe`、`pluginCheck`、`pluginInstall`、`pluginEnable`、`pluginDisable`、`pluginUninstall`、`pluginRollback`、`pluginsMock`、`pluginsSetMock`、`pluginCommands`、`pluginExpandCommand`。
+- 后端端口上的方法（外壳插件页走同一个进程）：`pluginsList`、`pluginDescribe`、`pluginCheck`、`pluginInstall`、`pluginEnable`、`pluginDisable`、`pluginUninstall`、`pluginRollback`、`pluginsMock`、`pluginsSetMock`、`pluginCommands`、`pluginExpandCommand`；插件页面用 `pluginViews()`、`pluginViewFile({ plugin, path })` → 绝对路径或 `null`、`pluginViewCall({ plugin, view, tool, args, confirmed? })`。
 - 关闭时先停插件进程，再关内核。
 
 J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型，读 .env.local）：装上 → 工具出现 → Agent 调 `notes__write_note` / `notes__read_note` → 停用 → 工具消失、Agent 也调不到。
@@ -213,7 +237,7 @@ J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型�
 
 ## 11. 故意没做的
 
-- 视图渲染、插件设置表单（MCPB 的 `user_config`）、包签名、工作文件夹 / 网络的强制拦截、宿主托管 Python：见上文「以后」。
+- 插件设置表单（MCPB 的 `user_config`）、包签名、工作文件夹 / 网络的强制拦截、宿主托管 Python：见上文「以后」。
 - 外壳的插件页、模拟模式标记、来源设置：归桌面外壳，本包只给接口和事件。
 - 官方 Outlook 插件：另开话题。
 
@@ -221,7 +245,7 @@ J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型�
 
 - **做了什么**：`@spica/plugins`（清单、文件夹、启用 / 停用全撤、失败回滚、崩溃重启上限、模拟模式、describe()、zip 打包与校验、共享盘 / HTTP 来源、更新与回滚、环境变量白名单）；示例插件 `plugins/example-notes`；J6 冒烟 `npm run smoke:plugins -w @spica/plugins`（13 项）和真模型版 `smoke:plugins:model`；本文和作者指南。提交 2caf365、6064913 和本次。
 - **内核配合**（已提交 e473a9d）：`connectMcp(config, { source })`、`onExit`、`stderrLog`、可等待的 `disconnect()`、单个 server 只撤自己的工具、`inheritEnv` 白名单。
-- **故意没做**：插件页界面与模拟数据标记（归桌面外壳，接口见第 9 节）；工作文件夹 / 网络权限的强制拦截；插件设置表单（MCPB 的 user_config）；包签名；宿主托管 Python（方案见第 5 节，何时做待他拍板）；视图渲染。
+- **故意没做**：插件页界面与模拟数据标记（归桌面外壳，接口见第 9 节）；工作文件夹 / 网络权限的强制拦截；插件设置表单（MCPB 的 user_config）；包签名；宿主托管 Python（方案见第 5 节，何时做待他拍板）。视图的渲染归桌面外壳（接口见第 2 节「视图」）。
 - **J6 经 MCP**：`npm run journey:j6 -w @spica/plugins`，7 项全过（DeepSeek flash）。
 - **下一步**：外壳经后端端口的 plugin* 方法做插件页，不用自己建 `PluginManager`；插件根建议 `%APPDATA%\Spica\plugins`，写进后端配置的 extensions.options.root。之后官方 Outlook 插件按本格式写。
 - **他该看什么**：跑 J6 冒烟看 13 行 ✓；翻 `plugins/example-notes` 看一个插件长什么样。

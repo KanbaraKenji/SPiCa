@@ -27,6 +27,7 @@ export {
   type ServerDef,
   type HookModuleDef,
   type ViewDef,
+  VIEW_PLACEMENTS,
 } from './folder.ts';
 export { runtimeHost, type PluginHost, type McpLaunch, type McpExit, type McpHandle, type RuntimeLike, type MailSourceSpec } from './host.ts';
 export {
@@ -37,6 +38,8 @@ export {
   type PluginManagerOptions,
   type PluginDescription,
   type PluginEvent,
+  type PluginView,
+  type ViewCallResult,
   type PluginSource,
   type InstalledRecord,
   type ServerStatus,

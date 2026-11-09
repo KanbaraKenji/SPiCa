@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Notebook</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="layout">
+    <aside class="list">
+      <div class="list-head">
+        <span>笔记</span>
+        <button id="new" type="button">新建</button>
+      </div>
+      <ul id="notes" aria-label="笔记列表"></ul>
+      <p id="empty" class="muted" hidden>还没有笔记。点「新建」写第一条。</p>
+    </aside>
+    <section class="editor">
+      <input id="title" placeholder="标题" autocomplete="off">
+      <textarea id="text" placeholder="正文"></textarea>
+      <div class="actions">
+        <button id="save" type="button" class="primary">保存</button>
+        <button id="delete" type="button" class="danger">删除</button>
+        <span id="status" class="muted" role="status"></span>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "title": "Notebook",
+  "entry": "ui/index.html",
+  "placement": "sidebar",
+  "icon": "ui/icon.svg",
+  "permissions": { "tools": ["list_notes", "read_note", "write_note", "delete_note"] }
+}
