@@ -4,7 +4,7 @@
 
 ## 一、装进正在运行的桌面版 Spica（平时用这个）
 
-1. 在 Spica 的 **设置 › 常规 › 开发者** 里打开「允许本机脚本连接 Spica（开发者）」。打开后 Spica 会写 `<用户文件夹>/mcp-http.json`，Windows 上是 `%APPDATA%\Spica\mcp-http.json`，里面是地址和令牌文件的位置；关掉开关或退出 Spica 时删掉。
+1. 在 Spica 的 **设置 › 常规 › 开发者** 里打开「允许本机脚本连接 Spica」。打开后 Spica 会写 `<用户文件夹>/mcp-http.json`，Windows 上是 `%APPDATA%\Spica\mcp-http.json`，里面是地址和令牌文件的位置；关掉开关或退出 Spica 时删掉。
 2. 直接跑，不用带连接参数：
    ```
    node <skill>/scripts/install.mjs dist/<名字>-<版本>.zip --run "一句会用到新工具的话" --disable-after
@@ -60,7 +60,7 @@ node <skill>/scripts/install.mjs <zip> --stdio <backend.json> --spica <Spica 源
 
 | 看到 | 原因和办法 |
 |---|---|
-| `没找到正在运行、而且开了本机连接的 Spica` | 打开 Spica，在 设置 › 常规 › 开发者 打开「允许本机脚本连接 Spica（开发者）」；或用「二、手动装」 |
+| `没找到正在运行、而且开了本机连接的 Spica` | 打开 Spica，在 设置 › 常规 › 开发者 打开「允许本机脚本连接 Spica」；或用「二、手动装」 |
 | `Spica 上次开过本机连接，但现在没在运行` | 先打开 Spica |
 | `令牌不对（401）` | 令牌换过了：重开一次开关，或重新读令牌文件 |
 | `Spica 拒绝了这个请求（403）` | 只能从本机连 |

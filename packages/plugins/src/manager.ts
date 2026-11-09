@@ -526,8 +526,10 @@ export class PluginManager {
             if (hidden.length === 0) return;
             return { ...draft, tools: draft.tools.filter((t) => !hidden.some((p) => t.name.startsWith(p))) };
           },
-          beforeTool: (call) => {
-            if (this.#hiddenPrefixes(a).some((p) => call.name.startsWith(p))) {
+          beforeTool: (call, ctx) => {
+            // Service tools are for the plugin's own pages, not for the model.
+            const fromOwnPage = ctx?.runId === `view:${a.manifest.name}`;
+            if (!fromOwnPage && this.#hiddenPrefixes(a).some((p) => call.name.startsWith(p))) {
               return { action: 'deny', reason: 'This tool belongs to a background service and is not available to the model.' };
             }
             const run = a.servers.find((r) => r.def.kind === 'mcp' && call.name.startsWith(`${r.launchName}__`));
@@ -874,11 +876,34 @@ export class PluginManager {
     const full = this.#ownTools(a).get(tool);
     if (!full) return fail('TOOL_NOT_FOUND', `插件「${a.manifest.displayName}」现在没有 ${tool} 这个工具（server 可能还没起来）。`);
     if (v.tools && !v.tools.includes(tool)) return fail('TOOL_NOT_ALLOWED', `这个页面没有声明可以调 ${tool}（views/${viewId}.json 的 permissions.tools）。`);
-    if (a.manifest.permissions.irreversible.includes(tool) && opts.confirmed !== true) {
-      return fail('CONFIRM_REQUIRED', `「${a.manifest.displayName}」声明这个操作不可撤销，需要你确认。`);
+    // Confirmation: the shell asks the user itself on [CONFIRM_REQUIRED], then
+    // calls again with confirmed: true.
+    const input = args && typeof args === 'object' ? args : {};
+    let r: { content: string; isError: boolean };
+    if (this.#host.callPluginTool) {
+      // Through the core: hooks apply (e.g. a plugin's own path guard), the call
+      // is traced, and the core says when a confirmation is needed (declared
+      // irreversible via our permission hook, destructiveHint, or another hook).
+      const out = await this.#host.callPluginTool(plugin, full, input, { confirmed: opts.confirmed === true });
+      if (out.needsConfirmation || out.declined) {
+        // Our permission hook gives a Chinese reason; the core's default is English.
+        const why = /[一-鿿]/.test(out.content) ? out.content : `「${a.manifest.displayName}」的这个操作不可撤销`;
+        return fail('CONFIRM_REQUIRED', `${why}，需要你确认。`);
+      }
+      if (out.isError && out.content.startsWith('Blocked: ')) {
+        // A hook refused it; keep the hook's own code when it gave one.
+        const reason = out.content.slice('Blocked: '.length);
+        r = { content: /^\[[A-Z_]+\]/.test(reason) ? reason : `[BLOCKED] ${reason}`, isError: true };
+      } else r = out;
+    } else if (this.#host.invokeTool) {
+      // Older cores: no hooks on this path, so check the declared irreversible tools here.
+      if (a.manifest.permissions.irreversible.includes(tool) && opts.confirmed !== true) {
+        return fail('CONFIRM_REQUIRED', `「${a.manifest.displayName}」的这个操作不可撤销，需要你确认。`);
+      }
+      r = await this.#host.invokeTool(full, input);
+    } else {
+      return fail('UNSUPPORTED', '这个版本的 Spica 内核还不能从页面直接调工具。');
     }
-    if (!this.#host.invokeTool) return fail('UNSUPPORTED', '这个版本的 Spica 内核还不能从页面直接调工具。');
-    const r = await this.#host.invokeTool(full, args && typeof args === 'object' ? args : {});
     let data: unknown;
     try {
       data = JSON.parse(r.content);

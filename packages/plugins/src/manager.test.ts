@@ -1,6 +1,7 @@
 // Enable / disable lifecycle against a real @spica/core runtime and real
 // server processes (the example plugin and small throwaway plugins).
-import { readFile, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -8,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.setConfig({ testTimeout: 30_000 });
 import { PluginManager } from './manager.ts';
 import { runtimeHost } from './host.ts';
-import { EXAMPLE_PLUGIN, callTool, hookCtx, manifest, rig, toolNames, until, writePlugin, type Rig } from './testing/helpers.ts';
+import { EXAMPLE_PLUGIN, OUTLOOK_PLUGIN, callTool, hookCtx, makeRuntime, manifest, rig, toolNames, until, writePlugin, type Rig } from './testing/helpers.ts';
 
 let r: Rig | undefined;
 const dirs: string[] = [];
@@ -244,6 +245,68 @@ describe('views (plugin pages)', () => {
     expect((await pm.viewCall('notes', 'notebook', 'read_note', { title: 'page' })).isError).toBe(false); // still there
     expect(await pm.viewCall('notes', 'notebook', 'delete_note', { title: 'page' }, { confirmed: true })).toMatchObject({ isError: false });
     expect((await pm.viewCall('notes', 'notebook', 'read_note', { title: 'page' })).isError).toBe(true);
+  });
+
+  it("page calls go through the plugin's hooks: Outlook's attachment path guard applies", async () => {
+    // The Outlook plugin plus a small page that may list mail and save attachments.
+    const src = await mkdtemp(join(tmpdir(), 'spica-outlook-view-'));
+    dirs.push(src);
+    await cp(OUTLOOK_PLUGIN, src, { recursive: true, filter: (s) => !/[\\/](node_modules|test)([\\/]|$)/.test(s) });
+    await mkdir(join(src, 'views'), { recursive: true });
+    await mkdir(join(src, 'ui'), { recursive: true });
+    await writeFile(join(src, 'views', 'files.json'), JSON.stringify({ title: 'Files', entry: 'ui/files.html', placement: 'panel', permissions: { tools: ['list_messages', 'save_attachments'] } }));
+    await writeFile(join(src, 'ui', 'files.html'), '<!doctype html><title>Files</title>');
+    const project = await mkdtemp(join(tmpdir(), 'spica-project-'));
+    const outside = await mkdtemp(join(tmpdir(), 'spica-outside-'));
+    dirs.push(project, outside);
+
+    r = await rig(makeRuntime(undefined, { cwd: project }));
+    await r.pm.setMock(true);
+    await r.pm.install(src);
+    await r.pm.enable('outlook');
+
+    // An absolute folder outside the project: the server alone would save there; the hook refuses.
+    const refused = await r.pm.viewCall('outlook', 'files', 'save_attachments', { id: 'mock-001', dest_folder: outside });
+    expect(refused).toMatchObject({ isError: true, content: expect.stringMatching(/^\[PATH_NOT_ALLOWED\] 附件只能存到项目文件夹/) });
+    expect(await readdir(outside)).toEqual([]);
+
+    // A relative folder: the hook resolves it inside the project folder.
+    const saved = await r.pm.viewCall('outlook', 'files', 'save_attachments', { id: 'mock-001', dest_folder: 'from-page' });
+    expect(saved.isError, saved.content).toBe(false);
+    expect(await readdir(join(project, 'from-page'))).toEqual(['order-PL-2207.csv']);
+
+    // overwrite asks the user (the hook says confirm): the page gets CONFIRM_REQUIRED, nothing is written.
+    const asked = await r.pm.viewCall('outlook', 'files', 'save_attachments', { id: 'mock-001', dest_folder: 'from-page', overwrite: true });
+    expect(asked.content).toMatch(/^\[CONFIRM_REQUIRED\] 会覆盖项目文件夹里同名的文件/);
+    expect(await readdir(join(project, 'from-page'))).toEqual(['order-PL-2207.csv']);
+    expect((await r.pm.viewCall('outlook', 'files', 'save_attachments', { id: 'mock-001', dest_folder: 'from-page', overwrite: true }, { confirmed: true })).isError).toBe(false);
+  });
+
+  it("a page may call its plugin's service tools, which the model never gets", async () => {
+    const server = `import { createInterface } from 'node:readline';
+      const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\\n');
+      createInterface({ input: process.stdin }).on('line', (l) => {
+        const m = JSON.parse(l);
+        if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 's' } } });
+        if (m.method === 'tools/list') send({ id: m.id, result: { tools: [{ name: 'stats', inputSchema: { type: 'object' } }] } });
+        if (m.method === 'tools/call') send({ id: m.id, result: { content: [{ type: 'text', text: '{"count":7}' }] } });
+      });`;
+    const dir = await writePlugin({
+      'manifest.json': manifest('svcpage'),
+      'services/backend.json': { runtime: 'node', entry: 'srv.js' },
+      'srv.js': server,
+      'views/main.json': { title: 'Main', entry: 'ui/index.html' },
+      'ui/index.html': '<!doctype html><title>x</title>',
+    });
+    dirs.push(dir);
+    r = await rig();
+    await r.pm.install(dir);
+    await r.pm.enable('svcpage');
+    expect(r.pm.views()[0]?.tools).toEqual(['stats']);
+    expect(await r.pm.viewCall('svcpage', 'main', 'stats')).toMatchObject({ isError: false, data: { count: 7 } });
+    // The model is still refused.
+    const { decision } = await r.rt.hooks.beforeTool({ callId: 'c', name: 'svcpage-backend__stats', input: {}, irreversible: false }, hookCtx);
+    expect(decision.action).toBe('deny');
   });
 
   it('JSON results come back parsed as data', async () => {

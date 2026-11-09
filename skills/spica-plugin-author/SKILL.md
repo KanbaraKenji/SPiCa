@@ -31,7 +31,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
    ```
    它会检查清单、在模拟模式下启动 server 列出工具、查密钥、跑测试，最后打出 `dist/<名字>-<版本>.zip` 和 `.sha256`。有 ✗ 就改，直到显示「可以装了」。
 7. **装进 Spica**（详见 `references/connect.md`）：
-   - Spica 开着，而且在 设置 › 常规 › 开发者 打开了「允许本机脚本连接 Spica（开发者）」：直接跑 `node <skill>/scripts/install.mjs dist/<名字>-<版本>.zip`，脚本自己找到它。
+   - Spica 开着，而且在 设置 › 常规 › 开发者 打开了「允许本机脚本连接 Spica」：直接跑 `node <skill>/scripts/install.mjs dist/<名字>-<版本>.zip`，脚本自己找到它。
    - 开关没开：请用户在 **设置 › 插件** 里粘贴 zip 的完整路径安装，第 8、9 步改成让用户在对话里试、再关掉开关看工具消失。
    - 开发时连自己起的服务：加 `--http <地址> --token-file <令牌文件>`，或 `--stdio <backend.json> --spica <Spica 源码文件夹>`。
    装完会列出新增的工具（`<插件名>__<工具>`）和页面。

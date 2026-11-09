@@ -29,7 +29,7 @@ export {
   type ViewDef,
   VIEW_PLACEMENTS,
 } from './folder.ts';
-export { runtimeHost, type PluginHost, type McpLaunch, type McpExit, type McpHandle, type RuntimeLike, type MailSourceSpec } from './host.ts';
+export { runtimeHost, type PluginHost, type McpLaunch, type McpExit, type McpHandle, type RuntimeLike, type MailSourceSpec, type PluginToolCallResult } from './host.ts';
 export {
   PluginManager,
   PluginError,

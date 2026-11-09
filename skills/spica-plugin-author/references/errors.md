@@ -41,4 +41,5 @@
 | `TOOL_NOT_FOUND` | 插件现在没有这个工具（server 可能没起来） |
 | `TOOL_NOT_ALLOWED` | 页面的 `permissions.tools` 没列这个工具 |
 | `CONFIRM_REQUIRED` | 不可逆工具，用户在确认框里没同意 |
+| `BLOCKED` 或钩子自己的码（如 `PATH_NOT_ALLOWED`） | 插件的钩子拒绝了这次调用（页面调用也走钩子） |
 | `UNSUPPORTED` | Spica 版本太旧 |
