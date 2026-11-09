@@ -2270,3 +2270,11 @@ button.tree-twisty:hover {
   margin: 0 4px;
   padding: 0 6px;
 }
+
+/* Long activity lines (reports, decisions) stay at two lines; the tooltip has all of it. */
+.activity-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
