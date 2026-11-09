@@ -18,7 +18,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --root ../.. packages/plugins",
     "smoke:plugins": "node scripts/smoke-j6.ts",
-    "smoke:plugins:model": "node --env-file=../../.env.local scripts/smoke-j6.ts --model"
+    "smoke:plugins:model": "node --env-file=../../.env.local scripts/smoke-j6.ts --model",
+    "journey:j6": "node --env-file=../../.env.local scripts/journey-j6.ts"
   },
   "devDependencies": {
     "@spica/core": "*"
