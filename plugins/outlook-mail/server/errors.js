@@ -5,8 +5,9 @@
 /** code → what the user is told. */
 export const MESSAGES = {
   NOT_WINDOWS: '只能在 Windows 上读本机 Outlook。可以在 Spica 里打开模拟模式，用样例邮件试。',
-  OUTLOOK_NOT_INSTALLED: '这台电脑上没找到经典版 Outlook。新版 Outlook（Windows 自带的那个）不支持本插件，请装经典版 Outlook，或打开模拟模式用样例邮件。',
-  OUTLOOK_NO_PROFILE: 'Outlook 还没有配置邮箱账号。请先打开 Outlook 登录一次邮箱，再让我试。',
+  OUTLOOK_NOT_INSTALLED: '这台电脑上没有装 Outlook。本插件需要经典版 Outlook（Office 里带的那个）；也可以打开模拟模式用样例邮件试。',
+  OUTLOOK_NEW_ONLY: '这台电脑上只有新版 Outlook。新版 Outlook 不支持本地自动化，需要经典版 Outlook（开始菜单里叫「Outlook (classic)」）。',
+  OUTLOOK_NO_PROFILE: '经典版 Outlook 已经装了，但还没有配置邮箱账号。请先打开「Outlook (classic)」登录一次邮箱，再让我试。',
   OUTLOOK_NOT_RUNNING: 'Outlook 没有打开。请先打开 Outlook，再让我试一次。',
   OUTLOOK_BUSY: 'Outlook 正忙，或者有一个窗口在等你处理（例如提示框、登录框）。处理完再让我试。',
   OUTLOOK_SECURITY_BLOCKED: 'Outlook 弹出了安全提示，访问被拒绝了。如果是你点了「拒绝」，下次请选「允许」；如果一直弹，请管理员检查杀毒软件状态。',
@@ -19,6 +20,16 @@ export const MESSAGES = {
   PATH_NOT_ALLOWED: '附件只能存到项目文件夹（或插件自己的数据文件夹）里。',
   INVALID_ARGUMENT: '参数不对。',
   COM_ERROR: 'Outlook 报了一个错误，详情在插件日志里。',
+};
+
+/** status → the sentence shown with it (same wording as the matching error). */
+export const STATE_HINTS = {
+  ready: 'Outlook 可以用了。',
+  restricted: MESSAGES.POWERSHELL_RESTRICTED,
+  not_installed: MESSAGES.OUTLOOK_NOT_INSTALLED,
+  new_outlook_only: MESSAGES.OUTLOOK_NEW_ONLY,
+  no_profile: MESSAGES.OUTLOOK_NO_PROFILE,
+  not_running: MESSAGES.OUTLOOK_NOT_RUNNING,
 };
 
 export class MailError extends Error {

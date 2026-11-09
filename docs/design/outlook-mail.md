@@ -1,6 +1,6 @@
 # Outlook 邮件插件设计（`plugins/outlook-mail`）
 
-> 状态：首版完成（2026-11-09）。8 个工具、15 个错误码、模拟模式 30 封、分拣技能、项目文件夹钩子都做通；测试 49 条、冒烟 16 项全过。真 Outlook 只验到「没配置文件」（这台机器的 Outlook 没登录邮箱），读信 / 起草的 COM 代码对着一套假 Outlook 对象验过，**还没在登录了的真 Outlook 上跑过**。
+> 状态：首版完成（2026-11-09）。8 个工具、16 个错误码、模拟模式 30 封、分拣技能、项目文件夹钩子都做通；测试 59 条、冒烟 17 项全过。真 Outlook 只验到「装了经典版、没配置邮箱」这一步（这台机器两种 Outlook 都装了，但经典版没登录过邮箱），读信 / 起草的 COM 代码对着一套假 Outlook 对象验过，**还没在登录了的真 Outlook 上跑过**；统筹定真机验证留到公司电脑（步骤见第 9 节）。
 > 需求来源：立项书「邮件」「插件」「硬规则」「硬环境约束」；插件格式见 `plugins.md`、`docs/plugins/authoring.md`。
 
 ## 1. 工具表
@@ -30,8 +30,9 @@
 | 错误码 | 什么时候 | 给人看的话（大意） |
 |---|---|---|
 | `NOT_WINDOWS` | 不是 Windows 且没开模拟模式 | 只能在 Windows 上读 Outlook；可以打开模拟模式用样例邮件 |
-| `OUTLOOK_NOT_INSTALLED` | `Outlook.Application` 没注册（没装，或只装了新版 Outlook） | 没找到经典版 Outlook；新版 Outlook 不支持本插件 |
-| `OUTLOOK_NO_PROFILE` | 没有 Outlook 配置文件 | Outlook 还没配置邮箱账号，先打开 Outlook 登录一次 |
+| `OUTLOOK_NOT_INSTALLED` | 经典版和新版都没有（只剩 COM 注册表残留也算没有） | 这台电脑上没有装 Outlook，本插件需要经典版 |
+| `OUTLOOK_NEW_ONLY` | 只有新版 Outlook（olk.exe） | 新版 Outlook 不支持本地自动化，需要经典版（开始菜单里叫「Outlook (classic)」） |
+| `OUTLOOK_NO_PROFILE` | 经典版装了，但没有配置文件 | 经典版 Outlook 已经装了，但还没有配置邮箱账号，先打开「Outlook (classic)」登录一次 |
 | `OUTLOOK_NOT_RUNNING` | Outlook 没开（插件不替你启动，免得弹向导） | Outlook 没打开，先打开再试 |
 | `OUTLOOK_BUSY` | Outlook 有对话框开着、正在忙（RPC 拒绝调用） | Outlook 正忙或有窗口等你处理，关掉后再试 |
 | `OUTLOOK_SECURITY_BLOCKED` | 对象模型保护的安全提示被拒或超时 | Outlook 弹了安全提示并拒绝了访问；需要允许，或请管理员处理杀毒软件状态 |
@@ -74,12 +75,13 @@ plugins/outlook-mail/
 
 **耗时**：这台机器上 PowerShell 冷启动加一次调用约 1.8–2 秒（实测，`status` 1.9 秒、`list_messages` 报错路径 2.0 秒）。分拣一轮通常是 1 次列表 + 少量读正文，可以接受；要更快就改成常驻一个 PowerShell 进程（见「以后」）。
 
-**每次调用的顺序**：
+**每次调用的顺序**（`status` 走同样的检查，把结果作为 `state` + 一句中文 `hint` 返回，不报错）：
 1. 语言模式不是 FullLanguage（AppLocker / WDAC 受限模式）→ `POWERSHELL_RESTRICTED`
-2. `Outlook.Application` 没注册 → `OUTLOOK_NOT_INSTALLED`（只装新版 Outlook 也是这样）
-3. 注册表 `HKCU\Software\Microsoft\Office\16.0|15.0\Outlook\Profiles` 下没有配置文件 → `OUTLOOK_NO_PROFILE`
-4. 没有 OUTLOOK.EXE 进程 → `OUTLOOK_NOT_RUNNING`。**插件不替用户启动 Outlook**：没配置文件时 COM 拉起 Outlook 会弹配置向导，违反「不弹窗」；Outlook 本来就是用户常开的。
-5. `New-Object -ComObject Outlook.Application`（Outlook 是单实例，开着时这是连上去，不是再开一个）→ `GetNamespace('MAPI')`；遇到 Outlook 忙（RPC 拒绝调用）重试 3 次、每次隔 0.5 秒。
+2. **经典版装没装看程序文件，不看注册**：从 64 位和 32 位两份注册表里读 `Outlook.Application` 的 CLSID → `LocalServer32` 指向的 exe，至少有一份**文件真的存在**才算装了（只看注册会把卸载残留误判成已装）。都没有时再看新版：`%LOCALAPPDATA%\Microsoft\WindowsApps\olk.exe`（新版的启动别名），没有再查 `Get-AppxPackage Microsoft.OutlookForWindows` → 有新版报 `OUTLOOK_NEW_ONLY`，没有报 `OUTLOOK_NOT_INSTALLED`
+3. **32 位 Office 的 64 位注册坏了**：64 位 PowerShell 读的是 64 位那份注册；若只有 32 位那份指向真文件，脚本回一个内部信号，Node 这边改用 `SysWOW64` 里的 32 位 PowerShell 重跑这一次，之后这个 server 一直用 32 位（这台机器就是这样：Office 2019 32 位，64 位注册指向不存在的 `C:\Program Files\Microsoft Office\Root\Office16\OUTLOOK.EXE`）
+4. 注册表 `HKCU\Software\Microsoft\Office\16.0|15.0\Outlook\Profiles` 下没有配置文件 → `OUTLOOK_NO_PROFILE`
+5. 没有 OUTLOOK.EXE 进程 → `OUTLOOK_NOT_RUNNING`。**插件不替用户启动 Outlook**：没配置文件时 COM 拉起 Outlook 会弹配置向导，违反「不弹窗」；Outlook 本来就是用户常开的。
+6. `New-Object -ComObject Outlook.Application`（Outlook 是单实例，开着时这是连上去，不是再开一个）→ `GetNamespace('MAPI')`；遇到 Outlook 忙（RPC 拒绝调用）重试 3 次、每次隔 0.5 秒。
 
 **各工具怎么取数**：
 
@@ -101,7 +103,9 @@ plugins/outlook-mail/
 
 | 坑 | 现在怎么处理 | 真机核实 |
 |---|---|---|
-| 新版 Outlook（olk.exe）没有 COM | 报 `OUTLOOK_NOT_INSTALLED`，提示要经典版 | 待核实 |
+| 新版 Outlook（olk.exe）没有 COM | 只有新版时报 `OUTLOOK_NEW_ONLY`，提示要经典版 | 这台机器上检测到新版（启动别名在） |
+| 卸载后 COM 注册还在 | 以注册指向的 exe 文件是否存在为准 | 测试覆盖 |
+| 32 位 Office 的 64 位 COM 注册指向不存在的路径 | 自动改用 32 位 PowerShell | 这台机器上实际遇到并验过：`status` 走 32 位后正确报「经典版已装、没配置邮箱」 |
 | 对象模型保护（杀毒软件过期时读地址 / 正文会弹「有程序在访问邮件」） | `0x80004004` / `0x80070005` 映射成 `OUTLOOK_SECURITY_BLOCKED`；这类错误在所有 try 里都不吞，一律报出来 | 待核实 HRESULT |
 | Outlook 有对话框开着时 COM 调用被拒 | 连接时重试 3 次，之后报 `OUTLOOK_BUSY` | 待核实 |
 | Outlook 以管理员身份运行、插件不是 | `0x80080005` 报 `OUTLOOK_NOT_RUNNING`，附一句「正常方式重新打开」 | 待核实 |
@@ -134,11 +138,44 @@ plugins/outlook-mail/
 
 | 日期 | 测试 | 冒烟 |
 |---|---|---|
-| 2026-11-09 | `npx vitest run plugins/outlook-mail`：4 个文件 49 条全过。`mock.test`（模拟模式每个工具：30 封、倒序、翻页、各种筛选、正文 / html / 截断、读不改未读、标已读与标回、移动、存附件与重名、草稿回复 / 全部回复 / 新邮件、7 种参数错误、日志不含邮件内容）；`errors.test`（10 个 HRESULT 映射、worker 自报错误码、受限模式、PowerShell 起不来 / 输出乱 / 超时、非 Windows）；`worker.test`（outlook.ps1 零语法错误、纯 ASCII、无 Send；对着假 Outlook 跑 21 个请求：文件夹树、列表翻页与 Exchange 地址、DASL 过滤串与单引号转义、日期筛选、收件人与附件、标记、移动新 id、存附件重名、HTML 草稿插入位置、只在要求时打开窗口、安全提示 / 忙 / 找不到 / 未知操作；本机真跑 status 且不会拉起 Outlook）；`plugin.test`（插件检查零问题、装上启用出 9 个工具、移动要确认而标已读和草稿不要、附件只进项目文件夹、覆盖要确认、停用全撤；样例邮件 30 封且只用示例域名） | `npm run smoke -w @spica/plugin-outlook-mail`：装上 → 模拟模式 30 封 → 读未读 → 移动要确认 / 标已读不要 → 附件进项目文件夹、外面被拦 → 起草回复进草稿箱 → 真 Outlook 检查（这台：装了、没配置文件，报 `OUTLOOK_NO_PROFILE`）→ 停用工具和钩子消失，16 项全过。eslint 过、敏感词扫描 0 命中 |
+| 2026-11-09 | `npx vitest run plugins/outlook-mail`：4 个文件 59 条全过（含 2026-11-09 收尾加的 10 条：环境检查 7 种情况——没装、只有新版、残留 + 新版、只有残留、没配置文件、32 位 Office 注册坏、没开——和自动切 32 位 PowerShell）。`mock.test`（模拟模式每个工具：30 封、倒序、翻页、各种筛选、正文 / html / 截断、读不改未读、标已读与标回、移动、存附件与重名、草稿回复 / 全部回复 / 新邮件、7 种参数错误、日志不含邮件内容）；`errors.test`（10 个 HRESULT 映射、worker 自报错误码、受限模式、PowerShell 起不来 / 输出乱 / 超时、非 Windows）；`worker.test`（outlook.ps1 零语法错误、纯 ASCII、无 Send；对着假 Outlook 跑 21 个请求：文件夹树、列表翻页与 Exchange 地址、DASL 过滤串与单引号转义、日期筛选、收件人与附件、标记、移动新 id、存附件重名、HTML 草稿插入位置、只在要求时打开窗口、安全提示 / 忙 / 找不到 / 未知操作；本机真跑 status 且不会拉起 Outlook）；`plugin.test`（插件检查零问题、装上启用出 9 个工具、移动要确认而标已读和草稿不要、附件只进项目文件夹、覆盖要确认、停用全撤；样例邮件 30 封且只用示例域名） | `npm run smoke -w @spica/plugin-outlook-mail`：装上 → 模拟模式 30 封 → 读未读 → 移动要确认 / 标已读不要 → 附件进项目文件夹、外面被拦 → 起草回复进草稿箱 → 真 Outlook 检查（这台：经典版和新版都装了、经典版没配置邮箱，走 32 位 PowerShell，状态 `no_profile`，报 `OUTLOOK_NO_PROFILE`）→ 停用工具和钩子消失，17 项全过。eslint 过、敏感词扫描 0 命中 |
 
-**真机没验到的**：读真列表、读真正文、建真草稿。这台机器装了经典版 Outlook（Office16）但没有登录任何邮箱。登录一个邮箱后跑 `npm run smoke -w @spica/plugin-outlook-mail -- --real-draft` 就会读真收件箱前 5 封、读一封正文、在草稿箱建一封测试草稿（不发送），并核实第 5 节里标「待核实」的几条。
+**真机没验到的**：读真列表、读真正文、建真草稿。这台机器经典版（Office 2019 32 位）和新版 Outlook 都装了，但经典版从没登录过邮箱；他不登个人邮箱，统筹定留到公司电脑验（见第 9 节）。
 
 ## 9. 以后
+
+### 在公司电脑上验真机（下一步，经典版 Outlook + 工作邮箱）
+
+1. 打开「Outlook (classic)」，确认工作邮箱能正常收信，Outlook 保持开着。
+2. 在 Spica 仓库根目录跑：`npm run smoke -w @spica/plugin-outlook-mail -- --real-draft`
+3. 第 1–5、7 步和在家一样（模拟模式），看第 6 步「真 Outlook」，预期：
+
+   ```
+   6. 真 Outlook
+        经典版 是 · 新版 是/否 · 有配置文件 是 · 开着 是 · 64 位（或 32 位）PowerShell · 邮箱 1 个以上
+     ✓ 状态：ready — Outlook 可以用了。
+     ✓ 读真收件箱列表 — 约 2000 ms
+     ✓ 读一封真邮件正文 — 约 2000 ms
+     ✓ 真草稿已存进草稿箱（未发送） — 约 2000 ms
+   ```
+
+4. 去 Outlook 的「草稿」文件夹看：有一封回复收件箱最新那封信的草稿，正文第一行是 `Spica smoke test draft — safe to delete.`，下面是原信的引用、格式没乱；它**没有**出现在「已发送」里。看完删掉这封草稿。
+5. 不加 `--real-draft` 跑就只读不写。
+
+可能看到的其他结果和含义：
+
+| 第 6 步看到 | 意思 | 怎么办 |
+|---|---|---|
+| `状态：not_running` + `[OUTLOOK_NOT_RUNNING]` | Outlook 没开 | 打开再跑 |
+| `[OUTLOOK_SECURITY_BLOCKED]` 或 Outlook 弹出「有程序在访问电子邮件地址信息」 | 对象模型保护（多半是杀毒软件状态没被 Outlook 认到） | 点「允许」再跑；一直弹就记下来，问 IT；顺便核实这个提示对应的 HRESULT 是不是 0x80004004 |
+| `[OUTLOOK_BUSY]` | Outlook 有提示框或登录框开着 | 关掉再跑 |
+| `[POWERSHELL_RESTRICTED]` | 公司策略把 PowerShell 锁在受限模式 | 本插件在这台电脑上用不了，记下来另想办法（例如改成自带的小 exe） |
+| `[TIMEOUT]` | 45 秒没回应，多半是弹窗在等人点 | 看 Outlook 有没有弹窗 |
+| `[COM_ERROR] …（错误代码 0x…）` | 没见过的错误 | 把错误代码记下来，补进 `server/errors.js` 的 HRESULT 表 |
+
+验完把结果写进第 8 节的验收记录，并把第 5 节「待核实」的几条改成实测结论。
+
+### 以后再做
 
 - 发送邮件（要确认、要能撤回期内取消）、日历、联系人、规则：首版不做。
 - 常驻一个 PowerShell 进程，把每次约 2 秒降到零点几秒（要处理超时重启、Outlook 关掉后重连）。
@@ -150,5 +187,6 @@ plugins/outlook-mail/
 ## 10. 交接（2026-11-09）
 
 - **做了什么**：上面全部；提交见 git log（`plugins/outlook-mail`、本文、package-lock.json 里新工作区的一条）。
-- **故意没做**：发送 / 日历 / 联系人 / 规则；常驻 PowerShell；`plugins/README.md` 的插件表没加这一行（那个文件不归本话题管）。
-- **他该看什么**：跑冒烟看 16 行 ✓；要验真 Outlook 就登录一个邮箱后加 `--real-draft` 再跑。
+- **收尾补的**（统筹转他的话：「我这台电脑好像没有经典版的outlook」）：`status` 分清「没装 / 只有新版 / 经典版装了没配置邮箱」并带中文提示；经典版以程序文件为准，不被注册表残留骗；32 位 Office 注册坏时自动改用 32 位 PowerShell。核实结果：这台其实两种都装了，开始菜单里有「Outlook (classic)」，只是没登录过邮箱。`plugins/README.md` 的插件表已加一行（4c2e850）。
+- **故意没做**：发送 / 日历 / 联系人 / 规则；常驻 PowerShell（记在账本「点子」）。
+- **他该看什么**：跑冒烟看 17 行 ✓；真机验证到公司电脑上照第 9 节做。

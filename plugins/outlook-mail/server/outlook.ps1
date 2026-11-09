@@ -74,21 +74,77 @@ function Test-OutlookProfile {
   return $false
 }
 
+# The exe that COM would start for Outlook.Application, read from one
+# registry view ('Registry64' or 'Registry32'). $null when not registered.
+# A registration can outlive the program (uninstall leftovers, or a 64-bit
+# entry pointing at a folder that does not exist), so callers check the file.
+function Get-ComServerPath([string]$view) {
+  try {
+    $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::ClassesRoot, [Microsoft.Win32.RegistryView]$view)
+    $ck = $base.OpenSubKey('Outlook.Application\CLSID')
+    if ($null -eq $ck) { return $null }
+    $clsid = [string]$ck.GetValue('')
+    $ls = $base.OpenSubKey("CLSID\$clsid\LocalServer32")
+    if ($null -eq $ls) { return $null }
+    $cmd = ([string]$ls.GetValue('')).Trim()
+  } catch { return $null }
+  if (-not $cmd) { return $null }
+  if ($cmd.StartsWith('"')) { $end = $cmd.IndexOf('"', 1); if ($end -gt 1) { return $cmd.Substring(1, $end - 1) } return $null }
+  $m = [regex]::Match($cmd, '^(.*?\.exe)\b', 'IgnoreCase')
+  if ($m.Success) { return $m.Groups[1].Value }
+  return $cmd
+}
+
+function Test-FileExists([string]$path) { return ([bool]$path -and [IO.File]::Exists($path)) }
+
+# The new Outlook for Windows (olk.exe, a Store app) has no COM interface.
+function Test-NewOutlook {
+  if (Test-FileExists (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\olk.exe')) { return $true }
+  try { return (@(Get-AppxPackage -Name 'Microsoft.OutlookForWindows' -ErrorAction Stop).Count -gt 0) } catch { return $false }
+}
+
+function Get-OutlookProcessCount { return @(Get-Process -Name OUTLOOK -ErrorAction SilentlyContinue).Count }
+
 function Get-Prerequisites {
-  return @{
+  $p64 = Get-ComServerPath 'Registry64'
+  $p32 = Get-ComServerPath 'Registry32'
+  $ok64 = Test-FileExists $p64
+  $ok32 = Test-FileExists $p32
+  $p = @{
     language = $ExecutionContext.SessionState.LanguageMode.ToString()
-    installed = ($null -ne [Type]::GetTypeFromProgID('Outlook.Application'))
+    classic_installed = ($ok64 -or $ok32)
+    classic_path = $(if ($ok64) { $p64 } elseif ($ok32) { $p32 } else { $null })
+    powershell_bits = $(if ([Environment]::Is64BitProcess) { 64 } else { 32 })
+    # 64-bit PowerShell reads the 64-bit registration; when only the 32-bit one
+    # points at a real file, the worker must run in 32-bit PowerShell instead.
+    needs_32bit = ([Environment]::Is64BitProcess -and -not $ok64 -and $ok32)
     profile = (Test-OutlookProfile)
-    running = (@(Get-Process -Name OUTLOOK -ErrorAction SilentlyContinue).Count -gt 0)
+    running = ((Get-OutlookProcessCount) -gt 0)
   }
+  $p.new_outlook_installed = $(if ($p.classic_installed) { $null } else { Test-NewOutlook })
+  $p.state = $(
+    if ($p.language -ne 'FullLanguage') { 'restricted' }
+    elseif (-not $p.classic_installed) { if ($p.new_outlook_installed) { 'new_outlook_only' } else { 'not_installed' } }
+    elseif ($p.needs_32bit) { 'needs_32bit' }
+    elseif (-not $p.profile) { 'no_profile' }
+    elseif (-not $p.running) { 'not_running' }
+    else { 'ready' }
+  )
+  return $p
+}
+
+$StateCodes = @{
+  restricted = 'POWERSHELL_RESTRICTED'
+  not_installed = 'OUTLOOK_NOT_INSTALLED'
+  new_outlook_only = 'OUTLOOK_NEW_ONLY'
+  needs_32bit = 'NEED_32BIT_POWERSHELL'
+  no_profile = 'OUTLOOK_NO_PROFILE'
+  not_running = 'OUTLOOK_NOT_RUNNING'
 }
 
 function Connect-Outlook {
   $p = Get-Prerequisites
-  if ($p.language -ne 'FullLanguage') { throw (New-MailError 'POWERSHELL_RESTRICTED') }
-  if (-not $p.installed) { throw (New-MailError 'OUTLOOK_NOT_INSTALLED') }
-  if (-not $p.profile) { throw (New-MailError 'OUTLOOK_NO_PROFILE') }
-  if (-not $p.running) { throw (New-MailError 'OUTLOOK_NOT_RUNNING') }
+  if ($p.state -ne 'ready') { throw (New-MailError $StateCodes[$p.state]) }
   for ($i = 1; ; $i++) {
     try {
       # Outlook is single-instance: with it running this attaches, it does not start a new one.
@@ -234,8 +290,12 @@ function ConvertTo-HtmlText([string]$s) {
 
 function Invoke-Status {
   $p = Get-Prerequisites
-  $r = @{ mode = 'real'; outlook = @{ installed = $p.installed; profile = $p.profile; running = $p.running; language = $p.language }; mailboxes = @() }
-  if ($p.language -eq 'FullLanguage' -and $p.installed -and $p.profile -and $p.running) {
+  if ($p.state -eq 'needs_32bit') { throw (New-MailError 'NEED_32BIT_POWERSHELL') }
+  $o = @{}
+  foreach ($k in 'state', 'classic_installed', 'classic_path', 'new_outlook_installed', 'profile', 'running', 'language', 'powershell_bits') { $o[$k] = $p[$k] }
+  if ($null -eq $o.new_outlook_installed) { $o.new_outlook_installed = (Test-NewOutlook) }
+  $r = @{ mode = 'real'; outlook = $o; mailboxes = @() }
+  if ($p.state -eq 'ready') {
     $c = Connect-Outlook
     $r.outlook.version = [string]$c.app.Version
     $defId = [string]$c.ns.DefaultStore.StoreID

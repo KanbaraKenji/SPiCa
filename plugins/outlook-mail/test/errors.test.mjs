@@ -115,11 +115,33 @@ describe('PowerShell worker', () => {
     expect((await callTool(backend, 'read_message', { id: 'x' })).text).toMatch(/^\[NOT_WINDOWS\] /);
     const st = await callTool(backend, 'status', {});
     expect(st.isError).toBe(false);
-    expect(JSON.parse(st.text).outlook.installed).toBe(false);
+    expect(JSON.parse(st.text).outlook).toMatchObject({ state: 'not_installed', classic_installed: false, hint: expect.stringContaining('没有装 Outlook') });
   });
 
   it('formats unknown failures without leaking their text', () => {
     expect(formatError(new Error('Subject: secret salary review'))).toBe(`[COM_ERROR] ${MESSAGES.COM_ERROR}`);
     expect(new MailError('TIMEOUT').code).toBe('TIMEOUT');
+  });
+});
+
+describe('32-bit Office', () => {
+  it('switches to 32-bit PowerShell when the worker asks for it, and stays there', async () => {
+    const seen = [];
+    const run = async (_s, op, _a, opts) => {
+      seen.push(opts.x86);
+      if (!opts.x86) return { ok: false, error: { code: 'NEED_32BIT_POWERSHELL' } };
+      return { ok: true, result: { mode: 'real', outlook: { state: 'no_profile' }, mailboxes: [] } };
+    };
+    const backend = new OutlookBackend({ script: 's', platform: 'win32', run });
+    const st = await callTool(backend, 'status', {});
+    expect(JSON.parse(st.text).outlook.hint).toContain('还没有配置邮箱账号');
+    await callTool(backend, 'status', {});
+    expect(seen).toEqual([false, true, true]);
+  });
+
+  it('picks the SysWOW64 PowerShell for x86', async () => {
+    const { powershellPath } = await import('../server/outlook-backend.js');
+    expect(powershellPath({ SystemRoot: 'C:\\Windows' }, true)).toMatch(/SysWOW64[\\/]WindowsPowerShell[\\/]v1\.0[\\/]powershell\.exe$/);
+    expect(powershellPath({ SystemRoot: 'C:\\Windows' })).toMatch(/System32[\\/]WindowsPowerShell/);
   });
 });

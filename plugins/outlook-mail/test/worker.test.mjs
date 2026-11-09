@@ -1,6 +1,7 @@
 // outlook.ps1 on Windows PowerShell 5.1: parses cleanly, and every operation
 // runs against a stand-in Outlook object model (test/fake-outlook.ps1). The
 // last test talks to whatever Outlook this machine really has.
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mapWorkerError } from '../server/errors.js';
-import { powershellPath, runWorker } from '../server/outlook-backend.js';
+import { OutlookBackend, powershellPath, runWorker } from '../server/outlook-backend.js';
 import { runFake } from './fake-runner.mjs';
 
 const SCRIPT = fileURLToPath(new URL('../server/outlook.ps1', import.meta.url));
@@ -158,11 +159,53 @@ describe.skipIf(!win)('outlook.ps1', () => {
 
   it('answers status from this machine without starting Outlook', async () => {
     const before = spawnSync('tasklist', ['/FI', 'IMAGENAME eq OUTLOOK.EXE', '/NH'], { encoding: 'utf8', windowsHide: true }).stdout.includes('OUTLOOK.EXE');
-    const r = await runWorker(SCRIPT, 'status', {});
-    expect(r.ok).toBe(true);
-    expect(r.result.mode).toBe('real');
-    expect(typeof r.result.outlook.installed).toBe('boolean');
+    const first = await runWorker(SCRIPT, 'status', {});
+    // either an answer, or (32-bit Office with a broken 64-bit entry) the request to switch
+    expect(first.ok || first.error?.code === 'NEED_32BIT_POWERSHELL').toBe(true);
+    const st = await new OutlookBackend({ script: SCRIPT }).status();
+    expect(st.mode).toBe('real');
+    expect(['ready', 'restricted', 'not_installed', 'new_outlook_only', 'no_profile', 'not_running']).toContain(st.outlook.state);
+    expect(typeof st.outlook.classic_installed).toBe('boolean');
+    expect(typeof st.outlook.new_outlook_installed).toBe('boolean');
+    expect(st.outlook.hint.length).toBeGreaterThan(5);
+    if (st.outlook.classic_installed) expect(existsSync(st.outlook.classic_path)).toBe(true);
     const after = spawnSync('tasklist', ['/FI', 'IMAGENAME eq OUTLOOK.EXE', '/NH'], { encoding: 'utf8', windowsHide: true }).stdout.includes('OUTLOOK.EXE');
     expect(after).toBe(before);
   }, 60_000);
+});
+
+describe.skipIf(!win)('outlook.ps1 environment checks', () => {
+  const E64 = 'C:\\Program Files\\Office\\OUTLOOK.EXE';
+  const E32 = 'C:\\Program Files (x86)\\Office\\OUTLOOK.EXE';
+  const base = { p64: null, p32: null, files: [], new: false, profile: false, running: false };
+  const cases = [
+    ['nothing installed', {}, 'not_installed', 'OUTLOOK_NOT_INSTALLED'],
+    ['only the new Outlook', { new: true }, 'new_outlook_only', 'OUTLOOK_NEW_ONLY'],
+    ['COM left over from an uninstall, new Outlook present', { p64: E64, p32: E32, new: true }, 'new_outlook_only', 'OUTLOOK_NEW_ONLY'],
+    ['COM left over from an uninstall', { p64: E64 }, 'not_installed', 'OUTLOOK_NOT_INSTALLED'],
+    ['classic, no profile', { p64: E64, files: [E64] }, 'no_profile', 'OUTLOOK_NO_PROFILE'],
+    ['32-bit Office, broken 64-bit entry', { p64: E64, p32: E32, files: [E32], profile: true, running: true }, 'needs_32bit', 'NEED_32BIT_POWERSHELL'],
+    ['classic, profile, closed', { p64: E64, files: [E64], profile: true }, 'not_running', 'OUTLOOK_NOT_RUNNING'],
+  ];
+  let out;
+  beforeAll(() => {
+    const r = spawnSync(powershellPath(), ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', fileURLToPath(new URL('./prereq.ps1', import.meta.url))], {
+      input: JSON.stringify(cases.map(([, c]) => ({ ...base, ...c }))),
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 60_000,
+      env: { ...process.env, SPICA_OUTLOOK_SCRIPT: SCRIPT },
+    });
+    out = JSON.parse(r.stdout);
+  }, 90_000);
+
+  it.each(cases.map((c, i) => [c[0], i, c[2], c[3]]))('%s', (_name, i, state, code) => {
+    expect(out[i].state).toBe(state);
+    expect(out[i].code).toBe(code);
+  });
+
+  it('reports the real program path, not the leftover entry', () => {
+    expect(out[4]).toMatchObject({ classic: true, path: E64 });
+    expect(out[3]).toMatchObject({ classic: false, path: null });
+  });
 });

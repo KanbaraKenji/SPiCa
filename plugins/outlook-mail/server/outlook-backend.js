@@ -9,7 +9,7 @@
 // contain mail text; only the error code and HRESULT reach the log.
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
-import { MailError, mapWorkerError } from './errors.js';
+import { MailError, STATE_HINTS, mapWorkerError } from './errors.js';
 
 const BOOTSTRAP = [
   "$ErrorActionPreference='Stop'",
@@ -19,9 +19,10 @@ const BOOTSTRAP = [
   '& ([scriptblock]::Create([IO.File]::ReadAllText($env:SPICA_OUTLOOK_SCRIPT,[Text.Encoding]::UTF8)))',
 ].join(';');
 
-export function powershellPath(env = process.env) {
+/** 64-bit PowerShell by default; `x86` picks the 32-bit one (SysWOW64). */
+export function powershellPath(env = process.env, x86 = false) {
   const root = env.SystemRoot || env.windir || 'C:\\Windows';
-  return join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  return join(root, x86 ? 'SysWOW64' : 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 }
 
 export function powershellArgs() {
@@ -33,11 +34,11 @@ export function powershellArgs() {
  * answer; rejects with MailError for start failures and timeouts.
  * `spawnImpl` is replaceable for tests.
  */
-export function runWorker(script, op, args, { timeoutMs = 45_000, spawnImpl = spawn } = {}) {
+export function runWorker(script, op, args, { timeoutMs = 45_000, spawnImpl = spawn, x86 = false } = {}) {
   return new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawnImpl(powershellPath(), powershellArgs(), {
+      child = spawnImpl(powershellPath(process.env, x86), powershellArgs(), {
         windowsHide: true,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env, SPICA_OUTLOOK_SCRIPT: script },
@@ -102,16 +103,25 @@ export class OutlookBackend {
 
   async call(op, args = {}) {
     if (this.platform !== 'win32') throw new MailError('NOT_WINDOWS');
-    const answer = await this.run(this.script, op, args, this.timeoutMs ? { timeoutMs: this.timeoutMs } : {});
+    const opts = () => ({ ...(this.timeoutMs ? { timeoutMs: this.timeoutMs } : {}), x86: this.x86 === true });
+    let answer = await this.run(this.script, op, args, opts());
+    if (!answer.ok && answer.error?.code === 'NEED_32BIT_POWERSHELL' && !this.x86) {
+      // 32-bit Office whose 64-bit COM registration points at a missing file:
+      // switch to 32-bit PowerShell for the rest of this server's life.
+      this.x86 = true;
+      answer = await this.run(this.script, op, args, opts());
+    }
     if (answer.ok) return answer.result;
     throw mapWorkerError(answer.error);
   }
 
-  status() {
-    if (this.platform !== 'win32') {
-      return Promise.resolve({ mode: 'real', outlook: { installed: false, profile: false, running: false, platform: this.platform }, mailboxes: [] });
-    }
-    return this.call('status');
+  async status() {
+    const r =
+      this.platform !== 'win32'
+        ? { mode: 'real', outlook: { state: 'not_installed', classic_installed: false, platform: this.platform }, mailboxes: [] }
+        : await this.call('status');
+    if (r.outlook) r.outlook.hint = STATE_HINTS[r.outlook.state] ?? '';
+    return r;
   }
   listFolders(a) {
     return this.call('listFolders', a);
