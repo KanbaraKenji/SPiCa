@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FakeBackend } from '../../../main/backend/fake';
 import { AgentStore, friendlyError } from './agent';
 
@@ -19,11 +19,30 @@ describe('AgentStore', () => {
     store.newChat();
     store.newChat();
     expect((await backend.listSessions()).map((x) => x.id)).toEqual([top.id]);
+    // First use: the message goes into the assistant's still-empty thread, no extra one.
     await store.send(null, '你好');
+    expect((await backend.listSessions()).map((x) => x.id)).toEqual([top.id]);
+    expect(store.state.get().activeId).toBe(top.id);
+    // After that, 新对话 starts a new conversation.
+    store.newChat();
+    await store.send(null, '再开一个');
     const sessions = await backend.listSessions();
     expect(sessions).toHaveLength(2);
-    const fresh = sessions.find((x) => x.id !== top.id);
-    expect(store.state.get().activeId).toBe(fresh?.id);
+    expect(store.state.get().activeId).toBe(sessions.find((x) => x.id !== top.id)?.id);
+    backend.dispose();
+  });
+
+  it('names untitled conversations by their first line after a restart', async () => {
+    const backend = new FakeBackend({ speed: 0, seed: false });
+    const first = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
+    await first.init();
+    await first.send(null, '你好');
+    first.newChat();
+    await first.send(null, '帮我看看报价单');
+    // A fresh window over the same core (the app was closed and opened again).
+    const again = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
+    await again.init();
+    await vi.waitFor(() => expect(Object.values(again.state.get().firstLines).sort()).toEqual(['你好', '帮我看看报价单']));
     backend.dispose();
   });
 });
