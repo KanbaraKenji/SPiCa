@@ -91,8 +91,8 @@ renderer ──window.spica──► preload ──ipcMain──► main ──A
 ## 7. 截图脚本
 
 ```powershell
-npm run shots -w @spica/desktop              # 对话页：浅/深 × 900×600、1280×800、1920×1080 × 100%、150%，共 12 张
-npm run shots -w @spica/desktop -- settings,models  # 再加外观页、模型页各 12 张
+npm run shots -w @spica/desktop              # 对话页：浅/深 × 480×360、900×600、1280×800、1920×1080 × 100%、150%，共 16 张
+npm run shots -w @spica/desktop -- settings,models  # 再加外观页、模型页各 16 张
 ```
 
 - 输出 `docs/screenshots/shell/{视图-}{皮肤}-{宽}x{高}-z{缩放}.png`。

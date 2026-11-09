@@ -7,6 +7,7 @@ import type { SettingsStore } from './settings-store';
 
 export const SHOT_SKINS = ['light', 'dark'] as const;
 export const SHOT_SIZES = [
+  [480, 360],
   [900, 600],
   [1280, 800],
   [1920, 1080],

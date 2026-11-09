@@ -235,6 +235,12 @@ ipcMain.handle(DesktopChannel.OpenFile, async (_e, sessionId: unknown, path: unk
   return error ? `打不开这个文件：${error}` : null;
 });
 
+ipcMain.on(DesktopChannel.Zoom, (_e, step: unknown) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (step === 'reset') applyZoom(mainWindow, DEFAULT_ZOOM);
+  else if (step === 'in' || step === 'out') applyZoom(mainWindow, stepZoom(settings.get().zoom, step));
+});
+
 ipcMain.handle(DesktopChannel.ListProviders, () => providerList());
 ipcMain.handle(DesktopChannel.SaveProvider, (_e, draft: ProviderDraft) => {
   providers.save(draft);

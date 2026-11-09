@@ -27,6 +27,8 @@ export interface DesktopBridge extends SpicaBridge {
   getShellState(): Promise<ShellState>;
   updateSettings(patch: SettingsPatch): Promise<ShellSettings>;
   onSettingsChanged(listener: (settings: ShellSettings) => void): () => void;
+  /** One zoom step for the whole window (Ctrl+wheel, Ctrl+=/-/0). */
+  zoom(step: 'in' | 'out' | 'reset'): void;
   /** Opens a file a session referenced (relative to its working folder). Resolves to an error text, or null on success. */
   openFile(sessionId: string, path: string): Promise<string | null>;
   providers: {

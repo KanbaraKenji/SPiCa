@@ -10,6 +10,8 @@ export const DesktopChannel = {
   SettingsChanged: 'spica:settings:changed',
   GetShellState: 'spica:shell:get',
   OpenFile: 'spica:file:open',
+  /** renderer -> main: 'in' | 'out' | 'reset' (Ctrl+wheel and zoom keys caught in the page) */
+  Zoom: 'spica:zoom',
   ListProviders: 'spica:providers:list',
   SaveProvider: 'spica:providers:save',
   DeleteProvider: 'spica:providers:delete',
