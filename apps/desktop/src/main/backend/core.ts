@@ -53,6 +53,8 @@ export function createCoreBackend({ env, cwd, dbPath }: CoreBackendOptions): Age
     // which the UI turns into "还没有配置这个模型".
     defaults: { providerId: current?.providerId ?? '', model: current?.model ?? '', maxTokens: 4096, maxTurns: 30 },
     cwd,
+    // The interface is Chinese; the core tells the model to answer in the user's language.
+    locale: 'zh-CN',
     ...(dbPath ? { store: new SqliteStore(dbPath) } : {}),
     // Development limits (see docs/design/agent-core.md §10): Anthropic 100 USD total, 2 USD per call.
     budget: { perProvider: { anthropic: { globalUsd: 100, perCallUsd: 2 } }, perRunUsd: 1 },

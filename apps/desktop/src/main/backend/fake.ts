@@ -17,7 +17,7 @@ import type {
   SteerMode,
 } from '@spica/protocol';
 import type { AgentBackend } from './types';
-import { buildSeed } from './fake-seed';
+import { buildSeed, fakeCard } from './fake-seed';
 import { isoAt } from './time';
 
 export interface FakeBackendOptions {
@@ -319,6 +319,8 @@ export class FakeBackend implements AgentBackend {
     this.#emit(sessionId, { type: 'tool.start', callId, name, input });
     this.#setStatus(sessionId, 'tool', name);
     await this.#sleep(ms, run.controller.signal);
+    const path = (input as { path?: unknown }).path;
+    if (name === 'read_file' && typeof path === 'string') this.#emit(sessionId, { type: 'file.card', callId, file: fakeCard(path, this.#now()) });
     const content = `${isoAt(this.#now())}\n${result}`;
     this.#emit(sessionId, { type: 'tool.end', callId, name, isError: false, preview: result.slice(0, 160), durationMs: ms });
     return [

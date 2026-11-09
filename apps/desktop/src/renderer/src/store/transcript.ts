@@ -1,6 +1,6 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
-import type { CoreEvent, Message, PendingItem, SessionStatus } from '@spica/protocol';
+import type { CoreEvent, FileCardMeta, Message, PendingItem, SessionStatus } from '@spica/protocol';
 import { humanError } from '../../../shared/errors';
 
 export { humanError } from '../../../shared/errors';
@@ -85,6 +85,8 @@ export interface Transcript {
   error?: string;
   /** Messages sent while a run was going, not yet taken in by the agent. */
   queued?: { id: string; text: string }[];
+  /** File details the core reported for read_file calls (file.card), by call id. */
+  fileCards?: Record<string, FileCardMeta>;
 }
 
 export const EMPTY_TRANSCRIPT: Transcript = { items: [] };
@@ -154,6 +156,7 @@ function findBlock<T extends Block['type']>(items: Item[], type: T, callId: stri
 /** Builds the view from stored history plus whatever the session is still waiting on. */
 export function fromHistory(messages: readonly Message[], pending: readonly PendingItem[] = []): Transcript {
   const items: Item[] = [];
+  const cards: Record<string, FileCardMeta> = {};
   for (const m of messages) {
     if (m.role === 'assistant') {
       const r = lastResponse(items, m.id);
@@ -176,6 +179,8 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
       continue;
     }
     if (m.kind === 'tool_results') {
+      const stored = m.meta?.fileCards;
+      if (stored && typeof stored === 'object') Object.assign(cards, stored as Record<string, FileCardMeta>);
       for (const b of m.content) {
         if (b.type !== 'tool_result') continue;
         const tool = findBlock(items, 'tool', b.toolUseId);
@@ -194,7 +199,7 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
     if (m.kind === 'user' || m.kind === 'steer') items.push({ kind: 'user', id: m.id, text, steer: m.kind === 'steer' });
     else items.push(noteItem(m));
   }
-  const t: Transcript = { items };
+  const t: Transcript = { items, ...(Object.keys(cards).length ? { fileCards: cards } : {}) };
   for (const p of pending) applyPending(t, p);
   return t;
 }
@@ -278,6 +283,10 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       }
       return t;
     }
+    case 'file.card': {
+      t.fileCards = { ...(t.fileCards ?? {}), [e.callId]: e.file };
+      return t;
+    }
     case 'tool.end': {
       const tool = findBlock(items, 'tool', e.callId);
       if (tool) {
@@ -357,13 +366,41 @@ function formatMoney(usd: number): string {
   return 'US$' + usd.toFixed(2);
 }
 
-/** Files the answer touched, in first-seen order. */
-export function filesOf(blocks: readonly Block[]): { path: string; tool: string }[] {
-  const seen = new Map<string, string>();
+export interface FileRef {
+  /** Absolute when the core reported the file, otherwise as the model wrote it. */
+  path: string;
+  tool: string;
+  card?: FileCardMeta;
+}
+
+/** Files the answer touched, in first-seen order; core file cards win over the bare path argument. */
+export function filesOf(blocks: readonly Block[], cards: Record<string, FileCardMeta> = {}): FileRef[] {
+  const seen = new Map<string, FileRef>();
   for (const b of blocks) {
     if (b.type !== 'tool' || !FILE_TOOLS.has(b.name) || b.state === 'error') continue;
-    const path = (b.input as { path?: unknown } | undefined)?.path;
-    if (typeof path === 'string' && !seen.has(path)) seen.set(path, b.name);
+    const card = cards[b.callId];
+    const arg = (b.input as { path?: unknown } | undefined)?.path;
+    const path = card?.path ?? (typeof arg === 'string' ? arg : undefined);
+    if (!path || seen.has(path)) continue;
+    seen.set(path, card ? { path, tool: b.name, card } : { path, tool: b.name });
   }
-  return [...seen].map(([path, tool]) => ({ path, tool }));
+  return [...seen.values()];
+}
+
+const KIND_LABEL: Record<FileCardMeta['kind'], string> = { pdf: 'PDF', docx: 'Word', xlsx: 'Excel', csv: 'CSV', pptx: 'PPT', text: '文本' };
+
+/** One line under the file name: what kind, how big, what was read, and anything to watch out for. */
+export function fileCardLine(card: FileCardMeta): string {
+  const parts: string[] = [KIND_LABEL[card.kind] ?? card.kind];
+  if (card.pageCount) parts.push(`${card.pageCount} 页`);
+  if (card.sheets?.length) parts.push(`${card.sheets.length} 个表`);
+  if (card.slideCount) parts.push(`${card.slideCount} 页幻灯片`);
+  const r = card.read;
+  if (r.pages) parts.push(`读了第 ${r.pages} 页`);
+  else if (r.sheet) parts.push(`读了「${r.sheet}」${r.range ?? (r.rows ? `第 ${r.rows} 行` : '')}`);
+  else if (r.range) parts.push(`读了 ${r.range}`);
+  else if (r.rows) parts.push(`读了第 ${r.rows} 行`);
+  if (card.noTextLayer) parts.push('扫描件，读不出文字');
+  else if (card.truncated) parts.push('没读完');
+  return parts.join(' · ');
 }

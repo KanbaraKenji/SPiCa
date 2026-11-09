@@ -142,7 +142,7 @@ export function App({ bridge, shell, agent }: AppProps) {
       {leftShown ? (
         <div className={`panel panel-left is-${layout.left}`}>
           <div className="sidebar-head">
-            <SpicaBanner height={20} className="sidebar-brand" />
+            <SpicaBanner height={22} className="sidebar-brand" />
             {sidebarToggle}
           </div>
           <Sidebar

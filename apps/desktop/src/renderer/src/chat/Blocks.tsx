@@ -3,7 +3,7 @@
 import { memo, useState, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Block, ChildNote } from '../store/transcript';
+import { fileCardLine, type Block, type ChildNote, type FileRef } from '../store/transcript';
 import { Icon } from '../ui/Icon';
 import { confirmTitle, fileFolder, fileName, formatDuration, toolLabel, toolTarget } from './format';
 
@@ -89,7 +89,7 @@ export function ToolGroup({ blocks }: { blocks: ToolBlock[] }) {
   );
 }
 
-export function FileCards({ files, onOpen }: { files: { path: string; tool: string }[]; onOpen(path: string): void }) {
+export function FileCards({ files, onOpen }: { files: FileRef[]; onOpen(path: string): void }) {
   if (files.length === 0) return null;
   return (
     <div className="file-cards">
@@ -99,8 +99,10 @@ export function FileCards({ files, onOpen }: { files: { path: string; tool: stri
             <Icon name="file" size={18} />
           </span>
           <span className="file-card-text">
-            <span className="file-card-name">{fileName(f.path)}</span>
-            <span className="file-card-sub">{f.tool === 'read_file' ? '读过' : '改过'}{fileFolder(f.path) ? ` · ${fileFolder(f.path)}` : ''}</span>
+            <span className="file-card-name">{f.card?.name ?? fileName(f.path)}</span>
+            <span className="file-card-sub">
+              {f.card ? fileCardLine(f.card) : `${f.tool === 'read_file' ? '读过' : '改过'}${fileFolder(f.path) ? ` · ${fileFolder(f.path)}` : ''}`}
+            </span>
           </span>
         </button>
       ))}

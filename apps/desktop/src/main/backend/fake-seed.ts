@@ -1,13 +1,25 @@
 // Demo data for the fake backend: a neutral, fictional workspace with one
 // finished conversation, two projects and their sub-agents in every state the
 // UI has to draw. Used by screenshots, so keep it stable.
-import type { ContentBlock, Message, PendingItem, SessionInfo, SessionStatus, AgentRole } from '@spica/protocol';
+import type { ContentBlock, FileCardMeta, Message, PendingItem, SessionInfo, SessionStatus, AgentRole } from '@spica/protocol';
 import { isoAt } from './time';
 
 export interface Seed {
   sessions: SessionInfo[];
   messages: Record<string, Message[]>;
   pending: Record<string, PendingItem[]>;
+}
+
+/** What the core reports about a file it read (file.card), with demo numbers. */
+export function fakeCard(path: string, now: Date): FileCardMeta {
+  const name = path.split(/[\\/]/).pop() ?? path;
+  const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
+  const at = isoAt(now);
+  const base = { path: `D:\\工作\\样机评审\\${name}`, name, sizeBytes: 48_213, modifiedAt: at, extractedAt: at };
+  if (ext === 'pdf') return { ...base, kind: 'pdf', pageCount: 12, read: { pages: '1-12' } };
+  if (ext === 'docx') return { ...base, kind: 'docx', pageCount: 4, read: {} };
+  if (ext === 'xlsx') return { ...base, kind: 'xlsx', sheets: [{ name: '报价', rows: 36, cols: 8 }, { name: '交期', rows: 12, cols: 5 }], read: { sheet: '报价', rows: '1-36' } };
+  return { ...base, kind: 'text', read: { rows: '1-80' } };
 }
 
 export const SEED_IDS = {
@@ -125,6 +137,10 @@ export function buildSeed(now: Date): Seed {
       4,
     ),
   ];
+
+  // The core reports read files as file.card events; history here carries them the forward-compatible way.
+  const results = chatMessages[2];
+  if (results) results.meta = { ...results.meta, fileCards: { 'seed-call-2': fakeCard('需求说明.docx', now), 'seed-call-3': fakeCard('测试报告.pdf', now) } };
 
   const minutesMessages: Message[] = [
     msg(minutes, 'user', 'user', [text('根据会议记录起草一份评审纪要')], 4),
