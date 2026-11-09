@@ -197,6 +197,13 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 
 所有面向用户的报错都是中文人话（`PluginError.message`，带 `issues` 明细）。
 
+**在后端进程里**：插件包是内核后端的一个扩展（`BackendConfig.extensions: [{ module: '@spica/plugins', options: { root } }]`），内核在 `restore()` 之后调 `attachBackend(runtime, options)`：建 `PluginManager`、`load()`，交回
+- 本程序 MCP 服务上的工具：`spica_plugins_list`、`spica_plugin_describe`、`spica_plugin_install {path, enable?}`（文件夹或 zip）、`spica_plugin_enable` / `disable` / `uninstall` / `rollback {name}`、`spica_plugins_set_mock {on}`；当前工具表用内核的 `spica_list_tools`。
+- 后端端口上的方法（外壳插件页走同一个进程）：`pluginsList`、`pluginDescribe`、`pluginCheck`、`pluginInstall`、`pluginEnable`、`pluginDisable`、`pluginUninstall`、`pluginRollback`、`pluginsMock`、`pluginsSetMock`、`pluginCommands`、`pluginExpandCommand`。
+- 关闭时先停插件进程，再关内核。
+
+J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型，读 .env.local）：装上 → 工具出现 → Agent 调 `notes__write_note` / `notes__read_note` → 停用 → 工具消失、Agent 也调不到。
+
 ## 10. 验收记录
 
 | 日期 | 测试 | 冒烟 |
@@ -214,6 +221,7 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 - **做了什么**：`@spica/plugins`（清单、文件夹、启用 / 停用全撤、失败回滚、崩溃重启上限、模拟模式、describe()、zip 打包与校验、共享盘 / HTTP 来源、更新与回滚、环境变量白名单）；示例插件 `plugins/example-notes`；J6 冒烟 `npm run smoke:plugins -w @spica/plugins`（13 项）和真模型版 `smoke:plugins:model`；本文和作者指南。提交 2caf365、6064913 和本次。
 - **内核配合**（已提交 e473a9d）：`connectMcp(config, { source })`、`onExit`、`stderrLog`、可等待的 `disconnect()`、单个 server 只撤自己的工具、`inheritEnv` 白名单。
 - **故意没做**：插件页界面与模拟数据标记（归桌面外壳，接口见第 9 节）；工作文件夹 / 网络权限的强制拦截；插件设置表单（MCPB 的 user_config）；包签名；宿主托管 Python（方案见第 5 节，何时做待他拍板）；视图渲染。
-- **下一步**：外壳在主进程建 `PluginManager`（插件根 `%APPDATA%Spicaplugins`，传 Electron 的 `net.fetch` 给来源）并做插件页；之后官方 Outlook 插件按本格式写。
+- **J6 经 MCP**：`npm run journey:j6 -w @spica/plugins`，7 项全过（DeepSeek flash）。
+- **下一步**：外壳经后端端口的 plugin* 方法做插件页，不用自己建 `PluginManager`；插件根建议 `%APPDATA%Spicaplugins`，写进后端配置的 extensions.options.root。之后官方 Outlook 插件按本格式写。
 - **他该看什么**：跑 J6 冒烟看 13 行 ✓；翻 `plugins/example-notes` 看一个插件长什么样。
 - **注意**：插件测试要起真进程，机器很忙时默认 5 秒会超时，测试文件里已放宽到 30 秒。

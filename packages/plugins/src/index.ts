@@ -59,3 +59,4 @@ export {
 } from './sources.ts';
 export { readZip, writeZip, safeEntryName, ZipError, type ZipEntry } from './zip.ts';
 export type { PluginContext, HookModule } from './authoring.ts';
+export { attachBackend, pluginMcpTools, pluginMethods, type McpServiceTool, type PluginBackendOptions } from './backend.ts';
