@@ -2,7 +2,7 @@
 // folder workflow files are read from, and exporting the usage log.
 import { useCallback, useEffect, useState } from 'react';
 import { DEFAULT_NETWORK, MAIL_INTERVALS, type MailPrefs, type NetworkPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
-import type { NetworkState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
+import type { LocalConnectInfo, NetworkState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { ConfirmDialog } from '../ui/Dialog';
@@ -31,7 +31,74 @@ export interface GeneralProps {
   networkState?: () => Promise<NetworkState | null>;
   /** Windows' file picker (for the certificate file). */
   pickFiles?: (title?: string) => Promise<string[]>;
+  /** Where local scripts reach Spica now (null: off). Absent: no 开发者 group. */
+  localConnect?: () => Promise<LocalConnectInfo | null>;
 }
+
+/** 开发者: lets scripts on this machine (e.g. a plugin's install script) reach the running Spica. */
+function Developer({ settings, onChange, localConnect }: GeneralProps) {
+  const on = settings.localConnect === true;
+  const [info, setInfo] = useState<LocalConnectInfo | null>(null);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!localConnect) return;
+    let alive = true;
+    const t = setTimeout(() => {
+      void localConnect()
+        .then((i) => alive && setInfo(i))
+        .catch(() => undefined);
+    }, 300);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [localConnect, on]);
+  const shown = on ? info : null;
+  return (
+    <div className="settings-group">
+      <h3 className="settings-subheading">开发者</h3>
+      <div className="setting-row">
+        <div className="setting-text">
+          <span className="setting-title">允许本机脚本连接 Spica</span>
+          <span className="settings-hint">打开后，这台电脑上的脚本（比如插件的安装脚本）可以连上正在运行的 Spica。只对本机开放，要带上令牌才能连。不用时请关掉。</span>
+        </div>
+        <Switch on={on} label="允许本机脚本连接 Spica" onChange={(v) => onChange({ localConnect: v })} />
+      </div>
+      {on ? (
+        <div className="setting-row">
+          <div className="setting-text">
+            <span className="setting-title path-text">{shown ? shown.url : '正在打开…'}</span>
+            {shown?.tokenFile ? (
+              <span className="settings-hint path-text" title={shown.tokenFile}>
+                令牌在 {shown.tokenFile}
+              </span>
+            ) : null}
+          </div>
+          {shown ? (
+            <div className="row-buttons">
+              <button
+                type="button"
+                className="btn"
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(JSON.stringify({ url: shown.url, tokenFile: shown.tokenFile }, null, 2))
+                    .then(() => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
+                    })
+                    .catch(() => undefined)
+                }
+              >
+                {copied ? '已复制' : '复制连接信息'}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 
 /** 网络: proxy, hosts that skip it, an extra certificate file, Windows' certificates. */
 function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) {
@@ -388,6 +455,7 @@ export function General(props: GeneralProps) {
       <Workflows {...props} />
       <Network {...props} />
       <UsageLog {...props} />
+      {props.localConnect ? <Developer {...props} /> : null}
     </section>
   );
 }

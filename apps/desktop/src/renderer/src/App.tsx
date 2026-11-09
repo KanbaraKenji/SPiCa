@@ -519,6 +519,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               mailModel={mailModelLabel}
               networkState={bridge.network}
               pickFiles={bridge.pickFiles}
+              {...(shell.demo ? {} : { localConnect: bridge.localConnect })}
             />
           ) : view === 'plugin' ? (
             openPluginView ? (

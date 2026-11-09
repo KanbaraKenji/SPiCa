@@ -11,6 +11,7 @@ import type { PluginsCommand, PluginsResult } from '../../shared/plugins';
 import type { DesktopBackendConfig } from '../../backend/config';
 import type { AgentBackend } from './types';
 import type { PluginView, PluginViewResult } from '../../shared/plugin-view';
+import type { LocalConnectInfo } from '../../shared/bridge';
 
 export type BackendStatus = { state: 'starting' | 'ready' | 'recovering' } | { state: 'failed'; message: string };
 
@@ -185,6 +186,15 @@ export class ProcessBackend implements AgentBackend {
   }
 
   /** Workflows the core read at start, and files it could not read. */
+  /** Spica's MCP service over HTTP for local scripts: on / off, and where it listens. */
+  localConnect(on: boolean): Promise<LocalConnectInfo | null> {
+    return this.call(on ? 'mcpHttpStart' : 'mcpHttpStop');
+  }
+
+  localConnectState(): Promise<LocalConnectInfo | null> {
+    return this.call('mcpHttpState');
+  }
+
   /** Network settings in force now (no proxy password). */
   networkSettings(): Promise<{ proxy: string | null; noProxy: string[]; caFile: string | null; useSystemCa: boolean }> {
     return this.call('networkSettings');

@@ -41,6 +41,8 @@ export const DesktopChannel = {
   Preview: 'spica:preview',
   /** invoke: -> NetworkState (what the core uses now, and problems with the settings) */
   Network: 'spica:network',
+  /** invoke: -> LocalConnectInfo | null */
+  LocalConnect: 'spica:localConnect',
   /** invoke: -> PluginView[] (pages of enabled plugins) */
   PluginViews: 'spica:pluginViews',
   /** invoke: (plugin, view, tool, args, confirmed) -> PluginViewResult */

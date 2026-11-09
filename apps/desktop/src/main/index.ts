@@ -1,5 +1,5 @@
 // Main process of the Spica desktop shell.
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, safeStorage, shell } from 'electron';
@@ -9,7 +9,7 @@ import { DesktopChannel } from '../shared/ipc';
 import { deriveTokens, resolveSkin, schemeOf } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
 import { mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
-import type { NetworkState } from '../shared/bridge';
+import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import type { ProviderDraft, ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
@@ -82,6 +82,20 @@ function workflowsDir(): string {
 }
 const pluginRoot = join(app.getPath('userData'), 'plugins');
 
+// 允许本机脚本连接 Spica: the core serves MCP over HTTP on 127.0.0.1; scripts (e.g. the plugin
+// skill's install script) read where from mcp-http.json and the token from mcp-token.
+const mcpInfoFile = join(app.getPath('userData'), 'mcp-http.json');
+const mcpTokenFile = join(app.getPath('userData'), 'mcp-token');
+// Left by a run that did not end cleanly: no service behind it now.
+rmSync(mcpInfoFile, { force: true });
+let localConnectApplied: Promise<unknown> = Promise.resolve();
+function applyLocalConnect(on: boolean): Promise<unknown> {
+  if (!(backend instanceof ProcessBackend)) return Promise.resolve();
+  const b = backend;
+  localConnectApplied = localConnectApplied.then(() => b.localConnect(on)).catch((err: unknown) => console.warn('[spica] local connect:', err instanceof Error ? err.message : err));
+  return localConnectApplied;
+}
+
 /** Everything the core's process needs, built from the current settings at every (re)start. */
 function backendConfig(): DesktopBackendConfig {
   const envConfigs: ProviderConfig[] = [];
@@ -113,7 +127,7 @@ function backendConfig(): DesktopBackendConfig {
       extensions: [
         {
           module: '@spica/desktop-host',
-          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json') },
+          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), mcpInfoFile, mcpTokenFile },
         },
       ],
     },
@@ -134,6 +148,8 @@ const backend: AgentBackend =
         onStatus: (s) => {
           backendStatus = s;
           sendToWindow(DesktopChannel.BackendStatus, s);
+          // Each (re)start of the core: bring back what the settings ask for.
+          if (s.state === 'ready' && settings.get().localConnect) void applyLocalConnect(true);
         },
         onRestarted: () => sendToWindow(DesktopChannel.BackendRestarted),
         onPluginsChanged: () => sendToWindow(DesktopChannel.PluginsChanged),
@@ -374,6 +390,12 @@ ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unkn
   return readPreview(full, previewFiles);
 });
 
+ipcMain.handle(DesktopChannel.LocalConnect, async (): Promise<LocalConnectInfo | null> => {
+  if (!(backend instanceof ProcessBackend)) return null;
+  await localConnectApplied;
+  return backend.localConnectState().catch(() => null);
+});
+
 ipcMain.handle(DesktopChannel.Network, async (): Promise<NetworkState | null> => {
   if (!(backend instanceof ProcessBackend)) return null;
   try {
@@ -492,6 +514,7 @@ settings.onChange((s) => {
 let lastMail = JSON.stringify(settings.get().mail);
 let lastWorkflowsDir = workflowsDir();
 let lastNetwork = JSON.stringify(settings.get().network);
+let lastLocalConnect = settings.get().localConnect;
 /** Problems the core reported for the network settings (e.g. a certificate file it cannot read), in words. */
 let networkProblems: string[] = [];
 function networkProblem(raw: string): string {
@@ -505,6 +528,10 @@ settings.onChange((s) => {
   if (mail !== lastMail) {
     lastMail = mail;
     void backend.apply({ mail: mailForCore(s.mail) }).catch(() => undefined);
+  }
+  if (s.localConnect !== lastLocalConnect) {
+    lastLocalConnect = s.localConnect;
+    void applyLocalConnect(s.localConnect);
   }
   const net = JSON.stringify(s.network);
   if (net !== lastNetwork) {
