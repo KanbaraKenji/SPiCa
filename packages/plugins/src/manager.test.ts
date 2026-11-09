@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // These tests start real server processes; give them room on a busy machine.
 vi.setConfig({ testTimeout: 30_000 });
+import { Runtime } from '@spica/core';
 import { PluginManager } from './manager.ts';
 import { runtimeHost } from './host.ts';
 import { EXAMPLE_PLUGIN, OUTLOOK_PLUGIN, callTool, hookCtx, makeRuntime, manifest, rig, toolNames, until, writePlugin, type Rig } from './testing/helpers.ts';
@@ -307,6 +308,19 @@ describe('views (plugin pages)', () => {
     // The model is still refused.
     const { decision } = await r.rt.hooks.beforeTool({ callId: 'c', name: 'svcpage-backend__stats', input: {}, irreversible: false }, hookCtx);
     expect(decision.action).toBe('deny');
+  });
+
+  // Skipped until the core's callPluginTool no longer needs a session with a model.
+  it.skip('pages work before any model is configured (fresh install)', async () => {
+    // A fresh desktop install: no provider, empty default. Page calls need no model.
+    const rt = new Runtime({ providers: [], defaults: { providerId: '', model: '', maxTokens: 256 }, tools: [] });
+    r = await rig(rt);
+    await r.pm.install(EXAMPLE_PLUGIN);
+    await r.pm.enable('notes');
+    expect(await r.pm.viewCall('notes', 'notebook', 'write_note', { title: 'fresh', text: 'no model yet' })).toMatchObject({ isError: false });
+    expect((await r.pm.viewCall('notes', 'notebook', 'read_note', { title: 'fresh' })).content).toContain('no model yet');
+    expect((await r.pm.viewCall('notes', 'notebook', 'delete_note', { title: 'fresh' })).content).toMatch(/^\[CONFIRM_REQUIRED\]/);
+    expect(await r.pm.viewCall('notes', 'notebook', 'delete_note', { title: 'fresh' }, { confirmed: true })).toMatchObject({ isError: false });
   });
 
   it('JSON results come back parsed as data', async () => {
