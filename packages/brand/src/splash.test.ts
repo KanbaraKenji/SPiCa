@@ -104,14 +104,16 @@ describe('收尾', () => {
     expect(SPLASH_FINISH_AFTER).toBeCloseTo(S.end, 9);
   });
 
-  it('顺序定死：扩轨 → 大半径绕满 2 圈 → 两圈一结束直接扎进花心（≤ 0.4 秒，只走一小段短弧）', () => {
+  it('顺序定死：扩轨 → 大半径绕 bigTurns 圈 → 一结束就直接扎进花心（≤ 0.4 秒，只走一小段短弧）', () => {
     const F = SPLASH_FINISH;
     expect(S.bigStart).toBeCloseTo(F.expand, 9);
     expect(splashOrbitScale(R + S.bigStart + 0.01, R)).toBeCloseTo(F.bigRadius, 6);
     const dt = 0.0002;
     let big = 0;
     for (let t = R + S.bigStart; t < R + S.collapseStart; t += dt) big += (splashSpeeds(t, R).orbit * dt) / SPLASH_TIMING.orbitPeriod;
-    expect(big).toBeCloseTo(2, 2);
+    expect(big).toBeCloseTo(F.bigTurns, 2);
+    // 评审视频 7 秒模拟加载：大半径段在第 9.0 秒结束
+    expect(7 + S.collapseStart).toBeCloseTo(9.0, 6);
     expect(S.merge - S.collapseStart).toBeLessThanOrEqual(0.4);
     let dive = 0;
     for (let t = R + S.collapseStart; t < R + S.merge; t += dt) dive += (splashSpeeds(t, R).orbit * dt) / SPLASH_TIMING.orbitPeriod;
