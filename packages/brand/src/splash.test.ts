@@ -30,7 +30,6 @@ describe('加载中', () => {
       expect(f.finished).toBe(false);
       expect(f.layer).toBe(1);
       expect(f.stars).toHaveLength(2);
-      expect(f.trails).toHaveLength(0);
       expect(f.fill).toBeNull();
     }
   });
@@ -105,19 +104,36 @@ describe('收尾', () => {
     expect(SPLASH_FINISH_AFTER).toBeCloseTo(S.end, 9);
   });
 
-  it('扩轨后轨道是平时的 1.8 倍，并在大半径上绕满 2 圈', () => {
+  it('扩轨后轨道是平时的 1.8 倍，并在大半径上绕一圈半', () => {
     expect(splashOrbitScale(R + S.bigStart + 0.01, R)).toBeCloseTo(SPLASH_FINISH.bigRadius, 6);
     expect(splashOrbitScale(R + S.collapseStart - 0.01, R)).toBeCloseTo(SPLASH_FINISH.bigRadius, 6);
     let turns = 0;
     const dt = 0.0005;
     for (let t = R + S.bigStart; t < R + S.collapseStart; t += dt) turns += (splashSpeeds(t, R).orbit * dt) / SPLASH_TIMING.orbitPeriod;
-    expect(turns).toBeCloseTo(2, 1);
+    expect(turns).toBeCloseTo(1.5, 1);
   });
 
-  it('拖尾只在收尾出现，合心后消失', () => {
-    expect(splashFrame(R + 0.05, R).trails).toHaveLength(0);
-    expect(splashFrame(R + S.bigStart + 0.5, R).trails.length).toBeGreaterThan(10);
+  it('拖尾：加载中短而淡，收尾拉长变浓，合心后消失', () => {
+    const load = splashFrame(3, null).trails;
+    const finish = splashFrame(R + S.bigStart + 0.5, R).trails;
+    expect(load.length).toBeGreaterThan(10);
+    expect(Math.max(...load.map((d) => d.opacity))).toBeLessThan(Math.max(...finish.map((d) => d.opacity)));
+    const span = (ds: typeof load) => Math.max(...ds.map((d) => d.x)) - Math.min(...ds.map((d) => d.x));
+    expect(span(load)).toBeLessThan(span(finish));
     expect(splashFrame(R + S.merge + 0.01, R).trails).toHaveLength(0);
+  });
+
+  it('收心落在 ready 后约 3.15 秒（视频里 7 秒模拟加载 → 约第 10 秒）', () => {
+    expect(S.merge).toBeCloseTo(3.15, 2);
+  });
+
+  it('轴心：加载中半透明，合心后变实', () => {
+    for (const t of [1.5, 2.5, 3.5]) {
+      const h = splashFrame(t, null).hubOpacity;
+      expect(h).toBeGreaterThan(0.35);
+      expect(h).toBeLessThan(0.6);
+    }
+    expect(splashFrame(R + S.merge + 0.3, R).hubOpacity).toBeCloseTo(1, 6);
   });
 
   it('合心那一帧：双星消失，水波填充从花心开始，填满时半径覆盖整朵花', () => {

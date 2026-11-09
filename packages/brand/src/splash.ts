@@ -7,8 +7,8 @@
  *   轨道是开普勒椭圆，近快远慢，最近点朝前。花标和字标跟双星同一个节拍呼吸、起伏，
  *   但不和星的位置一一对应（不再「星扫到哪片、哪片亮」）。
  * - 加载完成（ready）后的收尾（每一步时长都是参数 SPLASH_FINISH）：
- *   ① 扩轨：双星平滑加速，轨道放大到 1.8 倍，同时拖出渐隐的光迹；
- *   ② 大半径上再绕两圈；③ 加速收向花心，合一消失；
+ *   ① 扩轨：双星平滑加速，轨道放大到 1.8 倍，同时拖尾拉长；
+ *   ② 大半径上再绕一圈半；③ 加速收向花心，合一消失；
  *   ④ 合一那一帧起，花标像水波一样从花心向外把实色填满（圆形遮罩扩散 + 两圈涟漪，轮廓不动）；
  *   ⑤ 一道光扫过字标，经过处字由暗变亮、闪一下辉光再回稳；⑥ 停住；⑦ 整层淡出。
  * - 短版（每天第二次起）：花标和字标淡入、停住、淡出，总长约 1 秒，不放星点。见 splashBriefFrame。
@@ -40,10 +40,12 @@ export interface SplashFinish {
   /** ③ 收心：用时、合一那一刻双星转速是平时的几倍 */
   collapse: number;
   collapseSpeed: number;
-  /** 拖尾：光迹拖多长（秒）、从 ready 后多久开始淡入、淡入用时 */
+  /** 拖尾：收尾时光迹拖多长（秒）、从 ready 后多久开始拉长、拉长用时；加载中的短拖尾长度与浓度 */
   trail: number;
   trailStart: number;
   trailFadeIn: number;
+  loadTrail: number;
+  loadTrailStrength: number;
   /** 背景星点：合一时速度是平时几倍、合一后回落用时 */
   starPeak: number;
   starSettle: number;
@@ -60,15 +62,17 @@ export interface SplashFinish {
 }
 
 export const SPLASH_FINISH: Readonly<SplashFinish> = Object.freeze({
-  expand: 0.9,
+  expand: 0.6,
   bigRadius: 1.8,
   bigSpeed: 3,
-  bigTurns: 2,
+  bigTurns: 1.5,
   collapse: 0.8,
   collapseSpeed: 5,
   trail: 0.35,
   trailStart: 0.2,
   trailFadeIn: 0.5,
+  loadTrail: 0.12,
+  loadTrailStrength: 0.4,
   starPeak: 3,
   starSettle: 1.5,
   fill: 1.2,
@@ -301,6 +305,8 @@ export interface SplashFrame {
 
 const PETAL_BASE = 0.3;
 const PETAL_PULSE = 0.22;
+const HUB_BASE = 0.42;
+const HUB_PULSE = 0.1;
 const LETTER_BASE = 0.22;
 const LETTER_WAVE = 0.3;
 /** 每颗星拖尾的光点数 */
@@ -351,11 +357,13 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
         companion: i === 1,
       });
     });
-    // 拖尾：收尾开始一会儿后淡入，沿过去 trail 秒的轨迹画一串渐隐的光点
-    const trailOn = done ? seg(u, F.trailStart, F.trailStart + F.trailFadeIn) : 0;
-    if (trailOn > 0) {
+    // 拖尾：加载中短而淡；收尾开始一会儿后拉长、变浓。沿过去一小段时间的轨迹画一串渐隐的光点
+    const grow = done ? seg(u, F.trailStart, F.trailStart + F.trailFadeIn) : 0;
+    const trailLen = lerp(F.loadTrail, F.trail, grow);
+    const trailOn = appear * lerp(F.loadTrailStrength, 1, grow);
+    if (trailOn > 0 && trailLen > 0) {
       for (let j = 1; j <= SPLASH_TRAIL_DOTS; j++) {
-        const back = starsAt(t - (j / SPLASH_TRAIL_DOTS) * F.trail);
+        const back = starsAt(t - (j / SPLASH_TRAIL_DOTS) * trailLen);
         if (!back) continue;
         const fadeK = (1 - j / (SPLASH_TRAIL_DOTS + 1)) ** 1.5;
         back.forEach((p, i) => {
@@ -421,11 +429,15 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
   const fade = done ? seg(u, S.fadeStart, S.end) : 0;
   const fillW = fill ? fill.radius / L.fillRadius : 0;
 
+  // 轴心：加载中半透明、随呼吸微变；合心那一刻起 0.25 秒变实
+  const hubLoad = HUB_BASE + HUB_PULSE * pulse(breathT, beat);
+  const hubOpacity = appear * (done && m >= 0 ? lerp(hubLoad, 1, outCubic(seg(m, 0, 0.25))) : hubLoad);
+
   return {
     layer: 1 - fade,
     appear,
     petals,
-    hubOpacity: appear,
+    hubOpacity,
     hubScale: 1 + 0.6 * Math.sin(Math.PI * hop),
     fill,
     glow: clamp(0.12 + 0.4 * fillW),
