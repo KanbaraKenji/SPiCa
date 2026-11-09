@@ -115,6 +115,10 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'confirm',
   'abort',
   'exportTraces',
+  'getTopSession',
+  'createProject',
+  'listProjects',
+  'getProject',
 ]);
 
 let mainWindow: BrowserWindow | undefined;
@@ -234,7 +238,8 @@ ipcMain.handle(DesktopChannel.Agent, async (_e, method: unknown, args: unknown) 
   if (typeof method !== 'string' || !AGENT_METHODS.has(method as keyof AgentApi)) {
     throw new Error(`不支持的操作：${String(method)}`);
   }
-  const fn = backend[method as keyof AgentApi] as (...a: unknown[]) => Promise<unknown>;
+  const fn = backend[method as keyof AgentApi] as ((...a: unknown[]) => Promise<unknown>) | undefined;
+  if (!fn) throw new Error('这个版本还不支持这个操作。');
   return fn.apply(backend, Array.isArray(args) ? args : []);
 });
 

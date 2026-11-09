@@ -1,7 +1,7 @@
 // Sessions and transcripts on the renderer side. Everything comes from the
 // backend through `window.spica.agent` and its event stream.
 import { useSyncExternalStore } from 'react';
-import type { AgentApi, CoreEvent, Message, SessionInfo } from '@spica/protocol';
+import type { AgentApi, CoreEvent, Message, ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
 import { Store } from './external';
 import { applyEvent, EMPTY_TRANSCRIPT, fromHistory, humanError, type Transcript } from './transcript';
 
@@ -14,6 +14,11 @@ export interface AgentView {
   globalCostUsd: number;
   /** First thing the user said in each session, used to name untitled sessions. */
   firstLines: Record<string, string>;
+  projects: ProjectInfo[];
+  /** The core's standing top-level agent (it starts projects); null until known. */
+  topId: string | null;
+  /** Key actions per project, newest first (from getProject, then live project.activity). */
+  activity: Record<string, ProjectLogEntry[]>;
   /** User-visible error from the last failed command. */
   notice?: string;
 }
@@ -50,7 +55,7 @@ export function friendlyError(err: unknown): string {
 }
 
 export class AgentStore {
-  readonly state = new Store<AgentView>({ sessions: [], loaded: false, activeId: null, transcripts: {}, globalCostUsd: 0, firstLines: {} });
+  readonly state = new Store<AgentView>({ sessions: [], loaded: false, activeId: null, transcripts: {}, globalCostUsd: 0, firstLines: {}, projects: [], activity: {}, topId: null });
   readonly #api: AgentApi;
   #loading = new Set<string>();
 
@@ -60,6 +65,14 @@ export class AgentStore {
   }
 
   async init(preferredId?: string): Promise<void> {
+    void this.#refreshProjects();
+    if (this.#api.getTopSession) {
+      // Projects hang under the core's top-level agent; knowing it lets the sidebar name it.
+      void this.#api
+        .getTopSession()
+        .then((top) => this.state.set((v) => ({ ...v, topId: top.id, sessions: v.sessions.some((s) => s.id === top.id) ? v.sessions : [top, ...v.sessions] })))
+        .catch(() => {});
+    }
     try {
       const sessions = await this.#api.listSessions();
       const first = preferredId ?? sessions.find((s) => s.role === 'top')?.id ?? sessions[0]?.id ?? null;
@@ -143,6 +156,27 @@ export class AgentStore {
     await this.#guard(() => this.#api.confirm(id, callId, approved));
   }
 
+  /** Loads a project's recent activity once (live entries keep coming as events). */
+  async loadProject(projectId: string): Promise<void> {
+    if (!this.#api.getProject || this.state.get().activity[projectId]) return;
+    try {
+      const d = await this.#api.getProject(projectId);
+      if (d) this.state.set((v) => ({ ...v, activity: { ...v.activity, [projectId]: v.activity[projectId] ?? d.recentLog } }));
+    } catch {
+      // Activity is extra information; the conversation works without it.
+    }
+  }
+
+  async #refreshProjects(): Promise<void> {
+    if (!this.#api.listProjects) return;
+    try {
+      const projects = await this.#api.listProjects();
+      this.state.set((v) => ({ ...v, projects }));
+    } catch {
+      // Keep the current list.
+    }
+  }
+
   dismissNotice(): void {
     this.state.set((v) => ({ ...v, notice: undefined }));
   }
@@ -171,6 +205,19 @@ export class AgentStore {
       const transcripts = current ? { ...v.transcripts, [e.sessionId]: applyEvent(current, e) } : v.transcripts;
       return { ...v, sessions, globalCostUsd, transcripts };
     });
+    if (e.type === 'project.created' || e.type === 'project.updated') {
+      const p = e.project;
+      this.state.set((v) => ({ ...v, projects: [p, ...v.projects.filter((x) => x.id !== p.id)] }));
+      void this.#refreshSessions();
+    }
+    if (e.type === 'project.activity') {
+      const entry = e.entry;
+      this.state.set((v) => {
+        const list = v.activity[entry.projectId] ?? [];
+        if (list.some((x) => x.id === entry.id)) return v;
+        return { ...v, activity: { ...v.activity, [entry.projectId]: [entry, ...list].slice(0, 50) } };
+      });
+    }
     if (e.type === 'message' && e.message.role === 'user' && e.message.kind === 'user' && !this.state.get().firstLines[e.sessionId]) {
       const first = firstUserText([e.message]);
       if (first) this.state.set((v) => ({ ...v, firstLines: { ...v.firstLines, [e.sessionId]: first } }));

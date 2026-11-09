@@ -20,6 +20,9 @@ export interface AppProps {
 
 type View = 'chat' | 'settings';
 
+/** What the core's standing top-level agent is called until someone renames it. */
+const TOP_AGENT_TITLE = '助理';
+
 export function App({ bridge, shell, agent }: AppProps) {
   const { settings } = useShell(shell);
   const state = useAgent(agent);
@@ -94,10 +97,26 @@ export function App({ bridge, shell, agent }: AppProps) {
     };
   }, []);
 
-  const sessions = useMemo(() => state.sessions.map((s) => ({ ...s, title: displayTitle(s, state.firstLines) })), [state.sessions, state.firstLines]);
+  // A project manager is shown under its project's name.
+  const sessions = useMemo(() => {
+    const byManager = new Map(state.projects.map((p) => [p.managerSessionId, p.name]));
+    return state.sessions.map((s) => ({
+      ...s,
+      title: byManager.get(s.id) ?? (s.id === state.topId && !s.title ? TOP_AGENT_TITLE : displayTitle(s, state.firstLines)),
+    }));
+  }, [state.sessions, state.firstLines, state.projects, state.topId]);
   const session = sessions.find((s) => s.id === state.activeId);
   const parent = session?.parentId ? sessions.find((s) => s.id === session.parentId) : undefined;
   const transcript = agent.transcript(state.activeId);
+  // The project the open session belongs to: its manager, or any sub-agent below it.
+  const project = useMemo(() => {
+    if (!session) return undefined;
+    const chain = [session.id, ...session.parentChain];
+    return state.projects.find((p) => chain.includes(p.managerSessionId));
+  }, [session, state.projects]);
+  useEffect(() => {
+    if (project) void agent.loadProject(project.id);
+  }, [agent, project]);
   const totalCost = useMemo(() => state.sessions.reduce((n, s) => n + s.costUsd, 0), [state.sessions]);
 
   const openSession = (id: string) => {
@@ -234,6 +253,8 @@ export function App({ bridge, shell, agent }: AppProps) {
               globalCostUsd={totalCost}
               onOpenFile={openFile}
               onOpenSession={openSession}
+              project={project}
+              activity={project ? (state.activity[project.id] ?? []) : []}
               onClose={layout.right === 'floating' ? () => setFloating(null) : undefined}
             />
           </div>

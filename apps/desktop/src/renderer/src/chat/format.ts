@@ -17,6 +17,13 @@ const LABELS: Record<string, string> = {
   wait_agents: '等子任务完成',
   record_decision: '记下决定',
   suggest_actions: '给出建议',
+  create_project: '建项目',
+  list_projects: '查看项目',
+  open_project: '打开项目',
+  project_status: '查看项目进度',
+  set_stage: '推进阶段',
+  add_work_object: '添加工作对象',
+  list_work_objects: '查看工作对象',
 };
 
 export function toolLabel(name: string): string {
@@ -27,7 +34,7 @@ export function toolLabel(name: string): string {
 export function toolTarget(input: unknown): string {
   if (!input || typeof input !== 'object') return '';
   const v = input as Record<string, unknown>;
-  for (const key of ['path', 'pattern', 'query', 'command', 'url', 'to', 'subject', 'title', 'decision', 'text']) {
+  for (const key of ['path', 'pattern', 'query', 'command', 'url', 'to', 'subject', 'title', 'name', 'stage', 'decision', 'text']) {
     const value = v[key];
     if (typeof value === 'string' && value) return value === '.' ? '工作文件夹' : value.length > 60 ? `${value.slice(0, 60)}…` : value;
   }

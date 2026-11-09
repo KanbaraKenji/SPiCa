@@ -31,6 +31,10 @@ const agent: AgentApi = {
   confirm: call('confirm'),
   abort: call('abort'),
   exportTraces: call('exportTraces'),
+  getTopSession: call('getTopSession'),
+  createProject: call('createProject'),
+  listProjects: call('listProjects'),
+  getProject: call('getProject'),
 };
 
 const bridge: DesktopBridge = {
