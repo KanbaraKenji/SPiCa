@@ -54,6 +54,7 @@ export function createAgentApi(rt: Runtime): AgentApi {
       await get(id).confirm(callId, approved);
     },
     async callPluginTool(pluginId, toolName, args, opts) {
+      // opts.confirmed: the view already asked the user
       return rt.callPluginTool(pluginId, toolName, args, opts);
     },
     async renameSession(id, title) {
