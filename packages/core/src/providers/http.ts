@@ -39,28 +39,47 @@ export async function postWithRetry(opts: PostOptions): Promise<Response> {
   for (let attempt = 1; attempt <= opts.retry.maxAttempts; attempt++) {
     if (opts.signal.aborted) throw abortError(opts.signal);
     if (opts.info) opts.info.attempts = attempt;
-    // Header timeout: aborts only this attempt; the body stream is governed
-    // by the caller's signal and the stream idle timeout.
+    // Soft stop: the caller's signal (user interrupt / stop) never aborts the
+    // connection. Before headers we stop waiting and cancel the body when it
+    // arrives; after headers the stream reader cancels the body. Only the
+    // header timeout aborts hard. (Aborting in-flight requests occasionally
+    // crashed Node 24 on Windows; see scripts/diag.)
     const attemptCtl = new AbortController();
-    const onOuterAbort = () => attemptCtl.abort(opts.signal.reason);
-    opts.signal.addEventListener('abort', onOuterAbort, { once: true });
     const timer = setTimeout(
       () => attemptCtl.abort(Object.assign(new Error('timed out waiting for response'), { name: 'TimeoutError' })),
       opts.timeoutMs,
     );
     let res: Response;
+    let onStop: (() => void) | undefined;
     try {
       const authHeaders = opts.auth ? await opts.auth.headers(opts.signal) : {};
-      res = await doFetch(opts.url, {
+      if (opts.signal.aborted) throw abortError(opts.signal);
+      const fetching = doFetch(opts.url, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...opts.headers, ...authHeaders },
         body: opts.body,
         signal: attemptCtl.signal,
       });
+      const stopped = new Promise<never>((_, reject) => {
+        onStop = () => {
+          // Let the request finish on its own; discard the body when it comes.
+          fetching.then(
+            (r) => {
+              clearTimeout(timer);
+              void r.body?.cancel().catch(() => {});
+            },
+            () => clearTimeout(timer),
+          );
+          reject(abortError(opts.signal));
+        };
+        opts.signal.addEventListener('abort', onStop, { once: true });
+      });
+      stopped.catch(() => {});
+      res = await Promise.race([fetching, stopped]);
     } catch (err) {
-      clearTimeout(timer);
-      opts.signal.removeEventListener('abort', onOuterAbort);
+      if (onStop) opts.signal.removeEventListener('abort', onStop);
       if (opts.signal.aborted) throw abortError(opts.signal);
+      clearTimeout(timer);
       if (err instanceof ProviderError && !err.retryable) throw err; // e.g. rejected credentials
       const reason = err instanceof Error ? `${err.name}: ${err.message}` : 'network error';
       lastError = new ProviderError(redact(`request failed (${reason})`, opts.secrets), { retryable: true });
@@ -73,13 +92,11 @@ export async function postWithRetry(opts: PostOptions): Promise<Response> {
       throw lastError;
     }
     clearTimeout(timer);
-    // From here on the body is cancelled only by the caller's signal (the
-    // listener above stays attached for that).
+    if (onStop) opts.signal.removeEventListener('abort', onStop);
     if (opts.info) opts.info.httpStatus = res.status;
     if (res.ok) return res;
 
     const text = await safeText(res);
-    opts.signal.removeEventListener('abort', onOuterAbort);
     if (res.status === 401 && opts.auth?.refresh && !refreshed) {
       refreshed = true;
       if (await opts.auth.refresh(opts.signal)) {

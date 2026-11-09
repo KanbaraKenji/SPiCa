@@ -91,9 +91,10 @@ describe('MCP tools in the runtime', () => {
     const h = await rt.connectMcp({ ...config, onExit: (i) => exits.push(i), stderrLog: (c) => logs.push(c) }, { source: 'plugin:demo' });
     expect(h.source).toBe('plugin:demo');
     expect(rt.tools.get('fake__echo')).toBeDefined();
-    expect(rt.unregisterSource('plugin:demo')).toMatchObject({ tools: 0, mcpServers: 1 }); // tools already gone with the server
+    const res = rt.unregisterSource('plugin:demo');
+    expect(res).toMatchObject({ tools: 0, mcpServers: 1 }); // tools already gone with the server
     expect(rt.tools.get('fake__echo')).toBeUndefined();
-    await new Promise((r) => setTimeout(r, 300));
+    await res.stopped; // the process has exited when this resolves
     expect(exits).toEqual([expect.objectContaining({ expected: true })]);
     expect(logs.join('')).toContain('fake mcp server starting');
     await rt.close();

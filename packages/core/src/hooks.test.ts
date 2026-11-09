@@ -152,7 +152,7 @@ describe('tool hooks', () => {
     expect(JSON.stringify(gw.requests[0]!.body)).toContain('PLUGIN-ON');
     expect(JSON.stringify(gw.requests[0]!.body.tools)).toContain('plugin_tool');
 
-    expect(rt.unregisterSource('my-plugin')).toEqual({ hooks: 1, tools: 1, mcpServers: 0 });
+    expect(rt.unregisterSource('my-plugin')).toMatchObject({ hooks: 1, tools: 1, mcpServers: 0 });
     await s.send('two').done;
     const body = JSON.stringify(gw.requests[1]!.body);
     expect(body).not.toContain('PLUGIN-ON');

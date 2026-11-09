@@ -83,7 +83,7 @@ export class Runtime implements RuntimeInternals {
   readonly #limiters = new Map<string, RateLimiter>();
   readonly #sessions = new Map<string, Session>();
   readonly #opts: RuntimeOptions;
-  readonly #mcp = new Map<string, { client: McpStdioClient; source: string; disconnect: () => void }>();
+  readonly #mcp = new Map<string, { client: McpStdioClient; source: string; disconnect: () => Promise<void> }>();
   readonly #reports = new Map<string, string>();
 
   constructor(opts: RuntimeOptions) {
@@ -241,11 +241,15 @@ export class Runtime implements RuntimeInternals {
     return this.#reports.get(sessionId) ?? this.store.listRelays(this.session(sessionId)?.parentId ?? '').filter((r) => r.childId === sessionId && r.kind === 'report').pop()?.text;
   }
 
-  /** Withdraw everything a plugin registered: hooks, tools, and the MCP servers it connected. */
-  unregisterSource(source: string): { hooks: number; tools: number; mcpServers: number } {
+  /**
+   * Withdraw everything a plugin registered: hooks, tools, and the MCP servers
+   * it connected. Hooks and tools are gone immediately; await `stopped` before
+   * deleting the plugin's files (server processes are still exiting).
+   */
+  unregisterSource(source: string): { hooks: number; tools: number; mcpServers: number; stopped: Promise<void> } {
     const servers = [...this.#mcp.values()].filter((m) => m.source === source);
-    for (const m of servers) m.disconnect();
-    return { hooks: this.hooks.unregisterSource(source), tools: this.tools.unregisterSource(source), mcpServers: servers.length };
+    const stopped = Promise.all(servers.map((m) => m.disconnect())).then(() => undefined);
+    return { hooks: this.hooks.unregisterSource(source), tools: this.tools.unregisterSource(source), mcpServers: servers.length, stopped };
   }
 
   #noteMeta(child: Session, kind: ChildNoteMeta['kind'], text: string): ChildNoteMeta {
@@ -328,12 +332,16 @@ export class Runtime implements RuntimeInternals {
    * (default `mcp:<name>`); `unregisterSource(source)` or `disconnect()`
    * removes the tools and stops the server.
    */
-  async connectMcp(config: McpServerConfig, opts: { source?: string } = {}): Promise<{ tools: string[]; source: string; disconnect: () => void }> {
+  async connectMcp(
+    config: McpServerConfig,
+    opts: { source?: string } = {},
+  ): Promise<{ tools: string[]; source: string; disconnect: () => Promise<void> }> {
     if (this.#mcp.has(config.name)) throw new Error(`MCP server "${config.name}" is already connected`);
     const h = await connectMcp(this.tools, this.tracer, config, opts);
+    // Resolves when the server process has exited.
     const disconnect = () => {
-      h.disconnect();
       this.#mcp.delete(config.name);
+      return h.disconnect();
     };
     this.#mcp.set(config.name, { client: h.client, source: h.source, disconnect });
     return { tools: h.tools, source: h.source, disconnect };
@@ -342,7 +350,7 @@ export class Runtime implements RuntimeInternals {
   /** Stop all runs (they become `interrupted`, resumable after restart), stop MCP servers, close the store. */
   async close(): Promise<void> {
     await Promise.all([...this.#sessions.values()].map((s) => s.shutdown()));
-    for (const m of [...this.#mcp.values()]) m.disconnect();
+    await Promise.all([...this.#mcp.values()].map((m) => m.disconnect()));
     this.store.close();
   }
 }
