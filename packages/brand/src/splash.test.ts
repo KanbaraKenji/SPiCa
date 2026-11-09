@@ -157,14 +157,15 @@ describe('收尾', () => {
     }
   });
 
-  it('拖尾：加载中短而淡，收尾拉长变浓，合心后消失', () => {
+  it('拖尾：加载中短而淡，收尾拉长变浓，合心后收进花心再消失', () => {
     const F = SPLASH_FINISH;
     expect(F.loadTrail).toBeLessThan(F.trail);
     const load = splashFrame(3, null).trails;
     const finish = splashFrame(R + 0.4, R).trails;
     expect(load.length).toBeGreaterThan(10);
     expect(Math.max(...load.map((d) => d.opacity))).toBeLessThan(Math.max(...finish.map((d) => d.opacity)));
-    expect(splashFrame(R + S.merge + 0.01, R).trails).toHaveLength(0);
+    expect(splashFrame(R + S.merge + 0.05, R).trails.length).toBeGreaterThan(0); // 合心后尾巴还在往花心收
+    expect(splashFrame(R + S.merge + SPLASH_FINISH.trail + 0.01, R).trails).toHaveLength(0);
   });
 
   it('不管加载在哪一刻完成，大半径段结束时蓝星都在字标右上方的弯角，扎到花跟前时已在前面（圈数在 bigTurns 上下半圈内微调）', () => {
@@ -361,7 +362,7 @@ describe('拖尾光带', () => {
       for (const front of [true, false]) expect(f.ribbons.filter((r) => r.front === front).length).toBeLessThanOrEqual(SPLASH_RIBBON_SLOTS);
       for (const r of f.ribbons) expect(r.d).toMatch(/^M[\d.\s-]+L.*Z$/);
     }
-    expect(splashFrame(R + S.merge + 0.01, R).ribbons).toHaveLength(0);
+    expect(splashFrame(R + S.merge + SPLASH_FINISH.trail + 0.01, R).ribbons).toHaveLength(0);
   });
 
   it('光带随速度拉长', () => {
@@ -376,5 +377,53 @@ describe('拖尾光带', () => {
           return sum + per / 2;
         }, 0);
     expect(len(R + 0.9)).toBeGreaterThan(len(3) * 3); // 加速后比加载中长得多
+  });
+});
+
+describe('逐帧连续性（按 60 帧/秒走完整段，几种 ready 时刻）', () => {
+  // 光带长度 ≈ 轮廓周长的一半
+  const ribbonLen = (f: ReturnType<typeof splashFrame>, companion: boolean) =>
+    f.ribbons
+      .filter((x) => x.companion === companion)
+      .reduce((sum, x) => {
+        const pts = x.d.replace(/[MZ]/g, '').split('L').map((p) => p.trim().split(/\s+/).map(Number));
+        let per = 0;
+        for (let i = 1; i < pts.length; i++) per += Math.hypot(pts[i]![0]! - pts[i - 1]![0]!, pts[i]![1]! - pts[i - 1]![1]!);
+        return sum + per / 2;
+      }, 0);
+
+  it('星的位移没有跳变，光带长度没有骤降（合心后尾巴收进花心，也是逐帧收短）', () => {
+    for (const ready of [3, 5.37, 7, 12.25]) {
+      const S = splashSchedule({}, ready);
+      let prevStar: { x: number; y: number } | null = null;
+      let prevStep: number | null = null;
+      let prevLen: [number, number] | null = null;
+      let sawDrain = false;
+      let prevGlow: number | null = null;
+      for (let i = 0; i < Math.ceil((ready + S.end) * 60); i++) {
+        const t = i / 60;
+        const f = splashFrame(t, t >= ready ? ready : null);
+        const s = f.stars.find((x) => !x.companion && x.y !== SPLASH_LAYOUT.cy - 4); // 不含扫字的光
+        if (s && prevStar) {
+          const step = Math.hypot(s.x - prevStar.x, s.y - prevStar.y);
+          if (prevStep !== null) expect(Math.abs(step - prevStep)).toBeLessThan(16); // 一帧之间速度变化（像素/帧）
+          prevStep = step;
+        }
+        prevStar = s ?? null;
+        if (!s) prevStep = null;
+        for (const front of [true, false]) expect(f.ribbons.filter((x) => x.front === front).length).toBeLessThanOrEqual(SPLASH_RIBBON_SLOTS); // 组件里的位置够用，不会漏画
+        const len: [number, number] = [ribbonLen(f, false), ribbonLen(f, true)];
+        if (prevLen) {
+          for (const k of [0, 1] as const) expect(prevLen[k] - len[k]).toBeLessThan(80); // 一帧最多收短 80 像素（星最快约 75 像素/帧）
+        }
+        // 光带的「亮度总量」（长度 × 透明度）逐帧变化不超过最亮时的 25%：不会一帧整圈亮、下一帧整圈灭
+        const glow = f.ribbons.filter((x) => !x.companion).reduce((sum, x) => sum + ribbonLen({ ...f, ribbons: [x] }, false) * x.opacity, 0);
+        if (prevGlow !== null) expect(Math.abs(glow - prevGlow)).toBeLessThan(0.25 * 212);
+        prevGlow = glow;
+        if (t > ready + S.merge + 0.1 && len[0] > 50) sawDrain = true;
+        prevLen = len;
+      }
+      expect(sawDrain).toBe(true); // 合心 0.1 秒后尾巴还在往里收
+    }
   });
 });

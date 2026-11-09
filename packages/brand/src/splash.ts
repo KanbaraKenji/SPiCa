@@ -476,12 +476,9 @@ export interface SplashTrailDot {
   companion: boolean;
 }
 
+/** 拖尾光带的一小段：轮廓路径和这一段的透明度（越久以前越淡） */
 export interface SplashRibbon {
   d: string;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
   opacity: number;
   front: boolean;
   companion: boolean;
@@ -522,8 +519,10 @@ const LETTER_WAVE = 0.3;
 export const SPLASH_TRAIL_DOTS = 14;
 /** 光带每颗星取样的点数 */
 const RIBBON_SAMPLES = 32;
-/** 每颗星最多切成几段光带（花前 / 花后来回切换） */
-export const SPLASH_RIBBON_SLOTS = 4;
+/** 光带按「多久以前」切成几小段，每段一个透明度（不用沿直线的渐变：尾巴绕成一圈时直线渐变会每帧乱跳） */
+const RIBBON_BANDS = 16;
+/** 每一层（花前 / 花后）最多几小段光带：两颗星 × 每颗的小段数，再加上花前花后来回切换时多出的切口 */
+export const SPLASH_RIBBON_SLOTS = 2 * RIBBON_BANDS + 8;
 
 type Pt = { x: number; y: number; depth: number };
 
@@ -590,64 +589,68 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
         companion: i === 1,
       });
     });
-    // 拖尾：加载中短而淡；收尾开始一会儿后拉长、变浓。沿过去一小段时间的轨迹画一串渐隐的光点
-    const grow = done ? seg(u, F.trailStart, F.trailStart + F.trailFadeIn) : 0;
-    const trailLen = lerp(F.loadTrail, F.trail, grow);
-    const trailOn = appear * lerp(F.loadTrailStrength, 1, grow);
-    if (trailOn > 0 && trailLen > 0) {
-      for (let j = 1; j <= SPLASH_TRAIL_DOTS; j++) {
-        const back = starsAt(t - (j / SPLASH_TRAIL_DOTS) * trailLen);
-        if (!back) continue;
-        const fadeK = (1 - j / (SPLASH_TRAIL_DOTS + 1)) ** 1.5;
-        back.forEach((p, i) => {
-          trails.push({
-            x: p.x,
-            y: p.y,
-            opacity: trailOn * fadeK * 0.55 * (0.6 + 0.4 * p.depth),
-            r: 5.5 * (1 + 0.35 * p.depth) * (0.35 + 0.65 * fadeK),
-            front: p.depth >= 0,
-            companion: i === 1,
-          });
+  }
+  // 拖尾：加载中短而淡；收尾开始一会儿后拉长、变浓。沿真实走过的位置（过去一小段时间）画，和处在哪一段无关，
+  // 星越快拖得越长。合心后星没了，拖尾的头停在花心，尾巴沿原路继续收进花心，trailLen 秒内收完（不在一帧里消失）
+  const grow = done ? seg(u, F.trailStart, F.trailStart + F.trailFadeIn) : 0;
+  const trailLen = lerp(F.loadTrail, F.trail, grow);
+  const after = done ? u - S.merge : -1; // 合心后过了多久
+  const trailOn = appear * lerp(F.loadTrailStrength, 1, grow) * (after > 0 ? 1 - smooth(clamp(after / trailLen)) : 1);
+  const hub = project(0, 0, depthRef);
+  // 某个过去时刻的位置；合心之后的时刻都落在花心
+  const pastAt = (tt: number) => starsAt(tt) ?? ([hub, hub] as const);
+  if (trailOn > 0 && trailLen > 0 && (pair || after < trailLen)) {
+    for (let j = 1; j <= SPLASH_TRAIL_DOTS; j++) {
+      const back = starsAt(t - (j / SPLASH_TRAIL_DOTS) * trailLen);
+      if (!back) continue;
+      const fadeK = (1 - j / (SPLASH_TRAIL_DOTS + 1)) ** 1.5;
+      back.forEach((p, i) => {
+        trails.push({
+          x: p.x,
+          y: p.y,
+          opacity: trailOn * fadeK * 0.55 * (0.6 + 0.4 * p.depth),
+          r: 5.5 * (1 + 0.35 * p.depth) * (0.35 + 0.65 * fadeK),
+          front: p.depth >= 0,
+          companion: i === 1,
         });
-      }
-      // 光带：同一段时间按更密的取样连成一条，头宽尾尖，越快拉得越长
-      const lines: Pt[][] = [[pair[0]], [pair[1]]];
-      for (let j = 1; j <= RIBBON_SAMPLES; j++) {
-        const back = starsAt(t - (j / RIBBON_SAMPLES) * trailLen);
-        if (!back) break;
-        lines[0]!.push(back[0]);
-        lines[1]!.push(back[1]);
-      }
-      lines.forEach((line, i) => {
-        if (line.length < 3) return;
-        const n = line.length - 1;
-        const half = line.map((p, j) => 3.4 * (1 + 0.35 * p.depth) * (1 - j / n) ** 0.8);
-        // 按在花前 / 花后切段（相邻两段共用切点，不留缝）
-        let start = 0;
-        for (let j = 1; j <= n; j++) {
-          const split = j === n || line[j]!.depth >= 0 !== line[start]!.depth >= 0;
-          if (!split) continue;
-          const end = j;
-          const seg = line.slice(start, end + 1);
-          if (seg.length >= 2) {
-            const head = seg[0]!;
-            const tail = line[n]!;
-            ribbons.push({
-              d: ribbonPath(seg, half.slice(start, end + 1)),
-              // 渐隐方向按整条光带的头尾，切段后颜色仍连贯
-              x1: line[0]!.x,
-              y1: line[0]!.y,
-              x2: tail.x,
-              y2: tail.y,
-              opacity: trailOn * 0.6 * (0.6 + 0.4 * head.depth),
-              front: head.depth >= 0,
-              companion: i === 1,
-            });
-          }
-          start = end;
-        }
       });
     }
+    // 光带：同一段时间按更密的取样连成一条，头宽尾尖。宽度按「多久以前」定，所以收进花心时尾巴越收越细
+    const head = pair ?? ([hub, hub] as const);
+    const lines: Pt[][] = [[head[0]], [head[1]]];
+    const ages: number[] = [0];
+    for (let j = 1; j <= RIBBON_SAMPLES; j++) {
+      const age = j / RIBBON_SAMPLES;
+      const back = pastAt(t - age * trailLen);
+      if (back[0] === hub) continue; // 合心后的时刻：都在花心，并成头上那一点
+      lines[0]!.push(back[0]);
+      lines[1]!.push(back[1]);
+      ages.push(age);
+    }
+    if (!pair && ages.length > 1) ages[0] = ages[1]!; // 头在花心时，头宽取紧挨着的那一点，不出尖楔
+    lines.forEach((line, i) => {
+      if (line.length < 3) return;
+      const n = line.length - 1;
+      const half = line.map((p, j) => 3.4 * (1 + 0.35 * p.depth) * (1 - ages[j]!) ** 0.8);
+      // 切成小段：每 RIBBON_SAMPLES / RIBBON_BANDS 个点一段，花前 / 花后切换处也切开（相邻两段共用切点，不留缝）
+      const per = RIBBON_SAMPLES / RIBBON_BANDS;
+      let start = 0;
+      for (let j = 1; j <= n; j++) {
+        const bandEdge = Math.floor(ages[j]! * RIBBON_SAMPLES / per + 1e-9) !== Math.floor(ages[start]! * RIBBON_SAMPLES / per + 1e-9);
+        const split = j === n || bandEdge || line[j]!.depth >= 0 !== line[start]!.depth >= 0;
+        if (!split) continue;
+        const part = line.slice(start, j + 1);
+        const first = part[0]!;
+        const age = (ages[start]! + ages[j]!) / 2;
+        ribbons.push({
+          d: ribbonPath(part, half.slice(start, j + 1)),
+          opacity: trailOn * 0.6 * (0.6 + 0.4 * first.depth) * (1 - age) ** 1.3,
+          front: first.depth >= 0,
+          companion: i === 1,
+        });
+        start = j;
+      }
+    });
   }
 
   // 花标：加载中与双星同节拍呼吸（不和星的位置对应）；ready 后停在 ready 那一刻的亮度，等水波填实

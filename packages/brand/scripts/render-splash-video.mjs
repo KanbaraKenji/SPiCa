@@ -41,12 +41,9 @@ function trailEl(d) {
   if (d.opacity <= 0.005) return '';
   return `<circle cx="${f2(d.x)}" cy="${f2(d.y)}" r="${f2(d.r)}" fill="${d.companion ? T.companion : T.acc}" opacity="${d.opacity.toFixed(3)}"/>`;
 }
-let ribbonId = 0;
 function ribbonEl(r) {
   if (r.opacity <= 0.005) return '';
-  const id = `rb${ribbonId++}`;
-  const color = r.companion ? T.companion : T.acc;
-  return `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${f2(r.x1)}" y1="${f2(r.y1)}" x2="${f2(r.x2)}" y2="${f2(r.y2)}"><stop offset="0" stop-color="${color}" stop-opacity="1"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient><path d="${r.d}" fill="url(#${id})" opacity="${r.opacity.toFixed(3)}"/>`;
+  return `<path d="${r.d}" fill="${r.companion ? T.companion : T.acc}" opacity="${r.opacity.toFixed(3)}"/>`;
 }
 const trailEls = (f, front) => TRAIL === 'dots'
   ? f.trails.filter((d) => d.front === front).map(trailEl)
