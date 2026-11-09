@@ -21,6 +21,8 @@ export interface DetailPanelProps {
   project?: ProjectInfo | undefined;
   activity?: ProjectLogEntry[];
   onClose?: () => void;
+  /** A tab above already says 详情: leave out the heading (the close button stays). */
+  hideHeading?: boolean;
 }
 
 
@@ -31,20 +33,22 @@ function clock(iso: string): string {
 
 const ROLE_LABEL: Record<SessionInfo['role'], string> = { top: '对话', manager: '项目经理', worker: '子任务' };
 
-export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose }: DetailPanelProps) {
+export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false }: DetailPanelProps) {
   const blocks = transcript.items.flatMap((i) => (i.kind === 'response' ? i.blocks : []));
   const tools = blocks.filter((b): b is ToolBlock => b.type === 'tool');
   const files = filesOf(blocks, transcript.fileCards);
   return (
     <aside className="detail" aria-label="详情">
+      {hideHeading && !onClose ? null : (
       <header className="detail-head">
-        <span className="detail-heading">详情</span>
+        {hideHeading ? <span /> : <span className="detail-heading">详情</span>}
         {onClose ? (
           <button type="button" className="icon-btn" onClick={onClose} aria-label="关闭详情" title="关闭详情">
             <Icon name="close" size={14} />
           </button>
         ) : null}
       </header>
+      )}
       {/* Nothing open yet: the panel stays empty rather than a column of dashes. */}
       {session ? (
       <div className="detail-scroll">
