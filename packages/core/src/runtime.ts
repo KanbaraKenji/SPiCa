@@ -33,12 +33,18 @@ import type {
 } from './types.ts';
 import { mkdirSync } from 'node:fs';
 import { isAbsolute, join, relative } from 'node:path';
-import { newId } from './util.ts';
+import { newId, redact } from './util.ts';
 import { exportUsageLog, type UsageLogFilter } from './export.ts';
 import { BUILTIN_TEMPLATES, loadWorkflows, type RoleTemplate } from './projects.ts';
 
 export interface RuntimeOptions {
   providers: Provider[];
+  /**
+   * Values that must never appear in exports or records: model keys, client
+   * secrets, endpoint addresses (host names are added for URLs). Write-only:
+   * see addRedactions().
+   */
+  redactions?: readonly (string | undefined)[];
   /** Defaults for new sessions. */
   defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; system?: string };
   store?: Store;
@@ -121,7 +127,7 @@ export class Runtime implements RuntimeInternals {
   readonly ledger: CostLedger;
   readonly extractors: FileExtractor[];
   readonly #providers = new Map<string, Provider>();
-  /** Keys and endpoint addresses of every provider seen, for redaction. */
+  /** Keys and endpoint addresses to redact. Write-only: nothing reads it back out of the runtime. */
   readonly #secrets = new Set<string>();
   readonly #limiters = new Map<string, RateLimiter>();
   readonly #sessions = new Map<string, Session>();
@@ -137,7 +143,8 @@ export class Runtime implements RuntimeInternals {
     this.#workflows = loadWorkflows(opts.workflowsDir, opts.workflows ?? []);
     this.mail = new MailPipeline(this, opts.mail ?? {});
     this.store = opts.store ?? new MemoryStore();
-    this.tracer = new Tracer(this.store, this.events);
+    this.addRedactions(opts.redactions ?? []);
+    this.tracer = new Tracer(this.store, this.events, (text) => redact(text, [...this.#secrets]));
     this.ledger = new CostLedger(opts.prices ?? DEFAULT_PRICES, opts.budget ?? {});
     this.extractors = [...(opts.extractors ?? [])];
     for (const p of opts.providers) this.addProvider(p, opts.limits?.[p.id]);
@@ -191,8 +198,6 @@ export class Runtime implements RuntimeInternals {
   /** Add or replace a provider; its rate limiter (and anyone queued on it) is kept. */
   setProvider(p: Provider, limits?: LimiterConfig): void {
     this.#providers.set(p.id, p);
-    // kept after the provider is removed: old records may still mention them
-    for (const s of p.secrets?.() ?? []) if (s.length >= 6) this.#secrets.add(s);
     p.attach?.({ tracer: this.tracer });
     const existing = this.#limiters.get(p.id);
     if (existing) {
@@ -660,6 +665,27 @@ export class Runtime implements RuntimeInternals {
   }
 
   /** Traceable records as JSON Lines. */
+  /**
+   * Register values to remove from exports and traceable records (keys, client
+   * secrets, endpoint addresses; a URL also adds its host name). There is no
+   * way to read them back, so extensions holding the runtime cannot get them.
+   * Kept after a provider is removed: old records may still mention them.
+   */
+  addRedactions(values: readonly (string | undefined)[]): void {
+    for (const v of values) {
+      if (!v || v.length < 6) continue;
+      this.#secrets.add(v);
+      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(v)) {
+        try {
+          const host = new URL(v).host;
+          if (host.length >= 6) this.#secrets.add(host);
+        } catch {
+          // not a URL after all
+        }
+      }
+    }
+  }
+
   /**
    * Usage log (JSON Lines) of sessions, messages, tool calls, traceable
    * records, relays, project activity and mail, filtered by project and time.

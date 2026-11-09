@@ -40,9 +40,13 @@ export class Tracer {
   readonly #store: Store;
   readonly #bus: EventBus | undefined;
 
-  constructor(store: Store, bus?: EventBus) {
+  readonly #scrub: (text: string) => string;
+
+  /** `scrub` removes known secrets from error texts (default: pattern-based redaction only). */
+  constructor(store: Store, bus?: EventBus, scrub: (text: string) => string = (t) => redact(t)) {
     this.#store = store;
     this.#bus = bus;
+    this.#scrub = scrub;
   }
 
   start(start: TraceStart): TraceHandle {
@@ -59,7 +63,7 @@ export class Tracer {
           durationMs: Math.round(performance.now() - t0),
           ...start,
           ...result,
-          ...(result.error ? { error: redact(result.error).slice(0, 300) } : {}),
+          ...(result.error ? { error: this.#scrub(result.error).slice(0, 300) } : {}),
         };
         if (!done) {
           done = true;

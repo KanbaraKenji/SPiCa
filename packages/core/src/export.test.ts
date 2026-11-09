@@ -2,10 +2,12 @@
 // with model keys, endpoint addresses and key-looking strings removed.
 import { execFileSync } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { USAGE_LOG_SCHEMA, USAGE_LOG_VERSION } from './export.ts';
+import { pathHider, USAGE_LOG_SCHEMA, USAGE_LOG_VERSION } from './export.ts';
+import { applySettings, createProvider, startBackend } from './host/backend.ts';
 import { spicaMcpTools } from './mcp/server.ts';
 import type { Runtime } from './runtime.ts';
 import { SqliteStore } from './store/sqlite.ts';
@@ -134,6 +136,50 @@ describe('usage log export', () => {
       expect(() => ro.upsertMail(mail('m3', a.id, 'x'))).toThrow();
     } finally {
       ro.close();
+    }
+  });
+
+  it('paths carry no user names: temp folder, this user, other users', () => {
+    const hide = pathHider({ home: 'C:\\Users\\Ann', temp: 'C:\\Users\\Ann\\AppData\\Local\\Temp' });
+    expect(hide('saved to C:\\Users\\Ann\\AppData\\Local\\Temp\\spica-1\\a.txt')).toBe('saved to %TEMP%\\spica-1\\a.txt');
+    expect(hide('see c:/users/ann/Documents/q.pdf and C:\\Users\\Ann')).toBe('see %USERPROFILE%/Documents/q.pdf and %USERPROFILE%');
+    expect(hide('C:\\Users\\Anna\\x and D:\\Users\\bob.smith\\y')).toBe('%USERPROFILE%\\x and %USERPROFILE%\\y');
+    expect(hide('"/home/kim/work" and /Users/lee/x')).toBe('"$HOME/work" and $HOME/x');
+    expect(hide('C:\\Program Files\\Spica\\spica.exe')).toBe('C:\\Program Files\\Spica\\spica.exe');
+  });
+
+  it('the export hides this machine user folders, also inside JSON fields', async () => {
+    const { pmA } = await seed();
+    gw.enqueue({ text: `wrote ${join(homedir(), 'Documents', 'plan.docx')} and ${join(tmpdir(), 'x.log')}` });
+    await pmA.send(`look at ${join(homedir(), 'Desktop')}`).done;
+    const jsonl = rt.exportUsageLog();
+    const user = homedir().split(/[\\/]/).at(-1)!;
+    // in JSON a backslash is written twice
+    expect(jsonl).not.toContain(homedir().replace(/\\/g, '\\\\'));
+    expect(jsonl).not.toContain(tmpdir().replace(/\\/g, '\\\\'));
+    expect(jsonl).toContain('%USERPROFILE%');
+    expect(jsonl).toContain('%TEMP%'); // the project folders live in the temp folder here
+    if (user.length >= 3) expect(jsonl.toLowerCase()).not.toContain(`users\\\\${user.toLowerCase()}`);
+  });
+
+  it('keys come from the configuration into a table nobody can read; providers do not expose them', async () => {
+    const b = await startBackend({
+      dbPath: join(dir, 'db2', 'spica.db'),
+      providers: [{ id: 'gw', kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1`, apiKey: 'backend-key-abc123def456' }],
+      defaults: { providerId: 'gw', model: 'm', maxTokens: 64 },
+      cwd: dir,
+    });
+    try {
+      const p = createProvider({ id: 'x', kind: 'wso2', baseUrl: 'https://gw.example/v1', oauth: { tokenUrl: 'https://id.example/token', clientId: 'client-id-1', clientSecret: 'client-secret-1' } });
+      expect('secrets' in p).toBe(false);
+      expect(Object.keys(b.runtime).join(' ')).not.toMatch(/secret|redaction/i);
+      applySettings(b.runtime, { providers: [{ id: 'gw', kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1`, apiKey: 'backend-key-abc123def456' }, { id: 'two', kind: 'openai-compatible', baseUrl: 'https://second.example/v1', apiKey: 'second-key-zyx987wvu654' }] });
+      gw.enqueue({ text: 'ok' });
+      await b.runtime.createSession().send('keys backend-key-abc123def456 second-key-zyx987wvu654 at second.example and ' + gw.baseUrl).done;
+      const jsonl = b.runtime.exportUsageLog();
+      for (const s of ['backend-key-abc123def456', 'second-key-zyx987wvu654', 'second.example', gw.baseUrl.replace('http://', '')]) expect(jsonl).not.toContain(s);
+    } finally {
+      await b.close();
     }
   });
 });
