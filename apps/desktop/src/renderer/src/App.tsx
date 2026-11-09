@@ -3,7 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DesktopBridge } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
-import { computeLayout, toggleAction, type Floating } from './shell/layout';
+import { computeLayout, panelWidths, toggleAction, type Floating } from './shell/layout';
+import { Resizer } from './shell/Resizer';
+import { DEFAULT_SETTINGS } from '../../shared/settings';
 import { useViewportWidth } from './shell/useViewportWidth';
 import { Sidebar } from './shell/Sidebar';
 import { DetailPanel } from './shell/DetailPanel';
@@ -71,6 +73,20 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     };
   }, [bridge, view]);
   const layout = computeLayout(width, settings.panels, floating);
+  // Panel widths: what the user dragged them to (live while dragging), giving way when the window narrows.
+  const [dragging, setDragging] = useState<{ side: 'left' | 'right'; width: number } | null>(null);
+  // A main process older than this setting (dev build not restarted yet) does not send it.
+  const savedWidths = settings.panelWidths ?? DEFAULT_SETTINGS.panelWidths;
+  const widths = panelWidths(width, layout, dragging ? { ...savedWidths, [dragging.side]: dragging.width } : savedWidths);
+  const resizer = (side: 'left' | 'right') =>
+    layout[side] === 'docked' ? (
+      <Resizer
+        side={side}
+        width={widths[side]}
+        onPreview={(w) => setDragging(w === null ? null : { side, width: w })}
+        onCommit={(w) => shell.update({ panelWidths: { ...savedWidths, [side]: w } })}
+      />
+    ) : null;
 
   // The sidebar slid out from the left edge (see below).
   const [peeking, setPeeking] = useState(false);
@@ -261,8 +277,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       {leftShown ? (
         <div
           className={`panel panel-left is-${layout.left}`}
+          style={{ width: widths.left }}
           {...(peekOpen ? { onMouseEnter: clearPeekTimer, onMouseLeave: unpeekSoon } : {})}
         >
+          {resizer('left')}
           <div className="sidebar-head">
             <SpicaBanner height={22} className="sidebar-brand" />
             {sidebarToggle}
@@ -283,10 +301,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             settingsOpen={view === 'settings'}
             topId={state.topId}
             onRename={(sid, title) => void agent.rename(sid, title)}
-            pinned={settings.pinnedProjects}
-            onPin={(pid, pin) =>
-              shell.update({ pinnedProjects: pin ? [...settings.pinnedProjects.filter((x) => x !== pid), pid] : settings.pinnedProjects.filter((x) => x !== pid) })
-            }
+            pinned={settings.pinnedProjects ?? []}
+            onPin={(pid, pin) => {
+              const now = (settings.pinnedProjects ?? []).filter((x) => x !== pid);
+              shell.update({ pinnedProjects: pin ? [...now, pid] : now });
+            }}
             {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject({}) } : {})}
             {...(mail.supported
               ? {
@@ -406,7 +425,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         </main>
 
         {rightShown && view === 'chat' ? (
-          <div className={`panel panel-right is-${layout.right}`}>
+          <div className={`panel panel-right is-${layout.right}`} style={{ width: widths.right }}>
+            {resizer('right')}
             <DetailPanel
               session={session}
               parent={parent}
