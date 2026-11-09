@@ -4,6 +4,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 export interface MenuItem {
   label: string;
+  /** Deletes something: shown in the danger color. */
+  danger?: boolean;
   onSelect(): void;
 }
 
@@ -50,7 +52,7 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
           key={it.label}
           type="button"
           role="menuitem"
-          className="context-item"
+          className={it.danger ? 'context-item is-danger' : 'context-item'}
           onClick={() => {
             onClose();
             it.onSelect();
