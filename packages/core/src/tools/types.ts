@@ -1,5 +1,5 @@
 // Tool contract and registry.
-import type { CoreEventBody, ToolSpec } from '../types.ts';
+import type { CoreEventBody, FileCardMeta, ToolSpec } from '../types.ts';
 import type { Tracer } from '../trace.ts';
 
 export interface ToolContext {
@@ -44,10 +44,34 @@ export interface ToolEnv {
   serverWebSearch: boolean;
 }
 
+/** Which part of a file read_file asked for. */
+export interface ExtractRequest {
+  /** "3" or "2-5" (slides for pptx). */
+  pages?: string;
+  /** Sheet name or 1-based index. */
+  sheet?: string;
+  /** 1-based first line / row; for tables offset and limit count rows. */
+  offset?: number;
+  limit?: number;
+  /** Upper bound for the returned text (the core's single-read limit). */
+  maxChars: number;
+}
+
+/** A formatted extraction: the core adds only the fetch-time line and a header. */
+export interface ExtractResult {
+  text: string;
+  meta: FileCardMeta;
+  truncated?: boolean;
+}
+
 export interface FileExtractor {
   /** Lower-case extensions including the dot, e.g. ['.pdf']. */
   extensions: string[];
-  extract(path: string, signal: AbortSignal): Promise<string>;
+  /**
+   * Return plain text (the core then pages it by line like a text file), or an
+   * ExtractResult that is already laid out and is passed through as is.
+   */
+  extract(path: string, req: ExtractRequest, signal: AbortSignal): Promise<string | ExtractResult>;
 }
 
 interface ToolEntry {

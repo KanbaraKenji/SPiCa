@@ -50,6 +50,36 @@ describe('read_file', () => {
     expect((await readFileTool.execute({ path: 'bin.dat' }, ctx)).content).toContain('extracted text');
   });
 
+  it('passes page/sheet/row requests to an extractor and a laid-out result through unchanged, with a card', async () => {
+    const seen: unknown[] = [];
+    const cards: unknown[] = [];
+    ctx.emit = (e) => cards.push(e);
+    ctx.extractors.push({
+      extensions: ['.xlsx'],
+      extract: async (path, req) => {
+        seen.push(req);
+        return {
+          text: '| A | B |\n| 1 | 2 |',
+          meta: { path, name: 'book.xlsx', kind: 'xlsx', sizeBytes: 4, modifiedAt: 'm', extractedAt: 'e', sheets: [{ name: 'Q1', rows: 2, cols: 2 }], read: { sheet: 'Q1', rows: '1-2', range: 'A1:B2' } },
+        };
+      },
+    });
+    await writeFile(join(dir, 'book.xlsx'), 'xx');
+    const r = await readFileTool.execute({ path: 'book.xlsx', sheet: 'Q1', offset: 1, limit: 50, pages: '2-3' }, ctx);
+    expect(seen).toEqual([{ pages: '2-3', sheet: 'Q1', offset: 1, limit: 50, maxChars: 200_000 }]);
+    expect(r.content.split('\n')[0]).toMatch(/^book\.xlsx \(xlsx, 2 bytes, modified .+; read sheet Q1, rows 1-2, A1:B2\)$/);
+    expect(r.content).toContain('| A | B |\n| 1 | 2 |');
+    expect(r.content).not.toMatch(/^\s+1\t/m); // no line numbers added
+    expect(cards).toEqual([{ type: 'file.card', callId: 'c', file: expect.objectContaining({ kind: 'xlsx', read: { sheet: 'Q1', rows: '1-2', range: 'A1:B2' } }) }]);
+  });
+
+  it('sends a card for plain text files too', async () => {
+    const cards: { file: { kind: string; read: unknown; truncated?: boolean } }[] = [];
+    ctx.emit = (e) => cards.push(e as never);
+    await readFileTool.execute({ path: 'notes.txt', limit: 2 }, ctx);
+    expect(cards[0]!.file).toMatchObject({ kind: 'text', read: { rows: '1-2' }, truncated: true });
+  });
+
   it('strips a UTF-8 byte order mark', async () => {
     await writeFile(join(dir, 'bom.txt'), `${String.fromCharCode(0xfeff)}first line\n`);
     const r = await readFileTool.execute({ path: 'bom.txt' }, ctx);

@@ -1,6 +1,9 @@
 // Built-in file tools: read_file, write_file, edit_file, list_dir, glob, grep.
 import { glob as fsGlob, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, dirname } from 'node:path';
+import { basename } from 'node:path';
+import { isoNow } from '../events.ts';
+import type { FileCardMeta } from '../types.ts';
 import type { Tool, ToolContext } from './types.ts';
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '.hg', '.svn', 'dist', 'out', '.venv', '__pycache__']);
@@ -18,6 +21,8 @@ function display(ctx: ToolContext, abs: string): string {
   return rel === '' ? '.' : rel.startsWith('..') || isAbsolute(rel) ? abs : rel;
 }
 
+const CARD_KIND: Record<string, FileCardMeta['kind']> = { '.pdf': 'pdf', '.docx': 'docx', '.xlsx': 'xlsx', '.xlsm': 'xlsx', '.csv': 'csv', '.tsv': 'csv', '.pptx': 'pptx' };
+
 const BOM = String.fromCharCode(0xfeff);
 
 function stripBom(s: string): string {
@@ -34,14 +39,17 @@ export const readFileTool: Tool = {
   spec: {
     name: 'read_file',
     description:
-      'Read a text file. Returns lines prefixed with line numbers. Use offset/limit (1-based line numbers) for large files. ' +
-      'Non-text formats are converted to text when an extractor for the file type is installed.',
+      'Read a file. Text files come back with line numbers; use offset/limit (1-based) for large files. ' +
+      'Documents (PDF, Word, Excel, PowerPoint, CSV) are converted to text when an extractor is installed: ' +
+      'use pages ("3" or "2-5", slides for PowerPoint) and sheet (name or 1-based index); for tables offset/limit count rows.',
     inputSchema: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'File path, absolute or relative to the working folder.' },
         offset: { type: 'integer', description: 'First line to return (1-based). Default 1.' },
-        limit: { type: 'integer', description: `Max lines to return. Default ${MAX_READ_LINES}.` },
+        limit: { type: 'integer', description: `Max lines (or table rows) to return. Default ${MAX_READ_LINES}.` },
+        pages: { type: 'string', description: 'Pages or slides to read, e.g. "3" or "2-5".' },
+        sheet: { type: 'string', description: 'Sheet name or 1-based index (spreadsheets).' },
       },
       required: ['path'],
     },
@@ -52,9 +60,33 @@ export const readFileTool: Tool = {
     if (!info) return { content: `File not found: ${display(ctx, abs)}`, isError: true };
     if (info.isDirectory()) return { content: `${display(ctx, abs)} is a folder; use list_dir.`, isError: true };
     let text: string;
+    const offsetIn = input.offset === undefined ? undefined : Math.max(1, Number(input.offset) || 1);
+    const limitIn = input.limit === undefined ? undefined : Math.max(1, Number(input.limit) || MAX_READ_LINES);
     const extractor = ctx.extractors.find((e) => e.extensions.includes(extname(abs).toLowerCase()));
     if (extractor) {
-      text = await extractor.extract(abs, ctx.signal);
+      const got = await extractor.extract(
+        abs,
+        {
+          ...(typeof input.pages === 'string' ? { pages: input.pages } : {}),
+          ...(input.sheet !== undefined ? { sheet: String(input.sheet) } : {}),
+          ...(offsetIn !== undefined ? { offset: offsetIn } : {}),
+          ...(limitIn !== undefined ? { limit: limitIn } : {}),
+          maxChars: MAX_READ_CHARS,
+        },
+        ctx.signal,
+      );
+      if (typeof got !== 'string') {
+        // Already laid out by the extractor: pass through, add a header and the card.
+        ctx.emit({ type: 'file.card', callId: ctx.callId, file: got.meta });
+        const parts = [got.meta.read.pages && `pages ${got.meta.read.pages}`, got.meta.read.sheet && `sheet ${got.meta.read.sheet}`, got.meta.read.rows && `rows ${got.meta.read.rows}`, got.meta.read.range]
+          .filter(Boolean)
+          .join(', ');
+        const header = `${display(ctx, abs)} (${got.meta.kind}, ${info.size} bytes, modified ${info.mtime.toISOString()}${parts ? `; read ${parts}` : ''})`;
+        const body = got.text.length > MAX_READ_CHARS ? got.text.slice(0, MAX_READ_CHARS) : got.text;
+        const note = got.truncated || got.meta.truncated || got.text.length > MAX_READ_CHARS ? '\n[truncated; ask for fewer pages, another sheet or a smaller row range]' : '';
+        return { content: `${header}\n${body}${note}` };
+      }
+      text = got;
     } else {
       const buf = await readFile(abs);
       if (isBinary(buf)) {
@@ -66,8 +98,8 @@ export const readFileTool: Tool = {
       text = stripBom(buf.toString('utf8'));
     }
     const lines = text.split(/\r?\n/);
-    const offset = Math.max(1, Number(input.offset ?? 1) || 1);
-    const limit = Math.max(1, Number(input.limit ?? MAX_READ_LINES) || MAX_READ_LINES);
+    const offset = offsetIn ?? 1;
+    const limit = limitIn ?? MAX_READ_LINES;
     const slice = lines.slice(offset - 1, offset - 1 + limit);
     let out = '';
     let shown = 0;
@@ -83,6 +115,17 @@ export const readFileTool: Tool = {
     const end = offset - 1 + shown;
     const header = `${display(ctx, abs)} (${total} lines, ${info.size} bytes, modified ${info.mtime.toISOString()})`;
     const more = end < total ? `\n[showing lines ${offset}-${end} of ${total}; use offset=${end + 1} to continue]` : '';
+    const card: FileCardMeta = {
+      path: abs,
+      name: basename(abs),
+      kind: CARD_KIND[extname(abs).toLowerCase()] ?? 'text',
+      sizeBytes: info.size,
+      modifiedAt: isoNow(info.mtime),
+      extractedAt: isoNow(),
+      read: { rows: `${offset}-${end}` },
+      ...(end < total ? { truncated: true } : {}),
+    };
+    ctx.emit({ type: 'file.card', callId: ctx.callId, file: card });
     return { content: `${header}\n${out}${more}` };
   },
 };

@@ -237,6 +237,8 @@ export type CoreEventBody =
   /** A plugin hook changed a message after it had been streamed. */
   | { type: 'message.replaced'; messageId: string; content: ContentBlock[] }
   | { type: 'tool.start'; callId: string; name: string; input: unknown }
+  /** A file was read (read_file); render a file card. Sent before the tool's `tool.end`. */
+  | { type: 'file.card'; callId: string; file: FileCardMeta }
   | {
       type: 'tool.end';
       callId: string;
@@ -276,6 +278,28 @@ export type CoreEventBody =
   /** A run (from an input until the agent stops) ended. */
   | { type: 'run.end'; reason: RunEndReason; detail?: string }
   | { type: 'error'; message: string; retryable?: boolean };
+
+/** What a file card shows about a file the agent read (event `file.card`). */
+export interface FileCardMeta {
+  /** Absolute path. */
+  path: string;
+  name: string;
+  kind: 'pdf' | 'docx' | 'xlsx' | 'csv' | 'pptx' | 'text';
+  sizeBytes: number;
+  /** ISO 8601 with offset. */
+  modifiedAt: string;
+  extractedAt: string;
+  pageCount?: number;
+  sheets?: { name: string; rows: number; cols: number }[];
+  slideCount?: number;
+  /** Which part was read. `rows` like "1-200", `range` like "A1:F40". */
+  read: { pages?: string; sheet?: string; rows?: string; range?: string };
+  truncated?: boolean;
+  /** PDF without a text layer (scanned). */
+  noTextLayer?: boolean;
+  /** Detected text encoding (e.g. UTF-8, GBK). */
+  encoding?: string;
+}
 
 export interface SuggestedAction {
   label: string;

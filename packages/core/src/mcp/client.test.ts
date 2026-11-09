@@ -84,6 +84,30 @@ describe('MCP tools in the runtime', () => {
     expect(rt.tools.get('fake__echo')).toBeUndefined();
   });
 
+  it('a plugin source owns its MCP tools: unregisterSource removes them and stops the server', async () => {
+    const exits: { expected: boolean }[] = [];
+    const logs: string[] = [];
+    const rt = makeRuntime(gw);
+    const h = await rt.connectMcp({ ...config, onExit: (i) => exits.push(i), stderrLog: (c) => logs.push(c) }, { source: 'plugin:demo' });
+    expect(h.source).toBe('plugin:demo');
+    expect(rt.tools.get('fake__echo')).toBeDefined();
+    expect(rt.unregisterSource('plugin:demo')).toMatchObject({ tools: 0, mcpServers: 1 }); // tools already gone with the server
+    expect(rt.tools.get('fake__echo')).toBeUndefined();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(exits).toEqual([expect.objectContaining({ expected: true })]);
+    expect(logs.join('')).toContain('fake mcp server starting');
+    await rt.close();
+  });
+
+  it('reports an unexpected exit', async () => {
+    const exits: { code: number | null; expected: boolean; stderrTail: string }[] = [];
+    const rt = makeRuntime(gw);
+    await rt.connectMcp({ name: 'crashy', command: process.execPath, args: ['-e', "process.stderr.write('dying'); process.exit(7)"], onExit: (i) => exits.push(i) }).catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(exits[0]).toMatchObject({ code: 7, expected: false, stderrTail: 'dying' });
+    await rt.close();
+  });
+
   it('tool names are restricted to safe characters', () => {
     expect(mcpToolName('my server', 'do.thing/now')).toBe('my_server__do_thing_now');
   });
