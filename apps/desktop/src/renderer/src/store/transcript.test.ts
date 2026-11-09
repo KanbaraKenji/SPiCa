@@ -28,6 +28,27 @@ describe('fromHistory', () => {
   });
 });
 
+describe('notes from sub-agents', () => {
+  it('reads ChildNoteMeta instead of the text written for the model', () => {
+    const report = {
+      id: 'n1',
+      sessionId: 'p',
+      seq: 1,
+      role: 'user' as const,
+      kind: 'report' as const,
+      content: [{ type: 'text' as const, text: '[Report from sub-agent "写春天" (s-1)] ...' }],
+      createdAt: '',
+      meta: { author: 'child', kind: 'report', fromSessionId: 's-1', fromTitle: '写春天', at: '', text: '春风拂面。' },
+    };
+    const plain = { ...report, id: 'n2', kind: 'note' as const, meta: {}, content: [{ type: 'text' as const, text: '普通备注' }] };
+    const t = fromHistory([report, plain]);
+    expect(t.items).toEqual([
+      { kind: 'note', id: 'n1', text: '春风拂面。', child: { kind: 'report', fromSessionId: 's-1', fromTitle: '写春天', text: '春风拂面。' } },
+      { kind: 'note', id: 'n2', text: '普通备注' },
+    ]);
+  });
+});
+
 describe('resultBody', () => {
   it('drops the fetch-time line', () => {
     expect(resultBody('2026-11-09T10:00:00.000+08:00\nhello')).toBe('hello');

@@ -1675,20 +1675,21 @@ button.tree-twisty:hover {
   z-index: 1000;
 }
 
-/* Settings tabs */
+/* Settings tabs: the open one is a filled pill, no underline. */
 .tabs {
-  display: flex;
-  gap: 4px;
+  display: inline-flex;
+  gap: 2px;
   margin-bottom: 24px;
-  border-bottom: 1px solid var(--spica-border);
+  padding: 3px;
+  border-radius: var(--radius-m);
+  background: var(--spica-hover);
 }
 
 .tab {
-  position: relative;
-  height: 36px;
-  padding: 0 14px;
+  height: 30px;
+  padding: 0 16px;
+  border-radius: var(--radius-s);
   color: var(--spica-muted);
-  font-size: 15px;
 }
 
 .tab:hover {
@@ -1696,19 +1697,10 @@ button.tree-twisty:hover {
 }
 
 .tab.is-on {
+  background: var(--spica-raised);
   color: var(--spica-ink);
   font-weight: 600;
-}
-
-.tab.is-on::after {
-  content: '';
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: -1px;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--spica-accent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 /* Settings > models */

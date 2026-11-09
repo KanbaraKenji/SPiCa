@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { Root } from './shell/Root';
+import { installZoomInput } from './shell/zoomInput';
 import { AgentStore } from './store/agent';
 import { ShellStore } from './store/shell';
 import '@spica/brand/styles.css';
@@ -14,6 +15,7 @@ if (!root) throw new Error('Missing #root element');
 async function start(el: HTMLElement): Promise<void> {
   const bridge = window.spica;
   const state = await bridge.getShellState();
+  installZoomInput((step) => bridge.zoom(step));
   const shell = new ShellStore(bridge, state);
   const agent = new AgentStore(bridge);
   const ready = agent.init();
