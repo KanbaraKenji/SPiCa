@@ -1,8 +1,8 @@
 // Packaging, shared-folder and HTTP sources, checksums, updates and rollback.
 import { createServer, type Server } from 'node:http';
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // These tests start real server processes; give them room on a busy machine.
@@ -79,6 +79,32 @@ describe('zip and packages', () => {
     const folder = await unpackPlugin(writeZip(entries), target);
     expect(folder.manifest?.name).toBe('notes');
     expect(folder.issues).toEqual([]);
+  });
+
+  it('.spicaignore leaves development files out of the package', async () => {
+    const src = await exampleAt('0.1.0');
+    dirs.push(src);
+    await writeFile(join(src, '.spicaignore'), '# dev only\ntest/\n/scripts\n**/*.test.mjs\nmanifest.json\n');
+    for (const f of ['test/a.mjs', 'scripts/smoke.mjs', 'server/x.test.mjs', 'docs/test/a.txt', 'docs/tested.txt', 'docs/scripts/b.txt']) {
+      await mkdir(dirname(join(src, f)), { recursive: true });
+      await writeFile(join(src, f), 'x');
+    }
+    const p = await packPlugin(src, await temp());
+    const names = readZip(await readFile(p.file)).map((e) => e.name);
+    expect(names).toContain('manifest.json'); // never ignored
+    expect(names).toContain('server/index.js');
+    expect(names).toContain('docs/tested.txt');
+    expect(names).toContain('docs/scripts/b.txt'); // "/scripts" only means the top folder
+    expect(names.filter((n) => /(^|\/)test\/|^scripts\/|\.test\.mjs$|^\.spicaignore$/.test(n))).toEqual([]);
+  });
+
+  it('refuses to write a package an ignore rule broke', async () => {
+    const src = await exampleAt('0.1.0');
+    dirs.push(src);
+    await writeFile(join(src, '.spicaignore'), 'server/\n');
+    const out = await temp();
+    await expect(packPlugin(src, out)).rejects.toThrow(/\.spicaignore/);
+    expect(await readdir(out)).toEqual([]);
   });
 });
 
