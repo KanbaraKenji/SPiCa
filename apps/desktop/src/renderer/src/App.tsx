@@ -5,6 +5,7 @@ import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent
 import { ShellStore, useShell } from './store/shell';
 import { computeLayout, panelWidths, toggleAction, type Floating } from './shell/layout';
 import { Resizer } from './shell/Resizer';
+import { ConfirmDialog } from './ui/Dialog';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import { useViewportWidth } from './shell/useViewportWidth';
 import { Sidebar } from './shell/Sidebar';
@@ -52,6 +53,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   /** The new-project dialog; from a 「新事务」 mail it carries the mail and the suggested name. */
   const [newProject, setNewProject] = useState<null | { name?: string; mailId?: string }>(null);
+  /** The project the user asked to delete (waiting for the confirmation). */
+  const [deletingProject, setDeletingProject] = useState<null | { id: string; name: string }>(null);
   const update = useUpdateState(bridge);
   const backendState = useBackendState(bridge, agent);
   const installUpdate = () => void bridge.updates.run('install');
@@ -306,6 +309,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               const now = (settings.pinnedProjects ?? []).filter((x) => x !== pid);
               shell.update({ pinnedProjects: pin ? [...now, pid] : now });
             }}
+            {...(bridge.agent.renameProject ? { onRenameProject: (pid: string, name: string) => void agent.renameProject(pid, name) } : {})}
+            {...(bridge.agent.deleteProject ? { onDeleteProject: (pid: string, name: string) => setDeletingProject({ id: pid, name }) } : {})}
             {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject({}) } : {})}
             {...(mail.supported
               ? {
@@ -444,6 +449,25 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       </div>
       </div>
 
+
+      {deletingProject ? (
+        <ConfirmDialog
+          title={`删除项目「${deletingProject.name}」？`}
+          detail="只删 Spica 里的这个项目和它的对话记录；项目文件夹和里面的文件不会动。"
+          confirmLabel="删除"
+          danger
+          onCancel={() => setDeletingProject(null)}
+          onConfirm={() => {
+            const pid = deletingProject.id;
+            setDeletingProject(null);
+            void agent.deleteProject(pid).then((problem) => {
+              if (problem) return;
+              const pins = settings.pinnedProjects ?? [];
+              if (pins.includes(pid)) shell.update({ pinnedProjects: pins.filter((x) => x !== pid) });
+            });
+          }}
+        />
+      ) : null}
 
       {newProject ? (
         <NewProjectDialog

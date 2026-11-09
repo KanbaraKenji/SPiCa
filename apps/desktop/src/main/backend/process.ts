@@ -153,6 +153,10 @@ export class ProcessBackend implements AgentBackend {
   listMail: NonNullable<AgentApi['listMail']> = (...a) => this.call('listMail', ...a);
   pollMail: NonNullable<AgentApi['pollMail']> = () => this.call('pollMail');
   mailFeedback: NonNullable<AgentApi['mailFeedback']> = (...a) => this.call('mailFeedback', ...a);
+  renameProject: NonNullable<AgentApi['renameProject']> = (...a) => this.call('renameProject', ...a);
+  deleteProject: NonNullable<AgentApi['deleteProject']> = (...a) => this.call('deleteProject', ...a);
+  setSessionModel: NonNullable<AgentApi['setSessionModel']> = (...a) => this.call('setSessionModel', ...a);
+  setApprovalMode: NonNullable<AgentApi['setApprovalMode']> = (...a) => this.call('setApprovalMode', ...a);
 
   onEvent(listener: (event: CoreEvent) => void): () => void {
     this.#listeners.add(listener);

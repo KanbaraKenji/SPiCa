@@ -45,4 +45,22 @@ describe('AgentStore', () => {
     await vi.waitFor(() => expect(Object.values(again.state.get().firstLines).sort()).toEqual(['你好', '帮我看看报价单']));
     backend.dispose();
   });
+
+  it('renames and deletes a project; its conversations leave the list, not just the project', async () => {
+    const backend = new FakeBackend({ speed: 0 });
+    const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
+    await store.init();
+    await vi.waitFor(() => expect(store.state.get().projects.length).toBe(2));
+    expect(await store.renameProject('p-budget', '  ')).toBe('项目要有个名字。');
+    expect(await store.renameProject('p-budget', '2027 年度预算')).toBeNull();
+    expect(store.state.get().sessions.find((x) => x.id === 's-pm-2')?.title).toBe('2027 年度预算');
+    await store.open('s-w-4');
+    expect(await store.deleteProject('p-budget')).toBeNull();
+    const v = store.state.get();
+    expect(v.projects.map((p) => p.id)).toEqual(['p-review']);
+    expect(v.sessions.some((x) => x.id === 's-pm-2' || x.id === 's-w-4')).toBe(false);
+    // The open conversation was in it: back to the assistant.
+    expect(v.activeId).toBe(v.topId);
+    backend.dispose();
+  });
 });

@@ -300,6 +300,7 @@ export class FakeBackend implements AgentBackend {
     if (!n) throw new Error('a project needs a name');
     Object.assign(p, { name: n, updatedAt: isoAt(this.#now()) });
     await this.renameSession(p.managerSessionId, n);
+    this.#emit(p.managerSessionId, { type: 'project.updated', project: structuredClone(p) });
     return structuredClone(p);
   }
 
@@ -318,9 +319,14 @@ export class FakeBackend implements AgentBackend {
     }
     for (const id of ids) {
       this.#runs.get(id)?.controller.abort();
+      this.#emit(id, { type: 'session.deleted' });
       this.#sessions.delete(id);
+      this.#messages.delete(id);
+      this.#pending.delete(id);
     }
     this.#projects.delete(projectId);
+    const top = [...this.#sessions.values()].find((s) => s.role === 'top' && !s.parentId);
+    this.#emit(top?.id ?? '', { type: 'project.deleted', projectId });
   }
 
   async createProject(req: CreateProjectRequest): Promise<ProjectInfo> {

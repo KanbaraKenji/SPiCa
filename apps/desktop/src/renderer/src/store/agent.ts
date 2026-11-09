@@ -218,6 +218,39 @@ export class AgentStore {
     }
   }
 
+  /** Renames a project (its manager's conversation takes the name). Resolves to a problem in words, or null. */
+  async renameProject(projectId: string, name: string): Promise<string | null> {
+    if (!this.#api.renameProject) return '这个版本还不能给项目改名。';
+    try {
+      const p = await this.#api.renameProject(projectId, name);
+      this.state.set((v) => ({
+        ...v,
+        projects: v.projects.map((x) => (x.id === p.id ? p : x)),
+        sessions: v.sessions.map((s) => (s.id === p.managerSessionId ? { ...s, title: p.name } : s)),
+      }));
+      return null;
+    } catch (err) {
+      const msg = friendlyError(err);
+      this.state.set((v) => ({ ...v, notice: msg }));
+      return msg;
+    }
+  }
+
+  /** Deletes a project from Spica (its conversations; never its folder). The core's events take it off the list. */
+  async deleteProject(projectId: string): Promise<string | null> {
+    if (!this.#api.deleteProject) return '这个版本还不能删除项目。';
+    try {
+      await this.#api.deleteProject(projectId);
+      await this.#refreshProjects();
+      await this.#refreshSessions();
+      return null;
+    } catch (err) {
+      const msg = friendlyError(err);
+      this.state.set((v) => ({ ...v, notice: msg }));
+      return msg;
+    }
+  }
+
   /** Loads a project's recent activity once (live entries keep coming as events). */
   async loadProject(projectId: string): Promise<void> {
     if (!this.#api.getProject || this.state.get().activity[projectId]) return;
@@ -282,6 +315,23 @@ export class AgentStore {
       const transcripts = current ? { ...v.transcripts, [e.sessionId]: applyEvent(current, e) } : v.transcripts;
       return { ...v, sessions, globalCostUsd, transcripts };
     });
+    if (e.type === 'session.deleted') {
+      const gone = e.sessionId;
+      this.state.set((v) => {
+        const transcripts = { ...v.transcripts };
+        delete transcripts[gone];
+        return {
+          ...v,
+          sessions: v.sessions.filter((s) => s.id !== gone),
+          transcripts,
+          activeId: v.activeId === gone ? v.topId : v.activeId,
+        };
+      });
+    }
+    if (e.type === 'project.deleted') {
+      const pid = e.projectId;
+      this.state.set((v) => ({ ...v, projects: v.projects.filter((p) => p.id !== pid) }));
+    }
     if (e.type === 'project.created' || e.type === 'project.updated') {
       const p = e.project;
       this.state.set((v) => ({ ...v, projects: [p, ...v.projects.filter((x) => x.id !== p.id)] }));
