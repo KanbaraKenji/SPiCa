@@ -35,13 +35,15 @@ export interface OpenAICompatibleOptions {
   bodyDefaults?: Record<string, unknown>;
   /** Name of the max-tokens body field. Default max_tokens. */
   maxTokensField?: string;
+  /** Record the endpoint host name in traces instead of the provider id. Default false. */
+  traceHost?: boolean;
   fetchImpl?: typeof fetch;
 }
 
 export class OpenAICompatibleProvider implements Provider {
   readonly id: string;
   readonly kind: string = 'openai-compatible';
-  readonly host: string;
+  readonly traceTarget: string;
   readonly capabilities = { serverWebSearch: false };
   readonly #opts: OpenAICompatibleOptions;
   readonly #auth: AuthSource | undefined;
@@ -49,7 +51,7 @@ export class OpenAICompatibleProvider implements Provider {
   constructor(opts: OpenAICompatibleOptions) {
     this.id = opts.id;
     this.#opts = opts;
-    this.host = hostOf(opts.baseUrl);
+    this.traceTarget = opts.traceHost ? hostOf(opts.baseUrl) : opts.id;
     this.#auth = opts.auth ?? (opts.apiKey ? staticAuth({ authorization: `Bearer ${opts.apiKey}` }) : undefined);
   }
 

@@ -58,8 +58,12 @@ export interface ProviderCapabilities {
 export interface Provider {
   readonly id: string;
   readonly kind: string;
-  /** Host name only, for traces (never the full URL). */
-  readonly host: string;
+  /**
+   * What traces record as the request target: the provider id by default, or
+   * the endpoint host name when the deployment opts in (`traceHost: true`).
+   * Never the full URL.
+   */
+  readonly traceTarget: string;
   readonly capabilities: ProviderCapabilities;
   stream(request: ModelRequest, ctx: ProviderCallContext): AsyncGenerator<ProviderEvent, void>;
 }

@@ -5,7 +5,7 @@
 //   npm run smoke:claude        (Anthropic, Haiku by default)
 //
 // Keys and endpoints are read from the environment (loaded with --env-file);
-// nothing secret is printed: trace targets are masked in this output.
+// nothing secret is printed (trace targets are provider ids, not addresses).
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -106,7 +106,7 @@ console.log(summary.join('\n'));
 console.log(`\nfinal answer: ${result.text}`);
 console.log(`\n== traceable records (${rt.store.listTraces().length}) ==`);
 for (const t of rt.store.listTraces()) {
-  console.log(JSON.stringify({ ...t, target: '[masked]' }));
+  console.log(JSON.stringify(t));
 }
 const tools = session
   .messages()
