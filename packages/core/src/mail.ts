@@ -47,6 +47,8 @@ export class MailPipeline {
   readonly #sources: MailSource[];
   #timer: ReturnType<typeof setInterval> | undefined;
   #polling: Promise<MailPollResult> | undefined;
+  /** Mail ids of the batch the triage thread is working on. */
+  #batch = new Set<string>();
 
   constructor(rt: Runtime, cfg: MailConfig = {}) {
     this.#rt = rt;
@@ -154,13 +156,14 @@ export class MailPipeline {
     const size = this.#cfg.batchSize ?? 20;
     for (let i = 0; i < toModel.length; i += size) {
       const batch = toModel.slice(i, i + size);
+      this.#batch = new Set(batch.map((b) => b.id));
       await thread.send(this.#batchMessage(batch), { author: 'runtime', kind: 'user' }).done;
+      this.#batch = new Set();
       result.triaged += batch.filter((b) => this.#rt.store.getMail(b.id)?.status !== 'new').length;
     }
-    // 3. Hand mail that belongs to a project to its manager.
-    for (const item of this.#rt.store.listMail({ status: 'triaged' })) {
-      if (item.triage?.decision === 'project' && !item.routedTo && this.#route(item, thread)) result.routed++;
-    }
+    // 3. Hand mail that belongs to a project to its manager: one message per manager per poll.
+    const toRoute = this.#rt.store.listMail({ status: 'triaged' }).filter((m) => m.triage?.decision === 'project' && !m.routedTo);
+    result.routed = this.#route(toRoute, thread);
     return result;
   }
 
@@ -235,6 +238,9 @@ export class MailPipeline {
         thread,
       );
     }
+    // every mail of the current batch needs a result
+    const missing = [...this.#batch].filter((id) => this.#rt.store.getMail(id)?.status === 'new');
+    if (missing.length > 0) problems.push(`no result yet for: ${missing.join(', ')}`);
     return problems;
   }
 
@@ -244,32 +250,50 @@ export class MailPipeline {
     this.#emit(thread, { type: 'mail.triaged', item: updated });
   }
 
-  /** Send a triaged mail to its project's manager. */
-  #route(item: MailItem, thread: Session): boolean {
-    const project = item.triage?.projectId ? this.#rt.store.getProject(item.triage.projectId) : undefined;
-    const manager = project && this.#rt.session(project.managerSessionId);
-    if (!project || !manager) return false;
-    const src = this.#sources.find((s) => s.id === item.sourceId);
-    const text = [
-      'New mail for this project.',
-      `From: ${item.fromName ?? ''} <${item.fromAddress ?? ''}>`,
-      `Subject: ${item.subject}`,
-      item.receivedAt ? `Received: ${item.receivedAt}` : '',
-      item.preview ? `Preview: ${item.preview}` : '',
-      `Mail id: ${item.messageId}${src ? ` (read it with ${src.readTool})` : ''}`,
-      item.triage?.reason ? `Why it was put here: ${item.triage.reason}` : '',
-      '',
-      'Read the full mail, then give the user a few next steps with suggest_actions. If a reply is needed, write it only as a draft with ' +
-        "the mail plugin's draft tool; never send mail. Moving or marking mail follows the plugin's confirmation rules.",
-    ]
-      .filter((l) => l !== '')
-      .join('\n');
-    manager.send(text, { author: 'parent', meta: { mail: { id: item.id, sourceId: item.sourceId, messageId: item.messageId } } });
-    const routed: MailItem = { ...item, status: 'routed', routedTo: manager.id, updatedAt: isoNow() };
-    this.#rt.store.upsertMail(routed);
-    this.#rt.logProjectActivity(manager, 'note', `Mail received: ${item.subject}`, item.subject, item.id);
-    this.#emit(thread, { type: 'mail.routed', item: routed, managerSessionId: manager.id });
-    return true;
+  /** Send triaged mail to the project managers: one message per manager listing its new mail. Returns how many were routed. */
+  #route(items: MailItem[], thread: Session): number {
+    const byProject = new Map<string, MailItem[]>();
+    for (const it of items) {
+      const pid = it.triage?.projectId;
+      if (!pid) continue;
+      byProject.set(pid, [...(byProject.get(pid) ?? []), it]);
+    }
+    let routed = 0;
+    for (const [pid, list] of byProject) {
+      const project = this.#rt.store.getProject(pid);
+      const manager = project && this.#rt.session(project.managerSessionId);
+      if (!project || !manager) continue;
+      const readTools = [...new Set(list.map((m) => this.#sources.find((s) => s.id === m.sourceId)?.readTool).filter(Boolean))];
+      const text = [
+        list.length === 1 ? 'New mail for this project.' : `${list.length} new mails for this project.`,
+        '',
+        ...list.map((m, k) =>
+          [
+            `${k + 1}. Subject: ${m.subject}`,
+            `   From: ${m.fromName ?? ''} <${m.fromAddress ?? ''}>`,
+            m.receivedAt ? `   Received: ${m.receivedAt}` : '',
+            m.preview ? `   Preview: ${m.preview}` : '',
+            `   Mail id: ${m.messageId}`,
+            m.triage?.reason ? `   Why it was put here: ${m.triage.reason}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        ),
+        '',
+        `Read the mails${readTools.length ? ` (with ${readTools.join(', ')})` : ''}, then give the user a few next steps with ` +
+          "suggest_actions. If a reply is needed, write it only as a draft with the mail plugin's draft tool; never send mail. " +
+          "Moving or marking mail follows the plugin's confirmation rules.",
+      ].join('\n');
+      manager.send(text, { author: 'parent', meta: { mails: list.map((m) => ({ id: m.id, sourceId: m.sourceId, messageId: m.messageId })) } });
+      for (const m of list) {
+        const done: MailItem = { ...m, status: 'routed', routedTo: manager.id, updatedAt: isoNow() };
+        this.#rt.store.upsertMail(done);
+        this.#rt.logProjectActivity(manager, 'note', `Mail received: ${m.subject}`, m.subject, m.id);
+        this.#emit(thread, { type: 'mail.routed', item: done, managerSessionId: manager.id });
+        routed++;
+      }
+    }
+    return routed;
   }
 
   /** The user's handling of a mail; accept / reassign teach the sender memory. */
@@ -295,7 +319,7 @@ export class MailPipeline {
     }
     this.#rt.store.upsertMail(updated);
     this.#emit(thread, { type: 'mail.feedback', item: updated });
-    if (fb.action === 'reassign') this.#route(updated, thread);
+    if (fb.action === 'reassign') this.#route([updated], thread);
     return this.#rt.store.getMail(mailId)!;
   }
 

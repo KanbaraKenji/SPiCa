@@ -36,7 +36,7 @@ function mailTools(): Tool[] {
 }
 
 /** The fake triage agent: website mail → website project, move mail → office project, newsletters ignored, the rest new. */
-function triageModel(opts: { badFirst?: boolean } = {}) {
+function triageModel(opts: { badFirst?: boolean; omitFirst?: boolean } = {}) {
   let firstTriage = true;
   return (r: ReceivedRequest): ScriptedReply => {
     const msgs = r.body.messages as { role: string; content: string }[];
@@ -56,12 +56,13 @@ function triageModel(opts: { badFirst?: boolean } = {}) {
       if (/office|move/i.test(subject)) return { mail_id: mailId, decision: 'project', project_id: proj('office'), reason: 'about the move', confidence: 0.8 };
       return { mail_id: mailId, decision: 'new', suggestion: 'Open house event', reason: 'nothing matches', confidence: 0.6 };
     });
+    if (opts.omitFirst && firstTriage) results.pop(); // forget one mail the first time
     firstTriage = false;
     return { toolCalls: [{ id: `t${Math.random().toString(36).slice(2, 8)}`, name: 'triage_mail', args: { results } }] };
   };
 }
 
-function setup(opts: { badFirst?: boolean } = {}) {
+function setup(opts: { badFirst?: boolean; omitFirst?: boolean } = {}) {
   inbox.length = 0;
   inbox.push(
     mail('m1', 'ana@web.example', 'Website homepage draft v2'),
@@ -99,7 +100,9 @@ describe('mail pipeline', () => {
 
     // the managers got the mail with structured meta and the never-send instruction
     const pmFirst = rt.session(web.managerSessionId)!.messages()[0]!;
-    expect(pmFirst.meta).toMatchObject({ author: 'parent', mail: { id: 'mailbox:m1', messageId: 'm1', sourceId: 'mailbox' } });
+    // one message per manager listing all its new mail
+    expect(pmFirst.meta).toMatchObject({ author: 'parent', mails: [{ id: 'mailbox:m1', messageId: 'm1', sourceId: 'mailbox' }, { id: 'mailbox:m5' }] });
+    expect(JSON.stringify(pmFirst.content)).toContain('2 new mails for this project');
     expect(JSON.stringify(pmFirst.content)).toContain('never send mail');
     expect(JSON.stringify(pmFirst.content)).toContain('mailbox__read_message');
     await rt.session(web.managerSessionId)!.settled();
@@ -125,6 +128,14 @@ describe('mail pipeline', () => {
     const thread = rt.mail.thread();
     expect(JSON.stringify(thread.messages())).toContain('is not one of the listed projects');
     expect(thread.info().templateId).toBe('mail-triage');
+  });
+
+  it('a mail left out of the answer is pointed out and then recorded', async () => {
+    const { rt } = setup({ omitFirst: true });
+    const r = await rt.mail.poll();
+    expect(r.triaged).toBe(5);
+    expect(rt.store.listMail({ status: 'new' })).toEqual([]);
+    expect(JSON.stringify(rt.mail.thread().messages())).toContain('no result yet for: mailbox:m5');
   });
 
   it('the user accepting or reassigning teaches the sender memory', async () => {
