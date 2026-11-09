@@ -34,6 +34,7 @@ import type {
 import { mkdirSync } from 'node:fs';
 import { isAbsolute, join, relative } from 'node:path';
 import { newId } from './util.ts';
+import { exportUsageLog, type UsageLogFilter } from './export.ts';
 import { BUILTIN_TEMPLATES, loadWorkflows, type RoleTemplate } from './projects.ts';
 
 export interface RuntimeOptions {
@@ -120,6 +121,8 @@ export class Runtime implements RuntimeInternals {
   readonly ledger: CostLedger;
   readonly extractors: FileExtractor[];
   readonly #providers = new Map<string, Provider>();
+  /** Keys and endpoint addresses of every provider seen, for redaction. */
+  readonly #secrets = new Set<string>();
   readonly #limiters = new Map<string, RateLimiter>();
   readonly #sessions = new Map<string, Session>();
   readonly #opts: RuntimeOptions;
@@ -188,6 +191,8 @@ export class Runtime implements RuntimeInternals {
   /** Add or replace a provider; its rate limiter (and anyone queued on it) is kept. */
   setProvider(p: Provider, limits?: LimiterConfig): void {
     this.#providers.set(p.id, p);
+    // kept after the provider is removed: old records may still mention them
+    for (const s of p.secrets?.() ?? []) if (s.length >= 6) this.#secrets.add(s);
     p.attach?.({ tracer: this.tracer });
     const existing = this.#limiters.get(p.id);
     if (existing) {
@@ -655,6 +660,15 @@ export class Runtime implements RuntimeInternals {
   }
 
   /** Traceable records as JSON Lines. */
+  /**
+   * Usage log (JSON Lines) of sessions, messages, tool calls, traceable
+   * records, relays, project activity and mail, filtered by project and time.
+   * Model keys, endpoint addresses and key-looking strings are redacted.
+   */
+  exportUsageLog(filter: UsageLogFilter = {}): string {
+    return exportUsageLog(this.store, filter, { secrets: [...this.#secrets] });
+  }
+
   exportTraces(filter?: { sessionId?: string }): string {
     return this.tracer.exportJsonl(filter);
   }

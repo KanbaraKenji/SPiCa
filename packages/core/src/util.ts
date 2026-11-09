@@ -43,9 +43,28 @@ export function redact(text: string, secrets: readonly string[] = []): string {
   let out = text;
   for (const s of secrets) if (s && s.length >= 6) out = out.split(s).join('[redacted]');
   return out
+    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----|$)/g, '[redacted private key]')
     .replace(/\b(sk-[A-Za-z0-9_-]{8,})/g, '[redacted]')
-    .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, '$1[redacted]')
-    .replace(/("?(?:api[_-]?key|client_secret|access_token|password)"?\s*[:=]\s*"?)[^\s",}]+/gi, '$1[redacted]');
+    .replace(/\b(AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abposr]-[A-Za-z0-9-]{10,})\b/g, '[redacted]')
+    .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[redacted]') // JWT
+    .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/:@]+:[^\s/@]+@/gi, '$1[redacted]@') // user:password@ in URLs
+    .replace(/((?:Bearer|Basic)\s+)[A-Za-z0-9._~+/=-]{8,}/gi, '$1[redacted]')
+    .replace(/("?(?:api[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|secret[_-]?key|private[_-]?key|password|passwd|(?<![A-Za-z])token|(?<![A-Za-z])secret)"?\s*[:=]\s*"?)[^\s",}]+/gi, '$1[redacted]');
+}
+
+/** Field names whose values are credentials, whatever they look like. */
+export const SECRET_FIELD = /^(api[_-]?key|x-api-key|apikey|client[_-]?secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|token|secret|secret[_-]?key|private[_-]?key|password|passwd|authorization|cookie)$/i;
+
+/** Redact every string inside a JSON-like value; values of credential-named fields are replaced outright. */
+export function redactDeep(v: unknown, secrets: readonly string[] = []): unknown {
+  if (typeof v === 'string') return redact(v, secrets);
+  if (Array.isArray(v)) return v.map((x) => redactDeep(x, secrets));
+  if (v && typeof v === 'object') {
+    const o: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v)) o[redact(k, secrets)] = SECRET_FIELD.test(k) && typeof x === 'string' && x ? '[redacted]' : redactDeep(x, secrets);
+    return o;
+  }
+  return v;
 }
 
 /** Cut a string to `max` characters, noting how much was dropped. */
@@ -66,7 +85,7 @@ export function anySignal(...signals: (AbortSignal | undefined)[]): AbortSignal 
 }
 
 /** Environment variable names that must never reach child processes (model keys, tokens, ...). */
-const SECRET_ENV = /(^SPICA_|API_?KEY|SECRET|TOKEN|PASSW(OR)?D|CREDENTIAL|PRIVATE_?KEY)/i;
+export const SECRET_ENV = /(^SPICA_|API_?KEY|SECRET|TOKEN|PASSW(OR)?D|CREDENTIAL|PRIVATE_?KEY)/i;
 
 /** What a child process inherits by default: enough to run programs and reach the network through a proxy. */
 export const DEFAULT_CHILD_ENV: readonly string[] = [

@@ -56,6 +56,12 @@ export class AnthropicProvider implements Provider {
     this.#auth = opts.auth ?? (opts.apiKey ? staticAuth({ 'x-api-key': opts.apiKey }) : undefined);
   }
 
+  secrets(): string[] {
+    const o = this.#opts;
+    // the public default endpoint is not a secret; a custom one (a gateway) is
+    return [o.apiKey, o.baseUrl, o.baseUrl ? hostOf(o.baseUrl) : undefined, ...Object.values(o.headers ?? {}).filter((v) => v.length >= 12)].filter((v): v is string => !!v);
+  }
+
   buildBody(req: ModelRequest): Record<string, unknown> {
     const cache = this.#opts.promptCache ?? true;
     const messages = toAnthropicMessages(req.messages, this.id);

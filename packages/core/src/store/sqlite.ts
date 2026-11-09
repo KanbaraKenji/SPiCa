@@ -78,8 +78,18 @@ export class SqliteStore implements Store {
   #traceSeq = 0;
   #queueSeq = 0;
 
-  /** `path` is a file path, or ':memory:'. */
-  constructor(path: string) {
+  /**
+   * `path` is a file path, or ':memory:'. `readOnly` opens an existing
+   * database for reading only (e.g. exporting while the app runs): no schema
+   * changes, every write throws.
+   */
+  constructor(path: string, opts: { readOnly?: boolean } = {}) {
+    if (opts.readOnly) {
+      this.#db = new DatabaseSync(path, { readOnly: true });
+      const v = this.#db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as Row | undefined;
+      if (v && Number(v.value) > SCHEMA_VERSION) throw new Error(`database schema ${String(v.value)} is newer than this build (${SCHEMA_VERSION})`);
+      return;
+    }
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.#db = new DatabaseSync(path);
     this.#db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = OFF;');

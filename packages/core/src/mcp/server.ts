@@ -148,6 +148,19 @@ export function spicaMcpTools(rt: Runtime, events: CoreEvent[]): McpTool[] {
       inputSchema: obj({}),
       run: async () => rt.tools.entries().map((e) => ({ name: e.tool.spec.name, source: e.source, irreversible: !!e.tool.irreversible, description: e.tool.spec.description })),
     },
+    {
+      name: 'spica_export_usage_log',
+      description:
+        'Usage log as JSON Lines: a header line (schema, version, filter, counts), then sessions, messages, tool calls, traceable records, relays, project activity and mail. ' +
+        'Optionally only one project and / or a time range (ISO 8601). Model keys, endpoint addresses and key-looking strings are redacted.',
+      inputSchema: obj({ project_id: str, from: str, to: str }),
+      run: async (a) =>
+        rt.exportUsageLog({
+          ...(a.project_id ? { projectId: String(a.project_id) } : {}),
+          ...(a.from ? { from: String(a.from) } : {}),
+          ...(a.to ? { to: String(a.to) } : {}),
+        }),
+    },
     { name: 'spica_export_traces', description: 'Traceable records (JSON Lines).', inputSchema: obj({ session_id: str }), run: (a) => api.exportTraces(a.session_id ? { sessionId: String(a.session_id) } : undefined) },
   ];
 }
