@@ -44,6 +44,15 @@ export type PreviewInfo =
   | { kind: 'markdown' | 'text' | 'html'; name: string; path: string; size: number; text: string; truncated: boolean }
   | { kind: 'unsupported' | 'missing'; name: string; path: string; size: number; message: string };
 
+/** 设置 › 常规 › 网络: what the core uses now (proxy password hidden) and problems, in words. */
+export interface NetworkState {
+  proxy: string | null;
+  noProxy: string[];
+  caFile: string | null;
+  useSystemCa: boolean;
+  problems: string[];
+}
+
 /** 导出使用日志: which project (none = all) and which days (ISO, inclusive; none = from the start / until now). */
 export interface UsageLogRequest {
   projectId?: string;
@@ -75,6 +84,7 @@ export interface DesktopBridge extends SpicaBridge {
   exportUsageLog(req: UsageLogRequest): Promise<UsageLogResult>;
   /** A file of this session (relative paths are in its folder), ready for the right panel. */
   preview(sessionId: string | null, path: string): Promise<PreviewInfo>;
+  network(): Promise<NetworkState | null>;
   /** Plugin pages (views/<id>.json of enabled plugins). */
   pluginViews: {
     list(): Promise<PluginView[]>;

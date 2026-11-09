@@ -517,6 +517,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               exportUsageLog={bridge.exportUsageLog}
               showInFolder={bridge.showInFolder}
               mailModel={mailModelLabel}
+              networkState={bridge.network}
+              pickFiles={bridge.pickFiles}
             />
           ) : view === 'plugin' ? (
             openPluginView ? (

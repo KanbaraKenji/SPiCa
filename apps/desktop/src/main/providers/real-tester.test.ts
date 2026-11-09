@@ -35,8 +35,12 @@ describe('real connection tester', () => {
   // The app probes through the backend process; here the core runs in the test process.
   const test = createRealTester((config, model, timeoutMs) => probeProvider(createProvider(config), { model, timeoutMs }));
 
-  it('says the key is wrong on 401', async () => {
-    expect(await test(draft('made-up'), undefined)).toEqual({ ok: false, message: '密钥不对或已失效：请检查「API Key」。' });
+  it('says the key is wrong on 401 (the core cause first, then which field to check)', async () => {
+    const r = await test(draft('made-up'), undefined);
+    expect(r.ok).toBe(false);
+    expect(r.message).toMatch(/^调模型失败：.*401/);
+    expect(r.message.endsWith('请检查「API Key」。')).toBe(true);
+    expect(r.message).not.toContain('密钥不对或已失效：');
   });
 
   it('passes when the model answers', async () => {

@@ -35,9 +35,11 @@ export interface SettingsViewProps {
   exportUsageLog: GeneralProps['exportUsageLog'];
   showInFolder: GeneralProps['showInFolder'];
   mailModel?: string;
+  networkState?: GeneralProps['networkState'];
+  pickFiles?: GeneralProps['pickFiles'];
 }
 
-export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel }: SettingsViewProps) {
+export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles }: SettingsViewProps) {
   const { settings } = useShell(shell);
   return (
     <div className="settings">
@@ -70,6 +72,8 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
               exportUsageLog={exportUsageLog}
               showInFolder={showInFolder}
               {...(mailModel ? { mailModel } : {})}
+              {...(networkState ? { networkState } : {})}
+              {...(pickFiles ? { pickFiles } : {})}
             />
           ) : tab === 'appearance' ? (
             <Appearance settings={settings} activeSkin={shell.activeSkin()} onChange={(p) => shell.update(p)} />

@@ -1,8 +1,8 @@
 // Settings > 常规: mail sorting (on / off, how often, what to ignore), the
 // folder workflow files are read from, and exporting the usage log.
 import { useCallback, useEffect, useState } from 'react';
-import { MAIL_INTERVALS, type MailPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
-import type { UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
+import { DEFAULT_NETWORK, MAIL_INTERVALS, type MailPrefs, type NetworkPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
+import type { NetworkState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { ConfirmDialog } from '../ui/Dialog';
@@ -27,7 +27,112 @@ export interface GeneralProps {
   now?: Date;
   /** The model mail goes to for sorting, in words (e.g. 「DeepSeek · deepseek-chat」); empty when none is set. */
   mailModel?: string;
+  /** What the core uses for the network now; absent: the status line is left out. */
+  networkState?: () => Promise<NetworkState | null>;
+  /** Windows' file picker (for the certificate file). */
+  pickFiles?: (title?: string) => Promise<string[]>;
 }
+
+/** 网络: proxy, hosts that skip it, an extra certificate file, Windows' certificates. */
+function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) {
+  const saved = settings.network ?? DEFAULT_NETWORK;
+  const [proxy, setProxy] = useState(saved.proxy);
+  const [noProxy, setNoProxy] = useState(saved.noProxy);
+  const [state, setState] = useState<NetworkState | null>(null);
+  const changed = proxy.trim() !== saved.proxy || noProxy.trim() !== saved.noProxy;
+  const save = (patch: Partial<NetworkPrefs>) => onChange({ network: { ...saved, ...patch } });
+  // What the core uses now; read again a moment after a change (it applies on the next request).
+  const key = JSON.stringify(saved);
+  useEffect(() => {
+    if (!networkState) return;
+    let alive = true;
+    const t = setTimeout(() => {
+      void networkState()
+        .then((s) => alive && setState(s))
+        .catch(() => undefined);
+    }, 400);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [networkState, key]);
+  return (
+    <div className="settings-group">
+      <h3 className="settings-subheading">网络</h3>
+      <p className="settings-hint">公司网络要经代理上网、或者会检查加密连接时，在这里填。改了下一次请求就生效，不用重启。</p>
+      <div className="net-grid">
+        <label className="form-field">
+          <span className="field-label">代理地址</span>
+          <input className="input" spellCheck={false} value={proxy} onChange={(e) => setProxy(e.target.value)} aria-describedby="net-proxy-hint" />
+          <span className="settings-hint" id="net-proxy-hint">
+            比如 http://proxy.example.com:8080。留空就用电脑上已有的代理设置（环境变量）。
+          </span>
+        </label>
+        <label className="form-field">
+          <span className="field-label">不走代理的地址</span>
+          <input className="input" spellCheck={false} value={noProxy} onChange={(e) => setNoProxy(e.target.value)} aria-describedby="net-noproxy-hint" />
+          <span className="settings-hint" id="net-noproxy-hint">
+            用逗号隔开，比如 localhost, 10.0.0.0/8, .corp.example.com
+          </span>
+        </label>
+      </div>
+      <div className="rule-actions">
+        <button type="button" className="btn" disabled={!changed} onClick={() => save({ proxy: proxy.trim(), noProxy: noProxy.trim() })}>
+          保存代理
+        </button>
+      </div>
+      <div className="setting-row net-ca">
+        <div className="setting-text">
+          <span className="setting-title">额外信任的证书</span>
+          <span className="settings-hint path-text" title={saved.caFile}>
+            {saved.caFile || '没有'}
+          </span>
+        </div>
+        <div className="row-buttons">
+          {pickFiles ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() =>
+                void pickFiles('选择证书文件（.pem / .crt）').then((files) => {
+                  if (files[0]) save({ caFile: files[0] });
+                })
+              }
+            >
+              选择文件
+            </button>
+          ) : null}
+          {saved.caFile ? (
+            <button type="button" className="btn" onClick={() => save({ caFile: '' })}>
+              不用了
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="setting-row">
+        <div className="setting-text">
+          <span className="setting-title">使用 Windows 的证书</span>
+          <span className="settings-hint">公司的证书一般已经装在 Windows 里，打开它就能连上。</span>
+        </div>
+        <Switch on={saved.useSystemCa} label="使用 Windows 的证书" onChange={(useSystemCa) => save({ useSystemCa })} />
+      </div>
+      {state ? (
+        <p className="settings-hint net-now">
+          现在：{state.proxy ? `经代理 ${state.proxy}` : '不经代理'}
+          {state.noProxy.length ? ` · ${state.noProxy.length} 个地址不走代理` : ''}
+          {state.caFile ? ' · 加了证书文件' : ''}
+          {state.useSystemCa ? ' · 用 Windows 的证书' : ''}
+        </p>
+      ) : null}
+      {state?.problems.map((p) => (
+        <p key={p} className="provider-result is-bad plugin-note">
+          {p}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 
 type Range = 'all' | 'today' | 'week' | 'month';
 const RANGES: [Range, string][] = [
@@ -281,6 +386,7 @@ export function General(props: GeneralProps) {
       ) : null}
       <IgnoreRules key={JSON.stringify(mail.ignore)} mail={mail} onSave={(ignore) => setMail({ ignore })} />
       <Workflows {...props} />
+      <Network {...props} />
       <UsageLog {...props} />
     </section>
   );

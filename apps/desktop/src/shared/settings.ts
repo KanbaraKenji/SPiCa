@@ -10,6 +10,28 @@ export interface PanelPrefs {
   right: boolean;
 }
 
+/** 设置 › 常规 › 网络. Empty proxy = whatever the environment says (HTTPS_PROXY...). */
+export interface NetworkPrefs {
+  proxy: string;
+  /** Host names that skip the proxy, comma separated as typed. */
+  noProxy: string;
+  /** PEM file with extra root certificates (a company's TLS inspection); empty = none. */
+  caFile: string;
+  /** Also trust Windows' certificate store (usually holds the company CA). */
+  useSystemCa: boolean;
+}
+
+export const DEFAULT_NETWORK: NetworkPrefs = { proxy: '', noProxy: '', caFile: '', useSystemCa: true };
+
+/** What the core's configure({ network }) gets. */
+export function networkForCore(n: NetworkPrefs): { proxy?: { url: string; noProxy: string[] }; caFile: string | null; useSystemCa: boolean } {
+  const noProxy = n.noProxy
+    .split(/[,，;\s]+/)
+    .map((h) => h.trim())
+    .filter(Boolean);
+  return { ...(n.proxy.trim() ? { proxy: { url: n.proxy.trim(), noProxy } } : {}), caFile: n.caFile.trim() || null, useSystemCa: n.useSystemCa };
+}
+
 /** Widths the user dragged the side panels to (CSS px). */
 export interface PanelWidths {
   left: number;
@@ -66,6 +88,7 @@ export interface ShellSettings {
   mailSeen: Record<string, string>;
   /** Projects pinned to the top of the sidebar (project ids, in the order they were pinned). */
   pinnedProjects: string[];
+  network: NetworkPrefs;
 }
 
 export const DEFAULT_SETTINGS: ShellSettings = {
@@ -82,6 +105,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   mail: { enabled: false, consentedAt: null, intervalMinutes: 5, ignore: { from: [], subject: [] } },
   workflowsDir: '',
   pinnedProjects: [],
+  network: DEFAULT_NETWORK,
   mailSeen: {},
 };
 
@@ -163,7 +187,15 @@ export function sanitizeSettings(value: unknown): ShellSettings {
     left: clampPanelWidth('left', typeof w.left === 'number' ? w.left : PANEL_LIMITS.left.initial),
     right: clampPanelWidth('right', typeof w.right === 'number' ? w.right : PANEL_LIMITS.right.initial),
   };
-  return { skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, mailSeen, pinnedProjects };
+  const nw = v.network && typeof v.network === 'object' ? (v.network as Record<string, unknown>) : {};
+  const text = (x: unknown, max: number) => (typeof x === 'string' ? x.trim().slice(0, max) : '');
+  const network: NetworkPrefs = {
+    proxy: text(nw.proxy, 500),
+    noProxy: text(nw.noProxy, 2000),
+    caFile: text(nw.caFile, 500),
+    useSystemCa: typeof nw.useSystemCa === 'boolean' ? nw.useSystemCa : true,
+  };
+  return { network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, mailSeen, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {
