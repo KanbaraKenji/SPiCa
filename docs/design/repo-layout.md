@@ -1,0 +1,85 @@
+# 仓库布局与约定
+
+> 适用范围：Spica 仓库的目录、工具链和全仓约定。新增包、新增脚本、新增子进程前先看「约定」一节。
+
+## 目录
+
+```
+apps/desktop/            Electron 壳：main（主进程）、preload（桥）、renderer（界面）
+  src/main/              主进程。窗口、IPC、以后的本机能力都从这里出
+  src/preload/           唯一的桥：把 window.spica 暴露给界面，类型见 @spica/protocol
+  src/renderer/          界面（React）。mark/ 下是花标几何与组件
+packages/protocol/       @spica/protocol：后端接口与事件的类型定义（接口先行的「合同」）
+packages/core/           @spica/core：Agent 内核（归「Agent 内核」话题）
+plugins/                 官方插件，一个插件一个文件夹
+scripts/sensitive-words/ 敏感词扫描（脚本 + 示例词表 + 测试）
+docs/design/             中文设计文档
+docs/screenshots/        给人看的截图（skeleton.png 等）
+.github/workflows/       CI
+```
+
+根目录文件：`package.json`（workspaces 和统一脚本）、`tsconfig.base.json`（所有包继承）、`eslint.config.mjs`、`vitest.config.mts`、`.env.example`、`LICENSE`、`NOTICE`。
+
+不进仓库（`.gitignore`）：维护者的工作笔记（PROMPT.md、LEDGER.md、ledger-*、scripts/dev/open-subsession.ps1）、`.idea/`、`.venv/`、`.env.local`，以及 `branding/`（品牌资产待「品牌字标」话题换成 Spica 字标、重写文档后再进仓，届时放 `apps/desktop/resources/branding/`）。
+
+## 选择与理由
+
+| 选择 | 理由 |
+|---|---|
+| Electron + Vite + React + TypeScript | Electron 自带 Node，插件的 Node 类 MCP server 直接用宿主的 Node，用户不用装任何东西；插件作者用同一套 TS/React 写界面视图和代码钩子。 |
+| npm workspaces，不用 pnpm | Node 自带 npm，clone 后 `npm install` 即可，不要求另装包管理器。 |
+| electron-vite 6 | 只当「胶水」：一条命令同时构建 main / preload / renderer 并热更新。可替换，不是架构决定。 |
+| TypeScript 6.0.3（不是 7） | typescript-eslint 目前只支持到 TS 6.0；等它支持 7 再升。 |
+| ESLint 10 flat 配置 + typescript-eslint | 业界默认；全仓一份配置，包里不另配。 |
+| Vitest 5 | 和 Vite 同源，TS 直接跑；全仓一份配置，测试文件与源码放一起（`*.test.ts`）。 |
+| 工作区包「源码直出」 | `@spica/*` 的 `main` 直接指向 `src/index.ts`，不单独编译；桌面端构建时整个打包进去。少一层构建步骤，改了马上生效。 |
+| 工作区包写在 devDependencies | electron-vite 默认把 `dependencies` 当外部依赖、运行时去 node_modules 找；`@spica/*` 是 TS 源码，必须打包进去，所以放 devDependencies。真正运行时要的第三方库才放 `dependencies`。 |
+| 界面只通过 preload 桥调后端 | renderer 开 sandbox + contextIsolation，不能直接碰 Node；所有能力都是后端接口，界面只是外壳，和「接口先行」一致。 |
+| 花标用代码现画 | 几何（瓣形、40° 间隔、长瓣 0/120/240°、轴半径 4.5、放大 1.15、花心 (32,37)）集中在 `mark/geometry.ts`，有测试锁住与参考 SVG 一致；短瓣和轴用 `currentColor`，长瓣用 `--spica-accent`，系统明暗、以后换皮肤都不用新图。 |
+| Electron 45 | 当前稳定版。注意它不再在 `npm install` 时下载本体，第一次 `npm run dev` 会自动下载（约 100 MB），之后不再下。 |
+
+## 加一个新包
+
+1. 建文件夹：内部库放 `packages/<name>/`，官方插件放 `plugins/<name>/`，应用放 `apps/<name>/`。
+2. `package.json`：`"name": "@spica/<name>"`（插件用 `@spica/plugin-<name>`）、`"private": true`、`"type": "module"`、`"license": "Apache-2.0"`、`main`/`types` 指向 `./src/index.ts`、`"scripts": { "typecheck": "tsc -p tsconfig.json" }`。
+3. `tsconfig.json`：`"extends": "../../tsconfig.base.json"`，`include: ["src"]`；用 Node API 的加 `"types": ["node"]`。
+4. 写一个英文 `README.md`：它做什么、现在到哪一步。
+5. 别的包要用它：在使用方的 `devDependencies` 里加 `"@spica/<name>": "*"`，然后在根目录 `npm install`。
+6. 不用改根配置：`npm run typecheck` 会自动跑到新包，`npm test` 和 `npm run lint` 本来就覆盖全仓。
+
+## 约定
+
+- **不弹控制台窗口**：任何子进程（`spawn` / `execFile` / `exec` / `fork`）一律带 `windowsHide: true`；不用 `shell: true`，不直接起 `.cmd` / `.bat`。Node 类子进程用宿主自带的 Node：`process.execPath` + 环境变量 `ELECTRON_RUN_AS_NODE=1`。打包产物是 GUI 程序，不带控制台。
+- **不需要管理员权限**：打包走 electron-builder 的 NSIS per-user 安装（`perMachine: false`，装到用户目录）或便携版；不写 HKLM、不装服务、不依赖系统预装组件。现阶段还不出包。
+- **模型 key 永远不进仓库**：本机配置写在根目录 `.env.local`（已忽略），变量名见 `.env.example`：`SPICA_OPENAI_BASE_URL`、`SPICA_OPENAI_API_KEY`、`SPICA_ANTHROPIC_API_KEY`。
+- **语言**：README、代码注释、提交信息用英文；`docs/design/` 下的设计文档用中文。
+- **命名**：工作区包 `@spica/<name>`，全部 `private: true`，是否发布以后再定。应用默认名 Spica，以后可自定义。
+- **不装全局东西**：所有工具都是仓库内的 devDependencies，通过 `npm run` 调用。
+- **版本写死**：依赖版本写确切版本号，提交 `package-lock.json`；CI 用 `npm ci`。
+- **示例中立**：示例、文档、测试数据只用通用或虚构场景，不出现任何公司或行业专属内容。敏感词扫描兜底。
+
+## 敏感词扫描
+
+- 脚本：`scripts/sensitive-words/scan.mjs`，纯 Node，无依赖；`npm run scan:sensitive`。
+- 扫哪些文件：git 跟踪的文件和未被忽略的新文件；跳过二进制文件和词表文件本身。
+- 词表：仓库只带 `words.example.txt`（通用示例词），永远参与扫描。私有仓追加自己的词表，三种方式任选：
+  - 环境变量 `SPICA_SENSITIVE_WORDS`：词表文件路径，多个用 `;`（Windows）分隔；
+  - 命令行 `--words <路径>`，可重复；
+  - CI 里设仓库 secret `SPICA_SENSITIVE_WORDS_LIST`，内容就是词表正文，workflow 会写成临时文件再扫。
+- 词表格式：一行一个词，`#` 开头是注释，不区分大小写，按子串匹配。
+- 命中：打印 `文件:行号` 和「第几个词表的第几行」，CI 失败；**不回显词本身**，免得私有词表漏进 CI 日志。
+
+## 开发开关
+
+- `SPICA_THEME=dark|light`：强制明暗，不跟系统。
+- `SPICA_CAPTURE=<文件.png>`：开窗渲染一次，存截图后退出。`docs/screenshots/skeleton.png` 就是这样生成的：
+
+  ```powershell
+  $env:SPICA_THEME='dark'; $env:SPICA_CAPTURE="$PWD\docs\screenshots\skeleton.png"; npm run dev
+  ```
+
+## 现在故意没做的
+
+- 窗口和任务栏图标：等品牌资产进仓后再接。
+- 打包（electron-builder 配置、安装包、自动更新）：只定了 per-user 原则。
+- 三栏布局、对话区、开机动画：以后另开话题。
