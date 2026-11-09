@@ -21,6 +21,11 @@ const APP_NAME = 'Spica';
 /** Title bar height in CSS px at 100% zoom; must match `--spica-titlebar-h` in the renderer. */
 const TITLEBAR_HEIGHT = 40;
 
+/** Native caption buttons stop one CSS px short, so the title bar's bottom line runs under them too. */
+function overlayHeight(zoom: number): number {
+  return Math.floor((TITLEBAR_HEIGHT - 1) * zoom);
+}
+
 // Dev-only switches, used by scripts and screenshots:
 //   SPICA_THEME=dark|light   force the color scheme instead of following the system
 //   SPICA_CAPTURE=<file.png> render the window once, save a PNG and quit
@@ -124,7 +129,7 @@ function syncNativeChrome(win: BrowserWindow, s: ShellSettings): void {
   const c = chromeColors(s);
   win.setBackgroundColor(c.bg);
   if (process.platform === 'win32') {
-    win.setTitleBarOverlay({ color: c.chrome, symbolColor: c.ink, height: Math.round(TITLEBAR_HEIGHT * s.zoom) });
+    win.setTitleBarOverlay({ color: c.chrome, symbolColor: c.ink, height: overlayHeight(s.zoom) });
   }
 }
 
@@ -156,7 +161,7 @@ function createMainWindow(): BrowserWindow {
     show: false,
     backgroundColor: c.bg,
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: c.chrome, symbolColor: c.ink, height: Math.round(TITLEBAR_HEIGHT * s.zoom) },
+    titleBarOverlay: { color: c.chrome, symbolColor: c.ink, height: overlayHeight(s.zoom) },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,

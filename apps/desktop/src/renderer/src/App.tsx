@@ -10,7 +10,7 @@ import { DetailPanel } from './shell/DetailPanel';
 import { Conversation, type ConversationActions } from './chat/Conversation';
 import { SettingsView, type SettingsTab } from './settings/SettingsView';
 import { Icon } from './ui/Icon';
-import { SpicaMark } from '@spica/brand/react';
+import { SpicaBanner, SpicaMark } from '@spica/brand/react';
 
 export interface AppProps {
   bridge: DesktopBridge;
@@ -118,17 +118,51 @@ export function App({ bridge, shell, agent }: AppProps) {
   const rightShown = layout.right !== 'hidden';
   const title = view === 'settings' ? '设置' : (session?.title ?? '');
 
+  const sidebarToggle = (
+    <button type="button" className={leftShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('left')} aria-label={leftShown ? '收起侧栏' : '展开侧栏'} aria-pressed={leftShown} title="侧栏（Ctrl+B）">
+      <Icon name="sidebar" />
+    </button>
+  );
+
+  // Frame (like Claude Desktop): the sidebar runs the full height of the window
+  // with the brand and its own toggle at the top; the title bar covers only the
+  // main pane and the detail panel.
   return (
     <div className="app" data-left={layout.left} data-right={view === 'chat' ? layout.right : 'hidden'}>
-      <header className="titlebar">
-        <div className="titlebar-left">
-          <span className="titlebar-brand" aria-hidden>
-            <SpicaMark size={18} />
-          </span>
-          <button type="button" className={leftShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('left')} aria-label={leftShown ? '收起侧栏' : '展开侧栏'} aria-pressed={leftShown} title="侧栏（Ctrl+B）">
-            <Icon name="sidebar" />
-          </button>
+      {leftShown ? (
+        <div className={`panel panel-left is-${layout.left}`}>
+          <div className="sidebar-head">
+            <SpicaBanner height={20} className="sidebar-brand" />
+            {sidebarToggle}
+          </div>
+          <Sidebar
+            sessions={sessions}
+            activeId={state.activeId}
+            onOpen={openSession}
+            onNewChat={() => {
+              setView('chat');
+              setFloating(null);
+              void agent.newChat();
+            }}
+            onSettings={() => {
+              setView((v) => (v === 'settings' ? 'chat' : 'settings'));
+              setFloating(null);
+            }}
+            settingsOpen={view === 'settings'}
+          />
         </div>
+      ) : null}
+
+      <div className="column">
+      <header className="titlebar">
+        {layout.left === 'docked' ? null : (
+          <div className="titlebar-left">
+            <span className="titlebar-brand" aria-hidden>
+              <SpicaMark size={18} />
+            </span>
+            {sidebarToggle}
+          </div>
+        )}
         <div className="titlebar-title">
           {view === 'chat' && parent ? (
             <>
@@ -152,26 +186,6 @@ export function App({ bridge, shell, agent }: AppProps) {
       </header>
 
       <div className="body">
-        {leftShown ? (
-          <div className={`panel panel-left is-${layout.left}`}>
-            <Sidebar
-              sessions={sessions}
-              activeId={state.activeId}
-              onOpen={openSession}
-              onNewChat={() => {
-                setView('chat');
-                setFloating(null);
-                void agent.newChat();
-              }}
-              onSettings={() => {
-                setView((v) => (v === 'settings' ? 'chat' : 'settings'));
-                setFloating(null);
-              }}
-              settingsOpen={view === 'settings'}
-            />
-          </div>
-        ) : null}
-
         <main className="main">
           {view === 'settings' ? (
             <SettingsView shell={shell} providers={bridge.providers} tab={settingsTab} onTab={setSettingsTab} />
@@ -214,8 +228,11 @@ export function App({ bridge, shell, agent }: AppProps) {
           </div>
         ) : null}
 
-        {floating ? <div className="scrim scrim-panel" onMouseDown={() => setFloating(null)} aria-hidden /> : null}
+        {floating === 'right' ? <div className="scrim scrim-panel" onMouseDown={() => setFloating(null)} aria-hidden /> : null}
       </div>
+      </div>
+
+      {floating === 'left' ? <div className="scrim scrim-panel scrim-app" onMouseDown={() => setFloating(null)} aria-hidden /> : null}
     </div>
   );
 }

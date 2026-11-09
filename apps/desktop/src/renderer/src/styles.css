@@ -103,10 +103,36 @@ a:hover {
 /* ---------- App frame ---------- */
 
 .app {
+  position: relative;
   height: 100%;
   display: flex;
-  flex-direction: column;
   background: var(--spica-chrome);
+}
+
+/* Main pane + detail panel, under the title bar. */
+.column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-head {
+  height: var(--spica-titlebar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px 0 14px;
+  -webkit-app-region: drag;
+}
+
+.sidebar-head button {
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-brand {
+  color: var(--spica-ink);
 }
 
 .titlebar {
@@ -115,10 +141,11 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-left: 8px;
+  padding-left: 14px;
   /* Leave room for the native caption buttons (Window Controls Overlay). */
   padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px);
   background: var(--spica-chrome);
+  border-bottom: 1px solid var(--spica-border);
   -webkit-app-region: drag;
   min-width: 0;
 }
@@ -197,11 +224,12 @@ a:hover {
 
 .panel-left {
   width: 264px;
+  flex-direction: column;
+  border-right: 1px solid var(--spica-border);
 }
 
 .panel-right {
   width: 300px;
-  border-top: 1px solid var(--spica-border);
 }
 
 .panel.is-floating {
@@ -227,6 +255,16 @@ a:hover {
   background: var(--spica-scrim);
 }
 
+/* A floating sidebar covers the title bar too, so its scrim does as well
+   (the native caption buttons stay usable on top). */
+.scrim-app {
+  z-index: 25;
+}
+
+.panel-left.is-floating {
+  z-index: 30;
+}
+
 .main {
   flex: 1;
   min-width: 0;
@@ -234,16 +272,11 @@ a:hover {
   display: flex;
   flex-direction: column;
   background: var(--spica-bg);
-  border-top: 1px solid var(--spica-border);
 }
 
 /* Frame lines: one straight line under the title bar from the sidebar's
    edge to the window's right edge (over the main pane and the detail panel),
    and straight full-height lines between the panes. Square corners. */
-.app[data-left='docked'] .main {
-  border-left: 1px solid var(--spica-border);
-}
-
 .app[data-right='docked'] .main {
   border-right: 1px solid var(--spica-border);
 }
