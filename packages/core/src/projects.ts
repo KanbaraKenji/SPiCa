@@ -2,7 +2,7 @@
 // templates (top-level agent, project manager, later persistent members).
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AgentRole, WorkflowDef } from './types.ts';
+import type { AgentRole, ProjectActivityKind, ProjectLogEntry, WorkflowDef } from './types.ts';
 
 const BOM_RE = new RegExp(`^${String.fromCharCode(0xfeff)}`);
 
@@ -93,6 +93,27 @@ export function loadWorkflows(dir: string | undefined, extra: unknown[] = []): {
   }
   extra.forEach((w, i) => add(w, `option #${i + 1}`));
   return { workflows, errors };
+}
+
+const LEGACY_KIND: Record<ProjectActivityKind, ProjectLogEntry['kind']> = {
+  'file.write': 'file_write',
+  'file.edit': 'file_edit',
+  'file.delete': 'note',
+  command: 'command',
+  'child.spawn': 'note',
+  'child.report': 'note',
+  decision: 'decision',
+  stage: 'stage',
+  note: 'note',
+};
+
+/** Complete a project log entry with the deprecated `kind` / `path` fields. */
+export function projectLogEntry(e: Omit<ProjectLogEntry, 'kind' | 'path'>): ProjectLogEntry {
+  return {
+    ...e,
+    kind: LEGACY_KIND[e.action],
+    ...(e.target && e.action.startsWith('file.') ? { path: e.target } : {}),
+  };
 }
 
 /** A reusable session setup. Persistent members will be templates plus a memory interface. */

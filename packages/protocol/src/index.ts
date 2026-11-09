@@ -463,13 +463,34 @@ export interface WorkObject {
 }
 
 /** A key action inside a project, kept for the top-level agent (system-level record). */
+export type ProjectActivityKind =
+  | 'file.write'
+  | 'file.edit'
+  | 'file.delete'
+  | 'command'
+  | 'child.spawn'
+  | 'child.report'
+  | 'decision'
+  | 'stage'
+  | 'note';
+
 export interface ProjectLogEntry {
   id: string;
   projectId: string;
+  /** Session that did it. */
   sessionId: string;
   at: string;
-  kind: 'file_write' | 'file_edit' | 'command' | 'stage' | 'decision' | 'note';
+  /** What happened. UIs build their own (localized) text from action + target + detail. */
+  action: ProjectActivityKind;
+  /** File path relative to the project folder, a command line, a sub-agent's title, or a stage id. */
+  target?: string;
+  /** Extra information: a sub-agent id, the first part of a report, a stage note, a decision. */
+  detail?: string;
+  /** English one-liner written for the model (list_projects, open_project); do not show it as UI text. */
   summary: string;
+  /** @deprecated Use `action`. Kept until the desktop shell has switched. */
+  kind: 'file_write' | 'file_edit' | 'command' | 'stage' | 'decision' | 'note';
+  /** @deprecated Use `target`. Set for file actions. */
   path?: string;
 }
 

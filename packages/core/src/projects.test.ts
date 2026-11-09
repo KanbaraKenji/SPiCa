@@ -132,7 +132,7 @@ describe('projects', () => {
     expect(() => rt.setStage(p.id, 'launch', undefined, p.managerSessionId)).toThrow(/unknown stage "launch"/);
     const u = rt.setStage(p.id, 'pilot', 'samples approved', p.managerSessionId);
     expect(u.stage).toBe('pilot');
-    expect(rt.getProject(p.id)!.recentLog[0]).toMatchObject({ kind: 'stage', summary: 'Stage changed to "Pilot run": samples approved' });
+    expect(rt.getProject(p.id)!.recentLog[0]).toMatchObject({ action: 'stage', kind: 'stage', target: 'pilot', detail: 'samples approved', summary: 'Stage changed to "Pilot run": samples approved' });
     const topNotes = rt.top().messages().filter((m) => m.kind === 'relay');
     expect(topNotes[0]!.meta).toMatchObject({ kind: 'decision', text: 'Project "P": Stage changed to "Pilot run": samples approved' });
   });
@@ -157,12 +157,15 @@ describe('projects', () => {
     const p = rt.createProject({ name: 'P' });
     const worker = rt.createSession({ parentId: p.managerSessionId, title: 'Writer' });
     await worker.send('write the spec', { author: 'parent' }).done;
-    expect(rt.getProject(p.id)!.recentLog[0]).toMatchObject({ kind: 'file_write', path: 'spec.md', sessionId: worker.id, summary: 'Wrote spec.md' });
-    expect(activity).toHaveLength(1);
+    const log = rt.getProject(p.id)!.recentLog;
+    expect(log.find((e) => e.action === 'file.write')).toMatchObject({ target: 'spec.md', sessionId: worker.id, kind: 'file_write', path: 'spec.md' });
+    expect(log.find((e) => e.action === 'child.spawn')).toMatchObject({ target: 'Writer', detail: worker.id, sessionId: p.managerSessionId });
+    expect(log.find((e) => e.action === 'child.report')).toMatchObject({ target: 'Writer', detail: 'written' });
+    expect(activity).toHaveLength(3);
     // sessions outside projects leave no project log
     gw.enqueue({ toolCalls: [{ id: 'w2', name: 'write_file', args: { path: 'other.md', content: 'x' } }] }, { text: 'ok' });
     await rt.createSession().send('write').done;
-    expect(activity).toHaveLength(1);
+    expect(activity).toHaveLength(3);
   });
 
   it('projects survive a restart', async () => {
