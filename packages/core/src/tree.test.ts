@@ -115,6 +115,25 @@ describe('session tree', () => {
     expect(relays.filter((m) => m.meta?.decision === true)).toHaveLength(2);
   });
 
+  it('a child that finished before wait_agents is not reported twice', async () => {
+    let parentCalls = 0;
+    gw.onRequest((r) => {
+      if (has(r, 'LEAD')) {
+        parentCalls++;
+        if (parentCalls === 1) return { toolCalls: [{ id: 's1', name: 'spawn_agent', args: { title: 'Quick', task: 'QUICK-TASK' } }] };
+        if (parentCalls === 2) return { toolCalls: [{ id: 'w1', name: 'wait_agents', args: {} }], delayMs: 150 };
+        return { text: 'lead done' };
+      }
+      return { text: 'QUICK-REPORT-TEXT' };
+    });
+    const rt = makeRuntime(gw);
+    const lead = rt.createSession({ role: 'manager' });
+    await lead.send('LEAD').done;
+    const all = JSON.stringify(lead.messages());
+    expect(all.split('QUICK-REPORT-TEXT')).toHaveLength(2); // exactly once
+    expect(all).toContain('report already in your context');
+  });
+
   it('message_agent only reaches own children', async () => {
     gw.onRequest((r) => {
       if (has(r, 'BOSS') && !has(r, 'Sent;') && !has(r, 'No sub-agent')) {
