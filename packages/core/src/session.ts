@@ -687,10 +687,11 @@ export class Session {
     const ids: string[] = [];
     for (const { message } of items) {
       const m = this.#append(message);
+      if (m.kind !== 'steer') continue; // relay / report notes are not user steers
       ids.push(m.id);
-      if (m.kind === 'steer') this.#rt.onUserMessage(this, m);
+      this.#rt.onUserMessage(this, m);
     }
-    this.#emit({ type: 'steer.applied', messageIds: ids });
+    if (ids.length > 0) this.#emit({ type: 'steer.applied', messageIds: ids });
   }
 
   // ---------------------------------------------------------------------------

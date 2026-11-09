@@ -113,7 +113,9 @@ export const waitAgentsTool: Tool = {
       clearTimeout(timer);
       const lines = targets.map((t) => {
         const info = t!.info();
-        const report = rt.lastReport(t!.id);
+        const report = rt.reportAlreadyNoted(t!.id)
+          ? '(report already in your context as a note from this sub-agent)'
+          : rt.lastReport(t!.id);
         return `## ${info.title} (${info.id}) — ${info.status}\n${report ?? '(no report yet)'}`;
       });
       const head = outcome === 'done' ? 'All requested sub-agents have finished.' : outcome === 'timeout' ? 'Stopped waiting (timeout); some sub-agents are still working.' : 'Stopped waiting (interrupted).';

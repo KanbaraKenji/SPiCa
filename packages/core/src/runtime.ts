@@ -68,6 +68,8 @@ export class Runtime implements RuntimeInternals {
   readonly #opts: RuntimeOptions;
   readonly #awaited = new Map<string, number>();
   readonly #reports = new Map<string, string>();
+  /** Children whose latest report already reached the parent as a note. */
+  readonly #reportNoted = new Set<string>();
 
   constructor(opts: RuntimeOptions) {
     this.#opts = opts;
@@ -183,12 +185,14 @@ export class Runtime implements RuntimeInternals {
     if (!session.parentId || result.reason !== 'completed') return;
     const report = result.text || '(finished without a written report)';
     this.#reports.set(session.id, report);
+    this.#reportNoted.delete(session.id);
     const parent = this.session(session.parentId);
     if (!parent) return;
     this.store.appendRelay(this.#relayRecord(parent.id, session.id, 'report', report));
     this.events.emit({ sessionId: parent.id, parentChain: parent.parentChain }, { type: 'child.report', childId: session.id, summary: report.slice(0, 500) });
     // A parent blocked in wait_agents gets the report as the tool result instead.
     if ((this.#awaited.get(session.id) ?? 0) > 0) return;
+    this.#reportNoted.add(session.id);
     parent.addNote('report', `[Report from sub-agent "${session.info().title}" (${session.id})]
 ${report}`, {
       author: 'child',
@@ -213,6 +217,11 @@ ${report}`, {
     return () => {
       for (const id of ids) this.#awaited.set(id, Math.max(0, (this.#awaited.get(id) ?? 1) - 1));
     };
+  }
+
+  /** True when the child's latest report was already added to the parent's context as a note. */
+  reportAlreadyNoted(sessionId: string): boolean {
+    return this.#reportNoted.has(sessionId);
   }
 
   lastReport(sessionId: string): string | undefined {
