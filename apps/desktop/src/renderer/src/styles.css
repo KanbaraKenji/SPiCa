@@ -2313,29 +2313,32 @@ button.tree-twisty:hover {
   margin: 8px 0 0;
 }
 
-/* Update / announcement line at the top of the main pane. It floats, so
-   nothing below moves when it appears or goes away. */
+/* Update / announcement / backend line in the title bar's free space.
+   Nothing is covered and nothing below moves when it appears or goes away. */
 .notice-bar {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 35;
-  width: min(760px, calc(100% - 32px));
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(560px, 55%);
+  height: 28px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 6px 6px 14px;
+  gap: 8px;
+  padding: 0 4px 0 12px;
   border-radius: var(--radius-m);
   border: 1px solid var(--spica-border);
   background: var(--spica-raised);
-  box-shadow: var(--spica-shadow);
   font-size: 13px;
+  -webkit-app-region: no-drag;
 }
 
 .notice-bar.is-warning {
-  border-color: var(--spica-warning);
+  border-color: color-mix(in srgb, var(--spica-warning) 60%, var(--spica-border));
   background: var(--spica-warning-soft);
+}
+
+.notice-bar .btn-small {
+  height: 22px;
+  font-size: 12px;
 }
 
 .notice-icon {
@@ -2356,8 +2359,8 @@ button.tree-twisty:hover {
 }
 
 .notice-close {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
 }
 
 .about-hint {

@@ -216,6 +216,16 @@ export function App({ bridge, shell, agent, version = '' }: AppProps) {
             {title}
           </span>
         </div>
+        {/* Updates, announcements and backend recovery live in the title bar's free
+            space: nothing in the window is covered and nothing moves. */}
+        <NoticeBar
+          backend={backendState}
+          onRetryBackend={() => bridge.backend.retry()}
+          update={update}
+          settings={settings}
+          onInstall={installUpdate}
+          onDismissNotice={(nid) => shell.update({ dismissedNotices: [...settings.dismissedNotices, nid] })}
+        />
         <div className="titlebar-right">
           {view === 'chat' ? (
             <button type="button" className={rightShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('right')} aria-label={rightShown ? '收起详情' : '展开详情'} aria-pressed={rightShown} title="详情（Ctrl+Alt+B）">
@@ -254,14 +264,6 @@ export function App({ bridge, shell, agent, version = '' }: AppProps) {
           ) : (
             <div className="conversation" />
           )}
-          <NoticeBar
-            backend={backendState}
-            onRetryBackend={() => bridge.backend.retry()}
-            update={update}
-            settings={settings}
-            onInstall={installUpdate}
-            onDismissNotice={(nid) => shell.update({ dismissedNotices: [...settings.dismissedNotices, nid] })}
-          />
           {state.notice ? (
             <div className="toast" role="alert">
               <span>{state.notice}</span>

@@ -24,22 +24,20 @@
 - 打开时先播品牌包的开机画面（`SpicaSplash`），三栏在它底下同时就绪；会话列表读完就收尾淡出。截图脚本不播。
 - 入口自问（立项书那句）：设置只有左下角一个入口（另外只在「一个模型都没配」时，空对话页给一个「去设置模型」，直达同一页）；新对话只在左侧栏顶部；项目行点名字进项目经理的对话，点前面的箭头只展开收起，两个动作分开、互不误触；子会话的标题栏带「项目 ›」可以一步回到项目。
 
-## 2. IPC 适配层（换真内核只动一个文件）
+## 2. 进程与 IPC
 
 ```
-renderer ──window.spica──► preload ──ipcMain──► main ──AgentBackend──► CoreBackend（@spica/core 的 Runtime）
-   │  (DesktopBridge)                              │                  FakeBackend（截图、测试、没配模型时）
-   └◄────────── spica:agent-event（CoreEvent）◄─────┘
+渲染进程（界面） ──window.spica──► preload ──ipcMain──► 主进程（窗口、设置、监护）
+                                                         │  MessagePort（@spica/core 的 connectBackend）
+                                                         ▼
+                                          内核进程（utilityProcess：Runtime + SQLite + 提取器 + 插件）
 ```
 
-- 合同用 `@spica/protocol`（内核发布）：`AgentApi` 是命令，`CoreEvent` 是事件。外壳自己的东西（设置、开文件）在 `src/shared/bridge.ts` 的 `DesktopBridge` 里，继承 protocol 的 `SpicaBridge`。
-- 主进程 `ipcMain.handle('spica:agent', method, args)` 只放行 `AgentApi` 的 11 个方法名，其余一律拒绝。
-- 后端选择只在 `src/main/backend/index.ts`：`SPICA_BACKEND=fake|core` 强制；不指定时截图脚本用假后端，平常运行一律用真内核。一个模型都没配时，空对话页写「还没有配置模型」并给一个「去设置模型」按钮（直接打开设置的「模型」页）。`AgentBackend = AgentApi + onEvent + dispose + configure`。
-- 真内核 `CoreBackend`：`new Runtime({ store: new SqliteStore(userData/spica.db) })` + `runtime.restore()` + `createAgentApi(runtime)`，事件直接转发 `runtime.events`。会话、历史、等你回答 / 确认的事都在 SQLite 里，正常关闭或强杀后重开都在；跑到一半被打断的会话在对话末尾显示「上次没做完就中断了 [继续]」。
-- 模型从两处来：设置页保存的（见第 6 节），和开发者仓库根 `.env.local` 里的（`SPICA_OPENAI_*` / `SPICA_ANTHROPIC_*`，只在没打包时读，由主进程 `util.parseEnv` 解析成普通对象，不写进 `process.env`、不进日志、不进渲染层；设置页里显示为只读的「开发用模型（.env.local）」）。新会话用「默认」那一个；保存、删除、改默认都立即生效（`runtime.addProvider`），不用重开。
-- 会话默认工作文件夹：`文档\Spica`（第一次用真内核时创建）。
-- 开发期花费上限沿用内核文档：Anthropic 总计 100 USD、单次 2 USD、单轮 1 USD。
-- 假后端 `FakeBackend`：不联网、不碰磁盘；带一套虚构的演示数据（2 个对话、2 个项目、4 个子任务，覆盖空闲 / 思考 / 调工具 / 排队 / 等你回答 / 已完成）；`speed: 0` 时脚本瞬间跑完（测试和截图用）。发消息里带「发送 / 确认」走确认流程，带「问 / 选」走提问流程，其余走「读文件 → 回答 → 建议」。
+- 合同用 `@spica/protocol`：`AgentApi` 是命令，`CoreEvent` 是事件。外壳自己的东西（设置、开文件、更新、插件页）在 `src/shared/bridge.ts` 的 `DesktopBridge`。主进程只放行 `AgentApi` 的方法名。
+- **内核在独立进程里**（`src/backend/entry.ts`，随主进程一起构建成 `out/main/backend.js`）：用内核的 `runUtilityEntry({ modules })`，把 `@spica/extract` 和外壳自己的扩展 `@spica/desktop-host` 在构建时链接进去（打包后没有 node_modules，不能按包名动态加载）。
+- `@spica/desktop-host`（`src/backend/desktop-host.ts`）是外壳的后端扩展：调 `@spica/plugins` 的 `attachBackend`（全进程一个插件管理器，MCP 服务上的插件工具照旧），再挂四个方法：`plugins`（插件页，含共享盘 / 网址来源、检查更新、更新）、`setProviders`（设置页改了模型，不重启就生效）、`createSession`（新的顶层会话用默认模型）；`probeProvider`（测试连接）是内核自带的。
+- **监护**（`src/main/backend/process.ts`）：内核进程意外退出，按 1、2、5 秒退避重启，1 分钟最多 5 次；重启期间的调用排队等候，窗口标题栏显示「后台正在恢复」；新进程 `restore()` 后界面重新拉会话，跑到一半的回答显示「（中断）」和「继续」。超过次数显示「后台反复出错，已经停下 [重试]」。正常退出发 `shutdown`，5 秒不退就强杀。
+- 截图和测试用假后端（`src/main/backend/fake.ts`），`SPICA_BACKEND=fake|core` 可强制。
 
 ## 3. 事件到界面的映射
 
@@ -85,7 +83,7 @@ renderer ──window.spica──► preload ──ipcMain──► main ──A
 - 设置分两页：外观（皮肤、缩放）、模型。
 - 模型存 `%APPDATA%\Spica\providers.json`。三种表单：OpenAI 兼容（接口地址、API Key、模型）、Anthropic（API Key、接口地址可留默认、模型）、WSO2 网关（网关地址、取 token 地址、Client ID、Client Secret、Scope 可选、模型）；三种都有强模型（可空）、同时请求数、每分钟请求数（空 = 不限）。
 - 密钥（API Key / Client Secret）用 Electron `safeStorage`（Windows DPAPI，按当前用户加密，不需要管理员）存密文；主进程从不把密钥发回界面，界面只知道「已保存」。系统不能加密时拒绝保存并说明。
-- 「测试连接」是真的（`main/providers/real-tester.ts`）：先查表单，再用表单里的配置向模型发一次极小的请求（不重试、20 秒超时，什么都不保存），结果用人话说（密钥不对、连不上、找不到模型……）。截图和测试用假测试器，不联网。内核出探针接口（M5）后换成它，只改这一个文件。
+- 「测试连接」走内核的 `probeProvider`（在内核进程里，一次极小请求、不进会话），按错误类别写人话并点出该改表单哪一项（`main/providers/real-tester.ts`）。截图和测试用假测试器，不联网。
 - 默认模型：第一次保存时如果还没有默认就设为默认，已有（包括开发用模型）就不抢；任何一行都能「设为默认」。
 
 ## 7. 第一次用（UX 复查后定的）
@@ -97,7 +95,27 @@ renderer ──window.spica──► preload ──ipcMain──► main ──A
 - 拿不准的 4 处（设置页返回、模型表单高级项、开机画面时长、表单离开提示）做成了点选页，等他说「这版可以了」再给他点。
 - 界面禁区逐条过：无 emoji；无下划线（设置页标签改成填色块）；不能点的都不像按钮（「默认」「插话」是纯文字）；空值是「—」或不显示；术语只在模型表单里用网关管理员给的字段名（API Key、Client ID 等）；同一件事一处（详情不再重复状态）；不闪不跳（窗口缩放、改尺寸时对话贴底）；确认框只写对象（「删除模型「X」？」）。「不让人干等」与开机画面的冲突放进点选页由他定。
 
-## 8. 截图脚本
+## 8. 打包、更新与公告
+
+- **出包**：`npm run dist -w @spica/desktop`（electron-builder，配置 `apps/desktop/electron-builder.yml`），出到 `apps/desktop/release/`：
+  - `Spica-Setup-<版本>.exe`：按用户安装（`perMachine: false`、`allowElevation: false`、`requestedExecutionLevel: asInvoker`），装到 `%LOCALAPPDATA%\Programs\Spica`，卸载信息写在 HKCU，**不需要管理员权限**；
+  - `Spica-Portable-<版本>.exe`：便携版；
+  - `latest.yml`：版本号、安装包文件名和 sha512，给更新用。
+- **更新源**：一个共享盘文件夹或 http(s) 地址，里面放 `latest.yml` 和安装包（就是 `release/` 里那几个文件），公告也放这里（`announcements.json`）。
+  - 默认是空的。公司打包时复制 `deploy.example.json` 为 `deploy.json`（已 .gitignore）填上自己的地址，就成了每台机器的默认值；用户也可以在 设置 › 关于 里改。仓库里只有示例，没有任何公司地址。
+  - 为什么不用 electron-updater：它的 generic 源只认 HTTP，公司常用共享盘。这里自己读 electron-builder 生成的同一份 `latest.yml`，校验 sha512，再静默运行按用户安装的安装包（`--updated /S --force-run`），装完自动打开新版本。
+  - 启动 10 秒后查一次，之后每 4 小时一次；有新版本就先下载校验，标题栏显示「新版本 x 已经下好 [重启并更新]」。便携版只提示「有新版本，请从更新源拿新的便携版」。
+- **公告**：`announcements.json` 形如 `{ "announcements": [ { "id": "…", "text": "…", "level": "info|warning", "link": "https://…", "start": "…", "end": "…" } ] }`。启动 3 秒后取一次、之后每 30 分钟一次；上次取到的存在设置里，下次一打开就先显示（不让人等）。显示在标题栏右侧的空白处，不遮挡、不挤动任何东西；点 ✕ 关掉的不再显示。
+- **子进程不弹窗**：外壳自己起的子进程（更新时运行安装包）一律 `windowsHide: true`；内核和插件的子进程由它们自己保证。
+- **真机走查（2026-11-09）**：
+  1. 出 0.1.0，静默安装 → 装在用户目录、HKCU 有卸载项，全程没要管理员；
+  2. 出 0.1.1 放进临时更新源，加一条公告；
+  3. 打开装好的 0.1.0：3 秒后标题栏出公告，约 18 秒出「新版本 0.1.1 已经下好」；
+  4. 点「重启并更新」→ 程序退出、安装包静默运行、自动打开 0.1.1；设置 › 关于 显示「Spica 0.1.1 / 已经是最新版本」；
+  5. 便携版 0.1.0 对同一源只提示不安装；
+  6. 静默卸载干净。
+
+## 9. 截图脚本
 
 ```powershell
 npm run shots -w @spica/desktop                 # 对话页、设置 › 外观、设置 › 模型 × 浅/深 × 480×360、900×600、1280×800、1920×1080 × 100%、150%，共 48 张
@@ -108,12 +126,12 @@ npm run shots -w @spica/desktop -- main         # 只出某几页，逗号分隔
 - 在真窗口里截（真实字体、DPI、布局），不读不写你自己的设置（用临时设置目录），全程用假后端，结果稳定可比。超过 2 分钟自动退出。
 - 开发开关：`SPICA_THEME=dark|light`、`SPICA_CAPTURE=<png>`（截一张就退）、`SPICA_SHOTS=<目录>`、`SPICA_USER_DATA=<目录>`（换一个设置目录做手动检查）。
 
-## 9. 测试
+## 10. 测试
 
 - 纯函数：皮肤对比度、设置清洗、缩放档位、三栏收放、事件 → 界面映射（含「流式结果 = 历史重建」）、假后端的流程（确认、提问、插话、中止）。
 - 组件（jsdom）：输入框（Enter 发送、输入法组字时回车不发送、Shift+Enter 换行、运行中有停止）、提问卡 / 确认卡 / 建议卡 / 文件卡 / 工具行折叠、外观设置（换皮肤、新建、改色、非法色值回退、删除要确认、缩放）、侧栏（打开会话、展开收起、项目摘要）。
 
-## 10. 故意没做的事
+## 11. 故意没做的事
 
 - 分区缩放（左栏 / 主窗 / 右栏各自缩放）：立项书写「之后」。
 - 侧栏拖拽改宽度、会话改名 / 删除 / 搜索：没人要，入口先不加（`renameSession` 和 `session.renamed` 已接上，只差入口）。
@@ -123,7 +141,7 @@ npm run shots -w @spica/desktop -- main         # 只出某几页，逗号分隔
 - `body` 默认不可选中（界面像应用不像网页），对话正文、输入框、路径单独打开了选中。
 - 任务栏状态灯、彩蛋：不在三个里程碑里。
 
-## 11. 交接（2026-11-09 更新）
+## 12. 交接（2026-11-09 更新）
 
 **全部已提交、都是绿的**（到 a71dc0c）：U1–U3、外框、UX 复查修正、文件卡 / 回报卡 / 建议卡（含重开后从 meta 重建）、提取器、插件页（设置 › 插件）、项目入口（左栏「项目」+ 新建、项目下挂子 Agent、详情栏项目 / 文件夹打开 / 项目动态）。
 
