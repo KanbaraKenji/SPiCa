@@ -87,7 +87,7 @@ export class ProcessBackend implements AgentBackend {
       });
     });
     child.once('exit', () => this.#exited(child, client));
-    child.postMessage({ type: 'start', config: this.#o.config() }, [port2]);
+    child.postMessage({ type: 'start', config: this.#o.config().core }, [port2]);
     return done;
   }
 
