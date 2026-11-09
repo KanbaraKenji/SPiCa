@@ -116,6 +116,7 @@ export class Session {
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       ...(r.config.templateId ? { templateId: r.config.templateId } : {}),
+      ...(r.config.projectId ? { projectId: r.config.projectId } : {}),
     };
   }
 

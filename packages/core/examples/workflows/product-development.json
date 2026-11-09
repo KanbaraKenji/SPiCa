@@ -1,0 +1,13 @@
+{
+  "id": "product-development",
+  "name": "New product development",
+  "stages": [
+    { "id": "sample", "name": "Sample", "goal": "Build samples that prove the function", "exitCriteria": ["Sample test report", "Customer sign-off"] },
+    { "id": "pilot", "name": "Pilot run", "goal": "Validate the process with a small batch", "exitCriteria": ["Pilot yield report"] },
+    { "id": "mass", "name": "Mass production", "goal": "Stable volume production" }
+  ],
+  "objectLevels": [
+    { "id": "product", "name": "Product" },
+    { "id": "part", "name": "Part", "parent": "product" }
+  ]
+}

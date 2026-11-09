@@ -17,6 +17,7 @@ import { ToolRegistry, type FileExtractor, type Tool } from './tools/types.ts';
 import { Tracer } from './trace.ts';
 import type { AgentRole, ChildNoteMeta, CreateSessionRequest, Message, SessionStatus } from './types.ts';
 import { newId } from './util.ts';
+import { BUILTIN_TEMPLATES, type RoleTemplate } from './projects.ts';
 
 export interface RuntimeOptions {
   providers: Provider[];
@@ -40,6 +41,8 @@ export interface RuntimeOptions {
   hostedWebSearch?: boolean;
   /** Interface language for new sessions (BCP 47). Default zh-CN. */
   locale?: string;
+  /** Role templates in addition to the built-in 'top' and 'project-manager' (same id replaces). */
+  templates?: RoleTemplate[];
 }
 
 /** What sessions need from the runtime. Not part of the public API. */
@@ -128,19 +131,24 @@ export class Runtime implements RuntimeInternals {
     const d = this.#opts.defaults;
     const parent = req.parentId ? this.session(req.parentId) : undefined;
     if (req.parentId && !parent) throw new Error(`unknown parent session: ${req.parentId}`);
+    const tpl = req.templateId ? this.template(req.templateId) : undefined;
+    if (req.templateId && !tpl) throw new Error(`unknown role template: ${req.templateId}`);
     const now = isoNow();
-    const role: AgentRole = req.role ?? (parent ? 'worker' : 'top');
+    const role: AgentRole = req.role ?? tpl?.role ?? (parent ? 'worker' : 'top');
+    const tools = req.tools ?? tpl?.tools ?? parent?.config.tools;
     const config: SessionConfig = {
-      system: req.system ?? d.system ?? DEFAULT_SYSTEM_PROMPT,
-      providerId: req.providerId ?? parent?.config.providerId ?? d.providerId,
-      model: req.model ?? (req.providerId ? undefined : parent?.config.model) ?? d.model,
+      system: req.system ?? tpl?.system ?? d.system ?? DEFAULT_SYSTEM_PROMPT,
+      providerId: req.providerId ?? tpl?.providerId ?? parent?.config.providerId ?? d.providerId,
+      model: req.model ?? tpl?.model ?? (req.providerId || tpl?.providerId ? undefined : parent?.config.model) ?? d.model,
       maxTokens: req.maxTokens ?? d.maxTokens,
       cwd: req.cwd ?? parent?.config.cwd ?? this.#opts.cwd ?? process.cwd(),
       maxTurns: req.maxTurns ?? d.maxTurns ?? 50,
       locale: req.locale ?? parent?.config.locale ?? this.#opts.locale ?? 'zh-CN',
       serverWebSearch: false,
       // A sub-agent gets its parent's tool allow-list unless told otherwise.
-      ...((req.tools ?? parent?.config.tools) ? { tools: req.tools ?? parent?.config.tools } : {}),
+      ...(tools ? { tools } : {}),
+      ...(tpl ? { templateId: tpl.id } : {}),
+      ...((req.projectId ?? parent?.config.projectId) ? { projectId: req.projectId ?? parent?.config.projectId } : {}),
     };
     const provider = this.provider(config.providerId); // fail fast
     config.serverWebSearch = (this.#opts.hostedWebSearch ?? true) && provider.capabilities.serverWebSearch;
@@ -165,6 +173,11 @@ export class Runtime implements RuntimeInternals {
     }
     this.events.emit({ sessionId: s.id, parentChain: s.parentChain }, { type: 'status', status: 'idle' });
     return s;
+  }
+
+  /** A role template by id (deployment templates override the built-in ones). */
+  template(id: string): RoleTemplate | undefined {
+    return (this.#opts.templates ?? []).find((t) => t.id === id) ?? BUILTIN_TEMPLATES.find((t) => t.id === id);
   }
 
   session(id: string): Session | undefined {
