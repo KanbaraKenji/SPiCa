@@ -574,10 +574,12 @@ export class Runtime implements RuntimeInternals {
     if (decision.action === 'deny') return { content: `Blocked: ${decision.reason}`, isError: true };
     let confirmedBy: 'user' | 'view' | undefined;
     if (tool.irreversible || decision.action === 'confirm') {
+      const reason = decision.action === 'confirm' && !decision.byDefault && decision.reason ? decision.reason : 'a plugin view asks to run an irreversible action';
       if (opts.confirmed === true) {
         confirmedBy = 'view'; // the view asked the user itself
+      } else if (opts.confirmed === false) {
+        return { content: reason, isError: true, needsConfirmation: true }; // the caller asks and comes back with confirmed: true
       } else {
-        const reason = decision.action === 'confirm' && !decision.byDefault && decision.reason ? decision.reason : 'a plugin view asks to run an irreversible action';
         const ok = await this.#askView(host, callId, name, input, reason);
         if (!ok) return { content: 'The user declined this action.', isError: true, declined: true };
         confirmedBy = 'user';
