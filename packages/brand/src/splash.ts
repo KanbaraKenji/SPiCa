@@ -2,7 +2,7 @@
  * 开机画面「暗处亮起 · 双星环绕」的时间线（纯函数，不碰 DOM）。
  *
  * 画面是一块 1280 × 720 的舞台（React 组件按窗口等比缩放），花标 + 字标的大横标居中。
- * - 背景：星点从画面中心沿径向向外飘出，每颗星飘完全程固定 6 秒（背景节拍）。
+ * - 背景：星点从画面中心沿径向向外飘出，每颗星飘完全程固定 5 秒（背景节拍）。
  * - 加载中：一蓝一白两颗星在一条倾斜的椭圆轨道上绕花标转，相差半圈；转到前面时大、亮、
  *   盖在花标上，转到后面时小、暗、被花标挡住。双星转一圈的时间锁在背景节拍上（等于或两倍）。
  *   星从前面扫过哪片瓣，哪片亮起再慢慢暗下；字标五个字母随同一节拍起伏。
@@ -18,18 +18,33 @@ export const SPLASH_STAGE = Object.freeze({ width: 1280, height: 720 });
 /** 时间（秒） */
 export const SPLASH_TIMING = Object.freeze({
   /** 背景节拍：每颗背景星从中心飘到画面外的时间 */
-  starfieldPeriod: 6,
+  starfieldPeriod: 5,
   /** 进场：花和字从暗处浮现 */
   appear: [0.2, 1.0] as const,
-  /** 以下相对 ready 那一刻 */
-  merge: 0.9, // 双星螺旋收拢用时
-  bloom: [0.85, 1.15] as const, // 九瓣全亮
-  hop: [0.85, 1.25] as const, // 轴弹一下
-  shock: [0.87, 1.65] as const, // 冲击环
-  sweep: [1.0, 1.7] as const, // 掠字的光
-  hold: 2.6, // 收尾动画结束、开始淡出
+  /** 以下相对双星合于花心那一刻（= ready 之后 accel 秒） */
+  bloom: [-0.05, 0.25] as const, // 九瓣全亮
+  hop: [-0.05, 0.35] as const, // 轴弹一下
+  shock: [-0.03, 0.75] as const, // 冲击环
+  sweep: [0.1, 0.8] as const, // 掠字的光
+  hold: 1.7, // 收尾动画结束、开始淡出
   fadeOut: 0.26,
 });
+
+/**
+ * 收尾加速曲线：ready 之后 accel 秒内，双星和背景星点从平时速度平滑加速（缓入，起步加速度为 0，
+ * 速度连续、没有台阶），双星同时螺旋收拢、在 accel 末合于花心；背景星点再用 starSettle 秒平滑回落到平时速度。
+ */
+export interface SplashFinishCurve {
+  /** 加速时长（秒） */
+  accel: number;
+  /** 合一那一刻双星的转速，是平时的几倍 */
+  orbitPeak: number;
+  /** 合一那一刻背景星点的速度，是平时的几倍 */
+  starPeak: number;
+  /** 背景星点从峰值回落到平时速度用时（秒） */
+  starSettle: number;
+}
+export const SPLASH_FINISH_CURVE: Readonly<SplashFinishCurve> = Object.freeze({ accel: 1.4, orbitPeak: 4, starPeak: 3, starSettle: 1.5 });
 
 /** 双星转一圈的时间：sync = 与背景同拍；slow = 背景的两倍慢 */
 export const SPLASH_TEMPOS = Object.freeze({
@@ -41,10 +56,48 @@ export type SplashTempo = keyof typeof SPLASH_TEMPOS;
 export interface SplashOptions {
   /** 双星转一圈的秒数（缺省与背景同拍） */
   orbitPeriod?: number;
+  /** 收尾加速曲线（缺省 SPLASH_FINISH_CURVE） */
+  finish?: Partial<SplashFinishCurve>;
 }
 
-/** 完成后多久整层消失（相对 ready） */
-export const SPLASH_FINISH_AFTER = SPLASH_TIMING.hold + SPLASH_TIMING.fadeOut;
+/** 完成后多久整层消失（相对 ready），按给定的加速曲线 */
+export function splashFinishAfter(finish: Partial<SplashFinishCurve> = {}): number {
+  return (finish.accel ?? SPLASH_FINISH_CURVE.accel) + SPLASH_TIMING.hold + SPLASH_TIMING.fadeOut;
+}
+/** 缺省曲线下，完成后多久整层消失（相对 ready） */
+export const SPLASH_FINISH_AFTER = splashFinishAfter();
+
+// ---- 速度曲线（缓入：速度倍率 1 → peak，加速度从 0 起步）----
+/** 缓入的形状 e(x) = x²，以及它的积分 x³/3 */
+const easeIn = (x: number) => x * x;
+const easeInArea = (x: number) => (x * x * x) / 3;
+/** 平滑回落 1 - smoothstep 及其积分 */
+const settle = (x: number) => 1 - x * x * (3 - 2 * x);
+const settleArea = (x: number) => x - x * x * x + (x * x * x * x) / 2;
+
+function curveOf(options: SplashOptions): SplashFinishCurve {
+  return { ...SPLASH_FINISH_CURVE, ...options.finish };
+}
+
+/**
+ * 某一时刻的速度倍率（相对平时）：双星转速、背景星点速度。给曲线图和测试用。
+ */
+export function splashSpeeds(t: number, readyAt: number | null, options: SplashOptions = {}): { orbit: number; starfield: number } {
+  if (readyAt === null || t < readyAt) return { orbit: 1, starfield: 1 };
+  const c = curveOf(options);
+  const u = t - readyAt;
+  const a = Math.min(u / c.accel, 1);
+  const orbit = u <= c.accel ? 1 + (c.orbitPeak - 1) * easeIn(a) : c.orbitPeak;
+  const starfield = u <= c.accel
+    ? 1 + (c.starPeak - 1) * easeIn(a)
+    : 1 + (c.starPeak - 1) * settle(Math.min((u - c.accel) / c.starSettle, 1));
+  return { orbit, starfield };
+}
+
+/** 速度倍率对时间的积分减去 t 本身：加速带来的「额外走过的时间」 */
+function extraTime(u: number, peak: number, accel: number): number {
+  return (peak - 1) * accel * easeInArea(Math.min(u / accel, 1));
+}
 
 // ---- 版面 ----
 const MARK_FRACTION = 0.36; // 花标占舞台高度
@@ -154,6 +207,8 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
   const L = SPLASH_LAYOUT;
   const T = SPLASH_TIMING;
   const period = options.orbitPeriod ?? SPLASH_TEMPOS.sync;
+  const curve = curveOf(options);
+  const finishAfter = splashFinishAfter(curve);
   const beat = period / 2;
   const n = WORDMARK.shapes.length;
   const appear = seg(t, T.appear[0], T.appear[1]);
@@ -162,10 +217,11 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
   const letters: Array<{ opacity: number; dy: number }> = [];
   const done = readyAt !== null && t >= readyAt;
   const u = done ? t - readyAt : 0; // 收尾进行了多久
+  const m = u - curve.accel; // 相对双星合一那一刻
 
-  // 双星：加载中匀速绕轨道；完成后半径收拢到 0、再额外转一圈合于花心
-  const merge = done ? inOutCubic(seg(u, 0, T.merge)) : 0;
-  const phase = (t / period) * 360 + 360 * merge;
+  // 双星：加载中匀速绕轨道；完成后按缓入曲线平滑加速，同时半径收拢，accel 末合于花心
+  const merge = done ? inOutCubic(seg(u, 0, curve.accel)) : 0;
+  const phase = ((t + (done ? extraTime(u, curve.orbitPeak, curve.accel) : 0)) / period) * 360;
   const r = SPLASH_ORBIT.radius * (1 - merge);
   if (!done || merge < 1) {
     for (const [ph, companion] of [[phase, false], [phase + 180, true]] as const) {
@@ -184,7 +240,7 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
       });
     }
   }
-  const bloom = done ? outCubic(seg(u, T.bloom[0], T.bloom[1])) : 0;
+  const bloom = done ? outCubic(seg(m, T.bloom[0], T.bloom[1])) : 0;
 
   // 字标
   if (!done) {
@@ -193,7 +249,7 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
       letters.push({ opacity: appear * (LETTER_BASE + LETTER_WAVE * w), dy: -2.5 * w });
     }
   } else {
-    const c = seg(u, T.sweep[0], T.sweep[1]);
+    const c = seg(m, T.sweep[0], T.sweep[1]);
     const sweepX = lerp(L.cx, L.wordX + WORDMARK.width * L.wordScale + 40, inOutCubic(c));
     if (c > 0 && c < 1) {
       stars.push({ x: sweepX, y: L.cy - 6, opacity: 1 - seg(c, 0.85, 1), scale: 0.85, front: true, companion: false });
@@ -213,13 +269,13 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
     return { opacity: appear * (0.2 + 0.8 * lit), scale: 1 + 0.07 * lit * (1 - bloom) };
   });
 
-  const hop = done ? seg(u, T.hop[0], T.hop[1]) : 0;
-  const flash = done && u > T.merge ? Math.exp(-(u - T.merge) * 3) : 0;
-  const sw = done ? seg(u, T.shock[0], T.shock[1]) : 0;
+  const hop = done ? seg(m, T.hop[0], T.hop[1]) : 0;
+  const flash = done && m > 0 ? Math.exp(-m * 3) : 0;
+  const sw = done ? seg(m, T.shock[0], T.shock[1]) : 0;
   const shock = sw > 0 && sw < 1
     ? { r: K * (6 + 60 * outCubic(sw)), opacity: 0.45 * (1 - sw), width: 3 * (1 - sw) }
     : null;
-  const fade = done ? seg(u, T.hold, T.hold + T.fadeOut) : 0;
+  const fade = done ? seg(m, T.hold, T.hold + T.fadeOut) : 0;
 
   return {
     layer: 1 - fade,
@@ -230,7 +286,7 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
     shock,
     stars,
     letters,
-    finished: done && u >= SPLASH_FINISH_AFTER,
+    finished: done && u >= finishAfter,
   };
 }
 
@@ -280,10 +336,14 @@ const STAR_SEEDS: readonly StarSeed[] = (() => {
   }));
 })();
 
-/** 星点的「时间」：加载完成那一下加速冲出一把再回落 */
-function starTime(t: number, readyAt: number | null): number {
+/** 星点的「时间」：加载完成后按同一条缓入曲线加速，合一后再平滑回落（速度连续，没有台阶） */
+function starTime(t: number, readyAt: number | null, options: SplashOptions = {}): number {
   if (readyAt === null || t < readyAt) return t;
-  return t + 0.8 * (1 - Math.exp(-(t - readyAt) * 2));
+  const c = curveOf(options);
+  const u = t - readyAt;
+  const up = extraTime(u, c.starPeak, c.accel);
+  const down = u > c.accel ? (c.starPeak - 1) * c.starSettle * settleArea(Math.min((u - c.accel) / c.starSettle, 1)) : 0;
+  return t + up + down;
 }
 
 /**
@@ -291,8 +351,8 @@ function starTime(t: number, readyAt: number | null): number {
  * 每颗星飘完全程的时间相同（SPLASH_TIMING.starfieldPeriod），起点相位各不相同。
  * @param scale 线宽倍率（高分屏传 devicePixelRatio × 舞台缩放）
  */
-export function starfield(t: number, readyAt: number | null, width: number, height: number, scale = 1): StarStreak[] {
-  const u = starTime(t, readyAt) / SPLASH_TIMING.starfieldPeriod;
+export function starfield(t: number, readyAt: number | null, width: number, height: number, scale = 1, options: SplashOptions = {}): StarStreak[] {
+  const u = starTime(t, readyAt, options) / SPLASH_TIMING.starfieldPeriod;
   const fadeIn = seg(t, 0, 0.8);
   const rMax = Math.hypot(width, height) / 2;
   const cx = width / 2;

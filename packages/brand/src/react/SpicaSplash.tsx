@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
 import { MARK_CENTER, MARK_GEOMETRY, MARK_VIEWBOX, fmt, sparklePath } from '../geometry.ts';
-import { SPLASH_LAYOUT, SPLASH_STAGE, SPLASH_TEMPOS, splashFrame, splashStaticFrame, starfield, type SplashFrame } from '../splash.ts';
+import { SPLASH_LAYOUT, SPLASH_STAGE, SPLASH_TEMPOS, splashFrame, splashStaticFrame, starfield, type SplashFinishCurve, type SplashFrame } from '../splash.ts';
 import { WORDMARK } from '../wordmark.ts';
 
 export interface SpicaSplashProps {
@@ -11,6 +11,8 @@ export interface SpicaSplashProps {
   theme?: 'dark' | 'light';
   /** 双星转一圈的秒数；缺省与背景同拍（SPLASH_TEMPOS.sync） */
   orbitPeriod?: number;
+  /** 收尾加速曲线（缺省 SPLASH_FINISH_CURVE：1.4 秒缓入加速到 4 倍转速后合一） */
+  finish?: Partial<SplashFinishCurve>;
   /** 横标下方的小字（例如版本号） */
   caption?: ReactNode;
   className?: string;
@@ -50,7 +52,7 @@ function reducedMotion(): boolean {
  * 开机画面「暗处亮起 · 双星环绕」。铺满父元素（父元素需要定位）。
  * 时间线在 splash.ts，这里只负责按帧把状态写到 SVG 和画布上。
  */
-export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLASH_TEMPOS.sync, caption, className, style }: SpicaSplashProps) {
+export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLASH_TEMPOS.sync, finish, caption, className, style }: SpicaSplashProps) {
   const id = useId().replace(/:/g, '');
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -66,6 +68,10 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLAS
   const readyAtRef = useRef<number | null>(null);
   const t0Ref = useRef<number>(0);
   const onDoneRef = useRef(onDone);
+  const finishRef = useRef(finish);
+  useEffect(() => {
+    finishRef.current = finish;
+  }, [finish]);
   useEffect(() => {
     onDoneRef.current = onDone;
   }, [onDone]);
@@ -159,7 +165,8 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLAS
     let finished = false;
     const tick = (now: number) => {
       const t = (now - t0Ref.current) / 1000;
-      const f = splashFrame(t, readyAtRef.current, { orbitPeriod });
+      const opts = { orbitPeriod, finish: finishRef.current };
+      const f = splashFrame(t, readyAtRef.current, opts);
       apply(f);
       if (ctx) {
         const w = canvas.width;
@@ -167,7 +174,7 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLAS
         const scale = Math.min(w / SPLASH_STAGE.width, h / SPLASH_STAGE.height);
         ctx.clearRect(0, 0, w, h);
         ctx.lineCap = 'round';
-        for (const s of starfield(t, readyAtRef.current, w, h, scale)) {
+        for (const s of starfield(t, readyAtRef.current, w, h, scale, opts)) {
           if (s.opacity <= 0.005) continue;
           ctx.globalAlpha = s.opacity;
           ctx.strokeStyle = s.accent ? colors.accent : colors.star;
