@@ -18,7 +18,9 @@
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
-    "scan:sensitive": "node scripts/sensitive-words/scan.mjs"
+    "scan:sensitive": "node scripts/sensitive-words/scan.mjs",
+    "smoke:deepseek": "npm run smoke:deepseek -w @spica/core",
+    "smoke:claude": "npm run smoke:claude -w @spica/core"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

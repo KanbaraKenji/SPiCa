@@ -51,7 +51,7 @@ docs/screenshots/        给人看的截图（skeleton.png 等）
 
 - **不弹控制台窗口**：任何子进程（`spawn` / `execFile` / `exec` / `fork`）一律带 `windowsHide: true`；不用 `shell: true`，不直接起 `.cmd` / `.bat`。Node 类子进程用宿主自带的 Node：`process.execPath` + 环境变量 `ELECTRON_RUN_AS_NODE=1`。打包产物是 GUI 程序，不带控制台。
 - **不需要管理员权限**：打包走 electron-builder 的 NSIS per-user 安装（`perMachine: false`，装到用户目录）或便携版；不写 HKLM、不装服务、不依赖系统预装组件。现阶段还不出包。
-- **模型 key 永远不进仓库**：本机配置写在根目录 `.env.local`（已忽略），变量名见 `.env.example`：`SPICA_OPENAI_BASE_URL`、`SPICA_OPENAI_API_KEY`、`SPICA_ANTHROPIC_API_KEY`。
+- **模型 key 永远不进仓库**：本机配置写在根目录 `.env.local`（已忽略），变量名见 `.env.example`：`SPICA_OPENAI_BASE_URL`、`SPICA_OPENAI_API_KEY`、`SPICA_OPENAI_MODEL`、`SPICA_OPENAI_MODEL_STRONG`、`SPICA_ANTHROPIC_API_KEY`、`SPICA_ANTHROPIC_MODEL`。`npm run smoke:deepseek` / `smoke:claude` 用这些变量对真模型做冒烟测试，实现在 `@spica/core`。
 - **语言**：README、代码注释、提交信息用英文；`docs/design/` 下的设计文档用中文。
 - **命名**：工作区包 `@spica/<name>`，全部 `private: true`，是否发布以后再定。应用默认名 Spica，以后可自定义。
 - **不装全局东西**：所有工具都是仓库内的 devDependencies，通过 `npm run` 调用。
