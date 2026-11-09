@@ -138,7 +138,7 @@
 - **出包**：`npm run dist -w @spica/desktop`（electron-builder，配置 `apps/desktop/electron-builder.yml`），出到 `apps/desktop/release/`：
   - `Spica-Setup-<版本>.exe`：按用户安装（`perMachine: false`、`allowElevation: false`、`requestedExecutionLevel: asInvoker`），装到 `%LOCALAPPDATA%\Programs\Spica`，卸载信息写在 HKCU，**不需要管理员权限**；
   - `Spica-Portable-<版本>.exe`：便携版；
-  - `latest.yml`：版本号、安装包文件名和 sha512，给更新用。
+  - `latest.yml`：版本号、安装包文件名和 sha512，给更新用。预发布版本（如 `0.1.0-rc.1`）也写成这个文件名：配置里固定了 `channel: latest`，不固定的话 electron-builder 会按版本后缀写成 `rc.yml`，更新和发版流程都找不到。
 - **更新源**：一个共享盘文件夹或 http(s) 地址，里面放 `latest.yml` 和安装包（就是 `release/` 里那几个文件），公告也放这里（`announcements.json`）。
   - 默认是空的。公司打包时复制 `deploy.example.json` 为 `deploy.json`（已 .gitignore）填上自己的地址，就成了每台机器的默认值；用户也可以在 设置 › 关于 里改。仓库里只有示例，没有任何公司地址。
   - 为什么不用 electron-updater：它的 generic 源只认 HTTP，公司常用共享盘。这里自己读 electron-builder 生成的同一份 `latest.yml`，校验 sha512，再静默运行按用户安装的安装包（`--updated /S --force-run`），装完自动打开新版本。
