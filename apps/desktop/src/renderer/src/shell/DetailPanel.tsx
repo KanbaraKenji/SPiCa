@@ -32,6 +32,8 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
           </button>
         ) : null}
       </header>
+      {/* Nothing open yet: the panel stays empty rather than a column of dashes. */}
+      {session ? (
       <div className="detail-scroll">
         {session ? (
           <section className="detail-section">
@@ -114,6 +116,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
           </dl>
         </section>
       </div>
+      ) : null}
     </aside>
   );
 }
