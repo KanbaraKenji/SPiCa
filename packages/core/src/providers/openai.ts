@@ -1,0 +1,292 @@
+// OpenAI-compatible chat completions provider (/v1/chat/completions, SSE).
+// Used for any gateway that speaks this protocol (hosted APIs, LiteLLM, ...).
+import { DEFAULT_RETRY, hostOf, postWithRetry, staticAuth, type RetryPolicy } from './http.ts';
+import { parseSse } from './sse.ts';
+import {
+  ProviderError,
+  type AuthSource,
+  type ModelRequest,
+  type ModelResponse,
+  type Provider,
+  type ProviderCallContext,
+  type ProviderEvent,
+} from './types.ts';
+import type { ContentBlock, Message, StopReason, Usage } from '../types.ts';
+
+export interface OpenAICompatibleOptions {
+  id: string;
+  /** Base URL up to and including the API version segment, e.g. https://host/v1 */
+  baseUrl: string;
+  apiKey?: string;
+  /** Custom credential source; overrides apiKey (used by the WSO2 provider). */
+  auth?: AuthSource;
+  headers?: Record<string, string>;
+  /** Path appended to baseUrl. Default /chat/completions. */
+  path?: string;
+  timeoutMs?: number;
+  idleTimeoutMs?: number;
+  retry?: RetryPolicy;
+  /**
+   * Reasoning text returned by some servers in a separate delta field.
+   * `field` names it; `echo` decides when it is sent back on later turns.
+   */
+  reasoning?: { field?: string; echo?: 'never' | 'tool_turns' | 'always' };
+  /** Fields merged into every request body (e.g. vendor options). */
+  bodyDefaults?: Record<string, unknown>;
+  /** Name of the max-tokens body field. Default max_tokens. */
+  maxTokensField?: string;
+  fetchImpl?: typeof fetch;
+}
+
+export class OpenAICompatibleProvider implements Provider {
+  readonly id: string;
+  readonly kind: string = 'openai-compatible';
+  readonly host: string;
+  readonly capabilities = { serverWebSearch: false };
+  readonly #opts: OpenAICompatibleOptions;
+  readonly #auth: AuthSource | undefined;
+
+  constructor(opts: OpenAICompatibleOptions) {
+    this.id = opts.id;
+    this.#opts = opts;
+    this.host = hostOf(opts.baseUrl);
+    this.#auth = opts.auth ?? (opts.apiKey ? staticAuth({ authorization: `Bearer ${opts.apiKey}` }) : undefined);
+  }
+
+  /** Build the wire body (exported for tests and hooks that want to inspect it). */
+  buildBody(req: ModelRequest): Record<string, unknown> {
+    const reasoningField = this.#opts.reasoning?.field ?? 'reasoning_content';
+    const echo = this.#opts.reasoning?.echo ?? 'tool_turns';
+    const body: Record<string, unknown> = {
+      model: req.model,
+      messages: toOpenAIMessages(req.system, req.messages, this.id, reasoningField, echo),
+      stream: true,
+      stream_options: { include_usage: true },
+      [this.#opts.maxTokensField ?? 'max_tokens']: req.maxTokens,
+      ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
+      ...this.#opts.bodyDefaults,
+      ...req.extra,
+    };
+    if (req.tools.length > 0) {
+      body.tools = req.tools.map((t) => ({
+        type: 'function',
+        function: { name: t.name, description: t.description, parameters: t.inputSchema },
+      }));
+    }
+    return body;
+  }
+
+  async *stream(req: ModelRequest, ctx: ProviderCallContext): AsyncGenerator<ProviderEvent, void> {
+    const url = this.#opts.baseUrl.replace(/\/+$/, '') + (this.#opts.path ?? '/chat/completions');
+    const res = await postWithRetry({
+      url,
+      body: JSON.stringify(this.buildBody(req)),
+      headers: { accept: 'text/event-stream', ...this.#opts.headers },
+      ...(this.#auth ? { auth: this.#auth } : {}),
+      signal: ctx.signal,
+      timeoutMs: this.#opts.timeoutMs ?? 120_000,
+      retry: this.#opts.retry ?? DEFAULT_RETRY,
+      secrets: this.#opts.apiKey ? [this.#opts.apiKey] : [],
+      ...(ctx.info ? { info: ctx.info } : {}),
+      ...(ctx.onRetry ? { onRetry: ctx.onRetry } : {}),
+      ...(this.#opts.fetchImpl ? { fetchImpl: this.#opts.fetchImpl } : {}),
+    });
+    if (!res.body) throw new ProviderError('empty response body', { retryable: true });
+    yield* parseOpenAIStream(res.body, {
+      providerId: this.id,
+      reasoningField: this.#opts.reasoning?.field ?? 'reasoning_content',
+      idleTimeoutMs: this.#opts.idleTimeoutMs ?? 90_000,
+      signal: ctx.signal,
+      fallbackModel: req.model,
+    });
+  }
+}
+
+interface ToolCallAcc {
+  id: string;
+  name: string;
+  args: string;
+}
+
+/** Parse an OpenAI-style chat completion SSE stream. */
+export async function* parseOpenAIStream(
+  body: ReadableStream<Uint8Array>,
+  opts: { providerId: string; reasoningField: string; idleTimeoutMs?: number; signal?: AbortSignal; fallbackModel: string },
+): AsyncGenerator<ProviderEvent, void> {
+  let text = '';
+  let reasoning = '';
+  const calls = new Map<number, ToolCallAcc>();
+  let finish: string | undefined;
+  let usage: Usage = { inputTokens: 0, outputTokens: 0 };
+  let model = opts.fallbackModel;
+  for await (const ev of parseSse(body, {
+    ...(opts.idleTimeoutMs ? { idleTimeoutMs: opts.idleTimeoutMs } : {}),
+    ...(opts.signal ? { signal: opts.signal } : {}),
+  })) {
+    const data = ev.data.trim();
+    if (data === '[DONE]') break;
+    let chunk: OpenAIChunk;
+    try {
+      chunk = JSON.parse(data) as OpenAIChunk;
+    } catch {
+      continue;
+    }
+    if (chunk.error) {
+      throw new ProviderError(`stream error: ${String(chunk.error.message ?? 'unknown').slice(0, 300)}`, {
+        retryable: false,
+      });
+    }
+    if (chunk.model) model = chunk.model;
+    if (chunk.usage) usage = parseUsage(chunk.usage);
+    for (const choice of chunk.choices ?? []) {
+      const delta = choice.delta ?? {};
+      const r = delta[opts.reasoningField];
+      if (typeof r === 'string' && r !== '') {
+        reasoning += r;
+        yield { type: 'thinking', delta: r };
+      }
+      if (typeof delta.content === 'string' && delta.content !== '') {
+        text += delta.content;
+        yield { type: 'text', delta: delta.content };
+      }
+      for (const tc of delta.tool_calls ?? []) {
+        const idx = tc.index ?? 0;
+        let acc = calls.get(idx);
+        if (!acc) {
+          acc = { id: tc.id ?? `call_${idx}`, name: '', args: '' };
+          calls.set(idx, acc);
+        }
+        if (tc.id) acc.id = tc.id;
+        if (tc.function?.name) {
+          const first = acc.name === '';
+          acc.name += tc.function.name;
+          if (first) yield { type: 'tool_call', id: acc.id, name: acc.name };
+        }
+        if (tc.function?.arguments) acc.args += tc.function.arguments;
+      }
+      if (choice.finish_reason) finish = choice.finish_reason;
+    }
+  }
+  const content: ContentBlock[] = [];
+  if (reasoning) content.push({ type: 'thinking', text: reasoning, provider: opts.providerId });
+  if (text) content.push({ type: 'text', text });
+  for (const [, c] of [...calls.entries()].sort((a, b) => a[0] - b[0])) {
+    content.push({ type: 'tool_use', id: c.id, name: c.name, input: parseArgs(c.args) });
+  }
+  const response: ModelResponse = {
+    content,
+    stopReason: mapFinish(finish, calls.size > 0),
+    ...(finish ? { rawStopReason: finish } : {}),
+    usage,
+    model,
+  };
+  yield { type: 'response', response };
+}
+
+/** Tool arguments that fail to parse are passed on so the tool can report the problem. */
+function parseArgs(raw: string): unknown {
+  if (raw.trim() === '') return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { __invalid_json__: raw };
+  }
+}
+
+function mapFinish(reason: string | undefined, hasCalls: boolean): StopReason {
+  if (hasCalls) return 'tool_use';
+  switch (reason) {
+    case 'stop':
+      return 'end';
+    case 'length':
+      return 'max_tokens';
+    case 'tool_calls':
+    case 'function_call':
+      return 'tool_use';
+    case 'content_filter':
+      return 'refusal';
+    case undefined:
+      return 'end';
+    default:
+      return 'other';
+  }
+}
+
+function parseUsage(u: OpenAIUsage): Usage {
+  const cached = u.prompt_tokens_details?.cached_tokens ?? u.prompt_cache_hit_tokens;
+  return {
+    inputTokens: u.prompt_tokens ?? 0,
+    outputTokens: u.completion_tokens ?? 0,
+    ...(cached !== undefined ? { cacheReadTokens: cached } : {}),
+  };
+}
+
+/** Convert Spica messages to OpenAI chat messages. */
+export function toOpenAIMessages(
+  system: string,
+  messages: Message[],
+  providerId: string,
+  reasoningField: string,
+  echo: 'never' | 'tool_turns' | 'always',
+): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  if (system) out.push({ role: 'system', content: system });
+  for (const m of messages) {
+    if (m.role === 'assistant') {
+      const text = m.content
+        .map((b) => (b.type === 'text' ? b.text : b.type === 'opaque' && b.text ? b.text : ''))
+        .filter(Boolean)
+        .join('\n');
+      const calls = m.content.filter((b) => b.type === 'tool_use');
+      const msg: Record<string, unknown> = { role: 'assistant', content: text || null };
+      if (calls.length > 0) {
+        msg.tool_calls = calls.map((b) =>
+          b.type === 'tool_use'
+            ? { id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) } }
+            : null,
+        );
+      }
+      if (echo === 'always' || (echo === 'tool_turns' && calls.length > 0)) {
+        const reasoning = m.content
+          .filter((b) => b.type === 'thinking' && b.provider === providerId)
+          .map((b) => (b.type === 'thinking' ? b.text : ''))
+          .join('');
+        if (reasoning) msg[reasoningField] = reasoning;
+      }
+      if (msg.content === null && !msg.tool_calls) msg.content = '';
+      out.push(msg);
+      continue;
+    }
+    // user side: tool results become role=tool messages, placed first
+    for (const b of m.content) {
+      if (b.type === 'tool_result') out.push({ role: 'tool', tool_call_id: b.toolUseId, content: b.content });
+    }
+    const text = m.content
+      .map((b) => (b.type === 'text' ? b.text : b.type === 'opaque' && b.text ? b.text : ''))
+      .filter(Boolean)
+      .join('\n');
+    if (text) out.push({ role: 'user', content: text });
+  }
+  return out;
+}
+
+interface OpenAIUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number };
+  prompt_cache_hit_tokens?: number;
+}
+
+interface OpenAIChunk {
+  model?: string;
+  error?: { message?: unknown };
+  usage?: OpenAIUsage | null;
+  choices?: {
+    delta?: {
+      content?: string | null;
+      tool_calls?: { index?: number; id?: string; function?: { name?: string; arguments?: string } }[];
+      [k: string]: unknown;
+    };
+    finish_reason?: string | null;
+  }[];
+}
