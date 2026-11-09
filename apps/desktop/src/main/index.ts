@@ -28,6 +28,7 @@ import type { DesktopBackendConfig } from '../backend/config';
 import { readModelEnv } from './backend/model-env';
 import { SettingsStore } from './settings-store';
 import { captureOnce, runShots } from './shots';
+import { flatten, icoFromPngs, inkFor } from './icon';
 
 const APP_NAME = 'Spica';
 /** Title bar height in CSS px at 100% zoom; must match `--spica-titlebar-h` in the renderer. */
@@ -50,7 +51,8 @@ const shotsDir = process.env.SPICA_SHOTS;
 const automated = Boolean(capturePath || shotsDir);
 
 app.setName(APP_NAME);
-if (process.platform === 'win32') app.setAppUserModelId('dev.spica.desktop');
+const APP_USER_MODEL_ID = 'dev.spica.desktop';
+if (process.platform === 'win32') app.setAppUserModelId(APP_USER_MODEL_ID);
 // Screenshots must not read or change the user's own settings.
 //   SPICA_USER_DATA=<dir>    use another settings folder (manual checks without touching your own)
 if (process.env.SPICA_USER_DATA) app.setPath('userData', process.env.SPICA_USER_DATA);
@@ -213,13 +215,40 @@ function syncNativeChrome(win: BrowserWindow, s: ShellSettings): void {
   }
 }
 
-/** Window / taskbar icon, matched to the Windows taskbar's own light or dark color. */
+/**
+ * Window / taskbar icon: the flower in one flat color, white on a dark Windows
+ * taskbar and black on a light one, no tile (main/icon.ts).
+ */
 function windowIcon(): Electron.NativeImage | undefined {
-  const variant = nativeTheme.shouldUseDarkColorsForSystemIntegratedUI ? 'dark' : 'light';
-  const file = join(app.getAppPath(), 'resources', 'branding', 'png', `spica-win-${variant}.png`);
+  const dark = nativeTheme.shouldUseDarkColorsForSystemIntegratedUI;
+  const file = join(app.getAppPath(), 'resources', 'branding', 'png', `spica-win-${dark ? 'dark' : 'light'}.png`);
   if (!existsSync(file)) return undefined;
-  const image = nativeImage.createFromPath(file);
-  return image.isEmpty() ? undefined : image;
+  const base = nativeImage.createFromPath(file);
+  if (base.isEmpty()) return undefined;
+  return nativeImage.createFromBitmap(Buffer.from(flatten(base.toBitmap(), inkFor(dark))), base.getSize());
+}
+
+/**
+ * Puts the icon on the window and on its taskbar button. The taskbar would
+ * otherwise show the shortcut's icon (the installer's tile), so the window
+ * gets its own .ico, written next to the settings.
+ */
+function applyWindowIcon(win: BrowserWindow): void {
+  const icon = windowIcon();
+  if (!icon) return;
+  win.setIcon(icon);
+  if (process.platform !== 'win32') return;
+  try {
+    const ink = inkFor(nativeTheme.shouldUseDarkColorsForSystemIntegratedUI);
+    const dir = join(app.getPath('userData'), 'icons');
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `taskbar-${ink}.ico`);
+    const images = [256, 48, 32, 16].map((size) => ({ size, png: icon.resize({ width: size, height: size, quality: 'best' }).toPNG() }));
+    writeFileSync(file, icoFromPngs(images));
+    win.setAppDetails({ appId: APP_USER_MODEL_ID, appIconPath: file, appIconIndex: 0 });
+  } catch {
+    // The window icon above is still set; only the taskbar button keeps the shortcut's icon.
+  }
 }
 
 function applyZoom(win: BrowserWindow, factor: number): void {
@@ -288,6 +317,7 @@ function createMainWindow(): BrowserWindow {
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (!app.isPackaged && devUrl) void win.loadURL(devUrl);
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
+  applyWindowIcon(win);
   return win;
 }
 
@@ -533,8 +563,7 @@ settings.onChange((s) => {
 });
 nativeTheme.on('updated', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  const icon = windowIcon();
-  if (icon) mainWindow.setIcon(icon);
+  applyWindowIcon(mainWindow);
   syncNativeChrome(mainWindow, settings.get());
   mainWindow.webContents.send(DesktopChannel.SettingsChanged, settings.get());
 });
