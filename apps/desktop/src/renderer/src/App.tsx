@@ -249,6 +249,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             settingsOpen={view === 'settings'}
             topId={state.topId}
             onRename={(sid, title) => void agent.rename(sid, title)}
+            pinned={settings.pinnedProjects}
+            onPin={(pid, pin) =>
+              shell.update({ pinnedProjects: pin ? [...settings.pinnedProjects.filter((x) => x !== pid), pid] : settings.pinnedProjects.filter((x) => x !== pid) })
+            }
             {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject({}) } : {})}
             {...(mail.supported
               ? {

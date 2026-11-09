@@ -2730,3 +2730,20 @@ button.tree-twisty:hover {
   font-size: 13px;
   color: var(--spica-muted);
 }
+
+.context-item.is-danger {
+  color: var(--spica-danger);
+}
+
+/* A pinned project: a small mark after its name (not a button; the menu pins and unpins). */
+.tree-pin {
+  flex: none;
+  display: inline-flex;
+  color: var(--spica-faint);
+}
+
+.dialog-detail {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--spica-muted);
+}

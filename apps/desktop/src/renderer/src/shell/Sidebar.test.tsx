@@ -74,8 +74,48 @@ describe('Sidebar', () => {
     fireEvent.keyDown(screen.getByRole('textbox', { name: '新名字' }), { key: 'Escape' });
     expect(onRename).toHaveBeenCalledTimes(1);
 
+    // Without project actions, a project row has no menu.
     fireEvent.contextMenu(screen.getByTitle('新品样机评审'));
     expect(screen.queryByRole('menuitem')).toBeNull();
+  });
+
+  it('pins, renames and deletes a project from its menu; pinned ones come first', () => {
+    const onPin = vi.fn();
+    const onRenameProject = vi.fn();
+    const onDeleteProject = vi.fn();
+    const props = { sessions: seed.sessions, activeId: null, onOpen: vi.fn(), onNewChat: vi.fn(), onSettings: vi.fn(), settingsOpen: false, onPin, onRenameProject, onDeleteProject };
+    const { rerender } = render(<Sidebar {...props} />);
+    const order = () => [...document.querySelectorAll('.tree-section')].at(-1)!.querySelectorAll(':scope > .tree-row .tree-title');
+    const names = () => [...order()].map((e) => e.textContent);
+    expect(names()[0]).toBe('新品样机评审');
+    fireEvent.contextMenu(screen.getByTitle('年度预算'));
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['重命名', '置顶', '删除']);
+    fireEvent.click(screen.getByRole('menuitem', { name: '置顶' }));
+    expect(onPin).toHaveBeenCalledWith('p-budget', true);
+
+    rerender(<Sidebar {...props} pinned={['p-budget']} />);
+    expect(names()[0]).toBe('年度预算');
+    expect(screen.getByTitle('已置顶')).toBeTruthy();
+    fireEvent.contextMenu(screen.getByTitle('年度预算'));
+    fireEvent.click(screen.getByRole('menuitem', { name: '取消置顶' }));
+    expect(onPin).toHaveBeenCalledWith('p-budget', false);
+
+    fireEvent.contextMenu(screen.getByTitle('年度预算'));
+    fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }));
+    const field = screen.getByRole('textbox', { name: '新名字' });
+    // An empty name changes nothing for a project.
+    fireEvent.change(field, { target: { value: '  ' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onRenameProject).not.toHaveBeenCalled();
+    fireEvent.contextMenu(screen.getByTitle('年度预算'));
+    fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '新名字' }), { target: { value: '2027 年度预算' } });
+    fireEvent.keyDown(screen.getByRole('textbox', { name: '新名字' }), { key: 'Enter' });
+    expect(onRenameProject).toHaveBeenCalledWith('p-budget', '2027 年度预算');
+
+    fireEvent.contextMenu(screen.getByTitle('年度预算'));
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除' }));
+    expect(onDeleteProject).toHaveBeenCalledWith('p-budget', '年度预算');
   });
 
   it('collapsing a project shows the summary instead of children', () => {

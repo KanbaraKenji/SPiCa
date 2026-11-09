@@ -25,6 +25,12 @@ export interface SidebarProps {
   inbox?: { count: number; open: boolean; onOpen(): void };
   /** Short words after a row's title, by session id (e.g. 「有新来信」 on a project). */
   notes?: ReadonlyMap<string, string>;
+  /** Project ids pinned to the top, in pin order. */
+  pinned?: readonly string[];
+  onPin?: (projectId: string, pinned: boolean) => void;
+  /** Absent when the backend cannot rename / delete projects: the menu leaves them out. */
+  onRenameProject?: (projectId: string, name: string) => void;
+  onDeleteProject?: (projectId: string, name: string) => void;
 }
 
 function byRecent(a: SessionInfo, b: SessionInfo): number {
@@ -58,14 +64,13 @@ interface TreeProps {
   openByDefault: ReadonlySet<string>;
   /** Row being renamed, if any. */
   editing: string | null;
+  /** Right-click or F2 on a row (absent: no menu). */
   startRename?: (s: SessionInfo, at?: { x: number; y: number }) => void;
   finishRename(s: SessionInfo, value: string | null): void;
   notes?: ReadonlyMap<string, string>;
-}
-
-/** Projects are renamed through the project, not the manager's session. */
-function canRename(s: SessionInfo): boolean {
-  return s.role !== 'manager';
+  /** Rows that have a menu (conversations to rename; projects to rename, pin, delete). */
+  hasMenu(s: SessionInfo): boolean;
+  pinned: ReadonlySet<string>;
 }
 
 function RenameField({ initial, onDone }: { initial: string; onDone(value: string | null): void }) {
@@ -134,12 +139,12 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
             className="tree-open"
             onClick={() => tree.onOpen(s.id)}
             onContextMenu={(e) => {
-              if (!tree.startRename || !canRename(s)) return;
+              if (!tree.startRename || !tree.hasMenu(s)) return;
               e.preventDefault();
               tree.startRename(s, { x: e.clientX, y: e.clientY });
             }}
             onKeyDown={(e) => {
-              if (e.key === 'F2' && tree.startRename && canRename(s)) {
+              if (e.key === 'F2' && tree.startRename && tree.hasMenu(s)) {
                 e.preventDefault();
                 tree.startRename(s);
               }
@@ -148,6 +153,11 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
             title={name}
           >
             <span className="tree-title">{name}</span>
+            {s.projectId && tree.pinned.has(s.projectId) ? (
+              <span className="tree-pin" title="已置顶">
+                <Icon name="pin" size={12} />
+              </span>
+            ) : null}
             {tree.notes?.get(s.id) && !active ? <span className="tree-note">{tree.notes.get(s.id)}</span> : null}
             {summary ? <span className={/等你/.test(summary) ? 'tree-summary is-waiting' : 'tree-summary'}>{summary}</span> : <StatusMark status={s.status} />}
           </button>
@@ -163,11 +173,29 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
   );
 }
 
-export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, onSettings, settingsOpen, topId = null, onRename, inbox, notes }: SidebarProps) {
+export function Sidebar({
+  sessions,
+  activeId,
+  onOpen,
+  onNewChat,
+  onNewProject,
+  onSettings,
+  settingsOpen,
+  topId = null,
+  onRename,
+  inbox,
+  notes,
+  pinned = [],
+  onPin,
+  onRenameProject,
+  onDeleteProject,
+}: SidebarProps) {
+  const pinOrder = useMemo(() => new Map(pinned.map((id, i) => [id, i])), [pinned]);
   const { chats, projects, childrenOf, top } = useMemo(() => {
     const chats = sessions.filter((s) => s.role === 'top' && !s.parentId).sort(byRecent);
-    // A project is a project-manager session, wherever it was started from.
-    const projects = sessions.filter((s) => s.role === 'manager').sort(byRecent);
+    // A project is a project-manager session, wherever it was started from. Pinned ones first.
+    const rank = (s: SessionInfo) => (s.projectId !== undefined ? (pinOrder.get(s.projectId) ?? Infinity) : Infinity);
+    const projects = sessions.filter((s) => s.role === 'manager').sort((a, b) => rank(a) - rank(b) || byRecent(a, b));
     const childrenOf = new Map<string, SessionInfo[]>();
     for (const s of sessions) {
       if (!s.parentId || s.role === 'manager') continue;
@@ -181,7 +209,7 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, o
     const top = topId ? chats.find((s) => s.id === topId) : undefined;
     if (top) childrenOf.set(top.id, [...chats.filter((s) => s.id !== top.id), ...(childrenOf.get(top.id) ?? [])]);
     return { chats, projects, childrenOf, top };
-  }, [sessions, topId]);
+  }, [sessions, topId, pinOrder]);
 
   const [expanded, setExpandedState] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<string | null>(null);
@@ -197,7 +225,9 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, o
     onOpen,
     openByDefault: new Set(top ? [top.id] : []),
     editing,
-    ...(onRename
+    pinned: new Set(pinned),
+    hasMenu: (s) => (s.role === 'manager' ? Boolean(s.projectId && (onPin || onRenameProject || onDeleteProject)) : Boolean(onRename)),
+    ...(onRename || onPin || onRenameProject || onDeleteProject
       ? {
           startRename: (s: SessionInfo, at?: { x: number; y: number }) => {
             if (at) setMenu({ s, ...at });
@@ -207,10 +237,26 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, o
       : {}),
     finishRename: (s, value) => {
       setEditing(null);
-      if (value === null || !onRename) return;
+      if (value === null) return;
       const next = value.trim();
-      if (next !== (s.title ?? '')) onRename(s.id, next || null);
+      if (next === (s.title ?? '')) return;
+      if (s.role === 'manager') {
+        // A project keeps a name: an empty one changes nothing.
+        if (next && s.projectId && onRenameProject) onRenameProject(s.projectId, next);
+      } else if (onRename) onRename(s.id, next || null);
     },
+  };
+
+  const menuItems = (row: SessionInfo) => {
+    if (row.role !== 'manager') return [{ label: '重命名', onSelect: () => setEditing(row.id) }];
+    const pid = row.projectId;
+    if (!pid) return [];
+    const isPinned = pinOrder.has(pid);
+    return [
+      ...(onRenameProject ? [{ label: '重命名', onSelect: () => setEditing(row.id) }] : []),
+      ...(onPin ? [{ label: isPinned ? '取消置顶' : '置顶', onSelect: () => onPin(pid, !isPinned) }] : []),
+      ...(onDeleteProject ? [{ label: '删除', danger: true, onSelect: () => onDeleteProject(pid, row.title ?? '') }] : []),
+    ];
   };
 
   return (
@@ -265,7 +311,7 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, o
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          items={[{ label: '重命名', onSelect: () => setEditing(menu.s.id) }]}
+          items={menuItems(menu.s)}
           onClose={() => setMenu(null)}
         />
       ) : null}

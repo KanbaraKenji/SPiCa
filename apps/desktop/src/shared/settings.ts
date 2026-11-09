@@ -44,6 +44,8 @@ export interface ShellSettings {
   workflowsDir: string;
   /** When the user last opened each project manager's conversation (ISO), for 「有新来信」. */
   mailSeen: Record<string, string>;
+  /** Projects pinned to the top of the sidebar (project ids, in the order they were pinned). */
+  pinnedProjects: string[];
 }
 
 export const DEFAULT_SETTINGS: ShellSettings = {
@@ -58,6 +60,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   noticesCache: [],
   mail: { enabled: true, intervalMinutes: 5, ignore: { from: [], subject: [] } },
   workflowsDir: '',
+  pinnedProjects: [],
   mailSeen: {},
 };
 
@@ -128,7 +131,10 @@ export function sanitizeSettings(value: unknown): ShellSettings {
       .filter((e): e is [string, string] => typeof e[1] === 'string' && !Number.isNaN(Date.parse(e[1])))
       .slice(-500),
   );
-  return { skin, customSkins, zoom, panels, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, mailSeen };
+  const pinnedProjects = Array.isArray(v.pinnedProjects)
+    ? [...new Set(v.pinnedProjects.filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 200))].slice(0, 200)
+    : [];
+  return { skin, customSkins, zoom, panels, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, mailSeen, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {
