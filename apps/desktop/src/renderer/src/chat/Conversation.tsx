@@ -167,6 +167,16 @@ export function Conversation({ session, transcript, actions, demo }: Conversatio
           <Icon name="chevronDown" size={16} />
         </button>
       ) : null}
+      {transcript.queued?.length ? (
+        <div className="queued" aria-live="polite">
+          {transcript.queued.map((q) => (
+            <p key={q.id} className="queued-item">
+              <span className="queued-tag">下一步生效</span>
+              <span className="queued-text">{q.text}</span>
+            </p>
+          ))}
+        </div>
+      ) : null}
       <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} />
       {demo ? <p className="composer-note">还没有配置模型，现在的回答是演示数据</p> : null}
     </div>

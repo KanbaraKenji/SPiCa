@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CoreEvent } from '@spica/protocol';
 import { FakeBackend } from '../../../main/backend/fake';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
-import { applyEvent, filesOf, fromHistory, resultBody, type Transcript } from './transcript';
+import { applyEvent, askAnswer, filesOf, fromHistory, humanError, resultBody, type Transcript } from './transcript';
 
 describe('fromHistory', () => {
   const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
@@ -32,6 +32,19 @@ describe('resultBody', () => {
   it('drops the fetch-time line', () => {
     expect(resultBody('2026-11-09T10:00:00.000+08:00\nhello')).toBe('hello');
     expect(resultBody('plain')).toBe('plain');
+    expect(resultBody('[fetched at 2026-11-09T15:58:17.755+08:00]\nbody')).toBe('body');
+  });
+  it('pulls the answer out of an ask_user result', () => {
+    expect(askAnswer('[fetched at 2026-11-09T15:58:17.755+08:00]\nUser answered: 只写结论')).toBe('只写结论');
+  });
+});
+
+describe('humanError', () => {
+  it('says common failures in plain words', () => {
+    expect(humanError('HTTP 401 Unauthorized')).toContain('密钥');
+    expect(humanError('429 Too Many Requests')).toContain('限流');
+    expect(humanError('TypeError: fetch failed')).toContain('连不上');
+    expect(humanError('something odd')).toBe('出错了：something odd');
   });
 });
 
@@ -58,6 +71,15 @@ describe('applyEvent', () => {
     expect(strip(live)).toEqual(strip(stored));
     expect(live.run).toBeUndefined();
     expect(live.lastRun?.reason).toBe('idle');
+  });
+
+  it('drops a queued message once the agent takes it in', () => {
+    const base = { seq: 1, at: '', sessionId: 's', parentChain: [] };
+    const t0: Transcript = { items: [], queued: [{ id: 'm9', text: '改成两点' }] };
+    const message = { id: 'm9', sessionId: 's', seq: 3, role: 'user' as const, kind: 'steer' as const, content: [{ type: 'text' as const, text: '改成两点' }], createdAt: '' };
+    const t1 = applyEvent(t0, { ...base, type: 'message', message });
+    expect(t1.queued).toEqual([]);
+    expect(t1.items).toEqual([{ kind: 'user', id: 'm9', text: '改成两点', steer: true }]);
   });
 
   it('tracks the run for the status line', () => {

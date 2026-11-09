@@ -5,7 +5,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Block } from '../store/transcript';
 import { Icon } from '../ui/Icon';
-import { fileFolder, fileName, formatDuration, toolLabel, toolTarget } from './format';
+import { confirmTitle, fileFolder, fileName, formatDuration, toolLabel, toolTarget } from './format';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
 
@@ -163,12 +163,11 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
 
 export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type: 'confirm' }>; onDecide(approved: boolean): void }) {
   const decided = block.approved !== undefined;
-  const target = toolTarget(block.input);
   return (
     <section className={decided ? 'card confirm-card is-done' : 'card confirm-card'} aria-label="确认">
       <header className="card-head">
         <Icon name="tool" size={16} className="card-head-icon" />
-        <span className="card-title">{block.reason || `${toolLabel(block.name)}${target ? ` ${target}` : ''}`}</span>
+        <span className="card-title">{confirmTitle(block.name, block.input, block.reason)}</span>
       </header>
       {decided ? (
         <p className="card-answer">
