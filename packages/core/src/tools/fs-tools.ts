@@ -81,9 +81,10 @@ export const readFileTool: Tool = {
         const parts = [got.meta.read.pages && `pages ${got.meta.read.pages}`, got.meta.read.sheet && `sheet ${got.meta.read.sheet}`, got.meta.read.rows && `rows ${got.meta.read.rows}`, got.meta.read.range]
           .filter(Boolean)
           .join(', ');
-        const header = `${display(ctx, abs)} (${got.meta.kind}, ${info.size} bytes, modified ${info.mtime.toISOString()}${parts ? `; read ${parts}` : ''})`;
+        const header = `${display(ctx, abs)} (${got.meta.kind}, ${info.size} bytes, modified ${isoNow(info.mtime)}${parts ? `; read ${parts}` : ''})`;
         const body = got.text.length > MAX_READ_CHARS ? got.text.slice(0, MAX_READ_CHARS) : got.text;
-        const note = got.truncated || got.meta.truncated || got.text.length > MAX_READ_CHARS ? '\n[truncated; ask for fewer pages, another sheet or a smaller row range]' : '';
+        // The extractor writes its own continuation hint; add ours only if the core had to cut.
+        const note = got.text.length > MAX_READ_CHARS ? '\n[truncated at the read limit; ask for fewer pages, another sheet or a smaller row range]' : '';
         return { content: `${header}\n${body}${note}` };
       }
       text = got;
@@ -113,7 +114,7 @@ export const readFileTool: Tool = {
     }
     const total = lines.length;
     const end = offset - 1 + shown;
-    const header = `${display(ctx, abs)} (${total} lines, ${info.size} bytes, modified ${info.mtime.toISOString()})`;
+    const header = `${display(ctx, abs)} (${total} lines, ${info.size} bytes, modified ${isoNow(info.mtime)})`;
     const more = end < total ? `\n[showing lines ${offset}-${end} of ${total}; use offset=${end + 1} to continue]` : '';
     const card: FileCardMeta = {
       path: abs,
@@ -221,7 +222,7 @@ export const listDirTool: Tool = {
         rows.push(`${e.name}/`);
       } else {
         const s = await stat(join(abs, e.name)).catch(() => undefined);
-        rows.push(s ? `${e.name}\t${s.size} bytes\t${s.mtime.toISOString()}` : e.name);
+        rows.push(s ? `${e.name}\t${s.size} bytes\t${isoNow(s.mtime)}` : e.name);
       }
     }
     const more = entries.length > 1000 ? `\n[${entries.length - 1000} more entries not shown]` : '';

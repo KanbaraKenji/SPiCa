@@ -176,12 +176,74 @@
 - 常驻成员：角色模板、记忆接口（读写由插件实现）、专属工具表三个可选字段；可追溯记录完整可导出，将来做成员记忆用。
 - 评测插件：只走公开接口和事件流（与 MCP 服务同一套），不碰内核内部。
 
+## 12a. 项目与三层团队（M4，先设计后实现）
+
+立项书的卖点在内核里变成一等概念：**项目 = 一个文件夹 + 一个常驻的项目经理会话**，顶层会话管所有项目。
+
+**数据模型**（新增表，都在 sqlite 里）
+
+| 表 | 字段 | 说明 |
+|---|---|---|
+| `projects` | id、name、folder（绝对路径）、manager_session_id、workflow_id、stage、status（active / archived）、created_at、updated_at | 一个项目一行 |
+| `project_log` | id、project_id、session_id、at、kind（file_write / file_edit / command / stage / decision / note）、summary、path | 项目经理和它的子 Agent 在项目里的**关键操作**，给顶层留的系统级记录 |
+| `work_objects` | id、project_id、level、name、parent_id、data_json、created_at | 工作对象实例（层级由流程文件声明，层数不固定） |
+
+- 会话记录多一个 `projectId`（项目经理和它开出的子 Agent 都带），工作文件夹默认就是项目文件夹。
+- 顶层会话全局只有一个：`runtime.top()` 没有就建、有就返回。项目经理的父会话是顶层，子 Agent 的父会话是项目经理（三层就是会话树）。
+
+**流程与工作对象从文件读**：一个流程一个 JSON 文件（不引第三方 YAML 库），放在 `workflowsDir`（部署配置，默认带一个示例 `docs/examples/workflows/product-development.json`）：
+
+```json
+{
+  "id": "product-development",
+  "name": "新产品开发",
+  "stages": [
+    { "id": "sample", "name": "样品", "goal": "做出能验证功能的样品", "exitCriteria": ["样品测试报告", "客户确认"] },
+    { "id": "pilot", "name": "试产", "goal": "小批量验证工艺" },
+    { "id": "mass", "name": "量产" }
+  ],
+  "objectLevels": [
+    { "id": "product", "name": "产品" },
+    { "id": "part", "name": "部件", "parent": "product" }
+  ]
+}
+```
+
+换部门、换公司只换文件；内核只认结构，不认内容。
+
+**工具**
+
+| 谁用 | 工具 | 做什么 |
+|---|---|---|
+| 顶层 | `create_project {name, folder?, workflow?, brief?}` | 建项目：文件夹不存在就建（默认放在部署配置的项目根目录下）、建项目经理会话、把 brief 作为第一条任务发给它 |
+| 顶层 | `list_projects` | 每个项目一行：名字、文件夹、阶段、项目经理状态、最近一条关键操作、花费 |
+| 顶层 | `open_project {project}` | 看一个项目的近况：阶段、工作对象、最近关键操作、项目经理最近的回答、在跑的子 Agent |
+| 顶层 | `message_agent {id, text}` | 已有；顶层可以对项目经理说话（项目经理是它的孩子） |
+| 项目经理 | `project_status` | 本项目的流程、当前阶段的目标和出口条件、工作对象树 |
+| 项目经理 | `set_stage {stage, note}` | 换阶段（只能是流程文件里的阶段），记一条 stage 关键操作，回传给顶层 |
+| 项目经理 | `add_work_object {level, name, parent?}` / `list_work_objects` | 维护工作对象（层级按流程文件校验） |
+
+**关键操作记录**：项目内的会话 write_file / edit_file 成功、run_command 执行、set_stage、record_decision 时自动记一条 `project_log`，发 `project.activity` 事件；顶层的 `list_projects` / `open_project` 读它。项目经理和子 Agent 的完整交互照旧进 `messages`。
+
+**角色模板（给常驻成员留的口）**：`RoleTemplate {id, name, system, tools?, providerId?, model?}`，部署时注册；`createSession({ templateId })` 套用。内置两个：`top`（顶层）和 `project-manager`。常驻成员以后就是「带模板 + 记忆接口的长期会话」，首版不做记忆。
+
+**接口与事件**：AgentApi 加 `createProject`、`listProjects`、`getProject`；事件加 `project.created`、`project.updated`（阶段等）、`project.activity`。
+
 ## 13. 未决问题
 
 - 「收到响应后改响应」与逐字流出的矛盾：默认先流给界面、响应完整后再交钩子；钩子若改了内容，发一个 `message.replaced` 事件让界面替换。是否需要「缓冲模式」由插件声明。
 - 价表默认值未核实，需对照各家公开价格。
 - web_search 非 Anthropic 时接哪家搜索接口，待定（接口可插，通用 JSON 适配器已有）。
-- **Node 24.15 在 Windows 上中止 HTTP 流时偶发硬崩溃**（退出码 0xC0000409，无 JS 栈、无崩溃报告）。纯 `fetch` 和 `node:http` 都能复现，不经过 Spica 代码；进程里没有第三方 DLL。压力测试大约每几千次中止崩一次；全量测试在安静的机器上约 10 次里有 1 次某个测试进程这样退出（从没有断言失败）。产品影响：一次插话或报错 = 一次中止，平时概率很低，但内核跑在 Electron 主进程里时会把整个桌面端带走。复现脚本和用法在 `packages/core/scripts/diag/`。待定：内核要不要放进独立进程（Electron utilityProcess，崩了由主进程拉起，靠 `restore()` 接着干）；Electron 45 自带的 Node 上是否还会出现。
+- **Node 24.15 在 Windows 上中止 HTTP 流时偶发硬崩溃**（退出码 0xC0000409，无 JS 栈、无崩溃报告）。纯 `fetch` 和 `node:http` 都能复现，不经过 Spica 代码；进程里没有第三方 DLL。压力测试大约每几千次中止崩一次；全量测试在安静的机器上约 10 次里有 1 次某个测试进程这样退出（从没有断言失败）。产品影响：一次插话或报错 = 一次中止，平时概率很低，但内核跑在 Electron 主进程里时会把整个桌面端带走。复现脚本和用法在 `packages/core/scripts/diag/`。
+  - 已做（统筹定）：**中止改成软的**。用户插话 / 停止不再 abort 连接：拿到响应头之前就不等了、等它回来再丢掉正文；之后由读流的一方 `cancel()`。只有「等响应头超时」还会硬中止。
+  - 实测（每次 300 轮「开流→停→再发一次」，每轮之间留出端口冷却）：
+
+| 运行时 | 硬中止（纯 fetch / node:http） | Spica 软停止 |
+|---|---|---|
+| 系统 Node 24.15.0 | 旧版内核 2/6 次崩；纯 fetch、node:http 各偶发 1 次 | 0/8 崩 |
+| Electron 45 自带 Node 24.22.2 | 16 次都没有 0xC0000409（几次退出码 1 是压测把本机端口用光，不是这个问题） | 冷却后通过 |
+
+  - 结论：桌面端实际跑的 Electron 自带 Node 上没复现；内核也已改成软停止。内核放进 Electron utilityProcess（崩了拉起、`restore()` 接着干）在 M5 里做，作为兜底。
 - 冒烟里观察到：项目经理收到「用户在子会话里改方向」的回传后，有时会判断这只是对那个子任务的要求，不套用到总体结论，并会问用户。回传本身没丢；要不要在系统提示里规定「子会话里用户的改动优先」，看他的意思。
 
 ## 14. 验收记录

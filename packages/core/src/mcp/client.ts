@@ -47,6 +47,7 @@ export class McpStdioClient {
   #stderr = '';
   #closed = false;
   #closing = false;
+  #exited: Promise<void> = Promise.resolve();
   serverInfo: { name?: string; version?: string } = {};
 
   constructor(config: McpServerConfig) {
@@ -66,6 +67,7 @@ export class McpStdioClient {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.#child = child;
+    this.#exited = new Promise((r) => child.once('close', () => r()));
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (d: string) => this.#onData(d));
     child.stderr.setEncoding('utf8');
@@ -150,16 +152,22 @@ export class McpStdioClient {
     this.#child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`);
   }
 
-  close(): void {
+  /**
+   * Stop the server. Resolves when the process has exited (so its files can
+   * be deleted right after, which matters on Windows).
+   */
+  close(): Promise<void> {
     this.#closing = true;
-    if (this.#closed) return;
-    this.#fail(new Error(`MCP server "${this.config.name}" was disconnected`));
+    const child = this.#child;
+    if (!this.#closed) this.#fail(new Error(`MCP server "${this.config.name}" was disconnected`));
+    if (!child || child.exitCode !== null || child.signalCode !== null) return this.#exited;
     try {
-      this.#child?.stdin.end();
-      this.#child?.kill();
+      child.stdin.end();
+      child.kill();
     } catch {
       // already gone
     }
+    return this.#exited;
   }
 
   #onData(chunk: string): void {
@@ -243,7 +251,7 @@ export async function connectMcp(
   tracer: Tracer,
   config: McpServerConfig,
   opts: { source?: string } = {},
-): Promise<{ client: McpStdioClient; tools: string[]; source: string; disconnect: () => void }> {
+): Promise<{ client: McpStdioClient; tools: string[]; source: string; disconnect: () => Promise<void> }> {
   const client = new McpStdioClient(config);
   try {
     await client.connect();
@@ -257,11 +265,11 @@ export async function connectMcp(
       tools: tools.map((t) => t.spec.name),
       disconnect: () => {
         registry.unregisterSource(source);
-        client.close();
+        return client.close();
       },
     };
   } catch (err) {
-    client.close();
+    await client.close();
     throw err;
   }
 }
