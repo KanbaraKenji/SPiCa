@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "name": "notes",
+  "version": "0.1.0",
+  "display_name": "Notes (example)",
+  "description": "Keep notes in a local notebook and look things up in a fictional sample catalog. Shows every part of a Spica plugin.",
+  "author": { "name": "Spica contributors" },
+  "license": "Apache-2.0",
+  "compatibility": { "spica": ">=0.1.0" },
+  "permissions": {
+    "network": [],
+    "workspace": "none",
+    "irreversible": ["delete_note"],
+    "hooks": ["inject"]
+  },
+  "mock": {
+    "supported": true,
+    "description": "The catalog answers from bundled sample data instead of the catalog service."
+  }
+}

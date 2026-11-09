@@ -1,0 +1,8 @@
+{
+  "name": "@spica/plugin-example-notes",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Example Spica plugin: a local notebook and a fictional sample catalog over MCP, with mock mode, a skill, a command and a hook.",
+  "license": "Apache-2.0",
+  "type": "module"
+}

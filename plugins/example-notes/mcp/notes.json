@@ -1,0 +1,7 @@
+{
+  "runtime": "node",
+  "entry": "server/index.js",
+  "description": "Notebook and catalog tools.",
+  "timeout_seconds": 30,
+  "restart": { "max_restarts": 3, "window_seconds": 60 }
+}

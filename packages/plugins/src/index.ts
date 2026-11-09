@@ -1,0 +1,60 @@
+// Spica plugin system: public entry point.
+export {
+  MANIFEST_FILE,
+  MANIFEST_VERSION,
+  HOOK_KINDS,
+  NAME_PATTERN,
+  parseManifest,
+  validateManifest,
+  compareVersions,
+  satisfies,
+  isSemver,
+  type HookKind,
+  type Issue,
+  type PluginManifest,
+  type PluginPermissions,
+} from './manifest.ts';
+export {
+  readPluginFolder,
+  parseFrontmatter,
+  expandCommand,
+  insidePlugin,
+  hasErrors,
+  type PluginFolder,
+  type SkillDef,
+  type CommandDef,
+  type ServerDef,
+  type HookModuleDef,
+  type ViewDef,
+} from './folder.ts';
+export { runtimeHost, type PluginHost, type McpLaunch, type McpExit, type McpHandle, type RuntimeLike } from './host.ts';
+export {
+  PluginManager,
+  PluginError,
+  SPICA_VERSION,
+  type PluginManagerOptions,
+  type PluginDescription,
+  type PluginEvent,
+  type PluginSource,
+  type InstalledRecord,
+  type ServerStatus,
+} from './manager.ts';
+export { packPlugin, unpackPlugin, verifyPackage, sha256 } from './pack.ts';
+export {
+  INDEX_FILE,
+  listSource,
+  newest,
+  checkUpdates,
+  installAvailable,
+  installZip,
+  writeIndex,
+  type SourceConfig,
+  type SourceOptions,
+  type IndexEntry,
+  type IndexFile,
+  type Available,
+  type UpdateInfo,
+  type FetchLike,
+} from './sources.ts';
+export { readZip, writeZip, safeEntryName, ZipError, type ZipEntry } from './zip.ts';
+export type { PluginContext, HookModule } from './authoring.ts';
