@@ -112,6 +112,11 @@
 - 实现：`renderer/src/store/mail.ts`（listMail + mail.* 事件 + mailFeedback）、`shell/InboxView.tsx`、`shared/mail.ts`（结果和理由的中文）；假后端 `main/backend/fake-mail.ts` 有 6 封虚构的信和每次「现在查收」多一封。
 - 真机走查（2026-11-09，内核 + Outlook 插件模拟模式 + DeepSeek）：建「网站改版」「办公室搬迁」两个项目，点「现在查收」→ 收件箱分好、两个项目都出「有新来信」；办公室搬迁的对话里是「收到 3 封来信」卡；采纳、改归属到另一个项目、改间隔、改忽略规则、重新读取工作流都不重启后台。
 
+### 外来内容里夹带的指令（内核 guard）
+
+- 确认卡按 `cause` 加一行为什么要确认：`untrusted_turn`「这一步是看了外来内容后要做的不可逆操作，需要你确认。」、`outside_link`「要打开的链接只出现在来信或网页里，你没点过。」、`sensitive_file`「要读的是密钥类文件。」；内核的英文 reason 不显示。
+- 工具读回来的内容被标记（`meta.guard[callId]` / `guard.flagged`）时，工具行下面一行浅色字：「这封信 / 这个网页 / 这个文件里 / 插件返回的内容夹带了指令，已忽略」。交给项目经理的信（`meta.untrusted`）在「收到 N 封来信」卡里那封后面标；收件箱里那封信下面也标（从分拣线程的历史重建，加上实时的 `guard.flagged`）。文案都在 `chat/format.ts`。
+
 ## 9. 打包、更新与公告
 
 - **出包**：`npm run dist -w @spica/desktop`（electron-builder，配置 `apps/desktop/electron-builder.yml`），出到 `apps/desktop/release/`：

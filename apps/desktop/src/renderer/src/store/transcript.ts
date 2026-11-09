@@ -1,6 +1,6 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
-import type { CoreEvent, FileCardMeta, Message, PendingItem, SessionStatus } from '@spica/protocol';
+import type { CoreEvent, FileCardMeta, GuardCause, Message, PendingItem, SessionStatus, UntrustedKind } from '@spica/protocol';
 import { humanError } from '../../../shared/errors';
 import { toolLabel } from '../chat/format';
 
@@ -39,9 +39,11 @@ export type Block =
       preview?: string;
       result?: string;
       durationMs?: number;
+      /** What came back looked like instructions (outside content); the core told the model to ignore them. */
+      flagged?: UntrustedKind;
     }
   | { type: 'ask'; callId: string; question: string; options: string[]; answer?: string }
-  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean }
+  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause }
   | { type: 'suggest'; callId: string; title: string; actions: SuggestAction[] };
 
 /** A note from a sub-agent (its report, what the user said there, or a decision made there). */
@@ -85,10 +87,24 @@ export function mailIdsOf(m: Message): string[] | undefined {
   return ids.length ? ids : undefined;
 }
 
+/** Mail ids (from `mail:<id>` sources) whose text the core flagged as instruction-like. */
+export function flaggedMailIds(notes: unknown): string[] {
+  if (!Array.isArray(notes)) return [];
+  return notes
+    .filter((n): n is { kind: string; source: string; signals: unknown[] } => Boolean(n) && typeof n === 'object' && (n as { kind?: unknown }).kind === 'mail' && Array.isArray((n as { signals?: unknown }).signals))
+    .filter((n) => n.signals.length > 0 && typeof n.source === 'string' && n.source.startsWith('mail:'))
+    .map((n) => n.source.slice('mail:'.length));
+}
+
+function mailItem(m: Message, mailIds: string[]): Item {
+  const flagged = flaggedMailIds(m.meta?.untrusted);
+  return flagged.length ? { kind: 'mail', id: m.id, mailIds, flagged } : { kind: 'mail', id: m.id, mailIds };
+}
+
 export type Item =
   | { kind: 'user'; id: string; text: string; steer: boolean }
   /** New mail for this project (the core's English instructions to the agent are not shown). */
-  | { kind: 'mail'; id: string; mailIds: string[] }
+  | { kind: 'mail'; id: string; mailIds: string[]; flagged?: string[] }
   | { kind: 'note'; id: string; text: string; child?: ChildNote }
   | { kind: 'response'; id: string; blocks: Block[]; interrupted: boolean };
 
@@ -225,6 +241,8 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
           tool.result = resultBody(b.content);
           tool.preview = tool.result.slice(0, 160);
           tool.state = b.isError ? failedState(b.content) : 'done';
+          const note = m.meta?.guard?.[b.toolUseId];
+          if (note?.signals?.length) tool.flagged = note.kind;
           continue;
         }
         const ask = findBlock(items, 'ask', b.toolUseId);
@@ -234,7 +252,7 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
     }
     const text = textOf(m);
     const mailIds = mailIdsOf(m);
-    if (mailIds) items.push({ kind: 'mail', id: m.id, mailIds });
+    if (mailIds) items.push(mailItem(m, mailIds));
     else if (m.kind === 'user' || m.kind === 'steer') items.push({ kind: 'user', id: m.id, text, steer: m.kind === 'steer' });
     else items.push(noteItem(m));
   }
@@ -254,7 +272,7 @@ function applyPending(t: Transcript, p: PendingItem): void {
     }
   } else {
     if (!findBlock(t.items, 'confirm', p.callId)) {
-      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason });
+      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}) });
     }
   }
 }
@@ -279,7 +297,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       const m = e.message;
       const mailIds = m.role === 'user' ? mailIdsOf(m) : undefined;
       if (mailIds) {
-        if (!items.some((i) => i.id === m.id)) items.push({ kind: 'mail', id: m.id, mailIds });
+        if (!items.some((i) => i.id === m.id)) items.push(mailItem(m, mailIds));
       } else if (m.role === 'user' && (m.kind === 'user' || m.kind === 'steer')) {
         if (!items.some((i) => i.id === m.id)) items.push({ kind: 'user', id: m.id, text: textOf(m), steer: m.kind === 'steer' });
         if (t.queued?.some((q) => q.id === m.id)) t.queued = t.queued.filter((q) => q.id !== m.id);
@@ -340,8 +358,14 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     }
     case 'confirm.request': {
       if (!findBlock(items, 'confirm', e.callId)) {
-        lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason });
+        lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}) });
       }
+      return t;
+    }
+    case 'guard.flagged': {
+      // A tool's outside content looked like instructions (mail handed over is marked on its message instead).
+      const tool = e.callId ? findBlock(items, 'tool', e.callId) : undefined;
+      if (tool && e.note.signals.length) tool.flagged = e.note.kind;
       return t;
     }
     case 'confirm.resolved': {

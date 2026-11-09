@@ -84,3 +84,18 @@ export function confirmTitle(name: string, input: unknown, reason: string): stri
   const target = toolTarget(input);
   return target ? `${toolLabel(name)}：${target}` : toolLabel(name);
 }
+
+/** Why the core asks for a confirmation it would not ask otherwise (outside content was involved). */
+export const GUARD_CAUSE_TEXT: Record<string, string> = {
+  untrusted_turn: '这一步是看了外来内容后要做的不可逆操作，需要你确认。',
+  outside_link: '要打开的链接只出现在来信或网页里，你没点过。',
+  sensitive_file: '要读的是密钥类文件。',
+};
+
+/** Outside content that carried instructions; they were ignored, not followed. */
+export const GUARD_FLAG_TEXT: Record<string, string> = {
+  mail: '这封信夹带了指令，已忽略',
+  web: '这个网页夹带了指令，已忽略',
+  file: '这个文件里夹带了指令，已忽略',
+  mcp: '插件返回的内容夹带了指令，已忽略',
+};

@@ -8,6 +8,7 @@ import type { MailPrefs } from '../../../shared/settings';
 import type { MailView } from '../store/mail';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
+import { GUARD_FLAG_TEXT } from '../chat/format';
 
 export interface InboxProject {
   id: string;
@@ -61,6 +62,7 @@ function MailCard({ item, props, onMoveMenu }: { item: MailItem; props: InboxVie
         {reason ? <span className="mail-reason">{reason}</span> : null}
         {sure ? <span className="mail-sure">{sure}</span> : null}
       </div>
+      {props.mail.flagged.includes(item.id) ? <p className="guard-note mail-guard">{GUARD_FLAG_TEXT.mail}</p> : null}
       {verdict.tone === 'pending' ? null : (
         <div className="mail-actions">
           {verdict.handled ? (

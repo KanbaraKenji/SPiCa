@@ -2709,3 +2709,25 @@ button.tree-twisty:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* The core flagged outside content that carried instructions (ignored, not followed). */
+.guard-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--spica-muted);
+}
+
+.turn-mail-list .guard-note {
+  margin-left: 8px;
+}
+
+.mail-guard {
+  margin-top: 6px;
+}
+
+/* Why a confirmation is asked (the guard's cause), under the card title. */
+.card-why {
+  margin: 6px 0 0 26px;
+  font-size: 13px;
+  color: var(--spica-muted);
+}

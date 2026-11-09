@@ -17,6 +17,7 @@ const view = (over: Partial<MailView> = {}): MailView => ({
   lastPolledAt: null,
   problem: '',
   threadId: null,
+  flagged: [],
   ...over,
 });
 
@@ -83,6 +84,13 @@ describe('InboxView', () => {
     expect(within(news).getByText('不用管')).toBeTruthy();
     expect(within(news).queryByRole('button', { name: '忽略' })).toBeNull();
     expect(within(news).getByRole('button', { name: '采纳' })).toBeTruthy();
+  });
+
+  it('marks a mail whose text carried instructions', () => {
+    setup({ mail: view({ flagged: ['demo:m1'] }) });
+    const card = screen.getByRole('article', { name: '外壳模具报价补充说明' });
+    expect(within(card).getByText('这封信夹带了指令，已忽略')).toBeTruthy();
+    expect(screen.getAllByText('这封信夹带了指令，已忽略')).toHaveLength(1);
   });
 
   it('says what to do when there is no mail, and when sorting is off', () => {
