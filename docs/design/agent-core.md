@@ -1,6 +1,6 @@
 # Agent 内核设计（`@spica/core`）
 
-> 状态：M1–M5 内核部分已完成（2026-11-09）。M5：后端进程入口（utilityProcess）、端口协议与客户端、单写者锁、本程序的 MCP 服务（stdio）、测试连接探针；J2–J5、J7 经 MCP 服务用真模型自动跑通。还差：主进程监护代码（在 apps/desktop，归桌面外壳）、HTTP 传输（可选）、J6 经 MCP（要插件安装命令）。
+> 状态：M1–M5 内核部分已完成（2026-11-09）。M5：后端进程入口（utilityProcess）、端口协议与客户端、单写者锁、扩展模块（attachBackend）、本程序的 MCP 服务（stdio）、测试连接探针。J2–J7 都能经 MCP 服务自动跑：J2–J5、J7 在 `npm run journeys -w @spica/core`，J6 在插件包（`journey:j6`，751a20b）。还差：主进程监护代码（在 apps/desktop，归桌面外壳）、HTTP 传输（可选）。
 > 需求来源：立项书「定位」「硬规则」「模型接入」「Harness」「数据与外壳」「首版验收」；主循环纯自写（不试接 Pi）。
 
 ## 1. 总览与架构图
@@ -251,7 +251,8 @@
 - `utility-entry.ts`：Electron `utilityProcess.fork()` 的入口。主进程发 `{type:'start', config}` 并附一个 MessagePort；之后可以用 `{type:'connect'}` 再接一个端口（窗口重载后），用 `{type:'shutdown'}` 正常退出。内核回 `{type:'started', restored, warnings}` 或 `{type:'failed', code, message}`。
 - `scripts/electron/host-check.ts`：在真 Electron 里 fork、跑一轮、杀掉、重启、确认历史还在、正常退出，五项都通过（`npm run check:electron-host -w @spica/core`）。
 - `mcp-main.ts` + `mcp/server.ts`：stdio MCP 服务（`node src/host/mcp-main.ts --config backend.json`）。工具见下文；库被别的进程占着时直接拒绝并说明原因。
-- **还没做**：主进程监护（重启退避、`shutdown`、把 `createAgentApi` 换成 `connectBackend`）在 apps/desktop，归桌面外壳，按上面的消息做即可；HTTP 传输（可选）；J6 经 MCP（要插件系统把安装 / 停用命令放到 MCP 上）。
+- **扩展模块**：`BackendConfig.extensions: {module, options}[]`，模块导出 `attachBackend(runtime, options)`，返回 `{ mcpTools?, methods?, warnings?, close? }`：工具加到 MCP 服务上，方法加到后端端口上，关闭时先于 runtime 调 `close()`。插件包就是这样把安装 / 启用 / 停用 / 列表挂上来的（内核不依赖插件包）。`spica_list_tools` 列当前工具和来源。
+- **还没做**：主进程监护（重启退避、`shutdown`、把 `createAgentApi` 换成 `connectBackend`）在 apps/desktop，归桌面外壳，按上面的消息做即可；HTTP 传输（可选）。
 
 （以下是原设计）
 
@@ -320,7 +321,7 @@
 
 **下一步**：
 1. 桌面外壳：主进程用 `utilityProcess.fork(packages/core/src/host/utility-entry.ts)` 起内核，按 12b 节的消息接 `connectBackend`，崩了退避重启（1/2/5 秒，1 分钟最多 5 次）；设置页「测试连接」调 `call('probeProvider', 配置, 模型)`。
-2. 插件系统：把安装 / 启用 / 停用命令放到 MCP 服务上，让 J6 也能经 MCP 自动跑；然后在 journeys.ts 里加 J6。
+2. J6 已由插件系统经 MCP 跑通（751a20b，`journey:j6` 在插件包里）。
 3. 内核：HTTP 传输（127.0.0.1 + 令牌，可选）；AgentApi 的项目命令在 protocol 里改成必选（外壳实现后）。
 
 **注意**：
