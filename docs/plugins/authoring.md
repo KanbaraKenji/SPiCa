@@ -178,7 +178,7 @@ await writeIndex('\\\\server\\spica-plugins');                  // 生成 / 更�
   **/*.test.mjs
   ```
 
-  排除后包装不上（比如把 `server/` 排除了），打包会报错，不会写出坏包。
+  排除后包装不上（比如把 `server/` 排除了），打包会报错，不会写出坏包。别排除 `package.json`：里面的 `"type": "module"` 决定 `.js` 按 ES 模块加载。
 - 共享盘：把 zip 放进共享文件夹，最好再生成 `index.json`；用户在 Spica 里把这个文件夹加成来源。
 - 网站：把 zip 和 `index.json` 放到同一个目录，用户把 `index.json` 的地址加成来源。网站来源必须有校验和。
 - 发新版：改 `version`，重新打包、重新生成索引。用户会看到更新提示；新版起不来会自动退回旧版，用户也可以手动退回上一版。
