@@ -1,7 +1,7 @@
 # 插件系统设计（`@spica/plugins`）
 
 > 状态：首版完成（2026-11-09）。插件文件夹格式、启用 / 停用全撤销、Node 与自带可执行文件两种 MCP server、崩溃重启、模拟模式、打包校验、共享盘 / HTTP 分发与更新、回滚都已做通；示例插件 `plugins/example-notes` 跑通 J6。
-> 需求来源：立项书「硬规则」「Harness」「插件」「首版验收 J6」「硬环境约束」。内核侧接口见 `agent-core.md` 第 6 节（钩子）、第 7 节（工具注册、MCP 客户端）。
+> 需求来源：立项书「硬规则」「Harness」「插件」「首版验收 J6」「硬环境约束」。内核侧接口见 `agent-core.md` 第 7 节（钩子）、第 8 节（工具与确认，含 MCP 客户端）。
 
 ## 1. 对标与取舍
 
@@ -78,7 +78,7 @@ export const priority = 100; // 可选，小的先跑
 ```
 
 - 默认导出钩子对象，或接收 `PluginContext`（name、version、pluginDir、dataDir、`mock()`、`log()`）的工厂。
-- 钩子类型和参数就是内核的 `Hooks`（`agent-core.md` 第 6 节），六个注入位置照用。
+- 钩子类型和参数就是内核的 `Hooks`（`agent-core.md` 第 7 节），六个注入位置照用。
 - 只收 ESM `.js/.mjs`；放 `.ts` 会得到「先编译成 .js」的警告。Electron 45 自带的 Node 24.22 其实能跑 TS，但不对插件作者承诺，免得以后换运行时出问题。
 
 ### 视图 `views/<id>.json`（只定格式）
