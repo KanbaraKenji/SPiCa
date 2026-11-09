@@ -122,3 +122,15 @@ npm run shots -w @spica/desktop -- main         # 只出某几页，逗号分隔
 - 文件卡只认 `read_file / write_file / edit_file` 的 `path`，模型在正文里提到的文件不会变成卡片。
 - `body` 默认不可选中（界面像应用不像网页），对话正文、输入框、路径单独打开了选中。
 - 任务栏状态灯、彩蛋：不在三个里程碑里。
+
+## 11. 交接（2026-11-09 用量快到上限时写）
+
+**已提交、都是绿的**：U1–U3、外框、UX 复查修正、file.card / 回报卡 / 建议卡（含重开后从 meta 重建）、提取器接线（a83e0a1）、3ea4bbb 为止。
+
+**做到一半、没提交**：设置 › 插件 页（「插件系统」2caf365 的接口，见 docs/design/plugins.md 第 9 节）。代码已写完、typecheck / lint / 现有测试都过，但还没在真窗口里装过插件，所以没提交。涉及的文件：
+- 新文件：`apps/desktop/src/shared/plugins.ts`（界面看到的类型和命令）、`src/main/plugins/service.ts`（`RealPluginService` 包 PluginManager；`FakePluginService` 给截图）、`src/renderer/src/settings/Plugins.tsx`（列表、启用开关、模拟模式、安装、更新、退回、删除）。
+- 改动：`src/main/index.ts`（插件根 `%APPDATA%\Spica\plugins`、IPC、启动时 `start()`、退出前停插件进程）、`src/main/backend/index.ts`（返回 runtime 类型）、`src/preload/index.ts`、`src/shared/bridge.ts`、`src/shared/ipc.ts`、`src/renderer/src/App.tsx`、`src/renderer/src/settings/SettingsView.tsx`（第三个标签「插件」）、`src/renderer/src/styles.css`（开关、插件卡片）、`apps/desktop/package.json` + 根 `package-lock.json`（加 `"@spica/plugins": "*"`，两者要同一个提交）。
+
+**下一步第一件事**：`npm run build -w @spica/desktop` 后用真内核开窗口，设置 › 插件 里填 `K:\unnamed\plugins\example-notes` 点安装；确认列表出现「Notes (example)」、展开看到工具、关掉开关后工具变 0（J6），打开再回来；退回 / 删除各点一次。截图明暗各一，补 `Plugins.test.tsx`（假 api），然后连同上面的文件一个提交。
+
+**还没开始**：项目入口（等内核 M4 的 ProjectApi 进 AgentApi，协议现在还在改）。点选页 `ledger-briefs/pages/shell-ux.html` 等他说「这版可以了」再发。
