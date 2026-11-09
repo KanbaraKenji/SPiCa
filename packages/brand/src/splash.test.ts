@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
-import { SPLASH_FINISH_AFTER, SPLASH_LAYOUT, SPLASH_TEMPOS, SPLASH_TIMING, STARFIELD_COUNT, splashFrame, splashStaticFrame, starfield } from './splash.ts';
+import { SPLASH_FINISH_AFTER, SPLASH_FINISH_CURVE, SPLASH_LAYOUT, SPLASH_TEMPOS, SPLASH_TIMING, STARFIELD_COUNT, splashFrame, splashSpeeds, splashStaticFrame, starfield } from './splash.ts';
 import { MARK_GEOMETRY } from './geometry.ts';
 import { SpicaSplash } from './react/SpicaSplash.tsx';
 
@@ -44,7 +44,7 @@ describe('开机画面时间线', () => {
     expect(sawFront && sawBack).toBe(true);
   });
 
-  it('双星周期锁在背景节拍上：同拍一圈 6 秒，慢档 12 秒', () => {
+  it('双星周期锁在背景节拍上：同拍一圈 5 秒，慢档 10 秒', () => {
     expect(SPLASH_TEMPOS.sync).toBe(SPLASH_TIMING.starfieldPeriod);
     expect(SPLASH_TEMPOS.slow).toBe(SPLASH_TIMING.starfieldPeriod * 2);
     for (const period of [SPLASH_TEMPOS.sync, SPLASH_TEMPOS.slow]) {
@@ -74,9 +74,10 @@ describe('开机画面时间线', () => {
 
   it('ready 后：合一 → 九瓣全亮 → 逐字点亮 → 淡出结束', () => {
     const r = 3;
-    const bloomed = splashFrame(r + SPLASH_TIMING.bloom[1] + 0.01, r);
+    const merged = r + SPLASH_FINISH_CURVE.accel;
+    const bloomed = splashFrame(merged + SPLASH_TIMING.bloom[1] + 0.01, r);
     for (const p of bloomed.petals) expect(p.opacity).toBeCloseTo(1, 5);
-    const lit = splashFrame(r + SPLASH_TIMING.sweep[1] + 0.3, r);
+    const lit = splashFrame(merged + SPLASH_TIMING.sweep[1] + 0.3, r);
     for (const l of lit.letters) expect(l.opacity).toBeCloseTo(1, 5);
     expect(lit.stars).toHaveLength(0);
     expect(splashFrame(r + SPLASH_FINISH_AFTER - 0.01, r).finished).toBe(false);
@@ -100,6 +101,57 @@ describe('开机画面时间线', () => {
   });
 });
 
+describe('收尾加速曲线', () => {
+  it('ready 前后速度连续：没有台阶，起步加速度为 0', () => {
+    const r = 5;
+    let prev = splashSpeeds(r - 0.001, r);
+    expect(prev).toEqual({ orbit: 1, starfield: 1 });
+    for (let t = r; t < r + 5; t += 0.001) {
+      const s = splashSpeeds(t, r);
+      expect(Math.abs(s.orbit - prev.orbit)).toBeLessThan(0.01);
+      expect(Math.abs(s.starfield - prev.starfield)).toBeLessThan(0.01);
+      prev = s;
+    }
+    // 刚 ready 0.1 秒时几乎还是平时的速度（缓入）
+    expect(splashSpeeds(r + 0.1, r).orbit).toBeLessThan(1.02);
+  });
+
+  it('合一时转速到峰值，背景星点之后回落到平时速度', () => {
+    const r = 5;
+    const c = SPLASH_FINISH_CURVE;
+    expect(splashSpeeds(r + c.accel, r).orbit).toBeCloseTo(c.orbitPeak, 6);
+    expect(splashSpeeds(r + c.accel, r).starfield).toBeCloseTo(c.starPeak, 6);
+    expect(splashSpeeds(r + c.accel + c.starSettle + 0.1, r).starfield).toBeCloseTo(1, 6);
+  });
+
+  it('双星和背景星点的位置随时间连续变化（没有跳帧）', () => {
+    const r = 5;
+    let prevStar = splashFrame(r - 0.004, null).stars[0]!;
+    let prevBg = starfield(r - 0.004, null, 1280, 720);
+    for (let t = r; t < r + SPLASH_FINISH_CURVE.accel - 0.01; t += 0.004) {
+      const star = splashFrame(t, r).stars[0]!;
+      expect(Math.hypot(star.x - prevStar.x, star.y - prevStar.y)).toBeLessThan(6);
+      prevStar = star;
+      const bg = starfield(t, r, 1280, 720);
+      bg.forEach((s, i) => {
+        const p = prevBg[i]!;
+        // 一颗星飘出画面后会从中心重来，那一帧跳回中心，不算
+        if (Math.hypot(s.x2 - 640, s.y2 - 360) >= Math.hypot(p.x2 - 640, p.y2 - 360)) {
+          expect(Math.hypot(s.x2 - p.x2, s.y2 - p.y2)).toBeLessThan(25);
+        }
+      });
+      prevBg = bg;
+    }
+  });
+
+  it('加速曲线可调：时长变了，结束时间跟着变', () => {
+    const r = 5;
+    const f = splashFrame(r + 2.2 + SPLASH_TIMING.hold + SPLASH_TIMING.fadeOut, r, { finish: { accel: 2.2 } });
+    expect(f.finished).toBe(true);
+    expect(splashFrame(r + 2.2 + SPLASH_TIMING.hold, r, { finish: { accel: 2.2 } }).finished).toBe(false);
+  });
+});
+
 describe('背景星点', () => {
   it('从中心沿径向向外飞，光迹头尾在同一条射线上', () => {
     const lines = starfield(4, null, 1280, 720);
@@ -112,9 +164,9 @@ describe('背景星点', () => {
     }
   });
 
-  it('背景节拍：每颗星 6 秒飘完全程，之后从中心重来', () => {
+  it('背景节拍：每颗星 5 秒飘完全程，之后从中心重来', () => {
     const p = SPLASH_TIMING.starfieldPeriod;
-    expect(p).toBe(6);
+    expect(p).toBe(5);
     const a = starfield(2, null, 1280, 720);
     const b = starfield(2 + p, null, 1280, 720);
     a.forEach((s, i) => {
