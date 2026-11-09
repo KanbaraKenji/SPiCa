@@ -26,9 +26,21 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async getPending(id) {
       return get(id).pending();
     },
-    async send(id, text) {
-      const h = get(id).send(text);
+    async send(id, text, opts) {
+      const s = get(id);
+      if (!opts?.attachments?.length) {
+        const h = s.send(text);
+        return { messageId: h.messageId, started: h.started };
+      }
+      const a = await s.readAttachments(opts.attachments);
+      const h = s.send(text, { content: a.content, meta: { attachments: a.attachments, ...(a.notes.length ? { untrusted: a.notes } : {}) } });
       return { messageId: h.messageId, started: h.started };
+    },
+    async setSessionModel(id, providerId, model) {
+      return get(id).setModel(providerId, model);
+    },
+    async setApprovalMode(id, mode) {
+      return get(id).setApprovalMode(mode);
     },
     async steer(id, text, mode: SteerMode) {
       const h = get(id).steer(text, mode);

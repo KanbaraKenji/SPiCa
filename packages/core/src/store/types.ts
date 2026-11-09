@@ -35,6 +35,8 @@ export interface SessionConfig {
   templateId?: string;
   /** Project the session works for (manager and its sub-agents). */
   projectId?: string;
+  /** Default manual. */
+  approvalMode?: import('../types.ts').ApprovalMode;
   memoryId?: string;
 }
 
@@ -43,6 +45,8 @@ export interface ToolCallCards {
   suggestion?: { title: string; actions: import('../types.ts').SuggestedAction[] };
   /** The result was outside content and went to the model fenced as data. */
   guard?: import('../types.ts').GuardNote;
+  /** Ran without asking (approval mode auto). */
+  autoApproved?: true;
 }
 
 /** Keyed by (sessionId, messageId, id): some gateways reuse call ids across turns. */
