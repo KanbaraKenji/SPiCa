@@ -78,17 +78,12 @@
 .spica-splash-trail--companion {
   fill: var(--spica-splash-companion);
 }
-/* 拖尾光带：头部实、尾部渐隐 */
-.spica-splash-ribbon-head {
-  stop-color: var(--spica-splash-accent);
-  stop-opacity: 1;
+/* 拖尾光带：一小段一小段，透明度由 JS 按「多久以前」给 */
+.spica-splash-ribbon {
+  fill: var(--spica-splash-accent);
 }
-.spica-splash-ribbon-tail {
-  stop-color: var(--spica-splash-accent);
-  stop-opacity: 0;
-}
-.spica-splash-ribbon-grad--companion stop {
-  stop-color: var(--spica-splash-companion);
+.spica-splash-ribbon--companion {
+  fill: var(--spica-splash-companion);
 }
 /* 扫字时字亮起的辉光 */
 .spica-splash-letter-glow-shape {
