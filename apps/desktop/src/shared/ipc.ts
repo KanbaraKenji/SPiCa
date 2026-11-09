@@ -10,4 +10,9 @@ export const DesktopChannel = {
   SettingsChanged: 'spica:settings:changed',
   GetShellState: 'spica:shell:get',
   OpenFile: 'spica:file:open',
+  ListProviders: 'spica:providers:list',
+  SaveProvider: 'spica:providers:save',
+  DeleteProvider: 'spica:providers:delete',
+  SetDefaultProvider: 'spica:providers:default',
+  TestProvider: 'spica:providers:test',
 } as const;

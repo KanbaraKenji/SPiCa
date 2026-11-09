@@ -2,13 +2,16 @@
 import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve as resolvePath } from 'node:path';
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, shell } from 'electron';
 import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
 import { deriveTokens, resolveSkin, schemeOf } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
 import type { ShellSettings } from '../shared/settings';
-import type { ShellState } from '../shared/bridge';
+import type { ProviderList, ShellState } from '../shared/bridge';
+import type { ProviderDraft, ProviderView } from '../shared/providers';
+import { ProviderStore } from './providers/store';
+import { createFakeTester } from './providers/tester';
 import { chooseBackend, createBackend } from './backend';
 import { readModelEnv } from './backend/model-env';
 import { SettingsStore } from './settings-store';
@@ -22,7 +25,7 @@ const TITLEBAR_HEIGHT = 40;
 //   SPICA_THEME=dark|light   force the color scheme instead of following the system
 //   SPICA_CAPTURE=<file.png> render the window once, save a PNG and quit
 //   SPICA_SHOTS=<dir>        render the screenshot matrix into <dir> and quit
-//   SPICA_BACKEND=fake|core  pick the backend (default: real core when .env.local has a model)
+//   SPICA_BACKEND=fake|core  pick the backend (default: the real core; screenshots use the fake)
 const forcedTheme = process.env.SPICA_THEME;
 const capturePath = process.env.SPICA_CAPTURE;
 const shotsDir = process.env.SPICA_SHOTS;
@@ -38,13 +41,52 @@ else if (automated) app.setPath('userData', mkdtempSync(join(tmpdir(), 'spica-sh
 if (forcedTheme === 'dark' || forcedTheme === 'light') nativeTheme.themeSource = forcedTheme;
 
 // Development model settings: the repository's .env.local, read here and nowhere else.
-const modelEnv = app.isPackaged ? {} : readModelEnv(resolvePath(app.getAppPath(), '../../.env.local'));
-const backendKind = chooseBackend({ requested: process.env.SPICA_BACKEND, automated, env: modelEnv });
+// Screenshots never read it, so no local model shows up in committed images.
+const modelEnv = app.isPackaged || automated ? {} : readModelEnv(resolvePath(app.getAppPath(), '../../.env.local'));
+const backendKind = chooseBackend({ requested: process.env.SPICA_BACKEND, automated });
 const workDir = join(app.getPath('documents'), 'Spica');
 if (backendKind === 'core') mkdirSync(workDir, { recursive: true });
-const backend = createBackend(backendKind, { fake: { speed: automated ? 0 : 1 }, env: modelEnv, cwd: workDir });
+const backend = createBackend(backendKind, {
+  fake: { speed: automated ? 0 : 1 },
+  env: modelEnv,
+  cwd: workDir,
+  dbPath: join(app.getPath('userData'), 'spica.db'),
+});
 console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core' : 'fake (demo data)'}`);
 const settings = new SettingsStore(app.getPath('userData'), { persist: !automated });
+const providers = new ProviderStore(
+  app.getPath('userData'),
+  {
+    available: () => safeStorage.isEncryptionAvailable(),
+    encrypt: (plain) => safeStorage.encryptString(plain).toString('base64'),
+    decrypt: (sealed) => safeStorage.decryptString(Buffer.from(sealed, 'base64')),
+  },
+  () => envProviders().map((p) => p.id),
+);
+const testConnection = createFakeTester({ delayMs: automated ? 0 : 700 });
+let providerProblems: Record<string, string> = {};
+
+/** Models from the developer's .env.local, shown read-only on the settings page. */
+function envProviders(): ProviderView[] {
+  const base = { strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, hasSecret: true, isDefault: false, readOnly: true };
+  const out: ProviderView[] = [];
+  if (modelEnv.openai) out.push({ ...base, id: 'openai', kind: 'openai', name: '开发用模型（.env.local）', baseUrl: modelEnv.openai.baseUrl, model: modelEnv.openai.model });
+  if (modelEnv.anthropic) out.push({ ...base, id: 'anthropic', kind: 'anthropic', name: '开发用模型（.env.local）', baseUrl: '', model: modelEnv.anthropic.model });
+  return out;
+}
+
+function providerList(): ProviderList {
+  const def = providers.defaultId();
+  const env = envProviders().map((p) => ({ ...p, isDefault: p.id === def }));
+  return { items: [...env, ...providers.list()], problems: providerProblems };
+}
+
+/** Hands saved providers to the backend; remembers which ones it could not use. */
+function applyProviders(): void {
+  if (!backend.configure) return;
+  const problems = backend.configure(providers.resolved(), providers.defaultId());
+  providerProblems = Object.fromEntries(problems.map((p) => [p.id, p.reason]));
+}
 if (forcedTheme === 'dark' || forcedTheme === 'light') settings.update({ skin: forcedTheme });
 
 const AGENT_METHODS = new Set<keyof AgentApi>([
@@ -56,6 +98,8 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'send',
   'steer',
   'answer',
+  'renameSession',
+  'resume',
   'confirm',
   'abort',
   'exportTraces',
@@ -163,7 +207,7 @@ function createMainWindow(): BrowserWindow {
 }
 
 function shellState(): ShellState {
-  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated };
+  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated };
 }
 
 ipcMain.handle(IpcChannel.AppInfo, (): AppInfo => ({ name: APP_NAME, version: app.getVersion() }));
@@ -191,6 +235,26 @@ ipcMain.handle(DesktopChannel.OpenFile, async (_e, sessionId: unknown, path: unk
   return error ? `打不开这个文件：${error}` : null;
 });
 
+ipcMain.handle(DesktopChannel.ListProviders, () => providerList());
+ipcMain.handle(DesktopChannel.SaveProvider, (_e, draft: ProviderDraft) => {
+  providers.save(draft);
+  applyProviders();
+  return providerList();
+});
+ipcMain.handle(DesktopChannel.DeleteProvider, (_e, id: string) => {
+  providers.remove(id);
+  applyProviders();
+  return providerList();
+});
+ipcMain.handle(DesktopChannel.SetDefaultProvider, (_e, id: string) => {
+  providers.setDefault(id);
+  applyProviders();
+  return providerList();
+});
+ipcMain.handle(DesktopChannel.TestProvider, (_e, draft: ProviderDraft) =>
+  testConnection(draft, draft.id ? providers.secretOf(draft.id) : undefined),
+);
+
 backend.onEvent((event) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DesktopChannel.AgentEvent, event);
 });
@@ -209,6 +273,7 @@ nativeTheme.on('updated', () => {
 
 void app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
+  applyProviders();
   mainWindow = createMainWindow();
   syncNativeChrome(mainWindow, settings.get());
   if (shotsDir) void runShots(mainWindow, settings, shotsDir);

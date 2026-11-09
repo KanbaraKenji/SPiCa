@@ -436,15 +436,12 @@ a:hover {
   height: 32px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px;
+  padding-right: 8px;
   border-radius: var(--radius-m);
-  text-align: left;
   color: var(--spica-ink);
 }
 
-button.tree-row:hover,
-.tree-project-row:hover {
+.tree-row:hover {
   background: var(--spica-hover);
 }
 
@@ -459,11 +456,6 @@ button.tree-row:hover,
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.tree-project-row {
-  padding: 0 6px 0 2px;
-  gap: 0;
 }
 
 .tree-twisty {
@@ -482,7 +474,7 @@ button.tree-twisty:hover {
   color: var(--spica-ink);
 }
 
-.tree-project-open {
+.tree-open {
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -491,7 +483,6 @@ button.tree-twisty:hover {
   gap: 8px;
   padding-left: 4px;
   text-align: left;
-  font-weight: 500;
 }
 
 .tree-summary {
@@ -1621,4 +1612,305 @@ button.tree-twisty:hover {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* Notes from sub-agents */
+.note-card {
+  padding: 10px 14px 12px;
+}
+
+.note-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.note-from {
+  font-weight: 600;
+  color: var(--spica-accent-text);
+  max-width: 60%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.note-from:hover {
+  color: var(--spica-accent);
+}
+
+.note-kind {
+  color: var(--spica-muted);
+}
+
+.note-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.note-relay .note-text,
+.note-decision .note-text {
+  color: var(--spica-ink);
+}
+
+.resume-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--spica-muted);
+  font-size: 13px;
+}
+
+/* Opening animation layer (component from @spica/brand) */
+.root {
+  position: relative;
+  height: 100%;
+}
+
+.splash-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+}
+
+/* Settings tabs */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--spica-border);
+}
+
+.tab {
+  position: relative;
+  height: 36px;
+  padding: 0 14px;
+  color: var(--spica-muted);
+  font-size: 15px;
+}
+
+.tab:hover {
+  color: var(--spica-ink);
+}
+
+.tab.is-on {
+  color: var(--spica-ink);
+  font-weight: 600;
+}
+
+.tab.is-on::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--spica-accent);
+}
+
+/* Settings > models */
+.provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.provider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px 4px 4px;
+  border-radius: var(--radius-l);
+  border: 1px solid var(--spica-border);
+  background: var(--spica-surface);
+}
+
+.provider-row.is-on {
+  border-color: var(--spica-accent);
+}
+
+.provider-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: var(--radius-m);
+  text-align: left;
+}
+
+.provider-open:hover {
+  background: var(--spica-hover);
+}
+
+.provider-name,
+.provider-sub {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.provider-name {
+  font-weight: 500;
+}
+
+.provider-sub {
+  font-size: 12px;
+  color: var(--spica-muted);
+}
+
+.provider-problem {
+  font-size: 12px;
+  color: var(--spica-danger);
+}
+
+.provider-default {
+  flex: none;
+  font-size: 12px;
+  color: var(--spica-muted);
+}
+
+.btn-small {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.provider-add {
+  align-self: flex-start;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: var(--radius-m);
+  color: var(--spica-accent-text);
+}
+
+.provider-add:hover,
+.provider-add.is-on {
+  background: var(--spica-hover);
+}
+
+.provider-readonly {
+  display: block;
+  margin: 12px 0 0;
+}
+
+.provider-editor {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: var(--radius-l);
+  border: 1px solid var(--spica-border);
+  background: var(--spica-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field-stack {
+  grid-template-columns: 96px 1fr;
+  align-items: start;
+}
+
+.field-stack > .field-label {
+  padding-top: 6px;
+}
+
+.field-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field .field-control .input {
+  max-width: 420px;
+  width: 100%;
+}
+
+.field-error {
+  font-size: 12px;
+  color: var(--spica-danger);
+}
+
+.field-hint {
+  font-size: 12px;
+  color: var(--spica-faint);
+}
+
+.input.is-invalid {
+  border-color: var(--spica-danger);
+}
+
+.field-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.field-pair .field .field-control .input {
+  max-width: 120px;
+}
+
+.segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--spica-border-strong);
+  background: var(--spica-raised);
+  justify-self: start;
+}
+
+.segment {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-s);
+  color: var(--spica-muted);
+}
+
+.segment:hover {
+  color: var(--spica-ink);
+}
+
+.segment.is-on {
+  background: var(--spica-accent-soft);
+  color: var(--spica-ink);
+  font-weight: 500;
+}
+
+.provider-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.provider-actions-gap {
+  flex: 1;
+}
+
+.provider-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.provider-result.is-ok {
+  color: var(--spica-success);
+}
+
+.provider-result.is-bad {
+  color: var(--spica-danger);
 }
