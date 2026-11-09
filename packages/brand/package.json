@@ -21,7 +21,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --root ../.. packages/brand",
-    "brand:build": "node scripts/build.ts"
+    "brand:build": "node scripts/build.ts",
+    "preview:splash": "node scripts/preview-splash.mjs"
   },
   "peerDependencies": {
     "react": ">=19"

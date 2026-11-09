@@ -8,6 +8,8 @@
 
 export interface WordmarkShape {
   d: string;
+  /** 这个字母的水平中心（字标自身坐标）；开机画面逐字点亮时用 */
+  cx: number;
   /** fill：填充；stroke：按 strokeWidth 描边（方头、尖角） */
   kind: 'fill' | 'stroke';
   strokeWidth?: number;
@@ -15,7 +17,7 @@ export interface WordmarkShape {
 }
 
 export interface Wordmark {
-  /** 画框宽高（字标自身坐标） */
+  /** 画框宽高（字标自身坐标）；height 即大写字母高度。每个 shape 是一个字母，按书写顺序排 */
   width: number;
   height: number;
   shapes: readonly WordmarkShape[];
@@ -27,25 +29,28 @@ export const WORDMARK: Wordmark = Object.freeze({
   shapes: Object.freeze([
     // S
     {
+      cx: 28,
       kind: 'stroke',
       strokeWidth: 11,
       d: 'M50 10C46 6.5 40 5.5 28 5.5C12 5.5 5.5 10 5.5 18.5C5.5 27 12 29.5 28 32C44 34.5 50.5 37 50.5 45.5C50.5 54 44 58.5 28 58.5C16 58.5 9 57 5.5 53.5',
     },
     // P
     {
+      cx: 102,
       kind: 'fill',
       evenOdd: true,
       d: 'M74 0H104C120 0 130 8 130 19S120 38 104 38H86V64H74V0ZM86 10V28H104C112 28 117 25 117 19S112 10 104 10H86Z',
     },
     // I
-    { kind: 'fill', d: 'M148 0h12v64h-12z' },
+    { kind: 'fill', cx: 154, d: 'M148 0h12v64h-12z' },
     // C
     {
+      cx: 208,
       kind: 'stroke',
       strokeWidth: 11,
       d: 'M232 13C228 8 221 5.5 210 5.5C193 5.5 183.5 16 183.5 32C183.5 48 193 58.5 210 58.5C221 58.5 228 56 232 51',
     },
     // A
-    { kind: 'stroke', strokeWidth: 11, d: 'M262 59 297 5c2-3 4-3 6 0l35 54' },
+    { kind: 'stroke', cx: 300, strokeWidth: 11, d: 'M262 59 297 5c2-3 4-3 6 0l35 54' },
   ] satisfies WordmarkShape[]),
 });

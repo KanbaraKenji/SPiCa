@@ -1,0 +1,110 @@
+/* ============================================================
+   Spica 开机画面「暗处亮起 · 双星互绕」
+   ------------------------------------------------------------
+   消费方：@spica/brand/react 的 <SpicaSplash ready onDone theme>。
+   动画由组件按帧驱动（时间线在 src/splash.ts），这里只管铺版和配色。
+   长瓣、蓝星、星点里的蓝色都跟 --spica-accent 走。
+   ============================================================ */
+
+.spica-splash {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--spica-splash-bg);
+  color: var(--spica-splash-ink);
+}
+.spica-splash[data-theme='dark'] {
+  --spica-splash-bg: #0b0f19;
+  --spica-splash-ink: #f1f5f9;
+  --spica-splash-star: #dce8ff;
+  --spica-splash-companion: #e8f0ff;
+  --spica-splash-accent: var(--spica-accent, #62a9ff);
+  --spica-splash-glow: 0.55;
+}
+/* 浅色：干净的单色底，不压暗角；星点用浅蓝细线，不加辉光 */
+.spica-splash[data-theme='light'] {
+  --spica-splash-bg: #f7f9fc;
+  --spica-splash-ink: #0f172a;
+  --spica-splash-star: #9db8e0;
+  --spica-splash-companion: #4f74b0;
+  --spica-splash-accent: var(--spica-accent, #2f7de1);
+  --spica-splash-glow: 0.12;
+}
+/* 暗色压一点四角，让中心更亮 */
+.spica-splash[data-theme='dark']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 55%, rgb(0 0 0 / 0.55) 100%);
+}
+
+.spica-splash-stars,
+.spica-splash-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.spica-splash-petal--long path {
+  fill: var(--spica-splash-accent);
+}
+.spica-splash-petal--short path,
+.spica-splash-hub,
+.spica-splash-letter {
+  fill: currentColor;
+}
+.spica-splash-letter--stroke {
+  fill: none;
+  stroke: currentColor;
+}
+.spica-splash-shock {
+  fill: none;
+  stroke: var(--spica-splash-accent);
+}
+
+.spica-splash-glow-core {
+  stop-color: var(--spica-splash-accent);
+  stop-opacity: var(--spica-splash-glow);
+}
+.spica-splash-glow-mid {
+  stop-color: var(--spica-splash-accent);
+  stop-opacity: 0.12;
+}
+.spica-splash-glow-edge {
+  stop-color: var(--spica-splash-accent);
+  stop-opacity: 0;
+}
+
+.spica-splash-star .spica-splash-star-shape {
+  fill: var(--spica-splash-accent);
+}
+.spica-splash-star--companion .spica-splash-star-shape {
+  fill: var(--spica-splash-companion);
+}
+.spica-splash-star-core {
+  fill: #fff;
+}
+.spica-splash[data-theme='light'] .spica-splash-star-core {
+  fill: var(--spica-splash-bg);
+}
+
+.spica-splash-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(24px, 6vh);
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  opacity: 0.55;
+}
+
+/* 减弱动效：组件不跑动画、不画星点，直接给完整横标；这里把画布藏掉 */
+@media (prefers-reduced-motion: reduce) {
+  .spica-splash-stars {
+    display: none;
+  }
+}
