@@ -669,6 +669,7 @@ export class Session {
         : { content: `Tool failed: ${err instanceof Error ? err.message : String(err)}`, isError: true };
     }
     out = await this.#rt.hooks.afterTool(draft, out, hctx);
+    this.#rt.onToolDone(this, draft, out);
     out = { content: `[fetched at ${fetchedAt}]\n${truncate(out.content, MAX_RESULT_CHARS)}`, isError: out.isError };
     this.#emit({
       type: 'tool.end',

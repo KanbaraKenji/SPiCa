@@ -89,3 +89,97 @@ describe('role templates', () => {
     expect(rt.createSession().info().projectId).toBeUndefined();
   });
 });
+
+describe('projects', () => {
+  let gw: FakeGateway;
+  let dir: string;
+  let cleanup: () => Promise<void>;
+  beforeEach(async () => {
+    gw = await startGateway();
+    ({ dir, cleanup } = await tempDir());
+  });
+  afterEach(async () => {
+    await gw.stop();
+    await cleanup();
+  });
+  const rtFor = (extra: Parameters<typeof makeRuntime>[1] = {}) => makeRuntime(gw, { cwd: dir, workflowsDir: exampleDir, ...extra });
+
+  it('a project is a folder plus a manager under the single top-level agent', async () => {
+    gw.onRequest(() => ({ text: 'on it' }));
+    const rt = rtFor();
+    const events: string[] = [];
+    rt.events.on((e) => events.push(e.type));
+    const p = rt.createProject({ name: 'Orion: relaunch?', workflowId: 'product-development', brief: 'BRIEF-TEXT start with samples' });
+    expect(p.folder).toBe(join(dir, 'Orion_ relaunch_'));
+    expect(p.stage).toBe('sample');
+    const { stat } = await import('node:fs/promises');
+    expect((await stat(p.folder)).isDirectory()).toBe(true);
+    const top = rt.top();
+    expect(rt.top().id).toBe(top.id); // one top-level agent
+    const pm = rt.session(p.managerSessionId)!;
+    expect(pm.info()).toMatchObject({ role: 'manager', templateId: 'project-manager', parentId: top.id, projectId: p.id, cwd: p.folder, title: 'Orion: relaunch?' });
+    expect(events).toContain('project.created');
+    await pm.idle();
+    expect(JSON.stringify(gw.requests[0]!.body.messages)).toContain('BRIEF-TEXT');
+    expect(rt.listProjects().map((x) => x.id)).toEqual([p.id]);
+    expect(rt.getProject(p.id)).toMatchObject({ workflow: { id: 'product-development' }, manager: { id: pm.id }, agents: [] });
+    expect(() => rt.createProject({ name: 'x', workflowId: 'nope' })).toThrow(/unknown workflow "nope"/);
+  });
+
+  it('stage changes are checked against the workflow, logged and relayed to the top-level agent', () => {
+    const rt = rtFor();
+    const p = rt.createProject({ name: 'P', workflowId: 'product-development' });
+    expect(() => rt.setStage(p.id, 'launch', undefined, p.managerSessionId)).toThrow(/unknown stage "launch"/);
+    const u = rt.setStage(p.id, 'pilot', 'samples approved', p.managerSessionId);
+    expect(u.stage).toBe('pilot');
+    expect(rt.getProject(p.id)!.recentLog[0]).toMatchObject({ kind: 'stage', summary: 'Stage changed to "Pilot run": samples approved' });
+    const topNotes = rt.top().messages().filter((m) => m.kind === 'relay');
+    expect(topNotes[0]!.meta).toMatchObject({ kind: 'decision', text: 'Project "P": Stage changed to "Pilot run": samples approved' });
+  });
+
+  it('work objects follow the levels in the workflow file', () => {
+    const rt = rtFor();
+    const p = rt.createProject({ name: 'P', workflowId: 'product-development' });
+    const product = rt.addWorkObject(p.id, { level: 'product', name: 'Charger X' });
+    const part = rt.addWorkObject(p.id, { level: 'Part', name: 'Housing', parentId: product.id });
+    expect(part).toMatchObject({ level: 'part', parentId: product.id });
+    expect(() => rt.addWorkObject(p.id, { level: 'part', name: 'Orphan' })).toThrow(/belongs under a "product"/);
+    expect(() => rt.addWorkObject(p.id, { level: 'part', name: 'Wrong', parentId: part.id })).toThrow(/not a "part"/);
+    expect(() => rt.addWorkObject(p.id, { level: 'module', name: 'M' })).toThrow(/unknown level/);
+    expect(rt.getProject(p.id)!.objects.map((o) => o.name)).toEqual(['Charger X', 'Housing']);
+  });
+
+  it('key actions of the manager and its sub-agents go to the project log', async () => {
+    gw.enqueue({ toolCalls: [{ id: 'w1', name: 'write_file', args: { path: 'spec.md', content: '# Spec' } }] }, { text: 'written' });
+    const rt = rtFor();
+    const activity: unknown[] = [];
+    rt.events.on((e) => e.type === 'project.activity' && activity.push(e.entry));
+    const p = rt.createProject({ name: 'P' });
+    const worker = rt.createSession({ parentId: p.managerSessionId, title: 'Writer' });
+    await worker.send('write the spec', { author: 'parent' }).done;
+    expect(rt.getProject(p.id)!.recentLog[0]).toMatchObject({ kind: 'file_write', path: 'spec.md', sessionId: worker.id, summary: 'Wrote spec.md' });
+    expect(activity).toHaveLength(1);
+    // sessions outside projects leave no project log
+    gw.enqueue({ toolCalls: [{ id: 'w2', name: 'write_file', args: { path: 'other.md', content: 'x' } }] }, { text: 'ok' });
+    await rt.createSession().send('write').done;
+    expect(activity).toHaveLength(1);
+  });
+
+  it('projects survive a restart', async () => {
+    const { SqliteStore } = await import('./store/sqlite.ts');
+    const path = join(dir, 'spica.db');
+    const rt1 = rtFor({ store: new SqliteStore(path) });
+    const p = rt1.createProject({ name: 'Kept', workflowId: 'product-development' });
+    rt1.setStage(p.id, 'mass', undefined, p.managerSessionId);
+    rt1.addWorkObject(p.id, { level: 'product', name: 'Lamp' });
+    const topId = rt1.top().id;
+    await rt1.close();
+    const rt2 = rtFor({ store: new SqliteStore(path) });
+    rt2.restore();
+    const d = rt2.getProject(p.id)!;
+    expect(d).toMatchObject({ name: 'Kept', stage: 'mass', manager: { id: p.managerSessionId, projectId: p.id } });
+    expect(d.objects.map((o) => o.name)).toEqual(['Lamp']);
+    expect(rt2.top().id).toBe(topId);
+    await rt2.close();
+  });
+});
