@@ -1,0 +1,81 @@
+// Tests for the __NAME__ server: run with `node --test test/` (no dependencies).
+// They start the real server the way Spica does, in mock mode.
+import { spawn } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createInterface } from 'node:readline';
+import { after, before, test } from 'node:test';
+import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+
+const pluginDir = fileURLToPath(new URL('..', import.meta.url));
+let child;
+let dataDir;
+let nextId = 0;
+const pending = new Map();
+
+function request(method, params = {}) {
+  const id = ++nextId;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+  });
+}
+const call = (name, args = {}) => request('tools/call', { name, arguments: args });
+const text = (r) => r.content.map((c) => c.text).join('\n');
+
+before(async () => {
+  dataDir = await mkdtemp(join(tmpdir(), '__NAME__-test-'));
+  child = spawn(process.execPath, [join(pluginDir, 'server', 'index.js')], {
+    env: { ...process.env, SPICA_MOCK: '1', SPICA_PLUGIN_DATA: dataDir, SPICA_PLUGIN_DIR: pluginDir },
+    stdio: ['pipe', 'pipe', 'inherit'],
+    windowsHide: true,
+  });
+  createInterface({ input: child.stdout }).on('line', (line) => {
+    const msg = JSON.parse(line); // anything else on stdout is a bug: logs belong on stderr
+    const p = pending.get(msg.id);
+    pending.delete(msg.id);
+    if (msg.error) p?.reject(new Error(msg.error.message));
+    else p?.resolve(msg.result);
+  });
+  await request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
+});
+
+after(async () => {
+  child.stdin.end();
+  await new Promise((r) => child.once('exit', r));
+  await rm(dataDir, { recursive: true, force: true });
+});
+
+test('lists its tools, each with a description and an input schema', async () => {
+  const { tools } = await request('tools/list');
+  assert.deepEqual(tools.map((t) => t.name).sort(), ['add_item', 'get_item', 'list_items', 'remove_item']);
+  for (const t of tools) {
+    assert.ok(t.description, `${t.name} needs a description`);
+    assert.equal(t.inputSchema.type, 'object');
+  }
+});
+
+test('mock mode answers from the sample data', async () => {
+  const r = await call('list_items');
+  assert.ok(!r.isError);
+  const v = JSON.parse(text(r));
+  assert.equal(v.total, 3);
+  assert.equal(v.note, 'sample data (mock mode)');
+});
+
+test('add, read and remove an item', async () => {
+  const added = JSON.parse(text(await call('add_item', { title: 'Write the report' })));
+  assert.equal(added.status, 'open');
+  assert.equal(JSON.parse(text(await call('get_item', { id: added.id }))).title, 'Write the report');
+  assert.ok(!(await call('remove_item', { id: added.id })).isError);
+});
+
+test('errors come back as "[CODE] message", not as a crash', async () => {
+  const missing = await call('get_item', { id: 'nope' });
+  assert.equal(missing.isError, true);
+  assert.match(text(missing), /^\[ITEM_NOT_FOUND\] /);
+  const bad = await call('add_item', {});
+  assert.match(text(bad), /^\[INVALID_ARGUMENT\] /);
+});

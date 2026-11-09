@@ -1,6 +1,8 @@
 # 从零写一个 Spica 插件
 
 > 给插件作者看。读完能写出一个带工具、技能、命令、钩子和模拟数据的插件，打包后放到共享盘或网站上分发。完整的可运行例子在 `plugins/example-notes`。格式的来龙去脉见 `docs/design/plugins.md`。
+>
+> 让 Claude Code / Codex 代写：把 `skills/spica-plugin-author` 复制到 `~/.claude/skills/` 或 `~/.codex/skills/`，它会按本指南生成骨架、校验打包、装进 Spica 并试用。
 
 ## 0. 你需要什么
 
@@ -146,7 +148,8 @@ if (r.isError) showError(r.content); else render(r.data ?? r.content);
 - 沙箱限制：页面里没有 Node，不能 `require`、不能读写文件；只能加载本插件目录里的文件（不能用 CDN，脚本和样式都放进插件）；只能调本插件的工具，写了 `permissions.tools` 就只能调列出的那几个。
 - `permissions.irreversible` 里的工具，页面调用时 Spica 会先弹确认框；用户拒绝时 `isError` 为真，`content` 以 `[CONFIRM_REQUIRED]` 开头。
 - 页面能调常驻进程（`services/`）的工具：这类工具不给模型、只给自己的页面用，适合做界面专用的接口。
-- 完整例子：`plugins/example-notes/views/notebook.json` 和 `ui/`。
+- `sidebar` 是侧栏里一个入口、点开占主区域，适合完整的功能页；`panel` 是对话旁边右栏的一个标签，适合边聊边用的小工具（按 320px 宽设计）。一个插件可以有多个页面。
+- 完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）、`views/quick-note.json`（panel），页面在 `ui/`。
 
 ## 6. 模拟模式
 

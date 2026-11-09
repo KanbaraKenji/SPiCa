@@ -1,0 +1,170 @@
+#!/usr/bin/env node
+// Preview a plugin's page in an ordinary browser, without Spica: starts the
+// plugin's MCP servers (mock mode by default), serves the plugin folder on
+// 127.0.0.1 and injects a stand-in window.spica with the same rules as Spica
+// (own tools only, only the view's permissions.tools, irreversible tools ask
+// first). Colours follow ?theme=light|dark. For development only.
+//
+//   node preview.mjs <plugin folder> [--view <id>] [--port 4700] [--real]
+import { createServer } from 'node:http';
+import { existsSync, statSync } from 'node:fs';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { StdioClient } from './lib/mcp.mjs';
+import { stripBom } from './lib/pack.mjs';
+
+const THEMES = {
+  light: { bg: '#ffffff', surface: '#f4f4f5', fg: '#18181b', muted: '#71717a', border: '#e4e4e7', accent: '#4f46e5', danger: '#dc2626' },
+  dark: { bg: '#17171b', surface: '#26262c', fg: '#ececf1', muted: '#9d9da8', border: '#36363f', accent: '#8b93f8', danger: '#f87171' },
+};
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.woff2': 'font/woff2' };
+
+export async function startPreview(dir, opts = {}) {
+  const root = resolve(dir);
+  const readJson = async (p) => JSON.parse(stripBom(await readFile(p, 'utf8')));
+  const m = await readJson(join(root, 'manifest.json'));
+  const viewFiles = existsSync(join(root, 'views')) ? (await readdir(join(root, 'views'))).filter((f) => f.endsWith('.json')) : [];
+  if (viewFiles.length === 0) throw new Error('这个插件没有页面（views/*.json）。');
+  const viewId = opts.view ?? viewFiles[0].slice(0, -5);
+  const view = await readJson(join(root, 'views', `${viewId}.json`));
+
+  // Start the servers the way Spica does.
+  const data = await mkdtemp(join(tmpdir(), 'spica-preview-'));
+  const tools = new Map(); // bare name → client
+  const clients = [];
+  for (const kind of ['mcp', 'services']) {
+    if (!existsSync(join(root, kind))) continue;
+    for (const f of await readdir(join(root, kind))) {
+      if (!f.endsWith('.json')) continue;
+      const s = await readJson(join(root, kind, f));
+      const entry = resolve(root, s.entry);
+      const client = new StdioClient({
+        command: s.runtime === 'node' ? process.execPath : entry,
+        args: s.runtime === 'node' ? [entry, ...(s.args ?? [])] : (s.args ?? []),
+        cwd: root,
+        env: { ...process.env, ...(s.env ?? {}), SPICA_MOCK: opts.real ? '0' : '1', SPICA_PLUGIN_NAME: m.name, SPICA_PLUGIN_VERSION: m.version, SPICA_PLUGIN_DIR: root, SPICA_PLUGIN_DATA: join(data, f) },
+      });
+      await client.initialize();
+      for (const t of await client.listTools()) if (!tools.has(t.name)) tools.set(t.name, client);
+      clients.push(client);
+    }
+  }
+  const allowed = view.permissions?.tools ?? [...tools.keys()];
+  const irreversible = m.permissions?.irreversible ?? [];
+
+  const bridge = (mode) => `<script>
+(() => {
+  const vars = ${JSON.stringify(THEMES[mode])};
+  const root = document.documentElement;
+  for (const [k, v] of Object.entries(vars)) root.style.setProperty('--spica-' + k, v);
+  root.style.setProperty('--spica-font', 'system-ui, "Segoe UI", sans-serif');
+  root.style.setProperty('--spica-radius', '6px');
+  root.dataset.theme = '${mode}';
+  const listeners = new Set();
+  const post = (body) => fetch('/__spica/call', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.json());
+  window.spica = {
+    theme: { mode: '${mode}' },
+    async callTool(tool, args) {
+      let r = await post({ tool, args });
+      if (r.isError && r.content.startsWith('[CONFIRM_REQUIRED]')) {
+        if (!window.confirm(${JSON.stringify(m.display_name ?? m.name)} + ' 要执行 ' + tool + '，确认吗？')) return r;
+        r = await post({ tool, args, confirmed: true });
+      }
+      return r;
+    },
+    onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+    openFile(path) { console.log('[preview] openFile', path); },
+    notify(text, o) { console.log('[preview] notify', o && o.kind || 'info', text); },
+  };
+})();
+</script>`;
+
+  const inside = (rel) => {
+    const abs = resolve(root, rel);
+    const r = relative(root, abs);
+    return !r || r.startsWith('..') || isAbsolute(r) || r.split(sep).includes('..') ? undefined : abs;
+  };
+
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url ?? '/', 'http://x');
+    try {
+      if (url.pathname === '/__spica/call' && req.method === 'POST') {
+        let body = '';
+        for await (const c of req) body += c;
+        const { tool, args, confirmed } = JSON.parse(body);
+        const send = (v) => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(v));
+        const client = tools.get(tool);
+        if (!client) return send({ content: `[TOOL_NOT_FOUND] 插件没有 ${tool} 这个工具。`, isError: true });
+        if (!allowed.includes(tool)) return send({ content: `[TOOL_NOT_ALLOWED] 这个页面没有声明可以调 ${tool}（views/${viewId}.json 的 permissions.tools）。`, isError: true });
+        if (irreversible.includes(tool) && confirmed !== true) return send({ content: '[CONFIRM_REQUIRED] 这个操作不可撤销，需要确认。', isError: true });
+        const r = await client.callToolRaw(tool, args ?? {});
+        const content = (r.content ?? []).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
+        let data;
+        try {
+          data = JSON.parse(content);
+        } catch {
+          data = undefined;
+        }
+        return send({ content, isError: !!r.isError, ...(data !== undefined ? { data } : {}) });
+      }
+      // The page's relative links (style.css, app.js) must resolve next to it.
+      if (url.pathname === '/') return res.writeHead(302, { location: `/${view.entry}${url.search}` }).end();
+      const rel = decodeURIComponent(url.pathname.slice(1));
+      const abs = inside(rel);
+      if (!abs || !existsSync(abs) || !statSync(abs).isFile()) return res.writeHead(404).end('not found');
+      let body = await readFile(abs);
+      const type = TYPES[extname(abs).toLowerCase()] ?? 'application/octet-stream';
+      if (type === 'text/html') {
+        const mode = url.searchParams.get('theme') === 'dark' ? 'dark' : 'light';
+        body = body.toString('utf8').replace(/<head([^>]*)>/i, (h) => `${h}\n${bridge(mode)}`);
+      }
+      res.writeHead(200, {
+        'content-type': `${type}; charset=utf-8`,
+        // Same limits as Spica's sandbox: only this plugin's files, inline styles allowed.
+        'content-security-policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'",
+      });
+      res.end(body);
+    } catch (err) {
+      res.writeHead(500).end(String(err?.message ?? err));
+    }
+  });
+  await new Promise((r) => server.listen(opts.port ?? 4700, '127.0.0.1', r));
+  const port = server.address().port;
+  return {
+    url: `http://127.0.0.1:${port}/${view.entry}`,
+    tools: allowed,
+    async close() {
+      await new Promise((r) => server.close(r));
+      for (const c of clients) await c.close();
+      await rm(data, { recursive: true, force: true }).catch(() => {});
+    },
+  };
+}
+
+const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  const args = process.argv.slice(2);
+  const opt = (n) => (args.includes(n) ? args[args.indexOf(n) + 1] : undefined);
+  const dir = args.find((a, i) => !a.startsWith('--') && !['--view', '--port'].includes(args[i - 1]));
+  if (!dir) {
+    console.log('用法：node preview.mjs <插件文件夹> [--view 视图id] [--port 4700] [--real]');
+    process.exit(2);
+  }
+  try {
+    const p = await startPreview(dir, { view: opt('--view'), port: opt('--port') ? Number(opt('--port')) : undefined, real: args.includes('--real') });
+    console.log(`预览：${p.url}（暗色加 ?theme=dark）`);
+    console.log(`页面能调的工具：${p.tools.join('、')}`);
+    console.log('按 Ctrl+C 结束。');
+    const stop = async () => {
+      await p.close();
+      process.exit(0);
+    };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
+  } catch (err) {
+    console.error(err.message);
+    process.exit(1);
+  }
+}

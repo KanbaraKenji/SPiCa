@@ -1,0 +1,68 @@
+// MCP server of the __NAME__ plugin: stdio, one JSON-RPC message per line,
+// no dependencies. Spica starts it with its own Node; nothing to install.
+//
+// Environment set by Spica:
+//   SPICA_MOCK          "1" in mock mode: answer from mock/ instead of the real service
+//   SPICA_PLUGIN_DATA   the only folder this plugin may write to
+//   SPICA_PLUGIN_DIR    the installed plugin folder (read-only)
+//
+// stdout carries protocol messages only; write logs to stderr (Spica keeps
+// them in the plugin log). Never log message bodies or personal data.
+import { createInterface } from 'node:readline';
+import { openBackend } from './backend.js';
+import { formatError } from './errors.js';
+import { TOOLS, runTool } from './tools.js';
+
+const backend = await openBackend({
+  mock: process.env.SPICA_MOCK === '1',
+  dataDir: process.env.SPICA_PLUGIN_DATA || '.data',
+  pluginDir: process.env.SPICA_PLUGIN_DIR || process.cwd(),
+});
+
+const send = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`);
+const log = (line) => process.stderr.write(`${line}\n`);
+
+async function handle(msg) {
+  switch (msg.method) {
+    case 'initialize':
+      return {
+        protocolVersion: msg.params?.protocolVersion ?? '2025-06-18',
+        capabilities: { tools: {} },
+        serverInfo: { name: '__NAME__', version: '0.1.0' },
+      };
+    case 'tools/list':
+      return { tools: TOOLS };
+    case 'tools/call': {
+      const name = msg.params?.name;
+      const args = msg.params?.arguments ?? {};
+      try {
+        const value = await runTool(backend, name, args);
+        const text = typeof value === 'string' ? value : JSON.stringify(value, null, 1);
+        return { content: [{ type: 'text', text }] };
+      } catch (err) {
+        log(`[${name}] ${err?.code ?? 'ERROR'}`);
+        return { content: [{ type: 'text', text: formatError(err) }], isError: true };
+      }
+    }
+    case 'ping':
+      return {};
+    default:
+      if (msg.id !== undefined) throw Object.assign(new Error(`unknown method ${msg.method}`), { rpcCode: -32601 });
+      return undefined;
+  }
+}
+
+createInterface({ input: process.stdin }).on('line', async (line) => {
+  let msg;
+  try {
+    msg = JSON.parse(line);
+  } catch {
+    return;
+  }
+  try {
+    const result = await handle(msg);
+    if (msg.id !== undefined) send({ id: msg.id, result });
+  } catch (err) {
+    if (msg.id !== undefined) send({ id: msg.id, error: { code: err.rpcCode ?? -32603, message: err.message } });
+  }
+});

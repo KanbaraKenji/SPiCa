@@ -1,0 +1,26 @@
+// Error codes of the __NAME__ plugin. Every failure reaches the model as an
+// error result whose text starts with "[CODE] 一句中文说明"; the model and the
+// user both read it, so say what happened and what to do next. Never put
+// message bodies, file contents or secrets in it.
+
+export const MESSAGES = {
+  INVALID_ARGUMENT: '参数不对。',
+  ITEM_NOT_FOUND: '找不到这一条。可以先用 list_items 看有哪些。',
+  SERVICE_UNREACHABLE: '连不上后台服务。在家里或外网时，可以在 Spica 里打开模拟模式，用样例数据试。',
+  NOT_CONFIGURED: '这个插件还没有配置后台服务地址。可以先打开模拟模式试用。',
+  INTERNAL: '插件内部出错了，详情在插件日志里。',
+};
+
+export class PluginToolError extends Error {
+  /** @param {keyof typeof MESSAGES} code @param {string} [detail] extra human text (no private content) */
+  constructor(code, detail) {
+    super(detail ? `${MESSAGES[code]}${detail}` : MESSAGES[code]);
+    this.code = code;
+  }
+}
+
+/** "[CODE] message" for the tool result. */
+export function formatError(err) {
+  if (err instanceof PluginToolError) return `[${err.code}] ${err.message}`;
+  return `[INTERNAL] ${MESSAGES.INTERNAL}`;
+}

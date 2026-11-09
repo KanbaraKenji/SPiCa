@@ -1,0 +1,63 @@
+// Tools of the __NAME__ plugin. For each tool write down: what it does (the
+// description is all the model sees), its parameters, what it returns, and
+// whether it is irreversible (then list it in manifest.json
+// permissions.irreversible so Spica asks the user first).
+import { PluginToolError } from './errors.js';
+
+export const TOOLS = [
+  {
+    name: 'list_items',
+    description: 'List items, newest first. Optional status filter ("open" or "done"). Returns { items, total }.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['open', 'done'], description: 'Only items with this status.' },
+        limit: { type: 'integer', minimum: 1, maximum: 100, description: 'At most this many (default 20).' },
+      },
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: 'get_item',
+    description: 'Read one item by id. Returns { id, title, status, updated }.',
+    inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: 'add_item',
+    description: 'Add an item with a title; it starts as "open". Returns the new item.',
+    inputSchema: { type: 'object', properties: { title: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['title'] },
+  },
+  {
+    // Irreversible: listed in manifest.json permissions.irreversible.
+    name: 'remove_item',
+    description: 'Remove an item by id. Cannot be undone.',
+    inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+    annotations: { destructiveHint: true },
+  },
+];
+
+const text = (v, field) => {
+  if (typeof v !== 'string' || !v.trim()) throw new PluginToolError('INVALID_ARGUMENT', `需要 ${field}。`);
+  return v.trim();
+};
+
+/** Run a tool; returns a JSON-able value or throws PluginToolError. */
+export async function runTool(backend, name, args) {
+  switch (name) {
+    case 'list_items': {
+      const limit = Math.min(100, Math.max(1, Number(args.limit ?? 20) || 20));
+      const items = await backend.list(args.status);
+      return { items: items.slice(0, limit), total: items.length, ...(backend.mock ? { note: 'sample data (mock mode)' } : {}) };
+    }
+    case 'get_item':
+      return backend.get(text(args.id, 'id'));
+    case 'add_item':
+      return backend.add(text(args.title, 'title'));
+    case 'remove_item':
+      await backend.remove(text(args.id, 'id'));
+      return { removed: args.id };
+    default:
+      throw new PluginToolError('INVALID_ARGUMENT', `没有 ${name} 这个工具。`);
+  }
+}
