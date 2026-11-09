@@ -240,6 +240,8 @@ export function mcpTools(client: McpStdioClient, infos: McpToolInfo[], tracer: T
       inputSchema: info.inputSchema ?? { type: 'object' },
     },
     irreversible: info.annotations?.destructiveHint === true,
+    // whatever an MCP server returns comes from outside Spica (mail, external systems)
+    untrusted: 'mcp',
     async execute(input, ctx) {
       const trace = tracer.start({
         kind: 'mcp',

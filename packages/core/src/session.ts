@@ -9,6 +9,8 @@ import type { PendingRecord, SessionConfig, SessionRecord, ToolCallCards, ToolCa
 import { validateInput, type Tool, type ToolContext } from './tools/types.ts';
 import type {
   ContentBlock,
+  GuardCause,
+  GuardNote,
   Message,
   MessageKind,
   MessageMeta,
@@ -20,6 +22,7 @@ import type {
 } from './types.ts';
 import type { RuntimeInternals } from './runtime.ts';
 import { estimateTokens, isAbortError, newId, truncate } from './util.ts';
+import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.ts';
 
 export interface RunResult {
   reason: RunEndReason;
@@ -150,7 +153,7 @@ export class Session {
       role: 'user',
       kind: opts.kind ?? 'user',
       content: [{ type: 'text', text }],
-      meta: { ...opts.meta, author: opts.author ?? 'user' },
+      meta: { ...opts.meta, ...this.#inheritedTaint(opts), author: opts.author ?? 'user' },
     });
     this.#rt.onUserMessage(this, msg);
     const done = this.#startRun();
@@ -172,7 +175,7 @@ export class Session {
       kind: 'steer',
       content: [{ type: 'text', text }],
       createdAt: isoNow(),
-      meta: { ...opts.meta, author: opts.author ?? 'user', steerMode: mode },
+      meta: { ...opts.meta, ...this.#inheritedTaint(opts), author: opts.author ?? 'user', steerMode: mode },
     };
     this.#rt.store.putQueued(message); // persisted: survives a crash before it is applied
     this.#emit({ type: 'steer.queued', messageId: message.id, mode });
@@ -344,7 +347,7 @@ export class Session {
       const injections = await this.#rt.hooks.injections(hctx);
       let draft: RequestDraft = {
         segments: buildSegments(
-          [cfg.system, languageLine(cfg.locale, this.#userHasWritten()), this.#leadsOthers() ? TEAM_RULE : ''].filter(Boolean).join('\n\n'),
+          [cfg.system, DATA_RULE, languageLine(cfg.locale, this.#userHasWritten()), this.#leadsOthers() ? TEAM_RULE : ''].filter(Boolean).join('\n\n'),
           this.#messages,
           injections,
         ),
@@ -609,6 +612,7 @@ export class Session {
       ...(cfg.templateId ? { templateId: cfg.templateId } : {}),
     };
     const visible = new Set(this.#rt.tools.list(env, cfg.tools).map((t) => t.spec.name));
+    const guard = this.#guardState();
     const pending: PendingRecord[] = [];
 
     const work = calls.map((call) => async () => {
@@ -661,13 +665,16 @@ export class Session {
         pending.push({ sessionId: this.id, callId: call.id, messageId: assistant.id, item });
         return;
       }
-      if (decision.action === 'confirm') {
+      // outside content in play: the user confirms, whatever hooks or plugin settings say
+      const cause = this.#guardCause(tool, (input ?? {}) as Record<string, unknown>, guard);
+      if (decision.action === 'confirm' || cause) {
         const item: PendingItem = {
           kind: 'confirm',
           callId: call.id,
           toolName: call.name,
           input,
-          reason: decision.reason ?? 'needs confirmation',
+          reason: cause ? GUARD_REASON[cause] : ((decision.action === 'confirm' ? decision.reason : undefined) ?? 'needs confirmation'),
+          ...(cause ? { cause } : {}),
           createdAt: isoNow(),
         };
         this.#rt.store.upsertToolCall({ ...rec, input, status: 'pending' });
@@ -686,7 +693,7 @@ export class Session {
         if (p.item.kind === 'ask') {
           this.#emit({ type: 'ask.request', callId: p.callId, question: p.item.question, ...(p.item.options ? { options: p.item.options } : {}) });
         } else {
-          this.#emit({ type: 'confirm.request', callId: p.callId, name: p.item.toolName, input: p.item.input, reason: p.item.reason });
+          this.#emit({ type: 'confirm.request', callId: p.callId, name: p.item.toolName, input: p.item.input, reason: p.item.reason, ...(p.item.cause ? { cause: p.item.cause } : {}) });
         }
       }
       return true;
@@ -733,13 +740,23 @@ export class Session {
     }
     out = await this.#rt.hooks.afterTool(draft, out, hctx);
     this.#rt.onToolDone(this, draft, out);
-    out = { content: `[fetched at ${fetchedAt}]\n${truncate(out.content, MAX_RESULT_CHARS)}`, isError: out.isError };
+    const body = truncate(out.content, MAX_RESULT_CHARS);
+    let sent = body;
+    if (tool.untrusted && !out.isError) {
+      // outside content goes to the model as fenced data
+      const ref = (draft.input as Record<string, unknown> | undefined)?.id;
+      const f = fence(body, tool.untrusted, typeof ref === 'string' && ref.length <= 80 ? `${draft.name}:${ref}` : draft.name);
+      sent = f.text;
+      cards = { ...cards, guard: f.note };
+      if (f.note.signals.length) this.#emit({ type: 'guard.flagged', note: f.note, callId: draft.callId });
+    }
+    out = { content: `[fetched at ${fetchedAt}]\n${sent}`, isError: out.isError };
     this.#emit({
       type: 'tool.end',
       callId: draft.callId,
       name: draft.name,
       isError: out.isError,
-      preview: out.content.slice(0, RESULT_PREVIEW),
+      preview: `[fetched at ${fetchedAt}]\n${body}`.slice(0, RESULT_PREVIEW),
       durationMs: Math.round(performance.now() - t0),
     });
     return cards ? { ...out, cards } : out;
@@ -751,9 +768,11 @@ export class Session {
     const content: ContentBlock[] = [];
     const fileCards: NonNullable<MessageMeta['fileCards']> = {};
     const suggestedActions: NonNullable<MessageMeta['suggestedActions']> = {};
+    const guard: Record<string, GuardNote> = {};
     for (const b of assistant.content) {
       if (b.type !== 'tool_use') continue;
       const r = records.get(b.id);
+      if (r?.cards?.guard) guard[b.id] = r.cards.guard;
       if (r?.cards?.fileCard) fileCards[b.id] = r.cards.fileCard;
       if (r?.cards?.suggestion) suggestedActions[b.id] = r.cards.suggestion;
       content.push({
@@ -768,6 +787,7 @@ export class Session {
       author: 'runtime',
       ...(Object.keys(fileCards).length > 0 ? { fileCards } : {}),
       ...(Object.keys(suggestedActions).length > 0 ? { suggestedActions } : {}),
+      ...(Object.keys(guard).length > 0 ? { guard } : {}),
     };
     this.#append({ role: 'user', kind: 'tool_results', content, meta });
   }
@@ -916,6 +936,69 @@ export class Session {
     });
   }
 
+  /**
+   * What the guard needs for this turn: whether outside content arrived since
+   * the user last typed something (then this turn acts on it), which hosts
+   * appear in outside content, and which ones the user wrote themselves.
+   */
+  #guardState(): GuardState {
+    const typed = (m: Message) => m.role === 'user' && (m.kind === 'user' || m.kind === 'steer') && (m.meta?.author ?? 'user') === 'user';
+    let tainted = false;
+    let kind: GuardNote['kind'] | undefined;
+    for (let i = this.#messages.length - 1; i >= 0; i--) {
+      const m = this.#messages[i]!;
+      if (typed(m)) break;
+      const note = m.meta?.untrusted?.[0] ?? Object.values(m.meta?.guard ?? {})[0];
+      if (note) {
+        tainted = true;
+        kind = note.kind;
+        break;
+      }
+    }
+    const outsideHosts = new Set<string>();
+    const userHosts = new Set<string>();
+    for (const m of this.#messages) {
+      for (const b of m.content) {
+        const text = b.type === 'text' ? b.text : b.type === 'tool_result' ? b.content : '';
+        if (!text) continue;
+        if (typed(m)) for (const h of hostsIn(text)) userHosts.add(h);
+        for (const part of fencedParts(text)) for (const h of hostsIn(part)) outsideHosts.add(h);
+      }
+    }
+    return { tainted, ...(kind ? { kind } : {}), outsideHosts, userHosts };
+  }
+
+  #guardCause(tool: Tool, input: Record<string, unknown>, g: GuardState): GuardCause | undefined {
+    if (g.tainted && tool.irreversible) return 'untrusted_turn';
+    const url = tool.targetUrl?.(input);
+    if (url) {
+      const host = hostsIn(url)[0];
+      if (host && g.outsideHosts.has(host) && !g.userHosts.has(host)) return 'outside_link';
+    }
+    const path = tool.targetPath?.(input);
+    if (g.tainted && path && SENSITIVE_FILE.test(path.trim())) return 'sensitive_file';
+    return undefined;
+  }
+
+  /** Outside content arrived since the user last typed something (a sub-agent started now inherits that). */
+  get actsOnOutsideContent(): boolean {
+    return this.#guardState().tainted;
+  }
+
+  /** Kind of the outside content the session is acting on, if any. */
+  get outsideKind(): GuardNote['kind'] | undefined {
+    return this.#guardState().kind;
+  }
+
+  /** A task written by a parent that is acting on outside content carries that along. */
+  #inheritedTaint(opts: { author?: string; meta?: Record<string, unknown> }): Partial<MessageMeta> {
+    const parentId = this.#record.parentId;
+    if (opts.author !== 'parent' || !parentId || opts.meta?.untrusted) return {};
+    const parent = this.#rt.session(parentId);
+    if (!parent?.actsOnOutsideContent) return {};
+    return { untrusted: [{ kind: parent.outsideKind ?? 'mcp', source: `parent:${parentId}`, signals: [] }] };
+  }
+
   /** The user has typed at least one message in this session (not the system or another agent). */
   #userHasWritten(): boolean {
     return this.#messages.some((m) => m.role === 'user' && (m.kind === 'user' || m.kind === 'steer') && (m.meta?.author ?? 'user') === 'user');
@@ -967,6 +1050,21 @@ export class Session {
  * For sessions that lead sub-agents: what the user says or decides inside a
  * sub-agent session overrides the original plan (project brief J4).
  */
+interface GuardState {
+  tainted: boolean;
+  /** Kind of the latest outside content when tainted. */
+  kind?: GuardNote['kind'];
+  outsideHosts: Set<string>;
+  userHosts: Set<string>;
+}
+
+/** Shown with the confirmation (the UI words it from `cause`; this text is for logs and the MCP service). */
+const GUARD_REASON: Record<GuardCause, string> = {
+  untrusted_turn: 'the agent is acting on outside content (mail, web page, file or plugin data); irreversible actions need your confirmation',
+  outside_link: 'this link comes from outside content (e.g. a mail), not from you',
+  sensitive_file: 'reading a credential file while acting on outside content',
+};
+
 export const TEAM_RULE =
   'The user can talk to your sub-agents directly. When a note tells you what the user said or decided in a sub-agent ' +
   'session, that takes priority over your original plan: apply it to your overall result, and say in your answer that ' +
