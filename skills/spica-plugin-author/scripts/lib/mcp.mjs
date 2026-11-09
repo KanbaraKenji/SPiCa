@@ -5,6 +5,24 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
 const PROTOCOL = '2025-06-18';
+
+/**
+ * The host variables Spica lets plugin servers inherit (same list as
+ * PLUGIN_INHERIT_ENV in @spica/plugins). Starting servers with only these
+ * makes a plugin that needs anything else fail here, not after install.
+ */
+export const PLUGIN_INHERIT_ENV = [
+  'PATH', 'PATHEXT', 'SystemRoot', 'SystemDrive', 'windir', 'ComSpec', 'TEMP', 'TMP',
+  'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'HOME', 'APPDATA', 'LOCALAPPDATA', 'LANG',
+  'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
+];
+
+/** process.env reduced to the whitelist, plus `extra`. */
+export function pluginEnv(extra = {}) {
+  const env = {};
+  for (const k of PLUGIN_INHERIT_ENV) if (process.env[k] !== undefined) env[k] = process.env[k];
+  return { ...env, ...extra };
+}
 const CLIENT = { name: 'spica-plugin-author', version: '0.1.0' };
 
 /** Text of a tools/call result; JSON is parsed when it looks like JSON. */
