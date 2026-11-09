@@ -78,7 +78,7 @@ export function NewProjectDialog({ onPickFolder, onCreate, onClose }: NewProject
         <label className="form-field">
           <span className="field-label">文件夹</span>
           <span className="form-inline">
-            <input className="input" value={folder} spellCheck={false} onChange={(e) => setFolder(e.target.value)} placeholder="留空就在「文档\\Spica」里新建一个" />
+            <input className="input" value={folder} spellCheck={false} onChange={(e) => setFolder(e.target.value)} placeholder="留空就在「文档\Spica」里新建一个" />
             <button type="button" className="btn" onClick={() => void pick()}>
               选择…
             </button>
