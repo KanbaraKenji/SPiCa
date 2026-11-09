@@ -16,6 +16,9 @@ import { createRealTester } from './providers/real-tester';
 import { PluginManager, runtimeHost } from '@spica/plugins';
 import { RealPluginService, type PluginService } from './plugins/service';
 import { FakePluginService } from './plugins/fake';
+import { UpdateService } from './update/service';
+import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import type { PluginsCommand } from '../shared/plugins';
 import { chooseBackend, createBackend } from './backend';
 import { readModelEnv } from './backend/model-env';
@@ -252,6 +255,57 @@ ipcMain.handle(DesktopChannel.OpenFile, async (_e, sessionId: unknown, path: unk
   return error ? `打不开这个文件：${error}` : null;
 });
 
+// Updates and announcements. The source is the user's setting, else the
+// installer's deploy.json (a company sets it when packaging), else none.
+function deploySource(): string {
+  const file = app.isPackaged ? join(process.resourcesPath, 'deploy.json') : join(app.getAppPath(), 'deploy.json');
+  try {
+    const v = JSON.parse(readFileSync(file, 'utf8')) as { updateSource?: unknown };
+    return typeof v.updateSource === 'string' ? v.updateSource.trim() : '';
+  } catch {
+    return '';
+  }
+}
+const deployDefault = automated ? '' : deploySource();
+const updates = new UpdateService({
+  currentVersion: app.getVersion(),
+  packaged: app.isPackaged,
+  portable: Boolean(process.env.PORTABLE_EXECUTABLE_DIR),
+  downloadsDir: join(app.getPath('userData'), 'updates'),
+  getSource: () => {
+    const own = settings.get().updateSource;
+    return own ? { source: own, fromDeploy: false } : { source: deployDefault, fromDeploy: Boolean(deployDefault) };
+  },
+  fetch: (url) => net.fetch(url),
+  launchInstaller: (path) => {
+    // Per-user NSIS installer: silent, then it starts the new version itself.
+    const child = spawn(path, ['--updated', '/S', '--force-run'], { detached: true, stdio: 'ignore', windowsHide: true });
+    child.unref();
+    app.quit();
+  },
+});
+updates.onChange((s) => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DesktopChannel.UpdateChanged, s);
+});
+ipcMain.handle(DesktopChannel.Update, async (_e, op: unknown) => {
+  if (op === 'check') return updates.check();
+  if (op === 'install') updates.install();
+  return updates.state;
+});
+
+async function refreshNotices(): Promise<void> {
+  const list = await updates.notices();
+  if (list) settings.update({ noticesCache: list });
+}
+let lastSource = settings.get().updateSource;
+settings.onChange((s) => {
+  if (s.updateSource === lastSource) return;
+  lastSource = s.updateSource;
+  updates.reset();
+  void updates.check();
+  void refreshNotices();
+});
+
 ipcMain.handle(DesktopChannel.PickFolder, async (): Promise<string | null> => {
   const opts: Electron.OpenDialogOptions = { title: '选择项目文件夹', properties: ['openDirectory', 'createDirectory'] };
   const r = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts);
@@ -325,6 +379,13 @@ void app.whenReady().then(() => {
   void pluginService.start().catch(() => {
     // Problems show up per plugin on the plugin page.
   });
+  if (!automated) {
+    // Announcements soon after start, then every 30 minutes; updates after 10 s, then every 4 hours.
+    setTimeout(() => void refreshNotices(), 3_000);
+    setInterval(() => void refreshNotices(), 30 * 60_000);
+    setTimeout(() => void updates.check(), 10_000);
+    setInterval(() => void updates.check(), 4 * 60 * 60_000);
+  }
   mainWindow = createMainWindow();
   syncNativeChrome(mainWindow, settings.get());
   if (shotsDir) void runShots(mainWindow, settings, shotsDir);

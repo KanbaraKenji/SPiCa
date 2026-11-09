@@ -1,0 +1,51 @@
+# Windows packages for Spica: a per-user installer (no administrator rights)
+# and a portable exe. See docs/design/desktop-shell.md, "打包与更新".
+#   npm run dist -w @spica/desktop
+appId: dev.spica.desktop
+productName: Spica
+copyright: Copyright The Spica Authors
+directories:
+  output: release
+  buildResources: resources/branding
+# Everything the app runs is bundled into out/ by electron-vite, so no
+# node_modules ship. Brand assets are needed at runtime for the window icon.
+files:
+  - out/**
+  - resources/branding/png/**
+  - package.json
+  - "!**/*.map"
+# A company's own update / announcement source goes here when it packages the
+# app (copy deploy.example.json to deploy.json); nothing is shipped otherwise.
+extraResources:
+  - from: deploy.json
+    to: deploy.json
+    filter: ["**/*"]
+asar: true
+npmRebuild: false
+win:
+  icon: resources/branding/spica.ico
+  target:
+    - target: nsis
+      arch: x64
+    - target: portable
+      arch: x64
+  # Ask for no elevation; per-user install only.
+  requestedExecutionLevel: asInvoker
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Spica
+  artifactName: Spica-Setup-${version}.${ext}
+  deleteAppDataOnUninstall: false
+portable:
+  artifactName: Spica-Portable-${version}.${ext}
+# latest.yml (version, file name, sha512) is written next to the installer; the
+# app's updater reads it from the update source. The URL here is a placeholder
+# and is not used by the app.
+publish:
+  provider: generic
+  url: https://updates.example.invalid/spica

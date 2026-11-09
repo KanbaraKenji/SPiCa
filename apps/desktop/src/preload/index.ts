@@ -5,6 +5,7 @@ import { DesktopChannel } from '../shared/ipc';
 import type { DesktopBridge, ProviderList, ShellState } from '../shared/bridge';
 import type { ProviderDraft, TestResult } from '../shared/providers';
 import type { PluginsCommand, PluginsResult } from '../shared/plugins';
+import type { UpdateState } from '../shared/updates';
 import type { SettingsPatch, ShellSettings } from '../shared/settings';
 
 function call<K extends keyof AgentApi>(method: K) {
@@ -47,6 +48,10 @@ const bridge: DesktopBridge = {
   zoom: (step) => ipcRenderer.send(DesktopChannel.Zoom, step),
   pickFolder: () => ipcRenderer.invoke(DesktopChannel.PickFolder) as Promise<string | null>,
   openFile: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.OpenFile, sessionId, path) as Promise<string | null>,
+  updates: {
+    run: (op) => ipcRenderer.invoke(DesktopChannel.Update, op) as Promise<UpdateState>,
+    onChanged: (listener) => subscribe<UpdateState>(DesktopChannel.UpdateChanged, listener),
+  },
   plugins: {
     run: (cmd: PluginsCommand) => ipcRenderer.invoke(DesktopChannel.Plugins, cmd) as Promise<PluginsResult>,
     onChanged: (listener) => subscribe<void>(DesktopChannel.PluginsChanged, () => listener()),

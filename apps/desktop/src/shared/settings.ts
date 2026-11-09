@@ -1,6 +1,7 @@
 // Shell settings persisted by the main process (userData/settings.json).
 import { clampZoom, DEFAULT_ZOOM } from './zoom';
 import { BUILTIN_SKINS, normalizeHex, type Skin, type SkinChoice } from './skin';
+import { parseNotices, type Notice } from './updates';
 
 export interface PanelPrefs {
   /** Left sidebar (projects and sessions) is open. */
@@ -20,6 +21,12 @@ export interface ShellSettings {
   splash: SplashMode;
   /** Local date (YYYY-MM-DD) the full animation last played. */
   splashShownOn: string | null;
+  /** Update / announcement source set by the user (empty = the installer's default, if any). */
+  updateSource: string;
+  /** Announcements the user closed. */
+  dismissedNotices: string[];
+  /** Last announcements fetched, so they show at once on the next launch. */
+  noticesCache: Notice[];
 }
 
 export const DEFAULT_SETTINGS: ShellSettings = {
@@ -29,6 +36,9 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   panels: { left: true, right: true },
   splash: 'daily',
   splashShownOn: null,
+  updateSource: '',
+  dismissedNotices: [],
+  noticesCache: [],
 };
 
 /** Local calendar date, YYYY-MM-DD. */
@@ -72,7 +82,10 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   };
   const splash: SplashMode = v.splash === 'always' || v.splash === 'never' ? v.splash : 'daily';
   const splashShownOn = typeof v.splashShownOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.splashShownOn) ? v.splashShownOn : null;
-  return { skin, customSkins, zoom, panels, splash, splashShownOn };
+  const updateSource = typeof v.updateSource === 'string' ? v.updateSource.trim().slice(0, 500) : '';
+  const dismissedNotices = Array.isArray(v.dismissedNotices) ? v.dismissedNotices.filter((x): x is string => typeof x === 'string').slice(-200) : [];
+  const noticesCache = parseNotices({ announcements: v.noticesCache });
+  return { skin, customSkins, zoom, panels, splash, splashShownOn, updateSource, dismissedNotices, noticesCache };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

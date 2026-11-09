@@ -1,0 +1,4 @@
+{
+  "//": "Copy to deploy.json before packaging to give every install a default update and announcement source. A shared folder (\\server\share\spica) or an http(s) address. Leave empty for none.",
+  "updateSource": ""
+}
