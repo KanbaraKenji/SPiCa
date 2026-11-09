@@ -113,3 +113,45 @@ describe('MCP tools in the runtime', () => {
     expect(mcpToolName('my server', 'do.thing/now')).toBe('my_server__do_thing_now');
   });
 });
+
+describe('MCP servers sharing a plugin source', () => {
+  it('disconnecting one server removes only its own tools', async () => {
+    const rt = makeRuntime(gw);
+    rt.tools.register({ spec: { name: 'notes__skill', description: 's', inputSchema: { type: 'object' } }, execute: async () => ({ content: 'x' }) }, 'plugin:notes');
+    const a = await rt.connectMcp({ ...config, name: 'a' }, { source: 'plugin:notes' });
+    await rt.connectMcp({ ...config, name: 'b' }, { source: 'plugin:notes' });
+    await a.disconnect();
+    expect(rt.tools.get('a__echo')).toBeUndefined();
+    expect(rt.tools.get('b__echo')).toBeDefined();
+    expect(rt.tools.get('notes__skill')).toBeDefined();
+    // reconnecting (e.g. a restart) brings the server's tools back
+    await rt.connectMcp({ ...config, name: 'a' }, { source: 'plugin:notes' });
+    expect(rt.tools.get('a__echo')).toBeDefined();
+    // disabling the plugin still removes everything of the source
+    const res = rt.unregisterSource('plugin:notes');
+    await res.stopped;
+    expect([rt.tools.get('a__echo'), rt.tools.get('b__echo'), rt.tools.get('notes__skill')]).toEqual([undefined, undefined, undefined]);
+    await rt.close();
+  });
+});
+
+describe('MCP server environment', () => {
+  it('gets a whitelist by default, never secrets, plus explicit env', async () => {
+    process.env.SPICA_OPENAI_API_KEY_TEST = 'secret-1';
+    process.env.RANDOM_HOST_VAR = 'host-only';
+    try {
+      const { childEnv } = await import('../util.ts');
+      const def = childEnv(undefined, { PLUGIN_SETTING: '1' });
+      expect(Object.keys(def)).toContain('PLUGIN_SETTING');
+      expect(Object.keys(def).some((k) => k.toUpperCase() === 'PATH')).toBe(true);
+      expect(def.RANDOM_HOST_VAR).toBeUndefined();
+      expect(def.SPICA_OPENAI_API_KEY_TEST).toBeUndefined();
+      const all = childEnv('all');
+      expect(all.RANDOM_HOST_VAR).toBe('host-only');
+      expect(all.SPICA_OPENAI_API_KEY_TEST).toBeUndefined();
+    } finally {
+      delete process.env.SPICA_OPENAI_API_KEY_TEST;
+      delete process.env.RANDOM_HOST_VAR;
+    }
+  });
+});

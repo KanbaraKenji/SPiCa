@@ -64,3 +64,48 @@ export function anySignal(...signals: (AbortSignal | undefined)[]): AbortSignal 
   const list = signals.filter((s): s is AbortSignal => !!s);
   return AbortSignal.any(list);
 }
+
+/** Environment variable names that must never reach child processes (model keys, tokens, ...). */
+const SECRET_ENV = /(^SPICA_|API_?KEY|SECRET|TOKEN|PASSW(OR)?D|CREDENTIAL|PRIVATE_?KEY)/i;
+
+/** What a child process inherits by default: enough to run programs and reach the network through a proxy. */
+export const DEFAULT_CHILD_ENV: readonly string[] = [
+  'PATH',
+  'PATHEXT',
+  'SystemRoot',
+  'SystemDrive',
+  'windir',
+  'ComSpec',
+  'TEMP',
+  'TMP',
+  'USERPROFILE',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'HOME',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'LANG',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'NO_PROXY',
+  'http_proxy',
+  'https_proxy',
+  'no_proxy',
+];
+
+/**
+ * Build a child process environment. `inherit`: 'all' (the host environment
+ * minus secret-looking names) or a whitelist of names (default
+ * DEFAULT_CHILD_ENV). `extra` is added as given (explicit configuration).
+ * Names compare case-insensitively, as on Windows.
+ */
+export function childEnv(inherit: 'all' | readonly string[] = DEFAULT_CHILD_ENV, extra: Record<string, string> = {}): Record<string, string> {
+  const allowed = inherit === 'all' ? undefined : new Set(inherit.map((n) => n.toUpperCase()));
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value === undefined || SECRET_ENV.test(name)) continue;
+    if (allowed && !allowed.has(name.toUpperCase())) continue;
+    out[name] = value;
+  }
+  return { ...out, ...extra };
+}

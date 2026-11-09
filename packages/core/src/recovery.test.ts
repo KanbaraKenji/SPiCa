@@ -105,6 +105,33 @@ describe('recovery', () => {
     await rt2.close();
   });
 
+  it('file cards and suggestion cards are in the history and survive a restart', async () => {
+    const path = join(dir, 'spica.db');
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(join(dir, 'a.txt'), 'hello\n');
+    gw.enqueue(
+      {
+        toolCalls: [
+          { id: 'r1', name: 'read_file', args: { path: 'a.txt' } },
+          { id: 's1', name: 'suggest_actions', args: { title: 'Next', actions: [{ label: 'Go', prompt: 'go on' }] } },
+        ],
+      },
+      { text: 'done' },
+    );
+    const rt1 = makeRuntime(gw, { store: new SqliteStore(path), cwd: dir });
+    const s1 = rt1.createSession();
+    await s1.send('read it').done;
+    const meta = s1.messages()[2]!.meta!;
+    expect(meta.fileCards?.r1).toMatchObject({ name: 'a.txt', kind: 'text', read: { rows: '1-2' } });
+    expect(meta.suggestedActions?.s1).toEqual({ title: 'Next', actions: [{ label: 'Go', prompt: 'go on' }] });
+    await rt1.close();
+
+    const rt2 = makeRuntime(gw, { store: new SqliteStore(path), cwd: dir });
+    rt2.restore();
+    expect(rt2.session(s1.id)!.messages()[2]!.meta).toEqual(meta);
+    await rt2.close();
+  });
+
   it('the session tree and relays come back', async () => {
     const path = join(dir, 'spica.db');
     gw.onRequest(() => ({ text: 'ok' }));

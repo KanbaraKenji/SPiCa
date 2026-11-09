@@ -34,6 +34,11 @@ export interface SessionConfig {
   memoryId?: string;
 }
 
+export interface ToolCallCards {
+  fileCard?: import('../types.ts').FileCardMeta;
+  suggestion?: { title: string; actions: import('../types.ts').SuggestedAction[] };
+}
+
 /** Keyed by (sessionId, messageId, id): some gateways reuse call ids across turns. */
 export interface ToolCallRecord {
   id: string;
@@ -43,6 +48,8 @@ export interface ToolCallRecord {
   input: unknown;
   status: 'running' | 'ok' | 'error' | 'denied' | 'pending';
   result?: string;
+  /** Cards the call produced (file card, suggestions), copied into the tool_results message. */
+  cards?: ToolCallCards;
   startedAt: string;
   endedAt?: string;
 }

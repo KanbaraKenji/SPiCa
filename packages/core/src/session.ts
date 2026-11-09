@@ -5,12 +5,13 @@ import type { CoreEventBody, RunEndReason } from './events.ts';
 import type { HookContext, RequestDraft, ToolCallDraft } from './hooks.ts';
 import type { ModelRequest, ModelResponse, CallInfo } from './providers/types.ts';
 import { ProviderError } from './providers/types.ts';
-import type { PendingRecord, SessionConfig, SessionRecord, ToolCallRecord } from './store/types.ts';
+import type { PendingRecord, SessionConfig, SessionRecord, ToolCallCards, ToolCallRecord } from './store/types.ts';
 import { validateInput, type Tool, type ToolContext } from './tools/types.ts';
 import type {
   ContentBlock,
   Message,
   MessageKind,
+  MessageMeta,
   PendingItem,
   SessionInfo,
   SessionStatus,
@@ -225,7 +226,7 @@ export class Session {
       ? await this.#execute(tool, draft, ac.signal, this.#hookCtx('confirm', 0))
       : { content: `Unknown tool: ${p.item.toolName}`, isError: true };
     this.#runAbort = undefined;
-    this.#resolveCall(p, res.content, res.isError, res.isError ? 'error' : 'ok', true);
+    this.#resolveCall(p, res.content, res.isError, res.isError ? 'error' : 'ok', true, 'cards' in res ? res.cards : undefined);
     return this.#maybeResume();
   }
 
@@ -564,8 +565,8 @@ export class Session {
         status: 'running',
         startedAt: isoNow(),
       };
-      const finish = (content: string, isError: boolean, status: ToolCallRecord['status']) => {
-        this.#rt.store.upsertToolCall({ ...rec, status, result: content, endedAt: isoNow() });
+      const finish = (content: string, isError: boolean, status: ToolCallRecord['status'], cards?: ToolCallCards) => {
+        this.#rt.store.upsertToolCall({ ...rec, status, result: content, endedAt: isoNow(), ...(cards ? { cards } : {}) });
       };
       if (!tool) {
         finish(`Unknown tool "${call.name}". Available tools: ${[...visible].join(', ')}.`, true, 'error');
@@ -611,7 +612,7 @@ export class Session {
       }
       this.#rt.store.upsertToolCall({ ...rec, input });
       const res = await this.#execute(tool, { ...draft, input }, signal, hctx);
-      finish(res.content, res.isError, res.isError ? 'error' : 'ok');
+      finish(res.content, res.isError, res.isError ? 'error' : 'ok', res.cards);
     });
     await runLimited(work, MAX_PARALLEL_TOOLS);
 
@@ -636,8 +637,10 @@ export class Session {
     draft: ToolCallDraft,
     signal: AbortSignal,
     hctx: HookContext,
-  ): Promise<{ content: string; isError: boolean }> {
+  ): Promise<{ content: string; isError: boolean; cards?: ToolCallCards }> {
     this.#emit({ type: 'tool.start', callId: draft.callId, name: draft.name, input: draft.input });
+    // Card events are also kept with the call, so history can rebuild them.
+    let cards: ToolCallCards | undefined;
     const t0 = performance.now();
     const fetchedAt = isoNow();
     let out: { content: string; isError: boolean };
@@ -650,7 +653,11 @@ export class Session {
       extractors: this.#rt.extractors,
       services: this.#rt.services(this),
       callId: draft.callId,
-      emit: (body) => this.#emit(body),
+      emit: (body) => {
+        if (body.type === 'file.card') cards = { ...cards, fileCard: body.file };
+        if (body.type === 'suggest.actions') cards = { ...cards, suggestion: { title: body.title, actions: body.actions } };
+        this.#emit(body);
+      },
     };
     try {
       const r = await tool.execute((draft.input ?? {}) as Record<string, unknown>, ctx);
@@ -670,16 +677,20 @@ export class Session {
       preview: out.content.slice(0, RESULT_PREVIEW),
       durationMs: Math.round(performance.now() - t0),
     });
-    return out;
+    return cards ? { ...out, cards } : out;
   }
 
   /** Append the tool_results message for an assistant message, from the tool-call records. */
   #appendToolResults(assistant: Message): void {
     const records = new Map(this.#rt.store.listToolCalls(this.id, assistant.id).map((r) => [r.id, r]));
     const content: ContentBlock[] = [];
+    const fileCards: NonNullable<MessageMeta['fileCards']> = {};
+    const suggestedActions: NonNullable<MessageMeta['suggestedActions']> = {};
     for (const b of assistant.content) {
       if (b.type !== 'tool_use') continue;
       const r = records.get(b.id);
+      if (r?.cards?.fileCard) fileCards[b.id] = r.cards.fileCard;
+      if (r?.cards?.suggestion) suggestedActions[b.id] = r.cards.suggestion;
       content.push({
         type: 'tool_result',
         toolUseId: b.id,
@@ -687,10 +698,23 @@ export class Session {
         ...(r && r.status !== 'ok' ? { isError: true } : {}),
       });
     }
-    if (content.length > 0) this.#append({ role: 'user', kind: 'tool_results', content, meta: { author: 'runtime' } });
+    if (content.length === 0) return;
+    const meta: MessageMeta = {
+      author: 'runtime',
+      ...(Object.keys(fileCards).length > 0 ? { fileCards } : {}),
+      ...(Object.keys(suggestedActions).length > 0 ? { suggestedActions } : {}),
+    };
+    this.#append({ role: 'user', kind: 'tool_results', content, meta });
   }
 
-  #resolveCall(p: PendingRecord, content: string, isError: boolean, status: ToolCallRecord['status'], stamped = false): void {
+  #resolveCall(
+    p: PendingRecord,
+    content: string,
+    isError: boolean,
+    status: ToolCallRecord['status'],
+    stamped = false,
+    cards?: ToolCallCards,
+  ): void {
     const rec = this.#rt.store.listToolCalls(this.id, p.messageId).find((r) => r.id === p.callId);
     const result = stamped ? content : `[fetched at ${isoNow()}]\n${content}`;
     this.#rt.store.upsertToolCall({
@@ -705,6 +729,7 @@ export class Session {
       status,
       result,
       endedAt: isoNow(),
+      ...(cards ? { cards } : {}),
     });
     this.#rt.store.deletePending(this.id, p.callId);
   }

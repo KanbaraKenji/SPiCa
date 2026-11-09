@@ -4,13 +4,21 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { Tracer } from '../trace.ts';
 import type { Tool, ToolRegistry } from '../tools/types.ts';
+import { childEnv } from '../util.ts';
 
 export interface McpServerConfig {
   /** Short name; tools appear as `<name>__<tool>`. */
   name: string;
   command: string;
   args?: string[];
+  /** Extra variables for the server (passed as given). */
   env?: Record<string, string>;
+  /**
+   * Which host variables the server inherits: a whitelist (default: PATH,
+   * SystemRoot, TEMP/TMP, USERPROFILE, APPDATA, LOCALAPPDATA, proxy variables,
+   * ...) or 'all'. Secret-looking names (model keys, tokens) never pass.
+   */
+  inheritEnv?: 'all' | string[];
   cwd?: string;
   /** Per-request timeout. Default 60 s. */
   timeoutMs?: number;
@@ -62,7 +70,7 @@ export class McpStdioClient {
     const c = this.config;
     const child = spawn(c.command, c.args ?? [], {
       cwd: c.cwd,
-      env: { ...process.env, ...c.env },
+      env: childEnv(c.inheritEnv, c.env),
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -258,13 +266,15 @@ export async function connectMcp(
     const infos = await client.listTools();
     const tools = mcpTools(client, infos, tracer);
     const source = opts.source ?? `mcp:${config.name}`;
-    for (const t of tools) registry.register(t, source);
+    // Keep each tool's own remover: the source may also own other tools
+    // (a plugin's skills, other servers) that must survive this server.
+    const removers = tools.map((t) => registry.register(t, source));
     return {
       client,
       source,
       tools: tools.map((t) => t.spec.name),
       disconnect: () => {
-        registry.unregisterSource(source);
+        for (const remove of removers) remove();
         return client.close();
       },
     };

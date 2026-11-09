@@ -6,6 +6,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import type { Tool } from './types.ts';
+import { childEnv } from '../util.ts';
 
 export interface CommandToolOptions {
   /** Default: powershell on Windows, sh elsewhere. */
@@ -52,7 +53,8 @@ export function createRunCommandTool(opts: CommandToolOptions = {}): Tool {
       const cwd = typeof input.cwd === 'string' ? (isAbsolute(input.cwd) ? input.cwd : resolve(ctx.cwd, input.cwd)) : ctx.cwd;
       const [file, args] = shellArgs(shell, command);
       const t0 = performance.now();
-      const child = spawn(file, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: process.env });
+      // The user's environment, minus model keys and other secret-looking variables.
+      const child = spawn(file, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: childEnv('all') });
       const chunks: Buffer[] = [];
       let captured = 0;
       let dropped = 0;

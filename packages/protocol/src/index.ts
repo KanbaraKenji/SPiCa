@@ -124,13 +124,26 @@ export interface Message {
   createdAt: string;
   /** Assistant only: opaque per-provider fields to echo back on later turns. */
   providerExtras?: Record<string, unknown>;
-  /**
-   * Metadata. Common keys: `author` (Author); `partial` (assistant text saved
-   * while streaming); `interrupted` (the stream was cut: user interrupt, error
-   * or app crash; show it as interrupted); relay / report notes carry
-   * ChildNoteMeta.
-   */
-  meta?: Record<string, unknown>;
+  /** Metadata; see MessageMeta. Relay / report notes carry ChildNoteMeta fields. */
+  meta?: MessageMeta;
+}
+
+/** Known metadata keys on messages. Everything a UI shows must be rebuildable from history. */
+export interface MessageMeta {
+  /** One of Author; typed loosely so older callers that build plain objects still compile. */
+  author?: Author | (string & {});
+  /** Assistant text saved while it was streaming. */
+  partial?: boolean;
+  /** The stream was cut (user interrupt, error or app crash): show as interrupted. */
+  interrupted?: boolean;
+  error?: boolean;
+  model?: string;
+  stopReason?: StopReason;
+  /** tool_results messages: file cards produced by the calls, by call id. */
+  fileCards?: Record<string, FileCardMeta>;
+  /** tool_results messages: suggestion cards produced by the calls, by call id. */
+  suggestedActions?: Record<string, { title: string; actions: SuggestedAction[] }>;
+  [key: string]: unknown;
 }
 
 /** JSON schema for tool input (kept loose on purpose). */

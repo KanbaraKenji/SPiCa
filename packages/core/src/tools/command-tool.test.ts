@@ -82,3 +82,23 @@ describe('run_command', () => {
     expect(full.split('\n').filter(Boolean)).toHaveLength(5000);
   }, 20_000);
 });
+
+describe('child process environment', () => {
+  it('run_command does not pass model keys or tokens', async () => {
+    process.env.SPICA_TEST_SECRET_KEY = 'leak-me-1';
+    process.env.SOME_API_KEY = 'leak-me-2';
+    process.env.SPICA_HARMLESS_LOOKING = 'leak-me-3';
+    process.env.MY_PLAIN_SETTING = 'visible-value';
+    try {
+      const tool = createRunCommandTool();
+      const r = await tool.execute({ command: win ? 'Get-ChildItem env: | ForEach-Object { "$($_.Name)=$($_.Value)" }' : 'env' }, ctx());
+      expect(r.content).not.toMatch(/leak-me/);
+      expect(r.content).toContain('MY_PLAIN_SETTING=visible-value');
+    } finally {
+      delete process.env.SPICA_TEST_SECRET_KEY;
+      delete process.env.SOME_API_KEY;
+      delete process.env.SPICA_HARMLESS_LOOKING;
+      delete process.env.MY_PLAIN_SETTING;
+    }
+  }, 20_000);
+});
