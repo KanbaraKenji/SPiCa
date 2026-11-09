@@ -119,6 +119,16 @@ A plugin is a folder with a `manifest.json` and any of skills, commands, MCP ser
 hooks and views. Start with the [plugin author guide](docs/plugins/authoring.md) (in
 Chinese) and the working example in [plugins/example-notes](plugins/example-notes).
 
+## Known issues
+
+- On Windows with the system Node 24.15, aborting a streaming HTTP request occasionally
+  crashes the process natively (exit code `0xC0000409`) during tests or smoke runs — not
+  an assertion failure, a rerun passes; the core avoids it by cancelling the reader
+  instead of aborting the connection when the user stops, and the Node bundled with the
+  Spica desktop app (Electron 45, Node 24.22.2) does not reproduce it (see
+  [docs/design/agent-core.md](docs/design/agent-core.md) §13). CI retries the test step
+  once for this reason.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
