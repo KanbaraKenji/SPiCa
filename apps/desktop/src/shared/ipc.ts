@@ -10,6 +10,12 @@ export const DesktopChannel = {
   SettingsChanged: 'spica:settings:changed',
   GetShellState: 'spica:shell:get',
   OpenFile: 'spica:file:open',
+  /** invoke: () -> BackendStatus; main -> renderer: BackendStatus */
+  BackendStatus: 'spica:backend:status',
+  /** main -> renderer: the core restarted after a crash (reload sessions) */
+  BackendRestarted: 'spica:backend:restarted',
+  /** renderer -> main: try starting the core again after it gave up */
+  BackendRetry: 'spica:backend:retry',
   /** invoke: 'state' | 'check' | 'install' -> UpdateState */
   Update: 'spica:update',
   /** main -> renderer: UpdateState */

@@ -1,11 +1,14 @@
 // "测试连接" for real, through the core's probe: one minimal request outside
 // any session (no retries, 20 s limit). The core returns a category; the words,
 // and which field of the form to look at, are written here.
-import { probeProvider } from '@spica/core';
+import type { ProviderConfig } from '@spica/core';
 import type { ProbeResult } from '@spica/protocol';
 import { secretLabel, validateDraft, type ProviderDraft } from '../../shared/providers';
-import { buildProvider } from '../backend/core';
+import { toProviderConfig } from '../backend/to-config';
 import type { ConnectionTester } from './tester';
+
+/** One probe request: the backend process in the app, the core directly in tests. */
+export type Probe = (config: ProviderConfig, model: string, timeoutMs: number) => Promise<ProbeResult>;
 
 const TIMEOUT_MS = 20_000;
 
@@ -39,15 +42,13 @@ export function probeMessage(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' |
   }
 }
 
-export function createRealTester(): ConnectionTester {
-  return async (draft, savedSecret, signal) => {
+export function createRealTester(probe: Probe): ConnectionTester {
+  return async (draft, savedSecret) => {
     const errors = validateDraft(draft, Boolean(savedSecret));
     const first = Object.values(errors)[0];
     if (first) return { ok: false, message: first };
     const secret = draft.secret?.trim() || savedSecret || '';
-    const built = buildProvider({ ...draft, id: 'connection-test', secret }, { retry: { maxAttempts: 1, baseDelayMs: 0, maxDelayMs: 0 } });
-    if (typeof built === 'string') return { ok: false, message: built };
-    const r = await probeProvider(built, { model: draft.model.trim(), timeoutMs: TIMEOUT_MS, ...(signal ? { signal } : {}) });
+    const r = await probe(toProviderConfig({ ...draft, id: 'connection-test', secret }), draft.model.trim(), TIMEOUT_MS);
     return { ok: r.ok, message: probeMessage(r, draft) };
   };
 }

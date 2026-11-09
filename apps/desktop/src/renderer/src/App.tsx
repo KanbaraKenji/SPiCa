@@ -10,7 +10,7 @@ import { DetailPanel } from './shell/DetailPanel';
 import { Conversation, type ConversationActions } from './chat/Conversation';
 import { SettingsView, type SettingsTab } from './settings/SettingsView';
 import { NewProjectDialog } from './shell/NewProjectDialog';
-import { NoticeBar, useUpdateState } from './shell/NoticeBar';
+import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
 import { Icon } from './ui/Icon';
 import { SpicaBanner, SpicaMark } from '@spica/brand/react';
 
@@ -35,6 +35,7 @@ export function App({ bridge, shell, agent, version = '' }: AppProps) {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('appearance');
   const [newProject, setNewProject] = useState(false);
   const update = useUpdateState(bridge);
+  const backendState = useBackendState(bridge, agent);
   const installUpdate = () => void bridge.updates.run('install');
   // Whether any model is configured; checked at start and whenever settings close.
   const [modelReady, setModelReady] = useState<boolean | null>(null);
@@ -254,6 +255,8 @@ export function App({ bridge, shell, agent, version = '' }: AppProps) {
             <div className="conversation" />
           )}
           <NoticeBar
+            backend={backendState}
+            onRetryBackend={() => bridge.backend.retry()}
             update={update}
             settings={settings}
             onInstall={installUpdate}

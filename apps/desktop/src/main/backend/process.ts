@@ -1,0 +1,194 @@
+// The real backend, in its own process. The agent core runs in an Electron
+// utilityProcess (src/backend/entry.ts); this side starts it, talks to it over
+// a MessagePort and restarts it if it dies (1 s, 2 s, 5 s; at most 5 times a
+// minute). The window never goes down with it: calls wait while it restarts,
+// and the restarted core restores every session from the database.
+import { MessageChannelMain, utilityProcess, type UtilityProcess } from 'electron';
+import { connectBackend, electronPort, type BackendClient, type ProviderConfig } from '@spica/core';
+export { toProviderConfig } from './to-config';
+import type { AgentApi, CoreEvent, ProbeResult } from '@spica/protocol';
+import type { PluginsCommand, PluginsResult } from '../../shared/plugins';
+import type { DesktopBackendConfig } from '../../backend/config';
+import type { AgentBackend } from './types';
+
+export type BackendStatus = { state: 'starting' | 'ready' | 'recovering' } | { state: 'failed'; message: string };
+
+const BACKOFF_MS = [1000, 2000, 5000];
+const MAX_RESTARTS_PER_MINUTE = 5;
+const CALL_WAIT_MS = 30_000;
+
+
+export interface ProcessBackendOptions {
+  /** Built backend entry (out/main/backend.js). */
+  entry: string;
+  /** Evaluated at every (re)start, so new settings apply after a crash too. */
+  config(): DesktopBackendConfig;
+  onStatus(s: BackendStatus): void;
+  /** The core came back after a crash: the window reloads sessions. */
+  onRestarted(): void;
+  onPluginsChanged(): void;
+}
+
+export class ProcessBackend implements AgentBackend {
+  readonly #o: ProcessBackendOptions;
+  #child: UtilityProcess | undefined;
+  #client: BackendClient | undefined;
+  #ready!: Promise<BackendClient>;
+  #resolveReady!: (c: BackendClient) => void;
+  #rejectReady!: (e: Error) => void;
+  #listeners = new Set<(e: CoreEvent) => void>();
+  #restarts: number[] = [];
+  #stopping = false;
+  #started = false;
+
+  constructor(o: ProcessBackendOptions) {
+    this.#o = o;
+    this.#newReady();
+  }
+
+  #newReady(): void {
+    this.#ready = new Promise<BackendClient>((resolve, reject) => {
+      this.#resolveReady = resolve;
+      this.#rejectReady = reject;
+    });
+    // Unhandled until someone calls; avoid noise.
+    this.#ready.catch(() => undefined);
+  }
+
+  /** Starts the backend process. Resolves when it has restored its sessions. */
+  start(): Promise<void> {
+    this.#stopping = false;
+    this.#o.onStatus({ state: this.#started ? 'recovering' : 'starting' });
+    const child = utilityProcess.fork(this.#o.entry, [], { serviceName: 'spica-backend', stdio: 'pipe' });
+    this.#child = child;
+    child.stdout?.on('data', (d: Buffer) => process.stdout.write(`[backend] ${d}`));
+    child.stderr?.on('data', (d: Buffer) => process.stderr.write(`[backend] ${d}`));
+    const { port1, port2 } = new MessageChannelMain();
+    const client = connectBackend(electronPort(port1));
+    client.onEvent((e) => {
+      for (const l of this.#listeners) l(e);
+    });
+    const wasStarted = this.#started;
+    const done = new Promise<void>((resolve) => {
+      child.on('message', (m: { type?: string; message?: string }) => {
+        if (m?.type === 'started') {
+          this.#client = client;
+          this.#started = true;
+          this.#resolveReady(client);
+          this.#o.onStatus({ state: 'ready' });
+          if (wasStarted) this.#o.onRestarted();
+          resolve();
+        } else if (m?.type === 'failed') {
+          this.#o.onStatus({ state: 'failed', message: `后台没有启动起来：${m.message ?? ''}` });
+          resolve();
+        } else if (m?.type === 'plugins.changed') {
+          this.#o.onPluginsChanged();
+        }
+      });
+    });
+    child.once('exit', () => this.#exited(child, client));
+    child.postMessage({ type: 'start', config: this.#o.config() }, [port2]);
+    return done;
+  }
+
+  #exited(child: UtilityProcess, client: BackendClient): void {
+    if (this.#child !== child) return;
+    this.#child = undefined;
+    this.#client = undefined;
+    client.fail('后台正在恢复');
+    if (this.#stopping) return;
+    this.#newReady();
+    const now = Date.now();
+    this.#restarts = this.#restarts.filter((t) => now - t < 60_000);
+    if (this.#restarts.length >= MAX_RESTARTS_PER_MINUTE) {
+      this.#rejectReady(new Error('后台反复出错，已经停下。'));
+      this.#o.onStatus({ state: 'failed', message: '后台反复出错，已经停下。' });
+      return;
+    }
+    const delay = BACKOFF_MS[Math.min(this.#restarts.length, BACKOFF_MS.length - 1)] ?? 5000;
+    this.#restarts.push(now);
+    this.#o.onStatus({ state: 'recovering' });
+    setTimeout(() => {
+      if (!this.#stopping) void this.start();
+    }, delay);
+  }
+
+  /** After "failed": try again now. */
+  retry(): void {
+    if (this.#child) return;
+    this.#restarts = [];
+    this.#newReady();
+    void this.start();
+  }
+
+  /** Any backend method; waits while the backend is (re)starting. */
+  async call<T = unknown>(method: string, ...params: unknown[]): Promise<T> {
+    const client =
+      this.#client ??
+      (await Promise.race([
+        this.#ready,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('后台没有响应，请稍后再试。')), CALL_WAIT_MS)),
+      ]));
+    return client.call<T>(method, ...params);
+  }
+
+  // AgentApi over the port.
+  createSession: AgentApi['createSession'] = (...a) => this.call('createSession', ...a);
+  listSessions: AgentApi['listSessions'] = (...a) => this.call('listSessions', ...a);
+  getSession: AgentApi['getSession'] = (...a) => this.call('getSession', ...a);
+  getMessages: AgentApi['getMessages'] = (...a) => this.call('getMessages', ...a);
+  getPending: AgentApi['getPending'] = (...a) => this.call('getPending', ...a);
+  send: AgentApi['send'] = (...a) => this.call('send', ...a);
+  steer: AgentApi['steer'] = (...a) => this.call('steer', ...a);
+  answer: AgentApi['answer'] = (...a) => this.call('answer', ...a);
+  confirm: AgentApi['confirm'] = (...a) => this.call('confirm', ...a);
+  renameSession: AgentApi['renameSession'] = (...a) => this.call('renameSession', ...a);
+  resume: AgentApi['resume'] = (...a) => this.call('resume', ...a);
+  abort: AgentApi['abort'] = (...a) => this.call('abort', ...a);
+  exportTraces: AgentApi['exportTraces'] = (...a) => this.call('exportTraces', ...a);
+  getTopSession: NonNullable<AgentApi['getTopSession']> = () => this.call('getTopSession');
+  createProject: NonNullable<AgentApi['createProject']> = (...a) => this.call('createProject', ...a);
+  listProjects: NonNullable<AgentApi['listProjects']> = () => this.call('listProjects');
+  getProject: NonNullable<AgentApi['getProject']> = (...a) => this.call('getProject', ...a);
+
+  onEvent(listener: (event: CoreEvent) => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  /** The settings page changed models: send the whole current list and default (from config()). */
+  configure(): { id: string; reason: string }[] {
+    const cfg = this.#o.config();
+    void this.call('setProviders', cfg.core.providers, cfg.current).catch(() => undefined);
+    return [];
+  }
+
+  probe(config: ProviderConfig, model: string): Promise<ProbeResult> {
+    return this.call<ProbeResult>('probeProvider', config, model);
+  }
+
+  plugins(cmd: PluginsCommand): Promise<PluginsResult> {
+    return this.call<PluginsResult>('plugins', cmd);
+  }
+
+  dispose(): void {
+    void this.shutdown();
+  }
+
+  /** Lets the core close cleanly (running sessions become "interrupted"); kills it after 5 s. */
+  async shutdown(): Promise<void> {
+    this.#stopping = true;
+    const child = this.#child;
+    if (!child) return;
+    const exited = new Promise<void>((r) => child.once('exit', () => r()));
+    child.postMessage({ type: 'shutdown' });
+    const timer = setTimeout(() => child.kill(), 5000);
+    await exited;
+    clearTimeout(timer);
+  }
+
+  /** For tests and the "kill the core" check. */
+  get pid(): number | undefined {
+    return this.#child?.pid;
+  }
+}

@@ -12,6 +12,9 @@ export interface ProviderList {
   problems: Record<string, string>;
 }
 
+/** The core's own process: starting, running, coming back after a crash, or given up. */
+export type BackendState = { state: 'starting' | 'ready' | 'recovering' } | { state: 'failed'; message: string };
+
 export interface ShellState {
   settings: ShellSettings;
   /** OS prefers dark (used when the skin follows the system). */
@@ -35,6 +38,12 @@ export interface DesktopBridge extends SpicaBridge {
   openFile(sessionId: string, path: string): Promise<string | null>;
   /** Windows' own folder picker. Resolves to the chosen path, or null when cancelled. */
   pickFolder(): Promise<string | null>;
+  backend: {
+    status(): Promise<BackendState>;
+    onStatus(listener: (s: BackendState) => void): () => void;
+    onRestarted(listener: () => void): () => void;
+    retry(): void;
+  };
   updates: {
     run(op: 'state' | 'check' | 'install'): Promise<UpdateState>;
     onChanged(listener: (s: UpdateState) => void): () => void;

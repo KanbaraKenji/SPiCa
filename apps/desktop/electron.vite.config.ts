@@ -6,7 +6,18 @@ import react from '@vitejs/plugin-react';
 // Workspace packages (@spica/*) are devDependencies, so they are bundled, not
 // externalized; real runtime dependencies go in "dependencies".
 export default defineConfig({
-  main: {},
+  main: {
+    build: {
+      rollupOptions: {
+        // index: the main process. backend: the agent core's own process
+        // (utilityProcess.fork), so a crash there never takes the window down.
+        input: {
+          index: resolve(__dirname, 'src/main/index.ts'),
+          backend: resolve(__dirname, 'src/backend/entry.ts'),
+        },
+      },
+    },
+  },
   preload: {},
   renderer: {
     root: resolve(__dirname, 'src/renderer'),

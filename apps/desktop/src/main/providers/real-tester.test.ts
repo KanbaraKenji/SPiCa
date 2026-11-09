@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { emptyDraft } from '../../shared/providers';
+import { createProvider, probeProvider } from '@spica/core';
 import { createRealTester, probeMessage } from './real-tester';
 
 let server: Server;
@@ -31,7 +32,8 @@ afterAll(() => {
 const draft = (secret: string, baseUrl = base) => ({ ...emptyDraft('openai'), name: 'local', baseUrl, model: 'm', secret });
 
 describe('real connection tester', () => {
-  const test = createRealTester();
+  // The app probes through the backend process; here the core runs in the test process.
+  const test = createRealTester((config, model, timeoutMs) => probeProvider(createProvider(config), { model, timeoutMs }));
 
   it('says the key is wrong on 401', async () => {
     expect(await test(draft('made-up'), undefined)).toEqual({ ok: false, message: '密钥不对或已失效：请检查「API Key」。' });
