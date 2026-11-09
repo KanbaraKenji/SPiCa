@@ -40,6 +40,10 @@ export interface Tool {
 
 export interface ToolEnv {
   providerId: string;
+  /** Role of the session (tools for the top-level agent only, ...). */
+  role?: import('../types.ts').AgentRole;
+  /** Set when the session works for a project. */
+  projectId?: string;
   /** The provider offers model-hosted web search and the session enabled it. */
   serverWebSearch: boolean;
 }

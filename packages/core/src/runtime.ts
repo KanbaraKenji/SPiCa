@@ -9,6 +9,7 @@ import { Session, type RunResult } from './session.ts';
 import { MemoryStore } from './store/memory.ts';
 import type { RelayRecord, SessionConfig, SessionRecord, Store } from './store/types.ts';
 import { agentTools } from './tools/agent-tools.ts';
+import { projectTools } from './tools/project-tools.ts';
 import { createRunCommandTool } from './tools/command-tool.ts';
 import { createWebFetchTool, createWebSearchTool, type SearchBackend } from './tools/web-tools.ts';
 import { connectMcp, type McpServerConfig, type McpStdioClient } from './mcp/client.ts';
@@ -135,8 +136,23 @@ export class Runtime implements RuntimeInternals {
       createWebFetchTool(),
       ...(opts.search ? [createWebSearchTool(opts.search)] : []),
       ...agentTools,
+      ...projectTools,
     ];
     for (const t of opts.tools ?? defaults) this.tools.register(t, 'core');
+    // Sessions inside a project see their project and stage every turn.
+    this.hooks.register('core:project', {
+      inject: (ctx) => {
+        const projectId = ctx.session.projectId;
+        const p = projectId ? this.store.getProject(projectId) : undefined;
+        if (!p) return;
+        const wf = p.workflowId ? this.#workflows.workflows.get(p.workflowId) : undefined;
+        const stage = wf?.stages.find((s) => s.id === p.stage);
+        const text =
+          `You work for the project "${p.name}" (${p.id}); project folder: ${p.folder}.` +
+          (wf ? ` Workflow: ${wf.name}; current stage: ${stage?.name ?? p.stage}${stage?.goal ? ` (goal: ${stage.goal})` : ''}.` : '');
+        return [{ position: 'system:after', text, priority: 10 }];
+      },
+    });
   }
 
   addProvider(p: Provider, limits?: LimiterConfig): void {
