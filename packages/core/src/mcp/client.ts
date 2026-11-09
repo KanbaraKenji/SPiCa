@@ -14,6 +14,13 @@ export interface McpServerConfig {
   cwd?: string;
   /** Per-request timeout. Default 60 s. */
   timeoutMs?: number;
+  /**
+   * Called once when the server process ends. `expected` is true when it was
+   * stopped by disconnect()/close(); otherwise it crashed or quit by itself.
+   */
+  onExit?(info: { code: number | null; stderrTail: string; expected: boolean }): void;
+  /** Receives the server's stderr as it arrives (e.g. to write a plugin log). */
+  stderrLog?(chunk: string): void;
 }
 
 export interface McpToolInfo {
@@ -39,6 +46,7 @@ export class McpStdioClient {
   #buffer = '';
   #stderr = '';
   #closed = false;
+  #closing = false;
   serverInfo: { name?: string; version?: string } = {};
 
   constructor(config: McpServerConfig) {
@@ -61,8 +69,22 @@ export class McpStdioClient {
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (d: string) => this.#onData(d));
     child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (d: string) => (this.#stderr = (this.#stderr + d).slice(-4000)));
-    child.on('exit', (code) => this.#fail(new Error(`MCP server "${c.name}" exited (code ${code ?? 'unknown'})${this.#stderr ? `: ${this.#stderr.trim().slice(-300)}` : ''}`)));
+    child.stderr.on('data', (d: string) => {
+      this.#stderr = (this.#stderr + d).slice(-4000);
+      try {
+        c.stderrLog?.(d);
+      } catch {
+        // a broken log sink must not break the client
+      }
+    });
+    child.on('exit', (code) => {
+      this.#fail(new Error(`MCP server "${c.name}" exited (code ${code ?? 'unknown'})${this.#stderr ? `: ${this.#stderr.trim().slice(-300)}` : ''}`));
+      try {
+        c.onExit?.({ code, stderrTail: this.#stderr.slice(-2000), expected: this.#closing });
+      } catch {
+        // ignore listener errors
+      }
+    });
     child.on('error', (err) => this.#fail(new Error(`could not start MCP server "${c.name}": ${err.message}`)));
     const init = (await this.request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
@@ -129,6 +151,7 @@ export class McpStdioClient {
   }
 
   close(): void {
+    this.#closing = true;
     if (this.#closed) return;
     this.#fail(new Error(`MCP server "${this.config.name}" was disconnected`));
     try {
@@ -219,16 +242,18 @@ export async function connectMcp(
   registry: ToolRegistry,
   tracer: Tracer,
   config: McpServerConfig,
-): Promise<{ client: McpStdioClient; tools: string[]; disconnect: () => void }> {
+  opts: { source?: string } = {},
+): Promise<{ client: McpStdioClient; tools: string[]; source: string; disconnect: () => void }> {
   const client = new McpStdioClient(config);
   try {
     await client.connect();
     const infos = await client.listTools();
     const tools = mcpTools(client, infos, tracer);
-    const source = `mcp:${config.name}`;
+    const source = opts.source ?? `mcp:${config.name}`;
     for (const t of tools) registry.register(t, source);
     return {
       client,
+      source,
       tools: tools.map((t) => t.spec.name),
       disconnect: () => {
         registry.unregisterSource(source);
