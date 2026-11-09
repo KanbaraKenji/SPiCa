@@ -5,9 +5,10 @@ import { EventBus, isoNow } from './events.ts';
 import { HookRegistry } from './hooks.ts';
 import { RateLimiter, type LimiterConfig } from './limiter.ts';
 import type { Provider } from './providers/types.ts';
-import { Session } from './session.ts';
+import { Session, type RunResult } from './session.ts';
 import { MemoryStore } from './store/memory.ts';
-import type { SessionConfig, SessionRecord, Store } from './store/types.ts';
+import type { RelayRecord, SessionConfig, SessionRecord, Store } from './store/types.ts';
+import { agentTools } from './tools/agent-tools.ts';
 import { fileTools } from './tools/fs-tools.ts';
 import { ToolRegistry, type FileExtractor, type Tool } from './tools/types.ts';
 import { Tracer } from './trace.ts';
@@ -23,7 +24,7 @@ export interface RuntimeOptions {
   limits?: Record<string, LimiterConfig>;
   prices?: PriceTable;
   budget?: BudgetConfig;
-  /** Built-in tools to register. Default: the file tools. */
+  /** Built-in tools to register. Default: file tools plus ask_user and the session-tree tools. */
   tools?: Tool[];
   extractors?: FileExtractor[];
   /** Default working folder for sessions. */
@@ -45,6 +46,7 @@ export interface RuntimeInternals {
   services(session: Session): Record<string, unknown>;
   onUserMessage(session: Session, message: Message): void;
   onStatus(session: Session, status: SessionStatus): void;
+  onRunEnd(session: Session, result: RunResult): void;
 }
 
 export const DEFAULT_SYSTEM_PROMPT =
@@ -64,6 +66,8 @@ export class Runtime implements RuntimeInternals {
   readonly #limiters = new Map<string, RateLimiter>();
   readonly #sessions = new Map<string, Session>();
   readonly #opts: RuntimeOptions;
+  readonly #awaited = new Map<string, number>();
+  readonly #reports = new Map<string, string>();
 
   constructor(opts: RuntimeOptions) {
     this.#opts = opts;
@@ -72,7 +76,7 @@ export class Runtime implements RuntimeInternals {
     this.ledger = new CostLedger(opts.prices ?? DEFAULT_PRICES, opts.budget ?? {});
     this.extractors = [...(opts.extractors ?? [])];
     for (const p of opts.providers) this.addProvider(p, opts.limits?.[p.id]);
-    for (const t of opts.tools ?? fileTools) this.tools.register(t, 'core');
+    for (const t of opts.tools ?? [...fileTools, ...agentTools]) this.tools.register(t, 'core');
   }
 
   addProvider(p: Provider, limits?: LimiterConfig): void {
@@ -161,11 +165,78 @@ export class Runtime implements RuntimeInternals {
     return { runtime: this };
   }
 
-  onUserMessage(): void {
-    // Relay to the parent is wired in the session-tree module.
+  /**
+   * Default relay: every message the user writes in a child session is added
+   * to the parent's context as a note (and stored), so the parent knows what
+   * the user said there.
+   */
+  onUserMessage(session: Session, message: Message): void {
+    if (message.meta?.author !== 'user') return;
+    const text = message.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+    this.#relay(session, 'user_message', `The user wrote in that session: "${text}"`);
   }
 
   onStatus(): void {}
+
+  /** A child's finished run becomes its report to the parent. */
+  onRunEnd(session: Session, result: RunResult): void {
+    if (!session.parentId || result.reason !== 'completed') return;
+    const report = result.text || '(finished without a written report)';
+    this.#reports.set(session.id, report);
+    const parent = this.session(session.parentId);
+    if (!parent) return;
+    this.store.appendRelay(this.#relayRecord(parent.id, session.id, 'report', report));
+    this.events.emit({ sessionId: parent.id, parentChain: parent.parentChain }, { type: 'child.report', childId: session.id, summary: report.slice(0, 500) });
+    // A parent blocked in wait_agents gets the report as the tool result instead.
+    if ((this.#awaited.get(session.id) ?? 0) > 0) return;
+    parent.addNote('report', `[Report from sub-agent "${session.info().title}" (${session.id})]
+${report}`, {
+      author: 'child',
+      fromSessionId: session.id,
+    });
+  }
+
+  /**
+   * Record a decision made or changed in a session; it is relayed to the
+   * parent like a user message. `by` says who recorded it.
+   */
+  recordDecision(sessionId: string, decision: string, by: 'user' | 'agent'): void {
+    const s = this.session(sessionId);
+    if (!s) throw new Error(`unknown session: ${sessionId}`);
+    this.events.emit({ sessionId, parentChain: s.parentChain }, { type: 'relay', fromSessionId: sessionId, note: `decision: ${decision}` });
+    this.#relay(s, 'decision', `Decision ${by === 'user' ? 'made by the user' : 'recorded'} there: ${decision}`);
+  }
+
+  /** wait_agents marks children it is waiting for; returns a release function. */
+  markAwaited(ids: string[]): () => void {
+    for (const id of ids) this.#awaited.set(id, (this.#awaited.get(id) ?? 0) + 1);
+    return () => {
+      for (const id of ids) this.#awaited.set(id, Math.max(0, (this.#awaited.get(id) ?? 1) - 1));
+    };
+  }
+
+  lastReport(sessionId: string): string | undefined {
+    return this.#reports.get(sessionId) ?? this.store.listRelays(this.session(sessionId)?.parentId ?? '').filter((r) => r.childId === sessionId && r.kind === 'report').pop()?.text;
+  }
+
+  /** Withdraw everything a plugin registered (hooks and tools). */
+  unregisterSource(source: string): { hooks: number; tools: number } {
+    return { hooks: this.hooks.unregisterSource(source), tools: this.tools.unregisterSource(source) };
+  }
+
+  #relay(child: Session, kind: RelayRecord['kind'], body: string): void {
+    if (!child.parentId) return;
+    const parent = this.session(child.parentId);
+    if (!parent) return;
+    const note = `[From sub-agent "${child.info().title}" (${child.id})] ${body}`;
+    this.store.appendRelay(this.#relayRecord(parent.id, child.id, kind, body));
+    parent.addNote('relay', note, { author: 'child', fromSessionId: child.id, ...(kind === 'decision' ? { decision: true } : {}) });
+    this.events.emit({ sessionId: parent.id, parentChain: parent.parentChain }, { type: 'relay', fromSessionId: child.id, note });
+  }
+
+  #relayRecord(parentId: string, childId: string, kind: RelayRecord['kind'], text: string): RelayRecord {
+    return { id: newId('rel'), parentId, childId, kind, text, createdAt: isoNow() };
+  }
 
   /** Traceable records as JSON Lines. */
   exportTraces(filter?: { sessionId?: string }): string {

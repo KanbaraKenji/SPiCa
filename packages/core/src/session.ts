@@ -55,6 +55,9 @@ export class Session {
   #turnAbort: AbortController | undefined;
   #interrupt = false;
   #waiters: ((r: RunResult) => void)[] = [];
+  #settleWaiters: (() => void)[] = [];
+  /** Input size of the last model call (context only grows within a run), used for budget pre-checks. */
+  #lastInputTokens = 0;
 
   constructor(rt: RuntimeInternals, record: SessionRecord, messages: Message[] = []) {
     this.#rt = rt;
@@ -117,6 +120,12 @@ export class Session {
   /** Resolves when the current run (if any) ends. */
   idle(): Promise<RunResult | undefined> {
     return this.#run ?? Promise.resolve(undefined);
+  }
+
+  /** Resolves when nothing is running and nothing waits for the user. */
+  settled(): Promise<void> {
+    if (!this.#run && !this.#hasPending()) return Promise.resolve();
+    return new Promise((r) => this.#settleWaiters.push(r));
   }
 
   // ---------------------------------------------------------------------------
@@ -249,7 +258,10 @@ export class Session {
       this.#turnAbort = undefined;
     });
     this.#run = p;
-    void p.then((r) => this.#finishWaiters(r));
+    void p.then((r) => {
+      this.#rt.onRunEnd(this, r);
+      this.#finishWaiters(r);
+    });
     return p;
   }
 
@@ -262,7 +274,9 @@ export class Session {
     let lastText = '';
     const end = (reason: RunEndReason, detail?: string): RunResult => {
       const status: SessionStatus =
-        reason === 'completed' || reason === 'max_turns'
+        reason === 'completed' && this.#record.role === 'worker'
+          ? 'done'
+          : reason === 'completed' || reason === 'max_turns'
           ? 'idle'
           : reason === 'budget'
             ? 'idle'
@@ -321,7 +335,10 @@ export class Session {
 
       // 2. Spending limits (worst case for this call).
       const scope = { providerId: provider.id, providerKind: provider.kind, model: request.model, sessionId: this.id, runId };
-      const est = estimateTokens(request.system + JSON.stringify(request.messages) + JSON.stringify(request.tools));
+      const est = Math.max(
+        estimateTokens(request.system + JSON.stringify(request.messages) + JSON.stringify(request.tools)),
+        this.#lastInputTokens,
+      );
       const check = this.#rt.ledger.precheck(scope, est, request.maxTokens);
       if (!check.ok) {
         this.#emit({ type: 'budget.stop', scope: check.scope, spentUsd: check.spentUsd, limitUsd: check.limitUsd, message: check.message });
@@ -406,6 +423,8 @@ export class Session {
       }
 
       // 5. Cost and traceable record.
+      const u = response.usage;
+      this.#lastInputTokens = u.inputTokens + (provider.kind === 'anthropic' ? (u.cacheReadTokens ?? 0) + (u.cacheWriteTokens ?? 0) : 0);
       const cost = this.#rt.ledger.record(scope, response.usage);
       trace.finish({
         status: 'ok',
@@ -722,6 +741,7 @@ export class Session {
   #finishWaiters(r: RunResult): void {
     const w = this.#waiters.splice(0);
     for (const fn of w) fn(r);
+    if (!this.#run && !this.#hasPending()) for (const fn of this.#settleWaiters.splice(0)) fn();
   }
 }
 

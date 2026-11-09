@@ -1,0 +1,50 @@
+// The backend API (AgentApi from @spica/protocol) on top of a Runtime.
+// The desktop main process and the MCP server expose this object; events
+// come from runtime.events.
+import type { Runtime } from './runtime.ts';
+import type { AgentApi, CreateSessionRequest, SteerMode } from './types.ts';
+
+export function createAgentApi(rt: Runtime): AgentApi {
+  const get = (id: string) => {
+    const s = rt.session(id);
+    if (!s) throw new Error(`unknown session: ${id}`);
+    return s;
+  };
+  return {
+    async createSession(req: CreateSessionRequest) {
+      return rt.createSession(req).info();
+    },
+    async listSessions() {
+      return rt.sessions().map((s) => s.info());
+    },
+    async getSession(id) {
+      return rt.session(id)?.info();
+    },
+    async getMessages(id) {
+      return get(id).messages();
+    },
+    async getPending(id) {
+      return get(id).pending();
+    },
+    async send(id, text) {
+      const h = get(id).send(text);
+      return { messageId: h.messageId, started: h.started };
+    },
+    async steer(id, text, mode: SteerMode) {
+      const h = get(id).steer(text, mode);
+      return { messageId: h.messageId, started: h.started };
+    },
+    async answer(id, callId, answer) {
+      get(id).answer(callId, answer);
+    },
+    async confirm(id, callId, approved) {
+      await get(id).confirm(callId, approved);
+    },
+    async abort(id) {
+      get(id).abort();
+    },
+    async exportTraces(filter) {
+      return rt.exportTraces(filter);
+    },
+  };
+}
