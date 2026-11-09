@@ -458,7 +458,8 @@ a:hover {
   height: 32px;
   display: flex;
   align-items: center;
-  padding-right: 8px;
+  gap: 2px;
+  padding-right: 4px;
   border-radius: var(--radius-m);
   color: var(--spica-ink);
 }
@@ -503,7 +504,9 @@ button.tree-twisty:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-left: 4px;
+  /* Same left edge as .tree-heading text. */
+  padding-left: 10px;
+  padding-right: 4px;
   text-align: left;
 }
 
