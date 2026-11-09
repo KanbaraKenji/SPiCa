@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" width="960" height="640" role="img" aria-labelledby="t d">
+  <title id="t">Spica agent core</title>
+  <desc id="d">Callers (desktop shell over a message port, MCP clients over stdio or HTTP, tests) drive the Runtime. Inside, a tree of sessions runs the agent loop and shares hooks, tools, the untrusted-content guard, the cost ledger, rate limiters, the tracer, the mail pipeline, projects and the SQLite store. The core calls model endpoints through three providers and reaches files, commands, the web and plugin MCP servers through tools.</desc>
+  <style>
+    .frame { fill: #f8fafc; stroke: #e2e8f0; }
+    .box { fill: #ffffff; stroke: #cbd5e1; }
+    .key { fill: #ffffff; stroke: #2f7de1; stroke-width: 1.6; }
+    .ext { fill: #ffffff; stroke: #cbd5e1; stroke-dasharray: 5 4; }
+    .line { stroke: #94a3b8; stroke-width: 1.4; fill: none; }
+    .head { fill: #94a3b8; }
+    .h { fill: #111827; font: 600 14px 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif; }
+    .s { fill: #64748b; font: 12px 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif; }
+    .group { fill: #475569; font: 600 12px 'Cascadia Mono', Consolas, monospace; }
+    .lbl { fill: #64748b; font: italic 11px 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif; }
+    @media (prefers-color-scheme: dark) {
+      .frame { fill: #161a22; stroke: #2a2f3a; }
+      .box, .key, .ext { fill: #1f2430; }
+      .box, .ext { stroke: #3b4252; }
+      .key { stroke: #62a9ff; }
+      .line { stroke: #6b7280; }
+      .head { fill: #6b7280; }
+      .h { fill: #e5e7eb; }
+      .s, .lbl { fill: #9ca3af; }
+      .group { fill: #cbd5e1; }
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0 0L10 5L0 10z"/>
+    </marker>
+  </defs>
+
+  <!-- callers -->
+  <rect class="ext" x="20" y="16" width="290" height="70" rx="10"/>
+  <text class="h" x="36" y="44">桌面外壳（主进程 / 界面）</text>
+  <text class="s" x="36" y="66">MessagePort：AgentApi 命令 + 事件流</text>
+  <rect class="ext" x="335" y="16" width="290" height="70" rx="10"/>
+  <text class="h" x="351" y="44">外部 MCP 客户端</text>
+  <text class="s" x="351" y="66">评测插件、远程调试：stdio / HTTP + 令牌</text>
+  <rect class="ext" x="650" y="16" width="290" height="70" rx="10"/>
+  <text class="h" x="666" y="44">测试与冒烟脚本</text>
+  <text class="s" x="666" y="66">直接用 Runtime，或经 MCP 服务</text>
+  <path class="line" marker-end="url(#a)" d="M165 86V122"/>
+  <path class="line" marker-end="url(#a)" d="M480 86V122"/>
+  <path class="line" marker-end="url(#a)" d="M795 86V122"/>
+
+  <!-- runtime -->
+  <rect class="frame" x="20" y="126" width="920" height="352" rx="12"/>
+  <text class="group" x="36" y="150">packages/core · Runtime（内核进程，纯 Node，零运行时依赖）</text>
+
+  <rect class="key" x="40" y="166" width="400" height="232" rx="10"/>
+  <text class="h" x="56" y="192">会话树</text>
+  <rect class="box" x="60" y="208" width="110" height="52" rx="8"/>
+  <text class="h" x="76" y="231">顶层线程</text>
+  <text class="s" x="76" y="249">top，可多个</text>
+  <rect class="box" x="195" y="208" width="110" height="52" rx="8"/>
+  <text class="h" x="211" y="231">项目经理</text>
+  <text class="s" x="211" y="249">manager</text>
+  <rect class="box" x="330" y="208" width="94" height="52" rx="8"/>
+  <text class="h" x="344" y="231">子 Agent</text>
+  <text class="s" x="344" y="249">worker</text>
+  <path class="line" marker-end="url(#a)" d="M170 234H193"/>
+  <path class="line" marker-end="url(#a)" d="M305 234H328"/>
+  <text class="lbl" x="60" y="282">父派任务、子回报；用户在子会话里的话回传给父会话</text>
+  <text class="s" x="56" y="314">每个会话跑同一个主循环：</text>
+  <text class="s" x="56" y="334">段组装 → 钩子 → 花费预留 → 限流排队 → 流式调模型</text>
+  <text class="s" x="56" y="354">→ 钩子 → 守卫判定 → 并行跑工具 → 结果写回 → 下一轮</text>
+  <text class="s" x="56" y="380">插话（下一轮 / 打断）、确认卡、提问卡、重启续跑</text>
+
+  <rect class="box" x="460" y="166" width="226" height="52" rx="8"/>
+  <text class="h" x="476" y="189">钩子 HookRegistry</text>
+  <text class="s" x="476" y="207">注入、发请求前后、工具前后</text>
+  <rect class="box" x="698" y="166" width="226" height="52" rx="8"/>
+  <text class="h" x="714" y="189">工具 ToolRegistry</text>
+  <text class="s" x="714" y="207">内置 + 插件 MCP，按角色可见</text>
+  <rect class="key" x="460" y="226" width="226" height="52" rx="8"/>
+  <text class="h" x="476" y="249">不可信内容防护 guard</text>
+  <text class="s" x="476" y="267">数据围栏、指令标记、强制确认</text>
+  <rect class="box" x="698" y="226" width="226" height="52" rx="8"/>
+  <text class="h" x="714" y="249">花费 CostLedger</text>
+  <text class="s" x="714" y="267">价表、上限、并行预留</text>
+  <rect class="box" x="460" y="286" width="226" height="52" rx="8"/>
+  <text class="h" x="476" y="309">限流 RateLimiter</text>
+  <text class="s" x="476" y="327">每个模型端点一个，排队位次</text>
+  <rect class="box" x="698" y="286" width="226" height="52" rx="8"/>
+  <text class="h" x="714" y="309">可追溯记录 Tracer</text>
+  <text class="s" x="714" y="327">每次对外请求一条，去敏</text>
+  <rect class="box" x="460" y="346" width="226" height="52" rx="8"/>
+  <text class="h" x="476" y="369">邮件流水线</text>
+  <text class="s" x="476" y="387">取信 → 分拣 → 转给项目经理</text>
+  <rect class="box" x="698" y="346" width="226" height="52" rx="8"/>
+  <text class="h" x="714" y="369">项目与流程</text>
+  <text class="s" x="714" y="387">项目文件夹、阶段、工作对象</text>
+
+  <rect class="box" x="40" y="410" width="884" height="52" rx="8"/>
+  <text class="h" x="56" y="433">存储 SqliteStore（node:sqlite，WAL，单写者锁）</text>
+  <text class="s" x="56" y="451">会话、消息、工具调用、挂起项、排队插话、回传、可追溯记录、项目、关键操作、工作对象、来信、发件人记忆</text>
+
+  <!-- outside -->
+  <path class="line" marker-end="url(#a)" d="M250 478V522"/>
+  <path class="line" marker-end="url(#a)" d="M710 478V522"/>
+  <rect class="ext" x="20" y="526" width="455" height="96" rx="10"/>
+  <text class="h" x="36" y="554">模型接口（provider）</text>
+  <text class="s" x="36" y="576">openai-compatible · anthropic · wso2（OAuth2 换 token）</text>
+  <text class="s" x="36" y="596">共用 http 层：重试退避、超时、软停止、错误去敏</text>
+  <rect class="ext" x="485" y="526" width="455" height="96" rx="10"/>
+  <text class="h" x="501" y="554">工具接触的外部世界</text>
+  <text class="s" x="501" y="576">文件与文档提取、命令（PowerShell / sh）、网页与搜索</text>
+  <text class="s" x="501" y="596">插件的 MCP server（邮件等）：返回内容一律按外来数据处理</text>
+</svg>

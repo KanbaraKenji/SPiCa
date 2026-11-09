@@ -1,6 +1,6 @@
 // Usage log export: everything that happened, as JSON Lines, filtered by
 // project and time range. Raw material for evaluation and, later, for the
-// members' memory. Field reference: docs/design/agent-core.md §10a.
+// members' memory. Field reference: docs/design/agent-core.md §13.
 import type { ContentBlock, Message, UsageLogFilter } from './types.ts';
 import type { SessionRecord, Store } from './store/types.ts';
 import { isoNow } from './events.ts';
