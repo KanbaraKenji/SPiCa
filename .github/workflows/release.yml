@@ -1,0 +1,76 @@
+name: Release
+
+# Pushing a tag like v0.2.0 builds the Windows packages and publishes them as a
+# GitHub Release. Prepare the tag locally with: npm run release:prepare -- 0.2.0
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      # No code-signing certificate: build unsigned.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # The tag is the version. If package.json disagrees (tag pushed without
+      # release:prepare), the packages still carry the tag's version.
+      - name: Take the version from the tag
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          current="$(node -p "require('./apps/desktop/package.json').version")"
+          if [ "$current" != "$version" ]; then
+            echo "::warning::apps/desktop/package.json says $current, tag says $version; building $version."
+            node -e "const f='apps/desktop/package.json';const fs=require('fs');const p=JSON.parse(fs.readFileSync(f,'utf8'));p.version='$version';fs.writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+          fi
+          echo "SPICA_VERSION=$version" >> "$GITHUB_ENV"
+
+      - run: npm run lint
+      - run: npm run typecheck
+      # Retried once for the same reason as in ci.yml.
+      - name: Test (retry once)
+        shell: bash
+        run: |
+          npm test || { echo "::warning::Tests failed on the first run; retrying once."; npm test; }
+      - run: npm run scan:sensitive
+
+      # Per-user NSIS installer (no administrator rights) + portable exe,
+      # see apps/desktop/electron-builder.yml.
+      - run: npm run dist
+
+      - name: Publish the GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd apps/desktop/release
+          ls -la
+          files=(
+            "Spica-Setup-$SPICA_VERSION.exe"
+            "Spica-Setup-$SPICA_VERSION.exe.blockmap"
+            "Spica-Portable-$SPICA_VERSION.exe"
+            latest.yml
+          )
+          for f in "${files[@]}"; do
+            [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
+          done
+          prerelease=""
+          case "$SPICA_VERSION" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Spica $GITHUB_REF_NAME" \
+            --generate-notes $prerelease
