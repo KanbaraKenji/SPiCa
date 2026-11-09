@@ -1,6 +1,9 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
 import type { CoreEvent, Message, PendingItem, SessionStatus } from '@spica/protocol';
+import { humanError } from '../../../shared/errors';
+
+export { humanError } from '../../../shared/errors';
 
 export interface SuggestAction {
   label: string;
@@ -352,21 +355,6 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
 
 function formatMoney(usd: number): string {
   return 'US$' + usd.toFixed(2);
-}
-
-/** Turns a raw backend error into a sentence the user can act on. */
-export function humanError(raw: string): string {
-  const m = raw.toLowerCase();
-  if (/\b401\b|unauthori[sz]ed|invalid api key|authentication/.test(m)) return '模型密钥不对或已失效，请检查模型设置。';
-  if (/\b403\b|forbidden/.test(m)) return '这个模型账号没有权限，请检查模型设置。';
-  if (/\b404\b|model_not_found|does not exist/.test(m)) return '找不到这个模型，请检查模型名称。';
-  if (/\b429\b|rate limit|too many requests/.test(m)) return '模型接口太忙（被限流了），稍后再试。';
-  if (/insufficient|balance|quota|credit/.test(m)) return '模型账号余额不足。';
-  if (/\b5\d\d\b|overloaded|bad gateway|service unavailable/.test(m)) return '模型服务暂时出错了，稍后再试。';
-  if (/timeout|timed out|etimedout/.test(m)) return '模型接口太久没有回应，稍后再试。';
-  if (/fetch failed|econnrefused|enotfound|network|socket/.test(m)) return '连不上模型接口，请检查网络或接口地址。';
-  if (/unknown provider/.test(m)) return '还没有配置这个模型。';
-  return `出错了：${raw}`;
 }
 
 /** Files the answer touched, in first-seen order. */

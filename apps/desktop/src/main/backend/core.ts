@@ -1,7 +1,7 @@
 // The real backend: @spica/core's Runtime behind the same AgentBackend seam.
 // Model settings come from the developer's .env.local (ModelEnv) and from the
 // providers saved on the settings page; keys stay in the main process.
-import { AnthropicProvider, createAgentApi, OpenAICompatibleProvider, Runtime, SqliteStore, Wso2Provider, type Provider } from '@spica/core';
+import { AnthropicProvider, createAgentApi, OpenAICompatibleProvider, Runtime, SqliteStore, Wso2Provider, type Provider, type RetryPolicy } from '@spica/core';
 import type { CreateSessionRequest } from '@spica/protocol';
 import type { AgentBackend } from './types';
 import type { ModelEnv } from './model-env';
@@ -16,17 +16,19 @@ export interface CoreBackendOptions {
 }
 
 /** Builds a core provider from saved settings, or explains why it cannot. */
-export function buildProvider(p: ResolvedProvider): Provider | string {
+export function buildProvider(p: ResolvedProvider, opts: { retry?: RetryPolicy } = {}): Provider | string {
+  const retry = opts.retry ? { retry: opts.retry } : {};
   switch (p.kind) {
     case 'openai':
-      return new OpenAICompatibleProvider({ id: p.id, baseUrl: p.baseUrl, apiKey: p.secret });
+      return new OpenAICompatibleProvider({ id: p.id, baseUrl: p.baseUrl, apiKey: p.secret, ...retry });
     case 'anthropic':
-      return new AnthropicProvider({ id: p.id, apiKey: p.secret, ...(p.baseUrl ? { baseUrl: p.baseUrl } : {}) });
+      return new AnthropicProvider({ id: p.id, apiKey: p.secret, ...(p.baseUrl ? { baseUrl: p.baseUrl } : {}), ...retry });
     case 'wso2':
       return new Wso2Provider({
         id: p.id,
         baseUrl: p.baseUrl,
         oauth: { tokenUrl: p.tokenUrl, clientId: p.clientId, clientSecret: p.secret, ...(p.scope ? { scope: p.scope } : {}) },
+        ...retry,
       });
   }
 }

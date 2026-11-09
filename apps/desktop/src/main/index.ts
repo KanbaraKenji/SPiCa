@@ -12,6 +12,7 @@ import type { ProviderList, ShellState } from '../shared/bridge';
 import type { ProviderDraft, ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
+import { createRealTester } from './providers/real-tester';
 import { chooseBackend, createBackend } from './backend';
 import { readModelEnv } from './backend/model-env';
 import { SettingsStore } from './settings-store';
@@ -47,7 +48,8 @@ if (forcedTheme === 'dark' || forcedTheme === 'light') nativeTheme.themeSource =
 
 // Development model settings: the repository's .env.local, read here and nowhere else.
 // Screenshots never read it, so no local model shows up in committed images.
-const modelEnv = app.isPackaged || automated ? {} : readModelEnv(resolvePath(app.getAppPath(), '../../.env.local'));
+//   SPICA_DEV_MODELS=0       ignore .env.local (see the app as a first-time user would)
+const modelEnv = app.isPackaged || automated || process.env.SPICA_DEV_MODELS === '0' ? {} : readModelEnv(resolvePath(app.getAppPath(), '../../.env.local'));
 const backendKind = chooseBackend({ requested: process.env.SPICA_BACKEND, automated });
 const workDir = join(app.getPath('documents'), 'Spica');
 if (backendKind === 'core') mkdirSync(workDir, { recursive: true });
@@ -68,7 +70,8 @@ const providers = new ProviderStore(
   },
   () => envProviders().map((p) => p.id),
 );
-const testConnection = createFakeTester({ delayMs: automated ? 0 : 700 });
+// Screenshots and tests never touch the network; a normal run really calls the model.
+const testConnection = automated ? createFakeTester({ delayMs: 0 }) : createRealTester();
 let providerProblems: Record<string, string> = {};
 
 /** Models from the developer's .env.local, shown read-only on the settings page. */

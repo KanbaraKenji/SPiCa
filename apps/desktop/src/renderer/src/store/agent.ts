@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from 'react';
 import type { AgentApi, CoreEvent, Message, SessionInfo } from '@spica/protocol';
 import { Store } from './external';
-import { applyEvent, EMPTY_TRANSCRIPT, fromHistory, type Transcript } from './transcript';
+import { applyEvent, EMPTY_TRANSCRIPT, fromHistory, humanError, type Transcript } from './transcript';
 
 export interface AgentView {
   sessions: SessionInfo[];
@@ -43,7 +43,10 @@ function firstUserText(messages: Message[]): string | undefined {
 export function friendlyError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   // Electron prefixes remote errors with "Error invoking remote method '...': Error: ".
-  return raw.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '') || '操作没有成功，请再试一次。';
+  const msg = raw.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '').trim();
+  if (!msg) return '操作没有成功，请再试一次。';
+  // Messages the shell already wrote in Chinese pass through; backend English is translated.
+  return /[\u4e00-\u9fff]/.test(msg) ? msg : humanError(msg);
 }
 
 export class AgentStore {
@@ -96,11 +99,9 @@ export class AgentStore {
     }
   }
 
-  async newChat(): Promise<void> {
-    await this.#guard(async () => {
-      const s = await this.#api.createSession({ role: 'top' });
-      this.state.set((v) => ({ ...v, sessions: [s, ...v.sessions], activeId: s.id, transcripts: { ...v.transcripts, [s.id]: { items: [] } } }));
-    });
+  /** Shows an empty conversation; the session is created when the first message is sent. */
+  newChat(): void {
+    this.state.set((v) => ({ ...v, activeId: null }));
   }
 
   async send(id: string | null, text: string): Promise<void> {

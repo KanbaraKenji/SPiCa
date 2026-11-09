@@ -70,6 +70,16 @@ export function App({ bridge, shell, agent }: AppProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [toggle, floating, view]);
 
+  // A notice belongs to what was on screen; moving elsewhere clears it, and it fades after a while.
+  useEffect(() => {
+    agent.dismissNotice();
+  }, [agent, view, state.activeId]);
+  useEffect(() => {
+    if (!state.notice) return;
+    const t = setTimeout(() => agent.dismissNotice(), 8000);
+    return () => clearTimeout(t);
+  }, [agent, state.notice]);
+
   // Screenshot script hook (only set when the script asks for a different view).
   useEffect(() => {
     window.__spicaShots = {
@@ -142,7 +152,7 @@ export function App({ bridge, shell, agent }: AppProps) {
             onNewChat={() => {
               setView('chat');
               setFloating(null);
-              void agent.newChat();
+              agent.newChat();
             }}
             onSettings={() => {
               setView((v) => (v === 'settings' ? 'chat' : 'settings'));
