@@ -90,23 +90,25 @@ export function wordmarkBody(ink = 'currentColor', wm: Wordmark = WORDMARK): str
 /** 字标 SVG */
 export function wordmarkSvg(opts: { ink?: string; height?: number; className?: string; title?: string } = {}): string {
   const wm = WORDMARK;
-  const size = opts.height ? ` width="${fmt((opts.height * wm.width) / wm.height)}" height="${opts.height}"` : '';
+  const fullH = wm.height + wm.descent;
+  const size = opts.height ? ` width="${fmt((opts.height * wm.width) / fullH)}" height="${opts.height}"` : '';
   const cls = opts.className ? ` class="${esc(opts.className)}"` : '';
   const { attr, el } = a11y(opts.title);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${wm.width} ${wm.height}"${size}${cls}${attr}>${el}${wordmarkBody(opts.ink)}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${wm.width} ${fullH}"${size}${cls}${attr}>${el}${wordmarkBody(opts.ink)}</svg>`;
 }
 
 /**
- * 横标排版：花标 64 见方在左，间距 16，字标缩到 40 高、竖向居中。
+ * 横标排版：花标 64 见方在左，间距 16，字标大写高 36、在花标框里竖向居中。
  * 返回画框尺寸与字标的放置变换，React 版和字符串版共用。
  */
 export const BANNER_LAYOUT = (() => {
   const gap = 16;
-  const wordHeight = 40;
+  const wordHeight = 36; // 大写高 = 花标框高 × 0.5625（定稿比较图都按这个比例）
   const wordScale = wordHeight / WORDMARK.height;
-  const height = MARK_VIEWBOX;
   const wordX = MARK_VIEWBOX + gap;
-  const wordY = (height - wordHeight) / 2;
+  const wordY = (MARK_VIEWBOX - wordHeight) / 2; // 大写字母在花标框里竖向居中
+  // 下伸部分（p 的竖笔）超出花标框时，画框往下加高
+  const height = Math.max(MARK_VIEWBOX, Math.ceil(wordY + (WORDMARK.height + WORDMARK.descent) * wordScale));
   const width = wordX + WORDMARK.width * wordScale;
   return Object.freeze({
     width,
@@ -119,7 +121,7 @@ export const BANNER_LAYOUT = (() => {
 export function bannerSvg(opts: { accent?: string; ink?: string; height?: number; background?: string | null; title?: string } = {}): string {
   const L = BANNER_LAYOUT;
   const size = opts.height ? ` width="${fmt((opts.height * L.width) / L.height)}" height="${opts.height}"` : '';
-  const bg = opts.background ? `<rect width="${fmt(L.width)}" height="${L.height}" fill="${opts.background}"/>` : '';
+  const bg = opts.background ? `<rect width="${fmt(L.width)}" height="${fmt(L.height)}" fill="${opts.background}"/>` : '';
   const { attr, el } = a11y(opts.title);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmt(L.width)} ${L.height}"${size}${attr}>${el}${bg}${markBody(opts)}<g transform="${L.wordTransform}">${wordmarkBody(opts.ink)}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmt(L.width)} ${fmt(L.height)}"${size}${attr}>${el}${bg}${markBody(opts)}<g transform="${L.wordTransform}">${wordmarkBody(opts.ink)}</g></svg>`;
 }

@@ -39,9 +39,9 @@ export function SpicaWordmark({ height, title, className, style }: SpicaWordmark
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox={`0 0 ${WORDMARK.width} ${WORDMARK.height}`}
+      viewBox={`0 0 ${WORDMARK.width} ${WORDMARK.height + WORDMARK.descent}`}
       height={height}
-      width={height ? (height * WORDMARK.width) / WORDMARK.height : undefined}
+      width={height ? (height * WORDMARK.width) / (WORDMARK.height + WORDMARK.descent) : undefined}
       className={className ? `spica-wordmark ${className}` : 'spica-wordmark'}
       style={style}
       role={title ? 'img' : undefined}
@@ -70,11 +70,11 @@ export function SpicaBanner({ height, title = 'Spica', className, style, ...mark
   return (
     <span
       className={className ? `spica-banner ${className}` : 'spica-banner'}
-      style={{ display: 'inline-flex', alignItems: 'center', height, aspectRatio: `${fmt(L.width)} / ${L.height}`, ...style }}
+      style={{ display: 'inline-flex', alignItems: 'center', height, aspectRatio: `${fmt(L.width)} / ${fmt(L.height)}`, ...style }}
       role="img"
       aria-label={title}
     >
-      <svg viewBox={`0 0 ${fmt(L.width)} ${L.height}`} height="100%" width="100%" aria-hidden="true" style={{ overflow: 'visible' }}>
+      <svg viewBox={`0 0 ${fmt(L.width)} ${fmt(L.height)}`} height="100%" width="100%" aria-hidden="true" style={{ overflow: 'visible' }}>
         {/* 嵌套 svg：宽高按父画框的单位算，正好占 64 见方 */}
         <SpicaMark size={MARK_VIEWBOX} {...mark} />
         <g transform={L.wordTransform}>
