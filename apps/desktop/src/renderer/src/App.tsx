@@ -7,6 +7,9 @@ import { computeLayout, panelWidths, toggleAction, type Floating } from './shell
 import { Resizer } from './shell/Resizer';
 import { ConfirmDialog } from './ui/Dialog';
 import { FilePreview, usePreview } from './shell/FilePreview';
+import { PluginPage, type PluginTheme } from './shell/PluginFrame';
+import { FONT_UI, pluginThemeVars, type PluginView } from '../../shared/plugin-view';
+import { deriveTokens, schemeOf } from '../../shared/skin';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import { useViewportWidth } from './shell/useViewportWidth';
 import { Sidebar } from './shell/Sidebar';
@@ -33,7 +36,7 @@ export interface AppProps {
   mail?: MailStore;
 }
 
-type View = 'chat' | 'settings' | 'inbox';
+type View = 'chat' | 'settings' | 'inbox' | 'plugin';
 
 /** Role template of the core's mail sorting thread; it lives in the inbox, not the sidebar. */
 const MAIL_TRIAGE_TEMPLATE = 'mail-triage';
@@ -268,6 +271,60 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       })
       .catch((err: unknown) => agent.state.set((v) => ({ ...v, notice: friendlyError(err) })));
   };
+  // Plugin pages: sidebar ones open in the main pane, panel ones as tabs in the right panel.
+  const [pluginViews, setPluginViews] = useState<PluginView[]>([]);
+  const [pluginsChanged, setPluginsChanged] = useState(0);
+  const [openPlugin, setOpenPlugin] = useState<string | null>(null);
+  const [rightTab, setRightTab] = useState<string>('detail');
+  const [pluginAsk, setPluginAsk] = useState<{ title: string; resolve(ok: boolean): void } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      void bridge.pluginViews
+        .list()
+        .then((v) => alive && setPluginViews(v))
+        .catch(() => undefined);
+    load();
+    const offChanged = bridge.plugins.onChanged(() => {
+      load();
+      setPluginsChanged((n) => n + 1);
+    });
+    const offRestart = bridge.backend.onRestarted(load);
+    return () => {
+      alive = false;
+      offChanged();
+      offRestart();
+    };
+  }, [bridge]);
+  const viewKey = (v: PluginView) => `${v.plugin}/${v.id}`;
+  const sidebarPages = pluginViews.filter((v) => v.placement === 'sidebar');
+  const panelPages = pluginViews.filter((v) => v.placement === 'panel');
+  const openPluginView = view === 'plugin' ? sidebarPages.find((v) => viewKey(v) === openPlugin) : undefined;
+  const panelPluginView = rightTab === 'detail' ? undefined : panelPages.find((v) => viewKey(v) === rightTab);
+  const skinNow = shell.activeSkin();
+  const pluginTheme: PluginTheme = { mode: schemeOf(skinNow.bg), vars: pluginThemeVars(deriveTokens(skinNow), FONT_UI) };
+  const pluginProps = (v: PluginView) => ({
+    view: v,
+    theme: pluginTheme,
+    changed: pluginsChanged,
+    call: (tool: string, args: unknown, confirmed: boolean) => bridge.pluginViews.call(v.plugin, v.id, tool, args, confirmed),
+    confirm: (tool: string) => new Promise<boolean>((resolve) => setPluginAsk({ title: `「${v.pluginTitle}」要执行「${tool}」，这一步做了就撤不回。继续吗？`, resolve })),
+    openFile: async (path: string) => {
+      const abs = await bridge.pluginViews.file(v.plugin, path);
+      if (!abs) return '只能打开这个插件自己文件夹里的文件。';
+      setPreview({ sessionId: null, path: abs });
+      setView('chat');
+      if (layout.right === 'hidden') {
+        const wanted = { ...settings.panels, right: true };
+        if (computeLayout(width, wanted).right === 'docked') shell.update({ panels: wanted });
+        else setFloating('right');
+      }
+      return null;
+    },
+    notify: (text: string) => agent.state.set((s) => ({ ...s, notice: `${v.pluginTitle}：${text}` })),
+    exists: async (plugin: string, path: string) => (await bridge.pluginViews.file(plugin, path)) !== null,
+  });
+
   const id = state.activeId;
   const usingDefaultModel = models.find((p) => p.isDefault) ?? models[0];
 
@@ -328,7 +385,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
 
   const leftShown = layout.left !== 'hidden';
   const rightShown = layout.right !== 'hidden';
-  const title = view === 'settings' ? '设置' : view === 'inbox' ? '收件箱' : (session?.title ?? '');
+  const title = view === 'settings' ? '设置' : view === 'inbox' ? '收件箱' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
 
   const sidebarToggle = (
     <button type="button" data-panel-toggle className={leftShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('left')} aria-label={leftShown ? '收起侧栏' : '展开侧栏'} aria-pressed={leftShown} title="侧栏（Ctrl+B）">
@@ -369,6 +426,17 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             settingsOpen={view === 'settings'}
             topId={state.topId}
             onRename={(sid, title) => void agent.rename(sid, title)}
+            pluginPages={sidebarPages.map((v) => ({
+              key: viewKey(v),
+              title: v.title,
+              ...(v.icon ? { icon: `spica-plugin://${v.plugin}/${v.icon.replace(/^\/+/, '')}` } : {}),
+              open: view === 'plugin' && openPlugin === viewKey(v),
+              onOpen: () => {
+                setOpenPlugin(viewKey(v));
+                setView('plugin');
+                setFloating(null);
+              },
+            }))}
             pinned={settings.pinnedProjects ?? []}
             onPin={(pid, pin) => {
               const now = (settings.pinnedProjects ?? []).filter((x) => x !== pid);
@@ -450,6 +518,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               showInFolder={bridge.showInFolder}
               mailModel={mailModelLabel}
             />
+          ) : view === 'plugin' ? (
+            openPluginView ? (
+              <PluginPage key={viewKey(openPluginView)} {...pluginProps(openPluginView)} />
+            ) : (
+              <div className="plugin-page plugin-missing">
+                <p>这个插件页面已经不在了（插件可能被停用或卸载）。</p>
+              </div>
+            )
           ) : view === 'inbox' ? (
             <InboxView
               mail={mail}
@@ -499,7 +575,21 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         {rightShown && view === 'chat' ? (
           <div className={`panel panel-right is-${layout.right}`} style={{ width: widths.right }}>
             {resizer('right')}
-            {preview ? (
+            {panelPages.length && !preview ? (
+              <div className="tabs right-tabs" role="tablist" aria-label="右栏">
+                <button type="button" role="tab" aria-selected={!panelPluginView} className={!panelPluginView ? 'tab is-on' : 'tab'} onClick={() => setRightTab('detail')}>
+                  详情
+                </button>
+                {panelPages.map((v) => (
+                  <button key={viewKey(v)} type="button" role="tab" aria-selected={rightTab === viewKey(v)} className={rightTab === viewKey(v) ? 'tab is-on' : 'tab'} onClick={() => setRightTab(viewKey(v))} title={v.pluginTitle}>
+                    {v.title}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {panelPluginView && !preview ? (
+              <PluginPage key={viewKey(panelPluginView)} {...pluginProps(panelPluginView)} />
+            ) : preview ? (
               <FilePreview
                 info={previewInfo}
                 onOpenExternal={(p) => {
@@ -529,6 +619,22 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       </div>
       </div>
 
+
+      {pluginAsk ? (
+        <ConfirmDialog
+          title={pluginAsk.title}
+          confirmLabel="继续"
+          danger
+          onCancel={() => {
+            pluginAsk.resolve(false);
+            setPluginAsk(null);
+          }}
+          onConfirm={() => {
+            pluginAsk.resolve(true);
+            setPluginAsk(null);
+          }}
+        />
+      ) : null}
 
       {deletingProject ? (
         <ConfirmDialog

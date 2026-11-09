@@ -10,6 +10,7 @@ import type { AgentApi, CoreEvent, ProbeResult } from '@spica/protocol';
 import type { PluginsCommand, PluginsResult } from '../../shared/plugins';
 import type { DesktopBackendConfig } from '../../backend/config';
 import type { AgentBackend } from './types';
+import type { PluginView, PluginViewResult } from '../../shared/plugin-view';
 
 export type BackendStatus = { state: 'starting' | 'ready' | 'recovering' } | { state: 'failed'; message: string };
 
@@ -184,6 +185,19 @@ export class ProcessBackend implements AgentBackend {
   }
 
   /** Workflows the core read at start, and files it could not read. */
+  /** Plugin pages (the plugin manager's methods, in the core's process). */
+  pluginViews(): Promise<PluginView[]> {
+    return this.call('pluginViews');
+  }
+
+  pluginViewFile(req: { plugin: string; path: string }): Promise<string | null> {
+    return this.call('pluginViewFile', req);
+  }
+
+  pluginViewCall(req: { plugin: string; view: string; tool: string; args: unknown; confirmed?: boolean }): Promise<PluginViewResult> {
+    return this.call('pluginViewCall', req);
+  }
+
   /** Writes the core's usage log to `file` (in the core's process: the log can be large). */
   usageLog(req: { filter: { projectId?: string; from?: string; to?: string }; file: string }): Promise<{ file: string; records: number }> {
     return this.call('usageLog', req);

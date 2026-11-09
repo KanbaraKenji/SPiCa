@@ -3029,3 +3029,59 @@ button.tree-twisty:hover {
   color: var(--spica-muted);
   text-align: center;
 }
+
+/* Plugin pages: a sandboxed frame filling its place. */
+.plugin-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.plugin-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: var(--spica-bg);
+}
+
+.plugin-missing {
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 24px;
+  text-align: center;
+  color: var(--spica-muted);
+}
+
+.plugin-missing p {
+  margin: 0;
+}
+
+.side-plugins {
+  padding: 0 8px;
+}
+
+.side-plugin-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.side-action-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Tabs on top of the right panel when plugins add pages there. */
+.right-tabs {
+  flex: none;
+  margin: 8px 10px 0;
+}
+
+.panel-right {
+  flex-direction: column;
+}

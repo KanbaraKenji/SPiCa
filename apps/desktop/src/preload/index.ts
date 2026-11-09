@@ -7,6 +7,7 @@ import type { ProviderDraft, TestResult } from '../shared/providers';
 import type { PluginsCommand, PluginsResult } from '../shared/plugins';
 import type { UpdateState } from '../shared/updates';
 import type { SettingsPatch, ShellSettings } from '../shared/settings';
+import type { PluginView, PluginViewResult } from '../shared/plugin-view';
 
 function call<K extends keyof AgentApi>(method: K) {
   return ((...args: unknown[]) => ipcRenderer.invoke(DesktopChannel.Agent, method, args)) as AgentApi[K];
@@ -54,6 +55,11 @@ const bridge: DesktopBridge = {
   onSettingsChanged: (listener) => subscribe<ShellSettings>(DesktopChannel.SettingsChanged, listener),
   zoom: (step) => ipcRenderer.send(DesktopChannel.Zoom, step),
   pickFolder: (title) => ipcRenderer.invoke(DesktopChannel.PickFolder, title) as Promise<string | null>,
+  pluginViews: {
+    list: () => ipcRenderer.invoke(DesktopChannel.PluginViews) as Promise<PluginView[]>,
+    call: (plugin, view, tool, args, confirmed) => ipcRenderer.invoke(DesktopChannel.PluginViewCall, plugin, view, tool, args, confirmed) as Promise<PluginViewResult>,
+    file: (plugin, path) => ipcRenderer.invoke(DesktopChannel.PluginViewFile, plugin, path) as Promise<string | null>,
+  },
   preview: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.Preview, sessionId, path) as Promise<PreviewInfo>,
   pickFiles: (title) => ipcRenderer.invoke(DesktopChannel.PickFiles, title) as Promise<string[]>,
   pathForFile: (file) => {

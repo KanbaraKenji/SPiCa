@@ -5,6 +5,7 @@ import type { SettingsPatch, ShellSettings } from './settings';
 import type { ProviderDraft, ProviderView, TestResult } from './providers';
 import type { PluginsCommand, PluginsResult } from './plugins';
 import type { UpdateState } from './updates';
+import type { PluginView, PluginViewResult } from './plugin-view';
 
 /** Saved model providers plus, per id, why one cannot be used right now. */
 export interface ProviderList {
@@ -74,6 +75,13 @@ export interface DesktopBridge extends SpicaBridge {
   exportUsageLog(req: UsageLogRequest): Promise<UsageLogResult>;
   /** A file of this session (relative paths are in its folder), ready for the right panel. */
   preview(sessionId: string | null, path: string): Promise<PreviewInfo>;
+  /** Plugin pages (views/<id>.json of enabled plugins). */
+  pluginViews: {
+    list(): Promise<PluginView[]>;
+    call(plugin: string, view: string, tool: string, args: unknown, confirmed: boolean): Promise<PluginViewResult>;
+    /** A file inside the plugin's folder, as an absolute path; null when it is not one. */
+    file(plugin: string, path: string): Promise<string | null>;
+  };
   /** Shows a file selected in Explorer. */
   showInFolder(path: string): void;
   backend: {

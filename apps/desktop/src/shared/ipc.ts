@@ -39,6 +39,12 @@ export const DesktopChannel = {
   PickFiles: 'spica:pickFiles',
   /** invoke: (sessionId, path) -> PreviewInfo */
   Preview: 'spica:preview',
+  /** invoke: -> PluginView[] (pages of enabled plugins) */
+  PluginViews: 'spica:pluginViews',
+  /** invoke: (plugin, view, tool, args, confirmed) -> PluginViewResult */
+  PluginViewCall: 'spica:pluginViewCall',
+  /** invoke: (plugin, path) -> absolute path inside the plugin, or null */
+  PluginViewFile: 'spica:pluginViewFile',
   /** invoke: UsageLogRequest -> UsageLogResult (asks where to save first) */
   UsageLog: 'spica:usageLog',
   /** send: a file path to show in Explorer */
