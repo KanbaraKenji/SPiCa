@@ -1204,10 +1204,16 @@ button.tree-twisty:hover {
   text-align: center;
 }
 
+.to-bottom-anchor {
+  position: relative;
+  flex: none;
+  height: 0;
+}
+
 .to-bottom {
   position: absolute;
   left: 50%;
-  bottom: 112px;
+  bottom: 10px;
   transform: translateX(-50%);
   width: 32px;
   height: 32px;

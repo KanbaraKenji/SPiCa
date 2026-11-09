@@ -251,11 +251,15 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
           </div>
         )}
       </div>
-      {away ? (
-        <button type="button" className="to-bottom" onClick={toBottom} aria-label="回到最新">
-          <Icon name="chevronDown" size={16} />
-        </button>
-      ) : null}
+      {/* Pinned to the top of the input area, so it sits just above the input box
+          whatever its height (several lines, queued messages, zoom). */}
+      <div className="to-bottom-anchor">
+        {away ? (
+          <button type="button" className="to-bottom" onClick={toBottom} aria-label="回到最新" title="回到最新">
+            <Icon name="chevronDown" size={16} />
+          </button>
+        ) : null}
+      </div>
       {transcript.queued?.length ? (
         <div className="queued" aria-live="polite">
           {transcript.queued.map((q) => (
