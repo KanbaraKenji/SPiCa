@@ -133,7 +133,7 @@ describe('收尾加速曲线', () => {
     expect(prev).toEqual({ orbit: 1, starfield: 1 });
     for (let t = r; t < r + 5; t += 0.001) {
       const s = splashSpeeds(t, r);
-      expect(Math.abs(s.orbit - prev.orbit)).toBeLessThan(0.01);
+      expect(Math.abs(s.orbit - prev.orbit)).toBeLessThan(0.02);
       expect(Math.abs(s.starfield - prev.starfield)).toBeLessThan(0.01);
       prev = s;
     }
@@ -144,7 +144,7 @@ describe('收尾加速曲线', () => {
   it('合一时转速到峰值，背景星点之后回落到平时速度', () => {
     const r = 5;
     const c = SPLASH_FINISH;
-    expect(splashSpeeds(r + c.accel, r).orbit).toBeCloseTo(c.orbitPeak, 6);
+    expect(splashSpeeds(r + c.accel, r).orbit).toBeCloseTo(c.orbitPeak * c.finalBoost, 6);
     expect(splashSpeeds(r + c.accel, r).starfield).toBeCloseTo(c.starPeak, 6);
     expect(splashSpeeds(r + c.accel + c.starSettle + 0.1, r).starfield).toBeCloseTo(1, 6);
   });
@@ -193,6 +193,16 @@ describe('收尾加速曲线', () => {
     const at = splashFrame(r + F.accel + 1e-6, r);
     for (const p of at.petals) expect(p.opacity).toBeCloseTo(1, 3);
     expect(at.stars.filter((s) => s.scale !== 0.85)).toHaveLength(0); // 只剩（还没出现的）掠字光，没有双星
+  });
+
+  it('合心前最后一段再加速：峰值 4 × 1.8 = 7.2 倍，远低于旧版的 21 倍；再加速开始前和原曲线一样', () => {
+    const r = 5;
+    const F = SPLASH_FINISH;
+    const peak = splashSpeeds(r + F.accel, r).orbit;
+    expect(peak).toBeCloseTo(7.2, 6);
+    expect(peak).toBeLessThan(10);
+    const u = F.accel - F.finalBoostTime;
+    expect(splashSpeeds(r + u, r).orbit).toBeCloseTo(1 + (F.orbitPeak - 1) * (u / F.accel) ** 2, 9);
   });
 
   it('加速段里双星至少再绕 2 圈', () => {

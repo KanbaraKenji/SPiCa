@@ -32,8 +32,11 @@ export const SPLASH_TIMING = Object.freeze({
 export interface SplashFinish {
   /** ready 后双星与背景平滑加速、螺旋收拢到合一的时长 */
   accel: number;
-  /** 合一那一刻双星的转速是平时的几倍 */
+  /** 加速曲线本身到合一时的倍数（双星转速是平时的几倍，不含 finalBoost） */
   orbitPeak: number;
+  /** 合心前最后 finalBoostTime 秒，双星转速在上面的曲线上再缓入加到 finalBoost 倍（合心时 = orbitPeak × finalBoost） */
+  finalBoost: number;
+  finalBoostTime: number;
   /** 合一那一刻背景星点的速度是平时的几倍 */
   starPeak: number;
   /** 背景星点从峰值平滑回落到平时速度的时长 */
@@ -60,6 +63,9 @@ export const SPLASH_FINISH: Readonly<SplashFinish> = Object.freeze({
   // 加速段 3.6 秒：从 3.5 秒一圈平滑加到 4 倍转速，收拢前绕约 2.06 圈
   accel: 3.6,
   orbitPeak: 4,
+  // 合心前最后 0.7 秒再加一把：4 倍 → 7.2 倍（曲线连续、缓入）
+  finalBoost: 1.8,
+  finalBoostTime: 0.7,
   starPeak: 3,
   starSettle: 1.5,
   // 九瓣逐片点亮在双星收拢的最后 1.33 秒里进行，最后一片亮满的那一帧正好是双星合于花心、消失的那一帧
@@ -113,7 +119,7 @@ export function splashSpeeds(t: number, readyAt: number | null, options: SplashO
   const c = finishOf(options);
   const u = t - readyAt;
   const a = Math.min(u / c.accel, 1);
-  const orbit = u <= c.accel ? 1 + (c.orbitPeak - 1) * easeIn(a) : c.orbitPeak;
+  const orbit = orbitMultiplier(Math.min(u, c.accel), c);
   const starfield = u <= c.accel
     ? 1 + (c.starPeak - 1) * easeIn(a)
     : 1 + (c.starPeak - 1) * settleCurve(Math.min((u - c.accel) / c.starSettle, 1));
@@ -123,6 +129,28 @@ export function splashSpeeds(t: number, readyAt: number | null, options: SplashO
 /** 速度倍率对时间的积分减去 t 本身：加速带来的「额外走过的时间」 */
 function extraTime(u: number, peak: number, accel: number): number {
   return (peak - 1) * accel * easeInArea(Math.min(u / accel, 1));
+}
+
+/** 双星转速倍率：缓入曲线 × 合心前最后一段的再加速（两段都从加速度 0 起步，速度连续） */
+function orbitMultiplier(u: number, c: SplashFinish): number {
+  const base = 1 + (c.orbitPeak - 1) * easeIn(Math.min(u / c.accel, 1));
+  const boostFrom = c.accel - c.finalBoostTime;
+  const b = c.finalBoostTime > 0 ? Math.min(Math.max((u - boostFrom) / c.finalBoostTime, 0), 1) : 0;
+  return base * (1 + (c.finalBoost - 1) * easeIn(b));
+}
+
+/** 双星加速带来的额外时间：对 orbitMultiplier - 1 积分（辛普森法，64 段） */
+function orbitExtraTime(u: number, c: SplashFinish): number {
+  const end = Math.min(u, c.accel);
+  if (end <= 0) return 0;
+  const n = 64;
+  const h = end / n;
+  let sum = 0;
+  for (let i = 0; i <= n; i++) {
+    const w = i === 0 || i === n ? 1 : i % 2 ? 4 : 2;
+    sum += w * (orbitMultiplier(i * h, c) - 1);
+  }
+  return (sum * h) / 3;
 }
 
 // ---- 版面 ----
@@ -259,7 +287,7 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
 
   // 双星：平近点角随时间匀速走（完成后按缓入曲线加速），位置按开普勒椭圆算；完成后半径同时收拢到 0
   const merge = done ? inOutCubic(seg(u, 0, F.accel)) : 0;
-  const M = (2 * Math.PI * (t + (done ? extraTime(u, F.orbitPeak, F.accel) : 0))) / period;
+  const M = (2 * Math.PI * (t + (done ? orbitExtraTime(u, F) : 0))) / period;
   const a = SPLASH_ORBIT.semiMajor * (1 - merge);
   const depthRef = SPLASH_ORBIT.semiMajor * (1 + e);
   if (!done || merge < 1) {
