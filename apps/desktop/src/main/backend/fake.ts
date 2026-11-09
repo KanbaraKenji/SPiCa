@@ -7,6 +7,7 @@ import type {
   ContentBlock,
   CoreEvent,
   CoreEventBody,
+  CreateProjectRequest,
   CreateSessionRequest,
   MailFeedback,
   MailItem,
@@ -14,6 +15,8 @@ import type {
   Message,
   MessageKind,
   PendingItem,
+  ProjectDetail,
+  ProjectInfo,
   SendResult,
   SessionInfo,
   SessionStatus,
@@ -21,7 +24,7 @@ import type {
 } from '@spica/protocol';
 import type { AgentBackend } from './types';
 import { buildSeed, fakeCard } from './fake-seed';
-import { FakeMailbox } from './fake-mail';
+import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
 import { isoAt } from './time';
 
 export interface FakeBackendOptions {
@@ -67,6 +70,7 @@ export class FakeBackend implements AgentBackend {
   #pending = new Map<string, PendingItem[]>();
   #runs = new Map<string, Run>();
   #globalCost = 0;
+  #projects = new Map<string, ProjectInfo>();
   readonly #mail: FakeMailbox;
 
   constructor(options: FakeBackendOptions = {}) {
@@ -77,6 +81,7 @@ export class FakeBackend implements AgentBackend {
       (sid, body) => this.#emit(sid, body),
       (ms) => new Promise((r) => setTimeout(r, ms * this.#speed)),
       options.seed ?? true,
+      () => [...this.#projects.values()],
     );
     if (options.seed ?? true) {
       const seed = buildSeed(this.#now());
@@ -84,6 +89,21 @@ export class FakeBackend implements AgentBackend {
       for (const [id, list] of Object.entries(seed.messages)) this.#messages.set(id, list);
       for (const [id, list] of Object.entries(seed.pending)) this.#pending.set(id, list);
       this.#ids = 1000;
+      for (const p of FAKE_PROJECTS) {
+        const pm = this.#sessions.get(p.managerSessionId);
+        if (!pm) continue;
+        this.#projects.set(p.id, {
+          id: p.id,
+          name: p.name,
+          folder: pm.cwd,
+          managerSessionId: pm.id,
+          workflowId: null,
+          stage: null,
+          status: 'active',
+          createdAt: pm.createdAt,
+          updatedAt: pm.updatedAt,
+        });
+      }
     }
   }
 
@@ -239,6 +259,50 @@ export class FakeBackend implements AgentBackend {
 
   async abort(sessionId: string): Promise<void> {
     this.#runs.get(sessionId)?.controller.abort();
+  }
+
+  // Projects: the seed's two, plus any made with createProject.
+
+  async getTopSession(): Promise<SessionInfo> {
+    // Like the core: the first top-level session is the assistant's default thread; made on first call.
+    const top = [...this.#sessions.values()].find((s) => s.role === 'top' && !s.parentId);
+    return top ? structuredClone(top) : this.createSession({ role: 'top' });
+  }
+
+  async listProjects(): Promise<ProjectInfo[]> {
+    return [...this.#projects.values()].map((p) => structuredClone(p));
+  }
+
+  async getProject(projectId: string): Promise<ProjectDetail | undefined> {
+    const p = this.#projects.get(projectId);
+    const manager = p ? this.#sessions.get(p.managerSessionId) : undefined;
+    if (!p || !manager) return undefined;
+    const agents = [...this.#sessions.values()].filter((s) => s.parentId === manager.id);
+    return structuredClone({ ...p, workflow: null, objects: [], recentLog: [], manager, agents });
+  }
+
+  async createProject(req: CreateProjectRequest): Promise<ProjectInfo> {
+    const name = req.name.trim();
+    if (!name) throw new Error('project name is required');
+    const manager = await this.createSession({ role: 'manager', title: name, cwd: req.folder ?? `D:\\工作\\${name}` });
+    const at = isoAt(this.#now());
+    const project: ProjectInfo = {
+      id: this.#id('p'),
+      name,
+      folder: manager.cwd,
+      managerSessionId: manager.id,
+      workflowId: req.workflowId ?? null,
+      stage: null,
+      status: 'active',
+      createdAt: at,
+      updatedAt: at,
+    };
+    const s = this.#sessions.get(manager.id);
+    if (s) s.projectId = project.id;
+    this.#projects.set(project.id, project);
+    this.#emit(manager.id, { type: 'project.created', project: structuredClone(project) });
+    if (req.brief) void this.send(manager.id, req.brief);
+    return structuredClone(project);
   }
 
   async listMail(filter?: Parameters<NonNullable<AgentBackend['listMail']>>[0]): Promise<MailItem[]> {

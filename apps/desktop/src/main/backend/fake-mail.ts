@@ -21,9 +21,17 @@ export class FakeMailbox {
   readonly #emit: Emit;
   readonly #wait: (ms: number) => Promise<void>;
   readonly #items = new Map<string, MailItem>();
+  readonly #projects: () => readonly { id: string; managerSessionId: string }[];
   #polls = 0;
 
-  constructor(now: () => Date, emit: Emit, wait: (ms: number) => Promise<void>, seed = true) {
+  constructor(
+    now: () => Date,
+    emit: Emit,
+    wait: (ms: number) => Promise<void>,
+    seed = true,
+    projects: () => readonly { id: string; managerSessionId: string }[] = () => FAKE_PROJECTS,
+  ) {
+    this.#projects = projects;
     this.#now = now;
     this.#emit = emit;
     this.#wait = wait;
@@ -77,7 +85,7 @@ export class FakeMailbox {
     let next: MailItem = { ...item, feedback, updatedAt: at };
     if (fb.action === 'ignore') next = { ...next, status: 'ignored' };
     if (fb.action === 'reassign') {
-      const project = FAKE_PROJECTS.find((p) => p.id === fb.projectId);
+      const project = this.#projects().find((p) => p.id === fb.projectId);
       if (!project) throw new Error('reassign needs an existing projectId');
       const triage: MailTriage = { decision: 'project', projectId: project.id, reason: 'put here by the user', confidence: 1, by: item.triage?.by ?? 'model', at };
       next = { ...next, status: 'routed', triage, routedTo: project.managerSessionId };

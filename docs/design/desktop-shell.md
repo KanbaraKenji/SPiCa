@@ -138,7 +138,8 @@ npm run shots -w @spica/desktop                 # 对话页、设置 › 外观�
 npm run shots -w @spica/desktop -- main         # 只出某几页，逗号分隔（main / inbox / general / settings / models / plugins / about）
 ```
 
-- 输出 `docs/screenshots/shell/{视图-}{皮肤}-{宽}x{高}-z{缩放}.png`。
+- 输出 `docs/screenshots/shell/{视图-}{皮肤}-{宽}x{高}-z{缩放}.png`：这是提交进仓库的基线，只在有意更新时写。验收或自查时加 `--out out/shots`（或环境变量 `SPICA_SHOTS_OUT`，相对仓库根目录），`out/` 不进仓库。
+- 假后端实现了内核接口的全部方法（测试里按 `AgentApi` 逐个核对，内核加了方法、假后端没跟上会直接类型报错）；真缺了方法时报「这个版本还不支持这个操作（方法名）」。
 - 在真窗口里截（真实字体、DPI、布局），不读不写你自己的设置（用临时设置目录），全程用假后端，结果稳定可比。超过 2 分钟自动退出。
 - 开发开关：`SPICA_THEME=dark|light`、`SPICA_CAPTURE=<png>`（截一张就退）、`SPICA_SHOTS=<目录>`、`SPICA_USER_DATA=<目录>`（换一个设置目录做手动检查）。
 

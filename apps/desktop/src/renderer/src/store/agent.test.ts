@@ -14,13 +14,16 @@ describe('AgentStore', () => {
     const backend = new FakeBackend({ speed: 0, seed: false });
     const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
     await store.init();
+    // The core makes the assistant's default thread itself; 新对话 adds nothing until you write.
+    const top = await backend.getTopSession();
     store.newChat();
     store.newChat();
-    expect(await backend.listSessions()).toHaveLength(0);
+    expect((await backend.listSessions()).map((x) => x.id)).toEqual([top.id]);
     await store.send(null, '你好');
     const sessions = await backend.listSessions();
-    expect(sessions).toHaveLength(1);
-    expect(store.state.get().activeId).toBe(sessions[0]?.id);
+    expect(sessions).toHaveLength(2);
+    const fresh = sessions.find((x) => x.id !== top.id);
+    expect(store.state.get().activeId).toBe(fresh?.id);
     backend.dispose();
   });
 });
