@@ -125,7 +125,7 @@ export class Runtime implements RuntimeInternals {
   readonly #opts: RuntimeOptions;
   /** Incoming mail → triage → project managers. */
   readonly mail: MailPipeline;
-  readonly #workflows: { workflows: Map<string, WorkflowDef>; errors: string[] };
+  #workflows: { workflows: Map<string, WorkflowDef>; errors: string[] };
   readonly #mcp = new Map<string, { client: McpStdioClient; source: string; disconnect: () => Promise<void> }>();
   readonly #reports = new Map<string, string>();
 
@@ -142,12 +142,12 @@ export class Runtime implements RuntimeInternals {
       ...fileTools,
       createRunCommandTool(opts.spillDir ? { spillDir: opts.spillDir } : {}),
       createWebFetchTool(),
-      ...(opts.search ? [createWebSearchTool(opts.search)] : []),
       ...agentTools,
       ...projectTools,
       triageMailTool,
     ];
     for (const t of opts.tools ?? defaults) this.tools.register(t, 'core');
+    if (opts.search && !opts.tools) this.setSearch(opts.search);
     // Waiting is done with wait_agents: refuse commands that only sleep, before
     // they reach the confirmation card.
     this.hooks.register('core:guard', {
@@ -177,9 +177,69 @@ export class Runtime implements RuntimeInternals {
   }
 
   addProvider(p: Provider, limits?: LimiterConfig): void {
+    this.setProvider(p, limits);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Settings that can change while running (the settings page never needs a
+  // backend restart). Running sessions keep their provider and model.
+  // ---------------------------------------------------------------------------
+
+  /** Add or replace a provider; its rate limiter (and anyone queued on it) is kept. */
+  setProvider(p: Provider, limits?: LimiterConfig): void {
     this.#providers.set(p.id, p);
     p.attach?.({ tracer: this.tracer });
-    this.#limiters.set(p.id, new RateLimiter(limits ?? {}));
+    const existing = this.#limiters.get(p.id);
+    if (existing) {
+      if (limits) existing.configure(limits);
+    } else {
+      this.#limiters.set(p.id, new RateLimiter(limits ?? {}));
+    }
+  }
+
+  /** Remove a provider; sessions still using it get a clear error on their next model call. */
+  removeProvider(id: string): boolean {
+    return this.#providers.delete(id);
+  }
+
+  get providerIds(): string[] {
+    return [...this.#providers.keys()];
+  }
+
+  /** Defaults for new sessions (provider, model, max tokens, max turns). */
+  setDefaults(d: Partial<RuntimeOptions['defaults']>): void {
+    const next = { ...this.#opts.defaults, ...d };
+    if (!this.#providers.has(next.providerId)) throw new Error(`unknown provider: ${next.providerId}`);
+    this.#opts.defaults = next;
+  }
+
+  get defaults(): RuntimeOptions['defaults'] {
+    return { ...this.#opts.defaults };
+  }
+
+  setLimits(providerId: string, limits: LimiterConfig): void {
+    this.limiter(providerId).configure(limits);
+  }
+
+  /** Interface language for new sessions. */
+  setLocale(locale: string): void {
+    this.#opts.locale = locale;
+  }
+
+  /** Read the workflow files again (e.g. a new folder chosen in the settings). Returns the problems found. */
+  reloadWorkflows(dir?: string): string[] {
+    if (dir !== undefined) this.#opts.workflowsDir = dir;
+    this.#workflows = loadWorkflows(this.#opts.workflowsDir, this.#opts.workflows ?? []);
+    return [...this.#workflows.errors];
+  }
+
+  #removeSearch: (() => void) | undefined;
+
+  /** Configure or remove (undefined) the web_search backend; the tool appears or disappears. */
+  setSearch(backend: SearchBackend | undefined): void {
+    this.#removeSearch?.();
+    this.#removeSearch = undefined;
+    if (backend) this.#removeSearch = this.tools.register(createWebSearchTool(backend), 'core');
   }
 
   provider(id: string): Provider {

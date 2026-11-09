@@ -61,7 +61,7 @@ export function parseToolJson(content: string): unknown {
 
 export class MailPipeline {
   readonly #rt: Runtime;
-  readonly #cfg: MailConfig;
+  #cfg: MailConfig;
   readonly #sources: MailSource[];
   #timer: ReturnType<typeof setInterval> | undefined;
   #polling: Promise<MailPollResult> | undefined;
@@ -102,6 +102,34 @@ export class MailPipeline {
   stop(): void {
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = undefined;
+  }
+
+  /** Polling on its interval right now. */
+  get running(): boolean {
+    return this.#timer !== undefined;
+  }
+
+  /** Current settings (sources are listed separately in activeSources). */
+  get settings(): Omit<MailConfig, 'sources'> {
+    const { sources: _s, ...rest } = this.#cfg;
+    void _s;
+    return { ...rest };
+  }
+
+  /**
+   * Change settings without restarting the backend: a new interval reschedules
+   * the timer, enabled:false stops polling, enabled:true starts it again.
+   * Emits mail.configured.
+   */
+  configure(patch: Omit<MailConfig, 'sources'>): Omit<MailConfig, 'sources'> {
+    const wasRunning = this.running;
+    this.#cfg = { ...this.#cfg, ...patch };
+    const shouldRun = this.#cfg.enabled !== false && (wasRunning || patch.enabled === true);
+    if (this.running && (!shouldRun || patch.intervalMinutes !== undefined)) this.stop();
+    if (shouldRun && !this.running) this.start();
+    const settings = this.settings;
+    this.#rt.events.emit({ sessionId: this.#rt.top().id, parentChain: [] }, { type: 'mail.configured', settings, running: this.running });
+    return settings;
   }
 
   /** Fetch new mail, triage it and route it. Concurrent calls share one run. */

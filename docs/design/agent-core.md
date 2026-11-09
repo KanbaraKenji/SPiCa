@@ -253,6 +253,8 @@
 - `mcp-main.ts` + `mcp/server.ts`：stdio MCP 服务（`node src/host/mcp-main.ts --config backend.json`）。工具见下文；库被别的进程占着时直接拒绝并说明原因。
 - **扩展模块**：`BackendConfig.extensions: {module, options}[]`，模块导出 `attachBackend(runtime, options)`，返回 `{ mcpTools?, methods?, warnings?, close? }`：工具加到 MCP 服务上，方法加到后端端口上，关闭时先于 runtime 调 `close()`。插件包就是这样把安装 / 启用 / 停用 / 列表挂上来的（内核不依赖插件包）。`spica_list_tools` 列当前工具和来源。
 - **还没做**：主进程监护（重启退避、`shutdown`、把 `createAgentApi` 换成 `connectBackend`）在 apps/desktop，归桌面外壳，按上面的消息做即可；HTTP 传输（可选）。
+- **运行中改设置，不重启后台**：端口上的 `configure(patch)`（`SettingsPatch`）一次可改：provider 全量列表（新的加、改的换、没列的删；限流器和排队的人保留）、新会话的默认 provider / 模型、限流并发和每分钟请求数、花费上限和价表、流程文件夹（重读并返回问题）、界面语言、搜索接口（`null` 去掉 web_search）、邮件设置（开关、间隔、批量、忽略规则、分拣规则和模板）。发 `runtime.configured { changed, warnings }`；邮件另发 `mail.configured { settings, running }`。正在跑的会话保留自己的 provider 和模型；它用的 provider 被删了，下一次调用会以「unknown provider」的错误结束，不会卡住。`mailSettings()` 返回当前邮件设置、是否在轮询、有哪些来源。
+- **仍然只在启动时定的**：数据库路径（换库等于换一份数据，要重启后台）、扩展模块列表（插件的启用停用走插件系统自己的接口，不用重启）、run_command 的大输出存放目录（设置页没有这一项）。
 
 （以下是原设计）
 

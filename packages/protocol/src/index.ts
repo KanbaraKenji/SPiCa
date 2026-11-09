@@ -293,6 +293,10 @@ export type CoreEventBody =
   | { type: 'mail.triaged'; item: MailItem }
   | { type: 'mail.routed'; item: MailItem; managerSessionId: string }
   | { type: 'mail.feedback'; item: MailItem }
+  /** Mail settings changed while running. `running` = polling on its interval. */
+  | { type: 'mail.configured'; settings: MailSettings; running: boolean }
+  /** Runtime settings changed while running (which groups: providers, defaults, limits, budget, workflows, locale, search, mail). */
+  | { type: 'runtime.configured'; changed: string[]; warnings: string[] }
   | { type: 'session.renamed'; title: string | null }
   | { type: 'child.report'; childId: string; summary: string }
   /** A note from a child session was added to this (parent) session. */
@@ -496,6 +500,16 @@ export interface MailItem {
   routedTo?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Mail settings the settings page can change while running. */
+export interface MailSettings {
+  enabled?: boolean;
+  intervalMinutes?: number;
+  batchSize?: number;
+  triageTemplateId?: string;
+  rules?: string;
+  ignore?: { from?: string[]; subject?: string[] };
 }
 
 export interface MailPollResult {

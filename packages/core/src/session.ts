@@ -357,7 +357,15 @@ export class Session {
         },
       };
       draft = await this.#rt.hooks.beforeRequest(draft, hctx);
-      const provider = this.#rt.provider(draft.params.providerId);
+      let provider: ReturnType<RuntimeInternals['provider']>;
+      try {
+        provider = this.#rt.provider(draft.params.providerId);
+      } catch (err) {
+        // e.g. the provider was removed in the settings while this session still uses it
+        const message = err instanceof Error ? err.message : String(err);
+        this.#emit({ type: 'error', message });
+        return end('error', message);
+      }
       const flat = flattenSegments(draft.segments, this.id);
       const request: ModelRequest = {
         model: draft.params.model,
