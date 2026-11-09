@@ -431,7 +431,7 @@ export class PluginManager {
       }
     }
     a.undo = [];
-    this.#host.unregisterSource(a.source);
+    await this.#host.unregisterSource(a.source);
   }
 
   // ---------- skills ----------
@@ -618,7 +618,7 @@ export class PluginManager {
     delete run.handle;
     if (h) {
       try {
-        h.disconnect();
+        await h.disconnect(); // resolves once the process has exited, so its folder can be removed
       } catch {
         // already gone
       }
@@ -629,12 +629,11 @@ export class PluginManager {
   /** Crash handling: restart with a cap per time window, then give up and tell the user. */
   #onExit(a: Active, run: ServerRun, info: McpExit): void {
     if (info.expected || run.stopping || this.#active.get(a.manifest.name) !== a) return;
-    try {
-      run.handle?.disconnect(); // drop the dead server's tools before restarting
-    } catch {
-      // ignore
-    }
+    const dead = run.handle;
     delete run.handle;
+    const dropped = Promise.resolve()
+      .then(() => dead?.disconnect()) // drop the dead server's tools before restarting
+      .catch(() => undefined);
     const now = Date.now();
     run.restarts = run.restarts.filter((t) => now - t < run.def.restart.windowMs);
     const tail = info.stderrTail.trim().split('\n').slice(-3).join(' / ');
@@ -648,8 +647,10 @@ export class PluginManager {
     run.restarts.push(now);
     const delay = 250 * 2 ** (run.restarts.length - 1);
     setTimeout(() => {
-      if (this.#active.get(a.manifest.name) !== a || run.stopping) return;
-      void this.#serial(() => this.#startServer(a, run)).catch(() => undefined);
+      void dropped.then(() => {
+        if (this.#active.get(a.manifest.name) !== a || run.stopping) return;
+        return this.#serial(() => this.#startServer(a, run));
+      }).catch(() => undefined);
     }, delay);
   }
 

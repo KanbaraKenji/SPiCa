@@ -27,7 +27,8 @@ export interface McpExit {
 export interface McpHandle {
   /** Tool names as the model sees them. */
   tools: string[];
-  disconnect(): void;
+  /** Resolves when the server process has exited. */
+  disconnect(): Promise<void>;
 }
 
 export interface PluginHost {
@@ -37,8 +38,8 @@ export interface PluginHost {
   registerTool(tool: Tool, source: string): () => void;
   /** Start an MCP server and add its tools under `source`. */
   connectMcp(config: McpLaunch, source: string): Promise<McpHandle>;
-  /** Backstop: withdraw every hook and tool still registered under `source`. */
-  unregisterSource(source: string): void;
+  /** Backstop: withdraw every hook and tool still registered under `source`; resolves when its servers have exited. */
+  unregisterSource(source: string): Promise<void>;
   /** Tool names currently registered (for checks and describe()). */
   toolNames(): string[];
 }
@@ -51,7 +52,7 @@ export interface RuntimeLike {
     list(env: { providerId: string; serverWebSearch: boolean }): Tool[];
   };
   unregisterSource(source: string): unknown;
-  connectMcp?(config: McpLaunch, opts?: { source?: string }): Promise<{ tools: string[]; disconnect: () => void }>;
+  connectMcp?(config: McpLaunch, opts?: { source?: string }): Promise<{ tools: string[]; disconnect: () => void | Promise<void> }>;
 }
 
 export function runtimeHost(rt: RuntimeLike): PluginHost {
@@ -61,9 +62,12 @@ export function runtimeHost(rt: RuntimeLike): PluginHost {
     async connectMcp(config, source) {
       if (!rt.connectMcp) throw new Error('这个版本的 Spica 内核还不能启动 MCP server。');
       const h = await rt.connectMcp(config, { source });
-      return { tools: h.tools, disconnect: h.disconnect };
+      return { tools: h.tools, disconnect: async () => void (await h.disconnect()) };
     },
-    unregisterSource: (source) => void rt.unregisterSource(source),
+    async unregisterSource(source) {
+      const r = rt.unregisterSource(source) as { stopped?: Promise<void> } | undefined;
+      await r?.stopped;
+    },
     toolNames: () => rt.tools.list({ providerId: '', serverWebSearch: true }).map((t) => t.spec.name),
   };
 }
