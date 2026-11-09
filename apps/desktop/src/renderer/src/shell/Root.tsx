@@ -3,19 +3,27 @@
 // so nothing waits on the animation except the animation itself, and a click
 // or key press skips it.
 import { useEffect, useState, type ReactNode } from 'react';
-import { SpicaSplash } from '@spica/brand/react';
+import { SpicaMark, SpicaSplash } from '@spica/brand/react';
 
 export interface RootProps {
-  showSplash: boolean;
+  /** full: the brand animation; brief: the mark flashes for under a second; none: straight in. */
+  splash: 'full' | 'brief' | 'none';
   /** Resolves when sessions and settings are loaded. */
   ready: Promise<unknown>;
   version: string;
   children: ReactNode;
 }
 
-export function Root({ showSplash, ready, version, children }: RootProps) {
+export function Root({ splash: mode, ready, version, children }: RootProps) {
   const [loaded, setLoaded] = useState(false);
-  const [splash, setSplash] = useState(showSplash);
+  const [splash, setSplash] = useState(mode === 'full');
+  const [brief, setBrief] = useState(mode === 'brief');
+  useEffect(() => {
+    if (!brief) return;
+    // Fallback in case animationend does not arrive.
+    const t = setTimeout(() => setBrief(false), 1000);
+    return () => clearTimeout(t);
+  }, [brief]);
   useEffect(() => {
     let alive = true;
     void ready.finally(() => {
@@ -52,6 +60,11 @@ export function Root({ showSplash, ready, version, children }: RootProps) {
   return (
     <div className="root">
       {children}
+      {brief ? (
+        <div className="splash-brief" onAnimationEnd={() => setBrief(false)} onPointerDown={() => setBrief(false)} aria-hidden>
+          <SpicaMark size={72} />
+        </div>
+      ) : null}
       {splash ? (
         <div
           className={skipping ? 'splash-layer is-skipping' : 'splash-layer'}
