@@ -313,5 +313,6 @@
 
 **注意**：
 - 只 add 自己的路径（packages/core、packages/protocol、本文档）；改 package.json 要和锁文件同一个提交。
+- 远端 `origin` = https://github.com/KanbaraKenji/SPiCa.git（公开仓，分支 main）。各会话只做本地提交，不 git push；每到一个绿的节点给统筹发一句「可推」，由统筹统一推送（推前扫历史）。仓库是公开的：提交前确认没有 key 和模型端点地址进文件。
 - 用 Python 改文件时 `\n` 这类转义容易被写成真换行，改完先 typecheck；在 Windows 上用 Edit 工具最稳。
 - 全量测试偶发被 Node 的 0xC0000409 打断（见 13 节），断言本身不失败。

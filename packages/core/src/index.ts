@@ -72,3 +72,4 @@ export {
   type ProviderEvent,
 } from './providers/types.ts';
 export { DEFAULT_RETRY, type RetryPolicy } from './providers/http.ts';
+export { probeProvider, type ProbeOptions } from './providers/probe.ts';
