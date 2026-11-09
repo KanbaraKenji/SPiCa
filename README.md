@@ -158,6 +158,10 @@ A plugin is a folder with a `manifest.json` and any of skills, commands, MCP ser
 hooks and views. Start with the [plugin author guide](docs/plugins/authoring.md) (in
 Chinese) and the working example in [plugins/example-notes](plugins/example-notes).
 
+To let Claude Code or Codex build and install plugins for you, copy the folder
+[skills/spica-plugin-author](skills/spica-plugin-author) to `~/.claude/skills/` (Claude Code)
+or `~/.codex/skills/` (Codex), then ask it to "make a Spica plugin that …".
+
 ## Known issues
 
 - On Windows with the system Node 24.15, aborting a streaming HTTP request occasionally

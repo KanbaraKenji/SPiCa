@@ -1,0 +1,52 @@
+// Where the data comes from. Mock mode reads the fictional sample in
+// mock/items.json (changes stay in memory until the plugin restarts). The
+// "real" backend here keeps items in a JSON file in the plugin's data folder;
+// replace it with calls to your own service, and turn connection failures
+// into PluginToolError('SERVICE_UNREACHABLE') so the model can suggest mock mode.
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { PluginToolError } from './errors.js';
+
+export async function openBackend({ mock, dataDir, pluginDir }) {
+  const file = join(dataDir, 'items.json');
+  let items;
+  if (mock) {
+    items = JSON.parse(await readFile(join(pluginDir, 'mock', 'items.json'), 'utf8')).items;
+  } else {
+    items = await readFile(file, 'utf8').then((t) => JSON.parse(t).items, () => []);
+  }
+  const save = async () => {
+    if (mock) return;
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(`${file}.tmp`, JSON.stringify({ items }, null, 1));
+    await rename(`${file}.tmp`, file);
+  };
+  const find = (id) => {
+    const item = items.find((i) => i.id === id);
+    if (!item) throw new PluginToolError('ITEM_NOT_FOUND');
+    return item;
+  };
+  return {
+    mock,
+    async list(status) {
+      return items.filter((i) => !status || i.status === status).sort((a, b) => b.updated.localeCompare(a.updated));
+    },
+    async get(id) {
+      return find(id);
+    },
+    async add(title) {
+      const n = items.reduce((m, i) => Math.max(m, Number(i.id.replace(/\D/g, '')) || 0), 0) + 1;
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const item = { id: `item-${String(n).padStart(3, '0')}`, title, status: 'open', updated: today };
+      items.push(item);
+      await save();
+      return item;
+    },
+    async remove(id) {
+      find(id);
+      items = items.filter((i) => i.id !== id);
+      await save();
+    },
+  };
+}

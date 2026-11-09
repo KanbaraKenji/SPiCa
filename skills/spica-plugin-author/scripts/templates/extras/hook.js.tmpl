@@ -1,0 +1,11 @@
+// Hook of the __NAME__ plugin: runs inside Spica, no imports needed.
+// Only the kinds listed in manifest.json permissions.hooks are used.
+// A hook that throws is logged and skipped for that turn; it never breaks the conversation.
+
+/** @param {{ name: string, dataDir: string, mock(): boolean, log(line: string): void }} ctx */
+export default (ctx) => ({
+  inject() {
+    const note = ctx.mock() ? ' (mock mode: answers are sample data)' : '';
+    return [{ position: 'system:after', text: `The ${ctx.name} plugin is active${note}. Use ${ctx.name}__list_items before changing items.` }];
+  },
+});

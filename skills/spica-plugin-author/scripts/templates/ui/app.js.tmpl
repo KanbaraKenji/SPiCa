@@ -1,0 +1,82 @@
+/* global window, document */
+// Page of the __NAME__ plugin. It runs in Spica's sandbox: no Node, only
+// files of this plugin, only the tools listed in views/main.json. Spica
+// injects window.spica:
+//   callTool(tool, args) → { content, data?, isError }   (tool = name in the server, no prefix)
+//   onEvent(fn) → unsubscribe; events { type: 'theme' } and { type: 'plugin.changed' }
+//   theme → { mode: 'light' | 'dark' }; colours come as --spica-* CSS variables
+//   openFile(path), notify(text, { kind })
+// Irreversible tools (manifest permissions.irreversible) make Spica ask the
+// user first; if they say no the result is an error starting [CONFIRM_REQUIRED].
+const spica = window.spica;
+const $ = (id) => document.getElementById(id);
+
+function status(text, isError = false) {
+  $('status').textContent = text;
+  $('status').classList.toggle('error', isError);
+}
+
+/** Call a tool of this plugin; returns parsed JSON (or text), throws with the tool's own message. */
+async function tool(name, args = {}) {
+  const r = await spica.callTool(name, args);
+  if (r.isError) throw new Error(r.content.replace(/^\[[A-Z_]+\]\s*/, ''));
+  return r.data ?? r.content;
+}
+
+async function refresh() {
+  const filter = $('filter').value;
+  const { items } = await tool('list_items', filter ? { status: filter, limit: 100 } : { limit: 100 });
+  $('items').replaceChildren(
+    ...items.map((item) => {
+      const li = document.createElement('li');
+      const title = document.createElement('span');
+      title.className = 'title';
+      title.textContent = item.title;
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.textContent = `${item.status === 'done' ? '已完成' : '未完成'} · ${item.updated}`;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'danger';
+      remove.textContent = '删除';
+      remove.onclick = () => run(async () => {
+        await tool('remove_item', { id: item.id });
+        status(`已删除「${item.title}」`);
+      });
+      li.append(title, meta, remove);
+      return li;
+    }),
+  );
+  $('empty').hidden = items.length > 0;
+}
+
+/** Run an action, show its error in the status line, then reload the list. */
+async function run(action) {
+  try {
+    await action();
+  } catch (err) {
+    status(err.message, true);
+  }
+  await refresh().catch((err) => status(err.message, true));
+}
+
+$('add-form').onsubmit = (e) => {
+  e.preventDefault();
+  const title = $('new-title').value.trim();
+  if (!title) return status('先写点内容。', true);
+  void run(async () => {
+    await tool('add_item', { title });
+    $('new-title').value = '';
+    status('已添加');
+  });
+};
+$('filter').onchange = () => void run(async () => status(''));
+
+if (!spica) {
+  document.body.textContent = '这个页面要在 Spica 里打开：启用插件后，在侧栏点它的图标。';
+} else {
+  spica.onEvent?.((e) => {
+    if (e.type === 'plugin.changed') void refresh().catch(() => {});
+  });
+  refresh().catch((err) => status(err.message, true));
+}

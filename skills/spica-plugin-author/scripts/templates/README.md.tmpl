@@ -1,0 +1,17 @@
+# __DISPLAY__
+
+A Spica plugin. __DESCRIPTION__
+
+| Tool | What it does | Irreversible |
+| --- | --- | --- |
+| `list_items` | List items, newest first | no |
+| `get_item` | Read one item | no |
+| `add_item` | Add an item | no |
+| `remove_item` | Remove an item | **yes** (Spica asks first) |
+
+- Mock mode: answers from the fictional sample in `mock/items.json`.
+- Errors start with a code, e.g. `[ITEM_NOT_FOUND]`; see `server/errors.js`.
+- Data is kept in the plugin's data folder (`SPICA_PLUGIN_DATA`).
+
+Develop: `node --test test/` · check and pack: `node <skill>/scripts/check.mjs .` ·
+install: `node <skill>/scripts/install.mjs dist/__NAME__-0.1.0.zip ...`
