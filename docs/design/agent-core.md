@@ -1,6 +1,6 @@
 # Agent 内核设计（`@spica/core`）
 
-> 状态：M1–M4 已完成（2026-11-09）。M1：主循环、两种接入、事件流、可追溯记录、文件工具；M2：钩子六位置、会话树与回传、两种插话、确认与提问卡、限流与花费上限；M3：run_command、web_fetch、web_search、MCP 客户端、wso2、sqlite 存储与重启恢复；M4：项目与三层团队。下一步 M5「后端进程与 MCP 服务」（12b 节）。
+> 状态：M1–M5 内核部分已完成（2026-11-09）。M5：后端进程入口（utilityProcess）、端口协议与客户端、单写者锁、本程序的 MCP 服务（stdio）、测试连接探针；J2–J5、J7 经 MCP 服务用真模型自动跑通。还差：主进程监护代码（在 apps/desktop，归桌面外壳）、HTTP 传输（可选）、J6 经 MCP（要插件安装命令）。
 > 需求来源：立项书「定位」「硬规则」「模型接入」「Harness」「数据与外壳」「首版验收」；主循环纯自写（不试接 Pi）。
 
 ## 1. 总览与架构图
@@ -241,7 +241,21 @@
 
 **接口与事件**：AgentApi 加 `createProject`、`listProjects`、`getProject`；事件加 `project.created`、`project.updated`（阶段等）、`project.activity`。
 
-## 12b. 后端进程与 MCP 服务（M5 设计，统筹已定方向）
+## 12b. 后端进程与 MCP 服务（M5，内核部分已实现）
+
+**已实现**（`packages/core/src/host/`、`src/mcp/server.ts`）：
+- `wire.ts`：线上消息 `req / res / event / ready`；`electronPort()`、`nodePort()` 两种端口适配。
+- `server.ts`：`BackendServer` 把 AgentApi 和 `eventsSince`、`workflowErrors` 挂在端口上，事件按 seq 推送并留最近 5000 条。
+- `client.ts`：`connectBackend(port)` 给主进程一个同接口的 AgentApi，外加 `call(方法, …)`、`onEvent`、`ready`、`fail()`（内核进程死了时让挂着的调用立刻失败）。
+- `backend.ts`：`startBackend(config)`：provider 配置（key 随配置从端口传进来，`apiKeyEnv` 供独立模式用环境变量名）、`<库>.lock` 单写者锁、`restore()`、`extractorModules`（例如 `@spica/extract`）、端口上的 `probeProvider`。
+- `utility-entry.ts`：Electron `utilityProcess.fork()` 的入口。主进程发 `{type:'start', config}` 并附一个 MessagePort；之后可以用 `{type:'connect'}` 再接一个端口（窗口重载后），用 `{type:'shutdown'}` 正常退出。内核回 `{type:'started', restored, warnings}` 或 `{type:'failed', code, message}`。
+- `scripts/electron/host-check.ts`：在真 Electron 里 fork、跑一轮、杀掉、重启、确认历史还在、正常退出，五项都通过（`npm run check:electron-host -w @spica/core`）。
+- `mcp-main.ts` + `mcp/server.ts`：stdio MCP 服务（`node src/host/mcp-main.ts --config backend.json`）。工具见下文；库被别的进程占着时直接拒绝并说明原因。
+- **还没做**：主进程监护（重启退避、`shutdown`、把 `createAgentApi` 换成 `connectBackend`）在 apps/desktop，归桌面外壳，按上面的消息做即可；HTTP 传输（可选）；J6 经 MCP（要插件系统把安装 / 停用命令放到 MCP 上）。
+
+（以下是原设计）
+
+
 
 **进程边界**：内核跑在 Electron 的 `utilityProcess` 里（用 Electron 自带的 Node），主进程只做监护和转发，界面在渲染进程。SQLite 只有内核进程打开，主进程和界面都不碰库。
 
@@ -294,6 +308,7 @@
 
 | 里程碑 | 日期 | 测试 | 真模型冒烟 |
 |---|---|---|---|
+| M5 | 2026-11-09 | 20 个测试文件全过（新增：端口协议与回放、后端启动 / 锁 / 重启恢复 / 端口上的测试连接、stdio MCP 服务：工具、运行、事件、重启后状态还在、第二个写者被拒、测试连接探针）；真 Electron 检查五项通过 | `npm run journeys -w @spica/core`：只经 MCP 服务、用 DeepSeek 跑 J2（PDF / Word / Excel 三问全对，三张文件卡）、J3（建项目、两个子 Agent）、J4（用户在子会话改方向，项目经理按改动给结论）、J5（提问卡 → 确认 → 执行）、J7（运行中关掉后端、重开、续跑完成），全部通过，约 0.011 USD |
 | M4 | 2026-11-09 | 16 个测试文件 130 条全过（新增：流程文件校验、角色模板、建项目与三层父子关系、阶段校验与回传、工作对象层级、关键操作记录、项目跨重启、工具按角色可见、项目提示、带队规则、AgentApi 项目命令） | DeepSeek flash 项目冒烟（`npm run smoke:project -w @spica/core`）：顶层建项目 → 项目经理并行开两个子 Agent → 用户在 B 里说「只看付款和认证、不看价格」→ 项目经理按这两项给结论，并写明「在 supplier-b 会话里用户说……所以我调整了建议」；它的决定也回传到顶层；13 次调用约 0.0065 USD |
 | M3 | 2026-11-09 | 15 个测试文件 112 条全过（新增：sqlite 存储、正常关闭 / 提问卡 / 会话树跨重启、两种强杀、wso2 token 流程、run_command、web_fetch / web_search、MCP 客户端、文件卡、提取器请求） | DeepSeek flash：读文件→grep→答对，2 次调用约 0.0005 USD；团队冒烟仍通过（9 次调用约 0.004 USD） |
 | M2 | 2026-11-09 | 10 个测试文件 72 条全过（新增：钩子六位置与撤销、两种插话、确认与提问卡、会话树与回传、限流与花费上限、AgentApi 适配） | DeepSeek flash 团队冒烟（`npm run smoke:team -w @spica/core`）：项目经理并行开两个子 Agent 各读一份报价，用户中途进 B 改方向「只看付款和认证」，回传到项目经理，项目经理的结论明确按这次改动写；9 次调用约 0.004 USD |
@@ -303,13 +318,10 @@
 
 **状态**：M1–M4 完成并回报。工作区里 packages/core、packages/protocol、本文档没有未提交的改动。提交前用一个小脚本把关：根目录 lint、typecheck 和内核测试都绿才提交（内核测试遇到 Node 的 0xC0000409 崩溃会自动重跑一次）。
 
-**下一步 M5**（设计见 12b 节）：
-1. 内核进程入口：`packages/core/src/host/`：在 utilityProcess 里起 Runtime + SqliteStore + `restore()`，接主进程的 MessagePort，按 `{id, method, params}` 调 AgentApi，事件原样推送；内存里留最近几千条事件，提供 `eventsSince(seq)`。
-2. 端口客户端：实现同一个 `AgentApi` 接口，给桌面主进程用（外壳把 `createAgentApi(runtime)` 换成它）。
-3. 监护：主进程按退避重启（1/2/5 秒，1 分钟最多 5 次），正常退出发 `shutdown`。这部分代码在 apps/desktop，归桌面外壳；内核只提供入口和客户端，并写清楚协议。
-4. MCP 服务：stdio（`--mcp`）必做，本机 HTTP（127.0.0.1 + 令牌）可选；每个 AgentApi 方法一个工具，加 `spica_run`（发一句、等运行结束、回结果）和 `spica_events`；库锁文件防两个进程同时写。
-5. 测试连接探针 `probeProvider(配置)`：最小请求，回延迟、模型名、人话错误，不进会话。
-6. 之后：AgentApi 的项目命令在 protocol 里改成必选（先让外壳实现）；J2–J7 经 MCP 服务自动跑一遍。
+**下一步**：
+1. 桌面外壳：主进程用 `utilityProcess.fork(packages/core/src/host/utility-entry.ts)` 起内核，按 12b 节的消息接 `connectBackend`，崩了退避重启（1/2/5 秒，1 分钟最多 5 次）；设置页「测试连接」调 `call('probeProvider', 配置, 模型)`。
+2. 插件系统：把安装 / 启用 / 停用命令放到 MCP 服务上，让 J6 也能经 MCP 自动跑；然后在 journeys.ts 里加 J6。
+3. 内核：HTTP 传输（127.0.0.1 + 令牌，可选）；AgentApi 的项目命令在 protocol 里改成必选（外壳实现后）。
 
 **注意**：
 - 只 add 自己的路径（packages/core、packages/protocol、本文档）；改 package.json 要和锁文件同一个提交。
