@@ -302,6 +302,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               workflows={bridge.workflows}
               pickFolder={() => bridge.pickFolder('选择工作流文件夹')}
               onBackendRestarted={bridge.backend.onRestarted}
+              projects={inboxProjects}
+              exportUsageLog={bridge.exportUsageLog}
+              showInFolder={bridge.showInFolder}
             />
           ) : view === 'inbox' ? (
             <InboxView

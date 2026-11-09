@@ -2,7 +2,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IpcChannel, type AgentApi, type AppInfo, type CoreEvent } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
-import type { BackendState, DesktopBridge, ProviderList, ShellState, WorkflowsState } from '../shared/bridge';
+import type { BackendState, DesktopBridge, ProviderList, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import type { ProviderDraft, TestResult } from '../shared/providers';
 import type { PluginsCommand, PluginsResult } from '../shared/plugins';
 import type { UpdateState } from '../shared/updates';
@@ -68,6 +68,8 @@ const bridge: DesktopBridge = {
   workflows: {
     run: (op) => ipcRenderer.invoke(DesktopChannel.Workflows, op) as Promise<WorkflowsState>,
   },
+  exportUsageLog: (req) => ipcRenderer.invoke(DesktopChannel.UsageLog, req) as Promise<UsageLogResult>,
+  showInFolder: (path) => ipcRenderer.send(DesktopChannel.ShowInFolder, path),
   providers: {
     list: () => ipcRenderer.invoke(DesktopChannel.ListProviders) as Promise<ProviderList>,
     save: (draft: ProviderDraft) => ipcRenderer.invoke(DesktopChannel.SaveProvider, draft) as Promise<ProviderList>,

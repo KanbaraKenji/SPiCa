@@ -1,5 +1,5 @@
 // Main process of the Spica desktop shell.
-import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve as resolvePath } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, safeStorage, shell } from 'electron';
@@ -8,7 +8,7 @@ import { DesktopChannel } from '../shared/ipc';
 import { deriveTokens, resolveSkin, schemeOf } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
 import type { ShellSettings } from '../shared/settings';
-import type { ProviderList, ShellState, WorkflowsState } from '../shared/bridge';
+import type { ProviderList, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import type { ProviderDraft, ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
@@ -432,6 +432,39 @@ ipcMain.handle(DesktopChannel.PickFolder, async (_e, title: unknown): Promise<st
   const opts: Electron.OpenDialogOptions = { title: typeof title === 'string' && title ? title.slice(0, 60) : '选择文件夹', properties: ['openDirectory', 'createDirectory'] };
   const r = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts);
   return r.canceled ? null : (r.filePaths[0] ?? null);
+});
+
+ipcMain.handle(DesktopChannel.UsageLog, async (_e, raw: unknown): Promise<UsageLogResult> => {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' && v ? v.slice(0, 200) : undefined);
+  const req: UsageLogRequest = {};
+  const projectId = str(r.projectId);
+  const from = str(r.from);
+  const to = str(r.to);
+  if (projectId) req.projectId = projectId;
+  if (from) req.from = from;
+  if (to) req.to = to;
+  const day = new Date().toLocaleDateString('sv-SE').replaceAll('-', '');
+  mkdirSync(workDir, { recursive: true });
+  const opts: Electron.SaveDialogOptions = { title: '导出使用日志', defaultPath: join(workDir, `使用日志-${day}.jsonl`), filters: [{ name: '使用日志', extensions: ['jsonl'] }] };
+  const pick = mainWindow ? await dialog.showSaveDialog(mainWindow, opts) : await dialog.showSaveDialog(opts);
+  if (pick.canceled || !pick.filePath) return null;
+  try {
+    if (backend instanceof ProcessBackend) return await backend.usageLog({ filter: req, file: pick.filePath });
+    // Demo data: a header and two fictional records, so the page can be tried without the core.
+    const header = { type: 'header', schema: 'spica.usage-log', version: 1, demo: true, filter: req };
+    const rows = [{ type: 'session', id: 's-chat-1', title: '看一下样机评审资料' }, { type: 'message', sessionId: 's-chat-1', role: 'user', text: '帮我看看样机评审的资料' }];
+    writeFileSync(pick.filePath, [header, ...rows].map((x) => JSON.stringify(x)).join('\n') + '\n', 'utf8');
+    return { file: pick.filePath, records: rows.length };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/EACCES|EPERM|EBUSY|EROFS|ENOENT/.test(msg)) return { error: '写不进这个位置（可能被占用或没有权限），换一个文件夹试试。' };
+    return { error: friendly(err) };
+  }
+});
+
+ipcMain.on(DesktopChannel.ShowInFolder, (_e, path: unknown) => {
+  if (typeof path === 'string' && existsSync(path)) shell.showItemInFolder(path);
 });
 
 ipcMain.on(DesktopChannel.Zoom, (_e, step: unknown) => {

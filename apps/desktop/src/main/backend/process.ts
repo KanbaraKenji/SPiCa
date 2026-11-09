@@ -180,6 +180,11 @@ export class ProcessBackend implements AgentBackend {
   }
 
   /** Workflows the core read at start, and files it could not read. */
+  /** Writes the core's usage log to `file` (in the core's process: the log can be large). */
+  usageLog(req: { filter: { projectId?: string; from?: string; to?: string }; file: string }): Promise<{ file: string; records: number }> {
+    return this.call('usageLog', req);
+  }
+
   workflows(): Promise<{ names: string[]; errors: string[] }> {
     return this.call('workflows');
   }

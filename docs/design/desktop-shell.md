@@ -83,6 +83,7 @@
 - 设置分五页：常规（邮件、工作流）、外观（皮肤、缩放、开机动画）、模型、插件、关于（版本、更新源）。
 - 邮件：`mail.enabled`（默认开）、`mail.intervalMinutes`（5 / 15 / 30 / 60 分钟，默认 5）、`mail.ignore.from / subject`（一行一条，包含这段文字或 /正则/ 就直接忽略，不交给模型）。`mailSeen` 记每个项目经理的对话上次被打开的时间，用来算「有新来信」。
 - 工作流文件夹：`workflowsDir`，空 = `文档\Spica\workflows`（启动时建好）。
+- 使用日志：常规页「使用日志」选项目（默认全部）和时间（全部 / 今天 / 最近 7 天 / 最近 30 天），点「导出…」选保存位置（默认 `文档\Spica\使用日志-日期.jsonl`），由内核进程直接写文件（内核 `exportUsageLog`，密钥和接口地址已去掉），完成后显示条数、路径和「在文件夹中显示」。
 - 这些改了都不用重启：主进程调内核的 `configure(patch)`（邮件、工作流文件夹、模型都走它），正在跑的会话不受影响。
 - 模型存 `%APPDATA%\Spica\providers.json`。三种表单：OpenAI 兼容（接口地址、API Key、模型）、Anthropic（API Key、接口地址可留默认、模型）、WSO2 网关（网关地址、取 token 地址、Client ID、Client Secret、Scope 可选、模型）；三种都有强模型（可空）、同时请求数、每分钟请求数（空 = 不限）。
 - 密钥（API Key / Client Secret）用 Electron `safeStorage`（Windows DPAPI，按当前用户加密，不需要管理员）存密文；主进程从不把密钥发回界面，界面只知道「已保存」。系统不能加密时拒绝保存并说明。
