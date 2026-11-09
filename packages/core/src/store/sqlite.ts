@@ -5,7 +5,6 @@ import { dirname } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
 import type { Message, ProjectInfo, ProjectLogEntry, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, SessionRecord, Store, ToolCallRecord } from './types.ts';
-import { projectLogEntry } from '../projects.ts';
 
 const SCHEMA_VERSION = 1;
 
@@ -248,8 +247,8 @@ export class SqliteStore implements Store {
     );
   }
   listProjectLog(projectId: string, limit = 50): ProjectLogEntry[] {
-    return (this.#q('SELECT * FROM project_log WHERE project_id = ? ORDER BY rowid DESC LIMIT ?').all(projectId, limit) as Row[]).map((r) =>
-      projectLogEntry({
+    return (this.#q('SELECT * FROM project_log WHERE project_id = ? ORDER BY rowid DESC LIMIT ?').all(projectId, limit) as Row[]).map(
+      (r): ProjectLogEntry => ({
         id: String(r.id),
         projectId: String(r.project_id),
         sessionId: String(r.session_id),

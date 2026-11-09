@@ -49,7 +49,7 @@ function describe(d: ProjectDetail): string {
     lines.push('', 'Sub-agents:', ...d.agents.map((a) => `- ${a.title ?? 'Sub-agent'} (${a.id}): ${a.status}`));
   }
   if (d.recentLog.length > 0) {
-    lines.push('', 'Recent key actions (newest first):', ...d.recentLog.slice(0, 10).map((e) => `- ${e.at} ${e.kind}: ${e.summary}`));
+    lines.push('', 'Recent key actions (newest first):', ...d.recentLog.slice(0, 10).map((e) => `- ${e.at} ${e.action}: ${e.summary}`));
   }
   return lines.join('\n');
 }

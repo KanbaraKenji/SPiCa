@@ -488,10 +488,6 @@ export interface ProjectLogEntry {
   detail?: string;
   /** English one-liner written for the model (list_projects, open_project); do not show it as UI text. */
   summary: string;
-  /** @deprecated Use `action`. Kept until the desktop shell has switched. */
-  kind: 'file_write' | 'file_edit' | 'command' | 'stage' | 'decision' | 'note';
-  /** @deprecated Use `target`. Set for file actions. */
-  path?: string;
 }
 
 export interface ProjectDetail extends ProjectInfo {
