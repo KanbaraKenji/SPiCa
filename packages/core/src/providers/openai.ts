@@ -56,6 +56,11 @@ export class OpenAICompatibleProvider implements Provider {
     this.#auth = opts.auth ?? (opts.apiKey ? staticAuth({ authorization: `Bearer ${opts.apiKey}` }) : undefined);
   }
 
+  secrets(): string[] {
+    const o = this.#opts;
+    return [o.apiKey, o.baseUrl, hostOf(o.baseUrl), ...Object.values(o.headers ?? {}).filter((v) => v.length >= 12)].filter((v): v is string => !!v);
+  }
+
   /** Build the wire body (exported for tests and hooks that want to inspect it). */
   buildBody(req: ModelRequest): Record<string, unknown> {
     const reasoningField = this.#opts.reasoning?.field ?? 'reasoning_content';

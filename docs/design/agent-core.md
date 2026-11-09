@@ -165,6 +165,29 @@
 - 压力测试（`src/pressure.test.ts`，M7）：一个项目经理下 16 个子任务同时跑。并发上限 3：网关同时最多 3 个请求，按发起顺序服务；第 n 个排队的子任务先收到位次 n，再逐个收到 n-1 … 1，然后 queued → thinking；跑完限流器和预留都归零。全局上限 0.05 USD（不限并发、并发 4 各测一次）：总花费不超上限，等预留释放后放行的调用比只按最坏花费多（4 次 vs 2 次），其余每个都收到 `budget.stop`。排队中被停：让出位置、后面的人往前挪；运行中被停：预留释放，只有真跑完的那次记账。
 - 导出 JSONL。
 
+## 10a. 使用日志导出（M7）
+
+把发生过的事整理成一份 JSON Lines，给评测插件用，将来也是「成员记忆」的原料。
+
+- **入口**：`Runtime.exportUsageLog(filter)`；MCP 工具 `spica_export_usage_log {project_id?, from?, to?}`；命令行 `node packages/core/scripts/export-log.ts --db <spica.db> [--project <id>] [--from <ISO>] [--to <ISO>] [--config <backend.json>] [--out <文件>]`。命令行用只读方式打开数据库（`new SqliteStore(path, { readOnly: true })`，不改表、写入会报错），所以桌面端开着时也能导。
+- **筛选**：`projectId` = 这个项目的项目经理、`config.projectId` 是它的会话，以及这些会话下面的所有子会话；它的项目动态和来信。`from` / `to` 含两端，ISO 8601，任意时区（按时间点比，不按字符串比）。会话按「创建 ≤ to 且最后更新 ≥ from」入选，其余记录按各自的时间。不筛项目时，另带不属于任何会话的请求记录（取 token、邮件轮询）。
+- **去敏**（在序列化之前对每个字段的值做，避免转义后的 `"api_key": "…"` 漏网）：所有 provider 的 key、client secret、client id、端点地址和它的主机名（`Provider.secrets()`，provider 被删后仍记着）；看起来像密钥的串（`sk-…`、Bearer / Basic 后面的值、AWS / Google / GitHub / Slack 的 key 格式、JWT、私钥块、URL 里的 `用户:密码@`、`api_key= / password: / token= / secret=` 这类键值）；字段名本身是 `apiKey`、`password`、`token`、`authorization`、`cookie` 等的，值整个换掉。命令行另把名字像密钥的环境变量（`SPICA_*`、`*KEY*`、`*TOKEN*`…）的值和 `--config` 里的 key / 地址都当成要去掉的值，所以用 `--env-file=.env.local` 跑时，本机部署的 key 和地址也去掉。超过 2 万字符的文本截断并注明原长度。
+- **格式**：第一行是 header，其余每行一条记录，`type` 区分。`schemaVersion` 只在字段含义变化或删字段时加一；新增字段不加版本，读的人要忽略不认识的字段。
+
+| type | 字段 |
+|---|---|
+| `header` | `schema: "spica.usage-log"`、`schemaVersion: 1`、`exportedAt`、`filter {projectId, from, to}`、`counts {各 type: 条数}` |
+| `session` | `id`、`parentId`、`role`（top / manager / worker）、`title`、`status`、`templateId`、`projectId`、`providerId`、`model`、`locale`、`createdAt`、`updatedAt`（不导系统提示词） |
+| `message` | `id`、`sessionId`、`seq`、`role`、`kind`（user / assistant / tool_results / steer / relay / report / note）、`author`（user / parent / child / runtime / plugin / agent）、`createdAt`、`text`（文字块拼起来）、`content`（text / thinking / tool_use / tool_result 块；不含签名和 provider 私有块）、`meta`（文件卡、建议、回传来源、是否中断等，见 MessageMeta） |
+| `tool_call` | `sessionId`、`messageId`、`id`、`name`、`input`、`status`（ok / error / denied / pending / unavailable）、`result`、`startedAt`、`endedAt`、`durationMs` |
+| `trace` | TraceRecord 原样：`kind`（model / search / fetch / mcp / auth）、`startedAt`、`durationMs`、`sessionId`、`parentChain`、`initiator`、`target`（provider id 或主机名，从不是完整地址）、`model`、token 数、`costUsd`、`status`、`httpStatus`、`attempts`、`error` |
+| `relay` | `id`、`parentId`、`childId`、`kind`（user_message / decision / report）、`text`、`createdAt` |
+| `project` | ProjectInfo：`id`、`name`、`folder`、`managerSessionId`、`workflowId`、`stage`、`status`、`createdAt`、`updatedAt` |
+| `project_log` | `id`、`projectId`、`sessionId`、`at`、`action`（file.write / file.edit / file.delete / command / child.spawn / child.report / decision / stage / mail / note）、`target`、`detail`、`summary`（按时间先后） |
+| `mail` | MailItem：`id`（来源:邮件 id）、`sourceId`、`messageId`、`fromName`、`fromAddress`、`subject`、`receivedAt`、`preview`、`status`、`triage {result, projectId, by, reason}`、`feedback`、`routedTo`、`createdAt`、`updatedAt` |
+
+- 测试（`src/export.test.ts`）：两个项目，项目 A 的项目经理带一个子会话、一次工具调用，消息里故意放了 provider key、网关地址、`sk-…`、Bearer、`"api_key": "…"`，项目动态里放 `token=…`，来信预览里放 `password: …`：全部导出后这些一个都不出现，其余文字保留；按项目 A 导只有 A 的两个会话、A 的项目和来信；时间段筛选按时间点；经 MCP 和命令行（应用开着数据库时）导出的条数一致。
+
 ## 11. 存储与恢复
 
 - `Store` 接口两份实现：`MemoryStore`（测试）和 `SqliteStore`（`node:sqlite`，Node 24 自带、不用本机编译，所以 Electron 主进程里也能用；WAL 模式）。

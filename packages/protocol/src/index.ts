@@ -367,6 +367,15 @@ export type TraceKind = 'model' | 'search' | 'fetch' | 'mcp' | 'auth' | 'other';
  * One external request (model, search, web fetch, MCP, token endpoint).
  * Never contains request headers, bodies, keys or full URLs.
  */
+/** Which part of the usage log to export. All fields optional. */
+export interface UsageLogFilter {
+  /** Only this project: its manager, every session under it, its activity and mail. */
+  projectId?: string;
+  /** Inclusive range, ISO 8601 (any offset). */
+  from?: string;
+  to?: string;
+}
+
 export interface TraceRecord {
   id: string;
   kind: TraceKind;

@@ -67,6 +67,8 @@ export interface Provider {
   readonly capabilities: ProviderCapabilities;
   /** Called once when the runtime adopts the provider (e.g. to trace token requests). */
   attach?(services: { tracer: import('../trace.ts').Tracer }): void;
+  /** Values that must never appear in exports or logs: keys, client secrets, endpoint addresses and their host names. */
+  secrets?(): string[];
   stream(request: ModelRequest, ctx: ProviderCallContext): AsyncGenerator<ProviderEvent, void>;
 }
 
