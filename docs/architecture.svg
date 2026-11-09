@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 470" width="960" height="470" role="img" aria-labelledby="t d">
+  <title id="t">Spica architecture</title>
+  <desc id="d">The Electron app (renderer, main process, backend process) runs the agent core and its linked modules; plugins run as MCP servers; the core talks to model endpoints and serves external MCP clients.</desc>
+  <style>
+    .frame { fill: #f8fafc; stroke: #e2e8f0; }
+    .box { fill: #ffffff; stroke: #cbd5e1; }
+    .key { fill: #ffffff; stroke: #2f7de1; stroke-width: 1.6; }
+    .ext { fill: #ffffff; stroke: #cbd5e1; stroke-dasharray: 5 4; }
+    .line { stroke: #94a3b8; stroke-width: 1.4; fill: none; }
+    .head { fill: #94a3b8; }
+    .h { fill: #111827; font: 600 14px 'Segoe UI', system-ui, sans-serif; }
+    .s { fill: #64748b; font: 12px 'Segoe UI', system-ui, sans-serif; }
+    .group { fill: #475569; font: 600 12px 'Cascadia Mono', Consolas, monospace; }
+    .lbl { fill: #64748b; font: italic 11px 'Segoe UI', system-ui, sans-serif; }
+    @media (prefers-color-scheme: dark) {
+      .frame { fill: #161a22; stroke: #2a2f3a; }
+      .box, .key, .ext { fill: #1f2430; }
+      .box, .ext { stroke: #3b4252; }
+      .key { stroke: #62a9ff; }
+      .line { stroke: #6b7280; }
+      .head { fill: #6b7280; }
+      .h { fill: #e5e7eb; }
+      .s, .lbl { fill: #9ca3af; }
+      .group { fill: #cbd5e1; }
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0 0L10 5L0 10z"/>
+    </marker>
+  </defs>
+
+  <!-- apps/desktop -->
+  <rect class="frame" x="20" y="16" width="920" height="138" rx="12"/>
+  <text class="group" x="36" y="40">apps/desktop · Electron app</text>
+
+  <rect class="box" x="40" y="56" width="250" height="72" rx="8"/>
+  <text class="h" x="165" y="86" text-anchor="middle">Renderer</text>
+  <text class="s" x="165" y="106" text-anchor="middle">React UI, sandboxed</text>
+
+  <rect class="box" x="355" y="56" width="250" height="72" rx="8"/>
+  <text class="h" x="480" y="86" text-anchor="middle">Main process</text>
+  <text class="s" x="480" y="106" text-anchor="middle">window, settings, updates</text>
+
+  <rect class="key" x="670" y="56" width="250" height="72" rx="8"/>
+  <text class="h" x="795" y="86" text-anchor="middle">Backend process</text>
+  <text class="s" x="795" y="106" text-anchor="middle">runs the core in its own process</text>
+
+  <path class="line" d="M292 92H353" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="lbl" x="322" y="86" text-anchor="middle">IPC</text>
+  <path class="line" d="M607 92H668" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="lbl" x="637" y="86" text-anchor="middle">port</text>
+
+  <!-- packages -->
+  <rect class="frame" x="20" y="172" width="920" height="146" rx="12"/>
+  <text class="group" x="36" y="196">packages/</text>
+
+  <path class="line" d="M140 128V236" marker-end="url(#a)"/>
+  <path class="line" d="M795 128V236" marker-end="url(#a)"/>
+  <path class="line" d="M350 212H795"/>
+  <path class="line" d="M350 212V236" marker-end="url(#a)"/>
+  <path class="line" d="M555 212V236" marker-end="url(#a)"/>
+  <text class="lbl" x="675" y="206" text-anchor="middle">loaded into the backend process</text>
+
+  <rect class="box" x="40" y="238" width="200" height="66" rx="8"/>
+  <text class="h" x="140" y="265" text-anchor="middle">brand</text>
+  <text class="s" x="140" y="285" text-anchor="middle">mark, wordmark, splash</text>
+
+  <rect class="box" x="260" y="238" width="180" height="66" rx="8"/>
+  <text class="h" x="350" y="265" text-anchor="middle">extract</text>
+  <text class="s" x="350" y="285" text-anchor="middle">read PDF / Word / Excel</text>
+
+  <rect class="box" x="460" y="238" width="190" height="66" rx="8"/>
+  <text class="h" x="555" y="265" text-anchor="middle">plugins</text>
+  <text class="s" x="555" y="285" text-anchor="middle">install, enable, disable</text>
+
+  <rect class="key" x="670" y="238" width="250" height="66" rx="8"/>
+  <text class="h" x="795" y="265" text-anchor="middle">core</text>
+  <text class="s" x="795" y="285" text-anchor="middle">agent loop, tools, team, MCP service</text>
+
+  <!-- outside -->
+  <rect class="ext" x="40" y="366" width="390" height="84" rx="8"/>
+  <text class="h" x="235" y="396" text-anchor="middle">packages/protocol</text>
+  <text class="s" x="235" y="416" text-anchor="middle">API and event types shared by every part:</text>
+  <text class="s" x="235" y="434" text-anchor="middle">every feature is a backend API first, the UI is a client</text>
+
+  <rect class="ext" x="450" y="366" width="210" height="84" rx="8"/>
+  <text class="h" x="555" y="396" text-anchor="middle">plugins/*</text>
+  <text class="s" x="555" y="416" text-anchor="middle">skills, commands, hooks,</text>
+  <text class="s" x="555" y="434" text-anchor="middle">MCP servers</text>
+
+  <rect class="ext" x="670" y="366" width="122" height="84" rx="8"/>
+  <text class="h" x="731" y="392" text-anchor="middle">Models</text>
+  <text class="s" x="731" y="412" text-anchor="middle">OpenAI-compatible,</text>
+  <text class="s" x="731" y="430" text-anchor="middle">Anthropic, WSO2</text>
+
+  <rect class="ext" x="804" y="366" width="136" height="84" rx="8"/>
+  <text class="h" x="872" y="392" text-anchor="middle">MCP clients</text>
+  <text class="s" x="872" y="412" text-anchor="middle">scripts, evals,</text>
+  <text class="s" x="872" y="430" text-anchor="middle">journeys</text>
+
+  <path class="line" d="M555 304V364" marker-end="url(#a)"/>
+  <text class="lbl" x="562" y="338">starts as MCP servers</text>
+  <path class="line" d="M731 304V364" marker-end="url(#a)"/>
+  <text class="lbl" x="738" y="338">HTTPS</text>
+  <path class="line" d="M872 364V306" marker-end="url(#a)"/>
+  <text class="lbl" x="866" y="338" text-anchor="end">stdio</text>
+</svg>
