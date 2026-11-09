@@ -98,6 +98,15 @@ try {
   show('new matters', mail.filter((m) => m.triage?.decision === 'new'));
   show('ignored', mail.filter((m) => m.triage?.decision === 'ignore'));
   show('still untriaged', mail.filter((m) => !m.triage));
+  if (mail.some((m) => !m.triage)) {
+    const sessions = (await call('spica_list_sessions')) as unknown as { id: string; templateId?: string; status: string }[];
+    const thread = sessions.find((x) => x.templateId === 'mail-triage');
+    if (thread) {
+      const tmsgs = (await call('spica_get_messages', { session_id: thread.id })) as unknown as { kind: string; text?: string; toolCalls?: { name: string }[]; toolResults?: { content: string }[] }[];
+      console.log(`  [debug triage thread ${thread.status}]`);
+      for (const m of tmsgs) console.log(`    ${m.kind}: ${(m.text ?? '').replace(/\s+/g, ' ').slice(0, 160)} ${(m.toolCalls ?? []).map((c) => `<${c.name}>`).join(' ')} ${(m.toolResults ?? []).map((r) => r.content.replace(/\s+/g, ' ').slice(0, 160)).join(' | ')}`);
+    }
+  }
 
   // each manager: only its own mail, suggestions given, drafts only
   const checks: string[] = [];
@@ -119,6 +128,10 @@ try {
     const suggested = calls.includes('suggest_actions');
     const sent = calls.some((c) => /send/i.test(c));
     const last = [...msgs].reverse().find((m) => m.kind === 'assistant' && m.text)?.text ?? '';
+    const first = msgs.find((m) => m.kind === 'assistant' && m.text)?.text ?? '';
+    const chinese = /[一-鿿]/.test(first.slice(0, 40));
+    checks.push(`${name}: first words: ${first.replace(/\s+/g, ' ').slice(0, 60)} → Chinese: ${chinese}`);
+    if (!chinese) allGood = false;
     checks.push(
       `${name}: received ${received.length} mail(s), only its own: ${onlyOwn}; suggest_actions: ${suggested}; drafts: ${calls.filter((c) => c.includes('create_draft')).length}; anything sent: ${sent}\n    last answer: ${last.replace(/\s+/g, ' ').slice(0, 200)}`,
     );

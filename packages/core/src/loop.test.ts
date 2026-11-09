@@ -160,10 +160,17 @@ describe('agent loop', () => {
     await rt.createSession().send('hi').done;
     await rt.createSession({ locale: 'en-US' }).send('hi').done;
     const sys = (i: number) => (gw.requests[i]!.body.messages as { content: string }[])[0]!.content;
-    expect(sys(0)).toContain("Reply in the language of the user's latest message");
+    expect(sys(0)).toContain('Reply in the language of the latest message the user typed themselves');
     expect(sys(0)).toContain('interface language: ja-JP');
     expect(sys(1)).toContain('interface language: en-US');
     expect(makeRuntime(gw).createSession().config.locale).toBe('zh-CN');
+    // a session that only got messages from the system / other agents is told to use the interface language
+    const rt2 = makeRuntime(gw, { cwd: dir });
+    const pm = rt2.createSession({ templateId: 'project-manager' });
+    await pm.send('New mail for this project. Subject: hello', { author: 'parent' }).done;
+    const last = (gw.requests.at(-1)!.body.messages as { content: string }[])[0]!.content;
+    expect(last).toContain('Write everything for the user in the interface language: zh-CN');
+    expect(last).not.toContain('latest message the user typed');
   });
 
   it('child sessions carry their parent chain in events and traces', async () => {

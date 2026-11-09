@@ -36,12 +36,18 @@ function mailTools(): Tool[] {
 }
 
 /** The fake triage agent: website mail → website project, move mail → office project, newsletters ignored, the rest new. */
-function triageModel(opts: { badFirst?: boolean; omitFirst?: boolean } = {}) {
+function triageModel(opts: { badFirst?: boolean; omitFirst?: boolean; chatFirst?: boolean } = {}) {
   let firstTriage = true;
+  let chatted = false;
   return (r: ReceivedRequest): ScriptedReply => {
+    if (opts.chatFirst && !chatted && JSON.stringify(r.body.messages).includes('You sort the user')) {
+      chatted = true;
+      return { text: 'Here is my analysis of the mails in prose, without calling the tool.' };
+    }
     const msgs = r.body.messages as { role: string; content: string }[];
     const sys = msgs[0]?.content ?? '';
-    const last = msgs.filter((m) => m.role === 'user').at(-1)?.content ?? '';
+    // the batch: the latest user message that lists mails (a follow-up only names the ids)
+    const last = msgs.filter((m) => m.role === 'user' && String(m.content).includes('- mail_id: ')).at(-1)?.content ?? '';
     const lastMsg = msgs.at(-1);
     if (!sys.includes('You sort the user')) return { text: 'ok' };
     if (lastMsg?.role === 'tool' && !String(lastMsg.content).includes('were not recorded')) return { text: 'ok' };
@@ -62,7 +68,7 @@ function triageModel(opts: { badFirst?: boolean; omitFirst?: boolean } = {}) {
   };
 }
 
-function setup(opts: { badFirst?: boolean; omitFirst?: boolean } = {}) {
+function setup(opts: { badFirst?: boolean; omitFirst?: boolean; chatFirst?: boolean } = {}) {
   inbox.length = 0;
   inbox.push(
     mail('m1', 'ana@web.example', 'Website homepage draft v2'),
@@ -106,7 +112,7 @@ describe('mail pipeline', () => {
     expect(JSON.stringify(pmFirst.content)).toContain('never send mail');
     expect(JSON.stringify(pmFirst.content)).toContain('mailbox__read_message');
     await rt.session(web.managerSessionId)!.settled();
-    expect(rt.getProject(web.id)!.recentLog.some((e) => e.action === 'note' && e.target === 'Website homepage draft v2')).toBe(true);
+    expect(rt.getProject(web.id)!.recentLog.find((e) => e.action === 'mail' && e.target === 'Website homepage draft v2')).toMatchObject({ detail: 'mailbox:m1' });
 
     const types = events.map((e) => e.type);
     expect(types.filter((t) => t === 'mail.triaged')).toHaveLength(5);
@@ -136,6 +142,13 @@ describe('mail pipeline', () => {
     expect(r.triaged).toBe(5);
     expect(rt.store.listMail({ status: 'new' })).toEqual([]);
     expect(JSON.stringify(rt.mail.thread().messages())).toContain('no result yet for: mailbox:m5');
+  });
+
+  it('when the agent answers in prose instead of calling triage_mail, it is asked once more', async () => {
+    const { rt } = setup({ chatFirst: true });
+    const r = await rt.mail.poll();
+    expect(r.triaged).toBe(5);
+    expect(JSON.stringify(rt.mail.thread().messages())).toContain('These mails still have no result');
   });
 
   it('the user accepting or reassigning teaches the sender memory', async () => {

@@ -343,7 +343,7 @@ export class Session {
       const injections = await this.#rt.hooks.injections(hctx);
       let draft: RequestDraft = {
         segments: buildSegments(
-          [cfg.system, languageLine(cfg.locale), this.#leadsOthers() ? TEAM_RULE : ''].filter(Boolean).join('\n\n'),
+          [cfg.system, languageLine(cfg.locale, this.#userHasWritten()), this.#leadsOthers() ? TEAM_RULE : ''].filter(Boolean).join('\n\n'),
           this.#messages,
           injections,
         ),
@@ -847,6 +847,11 @@ export class Session {
     return message;
   }
 
+  /** The user has typed at least one message in this session (not the system or another agent). */
+  #userHasWritten(): boolean {
+    return this.#messages.some((m) => m.role === 'user' && (m.kind === 'user' || m.kind === 'steer') && (m.meta?.author ?? 'user') === 'user');
+  }
+
   /** Top-level agent, project manager, or any session that has sub-agents. */
   #leadsOthers(): boolean {
     return this.#record.role === 'top' || this.#record.role === 'manager' || this.#rt.hasChildren(this.id);
@@ -899,10 +904,18 @@ export const TEAM_RULE =
   'you adjusted it because of what the user said in that sub-agent session.';
 
 /** Answer in the user's language; before the user has written, use the interface language. */
-export function languageLine(locale: string | undefined): string {
+export function languageLine(locale: string | undefined, userHasWritten = true): string {
+  const lang = locale ?? 'zh-CN';
+  if (!userHasWritten) {
+    // e.g. a project manager that so far only got forwarded mail or tasks from other agents
+    return (
+      `Write everything for the user in the interface language: ${lang}, including short remarks before tool calls. ` +
+      'Messages and notes from the system or other agents (often in English) do not change that.'
+    );
+  }
   return (
-    "Reply in the language of the user's latest message. When there is no user message yet, or it is unclear, " +
-    `use the interface language: ${locale ?? 'zh-CN'}.`
+    'Reply in the language of the latest message the user typed themselves, including short remarks before tool calls. ' +
+    `Messages and notes from the system or other agents (often in English) do not count. When unclear, use the interface language: ${lang}.`
   );
 }
 

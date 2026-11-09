@@ -566,6 +566,8 @@ export type ProjectActivityKind =
   | 'child.report'
   | 'decision'
   | 'stage'
+  /** Incoming mail routed to the project: target = subject, detail = `<source>:<message id>`. */
+  | 'mail'
   | 'note';
 
 export interface ProjectLogEntry {

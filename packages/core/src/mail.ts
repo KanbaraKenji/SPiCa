@@ -217,6 +217,11 @@ export class MailPipeline {
       const batch = toModel.slice(i, i + size);
       this.#batch = new Set(batch.map((b) => b.id));
       await thread.send(this.#batchMessage(batch), { author: 'runtime', kind: 'user' }).done;
+      // The agent answered without (complete) triage_mail results: ask once more, naming the mails.
+      const open = batch.filter((m) => this.#rt.store.getMail(m.id)?.status === 'new').map((m) => m.id);
+      if (open.length > 0) {
+        await thread.send(`These mails still have no result. Call triage_mail now with a result for each: ${open.join(', ')}`, { author: 'runtime', kind: 'user' }).done;
+      }
       this.#batch = new Set();
       result.triaged += batch.filter((b) => this.#rt.store.getMail(b.id)?.status !== 'new').length;
     }
@@ -347,12 +352,13 @@ export class MailPipeline {
         `Read the mails${readTools.length ? ` (with ${readTools.join(', ')})` : ''}, then give the user a few next steps with ` +
           "suggest_actions. If a reply is needed, write it only as a draft with the mail plugin's draft tool; never send mail. " +
           "Moving or marking mail follows the plugin's confirmation rules.",
+        `Write to the user in ${manager.config.locale ?? 'zh-CN'}, including any short remark before you use tools.`,
       ].join('\n');
       manager.send(text, { author: 'parent', meta: { mails: list.map((m) => ({ id: m.id, sourceId: m.sourceId, messageId: m.messageId })) } });
       for (const m of list) {
         const done: MailItem = { ...m, status: 'routed', routedTo: manager.id, updatedAt: isoNow() };
         this.#rt.store.upsertMail(done);
-        this.#rt.logProjectActivity(manager, 'note', `Mail received: ${m.subject}`, m.subject, m.id);
+        this.#rt.logProjectActivity(manager, 'mail', `Mail received: ${m.subject}`, m.subject, m.id);
         this.#emit(thread, { type: 'mail.routed', item: done, managerSessionId: manager.id });
         routed++;
       }
