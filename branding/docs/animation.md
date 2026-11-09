@@ -85,6 +85,6 @@ ready 到整层消失共 7.3 秒（`SPLASH_FINISH_AFTER`）。
 
 已做完、已提交：九瓣填满与双星消失对齐到同一帧（ready 后 3.6s）；双星一圈 4 → 3.5 秒、背景仍 5 秒；加速段 2.0 → 3.6 秒（收拢前约 2.06 圈）；收尾总长 6.0 → 7.3 秒。时间表见上。
 
-第五版 60fps 视频已出（`docs/screenshots/brand/boot-v5-*-1280p60.mp4`），点选页已发他。
+第五版、第六版 60fps 视频已出（`docs/screenshots/brand/boot-v5-*` / `boot-v6-*-1280p60.mp4`），第六版点选页已发他。
 
-下一步第一件事：等他回第五版「行不行」；还要改就只动 `SPLASH_FINISH` / `SPLASH_TIMING` 里他点名的那一项，再用 `render-splash-video.mjs` 出同规格视频。
+下一步第一件事：等他回第六版「行不行」；还要改就只动 `SPLASH_FINISH` / `SPLASH_TIMING` 里他点名的那一项，再用 `render-splash-video.mjs` 出同规格视频。
