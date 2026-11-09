@@ -31,7 +31,10 @@ export type SplashMode = 'daily' | 'always' | 'never';
 
 /** Sorting incoming mail into projects (the core's mail pipeline). */
 export interface MailPrefs {
+  /** On only after the user turned it on and agreed (consentedAt): mail content goes to a model. */
   enabled: boolean;
+  /** When the user agreed that mail goes to the sorting model (ISO); null = never asked. */
+  consentedAt: string | null;
   /** How often new mail is fetched, in minutes. */
   intervalMinutes: number;
   /** Mail ignored without asking the model: each line is text it contains, or /a pattern/. */
@@ -76,7 +79,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   updateSource: '',
   dismissedNotices: [],
   noticesCache: [],
-  mail: { enabled: true, intervalMinutes: 5, ignore: { from: [], subject: [] } },
+  mail: { enabled: false, consentedAt: null, intervalMinutes: 5, ignore: { from: [], subject: [] } },
   workflowsDir: '',
   pinnedProjects: [],
   mailSeen: {},
@@ -137,8 +140,11 @@ export function sanitizeSettings(value: unknown): ShellSettings {
           .filter(Boolean)
           .slice(0, 100)
       : [];
+  // Mail is on only with the user's agreement on record; an old "on" without it counts as off.
+  const consentedAt = typeof m.consentedAt === 'string' && !Number.isNaN(Date.parse(m.consentedAt)) ? m.consentedAt : null;
   const mail: MailPrefs = {
-    enabled: typeof m.enabled === 'boolean' ? m.enabled : true,
+    enabled: m.enabled === true && consentedAt !== null,
+    consentedAt,
     intervalMinutes: Math.min(24 * 60, Math.max(1, interval)),
     ignore: { from: rules(ig.from), subject: rules(ig.subject) },
   };
@@ -162,4 +168,9 @@ export function sanitizeSettings(value: unknown): ShellSettings {
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {
   return sanitizeSettings({ ...current, ...patch });
+}
+
+/** What the core gets from the mail settings (the agreement stays with the shell). */
+export function mailForCore(mail: MailPrefs): { enabled: boolean; intervalMinutes: number; ignore: MailPrefs['ignore'] } {
+  return { enabled: mail.enabled && mail.consentedAt !== null, intervalMinutes: mail.intervalMinutes, ignore: mail.ignore };
 }

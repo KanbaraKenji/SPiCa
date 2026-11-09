@@ -81,7 +81,7 @@
 
 - `%APPDATA%\Spica\settings.json`（主进程读写，先写临时文件再改名，写坏了读到的是默认值）。渲染层不碰 `localStorage`。字段：`skin`、`customSkins`、`zoom`、`panels.left/right`。
 - 设置分五页：常规（邮件、工作流）、外观（皮肤、缩放、开机动画）、模型、插件、关于（版本、更新源）。
-- 邮件：`mail.enabled`（默认开）、`mail.intervalMinutes`（5 / 15 / 30 / 60 分钟，默认 5）、`mail.ignore.from / subject`（一行一条，包含这段文字或 /正则/ 就直接忽略，不交给模型）。`mailSeen` 记每个项目经理的对话上次被打开的时间，用来算「有新来信」。
+- 邮件：`mail.enabled`（**默认关**；打开时先弹框说明来信会发给哪个模型分拣，同意后记 `mail.consentedAt`；没有这个记录的「开」一律当关，传给内核的也是关）、`mail.intervalMinutes`（5 / 15 / 30 / 60 分钟，默认 5）、`mail.ignore.from / subject`（一行一条，包含这段文字或 /正则/ 就直接忽略，不交给模型）。`mailSeen` 记每个项目经理的对话上次被打开的时间，用来算「有新来信」。
 - 工作流文件夹：`workflowsDir`，空 = `文档\Spica\workflows`（启动时建好）。
 - 使用日志：常规页「使用日志」选项目（默认全部）和时间（全部 / 今天 / 最近 7 天 / 最近 30 天），点「导出…」选保存位置（默认 `文档\Spica\使用日志-日期.jsonl`），由内核进程直接写文件（内核 `exportUsageLog`，密钥和接口地址已去掉），完成后显示条数、路径和「在文件夹中显示」。
 - 这些改了都不用重启：主进程调内核的 `configure(patch)`（邮件、工作流文件夹、模型都走它），正在跑的会话不受影响。

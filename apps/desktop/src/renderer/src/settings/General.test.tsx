@@ -63,3 +63,23 @@ describe('导出使用日志', () => {
     expect(Math.round((today.getTime() - month.getTime()) / 86_400_000)).toBe(29);
   });
 });
+
+describe('turning mail sorting on', () => {
+  it('asks first, naming the model the mail goes to; agreeing records when', () => {
+    const p = setup({ mailModel: 'DeepSeek · deepseek-chat' });
+    fireEvent.click(screen.getByRole('switch', { name: '把来信分到项目' }));
+    expect(p.onChange).not.toHaveBeenCalled();
+    expect(screen.getByText(/会发给「DeepSeek · deepseek-chat」分拣/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '打开' }));
+    const patch = (p.onChange as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as { mail: { enabled: boolean; consentedAt: string } };
+    expect(patch.mail.enabled).toBe(true);
+    expect(Number.isNaN(Date.parse(patch.mail.consentedAt))).toBe(false);
+  });
+
+  it('cancelling leaves it off', () => {
+    const p = setup();
+    fireEvent.click(screen.getByRole('switch', { name: '把来信分到项目' }));
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(p.onChange).not.toHaveBeenCalled();
+  });
+});

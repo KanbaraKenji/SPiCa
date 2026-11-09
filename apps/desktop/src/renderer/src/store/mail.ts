@@ -25,6 +25,8 @@ export interface MailView {
   threadId: string | null;
   /** Mail whose text carried instructions (the core flagged them and told the model to ignore them). */
   flagged: string[];
+  /** The provider and model the core sends mail to for sorting (from mail.configured); null until known. */
+  triageModel: { providerId: string; model: string } | null;
 }
 
 export interface MailSource {
@@ -47,6 +49,7 @@ export class MailStore {
       problem: '',
       threadId: null,
       flagged: [],
+      triageModel: null,
     });
     source.onAgentEvent((e) => this.#onEvent(e));
   }
@@ -124,6 +127,9 @@ export class MailStore {
     if (e.type === 'mail.triaged' || e.type === 'mail.routed' || e.type === 'mail.feedback') {
       this.#upsert(e.item);
       if (this.state.get().threadId !== e.sessionId) this.state.set((v) => ({ ...v, threadId: e.sessionId }));
+    } else if (e.type === 'mail.configured') {
+      const tm = e.settings.triageModel;
+      this.state.set((v) => ({ ...v, triageModel: tm ? { providerId: tm.providerId, model: tm.model } : null }));
     } else if (e.type === 'guard.flagged' && e.note.kind === 'mail') {
       this.#flag(flaggedMailIds([e.note]));
     } else if (e.type === 'mail.polled') {

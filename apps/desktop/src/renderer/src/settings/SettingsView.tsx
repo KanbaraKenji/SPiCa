@@ -34,9 +34,10 @@ export interface SettingsViewProps {
   projects: GeneralProps['projects'];
   exportUsageLog: GeneralProps['exportUsageLog'];
   showInFolder: GeneralProps['showInFolder'];
+  mailModel?: string;
 }
 
-export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder }: SettingsViewProps) {
+export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel }: SettingsViewProps) {
   const { settings } = useShell(shell);
   return (
     <div className="settings">
@@ -68,6 +69,7 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
               projects={projects}
               exportUsageLog={exportUsageLog}
               showInFolder={showInFolder}
+              {...(mailModel ? { mailModel } : {})}
             />
           ) : tab === 'appearance' ? (
             <Appearance settings={settings} activeSkin={shell.activeSkin()} onChange={(p) => shell.update(p)} />
