@@ -28,7 +28,7 @@ describe('mail.configure', () => {
   it('reschedules, stops and starts polling without a restart, and says so', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] });
     let lists = 0;
-    const rt = makeRuntime(gw, { cwd: dir, mail: { intervalMinutes: 5 } });
+    const rt = makeRuntime(gw, { cwd: dir, mail: { enabled: true, intervalMinutes: 5 } });
     rt.tools.register({ spec: { name: 'm__list', description: '', inputSchema: { type: 'object' } }, execute: async () => ((lists += 1), { content: '{"messages":[]}' }) }, 'p');
     rt.tools.register({ spec: { name: 'm__read', description: '', inputSchema: { type: 'object' } }, execute: async () => ({ content: '{}' }) }, 'p');
     rt.mail.addSource({ id: 'm', listTool: 'm__list', readTool: 'm__read' });

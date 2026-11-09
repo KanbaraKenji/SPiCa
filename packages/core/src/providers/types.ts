@@ -68,6 +68,8 @@ export interface Provider {
   /** Called once when the runtime adopts the provider (e.g. to trace token requests). */
   attach?(services: { tracer: import('../trace.ts').Tracer }): void;
   stream(request: ModelRequest, ctx: ProviderCallContext): AsyncGenerator<ProviderEvent, void>;
+  /** Get fresh credentials without calling the model (test connection tells the two steps apart). */
+  checkAuth?(signal: AbortSignal): Promise<void>;
 }
 
 /** Thrown for failed provider calls. Message is already redacted. */
@@ -75,10 +77,13 @@ export class ProviderError extends Error {
   override name = 'ProviderError';
   readonly status: number | undefined;
   readonly retryable: boolean;
-  constructor(message: string, opts: { status?: number; retryable?: boolean } = {}) {
+  /** Stable code (see NET_HINTS in net.ts), e.g. "tls.untrusted", "wso2.token_rejected". */
+  readonly code: string | undefined;
+  constructor(message: string, opts: { status?: number; retryable?: boolean; code?: string } = {}) {
     super(message);
     this.status = opts.status;
     this.retryable = opts.retryable ?? false;
+    this.code = opts.code;
   }
 }
 
@@ -88,4 +93,6 @@ export interface AuthSource {
   headers(signal: AbortSignal): Promise<Record<string, string>>;
   /** Called after a 401; return true if new credentials were obtained and a retry makes sense. */
   refresh?(signal: AbortSignal): Promise<boolean>;
+  /** Why the gateway may still say 401 after a refresh (code + detail), e.g. a clock difference. */
+  diagnose?(): { code: string; detail: string };
 }

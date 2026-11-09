@@ -649,7 +649,7 @@ export class Session {
           attempts: callInfo.attempts,
           ...(err instanceof ProviderError && err.status ? { httpStatus: err.status } : {}),
         });
-        this.#emit({ type: 'error', message, retryable: err instanceof ProviderError && err.retryable });
+        this.#emit({ type: 'error', message, retryable: err instanceof ProviderError && err.retryable, ...(err instanceof ProviderError && err.code ? { code: err.code } : {}) });
         keepPartial({ interrupted: true, error: true });
         return end('error', message);
       }

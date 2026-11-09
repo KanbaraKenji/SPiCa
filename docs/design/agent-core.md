@@ -1,6 +1,6 @@
 # Agent 内核设计（`@spica/core`）
 
-> **状态**：定稿版（2026-11-10，对应 M1–M9）。本文按代码现状写；做过的取舍和改过的决定放在附录 A，验收记录在附录 B，开发约定在附录 C。
+> **状态**：定稿版（2026-11-10，对应 M1–M10）。本文按代码现状写；做过的取舍和改过的决定放在附录 A，验收记录在附录 B，开发约定在附录 C。
 > **读者**：接手内核、写插件 / 评测插件、做桌面外壳的人。类型定义以 `packages/protocol/src/index.ts` 为准，本文只讲为什么和怎么用。
 > **需求来源**：立项书「定位」「硬规则」「模型接入」「Harness」「数据与外壳」「首版验收」。主循环全部自写，不基于任何现成 Agent 框架。
 
@@ -119,7 +119,31 @@
 - **anthropic**（`providers/anthropic.ts`）：Messages API 原生流式；thinking 连同签名只回传给产生它的 provider；系统提示、工具表最后一项、最后一条消息打 `cache_control`；同角色连续消息合并、tool_result 排在用户轮最前；托管搜索等模型托管的块作为 `opaque` 原样保存回传。
 - **wso2**（`providers/wso2.ts`）：openai-compatible 外包一层 OAuth2 client credentials。第一次请求前取 token（client id / secret 默认走 HTTP Basic，可改放表单，scope 可配），缓存到过期前 60 秒；多个会话同时要 token 只发一次请求；网关回 401 时作废缓存、重取一次、重发一次（不占重试次数）；凭据被拒不重试，错误里不出现 secret；每次取 token 记一条 `kind: 'auth'` 记录。
 - **共用 http 层**（`providers/http.ts`）：408 / 409 / 429 / 5xx / 网络错重试，指数退避加抖动，尊重 Retry-After；只在拿到响应头之前重试（流已开始吐字就不重试，免得界面上出现重复文字）；等响应头有超时，读流有空闲超时；错误信息过一遍去敏。**软停止**：用户插话或停止时不中止连接，拿到响应头之前就不等了、等它回来再丢掉正文，之后由读流的一方 `cancel()`；只有「等响应头超时」才硬中止（原因见第 20 节）。
-- **测试连接**（`providers/probe.ts`）：按给定配置发一次最小请求，返回是否成功、延迟、服务端报的模型名和人话错误；不进任何会话，记一条 `initiator: 'runtime:probe'` 的记录。
+- **测试连接**（`providers/probe.ts`）：按给定配置发一次最小请求，返回是否成功、延迟、服务端报的模型名；失败时给 `stage`（`token` = 取 token 这一步，`model` = 调模型这一步，WSO2 先单独取一次 token 再调模型）、`code`（见下表）和中文 `hint`（「取 token 失败：…」「调模型失败：…」）。不进任何会话，记一条 `initiator: 'runtime:probe'` 的记录。
+- **WSO2 的几种失败**：token 地址连不上 → `wso2.token_unreachable`，若是证书或代理问题则直接给 `tls.*` / `proxy.*`；凭据或 scope 不对 → `wso2.token_rejected`；token 地址回的是网页或不是 token → `wso2.token_bad_response`（报网页标题，不把整页塞进错误）；token 快过期时提前 60 秒换新的；网关回 401 时作废缓存重取一次，重取后仍 401：本机时间和网关（按 token 响应的 Date 头）相差超过 5 分钟就报 `wso2.clock_skew`，否则报 `wso2.token_not_accepted`（多半是应用没订阅这个接口）。模型调用回网页错误页 → `gateway.html`。
+
+**网络**（`net.ts`，M10）：所有对外请求（各 provider、取 token、web_fetch、web_search）都走 `netFetch`。
+- 设置 `network: { proxy: { url, noProxy[] } | null, caFile, useSystemCa }`，在后台配置里给，或用 `configure({ network })` 运行中改，下一个请求生效；端口方法 `networkSettings()` 返回当前生效的值（代理不带密码）。
+- 没写的部分从环境变量取：`HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`。`NODE_EXTRA_CA_CERTS` 由 Node 自己读，算在默认证书里。`proxy: null` 表示明确不走代理，环境变量也不看。
+- 代理：`http://[用户:密码@]主机:端口`，密码里的特殊字符要百分号编码，带登录时发 Basic 认证。HTTPS 目标走 CONNECT 隧道，隧道里再和目标做 TLS；HTTP 目标把完整地址交给代理。每个请求一条隧道，用完就关。`noProxy`：`*` 表示全部直连；`example.com` 和 `.example.com` 都匹配它本身和所有子域；可写 `主机:端口`；IP 地址按完全相同匹配。不认 CIDR 网段，也不支持 PAC 文件。
+- 证书：信任列表 = Node 默认（自带的 + `NODE_EXTRA_CA_CERTS`）+ 操作系统证书库（`useSystemCa`，默认开；Windows 上公司的 TLS 检查根证书通常已经在系统库里）+ `caFile`（PEM，可以放多张）。合并后设为 Node 的默认信任，直连和隧道都用它；拿掉 `caFile` 后，下一个新连接就不再信任。读不了的文件、没有证书的文件只给警告，不会让后台起不来。
+- **错误码**（`ProviderError.code`、`error` 事件的 `code`、测试连接的 `code` / `hint`；中文说明在 `NET_HINTS`）：
+
+| 码 | 意思 |
+|---|---|
+| `net.dns` | 找不到地址：拼写错，或外网要走代理 |
+| `net.refused` | 对方拒绝连接：地址或端口不对，服务没开 |
+| `net.timeout` | 连接超时：多半要配代理，或被防火墙拦了 |
+| `net.reset` | 连接被中途断开：代理或防火墙常见 |
+| `tls.untrusted` | 证书不受信任：公司 TLS 检查换了证书，配 `caFile` 或打开 `useSystemCa`（不重试） |
+| `tls.expired` | 证书过期，或本机时间不对 |
+| `tls.name_mismatch` | 证书上的名字和地址对不上 |
+| `proxy.unreachable` | 连不上代理 |
+| `proxy.auth` | 代理要登录（407）（不重试） |
+| `proxy.refused` | 代理拒绝转发到这个地址 |
+| `gateway.html` | 网关回了一个网页（拦截页、登录页、错误页），不是接口数据 |
+| `gateway.unauthorized` / `gateway.forbidden` / `gateway.not_found` / `gateway.bad_request` / `gateway.rate_limited` / `gateway.server` | 401 / 403 / 404 / 400 / 429 / 5xx |
+| `wso2.token_unreachable` / `wso2.token_rejected` / `wso2.token_bad_response` / `wso2.token_not_accepted` / `wso2.clock_skew` | 见上 |
 
 ## 7. 钩子
 
@@ -304,7 +328,8 @@
 ```
 
 - **邮件来源**：`{ id, listTool, readTool, listArgs?, fields? }`，由插件在清单里声明（`mail: { list_tool, read_tool }`），插件包启用时登记、停用时撤掉，部署配置里不出现插件工具名。工具不在时这个来源跳过；插件的模拟模式照样能跑通整条链。
-- **配置**（`MailConfig`，运行中可改）：`enabled`、`intervalMinutes`（默认 5）、`batchSize`（默认 20）、`triageTemplateId`、`rules`（附加分拣规则文本）、`ignore { from, subject }`（不分大小写的子串，或 `/正则/标志`）。启动后先跑一次，之后按间隔跑，上一轮没结束就跳过；`pollMail()` 手动触发。
+- **默认关闭**：轮询会把来信内容发给模型，所以要等用户在设置里亲手打开（`enabled: true`）才轮询。改间隔之类的设置不会把它打开。`mailSettings()` 和 `mail.configured` 的设置里带 `triageModel { providerId, model }`，说明分拣会把信发给哪个模型；打开前的提示由界面来写。项目经理读信用的是它们各自会话的模型。
+- **配置**（`MailConfig`，运行中可改）：`enabled`（默认 false）、`intervalMinutes`（默认 5）、`batchSize`（默认 20）、`triageTemplateId`、`rules`（附加分拣规则文本）、`ignore { from, subject }`（不分大小写的子串，或 `/正则/标志`）。启动后先跑一次，之后按间隔跑，上一轮没结束就跳过；`pollMail()` 手动触发。
 - **不问模型就定的**（按顺序）：命中忽略规则（`by: 'rule'`）；用户归过项目的发件人直接归到同一项目、用户忽略过的发件人直接忽略（`by: 'sender_memory'`）。
 - **分拣**：模型必须调 `triage_mail { results: [{ mail_id, decision: project | new | ignore, project_id?, suggestion?, reason, confidence }] }`。内核校验项目在清单里、这一批每封都有结果，不合格的和漏掉的点名让模型同一轮改正；模型只用文字作答没交结果时，列出没分拣的信再问一次。分拣线程的工具只有 `triage_mail`、`list_projects`、`open_project` 和来源的读信工具。
 - **转给项目经理**：每轮每个项目经理只收一条消息（`meta.mails` 是邮件 id 数组，`meta.untrusted` 是围栏标记），要求先读全文、用 `suggest_actions` 给下一步、回复只写草稿不发送、移动和标记照插件的确认规则；消息末尾写明用界面语言。每封信记一条 `mail` 关键操作。发 `mail.routed`。
@@ -322,7 +347,7 @@
 
 - **端口协议**（`host/wire.ts`）：`req { id, method, params }`、`res { id, result | error {code, message} }`、`event { event }`、`ready`；`electronPort()`、`nodePort()` 两种适配。`BackendServer` 把 AgentApi、`eventsSince(seq)`、`workflowErrors` 和扩展方法挂在端口上，留最近 5000 条事件供重连补齐；补不上时界面重新拉会话和消息，历史本身就能重建所有卡片。`connectBackend(port)` 给主进程一个同接口的 AgentApi，外加 `call`、`onEvent`、`ready`、`fail()`。
 - **启动**（`host/backend.ts`）：`startBackend(config, host)`：建 provider 并登记去敏表、加数据库锁、加载提取器模块、`restore()`、挂扩展模块（`attachBackend(runtime, options)` 返回 `{ mcpTools?, methods?, warnings?, close? }`，插件包就是这样挂上来的，内核不依赖它）、按配置启动邮件轮询和 HTTP MCP 服务。`host` 可传已导入的模块表，打包后不靠按包名加载。Electron 入口 `utility-entry.ts`：主进程发 `{type:'start', config}` 并附端口，之后可 `{type:'connect'}` 再接端口、`{type:'shutdown'}` 退出；内核回 `started` 或 `failed`。
-- **运行中改设置**（端口方法 `configure(patch)`，`SettingsPatch`）：provider 全量列表（新的加、改的换、没列的删，限流器和排队的人保留）、新会话的默认 provider / 模型、限流、花费上限和价表、流程文件夹（重读并返回问题）、界面语言、搜索接口（`null` 去掉）、邮件设置。发 `runtime.configured`，邮件另发 `mail.configured`。正在跑的会话保留自己的 provider 和模型；它用的 provider 被删了，下一次调用以「unknown provider」结束，不会卡住。其他端口方法：`mailSettings()`、`probeProvider(配置, 模型)`、`mcpHttp()`（只回地址）。
+- **运行中改设置**（端口方法 `configure(patch)`，`SettingsPatch`）：provider 全量列表（新的加、改的换、没列的删，限流器和排队的人保留）、新会话的默认 provider / 模型、限流、花费上限和价表、流程文件夹（重读并返回问题）、界面语言、搜索接口（`null` 去掉）、邮件设置、网络（代理和证书）。发 `runtime.configured`，邮件另发 `mail.configured`。正在跑的会话保留自己的 provider 和模型；它用的 provider 被删了，下一次调用以「unknown provider」结束，不会卡住。其他端口方法：`mailSettings()`、`networkSettings()`、`probeProvider(配置, 模型)`、`mcpHttp()`（只回地址）。
 - 只在启动时定的：数据库路径、扩展模块列表、大输出存放目录。
 
 ## 18. 本程序的 MCP 服务
@@ -370,6 +395,7 @@
 | Electron 45 自带 Node 24.22.2 | 16 次都没有 0xC0000409 | 通过 |
 
 - 默认价表里 DeepSeek 的价格未核实（标 `unverified`）。
+- 代理只支持 Basic 登录。要 NTLM / Kerberos（Windows 域登录）的代理不支持，这种情况请 IT 给一个免登录的代理端口，或在本机跑一个转换代理。PAC 文件和 CIDR 写法的 `noProxy` 也不支持。走代理的请求每次新建隧道，不复用连接。
 - 非 Anthropic 模型的 web_search 接哪家搜索接口未定；接口可插，通用 JSON 适配器已有。
 - 不可信内容检测是规则匹配，不是理解（第 9 节）；写文件不在强制确认之列。
 - 「收到响应后改」默认先流给界面、改了再替换；是否需要「先缓冲、改完再显示」的模式，留给插件以后声明。
@@ -402,12 +428,15 @@
 | 2026-11-10 | 外来内容一律围栏 + 标记 + 强制确认，插件的 `auto` 盖不过 | 分拣和项目经理会根据外来内容行动，注入不能借插件配置绕过用户 |
 | 2026-11-10 | 批准方式 auto 只放行「声明为不可逆」的默认确认；附件按外来内容处理 | 用户想少点确认，但守卫和插件自己要求的确认不能因此消失；附件常是别人发来的文件 |
 | 2026-11-10 | SessionInfo 的新字段和新的 AgentApi 方法先设成可选，外壳的假后端在同一提交补上 | 不让外壳的类型检查变红 |
+| 2026-11-10 | 邮件流水线默认关闭，用户亲手打开时界面提示信会发给哪个模型 | 在公司用个人模型 key 时，自动轮询会把公司邮件发出去 |
+| 2026-11-10 | 代理和证书自己实现（node:http 的 CONNECT 隧道 + 合并进默认信任），不引第三方包 | 内置 fetch 没有公开的代理接口，又要能运行中改；运行时零依赖 |
 | 2026-11-10 | 删项目只删 Spica 的记录，不碰文件夹；来信改回「新事务」、清掉指向它的发件人记忆；可追溯记录保留 | 文件是用户的；信不能再转给不存在的项目；花费上限要靠完整的历史 |
 
 ## 附录 B 验收记录
 
 | 里程碑 | 日期 | 测试 | 真模型冒烟 |
 |---|---|---|---|
+| M10 | 2026-11-10 | 新增：代理（模型调用经本地代理、noProxy 直连、运行中改、环境变量兜底、`null` 关掉、密码不外露、要登录的代理）；证书（用 openssl 现场生成自签 CA，没配 `caFile` 时握手失败并报 `tls.untrusted`，配上后直连和经代理都通，拿掉后又失败，读不了的文件只警告）；WSO2 和测试连接（token 地址回登录页 / 凭据错 / 连不上 → stage token，网关回 HTML 错误页 → stage model + `gateway.html`，重取后仍 401 时报 `wso2.clock_skew` 或 `wso2.token_not_accepted`）；邮件默认关闭并给出 `triageModel`。core + plugins 共 233 条 | — |
 | M9 | 2026-11-10 | 新增会话级控制 5 条和项目重命名 / 删除 2 条（删除时停掉在跑的子会话、文件夹不动、来信改回新事务、发件人记忆清掉、另一个项目不受影响、重启后不回来）；会话级控制：每次模型调用后的上下文用量和模型窗口（重启后还在）；默认价表的 Claude 窗口和 Haiku 长提示价；改模型在下一次调用生效、正在进行的不动、备注不插进工具对中间、回传给父会话；附件按外来数据围栏、给卡片、读不了的报错、带附件的一轮里不可逆动作仍要确认；批准方式 auto 放行不可逆工具并记录，钩子要求的确认和守卫的确认照样要人，子 Agent 继承。core + plugins + 评测插件 + apps/desktop 共 359 条 | — |
 | M8 | 2026-11-10 | 新增守卫 5 条：中英文检测、围栏不可关闭；插件把发送 / 移动设成自动，读信后发信、移信、读 .env、开信里的链接都停下等确认，拒绝后什么都没执行；用户再要求就照常执行；转来的信和由它派出的子 Agent 受限；邮件流水线的消息围栏与标记。core + plugins + 评测插件 219 条 | `npm run smoke:guard`：虚构邮箱 3 封正常 + 4 封注入信，插件把发送和移动设成自动，脚本拒绝一切确认：没有发出 / 转发 / 移动任何信，没读 .env，没跑命令，没开可疑链接；改归属的信仍按内容归类；4 封都被标记；正常信照常分拣。25 秒约 0.009 USD（这次模型自己就没去做，「被挡下」由单元测试保证） |
 | M7 | 2026-11-10 | 新增：16 个子任务同时跑的压力测试（限流排队按顺序、位次 n→1、花费上限按预留算不超、排队中 / 运行中被停释放）、停用工具的拒绝与备注、使用日志导出（两个项目、去敏、筛选、只读命令行、路径不带用户名、只写去敏表）、MCP 的 HTTP 传输（令牌、本机、Origin、大小）、评测插件（经 HTTP 跑 J5、跳过与失败、插件清单合法）；共 214 条 | `npm run eval`：只经 MCP 服务、DeepSeek flash，J2–J7 全过，55 秒，32 次请求约 0.0134 USD；同库导出的使用日志 143 行，报告和日志里没有 key 和端点地址。`journey:j6` 修复后连跑两次 7/7 |

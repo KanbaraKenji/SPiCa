@@ -16,6 +16,7 @@ import type { FileExtractor } from '../tools/types.ts';
 import { jsonSearchBackend, type JsonSearchBackendOptions } from '../tools/web-tools.ts';
 import type { McpTool } from '../mcp/server.ts';
 import { serveMcpHttp, type McpHttpServer } from '../mcp/http.ts';
+import { configureNetwork, networkStatus, type NetworkConfig } from '../net.ts';
 import type { MailConfig } from '../mail.ts';
 import { BackendServer } from './server.ts';
 
@@ -67,6 +68,12 @@ export interface BackendConfig {
    * variable `tokenEnv` or is generated, and is written to `tokenFile` when given.
    */
   mcpHttp?: { port?: number; host?: string; allowRemote?: boolean; tokenEnv?: string; tokenFile?: string };
+  /**
+   * Proxy and extra trusted certificates for every outbound request (models,
+   * token endpoints, web_fetch, web_search). What is left out comes from
+   * HTTPS_PROXY / HTTP_PROXY / NO_PROXY and NODE_EXTRA_CA_CERTS.
+   */
+  network?: NetworkConfig;
 }
 
 /** What attachBackend() of an extension module returns. */
@@ -177,6 +184,8 @@ export interface SettingsPatch {
   /** null removes web_search. */
   search?: JsonSearchBackendOptions | null;
   mail?: Omit<MailConfig, 'sources'>;
+  /** Proxy / certificates; applies to the next request. */
+  network?: NetworkConfig;
 }
 
 /** Apply a settings patch to a running runtime; emits runtime.configured. */
@@ -220,6 +229,10 @@ export function applySettings(runtime: Runtime, patch: SettingsPatch): { changed
     runtime.mail.configure(patch.mail);
     changed.push('mail');
   }
+  if (patch.network) {
+    warnings.push(...configureNetwork(patch.network).warnings);
+    changed.push('network');
+  }
   runtime.events.emit({ sessionId: runtime.top().id, parentChain: [] }, { type: 'runtime.configured', changed, warnings });
   return { changed, warnings };
 }
@@ -250,7 +263,7 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
   const load = async (spec: string): Promise<unknown> => host.modules?.[spec] ?? (await import(spec));
   const unlock = lockDatabase(cfg.dbPath);
   try {
-    const warnings: string[] = [];
+    const warnings: string[] = [...configureNetwork(cfg.network ?? {}).warnings];
     const extractors: FileExtractor[] = [];
     for (const spec of cfg.extractorModules ?? []) {
       try {
@@ -296,7 +309,8 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
         warnings.push(`extension ${ext.module} could not be attached: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    if (cfg.mail && cfg.mail.enabled !== false) runtime.mail.start();
+    // off unless the user turned it on: polling sends mail content to the configured model
+    if (cfg.mail?.enabled === true) runtime.mail.start();
     const mcpTools = extensions.flatMap((e) => e.mcpTools ?? []);
     let mcpHttp: McpHttpServer | undefined;
     if (cfg.mcpHttp) {
@@ -325,6 +339,8 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
         configure: (patch: unknown) => applySettings(runtime, (patch ?? {}) as SettingsPatch),
         /** Where the HTTP MCP service listens (never the token), or null. */
         mcpHttp: () => (mcpHttp ? { url: mcpHttp.url, tokenFile: cfg.mcpHttp?.tokenFile ?? null } : null),
+        /** Proxy and certificates in force (no password). */
+        networkSettings: () => networkStatus(),
         /** Current mail settings and whether polling runs. */
         mailSettings: () => ({ ...runtime.mail.settings, running: runtime.mail.running, sources: runtime.mail.activeSources.map((s) => s.id) }),
         /** Test connection with a provider config from the settings form. */

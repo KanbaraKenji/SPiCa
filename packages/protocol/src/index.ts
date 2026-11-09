@@ -375,7 +375,8 @@ export type CoreEventBody =
   | { type: 'turn.end'; turn: number }
   /** A run (from an input until the agent stops) ended. */
   | { type: 'run.end'; reason: RunEndReason; detail?: string }
-  | { type: 'error'; message: string; retryable?: boolean };
+  /** `code`: stable id of the cause (net.*, tls.*, proxy.*, gateway.*, wso2.*); the UI words it. */
+  | { type: 'error'; message: string; retryable?: boolean; code?: string };
 
 /** What a file card shows about a file the agent read (event `file.card`). */
 export interface FileCardMeta {
@@ -410,6 +411,12 @@ export interface ProbeResult {
   model?: string;
   /** Failure category; UIs write their own message from it. */
   errorCode?: 'auth' | 'not_found' | 'rate_limited' | 'server' | 'bad_request' | 'network' | 'timeout' | 'aborted';
+  /** Which step failed: getting a token (WSO2) or calling the model. */
+  stage?: 'token' | 'model';
+  /** Finer cause: net.* / tls.* / proxy.* / gateway.* / wso2.* (see the core's NET_HINTS). */
+  code?: string;
+  /** The cause in Chinese, ready to show next to "test connection". */
+  hint?: string;
   httpStatus?: number;
   /** Technical detail (redacted), for logs and "show details". */
   message?: string;
@@ -600,7 +607,10 @@ export interface MailItem {
 
 /** Mail settings the settings page can change while running. */
 export interface MailSettings {
+  /** Default off: the user turns mail on in the settings (the page says mail content goes to `triageModel`). */
   enabled?: boolean;
+  /** Read only (in mail.configured / mailSettings()): the provider and model that receive mail content for sorting. */
+  triageModel?: { providerId: string; model: string };
   intervalMinutes?: number;
   batchSize?: number;
   triageTemplateId?: string;
