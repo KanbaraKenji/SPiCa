@@ -39,6 +39,9 @@ scripts/            Repository scripts (sensitive-word scan, ...)
 docs/design/        Design documents (in Chinese)
 ```
 
+Conventions (no console windows, per-user install, how to add a package, ...) are in
+[docs/design/repo-layout.md](docs/design/repo-layout.md).
+
 ## Configuration
 
 Copy `.env.example` to `.env.local` and fill in your model endpoints and keys.
