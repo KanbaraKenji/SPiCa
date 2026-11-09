@@ -10,6 +10,10 @@ export interface ModelPrice {
   cacheWrite?: number;
   /** True when the default value has not been checked against the vendor's price list. */
   unverified?: boolean;
+  /** Context window in tokens (only from an exact model entry; never guessed from a `*` row). */
+  contextWindow?: number;
+  /** Higher rates when the prompt is longer than `above` input tokens. */
+  longContext?: { above: number; input: number; output: number; cacheRead?: number; cacheWrite?: number };
 }
 
 /** providerKind or providerId -> model -> price. Lookup tries id first, then kind, then '*'. */
@@ -21,9 +25,17 @@ export type PriceTable = Record<string, Record<string, ModelPrice>>;
  */
 export const DEFAULT_PRICES: PriceTable = {
   anthropic: {
-    'claude-haiku-5-5': { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
-    'claude-sonnet-5-5': { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
-    'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
+    'claude-haiku-5-5': {
+      input: 0.1,
+      output: 0.5,
+      cacheRead: 0.01,
+      cacheWrite: 0.125,
+      contextWindow: 1_000_000,
+      // prompts over 100K tokens use the second rate card
+      longContext: { above: 100_000, input: 0.5, output: 2.5, cacheRead: 0.05, cacheWrite: 0.625 },
+    },
+    'claude-sonnet-5-5': { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5, contextWindow: 1_000_000 },
+    'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5, contextWindow: 1_000_000 },
     '*': { input: 10, output: 50, unverified: true }, // unknown Claude model: assume the top tier
   },
   'openai-compatible': {
@@ -114,8 +126,19 @@ export class CostLedger {
     return this.#prices['*']?.['*'] ?? FALLBACK_PRICE;
   }
 
+  /** Context window of a model when the price table knows it exactly, else null. */
+  contextWindow(providerId: string, providerKind: string, model: string): number | null {
+    for (const t of [this.#prices[providerId], this.#prices[providerKind]]) {
+      const w = t?.[model]?.contextWindow;
+      if (w) return w;
+    }
+    return null;
+  }
+
   estimate(scope: Pick<CostScope, 'providerId' | 'providerKind' | 'model'>, usage: Usage): number {
-    const p = this.price(scope.providerId, scope.providerKind, scope.model);
+    const base = this.price(scope.providerId, scope.providerKind, scope.model);
+    const prompt = usage.inputTokens + (scope.providerKind === 'anthropic' ? (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0) : 0);
+    const p = base.longContext && prompt > base.longContext.above ? { ...base, ...base.longContext } : base;
     const cacheRead = usage.cacheReadTokens ?? 0;
     const cacheWrite = usage.cacheWriteTokens ?? 0;
     // Anthropic reports cached tokens separately from input_tokens; OpenAI-style

@@ -96,6 +96,7 @@ export interface RuntimeInternals {
   onToolDone(session: Session, call: { name: string; input: unknown }, result: { isError: boolean }): void;
   hasChildren(sessionId: string): boolean;
   session(id: string): Session | undefined;
+  recordDecision(sessionId: string, decision: string, by: 'user' | 'agent'): void;
 }
 
 /** How a session is named in text written for the model. */
@@ -294,6 +295,8 @@ export class Runtime implements RuntimeInternals {
       ...(tools ? { tools } : {}),
       ...(tpl ? { templateId: tpl.id } : {}),
       ...((req.projectId ?? parent?.config.projectId) ? { projectId: req.projectId ?? parent?.config.projectId } : {}),
+      // sub-agents work under their parent's approval mode
+      ...((req.approvalMode ?? parent?.config.approvalMode) === 'auto' ? { approvalMode: 'auto' as const } : {}),
     };
     const provider = this.provider(config.providerId); // fail fast
     config.serverWebSearch = (this.#opts.hostedWebSearch ?? true) && provider.capabilities.serverWebSearch;
@@ -711,11 +714,13 @@ export class Runtime implements RuntimeInternals {
     const awaiting: string[] = [];
     const traces = this.store.listTraces();
     const lastInput = new Map<string, number>();
+    const lastContext = new Map<string, number>();
     for (const t of traces) {
       if (t.kind !== 'model' || !t.sessionId || t.status !== 'ok') continue;
       const kind = t.providerId ? this.#providers.get(t.providerId)?.kind : undefined;
       const cached = kind === 'anthropic' ? (t.cacheReadTokens ?? 0) + (t.cacheWriteTokens ?? 0) : 0;
       lastInput.set(t.sessionId, (t.inputTokens ?? 0) + cached);
+      lastContext.set(t.sessionId, (t.inputTokens ?? 0) + cached + (t.outputTokens ?? 0));
     }
     let count = 0;
     for (const rec of this.store.listSessions()) {
@@ -737,7 +742,10 @@ export class Runtime implements RuntimeInternals {
         this.store.updateMessage(fixed); // a stream cut off by the crash
         return fixed;
       });
-      const s = new Session(this, record, messages, { lastInputTokens: lastInput.get(rec.id) ?? 0 });
+      const s = new Session(this, record, messages, {
+        lastInputTokens: lastInput.get(rec.id) ?? 0,
+        ...(lastContext.has(rec.id) ? { contextTokens: lastContext.get(rec.id)! } : {}),
+      });
       this.#sessions.set(s.id, s);
       count++;
     }

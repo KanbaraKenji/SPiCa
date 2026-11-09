@@ -16,6 +16,11 @@ export interface McpTool {
 
 const str = { type: 'string' } as const;
 const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: 'object', properties, required });
+const attachmentsSchema = { type: 'array', items: obj({ path: str }, ['path']), description: 'Files on this machine to attach.' };
+const attachmentsOf = (a: Record<string, unknown>) =>
+  Array.isArray(a.attachments)
+    ? { attachments: (a.attachments as { path?: unknown }[]).map((x) => ({ path: String(x?.path ?? '') })).filter((x) => x.path) }
+    : undefined;
 
 /** Compact transcript for automation: kind, text, tool calls and results. */
 function transcript(messages: Message[]): unknown[] {
@@ -78,7 +83,24 @@ export function spicaMcpTools(rt: Runtime, events: CoreEvent[]): McpTool[] {
     { name: 'spica_list_sessions', description: 'All sessions with role, status, parent and project.', inputSchema: obj({}), run: () => api.listSessions() },
     { name: 'spica_get_messages', description: 'Transcript of a session (compact), optionally only messages after a seq.', inputSchema: obj({ session_id: str, after_seq: { type: 'integer' } }, ['session_id']), run: async (a) => transcript((await api.getMessages(String(a.session_id))).filter((m) => m.seq > Number(a.after_seq ?? 0))) },
     { name: 'spica_get_pending', description: 'Questions and confirmations a session is waiting on.', inputSchema: obj({ session_id: str }, ['session_id']), run: (a) => api.getPending(String(a.session_id)) },
-    { name: 'spica_send', description: 'Send a user message (starts a run, or is queued into the running one). Returns at once.', inputSchema: obj({ session_id: str, text: str }, ['session_id', 'text']), run: (a) => api.send(String(a.session_id), String(a.text)) },
+    {
+      name: 'spica_send',
+      description: 'Send a user message (starts a run, or is queued into the running one), optionally with attached files on this machine. Returns at once.',
+      inputSchema: obj({ session_id: str, text: str, attachments: attachmentsSchema }, ['session_id', 'text']),
+      run: (a) => api.send(String(a.session_id), String(a.text), attachmentsOf(a)),
+    },
+    {
+      name: 'spica_set_model',
+      description: 'Use another provider / model for a session from its next model call on (recorded as a decision).',
+      inputSchema: obj({ session_id: str, provider_id: str, model: str }, ['session_id', 'provider_id', 'model']),
+      run: (a) => api.setSessionModel!(String(a.session_id), String(a.provider_id), String(a.model)),
+    },
+    {
+      name: 'spica_set_approval_mode',
+      description: 'manual: every confirmation goes to the user; auto: tools that are irreversible by declaration run on their own (recorded). Confirmations the guard requires always go to the user.',
+      inputSchema: obj({ session_id: str, mode: { type: 'string', enum: ['manual', 'auto'] } }, ['session_id', 'mode']),
+      run: (a) => api.setApprovalMode!(String(a.session_id), a.mode === 'auto' ? 'auto' : 'manual'),
+    },
     { name: 'spica_steer', description: 'Insert a message into a running session; mode "next" (turn boundary) or "interrupt".', inputSchema: obj({ session_id: str, text: str, mode: { type: 'string', enum: ['next', 'interrupt'] } }, ['session_id', 'text']), run: (a) => api.steer(String(a.session_id), String(a.text), a.mode === 'interrupt' ? 'interrupt' : 'next') },
     { name: 'spica_answer', description: 'Answer an ask_user question card.', inputSchema: obj({ session_id: str, call_id: str, answer: str }, ['session_id', 'call_id', 'answer']), run: (a) => api.answer(String(a.session_id), String(a.call_id), String(a.answer)) },
     { name: 'spica_confirm', description: 'Approve or decline an action waiting for confirmation.', inputSchema: obj({ session_id: str, call_id: str, approved: { type: 'boolean' } }, ['session_id', 'call_id', 'approved']), run: (a) => api.confirm(String(a.session_id), String(a.call_id), a.approved === true) },
@@ -93,12 +115,12 @@ export function spicaMcpTools(rt: Runtime, events: CoreEvent[]): McpTool[] {
       description:
         'Send a message and wait until the run ends (and, with wait_for_subagents, until all its sub-agents are done too) or the session waits for the user. ' +
         'Returns the answer, status, pending questions/confirmations, tools called, sub-agents and cost. Without session_id the default top-level thread is used.',
-      inputSchema: obj({ session_id: str, text: str, wait_for_subagents: { type: 'boolean' }, timeout_seconds: { type: 'integer' } }, ['text']),
+      inputSchema: obj({ session_id: str, text: str, attachments: attachmentsSchema, wait_for_subagents: { type: 'boolean' }, timeout_seconds: { type: 'integer' } }, ['text']),
       run: async (a) => {
         const id = a.session_id ? String(a.session_id) : rt.top().id;
         const s = session(id);
         const fromSeq = s.messages().at(-1)?.seq ?? 0;
-        s.send(String(a.text));
+        await api.send(id, String(a.text), attachmentsOf(a));
         const ok = await settle(id, a.wait_for_subagents === true, Math.max(1, Number(a.timeout_seconds ?? 600)) * 1000);
         return { ...summary(id, fromSeq), timedOut: !ok };
       },

@@ -136,6 +136,12 @@ export interface MessageMeta {
   untrusted?: GuardNote[];
   /** tool_results: outside content per tool call id. */
   guard?: Record<string, GuardNote>;
+  /** User message: attached files (the cards); their text is in the content blocks listed. */
+  attachments?: AttachmentMeta[];
+  /** tool_results: calls that ran without asking because the session's approval mode is auto. */
+  autoApproved?: string[];
+  /** Runtime note: the user switched the session's model (a decision). */
+  modelChange?: { from: { providerId: string; model: string }; to: { providerId: string; model: string } };
   /** One of Author; typed loosely so older callers that build plain objects still compile. */
   author?: Author | (string & {});
   /** Assistant text saved while it was streaming. */
@@ -210,6 +216,34 @@ export interface SessionInfo {
   templateId?: string;
   /** Project the session works for (project manager and its sub-agents). */
   projectId?: string;
+  // The three below are always set by the core (optional only so older fakes still type-check).
+  /** manual = every confirmation goes to the user; auto = tools that are irreversible by declaration run and are recorded. */
+  approvalMode?: ApprovalMode;
+  /** Tokens the context takes now (from the last model call: its input plus its output), null before the first call. */
+  contextTokens?: number | null;
+  /** Context window of the session's model, null when unknown. */
+  contextWindow?: number | null;
+}
+
+/**
+ * auto: confirmations a tool asks for because it is irreversible pass on their own (recorded, event confirm.auto).
+ * Confirmations the guard requires (untrusted_turn, outside_link, sensitive_file) and those a hook asks for always
+ * go to the user.
+ */
+export type ApprovalMode = 'manual' | 'auto';
+
+/** A file the user attached to a message; its content went to the model fenced as data. */
+export interface AttachmentMeta {
+  /** As given (absolute, or relative to the session's working folder). */
+  path: string;
+  /** File name for the card. */
+  name: string;
+  /** Index of the content block that carries the file text (the UI hides it), null when it could not be read. */
+  block: number | null;
+  /** Same card read_file makes (type, size, pages read, truncated, ...). */
+  file?: FileCardMeta;
+  /** Why it could not be read (English, for logs). */
+  error?: string;
 }
 
 /** An open question or confirmation the session is waiting on. */
@@ -291,6 +325,10 @@ export type CoreEventBody =
   | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause }
   /** Outside content (mail, web page, file, plugin tool) contained text that looks like instructions. */
   | { type: 'guard.flagged'; note: GuardNote; callId?: string }
+  /** An irreversible call ran without asking because the session's approval mode is auto. */
+  | { type: 'confirm.auto'; callId: string; name: string; input: unknown }
+  /** Session details changed (context use after a model call, model, approval mode). */
+  | { type: 'session.updated'; info: SessionInfo }
   | { type: 'confirm.resolved'; callId: string; approved: boolean }
   | { type: 'ask.request'; callId: string; question: string; options?: string[] }
   | { type: 'ask.resolved'; callId: string; answer: string }
@@ -432,6 +470,10 @@ export interface TraceRecord {
 
 export type SteerMode = 'next' | 'interrupt';
 
+export interface SendOptions {
+  attachments?: { path: string }[];
+}
+
 export interface CreateSessionRequest {
   parentId?: string;
   role?: AgentRole;
@@ -451,6 +493,8 @@ export interface CreateSessionRequest {
   templateId?: string;
   /** Attach the session to a project (sub-agents inherit their parent's project). */
   projectId?: string;
+  /** Default manual; sub-agents inherit their parent's. */
+  approvalMode?: ApprovalMode;
 }
 
 export interface SendResult {
@@ -466,12 +510,16 @@ export interface AgentApi {
   getMessages(sessionId: string): Promise<Message[]>;
   getPending(sessionId: string): Promise<PendingItem[]>;
   /** User message. Starts a run if idle; otherwise applied at the next turn boundary. */
-  send(sessionId: string, text: string): Promise<SendResult>;
+  /** `attachments`: files on this machine; read like read_file and sent to the model fenced as data. */
+  send(sessionId: string, text: string, opts?: SendOptions): Promise<SendResult>;
   /** Insert a message into a running session; `interrupt` cuts the current model stream first. */
   steer(sessionId: string, text: string, mode: SteerMode): Promise<SendResult>;
   answer(sessionId: string, callId: string, answer: string): Promise<void>;
   /** Set or clear the display name. */
   renameSession(sessionId: string, title: string | null): Promise<SessionInfo>;
+  /** Use another model from the next model call on (the one running now is not touched); recorded as a decision. */
+  setSessionModel?(sessionId: string, providerId: string, model: string): Promise<SessionInfo>;
+  setApprovalMode?(sessionId: string, mode: ApprovalMode): Promise<SessionInfo>;
   /** Continue a session left `interrupted` (e.g. after a restart). */
   resume(sessionId: string): Promise<void>;
   confirm(sessionId: string, callId: string, approved: boolean): Promise<void>;

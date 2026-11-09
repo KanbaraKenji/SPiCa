@@ -241,6 +241,18 @@ export class FakeBackend implements AgentBackend {
     return structuredClone(s);
   }
 
+  async setSessionModel(sessionId: string, providerId: string, model: string): Promise<SessionInfo> {
+    const s = this.#requireSession(sessionId);
+    Object.assign(s, { providerId, model, updatedAt: isoAt(this.#now()) });
+    return structuredClone(s);
+  }
+
+  async setApprovalMode(sessionId: string, mode: 'manual' | 'auto'): Promise<SessionInfo> {
+    const s = this.#requireSession(sessionId);
+    Object.assign(s, { approvalMode: mode, updatedAt: isoAt(this.#now()) });
+    return structuredClone(s);
+  }
+
   async resume(sessionId: string): Promise<void> {
     const s = this.#requireSession(sessionId);
     if (s.status !== 'interrupted' || this.#runs.has(sessionId)) return;

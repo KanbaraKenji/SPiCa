@@ -34,7 +34,8 @@ export interface ToolCallDraft {
 export type ToolDecision =
   | { action: 'allow'; input?: unknown }
   | { action: 'deny'; reason: string }
-  | { action: 'confirm'; reason?: string; input?: unknown }
+  /** `byDefault`: set by the registry for irreversible tools nobody waived (an approval mode may pass it). */
+  | { action: 'confirm'; reason?: string; input?: unknown; byDefault?: boolean }
   /** Skip confirmation even for irreversible tools. */
   | { action: 'auto'; input?: unknown };
 
@@ -129,7 +130,7 @@ export class HookRegistry {
     }
     if (confirm) return { decision: { action: 'confirm', ...confirm }, input };
     if (call.irreversible && !auto) {
-      return { decision: { action: 'confirm', reason: 'irreversible action' }, input };
+      return { decision: { action: 'confirm', reason: 'irreversible action', byDefault: true }, input };
     }
     return { decision: { action: 'allow' }, input };
   }

@@ -32,6 +32,8 @@ const API: Record<keyof AgentApi, true> = {
   steer: true,
   answer: true,
   renameSession: true,
+  setSessionModel: true,
+  setApprovalMode: true,
   resume: true,
   confirm: true,
   abort: true,

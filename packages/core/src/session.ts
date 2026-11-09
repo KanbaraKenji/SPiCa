@@ -8,7 +8,10 @@ import { ProviderError } from './providers/types.ts';
 import type { PendingRecord, SessionConfig, SessionRecord, ToolCallCards, ToolCallRecord } from './store/types.ts';
 import { validateInput, type Tool, type ToolContext } from './tools/types.ts';
 import type {
+  ApprovalMode,
+  AttachmentMeta,
   ContentBlock,
+  FileCardMeta,
   GuardCause,
   GuardNote,
   Message,
@@ -57,15 +60,23 @@ export class Session {
   #settleWaiters: (() => void)[] = [];
   /** Input size of the last model call (context only grows within a run), used for budget pre-checks. */
   #lastInputTokens = 0;
+  /** Context the last model call used plus what it wrote (null before the first call). */
+  #contextTokens: number | null = null;
 
   #shutdown = false;
 
-  constructor(rt: RuntimeInternals, record: SessionRecord, messages: Message[] = [], restored: { lastInputTokens?: number } = {}) {
+  constructor(
+    rt: RuntimeInternals,
+    record: SessionRecord,
+    messages: Message[] = [],
+    restored: { lastInputTokens?: number; contextTokens?: number } = {},
+  ) {
     this.#rt = rt;
     this.id = record.id;
     this.#record = record;
     this.#messages = messages;
     this.#lastInputTokens = restored.lastInputTokens ?? 0;
+    this.#contextTokens = restored.contextTokens ?? null;
   }
 
   /**
@@ -120,7 +131,21 @@ export class Session {
       updatedAt: r.updatedAt,
       ...(r.config.templateId ? { templateId: r.config.templateId } : {}),
       ...(r.config.projectId ? { projectId: r.config.projectId } : {}),
+      approvalMode: r.config.approvalMode ?? 'manual',
+      contextTokens: this.#contextTokens,
+      contextWindow: this.#contextWindow(),
     };
+  }
+
+  #contextWindow(): number | null {
+    const c = this.#record.config;
+    let kind = '';
+    try {
+      kind = this.#rt.provider(c.providerId).kind;
+    } catch {
+      // provider removed in the settings
+    }
+    return this.#rt.ledger.contextWindow(c.providerId, kind, c.model);
   }
 
   messages(): Message[] {
@@ -147,12 +172,15 @@ export class Session {
   // ---------------------------------------------------------------------------
 
   /** A message from the user (or the parent). Starts a run when idle; queued otherwise. */
-  send(text: string, opts: { author?: 'user' | 'parent' | 'runtime'; kind?: MessageKind; meta?: Record<string, unknown> } = {}): SendHandle {
+  send(
+    text: string,
+    opts: { author?: 'user' | 'parent' | 'runtime'; kind?: MessageKind; meta?: Record<string, unknown>; content?: ContentBlock[] } = {},
+  ): SendHandle {
     if (this.#run || this.#hasPending()) return this.steer(text, 'next', opts);
     const msg = this.#append({
       role: 'user',
       kind: opts.kind ?? 'user',
-      content: [{ type: 'text', text }],
+      content: [{ type: 'text', text }, ...(opts.content ?? [])],
       meta: { ...opts.meta, ...this.#inheritedTaint(opts), author: opts.author ?? 'user' },
     });
     this.#rt.onUserMessage(this, msg);
@@ -165,7 +193,11 @@ export class Session {
    * turn boundary; `interrupt` cuts the current model stream (or tool batch)
    * first, then applies it and continues.
    */
-  steer(text: string, mode: SteerMode, opts: { author?: 'user' | 'parent' | 'runtime'; meta?: Record<string, unknown> } = {}): SendHandle {
+  steer(
+    text: string,
+    mode: SteerMode,
+    opts: { author?: 'user' | 'parent' | 'runtime'; meta?: Record<string, unknown>; content?: ContentBlock[] } = {},
+  ): SendHandle {
     if (!this.#run && !this.#hasPending()) return this.send(text, opts);
     const message: Message = {
       id: newId('msg'),
@@ -173,7 +205,7 @@ export class Session {
       seq: -1,
       role: 'user',
       kind: 'steer',
-      content: [{ type: 'text', text }],
+      content: [{ type: 'text', text }, ...(opts.content ?? [])],
       createdAt: isoNow(),
       meta: { ...opts.meta, ...this.#inheritedTaint(opts), author: opts.author ?? 'user', steerMode: mode },
     };
@@ -242,6 +274,92 @@ export class Session {
     this.#rt.store.upsertSession(this.#record);
   }
 
+  /**
+   * Use another model from the next model call on; the call running now is
+   * not touched. Recorded as a decision note in the session (and relayed to
+   * the parent like any decision).
+   */
+  setModel(providerId: string, model: string): SessionInfo {
+    const provider = this.#rt.provider(providerId); // unknown provider → throws
+    const from = { providerId: this.#record.config.providerId, model: this.#record.config.model };
+    if (from.providerId === providerId && from.model === model) return this.info();
+    this.#record = {
+      ...this.#record,
+      config: { ...this.#record.config, providerId, model, serverWebSearch: !!this.#record.config.serverWebSearch && provider.capabilities.serverWebSearch },
+      updatedAt: isoNow(),
+    };
+    this.#rt.store.upsertSession(this.#record);
+    this.addNote('note', `[The user switched this conversation from ${from.model} to ${model}. Carry on as before.]`, {
+      author: 'runtime',
+      decision: true,
+      modelChange: { from, to: { providerId, model } },
+    });
+    this.#rt.recordDecision(this.id, `switched the model from ${from.model} to ${model}`, 'user');
+    this.#emit({ type: 'session.updated', info: this.info() });
+    return this.info();
+  }
+
+  /** manual: every confirmation goes to the user; auto: irreversible-by-declaration calls run and are recorded. */
+  setApprovalMode(mode: ApprovalMode): SessionInfo {
+    if (mode !== 'manual' && mode !== 'auto') throw new Error(`unknown approval mode: ${String(mode)}`);
+    this.#record = { ...this.#record, config: { ...this.#record.config, approvalMode: mode }, updatedAt: isoNow() };
+    this.#rt.store.upsertSession(this.#record);
+    this.#emit({ type: 'session.updated', info: this.info() });
+    return this.info();
+  }
+
+  /**
+   * Read files the user attached, the way read_file does (extractors, paging,
+   * file card), fenced as outside data. Returns the content blocks to send
+   * after the user's text and the cards for `meta.attachments`.
+   */
+  async readAttachments(list: readonly { path: string }[]): Promise<{ content: ContentBlock[]; attachments: AttachmentMeta[]; notes: GuardNote[] }> {
+    const content: ContentBlock[] = [];
+    const attachments: AttachmentMeta[] = [];
+    const notes: GuardNote[] = [];
+    const tool = this.#rt.tools.get('read_file');
+    for (const a of list) {
+      const path = String(a?.path ?? '').trim();
+      if (!path) continue;
+      const name = path.split(/[\\/]/).pop() || path;
+      if (!tool) {
+        attachments.push({ path, name, block: null, error: 'read_file is not available' });
+        continue;
+      }
+      let file: FileCardMeta | undefined;
+      let out: { content: string; isError?: boolean };
+      try {
+        out = await tool.execute({ path }, {
+          sessionId: this.id,
+          parentChain: this.parentChain,
+          cwd: this.#record.config.cwd,
+          signal: AbortSignal.timeout(120_000),
+          tracer: this.#rt.tracer,
+          extractors: this.#rt.extractors,
+          services: this.#rt.services(this),
+          callId: newId('att'),
+          emit: (body) => {
+            if (body.type === 'file.card') file = body.file;
+          },
+        });
+      } catch (err) {
+        out = { content: err instanceof Error ? err.message : String(err), isError: true };
+      }
+      if (out.isError) {
+        attachments.push({ path, name, block: null, error: out.content.slice(0, 300) });
+        content.push({ type: 'text', text: `[The user attached ${name}, but it could not be read: ${out.content.slice(0, 300)}]` });
+        continue;
+      }
+      const f = fence(truncate(out.content, MAX_RESULT_CHARS), 'file', `attachment:${name}`);
+      notes.push(f.note);
+      if (f.note.signals.length) this.#emit({ type: 'guard.flagged', note: f.note });
+      // content[0] of the message is the user's text
+      attachments.push({ path, name, block: content.length + 1, ...(file ? { file } : {}) });
+      content.push({ type: 'text', text: `The user attached the file ${name} (read with read_file; ask for more pages with read_file if it was cut):\n${f.text}` });
+    }
+    return { content, attachments, notes };
+  }
+
   /** Set or clear the display name. */
   rename(title: string | null): SessionInfo {
     this.#record = { ...this.#record, title: title && title.trim() !== '' ? title.trim() : null, updatedAt: isoNow() };
@@ -299,7 +417,8 @@ export class Session {
     const runId = newId('run');
     const runAbort = new AbortController();
     this.#runAbort = runAbort;
-    const cfg = this.#record.config;
+    // read again at every turn: the model or tools can change between turns
+    let cfg: SessionConfig;
     let turn = 0;
     let lastText = '';
     const end = (reason: RunEndReason, detail?: string): RunResult => {
@@ -326,6 +445,7 @@ export class Session {
       if (runAbort.signal.aborted) return end('aborted', String(runAbort.signal.reason?.message ?? ''));
       this.#interrupt = false;
       this.#applyQueue();
+      cfg = this.#record.config;
       if (turn >= cfg.maxTurns) return end('max_turns', `stopped after ${cfg.maxTurns} turns`);
       turn++;
       this.#emit({ type: 'turn.start', turn });
@@ -557,6 +677,8 @@ export class Session {
         ...(callInfo.httpStatus ? { httpStatus: callInfo.httpStatus } : {}),
       });
       this.#emit({ type: 'usage', usage: response.usage, costUsd: cost.costUsd, providerId: provider.id, model: response.model });
+      this.#contextTokens = this.#lastInputTokens + u.outputTokens;
+      this.#emit({ type: 'session.updated', info: this.info() });
       for (const t of cost.totals) {
         if (t.scope === 'call') continue;
         this.#emit({ type: 'cost', scope: t.scope, spentUsd: t.spentUsd, ...(t.limitUsd !== undefined ? { limitUsd: t.limitUsd } : {}), warning: t.warning });
@@ -667,7 +789,9 @@ export class Session {
       }
       // outside content in play: the user confirms, whatever hooks or plugin settings say
       const cause = this.#guardCause(tool, (input ?? {}) as Record<string, unknown>, guard);
-      if (decision.action === 'confirm' || cause) {
+      // approval mode auto passes only the default confirmation of irreversible tools, never the guard's or a hook's
+      const autoApproved = !cause && decision.action === 'confirm' && decision.byDefault === true && cfg.approvalMode === 'auto';
+      if ((decision.action === 'confirm' && !autoApproved) || cause) {
         const item: PendingItem = {
           kind: 'confirm',
           callId: call.id,
@@ -682,8 +806,9 @@ export class Session {
         return;
       }
       this.#rt.store.upsertToolCall({ ...rec, input });
+      if (autoApproved) this.#emit({ type: 'confirm.auto', callId: call.id, name: call.name, input });
       const res = await this.#execute(tool, { ...draft, input }, signal, hctx);
-      finish(res.content, res.isError, res.isError ? 'error' : 'ok', res.cards);
+      finish(res.content, res.isError, res.isError ? 'error' : 'ok', autoApproved ? { ...res.cards, autoApproved: true } : res.cards);
     });
     await runLimited(work, MAX_PARALLEL_TOOLS);
 
@@ -769,9 +894,11 @@ export class Session {
     const fileCards: NonNullable<MessageMeta['fileCards']> = {};
     const suggestedActions: NonNullable<MessageMeta['suggestedActions']> = {};
     const guard: Record<string, GuardNote> = {};
+    const autoApproved: string[] = [];
     for (const b of assistant.content) {
       if (b.type !== 'tool_use') continue;
       const r = records.get(b.id);
+      if (r?.cards?.autoApproved) autoApproved.push(b.id);
       if (r?.cards?.guard) guard[b.id] = r.cards.guard;
       if (r?.cards?.fileCard) fileCards[b.id] = r.cards.fileCard;
       if (r?.cards?.suggestion) suggestedActions[b.id] = r.cards.suggestion;
@@ -788,6 +915,7 @@ export class Session {
       ...(Object.keys(fileCards).length > 0 ? { fileCards } : {}),
       ...(Object.keys(suggestedActions).length > 0 ? { suggestedActions } : {}),
       ...(Object.keys(guard).length > 0 ? { guard } : {}),
+      ...(autoApproved.length > 0 ? { autoApproved } : {}),
     };
     this.#append({ role: 'user', kind: 'tool_results', content, meta });
   }
@@ -947,7 +1075,15 @@ export class Session {
     let kind: GuardNote['kind'] | undefined;
     for (let i = this.#messages.length - 1; i >= 0; i--) {
       const m = this.#messages[i]!;
-      if (typed(m)) break;
+      if (typed(m)) {
+        // files the user attached are outside content too
+        const att = m.meta?.untrusted?.[0];
+        if (att) {
+          tainted = true;
+          kind = att.kind;
+        }
+        break;
+      }
       const note = m.meta?.untrusted?.[0] ?? Object.values(m.meta?.guard ?? {})[0];
       if (note) {
         tainted = true;
