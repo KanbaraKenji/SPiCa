@@ -307,7 +307,8 @@ ipcMain.handle(DesktopChannel.Agent, async (_e, method: unknown, args: unknown) 
     throw new Error(`不支持的操作：${String(method)}`);
   }
   const fn = backend[method as keyof AgentApi] as ((...a: unknown[]) => Promise<unknown>) | undefined;
-  if (!fn) throw new Error('这个版本还不支持这个操作。');
+  // Name the missing method, so a backend that lags behind the shell is easy to spot.
+  if (!fn) throw new Error(`这个版本还不支持这个操作（${method}）。`);
   return fn.apply(backend, Array.isArray(args) ? args : []);
 });
 

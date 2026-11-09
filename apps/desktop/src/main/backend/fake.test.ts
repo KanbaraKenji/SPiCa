@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CoreEvent } from '@spica/protocol';
+import type { AgentApi, CoreEvent } from '@spica/protocol';
 import { FakeBackend } from './fake';
 import { SEED_IDS } from './fake-seed';
 
@@ -20,7 +20,56 @@ function collect(backend: FakeBackend) {
   return { events, until };
 }
 
+// Every method of the core's API. Typed as a record, so a method added to AgentApi
+// fails the typecheck here until it is listed (and the fake gets it).
+const API: Record<keyof AgentApi, true> = {
+  createSession: true,
+  listSessions: true,
+  getSession: true,
+  getMessages: true,
+  getPending: true,
+  send: true,
+  steer: true,
+  answer: true,
+  renameSession: true,
+  resume: true,
+  confirm: true,
+  abort: true,
+  exportTraces: true,
+  getTopSession: true,
+  createProject: true,
+  listProjects: true,
+  getProject: true,
+  listMail: true,
+  pollMail: true,
+  mailFeedback: true,
+};
+
 describe('FakeBackend', () => {
+  it('has every method of the core API, so screenshots never hit a missing one', () => {
+    const backend = new FakeBackend({ speed: 0 });
+    const missing = Object.keys(API).filter((k) => typeof (backend as unknown as Record<string, unknown>)[k] !== 'function');
+    expect(missing).toEqual([]);
+    backend.dispose();
+  });
+
+  it('lists the seed projects and makes new ones with a manager', async () => {
+    const backend = new FakeBackend({ speed: 0 });
+    const { until } = collect(backend);
+    expect((await backend.getTopSession()).id).toBe(SEED_IDS.chat);
+    expect((await backend.listProjects()).map((p) => p.name)).toEqual(['新品样机评审', '年度预算']);
+    const detail = await backend.getProject('p-review');
+    expect(detail?.manager.id).toBe(SEED_IDS.pm);
+    expect(detail?.agents.map((a) => a.id)).toContain(SEED_IDS.quotes);
+    const p = await backend.createProject({ name: '办公室搬迁' });
+    expect((await until((e) => e.type === 'project.created')).sessionId).toBe(p.managerSessionId);
+    expect((await backend.getSession(p.managerSessionId))?.projectId).toBe(p.id);
+    // Mail can be moved into the new project.
+    const moved = await backend.mailFeedback('demo:m1', { action: 'reassign', projectId: p.id });
+    expect(moved.routedTo).toBe(p.managerSessionId);
+    backend.dispose();
+  });
+
   it('seeds a project tree with every status the UI draws', async () => {
     const b = new FakeBackend({ speed: 0 });
     const sessions = await b.listSessions();
