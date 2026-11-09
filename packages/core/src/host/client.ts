@@ -45,6 +45,8 @@ const API_METHODS = [
   'createProject',
   'listProjects',
   'getProject',
+  'renameProject',
+  'deleteProject',
   'listMail',
   'pollMail',
   'mailFeedback',

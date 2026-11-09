@@ -536,6 +536,67 @@ export class Runtime implements RuntimeInternals {
     return updated;
   }
 
+  /** Rename a project; its manager session takes the same title. */
+  renameProject(projectId: string, name: string): ProjectInfo {
+    const p = this.store.getProject(projectId);
+    if (!p) throw new Error(`unknown project: ${projectId}`);
+    const n = name.trim();
+    if (!n) throw new Error('a project needs a name');
+    const updated: ProjectInfo = { ...p, name: n, updatedAt: isoNow() };
+    this.store.upsertProject(updated);
+    this.session(p.managerSessionId)?.rename(n);
+    const top = this.top();
+    this.events.emit({ sessionId: top.id, parentChain: [] }, { type: 'project.updated', project: updated });
+    return updated;
+  }
+
+  /**
+   * Remove a project from Spica: the project, its manager and every session
+   * under it, its activity log and work objects. The folder and its files are
+   * not touched. Running sessions are stopped first. Mail filed under it
+   * becomes a "new matter" again, and sender memory pointing at it is
+   * forgotten. Traceable records stay (spending history and limits).
+   */
+  async deleteProject(projectId: string): Promise<void> {
+    const p = this.store.getProject(projectId);
+    if (!p) throw new Error(`unknown project: ${projectId}`);
+    const all = this.store.listSessions();
+    const ids = new Set(all.filter((s) => s.id === p.managerSessionId || s.config.projectId === p.id).map((s) => s.id));
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const s of all) {
+        if (s.parentId && ids.has(s.parentId) && !ids.has(s.id)) {
+          ids.add(s.id);
+          grew = true;
+        }
+      }
+    }
+    // stop what runs, children first so they do not report into a session about to go
+    const live = [...ids].map((id) => this.session(id)).filter((s): s is Session => !!s);
+    for (const s of [...live].reverse()) if (s.running) s.abort('project deleted');
+    for (const s of live) {
+      const t0 = Date.now();
+      while (s.running && Date.now() - t0 < 10_000) await new Promise((r) => setTimeout(r, 20));
+    }
+    for (const m of this.store.listMail({ projectId: p.id, limit: 1_000_000 })) {
+      const { routedTo: _r, ...rest } = m;
+      void _r;
+      const triage = m.triage ? (({ projectId: _p, ...t }) => (void _p, { ...t, decision: 'new' as const }))(m.triage) : undefined;
+      this.store.upsertMail({ ...rest, status: m.status === 'ignored' ? 'ignored' : 'triaged', ...(triage ? { triage } : {}), updatedAt: isoNow() });
+    }
+    for (const id of ids) {
+      const s = this.session(id);
+      const parentChain = s?.parentChain ?? [];
+      this.store.deleteSession(id);
+      this.#sessions.delete(id);
+      this.#reports.delete(id);
+      this.events.emit({ sessionId: id, parentChain }, { type: 'session.deleted' });
+    }
+    this.store.deleteProject(p.id);
+    const top = this.top();
+    this.events.emit({ sessionId: top.id, parentChain: [] }, { type: 'project.deleted', projectId: p.id });
+  }
+
   addWorkObject(projectId: string, obj: { level: string; name: string; parentId?: string | null; data?: Record<string, unknown> }): WorkObject {
     const p = this.store.getProject(projectId);
     if (!p) throw new Error(`unknown project: ${projectId}`);

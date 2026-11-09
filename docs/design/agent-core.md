@@ -107,7 +107,7 @@
 | 记录 | `trace`（一条可追溯记录写完） |
 | 插话 | `steer.queued`、`steer.applied`（只列真正的用户插话） |
 | 会话树 | `child.spawned`、`child.report`、`relay`、`session.renamed`、`session.updated`（上下文用量、模型、批准方式） |
-| 项目 | `project.created`、`project.updated`、`project.activity` |
+| 项目 | `project.created`、`project.updated`、`project.activity`、`project.deleted`（以及每个被删会话的 `session.deleted`） |
 | 邮件 | `mail.polled`、`mail.triaged`、`mail.routed`、`mail.feedback`、`mail.configured` |
 | 设置 | `runtime.configured { changed, warnings }` |
 | 边界 | `turn.start`、`turn.end`、`run.end`（原因见第 3 节）、`error` |
@@ -283,7 +283,8 @@
 | 项目经理 | `add_work_object` / `list_work_objects` | 维护工作对象（层级按流程校验） |
 
 - **关键操作**（`project_log`，发 `project.activity`）：项目里的会话写 / 改 / 删文件、跑命令、换阶段、记决定、开子 Agent、子 Agent 回报、收到来信时自动记一条。字段是结构化的：`action`（file.write / file.edit / file.delete / command / child.spawn / child.report / decision / stage / mail / note）、`target`（相对项目文件夹的路径、命令、子 Agent 名、阶段 id、邮件主题）、`detail`（来信是 `来源:邮件 id`）。界面按这些拼中文，`summary` 是写给模型看的英文。
-- 接口与事件：AgentApi `createProject` / `listProjects` / `getProject`；事件 `project.created` / `project.updated` / `project.activity`。
+- **重命名与删除**（左栏项目行的右键菜单）：`renameProject(项目, 名字)` 改项目名，项目经理会话的标题跟着改，发 `project.updated`。`deleteProject(项目)` 只删 Spica 里的记录：项目、项目经理和它下面所有子会话（消息、工具调用、挂起项、排队、回传）、项目动态、工作对象；项目文件夹和里面的文件一概不动。正在跑的会话先停（子会话先停）。归到这个项目的来信改回「新事务」（`triage.decision: 'new'`，去掉项目和转给谁），指向它的发件人记忆删掉，免得以后的信又转给一个不存在的项目。可追溯记录保留（花费历史和上限要用）。每个删掉的会话发 `session.deleted`，最后在顶层会话上发 `project.deleted { projectId }`。
+- 接口与事件：AgentApi `createProject` / `listProjects` / `getProject` / `renameProject` / `deleteProject`；事件 `project.created` / `project.updated` / `project.activity` / `project.deleted`。
 
 ## 16. 邮件流水线
 
@@ -328,7 +329,7 @@
 
 立项书「接口先行」：对外就是 MCP 服务，验收旅程、评测插件、远程调试都走它。同一个内核进程对内服务界面、对外当 MCP 服务，两边是同一份会话和同一个事件流。
 
-- **工具**（`mcp/server.ts`）：`spica_create_session`、`spica_get_top_session`、`spica_list_sessions`、`spica_get_messages`、`spica_get_pending`、`spica_send`、`spica_set_model`、`spica_set_approval_mode`、`spica_steer`、`spica_answer`、`spica_confirm`、`spica_abort`、`spica_resume`、`spica_rename_session`、`spica_create_project`、`spica_list_projects`、`spica_get_project`、`spica_list_mail`、`spica_poll_mail`、`spica_mail_feedback`、`spica_list_tools`、`spica_export_traces`、`spica_export_usage_log`，外加两个方便自动化的：`spica_run`（发一句话，等这次运行结束或等用户；可连子 Agent 一起等），返回回答、状态、挂起项、执行了的工具 `toolCalls`、调了但已不存在的工具 `unavailableToolCalls`、子 Agent 和花费；`spica_wait`、`spica_events {since}`。扩展模块（如插件包的 `spica_plugin_*`）再往上加。
+- **工具**（`mcp/server.ts`）：`spica_create_session`、`spica_get_top_session`、`spica_list_sessions`、`spica_get_messages`、`spica_get_pending`、`spica_send`、`spica_set_model`、`spica_set_approval_mode`、`spica_steer`、`spica_answer`、`spica_confirm`、`spica_abort`、`spica_resume`、`spica_rename_session`、`spica_create_project`、`spica_list_projects`、`spica_get_project`、`spica_rename_project`、`spica_delete_project`、`spica_list_mail`、`spica_poll_mail`、`spica_mail_feedback`、`spica_list_tools`、`spica_export_traces`、`spica_export_usage_log`，外加两个方便自动化的：`spica_run`（发一句话，等这次运行结束或等用户；可连子 Agent 一起等），返回回答、状态、挂起项、执行了的工具 `toolCalls`、调了但已不存在的工具 `unavailableToolCalls`、子 Agent 和花费；`spica_wait`、`spica_events {since}`。扩展模块（如插件包的 `spica_plugin_*`）再往上加。
 - **stdio**：`node src/host/mcp-main.ts --config backend.json`（或 Electron 的 Node 加 `ELECTRON_RUN_AS_NODE=1`）。配置里的 key 可写成 `apiKeyEnv`（环境变量名），不用写进文件。stdout 只走协议，日志走 stderr。库被别的进程占着时直接拒绝并说明原因。
 - **HTTP**（`mcp/http.ts`）：MCP「Streamable HTTP」的子集。`POST /mcp`，一条或一批 JSON-RPC，回 JSON，通知回 202；不做服务端推送（GET 回 405），不发会话 id，事件靠 `spica_events` 按 seq 取；不设请求超时（`spica_run` 会等很久）。独立进程加 `--http [--port] [--host] [--allow-remote] [--token-file]`；桌面端开着时库被占，就在后台配置里加 `mcpHttp`，由跑着的后台一起提供。
 - **HTTP 的安全边界**：
@@ -401,12 +402,13 @@
 | 2026-11-10 | 外来内容一律围栏 + 标记 + 强制确认，插件的 `auto` 盖不过 | 分拣和项目经理会根据外来内容行动，注入不能借插件配置绕过用户 |
 | 2026-11-10 | 批准方式 auto 只放行「声明为不可逆」的默认确认；附件按外来内容处理 | 用户想少点确认，但守卫和插件自己要求的确认不能因此消失；附件常是别人发来的文件 |
 | 2026-11-10 | SessionInfo 的新字段和新的 AgentApi 方法先设成可选，外壳的假后端在同一提交补上 | 不让外壳的类型检查变红 |
+| 2026-11-10 | 删项目只删 Spica 的记录，不碰文件夹；来信改回「新事务」、清掉指向它的发件人记忆；可追溯记录保留 | 文件是用户的；信不能再转给不存在的项目；花费上限要靠完整的历史 |
 
 ## 附录 B 验收记录
 
 | 里程碑 | 日期 | 测试 | 真模型冒烟 |
 |---|---|---|---|
-| M9 | 2026-11-10 | 新增会话级控制 5 条：每次模型调用后的上下文用量和模型窗口（重启后还在）；默认价表的 Claude 窗口和 Haiku 长提示价；改模型在下一次调用生效、正在进行的不动、备注不插进工具对中间、回传给父会话；附件按外来数据围栏、给卡片、读不了的报错、带附件的一轮里不可逆动作仍要确认；批准方式 auto 放行不可逆工具并记录，钩子要求的确认和守卫的确认照样要人，子 Agent 继承。core + plugins + 评测插件 + 外壳假后端 232 条 | — |
+| M9 | 2026-11-10 | 新增会话级控制 5 条和项目重命名 / 删除 2 条（删除时停掉在跑的子会话、文件夹不动、来信改回新事务、发件人记忆清掉、另一个项目不受影响、重启后不回来）；会话级控制：每次模型调用后的上下文用量和模型窗口（重启后还在）；默认价表的 Claude 窗口和 Haiku 长提示价；改模型在下一次调用生效、正在进行的不动、备注不插进工具对中间、回传给父会话；附件按外来数据围栏、给卡片、读不了的报错、带附件的一轮里不可逆动作仍要确认；批准方式 auto 放行不可逆工具并记录，钩子要求的确认和守卫的确认照样要人，子 Agent 继承。core + plugins + 评测插件 + apps/desktop 共 359 条 | — |
 | M8 | 2026-11-10 | 新增守卫 5 条：中英文检测、围栏不可关闭；插件把发送 / 移动设成自动，读信后发信、移信、读 .env、开信里的链接都停下等确认，拒绝后什么都没执行；用户再要求就照常执行；转来的信和由它派出的子 Agent 受限；邮件流水线的消息围栏与标记。core + plugins + 评测插件 219 条 | `npm run smoke:guard`：虚构邮箱 3 封正常 + 4 封注入信，插件把发送和移动设成自动，脚本拒绝一切确认：没有发出 / 转发 / 移动任何信，没读 .env，没跑命令，没开可疑链接；改归属的信仍按内容归类；4 封都被标记；正常信照常分拣。25 秒约 0.009 USD（这次模型自己就没去做，「被挡下」由单元测试保证） |
 | M7 | 2026-11-10 | 新增：16 个子任务同时跑的压力测试（限流排队按顺序、位次 n→1、花费上限按预留算不超、排队中 / 运行中被停释放）、停用工具的拒绝与备注、使用日志导出（两个项目、去敏、筛选、只读命令行、路径不带用户名、只写去敏表）、MCP 的 HTTP 传输（令牌、本机、Origin、大小）、评测插件（经 HTTP 跑 J5、跳过与失败、插件清单合法）；共 214 条 | `npm run eval`：只经 MCP 服务、DeepSeek flash，J2–J7 全过，55 秒，32 次请求约 0.0134 USD；同库导出的使用日志 143 行，报告和日志里没有 key 和端点地址。`journey:j6` 修复后连跑两次 7/7 |
 | M6 | 2026-11-09 | 邮件流水线 6 条（分拣 → 转给项目经理 → 不重复；拒绝不存在的项目并让模型改正；漏掉的信被点名后补上；采纳 / 改归属教会发件人记忆；没有邮件插件时什么都不跑） | `npm run smoke:mail`：经 MCP 服务，Outlook 插件模拟模式 + DeepSeek：收件箱 23 封全部分拣，两个项目经理各只收到自己的信并给建议，没有发送任何邮件，首句是中文；约 0.022 USD |

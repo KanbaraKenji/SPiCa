@@ -42,6 +42,22 @@ export class MemoryStore implements Store {
   upsertProject(p: ProjectInfo): void {
     this.#projects.set(p.id, clone(p));
   }
+  deleteProject(id: string): void {
+    this.#projects.delete(id);
+    const keep = this.#projectLog.filter((e) => e.projectId !== id);
+    this.#projectLog.splice(0, this.#projectLog.length, ...keep);
+    for (const [k, o] of this.#objects) if (o.projectId === id) this.#objects.delete(k);
+    for (const [k, d] of this.#senders) if (d.decision === 'project' && d.projectId === id) this.#senders.delete(k);
+  }
+  deleteSession(id: string): void {
+    this.#sessions.delete(id);
+    this.#messages.delete(id);
+    this.#queued.delete(id);
+    for (const [k, t] of this.#toolCalls) if (t.sessionId === id) this.#toolCalls.delete(k);
+    for (const [k, p] of this.#pending) if (p.sessionId === id) this.#pending.delete(k);
+    const keep = this.#relays.filter((r) => r.parentId !== id && r.childId !== id);
+    this.#relays.splice(0, this.#relays.length, ...keep);
+  }
   getProject(id: string): ProjectInfo | undefined {
     const p = this.#projects.get(id);
     return p && clone(p);
