@@ -31,6 +31,9 @@ import { SettingsStore } from './settings-store';
 import { captureOnce, runShots } from './shots';
 import { flatten, icoFromPngs, inkFor } from './icon';
 import { PREVIEW_SCHEME, PreviewFiles, readPreview } from './preview';
+import { BRIDGE_JS, contentType, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
+import { FONT_UI, type PluginView, type PluginViewResult } from '../shared/plugin-view';
+import { readFile } from 'node:fs/promises';
 
 const APP_NAME = 'Spica';
 /** Title bar height in CSS px at 100% zoom; must match `--spica-titlebar-h` in the renderer. */
@@ -355,7 +358,11 @@ ipcMain.handle(DesktopChannel.Agent, async (_e, method: unknown, args: unknown) 
 
 // Previews: files the user opened from a conversation, shown in the right panel.
 // The PDF viewer and images load them through spica-file://<token> (only those files).
-protocol.registerSchemesAsPrivileged([{ scheme: PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
+// Plugin pages load their own files through spica-plugin://<plugin>/<path> (see plugin-views.ts).
+protocol.registerSchemesAsPrivileged([
+  { scheme: PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  { scheme: PLUGIN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+]);
 const previewFiles = new PreviewFiles();
 
 ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unknown) => {
@@ -364,6 +371,51 @@ ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unkn
   const full = isAbsolute(raw) ? raw : resolvePath(session?.cwd || app.getPath('home'), raw);
   return readPreview(full, previewFiles);
 });
+
+// Plugin pages: only through the plugin manager, which knows the plugin's folder and its pages' tools.
+const str = (v: unknown) => (typeof v === 'string' ? v : '');
+ipcMain.handle(DesktopChannel.PluginViews, async (): Promise<PluginView[]> => {
+  if (!(backend instanceof ProcessBackend)) return [];
+  return backend.pluginViews().catch(() => []);
+});
+ipcMain.handle(DesktopChannel.PluginViewCall, async (_e, plugin: unknown, view: unknown, tool: unknown, args: unknown, confirmed: unknown): Promise<PluginViewResult> => {
+  if (!(backend instanceof ProcessBackend)) return { content: '[UNSUPPORTED] 这个版本不能运行插件页面。', isError: true };
+  try {
+    return await backend.pluginViewCall({ plugin: str(plugin), view: str(view), tool: str(tool), args: args ?? {}, confirmed: confirmed === true });
+  } catch (err) {
+    return { content: friendly(err), isError: true };
+  }
+});
+ipcMain.handle(DesktopChannel.PluginViewFile, async (_e, plugin: unknown, path: unknown): Promise<string | null> => {
+  if (!(backend instanceof ProcessBackend)) return null;
+  return backend.pluginViewFile({ plugin: str(plugin), path: str(path) }).catch(() => null);
+});
+
+function pluginTheme(): { css: string } {
+  const s = settings.get();
+  const skin = resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins);
+  const mode = schemeOf(skin.bg);
+  return { css: themeCss(pluginThemeVars(deriveTokens(skin), FONT_UI), mode) };
+}
+
+async function servePluginFile(url: string): Promise<Response> {
+  const notFound = () => new Response('', { status: 404 });
+  const req = parsePluginUrl(url);
+  if (!req) return notFound();
+  if (req.path === '__spica/bridge.js') return new Response(BRIDGE_JS, { headers: { 'content-type': 'text/javascript; charset=utf-8' } });
+  if (req.path === '__spica/theme.css') return new Response(pluginTheme().css, { headers: { 'content-type': 'text/css; charset=utf-8' } });
+  if (!(backend instanceof ProcessBackend)) return notFound();
+  const file = await backend.pluginViewFile({ plugin: req.plugin, path: req.path }).catch(() => null);
+  if (!file) return notFound();
+  const type = contentType(file);
+  if (type.startsWith('text/html')) {
+    const html = await readFile(file, 'utf8').catch(() => null);
+    if (html === null) return notFound();
+    return new Response(injectIntoPage(html, req.plugin), { headers: { 'content-type': type, 'content-security-policy': pageCsp(req.plugin) } });
+  }
+  const res = await net.fetch(pathToFileURL(file).toString());
+  return new Response(res.body, { status: res.status, headers: { 'content-type': type } });
+}
 
 ipcMain.handle(DesktopChannel.OpenFile, async (_e, sessionId: unknown, path: unknown): Promise<string | null> => {
   if (typeof sessionId !== 'string' || typeof path !== 'string' || !path) return '文件路径不对。';
@@ -598,6 +650,7 @@ nativeTheme.on('updated', () => {
 
 void app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
+  protocol.handle(PLUGIN_SCHEME, (req) => servePluginFile(req.url));
   protocol.handle(PREVIEW_SCHEME, (req) => {
     const file = previewFiles.pathOf(req.url);
     return file ? net.fetch(pathToFileURL(file).toString()) : new Response('', { status: 404 });

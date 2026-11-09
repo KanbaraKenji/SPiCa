@@ -31,6 +31,8 @@ export interface SidebarProps {
   /** Absent when the backend cannot rename / delete projects: the menu leaves them out. */
   onRenameProject?: (projectId: string, name: string) => void;
   onDeleteProject?: (projectId: string, name: string) => void;
+  /** Pages plugins add to the sidebar (views with placement sidebar); they open in the main pane. */
+  pluginPages?: { key: string; title: string; icon?: string; open: boolean; onOpen(): void }[];
 }
 
 function byRecent(a: SessionInfo, b: SessionInfo): number {
@@ -189,6 +191,7 @@ export function Sidebar({
   onPin,
   onRenameProject,
   onDeleteProject,
+  pluginPages = [],
 }: SidebarProps) {
   const pinOrder = useMemo(() => new Map(pinned.map((id, i) => [id, i])), [pinned]);
   const { chats, projects, childrenOf, top } = useMemo(() => {
@@ -307,6 +310,17 @@ export function Sidebar({
           </section>
         ) : null}
       </div>
+      {pluginPages.length ? (
+        <section className="tree-section side-plugins" aria-label="插件">
+          <h2 className="tree-heading">插件</h2>
+          {pluginPages.map((p) => (
+            <button key={p.key} type="button" className={p.open ? 'side-action is-active' : 'side-action'} onClick={p.onOpen} aria-current={p.open ? 'page' : undefined} title={p.title}>
+              {p.icon ? <img className="side-plugin-icon" src={p.icon} alt="" /> : <Icon name="dot" />}
+              <span className="side-action-text">{p.title}</span>
+            </button>
+          ))}
+        </section>
+      ) : null}
       {menu ? (
         <ContextMenu
           x={menu.x}
