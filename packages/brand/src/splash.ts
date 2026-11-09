@@ -3,15 +3,18 @@
  *
  * 画面是一块 1280 × 720 的舞台（React 组件按窗口等比缩放），花标 + 字标的大横标居中。
  * - 背景：星点从画面中心沿径向向外飘出，每颗星飘完全程固定 5 秒。
- * - 加载中：一蓝一白两颗星像真正的双星一样绕共同的中心（花心）转，两颗永远一前一后、相差半圈。
- *   轨道是椭圆，按开普勒第二定律走：离花心近时快、远时慢（快慢比是参数）；最近点转在前面（离观者近），
- *   所以星在前面时又快又大又亮、盖在花标上，在后面时慢、小、暗、被花标挡住。
- *   星从前面扫过哪片瓣，哪片亮起再慢慢暗下；字标五个字母随同一节拍起伏。
- * - 加载完成（ready）：双星平滑加速、螺旋收拢、合于花心 → 九瓣顺时针逐片点亮、轴弹一下、放一圈冲击环
- *   → 一道光从花心慢慢掠过字标，逐字点亮 → 停顿 → 整层淡出。每一步的时长都是参数（SPLASH_FINISH）。
+ * - 加载中：一蓝一白两颗星像真正的双星一样绕共同的中心（花心）转，永远一前一后、相差半圈；
+ *   轨道是开普勒椭圆，近快远慢，最近点朝前。花标和字标跟双星同一个节拍呼吸、起伏，
+ *   但不和星的位置一一对应（不再「星扫到哪片、哪片亮」）。
+ * - 加载完成（ready）后的收尾（每一步时长都是参数 SPLASH_FINISH）：
+ *   ① 扩轨：双星平滑加速，轨道放大到 1.8 倍，同时拖出渐隐的光迹；
+ *   ② 大半径上再绕两圈；③ 加速收向花心，合一消失；
+ *   ④ 合一那一帧起，花标像水波一样从花心向外把实色填满（圆形遮罩扩散 + 两圈涟漪，轮廓不动）；
+ *   ⑤ 一道光扫过字标，经过处字由暗变亮、闪一下辉光再回稳；⑥ 停住；⑦ 整层淡出。
+ * - 短版（每天第二次起）：花标和字标淡入、停住、淡出，总长约 1 秒，不放星点。见 splashBriefFrame。
  * 花瓣只动透明度和缩放，形状一笔不改。
  */
-import { MARK_GEOMETRY, MARK_VIEWBOX, PETAL_COUNT } from './geometry.ts';
+import { MARK_GEOMETRY, MARK_VIEWBOX } from './geometry.ts';
 import { WORDMARK } from './wordmark.ts';
 
 export const SPLASH_STAGE = Object.freeze({ width: 1280, height: 720 });
@@ -26,59 +29,54 @@ export const SPLASH_TIMING = Object.freeze({
   appear: [0.2, 1.0] as const,
 });
 
-/**
- * 收尾每一步的时长（秒）。除 accel 外都从「双星合于花心」那一刻算起（= ready 之后 accel 秒）。
- */
+/** 收尾各步（秒，按顺序首尾相接；起止时刻见 splashSchedule） */
 export interface SplashFinish {
-  /** ready 后双星与背景平滑加速、螺旋收拢到合一的时长 */
-  accel: number;
-  /** 加速曲线本身到合一时的倍数（双星转速是平时的几倍，不含 finalBoost） */
-  orbitPeak: number;
-  /** 合心前最后 finalBoostTime 秒，双星转速在上面的曲线上再缓入加到 finalBoost 倍（合心时 = orbitPeak × finalBoost） */
-  finalBoost: number;
-  finalBoostTime: number;
-  /** 合一那一刻背景星点的速度是平时的几倍 */
+  /** ① 扩轨：用时、轨道放到原来的几倍、此时双星转速是平时的几倍 */
+  expand: number;
+  bigRadius: number;
+  bigSpeed: number;
+  /** ② 大半径上再绕几圈（用时 = 圈数 × 一圈秒数 ÷ bigSpeed） */
+  bigTurns: number;
+  /** ③ 收心：用时、合一那一刻双星转速是平时的几倍 */
+  collapse: number;
+  collapseSpeed: number;
+  /** 拖尾：光迹拖多长（秒）、从 ready 后多久开始淡入、淡入用时 */
+  trail: number;
+  trailStart: number;
+  trailFadeIn: number;
+  /** 背景星点：合一时速度是平时几倍、合一后回落用时 */
   starPeak: number;
-  /** 背景星点从峰值平滑回落到平时速度的时长 */
   starSettle: number;
-  /** 九瓣逐片点亮：从第一片开始的时刻、每片亮起用时、相邻两片的间隔（顺时针，12 点钟起） */
-  petalStart: number;
-  petalEach: number;
-  petalStagger: number;
-  /** 轴弹一下：开始时刻、用时 */
-  hopStart: number;
+  /** ④ 水波填充：从合一起的用时；轴弹一下的用时 */
+  fill: number;
   hop: number;
-  /** 冲击环：开始时刻、扩散用时 */
-  shockStart: number;
-  shock: number;
-  /** 光掠过字标：开始时刻、从花心走到字标末尾的用时 */
-  sweepStart: number;
+  /** ⑤ 扫字：相对填充结束的开始偏移（负数 = 提前一点接上）、用时；字亮起后的辉光回稳用时 */
+  sweepDelay: number;
   sweep: number;
-  /** 一切停住后开始淡出的时刻、淡出用时 */
+  letterGlow: number;
+  /** ⑥ 扫字结束后停多久；⑦ 淡出用时 */
   hold: number;
   fadeOut: number;
 }
 
 export const SPLASH_FINISH: Readonly<SplashFinish> = Object.freeze({
-  // 加速段 3.6 秒：从 3.5 秒一圈平滑加到 4 倍转速，收拢前绕约 2.06 圈
-  accel: 3.6,
-  orbitPeak: 4,
-  // 合心前最后 0.7 秒再加一把：4 倍 → 7.2 倍（曲线连续、缓入）
-  finalBoost: 1.8,
-  finalBoostTime: 0.7,
+  expand: 0.9,
+  bigRadius: 1.8,
+  bigSpeed: 3,
+  bigTurns: 2,
+  collapse: 0.8,
+  collapseSpeed: 5,
+  trail: 0.35,
+  trailStart: 0.2,
+  trailFadeIn: 0.5,
   starPeak: 3,
   starSettle: 1.5,
-  // 九瓣逐片点亮在双星收拢的最后 1.33 秒里进行，最后一片亮满的那一帧正好是双星合于花心、消失的那一帧
-  petalStart: -(0.45 + 8 * 0.11),
-  petalEach: 0.45,
-  petalStagger: 0.11, // 九片全部亮完 = 0.45 + 8 × 0.11 = 1.33 秒
-  hopStart: 0,
-  hop: 0.6,
-  shockStart: 0,
-  shock: 1.4,
-  sweepStart: 0.6,
-  sweep: 1.5,
-  hold: 3.3,
+  fill: 1.2,
+  hop: 0.5,
+  sweepDelay: -0.15,
+  sweep: 0.8,
+  letterGlow: 0.5,
+  hold: 1.0,
   fadeOut: 0.4,
 });
 
@@ -94,73 +92,115 @@ export interface SplashOptions {
   finish?: Partial<SplashFinish>;
 }
 
+export interface SplashSchedule {
+  /** 以下都是从 ready 起的秒数 */
+  bigStart: number;
+  collapseStart: number;
+  merge: number;
+  fillEnd: number;
+  sweepStart: number;
+  sweepEnd: number;
+  fadeStart: number;
+  end: number;
+}
+
+/** 收尾各步的起止时刻（从 ready 算起） */
+export function splashSchedule(options: SplashOptions = {}): SplashSchedule {
+  const F = { ...SPLASH_FINISH, ...options.finish };
+  const period = options.orbitPeriod ?? SPLASH_TIMING.orbitPeriod;
+  const bigStart = F.expand;
+  const collapseStart = bigStart + (F.bigTurns * period) / F.bigSpeed;
+  const merge = collapseStart + F.collapse;
+  const fillEnd = merge + F.fill;
+  const sweepStart = fillEnd + F.sweepDelay;
+  const sweepEnd = sweepStart + F.sweep;
+  const fadeStart = sweepEnd + F.letterGlow + F.hold;
+  return { bigStart, collapseStart, merge, fillEnd, sweepStart, sweepEnd, fadeStart, end: fadeStart + F.fadeOut };
+}
+
+/** 完成后多久整层消失（相对 ready） */
+export function splashFinishAfter(options: SplashOptions = {}): number {
+  return splashSchedule(options).end;
+}
+/** 缺省设置下，完成后多久整层消失（相对 ready） */
+export const SPLASH_FINISH_AFTER = splashFinishAfter();
+
+// ---- 曲线 ----
+const clamp = (x: number) => Math.max(0, Math.min(1, x));
+const seg = (t: number, a: number, b: number) => clamp((t - a) / (b - a));
+const smooth = (x: number) => x * x * (3 - 2 * x);
+const smoothArea = (x: number) => x * x * x - (x * x * x * x) / 2;
+const easeIn = (x: number) => x * x;
+const easeInArea = (x: number) => (x * x * x) / 3;
+const outCubic = (x: number) => 1 - (1 - x) ** 3;
+const inOutCubic = (x: number) => (x < 0.5 ? 4 * x ** 3 : 1 - (-2 * x + 2) ** 3 / 2);
+const lerp = (a: number, b: number, x: number) => a + (b - a) * x;
+const rad = (deg: number) => (deg * Math.PI) / 180;
+const settleCurve = (x: number) => 1 - smooth(x);
+const settleArea = (x: number) => x - smoothArea(x);
+
 function finishOf(options: SplashOptions): SplashFinish {
   return { ...SPLASH_FINISH, ...options.finish };
 }
 
-/** 完成后多久整层消失（相对 ready） */
-export function splashFinishAfter(finish: Partial<SplashFinish> = {}): number {
-  const f = { ...SPLASH_FINISH, ...finish };
-  return f.accel + f.hold + f.fadeOut;
+/** 双星转速倍率（u = ready 后秒数）：扩轨平滑加到 bigSpeed → 大半径匀速 → 收心缓入加到 collapseSpeed */
+function orbitMultiplier(u: number, F: SplashFinish, S: SplashSchedule): number {
+  if (u <= 0) return 1;
+  if (u < S.bigStart) return 1 + (F.bigSpeed - 1) * smooth(u / F.expand);
+  if (u < S.collapseStart) return F.bigSpeed;
+  return F.bigSpeed + (F.collapseSpeed - F.bigSpeed) * easeIn(Math.min((u - S.collapseStart) / F.collapse, 1));
 }
-/** 缺省时长下，完成后多久整层消失（相对 ready） */
-export const SPLASH_FINISH_AFTER = splashFinishAfter();
 
-// ---- 速度曲线（缓入：速度倍率 1 → peak，加速度从 0 起步）----
-const easeIn = (x: number) => x * x;
-const easeInArea = (x: number) => (x * x * x) / 3;
-/** 平滑回落 1 - smoothstep 及其积分 */
-const settleCurve = (x: number) => 1 - x * x * (3 - 2 * x);
-const settleArea = (x: number) => x - x * x * x + (x * x * x * x) / 2;
+/** ∫0^u (倍率 - 1) du：加速带来的「额外走过的时间」 */
+function orbitExtraTime(u: number, F: SplashFinish, S: SplashSchedule): number {
+  if (u <= 0) return 0;
+  const a = Math.min(u, S.bigStart);
+  let extra = F.expand * (F.bigSpeed - 1) * smoothArea(a / F.expand);
+  if (u <= S.bigStart) return extra;
+  const b = Math.min(u, S.collapseStart) - S.bigStart;
+  extra += b * (F.bigSpeed - 1);
+  if (u <= S.collapseStart) return extra;
+  const c = Math.min(u, S.merge) - S.collapseStart;
+  extra += c * (F.bigSpeed - 1) + (F.collapseSpeed - F.bigSpeed) * F.collapse * easeInArea(c / F.collapse);
+  if (u > S.merge) extra += (u - S.merge) * (F.collapseSpeed - 1);
+  return extra;
+}
+
+/** 轨道半径倍率：扩轨平滑放大 → 大半径 → 收心缓入缩到 0 */
+function radiusScale(u: number, F: SplashFinish, S: SplashSchedule): number {
+  if (u <= 0) return 1;
+  if (u < S.bigStart) return 1 + (F.bigRadius - 1) * smooth(u / F.expand);
+  if (u < S.collapseStart) return F.bigRadius;
+  return F.bigRadius * (1 - easeIn(Math.min((u - S.collapseStart) / F.collapse, 1)));
+}
 
 /** 某一时刻的速度倍率（相对平时）：双星转速、背景星点速度。给曲线图和测试用 */
 export function splashSpeeds(t: number, readyAt: number | null, options: SplashOptions = {}): { orbit: number; starfield: number } {
   if (readyAt === null || t < readyAt) return { orbit: 1, starfield: 1 };
-  const c = finishOf(options);
+  const F = finishOf(options);
+  const S = splashSchedule(options);
   const u = t - readyAt;
-  const a = Math.min(u / c.accel, 1);
-  const orbit = orbitMultiplier(Math.min(u, c.accel), c);
-  const starfield = u <= c.accel
-    ? 1 + (c.starPeak - 1) * easeIn(a)
-    : 1 + (c.starPeak - 1) * settleCurve(Math.min((u - c.accel) / c.starSettle, 1));
+  const orbit = orbitMultiplier(Math.min(u, S.merge), F, S);
+  const starfield = u <= S.merge
+    ? 1 + (F.starPeak - 1) * easeIn(u / S.merge)
+    : 1 + (F.starPeak - 1) * settleCurve(Math.min((u - S.merge) / F.starSettle, 1));
   return { orbit, starfield };
 }
 
-/** 速度倍率对时间的积分减去 t 本身：加速带来的「额外走过的时间」 */
-function extraTime(u: number, peak: number, accel: number): number {
-  return (peak - 1) * accel * easeInArea(Math.min(u / accel, 1));
-}
-
-/** 双星转速倍率：缓入曲线 × 合心前最后一段的再加速（两段都从加速度 0 起步，速度连续） */
-function orbitMultiplier(u: number, c: SplashFinish): number {
-  const base = 1 + (c.orbitPeak - 1) * easeIn(Math.min(u / c.accel, 1));
-  const boostFrom = c.accel - c.finalBoostTime;
-  const b = c.finalBoostTime > 0 ? Math.min(Math.max((u - boostFrom) / c.finalBoostTime, 0), 1) : 0;
-  return base * (1 + (c.finalBoost - 1) * easeIn(b));
-}
-
-/** 双星加速带来的额外时间：对 orbitMultiplier - 1 积分（辛普森法，64 段） */
-function orbitExtraTime(u: number, c: SplashFinish): number {
-  const end = Math.min(u, c.accel);
-  if (end <= 0) return 0;
-  const n = 64;
-  const h = end / n;
-  let sum = 0;
-  for (let i = 0; i <= n; i++) {
-    const w = i === 0 || i === n ? 1 : i % 2 ? 4 : 2;
-    sum += w * (orbitMultiplier(i * h, c) - 1);
-  }
-  return (sum * h) / 3;
+/** 某一时刻双星轨道半径是平时的几倍（给测试和时间表用） */
+export function splashOrbitScale(t: number, readyAt: number | null, options: SplashOptions = {}): number {
+  if (readyAt === null || t < readyAt) return 1;
+  return radiusScale(t - readyAt, finishOf(options), splashSchedule(options));
 }
 
 // ---- 版面 ----
 const MARK_FRACTION = 0.36; // 花标占舞台高度
-const S = (SPLASH_STAGE.height * MARK_FRACTION) / MARK_VIEWBOX; // 花标 64 单位 → 舞台像素
-const K = S * MARK_GEOMETRY.params.scale; // 花瓣局部单位 → 舞台像素（含 1.15 放大）
+const S0 = (SPLASH_STAGE.height * MARK_FRACTION) / MARK_VIEWBOX; // 花标 64 单位 → 舞台像素
+const K = S0 * MARK_GEOMETRY.params.scale; // 花瓣局部单位 → 舞台像素（含 1.15 放大）
 const WORD_CAP = 96; // 字标大写高（舞台像素）
 const WORD_SCALE = WORD_CAP / WORDMARK.height;
 const GAP = 40;
-const markW = MARK_VIEWBOX * S;
+const markW = MARK_VIEWBOX * S0;
 const wordW = WORDMARK.width * WORD_SCALE;
 const x0 = (SPLASH_STAGE.width - (markW + GAP + wordW)) / 2;
 
@@ -174,6 +214,8 @@ export const SPLASH_LAYOUT = Object.freeze({
   wordX: x0 + markW + GAP,
   wordY: SPLASH_STAGE.height / 2 + 6 - WORD_CAP / 2,
   wordScale: WORD_SCALE,
+  /** 水波填满整朵花需要的半径（花瓣局部单位：长瓣尖离花心 29） */
+  fillRadius: 30,
 });
 
 /**
@@ -181,14 +223,6 @@ export const SPLASH_LAYOUT = Object.freeze({
  * 投影到屏幕上竖向压到 0.36、整体转 -18°。最近点朝前（屏幕下方、离观者近）。
  */
 export const SPLASH_ORBIT = Object.freeze({ semiMajor: 32, squash: 0.36, roll: -18 });
-
-// ---- 小工具 ----
-const clamp = (x: number) => Math.max(0, Math.min(1, x));
-const seg = (t: number, a: number, b: number) => clamp((t - a) / (b - a));
-const outCubic = (x: number) => 1 - (1 - x) ** 3;
-const inOutCubic = (x: number) => (x < 0.5 ? 4 * x ** 3 : 1 - (-2 * x + 2) ** 3 / 2);
-const lerp = (a: number, b: number, x: number) => a + (b - a) * x;
-const rad = (deg: number) => (deg * Math.PI) / 180;
 
 /**
  * 开普勒运动：平近点角 M（弧度，随时间匀速走）→ 离花心的距离（以半长轴为 1）与真近点角。
@@ -204,29 +238,20 @@ export function keplerPosition(M: number, e: number): { r: number; angle: number
 
 /** 轨道平面上（相对花心）的一点 → 屏幕位置与纵深 depth（-1 后 … 1 前） */
 function project(px: number, py: number, depthRef: number) {
-  const ex = px;
   const ey = py * SPLASH_ORBIT.squash;
   const roll = rad(SPLASH_ORBIT.roll);
-  const lx = ex * Math.cos(roll) - ey * Math.sin(roll);
-  const ly = ex * Math.sin(roll) + ey * Math.cos(roll);
+  const lx = px * Math.cos(roll) - ey * Math.sin(roll);
+  const ly = px * Math.sin(roll) + ey * Math.cos(roll);
   return {
     x: SPLASH_LAYOUT.cx + K * lx,
     y: SPLASH_LAYOUT.cy + K * ly,
     depth: Math.max(-1, Math.min(1, py / depthRef)),
-    /** 屏幕上从 12 点钟顺时针量的角度，用来判断扫过哪片瓣 */
-    screenAngle: (Math.atan2(lx, -ly) * 180) / Math.PI,
   };
 }
 
-/** 星扫过之后瓣的亮度：刚扫过最亮，之后指数变暗 */
-function litByStar(petalAngle: number, starDeg: number): number {
-  const behind = (((starDeg - petalAngle) % 360) + 360) % 360;
-  return behind < 300 ? Math.exp(-behind / 70) : 0;
-}
-
-/** 加载中字母的起伏（0..1）：两颗星相差半圈，所以字按半圈一拍 */
-function letterWave(t: number, j: number, n: number, beat: number): number {
-  return (0.5 + 0.5 * Math.cos(2 * Math.PI * (t / beat - j / n))) ** 3;
+/** 加载中的节拍（0..1）：两颗星相差半圈，所以按半圈一拍 */
+function pulse(t: number, beat: number, offset = 0): number {
+  return (0.5 + 0.5 * Math.cos(2 * Math.PI * (t / beat - offset))) ** 2;
 }
 
 export interface SplashStar {
@@ -241,27 +266,45 @@ export interface SplashStar {
   companion: boolean;
 }
 
+export interface SplashTrailDot {
+  x: number;
+  y: number;
+  opacity: number;
+  /** 光点半径（舞台像素） */
+  r: number;
+  front: boolean;
+  companion: boolean;
+}
+
 export interface SplashFrame {
   /** 整层透明度（淡出时 1 → 0） */
   layer: number;
   /** 进场透明度 */
   appear: number;
   petals: ReadonlyArray<{ opacity: number; scale: number }>;
+  /** 轴的透明度与缩放 */
+  hubOpacity: number;
   hubScale: number;
+  /** 水波填充：实色花标的圆形遮罩半径（花瓣局部单位）与涟漪；null = 不画实色层 */
+  fill: { radius: number; ripples: ReadonlyArray<{ r: number; opacity: number }> } | null;
   /** 花心光晕强度 0..1（浅色主题不画） */
   glow: number;
-  /** 冲击环（舞台像素） */
-  shock: { r: number; opacity: number; width: number } | null;
-  /** 双星与掠字的光 */
+  /** 双星与扫字的光 */
   stars: readonly SplashStar[];
-  letters: ReadonlyArray<{ opacity: number; dy: number }>;
+  /** 双星拖尾的光点 */
+  trails: readonly SplashTrailDot[];
+  /** 字母：透明度、上下位移（舞台像素）、辉光 0..1 */
+  letters: ReadonlyArray<{ opacity: number; dy: number; glow: number }>;
   /** 收尾结束、可以移除 */
   finished: boolean;
 }
 
+const PETAL_BASE = 0.3;
+const PETAL_PULSE = 0.22;
 const LETTER_BASE = 0.22;
 const LETTER_WAVE = 0.3;
-const BACK_DIM = 0.35; // 星在后面时点亮花瓣的力度
+/** 每颗星拖尾的光点数 */
+export const SPLASH_TRAIL_DOTS = 14;
 
 /**
  * 某一时刻的画面状态。
@@ -274,95 +317,122 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
   const k = Math.max(1, options.speedRatio ?? SPLASH_ORBIT_DEFAULTS.speedRatio);
   const e = (k - 1) / (k + 1);
   const F = finishOf(options);
-  const finishAfter = splashFinishAfter(F);
+  const S = splashSchedule(options);
   const beat = period / 2;
   const n = WORDMARK.shapes.length;
   const appear = seg(t, SPLASH_TIMING.appear[0], SPLASH_TIMING.appear[1]);
-  const petalLit = new Array<number>(PETAL_COUNT).fill(0);
-  const stars: SplashStar[] = [];
-  const letters: Array<{ opacity: number; dy: number }> = [];
   const done = readyAt !== null && t >= readyAt;
-  const u = done ? t - readyAt : 0; // 收尾进行了多久
-  const m = u - F.accel; // 相对双星合一那一刻
-
-  // 双星：平近点角随时间匀速走（完成后按缓入曲线加速），位置按开普勒椭圆算；完成后半径同时收拢到 0
-  const merge = done ? inOutCubic(seg(u, 0, F.accel)) : 0;
-  const M = (2 * Math.PI * (t + (done ? orbitExtraTime(u, F) : 0))) / period;
-  const a = SPLASH_ORBIT.semiMajor * (1 - merge);
+  const u = done ? t - readyAt : 0;
   const depthRef = SPLASH_ORBIT.semiMajor * (1 + e);
-  if (!done || merge < 1) {
+
+  // 双星在时刻 tt 的位置（拖尾用同一个函数回看过去的位置）；合一之后没有
+  const starsAt = (tt: number) => {
+    const uu = readyAt !== null && tt >= readyAt ? tt - readyAt : 0;
+    if (uu >= S.merge) return null;
+    const M = (2 * Math.PI * (tt + orbitExtraTime(uu, F, S))) / period;
+    const a = SPLASH_ORBIT.semiMajor * radiusScale(uu, F, S);
     const kp = keplerPosition(M, e);
-    // 最近点（真近点角 0）朝前：轨道平面里 +y 是前方
     const px = a * kp.r * Math.cos(kp.angle + Math.PI / 2);
     const py = a * kp.r * Math.sin(kp.angle + Math.PI / 2);
-    for (const [sx, sy, companion] of [[px, py, false], [-px, -py, true]] as const) {
-      const p = project(sx, sy, depthRef);
+    return [project(px, py, depthRef), project(-px, -py, depthRef)] as const;
+  };
+
+  const stars: SplashStar[] = [];
+  const trails: SplashTrailDot[] = [];
+  const pair = starsAt(t);
+  if (pair) {
+    pair.forEach((p, i) => {
       stars.push({
         x: p.x,
         y: p.y,
         opacity: (done ? 1 : appear) * (0.6 + 0.4 * p.depth),
         scale: 1 + 0.35 * p.depth,
         front: p.depth >= 0,
-        companion,
+        companion: i === 1,
       });
-      const strength = p.depth >= 0 ? 1 : BACK_DIM;
-      MARK_GEOMETRY.petals.forEach((petal, i) => {
-        petalLit[i] = Math.max(petalLit[i] ?? 0, strength * litByStar(petal.angle, p.screenAngle));
-      });
+    });
+    // 拖尾：收尾开始一会儿后淡入，沿过去 trail 秒的轨迹画一串渐隐的光点
+    const trailOn = done ? seg(u, F.trailStart, F.trailStart + F.trailFadeIn) : 0;
+    if (trailOn > 0) {
+      for (let j = 1; j <= SPLASH_TRAIL_DOTS; j++) {
+        const back = starsAt(t - (j / SPLASH_TRAIL_DOTS) * F.trail);
+        if (!back) continue;
+        const fadeK = (1 - j / (SPLASH_TRAIL_DOTS + 1)) ** 1.5;
+        back.forEach((p, i) => {
+          trails.push({
+            x: p.x,
+            y: p.y,
+            opacity: trailOn * fadeK * 0.55 * (0.6 + 0.4 * p.depth),
+            r: 5.5 * (1 + 0.35 * p.depth) * (0.35 + 0.65 * fadeK),
+            front: p.depth >= 0,
+            companion: i === 1,
+          });
+        });
+      }
     }
   }
 
-  // 九瓣顺时针逐片点亮
-  const petalBloom = (i: number) => (done ? outCubic(seg(m, F.petalStart + i * F.petalStagger, F.petalStart + i * F.petalStagger + F.petalEach)) : 0);
-  const allBloom = done ? petalBloom(PETAL_COUNT - 1) : 0;
+  // 花标：加载中与双星同节拍呼吸（不和星的位置对应）；ready 后停在 ready 那一刻的亮度，等水波填实
+  const breathT = done ? readyAt! : t;
+  const petalOpacity = appear * (PETAL_BASE + PETAL_PULSE * pulse(breathT, beat));
+  const petals = MARK_GEOMETRY.petals.map(() => ({ opacity: petalOpacity, scale: 1 }));
+
+  // 水波填充：合一起，实色花标的圆形遮罩从花心扩到整朵花，带两圈涟漪
+  const m = u - S.merge;
+  let fill: SplashFrame['fill'] = null;
+  if (done && m >= 0) {
+    const radius = L.fillRadius * outCubic(seg(m, 0, F.fill));
+    const ripples = [0, 0.28].map((lag) => {
+      const q = seg(m, lag * F.fill, F.fill * (1 + lag));
+      return { r: L.fillRadius * 1.25 * outCubic(q), opacity: q > 0 && q < 1 ? 0.55 * (1 - q) : 0 };
+    });
+    fill = { radius, ripples };
+  }
+  const hop = done && m >= 0 ? seg(m, 0, F.hop) : 0;
 
   // 字标
-  if (!done) {
-    for (let j = 0; j < n; j++) {
-      const w = letterWave(t, j, n, beat);
-      letters.push({ opacity: appear * (LETTER_BASE + LETTER_WAVE * w), dy: -2.5 * w });
+  const letters: Array<{ opacity: number; dy: number; glow: number }> = [];
+  const sweepC = done ? seg(u, S.sweepStart, S.sweepEnd) : 0;
+  const wordEnd = L.wordX + WORDMARK.width * L.wordScale;
+  const sweepFrom = L.wordX - 40;
+  const sweepTo = wordEnd + 60;
+  const sweepX = lerp(sweepFrom, sweepTo, inOutCubic(sweepC));
+  const pxPerSec = (sweepTo - sweepFrom) / F.sweep;
+  const glowFade = 1 - (done ? seg(u, S.sweepEnd, S.sweepEnd + F.letterGlow) : 0);
+  WORDMARK.shapes.forEach((shape, j) => {
+    const wave = pulse(breathT, beat, j / n);
+    if (!done) {
+      letters.push({ opacity: appear * (LETTER_BASE + LETTER_WAVE * wave), dy: -2.5 * wave, glow: 0 });
+      return;
     }
-  } else {
-    const c = seg(m, F.sweepStart, F.sweepStart + F.sweep);
-    const sweepX = lerp(L.cx, L.wordX + WORDMARK.width * L.wordScale + 80, inOutCubic(c));
-    if (c > 0 && c < 1) {
-      stars.push({ x: sweepX, y: L.cy - 6, opacity: 1 - seg(c, 0.85, 1), scale: 0.85, front: true, companion: false });
-    }
-    // ready 那一刻的起伏在 0.3s 内回落到底色，再等光掠过点亮，避免跳变
+    // ready 后：起伏 0.3s 内回落到底色；光扫过字母中心时字亮满，并闪一下辉光再回稳
     const settle = seg(u, 0, 0.3);
-    WORDMARK.shapes.forEach((shape, j) => {
-      const w = letterWave(readyAt!, j, n, beat) * (1 - settle);
-      const base = LETTER_BASE + LETTER_WAVE * w;
-      // 光走到字母中心前 20 像素开始亮，越过 90 像素亮满
-      const lit = c > 0 ? outCubic(seg(sweepX - (L.wordX + shape.cx * L.wordScale), -20, 90)) : 0;
-      letters.push({ opacity: lerp(base, 1, lit), dy: lit > 0 ? 8 * (1 - lit) : -2.5 * w });
-    });
+    const rest = LETTER_BASE + LETTER_WAVE * wave * (1 - settle);
+    const passed = sweepC > 0 ? sweepX - (L.wordX + shape.cx * L.wordScale) : -Infinity;
+    const lit = outCubic(clamp((passed + 30) / 90));
+    const since = passed > 0 ? passed / pxPerSec : -1;
+    const glow = since >= 0 ? Math.exp(-since / (F.letterGlow / 2.5)) * glowFade : 0;
+    letters.push({ opacity: lerp(rest, 1, lit), dy: lit > 0 ? 6 * (1 - lit) : -2.5 * wave * (1 - settle), glow: clamp(glow) });
+  });
+  if (done && sweepC > 0 && sweepC < 1) {
+    stars.push({ x: sweepX, y: L.cy - 4, opacity: 1 - seg(sweepC, 0.85, 1), scale: 1.25, front: true, companion: false });
   }
 
-  const petals = MARK_GEOMETRY.petals.map((_, i) => {
-    const b = petalBloom(i);
-    const lit = lerp(petalLit[i] ?? 0, 1, b);
-    return { opacity: appear * (0.2 + 0.8 * lit), scale: 1 + 0.07 * lit * (1 - b) };
-  });
-
-  const hop = done ? seg(m, F.hopStart, F.hopStart + F.hop) : 0;
-  const flash = done && m > 0 ? Math.exp(-m * 1.5) : 0;
-  const sw = done ? seg(m, F.shockStart, F.shockStart + F.shock) : 0;
-  const shock = sw > 0 && sw < 1
-    ? { r: K * (6 + 60 * outCubic(sw)), opacity: 0.45 * (1 - sw), width: 3 * (1 - sw) }
-    : null;
-  const fade = done ? seg(m, F.hold, F.hold + F.fadeOut) : 0;
+  const fade = done ? seg(u, S.fadeStart, S.end) : 0;
+  const fillW = fill ? fill.radius / L.fillRadius : 0;
 
   return {
     layer: 1 - fade,
     appear,
     petals,
+    hubOpacity: appear,
     hubScale: 1 + 0.6 * Math.sin(Math.PI * hop),
-    glow: clamp(0.1 + 0.4 * allBloom + 0.35 * flash),
-    shock,
+    fill,
+    glow: clamp(0.12 + 0.4 * fillW),
     stars,
+    trails,
     letters,
-    finished: done && u >= finishAfter,
+    finished: done && u >= S.end,
   };
 }
 
@@ -372,13 +442,30 @@ export function splashStaticFrame(): SplashFrame {
     layer: 1,
     appear: 1,
     petals: MARK_GEOMETRY.petals.map(() => ({ opacity: 1, scale: 1 })),
+    hubOpacity: 1,
     hubScale: 1,
-    glow: 0.5,
-    shock: null,
+    fill: null,
+    glow: 0.3,
     stars: [],
-    letters: WORDMARK.shapes.map(() => ({ opacity: 1, dy: 0 })),
+    trails: [],
+    letters: WORDMARK.shapes.map(() => ({ opacity: 1, dy: 0, glow: 0 })),
     finished: false,
   };
+}
+
+/** 短版时长：淡入、停住、淡出（秒），合计 1 秒 */
+export const SPLASH_BRIEF = Object.freeze({ fadeIn: 0.3, hold: 0.4, fadeOut: 0.3 });
+
+/**
+ * 短版（每天第二次打开起）：完整横标淡入、停住、淡出，总长 1 秒，不放星点。
+ * 1 秒到了还没 ready 就停在完整横标上等 ready，ready 后再淡出。
+ */
+export function splashBriefFrame(t: number, readyAt: number | null): SplashFrame {
+  const B = SPLASH_BRIEF;
+  const fadeFrom = readyAt === null ? Infinity : Math.max(B.fadeIn + B.hold, readyAt);
+  const inA = seg(t, 0, B.fadeIn);
+  const out = Number.isFinite(fadeFrom) ? seg(t, fadeFrom, fadeFrom + B.fadeOut) : 0;
+  return { ...splashStaticFrame(), layer: inA * (1 - out), finished: Number.isFinite(fadeFrom) && t >= fadeFrom + B.fadeOut };
 }
 
 // ---- 背景星点 ----
@@ -412,13 +499,14 @@ const STAR_SEEDS: readonly StarSeed[] = (() => {
   }));
 })();
 
-/** 星点的「时间」：加载完成后按同一条缓入曲线加速，合一后再平滑回落（速度连续，没有台阶） */
+/** 星点的「时间」：ready 后缓入加速到合一时的 starPeak 倍，合一后平滑回落（速度连续，没有台阶） */
 function starTime(t: number, readyAt: number | null, options: SplashOptions = {}): number {
   if (readyAt === null || t < readyAt) return t;
-  const c = finishOf(options);
+  const F = finishOf(options);
+  const S = splashSchedule(options);
   const u = t - readyAt;
-  const up = extraTime(u, c.starPeak, c.accel);
-  const down = u > c.accel ? (c.starPeak - 1) * c.starSettle * settleArea(Math.min((u - c.accel) / c.starSettle, 1)) : 0;
+  const up = (F.starPeak - 1) * S.merge * easeInArea(Math.min(u / S.merge, 1));
+  const down = u > S.merge ? (F.starPeak - 1) * F.starSettle * settleArea(Math.min((u - S.merge) / F.starSettle, 1)) : 0;
   return t + up + down;
 }
 

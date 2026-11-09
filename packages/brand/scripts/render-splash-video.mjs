@@ -25,6 +25,7 @@ const defs = `<defs>
 <radialGradient id="glow"><stop offset="0" stop-color="${T.acc}" stop-opacity="${T.glow}"/><stop offset="0.45" stop-color="${T.acc}" stop-opacity="0.12"/><stop offset="1" stop-color="${T.acc}" stop-opacity="0"/></radialGradient>
 <radialGradient id="sg"><stop offset="0" stop-color="${T.acc}" stop-opacity="0.12"/><stop offset="1" stop-color="${T.acc}" stop-opacity="0"/></radialGradient>
 <radialGradient id="vign" cx="0.5" cy="0.5" r="0.75"><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.55"/></radialGradient>
+<filter id="blur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="6"/></filter>
 </defs>`;
 
 function starEl(s) {
@@ -32,35 +33,47 @@ function starEl(s) {
   const halo = theme === 'dark' ? `<circle r="${STAR_R * 2.6}" fill="url(#sg)" opacity="0.5"/>` : '';
   return `<g transform="translate(${f2(s.x)} ${f2(s.y)}) scale(${f2(s.scale)})" opacity="${s.opacity.toFixed(3)}">${halo}<path d="${SPARK}" fill="${s.companion ? T.companion : T.acc}"/><circle r="${STAR_R * 0.55}" fill="${T.core}"/></g>`;
 }
+function trailEl(d) {
+  if (d.opacity <= 0.005) return '';
+  return `<circle cx="${f2(d.x)}" cy="${f2(d.y)}" r="${f2(d.r)}" fill="${d.companion ? T.companion : T.acc}" opacity="${d.opacity.toFixed(3)}"/>`;
+}
+const petalPaths = (ink, acc) => MARK_GEOMETRY.petals.map((p) => `<path fill="${p.long ? acc : ink}" transform="rotate(${p.angle} ${C} ${C})" d="${p.d}"/>`).join('');
+const letterBody = (s, color) => s.kind === 'fill'
+  ? `<path fill="${color}"${s.evenOdd ? ' fill-rule="evenodd"' : ''} d="${s.d}"/>`
+  : `<path fill="none" stroke="${color}" stroke-width="${s.strokeWidth}" stroke-linecap="square" stroke-linejoin="miter" d="${s.d}"/>`;
 
 function frame(t) {
-  const f = splashFrame(t, t >= readyAt ? readyAt : null);
+  const ready = t >= readyAt ? readyAt : null;
+  const f = splashFrame(t, ready);
   const out = [];
-  for (const s of starfield(t, t >= readyAt ? readyAt : null, W, H, 1)) {
+  for (const s of starfield(t, ready, W, H, 1)) {
     if (s.opacity <= 0.005) continue;
     out.push(`<line x1="${f2(s.x1)}" y1="${f2(s.y1)}" x2="${f2(s.x2)}" y2="${f2(s.y2)}" stroke="${s.accent ? T.acc : T.star}" stroke-width="${f2(s.width)}" stroke-linecap="round" opacity="${(s.opacity * f.layer).toFixed(3)}"/>`);
   }
   const g = [];
-  if (theme === 'dark') g.push(`<circle cx="${L.cx}" cy="${L.cy}" r="${(H * 0.36 * 70) / 64}" fill="url(#glow)" opacity="${f.glow.toFixed(3)}"/>`);
+  if (theme === 'dark') g.push(`<circle cx="${L.cx}" cy="${L.cy}" r="${f2(L.markScale * 61)}" fill="url(#glow)" opacity="${f.glow.toFixed(3)}"/>`);
+  for (const d of f.trails) if (!d.front) g.push(trailEl(d));
   for (const s of f.stars) if (!s.front) g.push(starEl(s));
-  const petals = MARK_GEOMETRY.petals;
-  let mark = `<g opacity="${f.appear.toFixed(3)}">${petals.map((p) => `<path fill="${T.bg}" transform="rotate(${p.angle} ${C} ${C})" d="${p.d}"/>`).join('')}<circle cx="${C}" cy="${C}" r="4.5" fill="${T.bg}"/></g>`;
-  petals.forEach((p, i) => {
-    const st = f.petals[i];
-    mark += `<g transform="translate(${C} ${C}) scale(${st.scale.toFixed(3)}) translate(-${C} -${C})" opacity="${st.opacity.toFixed(3)}"><path fill="${p.long ? T.acc : T.ink}" transform="rotate(${p.angle} ${C} ${C})" d="${p.d}"/></g>`;
-  });
-  mark += `<circle cx="${C}" cy="${C}" r="${(4.5 * f.hubScale).toFixed(3)}" fill="${T.ink}" opacity="${f.appear.toFixed(3)}"/>`;
+  // 花标：底色剪影（挡住后面的星）→ 呼吸中的暗花标 → 水波填充的实色花标（圆形遮罩）→ 涟漪 → 轴
+  let mark = `<g opacity="${f.appear.toFixed(3)}">${petalPaths(T.bg, T.bg)}<circle cx="${C}" cy="${C}" r="4.5" fill="${T.bg}"/></g>`;
+  mark += `<g opacity="${(f.petals[0]?.opacity ?? 0).toFixed(3)}">${petalPaths(T.ink, T.acc)}</g>`;
+  if (f.fill) {
+    mark += `<clipPath id="fillclip"><circle cx="${C}" cy="${C}" r="${f.fill.radius.toFixed(3)}"/></clipPath><g clip-path="url(#fillclip)">${petalPaths(T.ink, T.acc)}</g>`;
+    for (const rp of f.fill.ripples) if (rp.opacity > 0.005) mark += `<circle cx="${C}" cy="${C}" r="${rp.r.toFixed(3)}" fill="none" stroke="${T.acc}" stroke-width="0.8" opacity="${rp.opacity.toFixed(3)}"/>`;
+  }
+  mark += `<circle cx="${C}" cy="${C}" r="${(4.5 * f.hubScale).toFixed(3)}" fill="${T.ink}" opacity="${f.hubOpacity.toFixed(3)}"/>`;
   g.push(`<g transform="translate(${L.cx} ${L.cy}) scale(${L.markScale}) translate(-${C} -${C})">${mark}</g>`);
-  if (f.shock) g.push(`<circle cx="${L.cx}" cy="${L.cy}" r="${f2(f.shock.r)}" fill="none" stroke="${T.acc}" stroke-width="${f2(f.shock.width)}" opacity="${f.shock.opacity.toFixed(3)}"/>`);
+  // 字标：暗色辉光是模糊的强调色垫在下面；浅色辉光是清晰的强调色盖在上面
   let word = '';
   WORDMARK.shapes.forEach((s, i) => {
     const l = f.letters[i];
-    const body = s.kind === 'fill'
-      ? `<path fill="${T.ink}"${s.evenOdd ? ' fill-rule="evenodd"' : ''} d="${s.d}"/>`
-      : `<path fill="none" stroke="${T.ink}" stroke-width="${s.strokeWidth}" stroke-linecap="square" stroke-linejoin="miter" d="${s.d}"/>`;
-    word += `<g transform="translate(0 ${(l.dy / L.wordScale).toFixed(3)})" opacity="${l.opacity.toFixed(3)}">${body}</g>`;
+    const tr = `translate(0 ${(l.dy / L.wordScale).toFixed(3)})`;
+    const glow = l.glow > 0.005 ? `<g transform="${tr}" opacity="${l.glow.toFixed(3)}"${theme === 'dark' ? ' filter="url(#blur)"' : ''}>${letterBody(s, T.acc)}</g>` : '';
+    const letter = `<g transform="${tr}" opacity="${l.opacity.toFixed(3)}">${letterBody(s, T.ink)}</g>`;
+    word += theme === 'dark' ? glow + letter : letter + glow;
   });
   g.push(`<g transform="translate(${L.wordX} ${L.wordY}) scale(${L.wordScale})">${word}</g>`);
+  for (const d of f.trails) if (d.front) g.push(trailEl(d));
   for (const s of f.stars) if (s.front) g.push(starEl(s));
   out.push(`<g opacity="${f.layer.toFixed(3)}">${g.join('')}</g>`);
   if (T.vign) out.push(`<rect width="${W}" height="${H}" fill="url(#vign)"/>`);

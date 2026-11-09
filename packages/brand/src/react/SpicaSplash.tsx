@@ -1,15 +1,28 @@
 import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
-import { MARK_CENTER, MARK_GEOMETRY, MARK_VIEWBOX, fmt, sparklePath } from '../geometry.ts';
-import { SPLASH_LAYOUT, SPLASH_STAGE, SPLASH_TIMING, splashFrame, splashStaticFrame, starfield, type SplashFinish, type SplashFrame } from '../splash.ts';
+import { MARK_CENTER, MARK_GEOMETRY, fmt, sparklePath } from '../geometry.ts';
+import {
+  SPLASH_LAYOUT,
+  SPLASH_STAGE,
+  SPLASH_TIMING,
+  SPLASH_TRAIL_DOTS,
+  splashBriefFrame,
+  splashFrame,
+  splashStaticFrame,
+  starfield,
+  type SplashFinish,
+  type SplashFrame,
+} from '../splash.ts';
 import { WORDMARK } from '../wordmark.ts';
 
 export interface SpicaSplashProps {
-  /** 加载完成：从这一刻起播收尾（双星合一 → 全亮 → 逐字点亮 → 淡出） */
+  /** 加载完成：从这一刻起播收尾 */
   ready: boolean;
   /** 收尾播完、整层淡出后回调；调用方在这里卸载组件 */
   onDone?: () => void;
   theme?: 'dark' | 'light';
-  /** 双星转一圈的秒数（缺省 4 秒） */
+  /** full = 完整版（每天第一次打开）；brief = 短版：横标淡入、停住、淡出，约 1 秒，不放星点 */
+  mode?: 'full' | 'brief';
+  /** 双星转一圈的秒数（缺省 3.5 秒） */
   orbitPeriod?: number;
   /** 双星快慢比：离花心最近时的速度 ÷ 最远时（缺省 2；1 = 匀速） */
   speedRatio?: number;
@@ -25,11 +38,15 @@ const C = fmt(MARK_CENTER);
 const L = SPLASH_LAYOUT;
 const STAR_R = 7;
 const STAR_SPARKLE = sparklePath(0, 0, STAR_R * 2.4, 0.16);
-/** 同时最多三颗：蓝星、伴星、掠字的光。每颗在花标后面、前面各有一个位置，按纵深切换 */
+/** 同时最多三颗：蓝星、伴星、扫字的光。每颗在花标后面、前面各有一个位置，按纵深切换 */
 const STAR_SLOTS = 3;
+/** 拖尾光点：两颗星 × 每颗 SPLASH_TRAIL_DOTS 个，后面、前面各一组 */
+const TRAIL_SLOTS = 2 * SPLASH_TRAIL_DOTS;
+
+type Refs<T> = { current: Array<T | null> };
 
 /** 一组星的位置（后面一组画在花标下面，前面一组画在最上面） */
-function starSlots(refs: { current: Array<SVGGElement | null> }, id: string) {
+function starSlots(refs: Refs<SVGGElement>, id: string) {
   return Array.from({ length: STAR_SLOTS }, (_, i) => (
     <g
       key={i}
@@ -46,6 +63,38 @@ function starSlots(refs: { current: Array<SVGGElement | null> }, id: string) {
   ));
 }
 
+function trailSlots(refs: Refs<SVGCircleElement>) {
+  return Array.from({ length: TRAIL_SLOTS }, (_, i) => (
+    <circle
+      key={i}
+      ref={(el) => {
+        refs.current[i] = el;
+      }}
+      className="spica-splash-trail"
+      r="0"
+      opacity="0"
+    />
+  ));
+}
+
+function petalPaths() {
+  return (
+    <>
+      {MARK_GEOMETRY.petals.map((p) => (
+        <path key={p.index} className={`spica-splash-petal--${p.long ? 'long' : 'short'}`} transform={`rotate(${p.angle} ${C} ${C})`} d={p.d} />
+      ))}
+    </>
+  );
+}
+
+function letterShape(s: (typeof WORDMARK.shapes)[number], className: string) {
+  return s.kind === 'fill' ? (
+    <path className={className} fillRule={s.evenOdd ? 'evenodd' : undefined} d={s.d} />
+  ) : (
+    <path className={`${className} spica-splash-letter--stroke`} strokeWidth={s.strokeWidth} strokeLinecap="square" strokeLinejoin="miter" d={s.d} />
+  );
+}
+
 function reducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 }
@@ -54,29 +103,45 @@ function reducedMotion(): boolean {
  * 开机画面「暗处亮起 · 双星环绕」。铺满父元素（父元素需要定位）。
  * 时间线在 splash.ts，这里只负责按帧把状态写到 SVG 和画布上。
  */
-export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLASH_TIMING.orbitPeriod, speedRatio, finish, caption, className, style }: SpicaSplashProps) {
+export function SpicaSplash({
+  ready,
+  onDone,
+  theme = 'dark',
+  mode = 'full',
+  orbitPeriod = SPLASH_TIMING.orbitPeriod,
+  speedRatio,
+  finish,
+  caption,
+  className,
+  style,
+}: SpicaSplashProps) {
   const id = useId().replace(/:/g, '');
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const layerRef = useRef<SVGSVGElement>(null);
   const glowRef = useRef<SVGCircleElement>(null);
-  const shockRef = useRef<SVGCircleElement>(null);
   const hubRef = useRef<SVGCircleElement>(null);
-  const petalRefs = useRef<Array<SVGGElement | null>>([]);
-  const letterRefs = useRef<Array<SVGGElement | null>>([]);
   const maskRef = useRef<SVGGElement>(null);
+  const dimRef = useRef<SVGGElement>(null);
+  const fillRef = useRef<SVGGElement>(null);
+  const fillClipRef = useRef<SVGCircleElement>(null);
+  const rippleRefs = useRef<Array<SVGCircleElement | null>>([]);
+  const letterRefs = useRef<Array<SVGGElement | null>>([]);
+  const letterGlowRefs = useRef<Array<SVGGElement | null>>([]);
   const backStarRefs = useRef<Array<SVGGElement | null>>([]);
   const frontStarRefs = useRef<Array<SVGGElement | null>>([]);
+  const backTrailRefs = useRef<Array<SVGCircleElement | null>>([]);
+  const frontTrailRefs = useRef<Array<SVGCircleElement | null>>([]);
   const readyAtRef = useRef<number | null>(null);
   const t0Ref = useRef<number>(0);
   const onDoneRef = useRef(onDone);
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
   const finishRef = useRef(finish);
   useEffect(() => {
     finishRef.current = finish;
   }, [finish]);
-  useEffect(() => {
-    onDoneRef.current = onDone;
-  }, [onDone]);
 
   // 记下 ready 的时刻（相对开机画面出现）
   useEffect(() => {
@@ -97,25 +162,25 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLAS
       canvas.style.opacity = fmt(f.layer);
       glowRef.current?.setAttribute('opacity', fmt(f.glow));
       hubRef.current?.setAttribute('r', fmt(MARK_GEOMETRY.params.hubRadius * f.hubScale));
-      hubRef.current?.setAttribute('opacity', fmt(f.appear));
+      hubRef.current?.setAttribute('opacity', fmt(f.hubOpacity));
       maskRef.current?.setAttribute('opacity', fmt(f.appear));
-      const sh = shockRef.current;
-      if (sh) {
-        sh.setAttribute('r', fmt(f.shock?.r ?? 0));
-        sh.setAttribute('opacity', fmt(f.shock?.opacity ?? 0));
-        sh.setAttribute('stroke-width', fmt(f.shock?.width ?? 0));
-      }
-      f.petals.forEach((p, i) => {
-        const g = petalRefs.current[i];
-        if (!g) return;
-        g.setAttribute('opacity', fmt(p.opacity));
-        g.setAttribute('transform', `translate(${C} ${C}) scale(${fmt(p.scale)}) translate(-${C} -${C})`);
+      dimRef.current?.setAttribute('opacity', fmt(f.petals[0]?.opacity ?? 0));
+      // 水波填充：实色花标层的圆形遮罩
+      fillRef.current?.setAttribute('opacity', f.fill ? '1' : '0');
+      fillClipRef.current?.setAttribute('r', fmt(f.fill?.radius ?? 0));
+      rippleRefs.current.forEach((c, i) => {
+        const rp = f.fill?.ripples[i];
+        c?.setAttribute('r', fmt(rp?.r ?? 0));
+        c?.setAttribute('opacity', fmt(rp?.opacity ?? 0));
       });
       f.letters.forEach((l, i) => {
+        const tr = `translate(0 ${fmt(l.dy / L.wordScale)})`;
         const g = letterRefs.current[i];
-        if (!g) return;
-        g.setAttribute('opacity', fmt(l.opacity));
-        g.setAttribute('transform', `translate(0 ${fmt(l.dy / L.wordScale)})`);
+        g?.setAttribute('opacity', fmt(l.opacity));
+        g?.setAttribute('transform', tr);
+        const gl = letterGlowRefs.current[i];
+        gl?.setAttribute('opacity', fmt(l.glow));
+        gl?.setAttribute('transform', tr);
       });
       for (let i = 0; i < STAR_SLOTS; i++) {
         const s = f.stars[i];
@@ -130,22 +195,22 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLAS
           }
         }
       }
-    };
-
-    // 减弱动效：静态完整画面，ready 后稍停即结束
-    if (reducedMotion()) {
-      apply(splashStaticFrame());
-      let timer = 0;
-      const check = window.setInterval(() => {
-        if (readyAtRef.current !== null && !timer) {
-          timer = window.setTimeout(() => onDoneRef.current?.(), 600);
+      for (let i = 0; i < TRAIL_SLOTS; i++) {
+        const d = f.trails[i];
+        for (const [refs, isFront] of [[backTrailRefs, false], [frontTrailRefs, true]] as const) {
+          const c = refs.current[i];
+          if (!c) continue;
+          const on = d !== undefined && d.front === isFront;
+          c.setAttribute('opacity', fmt(on ? d.opacity : 0));
+          if (on) {
+            c.setAttribute('cx', fmt(d.x));
+            c.setAttribute('cy', fmt(d.y));
+            c.setAttribute('r', fmt(d.r));
+            c.setAttribute('class', d.companion ? 'spica-splash-trail spica-splash-trail--companion' : 'spica-splash-trail');
+          }
         }
-      }, 100);
-      return () => {
-        window.clearInterval(check);
-        window.clearTimeout(timer);
-      };
-    }
+      }
+    };
 
     const ctx = canvas.getContext('2d');
     let colors = { star: '#DCE8FF', accent: '#62A9FF' };
@@ -159,6 +224,26 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLAS
         accent: cs.getPropertyValue('--spica-splash-accent').trim() || colors.accent,
       };
     };
+
+    // 减弱动效或短版：都不放星点，按短版的淡入 / 停住 / 淡出走；减弱动效时连淡入淡出都不做
+    if (reducedMotion() || mode === 'brief') {
+      const still = reducedMotion();
+      ctx?.clearRect(0, 0, canvas.width, canvas.height);
+      let raf = 0;
+      const tick = (now: number) => {
+        const t = (now - t0Ref.current) / 1000;
+        const f = splashBriefFrame(t, readyAtRef.current);
+        apply(still ? { ...splashStaticFrame(), finished: f.finished } : f);
+        if (f.finished) {
+          onDoneRef.current?.();
+          return;
+        }
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }
+
     resize();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
     ro?.observe(root);
@@ -200,8 +285,8 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLAS
       cancelAnimationFrame(raf);
       ro?.disconnect();
     };
-    // 换主题或节奏时重启循环；ready 通过 ref 传进循环，不触发重启
-  }, [theme, orbitPeriod, speedRatio]);
+    // 换主题、模式或节奏时重启；ready 通过 ref 传进循环，不触发重启
+  }, [theme, mode, orbitPeriod, speedRatio]);
 
   const markTransform = `translate(${fmt(L.cx)} ${fmt(L.cy)}) scale(${fmt(L.markScale)}) translate(-${C} -${C})`;
   const wordTransform = `translate(${fmt(L.wordX)} ${fmt(L.wordY)}) scale(${fmt(L.wordScale)})`;
@@ -211,6 +296,7 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLAS
       ref={rootRef}
       className={className ? `spica-splash ${className}` : 'spica-splash'}
       data-theme={theme}
+      data-mode={mode}
       style={style}
       role="img"
       aria-label="Spica"
@@ -233,55 +319,76 @@ export function SpicaSplash({ ready, onDone, theme = 'dark', orbitPeriod = SPLAS
             <stop offset="0" className="spica-splash-glow-mid" />
             <stop offset="1" className="spica-splash-glow-edge" />
           </radialGradient>
+          <clipPath id={`${id}-fill`}>
+            <circle ref={fillClipRef} cx={C} cy={C} r="0" />
+          </clipPath>
+          <filter id={`${id}-blur`} x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
         </defs>
-        <circle ref={glowRef} className="spica-splash-glow" cx={fmt(L.cx)} cy={fmt(L.cy)} r={fmt((SPLASH_STAGE.height * 0.36 * 70) / MARK_VIEWBOX)} fill={`url(#${id}-glow)`} opacity="0" />
+        <circle ref={glowRef} className="spica-splash-glow" cx={fmt(L.cx)} cy={fmt(L.cy)} r={fmt(L.markScale * 61)} fill={`url(#${id}-glow)`} opacity="0" />
+        {trailSlots(backTrailRefs)}
         {starSlots(backStarRefs, id)}
         <g transform={markTransform}>
-          {/* 底色剪影：花瓣暗下去时也挡住后面的星（同一组路径，只当遮挡，不改轮廓） */}
+          {/* 底色剪影：花瓣暗着时也挡住后面的星（同一组路径，只当遮挡，不改轮廓） */}
           <g ref={maskRef} className="spica-splash-mask" opacity="0">
-            {MARK_GEOMETRY.petals.map((p) => (
-              <path key={p.index} transform={`rotate(${p.angle} ${C} ${C})`} d={p.d} />
-            ))}
+            {petalPaths()}
             <circle cx={C} cy={C} r={fmt(MARK_GEOMETRY.params.hubRadius)} />
           </g>
-          {MARK_GEOMETRY.petals.map((p, i) => (
-            <g
-              key={p.index}
+          {/* 呼吸中的暗花标 */}
+          <g ref={dimRef} className="spica-splash-petals" opacity="0">
+            {petalPaths()}
+          </g>
+          {/* 水波填充：实色花标，圆形遮罩从花心扩开 */}
+          <g ref={fillRef} className="spica-splash-petals" clipPath={`url(#${id}-fill)`} opacity="0">
+            {petalPaths()}
+          </g>
+          {[0, 1].map((i) => (
+            <circle
+              key={i}
               ref={(el) => {
-                petalRefs.current[i] = el;
+                rippleRefs.current[i] = el;
               }}
-              className={`spica-splash-petal spica-splash-petal--${p.long ? 'long' : 'short'}`}
+              className="spica-splash-ripple"
+              cx={C}
+              cy={C}
+              r="0"
               opacity="0"
-            >
-              <path transform={`rotate(${p.angle} ${C} ${C})`} d={p.d} />
-            </g>
+            />
           ))}
           <circle ref={hubRef} className="spica-splash-hub" cx={C} cy={C} r={fmt(MARK_GEOMETRY.params.hubRadius)} opacity="0" />
         </g>
-        <circle ref={shockRef} className="spica-splash-shock" cx={fmt(L.cx)} cy={fmt(L.cy)} r="0" opacity="0" />
         <g transform={wordTransform}>
-          {WORDMARK.shapes.map((s, i) => (
-            <g
-              key={i}
-              ref={(el) => {
-                letterRefs.current[i] = el;
-              }}
-              opacity="0"
-            >
-              {s.kind === 'fill' ? (
-                <path className="spica-splash-letter" fillRule={s.evenOdd ? 'evenodd' : undefined} d={s.d} />
-              ) : (
-                <path
-                  className="spica-splash-letter spica-splash-letter--stroke"
-                  strokeWidth={s.strokeWidth}
-                  strokeLinecap="square"
-                  strokeLinejoin="miter"
-                  d={s.d}
-                />
-              )}
-            </g>
-          ))}
+          {WORDMARK.shapes.map((s, i) => {
+            // 辉光：暗色是一层模糊的强调色垫在字下面；浅色是一层清晰的强调色盖在字上面（不糊成脏底）
+            const glow = (
+              <g
+                key="glow"
+                ref={(el) => {
+                  letterGlowRefs.current[i] = el;
+                }}
+                className="spica-splash-letter-glow"
+                filter={theme === 'dark' ? `url(#${id}-blur)` : undefined}
+                opacity="0"
+              >
+                {letterShape(s, 'spica-splash-letter-glow-shape')}
+              </g>
+            );
+            const letter = (
+              <g
+                key="letter"
+                ref={(el) => {
+                  letterRefs.current[i] = el;
+                }}
+                opacity="0"
+              >
+                {letterShape(s, 'spica-splash-letter')}
+              </g>
+            );
+            return <g key={i}>{theme === 'dark' ? [glow, letter] : [letter, glow]}</g>;
+          })}
         </g>
+        {trailSlots(frontTrailRefs)}
         {starSlots(frontStarRefs, id)}
       </svg>
       {caption ? <div className="spica-splash-caption">{caption}</div> : null}

@@ -48,10 +48,10 @@
   display: block;
 }
 
-.spica-splash-petal--long path {
+.spica-splash-petal--long {
   fill: var(--spica-splash-accent);
 }
-.spica-splash-petal--short path,
+.spica-splash-petal--short,
 .spica-splash-hub,
 .spica-splash-letter {
   fill: currentColor;
@@ -60,17 +60,36 @@
   fill: none;
   stroke: currentColor;
 }
-.spica-splash-mask {
+/* 底色剪影：挡住后面的星 */
+.spica-splash-mask path,
+.spica-splash-mask circle {
   fill: var(--spica-splash-bg);
+}
+/* 水波填充的涟漪 */
+.spica-splash-ripple {
+  fill: none;
+  stroke: var(--spica-splash-accent);
+  stroke-width: 0.8;
+}
+/* 双星拖尾 */
+.spica-splash-trail {
+  fill: var(--spica-splash-accent);
+}
+.spica-splash-trail--companion {
+  fill: var(--spica-splash-companion);
+}
+/* 扫字时字亮起的辉光 */
+.spica-splash-letter-glow-shape {
+  fill: var(--spica-splash-accent);
+}
+.spica-splash-letter-glow-shape.spica-splash-letter--stroke {
+  fill: none;
+  stroke: var(--spica-splash-accent);
 }
 /* 浅色：不画任何光晕（花心光晕、星的光晕），浅底上会显成一团脏色 */
 .spica-splash[data-theme='light'] .spica-splash-glow,
 .spica-splash[data-theme='light'] .spica-splash-star-halo {
   display: none;
-}
-.spica-splash-shock {
-  fill: none;
-  stroke: var(--spica-splash-accent);
 }
 
 .spica-splash-glow-core {
