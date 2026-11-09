@@ -15,6 +15,7 @@ import { SqliteStore } from '../store/sqlite.ts';
 import type { FileExtractor } from '../tools/types.ts';
 import { jsonSearchBackend, type JsonSearchBackendOptions } from '../tools/web-tools.ts';
 import type { McpTool } from '../mcp/server.ts';
+import { serveMcpHttp, type McpHttpServer } from '../mcp/http.ts';
 import type { MailConfig } from '../mail.ts';
 import { BackendServer } from './server.ts';
 
@@ -60,6 +61,12 @@ export interface BackendConfig {
   extensions?: { module: string; options?: unknown }[];
   /** Mail pipeline; polling starts after the extensions are attached unless enabled is false. */
   mail?: MailConfig;
+  /**
+   * Also serve Spica's MCP service over HTTP (remote agent debugging). Loopback
+   * only unless allowRemote; the bearer token comes from the environment
+   * variable `tokenEnv` or is generated, and is written to `tokenFile` when given.
+   */
+  mcpHttp?: { port?: number; host?: string; allowRemote?: boolean; tokenEnv?: string; tokenFile?: string };
 }
 
 /** What attachBackend() of an extension module returns. */
@@ -208,6 +215,8 @@ export interface Backend {
   warnings: string[];
   /** Tools contributed by extensions, for serveMcp({ extraTools }). */
   mcpTools: McpTool[];
+  /** The HTTP MCP service when `mcpHttp` is configured (holds the token: do not log it). */
+  mcpHttp?: McpHttpServer;
   close(): Promise<void>;
 }
 
@@ -271,11 +280,34 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
       }
     }
     if (cfg.mail && cfg.mail.enabled !== false) runtime.mail.start();
+    const mcpTools = extensions.flatMap((e) => e.mcpTools ?? []);
+    let mcpHttp: McpHttpServer | undefined;
+    if (cfg.mcpHttp) {
+      const h = cfg.mcpHttp;
+      const envToken = h.tokenEnv ? process.env[h.tokenEnv] : undefined;
+      try {
+        mcpHttp = await serveMcpHttp(runtime, {
+          extraTools: mcpTools,
+          ...(h.host ? { host: h.host } : {}),
+          ...(h.port !== undefined ? { port: h.port } : {}),
+          ...(h.allowRemote ? { allowRemote: true } : {}),
+          ...(envToken ? { token: envToken } : {}),
+        });
+        if (h.tokenFile) {
+          mkdirSync(dirname(h.tokenFile), { recursive: true });
+          writeFileSync(h.tokenFile, mcpHttp.token, { mode: 0o600 });
+        }
+      } catch (err) {
+        warnings.push(`MCP over HTTP not started: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
     const server = new BackendServer(runtime, {
       extraMethods: {
         ...Object.assign({}, ...extensions.map((e) => e.methods ?? {})),
         /** Change settings without restarting (see SettingsPatch). */
         configure: (patch: unknown) => applySettings(runtime, (patch ?? {}) as SettingsPatch),
+        /** Where the HTTP MCP service listens (never the token), or null. */
+        mcpHttp: () => (mcpHttp ? { url: mcpHttp.url, tokenFile: cfg.mcpHttp?.tokenFile ?? null } : null),
         /** Current mail settings and whether polling runs. */
         mailSettings: () => ({ ...runtime.mail.settings, running: runtime.mail.running, sources: runtime.mail.activeSources.map((s) => s.id) }),
         /** Test connection with a provider config from the settings form. */
@@ -289,11 +321,13 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
       server,
       restored,
       warnings,
-      mcpTools: extensions.flatMap((e) => e.mcpTools ?? []),
+      mcpTools,
+      ...(mcpHttp ? { mcpHttp } : {}),
       close: async () => {
         if (closed) return;
         closed = true;
         server.close();
+        await mcpHttp?.close();
         for (const e of extensions) await e.close?.().catch(() => undefined);
         await runtime.close();
         unlock();
