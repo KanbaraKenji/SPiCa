@@ -7,7 +7,7 @@ import { computeLayout, toggleAction, type Floating } from './shell/layout';
 import { useViewportWidth } from './shell/useViewportWidth';
 import { Sidebar } from './shell/Sidebar';
 import { DetailPanel } from './shell/DetailPanel';
-import { Conversation, type ConversationActions } from './chat/Conversation';
+import { Conversation, type ConversationActions, type WaitingChild } from './chat/Conversation';
 import { SettingsView, type SettingsTab } from './settings/SettingsView';
 import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
@@ -128,6 +128,15 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       title: byManager.get(s.id) ?? (s.id === state.topId && !s.title ? TOP_AGENT_TITLE : displayTitle(s, state.firstLines)),
     }));
   }, [state.sessions, state.firstLines, state.projects, state.topId, mail.threadId]);
+  // Sub-agents under the open conversation that wait for the user: said under the status line,
+  // so a parent that "waits for its sub-tasks" does not look stuck.
+  const waiting = useMemo<WaitingChild[]>(() => {
+    const id = state.activeId;
+    if (!id) return [];
+    return sessions
+      .filter((s) => s.parentChain.includes(id) && (s.status === 'awaiting_confirm' || s.status === 'awaiting_answer'))
+      .map((s) => ({ id: s.id, title: s.title ?? '子任务', status: s.status as WaitingChild['status'] }));
+  }, [sessions, state.activeId]);
   // Projects for the inbox: the core's list, plus any project manager it did not list (demo data).
   const inboxProjects = useMemo<InboxProject[]>(() => {
     const out: InboxProject[] = state.projects.filter((p) => p.status === 'active').map((p) => ({ id: p.id, name: p.name, managerSessionId: p.managerSessionId }));
@@ -332,6 +341,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               actions={actions}
               demo={shell.demo}
               needsModel={modelReady === false && !shell.demo}
+              waiting={waiting}
               onSetupModel={() => {
                 setSettingsTab('models');
                 setView('settings');

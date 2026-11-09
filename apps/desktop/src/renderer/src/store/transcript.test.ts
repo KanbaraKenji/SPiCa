@@ -103,6 +103,11 @@ describe('tools that were turned off', () => {
     live = applyEvent(live, ev({ type: 'tool.end', callId: 'c2', name: 'notes__add_note', isError: true, preview: 'Tool "notes__add_note" is no longer available', durationMs: 1 }, 2));
     const lr = live.items[0];
     expect(lr?.kind === 'response' && lr.blocks[0]?.type === 'tool' ? lr.blocks[0].state : '').toBe('unavailable');
+    // Waiting for sub-tasks that ran out of time is not a failure: they keep working.
+    live = applyEvent(live, ev({ type: 'tool.start', callId: 'c3', name: 'wait_agents', input: {} }, 3));
+    live = applyEvent(live, ev({ type: 'tool.end', callId: 'c3', name: 'wait_agents', isError: true, preview: 'Stopped waiting (timeout); some sub-agents are still working.', durationMs: 600000 }, 4));
+    const wr = live.items[0];
+    expect(wr?.kind === 'response' && wr.blocks[1]?.type === 'tool' ? wr.blocks[1].state : '').toBe('timeout');
   });
 });
 
