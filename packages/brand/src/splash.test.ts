@@ -44,11 +44,11 @@ describe('开机画面时间线', () => {
     expect(sawFront && sawBack).toBe(true);
   });
 
-  it('双星一圈 4 秒，背景星点仍 5 秒一程（不同拍）', () => {
-    expect(SPLASH_TIMING.orbitPeriod).toBe(4);
+  it('双星一圈 3.5 秒，背景星点仍 5 秒一程（不同拍）', () => {
+    expect(SPLASH_TIMING.orbitPeriod).toBe(3.5);
     expect(SPLASH_TIMING.starfieldPeriod).toBe(5);
     const a = splashFrame(1.5, null).stars[0]!;
-    const b = splashFrame(1.5 + 4, null).stars[0]!;
+    const b = splashFrame(1.5 + 3.5, null).stars[0]!;
     expect(b.x).toBeCloseTo(a.x, 6);
     expect(b.y).toBeCloseTo(a.y, 6);
   });
@@ -66,7 +66,7 @@ describe('开机画面时间线', () => {
       return { v: Math.hypot(q.x - p.x, q.y - p.y) / dt, front: p.front };
     };
     let maxV = 0, minV = Infinity, maxFront = false;
-    for (let t = 1.2; t < 5.2; t += 0.01) {
+    for (let t = 1.2; t < 1.2 + SPLASH_TIMING.orbitPeriod; t += 0.01) {
       const s = speed(t);
       if (s.v > maxV) { maxV = s.v; maxFront = s.front; }
       minV = Math.min(minV, s.v);
@@ -177,18 +177,29 @@ describe('收尾加速曲线', () => {
     expect(splashFrame(r + 2.6 + F.hold, r, { finish: { accel: 2.6 } }).finished).toBe(false);
   });
 
-  it('收尾放慢：九瓣逐片点亮 ≥ 1.2 秒、光掠过字标 ≥ 0.8 秒、整段约 6 秒', () => {
+  it('收尾：九瓣逐片点亮 ≥ 1.2 秒、光掠过字标 ≥ 0.8 秒', () => {
     const F = SPLASH_FINISH;
     expect(F.petalEach + 8 * F.petalStagger).toBeGreaterThanOrEqual(1.2);
     expect(F.sweep).toBeGreaterThanOrEqual(0.8);
-    expect(SPLASH_FINISH_AFTER).toBeCloseTo(6, 6);
-    // 逐片：第一片亮满时最后一片还没亮满
-    const r = 5;
-    const f = splashFrame(r + F.accel + F.petalStart + F.petalEach + 0.01, r);
-    expect(f.petals[0]!.opacity).toBeCloseTo(1, 3);
-    expect(f.petals[8]!.opacity).toBeLessThan(0.99);
+    expect(SPLASH_FINISH_AFTER).toBeCloseTo(F.accel + F.hold + F.fadeOut, 9);
   });
-});
+
+  it('九瓣填满的那一帧就是双星合于花心、消失的那一帧', () => {
+    const r = 5;
+    const F = SPLASH_FINISH;
+    const before = splashFrame(r + F.accel - 0.3, r);
+    expect(before.stars).toHaveLength(2); // 双星还在
+    expect(before.petals[8]!.opacity).toBeLessThan(0.95); // 最后一片还在亮起中
+    const at = splashFrame(r + F.accel + 1e-6, r);
+    for (const p of at.petals) expect(p.opacity).toBeCloseTo(1, 3);
+    expect(at.stars.filter((s) => s.scale !== 0.85)).toHaveLength(0); // 只剩（还没出现的）掠字光，没有双星
+  });
+
+  it('加速段里双星至少再绕 2 圈', () => {
+    const F = SPLASH_FINISH;
+    const turns = (F.accel * (1 + (F.orbitPeak - 1) / 3)) / SPLASH_TIMING.orbitPeriod;
+    expect(turns).toBeGreaterThanOrEqual(2);
+  });});
 
 describe('背景星点', () => {
   it('从中心沿径向向外飞，光迹头尾在同一条射线上', () => {

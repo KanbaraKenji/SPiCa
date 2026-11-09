@@ -21,7 +21,7 @@ export const SPLASH_TIMING = Object.freeze({
   /** 背景：每颗星从中心飘到画面外的时间 */
   starfieldPeriod: 5,
   /** 双星转一圈的时间（缺省） */
-  orbitPeriod: 4,
+  orbitPeriod: 3.5,
   /** 进场：花和字从暗处浮现 */
   appear: [0.2, 1.0] as const,
 });
@@ -57,20 +57,22 @@ export interface SplashFinish {
 }
 
 export const SPLASH_FINISH: Readonly<SplashFinish> = Object.freeze({
-  accel: 2.0,
+  // 加速段 3.6 秒：从 3.5 秒一圈平滑加到 4 倍转速，收拢前绕约 2.06 圈
+  accel: 3.6,
   orbitPeak: 4,
   starPeak: 3,
   starSettle: 1.5,
-  petalStart: -0.1,
+  // 九瓣逐片点亮在双星收拢的最后 1.33 秒里进行，最后一片亮满的那一帧正好是双星合于花心、消失的那一帧
+  petalStart: -(0.45 + 8 * 0.11),
   petalEach: 0.45,
-  petalStagger: 0.11, // 九片全部亮完 = 0.45 + 8 × 0.11 ≈ 1.33 秒
+  petalStagger: 0.11, // 九片全部亮完 = 0.45 + 8 × 0.11 = 1.33 秒
   hopStart: 0,
   hop: 0.6,
   shockStart: 0,
   shock: 1.4,
-  sweepStart: 0.9,
+  sweepStart: 0.6,
   sweep: 1.5,
-  hold: 3.6,
+  hold: 3.3,
   fadeOut: 0.4,
 });
 
