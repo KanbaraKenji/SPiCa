@@ -39,6 +39,25 @@ describe('Sidebar', () => {
     expect(screen.queryByRole('button', { name: '整理本周来信' })).toBeNull();
   });
 
+  it('renames a thread from the right-click menu; Esc cancels; projects have no menu', () => {
+    const onRename = vi.fn();
+    render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} onRename={onRename} />);
+    fireEvent.contextMenu(screen.getByRole('button', { name: '整理本周来信' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }));
+    const field = screen.getByRole('textbox', { name: '新名字' });
+    fireEvent.change(field, { target: { value: '本周来信' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onRename).toHaveBeenCalledWith(SEED_IDS.chat2, '本周来信');
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: '看一下样机评审资料' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }));
+    fireEvent.keyDown(screen.getByRole('textbox', { name: '新名字' }), { key: 'Escape' });
+    expect(onRename).toHaveBeenCalledTimes(1);
+
+    fireEvent.contextMenu(screen.getByTitle('新品样机评审'));
+    expect(screen.queryByRole('menuitem')).toBeNull();
+  });
+
   it('collapsing a project shows the summary instead of children', () => {
     render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} />);
     fireEvent.click(screen.getByRole('button', { name: '收起 新品样机评审' }));

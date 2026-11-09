@@ -182,6 +182,7 @@ export function App({ bridge, shell, agent }: AppProps) {
             }}
             settingsOpen={view === 'settings'}
             topId={state.topId}
+            onRename={(sid, title) => void agent.rename(sid, title)}
             {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject(true) } : {})}
           />
         </div>

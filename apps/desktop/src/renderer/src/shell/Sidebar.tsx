@@ -2,6 +2,7 @@
 // the sub-agents it started (at any depth). Every row opens that session's
 // conversation; the arrow in front only expands or collapses.
 import { useMemo, useState } from 'react';
+import { ContextMenu } from '../ui/ContextMenu';
 import type { SessionInfo } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
 import { StatusMark } from '../ui/StatusMark';
@@ -18,6 +19,8 @@ export interface SidebarProps {
   settingsOpen: boolean;
   /** The assistant's default thread (getTopSession); other top-level threads are listed under it. */
   topId?: string | null;
+  /** Sets a session's name; an empty name goes back to the automatic one. Absent: no renaming. */
+  onRename?: (id: string, title: string | null) => void;
 }
 
 function byRecent(a: SessionInfo, b: SessionInfo): number {
@@ -49,6 +52,47 @@ interface TreeProps {
   onOpen(id: string): void;
   /** Rows that start expanded no matter what runs below them. */
   openByDefault: ReadonlySet<string>;
+  /** Row being renamed, if any. */
+  editing: string | null;
+  startRename?: (s: SessionInfo, at?: { x: number; y: number }) => void;
+  finishRename(s: SessionInfo, value: string | null): void;
+}
+
+/** Projects are renamed through the project, not the manager's session. */
+function canRename(s: SessionInfo): boolean {
+  return s.role !== 'manager';
+}
+
+function RenameField({ initial, onDone }: { initial: string; onDone(value: string | null): void }) {
+  const [value, setValue] = useState(initial);
+  const [done, setDone] = useState(false);
+  const finish = (v: string | null) => {
+    if (done) return;
+    setDone(true);
+    onDone(v);
+  };
+  return (
+    <input
+      className="input tree-rename"
+      value={value}
+      maxLength={60}
+      aria-label="新名字"
+      autoFocus
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => finish(value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+          e.preventDefault();
+          finish(value);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(null);
+        }
+      }}
+    />
+  );
 }
 
 function descendantsOf(id: string, childrenOf: Map<string, SessionInfo[]>): SessionInfo[] {
@@ -82,17 +126,38 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
         ) : (
           <span className="tree-twisty" aria-hidden />
         )}
-        <button type="button" className="tree-open" onClick={() => tree.onOpen(s.id)} aria-current={active ? 'page' : undefined} title={name}>
-          <span className="tree-title">{name}</span>
-          {summary ? <span className={/等你/.test(summary) ? 'tree-summary is-waiting' : 'tree-summary'}>{summary}</span> : <StatusMark status={s.status} />}
-        </button>
+        {tree.editing === s.id ? (
+          <RenameField initial={name} onDone={(v) => tree.finishRename(s, v)} />
+        ) : (
+          <button
+            type="button"
+            className="tree-open"
+            onClick={() => tree.onOpen(s.id)}
+            onContextMenu={(e) => {
+              if (!tree.startRename || !canRename(s)) return;
+              e.preventDefault();
+              tree.startRename(s, { x: e.clientX, y: e.clientY });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'F2' && tree.startRename && canRename(s)) {
+                e.preventDefault();
+                tree.startRename(s);
+              }
+            }}
+            aria-current={active ? 'page' : undefined}
+            title={name}
+          >
+            <span className="tree-title">{name}</span>
+            {summary ? <span className={/等你/.test(summary) ? 'tree-summary is-waiting' : 'tree-summary'}>{summary}</span> : <StatusMark status={s.status} />}
+          </button>
+        )}
       </div>
       {open ? kids.map((k) => <Node key={k.id} s={k} depth={depth + 1} tree={tree} />) : null}
     </>
   );
 }
 
-export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, onSettings, settingsOpen, topId = null }: SidebarProps) {
+export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, onSettings, settingsOpen, topId = null, onRename }: SidebarProps) {
   const { chats, projects, childrenOf, top } = useMemo(() => {
     const chats = sessions.filter((s) => s.role === 'top' && !s.parentId).sort(byRecent);
     // A project is a project-manager session, wherever it was started from.
@@ -113,6 +178,8 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, o
   }, [sessions, topId]);
 
   const [expanded, setExpandedState] = useState<Record<string, boolean>>({});
+  const [editing, setEditing] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ s: SessionInfo; x: number; y: number } | null>(null);
   const tree: TreeProps = {
     childrenOf,
     activeId,
@@ -121,6 +188,21 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, o
     setExpanded: (id, open) => setExpandedState((e) => ({ ...e, [id]: open })),
     onOpen,
     openByDefault: new Set(top ? [top.id] : []),
+    editing,
+    ...(onRename
+      ? {
+          startRename: (s: SessionInfo, at?: { x: number; y: number }) => {
+            if (at) setMenu({ s, ...at });
+            else setEditing(s.id);
+          },
+        }
+      : {}),
+    finishRename: (s, value) => {
+      setEditing(null);
+      if (value === null || !onRename) return;
+      const next = value.trim();
+      if (next !== (s.title ?? '')) onRename(s.id, next || null);
+    },
   };
 
   return (
@@ -160,6 +242,14 @@ export function Sidebar({ sessions, activeId, onOpen, onNewChat, onNewProject, o
           </section>
         ) : null}
       </div>
+      {menu ? (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={[{ label: '重命名', onSelect: () => setEditing(menu.s.id) }]}
+          onClose={() => setMenu(null)}
+        />
+      ) : null}
       <div className="sidebar-bottom">
         <button type="button" className={settingsOpen ? 'side-action is-active' : 'side-action'} onClick={onSettings} aria-current={settingsOpen ? 'page' : undefined}>
           <Icon name="settings" />

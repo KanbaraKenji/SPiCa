@@ -140,6 +140,14 @@ export class AgentStore {
     });
   }
 
+  /** Names a session; null goes back to the automatic name. */
+  async rename(id: string, title: string | null): Promise<void> {
+    await this.#guard(async () => {
+      const s = await this.#api.renameSession(id, title);
+      this.state.set((v) => ({ ...v, sessions: v.sessions.map((x) => (x.id === id ? { ...x, title: s.title } : x)) }));
+    });
+  }
+
   async resume(id: string): Promise<void> {
     await this.#guard(() => this.#api.resume(id));
   }
