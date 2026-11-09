@@ -84,8 +84,9 @@ export function App({ bridge, shell, agent }: AppProps) {
   useEffect(() => {
     window.__spicaShots = {
       setView: (v) => {
-        if (v === 'settings' || v === 'models') setSettingsTab(v === 'models' ? 'models' : 'appearance');
-        setView(v === 'settings' || v === 'models' ? 'settings' : 'chat');
+        const tab: SettingsTab | null = v === 'settings' ? 'appearance' : v === 'models' || v === 'plugins' ? v : null;
+        if (tab) setSettingsTab(tab);
+        setView(tab ? 'settings' : 'chat');
       },
     };
     return () => {
@@ -198,7 +199,7 @@ export function App({ bridge, shell, agent }: AppProps) {
       <div className="body">
         <main className="main">
           {view === 'settings' ? (
-            <SettingsView shell={shell} providers={bridge.providers} tab={settingsTab} onTab={setSettingsTab} />
+            <SettingsView shell={shell} providers={bridge.providers} plugins={bridge.plugins} tab={settingsTab} onTab={setSettingsTab} />
           ) : state.loaded ? (
             <Conversation
               session={session}

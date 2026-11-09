@@ -1941,3 +1941,199 @@ button.tree-twisty:hover {
 .provider-result.is-bad {
   color: var(--spica-danger);
 }
+
+/* On/off switch (real button with role=switch) */
+.switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--spica-border-strong);
+  transition: background 0.15s ease;
+}
+
+.switch.is-on {
+  background: var(--spica-accent);
+}
+
+.switch:disabled {
+  opacity: 0.5;
+}
+
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.switch.is-on .switch-knob {
+  transform: translateX(16px);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-radius: var(--radius-l);
+  border: 1px solid var(--spica-border);
+  background: var(--spica-surface);
+}
+
+.setting-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.setting-title {
+  font-weight: 500;
+}
+
+/* Settings > plugins */
+.install-row {
+  display: flex;
+  gap: 8px;
+}
+
+.install-row .input {
+  flex: 1;
+  max-width: 520px;
+}
+
+.plugin-note {
+  margin: 8px 0 0;
+}
+
+.available-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.available-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-m);
+  border: 1px dashed var(--spica-border-strong);
+}
+
+.available-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.plugins-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.plugins-bar .settings-subheading {
+  margin: 0;
+}
+
+.plugin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.plugin-card {
+  padding: 12px 16px;
+}
+
+.plugin-card.is-off .plugin-name,
+.plugin-card.is-off .plugin-desc {
+  color: var(--spica-muted);
+}
+
+.plugin-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.plugin-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.plugin-name {
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.plugin-version {
+  font-size: 12px;
+  color: var(--spica-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.plugin-desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--spica-ink);
+}
+
+.plugin-problem {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--spica-danger);
+}
+
+.plugin-more {
+  margin: 6px 0 0 -8px;
+}
+
+.plugin-details {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--spica-border);
+}
+
+.plugin-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+.plugin-root {
+  margin: 14px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.plugin-root > .settings-hint,
+.plugin-root > .link-btn {
+  flex: none;
+  white-space: nowrap;
+}
+
+.plugin-root .detail-path {
+  min-width: 0;
+}

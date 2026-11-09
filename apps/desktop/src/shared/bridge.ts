@@ -3,6 +3,7 @@
 import type { AgentApi, CoreEvent, SpicaBridge } from '@spica/protocol';
 import type { SettingsPatch, ShellSettings } from './settings';
 import type { ProviderDraft, ProviderView, TestResult } from './providers';
+import type { PluginsCommand, PluginsResult } from './plugins';
 
 /** Saved model providers plus, per id, why one cannot be used right now. */
 export interface ProviderList {
@@ -31,6 +32,10 @@ export interface DesktopBridge extends SpicaBridge {
   zoom(step: 'in' | 'out' | 'reset'): void;
   /** Opens a file a session referenced (relative to its working folder). Resolves to an error text, or null on success. */
   openFile(sessionId: string, path: string): Promise<string | null>;
+  plugins: {
+    run(cmd: PluginsCommand): Promise<PluginsResult>;
+    onChanged(listener: () => void): () => void;
+  };
   providers: {
     list(): Promise<ProviderList>;
     /** Saves (new when draft.id is empty). Rejects with a plain-language message. */
