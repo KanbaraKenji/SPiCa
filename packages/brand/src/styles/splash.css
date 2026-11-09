@@ -1,5 +1,5 @@
 /* ============================================================
-   Spica 开机画面「暗处亮起 · 双星互绕」
+   Spica 开机画面「暗处亮起 · 双星环绕」
    ------------------------------------------------------------
    消费方：@spica/brand/react 的 <SpicaSplash ready onDone theme>。
    动画由组件按帧驱动（时间线在 src/splash.ts），这里只管铺版和配色。
@@ -21,7 +21,7 @@
   --spica-splash-accent: var(--spica-accent, #62a9ff);
   --spica-splash-glow: 0.55;
 }
-/* 浅色：干净的单色底，不压暗角；星点用浅蓝细线，不加辉光 */
+/* 浅色：干净的单色底，不压暗角；星点用浅蓝细线，不加任何光晕 */
 .spica-splash[data-theme='light'] {
   --spica-splash-bg: #f7f9fc;
   --spica-splash-ink: #0f172a;
@@ -59,6 +59,14 @@
 .spica-splash-letter--stroke {
   fill: none;
   stroke: currentColor;
+}
+.spica-splash-mask {
+  fill: var(--spica-splash-bg);
+}
+/* 浅色：不画任何光晕（花心光晕、星的光晕），浅底上会显成一团脏色 */
+.spica-splash[data-theme='light'] .spica-splash-glow,
+.spica-splash[data-theme='light'] .spica-splash-star-halo {
+  display: none;
 }
 .spica-splash-shock {
   fill: none;

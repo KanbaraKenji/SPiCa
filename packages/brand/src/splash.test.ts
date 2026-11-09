@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
-import { SPLASH_FINISH_AFTER, SPLASH_LAYOUT, SPLASH_TIMING, STARFIELD_COUNT, STARFIELD_MAX_SPEED, splashFrame, splashStaticFrame, starfield } from './splash.ts';
+import { SPLASH_FINISH_AFTER, SPLASH_LAYOUT, SPLASH_TEMPOS, SPLASH_TIMING, STARFIELD_COUNT, splashFrame, splashStaticFrame, starfield } from './splash.ts';
 import { MARK_GEOMETRY } from './geometry.ts';
 import { SpicaSplash } from './react/SpicaSplash.tsx';
 
@@ -15,15 +15,45 @@ describe('开机画面时间线', () => {
     }
   });
 
-  it('双星相对 180°、在同一轨道上，中点就是花心', () => {
-    for (const t of [0.4, 1.3, 2.2]) {
+  it('双星相差半圈：中点就是花心，一前一后', () => {
+    for (const t of [0.7, 2.3, 4.1]) {
       const [a, b] = splashFrame(t, null).stars;
       expect(a!.companion).toBe(false);
       expect(b!.companion).toBe(true);
       expect((a!.x + b!.x) / 2).toBeCloseTo(SPLASH_LAYOUT.cx, 6);
       expect((a!.y + b!.y) / 2).toBeCloseTo(SPLASH_LAYOUT.cy, 6);
-      const ra = Math.hypot(a!.x - SPLASH_LAYOUT.cx, a!.y - SPLASH_LAYOUT.cy);
-      expect(ra).toBeCloseTo(SPLASH_LAYOUT.orbit * SPLASH_LAYOUT.markScale, 6);
+      expect(a!.front).not.toBe(b!.front);
+    }
+  });
+
+  it('三维环绕：在前面时大、亮，在后面时小、暗', () => {
+    let sawFront = false;
+    let sawBack = false;
+    for (let t = 1.2; t < 1.2 + SPLASH_TEMPOS.sync; t += 0.1) {
+      for (const s of splashFrame(t, null).stars) {
+        if (s.front) {
+          sawFront = true;
+          expect(s.scale).toBeGreaterThanOrEqual(1);
+        } else {
+          sawBack = true;
+          expect(s.scale).toBeLessThan(1);
+          expect(s.opacity).toBeLessThan(0.61);
+        }
+      }
+    }
+    expect(sawFront && sawBack).toBe(true);
+  });
+
+  it('双星周期锁在背景节拍上：同拍一圈 6 秒，慢档 12 秒', () => {
+    expect(SPLASH_TEMPOS.sync).toBe(SPLASH_TIMING.starfieldPeriod);
+    expect(SPLASH_TEMPOS.slow).toBe(SPLASH_TIMING.starfieldPeriod * 2);
+    for (const period of [SPLASH_TEMPOS.sync, SPLASH_TEMPOS.slow]) {
+      const a = splashFrame(1.5, null, { orbitPeriod: period }).stars[0]!;
+      const b = splashFrame(1.5 + period, null, { orbitPeriod: period }).stars[0]!;
+      expect(b.x).toBeCloseTo(a.x, 6);
+      expect(b.y).toBeCloseTo(a.y, 6);
+      const half = splashFrame(1.5 + period / 2, null, { orbitPeriod: period }).stars[0]!;
+      expect(Math.hypot(half.x - a.x, half.y - a.y)).toBeGreaterThan(10);
     }
   });
 
@@ -82,9 +112,15 @@ describe('背景星点', () => {
     }
   });
 
-  it('加载中慢速：每颗星至少约 5 秒才飞完全程', () => {
-    expect(STARFIELD_MAX_SPEED).toBeLessThanOrEqual(0.21);
-    expect(1 / STARFIELD_MAX_SPEED).toBeGreaterThan(4.7);
+  it('背景节拍：每颗星 6 秒飘完全程，之后从中心重来', () => {
+    const p = SPLASH_TIMING.starfieldPeriod;
+    expect(p).toBe(6);
+    const a = starfield(2, null, 1280, 720);
+    const b = starfield(2 + p, null, 1280, 720);
+    a.forEach((s, i) => {
+      expect(b[i]!.x2).toBeCloseTo(s.x2, 6);
+      expect(b[i]!.y2).toBeCloseTo(s.y2, 6);
+    });
   });
 });
 
@@ -94,7 +130,8 @@ describe('<SpicaSplash>', () => {
     expect(html).toContain('data-theme="light"');
     expect(html.match(/spica-splash-petal spica-splash-petal--/g)).toHaveLength(9);
     expect(html.match(/class="spica-splash-letter/g)).toHaveLength(5);
-    expect(html.match(/class="spica-splash-star"/g)).toHaveLength(3);
+    expect(html.match(/class="spica-splash-star"/g)).toHaveLength(6); // 后面三个、前面三个
+    expect(html).toContain('spica-splash-mask');
     expect(html).toContain('v0.1.0');
     for (const p of MARK_GEOMETRY.petals) expect(html).toContain(`d="${p.d}"`);
   });
