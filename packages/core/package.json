@@ -15,7 +15,8 @@
     "test": "vitest run --root ../.. packages/core",
     "smoke:deepseek": "node --env-file=../../.env.local scripts/smoke.ts deepseek",
     "smoke:claude": "node --env-file=../../.env.local scripts/smoke.ts claude",
-    "smoke:team": "node --env-file=../../.env.local scripts/smoke-team.ts"
+    "smoke:team": "node --env-file=../../.env.local scripts/smoke-team.ts",
+    "smoke:project": "node --env-file=../../.env.local scripts/smoke-project.ts"
   },
   "dependencies": {
     "@spica/protocol": "*"
