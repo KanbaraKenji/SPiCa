@@ -215,6 +215,16 @@ export async function readPluginFolder(root: string): Promise<PluginFolder> {
     else out.views.push({ id, title: v.title, placement, entry });
   }
 
+  // A mail declaration must point at one MCP server.
+  const mail = out.manifest?.mail;
+  if (mail) {
+    const mcp = out.servers.filter((s) => s.kind === 'mcp');
+    if (mail.server && !mcp.some((s) => s.id === mail.server)) issue('manifest.json · mail.server', `mcp/ 里没有「${mail.server}」。`);
+    else if (!mail.server && mcp.length !== 1) {
+      issue('manifest.json · mail', mcp.length === 0 ? '声明了邮件来源，但插件里没有 MCP server。' : '插件有多个 MCP server，请在 mail.server 写明用哪一个。');
+    }
+  }
+
   // Irreversible tools must at least be plausible names.
   if (out.manifest && out.servers.length === 0 && out.manifest.permissions.irreversible.length > 0) {
     issue('manifest.json · permissions.irreversible', '声明了不可逆工具，但插件里没有 MCP server。', 'warning');

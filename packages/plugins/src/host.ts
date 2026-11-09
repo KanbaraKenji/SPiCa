@@ -44,6 +44,17 @@ export interface PluginHost {
   unregisterSource(source: string): Promise<void>;
   /** Tool names currently registered (for checks and describe()). */
   toolNames(): string[];
+  /** Add a mail source to the core's mail pipeline; returns a remover. Absent when the core has no mail pipeline. */
+  addMailSource?(src: MailSourceSpec): () => void;
+}
+
+/** Mirrors @spica/core's MailSource. */
+export interface MailSourceSpec {
+  id: string;
+  listTool: string;
+  readTool: string;
+  listArgs?: Record<string, unknown>;
+  fields?: Record<string, string>;
 }
 
 /** The parts of @spica/core's Runtime the adapter uses (structural, so older cores still type-check). */
@@ -55,6 +66,7 @@ export interface RuntimeLike {
   };
   unregisterSource(source: string): unknown;
   connectMcp?(config: McpLaunch, opts?: { source?: string }): Promise<{ tools: string[]; disconnect: () => void | Promise<void> }>;
+  mail?: { addSource(src: MailSourceSpec): () => void };
 }
 
 export function runtimeHost(rt: RuntimeLike): PluginHost {
@@ -71,5 +83,6 @@ export function runtimeHost(rt: RuntimeLike): PluginHost {
       await r?.stopped;
     },
     toolNames: () => rt.tools.list({ providerId: '', serverWebSearch: true }).map((t) => t.spec.name),
+    ...(rt.mail ? { addMailSource: (src: MailSourceSpec) => rt.mail!.addSource(src) } : {}),
   };
 }

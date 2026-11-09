@@ -34,7 +34,21 @@ export interface PluginManifest {
   spica: string;
   permissions: PluginPermissions;
   mock: { supported: boolean; description?: string };
+  /** The plugin is a mail source: which of its MCP tools list and read messages. */
+  mail?: MailDeclaration;
   homepage?: string;
+}
+
+export interface MailDeclaration {
+  /** MCP server id (file name under mcp/); may be left out when the plugin has one server. */
+  server?: string;
+  /** Tool names as the server reports them (without the plugin prefix). */
+  listTool: string;
+  readTool: string;
+  /** Arguments for the list call. Default (core): { unread_only: true, limit: 50 }. */
+  listArgs?: Record<string, unknown>;
+  /** Field names in the list result, when they differ from the core's defaults. */
+  fields?: { list?: string; id?: string; fromName?: string; fromAddress?: string; subject?: string; received?: string; preview?: string };
 }
 
 export interface Issue {
@@ -242,6 +256,39 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE): { manifes
     }
   }
 
+  let mail: MailDeclaration | undefined;
+  if (raw.mail !== undefined) {
+    const m = raw.mail;
+    const tool = (v: unknown) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,60}$/.test(v);
+    if (!isObj(m) || !tool(m.list_tool) || !tool(m.read_tool)) {
+      err('mail', '「mail」要写成 { "list_tool": "列邮件的工具名", "read_tool": "读一封邮件的工具名" }，工具名写 server 里的原名（不带插件前缀）。');
+    } else {
+      mail = { listTool: m.list_tool as string, readTool: m.read_tool as string };
+      if (m.server !== undefined) {
+        if (typeof m.server === 'string' && m.server) mail.server = m.server;
+        else err('mail.server', '「mail.server」要写 mcp/ 下的文件名（不带 .json）。');
+      }
+      if (m.list_args !== undefined) {
+        if (isObj(m.list_args)) mail.listArgs = m.list_args;
+        else err('mail.list_args', '「mail.list_args」应该是对象，例如 { "unread_only": true }。');
+      }
+      if (m.fields !== undefined) {
+        const keys: Record<string, keyof NonNullable<MailDeclaration['fields']>> = {
+          list: 'list',
+          id: 'id',
+          from_name: 'fromName',
+          from_address: 'fromAddress',
+          subject: 'subject',
+          received: 'received',
+          preview: 'preview',
+        };
+        if (!isObj(m.fields) || Object.entries(m.fields).some(([k, v]) => !(k in keys) || typeof v !== 'string')) {
+          err('mail.fields', `「mail.fields」只能写这些键：${Object.keys(keys).join('、')}，值是列表结果里的字段名。`);
+        } else mail.fields = Object.fromEntries(Object.entries(m.fields).map(([k, v]) => [keys[k], v as string]));
+      }
+    }
+  }
+
   if (issues.some((i) => i.severity === 'error')) return { issues };
   const manifest: PluginManifest = {
     manifestVersion: MANIFEST_VERSION,
@@ -254,6 +301,7 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE): { manifes
     spica,
     permissions,
     mock,
+    ...(mail ? { mail } : {}),
     ...(homepage ? { homepage } : {}),
   };
   return { manifest, issues };

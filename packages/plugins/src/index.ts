@@ -13,6 +13,7 @@ export {
   type Issue,
   type PluginManifest,
   type PluginPermissions,
+  type MailDeclaration,
 } from './manifest.ts';
 export {
   readPluginFolder,
@@ -27,7 +28,7 @@ export {
   type HookModuleDef,
   type ViewDef,
 } from './folder.ts';
-export { runtimeHost, type PluginHost, type McpLaunch, type McpExit, type McpHandle, type RuntimeLike } from './host.ts';
+export { runtimeHost, type PluginHost, type McpLaunch, type McpExit, type McpHandle, type RuntimeLike, type MailSourceSpec } from './host.ts';
 export {
   PluginManager,
   PluginError,

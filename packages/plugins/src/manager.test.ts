@@ -124,6 +124,53 @@ describe('enable and disable', () => {
   });
 });
 
+describe('mail source', () => {
+  const server = `import { createInterface } from 'node:readline';
+    const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\\n');
+    const tools = ['list_messages', 'read_message'].map((name) => ({ name, inputSchema: { type: 'object' } }));
+    createInterface({ input: process.stdin }).on('line', (l) => {
+      const m = JSON.parse(l);
+      if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'm' } } });
+      if (m.method === 'tools/list') send({ id: m.id, result: { tools } });
+      if (m.method === 'tools/call') send({ id: m.id, result: { content: [{ type: 'text', text: JSON.stringify({ messages: [] }) }] } });
+    });`;
+
+  it('a plugin that declares mail joins the mail pipeline while enabled, and leaves it on disable', async () => {
+    const dir = await writePlugin({
+      'manifest.json': manifest('mailer', { mail: { list_tool: 'list_messages', read_tool: 'read_message', list_args: { unread_only: true, limit: 10 } } }),
+      'mcp/box.json': { runtime: 'node', entry: 'srv.js' },
+      'srv.js': server,
+    });
+    dirs.push(dir);
+    r = await rig();
+    await r.pm.install(dir);
+    expect(r.rt.mail.activeSources).toEqual([]);
+    const d = await r.pm.enable('mailer');
+    expect(d.mail).toEqual({ listTool: 'mailer__list_messages', readTool: 'mailer__read_message' });
+    expect(r.rt.mail.activeSources).toEqual([
+      { id: 'mailer', listTool: 'mailer__list_messages', readTool: 'mailer__read_message', listArgs: { unread_only: true, limit: 10 } },
+    ]);
+    await r.pm.disable('mailer');
+    expect(r.rt.mail.activeSources).toEqual([]);
+    expect(r.pm.describe('mailer').mail).toBeUndefined();
+    // Enabling again registers it once, not twice.
+    await r.pm.enable('mailer');
+    expect(r.rt.mail.activeSources).toHaveLength(1);
+  });
+
+  it('a wrong mail declaration is explained', async () => {
+    const dir = await writePlugin({
+      'manifest.json': manifest('badmail', { mail: { list_tool: 'list_messages' } }),
+    });
+    dirs.push(dir);
+    r = await rig();
+    await expect(r.pm.install(dir)).rejects.toThrow(/mail[\s\S]*read_tool/);
+    const dir2 = await writePlugin({ 'manifest.json': manifest('nomcp', { mail: { list_tool: 'a', read_tool: 'b' } }) });
+    dirs.push(dir2);
+    await expect(r.pm.install(dir2)).rejects.toThrow(/声明了邮件来源，但插件里没有 MCP server/);
+  });
+});
+
 describe('failures', () => {
   it('a hook that fails to load rolls back the whole enable: nothing left behind', async () => {
     const dir = await writePlugin({
