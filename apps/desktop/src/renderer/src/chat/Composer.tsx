@@ -65,6 +65,8 @@ function ContextRing({ tokens, window }: { tokens: number; window: number | null
         <circle cx="9" cy="9" r={r} className="ring-track" />
         <circle cx="9" cy="9" r={r} className="ring-fill" strokeDasharray={`${c * share} ${c}`} transform="rotate(-90 9 9)" />
       </svg>
+      {/* The number too, so the ring is not taken for a 'working' spinner. */}
+      <span className="composer-context-pct">{Math.min(100, Math.round(share * 100))}%</span>
     </span>
   );
 }
