@@ -2221,3 +2221,18 @@ button.tree-twisty:hover {
 .dialog-form .dialog-actions {
   margin-top: 6px;
 }
+
+.splash-layer {
+  transition: opacity 0.28s ease-out;
+}
+
+.splash-layer.is-skipping {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-layer {
+    transition-duration: 0.01s;
+  }
+}
