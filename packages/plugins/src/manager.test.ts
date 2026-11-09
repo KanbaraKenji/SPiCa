@@ -310,8 +310,7 @@ describe('views (plugin pages)', () => {
     expect(decision.action).toBe('deny');
   });
 
-  // Skipped until the core's callPluginTool no longer needs a session with a model.
-  it.skip('pages work before any model is configured (fresh install)', async () => {
+  it('pages work before any model is configured (fresh install)', async () => {
     // A fresh desktop install: no provider, empty default. Page calls need no model.
     const rt = new Runtime({ providers: [], defaults: { providerId: '', model: '', maxTokens: 256 }, tools: [] });
     r = await rig(rt);
