@@ -10,6 +10,8 @@ export interface McpLaunch {
   command: string;
   args: string[];
   env: Record<string, string>;
+  /** Host variables the server may inherit (whitelist). Secret-looking names never pass. */
+  inheritEnv?: string[];
   cwd: string;
   timeoutMs?: number;
   /** Server stderr, for the plugin log  */

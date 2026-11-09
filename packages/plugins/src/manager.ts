@@ -15,6 +15,17 @@ import { HOOK_KINDS, compareVersions, satisfies, type HookKind, type Issue, type
 
 export const SPICA_VERSION = '0.1.0';
 
+/**
+ * Host environment variables a plugin process may inherit: enough to run
+ * programs and reach the network through a proxy. Everything else (model
+ * keys included) stays with the host; the core also drops secret-looking names.
+ */
+export const PLUGIN_INHERIT_ENV: readonly string[] = [
+  'PATH', 'PATHEXT', 'SystemRoot', 'SystemDrive', 'windir', 'ComSpec', 'TEMP', 'TMP',
+  'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'HOME', 'APPDATA', 'LOCALAPPDATA', 'LANG',
+  'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
+];
+
 export type ServerStatus = 'stopped' | 'starting' | 'running' | 'restarting' | 'failed';
 
 export interface PluginSource {
@@ -80,6 +91,8 @@ export interface PluginManagerOptions {
   nodePath?: string;
   /** Extra environment for every server (e.g. proxy settings). SPICA_* keys are set by the manager. */
   baseEnv?: Record<string, string>;
+  /** Host variables servers inherit. Default PLUGIN_INHERIT_ENV. */
+  inheritEnv?: readonly string[];
 }
 
 /** Thrown with a message meant for the user. */
@@ -120,6 +133,7 @@ export class PluginManager {
   readonly #spica: string;
   readonly #node: string;
   readonly #baseEnv: Record<string, string>;
+  readonly #inheritEnv: string[];
   #state: StateFile = { version: 1, mock: false, plugins: {} };
   readonly #folders = new Map<string, PluginFolder>();
   readonly #active = new Map<string, Active>();
@@ -133,6 +147,7 @@ export class PluginManager {
     this.#spica = opts.spicaVersion ?? SPICA_VERSION;
     this.#node = opts.nodePath ?? process.execPath;
     this.#baseEnv = opts.baseEnv ?? {};
+    this.#inheritEnv = [...(opts.inheritEnv ?? PLUGIN_INHERIT_ENV)];
   }
 
   get root(): string {
@@ -585,6 +600,7 @@ export class PluginManager {
       command: node ? this.#node : def.entry,
       args: node ? [def.entry, ...def.args] : [...def.args],
       env,
+      inheritEnv: this.#inheritEnv,
       cwd: a.folder.root,
       ...(def.timeoutMs ? { timeoutMs: def.timeoutMs } : {}),
       stderrLog: (chunk) => void this.#log(name, `[${def.id}] ${chunk.trimEnd()}`),

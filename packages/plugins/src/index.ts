@@ -32,6 +32,7 @@ export {
   PluginManager,
   PluginError,
   SPICA_VERSION,
+  PLUGIN_INHERIT_ENV,
   type PluginManagerOptions,
   type PluginDescription,
   type PluginEvent,

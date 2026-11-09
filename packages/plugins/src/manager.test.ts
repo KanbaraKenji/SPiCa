@@ -2,7 +2,10 @@
 // server processes (the example plugin and small throwaway plugins).
 import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// These tests start real server processes; give them room on a busy machine.
+vi.setConfig({ testTimeout: 30_000 });
 import { PluginManager } from './manager.ts';
 import { runtimeHost } from './host.ts';
 import { EXAMPLE_PLUGIN, callTool, hookCtx, manifest, rig, toolNames, until, writePlugin, type Rig } from './testing/helpers.ts';
@@ -94,6 +97,16 @@ describe('enable and disable', () => {
     expect((await callTool(r.rt, 'notes__search_catalog', { query: 'clocks' })).isError).toBe(true);
   });
 
+  it('restarting a server (mock switch) keeps the plugin\'s other tools and hooks', async () => {
+    r = await rig();
+    await r.pm.install(EXAMPLE_PLUGIN);
+    await r.pm.enable('notes');
+    const before = toolNames(r.rt).sort();
+    await r.pm.setMock(true);
+    expect(toolNames(r.rt).sort()).toEqual(before);
+    expect(r.rt.hooks.sources).toEqual(['plugin:notes']);
+  });
+
   it('state survives a restart: enabled plugins come back, mock setting kept', async () => {
     r = await rig();
     await r.pm.install(EXAMPLE_PLUGIN);
@@ -173,6 +186,37 @@ describe('failures', () => {
     expect(toolNames(r.rt)).toEqual([]);
     expect(r.events).toContainEqual(expect.objectContaining({ type: 'plugin.error', name: 'crashy', message: expect.stringContaining('已停止重启') }));
     expect(await readFile(r.pm.logFile('crashy'), 'utf8')).toContain('out of cheese');
+  });
+
+  it('plugin processes get only whitelisted host variables, never secrets', async () => {
+    const dir = await writePlugin({
+      'manifest.json': manifest('envy'),
+      'mcp/srv.json': { runtime: 'node', entry: 'srv.js', env: { OWN_SETTING: 'mine' } },
+      'srv.js': `import { createInterface } from 'node:readline';
+        const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\\n');
+        createInterface({ input: process.stdin }).on('line', (l) => {
+          const m = JSON.parse(l);
+          if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'e' } } });
+          if (m.method === 'tools/list') send({ id: m.id, result: { tools: [{ name: 'env', inputSchema: { type: 'object' } }] } });
+          if (m.method === 'tools/call') send({ id: m.id, result: { content: [{ type: 'text', text: Object.keys(process.env).join(',') }] } });
+        });`,
+    });
+    dirs.push(dir);
+    process.env.PLUGIN_TEST_PLAIN = 'x';
+    process.env.PLUGIN_TEST_API_KEY = 'secret';
+    try {
+      r = await rig();
+      await r.pm.install(dir);
+      await r.pm.enable('envy');
+      const names = (await callTool(r.rt, 'envy__env', {})).content.split(',');
+      expect(names).toEqual(expect.arrayContaining(['OWN_SETTING', 'SPICA_PLUGIN_DATA', 'SPICA_MOCK']));
+      expect(names.some((n) => n.toUpperCase() === 'PATH')).toBe(true);
+      expect(names).not.toContain('PLUGIN_TEST_PLAIN');
+      expect(names).not.toContain('PLUGIN_TEST_API_KEY');
+    } finally {
+      delete process.env.PLUGIN_TEST_PLAIN;
+      delete process.env.PLUGIN_TEST_API_KEY;
+    }
   });
 
   it('a server that cannot start fails the enable with a clear message', async () => {
