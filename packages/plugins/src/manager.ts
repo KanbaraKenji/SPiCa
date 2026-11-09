@@ -69,6 +69,8 @@ export interface PluginDescription {
   hooks: { module: string; kinds: HookKind[] }[];
   servers: { id: string; kind: 'mcp' | 'service'; runtime: 'node' | 'binary'; status: ServerStatus; restarts: number; tools: string[]; lastError?: string }[];
   views: { id: string; title: string; placement: string }[];
+  /** Set while the plugin is enabled and registered as a mail source. */
+  mail?: { listTool: string; readTool: string };
   issues: Issue[];
 }
 
@@ -123,6 +125,8 @@ interface Active {
   undo: (() => void | Promise<void>)[];
   servers: ServerRun[];
   hookKinds: { module: string; kinds: HookKind[] }[];
+  /** Registered mail source (resolved tool names), if the plugin declares one. */
+  mail?: { listTool: string; readTool: string };
 }
 
 let importNonce = 0;
@@ -408,6 +412,7 @@ export class PluginManager {
         await this.#startServer(a, run);
       }
       // Commands live in this manager (the shell lists and expands them); nothing to register in the core.
+      this.#registerMail(a);
       await this.#registerHooks(a);
       for (const def of folder.servers.filter((s) => s.kind === 'service')) {
         const run: ServerRun = { def, launchName: `${name}-${def.id}`, status: 'stopped', restarts: [], stopping: false };
@@ -516,6 +521,32 @@ export class PluginManager {
 
   #hiddenPrefixes(a: Active): string[] {
     return a.servers.filter((r) => !r.def.exposeTools).map((r) => `${r.launchName}__`);
+  }
+
+  // ---------- mail source ----------
+
+  /** A plugin that declares `mail` is a source of the core's mail pipeline while it is enabled. */
+  #registerMail(a: Active): void {
+    const mail = a.manifest.mail;
+    if (!mail) return;
+    const run = a.servers.find((r) => r.def.kind === 'mcp' && (!mail.server || r.def.id === mail.server));
+    if (!run) return;
+    if (!this.#host.addMailSource) {
+      void this.#log(a.manifest.name, 'declares a mail source, but this Spica core has no mail pipeline; skipped');
+      return;
+    }
+    const src = {
+      id: a.manifest.name,
+      listTool: `${run.launchName}__${mail.listTool}`,
+      readTool: `${run.launchName}__${mail.readTool}`,
+      ...(mail.listArgs ? { listArgs: mail.listArgs } : {}),
+      ...(mail.fields ? { fields: mail.fields as Record<string, string> } : {}),
+    };
+    for (const t of [src.listTool, src.readTool]) {
+      if (!run.handle?.tools.includes(t)) void this.#log(a.manifest.name, `mail: tool ${t} is not offered by the server`);
+    }
+    a.mail = { listTool: src.listTool, readTool: src.readTool };
+    a.undo.push(this.#host.addMailSource(src));
   }
 
   // ---------- hooks ----------
@@ -724,6 +755,7 @@ export class PluginManager {
         };
       }),
       views: (folder?.views ?? []).map((v) => ({ id: v.id, title: v.title, placement: v.placement })),
+      ...(a?.mail ? { mail: a.mail } : {}),
       issues: folder?.issues ?? [],
     };
   }

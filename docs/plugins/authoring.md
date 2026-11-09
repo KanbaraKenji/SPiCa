@@ -128,6 +128,19 @@ if (process.env.SPICA_MOCK === '1') {
 - 清单里把 `mock.supported` 设成 `true`，并用 `description` 说一句模拟时会怎样。
 - 没开模拟、又连不上真服务时，返回一句「服务连不上，可以打开模拟模式」，别让模型干等。
 
+## 6b. 邮件来源（可选）
+
+插件能列邮件、读邮件时，在清单里加一段，Spica 的邮件流水线就会在插件启用期间定时取新邮件、分到对应项目：
+
+```json
+"mail": { "list_tool": "list_messages", "read_tool": "read_message" }
+```
+
+- 工具名写 server 里的原名，不带插件前缀。
+- 列表结果默认按这些字段读：`messages` 数组，每条有 `id`、`from_name`、`from_address`、`subject`、`received`、`preview`。字段名不一样时用 `fields` 对应，例如 `"fields": { "list": "items", "subject": "title" }`。
+- 列表调用默认带 `{ "unread_only": true, "limit": 50 }`，要改就写 `list_args`。
+- 例子：`plugins/outlook-mail/manifest.json`。
+
 ## 7. 本地试
 
 在 Spica 仓库里：

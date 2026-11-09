@@ -13,6 +13,7 @@
     "irreversible": ["move_messages"],
     "hooks": ["beforeTool"]
   },
+  "mail": { "list_tool": "list_messages", "read_tool": "read_message" },
   "mock": {
     "supported": true,
     "description": "Answers from a fictional sample mailbox of 30 messages instead of Outlook; marks, moves and drafts last until the plugin restarts."

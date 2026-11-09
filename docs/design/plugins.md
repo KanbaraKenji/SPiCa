@@ -42,6 +42,7 @@
 | `permissions.irreversible` | 否 | 不可撤销的工具（写 server 里的原名），调用前一律要用户确认 |
 | `permissions.hooks` | 否 | 钩子模块允许挂哪几类：`inject`、`beforeRequest`、`afterResponse`、`beforeTool`、`afterTool`。没声明的一律不挂 |
 | `mock` | 否 | `{ "supported": true, "description": "…" }` |
+| `mail` | 否 | 这个插件是邮件来源：`{ "list_tool": "list_messages", "read_tool": "read_message" }`（server 里的原名）；可选 `server`（有多个 MCP server 时必填）、`list_args`、`fields`（列表结果字段名和内核默认不同时）。启用时插件包调 `runtime.mail.addSource({ id: 插件名, listTool: '<server名>__list_messages', … })`，停用时撤掉；部署配置里不用再写带前缀的工具名 |
 
 校验从不抛异常，返回问题列表：每条带「哪个文件 · 哪个字段」和一句中文人话（例：`manifest.json · version：版本号「1.0」不合格，应该像 1.2.3 这样三段数字。`）。有 error 就不装、不启用；warning 只展示。
 
