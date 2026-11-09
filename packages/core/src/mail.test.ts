@@ -144,12 +144,13 @@ describe('mail pipeline', () => {
     // reassign Ana's website mail to the office move: she is now an office-move sender
     const re = rt.mail.feedback('mailbox:m1', { action: 'reassign', projectId: office.id });
     expect(re).toMatchObject({ status: 'routed', routedTo: office.managerSessionId, triage: { projectId: office.id }, feedback: { action: 'reassign' } });
-    expect(rt.store.getSenderProject('ANA@web.example')).toBe(office.id);
+    expect(rt.store.getSenderDecision('ANA@web.example')).toEqual({ decision: 'project', projectId: office.id });
     expect(events.some((e) => e.type === 'mail.feedback')).toBe(true);
     rt.mail.feedback('mailbox:m2', { action: 'accept' });
-    expect(rt.store.getSenderProject('bo@move.example')).toBe(office.id);
+    expect(rt.store.getSenderDecision('bo@move.example')).toEqual({ decision: 'project', projectId: office.id });
     rt.mail.feedback('mailbox:m4', { action: 'ignore' });
     expect(rt.store.getMail('mailbox:m4')!.status).toBe('ignored');
+    expect(rt.store.getSenderDecision('cy@event.example')).toEqual({ decision: 'ignore' });
     expect(() => rt.mail.feedback('mailbox:m3', { action: 'reassign' })).toThrow(/needs an existing projectId/);
 
     // a new mail from Ana goes straight to the office move, without asking the model
@@ -160,6 +161,39 @@ describe('mail pipeline', () => {
     expect(rt.store.getMail('mailbox:m6')).toMatchObject({ triage: { by: 'sender_memory', projectId: office.id, confidence: 1 }, routedTo: office.managerSessionId });
     expect(gw.requests.filter((q) => JSON.stringify(q.body.messages).includes('You sort the user')).length).toBe(before);
     expect(web.id).not.toBe(office.id);
+  });
+
+  it('ignore rules and ignored senders skip the model; a source added later is picked up', async () => {
+    inbox.length = 0;
+    inbox.push(mail('a1', 'noreply@ci.example', 'Build 812 passed'), mail('a2', 'x@promo.example', 'WEEKLY DEALS inside'), mail('a3', 'ana@web.example', 'Website homepage draft v3'));
+    gw.onRequest(triageModel());
+    const rt = makeRuntime(gw, { cwd: dir, projectsRoot: dir, mail: { ignore: { from: ['noreply@'], subject: ['/weekly\\s+deals/'] } } });
+    rt.createProject({ name: 'Website refresh' });
+    expect(rt.mail.activeSources).toEqual([]);
+    // a plugin registers itself as a mail source after start-up
+    for (const t of mailTools()) rt.tools.register(t, 'plugin:mailbox');
+    const remove = rt.mail.addSource({ id: 'mailbox', listTool: 'mailbox__list_messages', readTool: 'mailbox__read_message' });
+    await rt.mail.poll();
+    expect(rt.store.getMail('mailbox:a1')!.triage).toMatchObject({ decision: 'ignore', by: 'rule', reason: 'matches the ignore rule noreply@' });
+    expect(rt.store.getMail('mailbox:a2')!.triage).toMatchObject({ decision: 'ignore', by: 'rule' });
+    expect(rt.store.getMail('mailbox:a3')!.triage).toMatchObject({ decision: 'project', by: 'model' });
+    expect(rt.mail.thread().config.tools).toContain('mailbox__read_message');
+    // the user ignores a sender once; the next mail from them is ignored without the model
+    rt.mail.feedback('mailbox:a3', { action: 'ignore' });
+    inbox.push(mail('a4', 'ana@web.example', 'Website: yet another thing'));
+    const asked = gw.requests.length;
+    await rt.mail.poll();
+    expect(rt.store.getMail('mailbox:a4')!.triage).toMatchObject({ decision: 'ignore', by: 'sender_memory' });
+    expect(gw.requests.length).toBe(asked);
+    remove();
+    expect(rt.mail.activeSources).toEqual([]);
+  });
+
+  it('the triage role template can be replaced by the deployment', async () => {
+    const rt = makeRuntime(gw, { cwd: dir, templates: [{ id: 'mail-triage', name: 'Sorter', role: 'top', system: 'CUSTOM SORTER RULES' }] });
+    expect(rt.mail.thread().config.system).toBe('CUSTOM SORTER RULES');
+    const other = makeRuntime(gw, { cwd: dir, templates: [{ id: 'my-sorter', name: 'Mine', role: 'top', system: 'MINE' }], mail: { triageTemplateId: 'my-sorter' } });
+    expect(other.mail.thread().config.system).toBe('MINE');
   });
 
   it('without a mail plugin nothing runs; start() respects enabled:false', async () => {

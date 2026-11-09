@@ -303,8 +303,8 @@
 用户在界面上采纳 / 忽略 / 改归属 ──► 写回 mail_items 和「发件人 → 项目」记忆，下一批分拣用
 ```
 
-**邮件来源**（配置或扩展注入，`runtime.mail.addSource()`）：`{ id, listTool, readTool, listArgs?, fields? }`。
-- `listTool` / `readTool` 是插件工具名（例如 Outlook 插件的 `outlook__list_messages` / `outlook__read_message`）；`listArgs` 默认 `{ unread_only: true, limit: 50 }`；`fields` 把结果里的字段名映射成内核的（默认 `id`、`from_name`、`from_address`、`subject`、`received`、`preview`）。
+**邮件来源**：`{ id, listTool, readTool, listArgs?, fields? }`。正常情况下由插件自己声明：插件清单里写 `mail: { list_tool, read_tool }`，插件包在启用时调 `runtime.mail.addSource()`，停用时撤掉，所以部署配置里**不出现任何插件工具名**；`mail.sources` 只给没有清单的特殊接法留着。
+- `listTool` / `readTool` 是插件工具的完整名字（由插件包按清单拼出来）；`listArgs` 默认 `{ unread_only: true, limit: 50 }`；`fields` 把结果里的字段名映射成内核的（默认 `id`、`from_name`、`from_address`、`subject`、`received`、`preview`）。
 - 工具不在（插件没装 / 停用）时这个来源跳过，不报错；插件的模拟模式照样能跑通整条链。
 - 结果文本里 JSON 前面的 `[…]` 提示行（模拟模式、取数时间）先去掉再解析。
 - 读信不标已读（插件已定）；内核按邮件 id 去重，同一封只分拣一次。
@@ -315,13 +315,14 @@
 - 分拣线程是一个顶层线程（模板 `mail-triage`，可被部署覆盖），工具只有 `triage_mail`、`list_projects`、`open_project` 和来源的读信工具。
 - 每批发一条消息：项目清单（id、名字、阶段）、这批信（mail id、发件人、主题、时间、预览）、发件人记忆（「这个发件人以前被你归到项目 X」）、部署或插件注入的分拣规则（`mail.rules` 文本，或插件用 `inject` 钩子加）。
 - 模型必须调 `triage_mail { results: [{ mail_id, decision: 'project' | 'new' | 'ignore', project_id?, suggestion?, reason, confidence }] }`。内核校验：项目必须在清单里，这一批每封信都要有结果；不合格的和漏掉的在工具结果里点名，模型同一轮改正。合格的写进 `mail_items`，发 `mail.triaged` 事件；这一轮还没结果的信留到下一轮。
-- **发件人记忆**（最简单的一版）：用户确认过（采纳或改归属）的发件人，下次直接归到同一个项目，不问模型，理由写「同一发件人此前由你归到该项目」，置信度 1。
+- **不问模型就定的三种情况**（按顺序）：① 配置的忽略规则 `mail.ignore: { from?, subject? }`（每条是不分大小写的子串，或写成 `/正则/标志`），命中就忽略，`by: 'rule'`；② 用户归过项目的发件人（采纳或改归属），直接归到同一个项目，`by: 'sender_memory'`；③ 用户忽略过的发件人，直接忽略，`by: 'sender_memory'`。用户之后的处理会覆盖之前的记忆。
+- **分拣角色可配**：模板 `mail-triage` 可被部署的同名模板替换，或用 `mail.triageTemplateId` 指定别的模板；分拣线程的工具表随当前启用的邮件来源自动更新。
 
 **转给项目经理**：每轮每个项目经理只收一条消息，列出这一轮归给它的所有信（`meta.mails` 是邮件 id 和来源的数组），内容是发件人、主题、时间、预览，以及要求：先用读信工具看全文，用 `suggest_actions` 给用户几个下一步；起草回复只用插件的草稿工具，不发送；移动、标记照插件已定的确认规则。发 `mail.routed` 事件。
 
 **用户处理**：`mailFeedback(mailId, { action: 'accept' | 'ignore' | 'reassign', projectId? })`。改归属时转给新的项目经理；采纳和改归属更新发件人记忆；全部写进 `mail_items.feedback`，发 `mail.feedback` 事件。
 
-**数据**：`mail_items`（id = 来源:邮件 id、来源、邮件 id、发件人名和地址、主题、时间、预览、状态 new / triaged / routed / ignored、分拣结果 JSON、用户处理 JSON、时间戳）；`mail_senders`（发件人地址、项目 id、更新时间）。
+**数据**：`mail_items`（id = 来源:邮件 id、来源、邮件 id、发件人名和地址、主题、时间、预览、状态 new / triaged / routed / ignored、分拣结果 JSON、用户处理 JSON、时间戳）；`mail_senders`（发件人地址、决定 project / ignore、项目 id、更新时间）。
 
 **接口与事件**：AgentApi 加 `listMail(filter)`、`pollMail()`、`mailFeedback()`（先可选）；事件 `mail.polled`、`mail.triaged`、`mail.routed`、`mail.feedback`，都带结构化字段，界面自己写中文。
 

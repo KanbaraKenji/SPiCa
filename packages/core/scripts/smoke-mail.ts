@@ -33,7 +33,7 @@ await writeFile(
     mail: {
       enabled: false, // polled by hand below
       batchSize: 15,
-      sources: [{ id: 'outlook', listTool: 'outlook__list_messages', readTool: 'outlook__read_message', listArgs: { unread_only: false, limit: 50 } }],
+      // no sources here: the Outlook plugin declares itself a mail source when it is enabled
     },
   }),
 );

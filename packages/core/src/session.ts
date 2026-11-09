@@ -231,6 +231,14 @@ export class Session {
     return this.#maybeResume();
   }
 
+  /** Replace the tool allow-list (undefined = all tools). */
+  setTools(tools: string[] | undefined): void {
+    const { tools: _old, ...rest } = this.#record.config;
+    void _old;
+    this.#record = { ...this.#record, config: tools ? { ...rest, tools } : rest, updatedAt: isoNow() };
+    this.#rt.store.upsertSession(this.#record);
+  }
+
   /** Set or clear the display name. */
   rename(title: string | null): SessionInfo {
     this.#record = { ...this.#record, title: title && title.trim() !== '' ? title.trim() : null, updatedAt: isoNow() };
