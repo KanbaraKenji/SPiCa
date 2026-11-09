@@ -3,7 +3,12 @@
 // enable it, and show the tools it added. Optionally ask the agent to use it
 // (--run) and turn it off again to check nothing is left behind (--disable-after).
 //
-// Two ways to reach Spica:
+// Ways to reach Spica:
+//   default  node install.mjs <zip>
+//          the running desktop Spica, when its local MCP connection is switched on:
+//          it writes <userData>/mcp-http.json ({ url, tokenFile, pid }), e.g.
+//          %APPDATA%\Spica\mcp-http.json. --user-data <folder> or SPICA_USER_DATA
+//          point elsewhere.
 //   HTTP   node install.mjs <zip> --http http://127.0.0.1:<port>/mcp --token-file <file>
 //          (token also from the SPICA_MCP_TOKEN environment variable; never on the command line)
 //   stdio  node install.mjs <zip> --stdio <backend.json> --spica <Spica source folder>
@@ -17,6 +22,7 @@
 //   --no-enable           install only
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HttpClient, StdioClient } from './lib/mcp.mjs';
@@ -34,6 +40,7 @@ function parse(argv) {
     else if (a === '--token-file') o.tokenFile = val();
     else if (a === '--stdio') o.stdio = val();
     else if (a === '--spica') o.spica = val();
+    else if (a === '--user-data') o.userData = val();
     else if (a === '--run') o.run = val();
     else if (a === '--timeout') o.timeout = Number(val());
     else if (a === '--disable-after') o.disableAfter = true;
@@ -59,7 +66,52 @@ async function connect(o, log) {
     log(`启动 Spica 的 MCP 服务（${resolve(o.stdio)}）`);
     return new StdioClient({ command: process.execPath, args: [entry, '--config', resolve(o.stdio)], cwd: spica, timeoutMs: 60_000 });
   }
-  throw new Error('要说明怎么连 Spica：--http <地址> --token-file <文件>，或 --stdio <backend.json> --spica <源码文件夹>。见 references/connect.md。');
+  const running = await desktopConnection(o.userData);
+  if (running.ok) {
+    log(`连接正在运行的 Spica（${running.url}）`);
+    return new HttpClient({ url: running.url, token: running.token, timeoutMs: 60_000 });
+  }
+  throw new Error(
+    `${running.reason}\n` +
+      '办法：在 Spica 的 设置 › 常规 › 开发者 里打开「允许本机脚本连接 Spica（开发者）」后再跑一次；或者在 设置 › 插件 里粘贴 zip 的完整路径手动安装；' +
+      '开发时也可以用 --http 或 --stdio 连自己起的服务。见 references/connect.md。',
+  );
+}
+
+/** Spica's per-user folder (Electron userData for the app named "Spica"). */
+export function userDataDir(override) {
+  if (override) return resolve(override);
+  if (process.env.SPICA_USER_DATA) return resolve(process.env.SPICA_USER_DATA);
+  if (process.platform === 'win32') return join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'Spica');
+  if (process.platform === 'darwin') return join(homedir(), 'Library', 'Application Support', 'Spica');
+  return join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'Spica');
+}
+
+/** Read <userData>/mcp-http.json written by the running desktop app. */
+export async function desktopConnection(override) {
+  const dir = userDataDir(override);
+  const file = join(dir, 'mcp-http.json');
+  let info;
+  try {
+    info = JSON.parse(await readFile(file, 'utf8'));
+  } catch {
+    return { ok: false, reason: `没找到正在运行、而且开了本机连接的 Spica（${file} 不存在）。` };
+  }
+  if (typeof info.pid === 'number') {
+    try {
+      process.kill(info.pid, 0);
+    } catch (err) {
+      if (err.code === 'ESRCH') return { ok: false, reason: 'Spica 上次开过本机连接，但现在没在运行。' };
+    }
+  }
+  if (typeof info.url !== 'string' || typeof info.tokenFile !== 'string') return { ok: false, reason: `${file} 的内容不对（要有 url 和 tokenFile）。` };
+  let token;
+  try {
+    token = (await readFile(info.tokenFile, 'utf8')).trim();
+  } catch {
+    return { ok: false, reason: `读不到令牌文件 ${info.tokenFile}。` };
+  }
+  return token ? { ok: true, url: info.url, token } : { ok: false, reason: '令牌文件是空的。' };
 }
 
 const pluginTools = (names, plugin) => names.filter((n) => n.startsWith(`${plugin}__`) || n.startsWith(`${plugin}-`));
@@ -130,7 +182,7 @@ if (isMain) {
     process.exit(2);
   }
   if (o.help || !o.path) {
-    console.log('用法：node install.mjs <插件包.zip 或文件夹> (--http <地址> --token-file <文件> | --stdio <backend.json> --spica <源码文件夹>) [--run "一句话"] [--disable-after] [--no-enable]');
+    console.log('用法：node install.mjs <插件包.zip 或文件夹> [--user-data <Spica 用户文件夹> | --http <地址> --token-file <文件> | --stdio <backend.json> --spica <源码文件夹>] [--run "一句话"] [--disable-after] [--no-enable]');
     process.exit(o.help ? 0 : 2);
   }
   try {

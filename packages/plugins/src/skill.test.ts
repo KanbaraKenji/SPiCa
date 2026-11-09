@@ -5,7 +5,7 @@
 // disable it and see every tool withdrawn. Also: the packed zip passes the
 // real plugin manager, and its page is served.
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -101,7 +101,7 @@ describe('plugin-author skill', () => {
     expect(first).toContain('shelf-basics');
   });
 
-  it('install over HTTP with a token file; a wrong token is refused plainly', async () => {
+  it('install into a running Spica over HTTP: found through mcp-http.json, token from its file; a wrong token is refused plainly', async () => {
     const zip = await scaffoldAndPack('board', ['--with-ui']);
     const work = await temp('spica-skill-http-');
     const gw = await gateway('board__add_item');
@@ -137,7 +137,18 @@ describe('plugin-author skill', () => {
     expect(refused.code).toBe(1);
     expect(refused.out).toMatch(/令牌不对/);
 
-    const r = await script('install.mjs', [zip, '--http', url, '--token-file', tokenFile, '--run', 'Add an item.', '--disable-after']);
+    // Default connection: the file a running desktop Spica writes when its local MCP connection is on.
+    const userData = join(work, 'user-data');
+    const none = await script('install.mjs', [zip], { SPICA_USER_DATA: userData });
+    expect(none.code).toBe(1);
+    expect(none.out).toMatch(/没找到正在运行、而且开了本机连接的 Spica[\s\S]*设置 › 插件/);
+    await mkdir(userData, { recursive: true });
+    await writeFile(join(userData, 'mcp-http.json'), JSON.stringify({ url, tokenFile, pid: 2 ** 30, startedAt: new Date().toISOString() }));
+    expect((await script('install.mjs', [zip], { SPICA_USER_DATA: userData })).out).toMatch(/现在没在运行/);
+    await writeFile(join(userData, 'mcp-http.json'), JSON.stringify({ url, tokenFile, pid: child.pid, startedAt: new Date().toISOString() }));
+
+    const r = await script('install.mjs', [zip, '--run', 'Add an item.', '--disable-after'], { SPICA_USER_DATA: userData });
+    expect(r.out).toMatch(/连接正在运行的 Spica/);
     expect(r.code, r.out).toBe(0);
     expect(r.out).toMatch(/页面：Board（sidebar）/);
     expect(r.out).toMatch(/Agent 调了：board__add_item/);

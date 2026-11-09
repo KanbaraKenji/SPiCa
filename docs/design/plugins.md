@@ -254,4 +254,4 @@ J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型�
   - 插件包可用 `.spicaignore` 排除开发文件（1585374），Outlook 插件已加（8988ad1）。
   - 插件页面定稿：`views/*.json`、`views()` / `resolveViewFile()` / `viewCall()`、后端端口 `pluginViews` / `pluginViewFile` / `pluginViewCall`，和桌面外壳对好的 `window.spica` 约定见第 2 节「视图」（fb0d42b）；示例插件有 sidebar 的 Notebook 和 panel 的 Quick note（eaa96f7）。
   - 给公司端 Claude Code / Codex 用的 skill：`skills/spica-plugin-author`（脚手架、校验打包、安装、页面预览，7105d2f 起）；`packages/plugins/src/skill.test.ts` 用它从零做插件，经 stdio 和 HTTP 装进 Spica 再撤掉。
-  - 缺口：桌面版后端没开 HTTP MCP 服务（`mcpHttp`），所以 `install.mjs` 还连不上正在运行的桌面版；开发用独立的 `mcp-main` 能连，桌面版用户先在 设置 › 插件 粘 zip 路径装。
+  - 本机连接：桌面版在 设置 › 常规 › 开发者 打开「允许本机脚本连接 Spica（开发者）」后写 `<userData>/mcp-http.json`（`{ url, tokenFile, pid, startedAt }`，令牌在 `<userData>/mcp-token`，关掉或退出时删），`install.mjs` 不带连接参数时就读它；没开时用 设置 › 插件 粘 zip 路径装。
