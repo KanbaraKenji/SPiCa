@@ -135,26 +135,43 @@ export interface Message {
  * the `settings.changed` event and by a note message in the conversations
  * (meta.settingsChange), so the card stays in the history.
  */
+/** A connection and one of its models (the default, the strong one). */
+export interface ModelPointer {
+  connectionId: string;
+  model: string;
+}
+
 export interface SettingsChangeMeta {
-  action: 'add_model' | 'change_model' | 'set_default_model';
-  /** The model connection (its id in the settings). */
+  /** add / change a connection (one address, one key, the models ticked under it), or point the default / strong model elsewhere. */
+  action: 'add_connection' | 'change_connection' | 'set_default_model' | 'set_strong_model';
+  /** The connection (its id in the settings). */
   id: string;
   name: string;
   kind: 'openai-compatible' | 'anthropic' | 'wso2';
-  model: string;
   baseUrl?: string;
   tokenUrl?: string;
   /** Last 4 characters only. */
   consumerKey?: string;
   scope?: string | null;
-  contextWindow?: number | null;
-  /** Names of the changed fields ('new' for a new connection, 'default' when it became the default). */
+  /** add / change: the models ticked now, each with its context window and where it came from ('name-match': matched by name in the catalog). */
+  models?: { id: string; contextWindow: number; contextFrom: 'user' | 'catalog' | 'provider' | 'name-match' }[];
+  /** add / change: models ticked or unticked by this change. */
+  addedModels?: string[];
+  removedModels?: string[];
+  /** set_default_model / set_strong_model: the model pointed at. */
+  model?: string;
+  /** Names of the changed fields ('new' for a new connection, 'models', 'default', 'strong', ...). */
   changes: string[];
   /** The key / Consumer Secret: newly given or kept as saved. */
   secret?: 'new' | 'unchanged';
-  makeDefault?: boolean;
-  /** The connection test run before saving. */
-  test?: { ok: boolean; code?: string };
+  /** add / change: the model of this connection made the default / the strong one. */
+  makeDefault?: string;
+  makeStrong?: string;
+  /** Where the default / strong model pointed before and after, when the change moved it (also when a pointed-at model was unticked). */
+  defaultMoved?: { from: ModelPointer | null; to: ModelPointer | null };
+  strongMoved?: { from: ModelPointer | null; to: ModelPointer | null };
+  /** The connection test run before saving (one of the models). */
+  test?: { ok: boolean; model?: string; code?: string };
   /** Who made the change. */
   by: 'mcp';
   /** Whether the user confirmed it in the window (false: applied without asking, as set up). */

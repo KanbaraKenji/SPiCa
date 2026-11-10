@@ -6,7 +6,7 @@
 // only answer text, and the answer goes to that plugin alone.
 import { isoNow } from './events.ts';
 import { RateLimiter } from './limiter.ts';
-import type { HostModel } from './settings-tools.ts';
+import type { HostModelList } from './settings-tools.ts';
 import type { Runtime } from './runtime.ts';
 import type { Message } from './types.ts';
 import { estimateTokens, newId } from './util.ts';
@@ -88,11 +88,8 @@ export class PluginSampler {
       // the models the user configured (the window knows all of them; without it, the defaults)
       let all: { providerId: string; model: string }[] = [];
       try {
-        const answer = (await this.#rt.settingsBridge?.host('models.list')) as HostModel[] | { connections?: { id: string; models?: { id: string }[] }[] } | undefined;
-        // one connection with several models ({ connections }), or the older one model per entry
-        all = Array.isArray(answer)
-          ? answer.flatMap((m) => [{ providerId: m.id, model: m.model }, ...(m.strongModel ? [{ providerId: m.id, model: m.strongModel }] : [])])
-          : (answer?.connections ?? []).flatMap((c) => (c.models ?? []).map((m) => ({ providerId: c.id, model: m.id })));
+        const answer = (await this.#rt.settingsBridge?.host('models.list')) as HostModelList | undefined;
+        all = (answer?.connections ?? []).flatMap((c) => (c.models ?? []).map((m) => ({ providerId: c.id, model: m.id })));
       } catch {
         // no window: only the defaults are known
       }

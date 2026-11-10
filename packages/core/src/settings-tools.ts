@@ -1,28 +1,80 @@
 // Model settings through Spica's MCP service: an agent on this machine (one the
 // user connected through "allow local scripts") lists, tests and saves model
-// connections for the user. The settings live with the host (the desktop shell
-// stores them, secrets encrypted); the core reaches it through host methods on
-// the backend port and never hands a secret back out:
+// connections for the user. A connection is one provider address with one key
+// and the models ticked under it; the default and the strong model each point
+// at a connection and one of its models. The settings live with the host (the
+// desktop shell stores them, secrets encrypted); the core reaches it through
+// host methods on the backend port and never hands a secret back out:
 //   - no tool result contains an API key or a Consumer Secret (only hasSecret);
 //     a Consumer Key comes back as its last 4 characters
 //   - every secret received is added to the redaction table at once
+//   - every ticked model has a context window: given, from the catalog, or
+//     matched by name (marked so); otherwise nothing is saved
 //   - a change applies at once and is shown in the conversations (event
 //     settings.changed, and a note with meta.settingsChange in the main
 //     conversation and the one open in the window, so it stays in the history);
 //     with the runtime's confirmSettingsChanges on it first waits for the user's
 //     confirmation in the window (cause settings_change, answerable only there)
 //   - each change leaves a traceable record (kind settings) with field names only
+import { isoNow } from './events.ts';
+import { fence } from './guard.ts';
 import type { ProviderConfig } from './host/backend.ts';
 import type { McpTool } from './mcp/server.ts';
 import type { Runtime } from './runtime.ts';
-import { isoNow } from './events.ts';
-import { fence } from './guard.ts';
 import type { Session } from './session.ts';
 import { catalogProvider } from './catalog/catalog.ts';
 import { listProviderModels } from './catalog/list-models.ts';
 import type { ProbeResult, SettingsChangeMeta } from './types.ts';
 
-/** A model connection as the host lists it (no secret). */
+type CoreKind = 'openai-compatible' | 'anthropic' | 'wso2';
+
+/** Where a ticked model's context window came from (the form marks name matches). */
+export type ContextFrom = 'user' | 'catalog' | 'provider' | 'name-match';
+
+export interface HostConnectionModel {
+  id: string;
+  /** Required: every ticked model has one. */
+  contextWindow: number;
+  contextFrom: ContextFrom;
+}
+
+/** A model connection as the host lists it: one address, one key, the models ticked under it (no secret). */
+export interface HostConnection {
+  id: string;
+  kind: CoreKind;
+  name: string;
+  baseUrl: string;
+  tokenUrl: string;
+  /** WSO2: the OAuth client id (Consumer Key), in full: the core masks it before it leaves. */
+  clientId: string;
+  scope: string;
+  /** The catalog provider or company preset it was set up from (prices, context windows, how to list models). */
+  catalogId?: string;
+  maxConcurrent: number | null;
+  requestsPerMinute: number | null;
+  hasSecret: boolean;
+  /** Cannot be changed here (e.g. comes from a developer file). */
+  readOnly?: boolean;
+  models: HostConnectionModel[];
+}
+
+/** A connection and one of its models (the default, the strong one). */
+export interface HostModelPointer {
+  connectionId: string;
+  model: string;
+}
+
+/** What 'models.list' answers. */
+export interface HostModelList {
+  connections: HostConnection[];
+  default: HostModelPointer | null;
+  strong: HostModelPointer | null;
+}
+
+/**
+ * @deprecated One model per entry, the shape before connections had several
+ * models. Kept only until the desktop shell's host methods move to HostConnection.
+ */
 export interface HostModel {
   id: string;
   kind: CoreKind;
@@ -31,7 +83,6 @@ export interface HostModel {
   model: string;
   strongModel: string;
   tokenUrl: string;
-  /** WSO2: the OAuth client id (Consumer Key), in full: the core masks it before it leaves. */
   clientId: string;
   scope: string;
   contextWindow: number | null;
@@ -39,22 +90,25 @@ export interface HostModel {
   requestsPerMinute: number | null;
   hasSecret: boolean;
   isDefault: boolean;
-  /** Cannot be changed here (e.g. comes from a developer file). */
   readOnly?: boolean;
-  /** The catalog provider or company preset it was set up from (prices, context windows, how to list models). */
   catalogId?: string;
 }
 
-/** What the core asks the host to save. `secret` undefined: keep the saved one. */
+/** @deprecated See HostModel. */
 export type HostModelDraft = Omit<HostModel, 'id' | 'hasSecret' | 'isDefault' | 'readOnly'> & { id?: string; secret?: string };
 
-type CoreKind = 'openai-compatible' | 'anthropic' | 'wso2';
+/** What the core asks the host to save: the whole list of ticked models; `secret` undefined keeps the saved one. */
+export type HostConnectionDraft = Omit<HostConnection, 'id' | 'hasSecret' | 'readOnly'> & { id?: string; secret?: string };
 
 /**
  * How the settings tools reach the host and the providers (set by startBackend).
- * Host methods: 'models.list' () → HostModel[]; 'models.save' (HostModelDraft) →
- * HostModel, the host then sends the providers to the core with configure() as it
- * does for its own settings page, with the same ids; 'models.setDefault' (id).
+ * Host methods: 'models.list' () → HostModelList; 'models.save'
+ * (HostConnectionDraft) → HostConnection (the ticked models replace the saved
+ * ones; a pointer to a model that went away moves: to the first model left in
+ * that connection, else the first one anywhere, else none), the host then sends
+ * the providers to the core with configure() as it does for its own settings
+ * page, with the same ids; 'models.setDefault' (HostModelPointer);
+ * 'models.setStrong' (HostModelPointer | null); optional 'ui.activeSession' ().
  */
 export interface SettingsBridge {
   host(method: string, params?: unknown[]): Promise<unknown>;
@@ -78,26 +132,28 @@ export class SettingsError extends Error {
 const KINDS: CoreKind[] = ['openai-compatible', 'anthropic', 'wso2'];
 const str = { type: 'string' } as const;
 const int = { type: 'integer', minimum: 1 } as const;
+const modelItem = {
+  type: 'object',
+  properties: { id: { ...str, description: 'Model name as the API takes it.' }, contextWindow: { ...int, description: 'Tokens it takes at once; leave out when the app knows it.' } },
+  required: ['id'],
+} as const;
 
 const FIELDS = {
   id: { ...str, description: 'An existing connection (from spica_list_models) to change or test; leave out to add a new one.' },
   preset: {
     ...str,
-    description: 'A provider or company preset from spica_list_presets: its kind, addresses and default model are filled in, so usually only the key (or Consumer Key and Secret) is needed.',
+    description: 'A provider or company preset from spica_list_presets: its kind, addresses and recommended models are filled in, so usually only the key (or Consumer Key and Secret) is needed.',
   },
-  kind: { type: 'string', enum: KINDS, description: 'openai-compatible (incl. DeepSeek and most gateways with a key), anthropic, or wso2 (WSO2 API gateway with Consumer Key / Secret).' },
+  kind: { type: 'string', enum: KINDS, description: 'openai-compatible (incl. DeepSeek, relays and most gateways with a key), anthropic, or wso2 (WSO2 API gateway with Consumer Key / Secret).' },
   name: { ...str, description: 'Shown in the model list.' },
   baseUrl: { ...str, description: 'API address (usually ending in /v1). Optional for anthropic.' },
-  model: { ...str, description: 'Model name to use.' },
-  strongModel: { ...str, description: 'Optional model for heavy work.' },
   tokenUrl: { ...str, description: 'wso2: the OAuth token endpoint.' },
   consumerKey: { ...str, description: 'wso2: Consumer Key (OAuth client id).' },
   consumerSecret: { ...str, description: 'wso2: Consumer Secret. Stored encrypted, never returned. Leave out to keep the saved one.' },
   apiKey: { ...str, description: 'openai-compatible / anthropic: the API key. Stored encrypted, never returned. Leave out to keep the saved one.' },
   scope: { ...str, description: 'wso2: OAuth scope, if the gateway needs one.' },
-  contextWindow: { ...int, description: 'Tokens the model takes at once. Filled in for models the app knows; otherwise required (ask the user).' },
-  maxConcurrent: { ...int, description: 'Requests at the same time (leave out: no limit).' },
-  requestsPerMinute: { ...int, description: 'Requests per minute (leave out: no limit).' },
+  maxConcurrent: { ...int, description: 'Requests at the same time over this connection (leave out: no limit).' },
+  requestsPerMinute: { ...int, description: 'Requests per minute over this connection (leave out: no limit).' },
 } as const;
 
 const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: 'object', properties, required });
@@ -113,34 +169,40 @@ function kindOf(v: unknown): CoreKind | undefined {
   return KINDS.includes(v as CoreKind) ? (v as CoreKind) : undefined;
 }
 
+const samePointer = (a: HostModelPointer | null | undefined, b: HostModelPointer | null | undefined) =>
+  (a?.connectionId ?? null) === (b?.connectionId ?? null) && (a?.model ?? null) === (b?.model ?? null);
+
 /** What an agent sees of a connection: no secret, the Consumer Key masked. */
-function view(m: HostModel) {
-  const kind = kindOf(m.kind) ?? 'openai-compatible';
+function view(c: HostConnection, list: HostModelList) {
+  const kind = kindOf(c.kind) ?? 'openai-compatible';
   return {
-    id: m.id,
+    id: c.id,
     kind,
-    name: m.name,
-    baseUrl: m.baseUrl,
-    model: m.model,
-    strongModel: m.strongModel || null,
-    ...(kind === 'wso2' ? { tokenUrl: m.tokenUrl, consumerKey: maskTail(m.clientId), scope: m.scope || null } : {}),
-    contextWindow: m.contextWindow,
-    maxConcurrent: m.maxConcurrent,
-    requestsPerMinute: m.requestsPerMinute,
-    hasSecret: m.hasSecret,
-    isDefault: m.isDefault,
-    ...(m.readOnly ? { readOnly: true } : {}),
+    name: c.name,
+    baseUrl: c.baseUrl,
+    ...(kind === 'wso2' ? { tokenUrl: c.tokenUrl, consumerKey: maskTail(c.clientId), scope: c.scope || null } : {}),
+    ...(c.catalogId ? { preset: c.catalogId } : {}),
+    models: c.models.map((m) => ({
+      ...m,
+      ...(list.default?.connectionId === c.id && list.default.model === m.id ? { isDefault: true } : {}),
+      ...(list.strong?.connectionId === c.id && list.strong.model === m.id ? { isStrong: true } : {}),
+    })),
+    maxConcurrent: c.maxConcurrent,
+    requestsPerMinute: c.requestsPerMinute,
+    hasSecret: c.hasSecret,
+    ...(c.readOnly ? { readOnly: true } : {}),
   };
 }
 
 /** Test result for an agent: the two steps, the code and the Chinese hint from NET_HINTS. */
-function testView(kind: CoreKind, r: ProbeResult) {
+function testView(kind: CoreKind, model: string, r: ProbeResult) {
   const twoSteps = kind === 'wso2';
   const token = !twoSteps ? 'n/a' : r.ok || r.stage === 'model' ? 'ok' : 'failed';
-  const model = r.ok ? 'ok' : r.stage === 'token' ? 'skipped' : 'failed';
+  const step = r.ok ? 'ok' : r.stage === 'token' ? 'skipped' : 'failed';
   return {
     ok: r.ok,
-    steps: { token, model },
+    model,
+    steps: { token, model: step },
     ...(r.code ? { code: r.code } : {}),
     ...(r.errorCode ? { errorCode: r.errorCode } : {}),
     ...(r.hint ? { hint: r.hint } : {}),
@@ -155,6 +217,14 @@ function testView(kind: CoreKind, r: ProbeResult) {
 type Args = Record<string, unknown>;
 const text = (v: unknown) => (typeof v === 'string' ? v.trim() : undefined);
 const count = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : v === undefined ? undefined : NaN);
+/** [{ id, contextWindow? }] from a list of objects or of names. */
+const modelArgs = (v: unknown): { id: string; contextWindow?: number }[] | undefined =>
+  Array.isArray(v)
+    ? v
+        .map((x) => (typeof x === 'string' ? { id: x.trim() } : { id: String((x as { id?: unknown })?.id ?? '').trim(), contextWindow: count((x as { contextWindow?: unknown })?.contextWindow) }))
+        .filter((x) => x.id)
+        .map((x) => (x.contextWindow === undefined ? { id: x.id } : { id: x.id, contextWindow: x.contextWindow }))
+    : undefined;
 
 export function settingsTools(rt: Runtime): McpTool[] {
   const app = rt.appName;
@@ -173,52 +243,89 @@ export function settingsTools(rt: Runtime): McpTool[] {
       throw new SettingsError(typeof code === 'string' ? code : 'host_failed', rt.redact(err instanceof Error ? err.message : String(err)));
     }
   };
-  const list = async () => (await host<HostModel[]>('models.list')) ?? [];
+  const list = async (): Promise<HostModelList> => {
+    const l = await host<HostModelList | undefined>('models.list');
+    return { connections: l?.connections ?? [], default: l?.default ?? null, strong: l?.strong ?? null };
+  };
   const waiting = new Map<string, Promise<unknown>>();
+
+  /** A context window for each model: given, the catalog's, or matched by name; the ones without are named. */
+  const windows = (kind: CoreKind, catalogId: string | undefined, wanted: { id: string; contextWindow?: number }[], keep: HostConnectionModel[]) => {
+    const out: HostConnectionModel[] = [];
+    const missing: string[] = [];
+    for (const w of wanted) {
+      const kept = keep.find((m) => m.id === w.id);
+      if (Number.isNaN(w.contextWindow)) throw new SettingsError('invalid', `a positive whole number (field contextWindow of ${w.id})`);
+      if (w.contextWindow) out.push({ id: w.id, contextWindow: w.contextWindow, contextFrom: 'user' });
+      else if (kept) out.push(kept);
+      else {
+        const found = rt.ledger.matchContextWindow(kind, w.id, catalogId);
+        if (found) out.push({ id: w.id, contextWindow: found.contextWindow, contextFrom: found.how === 'exact' ? 'catalog' : 'name-match' });
+        else missing.push(w.id);
+      }
+    }
+    if (missing.length) {
+      throw new SettingsError('context_window_required', `${app} does not know how many tokens ${missing.join(', ')} take at once: ask the user and pass contextWindow for each`);
+    }
+    return out;
+  };
 
   /** The saved connection merged with what the agent gave, validated; secrets registered for redaction. */
   const draftFrom = async (a: Args, purpose: 'test' | 'save' | 'list') => {
+    const all = await (purpose === 'save' || text(a.id) ? list() : Promise.resolve<HostModelList>({ connections: [], default: null, strong: null }));
     const id = text(a.id) || undefined;
-    const presetId = text(a.preset) || undefined;
-    const preset = catalogProvider(rt.catalog, presetId);
-    if (presetId && !preset) throw new SettingsError('not_found', `no preset ${presetId} (see spica_list_presets)`);
-    let existing: HostModel | undefined;
+    let existing: HostConnection | undefined;
     if (id) {
-      existing = (await list()).find((m) => m.id === id);
+      existing = all.connections.find((c) => c.id === id);
       if (!existing) throw new SettingsError('not_found', `no model connection with id ${id} (see spica_list_models)`);
       if (existing.readOnly && purpose === 'save') throw new SettingsError('read_only', `${id} cannot be changed here`);
     }
+    const presetId = text(a.preset) || undefined;
+    const preset = catalogProvider(rt.catalog, presetId);
+    if (presetId && !preset) throw new SettingsError('not_found', `no preset ${presetId} (see spica_list_presets)`);
     // what the preset fills in (a saved connection keeps its own values; what the agent gives wins)
     const fromPreset = preset && !existing;
     const kind = a.kind !== undefined ? kindOf(a.kind) : existing ? kindOf(existing.kind) : preset?.kind;
     if (!kind) throw new SettingsError('invalid', `kind must be one of ${KINDS.join(', ')}`);
     const pick = (k: string, from: string) => text(a[k]) ?? from;
-    const roleModel = (role: string) => preset?.models.find((m) => m.role === role)?.id ?? '';
-    const model = pick('model', existing?.model ?? (fromPreset ? roleModel('default') || (preset.models[0]?.id ?? '') : ''));
-    const presetWindow = preset?.models.find((m) => m.id === model)?.contextWindow ?? null;
-    const d: HostModelDraft = {
+    const catalogId = existing?.catalogId ?? preset?.id;
+
+    // the ticked models: the whole list, or the saved ones plus / minus some; a new preset connection gets its recommended ones
+    const given = modelArgs(a.models);
+    const single = text(a.model) ? [{ id: text(a.model)!, ...(a.contextWindow !== undefined ? { contextWindow: count(a.contextWindow) } : {}) }] : undefined;
+    const add = [...(modelArgs(a.addModels) ?? []), ...(given ? [] : (single ?? []))];
+    const remove = new Set((Array.isArray(a.removeModels) ? a.removeModels : []).map((x) => String(x)));
+    const before = existing?.models ?? [];
+    let wanted: { id: string; contextWindow?: number }[] =
+      given ?? (existing ? before.map((m) => ({ id: m.id })) : fromPreset ? preset.models.filter((m) => m.role === 'default' || m.role === 'strong').map((m) => ({ id: m.id })) : []);
+    if (fromPreset && !given && wanted.length === 0 && preset.models[0]) wanted = [{ id: preset.models[0].id }];
+    for (const m of add) {
+      const i = wanted.findIndex((w) => w.id === m.id);
+      if (i >= 0) wanted[i] = m;
+      else wanted.push(m);
+    }
+    wanted = wanted.filter((w) => !remove.has(w.id));
+    if (purpose === 'save' && wanted.length === 0) throw new SettingsError('invalid', 'at least one model (field models)');
+
+    const d: HostConnectionDraft = {
       ...(id ? { id } : {}),
       kind,
       name: pick('name', existing?.name ?? (fromPreset ? preset.name : '')),
       baseUrl: pick('baseUrl', existing?.baseUrl ?? (fromPreset ? preset.baseUrl : kind === 'anthropic' ? 'https://api.anthropic.com/v1' : '')),
-      model,
-      strongModel: pick('strongModel', existing?.strongModel ?? (fromPreset ? roleModel('strong') : '')),
       tokenUrl: pick('tokenUrl', existing?.tokenUrl ?? (fromPreset ? (preset.tokenUrl ?? '') : '')),
       clientId: pick('consumerKey', existing?.clientId ?? ''),
       scope: pick('scope', existing?.scope ?? (fromPreset ? (preset.scope ?? '') : '')),
-      contextWindow: count(a.contextWindow) ?? (a.model === undefined ? existing?.contextWindow : undefined) ?? presetWindow ?? null,
+      ...(catalogId ? { catalogId } : {}),
       maxConcurrent: count(a.maxConcurrent) ?? existing?.maxConcurrent ?? (fromPreset ? (preset.maxConcurrent ?? null) : null),
       requestsPerMinute: count(a.requestsPerMinute) ?? existing?.requestsPerMinute ?? (fromPreset ? (preset.requestsPerMinute ?? null) : null),
-      ...((existing?.catalogId ?? preset?.id) ? { catalogId: existing?.catalogId ?? preset!.id } : {}),
+      models: [],
     };
-    const needsKey = catalogProvider(rt.catalog, d.catalogId)?.needsKey ?? true;
     const typed = text(kind === 'wso2' ? (a.consumerSecret ?? a.apiKey) : (a.apiKey ?? a.consumerSecret));
     if (typed) d.secret = typed;
     // known secrets and addresses never show up in errors, records or exports from here on
     rt.addRedactions([typed, d.clientId, d.baseUrl, d.tokenUrl]);
     // (the field name after the reason: "apiKey: …" would read as a key to the redaction)
     const bad = (field: string, why: string) => new SettingsError('invalid', `${why} (field ${field})`);
-    if (!d.model && purpose !== 'list') throw bad('model', 'required');
     if (purpose === 'save' && !d.name) throw bad('name', 'required (shown in the model list)');
     const url = /^https?:\/\/[^\s/]+/i;
     if (kind !== 'anthropic' && !d.baseUrl) throw bad('baseUrl', 'required');
@@ -228,17 +335,14 @@ export function settingsTools(rt: Runtime): McpTool[] {
       if (!url.test(d.tokenUrl)) throw bad('tokenUrl', 'must start with http:// or https://');
       if (!d.clientId) throw bad('consumerKey', 'required for wso2');
     }
-    for (const k of ['contextWindow', 'maxConcurrent', 'requestsPerMinute'] as const) if (Number.isNaN(d[k])) throw bad(k, 'a positive whole number');
+    for (const k of ['maxConcurrent', 'requestsPerMinute'] as const) if (Number.isNaN(d[k])) throw bad(k, 'a positive whole number');
+    const needsKey = catalogProvider(rt.catalog, d.catalogId)?.needsKey ?? true;
     const running = id ? bridge().providerConfig(id) : undefined;
     const secret = d.secret ?? (kind === 'wso2' ? running?.oauth?.clientSecret : running?.apiKey);
     if (!secret && (needsKey || kind === 'wso2')) {
       throw bad(kind === 'wso2' ? 'consumerSecret' : 'apiKey', existing?.hasSecret ? 'the saved one cannot be read; give it again' : 'required');
     }
-    if (purpose === 'save' && d.contextWindow === null) {
-      const known = rt.ledger.knownContextWindow(kind, d.model, d.catalogId);
-      if (!known) throw new SettingsError('context_window_required', `${app} does not know how many tokens ${d.model} takes at once: ask the user and pass contextWindow`);
-      d.contextWindow = known;
-    }
+    if (purpose === 'save') d.models = windows(kind, catalogId, wanted, before);
     const config: ProviderConfig = {
       id: id ?? 'settings-draft',
       kind,
@@ -250,16 +354,24 @@ export function settingsTools(rt: Runtime): McpTool[] {
           : {}),
       ...(d.catalogId ? { catalogId: d.catalogId } : {}),
     };
+    const added = d.models.filter((m) => !before.some((b) => b.id === m.id)).map((m) => m.id);
+    const removed = before.filter((b) => !d.models.some((m) => m.id === b.id)).map((m) => m.id);
     const changes = existing
-      ? (['kind', 'name', 'baseUrl', 'model', 'strongModel', 'tokenUrl', 'scope', 'contextWindow', 'maxConcurrent', 'requestsPerMinute'] as const)
+      ? (['kind', 'name', 'baseUrl', 'tokenUrl', 'scope', 'maxConcurrent', 'requestsPerMinute'] as const)
           .filter((k) => (k === 'kind' ? kindOf(existing.kind) !== d.kind : existing[k] !== d[k]))
           .map(String)
-          .concat(existing.clientId !== d.clientId ? ['consumerKey'] : [], d.secret ? [kind === 'wso2' ? 'consumerSecret' : 'apiKey'] : [])
+          .concat(
+            existing.clientId !== d.clientId ? ['consumerKey'] : [],
+            d.secret ? [kind === 'wso2' ? 'consumerSecret' : 'apiKey'] : [],
+            added.length || removed.length || d.models.some((m) => before.find((b) => b.id === m.id)?.contextWindow !== m.contextWindow && before.some((b) => b.id === m.id)) ? ['models'] : [],
+          )
       : ['new'];
-    return { d, config, existing, changes };
+    // the model to test: one being added, else the one asked for, else the first
+    const testModel = added[0] ?? text(a.model) ?? (wanted[0]?.id || '');
+    return { d, config, existing, changes, added, removed, testModel, all };
   };
 
-  const test = async (kind: CoreKind, config: ProviderConfig, model: string) => testView(kind, await bridge().probe(config, model));
+  const test = async (kind: CoreKind, config: ProviderConfig, model: string) => testView(kind, model, await bridge().probe(config, model));
 
   const record = (o: { id: string; changes: string[]; status: 'ok' | 'error' | 'aborted'; confirmed: boolean; error?: string }) =>
     rt.tracer
@@ -297,13 +409,19 @@ export function settingsTools(rt: Runtime): McpTool[] {
     } catch {
       // the window does not say which conversation is open
     }
-    const what = { action: change.action, name: change.name, model: change.model, changes: change.changes, confirmedByUser: change.confirmed };
+    const what = {
+      action: change.action,
+      name: change.name,
+      ...(change.addedModels?.length ? { addedModels: change.addedModels } : {}),
+      ...(change.removedModels?.length ? { removedModels: change.removedModels } : {}),
+      ...(change.model ? { model: change.model } : {}),
+      changes: change.changes,
+      confirmedByUser: change.confirmed,
+    };
     const body = fence(JSON.stringify(what), 'mcp', 'settings', app).text;
-    const text = `[The model settings were changed by a script connected to ${app}${change.confirmed ? ', confirmed by the user' : ', without asking the user (as set up)'}. Details:]\n${body}`;
-    for (const s of targets) s.addNote('note', text, { author: 'runtime', settingsChange: change });
+    const note = `[The model settings were changed by a script connected to ${app}${change.confirmed ? ', confirmed by the user' : ', without asking the user (as set up)'}. Details:]\n${body}`;
+    for (const s of targets) s.addNote('note', note, { author: 'runtime', settingsChange: change });
   };
-  const changeOf = (card: Record<string, unknown>, id: string, confirmed: boolean, extra: string[] = []): SettingsChangeMeta =>
-    ({ ...card, id, changes: [...((card.changes as string[] | undefined) ?? []), ...extra], by: 'mcp', confirmed, at: isoNow() }) as SettingsChangeMeta;
 
   /** Ask the user (unless turned off), then run `apply`; says it is still waiting after waitMs. */
   const confirmThen = async (name: string, card: Record<string, unknown>, apply: (confirmed: boolean) => Promise<unknown>, declined: () => unknown) => {
@@ -324,12 +442,15 @@ export function settingsTools(rt: Runtime): McpTool[] {
     }
   };
 
+  /** Set a pointer (default / strong) to a connection's model. */
+  const pointerTo = (connectionId: string, model: string): HostModelPointer => ({ connectionId, model });
+
   return [
     {
       name: 'spica_list_presets',
       description:
         `The providers ${app} knows (company presets first, then providers in China, international, on this machine): kind, API address, whether a key is needed, ` +
-        'and a short list of models with context windows and official prices where known. Pass a preset id to spica_save_model to fill in the address and model.',
+        'and a short list of models with context windows and official prices where known. Pass a preset id to spica_save_model to fill in the address and models.',
       inputSchema: obj({}),
       run: async () =>
         rt.catalog.providers.map((p) => ({
@@ -369,65 +490,100 @@ export function settingsTools(rt: Runtime): McpTool[] {
     },
     {
       name: 'spica_list_models',
-      description: `The model connections set up in ${app} (no keys or secrets: hasSecret says whether one is saved; the Consumer Key shows its last 4 characters).`,
+      description:
+        `The model connections set up in ${app}: each is one address with one key and the models ticked under it (with their context windows); which model is the default and which the strong one. ` +
+        'No keys or secrets: hasSecret says whether one is saved; the Consumer Key shows its last 4 characters. A second key for the same provider is a second connection.',
       inputSchema: obj({}),
-      run: async () => (await list()).map(view),
+      run: async () => {
+        const l = await list();
+        return { connections: l.connections.map((c) => view(c, l)), default: l.default, strong: l.strong };
+      },
     },
     {
       name: 'spica_test_model',
       description:
-        'Test a connection without saving it: a saved one by id, or the fields of a new one (with its key / secret). WSO2 is tested in two steps (getting a token, then calling the model). ' +
-        'On failure: code, and hint (Chinese) saying what to change.',
-      inputSchema: obj(FIELDS),
+        'Test a connection without saving it: a saved one by id, or a preset / the fields of a new one (with its key / secret); `model` picks which of its models (default: the first). ' +
+        'WSO2 is tested in two steps (getting a token, then calling the model). On failure: code, and hint (Chinese) saying what to change.',
+      inputSchema: obj({ ...FIELDS, model: { ...str, description: 'Which model to test.' } }),
       run: async (a) => {
-        const { d, config } = await draftFrom(a, 'test');
-        return test(d.kind, config, d.model);
+        const { d, config, testModel } = await draftFrom(a, 'test');
+        if (!testModel) throw new SettingsError('invalid', 'which model to test (field model)');
+        return test(d.kind, config, testModel);
       },
     },
     {
       name: 'spica_save_model',
       description:
-        `Add (no id) or change (id) a model connection, test it, and save it; the change is shown to the user in ${app}'s conversations (if ${app} is set up to ask first, it waits for the user to confirm in the window). ` +
-        'Fields left out keep their saved value; the key / secret is stored encrypted and never returned. A failed test saves nothing unless saveIfTestFails. ' +
-        'If the user has not answered yet the result is status waiting_for_user with a requestId for spica_settings_result.',
-      inputSchema: obj(
-        {
-          ...FIELDS,
-          makeDefault: { type: 'boolean', description: 'Also make it the default for new conversations.' },
-          saveIfTestFails: { type: 'boolean', description: 'Save even when the test fails.' },
-        },
-        [],
-      ),
+        `Add (no id) or change (id) a model connection: one address and one key with the models ticked under it (several models of a provider share one key: ask for the key once). ` +
+        'models replaces the ticked list; addModels / removeModels change it; a new connection from a preset gets the preset\'s recommended models when none are given. ' +
+        `Every model needs a context window: given, or known to ${app} (also matched by name for relays that spell it differently); otherwise nothing is saved. ` +
+        `It tests one model first; a failed test saves nothing unless saveIfTestFails. The change is shown to the user in ${app}'s conversations (if ${app} is set up to ask first, it waits for the user to confirm in the window). ` +
+        'Fields left out keep their saved value; the key / secret is stored encrypted and never returned. If the user has not answered yet the result is status waiting_for_user with a requestId for spica_settings_result.',
+      inputSchema: obj({
+        ...FIELDS,
+        models: { type: 'array', items: modelItem, description: 'All models to tick (replaces the saved list).' },
+        addModels: { type: 'array', items: modelItem, description: 'Models to tick in addition.' },
+        removeModels: { type: 'array', items: str, description: 'Model names to untick.' },
+        model: { ...str, description: 'Shorthand for one model to add.' },
+        contextWindow: { ...int, description: 'With model: its context window.' },
+        makeDefault: { ...str, description: 'Make this model of the connection the default for new conversations.' },
+        makeStrong: { ...str, description: 'Make this model of the connection the strong one (heavy work).' },
+        saveIfTestFails: { type: 'boolean', description: 'Save even when the test fails.' },
+      }),
       run: async (a) => {
-        const { d, config, existing, changes } = await draftFrom(a, 'save');
-        const tested = await test(d.kind, config, d.model);
+        const { d, config, existing, changes, added, removed, testModel, all } = await draftFrom(a, 'save');
+        const makeDefault = text(a.makeDefault) || undefined;
+        const makeStrong = text(a.makeStrong) || undefined;
+        for (const [field, m] of [['makeDefault', makeDefault], ['makeStrong', makeStrong]] as const) {
+          if (m && !d.models.some((x) => x.id === m)) throw new SettingsError('invalid', `${m} is not one of this connection's models (field ${field})`);
+        }
+        const tested = await test(d.kind, config, testModel);
         if (!tested.ok && a.saveIfTestFails !== true) return { saved: false, test: tested };
-        const makeDefault = a.makeDefault === true;
         const card = {
-          action: existing ? 'change_model' : 'add_model',
+          action: existing ? 'change_connection' : 'add_connection',
           ...(existing ? { id: existing.id } : {}),
           name: d.name,
           kind: d.kind,
-          model: d.model,
           baseUrl: d.baseUrl,
           ...(d.kind === 'wso2' ? { tokenUrl: d.tokenUrl, consumerKey: maskTail(d.clientId), scope: d.scope || null } : {}),
-          contextWindow: d.contextWindow,
+          models: d.models,
+          addedModels: added,
+          removedModels: removed,
           changes,
           secret: d.secret ? 'new' : 'unchanged',
-          makeDefault,
-          test: { ok: tested.ok, ...(tested.code ? { code: tested.code } : {}) },
+          ...(makeDefault ? { makeDefault } : {}),
+          ...(makeStrong ? { makeStrong } : {}),
+          test: { ok: tested.ok, model: tested.model, ...(tested.code ? { code: tested.code } : {}) },
         };
         return confirmThen(
           'spica_save_model',
           card,
           async (confirmed) => {
             try {
-              const saved = await host<HostModel>('models.save', [d]);
-              if (makeDefault && !saved.isDefault) await host('models.setDefault', [saved.id]);
-              const all = makeDefault ? [...changes, 'default'] : changes;
-              record({ id: saved.id, changes: all, status: 'ok', confirmed });
-              await announce(changeOf(card, saved.id, confirmed, makeDefault ? ['default'] : []));
-              return { saved: true, model: view({ ...saved, isDefault: saved.isDefault || makeDefault }), test: tested };
+              const saved = await host<HostConnection>('models.save', [d]);
+              if (makeDefault) await host('models.setDefault', [pointerTo(saved.id, makeDefault)]);
+              if (makeStrong) await host('models.setStrong', [pointerTo(saved.id, makeStrong)]);
+              const after = await list();
+              const moved = (which: 'default' | 'strong') => (samePointer(all[which], after[which]) ? undefined : { from: all[which], to: after[which] });
+              const all2 = [...changes, ...(makeDefault ? ['default'] : []), ...(makeStrong ? ['strong'] : [])];
+              record({ id: saved.id, changes: all2, status: 'ok', confirmed });
+              await announce({
+                ...(card as unknown as SettingsChangeMeta),
+                id: saved.id,
+                changes: all2,
+                ...(moved('default') ? { defaultMoved: moved('default') } : {}),
+                ...(moved('strong') ? { strongMoved: moved('strong') } : {}),
+                by: 'mcp',
+                confirmed,
+                at: isoNow(),
+              });
+              return {
+                saved: true,
+                connection: view(after.connections.find((c) => c.id === saved.id) ?? saved, after),
+                default: after.default,
+                strong: after.strong,
+                test: tested,
+              };
             } catch (err) {
               record({ id: existing?.id ?? '', changes, status: 'error', confirmed, error: err instanceof Error ? err.message : String(err) });
               throw err;
@@ -442,25 +598,32 @@ export function settingsTools(rt: Runtime): McpTool[] {
     },
     {
       name: 'spica_set_default_model',
-      description: `Make a saved connection the default for new conversations; shown to the user like spica_save_model (and confirmed first if ${app} is set up to ask).`,
-      inputSchema: obj({ id: FIELDS.id }, ['id']),
+      description: `Make a model of a saved connection the default for new conversations (or, with strong, the one for heavy work); shown to the user like spica_save_model (and confirmed first if ${app} is set up to ask).`,
+      inputSchema: obj({ id: FIELDS.id, model: { ...str, description: "One of the connection's models (default: its first)." }, strong: { type: 'boolean', description: 'Set the strong model instead.' } }, ['id']),
       run: async (a) => {
         const id = String(a.id ?? '');
-        const m = (await list()).find((x) => x.id === id);
-        if (!m) throw new SettingsError('not_found', `no model connection with id ${id} (see spica_list_models)`);
-        if (m.isDefault) return { id, isDefault: true };
+        const strong = a.strong === true;
+        const l = await list();
+        const c = l.connections.find((x) => x.id === id);
+        if (!c) throw new SettingsError('not_found', `no model connection with id ${id} (see spica_list_models)`);
+        const model = text(a.model) || c.models[0]?.id;
+        if (!model || !c.models.some((m) => m.id === model)) throw new SettingsError('invalid', `${model ?? '(none)'} is not one of this connection's models (field model)`);
+        const which = strong ? 'strong' : 'default';
+        const target = pointerTo(id, model);
+        if (samePointer(l[which], target)) return { [which]: target };
+        const card = { action: strong ? 'set_strong_model' : 'set_default_model', id, name: c.name, kind: kindOf(c.kind), model, changes: [which] };
         return confirmThen(
           'spica_set_default_model',
-          { action: 'set_default_model', id, name: m.name, kind: kindOf(m.kind), model: m.model, changes: ['default'] },
+          card,
           async (confirmed) => {
-            await host('models.setDefault', [id]);
-            record({ id, changes: ['default'], status: 'ok', confirmed });
-            await announce(changeOf({ action: 'set_default_model', name: m.name, kind: kindOf(m.kind), model: m.model, changes: ['default'] }, id, confirmed));
-            return { id, isDefault: true };
+            await host(strong ? 'models.setStrong' : 'models.setDefault', [target]);
+            record({ id, changes: [which], status: 'ok', confirmed });
+            await announce({ ...(card as unknown as SettingsChangeMeta), [strong ? 'strongMoved' : 'defaultMoved']: { from: l[which], to: target }, by: 'mcp', confirmed, at: isoNow() });
+            return { [which]: target };
           },
           () => {
-            record({ id, changes: ['default'], status: 'aborted', confirmed: false, error: 'declined by the user' });
-            return { id, isDefault: false, declined: true };
+            record({ id, changes: [which], status: 'aborted', confirmed: false, error: 'declined by the user' });
+            return { [which]: l[which], declined: true };
           },
         );
       },

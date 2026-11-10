@@ -11,7 +11,7 @@ import { connectBackend, type BackendClient } from './host/client.ts';
 import { nodePort } from './host/wire.ts';
 import { listenFetchable } from './net.ts';
 import { mcpDispatcher } from './mcp/server.ts';
-import type { HostModel, HostModelDraft } from './settings-tools.ts';
+import type { HostConnection, HostConnectionDraft, HostModelList, HostModelPointer } from './settings-tools.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { startGateway, tempDir, until } from './testing/helpers.ts';
 import type { CoreEvent } from './types.ts';
@@ -35,44 +35,65 @@ afterEach(async () => {
   await cleanup();
 });
 
-/** The window's side: an in-memory settings store that sends the providers to the core like the desktop shell does. */
+/**
+ * The window's side: an in-memory settings store that sends the providers to the
+ * core like the desktop shell does. A pointer to a model that went away moves to
+ * the first model left in its connection, else the first one anywhere, else none.
+ */
 function fakeWindow(client: () => BackendClient) {
-  const models: Omit<HostModel, 'isDefault'>[] = [];
+  const conns: Omit<HostConnection, 'hasSecret'>[] = [];
   const secrets = new Map<string, string>();
-  let defaultId: string | null = null;
+  let def: HostModelPointer | null = null;
+  let strong: HostModelPointer | null = null;
   let n = 1;
-  const core = (m: Omit<HostModel, 'isDefault'>): ProviderConfig => ({
-    id: m.id,
-    kind: m.kind,
-    ...(m.baseUrl ? { baseUrl: m.baseUrl } : {}),
-    ...(m.kind === 'wso2'
-      ? { oauth: { tokenUrl: m.tokenUrl, clientId: m.clientId, clientSecret: secrets.get(m.id)!, ...(m.scope ? { scope: m.scope } : {}) } }
-      : { apiKey: secrets.get(m.id)! }),
-    ...(m.contextWindow ? { contextWindows: { [m.model]: m.contextWindow } } : {}),
+  const core = (c: Omit<HostConnection, 'hasSecret'>): ProviderConfig => ({
+    id: c.id,
+    kind: c.kind,
+    ...(c.baseUrl ? { baseUrl: c.baseUrl } : {}),
+    ...(c.kind === 'wso2'
+      ? { oauth: { tokenUrl: c.tokenUrl, clientId: c.clientId, clientSecret: secrets.get(c.id)!, ...(c.scope ? { scope: c.scope } : {}) } }
+      : { apiKey: secrets.get(c.id)! }),
+    ...(c.catalogId ? { catalogId: c.catalogId } : {}),
+    contextWindows: Object.fromEntries(c.models.map((m) => [m.id, m.contextWindow])),
   });
-  const push = async () => {
-    const d = models.find((m) => m.id === defaultId);
-    await client().call('configure', { providers: models.map(core), ...(d ? { defaults: { providerId: d.id, model: d.model } } : {}) });
+  const fix = (p: HostModelPointer | null): HostModelPointer | null => {
+    if (!p) return null;
+    const c = conns.find((x) => x.id === p.connectionId);
+    if (c?.models.some((m) => m.id === p.model)) return p;
+    if (c?.models[0]) return { connectionId: c.id, model: c.models[0].id };
+    const any = conns.find((x) => x.models.length > 0);
+    return any ? { connectionId: any.id, model: any.models[0]!.id } : null;
   };
-  const list = (): HostModel[] => models.map((m) => ({ ...m, isDefault: m.id === defaultId }));
+  const push = async () => {
+    await client().call('configure', {
+      providers: conns.map(core),
+      ...(def ? { defaults: { providerId: def.connectionId, model: def.model, ...(strong ? { strongModel: strong.model, strongProviderId: strong.connectionId } : {}) } } : {}),
+    });
+  };
+  const list = (): HostModelList => ({ connections: conns.map((c) => ({ ...c, hasSecret: secrets.has(c.id) })), default: def, strong });
   return {
-    models: list,
+    list,
     methods: {
       'models.list': () => list(),
-      'models.save': async (draft: HostModelDraft) => {
+      'models.save': async (draft: HostConnectionDraft) => {
         const { secret, ...fields } = draft;
         const id = draft.id ?? `p-${n++}`;
         if (secret) secrets.set(id, secret);
-        const saved = { ...fields, id, hasSecret: secrets.has(id) };
-        const i = models.findIndex((m) => m.id === id);
-        if (i >= 0) models[i] = saved;
-        else models.push(saved);
-        defaultId ??= id;
+        const saved = { ...fields, id };
+        const i = conns.findIndex((c) => c.id === id);
+        if (i >= 0) conns[i] = saved;
+        else conns.push(saved);
+        def = fix(def) ?? (saved.models[0] ? { connectionId: id, model: saved.models[0].id } : null);
+        strong = fix(strong);
         await push();
-        return list().find((m) => m.id === id)!;
+        return list().connections.find((c) => c.id === id)!;
       },
-      'models.setDefault': async (id: string) => {
-        defaultId = id;
+      'models.setDefault': async (p: HostModelPointer) => {
+        def = p;
+        await push();
+      },
+      'models.setStrong': async (p: HostModelPointer | null) => {
+        strong = p;
         await push();
       },
     },
@@ -147,28 +168,47 @@ const asks = (events: CoreEvent[]) => events.filter((e): e is Extract<CoreEvent,
 describe('model settings over Spica MCP', () => {
   it('set up to ask first: saves after a passing test and the user confirming in the window; the key never comes back out', async () => {
     const { b, client, events, call, seen } = await setup({ confirm: true });
-    const pending = call('spica_save_model', { kind: 'openai-compatible', name: 'Gateway A', baseUrl: `${gw.baseUrl}/v1`, model: 'm1', apiKey: API_KEY, contextWindow: 64_000, makeDefault: true });
+    const pending = call('spica_save_model', { kind: 'openai-compatible', name: 'Gateway A', baseUrl: `${gw.baseUrl}/v1`, model: 'm1', apiKey: API_KEY, contextWindow: 64_000, makeDefault: 'm1' });
     await until(() => asks(events).length === 1);
     const ask = asks(events)[0]!;
     expect(ask).toMatchObject({ sessionId: '', cause: 'settings_change', name: 'spica_save_model' });
-    expect(ask.input).toMatchObject({ action: 'add_model', name: 'Gateway A', model: 'm1', secret: 'new', makeDefault: true, test: { ok: true }, changes: ['new'] });
+    expect(ask.input).toMatchObject({
+      action: 'add_connection',
+      name: 'Gateway A',
+      models: [{ id: 'm1', contextWindow: 64_000, contextFrom: 'user' }],
+      addedModels: ['m1'],
+      removedModels: [],
+      secret: 'new',
+      makeDefault: 'm1',
+      test: { ok: true, model: 'm1' },
+      changes: ['new'],
+    });
     // the script cannot answer its own request
     expect((await call('spica_confirm', { session_id: '', call_id: ask.callId, approved: true })).error).toMatch(/only by the user in the Spica window/);
     await client().api.confirm('', ask.callId, true);
-    const saved = (await pending) as { saved: boolean; model: Record<string, unknown>; test: Record<string, unknown> };
-    expect(saved).toMatchObject({ saved: true, model: { name: 'Gateway A', hasSecret: true, isDefault: true, contextWindow: 64_000 }, test: { ok: true, steps: { token: 'n/a', model: 'ok' } } });
-    const id = String(saved.model.id);
+    const saved = (await pending) as { saved: boolean; connection: Record<string, unknown>; test: Record<string, unknown> };
+    expect(saved).toMatchObject({
+      saved: true,
+      connection: { name: 'Gateway A', hasSecret: true, models: [{ id: 'm1', contextWindow: 64_000, isDefault: true }] },
+      test: { ok: true, steps: { token: 'n/a', model: 'ok' } },
+    });
+    const id = String(saved.connection.id);
+    expect(saved).toMatchObject({ default: { connectionId: id, model: 'm1' } });
     expect(b.runtime.providerIds).toEqual([id]); // the window sent it to the core
     expect(b.runtime.defaults).toMatchObject({ providerId: id, model: 'm1' });
 
     // listed and tested by id, without the key
-    expect((await call('spica_list_models')).value).toEqual([expect.objectContaining({ id, kind: 'openai-compatible', hasSecret: true, isDefault: true })]);
+    expect(await call('spica_list_models')).toEqual({
+      connections: [expect.objectContaining({ id, kind: 'openai-compatible', hasSecret: true, models: [{ id: 'm1', contextWindow: 64_000, contextFrom: 'user', isDefault: true }] })],
+      default: { connectionId: id, model: 'm1' },
+      strong: null,
+    });
     expect(await call('spica_test_model', { id })).toMatchObject({ ok: true, steps: { model: 'ok' } });
 
     // a change: only what is given changes; the user can say no
-    const change = call('spica_save_model', { id, contextWindow: 32_000 });
+    const change = call('spica_save_model', { id, model: 'm1', contextWindow: 32_000 });
     await until(() => asks(events).length === 2);
-    expect(asks(events)[1]!.input).toMatchObject({ action: 'change_model', id, changes: ['contextWindow'], secret: 'unchanged' });
+    expect(asks(events)[1]!.input).toMatchObject({ action: 'change_connection', id, changes: ['models'], addedModels: [], removedModels: [], secret: 'unchanged' });
     await client().api.confirm('', asks(events)[1]!.callId, false);
     expect(await change).toMatchObject({ saved: false, declined: true });
 
@@ -176,7 +216,7 @@ describe('model settings over Spica MCP', () => {
     const traces = b.runtime.exportTraces().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>).filter((t) => t.kind === 'settings');
     expect(traces).toEqual([
       expect.objectContaining({ initiator: 'mcp', providerId: id, changes: ['new', 'default'], status: 'ok', confirmedBy: 'user' }),
-      expect.objectContaining({ providerId: id, changes: ['contextWindow'], status: 'aborted' }),
+      expect.objectContaining({ providerId: id, changes: ['models'], status: 'aborted' }),
     ]);
     // the key is nowhere: results, events, records, usage log
     for (const where of [seen.join('\n'), JSON.stringify(events), b.runtime.exportTraces(), b.runtime.exportUsageLog()]) expect(where).not.toContain(API_KEY);
@@ -189,7 +229,7 @@ describe('model settings over Spica MCP', () => {
     expect(r).toMatchObject({ saved: false, test: { ok: false, steps: { model: 'failed' }, code: 'net.refused' } });
     expect((r.test as { hint: string }).hint).toMatch(/^调模型失败：/);
     expect(asks(events)).toEqual([]);
-    expect(win.models()).toEqual([]);
+    expect(win.list().connections).toEqual([]);
 
     expect((await call('spica_save_model', { kind: 'openai-compatible', name: 'X', baseUrl: `${gw.baseUrl}/v1`, model: 'm1' })).error).toMatch(/^\[invalid\] required \(field apiKey\)/);
     expect((await call('spica_save_model', { kind: 'openai-compatible', name: 'X', baseUrl: `${gw.baseUrl}/v1`, model: 'unknown-model', apiKey: API_KEY })).error).toMatch(
@@ -215,9 +255,9 @@ describe('model settings over Spica MCP', () => {
       model: 'm-gw',
       contextWindow: 128_000,
     });
-    expect(r).toMatchObject({ saved: true, model: { kind: 'wso2', consumerKey: '…1234', scope: 'chat', hasSecret: true }, test: { ok: true, steps: { token: 'ok', model: 'ok' }, serverModel: 'm-gw' } });
+    expect(r).toMatchObject({ saved: true, connection: { kind: 'wso2', consumerKey: '…1234', scope: 'chat', hasSecret: true }, test: { ok: true, steps: { token: 'ok', model: 'ok' }, serverModel: 'm-gw' } });
     expect(asks(events)).toEqual([]); // not set up to ask
-    const id = String((r.model as { id: string }).id);
+    const id = String((r.connection as { id: string }).id);
     expect(await call('spica_test_model', { id })).toMatchObject({ ok: true, steps: { token: 'ok', model: 'ok' } });
     // a wrong token address: the token step fails, the model step is skipped
     expect(await call('spica_test_model', { id, tokenUrl: `${await closedUrl()}/token` })).toMatchObject({ ok: false, steps: { token: 'failed', model: 'skipped' }, code: 'wso2.token_unreachable' });
@@ -234,11 +274,12 @@ describe('model settings over Spica MCP', () => {
     const r = await first.call('spica_save_model', { kind: 'openai-compatible', name: 'Gateway A', baseUrl: `${gw.baseUrl}/v1`, model: 'm1', apiKey: API_KEY, contextWindow: 64_000 });
     expect(r).toMatchObject({ saved: true });
     expect(asks(first.events)).toEqual([]);
-    const id = String((r.model as { id: string }).id);
+    const id = String((r.connection as { id: string }).id);
     const changed = first.events.filter((e) => e.type === 'settings.changed');
     expect(changed).toHaveLength(1);
     const change = changed[0]!.type === 'settings.changed' ? changed[0]!.change : undefined;
-    expect(change).toMatchObject({ action: 'add_model', id, name: 'Gateway A', model: 'm1', changes: ['new'], secret: 'new', by: 'mcp', confirmed: false, test: { ok: true } });
+    expect(change).toMatchObject({ action: 'add_connection', id, name: 'Gateway A', addedModels: ['m1'], changes: ['new'], secret: 'new', by: 'mcp', confirmed: false, test: { ok: true } });
+    expect(change).toMatchObject({ defaultMoved: { from: null, to: { connectionId: id, model: 'm1' } } }); // the first model became the default
     const top = first.b.runtime.top();
     const note = (s: { messages(): { meta?: Record<string, unknown> }[] }) => s.messages().filter((m) => m.meta?.settingsChange);
     expect(note(top).map((m) => m.meta!.settingsChange)).toEqual([change]);
@@ -246,15 +287,28 @@ describe('model settings over Spica MCP', () => {
     // another conversation is open in the window: the next change shows there too
     const other = first.b.runtime.createSession();
     open = other.id;
-    expect(await first.call('spica_set_default_model', { id })).toMatchObject({ id, isDefault: true }); // already the default (first model)
-    expect(await first.call('spica_save_model', { id, contextWindow: 32_000, makeDefault: true })).toMatchObject({ saved: true });
+    expect(await first.call('spica_set_default_model', { id })).toEqual({ default: { connectionId: id, model: 'm1' } }); // already the default
+    // a second model under the same key, made the default
+    expect(await first.call('spica_save_model', { id, addModels: [{ id: 'm2', contextWindow: 32_000 }], makeDefault: 'm2' })).toMatchObject({ saved: true, default: { connectionId: id, model: 'm2' } });
     expect(note(top)).toHaveLength(2);
-    expect(note(other).map((m) => m.meta!.settingsChange)).toEqual([expect.objectContaining({ action: 'change_model', changes: ['contextWindow', 'default'], secret: 'unchanged' })]);
+    expect(note(other).map((m) => m.meta!.settingsChange)).toEqual([
+      expect.objectContaining({
+        action: 'change_connection',
+        addedModels: ['m2'],
+        changes: ['models', 'default'],
+        secret: 'unchanged',
+        defaultMoved: { from: { connectionId: id, model: 'm1' }, to: { connectionId: id, model: 'm2' } },
+      }),
+    ]);
+    // unticking the default model: the window moves the default, and the card says where
+    expect(await first.call('spica_save_model', { id, removeModels: ['m2'] })).toMatchObject({ saved: true, default: { connectionId: id, model: 'm1' } });
+    expect(note(other).at(-1)!.meta!.settingsChange).toMatchObject({ removedModels: ['m2'], defaultMoved: { from: { connectionId: id, model: 'm2' }, to: { connectionId: id, model: 'm1' } } });
+    expect(first.b.runtime.defaults).toMatchObject({ providerId: id, model: 'm1' });
     // the model in that conversation reads it as data
     const noteText = other.messages().find((m) => m.meta?.settingsChange)!.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
     expect(noteText).toContain('<untrusted_data kind="mcp" source="settings">');
     const traces = first.b.runtime.exportTraces().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>).filter((t) => t.kind === 'settings');
-    expect(traces.map((t) => t.confirmedBy)).toEqual(['none', 'none']);
+    expect(traces.map((t) => t.confirmedBy)).toEqual(['none', 'none', 'none']);
     for (const where of [JSON.stringify(first.events), JSON.stringify(top.messages()), JSON.stringify(other.messages())]) expect(where).not.toContain(API_KEY);
     const topId = top.id;
     const otherId = other.id;
@@ -263,20 +317,37 @@ describe('model settings over Spica MCP', () => {
 
     // after a restart the cards are still in the history
     const again = await setup();
-    expect(note(again.b.runtime.session(topId)!)).toHaveLength(2);
-    expect(note(again.b.runtime.session(otherId)!)).toHaveLength(1);
+    expect(note(again.b.runtime.session(topId)!)).toHaveLength(3);
+    expect(note(again.b.runtime.session(otherId)!)).toHaveLength(2);
   });
 
-  it('a preset fills in the address, the model and its context window, so the agent gives only the key; listing models works with a preset', async () => {
+  it('a preset fills in the address and its recommended models under one key; relay names are matched and marked; listing models works with a preset', async () => {
     const { call, win, seen } = await setup();
     const presets = (await call('spica_list_presets')).value as { id: string; needsKey: boolean; models: { id: string; price?: unknown }[] }[];
     expect(presets.map((p) => p.id)).toEqual(expect.arrayContaining(['deepseek', 'anthropic', 'ollama']));
     expect(presets.find((p) => p.id === 'moonshot')!.models[0]).not.toHaveProperty('price'); // no official price: none shown
     expect(presets.find((p) => p.id === 'ollama')!.needsKey).toBe(false);
 
-    const r = await call('spica_save_model', { preset: 'deepseek', baseUrl: `${gw.baseUrl}/v1`, apiKey: API_KEY });
-    expect(r).toMatchObject({ saved: true, model: { name: 'DeepSeek', model: 'deepseek-flash', strongModel: 'deepseek-v4-pro', contextWindow: 1_048_576 } });
-    expect(win.models()[0]).toMatchObject({ catalogId: 'deepseek', kind: 'openai-compatible' });
+    const r = await call('spica_save_model', { preset: 'deepseek', baseUrl: `${gw.baseUrl}/v1`, apiKey: API_KEY, makeStrong: 'deepseek-v4-pro' });
+    expect(r).toMatchObject({
+      saved: true,
+      connection: {
+        name: 'DeepSeek',
+        preset: 'deepseek',
+        models: [
+          { id: 'deepseek-flash', contextWindow: 1_048_576, contextFrom: 'catalog', isDefault: true },
+          { id: 'deepseek-v4-pro', contextWindow: 1_048_576, contextFrom: 'catalog', isStrong: true },
+        ],
+      },
+    });
+    expect(win.list().connections).toHaveLength(1); // two models, one key
+    expect(win.list().connections[0]).toMatchObject({ catalogId: 'deepseek', kind: 'openai-compatible' });
+    // a relay spelling a known model its own way: matched by name and marked; an unknown name is not saved quietly
+    const relay = await call('spica_save_model', { kind: 'openai-compatible', name: 'Relay', baseUrl: `${gw.baseUrl}/v1`, apiKey: API_KEY, models: ['deepseek/DeepSeek-V4-Pro'] });
+    expect(relay).toMatchObject({ saved: true, connection: { models: [{ id: 'deepseek/DeepSeek-V4-Pro', contextWindow: 1_048_576, contextFrom: 'name-match' }] } });
+    expect((await call('spica_save_model', { kind: 'openai-compatible', name: 'Relay 2', baseUrl: `${gw.baseUrl}/v1`, apiKey: API_KEY, models: ['relay/secret-sauce-9'] })).error).toMatch(
+      /^\[context_window_required\] .*relay\/secret-sauce-9/,
+    );
     expect((await call('spica_save_model', { preset: 'nope', apiKey: API_KEY })).error).toMatch(/^\[not_found\] no preset nope/);
     // a local preset needs no key
     expect(await call('spica_test_model', { preset: 'ollama', baseUrl: `${gw.baseUrl}/v1`, model: 'm1' })).toMatchObject({ ok: true });
