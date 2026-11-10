@@ -18,6 +18,7 @@ import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
 import type { PluginService } from './plugins/types';
+import { pickedFiles, pickedFolder } from './dev-hooks';
 import { FakePluginService } from './plugins/fake';
 import { UpdateService } from './update/service';
 import { spawn } from 'node:child_process';
@@ -69,6 +70,8 @@ function overlayHeight(zoom: number): number {
 //   SPICA_SHOTS=<dir>        render the screenshot matrix into <dir> and quit
 //   SPICA_BACKEND=fake|core  pick the backend (default: the real core; screenshots use the fake)
 //   SPICA_SAVE_TO=<dir>      save files (usage log) there without asking (not in installed builds)
+//   SPICA_PICK_FOLDER=<dir>  the folder picker answers this without showing (not in installed builds)
+//   SPICA_PICK_FILES=<a;b>   the file picker answers these without showing (not in installed builds)
 //   SPICA_HIDDEN=1           never show the window: test scripts drive it over DevTools while
 //                            someone is using the computer (not in installed builds)
 const forcedTheme = process.env.SPICA_THEME;
@@ -843,6 +846,9 @@ function friendly(err: unknown): string {
 }
 
 ipcMain.handle(DesktopChannel.PickFolder, async (_e, title: unknown): Promise<string | null> => {
+  // SPICA_PICK_FOLDER (development only): answered without the dialog, so test scripts never drive one.
+  const picked = pickedFolder(process.env, app.isPackaged);
+  if (picked) return picked;
   const opts: Electron.OpenDialogOptions = { title: typeof title === 'string' && title ? title.slice(0, 60) : '选择文件夹', properties: ['openDirectory', 'createDirectory'] };
   const r = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts);
   return r.canceled ? null : (r.filePaths[0] ?? null);
@@ -887,6 +893,9 @@ ipcMain.on(DesktopChannel.ShowInFolder, (_e, path: unknown) => {
 });
 
 ipcMain.handle(DesktopChannel.PickFiles, async (_e, title: unknown): Promise<string[]> => {
+  // SPICA_PICK_FILES (development only, ;-separated): answered without the dialog.
+  const picked = pickedFiles(process.env, app.isPackaged);
+  if (picked) return picked;
   const opts: Electron.OpenDialogOptions = { title: typeof title === 'string' && title ? title.slice(0, 60) : '选择文件', properties: ['openFile', 'multiSelections'] };
   const r = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts);
   return r.canceled ? [] : r.filePaths.slice(0, 20);
