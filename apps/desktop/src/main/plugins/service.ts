@@ -248,14 +248,15 @@ export class RealPluginService implements PluginService {
         }
         case 'checkUpdates': {
           const sources = this.#sources();
-          if (sources.length === 0) {
-            message = '没有插件来源，无法检查更新。';
-            break;
-          }
+          // Nothing to check against: a notice, not a result.
+          if (sources.length === 0) return { ok: true, info: true, message: '没有插件来源，无法检查更新。', state: this.#state() };
           const { updates, errors } = await checkUpdates(manager, sources, this.#o.fetch ? { fetch: this.#o.fetch } : {});
           this.#updates = new Map(updates.map((u) => [u.name, u]));
-          message = updates.length ? `${updates.length} 个插件可更新。` : '已是最新版本。';
-          if (errors.length) message += `（${errors.length} 个来源连接失败）`;
+          const found = updates.length ? `${updates.length} 个插件可更新` : '没有可用更新';
+          if (errors.length === sources.length) return { ok: false, message: `${errors.length} 个插件来源连接失败，无法检查更新。`, state: this.#state() };
+          // Some sources not reached: what the reached ones say, and how many failed; not "up to date".
+          if (errors.length) return { ok: true, info: true, message: `已检查 ${sources.length - errors.length} 个插件来源：${found}；${errors.length} 个连接失败。`, state: this.#state() };
+          message = updates.length ? `${found}。` : '已是最新版本。';
           break;
         }
         case 'update': {
@@ -268,7 +269,7 @@ export class RealPluginService implements PluginService {
         }
         case 'openRoot': {
           const err = await this.#o.openFolder(this.#o.root);
-          if (err) message = `无法打开文件夹：${err}`;
+          if (err) return { ok: false, message: `无法打开文件夹：${err}`, state: this.#state() };
           break;
         }
       }

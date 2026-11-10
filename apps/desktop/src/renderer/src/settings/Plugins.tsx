@@ -270,7 +270,8 @@ export const MOCK_TIP = '插件改用演示数据，不连接真实系统。';
 export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsProps }) {
   const [state, setState] = useState<PluginsState | null>(null);
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  // 'info': a notice (no sources to check), shown plain like 正在检查更新….
+  const [note, setNote] = useState<{ tone: 'ok' | 'bad' | 'info'; text: string } | null>(null);
   // 检查更新 running: said beside the result line until it ends.
   const [checking, setChecking] = useState(false);
   const [location, setLocation, locationDone] = useKeptDraft('plugins.location', '');
@@ -317,10 +318,10 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
       try {
         const r = await api.run(cmd);
         setState(r.state);
-        setNote(r.message ? { ok: r.ok, text: r.message } : r.ok ? null : { ok: false, text: '操作失败，请重试。' });
+        setNote(r.message ? { tone: !r.ok ? 'bad' : r.info ? 'info' : 'ok', text: r.message } : r.ok ? null : { tone: 'bad', text: '操作失败，请重试。' });
         return r;
       } catch (e) {
-        setNote({ ok: false, text: friendlyError(e) });
+        setNote({ tone: 'bad', text: friendlyError(e) });
         return undefined;
       } finally {
         inFlight.current = false;
@@ -481,8 +482,8 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
           正在检查更新…
         </p>
       ) : note ? (
-        <p className={note.ok ? 'provider-result is-ok plugin-note' : 'provider-result is-bad plugin-note'} role="status">
-          <SpicaStatusIcon name={note.ok ? 'done' : 'error'} size={15} />
+        <p className={note.tone === 'ok' ? 'provider-result is-ok plugin-note' : note.tone === 'bad' ? 'provider-result is-bad plugin-note' : 'provider-result plugin-note'} role="status">
+          {note.tone === 'info' ? null : <SpicaStatusIcon name={note.tone === 'ok' ? 'done' : 'error'} size={15} />}
           {note.text}
         </p>
       ) : null}

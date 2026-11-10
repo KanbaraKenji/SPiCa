@@ -91,4 +91,6 @@ export interface PluginsResult {
   /** Plain-language outcome to show next to the action (success or problem). */
   message?: string;
   ok: boolean;
+  /** The message is a notice, not a finished outcome (nothing to check against): shown plain, without the done mark. */
+  info?: boolean;
 }

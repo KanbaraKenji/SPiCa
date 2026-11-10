@@ -116,6 +116,42 @@ describe('Plugins', () => {
     await waitFor(() => expect(screen.queryByText('正在检查更新…')).toBeNull());
   });
 
+  it('检查更新 result line: a notice is plain (no mark, no colour); a result has the done mark; a failure the error mark', async () => {
+    const base = api();
+    let reply: { ok: boolean; info?: boolean; message: string } = { ok: true, info: true, message: '没有插件来源，无法检查更新。' };
+    const answering: PluginsApi = {
+      ...base,
+      run: async (cmd) => {
+        const r = await base.run(cmd);
+        return cmd.op === 'checkUpdates' ? { ...r, ...reply } : r;
+      },
+    };
+    render(<Plugins api={answering} />);
+    await screen.findByRole('navigation', { name: '插件列表' });
+    const check = async (text: string) => {
+      fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
+      return waitFor(() => {
+        const line = screen.getByRole('status');
+        expect(line.textContent).toBe(text);
+        return line;
+      });
+    };
+
+    let line = await check('没有插件来源，无法检查更新。');
+    expect(line.className).toBe('provider-result plugin-note');
+    expect(line.querySelector('svg')).toBeNull();
+
+    reply = { ok: true, message: '已是最新版本。' };
+    line = await check('已是最新版本。');
+    expect(line.className).toContain('is-ok');
+    expect(line.querySelector('svg')).not.toBeNull();
+
+    reply = { ok: false, message: '1 个插件来源连接失败，无法检查更新。' };
+    line = await check('1 个插件来源连接失败，无法检查更新。');
+    expect(line.className).toContain('is-bad');
+    expect(line.querySelector('svg')).not.toBeNull();
+  });
+
   it('模拟模式: says what it does on hover; while on, a tag says the data is demo data', async () => {
     render(<Plugins api={api()} />);
     await screen.findByRole('navigation', { name: '插件列表' });
