@@ -165,6 +165,11 @@ export class CostLedger {
     return null;
   }
 
+  /** The catalog provider a configured provider was set up from, if any. */
+  catalogIdOf(providerId: string): string | undefined {
+    return this.#catalogIds.get(providerId);
+  }
+
   /** Which catalog provider each configured provider was set up from (replaces the previous map). */
   setCatalogIds(ids: Record<string, string>): void {
     this.#catalogIds.clear();

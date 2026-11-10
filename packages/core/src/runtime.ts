@@ -20,7 +20,7 @@ import { Tracer } from './trace.ts';
 import type { SettingsBridge } from './settings-tools.ts';
 import { PluginSampler } from './sampling.ts';
 import { BUILTIN_CATALOG } from './catalog/builtin.ts';
-import { catalogProblems, effectiveCatalog, presetProblems, pricesFromCatalog, type CatalogPreset, type ModelCatalog } from './catalog/catalog.ts';
+import { catalogProblems, catalogProvider, effectiveCatalog, presetProblems, pricesFromCatalog, type CatalogPreset, type ModelCatalog } from './catalog/catalog.ts';
 import type {
   AgentRole,
   ChildNoteMeta,
@@ -38,7 +38,8 @@ import type {
   WorkflowDef,
   WorkObject,
 } from './types.ts';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative } from 'node:path';
 import { newId, redact } from './util.ts';
 import { exportUsageLog, type UsageLogFilter } from './export.ts';
@@ -94,6 +95,8 @@ export interface RuntimeOptions {
   appName?: string;
   /** A company's model connections (the packaging's deploy.json), first in the settings form. */
   catalogPresets?: CatalogPreset[];
+  /** Where attached images are kept (one folder per conversation, deleted with it). Default: the temp folder. */
+  mediaDir?: string;
 }
 
 export { APP_NAME_SLOT, withAppName } from './util.ts';
@@ -102,6 +105,11 @@ export { APP_NAME_SLOT, withAppName } from './util.ts';
 export interface RuntimeInternals {
   readonly appName: string;
   readonly events: EventBus;
+  mediaDir(sessionId: string): string;
+  /** true / false when the catalog says whether the model takes images (or it refused them before); undefined: unknown, send them. */
+  imagesAllowed(providerId: string, model: string): boolean | undefined;
+  /** The provider refused images for this model: later requests to it leave the images out. */
+  markNoImages(providerId: string, model: string): void;
   readonly hooks: HookRegistry;
   readonly tools: ToolRegistry;
   readonly store: Store;
@@ -193,6 +201,24 @@ export class Runtime implements RuntimeInternals {
 
   /** Plugins using the user's models (MCP sampling): daily limits, rate limits, records. */
   readonly sampler = new PluginSampler(this);
+
+  readonly #noImages = new Set<string>();
+
+  /** Folder for the images attached in a conversation. */
+  mediaDir(sessionId: string): string {
+    return join(this.#opts.mediaDir ?? join(tmpdir(), 'spica-media'), sessionId.replace(/[^A-Za-z0-9_-]/g, '_'));
+  }
+
+  imagesAllowed(providerId: string, model: string): boolean | undefined {
+    if (this.#noImages.has(`${providerId}|${model}`)) return false;
+    const catalogId = this.ledger.catalogIdOf(providerId);
+    const known = catalogProvider(this.catalog, catalogId)?.models.find((m) => m.id === model)?.vision;
+    return known;
+  }
+
+  markNoImages(providerId: string, model: string): void {
+    this.#noImages.add(`${providerId}|${model}`);
+  }
 
   /** See RuntimeOptions.appName. */
   get appName(): string {
@@ -816,6 +842,7 @@ export class Runtime implements RuntimeInternals {
       const s = this.session(id);
       const parentChain = s?.parentChain ?? [];
       this.store.deleteSession(id);
+      rmSync(this.mediaDir(id), { recursive: true, force: true }); // its attached images
       this.#sessions.delete(id);
       this.#reports.delete(id);
       this.events.emit({ sessionId: id, parentChain }, { type: 'session.deleted' });

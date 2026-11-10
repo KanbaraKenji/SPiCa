@@ -1,5 +1,6 @@
 // OpenAI-compatible chat completions provider (/v1/chat/completions, SSE).
 // Used for any gateway that speaks this protocol (hosted APIs, LiteLLM, ...).
+import { imageBase64 } from '../images.ts';
 import { DEFAULT_RETRY, hostOf, postWithRetry, staticAuth, type RetryPolicy } from './http.ts';
 import { parseSse } from './sse.ts';
 import {
@@ -268,7 +269,19 @@ export function toOpenAIMessages(
       .map((b) => (b.type === 'text' ? b.text : b.type === 'opaque' && b.text ? b.text : ''))
       .filter(Boolean)
       .join('\n');
-    if (text) out.push({ role: 'user', content: text });
+    const images = m.content.filter((b) => b.type === 'image');
+    if (images.length === 0) {
+      if (text) out.push({ role: 'user', content: text });
+      continue;
+    }
+    // with images: content parts (text first, then each image as a data URL)
+    const parts: Record<string, unknown>[] = text ? [{ type: 'text', text }] : [];
+    for (const b of images) {
+      if (b.type !== 'image') continue;
+      const data = imageBase64(b.path);
+      parts.push(data ? { type: 'image_url', image_url: { url: `data:${b.mediaType};base64,${data}` } } : { type: 'text', text: `[image ${b.name ?? ''}: no longer available]` });
+    }
+    out.push({ role: 'user', content: parts });
   }
   return out;
 }

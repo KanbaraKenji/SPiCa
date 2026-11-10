@@ -33,7 +33,31 @@ export const IpcChannel = {
 // ---------------------------------------------------------------------------
 
 /** A piece of message content. Spica's own format, not any vendor's wire format. */
-export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock | OpaqueBlock;
+export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock | OpaqueBlock | ImageBlock;
+
+/**
+ * An image in a user message (a pasted screenshot, a dropped picture). Only the
+ * path of the copy the core keeps and its size are in the record, never the
+ * pixels; it is read and sent in the provider's own format with each request.
+ */
+export interface ImageBlock {
+  type: 'image';
+  /** The core's own copy (deleted with the conversation). */
+  path: string;
+  mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+  width: number;
+  height: number;
+  bytes: number;
+  /** File name as attached. */
+  name?: string;
+}
+
+/**
+ * What one attached image may be when it is sent (the strictest of the
+ * providers' documented limits): longest side in pixels, file size in bytes,
+ * images per message. Larger ones are made smaller (PNG) or refused.
+ */
+export const IMAGE_LIMITS = { maxLongSide: 1568, maxBytes: 3_750_000, maxPerMessage: 10 } as const;
 
 export interface TextBlock {
   type: 'text';
@@ -297,6 +321,10 @@ export interface AttachmentMeta {
   file?: FileCardMeta;
   /** Why it could not be read (English, for logs). */
   error?: string;
+  /** An image: the copy the core sends (its path, size), and whether it was made smaller to fit IMAGE_LIMITS. */
+  image?: { path: string; mediaType: ImageBlock['mediaType']; width: number; height: number; bytes: number; resized: boolean };
+  /** Why an image was not attached: image.too_large, image.too_many, image.unreadable (the UI words it). */
+  code?: 'image.too_large' | 'image.too_many' | 'image.unreadable';
 }
 
 /** An open question or confirmation the session is waiting on. */

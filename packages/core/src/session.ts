@@ -25,6 +25,9 @@ import type {
 } from './types.ts';
 import type { RuntimeInternals } from './runtime.ts';
 import { estimateTokens, isAbortError, newId, truncate, withAppName } from './util.ts';
+import { IMAGE_LIMITS, imageTokens, prepareImage, REQUEST_IMAGE_LIMITS, sniffImage } from './images.ts';
+import { closeSync, openSync, readSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.ts';
 
 export interface RunResult {
@@ -318,10 +321,29 @@ export class Session {
     const attachments: AttachmentMeta[] = [];
     const notes: GuardNote[] = [];
     const tool = this.#rt.tools.get('read_file');
+    let images = 0;
     for (const a of list) {
       const path = String(a?.path ?? '').trim();
       if (!path) continue;
       const name = path.split(/[\\/]/).pop() || path;
+      // an image: kept as an image (the model looks at it), not read as text
+      const full = resolvePath(this.#record.config.cwd, path);
+      if (isImageFile(full)) {
+        if (++images > IMAGE_LIMITS.maxPerMessage) {
+          attachments.push({ path, name, block: null, code: 'image.too_many', error: `more than ${IMAGE_LIMITS.maxPerMessage} images in one message` });
+          continue;
+        }
+        const prepared = prepareImage(full, this.#rt.mediaDir(this.id));
+        if (!prepared.ok) {
+          attachments.push({ path, name, block: null, code: prepared.code, error: prepared.message.slice(0, 300) });
+          content.push({ type: 'text', text: `[The user attached the image ${name}, but it could not be used: ${prepared.message.slice(0, 200)}]` });
+          continue;
+        }
+        const { path: stored, mediaType, width, height, bytes, resized } = prepared.image;
+        attachments.push({ path, name, block: content.length + 1, image: { path: stored, mediaType, width, height, bytes, resized } });
+        content.push({ type: 'image', path: stored, mediaType, width, height, bytes, name });
+        continue;
+      }
       if (!tool) {
         attachments.push({ path, name, block: null, error: 'read_file is not available' });
         continue;
@@ -491,10 +513,24 @@ export class Session {
         return end('error', message);
       }
       const flat = flattenSegments(draft.segments, this.id);
+      // images: sent unless the model is known not to take them (catalog, or it refused them before)
+      const allowed = this.#rt.imagesAllowed(provider.id, draft.params.model);
+      if (allowed === false) {
+        // the message the user just wrote (not older ones: those simply leave their images out)
+        const latest = [...flat.messages].reverse().find((m) => m.role === 'user' && (m.kind === 'user' || m.kind === 'steer'));
+        if (latest?.content.some((b) => b.type === 'image')) {
+          // the user just attached images to a model that does not take them: say so instead of sending
+          const message = `model ${draft.params.model} does not accept images`;
+          this.#emit({ type: 'error', message, code: 'model.no_images' });
+          return end('error', message);
+        }
+      }
+      const messages = keepRecentImages(allowed === false ? flat.messages.map(withoutImages) : flat.messages);
+      const sentImages = messages.flatMap((m) => m.content).filter((b): b is Extract<ContentBlock, { type: 'image' }> => b.type === 'image');
       const request: ModelRequest = {
         model: draft.params.model,
         system: flat.system,
-        messages: flat.messages,
+        messages,
         tools: draft.tools,
         maxTokens: draft.params.maxTokens,
         ...(draft.params.temperature !== undefined ? { temperature: draft.params.temperature } : {}),
@@ -507,7 +543,8 @@ export class Session {
       // 2. Spending limits (worst case for this call).
       const scope = { providerId: provider.id, providerKind: provider.kind, model: request.model, sessionId: this.id, runId };
       const est = Math.max(
-        estimateTokens(request.system + JSON.stringify(request.messages) + JSON.stringify(request.tools)),
+        estimateTokens(request.system + JSON.stringify(request.messages) + JSON.stringify(request.tools)) +
+          sentImages.reduce((n, b) => n + imageTokens(provider.kind, b.width, b.height), 0),
         this.#lastInputTokens,
       );
       // 3. Rate limiter shared by all sessions on this endpoint.
@@ -649,7 +686,11 @@ export class Session {
           attempts: callInfo.attempts,
           ...(err instanceof ProviderError && err.status ? { httpStatus: err.status } : {}),
         });
-        this.#emit({ type: 'error', message, retryable: err instanceof ProviderError && err.retryable, ...(err instanceof ProviderError && err.code ? { code: err.code } : {}) });
+        // the model refused the images: leave them out from now on, and say so plainly
+        const noImages = sentImages.length > 0 && refusesImages(err);
+        if (noImages) this.#rt.markNoImages(provider.id, request.model);
+        const code = noImages ? 'model.no_images' : err instanceof ProviderError && err.code ? err.code : undefined;
+        this.#emit({ type: 'error', message, retryable: !noImages && err instanceof ProviderError && err.retryable, ...(code ? { code } : {}) });
         keepPartial({ interrupted: true, error: true });
         return end('error', message);
       }
@@ -1240,4 +1281,59 @@ async function runLimited(tasks: (() => Promise<void>)[], limit: number): Promis
     }
   });
   await Promise.all(workers);
+}
+
+/** An attached file that is an image (by its first bytes). */
+function isImageFile(path: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, 'r');
+    const head = Buffer.alloc(16);
+    readSync(fd, head, 0, 16, 0);
+    return !!sniffImage(head);
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/** A message with its images replaced by a line saying they were left out (for a model that does not take them). */
+function withoutImages(m: Message): Message {
+  if (!m.content.some((b) => b.type === 'image')) return m;
+  return {
+    ...m,
+    content: m.content.map((b) => (b.type === 'image' ? { type: 'text' as const, text: `[image ${b.name ?? ''}: left out, this model does not take images]` } : b)),
+  };
+}
+
+/** A provider error that says the model does not take images (status 400/415/422 and a message about images). */
+function refusesImages(err: unknown): boolean {
+  if (!(err instanceof ProviderError) || ![400, 404, 415, 422].includes(err.status ?? 0)) return false;
+  return /image|vision|multimodal|multi-modal|picture|图片|图像|视觉|多模态/i.test(err.message);
+}
+
+/** Keep the newest images within REQUEST_IMAGE_LIMITS; older ones become a line saying they were left out. */
+function keepRecentImages(messages: Message[]): Message[] {
+  let count = 0;
+  let bytes = 0;
+  const out = [...messages];
+  for (let i = out.length - 1; i >= 0; i--) {
+    const m = out[i]!;
+    if (!m.content.some((b) => b.type === 'image')) continue;
+    const content = [...m.content];
+    for (let j = content.length - 1; j >= 0; j--) {
+      const b = content[j]!;
+      if (b.type !== 'image') continue;
+      const size = Math.ceil(b.bytes / 3) * 4;
+      if (count + 1 > REQUEST_IMAGE_LIMITS.maxImages || bytes + size > REQUEST_IMAGE_LIMITS.maxBase64Bytes) {
+        content[j] = { type: 'text', text: `[image ${b.name ?? ''}: left out of this request to keep it small; it was shown earlier]` };
+      } else {
+        count++;
+        bytes += size;
+      }
+    }
+    out[i] = { ...m, content };
+  }
+  return out;
 }

@@ -38,6 +38,9 @@ export interface CatalogModel {
   /** Where the facts come from (official page) and when they were checked (YYYY-MM-DD). Presets of a company need neither. */
   source?: string;
   checked?: string;
+  /** Takes images (true) or text only (false), per the official page `visionSource`; absent: not known (images are sent, a refusal is told apart). */
+  vision?: boolean;
+  visionSource?: string;
 }
 
 export interface CatalogProvider {
@@ -136,6 +139,7 @@ export function catalogProblems(raw: unknown): string[] {
       if (m?.maxOutput !== undefined && !posInt(m.maxOutput)) out.push(`${mt}: maxOutput must be a positive whole number`);
       if (!m || !URL_RE.test(String(m.source ?? ''))) out.push(`${mt}: source (an official page) missing`);
       if (!m || !DAY.test(String(m.checked ?? ''))) out.push(`${mt}: checked (YYYY-MM-DD) missing`);
+      if (m?.vision !== undefined && !URL_RE.test(String(m.visionSource ?? ''))) out.push(`${mt}: visionSource (an official page) missing`);
       if (m?.price && !(m.price.input >= 0 && m.price.output >= 0 && (m.price.currency === 'USD' || m.price.currency === 'CNY'))) {
         out.push(`${mt}: price needs input, output and currency USD or CNY`);
       }

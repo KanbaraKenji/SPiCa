@@ -73,6 +73,7 @@
 **输入框的会话级控制**（M9）
 - **改模型**：`setSessionModel(会话, provider, 模型)`（MCP `spica_set_model`）。从下一次模型调用起生效，正在进行的那次不动；主循环每轮开头重读配置。provider 不存在就报错。会话里记一条运行时备注（`kind: 'note'`，`meta.decision`、`meta.modelChange {from, to}`，正文告诉模型换了模型、照常继续）。正在跑时这条备注排到下一轮边界，不会插进工具调用和结果中间。同时按「用户的决定」回传给父会话。
 - **附件**：`send(会话, 文字, { attachments: [{ path }] })`（MCP `spica_send` / `spica_run` 的 `attachments`）。文件在本机，相对路径按会话的工作文件夹算。内核用 read_file 读，走同一套提取器和分页，超长时只给第一段并告诉模型可以再用 read_file 翻页。读出的内容作为外来数据（file）放进围栏，追加在这条用户消息的文字后面，作为额外的内容块。`meta.attachments` 给界面画卡：每项有 `path`、`name`、`block`（文件文字在第几个内容块，界面不显示那一块）、`file`（同 read_file 的文件卡）；读不了时有 `error`，`block` 为 null。带附件的这一轮按「受外来内容影响」处理（第 9 节），里面像指令的文字照样标记。
+- **图片**（`images.ts`，粘贴截图、拖入图片）：附件照旧传路径，按文件开头的字节认 PNG / JPEG / GIF / WEBP；图片不走 read_file，而是复制到数据库旁的 `media/<会话 id>/` 成一个 `image` 块（`ImageBlock`：path、mediaType、宽高、字节数），记录里只有路径和尺寸，不存像素；`meta.attachments[i].image` 给界面读缩略图；删对话时连同文件夹一起删。上限（protocol 的 `IMAGE_LIMITS`）：长边 1568 px、单张 3.75 MB、一条消息 10 张，取各家文档里最严的一档（`IMAGE_LIMIT_SOURCES`：Anthropic 当前模型长边 2576、旧模型 1568、超过 20 张时尺寸更严；智谱单张 5 MB；Gemini 每个请求内联合计 20 MB）。超过时 8 位 PNG 在内核里缩小（不用第三方库），其他格式超限报 `image.too_large`（外壳先用 nativeImage 缩好再给）；超过张数 `image.too_many`，读不了 `image.unreadable`。一次请求最多带最新的 20 张、base64 合计 15 MB，更早的换成一行文字（每一轮都会重发历史里的图）。发送时按协议各自的格式：OpenAI 兼容是 `image_url` 加 data URL，Anthropic 是 base64 的 `image` 块；存的文件不在了就换成一行文字。能不能看图：目录里的型号按官方页标 `vision`（带 `visionSource`，没有出处不让进）；标明不收图的，用户这次附了图就在发之前结束本轮，error 事件 code `model.no_images`，不花一次调用；不知道的照常发，服务端 400 / 415 / 422 且说的是图片时同样报 `model.no_images`，并记住这个模型，之后历史里的图换成一行文字，对话能接着聊。端口方法 `modelTakesImages(providerId, model)` → true / false / null 给输入框加图时提示。花费估算：Anthropic 按 ceil(w/28)×ceil(h/28)；其他取 OpenAI 的 32 px 块数 ×1.5、Anthropic 的算法、Gemini 每张 1,120 三者里最大的；上下文进度用服务端回报的实际用量，图片本来就算在里面。
 - **批准方式**：`setApprovalMode(会话, 'manual' | 'auto')`（MCP `spica_set_approval_mode`），默认 manual，子 Agent 继承父会话的。auto 时只有「工具声明为不可逆、没人豁免」这一种默认确认会自动通过，发 `confirm.auto`，并记在工具结果消息的 `meta.autoApproved`。钩子主动要求的确认和守卫强制的确认（untrusted_turn / outside_link / sensitive_file）仍然必须由人确认。
 
 ## 3. 主循环
@@ -466,6 +467,7 @@
 
 | 里程碑 | 日期 | 测试 | 真模型冒烟 |
 |---|---|---|---|
+| M21 | 2026-11-10 | 新增 12 条：图片——按字节认格式和量尺寸、PNG 往返不变、未超限原样保留、超限 PNG 缩到 1568、超限 JPEG 和非图片各有码、按各家算法估 token；OpenAI 兼容发 data URL 且记录和使用日志里没有像素、Anthropic 发 base64 块；模型拒图时报 model.no_images 并记住、之后历史图换成文字、再附新图在发前拦下；目录标明不收图的在发前拦下；一条消息超过 10 张的有码；一次请求只带最新 20 张；删项目时图片文件一起删 | — |
 | M20 | 2026-11-10 | 新增 5 条：地址少写 /v1——补上能通时带回该用的地址和提示、末尾已有版本号不动且 404 照常报、补了也不通报第一次的 404 并提示检查结尾、公司网关取 token 不重试只重试调模型、Agent 保存走同一个测试并存下能通的地址 | — |
 | M19 | 2026-11-10 | 改 4 条、新增 3 条：一条连接一把 Key 多个模型——新建时勾的模型和上限、一次加第二个模型并设为默认、去掉被指着的默认模型时卡片写清挪到了哪、从预置新建自带推荐的两个模型只问一次 Key、中转站写法不同的型号按名字对上并标出、对不上的不存；强模型可以在另一条连接上（插件取样用它）；按名字对上限的三步 | — |
 | M18 | 2026-11-10 | 新增 13 条：模型目录——内置目录有效且每条带出处和核对日期、缺了不让进并说清是哪条、列出过期条目；价格表就是从目录生成的（官方价换成美元、没价的用标了 unverified 的兜底、按 catalogId 查）；公司预置排最前、写错用人话说、不能带凭据；更新的目录新的才用、坏的不用；从服务商获取：OpenAI 式（上下文先用回答的、600 个型号、非对话型号标出）、Anthropic 分页和它的头、WSO2 先取 token、接口不存在 / Key 被拒 / 不是 JSON / 连不上各有码且不漏 Key；MCP 按预置配只给 Key、本机不要 Key、按预置列型号 | — |

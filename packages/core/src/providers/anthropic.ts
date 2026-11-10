@@ -1,6 +1,7 @@
 // Anthropic Messages API provider (native streaming, tool use, prompt caching,
 // optional model-hosted web search). Raw HTTP so the core owns retries,
 // credentials and stream handling.
+import { imageBase64 } from '../images.ts';
 import { DEFAULT_RETRY, hostOf, postWithRetry, staticAuth, type RetryPolicy } from './http.ts';
 import { parseSse } from './sse.ts';
 import {
@@ -329,6 +330,11 @@ export function toAnthropicMessages(messages: Message[], providerId: string): An
           if (b.provider === providerId) blocks.push(b.data as AnyRecord);
           else if (b.text) blocks.push({ type: 'text', text: b.text });
           break;
+        case 'image': {
+          const data = imageBase64(b.path);
+          blocks.push(data ? { type: 'image', source: { type: 'base64', media_type: b.mediaType, data } } : { type: 'text', text: `[image ${b.name ?? ''}: no longer available]` });
+          break;
+        }
       }
     }
     if (blocks.length === 0) continue;

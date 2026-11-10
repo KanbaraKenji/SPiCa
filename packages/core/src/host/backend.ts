@@ -2,7 +2,7 @@
 // single-writer lock, restore(), optional extractor modules. Used by the
 // Electron utilityProcess entry and by the stdio MCP server.
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import type { BudgetConfig, PriceTable } from '../cost.ts';
 import type { LimiterConfig } from '../limiter.ts';
 import { AnthropicProvider } from '../providers/anthropic.ts';
@@ -389,6 +389,8 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
       ...(cfg.prices ? { prices: cfg.prices } : {}),
       ...(cfg.spillDir ? { spillDir: cfg.spillDir } : {}),
       ...(cfg.appName ? { appName: cfg.appName } : {}),
+      // attached images live next to the database (one folder per conversation)
+      mediaDir: join(dirname(cfg.dbPath), 'media'),
       ...(cfg.search ? { search: jsonSearchBackend(cfg.search) } : {}),
       ...(cfg.mail ? { mail: cfg.mail } : {}),
     });
@@ -465,6 +467,8 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
         /** Like knownContextWindow, also when a relay spells the name differently: { contextWindow, matched, how: 'exact' | 'name' } or null. */
         matchContextWindow: (kind: unknown, model: unknown, catalogId?: unknown) =>
           runtime.ledger.matchContextWindow(String(kind), String(model), typeof catalogId === 'string' ? catalogId : undefined),
+        /** Whether a configured model takes images: true / false (catalog, or it refused them), null when not known (images are sent). */
+        modelTakesImages: (providerId: unknown, model: unknown) => runtime.imagesAllowed(String(providerId), String(model)) ?? null,
         /** The model catalog for the settings form: providers (company presets first), addresses, models, context windows, official prices. */
         modelCatalog: () => runtime.catalog,
         /** "Get the models from the provider" for a connection being set up (the key is used for this request only). */

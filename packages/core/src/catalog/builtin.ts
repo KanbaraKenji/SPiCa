@@ -37,7 +37,7 @@ export const BUILTIN_CATALOG: ModelCatalog = {
           role: 'default',
           price: { input: 2, output: 8, cacheRead: 0.04, currency: 'CNY' },
           source: 'https://api-docs.deepseek.com/zh-cn/quick_start/pricing',
-          checked: C,
+          checked: C, vision: true, visionSource: 'https://api-docs.deepseek.com/quick_start/pricing',
         },
         {
           id: 'deepseek-v4-pro',
@@ -45,7 +45,7 @@ export const BUILTIN_CATALOG: ModelCatalog = {
           role: 'strong',
           price: { input: 9, output: 27, cacheRead: 0.3, currency: 'CNY' },
           source: 'https://api-docs.deepseek.com/zh-cn/quick_start/pricing',
-          checked: C,
+          checked: C, vision: false, visionSource: 'https://api-docs.deepseek.com/quick_start/pricing',
         },
       ],
     },
@@ -68,7 +68,7 @@ export const BUILTIN_CATALOG: ModelCatalog = {
           role: 'default',
           price: { input: 2, output: 8, currency: 'CNY' },
           source: 'https://help.aliyun.com/zh/model-studio/model-pricing',
-          checked: C,
+          checked: C, vision: true, visionSource: 'https://help.aliyun.com/zh/model-studio/models',
         },
         {
           id: 'qwen3.8-max',
@@ -76,7 +76,7 @@ export const BUILTIN_CATALOG: ModelCatalog = {
           role: 'strong',
           price: { input: 12, output: 36, currency: 'CNY' },
           source: 'https://help.aliyun.com/zh/model-studio/model-pricing',
-          checked: C,
+          checked: C, vision: true, visionSource: 'https://help.aliyun.com/zh/model-studio/models',
         },
         {
           id: 'qwen3.8-flash',
@@ -107,7 +107,7 @@ export const BUILTIN_CATALOG: ModelCatalog = {
           role: 'default',
           price: { input: 8, output: 28, currency: 'CNY' },
           source: 'https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3',
-          checked: C,
+          checked: C, vision: false, visionSource: 'https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3',
         },
         {
           id: 'glm-5.3-flashx',
@@ -115,7 +115,7 @@ export const BUILTIN_CATALOG: ModelCatalog = {
           maxOutput: 128_000,
           price: { input: 2, output: 7, currency: 'CNY' },
           source: 'https://docs.bigmodel.cn/cn/guide/start/pricing',
-          checked: C,
+          checked: C, vision: true, visionSource: 'https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash',
         },
         {
           id: 'glm-5.3-flash',
@@ -124,7 +124,7 @@ export const BUILTIN_CATALOG: ModelCatalog = {
           role: 'cheap',
           price: { input: 0.8, output: 2.8, currency: 'CNY' },
           source: 'https://docs.bigmodel.cn/cn/guide/start/pricing',
-          checked: C,
+          checked: C, vision: true, visionSource: 'https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash',
         },
       ],
     },
@@ -141,8 +141,8 @@ export const BUILTIN_CATALOG: ModelCatalog = {
       checked: C,
       models: [
         // no price: the official price table could not be read when this was compiled
-        { id: 'kimi-k3.1-pro', contextWindow: 1_048_576, role: 'default', source: 'https://platform.kimi.com/docs/pricing/chat', checked: C },
-        { id: 'kimi-k3', contextWindow: 1_048_576, source: 'https://platform.kimi.com/docs/pricing/chat', checked: C },
+        { id: 'kimi-k3.1-pro', contextWindow: 1_048_576, role: 'default', source: 'https://platform.kimi.com/docs/pricing/chat', checked: C, vision: true, visionSource: 'https://platform.kimi.com/docs/guide/use-kimi-vision-model' },
+        { id: 'kimi-k3', contextWindow: 1_048_576, source: 'https://platform.kimi.com/docs/pricing/chat', checked: C, vision: true, visionSource: 'https://platform.kimi.com/docs/guide/use-kimi-vision-model' },
       ],
     },
     {
@@ -164,7 +164,7 @@ export const BUILTIN_CATALOG: ModelCatalog = {
           role: 'default',
           price: { input: 6, output: 30, currency: 'CNY' },
           source: 'https://ark.volcengine.com/region:cn-beijing/docs/model-list',
-          checked: C,
+          checked: C, vision: true, visionSource: 'https://docs.volcengine.com/docs/ark/model-list?lang=zh',
         },
         {
           id: 'doubao-seed-2-1-lite-260915',
@@ -172,14 +172,14 @@ export const BUILTIN_CATALOG: ModelCatalog = {
           role: 'cheap',
           price: { input: 0.8, output: 2.7, currency: 'CNY' },
           source: 'https://ark.volcengine.com/region:cn-beijing/docs/model-list',
-          checked: C,
+          checked: C, vision: true, visionSource: 'https://docs.volcengine.com/docs/ark/model-list?lang=zh',
         },
         {
           id: 'doubao-seed-2-1-turbo-260628',
           contextWindow: 262_144,
           price: { input: 3, output: 15, currency: 'CNY' },
           source: 'https://ark.volcengine.com/region:cn-beijing/docs/model-list',
-          checked: C,
+          checked: C, vision: true, visionSource: 'https://docs.volcengine.com/docs/ark/model-list?lang=zh',
         },
       ],
     },
@@ -195,21 +195,21 @@ export const BUILTIN_CATALOG: ModelCatalog = {
       source: 'https://docs.siliconflow.cn/cn/userguide/quickstart',
       checked: C,
       models: [
-        { id: 'deepseek-ai/DeepSeek-V4-Flash', contextWindow: 1_000_000, role: 'default', source: 'https://cloud.siliconflow.cn/open/models', checked: C },
+        { id: 'deepseek-ai/DeepSeek-V4-Flash', contextWindow: 1_000_000, role: 'default', source: 'https://cloud.siliconflow.cn/open/models', checked: C, vision: false, visionSource: 'https://www.siliconflow.cn/models' },
         {
           id: 'deepseek-ai/DeepSeek-V4-Pro',
           contextWindow: 1_000_000,
           role: 'strong',
           price: { input: 12, output: 24, currency: 'CNY' },
           source: 'https://siliconflow.cn/pricing',
-          checked: C,
+          checked: C, vision: false, visionSource: 'https://www.siliconflow.cn/models',
         },
         {
           id: 'zai-org/GLM-5.3',
           contextWindow: 1_048_576,
           price: { input: 8, output: 28, currency: 'CNY' },
           source: 'https://siliconflow.cn/pricing',
-          checked: C,
+          checked: C, vision: false, visionSource: 'https://www.siliconflow.cn/models',
         },
       ],
     },
@@ -227,10 +227,10 @@ export const BUILTIN_CATALOG: ModelCatalog = {
       checked: C,
       models: [
         // no price: the pricing page was not part of this check
-        { id: 'gpt-6-astra', contextWindow: 1_050_000, maxOutput: 128_000, role: 'default', source: 'https://developers.openai.com/api/docs/models', checked: C },
-        { id: 'gpt-6.1-sol', contextWindow: 1_050_000, maxOutput: 128_000, role: 'strong', source: 'https://developers.openai.com/api/docs/models', checked: C },
-        { id: 'gpt-6.1-terra', contextWindow: 1_050_000, maxOutput: 128_000, source: 'https://developers.openai.com/api/docs/models', checked: C },
-        { id: 'gpt-6-luna', contextWindow: 1_050_000, maxOutput: 128_000, role: 'cheap', source: 'https://developers.openai.com/api/docs/models', checked: C },
+        { id: 'gpt-6-astra', contextWindow: 1_050_000, maxOutput: 128_000, role: 'default', source: 'https://developers.openai.com/api/docs/models', checked: C, vision: true, visionSource: 'https://developers.openai.com/api/docs/models/gpt-6-astra' },
+        { id: 'gpt-6.1-sol', contextWindow: 1_050_000, maxOutput: 128_000, role: 'strong', source: 'https://developers.openai.com/api/docs/models', checked: C, vision: true, visionSource: 'https://developers.openai.com/api/docs/models/gpt-6.1-sol' },
+        { id: 'gpt-6.1-terra', contextWindow: 1_050_000, maxOutput: 128_000, source: 'https://developers.openai.com/api/docs/models', checked: C, vision: true, visionSource: 'https://developers.openai.com/api/docs/models/gpt-6.1-terra' },
+        { id: 'gpt-6-luna', contextWindow: 1_050_000, maxOutput: 128_000, role: 'cheap', source: 'https://developers.openai.com/api/docs/models', checked: C, vision: true, visionSource: 'https://developers.openai.com/api/docs/models/gpt-6-luna' },
       ],
     },
     {
@@ -252,7 +252,7 @@ export const BUILTIN_CATALOG: ModelCatalog = {
           role: 'default',
           price: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5, currency: 'USD' },
           source: 'https://platform.claude.com/docs/en/about-claude/pricing',
-          checked: C,
+          checked: C, vision: true, visionSource: 'https://platform.claude.com/docs/en/build-with-claude/vision',
         },
         {
           id: 'claude-opus-5-5',
@@ -261,7 +261,7 @@ export const BUILTIN_CATALOG: ModelCatalog = {
           role: 'strong',
           price: { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5, currency: 'USD' },
           source: 'https://platform.claude.com/docs/en/about-claude/pricing',
-          checked: C,
+          checked: C, vision: true, visionSource: 'https://platform.claude.com/docs/en/build-with-claude/vision',
         },
         {
           id: 'claude-haiku-5-5',
@@ -278,7 +278,7 @@ export const BUILTIN_CATALOG: ModelCatalog = {
             longContext: { above: 100_000, input: 0.5, output: 2.5, cacheRead: 0.05, cacheWrite: 0.625 },
           },
           source: 'https://platform.claude.com/docs/en/about-claude/pricing',
-          checked: C,
+          checked: C, vision: true, visionSource: 'https://platform.claude.com/docs/en/build-with-claude/vision',
         },
         {
           id: 'claude-fable-5-2',
@@ -286,7 +286,7 @@ export const BUILTIN_CATALOG: ModelCatalog = {
           maxOutput: 128_000,
           price: { input: 8, output: 40, cacheRead: 0.2, cacheWrite: 10, currency: 'USD' },
           source: 'https://platform.claude.com/docs/en/about-claude/pricing',
-          checked: C,
+          checked: C, vision: true, visionSource: 'https://platform.claude.com/docs/en/build-with-claude/vision',
         },
       ],
     },
@@ -302,8 +302,8 @@ export const BUILTIN_CATALOG: ModelCatalog = {
       source: 'https://aistudio.google.com/docs/openai',
       checked: C,
       models: [
-        { id: 'gemini-3.8-flash', contextWindow: 1_048_576, maxOutput: 65_536, role: 'default', source: 'https://aistudio.google.com/docs/models/gemini-3.8-flash', checked: C },
-        { id: 'gemini-4-argon', contextWindow: 1_048_576, maxOutput: 65_536, role: 'strong', source: 'https://aistudio.google.com/docs/models/gemini-4-argon', checked: C },
+        { id: 'gemini-3.8-flash', contextWindow: 1_048_576, maxOutput: 65_536, role: 'default', source: 'https://aistudio.google.com/docs/models/gemini-3.8-flash', checked: C, vision: true, visionSource: 'https://aistudio.google.com/docs/models/gemini-3.8-flash' },
+        { id: 'gemini-4-argon', contextWindow: 1_048_576, maxOutput: 65_536, role: 'strong', source: 'https://aistudio.google.com/docs/models/gemini-4-argon', checked: C, vision: true, visionSource: 'https://aistudio.google.com/docs/models' },
       ],
     },
     {
