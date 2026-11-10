@@ -177,7 +177,7 @@ export class FakeBackend implements AgentBackend {
       title: req.title ?? null,
       status: 'idle',
       providerId: req.providerId ?? 'fake',
-      model: req.model ?? 'fake-model',
+      model: req.model ?? 'deepseek-flash',
       cwd: req.cwd ?? parent?.cwd ?? '',
       costUsd: 0,
       approvalMode: req.approvalMode ?? parent?.approvalMode ?? 'manual',
@@ -512,7 +512,7 @@ export class FakeBackend implements AgentBackend {
     const s = this.#sessions.get(sessionId);
     if (s) s.costUsd += costUsd;
     this.#globalCost += costUsd;
-    this.#emit(sessionId, { type: 'usage', usage: { inputTokens, outputTokens }, costUsd, providerId: 'fake', model: 'fake-model' });
+    this.#emit(sessionId, { type: 'usage', usage: { inputTokens, outputTokens }, costUsd, providerId: 'fake', model: 'deepseek-flash' });
     this.#emit(sessionId, { type: 'cost', scope: 'session', spentUsd: s?.costUsd ?? costUsd, warning: false });
     this.#emit(sessionId, { type: 'cost', scope: 'global', spentUsd: this.#globalCost, limitUsd: 100, warning: false });
   }

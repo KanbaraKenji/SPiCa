@@ -52,7 +52,7 @@ export function buildSeed(now: Date): Seed {
     title,
     status,
     providerId: 'fake',
-    model: 'fake-model',
+    model: 'deepseek-flash',
     cwd: cwd || parent?.cwd || '',
     costUsd,
     approvalMode: 'manual',
