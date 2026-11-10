@@ -40,7 +40,8 @@ export class MemoryStore implements Store {
   }
 
   upsertProject(p: ProjectInfo): void {
-    this.#projects.set(p.id, clone(p));
+    // the same shape the SQLite store gives back: unread is always a number
+    this.#projects.set(p.id, clone({ ...p, unread: p.unread ?? 0 }));
   }
   deleteProject(id: string): void {
     this.#projects.delete(id);

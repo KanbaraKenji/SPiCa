@@ -85,6 +85,28 @@ describe('project managers stand on their own', () => {
     await rt.close();
   });
 
+  it('the unread count is kept in the database: two reports make 2, read makes 0, both survive reopening', async () => {
+    gw.onRequest(() => ({ text: 'progress' }));
+    const path = join(dir, 'db', 'spica.db');
+    const rt = makeRuntime(gw, { cwd: dir, projectsRoot: join(dir, 'p'), store: new SqliteStore(path) });
+    const p = rt.createProject({ name: 'Stored' });
+    const pm = rt.session(p.managerSessionId)!;
+    await pm.send('first update', { author: 'runtime' }).done;
+    await pm.send('second update', { author: 'runtime' }).done;
+    expect(rt.listProjects()[0]!.unread).toBe(2);
+    await rt.close();
+
+    const again = makeRuntime(gw, { cwd: dir, projectsRoot: join(dir, 'p'), store: new SqliteStore(path) });
+    again.restore();
+    expect(again.listProjects()[0]!.unread).toBe(2);
+    expect(again.markProjectRead(p.id).unread).toBe(0);
+    await again.close();
+    const third = makeRuntime(gw, { cwd: dir, projectsRoot: join(dir, 'p'), store: new SqliteStore(path) });
+    third.restore();
+    expect(third.listProjects()[0]!.unread).toBe(0);
+    await third.close();
+  });
+
   it('getTopSession is the conversation used most recently; it is no special thread', async () => {
     const rt = makeRuntime(gw, { cwd: dir });
     const api = createAgentApi(rt);

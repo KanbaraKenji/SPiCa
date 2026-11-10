@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS traces (
 CREATE INDEX IF NOT EXISTS traces_session ON traces(session_id, seq);
 CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, folder TEXT NOT NULL, manager_session_id TEXT NOT NULL,
-  workflow_id TEXT, stage TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  workflow_id TEXT, stage TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  unread INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS project_log (
   id TEXT PRIMARY KEY, project_id TEXT NOT NULL, session_id TEXT NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL,
@@ -110,6 +111,8 @@ export class SqliteStore implements Store {
     if (!logCols.includes('detail')) this.#db.exec('ALTER TABLE project_log ADD COLUMN detail TEXT');
     const senderCols = (this.#db.prepare('PRAGMA table_info(mail_senders)').all() as Row[]).map((r) => String(r.name));
     if (!senderCols.includes('decision')) this.#db.exec("ALTER TABLE mail_senders ADD COLUMN decision TEXT NOT NULL DEFAULT 'project'");
+    const projectCols = (this.#db.prepare('PRAGMA table_info(projects)').all() as Row[]).map((r) => String(r.name));
+    if (!projectCols.includes('unread')) this.#db.exec('ALTER TABLE projects ADD COLUMN unread INTEGER NOT NULL DEFAULT 0');
   }
 
   #q(sql: string): StatementSync {
@@ -239,11 +242,12 @@ export class SqliteStore implements Store {
   // projects -------------------------------------------------------------------
   upsertProject(p: ProjectInfo): void {
     this.#q(
-      `INSERT INTO projects (id, name, folder, manager_session_id, workflow_id, stage, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO projects (id, name, folder, manager_session_id, workflow_id, stage, status, created_at, updated_at, unread)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET name = excluded.name, folder = excluded.folder, manager_session_id = excluded.manager_session_id,
-         workflow_id = excluded.workflow_id, stage = excluded.stage, status = excluded.status, updated_at = excluded.updated_at`,
-    ).run(p.id, p.name, p.folder, p.managerSessionId, p.workflowId, p.stage, p.status, p.createdAt, p.updatedAt);
+         workflow_id = excluded.workflow_id, stage = excluded.stage, status = excluded.status, updated_at = excluded.updated_at,
+         unread = excluded.unread`,
+    ).run(p.id, p.name, p.folder, p.managerSessionId, p.workflowId, p.stage, p.status, p.createdAt, p.updatedAt, p.unread ?? 0);
   }
   getProject(id: string): ProjectInfo | undefined {
     const row = this.#q('SELECT * FROM projects WHERE id = ?').get(id) as Row | undefined;
@@ -384,6 +388,7 @@ function toProject(r: Row): ProjectInfo {
     status: String(r.status) as ProjectInfo['status'],
     createdAt: String(r.created_at),
     updatedAt: String(r.updated_at),
+    unread: Number(r.unread ?? 0),
   };
 }
 
