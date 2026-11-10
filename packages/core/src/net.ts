@@ -339,6 +339,8 @@ export const NET_HINTS: Record<string, string> = {
   'wso2.token_bad_response': '取 token 的地址返回的不是 token：多半是 token 地址写错了，或被代理拦截页、登录页替换了。',
   'wso2.token_not_accepted': '网关不接受新取的 token（重取后仍是 401）：应用没有订阅这个接口，或本机时间偏差太大。',
   'wso2.clock_skew': '本机时间和网关相差太多：token 可能被判成过期或还没生效。请校准系统时间。',
+  'list.unsupported': '这家服务商不提供型号列表：从清单里选，或直接填型号名。',
+  'list.bad_response': '服务商返回的型号列表看不懂：从清单里选，或直接填型号名。',
   // fault numbers in a WSO2 API gateway's error body (see gatewayFaultCode)
   'wso2.invalid_credentials': '网关说凭据无效或 token 已过期（WSO2 900901），已自动重新取过一次 token 仍不行：检查 key，或 client id / client secret；应用的密钥在开发者门户里重新生成过的话，要换成新的。',
   'wso2.missing_credentials': '请求没带凭据（WSO2 900902）：填上 key；网关要求先用 client id / client secret 取 token 的话，模型类型要选 WSO2。',

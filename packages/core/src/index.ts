@@ -80,6 +80,22 @@ export { BackendServer, type BackendServerOptions } from './host/server.ts';
 export { connectBackend, BackendError, type BackendClient, type HostMethods } from './host/client.ts';
 export { settingsTools, SettingsError, maskTail, type SettingsBridge, type HostModel, type HostModelDraft } from './settings-tools.ts';
 export { PluginSampler, SamplingError, type SamplingGrant } from './sampling.ts';
+export { BUILTIN_CATALOG } from './catalog/builtin.ts';
+export {
+  catalogProblems,
+  presetProblems,
+  effectiveCatalog,
+  pricesFromCatalog,
+  staleEntries,
+  type ModelCatalog,
+  type CatalogProvider,
+  type CatalogModel,
+  type CatalogPrice,
+  type CatalogPreset,
+  type CatalogKind,
+  type ListStyle,
+} from './catalog/catalog.ts';
+export { listProviderModels, type ListedModel, type ListModelsResult, type ListModelsRequest } from './catalog/list-models.ts';
 export { startBackend, applySettings, createProvider, lockDatabase, type SettingsPatch, type Backend, type BackendConfig, type BackendExtension, type BackendHost, type ProviderConfig } from './host/backend.ts';
 export { runUtilityEntry } from './host/utility-entry.ts';
 export { electronPort, nodePort, type PortLike, type WireMessage, type WireRequest, type WireResponse, type WireEvent, type WireReady } from './host/wire.ts';

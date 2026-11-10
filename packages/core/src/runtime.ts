@@ -19,6 +19,8 @@ import { ToolRegistry, validateInput, type FileExtractor, type Tool } from './to
 import { Tracer } from './trace.ts';
 import type { SettingsBridge } from './settings-tools.ts';
 import { PluginSampler } from './sampling.ts';
+import { BUILTIN_CATALOG } from './catalog/builtin.ts';
+import { catalogProblems, effectiveCatalog, presetProblems, pricesFromCatalog, type CatalogPreset, type ModelCatalog } from './catalog/catalog.ts';
 import type {
   AgentRole,
   ChildNoteMeta,
@@ -87,6 +89,8 @@ export interface RuntimeOptions {
    * (package names, spica_ tools, SPICA_ variables, spica-*:// links) do not change.
    */
   appName?: string;
+  /** A company's model connections (the packaging's deploy.json), first in the settings form. */
+  catalogPresets?: CatalogPreset[];
 }
 
 export { APP_NAME_SLOT, withAppName } from './util.ts';
@@ -155,6 +159,35 @@ export class Runtime implements RuntimeInternals {
   readonly #mcp = new Map<string, { client: McpStdioClient; source: string; disconnect: () => Promise<void> }>();
   readonly #reports = new Map<string, string>();
   readonly #viewConfirms = new Map<string, (approved: boolean) => void>();
+  #catalogUpdate: ModelCatalog | undefined;
+  #presets: CatalogPreset[] = [];
+
+  /** The model catalog in use: the built-in one or a newer update, with the company's presets first. */
+  get catalog(): ModelCatalog {
+    return effectiveCatalog(BUILTIN_CATALOG, this.#catalogUpdate, this.#presets);
+  }
+
+  /**
+   * Take a catalog update (used when newer than the built-in one) and / or the
+   * company's presets; invalid ones are left out and named in the result. The
+   * price table follows the catalog unless the deployment gave its own prices.
+   */
+  setCatalog(o: { update?: unknown; presets?: unknown }): string[] {
+    const warnings: string[] = [];
+    if (o.update !== undefined) {
+      const bad = catalogProblems(o.update);
+      if (bad.length) warnings.push(`model catalog update not used: ${bad.slice(0, 5).join('; ')}${bad.length > 5 ? ` (+${bad.length - 5} more)` : ''}`);
+      else this.#catalogUpdate = o.update as ModelCatalog;
+    }
+    if (o.presets !== undefined) {
+      const bad = presetProblems(o.presets);
+      if (bad.length) warnings.push(`company model presets not used: ${bad.join('; ')}`);
+      else this.#presets = o.presets as CatalogPreset[];
+    }
+    if (!this.#opts.prices) this.ledger.setPrices(pricesFromCatalog(this.catalog));
+    return warnings;
+  }
+
   /** Plugins using the user's models (MCP sampling): daily limits, rate limits, records. */
   readonly sampler = new PluginSampler(this);
 
@@ -186,6 +219,7 @@ export class Runtime implements RuntimeInternals {
     this.addRedactions(opts.redactions ?? []);
     this.tracer = new Tracer(this.store, this.events, (text) => redact(text, [...this.#secrets]));
     this.ledger = new CostLedger(opts.prices ?? DEFAULT_PRICES, opts.budget ?? {});
+    if (opts.catalogPresets) for (const w of this.setCatalog({ presets: opts.catalogPresets })) console.error(w);
     this.extractors = [...(opts.extractors ?? [])];
     for (const p of opts.providers) this.addProvider(p, opts.limits?.[p.id]);
     const defaults = [

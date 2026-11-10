@@ -267,6 +267,31 @@ describe('model settings over Spica MCP', () => {
     expect(note(again.b.runtime.session(otherId)!)).toHaveLength(1);
   });
 
+  it('a preset fills in the address, the model and its context window, so the agent gives only the key; listing models works with a preset', async () => {
+    const { call, win, seen } = await setup();
+    const presets = (await call('spica_list_presets')).value as { id: string; needsKey: boolean; models: { id: string; price?: unknown }[] }[];
+    expect(presets.map((p) => p.id)).toEqual(expect.arrayContaining(['deepseek', 'anthropic', 'ollama']));
+    expect(presets.find((p) => p.id === 'moonshot')!.models[0]).not.toHaveProperty('price'); // no official price: none shown
+    expect(presets.find((p) => p.id === 'ollama')!.needsKey).toBe(false);
+
+    const r = await call('spica_save_model', { preset: 'deepseek', baseUrl: `${gw.baseUrl}/v1`, apiKey: API_KEY });
+    expect(r).toMatchObject({ saved: true, model: { name: 'DeepSeek', model: 'deepseek-flash', strongModel: 'deepseek-v4-pro', contextWindow: 1_048_576 } });
+    expect(win.models()[0]).toMatchObject({ catalogId: 'deepseek', kind: 'openai-compatible' });
+    expect((await call('spica_save_model', { preset: 'nope', apiKey: API_KEY })).error).toMatch(/^\[not_found\] no preset nope/);
+    // a local preset needs no key
+    expect(await call('spica_test_model', { preset: 'ollama', baseUrl: `${gw.baseUrl}/v1`, model: 'm1' })).toMatchObject({ ok: true });
+
+    // what the provider has now (here a made-up one), with the preset's short list merged in
+    const list = createServer((req, res) => {
+      res.writeHead(req.headers.authorization === `Bearer ${API_KEY}` ? 200 : 401, { 'content-type': 'application/json' }).end(JSON.stringify({ data: [{ id: 'deepseek-flash' }, { id: 'deepseek-x-new' }] }));
+    });
+    const port = await listenFetchable(list);
+    closers.push(() => new Promise<void>((r) => (list.closeAllConnections(), list.close(() => r()))));
+    const listed = await call('spica_list_provider_models', { preset: 'deepseek', baseUrl: `http://127.0.0.1:${port}/v1`, apiKey: API_KEY });
+    expect(listed).toEqual({ ok: true, models: [expect.objectContaining({ id: 'deepseek-flash', inCatalog: true, contextWindow: 1_048_576 }), expect.objectContaining({ id: 'deepseek-x-new', inCatalog: false })] });
+    expect(seen.join('\n')).not.toContain(API_KEY);
+  });
+
   it('a user who has not answered yet: the agent hears it is waiting and asks again', async () => {
     const { b, client, events, call } = await setup({ confirm: true });
     b.runtime.settingsBridge!.waitMs = 30;

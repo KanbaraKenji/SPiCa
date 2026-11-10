@@ -1,5 +1,7 @@
 // Cost estimation and spending limits.
 // Prices are data (USD per million tokens) and can be overridden per deployment.
+import { BUILTIN_CATALOG } from './catalog/builtin.ts';
+import { pricesFromCatalog } from './catalog/catalog.ts';
 import type { Usage } from './types.ts';
 import { abortError } from './util.ts';
 
@@ -16,34 +18,15 @@ export interface ModelPrice {
   longContext?: { above: number; input: number; output: number; cacheRead?: number; cacheWrite?: number };
 }
 
-/** providerKind or providerId -> model -> price. Lookup tries id first, then kind, then '*'. */
+/** providerId, catalog provider id or providerKind -> model -> price. Lookup tries the id, its catalog id, the kind, then '*'. */
 export type PriceTable = Record<string, Record<string, ModelPrice>>;
 
 /**
- * Defaults. Anthropic values come from the published list price; values
- * marked `unverified` are placeholders until checked.
+ * Defaults: generated from the model catalog (catalog/builtin.ts, official list
+ * prices with their sources), one table per catalog provider id and per kind,
+ * plus deliberately high rows for models without a price.
  */
-export const DEFAULT_PRICES: PriceTable = {
-  anthropic: {
-    'claude-haiku-5-5': {
-      input: 0.1,
-      output: 0.5,
-      cacheRead: 0.01,
-      cacheWrite: 0.125,
-      contextWindow: 1_000_000,
-      // prompts over 100K tokens use the second rate card
-      longContext: { above: 100_000, input: 0.5, output: 2.5, cacheRead: 0.05, cacheWrite: 0.625 },
-    },
-    'claude-sonnet-5-5': { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5, contextWindow: 1_000_000 },
-    'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5, contextWindow: 1_000_000 },
-    '*': { input: 10, output: 50, unverified: true }, // unknown Claude model: assume the top tier
-  },
-  'openai-compatible': {
-    'deepseek-flash': { input: 0.3, output: 1.2, cacheRead: 0.03, unverified: true },
-    'deepseek-v4-pro': { input: 1, output: 4, cacheRead: 0.1, unverified: true },
-    '*': { input: 5, output: 20, unverified: true },
-  },
-};
+export const DEFAULT_PRICES: PriceTable = pricesFromCatalog(BUILTIN_CATALOG);
 
 /** Used when nothing in the price table matches: high on purpose. */
 export const FALLBACK_PRICE: ModelPrice = { input: 10, output: 50, unverified: true };
@@ -109,6 +92,8 @@ export class CostLedger {
   #onRelease: (() => void)[] = [];
   /** providerId -> model -> context window, from the settings. */
   readonly #windows = new Map<string, Record<string, number>>();
+  /** providerId -> the catalog provider it was set up from (ProviderConfig.catalogId). */
+  readonly #catalogIds = new Map<string, string>();
 
   constructor(prices: PriceTable = DEFAULT_PRICES, budget: BudgetConfig = {}) {
     this.#prices = prices;
@@ -122,7 +107,7 @@ export class CostLedger {
    * never make the limits look free.
    */
   price(providerId: string, providerKind: string, model: string): ModelPrice {
-    const tables = [this.#prices[providerId], this.#prices[providerKind]];
+    const tables = this.#tables(providerId, providerKind);
     for (const t of tables) if (t?.[model]) return t[model]!;
     for (const t of tables) if (t?.['*']) return t['*']!;
     return this.#prices['*']?.['*'] ?? FALLBACK_PRICE;
@@ -135,7 +120,7 @@ export class CostLedger {
   contextWindow(providerId: string, providerKind: string, model: string): number | null {
     const set = this.#windows.get(providerId)?.[model];
     if (set) return set;
-    for (const t of [this.#prices[providerId], this.#prices[providerKind]]) {
+    for (const t of this.#tables(providerId, providerKind)) {
       const w = t?.[model]?.contextWindow;
       if (w) return w;
     }
@@ -147,14 +132,25 @@ export class CostLedger {
    * settings (to pre-fill a form): the provider kind's exact entry, then an
    * exact entry under any provider (the same model behind a gateway), else null.
    */
-  knownContextWindow(providerKind: string, model: string): number | null {
-    const w = this.#prices[providerKind]?.[model]?.contextWindow;
+  knownContextWindow(providerKind: string, model: string, catalogId?: string): number | null {
+    const w = (catalogId ? this.#prices[catalogId]?.[model]?.contextWindow : undefined) ?? this.#prices[providerKind]?.[model]?.contextWindow;
     if (w) return w;
     for (const t of Object.values(this.#prices)) {
       const any = t[model]?.contextWindow;
       if (any) return any;
     }
     return null;
+  }
+
+  /** Which catalog provider each configured provider was set up from (replaces the previous map). */
+  setCatalogIds(ids: Record<string, string>): void {
+    this.#catalogIds.clear();
+    for (const [id, c] of Object.entries(ids)) if (c) this.#catalogIds.set(id, c);
+  }
+
+  #tables(providerId: string, providerKind: string): (Record<string, ModelPrice> | undefined)[] {
+    const c = this.#catalogIds.get(providerId);
+    return [this.#prices[providerId], c ? this.#prices[c] : undefined, this.#prices[providerKind]];
   }
 
   /**

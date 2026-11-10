@@ -53,7 +53,8 @@ describe('context use', () => {
   it('the default price table knows the Claude windows and the Haiku long-prompt rate', () => {
     const rt = makeRuntime(gw);
     expect(rt.ledger.contextWindow('a', 'anthropic', 'claude-haiku-5-5')).toBe(1_000_000);
-    expect(rt.ledger.contextWindow('x', 'openai-compatible', 'deepseek-flash')).toBeNull(); // not known: no guess
+    expect(rt.ledger.contextWindow('x', 'openai-compatible', 'deepseek-flash')).toBe(1_048_576); // from the catalog, also for a hand-typed connection
+    expect(rt.ledger.contextWindow('x', 'openai-compatible', 'nobody-knows-this')).toBeNull(); // not known: no guess
     const scope = { providerId: 'a', providerKind: 'anthropic', model: 'claude-haiku-5-5' };
     expect(rt.ledger.estimate(scope, { inputTokens: 100_000, outputTokens: 0 })).toBeCloseTo(0.01);
     expect(rt.ledger.estimate(scope, { inputTokens: 200_000, outputTokens: 0 })).toBeCloseTo(0.1); // 0.50 / MTok above 100K

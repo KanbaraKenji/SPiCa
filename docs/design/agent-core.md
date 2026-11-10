@@ -236,6 +236,14 @@
 ## 12. 花费、限流与并行
 
 - **价表**是数据（`cost.ts`），按 provider id、再按种类、再按模型查，`*` 兜底，可整体覆盖、运行中可换。条目可带 `contextWindow`（只从确切的模型条目取，不从 `*` 推测）和 `longContext { above, input, output, … }`（提示超过 above 个 token 时用的另一档价格）。默认表里 Claude Haiku / Sonnet / Opus 5.5 的窗口是 100 万 token（设置表单用后台方法 `knownContextWindow(kind, model)` 取这个值预填，先按种类、再按任何 provider 下同名的确切条目，不看设置里填的值）；Haiku 5.5 的提示超过 10 万 token 时按 0.50 / 2.50 USD 算。查不到时用故意偏高的兜底价（输入 10、输出 50 USD / 百万 token），绝不按 0 算。Claude 的价格按官方表；DeepSeek 的价格是占位，标 `unverified`，只影响估算准不准，不影响上限生效。
+- **模型目录**（`catalog/`）：添加模型时的「服务商」和「型号」下拉、默认价格表和已知上下文上限都出自这一份，不再两处各记各的。
+  - 数据：`catalog/builtin.ts`（随版本带，schema `spica.model-catalog`，version 是日期）。每家服务商：id、名字、分组（cn / intl / local）、类型、接口地址、文档页、怎么列型号（listModels）、要不要 Key；每个型号：API 里的 id、上下文上限、最大输出、角色（default / strong / cheap，表单拿它预选）、官方价格（没取到就不写）。**每条都有 `source`（官方页面）和 `checked`（核对日期）**，缺了 `catalogProblems()` 不让进，测试守着。全部按各家官方文档自己整理，不用任何数据集；new-api 是 AGPL-3.0 加额外条款，不搬它的任何东西；models.dev、LiteLLM、one-api 是 MIT，将来要用先建 THIRD-PARTY-NOTICES。
+  - 价格：`DEFAULT_PRICES = pricesFromCatalog(目录)`，按目录里的服务商 id 一张表，再按类型一张（手填的连接也能按型号名查到）；人民币按目录的 `fx.usdPerCny`（故意取高）换成美元，DeepSeek 按高峰价。没有官方价的型号只带上下文上限，价格用类型的偏高兜底（`unverified`）——**界面上不能把兜底价当成这个型号的价格显示**，`spica_list_presets` 和 `modelCatalog()` 只给官方价。连接配置的 `catalogId` 记它是从哪家选的，查价格和上下文上限依次看：设置里填的 → provider id → catalogId → 类型 → `*`。部署自己给了 `prices` 时用它的表。
+  - 更新：`configure({ catalog })`（外壳从更新源取 model-catalog.json），校验过、version 比内置的新才用，不然给警告用内置的。
+  - 公司预置：`BackendConfig.catalogPresets`（外壳从打包的 deploy.json 的 `models` 段读，格式见 `CatalogPreset`：id、name、kind、baseUrl、tokenUrl、scope、models[{id, contextWindow, role}]、default、限流；**不能有任何凭据**，`presetProblems()` 用人话说哪一项错了），合进目录排最前（group company）。公司的地址只在公司自己的 deploy.json 里。
+  - 发版前重新核对：`npm run catalog:age -w @spica/core [-- --days 60]` 列出核对日期超过 N 天的条目和它们的官方页（有就退出码 1）。核对的人逐条打开 source 页，对型号 id、上下文上限和价格，改 `builtin.ts` 并把 `checked` 改成当天；目录的 `version` 改成当天。
+  - **从服务商获取型号**（`listProviderModels`，端口方法同名、MCP `spica_list_provider_models`）：按 listModels 问——openai 是 GET {base}/models（硅基流动带 ?sub_type=chat），anthropic 是 GET /v1/models 分页取完，ollama 再用 /api/show 拿上下文，lmstudio 用 /api/v1/models，none（智谱、火山方舟、百炼兼容模式、公司网关）试一次 {base}/models。上下文上限先用回答里的（context_window / context_length / max_input_tokens / max_context_length），没有再用目录的；嵌入、语音、图像一类标 `chat: false`；目录里有的排前面。拿不到时 `{ ok: false, code, hint }`：接口不存在是 `list.unsupported`，看不懂是 `list.bad_response`，鉴权和网络沿用 gateway.* / net.* 的码和说明。**失败不挡表单**：照样能从清单里选或手填。
+  - MCP：`spica_list_presets` 列出目录（含公司预置）；`spica_save_model` / `spica_test_model` / `spica_list_provider_models` 收 `preset`，类型、地址、取 token 地址、scope、默认和强模型、上下文上限都从预置带出，Agent 只给 Key（本机两家不用 Key）。
 - **上限**：全局、单会话、单次运行、单次调用，外加按 provider 单独设。策略是**不开始一次可能越线的调用**：按「估算输入 + maxTokens 全用完」算最坏花费。输入估算取「按字符估」和「这个会话上一次调用的真实输入 token 数」中较大的那个。累计过警戒线（默认 80%）时，`cost` 事件带 warning；越线发 `budget.stop`，写明花了多少、上限多少。重启后累计从记录回填。
 - **并行**：检查放在拿到限流名额之后。通过就把这次调用的最坏花费预留（`ledger.reserve`），记账时换成真实花费；出错、被停、被插话打断都释放。后面的调用检查时，已花的加上所有预留一起算，所以 16 个子任务同时起跑也不会一起冲过上限。只是因为预留占着才不够时，这次调用不停，状态 `queued`，等有预留释放再查；真不够了才停。
 - **限流器**（`limiter.ts`）：每个 provider 一个，并发数和每分钟请求数按部署配置，所有会话共用，运行中可改（放宽时立刻放行排队的人）。排队时发 `queue { position, waitingFor }` 和 `queued` 状态，位次只在变化时发，先来先服务。一次模型调用（含内部重试）占一个名额。
@@ -457,6 +465,7 @@
 
 | 里程碑 | 日期 | 测试 | 真模型冒烟 |
 |---|---|---|---|
+| M18 | 2026-11-10 | 新增 13 条：模型目录——内置目录有效且每条带出处和核对日期、缺了不让进并说清是哪条、列出过期条目；价格表就是从目录生成的（官方价换成美元、没价的用标了 unverified 的兜底、按 catalogId 查）；公司预置排最前、写错用人话说、不能带凭据；更新的目录新的才用、坏的不用；从服务商获取：OpenAI 式（上下文先用回答的、600 个型号、非对话型号标出）、Anthropic 分页和它的头、WSO2 先取 token、接口不存在 / Key 被拒 / 不是 JSON / 连不上各有码且不漏 Key；MCP 按预置配只给 Key、本机不要 Key、按预置列型号 | — |
 | M17 | 2026-11-10 | 新增 3 条：插件借用模型——只有拿到授权的 server 被告知能取样，回答干净（无工具、无对话、系统提示只有插件的、不超过应用的 maxTokens）、不进任何对话、留痕不含文字、花费进总额；强模型、点名命中、点名没配时退回并标出或按要求拒绝；每天上限、工具 / 非文字 / 没配模型时各自的码，当天花费重启后接着算 | — |
 | M16 | 2026-11-10 | 新增 2 条：插件 server 进程拿到和应用一样的代理、例外和证书（自己的变量优先），设置关掉时删掉本机继承来的；网络设置对子进程真的变了才通知扩展，只改别的不通知 | — |
 | M15 | 2026-11-10 | 新增 1 条，改 5 条：经 MCP 改模型设置默认不确认、直接生效；改动作为卡片写进主对话和窗口打开的那条对话，重启后还在；正文里脚本给的内容在数据围栏里；留痕 confirmedBy none；密钥不在卡片和事件里；要确认的路径按开关打开后照旧 | — |

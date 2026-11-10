@@ -18,6 +18,8 @@ import type { Runtime } from './runtime.ts';
 import { isoNow } from './events.ts';
 import { fence } from './guard.ts';
 import type { Session } from './session.ts';
+import { catalogProvider } from './catalog/catalog.ts';
+import { listProviderModels } from './catalog/list-models.ts';
 import type { ProbeResult, SettingsChangeMeta } from './types.ts';
 
 /** A model connection as the host lists it (no secret). */
@@ -39,6 +41,8 @@ export interface HostModel {
   isDefault: boolean;
   /** Cannot be changed here (e.g. comes from a developer file). */
   readOnly?: boolean;
+  /** The catalog provider or company preset it was set up from (prices, context windows, how to list models). */
+  catalogId?: string;
 }
 
 /** What the core asks the host to save. `secret` undefined: keep the saved one. */
@@ -77,6 +81,10 @@ const int = { type: 'integer', minimum: 1 } as const;
 
 const FIELDS = {
   id: { ...str, description: 'An existing connection (from spica_list_models) to change or test; leave out to add a new one.' },
+  preset: {
+    ...str,
+    description: 'A provider or company preset from spica_list_presets: its kind, addresses and default model are filled in, so usually only the key (or Consumer Key and Secret) is needed.',
+  },
   kind: { type: 'string', enum: KINDS, description: 'openai-compatible (incl. DeepSeek and most gateways with a key), anthropic, or wso2 (WSO2 API gateway with Consumer Key / Secret).' },
   name: { ...str, description: 'Shown in the model list.' },
   baseUrl: { ...str, description: 'API address (usually ending in /v1). Optional for anthropic.' },
@@ -169,38 +177,48 @@ export function settingsTools(rt: Runtime): McpTool[] {
   const waiting = new Map<string, Promise<unknown>>();
 
   /** The saved connection merged with what the agent gave, validated; secrets registered for redaction. */
-  const draftFrom = async (a: Args, purpose: 'test' | 'save') => {
+  const draftFrom = async (a: Args, purpose: 'test' | 'save' | 'list') => {
     const id = text(a.id) || undefined;
+    const presetId = text(a.preset) || undefined;
+    const preset = catalogProvider(rt.catalog, presetId);
+    if (presetId && !preset) throw new SettingsError('not_found', `no preset ${presetId} (see spica_list_presets)`);
     let existing: HostModel | undefined;
     if (id) {
       existing = (await list()).find((m) => m.id === id);
       if (!existing) throw new SettingsError('not_found', `no model connection with id ${id} (see spica_list_models)`);
       if (existing.readOnly && purpose === 'save') throw new SettingsError('read_only', `${id} cannot be changed here`);
     }
-    const kind = a.kind === undefined && existing ? kindOf(existing.kind) : kindOf(a.kind);
+    // what the preset fills in (a saved connection keeps its own values; what the agent gives wins)
+    const fromPreset = preset && !existing;
+    const kind = a.kind !== undefined ? kindOf(a.kind) : existing ? kindOf(existing.kind) : preset?.kind;
     if (!kind) throw new SettingsError('invalid', `kind must be one of ${KINDS.join(', ')}`);
     const pick = (k: string, from: string) => text(a[k]) ?? from;
+    const roleModel = (role: string) => preset?.models.find((m) => m.role === role)?.id ?? '';
+    const model = pick('model', existing?.model ?? (fromPreset ? roleModel('default') || (preset.models[0]?.id ?? '') : ''));
+    const presetWindow = preset?.models.find((m) => m.id === model)?.contextWindow ?? null;
     const d: HostModelDraft = {
       ...(id ? { id } : {}),
       kind,
-      name: pick('name', existing?.name ?? ''),
-      baseUrl: pick('baseUrl', existing?.baseUrl ?? (kind === 'anthropic' ? 'https://api.anthropic.com/v1' : '')),
-      model: pick('model', existing?.model ?? ''),
-      strongModel: pick('strongModel', existing?.strongModel ?? ''),
-      tokenUrl: pick('tokenUrl', existing?.tokenUrl ?? ''),
+      name: pick('name', existing?.name ?? (fromPreset ? preset.name : '')),
+      baseUrl: pick('baseUrl', existing?.baseUrl ?? (fromPreset ? preset.baseUrl : kind === 'anthropic' ? 'https://api.anthropic.com/v1' : '')),
+      model,
+      strongModel: pick('strongModel', existing?.strongModel ?? (fromPreset ? roleModel('strong') : '')),
+      tokenUrl: pick('tokenUrl', existing?.tokenUrl ?? (fromPreset ? (preset.tokenUrl ?? '') : '')),
       clientId: pick('consumerKey', existing?.clientId ?? ''),
-      scope: pick('scope', existing?.scope ?? ''),
-      contextWindow: count(a.contextWindow) ?? existing?.contextWindow ?? null,
-      maxConcurrent: count(a.maxConcurrent) ?? existing?.maxConcurrent ?? null,
-      requestsPerMinute: count(a.requestsPerMinute) ?? existing?.requestsPerMinute ?? null,
+      scope: pick('scope', existing?.scope ?? (fromPreset ? (preset.scope ?? '') : '')),
+      contextWindow: count(a.contextWindow) ?? (a.model === undefined ? existing?.contextWindow : undefined) ?? presetWindow ?? null,
+      maxConcurrent: count(a.maxConcurrent) ?? existing?.maxConcurrent ?? (fromPreset ? (preset.maxConcurrent ?? null) : null),
+      requestsPerMinute: count(a.requestsPerMinute) ?? existing?.requestsPerMinute ?? (fromPreset ? (preset.requestsPerMinute ?? null) : null),
+      ...((existing?.catalogId ?? preset?.id) ? { catalogId: existing?.catalogId ?? preset!.id } : {}),
     };
+    const needsKey = catalogProvider(rt.catalog, d.catalogId)?.needsKey ?? true;
     const typed = text(kind === 'wso2' ? (a.consumerSecret ?? a.apiKey) : (a.apiKey ?? a.consumerSecret));
     if (typed) d.secret = typed;
     // known secrets and addresses never show up in errors, records or exports from here on
     rt.addRedactions([typed, d.clientId, d.baseUrl, d.tokenUrl]);
     // (the field name after the reason: "apiKey: …" would read as a key to the redaction)
     const bad = (field: string, why: string) => new SettingsError('invalid', `${why} (field ${field})`);
-    if (!d.model) throw bad('model', 'required');
+    if (!d.model && purpose !== 'list') throw bad('model', 'required');
     if (purpose === 'save' && !d.name) throw bad('name', 'required (shown in the model list)');
     const url = /^https?:\/\/[^\s/]+/i;
     if (kind !== 'anthropic' && !d.baseUrl) throw bad('baseUrl', 'required');
@@ -213,9 +231,11 @@ export function settingsTools(rt: Runtime): McpTool[] {
     for (const k of ['contextWindow', 'maxConcurrent', 'requestsPerMinute'] as const) if (Number.isNaN(d[k])) throw bad(k, 'a positive whole number');
     const running = id ? bridge().providerConfig(id) : undefined;
     const secret = d.secret ?? (kind === 'wso2' ? running?.oauth?.clientSecret : running?.apiKey);
-    if (!secret) throw bad(kind === 'wso2' ? 'consumerSecret' : 'apiKey', existing?.hasSecret ? 'the saved one cannot be read; give it again' : 'required');
+    if (!secret && (needsKey || kind === 'wso2')) {
+      throw bad(kind === 'wso2' ? 'consumerSecret' : 'apiKey', existing?.hasSecret ? 'the saved one cannot be read; give it again' : 'required');
+    }
     if (purpose === 'save' && d.contextWindow === null) {
-      const known = rt.ledger.knownContextWindow(kind, d.model);
+      const known = rt.ledger.knownContextWindow(kind, d.model, d.catalogId);
       if (!known) throw new SettingsError('context_window_required', `${app} does not know how many tokens ${d.model} takes at once: ask the user and pass contextWindow`);
       d.contextWindow = known;
     }
@@ -224,8 +244,11 @@ export function settingsTools(rt: Runtime): McpTool[] {
       kind,
       ...(d.baseUrl ? { baseUrl: d.baseUrl } : {}),
       ...(kind === 'wso2'
-        ? { oauth: { tokenUrl: d.tokenUrl, clientId: d.clientId, clientSecret: secret, ...(d.scope ? { scope: d.scope } : {}) } }
-        : { apiKey: secret }),
+        ? { oauth: { tokenUrl: d.tokenUrl, clientId: d.clientId, clientSecret: secret ?? '', ...(d.scope ? { scope: d.scope } : {}) } }
+        : secret
+          ? { apiKey: secret }
+          : {}),
+      ...(d.catalogId ? { catalogId: d.catalogId } : {}),
     };
     const changes = existing
       ? (['kind', 'name', 'baseUrl', 'model', 'strongModel', 'tokenUrl', 'scope', 'contextWindow', 'maxConcurrent', 'requestsPerMinute'] as const)
@@ -302,6 +325,48 @@ export function settingsTools(rt: Runtime): McpTool[] {
   };
 
   return [
+    {
+      name: 'spica_list_presets',
+      description:
+        `The providers ${app} knows (company presets first, then providers in China, international, on this machine): kind, API address, whether a key is needed, ` +
+        'and a short list of models with context windows and official prices where known. Pass a preset id to spica_save_model to fill in the address and model.',
+      inputSchema: obj({}),
+      run: async () =>
+        rt.catalog.providers.map((p) => ({
+          id: p.id,
+          name: p.name,
+          group: p.group,
+          kind: p.kind,
+          baseUrl: p.baseUrl,
+          ...(p.tokenUrl ? { tokenUrl: p.tokenUrl } : {}),
+          ...(p.scope ? { scope: p.scope } : {}),
+          needsKey: p.needsKey,
+          canListModels: p.listModels !== 'none',
+          ...(p.docsUrl ? { docsUrl: p.docsUrl } : {}),
+          // only official prices: a model without one has none here
+          models: p.models.map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), contextWindow: m.contextWindow, ...(m.role ? { role: m.role } : {}), ...(m.price ? { price: m.price } : {}) })),
+        })),
+    },
+    {
+      name: 'spica_list_provider_models',
+      description:
+        'Ask a provider which models it has now: a saved connection by id, or a preset with its key. Context windows come from the answer when the provider gives them, ' +
+        'else from the short list. When the provider has no model list (code list.unsupported) or the key is refused, use the short list or a model name the user gives.',
+      inputSchema: obj(FIELDS),
+      run: async (a) => {
+        const { config } = await draftFrom(a, 'list');
+        return listProviderModels(
+          {
+            kind: config.kind,
+            ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
+            ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+            ...(config.oauth ? { oauth: config.oauth } : {}),
+            ...(config.catalogId ? { catalogId: config.catalogId } : {}),
+          },
+          rt.catalog,
+        );
+      },
+    },
     {
       name: 'spica_list_models',
       description: `The model connections set up in ${app} (no keys or secrets: hasSecret says whether one is saved; the Consumer Key shows its last 4 characters).`,

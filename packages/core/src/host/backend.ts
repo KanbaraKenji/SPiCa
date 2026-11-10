@@ -19,6 +19,7 @@ import { serveMcpHttp, type McpHttpServer } from '../mcp/http.ts';
 import { configureNetwork, networkChildEnv, networkSecrets, networkStatus, type NetworkConfig } from '../net.ts';
 import type { MailConfig } from '../mail.ts';
 import { BackendServer } from './server.ts';
+import { listProviderModels } from '../catalog/list-models.ts';
 
 /** One model endpoint, as the settings page stores it (keys included; sent over the port, never via files or env). */
 export interface ProviderConfig {
@@ -38,6 +39,8 @@ export interface ProviderConfig {
   reasoning?: { field?: string; echo?: 'never' | 'tool_turns' | 'always' };
   /** anthropic: model-hosted web search on/off. */
   webSearch?: boolean;
+  /** The catalog provider (or company preset) it was set up from: prices and context windows of its models come from there. */
+  catalogId?: string;
   /**
    * Context window per model name, in tokens (positive whole numbers). Wins over
    * what the price table knows; needs no price. A session reads it every time
@@ -79,6 +82,8 @@ export interface BackendConfig {
   spillDir?: string;
   /** Product name the models are told they work in (see RuntimeOptions.appName). Default 'Spica'. */
   appName?: string;
+  /** A company's model connections from the packaging's deploy.json (CatalogPreset[]; no keys). */
+  catalogPresets?: unknown;
   search?: JsonSearchBackendOptions;
   /** Module specifiers that export createExtractors(): FileExtractor[] (e.g. '@spica/extract'). */
   extractorModules?: string[];
@@ -226,6 +231,8 @@ export interface SettingsPatch {
   /** Proxy / certificates; applies to the next request. */
   network?: NetworkConfig;
   agentSettings?: BackendConfig['agentSettings'];
+  /** A newer model catalog (from the update source); used when valid and newer than the built-in one. */
+  catalog?: unknown;
 }
 
 /** The provider configurations a runtime runs with now (secrets included; never leaves the backend). */
@@ -233,6 +240,7 @@ const runningConfigs = new WeakMap<Runtime, Map<string, ProviderConfig>>();
 
 function rememberConfigs(runtime: Runtime, providers: ProviderConfig[]): void {
   runningConfigs.set(runtime, new Map(providers.map((p) => [p.id, p])));
+  runtime.ledger.setCatalogIds(Object.fromEntries(providers.filter((p) => p.catalogId).map((p) => [p.id, p.catalogId!])));
 }
 
 /** Apply a settings patch to a running runtime; emits runtime.configured. */
@@ -293,6 +301,10 @@ export function applySettings(runtime: Runtime, patch: SettingsPatch): { changed
         }
       }
     }
+  }
+  if (patch.catalog !== undefined) {
+    warnings.push(...runtime.setCatalog({ update: patch.catalog }));
+    changed.push('catalog');
   }
   if (patch.agentSettings?.confirmChanges !== undefined) {
     runtime.confirmSettingsChanges = patch.agentSettings.confirmChanges;
@@ -362,6 +374,7 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
     warnings.push(...applyContextWindows(runtime, cfg.providers, []));
     runtime.addRedactions(networkSecrets());
     rememberConfigs(runtime, cfg.providers);
+    if (cfg.catalogPresets !== undefined) warnings.push(...runtime.setCatalog({ presets: cfg.catalogPresets }));
     if (cfg.agentSettings?.confirmChanges !== undefined) runtime.confirmSettingsChanges = cfg.agentSettings.confirmChanges;
     // the settings tools on Spica's MCP service reach the window's settings through the port (server is set below)
     const port: { server?: BackendServer } = {};
@@ -426,7 +439,26 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
         probeProvider: (config: unknown, model: unknown) =>
           probeProvider(createProvider(config as ProviderConfig), { model: String(model), tracer: runtime.tracer }),
         /** Context window the core knows for a model (to pre-fill the settings form), or null. kind: ProviderConfig kind. */
-        knownContextWindow: (kind: unknown, model: unknown) => runtime.ledger.knownContextWindow(String(kind), String(model)),
+        knownContextWindow: (kind: unknown, model: unknown, catalogId?: unknown) =>
+          runtime.ledger.knownContextWindow(String(kind), String(model), typeof catalogId === 'string' ? catalogId : undefined),
+        /** The model catalog for the settings form: providers (company presets first), addresses, models, context windows, official prices. */
+        modelCatalog: () => runtime.catalog,
+        /** "Get the models from the provider" for a connection being set up (the key is used for this request only). */
+        listProviderModels: (config: unknown) => {
+          const c = config as ProviderConfig;
+          runtime.addRedactions(providerRedactions(c));
+          return listProviderModels(
+            {
+              kind: c.kind,
+              ...(c.baseUrl ? { baseUrl: c.baseUrl } : {}),
+              ...(c.apiKey ? { apiKey: c.apiKey } : {}),
+              ...(c.oauth ? { oauth: c.oauth } : {}),
+              ...(c.headers ? { headers: c.headers } : {}),
+              ...(c.catalogId ? { catalogId: c.catalogId } : {}),
+            },
+            runtime.catalog,
+          );
+        },
       },
     });
     port.server = server;

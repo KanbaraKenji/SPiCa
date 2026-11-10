@@ -21,7 +21,8 @@
     "export:log": "node scripts/export-log.ts",
     "smoke:mail": "node --env-file=../../.env.local scripts/smoke-mail.ts",
     "smoke:guard": "node --env-file=../../.env.local scripts/smoke-guard.ts",
-    "check:electron-host": "electron scripts/electron/host-check.ts"
+    "check:electron-host": "electron scripts/electron/host-check.ts",
+    "catalog:age": "node scripts/catalog-age.ts"
   },
   "dependencies": {
     "@spica/protocol": "*"

@@ -150,6 +150,34 @@ describe('runtime settings', () => {
     }
   });
 
+  it('the settings form gets the model catalog with the company presets first, and can ask a provider for its models', async () => {
+    const b = await startBackend({
+      dbPath: join(dir, 'db', 'spica.db'),
+      providers: [],
+      defaults: { providerId: '', model: '', maxTokens: 64 },
+      cwd: dir,
+      mail: { enabled: false },
+      catalogPresets: [{ id: 'company-gateway', name: '公司网关', kind: 'wso2', baseUrl: 'https://llm-gw.example.internal/v1', tokenUrl: 'https://llm-gw.example.internal/oauth2/token', models: [{ id: 'model-a', contextWindow: 128_000 }] }],
+    });
+    const ch = new MessageChannel();
+    b.server.attach(nodePort(ch.port1));
+    const client = connectBackend(nodePort(ch.port2));
+    try {
+      const catalog = await client.call<{ providers: { id: string; group: string }[] }>('modelCatalog');
+      expect(catalog.providers[0]).toMatchObject({ id: 'company-gateway', group: 'company' });
+      expect(await client.call('knownContextWindow', 'wso2', 'model-a', 'company-gateway')).toBe(128_000);
+      // the fake gateway answers with a chat stream, not a model list: the form hears it plainly
+      expect(await client.call('listProviderModels', { id: 'x', kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1`, apiKey: 'sk-form-test-123456' })).toMatchObject({ ok: false, code: 'list.bad_response' });
+      // a broken catalog update is not used, and the warning says why
+      const b2warn = applySettings(b.runtime, { catalog: { schema: 'nope' } }).warnings;
+      expect(b2warn.join(' ')).toMatch(/model catalog update not used/);
+    } finally {
+      ch.port1.close();
+      ch.port2.close();
+      await b.close();
+    }
+  });
+
   it('extensions hear when the network settings change for child processes, only then', async () => {
     let calls = 0;
     const b = await startBackend(
@@ -223,7 +251,7 @@ describe('runtime settings', () => {
       // what the core knows, to pre-fill the form (also the same model behind another kind of endpoint)
       expect(await client.call('knownContextWindow', 'anthropic', 'claude-haiku-5-5')).toBe(1_000_000);
       expect(await client.call('knownContextWindow', 'wso2', 'claude-sonnet-5-5')).toBe(1_000_000);
-      expect((await client.call('knownContextWindow', 'openai-compatible', 'deepseek-flash')) ?? null).toBeNull(); // the port gives null as undefined
+      expect((await client.call('knownContextWindow', 'openai-compatible', 'nobody-knows-this')) ?? null).toBeNull(); // the port gives null as undefined
       // a configured value is not "known"
       await client.call('configure', { providers: [{ id: 'gw', kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1`, contextWindows: { m: 64_000 } }] });
       expect((await client.call('knownContextWindow', 'openai-compatible', 'm')) ?? null).toBeNull();
