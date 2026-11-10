@@ -72,7 +72,12 @@ export class FakeGateway {
   }
 
   async start(): Promise<this> {
-    this.#server = createServer((req, res) => void this.#handle(req, res));
+    this.#server = createServer((req, res) => {
+      // one request per connection: clients keep no idle connections that stop() would have to cut
+      // (cutting one occasionally crashes Node 24.15 on Windows natively, see scripts/diag)
+      res.setHeader('connection', 'close');
+      void this.#handle(req, res);
+    });
     await listenFetchable(this.#server); // never a port fetch refuses (Windows hands out ports from 1024 up)
     return this;
   }
