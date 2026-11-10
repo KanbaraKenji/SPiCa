@@ -33,6 +33,13 @@ describe('the one hover note', () => {
     expect(screen.getByRole('tooltip').textContent).toBe('128,000 token');
     fireEvent.pointerDown(screen.getByText('128k'));
     expect(screen.queryByRole('tooltip')).toBeNull();
+    // A click (also one from the keyboard) hides it too.
+    fireEvent.pointerOver(screen.getByText('plain'));
+    fireEvent.pointerOver(screen.getByText('128k'));
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.getByRole('tooltip')).toBeTruthy();
+    fireEvent.click(screen.getByText('128k'));
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
   it('not for an iframe’s title (its name for screen readers)', () => {

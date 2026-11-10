@@ -68,6 +68,7 @@ export function HoverTips() {
     document.addEventListener('pointerover', over);
     document.addEventListener('pointerout', out);
     document.addEventListener('pointerdown', hide, true);
+    document.addEventListener('click', hide, true);
     document.addEventListener('keydown', hide, true);
     document.addEventListener('scroll', hide, true);
     document.addEventListener('focusin', focus);
@@ -78,6 +79,7 @@ export function HoverTips() {
       document.removeEventListener('pointerover', over);
       document.removeEventListener('pointerout', out);
       document.removeEventListener('pointerdown', hide, true);
+      document.removeEventListener('click', hide, true);
       document.removeEventListener('keydown', hide, true);
       document.removeEventListener('scroll', hide, true);
       document.removeEventListener('focusin', focus);

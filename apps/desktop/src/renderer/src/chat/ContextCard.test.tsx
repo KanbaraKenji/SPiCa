@@ -60,6 +60,8 @@ describe('context card', () => {
     fireEvent.click(screen.getByRole('button', { name: '上下文占用 28.2k / 160k 18%' }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: '上下文占用' })).toBeTruthy());
     expect(detail).toHaveBeenCalledTimes(1);
+    // While the card is open the ring offers no hover bubble (the numbers are on the card).
+    expect(screen.getByRole('button', { name: /^上下文占用 / }).getAttribute('data-tip')).toBeNull();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
   });

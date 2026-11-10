@@ -43,17 +43,9 @@ export function priceText(p: CatalogPriceView): string {
   return `输入 ${c}${p.input} / 输出 ${c}${p.output}（每百万 token）`;
 }
 
-/** A context window in short, the way providers write it: 128000 or 131072 -> 「128k」, 1048576 -> 「1M」. */
-export function windowText(n: number): string {
-  // Whole thousands are counted in 1000s (128000); 131072 and 1048576 in 1024s.
-  if (n >= 1000 && n % 1000 !== 0 && n % 1024 === 0) {
-    const k = n / 1024;
-    return k >= 1024 && k % 1024 === 0 ? `${k / 1024}M` : `${k}k`;
-  }
-  if (n >= 1_000_000) return `${Number((n / 1_000_000).toFixed(1))}M`;
-  if (n >= 1000) return `${Number((n / 1000).toFixed(1))}k`;
-  return String(n);
-}
+/** A context window in short: the same abbreviation as the ring and the context card (chat/tokens). */
+export { tokenText as windowText } from '../chat/tokens';
+import { tokenText as windowText } from '../chat/tokens';
 
 function parseWindow(v: string): number | null {
   const t = v.trim();

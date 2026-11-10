@@ -114,6 +114,10 @@ describe('token counts under the box', () => {
     expect(tokenText(160_000)).toBe('160k');
     expect(tokenText(1_000)).toBe('1k');
     expect(contextText(28_200, 160_000)).toBe('28.2k / 160k 18%');
+    // The same abbreviation as the model list: a window of 1048576 reads 1M, not 1049k.
+    expect(tokenText(1_048_576)).toBe('1M');
+    expect(tokenText(131_072)).toBe('128k');
+    expect(contextText(3_200, 1_048_576)).toBe('3.2k / 1M 0%');
   });
 
   it('shows the provider beside the model name, both in the hover text', () => {
