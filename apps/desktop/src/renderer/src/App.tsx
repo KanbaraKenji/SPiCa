@@ -263,7 +263,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     return out;
   }, [state.projects, sessions]);
   const unseen = useMemo(() => unseenByManager(mail.items, settings.mailSeen), [mail.items, settings.mailSeen]);
-  // Words after a project in the sidebar: new mail for it, and progress reports nobody has seen yet.
+  // What is new for a project (the dot after it in the sidebar, its hover text): new mail, progress reports nobody has seen yet.
   const sidebarNotes = useMemo(() => {
     const notes = new Map<string, string>([...unseen.keys()].map((sid) => [sid, '有新来信']));
     for (const p of state.projects) {

@@ -3344,11 +3344,25 @@ button.ctx-row:hover {
   color: var(--spica-muted);
 }
 
-/* Words after a row title (e.g. 有新来信): plain colored text, not a button. */
-.tree-note {
+/* Something new (NewDot): one small dot, on a row, on the tab not shown and on the icon column. */
+.new-dot {
   flex: none;
-  font-size: 12px;
-  color: var(--spica-accent-text);
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--spica-accent);
+}
+
+.tab .new-dot {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+}
+
+.sidebar.is-rail .rail-row .new-dot {
+  position: absolute;
+  top: 7px;
+  left: 24px;
 }
 
 .inbox {
@@ -4166,16 +4180,6 @@ button.ctx-row:hover {
 }
 
 /* Something new in the list not shown. */
-.tab-dot {
-  position: absolute;
-  top: 6px;
-  right: 10px;
-  width: 6px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--spica-accent);
-}
-
 .side-new-project {
   color: var(--spica-muted);
 }

@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { ContextMenu } from '../ui/ContextMenu';
 import type { SessionInfo } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
+import { NewDot, joinNotes } from '../ui/NewDot';
 import { StatusMark } from '../ui/StatusMark';
 import { isRunning } from '../store/transcript';
 
@@ -169,7 +170,7 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
                 <Icon name="pin" size={12} />
               </span>
             ) : null}
-            {tree.notes?.get(s.id) && !active ? <span className="tree-note">{tree.notes.get(s.id)}</span> : null}
+            {tree.notes?.get(s.id) && !active ? <NewDot text={tree.notes.get(s.id)!} /> : null}
             {summary ? <span className={/等你/.test(summary) ? 'tree-summary is-waiting' : 'tree-summary'}>{summary}</span> : <StatusMark status={s.status} />}
           </button>
         )}
@@ -278,8 +279,9 @@ export function Sidebar({
     if (at) setListTab(at.role === 'manager' ? 'projects' : 'chats');
   }
   const projectIds = new Set(projects.map((p) => p.id));
-  const projectsNews = [...(notes?.keys() ?? [])].some((id) => projectIds.has(id));
-  const chatsNews = [...(notes?.keys() ?? [])].some((id) => !projectIds.has(id));
+  // What is new under each tab, for its dot ('' when nothing).
+  const projectsNews = joinNotes([...(notes ?? [])].filter(([id]) => projectIds.has(id)).map(([, n]) => n));
+  const chatsNews = joinNotes([...(notes ?? [])].filter(([id]) => !projectIds.has(id)).map(([, n]) => n));
   // 对话 and 项目 on the icon column: their lists as a menu.
   const [railMenu, setRailMenu] = useState<{ items: { label: string; onSelect(): void }[]; x: number; y: number } | null>(null);
   if (compact) {
@@ -324,6 +326,7 @@ export function Sidebar({
                 }}
               >
                 <Icon name="assistant" />
+                {chatsNews ? <NewDot text={chatsNews} /> : null}
               </button>
             </section>
           ) : null}
@@ -342,6 +345,7 @@ export function Sidebar({
                 }}
               >
                 <Icon name="folder" />
+                {projectsNews ? <NewDot text={projectsNews} /> : null}
               </button>
             </section>
           ) : null}
@@ -393,7 +397,7 @@ export function Sidebar({
         {(['chats', 'projects'] as const).map((t) => (
           <button key={t} type="button" role="tab" aria-selected={listTab === t} className={listTab === t ? 'tab is-on' : 'tab'} onClick={() => setListTab(t)}>
             {t === 'chats' ? '对话' : '项目'}
-            {listTab !== t && (t === 'chats' ? chatsNews : projectsNews) ? <span className="tab-dot" role="img" aria-label="有新消息" /> : null}
+            {listTab !== t && (t === 'chats' ? chatsNews : projectsNews) ? <NewDot text={t === 'chats' ? chatsNews : projectsNews} /> : null}
           </button>
         ))}
       </div>

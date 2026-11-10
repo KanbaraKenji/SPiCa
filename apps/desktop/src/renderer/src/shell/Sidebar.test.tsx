@@ -35,16 +35,18 @@ describe('Sidebar', () => {
         onSettings={vi.fn()}
         settingsOpen={false}
         inbox={{ count: 3, open: false, onOpen: onInbox }}
-        notes={new Map([[SEED_IDS.pm2, '有新来信']])}
+        notes={new Map([[SEED_IDS.pm2, '有新来信'], [SEED_IDS.pm, '有新回报']])}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: /收件箱/ }));
     expect(onInbox).toHaveBeenCalled();
     expect(screen.getByLabelText('3 封待确认')).toBeTruthy();
-    // The 项目 tab, not shown, says it has news.
-    expect(screen.getByRole('tab', { name: /项目/ }).querySelector('.tab-dot')).toBeTruthy();
+    // The 项目 tab, not shown, carries the dot; on hover it says what is new under it (each kind once).
+    expect(screen.getByRole('img', { name: '有新来信 · 有新回报' }).closest('[role="tab"]')?.textContent).toContain('项目');
     fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
+    // On the project row: the dot alone, no words on the row.
     expect(screen.getByRole('button', { name: /年度预算.*有新来信/ })).toBeTruthy();
+    expect(screen.queryByText('有新来信')).toBeNull();
   });
 
   it('summarises a collapsed project with only non-zero counts', () => {
