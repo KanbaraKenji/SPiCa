@@ -96,9 +96,11 @@ if (forcedTheme === 'dark' || forcedTheme === 'light') nativeTheme.themeSource =
 //   SPICA_DEV_MODELS=0       ignore .env.local (see the app as a first-time user would)
 const modelEnv = app.isPackaged || automated || process.env.SPICA_DEV_MODELS === '0' ? {} : readModelEnv(resolvePath(app.getAppPath(), '../../.env.local'));
 const backendKind = chooseBackend({ requested: process.env.SPICA_BACKEND, automated });
-const workDir = join(app.getPath('documents'), APP_NAME);
-/** Where workflow files live unless the user picked another folder (设置 › 常规). */
-const defaultWorkflowsDir = join(workDir, 'workflows');
+// A conversation without a folder gets its own in the core's data folder (他 2026-11-10: 「文件夹默认没有」);
+// this is only the core's fallback, and nothing for it is made under 文档.
+const workDir = join(app.getPath('userData'), 'work');
+/** Where workflow files live unless the user picked another folder (设置 › 常规): under 文档, where he edits them. */
+const defaultWorkflowsDir = join(app.getPath('documents'), APP_NAME, 'workflows');
 if (backendKind === 'core') mkdirSync(defaultWorkflowsDir, { recursive: true });
 function workflowsDir(): string {
   return settings.get().workflowsDir || defaultWorkflowsDir;
@@ -850,8 +852,7 @@ ipcMain.handle(DesktopChannel.UsageLog, async (_e, raw: unknown): Promise<UsageL
   if (from) req.from = from;
   if (to) req.to = to;
   const day = new Date().toLocaleDateString('sv-SE').replaceAll('-', '');
-  mkdirSync(workDir, { recursive: true });
-  const opts: Electron.SaveDialogOptions = { title: '导出使用日志', defaultPath: join(workDir, `使用日志-${day}.jsonl`), filters: [{ name: '使用日志', extensions: ['jsonl'] }] };
+  const opts: Electron.SaveDialogOptions = { title: '导出使用日志', defaultPath: join(app.getPath('documents'), `使用日志-${day}.jsonl`), filters: [{ name: '使用日志', extensions: ['jsonl'] }] };
   // SPICA_SAVE_TO=<folder> (development only): skip the dialog, so scripts never leave one open.
   const saveTo = app.isPackaged ? '' : (process.env.SPICA_SAVE_TO ?? '');
   const pick = saveTo

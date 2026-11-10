@@ -165,3 +165,15 @@ describe('pictures in the input box', () => {
     expect(pick).toHaveBeenCalled();
   });
 });
+
+describe('the working folder', () => {
+  it('none picked: only the folder button; picked: its name', () => {
+    const onPick = vi.fn();
+    const { rerender } = render(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="f1" tools={{ folder: { path: '', name: '', onPick } }} />);
+    fireEvent.click(screen.getByRole('button', { name: '选择工作文件夹' }));
+    expect(onPick).toHaveBeenCalled();
+    rerender(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="f1" tools={{ folder: { path: 'D:/资料/报价', name: '报价', onPick } }} />);
+    expect(screen.getByText('报价')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '选择工作文件夹' })).toBeNull();
+  });
+});

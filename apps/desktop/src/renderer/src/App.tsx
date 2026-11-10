@@ -394,7 +394,6 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
 
   // The input box's controls: what the next message goes out with.
   const draft = state.draft;
-  const topCwd = state.sessions.find((s) => s.id === state.topId)?.cwd ?? '';
   // Every ticked model of every connection, by connection (its key tail tells two keys of one provider apart).
   const isRef = (r: ModelRef | null, providerId: string, model: string) => Boolean(r && r.connectionId === providerId && r.model === model);
   const modelOptions = models.flatMap((p) =>
@@ -436,8 +435,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       ? {}
       : {
           folder: {
-            path: draft.cwd || topCwd,
-            name: (draft.cwd || topCwd).split(/[\\/]/).filter(Boolean).pop() || '默认文件夹',
+            // Shown once a folder is picked; until then only the button to pick one (no default folder is shown).
+            path: draft.cwd ?? '',
+            name: draft.cwd ? (draft.cwd.split(/[\\/]/).filter(Boolean).pop() ?? draft.cwd) : '',
             onPick: () =>
               void bridge.pickFolder('选择工作文件夹').then((dir) => {
                 if (dir) agent.setDraft({ cwd: dir });

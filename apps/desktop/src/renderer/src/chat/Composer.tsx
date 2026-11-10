@@ -200,10 +200,17 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
   }
   if (t.folder) {
     left.push(
-      <button key="folder" type="button" className="composer-chip" title={`工作文件夹：${t.folder.path}`} onClick={t.folder.onPick}>
-        <Icon name="folder" size={14} />
-        <span className="composer-chip-text">{t.folder.name}</span>
-      </button>,
+      // No folder picked: just the folder icon (选择工作文件夹); picked: its name.
+      t.folder.path ? (
+        <button key="folder" type="button" className="composer-chip" title={`工作文件夹：${t.folder.path}`} onClick={t.folder.onPick}>
+          <Icon name="folder" size={14} />
+          <span className="composer-chip-text">{t.folder.name}</span>
+        </button>
+      ) : (
+        <button key="folder" type="button" className="icon-btn" aria-label="选择工作文件夹" title="选择工作文件夹" onClick={t.folder.onPick}>
+          <Icon name="folder" size={16} />
+        </button>
+      ),
     );
   }
   return (
