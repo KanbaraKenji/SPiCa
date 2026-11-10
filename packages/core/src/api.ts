@@ -87,6 +87,9 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async deleteProject(projectId) {
       await rt.deleteProject(projectId);
     },
+    async deleteSession(sessionId) {
+      await rt.deleteSession(sessionId);
+    },
     async listMail(filter) {
       return rt.store.listMail(filter ?? {});
     },

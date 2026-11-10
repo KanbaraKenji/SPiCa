@@ -887,8 +887,40 @@ export class Runtime implements RuntimeInternals {
   async deleteProject(projectId: string): Promise<void> {
     const p = this.store.getProject(projectId);
     if (!p) throw new Error(`unknown project: ${projectId}`);
+    const ids = this.#withDescendants(this.store.listSessions().filter((s) => s.id === p.managerSessionId || s.config.projectId === p.id).map((s) => s.id));
+    await this.#stopAll(ids, 'project deleted');
+    for (const m of this.store.listMail({ projectId: p.id, limit: 1_000_000 })) {
+      const { routedTo: _r, ...rest } = m;
+      void _r;
+      const triage = m.triage ? (({ projectId: _p, ...t }) => (void _p, { ...t, decision: 'new' as const }))(m.triage) : undefined;
+      this.store.upsertMail({ ...rest, status: m.status === 'ignored' ? 'ignored' : 'triaged', ...(triage ? { triage } : {}), updatedAt: isoNow() });
+    }
+    this.#drop(ids);
+    this.store.deleteProject(p.id);
+    this.events.emit(this.eventHost, { type: 'project.deleted', projectId: p.id });
+  }
+
+  /**
+   * Delete a conversation and the sub-agents under it: their records (messages, tool calls, queued and pending items,
+   * relays) and the copies of attached images. Files they made, in their working folder (also their own
+   * sessions/<id>/files), stay. Running ones are stopped first. A project manager is deleted with its project only.
+   * Traceable records stay (spending history and limits). A project manager this conversation was waiting on
+   * reports to the project (an unread update) instead.
+   */
+  async deleteSession(sessionId: string): Promise<void> {
+    const rec = this.store.getSession(sessionId);
+    if (!rec) throw new Error(`unknown session: ${sessionId}`);
+    const project = this.store.listProjects().find((p) => p.managerSessionId === sessionId);
+    if (project) throw new Error(`${sessionId} is the project manager of "${project.name}": delete the project instead`);
+    const ids = this.#withDescendants([sessionId]);
+    await this.#stopAll(ids, 'conversation deleted');
+    this.#drop(ids);
+  }
+
+  /** These sessions and every session under them. */
+  #withDescendants(roots: string[]): Set<string> {
     const all = this.store.listSessions();
-    const ids = new Set(all.filter((s) => s.id === p.managerSessionId || s.config.projectId === p.id).map((s) => s.id));
+    const ids = new Set(roots);
     for (let grew = true; grew; ) {
       grew = false;
       for (const s of all) {
@@ -898,19 +930,21 @@ export class Runtime implements RuntimeInternals {
         }
       }
     }
-    // stop what runs, children first so they do not report into a session about to go
+    return ids;
+  }
+
+  /** Stop what runs, children first so they do not report into a session about to go; wait up to 10 s each. */
+  async #stopAll(ids: Set<string>, reason: string): Promise<void> {
     const live = [...ids].map((id) => this.session(id)).filter((s): s is Session => !!s);
-    for (const s of [...live].reverse()) if (s.running) s.abort('project deleted');
+    for (const s of [...live].reverse()) if (s.running) s.abort(reason);
     for (const s of live) {
       const t0 = Date.now();
       while (s.running && Date.now() - t0 < 10_000) await new Promise((r) => setTimeout(r, 20));
     }
-    for (const m of this.store.listMail({ projectId: p.id, limit: 1_000_000 })) {
-      const { routedTo: _r, ...rest } = m;
-      void _r;
-      const triage = m.triage ? (({ projectId: _p, ...t }) => (void _p, { ...t, decision: 'new' as const }))(m.triage) : undefined;
-      this.store.upsertMail({ ...rest, status: m.status === 'ignored' ? 'ignored' : 'triaged', ...(triage ? { triage } : {}), updatedAt: isoNow() });
-    }
+  }
+
+  /** Remove the sessions' records and attached-image copies (not their working folders), and tell the window. */
+  #drop(ids: Set<string>): void {
     for (const id of ids) {
       const s = this.session(id);
       const parentChain = s?.parentChain ?? [];
@@ -918,10 +952,9 @@ export class Runtime implements RuntimeInternals {
       rmSync(this.mediaDir(id), { recursive: true, force: true }); // its attached images
       this.#sessions.delete(id);
       this.#reports.delete(id);
+      for (const [pm, asker] of this.#askers) if (asker === id) this.#askers.delete(pm); // its answer goes to the project instead
       this.events.emit({ sessionId: id, parentChain }, { type: 'session.deleted' });
     }
-    this.store.deleteProject(p.id);
-    this.events.emit(this.eventHost, { type: 'project.deleted', projectId: p.id });
   }
 
   addWorkObject(projectId: string, obj: { level: string; name: string; parentId?: string | null; data?: Record<string, unknown> }): WorkObject {

@@ -44,6 +44,7 @@ const API: Record<keyof AgentApi, true> = {
   getProject: true,
   renameProject: true,
   deleteProject: true,
+  deleteSession: true,
   callPluginTool: true,
   listMail: true,
   pollMail: true,
@@ -83,6 +84,19 @@ describe('FakeBackend', () => {
     await b.renameSession(SEED_IDS.chat, 'named');
     await b.setSessionModel(SEED_IDS.chat, 'p', 'm');
     expect((await b.setApprovalMode(SEED_IDS.chat, 'auto')).updatedAt).toBe(before);
+    b.dispose();
+  });
+
+  it('deletes a conversation with its sub-agents; a project manager only with its project', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { events } = collect(b);
+    const chat = await b.createSession({ title: 'to go' });
+    const child = await b.createSession({ parentId: chat.id, role: 'worker' });
+    await b.deleteSession(chat.id);
+    expect(events.filter((e) => e.type === 'session.deleted').map((e) => e.sessionId).sort()).toEqual([chat.id, child.id].sort());
+    expect(await b.getSession(chat.id)).toBeUndefined();
+    expect(await b.getSession(child.id)).toBeUndefined();
+    await expect(b.deleteSession(SEED_IDS.pm)).rejects.toThrow(/project manager/);
     b.dispose();
   });
 

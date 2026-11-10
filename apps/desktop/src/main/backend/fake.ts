@@ -371,6 +371,30 @@ export class FakeBackend implements AgentBackend {
     this.#emit(top?.id ?? '', { type: 'project.deleted', projectId });
   }
 
+  /** Like the core: the conversation and its sub-agents go, a project manager only with its project. */
+  async deleteSession(sessionId: string): Promise<void> {
+    this.#requireSession(sessionId);
+    const project = [...this.#projects.values()].find((p) => p.managerSessionId === sessionId);
+    if (project) throw new Error(`${sessionId} is the project manager of "${project.name}": delete the project instead`);
+    const ids = new Set([sessionId]);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const s of this.#sessions.values()) {
+        if (s.parentId && ids.has(s.parentId) && !ids.has(s.id)) {
+          ids.add(s.id);
+          grew = true;
+        }
+      }
+    }
+    for (const id of ids) {
+      this.#runs.get(id)?.controller.abort();
+      this.#emit(id, { type: 'session.deleted' });
+      this.#sessions.delete(id);
+      this.#messages.delete(id);
+      this.#pending.delete(id);
+    }
+  }
+
   async createProject(req: CreateProjectRequest): Promise<ProjectInfo> {
     const name = req.name.trim();
     if (!name) throw new Error('project name is required');

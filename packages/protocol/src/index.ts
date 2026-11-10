@@ -751,6 +751,12 @@ export interface AgentApi {
    */
   deleteProject?(projectId: string): Promise<void>;
   /**
+   * Delete a conversation and the sub-agents under it from Spica: their messages, tool calls, pending items and the
+   * copies of attached images. Files they made (in their working folder) stay. Running ones are stopped first; then
+   * `session.deleted` for each. A project manager cannot be deleted on its own (delete the project). Traceable records stay.
+   */
+  deleteSession?(sessionId: string): Promise<void>;
+  /**
    * A plugin's view (its iframe) calls one of that plugin's own tools: no model, nothing in any session's history.
    * Irreversible tools (and tools a hook wants confirmed) ask the user first: confirm.request with cause 'plugin_view'
    * on `sessionId` (or the default top-level thread); answer it with confirm(sameSessionId, callId, approved).
