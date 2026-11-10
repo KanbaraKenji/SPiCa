@@ -697,7 +697,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 : {})}
               onOpenSession={openSession}
               onOpenSettings={() => {
-                setSettingsTab('general');
+                setSettingsTab('plugins');
                 setView('settings');
               }}
               onDismissProblem={() => mailStore.dismissProblem()}

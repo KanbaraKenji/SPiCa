@@ -85,7 +85,7 @@
 ## 6. 设置存哪
 
 - `%APPDATA%\Spica\settings.json`（主进程读写，先写临时文件再改名，写坏了读到的是默认值）。渲染层不碰 `localStorage`。字段：`skin`、`customSkins`、`zoom`、`panels.left/right`、`panelWidths`、`pinnedProjects`（置顶的项目）、`network`、`localConnect` 等。**加设置项先给默认值**：开发版热更新时，旧主进程不发新字段，渲染层要能兜住（2026-11-10 出过一次空白页）。
-- 设置分五页：常规（邮件、工作流、网络、使用日志、开发者）、外观（皮肤、缩放、开机动画）、模型、插件、关于（版本、更新源）。
+- 设置分五页：常规（工作流、网络、使用日志、开发者）、外观（皮肤、缩放、开机动画）、模型、插件（邮件分类放在提供邮件的插件卡里；两个以上邮件插件时在「已安装」上方出现一次）、关于（版本、更新源）。
 - 网络：代理地址（空 = 用环境变量）、不使用代理的地址（逗号隔开）、信任的证书文件（公司 TLS 检查）、使用 Windows 证书存储（默认开）。启动时和每次改动经 `configure({ network })` 传给内核，下一个请求生效；页面显示「代理：… · 使用 Windows 证书」和无法读取证书之类的问题。
 - 连上来的脚本改模型设置（内核的 spica_save_model 等 MCP 工具，他 2026-11-10 定「不确认、改完醒目展示」）：内核经宿主方法 `models.list` / `models.save` / `models.setDefault` 调外壳（`main/providers/host-models.ts`，和设置页同一个存储、同样的校验，中文错误原样回给 Agent），存完推一次 configure、通知窗口重读模型列表（`ProvidersChanged`）；`ui.activeSession` 告诉内核窗口开着哪条对话。内核在主对话和开着的那条对话里各写一条带 `meta.settingsChange` 的备注，外壳画成「设置已改动」卡（`chat/SettingsChangeCard.tsx`）：谁改的、改了哪些项（新增列全部，修改只列改了的）、地址原样、Consumer Key 只末 4 位、密钥只写「新填 / 未改动」、保存前测试结果、是否经你确认，[在设置里查看]。卡留在记录里，重启后还在。样子是他挑的 B「色头卡」：强调色描边，标题在实心强调色的头条上（文字用 `--spica-on-accent`），底部一条分隔线放按钮。
 - 开发者：「允许本机脚本连接 Spica」默认关。打开后内核进程里起 MCP over HTTP（只听 127.0.0.1，端口 47820，被占就随机），令牌写 `<userData>\mcp-token`（只本人可读），`<userData>\mcp-http.json` 写 `{ url, tokenFile, pid, startedAt }`（不含令牌），插件 skill 的安装脚本读它把 zip 装进正在运行的 Spica。关掉或退出时停服务、删 mcp-http.json；异常退出留下的下次启动删掉。
