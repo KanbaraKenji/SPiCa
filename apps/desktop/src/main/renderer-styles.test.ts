@@ -22,6 +22,12 @@ describe('styles', () => {
     expect(block('.tree-summary')).toContain('text-overflow: ellipsis');
   });
 
+  it('nothing is underlined (links and text buttons are told by colour and the pointer, not a line)', () => {
+    expect(css).not.toMatch(/text-decoration(-line)?:\s*underline/);
+    expect(css).not.toMatch(/text-underline/);
+    expect(block('.history-link:hover')).toContain('color: var(--spica-accent)');
+  });
+
   it('a sidebar row shows 更多 only under the pointer, when current, with the focus inside or with its menu open', () => {
     expect(block('.tree-more')).toContain('display: none');
     expect(block('.tree-row:hover .tree-more,\n.tree-row:focus-within .tree-more,\n.tree-row.is-active .tree-more,\n.tree-row.is-menu-open .tree-more')).toContain('display: inline-flex');

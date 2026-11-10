@@ -4462,21 +4462,20 @@ button.ctx-row:hover {
   border-top: 1px solid var(--spica-border);
 }
 
-/* A conversation named in an answer as [name](history:n): opens it at that place. */
+/* A conversation named in an answer as [name](history:n): opens it at that place. Like every link here:
+   the accent colour, darker under the pointer, never underlined. */
 .history-link {
   display: inline;
   margin: 0;
   padding: 0;
   font: inherit;
   color: var(--spica-accent-text);
-  text-decoration: underline;
-  text-underline-offset: 2px;
   vertical-align: baseline;
 }
 
 .history-link:hover {
   background: none;
-  text-decoration-thickness: 2px;
+  color: var(--spica-accent);
 }
 
 /* Opened from a history row or link: the way back, above the conversation. */
