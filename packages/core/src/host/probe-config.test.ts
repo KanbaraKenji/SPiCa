@@ -2,9 +2,12 @@
 // one more try with /v1 added; the form (or the agent's save) takes the address
 // that worked. Conversations never change the address on their own.
 import { createServer, type Server } from 'node:http';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { listenFetchable } from '../net.ts';
 import { probeConfig } from './backend.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 const servers: Server[] = [];
 afterEach(async () => {

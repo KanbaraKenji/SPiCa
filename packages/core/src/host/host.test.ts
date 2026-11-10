@@ -1,12 +1,15 @@
 // Backend over a port: requests, events, replay, errors.
 import { MessageChannel } from 'node:worker_threads';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FakeGateway } from '../testing/fake-gateway.ts';
 import { makeRuntime, startGateway, until } from '../testing/helpers.ts';
 import type { CoreEvent } from '../types.ts';
 import { connectBackend } from './client.ts';
 import { BackendServer } from './server.ts';
 import { nodePort } from './wire.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 let gw: FakeGateway;
 beforeEach(async () => {

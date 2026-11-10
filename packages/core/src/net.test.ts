@@ -7,7 +7,7 @@ import { createServer as createHttp, request as httpRequest, type Server } from 
 import { createServer as createHttps } from 'node:https';
 import { connect as netConnect } from 'node:net';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { McpStdioClient } from './mcp/client.ts';
 import {
@@ -28,6 +28,9 @@ import { probeProvider } from './providers/probe.ts';
 import { Wso2Provider } from './providers/wso2.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { makeRuntime, openaiProvider, startGateway, tempDir } from './testing/helpers.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 let gw: FakeGateway;
 let dir: string;

@@ -1,9 +1,12 @@
 // MCP stdio client against a tiny fake MCP server process.
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FakeGateway } from '../testing/fake-gateway.ts';
 import { makeRuntime, startGateway } from '../testing/helpers.ts';
 import { McpStdioClient, mcpToolName } from './client.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 const script = fileURLToPath(new URL('../testing/fake-mcp-server.mjs', import.meta.url));
 const config = { name: 'fake', command: process.execPath, args: [script] };

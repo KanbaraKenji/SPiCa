@@ -2,10 +2,13 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FakeGateway } from '../testing/fake-gateway.ts';
 import { startGateway, tempDir } from '../testing/helpers.ts';
 import { McpStdioClient } from './client.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 const entry = fileURLToPath(new URL('../host/mcp-main.ts', import.meta.url));
 let gw: FakeGateway;

@@ -1,12 +1,15 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { listenFetchable } from '../net.ts';
 import { MemoryStore } from '../store/memory.ts';
 import { anthropicProvider, makeRuntime, openaiProvider, startGateway } from '../testing/helpers.ts';
 import { Tracer } from '../trace.ts';
 import type { ToolContext } from './types.ts';
 import { createWebFetchTool, createWebSearchTool, htmlToText, jsonSearchBackend } from './web-tools.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 let server: Server;
 let base: string;

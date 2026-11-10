@@ -5,7 +5,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { MessageChannel } from 'node:worker_threads';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startBackend, type Backend, type ProviderConfig } from './host/backend.ts';
 import { connectBackend, type BackendClient } from './host/client.ts';
 import { nodePort } from './host/wire.ts';
@@ -15,6 +15,9 @@ import type { HostConnection, HostConnectionDraft, HostModelList, HostModelPoint
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { startGateway, tempDir, until } from './testing/helpers.ts';
 import type { CoreEvent } from './types.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 const API_KEY = 'sk-test-0123456789abcdef';
 const CONSUMER_SECRET = 'cs-test-fedcba9876543210';

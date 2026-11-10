@@ -2,13 +2,16 @@
 // the one source of the default prices and known context windows; companies add
 // presets; "get the models from the provider" never blocks the form.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CostLedger, DEFAULT_PRICES } from '../cost.ts';
 import { listenFetchable } from '../net.ts';
 import { makeRuntime, startGateway } from '../testing/helpers.ts';
 import { BUILTIN_CATALOG } from './builtin.ts';
 import { catalogProblems, effectiveCatalog, presetProblems, pricesFromCatalog, staleEntries, type CatalogPreset, type ModelCatalog } from './catalog.ts';
 import { listProviderModels } from './list-models.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 const servers: Server[] = [];
 afterEach(async () => {

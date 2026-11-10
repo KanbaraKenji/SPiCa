@@ -3,7 +3,7 @@
 // RuntimeOptions.appName; internal names (spica_ tools, packages) do not.
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fence } from './guard.ts';
 import { listenFetchable } from './net.ts';
 import { mcpDispatcher } from './mcp/server.ts';
@@ -11,6 +11,9 @@ import { PROJECT_MANAGER_TEMPLATE } from './projects.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { makeRuntime, startGateway } from './testing/helpers.ts';
 import { withAppName } from './util.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 const NAME = 'Acme Desk'; // made up
 

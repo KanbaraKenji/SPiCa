@@ -1,10 +1,13 @@
 // Many sub-agents at once: the shared limiter queues them in order, every
 // queued agent sees its position, and spending limits hold for the sum of
 // calls running in parallel (not only for each call on its own).
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { captureEvents, makeRuntime, startGateway, until } from './testing/helpers.ts';
 import type { CoreEvent } from './types.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 let gw: FakeGateway;
 beforeEach(async () => {

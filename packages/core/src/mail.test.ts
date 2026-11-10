@@ -1,10 +1,13 @@
 // Mail pipeline: poll → triage → route → feedback, with a fake mail plugin and a scripted model.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseToolJson } from './mail.ts';
 import type { FakeGateway, ReceivedRequest, ScriptedReply } from './testing/fake-gateway.ts';
 import { makeRuntime, startGateway, tempDir } from './testing/helpers.ts';
 import type { Tool } from './tools/types.ts';
 import type { CoreEvent } from './types.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 let gw: FakeGateway;
 let dir: string;

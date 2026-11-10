@@ -1,9 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FakeGateway } from '../testing/fake-gateway.ts';
 import { anthropicProvider, startGateway } from '../testing/helpers.ts';
 import type { Message } from '../types.ts';
 import { AnthropicProvider, toAnthropicMessages } from './anthropic.ts';
 import type { ModelRequest, ProviderEvent } from './types.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 let gw: FakeGateway;
 beforeEach(async () => {

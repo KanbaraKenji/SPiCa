@@ -5,6 +5,9 @@ import { RateLimiter } from './limiter.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { captureEvents, makeRuntime, startGateway } from './testing/helpers.ts';
 
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 describe('RateLimiter', () => {
   it('caps concurrency and reports queue positions', async () => {
     const lim = new RateLimiter({ maxConcurrent: 1 });

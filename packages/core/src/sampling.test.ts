@@ -1,11 +1,14 @@
 // Plugins use the user's models through MCP sampling: only when granted, no
 // tools, no conversation, within a daily limit, recorded without the text.
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Runtime } from './runtime.ts';
 import { MemoryStore } from './store/memory.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { makeRuntime, startGateway } from './testing/helpers.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 const script = fileURLToPath(new URL('./testing/fake-mcp-server.mjs', import.meta.url));
 

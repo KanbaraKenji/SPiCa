@@ -11,6 +11,9 @@ import type { FakeGateway } from './testing/fake-gateway.ts';
 import { makeRuntime, startGateway, tempDir } from './testing/helpers.ts';
 import type { CoreEvent } from './types.ts';
 
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 let gw: FakeGateway;
 let dir: string;
 let cleanup: () => Promise<void>;

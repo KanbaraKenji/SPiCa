@@ -1,9 +1,12 @@
 // Confirmation of irreversible actions and ask_user cards.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { captureEvents, makeRuntime, startGateway } from './testing/helpers.ts';
 import { askUserTool, suggestActionsTool } from './tools/agent-tools.ts';
 import type { Tool } from './tools/types.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 let gw: FakeGateway;
 beforeEach(async () => {

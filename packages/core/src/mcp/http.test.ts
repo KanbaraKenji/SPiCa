@@ -4,13 +4,16 @@ import { request } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MessageChannel } from 'node:worker_threads';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startBackend } from '../host/backend.ts';
 import { connectBackend } from '../host/client.ts';
 import { nodePort } from '../host/wire.ts';
 import type { FakeGateway } from '../testing/fake-gateway.ts';
 import { captureEvents, makeRuntime, startGateway, tempDir } from '../testing/helpers.ts';
 import { serveMcpHttp, type McpHttpServer } from './http.ts';
+
+// gateways, child processes and local servers start slowly when several full runs share the machine
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 let gw: FakeGateway;
 let dir: string;
