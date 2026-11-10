@@ -524,14 +524,18 @@ export type CoreEventBody =
 
 /**
  * What one of the history tools found (event `history.card`, kept in
- * `MessageMeta.historyCards`). One row per piece, message or file; every row
- * names the conversation it is in, so a click can open it there.
+ * `MessageMeta.historyCards`). Rows: search, one per conversation (its most
+ * relevant place); read, one per message the user or an agent wrote; files,
+ * one per file. Every row names the conversation it is in, so a click can
+ * open it there. Only what the user typed and what agents answered shows up
+ * (no runtime notes, reports or tool output), and background conversations
+ * (mail sorting) are not searched.
  */
 export interface HistoryCardMeta {
   tool: 'search_history' | 'read_history' | 'find_history_files';
   /** The words searched for (search), the part of the file name (files); absent for read. */
   query?: string;
-  /** How many there were in all; `rows` may be fewer (the newest). */
+  /** How many there are in all, counted like the rows (search: conversations); `rows` may be fewer (the newest). */
   total: number;
   rows: HistoryCardRow[];
 }
@@ -546,10 +550,14 @@ export interface HistoryCardRow {
   projectName?: string;
   /** ISO 8601 with offset: when the message was written or the file came up. */
   at: string;
-  /** Message number in that conversation (to scroll to it); absent when unknown. */
+  /** Message number in that conversation (to scroll to it; search: the most relevant place); absent when unknown. */
   seq?: number;
-  /** Who wrote it (search, read). */
-  who?: 'user' | 'agent' | 'other';
+  /** Search only: how many other places in this conversation match too. */
+  more?: number;
+  /** Search only: the message numbers of every matching place, the most relevant (`seq`) first. */
+  seqs?: number[];
+  /** Who wrote it (search, read): the user, or an agent (its answer, or the task an agent gave a sub-agent). */
+  who?: 'user' | 'agent';
   /** One piece of the text (search, read), redacted, at most 300 characters; for files the path. */
   text: string;
   /** Files only: absolute or as given, and how it came up. */
