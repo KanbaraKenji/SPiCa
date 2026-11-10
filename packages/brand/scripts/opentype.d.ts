@@ -1,4 +1,4 @@
-// opentype.js 2.0 没有自带类型；这里只声明 wordmark-from-font.ts 用到的部分。
+// opentype.js 2.0 没有自带类型；这里只声明 wordmark-font.ts 用到的部分。
 declare module 'opentype.js' {
   export interface PathCommand {
     type: 'M' | 'L' | 'Q' | 'C' | 'Z';
@@ -13,6 +13,7 @@ declare module 'opentype.js' {
     index: number;
     advanceWidth: number;
     getPath(x: number, y: number, fontSize: number): { commands: PathCommand[] };
+    getBoundingBox(): { x1: number; y1: number; x2: number; y2: number };
   }
   export interface Font {
     unitsPerEm: number;

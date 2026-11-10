@@ -92,41 +92,54 @@ export function wordmarkBody(ink = 'currentColor', wm: Wordmark = WORDMARK): str
     .join('');
 }
 
+/** 字标自身的画框：从高过大写字母的部分（ascent）一直到下伸 */
+export function wordmarkViewBox(wm: Wordmark = WORDMARK): { y: number; width: number; height: number } {
+  const ascent = wm.ascent ?? 0;
+  return { y: -ascent, width: wm.width, height: ascent + wm.height + wm.descent };
+}
+
 /** 字标 SVG */
-export function wordmarkSvg(opts: { ink?: string; height?: number; className?: string; title?: string } = {}): string {
-  const wm = WORDMARK;
-  const fullH = wm.height + wm.descent;
-  const size = opts.height ? ` width="${fmt((opts.height * wm.width) / fullH)}" height="${opts.height}"` : '';
+export function wordmarkSvg(opts: { ink?: string; height?: number; className?: string; title?: string; wordmark?: Wordmark } = {}): string {
+  const wm = opts.wordmark ?? WORDMARK;
+  const vb = wordmarkViewBox(wm);
+  const size = opts.height ? ` width="${fmt((opts.height * vb.width) / vb.height)}" height="${opts.height}"` : '';
   const cls = opts.className ? ` class="${esc(opts.className)}"` : '';
   const { attr, el } = a11y(opts.title);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${wm.width} ${fullH}"${size}${cls}${attr}>${el}${wordmarkBody(opts.ink)}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${fmt(vb.y)} ${vb.width} ${vb.height}"${size}${cls}${attr}>${el}${wordmarkBody(opts.ink, wm)}</svg>`;
 }
 
 /**
  * 横标排版：花标 64 见方在左，间距 16，字标大写高 36、在花标框里竖向居中。
  * 返回画框尺寸与字标的放置变换，React 版和字符串版共用。
  */
-export const BANNER_LAYOUT = (() => {
+export function bannerLayout(wm: Wordmark = WORDMARK): Readonly<{ width: number; top: number; height: number; wordTransform: string }> {
   const gap = 16;
   const wordHeight = 36; // 大写高 = 花标框高 × 0.5625（定稿比较图都按这个比例）
-  const wordScale = wordHeight / WORDMARK.height;
+  const wordScale = wordHeight / wm.height;
   const wordX = MARK_VIEWBOX + gap;
   const wordY = (MARK_VIEWBOX - wordHeight) / 2; // 大写字母在花标框里竖向居中
-  // 下伸部分（p 的竖笔）超出花标框时，画框往下加高
-  const height = Math.max(MARK_VIEWBOX, Math.ceil(wordY + (WORDMARK.height + WORDMARK.descent) * wordScale));
-  const width = wordX + WORDMARK.width * wordScale;
+  // 下伸部分（p 的竖笔）超出花标框时，画框往下加高；高过大写字母的部分超出时，画框往上加高（top 为负）
+  const bottom = Math.max(MARK_VIEWBOX, Math.ceil(wordY + (wm.height + wm.descent) * wordScale));
+  const top = Math.min(0, Math.floor(wordY - (wm.ascent ?? 0) * wordScale));
+  const width = wordX + wm.width * wordScale;
   return Object.freeze({
     width,
-    height,
+    /** 画框上沿的 y（通常 0） */
+    top,
+    /** 画框高（从 top 算起） */
+    height: bottom - top,
     wordTransform: `translate(${fmt(wordX)} ${fmt(wordY)}) scale(${fmt(wordScale)})`,
   });
-})();
+}
+
+export const BANNER_LAYOUT = bannerLayout();
 
 /** 横标 SVG：标志 + 字标；background 给了就铺底色（宣传图、文档用） */
-export function bannerSvg(opts: { accent?: string; ink?: string; height?: number; background?: string | null; title?: string } = {}): string {
-  const L = BANNER_LAYOUT;
+export function bannerSvg(opts: { accent?: string; ink?: string; height?: number; background?: string | null; title?: string; wordmark?: Wordmark } = {}): string {
+  const wm = opts.wordmark ?? WORDMARK;
+  const L = bannerLayout(wm);
   const size = opts.height ? ` width="${fmt((opts.height * L.width) / L.height)}" height="${opts.height}"` : '';
-  const bg = opts.background ? `<rect width="${fmt(L.width)}" height="${fmt(L.height)}" fill="${opts.background}"/>` : '';
+  const bg = opts.background ? `<rect${L.top ? ` y="${fmt(L.top)}"` : ''} width="${fmt(L.width)}" height="${fmt(L.height)}" fill="${opts.background}"/>` : '';
   const { attr, el } = a11y(opts.title);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmt(L.width)} ${fmt(L.height)}"${size}${attr}>${el}${bg}${markBody(opts)}<g transform="${L.wordTransform}">${wordmarkBody(opts.ink)}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${fmt(L.top)} ${fmt(L.width)} ${fmt(L.height)}"${size}${attr}>${el}${bg}${markBody(opts)}<g transform="${L.wordTransform}">${wordmarkBody(opts.ink, wm)}</g></svg>`;
 }

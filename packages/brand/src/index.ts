@@ -23,6 +23,7 @@ export { BRAND_COLORS, CSS_VARS, type ThemeColors } from './tokens.ts';
 export { WORDMARK, type Wordmark, type WordmarkShape } from './wordmark.ts';
 export {
   BANNER_LAYOUT,
+  bannerLayout,
   bannerSvg,
   markBody,
   markSvg,
@@ -31,6 +32,7 @@ export {
   FIXED_ICON_FIT,
   wordmarkBody,
   wordmarkSvg,
+  wordmarkViewBox,
   type MarkSvgOptions,
 } from './svg.ts';
 export {
@@ -49,6 +51,7 @@ export {
   splashBriefFrame,
   splashFinishAfter,
   splashFrame,
+  splashLayout,
   splashOrbitScale,
   splashSchedule,
   splashSpeeds,
@@ -57,6 +60,7 @@ export {
   starfield,
   type SplashFinish,
   type SplashFrame,
+  type SplashLayout,
   type SplashOptions,
   type SplashSchedule,
   type SplashStar,

@@ -67,7 +67,7 @@ Spica 的标志是一朵九片瓣的花，叫「九芒」。本目录是品牌�
 
 - 字体文件和许可证：`branding/fonts/Gelasio-Bold.ttf`、`branding/fonts/OFL.txt`（上游 https://github.com/SorkinType/Gelasio 原文件，未改动）。
 - 运行时不用字体文件：`packages/brand/src/wordmark.ts` 里是转好的路径，每个字母一条，带它的水平中心（开机画面逐字点亮用）。
-- 坐标：大写字母高 64 单位，基线在 y = 64，p 的竖笔下伸 21。
+- 坐标：大写字母高 64 单位，基线在 y = 64，p 的竖笔下伸 21；i 的点和 S 的顶高出大写字母 6（`ascent`），字标画框从 y = -6 起，不再切掉它们。
 - 横标里字的大写高是花标框高的 0.5625（花标 64 见方，字大写高 36），在花标框里竖向居中，间距 16。
 
 换字体或调字距：
@@ -78,6 +78,20 @@ npm run brand:build
 ```
 
 只接受静态字重的 TTF / OTF；可变字体先取出需要的字重。
+
+### 换成别的应用名
+
+公司按自己的名字打包时，不改仓库里的任何文件，另外生成一份字标 JSON：
+
+```powershell
+npm run wordmark:from-font -w @spica/brand -- ../../branding/fonts/Gelasio-Bold.ttf --text "应用名" --json 输出路径.json   # 也可以换成公司自己的字体文件
+```
+
+- JSON 就是一个 `Wordmark` 对象，交给 `SpicaSplash`、`SpicaBanner`、`SpicaWordmark` 的 `wordmark` 属性（字符串版是 `bannerSvg` / `wordmarkSvg` 的 `wordmark` 选项）。不传就是仓库自带的 Spica 字标，和原来一样。
+- 文字原样使用，大小写不改。空格只占位置，不算一个字母；字体里缺的字会一次全列出来报错。
+- 开机画面：花标和字标作为一组水平居中；名字长到整组超过舞台宽的 80% 时，字标按比例缩小，花标大小不变。扫字的光照样从左扫到右。
+- 侧栏横标按高度等比缩放，名字越长越宽，放不放得下由使用方决定。
+- 看效果：`SPLASH_WORDMARK=输出路径.json node scripts/render-splash-video.mjs dark 112 113 7 10 <目录>` 出一帧开机画面。
 
 ## 在应用里使用
 

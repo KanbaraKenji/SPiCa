@@ -6,8 +6,8 @@ import { Resvg } from '@resvg/resvg-js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { MARK_CENTER, MARK_GEOMETRY, sparklePath } from '../src/geometry.ts';
-import { SPLASH_LAYOUT as L, SPLASH_STAGE, splashFrame, starfield } from '../src/splash.ts';
-import { WORDMARK } from '../src/wordmark.ts';
+import { SPLASH_STAGE, splashFrame, splashLayout, starfield } from '../src/splash.ts';
+import { WORDMARK as SPICA_WORDMARK } from '../src/wordmark.ts';
 
 const [theme = 'dark', fromArg = '0', toArg = '0', readyArg = '7', fpsArg = '60', outArg = 'demo-out'] = process.argv.slice(2);
 const readyAt = Number(readyArg);
@@ -17,7 +17,10 @@ const T = theme === 'dark'
   ? { bg: '#0B0F19', ink: '#F1F5F9', acc: '#62A9FF', star: '#DCE8FF', companion: '#E8F0FF', core: '#FFFFFF', glow: 0.55, vign: true }
   : { bg: '#F7F9FC', ink: '#0F172A', acc: '#2F7DE1', star: '#9DB8E0', companion: '#1B3F7A', core: null, glow: 0, vign: false };
 // 可选：SPLASH_OPTIONS 环境变量传 JSON（例如 {"finish":{"bigTurns":0.7,"diveAngle":222}}），用来出对比档
-const OPTS = process.env.SPLASH_OPTIONS ? JSON.parse(process.env.SPLASH_OPTIONS) : {};
+// 可选：SPLASH_WORDMARK 环境变量给字标 JSON 的路径（wordmark-from-font.ts --text … --json 的输出），看换了名字的版面
+const WORDMARK = process.env.SPLASH_WORDMARK ? JSON.parse(fs.readFileSync(process.env.SPLASH_WORDMARK, 'utf8')) : SPICA_WORDMARK;
+const L = splashLayout(WORDMARK);
+const OPTS = { ...(process.env.SPLASH_OPTIONS ? JSON.parse(process.env.SPLASH_OPTIONS) : {}), wordmark: WORDMARK };
 // 拖尾画法：streak = 连续光带（缺省），dots = 一串光点（SPLASH_TRAIL=dots）
 const TRAIL = process.env.SPLASH_TRAIL === 'dots' ? 'dots' : 'streak';
 const C = MARK_CENTER;

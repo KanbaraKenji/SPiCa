@@ -15,7 +15,7 @@
  * 花瓣只动透明度和缩放，形状一笔不改。
  */
 import { MARK_GEOMETRY, MARK_VIEWBOX } from './geometry.ts';
-import { WORDMARK } from './wordmark.ts';
+import { WORDMARK, type Wordmark } from './wordmark.ts';
 
 export const SPLASH_STAGE = Object.freeze({ width: 1280, height: 720 });
 
@@ -126,6 +126,8 @@ export interface SplashOptions {
   finish?: Partial<SplashFinish>;
   /** 大半径段的圈数是否按 ready 时刻微调，让扎心总从字标一侧开始（缺省 true） */
   alignDive?: boolean;
+  /** 字标（缺省仓库自带的 Spica）；换应用名时传按名字生成的字标，版面随之重排 */
+  wordmark?: Wordmark;
 }
 
 export interface SplashSchedule {
@@ -429,25 +431,54 @@ const MARK_FRACTION = 0.36; // 花标占舞台高度
 const S0 = (SPLASH_STAGE.height * MARK_FRACTION) / MARK_VIEWBOX; // 花标 64 单位 → 舞台像素
 const K = S0 * MARK_GEOMETRY.params.scale; // 花瓣局部单位 → 舞台像素（含 1.15 放大）
 const WORD_CAP = 96; // 字标大写高（舞台像素）
-const WORD_SCALE = WORD_CAP / WORDMARK.height;
 const GAP = 40;
 const markW = MARK_VIEWBOX * S0;
-const wordW = WORDMARK.width * WORD_SCALE;
-const x0 = (SPLASH_STAGE.width - (markW + GAP + wordW)) / 2;
+/** 横标（花标 + 间距 + 字标）最宽占舞台多少；字标长了就缩小字标，花标不动 */
+const MAX_BANNER_FRACTION = 0.8;
 
-export const SPLASH_LAYOUT = Object.freeze({
+export interface SplashLayout {
   /** 花心 */
-  cx: x0 + markW / 2,
-  cy: SPLASH_STAGE.height / 2 + 6,
+  cx: number;
+  cy: number;
   /** 花瓣组的缩放（局部 64 坐标 → 舞台） */
-  markScale: K,
+  markScale: number;
   /** 字标左上角与缩放 */
-  wordX: x0 + markW + GAP,
-  wordY: SPLASH_STAGE.height / 2 + 6 - WORD_CAP / 2,
-  wordScale: WORD_SCALE,
+  wordX: number;
+  wordY: number;
+  wordScale: number;
   /** 水波填满整朵花需要的半径（花瓣局部单位：长瓣尖离花心 29） */
-  fillRadius: 30,
-});
+  fillRadius: number;
+}
+
+const layoutCache = new WeakMap<Wordmark, Readonly<SplashLayout>>();
+
+/**
+ * 开机画面的版面：花标和字标作为一组在舞台里水平居中。
+ * 字标大写高 96 像素；名字长到整组超过舞台宽的 80% 时，字标按比例缩小到刚好放下（花标大小不变）。
+ */
+export function splashLayout(wm: Wordmark = WORDMARK): Readonly<SplashLayout> {
+  const hit = layoutCache.get(wm);
+  if (hit) return hit;
+  const fitScale = (SPLASH_STAGE.width * MAX_BANNER_FRACTION - markW - GAP) / wm.width;
+  const wordScale = Math.min(WORD_CAP / wm.height, fitScale);
+  const wordW = wm.width * wordScale;
+  const x0 = (SPLASH_STAGE.width - (markW + GAP + wordW)) / 2;
+  const cy = SPLASH_STAGE.height / 2 + 6;
+  const layout = Object.freeze({
+    cx: x0 + markW / 2,
+    cy,
+    markScale: K,
+    wordX: x0 + markW + GAP,
+    // 大写字母竖向对齐花心
+    wordY: cy - (wm.height * wordScale) / 2,
+    wordScale,
+    fillRadius: 30,
+  });
+  layoutCache.set(wm, layout);
+  return layout;
+}
+
+export const SPLASH_LAYOUT = splashLayout(WORDMARK);
 
 /**
  * 双星轨道（花标局部单位）：半长轴 32 的椭圆，花心在焦点上；轨道平面倾斜，
@@ -468,14 +499,14 @@ export function keplerPosition(M: number, e: number): { r: number; angle: number
 }
 
 /** 轨道平面上（相对花心）的一点 → 屏幕位置与纵深 depth（-1 后 … 1 前） */
-function project(px: number, py: number, depthRef: number, rollDeg: number = SPLASH_ORBIT.roll) {
+function project(px: number, py: number, depthRef: number, rollDeg: number = SPLASH_ORBIT.roll, at: { cx: number; cy: number } = SPLASH_LAYOUT) {
   const ey = py * SPLASH_ORBIT.squash;
   const roll = rad(rollDeg);
   const lx = px * Math.cos(roll) - ey * Math.sin(roll);
   const ly = px * Math.sin(roll) + ey * Math.cos(roll);
   return {
-    x: SPLASH_LAYOUT.cx + K * lx,
-    y: SPLASH_LAYOUT.cy + K * ly,
+    x: at.cx + K * lx,
+    y: at.cy + K * ly,
     depth: Math.max(-1, Math.min(1, py / depthRef)),
   };
 }
@@ -583,14 +614,15 @@ function ribbonPath(pts: readonly Pt[], half: readonly number[]): string {
  * @param readyAt 加载完成的时刻（秒）；还没完成传 null
  */
 export function splashFrame(t: number, readyAt: number | null, options: SplashOptions = {}): SplashFrame {
-  const L = SPLASH_LAYOUT;
+  const wm = options.wordmark ?? WORDMARK;
+  const L = splashLayout(wm);
   const period = options.orbitPeriod ?? SPLASH_TIMING.orbitPeriod;
   const k = Math.max(1, options.speedRatio ?? SPLASH_ORBIT_DEFAULTS.speedRatio);
   const e = (k - 1) / (k + 1);
   const F = finishOf(options);
   const S = splashSchedule(options, readyAt);
   const beat = period / 2;
-  const n = WORDMARK.shapes.length;
+  const n = wm.shapes.length;
   const appear = seg(t, SPLASH_TIMING.appear[0], SPLASH_TIMING.appear[1]);
   const done = readyAt !== null && t >= readyAt;
   const u = done ? t - readyAt : 0;
@@ -602,7 +634,7 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
     const uu = readyAt !== null && tt >= readyAt ? tt - readyAt : 0;
     if (uu >= S.merge) return null;
     const { px, py, roll } = uu >= S.collapseStart ? diveOf(ctx, options).at(uu - S.collapseStart) : orbitPlane(tt, ctx);
-    return [project(px, py, depthRef, roll), project(-px, -py, depthRef, roll)] as const;
+    return [project(px, py, depthRef, roll, L), project(-px, -py, depthRef, roll, L)] as const;
   };
 
   const stars: SplashStar[] = [];
@@ -627,7 +659,7 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
   const trailLen = lerp(F.loadTrail, F.trail, grow);
   const after = done ? u - S.merge : -1; // 合心后过了多久
   const trailOn = appear * lerp(F.loadTrailStrength, 1, grow) * (after > 0 ? 1 - smooth(clamp(after / trailLen)) : 1);
-  const hub = project(0, 0, depthRef);
+  const hub = project(0, 0, depthRef, SPLASH_ORBIT.roll, L);
   // 某个过去时刻的位置；合心之后的时刻都落在花心
   const pastAt = (tt: number) => starsAt(tt) ?? ([hub, hub] as const);
   if (trailOn > 0 && trailLen > 0 && (pair || after < trailLen)) {
@@ -705,13 +737,13 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
   // 字标
   const letters: Array<{ opacity: number; dy: number; glow: number }> = [];
   const sweepC = done ? seg(u, S.sweepStart, S.sweepEnd) : 0;
-  const wordEnd = L.wordX + WORDMARK.width * L.wordScale;
+  const wordEnd = L.wordX + wm.width * L.wordScale;
   const sweepFrom = L.wordX - 40;
   const sweepTo = wordEnd + 60;
   const sweepX = lerp(sweepFrom, sweepTo, inOutCubic(sweepC));
   const pxPerSec = (sweepTo - sweepFrom) / F.sweep;
   const glowFade = 1 - (done ? seg(u, S.sweepEnd, S.sweepEnd + F.letterGlow) : 0);
-  WORDMARK.shapes.forEach((shape, j) => {
+  wm.shapes.forEach((shape, j) => {
     const wave = pulse(breathT, beat, j / n);
     if (!done) {
       letters.push({ opacity: appear * (LETTER_BASE + LETTER_WAVE * wave), dy: -2.5 * wave, glow: 0 });
@@ -754,7 +786,7 @@ export function splashFrame(t: number, readyAt: number | null, options: SplashOp
 }
 
 /** 减弱动效时的静态画面：完整横标，不放星点 */
-export function splashStaticFrame(): SplashFrame {
+export function splashStaticFrame(wm: Wordmark = WORDMARK): SplashFrame {
   return {
     layer: 1,
     appear: 1,
@@ -766,7 +798,7 @@ export function splashStaticFrame(): SplashFrame {
     stars: [],
     trails: [],
     ribbons: [],
-    letters: WORDMARK.shapes.map(() => ({ opacity: 1, dy: 0, glow: 0 })),
+    letters: wm.shapes.map(() => ({ opacity: 1, dy: 0, glow: 0 })),
     finished: false,
   };
 }
@@ -778,12 +810,12 @@ export const SPLASH_BRIEF = Object.freeze({ fadeIn: 0.3, hold: 0.4, fadeOut: 0.3
  * 短版（每天第二次打开起）：完整横标淡入、停住、淡出，总长 1 秒，不放星点。
  * 1 秒到了还没 ready 就停在完整横标上等 ready，ready 后再淡出。
  */
-export function splashBriefFrame(t: number, readyAt: number | null): SplashFrame {
+export function splashBriefFrame(t: number, readyAt: number | null, wm: Wordmark = WORDMARK): SplashFrame {
   const B = SPLASH_BRIEF;
   const fadeFrom = readyAt === null ? Infinity : Math.max(B.fadeIn + B.hold, readyAt);
   const inA = seg(t, 0, B.fadeIn);
   const out = Number.isFinite(fadeFrom) ? seg(t, fadeFrom, fadeFrom + B.fadeOut) : 0;
-  return { ...splashStaticFrame(), layer: inA * (1 - out), finished: Number.isFinite(fadeFrom) && t >= fadeFrom + B.fadeOut };
+  return { ...splashStaticFrame(wm), layer: inA * (1 - out), finished: Number.isFinite(fadeFrom) && t >= fadeFrom + B.fadeOut };
 }
 
 // ---- 背景星点 ----

@@ -1,19 +1,19 @@
 import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
 import { MARK_CENTER, MARK_GEOMETRY, fmt, sparklePath } from '../geometry.ts';
 import {
-  SPLASH_LAYOUT,
   SPLASH_RIBBON_SLOTS,
   SPLASH_STAGE,
   SPLASH_TIMING,
   SPLASH_TRAIL_DOTS,
   splashBriefFrame,
   splashFrame,
+  splashLayout,
   splashStaticFrame,
   starfield,
   type SplashFinish,
   type SplashFrame,
 } from '../splash.ts';
-import { WORDMARK } from '../wordmark.ts';
+import { WORDMARK, type Wordmark, type WordmarkShape } from '../wordmark.ts';
 
 export interface SpicaSplashProps {
   /** 加载完成：从这一刻起播收尾 */
@@ -35,12 +35,13 @@ export interface SpicaSplashProps {
   skippable?: boolean;
   /** 横标下方的小字（例如版本号） */
   caption?: ReactNode;
+  /** 字标（缺省仓库自带的 Spica）；换应用名时传按名字生成的字标，版面随之重排。开机画面播放中途换它不生效 */
+  wordmark?: Wordmark;
   className?: string;
   style?: CSSProperties;
 }
 
 const C = fmt(MARK_CENTER);
-const L = SPLASH_LAYOUT;
 const STAR_R = 7;
 const STAR_SPARKLE = sparklePath(0, 0, STAR_R * 2.4, 0.16);
 /** 同时最多三颗：蓝星、伴星、扫字的光。每颗在花标后面、前面各有一个位置，按纵深切换 */
@@ -107,7 +108,7 @@ function petalPaths() {
   );
 }
 
-function letterShape(s: (typeof WORDMARK.shapes)[number], className: string) {
+function letterShape(s: WordmarkShape, className: string) {
   return s.kind === 'fill' ? (
     <path className={className} fillRule={s.evenOdd ? 'evenodd' : undefined} d={s.d} />
   ) : (
@@ -134,9 +135,11 @@ export function SpicaSplash({
   trailStyle = 'streak',
   skippable = true,
   caption,
+  wordmark = WORDMARK,
   className,
   style,
 }: SpicaSplashProps) {
+  const L = splashLayout(wordmark);
   const id = useId().replace(/:/g, '');
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -291,8 +294,8 @@ export function SpicaSplash({
       let raf = 0;
       const tick = (now: number) => {
         const t = (now - t0Ref.current) / 1000;
-        const f = withSkip(splashBriefFrame(t, readyAtRef.current), t);
-        apply(still ? { ...splashStaticFrame(), layer: f.layer, finished: f.finished } : f);
+        const f = withSkip(splashBriefFrame(t, readyAtRef.current, wordmark), t);
+        apply(still ? { ...splashStaticFrame(wordmark), layer: f.layer, finished: f.finished } : f);
         if (f.finished) {
           onDoneRef.current?.();
           return;
@@ -314,7 +317,7 @@ export function SpicaSplash({
     let finished = false;
     const tick = (now: number) => {
       const t = (now - t0Ref.current) / 1000;
-      const opts = { orbitPeriod, speedRatio, finish: finishRef.current };
+      const opts = { orbitPeriod, speedRatio, finish: finishRef.current, wordmark };
       const f = withSkip(splashFrame(t, readyAtRef.current, opts), t);
       apply(f);
       if (ctx) {
@@ -350,7 +353,7 @@ export function SpicaSplash({
       unlisten();
     };
     // 换主题、模式或节奏时重启；ready 通过 ref 传进循环，不触发重启
-  }, [theme, mode, orbitPeriod, speedRatio, skippable, trailStyle]);
+  }, [theme, mode, orbitPeriod, speedRatio, skippable, trailStyle, wordmark]);
 
   const markTransform = `translate(${fmt(L.cx)} ${fmt(L.cy)}) scale(${fmt(L.markScale)}) translate(-${C} -${C})`;
   const wordTransform = `translate(${fmt(L.wordX)} ${fmt(L.wordY)}) scale(${fmt(L.wordScale)})`;
@@ -363,7 +366,7 @@ export function SpicaSplash({
       data-mode={mode}
       style={style}
       role="img"
-      aria-label="Spica"
+      aria-label={wordmark.text ?? 'Spica'}
     >
       <canvas ref={canvasRef} className="spica-splash-stars" aria-hidden="true" />
       <svg
@@ -424,7 +427,7 @@ export function SpicaSplash({
           <circle ref={hubRef} className="spica-splash-hub" cx={C} cy={C} r={fmt(MARK_GEOMETRY.params.hubRadius)} opacity="0" />
         </g>
         <g transform={wordTransform}>
-          {WORDMARK.shapes.map((s, i) => {
+          {wordmark.shapes.map((s, i) => {
             // 辉光：暗色是一层模糊的强调色垫在字下面；浅色是一层清晰的强调色盖在字上面（不糊成脏底）
             const glow = (
               <g
