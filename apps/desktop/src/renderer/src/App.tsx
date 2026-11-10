@@ -87,10 +87,17 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       alive = false;
     };
   }, [bridge, view]);
-  // 主页 (the empty page before any conversation is open): the right panel starts
-  // closed there and opening it lasts only this visit; conversations keep the
-  // saved choice (他 2026-11-10). Not before the list has loaded, so start-up does not jump.
-  const atHome = view === 'chat' && state.loaded && !state.activeId;
+  // 主页: the empty page before any conversation is open, and whatever Spica opens
+  // by itself at start (the assistant's main conversation) until you open a
+  // conversation yourself. The right panel starts closed there and opening it
+  // lasts only this visit; conversations keep the saved choice (他 2026-11-10).
+  // Not before the list has loaded, so start-up does not jump.
+  // The conversation open when the list loaded; once another one is open (picked,
+  // or a new one started) that is over for this run.
+  const [launch, setLaunch] = useState<{ id: string | null; over: boolean } | null>(null);
+  if (state.loaded && launch === null) setLaunch({ id: state.activeId, over: false });
+  else if (launch && !launch.over && state.activeId && state.activeId !== launch.id) setLaunch({ ...launch, over: true });
+  const atHome = view === 'chat' && state.loaded && (!state.activeId || (launch !== null && !launch.over && state.activeId === launch.id));
   const [homeRight, setHomeRight] = useState(false);
   if (!atHome && homeRight) setHomeRight(false);
   const panelPrefs = atHome ? { ...settings.panels, right: homeRight } : settings.panels;
