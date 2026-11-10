@@ -423,6 +423,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   }, [bridge, shownKey, turnError]);
   // A conversation on a model that was unticked or whose connection was deleted.
   const shownGone = Boolean(shown && models.length && !modelOptions.some((o) => o.providerId === shown.providerId && o.model === shown.model));
+  const shownProvider = shown ? models.find((p) => p.id === shown.providerId)?.name : undefined;
   const composerTools: ComposerTools = {
     pickFiles: () => bridge.pickFiles('添加附件'),
     pathForFile: bridge.pathForFile,
@@ -450,7 +451,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     ...(shown
       ? {
           model: {
-            label: shownGone ? `${shown.model}（已移除）` : [models.find((p) => p.id === shown.providerId)?.name, shown.model].filter(Boolean).join(' · '),
+            label: shown.model,
+            ...(shownGone ? { note: '（已移除）' } : shownProvider ? { provider: shownProvider } : {}),
             options: modelOptions.map((o) => ({
               label: o.label,
               group: o.group,

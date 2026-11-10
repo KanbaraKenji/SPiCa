@@ -1,8 +1,9 @@
 // Multi-line input. Enter sends, Shift+Enter adds a line. While an IME is
 // composing (Chinese pinyin etc.), Enter confirms the candidate and never sends.
-// Below the text: attachments and the working folder (new conversation) on the
-// left; approval, model and how full the context is on the right.
-import { useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
+// In the box: the text, attachments, send. Under the box: the working folder
+// (new conversation) on the left; model, approval and how full the context is
+// on the right.
+import { useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { ApprovalMode } from '@spica/protocol';
 import { ContextMenu, type MenuItem } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
@@ -21,7 +22,8 @@ export interface ComposerTools {
   approval?: { mode: ApprovalMode; onChange(mode: ApprovalMode): void };
   /** The model this conversation uses; options to switch (a menu only when there is a choice). */
   /** Options by connection (`group`); `marks`: 默认 / 强模型. */
-  model?: { label: string; options: { label: string; group?: string; marks?: string; current: boolean; onPick(): void }[] };
+  /** `label`: the model's name; `provider` and `note` are shown beside it in the secondary colour. */
+  model?: { label: string; provider?: string; note?: string; options: { label: string; group?: string; marks?: string; current: boolean; onPick(): void }[] };
   /** Tokens the context takes now and the model's window (only when the window is known). */
   context?: { tokens: number; window: number };
   /** Pictures: pasted (Ctrl+V), dropped or picked; absent: pictures are attached as plain files. */
@@ -52,34 +54,89 @@ export function isComposing(e: KeyboardEvent): boolean {
   return e.nativeEvent.isComposing || e.keyCode === 229;
 }
 
-/** 12345 -> 「1.2 万」, 980 -> 「980」 (token counts, as people say them). */
+/** Token counts in k: 28200 -> 「28.2k」, 160000 -> 「160k」, 980 -> 「980」. */
 export function tokenText(n: number): string {
-  if (n < 10_000) return String(Math.round(n));
-  const w = n / 10_000;
-  return `${w >= 100 ? Math.round(w) : w.toFixed(1).replace(/\.0$/, '')} 万`;
+  if (n < 1000) return String(Math.round(n));
+  const k = n / 1000;
+  return `${k >= 100 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, '')}k`;
 }
 
 const baseName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 
+/** 「28.2k / 160k 18%」: what the ring shows on hover. */
+export function contextText(tokens: number, window: number): string {
+  return `${tokenText(tokens)} / ${tokenText(window)} ${Math.min(100, Math.round((tokens / window) * 100))}%`;
+}
+
+/** The ring alone; the numbers show while the pointer is on it (or it has the focus). */
 function ContextRing({ tokens, window }: { tokens: number; window: number }) {
-  const label = `上下文已用 ${tokenText(tokens)} / ${tokenText(window)}（${Math.min(100, Math.round((tokens / window) * 100))}%）`;
+  const text = contextText(tokens, window);
   const share = Math.min(1, tokens / window);
   const r = 7;
   const c = 2 * Math.PI * r;
   return (
-    <span className={share >= 0.8 ? 'composer-context is-full' : 'composer-context'} role="img" aria-label={label} title={label}>
+    <span className={share >= 0.8 ? 'composer-context is-full' : 'composer-context'} role="img" aria-label={`上下文占用 ${text}`} tabIndex={0}>
       <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
         <circle cx="9" cy="9" r={r} className="ring-track" />
         <circle cx="9" cy="9" r={r} className="ring-fill" strokeDasharray={`${c * share} ${c}`} transform="rotate(-90 9 9)" />
       </svg>
-      {/* The number too, so the ring is not taken for a 'working' spinner. */}
-      <span className="composer-context-pct">{Math.min(100, Math.round(share * 100))}%</span>
+      <span className="composer-tip" aria-hidden>
+        {text}
+      </span>
     </span>
   );
 }
 
-const APPROVAL_TEXT: Record<ApprovalMode, string> = { manual: '每次确认', auto: '自动批准' };
-const APPROVAL_HINT = '自动批准：不可逆操作直接执行；处理外部内容后的操作仍需确认。';
+const APPROVAL_TEXT: Record<ApprovalMode, string> = { manual: 'Manual', auto: 'Auto' };
+const APPROVAL_HINT = 'Auto：不可逆操作直接执行；处理外部内容后的操作仍需确认。';
+
+type ModelTool = NonNullable<ComposerTools['model']>;
+
+/** The model under the box: its name in the text colour, the provider beside it in the secondary one.
+ *  On a narrow box only the model icon (the full name on hover). A button only when there is a choice. */
+function ModelChip({ model, buttonRef, onOpen }: { model: ModelTool; buttonRef: RefObject<HTMLButtonElement | null>; onOpen(el: HTMLElement, items: MenuItem[]): void }) {
+  const full = [model.provider, model.label].filter(Boolean).join(' · ') + (model.note ?? '');
+  const body = (
+    <>
+      <span className="composer-model-icon" aria-hidden>
+        <Icon name="model" size={15} />
+      </span>
+      <span className="composer-chip-text composer-model-text">
+        {model.provider ? <span className="composer-aside">{model.provider} · </span> : null}
+        {model.label}
+        {model.note ? <span className="composer-aside">{model.note}</span> : null}
+      </span>
+    </>
+  );
+  if (model.options.length <= 1) {
+    return (
+      <span className="composer-label composer-model" title={full}>
+        {body}
+      </span>
+    );
+  }
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      className="composer-chip composer-model"
+      aria-haspopup="menu"
+      aria-label={full}
+      title={`${full}（切换模型，下一步生效）`}
+      onClick={(e) =>
+        onOpen(
+          e.currentTarget,
+          model.options.map((o) => {
+            const hint = [o.current ? '当前' : '', o.marks ?? ''].filter(Boolean).join(' · ');
+            return { label: o.label, ...(o.group ? { group: o.group } : {}), ...(hint ? { hint } : {}), onSelect: o.onPick };
+          }),
+        )
+      }
+    >
+      {body}
+    </button>
+  );
+}
 
 export function Composer({ running, onSend, onStop, sessionKey, tools }: ComposerProps) {
   const [text, setText] = useState(() => drafts.get(sessionKey) ?? '');
@@ -198,8 +255,9 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
       </button>,
     );
   }
+  const below: ReactNode[] = [];
   if (t.folder) {
-    left.push(
+    below.push(
       // No folder picked: just the folder icon (选择工作文件夹); picked: its name.
       t.folder.path ? (
         <button key="folder" type="button" className="composer-chip" title={`工作文件夹：${t.folder.path}`} onClick={t.folder.onPick}>
@@ -285,6 +343,22 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
         <div className="composer-bar">
           <div className="composer-left">{left}</div>
           <div className="composer-right">
+            {running ? (
+              <button type="button" className="icon-btn composer-stop" onClick={onStop} aria-label="停止" title="停止">
+                <Icon name="stop" size={14} />
+              </button>
+            ) : null}
+            <button type="button" className="icon-btn composer-send" onClick={send} disabled={!canSend} aria-label="发送" title="发送（Enter）">
+              <Icon name="send" size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+      {below.length || t.model || t.approval || t.context ? (
+        <div className="composer-below">
+          <div className="composer-below-left">{below}</div>
+          <div className="composer-below-right">
+            {t.model ? <ModelChip model={t.model} buttonRef={modelBtn} onOpen={openMenu} /> : null}
             {t.approval ? (
               <button
                 type="button"
@@ -300,46 +374,12 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
                 }}
               >
                 <span className="composer-chip-text">{APPROVAL_TEXT[t.approval.mode]}</span>
-                <Icon name="chevronDown" size={12} />
               </button>
-            ) : null}
-            {t.model ? (
-              t.model.options.length > 1 ? (
-                <button
-                  ref={modelBtn}
-                  type="button"
-                  className="composer-chip composer-model"
-                  aria-haspopup="menu"
-                  title="切换模型（下一步生效）"
-                  onClick={(e) =>
-                    openMenu(
-                      e.currentTarget,
-                      t.model!.options.map((o) => {
-                        const hint = [o.current ? '当前' : '', o.marks ?? ''].filter(Boolean).join(' · ');
-                        return { label: o.label, ...(o.group ? { group: o.group } : {}), ...(hint ? { hint } : {}), onSelect: o.onPick };
-                      }),
-                    )
-                  }
-                >
-                  <span className="composer-chip-text">{t.model.label}</span>
-                  <Icon name="chevronDown" size={12} />
-                </button>
-              ) : (
-                <span className="composer-label">{t.model.label}</span>
-              )
             ) : null}
             {t.context ? <ContextRing tokens={t.context.tokens} window={t.context.window} /> : null}
-            {running ? (
-              <button type="button" className="icon-btn composer-stop" onClick={onStop} aria-label="停止" title="停止">
-                <Icon name="stop" size={14} />
-              </button>
-            ) : null}
-            <button type="button" className="icon-btn composer-send" onClick={send} disabled={!canSend} aria-label="发送" title="发送（Enter）">
-              <Icon name="send" size={16} />
-            </button>
           </div>
         </div>
-      </div>
+      ) : null}
       </div>
       {menu ? <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} /> : null}
       {viewing ? <ImageViewer url={viewing.url} name={viewing.name} onClose={() => setViewing(null)} /> : null}

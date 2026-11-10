@@ -103,9 +103,9 @@ function ToolRow({ block }: { block: ToolBlock }) {
       未完成，已停止等待
     </span>
   ) : block.durationMs !== undefined ? (
-    block.autoApproved ? `自动批准 · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs)
+    block.autoApproved ? `Auto · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs)
   ) : block.autoApproved ? (
-    '自动批准'
+    'Auto'
   ) : null;
   const body = block.result ?? block.preview;
   return (

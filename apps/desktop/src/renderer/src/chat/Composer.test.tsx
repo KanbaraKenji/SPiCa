@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { Composer } from './Composer';
+import { Composer, contextText, tokenText } from './Composer';
 
 afterEach(cleanup);
 
@@ -77,15 +77,16 @@ describe('Composer controls', () => {
         }}
       />,
     );
-    expect(screen.getByRole('img', { name: '上下文已用 2.3 万 / 12.8 万（18%）' })).toBeTruthy();
+    // The ring alone; the numbers are in its hover text.
+    expect(screen.getByRole('img', { name: '上下文占用 23.4k / 128k 18%' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /deepseek-chat/ }));
     // One heading per connection; the tag says which is in use and which is the default.
     expect(screen.getAllByText('DeepSeek · 尾号 3f9a')).toHaveLength(1);
     expect(screen.getByRole('menuitem', { name: /^deepseek-chat/ }).textContent).toBe('deepseek-chat当前 · 默认');
     fireEvent.click(screen.getByRole('menuitem', { name: 'deepseek-reasoner' }));
     expect(pickB).toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /每次确认/ }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '自动批准' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Auto' }));
     expect(onApproval).toHaveBeenCalledWith('auto');
   });
 
@@ -101,8 +102,33 @@ describe('Composer controls', () => {
     );
     expect(screen.queryByRole('button', { name: /gpt-mini/ })).toBeNull();
     expect(screen.getByText('gpt-mini')).toBeTruthy();
-    expect(screen.queryByRole('img', { name: /上下文已用/ })).toBeNull();
+    expect(screen.queryByRole('img', { name: /上下文占用/ })).toBeNull();
     expect(screen.queryByTitle(/工作文件夹/)).toBeNull();
+  });
+});
+
+describe('token counts under the box', () => {
+  it('are written in k, the share as a whole percent', () => {
+    expect(tokenText(980)).toBe('980');
+    expect(tokenText(28_200)).toBe('28.2k');
+    expect(tokenText(160_000)).toBe('160k');
+    expect(tokenText(1_000)).toBe('1k');
+    expect(contextText(28_200, 160_000)).toBe('28.2k / 160k 18%');
+  });
+
+  it('shows the provider beside the model name, both in the hover text', () => {
+    render(
+      <Composer
+        running={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        sessionKey="prov"
+        tools={{ model: { label: 'deepseek-flash', provider: 'DeepSeek', options: [{ label: 'a', current: true, onPick: vi.fn() }, { label: 'b', current: false, onPick: vi.fn() }] } }}
+      />,
+    );
+    const chip = screen.getByRole('button', { name: 'DeepSeek · deepseek-flash' });
+    expect(chip.textContent).toBe('DeepSeek · deepseek-flash');
+    expect(chip.querySelector('.composer-aside')?.textContent).toBe('DeepSeek · ');
   });
 });
 

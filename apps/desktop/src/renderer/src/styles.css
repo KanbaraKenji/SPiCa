@@ -1358,7 +1358,7 @@ button.tree-twisty:hover {
   color: var(--spica-placeholder);
 }
 
-/* Controls under the text: attach / folder on the left, approval / model / context / send on the right. */
+/* In the box under the text: attach on the left, stop / send on the right. */
 .composer-bar {
   display: flex;
   align-items: center;
@@ -1375,25 +1375,45 @@ button.tree-twisty:hover {
   min-width: 0;
 }
 
-/* Both sides give way on a narrow window: the chips shorten (ellipsis), the icons keep their size. */
-.composer-left,
-.composer-right {
-  flex: 0 1 auto;
-}
-
-.composer-bar .icon-btn,
-.composer-right > .composer-chip {
+.composer-bar .icon-btn {
   flex: none;
 }
 
-/* On the right only the model gives way; 每次确认 stays whole. */
-.composer-right > .composer-model {
+/* Under the box: the folder on the left; model, Manual / Auto and the ring on the right. */
+.composer-below {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 28px;
+  margin: 4px -4px 0;
+}
+
+.composer-below-left,
+.composer-below-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.composer-below-right {
+  margin-left: auto;
+}
+
+.composer-below-left > *,
+.composer-below-right > * {
+  flex: none;
+}
+
+/* Only the model gives way (ellipsis, then the icon alone). */
+.composer-below-right > .composer-model {
   flex: 0 1 auto;
 }
 
 .composer-chip {
   height: 28px;
-  max-width: 220px;
+  max-width: 260px;
   min-width: 0;
   flex: 0 1 auto;
   display: inline-flex;
@@ -1401,13 +1421,12 @@ button.tree-twisty:hover {
   gap: 4px;
   padding: 0 8px;
   border-radius: var(--radius-m);
-  color: var(--spica-muted);
+  color: var(--spica-ink);
   font-size: 13px;
 }
 
 .composer-chip:hover {
   background: var(--spica-hover);
-  color: var(--spica-ink);
 }
 
 .composer-chip-text {
@@ -1417,27 +1436,76 @@ button.tree-twisty:hover {
   text-overflow: ellipsis;
 }
 
-/* The model when there is nothing to switch to: plain text, not a button. */
-.composer-label {
-  min-width: 0;
-  padding: 0 8px;
-  font-size: 13px;
-  color: var(--spica-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Words beside the model's name (its provider, 已移除): the secondary colour. */
+.composer-aside {
+  color: var(--spica-muted);
 }
 
+/* The model when there is nothing to switch to: the same text, not a button. */
+.composer-label {
+  height: 28px;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  font-size: 13px;
+  color: var(--spica-ink);
+}
+
+.composer-model-icon {
+  display: none;
+  color: var(--spica-muted);
+}
+
+/* A narrow box: the model is its icon; the full name is on hover. */
+@container composer (max-width: 440px) {
+  .composer-model-text {
+    display: none;
+  }
+
+  .composer-model-icon {
+    display: inline-flex;
+  }
+}
+
+/* The ring alone; the numbers show above it on hover. */
 .composer-context {
+  position: relative;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   padding: 0 6px;
-  font-size: 12px;
-  color: var(--spica-faint);
+  border-radius: var(--radius-m);
+  outline: none;
 }
 
-.composer-context-pct {
-  margin-left: 4px;
+.composer-context:hover,
+.composer-context:focus-visible {
+  background: var(--spica-hover);
+}
+
+.composer-tip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--spica-menu);
+  box-shadow: var(--spica-shadow);
+  color: var(--spica-ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+  z-index: 3;
+}
+
+.composer-context:hover .composer-tip,
+.composer-context:focus-visible .composer-tip {
+  opacity: 1;
 }
 
 .composer-context .ring-track {
@@ -3643,6 +3711,7 @@ button.tree-twisty:hover {
   position: relative;
   max-width: 760px;
   margin: 0 auto;
+  container: composer / inline-size;
 }
 
 /* As wide as the box, just above it; laid over the conversation so the box does not move. */
