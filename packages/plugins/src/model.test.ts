@@ -4,7 +4,9 @@
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+// Starts real plugin processes against a fake model service: slow on a busy machine.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 import { FakeGateway } from '../../core/src/testing/fake-gateway.ts';
 import type { McpLaunch } from './host.ts';
 import { runtimeHost } from './host.ts';

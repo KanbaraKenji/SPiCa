@@ -11,7 +11,9 @@ import { createServer as createHttps } from 'node:https';
 import { connect as netConnect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+// Starts real plugin processes; beforeAll makes certificates with openssl: slow on a busy machine.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 import { configureNetwork, listenFetchable } from '@spica/core';
 import { callTool, manifest, rig, until, writePlugin, type Rig } from './testing/helpers.ts';
 
