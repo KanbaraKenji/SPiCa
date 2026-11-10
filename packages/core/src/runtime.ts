@@ -463,6 +463,15 @@ export class Runtime implements RuntimeInternals {
     return this.sessions().find((s) => s.info().role === 'top' && s.parentId === null && s.info().templateId === 'top');
   }
 
+  /**
+   * Where runtime-wide events (settings, mail settings, projects) are sent:
+   * the top-level thread when there is one, else '' — never creates it, since
+   * that needs a configured model (a fresh install has none).
+   */
+  get eventHost(): { sessionId: string; parentChain: string[] } {
+    return { sessionId: this.#existingTop()?.id ?? '', parentChain: [] };
+  }
+
   get workflows(): ReadonlyMap<string, WorkflowDef> {
     return this.#workflows.workflows;
   }
@@ -538,8 +547,7 @@ export class Runtime implements RuntimeInternals {
     if (by) this.logProjectActivity(by, 'stage', summary, stage.id, note);
     const manager = this.session(p.managerSessionId);
     if (manager) this.recordDecision(manager.id, `Project "${p.name}": ${summary}`, 'agent');
-    const top = this.top();
-    this.events.emit({ sessionId: top.id, parentChain: [] }, { type: 'project.updated', project: updated });
+    this.events.emit(this.eventHost, { type: 'project.updated', project: updated });
     return updated;
   }
 
@@ -669,8 +677,7 @@ export class Runtime implements RuntimeInternals {
     const updated: ProjectInfo = { ...p, name: n, updatedAt: isoNow() };
     this.store.upsertProject(updated);
     this.session(p.managerSessionId)?.rename(n);
-    const top = this.top();
-    this.events.emit({ sessionId: top.id, parentChain: [] }, { type: 'project.updated', project: updated });
+    this.events.emit(this.eventHost, { type: 'project.updated', project: updated });
     return updated;
   }
 
@@ -717,8 +724,7 @@ export class Runtime implements RuntimeInternals {
       this.events.emit({ sessionId: id, parentChain }, { type: 'session.deleted' });
     }
     this.store.deleteProject(p.id);
-    const top = this.top();
-    this.events.emit({ sessionId: top.id, parentChain: [] }, { type: 'project.deleted', projectId: p.id });
+    this.events.emit(this.eventHost, { type: 'project.deleted', projectId: p.id });
   }
 
   addWorkObject(projectId: string, obj: { level: string; name: string; parentId?: string | null; data?: Record<string, unknown> }): WorkObject {

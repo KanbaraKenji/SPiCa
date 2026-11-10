@@ -38,6 +38,30 @@ export interface ProviderConfig {
   reasoning?: { field?: string; echo?: 'never' | 'tool_turns' | 'always' };
   /** anthropic: model-hosted web search on/off. */
   webSearch?: boolean;
+  /**
+   * Context window per model name, in tokens (positive whole numbers). Wins over
+   * what the price table knows; needs no price. A session reads it every time
+   * its info is asked for, so a change applies without restarting.
+   */
+  contextWindows?: Record<string, number>;
+}
+
+/** Hand the providers' context windows to the ledger; providers not listed lose theirs. Returns warnings. */
+function applyContextWindows(runtime: Runtime, providers: ProviderConfig[], previous: Iterable<string>): string[] {
+  const warnings: string[] = [];
+  const before = new Map(runtime.sessions().map((s) => [s, s.info().contextWindow]));
+  const keep = new Set(providers.map((p) => p.id));
+  for (const id of previous) if (!keep.has(id)) runtime.ledger.setContextWindows(id, {});
+  for (const p of providers) {
+    const bad = runtime.ledger.setContextWindows(p.id, p.contextWindows ?? {});
+    if (bad.length) warnings.push(`provider ${p.id}: context window ignored for ${bad.join(', ')} (needs a positive whole number of tokens)`);
+  }
+  // open sessions whose window changed tell the UI now, not at their next model call
+  for (const [s, was] of before) {
+    const info = s.info();
+    if (info.contextWindow !== was) runtime.events.emit({ sessionId: s.id, parentChain: s.parentChain }, { type: 'session.updated', info });
+  }
+  return warnings;
 }
 
 export interface BackendConfig {
@@ -194,11 +218,13 @@ export function applySettings(runtime: Runtime, patch: SettingsPatch): { changed
   const warnings: string[] = [];
   if (patch.providers) {
     const keep = new Set(patch.providers.map((p) => p.id));
+    const previous = [...runtime.providerIds];
     for (const c of patch.providers) {
       runtime.addRedactions(providerRedactions(c));
       runtime.setProvider(createProvider(c), c.limits ?? {});
     }
     for (const id of runtime.providerIds) if (!keep.has(id)) runtime.removeProvider(id);
+    warnings.push(...applyContextWindows(runtime, patch.providers, previous));
     changed.push('providers');
   }
   if (patch.defaults) {
@@ -233,7 +259,7 @@ export function applySettings(runtime: Runtime, patch: SettingsPatch): { changed
     warnings.push(...configureNetwork(patch.network).warnings);
     changed.push('network');
   }
-  runtime.events.emit({ sessionId: runtime.top().id, parentChain: [] }, { type: 'runtime.configured', changed, warnings });
+  runtime.events.emit(runtime.eventHost, { type: 'runtime.configured', changed, warnings });
   return { changed, warnings };
 }
 
@@ -293,6 +319,7 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
       ...(cfg.mail ? { mail: cfg.mail } : {}),
     });
     warnings.push(...runtime.workflowErrors);
+    warnings.push(...applyContextWindows(runtime, cfg.providers, []));
     const restored = runtime.restore();
     const extensions: BackendExtension[] = [];
     for (const ext of cfg.extensions ?? []) {
@@ -346,6 +373,8 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
         /** Test connection with a provider config from the settings form. */
         probeProvider: (config: unknown, model: unknown) =>
           probeProvider(createProvider(config as ProviderConfig), { model: String(model), tracer: runtime.tracer }),
+        /** Context window the core knows for a model (to pre-fill the settings form), or null. kind: ProviderConfig kind. */
+        knownContextWindow: (kind: unknown, model: unknown) => runtime.ledger.knownContextWindow(String(kind), String(model)),
       },
     });
     let closed = false;

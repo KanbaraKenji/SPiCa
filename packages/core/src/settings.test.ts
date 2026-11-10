@@ -149,4 +149,61 @@ describe('runtime settings', () => {
       await b.close();
     }
   });
+
+  it('settings change on a fresh install with no model configured, and create no session', () => {
+    const rt = makeRuntime(gw, { cwd: dir, providers: [], defaults: { providerId: 'none', model: 'none', maxTokens: 64 } });
+    const events: CoreEvent[] = [];
+    rt.events.on((e) => events.push(e));
+    expect(applySettings(rt, { providers: [], mail: { intervalMinutes: 3 }, locale: 'en-US' }).changed).toEqual(['providers', 'locale', 'mail']);
+    expect(rt.sessions()).toEqual([]);
+    expect(events.filter((e) => e.type === 'runtime.configured' || e.type === 'mail.configured').map((e) => e.sessionId)).toEqual(['', '']);
+    // the first model arrives: from now on there can be sessions
+    applySettings(rt, { providers: [{ id: 'gw', kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1` }], defaults: { providerId: 'gw', model: 'm' } });
+    expect(rt.createSession().config.providerId).toBe('gw');
+  });
+
+  it('context windows come from the model settings first, then the known table; the form can ask what is known', async () => {
+    const b = await startBackend({
+      dbPath: join(dir, 'db', 'spica.db'),
+      providers: [{ id: 'gw', kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1`, contextWindows: { m: 128_000, bad: -1 } }],
+      defaults: { providerId: 'gw', model: 'm', maxTokens: 64 },
+      cwd: dir,
+      mail: { enabled: false },
+    });
+    const ch = new MessageChannel();
+    b.server.attach(nodePort(ch.port1));
+    const client = connectBackend(nodePort(ch.port2));
+    const events: CoreEvent[] = [];
+    b.runtime.events.on((e) => events.push(e));
+    try {
+      expect(b.warnings.join(' ')).toMatch(/gw: context window ignored for bad/);
+      const s = b.runtime.createSession();
+      expect(s.info().contextWindow).toBe(128_000); // no price needed
+      s.setModel('gw', 'claude-haiku-5-5');
+      expect(s.info().contextWindow).toBeNull(); // the gateway is not 'anthropic': nothing set, nothing known for this kind
+      s.setModel('gw', 'm');
+
+      // changed while running: the open session says so right away
+      events.length = 0;
+      await client.call('configure', { providers: [{ id: 'gw', kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1`, contextWindows: { m: 64_000 } }] });
+      expect(s.info().contextWindow).toBe(64_000);
+      const updated = events.filter((e) => e.type === 'session.updated' && e.sessionId === s.id);
+      expect(updated.map((e) => (e.type === 'session.updated' ? e.info.contextWindow : null))).toEqual([64_000]);
+      // left out: back to the known table (here: nothing)
+      await client.call('configure', { providers: [{ id: 'gw', kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1` }] });
+      expect(s.info().contextWindow).toBeNull();
+
+      // what the core knows, to pre-fill the form (also the same model behind another kind of endpoint)
+      expect(await client.call('knownContextWindow', 'anthropic', 'claude-haiku-5-5')).toBe(1_000_000);
+      expect(await client.call('knownContextWindow', 'wso2', 'claude-sonnet-5-5')).toBe(1_000_000);
+      expect((await client.call('knownContextWindow', 'openai-compatible', 'deepseek-flash')) ?? null).toBeNull(); // the port gives null as undefined
+      // a configured value is not "known"
+      await client.call('configure', { providers: [{ id: 'gw', kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1`, contextWindows: { m: 64_000 } }] });
+      expect((await client.call('knownContextWindow', 'openai-compatible', 'm')) ?? null).toBeNull();
+    } finally {
+      ch.port1.close();
+      ch.port2.close();
+      await b.close();
+    }
+  });
 });

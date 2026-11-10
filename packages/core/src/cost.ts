@@ -107,6 +107,8 @@ export class CostLedger {
   /** Calls in flight: their worst case counts as spent until they are recorded. */
   readonly #held = new Set<{ scope: CostScope; usd: number }>();
   #onRelease: (() => void)[] = [];
+  /** providerId -> model -> context window, from the settings. */
+  readonly #windows = new Map<string, Record<string, number>>();
 
   constructor(prices: PriceTable = DEFAULT_PRICES, budget: BudgetConfig = {}) {
     this.#prices = prices;
@@ -126,13 +128,50 @@ export class CostLedger {
     return this.#prices['*']?.['*'] ?? FALLBACK_PRICE;
   }
 
-  /** Context window of a model when the price table knows it exactly, else null. */
+  /**
+   * Context window of a model: what the settings give for this provider and
+   * model first, then the price table's exact entry (provider id, then kind), else null.
+   */
   contextWindow(providerId: string, providerKind: string, model: string): number | null {
+    const set = this.#windows.get(providerId)?.[model];
+    if (set) return set;
     for (const t of [this.#prices[providerId], this.#prices[providerKind]]) {
       const w = t?.[model]?.contextWindow;
       if (w) return w;
     }
     return null;
+  }
+
+  /**
+   * What the price table knows of a model's context window, ignoring the
+   * settings (to pre-fill a form): the provider kind's exact entry, then an
+   * exact entry under any provider (the same model behind a gateway), else null.
+   */
+  knownContextWindow(providerKind: string, model: string): number | null {
+    const w = this.#prices[providerKind]?.[model]?.contextWindow;
+    if (w) return w;
+    for (const t of Object.values(this.#prices)) {
+      const any = t[model]?.contextWindow;
+      if (any) return any;
+    }
+    return null;
+  }
+
+  /**
+   * Context windows set in the settings for one provider (model -> tokens),
+   * replacing what was set before; an empty map clears them. Entries that are
+   * not a positive whole number are left out and named in the result.
+   */
+  setContextWindows(providerId: string, windows: Record<string, number>): string[] {
+    const ok: Record<string, number> = {};
+    const bad: string[] = [];
+    for (const [model, n] of Object.entries(windows)) {
+      if (Number.isInteger(n) && n > 0) ok[model] = n;
+      else bad.push(model);
+    }
+    if (Object.keys(ok).length) this.#windows.set(providerId, ok);
+    else this.#windows.delete(providerId);
+    return bad;
   }
 
   estimate(scope: Pick<CostScope, 'providerId' | 'providerKind' | 'model'>, usage: Usage): number {

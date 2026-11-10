@@ -68,7 +68,7 @@
 - **author**（`meta.author`）：`user` / `parent` / `child` / `runtime` / `plugin`。语言规则、守卫和导出都靠它区分「用户亲手打的字」和系统 / 其他 Agent 写的。
 - **meta** 里界面要用的都是结构化字段，界面自己写中文，内核不往里塞给人看的文案：文件卡 `fileCards`、建议按钮 `suggestedActions`、回传来源（`fromSessionId` 等）、`partial` / `interrupted`、停用的工具 `toolsUnavailable`、外来内容 `untrusted` / `guard`、转来的信 `mails`。
 - **会话记录**：`id`、`parentId`、`role`（top / manager / worker）、`title`（可空，名字由界面定）、`status`、配置（provider、模型、maxTokens、工作文件夹、工具白名单、最大轮数、界面语言、模板 id、项目 id、批准方式）。
-- **会话信息**（`SessionInfo`，界面用）：除上面这些外还有花费、`approvalMode`（manual / auto）、`contextTokens`（上一次模型调用的输入加输出，即当前上下文大约占多少 token，第一次调用前是 null）、`contextWindow`（所用模型的窗口，价表里有确切条目才给，否则 null）。每次模型调用后、改模型和改批准方式时发 `session.updated { info }`。重启后 `contextTokens` 从可追溯记录回填。
+- **会话信息**（`SessionInfo`，界面用）：除上面这些外还有花费、`approvalMode`（manual / auto）、`contextTokens`（上一次模型调用的输入加输出，即当前上下文大约占多少 token，第一次调用前是 null）、`contextWindow`（所用模型的窗口：先看模型设置里的 `ProviderConfig.contextWindows[模型名]`，再看价表的确切条目，都没有才是 null；设置一改，打开着的会话立刻发 `session.updated`）。每次模型调用后、改模型和改批准方式时发 `session.updated { info }`。重启后 `contextTokens` 从可追溯记录回填。
 
 **输入框的会话级控制**（M9）
 - **改模型**：`setSessionModel(会话, provider, 模型)`（MCP `spica_set_model`）。从下一次模型调用起生效，正在进行的那次不动；主循环每轮开头重读配置。provider 不存在就报错。会话里记一条运行时备注（`kind: 'note'`，`meta.decision`、`meta.modelChange {from, to}`，正文告诉模型换了模型、照常继续）。正在跑时这条备注排到下一轮边界，不会插进工具调用和结果中间。同时按「用户的决定」回传给父会话。
@@ -227,7 +227,7 @@
 
 ## 12. 花费、限流与并行
 
-- **价表**是数据（`cost.ts`），按 provider id、再按种类、再按模型查，`*` 兜底，可整体覆盖、运行中可换。条目可带 `contextWindow`（只从确切的模型条目取，不从 `*` 推测）和 `longContext { above, input, output, … }`（提示超过 above 个 token 时用的另一档价格）。默认表里 Claude Haiku / Sonnet / Opus 5.5 的窗口是 100 万 token；Haiku 5.5 的提示超过 10 万 token 时按 0.50 / 2.50 USD 算。查不到时用故意偏高的兜底价（输入 10、输出 50 USD / 百万 token），绝不按 0 算。Claude 的价格按官方表；DeepSeek 的价格是占位，标 `unverified`，只影响估算准不准，不影响上限生效。
+- **价表**是数据（`cost.ts`），按 provider id、再按种类、再按模型查，`*` 兜底，可整体覆盖、运行中可换。条目可带 `contextWindow`（只从确切的模型条目取，不从 `*` 推测）和 `longContext { above, input, output, … }`（提示超过 above 个 token 时用的另一档价格）。默认表里 Claude Haiku / Sonnet / Opus 5.5 的窗口是 100 万 token（设置表单用后台方法 `knownContextWindow(kind, model)` 取这个值预填，先按种类、再按任何 provider 下同名的确切条目，不看设置里填的值）；Haiku 5.5 的提示超过 10 万 token 时按 0.50 / 2.50 USD 算。查不到时用故意偏高的兜底价（输入 10、输出 50 USD / 百万 token），绝不按 0 算。Claude 的价格按官方表；DeepSeek 的价格是占位，标 `unverified`，只影响估算准不准，不影响上限生效。
 - **上限**：全局、单会话、单次运行、单次调用，外加按 provider 单独设。策略是**不开始一次可能越线的调用**：按「估算输入 + maxTokens 全用完」算最坏花费。输入估算取「按字符估」和「这个会话上一次调用的真实输入 token 数」中较大的那个。累计过警戒线（默认 80%）时，`cost` 事件带 warning；越线发 `budget.stop`，写明花了多少、上限多少。重启后累计从记录回填。
 - **并行**：检查放在拿到限流名额之后。通过就把这次调用的最坏花费预留（`ledger.reserve`），记账时换成真实花费；出错、被停、被插话打断都释放。后面的调用检查时，已花的加上所有预留一起算，所以 16 个子任务同时起跑也不会一起冲过上限。只是因为预留占着才不够时，这次调用不停，状态 `queued`，等有预留释放再查；真不够了才停。
 - **限流器**（`limiter.ts`）：每个 provider 一个，并发数和每分钟请求数按部署配置，所有会话共用，运行中可改（放宽时立刻放行排队的人）。排队时发 `queue { position, waitingFor }` 和 `queued` 状态，位次只在变化时发，先来先服务。一次模型调用（含内部重试）占一个名额。
@@ -437,6 +437,7 @@
 
 | 里程碑 | 日期 | 测试 | 真模型冒烟 |
 |---|---|---|---|
+| M11 | 2026-11-10 | 新增 2 条：模型设置里的上下文上限（不用填价格、优先于价表、运行中改了打开的会话立刻更新、填错的值给警告、`knownContextWindow` 给表单预填）；全新安装没配模型时改设置不报错、不建会话（设置、邮件设置、项目的事件发到默认线程，没有就发到空会话 id） | — |
 | M10 | 2026-11-10 | 新增：插件界面直接调工具 3 条（结果原样、不进历史、不经模型、只能调自己的、不可逆的等用户确认并且拒绝时什么都不跑、钩子照样能拦、限流）；代理（模型调用经本地代理、noProxy 直连、运行中改、环境变量兜底、`null` 关掉、密码不外露、要登录的代理）；证书（用 openssl 现场生成自签 CA，没配 `caFile` 时握手失败并报 `tls.untrusted`，配上后直连和经代理都通，拿掉后又失败，读不了的文件只警告）；WSO2 和测试连接（token 地址回登录页 / 凭据错 / 连不上 → stage token，网关回 HTML 错误页 → stage model + `gateway.html`，重取后仍 401 时报 `wso2.clock_skew` 或 `wso2.token_not_accepted`）；邮件默认关闭并给出 `triageModel`。core + plugins + 评测插件 + apps/desktop 共 384 条 | — |
 | M9 | 2026-11-10 | 新增会话级控制 5 条和项目重命名 / 删除 2 条（删除时停掉在跑的子会话、文件夹不动、来信改回新事务、发件人记忆清掉、另一个项目不受影响、重启后不回来）；会话级控制：每次模型调用后的上下文用量和模型窗口（重启后还在）；默认价表的 Claude 窗口和 Haiku 长提示价；改模型在下一次调用生效、正在进行的不动、备注不插进工具对中间、回传给父会话；附件按外来数据围栏、给卡片、读不了的报错、带附件的一轮里不可逆动作仍要确认；批准方式 auto 放行不可逆工具并记录，钩子要求的确认和守卫的确认照样要人，子 Agent 继承。core + plugins + 评测插件 + apps/desktop 共 359 条 | — |
 | M8 | 2026-11-10 | 新增守卫 5 条：中英文检测、围栏不可关闭；插件把发送 / 移动设成自动，读信后发信、移信、读 .env、开信里的链接都停下等确认，拒绝后什么都没执行；用户再要求就照常执行；转来的信和由它派出的子 Agent 受限；邮件流水线的消息围栏与标记。core + plugins + 评测插件 219 条 | `npm run smoke:guard`：虚构邮箱 3 封正常 + 4 封注入信，插件把发送和移动设成自动，脚本拒绝一切确认：没有发出 / 转发 / 移动任何信，没读 .env，没跑命令，没开可疑链接；改归属的信仍按内容归类；4 封都被标记；正常信照常分拣。25 秒约 0.009 USD（这次模型自己就没去做，「被挡下」由单元测试保证） |

@@ -141,7 +141,7 @@ export class MailPipeline {
     if (this.running && (!shouldRun || patch.intervalMinutes !== undefined)) this.stop();
     if (shouldRun && !this.running) this.start();
     const settings = this.settings;
-    this.#rt.events.emit({ sessionId: this.#rt.top().id, parentChain: [] }, { type: 'mail.configured', settings, running: this.running });
+    this.#rt.events.emit(this.#rt.eventHost, { type: 'mail.configured', settings, running: this.running });
     return settings;
   }
 
