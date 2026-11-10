@@ -616,7 +616,7 @@ ipcMain.handle(DesktopChannel.PluginViewCall, async (_e, plugin: unknown, view: 
     if (/[一-鿿]/.test(msg)) return { content: msg, isError: true };
     // Known causes in words (e.g. no model configured yet), else the plugin's own message.
     const human = humanError(msg);
-    return { content: human.startsWith('出错了：') ? `插件调用失败：${msg.slice(0, 300)}` : human, isError: true };
+    return { content: human.startsWith('出错：') ? `插件调用失败：${msg.slice(0, 300)}` : human, isError: true };
   }
 });
 ipcMain.handle(DesktopChannel.PluginViewFile, async (_e, plugin: unknown, path: unknown): Promise<string | null> => {
