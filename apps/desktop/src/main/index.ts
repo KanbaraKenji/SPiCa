@@ -19,6 +19,7 @@ import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
 import type { PluginService } from './plugins/types';
 import { documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder } from './dev-hooks';
+import { withErrorHint } from './error-hint';
 import { FakePluginService } from './plugins/fake';
 import { UpdateService } from './update/service';
 import { spawn } from 'node:child_process';
@@ -35,7 +36,6 @@ import {
   BUILTIN_CATALOG,
   DEFAULT_PRICES,
   effectiveCatalog,
-  NET_HINTS,
   type CatalogPreset,
   type HostConnectionDraft,
   type ListModelsResult,
@@ -1018,17 +1018,6 @@ ipcMain.handle(DesktopChannel.ListProviderModels, async (_e, draft: ProviderDraf
   if (!p || p.listModels === 'none') return { ok: false, code: 'list.unsupported', message: 'demo', hint: '该服务商不支持获取模型列表，请从列表选择或手动输入模型。' };
   return { ok: true, models: p.models.map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), contextWindow: m.contextWindow, inCatalog: true, chat: true })) };
 });
-
-/**
- * A model error the core knows by code (e.g. a WSO2 gateway fault) carries the
- * core's own words for it (NET_HINTS), so the conversation says what to do.
- */
-function withErrorHint<E extends { type: string }>(event: E): E {
-  if (event.type !== 'error') return event;
-  const code = (event as { code?: unknown }).code;
-  const hint = typeof code === 'string' ? NET_HINTS[code] : undefined;
-  return hint ? { ...event, hint } : event;
-}
 
 backend.onEvent((event) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DesktopChannel.AgentEvent, withErrorHint(event));
