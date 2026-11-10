@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -19,6 +19,16 @@ describe('deploy.json', () => {
     expect(d.app).toMatchObject(DEFAULT_APP);
     expect(d.updateSource).toBe('\\\\server\\share');
     expect(builderOverrides(d.app, '1.0.0')).toEqual([]);
+  });
+
+  it('deploy.example.json copied as is changes nothing; its example, filled in, renames', () => {
+    const example = readFileSync(new URL('../deploy.example.json', import.meta.url), 'utf8');
+    const d = readDeploy(dirWith(example));
+    expect(d.app).toMatchObject({ ...DEFAULT_APP, icon: null, font: null });
+    expect(builderOverrides(d.app, '1.0.0')).toEqual([]);
+    const filled = JSON.parse(example);
+    filled.app = { ...filled.app, name: 'Nova Desk', id: 'com.example.nova' };
+    expect(readDeploy(dirWith(filled)).app).toMatchObject({ name: 'Nova Desk', id: 'com.example.nova', icon: null, font: null });
   });
 
   it('a name and id rename the installer, shortcut and app id', () => {
