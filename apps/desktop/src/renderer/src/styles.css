@@ -3668,14 +3668,30 @@ button.tree-twisty:hover {
   color: var(--spica-bg);
 }
 
-/* The model in use takes no pictures: one line, and the way to another model. */
-.composer-warn {
+/* The input box and the strip above it for notices about the message being written. */
+.composer-stack {
+  position: relative;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+/* As wide as the box, just above it; laid over the conversation so the box does not move. */
+.composer-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 2;
   margin: 0;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: var(--spica-warning-soft);
+  color: var(--spica-ink);
   font-size: 13px;
-  color: var(--spica-warning);
 }
 
 /* Pictures sent with a message, under its bubble. */

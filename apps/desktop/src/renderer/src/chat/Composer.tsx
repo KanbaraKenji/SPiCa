@@ -207,6 +207,19 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
   }
   return (
     <div className="composer-wrap">
+      {/* Notices about the message being written sit in one strip just above the box, as wide as it.
+          Laid over the conversation's lower edge, so the box never moves when one comes or goes. */}
+      <div className="composer-stack">
+      {blocked ? (
+        <p className="composer-strip" role="status">
+          <span>当前模型不支持图片，请切换模型。</span>
+          {t.model && t.model.options.length > 1 ? (
+            <button type="button" className="text-btn" onClick={() => modelBtn.current?.click()}>
+              切换模型
+            </button>
+          ) : null}
+        </p>
+      ) : null}
       <div
         className="composer"
         onDragOver={(e) => {
@@ -233,16 +246,6 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
               </span>
             ))}
           </div>
-        ) : null}
-        {blocked ? (
-          <p className="composer-warn" role="status">
-            当前模型不支持图片，请切换模型。
-            {t.model && t.model.options.length > 1 ? (
-              <button type="button" className="text-btn" onClick={() => modelBtn.current?.click()}>
-                切换模型
-              </button>
-            ) : null}
-          </p>
         ) : null}
         {files.length > pictures.length ? (
           <div className="composer-files">
@@ -325,6 +328,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
             </button>
           </div>
         </div>
+      </div>
       </div>
       {menu ? <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} /> : null}
       {viewing ? <ImageViewer url={viewing.url} name={viewing.name} onClose={() => setViewing(null)} /> : null}
