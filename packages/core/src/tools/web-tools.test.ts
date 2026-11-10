@@ -1,6 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { listenFetchable } from '../net.ts';
 import { MemoryStore } from '../store/memory.ts';
 import { anthropicProvider, makeRuntime, openaiProvider, startGateway } from '../testing/helpers.ts';
 import { Tracer } from '../trace.ts';
@@ -49,7 +50,7 @@ beforeAll(async () => {
     res.writeHead(500);
     res.end();
   });
-  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  await listenFetchable(server);
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 afterAll(async () => {

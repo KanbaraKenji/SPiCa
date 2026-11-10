@@ -5,7 +5,7 @@ import { writeFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer as createHttp, request as httpRequest, type Server } from 'node:http';
 import { createServer as createHttps } from 'node:https';
-import { connect as netConnect, type AddressInfo } from 'node:net';
+import { connect as netConnect } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,7 @@ import {
   configureNetwork,
   gatewayFaultCode,
   httpErrorCode,
+  listenFetchable,
   NET_HINTS,
   netErrorCode,
   netFetch,
@@ -50,8 +51,7 @@ afterEach(async () => {
 
 const listen = async (s: Server) => {
   servers.push(s);
-  await new Promise<void>((r) => s.listen(0, '127.0.0.1', () => r()));
-  return (s.address() as AddressInfo).port;
+  return listenFetchable(s);
 };
 
 /** A forward proxy: plain HTTP by absolute URL, HTTPS by CONNECT; optionally wants a login. */

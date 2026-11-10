@@ -13,7 +13,7 @@
 // - JSON only, at most 4 MB per request.
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { listenFetchable } from '../net.ts';
 import type { Runtime } from '../runtime.ts';
 import { mcpDispatcher, type McpServeOptions } from './server.ts';
 
@@ -140,14 +140,8 @@ export async function serveMcpHttp(rt: Runtime, opts: McpHttpOptions = {}): Prom
     });
   });
   server.requestTimeout = 0; // spica_run may wait for minutes
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(opts.port ?? 0, host, () => {
-      server.off('error', reject);
-      resolve();
-    });
-  });
-  const port = (server.address() as AddressInfo).port;
+  // any free port is one fetch-based scripts can reach (not one of fetch's blocked ports)
+  const port = await listenFetchable(server, host, opts.port ?? 0);
   const shown = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
   return {
     url: `http://${shown}:${port}${path}`,

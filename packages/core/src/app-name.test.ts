@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fence } from './guard.ts';
+import { listenFetchable } from './net.ts';
 import { mcpDispatcher } from './mcp/server.ts';
 import { PROJECT_MANAGER_TEMPLATE } from './projects.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
@@ -64,7 +65,7 @@ describe('appName', () => {
       agent = String(req.headers['user-agent']);
       res.writeHead(200, { 'content-type': 'text/plain' }).end('hello');
     });
-    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    await listenFetchable(server);
     try {
       const rt = makeRuntime(gw, { appName: NAME });
       const tool = rt.tools.get('web_fetch')!;

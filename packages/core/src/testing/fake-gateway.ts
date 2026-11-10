@@ -5,6 +5,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { randomUUID } from 'node:crypto';
+import { listenFetchable } from '../net.ts';
 
 export interface ScriptedToolCall {
   id?: string;
@@ -70,7 +71,7 @@ export class FakeGateway {
 
   async start(): Promise<this> {
     this.#server = createServer((req, res) => void this.#handle(req, res));
-    await new Promise<void>((r) => this.#server!.listen(0, '127.0.0.1', r));
+    await listenFetchable(this.#server); // never a port fetch refuses (Windows hands out ports from 1024 up)
     return this;
   }
 

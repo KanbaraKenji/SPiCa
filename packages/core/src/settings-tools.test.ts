@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { startBackend, type Backend, type ProviderConfig } from './host/backend.ts';
 import { connectBackend, type BackendClient } from './host/client.ts';
 import { nodePort } from './host/wire.ts';
+import { listenFetchable } from './net.ts';
 import { mcpDispatcher } from './mcp/server.ts';
 import type { HostModel, HostModelDraft } from './settings-tools.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
@@ -128,7 +129,7 @@ async function wso2Gateway(): Promise<string> {
         'data: {"id":"c","model":"m-gw","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}\n\ndata: [DONE]\n\n',
     );
   });
-  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  await listenFetchable(server);
   closers.push(() => new Promise<void>((r) => (server.closeAllConnections(), server.close(() => r()))));
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
@@ -136,8 +137,7 @@ async function wso2Gateway(): Promise<string> {
 /** A local address nothing listens on (refused at once). */
 async function closedUrl(): Promise<string> {
   const s = createServer();
-  await new Promise<void>((r) => s.listen(0, '127.0.0.1', r));
-  const port = (s.address() as AddressInfo).port;
+  const port = await listenFetchable(s);
   await new Promise<void>((r) => s.close(() => r()));
   return `http://127.0.0.1:${port}`;
 }
