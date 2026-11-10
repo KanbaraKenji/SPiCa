@@ -3,8 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { DEFAULT_SETTINGS } from '../../../shared/settings';
 import { General, rangeStart, type GeneralProps } from './General';
+import { dropAllDrafts } from './drafts';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  dropAllDrafts();
+});
 
 const now = new Date('2026-11-09T15:30:00+08:00');
 
@@ -81,5 +85,21 @@ describe('turning mail sorting on', () => {
     fireEvent.click(screen.getByRole('switch', { name: '把来信分到项目' }));
     fireEvent.click(screen.getByRole('button', { name: '取消' }));
     expect(p.onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('填一半离开', () => {
+  it('a proxy typed but not saved is still there when you come back', () => {
+    setup();
+    fireEvent.change(screen.getByLabelText(/^代理地址/), { target: { value: 'http://proxy.example.com:8080' } });
+    cleanup();
+    const p = setup();
+    expect((screen.getByLabelText(/^代理地址/) as HTMLInputElement).value).toBe('http://proxy.example.com:8080');
+    fireEvent.click(screen.getByRole('button', { name: '保存代理' }));
+    expect(p.onChange).toHaveBeenCalled();
+    cleanup();
+    setup();
+    // Saved (the settings in this test do not change), so the draft is gone.
+    expect((screen.getByLabelText(/^代理地址/) as HTMLInputElement).value).toBe('');
   });
 });

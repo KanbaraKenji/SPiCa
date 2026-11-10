@@ -6,6 +6,7 @@ import { Models, type ProvidersApi } from './Models';
 import { Plugins, type PluginsApi } from './Plugins';
 import { About } from './About';
 import { General, type GeneralProps, type WorkflowsApi } from './General';
+import { Icon } from '../ui/Icon';
 import type { UpdateState } from '../../../shared/updates';
 
 export type SettingsTab = 'general' | 'appearance' | 'models' | 'plugins' | 'about';
@@ -28,6 +29,8 @@ export interface SettingsViewProps {
   onInstallUpdate(): void;
   tab: SettingsTab;
   onTab(tab: SettingsTab): void;
+  /** Back to the conversation (same as Esc). */
+  onBack(): void;
   workflows: WorkflowsApi;
   pickFolder(): Promise<string | null>;
   onBackendRestarted(listener: () => void): () => void;
@@ -40,11 +43,16 @@ export interface SettingsViewProps {
   localConnect?: GeneralProps['localConnect'];
 }
 
-export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect }: SettingsViewProps) {
+export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, onBack, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect }: SettingsViewProps) {
   const { settings } = useShell(shell);
   return (
     <div className="settings">
       <div className="settings-column">
+        <div className="settings-top">
+          {/* Only the arrow: he wants no text on it; the name is for hover and screen readers. */}
+          <button type="button" className="icon-btn settings-back" aria-label="返回对话" title="返回对话（Esc）" onClick={onBack}>
+            <Icon name="back" size={16} />
+          </button>
         <div className="tabs" role="tablist" aria-label="设置">
           {TABS.map((t) => (
             <button
@@ -60,6 +68,7 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
               {t.label}
             </button>
           ))}
+        </div>
         </div>
         <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
           {tab === 'general' ? (

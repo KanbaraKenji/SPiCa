@@ -4,8 +4,12 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { Models, type ProvidersApi } from './Models';
 import type { ProviderList } from '../../../shared/bridge';
 import type { ProviderDraft, ProviderView } from '../../../shared/providers';
+import { dropAllDrafts } from './drafts';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  dropAllDrafts();
+});
 
 function fakeApi(initial: ProviderView[] = []) {
   let items = initial;
@@ -32,7 +36,7 @@ function fakeApi(initial: ProviderView[] = []) {
   return api;
 }
 
-const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
+const type = (label: string | RegExp, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 describe('Models', () => {
   it('points out missing fields before testing or saving', async () => {
@@ -69,6 +73,71 @@ describe('Models', () => {
     expect(screen.getByRole('button', { name: /公司网关/ })).toBeTruthy();
     expect((screen.getByLabelText('API Key') as HTMLInputElement).value).toBe('');
     expect((screen.getByLabelText('API Key') as HTMLInputElement).placeholder).toBe('已保存；不改就留空');
+  });
+
+  it('keeps 强模型 and the limits under 更多选项, folded', async () => {
+    render(<Models api={fakeApi()} />);
+    fireEvent.click(await screen.findByRole('button', { name: /添加模型/ }));
+    expect(screen.queryByLabelText(/^强模型/)).toBeNull();
+    expect(screen.queryByLabelText(/^同时请求/)).toBeNull();
+    const more = screen.getByRole('button', { name: '更多选项' });
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(more);
+    expect(screen.getByLabelText(/^强模型/)).toBeTruthy();
+    expect(screen.getByLabelText(/^每分钟请求/)).toBeTruthy();
+  });
+
+  it('opens 更多选项 when something in it is wrong', async () => {
+    render(<Models api={fakeApi()} />);
+    fireEvent.click(await screen.findByRole('button', { name: /添加模型/ }));
+    fireEvent.click(screen.getByRole('button', { name: '更多选项' }));
+    type(/^同时请求/, '-3');
+    fireEvent.click(screen.getByRole('button', { name: '更多选项' }));
+    expect(screen.queryByLabelText(/^同时请求/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(screen.getByRole('button', { name: '更多选项' }).getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByLabelText(/^同时请求/)).toBeTruthy();
+  });
+
+  it('a half-filled form is still there after leaving the page', async () => {
+    const api = fakeApi();
+    const first = render(<Models api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: /添加模型/ }));
+    type('名称', '公司网关');
+    type('API Key', 'sk-1');
+    first.unmount();
+
+    render(<Models api={api} />);
+    await screen.findByText('填了一半，还没保存');
+    expect((screen.getByLabelText('名称') as HTMLInputElement).value).toBe('公司网关');
+    expect((screen.getByLabelText('API Key') as HTMLInputElement).value).toBe('sk-1');
+  });
+
+  it('each model keeps its own unsaved edit; saving clears it', async () => {
+    const api = fakeApi([
+      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, hasSecret: true, isDefault: true },
+    ]);
+    render(<Models api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
+    type('模型', 'm2');
+    fireEvent.click(screen.getByRole('button', { name: /添加模型/ }));
+    expect(screen.getByText('改了还没保存')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /旧网关/ }));
+    expect((screen.getByLabelText('模型') as HTMLInputElement).value).toBe('m2');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(await screen.findByText('已保存')).toBeTruthy();
+    expect(screen.queryByText('改了还没保存')).toBeNull();
+  });
+
+  it('typing a field back to what is saved is not a draft', async () => {
+    const api = fakeApi([
+      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, hasSecret: true, isDefault: true },
+    ]);
+    render(<Models api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
+    type('模型', 'm2');
+    type('模型', 'm');
+    expect(screen.queryByText('改了还没保存')).toBeNull();
   });
 
   it('deletes only after confirming', async () => {

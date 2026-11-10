@@ -5,6 +5,7 @@ import { DEFAULT_NETWORK, MAIL_INTERVALS, type MailPrefs, type NetworkPrefs, typ
 import type { LocalConnectInfo, NetworkState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
+import { useKeptDraft } from './drafts';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Switch } from './Plugins';
 
@@ -103,8 +104,8 @@ function Developer({ settings, onChange, localConnect }: GeneralProps) {
 /** 网络: proxy, hosts that skip it, an extra certificate file, Windows' certificates. */
 function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) {
   const saved = settings.network ?? DEFAULT_NETWORK;
-  const [proxy, setProxy] = useState(saved.proxy);
-  const [noProxy, setNoProxy] = useState(saved.noProxy);
+  const [proxy, setProxy, proxyDone] = useKeptDraft('network.proxy', saved.proxy);
+  const [noProxy, setNoProxy, noProxyDone] = useKeptDraft('network.noProxy', saved.noProxy);
   const [state, setState] = useState<NetworkState | null>(null);
   const changed = proxy.trim() !== saved.proxy || noProxy.trim() !== saved.noProxy;
   const save = (patch: Partial<NetworkPrefs>) => onChange({ network: { ...saved, ...patch } });
@@ -144,7 +145,12 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
         </label>
       </div>
       <div className="rule-actions">
-        <button type="button" className="btn" disabled={!changed} onClick={() => save({ proxy: proxy.trim(), noProxy: noProxy.trim() })}>
+        <button type="button" className="btn" disabled={!changed} onClick={() => {
+            save({ proxy: proxy.trim(), noProxy: noProxy.trim() });
+            proxyDone();
+            noProxyDone();
+          }}
+        >
           保存代理
         </button>
       </div>
@@ -310,8 +316,8 @@ const lines = (text: string) =>
     .filter(Boolean);
 
 function IgnoreRules({ mail, onSave }: { mail: MailPrefs; onSave(ignore: MailPrefs['ignore']): void }) {
-  const [from, setFrom] = useState(mail.ignore.from.join('\n'));
-  const [subject, setSubject] = useState(mail.ignore.subject.join('\n'));
+  const [from, setFrom, fromDone] = useKeptDraft('mail.ignore.from', mail.ignore.from.join('\n'));
+  const [subject, setSubject, subjectDone] = useKeptDraft('mail.ignore.subject', mail.ignore.subject.join('\n'));
   const changed = lines(from).join('\n') !== mail.ignore.from.join('\n') || lines(subject).join('\n') !== mail.ignore.subject.join('\n');
   return (
     <div className="settings-group">
@@ -328,7 +334,12 @@ function IgnoreRules({ mail, onSave }: { mail: MailPrefs; onSave(ignore: MailPre
       </div>
       <p className="settings-hint rule-hint">一行一条。符合的来信直接忽略，不交给模型分。也可以写成 /规则/（正则表达式）。</p>
       <div className="rule-actions">
-        <button type="button" className="btn" disabled={!changed} onClick={() => onSave({ from: lines(from), subject: lines(subject) })}>
+        <button type="button" className="btn" disabled={!changed} onClick={() => {
+            onSave({ from: lines(from), subject: lines(subject) });
+            fromDone();
+            subjectDone();
+          }}
+        >
           保存规则
         </button>
       </div>

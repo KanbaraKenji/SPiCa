@@ -17,6 +17,7 @@ import {
 import { friendlyError } from '../store/agent';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
+import { dropDraft, keepDraft, keptDraft } from './drafts';
 
 export interface ProvidersApi {
   list(): Promise<ProviderList>;
@@ -65,6 +66,13 @@ function Field({ label, value, onChange, error, placeholder, type = 'text', hint
   );
 }
 
+// Which model was open and what was typed into each one, kept while you look elsewhere.
+const SELECTED = 'models.selected';
+const draftKey = (id: string | 'new') => `models.draft:${id}`;
+
+/** 强模型 and the two limits: first-time setup does not need them. */
+const MORE_FIELDS = ['strongModel', 'maxConcurrent', 'requestsPerMinute'] as const;
+
 function numText(v: number | null): string {
   return v === null ? '' : String(v);
 }
@@ -78,8 +86,12 @@ function parseNum(v: string): number | null {
 
 export function Models({ api }: { api: ProvidersApi }) {
   const [list, setList] = useState<ProviderList | null>(null);
-  const [selected, setSelected] = useState<string | 'new' | null>(null);
-  const [draft, setDraft] = useState<ProviderDraft>(emptyDraft());
+  const [selected, setSelectedState] = useState<string | 'new' | null>(() => keptDraft<string>(SELECTED) ?? null);
+  const [draft, setDraft] = useState<ProviderDraft>(() => {
+    const sel = keptDraft<string>(SELECTED);
+    return (sel ? keptDraft<ProviderDraft>(draftKey(sel)) : undefined) ?? emptyDraft();
+  });
+  const [more, setMore] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [result, setResult] = useState<TestResult | null>(null);
   const [busy, setBusy] = useState<'test' | 'save' | null>(null);
@@ -89,7 +101,19 @@ export function Models({ api }: { api: ProvidersApi }) {
     let alive = true;
     api
       .list()
-      .then((l) => alive && setList(l))
+      .then((l) => {
+        if (!alive) return;
+        setList(l);
+        // Back on this page with a model open: its draft if any, else what is saved.
+        const sel = keptDraft<string>(SELECTED);
+        if (!sel || sel === 'new') return;
+        const p = l.items.find((x) => x.id === sel);
+        if (!p) {
+          dropDraft(draftKey(sel));
+          dropDraft(SELECTED);
+          setSelectedState(null);
+        } else if (!keptDraft(draftKey(sel))) setDraft(draftFrom(p));
+      })
       .catch((e: unknown) => alive && setResult({ ok: false, message: friendlyError(e) }));
     return () => {
       alive = false;
@@ -100,15 +124,28 @@ export function Models({ api }: { api: ProvidersApi }) {
   const current = selected && selected !== 'new' ? items.find((p) => p.id === selected) : undefined;
   const hasSecret = Boolean(current?.hasSecret);
 
+  function setSelected(id: string | 'new' | null) {
+    setSelectedState(id);
+    if (id === null) dropDraft(SELECTED);
+    else keepDraft(SELECTED, id, null);
+  }
+
+  /** What the open model looks like saved (a blank form for a new one). */
+  const savedDraft = (): ProviderDraft => (current ? draftFrom(current) : emptyDraft());
+
   const open = (p: ProviderView | 'new') => {
-    setSelected(p === 'new' ? 'new' : p.id);
-    setDraft(p === 'new' ? emptyDraft() : draftFrom(p));
+    const id = p === 'new' ? 'new' : p.id;
+    setSelected(id);
+    setDraft(keptDraft<ProviderDraft>(draftKey(id)) ?? (p === 'new' ? emptyDraft() : draftFrom(p)));
     setErrors({});
     setResult(null);
+    setMore(false);
   };
 
   const set = (patch: Partial<ProviderDraft>) => {
-    setDraft((d) => ({ ...d, ...patch }));
+    const next = { ...draft, ...patch };
+    setDraft(next);
+    if (selected) keepDraft(draftKey(selected), next, savedDraft());
     setResult(null);
   };
 
@@ -120,6 +157,7 @@ export function Models({ api }: { api: ProvidersApi }) {
   const check = (): boolean => {
     const e = validateDraft(draft, hasSecret);
     setErrors(e);
+    if (MORE_FIELDS.some((f) => f in e)) setMore(true);
     return Object.keys(e).length === 0;
   };
 
@@ -141,6 +179,7 @@ export function Models({ api }: { api: ProvidersApi }) {
     try {
       const next = await api.save(draft);
       setList(next);
+      if (selected) dropDraft(draftKey(selected));
       const saved = draft.id ? next.items.find((p) => p.id === draft.id) : next.items.find((p) => !items.some((o) => o.id === p.id));
       if (saved) {
         setSelected(saved.id);
@@ -166,6 +205,7 @@ export function Models({ api }: { api: ProvidersApi }) {
     setDeleting(null);
     try {
       setList(await api.remove(p.id));
+      dropDraft(draftKey(p.id));
       setSelected(null);
     } catch (e) {
       setResult({ ok: false, message: friendlyError(e) });
@@ -187,6 +227,7 @@ export function Models({ api }: { api: ProvidersApi }) {
                 {kindLabel(p.kind)} · {p.model}
               </span>
               {list?.problems[p.id] ? <span className="provider-problem">{list.problems[p.id]}</span> : null}
+              {keptDraft(draftKey(p.id)) ? <span className="provider-unsaved">改了还没保存</span> : null}
             </button>
             {p.isDefault ? (
               <span className="provider-default">默认</span>
@@ -200,6 +241,7 @@ export function Models({ api }: { api: ProvidersApi }) {
         <button type="button" className={selected === 'new' ? 'provider-add is-on' : 'provider-add'} onClick={() => open('new')}>
           <Icon name="plus" size={14} />
           添加模型
+          {keptDraft(draftKey('new')) ? <span className="provider-unsaved">填了一半，还没保存</span> : null}
         </button>
       </div>
 
@@ -251,11 +293,21 @@ export function Models({ api }: { api: ProvidersApi }) {
           />
           {draft.kind === 'wso2' ? <Field label="Scope" value={draft.scope} onChange={(scope) => set({ scope })} hint="网关没要求就留空" /> : null}
           <Field label="模型" value={draft.model} onChange={(model) => set({ model })} error={errors.model} placeholder="平时用的模型名" />
-          <Field label="强模型" value={draft.strongModel} onChange={(strongModel) => set({ strongModel })} hint="重活用的模型，可留空" />
-          <div className="field-pair">
-            <Field label="同时请求" type="number" value={numText(draft.maxConcurrent)} onChange={(v) => set({ maxConcurrent: parseNum(v) })} error={errors.maxConcurrent} hint="留空表示不限" />
-            <Field label="每分钟请求" type="number" value={numText(draft.requestsPerMinute)} onChange={(v) => set({ requestsPerMinute: parseNum(v) })} error={errors.requestsPerMinute} hint="留空表示不限" />
+          <div className="provider-more">
+            <button type="button" className="fold-head" aria-expanded={more} onClick={() => setMore((m) => !m)}>
+              <span className="fold-label">更多选项</span>
+              <Icon name="chevronRight" size={14} className="fold-chevron" />
+            </button>
           </div>
+          {more ? (
+            <>
+              <Field label="强模型" value={draft.strongModel} onChange={(strongModel) => set({ strongModel })} hint="重活用的模型，可留空" />
+              <div className="field-pair">
+                <Field label="同时请求" type="number" value={numText(draft.maxConcurrent)} onChange={(v) => set({ maxConcurrent: parseNum(v) })} error={errors.maxConcurrent} hint="留空表示不限" />
+                <Field label="每分钟请求" type="number" value={numText(draft.requestsPerMinute)} onChange={(v) => set({ requestsPerMinute: parseNum(v) })} error={errors.requestsPerMinute} hint="留空表示不限" />
+              </div>
+            </>
+          ) : null}
 
           <div className="provider-actions">
             {current ? (

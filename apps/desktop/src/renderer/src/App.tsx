@@ -510,6 +510,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               onInstallUpdate={installUpdate}
               tab={settingsTab}
               onTab={setSettingsTab}
+              onBack={() => setView('chat')}
               workflows={bridge.workflows}
               pickFolder={() => bridge.pickFolder('选择工作流文件夹')}
               onBackendRestarted={bridge.backend.onRestarted}

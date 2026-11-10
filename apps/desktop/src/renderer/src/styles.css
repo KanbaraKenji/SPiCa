@@ -950,7 +950,8 @@ button.tree-twisty:hover {
   transition: transform 0.15s ease;
 }
 
-.fold-open > .fold-head .fold-chevron {
+.fold-open > .fold-head .fold-chevron,
+.fold-head[aria-expanded='true'] .fold-chevron {
   transform: rotate(90deg);
 }
 
@@ -1831,10 +1832,17 @@ button.tree-twisty:hover {
 }
 
 /* Settings tabs: the open one is a filled pill, no underline. */
+/* Back arrow, then the tabs, on one line at the top left of the settings page. */
+.settings-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 24px -6px;
+}
+
 .tabs {
   display: inline-flex;
   gap: 2px;
-  margin-bottom: 24px;
   padding: 3px;
   border-radius: var(--radius-m);
   background: var(--spica-hover);
@@ -1995,6 +2003,20 @@ button.tree-twisty:hover {
 
 .input.is-invalid {
   border-color: var(--spica-danger);
+}
+
+/* 更多选项: lines up with the field labels above it. */
+.provider-more {
+  margin-left: -8px;
+}
+
+.provider-unsaved {
+  font-size: 12px;
+  color: var(--spica-muted);
+}
+
+.provider-add .provider-unsaved {
+  margin-left: 8px;
 }
 
 .field-pair {

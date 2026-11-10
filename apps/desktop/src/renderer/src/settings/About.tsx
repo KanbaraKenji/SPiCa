@@ -1,6 +1,6 @@
 // Settings > 关于: version, where updates and announcements come from, and
 // checking for an update by hand.
-import { useState } from 'react';
+import { useKeptDraft } from './drafts';
 import type { UpdateState } from '../../../shared/updates';
 import { Icon } from '../ui/Icon';
 
@@ -15,11 +15,12 @@ export interface AboutProps {
 }
 
 export function About({ version, update, ownSource, onSource, onCheck, onInstall }: AboutProps) {
-  const [draft, setDraft] = useState(ownSource);
+  const [draft, setDraft, draftDone] = useKeptDraft('about.updateSource', ownSource);
   const deploy = update?.sourceFromDeploy ? update.source : '';
   const busy = update?.status === 'checking' || update?.status === 'downloading';
   const commit = () => {
     if (draft.trim() !== ownSource) onSource(draft.trim());
+    draftDone();
   };
   return (
     <section className="settings-section">

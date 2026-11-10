@@ -3,8 +3,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Plugins, type PluginsApi } from './Plugins';
 import { FakePluginService } from '../../../main/plugins/fake';
+import { dropAllDrafts } from './drafts';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  dropAllDrafts();
+});
 
 function api(): PluginsApi {
   const svc = new FakePluginService('C:\\Users\\me\\AppData\\Roaming\\Spica\\plugins');
@@ -38,5 +42,14 @@ describe('Plugins', () => {
     expect(dialog.textContent).toContain('删除插件「笔记（示例）」？');
     fireEvent.click(within(dialog).getByRole('button', { name: '删除' }));
     await waitFor(() => expect(screen.queryByRole('region', { name: '笔记（示例）' })).toBeNull());
+  });
+
+  it('the install location typed but not installed is still there when you come back', async () => {
+    const a = api();
+    const first = render(<Plugins api={a} />);
+    fireEvent.change(await screen.findByLabelText('插件在哪里'), { target: { value: 'D:\\plugins\\notes-0.1.0.zip' } });
+    first.unmount();
+    render(<Plugins api={a} />);
+    expect(((await screen.findByLabelText('插件在哪里')) as HTMLInputElement).value).toBe('D:\\plugins\\notes-0.1.0.zip');
   });
 });

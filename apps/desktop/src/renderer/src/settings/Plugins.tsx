@@ -6,6 +6,7 @@ import type { PluginsCommand, PluginsResult, PluginsState, PluginView } from '..
 import { friendlyError } from '../store/agent';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
+import { useKeptDraft } from './drafts';
 
 export interface PluginsApi {
   run(cmd: PluginsCommand): Promise<PluginsResult>;
@@ -101,7 +102,7 @@ export function Plugins({ api }: { api: PluginsApi }) {
   const [state, setState] = useState<PluginsState | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
-  const [location, setLocation] = useState('');
+  const [location, setLocation, locationDone] = useKeptDraft('plugins.location', '');
   const [confirm, setConfirm] = useState<{ kind: 'uninstall' | 'rollback'; p: PluginView } | null>(null);
 
   const run = useCallback(
@@ -141,7 +142,10 @@ export function Plugins({ api }: { api: PluginsApi }) {
 
   const install = async () => {
     const r = await run({ op: 'install', location });
-    if (r?.ok && !r.state.available?.length) setLocation('');
+    if (r?.ok && !r.state.available?.length) {
+      setLocation('');
+      locationDone();
+    }
   };
 
   return (
