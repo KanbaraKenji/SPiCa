@@ -158,6 +158,18 @@ export class UpdateService {
     }
   }
 
+  /** A newer model catalog from the same source (model-catalog.json); null when there is none, undefined when it could not be read. */
+  async modelCatalog(): Promise<unknown | null | undefined> {
+    const { source } = this.#o.getSource();
+    if (!source) return null;
+    try {
+      const text = await this.#text(source, 'model-catalog.json');
+      return text ? (JSON.parse(text) as unknown) : null;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** The source changed in settings: start over. */
   reset(): void {
     this.#ready = undefined;

@@ -3,6 +3,7 @@
 import type { AgentApi, CoreEvent, SpicaBridge } from '@spica/protocol';
 import type { SettingsPatch, ShellSettings } from './settings';
 import type { ProviderDraft, ProviderKind, ProviderView, TestResult } from './providers';
+import type { ListModelsView, ModelCatalogView } from './catalog';
 import type { PluginsCommand, PluginsResult } from './plugins';
 import type { UpdateState } from './updates';
 import type { PluginView, PluginViewResult } from './plugin-view';
@@ -130,7 +131,11 @@ export interface DesktopBridge extends SpicaBridge {
     setDefault(id: string): Promise<ProviderList>;
     test(draft: ProviderDraft): Promise<TestResult>;
     /** The context window Spica knows for this model (to pre-fill the form), or null. */
-    knownWindow(kind: ProviderKind, model: string): Promise<number | null>;
+    knownWindow(kind: ProviderKind, model: string, catalogId?: string | null): Promise<number | null>;
+    /** The providers and models to pick from (company presets first); null while the core is not up. */
+    catalog(): Promise<ModelCatalogView | null>;
+    /** 「从服务商获取」 for the form as it is (a saved key is used when the form leaves it empty). */
+    listModels(draft: ProviderDraft): Promise<ListModelsView>;
     /** The models changed somewhere else (a connected script through the MCP service). */
     onChanged(listener: () => void): () => void;
   };

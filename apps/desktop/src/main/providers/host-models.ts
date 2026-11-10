@@ -23,6 +23,7 @@ export function toHostModel(p: ProviderView): HostModel {
     hasSecret: p.hasSecret,
     isDefault: p.isDefault,
     ...(p.readOnly ? { readOnly: true } : {}),
+    ...(p.catalogId ? { catalogId: p.catalogId } : {}),
   };
 }
 
@@ -48,6 +49,7 @@ export function fromHostDraft(d: HostModelDraft, existing: readonly ProviderView
     contextWindow: d.contextWindow ?? null,
     maxConcurrent: d.maxConcurrent ?? null,
     requestsPerMinute: d.requestsPerMinute ?? null,
+    catalogId: d.catalogId ?? null,
     ...(d.secret !== undefined ? { secret: d.secret } : {}),
   };
 }

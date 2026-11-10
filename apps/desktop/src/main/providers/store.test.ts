@@ -87,4 +87,13 @@ describe('fake connection tester', () => {
     expect(await test({ ...draft, baseUrl: 'https://gateway.invalid/v1' }, undefined)).toMatchObject({ ok: false });
     expect(await test({ ...draft, model: '' }, undefined)).toMatchObject({ ok: false, message: '填要用的模型名' });
   });
+
+describe('local providers', () => {
+  it('save without a key when the catalog says none is needed; others still need one', () => {
+    const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
+    const local = { ...draft, name: 'Ollama', baseUrl: 'http://localhost:11434/v1', catalogId: 'ollama', secret: undefined };
+    expect(() => store.save(local)).toThrow('填 API Key');
+    expect(store.save(local, { needsKey: false })).toMatchObject({ name: 'Ollama', hasSecret: false, catalogId: 'ollama' });
+  });
+});
 });

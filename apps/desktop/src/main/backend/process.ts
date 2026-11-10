@@ -4,7 +4,7 @@
 // minute). The window never goes down with it: calls wait while it restarts,
 // and the restarted core restores every session from the database.
 import { MessageChannelMain, utilityProcess, type UtilityProcess } from 'electron';
-import { connectBackend, electronPort, type BackendClient, type HostMethods, type ProviderConfig, type SettingsPatch } from '@spica/core';
+import { connectBackend, electronPort, type BackendClient, type HostMethods, type ListModelsResult, type ModelCatalog, type ProviderConfig, type SettingsPatch } from '@spica/core';
 export { toProviderConfig } from './to-config';
 import type { AgentApi, CoreEvent, ProbeResult } from '@spica/protocol';
 import type { PluginsCommand, PluginsResult } from '../../shared/plugins';
@@ -184,8 +184,18 @@ export class ProcessBackend implements AgentBackend {
   }
 
   /** Context window the core knows for a model (to pre-fill the settings form), or null. */
-  async knownContextWindow(kind: 'openai-compatible' | 'anthropic' | 'wso2', model: string): Promise<number | null> {
-    return (await this.call<number | null | undefined>('knownContextWindow', kind, model)) ?? null;
+  async knownContextWindow(kind: 'openai-compatible' | 'anthropic' | 'wso2', model: string, catalogId?: string): Promise<number | null> {
+    return (await this.call<number | null | undefined>('knownContextWindow', kind, model, catalogId)) ?? null;
+  }
+
+  /** The providers and models the settings form offers (company presets first). */
+  modelCatalog(): Promise<ModelCatalog> {
+    return this.call<ModelCatalog>('modelCatalog');
+  }
+
+  /** 「从服务商获取」: what the provider lists now (the key is used for this request only). */
+  listProviderModels(config: ProviderConfig): Promise<ListModelsResult> {
+    return this.call<ListModelsResult>('listProviderModels', config);
   }
 
   plugins(cmd: PluginsCommand): Promise<PluginsResult> {

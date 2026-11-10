@@ -13,6 +13,7 @@ export function toProviderConfig(p: ResolvedProvider): ProviderConfig {
     ...(Object.keys(limits).length ? { limits } : {}),
     // One model per entry here; the core falls back to what it knows for any other name.
     ...(p.contextWindow && p.model ? { contextWindows: { [p.model]: p.contextWindow } } : {}),
+    ...(p.catalogId ? { catalogId: p.catalogId } : {}),
   };
   switch (p.kind) {
     case 'openai':

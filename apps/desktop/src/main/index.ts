@@ -29,7 +29,17 @@ import { ProcessBackend, type BackendStatus } from './backend/process';
 import { knownContextWindow, toProviderConfig } from './backend/to-config';
 import { fromHostDraft, toHostModel } from './providers/host-models';
 import { iconFileName, pointShortcutsAt, REFRESH_GAP_MS, SHORTCUT_SETTLE_MS, shortcutFolders, type ShortcutIo } from './taskbar-icon';
-import { DEFAULT_PRICES, NET_HINTS, type HostModelDraft, type ProviderConfig } from '@spica/core';
+import {
+  BUILTIN_CATALOG,
+  DEFAULT_PRICES,
+  effectiveCatalog,
+  NET_HINTS,
+  type CatalogPreset,
+  type HostModelDraft,
+  type ListModelsResult,
+  type ModelCatalog,
+  type ProviderConfig,
+} from '@spica/core';
 import type { DesktopBackendConfig } from '../backend/config';
 import { readModelEnv } from './backend/model-env';
 import { SettingsStore } from './settings-store';
@@ -135,6 +145,8 @@ function backendConfig(): DesktopBackendConfig {
       locale: 'zh-CN',
       // What the models are told they work in (Spica, or deploy.json's name).
       appName: APP_NAME,
+      // The company's preset model connections (deploy.json "models"; checked when packaging).
+      ...(deployPresets.length ? { catalogPresets: deployPresets } : {}),
       workflowsDir: workflowsDir(),
       // Mail sources come from mail plugins (they register themselves); here only on / off and the interval.
       mail: mailForCore(settings.get().mail),
@@ -174,6 +186,7 @@ const backend: AgentBackend =
           sendToWindow(DesktopChannel.BackendStatus, s);
           // Each (re)start of the core: bring back what the settings ask for.
           if (s.state === 'ready' && settings.get().localConnect) void applyLocalConnect(true);
+          if (s.state === 'ready' && catalogUpdate !== null) void applyCatalogUpdate(catalogUpdate);
         },
         onRestarted: () => sendToWindow(DesktopChannel.BackendRestarted),
         onPluginsChanged: () => sendToWindow(DesktopChannel.PluginsChanged),
@@ -182,7 +195,8 @@ const backend: AgentBackend =
           // checks as the settings page; plain-language errors go back to the agent.
           'models.list': () => providerList().items.map(toHostModel),
           'models.save': (draft: HostModelDraft) => {
-            const saved = providers.save(fromHostDraft(draft, providerList().items));
+            const shellDraft = fromHostDraft(draft, providerList().items);
+            const saved = providers.save(shellDraft, { needsKey: needsKeyFor(catalogCache, shellDraft.catalogId) });
             applyProviders();
             sendToWindow(DesktopChannel.ProvidersChanged);
             return toHostModel(providerList().items.find((p) => p.id === saved.id) ?? saved);
@@ -215,7 +229,7 @@ let providerProblems: Record<string, string> = {};
 
 /** Models from the developer's .env.local, shown read-only on the settings page. */
 function envProviders(): ProviderView[] {
-  const base = { strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: null, hasSecret: true, isDefault: false, readOnly: true };
+  const base = { strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: null, catalogId: null, hasSecret: true, isDefault: false, readOnly: true };
   const out: ProviderView[] = [];
   if (modelEnv.openai) out.push({ ...base, id: 'openai', kind: 'openai', name: '开发用模型（.env.local）', baseUrl: modelEnv.openai.baseUrl, model: modelEnv.openai.model });
   if (modelEnv.anthropic) out.push({ ...base, id: 'anthropic', kind: 'anthropic', name: '开发用模型（.env.local）', baseUrl: '', model: modelEnv.anthropic.model });
@@ -573,6 +587,18 @@ function deploySource(): string {
   }
 }
 const deployDefault = automated ? '' : deploySource();
+
+/** The company's preset model connections from deploy.json ("models"); the packaging already checked them. */
+function deployModels(): unknown[] {
+  const file = app.isPackaged ? join(process.resourcesPath, 'deploy.json') : join(app.getAppPath(), 'deploy.json');
+  try {
+    const v = JSON.parse(readFileSync(file, 'utf8')) as { models?: unknown };
+    return Array.isArray(v.models) ? v.models : [];
+  } catch {
+    return [];
+  }
+}
+const deployPresets = automated ? [] : deployModels();
 const updates = new UpdateService({
   currentVersion: app.getVersion(),
   packaged: app.isPackaged,
@@ -599,6 +625,46 @@ ipcMain.handle(DesktopChannel.Update, async (_e, op: unknown) => {
   return updates.state;
 });
 
+// The model catalog: the core's (built in, a newer one from the update source,
+// the company's presets first). The form and the key requirement read it here.
+let catalogCache: ModelCatalog | null = null;
+async function modelCatalog(): Promise<ModelCatalog | null> {
+  if (!(backend instanceof ProcessBackend)) return effectiveCatalog(BUILTIN_CATALOG, undefined, deployPresets as CatalogPreset[]);
+  try {
+    catalogCache = await backend.modelCatalog();
+  } catch {
+    // Not up yet: the last one known (or none).
+  }
+  return catalogCache;
+}
+
+/** Local providers (needsKey false) take no key; anything else, or not set up from the catalog, does. */
+function needsKeyFor(catalog: ModelCatalog | null, catalogId: string | null | undefined): boolean {
+  if (!catalogId) return true;
+  return catalog?.providers.find((p) => p.id === catalogId)?.needsKey ?? true;
+}
+
+/** model-catalog.json from the update source, handed to the core; null: none. */
+let catalogUpdate: unknown = null;
+async function applyCatalogUpdate(catalog: unknown): Promise<void> {
+  if (!(backend instanceof ProcessBackend)) return;
+  try {
+    const r = await backend.apply({ catalog });
+    if (r.warnings.length) console.warn('[spica] model catalog from the update source not used:', r.warnings.join('; '));
+    catalogCache = null;
+    sendToWindow(DesktopChannel.ProvidersChanged);
+  } catch (err) {
+    console.warn('[spica] model catalog:', err instanceof Error ? err.message : err);
+  }
+}
+async function refreshCatalog(): Promise<void> {
+  const next = await updates.modelCatalog();
+  if (next === undefined || next === null) return;
+  if (JSON.stringify(next) === JSON.stringify(catalogUpdate)) return;
+  catalogUpdate = next;
+  await applyCatalogUpdate(next);
+}
+
 async function refreshNotices(): Promise<void> {
   const list = await updates.notices();
   if (list) settings.update({ noticesCache: list });
@@ -610,6 +676,7 @@ settings.onChange((s) => {
   updates.reset();
   void updates.check();
   void refreshNotices();
+  void refreshCatalog();
 });
 
 // Mail and the workflow folder change in the running core (its configure): no restart.
@@ -772,8 +839,8 @@ ipcMain.on(DesktopChannel.BackendRetry, () => {
 });
 
 ipcMain.handle(DesktopChannel.ListProviders, () => providerList());
-ipcMain.handle(DesktopChannel.SaveProvider, (_e, draft: ProviderDraft) => {
-  providers.save(draft);
+ipcMain.handle(DesktopChannel.SaveProvider, async (_e, draft: ProviderDraft) => {
+  providers.save(draft, { needsKey: needsKeyFor(await modelCatalog(), draft.catalogId) });
   applyProviders();
   return providerList();
 });
@@ -787,14 +854,28 @@ ipcMain.handle(DesktopChannel.SetDefaultProvider, (_e, id: string) => {
   applyProviders();
   return providerList();
 });
-ipcMain.handle(DesktopChannel.TestProvider, (_e, draft: ProviderDraft) =>
-  testConnection(draft, draft.id ? providers.secretOf(draft.id) : undefined),
+ipcMain.handle(DesktopChannel.TestProvider, async (_e, draft: ProviderDraft) =>
+  testConnection(draft, draft.id ? providers.secretOf(draft.id) : undefined, undefined, needsKeyFor(await modelCatalog(), draft.catalogId)),
 );
-ipcMain.handle(DesktopChannel.KnownContextWindow, async (_e, kind: ProviderKind, model: string): Promise<number | null> => {
+ipcMain.handle(DesktopChannel.KnownContextWindow, async (_e, kind: ProviderKind, model: string, catalogId?: string | null): Promise<number | null> => {
   const name = String(model ?? '').trim();
   if (!name) return null;
-  if (backend instanceof ProcessBackend) return backend.knownContextWindow(coreKind(kind), name).catch(() => null);
-  return knownContextWindow(DEFAULT_PRICES, coreKind(kind), name);
+  const cid = typeof catalogId === 'string' && catalogId ? catalogId : undefined;
+  if (backend instanceof ProcessBackend) return backend.knownContextWindow(coreKind(kind), name, cid).catch(() => null);
+  const fromCatalog = (await modelCatalog())?.providers.find((p) => p.id === cid)?.models.find((m) => m.id === name)?.contextWindow;
+  return fromCatalog ?? knownContextWindow(DEFAULT_PRICES, coreKind(kind), name);
+});
+ipcMain.handle(DesktopChannel.ModelCatalog, () => modelCatalog());
+ipcMain.handle(DesktopChannel.ListProviderModels, async (_e, draft: ProviderDraft): Promise<ListModelsResult> => {
+  const secret = draft.secret?.trim() || (draft.id ? providers.secretOf(draft.id) : undefined) || '';
+  const config = toProviderConfig({ ...draft, id: 'list-models', secret });
+  if (backend instanceof ProcessBackend) {
+    return backend.listProviderModels(config).catch((err: unknown) => ({ ok: false, code: 'list.failed', message: err instanceof Error ? err.message : String(err), hint: '这次没有取到型号列表。下拉里的常用型号照样能选，也可以直接手填。' }));
+  }
+  // Demo data: the catalog's own list stands in for the provider's answer.
+  const p = (await modelCatalog())?.providers.find((x) => x.id === draft.catalogId);
+  if (!p || p.listModels === 'none') return { ok: false, code: 'list.unsupported', message: 'demo', hint: '这家服务商没有公开型号列表。下拉里的常用型号照样能选，也可以直接手填。' };
+  return { ok: true, models: p.models.map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), contextWindow: m.contextWindow, inCatalog: true, chat: true })) };
 });
 
 /**
@@ -839,6 +920,8 @@ void app.whenReady().then(() => {
     // Announcements soon after start, then every 30 minutes; updates after 10 s, then every 4 hours.
     setTimeout(() => void refreshNotices(), 3_000);
     setInterval(() => void refreshNotices(), 30 * 60_000);
+    setTimeout(() => void refreshCatalog(), 4_000);
+    setInterval(() => void refreshCatalog(), 30 * 60_000);
     setTimeout(() => void updates.check(), 10_000);
     setInterval(() => void updates.check(), 4 * 60 * 60_000);
   }

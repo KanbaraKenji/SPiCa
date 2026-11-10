@@ -48,6 +48,7 @@ function sanitizeFields(v: Record<string, unknown>): ProviderFields {
     maxConcurrent: num(v.maxConcurrent),
     requestsPerMinute: num(v.requestsPerMinute),
     contextWindow: num(v.contextWindow),
+    catalogId: str(v.catalogId).trim() || null,
   };
 }
 
@@ -87,9 +88,9 @@ export class ProviderStore {
   }
 
   /** Saves a new or existing provider. Throws a plain-language Error when it cannot. */
-  save(draft: ProviderDraft): ProviderView {
+  save(draft: ProviderDraft, opts: { needsKey?: boolean } = {}): ProviderView {
     const existing = draft.id ? this.#data.items.find((p) => p.id === draft.id) : undefined;
-    const errors = validateDraft(draft, Boolean(existing?.secret));
+    const errors = validateDraft(draft, Boolean(existing?.secret), opts);
     const first = Object.values(errors)[0];
     if (first) throw new Error(first);
     const fields = sanitizeFields(draft as unknown as Record<string, unknown>);

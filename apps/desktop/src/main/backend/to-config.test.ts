@@ -21,4 +21,11 @@ describe('knownContextWindow', () => {
     expect(knownContextWindow(DEFAULT_PRICES, 'openai-compatible', 'nobody-knows-this')).toBeNull();
     expect(knownContextWindow(DEFAULT_PRICES, 'anthropic', 'claude-unknown')).toBeNull();
   });
+
+describe('catalogId', () => {
+  it('goes to the core with the connection (prices, windows, how to list models)', () => {
+    expect(toProviderConfig({ ...saved, contextWindow: 1, catalogId: 'deepseek' }).catalogId).toBe('deepseek');
+    expect(toProviderConfig({ ...saved, contextWindow: 1, catalogId: null })).not.toHaveProperty('catalogId');
+  });
+});
 });

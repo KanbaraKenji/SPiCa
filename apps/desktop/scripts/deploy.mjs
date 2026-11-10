@@ -5,6 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { presetProblems } from '@spica/core';
 
 export const DEFAULT_APP = Object.freeze({ name: 'Spica', id: 'dev.spica.desktop' });
 
@@ -20,7 +21,7 @@ const ID = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
  */
 export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url)), '..')) {
   const file = join(dir, 'deploy.json');
-  if (!existsSync(file)) return { file: null, updateSource: '', app: { ...DEFAULT_APP, icon: null, font: null } };
+  if (!existsSync(file)) return { file: null, updateSource: '', app: { ...DEFAULT_APP, icon: null, font: null }, models: [] };
   let raw;
   try {
     raw = JSON.parse(readFileSync(file, 'utf8'));
@@ -55,9 +56,52 @@ export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url))
   if (icon && !icon.toLowerCase().endsWith('.ico')) throw new Error('deploy.json 的 app.icon 要是 .ico 文件（安装包和 exe 只认 .ico）。');
   const font = path('font');
   if (font && !/\.(ttf|otf)$/i.test(font)) throw new Error('deploy.json 的 app.font 要是 .ttf 或 .otf 文件。');
+  // The company's preset model connections: checked by the core's own rules; any key or secret stops it.
+  const models = raw.models === undefined ? [] : raw.models;
+  const problems = presetProblems(models);
+  if (problems.length) {
+    const list = problems.map((x) => `- ${presetProblemText(x)}`).join('\n');
+    throw new Error(`deploy.json 的 models 有 ${problems.length} 处要改：\n${list}`);
+  }
   return {
     file,
     updateSource: typeof raw.updateSource === 'string' ? raw.updateSource.trim() : '',
     app: { name, id, icon, font },
+    models,
   };
+}
+
+/** Where, as people count: "models[0] (acme).models[2] (m)" -> 「第 1 个连接（acme）的第 3 个型号（m）」. */
+function wherePreset(at) {
+  return at
+    .replace(/^models\[(\d+)\](?: \(([^)]*)\))?/, (_m, i, id) => `第 ${Number(i) + 1} 个连接${id ? `（${id}）` : ''}`)
+    .replace(/\.models\[(\d+)\](?: \(([^)]*)\))?/, (_m, i, id) => `的第 ${Number(i) + 1} 个型号${id ? `（${id}）` : ''}`);
+}
+
+const PRESET_WORDS = [
+  [/^not an object$/, '要写成 { … } 这样的一项'],
+  [/^id missing$/, '缺 id'],
+  [/^id used twice$/, 'id 和前面的重复了'],
+  [/^name missing$/, '缺 name（列表里显示的名字）'],
+  [/^kind must be one of .*$/, 'kind 只能是 openai-compatible、anthropic 或 wso2'],
+  [/^baseUrl must be an http\(s\) address$/, 'baseUrl 要以 http:// 或 https:// 开头'],
+  [/^tokenUrl .* is needed for wso2$/, 'wso2 要写 tokenUrl（以 http:// 或 https:// 开头）'],
+  [/^(\w+) must not be in the packaging.*$/, (k) => `不能写 ${k}：Key 和凭据由每个人自己填，不能放进安装包`],
+  [/^models needs at least one model$/, 'models 里至少要有一个型号'],
+  [/^contextWindow must be a positive whole number$/, 'contextWindow 要写正整数（这个型号一次最多能装多少 token）'],
+  [/^(\w+) must be a positive whole number$/, (k) => `${k} 要写正整数`],
+];
+
+/** One of the core's English findings in plain Chinese, saying which entry (English kept when unknown). */
+export function presetProblemText(line) {
+  if (line === 'models must be a list of model connections') return 'models 要写成一个列表，每一项是一个模型连接';
+  const i = line.indexOf(': ');
+  if (i < 0) return line;
+  const at = line.slice(0, i);
+  const what = line.slice(i + 2);
+  for (const [re, zh] of PRESET_WORDS) {
+    const m = re.exec(what);
+    if (m) return `${wherePreset(at)}：${typeof zh === 'function' ? zh(m[1]) : zh}`;
+  }
+  return `${wherePreset(at)}：${what}`;
 }

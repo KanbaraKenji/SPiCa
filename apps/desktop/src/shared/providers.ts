@@ -36,6 +36,8 @@ export interface ProviderFields {
   requestsPerMinute: number | null;
   /** How many tokens `model` takes at once (its context window). Required when saving; null in older files. */
   contextWindow: number | null;
+  /** The catalog provider or company preset it was set up from (null: 自己填 / 公司网关, or older files). */
+  catalogId: string | null;
 }
 
 /** What the settings page shows for a saved provider. */
@@ -77,6 +79,7 @@ export function emptyDraft(kind: ProviderKind = 'openai'): ProviderDraft {
     maxConcurrent: null,
     requestsPerMinute: null,
     contextWindow: null,
+    catalogId: null,
   };
 }
 
@@ -106,7 +109,7 @@ function isUrl(v: string): boolean {
  * Field problems in plain words; empty object = ready to save. `forTest`: only what
  * 测试连接 needs (上下文上限 can be filled in after the connection works).
  */
-export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: { forTest?: boolean } = {}): FieldErrors {
+export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: { forTest?: boolean; needsKey?: boolean } = {}): FieldErrors {
   const e: FieldErrors = {};
   if (!d.name.trim()) e.name = '起个名字，方便在列表里认出来';
   if (!d.model.trim()) e.model = '填要用的模型名';
@@ -119,7 +122,8 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: {
     if (!d.clientId.trim()) e.clientId = '填 Consumer Key';
   }
   const secret = d.secret?.trim();
-  if (!secret && !hasSavedSecret) e.secret = `填 ${secretLabel(d.kind)}`;
+  // Local providers (Ollama, LM Studio) need no key.
+  if (!secret && !hasSavedSecret && opts.needsKey !== false) e.secret = `填 ${secretLabel(d.kind)}`;
   if (!opts.forTest) {
     if (d.contextWindow === null) e.contextWindow = '必须填这一项，比如 128000';
     else if (!Number.isInteger(d.contextWindow) || d.contextWindow < 1) e.contextWindow = '填正整数（token 数），比如 128000';

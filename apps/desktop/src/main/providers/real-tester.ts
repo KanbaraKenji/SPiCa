@@ -58,8 +58,8 @@ function probeAdvice(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' | 'model'
 }
 
 export function createRealTester(probe: Probe): ConnectionTester {
-  return async (draft, savedSecret) => {
-    const errors = validateDraft(draft, Boolean(savedSecret), { forTest: true });
+  return async (draft, savedSecret, _signal, needsKey) => {
+    const errors = validateDraft(draft, Boolean(savedSecret), { forTest: true, ...(needsKey === false ? { needsKey } : {}) });
     const first = Object.values(errors)[0];
     if (first) return { ok: false, message: first };
     const secret = draft.secret?.trim() || savedSecret || '';

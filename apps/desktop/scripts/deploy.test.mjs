@@ -60,4 +60,21 @@ describe('deploy.json', () => {
     expect(() => readDeploy(dirWith({ app: { name: 'Nova', id: 'com.example.nova', icon: 'missing.ico' } }))).toThrow('不存在');
     expect(() => readDeploy(dirWith({ app: { name: 'Nova', id: 'com.example.nova', icon: 'n.png' } }, { 'n.png': 'x' }))).toThrow('.ico');
   });
+
+  it('company presets (models): the example in the note is good; mistakes and keys stop packaging, in plain words', () => {
+    const note = JSON.parse(readFileSync(new URL('../deploy.example.json', import.meta.url), 'utf8'))['// models'];
+    const example = JSON.parse(note.slice(note.indexOf('Example: ') + 'Example: '.length));
+    expect(readDeploy(dirWith({ models: [example] })).models).toEqual([example]);
+    const bad = { models: [{ ...example, apiKey: 'sk-x' }, { id: 'gw', name: '网关', kind: 'wso2', baseUrl: 'https://gw.example.com/v1', models: [{ id: 'm', contextWindow: 0 }] }] };
+    let message = '';
+    try {
+      readDeploy(dirWith(bad));
+    } catch (e) {
+      message = e.message;
+    }
+    expect(message).toContain('deploy.json 的 models 有 3 处要改');
+    expect(message).toContain('第 1 个连接（acme-gateway）：不能写 apiKey');
+    expect(message).toContain('第 2 个连接（gw）：wso2 要写 tokenUrl');
+    expect(message).toContain('第 2 个连接（gw）的第 1 个型号（m）：contextWindow 要写正整数');
+  });
 });

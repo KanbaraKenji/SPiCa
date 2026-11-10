@@ -8,6 +8,7 @@ import type { PluginsCommand, PluginsResult } from '../shared/plugins';
 import type { UpdateState } from '../shared/updates';
 import type { SettingsPatch, ShellSettings } from '../shared/settings';
 import type { PluginView, PluginViewResult } from '../shared/plugin-view';
+import type { ListModelsView, ModelCatalogView } from '../shared/catalog';
 
 function call<K extends keyof AgentApi>(method: K) {
   return ((...args: unknown[]) => ipcRenderer.invoke(DesktopChannel.Agent, method, args)) as AgentApi[K];
@@ -98,7 +99,9 @@ const bridge: DesktopBridge = {
     remove: (id: string) => ipcRenderer.invoke(DesktopChannel.DeleteProvider, id) as Promise<ProviderList>,
     setDefault: (id: string) => ipcRenderer.invoke(DesktopChannel.SetDefaultProvider, id) as Promise<ProviderList>,
     test: (draft: ProviderDraft) => ipcRenderer.invoke(DesktopChannel.TestProvider, draft) as Promise<TestResult>,
-    knownWindow: (kind: ProviderKind, model: string) => ipcRenderer.invoke(DesktopChannel.KnownContextWindow, kind, model) as Promise<number | null>,
+    knownWindow: (kind: ProviderKind, model: string, catalogId?: string | null) => ipcRenderer.invoke(DesktopChannel.KnownContextWindow, kind, model, catalogId ?? null) as Promise<number | null>,
+    catalog: () => ipcRenderer.invoke(DesktopChannel.ModelCatalog) as Promise<ModelCatalogView | null>,
+    listModels: (draft: ProviderDraft) => ipcRenderer.invoke(DesktopChannel.ListProviderModels, draft) as Promise<ListModelsView>,
     onChanged: (listener: () => void) => subscribe<void>(DesktopChannel.ProvidersChanged, () => listener()),
   },
 };

@@ -4,7 +4,8 @@
 // behind the same function type.
 import { validateDraft, type ProviderDraft, type TestResult } from '../../shared/providers';
 
-export type ConnectionTester = (draft: ProviderDraft, savedSecret: string | undefined, signal?: AbortSignal) => Promise<TestResult>;
+/** needsKey false: a local provider (no key to check). */
+export type ConnectionTester = (draft: ProviderDraft, savedSecret: string | undefined, signal?: AbortSignal, needsKey?: boolean) => Promise<TestResult>;
 
 export interface FakeTesterOptions {
   /** Pretend network time in ms. Default 700. */
@@ -12,8 +13,8 @@ export interface FakeTesterOptions {
 }
 
 export function createFakeTester({ delayMs = 700 }: FakeTesterOptions = {}): ConnectionTester {
-  return async (draft, savedSecret) => {
-    const errors = validateDraft(draft, Boolean(savedSecret), { forTest: true });
+  return async (draft, savedSecret, _signal, needsKey) => {
+    const errors = validateDraft(draft, Boolean(savedSecret), { forTest: true, ...(needsKey === false ? { needsKey } : {}) });
     const first = Object.values(errors)[0];
     if (first) return { ok: false, message: first };
     if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));

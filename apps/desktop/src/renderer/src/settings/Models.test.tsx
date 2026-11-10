@@ -137,7 +137,7 @@ describe('Models', () => {
 
   it('each model keeps its own unsaved edit; saving clears it', async () => {
     const api = fakeApi([
-      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, hasSecret: true, isDefault: true },
+      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, catalogId: null, hasSecret: true, isDefault: true },
     ]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
@@ -153,7 +153,7 @@ describe('Models', () => {
 
   it('typing a field back to what is saved is not a draft', async () => {
     const api = fakeApi([
-      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, hasSecret: true, isDefault: true },
+      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, catalogId: null, hasSecret: true, isDefault: true },
     ]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
@@ -164,7 +164,7 @@ describe('Models', () => {
 
   it('deletes only after confirming', async () => {
     const api = fakeApi([
-      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, hasSecret: true, isDefault: true },
+      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, catalogId: null, hasSecret: true, isDefault: true },
     ]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
@@ -215,7 +215,7 @@ describe('Models', () => {
 
   it('a model saved without 上下文上限 says so in the list', async () => {
     const api = fakeApi([
-      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: null, hasSecret: true, isDefault: true },
+      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: null, catalogId: null, hasSecret: true, isDefault: true },
     ]);
     render(<Models api={api} />);
     expect(await screen.findByText('还没填上下文上限，点开补上')).toBeTruthy();
