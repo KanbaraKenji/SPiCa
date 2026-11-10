@@ -8,7 +8,21 @@ import { createServer as createHttps } from 'node:https';
 import { connect as netConnect, type AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { configureNetwork, gatewayFaultCode, httpErrorCode, NET_HINTS, netErrorCode, netFetch, networkStatus, proxyFor } from './net.ts';
+import { fileURLToPath } from 'node:url';
+import { McpStdioClient } from './mcp/client.ts';
+import {
+  configureNetwork,
+  gatewayFaultCode,
+  httpErrorCode,
+  NET_HINTS,
+  netErrorCode,
+  netFetch,
+  networkChildEnv,
+  networkSecrets,
+  networkStatus,
+  proxyFor,
+  withNetworkEnv,
+} from './net.ts';
 import { probeProvider } from './providers/probe.ts';
 import { Wso2Provider } from './providers/wso2.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
@@ -189,6 +203,52 @@ describe.skipIf(!hasOpenssl)('certificates', () => {
     await writeFile(join(dir, 'empty.pem'), 'not a cert');
     expect(configureNetwork({ caFile: join(dir, 'empty.pem') }).warnings.join(' ')).toMatch(/no certificate found/);
   }, 30_000);
+});
+
+describe.skipIf(!hasOpenssl)('plugin servers connect like the app', () => {
+  const certsIn = (pem: string) => pem.match(/-----BEGIN CERTIFICATE-----/g)?.length ?? 0;
+
+  it('get the proxy, its exceptions and the trusted certificates when they start; the settings off remove inherited ones', async () => {
+    await mkdir(join(dir, 'pki'));
+    const certs = makeCerts(join(dir, 'pki'))!;
+    const ca = (await readFile(certs.ca, 'utf8')).trim();
+    configureNetwork({ proxy: { url: 'http://user:pa%40ss@proxy.example:8080', noProxy: ['corp.example'] }, caFile: certs.ca, useSystemCa: false });
+    expect(networkSecrets()).toEqual(['pa@ss']);
+    const env = networkChildEnv(join(dir, 'net'));
+    for (const n of ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy']) expect(env[n]).toBe('http://user:pa%40ss@proxy.example:8080/');
+    expect(env.NO_PROXY!.split(',')).toEqual(expect.arrayContaining(['corp.example', 'localhost', '127.0.0.1']));
+    expect(env.no_proxy).toBe(env.NO_PROXY);
+    expect(env.NODE_USE_ENV_PROXY).toBe('1');
+    // Node gets what is trusted beyond its own list; other programs the whole list
+    const extra = await readFile(env.NODE_EXTRA_CA_CERTS!, 'utf8');
+    expect(extra).toContain(ca);
+    expect(certsIn(extra)).toBe(1);
+    const bundle = await readFile(env.SSL_CERT_FILE!, 'utf8');
+    expect(bundle).toContain(ca);
+    expect(certsIn(bundle)).toBeGreaterThan(50);
+    expect([env.REQUESTS_CA_BUNDLE, env.CURL_CA_BUNDLE]).toEqual([env.SSL_CERT_FILE, env.SSL_CERT_FILE]);
+    expect(env.NODE_USE_SYSTEM_CA).toBeUndefined();
+
+    // a real server process sees them; its own variables win
+    const script = fileURLToPath(new URL('./testing/fake-mcp-server.mjs', import.meta.url));
+    const c = new McpStdioClient({ name: 'fake', command: process.execPath, args: [script], env: { NO_PROXY: 'own.example' } });
+    await c.connect();
+    try {
+      const seen = JSON.parse((await c.callTool('env', { names: ['HTTPS_PROXY', 'NO_PROXY', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE'] })).content) as Record<string, string | null>;
+      const name = (f: string | null | undefined) => (f ?? '').split(/[\\/]/).pop(); // same content, same file name (the server's are in the temp folder)
+      expect(seen).toMatchObject({ HTTPS_PROXY: env.HTTPS_PROXY, NO_PROXY: 'own.example' });
+      expect([name(seen.NODE_EXTRA_CA_CERTS), name(seen.SSL_CERT_FILE)]).toEqual([name(env.NODE_EXTRA_CA_CERTS), name(env.SSL_CERT_FILE)]);
+    } finally {
+      await c.close();
+    }
+
+    // with the system store: Node is told to use it too
+    configureNetwork({ proxy: null, caFile: null, useSystemCa: true });
+    expect(networkChildEnv(join(dir, 'net')).NODE_USE_SYSTEM_CA).toBe('1');
+    // nothing set: what the child would inherit from this machine is removed (the settings say none)
+    configureNetwork({ proxy: null, caFile: null, useSystemCa: false });
+    expect(withNetworkEnv({ PATH: 'p', HTTPS_PROXY: 'http://old:1', NO_PROXY: 'x', SSL_CERT_FILE: 'old.pem', NODE_EXTRA_CA_CERTS: 'old.pem' }, join(dir, 'net'))).toEqual({ PATH: 'p' });
+  });
 });
 
 describe('readable errors and WSO2', () => {

@@ -7,7 +7,10 @@
 // CONNECT tunnel (TLS to the target inside it); requests that do not use the
 // built-in fetch. Extra CAs (a PEM file, and optionally the system store) are
 // merged into Node's default trust list, which both paths use.
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { request as httpRequest, type IncomingMessage, type OutgoingHttpHeaders, type RequestOptions } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
@@ -28,9 +31,13 @@ interface Effective {
   noProxy: string[];
   caFile?: string;
   useSystemCa: boolean;
+  /** Certificates trusted beyond Node's own list (system store, CA file). */
+  extraCas: string[];
+  /** Everything trusted (Node's list + extraCas). */
+  allCas: string[];
 }
 
-let effective: Effective = { noProxy: [], useSystemCa: false };
+let effective: Effective = { noProxy: [], useSystemCa: false, extraCas: [], allCas: [] };
 let defaultCas: string[] | undefined;
 
 /** What is in force now (the proxy without its password), for the settings page and logs. */
@@ -52,7 +59,7 @@ export function networkStatus(): { proxy: string | null; noProxy: string[]; caFi
  */
 export function configureNetwork(cfg: NetworkConfig = {}, env: NodeJS.ProcessEnv = process.env): { warnings: string[] } {
   const warnings: string[] = [];
-  const next: Effective = { noProxy: [], useSystemCa: cfg.useSystemCa ?? true };
+  const next: Effective = { noProxy: [], useSystemCa: cfg.useSystemCa ?? true, extraCas: [], allCas: [] };
   const raw =
     cfg.proxy === null
       ? undefined
@@ -90,9 +97,77 @@ export function configureNetwork(cfg: NetworkConfig = {}, env: NodeJS.ProcessEnv
       warnings.push(`CA file not read: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-  tls.setDefaultCACertificates([...new Set(cas)]);
+  const all = [...new Set(cas)];
+  const base = new Set(defaultCas);
+  tls.setDefaultCACertificates(all);
+  next.allCas = all;
+  next.extraCas = all.filter((c) => !base.has(c));
   effective = next;
   return { warnings };
+}
+
+/** The proxy password, if any (for the redaction table). */
+export function networkSecrets(): string[] {
+  const p = effective.proxy;
+  return p?.password ? [decodeURIComponent(p.password)] : [];
+}
+
+const PROXY_VARS = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy'];
+const NO_PROXY_VARS = ['NO_PROXY', 'no_proxy'];
+const CA_VARS = ['NODE_EXTRA_CA_CERTS', 'NODE_USE_SYSTEM_CA', 'SSL_CERT_FILE', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE'];
+const LOOPBACK = ['localhost', '127.0.0.1', '::1'];
+
+/** A PEM file with these certificates, named by its content (running processes keep theirs when it changes). */
+function pemFile(cas: string[], dir: string): string {
+  const pem = `${cas.map((c) => c.trim()).join('\n')}\n`;
+  const file = join(dir, `ca-${createHash('sha256').update(pem).digest('hex').slice(0, 16)}.pem`);
+  if (!existsSync(file)) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(file, pem, 'utf8');
+  }
+  return file;
+}
+
+/**
+ * The network settings in force, as environment variables for a child process
+ * (plugin MCP servers), so they connect like the app itself: the proxy and its
+ * exceptions in the usual variables (upper and lower case; NODE_USE_ENV_PROXY
+ * for Node's fetch / http), and when anything is trusted beyond Node's own list
+ * (system store, CA file): NODE_EXTRA_CA_CERTS with those certificates
+ * (+ NODE_USE_SYSTEM_CA) for Node, and the whole list in SSL_CERT_FILE /
+ * REQUESTS_CA_BUNDLE / CURL_CA_BUNDLE for other programs (OpenSSL, Python, curl).
+ * A value of undefined means: remove the variable the child would inherit (the
+ * settings say there is none). The certificate files go to `dir` (default: the
+ * temp folder); they hold public certificates only. Read at process start:
+ * processes started after a change get the new settings.
+ */
+export function networkChildEnv(dir = join(tmpdir(), 'spica-net')): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {};
+  const p = effective.proxy;
+  for (const n of PROXY_VARS) env[n] = p ? p.href : undefined;
+  const noProxy = [...new Set([...effective.noProxy, ...LOOPBACK])].join(',');
+  for (const n of NO_PROXY_VARS) env[n] = p ? noProxy : undefined;
+  env.NODE_USE_ENV_PROXY = p ? '1' : undefined;
+  for (const n of CA_VARS) env[n] = undefined;
+  if (effective.extraCas.length > 0) {
+    env.NODE_EXTRA_CA_CERTS = pemFile(effective.extraCas, dir);
+    const bundle = pemFile(effective.allCas, dir);
+    env.SSL_CERT_FILE = bundle;
+    env.REQUESTS_CA_BUNDLE = bundle;
+    env.CURL_CA_BUNDLE = bundle;
+  }
+  if (effective.useSystemCa) env.NODE_USE_SYSTEM_CA = '1';
+  return env;
+}
+
+/** Apply networkChildEnv() to an environment (sets and removes variables). */
+export function withNetworkEnv(env: Record<string, string>, dir?: string): Record<string, string> {
+  const out = { ...env };
+  for (const [k, v] of Object.entries(networkChildEnv(dir))) {
+    if (v === undefined) delete out[k];
+    else out[k] = v;
+  }
+  return out;
 }
 
 /** The proxy for a URL, or undefined when it goes direct (no proxy, or listed in noProxy). */

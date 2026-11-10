@@ -16,7 +16,7 @@ import type { FileExtractor } from '../tools/types.ts';
 import { jsonSearchBackend, type JsonSearchBackendOptions } from '../tools/web-tools.ts';
 import type { McpTool } from '../mcp/server.ts';
 import { serveMcpHttp, type McpHttpServer } from '../mcp/http.ts';
-import { configureNetwork, networkStatus, type NetworkConfig } from '../net.ts';
+import { configureNetwork, networkChildEnv, networkSecrets, networkStatus, type NetworkConfig } from '../net.ts';
 import type { MailConfig } from '../mail.ts';
 import { BackendServer } from './server.ts';
 
@@ -113,7 +113,17 @@ export interface BackendExtension {
   warnings?: string[];
   /** Called on shutdown before the runtime closes (stop plugin processes, ...). */
   close?(): Promise<void>;
+  /**
+   * The network settings changed while running, in a way child processes see
+   * (proxy, exceptions, trusted certificates: networkChildEnv). Processes read
+   * them at start, so e.g. the plugin manager restarts its running servers.
+   * Not called when only other settings changed. Errors are logged, not thrown.
+   */
+  networkChanged?(): void | Promise<void>;
 }
+
+/** The extensions attached to a runtime (for networkChanged). */
+const attachedExtensions = new WeakMap<Runtime, BackendExtension[]>();
 
 /** What of a provider configuration must be redacted: keys, secrets, endpoints, long header values. */
 export function providerRedactions(c: ProviderConfig): (string | undefined)[] {
@@ -269,8 +279,19 @@ export function applySettings(runtime: Runtime, patch: SettingsPatch): { changed
     changed.push('mail');
   }
   if (patch.network) {
+    const before = JSON.stringify(networkChildEnv());
     warnings.push(...configureNetwork(patch.network).warnings);
+    runtime.addRedactions(networkSecrets());
     changed.push('network');
+    if (JSON.stringify(networkChildEnv()) !== before) {
+      for (const ext of attachedExtensions.get(runtime) ?? []) {
+        try {
+          void Promise.resolve(ext.networkChanged?.()).catch((err: unknown) => console.error(`networkChanged failed: ${err instanceof Error ? err.message : String(err)}`));
+        } catch (err) {
+          console.error(`networkChanged failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
   }
   if (patch.agentSettings?.confirmChanges !== undefined) {
     runtime.confirmSettingsChanges = patch.agentSettings.confirmChanges;
@@ -338,6 +359,7 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
     });
     warnings.push(...runtime.workflowErrors);
     warnings.push(...applyContextWindows(runtime, cfg.providers, []));
+    runtime.addRedactions(networkSecrets());
     rememberConfigs(runtime, cfg.providers);
     if (cfg.agentSettings?.confirmChanges !== undefined) runtime.confirmSettingsChanges = cfg.agentSettings.confirmChanges;
     // the settings tools on Spica's MCP service reach the window's settings through the port (server is set below)
@@ -350,6 +372,7 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
     };
     const restored = runtime.restore();
     const extensions: BackendExtension[] = [];
+    attachedExtensions.set(runtime, extensions);
     for (const ext of cfg.extensions ?? []) {
       try {
         const mod = (await load(ext.module)) as { attachBackend?: (rt: Runtime, options: unknown) => BackendExtension | Promise<BackendExtension> };

@@ -150,6 +150,33 @@ describe('runtime settings', () => {
     }
   });
 
+  it('extensions hear when the network settings change for child processes, only then', async () => {
+    let calls = 0;
+    const b = await startBackend(
+      {
+        dbPath: join(dir, 'db', 'spica.db'),
+        providers: [{ id: 'gw', kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1` }],
+        defaults: { providerId: 'gw', model: 'm', maxTokens: 64 },
+        cwd: dir,
+        mail: { enabled: false },
+        network: { proxy: null, caFile: null, useSystemCa: false },
+        extensions: [{ module: 'net-listener' }],
+      },
+      { modules: { 'net-listener': { attachBackend: () => ({ networkChanged: () => void calls++ }) } } },
+    );
+    try {
+      applySettings(b.runtime, { network: { proxy: { url: 'http://proxy.example:8080' }, caFile: null, useSystemCa: false } });
+      expect(calls).toBe(1);
+      applySettings(b.runtime, { network: { proxy: { url: 'http://proxy.example:8080' }, caFile: null, useSystemCa: false } }); // the same again
+      applySettings(b.runtime, { locale: 'en-US' }); // not the network
+      expect(calls).toBe(1);
+      applySettings(b.runtime, { network: { proxy: null, caFile: null, useSystemCa: false } });
+      expect(calls).toBe(2);
+    } finally {
+      await b.close();
+    }
+  });
+
   it('settings change on a fresh install with no model configured, and create no session', () => {
     const rt = makeRuntime(gw, { cwd: dir, providers: [], defaults: { providerId: 'none', model: 'none', maxTokens: 64 } });
     const events: CoreEvent[] = [];

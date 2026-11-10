@@ -27,6 +27,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       if (name === 'fail') return send({ id: msg.id, result: { content: [{ type: 'text', text: 'something broke' }], isError: true } });
       if (name === 'slow') return setTimeout(() => send({ id: msg.id, result: { content: [{ type: 'text', text: 'late' }] } }), 10_000);
       if (name === 'wipe') return send({ id: msg.id, result: { content: [{ type: 'text', text: 'wiped' }] } });
+      // not listed: tests read the server's environment with it
+      if (name === 'env') return send({ id: msg.id, result: { content: [{ type: 'text', text: JSON.stringify(Object.fromEntries(args.names.map((n) => [n, process.env[n] ?? null]))) }] } });
       return send({ id: msg.id, error: { code: -32602, message: `unknown tool ${name}` } });
     }
     default:

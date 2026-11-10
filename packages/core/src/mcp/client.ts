@@ -4,6 +4,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { Tracer } from '../trace.ts';
 import type { Tool, ToolRegistry } from '../tools/types.ts';
+import { withNetworkEnv } from '../net.ts';
 import { childEnv } from '../util.ts';
 
 export interface McpServerConfig {
@@ -11,7 +12,10 @@ export interface McpServerConfig {
   name: string;
   command: string;
   args?: string[];
-  /** Extra variables for the server (passed as given). */
+  /**
+   * Extra variables for the server (passed as given, after the network
+   * settings: the app's proxy and trusted certificates, see networkChildEnv).
+   */
   env?: Record<string, string>;
   /**
    * Which host variables the server inherits: a whitelist (default: PATH,
@@ -70,7 +74,8 @@ export class McpStdioClient {
     const c = this.config;
     const child = spawn(c.command, c.args ?? [], {
       cwd: c.cwd,
-      env: childEnv(c.inheritEnv, c.env),
+      // the app's proxy and certificates, so the server connects like the app; its own env wins
+      env: { ...withNetworkEnv(childEnv(c.inheritEnv)), ...(c.env ?? {}) },
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
