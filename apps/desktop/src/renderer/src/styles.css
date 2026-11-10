@@ -3331,13 +3331,67 @@ button.tree-twisty:hover {
 
 /* Sidebar collapsed: an invisible strip on the window's left edge; resting the
    pointer there slides the sidebar out. Below the title bar, which drags the window. */
-.peek-edge {
-  position: fixed;
-  left: 0;
-  top: var(--spica-titlebar-h);
-  bottom: 0;
-  width: 8px;
-  z-index: 15;
+/* Sidebar closed: a column of icons (他 2026-11-10). Same blocks as the sidebar, so each
+   icon sits where its row sits when the sidebar opens over it. */
+.panel-rail {
+  width: 52px;
+  flex-direction: column;
+  border-right: 1px solid var(--spica-divider);
+}
+
+.rail-head,
+.sidebar-head.is-over-rail {
+  height: var(--spica-titlebar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 0 11px;
+  -webkit-app-region: drag;
+}
+
+.rail-head button {
+  -webkit-app-region: no-drag;
+}
+
+.sidebar.is-rail .side-action,
+.sidebar.is-rail .rail-row {
+  position: relative;
+  justify-content: flex-start;
+  padding: 0 0 0 10px;
+}
+
+/* Waiting mail on the icon: the count as a small badge. */
+.rail-badge {
+  position: absolute;
+  top: 3px;
+  right: 1px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--spica-accent);
+  color: var(--spica-on-accent);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+}
+
+/* Where 插件 is written in the sidebar: a short line in the column, same height. */
+.sidebar.is-rail .rail-sep {
+  position: relative;
+  color: transparent;
+  user-select: none;
+}
+
+.sidebar.is-rail .rail-sep::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 50%;
+  border-top: 1px solid var(--spica-divider);
 }
 
 /* The edge between a docked side panel and the conversation: drag to resize. */

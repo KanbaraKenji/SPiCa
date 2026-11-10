@@ -17,7 +17,10 @@ export interface SidebarProps {
   onNewProject?: () => void;
   onSettings(): void;
   settingsOpen: boolean;
-  /** The assistant's default thread (getTopSession); other top-level threads are listed under it. */
+  /**
+   * The assistant's default thread (getTopSession). Not singled out any more (他 2026-11-10:
+   * the assistant is the voice of every conversation outside a project): it is one of 对话.
+   */
   topId?: string | null;
   /** Sets a session's name; an empty name goes back to the automatic one. Absent: no renaming. */
   onRename?: (id: string, title: string | null) => void;
@@ -33,6 +36,12 @@ export interface SidebarProps {
   onDeleteProject?: (projectId: string, name: string) => void;
   /** Pages plugins add to the sidebar (views with placement sidebar); they open in the main pane. */
   pluginPages?: { key: string; title: string; icon?: string; open: boolean; onOpen(): void }[];
+  /**
+   * The collapsed sidebar: one column of icons (他 2026-11-10). Built from the same
+   * blocks as the full sidebar, so 新对话, 收件箱, 助理, the plugins and 设置 sit at
+   * the same height in both; 项目 opens a menu of the projects.
+   */
+  compact?: boolean;
 }
 
 function byRecent(a: SessionInfo, b: SessionInfo): number {
@@ -183,7 +192,6 @@ export function Sidebar({
   onNewProject,
   onSettings,
   settingsOpen,
-  topId = null,
   onRename,
   inbox,
   notes,
@@ -192,9 +200,10 @@ export function Sidebar({
   onRenameProject,
   onDeleteProject,
   pluginPages = [],
+  compact = false,
 }: SidebarProps) {
   const pinOrder = useMemo(() => new Map(pinned.map((id, i) => [id, i])), [pinned]);
-  const { chats, projects, childrenOf, top } = useMemo(() => {
+  const { chats, projects, childrenOf } = useMemo(() => {
     const chats = sessions.filter((s) => s.role === 'top' && !s.parentId).sort(byRecent);
     // A project is a project-manager session, wherever it was started from. Pinned ones first.
     const rank = (s: SessionInfo) => (s.projectId !== undefined ? (pinOrder.get(s.projectId) ?? Infinity) : Infinity);
@@ -207,12 +216,8 @@ export function Sidebar({
       childrenOf.set(s.parentId, list);
     }
     for (const list of childrenOf.values()) list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    // The assistant is one role with many threads: its default thread is the row,
-    // the other threads (新对话) sit under it, newest first.
-    const top = topId ? chats.find((s) => s.id === topId) : undefined;
-    if (top) childrenOf.set(top.id, [...chats.filter((s) => s.id !== top.id), ...(childrenOf.get(top.id) ?? [])]);
-    return { chats, projects, childrenOf, top };
-  }, [sessions, topId, pinOrder]);
+    return { chats, projects, childrenOf };
+  }, [sessions, pinOrder]);
 
   const [expanded, setExpandedState] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<string | null>(null);
@@ -226,7 +231,7 @@ export function Sidebar({
     expanded,
     setExpanded: (id, open) => setExpandedState((e) => ({ ...e, [id]: open })),
     onOpen,
-    openByDefault: new Set(top ? [top.id] : []),
+    openByDefault: new Set<string>(),
     editing,
     pinned: new Set(pinned),
     hasMenu: (s) => (s.role === 'manager' ? Boolean(s.projectId && (onPin || onRenameProject || onDeleteProject)) : Boolean(onRename)),
@@ -262,6 +267,94 @@ export function Sidebar({
     ];
   };
 
+  // 对话 and 项目 on the icon column: their lists as a menu.
+  const [railMenu, setRailMenu] = useState<{ items: { label: string; onSelect(): void }[]; x: number; y: number } | null>(null);
+  if (compact) {
+    // The row that is current: another view (settings, inbox, a plugin page), else where the open conversation lives.
+    const otherView = settingsOpen || Boolean(inbox?.open) || pluginPages.some((p) => p.open);
+    const byId = new Map(sessions.map((x) => [x.id, x]));
+    let root = activeId ? byId.get(activeId) : undefined;
+    while (root?.parentId && root.role !== 'manager') root = byId.get(root.parentId);
+    const inProject = !otherView && root?.role === 'manager';
+    const inChats = !otherView && Boolean(root) && !inProject;
+    const chatItems = chats.slice(0, 20).map((c) => ({ label: c.title || '新对话', onSelect: () => onOpen(c.id) }));
+    const projectItems = [
+      ...projects.map((pr) => ({ label: pr.title ?? '未命名项目', onSelect: () => onOpen(pr.id) })),
+      ...(onNewProject ? [{ label: '新项目', onSelect: onNewProject }] : []),
+    ];
+    return (
+      <nav className="sidebar is-rail" aria-label="会话">
+        <div className="sidebar-top">
+          <button type="button" className="side-action" onClick={onNewChat} aria-label="新对话" title="新对话">
+            <Icon name="newChat" />
+          </button>
+          {inbox ? (
+            <button type="button" className={inbox.open ? 'side-action is-active' : 'side-action'} onClick={inbox.onOpen} aria-current={inbox.open ? 'page' : undefined} aria-label={inbox.count ? `收件箱，${inbox.count} 封待确认` : '收件箱'} title="收件箱">
+              <Icon name="inbox" />
+              {inbox.count ? <span className="rail-badge">{inbox.count}</span> : null}
+            </button>
+          ) : null}
+        </div>
+        <div className="sidebar-scroll">
+          {chatItems.length ? (
+            <section className="tree-section">
+              <button
+                type="button"
+                data-no-peek
+                className={inChats ? 'tree-row rail-row is-active' : 'tree-row rail-row'}
+                aria-label="对话"
+                aria-haspopup="menu"
+                title="对话"
+                onClick={(e) => {
+                  const b = e.currentTarget.getBoundingClientRect();
+                  setRailMenu({ items: chatItems, x: b.right + 6, y: b.top });
+                }}
+              >
+                <Icon name="assistant" />
+              </button>
+            </section>
+          ) : null}
+          {projectItems.length ? (
+            <section className="tree-section">
+              <button
+                type="button"
+                data-no-peek
+                className={inProject ? 'tree-row rail-row is-active' : 'tree-row rail-row'}
+                aria-label="项目"
+                aria-haspopup="menu"
+                title="项目"
+                onClick={(e) => {
+                  const b = e.currentTarget.getBoundingClientRect();
+                  setRailMenu({ items: projectItems, x: b.right + 6, y: b.top });
+                }}
+              >
+                <Icon name="folder" />
+              </button>
+            </section>
+          ) : null}
+        </div>
+        {pluginPages.length ? (
+          <section className="tree-section side-plugins" aria-label="插件">
+            <h2 className="tree-heading rail-sep" aria-hidden>
+              插件
+            </h2>
+            {pluginPages.map((p) => (
+              <button key={p.key} type="button" className={p.open ? 'side-action is-active' : 'side-action'} onClick={p.onOpen} aria-current={p.open ? 'page' : undefined} aria-label={p.title} title={p.title}>
+                {p.icon ? <img className="side-plugin-icon" src={p.icon} alt="" /> : <Icon name="plugin" />}
+              </button>
+            ))}
+          </section>
+        ) : null}
+        <div className="sidebar-bottom">
+          <button type="button" className={settingsOpen ? 'side-action is-active' : 'side-action'} onClick={onSettings} aria-current={settingsOpen ? 'page' : undefined} aria-label="设置" title="设置">
+            <Icon name="settings" />
+          </button>
+        </div>
+        {railMenu ? <ContextMenu x={railMenu.x} y={railMenu.y} items={railMenu.items} onClose={() => setRailMenu(null)} /> : null}
+      </nav>
+    );
+  }
+
   return (
     <nav className="sidebar" aria-label="会话">
       <div className="sidebar-top">
@@ -282,11 +375,8 @@ export function Sidebar({
         ) : null}
       </div>
       <div className="sidebar-scroll">
-        {top ? (
-          <section className="tree-section" aria-label="助理">
-            <Node s={top} depth={0} tree={tree} />
-          </section>
-        ) : chats.length ? (
+        {/* Every conversation outside a project, newest first; the assistant speaks in all of them. */}
+        {chats.length ? (
           <section className="tree-section">
             <h2 className="tree-heading">对话</h2>
             {chats.map((s) => (

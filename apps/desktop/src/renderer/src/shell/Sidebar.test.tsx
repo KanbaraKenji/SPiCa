@@ -48,15 +48,49 @@ describe('Sidebar', () => {
     expect(projectSummary([])).toBe('');
   });
 
-  it('puts the other assistant threads under the default one', () => {
+  it('lists every conversation outside a project flat under 对话, the default thread one of them', () => {
     const sessions = seed.sessions.map((s) => (s.id === SEED_IDS.chat ? { ...s, title: '助理' } : s));
     render(<Sidebar sessions={sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} topId={SEED_IDS.chat} />);
-    expect(screen.queryByRole('heading', { name: '对话' })).toBeNull();
-    const top = screen.getByRole('button', { name: '收起 助理' });
-    expect(top.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('heading', { name: '对话' })).toBeTruthy();
+    // No row is singled out to hold the others.
+    expect(screen.queryByRole('button', { name: /^(收起|展开) 助理$/ })).toBeNull();
+    expect(screen.getByRole('button', { name: '助理' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '整理本周来信' })).toBeTruthy();
-    fireEvent.click(top);
-    expect(screen.queryByRole('button', { name: '整理本周来信' })).toBeNull();
+  });
+
+  it('collapsed: one column of icons; 对话 and 项目 open their lists, the rest act as in the full sidebar', () => {
+    const onOpen = vi.fn();
+    const onSettings = vi.fn();
+    const onNewChat = vi.fn();
+    const onInbox = vi.fn();
+    render(
+      <Sidebar
+        compact
+        sessions={seed.sessions}
+        activeId={SEED_IDS.chat}
+        onOpen={onOpen}
+        onNewChat={onNewChat}
+        onSettings={onSettings}
+        settingsOpen={false}
+        onNewProject={vi.fn()}
+        inbox={{ count: 5, open: false, onOpen: onInbox }}
+      />,
+    );
+    expect(screen.queryByRole('heading', { name: '对话' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '新对话' }));
+    expect(onNewChat).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '收件箱，5 封待确认' }));
+    expect(onInbox).toHaveBeenCalled();
+    // The open conversation is outside a project: 对话 is the current one.
+    expect(screen.getByRole('button', { name: '对话' }).className).toContain('is-active');
+    fireEvent.click(screen.getByRole('button', { name: '对话' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '整理本周来信' }));
+    expect(onOpen).toHaveBeenCalledWith(SEED_IDS.chat2);
+    fireEvent.click(screen.getByRole('button', { name: '项目' }));
+    expect(screen.getByRole('menuitem', { name: '新品样机评审' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: '新项目' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    expect(onSettings).toHaveBeenCalled();
   });
 
   it('renames a thread from the right-click menu; Esc cancels; projects have no menu', () => {

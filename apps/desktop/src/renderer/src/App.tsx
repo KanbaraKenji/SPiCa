@@ -178,12 +178,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     if (peekTimer.current) clearTimeout(peekTimer.current);
     peekTimer.current = null;
   };
+  // A short rest on the icon column, so passing over it does not flash the sidebar open.
   const peekSoon = () => {
-    clearPeekTimer();
+    if (peekTimer.current || floating === 'left') return;
     peekTimer.current = setTimeout(() => {
+      peekTimer.current = null;
       setPeeking(true);
       setFloating('left');
-    }, 120);
+    }, 250);
   };
   const unpeekSoon = () => {
     clearPeekTimer();
@@ -455,12 +457,78 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     </button>
   );
 
+  // The sidebar, full (docked or over the window) or as the column of icons left when it is closed.
+  const sidebarEl = (compact: boolean) => (
+    <Sidebar
+      compact={compact}
+      sessions={sessions}
+      activeId={state.activeId}
+      onOpen={openSession}
+      onNewChat={() => {
+        setView('chat');
+        setFloating(null);
+        agent.newChat();
+      }}
+      onSettings={() => {
+        setView((v) => (v === 'settings' ? 'chat' : 'settings'));
+        setFloating(null);
+      }}
+      settingsOpen={view === 'settings'}
+      topId={state.topId}
+      onRename={(sid, title) => void agent.rename(sid, title)}
+      pluginPages={sidebarPages.map((v) => ({
+        key: viewKey(v),
+        title: v.title,
+        ...(v.icon ? { icon: `spica-plugin://${v.plugin}/${v.icon.replace(/^\/+/, '')}` } : {}),
+        open: view === 'plugin' && openPlugin === viewKey(v),
+        onOpen: () => {
+          setOpenPlugin(viewKey(v));
+          setView('plugin');
+          setFloating(null);
+        },
+      }))}
+      pinned={settings.pinnedProjects ?? []}
+      onPin={(pid, pin) => {
+        const now = (settings.pinnedProjects ?? []).filter((x) => x !== pid);
+        shell.update({ pinnedProjects: pin ? [...now, pid] : now });
+      }}
+      {...(bridge.agent.renameProject ? { onRenameProject: (pid: string, name: string) => void agent.renameProject(pid, name) } : {})}
+      {...(bridge.agent.deleteProject ? { onDeleteProject: (pid: string, name: string) => setDeletingProject({ id: pid, name }) } : {})}
+      {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject({}) } : {})}
+      {...(mail.supported
+        ? {
+            inbox: {
+              count: inboxCount,
+              open: view === 'inbox',
+              onOpen: () => {
+                setView((v) => (v === 'inbox' ? 'chat' : 'inbox'));
+                setFloating(null);
+              },
+            },
+            notes: sidebarNotes,
+          }
+        : {})}
+    />
+  );
+
   // Frame (like Claude Desktop): the sidebar runs the full height of the window
   // with the brand and its own toggle at the top; the title bar covers only the
   // main pane and the detail panel.
   return (
     <div className="app" data-left={layout.left} data-right={view === 'chat' ? layout.right : 'hidden'}>
-      {layout.left === 'hidden' ? <div className="peek-edge" onMouseEnter={peekSoon} onMouseLeave={clearPeekTimer} aria-hidden /> : null}
+      {/* Sidebar closed: a column of icons stays (他 2026-11-10); resting on it opens the full
+          sidebar over it for a moment, every row where its icon was (except 项目, see Sidebar). */}
+      {layout.left !== 'docked' ? (
+        <div
+          className="panel panel-rail"
+          onMouseOver={(e) => ((e.target as Element).closest('[data-no-peek]') ? clearPeekTimer() : peekSoon())}
+          onMouseLeave={clearPeekTimer}
+          onMouseDown={clearPeekTimer}
+        >
+          <div className="rail-head">{sidebarToggle}</div>
+          {sidebarEl(true)}
+        </div>
+      ) : null}
       {leftShown ? (
         <div
           className={`panel panel-left is-${layout.left}`}
@@ -468,65 +536,24 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           {...(peekOpen ? { onMouseEnter: clearPeekTimer, onMouseLeave: unpeekSoon } : {})}
         >
           {resizer('left')}
-          <div className="sidebar-head">
-            <SpicaBanner height={BANNER_HEIGHT} className="sidebar-brand" {...wordmarkProps} />
-            {sidebarToggle}
-          </div>
-          <Sidebar
-            sessions={sessions}
-            activeId={state.activeId}
-            onOpen={openSession}
-            onNewChat={() => {
-              setView('chat');
-              setFloating(null);
-              agent.newChat();
-            }}
-            onSettings={() => {
-              setView((v) => (v === 'settings' ? 'chat' : 'settings'));
-              setFloating(null);
-            }}
-            settingsOpen={view === 'settings'}
-            topId={state.topId}
-            onRename={(sid, title) => void agent.rename(sid, title)}
-            pluginPages={sidebarPages.map((v) => ({
-              key: viewKey(v),
-              title: v.title,
-              ...(v.icon ? { icon: `spica-plugin://${v.plugin}/${v.icon.replace(/^\/+/, '')}` } : {}),
-              open: view === 'plugin' && openPlugin === viewKey(v),
-              onOpen: () => {
-                setOpenPlugin(viewKey(v));
-                setView('plugin');
-                setFloating(null);
-              },
-            }))}
-            pinned={settings.pinnedProjects ?? []}
-            onPin={(pid, pin) => {
-              const now = (settings.pinnedProjects ?? []).filter((x) => x !== pid);
-              shell.update({ pinnedProjects: pin ? [...now, pid] : now });
-            }}
-            {...(bridge.agent.renameProject ? { onRenameProject: (pid: string, name: string) => void agent.renameProject(pid, name) } : {})}
-            {...(bridge.agent.deleteProject ? { onDeleteProject: (pid: string, name: string) => setDeletingProject({ id: pid, name }) } : {})}
-            {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject({}) } : {})}
-            {...(mail.supported
-              ? {
-                  inbox: {
-                    count: inboxCount,
-                    open: view === 'inbox',
-                    onOpen: () => {
-                      setView((v) => (v === 'inbox' ? 'chat' : 'inbox'));
-                      setFloating(null);
-                    },
-                  },
-                  notes: sidebarNotes,
-                }
-              : {})}
-          />
+          {layout.left === 'docked' ? (
+            <div className="sidebar-head">
+              <SpicaBanner height={BANNER_HEIGHT} className="sidebar-brand" {...wordmarkProps} />
+              {sidebarToggle}
+            </div>
+          ) : (
+            // Over the icon column: the toggle stays where the column has it, the brand after it.
+            <div className="sidebar-head is-over-rail">
+              {sidebarToggle}
+              <SpicaBanner height={BANNER_HEIGHT} className="sidebar-brand" {...wordmarkProps} />
+            </div>
+          )}
+          {sidebarEl(false)}
         </div>
       ) : null}
 
       <div className="column">
       <header className="titlebar">
-        {layout.left === 'docked' ? null : <div className="titlebar-left">{sidebarToggle}</div>}
         <div className="titlebar-title">
           {view === 'chat' && parent ? (
             <>
