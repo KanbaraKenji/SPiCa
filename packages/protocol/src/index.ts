@@ -554,7 +554,8 @@ export type CoreEventBody =
   /** A run (from an input until the agent stops) ended. */
   | { type: 'run.end'; reason: RunEndReason; detail?: string }
   /** `code`: stable id of the cause (net.*, tls.*, proxy.*, gateway.*, wso2.*); the UI words it. */
-  | { type: 'error'; message: string; retryable?: boolean; code?: string };
+  /** `hint`: the words for `code` (Chinese, as NET_HINTS), naming the fields as this connection's kind does (WSO2: 网关地址). */
+  | { type: 'error'; message: string; retryable?: boolean; code?: string; hint?: string };
 
 /**
  * What one of the history tools found (event `history.card`, kept in

@@ -2,7 +2,7 @@
 import type { Tracer } from '../trace.ts';
 import type { ProbeResult } from '../types.ts';
 import { isAbortError, redact } from '../util.ts';
-import { NET_HINTS, netErrorCode } from '../net.ts';
+import { netErrorCode, netHint } from '../net.ts';
 import { ProviderError, type Provider } from './types.ts';
 
 export interface ProbeOptions {
@@ -82,7 +82,7 @@ export async function probeProvider(provider: Provider, opts: ProbeOptions): Pro
                     : 'network';
     trace?.finish({ status: errorCode === 'aborted' ? 'aborted' : 'error', error: message, attempts: info.attempts, ...(status ? { httpStatus: status } : {}) });
     const code = timedOut ? 'net.timeout' : err instanceof ProviderError && err.code ? err.code : isAbortError(err) ? undefined : netErrorCode(err);
-    const hint = code ? NET_HINTS[code] : undefined;
+    const hint = netHint(code, provider.kind);
     return {
       ok: false,
       latencyMs,

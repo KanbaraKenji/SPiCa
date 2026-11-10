@@ -32,6 +32,7 @@ import { closeSync, openSync, readSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.ts';
 import { samePath } from './move-folder.ts';
+import { netHint } from './net.ts';
 
 export interface RunResult {
   reason: RunEndReason;
@@ -785,7 +786,9 @@ export class Session {
         const noImages = sentImages.length > 0 && refusesImages(err);
         if (noImages) this.#rt.markNoImages(provider.id, request.model);
         const code = noImages ? 'model.no_images' : err instanceof ProviderError && err.code ? err.code : undefined;
-        this.#emit({ type: 'error', message, retryable: !noImages && err instanceof ProviderError && err.retryable, ...(code ? { code } : {}) });
+        // the words for the code, naming the address field as this kind of connection's form does
+        const hint = netHint(code, provider.kind);
+        this.#emit({ type: 'error', message, retryable: !noImages && err instanceof ProviderError && err.retryable, ...(code ? { code } : {}), ...(hint ? { hint } : {}) });
         keepPartial({ interrupted: true, error: true });
         return end('error', message);
       }

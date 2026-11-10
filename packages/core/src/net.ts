@@ -355,6 +355,20 @@ export const NET_HINTS: Record<string, string> = {
   'wso2.subscription_inactive': '订阅未生效（WSO2 900909），请在 WSO2 开发者门户中查看订阅状态。',
 };
 
+/** What the settings form calls a connection's address, by its kind (the hints name the field the user sees). */
+export const ADDRESS_FIELD: Readonly<Record<string, string>> = { 'openai-compatible': '接口地址', anthropic: '接口地址', wso2: '网关地址' };
+
+/**
+ * The words for a code (NET_HINTS) as the user of this kind of connection reads them: the address field under
+ * its own name (a WSO2 gateway's is 网关地址). The one place the field name is chosen.
+ */
+export function netHint(code: string | undefined, kind?: string): string | undefined {
+  const hint = code ? NET_HINTS[code] : undefined;
+  if (!hint) return undefined;
+  const field = (kind && ADDRESS_FIELD[kind]) || '接口地址';
+  return field === '接口地址' ? hint : hint.replaceAll('接口地址', field);
+}
+
 const WSO2_FAULTS: Record<string, string> = {
   '900901': 'wso2.invalid_credentials',
   '900902': 'wso2.missing_credentials',

@@ -8,7 +8,7 @@ import type { LimiterConfig } from '../limiter.ts';
 import { AnthropicProvider } from '../providers/anthropic.ts';
 import { OpenAICompatibleProvider } from '../providers/openai.ts';
 import { probeProvider } from '../providers/probe.ts';
-import { NET_HINTS } from '../net.ts';
+import { netHint } from '../net.ts';
 import type { ProbeResult } from '../types.ts';
 import type { Provider } from '../providers/types.ts';
 import { Wso2Provider } from '../providers/wso2.ts';
@@ -206,8 +206,8 @@ export async function probeConfig(config: ProviderConfig, model: string, opts: {
   if (first.ok || first.httpStatus !== 404 || first.stage !== 'model' || !base || versioned || config.kind === 'anthropic') return first;
   const suggested = `${base}/v1`;
   const again = await run({ ...config, baseUrl: suggested });
-  if (again.ok) return { ...again, suggestedBaseUrl: suggested, code: 'address.v1_added', hint: NET_HINTS['address.v1_added']! };
-  return { ...first, code: 'gateway.not_found_version', hint: `模型调用失败：${NET_HINTS['gateway.not_found_version']!}` };
+  if (again.ok) return { ...again, suggestedBaseUrl: suggested, code: 'address.v1_added', hint: netHint('address.v1_added', config.kind)! };
+  return { ...first, code: 'gateway.not_found_version', hint: `模型调用失败：${netHint('gateway.not_found_version', config.kind)!}` };
 }
 
 /** Take the single-writer lock for a database; throws when another live process holds it. */
