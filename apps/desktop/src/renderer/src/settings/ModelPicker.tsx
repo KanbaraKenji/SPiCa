@@ -44,7 +44,8 @@ export function priceText(p: CatalogPriceView): string {
 
 /** A context window in short, the way providers write it: 128000 or 131072 -> 「128k」, 1048576 -> 「1M」. */
 export function windowText(n: number): string {
-  if (n >= 1024 && n % 1024 === 0) {
+  // Whole thousands are counted in 1000s (128000); 131072 and 1048576 in 1024s.
+  if (n >= 1000 && n % 1000 !== 0 && n % 1024 === 0) {
     const k = n / 1024;
     return k >= 1024 && k % 1024 === 0 ? `${k / 1024}M` : `${k}k`;
   }

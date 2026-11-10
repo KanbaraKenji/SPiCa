@@ -346,3 +346,16 @@ describe('Models', () => {
     await waitFor(() => expect(api.setPointer).toHaveBeenCalledWith('strong', { connectionId: 'p-1', model: 'deepseek-v4-pro' }));
   });
 });
+
+describe('context window in short', () => {
+  it('reads the way providers write it', async () => {
+    const { windowText } = await import('./ModelPicker');
+    expect(windowText(128_000)).toBe('128k');
+    expect(windowText(131_072)).toBe('128k');
+    expect(windowText(1_048_576)).toBe('1M');
+    expect(windowText(1_000_000)).toBe('1M');
+    expect(windowText(200_000)).toBe('200k');
+    expect(windowText(32_768)).toBe('32k');
+    expect(windowText(64_500)).toBe('64.5k');
+  });
+});
