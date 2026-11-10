@@ -86,8 +86,11 @@ export function coreKind(kind: ProviderKind): 'openai-compatible' | 'anthropic' 
 }
 
 export function secretLabel(kind: ProviderKind): string {
-  return kind === 'wso2' ? 'Client Secret' : 'API Key';
+  return kind === 'wso2' ? 'Consumer Secret（Client Secret）' : 'API Key';
 }
+
+/** WSO2's developer portal calls the OAuth client id the Consumer Key; that is what people are handed. */
+export const WSO2_KEY_LABEL = 'Consumer Key（Client ID）';
 
 export type FieldErrors = Partial<Record<keyof ProviderFields | 'secret', string>>;
 
@@ -109,7 +112,7 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: {
   if (d.kind === 'wso2') {
     if (!d.tokenUrl.trim()) e.tokenUrl = '填取 token 的地址';
     else if (!isUrl(d.tokenUrl)) e.tokenUrl = '地址要以 http:// 或 https:// 开头';
-    if (!d.clientId.trim()) e.clientId = '填 Client ID';
+    if (!d.clientId.trim()) e.clientId = '填 Consumer Key';
   }
   const secret = d.secret?.trim();
   if (!secret && !hasSavedSecret) e.secret = `填 ${secretLabel(d.kind)}`;

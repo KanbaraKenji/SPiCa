@@ -37,7 +37,9 @@ function fakeApi(initial: ProviderView[] = []) {
   return api;
 }
 
-const type = (label: string | RegExp, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
+// A label's text also holds the hint under the field, so match the start of it.
+const byLabel = (label: string | RegExp) => screen.getByLabelText(typeof label === 'string' ? new RegExp(`^${label}`) : label);
+const type = (label: string | RegExp, value: string) => fireEvent.change(byLabel(label), { target: { value } });
 
 describe('Models', () => {
   it('points out missing fields before testing or saving', async () => {
@@ -53,10 +55,25 @@ describe('Models', () => {
   it('shows the WSO2 fields only for WSO2', async () => {
     render(<Models api={fakeApi()} />);
     fireEvent.click(await screen.findByRole('button', { name: /添加模型/ }));
-    expect(screen.queryByLabelText('Client ID')).toBeNull();
+    expect(screen.queryByLabelText(/Consumer Key/)).toBeNull();
     fireEvent.click(screen.getByRole('radio', { name: 'WSO2 网关' }));
-    expect(screen.getByLabelText('取 token 地址')).toBeTruthy();
-    expect(screen.getByLabelText('Client Secret')).toBeTruthy();
+    expect(screen.getByLabelText(/^取 token 地址/)).toBeTruthy();
+    expect(screen.getByLabelText(/^Consumer Secret（Client Secret）/)).toBeTruthy();
+  });
+
+  it('WSO2: the names people are handed come first, each field says where it comes from', async () => {
+    render(<Models api={fakeApi()} />);
+    fireEvent.click(await screen.findByRole('button', { name: /添加模型/ }));
+    fireEvent.click(screen.getByRole('radio', { name: 'WSO2 网关' }));
+    expect(screen.getByLabelText(/^Consumer Key（Client ID）/)).toBeTruthy();
+    expect(screen.getByText('管理员给的模型接口地址，一般以 /v1 结尾，不带 /chat/completions')).toBeTruthy();
+    expect(screen.getByText('一般以 /token 或 /oauth2/token 结尾')).toBeTruthy();
+    expect(screen.getByText('在 WSO2 开发者门户里，你的应用的 Production Keys 下面')).toBeTruthy();
+    expect(screen.getByText('和 Consumer Key 在同一处（Production Keys）')).toBeTruthy();
+    expect(screen.getByText('照管理员给的原样填，区分大小写，可以带斜杠')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }));
+    expect(screen.getByText('填 Consumer Key')).toBeTruthy();
+    expect(screen.getByText('填 Consumer Secret（Client Secret）')).toBeTruthy();
   });
 
   it('tests, saves, and then keeps the key hidden', async () => {
@@ -73,8 +90,8 @@ describe('Models', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     expect(await screen.findByText('已保存')).toBeTruthy();
     expect(screen.getByRole('button', { name: /公司网关/ })).toBeTruthy();
-    expect((screen.getByLabelText('API Key') as HTMLInputElement).value).toBe('');
-    expect((screen.getByLabelText('API Key') as HTMLInputElement).placeholder).toBe('已保存；不改就留空');
+    expect((byLabel('API Key') as HTMLInputElement).value).toBe('');
+    expect((byLabel('API Key') as HTMLInputElement).placeholder).toBe('已保存；不改就留空');
   });
 
   it('keeps 强模型 and the limits under 更多选项, folded', async () => {
@@ -111,8 +128,8 @@ describe('Models', () => {
 
     render(<Models api={api} />);
     await screen.findByText('填了一半，还没保存');
-    expect((screen.getByLabelText('名称') as HTMLInputElement).value).toBe('公司网关');
-    expect((screen.getByLabelText('API Key') as HTMLInputElement).value).toBe('sk-1');
+    expect((byLabel('名称') as HTMLInputElement).value).toBe('公司网关');
+    expect((byLabel('API Key') as HTMLInputElement).value).toBe('sk-1');
   });
 
   it('each model keeps its own unsaved edit; saving clears it', async () => {
@@ -125,7 +142,7 @@ describe('Models', () => {
     fireEvent.click(screen.getByRole('button', { name: /添加模型/ }));
     expect(screen.getByText('改了还没保存')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /旧网关/ }));
-    expect((screen.getByLabelText('模型') as HTMLInputElement).value).toBe('m2');
+    expect((byLabel('模型') as HTMLInputElement).value).toBe('m2');
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     expect(await screen.findByText('已保存')).toBeTruthy();
     expect(screen.queryByText('改了还没保存')).toBeNull();

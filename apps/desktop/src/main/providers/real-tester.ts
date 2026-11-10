@@ -35,7 +35,7 @@ function probeAdvice(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' | 'model'
   }
   switch (r.errorCode) {
     case 'auth':
-      return draft.kind === 'wso2' ? '取不到 token：请检查「Client ID」和「Client Secret」，以及「取 token 地址」。' : `密钥不对或已失效：请检查「${secretLabel(draft.kind)}」。`;
+      return draft.kind === 'wso2' ? '取不到 token：请检查「Consumer Key」和「Consumer Secret」，以及「取 token 地址」。' : `密钥不对或已失效：请检查「${secretLabel(draft.kind)}」。`;
     case 'not_found':
       return `找不到模型「${model}」或这个地址：请检查「模型」和${url}。`;
     case 'bad_request':

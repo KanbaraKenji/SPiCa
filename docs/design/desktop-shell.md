@@ -91,7 +91,7 @@
 - 工作流文件夹：`workflowsDir`，空 = `文档\Spica\workflows`（启动时建好）。
 - 使用日志：常规页「使用日志」选项目（默认全部）和时间（全部 / 今天 / 最近 7 天 / 最近 30 天），点「导出…」选保存位置（默认 `文档\Spica\使用日志-日期.jsonl`），由内核进程直接写文件（内核 `exportUsageLog`，密钥和接口地址已去掉），完成后显示条数、路径和「在文件夹中显示」。
 - 这些改了都不用重启：主进程调内核的 `configure(patch)`（邮件、工作流文件夹、模型都走它），正在跑的会话不受影响。
-- 模型存 `%APPDATA%\Spica\providers.json`。三种表单：OpenAI 兼容（接口地址、API Key、模型）、Anthropic（API Key、接口地址可留默认、模型）、WSO2 网关（网关地址、取 token 地址、Client ID、Client Secret、Scope 可选、模型）；三种都要填**上下文上限**（这个模型一次最多能装多少 token，必填、正整数；内核认识的型号用 `knownContextWindow(kind, model)` 自动填上、可以改，换成不认识的型号时自动填的数会拿掉；手填的不动），经 `ProviderConfig.contextWindows: { [模型]: n }` 传给内核，改了马上生效。之前存的没有这一项，列表里写「还没填上下文上限，点开补上」，补上之前输入框不显示上下文环。强模型（可空）、同时请求数、每分钟请求数（空 = 不限）收在「更多选项」里，默认折叠，其中有填错的自动展开。
+- 模型存 `%APPDATA%\Spica\providers.json`。三种表单：OpenAI 兼容（接口地址、API Key、模型）、Anthropic（API Key、接口地址可留默认、模型）、WSO2 网关（网关地址、取 token 地址、Consumer Key（Client ID）、Consumer Secret（Client Secret）、Scope 可选、模型；标签先写 WSO2 开发者门户里的叫法，每栏下面一句「从哪来、长什么样」：地址一般以 /v1 结尾不带 /chat/completions，取 token 地址以 /token 或 /oauth2/token 结尾，Key 和 Secret 在门户里应用的 Production Keys，模型照管理员给的原样填）；三种都要填**上下文上限**（这个模型一次最多能装多少 token，必填、正整数；内核认识的型号用 `knownContextWindow(kind, model)` 自动填上、可以改，换成不认识的型号时自动填的数会拿掉；手填的不动），经 `ProviderConfig.contextWindows: { [模型]: n }` 传给内核，改了马上生效。之前存的没有这一项，列表里写「还没填上下文上限，点开补上」，补上之前输入框不显示上下文环。强模型（可空）、同时请求数、每分钟请求数（空 = 不限）收在「更多选项」里，默认折叠，其中有填错的自动展开。
 - 密钥（API Key / Client Secret）用 Electron `safeStorage`（Windows DPAPI，按当前用户加密，不需要管理员）存密文；主进程从不把密钥发回界面，界面只知道「已保存」。系统不能加密时拒绝保存并说明。
 - 设置页左上角一个返回箭头（只有箭头，悬停「返回对话（Esc）」），和 Esc 一样回对话。
 - 表单填一半离开（换标签、回对话、Esc、点别的模型）回来还在：模型表单（每个模型各一份）、代理、邮件忽略规则、插件安装位置、更新源。只放在窗口内存里不写盘（模型表单有密钥），关掉 Spica 就没了（`settings/drafts.ts`）。

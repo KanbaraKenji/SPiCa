@@ -62,7 +62,7 @@ describe('probeMessage', () => {
   it('points at the field to fix for each kind of failure', () => {
     const openai = { kind: 'openai' as const, model: 'm1' };
     const wso2 = { kind: 'wso2' as const, model: 'm1' };
-    expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'auth' }, wso2)).toContain('Client Secret');
+    expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'auth' }, wso2)).toContain('Consumer Secret');
     expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'not_found' }, openai)).toBe('找不到模型「m1」或这个地址：请检查「模型」和「接口地址」。');
     expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'network' }, wso2)).toContain('取 token 地址');
     expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'rate_limited' }, openai)).toContain('同时请求');

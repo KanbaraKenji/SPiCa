@@ -8,6 +8,7 @@ import {
   PROVIDER_KINDS,
   secretLabel,
   validateDraft,
+  WSO2_KEY_LABEL,
   type FieldErrors,
   type ProviderDraft,
   type ProviderKind,
@@ -361,12 +362,30 @@ export function Models({ api }: { api: ProvidersApi }) {
               onChange={(baseUrl) => set({ baseUrl })}
               error={errors.baseUrl}
               placeholder={draft.kind === 'wso2' ? 'https://网关地址/模型路径/v1' : 'https://api.example.com/v1'}
+              hint={
+                draft.kind === 'wso2'
+                  ? '管理员给的模型接口地址，一般以 /v1 结尾，不带 /chat/completions'
+                  : '服务商说明里的接口地址，一般以 /v1 结尾，不带 /chat/completions'
+              }
             />
           )}
           {draft.kind === 'wso2' ? (
             <>
-              <Field label="取 token 地址" value={draft.tokenUrl} onChange={(tokenUrl) => set({ tokenUrl })} error={errors.tokenUrl} placeholder="https://网关地址/oauth2/token" />
-              <Field label="Client ID" value={draft.clientId} onChange={(clientId) => set({ clientId })} error={errors.clientId} />
+              <Field
+                label="取 token 地址"
+                value={draft.tokenUrl}
+                onChange={(tokenUrl) => set({ tokenUrl })}
+                error={errors.tokenUrl}
+                placeholder="https://网关地址/oauth2/token"
+                hint="一般以 /token 或 /oauth2/token 结尾"
+              />
+              <Field
+                label={WSO2_KEY_LABEL}
+                value={draft.clientId}
+                onChange={(clientId) => set({ clientId })}
+                error={errors.clientId}
+                hint="在 WSO2 开发者门户里，你的应用的 Production Keys 下面"
+              />
             </>
           ) : null}
           <Field
@@ -376,9 +395,17 @@ export function Models({ api }: { api: ProvidersApi }) {
             onChange={(secret) => set({ secret })}
             error={errors.secret}
             placeholder={hasSecret ? '已保存；不改就留空' : ''}
+            {...(draft.kind === 'wso2' ? { hint: '和 Consumer Key 在同一处（Production Keys）' } : {})}
           />
           {draft.kind === 'wso2' ? <Field label="Scope" value={draft.scope} onChange={(scope) => set({ scope })} hint="网关没要求就留空" /> : null}
-          <Field label="模型" value={draft.model} onChange={(model) => set({ model })} error={errors.model} placeholder="平时用的模型名" />
+          <Field
+            label="模型"
+            value={draft.model}
+            onChange={(model) => set({ model })}
+            error={errors.model}
+            placeholder="平时用的模型名"
+            hint={draft.kind === 'wso2' ? '照管理员给的原样填，区分大小写，可以带斜杠' : '照服务商说明里的模型名原样填，区分大小写'}
+          />
           <Field
             label="上下文上限"
             type="number"
