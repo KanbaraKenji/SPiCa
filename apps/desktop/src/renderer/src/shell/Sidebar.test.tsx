@@ -49,6 +49,24 @@ describe('Sidebar', () => {
     expect(screen.queryByText('有新来信')).toBeNull();
   });
 
+  it('without 收件箱 (no mail plugin) a project with an unseen report still has its dot, on the row and on the tab', () => {
+    render(
+      <Sidebar
+        sessions={seed.sessions}
+        activeId={SEED_IDS.chat}
+        onOpen={vi.fn()}
+        onNewChat={vi.fn()}
+        onSettings={vi.fn()}
+        settingsOpen={false}
+        notes={new Map([[SEED_IDS.pm, '有新回报']])}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /收件箱/ })).toBeNull();
+    expect(screen.getByRole('img', { name: '有新回报' }).closest('[role="tab"]')?.textContent).toContain('项目');
+    fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
+    expect(screen.getByRole('img', { name: '有新回报' }).closest('.tree-row')).toBeTruthy();
+  });
+
   it('summarises a collapsed project with only non-zero counts', () => {
     const kids = seed.sessions.filter((s) => s.parentId === SEED_IDS.pm);
     expect(projectSummary(kids)).toBe('1 个待处理 · 1 个运行中 · 1 个排队中');

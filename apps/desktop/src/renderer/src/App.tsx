@@ -26,6 +26,7 @@ import { MailStore, useMail } from './store/mail';
 import { needsYou, unseenByManager } from '../../shared/mail';
 import type { MailItem } from '@spica/protocol';
 import { Icon } from './ui/Icon';
+import { sidebarNews } from './shell/sidebar-news';
 import { HoverTips } from './ui/HoverTips';
 import { SpicaBanner } from '@spica/brand/react';
 
@@ -546,20 +547,18 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       {...(bridge.agent.renameProject ? { onRenameProject: (pid: string, name: string) => void agent.renameProject(pid, name) } : {})}
       {...(bridge.agent.deleteProject ? { onDeleteProject: (pid: string, name: string) => setDeletingProject({ id: pid, name }) } : {})}
       {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject({}) } : {})}
-      {...(mail.supported && mailSource
-        ? {
-            inbox: {
-              count: inboxCount,
-              open: view === 'inbox',
-              onOpen: () => {
-                setView((v) => (v === 'inbox' ? 'chat' : 'inbox'));
-                setFloating(null);
-              },
-            },
-          }
-        : {})}
-      // New mail and unseen progress reports: with or without a mail plugin.
-      notes={sidebarNotes}
+      {...sidebarNews({
+        inboxShown: mail.supported && mailSource,
+        inbox: {
+          count: inboxCount,
+          open: view === 'inbox',
+          onOpen: () => {
+            setView((v) => (v === 'inbox' ? 'chat' : 'inbox'));
+            setFloating(null);
+          },
+        },
+        notes: sidebarNotes,
+      })}
     />
   );
 
