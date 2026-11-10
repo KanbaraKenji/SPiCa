@@ -2151,7 +2151,7 @@ button.tree-twisty:hover {
 
 /* 模型: the provider's models with a checkbox each; the selected ones carry 上下文上限. */
 .model-picker {
-  max-width: 560px;
+  max-width: 640px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2178,6 +2178,7 @@ button.tree-twisty:hover {
   border: 1px solid var(--spica-border);
   border-radius: var(--radius-m);
   max-height: 340px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -2186,10 +2187,10 @@ button.tree-twisty:hover {
 }
 
 .model-row {
+  /* The 上下文上限 line sits under the model's name: the price keeps one line. */
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
   padding: 6px 10px;
   border-top: 1px solid var(--spica-border);
 }
@@ -2235,14 +2236,23 @@ button.tree-twisty:hover {
 
 .model-row-window {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  padding-left: 24px;
 }
 
 .field .model-row-window > .input {
   width: 120px;
   height: 26px;
   font-size: 13px;
+}
+
+.model-row-label,
+.model-row-unit {
+  font-size: 12px;
+  color: var(--spica-muted);
+  white-space: nowrap;
 }
 
 .model-row-tag {
@@ -2272,14 +2282,6 @@ button.tree-twisty:hover {
 
   .field-stack > .field-label {
     padding-top: 0;
-  }
-
-  .model-row {
-    grid-template-columns: 1fr;
-  }
-
-  .model-row-window {
-    padding-left: 24px;
   }
 
   .provider-editor {

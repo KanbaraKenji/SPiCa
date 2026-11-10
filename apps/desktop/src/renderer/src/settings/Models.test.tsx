@@ -100,6 +100,9 @@ describe('Models', () => {
     expect((screen.getByRole('checkbox', { name: /deepseek-flash/ }) as HTMLInputElement).checked).toBe(true);
     expect((screen.getByLabelText('deepseek-flash 上下文上限') as HTMLInputElement).value).toBe('128000');
     expect(screen.getByText('来自目录')).toBeTruthy();
+    // The number says what it is and in what unit.
+    expect(screen.getByText('上下文上限')).toBeTruthy();
+    expect(screen.getByText('token')).toBeTruthy();
     expect(screen.getByText('输入 ¥2 / 输出 ¥8（每百万 token）')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'API 文档' }).getAttribute('href')).toBe('https://docs.example.com/deepseek');
     // 接口地址 is under 更多选项, already filled in.
@@ -180,7 +183,7 @@ describe('Models', () => {
     expect(await screen.findByText('已保存')).toBeTruthy();
     expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ catalogId: 'deepseek', model: 'deepseek-flash', contextWindow: 128_000 }));
     expect(screen.getByRole('button', { name: /DeepSeek/ })).toBeTruthy();
-    expect(screen.getByText('尾号 1234')).toBeTruthy();
+    expect(screen.getByText('· 尾号 1234')).toBeTruthy();
     expect((byLabel('API Key') as HTMLInputElement).value).toBe('');
     expect((byLabel('API Key') as HTMLInputElement).placeholder).toBe('已保存（留空不修改）');
   });
@@ -273,7 +276,8 @@ describe('Models', () => {
     render(<Models api={api} />);
     const def = (await screen.findByLabelText('默认模型')) as HTMLSelectElement;
     expect([...def.querySelectorAll('optgroup')].map((g) => g.label)).toEqual(['DeepSeek · 尾号 3f9a', 'DeepSeek 2 · 尾号 81c2']);
-    expect(def.selectedOptions[0]?.textContent).toBe('deepseek-flash');
+    // Closed, it still says which connection: two can carry the same model.
+    expect(def.selectedOptions[0]?.textContent).toBe('DeepSeek · deepseek-flash');
     const strong = screen.getByLabelText('强模型') as HTMLSelectElement;
     expect(strong.selectedOptions[0]?.textContent).toBe('无');
     fireEvent.change(strong, { target: { value: 'p-1\tdeepseek-v4-pro' } });

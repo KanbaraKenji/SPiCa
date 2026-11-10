@@ -38,9 +38,10 @@ describe('real connection tester', () => {
   it('says the key is wrong on 401 (the core cause first, then which field to check)', async () => {
     const r = await test(draft('made-up'), undefined);
     expect(r.ok).toBe(false);
-    expect(r.message).toMatch(/^调模型失败：.*401/);
+    expect(r.message).toMatch(/^模型调用失败：.*401/);
     expect(r.message.endsWith('请检查 API Key。')).toBe(true);
-    expect(r.message).not.toContain('密钥不对或已失效：');
+    // Said once: the core's sentence already says which field to check.
+    expect(r.message.split('请检查').length).toBe(2);
   });
 
   it('passes when the model answers', async () => {

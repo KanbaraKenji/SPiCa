@@ -89,6 +89,7 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
               </label>
               {on ? (
                 <span className="model-row-window">
+                  <span className="model-row-label">上下文上限</span>
                   <input
                     className={on.contextWindow === null ? 'input is-invalid' : 'input'}
                     type="number"
@@ -97,6 +98,7 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
                     aria-label={`${model.id} 上下文上限`}
                     onChange={(e) => onWindow(model.id, parseWindow(e.target.value))}
                   />
+                  <span className="model-row-unit">token</span>
                   {source ? (
                     <span className="model-row-tag" title={on.contextFrom === 'name-match' && matchedNames[model.id] ? matchedNames[model.id] : undefined}>
                       {source}

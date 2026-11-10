@@ -128,7 +128,6 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
   return (
     <div className="settings-group">
       <h3 className="settings-subheading">网络</h3>
-      <p className="settings-hint">通过代理访问网络或需要信任企业证书时设置，修改后立即生效。</p>
       <div className="net-grid">
         <label className="form-field">
           <span className="field-label">代理地址</span>
@@ -139,10 +138,7 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
         </label>
         <label className="form-field">
           <span className="field-label">不使用代理的地址</span>
-          <input className="input" spellCheck={false} value={noProxy} placeholder="localhost, 10.0.0.0/8, .corp.example.com" onChange={(e) => setNoProxy(e.target.value)} aria-describedby="net-noproxy-hint" />
-          <span className="settings-hint" id="net-noproxy-hint">
-            以逗号分隔。
-          </span>
+          <input className="input" spellCheck={false} value={noProxy} placeholder="localhost, 10.0.0.0/8, .corp.example.com" onChange={(e) => setNoProxy(e.target.value)} />
         </label>
       </div>
       <div className="rule-actions">
@@ -192,7 +188,7 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
       </div>
       {state ? (
         <p className="settings-hint net-now">
-          现在：{state.proxy ? `代理：${state.proxy}` : '直连'}
+          当前：{state.proxy ? `代理：${state.proxy}` : '直连'}
           {state.noProxy.length ? ` · ${state.noProxy.length} 个例外地址` : ''}
           {state.caFile ? ' · 已添加证书文件' : ''}
           {state.useSystemCa ? ' · 使用 Windows 证书' : ''}

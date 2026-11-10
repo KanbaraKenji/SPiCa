@@ -410,7 +410,8 @@ export function Models({ api }: { api: ProvidersApi }) {
     .filter((p) => p.models.length)
     .map((p) => ({
       label: `${p.name}${p.keyTail ? ` · 尾号 ${p.keyTail}` : ''}`,
-      options: p.models.map((m) => ({ key: refKey({ connectionId: p.id, model: m.id }), model: m.id })),
+      // 「名称 · 模型」 open and closed: two connections of one provider can carry the same model.
+      options: p.models.map((m) => ({ key: refKey({ connectionId: p.id, model: m.id }), model: `${p.name} · ${m.id}` })),
     }));
   const pointerOptions = groups.map((g) => (
     <optgroup key={g.label} label={g.label}>
@@ -478,7 +479,7 @@ export function Models({ api }: { api: ProvidersApi }) {
             <button type="button" className="provider-open" onClick={() => open(p)} aria-current={selected === p.id ? 'true' : undefined}>
               <span className="provider-name">
                 {p.name}
-                {p.keyTail ? <span className="provider-tail">尾号 {p.keyTail}</span> : null}
+                {p.keyTail ? <span className="provider-tail">· 尾号 {p.keyTail}</span> : null}
               </span>
               <span className="provider-sub">
                 {kindLabel(p.kind)} · {p.models.length > 1 ? `${p.models.length} 个模型：${p.models.map((m) => m.id).join('、')}` : (p.models[0]?.id ?? '—')}

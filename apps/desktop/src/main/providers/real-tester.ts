@@ -15,15 +15,12 @@ const TIMEOUT_MS = 20_000;
 /** The result in words a non-developer can act on, pointing at the field to fix. */
 export function probeMessage(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' | 'model'>): string {
   const advice = probeAdvice(r, draft);
-  // The core names the cause (取 token 失败：… / 调模型失败：…, TLS, proxy...); ours says which field to check.
+  // The core names the cause (获取 token 失败：… / 模型调用失败：…, TLS, proxy...); ours says which field to check.
   const hint = r.ok ? '' : (r.hint ?? '').trim();
   if (!hint) return advice;
-  // The gateway's own fault codes: the core's hint already says what to do and where.
-  if (r.code?.startsWith('wso2.')) return hint;
-  // For a wrong key / model / request ours repeats the core's cause before its colon: keep only what to check.
-  const repeats = r.errorCode === 'auth' || r.errorCode === 'not_found' || r.errorCode === 'bad_request';
-  const check = repeats ? (/：(请检查.+)$/.exec(advice)?.[1] ?? advice) : advice;
-  return `${hint.replace(/[。.]$/, '')}。${check}`;
+  // The core's sentence already says what to do (「…，请检查 API Key。」, the gateway's fault codes): one sentence, not two.
+  if (r.code?.startsWith('wso2.') || hint.includes('请')) return /[。.]$/.test(hint) ? hint : `${hint}。`;
+  return `${hint.replace(/[。.]$/, '')}。${advice}`;
 }
 
 function probeAdvice(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' | 'model'>): string {
