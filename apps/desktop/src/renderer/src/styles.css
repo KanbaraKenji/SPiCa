@@ -2097,7 +2097,8 @@ button.tree-twisty:hover {
 }
 
 .field-stack {
-  grid-template-columns: 96px 1fr;
+  /* Room for 「Consumer Secret」 and 「取 token 地址」 on one line. */
+  grid-template-columns: 116px 1fr;
   align-items: start;
 }
 

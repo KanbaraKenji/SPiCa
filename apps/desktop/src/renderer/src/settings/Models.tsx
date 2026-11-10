@@ -77,7 +77,8 @@ function Field({ label, value, onChange, error, placeholder, type = 'text', hint
           aria-invalid={error ? true : undefined}
           onChange={(e) => onChange(e.target.value)}
         />
-        {error ? <span className="field-error">{error}</span> : hint ? <span className="field-hint">{hint}</span> : null}
+        {error ? <span className="field-error">{error}</span> : null}
+        {hint ? <span className="field-hint">{hint}</span> : null}
       </span>
     </label>
   );
@@ -395,7 +396,7 @@ export function Models({ api }: { api: ProvidersApi }) {
                 value={draft.clientId}
                 onChange={(clientId) => set({ clientId })}
                 error={errors.clientId}
-                hint="在 WSO2 开发者门户里，你的应用的 Production Keys 下面"
+                hint="也叫 Client ID。在 WSO2 开发者门户里，你的应用的 Production Keys 下面"
               />
             </>
           ) : null}
@@ -406,7 +407,7 @@ export function Models({ api }: { api: ProvidersApi }) {
             onChange={(secret) => set({ secret })}
             error={errors.secret}
             placeholder={hasSecret ? '已保存；不改就留空' : ''}
-            {...(draft.kind === 'wso2' ? { hint: '和 Consumer Key 在同一处（Production Keys）' } : {})}
+            {...(draft.kind === 'wso2' ? { hint: '也叫 Client Secret。和 Consumer Key 在同一处（Production Keys）' } : {})}
           />
           {draft.kind === 'wso2' ? <Field label="Scope" value={draft.scope} onChange={(scope) => set({ scope })} hint="网关没要求就留空" /> : null}
           <Field

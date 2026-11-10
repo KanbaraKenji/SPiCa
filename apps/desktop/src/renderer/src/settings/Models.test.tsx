@@ -58,22 +58,25 @@ describe('Models', () => {
     expect(screen.queryByLabelText(/Consumer Key/)).toBeNull();
     fireEvent.click(screen.getByRole('radio', { name: 'WSO2 网关' }));
     expect(screen.getByLabelText(/^取 token 地址/)).toBeTruthy();
-    expect(screen.getByLabelText(/^Consumer Secret（Client Secret）/)).toBeTruthy();
+    expect(screen.getByLabelText(/^Consumer Secret/)).toBeTruthy();
   });
 
   it('WSO2: the names people are handed come first, each field says where it comes from', async () => {
     render(<Models api={fakeApi()} />);
     fireEvent.click(await screen.findByRole('button', { name: /添加模型/ }));
     fireEvent.click(screen.getByRole('radio', { name: 'WSO2 网关' }));
-    expect(screen.getByLabelText(/^Consumer Key（Client ID）/)).toBeTruthy();
+    expect(screen.getByLabelText(/^Consumer Key/)).toBeTruthy();
     expect(screen.getByText('管理员给的模型接口地址，一般以 /v1 结尾，不带 /chat/completions')).toBeTruthy();
     expect(screen.getByText('一般以 /token 或 /oauth2/token 结尾')).toBeTruthy();
-    expect(screen.getByText('在 WSO2 开发者门户里，你的应用的 Production Keys 下面')).toBeTruthy();
-    expect(screen.getByText('和 Consumer Key 在同一处（Production Keys）')).toBeTruthy();
+    expect(screen.getByText('也叫 Client ID。在 WSO2 开发者门户里，你的应用的 Production Keys 下面')).toBeTruthy();
+    expect(screen.getByText('也叫 Client Secret。和 Consumer Key 在同一处（Production Keys）')).toBeTruthy();
     expect(screen.getByText('照管理员给的原样填，区分大小写，可以带斜杠')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '测试连接' }));
     expect(screen.getByText('填 Consumer Key')).toBeTruthy();
-    expect(screen.getByText('填 Consumer Secret（Client Secret）')).toBeTruthy();
+    expect(screen.getByText('填 Consumer Secret')).toBeTruthy();
+    expect(screen.getByText('填网关地址')).toBeTruthy();
+    // The error sits above the hint; the hint (where it comes from) stays.
+    expect(screen.getByText('也叫 Client ID。在 WSO2 开发者门户里，你的应用的 Production Keys 下面')).toBeTruthy();
   });
 
   it('tests, saves, and then keeps the key hidden', async () => {
@@ -183,7 +186,8 @@ describe('Models', () => {
     type('API Key', 'sk-1');
     type('模型', 'deepseek-flash');
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    expect(screen.getByText('必须填：这个模型一次最多能装多少 token。不知道就查服务商的模型说明，比如 128000')).toBeTruthy();
+    expect(screen.getByText('必须填这一项，比如 128000')).toBeTruthy();
+    expect(screen.getByText('这个模型一次最多能装多少 token（上下文窗口）。不知道就查服务商的模型说明。')).toBeTruthy();
     expect(api.save).not.toHaveBeenCalled();
     type(/^上下文上限/, '64000.5');
     fireEvent.click(screen.getByRole('button', { name: '保存' }));

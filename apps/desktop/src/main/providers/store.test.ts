@@ -50,7 +50,7 @@ describe('ProviderStore', () => {
     delete raw.items[0]!.contextWindow;
     writeFileSync(file, JSON.stringify(raw));
     expect(new ProviderStore(dir, box).list()[0]?.contextWindow).toBeNull();
-    expect(() => new ProviderStore(dir, box).save({ ...draft, contextWindow: null })).toThrow('这个模型一次最多能装多少 token');
+    expect(() => new ProviderStore(dir, box).save({ ...draft, contextWindow: null })).toThrow('必须填这一项');
   });
 
   it('moves the default when the default one is deleted', () => {

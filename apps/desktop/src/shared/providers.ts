@@ -86,11 +86,15 @@ export function coreKind(kind: ProviderKind): 'openai-compatible' | 'anthropic' 
 }
 
 export function secretLabel(kind: ProviderKind): string {
-  return kind === 'wso2' ? 'Consumer Secret（Client Secret）' : 'API Key';
+  return kind === 'wso2' ? 'Consumer Secret' : 'API Key';
 }
 
-/** WSO2's developer portal calls the OAuth client id the Consumer Key; that is what people are handed. */
-export const WSO2_KEY_LABEL = 'Consumer Key（Client ID）';
+/**
+ * WSO2's developer portal calls the OAuth client id the Consumer Key; that is
+ * what people are handed. The OAuth names go in the hint ("也叫 Client ID"), so
+ * the label stays on one line.
+ */
+export const WSO2_KEY_LABEL = 'Consumer Key';
 
 export type FieldErrors = Partial<Record<keyof ProviderFields | 'secret', string>>;
 
@@ -107,7 +111,7 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: {
   if (!d.name.trim()) e.name = '起个名字，方便在列表里认出来';
   if (!d.model.trim()) e.model = '填要用的模型名';
   const needsUrl = d.kind !== 'anthropic';
-  if (needsUrl && !d.baseUrl.trim()) e.baseUrl = '填接口地址';
+  if (needsUrl && !d.baseUrl.trim()) e.baseUrl = d.kind === 'wso2' ? '填网关地址' : '填接口地址';
   else if (d.baseUrl.trim() && !isUrl(d.baseUrl)) e.baseUrl = '地址要以 http:// 或 https:// 开头';
   if (d.kind === 'wso2') {
     if (!d.tokenUrl.trim()) e.tokenUrl = '填取 token 的地址';
@@ -117,7 +121,7 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: {
   const secret = d.secret?.trim();
   if (!secret && !hasSavedSecret) e.secret = `填 ${secretLabel(d.kind)}`;
   if (!opts.forTest) {
-    if (d.contextWindow === null) e.contextWindow = '必须填：这个模型一次最多能装多少 token。不知道就查服务商的模型说明，比如 128000';
+    if (d.contextWindow === null) e.contextWindow = '必须填这一项，比如 128000';
     else if (!Number.isInteger(d.contextWindow) || d.contextWindow < 1) e.contextWindow = '填正整数（token 数），比如 128000';
   }
   for (const k of ['maxConcurrent', 'requestsPerMinute'] as const) {
