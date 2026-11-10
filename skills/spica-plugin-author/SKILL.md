@@ -43,8 +43,9 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 
 ## 交付前自查
 
-- [ ] **没有密钥**：插件包里没有 API key、令牌、密码、私钥、`.env`（`check.mjs` 会查常见格式，但它不是全部）。需要凭据时让用户在本机配置，或从环境变量读。
-- [ ] **没有写死公司专属的东西**：服务地址、部门名、项目代号不写进代码，放配置或环境变量；示例和模拟数据全是虚构的。
+- [ ] **没有密钥**：插件包里没有 API key、令牌、密码、私钥、`.env`（`check.mjs` 会查常见格式，但它不是全部）。需要凭据时，从 `SPICA_PLUGIN_DATA` 里的配置文件读，由插件自己的设置页通过 `services/` 里的工具保存，见 `references/internal-services.md`。**不要从环境变量读**：装进 Spica 后只传白名单变量，名字带 KEY、TOKEN、SECRET 的一律不传，`check.mjs` 看到会提醒。
+- [ ] **没有写死公司专属的东西**：服务地址、部门名、项目代号不写进代码，放 `SPICA_PLUGIN_DATA` 里的配置文件；示例和模拟数据全是虚构的。
+- [ ] **证书和代理没自己处理**：没有 `rejectUnauthorized: false`，没有打进包里的证书，也没自己读代理设置。这些由 Spica 代管。
 - [ ] **权限最小**：`permissions.workspace` 用得到才写 `read` / `write`；`permissions.hooks` 只写真用到的钩子类型；页面的 `permissions.tools` 只列页面要用的工具。
 - [ ] **不可逆都标了**：会删除、发送、提交、改外部系统的工具都在 `permissions.irreversible` 里。
 - [ ] **日志不记正文**：stderr 只写工具名、错误码、耗时，不写邮件正文、文件内容、个人信息。
@@ -73,6 +74,15 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 
 开发时不开 Spica 也能看页面：`node <skill>/scripts/preview.mjs <插件文件夹>`，在浏览器打开它打印的地址（暗色加 `?theme=dark`）。规则和 Spica 一样，背后是插件自己的 server（模拟模式）。详见 `references/ui.md`。
 
+## 连内部接口
+
+包公司内部服务的插件，先读 `references/internal-services.md`。要点：
+
+- **地址和凭据**放 `SPICA_PLUGIN_DATA/config.json`。用户在插件**自己的页面**里填，页面经 `services/` 里的工具保存（模型看不到这些工具）。Spica 没有统一的插件设置表单。
+- **证书和代理由 Spica 代管**：插件进程拿到的代理和信任名单和 Spica 自己的一样，Node 里直接用 `fetch` / `https`。用户改了网络设置，插件 server 会自动重启一次，之后的请求就按新设置走。
+- **工具按用户要办的事设计**，不是一个接口一个工具，一个插件十个以内。
+- **应用改了名**：插件不用改，`install.mjs` 加 `--app <应用名>`。
+
 ## 参考
 
 | 文件 | 内容 |
@@ -83,6 +93,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 | `references/mock-mode.md` | 模拟模式怎么写 |
 | `references/mail.md` | 声明「这个插件是邮件来源」 |
 | `references/ui.md` | 页面：声明、`window.spica`、主题变量、沙箱、预览 |
-| `references/connect.md` | 怎么连上 Spica（HTTP + 令牌 / stdio），装不上时怎么办 |
+| `references/connect.md` | 怎么连上 Spica（桌面版开关、HTTP + 令牌 / stdio、改了名的应用），装不上时怎么办 |
+| `references/internal-services.md` | 连内部接口：地址和凭据放哪、设置页写法、证书和代理、工具怎么设计 |
 
 更完整的说明在 Spica 仓库的 `docs/plugins/authoring.md`（作者指南）和 `docs/design/plugins.md`（设计），能跑的例子在 `plugins/example-notes`（带页面）。

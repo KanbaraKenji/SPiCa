@@ -419,6 +419,25 @@ export class PluginManager {
     });
   }
 
+  /**
+   * Restart every enabled plugin's servers. Servers read the network settings
+   * (proxy, trusted certificates) from their environment at start, so the host
+   * calls this after the user changes them. Tools are withdrawn and come back.
+   */
+  restartServers(reason = 'settings changed'): Promise<void> {
+    return this.#serial(async () => {
+      for (const a of this.#active.values()) {
+        if (a.servers.length === 0) continue;
+        void this.#log(a.manifest.name, `restarting servers: ${reason}`);
+        for (const run of a.servers) {
+          await this.#stopServer(a, run);
+          run.restarts = [];
+          await this.#startServer(a, run).catch(() => undefined);
+        }
+      }
+    });
+  }
+
   #require(name: string): InstalledRecord {
     const rec = this.#state.plugins[name];
     if (!rec) throw new PluginError(`没有装「${name}」这个插件。`);

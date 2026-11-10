@@ -8,7 +8,8 @@
 // 2. Starts every MCP server in mock mode and lists its tools: names in
 //    permissions.irreversible, the mail declaration and page permissions must
 //    exist; every tool needs a description and an input schema.
-// 3. Looks for things that must not ship: keys, tokens, private keys.
+// 3. Looks for things that must not ship: keys, tokens, private keys; and for
+//    environment variables the code reads that Spica will not pass to it.
 // 4. Runs `node --test` when the plugin has a test/ folder.
 // 5. Packs <name>-<version>.zip (honouring .spicaignore) into dist/ (or --out)
 //    with a .sha256 file next to it.
@@ -19,7 +20,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { StdioClient, pluginEnv } from './lib/mcp.mjs';
+import { PLUGIN_INHERIT_ENV, StdioClient, pluginEnv } from './lib/mcp.mjs';
 import { packageFiles, sha256, stripBom, writeZip } from './lib/pack.mjs';
 
 const NAME = /^[a-z][a-z0-9-]{1,23}$/;
@@ -33,6 +34,11 @@ const SECRET_PATTERNS = [
   [/\bgh[pousr]_[A-Za-z0-9]{30,}/, '像 GitHub 令牌的字符串'],
   [/\b(?:api[_-]?key|secret|password|passwd|token)\b["']?\s*[:=]\s*["'][^"'\s]{12,}["']/i, '写死的密码 / 密钥 / 令牌'],
 ];
+// Variables Spica sets for a plugin server besides the whitelist: its own SPICA_* and the
+// network settings (proxy, trusted certificates).
+const APP_SET_ENV = /^(SPICA_|NODE_EXTRA_CA_CERTS$|NODE_USE_SYSTEM_CA$|NODE_USE_ENV_PROXY$|SSL_CERT_FILE$|REQUESTS_CA_BUNDLE$|CURL_CA_BUNDLE$|ELECTRON_RUN_AS_NODE$|NODE_ENV$)/;
+const ENV_READS = /process\.env(?:\.([A-Za-z_]\w*)|\[\s*['"]([A-Za-z_]\w*)['"]\s*\])|os\.(?:environ(?:\.get\(\s*|\[\s*)|getenv\(\s*)['"]([A-Za-z_]\w*)['"]/g;
+const SECRET_NAME = /KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL/i;
 
 export async function check(dir, opts = {}) {
   const root = resolve(dir);
@@ -149,12 +155,20 @@ export async function check(dir, opts = {}) {
   }
   if (m.mail && servers.filter((s) => s.kind === 'mcp').length === 0) err('manifest.json', '声明了 mail，但插件里没有 MCP server');
 
-  // ---- secrets ----
+  // ---- secrets, and environment variables that will not be there ----
   const files = await packageFiles(root);
+  const inherited = new Set(PLUGIN_INHERIT_ENV.map((k) => k.toUpperCase()));
+  const declaredEnv = new Set(servers.flatMap((s) => Object.keys(s.env)));
   for (const rel of files) {
     if (/\.(png|jpe?g|gif|ico|exe|dll|node|zip|woff2?|ttf|pdf)$/i.test(rel) || statSync(join(root, rel)).size > 2_000_000) continue;
     const text = await readFile(join(root, rel), 'utf8');
-    for (const [re, what] of SECRET_PATTERNS) if (re.test(text)) err(rel, `里面有${what}。密钥不能进插件包：让用户在 Spica 设置里填，或从环境变量读`);
+    for (const [re, what] of SECRET_PATTERNS) if (re.test(text)) err(rel, `里面有${what}。密钥不能进插件包：放进 SPICA_PLUGIN_DATA 里的配置文件，或做一个设置页让用户填（见 references/internal-services.md）`);
+    if (!/\.(m?js|cjs|ts|py)$/i.test(rel) || /(^|\/)test\//.test(rel)) continue;
+    for (const name of new Set([...text.matchAll(ENV_READS)].map((x) => x[1] ?? x[2] ?? x[3]))) {
+      if (APP_SET_ENV.test(name) || inherited.has(name.toUpperCase()) || declaredEnv.has(name)) continue;
+      if (SECRET_NAME.test(name)) warn(rel, `读环境变量 ${name}：装进 Spica 后读不到（只传白名单变量，带 KEY、TOKEN、SECRET 的一律不传）。凭据放 SPICA_PLUGIN_DATA 里的配置文件，或做设置页让用户填，见 references/internal-services.md`);
+      else warn(rel, `读环境变量 ${name}：装进 Spica 后读不到（只传白名单变量）。要用就写进 mcp/<id>.json 的 env，或改读 SPICA_PLUGIN_DATA 里的配置文件`);
+    }
   }
   if (files.some((f) => /(^|\/)\.env(\.|$)/.test(f))) err('.env', '.env 文件不能进插件包（放进 .spicaignore）');
 

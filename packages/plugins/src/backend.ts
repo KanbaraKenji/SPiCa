@@ -153,6 +153,8 @@ export async function attachBackend(
   mcpTools: McpServiceTool[];
   methods: Record<string, (...params: unknown[]) => unknown>;
   warnings: string[];
+  /** The host calls this after the network settings changed: plugin servers restart and pick them up. */
+  networkChanged(): Promise<void>;
   close(): Promise<void>;
 }> {
   if (!options?.root) throw new Error('plugins extension needs options.root');
@@ -170,6 +172,7 @@ export async function attachBackend(
     mcpTools: pluginMcpTools(pm),
     methods: pluginMethods(pm),
     warnings: loaded.failed.map((f) => `plugin ${f.name} was not enabled: ${f.message}`),
+    networkChanged: () => pm.restartServers('network settings changed'),
     close: () => pm.shutdown(),
   };
 }

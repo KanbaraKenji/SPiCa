@@ -209,4 +209,27 @@ describe('plugin-author skill', () => {
     const r2 = await script('check.mjs', [root]);
     expect(r2.out).toMatch(/permissions\.irreversible 里的 drop_everything 不是任何 server 的工具/);
   });
+
+  it('check warns about environment variables a plugin will not get once installed', async () => {
+    const parent = await temp('spica-skill-env-');
+    await script('scaffold.mjs', ['envy', '--dir', parent]);
+    const root = join(parent, 'envy');
+    await writeFile(
+      join(root, 'server', 'config.js'),
+      [
+        'export const token = process.env.EXAMPLE_API_TOKEN;',
+        "export const base = process.env['EXAMPLE_BASE_URL'];",
+        'export const own = process.env.OWN_SETTING;',
+        'export const data = process.env.SPICA_PLUGIN_DATA;',
+        'export const proxy = process.env.HTTPS_PROXY;',
+        '',
+      ].join('\n'),
+    );
+    await writeFile(join(root, 'mcp', 'envy.json'), JSON.stringify({ runtime: 'node', entry: 'server/index.js', env: { OWN_SETTING: 'x' } }));
+    const r = await script('check.mjs', [root, '--no-tests', '--no-pack']);
+    expect(r.out).toMatch(/server\/config\.js：读环境变量 EXAMPLE_API_TOKEN：装进 Spica 后读不到（只传白名单变量，带 KEY、TOKEN、SECRET 的一律不传）/);
+    expect(r.out).toMatch(/读环境变量 EXAMPLE_BASE_URL：装进 Spica 后读不到（只传白名单变量）。要用就写进 mcp\/<id>\.json 的 env/);
+    expect(r.out).not.toMatch(/读环境变量 (OWN_SETTING|SPICA_PLUGIN_DATA|HTTPS_PROXY)/);
+    expect(r.code, r.out).toBe(0);
+  });
 });

@@ -181,7 +181,7 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 | 钩子出错 | 包一层：抛错只记日志、发 `hook.error`，这一轮照常跑 | 连续出错自动停用 |
 | 不可逆动作 | `permissions.irreversible` 里的工具一律要确认；MCP 的 `destructiveHint` 内核也默认要确认 | 插件可在设置里被用户改成「自动执行」 |
 | 工作文件夹 | `permissions.workspace` 只声明、展示 | 插件包挂 `beforeTool`：参数里出现的路径不在会话工作文件夹内就拒绝，`read` 的插件写文件也拒绝 |
-| 网络 | `permissions.network` 只声明、展示 | 视需要给 server 注入代理并按名单放行 |
+| 网络 | 插件 server 和应用用同一套网络设置：内核起子进程时注入代理（`HTTPS_PROXY` 等 + `NODE_USE_ENV_PROXY=1`）和信任名单（`NODE_EXTRA_CA_CERTS` + `NODE_USE_SYSTEM_CA`；自带可执行文件用 `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` / `CURL_CA_BUNDLE` 的全量证书），设置里没有的就从子进程环境里删掉（内核 f8d328d）。设置真变了时内核调扩展的 `networkChanged()`，插件这边重启在运行的 server（`restartServers()`），之后的请求用新设置；有认证的代理，账号密码会随代理地址进插件进程。`permissions.network` 只声明、展示 | 按 `permissions.network` 放行 |
 | 环境变量 | 插件进程只继承白名单（`PLUGIN_INHERIT_ENV`：PATH、系统目录、TEMP、用户目录、代理变量等），像密钥的名字（SPICA_ 开头、含 KEY / SECRET / TOKEN / PASSWORD / CREDENTIAL）内核一律不传；有测试 | — |
 | 插件页面 | 沙箱里跑，没有 Node；只能取本插件目录里的文件；只能调本插件、本视图 `permissions.tools` 里的工具；`permissions.irreversible` 里的工具先由外壳弹确认框（只认清单里的声明，MCP 的 `destructiveHint` 不算） | 页面调用记进插件日志 |
 | 来源可信 | HTTP 来源每个包必须有 SHA-256，不对拒装；共享盘有索引就校验 | 包签名 |
@@ -256,3 +256,4 @@ J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型�
   - 给公司端 Claude Code / Codex 用的 skill：`skills/spica-plugin-author`（脚手架、校验打包、安装、页面预览，9db40ef 起）；`packages/plugins/src/skill.test.ts` 用它从零做插件，经 stdio 和 HTTP 装进 Spica 再撤掉。
   - 本机连接：桌面版在 设置 › 常规 › 开发者 打开「允许本机脚本连接 Spica」后写 `<userData>/mcp-http.json`（`{ url, tokenFile, pid, startedAt }`，令牌在 `<userData>/mcp-token`，关掉或退出时删），`install.mjs` 不带连接参数时就读它；没开时用 设置 › 插件 粘 zip 路径装。
   - 应用名：打包时可以换成别的名字（外壳读 deploy.json）。`PluginManagerOptions` / 后端扩展的 options 多了 `appName`（缺省 `Spica`），只换给用户看的中文提示；`readPluginFolder` / `parseManifest` / `unpackPlugin` / `verifyPackage` / `packPlugin` / `runtimeHost` 也接 `{ appName }`。包名、`window.spica`、`spica_` 工具名、`--spica-*` 变量、`SPICA_` 环境变量、清单的 `compatibility.spica`、`.spicaignore` 都不跟着变。`install.mjs` 加 `--app <名字>`，不带时会在 `%APPDATA%` 下找唯一一个写了 `appName` 且在运行的 `mcp-http.json`。
+  - 插件共用应用的网络设置：插件 server 进程拿到和应用一样的代理和信任名单（注入在内核 f8d328d 的 connectMcp 里，插件这边不用改起进程的代码）；改了网络设置后，内核调后端扩展的 `networkChanged()`，manager 的 `restartServers()` 把在运行的 server 重启一遍。我替他定的：改设置后**自动重启插件进程**，不等下次启动（环境变量只在进程启动时读；重启那几秒工具会先撤掉再回来）。`network.test.ts`：用本机自签证书的假内网服务加一个 CONNECT 代理，插件里没有一行证书和代理代码，能连上；取消信任、重启后就被拒。skill：凭据不再「从环境变量读」，改成放 `SPICA_PLUGIN_DATA/config.json`、插件自己的设置页经 `services/` 保存；新增 `references/internal-services.md`；`check.mjs` 看到代码读拿不到的环境变量会提醒。设置页模板这次没进脚手架，先在文档里给写法，等有插件真用到再做。
