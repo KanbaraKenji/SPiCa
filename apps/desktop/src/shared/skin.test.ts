@@ -29,6 +29,24 @@ describe('deriveTokens', () => {
     expect(contrast(t['--spica-accent-text']!, t['--spica-bg']!)).toBeGreaterThanOrEqual(3);
     expect(contrast(t['--spica-on-accent']!, t['--spica-accent']!)).toBeGreaterThanOrEqual(3);
   });
+  it('built-in dark: the measured reference values; panels and what you wrote one or two steps lighter', () => {
+    const t = deriveTokens(DARK_SKIN);
+    expect(t['--spica-bg']).toBe('#191919');
+    expect(t['--spica-chrome']).toBe('#1f1f1f');
+    expect(t['--spica-ink']).toBe('#efefef');
+    expect(t['--spica-bubble']).toBe('#252525');
+    expect(t['--spica-input']).toBe('#262626');
+    // Neutral greys: no layer leans warm or cool.
+    for (const k of ['--spica-chrome', '--spica-bubble', '--spica-input', '--spica-raised', '--spica-border', '--spica-muted', '--spica-faint'] as const) {
+      const v = t[k]!;
+      expect(v.slice(1, 3) === v.slice(3, 5) && v.slice(3, 5) === v.slice(5, 7)).toBe(true);
+    }
+  });
+  it('a dark skin someone made keeps its panels darker than the conversation and the default text', () => {
+    const t = deriveTokens({ id: 'c4', name: 'w', bg: '#191919', accent: '#62a9ff' });
+    expect(t['--spica-chrome']).toBe('#141414');
+    expect(t['--spica-ink']).toBe('#ecebe5');
+  });
   it('derives the scheme from the background', () => {
     expect(schemeOf(LIGHT_SKIN.bg)).toBe('light');
     expect(schemeOf(DARK_SKIN.bg)).toBe('dark');
