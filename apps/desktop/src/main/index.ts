@@ -46,6 +46,7 @@ import { readModelEnv } from './backend/model-env';
 import { SettingsStore } from './settings-store';
 import { captureOnce, runShots } from './shots';
 import { flatten, icoFromPngs, inkFor, TASKBAR_FRAME_SIZES } from './icon';
+import { followTaskbarTheme, readTaskbarDark } from './taskbar-theme';
 import { PREVIEW_SCHEME, PreviewFiles, readPreview } from './preview';
 import { BRIDGE_JS, contentType, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
 import { FONT_UI, type PluginView, type PluginViewResult } from '../shared/plugin-view';
@@ -311,8 +312,7 @@ function syncNativeChrome(win: BrowserWindow, s: ShellSettings): void {
  * Window / taskbar icon: the flower in one flat color, white on a dark Windows
  * taskbar and black on a light one, no tile (main/icon.ts).
  */
-function windowIcon(): Electron.NativeImage | undefined {
-  const dark = nativeTheme.shouldUseDarkColorsForSystemIntegratedUI;
+function windowIcon(dark: boolean): Electron.NativeImage | undefined {
   const file = join(app.getAppPath(), 'resources', 'branding', 'png', `spica-win-${dark ? 'dark' : 'light'}.png`);
   if (!existsSync(file)) return undefined;
   const base = nativeImage.createFromPath(file);
@@ -326,16 +326,17 @@ function windowIcon(): Electron.NativeImage | undefined {
  * that start this exe are pointed at the same colour-matched .ico and the
  * button is refreshed once Explorer has noticed.
  */
-function applyWindowIcon(win: BrowserWindow): void {
+function applyWindowIcon(win: BrowserWindow, dark: boolean): void {
+  if (win.isDestroyed()) return;
   if (process.platform !== 'win32') {
-    const icon = windowIcon();
+    const icon = windowIcon(dark);
     if (icon) win.setIcon(icon);
     return;
   }
   try {
-    const ico = taskbarIco();
+    const ico = taskbarIco(dark);
     if (!ico) {
-      const icon = windowIcon();
+      const icon = windowIcon(dark);
       if (icon) win.setIcon(icon);
       return;
     }
@@ -352,7 +353,7 @@ function applyWindowIcon(win: BrowserWindow): void {
       buttonRefresh = setTimeout(() => refreshTaskbarButton(win, file), SHORTCUT_SETTLE_MS);
     }
   } catch {
-    const icon = windowIcon();
+    const icon = windowIcon(dark);
     if (icon) win.setIcon(icon);
   }
 }
@@ -363,8 +364,8 @@ function applyWindowIcon(win: BrowserWindow): void {
  * taskbar (white on dark, black on light). No frame is scaled from another, so
  * 150% (36 px) and the other scalings stay sharp. Undefined when the masks are missing.
  */
-function taskbarIco(): Uint8Array | undefined {
-  const ink = inkFor(nativeTheme.shouldUseDarkColorsForSystemIntegratedUI);
+function taskbarIco(dark: boolean): Uint8Array | undefined {
+  const ink = inkFor(dark);
   const images: { size: number; png: Uint8Array }[] = [];
   for (const size of TASKBAR_FRAME_SIZES) {
     const file = join(app.getAppPath(), 'resources', 'branding', 'png', `spica-taskbar-${size}.png`);
@@ -378,6 +379,7 @@ function taskbarIco(): Uint8Array | undefined {
 }
 
 let buttonRefresh: ReturnType<typeof setTimeout> | undefined;
+let taskbarTheme: { onUpdated(): void } | undefined;
 
 /**
  * Only an installed (or portable) build touches shortcuts, and not while it runs
@@ -435,13 +437,15 @@ function applyZoom(win: BrowserWindow, factor: number): void {
 function createMainWindow(): BrowserWindow {
   const s = settings.get();
   const c = chromeColors(s);
+  // First guess for the window's own icon; the taskbar follower below checks the system's value.
+  const firstIcon = windowIcon(nativeTheme.shouldUseDarkColorsForSystemIntegratedUI);
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 480,
     minHeight: 360,
     title: APP_NAME,
-    ...(windowIcon() ? { icon: windowIcon() } : {}),
+    ...(firstIcon ? { icon: firstIcon } : {}),
     show: false,
     backgroundColor: c.bg,
     titleBarStyle: 'hidden',
@@ -494,7 +498,14 @@ function createMainWindow(): BrowserWindow {
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (!app.isPackaged && devUrl) void win.loadURL(devUrl);
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
-  applyWindowIcon(win);
+  // The icon follows the taskbar's colour (main/taskbar-theme.ts): now, and after each system switch.
+  taskbarTheme = followTaskbarTheme({
+    readTaskbarDark,
+    nativeDark: () => nativeTheme.shouldUseDarkColorsForSystemIntegratedUI,
+    apply: (dark) => applyWindowIcon(win, dark),
+    setTimer: (fn, ms) => setTimeout(fn, ms),
+    clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+  });
   return win;
 }
 
@@ -949,7 +960,7 @@ settings.onChange((s) => {
 });
 nativeTheme.on('updated', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  applyWindowIcon(mainWindow);
+  taskbarTheme?.onUpdated();
   syncNativeChrome(mainWindow, settings.get());
   mainWindow.webContents.send(DesktopChannel.SettingsChanged, settings.get());
 });
