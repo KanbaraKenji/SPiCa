@@ -87,11 +87,11 @@ export function NoticeBar({ backend, onRetryBackend, update, settings, onInstall
     return (
       <div className="notice-bar" role="status">
         <SpicaStatusIcon name="done" size={15} className="notice-icon" />
-        <span className="notice-text">新版本 {update.available} 已经下好</span>
+        <span className="notice-text">新版本 {update.available} 已下载</span>
         <button type="button" className="btn btn-small btn-primary" onClick={onInstall}>
           重启并更新
         </button>
-        <button type="button" className="icon-btn notice-close" onClick={() => setUpdateClosed(update.available ?? null)} aria-label="稍后" title="稍后再说">
+        <button type="button" className="icon-btn notice-close" onClick={() => setUpdateClosed(update.available ?? null)} aria-label="稍后" title="稍后">
           <Icon name="close" size={14} />
         </button>
       </div>

@@ -72,7 +72,7 @@ export function FilePreview({ info, onOpenExternal, onClose }: FilePreviewProps)
         </div>
       ) : info.kind === 'markdown' || info.kind === 'text' || info.kind === 'html' ? (
         <>
-          {info.truncated ? <p className="preview-note">文件有 {sizeText(info.size)}，这里只显示前 512 KB。完整内容请用系统程序打开。</p> : null}
+          {info.truncated ? <p className="preview-note">仅显示前 512 KB（共 {sizeText(info.size)}）</p> : null}
           {info.kind === 'markdown' ? (
             <div className="preview-body preview-md">
               <MarkdownText text={info.text} />

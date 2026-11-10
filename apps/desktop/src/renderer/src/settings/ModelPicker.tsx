@@ -6,6 +6,7 @@ import { useState } from 'react';
 import type { CatalogModelView, CatalogPriceView } from '../../../shared/catalog';
 import type { ConnectionModel } from '../../../shared/providers';
 import { Icon } from '../ui/Icon';
+import { InfoTip } from '../ui/InfoTip';
 import { SpicaStatusIcon } from '@spica/brand/react';
 
 export interface ListedModel {
@@ -109,11 +110,7 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
                 <input type="checkbox" checked onChange={() => onToggle(model, false)} />
                 <span className="model-row-id">{name(model)}</span>
               </label>
-              {price ? (
-                <span className="model-row-info" title={priceText(price)} aria-label={`${model.id} 官方价`} role="img">
-                  <Icon name="info" size={14} />
-                </span>
-              ) : null}
+              {price ? <InfoTip text={priceText(price)} label={`${model.id} 官方价`} /> : null}
               {edit ? (
                 <span className="model-row-window">
                   {on.contextWindow === null ? (

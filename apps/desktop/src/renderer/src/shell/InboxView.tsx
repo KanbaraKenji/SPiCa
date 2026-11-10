@@ -133,7 +133,7 @@ export function InboxView(props: InboxViewProps) {
         <div className="inbox-head">
           <div className="tabs inbox-tabs" role="tablist" aria-label="收件箱">
             <button type="button" role="tab" aria-selected={filter === 'todo'} className={filter === 'todo' ? 'tab is-on' : 'tab'} onClick={() => setFilter('todo')}>
-              待你确认
+              待确认
             </button>
             <button type="button" role="tab" aria-selected={filter === 'all'} className={filter === 'all' ? 'tab is-on' : 'tab'} onClick={() => setFilter('all')}>
               全部

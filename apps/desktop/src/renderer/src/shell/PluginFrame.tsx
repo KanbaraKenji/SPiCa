@@ -123,7 +123,7 @@ export function PluginPage(props: PluginFrameProps & { exists(plugin: string, pa
   if (!state.ok) {
     return (
       <div className="plugin-page plugin-missing">
-        <p>「{view.pluginTitle}」的页面打不开：找不到 {view.entry}。</p>
+        <p>无法打开「{view.pluginTitle}」的页面：找不到 {view.entry}</p>
         <p className="settings-hint">插件不可用，请在 设置 › 插件 中查看状态。</p>
       </div>
     );

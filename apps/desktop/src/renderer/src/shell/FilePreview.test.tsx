@@ -10,7 +10,7 @@ describe('FilePreview', () => {
     render(<FilePreview info={{ kind: 'text', name: 'a.log', path: 'D:/a.log', size: 600_000, text: 'one\ntwo', truncated: true }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByText('two')).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
-    expect(screen.getByText(/只显示前 512 KB/)).toBeTruthy();
+    expect(screen.getByText(/仅显示前 512 KB（共 /)).toBeTruthy();
   });
 
   it('shows HTML in a sandbox with no permissions, and opens with Windows on request', () => {

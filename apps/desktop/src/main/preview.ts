@@ -71,7 +71,7 @@ export async function readPreview(path: string, files: PreviewFiles): Promise<Pr
   let size: number;
   try {
     const st = await stat(path);
-    if (!st.isFile()) return { kind: 'unsupported', name, path, size: 0, message: '这是文件夹，不是文件。' };
+    if (!st.isFile()) return { kind: 'unsupported', name, path, size: 0, message: '不是文件' };
     size = st.size;
   } catch {
     return { kind: 'missing', name, path, size: 0, message: '找不到文件，可能已被移动或删除。' };

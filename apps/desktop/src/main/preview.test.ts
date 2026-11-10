@@ -37,6 +37,6 @@ describe('file preview', () => {
     expect(files.pathOf('spica-file://f/not-a-token')).toBeUndefined();
     expect(await readPreview(join(dir, 'q.xlsx'), files)).toMatchObject({ kind: 'unsupported', message: '不支持预览此类文件。' });
     expect(await readPreview(join(dir, 'gone.txt'), files)).toMatchObject({ kind: 'missing' });
-    expect(await readPreview(dir, files)).toMatchObject({ kind: 'unsupported', message: '这是文件夹，不是文件。' });
+    expect(await readPreview(dir, files)).toMatchObject({ kind: 'unsupported', message: '不是文件' });
   });
 });

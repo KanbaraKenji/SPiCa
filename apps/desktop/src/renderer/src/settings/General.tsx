@@ -5,6 +5,7 @@ import { DEFAULT_NETWORK, type NetworkPrefs, type SettingsPatch, type ShellSetti
 import type { LocalConnectInfo, NetworkState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
+import { InfoTip } from '../ui/InfoTip';
 import { useKeptDraft } from './drafts';
 import { Switch } from './Switch';
 import { APP_NAME } from '../../../shared/app-identity';
@@ -69,7 +70,7 @@ function Developer({ settings, onChange, localConnect }: GeneralProps) {
             <span className="setting-title path-text">{shown ? shown.url : '正在打开…'}</span>
             {shown?.tokenFile ? (
               <span className="settings-hint path-text" title={shown.tokenFile}>
-                令牌在 {shown.tokenFile}
+                令牌文件 {shown.tokenFile}
               </span>
             ) : null}
           </div>
@@ -77,7 +78,9 @@ function Developer({ settings, onChange, localConnect }: GeneralProps) {
             <div className="row-buttons">
               <button
                 type="button"
-                className="btn"
+                className="btn btn-square"
+                aria-label={copied ? '已复制' : '复制连接信息'}
+                title={copied ? '已复制' : '复制连接信息'}
                 onClick={() =>
                   void navigator.clipboard
                     .writeText(JSON.stringify({ url: shown.url, tokenFile: shown.tokenFile }, null, 2))
@@ -88,7 +91,7 @@ function Developer({ settings, onChange, localConnect }: GeneralProps) {
                     .catch(() => undefined)
                 }
               >
-                {copied ? '已复制' : '复制连接信息'}
+                <Icon name={copied ? 'check' : 'copy'} size={16} />
               </button>
             </div>
           ) : null}
@@ -127,11 +130,11 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
       <h3 className="settings-subheading">网络</h3>
       <div className="net-grid">
         <label className="form-field">
-          <span className="field-label">代理地址</span>
-          <input className="input" spellCheck={false} value={proxy} placeholder="http://proxy.example.com:8080" onChange={(e) => setProxy(e.target.value)} aria-describedby="net-proxy-hint" />
-          <span className="settings-hint" id="net-proxy-hint">
-            留空则使用系统环境变量中的代理。
+          <span className="field-label">
+            代理地址
+            <InfoTip text="留空则使用系统环境变量中的代理。" decorative />
           </span>
+          <input className="input" spellCheck={false} value={proxy} placeholder="http://proxy.example.com:8080" onChange={(e) => setProxy(e.target.value)} aria-description="留空则使用系统环境变量中的代理。" />
         </label>
         <label className="form-field">
           <span className="field-label">不使用代理的地址</span>
@@ -171,8 +174,8 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
             </button>
           ) : null}
           {saved.caFile ? (
-            <button type="button" className="btn" onClick={() => save({ caFile: '' })}>
-              移除
+            <button type="button" className="btn btn-square" onClick={() => save({ caFile: '' })} aria-label="移除" title="移除">
+              <Icon name="close" size={14} />
             </button>
           ) : null}
         </div>
@@ -180,7 +183,6 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
       <div className="setting-row">
         <div className="setting-text">
           <span className="setting-title">使用 Windows 证书存储</span>
-          <span className="settings-hint">信任 Windows 已安装的证书（含企业证书）。</span>
         </div>
         <Switch on={saved.useSystemCa} label="使用 Windows 证书存储" onChange={(useSystemCa) => save({ useSystemCa })} />
       </div>
@@ -285,8 +287,8 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
             </span>
           </div>
           <div className="row-buttons">
-            <button type="button" className="btn" onClick={() => showInFolder(result.file)}>
-              在文件夹中显示
+            <button type="button" className="btn btn-square" onClick={() => showInFolder(result.file)} aria-label="在文件夹中显示" title="在文件夹中显示">
+              <Icon name="folder" size={16} />
             </button>
           </div>
         </div>

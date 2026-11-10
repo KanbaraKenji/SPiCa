@@ -142,7 +142,7 @@ function ContextRing({ tokens, window, detail }: { tokens: number; window: numbe
 }
 
 const APPROVAL_TEXT: Record<ApprovalMode, string> = { manual: 'Manual', auto: 'Auto' };
-const APPROVAL_HINT = 'Auto：不可逆操作直接执行；处理外部内容后的操作仍需确认。';
+const APPROVAL_HINT = 'Manual：不可逆操作先确认\nAuto：不可逆操作直接执行；处理外部内容后的操作仍需确认';
 
 type ModelTool = NonNullable<ComposerTools['model']>;
 
@@ -334,7 +334,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
         <p className="composer-strip" role="status">
           <span className="status-with-icon">
             <SpicaStatusIcon name="warning" size={15} />
-            当前模型不支持图片，请切换模型。
+            当前模型不支持图片
           </span>
           {t.model && t.model.options.length > 1 ? (
             <button type="button" className="text-btn" onClick={() => modelBtn.current?.click()}>

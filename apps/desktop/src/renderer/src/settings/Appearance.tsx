@@ -186,9 +186,8 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
             <ColorField label="底色" value={editing.bg} onChange={(bg) => edit({ bg })} />
             <ColorField label="强调色" value={editing.accent} onChange={(accent) => edit({ accent })} presets={ACCENT_PRESETS} />
             <div className="skin-editor-foot">
-              <button type="button" className="btn btn-quiet-danger" onClick={() => setDeleting(editing)}>
-                <Icon name="trash" size={14} />
-                删除这个皮肤
+              <button type="button" className="btn btn-quiet-danger btn-square" onClick={() => setDeleting(editing)} aria-label="删除皮肤" title="删除皮肤">
+                <Icon name="trash" size={15} />
               </button>
             </div>
           </div>

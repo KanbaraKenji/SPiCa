@@ -42,6 +42,7 @@ const PATHS = {
   paste: 'M5.5 2.5h5v2h-5z M5.5 3.5h-2v10h9v-10h-2',
   external: 'M9 2.5h4.5V7 M13.5 2.5L8 8 M11.5 9.5v4h-9v-9h4',
   pencil: 'M11.2 2.6l2.2 2.2-7.6 7.6-2.9.7.7-2.9z',
+  copy: 'M5.5 5.5h7.5v8H5.5z M3 10.5V2.5h7.5',
 } as const;
 
 export type IconName = keyof typeof PATHS;

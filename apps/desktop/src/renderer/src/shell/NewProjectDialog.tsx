@@ -102,7 +102,7 @@ export function NewProjectDialog({ onPickFolder, onCreate, onClose, initialName 
           </button>
           <button type="submit" className="btn btn-primary" disabled={busy}>
             {busy ? <span className="spinner" aria-hidden /> : null}
-            建项目
+            创建
           </button>
         </div>
       </form>

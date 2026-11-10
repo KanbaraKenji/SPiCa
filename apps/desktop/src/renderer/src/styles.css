@@ -2352,11 +2352,6 @@ button.ctx-row:hover {
   color: var(--spica-danger);
 }
 
-.field-hint {
-  font-size: 12px;
-  color: var(--spica-faint);
-}
-
 .input.is-invalid {
   border-color: var(--spica-danger);
 }
@@ -2465,14 +2460,64 @@ button.ctx-row:hover {
   text-overflow: ellipsis;
 }
 
-.model-row-info {
+/* The info icon beside a label (InfoTip): its note on hover. */
+.info-tip {
   flex: none;
   display: inline-flex;
+  vertical-align: -2px;
+  margin-left: 4px;
   color: var(--spica-faint);
+  cursor: default;
 }
 
-.model-row-info:hover {
+.info-tip {
+  position: relative;
+  outline: none;
+}
+
+.info-tip:hover,
+.info-tip:focus-visible {
   color: var(--spica-muted);
+}
+
+/* The note: the same bubble as the numbers over the context ring. */
+.info-tip-text {
+  position: absolute;
+  left: -8px;
+  bottom: calc(100% + 6px);
+  width: max-content;
+  max-width: 320px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--spica-menu);
+  box-shadow: var(--spica-shadow);
+  color: var(--spica-ink);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+  z-index: 5;
+}
+
+.info-tip:hover .info-tip-text,
+.info-tip:focus-visible .info-tip-text {
+  opacity: 1;
+}
+
+.model-row .info-tip {
+  margin-left: 0;
+}
+
+/* In the model list (it scrolls), beside the icon instead of above it. */
+.model-row .info-tip-text {
+  left: auto;
+  right: calc(100% + 6px);
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 /* A known 上下文上限 in short (128k); a click edits it. */

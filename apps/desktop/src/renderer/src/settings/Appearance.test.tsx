@@ -51,12 +51,12 @@ describe('Appearance', () => {
     fireEvent.blur(bg);
     expect((bg as HTMLInputElement).value).toBe(latest.customSkins[0]?.bg);
 
-    fireEvent.click(screen.getByRole('button', { name: /删除这个皮肤/ }));
+    fireEvent.click(screen.getByRole('button', { name: '删除皮肤' }));
     expect(screen.getByRole('alertdialog').textContent).toContain('删除皮肤「我的皮肤 1」？');
     fireEvent.click(screen.getByRole('button', { name: '取消' }));
     expect(latest.customSkins).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole('button', { name: /删除这个皮肤/ }));
+    fireEvent.click(screen.getByRole('button', { name: '删除皮肤' }));
     fireEvent.click(screen.getByRole('button', { name: '删除' }));
     expect(latest.customSkins).toHaveLength(0);
     expect(latest.skin).toBe('system');

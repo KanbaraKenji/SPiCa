@@ -184,7 +184,7 @@ describe('pictures in the input box', () => {
       />,
     );
     pasteImage(screen.getByRole('textbox', { name: '消息' }));
-    expect(await screen.findByText('当前模型不支持图片，请切换模型。')).toBeTruthy();
+    expect(await screen.findByText('当前模型不支持图片')).toBeTruthy();
     expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: '切换模型' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'qwen-vl' }));

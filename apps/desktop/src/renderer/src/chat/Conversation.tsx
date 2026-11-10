@@ -249,7 +249,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                 return (
                   <Fragment key={item.id}>
                     <div className={item.steer ? 'turn-user is-steer' : 'turn-user'}>
-                      {item.steer ? <span className="turn-user-tag">插话</span> : null}
+                      {item.steer ? <span className="turn-user-tag">补充</span> : null}
                       <p className="turn-user-text">{item.text}</p>
                     </div>
                     {item.attachments?.some((a) => a.image) ? (

@@ -28,6 +28,7 @@ import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
 import { dropDraft, keepDraft, keptDraft } from './drafts';
 import { ModelPicker, type ListedModel } from './ModelPicker';
+import { InfoTip } from '../ui/InfoTip';
 import { PasteConfig } from './PasteConfig';
 import { SpicaStatusIcon } from '@spica/brand/react';
 
@@ -91,7 +92,10 @@ interface FieldProps {
 function Field({ label, value, onChange, error, placeholder, type = 'text', hint }: FieldProps) {
   return (
     <label className="field field-stack">
-      <span className="field-label">{label}</span>
+      <span className="field-label">
+        {label}
+        {hint ? <InfoTip text={hint} decorative /> : null}
+      </span>
       <span className="field-control">
         <input
           className={error ? 'input is-invalid' : 'input'}
@@ -101,10 +105,10 @@ function Field({ label, value, onChange, error, placeholder, type = 'text', hint
           spellCheck={false}
           autoComplete="off"
           aria-invalid={error ? true : undefined}
+          {...(hint ? { 'aria-description': hint } : {})}
           onChange={(e) => onChange(e.target.value)}
         />
         {error ? <span className="field-error">{error}</span> : null}
-        {hint ? <span className="field-hint">{hint}</span> : null}
       </span>
     </label>
   );
@@ -626,7 +630,10 @@ export function Models({ api }: { api: ProvidersApi }) {
 
               {needsKey ? (
                 <label className="field field-stack">
-                  <span className="field-label">{secretLabel(draft.kind)}</span>
+                  <span className="field-label">
+                    {secretLabel(draft.kind)}
+                    {isWso2 ? <InfoTip text="即 Client Secret，与 Consumer Key 位于同一位置。" decorative /> : null}
+                  </span>
                   <span className="field-control">
                     <input
                       className={errors.secret ? 'input is-invalid' : 'input'}
@@ -636,10 +643,10 @@ export function Models({ api }: { api: ProvidersApi }) {
                       spellCheck={false}
                       autoComplete="off"
                       aria-invalid={errors.secret ? true : undefined}
+                      {...(isWso2 ? { 'aria-description': '即 Client Secret，与 Consumer Key 位于同一位置。' } : {})}
                       onChange={(e) => set({ secret: e.target.value })}
                     />
                     {errors.secret ? <span className="field-error">{errors.secret}</span> : null}
-                    {isWso2 ? <span className="field-hint">即 Client Secret，与 Consumer Key 位于同一位置。</span> : null}
                     {provider?.docsUrl ? (
                       <a className="field-link" href={provider.docsUrl} target="_blank" rel="noreferrer">
                         API 文档
@@ -649,10 +656,13 @@ export function Models({ api }: { api: ProvidersApi }) {
                 </label>
               ) : null}
 
-              {isWso2 ? <Field label="Scope" value={draft.scope} onChange={(scope) => set({ scope })} hint="可选。" /> : null}
+              {isWso2 ? <Field label="Scope" value={draft.scope} onChange={(scope) => set({ scope })} hint="可选" /> : null}
 
               <div className="field field-stack">
-                <span className="field-label">模型</span>
+                <span className="field-label">
+                  模型
+                  {isWso2 ? <InfoTip text="区分大小写，可包含斜杠。" label="模型名称的写法" /> : null}
+                </span>
                 <span className="field-control">
                   <ModelPicker
                     catalog={provider?.models ?? []}
@@ -668,7 +678,6 @@ export function Models({ api }: { api: ProvidersApi }) {
                     fetchError={fetchError}
                     error={errors.model ?? errors.contextWindow}
                   />
-                  {isWso2 ? <span className="field-hint">区分大小写，可包含斜杠。</span> : null}
                 </span>
               </div>
 

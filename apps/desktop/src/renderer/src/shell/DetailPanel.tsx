@@ -166,9 +166,9 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
         <section className="detail-section">
           <h3 className="detail-title">花费</h3>
           <dl className="detail-facts">
-            <dt>本会话</dt>
+            <dt>本对话</dt>
             <dd className="num">{session ? formatUsd(session.costUsd) : '—'}</dd>
-            <dt>全部会话</dt>
+            <dt>全部对话</dt>
             <dd className="num">{formatUsd(globalCostUsd)}</dd>
           </dl>
         </section>

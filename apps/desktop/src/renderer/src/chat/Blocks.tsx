@@ -100,7 +100,7 @@ function ToolRow({ block }: { block: ToolBlock }) {
   ) : block.state === 'timeout' ? (
     <span className="status-with-icon">
       <SpicaStatusIcon name="stopped" size={14} />
-      未完成，已停止等待
+      已超时
     </span>
   ) : block.durationMs !== undefined ? (
     block.autoApproved ? `Auto · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs)
@@ -268,7 +268,7 @@ const NOTE_HEAD: Record<ChildNote['kind'], string> = {
 /** A sub-agent's report, something the user said in a sub-session, or a decision made there. */
 export function ChildNoteCard({ note, onOpen }: { note: ChildNote; onOpen(id: string): void }) {
   const from = note.fromTitle ?? '子任务';
-  const head = note.kind === 'decision' && note.by === 'user' ? '你已决定' : NOTE_HEAD[note.kind];
+  const head = NOTE_HEAD[note.kind];
   return (
     <section className={`card note-card note-${note.kind}`} aria-label={`${from}：${head}`}>
       <header className="note-head">

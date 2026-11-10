@@ -10,6 +10,9 @@ let base = '';
 
 beforeAll(async () => {
   server = createServer((req, res) => {
+    // A fresh connection per request: under a full parallel run a kept-alive socket could be
+    // closed by the server just as the client reuses it (a network error that is not the code's).
+    res.setHeader('connection', 'close');
     const auth = req.headers.authorization ?? '';
     if (!auth.includes('good-key')) {
       res.writeHead(401, { 'content-type': 'application/json' });

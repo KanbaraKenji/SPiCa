@@ -376,7 +376,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     theme: pluginTheme,
     changed: pluginsChanged,
     call: (tool: string, args: unknown, confirmed: boolean) => bridge.pluginViews.call(v.plugin, v.id, tool, args, confirmed),
-    confirm: (tool: string) => new Promise<boolean>((resolve) => setPluginAsk({ title: `「${v.pluginTitle}」将执行「${tool}」，此操作不可撤销。是否继续？`, resolve })),
+    confirm: (tool: string) => new Promise<boolean>((resolve) => setPluginAsk({ title: `「${v.pluginTitle}」将执行「${tool}」，此操作不可撤销。`, resolve })),
     openFile: async (path: string) => {
       const abs = await bridge.pluginViews.file(v.plugin, path);
       if (!abs) return '仅能打开插件自身文件夹中的文件。';

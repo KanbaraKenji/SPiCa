@@ -296,7 +296,7 @@ export function Sidebar({
       ...(onNewProject ? [{ label: '新项目', onSelect: onNewProject }] : []),
     ];
     return (
-      <nav className="sidebar is-rail" aria-label="会话">
+      <nav className="sidebar is-rail" aria-label="对话">
         <div className="sidebar-top">
           <button type="button" className="side-action" onClick={onNewChat} aria-label="新对话" title="新对话">
             <Icon name="newChat" />
@@ -369,7 +369,7 @@ export function Sidebar({
   }
 
   return (
-    <nav className="sidebar" aria-label="会话">
+    <nav className="sidebar" aria-label="对话">
       <div className="sidebar-top">
         <button type="button" className="side-action" onClick={onNewChat}>
           <Icon name="newChat" />
