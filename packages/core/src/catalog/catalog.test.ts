@@ -96,6 +96,16 @@ describe('prices and context windows come from the catalog', () => {
     expect(ledger.price('p-2', 'openai-compatible', 'nobody-knows-this')).toMatchObject({ unverified: true });
   });
 
+  it('matches context windows by name when a relay spells the model differently, and says so; unknown names stay unknown', () => {
+    const ledger = new CostLedger();
+    expect(ledger.matchContextWindow('openai-compatible', 'deepseek-flash', 'deepseek')).toEqual({ contextWindow: 1_048_576, matched: 'deepseek-flash', how: 'exact' });
+    expect(ledger.matchContextWindow('openai-compatible', 'DeepSeek-Flash')).toEqual({ contextWindow: 1_048_576, matched: 'deepseek-flash', how: 'name' });
+    expect(ledger.matchContextWindow('openai-compatible', 'anthropic/Claude-Opus-5-5')).toEqual({ contextWindow: 1_000_000, matched: 'claude-opus-5-5', how: 'name' });
+    expect(ledger.matchContextWindow('openai-compatible', 'relay/glm-5.3-flashx')).toEqual({ contextWindow: 1_000_000, matched: 'glm-5.3-flashx', how: 'name' });
+    expect(ledger.matchContextWindow('openai-compatible', 'nobody-knows-this')).toBeNull();
+    expect(ledger.matchContextWindow('openai-compatible', 'relay/nobody-knows-this')).toBeNull();
+  });
+
   it('company presets come first; a newer valid update replaces the built-in list, an older or broken one does not', async () => {
     const c = effectiveCatalog(BUILTIN_CATALOG, undefined, PRESETS);
     expect(c.providers[0]).toMatchObject({ id: 'company-gateway', group: 'company', kind: 'wso2', listModels: 'none', default: true });

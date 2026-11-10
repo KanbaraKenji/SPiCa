@@ -71,8 +71,8 @@ export interface BackendConfig {
   /** SQLite file; a `<dbPath>.lock` file guards against a second writer. */
   dbPath: string;
   providers: ProviderConfig[];
-  /** strongModel: the default provider's model for heavy work (plugins that ask for a strong model get it). */
-  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; strongModel?: string };
+  /** strongModel: the model for heavy work (plugins that ask for a strong model get it), on the default provider or on strongProviderId. */
+  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; strongModel?: string; strongProviderId?: string };
   cwd?: string;
   projectsRoot?: string;
   workflowsDir?: string;
@@ -441,6 +441,9 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
         /** Context window the core knows for a model (to pre-fill the settings form), or null. kind: ProviderConfig kind. */
         knownContextWindow: (kind: unknown, model: unknown, catalogId?: unknown) =>
           runtime.ledger.knownContextWindow(String(kind), String(model), typeof catalogId === 'string' ? catalogId : undefined),
+        /** Like knownContextWindow, also when a relay spells the name differently: { contextWindow, matched, how: 'exact' | 'name' } or null. */
+        matchContextWindow: (kind: unknown, model: unknown, catalogId?: unknown) =>
+          runtime.ledger.matchContextWindow(String(kind), String(model), typeof catalogId === 'string' ? catalogId : undefined),
         /** The model catalog for the settings form: providers (company presets first), addresses, models, context windows, official prices. */
         modelCatalog: () => runtime.catalog,
         /** "Get the models from the provider" for a connection being set up (the key is used for this request only). */

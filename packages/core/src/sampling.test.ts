@@ -83,6 +83,25 @@ describe('plugins using the user models (MCP sampling)', () => {
     await c.close();
   });
 
+  it('the strong model may be on another connection (another key or provider)', async () => {
+    const other = await startGateway();
+    other.onRequest(() => ({ text: 'from the other connection', usage: { input: 10, output: 3 } }));
+    try {
+      const { openaiProvider } = await import('./testing/helpers.ts');
+      const rt = runtime({
+        providers: [openaiProvider(gw), openaiProvider(other, 'other')],
+        defaults: { providerId: 'fake-openai', model: 'fake-model', maxTokens: 512, strongModel: 'big-model', strongProviderId: 'other' },
+      });
+      const c = await plugin(rt, { pluginId: 'notes' });
+      expect(await c.call('ask', ask({ modelPreferences: { intelligencePriority: 0.9 } }))).toMatchObject({ result: { model: 'big-model', content: { text: 'from the other connection' } } });
+      expect(other.requests.at(-1)!.body.model).toBe('big-model');
+      expect(await c.call('ask', ask({}))).toMatchObject({ result: { model: 'fake-model', content: { text: 'a short answer' } } }); // the default stays where it is
+      await c.close();
+    } finally {
+      await other.stop();
+    }
+  });
+
   it('refusals the plugin can tell apart: daily limit, tools, non-text, no model at all; the day total survives a restart', async () => {
     const store = new MemoryStore();
     const rt = runtime({ store });

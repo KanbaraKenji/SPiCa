@@ -53,8 +53,11 @@ export interface RuntimeOptions {
    */
   redactions?: readonly (string | undefined)[];
   /** Defaults for new sessions. */
-  /** strongModel: the default provider's model for heavy work (plugins asking for a strong model get it). */
-  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; system?: string; strongModel?: string };
+  /**
+   * strongModel: the model for heavy work (plugins asking for a strong model get it), on the default
+   * provider or on strongProviderId when it is on another connection.
+   */
+  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; system?: string; strongModel?: string; strongProviderId?: string };
   store?: Store;
   /** Rate limits per provider id (deployment configuration). */
   limits?: Record<string, LimiterConfig>;

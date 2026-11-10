@@ -142,6 +142,29 @@ export class CostLedger {
     return null;
   }
 
+  /**
+   * The known context window of a model by its name, also when a relay spells
+   * it differently: the exact name first (catalog provider, then kind, then any
+   * provider), then ignoring case, then without a vendor prefix ("vendor/model").
+   * `how` says which: 'exact', or 'name' (matched by name; the form marks it and
+   * `matched` says which catalog model it is). null when nothing matches.
+   */
+  matchContextWindow(providerKind: string, model: string, catalogId?: string): { contextWindow: number; matched: string; how: 'exact' | 'name' } | null {
+    const exact = this.knownContextWindow(providerKind, model, catalogId);
+    if (exact) return { contextWindow: exact, matched: model, how: 'exact' };
+    const norm = (s: string) => s.toLowerCase().trim();
+    const bare = (s: string) => norm(s).replace(/^.*\//, '');
+    const tables = [catalogId ? this.#prices[catalogId] : undefined, this.#prices[providerKind], ...Object.values(this.#prices)];
+    for (const same of [(a: string, b: string) => norm(a) === norm(b), (a: string, b: string) => bare(a) === bare(b)]) {
+      for (const t of tables) {
+        for (const [id, row] of Object.entries(t ?? {})) {
+          if (id !== '*' && row.contextWindow && same(id, model)) return { contextWindow: row.contextWindow, matched: id, how: 'name' };
+        }
+      }
+    }
+    return null;
+  }
+
   /** Which catalog provider each configured provider was set up from (replaces the previous map). */
   setCatalogIds(ids: Record<string, string>): void {
     this.#catalogIds.clear();

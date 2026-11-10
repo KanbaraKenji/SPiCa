@@ -88,12 +88,15 @@ export class PluginSampler {
       // the models the user configured (the window knows all of them; without it, the defaults)
       let all: { providerId: string; model: string }[] = [];
       try {
-        const listed = ((await this.#rt.settingsBridge?.host('models.list')) ?? []) as HostModel[];
-        all = listed.flatMap((m) => [{ providerId: m.id, model: m.model }, ...(m.strongModel ? [{ providerId: m.id, model: m.strongModel }] : [])]);
+        const answer = (await this.#rt.settingsBridge?.host('models.list')) as HostModel[] | { connections?: { id: string; models?: { id: string }[] }[] } | undefined;
+        // one connection with several models ({ connections }), or the older one model per entry
+        all = Array.isArray(answer)
+          ? answer.flatMap((m) => [{ providerId: m.id, model: m.model }, ...(m.strongModel ? [{ providerId: m.id, model: m.strongModel }] : [])])
+          : (answer?.connections ?? []).flatMap((c) => (c.models ?? []).map((m) => ({ providerId: c.id, model: m.id })));
       } catch {
         // no window: only the defaults are known
       }
-      all.push({ providerId: d.providerId, model: d.model }, ...(d.strongModel ? [{ providerId: d.providerId, model: d.strongModel }] : []));
+      all.push({ providerId: d.providerId, model: d.model }, ...(d.strongModel ? [{ providerId: d.strongProviderId ?? d.providerId, model: d.strongModel }] : []));
       const usable = all.filter((c) => c.model && this.#rt.providerIds.includes(c.providerId));
       for (const h of named) {
         const hit = usable.find((c) => c.model.toLowerCase() === h) ?? usable.find((c) => c.model.toLowerCase().includes(h));
@@ -111,7 +114,10 @@ export class PluginSampler {
   #strongOrDefault(p: CreateMessageParams, hints: string[]): { providerId: string; model: string } {
     const d = this.#rt.defaults;
     const strong = hints.includes('strong') || (p.modelPreferences?.intelligencePriority ?? 0) >= STRONG;
-    return { providerId: d.providerId, model: strong && d.strongModel ? d.strongModel : d.model };
+    if (!strong || !d.strongModel) return { providerId: d.providerId, model: d.model };
+    // the strong model may be on another connection (another key / provider)
+    const other = d.strongProviderId && this.#rt.providerIds.includes(d.strongProviderId) ? d.strongProviderId : d.providerId;
+    return { providerId: other, model: d.strongModel };
   }
 
   /** Answer one sampling/createMessage request of a plugin's server. */
