@@ -48,7 +48,6 @@ type View = 'chat' | 'settings' | 'inbox' | 'plugin';
 const MAIL_TRIAGE_TEMPLATE = 'mail-triage';
 
 /** What the core's standing top-level agent is called until someone renames it. */
-const TOP_AGENT_TITLE = '助理';
 
 export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppProps) {
   const { settings } = useShell(shell);
@@ -244,9 +243,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     const byManager = new Map(state.projects.map((p) => [p.managerSessionId, p.name]));
     return state.sessions.filter((s) => s.templateId !== MAIL_TRIAGE_TEMPLATE && s.id !== mail.threadId).map((s) => ({
       ...s,
-      title: byManager.get(s.id) ?? (s.id === state.topId && !s.title ? TOP_AGENT_TITLE : displayTitle(s, state.firstLines)),
+      title: byManager.get(s.id) ?? displayTitle(s, state.firstLines),
     }));
-  }, [state.sessions, state.firstLines, state.projects, state.topId, mail.threadId]);
+  }, [state.sessions, state.firstLines, state.projects, mail.threadId]);
   // Sub-agents under the open conversation that wait for the user: said under the status line,
   // so a parent that "waits for its sub-tasks" does not look stuck.
   const waiting = useMemo<WaitingChild[]>(() => {

@@ -1,11 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FakeBackend } from '../../../main/backend/fake';
-import { AgentStore, friendlyError } from './agent';
+import { AgentStore, displayTitle, friendlyError } from './agent';
+import type { SessionInfo } from '@spica/protocol';
 
 describe('friendlyError', () => {
   it('strips the IPC prefix and translates backend English', () => {
     expect(friendlyError(new Error("Error invoking remote method 'spica:agent': Error: unknown provider: "))).toBe('未配置模型，请在 设置 › 模型 中添加。');
     expect(friendlyError(new Error("Error invoking remote method 'x': Error: 地址须以 http:// 或 https:// 开头"))).toBe('地址须以 http:// 或 https:// 开头');
+  });
+});
+
+describe('conversation names', () => {
+  // The core's standing conversation (getTopSession) is named like any other: no special 助理.
+  const top = { id: 'ses_top', title: null } as unknown as SessionInfo;
+  it('by the first thing said, 新对话 before anything is said', () => {
+    expect(displayTitle(top, {})).toBe('新对话');
+    expect(displayTitle(top, { ses_top: '帮我看看工作文件夹里有哪些文件' })).toBe('帮我看看工作文件夹里有哪些文件');
   });
 });
 

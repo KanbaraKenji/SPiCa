@@ -39,7 +39,7 @@ export interface SidebarProps {
   pluginPages?: { key: string; title: string; icon?: string; open: boolean; onOpen(): void }[];
   /**
    * The collapsed sidebar: one column of icons. Built from the same
-   * blocks as the full sidebar, so 新对话, 收件箱, 助理, the plugins and 设置 sit at
+   * blocks as the full sidebar, so 新对话, 收件箱, 对话, 项目, the plugins and 设置 sit at
    * the same height in both; 项目 opens a menu of the projects.
    */
   compact?: boolean;
