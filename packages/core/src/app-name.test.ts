@@ -52,7 +52,7 @@ describe('appName', () => {
     const mcp = mcpDispatcher(rt);
     const list = (await mcp.handle({ jsonrpc: '2.0', id: 1, method: 'tools/list' })) as { result: { tools: { name: string; description: string }[] } };
     const save = list.result.tools.find((t) => t.name === 'spica_save_model')!;
-    expect(save.description).toContain(`confirms in the ${NAME} window`);
+    expect(save.description).toContain(`shown to the user in ${NAME}'s conversations`);
     expect(list.result.tools.map((t) => t.description).join(' ')).not.toContain('Spica');
     mcp.close();
     await rt.close();

@@ -165,8 +165,12 @@ export class Runtime implements RuntimeInternals {
    * settings-tools.ts). Undefined: the settings tools say they are not available.
    */
   settingsBridge: SettingsBridge | undefined;
-  /** Changes to the settings from Spica's MCP service wait for the user's confirmation (default on). */
-  confirmSettingsChanges = true;
+  /**
+   * Changes to the settings from Spica's MCP service wait for the user's
+   * confirmation. Default off: they apply at once and are shown in the
+   * conversations (settings.changed, a note with meta.settingsChange).
+   */
+  confirmSettingsChanges = false;
   readonly #viewLimiters = new Map<string, RateLimiter>();
 
   constructor(opts: RuntimeOptions) {

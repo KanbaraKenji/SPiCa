@@ -100,7 +100,7 @@ export interface BackendConfig {
    * HTTPS_PROXY / HTTP_PROXY / NO_PROXY and NODE_EXTRA_CA_CERTS.
    */
   network?: NetworkConfig;
-  /** Spica's MCP service changing settings (spica_save_model, ...): whether each change waits for the user's confirmation. Default true. */
+  /** Spica's MCP service changing settings (spica_save_model, ...): whether each change waits for the user's confirmation. Default false (applied and shown in the conversations). */
   agentSettings?: { confirmChanges?: boolean };
 }
 
@@ -339,7 +339,7 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
     warnings.push(...runtime.workflowErrors);
     warnings.push(...applyContextWindows(runtime, cfg.providers, []));
     rememberConfigs(runtime, cfg.providers);
-    if (cfg.agentSettings?.confirmChanges === false) runtime.confirmSettingsChanges = false;
+    if (cfg.agentSettings?.confirmChanges !== undefined) runtime.confirmSettingsChanges = cfg.agentSettings.confirmChanges;
     // the settings tools on Spica's MCP service reach the window's settings through the port (server is set below)
     const port: { server?: BackendServer } = {};
     runtime.settingsBridge = {

@@ -6,14 +6,19 @@
 //   - no tool result contains an API key or a Consumer Secret (only hasSecret);
 //     a Consumer Key comes back as its last 4 characters
 //   - every secret received is added to the redaction table at once
-//   - a change waits for the user's confirmation in the window (cause
-//     settings_change, answerable only there), unless the runtime's
-//     confirmSettingsChanges is off
+//   - a change applies at once and is shown in the conversations (event
+//     settings.changed, and a note with meta.settingsChange in the main
+//     conversation and the one open in the window, so it stays in the history);
+//     with the runtime's confirmSettingsChanges on it first waits for the user's
+//     confirmation in the window (cause settings_change, answerable only there)
 //   - each change leaves a traceable record (kind settings) with field names only
 import type { ProviderConfig } from './host/backend.ts';
 import type { McpTool } from './mcp/server.ts';
 import type { Runtime } from './runtime.ts';
-import type { ProbeResult } from './types.ts';
+import { isoNow } from './events.ts';
+import { fence } from './guard.ts';
+import type { Session } from './session.ts';
+import type { ProbeResult, SettingsChangeMeta } from './types.ts';
 
 /** A model connection as the host lists it (no secret). */
 export interface HostModel {
@@ -235,8 +240,47 @@ export function settingsTools(rt: Runtime): McpTool[] {
 
   const record = (o: { id: string; changes: string[]; status: 'ok' | 'error' | 'aborted'; confirmed: boolean; error?: string }) =>
     rt.tracer
-      .start({ kind: 'settings', sessionId: null, parentChain: [], initiator: 'mcp', target: 'models', providerId: o.id, changes: o.changes, ...(o.confirmed ? { confirmedBy: 'user' as const } : {}) })
+      .start({
+        kind: 'settings',
+        sessionId: null,
+        parentChain: [],
+        initiator: 'mcp',
+        target: 'models',
+        providerId: o.id,
+        changes: o.changes,
+        // applied without asking (as set up) is recorded as such; a declined change has no confirmation
+        ...(o.confirmed ? { confirmedBy: 'user' as const } : o.status === 'aborted' ? {} : { confirmedBy: 'none' as const }),
+      })
       .finish({ status: o.status, ...(o.error ? { error: o.error } : {}) });
+
+  /**
+   * Show an applied change where the user looks: an event for the window, and a
+   * note in the main conversation and in the one open in the window (asked with
+   * the optional host method 'ui.activeSession'), kept in the history. The model
+   * there reads it as data: names and model names come from the script.
+   */
+  const announce = async (change: SettingsChangeMeta) => {
+    rt.events.emit(rt.eventHost, { type: 'settings.changed', change });
+    const targets = new Set<Session>();
+    try {
+      targets.add(rt.top()); // a model is configured by now, so the main conversation can exist
+    } catch {
+      // still no usable model: the event is all there is
+    }
+    try {
+      const open = await bridge().host('ui.activeSession');
+      const s = typeof open === 'string' && open ? rt.session(open) : undefined;
+      if (s) targets.add(s);
+    } catch {
+      // the window does not say which conversation is open
+    }
+    const what = { action: change.action, name: change.name, model: change.model, changes: change.changes, confirmedByUser: change.confirmed };
+    const body = fence(JSON.stringify(what), 'mcp', 'settings', app).text;
+    const text = `[The model settings were changed by a script connected to ${app}${change.confirmed ? ', confirmed by the user' : ', without asking the user (as set up)'}. Details:]\n${body}`;
+    for (const s of targets) s.addNote('note', text, { author: 'runtime', settingsChange: change });
+  };
+  const changeOf = (card: Record<string, unknown>, id: string, confirmed: boolean, extra: string[] = []): SettingsChangeMeta =>
+    ({ ...card, id, changes: [...((card.changes as string[] | undefined) ?? []), ...extra], by: 'mcp', confirmed, at: isoNow() }) as SettingsChangeMeta;
 
   /** Ask the user (unless turned off), then run `apply`; says it is still waiting after waitMs. */
   const confirmThen = async (name: string, card: Record<string, unknown>, apply: (confirmed: boolean) => Promise<unknown>, declined: () => unknown) => {
@@ -278,8 +322,9 @@ export function settingsTools(rt: Runtime): McpTool[] {
     {
       name: 'spica_save_model',
       description:
-        `Add (no id) or change (id) a model connection, test it, and save it after the user confirms in the ${app} window. Fields left out keep their saved value; the key / secret is stored encrypted and never returned. ` +
-        'A failed test saves nothing unless saveIfTestFails. If the user has not answered yet the result is status waiting_for_user with a requestId for spica_settings_result.',
+        `Add (no id) or change (id) a model connection, test it, and save it; the change is shown to the user in ${app}'s conversations (if ${app} is set up to ask first, it waits for the user to confirm in the window). ` +
+        'Fields left out keep their saved value; the key / secret is stored encrypted and never returned. A failed test saves nothing unless saveIfTestFails. ' +
+        'If the user has not answered yet the result is status waiting_for_user with a requestId for spica_settings_result.',
       inputSchema: obj(
         {
           ...FIELDS,
@@ -314,7 +359,9 @@ export function settingsTools(rt: Runtime): McpTool[] {
             try {
               const saved = await host<HostModel>('models.save', [d]);
               if (makeDefault && !saved.isDefault) await host('models.setDefault', [saved.id]);
-              record({ id: saved.id, changes: makeDefault ? [...changes, 'default'] : changes, status: 'ok', confirmed });
+              const all = makeDefault ? [...changes, 'default'] : changes;
+              record({ id: saved.id, changes: all, status: 'ok', confirmed });
+              await announce(changeOf(card, saved.id, confirmed, makeDefault ? ['default'] : []));
               return { saved: true, model: view({ ...saved, isDefault: saved.isDefault || makeDefault }), test: tested };
             } catch (err) {
               record({ id: existing?.id ?? '', changes, status: 'error', confirmed, error: err instanceof Error ? err.message : String(err) });
@@ -330,7 +377,7 @@ export function settingsTools(rt: Runtime): McpTool[] {
     },
     {
       name: 'spica_set_default_model',
-      description: `Make a saved connection the default for new conversations, after the user confirms in the ${app} window.`,
+      description: `Make a saved connection the default for new conversations; shown to the user like spica_save_model (and confirmed first if ${app} is set up to ask).`,
       inputSchema: obj({ id: FIELDS.id }, ['id']),
       run: async (a) => {
         const id = String(a.id ?? '');
@@ -339,10 +386,11 @@ export function settingsTools(rt: Runtime): McpTool[] {
         if (m.isDefault) return { id, isDefault: true };
         return confirmThen(
           'spica_set_default_model',
-          { action: 'set_default_model', id, name: m.name, kind: kindOf(m.kind), model: m.model },
+          { action: 'set_default_model', id, name: m.name, kind: kindOf(m.kind), model: m.model, changes: ['default'] },
           async (confirmed) => {
             await host('models.setDefault', [id]);
             record({ id, changes: ['default'], status: 'ok', confirmed });
+            await announce(changeOf({ action: 'set_default_model', name: m.name, kind: kindOf(m.kind), model: m.model, changes: ['default'] }, id, confirmed));
             return { id, isDefault: true };
           },
           () => {

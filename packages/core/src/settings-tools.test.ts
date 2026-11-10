@@ -78,21 +78,22 @@ function fakeWindow(client: () => BackendClient) {
   };
 }
 
-async function setup(opts: { confirm?: boolean; window?: boolean } = {}) {
+async function setup(opts: { confirm?: boolean; window?: boolean; openConversation?: () => string | null } = {}) {
   const b: Backend = await startBackend({
     dbPath: join(dir, 'db', 'spica.db'),
     providers: [],
     defaults: { providerId: '', model: '', maxTokens: 64 },
     cwd: dir,
     mail: { enabled: false },
-    ...(opts.confirm === false ? { agentSettings: { confirmChanges: false } } : {}),
+    ...(opts.confirm !== undefined ? { agentSettings: { confirmChanges: opts.confirm } } : {}),
   });
   const ch = new MessageChannel();
   let client!: BackendClient;
   const win = fakeWindow(() => client);
   if (opts.window !== false) {
     b.server.attach(nodePort(ch.port1));
-    client = connectBackend(nodePort(ch.port2), { hostMethods: win.methods as never });
+    const methods = { ...win.methods, ...(opts.openConversation ? { 'ui.activeSession': opts.openConversation } : {}) };
+    client = connectBackend(nodePort(ch.port2), { hostMethods: methods as never });
   }
   const events: CoreEvent[] = [];
   b.runtime.events.on((e) => events.push(e));
@@ -106,13 +107,14 @@ async function setup(opts: { confirm?: boolean; window?: boolean } = {}) {
     return r.result.isError ? { error: r.result.content[0]!.text } : r.result.structuredContent!;
   };
   const seen: string[] = [];
-  closers.push(async () => {
+  const close = async () => {
     mcp.close();
     ch.port1.close();
     ch.port2.close();
     await b.close();
-  });
-  return { b, client: () => client, win, events, call, seen };
+  };
+  closers.push(close);
+  return { b, client: () => client, win, events, call, seen, close };
 }
 
 /** A gateway with a token endpoint and a chat endpoint (all made up). */
@@ -143,8 +145,8 @@ async function closedUrl(): Promise<string> {
 const asks = (events: CoreEvent[]) => events.filter((e): e is Extract<CoreEvent, { type: 'confirm.request' }> => e.type === 'confirm.request');
 
 describe('model settings over Spica MCP', () => {
-  it('saves a new connection after a passing test and the user confirming in the window; the key never comes back out', async () => {
-    const { b, client, events, call, seen } = await setup();
+  it('set up to ask first: saves after a passing test and the user confirming in the window; the key never comes back out', async () => {
+    const { b, client, events, call, seen } = await setup({ confirm: true });
     const pending = call('spica_save_model', { kind: 'openai-compatible', name: 'Gateway A', baseUrl: `${gw.baseUrl}/v1`, model: 'm1', apiKey: API_KEY, contextWindow: 64_000, makeDefault: true });
     await until(() => asks(events).length === 1);
     const ask = asks(events)[0]!;
@@ -199,9 +201,9 @@ describe('model settings over Spica MCP', () => {
     expect(await call('spica_save_model', { kind: 'anthropic', name: 'C', baseUrl: `${nowhere}/v1`, model: 'claude-haiku-5-5', apiKey: API_KEY })).toMatchObject({ saved: false });
    }, 30_000); // a refused connection is retried a few times
 
-  it('WSO2: two test steps, the Consumer Key shows only its end, the secret never; confirmations can be switched off', async () => {
+  it('WSO2: two test steps, the Consumer Key shows only its end, the secret never', async () => {
     const base = await wso2Gateway();
-    const { b, call, seen, events } = await setup({ confirm: false });
+    const { b, call, seen, events } = await setup();
     const r = await call('spica_save_model', {
       kind: 'wso2',
       name: 'Company gateway',
@@ -214,7 +216,7 @@ describe('model settings over Spica MCP', () => {
       contextWindow: 128_000,
     });
     expect(r).toMatchObject({ saved: true, model: { kind: 'wso2', consumerKey: '…1234', scope: 'chat', hasSecret: true }, test: { ok: true, steps: { token: 'ok', model: 'ok' }, serverModel: 'm-gw' } });
-    expect(asks(events)).toEqual([]); // switched off: no card
+    expect(asks(events)).toEqual([]); // not set up to ask
     const id = String((r.model as { id: string }).id);
     expect(await call('spica_test_model', { id })).toMatchObject({ ok: true, steps: { token: 'ok', model: 'ok' } });
     // a wrong token address: the token step fails, the model step is skipped
@@ -225,8 +227,48 @@ describe('model settings over Spica MCP', () => {
     }
   });
 
+  it('by default a change applies at once and is shown in the main conversation and the open one, also after a restart', async () => {
+    const first = await setup({ openConversation: () => open });
+    let open: string | null = null;
+    // the first model: nothing to show it in yet but the main conversation, created now that a model exists
+    const r = await first.call('spica_save_model', { kind: 'openai-compatible', name: 'Gateway A', baseUrl: `${gw.baseUrl}/v1`, model: 'm1', apiKey: API_KEY, contextWindow: 64_000 });
+    expect(r).toMatchObject({ saved: true });
+    expect(asks(first.events)).toEqual([]);
+    const id = String((r.model as { id: string }).id);
+    const changed = first.events.filter((e) => e.type === 'settings.changed');
+    expect(changed).toHaveLength(1);
+    const change = changed[0]!.type === 'settings.changed' ? changed[0]!.change : undefined;
+    expect(change).toMatchObject({ action: 'add_model', id, name: 'Gateway A', model: 'm1', changes: ['new'], secret: 'new', by: 'mcp', confirmed: false, test: { ok: true } });
+    const top = first.b.runtime.top();
+    const note = (s: { messages(): { meta?: Record<string, unknown> }[] }) => s.messages().filter((m) => m.meta?.settingsChange);
+    expect(note(top).map((m) => m.meta!.settingsChange)).toEqual([change]);
+
+    // another conversation is open in the window: the next change shows there too
+    const other = first.b.runtime.createSession();
+    open = other.id;
+    expect(await first.call('spica_set_default_model', { id })).toMatchObject({ id, isDefault: true }); // already the default (first model)
+    expect(await first.call('spica_save_model', { id, contextWindow: 32_000, makeDefault: true })).toMatchObject({ saved: true });
+    expect(note(top)).toHaveLength(2);
+    expect(note(other).map((m) => m.meta!.settingsChange)).toEqual([expect.objectContaining({ action: 'change_model', changes: ['contextWindow', 'default'], secret: 'unchanged' })]);
+    // the model in that conversation reads it as data
+    const noteText = other.messages().find((m) => m.meta?.settingsChange)!.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+    expect(noteText).toContain('<untrusted_data kind="mcp" source="settings">');
+    const traces = first.b.runtime.exportTraces().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>).filter((t) => t.kind === 'settings');
+    expect(traces.map((t) => t.confirmedBy)).toEqual(['none', 'none']);
+    for (const where of [JSON.stringify(first.events), JSON.stringify(top.messages()), JSON.stringify(other.messages())]) expect(where).not.toContain(API_KEY);
+    const topId = top.id;
+    const otherId = other.id;
+    closers.splice(closers.indexOf(first.close), 1);
+    await first.close();
+
+    // after a restart the cards are still in the history
+    const again = await setup();
+    expect(note(again.b.runtime.session(topId)!)).toHaveLength(2);
+    expect(note(again.b.runtime.session(otherId)!)).toHaveLength(1);
+  });
+
   it('a user who has not answered yet: the agent hears it is waiting and asks again', async () => {
-    const { b, client, events, call } = await setup();
+    const { b, client, events, call } = await setup({ confirm: true });
     b.runtime.settingsBridge!.waitMs = 30;
     const first = await call('spica_save_model', { kind: 'openai-compatible', name: 'A', baseUrl: `${gw.baseUrl}/v1`, model: 'm1', apiKey: API_KEY, contextWindow: 8000 });
     expect(first).toMatchObject({ status: 'waiting_for_user', requestId: asks(events)[0]!.callId });

@@ -367,7 +367,8 @@
 - **让 Agent 帮忙配模型**（`settings-tools.ts`）：`spica_list_models`、`spica_test_model`、`spica_save_model`、`spica_set_default_model`、`spica_settings_result`、`spica_network_status`（只读）。模型设置存在宿主那边（桌面外壳用系统加密存），内核经后台端口的**宿主方法**去拿和存：内核发 `{t:'hreq'}`、宿主回 `{t:'hres'}`，宿主在 `connectBackend(port, { hostMethods })` 里注册 `models.list` / `models.save` / `models.setDefault`（`HostModel` / `HostModelDraft`）；没有窗口时这几个工具回 `host_unavailable`，测试连接照样能用。
   - **密钥只进不出**：参数名 `apiKey` / `consumerSecret`（在 `SECRET_FIELD` 和文本去敏规则里）；收到就加进去敏表；任何结果都不带密钥，只给 `hasSecret`；Consumer Key 只给末 4 位；错误信息过一遍去敏。
   - **先测再存**：`spica_save_model` 先测试连接（WSO2 分「取 token」「调模型」两步，带 `code` 和中文 `hint`），测不通就不存（除非 `saveIfTestFails`）；上下文上限不填时用内核已知值，内核也不知道就报 `context_window_required`。
-  - **用户确认**：存和设默认都先弹确认卡（`confirm.request`，cause `settings_change`，sessionId ''），卡上写改了哪些字段、密钥「新填 / 未改」、测试结果；这种确认只有窗口能答，`spica_confirm` 会拒绝（否则发请求的脚本就自己批准了）；批准方式 auto 也不跳过。最多等 2 分钟，没答就回 `waiting_for_user` 和 `requestId`，再用 `spica_settings_result` 接着等；10 分钟没人答算拒绝。开关是 `BackendConfig.agentSettings.confirmChanges` / 同名设置补丁（默认开）。
+  - **改了就醒目地展示**（他定：不要确认，改完在对话里明显地展示）：默认直接生效；生效后发 `settings.changed { change }` 事件，并在**主对话**（默认顶层线程，没有就在这时建，因为模型刚配好）和**窗口当前打开的那条对话**（可选宿主方法 `ui.activeSession()` → 会话 id）里各写一条运行时备注（kind `note`，`meta.settingsChange`），所以重启后卡片还在记录里。`SettingsChangeMeta`：action（add_model / change_model / set_default_model）、id、name、kind、model、baseUrl、tokenUrl、consumerKey（末 4 位）、scope、contextWindow、changes、secret（new / unchanged）、makeDefault、test {ok, code}、by `mcp`、confirmed、at；没有密钥。给模型看的那段正文把名字等脚本给的内容放在数据围栏里（kind mcp），模型只当信息。留痕 `confirmedBy: 'none'` 表示没问用户直接生效。
+  - **要确认时**（开关 `BackendConfig.agentSettings.confirmChanges` / 同名设置补丁，默认关）：存和设默认先弹确认卡（`confirm.request`，cause `settings_change`，sessionId ''），只有窗口能答，`spica_confirm` 会拒绝（否则发请求的脚本就自己批准了），批准方式 auto 也不跳过；最多等 2 分钟，没答就回 `waiting_for_user` 和 `requestId`，用 `spica_settings_result` 接着等；10 分钟没人答算拒绝。确认后照样写上面那张卡（confirmed true）。
   - **留痕**：每次改动一条 `kind: 'settings'` 记录（initiator `mcp`、providerId、`changes` 只有字段名、`confirmedBy`），不写任何字段值。网络设置这一版只读，写入不开放（代理和证书是风险最高的设置）。
 - **stdio**：`node src/host/mcp-main.ts --config backend.json`（或 Electron 的 Node 加 `ELECTRON_RUN_AS_NODE=1`）。配置里的 key 可写成 `apiKeyEnv`（环境变量名），不用写进文件。stdout 只走协议，日志走 stderr。库被别的进程占着时直接拒绝并说明原因。
 - **HTTP**（`mcp/http.ts`）：MCP「Streamable HTTP」的子集。`POST /mcp`，一条或一批 JSON-RPC，回 JSON，通知回 202；不做服务端推送（GET 回 405），不发会话 id，事件靠 `spica_events` 按 seq 取；不设请求超时（`spica_run` 会等很久）。独立进程加 `--http [--port] [--host] [--allow-remote] [--token-file]`；桌面端开着时库被占，就在后台配置里加 `mcpHttp`，由跑着的后台一起提供。
@@ -450,6 +451,7 @@
 
 | 里程碑 | 日期 | 测试 | 真模型冒烟 |
 |---|---|---|---|
+| M15 | 2026-11-10 | 新增 1 条，改 5 条：经 MCP 改模型设置默认不确认、直接生效；改动作为卡片写进主对话和窗口打开的那条对话，重启后还在；正文里脚本给的内容在数据围栏里；留痕 confirmedBy none；密钥不在卡片和事件里；要确认的路径按开关打开后照旧 | — |
 | M14 | 2026-11-10 | 新增 3 条：产品名——系统提示、守卫标记、MCP 工具说明都换成给的名字且不再出现 Spica，工具名不变；会话自带提示里的 {{app}} 也会填；web_fetch 用能放进请求头的名字；不给名字时一切照旧 | — |
 | M13 | 2026-11-10 | 新增 5 条：经 MCP 配模型——新增并确认后才存、密钥在结果 / 事件 / 留痕 / 使用日志里都找不到、脚本不能自己批准、改一处只记那一处、用户拒绝不存；测不通不存不弹卡、缺字段和不知道上下文上限时说清；WSO2 两步测试、Consumer Key 只露末 4 位、确认开关关掉时直接存；用户没答时回「还在等」再接着等；没窗口时只能测试和看网络状态 | — |
 | M12 | 2026-11-10 | 新增 2 条：WSO2 fault 编号（JSON / XML 两种格式、7 类 11 个编号、不认识的照旧按状态码、每类都有中文说明）；测试连接报出对应编号的说明，900901 先重取一次 token 再报错，第二次成功就不报 | — |

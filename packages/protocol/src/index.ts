@@ -129,7 +129,43 @@ export interface Message {
 }
 
 /** Known metadata keys on messages. Everything a UI shows must be rebuildable from history. */
+/**
+ * A change to the model settings made from outside the window (a script
+ * connected to the MCP service). Never contains a key or secret. Carried by
+ * the `settings.changed` event and by a note message in the conversations
+ * (meta.settingsChange), so the card stays in the history.
+ */
+export interface SettingsChangeMeta {
+  action: 'add_model' | 'change_model' | 'set_default_model';
+  /** The model connection (its id in the settings). */
+  id: string;
+  name: string;
+  kind: 'openai-compatible' | 'anthropic' | 'wso2';
+  model: string;
+  baseUrl?: string;
+  tokenUrl?: string;
+  /** Last 4 characters only. */
+  consumerKey?: string;
+  scope?: string | null;
+  contextWindow?: number | null;
+  /** Names of the changed fields ('new' for a new connection, 'default' when it became the default). */
+  changes: string[];
+  /** The key / Consumer Secret: newly given or kept as saved. */
+  secret?: 'new' | 'unchanged';
+  makeDefault?: boolean;
+  /** The connection test run before saving. */
+  test?: { ok: boolean; code?: string };
+  /** Who made the change. */
+  by: 'mcp';
+  /** Whether the user confirmed it in the window (false: applied without asking, as set up). */
+  confirmed: boolean;
+  /** ISO 8601 with offset. */
+  at: string;
+}
+
 export interface MessageMeta {
+  /** A settings change made from outside the window: render it as a card (see SettingsChangeMeta). */
+  settingsChange?: SettingsChangeMeta;
   /** Runtime note: tools the session used before that are gone now (names). */
   toolsUnavailable?: string[];
   /** The message carries outside content (e.g. forwarded mail), fenced as data. */
@@ -338,6 +374,8 @@ export type CoreEventBody =
   | { type: 'guard.flagged'; note: GuardNote; callId?: string }
   /** An irreversible call ran without asking because the session's approval mode is auto. */
   | { type: 'confirm.auto'; callId: string; name: string; input: unknown }
+  /** The model settings were changed from outside the window (also written as a note into the conversations). */
+  | { type: 'settings.changed'; change: SettingsChangeMeta }
   /** Session details changed (context use after a model call, model, approval mode). */
   | { type: 'session.updated'; info: SessionInfo }
   | { type: 'confirm.resolved'; callId: string; approved: boolean }
@@ -486,7 +524,8 @@ export interface TraceRecord {
   attempts?: number;
   error?: string;
   /** For a call that needed confirmation: who gave it ('user' = the confirmation card, 'view' = a plugin view that asked the user itself). */
-  confirmedBy?: 'user' | 'view';
+  /** 'none' (kind settings): applied without asking the user, as the settings say. */
+  confirmedBy?: 'user' | 'view' | 'none';
   /** kind 'settings': names of the fields that changed (never their values). */
   changes?: string[];
 }
