@@ -1548,13 +1548,9 @@ button.tree-twisty:hover {
   z-index: 4;
 }
 
-/* Context card colours: one per part (system prompt, tools, conversation), taken from the skin's
-   accent at three clearly different lightnesses; the parts inside one step lighter each.
-   Kept for the answer and free: neutral grey. */
+/* Context card colours: --ctx-system / --ctx-tools / --ctx-messages come from the skin's accent
+   (context-palette.ts), set on the card. Kept for the answer and free: neutral grey. */
 .ctx-card {
-  --ctx-system: color-mix(in oklab, var(--spica-accent) 55%, #000);
-  --ctx-tools: var(--spica-accent);
-  --ctx-messages: color-mix(in oklab, var(--spica-accent) 45%, #fff);
   --ctx-reserve: color-mix(in oklab, var(--spica-muted) 70%, var(--spica-menu));
   --ctx-track: color-mix(in oklab, var(--spica-ink) 8%, var(--spica-menu));
   display: block;
@@ -1610,7 +1606,7 @@ button.tree-twisty:hover {
 
 .ctx-seg,
 .ctx-sw {
-  background: color-mix(in oklab, var(--ctx-c) var(--ctx-k), #fff);
+  background: color-mix(in oklab, var(--ctx-c) var(--ctx-k), var(--ctx-tools));
 }
 
 .ctx-seg {

@@ -7,6 +7,7 @@ import { useState } from 'react';
 import type { ContextBreakdown } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
 import { tokenText } from './tokens';
+import { contextColours } from './context-palette';
 
 const NAMES: Record<string, string> = {
   system: '系统提示',
@@ -26,8 +27,15 @@ export function shareText(tokens: number, window: number): string {
   return `${((tokens / window) * 100).toFixed(1)}%`;
 }
 
-/** The colour of a part: its category's colour, a step lighter for each part after the first. */
-const swatch = (category: string, step = 0) => ({ ['--ctx-c' as string]: `var(--ctx-${category})`, ['--ctx-k' as string]: `${100 - step * 16}%` });
+/** The colour of a part: its category's colour, each part after the first a step toward the middle colour (tools). */
+const swatch = (category: string, step = 0) => ({ ['--ctx-c' as string]: `var(--ctx-${category})`, ['--ctx-k' as string]: `${100 - step * 11}%` });
+
+/** The skin's colours as they are now (the card follows the skin's accent). */
+function skinColours() {
+  const css = typeof getComputedStyle === 'function' ? getComputedStyle(document.documentElement) : null;
+  const v = (n: string) => css?.getPropertyValue(n) ?? '';
+  return contextColours({ accent: v('--spica-accent'), warning: v('--spica-warning'), danger: v('--spica-danger'), bg: v('--spica-bg') });
+}
 
 // Opened or closed stays as it was left, for the next time the card opens.
 let openBefore = false;
@@ -37,6 +45,8 @@ export function ContextCard({ data }: { data: ContextBreakdown }) {
   const [open, setOpen] = useState(openBefore);
   const [rowsOpen, setRowsOpen] = useState<Set<string>>(() => new Set(rowsOpenBefore));
   const w = data.window;
+  const c = skinColours();
+  const colourVars = { ['--ctx-system' as string]: c.system, ['--ctx-tools' as string]: c.tools, ['--ctx-messages' as string]: c.messages };
   const parts = data.parts.filter((p) => p.tokens > 0);
   const toggle = () => {
     openBefore = !open;
@@ -60,7 +70,7 @@ export function ContextCard({ data }: { data: ContextBreakdown }) {
     </>
   );
   return (
-    <div className="ctx-card" role="dialog" aria-label="上下文占用">
+    <div className="ctx-card" role="dialog" aria-label="上下文占用" style={{ ...colourVars }}>
       <button type="button" className="ctx-head" aria-expanded={open} onClick={toggle}>
         <span className="ctx-title">上下文占用</span>
         <span className="ctx-sum">
