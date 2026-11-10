@@ -6,7 +6,7 @@
 // desktop shell stores them, secrets encrypted); the core reaches it through
 // host methods on the backend port and never hands a secret back out:
 //   - no tool result contains an API key or a Consumer Secret (only hasSecret);
-//     a Consumer Key comes back as its last 4 characters
+//     a Consumer Key comes back masked (protocol keyMaskText)
 //   - every secret received is added to the redaction table at once
 //   - every ticked model has a context window: given, from the catalog, or
 //     matched by name (marked so); otherwise nothing is saved
@@ -22,6 +22,7 @@ import type { ProviderConfig } from './host/backend.ts';
 import type { McpTool } from './mcp/server.ts';
 import type { Runtime } from './runtime.ts';
 import type { Session } from './session.ts';
+import { keyMaskParts, keyMaskText } from '@spica/protocol';
 import { catalogProvider } from './catalog/catalog.ts';
 import { listProviderModels } from './catalog/list-models.ts';
 import type { ProbeResult, SettingsChangeMeta } from './types.ts';
@@ -137,10 +138,9 @@ const FIELDS = {
 
 const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: 'object', properties, required });
 
-/** The last 4 characters, for showing that a value is there without showing it. */
-export function maskTail(v: string): string {
-  if (!v) return '';
-  return v.length <= 4 ? '…' : `…${v.slice(-4)}`;
+/** A Consumer Key as shown everywhere (protocol keyMaskParts / keyMaskText); empty when there is none. */
+function maskKey(v: string): string {
+  return v ? keyMaskText(keyMaskParts(v)) : '';
 }
 
 function kindOf(v: unknown): CoreKind | undefined {
@@ -159,7 +159,7 @@ function view(c: HostConnection, list: HostModelList) {
     kind,
     name: c.name,
     baseUrl: c.baseUrl,
-    ...(kind === 'wso2' ? { tokenUrl: c.tokenUrl, consumerKey: maskTail(c.clientId), scope: c.scope || null } : {}),
+    ...(kind === 'wso2' ? { tokenUrl: c.tokenUrl, consumerKey: maskKey(c.clientId), scope: c.scope || null } : {}),
     ...(c.catalogId ? { preset: c.catalogId } : {}),
     models: c.models.map((m) => ({
       ...m,
@@ -504,7 +504,7 @@ export function settingsTools(rt: Runtime): McpTool[] {
       name: 'spica_list_models',
       description:
         `The model connections set up in ${app}: each is one address with one key and the models ticked under it (with their context windows); which model is the default and which the strong one. ` +
-        'No keys or secrets: hasSecret says whether one is saved; the Consumer Key shows its last 4 characters. A second key for the same provider is a second connection.',
+        'No keys or secrets: hasSecret says whether one is saved; the Consumer Key is shown masked (at most its first and last 4 characters). A second key for the same provider is a second connection.',
       inputSchema: obj({}),
       run: async () => {
         const l = await list();
@@ -566,7 +566,7 @@ export function settingsTools(rt: Runtime): McpTool[] {
           name: d.name,
           kind: d.kind,
           baseUrl: d.baseUrl,
-          ...(d.kind === 'wso2' ? { tokenUrl: d.tokenUrl, consumerKey: maskTail(d.clientId), scope: d.scope || null } : {}),
+          ...(d.kind === 'wso2' ? { tokenUrl: d.tokenUrl, consumerKey: maskKey(d.clientId), scope: d.scope || null } : {}),
           // the models in use (each has its context window); disabled ones are named in disabledModels
           models: d.models.filter((m) => m.enabled !== false).map((m) => ({ id: m.id, contextWindow: m.contextWindow ?? 0, contextFrom: m.contextFrom })),
           addedModels: added,

@@ -57,6 +57,21 @@ export interface ImageBlock {
  * providers' documented limits): longest side in pixels, file size in bytes,
  * images per message. Larger ones are made smaller (PNG) or refused.
  */
+/**
+ * How a key (API key, Consumer Key) is shown, the same everywhere: 24
+ * characters or more give their first 4 and last 4, 12 to 23 only the last 4,
+ * shorter ones nothing.
+ */
+export function keyMaskParts(key: string): { head: string; tail: string } {
+  const k = key.trim();
+  return { head: k.length >= 24 ? k.slice(0, 4) : '', tail: k.length >= 12 ? k.slice(-4) : '' };
+}
+
+/** The shown text: head + **** + tail, e.g. sk-a****3f9a, ****3f9a or ****. */
+export function keyMaskText(parts: { head: string; tail: string }): string {
+  return `${parts.head}****${parts.tail}`;
+}
+
 export const IMAGE_LIMITS = { maxLongSide: 1568, maxBytes: 3_750_000, maxPerMessage: 10 } as const;
 
 export interface TextBlock {
@@ -201,7 +216,7 @@ export interface SettingsChangeMeta {
   kind: 'openai-compatible' | 'anthropic' | 'wso2';
   baseUrl?: string;
   tokenUrl?: string;
-  /** Last 4 characters only. */
+  /** Shown masked (keyMaskText): first and last 4 characters for long ones, the last 4 for mid-length ones, nothing else. */
   consumerKey?: string;
   scope?: string | null;
   /** add / change: the models ticked now, each with its context window and where it came from ('name-match': matched by name in the catalog). */

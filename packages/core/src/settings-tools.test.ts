@@ -259,7 +259,7 @@ describe('model settings over Spica MCP', () => {
       model: 'm-gw',
       contextWindow: 128_000,
     });
-    expect(r).toMatchObject({ saved: true, connection: { kind: 'wso2', consumerKey: '…1234', scope: 'chat', hasSecret: true }, test: { ok: true, steps: { token: 'ok', model: 'ok' }, serverModel: 'm-gw' } });
+    expect(r).toMatchObject({ saved: true, connection: { kind: 'wso2', consumerKey: '****1234', scope: 'chat', hasSecret: true }, test: { ok: true, steps: { token: 'ok', model: 'ok' }, serverModel: 'm-gw' } });
     expect(asks(events)).toEqual([]); // not set up to ask
     const id = String((r.connection as { id: string }).id);
     expect(await call('spica_test_model', { id })).toMatchObject({ ok: true, steps: { token: 'ok', model: 'ok' } });
