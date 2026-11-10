@@ -27,6 +27,7 @@ import type {
   ChildNoteMeta,
   CreateProjectRequest,
   CreateSessionRequest,
+  CwdChangeMeta,
   GuardCause,
   Message,
   ProjectDetail,
@@ -36,12 +37,14 @@ import type {
   ProjectActivityKind,
   ProjectLogEntry,
   SessionStatus,
+  SetCwdResult,
   WorkflowDef,
   WorkObject,
 } from './types.ts';
-import { mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { moveFolderContents, removeEmptyTree, within } from './move-folder.ts';
 import { newId, redact } from './util.ts';
 import { exportUsageLog, type UsageLogFilter } from './export.ts';
 import { BUILTIN_TEMPLATES, loadWorkflows, type RoleTemplate } from './projects.ts';
@@ -113,6 +116,8 @@ export interface RuntimeInternals {
   readonly appName: string;
   readonly events: EventBus;
   mediaDir(sessionId: string): string;
+  /** The folder a conversation without a chosen one works in (in the app data); undefined when there are none. */
+  ownFolder(sessionId: string): string | undefined;
   /** true / false when the catalog says whether the model takes images (or it refused them before); undefined: unknown, send them. */
   imagesAllowed(providerId: string, model: string): boolean | undefined;
   /** The provider refused images for this model: later requests to it leave the images out. */
@@ -210,6 +215,11 @@ export class Runtime implements RuntimeInternals {
   readonly sampler = new PluginSampler(this);
 
   readonly #noImages = new Set<string>();
+
+  /** The folder a conversation without a chosen one works in: <sessionFilesDir>/<id>/files. */
+  ownFolder(sessionId: string): string | undefined {
+    return this.#opts.sessionFilesDir ? join(this.#opts.sessionFilesDir, sessionId, 'files') : undefined;
+  }
 
   /** Folder for the images attached in a conversation. */
   mediaDir(sessionId: string): string {
@@ -393,8 +403,7 @@ export class Runtime implements RuntimeInternals {
     const tools = req.tools ?? tpl?.tools ?? parent?.config.tools;
     const sessionId = newId('ses');
     // a conversation of its own without a folder: its own folder in the app's data, not one under Documents
-    const ownFolder =
-      !req.cwd && !parent && !req.projectId && this.#opts.sessionFilesDir ? join(this.#opts.sessionFilesDir, sessionId, 'files') : undefined;
+    const ownFolder = !req.cwd && !parent && !req.projectId ? this.ownFolder(sessionId) : undefined;
     if (ownFolder) mkdirSync(ownFolder, { recursive: true });
     const config: SessionConfig = {
       system: req.system ?? tpl?.system ?? d.system ?? DEFAULT_SYSTEM_PROMPT,
@@ -915,6 +924,58 @@ export class Runtime implements RuntimeInternals {
     const ids = this.#withDescendants([sessionId]);
     await this.#stopAll(ids, 'conversation deleted');
     this.#drop(ids);
+  }
+
+  /**
+   * The user chooses the working folder of a conversation that had none (it worked in its own folder in the app
+   * data), once. What it made there moves to the chosen folder, all or nothing (see moveFolderContents); its
+   * sub-agents that worked there move along; each gets a note saying where the folder is now and where the files
+   * went, so relative paths in earlier messages still hold. Refused while it or a sub-agent runs or waits for the user.
+   */
+  setSessionCwd(sessionId: string, folder: string): SetCwdResult {
+    const s = this.session(sessionId);
+    if (!s) throw new Error(`unknown session: ${sessionId}`);
+    if (!s.info().canChooseCwd) {
+      return { ok: false, code: 'cwd.not_changeable', message: 'This conversation already has its working folder (chosen before, or part of a project).' };
+    }
+    const src = this.ownFolder(sessionId)!;
+    const tree = [...this.#withDescendants([sessionId])].map((id) => this.session(id)).filter((x): x is Session => !!x);
+    if (tree.some((x) => x.busy)) return { ok: false, code: 'cwd.busy', message: 'The conversation is running or waits for an answer; choose the folder when it is done.' };
+    const dest = resolve(folder);
+    if (!isAbsolute(folder)) return { ok: false, code: 'cwd.bad_folder', message: `Not an absolute path: ${folder}` };
+    if (within(src, dest) || within(dest, src)) return { ok: false, code: 'cwd.bad_folder', message: `${dest} is the conversation's own folder or holds it.` };
+    if (existsSync(dest) && !statSync(dest).isDirectory()) return { ok: false, code: 'cwd.bad_folder', message: `${dest} is a file, not a folder.` };
+    const res = moveFolderContents(src, dest);
+    if (!res.ok) {
+      const left = res.notRestored.length ? ` Could not put back: ${res.notRestored.join(', ')} (still in ${dest}).` : '';
+      return {
+        ok: false,
+        code: res.file ? 'cwd.move_failed' : 'cwd.bad_folder',
+        message: res.file ? `Moving ${res.file} failed (${res.message}); everything else was put back.${left}` : `Cannot make ${dest}: ${res.message}`,
+        ...(res.file ? { file: res.file } : {}),
+        ...(res.notRestored.length ? { notRestored: res.notRestored } : {}),
+      };
+    }
+    try {
+      removeEmptyTree(src);
+      rmdirSync(dirname(src)); // sessions/<id>, when nothing else is in it
+    } catch {
+      // left over folders do no harm
+    }
+    const change: CwdChangeMeta = { from: src, to: dest, moved: res.moved, renamed: res.renamed };
+    const renamed = res.renamed.length
+      ? ` Renamed because a file of that name was already there: ${res.renamed.slice(0, 20).map((r) => `${r.from} → ${r.to}`).join(', ')}${res.renamed.length > 20 ? `, and ${res.renamed.length - 20} more` : ''}.`
+      : '';
+    const what = res.moved.length
+      ? `The ${res.moved.length} file${res.moved.length === 1 ? '' : 's'} made so far moved there from ${src}, at the same paths relative to the working folder.${renamed} ` +
+        `Relative paths in earlier messages now point into ${dest}; paths that started with ${src} now start with ${dest}.`
+      : 'Nothing had been made in the old folder.';
+    for (const x of tree) {
+      if (x.config.cwd !== src) continue;
+      x.setCwd(dest);
+      x.addNote('note', `[The user chose the working folder for this conversation: ${dest}. ${what}]`, { author: 'runtime', cwdChange: change });
+    }
+    return { ok: true, info: s.info(), moved: res.moved, renamed: res.renamed };
   }
 
   /** These sessions and every session under them. */

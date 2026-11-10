@@ -34,6 +34,7 @@ const API: Record<keyof AgentApi, true> = {
   renameSession: true,
   setSessionModel: true,
   setApprovalMode: true,
+  setSessionCwd: true,
   resume: true,
   confirm: true,
   abort: true,
@@ -84,6 +85,21 @@ describe('FakeBackend', () => {
     await b.renameSession(SEED_IDS.chat, 'named');
     await b.setSessionModel(SEED_IDS.chat, 'p', 'm');
     expect((await b.setApprovalMode(SEED_IDS.chat, 'auto')).updatedAt).toBe(before);
+    b.dispose();
+  });
+
+  it('a conversation without a folder chooses one once, its sub-agents along; not a project manager', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const chat = await b.createSession({});
+    const child = await b.createSession({ parentId: chat.id, role: 'worker' });
+    expect(chat.canChooseCwd).toBe(true);
+    expect((await b.createSession({ cwd: 'D:\\x' })).canChooseCwd).toBe(false);
+    expect(await b.setSessionCwd(chat.id, 'relative')).toMatchObject({ ok: false, code: 'cwd.bad_folder' });
+    const res = await b.setSessionCwd(chat.id, 'D:\\工作\\报价');
+    expect(res).toMatchObject({ ok: true, info: { cwd: 'D:\\工作\\报价', canChooseCwd: false } });
+    expect((await b.getSession(child.id))!.cwd).toBe('D:\\工作\\报价');
+    expect(await b.setSessionCwd(chat.id, 'D:\\other')).toMatchObject({ ok: false, code: 'cwd.not_changeable' });
+    expect(await b.setSessionCwd(SEED_IDS.pm, 'D:\\other')).toMatchObject({ ok: false, code: 'cwd.not_changeable' });
     b.dispose();
   });
 

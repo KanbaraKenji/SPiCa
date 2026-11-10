@@ -263,6 +263,8 @@ export interface MessageMeta {
   attachments?: AttachmentMeta[];
   /** tool_results: calls that ran without asking because the session's approval mode is auto. */
   autoApproved?: string[];
+  /** Runtime note: the user chose the working folder; what was made before moved there. */
+  cwdChange?: CwdChangeMeta;
   /** Runtime note: the user switched the session's model (a decision). */
   modelChange?: { from: { providerId: string; model: string }; to: { providerId: string; model: string } };
   /** One of Author; typed loosely so older callers that build plain objects still compile. */
@@ -348,7 +350,33 @@ export interface SessionInfo {
   contextTokens?: number | null;
   /** Context window of the session's model, null when unknown. */
   contextWindow?: number | null;
+  /**
+   * The user can still choose a working folder for this conversation (setSessionCwd): it works in its own folder in
+   * the app data because none was chosen, and it is not part of a project. Once chosen it cannot change again.
+   * (A running conversation is refused with `cwd.busy`: also look at `status`.)
+   */
+  canChooseCwd?: boolean;
 }
+
+/** Note in the conversation: the user chose its working folder and what it had made was moved there. */
+export interface CwdChangeMeta {
+  from: string;
+  to: string;
+  /** Moved files, relative to the folders (`to` differs from `from` when renamed). */
+  moved: { from: string; to: string }[];
+  /** The moved files that got another name because one of the same name was already there. */
+  renamed: { from: string; to: string }[];
+}
+
+/**
+ * What setSessionCwd did. `cwd.not_changeable`: a folder was chosen before, or it is part of a project;
+ * `cwd.busy`: it (or a sub-agent under it) is running or waits for the user; `cwd.bad_folder`: not an absolute path,
+ * a file, the conversation's own folder or inside it, or it cannot be made; `cwd.move_failed`: moving `file` failed,
+ * everything was put back (except `notRestored`) and the working folder is unchanged.
+ */
+export type SetCwdResult =
+  | { ok: true; info: SessionInfo; moved: { from: string; to: string }[]; renamed: { from: string; to: string }[] }
+  | { ok: false; code: 'cwd.not_changeable' | 'cwd.busy' | 'cwd.bad_folder' | 'cwd.move_failed'; message: string; file?: string; notRestored?: string[] };
 
 /**
  * auto: confirmations a tool asks for because it is irreversible pass on their own (recorded, event confirm.auto).
@@ -730,6 +758,12 @@ export interface AgentApi {
   /** Use another model from the next model call on (the one running now is not touched); recorded as a decision. */
   setSessionModel?(sessionId: string, providerId: string, model: string): Promise<SessionInfo>;
   setApprovalMode?(sessionId: string, mode: ApprovalMode): Promise<SessionInfo>;
+  /**
+   * Choose the working folder of a conversation that has none yet (`canChooseCwd`), once: the files it made in its
+   * own folder move there (all or nothing; same names get " (1)" and so on, nothing is overwritten), its sub-agents
+   * work there too, a note tells the model, then `session.updated`. Refused while it runs or waits for the user.
+   */
+  setSessionCwd?(sessionId: string, folder: string): Promise<SetCwdResult>;
   /** Continue a session left `interrupted` (e.g. after a restart). */
   resume(sessionId: string): Promise<void>;
   confirm(sessionId: string, callId: string, approved: boolean): Promise<void>;

@@ -139,7 +139,29 @@ export class Session {
       approvalMode: r.config.approvalMode ?? 'manual',
       contextTokens: this.#contextTokens,
       contextWindow: this.#contextWindow(),
+      canChooseCwd: this.#canChooseCwd(),
     };
+  }
+
+  /** Still in its own folder because none was chosen, and not part of a project (see setSessionCwd). */
+  #canChooseCwd(): boolean {
+    const r = this.#record;
+    const own = this.#rt.ownFolder(r.id);
+    const userThread = r.role === 'top' && (r.config.templateId === undefined || r.config.templateId === 'top');
+    return !!own && r.parentId === null && !r.config.projectId && userThread && r.config.cwd === own;
+  }
+
+  /** A run, or a confirmation or question waiting for the user. */
+  get busy(): boolean {
+    return this.#run !== undefined || this.#hasPending();
+  }
+
+  /** The working folder changed (the runtime moved the files; see Runtime.setSessionCwd). */
+  setCwd(cwd: string): SessionInfo {
+    this.#record = { ...this.#record, config: { ...this.#record.config, cwd } };
+    this.#rt.store.upsertSession(this.#record);
+    this.#emit({ type: 'session.updated', info: this.info() });
+    return this.info();
   }
 
   #contextWindow(): number | null {

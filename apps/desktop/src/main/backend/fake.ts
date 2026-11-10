@@ -21,6 +21,7 @@ import type {
   SendResult,
   SessionInfo,
   SessionStatus,
+  SetCwdResult,
   SteerMode,
 } from '@spica/protocol';
 import type { AgentBackend } from './types';
@@ -86,7 +87,7 @@ export class FakeBackend implements AgentBackend {
     );
     if (options.seed ?? true) {
       const seed = buildSeed(this.#now());
-      for (const s of seed.sessions) this.#sessions.set(s.id, s);
+      for (const s of seed.sessions) this.#sessions.set(s.id, { ...s, canChooseCwd: s.role === 'top' && !s.parentId && !s.cwd });
       for (const [id, list] of Object.entries(seed.messages)) this.#messages.set(id, list);
       for (const [id, list] of Object.entries(seed.pending)) this.#pending.set(id, list);
       this.#ids = 1000;
@@ -185,6 +186,7 @@ export class FakeBackend implements AgentBackend {
       contextWindow: null,
       createdAt: at,
       updatedAt: at,
+      canChooseCwd: role === 'top' && !parent && !req.cwd && !req.projectId,
     };
     this.#sessions.set(info.id, info);
     this.#messages.set(info.id, []);
@@ -369,6 +371,24 @@ export class FakeBackend implements AgentBackend {
     this.#projects.delete(projectId);
     const top = [...this.#sessions.values()].find((s) => s.role === 'top' && !s.parentId);
     this.#emit(top?.id ?? '', { type: 'project.deleted', projectId });
+  }
+
+  /** Like the core, without files: a conversation that has none chooses its folder once, not while it runs. */
+  async setSessionCwd(sessionId: string, folder: string): Promise<SetCwdResult> {
+    const s = this.#requireSession(sessionId);
+    if (!s.canChooseCwd) return { ok: false, code: 'cwd.not_changeable', message: 'This conversation already has its working folder.' };
+    if (this.#runs.has(sessionId) || (this.#pending.get(sessionId)?.length ?? 0) > 0) {
+      return { ok: false, code: 'cwd.busy', message: 'The conversation is running or waits for an answer.' };
+    }
+    if (!/^([A-Za-z]:[\\/]|\/)/.test(folder)) return { ok: false, code: 'cwd.bad_folder', message: `Not an absolute path: ${folder}` };
+    const old = s.cwd;
+    for (const x of this.#sessions.values()) {
+      if (x.id !== sessionId && !x.parentChain.includes(sessionId)) continue;
+      if (x.cwd !== old) continue;
+      Object.assign(x, { cwd: folder, canChooseCwd: false });
+      this.#emit(x.id, { type: 'session.updated', info: structuredClone(x) });
+    }
+    return { ok: true, info: structuredClone(s), moved: [], renamed: [] };
   }
 
   /** Like the core: the conversation and its sub-agents go, a project manager only with its project. */

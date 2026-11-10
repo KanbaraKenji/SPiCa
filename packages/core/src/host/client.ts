@@ -47,6 +47,7 @@ const API_METHODS = [
   'renameSession',
   'setSessionModel',
   'setApprovalMode',
+  'setSessionCwd',
   'resume',
   'abort',
   'exportTraces',
