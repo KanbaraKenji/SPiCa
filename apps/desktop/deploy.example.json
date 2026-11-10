@@ -9,6 +9,6 @@
     "icon": "",
     "font": ""
   },
-  "// models": "Company preset model connections, listed first under 服务商 in Settings > Models. Each: id, name, kind (openai-compatible / anthropic / wso2), baseUrl, tokenUrl and scope for wso2, models [{ id, label, contextWindow, role default/strong/cheap }], optional default, maxConcurrent, requestsPerMinute. No keys or secrets: each person types their own (packaging stops if one is here). Example: {\"id\": \"acme-gateway\", \"name\": \"公司模型网关（示例）\", \"kind\": \"openai-compatible\", \"baseUrl\": \"https://llm.example.com/v1\", \"default\": true, \"models\": [{\"id\": \"acme-chat\", \"label\": \"日常\", \"contextWindow\": 128000, \"role\": \"default\"}, {\"id\": \"acme-pro\", \"label\": \"重活\", \"contextWindow\": 200000, \"role\": \"strong\"}]}",
+  "// models": "Company preset model connections, listed first under 服务商 in Settings > Models. Each: id, name, kind (openai-compatible / anthropic / wso2), baseUrl, tokenUrl and scope for wso2, models [{ id, label, contextWindow, role default/strong/cheap }], optional default, maxConcurrent, requestsPerMinute. No keys or secrets: each person types their own (packaging stops if one is here). Example: {\"id\": \"acme-gateway\", \"name\": \"公司模型网关（示例）\", \"kind\": \"openai-compatible\", \"baseUrl\": \"https://llm.example.com/v1\", \"default\": true, \"models\": [{\"id\": \"acme-chat\", \"label\": \"Acme Chat\", \"contextWindow\": 128000, \"role\": \"default\"}, {\"id\": \"acme-pro\", \"label\": \"Acme Pro\", \"contextWindow\": 200000, \"role\": \"strong\"}]}",
   "models": []
 }
