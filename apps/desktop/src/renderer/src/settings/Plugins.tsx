@@ -2,7 +2,7 @@
 // vanish at once), mock mode, install from a folder / zip / shared folder /
 // web address, updates and going back one version.
 import { useCallback, useEffect, useState } from 'react';
-import { usd, type PluginModelView, type PluginsCommand, type PluginsResult, type PluginsState, type PluginView } from '../../../shared/plugins';
+import { spentText, usd, type PluginModelView, type PluginsCommand, type PluginsResult, type PluginsState, type PluginView } from '../../../shared/plugins';
 import { friendlyError } from '../store/agent';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
@@ -60,7 +60,7 @@ function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy
         {off ? '它想用你配好的模型，现在不让它用。' : `会用你配好的模型，花费记在你的额度里，每天最多 ${usd(m.maxUsdPerDay)}。`}
         {typeof used === 'number' && !off ? (
           <span className={used >= m.maxUsdPerDay ? 'plugin-model-spent is-full' : 'plugin-model-spent'}>
-            {used >= m.maxUsdPerDay ? ` 今天花了 ${usd(used)}，今天的额度用完了。` : ` 今天花了 ${usd(used)}。`}
+            {used >= m.maxUsdPerDay ? ` 今天花了 ${spentText(used)}，今天的额度用完了。` : ` 今天花了 ${spentText(used)}。`}
           </span>
         ) : null}
       </p>

@@ -46,6 +46,15 @@ export function usd(n: number): string {
   return `$${n.toFixed(2)}`;
 }
 
+/**
+ * Money already spent: one summarize call costs a fraction of a cent, which two
+ * decimals would show as $0.00 (seen on 2026-11-10: $0.0002667 read 「$0.00」).
+ */
+export function spentText(n: number): string {
+  if (n > 0 && n < 0.01) return '不到 $0.01';
+  return usd(n);
+}
+
 /** What to tell someone installing or turning on a plugin that uses models. */
 export function modelUseNotice(m: PluginModelView): string {
   if (m.maxUsdPerDay <= 0) return '它想用你配好的模型，现在不让它用。';
