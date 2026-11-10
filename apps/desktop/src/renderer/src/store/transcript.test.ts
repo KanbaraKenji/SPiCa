@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CoreEvent, HistoryCardMeta, Message } from '@spica/protocol';
 import { FakeBackend } from '../../../main/backend/fake';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
+import { changesAfter } from './relocate';
 import { applyEvent, askAnswer, cwdNoteText, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, type Transcript } from './transcript';
 
 describe('fromHistory', () => {
@@ -385,5 +386,34 @@ describe('the working folder chosen later', () => {
         renamed: [{ from: 'a.txt', to: 'a (1).txt' }],
       }),
     ).toBe('工作文件夹已选为 D:/资料/报价，移入 2 个文件，其中 1 个改了名：a.txt → a (1).txt');
+  });
+
+  it('a conversation from 0.1.0-rc.2: its files stay where they were, said instead of a count', () => {
+    const shared = 'C:\\Users\\me\\Documents\\Spica';
+    expect(cwdNoteText({ from: shared, to: 'D:\\资料\\报价', moved: [], renamed: [], filesStayIn: shared })).toBe(`工作文件夹已选为 D:\\资料\\报价，原来的文件留在 ${shared}`);
+  });
+
+  it('file cards of answers before the note open where the files went; after it, as written', () => {
+    const files = 'C:\\Users\\me\\AppData\\Roaming\\Spica\\sessions\\ses_1\\files';
+    const change = { from: files, to: 'D:\\资料\\报价', moved: [{ from: '报价.md', to: '报价 (1).md' }], renamed: [{ from: '报价.md', to: '报价 (1).md' }] };
+    const msg = (seq: number, role: 'user' | 'assistant', kind: string, content: unknown[], meta?: unknown) => ({ id: `m${seq}`, sessionId: 's', seq, role, kind, content, createdAt: `2026-11-10T10:00:0${seq}Z`, ...(meta ? { meta } : {}) });
+    const t = fromHistory([
+      msg(1, 'user', 'user', [{ type: 'text', text: '写文件' }]),
+      msg(2, 'assistant', 'assistant', [{ type: 'tool_use', id: 'w1', name: 'write_file', input: { path: '报价.md', content: 'x' } }]),
+      msg(3, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: 'w1', content: 'ok' }]),
+      msg(4, 'user', 'note', [{ type: 'text', text: '[chosen]' }], { author: 'runtime', cwdChange: change }),
+      msg(5, 'user', 'user', [{ type: 'text', text: '再写一个' }]),
+      msg(6, 'assistant', 'assistant', [{ type: 'tool_use', id: 'w2', name: 'write_file', input: { path: '报价.md', content: 'y' } }]),
+      msg(7, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: 'w2', content: 'ok' }]),
+    ] as unknown as Message[]);
+    const note = t.items.find((i) => i.kind === 'note');
+    expect(note).toMatchObject({ cwd: change });
+    const moves = changesAfter(t.items);
+    const answers = t.items.filter((i): i is Extract<typeof i, { kind: 'response' }> => i.kind === 'response');
+    expect(answers).toHaveLength(2);
+    // Opened at the new name; shown as files in the conversation's folder are (no folder).
+    expect(filesOf(answers[0]!.blocks, {}, moves.get(answers[0]!.id))).toEqual([{ path: 'D:\\资料\\报价\\报价 (1).md', shown: '报价 (1).md', tool: 'write_file' }]);
+    // Written after the folder was chosen: 报价.md in the new folder is that one.
+    expect(filesOf(answers[1]!.blocks, {}, moves.get(answers[1]!.id)).map((f) => f.path)).toEqual(['报价.md']);
   });
 });

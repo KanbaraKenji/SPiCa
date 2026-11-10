@@ -1,5 +1,6 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
+import { relocate, shownPath } from './relocate';
 import type { CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, Message, PendingItem, SessionStatus, SettingsChangeMeta, UntrustedKind } from '@spica/protocol';
 import { humanError } from '../../../shared/errors';
 import { toolLabel } from '../chat/format';
@@ -81,8 +82,12 @@ function modelOf(v: unknown): string | undefined {
   return v && typeof v === 'object' && typeof (v as { model?: unknown }).model === 'string' ? (v as { model: string }).model : undefined;
 }
 
-/** 「工作文件夹已选为 D:\报价，移入 3 个文件，其中 1 个改了名：a.txt → a (1).txt」 */
+/**
+ * 「工作文件夹已选为 D:\报价，移入 3 个文件，其中 1 个改了名：a.txt → a (1).txt」; for a conversation from
+ * 0.1.0-rc.2 nothing moves: 「工作文件夹已选为 D:\报价，原来的文件留在 C:\…\文档\Spica」.
+ */
 export function cwdNoteText(c: CwdChangeMeta): string {
+  if (typeof c.filesStayIn === 'string' && c.filesStayIn) return `工作文件夹已选为 ${c.to}，原来的文件留在 ${c.filesStayIn}`;
   const moved = Array.isArray(c.moved) ? c.moved.length : 0;
   const renamed = Array.isArray(c.renamed) ? c.renamed : [];
   const files = moved ? `，移入 ${moved} 个文件` : '';
@@ -110,7 +115,7 @@ function noteItem(m: Message): Item | undefined {
   }
   // The user chose the working folder; what the conversation had made moved there.
   const cwd = m.meta?.cwdChange;
-  if (cwd && typeof cwd === 'object' && typeof cwd.to === 'string') return { kind: 'note', id: m.id, text: cwdNoteText(cwd) };
+  if (cwd && typeof cwd === 'object' && typeof cwd.to === 'string') return { kind: 'note', id: m.id, text: cwdNoteText(cwd), cwd };
   const child = childNoteOf(m);
   if (child) {
     const empty = child.kind === 'report' && (child.text.trim() === '' || child.text === NO_REPORT);
@@ -159,7 +164,8 @@ export type Item =
   | { kind: 'user'; id: string; text: string; steer: boolean; attachments?: Attachment[] }
   /** New mail for this project (the core's English instructions to the agent are not shown). */
   | { kind: 'mail'; id: string; mailIds: string[]; flagged?: string[] }
-  | { kind: 'note'; id: string; text: string; child?: ChildNote }
+  /** `cwd`: the working-folder note; files named before it are looked for where they went (store/relocate.ts). */
+  | { kind: 'note'; id: string; text: string; child?: ChildNote; cwd?: CwdChangeMeta }
   /** A model setting a connected script changed (the card; meta.settingsChange). */
   | { kind: 'settings'; id: string; change: SettingsChangeMeta }
   | { kind: 'response'; id: string; blocks: Block[]; interrupted: boolean };
@@ -568,22 +574,29 @@ function formatMoney(usd: number): string {
 }
 
 export interface FileRef {
-  /** Absolute when the core reported the file, otherwise as the model wrote it. */
+  /** Absolute when the core reported the file, otherwise as the model wrote it; where it went when the working folder moved it. */
   path: string;
+  /** Shown instead of `path` (name and folder) when the file was moved into the conversation's folder: its path in there. */
+  shown?: string;
   tool: string;
   card?: FileCardMeta;
 }
 
-/** Files the answer touched, in first-seen order; core file cards win over the bare path argument. */
-export function filesOf(blocks: readonly Block[], cards: Record<string, FileCardMeta> = {}): FileRef[] {
+/**
+ * Files the answer touched, in first-seen order; core file cards win over the bare path argument.
+ * `moved`: the working-folder change after this answer, if any: the paths are where the files are now.
+ */
+export function filesOf(blocks: readonly Block[], cards: Record<string, FileCardMeta> = {}, moved?: CwdChangeMeta): FileRef[] {
   const seen = new Map<string, FileRef>();
   for (const b of blocks) {
     if (b.type !== 'tool' || !FILE_TOOLS.has(b.name) || b.state === 'error') continue;
     const card = cards[b.callId];
     const arg = (b.input as { path?: unknown } | undefined)?.path;
-    const path = card?.path ?? (typeof arg === 'string' ? arg : undefined);
+    const written = card?.path ?? (typeof arg === 'string' ? arg : undefined);
+    const path = written ? relocate(written, moved) : undefined;
     if (!path || seen.has(path)) continue;
-    seen.set(path, card ? { path, tool: b.name, card } : { path, tool: b.name });
+    const shown = path !== written ? shownPath(path, moved) : undefined;
+    seen.set(path, { path, tool: b.name, ...(shown && shown !== path ? { shown } : {}), ...(card ? { card } : {}) });
   }
   return [...seen.values()];
 }

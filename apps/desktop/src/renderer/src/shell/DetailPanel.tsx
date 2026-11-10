@@ -1,6 +1,7 @@
 // Right panel: details of the open session (tool calls, files, cost).
 import type { ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
 import { filesOf, type Block, type Transcript } from '../store/transcript';
+import { changesAfter } from '../store/relocate';
 import { Icon } from '../ui/Icon';
 import { InfoTip } from '../ui/InfoTip';
 import { FileGlyph } from '../ui/FileIcon';
@@ -39,7 +40,11 @@ const ROLE_LABEL: Record<SessionInfo['role'], string> = { top: '对话', manager
 export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false }: DetailPanelProps) {
   const blocks = transcript.items.flatMap((i) => (i.kind === 'response' ? i.blocks : []));
   const tools = blocks.filter((b): b is ToolBlock => b.type === 'tool');
-  const files = filesOf(blocks, transcript.fileCards);
+  // Per answer, so files named before the working-folder note are where it put them; each file once.
+  const moves = changesAfter(transcript.items);
+  const files = [
+    ...new Map(transcript.items.flatMap((i) => (i.kind === 'response' ? filesOf(i.blocks, transcript.fileCards, moves.get(i.id)) : [])).map((f) => [f.path, f] as const)).values(),
+  ];
   return (
     <aside className="detail" aria-label="详情">
       {hideHeading && !onClose ? null : (
@@ -156,9 +161,9 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
               {files.map((f) => (
                 <li key={f.path}>
                   <button type="button" className="detail-file" onClick={() => (onPreviewFile ?? onOpenFile)(f.path)} title={`查看 ${f.path}`}>
-                    <FileGlyph name={f.path} />
-                    <span className="detail-file-name">{fileName(f.path)}</span>
-                    {fileFolder(f.path) ? <span className="detail-item-sub">{fileFolder(f.path)}</span> : null}
+                    <FileGlyph name={f.shown ?? f.path} />
+                    <span className="detail-file-name">{fileName(f.shown ?? f.path)}</span>
+                    {fileFolder(f.shown ?? f.path) ? <span className="detail-item-sub">{fileFolder(f.shown ?? f.path)}</span> : null}
                   </button>
                 </li>
               ))}

@@ -41,6 +41,8 @@ export interface ShellState {
   demo: boolean;
   /** A script drives the window (screenshots): skip the opening animation. */
   automated: boolean;
+  /** The folder conversations shared up to 0.1.0-rc.2 (文档\<name>): one still in it keeps its files there when it chooses a folder. */
+  legacyDefaultCwd?: string;
 }
 
 /** A file shown in the right panel: a URL for the PDF viewer / images, or its text (capped). */

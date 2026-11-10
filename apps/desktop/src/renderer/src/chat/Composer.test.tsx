@@ -241,7 +241,7 @@ describe('the working folder', () => {
     expect(screen.queryByRole('button', { name: '选择工作文件夹' })).toBeNull();
   });
 
-  it('a conversation that has not chosen one: 选择工作文件夹 in words, greyed while it runs; once chosen, its name, not a button', () => {
+  it('a conversation that has not chosen one: 选择工作文件夹 in words, greyed while it runs; once chosen, nothing under the box', () => {
     const onPick = vi.fn();
     const { rerender } = render(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="f2" tools={{ folder: { path: '', name: '', onPick } }} />);
     const pick = screen.getByRole('button', { name: '选择工作文件夹' });
@@ -251,8 +251,9 @@ describe('the working folder', () => {
     expect(busy.getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(busy);
     expect(onPick).not.toHaveBeenCalled();
-    rerender(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="f2" tools={{ folder: { path: 'D:/资料/报价', name: '报价' } }} />);
-    expect(screen.getByText('报价').closest('button')).toBeNull();
-    expect(screen.getByTitle('工作文件夹：D:/资料/报价')).toBeTruthy();
+    rerender(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="f2" tools={{}} />);
+    expect(screen.queryByText('报价')).toBeNull();
+    expect(screen.queryByTitle(/工作文件夹/)).toBeNull();
+    expect(screen.queryByRole('button', { name: '选择工作文件夹' })).toBeNull();
   });
 });

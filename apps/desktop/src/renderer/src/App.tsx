@@ -32,6 +32,8 @@ import { joinNotes } from './ui/NewDot';
 import { SidebarHead, SidebarToggle } from './shell/SidebarToggle';
 import { HoverTips } from './ui/HoverTips';
 import { SpicaBanner } from '@spica/brand/react';
+import { sameFolder } from './store/relocate';
+import { APP_NAME } from '../../shared/app-identity';
 
 /** The sidebar's wordmark: 22 px high, smaller for a long app name. */
 const BANNER_HEIGHT = sidebarBannerHeight();
@@ -470,11 +472,12 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const ringWindow = session?.contextWindow || shownWindow || 0;
   // 选择工作文件夹 in a conversation (once): the user's own conversations, not in a project. With something said
   // already, a confirmation first (it cannot change afterwards, and what was made moves there).
-  const [cwdAsk, setCwdAsk] = useState<{ sessionId: string; dir: string } | null>(null);
+  // `stay`: a conversation from 0.1.0-rc.2, still in the folder they all shared: its files stay there.
+  const [cwdAsk, setCwdAsk] = useState<{ sessionId: string; dir: string; stay: boolean } | null>(null);
   const folderName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
   const sessionFolder = (s: SessionInfo): Pick<ComposerTools, 'folder'> => {
-    if (s.role !== 'top' || s.parentId || s.canChooseCwd === undefined) return {};
-    if (!s.canChooseCwd) return { folder: { path: s.cwd, name: folderName(s.cwd) } };
+    // Chosen (or in a project): nothing under the box; the folder is in 详情.
+    if (s.role !== 'top' || s.parentId || !s.canChooseCwd) return {};
     const busy = s.status === 'queued' || s.status === 'thinking' || s.status === 'tool' || s.status === 'awaiting_confirm' || s.status === 'awaiting_answer';
     return {
       folder: {
@@ -484,7 +487,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         onPick: () =>
           void bridge.pickFolder('选择工作文件夹').then((dir) => {
             if (!dir) return;
-            if (transcript.items.length) setCwdAsk({ sessionId: s.id, dir });
+            if (transcript.items.length) setCwdAsk({ sessionId: s.id, dir, stay: sameFolder(s.cwd, shell.legacyDefaultCwd) });
             else void agent.chooseCwd(s.id, dir);
           }),
       },
@@ -884,7 +887,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       {cwdAsk ? (
         <ConfirmDialog
           title={`将工作文件夹设为「${folderName(cwdAsk.dir)}」？`}
-          detail="选定后不能更改；这条对话已产生的文件会移到该文件夹。"
+          detail={cwdAsk.stay ? `选定后不能更改；原来的文件留在「文档\\${APP_NAME}」。` : '选定后不能更改；这条对话已产生的文件会移到该文件夹。'}
           confirmLabel="选定"
           onCancel={() => setCwdAsk(null)}
           onConfirm={() => {

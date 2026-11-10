@@ -183,17 +183,20 @@ export function FileCards({ files, onOpen }: { files: FileRef[]; onOpen(path: st
   if (files.length === 0) return null;
   return (
     <div className="file-cards">
-      {files.map((f) => (
-        <button key={f.path} type="button" className="card file-card" onClick={() => onOpen(f.path)} title={`打开 ${f.path}`}>
-          <FileBadge name={f.card?.name ?? fileName(f.path)} />
-          <span className="file-card-text">
-            <span className="file-card-name">{f.card?.name ?? fileName(f.path)}</span>
-            <span className="file-card-sub">
-              {f.card ? fileCardLine(f.card) : `${f.tool === 'read_file' ? '已读取' : f.tool === 'write_file' ? '已写入' : '已修改'}${fileFolder(f.path) ? ` · ${fileFolder(f.path)}` : ''}`}
+      {files.map((f) => {
+        const shown = f.shown ?? f.path;
+        return (
+          <button key={f.path} type="button" className="card file-card" onClick={() => onOpen(f.path)} title={`打开 ${f.path}`}>
+            <FileBadge name={f.card?.name ?? fileName(shown)} />
+            <span className="file-card-text">
+              <span className="file-card-name">{f.card?.name ?? fileName(shown)}</span>
+              <span className="file-card-sub">
+                {f.card ? fileCardLine(f.card) : `${f.tool === 'read_file' ? '已读取' : f.tool === 'write_file' ? '已写入' : '已修改'}${fileFolder(shown) ? ` · ${fileFolder(shown)}` : ''}`}
+              </span>
             </span>
-          </span>
-        </button>
-      ))}
+          </button>
+        );
+      })}
     </div>
   );
 }

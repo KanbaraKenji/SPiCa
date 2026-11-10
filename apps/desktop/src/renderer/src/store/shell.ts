@@ -16,10 +16,13 @@ export class ShellStore {
   readonly #bridge: DesktopBridge;
   /** No model configured: the conversation runs on demo data. */
   readonly demo: boolean;
+  /** The folder conversations shared up to 0.1.0-rc.2 (ShellState.legacyDefaultCwd). */
+  readonly legacyDefaultCwd: string | undefined;
 
   constructor(bridge: DesktopBridge, initial: ShellState) {
     this.#bridge = bridge;
     this.demo = initial.demo;
+    this.legacyDefaultCwd = initial.legacyDefaultCwd;
     const media = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)').matches : initial.systemDark;
     this.state = new Store<ShellView>({ settings: initial.settings, systemDark: media });
     bridge.onSettingsChanged((settings) => this.#replace(settings));

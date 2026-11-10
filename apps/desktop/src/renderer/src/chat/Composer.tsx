@@ -22,9 +22,9 @@ export interface ComposerTools {
   pickFiles?: () => Promise<string[]>;
   /** Path of a file dropped on the box ('' when none). */
   pathForFile?: (file: File) => string;
-  /** Which folder the conversation works in. `onPick`: it can still be chosen (before the first message, or once
-   *  later); without it the folder is fixed and only shown. `busy`: running, so it cannot be chosen right now. */
-  folder?: { name: string; path: string; onPick?: () => void; busy?: boolean };
+  /** The working folder while it can still be chosen (before the first message, or once later): the one picked, or
+   *  none yet. Absent once chosen (nothing is shown; 详情 has it). `busy`: running, so it cannot be chosen right now. */
+  folder?: { name: string; path: string; onPick: () => void; busy?: boolean };
   approval?: { mode: ApprovalMode; onChange(mode: ApprovalMode): void };
   /** The model this conversation uses; options to switch (a menu only when there is a choice). */
   /** Options by connection (`group`); `marks`: 默认 / 强模型. */
@@ -317,14 +317,9 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
   if (t.folder) {
     const f = t.folder;
     below.push(
-      // Fixed: its name, not a button. Picked but still open to change (before the first message): its name to click.
+      // Picked but still open to change (before the first message): its name to click.
       // None picked: 选择工作文件夹 (greyed while the conversation runs).
-      !f.onPick ? (
-        <span key="folder" className="composer-label" title={`工作文件夹：${f.path}`}>
-          <Icon name="folder" size={14} />
-          <span className="composer-chip-text">{f.name}</span>
-        </span>
-      ) : f.path ? (
+      f.path ? (
         <button key="folder" type="button" className="composer-chip" title={`工作文件夹：${f.path}`} onClick={f.onPick}>
           <Icon name="folder" size={14} />
           <span className="composer-chip-text">{f.name}</span>
@@ -336,7 +331,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
           className="composer-chip"
           aria-disabled={f.busy || undefined}
           title={f.busy ? '对话进行中，结束后可选择' : '选择工作文件夹'}
-          onClick={() => !f.busy && f.onPick?.()}
+          onClick={() => !f.busy && f.onPick()}
         >
           <Icon name="folder" size={14} />
           <span className="composer-chip-text">选择工作文件夹</span>

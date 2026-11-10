@@ -105,6 +105,9 @@ const backendKind = chooseBackend({ requested: process.env.SPICA_BACKEND, automa
 // A conversation without a folder gets its own in the core's data folder (none is picked by default);
 // this is only the core's fallback, and nothing for it is made under 文档.
 const workDir = join(app.getPath('userData'), 'work');
+// Up to 0.1.0-rc.2 every conversation without a chosen folder worked here (文档\<name>). Those conversations can
+// still choose a folder once; their files stay here. Only compared against, never created or written.
+const legacyDefaultCwd = join(app.getPath('documents'), APP_NAME);
 /** Where workflow files live unless the user picked another folder (设置 › 常规): under 文档, where he edits them. */
 const defaultWorkflowsDir = join(app.getPath('documents'), APP_NAME, 'workflows');
 if (backendKind === 'core') mkdirSync(defaultWorkflowsDir, { recursive: true });
@@ -150,6 +153,7 @@ function backendConfig(): DesktopBackendConfig {
         ...(strong ? { strongModel: strong.model, ...(strong.connectionId !== current?.providerId ? { strongProviderId: strong.connectionId } : {}) } : {}),
       },
       cwd: workDir,
+      legacyDefaultCwd,
       locale: 'zh-CN',
       // What the models are told they work in (Spica, or deploy.json's name).
       appName: APP_NAME,
@@ -226,7 +230,7 @@ const backend: AgentBackend =
           },
         },
       })
-    : new FakeBackend({ speed: automated ? 0 : 1 });
+    : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd });
 console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own process)' : 'fake (demo data)'}`);
 const settings = new SettingsStore(app.getPath('userData'), { persist: !automated });
 const providers = new ProviderStore(
@@ -534,7 +538,7 @@ function createMainWindow(): BrowserWindow {
 }
 
 function shellState(): ShellState {
-  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated };
+  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd };
 }
 
 ipcMain.handle(IpcChannel.AppInfo, (): AppInfo => ({ name: APP_NAME, version: app.getVersion() }));

@@ -1,6 +1,7 @@
 // The main pane: the transcript of one session, streamed live, and its input box.
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { MailItem, SessionInfo } from '@spica/protocol';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { CwdChangeMeta, MailItem, SessionInfo } from '@spica/protocol';
+import { changesAfter } from '../store/relocate';
 import { filesOf, historyRef, isRunning, itemAtSeq, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
 import { ImageViewer } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
@@ -101,9 +102,9 @@ function segments(blocks: Block[]): Segment[] {
   return out;
 }
 
-function Response({ item, live, actions, cards, at }: { item: Extract<Item, { kind: 'response' }>; live: boolean; actions: ConversationActions; cards: Transcript['fileCards']; at?: Record<string, string> }) {
+function Response({ item, live, actions, cards, moved, at }: { item: Extract<Item, { kind: 'response' }>; live: boolean; actions: ConversationActions; cards: Transcript['fileCards']; moved?: CwdChangeMeta; at?: Record<string, string> }) {
   const segs = segments(item.blocks);
-  const files = filesOf(item.blocks, cards);
+  const files = filesOf(item.blocks, cards, moved);
   return (
     <div className="turn-response" {...at}>
       {segs.map((s, i) => {
@@ -243,6 +244,8 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
   const running = isRunning(transcript.run?.status) || isRunning(session?.status);
   const { ref, away, toBottom, unpin } = useStickToBottom(transcript);
   const items = transcript.items;
+  // Answers before the working-folder note: their files are where that note moved them (or left them).
+  const moves = useMemo(() => changesAfter(items), [items]);
   const lastIndex = items.length - 1;
   // Opened at a found message: the item that holds it, scrolled to once it is there, and marked.
   const foundItem = found?.seq !== undefined ? itemAtSeq(transcript, found.seq) : undefined;
@@ -319,7 +322,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                     {item.text}
                   </p>
                 );
-              return <Response key={item.id} item={item} live={running && i === lastIndex} actions={actions} cards={transcript.fileCards} at={mark(item.id)} />;
+              return <Response key={item.id} item={item} live={running && i === lastIndex} actions={actions} cards={transcript.fileCards} moved={moves.get(item.id)} at={mark(item.id)} />;
             })}
             <StatusLine transcript={transcript} />
             {waiting.map((w) => (
