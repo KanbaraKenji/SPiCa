@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Plugins, type PluginsApi } from './Plugins';
 import { FakePluginService } from '../../../main/plugins/fake';
 import { dropAllDrafts } from './drafts';
+import { DEFAULT_SETTINGS } from '../../../shared/settings';
+import type { PluginsState } from '../../../shared/plugins';
 
 afterEach(() => {
   cleanup();
@@ -70,5 +72,53 @@ describe('Plugins', () => {
     await waitFor(() => expect(within(card).getByText(/使用模型 · 每日上限 \$0\.20/)).toBeTruthy());
     fireEvent.click(within(card).getByRole('button', { name: '禁止使用模型' }));
     await waitFor(() => expect(within(card).getByText('使用模型 · 已禁止')).toBeTruthy());
+  });
+});
+
+describe('mail sorting, with the plugin that provides mail', () => {
+  const mail = (over: { model?: string } = {}) => ({ prefs: DEFAULT_SETTINGS.mail, onChange: vi.fn(), ...over });
+
+  it('sits in that plugin’s card; turning it on asks first, naming the model; agreeing records when', async () => {
+    const m = mail({ model: 'DeepSeek · deepseek-chat' });
+    render(<Plugins api={api()} mail={m} />);
+    const card = (await screen.findByRole('region', { name: '来信摘要（示例）' })) as HTMLElement;
+    fireEvent.click(within(card).getByRole('switch', { name: '邮件分类' }));
+    expect(m.onChange).not.toHaveBeenCalled();
+    expect(screen.getByText(/将发送给「DeepSeek · deepseek-chat」进行分类/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '开启' }));
+    const patch = m.onChange.mock.calls[0]?.[0] as { enabled: boolean; consentedAt: string };
+    expect(patch.enabled).toBe(true);
+    expect(Number.isNaN(Date.parse(patch.consentedAt))).toBe(false);
+    // Not in the other plugin's card.
+    expect(within(screen.getByRole('region', { name: '笔记（示例）' })).queryByRole('switch', { name: '邮件分类' })).toBeNull();
+  });
+
+  it('cancelling leaves it off', async () => {
+    const m = mail();
+    render(<Plugins api={api()} mail={m} />);
+    fireEvent.click(await screen.findByRole('switch', { name: '邮件分类' }));
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(m.onChange).not.toHaveBeenCalled();
+  });
+
+  it('is gone while no plugin provides mail', async () => {
+    render(<Plugins api={api()} mail={mail()} />);
+    fireEvent.click(await screen.findByRole('switch', { name: '停用「来信摘要（示例）」' }));
+    await waitFor(() => expect(screen.queryByRole('switch', { name: '邮件分类' })).toBeNull());
+  });
+
+  it('with two mail plugins: once, above 已安装, naming both', async () => {
+    const base = api();
+    const two: PluginsApi = {
+      ...base,
+      run: async (cmd) => {
+        const r = await base.run(cmd);
+        const st: PluginsState = { ...r.state, plugins: r.state.plugins.map((p) => ({ ...p, enabled: true, mail: true })) };
+        return { ...r, state: st };
+      },
+    };
+    render(<Plugins api={two} mail={mail()} />);
+    await waitFor(() => expect(screen.getAllByRole('switch', { name: '邮件分类' })).toHaveLength(1));
+    expect(screen.getByText('笔记（示例）、来信摘要（示例）')).toBeTruthy();
   });
 });

@@ -915,7 +915,12 @@ const pluginService: PluginService =
         },
       }
     : new FakePluginService(pluginRoot);
-ipcMain.handle(DesktopChannel.Plugins, (_e, cmd: PluginsCommand) => pluginService.run(cmd));
+ipcMain.handle(DesktopChannel.Plugins, async (_e, cmd: PluginsCommand) => {
+  const r = await pluginService.run(cmd);
+  // The real core reports plugin changes itself; the demo's list says so here.
+  if (pluginService instanceof FakePluginService && cmd.op !== 'state') sendToWindow(DesktopChannel.PluginsChanged);
+  return r;
+});
 ipcMain.handle(DesktopChannel.BackendStatus, () => backendStatus);
 ipcMain.on(DesktopChannel.BackendRetry, () => {
   if (backend instanceof ProcessBackend) backend.retry();

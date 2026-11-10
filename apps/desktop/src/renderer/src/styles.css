@@ -2908,6 +2908,58 @@ button.ctx-row:hover {
   color: var(--spica-danger);
 }
 
+/* Mail sorting in the card of the plugin that provides mail (or once above 已安装). */
+.plugin-mail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--spica-border-strong);
+}
+
+.plugin-mail-shared {
+  padding: 14px 16px;
+}
+
+.mail-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mail-settings .interval-row {
+  margin-top: 0;
+}
+
+.mail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mail-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mail-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mail-rules .rule-actions {
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.plugin-mail-sources {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 0;
+  font-size: 13px;
+}
+
 .plugin-model {
   margin-top: 10px;
   padding: 10px 12px;

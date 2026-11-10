@@ -28,7 +28,7 @@ function withoutModel(p: PluginView): PluginView {
 }
 
 export class FakePluginService implements PluginService {
-  #plugins: PluginView[] = [structuredClone(EXAMPLE), { ...withoutModel(structuredClone(EXAMPLE)), name: 'mail-digest', displayName: '来信摘要（示例）', description: '把收件箱里的新邮件整理成摘要，按项目归类。', version: '1.0.0', enabled: false, tools: [], skills: [], commands: [], servers: [{ id: 'mail', status: 'stopped', tools: [] }], previousVersion: undefined, update: '1.1.0' } as PluginView];
+  #plugins: PluginView[] = [structuredClone(EXAMPLE), { ...withoutModel(structuredClone(EXAMPLE)), name: 'mail-digest', displayName: '来信摘要（示例）', description: '把收件箱里的新邮件整理成摘要，按项目归类。', version: '1.0.0', enabled: true, mail: true, tools: ['list_messages', 'read_message'], skills: [], commands: [], servers: [{ id: 'mail', status: 'running', tools: ['list_messages', 'read_message'] }], previousVersion: undefined, update: '1.1.0' } as PluginView];
   #mock = false;
   readonly #root: string;
 
@@ -57,6 +57,8 @@ export class FakePluginService implements PluginService {
           p.enabled = cmd.op === 'enable';
           p.tools = p.enabled ? p.servers.flatMap((s) => s.tools) : [];
           for (const s of p.servers) s.status = p.enabled ? 'running' : 'stopped';
+          // The demo's mail plugin is a mail source only while it is on.
+          if (p.name === 'mail-digest') p.mail = p.enabled;
         }
         break;
       case 'mock':

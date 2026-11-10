@@ -338,13 +338,20 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [openPlugin, setOpenPlugin] = useState<string | null>(null);
   const [rightTab, setRightTab] = useState<string>('detail');
   const [pluginAsk, setPluginAsk] = useState<{ title: string; resolve(ok: boolean): void } | null>(null);
+  // 收件箱 shows only while a plugin that provides mail is on.
+  const [mailSource, setMailSource] = useState(false);
   useEffect(() => {
     let alive = true;
-    const load = () =>
+    const load = () => {
       void bridge.pluginViews
         .list()
         .then((v) => alive && setPluginViews(v))
         .catch(() => undefined);
+      void bridge.plugins
+        .run({ op: 'state' })
+        .then((r) => alive && setMailSource(r.state.plugins.some((p) => p.mail)))
+        .catch(() => undefined);
+    };
     load();
     const offChanged = bridge.plugins.onChanged(() => {
       load();
@@ -535,7 +542,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       {...(bridge.agent.renameProject ? { onRenameProject: (pid: string, name: string) => void agent.renameProject(pid, name) } : {})}
       {...(bridge.agent.deleteProject ? { onDeleteProject: (pid: string, name: string) => setDeletingProject({ id: pid, name }) } : {})}
       {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject({}) } : {})}
-      {...(mail.supported
+      {...(mail.supported && mailSource
         ? {
             inbox: {
               count: inboxCount,

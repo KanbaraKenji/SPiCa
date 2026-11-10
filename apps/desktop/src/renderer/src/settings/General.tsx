@@ -1,13 +1,12 @@
-// Settings > 常规: mail sorting (on / off, how often, what to ignore), the
-// folder workflow files are read from, and exporting the usage log.
+// Settings > 常规: the folder workflow files are read from, the network,
+// exporting the usage log. Mail sorting is with the mail plugin (设置 › 插件).
 import { useCallback, useEffect, useState } from 'react';
-import { DEFAULT_NETWORK, MAIL_INTERVALS, type MailPrefs, type NetworkPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
+import { DEFAULT_NETWORK, type NetworkPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
 import type { LocalConnectInfo, NetworkState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { useKeptDraft } from './drafts';
-import { ConfirmDialog } from '../ui/Dialog';
-import { Switch } from './Plugins';
+import { Switch } from './Switch';
 import { APP_NAME } from '../../../shared/app-identity';
 
 export interface WorkflowsApi {
@@ -27,8 +26,6 @@ export interface GeneralProps {
   showInFolder(path: string): void;
   /** For tests. */
   now?: Date;
-  /** The model mail goes to for sorting, in words (e.g. 「DeepSeek · deepseek-chat」); empty when none is set. */
-  mailModel?: string;
   /** What the core uses for the network now; absent: the status line is left out. */
   networkState?: () => Promise<NetworkState | null>;
   /** Windows' file picker (for the certificate file). */
@@ -306,44 +303,6 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
   );
 }
 
-const lines = (text: string) =>
-  text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-function IgnoreRules({ mail, onSave }: { mail: MailPrefs; onSave(ignore: MailPrefs['ignore']): void }) {
-  const [from, setFrom, fromDone] = useKeptDraft('mail.ignore.from', mail.ignore.from.join('\n'));
-  const [subject, setSubject, subjectDone] = useKeptDraft('mail.ignore.subject', mail.ignore.subject.join('\n'));
-  const changed = lines(from).join('\n') !== mail.ignore.from.join('\n') || lines(subject).join('\n') !== mail.ignore.subject.join('\n');
-  return (
-    <div className="settings-group">
-      <h3 className="settings-subheading">忽略规则</h3>
-      <div className="rule-grid">
-        <label className="form-field">
-          <span className="field-label">发件人包含</span>
-          <textarea className="input rule-input" rows={4} spellCheck={false} value={from} placeholder="每行一条，支持 /正则/" onChange={(e) => setFrom(e.target.value)} />
-        </label>
-        <label className="form-field">
-          <span className="field-label">主题包含</span>
-          <textarea className="input rule-input" rows={4} spellCheck={false} value={subject} placeholder="每行一条，支持 /正则/" onChange={(e) => setSubject(e.target.value)} />
-        </label>
-      </div>
-            <div className="rule-actions">
-        <button type="button" className="btn" disabled={!changed} onClick={() => {
-            onSave({ from: lines(from), subject: lines(subject) });
-            fromDone();
-            subjectDone();
-          }}
-        >
-          保存
-        </button>
-        {changed ? <span className="provider-unsaved">未保存</span> : null}
-      </div>
-    </div>
-  );
-}
-
 function Workflows({ settings, onChange, workflows, pickFolder, onBackendRestarted }: GeneralProps) {
   const [state, setState] = useState<WorkflowsState | null>(null);
   const refresh = useCallback(
@@ -412,52 +371,8 @@ function Workflows({ settings, onChange, workflows, pickFolder, onBackendRestart
 }
 
 export function General(props: GeneralProps) {
-  const { settings, onChange, mailModel = '' } = props;
-  const mail = settings.mail;
-  const setMail = (patch: Partial<MailPrefs>) => onChange({ mail: { ...mail, ...patch } });
-  const [askingMail, setAskingMail] = useState(false);
   return (
     <section className="settings-section">
-      <div className="settings-group">
-        <h3 className="settings-subheading">邮件</h3>
-        <div className="setting-row">
-          <div className="setting-text">
-            <span className="setting-title">邮件分类</span>
-          </div>
-          <Switch on={mail.enabled} label="邮件分类" onChange={(enabled) => (enabled ? setAskingMail(true) : setMail({ enabled: false }))} />
-        </div>
-        <div className="interval-row">
-          <span className="field-label">检查间隔</span>
-          <div className="segmented" role="radiogroup" aria-label="检查间隔">
-            {MAIL_INTERVALS.map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="radio"
-                aria-checked={mail.intervalMinutes === m}
-                disabled={!mail.enabled}
-                className={mail.intervalMinutes === m ? 'segment is-on' : 'segment'}
-                onClick={() => setMail({ intervalMinutes: m })}
-              >
-                {m < 60 ? `${m} 分钟` : '1 小时'}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-      {askingMail ? (
-        <ConfirmDialog
-          title="开启邮件分类？"
-          detail={`新邮件的发件人、主题和正文开头将发送给${mailModel ? `「${mailModel}」` : '默认模型'}进行分类。`}
-          confirmLabel="开启"
-          onCancel={() => setAskingMail(false)}
-          onConfirm={() => {
-            setAskingMail(false);
-            setMail({ enabled: true, consentedAt: new Date().toISOString() });
-          }}
-        />
-      ) : null}
-      <IgnoreRules key={JSON.stringify(mail.ignore)} mail={mail} onSave={(ignore) => setMail({ ignore })} />
       <Workflows {...props} />
       <Network {...props} />
       <UsageLog {...props} />

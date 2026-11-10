@@ -65,6 +65,7 @@ function toView(d: PluginDescription, update?: string): PluginView {
     servers: d.servers.map((s) => ({ id: s.id, status: s.status, tools: s.tools.map((t) => t.replace(new RegExp(`^${d.name}__`), '')), ...(s.lastError ? { lastError: s.lastError } : {}) })),
     issues: d.issues.filter((i) => i.severity === 'error').map((i) => i.message),
     ...(update ? { update } : {}),
+    ...(d.mail ? { mail: true } : {}),
     ...(d.model
       ? {
           model: {

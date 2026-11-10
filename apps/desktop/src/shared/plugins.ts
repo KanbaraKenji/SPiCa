@@ -18,6 +18,8 @@ export interface PluginView {
   commands: { id: string; description: string }[];
   /** Tools the agents can use right now (empty while off). */
   tools: string[];
+  /** Enabled and a source of mail (its manifest declares `mail`): the mail settings show with it. */
+  mail?: boolean;
   servers: { id: string; status: ServerState; tools: string[]; lastError?: string }[];
   /** Things to fix, in plain words. */
   issues: string[];

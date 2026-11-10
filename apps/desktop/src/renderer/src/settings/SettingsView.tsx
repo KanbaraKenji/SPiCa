@@ -81,7 +81,6 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
               projects={projects}
               exportUsageLog={exportUsageLog}
               showInFolder={showInFolder}
-              {...(mailModel ? { mailModel } : {})}
               {...(networkState ? { networkState } : {})}
               {...(pickFiles ? { pickFiles } : {})}
               {...(localConnect ? { localConnect } : {})}
@@ -91,7 +90,7 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
           ) : tab === 'models' ? (
             <Models api={providers} />
           ) : tab === 'plugins' ? (
-            <Plugins api={plugins} />
+            <Plugins api={plugins} mail={{ prefs: settings.mail, onChange: (patch) => shell.update({ mail: { ...settings.mail, ...patch } }), ...(mailModel ? { model: mailModel } : {}) }} />
           ) : (
             <About
               version={version}

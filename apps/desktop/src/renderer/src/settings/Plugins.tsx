@@ -7,6 +7,8 @@ import { friendlyError } from '../store/agent';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
 import { useKeptDraft } from './drafts';
+import { Switch } from './Switch';
+import { MailSettings, type MailSettingsProps } from './MailSettings';
 import { SpicaStatusIcon } from '@spica/brand/react';
 
 export interface PluginsApi {
@@ -22,13 +24,7 @@ const SERVER_STATUS: Record<string, string> = {
   failed: '错误',
 };
 
-export function Switch({ on, label, disabled, onChange }: { on: boolean; label: string; disabled?: boolean; onChange(on: boolean): void }) {
-  return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} title={label} disabled={disabled} className={on ? 'switch is-on' : 'switch'} onClick={() => onChange(!on)}>
-      <span className="switch-knob" />
-    </button>
-  );
-}
+export { Switch } from './Switch';
 
 function List({ label, items }: { label: string; items: string[] }) {
   return (
@@ -100,7 +96,7 @@ function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy
   );
 }
 
-function PluginCard({ p, busy, run, ask }: { p: PluginView; busy: boolean; run(cmd: PluginsCommand): void; ask(kind: 'uninstall' | 'rollback', p: PluginView): void }) {
+function PluginCard({ p, busy, run, ask, mail }: { p: PluginView; busy: boolean; run(cmd: PluginsCommand): void; ask(kind: 'uninstall' | 'rollback', p: PluginView): void; mail?: MailSettingsProps | undefined }) {
   const [open, setOpen] = useState(false);
   const failed = p.servers.filter((s) => s.status === 'failed');
   return (
@@ -118,6 +114,11 @@ function PluginCard({ p, busy, run, ask }: { p: PluginView; busy: boolean; run(c
         <Switch on={p.enabled} label={p.enabled ? `停用「${p.displayName}」` : `启用「${p.displayName}」`} disabled={busy} onChange={(on) => run({ op: on ? 'enable' : 'disable', name: p.name })} />
       </header>
       {p.description ? <p className="plugin-desc">{p.description}</p> : null}
+      {mail ? (
+        <div className="plugin-mail">
+          <MailSettings {...mail} />
+        </div>
+      ) : null}
       {p.model ? <ModelUse p={p} m={p.model} busy={busy} run={run} /> : null}
       {p.issues.length || failed.length ? (
         <p className="plugin-problem">{[...p.issues, ...failed.map((s) => s.lastError ?? `「${s.id}」启动失败`)].join('；')}</p>
@@ -160,12 +161,15 @@ function PluginCard({ p, busy, run, ask }: { p: PluginView; busy: boolean; run(c
   );
 }
 
-export function Plugins({ api }: { api: PluginsApi }) {
+/** `mail`: the mail sorting settings, shown with the plugin(s) that provide mail. */
+export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsProps }) {
   const [state, setState] = useState<PluginsState | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [location, setLocation, locationDone] = useKeptDraft('plugins.location', '');
   const [confirm, setConfirm] = useState<{ kind: 'uninstall' | 'rollback'; p: PluginView } | null>(null);
+  // Plugins that provide mail (enabled): one shows the mail settings in its card; two or more, once above 已安装.
+  const mailSources = mail ? (state?.plugins ?? []).filter((p) => p.mail) : [];
 
   const run = useCallback(
     async (cmd: PluginsCommand) => {
@@ -266,6 +270,18 @@ export function Plugins({ api }: { api: PluginsApi }) {
         ) : null}
       </div>
 
+      {mail && mailSources.length > 1 ? (
+        <div className="settings-group">
+          <div className="card plugin-mail-shared">
+            <MailSettings {...mail} />
+            <p className="plugin-mail-sources">
+              <span className="field-label">来源</span>
+              {mailSources.map((p) => p.displayName).join('、')}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <div className="settings-group">
         <div className="plugins-bar">
           <h3 className="settings-subheading">已安装</h3>
@@ -276,7 +292,7 @@ export function Plugins({ api }: { api: PluginsApi }) {
         {state && state.plugins.length === 0 ? <p className="settings-hint">未安装插件</p> : null}
         <div className="plugin-list">
           {state?.plugins.map((p) => (
-            <PluginCard key={p.name} p={p} busy={busy} run={(c) => void run(c)} ask={(kind, pl) => setConfirm({ kind, p: pl })} />
+            <PluginCard key={p.name} p={p} busy={busy} run={(c) => void run(c)} ask={(kind, pl) => setConfirm({ kind, p: pl })} mail={mailSources.length === 1 && p.mail ? mail : undefined} />
           ))}
         </div>
         {state ? (

@@ -68,26 +68,6 @@ describe('导出使用日志', () => {
   });
 });
 
-describe('turning mail sorting on', () => {
-  it('asks first, naming the model the mail goes to; agreeing records when', () => {
-    const p = setup({ mailModel: 'DeepSeek · deepseek-chat' });
-    fireEvent.click(screen.getByRole('switch', { name: '邮件分类' }));
-    expect(p.onChange).not.toHaveBeenCalled();
-    expect(screen.getByText(/将发送给「DeepSeek · deepseek-chat」进行分类/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '开启' }));
-    const patch = (p.onChange as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as { mail: { enabled: boolean; consentedAt: string } };
-    expect(patch.mail.enabled).toBe(true);
-    expect(Number.isNaN(Date.parse(patch.mail.consentedAt))).toBe(false);
-  });
-
-  it('cancelling leaves it off', () => {
-    const p = setup();
-    fireEvent.click(screen.getByRole('switch', { name: '邮件分类' }));
-    fireEvent.click(screen.getByRole('button', { name: '取消' }));
-    expect(p.onChange).not.toHaveBeenCalled();
-  });
-});
-
 describe('填一半离开', () => {
   it('a proxy typed but not saved is still there when you come back', () => {
     setup();
@@ -95,7 +75,7 @@ describe('填一半离开', () => {
     cleanup();
     const p = setup();
     expect((screen.getByLabelText(/^代理地址/) as HTMLInputElement).value).toBe('http://proxy.example.com:8080');
-    // The network group's 保存 (the mail rules above have their own).
+    // The network group's 保存.
     const net = screen.getByRole('heading', { name: '网络' }).closest('.settings-group') as HTMLElement;
     fireEvent.click(within(net).getByRole('button', { name: '保存' }));
     expect(p.onChange).toHaveBeenCalled();
