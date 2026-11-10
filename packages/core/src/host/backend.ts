@@ -467,6 +467,8 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
         /** Like knownContextWindow, also when a relay spells the name differently: { contextWindow, matched, how: 'exact' | 'name' } or null. */
         matchContextWindow: (kind: unknown, model: unknown, catalogId?: unknown) =>
           runtime.ledger.matchContextWindow(String(kind), String(model), typeof catalogId === 'string' ? catalogId : undefined),
+        /** What a conversation's context is made of (the detail under the context ring), without a model call; null for an unknown session. */
+        contextBreakdown: (sessionId: unknown) => runtime.session(String(sessionId))?.contextBreakdown() ?? null,
         /** The user looked at a project's updates: its unread count goes back to 0 (emits project.updated). */
         markProjectRead: (projectId: unknown) => runtime.markProjectRead(String(projectId)),
         /** Whether a configured model takes images: true / false (catalog, or it refused them), null when not known (images are sent). */

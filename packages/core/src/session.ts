@@ -8,6 +8,8 @@ import { ProviderError } from './providers/types.ts';
 import type { PendingRecord, SessionConfig, SessionRecord, ToolCallCards, ToolCallRecord } from './store/types.ts';
 import { validateInput, type Tool, type ToolContext } from './tools/types.ts';
 import type {
+  ContextBreakdown,
+  ContextPart,
   ApprovalMode,
   AttachmentMeta,
   ContentBlock,
@@ -380,6 +382,75 @@ export class Session {
       content.push({ type: 'text', text: `The user attached the file ${name} (read with read_file; ask for more pages with read_file if it was cut):\n${f.text}` });
     }
     return { content, attachments, notes };
+  }
+
+  /**
+   * What the context is made of now (ContextBreakdown), without calling the
+   * model: the parts are estimated from the text (images by the provider's
+   * formula) and scaled to the total the provider reported for the last call;
+   * before any call the total is the estimate itself.
+   */
+  contextBreakdown(): ContextBreakdown {
+    const cfg = this.#record.config;
+    let kind = '';
+    try {
+      kind = this.#rt.provider(cfg.providerId).kind;
+    } catch {
+      // provider removed in the settings
+    }
+    const env = {
+      providerId: cfg.providerId,
+      serverWebSearch: !!cfg.serverWebSearch,
+      role: this.#record.role,
+      ...(cfg.projectId ? { projectId: cfg.projectId } : {}),
+      ...(cfg.templateId ? { templateId: cfg.templateId } : {}),
+    };
+    const base = estimateTokens(withAppName(cfg.system, this.#rt.appName));
+    const rules = estimateTokens([DATA_RULE, languageLine(cfg.locale, this.#userHasWritten()), this.#leadsOthers() ? TEAM_RULE : ''].filter(Boolean).join('\n\n'));
+    const tools = estimateTokens(JSON.stringify(this.#rt.tools.list(env, cfg.tools).map((t) => t.spec)));
+    const m = { user: 0, assistant: 0, tool_results: 0, notes: 0, images: 0 };
+    for (const msg of this.#messages) {
+      for (const b of msg.content) {
+        if (b.type === 'image') {
+          m.images += imageTokens(kind, b.width, b.height);
+          continue;
+        }
+        const text = b.type === 'text' || b.type === 'thinking' ? b.text : b.type === 'tool_use' ? JSON.stringify(b.input ?? {}) + b.name : b.type === 'tool_result' ? b.content : b.type === 'opaque' ? (b.text ?? '') : '';
+        const n = estimateTokens(text);
+        if (msg.role === 'assistant') m.assistant += n;
+        else if (b.type === 'tool_result') m.tool_results += n;
+        else if (msg.kind === 'user' || msg.kind === 'steer') m.user += n;
+        else m.notes += n;
+      }
+    }
+    const estimate = base + rules + tools + m.user + m.assistant + m.tool_results + m.notes + m.images;
+    const measured = this.#contextTokens !== null && this.#contextTokens > 0;
+    const total = measured ? this.#contextTokens! : estimate;
+    // scale the estimates to the total; rounding leftovers go to the largest part so the sum is exact
+    const k = estimate > 0 ? total / estimate : 0;
+    const scaled = (n: number) => Math.round(n * k);
+    const children = {
+      system: [
+        { key: 'system.base', tokens: scaled(base) },
+        { key: 'system.rules', tokens: scaled(rules) },
+      ],
+      messages: (['user', 'assistant', 'tool_results', 'notes', 'images'] as const).filter((x) => m[x] > 0).map((x) => ({ key: `messages.${x}`, tokens: scaled(m[x]) })),
+    };
+    const parts: ContextPart[] = [
+      { key: 'system', tokens: children.system.reduce((a, c) => a + c.tokens, 0), estimated: true, children: children.system },
+      { key: 'tools', tokens: scaled(tools), estimated: true },
+      { key: 'messages', tokens: children.messages.reduce((a, c) => a + c.tokens, 0), estimated: true, ...(children.messages.length ? { children: children.messages } : {}) },
+    ];
+    const diff = total - parts.reduce((a, p) => a + p.tokens, 0);
+    if (diff !== 0) {
+      const big = parts.reduce((a, p) => (p.tokens > a.tokens ? p : a));
+      big.tokens += diff;
+      const child = big.children?.reduce((a, c) => (c.tokens > a.tokens ? c : a));
+      if (child) child.tokens += diff;
+    }
+    const window = this.#contextWindow();
+    const outputReserve = cfg.maxTokens;
+    return { window, total, measured, parts, outputReserve, free: window === null ? null : Math.max(0, window - total - outputReserve) };
   }
 
   /** Set or clear the display name. */

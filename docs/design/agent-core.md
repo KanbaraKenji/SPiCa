@@ -69,6 +69,7 @@
 - **meta** 里界面要用的都是结构化字段，界面自己写中文，内核不往里塞给人看的文案：文件卡 `fileCards`、建议按钮 `suggestedActions`、回传来源（`fromSessionId` 等）、`partial` / `interrupted`、停用的工具 `toolsUnavailable`、外来内容 `untrusted` / `guard`、转来的信 `mails`。
 - **会话记录**：`id`、`parentId`、`role`（top / manager / worker）、`title`（可空，名字由界面定）、`status`、配置（provider、模型、maxTokens、工作文件夹、工具白名单、最大轮数、界面语言、模板 id、项目 id、批准方式）。
 - **会话信息**（`SessionInfo`，界面用）：除上面这些外还有花费、`approvalMode`（manual / auto）、`contextTokens`（上一次模型调用的输入加输出，即当前上下文大约占多少 token，第一次调用前是 null）、`contextWindow`（所用模型的窗口：先看模型设置里的 `ProviderConfig.contextWindows[模型名]`，再看价表的确切条目，都没有才是 null；设置一改，打开着的会话立刻发 `session.updated`）。每次模型调用后、改模型和改批准方式时发 `session.updated { info }`。重启后 `contextTokens` 从可追溯记录回填。
+- **上下文的组成**（`session.contextBreakdown()`，端口方法 `contextBreakdown(sessionId)`，给上下文环点开后的详情）：不调模型，现算。分项是估的（`estimated`，按文字估、图片按各家算法）：`system`（下一层 `system.base` 角色提示、`system.rules` 数据规则 / 语言 / 团队规则）、`tools`（工具表）、`messages`（下一层 `messages.user` / `.assistant` / `.tool_results` / `.notes` / `.images`，为 0 的不列）。`total`：发过消息后是服务端回报的上一次调用的实际用量（输入加回答，`measured: true`），分项按比例缩放到正好等于它，取整的差额加到最大的一项（和它下面最大的一行）上；还没发过时是估算本身（`measured: false`）。插件注入的内容没单独列，含在缩放里。`outputReserve` 是这条对话的最大输出（给回答留的，算在上下文上限里）；`free = window − total − outputReserve`（不小于 0），上下文上限不知道时 `window` 和 `free` 都是 null。我们没有检查点，也没有自动压缩，所以没有这两行。
 
 **输入框的会话级控制**（M9）
 - **改模型**：`setSessionModel(会话, provider, 模型)`（MCP `spica_set_model`）。从下一次模型调用起生效，正在进行的那次不动；主循环每轮开头重读配置。provider 不存在就报错。会话里记一条运行时备注（`kind: 'note'`，`meta.decision`、`meta.modelChange {from, to}`，正文告诉模型换了模型、照常继续）。正在跑时这条备注排到下一轮边界，不会插进工具调用和结果中间。同时按「用户的决定」回传给父会话。
@@ -468,6 +469,7 @@
 
 | 里程碑 | 日期 | 测试 | 真模型冒烟 |
 |---|---|---|---|
+| M23 | 2026-11-10 | 新增 2 条：上下文组成——还没发消息时是估算、不标实测、上限未知时没有空余；发过后总数用实测、分项加起来正好等于总数、消息和系统提示能往下分、带图片时有图片一行、再取一次不多花调用 | — |
 | M22 | 2026-11-10 | 新增 4 条、改 7 条：助理——旧数据库（经理挂在默认对话下）重启后改成没有父会话且旧对话和项目都在、任意对话给经理发话并收到回报；没人问的进展进项目动态和未读、不打扰任何对话、list_projects 能看到；getTopSession 是最近用过的那条；搜 / 读 / 找文件跨对话和项目、去敏、围栏、旧记录里的指令被标记、只给助理；阶段变更不再追加进对话；设置卡片只写进打开的那条 | — |
 | M21 | 2026-11-10 | 新增 12 条：图片——按字节认格式和量尺寸、PNG 往返不变、未超限原样保留、超限 PNG 缩到 1568、超限 JPEG 和非图片各有码、按各家算法估 token；OpenAI 兼容发 data URL 且记录和使用日志里没有像素、Anthropic 发 base64 块；模型拒图时报 model.no_images 并记住、之后历史图换成文字、再附新图在发前拦下；目录标明不收图的在发前拦下；一条消息超过 10 张的有码；一次请求只带最新 20 张；删项目时图片文件一起删 | — |
 | M20 | 2026-11-10 | 新增 5 条：地址少写 /v1——补上能通时带回该用的地址和提示、末尾已有版本号不动且 404 照常报、补了也不通报第一次的 404 并提示检查结尾、公司网关取 token 不重试只重试调模型、Agent 保存走同一个测试并存下能通的地址 | — |

@@ -159,6 +159,33 @@ export interface Message {
  * the `settings.changed` event and by a note message in the conversations
  * (meta.settingsChange), so the card stays in the history.
  */
+/**
+ * What a conversation's context is made of, for the detail under the context
+ * ring. `total` is what the provider reported for the last call (input plus the
+ * answer), `measured` then true; before any call it is the estimate of what
+ * the first request would carry. The parts are estimates (`estimated`), scaled
+ * so that they add up to `total`. The UI words the rows from the keys.
+ */
+export interface ContextBreakdown {
+  /** The model's context window in tokens; null when not known (no percentage then). */
+  window: number | null;
+  total: number;
+  measured: boolean;
+  parts: ContextPart[];
+  /** Kept free for the answer (the model's maximum output for this conversation), counted against the window. */
+  outputReserve: number;
+  /** window - total - outputReserve, never below 0; null when the window is not known. */
+  free: number | null;
+}
+
+export interface ContextPart {
+  key: 'system' | 'tools' | 'messages';
+  tokens: number;
+  estimated: boolean;
+  /** One level down: system.base / system.rules; messages.user / messages.assistant / messages.tool_results / messages.notes / messages.images. */
+  children?: { key: string; tokens: number }[];
+}
+
 /** A connection and one of its models (the default, the strong one). */
 export interface ModelPointer {
   connectionId: string;
