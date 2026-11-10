@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FakeGateway } from '../testing/fake-gateway.ts';
 import { FAST_RETRY, makeRuntime, startGateway } from '../testing/helpers.ts';
-import { Wso2Provider } from './wso2.ts';
+import { OAuthClientCredentials, Wso2Provider } from './wso2.ts';
 
 // gateways, child processes and local servers start slowly when several full runs share the machine
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
@@ -91,5 +91,48 @@ describe('Wso2Provider', () => {
     const s = rt.createSession();
     await s.send('x').done;
     expect(rt.ledger.sessionUsd(s.id)).toBeGreaterThan(0);
+  });
+});
+
+describe('where the token endpoint wants the client credentials', () => {
+  /** A token endpoint that takes the credentials only one way; records how each request carried them. */
+  const endpoint = (takes: 'basic' | 'body' | 'none') => {
+    const seen: ('basic' | 'body')[] = [];
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      const headers = init.headers as Record<string, string>;
+      const form = new URLSearchParams(String(init.body));
+      const how = headers.authorization?.startsWith('Basic ') ? 'basic' : 'body';
+      seen.push(how);
+      const ok = takes === how && (how === 'body' ? form.get('client_id') === 'id-1' && form.get('client_secret') === 's-1' : true);
+      return ok
+        ? new Response(JSON.stringify({ access_token: `t-${seen.length}`, expires_in: 0.001 }), { status: 200, headers: { 'content-type': 'application/json' } })
+        : new Response('{"error":"invalid_client"}', { status: 401, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof fetch;
+    return { seen, fetchImpl };
+  };
+  const auth = (fetchImpl: typeof fetch, credentialsIn?: 'basic' | 'body') =>
+    new OAuthClientCredentials({ tokenUrl: 'https://login.example.com/token', clientId: 'id-1', clientSecret: 's-1', fetchImpl, refreshSkewMs: 0, ...(credentialsIn ? { credentialsIn } : {}) });
+  const signal = () => new AbortController().signal;
+
+  it('not configured: Basic first, the form body once when Basic is refused, and that way from then on', async () => {
+    const e = endpoint('body');
+    const a = auth(e.fetchImpl);
+    expect(await a.headers(signal())).toEqual({ authorization: 'Bearer t-2' });
+    expect(e.seen).toEqual(['basic', 'body']);
+    await new Promise((r) => setTimeout(r, 5)); // the token ran out
+    await a.headers(signal());
+    expect(e.seen).toEqual(['basic', 'body', 'body']); // remembered: no Basic try again
+  });
+
+  it('a gateway that takes Basic is asked once; a configured way is the only one tried; refused both ways is token_rejected', async () => {
+    const basic = endpoint('basic');
+    await auth(basic.fetchImpl).headers(signal());
+    expect(basic.seen).toEqual(['basic']);
+    const onlyBasic = endpoint('body');
+    await expect(auth(onlyBasic.fetchImpl, 'basic').headers(signal())).rejects.toMatchObject({ code: 'wso2.token_rejected' });
+    expect(onlyBasic.seen).toEqual(['basic']);
+    const none = endpoint('none');
+    await expect(auth(none.fetchImpl).headers(signal())).rejects.toMatchObject({ code: 'wso2.token_rejected' });
+    expect(none.seen).toEqual(['basic', 'body']);
   });
 });

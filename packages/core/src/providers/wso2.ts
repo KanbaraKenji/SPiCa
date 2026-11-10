@@ -13,7 +13,10 @@ export interface OAuthClientCredentialsOptions {
   clientId: string;
   clientSecret: string;
   scope?: string;
-  /** Send credentials as HTTP Basic (default) or in the form body. */
+  /**
+   * Send credentials as HTTP Basic or in the form body. Left out: Basic first, and the form body once when the
+   * token endpoint refuses Basic (some gateways take only one of them); the one that worked is kept.
+   */
   credentialsIn?: 'basic' | 'body';
   /** Refresh this long before expiry. Default 60 s. */
   refreshSkewMs?: number;
@@ -30,10 +33,13 @@ export class OAuthClientCredentials implements AuthSource {
   #inflight: Promise<string> | undefined;
   /** Gateway clock minus ours, from the Date header of the last token response. */
   #skewMs = 0;
+  /** Where the credentials go: as configured, else found out by the first token request. */
+  #credsIn: 'basic' | 'body' | undefined;
   tracer: Tracer | undefined;
 
   constructor(opts: OAuthClientCredentialsOptions) {
     this.#o = opts;
+    this.#credsIn = opts.credentialsIn;
   }
 
   async headers(signal: AbortSignal): Promise<Record<string, string>> {
@@ -83,23 +89,33 @@ export class OAuthClientCredentials implements AuthSource {
       initiator: 'runtime',
       target: o.traceHost ? hostOf(o.tokenUrl) : (o.label ?? 'oauth'),
     });
-    const form = new URLSearchParams({ grant_type: 'client_credentials' });
-    if (o.scope) form.set('scope', o.scope);
-    const headers: Record<string, string> = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
-    if ((o.credentialsIn ?? 'basic') === 'basic') {
-      headers.authorization = `Basic ${Buffer.from(`${o.clientId}:${o.clientSecret}`).toString('base64')}`;
-    } else {
-      form.set('client_id', o.clientId);
-      form.set('client_secret', o.clientSecret);
-    }
-    let res: Response;
-    try {
-      res = await (o.fetchImpl ?? netFetch)(o.tokenUrl, {
+    const request = (credsIn: 'basic' | 'body') => {
+      const form = new URLSearchParams({ grant_type: 'client_credentials' });
+      if (o.scope) form.set('scope', o.scope);
+      const headers: Record<string, string> = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
+      if (credsIn === 'basic') {
+        headers.authorization = `Basic ${Buffer.from(`${o.clientId}:${o.clientSecret}`).toString('base64')}`;
+      } else {
+        form.set('client_id', o.clientId);
+        form.set('client_secret', o.clientSecret);
+      }
+      return (o.fetchImpl ?? netFetch)(o.tokenUrl, {
         method: 'POST',
         headers,
         body: form.toString(),
         signal: AbortSignal.any([signal, AbortSignal.timeout(o.timeoutMs ?? 30_000)]),
       });
+    };
+    let credsIn = this.#credsIn ?? 'basic';
+    let res: Response;
+    try {
+      res = await request(credsIn);
+      // not configured and Basic refused (not an HTML page): some gateways take the credentials only in the form body
+      if (!this.#credsIn && (res.status === 400 || res.status === 401) && !/text\/html/i.test(res.headers.get('content-type') ?? '')) {
+        await res.text().catch(() => '');
+        credsIn = 'body';
+        res = await request(credsIn);
+      }
     } catch (err) {
       trace?.finish({ status: signal.aborted ? 'aborted' : 'error', error: err instanceof Error ? err.message : String(err) });
       if (signal.aborted) throw abortError(signal);
@@ -134,6 +150,7 @@ export class OAuthClientCredentials implements AuthSource {
       trace?.finish({ status: 'error', httpStatus: res.status, error: `token response has no access_token (${what})` });
       throw new ProviderError(`token response has no access_token [wso2.token_bad_response]: the token URL returned ${what}`, { retryable: false, code: 'wso2.token_bad_response' });
     }
+    this.#credsIn ??= credsIn; // the way that worked, for the next tokens
     const ttl = Number(body.expires_in);
     this.#token = { value: body.access_token, expiresAt: Date.now() + (Number.isFinite(ttl) && ttl > 0 ? ttl * 1000 : 3_600_000) };
     trace?.finish({ status: 'ok', httpStatus: res.status });
