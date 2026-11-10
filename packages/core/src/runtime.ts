@@ -79,10 +79,19 @@ export interface RuntimeOptions {
   projectsRoot?: string;
   /** Mail pipeline (sources, interval, triage). Polling starts only with mail.start(). */
   mail?: MailConfig;
+  /**
+   * The product name the models are told they work in (system prompts, the
+   * guard's notes, the web_fetch user agent). Default 'Spica'. Internal names
+   * (package names, spica_ tools, SPICA_ variables, spica-*:// links) do not change.
+   */
+  appName?: string;
 }
+
+export { APP_NAME_SLOT, withAppName } from './util.ts';
 
 /** What sessions need from the runtime. Not part of the public API. */
 export interface RuntimeInternals {
+  readonly appName: string;
   readonly events: EventBus;
   readonly hooks: HookRegistry;
   readonly tools: ToolRegistry;
@@ -120,7 +129,7 @@ function safeFolderName(name: string): string {
 }
 
 export const DEFAULT_SYSTEM_PROMPT =
-  'You are an agent in Spica, a desktop workbench. Use the available tools to inspect files and gather facts ' +
+  'You are an agent in {{app}}, a desktop workbench. Use the available tools to inspect files and gather facts ' +
   'instead of guessing. Every tool result starts with the time the data was fetched; treat older results as ' +
   'possibly out of date and fetch again when the current state matters. Be concise.';
 
@@ -144,6 +153,11 @@ export class Runtime implements RuntimeInternals {
   readonly #mcp = new Map<string, { client: McpStdioClient; source: string; disconnect: () => Promise<void> }>();
   readonly #reports = new Map<string, string>();
   readonly #viewConfirms = new Map<string, (approved: boolean) => void>();
+  /** See RuntimeOptions.appName. */
+  get appName(): string {
+    return this.#opts.appName?.trim() || 'Spica';
+  }
+
   /** Confirmations only the window may answer (not Spica's MCP service: the asking script would answer itself). */
   readonly #userOnly = new Set<string>();
   /**
@@ -168,7 +182,7 @@ export class Runtime implements RuntimeInternals {
     const defaults = [
       ...fileTools,
       createRunCommandTool(opts.spillDir ? { spillDir: opts.spillDir } : {}),
-      createWebFetchTool(),
+      createWebFetchTool({ userAgent: `${this.appName.replace(/[^A-Za-z0-9._-]+/g, '-') || 'Spica'}/0.1 (+agent web_fetch)` }),
       ...agentTools,
       ...projectTools,
       triageMailTool,

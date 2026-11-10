@@ -269,7 +269,7 @@ export class MailPipeline {
     ]
       .filter(Boolean)
       .join('\n');
-    const f = fence(raw, 'mail', `mail:${m.id}`);
+    const f = fence(raw, 'mail', `mail:${m.id}`, this.#rt.appName);
     return { text: f.text.replace(/^/gm, indent), note: f.note };
   }
 
@@ -377,7 +377,7 @@ export class MailPipeline {
             `${k + 1}. Mail id: ${m.messageId}`,
             f.text,
             // the triage agent's reason can quote the mail: fenced too
-            m.triage?.reason ? `   Why it was put here: ${fence(m.triage.reason, 'mail', `triage:${m.id}`).text}` : '',
+            m.triage?.reason ? `   Why it was put here: ${fence(m.triage.reason, 'mail', `triage:${m.id}`, this.#rt.appName).text}` : '',
           ]
             .filter(Boolean)
             .join('\n');

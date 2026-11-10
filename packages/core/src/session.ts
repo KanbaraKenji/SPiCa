@@ -24,7 +24,7 @@ import type {
   ToolUseBlock,
 } from './types.ts';
 import type { RuntimeInternals } from './runtime.ts';
-import { estimateTokens, isAbortError, newId, truncate } from './util.ts';
+import { estimateTokens, isAbortError, newId, truncate, withAppName } from './util.ts';
 import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.ts';
 
 export interface RunResult {
@@ -350,7 +350,7 @@ export class Session {
         content.push({ type: 'text', text: `[The user attached ${name}, but it could not be read: ${out.content.slice(0, 300)}]` });
         continue;
       }
-      const f = fence(truncate(out.content, MAX_RESULT_CHARS), 'file', `attachment:${name}`);
+      const f = fence(truncate(out.content, MAX_RESULT_CHARS), 'file', `attachment:${name}`, this.#rt.appName);
       notes.push(f.note);
       if (f.note.signals.length) this.#emit({ type: 'guard.flagged', note: f.note });
       // content[0] of the message is the user's text
@@ -467,7 +467,7 @@ export class Session {
       const injections = await this.#rt.hooks.injections(hctx);
       let draft: RequestDraft = {
         segments: buildSegments(
-          [cfg.system, DATA_RULE, languageLine(cfg.locale, this.#userHasWritten()), this.#leadsOthers() ? TEAM_RULE : ''].filter(Boolean).join('\n\n'),
+          [withAppName(cfg.system, this.#rt.appName), DATA_RULE, languageLine(cfg.locale, this.#userHasWritten()), this.#leadsOthers() ? TEAM_RULE : ''].filter(Boolean).join('\n\n'),
           this.#messages,
           injections,
         ),
@@ -870,7 +870,7 @@ export class Session {
     if (tool.untrusted && !out.isError) {
       // outside content goes to the model as fenced data
       const ref = (draft.input as Record<string, unknown> | undefined)?.id;
-      const f = fence(body, tool.untrusted, typeof ref === 'string' && ref.length <= 80 ? `${draft.name}:${ref}` : draft.name);
+      const f = fence(body, tool.untrusted, typeof ref === 'string' && ref.length <= 80 ? `${draft.name}:${ref}` : draft.name, this.#rt.appName);
       sent = f.text;
       cards = { ...cards, guard: f.note };
       if (f.note.signals.length) this.#emit({ type: 'guard.flagged', note: f.note, callId: draft.callId });
@@ -1200,7 +1200,7 @@ const GUARD_REASON: Record<GuardCause, string> = {
   outside_link: 'this link comes from outside content (e.g. a mail), not from you',
   sensitive_file: 'reading a credential file while acting on outside content',
   plugin_view: 'a plugin view asks to run an irreversible action',
-  settings_change: 'a script connected to Spica asks to change the settings',
+  settings_change: 'a script connected to the app asks to change the settings',
 };
 
 export const TEAM_RULE =

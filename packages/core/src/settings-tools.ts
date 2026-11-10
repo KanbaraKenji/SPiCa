@@ -82,7 +82,7 @@ const FIELDS = {
   consumerSecret: { ...str, description: 'wso2: Consumer Secret. Stored encrypted, never returned. Leave out to keep the saved one.' },
   apiKey: { ...str, description: 'openai-compatible / anthropic: the API key. Stored encrypted, never returned. Leave out to keep the saved one.' },
   scope: { ...str, description: 'wso2: OAuth scope, if the gateway needs one.' },
-  contextWindow: { ...int, description: 'Tokens the model takes at once. Filled in for models Spica knows; otherwise required (ask the user).' },
+  contextWindow: { ...int, description: 'Tokens the model takes at once. Filled in for models the app knows; otherwise required (ask the user).' },
   maxConcurrent: { ...int, description: 'Requests at the same time (leave out: no limit).' },
   requestsPerMinute: { ...int, description: 'Requests per minute (leave out: no limit).' },
 } as const;
@@ -144,9 +144,10 @@ const text = (v: unknown) => (typeof v === 'string' ? v.trim() : undefined);
 const count = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : v === undefined ? undefined : NaN);
 
 export function settingsTools(rt: Runtime): McpTool[] {
+  const app = rt.appName;
   const bridge = (): SettingsBridge => {
     const b = rt.settingsBridge;
-    if (!b) throw new SettingsError('host_unavailable', 'model settings can be changed only while the Spica window is open');
+    if (!b) throw new SettingsError('host_unavailable', `model settings can be changed only while the ${app} window is open`);
     return b;
   };
   const host = async <T>(method: string, params: unknown[] = []): Promise<T> => {
@@ -155,7 +156,7 @@ export function settingsTools(rt: Runtime): McpTool[] {
     } catch (err) {
       if (err instanceof SettingsError) throw err;
       const code = (err as { code?: unknown })?.code;
-      if (code === 'host_unavailable') throw new SettingsError('host_unavailable', 'model settings can be changed only while the Spica window is open');
+      if (code === 'host_unavailable') throw new SettingsError('host_unavailable', `model settings can be changed only while the ${app} window is open`);
       throw new SettingsError(typeof code === 'string' ? code : 'host_failed', rt.redact(err instanceof Error ? err.message : String(err)));
     }
   };
@@ -210,7 +211,7 @@ export function settingsTools(rt: Runtime): McpTool[] {
     if (!secret) throw bad(kind === 'wso2' ? 'consumerSecret' : 'apiKey', existing?.hasSecret ? 'the saved one cannot be read; give it again' : 'required');
     if (purpose === 'save' && d.contextWindow === null) {
       const known = rt.ledger.knownContextWindow(kind, d.model);
-      if (!known) throw new SettingsError('context_window_required', `Spica does not know how many tokens ${d.model} takes at once: ask the user and pass contextWindow`);
+      if (!known) throw new SettingsError('context_window_required', `${app} does not know how many tokens ${d.model} takes at once: ask the user and pass contextWindow`);
       d.contextWindow = known;
     }
     const config: ProviderConfig = {
@@ -240,7 +241,7 @@ export function settingsTools(rt: Runtime): McpTool[] {
   /** Ask the user (unless turned off), then run `apply`; says it is still waiting after waitMs. */
   const confirmThen = async (name: string, card: Record<string, unknown>, apply: (confirmed: boolean) => Promise<unknown>, declined: () => unknown) => {
     if (!rt.confirmSettingsChanges) return apply(false);
-    const ask = rt.askOutsideSession({ name, input: card, reason: 'a script connected to Spica asks to change the model settings', cause: 'settings_change', userOnly: true });
+    const ask = rt.askOutsideSession({ name, input: card, reason: `a script connected to ${app} asks to change the model settings`, cause: 'settings_change', userOnly: true });
     const done = ask.answer.then((ok) => (ok ? apply(true) : declined()));
     return waitOrPending(ask.callId, done);
   };
@@ -259,7 +260,7 @@ export function settingsTools(rt: Runtime): McpTool[] {
   return [
     {
       name: 'spica_list_models',
-      description: 'The model connections set up in Spica (no keys or secrets: hasSecret says whether one is saved; the Consumer Key shows its last 4 characters).',
+      description: `The model connections set up in ${app} (no keys or secrets: hasSecret says whether one is saved; the Consumer Key shows its last 4 characters).`,
       inputSchema: obj({}),
       run: async () => (await list()).map(view),
     },
@@ -277,7 +278,7 @@ export function settingsTools(rt: Runtime): McpTool[] {
     {
       name: 'spica_save_model',
       description:
-        'Add (no id) or change (id) a model connection, test it, and save it after the user confirms in the Spica window. Fields left out keep their saved value; the key / secret is stored encrypted and never returned. ' +
+        `Add (no id) or change (id) a model connection, test it, and save it after the user confirms in the ${app} window. Fields left out keep their saved value; the key / secret is stored encrypted and never returned. ` +
         'A failed test saves nothing unless saveIfTestFails. If the user has not answered yet the result is status waiting_for_user with a requestId for spica_settings_result.',
       inputSchema: obj(
         {
@@ -329,7 +330,7 @@ export function settingsTools(rt: Runtime): McpTool[] {
     },
     {
       name: 'spica_set_default_model',
-      description: 'Make a saved connection the default for new conversations, after the user confirms in the Spica window.',
+      description: `Make a saved connection the default for new conversations, after the user confirms in the ${app} window.`,
       inputSchema: obj({ id: FIELDS.id }, ['id']),
       run: async (a) => {
         const id = String(a.id ?? '');
@@ -364,7 +365,7 @@ export function settingsTools(rt: Runtime): McpTool[] {
     },
     {
       name: 'spica_network_status',
-      description: 'Proxy, hosts that bypass it, and extra trusted certificates in force (read only; no proxy password). The user changes them in the Spica window\'s settings.',
+      description: `Proxy, hosts that bypass it, and extra trusted certificates in force (read only; no proxy password). The user changes them in the ${app} window's settings.`,
       inputSchema: obj({}),
       run: async () => bridge().network(),
     },

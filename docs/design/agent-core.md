@@ -363,6 +363,7 @@
 立项书「接口先行」：对外就是 MCP 服务，验收旅程、评测插件、远程调试都走它。同一个内核进程对内服务界面、对外当 MCP 服务，两边是同一份会话和同一个事件流。
 
 - **工具**（`mcp/server.ts`）：`spica_create_session`、`spica_get_top_session`、`spica_list_sessions`、`spica_get_messages`、`spica_get_pending`、`spica_send`、`spica_set_model`、`spica_set_approval_mode`、`spica_steer`、`spica_answer`、`spica_confirm`、`spica_abort`、`spica_resume`、`spica_rename_session`、`spica_create_project`、`spica_list_projects`、`spica_get_project`、`spica_rename_project`、`spica_delete_project`、`spica_list_mail`、`spica_poll_mail`、`spica_mail_feedback`、`spica_list_tools`、`spica_export_traces`、`spica_export_usage_log`，外加两个方便自动化的：`spica_run`（发一句话，等这次运行结束或等用户；可连子 Agent 一起等），返回回答、状态、挂起项、执行了的工具 `toolCalls`、调了但已不存在的工具 `unavailableToolCalls`、子 Agent 和花费；`spica_wait`、`spica_events {since}`。扩展模块（如插件包的 `spica_plugin_*`）再往上加。
+- **产品名**（`RuntimeOptions.appName` / `BackendConfig.appName`，缺省 `Spica`）：打包时可换成别的名字，不改受版本控制的文件。跟着变的：内置系统提示里的 `{{app}}`（每一轮发请求时才填，所以存下的会话不会写死旧名字；角色模板文件和会话自带的提示也可以用 `{{app}}`）、守卫给模型看的「[名字: this content …]」标记、web_fetch 的 User-Agent（换成能放进请求头的写法，如 `Acme-Desk/0.1`）、本程序 MCP 工具说明里的「… window」。不变的内部名字：`@spica/*` 包名、`spica_` 工具名、`SPICA_` 环境变量、`spica-file://` / `spica-plugin://`、MCP 的 serverInfo 名。
 - **让 Agent 帮忙配模型**（`settings-tools.ts`）：`spica_list_models`、`spica_test_model`、`spica_save_model`、`spica_set_default_model`、`spica_settings_result`、`spica_network_status`（只读）。模型设置存在宿主那边（桌面外壳用系统加密存），内核经后台端口的**宿主方法**去拿和存：内核发 `{t:'hreq'}`、宿主回 `{t:'hres'}`，宿主在 `connectBackend(port, { hostMethods })` 里注册 `models.list` / `models.save` / `models.setDefault`（`HostModel` / `HostModelDraft`）；没有窗口时这几个工具回 `host_unavailable`，测试连接照样能用。
   - **密钥只进不出**：参数名 `apiKey` / `consumerSecret`（在 `SECRET_FIELD` 和文本去敏规则里）；收到就加进去敏表；任何结果都不带密钥，只给 `hasSecret`；Consumer Key 只给末 4 位；错误信息过一遍去敏。
   - **先测再存**：`spica_save_model` 先测试连接（WSO2 分「取 token」「调模型」两步，带 `code` 和中文 `hint`），测不通就不存（除非 `saveIfTestFails`）；上下文上限不填时用内核已知值，内核也不知道就报 `context_window_required`。
@@ -449,6 +450,7 @@
 
 | 里程碑 | 日期 | 测试 | 真模型冒烟 |
 |---|---|---|---|
+| M14 | 2026-11-10 | 新增 3 条：产品名——系统提示、守卫标记、MCP 工具说明都换成给的名字且不再出现 Spica，工具名不变；会话自带提示里的 {{app}} 也会填；web_fetch 用能放进请求头的名字；不给名字时一切照旧 | — |
 | M13 | 2026-11-10 | 新增 5 条：经 MCP 配模型——新增并确认后才存、密钥在结果 / 事件 / 留痕 / 使用日志里都找不到、脚本不能自己批准、改一处只记那一处、用户拒绝不存；测不通不存不弹卡、缺字段和不知道上下文上限时说清；WSO2 两步测试、Consumer Key 只露末 4 位、确认开关关掉时直接存；用户没答时回「还在等」再接着等；没窗口时只能测试和看网络状态 | — |
 | M12 | 2026-11-10 | 新增 2 条：WSO2 fault 编号（JSON / XML 两种格式、7 类 11 个编号、不认识的照旧按状态码、每类都有中文说明）；测试连接报出对应编号的说明，900901 先重取一次 token 再报错，第二次成功就不报 | — |
 | M11 | 2026-11-10 | 新增 2 条：模型设置里的上下文上限（不用填价格、优先于价表、运行中改了打开的会话立刻更新、填错的值给警告、`knownContextWindow` 给表单预填）；全新安装没配模型时改设置不报错、不建会话（设置、邮件设置、项目的事件发到默认线程，没有就发到空会话 id） | — |

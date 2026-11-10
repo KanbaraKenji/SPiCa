@@ -52,6 +52,13 @@ export function redact(text: string, secrets: readonly string[] = []): string {
     .replace(/("?(?:api[_-]?key|client[_-]?secret|consumer[_-]?secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|secret[_-]?key|private[_-]?key|password|passwd|(?<![A-Za-z])token|(?<![A-Za-z])secret)"?\s*[:=]\s*"?)[^\s",}]+/gi, '$1[redacted]');
 }
 
+/** Placeholder for the product name in system prompts (built-in and template files); filled in every turn. */
+export const APP_NAME_SLOT = '{{app}}';
+
+export function withAppName(text: string, appName: string): string {
+  return text.split(APP_NAME_SLOT).join(appName);
+}
+
 /** Field names whose values are credentials, whatever they look like. */
 export const SECRET_FIELD = /^(api[_-]?key|x-api-key|apikey|client[_-]?secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|token|secret|secret[_-]?key|private[_-]?key|password|passwd|authorization|cookie|consumer[_-]?secret|consumer[_-]?key)$/i;
 

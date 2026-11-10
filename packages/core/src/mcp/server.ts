@@ -106,11 +106,11 @@ export function spicaMcpTools(rt: Runtime, events: CoreEvent[]): McpTool[] {
     { name: 'spica_answer', description: 'Answer an ask_user question card.', inputSchema: obj({ session_id: str, call_id: str, answer: str }, ['session_id', 'call_id', 'answer']), run: (a) => api.answer(String(a.session_id), String(a.call_id), String(a.answer)) },
     {
       name: 'spica_confirm',
-      description: 'Approve or decline an action waiting for confirmation. Settings changes asked for through this service are answered only in the Spica window.',
+      description: `Approve or decline an action waiting for confirmation. Settings changes asked for through this service are answered only in the ${rt.appName} window.`,
       inputSchema: obj({ session_id: str, call_id: str, approved: { type: 'boolean' } }, ['session_id', 'call_id', 'approved']),
       run: async (a) => {
         // the script that asked would be answering itself
-        if (rt.isUserOnlyConfirm(String(a.call_id))) throw new Error('this confirmation can be answered only by the user in the Spica window');
+        if (rt.isUserOnlyConfirm(String(a.call_id))) throw new Error(`this confirmation can be answered only by the user in the ${rt.appName} window`);
         return api.confirm(String(a.session_id), String(a.call_id), a.approved === true);
       },
     },
@@ -123,7 +123,7 @@ export function spicaMcpTools(rt: Runtime, events: CoreEvent[]): McpTool[] {
     { name: 'spica_rename_project', description: 'Rename a project (its manager session takes the same title).', inputSchema: obj({ project_id: str, name: str }, ['project_id', 'name']), run: (a) => api.renameProject!(String(a.project_id), String(a.name)) },
     {
       name: 'spica_delete_project',
-      description: 'Remove a project from Spica: project, manager and all sessions under it, activity log. The folder and its files are not touched; mail filed under it becomes a new matter again.',
+      description: `Remove a project from ${rt.appName}: project, manager and all sessions under it, activity log. The folder and its files are not touched; mail filed under it becomes a new matter again.`,
       inputSchema: obj({ project_id: str }, ['project_id']),
       run: (a) => api.deleteProject!(String(a.project_id)),
     },

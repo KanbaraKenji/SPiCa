@@ -76,6 +76,8 @@ export interface BackendConfig {
   budget?: BudgetConfig;
   prices?: PriceTable;
   spillDir?: string;
+  /** Product name the models are told they work in (see RuntimeOptions.appName). Default 'Spica'. */
+  appName?: string;
   search?: JsonSearchBackendOptions;
   /** Module specifiers that export createExtractors(): FileExtractor[] (e.g. '@spica/extract'). */
   extractorModules?: string[];
@@ -330,6 +332,7 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
       ...(cfg.budget ? { budget: cfg.budget } : {}),
       ...(cfg.prices ? { prices: cfg.prices } : {}),
       ...(cfg.spillDir ? { spillDir: cfg.spillDir } : {}),
+      ...(cfg.appName ? { appName: cfg.appName } : {}),
       ...(cfg.search ? { search: jsonSearchBackend(cfg.search) } : {}),
       ...(cfg.mail ? { mail: cfg.mail } : {}),
     });
