@@ -267,7 +267,7 @@ describe('model settings over Spica MCP', () => {
     }
   });
 
-  it('by default a change applies at once and is shown in the main conversation and the open one, also after a restart', async () => {
+  it('by default a change applies at once and is shown in the conversation open in the window (else the one used last), also after a restart', async () => {
     const first = await setup({ openConversation: () => open });
     let open: string | null = null;
     // the first model: nothing to show it in yet but the main conversation, created now that a model exists
@@ -290,7 +290,7 @@ describe('model settings over Spica MCP', () => {
     expect(await first.call('spica_set_default_model', { id })).toEqual({ default: { connectionId: id, model: 'm1' } }); // already the default
     // a second model under the same key, made the default
     expect(await first.call('spica_save_model', { id, addModels: [{ id: 'm2', contextWindow: 32_000 }], makeDefault: 'm2' })).toMatchObject({ saved: true, default: { connectionId: id, model: 'm2' } });
-    expect(note(top)).toHaveLength(2);
+    expect(note(top)).toHaveLength(1); // only where the user is looking
     expect(note(other).map((m) => m.meta!.settingsChange)).toEqual([
       expect.objectContaining({
         action: 'change_connection',
@@ -317,7 +317,7 @@ describe('model settings over Spica MCP', () => {
 
     // after a restart the cards are still in the history
     const again = await setup();
-    expect(note(again.b.runtime.session(topId)!)).toHaveLength(3);
+    expect(note(again.b.runtime.session(topId)!)).toHaveLength(1);
     expect(note(again.b.runtime.session(otherId)!)).toHaveLength(2);
   });
 

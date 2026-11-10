@@ -80,6 +80,8 @@ export const messageAgentTool: Tool = {
     if (!child || !rt.canDirect(ctx.sessionId, child.id)) {
       return { content: `No sub-agent with id ${String(input.id)} belongs to you.`, isError: true };
     }
+    // not its own sub-agent (a project manager): its next report comes back to this conversation
+    if (!rt.descendants(ctx.sessionId).some((s) => s.id === child.id)) rt.noteAsker(child.id, ctx.sessionId);
     const h = child.send(String(input.text), { author: 'parent' });
     const name = child.info().title ?? child.id;
     return { content: h.started ? `Sent; ${name} started working on it.` : `Queued for ${name}; it will see it at its next step.` };

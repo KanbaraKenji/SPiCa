@@ -80,7 +80,7 @@ export const createProjectTool: Tool = {
       ...(typeof input.folder === 'string' ? { folder: input.folder } : {}),
       ...(typeof input.workflow === 'string' ? { workflowId: input.workflow } : {}),
       ...(typeof input.brief === 'string' ? { brief: input.brief } : {}),
-    });
+    }, { askerId: ctx.sessionId });
     return {
       content:
         `Created project "${p.name}" (${p.id}) in ${p.folder}. Its project manager is ${p.managerSessionId}` +
@@ -101,7 +101,12 @@ export const listProjectsTool: Tool = {
     const rows = r.listProjects().map((p) => {
       const d = r.getProject(p.id);
       const last = d?.recentLog[0];
-      return `- ${p.name} (${p.id}) — folder ${p.folder}; stage ${p.stage ?? 'none'}; manager ${d?.manager.status ?? 'missing'}${last ? `; last: ${last.summary}` : ''}`;
+      const report = d?.recentLog.find((e) => e.action === 'manager.report');
+      return (
+        `- ${p.name} (${p.id}) — folder ${p.folder}; stage ${p.stage ?? 'none'}; manager ${d?.manager.status ?? 'missing'}` +
+        `${p.unread ? `; ${p.unread} unread update${p.unread === 1 ? '' : 's'}` : ''}${last ? `; last: ${last.summary}` : ''}` +
+        `${report?.detail ? `; latest report (${report.at}): ${report.detail.slice(0, 200)}` : ''}`
+      );
     });
     const wfs = [...r.workflows.values()].map((w) => `${w.id} (${w.name})`).join(', ') || 'none';
     return { content: `${rows.length ? rows.join('\n') : 'No projects yet.'}\nAvailable workflows: ${wfs}` };

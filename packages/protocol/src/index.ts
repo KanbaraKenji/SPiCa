@@ -329,7 +329,7 @@ export interface AttachmentMeta {
 
 /** An open question or confirmation the session is waiting on. */
 /** Where untrusted content came from. */
-export type UntrustedKind = 'mail' | 'web' | 'file' | 'mcp';
+export type UntrustedKind = 'mail' | 'web' | 'file' | 'mcp' | 'history';
 
 /** What the guard noticed in one piece of outside content. */
 export interface GuardNote {
@@ -767,6 +767,8 @@ export interface ProjectInfo {
   status: 'active' | 'archived';
   createdAt: string;
   updatedAt: string;
+  /** Progress reports of the project manager nobody has looked at yet (the sidebar marks the project). */
+  unread?: number;
 }
 
 export interface WorkObject {
@@ -791,6 +793,8 @@ export type ProjectActivityKind =
   | 'stage'
   /** Incoming mail routed to the project: target = subject, detail = `<source>:<message id>`. */
   | 'mail'
+  /** The project manager finished a piece of work: detail = the start of its report. */
+  | 'manager.report'
   | 'note';
 
 export interface ProjectLogEntry {

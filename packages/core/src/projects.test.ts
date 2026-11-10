@@ -114,10 +114,9 @@ describe('projects', () => {
     expect(p.stage).toBe('sample');
     const { stat } = await import('node:fs/promises');
     expect((await stat(p.folder)).isDirectory()).toBe(true);
-    const top = rt.top();
-    expect(rt.top().id).toBe(top.id); // one top-level agent
     const pm = rt.session(p.managerSessionId)!;
-    expect(pm.info()).toMatchObject({ role: 'manager', templateId: 'project-manager', parentId: top.id, projectId: p.id, cwd: p.folder, title: 'Orion: relaunch?' });
+    // a standing session of its own: no conversation is its parent
+    expect(pm.info()).toMatchObject({ role: 'manager', templateId: 'project-manager', parentId: null, projectId: p.id, cwd: p.folder, title: 'Orion: relaunch?' });
     expect(events).toContain('project.created');
     await pm.idle();
     expect(JSON.stringify(gw.requests[0]!.body.messages)).toContain('BRIEF-TEXT');
@@ -126,15 +125,14 @@ describe('projects', () => {
     expect(() => rt.createProject({ name: 'x', workflowId: 'nope' })).toThrow(/unknown workflow "nope"/);
   });
 
-  it('stage changes are checked against the workflow, logged and relayed to the top-level agent', () => {
+  it('stage changes are checked against the workflow and logged in the project (no conversation gets a note)', () => {
     const rt = rtFor();
     const p = rt.createProject({ name: 'P', workflowId: 'product-development' });
     expect(() => rt.setStage(p.id, 'launch', undefined, p.managerSessionId)).toThrow(/unknown stage "launch"/);
     const u = rt.setStage(p.id, 'pilot', 'samples approved', p.managerSessionId);
     expect(u.stage).toBe('pilot');
     expect(rt.getProject(p.id)!.recentLog[0]).toMatchObject({ action: 'stage', target: 'pilot', detail: 'samples approved', summary: 'Stage changed to "Pilot run": samples approved' });
-    const topNotes = rt.top().messages().filter((m) => m.kind === 'relay');
-    expect(topNotes[0]!.meta).toMatchObject({ kind: 'decision', text: 'Project "P": Stage changed to "Pilot run": samples approved' });
+    expect(rt.sessions().some((s) => s.messages().some((m) => m.kind === 'relay'))).toBe(false);
   });
 
   it('work objects follow the levels in the workflow file', () => {
@@ -245,8 +243,9 @@ describe('project tools', () => {
     const system = (pmRequest.body.messages as { content: string }[])[0]!.content;
     expect(system).toContain(`You work for the project "Lamp" (${p.id})`);
     expect(system).toContain('current stage: Sample (goal: Build samples that prove the function)');
-    // the stage change reached the top-level agent as a decision note
-    expect(top.messages().some((m) => m.kind === 'relay' && m.meta?.kind === 'decision')).toBe(true);
+    // the stage change is in the project's activity; the assistant reads it there (list_projects / open_project)
+    expect(r.getProject(p.id)!.recentLog.some((e) => e.action === 'stage')).toBe(true);
+    void top;
   });
 });
 
@@ -285,12 +284,15 @@ describe('top-level threads', () => {
     await cleanup();
   });
 
-  it('every parentless session is a thread of the top-level agent', () => {
+  it('every parentless session is a thread of the top-level agent', async () => {
     const r = makeRuntime(gw, { cwd: dir });
     const a = r.createSession();
     const b = r.createSession();
+    await new Promise((res) => setTimeout(res, 5));
+    b.rename('used last');
     expect([a.info().templateId, b.info().templateId]).toEqual(['top', 'top']);
-    expect(r.top().id).toBe(a.id); // the default thread is the oldest one
+    expect(r.top().id).toBe(b.id); // no conversation is special: top() is the one used most recently
+    expect(r.top().id).not.toBe(r.createSession({ role: 'worker' }).id);
     expect(r.createSession({ role: 'worker' }).info().templateId).toBeUndefined();
   });
 
@@ -313,7 +315,9 @@ describe('top-level threads', () => {
     expect(waitResult).toContain('All requested sub-agents have finished');
     expect(waitResult).toContain('PM-REPORT-TEXT');
     const pm = r.session(r.listProjects()[0]!.managerSessionId)!;
-    expect(pm.parentId).toBe(r.top().id);
+    expect(pm.parentId).toBeNull();
+    // the conversation that created it got the manager's report as a note
+    expect(thread2.messages().some((m) => m.kind === 'report' && JSON.stringify(m.content).includes('PM-REPORT-TEXT'))).toBe(true);
     expect(r.canDirect(thread2.id, pm.id)).toBe(true);
     expect(r.canDirect(r.createSession({ role: 'worker' }).id, pm.id)).toBe(false);
   });

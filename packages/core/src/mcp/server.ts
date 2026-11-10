@@ -80,7 +80,12 @@ export function spicaMcpTools(rt: Runtime, events: CoreEvent[]): McpTool[] {
 
   return [
     { name: 'spica_create_session', description: 'Create a conversation (a top-level thread unless parent_id is given).', inputSchema: obj({ title: str, parent_id: str, template_id: str, cwd: str, system: str }), run: (a) => api.createSession({ ...(a.title ? { title: String(a.title) } : {}), ...(a.parent_id ? { parentId: String(a.parent_id) } : {}), ...(a.template_id ? { templateId: String(a.template_id) } : {}), ...(a.cwd ? { cwd: String(a.cwd) } : {}), ...(a.system ? { system: String(a.system) } : {}) }) },
-    { name: 'spica_get_top_session', description: 'The default top-level agent thread.', inputSchema: obj({}), run: () => api.getTopSession!() },
+    {
+      name: 'spica_get_top_session',
+      description: 'The assistant conversation used most recently (every conversation outside a project is the assistant; none is special). Created when there is none.',
+      inputSchema: obj({}),
+      run: () => api.getTopSession!(),
+    },
     { name: 'spica_list_sessions', description: 'All sessions with role, status, parent and project.', inputSchema: obj({}), run: () => api.listSessions() },
     { name: 'spica_get_messages', description: 'Transcript of a session (compact), optionally only messages after a seq.', inputSchema: obj({ session_id: str, after_seq: { type: 'integer' } }, ['session_id']), run: async (a) => transcript((await api.getMessages(String(a.session_id))).filter((m) => m.seq > Number(a.after_seq ?? 0))) },
     { name: 'spica_get_pending', description: 'Questions and confirmations a session is waiting on.', inputSchema: obj({ session_id: str }, ['session_id']), run: (a) => api.getPending(String(a.session_id)) },

@@ -367,24 +367,28 @@ export function settingsTools(rt: Runtime): McpTool[] {
 
   /**
    * Show an applied change where the user looks: an event for the window, and a
-   * note in the main conversation and in the one open in the window (asked with
-   * the optional host method 'ui.activeSession'), kept in the history. The model
-   * there reads it as data: names and model names come from the script.
+   * note in the conversation open in the window (asked with the optional host
+   * method 'ui.activeSession'), else in the assistant conversation used most
+   * recently, kept in the history. The model there reads it as data: names and
+   * model names come from the script.
    */
   const announce = async (change: SettingsChangeMeta) => {
     rt.events.emit(rt.eventHost, { type: 'settings.changed', change });
+    // the conversation open in the window; else the one used most recently, so it is seen next time
     const targets = new Set<Session>();
-    try {
-      targets.add(rt.top()); // a model is configured by now, so the main conversation can exist
-    } catch {
-      // still no usable model: the event is all there is
-    }
     try {
       const open = await bridge().host('ui.activeSession');
       const s = typeof open === 'string' && open ? rt.session(open) : undefined;
       if (s) targets.add(s);
     } catch {
       // the window does not say which conversation is open
+    }
+    if (targets.size === 0) {
+      try {
+        targets.add(rt.top()); // a model is configured by now, so a conversation can be started
+      } catch {
+        // still no usable model: the event is all there is
+      }
     }
     const what = {
       action: change.action,

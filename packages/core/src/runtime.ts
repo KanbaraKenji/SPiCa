@@ -11,6 +11,7 @@ import type { RelayRecord, SessionConfig, SessionRecord, Store } from './store/t
 import { agentTools } from './tools/agent-tools.ts';
 import { MailPipeline, triageMailTool, type MailConfig } from './mail.ts';
 import { projectTools } from './tools/project-tools.ts';
+import { historyTools } from './tools/history-tools.ts';
 import { createRunCommandTool } from './tools/command-tool.ts';
 import { createWebFetchTool, createWebSearchTool, type SearchBackend } from './tools/web-tools.ts';
 import { connectMcp, type McpServerConfig, type McpStdioClient } from './mcp/client.ts';
@@ -257,6 +258,7 @@ export class Runtime implements RuntimeInternals {
       createWebFetchTool({ userAgent: `${this.appName.replace(/[^A-Za-z0-9._-]+/g, '-') || 'Spica'}/0.1 (+agent web_fetch)` }),
       ...agentTools,
       ...projectTools,
+      ...historyTools,
       triageMailTool,
     ];
     for (const t of opts.tools ?? defaults) this.tools.register(t, 'core');
@@ -519,7 +521,11 @@ export class Runtime implements RuntimeInternals {
    * boundary if it is running (e.g. inside wait_agents) or right away if idle.
    */
   onRunEnd(session: Session, result: RunResult): void {
-    if (!session.parentId || result.reason !== 'completed') return;
+    if (result.reason !== 'completed') return;
+    if (!session.parentId) {
+      if (session.info().projectId) this.#managerReport(session, result.text || '(finished without a written report)');
+      return;
+    }
     const report = result.text || '(finished without a written report)';
     this.#reports.set(session.id, report);
     const parent = this.session(session.parentId);
@@ -531,6 +537,51 @@ export class Runtime implements RuntimeInternals {
     }
     this.events.emit({ sessionId: parent.id, parentChain: parent.parentChain }, { type: 'child.report', childId: session.id, summary: report.slice(0, 500) });
     parent.addNote('report', `[Report from sub-agent ${label(session)}]\n${report}`, { ...this.#noteMeta(session, 'report', report) });
+  }
+
+  /** Who asked a project manager something (message_agent from an assistant conversation): its next report goes there. */
+  readonly #askers = new Map<string, string>();
+
+  /** An assistant conversation asked `targetId` (a session that is not its own sub-agent) to do something. */
+  noteAsker(targetId: string, askerId: string): void {
+    this.#askers.set(targetId, askerId);
+  }
+
+  /**
+   * A project manager finished: the report goes into the project's activity,
+   * and back to the conversation that asked, if one did; otherwise it counts
+   * as an unread update of the project (the sidebar marks it; nothing pops up
+   * in other conversations).
+   */
+  #managerReport(session: Session, report: string): void {
+    this.#reports.set(session.id, report);
+    const projectId = session.info().projectId!;
+    this.logProjectActivity(session, 'manager.report', 'The project manager reported', session.info().title ?? undefined, report.slice(0, 500));
+    const askerId = this.#askers.get(session.id);
+    this.#askers.delete(session.id);
+    const asker = askerId ? this.session(askerId) : undefined;
+    if (asker) {
+      this.store.appendRelay(this.#relayRecord(asker.id, session.id, 'report', report));
+      this.events.emit({ sessionId: asker.id, parentChain: asker.parentChain }, { type: 'child.report', childId: session.id, summary: report.slice(0, 500) });
+      asker.addNote('report', `[Report from project manager ${label(session)}]\n${report}`, { ...this.#noteMeta(session, 'report', report) });
+      return;
+    }
+    const p = this.store.getProject(projectId);
+    if (!p) return;
+    const updated: ProjectInfo = { ...p, unread: (p.unread ?? 0) + 1, updatedAt: isoNow() };
+    this.store.upsertProject(updated);
+    this.events.emit(this.eventHost, { type: 'project.updated', project: updated });
+  }
+
+  /** The user looked at a project's updates: its unread count goes back to 0. */
+  markProjectRead(projectId: string): ProjectInfo {
+    const p = this.store.getProject(projectId);
+    if (!p) throw new Error(`unknown project: ${projectId}`);
+    if (!p.unread) return p;
+    const updated: ProjectInfo = { ...p, unread: 0 };
+    this.store.upsertProject(updated);
+    this.events.emit(this.eventHost, { type: 'project.updated', project: updated });
+    return updated;
   }
 
   /**
@@ -551,13 +602,18 @@ export class Runtime implements RuntimeInternals {
   // Projects: a folder + a persistent project-manager session under the top-level agent
   // ---------------------------------------------------------------------------
 
-  /** The single top-level agent session (created on first call). */
+  /**
+   * The assistant conversation used most recently (created when there is none).
+   * No conversation is special: every one outside a project is the assistant;
+   * this is only where something without a conversation of its own goes.
+   */
   top(): Session {
     return this.#existingTop() ?? this.createSession({ templateId: 'top' });
   }
 
   #existingTop(): Session | undefined {
-    return this.sessions().find((s) => s.info().role === 'top' && s.parentId === null && s.info().templateId === 'top');
+    const threads = this.sessions().filter((s) => s.info().role === 'top' && s.parentId === null && !s.info().projectId);
+    return threads.sort((a, b) => (a.info().updatedAt < b.info().updatedAt ? 1 : a.info().updatedAt > b.info().updatedAt ? -1 : 0))[0];
   }
 
   /**
@@ -566,7 +622,7 @@ export class Runtime implements RuntimeInternals {
    * that needs a configured model (a fresh install has none).
    */
   get eventHost(): { sessionId: string; parentChain: string[] } {
-    return { sessionId: this.#existingTop()?.id ?? '', parentChain: [] };
+    return { sessionId: '', parentChain: [] };
   }
 
   get workflows(): ReadonlyMap<string, WorkflowDef> {
@@ -578,7 +634,8 @@ export class Runtime implements RuntimeInternals {
     return this.#workflows.errors;
   }
 
-  createProject(req: CreateProjectRequest): ProjectInfo {
+  /** `askerId`: the conversation that created it gets the manager's report on the brief. */
+  createProject(req: CreateProjectRequest, opts: { askerId?: string } = {}): ProjectInfo {
     const name = req.name.trim();
     if (!name) throw new Error('a project needs a name');
     const rootDir = this.#opts.projectsRoot ?? this.#opts.cwd ?? process.cwd();
@@ -589,9 +646,9 @@ export class Runtime implements RuntimeInternals {
       if (!workflow) throw new Error(`unknown workflow "${req.workflowId}"; known: ${[...this.#workflows.workflows.keys()].join(', ') || 'none'}`);
     }
     mkdirSync(folder, { recursive: true });
-    const top = this.top();
     const id = newId('prj');
-    const manager = this.createSession({ parentId: top.id, templateId: 'project-manager', title: name, cwd: folder, projectId: id });
+    // a standing session of its own: no conversation is its parent; any assistant conversation can talk to it
+    const manager = this.createSession({ templateId: 'project-manager', title: name, cwd: folder, projectId: id });
     const now = isoNow();
     const project: ProjectInfo = {
       id,
@@ -605,7 +662,8 @@ export class Runtime implements RuntimeInternals {
       updatedAt: now,
     };
     this.store.upsertProject(project);
-    this.events.emit({ sessionId: top.id, parentChain: [] }, { type: 'project.created', project });
+    this.events.emit(this.eventHost, { type: 'project.created', project });
+    if (opts.askerId) this.noteAsker(manager.id, opts.askerId);
     if (req.brief?.trim()) manager.send(req.brief, { author: 'parent' });
     return project;
   }
@@ -1054,7 +1112,9 @@ export class Runtime implements RuntimeInternals {
         status = 'interrupted';
       }
       if (status === 'interrupted') interrupted.push(rec.id);
-      const record = status === rec.status ? rec : { ...rec, status, updatedAt: isoNow() };
+      let record = status === rec.status ? rec : { ...rec, status, updatedAt: isoNow() };
+      // older data: a project manager was a child of the default conversation; now it stands on its own (same id)
+      if (record.role === 'manager' && record.config.projectId && record.parentId) record = { ...record, parentId: null };
       if (record !== rec) this.store.upsertSession(record);
       const messages = this.store.listMessages(rec.id).map((m) => {
         if (m.meta?.partial !== true || m.meta.interrupted === true) return m;

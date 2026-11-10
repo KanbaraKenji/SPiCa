@@ -187,7 +187,7 @@ describe('AgentApi adapter', () => {
     const { rm } = await import('node:fs/promises');
     const p = await api.createProject!({ name: 'Via API', folder: `${tmpdir()}/spica-api-${Date.now()}` });
     expect((await api.listProjects!()).map((x) => x.id)).toEqual([p.id]);
-    expect((await api.getProject!(p.id))?.manager.parentId).toBe(top.id);
+    expect((await api.getProject!(p.id))?.manager.parentId).toBeNull(); // project managers stand on their own
     await rm(p.folder, { recursive: true, force: true });
   });
 });
