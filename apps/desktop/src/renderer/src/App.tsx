@@ -399,7 +399,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const modelOptions = models.flatMap((p) =>
     enabledModels(p.models).map((m) => {
       const marks = [isRef(pointers.default, p.id, m.id) ? '默认' : '', isRef(pointers.strong, p.id, m.id) ? '强模型' : ''].filter(Boolean).join(' · ');
-      return { providerId: p.id, model: m.id, group: `${p.name}${p.keyTail ? ` · 尾号 ${p.keyTail}` : ''}`, label: m.id, marks };
+      return { providerId: p.id, model: m.id, group: `${p.name}${p.keyMask ? ` · ${p.keyMask}` : ''}`, label: m.id, marks };
     }),
   );
   const using = session ? { providerId: session.providerId, model: session.model } : draft.providerId && draft.model ? { providerId: draft.providerId, model: draft.model } : null;

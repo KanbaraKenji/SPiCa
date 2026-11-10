@@ -12,7 +12,7 @@ const saved: ProviderView = {
   model: 'm',
   contextWindow: 128_000,
   hasSecret: true,
-  keyTail: '1234',
+  keyMask: 'sk-a****1234',
   models: [
     { id: 'm', contextWindow: 128_000, contextFrom: 'user' },
     { id: 'm-pro', contextWindow: null, contextFrom: 'user' },

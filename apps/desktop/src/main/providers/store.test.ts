@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { emptyDraft } from '../../shared/providers';
+import { emptyDraft, keyMaskParts, keyMaskText } from '../../shared/providers';
 import { ProviderStore, type SecretBox } from './store';
 import { createFakeTester } from './tester';
 
@@ -43,7 +43,7 @@ describe('ProviderStore', () => {
 
   it('a version 1 file becomes connections: same ids, model and strong model ticked, the default where it was', () => {
     const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
-    const sealed = box.encrypt('sk-old-9f3a');
+    const sealed = box.encrypt('sk-old-00000000000000000009f3a');
     writeFileSync(
       join(dir, 'providers.json'),
       JSON.stringify({
@@ -56,11 +56,11 @@ describe('ProviderStore', () => {
     );
     const store = new ProviderStore(dir, box);
     const [a, b] = store.list();
-    expect(a).toMatchObject({ id: 'p-a', models: [{ id: 'm-a', contextWindow: null }], keyTail: '9f3a', hasSecret: true });
+    expect(a).toMatchObject({ id: 'p-a', models: [{ id: 'm-a', contextWindow: null }], keyMask: 'sk-o****9f3a', hasSecret: true });
     expect(b).toMatchObject({ id: 'p-b', maxConcurrent: 2, models: [{ id: 'm-b', contextWindow: 64000 }, { id: 'm-b-pro', contextWindow: null }] });
     expect(store.defaultRef()).toEqual({ connectionId: 'p-b', model: 'm-b' });
     expect(store.strongRef()).toEqual({ connectionId: 'p-b', model: 'm-b-pro' });
-    expect(store.secretOf('p-a')).toBe('sk-old-9f3a');
+    expect(store.secretOf('p-a')).toBe('sk-old-00000000000000000009f3a');
     // Rewritten as version 2 once; reading it again gives the same.
     expect(JSON.parse(readFileSync(join(dir, 'providers.json'), 'utf8')).version).toBe(2);
     expect(new ProviderStore(dir, box).list()).toEqual(store.list());
@@ -92,11 +92,11 @@ describe('ProviderStore', () => {
     expect(again.models.map((m) => [m.id, m.enabled !== false])).toEqual([['flash', true], ['pro', false], ['later', false]]);
   });
 
-  it('a second key of the same provider is a second connection; each shows its key tail', () => {
+  it('a second key of the same provider is a second connection; each shows its first and last characters', () => {
     const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
-    const one = store.save({ ...draft, secret: 'sk-one-3f9a' });
-    const two = store.save({ ...draft, name: 'DeepSeek 2', secret: 'sk-two-81c2' });
-    expect([one.keyTail, two.keyTail]).toEqual(['3f9a', '81c2']);
+    const one = store.save({ ...draft, secret: 'sk-one-0000000000000000003f9a' });
+    const two = store.save({ ...draft, name: 'DeepSeek 2', secret: 'sk-two-0000000000000000081c2' });
+    expect([one.keyMask, two.keyMask]).toEqual(['sk-o****3f9a', 'sk-t****81c2']);
     expect(one.id).not.toBe(two.id);
   });
 
@@ -143,4 +143,9 @@ describe('local providers', () => {
     expect(store.save(local, { needsKey: false })).toMatchObject({ name: 'Ollama', hasSecret: false, catalogId: 'ollama' });
   });
 });
+  it('a key shows never more than a third of itself', () => {
+    expect(keyMaskText(keyMaskParts('sk-0123456789abcdef0123456789abcd3f9a'))).toBe('sk-0****3f9a');
+    expect(keyMaskText(keyMaskParts('ck-0123456789ab'))).toBe('****89ab');
+    expect(keyMaskText(keyMaskParts('short-key'))).toBe('****');
+  });
 });

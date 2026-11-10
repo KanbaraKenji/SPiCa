@@ -239,7 +239,7 @@ let providerProblems: Record<string, string> = {};
 
 /** Models from the developer's .env.local, shown read-only on the settings page. */
 function envProviders(): ProviderView[] {
-  const base = { strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: null, catalogId: null, hasSecret: true, keyTail: null, isDefault: false, readOnly: true };
+  const base = { strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: null, catalogId: null, hasSecret: true, keyMask: null, isDefault: false, readOnly: true };
   const one = (model: string): ConnectionModel[] => [{ id: model, contextWindow: null, contextFrom: 'catalog' }];
   const out: ProviderView[] = [];
   if (modelEnv.openai) out.push({ ...base, id: 'openai', kind: 'openai', name: '开发用模型（.env.local）', baseUrl: modelEnv.openai.baseUrl, model: modelEnv.openai.model, models: one(modelEnv.openai.model) });

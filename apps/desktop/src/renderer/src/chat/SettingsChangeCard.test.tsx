@@ -38,7 +38,7 @@ describe('settings-change card (connections)', () => {
     expect(rows(added)).toMatchObject({
       类型: '公司网关（WSO2）',
       网关地址: 'https://gateway.example.invalid/llm/v1',
-      'Consumer Key': '尾号 1234',
+      'Consumer Key': '****1234',
       'claude-sonnet-5-5': '上下文上限 1,000,000 token',
       'team/claude-opus-5-5': '上下文上限 1,000,000 token（按名称匹配）',
       'Consumer Secret': '已更新',

@@ -11,6 +11,8 @@ import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   enabledModels,
+  keyMaskParts,
+  keyMaskText,
   legacyModelFields,
   modelsOfDraft,
   validateDraft,
@@ -31,10 +33,11 @@ export interface SecretBox {
   decrypt(sealed: string): string;
 }
 
-/** A key as saved: sealed, and its last 4 characters to tell keys apart. A list, so one connection may hold several later. */
+/** A key as saved: sealed, and only the characters that may be shown (keyMaskParts). A list, so one connection may hold several later. */
 interface SavedKey {
   sealed: string;
   tail: string;
+  head?: string;
 }
 
 interface SavedConnection {
@@ -70,7 +73,6 @@ const FROM: ContextFrom[] = ['user', 'catalog', 'provider', 'name-match'];
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : null);
-const tailOf = (key: string) => key.trim().slice(-4);
 
 function sanitizeModels(v: unknown): ConnectionModel[] {
   if (!Array.isArray(v)) return [];
@@ -135,7 +137,8 @@ export class ProviderStore {
           ...baseFields(x),
           id: x.id as string,
           models: sanitizeModels(x.models),
-          keys: Array.isArray(x.keys) ? (x.keys as SavedKey[]).filter((k) => k && typeof k.sealed === 'string').map((k) => ({ sealed: k.sealed, tail: str(k.tail) })) : [],
+          // Saved before the first characters were kept: worked out once from the key.
+          keys: Array.isArray(x.keys) ? (x.keys as SavedKey[]).filter((k) => k && typeof k.sealed === 'string').map((k) => (typeof k.head === 'string' ? { sealed: k.sealed, tail: str(k.tail), head: k.head } : { sealed: k.sealed, ...this.#partsOfSealed(k.sealed) })) : [],
         })),
         default: sanitizeRef(raw.default),
         strong: sanitizeRef(raw.strong),
@@ -150,7 +153,7 @@ export class ProviderStore {
       if (model) models.push({ id: model, contextWindow: num(x.contextWindow), contextFrom: 'user' });
       if (strong && strong !== model) models.push({ id: strong, contextWindow: null, contextFrom: 'user' });
       const sealed = typeof x.secret === 'string' ? x.secret : '';
-      return { ...baseFields(x), id: x.id as string, models, keys: sealed ? [{ sealed, tail: this.#tailOfSealed(sealed) }] : [] };
+      return { ...baseFields(x), id: x.id as string, models, keys: sealed ? [{ sealed, ...this.#partsOfSealed(sealed) }] : [] };
     });
     const defId = typeof raw.defaultId === 'string' ? raw.defaultId : null;
     const def = items.find((p) => p.id === defId);
@@ -169,11 +172,11 @@ export class ProviderStore {
     this.#write();
   }
 
-  #tailOfSealed(sealed: string): string {
+  #partsOfSealed(sealed: string): { head: string; tail: string } {
     try {
-      return tailOf(this.#box.decrypt(sealed));
+      return keyMaskParts(this.#box.decrypt(sealed));
     } catch {
-      return '';
+      return { head: '', tail: '' };
     }
   }
 
@@ -221,7 +224,7 @@ export class ProviderStore {
     const typed = draft.secret?.trim();
     if (typed) {
       if (!this.#box.available()) throw new Error('无法加密保存密钥，未保存。');
-      keys = [{ sealed: this.#box.encrypt(typed), tail: tailOf(typed) }];
+      keys = [{ sealed: this.#box.encrypt(typed), ...keyMaskParts(typed) }];
     }
     const saved: SavedConnection = {
       ...baseFields(draft as unknown as Record<string, unknown>),
@@ -317,7 +320,7 @@ export class ProviderStore {
       ...fields,
       ...legacyModelFields(p.models),
       hasSecret: keys.length > 0,
-      keyTail: keys[0]?.tail || null,
+      keyMask: keys[0] ? keyMaskText({ head: keys[0].head ?? '', tail: keys[0].tail }) : null,
       isDefault: this.defaultId() === p.id,
     };
   }

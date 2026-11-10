@@ -75,7 +75,7 @@ export function settingsChangeRows(c: SettingsChangeMeta): { label: string; valu
     add('kind', KIND[c.kind]);
     add('baseUrl', c.baseUrl);
     add('tokenUrl', c.tokenUrl);
-    add('consumerKey', c.consumerKey ? `尾号 ${c.consumerKey.replace(/^…/, '')}` : undefined, all || changed.has('consumerKey') || changed.has('clientId'));
+    add('consumerKey', c.consumerKey ? `****${c.consumerKey.replace(/^…/, '')}` : undefined, all || changed.has('consumerKey') || changed.has('clientId'));
     add('scope', c.scope ?? undefined);
     if (c.addedModels?.length && !all) rows.push({ label: '新增模型', value: c.addedModels.join('、') });
     if (c.enabledModels?.length) rows.push({ label: '启用模型', value: c.enabledModels.join('、') });

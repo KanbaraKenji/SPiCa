@@ -61,7 +61,7 @@ const WSO2 = '#wso2';
 const RELAY = '#relay';
 
 function draftFrom(p: ProviderView): ProviderDraft {
-  const { hasSecret: _h, isDefault: _d, readOnly: _r, keyTail: _t, ...fields } = p;
+  const { hasSecret: _h, isDefault: _d, readOnly: _r, keyMask: _t, ...fields } = p;
   void _h;
   void _d;
   void _r;
@@ -426,7 +426,7 @@ export function Models({ api }: { api: ProvidersApi }) {
   const groups = items
     .filter((p) => enabledModels(p.models).length)
     .map((p) => ({
-      label: `${p.name}${p.keyTail ? ` · 尾号 ${p.keyTail}` : ''}`,
+      label: `${p.name}${p.keyMask ? ` · ${p.keyMask}` : ''}`,
       // 「名称 · 模型」 open and closed: two connections of one provider can carry the same model.
       options: enabledModels(p.models).map((m) => ({ key: refKey({ connectionId: p.id, model: m.id }), model: `${p.name} · ${m.id}` })),
     }));
@@ -529,7 +529,7 @@ export function Models({ api }: { api: ProvidersApi }) {
             <button type="button" className="provider-open" onClick={() => open(p)} aria-current={selected === p.id ? 'true' : undefined}>
               <span className="provider-name">
                 {p.name}
-                {p.keyTail ? <span className="provider-tail">· 尾号 {p.keyTail}</span> : null}
+                {p.keyMask ? <span className="provider-tail">{p.keyMask}</span> : null}
               </span>
               <span className="provider-sub">
                 {kindLabel(p.kind)} · {enabledModels(p.models).length > 1 ? `${enabledModels(p.models).length} 个模型：${enabledModels(p.models).map((m) => m.id).join('、')}` : (enabledModels(p.models)[0]?.id ?? '—')}

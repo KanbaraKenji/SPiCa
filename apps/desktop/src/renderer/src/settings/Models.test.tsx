@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { Models, type ProvidersApi } from './Models';
 import type { ProviderList } from '../../../shared/bridge';
 import type { ModelCatalogView } from '../../../shared/catalog';
-import { emptyDraft, type ProviderDraft, type ProviderView } from '../../../shared/providers';
+import { emptyDraft, keyMaskParts, keyMaskText, type ProviderDraft, type ProviderView } from '../../../shared/providers';
 import { dropAllDrafts } from './drafts';
 
 afterEach(() => {
@@ -42,7 +42,7 @@ function fakeApi(initial: ProviderView[] = []) {
       const { secret, ...fields } = d;
       const id = d.id ?? `p-${items.length + 1}`;
       const models = fields.models ?? [];
-      const view: ProviderView = { ...fields, models, id, keyTail: secret ? secret.slice(-4) : null, hasSecret: Boolean(secret) || Boolean(items.find((i) => i.id === id)?.hasSecret), isDefault: items.length === 0 };
+      const view: ProviderView = { ...fields, models, id, keyMask: secret ? keyMaskText(keyMaskParts(secret)) : null, hasSecret: Boolean(secret) || Boolean(items.find((i) => i.id === id)?.hasSecret), isDefault: items.length === 0 };
       items = d.id ? items.map((i) => (i.id === id ? view : i)) : [...items, view];
       return list();
     }),
@@ -65,7 +65,7 @@ const saved = (over: Partial<ProviderView> = {}): ProviderView => ({
   baseUrl: 'https://a.example.com/v1',
   model: 'm',
   contextWindow: 128_000,
-  keyTail: null,
+  keyMask: null,
   models: [{ id: 'm', contextWindow: 128_000, contextFrom: 'user' }],
   hasSecret: true,
   isDefault: true,
@@ -176,14 +176,15 @@ describe('Models', () => {
   it('tests, saves, and then keeps the key hidden', async () => {
     const api = await openNew();
     choose('deepseek');
-    type('API Key', 'sk-1234');
+    type('API Key', 'sk-abcdefghijklmnopqrstu1234');
     fireEvent.click(screen.getByRole('button', { name: '测试连接' }));
     expect(await screen.findByText('连接成功：模型「m」。')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     expect(await screen.findByText('已保存')).toBeTruthy();
     expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ catalogId: 'deepseek', model: 'deepseek-flash', contextWindow: 128_000 }));
     expect(screen.getByRole('button', { name: /DeepSeek/ })).toBeTruthy();
-    expect(screen.getByText('· 尾号 1234')).toBeTruthy();
+    // First and last characters, the middle hidden.
+    expect(screen.getByText('sk-a****1234')).toBeTruthy();
     expect((byLabel('API Key') as HTMLInputElement).value).toBe('');
     expect((byLabel('API Key') as HTMLInputElement).placeholder).toBe('已保存（留空不修改）');
   });
@@ -322,15 +323,15 @@ describe('Models', () => {
 
   it('默认模型 / 强模型 list every selected model by connection and set the pointers', async () => {
     const conn = (id: string, name: string, tail: string, models: string[]): ProviderView =>
-      saved({ id, name, keyTail: tail, model: models[0]!, models: models.map((m) => ({ id: m, contextWindow: 1000, contextFrom: 'catalog' as const })), isDefault: id === 'p-1' });
-    const items = [conn('p-1', 'DeepSeek', '3f9a', ['deepseek-flash', 'deepseek-v4-pro']), conn('p-2', 'DeepSeek 2', '81c2', ['deepseek-flash'])];
+      saved({ id, name, keyMask: tail, model: models[0]!, models: models.map((m) => ({ id: m, contextWindow: 1000, contextFrom: 'catalog' as const })), isDefault: id === 'p-1' });
+    const items = [conn('p-1', 'DeepSeek', 'sk-a****3f9a', ['deepseek-flash', 'deepseek-v4-pro']), conn('p-2', 'DeepSeek 2', 'sk-b****81c2', ['deepseek-flash'])];
     const api = fakeApi(items);
     const list = { items, problems: {}, default: { connectionId: 'p-1', model: 'deepseek-flash' }, strong: null };
     api.list = vi.fn(async () => list);
     api.setPointer = vi.fn(async () => list);
     render(<Models api={api} />);
     const def = (await screen.findByLabelText('默认模型')) as HTMLSelectElement;
-    expect([...def.querySelectorAll('optgroup')].map((g) => g.label)).toEqual(['DeepSeek · 尾号 3f9a', 'DeepSeek 2 · 尾号 81c2']);
+    expect([...def.querySelectorAll('optgroup')].map((g) => g.label)).toEqual(['DeepSeek · sk-a****3f9a', 'DeepSeek 2 · sk-b****81c2']);
     // Closed, it still says which connection: two can carry the same model.
     expect(def.selectedOptions[0]?.textContent).toBe('DeepSeek · deepseek-flash');
     const strong = screen.getByLabelText('强模型') as HTMLSelectElement;

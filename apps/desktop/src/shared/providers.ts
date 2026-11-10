@@ -57,6 +57,20 @@ export interface ConnectionModel {
   enabled?: boolean;
 }
 
+/**
+ * The characters of a key that may be shown (他 2026-11-10: 「也要首位+末尾」), never more than a
+ * third of it: 24 characters or more → the first 4 and the last 4; 12–23 → the last 4; shorter → none.
+ */
+export function keyMaskParts(key: string): { head: string; tail: string } {
+  const k = key.trim();
+  return { head: k.length >= 24 ? k.slice(0, 4) : '', tail: k.length >= 12 ? k.slice(-4) : '' };
+}
+
+/** 「sk-a****3f9a」, 「****3f9a」 or 「****」. */
+export function keyMaskText(parts: { head: string; tail: string }): string {
+  return `${parts.head}****${parts.tail}`;
+}
+
 /** In use (checked in the connection's list). */
 export function isEnabled(m: Pick<ConnectionModel, 'enabled'>): boolean {
   return m.enabled !== false;
@@ -81,8 +95,8 @@ export interface ModelRef {
 export interface ProviderView extends ProviderFields {
   id: string;
   hasSecret: boolean;
-  /** The last 4 characters of its key (tells two keys of one provider apart); null without one. */
-  keyTail: string | null;
+  /** Its key as shown: first and last characters with **** between (keyMaskParts); null without one. */
+  keyMask: string | null;
   /** The models ticked under this connection. */
   models: ConnectionModel[];
   /** Holds the model new conversations use. */

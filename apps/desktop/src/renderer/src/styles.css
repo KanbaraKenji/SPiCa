@@ -2139,6 +2139,7 @@ button.tree-twisty:hover {
 
 .provider-tail {
   margin-left: 6px;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 400;
   color: var(--spica-faint);
