@@ -70,7 +70,7 @@ function Developer({ settings, onChange, localConnect }: GeneralProps) {
           <div className="setting-text">
             <span className="setting-title path-text">{shown ? shown.url : '正在打开…'}</span>
             {shown?.tokenFile ? (
-              <span className="settings-hint path-text" title={shown.tokenFile}>
+              <span className="settings-hint path-text" title={shown.tokenFile} data-tip-clipped="">
                 令牌文件 {shown.tokenFile}
               </span>
             ) : null}
@@ -156,7 +156,7 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
       <div className="setting-row net-ca">
         <div className="setting-text">
           <span className="setting-title">信任的证书文件</span>
-          <span className="settings-hint path-text" title={saved.caFile}>
+          <span className="settings-hint path-text" title={saved.caFile} data-tip-clipped="">
             {saved.caFile || '无'}
           </span>
         </div>
@@ -285,7 +285,7 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
         <div className="setting-row usage-result">
           <div className="setting-text">
             <span className="setting-title">{result.records ? `已导出 ${result.records.toLocaleString('zh-CN')} 条记录` : '该时间段没有记录。'}</span>
-            <span className="settings-hint path-text" title={result.file}>
+            <span className="settings-hint path-text" title={result.file} data-tip-clipped="">
               {result.file}
             </span>
           </div>

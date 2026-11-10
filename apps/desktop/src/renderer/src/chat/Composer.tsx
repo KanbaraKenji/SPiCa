@@ -166,7 +166,7 @@ function ModelChip({ model, pictures, buttonRef, onOpen }: { model: ModelTool; p
   );
   if (model.options.length <= 1) {
     return (
-      <span className="composer-label composer-model" title={full}>
+      <span className="composer-label composer-model" title={full} data-tip-clipped=".composer-model-text">
         {body}
       </span>
     );

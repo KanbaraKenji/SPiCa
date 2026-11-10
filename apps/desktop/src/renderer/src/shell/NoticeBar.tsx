@@ -100,7 +100,7 @@ export function NoticeBar({ backend, onRetryBackend, update, settings, onInstall
   if (!notice) return null;
   return (
     <div className={notice.level === 'warning' ? 'notice-bar is-warning' : 'notice-bar'} role="status">
-      <span className="notice-text" title={notice.text}>
+      <span className="notice-text" title={notice.text} data-tip-clipped="">
         {notice.text}
       </span>
       {notice.link ? (

@@ -85,7 +85,8 @@ export function ContextMenu({ x, y, items, onClose, anchor }: { x: number; y: nu
             role="menuitem"
             className={it.danger ? 'context-item is-danger' : 'context-item'}
             aria-disabled={it.disabled || undefined}
-            {...(it.title ? { title: it.title } : {})}
+            // Its own note (why it cannot be picked), else the label when it is cut short.
+            {...(it.title ? { title: it.title } : { title: it.label, 'data-tip-clipped': '.context-item-label' })}
             onClick={() => {
               if (it.disabled) return;
               onClose();

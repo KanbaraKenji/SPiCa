@@ -177,6 +177,7 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
             }}
             aria-current={active ? 'page' : undefined}
             title={name}
+            data-tip-clipped=".tree-title"
           >
             <span className="tree-title">{name}</span>
             {s.projectId && tree.pinned.has(s.projectId) ? (
@@ -403,7 +404,7 @@ export function Sidebar({
         <section className="tree-section side-plugins" aria-label="插件">
           <h2 className="tree-heading">插件</h2>
           {pluginPages.map((p) => (
-            <button key={p.key} type="button" className={p.open ? 'side-action is-active' : 'side-action'} onClick={p.onOpen} aria-current={p.open ? 'page' : undefined} title={p.title}>
+            <button key={p.key} type="button" className={p.open ? 'side-action is-active' : 'side-action'} onClick={p.onOpen} aria-current={p.open ? 'page' : undefined} title={p.title} data-tip-clipped=".side-action-text">
               {p.icon ? <img className="side-plugin-icon" src={p.icon} alt="" /> : <Icon name="plugin" />}
               <span className="side-action-text">{p.title}</span>
             </button>

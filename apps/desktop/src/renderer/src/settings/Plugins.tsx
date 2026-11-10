@@ -243,7 +243,7 @@ function PluginDetail({
         {p.source ? (
           <>
             <dt>来源</dt>
-            <dd className="detail-path" title={p.source.location}>
+            <dd className="detail-path" title={p.source.location} data-tip-clipped="">
               {p.source.location}
             </dd>
           </>
@@ -543,7 +543,7 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
           </div>
           <p className="plugin-root">
             <span className="settings-hint">插件目录</span>
-            <span className="detail-path" title={state.root}>
+            <span className="detail-path" title={state.root} data-tip-clipped="">
               {state.root}
             </span>
             <button type="button" className="icon-btn" onClick={() => void run({ op: 'openRoot' })} aria-label="打开文件夹" title="打开文件夹">

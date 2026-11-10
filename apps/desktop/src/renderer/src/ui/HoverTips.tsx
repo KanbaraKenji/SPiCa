@@ -4,6 +4,10 @@
 // for a button to get it. While the bubble is up the element's `title` is held
 // back (so Windows does not show its own as well) and put back on leaving, so
 // the DOM reads as before. Also on keyboard focus (focus-visible).
+// An element whose note only repeats its own text (a name that may be cut short)
+// carries `data-tip-clipped`: the bubble shows only while that text is cut off
+// with an ellipsis. Its value is the selector of the child holding the text
+// ('' = the element itself).
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 const DELAY_MS = 250;
@@ -16,6 +20,16 @@ interface Tip {
 }
 
 const tipOf = (el: HTMLElement) => el.getAttribute('data-tip') ?? el.dataset.heldTitle ?? el.getAttribute('title') ?? '';
+
+/** For `data-tip-clipped`: whether the text is cut short now (wider than its box). Without the mark: always shown. */
+export function tipWanted(el: HTMLElement): boolean {
+  const sel = el.getAttribute('data-tip-clipped');
+  if (sel === null) return true;
+  const box = (sel ? el.querySelector<HTMLElement>(sel) : null) ?? el;
+  // Not shown at all (a narrow window shows an icon instead): the note is the only way to read it.
+  if (box.getClientRects().length === 0) return true;
+  return box.scrollWidth > box.clientWidth + 1;
+}
 
 export function HoverTips() {
   const [tip, setTip] = useState<Tip | null>(null);
@@ -52,7 +66,9 @@ export function HoverTips() {
       // iframes name themselves with title for screen readers; that is not a note.
       if (el.tagName === 'IFRAME') return;
       current = el;
+      // Held either way, so Windows does not show its own note for a name shown in full.
       hold(el);
+      if (!tipWanted(el)) return;
       timer = setTimeout(() => {
         if (current === el && el.isConnected) setTip({ text: tipOf(el), rect: el.getBoundingClientRect() });
       }, wait);

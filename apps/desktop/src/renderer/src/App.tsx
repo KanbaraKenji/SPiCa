@@ -680,7 +680,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               <Icon name="chevronRight" size={12} className="crumb-sep" />
             </>
           ) : null}
-          <span className="titlebar-text" title={title}>
+          <span className="titlebar-text" title={title} data-tip-clipped="">
             {title}
           </span>
         </div>
