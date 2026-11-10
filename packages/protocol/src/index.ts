@@ -352,7 +352,8 @@ export interface SessionInfo {
   contextWindow?: number | null;
   /**
    * The user can still choose a working folder for this conversation (setSessionCwd): it works in its own folder in
-   * the app data because none was chosen, and it is not part of a project. Once chosen it cannot change again.
+   * the app data because none was chosen (or, from 0.1.0-rc.2 and before, in the folder all conversations shared),
+   * and it is not part of a project. Once chosen it cannot change again.
    * (A running conversation is refused with `cwd.busy`: also look at `status`.)
    */
   canChooseCwd?: boolean;
@@ -366,6 +367,11 @@ export interface CwdChangeMeta {
   moved: { from: string; to: string }[];
   /** The moved files that got another name because one of the same name was already there. */
   renamed: { from: string; to: string }[];
+  /**
+   * Nothing was moved: the conversation worked in the folder every conversation shared in an earlier version
+   * (0.1.0-rc.2 and before), and its files stay there (this folder; `moved` and `renamed` are empty).
+   */
+  filesStayIn?: string;
 }
 
 /**
@@ -375,7 +381,7 @@ export interface CwdChangeMeta {
  * everything was put back (except `notRestored`) and the working folder is unchanged.
  */
 export type SetCwdResult =
-  | { ok: true; info: SessionInfo; moved: { from: string; to: string }[]; renamed: { from: string; to: string }[] }
+  | { ok: true; info: SessionInfo; moved: { from: string; to: string }[]; renamed: { from: string; to: string }[]; filesStayIn?: string }
   | { ok: false; code: 'cwd.not_changeable' | 'cwd.busy' | 'cwd.bad_folder' | 'cwd.move_failed'; message: string; file?: string; notRestored?: string[] };
 
 /**

@@ -31,6 +31,7 @@ import { IMAGE_LIMITS, imageTokens, prepareImage, REQUEST_IMAGE_LIMITS, sniffIma
 import { closeSync, openSync, readSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.ts';
+import { samePath } from './move-folder.ts';
 
 export interface RunResult {
   reason: RunEndReason;
@@ -146,9 +147,10 @@ export class Session {
   /** Still in its own folder because none was chosen, and not part of a project (see setSessionCwd). */
   #canChooseCwd(): boolean {
     const r = this.#record;
-    const own = this.#rt.ownFolder(r.id);
     const userThread = r.role === 'top' && (r.config.templateId === undefined || r.config.templateId === 'top');
-    return !!own && r.parentId === null && !r.config.projectId && userThread && r.config.cwd === own;
+    // its own folder, or the folder every conversation shared in earlier versions (not chosen by the user either)
+    const unchosen = samePath(r.config.cwd, this.#rt.ownFolder(r.id)) || samePath(r.config.cwd, this.#rt.legacyDefaultCwd);
+    return r.parentId === null && !r.config.projectId && userThread && unchosen;
   }
 
   /** A run, or a confirmation or question waiting for the user. */

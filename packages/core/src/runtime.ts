@@ -44,7 +44,7 @@ import type {
 import { existsSync, mkdirSync, rmdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { moveFolderContents, removeEmptyTree, within } from './move-folder.ts';
+import { moveFolderContents, removeEmptyTree, samePath, within } from './move-folder.ts';
 import { newId, redact } from './util.ts';
 import { exportUsageLog, type UsageLogFilter } from './export.ts';
 import { BUILTIN_TEMPLATES, loadWorkflows, type RoleTemplate } from './projects.ts';
@@ -102,6 +102,12 @@ export interface RuntimeOptions {
   /** Where attached images are kept (one folder per conversation, deleted with it). Default: the temp folder. */
   mediaDir?: string;
   /**
+   * The folder every conversation without a chosen one shared up to 0.1.0-rc.2 (the desktop app: Documents/<app>).
+   * A user's conversation still working there counts as not having chosen one (canChooseCwd); choosing one later
+   * leaves the files there (it cannot be told which conversation made them).
+   */
+  legacyDefaultCwd?: string;
+  /**
    * A conversation started without a folder (not in a project, not a sub-agent)
    * works in its own folder here: <sessionFilesDir>/<session id>/files, made on
    * creation. Without it such conversations use `cwd`.
@@ -118,6 +124,8 @@ export interface RuntimeInternals {
   mediaDir(sessionId: string): string;
   /** The folder a conversation without a chosen one works in (in the app data); undefined when there are none. */
   ownFolder(sessionId: string): string | undefined;
+  /** The shared folder of older versions a conversation may still work in (RuntimeOptions.legacyDefaultCwd). */
+  readonly legacyDefaultCwd: string | undefined;
   /** true / false when the catalog says whether the model takes images (or it refused them before); undefined: unknown, send them. */
   imagesAllowed(providerId: string, model: string): boolean | undefined;
   /** The provider refused images for this model: later requests to it leave the images out. */
@@ -215,6 +223,10 @@ export class Runtime implements RuntimeInternals {
   readonly sampler = new PluginSampler(this);
 
   readonly #noImages = new Set<string>();
+
+  get legacyDefaultCwd(): string | undefined {
+    return this.#opts.legacyDefaultCwd;
+  }
 
   /** The folder a conversation without a chosen one works in: <sessionFilesDir>/<id>/files. */
   ownFolder(sessionId: string): string | undefined {
@@ -938,13 +950,32 @@ export class Runtime implements RuntimeInternals {
     if (!s.info().canChooseCwd) {
       return { ok: false, code: 'cwd.not_changeable', message: 'This conversation already has its working folder (chosen before, or part of a project).' };
     }
-    const src = this.ownFolder(sessionId)!;
+    // its own folder (its files move along), or the folder older versions shared (its files stay)
+    const src = s.config.cwd;
+    const shared = !samePath(src, this.ownFolder(sessionId));
     const tree = [...this.#withDescendants([sessionId])].map((id) => this.session(id)).filter((x): x is Session => !!x);
     if (tree.some((x) => x.busy)) return { ok: false, code: 'cwd.busy', message: 'The conversation is running or waits for an answer; choose the folder when it is done.' };
     const dest = resolve(folder);
     if (!isAbsolute(folder)) return { ok: false, code: 'cwd.bad_folder', message: `Not an absolute path: ${folder}` };
-    if (within(src, dest) || within(dest, src)) return { ok: false, code: 'cwd.bad_folder', message: `${dest} is the conversation's own folder or holds it.` };
+    if (!shared && (within(src, dest) || within(dest, src))) return { ok: false, code: 'cwd.bad_folder', message: `${dest} is the conversation's own folder or holds it.` };
     if (existsSync(dest) && !statSync(dest).isDirectory()) return { ok: false, code: 'cwd.bad_folder', message: `${dest} is a file, not a folder.` };
+    if (shared) {
+      try {
+        mkdirSync(dest, { recursive: true });
+      } catch (err) {
+        return { ok: false, code: 'cwd.bad_folder', message: `Cannot make ${dest}: ${err instanceof Error ? err.message : String(err)}` };
+      }
+      const change: CwdChangeMeta = { from: src, to: dest, moved: [], renamed: [], filesStayIn: src };
+      const what =
+        `The files from before stay where they were, in ${src} (the folder every conversation shared in an earlier version; nothing was moved): ` +
+        `relative paths in earlier messages mean files in ${src}, so give their full path from now on.`;
+      for (const x of tree) {
+        if (!samePath(x.config.cwd, src)) continue;
+        x.setCwd(dest);
+        x.addNote('note', `[The user chose the working folder for this conversation: ${dest}. ${what}]`, { author: 'runtime', cwdChange: change });
+      }
+      return { ok: true, info: s.info(), moved: [], renamed: [], filesStayIn: src };
+    }
     const res = moveFolderContents(src, dest);
     if (!res.ok) {
       const left = res.notRestored.length ? ` Could not put back: ${res.notRestored.join(', ')} (still in ${dest}).` : '';

@@ -6,7 +6,7 @@
 // removed again. Synchronous on purpose: nothing else in the process can
 // write into the folder while it runs.
 import { copyFileSync, constants, existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, unlinkSync } from 'node:fs';
-import { dirname, extname, join, relative } from 'node:path';
+import { dirname, extname, join, relative, resolve } from 'node:path';
 
 export interface MovePlanItem {
   /** Relative to the source folder. */
@@ -130,6 +130,13 @@ export function removeEmptyTree(root: string): boolean {
   for (const d of dirs.reverse()) rmdirSync(join(root, d));
   rmdirSync(root);
   return true;
+}
+
+/** The same folder (Windows and macOS: any case); false when either is missing. */
+export function samePath(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  const norm = (p: string) => resolve(p).replace(/[\\/]+$/, '');
+  return process.platform === 'win32' || process.platform === 'darwin' ? norm(a).toLowerCase() === norm(b).toLowerCase() : norm(a) === norm(b);
 }
 
 /** `child` is `parent` or inside it. */

@@ -103,6 +103,19 @@ describe('FakeBackend', () => {
     b.dispose();
   });
 
+  it('a conversation in the folder older versions shared chooses one once and its files stay; one in another folder does not', async () => {
+    const shared = 'C:\\Users\\me\\Documents\\Spica';
+    const b = new FakeBackend({ speed: 0, seed: false, legacyDefaultCwd: shared });
+    const old = await b.createSession({ cwd: shared });
+    const picked = await b.createSession({ cwd: 'D:\\picked' });
+    expect([old.canChooseCwd, picked.canChooseCwd]).toEqual([true, false]);
+    expect(await b.setSessionCwd(old.id, 'D:\\工作')).toMatchObject({ ok: true, moved: [], renamed: [], filesStayIn: shared, info: { cwd: 'D:\\工作', canChooseCwd: false } });
+    expect(await b.setSessionCwd(picked.id, 'D:\\工作')).toMatchObject({ ok: false, code: 'cwd.not_changeable' });
+    const fresh = await b.createSession({});
+    expect((await b.setSessionCwd(fresh.id, 'D:\\新')) as { filesStayIn?: string }).not.toHaveProperty('filesStayIn');
+    b.dispose();
+  });
+
   it('deletes a conversation with its sub-agents; a project manager only with its project', async () => {
     const b = new FakeBackend({ speed: 0 });
     const { events } = collect(b);

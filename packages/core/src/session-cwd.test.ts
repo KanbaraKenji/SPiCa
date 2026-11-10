@@ -170,3 +170,49 @@ describe('choosing the working folder later', () => {
     await rt.close();
   });
 });
+
+describe('conversations from 0.1.0-rc.2 and before (all in one shared folder)', () => {
+  it('one still in the shared folder chooses a folder once; nothing moves; the note names the old folder; one with a chosen folder stays locked; also after reopening', async () => {
+    gw.onRequest(() => ({ text: 'ok' }));
+    const shared = join(dir, 'Documents', 'Spica');
+    const path = join(dir, 'db', 'spica.db');
+    const opts = { cwd: join(dir, 'work'), sessionFilesDir: join(dir, 'data', 'sessions'), projectsRoot: join(dir, 'p'), legacyDefaultCwd: shared };
+    const rt = makeRuntime(gw, { ...opts, store: new SqliteStore(path) });
+    // as rc.2 made them: the shared folder, or one the user picked
+    const old = rt.createSession({ cwd: shared });
+    const other = rt.createSession({ cwd: shared });
+    const picked = rt.createSession({ cwd: join(dir, 'Picked') });
+    const child = rt.createSession({ parentId: old.id });
+    put(join(shared, 'notes.md'), 'from rc.2');
+    await old.send('earlier').done;
+    expect([old.info().canChooseCwd, picked.info().canChooseCwd, child.info().canChooseCwd]).toEqual([true, false, false]);
+    expect(rt.createSession({ cwd: join(dir, 'Documents', 'SPICA') }).info().canChooseCwd).toBe(process.platform === 'win32' || process.platform === 'darwin');
+
+    const target = join(dir, 'Work', 'Old');
+    const res = await createAgentApi(rt).setSessionCwd!(old.id, target);
+    expect(res).toMatchObject({ ok: true, moved: [], renamed: [], filesStayIn: shared, info: { cwd: target, canChooseCwd: false } });
+    expect(readFileSync(join(shared, 'notes.md'), 'utf8')).toBe('from rc.2'); // nothing moved
+    expect(existsSync(target)).toBe(true);
+    expect(child.config.cwd).toBe(target);
+    const note = old.messages().at(-1)!;
+    expect(note).toMatchObject({ kind: 'note', meta: { cwdChange: { from: shared, to: target, moved: [], renamed: [], filesStayIn: shared } } });
+    const said = JSON.stringify(note.content);
+    expect(said).toContain(`stay where they were, in ${JSON.stringify(shared).slice(1, -1)}`);
+    expect(said).toContain('give their full path');
+    expect(await createAgentApi(rt).setSessionCwd!(old.id, join(dir, 'Again'))).toMatchObject({ ok: false, code: 'cwd.not_changeable' });
+    expect(await createAgentApi(rt).setSessionCwd!(picked.id, join(dir, 'Again'))).toMatchObject({ ok: false, code: 'cwd.not_changeable' });
+    // a folder inside the shared one is fine (nothing moves)
+    expect(await createAgentApi(rt).setSessionCwd!(other.id, join(shared, 'sub'))).toMatchObject({ ok: true, filesStayIn: shared });
+    await rt.close();
+
+    const again = makeRuntime(gw, { ...opts, store: new SqliteStore(path) });
+    again.restore();
+    expect(again.session(old.id)!.info()).toMatchObject({ cwd: target, canChooseCwd: false });
+    expect(again.session(picked.id)!.info().canChooseCwd).toBe(false);
+    await again.close();
+    // without the setting (no older version to know about) the shared folder is just a chosen folder
+    const plain = makeRuntime(gw, { cwd: dir, sessionFilesDir: join(dir, 'data', 'sessions') });
+    expect(plain.createSession({ cwd: shared }).info().canChooseCwd).toBe(false);
+    await plain.close();
+  });
+});

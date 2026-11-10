@@ -36,6 +36,8 @@ export interface FakeBackendOptions {
   seed?: boolean;
   /** Clock, for deterministic screenshots and tests. */
   now?: () => Date;
+  /** Like the core's: the folder all conversations shared up to 0.1.0-rc.2; ones there choose a folder once, their files stay. */
+  legacyDefaultCwd?: string;
 }
 
 type Listener = (event: CoreEvent) => void;
@@ -64,6 +66,7 @@ export function chunk(text: string, size = 3): string[] {
 export class FakeBackend implements AgentBackend {
   readonly #speed: number;
   readonly #now: () => Date;
+  readonly #legacyCwd: string | undefined;
   #seq = 0;
   #ids = 0;
   #listeners = new Set<Listener>();
@@ -78,6 +81,7 @@ export class FakeBackend implements AgentBackend {
   constructor(options: FakeBackendOptions = {}) {
     this.#speed = options.speed ?? 1;
     this.#now = options.now ?? (() => new Date());
+    this.#legacyCwd = options.legacyDefaultCwd;
     this.#mail = new FakeMailbox(
       this.#now,
       (sid, body) => this.#emit(sid, body),
@@ -87,7 +91,7 @@ export class FakeBackend implements AgentBackend {
     );
     if (options.seed ?? true) {
       const seed = buildSeed(this.#now());
-      for (const s of seed.sessions) this.#sessions.set(s.id, { ...s, canChooseCwd: s.role === 'top' && !s.parentId && !s.cwd });
+      for (const s of seed.sessions) this.#sessions.set(s.id, { ...s, canChooseCwd: s.role === 'top' && !s.parentId && (!s.cwd || s.cwd === this.#legacyCwd) });
       for (const [id, list] of Object.entries(seed.messages)) this.#messages.set(id, list);
       for (const [id, list] of Object.entries(seed.pending)) this.#pending.set(id, list);
       this.#ids = 1000;
@@ -186,7 +190,7 @@ export class FakeBackend implements AgentBackend {
       contextWindow: null,
       createdAt: at,
       updatedAt: at,
-      canChooseCwd: role === 'top' && !parent && !req.cwd && !req.projectId,
+      canChooseCwd: role === 'top' && !parent && !req.projectId && (!req.cwd || req.cwd === this.#legacyCwd),
     };
     this.#sessions.set(info.id, info);
     this.#messages.set(info.id, []);
@@ -388,7 +392,8 @@ export class FakeBackend implements AgentBackend {
       Object.assign(x, { cwd: folder, canChooseCwd: false });
       this.#emit(x.id, { type: 'session.updated', info: structuredClone(x) });
     }
-    return { ok: true, info: structuredClone(s), moved: [], renamed: [] };
+    // the folder of older versions keeps its files (as in the core)
+    return { ok: true, info: structuredClone(s), moved: [], renamed: [], ...(old && old === this.#legacyCwd ? { filesStayIn: old } : {}) };
   }
 
   /** Like the core: the conversation and its sub-agents go, a project manager only with its project. */

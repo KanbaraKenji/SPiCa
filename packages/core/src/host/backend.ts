@@ -76,6 +76,11 @@ export interface BackendConfig {
   /** strongModel: the model for heavy work (plugins that ask for a strong model get it), on the default provider or on strongProviderId. */
   defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; strongModel?: string; strongProviderId?: string };
   cwd?: string;
+  /**
+   * The folder every conversation without a chosen one shared up to 0.1.0-rc.2 (the desktop app: Documents/<app>).
+   * Conversations still working there can choose a folder once; their files stay there (RuntimeOptions.legacyDefaultCwd).
+   */
+  legacyDefaultCwd?: string;
   projectsRoot?: string;
   workflowsDir?: string;
   locale?: string;
@@ -393,6 +398,7 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
       mediaDir: join(dirname(cfg.dbPath), 'media'),
       // a conversation started without a folder gets its own one next to the database, not under Documents
       sessionFilesDir: join(dirname(cfg.dbPath), 'sessions'),
+      ...(cfg.legacyDefaultCwd ? { legacyDefaultCwd: cfg.legacyDefaultCwd } : {}),
       ...(cfg.search ? { search: jsonSearchBackend(cfg.search) } : {}),
       ...(cfg.mail ? { mail: cfg.mail } : {}),
     });
