@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useState } from 'react';
 import { Plugins, pluginBadge, type PluginsApi } from './Plugins';
 import { FakePluginService } from '../../../main/plugins/fake';
 import { dropAllDrafts } from './drafts';
@@ -182,6 +183,35 @@ describe('mail sorting, with the plugin that provides mail', () => {
     const patch = m.onChange.mock.calls[0]?.[0] as { enabled: boolean; consentedAt: string };
     expect(patch.enabled).toBe(true);
     expect(Number.isNaN(Date.parse(patch.consentedAt))).toBe(false);
+  });
+
+  it('saving the ignore rules says 已保存, until they are edited again', async () => {
+    const onChange = vi.fn();
+    const a = api();
+    // Like the app: what is saved comes back as the new settings.
+    function Page() {
+      const [prefs, setPrefs] = useState(DEFAULT_SETTINGS.mail);
+      return (
+        <Plugins
+          api={a}
+          mail={{
+            prefs,
+            onChange: (patch) => {
+              onChange(patch);
+              setPrefs({ ...prefs, ...patch });
+            },
+          }}
+        />
+      );
+    }
+    render(<Page />);
+    await screen.findByRole('navigation', { name: '插件列表' });
+    pick('来信摘要');
+    fireEvent.change(await screen.findByLabelText('发件人包含'), { target: { value: 'noreply@' } });
+    expect(screen.getByText('未保存')).toBeTruthy();
+    fireEvent.click(within(screen.getByRole('region', { name: '来信摘要（示例）' })).getAllByRole('button', { name: '保存' }).at(-1)!);
+    expect(onChange).toHaveBeenCalledWith({ ignore: { from: ['noreply@'], subject: [] } });
+    expect(screen.getByText('已保存')).toBeTruthy();
   });
 
   it('cancelling leaves it off', async () => {

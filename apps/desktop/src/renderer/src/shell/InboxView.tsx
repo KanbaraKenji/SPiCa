@@ -123,7 +123,7 @@ export function InboxView(props: InboxViewProps) {
 
   const status = !prefs.enabled
     ? null
-    : [`每 ${prefs.intervalMinutes < 60 ? `${prefs.intervalMinutes} 分钟` : `${prefs.intervalMinutes / 60} 小时`}检查`, mail.lastPolledAt ? `上次 ${mailTime(mail.lastPolledAt, props.now)}` : '']
+    : [`每 ${prefs.intervalMinutes < 60 ? `${prefs.intervalMinutes} 分钟` : `${prefs.intervalMinutes / 60} 小时`}检查`, mail.lastPolledAt ? `上次 ${mailTime(mail.lastPolledAt, props.now)}` : '', mail.lastAdded === null ? '' : mail.lastAdded ? `${mail.lastAdded} 封新邮件` : '没有新邮件']
         .filter(Boolean)
         .join(' · ');
 

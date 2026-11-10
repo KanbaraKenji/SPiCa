@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { MAIL_INTERVALS, type MailPrefs } from '../../../shared/settings';
 import { ConfirmDialog } from '../ui/Dialog';
 import { useKeptDraft } from './drafts';
+import { SpicaStatusIcon } from '@spica/brand/react';
 import { Switch } from './Switch';
 
 export interface MailSettingsProps {
@@ -21,24 +22,38 @@ const lines = (text: string) =>
     .map((l) => l.trim())
     .filter(Boolean);
 
-function IgnoreRules({ prefs, onSave }: { prefs: MailPrefs; onSave(ignore: MailPrefs['ignore']): void }) {
+function IgnoreRules({ prefs, onSave, saved, onEdit }: { prefs: MailPrefs; onSave(ignore: MailPrefs['ignore']): void; saved: boolean; onEdit(): void }) {
   const [from, setFrom, fromDone] = useKeptDraft('mail.ignore.from', prefs.ignore.from.join('\n'));
   const [subject, setSubject, subjectDone] = useKeptDraft('mail.ignore.subject', prefs.ignore.subject.join('\n'));
   const changed = lines(from).join('\n') !== prefs.ignore.from.join('\n') || lines(subject).join('\n') !== prefs.ignore.subject.join('\n');
+  const editFrom = (v: string) => {
+    setFrom(v);
+    onEdit();
+  };
+  const editSubject = (v: string) => {
+    setSubject(v);
+    onEdit();
+  };
   return (
     <div className="mail-rules">
       <span className="field-label">忽略规则</span>
       <div className="rule-grid">
         <label className="form-field">
           <span className="field-label">发件人包含</span>
-          <textarea className="input rule-input" rows={3} spellCheck={false} value={from} placeholder="每行一条，支持 /正则/" onChange={(e) => setFrom(e.target.value)} />
+          <textarea className="input rule-input" rows={3} spellCheck={false} value={from} placeholder="每行一条，支持 /正则/" onChange={(e) => editFrom(e.target.value)} />
         </label>
         <label className="form-field">
           <span className="field-label">主题包含</span>
-          <textarea className="input rule-input" rows={3} spellCheck={false} value={subject} placeholder="每行一条，支持 /正则/" onChange={(e) => setSubject(e.target.value)} />
+          <textarea className="input rule-input" rows={3} spellCheck={false} value={subject} placeholder="每行一条，支持 /正则/" onChange={(e) => editSubject(e.target.value)} />
         </label>
       </div>
       <div className="rule-actions">
+        {saved && !changed ? (
+          <span className="provider-result is-ok" role="status">
+            <SpicaStatusIcon name="done" size={15} />
+            已保存
+          </span>
+        ) : null}
         {changed ? <span className="provider-unsaved">未保存</span> : null}
         <button
           type="button"
@@ -59,6 +74,8 @@ function IgnoreRules({ prefs, onSave }: { prefs: MailPrefs; onSave(ignore: MailP
 
 export function MailSettings({ prefs, onChange, model = '' }: MailSettingsProps) {
   const [asking, setAsking] = useState(false);
+  // 已保存 after 保存, like the model form, until the rules are edited again.
+  const [rulesSaved, setRulesSaved] = useState(false);
   return (
     <div className="mail-settings">
       <div className="mail-row">
@@ -83,7 +100,16 @@ export function MailSettings({ prefs, onChange, model = '' }: MailSettingsProps)
           ))}
         </div>
       </div>
-      <IgnoreRules key={JSON.stringify(prefs.ignore)} prefs={prefs} onSave={(ignore) => onChange({ ignore })} />
+      <IgnoreRules
+        key={JSON.stringify(prefs.ignore)}
+        prefs={prefs}
+        saved={rulesSaved}
+        onEdit={() => setRulesSaved(false)}
+        onSave={(ignore) => {
+          onChange({ ignore });
+          setRulesSaved(true);
+        }}
+      />
       {asking ? (
         <ConfirmDialog
           title="开启邮件分类？"

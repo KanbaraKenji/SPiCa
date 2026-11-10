@@ -19,6 +19,8 @@ export interface MailView {
   polling: boolean;
   /** When mail was last fetched (from mail.polled), ISO; null until known. */
   lastPolledAt: string | null;
+  /** New mails the last 现在查收 brought (0: none); null before one ran. */
+  lastAdded: number | null;
   /** Why the last fetch or action did not work, in words; empty when fine. */
   problem: string;
   /** The pipeline's own thread (hidden from the sidebar). */
@@ -46,6 +48,7 @@ export class MailStore {
       items: [],
       polling: false,
       lastPolledAt: null,
+      lastAdded: null,
       problem: '',
       threadId: null,
       flagged: [],
@@ -70,10 +73,12 @@ export class MailStore {
   async pollNow(): Promise<void> {
     if (!this.#api.pollMail || this.state.get().polling) return;
     this.state.set((v) => ({ ...v, polling: true, problem: '' }));
+    const before = new Set(this.state.get().items.map((m) => m.id));
     try {
       await this.#api.pollMail();
       this.state.set((v) => ({ ...v, lastPolledAt: new Date().toISOString() }));
       await this.reload();
+      this.state.set((v) => ({ ...v, lastAdded: v.items.filter((m) => !before.has(m.id)).length }));
     } catch (err) {
       this.state.set((v) => ({ ...v, problem: friendlyError(err) }));
     } finally {

@@ -15,6 +15,7 @@ const view = (over: Partial<MailView> = {}): MailView => ({
   items: seedMail(now),
   polling: false,
   lastPolledAt: null,
+  lastAdded: null,
   problem: '',
   threadId: null,
   flagged: [],
@@ -102,5 +103,17 @@ describe('InboxView', () => {
     expect(p.onOpenSettings).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '现在查收' }));
     expect(p.onPoll).toHaveBeenCalled();
+  });
+
+  it('after 现在查收: when, and what it found, also when nothing new came', () => {
+    setup({ mail: view({ lastPolledAt: '2026-11-09T09:58:00+08:00', lastAdded: 0 }), prefs: { ...DEFAULT_SETTINGS.mail, enabled: true } });
+    expect(screen.getByText(/上次 09:58 · 没有新邮件/)).toBeTruthy();
+    cleanup();
+    setup({ mail: view({ lastPolledAt: '2026-11-09T09:58:00+08:00', lastAdded: 3 }), prefs: { ...DEFAULT_SETTINGS.mail, enabled: true } });
+    expect(screen.getByText(/上次 09:58 · 3 封新邮件/)).toBeTruthy();
+    cleanup();
+    // While it runs: the button shows it is working and cannot be clicked again.
+    setup({ mail: view({ polling: true }) });
+    expect((screen.getByRole('button', { name: '现在查收' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
