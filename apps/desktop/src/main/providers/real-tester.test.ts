@@ -73,5 +73,11 @@ describe('probeMessage', () => {
     expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'auth', code: 'wso2.not_subscribed', hint: sub }, wso2)).toBe(sub);
     expect(probeMessage({ ok: true, latencyMs: 900, firstByteMs: 420, model: 'm1-2026' }, openai)).toBe('连接成功：模型「m1」（响应 420 毫秒，服务端型号：m1-2026）。');
     expect(probeMessage({ ok: true, latencyMs: 900, firstByteMs: 420, model: 'm1' }, openai)).toBe('连接成功：模型「m1」（响应 420 毫秒）。');
+    // Only got through with /v1 added (the core's retry): its sentence, with the gateway's own field name.
+    const added = { ok: true, latencyMs: 900, suggestedBaseUrl: 'https://gw.example.com/llm/v1', code: 'address.v1_added', hint: '已在 接口地址 末尾补上 /v1，连接成功。' };
+    expect(probeMessage(added, openai)).toBe('已在 接口地址 末尾补上 /v1，连接成功。');
+    expect(probeMessage(added, wso2)).toBe('已在 网关地址 末尾补上 /v1，连接成功。');
+    const missing = { ok: false, latencyMs: 5, errorCode: 'not_found' as const, code: 'gateway.not_found_version', hint: '模型调用失败：路径无效（HTTP 404），请检查 接口地址 是否需要以 /v1 结尾。' };
+    expect(probeMessage(missing, wso2)).toBe('模型调用失败：路径无效（HTTP 404），请检查 网关地址 是否需要以 /v1 结尾。');
   });
 });

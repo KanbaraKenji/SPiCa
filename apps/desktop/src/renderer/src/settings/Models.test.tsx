@@ -188,6 +188,23 @@ describe('Models', () => {
     expect((byLabel('API Key') as HTMLInputElement).placeholder).toBe('已保存（留空不修改）');
   });
 
+  it('a test that only got through with /v1 added puts that address in the form, and saving keeps it', async () => {
+    const api = await openNew();
+    api.test = vi.fn(async () => ({ ok: true, message: '已在 接口地址 末尾补上 /v1，连接成功。', suggestedBaseUrl: 'https://relay.example.com/v1' }));
+    choose('#relay');
+    type('名称', '中转');
+    type('接口地址', 'https://relay.example.com');
+    type('API Key', 'sk-1');
+    type('手动输入模型', 'm');
+    fireEvent.click(screen.getByRole('button', { name: '添加' }));
+    fireEvent.change(screen.getByLabelText('m 上下文上限'), { target: { value: '64000' } });
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }));
+    expect(await screen.findByText('已在 接口地址 末尾补上 /v1，连接成功。')).toBeTruthy();
+    expect((byLabel('接口地址') as HTMLInputElement).value).toBe('https://relay.example.com/v1');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ baseUrl: 'https://relay.example.com/v1' })));
+  });
+
   it('keeps the limits under 更多选项, folded, and opens it when something there is wrong', async () => {
     await openNew();
     choose('#relay');

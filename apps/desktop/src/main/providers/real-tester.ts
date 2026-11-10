@@ -14,12 +14,15 @@ const TIMEOUT_MS = 20_000;
 
 /** The result in words a non-developer can act on, pointing at the field to fix. */
 export function probeMessage(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' | 'model'>): string {
+  // The core says 「接口地址」; a gateway's field is called 网关地址 in the form.
+  const own = (s: string) => (draft.kind === 'wso2' ? s.replaceAll('接口地址', '网关地址') : s);
+  if (r.ok && r.suggestedBaseUrl && r.hint) return own(r.hint);
   const advice = probeAdvice(r, draft);
   // The core names the cause (获取 token 失败：… / 模型调用失败：…, TLS, proxy...); ours says which field to check.
   const hint = r.ok ? '' : (r.hint ?? '').trim();
   if (!hint) return advice;
   // The core's sentence already says what to do (「…，请检查 API Key。」, the gateway's fault codes): one sentence, not two.
-  if (r.code?.startsWith('wso2.') || hint.includes('请')) return /[。.]$/.test(hint) ? hint : `${hint}。`;
+  if (r.code?.startsWith('wso2.') || hint.includes('请')) return own(/[。.]$/.test(hint) ? hint : `${hint}。`);
   return `${hint.replace(/[。.]$/, '')}。${advice}`;
 }
 
@@ -61,6 +64,6 @@ export function createRealTester(probe: Probe): ConnectionTester {
     if (first) return { ok: false, message: first };
     const secret = draft.secret?.trim() || savedSecret || '';
     const r = await probe(toProviderConfig({ ...draft, id: 'connection-test', secret }), draft.model.trim(), TIMEOUT_MS);
-    return { ok: r.ok, message: probeMessage(r, draft) };
+    return { ok: r.ok, message: probeMessage(r, draft), ...(r.ok && r.suggestedBaseUrl ? { suggestedBaseUrl: r.suggestedBaseUrl } : {}) };
   };
 }

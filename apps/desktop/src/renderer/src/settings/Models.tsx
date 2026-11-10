@@ -376,7 +376,13 @@ export function Models({ api }: { api: ProvidersApi }) {
     if (!check(true)) return;
     setBusy('test');
     try {
-      setResult(await api.test(draft));
+      const r = await api.test(draft);
+      // Got through only with /v1 added: the form takes that address (saved with it); 更多选项 opens where it sits there.
+      if (r.suggestedBaseUrl) {
+        commit({ ...latest.current.draft, baseUrl: r.suggestedBaseUrl });
+        if (provider) setAdvanced(true);
+      }
+      setResult(r);
     } catch (e) {
       setResult({ ok: false, message: friendlyError(e) });
     } finally {

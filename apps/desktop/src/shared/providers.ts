@@ -119,6 +119,8 @@ export function legacyModelFields(models: readonly ConnectionModel[]): Pick<Prov
 export interface TestResult {
   ok: boolean;
   message: string;
+  /** The test only got through with /v1 added: the address to put in the form (and save). */
+  suggestedBaseUrl?: string;
 }
 
 export function emptyDraft(kind: ProviderKind = 'openai'): ProviderDraft {
