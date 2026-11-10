@@ -36,17 +36,17 @@ function probeAdvice(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' | 'model'
   }
   switch (r.errorCode) {
     case 'auth':
-      return draft.kind === 'wso2' ? '获取 token 失败，请检查 Consumer Key、Consumer Secret 和取 token 地址。' : `密钥无效或已失效，请检查 ${secretLabel(draft.kind)}。`;
+      return draft.kind === 'wso2' ? '获取 token 失败，请检查 Consumer Key、Consumer Secret 和「取 token 地址」。' : `密钥无效或已失效，请检查 ${secretLabel(draft.kind)}。`;
     case 'not_found':
       return `找不到模型「${model}」或地址无效，请检查模型和${url}。`;
     case 'bad_request':
       return `请求被拒绝，请检查模型名「${model}」。`;
     case 'rate_limited':
-      return '请求被限流，请稍后重试或调低同时请求、每分钟请求。';
+      return '请求被限流，请稍后重试或调低「同时请求」「每分钟请求」。';
     case 'server':
       return `模型服务错误${r.httpStatus ? `（${r.httpStatus}）` : ''}，请稍后重试。`;
     case 'network':
-      return draft.kind === 'wso2' ? `连接失败，请检查网络、${url}和取 token 地址。` : `连接失败，请检查网络和${url}。`;
+      return draft.kind === 'wso2' ? `连接失败，请检查网络、${url}和「取 token 地址」。` : `连接失败，请检查网络和${url}。`;
     case 'timeout':
       return `${TIMEOUT_MS / 1000} 秒内无响应，请检查网络和${url}。`;
     case 'aborted':

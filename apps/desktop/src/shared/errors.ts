@@ -11,7 +11,7 @@ export function humanError(raw: string): string {
   if (/insufficient|balance|quota|credit/.test(m)) return '模型账号余额不足。';
   if (/\b5\d\d\b|overloaded|bad gateway|service unavailable/.test(m)) return '模型服务错误，请稍后重试。';
   if (/timeout|timed out|etimedout/.test(m)) return '模型接口超时，请稍后重试。';
-  if (/fetch failed|econnrefused|enotfound|network|socket/.test(m)) return '无法连接模型接口，请检查网络或接口地址。';
+  if (/fetch failed|econnrefused|enotfound|network|socket/.test(m)) return '无法连接模型接口，请检查网络或「接口地址」。';
   if (/reassign needs an existing projectid/.test(m)) return '项目不存在，请选择其他项目。';
   if (/unknown mail/.test(m)) return '邮件不存在，请刷新收件箱。';
   if (/unknown project/.test(m)) return '项目不存在。';

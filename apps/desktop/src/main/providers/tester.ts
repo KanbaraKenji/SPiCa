@@ -21,7 +21,7 @@ export function createFakeTester({ delayMs = 700 }: FakeTesterOptions = {}): Con
     const secret = draft.secret?.trim() || savedSecret || '';
     // A few recognisable failures so the error path can be seen without a real gateway.
     if (/bad|wrong|invalid/i.test(secret)) return { ok: false, message: draft.kind === 'wso2' ? '获取 token 失败，请检查 Consumer Key 和 Consumer Secret。' : '密钥无效或已失效（401）。' };
-    if (/\.invalid(\/|$)|localhost:1\b/i.test(draft.baseUrl)) return { ok: false, message: '连接失败，请检查网络和接口地址。' };
+    if (/\.invalid(\/|$)|localhost:1\b/i.test(draft.baseUrl)) return { ok: false, message: '连接失败，请检查网络和「接口地址」。' };
     return { ok: true, message: `连接成功：模型「${draft.model.trim()}」。` };
   };
 }
