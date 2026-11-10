@@ -3414,14 +3414,30 @@ button.ctx-row:hover {
   color: var(--spica-muted);
 }
 
-/* Shown but cannot be picked: the hint says why. */
-.context-item:disabled {
+/* Shown but cannot be picked (aria-disabled, so its hover still says why). */
+.context-item[aria-disabled='true'] {
   color: var(--spica-faint);
   cursor: default;
 }
 
-.context-item:disabled:hover {
+.context-item[aria-disabled='true']:hover,
+.context-item[aria-disabled='true']:focus-visible {
   background: none;
+}
+
+/* 支持图片: the eye right after a model's name (menu, 设置 › 模型). */
+.image-mark {
+  display: inline-flex;
+  flex: none;
+  vertical-align: -2px;
+  margin-left: 6px;
+  color: var(--spica-muted);
+}
+
+/* In a row or a pill the gap already spaces it. */
+.model-row .image-mark,
+.model-pill-on .image-mark {
+  margin-left: 0;
 }
 
 /* A menu's group heading (the model menu: one per connection). */

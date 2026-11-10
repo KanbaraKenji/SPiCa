@@ -9,6 +9,7 @@ import { ContextMenu, type MenuItem } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { FileGlyph } from '../ui/FileIcon';
 import { ImageViewer } from '../ui/ImageViewer';
+import { ImageMark } from '../ui/ImageMark';
 import { APP_NAME } from '../../../shared/app-identity';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import type { ContextBreakdown } from '@spica/protocol';
@@ -182,10 +183,18 @@ function ModelChip({ model, pictures, buttonRef, onOpen }: { model: ModelTool; p
         onOpen(
           e.currentTarget,
           model.options.map((o) => {
-            // With pictures waiting or already in the conversation, a model that cannot take them is shown but not offered.
-            const noImages = (pictures || model.hasPictures) && o.images === false;
-            const hint = [o.current ? '当前' : '', o.marks ?? '', noImages ? '不支持图片' : ''].filter(Boolean).join(' · ');
-            return { label: o.label, ...(o.group ? { group: o.group } : {}), ...(hint ? { hint } : {}), ...(noImages && !o.current ? { disabled: true } : {}), onSelect: o.onPick };
+            // An eye after the models that take pictures. With pictures waiting or already in the conversation, one
+            // the core says cannot take them is shown but not offered; hovering it says why.
+            const noImages = (pictures || model.hasPictures) && o.images === false && !o.current;
+            const hint = [o.current ? '当前' : '', o.marks ?? ''].filter(Boolean).join(' · ');
+            return {
+              label: o.label,
+              ...(o.group ? { group: o.group } : {}),
+              ...(hint ? { hint } : {}),
+              ...(o.images === true ? { after: <ImageMark /> } : {}),
+              ...(noImages ? { disabled: true, title: '不支持图片' } : {}),
+              onSelect: o.onPick,
+            };
           }),
         )
       }

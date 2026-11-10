@@ -601,7 +601,11 @@ ipcMain.handle(DesktopChannel.Images, async (_e, op: unknown, a: unknown, b: unk
   }
   if (op === 'url' && typeof a === 'string') return previewFiles.urlFor(a);
   if (op === 'accepted' && typeof a === 'string' && typeof b === 'string') {
-    return backend instanceof ProcessBackend ? backend.modelTakesImages(a, b).catch(() => null) : null;
+    if (backend instanceof ProcessBackend) return backend.modelTakesImages(a, b).catch(() => null);
+    // Demo data: what the catalog says about the connection's provider (the core does the same, plus refusals it saw).
+    const catalogId = providers.list().find((p) => p.id === a)?.catalogId;
+    const catalog = catalogId ? await modelCatalog() : null;
+    return catalog?.providers.find((p) => p.id === catalogId)?.models.find((m) => m.id === b)?.vision ?? null;
   }
   return null;
 });

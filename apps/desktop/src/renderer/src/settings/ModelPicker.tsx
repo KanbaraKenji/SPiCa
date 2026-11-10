@@ -8,6 +8,7 @@ import type { ConnectionModel } from '../../../shared/providers';
 import { Icon } from '../ui/Icon';
 import { InfoTip } from '../ui/InfoTip';
 import { SpicaStatusIcon } from '@spica/brand/react';
+import { ImageMark } from '../ui/ImageMark';
 
 export interface ListedModel {
   id: string;
@@ -62,8 +63,8 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
   const [typing, setTyping] = useState(false);
   // The 上下文上限 being edited (a known one shows as 「128k」 until clicked).
   const [editing, setEditing] = useState<string | null>(null);
-  const byId = new Map<string, { model: ListedModel; price?: CatalogPriceView }>();
-  for (const m of catalog) byId.set(m.id, { model: { id: m.id, ...(m.label ? { label: m.label } : {}), contextWindow: m.contextWindow }, ...(m.price ? { price: m.price } : {}) });
+  const byId = new Map<string, { model: ListedModel; price?: CatalogPriceView; vision?: boolean }>();
+  for (const m of catalog) byId.set(m.id, { model: { id: m.id, ...(m.label ? { label: m.label } : {}), contextWindow: m.contextWindow }, ...(m.price ? { price: m.price } : {}), ...(m.vision !== undefined ? { vision: m.vision } : {}) });
   for (const m of fetched ?? []) if (!byId.has(m.id)) byId.set(m.id, { model: m });
   for (const m of selected) if (!byId.has(m.id)) byId.set(m.id, { model: { id: m.id } });
   const all = [...byId.values()];
@@ -92,7 +93,7 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
       {fetchError ? <p className="field-error model-picker-note">{fetchError}</p> : null}
       <span className="model-picker-sect">已启用</span>
       <ul className="model-picker-list">
-        {onRows.map(({ model, price }) => {
+        {onRows.map(({ model, price, vision }) => {
           const on = isOn(model.id)!;
           const source = SOURCE[on.contextFrom];
           const matched = on.contextFrom === 'name-match' ? matchedNames[model.id] : undefined;
@@ -103,6 +104,7 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
               <label className="model-row-name">
                 <input type="checkbox" checked onChange={() => onToggle(model, false)} />
                 <span className="model-row-id">{name(model)}</span>
+                {vision ? <ImageMark /> : null}
               </label>
               {price ? <InfoTip text={priceText(price)} label={`${model.id} 官方价`} /> : null}
               {edit ? (
@@ -150,10 +152,11 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
       </ul>
       <span className="model-picker-sect">未启用</span>
       <div className="model-pills">
-        {offRows.map(({ model, price }) => (
+        {offRows.map(({ model, price, vision }) => (
           <span key={model.id} className="model-pill">
             <button type="button" className="model-pill-on" onClick={() => onToggle(model, true)} aria-label={`启用 ${model.id}`} title={price ? `启用 · ${priceText(price)}` : '启用'}>
               <span className="model-pill-text">{name(model)}</span>
+              {vision ? <ImageMark size={12} /> : null}
               <Icon name="plus" size={12} />
             </button>
             {removable(model.id) ? (

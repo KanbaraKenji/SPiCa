@@ -19,6 +19,8 @@ export interface CatalogModelView {
   role?: 'default' | 'strong' | 'cheap';
   /** Official price only; absent when none was found (never show the budget's fallback). */
   price?: CatalogPriceView;
+  /** Takes pictures (true), text only (false); absent: not known. */
+  vision?: boolean;
 }
 
 export interface CatalogProviderView {

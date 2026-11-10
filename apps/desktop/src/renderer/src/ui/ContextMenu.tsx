@@ -1,7 +1,7 @@
 // A small right-click menu at the pointer, or under a button that opens it (`anchor`).
 // Closes on Esc, a click elsewhere, scrolling or resizing. Positions in CSS px, so
 // page zoom keeps it in place.
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 export interface MenuItem {
   label: string;
@@ -13,8 +13,12 @@ export interface MenuItem {
   hint?: string;
   /** One line under the label saying what it does. */
   detail?: string;
-  /** Shown but cannot be picked (the hint says why). */
+  /** Shown but cannot be picked; `title` says why on hover (not the disabled attribute: it would not show one). */
   disabled?: boolean;
+  /** Said on hover. */
+  title?: string;
+  /** Right after the label (a mark such as 支持图片). */
+  after?: ReactNode;
   onSelect(): void;
 }
 
@@ -40,7 +44,7 @@ export function ContextMenu({ x, y, items, onClose, anchor }: { x: number; y: nu
       top = a.bottom + 4 + r.height <= window.innerHeight - 4 ? a.bottom + 4 : a.top - 4 - r.height;
     }
     setPos({ left: Math.max(4, Math.min(left, window.innerWidth - r.width - 4)), top: Math.max(4, Math.min(top, window.innerHeight - r.height - 4)) });
-    el.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    el.querySelector<HTMLButtonElement>('button:not([aria-disabled="true"])')?.focus();
   }, [x, y, anchor]);
 
   useEffect(() => {
@@ -80,20 +84,27 @@ export function ContextMenu({ x, y, items, onClose, anchor }: { x: number; y: nu
             type="button"
             role="menuitem"
             className={it.danger ? 'context-item is-danger' : 'context-item'}
-            disabled={it.disabled}
             aria-disabled={it.disabled || undefined}
+            {...(it.title ? { title: it.title } : {})}
             onClick={() => {
+              if (it.disabled) return;
               onClose();
               it.onSelect();
             }}
           >
             {it.detail ? (
               <span className="context-item-text">
-                <span className="context-item-label">{it.label}</span>
+                <span className="context-item-label">
+                  {it.label}
+                  {it.after}
+                </span>
                 <span className="context-item-detail">{it.detail}</span>
               </span>
             ) : (
-              <span className="context-item-label">{it.label}</span>
+              <span className="context-item-label">
+                {it.label}
+                {it.after}
+              </span>
             )}
             {it.hint ? <span className="context-item-hint">{it.hint}</span> : null}
           </button>

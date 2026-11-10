@@ -198,7 +198,22 @@ describe('pictures in the input box', () => {
     expect(pick).toHaveBeenCalled();
   });
 
-  it('切换模型 with a picture waiting: models that take none say so and cannot be picked; without one the menu is as usual', async () => {
+  it('切换模型: an eye after the models that take pictures, always; none on text-only or unknown ones', () => {
+    const options = [
+      { label: 'deepseek-v4-pro', current: true, images: false, onPick: vi.fn() },
+      { label: 'qwen-vl', current: false, images: true, onPick: vi.fn() },
+      { label: 'm1', current: false, images: null, onPick: vi.fn() },
+    ];
+    render(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="eye1" tools={{ model: { label: 'deepseek-v4-pro', options } }} />);
+    fireEvent.click(screen.getByRole('button', { name: /deepseek-v4-pro/ }));
+    const eyeOf = (name: RegExp) => screen.getByRole('menuitem', { name }).querySelector('.image-mark');
+    expect(eyeOf(/^qwen-vl/)?.getAttribute('title')).toBe('支持图片');
+    expect(eyeOf(/^deepseek-v4-pro/)).toBeNull();
+    expect(eyeOf(/^m1/)).toBeNull();
+    expect(screen.queryByText(/不支持图片/)).toBeNull();
+  });
+
+  it('切换模型 with a picture waiting: models that take none cannot be picked and say why on hover; without one the menu is as usual', async () => {
     const pickFlash = vi.fn();
     const options = [
       { label: 'deepseek-v4-pro', current: true, images: false, onPick: vi.fn() },
@@ -206,27 +221,30 @@ describe('pictures in the input box', () => {
       { label: 'qwen-vl', current: false, images: true, onPick: vi.fn() },
       { label: 'm1', current: false, images: null, onPick: vi.fn() },
     ];
+    const off = (name: RegExp) => screen.getByRole('menuitem', { name }).getAttribute('aria-disabled') === 'true';
     const { unmount } = render(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="pic4" tools={{ images: images(false), model: { label: 'deepseek-v4-pro', options } }} />);
     fireEvent.click(screen.getByRole('button', { name: /deepseek-v4-pro/ }));
-    expect((screen.getByRole('menuitem', { name: /^deepseek-flash/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect(off(/^deepseek-flash/)).toBe(false);
     fireEvent.keyDown(window, { key: 'Escape' });
     pasteImage(screen.getByRole('textbox', { name: '消息' }));
     await screen.findByText('当前模型不支持图片');
     fireEvent.click(screen.getByRole('button', { name: '切换模型' }));
-    const flash = screen.getByRole('menuitem', { name: /^deepseek-flash/ }) as HTMLButtonElement;
-    expect(flash.textContent).toBe('deepseek-flash不支持图片');
-    expect(flash.disabled).toBe(true);
+    const flash = screen.getByRole('menuitem', { name: /^deepseek-flash/ });
+    // No words on the item: it cannot be picked, and hovering it says why.
+    expect(flash.textContent).toBe('deepseek-flash');
+    expect(off(/^deepseek-flash/)).toBe(true);
+    expect(flash.getAttribute('title')).toBe('不支持图片');
     fireEvent.click(flash);
     expect(pickFlash).not.toHaveBeenCalled();
     // The one in use stays as it is (the line above the box already says it takes none); unknown ones are offered.
-    expect(screen.getByRole('menuitem', { name: /^deepseek-v4-pro/ }).textContent).toBe('deepseek-v4-pro当前 · 不支持图片');
-    expect((screen.getByRole('menuitem', { name: 'qwen-vl' }) as HTMLButtonElement).disabled).toBe(false);
-    expect((screen.getByRole('menuitem', { name: 'm1' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole('menuitem', { name: /^deepseek-v4-pro/ }).textContent).toBe('deepseek-v4-pro当前');
+    expect(off(/^qwen-vl/)).toBe(false);
+    expect(off(/^m1/)).toBe(false);
     unmount();
     // Pictures already in the conversation count too.
     render(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="pic5" tools={{ model: { label: 'deepseek-v4-pro', hasPictures: true, options } }} />);
     fireEvent.click(screen.getByRole('button', { name: /deepseek-v4-pro/ }));
-    expect((screen.getByRole('menuitem', { name: /^deepseek-flash/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(off(/^deepseek-flash/)).toBe(true);
   });
 });
 
