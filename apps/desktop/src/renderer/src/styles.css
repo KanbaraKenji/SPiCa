@@ -2132,6 +2132,60 @@ button.tree-twisty:hover {
   border-color: var(--spica-danger);
 }
 
+/* 粘贴管理员给的配置: at the top of the model form. */
+.paste-config {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.paste-config-box {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.paste-config-input {
+  width: 100%;
+  /* .input is one line high; this is a box for a whole block. */
+  height: auto;
+  min-height: 132px;
+  padding: 8px 10px;
+  line-height: 1.5;
+  resize: vertical;
+  font-family: var(--spica-mono, ui-monospace, Consolas, monospace);
+  font-size: 12px;
+}
+
+.paste-config-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.paste-config-result {
+  font-size: 13px;
+}
+
+.paste-config-line {
+  margin: 0;
+}
+
+.paste-config-line.is-none {
+  color: var(--spica-muted);
+}
+
+.paste-config-unknown {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-family: var(--spica-mono, ui-monospace, Consolas, monospace);
+  font-size: 12px;
+  color: var(--spica-muted);
+  overflow-wrap: anywhere;
+}
+
 /* 更多选项: lines up with the field labels above it. */
 .provider-more {
   margin-left: -8px;

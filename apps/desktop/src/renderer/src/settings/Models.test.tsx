@@ -220,4 +220,26 @@ describe('Models', () => {
     render(<Models api={api} />);
     expect(await screen.findByText('还没填上下文上限，点开补上')).toBeTruthy();
   });
+
+  it('粘贴管理员给的配置 fills the form, switches to WSO2, lists what it cannot place', async () => {
+    render(<Models api={fakeApi()} />);
+    fireEvent.click(await screen.findByRole('button', { name: /添加模型/ }));
+    fireEvent.click(screen.getByRole('button', { name: '粘贴管理员给的配置' }));
+    fireEvent.change(screen.getByLabelText('管理员给的配置'), {
+      target: {
+        value: ['CONSUMER_KEY=ck-1', 'CONSUMER_SECRET="cs-1"', 'TOKEN_URL=https://gw.example.com/oauth2/token', 'LLM_BASE=https://gw.example.com/llm/v1', 'MODEL=m-1', 'OWNER=IT'].join('\n'),
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '识别并填入' }));
+    expect(screen.getByRole('radio', { name: 'WSO2 网关' }).getAttribute('aria-checked')).toBe('true');
+    expect((byLabel('网关地址') as HTMLInputElement).value).toBe('https://gw.example.com/llm/v1');
+    expect((byLabel('取 token 地址') as HTMLInputElement).value).toBe('https://gw.example.com/oauth2/token');
+    expect((byLabel('Consumer Key') as HTMLInputElement).value).toBe('ck-1');
+    expect((byLabel('Consumer Secret') as HTMLInputElement).value).toBe('cs-1');
+    expect((byLabel('模型') as HTMLInputElement).value).toBe('m-1');
+    expect(screen.getByText('填好了 5 项：网关地址、取 token 地址、Consumer Key、Consumer Secret、模型。请核对一遍。')).toBeTruthy();
+    expect(screen.getByText('OWNER=IT')).toBeTruthy();
+    // The pasted text is gone from the window once used.
+    expect(screen.queryByLabelText('管理员给的配置')).toBeNull();
+  });
 });

@@ -21,6 +21,7 @@ import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
 import { APP_NAME } from '../../../shared/app-identity';
 import { dropDraft, keepDraft, keptDraft } from './drafts';
+import { PasteConfig } from './PasteConfig';
 
 export interface ProvidersApi {
   list(): Promise<ProviderList>;
@@ -354,6 +355,11 @@ export function Models({ api }: { api: ProvidersApi }) {
             void save();
           }}
         >
+          <PasteConfig
+            key={selected ?? ''}
+            kind={draft.kind}
+            onApply={(r) => set({ ...(r.kind && r.kind !== draft.kind ? { kind: r.kind } : {}), ...r.fields })}
+          />
           <div className="field field-stack">
             <span className="field-label">类型</span>
             <div className="segmented" role="radiogroup" aria-label="类型">
