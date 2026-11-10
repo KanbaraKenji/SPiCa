@@ -365,6 +365,11 @@
 
 - **工具**（`mcp/server.ts`）：`spica_create_session`、`spica_get_top_session`、`spica_list_sessions`、`spica_get_messages`、`spica_get_pending`、`spica_send`、`spica_set_model`、`spica_set_approval_mode`、`spica_steer`、`spica_answer`、`spica_confirm`、`spica_abort`、`spica_resume`、`spica_rename_session`、`spica_create_project`、`spica_list_projects`、`spica_get_project`、`spica_rename_project`、`spica_delete_project`、`spica_list_mail`、`spica_poll_mail`、`spica_mail_feedback`、`spica_list_tools`、`spica_export_traces`、`spica_export_usage_log`，外加两个方便自动化的：`spica_run`（发一句话，等这次运行结束或等用户；可连子 Agent 一起等），返回回答、状态、挂起项、执行了的工具 `toolCalls`、调了但已不存在的工具 `unavailableToolCalls`、子 Agent 和花费；`spica_wait`、`spica_events {since}`。扩展模块（如插件包的 `spica_plugin_*`）再往上加。
 - **产品名**（`RuntimeOptions.appName` / `BackendConfig.appName`，缺省 `Spica`）：打包时可换成别的名字，不改受版本控制的文件。跟着变的：内置系统提示里的 `{{app}}`（每一轮发请求时才填，所以存下的会话不会写死旧名字；角色模板文件和会话自带的提示也可以用 `{{app}}`）、守卫给模型看的「[名字: this content …]」标记、web_fetch 的 User-Agent（换成能放进请求头的写法，如 `Acme-Desk/0.1`）、本程序 MCP 工具说明里的「… window」。不变的内部名字：`@spica/*` 包名、`spica_` 工具名、`SPICA_` 环境变量、`spica-file://` / `spica-plugin://`、MCP 的 serverInfo 名。
+- **插件借用配好的模型**（`sampling.ts`，MCP 的 sampling/createMessage，server 向宿主发请求）：插件不带 key，用户的花费额度。只有 `McpServerConfig.sampling = { pluginId, maxUsdPerDay? }` 的 server（插件系统按清单里的权限和用户设的上限传进来）在 initialize 时才被告知 `capabilities.sampling`，别的发了也回 -32601。
+  - **用哪个模型**：默认模型；`modelPreferences.intelligencePriority ≥ 0.7` 或 hint `strong` 时用强模型（`defaults.strongModel`，没配就默认）；hint 点名的模型名在用户配好的模型里找（窗口的 `models.list`，没窗口时只看默认和强模型，先全名再包含）。找不到就退回默认，结果里 `_meta.spica = { fallback: true, requested }`；请求里 `_meta.spica.requireModel: true` 时改为拒绝（`model_not_configured`），让必须用某个模型的插件自己提示用户去配。一个模型都没配时 `no_model`。
+  - **花费和限流**：每个插件每天的上限（缺省 0.5 USD，按可追溯记录在重启后接着算）；超了在发请求前就拒（`budget`）；同时还过用户的总额度（按最坏情况先占着）。每个插件同时 2 个、每分钟 30 个；`maxTokens` 不超过应用的设置。拒绝都是 JSON-RPC 错误 -32000，`data.code` 是 invalid / no_model / model_not_configured / budget / rate_limited / failed。
+  - **防它借模型做别的**：不带任何工具（请求里带 tools 直接拒），不带任何对话（includeContext 一律当 none），只收文字；系统提示只有插件给的那段，不加应用的规则；回答只回给这个插件，不进任何对话。
+  - **留痕**：每次一条 `kind: 'model'`，initiator `plugin:<id>`、模型、token、花费、状态，不记提示和回答的文字。页面里的脚本不能直接用，要用就调自己 server 的工具。
 - **让 Agent 帮忙配模型**（`settings-tools.ts`）：`spica_list_models`、`spica_test_model`、`spica_save_model`、`spica_set_default_model`、`spica_settings_result`、`spica_network_status`（只读）。模型设置存在宿主那边（桌面外壳用系统加密存），内核经后台端口的**宿主方法**去拿和存：内核发 `{t:'hreq'}`、宿主回 `{t:'hres'}`，宿主在 `connectBackend(port, { hostMethods })` 里注册 `models.list` / `models.save` / `models.setDefault`（`HostModel` / `HostModelDraft`）；没有窗口时这几个工具回 `host_unavailable`，测试连接照样能用。
   - **密钥只进不出**：参数名 `apiKey` / `consumerSecret`（在 `SECRET_FIELD` 和文本去敏规则里）；收到就加进去敏表；任何结果都不带密钥，只给 `hasSecret`；Consumer Key 只给末 4 位；错误信息过一遍去敏。
   - **先测再存**：`spica_save_model` 先测试连接（WSO2 分「取 token」「调模型」两步，带 `code` 和中文 `hint`），测不通就不存（除非 `saveIfTestFails`）；上下文上限不填时用内核已知值，内核也不知道就报 `context_window_required`。
@@ -452,6 +457,7 @@
 
 | 里程碑 | 日期 | 测试 | 真模型冒烟 |
 |---|---|---|---|
+| M17 | 2026-11-10 | 新增 3 条：插件借用模型——只有拿到授权的 server 被告知能取样，回答干净（无工具、无对话、系统提示只有插件的、不超过应用的 maxTokens）、不进任何对话、留痕不含文字、花费进总额；强模型、点名命中、点名没配时退回并标出或按要求拒绝；每天上限、工具 / 非文字 / 没配模型时各自的码，当天花费重启后接着算 | — |
 | M16 | 2026-11-10 | 新增 2 条：插件 server 进程拿到和应用一样的代理、例外和证书（自己的变量优先），设置关掉时删掉本机继承来的；网络设置对子进程真的变了才通知扩展，只改别的不通知 | — |
 | M15 | 2026-11-10 | 新增 1 条，改 5 条：经 MCP 改模型设置默认不确认、直接生效；改动作为卡片写进主对话和窗口打开的那条对话，重启后还在；正文里脚本给的内容在数据围栏里；留痕 confirmedBy none；密钥不在卡片和事件里；要确认的路径按开关打开后照旧 | — |
 | M14 | 2026-11-10 | 新增 3 条：产品名——系统提示、守卫标记、MCP 工具说明都换成给的名字且不再出现 Spica，工具名不变；会话自带提示里的 {{app}} 也会填；web_fetch 用能放进请求头的名字；不给名字时一切照旧 | — |

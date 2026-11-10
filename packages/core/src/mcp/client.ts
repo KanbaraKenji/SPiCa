@@ -5,6 +5,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { Tracer } from '../trace.ts';
 import type { Tool, ToolRegistry } from '../tools/types.ts';
 import { withNetworkEnv } from '../net.ts';
+import type { SamplingGrant } from '../sampling.ts';
 import { childEnv } from '../util.ts';
 
 export interface McpServerConfig {
@@ -33,6 +34,14 @@ export interface McpServerConfig {
   onExit?(info: { code: number | null; stderrTail: string; expected: boolean }): void;
   /** Receives the server's stderr as it arrives (e.g. to write a plugin log). */
   stderrLog?(chunk: string): void;
+  /**
+   * The server may use the user's models (MCP sampling): set by the plugin
+   * manager for plugins whose manifest asks for it. Runtime.connectMcp answers
+   * the requests; without it the client does not offer sampling.
+   */
+  sampling?: SamplingGrant;
+  /** Answers sampling/createMessage (set by Runtime.connectMcp from `sampling`). */
+  onSampling?(params: unknown, signal: AbortSignal): Promise<unknown>;
 }
 
 export interface McpToolInfo {
@@ -60,6 +69,8 @@ export class McpStdioClient {
   #closed = false;
   #closing = false;
   #exited: Promise<void> = Promise.resolve();
+  /** Requests the server sent us that are still running (for notifications/cancelled). */
+  readonly #serving = new Map<number | string, AbortController>();
   serverInfo: { name?: string; version?: string } = {};
 
   constructor(config: McpServerConfig) {
@@ -103,7 +114,7 @@ export class McpStdioClient {
     child.on('error', (err) => this.#fail(new Error(`could not start MCP server "${c.name}": ${err.message}`)));
     const init = (await this.request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
-      capabilities: {},
+      capabilities: c.onSampling ? { sampling: {} } : {},
       clientInfo: { name: 'spica', version: '0.1.0' },
     })) as { serverInfo?: { name?: string; version?: string } };
     this.serverInfo = init.serverInfo ?? {};
@@ -198,16 +209,21 @@ export class McpStdioClient {
       const line = this.#buffer.slice(0, nl).trim();
       this.#buffer = this.#buffer.slice(nl + 1);
       if (!line) continue;
-      let msg: { id?: number; result?: unknown; error?: { code?: number; message?: string }; method?: string };
+      let msg: { id?: number; result?: unknown; error?: { code?: number; message?: string }; method?: string; params?: Record<string, unknown> };
       try {
         msg = JSON.parse(line) as typeof msg;
       } catch {
         continue; // servers sometimes print logs to stdout; ignore non-JSON lines
       }
       if (msg.id === undefined || msg.method) {
-        // Server-initiated request or notification: answer requests we do not support.
-        if (msg.id !== undefined && msg.method) {
-          this.#child?.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'not supported by this client' } })}\n`);
+        // Server-initiated request or notification
+        if (msg.method === 'notifications/cancelled') {
+          const id = msg.params?.requestId as number | string | undefined;
+          if (id !== undefined) this.#serving.get(id)?.abort();
+        } else if (msg.id !== undefined && msg.method === 'sampling/createMessage' && this.config.onSampling) {
+          this.#serve(msg.id, msg.params);
+        } else if (msg.id !== undefined && msg.method) {
+          this.#write({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'not supported by this client' } });
         }
         continue;
       }
@@ -220,8 +236,39 @@ export class McpStdioClient {
     }
   }
 
+  #write(msg: unknown): void {
+    if (!this.#child || this.#closed) return;
+    try {
+      this.#child.stdin.write(`${JSON.stringify(msg)}\n`);
+    } catch {
+      // the server is gone
+    }
+  }
+
+  /** Answer a sampling request; a refusal carries data.code (budget, rate_limited, no_model, ...). */
+  #serve(id: number | string, params: unknown): void {
+    const ctl = new AbortController();
+    this.#serving.set(id, ctl);
+    void this.config
+      .onSampling!(params, ctl.signal)
+      .then(
+        (result) => this.#write({ jsonrpc: '2.0', id, result }),
+        (err: unknown) => {
+          const code = (err as { code?: unknown })?.code;
+          this.#write({
+            jsonrpc: '2.0',
+            id,
+            error: { code: -32000, message: err instanceof Error ? err.message : String(err), ...(typeof code === 'string' ? { data: { code } } : {}) },
+          });
+        },
+      )
+      .finally(() => this.#serving.delete(id));
+  }
+
   #fail(err: Error): void {
     this.#closed = true;
+    for (const [, ctl] of this.#serving) ctl.abort();
+    this.#serving.clear();
     for (const [, p] of this.#pending) {
       clearTimeout(p.timer);
       p.reject(err);

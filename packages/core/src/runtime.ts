@@ -18,6 +18,7 @@ import { fileTools } from './tools/fs-tools.ts';
 import { ToolRegistry, validateInput, type FileExtractor, type Tool } from './tools/types.ts';
 import { Tracer } from './trace.ts';
 import type { SettingsBridge } from './settings-tools.ts';
+import { PluginSampler } from './sampling.ts';
 import type {
   AgentRole,
   ChildNoteMeta,
@@ -50,7 +51,8 @@ export interface RuntimeOptions {
    */
   redactions?: readonly (string | undefined)[];
   /** Defaults for new sessions. */
-  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; system?: string };
+  /** strongModel: the default provider's model for heavy work (plugins asking for a strong model get it). */
+  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; system?: string; strongModel?: string };
   store?: Store;
   /** Rate limits per provider id (deployment configuration). */
   limits?: Record<string, LimiterConfig>;
@@ -153,6 +155,9 @@ export class Runtime implements RuntimeInternals {
   readonly #mcp = new Map<string, { client: McpStdioClient; source: string; disconnect: () => Promise<void> }>();
   readonly #reports = new Map<string, string>();
   readonly #viewConfirms = new Map<string, (approved: boolean) => void>();
+  /** Plugins using the user's models (MCP sampling): daily limits, rate limits, records. */
+  readonly sampler = new PluginSampler(this);
+
   /** See RuntimeOptions.appName. */
   get appName(): string {
     return this.#opts.appName?.trim() || 'Spica';
@@ -1021,7 +1026,10 @@ export class Runtime implements RuntimeInternals {
     opts: { source?: string } = {},
   ): Promise<{ tools: string[]; source: string; disconnect: () => Promise<void> }> {
     if (this.#mcp.has(config.name)) throw new Error(`MCP server "${config.name}" is already connected`);
-    const h = await connectMcp(this.tools, this.tracer, config, opts);
+    // a plugin allowed to use the user's models: its sampling requests are answered here
+    const grant = config.sampling;
+    const withSampling = grant ? { ...config, onSampling: (p: unknown, signal: AbortSignal) => this.sampler.createMessage(grant, p, signal) } : config;
+    const h = await connectMcp(this.tools, this.tracer, withSampling, opts);
     // Resolves when the server process has exited.
     const disconnect = () => {
       this.#mcp.delete(config.name);

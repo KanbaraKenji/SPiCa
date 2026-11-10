@@ -68,7 +68,8 @@ export interface BackendConfig {
   /** SQLite file; a `<dbPath>.lock` file guards against a second writer. */
   dbPath: string;
   providers: ProviderConfig[];
-  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number };
+  /** strongModel: the default provider's model for heavy work (plugins that ask for a strong model get it). */
+  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; strongModel?: string };
   cwd?: string;
   projectsRoot?: string;
   workflowsDir?: string;
