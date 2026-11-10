@@ -43,6 +43,8 @@ export interface SessionConfig {
 export interface ToolCallCards {
   fileCard?: import('../types.ts').FileCardMeta;
   suggestion?: { title: string; actions: import('../types.ts').SuggestedAction[] };
+  /** What a history tool found (rows with their [n] numbers). */
+  history?: import('../types.ts').HistoryCardMeta;
   /** The result was outside content and went to the model fenced as data. */
   guard?: import('../types.ts').GuardNote;
   /** Ran without asking (approval mode auto). */

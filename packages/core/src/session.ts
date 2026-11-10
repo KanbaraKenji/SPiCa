@@ -964,6 +964,7 @@ export class Session {
       emit: (body) => {
         if (body.type === 'file.card') cards = { ...cards, fileCard: body.file };
         if (body.type === 'suggest.actions') cards = { ...cards, suggestion: { title: body.title, actions: body.actions } };
+        if (body.type === 'history.card') cards = { ...cards, history: body.card };
         this.#emit(body);
       },
     };
@@ -1005,6 +1006,7 @@ export class Session {
     const content: ContentBlock[] = [];
     const fileCards: NonNullable<MessageMeta['fileCards']> = {};
     const suggestedActions: NonNullable<MessageMeta['suggestedActions']> = {};
+    const historyCards: NonNullable<MessageMeta['historyCards']> = {};
     const guard: Record<string, GuardNote> = {};
     const autoApproved: string[] = [];
     for (const b of assistant.content) {
@@ -1014,6 +1016,7 @@ export class Session {
       if (r?.cards?.guard) guard[b.id] = r.cards.guard;
       if (r?.cards?.fileCard) fileCards[b.id] = r.cards.fileCard;
       if (r?.cards?.suggestion) suggestedActions[b.id] = r.cards.suggestion;
+      if (r?.cards?.history) historyCards[b.id] = r.cards.history;
       content.push({
         type: 'tool_result',
         toolUseId: b.id,
@@ -1026,6 +1029,7 @@ export class Session {
       author: 'runtime',
       ...(Object.keys(fileCards).length > 0 ? { fileCards } : {}),
       ...(Object.keys(suggestedActions).length > 0 ? { suggestedActions } : {}),
+      ...(Object.keys(historyCards).length > 0 ? { historyCards } : {}),
       ...(Object.keys(guard).length > 0 ? { guard } : {}),
       ...(autoApproved.length > 0 ? { autoApproved } : {}),
     };

@@ -149,11 +149,11 @@ describe('a conversation without a folder', () => {
 });
 
 describe('looking things up in earlier conversations', () => {
-  it('the assistant is told to name earlier conversations by title and time, not by id', async () => {
+  it('the assistant is told to name earlier conversations by title and time, not by their number', async () => {
     const { TOP_TEMPLATE } = await import('./projects.ts');
-    expect(TOP_TEMPLATE.system).toMatch(/name it by its title and when it was, never by its id/);
+    expect(TOP_TEMPLATE.system).toMatch(/name it by its title and when it was, never by its number/);
     const rt = makeRuntime(gw, { cwd: dir });
-    expect(rt.tools.get('search_history')!.spec.description).toMatch(/name a conversation by its title and time; the id is only for read_history/);
+    expect(rt.tools.get('search_history')!.spec.description).toMatch(/name a conversation by its title and time; the \[n\] numbers are only for read_history/);
     await rt.close();
   });
 
@@ -174,23 +174,32 @@ describe('looking things up in earlier conversations', () => {
     const search = rt.tools.get('search_history')!;
     const found = await search.execute({ query: 'blue-widget' }, ctx(rt, now.id));
     expect(found.content).toMatch(/^3 pieces found:/);
-    expect(found.content).toContain(`${older.id}#1`);
+    expect(found.content).not.toMatch(/ses_/); // no conversation ids for the model to repeat
+    expect(found.content).toMatch(/- \[1\] /);
     expect(found.content).toContain('(project Widgets)');
     // a conversation without a title is named by its first message, as in the window
-    expect(found.content).toContain('- The supplier for the BLUE-WIDGET housing… · ');
+    expect(found.content).toContain('] The supplier for the BLUE-WIDGET housing… · ');
+    const supplier = /- \[(\d+)\] .*housing is Acme/.exec(found.content)!;
+    expect(supplier).not.toBeNull();
     expect(found.content).not.toContain('untitled');
     expect(found.content).not.toContain('sk-history-secret-123456');
     expect((await search.execute({ query: 'blue-widget', project: 'Widgets' }, ctx(rt, now.id))).content).toMatch(/^1 piece found:/);
     expect((await search.execute({ query: 'nothing-like-this' }, ctx(rt, now.id))).content).toMatch(/^Nothing found/);
 
-    const read = await rt.tools.get('read_history')!.execute({ session_id: older.id, around: 1, count: 2 }, ctx(rt, now.id));
+    // read_history takes the number: the messages around that piece
+    const read = await rt.tools.get('read_history')!.execute({ ref: Number(supplier[1]), count: 2 }, ctx(rt, now.id));
     expect(read.content).toMatch(/messages 1–2 of \d+/);
     expect(read.content).toContain('Acme Plastics');
+    expect(read.content).not.toMatch(/ses_/);
+    expect((await rt.tools.get('read_history')!.execute({ ref: 99 }, ctx(rt, now.id))).content).toMatch(/^No \[99\]/);
 
+    // results from before the numbers named conversations by id: still understood
     const empty = rt.createSession();
-    expect((await rt.tools.get('read_history')!.execute({ session_id: empty.id }, ctx(rt, now.id))).content).toMatch(/^新对话 · /);
+    expect((await rt.tools.get('read_history')!.execute({ session_id: empty.id }, ctx(rt, now.id))).content).toMatch(/^\[\d+\] 新对话 · /);
     const files = await rt.tools.get('find_history_files')!.execute({ name: 'quote' }, ctx(rt, now.id));
-    expect(files.content).toContain(`${file} · attached`);
+    const fileLine = files.content.split('\n').find((l) => l.startsWith(`- ${file} · attached · [`))!;
+    expect(fileLine).toMatch(/· \[\d+\] The supplier for the BLUE-WIDGET housing… · /);
+    expect(files.content).not.toMatch(/ses_/);
 
     // only the assistant has them; what they return is fenced as outside data in the conversation
     const toolsFor = (role: 'top' | 'worker') => rt.tools.list({ providerId: 'fake-openai', serverWebSearch: false, role }).map((t) => t.spec.name);
@@ -203,5 +212,54 @@ describe('looking things up in earlier conversations', () => {
     expect(result).toContain('looks like instructions'); // the old "ignore all previous instructions" is flagged, not followed
     expect(HISTORY_LIMITS.maxHits).toBe(20);
     await rt.close();
+  });
+
+  it('the window gets each result as a card row that opens its conversation; the numbers stay the same in one conversation, also after a restart', async () => {
+    const path = join(dir, 'db', 'spica.db');
+    gw.onRequest(() => ({ text: 'noted' }));
+    const rt = makeRuntime(gw, { cwd: dir, projectsRoot: join(dir, 'p'), store: new SqliteStore(path), redactions: ['sk-card-secret-123456'] });
+    const older = rt.createSession();
+    older.rename('Housing supplier');
+    await older.send('RED-GEAR price is 4 EUR, key sk-card-secret-123456').done;
+    const file = join(dir, 'gear.txt');
+    writeFileSync(file, 'gear');
+    await createAgentApi(rt).send(older.id, 'RED-GEAR drawing', { attachments: [{ path: file }] });
+    await older.idle();
+    const p = rt.createProject({ name: 'Gears' });
+    await rt.session(p.managerSessionId)!.send('RED-GEAR stage one', { author: 'runtime' }).done;
+
+    const now = rt.createSession();
+    gw.enqueue(
+      { toolCalls: [{ id: 's1', name: 'search_history', args: { query: 'red-gear' } }, { id: 'f1', name: 'find_history_files', args: { name: 'gear' } }] },
+      { text: 'done' },
+    );
+    const events = captureEvents(rt);
+    await now.send('What about RED-GEAR?').done;
+    const results = now.messages().find((m) => m.kind === 'tool_results')!;
+    const search = results.meta!.historyCards!['s1']!;
+    expect(events.filter((e) => e.type === 'history.card').map((e) => (e as { callId: string }).callId)).toEqual(['s1', 'f1']);
+    expect(search).toMatchObject({ tool: 'search_history', query: 'red-gear', total: 3 });
+    expect(search.rows.map((r) => r.ref)).toEqual([1, 2, 3]); // newest first
+    const piece = search.rows.find((r) => r.text.includes('4 EUR'))!;
+    expect(piece).toMatchObject({ sessionId: older.id, name: 'Housing supplier', seq: 1, who: 'user' });
+    expect(piece.text).not.toContain('sk-card-secret-123456');
+    expect(search.rows.find((r) => r.sessionId === p.managerSessionId)).toMatchObject({ projectId: p.id, projectName: 'Gears' });
+    const files = results.meta!.historyCards!['f1']!;
+    expect(files.rows[0]).toMatchObject({ path: file, how: 'attached', sessionId: older.id, seq: 3, name: 'Housing supplier' });
+    expect(files.rows[0]!.ref).toBe(search.rows.find((r) => r.sessionId === older.id && r.seq === 3)!.ref); // same place, same number
+    // nothing the model got names a conversation by id
+    expect(JSON.stringify(results.content)).not.toMatch(/ses_/);
+    await rt.close();
+
+    // after a restart the numbers this conversation was given still point at the same places
+    const again = makeRuntime(gw, { cwd: dir, projectsRoot: join(dir, 'p'), store: new SqliteStore(path) });
+    again.restore();
+    const read = await again.tools.get('read_history')!.execute({ ref: piece.ref, count: 1 }, ctx(again, now.id));
+    expect(read.content).toMatch(new RegExp(`^\\[\\d+\\] Housing supplier · messages 1–1 of`));
+    const more = await again.tools.get('search_history')!.execute({ query: 'red-gear drawing' }, ctx(again, now.id));
+    expect(more.content).toContain(`[${files.rows[0]!.ref}] Housing supplier`); // known place: its old number
+    // another conversation has its own numbers
+    expect((await again.tools.get('read_history')!.execute({ ref: piece.ref }, ctx(again, again.createSession().id))).isError).toBe(true);
+    await again.close();
   });
 });

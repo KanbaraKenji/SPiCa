@@ -278,6 +278,8 @@ export interface MessageMeta {
   fileCards?: Record<string, FileCardMeta>;
   /** tool_results messages: suggestion cards produced by the calls, by call id. */
   suggestedActions?: Record<string, { title: string; actions: SuggestedAction[] }>;
+  /** tool_results messages: what the history tools found, by call id. */
+  historyCards?: Record<string, HistoryCardMeta>;
   [key: string]: unknown;
 }
 
@@ -477,6 +479,8 @@ export type CoreEventBody =
    * not wait; clicking an action sends its `prompt` as a user message.
    */
   | { type: 'suggest.actions'; callId: string; title: string; actions: SuggestedAction[] }
+  /** What a history tool found (search_history, read_history, find_history_files), as rows. Sent before the tool's `tool.end`. */
+  | { type: 'history.card'; callId: string; card: HistoryCardMeta }
   /** Tokens and estimated cost of one model call. */
   | { type: 'usage'; usage: Usage; costUsd: number; providerId: string; model: string }
   /** Running totals; `warning` when a total passes the warning threshold of its limit. */
@@ -517,6 +521,41 @@ export type CoreEventBody =
   | { type: 'run.end'; reason: RunEndReason; detail?: string }
   /** `code`: stable id of the cause (net.*, tls.*, proxy.*, gateway.*, wso2.*); the UI words it. */
   | { type: 'error'; message: string; retryable?: boolean; code?: string };
+
+/**
+ * What one of the history tools found (event `history.card`, kept in
+ * `MessageMeta.historyCards`). One row per piece, message or file; every row
+ * names the conversation it is in, so a click can open it there.
+ */
+export interface HistoryCardMeta {
+  tool: 'search_history' | 'read_history' | 'find_history_files';
+  /** The words searched for (search), the part of the file name (files); absent for read. */
+  query?: string;
+  /** How many there were in all; `rows` may be fewer (the newest). */
+  total: number;
+  rows: HistoryCardRow[];
+}
+
+export interface HistoryCardRow {
+  /** The short number the model sees for this row ([n]); the same place keeps its number within the asking conversation. */
+  ref: number;
+  sessionId: string;
+  /** The conversation's name as the window shows it: its title, else its first message (first line); null when it has neither. */
+  name: string | null;
+  projectId?: string;
+  projectName?: string;
+  /** ISO 8601 with offset: when the message was written or the file came up. */
+  at: string;
+  /** Message number in that conversation (to scroll to it); absent when unknown. */
+  seq?: number;
+  /** Who wrote it (search, read). */
+  who?: 'user' | 'agent' | 'other';
+  /** One piece of the text (search, read), redacted, at most 300 characters; for files the path. */
+  text: string;
+  /** Files only: absolute or as given, and how it came up. */
+  path?: string;
+  how?: 'attached' | 'attached_image' | 'read' | 'written' | 'edited';
+}
 
 /** What a file card shows about a file the agent read (event `file.card`). */
 export interface FileCardMeta {
