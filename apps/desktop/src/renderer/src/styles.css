@@ -2382,7 +2382,7 @@ button.ctx-row:hover {
   text-decoration: none;
 }
 
-/* 模型: the provider's models with a checkbox each; the selected ones carry 上下文上限. */
+/* 模型: 已启用 on top, a row each with its 上下文上限; 未启用 below as a line of small buttons. */
 .model-picker {
   max-width: 640px;
   display: flex;
@@ -2390,25 +2390,26 @@ button.ctx-row:hover {
   gap: 6px;
 }
 
-.model-picker-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.model-picker-gap {
-  flex: 1;
-}
-
 .model-picker-note {
   margin: 0;
+}
+
+.field .model-picker > .model-picker-search {
+  max-width: none;
+  height: 28px;
+}
+
+.model-picker-sect {
+  padding-top: 2px;
+  font-size: 12px;
+  color: var(--spica-faint);
 }
 
 .model-picker-list {
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--spica-border);
+  border: 1px solid var(--spica-border-strong);
   border-radius: var(--radius-m);
   max-height: 340px;
   overflow-x: hidden;
@@ -2420,11 +2421,11 @@ button.ctx-row:hover {
 }
 
 .model-row {
-  /* The 上下文上限 line sits under the model's name: the price keeps one line. */
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 4px;
-  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 8px 6px 10px;
   border-top: 1px solid var(--spica-border);
 }
 
@@ -2433,6 +2434,7 @@ button.ctx-row:hover {
 }
 
 .model-row-name {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2446,63 +2448,139 @@ button.ctx-row:hover {
   accent-color: var(--spica-accent);
 }
 
-.model-row-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
 .model-row-id {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.model-row:not(.is-on) .model-row-id {
-  color: var(--spica-muted);
-}
-
-.model-row-meta {
-  font-size: 12px;
+.model-row-info {
+  flex: none;
+  display: inline-flex;
   color: var(--spica-faint);
 }
 
+.model-row-info:hover {
+  color: var(--spica-muted);
+}
+
+/* A known 上下文上限 in short (128k); a click edits it. */
+.model-row-size {
+  flex: none;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--spica-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.model-row-size:hover {
+  background: var(--spica-hover);
+  color: var(--spica-ink);
+}
+
 .model-row-window {
+  flex: none;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  padding-left: 24px;
+  gap: 8px;
 }
 
 .field .model-row-window > .input {
-  width: 120px;
+  width: 112px;
   height: 26px;
   font-size: 13px;
 }
 
-.model-row-label,
-.model-row-unit {
+.model-row-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12px;
+  color: var(--spica-warning);
+  white-space: nowrap;
+}
+
+.model-row-remove {
+  flex: none;
   color: var(--spica-muted);
-  white-space: nowrap;
 }
 
-.model-row-tag {
-  font-size: 12px;
-  color: var(--spica-faint);
-  white-space: nowrap;
-}
-
-.model-picker-add {
+/* 未启用: one small button per model (a click turns it on), then 获取模型列表 and 手动输入模型. */
+.model-pills {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
 }
 
-.field .model-picker-add > .input,
-.field .model-picker-head > .model-picker-search {
-  flex: 1;
-  max-width: none;
+.model-pill,
+.model-pill-on {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 14px;
+  font-size: 13px;
+  color: var(--spica-muted);
+}
+
+.model-pill {
+  max-width: 100%;
+  padding: 0 4px 0 0;
+  border: 1px dashed var(--spica-border-strong);
+}
+
+.model-pill.is-action {
+  padding: 0 12px 0 10px;
+}
+
+.model-pill-on {
+  min-width: 0;
+  padding: 0 8px 0 12px;
+}
+
+.model-pill-on:hover,
+.model-pill.is-action:hover:not(:disabled) {
+  color: var(--spica-ink);
+}
+
+.model-pill:has(.model-pill-on:hover),
+.model-pill.is-action:hover:not(:disabled) {
+  background: var(--spica-hover);
+}
+
+.model-pill-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.model-pill-remove {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--spica-faint);
+}
+
+.model-pill-remove:hover {
+  background: var(--spica-hover);
+  color: var(--spica-ink);
+}
+
+.model-pill-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.field .model-pill-add > .input {
+  width: 200px;
   height: 28px;
 }
 
@@ -3945,23 +4023,6 @@ button.ctx-row:hover {
   max-height: 100%;
   border-radius: var(--radius-m);
   box-shadow: var(--spica-shadow);
-}
-
-/* A model's row: name and price, its 删除 at the far end (away from the checkbox). */
-.model-row-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.model-row-head > .model-row-name {
-  flex: 1;
-}
-
-.model-row-remove {
-  flex: none;
-  font-size: 12px;
-  color: var(--spica-muted);
 }
 
 /* What saving will do to 默认模型 / 强模型. */

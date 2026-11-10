@@ -37,6 +37,8 @@ const PATHS = {
   maximize: 'M9.5 2.5h4v4 M13.5 2.5L9 7 M6.5 13.5h-4v-4 M2.5 13.5L7 9',
   restore: 'M13.5 2.5L9.5 6.5 M9.5 3v3.5H13 M2.5 13.5l4-4 M6.5 13V9.5H3',
   model: 'M8 1.8l1.5 4.7L14.2 8l-4.7 1.5L8 14.2 6.5 9.5 1.8 8l4.7-1.5z',
+  info: 'M8 2.2a5.8 5.8 0 1 0 0 11.6 5.8 5.8 0 0 0 0-11.6z M8 7.3v3.7 M8 5.1v.2',
+  refresh: 'M13 8a5 5 0 1 1-1.6-3.7 M13.2 2.6v2.9h-2.9',
 } as const;
 
 export type IconName = keyof typeof PATHS;

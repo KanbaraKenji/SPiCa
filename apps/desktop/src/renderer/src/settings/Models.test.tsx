@@ -98,12 +98,14 @@ describe('Models', () => {
     choose('deepseek');
     expect((byLabel('名称') as HTMLInputElement).value).toBe('DeepSeek');
     expect((screen.getByRole('checkbox', { name: /deepseek-flash/ }) as HTMLInputElement).checked).toBe(true);
+    // 已启用 on top: the 上下文上限 in short, the full number and where it came from on hover.
+    const size = screen.getByRole('button', { name: 'deepseek-flash 上下文上限' });
+    expect(size.textContent).toBe('128k');
+    expect(size.getAttribute('title')).toBe('上下文上限 128,000 token（来自目录）');
+    expect(screen.getByRole('img', { name: 'deepseek-flash 官方价' }).getAttribute('title')).toBe('输入 ¥2 / 输出 ¥8（每百万 token）');
+    // A click on the number edits it.
+    fireEvent.click(size);
     expect((screen.getByLabelText('deepseek-flash 上下文上限') as HTMLInputElement).value).toBe('128000');
-    expect(screen.getByText('来自目录')).toBeTruthy();
-    // The number says what it is and in what unit.
-    expect(screen.getByText('上下文上限')).toBeTruthy();
-    expect(screen.getByText('token')).toBeTruthy();
-    expect(screen.getByText('输入 ¥2 / 输出 ¥8（每百万 token）')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'API 文档' }).getAttribute('href')).toBe('https://docs.example.com/deepseek');
     // 接口地址 is under 更多选项, already filled in.
     expect(screen.queryByLabelText(/^接口地址/)).toBeNull();
@@ -154,6 +156,7 @@ describe('Models', () => {
     type('名称', '中转');
     type('接口地址', 'https://relay.example.com/v1');
     type('API Key', 'sk-1');
+    fireEvent.click(screen.getByRole('button', { name: '手动输入模型' }));
     type('手动输入模型', 'my-model');
     fireEvent.click(screen.getByRole('button', { name: '添加' }));
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
@@ -167,10 +170,11 @@ describe('Models', () => {
   it('a model name the catalog knows by another name gets its 上下文上限, tagged 按名称匹配', async () => {
     await openNew();
     choose('#relay');
+    fireEvent.click(screen.getByRole('button', { name: '手动输入模型' }));
     type('手动输入模型', 'deepseek-flash-0611');
     fireEvent.click(screen.getByRole('button', { name: '添加' }));
-    await waitFor(() => expect((screen.getByLabelText('deepseek-flash-0611 上下文上限') as HTMLInputElement).value).toBe('128000'));
-    expect(screen.getByText('按名称匹配').getAttribute('title')).toBe('deepseek-flash');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'deepseek-flash-0611 上下文上限' }).textContent).toBe('128k'));
+    expect(screen.getByRole('button', { name: 'deepseek-flash-0611 上下文上限' }).getAttribute('title')).toBe('上下文上限 128,000 token（按名称匹配：deepseek-flash）');
   });
 
   it('tests, saves, and then keeps the key hidden', async () => {
@@ -196,6 +200,7 @@ describe('Models', () => {
     type('名称', '中转');
     type('接口地址', 'https://relay.example.com');
     type('API Key', 'sk-1');
+    fireEvent.click(screen.getByRole('button', { name: '手动输入模型' }));
     type('手动输入模型', 'm');
     fireEvent.click(screen.getByRole('button', { name: '添加' }));
     fireEvent.change(screen.getByLabelText('m 上下文上限'), { target: { value: '64000' } });
@@ -250,16 +255,17 @@ describe('Models', () => {
     const api = fakeApi([saved({ name: 'DeepSeek', catalogId: 'deepseek', models: [{ id: 'deepseek-flash', contextWindow: 128_000, contextFrom: 'catalog' }, { id: 'my-model', contextWindow: 64_000, contextFrom: 'user' }] })]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /DeepSeek/ }));
+    // Unchecked: it moves down to 未启用, where a click turns it on again.
     fireEvent.click(screen.getByRole('checkbox', { name: /my-model/ }));
-    expect((screen.getByRole('checkbox', { name: /my-model/ }) as HTMLInputElement).checked).toBe(false);
-    fireEvent.click(screen.getByRole('checkbox', { name: /my-model/ }));
+    expect(screen.queryByRole('checkbox', { name: /my-model/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '启用 my-model' }));
     expect((screen.getByRole('checkbox', { name: /my-model/ }) as HTMLInputElement).checked).toBe(true);
     expect(screen.queryByRole('button', { name: '删除 deepseek-flash' })).toBeNull();
     fireEvent.click(screen.getByRole('checkbox', { name: /my-model/ }));
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ models: [expect.objectContaining({ id: 'deepseek-flash' }), expect.objectContaining({ id: 'my-model', enabled: false })] })));
     fireEvent.click(screen.getByRole('button', { name: '删除 my-model' }));
-    expect(screen.queryByRole('checkbox', { name: /my-model/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: '启用 my-model' })).toBeNull();
   });
 
   it('beside 保存: 未保存 while there are changes, and 取消 goes back to what is saved', async () => {
