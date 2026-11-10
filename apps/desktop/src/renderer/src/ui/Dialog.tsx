@@ -1,5 +1,7 @@
 // Modal confirmation. Says only what is being confirmed (no explanations).
-import { useEffect, useId, useRef } from 'react';
+// The keyboard stays inside it (useModal); confirming fires once.
+import { useId, useRef } from 'react';
+import { useModal } from './useModal';
 
 export interface ConfirmDialogProps {
   title: string;
@@ -13,21 +15,13 @@ export interface ConfirmDialogProps {
 
 export function ConfirmDialog({ title, detail, confirmLabel, danger, onConfirm, onCancel }: ConfirmDialogProps) {
   const id = useId();
+  const box = useRef<HTMLDivElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    confirmRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onCancel();
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [onCancel]);
+  const done = useRef(false);
+  useModal(box, onCancel, confirmRef);
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
-      <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby={id}>
+      <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby={id} ref={box}>
         <p className="dialog-title" id={id}>
           {title}
         </p>
@@ -36,7 +30,16 @@ export function ConfirmDialog({ title, detail, confirmLabel, danger, onConfirm, 
           <button type="button" className="btn" onClick={onCancel}>
             取消
           </button>
-          <button type="button" ref={confirmRef} className={danger ? 'btn btn-danger' : 'btn btn-primary'} onClick={onConfirm}>
+          <button
+            type="button"
+            ref={confirmRef}
+            className={danger ? 'btn btn-danger' : 'btn btn-primary'}
+            onClick={() => {
+              if (done.current) return;
+              done.current = true;
+              onConfirm();
+            }}
+          >
             {confirmLabel}
           </button>
         </div>

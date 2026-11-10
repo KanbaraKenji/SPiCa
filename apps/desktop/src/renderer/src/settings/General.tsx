@@ -5,6 +5,7 @@ import { DEFAULT_NETWORK, type NetworkPrefs, type SettingsPatch, type ShellSetti
 import type { LocalConnectInfo, NetworkState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
+import { useGuard } from '../ui/guard';
 import { InfoTip } from '../ui/InfoTip';
 import { useKeptDraft } from './drafts';
 import { Switch } from './Switch';
@@ -229,7 +230,9 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<UsageLogResult>(null);
   const project = projects.find((p) => p.id === projectId);
-  const run = async () => {
+  const guard = useGuard();
+  const run = () => guard(exportNow);
+  const exportNow = async () => {
     setBusy(true);
     setResult(null);
     const from = rangeStart(range, now);

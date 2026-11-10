@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Models, type ProvidersApi } from './Models';
 import type { ProviderList } from '../../../shared/bridge';
 import type { ModelCatalogView } from '../../../shared/catalog';
@@ -167,6 +167,8 @@ describe('Models', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     expect(screen.getByText('请填写「my-model」的上下文上限')).toBeTruthy();
     expect(api.save).not.toHaveBeenCalled();
+    // The first 保存 has finished (one submit at a time).
+    await act(async () => {});
     fireEvent.change(screen.getByLabelText('my-model 上下文上限'), { target: { value: '64000' } });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ models: [{ id: 'my-model', contextWindow: 64_000, contextFrom: 'user' }] })));
@@ -180,6 +182,18 @@ describe('Models', () => {
     fireEvent.click(screen.getByRole('button', { name: '添加' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'deepseek-flash-0611 上下文上限' }).textContent).toBe('128k'));
     expect(screen.getByRole('button', { name: 'deepseek-flash-0611 上下文上限' }).getAttribute('title')).toBe('上下文上限 128,000 token（按名称匹配：deepseek-flash）');
+  });
+
+  it('保存 clicked three times saves once', async () => {
+    const api = await openNew();
+    choose('deepseek');
+    type('API Key', 'sk-abcdefghijklmnopqrstu1234');
+    const save = screen.getByRole('button', { name: '保存' });
+    fireEvent.click(save);
+    fireEvent.click(save);
+    fireEvent.click(save);
+    expect(await screen.findByText('已保存')).toBeTruthy();
+    expect(api.save).toHaveBeenCalledTimes(1);
   });
 
   it('tests, saves, and then keeps the key hidden', async () => {

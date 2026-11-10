@@ -28,6 +28,7 @@ import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
 import { dropDraft, keepDraft, keptDraft } from './drafts';
 import { ModelPicker, type ListedModel } from './ModelPicker';
+import { useGuard } from '../ui/guard';
 import { InfoTip } from '../ui/InfoTip';
 import { PasteConfig } from './PasteConfig';
 import { SpicaStatusIcon } from '@spica/brand/react';
@@ -145,6 +146,9 @@ export function Models({ api }: { api: ProvidersApi }) {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [result, setResult] = useState<TestResult | null>(null);
   const [busy, setBusy] = useState<'test' | 'save' | null>(null);
+  // One save / test / delete / pointer change at a time, and one 获取模型列表 at a time.
+  const run = useGuard();
+  const fetchRun = useGuard();
   const [deleting, setDeleting] = useState<ProviderView | null>(null);
   const [fetched, setFetched] = useState<ListedModel[] | null>(null);
   const [fetching, setFetching] = useState(false);
@@ -512,13 +516,13 @@ export function Models({ api }: { api: ProvidersApi }) {
         <div className="model-pointers">
           <label className="model-pointer">
             <span className="field-label">默认模型</span>
-            <select className="input" value={refKey(list.default ?? null)} onChange={(e) => void point('default', e.target.value)} aria-label="默认模型">
+            <select className="input" value={refKey(list.default ?? null)} onChange={(e) => void run(() => point('default', e.target.value))} aria-label="默认模型">
               {pointerOptions}
             </select>
           </label>
           <label className="model-pointer">
             <span className="field-label">强模型</span>
-            <select className="input" value={refKey(list.strong ?? null)} onChange={(e) => void point('strong', e.target.value)} aria-label="强模型">
+            <select className="input" value={refKey(list.strong ?? null)} onChange={(e) => void run(() => point('strong', e.target.value))} aria-label="强模型">
               <option value="">无</option>
               {pointerOptions}
             </select>
@@ -567,7 +571,7 @@ export function Models({ api }: { api: ProvidersApi }) {
           className="provider-editor"
           onSubmit={(e) => {
             e.preventDefault();
-            void save();
+            void run(save);
           }}
         >
           <div className="field field-stack">
@@ -673,7 +677,7 @@ export function Models({ api }: { api: ProvidersApi }) {
                     onRemove={(id) => set({ models: (draft.models ?? []).filter((x) => x.id !== id) })}
                     onWindow={setWindow}
                     onAdd={addTyped}
-                    onFetch={api.listModels ? () => void fetchModels() : undefined}
+                    onFetch={api.listModels ? () => void fetchRun(fetchModels) : undefined}
                     fetching={fetching}
                     fetchError={fetchError}
                     error={errors.model ?? errors.contextWindow}
@@ -738,7 +742,7 @@ export function Models({ api }: { api: ProvidersApi }) {
             ) : null}
             {choice !== '' ? (
               <>
-                <button type="button" className="btn" onClick={() => void test()} disabled={busy !== null}>
+                <button type="button" className="btn" onClick={() => void run(test)} disabled={busy !== null}>
                   {busy === 'test' ? <span className="spinner" aria-hidden /> : null}
                   测试连接
                 </button>
@@ -751,7 +755,7 @@ export function Models({ api }: { api: ProvidersApi }) {
         </form>
       ) : null}
 
-      {deleting ? <ConfirmDialog title={`删除服务商「${deleting.name}」？`} confirmLabel="删除" danger onConfirm={() => void remove(deleting)} onCancel={() => setDeleting(null)} /> : null}
+      {deleting ? <ConfirmDialog title={`删除服务商「${deleting.name}」？`} confirmLabel="删除" danger onConfirm={() => void run(() => remove(deleting))} onCancel={() => setDeleting(null)} /> : null}
     </section>
   );
 }

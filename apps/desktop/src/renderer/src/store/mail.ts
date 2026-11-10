@@ -81,13 +81,19 @@ export class MailStore {
     }
   }
 
+  /** Mails whose 采纳 / 忽略 / 更改项目 is on its way: a second click is dropped. */
+  readonly #sending = new Set<string>();
+
   async feedback(mailId: string, action: MailFeedback['action'], projectId?: string): Promise<void> {
-    if (!this.#api.mailFeedback) return;
+    if (!this.#api.mailFeedback || this.#sending.has(mailId)) return;
+    this.#sending.add(mailId);
     try {
       const item = await this.#api.mailFeedback(mailId, { action, ...(projectId ? { projectId } : {}) });
       this.#upsert(item);
     } catch (err) {
       this.state.set((v) => ({ ...v, problem: friendlyError(err) }));
+    } finally {
+      this.#sending.delete(mailId);
     }
   }
 

@@ -273,8 +273,12 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
   const missing = plugins.filter((p) => !(p.name in groupOf));
   if (missing.length) setGroupOf({ ...groupOf, ...Object.fromEntries(missing.map((p) => [p.name, p.enabled])) });
 
+  // One plugin command at a time (install, enable, update, delete, limits…): a second click while one runs is dropped.
+  const inFlight = useRef(false);
   const run = useCallback(
     async (cmd: PluginsCommand) => {
+      if (inFlight.current) return undefined;
+      inFlight.current = true;
       setBusy(true);
       try {
         const r = await api.run(cmd);
@@ -285,6 +289,7 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
         setNote({ ok: false, text: friendlyError(e) });
         return undefined;
       } finally {
+        inFlight.current = false;
         setBusy(false);
       }
     },

@@ -1,5 +1,5 @@
 // Settings > 外观: pick a skin, make your own (background + accent), zoom.
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { BUILTIN_SKINS, DARK_SKIN, deriveTokens, LIGHT_SKIN, normalizeHex, type Skin, type SkinChoice } from '../../../shared/skin';
 import { DEFAULT_ZOOM, stepZoom, ZOOM_STEPS, zoomLabel } from '../../../shared/zoom';
 import type { SettingsPatch, ShellSettings, SplashMode } from '../../../shared/settings';
@@ -129,7 +129,11 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
   const editing = custom.find((s) => s.id === settings.skin);
 
   const choose = (choice: SkinChoice) => onChange({ skin: choice });
+  // A double click makes one skin, not two (the list has not been redrawn between the clicks).
+  const lastCreate = useRef(0);
   const create = () => {
+    if (Date.now() - lastCreate.current < 600) return;
+    lastCreate.current = Date.now();
     const skin: Skin = { id: newSkinId(custom), name: newSkinName(custom), bg: activeSkin.bg, accent: activeSkin.accent };
     onChange({ customSkins: [...custom, skin], skin: skin.id });
   };
