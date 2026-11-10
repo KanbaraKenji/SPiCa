@@ -4,6 +4,16 @@
 // or key press skips it.
 import { useEffect, useState, type ReactNode } from 'react';
 import { SpicaMark, SpicaSplash } from '@spica/brand/react';
+import { SPLASH_FINISH_AFTER } from '@spica/brand';
+
+/**
+ * The full opening plays about this long however fast start-up is (he asked for
+ * ~10 s on 2026-11-10: on a fresh install loading took no time and it flashed by).
+ * Only the loading part is held longer; the finish after it is the brand's own.
+ */
+export const SPLASH_TOTAL_MS = 10_000;
+/** How long the loading part runs at least before the finish starts. */
+export const SPLASH_LOADING_AT_LEAST_MS = Math.max(0, SPLASH_TOTAL_MS - Math.round(SPLASH_FINISH_AFTER * 1000));
 
 export interface RootProps {
   /** full: the brand animation; brief: the mark flashes for under a second; none: straight in. */
@@ -26,13 +36,17 @@ export function Root({ splash: mode, ready, version, children }: RootProps) {
   }, [brief]);
   useEffect(() => {
     let alive = true;
-    void ready.finally(() => {
+    // The full version waits out its loading part even when start-up is already done.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const atLeast = mode === 'full' ? new Promise<void>((r) => (timer = setTimeout(r, SPLASH_LOADING_AT_LEAST_MS))) : Promise.resolve();
+    void Promise.allSettled([ready, atLeast]).then(() => {
       if (alive) setLoaded(true);
     });
     return () => {
       alive = false;
+      clearTimeout(timer);
     };
-  }, [ready]);
+  }, [ready, mode]);
   // A click or any key skips the opening animation: it fades out instead of cutting.
   const [skipping, setSkipping] = useState(false);
   useEffect(() => {
