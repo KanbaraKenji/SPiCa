@@ -11,18 +11,77 @@ export interface Skin {
   bg: string;
   /** Accent (links, focus, primary buttons, the mark's long petals), #rrggbb. */
   accent: string;
-  /** Body text, #rrggbb, instead of the scheme's default (built-in dark only). */
-  ink?: string;
-  /** Title bar, side panels and what you wrote one step lighter than the conversation, not darker (built-in dark only). */
-  lighterChrome?: boolean;
+  /**
+   * Built-in skins only: values measured from the reference (统筹 2026-11-10,
+   * ledger-briefs/reference-ui-colours-20261110.md), used as they are instead
+   * of derived. A skin someone makes has none: everything is derived.
+   */
+  fixed?: Partial<Tokens>;
   builtin?: boolean;
 }
 
-export const LIGHT_SKIN: Skin = { id: 'light', name: '浅色', bg: '#f7f8fa', accent: '#2f7de1', builtin: true };
-// Dark takes the reference's measured values (他 2026-11-10: conversation #191919,
-// side panel #1f1f1f, text #efefef): neutral greys, side panels, the input, menus and
-// what you wrote one or two steps lighter than the conversation.
-export const DARK_SKIN: Skin = { id: 'dark', name: '深色', bg: '#191919', accent: '#62a9ff', ink: '#efefef', lighterChrome: true, builtin: true };
+// Both built-in skins take the reference's measured greys (neutral: red, green and blue equal).
+export const LIGHT_SKIN: Skin = {
+  id: 'light',
+  name: '浅色',
+  bg: '#ffffff',
+  accent: '#2f7de1',
+  fixed: {
+    '--spica-ink': '#191919',
+    '--spica-chrome': '#fafafa',
+    '--spica-divider': '#e1e1e1',
+    '--spica-muted': '#666666',
+    '--spica-faint': '#878787',
+    '--spica-placeholder': '#878787',
+    '--spica-bubble': '#f3f3f3',
+    '--spica-input': '#ffffff',
+    '--spica-input-border': 'rgba(0, 0, 0, 0.12)',
+    '--spica-input-shadow': '0 4px 20px rgba(0, 0, 0, 0.075)',
+    '--spica-hover': '#eeeeee',
+    '--spica-active': '#e1e1e1',
+    '--spica-control': '#f2f2f2',
+    '--spica-control-hover': '#e5e5e5',
+    '--spica-code': '#f2f2f2',
+    '--spica-border': '#fbfbfb',
+    '--spica-border-strong': '#cecece',
+    // Not measured: cards (settings, connections) would vanish white on white; the side panel's grey keeps their edge.
+    '--spica-surface': '#fafafa',
+    '--spica-raised': '#ffffff',
+    '--spica-menu': '#ffffff',
+    '--spica-menu-hover': '#e5e5e5',
+  },
+  builtin: true,
+};
+export const DARK_SKIN: Skin = {
+  id: 'dark',
+  name: '深色',
+  bg: '#191919',
+  accent: '#62a9ff',
+  fixed: {
+    '--spica-ink': '#efefef',
+    '--spica-chrome': '#1f1f1f',
+    // Measured as 10% (black or white could not be told apart); white 10% over the conversation.
+    '--spica-divider': 'rgba(255, 255, 255, 0.1)',
+    '--spica-muted': '#9c9c9c',
+    '--spica-faint': '#878787',
+    '--spica-placeholder': '#878787',
+    '--spica-bubble': '#252525',
+    '--spica-input': '#303030',
+    '--spica-input-border': 'rgba(255, 255, 255, 0.08)',
+    '--spica-input-shadow': '0 4px 20px rgba(0, 0, 0, 0.035)',
+    '--spica-hover': '#2a2a2a',
+    '--spica-active': '#404040',
+    '--spica-control': '#3b3b3b',
+    '--spica-control-hover': '#454545',
+    '--spica-code': '#2a2a2a',
+    '--spica-border': '#222222',
+    '--spica-border-strong': '#474747',
+    '--spica-raised': '#303030',
+    '--spica-menu': '#303030',
+    '--spica-menu-hover': '#454545',
+  },
+  builtin: true,
+};
 export const BUILTIN_SKINS: readonly Skin[] = [LIGHT_SKIN, DARK_SKIN];
 
 /** `system` follows the OS light/dark setting with the two built-in skins. */
@@ -104,20 +163,18 @@ export function deriveTokens(skin: Skin): Tokens {
   const scheme = schemeOf(bg);
   const dark = scheme === 'dark';
   // Very mid-tone backgrounds push the ink all the way to black or white.
-  const ink = readable(skin.ink ?? (dark ? DARK_INK : LIGHT_INK), bg, dark ? '#ffffff' : '#000000', 7);
-  // One step = 2.8% of the way to the ink (#191919 → #1f1f1f with #efefef ink).
-  const lighter = dark && skin.lighterChrome === true;
+  const ink = skin.fixed?.['--spica-ink'] ?? readable(dark ? DARK_INK : LIGHT_INK, bg, dark ? '#ffffff' : '#000000', 7);
   const accent = skin.accent;
   const accentText = readable(accent, bg, ink, 3);
   const onAccent = contrast('#ffffff', accent) >= contrast('#0b0d12', accent) ? '#ffffff' : '#0b0d12';
   const danger = dark ? '#f87171' : '#dc2626';
   const warning = dark ? '#fbbf24' : '#b45309';
   const success = dark ? '#4ade80' : '#15803d';
-  return {
+  const derived: Tokens = {
     '--spica-bg': bg,
     // Window chrome: title bar and side panels sit one step away from the main pane
-    // (one step lighter for the built-in dark, darker for other dark skins; a touch grayer in light mode).
-    '--spica-chrome': lighter ? mix(bg, ink, 0.028) : dark ? mix(bg, '#000000', 0.2) : mix(bg, ink, 0.03),
+    // (darker in dark mode; a touch grayer in light mode). The built-in skins set their own.
+    '--spica-chrome': dark ? mix(bg, '#000000', 0.2) : mix(bg, ink, 0.03),
     '--spica-surface': dark ? mix(bg, ink, 0.04) : mix(bg, '#ffffff', 0.7),
     '--spica-raised': dark ? mix(bg, ink, 0.07) : '#ffffff',
     '--spica-input': dark ? mix(bg, ink, 0.06) : '#ffffff',
@@ -126,7 +183,7 @@ export function deriveTokens(skin: Skin): Tokens {
     '--spica-hover': mix(bg, ink, dark ? 0.07 : 0.055),
     '--spica-active': mix(bg, ink, dark ? 0.11 : 0.09),
     // What you wrote, in the conversation: a filled block, no border.
-    '--spica-bubble': lighter ? mix(bg, ink, 0.056) : dark ? mix(bg, '#000000', 0.3) : mix(bg, ink, 0.06),
+    '--spica-bubble': dark ? mix(bg, '#000000', 0.3) : mix(bg, ink, 0.06),
     '--spica-ink': ink,
     '--spica-muted': readable(mix(ink, bg, dark ? 0.36 : 0.4), bg, ink, 4.5),
     '--spica-faint': readable(mix(ink, bg, dark ? 0.56 : 0.6), bg, ink, 2.6),
@@ -145,6 +202,19 @@ export function deriveTokens(skin: Skin): Tokens {
       ? '0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06)'
       : '0 12px 32px rgba(15, 23, 42, 0.14), 0 0 0 1px rgba(15, 23, 42, 0.06)',
   };
+  // Layers the reference sets apart; a derived skin keeps what it had (same as the general token).
+  const layers: Tokens = {
+    '--spica-divider': derived['--spica-border']!,
+    '--spica-placeholder': derived['--spica-faint']!,
+    '--spica-input-border': derived['--spica-border-strong']!,
+    '--spica-input-shadow': '0 1px 2px rgba(0, 0, 0, 0.04)',
+    '--spica-control': derived['--spica-raised']!,
+    '--spica-control-hover': derived['--spica-hover']!,
+    '--spica-code': derived['--spica-hover']!,
+    '--spica-menu': derived['--spica-raised']!,
+    '--spica-menu-hover': derived['--spica-hover']!,
+  };
+  return { ...derived, ...layers, ...(skin.fixed as Tokens | undefined) };
 }
 
 /** Picks the skin to show for a choice, given the OS setting and the user's skins. */

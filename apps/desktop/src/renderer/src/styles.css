@@ -145,7 +145,7 @@ a:hover {
   /* Leave room for the native caption buttons (Window Controls Overlay). */
   padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px);
   background: var(--spica-chrome);
-  border-bottom: 1px solid var(--spica-border);
+  border-bottom: 1px solid var(--spica-divider);
   -webkit-app-region: drag;
   min-width: 0;
 }
@@ -225,7 +225,7 @@ a:hover {
 .panel-left {
   width: 264px;
   flex-direction: column;
-  border-right: 1px solid var(--spica-border);
+  border-right: 1px solid var(--spica-divider);
 }
 
 .panel-right {
@@ -265,7 +265,7 @@ a:hover {
    edge to the window's right edge (over the main pane and the detail panel),
    and straight full-height lines between the panes. Square corners. */
 .app[data-right='docked'] .main {
-  border-right: 1px solid var(--spica-border);
+  border-right: 1px solid var(--spica-divider);
 }
 
 /* ---------- Buttons ---------- */
@@ -307,12 +307,12 @@ a:hover {
   gap: 6px;
   border-radius: var(--radius-m);
   border: 1px solid var(--spica-border-strong);
-  background: var(--spica-raised);
+  background: var(--spica-control);
   white-space: nowrap;
 }
 
 .btn:hover:not(:disabled) {
-  background: var(--spica-hover);
+  background: var(--spica-control-hover);
 }
 
 .btn:disabled {
@@ -373,6 +373,10 @@ a:hover {
   background: var(--spica-input);
   outline: none;
   user-select: text;
+}
+
+.input::placeholder {
+  color: var(--spica-placeholder);
 }
 
 .input:focus {
@@ -934,7 +938,7 @@ button.tree-twisty:hover {
   font-size: 0.9em;
   padding: 1px 5px;
   border-radius: 4px;
-  background: var(--spica-hover);
+  background: var(--spica-code);
 }
 
 .md pre {
@@ -1327,13 +1331,13 @@ button.tree-twisty:hover {
   gap: 6px;
   padding: 12px 10px 8px 16px;
   border-radius: 16px;
-  border: 1px solid var(--spica-border-strong);
+  border: 1px solid var(--spica-input-border);
   background: var(--spica-input);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--spica-input-shadow);
 }
 
 .composer:focus-within {
-  border-color: color-mix(in srgb, var(--spica-accent) 60%, var(--spica-border-strong));
+  border-color: color-mix(in srgb, var(--spica-accent) 60%, var(--spica-input-border));
 }
 
 .composer-input {
@@ -1352,7 +1356,7 @@ button.tree-twisty:hover {
 }
 
 .composer-input::placeholder {
-  color: var(--spica-faint);
+  color: var(--spica-placeholder);
 }
 
 /* Controls under the text: attach / folder on the left, approval / model / context / send on the right. */
@@ -2769,7 +2773,7 @@ button.tree-twisty:hover {
   max-width: calc(100vw - 8px);
   padding: 4px;
   border-radius: var(--radius-m);
-  background: var(--spica-raised);
+  background: var(--spica-menu);
   box-shadow: var(--spica-shadow);
 }
 
@@ -2807,7 +2811,7 @@ button.tree-twisty:hover {
 
 .context-item:hover,
 .context-item:focus-visible {
-  background: var(--spica-hover);
+  background: var(--spica-menu-hover);
   outline: none;
 }
 
