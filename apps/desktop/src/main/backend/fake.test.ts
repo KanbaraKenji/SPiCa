@@ -75,6 +75,17 @@ describe('FakeBackend', () => {
     backend.dispose();
   });
 
+  it('renaming, switching model or Manual / Auto keeps updatedAt, so the sidebar order stays (as in the core)', async () => {
+    let t = Date.parse('2026-01-01T00:00:00Z');
+    const b = new FakeBackend({ speed: 0, now: () => new Date(t) });
+    const before = (await b.getSession(SEED_IDS.chat))!.updatedAt;
+    t += 60_000;
+    await b.renameSession(SEED_IDS.chat, 'named');
+    await b.setSessionModel(SEED_IDS.chat, 'p', 'm');
+    expect((await b.setApprovalMode(SEED_IDS.chat, 'auto')).updatedAt).toBe(before);
+    b.dispose();
+  });
+
   it('seeds a project tree with every status the UI draws', async () => {
     const b = new FakeBackend({ speed: 0 });
     const sessions = await b.listSessions();

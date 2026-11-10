@@ -275,7 +275,8 @@ export class Session {
   setTools(tools: string[] | undefined): void {
     const { tools: _old, ...rest } = this.#record.config;
     void _old;
-    this.#record = { ...this.#record, config: tools ? { ...rest, tools } : rest, updatedAt: isoNow() };
+    // a settings change is not use: updatedAt (most recently used) moves only with the conversation's activity
+    this.#record = { ...this.#record, config: tools ? { ...rest, tools } : rest };
     this.#rt.store.upsertSession(this.#record);
   }
 
@@ -291,7 +292,6 @@ export class Session {
     this.#record = {
       ...this.#record,
       config: { ...this.#record.config, providerId, model, serverWebSearch: !!this.#record.config.serverWebSearch && provider.capabilities.serverWebSearch },
-      updatedAt: isoNow(),
     };
     this.#rt.store.upsertSession(this.#record);
     this.addNote('note', `[The user switched this conversation from ${from.model} to ${model}. Carry on as before.]`, {
@@ -307,7 +307,7 @@ export class Session {
   /** manual: every confirmation goes to the user; auto: irreversible-by-declaration calls run and are recorded. */
   setApprovalMode(mode: ApprovalMode): SessionInfo {
     if (mode !== 'manual' && mode !== 'auto') throw new Error(`unknown approval mode: ${String(mode)}`);
-    this.#record = { ...this.#record, config: { ...this.#record.config, approvalMode: mode }, updatedAt: isoNow() };
+    this.#record = { ...this.#record, config: { ...this.#record.config, approvalMode: mode } };
     this.#rt.store.upsertSession(this.#record);
     this.#emit({ type: 'session.updated', info: this.info() });
     return this.info();
@@ -455,7 +455,7 @@ export class Session {
 
   /** Set or clear the display name. */
   rename(title: string | null): SessionInfo {
-    this.#record = { ...this.#record, title: title && title.trim() !== '' ? title.trim() : null, updatedAt: isoNow() };
+    this.#record = { ...this.#record, title: title && title.trim() !== '' ? title.trim() : null };
     this.#rt.store.upsertSession(this.#record);
     this.#emit({ type: 'session.renamed', title: this.#record.title });
     return this.info();

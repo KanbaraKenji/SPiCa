@@ -239,22 +239,21 @@ export class FakeBackend implements AgentBackend {
 
   async renameSession(sessionId: string, title: string | null): Promise<SessionInfo> {
     const s = this.#requireSession(sessionId);
-    s.title = title?.trim() ? title.trim() : null;
-    s.updatedAt = isoAt(this.#now());
+    s.title = title?.trim() ? title.trim() : null; // a settings change is not use: updatedAt stays, as in the core
     this.#emit(sessionId, { type: 'session.renamed', title: s.title });
     return structuredClone(s);
   }
 
   async setSessionModel(sessionId: string, providerId: string, model: string): Promise<SessionInfo> {
     const s = this.#requireSession(sessionId);
-    Object.assign(s, { providerId, model, updatedAt: isoAt(this.#now()) });
+    Object.assign(s, { providerId, model });
     this.#emit(sessionId, { type: 'session.updated', info: structuredClone(s) });
     return structuredClone(s);
   }
 
   async setApprovalMode(sessionId: string, mode: 'manual' | 'auto'): Promise<SessionInfo> {
     const s = this.#requireSession(sessionId);
-    Object.assign(s, { approvalMode: mode, updatedAt: isoAt(this.#now()) });
+    Object.assign(s, { approvalMode: mode });
     this.#emit(sessionId, { type: 'session.updated', info: structuredClone(s) });
     return structuredClone(s);
   }

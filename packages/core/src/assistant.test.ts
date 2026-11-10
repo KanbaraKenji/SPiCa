@@ -107,16 +107,25 @@ describe('project managers stand on their own', () => {
     await third.close();
   });
 
-  it('getTopSession is the conversation used most recently; it is no special thread', async () => {
+  it('getTopSession is the conversation used most recently; it is no special thread; changing its settings is not use', async () => {
+    gw.onRequest(() => ({ text: 'ok' }));
     const rt = makeRuntime(gw, { cwd: dir });
     const api = createAgentApi(rt);
     const a = rt.createSession();
     await new Promise((r) => setTimeout(r, 5));
     const b = rt.createSession();
-    b.rename('newer');
+    await b.send('hello').done;
     expect((await api.getTopSession!()).id).toBe(b.id);
     await new Promise((r) => setTimeout(r, 5));
-    a.rename('used again');
+    await a.send('again').done;
+    expect((await api.getTopSession!()).id).toBe(a.id);
+    // settings of b change: it does not become the most recent (the sidebar order stays)
+    const before = b.info().updatedAt;
+    await new Promise((r) => setTimeout(r, 5));
+    b.setApprovalMode('auto');
+    b.setModel('fake-openai', 'other-model');
+    b.rename('named');
+    expect(b.info().updatedAt).toBe(before);
     expect((await api.getTopSession!()).id).toBe(a.id);
     await rt.close();
   });

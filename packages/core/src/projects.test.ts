@@ -285,11 +285,12 @@ describe('top-level threads', () => {
   });
 
   it('every parentless session is a thread of the top-level agent', async () => {
+    gw.onRequest(() => ({ text: 'ok' }));
     const r = makeRuntime(gw, { cwd: dir });
     const a = r.createSession();
     const b = r.createSession();
     await new Promise((res) => setTimeout(res, 5));
-    b.rename('used last');
+    await b.send('used last').done;
     expect([a.info().templateId, b.info().templateId]).toEqual(['top', 'top']);
     expect(r.top().id).toBe(b.id); // no conversation is special: top() is the one used most recently
     expect(r.top().id).not.toBe(r.createSession({ role: 'worker' }).id);
