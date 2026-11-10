@@ -5,8 +5,23 @@
  * 高过大写字母的部分（d、l 的竖笔，重音符号）落在 0 以上，记在 ascent 里。
  * 每个字母一个 shape（开机画面逐字点亮）；空格只占位置，不出 shape。
  */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import opentype, { type Font, type Glyph, type PathCommand } from 'opentype.js';
-import type { Wordmark, WordmarkShape } from '../src/wordmark.ts';
+import { WORDMARK, type Wordmark, type WordmarkShape } from '../src/wordmark.ts';
+
+/** 仓库自带的字标字体（Gelasio Bold，SIL OFL 1.1） */
+export const BUNDLED_WORDMARK_FONT = fileURLToPath(new URL('../../../branding/fonts/Gelasio-Bold.ttf', import.meta.url));
+
+/**
+ * 构建时用：按应用名生成字标，交给 SpicaSplash / SpicaBanner 的 wordmark 属性。
+ * 不给字体就用仓库自带的 Gelasio；名字是 Spica 且没给字体时，原样返回仓库里的 WORDMARK。
+ * 字体里缺字、文字为空时抛错，消息是给人看的中文。
+ */
+export function wordmarkForName(name: string, font?: Uint8Array): Wordmark {
+  if (!font && name.trim() === 'Spica') return WORDMARK;
+  return wordmarkFromFont(font ?? readFileSync(BUNDLED_WORDMARK_FONT), name).wordmark;
+}
 
 export const WORDMARK_CAP = 64;
 

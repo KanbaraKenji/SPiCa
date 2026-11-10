@@ -6,7 +6,7 @@ import { MARK_VIEWBOX } from '../src/geometry.ts';
 import { SPLASH_LAYOUT, SPLASH_STAGE, splashFrame, splashLayout } from '../src/splash.ts';
 import { BANNER_LAYOUT, bannerLayout, bannerSvg, wordmarkSvg } from '../src/svg.ts';
 import { WORDMARK } from '../src/wordmark.ts';
-import { wordmarkFromFont, wordmarkModuleSource } from './wordmark-font.ts';
+import { wordmarkForName, wordmarkFromFont, wordmarkModuleSource } from './wordmark-font.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FONT = readFileSync(path.join(here, '../../../branding/fonts/Gelasio-Bold.ttf'));
@@ -35,6 +35,13 @@ describe('按字体生成字标', () => {
     expect(make('Abcd').ascent).toBeGreaterThan(0); // b、d 的竖笔
     expect(make('Élan').ascent).toBeGreaterThan(make('Abcd').ascent!); // 重音符号更高
     expect(make('AB').descent).toBeLessThan(WORDMARK.descent); // 没有 p 的竖笔
+  });
+
+  it('构建时的 wordmarkForName：缺省用自带字体，Spica 原样返回仓库里的字标', () => {
+    expect(wordmarkForName('Spica')).toBe(WORDMARK);
+    expect(wordmarkForName('Abcd')).toEqual(make('Abcd'));
+    expect(wordmarkForName('Abcd', FONT)).toEqual(make('Abcd'));
+    expect(() => wordmarkForName('A测B')).toThrow('字体里没有这些字：测');
   });
 
   it('字体里缺的字一次全列出来', () => {

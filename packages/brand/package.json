@@ -10,6 +10,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./react": "./src/react/index.ts",
+    "./node": "./scripts/wordmark-font.ts",
     "./styles.css": "./src/styles/brand.css"
   },
   "sideEffects": [

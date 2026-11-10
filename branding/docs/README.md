@@ -87,6 +87,7 @@ npm run brand:build
 npm run wordmark:from-font -w @spica/brand -- ../../branding/fonts/Gelasio-Bold.ttf --text "应用名" --json 输出路径.json   # 也可以换成公司自己的字体文件
 ```
 
+- 构建脚本里也可以直接调函数：`import { wordmarkForName } from '@spica/brand/node'`，`wordmarkForName(名字, 字体字节?)` 返回同样的 `Wordmark`；不给字体用自带的 Gelasio，名字是 Spica 时原样返回仓库里的字标。只在构建时（Node）用，不要打进渲染层。
 - JSON 就是一个 `Wordmark` 对象，交给 `SpicaSplash`、`SpicaBanner`、`SpicaWordmark` 的 `wordmark` 属性（字符串版是 `bannerSvg` / `wordmarkSvg` 的 `wordmark` 选项）。不传就是仓库自带的 Spica 字标，和原来一样。
 - 文字原样使用，大小写不改。空格只占位置，不算一个字母；字体里缺的字会一次全列出来报错。
 - 开机画面：花标和字标作为一组水平居中；名字长到整组超过舞台宽的 80% 时，字标按比例缩小，花标大小不变。扫字的光照样从左扫到右。
