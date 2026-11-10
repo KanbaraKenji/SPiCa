@@ -556,9 +556,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 setFloating(null);
               },
             },
-            notes: sidebarNotes,
           }
         : {})}
+      // New mail and unseen progress reports: with or without a mail plugin.
+      notes={sidebarNotes}
     />
   );
 
