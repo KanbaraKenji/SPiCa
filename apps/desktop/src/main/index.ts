@@ -541,6 +541,10 @@ protocol.registerSchemesAsPrivileged([
 ]);
 const previewFiles = new PreviewFiles();
 
+ipcMain.handle(DesktopChannel.ProjectRead, async (_e, projectId: unknown) => {
+  if (typeof projectId === 'string' && backend instanceof ProcessBackend) await backend.markProjectRead(projectId).catch(() => undefined);
+});
+
 // Pictures for a message: pasted ones saved as PNG, large ones made to fit (main/images.ts).
 const attachImages = new AttachImages(join(app.getPath('userData'), 'attach-images'), {
   fromBuffer: (data) => nativeImage.createFromBuffer(data),

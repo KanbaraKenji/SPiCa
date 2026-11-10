@@ -57,7 +57,7 @@ function MailCard({ item, props, onMoveMenu }: { item: MailItem; props: InboxVie
       {item.preview ? <p className="mail-preview">{item.preview}</p> : null}
       <div className="mail-verdict">
         <span className={`mail-tag is-${verdict.tone}`}>
-          {verdict.tone === 'pending' ? <span className="spinner" aria-hidden /> : null}
+          {verdict.tone === 'pending' ? <SpicaStatusIcon name="running" size={14} /> : null}
           {verdict.text}
         </span>
         {reason ? <span className="mail-reason">{reason}</span> : null}

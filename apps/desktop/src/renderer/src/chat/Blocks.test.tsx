@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { AskCard, ConfirmCard, FileCards, SuggestCard, ToolGroup } from './Blocks';
+import { OpenSessionContext, AskCard, ConfirmCard, FileCards, SuggestCard, ToolGroup } from './Blocks';
 
 afterEach(cleanup);
 
@@ -71,5 +71,27 @@ describe('ToolGroup', () => {
     expect(head.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(head);
     expect(screen.getByRole('button', { name: /读取文件\s+需求说明\.docx/ })).toBeTruthy();
+  });
+});
+
+describe('the assistant looking through earlier conversations', () => {
+  it('says what it looked for, and each conversation it found opens on a click', () => {
+    const open = vi.fn();
+    const block = {
+      type: 'tool' as const,
+      callId: 'h1',
+      name: 'search_history',
+      input: { query: '报价单' },
+      state: 'done' as const,
+      result: '2 pieces found:\n- 样机评审 · ses_ab12#4 · 2026-11-09 · user: 报价单在哪\n- 预算 · ses_cd34#9 · 2026-11-08 · agent: 报价单已更新',
+    };
+    render(
+      <OpenSessionContext.Provider value={open}>
+        <ToolGroup blocks={[block]} />
+      </OpenSessionContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /查找对话记录\s+报价单/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'ses_ab12#4' }));
+    expect(open).toHaveBeenCalledWith('ses_ab12');
   });
 });

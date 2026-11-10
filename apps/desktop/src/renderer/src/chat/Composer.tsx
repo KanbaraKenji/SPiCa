@@ -9,6 +9,7 @@ import { Icon } from '../ui/Icon';
 import { FileGlyph } from '../ui/FileIcon';
 import { ImageViewer } from '../ui/ImageViewer';
 import { APP_NAME } from '../../../shared/app-identity';
+import { SpicaStatusIcon } from '@spica/brand/react';
 
 export interface ComposerTools {
   /** Windows' file picker; absent: no attachments. */
@@ -212,7 +213,10 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
       <div className="composer-stack">
       {blocked ? (
         <p className="composer-strip" role="status">
-          <span>当前模型不支持图片，请切换模型。</span>
+          <span className="status-with-icon">
+            <SpicaStatusIcon name="warning" size={15} />
+            当前模型不支持图片，请切换模型。
+          </span>
           {t.model && t.model.options.length > 1 ? (
             <button type="button" className="text-btn" onClick={() => modelBtn.current?.click()}>
               切换模型

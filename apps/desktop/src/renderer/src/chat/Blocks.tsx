@@ -1,12 +1,35 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
-import { memo, useState, type ReactNode } from 'react';
+import { createContext, memo, useContext, useState, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, type Block, type ChildNote, type FileRef } from '../store/transcript';
 import { Icon } from '../ui/Icon';
 import { FileBadge } from '../ui/FileIcon';
-import { confirmTitle, fileFolder, fileName, formatDuration, GUARD_CAUSE_TEXT, toolLabel, toolTarget } from './format';
+import { confirmTitle, fileFolder, fileName, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS, toolLabel, toolTarget } from './format';
+
+/** Opens a conversation by id (links in what the assistant found in earlier conversations). */
+export const OpenSessionContext = createContext<((id: string) => void) | null>(null);
+
+/** A history tool's result with each conversation it names (ses_…, ses_…#n) as a link to it. */
+function HistoryResult({ text }: { text: string }) {
+  const open = useContext(OpenSessionContext);
+  if (!open) return <pre className="tool-result">{text}</pre>;
+  const parts = text.split(/(\bses_[A-Za-z0-9_-]+(?:#\d+)?)/g);
+  return (
+    <pre className="tool-result">
+      {parts.map((p, i) =>
+        /^ses_/.test(p) ? (
+          <button key={i} type="button" className="text-btn history-link" onClick={() => open(p.split('#')[0]!)} title="打开该对话">
+            {p}
+          </button>
+        ) : (
+          p
+        ),
+      )}
+    </pre>
+  );
+}
 import { SpicaStatusIcon } from '@spica/brand/react';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
@@ -63,13 +86,22 @@ function ToolRow({ block }: { block: ToolBlock }) {
   const [open, setOpen] = useState(false);
   const running = block.state === 'running' || block.state === 'pending';
   const meta = running ? (
-    <span className="spinner" aria-label="进行中" />
+    <SpicaStatusIcon name="running" size={14} title="进行中" />
   ) : block.state === 'error' ? (
-    <span className="text-danger">失败</span>
+    <span className="status-with-icon text-danger">
+      <SpicaStatusIcon name="error" size={14} />
+      失败
+    </span>
   ) : block.state === 'unavailable' ? (
-    <span>已停用，未执行</span>
+    <span className="status-with-icon">
+      <SpicaStatusIcon name="stopped" size={14} />
+      已停用，未执行
+    </span>
   ) : block.state === 'timeout' ? (
-    <span>未完成，已停止等待</span>
+    <span className="status-with-icon">
+      <SpicaStatusIcon name="stopped" size={14} />
+      未完成，已停止等待
+    </span>
   ) : block.durationMs !== undefined ? (
     block.autoApproved ? `自动批准 · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs)
   ) : block.autoApproved ? (
@@ -78,7 +110,7 @@ function ToolRow({ block }: { block: ToolBlock }) {
   const body = block.result ?? block.preview;
   return (
     <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={<Icon name="tool" size={14} />} label={toolLine(block)} meta={meta}>
-      {body ? <pre className="tool-result">{body}</pre> : <p className="tool-empty">—</p>}
+      {body ? HISTORY_TOOLS.has(block.name) ? <HistoryResult text={body} /> : <pre className="tool-result">{body}</pre> : <p className="tool-empty">—</p>}
     </Disclosure>
   );
 }
@@ -91,7 +123,14 @@ export function ToolGroup({ blocks }: { blocks: ToolBlock[] }) {
   const failed = blocks.filter((b) => b.state === 'error').length;
   const total = blocks.reduce((n, b) => n + (b.durationMs ?? 0), 0);
   const label = running ? `${toolLine(running)}` : `调用了 ${blocks.length} 个工具`;
-  const meta = running ? <span className="spinner" aria-label="进行中" /> : failed ? <span className="text-danger">{failed} 个失败</span> : total ? formatDuration(total) : null;
+  const meta = running ? (
+    <SpicaStatusIcon name="running" size={14} title="进行中" />
+  ) : failed ? (
+    <span className="status-with-icon text-danger">
+      <SpicaStatusIcon name="error" size={14} />
+      {failed} 个失败
+    </span>
+  ) : total ? formatDuration(total) : null;
   return (
     <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={<Icon name="tool" size={14} />} label={label} meta={meta}>
       <div className="fold-list">
@@ -186,7 +225,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
       {decided ? (
         <p className="card-answer">
-          {block.approved ? <SpicaStatusIcon name="done" size={15} /> : <Icon name="close" size={14} />}
+          <SpicaStatusIcon name={block.approved ? 'done' : 'stopped'} size={15} />
           <span>{block.approved ? '已允许' : '已拒绝'}</span>
         </p>
       ) : (

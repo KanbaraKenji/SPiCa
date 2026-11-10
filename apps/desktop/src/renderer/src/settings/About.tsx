@@ -61,7 +61,7 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
         </form>
         {update?.message ? (
           <p className={update.status === 'error' ? 'provider-result is-bad plugin-note' : 'provider-result plugin-note'} role="status">
-            {update.status === 'latest' || update.status === 'ready' ? <SpicaStatusIcon name="done" size={15} /> : null}
+            {update.status === 'latest' || update.status === 'ready' ? <SpicaStatusIcon name="done" size={15} /> : update.status === 'error' ? <SpicaStatusIcon name="error" size={15} /> : null}
             {update.message}
           </p>
         ) : null}

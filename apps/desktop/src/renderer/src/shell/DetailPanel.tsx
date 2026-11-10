@@ -5,6 +5,7 @@ import { Icon } from '../ui/Icon';
 import { FileGlyph } from '../ui/FileIcon';
 import { activityText } from './activity';
 import { fileFolder, fileName, formatDuration, formatUsd, toolLabel, toolTarget } from '../chat/format';
+import { SpicaStatusIcon } from '@spica/brand/react';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
 
@@ -131,7 +132,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
                     {toolTarget(t.input) ? <span className="detail-item-sub"> {toolTarget(t.input)}</span> : null}
                   </span>
                   <span className="detail-item-meta">
-                    {t.state === 'running' || t.state === 'pending' ? <span className="spinner" aria-label="进行中" /> : t.durationMs !== undefined ? formatDuration(t.durationMs) : ''}
+                    {t.state === 'running' || t.state === 'pending' ? <SpicaStatusIcon name="running" size={14} title="进行中" /> : t.durationMs !== undefined ? formatDuration(t.durationMs) : ''}
                   </span>
                 </li>
               ))}

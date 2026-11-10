@@ -74,6 +74,7 @@ const bridge: DesktopBridge = {
     }
   },
   openFile: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.OpenFile, sessionId, path) as Promise<string | null>,
+  markProjectRead: (projectId) => ipcRenderer.invoke(DesktopChannel.ProjectRead, projectId) as Promise<void>,
   images: {
     fromPaste: (data) => ipcRenderer.invoke(DesktopChannel.Images, 'fromPaste', data) as Promise<{ path: string; url: string } | null>,
     prepare: (path) => ipcRenderer.invoke(DesktopChannel.Images, 'prepare', path) as Promise<{ path: string; url: string } | null>,

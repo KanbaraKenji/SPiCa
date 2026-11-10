@@ -190,6 +190,11 @@ export class ProcessBackend implements AgentBackend {
   }
 
   /** A model name matched to the catalog (exact, else by name: case, a vendor/ prefix): its context window. */
+  /** A project's reports have been seen: the core clears its unread count (and sends project.updated). */
+  async markProjectRead(projectId: string): Promise<void> {
+    await this.call('markProjectRead', projectId);
+  }
+
   /** Whether a model takes pictures (the catalog, or a refusal the core remembers); null: not known. */
   async modelTakesImages(providerId: string, model: string): Promise<boolean | null> {
     const r = await this.call<boolean | null | undefined>('modelTakesImages', providerId, model);

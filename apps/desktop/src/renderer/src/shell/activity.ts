@@ -38,6 +38,9 @@ export function activityText(e: EntryFields): string {
       return `决定：${d ?? t ?? ''}`.replace(/：$/, '');
     case 'stage':
       return `${t ? `进入阶段${q(t)}` : '切换阶段'}${d ? `：${d}` : ''}`;
+    case 'manager.report':
+      // Progress nobody asked about (mail handled, steps it took on its own): the start of the report.
+      return `项目经理回报${d ? `：${d}` : ''}`;
     case 'note':
       // The mail pipeline logs a received mail as a note: subject + mail id (<source>:<id>).
       if (t && d && /^[\w.-]+:\S+$/.test(d)) return `收到来信${q(t)}`;

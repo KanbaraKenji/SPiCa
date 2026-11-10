@@ -22,4 +22,7 @@ describe('activityText', () => {
     // Older entries without `action`.
     expect(activityText({ kind: 'file_write', path: 'kickoff.md' } as never)).toBe('写入 kickoff.md');
   });
+  it('a progress report nobody asked about', () => {
+    expect(activityText({ action: 'manager.report', detail: '已处理 3 封来信' })).toBe('项目经理回报：已处理 3 封来信');
+  });
 });

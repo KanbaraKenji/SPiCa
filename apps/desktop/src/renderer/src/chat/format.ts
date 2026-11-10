@@ -24,7 +24,14 @@ const LABELS: Record<string, string> = {
   set_stage: '推进阶段',
   add_work_object: '添加工作对象',
   list_work_objects: '查看工作对象',
+  // The assistant looking through earlier conversations.
+  search_history: '查找对话记录',
+  read_history: '读取对话记录',
+  find_history_files: '查找对话中的文件',
 };
+
+/** Tools that read other conversations: their results name them as ses_…#n, shown as links. */
+export const HISTORY_TOOLS = new Set(['search_history', 'read_history', 'find_history_files']);
 
 export function toolLabel(name: string): string {
   return LABELS[name] ?? name;
@@ -34,7 +41,7 @@ export function toolLabel(name: string): string {
 export function toolTarget(input: unknown): string {
   if (!input || typeof input !== 'object') return '';
   const v = input as Record<string, unknown>;
-  for (const key of ['path', 'pattern', 'query', 'command', 'url', 'to', 'subject', 'title', 'name', 'stage', 'decision', 'text']) {
+  for (const key of ['path', 'pattern', 'query', 'command', 'url', 'to', 'subject', 'title', 'name', 'stage', 'decision', 'text', 'session_id']) {
     const value = v[key];
     if (typeof value === 'string' && value) return value === '.' ? '工作文件夹' : value.length > 60 ? `${value.slice(0, 60)}…` : value;
   }

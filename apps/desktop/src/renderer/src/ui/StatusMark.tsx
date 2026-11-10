@@ -1,6 +1,7 @@
 // Small status glyph for a session in the tree. Running states animate
 // gently; waiting-for-you is the only colored one, so it stands out.
 import type { SessionStatus } from '@spica/protocol';
+import type { StatusIconName } from '@spica/brand';
 import { SpicaStatusIcon } from '@spica/brand/react';
 
 export const STATUS_LABEL: Record<SessionStatus, string> = {
@@ -16,23 +17,25 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
   interrupted: '已中断',
 };
 
+/** Each state's icon from the brand's status family; idle shows nothing. */
+const ICON: Partial<Record<SessionStatus, StatusIconName>> = {
+  thinking: 'running',
+  tool: 'running',
+  queued: 'queued',
+  awaiting_confirm: 'waiting',
+  awaiting_answer: 'question',
+  error: 'error',
+  interrupted: 'error',
+  aborted: 'stopped',
+  done: 'done',
+};
+
 export function StatusMark({ status }: { status: SessionStatus }) {
-  const kind =
-    status === 'thinking' || status === 'tool'
-      ? 'run'
-      : status === 'queued'
-        ? 'queue'
-        : status === 'awaiting_answer' || status === 'awaiting_confirm'
-          ? 'wait'
-          : status === 'error' || status === 'interrupted'
-            ? 'error'
-            : status === 'done'
-              ? 'done'
-              : 'none';
-  if (kind === 'none') return <span className="status-mark" aria-hidden />;
+  const name = ICON[status];
+  if (!name) return <span className="status-mark" aria-hidden />;
   return (
-    <span className={`status-mark status-${kind}`} role="img" aria-label={STATUS_LABEL[status]} title={STATUS_LABEL[status]}>
-      {kind === 'done' ? <SpicaStatusIcon name="done" size={12} /> : null}
+    <span className="status-mark" role="img" aria-label={STATUS_LABEL[status]} title={STATUS_LABEL[status]}>
+      <SpicaStatusIcon name={name} size={12} />
     </span>
   );
 }

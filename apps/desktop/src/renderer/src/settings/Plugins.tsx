@@ -246,7 +246,7 @@ export function Plugins({ api }: { api: PluginsApi }) {
         </form>
         {note ? (
           <p className={note.ok ? 'provider-result is-ok plugin-note' : 'provider-result is-bad plugin-note'} role="status">
-            {note.ok ? <SpicaStatusIcon name="done" size={15} /> : null}
+            <SpicaStatusIcon name={note.ok ? 'done' : 'error'} size={15} />
             {note.text}
           </p>
         ) : null}

@@ -534,8 +534,16 @@ export function Models({ api }: { api: ProvidersApi }) {
               <span className="provider-sub">
                 {kindLabel(p.kind)} · {enabledModels(p.models).length > 1 ? `${enabledModels(p.models).length} 个模型：${enabledModels(p.models).map((m) => m.id).join('、')}` : (enabledModels(p.models)[0]?.id ?? '—')}
               </span>
-              {list?.problems[p.id] ? <span className="provider-problem">{list.problems[p.id]}</span> : null}
-              {!p.readOnly && enabledModels(p.models).some((m) => m.contextWindow === null) ? <span className="provider-problem">缺少上下文上限</span> : null}
+              {list?.problems[p.id] ? (
+                <span className="provider-problem status-with-icon">
+                  <SpicaStatusIcon name="error" size={14} />
+                  {list.problems[p.id]}
+                </span>
+              ) : null}
+              {!p.readOnly && enabledModels(p.models).some((m) => m.contextWindow === null) ? <span className="provider-problem status-with-icon is-warning">
+                  <SpicaStatusIcon name="warning" size={14} />
+                  缺少上下文上限
+                </span> : null}
               {keptDraft(draftKey(p.id)) ? <span className="provider-unsaved">未保存</span> : null}
             </button>
             {p.isDefault ? <span className="provider-default">默认</span> : null}
@@ -694,7 +702,8 @@ export function Models({ api }: { api: ProvidersApi }) {
           ) : null}
 
           {pointerNote ? (
-            <p className="provider-pointer-note" role="status">
+            <p className="provider-pointer-note status-with-icon" role="status">
+              <SpicaStatusIcon name="info" size={14} />
               {pointerNote}
             </p>
           ) : null}
@@ -708,7 +717,7 @@ export function Models({ api }: { api: ProvidersApi }) {
             <span className="provider-actions-gap" />
             {result ? (
               <span className={result.ok ? 'provider-result is-ok' : 'provider-result is-bad'} role="status">
-                {result.ok ? <SpicaStatusIcon name="done" size={15} /> : null}
+                <SpicaStatusIcon name={result.ok ? 'done' : 'error'} size={15} />
                 {result.message}
               </span>
             ) : null}

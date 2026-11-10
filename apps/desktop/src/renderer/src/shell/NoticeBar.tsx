@@ -67,7 +67,7 @@ export function NoticeBar({ backend, onRetryBackend, update, settings, onInstall
   if (backend?.state === 'recovering') {
     return (
       <div className="notice-bar is-warning" role="status">
-        <span className="spinner" aria-hidden />
+        <SpicaStatusIcon name="running" size={15} className="notice-icon" />
         <span className="notice-text">后台正在恢复…</span>
       </div>
     );
@@ -75,6 +75,7 @@ export function NoticeBar({ backend, onRetryBackend, update, settings, onInstall
   if (backend?.state === 'failed') {
     return (
       <div className="notice-bar is-warning" role="alert">
+        <SpicaStatusIcon name="error" size={15} className="notice-icon" />
         <span className="notice-text">{backend.message}</span>
         <button type="button" className="btn btn-small" onClick={onRetryBackend}>
           重试

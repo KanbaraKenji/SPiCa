@@ -263,7 +263,16 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     return out;
   }, [state.projects, sessions]);
   const unseen = useMemo(() => unseenByManager(mail.items, settings.mailSeen), [mail.items, settings.mailSeen]);
-  const sidebarNotes = useMemo(() => new Map([...unseen.keys()].map((sid) => [sid, '有新来信'])), [unseen]);
+  // Words after a project in the sidebar: new mail for it, and progress reports nobody has seen yet.
+  const sidebarNotes = useMemo(() => {
+    const notes = new Map<string, string>([...unseen.keys()].map((sid) => [sid, '有新来信']));
+    for (const p of state.projects) {
+      if (!p.unread) continue;
+      const had = notes.get(p.managerSessionId);
+      notes.set(p.managerSessionId, had ? `${had} · 有新回报` : '有新回报');
+    }
+    return notes;
+  }, [unseen, state.projects]);
   const inboxCount = mail.items.filter(needsYou).length;
   // Looking at a project's conversation clears its 「有新来信」.
   useEffect(() => {
@@ -284,6 +293,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     const chain = [session.id, ...session.parentChain];
     return state.projects.find((p) => chain.includes(p.managerSessionId));
   }, [session, state.projects]);
+  // Opening a project (its manager or anything under it) means its reports have been seen.
+  const unreadProject = project?.unread ? project.id : null;
+  useEffect(() => {
+    if (unreadProject && view === 'chat') void bridge.markProjectRead(unreadProject).catch(() => undefined);
+  }, [bridge, unreadProject, view]);
   useEffect(() => {
     if (project) void agent.loadProject(project.id);
   }, [agent, project]);

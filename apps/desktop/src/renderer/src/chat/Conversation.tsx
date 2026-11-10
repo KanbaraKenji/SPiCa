@@ -3,9 +3,9 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MailItem, SessionInfo } from '@spica/protocol';
 import { filesOf, isRunning, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
 import { ImageViewer } from '../ui/ImageViewer';
-import { SpicaMark } from '@spica/brand/react';
+import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
-import { AskCard, ChildNoteCard, ConfirmCard, FileCards, MarkdownText, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
+import { AskCard, ChildNoteCard, ConfirmCard, FileCards, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
 import { Composer, type ComposerTools } from './Composer';
 import { StatusLine } from './StatusLine';
 import { GUARD_FLAG_TEXT } from './format';
@@ -112,7 +112,8 @@ function Response({ item, live, actions, cards }: { item: Extract<Item, { kind: 
             <Fragment key={s.blocks[0]?.callId ?? i}>
               <ToolGroup blocks={s.blocks} />
               {kinds.map((k) => (
-                <p key={k} className="turn-note guard-note">
+                <p key={k} className="turn-note guard-note status-with-icon">
+                  <SpicaStatusIcon name="info" size={14} />
                   {GUARD_FLAG_TEXT[k]}
                 </p>
               ))}
@@ -236,6 +237,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
   const items = transcript.items;
   const lastIndex = items.length - 1;
   return (
+    <OpenSessionContext.Provider value={actions.openSession}>
     <div className="conversation">
       <div className="transcript" ref={ref}>
         {items.length === 0 && !running ? (
@@ -260,7 +262,8 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                       </div>
                     ) : null}
                     {item.attachments?.some((a) => a.code) ? (
-                      <p className="turn-note turn-attach-note">
+                      <p className="turn-note turn-attach-note status-with-icon">
+                        <SpicaStatusIcon name="error" size={14} />
                         {item.attachments
                           .filter((a) => a.code)
                           .map((a) => `${a.name}：${IMAGE_CODE_TEXT[a.code!]}`)
@@ -302,14 +305,18 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
             ))}
             {session?.status === 'interrupted' && !running ? (
               <div className="resume-row">
-                <span>上次运行已中断</span>
+                <span className="status-with-icon">
+                  <SpicaStatusIcon name="warning" size={15} />
+                  上次运行已中断
+                </span>
                 <button type="button" className="btn" onClick={actions.resume}>
                   继续
                 </button>
               </div>
             ) : null}
             {transcript.error ? (
-              <p className="turn-error" role="alert">
+              <p className="turn-error status-with-icon" role="alert">
+                <SpicaStatusIcon name="error" size={15} />
                 {transcript.error}
               </p>
             ) : null}
@@ -338,5 +345,6 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
       <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
       {demo ? <p className="composer-note">当前为演示数据</p> : null}
     </div>
+    </OpenSessionContext.Provider>
   );
 }

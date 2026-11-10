@@ -94,6 +94,8 @@ export interface DesktopBridge extends SpicaBridge {
   pickFiles(title?: string): Promise<string[]>;
   /** The path of a file dropped on the window ('' when it has none). */
   pathForFile(file: File): string;
+  /** A project's progress reports have been seen (clears its unread mark). */
+  markProjectRead(projectId: string): Promise<void>;
   /** Pictures attached to a message. */
   images: {
     /** A pasted picture (its bytes, read at the paste): saved for sending; null when it is not a picture. */
