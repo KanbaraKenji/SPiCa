@@ -87,7 +87,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       alive = false;
     };
   }, [bridge, view]);
-  const layout = computeLayout(width, settings.panels, floating);
+  // 主页 (the empty page before any conversation is open): the right panel starts
+  // closed there and opening it lasts only this visit; conversations keep the
+  // saved choice (他 2026-11-10). Not before the list has loaded, so start-up does not jump.
+  const atHome = view === 'chat' && state.loaded && !state.activeId;
+  const [homeRight, setHomeRight] = useState(false);
+  if (!atHome && homeRight) setHomeRight(false);
+  const panelPrefs = atHome ? { ...settings.panels, right: homeRight } : settings.panels;
+  const layout = computeLayout(width, panelPrefs, floating);
   // Panel widths: what the user dragged them to (live while dragging), giving way when the window narrows.
   const [dragging, setDragging] = useState<{ side: 'left' | 'right'; width: number } | null>(null);
   // A main process older than this setting (dev build not restarted yet) does not send it.
@@ -109,13 +116,16 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [peeking, setPeeking] = useState(false);
   const toggle = useCallback(
     (side: 'left' | 'right') => {
-      const next = toggleAction(side, window.innerWidth, shell.settings.panels, floating);
-      if (next.prefs !== shell.settings.panels) shell.update({ panels: next.prefs });
+      const saved = shell.settings.panels;
+      const prefs = atHome ? { ...saved, right: homeRight } : saved;
+      const next = toggleAction(side, window.innerWidth, prefs, floating);
+      if (atHome && side === 'right') setHomeRight(next.prefs.right);
+      else if (next.prefs !== prefs) shell.update({ panels: atHome ? { ...next.prefs, right: saved.right } : next.prefs });
       setFloating(next.floating);
       // Opened or closed on purpose: no longer a peek from the edge.
       setPeeking(false);
     },
-    [floating, shell],
+    [floating, shell, atHome, homeRight],
   );
 
   // Shortcuts: Ctrl+B sidebar, Ctrl+Alt+B details, Esc closes a floating panel or settings.
@@ -249,6 +259,16 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   }, [agent, project]);
   const totalCost = useMemo(() => state.sessions.reduce((n, s) => n + s.costUsd, 0), [state.sessions]);
 
+  /** Opens the right panel for something to show there (on 主页 only for this visit). */
+  const showRight = (home: boolean) => {
+    const prefs = home ? { ...settings.panels, right: homeRight } : settings.panels;
+    if (computeLayout(width, prefs, floating).right !== 'hidden') return;
+    const wanted = { ...prefs, right: true };
+    if (computeLayout(width, wanted).right !== 'docked') setFloating('right');
+    else if (home) setHomeRight(true);
+    else shell.update({ panels: wanted });
+  };
+
   const openSession = (id: string) => {
     setView('chat');
     if (layout.left === 'floating') setFloating(null);
@@ -257,10 +277,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // Files open in the right panel (read-only preview); 用系统程序打开 there hands them to Windows.
   const previewFile = (path: string) => {
     setPreview({ sessionId: state.activeId, path });
-    if (layout.right !== 'hidden') return;
-    const wanted = { ...settings.panels, right: true };
-    if (computeLayout(width, wanted).right === 'docked') shell.update({ panels: wanted });
-    else setFloating('right');
+    showRight(atHome);
   };
   const openFile = (path: string) => {
     if (!state.activeId) return;
@@ -314,11 +331,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       if (!abs) return '只能打开这个插件自己文件夹里的文件。';
       setPreview({ sessionId: null, path: abs });
       setView('chat');
-      if (layout.right === 'hidden') {
-        const wanted = { ...settings.panels, right: true };
-        if (computeLayout(width, wanted).right === 'docked') shell.update({ panels: wanted });
-        else setFloating('right');
-      }
+      showRight(!state.activeId);
       return null;
     },
     notify: (text: string) => agent.state.set((s) => ({ ...s, notice: `${v.pluginTitle}：${text}` })),
