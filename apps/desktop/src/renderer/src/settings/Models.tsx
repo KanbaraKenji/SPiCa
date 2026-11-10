@@ -531,8 +531,8 @@ export function Models({ api }: { api: ProvidersApi }) {
                 {p.name}
                 {p.keyMask ? <span className="provider-tail">{p.keyMask}</span> : null}
               </span>
-              <span className="provider-sub">
-                {kindLabel(p.kind)} · {enabledModels(p.models).length > 1 ? `${enabledModels(p.models).length} 个模型：${enabledModels(p.models).map((m) => m.id).join('、')}` : (enabledModels(p.models)[0]?.id ?? '—')}
+              <span className="provider-sub" title={kindLabel(p.kind)}>
+                {enabledModels(p.models).map((m) => m.id).join('、') || '—'}
               </span>
               {list?.problems[p.id] ? (
                 <span className="provider-problem status-with-icon">
@@ -709,9 +709,8 @@ export function Models({ api }: { api: ProvidersApi }) {
           ) : null}
           <div className="provider-actions">
             {current ? (
-              <button type="button" className="btn btn-quiet-danger" onClick={() => setDeleting(current)}>
-                <Icon name="trash" size={14} />
-                删除
+              <button type="button" className="btn btn-quiet-danger btn-square" onClick={() => setDeleting(current)} aria-label="删除" title="删除">
+                <Icon name="trash" size={15} />
               </button>
             ) : null}
             <span className="provider-actions-gap" />

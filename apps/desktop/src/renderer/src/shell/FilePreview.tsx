@@ -54,8 +54,8 @@ export function FilePreview({ info, onOpenExternal, onClose }: FilePreviewProps)
           {info?.name ?? ''}
         </span>
         {info && info.kind !== 'missing' ? (
-          <button type="button" className="text-btn" onClick={() => onOpenExternal(info.path)}>
-            用系统程序打开
+          <button type="button" className="icon-btn" onClick={() => onOpenExternal(info.path)} aria-label="用系统程序打开" title="用系统程序打开">
+            <Icon name="external" size={15} />
           </button>
         ) : null}
         <button type="button" className="icon-btn" onClick={onClose} aria-label="关闭预览" title="关闭预览">

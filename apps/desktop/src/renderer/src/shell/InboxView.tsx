@@ -150,9 +150,8 @@ export function InboxView(props: InboxViewProps) {
                 </button>
               </span>
             )}
-            <button type="button" className="btn" disabled={mail.polling || !mail.supported} onClick={props.onPoll}>
-              {mail.polling ? <span className="spinner" aria-hidden /> : null}
-              现在查收
+            <button type="button" className="btn btn-square" disabled={mail.polling || !mail.supported} onClick={props.onPoll} aria-label="现在查收" title="现在查收">
+              {mail.polling ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={16} />}
             </button>
           </div>
         </div>

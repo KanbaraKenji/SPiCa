@@ -381,14 +381,14 @@ function Workflows({ settings, onChange, workflows, pickFolder, onBackendRestart
           </span>
         </div>
         <div className="row-buttons">
-          <button type="button" className="btn" onClick={() => void refresh('open')}>
-            打开文件夹
+          <button type="button" className="btn btn-square" onClick={() => void refresh('open')} aria-label="打开文件夹" title="打开文件夹">
+            <Icon name="folder" size={16} />
           </button>
-          <button type="button" className="btn" onClick={() => void choose()}>
-            更改
+          <button type="button" className="btn btn-square" onClick={() => void choose()} aria-label="更改" title="更改">
+            <Icon name="pencil" size={16} />
           </button>
-          <button type="button" className="btn" onClick={() => void refresh('reload')}>
-            重新读取
+          <button type="button" className="btn btn-square" onClick={() => void refresh('reload')} aria-label="重新读取" title="重新读取">
+            <Icon name="refresh" size={16} />
           </button>
           {settings.workflowsDir ? (
             <button type="button" className="btn" onClick={() => onChange({ workflowsDir: '' })}>

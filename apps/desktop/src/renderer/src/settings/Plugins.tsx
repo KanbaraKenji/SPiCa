@@ -150,9 +150,8 @@ function PluginCard({ p, busy, run, ask }: { p: PluginView; busy: boolean; run(c
                 退回 {p.previousVersion}
               </button>
             ) : null}
-            <button type="button" className="btn btn-small btn-quiet-danger" disabled={busy} onClick={() => ask('uninstall', p)}>
+            <button type="button" className="btn btn-small btn-quiet-danger btn-square" disabled={busy} onClick={() => ask('uninstall', p)} aria-label="删除" title="删除">
               <Icon name="trash" size={14} />
-              删除
             </button>
           </div>
         </div>
@@ -270,8 +269,8 @@ export function Plugins({ api }: { api: PluginsApi }) {
       <div className="settings-group">
         <div className="plugins-bar">
           <h3 className="settings-subheading">已安装</h3>
-          <button type="button" className="btn btn-small" disabled={busy || !state?.plugins.length} onClick={() => void run({ op: 'checkUpdates' })}>
-            检查更新
+          <button type="button" className="icon-btn" disabled={busy || !state?.plugins.length} onClick={() => void run({ op: 'checkUpdates' })} aria-label="检查更新" title="检查更新">
+            <Icon name="refresh" size={16} />
           </button>
         </div>
         {state && state.plugins.length === 0 ? <p className="settings-hint">未安装插件</p> : null}
@@ -286,8 +285,8 @@ export function Plugins({ api }: { api: PluginsApi }) {
             <span className="detail-path" title={state.root}>
               {state.root}
             </span>
-            <button type="button" className="link-btn" onClick={() => void run({ op: 'openRoot' })}>
-              打开文件夹
+            <button type="button" className="icon-btn" onClick={() => void run({ op: 'openRoot' })} aria-label="打开文件夹" title="打开文件夹">
+              <Icon name="folder" size={16} />
             </button>
           </p>
         ) : null}

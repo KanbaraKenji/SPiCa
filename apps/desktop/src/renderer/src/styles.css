@@ -2282,6 +2282,17 @@ button.ctx-row:hover {
   font-size: 13px;
 }
 
+/* A button that is just an icon (its name on hover), as tall as the buttons and fields beside it. */
+.btn.btn-square {
+  width: 32px;
+  padding: 0;
+  flex: none;
+}
+
+.btn.btn-small.btn-square {
+  width: 28px;
+}
+
 .provider-add {
   align-self: flex-start;
   height: 34px;

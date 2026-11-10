@@ -39,6 +39,9 @@ const PATHS = {
   model: 'M8 1.8l1.5 4.7L14.2 8l-4.7 1.5L8 14.2 6.5 9.5 1.8 8l4.7-1.5z',
   info: 'M8 2.2a5.8 5.8 0 1 0 0 11.6 5.8 5.8 0 0 0 0-11.6z M8 7.3v3.7 M8 5.1v.2',
   refresh: 'M13 8a5 5 0 1 1-1.6-3.7 M13.2 2.6v2.9h-2.9',
+  paste: 'M5.5 2.5h5v2h-5z M5.5 3.5h-2v10h9v-10h-2',
+  external: 'M9 2.5h4.5V7 M13.5 2.5L8 8 M11.5 9.5v4h-9v-9h4',
+  pencil: 'M11.2 2.6l2.2 2.2-7.6 7.6-2.9.7.7-2.9z',
 } as const;
 
 export type IconName = keyof typeof PATHS;

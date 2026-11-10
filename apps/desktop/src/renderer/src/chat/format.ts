@@ -49,7 +49,7 @@ export function toolTarget(input: unknown): string {
 }
 
 export function formatDuration(ms: number): string {
-  if (ms < 1000) return '不到 1 秒';
+  if (ms < 1000) return '<1 秒';
   const s = Math.round(ms / 1000);
   if (s < 60) return `${s} 秒`;
   const m = Math.floor(s / 60);

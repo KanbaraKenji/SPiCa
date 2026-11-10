@@ -4,6 +4,7 @@ import { useKeptDraft } from './drafts';
 import type { UpdateState } from '../../../shared/updates';
 import { APP_NAME } from '../../../shared/app-identity';
 import { SpicaStatusIcon } from '@spica/brand/react';
+import { Icon } from '../ui/Icon';
 
 export interface AboutProps {
   version: string;
@@ -54,9 +55,8 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
             onChange={(e) => setDraft(e.target.value)}
             onBlur={commit}
           />
-          <button type="button" className="btn" disabled={busy || update?.status === 'off'} onClick={onCheck}>
-            {busy ? <span className="spinner" aria-hidden /> : null}
-            检查更新
+          <button type="button" className="btn btn-square" disabled={busy || update?.status === 'off'} onClick={onCheck} aria-label="检查更新" title="检查更新">
+            {busy ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={16} />}
           </button>
         </form>
         {update?.message ? (

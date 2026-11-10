@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { parsePastedConfig, type PasteResult, type PastedField } from '../../../shared/paste-config';
 import type { ProviderKind } from '../../../shared/providers';
 import { secretLabel, WSO2_KEY_LABEL } from '../../../shared/providers';
+import { Icon } from '../ui/Icon';
 
 const ORDER: PastedField[] = ['baseUrl', 'tokenUrl', 'clientId', 'secret', 'scope', 'model'];
 
@@ -63,8 +64,8 @@ export function PasteConfig({ kind, onApply }: { kind: ProviderKind; onApply(r: 
           </div>
         </div>
       ) : (
-        <button type="button" className="btn btn-small" onClick={() => setOpen(true)}>
-          粘贴配置
+        <button type="button" className="btn btn-small btn-square" onClick={() => setOpen(true)} aria-label="粘贴配置" title="粘贴配置">
+          <Icon name="paste" size={15} />
         </button>
       )}
       {done && !open ? (
