@@ -80,6 +80,8 @@ const capturePath = process.env.SPICA_CAPTURE;
 const shotsDir = process.env.SPICA_SHOTS;
 const automated = Boolean(capturePath || shotsDir);
 const hidden = process.env.SPICA_HIDDEN === '1' && !app.isPackaged;
+// A hidden test window is kept painting (Windows would report it as covered and Chromium would stop drawing it).
+if (hidden) app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
 app.setName(APP_NAME);
 // The development build has its own id: with the same one as an installed Spica,
@@ -466,10 +468,23 @@ function createMainWindow(): BrowserWindow {
       spellcheck: false,
       // The built-in PDF viewer, for previews in the right panel.
       plugins: true,
+      // SPICA_HIDDEN: a window never shown would otherwise be throttled (timers slowed down) as if in the background.
+      ...(hidden ? { backgroundThrottling: false } : {}),
     },
   });
 
   if (!automated && !hidden) win.once('ready-to-show', () => win.show());
+  // SPICA_HIDDEN: shown (so it keeps drawing frames for screenshots) but nowhere anyone can see or click it:
+  // off screen, fully transparent, not in the taskbar, never focused, mouse passing through.
+  if (hidden)
+    win.once('ready-to-show', () => {
+      win.setSkipTaskbar(true);
+      win.setFocusable(false);
+      win.setIgnoreMouseEvents(true);
+      win.setOpacity(0);
+      win.setPosition(-32000, -32000);
+      win.showInactive();
+    });
 
   // Ctrl+wheel. We own the zoom level (Electron's own per-origin zoom is not persisted).
   win.webContents.on('zoom-changed', (_e, direction) => applyZoom(win, stepZoom(settings.get().zoom, direction)));
