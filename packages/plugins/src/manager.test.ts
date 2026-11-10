@@ -374,6 +374,60 @@ describe('views (plugin pages)', () => {
   });
 });
 
+describe('irreversible tools on every kind of server', () => {
+  /** One tool, void_x; with `hint` it also carries MCP's destructiveHint. */
+  const voidServer = (hint: boolean) => `import { createInterface } from 'node:readline';
+    const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\\n');
+    createInterface({ input: process.stdin }).on('line', (l) => {
+      const m = JSON.parse(l);
+      if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 's' } } });
+      if (m.method === 'tools/list') send({ id: m.id, result: { tools: [{ name: 'void_x', inputSchema: { type: 'object' }${hint ? ', annotations: { destructiveHint: true }' : ''} }] } });
+      if (m.method === 'tools/call') send({ id: m.id, result: { content: [{ type: 'text', text: '{"voided":true}' }] } });
+    });`;
+
+  async function voidPlugin(name: string, dirName: 'services' | 'mcp', hint: boolean, serverExtra: Record<string, unknown> = {}): Promise<string> {
+    const dir = await writePlugin({
+      'manifest.json': manifest(name, { permissions: { irreversible: ['void_x'] } }),
+      [`${dirName}/admin.json`]: { runtime: 'node', entry: 'srv.js', ...serverExtra },
+      'srv.js': voidServer(hint),
+      'views/main.json': { title: 'Main', entry: 'ui/index.html', permissions: { tools: ['void_x'] } },
+      'ui/index.html': '<!doctype html><title>x</title>',
+    });
+    dirs.push(dir);
+    return dir;
+  }
+
+  for (const [dirName, hint] of [['services', false], ['services', true], ['mcp', false]] as const) {
+    it(`a page call to a declared irreversible ${dirName}/ tool (destructiveHint ${hint ? 'set' : 'not set'}) asks first, and runs once confirmed`, async () => {
+      const name = `void-${dirName === 'mcp' ? 'm' : 's'}${hint ? 'h' : 'n'}`;
+      r = await rig();
+      await r.pm.install(await voidPlugin(name, dirName, hint));
+      await r.pm.enable(name);
+      expect(r.pm.views()[0]).toMatchObject({ irreversible: ['void_x'] });
+      const asked = await r.pm.viewCall(name, 'main', 'void_x', {});
+      expect(asked.content).toMatch(/^\[CONFIRM_REQUIRED\]/);
+      expect(asked.isError).toBe(true);
+      const done = await r.pm.viewCall(name, 'main', 'void_x', {}, { confirmed: true });
+      expect(done).toMatchObject({ isError: false, data: { voided: true } });
+    });
+  }
+
+  it('a services/ tool exposed to the model asks first too; a hidden one is still refused to the model', async () => {
+    r = await rig();
+    await r.pm.install(await voidPlugin('void-exposed', 'services', false, { expose_tools: true }));
+    await r.pm.enable('void-exposed');
+    const exposed = { callId: 'c', name: 'void-exposed-admin__void_x', input: {}, irreversible: false };
+    expect(toolNames(r.rt)).toContain('void-exposed-admin__void_x');
+    expect((await r.rt.hooks.beforeTool(exposed, hookCtx)).decision).toMatchObject({ action: 'confirm' });
+
+    await r.pm.install(await voidPlugin('void-hidden', 'services', false));
+    await r.pm.enable('void-hidden');
+    const hidden = { callId: 'c', name: 'void-hidden-admin__void_x', input: {}, irreversible: false };
+    // Deny for the model comes before the confirmation.
+    expect((await r.rt.hooks.beforeTool(hidden, hookCtx)).decision).toMatchObject({ action: 'deny' });
+  });
+});
+
 describe('app name in messages', () => {
   it('a branded build shows its own name; nothing else changes', async () => {
     const msg = { appName: 'Acme Desk' };

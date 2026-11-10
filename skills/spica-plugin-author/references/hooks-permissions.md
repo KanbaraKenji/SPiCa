@@ -29,7 +29,7 @@ export default (ctx) => ({
 
 ## 权限
 
-- **不可逆**：`permissions.irreversible` 列出的工具，Agent 每次调用前 Spica 都问用户；页面调用时也先弹确认框。删除、发送、提交、付款、改外部系统的都要列。
+- **不可逆**：`permissions.irreversible` 列出的工具，Agent 每次调用前 Spica 都问用户；页面调用时也先弹确认框。mcp/ 和 services/ 里的工具都适用。删除、发送、提交、付款、改外部系统的都要列。
 - **工作文件夹**：`permissions.workspace` 写 `none` / `read` / `write`，告诉用户插件会不会碰项目文件夹。现在只展示，以后会拦。
 - **网络**：`permissions.network` 列会访问的主机。现在只展示。
 - **钩子**：`permissions.hooks` 见上。

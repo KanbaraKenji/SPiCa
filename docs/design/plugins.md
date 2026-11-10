@@ -39,7 +39,7 @@
 | `compatibility.spica` | 否（警告） | 兼容范围：`>=0.1.0 <1.0.0`、`^0.1.0`、`~0.1.0`、`*` |
 | `permissions.network` | 否 | 插件进程会访问的主机名单；现在只展示给用户，不拦截 |
 | `permissions.workspace` | 否 | 对会话工作文件夹（项目文件夹）的访问：`none`（默认）/ `read` / `write`；现在只展示，第 7 节写了以后怎么拦 |
-| `permissions.irreversible` | 否 | 不可撤销的工具（写 server 里的原名），调用前一律要用户确认 |
+| `permissions.irreversible` | 否 | 不可撤销的工具（写 server 里的原名，mcp/ 和 services/ 的都算），调用前一律要用户确认 |
 | `permissions.hooks` | 否 | 钩子模块允许挂哪几类：`inject`、`beforeRequest`、`afterResponse`、`beforeTool`、`afterTool`。没声明的一律不挂 |
 | `permissions.model` | 否 | 借用户配好的模型（MCP 取样）：`{ "reason": "一句为什么", "max_usd_per_day": 0.2 }`。`reason` 必填（安装、启用时给用户看，第一次用不再确认），上限缺省 0.5 美元/天。起 server 时 manager 在 `connectMcp` 的配置里加 `sampling: { pluginId, maxUsdPerDay }`，上限取清单值和用户在插件页设的值中较小的；用户设 0 或没声明就不传，server 拿不到 `capabilities.sampling`。用户改上限会重启这个插件的 server |
 | `mock` | 否 | `{ "supported": true, "description": "…" }` |
@@ -121,7 +121,7 @@ export const priority = 100; // 可选，小的先跑
 | 命令 | 不进内核。`PluginManager.commands()` 列出 `/<插件>:<命令>`，`expandCommand()` 展开成要发的话，由外壳发 | — |
 | 代码钩子 | `runtime.hooks.register(source, hooks, { priority })` | `plugin:<name>` |
 | 常驻进程 | 同 MCP，但插件包再挂一个 `beforeRequest` 把它的工具从工具表里拿掉、`beforeTool` 拒绝调用 | `plugin:<name>` |
-| 不可逆声明 | 插件包挂一个 `beforeTool`（优先级 10），对声明过的工具返回 `confirm` | `plugin:<name>` |
+| 不可逆声明 | 插件包挂一个 `beforeTool`（优先级 10），对声明过的工具返回 `confirm`（本插件任何 server 的工具，mcp/ 和 services/ 都算；模型调隐藏的服务工具先返回 `deny`） | `plugin:<name>` |
 | 视图 | 不进内核。`views()` 列出已启用插件的页面，外壳渲染；页面调工具走 `viewCall()` → 内核 `callPluginTool`（钩子生效、留痕） | — |
 
 server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes__write_note`），有多个时叫 `<插件>-<id>`；常驻进程一律 `<插件>-<id>`。
@@ -180,11 +180,11 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 | 文件路径 | 清单里所有路径必须在插件文件夹内；zip 解包拒绝越界条目；插件可写的只有 `SPICA_PLUGIN_DATA` | — |
 | 钩子权限 | 只挂 `permissions.hooks` 声明过的类型；没声明的写日志、不挂 | 安装时给用户看「这个插件能改请求 / 改响应 / 拦工具」 |
 | 钩子出错 | 包一层：抛错只记日志、发 `hook.error`，这一轮照常跑 | 连续出错自动停用 |
-| 不可逆动作 | `permissions.irreversible` 里的工具一律要确认；MCP 的 `destructiveHint` 内核也默认要确认 | 插件可在设置里被用户改成「自动执行」 |
+| 不可逆动作 | `permissions.irreversible` 里的工具一律要确认（mcp/ 和 services/ 的工具一样，不论是模型调还是页面调）；MCP 的 `destructiveHint` 内核也默认要确认 | 插件可在设置里被用户改成「自动执行」 |
 | 工作文件夹 | `permissions.workspace` 只声明、展示 | 插件包挂 `beforeTool`：参数里出现的路径不在会话工作文件夹内就拒绝，`read` 的插件写文件也拒绝 |
 | 网络 | 插件 server 和应用用同一套网络设置：内核起子进程时注入代理（`HTTPS_PROXY` 等 + `NODE_USE_ENV_PROXY=1`）和信任名单（`NODE_EXTRA_CA_CERTS` + `NODE_USE_SYSTEM_CA`；自带可执行文件用 `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` / `CURL_CA_BUNDLE` 的全量证书），设置里没有的就从子进程环境里删掉（内核 f8d328d）。设置真变了时内核调扩展的 `networkChanged()`，插件这边重启在运行的 server（`restartServers()`），之后的请求用新设置；有认证的代理，账号密码会随代理地址进插件进程。`permissions.network` 只声明、展示 | 按 `permissions.network` 放行 |
 | 环境变量 | 插件进程只继承白名单（`PLUGIN_INHERIT_ENV`：PATH、系统目录、TEMP、用户目录、代理变量等），像密钥的名字（SPICA_ 开头、含 KEY / SECRET / TOKEN / PASSWORD / CREDENTIAL）内核一律不传；有测试 | — |
-| 插件页面 | 沙箱里跑，没有 Node；只能取本插件目录里的文件；只能调本插件、本视图 `permissions.tools` 里的工具；`permissions.irreversible` 里的工具先由外壳弹确认框（只认清单里的声明，MCP 的 `destructiveHint` 不算） | 页面调用记进插件日志 |
+| 插件页面 | 沙箱里跑，没有 Node；只能取本插件目录里的文件；只能调本插件、本视图 `permissions.tools` 里的工具；`permissions.irreversible` 里的工具先由外壳弹确认框：清单里的声明和 MCP 的 `destructiveHint` 都会要确认，mcp/ 和 services/ 的工具一样 | 页面调用记进插件日志 |
 | 来源可信 | HTTP 来源每个包必须有 SHA-256，不对拒装；共享盘有索引就校验 | 包签名 |
 
 ## 8. 分发与更新
@@ -262,3 +262,4 @@ J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型�
   - 插件共用应用的网络设置：插件 server 进程拿到和应用一样的代理和信任名单（注入在内核 f8d328d 的 connectMcp 里，插件这边不用改起进程的代码）；改了网络设置后，内核调后端扩展的 `networkChanged()`，manager 的 `restartServers()` 把在运行的 server 重启一遍。我替他定的：改设置后**自动重启插件进程**，不等下次启动（环境变量只在进程启动时读；重启那几秒工具会先撤掉再回来）。`network.test.ts`：用本机自签证书的假内网服务加一个 CONNECT 代理，插件里没有一行证书和代理代码，能连上；取消信任、重启后就被拒。skill：凭据不再「从环境变量读」，改成放 `SPICA_PLUGIN_DATA/config.json`、插件自己的设置页经 `services/` 保存；新增 `references/internal-services.md`；`check.mjs` 看到代码读拿不到的环境变量会提醒。设置页模板这次没进脚手架，先在文档里给写法，等有插件真用到再做。
   - 插件借用用户配好的模型（MCP 取样，内核半边 1aa892e）：清单 `permissions.model { reason, max_usd_per_day }`；manager 起 server 时传 `sampling: { pluginId, maxUsdPerDay }`（清单值和用户值取小，0 或没声明不传）；`describe().model` / `modelUsage()` / `setModelLimit()`，后端端口 `pluginModelUsage` / `pluginSetModelLimit` 给外壳的插件页显示「今天花了多少」和调上限。示例插件加了 `summarize_note`（自己写的 JSON-RPC，不用 SDK），`model.test.ts` 用假模型服务从头走一遍。示例插件的目录服务地址也从环境变量改成数据文件夹里的 `config.json`。skill：`references/model.md`。
   - 文字规范（外壳转、统筹逐句看过的 `out/copy-pass/plugins.md`）：42 句照表改；标「保留」的统一了口气（须为 / 无效 / 未知 / 未安装 / 有错误）；删掉的例子逐句核过，看不出怎么改的补回了例子或去处（description 写在哪、TypeScript 先编译、0 表示禁止使用模型、详见插件日志、views/*.json 的 permissions.tools、检查逗号和引号、author / license / reason / max_usd_per_day 的例子）。`copy.test.ts` 拦禁用词。
+  - 修：`permissions.irreversible` 以前只对 mcp/ 的工具生效，services/ 里声明的工具从页面调用时不确认就执行（公司端反馈，统筹复现属实）。权限钩子改为认本插件任何 server 的工具；expose_tools 为 true 的服务工具被模型调用时也要确认；模型调隐藏的服务工具仍先 deny。按 kind 过滤、故意没改的两处：启用时先起 mcp/、钩子之后再起 services/（顺序）；邮件来源只认 mcp/ 的 server。

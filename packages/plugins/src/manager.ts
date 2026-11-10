@@ -640,7 +640,9 @@ export class PluginManager {
             if (!fromOwnPage && this.#hiddenPrefixes(a).some((p) => call.name.startsWith(p))) {
               return { action: 'deny', reason: 'This tool belongs to a background service and is not available to the model.' };
             }
-            const run = a.servers.find((r) => r.def.kind === 'mcp' && call.name.startsWith(`${r.launchName}__`));
+            // Declared irreversible tools need confirmation whichever server has them:
+            // mcp/ tools, and services/ tools called from the page or exposed to the model.
+            const run = a.servers.find((r) => call.name.startsWith(`${r.launchName}__`));
             if (!run) return;
             const bare = call.name.slice(run.launchName.length + 2);
             if (irreversible.includes(bare)) return { action: 'confirm', reason: `「${a.manifest.displayName}」：此操作不可撤销` };
