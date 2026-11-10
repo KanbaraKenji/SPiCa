@@ -83,8 +83,7 @@ describe('Sidebar', () => {
     expect(screen.getByRole('button', { name: '整理本周来信' })).toBeTruthy();
   });
 
-  it('collapsed: one column of icons; 对话 and 项目 open their lists, the rest act as in the full sidebar', () => {
-    const onOpen = vi.fn();
+  it('collapsed: one column of actions; the lists (对话, 项目) are not on it', () => {
     const onSettings = vi.fn();
     const onNewChat = vi.fn();
     const onInbox = vi.fn();
@@ -93,27 +92,25 @@ describe('Sidebar', () => {
         compact
         sessions={seed.sessions}
         activeId={SEED_IDS.chat}
-        onOpen={onOpen}
+        onOpen={vi.fn()}
         onNewChat={onNewChat}
         onSettings={onSettings}
         settingsOpen={false}
         onNewProject={vi.fn()}
         inbox={{ count: 5, open: false, onOpen: onInbox }}
+        notes={new Map([[SEED_IDS.chat2, '有新回报']])}
       />,
     );
     expect(screen.queryByRole('heading', { name: '对话' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '对话' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '项目' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '整理本周来信' })).toBeNull();
+    // The dot for what is new is on the sidebar toggle (SidebarToggle), not here.
+    expect(screen.queryByRole('img', { name: '有新回报' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '新对话' }));
     expect(onNewChat).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '收件箱，5 封待确认' }));
     expect(onInbox).toHaveBeenCalled();
-    // The open conversation is outside a project: 对话 is the current one.
-    expect(screen.getByRole('button', { name: '对话' }).className).toContain('is-active');
-    fireEvent.click(screen.getByRole('button', { name: '对话' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '整理本周来信' }));
-    expect(onOpen).toHaveBeenCalledWith(SEED_IDS.chat2);
-    fireEvent.click(screen.getByRole('button', { name: '项目' }));
-    expect(screen.getByRole('menuitem', { name: '新品样机评审' })).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: '新项目' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     expect(onSettings).toHaveBeenCalled();
   });

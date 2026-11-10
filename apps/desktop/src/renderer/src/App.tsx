@@ -1,5 +1,5 @@
 // The window: title bar, left sidebar, main pane (conversation or settings), right detail panel.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DesktopBridge } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
@@ -27,6 +27,9 @@ import { needsYou, unseenByManager } from '../../shared/mail';
 import type { MailItem } from '@spica/protocol';
 import { Icon } from './ui/Icon';
 import { sidebarNews } from './shell/sidebar-news';
+import { usePeek } from './shell/peek';
+import { joinNotes } from './ui/NewDot';
+import { SidebarToggle } from './shell/SidebarToggle';
 import { HoverTips } from './ui/HoverTips';
 import { SpicaBanner } from '@spica/brand/react';
 
@@ -172,31 +175,18 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     return () => window.removeEventListener('keydown', onKey);
   }, [toggle, floating, view, canMax]);
 
-  // Sidebar collapsed: resting the pointer on the window's left edge slides it out
+  // Sidebar collapsed: resting the pointer on the icon column slides it out
   // for a moment (like Claude Desktop); it goes away once the pointer leaves it.
-  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearPeekTimer = () => {
-    if (peekTimer.current) clearTimeout(peekTimer.current);
-    peekTimer.current = null;
-  };
-  // A short rest on the icon column, so passing over it does not flash the sidebar open.
-  const peekSoon = () => {
-    if (peekTimer.current || floating === 'left') return;
-    peekTimer.current = setTimeout(() => {
-      peekTimer.current = null;
+  const peek = usePeek(
+    () => {
       setPeeking(true);
       setFloating('left');
-    }, 250);
-  };
-  const unpeekSoon = () => {
-    clearPeekTimer();
-    if (!peekOpen) return;
-    peekTimer.current = setTimeout(() => {
+    },
+    () => {
       setPeeking(false);
       setFloating((f) => (f === 'left' ? null : f));
-    }, 300);
-  };
-  useEffect(() => clearPeekTimer, []);
+    },
+  );
   // Only a sidebar the edge opened goes away on its own.
   const peekOpen = peeking && floating === 'left';
 
@@ -508,11 +498,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   if (rightMax && !rightCanMax) setRightMax(false);
   const title = view === 'settings' ? '设置' : view === 'inbox' ? '收件箱' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
 
-  const sidebarToggle = (
-    <button type="button" data-panel-toggle className={leftShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('left')} aria-label={leftShown ? '收起侧栏' : '展开侧栏'} aria-pressed={leftShown} title="侧栏（Ctrl+B）">
-      <Icon name="sidebar" />
-    </button>
-  );
+  const sidebarToggle = <SidebarToggle shown={leftShown} news={joinNotes(sidebarNotes.values())} onToggle={() => toggle('left')} />;
 
   // The sidebar, full (docked or over the window) or as the column of icons left when it is closed.
   const sidebarEl = (compact: boolean) => (
@@ -574,13 +560,13 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     <div className="app" data-left={layout.left} data-right={view === 'chat' ? layout.right : 'hidden'}>
       <HoverTips />
       {/* Sidebar closed: a column of icons stays; resting on it opens the full
-          sidebar over it for a moment, every row where its icon was (except 项目, see Sidebar). */}
+          sidebar over it for a moment, every row where its icon was. */}
       {layout.left !== 'docked' ? (
         <div
           className="panel panel-rail"
-          onMouseOver={(e) => ((e.target as Element).closest('[data-no-peek]') ? clearPeekTimer() : peekSoon())}
-          onMouseLeave={clearPeekTimer}
-          onMouseDown={clearPeekTimer}
+          onMouseOver={(e) => ((e.target as Element).closest('[data-no-peek]') ? peek.cancel() : peek.openSoon(floating === 'left'))}
+          onMouseLeave={peek.cancel}
+          onMouseDown={peek.cancel}
         >
           <div className="rail-head">{sidebarToggle}</div>
           {sidebarEl(true)}
@@ -590,7 +576,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         <div
           className={`panel panel-left is-${layout.left}`}
           style={{ width: widths.left }}
-          {...(peekOpen ? { onMouseEnter: clearPeekTimer, onMouseLeave: unpeekSoon } : {})}
+          {...(peekOpen ? { onMouseEnter: peek.cancel, onMouseLeave: () => peek.closeSoon(peekOpen) } : {})}
         >
           {resizer('left')}
           {layout.left === 'docked' ? (

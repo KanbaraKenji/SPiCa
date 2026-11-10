@@ -3448,7 +3448,7 @@ button.ctx-row:hover {
   color: var(--spica-muted);
 }
 
-/* Something new (NewDot): one small dot, on a row, on the tab not shown and on the icon column. */
+/* Something new (NewDot): one small dot, on a row, on the tab not shown and on the sidebar toggle when collapsed. */
 .new-dot {
   flex: none;
   width: 6px;
@@ -3463,10 +3463,14 @@ button.ctx-row:hover {
   right: 10px;
 }
 
-.sidebar.is-rail .rail-row .new-dot {
+.rail-head [data-panel-toggle] {
+  position: relative;
+}
+
+.rail-head [data-panel-toggle] .new-dot {
   position: absolute;
-  top: 7px;
-  left: 24px;
+  top: 5px;
+  right: 5px;
 }
 
 .inbox {
@@ -3856,8 +3860,7 @@ button.ctx-row:hover {
   -webkit-app-region: no-drag;
 }
 
-.sidebar.is-rail .side-action,
-.sidebar.is-rail .rail-row {
+.sidebar.is-rail .side-action {
   position: relative;
   justify-content: flex-start;
   padding: 0 0 0 10px;

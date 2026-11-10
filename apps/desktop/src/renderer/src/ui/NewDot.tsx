@@ -1,7 +1,7 @@
 /**
  * Something new here (mail for a project, a progress report nobody has seen):
  * one small dot, the same on a project row, on the tab not shown and on the
- * icon column; what it is shows on hover and is read out.
+ * sidebar toggle when collapsed; what it is shows on hover and is read out.
  */
 export function NewDot({ text }: { text: string }) {
   return <span className="new-dot" role="img" aria-label={text} title={text} />;

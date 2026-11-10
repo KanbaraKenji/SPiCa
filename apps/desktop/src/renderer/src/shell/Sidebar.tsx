@@ -282,21 +282,8 @@ export function Sidebar({
   // What is new under each tab, for its dot ('' when nothing).
   const projectsNews = joinNotes([...(notes ?? [])].filter(([id]) => projectIds.has(id)).map(([, n]) => n));
   const chatsNews = joinNotes([...(notes ?? [])].filter(([id]) => !projectIds.has(id)).map(([, n]) => n));
-  // 对话 and 项目 on the icon column: their lists as a menu.
-  const [railMenu, setRailMenu] = useState<{ items: { label: string; onSelect(): void }[]; x: number; y: number } | null>(null);
   if (compact) {
-    // The row that is current: another view (settings, inbox, a plugin page), else where the open conversation lives.
-    const otherView = settingsOpen || Boolean(inbox?.open) || pluginPages.some((p) => p.open);
-    const byId = new Map(sessions.map((x) => [x.id, x]));
-    let root = activeId ? byId.get(activeId) : undefined;
-    while (root?.parentId && root.role !== 'manager') root = byId.get(root.parentId);
-    const inProject = !otherView && root?.role === 'manager';
-    const inChats = !otherView && Boolean(root) && !inProject;
-    const chatItems = chats.slice(0, 20).map((c) => ({ label: c.title || '新对话', onSelect: () => onOpen(c.id) }));
-    const projectItems = [
-      ...projects.map((pr) => ({ label: pr.title ?? '未命名项目', onSelect: () => onOpen(pr.id) })),
-      ...(onNewProject ? [{ label: '新项目', onSelect: onNewProject }] : []),
-    ];
+    // Only actions here; the lists (对话, 项目) come with the full sidebar, slid out by resting on this column.
     return (
       <nav className="sidebar is-rail" aria-label="对话">
         <div className="sidebar-top">
@@ -310,46 +297,7 @@ export function Sidebar({
             </button>
           ) : null}
         </div>
-        <div className="sidebar-scroll">
-          {chatItems.length ? (
-            <section className="tree-section">
-              <button
-                type="button"
-                data-no-peek
-                className={inChats ? 'tree-row rail-row is-active' : 'tree-row rail-row'}
-                aria-label="对话"
-                aria-haspopup="menu"
-                title="对话"
-                onClick={(e) => {
-                  const b = e.currentTarget.getBoundingClientRect();
-                  setRailMenu({ items: chatItems, x: b.right + 6, y: b.top });
-                }}
-              >
-                <Icon name="assistant" />
-                {chatsNews ? <NewDot text={chatsNews} /> : null}
-              </button>
-            </section>
-          ) : null}
-          {projectItems.length ? (
-            <section className="tree-section">
-              <button
-                type="button"
-                data-no-peek
-                className={inProject ? 'tree-row rail-row is-active' : 'tree-row rail-row'}
-                aria-label="项目"
-                aria-haspopup="menu"
-                title="项目"
-                onClick={(e) => {
-                  const b = e.currentTarget.getBoundingClientRect();
-                  setRailMenu({ items: projectItems, x: b.right + 6, y: b.top });
-                }}
-              >
-                <Icon name="folder" />
-                {projectsNews ? <NewDot text={projectsNews} /> : null}
-              </button>
-            </section>
-          ) : null}
-        </div>
+        <div className="sidebar-scroll" />
         {pluginPages.length ? (
           <section className="tree-section side-plugins" aria-label="插件">
             <h2 className="tree-heading rail-sep" aria-hidden>
@@ -367,7 +315,6 @@ export function Sidebar({
             <Icon name="settings" />
           </button>
         </div>
-        {railMenu ? <ContextMenu x={railMenu.x} y={railMenu.y} items={railMenu.items} onClose={() => setRailMenu(null)} /> : null}
       </nav>
     );
   }
