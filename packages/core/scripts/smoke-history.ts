@@ -127,10 +127,30 @@ for (let r = 1; r <= rounds; r++) {
       .at(-1)!
       .content.map((b) => (b.type === 'text' ? b.text : ''))
       .join('');
-    answers.push(`round ${r} · ${q}\n  tools: ${used.join(' | ') || '-'}\n  answer: ${text.replace(/\s+/g, ' ')}`);
+    // the numbers this conversation was given: from its history cards, as the window resolves them
+    const given = new Map<number, string>();
+    for (const m of chat.messages()) {
+      for (const card of Object.values(m.meta?.historyCards ?? {})) for (const row of card.rows) if (!given.has(row.ref)) given.set(row.ref, row.sessionId);
+    }
+    const links = [...text.matchAll(/\[([^\]]+)\]\(history:(\d+)\)/g)].map((x) => ({ label: x[1]!, ref: Number(x[2]) }));
+    const shown = links.map((l) => {
+      const sid = given.get(l.ref);
+      const name = sid ? (rt.store.getSession(sid)?.title ?? `(untitled ${sid.slice(-4)})`) : undefined;
+      return `${l.label} → ${l.ref}${name === undefined ? ' NOT GIVEN' : name === l.label ? ' ok' : ` = ${name}`}`;
+    });
+    answers.push(`round ${r} · ${q}\n  tools: ${used.join(' | ') || '-'}\n  links: ${shown.join(' | ') || '-'}\n  answer: ${text.replace(/\s+/g, ' ')}`);
     if (res.reason !== 'completed') failures.push(`round ${r} "${q}": run ended ${res.reason}`);
     if (/ses_[0-9a-f]/.test(text)) failures.push(`round ${r} "${q}": the answer has a conversation id`);
-    if (/\[\d+\]/.test(text)) failures.push(`round ${r} "${q}": the answer has a result number`);
+    const bare = text.replace(/\[([^\]]+)\]\(history:\d+\)/g, '$1');
+    if (/\[\d+\]|history:\d+/.test(bare)) failures.push(`round ${r} "${q}": a number outside a link`);
+    if (links.length === 0) failures.push(`round ${r} "${q}": no link to a conversation`);
+    for (const l of links) {
+      const sid = given.get(l.ref);
+      if (!sid) failures.push(`round ${r} "${q}": link to [${l.ref}], a number it was not given`);
+      else if (rt.store.getSession(sid)?.title && !l.label.includes(rt.store.getSession(sid)!.title!)) {
+        failures.push(`round ${r} "${q}": link "${l.label}" points at "${rt.store.getSession(sid)!.title}"`);
+      }
+    }
     if (used.length === 0) failures.push(`round ${r} "${q}": no history tool was used`);
   }
   await rt.close();

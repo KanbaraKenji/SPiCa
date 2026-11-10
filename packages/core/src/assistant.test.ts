@@ -164,11 +164,13 @@ describe('a conversation without a folder', () => {
 });
 
 describe('looking things up in earlier conversations', () => {
-  it('the assistant is told to name earlier conversations by title and time, not by their number', async () => {
+  it('the assistant is told to name earlier conversations by title and time, the title a link to its number, never the number as text', async () => {
     const { TOP_TEMPLATE } = await import('./projects.ts');
-    expect(TOP_TEMPLATE.system).toMatch(/name it by its title and when it was, never by its number/);
+    expect(TOP_TEMPLATE.system).toMatch(/name it by its title and when it was, and make the title a link to its number/);
+    expect(TOP_TEMPLATE.system).toContain('[Supplier comparison](history:3)');
+    expect(TOP_TEMPLATE.system).toMatch(/Only use numbers these tools gave you in this conversation; never write a number or an id as plain text/);
     const rt = makeRuntime(gw, { cwd: dir });
-    expect(rt.tools.get('search_history')!.spec.description).toMatch(/name a conversation by its title and time; the \[n\] numbers are only for read_history/);
+    expect(rt.tools.get('search_history')!.spec.description).toMatch(/the title as a link to its number: \[title\]\(history:3\)/);
     await rt.close();
   });
 
