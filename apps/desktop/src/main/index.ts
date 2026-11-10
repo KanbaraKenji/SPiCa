@@ -1037,6 +1037,8 @@ nativeTheme.on('updated', () => {
 });
 
 void app.whenReady().then(() => {
+  // Keys moved from an older providers.json before the app was ready could not be read then: show their first and last characters.
+  providers.fillKeyMasks();
   Menu.setApplicationMenu(null);
   protocol.handle(PLUGIN_SCHEME, (req) => servePluginFile(req.url));
   protocol.handle(PREVIEW_SCHEME, (req) => {

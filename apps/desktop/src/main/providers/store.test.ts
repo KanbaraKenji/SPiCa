@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { keyMaskParts, keyMaskText } from '@spica/protocol';
 import { emptyDraft } from '../../shared/providers';
 import { ProviderStore, type SecretBox } from './store';
@@ -67,6 +67,51 @@ describe('ProviderStore', () => {
     expect(new ProviderStore(dir, box).list()).toEqual(store.list());
     // A model without a window still has to get one before the one-model form saves it.
     expect(() => store.save({ ...draft, id: 'p-a', contextWindow: null })).toThrow('请填写上下文上限');
+  });
+
+  it('a version 1 key moved before the app was ready (the key store not usable yet): its first and last characters come back once ready', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
+    const sealed = box.encrypt('sk-fake0123456789abcdefghijk3f9a');
+    writeFileSync(
+      join(dir, 'providers.json'),
+      JSON.stringify({ defaultId: 'p-a', items: [{ id: 'p-a', kind: 'openai', name: 'A', baseUrl: 'https://a.example.com/v1', model: 'm-a', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, secret: sealed }] }),
+    );
+    let ready = false;
+    const early: SecretBox = { ...box, available: () => ready, decrypt: (x) => (ready ? box.decrypt(x) : (() => { throw new Error('safeStorage cannot be used before the app is ready'); })()) };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const store = new ProviderStore(dir, early);
+    // Moved, but nothing to show yet; said in the log, without the key.
+    expect(store.list()[0]).toMatchObject({ id: 'p-a', keyMask: '****', hasSecret: true });
+    expect(warn).toHaveBeenCalled();
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('sk-fake');
+    warn.mockRestore();
+    ready = true;
+    expect(store.fillKeyMasks()).toBe(1);
+    expect(store.list()[0]!.keyMask).toBe('sk-f****3f9a');
+    // Written back: the next start shows it at once, with no key store needed.
+    const saved = JSON.parse(readFileSync(join(dir, 'providers.json'), 'utf8'));
+    expect(saved.items[0].keys[0]).toMatchObject({ head: 'sk-f', tail: '3f9a' });
+    expect(new ProviderStore(dir, { ...early, decrypt: () => { throw new Error('not again'); } }).list()[0]!.keyMask).toBe('sk-f****3f9a');
+  });
+
+  it('a version 2 file already written with empty first and last characters (moved by 0.1.0-rc.3 before this fix) is mended on the next start', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
+    const sealed = box.encrypt('sk-fake0123456789abcdefghijk3f9a');
+    writeFileSync(
+      join(dir, 'providers.json'),
+      JSON.stringify({
+        version: 2,
+        items: [{ id: 'p-a', kind: 'openai', name: 'A', baseUrl: 'https://a.example.com/v1', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, catalogId: null, models: [{ id: 'm-a', contextWindow: 128000, contextFrom: 'user' }], keys: [{ sealed, tail: '', head: '' }] }],
+        default: { connectionId: 'p-a', model: 'm-a' },
+        strong: null,
+      }),
+    );
+    const store = new ProviderStore(dir, box);
+    expect(store.list()[0]!.keyMask).toBe('****');
+    expect(store.fillKeyMasks()).toBe(1);
+    expect(store.list()[0]!.keyMask).toBe('sk-f****3f9a');
+    // Nothing left to fill: no second write.
+    expect(store.fillKeyMasks()).toBe(0);
   });
 
   it('one connection, several models; unticking the default model moves the pointer within the connection', () => {

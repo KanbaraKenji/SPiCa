@@ -137,7 +137,7 @@ export class ProviderStore {
           id: x.id as string,
           models: sanitizeModels(x.models),
           // Saved before the first characters were kept: worked out once from the key.
-          keys: Array.isArray(x.keys) ? (x.keys as SavedKey[]).filter((k) => k && typeof k.sealed === 'string').map((k) => (typeof k.head === 'string' ? { sealed: k.sealed, tail: str(k.tail), head: k.head } : { sealed: k.sealed, ...this.#partsOfSealed(k.sealed) })) : [],
+          keys: Array.isArray(x.keys) ? (x.keys as SavedKey[]).filter((k) => k && typeof k.sealed === 'string').map((k) => (typeof k.head === 'string' ? { sealed: k.sealed, tail: str(k.tail), head: k.head } : { sealed: k.sealed, ...this.#partsOfSealed(k.sealed, x.id as string) })) : [],
         })),
         default: sanitizeRef(raw.default),
         strong: sanitizeRef(raw.strong),
@@ -152,7 +152,7 @@ export class ProviderStore {
       if (model) models.push({ id: model, contextWindow: num(x.contextWindow), contextFrom: 'user' });
       if (strong && strong !== model) models.push({ id: strong, contextWindow: null, contextFrom: 'user' });
       const sealed = typeof x.secret === 'string' ? x.secret : '';
-      return { ...baseFields(x), id: x.id as string, models, keys: sealed ? [{ sealed, ...this.#partsOfSealed(sealed) }] : [] };
+      return { ...baseFields(x), id: x.id as string, models, keys: sealed ? [{ sealed, ...this.#partsOfSealed(sealed, x.id as string) }] : [] };
     });
     const defId = typeof raw.defaultId === 'string' ? raw.defaultId : null;
     const def = items.find((p) => p.id === defId);
@@ -171,12 +171,39 @@ export class ProviderStore {
     this.#write();
   }
 
-  #partsOfSealed(sealed: string): { head: string; tail: string } {
+  /**
+   * The characters a key may show, worked out from its sealed form. Before the app is ready the OS key store
+   * cannot be used (Electron's safeStorage on Windows): then nothing is shown for now, it is said in the log
+   * (without the key), and fillKeyMasks() works it out once the app is ready.
+   */
+  #partsOfSealed(sealed: string, id = ''): { head: string; tail: string } {
     try {
       return keyMaskParts(this.#box.decrypt(sealed));
-    } catch {
+    } catch (err) {
+      console.warn(`[spica] providers: the saved key${id ? ` of ${id}` : ''} could not be read to show its first and last characters (${err instanceof Error ? err.message : 'unknown error'}); tried again once the app is ready`);
       return { head: '', tail: '' };
     }
+  }
+
+  /**
+   * Keys saved without the characters they may show (moved from version 1 before the app was ready, or saved
+   * by a version that did not keep them): worked out now and written back. Call once the app is ready; a key
+   * too short to show anything is simply worked out again next time. Returns how many were filled in.
+   */
+  fillKeyMasks(): number {
+    let filled = 0;
+    for (const p of this.#data.items) {
+      for (const k of p.keys) {
+        if (!k.sealed || k.head || k.tail) continue;
+        const parts = this.#partsOfSealed(k.sealed, p.id);
+        if (!parts.head && !parts.tail) continue;
+        k.head = parts.head;
+        k.tail = parts.tail;
+        filled++;
+      }
+    }
+    if (filled) this.#write();
+    return filled;
   }
 
   /** Every connection with the models it has, saved ones and outside ones. */
