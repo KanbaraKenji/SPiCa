@@ -2,7 +2,7 @@
  * 纯字符串版 SVG 构造器：给导出脚本、开机首帧、主进程窗口图标用。
  * React 组件另有 JSX 版，几何同源（geometry.ts / wordmark.ts）。
  */
-import { MARK_CENTER, MARK_GEOMETRY, MARK_VIEWBOX, TASKBAR_PARAMS, fmt, markGeometry, type MarkParams } from './geometry.ts';
+import { MARK_CENTER, MARK_GEOMETRY, MARK_PARAMS, MARK_VIEWBOX, TASKBAR_PARAMS, fmt, markGeometry, type MarkParams } from './geometry.ts';
 import { BRAND_COLORS } from './tokens.ts';
 import { WORDMARK, type Wordmark } from './wordmark.ts';
 
@@ -13,8 +13,6 @@ export interface MarkSvgOptions {
   ink?: string;
   /** 输出边长（不写则不加 width/height，随容器） */
   size?: number;
-  /** 圆角磁贴底（桌面图标用；任务栏图标不加底） */
-  tile?: { fill: string; radius?: number } | null;
   /** 几何参数（缺省应用内定稿；任务栏光学版传 TASKBAR_PARAMS） */
   params?: Readonly<MarkParams>;
   /** 逐瓣颜色（9 个，12 点钟起顺时针）；给了就盖过 accent / ink 的长短瓣规则 */
@@ -39,7 +37,7 @@ function a11y(title: string | undefined): { attr: string; el: string } {
 }
 
 /** 花（不含外层 svg）：瓣组 + 轴，坐标在 64 画框里 */
-export function markBody(opts: Omit<MarkSvgOptions, 'size' | 'tile' | 'className' | 'title'> = {}): string {
+export function markBody(opts: Omit<MarkSvgOptions, 'size' | 'className' | 'title'> = {}): string {
   const ink = opts.ink ?? 'currentColor';
   const accent = opts.accent ?? DEFAULT_ACCENT;
   const geo = opts.params ? markGeometry(opts.params) : MARK_GEOMETRY;
@@ -55,20 +53,27 @@ export function markSvg(opts: MarkSvgOptions = {}): string {
   const size = opts.size ? ` width="${opts.size}" height="${opts.size}"` : '';
   const cls = opts.className ? ` class="${esc(opts.className)}"` : '';
   const { attr, el } = a11y(opts.title);
-  const tile = opts.tile
-    ? `<rect width="${MARK_VIEWBOX}" height="${MARK_VIEWBOX}" rx="${fmt(opts.tile.radius ?? BRAND_COLORS.tileRadius)}" fill="${opts.tile.fill}"/>`
-    : '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MARK_VIEWBOX} ${MARK_VIEWBOX}"${size}${cls}${attr}>${el}${tile}${markBody(opts)}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MARK_VIEWBOX} ${MARK_VIEWBOX}"${size}${cls}${attr}>${el}${markBody(opts)}</svg>`;
 }
 
-/** 桌面图标：深色圆角磁贴 + 暗色版的花 */
-export function tileIconSvg(opts: { size?: number; accent?: string; ink?: string; tile?: string } = {}): string {
-  return markSvg({
-    size: opts.size,
-    accent: opts.accent ?? BRAND_COLORS.dark.accent,
-    ink: opts.ink ?? BRAND_COLORS.dark.ink,
-    tile: { fill: opts.tile ?? BRAND_COLORS.tile },
-  });
+/** 写死图标的花缩到 93%，给外圈细边留出画框 */
+export const FIXED_ICON_FIT = 0.93;
+
+/**
+ * 写死颜色的应用图标：安装程序、资源管理器里的 exe、卸载条目这些不能随任务栏深浅换色的位置。
+ * 无底白花，外加一圈深色细边，白底和深底上都看得见。
+ * 边宽按输出像素算：48px 及以下约 1px，再大按比例（size / 48）；48px 及以下用光学版几何，64px 起用原版花。
+ */
+export function fixedIconSvg(size: number): string {
+  const params = size <= 48 ? TASKBAR_PARAMS : MARK_PARAMS;
+  const { ink, rim } = BRAND_COLORS.fixedIcon;
+  const rimPx = Math.max(1, size / 48);
+  // 描边一半被花盖住，所以乘 2；再除掉花组和外层的放大，换回 64 画框单位
+  const width = (2 * rimPx * MARK_VIEWBOX) / size / (params.scale * FIXED_ICON_FIT);
+  const c = fmt(MARK_CENTER);
+  const rimLayer = `<g stroke="${rim}" stroke-width="${fmt(width)}" stroke-linejoin="round">${markBody({ ink: rim, accent: rim, params })}</g>`;
+  const flower = markBody({ ink, accent: ink, params });
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MARK_VIEWBOX} ${MARK_VIEWBOX}" width="${size}" height="${size}" aria-hidden="true"><g transform="translate(${c} ${c}) scale(${fmt(FIXED_ICON_FIT)}) translate(-${c} -${c})">${rimLayer}${flower}</g></svg>`;
 }
 
 /** 任务栏 / 窗口图标：无底、光学版几何 */

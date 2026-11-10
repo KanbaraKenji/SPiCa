@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BANNER_LAYOUT, bannerSvg, markSvg, taskbarSvg, tileIconSvg, wordmarkSvg } from './svg.ts';
+import { BANNER_LAYOUT, bannerSvg, fixedIconSvg, markSvg, taskbarSvg, wordmarkSvg } from './svg.ts';
 import { BRAND_COLORS } from './tokens.ts';
 
 const dark = BRAND_COLORS.dark;
@@ -19,11 +19,26 @@ describe('SVG 构造器', () => {
     expect(svg).toContain('<title>Spica &lt;home&gt;</title>');
   });
 
-  it('桌面图标：带深色圆角磁贴', () => {
-    const svg = tileIconSvg({ size: 256 });
-    expect(svg).toContain(`<rect width="64" height="64" rx="14" fill="${BRAND_COLORS.tile}"/>`);
-    expect(svg).toContain('width="256" height="256"');
-    expect(svg).toMatchSnapshot();
+  it('写死的应用图标：无底白花加深色细边，小尺寸用光学版', () => {
+    const { ink, rim } = BRAND_COLORS.fixedIcon;
+    const small = fixedIconSvg(24);
+    expect(small).not.toContain('<rect');
+    expect(small).toContain('width="24" height="24"');
+    expect(small).toContain('scale(1.22)'); // 光学版
+    expect(small.match(new RegExp(`fill="${ink}"`, 'g'))).toHaveLength(10); // 九瓣 + 轴
+    expect(small.match(new RegExp(`fill="${rim}"`, 'g'))).toHaveLength(10); // 细边那层
+    expect(small).toContain(`stroke="${rim}"`);
+    const big = fixedIconSvg(256);
+    expect(big).toContain('scale(1.15)'); // 原版花
+    expect(big).toMatchSnapshot();
+  });
+
+  it('写死的应用图标：边宽按输出像素算，48px 及以下约 1px', () => {
+    const strokeIn = (svg: string) => Number(/stroke-width="([\d.]+)"/.exec(svg)?.[1]);
+    const px = (size: number, scale: number) => (strokeIn(fixedIconSvg(size)) / 2) * scale * 0.93 * (size / 64);
+    expect(px(16, 1.22)).toBeCloseTo(1, 2);
+    expect(px(48, 1.22)).toBeCloseTo(1, 2);
+    expect(px(256, 1.15)).toBeCloseTo(256 / 48, 2);
   });
 
   it('任务栏图标：无底、用光学版几何', () => {

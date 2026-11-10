@@ -14,7 +14,7 @@ import { Resvg } from '@resvg/resvg-js';
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BANNER_LAYOUT, bannerSvg, markSvg, taskbarSvg, tileIconSvg, wordmarkSvg } from '../src/svg.ts';
+import { BANNER_LAYOUT, bannerSvg, fixedIconSvg, markSvg, taskbarSvg, wordmarkSvg } from '../src/svg.ts';
 import { BRAND_COLORS } from '../src/tokens.ts';
 import { buildIco } from './ico.ts';
 
@@ -33,7 +33,7 @@ const { dark, light } = BRAND_COLORS;
 /** 矢量成品：文件名 → SVG */
 function vectorFiles(): Record<string, string> {
   return {
-    'spica-icon.svg': tileIconSvg(),
+    'spica-icon.svg': fixedIconSvg(256),
     'spica-mark-dark.svg': markSvg({ ink: dark.ink, accent: dark.accent }),
     'spica-mark-light.svg': markSvg({ ink: light.ink, accent: light.accent }),
     'spica-taskbar-dark.svg': taskbarSvg({ ink: dark.ink, accent: dark.accent }),
@@ -52,8 +52,8 @@ function raster(svg: string, width: number): Uint8Array {
 /** 位图成品：文件名 → PNG */
 function rasterFiles(): Record<string, Uint8Array> {
   const out: Record<string, Uint8Array> = {};
-  const tile = tileIconSvg();
-  for (const s of ICON_SIZES) out[`spica-icon-${s}.png`] = raster(tile, s);
+  // 写死的应用图标：每个尺寸单独画，边宽和几何跟尺寸走
+  for (const s of ICON_SIZES) out[`spica-icon-${s}.png`] = raster(fixedIconSvg(s), s);
   // 运行态窗口图标首帧兜底：无底、光学版；深色任务栏用亮花，浅色任务栏用深花
   out['spica-win-dark.png'] = raster(taskbarSvg({ ink: dark.ink, accent: dark.accent }), WIN_ICON_SIZE);
   out['spica-win-light.png'] = raster(taskbarSvg({ ink: light.ink, accent: light.accent }), WIN_ICON_SIZE);
@@ -76,8 +76,7 @@ function cleanDir(dir: string, exts: readonly string[]) {
 function main() {
   const svgs = vectorFiles();
   const pngs = rasterFiles();
-  const tile = tileIconSvg();
-  const ico = buildIco(ICO_SIZES.map((size) => ({ size, png: raster(tile, size) })));
+  const ico = buildIco(ICO_SIZES.map((size) => ({ size, png: raster(fixedIconSvg(size), size) })));
 
   for (const root of TARGETS) {
     cleanDir(path.join(root, 'svg'), ['.svg']);

@@ -11,9 +11,9 @@ SVG 是真矢量（可编辑路径），全部由 `packages/brand/src/` 的构�
 
 | 文件 | 用途 |
 |---|---|
-| `spica.ico` | Windows 快捷方式、安装包、资源管理器用的多尺寸图标，内含 16～256px 磁贴版 |
+| `spica.ico` | 写死颜色的多尺寸图标（16～256px）：安装程序、资源管理器里的 exe、卸载条目；无底白花加深色细边，见 `docs/taskbar_icon.md` 第 4 节 |
 | `png/spica-win-dark.png` / `spica-win-light.png` | 运行态窗口图标（任务栏、Alt-Tab）的首帧兜底：无底、光学版，深色 / 浅色任务栏各一。应用启动后可由渲染层按当前皮肤现画、交给主进程替换 |
-| `png/spica-icon-256.png` | 带磁贴底的桌面图标，找不到其他图标时的兜底 |
+| `png/spica-icon-256.png` | 写死颜色的应用图标（白花加深色细边），找不到其他图标时的兜底 |
 | `png/spica-icon-64.png` | 网页预览时的页签图标 |
 
 应用内的所有标志（左上角横标、开机画面、状态动效）都是 React 组件现画的 SVG，不用位图。
@@ -22,7 +22,7 @@ SVG 是真矢量（可编辑路径），全部由 `packages/brand/src/` 的构�
 
 | 文件 | 内容 |
 |---|---|
-| `spica-icon.svg` | 桌面图标：深色圆角磁贴 + 暗色版的花 |
+| `spica-icon.svg` | 写死颜色的应用图标：无底白花 + 深色细边（按 256px 的边宽） |
 | `spica-mark-dark.svg` / `spica-mark-light.svg` | 无底花标，暗底 / 亮底用色 |
 | `spica-taskbar-dark.svg` / `spica-taskbar-light.svg` | 无底任务栏图标（光学版），深色 / 浅色任务栏用 |
 | `spica-wordmark-dark.svg` / `spica-wordmark-light.svg` | 字标 |
@@ -32,7 +32,7 @@ SVG 是真矢量（可编辑路径），全部由 `packages/brand/src/` 的构�
 
 | 文件 | 内容 |
 |---|---|
-| `spica-icon-16.png` ～ `spica-icon-1024.png` | 磁贴版各尺寸：16、24、32、48、64、128、256、512、1024 |
+| `spica-icon-16.png` ～ `spica-icon-1024.png` | 写死颜色的应用图标各尺寸：16、24、32、48、64、128、256、512、1024；每个尺寸单独画，边宽跟尺寸走 |
 | `spica-win-dark.png` / `spica-win-light.png` | 无底窗口图标，256px |
 | `spica-banner-dark.png` / `spica-banner-light.png` | 横标位图，256px 高，带底色，宣传和文档用 |
 
