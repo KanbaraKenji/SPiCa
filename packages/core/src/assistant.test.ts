@@ -100,7 +100,32 @@ describe('project managers stand on their own', () => {
   });
 });
 
+describe('a conversation without a folder', () => {
+  it('works in its own folder in the app data, not in a shared one; a chosen folder, sub-agents and projects are as before', async () => {
+    const { existsSync } = await import('node:fs');
+    const rt = makeRuntime(gw, { cwd: join(dir, 'Documents'), sessionFilesDir: join(dir, 'data', 'sessions'), projectsRoot: join(dir, 'p') });
+    const a = rt.createSession();
+    expect(a.config.cwd).toBe(join(dir, 'data', 'sessions', a.id, 'files'));
+    expect(existsSync(a.config.cwd)).toBe(true);
+    expect(rt.createSession().config.cwd).not.toBe(a.config.cwd); // each its own
+    expect(rt.createSession({ cwd: join(dir, 'chosen') }).config.cwd).toBe(join(dir, 'chosen'));
+    expect(rt.createSession({ parentId: a.id }).config.cwd).toBe(a.config.cwd); // a sub-agent works where its parent does
+    const p = rt.createProject({ name: 'Folder' });
+    expect(rt.session(p.managerSessionId)!.config.cwd).toBe(p.folder);
+    expect(existsSync(join(dir, 'Documents'))).toBe(false); // nothing made under Documents
+    await rt.close();
+  });
+});
+
 describe('looking things up in earlier conversations', () => {
+  it('the assistant is told to name earlier conversations by title and time, not by id', async () => {
+    const { TOP_TEMPLATE } = await import('./projects.ts');
+    expect(TOP_TEMPLATE.system).toMatch(/name it by its title and when it was, never by its id/);
+    const rt = makeRuntime(gw, { cwd: dir });
+    expect(rt.tools.get('search_history')!.spec.description).toMatch(/name a conversation by its title and time; the id is only for read_history/);
+    await rt.close();
+  });
+
   it('search, read and find files across conversations and projects, as outside data, redacted, capped', async () => {
     gw.onRequest(() => ({ text: 'noted' }));
     const rt = makeRuntime(gw, { cwd: dir, projectsRoot: join(dir, 'p'), redactions: ['sk-history-secret-123456'] });

@@ -98,6 +98,12 @@ export interface RuntimeOptions {
   catalogPresets?: CatalogPreset[];
   /** Where attached images are kept (one folder per conversation, deleted with it). Default: the temp folder. */
   mediaDir?: string;
+  /**
+   * A conversation started without a folder (not in a project, not a sub-agent)
+   * works in its own folder here: <sessionFilesDir>/<session id>/files, made on
+   * creation. Without it such conversations use `cwd`.
+   */
+  sessionFilesDir?: string;
 }
 
 export { APP_NAME_SLOT, withAppName } from './util.ts';
@@ -385,12 +391,17 @@ export class Runtime implements RuntimeInternals {
     const now = isoNow();
     const role: AgentRole = req.role ?? tpl?.role ?? (parent ? 'worker' : 'top');
     const tools = req.tools ?? tpl?.tools ?? parent?.config.tools;
+    const sessionId = newId('ses');
+    // a conversation of its own without a folder: its own folder in the app's data, not one under Documents
+    const ownFolder =
+      !req.cwd && !parent && !req.projectId && this.#opts.sessionFilesDir ? join(this.#opts.sessionFilesDir, sessionId, 'files') : undefined;
+    if (ownFolder) mkdirSync(ownFolder, { recursive: true });
     const config: SessionConfig = {
       system: req.system ?? tpl?.system ?? d.system ?? DEFAULT_SYSTEM_PROMPT,
       providerId: req.providerId ?? tpl?.providerId ?? parent?.config.providerId ?? d.providerId,
       model: req.model ?? tpl?.model ?? (req.providerId || tpl?.providerId ? undefined : parent?.config.model) ?? d.model,
       maxTokens: req.maxTokens ?? d.maxTokens,
-      cwd: req.cwd ?? parent?.config.cwd ?? this.#opts.cwd ?? process.cwd(),
+      cwd: req.cwd ?? parent?.config.cwd ?? ownFolder ?? this.#opts.cwd ?? process.cwd(),
       maxTurns: req.maxTurns ?? d.maxTurns ?? 50,
       locale: req.locale ?? parent?.config.locale ?? this.#opts.locale ?? 'zh-CN',
       serverWebSearch: false,
@@ -404,7 +415,7 @@ export class Runtime implements RuntimeInternals {
     const provider = this.provider(config.providerId); // fail fast
     config.serverWebSearch = (this.#opts.hostedWebSearch ?? true) && provider.capabilities.serverWebSearch;
     const record: SessionRecord = {
-      id: newId('ses'),
+      id: sessionId,
       parentId: parent?.id ?? null,
       role,
       title: req.title ?? null,

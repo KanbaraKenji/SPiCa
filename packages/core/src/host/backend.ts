@@ -391,6 +391,8 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
       ...(cfg.appName ? { appName: cfg.appName } : {}),
       // attached images live next to the database (one folder per conversation)
       mediaDir: join(dirname(cfg.dbPath), 'media'),
+      // a conversation started without a folder gets its own one next to the database, not under Documents
+      sessionFilesDir: join(dirname(cfg.dbPath), 'sessions'),
       ...(cfg.search ? { search: jsonSearchBackend(cfg.search) } : {}),
       ...(cfg.mail ? { mail: cfg.mail } : {}),
     });
