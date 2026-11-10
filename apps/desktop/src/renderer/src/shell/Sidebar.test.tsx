@@ -249,4 +249,16 @@ describe('Sidebar', () => {
     expect(screen.getByText('1 个待处理 · 1 个运行中 · 1 个排队中')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /汇总测试报告/ })).toBeNull();
   });
+
+  it('a collapsed project’s summary is in the warning colour while something below waits for you (by state, not by its words)', () => {
+    const props = { activeId: null, onOpen: vi.fn(), onNewChat: vi.fn(), onSettings: vi.fn(), settingsOpen: false };
+    const { rerender } = render(<Sidebar sessions={seed.sessions} {...props} />);
+    fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
+    fireEvent.click(screen.getByRole('button', { name: '收起 新品样机评审' }));
+    expect(screen.getByText('1 个待处理 · 1 个运行中 · 1 个排队中').className).toBe('tree-summary is-waiting');
+    // Nothing waits any more (the sub-task that asked is running again): the plain colour.
+    const none = seed.sessions.map((x) => (x.id === SEED_IDS.minutes ? { ...x, status: 'thinking' as const } : x));
+    rerender(<Sidebar sessions={none} {...props} />);
+    expect(screen.getByText('2 个运行中 · 1 个排队中').className).toBe('tree-summary');
+  });
 });

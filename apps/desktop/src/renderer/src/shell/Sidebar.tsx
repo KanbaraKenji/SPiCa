@@ -147,6 +147,8 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
   const open =
     s.id in tree.expanded ? tree.expanded[s.id] === true : tree.openByDefault.has(s.id) || all.some((k) => isRunning(k.status) || k.id === tree.activeId);
   const summary = kids.length && !open ? projectSummary(all) : '';
+  // Something below waits for the user: the summary in the warning colour (by state, not by its words).
+  const waiting = Boolean(summary) && all.some(waitingForYou);
   const active = !tree.settingsOpen && s.id === tree.activeId;
   const name = s.title ?? '';
   const menuOpen = tree.menuFor === s.id;
@@ -186,7 +188,7 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
               </span>
             ) : null}
             {tree.notes?.get(s.id) && !active ? <NewDot text={tree.notes.get(s.id)!} /> : null}
-            {summary ? <span className={/等你/.test(summary) ? 'tree-summary is-waiting' : 'tree-summary'} title={summary}>{summary}</span> : <StatusMark status={s.status} />}
+            {summary ? <span className={waiting ? 'tree-summary is-waiting' : 'tree-summary'} title={summary}>{summary}</span> : <StatusMark status={s.status} />}
           </button>
         )}
         {more ? (
