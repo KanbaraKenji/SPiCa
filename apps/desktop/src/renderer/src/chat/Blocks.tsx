@@ -7,6 +7,7 @@ import { fileCardLine, type Block, type ChildNote, type FileRef } from '../store
 import { Icon } from '../ui/Icon';
 import { FileBadge } from '../ui/FileIcon';
 import { confirmTitle, fileFolder, fileName, formatDuration, GUARD_CAUSE_TEXT, toolLabel, toolTarget } from './format';
+import { SpicaStatusIcon } from '@spica/brand/react';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
 
@@ -90,7 +91,7 @@ export function ToolGroup({ blocks }: { blocks: ToolBlock[] }) {
   const failed = blocks.filter((b) => b.state === 'error').length;
   const total = blocks.reduce((n, b) => n + (b.durationMs ?? 0), 0);
   const label = running ? `${toolLine(running)}` : `调用了 ${blocks.length} 个工具`;
-  const meta = running ? <span className="spinner" aria-label="进行中" /> : failed ? <span className="text-danger">{failed} 个没有成功</span> : total ? formatDuration(total) : null;
+  const meta = running ? <span className="spinner" aria-label="进行中" /> : failed ? <span className="text-danger">{failed} 个失败</span> : total ? formatDuration(total) : null;
   return (
     <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={<Icon name="tool" size={14} />} label={label} meta={meta}>
       <div className="fold-list">
@@ -136,7 +137,7 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
       </header>
       {answered ? (
         <p className="card-answer">
-          <Icon name="check" size={14} />
+          <SpicaStatusIcon name="done" size={15} />
           <span>{block.answer}</span>
         </p>
       ) : (
@@ -185,7 +186,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
       {decided ? (
         <p className="card-answer">
-          <Icon name={block.approved ? 'check' : 'close'} size={14} />
+          {block.approved ? <SpicaStatusIcon name="done" size={15} /> : <Icon name="close" size={14} />}
           <span>{block.approved ? '已允许' : '已拒绝'}</span>
         </p>
       ) : (

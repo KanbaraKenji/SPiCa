@@ -9,6 +9,7 @@ import type { MailView } from '../store/mail';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { GUARD_FLAG_TEXT } from '../chat/format';
+import { SpicaStatusIcon } from '@spica/brand/react';
 
 export interface InboxProject {
   id: string;
@@ -67,7 +68,7 @@ function MailCard({ item, props, onMoveMenu }: { item: MailItem; props: InboxVie
         <div className="mail-actions">
           {verdict.handled ? (
             <span className="mail-handled">
-              <Icon name="check" size={14} />
+              <SpicaStatusIcon name="done" size={15} />
               {verdict.handled}
             </span>
           ) : null}

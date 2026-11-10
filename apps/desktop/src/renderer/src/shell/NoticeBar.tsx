@@ -7,6 +7,7 @@ import type { AgentStore } from '../store/agent';
 import { activeNotices, type Notice, type UpdateState } from '../../../shared/updates';
 import type { ShellSettings } from '../../../shared/settings';
 import { Icon } from '../ui/Icon';
+import { SpicaStatusIcon } from '@spica/brand/react';
 
 export function useUpdateState(bridge: DesktopBridge): UpdateState | null {
   const [state, setState] = useState<UpdateState | null>(null);
@@ -84,7 +85,7 @@ export function NoticeBar({ backend, onRetryBackend, update, settings, onInstall
   if (showUpdate && update?.available) {
     return (
       <div className="notice-bar" role="status">
-        <Icon name="check" size={14} className="notice-icon" />
+        <SpicaStatusIcon name="done" size={15} className="notice-icon" />
         <span className="notice-text">新版本 {update.available} 已经下好</span>
         <button type="button" className="btn btn-small btn-primary" onClick={onInstall}>
           重启并更新

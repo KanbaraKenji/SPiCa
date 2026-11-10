@@ -7,6 +7,7 @@ import { friendlyError } from '../store/agent';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
 import { useKeptDraft } from './drafts';
+import { SpicaStatusIcon } from '@spica/brand/react';
 
 export interface PluginsApi {
   run(cmd: PluginsCommand): Promise<PluginsResult>;
@@ -245,7 +246,7 @@ export function Plugins({ api }: { api: PluginsApi }) {
         </form>
         {note ? (
           <p className={note.ok ? 'provider-result is-ok plugin-note' : 'provider-result is-bad plugin-note'} role="status">
-            {note.ok ? <Icon name="check" size={14} /> : null}
+            {note.ok ? <SpicaStatusIcon name="done" size={15} /> : null}
             {note.text}
           </p>
         ) : null}

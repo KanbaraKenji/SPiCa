@@ -29,6 +29,7 @@ import { Icon } from '../ui/Icon';
 import { dropDraft, keepDraft, keptDraft } from './drafts';
 import { ModelPicker, type ListedModel } from './ModelPicker';
 import { PasteConfig } from './PasteConfig';
+import { SpicaStatusIcon } from '@spica/brand/react';
 
 export interface ProvidersApi {
   list(): Promise<ProviderList>;
@@ -707,7 +708,7 @@ export function Models({ api }: { api: ProvidersApi }) {
             <span className="provider-actions-gap" />
             {result ? (
               <span className={result.ok ? 'provider-result is-ok' : 'provider-result is-bad'} role="status">
-                {result.ok ? <Icon name="check" size={14} /> : null}
+                {result.ok ? <SpicaStatusIcon name="done" size={15} /> : null}
                 {result.message}
               </span>
             ) : null}

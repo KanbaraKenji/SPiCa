@@ -2,8 +2,8 @@
 // checking for an update by hand.
 import { useKeptDraft } from './drafts';
 import type { UpdateState } from '../../../shared/updates';
-import { Icon } from '../ui/Icon';
 import { APP_NAME } from '../../../shared/app-identity';
+import { SpicaStatusIcon } from '@spica/brand/react';
 
 export interface AboutProps {
   version: string;
@@ -61,7 +61,7 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
         </form>
         {update?.message ? (
           <p className={update.status === 'error' ? 'provider-result is-bad plugin-note' : 'provider-result plugin-note'} role="status">
-            {update.status === 'latest' || update.status === 'ready' ? <Icon name="check" size={14} /> : null}
+            {update.status === 'latest' || update.status === 'ready' ? <SpicaStatusIcon name="done" size={15} /> : null}
             {update.message}
           </p>
         ) : null}
