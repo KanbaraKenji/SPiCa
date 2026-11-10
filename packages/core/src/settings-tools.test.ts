@@ -456,3 +456,73 @@ describe('model settings over Spica MCP', () => {
     expect(await call('spica_network_status')).toEqual({ proxy: null, noProxy: expect.any(Array), caFile: null, useSystemCa: expect.any(Boolean) });
   });
 });
+
+describe('scripts written for 0.1.0-rc.2', () => {
+  const base = () => ({ kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1`, apiKey: API_KEY });
+
+  it('makeDefault: true, strongModel and contextWindow alone work as they did, and the result says how they were taken', async () => {
+    const { call, win } = await setup();
+    // the rc.2 way: one model, made the default
+    const a = await call('spica_save_model', { ...base(), name: 'Gateway A', model: 'm1', contextWindow: 64_000, makeDefault: true });
+    expect(a).toMatchObject({ saved: true, default: { model: 'm1' }, legacy: [{ parameter: 'makeDefault', given: true, handledAs: 'makeDefault: "m1"' }] });
+    const idA = (a.connection as { id: string }).id;
+    // a second connection made the default with a strong model of its own (a model not ticked yet is ticked)
+    const b = await call('spica_save_model', { ...base(), name: 'Gateway B', models: [{ id: 'm2', contextWindow: 8000 }, { id: 'm3', contextWindow: 4000 }], makeDefault: true, strongModel: 'm3' });
+    const idB = (b.connection as { id: string }).id;
+    expect(b).toMatchObject({ saved: true, default: { connectionId: idB, model: 'm2' }, strong: { connectionId: idB, model: 'm3' } });
+    expect(b.legacy).toEqual(
+      expect.arrayContaining([
+        { parameter: 'makeDefault', given: true, handledAs: 'makeDefault: "m2"' },
+        { parameter: 'strongModel', given: 'm3', handledAs: 'makeStrong: "m3"' },
+      ]),
+    );
+    // contextWindow alone on a connection with one model: that model's window (rc.2: the connection's window)
+    const c = await call('spica_save_model', { id: idA, contextWindow: 32_000 });
+    expect(c).toMatchObject({ saved: true, connection: { models: [{ id: 'm1', contextWindow: 32_000 }] }, legacy: [{ parameter: 'contextWindow', handledAs: expect.stringMatching(/m1/) }] });
+    // and with makeDefault: true it is the default again
+    expect(await call('spica_save_model', { id: idA, contextWindow: 16_000, makeDefault: true })).toMatchObject({ saved: true, default: { connectionId: idA, model: 'm1' } });
+    // strongModel on a connection that is not the default: ticked, the strong model stays (as before), said so
+    const d = await call('spica_save_model', { ...base(), name: 'Gateway D', model: 'm4', contextWindow: 4000, strongModel: 'm4' });
+    expect(d).toMatchObject({ saved: true, strong: { connectionId: idB, model: 'm3' }, legacy: [{ parameter: 'strongModel', handledAs: expect.stringMatching(/not the default/) }] });
+    // makeStrong and strongModel together: the newer one wins
+    const e = await call('spica_save_model', { id: idA, makeStrong: 'm1', strongModel: 'm9' });
+    expect(e).toMatchObject({ saved: true, strong: { connectionId: idA, model: 'm1' }, legacy: [{ parameter: 'strongModel', handledAs: expect.stringMatching(/makeStrong was given too/) }] });
+    expect(win.list().connections.find((x) => x.id === idA)!.models.map((m) => m.id)).toEqual(['m1']); // m9 was not ticked
+    // spica_set_default_model { id } as before: the connection's (first) model
+    expect(await call('spica_set_default_model', { id: idB })).toMatchObject({ default: { connectionId: idB, model: 'm2' } });
+    // spica_test_model with every rc.2 field: the two it no longer takes did nothing for a test then either
+    expect(await call('spica_test_model', { ...base(), model: 'm1', strongModel: 'm2', contextWindow: 8000 })).toMatchObject({
+      ok: true,
+      legacy: [
+        { parameter: 'strongModel', handledAs: 'not used by a test (as before)' },
+        { parameter: 'contextWindow', handledAs: 'not used by a test (as before)' },
+      ],
+    });
+  });
+
+  it('what is ambiguous now is refused with the way to say it, and nothing is saved', async () => {
+    const { call, win } = await setup();
+    const a = await call('spica_save_model', { ...base(), name: 'A', models: [{ id: 'm1', contextWindow: 8000 }, { id: 'm2', contextWindow: 8000 }] });
+    const id = (a.connection as { id: string }).id;
+    const before = JSON.stringify(win.list());
+    // rc.2: model replaced the connection's model; now it would add one
+    expect((await call('spica_save_model', { id, model: 'm7' })).error).toMatch(/Up to 0\.1\.0-rc\.2, model replaced a connection's model.*addModels: \[\{ id: "m7" \}\].*models: \[\.\.\.\]/);
+    // contextWindow alone with two models: which one?
+    expect((await call('spica_save_model', { id, contextWindow: 4000 })).error).toMatch(/contextWindow needs the model it is for/);
+    expect((await call('spica_save_model', { ...base(), name: 'N', contextWindow: 4000, models: [{ id: 'm1', contextWindow: 8000 }] })).error).toMatch(/contextWindow needs the model it is for/);
+    expect((await call('spica_save_model', { id, makeDefault: 1 })).error).toMatch(/makeDefault takes the name of one of this connection's models/);
+    expect((await call('spica_save_model', { id, strongModel: '' })).error).toMatch(/now written makeStrong/);
+    expect(JSON.stringify(win.list())).toBe(before);
+  });
+
+  it('a parameter a settings tool does not take is an error naming it, never dropped', async () => {
+    const { call, win } = await setup();
+    const typo = await call('spica_save_model', { ...base(), name: 'A', model: 'm1', contextWindow: 8000, makeDefualt: 'm1' });
+    expect(typo.error).toMatch(/spica_save_model does not take "makeDefualt"; it takes: id, preset, kind/);
+    expect(win.list().connections).toEqual([]);
+    expect((await call('spica_set_default_model', { id: 'p-1', makeStrong: true })).error).toMatch(/spica_set_default_model does not take "makeStrong"; it takes: id, model, strong/);
+    expect((await call('spica_list_models', { verbose: true })).error).toMatch(/spica_list_models does not take "verbose"; it takes no parameters/);
+    expect((await call('spica_test_model', { ...base(), model: 'm1', timeout: 5 })).error).toMatch(/spica_test_model does not take "timeout"/);
+    expect((await call('spica_network_status', { all: true })).error).toMatch(/does not take "all"/);
+  });
+});

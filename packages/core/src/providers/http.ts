@@ -27,6 +27,8 @@ export interface PostOptions {
   info?: CallInfo;
   onRetry?: (info: { attempt: number; delayMs: number; reason: string }) => void;
   fetchImpl?: typeof fetch;
+  /** The address the user saved has no version at its end (/v1, /v2...): a 404 says to check that (gateway.not_found_version). */
+  unversionedBase?: boolean;
 }
 
 /**
@@ -103,6 +105,7 @@ export async function postWithRetry(opts: PostOptions): Promise<Response> {
 
     const text = await safeText(res);
     let code = httpErrorCode(res.status, res.headers.get('content-type'), text);
+    if (code === 'gateway.not_found' && opts.unversionedBase) code = 'gateway.not_found_version'; // most often /v1 is missing
     // rejected credentials (401, or a gateway's "invalid credentials / token expired" fault): get a new token once
     const rejected = res.status === 401 || code === 'wso2.invalid_credentials';
     if (rejected && opts.auth?.refresh && !refreshed) {

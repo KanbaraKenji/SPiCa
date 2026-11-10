@@ -94,6 +94,8 @@ export class OpenAICompatibleProvider implements Provider {
       ...(ctx.info ? { info: ctx.info } : {}),
       ...(ctx.onRetry ? { onRetry: ctx.onRetry } : {}),
       ...(this.#opts.fetchImpl ? { fetchImpl: this.#opts.fetchImpl } : {}),
+      // a saved address without /v1 (it is added only by test connection, not here): a 404 says to check its ending
+      ...(!this.#opts.path && !/\/v\d+$/i.test(this.#opts.baseUrl.replace(/\/+$/, '')) ? { unversionedBase: true } : {}),
     });
     if (!res.body) throw new ProviderError('empty response body', { retryable: true });
     yield* parseOpenAIStream(res.body, {

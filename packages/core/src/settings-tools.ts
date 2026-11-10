@@ -457,7 +457,62 @@ export function settingsTools(rt: Runtime): McpTool[] {
   /** Set a pointer (default / strong) to a connection's model. */
   const pointerTo = (connectionId: string, model: string): HostModelPointer => ({ connectionId, model });
 
-  return [
+  /**
+   * spica_save_model as scripts called it up to 0.1.0-rc.2 (one model per connection): makeDefault: true, strongModel,
+   * contextWindow without model, model on a saved connection meaning "its model". What has one clear meaning now
+   * works as before and is reported in the result (`legacy`); what is ambiguous is refused with the way to say it now.
+   * When the old and the new spelling are both given, the new one wins.
+   */
+  const legacySave = async (raw: Args) => {
+    const a: Args = { ...raw };
+    const notes: LegacyNote[] = [];
+    const existing = text(raw.id) ? (await list()).connections.find((c) => c.id === text(raw.id)) : undefined;
+    let legacyDefault = false;
+    if (typeof raw.makeDefault === 'boolean') {
+      delete a.makeDefault;
+      legacyDefault = raw.makeDefault;
+      if (!raw.makeDefault) notes.push({ parameter: 'makeDefault', given: false, handledAs: 'nothing to do (as before)' });
+    } else if (raw.makeDefault !== undefined && typeof raw.makeDefault !== 'string') {
+      throw new SettingsError('invalid', 'makeDefault takes the name of one of this connection\'s models, e.g. makeDefault: "deepseek-flash" (true still works: its model) (field makeDefault)');
+    }
+    let legacyStrong: string | undefined;
+    if (raw.strongModel !== undefined) {
+      delete a.strongModel;
+      const s = text(raw.strongModel);
+      if (!s) throw new SettingsError('invalid', 'strongModel is a model name; it is now written makeStrong: "<model>" (field strongModel)');
+      if (text(raw.makeStrong)) notes.push({ parameter: 'strongModel', given: s, handledAs: 'not used: makeStrong was given too (the newer parameter wins)' });
+      else {
+        legacyStrong = s;
+        // as before, the strong model is one of the connection's models
+        const ticked = (existing?.models ?? []).some((m) => m.id === s) || text(raw.model) === s || (modelArgs(raw.models) ?? []).some((m) => m.id === s);
+        if (!ticked && raw.models === undefined) a.addModels = [...(modelArgs(raw.addModels) ?? []), { id: s }];
+      }
+    }
+    if (raw.contextWindow !== undefined && !text(raw.model)) {
+      // before, a connection had one model and contextWindow was its window
+      const on = (existing?.models ?? []).filter((m) => m.enabled !== false);
+      if (existing && on.length === 1) {
+        a.model = on[0]!.id;
+        notes.push({ parameter: 'contextWindow', given: raw.contextWindow, handledAs: `the context window of ${on[0]!.id}, the connection's one model` });
+      } else {
+        throw new SettingsError(
+          'invalid',
+          'contextWindow needs the model it is for (a connection can have several models now): pass model with it, or models / addModels: [{ id, contextWindow }] (field contextWindow)',
+        );
+      }
+    }
+    const single = text(raw.model);
+    if (existing && single && !existing.models.some((m) => m.id === single) && raw.models === undefined && raw.addModels === undefined) {
+      // before, model on a saved connection replaced its model; now a connection has several, and replacing or adding cannot be told apart
+      throw new SettingsError(
+        'invalid',
+        `${single} is not one of this connection's models. Up to 0.1.0-rc.2, model replaced a connection's model; now a connection has several: pass addModels: [{ id: "${single}" }] to add it, or models: [...] for the whole list (field model)`,
+      );
+    }
+    return { a, notes, legacyDefault, legacyStrong };
+  };
+
+  const tools: McpTool[] = [
     {
       name: 'spica_list_presets',
       description:
@@ -516,11 +571,21 @@ export function settingsTools(rt: Runtime): McpTool[] {
       description:
         'Test a connection without saving it: a saved one by id, or a preset / the fields of a new one (with its key / secret); `model` picks which of its models (default: the first). ' +
         'WSO2 is tested in two steps (getting a token, then calling the model). On failure: code, and hint (Chinese) saying what to change.',
-      inputSchema: obj({ ...FIELDS, model: { ...str, description: 'Which model to test.' } }),
-      run: async (a) => {
+      inputSchema: obj({
+        ...FIELDS,
+        model: { ...str, description: 'Which model to test.' },
+        strongModel: { ...str, description: 'Older parameter: not used by a test (as before).' },
+        contextWindow: { ...int, description: 'Older parameter: not used by a test (as before).' },
+      }),
+      run: async (raw) => {
+        const { strongModel, contextWindow, ...a } = raw;
+        const notes: LegacyNote[] = [];
+        if (strongModel !== undefined) notes.push({ parameter: 'strongModel', given: strongModel, handledAs: 'not used by a test (as before)' });
+        if (contextWindow !== undefined) notes.push({ parameter: 'contextWindow', given: contextWindow, handledAs: 'not used by a test (as before)' });
         const { d, config, testModel } = await draftFrom(a, 'test');
         if (!testModel) throw new SettingsError('invalid', 'which model to test (field model)');
-        return test(d.kind, config, testModel);
+        const r = await test(d.kind, config, testModel);
+        return notes.length ? { ...r, legacy: notes } : r;
       },
     },
     {
@@ -531,7 +596,8 @@ export function settingsTools(rt: Runtime): McpTool[] {
         'a new connection from a preset gets the preset\'s recommended models when none are given. ' +
         `Every enabled model needs a context window: given, or known to ${app} (also matched by name for relays that spell it differently); otherwise nothing is saved. ` +
         `It tests one model first; a failed test saves nothing unless saveIfTestFails. The change is shown to the user in ${app}'s conversations (if ${app} is set up to ask first, it waits for the user to confirm in the window). ` +
-        'Fields left out keep their saved value; the key / secret is stored encrypted and never returned. If the user has not answered yet the result is status waiting_for_user with a requestId for spica_settings_result.',
+        'Fields left out keep their saved value; the key / secret is stored encrypted and never returned. If the user has not answered yet the result is status waiting_for_user with a requestId for spica_settings_result. ' +
+        'Parameters of scripts written for 0.1.0-rc.2 (makeDefault: true, strongModel, contextWindow alone) still work and the result says how they were taken (legacy); unknown parameters are refused.',
       inputSchema: obj({
         ...FIELDS,
         models: { type: 'array', items: modelItem, description: 'All models to tick (replaces the saved list).' },
@@ -539,21 +605,30 @@ export function settingsTools(rt: Runtime): McpTool[] {
         removeModels: { type: 'array', items: str, description: 'Model names to remove from the connection\'s list.' },
         disableModels: { type: 'array', items: str, description: 'Model names to disable: kept in the list, not in use (no context window needed).' },
         enableModels: { type: 'array', items: modelItem, description: 'Disabled models to enable again (each needs a context window, given or known).' },
-        model: { ...str, description: 'Shorthand for one model to add.' },
+        model: { ...str, description: 'A new connection: its model (shorthand for models: [{ id }]). A saved one: one of its models, to change its contextWindow; to add one use addModels.' },
         contextWindow: { ...int, description: 'With model: its context window.' },
-        makeDefault: { ...str, description: 'Make this model of the connection the default for new conversations.' },
+        makeDefault: { ...str, description: 'Make this model of the connection the default for new conversations. (Older scripts: true still works and means the connection\'s model, `model` or its first enabled one.)' },
         makeStrong: { ...str, description: 'Make this model of the connection the strong one (heavy work).' },
+        strongModel: {
+          ...str,
+          description: 'Older parameter, still works: ticks this model and makes it the strong one when this connection is the default (as it was). Prefer makeStrong; when both are given makeStrong wins.',
+        },
         saveIfTestFails: { type: 'boolean', description: 'Save even when the test fails.' },
       }),
-      run: async (a) => {
+      run: async (raw) => {
+        const { a, notes, legacyDefault, legacyStrong } = await legacySave(raw);
         const { d, config, existing, changes, added, removed, enabledNow, disabledNow, testModel, all } = await draftFrom(a, 'save');
-        const makeDefault = text(a.makeDefault) || undefined;
+        let makeDefault = text(a.makeDefault) || undefined;
+        if (legacyDefault) {
+          makeDefault = text(a.model) || d.models.find((m) => m.enabled !== false)?.id;
+          notes.push({ parameter: 'makeDefault', given: true, handledAs: `makeDefault: "${makeDefault}"` });
+        }
         const makeStrong = text(a.makeStrong) || undefined;
         for (const [field, m] of [['makeDefault', makeDefault], ['makeStrong', makeStrong]] as const) {
           if (m && !d.models.some((x) => x.id === m && x.enabled !== false)) throw new SettingsError('invalid', `${m} is not one of this connection's enabled models (field ${field})`);
         }
         const tested = await test(d.kind, config, testModel);
-        if (!tested.ok && a.saveIfTestFails !== true) return { saved: false, test: tested };
+        if (!tested.ok && a.saveIfTestFails !== true) return { saved: false, test: tested, ...(notes.length ? { legacy: notes } : {}) };
         // the address only worked with /v1 added: save that one, and say so (as the form does)
         const baseUrlAdjusted = tested.suggestedBaseUrl ? { from: d.baseUrl, to: tested.suggestedBaseUrl } : undefined;
         if (baseUrlAdjusted) {
@@ -587,9 +662,24 @@ export function settingsTools(rt: Runtime): McpTool[] {
               const saved = await host<HostConnection>('models.save', [d]);
               if (makeDefault) await host('models.setDefault', [pointerTo(saved.id, makeDefault)]);
               if (makeStrong) await host('models.setStrong', [pointerTo(saved.id, makeStrong)]);
+              let strongSet = !!makeStrong;
+              if (legacyStrong) {
+                // as before: a connection's strong model counts while it is the default
+                if ((await list()).default?.connectionId === saved.id) {
+                  await host('models.setStrong', [pointerTo(saved.id, legacyStrong)]);
+                  strongSet = true;
+                  notes.push({ parameter: 'strongModel', given: legacyStrong, handledAs: `makeStrong: "${legacyStrong}"` });
+                } else {
+                  notes.push({
+                    parameter: 'strongModel',
+                    given: legacyStrong,
+                    handledAs: `${legacyStrong} is ticked on this connection; the strong model did not change because this connection is not the default (as before); pass makeStrong to set it`,
+                  });
+                }
+              }
               const after = await list();
               const moved = (which: 'default' | 'strong') => (samePointer(all[which], after[which]) ? undefined : { from: all[which], to: after[which] });
-              const all2 = [...changes, ...(makeDefault ? ['default'] : []), ...(makeStrong ? ['strong'] : [])];
+              const all2 = [...changes, ...(makeDefault ? ['default'] : []), ...(strongSet ? ['strong'] : [])];
               record({ id: saved.id, changes: all2, status: 'ok', confirmed });
               await announce({
                 ...(card as unknown as SettingsChangeMeta),
@@ -608,6 +698,7 @@ export function settingsTools(rt: Runtime): McpTool[] {
                 default: after.default,
                 strong: after.strong,
                 test: tested,
+                ...(notes.length ? { legacy: notes } : {}),
               };
             } catch (err) {
               record({ id: existing?.id ?? '', changes, status: 'error', confirmed, error: err instanceof Error ? err.message : String(err) });
@@ -616,7 +707,7 @@ export function settingsTools(rt: Runtime): McpTool[] {
           },
           () => {
             record({ id: existing?.id ?? '', changes, status: 'aborted', confirmed: false, error: 'declined by the user' });
-            return { saved: false, declined: true, test: tested };
+            return { saved: false, declined: true, test: tested, ...(notes.length ? { legacy: notes } : {}) };
           },
         );
       },
@@ -671,4 +762,23 @@ export function settingsTools(rt: Runtime): McpTool[] {
       run: async () => bridge().network(),
     },
   ];
+  return tools.map((t) => ({ ...t, run: (a: Args) => (refuseUnknown(t, a ?? {}), t.run(a ?? {})) }));
+}
+
+/** How a parameter of an older script was taken (in the result as `legacy`). */
+interface LegacyNote {
+  parameter: string;
+  given: unknown;
+  handledAs: string;
+}
+
+/** A parameter the tool does not take is an error naming it (a misspelled or dropped one never passes silently). */
+function refuseUnknown(t: McpTool, a: Args): void {
+  const known = Object.keys((t.inputSchema as { properties?: Record<string, unknown> }).properties ?? {});
+  const unknown = Object.keys(a).filter((k) => !known.includes(k));
+  if (unknown.length === 0) return;
+  throw new SettingsError(
+    'invalid',
+    `${t.name} does not take ${unknown.map((k) => `"${k}"`).join(', ')}${known.length ? `; it takes: ${known.join(', ')}` : '; it takes no parameters'}`,
+  );
 }
