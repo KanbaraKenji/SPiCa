@@ -1,6 +1,6 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
-import type { CoreEvent, FileCardMeta, GuardCause, HistoryCardMeta, Message, PendingItem, SessionStatus, SettingsChangeMeta, UntrustedKind } from '@spica/protocol';
+import type { CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, Message, PendingItem, SessionStatus, SettingsChangeMeta, UntrustedKind } from '@spica/protocol';
 import { humanError } from '../../../shared/errors';
 import { toolLabel } from '../chat/format';
 
@@ -81,6 +81,15 @@ function modelOf(v: unknown): string | undefined {
   return v && typeof v === 'object' && typeof (v as { model?: unknown }).model === 'string' ? (v as { model: string }).model : undefined;
 }
 
+/** 「工作文件夹已选为 D:\报价，移入 3 个文件，其中 1 个改了名：a.txt → a (1).txt」 */
+export function cwdNoteText(c: CwdChangeMeta): string {
+  const moved = Array.isArray(c.moved) ? c.moved.length : 0;
+  const renamed = Array.isArray(c.renamed) ? c.renamed : [];
+  const files = moved ? `，移入 ${moved} 个文件` : '';
+  const names = renamed.length ? `，其中 ${renamed.length} 个改了名：${renamed.map((r) => `${r.from} → ${r.to}`).join('、')}` : '';
+  return `工作文件夹已选为 ${c.to}${files}${names}`;
+}
+
 /**
  * A note in the conversation, in words for people. The core's own notes are
  * written for the model (English, in brackets); they are shown from their meta,
@@ -99,6 +108,9 @@ function noteItem(m: Message): Item | undefined {
     const to = modelOf(switched.to);
     if (to) return { kind: 'note', id: m.id, text: from ? `已切换模型：${from} → ${to}` : `已切换模型：${to}` };
   }
+  // The user chose the working folder; what the conversation had made moved there.
+  const cwd = m.meta?.cwdChange;
+  if (cwd && typeof cwd === 'object' && typeof cwd.to === 'string') return { kind: 'note', id: m.id, text: cwdNoteText(cwd) };
   const child = childNoteOf(m);
   if (child) {
     const empty = child.kind === 'report' && (child.text.trim() === '' || child.text === NO_REPORT);

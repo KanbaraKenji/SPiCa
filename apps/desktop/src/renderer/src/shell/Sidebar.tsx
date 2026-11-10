@@ -35,6 +35,8 @@ export interface SidebarProps {
   /** Absent when the backend cannot rename / delete projects: the menu leaves them out. */
   onRenameProject?: (projectId: string, name: string) => void;
   onDeleteProject?: (projectId: string, name: string) => void;
+  /** 删除 in the right-click menu of the user's own conversations (not a project's). */
+  onDeleteChat?: (s: SessionInfo) => void;
   /** Pages plugins add to the sidebar (views with placement sidebar); they open in the main pane. */
   pluginPages?: { key: string; title: string; icon?: string; open: boolean; onOpen(): void }[];
   /**
@@ -43,6 +45,11 @@ export interface SidebarProps {
    * the same height in both; 项目 opens a menu of the projects.
    */
   compact?: boolean;
+}
+
+/** A conversation the user started (not a project's, not a sub-task): one that can be deleted on its own. */
+function isOwnChat(s: SessionInfo): boolean {
+  return s.role === 'top' && !s.parentId;
 }
 
 function byRecent(a: SessionInfo, b: SessionInfo): number {
@@ -200,6 +207,7 @@ export function Sidebar({
   onPin,
   onRenameProject,
   onDeleteProject,
+  onDeleteChat,
   pluginPages = [],
   compact = false,
 }: SidebarProps) {
@@ -235,8 +243,8 @@ export function Sidebar({
     openByDefault: new Set<string>(),
     editing,
     pinned: new Set(pinned),
-    hasMenu: (s) => (s.role === 'manager' ? Boolean(s.projectId && (onPin || onRenameProject || onDeleteProject)) : Boolean(onRename)),
-    ...(onRename || onPin || onRenameProject || onDeleteProject
+    hasMenu: (s) => (s.role === 'manager' ? Boolean(s.projectId && (onPin || onRenameProject || onDeleteProject)) : Boolean(onRename || (onDeleteChat && isOwnChat(s)))),
+    ...(onRename || onPin || onRenameProject || onDeleteProject || onDeleteChat
       ? {
           startRename: (s: SessionInfo, at?: { x: number; y: number }) => {
             if (at) setMenu({ s, ...at });
@@ -257,7 +265,11 @@ export function Sidebar({
   };
 
   const menuItems = (row: SessionInfo) => {
-    if (row.role !== 'manager') return [{ label: '重命名', onSelect: () => setEditing(row.id) }];
+    if (row.role !== 'manager')
+      return [
+        ...(onRename ? [{ label: '重命名', onSelect: () => setEditing(row.id) }] : []),
+        ...(onDeleteChat && isOwnChat(row) ? [{ label: '删除', danger: true, onSelect: () => onDeleteChat(row) }] : []),
+      ];
     const pid = row.projectId;
     if (!pid) return [];
     const isPinned = pinOrder.has(pid);

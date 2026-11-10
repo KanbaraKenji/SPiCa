@@ -19,6 +19,8 @@ export interface InboxProject {
 
 export interface InboxViewProps {
   mail: MailView;
+  /** 模拟模式 is on: the mail is the plugins' demo data. */
+  mock?: boolean;
   prefs: MailPrefs;
   projects: InboxProject[];
   onPoll(): void;
@@ -140,6 +142,11 @@ export function InboxView(props: InboxViewProps) {
             </button>
           </div>
           <div className="inbox-status">
+            {props.mock ? (
+              <span className="mock-tag" title="模拟模式已开启">
+                模拟数据
+              </span>
+            ) : null}
             {prefs.enabled ? (
               <span className="settings-hint">{status}</span>
             ) : (

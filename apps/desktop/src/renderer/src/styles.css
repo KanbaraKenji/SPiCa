@@ -323,12 +323,17 @@ a:hover {
   white-space: nowrap;
 }
 
-.btn:hover:not(:disabled) {
+.btn:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--spica-control-hover);
 }
 
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled='true'] {
   opacity: 0.45;
+}
+
+.btn[aria-disabled='true'] {
+  cursor: default;
 }
 
 .btn-primary {
@@ -1429,6 +1434,16 @@ button.tree-twisty:hover {
   background: var(--spica-hover);
 }
 
+/* 选择工作文件夹 while the conversation runs: greyed, the hover says when. */
+.composer-chip[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.composer-chip[aria-disabled='true']:hover {
+  background: none;
+}
+
 .composer-chip-text {
   min-width: 0;
   overflow: hidden;
@@ -1441,9 +1456,10 @@ button.tree-twisty:hover {
   color: var(--spica-muted);
 }
 
-/* The model when there is nothing to switch to: the same text, not a button. */
+/* The model when there is nothing to switch to, the working folder once fixed: the same text, not a button. */
 .composer-label {
   height: 28px;
+  max-width: 260px;
   min-width: 0;
   display: inline-flex;
   align-items: center;
@@ -3010,6 +3026,21 @@ button.ctx-row:hover {
   margin-top: 20px;
 }
 
+/* 模拟模式 on: the same small tag beside the switch and at the top of 收件箱. */
+.mock-tag {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 0 7px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--spica-accent-soft);
+  color: var(--spica-accent-text);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -3316,6 +3347,31 @@ button.ctx-row:hover {
   flex: none;
   font-size: 12px;
   color: var(--spica-faint);
+}
+
+/* A label with one line under it saying what the item does (Manual / Auto). */
+.context-item-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 2px 0;
+}
+
+.context-item-detail {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--spica-muted);
+}
+
+/* Shown but cannot be picked: the hint says why. */
+.context-item:disabled {
+  color: var(--spica-faint);
+  cursor: default;
+}
+
+.context-item:disabled:hover {
+  background: none;
 }
 
 /* A menu's group heading (the model menu: one per connection). */

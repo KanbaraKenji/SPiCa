@@ -10,6 +10,10 @@ export interface MenuItem {
   group?: string;
   /** A short tag at the right end of the item. */
   hint?: string;
+  /** One line under the label saying what it does. */
+  detail?: string;
+  /** Shown but cannot be picked (the hint says why). */
+  disabled?: boolean;
   onSelect(): void;
 }
 
@@ -23,7 +27,7 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
     if (!el) return;
     const r = el.getBoundingClientRect();
     setPos({ left: Math.max(4, Math.min(x, window.innerWidth - r.width - 4)), top: Math.max(4, Math.min(y, window.innerHeight - r.height - 4)) });
-    el.querySelector<HTMLButtonElement>('button')?.focus();
+    el.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
   }, [x, y]);
 
   useEffect(() => {
@@ -62,12 +66,21 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
             type="button"
             role="menuitem"
             className={it.danger ? 'context-item is-danger' : 'context-item'}
+            disabled={it.disabled}
+            aria-disabled={it.disabled || undefined}
             onClick={() => {
               onClose();
               it.onSelect();
             }}
           >
-            <span className="context-item-label">{it.label}</span>
+            {it.detail ? (
+              <span className="context-item-text">
+                <span className="context-item-label">{it.label}</span>
+                <span className="context-item-detail">{it.detail}</span>
+              </span>
+            ) : (
+              <span className="context-item-label">{it.label}</span>
+            )}
             {it.hint ? <span className="context-item-hint">{it.hint}</span> : null}
           </button>
         </div>

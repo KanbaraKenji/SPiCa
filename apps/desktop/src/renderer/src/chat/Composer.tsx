@@ -22,13 +22,15 @@ export interface ComposerTools {
   pickFiles?: () => Promise<string[]>;
   /** Path of a file dropped on the box ('' when none). */
   pathForFile?: (file: File) => string;
-  /** Only before a conversation exists: which folder it works in. */
-  folder?: { name: string; path: string; onPick(): void };
+  /** Which folder the conversation works in. `onPick`: it can still be chosen (before the first message, or once
+   *  later); without it the folder is fixed and only shown. `busy`: running, so it cannot be chosen right now. */
+  folder?: { name: string; path: string; onPick?: () => void; busy?: boolean };
   approval?: { mode: ApprovalMode; onChange(mode: ApprovalMode): void };
   /** The model this conversation uses; options to switch (a menu only when there is a choice). */
   /** Options by connection (`group`); `marks`: 默认 / 强模型. */
   /** `label`: the model's name; `provider` and `note` are shown beside it in the secondary colour. */
-  model?: { label: string; provider?: string; note?: string; options: { label: string; group?: string; marks?: string; current: boolean; onPick(): void }[] };
+  /** `images`: whether that model takes pictures (null: not known). `hasPictures`: the conversation already has some. */
+  model?: { label: string; provider?: string; note?: string; hasPictures?: boolean; options: { label: string; group?: string; marks?: string; current: boolean; images?: boolean | null; onPick(): void }[] };
   /** Tokens the context takes now and the model's window (only when the window is known). */
   /** `detail`: what the context is made of, for the card the ring opens. */
   context?: { tokens: number; window: number; detail?: () => Promise<ContextBreakdown | null> };
@@ -139,13 +141,15 @@ function ContextRing({ tokens, window, detail }: { tokens: number; window: numbe
 }
 
 const APPROVAL_TEXT: Record<ApprovalMode, string> = { manual: 'Manual', auto: 'Auto' };
-const APPROVAL_HINT = 'Manual：不可逆操作先确认\nAuto：不可逆操作直接执行；处理外部内容后的操作仍需确认';
+// The same sentences on hover and under each item in the menu.
+const APPROVAL_DETAIL: Record<ApprovalMode, string> = { manual: '不可逆操作先确认', auto: '不可逆操作直接执行；处理外部内容后的操作仍需确认' };
+const APPROVAL_HINT = `Manual：${APPROVAL_DETAIL.manual}\nAuto：${APPROVAL_DETAIL.auto}`;
 
 type ModelTool = NonNullable<ComposerTools['model']>;
 
 /** The model under the box: its name in the text colour, the provider beside it in the secondary one.
  *  On a narrow box only the model icon (the full name on hover). A button only when there is a choice. */
-function ModelChip({ model, buttonRef, onOpen }: { model: ModelTool; buttonRef: RefObject<HTMLButtonElement | null>; onOpen(el: HTMLElement, items: MenuItem[]): void }) {
+function ModelChip({ model, pictures, buttonRef, onOpen }: { model: ModelTool; pictures: boolean; buttonRef: RefObject<HTMLButtonElement | null>; onOpen(el: HTMLElement, items: MenuItem[]): void }) {
   const full = [model.provider, model.label].filter(Boolean).join(' · ') + (model.note ?? '');
   const body = (
     <>
@@ -178,8 +182,10 @@ function ModelChip({ model, buttonRef, onOpen }: { model: ModelTool; buttonRef: 
         onOpen(
           e.currentTarget,
           model.options.map((o) => {
-            const hint = [o.current ? '当前' : '', o.marks ?? ''].filter(Boolean).join(' · ');
-            return { label: o.label, ...(o.group ? { group: o.group } : {}), ...(hint ? { hint } : {}), onSelect: o.onPick };
+            // With pictures waiting or already in the conversation, a model that cannot take them is shown but not offered.
+            const noImages = (pictures || model.hasPictures) && o.images === false;
+            const hint = [o.current ? '当前' : '', o.marks ?? '', noImages ? '不支持图片' : ''].filter(Boolean).join(' · ');
+            return { label: o.label, ...(o.group ? { group: o.group } : {}), ...(hint ? { hint } : {}), ...(noImages && !o.current ? { disabled: true } : {}), onSelect: o.onPick };
           }),
         )
       }
@@ -293,7 +299,8 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
   const openMenu = (el: HTMLElement, items: MenuItem[]) => {
     const r = el.getBoundingClientRect();
     const groups = new Set(items.map((i) => i.group).filter(Boolean)).size;
-    setMenu({ items, x: r.left, y: r.top - 8 - items.length * 34 - groups * 24 });
+    const details = items.filter((i) => i.detail).length;
+    setMenu({ items, x: r.left, y: r.top - 8 - items.length * 34 - groups * 24 - details * 18 });
   };
 
   const canSend = (text.trim().length > 0 || files.length > 0) && !blocked;
@@ -308,16 +315,31 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
   }
   const below: ReactNode[] = [];
   if (t.folder) {
+    const f = t.folder;
     below.push(
-      // No folder picked: just the folder icon (选择工作文件夹); picked: its name.
-      t.folder.path ? (
-        <button key="folder" type="button" className="composer-chip" title={`工作文件夹：${t.folder.path}`} onClick={t.folder.onPick}>
+      // Fixed: its name, not a button. Picked but still open to change (before the first message): its name to click.
+      // None picked: 选择工作文件夹 (greyed while the conversation runs).
+      !f.onPick ? (
+        <span key="folder" className="composer-label" title={`工作文件夹：${f.path}`}>
           <Icon name="folder" size={14} />
-          <span className="composer-chip-text">{t.folder.name}</span>
+          <span className="composer-chip-text">{f.name}</span>
+        </span>
+      ) : f.path ? (
+        <button key="folder" type="button" className="composer-chip" title={`工作文件夹：${f.path}`} onClick={f.onPick}>
+          <Icon name="folder" size={14} />
+          <span className="composer-chip-text">{f.name}</span>
         </button>
       ) : (
-        <button key="folder" type="button" className="icon-btn" aria-label="选择工作文件夹" title="选择工作文件夹" onClick={t.folder.onPick}>
-          <Icon name="folder" size={16} />
+        <button
+          key="folder"
+          type="button"
+          className="composer-chip"
+          aria-disabled={f.busy || undefined}
+          title={f.busy ? '对话进行中，结束后可选择' : '选择工作文件夹'}
+          onClick={() => !f.busy && f.onPick?.()}
+        >
+          <Icon name="folder" size={14} />
+          <span className="composer-chip-text">选择工作文件夹</span>
         </button>
       ),
     );
@@ -409,7 +431,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
         <div className="composer-below">
           <div className="composer-below-left">{below}</div>
           <div className="composer-below-right">
-            {t.model ? <ModelChip model={t.model} buttonRef={modelBtn} onOpen={openMenu} /> : null}
+            {t.model ? <ModelChip model={t.model} pictures={pictures.length > 0} buttonRef={modelBtn} onOpen={openMenu} /> : null}
             {t.approval ? (
               <button
                 type="button"
@@ -419,8 +441,8 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
                 onClick={(e) => {
                   const a = t.approval!;
                   openMenu(e.currentTarget, [
-                    { label: APPROVAL_TEXT.manual, onSelect: () => a.onChange('manual') },
-                    { label: APPROVAL_TEXT.auto, onSelect: () => a.onChange('auto') },
+                    { label: APPROVAL_TEXT.manual, detail: APPROVAL_DETAIL.manual, onSelect: () => a.onChange('manual') },
+                    { label: APPROVAL_TEXT.auto, detail: APPROVAL_DETAIL.auto, onSelect: () => a.onChange('auto') },
                   ]);
                 }}
               >

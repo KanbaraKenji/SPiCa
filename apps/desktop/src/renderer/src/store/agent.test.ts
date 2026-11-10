@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FakeBackend } from '../../../main/backend/fake';
-import { AgentStore, displayTitle, friendlyError } from './agent';
+import { AgentStore, cwdErrorText, displayTitle, friendlyError } from './agent';
 import type { SessionInfo } from '@spica/protocol';
 
 describe('friendlyError', () => {
@@ -87,5 +87,50 @@ describe('AgentStore', () => {
     // The open conversation was in it: back to the assistant.
     expect(v.activeId).toBe(v.topId);
     backend.dispose();
+  });
+});
+
+describe('deleting a conversation and choosing its working folder', () => {
+  it('deletes the open conversation: it leaves the list and the window goes to a new conversation', async () => {
+    const backend = new FakeBackend({ speed: 0, seed: false });
+    const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
+    await store.init();
+    await store.send(null, '你好');
+    const id = store.state.get().activeId!;
+    expect(await store.deleteSession(id)).toBeNull();
+    await vi.waitFor(() => expect(store.state.get().sessions.some((x) => x.id === id)).toBe(false));
+    expect(store.state.get().activeId).toBeNull();
+  });
+
+  it('a project manager is not deleted on its own: what went wrong is said', async () => {
+    const backend = new FakeBackend({ speed: 0, seed: false });
+    const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
+    await store.init();
+    const p = await backend.createProject!({ name: '样机评审' });
+    expect(await store.deleteSession(p.managerSessionId)).not.toBeNull();
+  });
+
+  it('chooses the folder once; a refusal is said in the window’s words', async () => {
+    const backend = new FakeBackend({ speed: 0, seed: false });
+    const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
+    await store.init();
+    await store.send(null, '你好');
+    const id = store.state.get().activeId!;
+    // Not while it runs.
+    await vi.waitFor(async () => expect((await backend.getSession(id))?.status).toBe('idle'));
+    expect(store.state.get().sessions.find((x) => x.id === id)?.canChooseCwd).toBe(true);
+    expect(await store.chooseCwd(id, 'D:/资料/报价')).toBeNull();
+    const after = store.state.get().sessions.find((x) => x.id === id);
+    expect([after?.cwd, after?.canChooseCwd]).toEqual(['D:/资料/报价', false]);
+    expect(await store.chooseCwd(id, 'D:/别处')).toBe('工作文件夹已选定，不能更改。');
+    expect(store.state.get().notice).toBe('工作文件夹已选定，不能更改。');
+  });
+
+  it('says each refusal in standard words; a failed move names the file and what could not be put back', () => {
+    const r = (code: 'cwd.not_changeable' | 'cwd.busy' | 'cwd.bad_folder' | 'cwd.move_failed', more = {}) => cwdErrorText({ ok: false, code, message: 'x', ...more });
+    expect(r('cwd.busy')).toBe('对话进行中，结束后再选择工作文件夹。');
+    expect(r('cwd.bad_folder')).toBe('无法使用该文件夹，请选择其他文件夹。');
+    expect(r('cwd.move_failed', { file: 'C:/data/ses_1/报价.xlsx' })).toBe('移动「报价.xlsx」失败，已放回原处，工作文件夹未更改。');
+    expect(r('cwd.move_failed', { file: 'C:\\data\\a.txt', notRestored: ['C:\\data\\b.txt'] })).toBe('移动「a.txt」失败，已放回原处，工作文件夹未更改；1 个文件未能放回：b.txt。');
   });
 });

@@ -24,7 +24,7 @@ import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
 import { InboxView, type InboxProject } from './shell/InboxView';
 import { MailStore, useMail } from './store/mail';
 import { needsYou, unseenByManager } from '../../shared/mail';
-import type { MailItem } from '@spica/protocol';
+import type { MailItem, SessionInfo } from '@spica/protocol';
 import { Icon } from './ui/Icon';
 import { sidebarNews } from './shell/sidebar-news';
 import { usePeek } from './shell/peek';
@@ -72,6 +72,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const previewInfo = usePreview(bridge.preview, preview);
   /** The project the user asked to delete (waiting for the confirmation). */
   const [deletingProject, setDeletingProject] = useState<null | { id: string; name: string }>(null);
+  const [deletingChat, setDeletingChat] = useState<null | { id: string; name: string }>(null);
   const update = useUpdateState(bridge);
   const backendState = useBackendState(bridge, agent);
   const installUpdate = () => void bridge.updates.run('install');
@@ -338,8 +339,12 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [openPlugin, setOpenPlugin] = useState<string | null>(null);
   const [rightTab, setRightTab] = useState<string>('detail');
   const [pluginAsk, setPluginAsk] = useState<{ title: string; resolve(ok: boolean): void } | null>(null);
+  // 设置 › 插件: the plugin commands, and the system folder picker for 插件位置.
+  const pluginsApi = useMemo(() => ({ ...bridge.plugins, pickFolder: () => bridge.pickFolder('选择插件文件夹') }), [bridge]);
   // 收件箱 shows only while a plugin that provides mail is on.
   const [mailSource, setMailSource] = useState(false);
+  // 模拟模式 (设置 › 插件): the inbox says its mail is demo data.
+  const [pluginMock, setPluginMock] = useState(false);
   useEffect(() => {
     let alive = true;
     const load = () => {
@@ -349,7 +354,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         .catch(() => undefined);
       void bridge.plugins
         .run({ op: 'state' })
-        .then((r) => alive && setMailSource(r.state.plugins.some((p) => p.mail)))
+        .then((r) => {
+          if (!alive) return;
+          setMailSource(r.state.plugins.some((p) => p.mail));
+          setPluginMock(r.state.mock);
+        })
         .catch(() => undefined);
     };
     load();
@@ -434,11 +443,53 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shownKey stands for shown
   }, [bridge, shownKey, turnError]);
+  // Whether each model in the 切换模型 menu takes pictures (asked once per model, kept for the visit).
+  const [imageSupport, setImageSupport] = useState<Record<string, boolean | null>>({});
+  const optionKeys = modelOptions.map((o) => `${o.providerId}|${o.model}`).join(',');
+  useEffect(() => {
+    let alive = true;
+    for (const key of optionKeys.split(',')) {
+      if (!key || key in imageSupport) continue;
+      const [providerId = '', model = ''] = key.split('|');
+      void bridge.images
+        .accepted(providerId, model)
+        .then((ok) => alive && setImageSupport((v) => ({ ...v, [key]: ok })))
+        .catch(() => undefined);
+    }
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- optionKeys stands for the options; asked once per model
+  }, [bridge, optionKeys]);
+  // Pictures already in this conversation: a model that cannot take them is not offered.
+  const hasPictures = transcript.items.some((i) => i.kind === 'user' && i.attachments?.some((a) => a.image));
   // A conversation on a model that was unticked or whose connection was deleted.
   const shownGone = Boolean(shown && models.length && !modelOptions.some((o) => o.providerId === shown.providerId && o.model === shown.model));
   const shownProvider = shown ? models.find((p) => p.id === shown.providerId)?.name : undefined;
   const shownWindow = shown ? models.find((p) => p.id === shown.providerId)?.models.find((m) => m.id === shown.model)?.contextWindow : undefined;
   const ringWindow = session?.contextWindow || shownWindow || 0;
+  // 选择工作文件夹 in a conversation (once): the user's own conversations, not in a project. With something said
+  // already, a confirmation first (it cannot change afterwards, and what was made moves there).
+  const [cwdAsk, setCwdAsk] = useState<{ sessionId: string; dir: string } | null>(null);
+  const folderName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
+  const sessionFolder = (s: SessionInfo): Pick<ComposerTools, 'folder'> => {
+    if (s.role !== 'top' || s.parentId || s.canChooseCwd === undefined) return {};
+    if (!s.canChooseCwd) return { folder: { path: s.cwd, name: folderName(s.cwd) } };
+    const busy = s.status === 'queued' || s.status === 'thinking' || s.status === 'tool' || s.status === 'awaiting_confirm' || s.status === 'awaiting_answer';
+    return {
+      folder: {
+        path: '',
+        name: '',
+        busy,
+        onPick: () =>
+          void bridge.pickFolder('选择工作文件夹').then((dir) => {
+            if (!dir) return;
+            if (transcript.items.length) setCwdAsk({ sessionId: s.id, dir });
+            else void agent.chooseCwd(s.id, dir);
+          }),
+      },
+    };
+  };
   const composerTools: ComposerTools = {
     pickFiles: () => bridge.pickFiles('添加附件'),
     pathForFile: bridge.pathForFile,
@@ -448,7 +499,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       accepted: imagesAccepted?.key === shownKey ? imagesAccepted.ok : null,
     },
     ...(session
-      ? {}
+      ? sessionFolder(session)
       : {
           folder: {
             // Shown once a folder is picked; until then only the button to pick one (no default folder is shown).
@@ -468,10 +519,12 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           model: {
             label: shown.model,
             ...(shownGone ? { note: '（已移除）' } : shownProvider ? { provider: shownProvider } : {}),
+            ...(hasPictures ? { hasPictures } : {}),
             options: modelOptions.map((o) => ({
               label: o.label,
               group: o.group,
               marks: o.marks,
+              images: imageSupport[`${o.providerId}|${o.model}`] ?? null,
               current: o.providerId === shown.providerId && o.model === shown.model,
               onPick: () => (session ? void agent.setModel(session.id, o.providerId, o.model) : agent.setDraft({ providerId: o.providerId, model: o.model })),
             })),
@@ -565,6 +618,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       }}
       {...(bridge.agent.renameProject ? { onRenameProject: (pid: string, name: string) => void agent.renameProject(pid, name) } : {})}
       {...(bridge.agent.deleteProject ? { onDeleteProject: (pid: string, name: string) => setDeletingProject({ id: pid, name }) } : {})}
+      {...(bridge.agent.deleteSession ? { onDeleteChat: (s: SessionInfo) => setDeletingChat({ id: s.id, name: s.title || '新对话' }) } : {})}
       {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject({}) } : {})}
       {...sidebarNews({
         inboxShown: mail.supported && mailSource,
@@ -664,7 +718,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             <SettingsView
               shell={shell}
               providers={bridge.providers}
-              plugins={bridge.plugins}
+              plugins={pluginsApi}
               version={version}
               update={update}
               onCheckUpdate={() => void bridge.updates.run('check')}
@@ -694,6 +748,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           ) : view === 'inbox' ? (
             <InboxView
               mail={mail}
+              mock={pluginMock}
               prefs={settings.mail}
               projects={inboxProjects}
               onPoll={() => void mailStore.pollNow()}
@@ -803,6 +858,42 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         />
       ) : null}
 
+      {deletingChat ? (
+        <ConfirmDialog
+          title={`删除对话「${deletingChat.name}」？`}
+          detail="将删除这条对话的记录，助理以后查不到它；它产出的文件不会删除。"
+          confirmLabel="删除"
+          danger
+          onCancel={() => setDeletingChat(null)}
+          onConfirm={() => {
+            const gone = deletingChat.id;
+            setDeletingChat(null);
+            // The open one goes: the one above it in the list, else a new conversation.
+            const chats = sessions.filter((x) => x.role === 'top' && !x.parentId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+            const at = chats.findIndex((x) => x.id === gone);
+            const above = at > 0 ? chats[at - 1] : undefined;
+            const wasOpen = state.activeId === gone;
+            void agent.deleteSession(gone).then((problem) => {
+              if (problem || !wasOpen) return;
+              if (above) openSession(above.id);
+              else agent.newChat();
+            });
+          }}
+        />
+      ) : null}
+      {cwdAsk ? (
+        <ConfirmDialog
+          title={`将工作文件夹设为「${folderName(cwdAsk.dir)}」？`}
+          detail="选定后不能更改；这条对话已产生的文件会移到该文件夹。"
+          confirmLabel="选定"
+          onCancel={() => setCwdAsk(null)}
+          onConfirm={() => {
+            const ask = cwdAsk;
+            setCwdAsk(null);
+            void agent.chooseCwd(ask.sessionId, ask.dir);
+          }}
+        />
+      ) : null}
       {deletingProject ? (
         <ConfirmDialog
           title={`删除项目「${deletingProject.name}」？`}

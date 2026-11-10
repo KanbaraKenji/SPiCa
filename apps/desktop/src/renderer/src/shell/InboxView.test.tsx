@@ -106,6 +106,14 @@ describe('InboxView', () => {
     expect(p.onPoll).toHaveBeenCalled();
   });
 
+  it('模拟模式 on: the top says the mail is demo data', () => {
+    setup({ mock: true });
+    expect(screen.getByText('模拟数据')).toBeTruthy();
+    cleanup();
+    setup();
+    expect(screen.queryByText('模拟数据')).toBeNull();
+  });
+
   it('after 现在查收: when, and what it found, also when nothing new came', () => {
     // The time is shown in the machine's zone; the expectation uses the same formatter.
     const polled = '2026-11-09T09:58:00+08:00';

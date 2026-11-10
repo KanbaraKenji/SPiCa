@@ -98,11 +98,51 @@ describe('Plugins', () => {
     expect(screen.getByRole('button', { name: '安装插件' }).className).toContain('btn-square');
   });
 
-  it('no plugins: says so, and the place to install is open', async () => {
+  it('检查更新: while it runs it says so, then the result', async () => {
+    const base = api();
+    let finish: () => void = () => {};
+    const slow: PluginsApi = {
+      ...base,
+      run: async (cmd) => {
+        if (cmd.op === 'checkUpdates') await new Promise<void>((r) => (finish = r));
+        return base.run(cmd);
+      },
+    };
+    render(<Plugins api={slow} />);
+    await screen.findByRole('navigation', { name: '插件列表' });
+    fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
+    expect(screen.getByRole('status').textContent).toBe('正在检查更新…');
+    finish();
+    await waitFor(() => expect(screen.queryByText('正在检查更新…')).toBeNull());
+  });
+
+  it('模拟模式: says what it does on hover; while on, a tag says the data is demo data', async () => {
+    render(<Plugins api={api()} />);
+    await screen.findByRole('navigation', { name: '插件列表' });
+    expect(screen.getByRole('img', { name: '模拟模式：插件改用演示数据，不连接真实系统。' }).getAttribute('data-tip')).toBe('插件改用演示数据，不连接真实系统。');
+    const on = screen.getByRole('switch', { name: '模拟模式' }).getAttribute('aria-checked') === 'true';
+    expect(Boolean(screen.queryByText('模拟数据'))).toBe(on);
+    fireEvent.click(screen.getByRole('switch', { name: '模拟模式' }));
+    await waitFor(() => expect(Boolean(screen.queryByText('模拟数据'))).toBe(!on));
+  });
+
+  it('no plugins: 安装插件 open on top, 未安装插件 where the list would be', async () => {
     render(<Plugins api={apiWith(() => [])} />);
-    expect(await screen.findByText('未安装插件')).toBeTruthy();
-    expect(screen.getByLabelText('插件位置')).toBeTruthy();
+    const none = await screen.findByText('未安装插件');
+    const heading = screen.getByRole('heading', { name: '安装插件' });
+    const field = screen.getByLabelText('插件位置');
+    // In the page's order: the heading, the field, then 未安装插件.
+    expect(heading.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(field.compareDocumentPosition(none) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByLabelText('搜索插件')).toBeNull();
+  });
+
+  it('插件位置: a folder button opens the system picker and fills the field', async () => {
+    const pickFolder = vi.fn(async () => 'D:/插件/outlook-mail');
+    render(<Plugins api={{ ...apiWith(() => []), pickFolder }} />);
+    fireEvent.click(await screen.findByRole('button', { name: '选择文件夹' }));
+    await waitFor(() => expect((screen.getByLabelText('插件位置') as HTMLInputElement).value).toBe('D:/插件/outlook-mail'));
+    expect(pickFolder).toHaveBeenCalledTimes(1);
   });
 
   it('deletes only after confirming', async () => {

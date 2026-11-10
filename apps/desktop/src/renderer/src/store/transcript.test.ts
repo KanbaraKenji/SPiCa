@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CoreEvent, HistoryCardMeta, Message } from '@spica/protocol';
 import { FakeBackend } from '../../../main/backend/fake';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
-import { applyEvent, askAnswer, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, type Transcript } from './transcript';
+import { applyEvent, askAnswer, cwdNoteText, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, type Transcript } from './transcript';
 
 describe('fromHistory', () => {
   const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
@@ -368,5 +368,22 @@ describe('model errors', () => {
   it('falls back to its own plain words otherwise', () => {
     const t = applyEvent({ items: [] }, { type: 'error', message: 'HTTP 401 unauthorized', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
     expect(t.error).toBe('模型密钥无效或已失效，请检查模型设置。');
+  });
+});
+
+describe('the working folder chosen later', () => {
+  it('a note line: where, how many files moved, which got another name', () => {
+    expect(cwdNoteText({ from: 'C:/data/ses_1', to: 'D:/资料/报价', moved: [], renamed: [] })).toBe('工作文件夹已选为 D:/资料/报价');
+    expect(
+      cwdNoteText({
+        from: 'C:/data/ses_1',
+        to: 'D:/资料/报价',
+        moved: [
+          { from: '报价.xlsx', to: '报价.xlsx' },
+          { from: 'a.txt', to: 'a (1).txt' },
+        ],
+        renamed: [{ from: 'a.txt', to: 'a (1).txt' }],
+      }),
+    ).toBe('工作文件夹已选为 D:/资料/报价，移入 2 个文件，其中 1 个改了名：a.txt → a (1).txt');
   });
 });

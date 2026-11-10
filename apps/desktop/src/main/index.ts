@@ -292,6 +292,8 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'deleteProject',
   'setSessionModel',
   'setApprovalMode',
+  'setSessionCwd',
+  'deleteSession',
 ]);
 
 let mainWindow: BrowserWindow | undefined;

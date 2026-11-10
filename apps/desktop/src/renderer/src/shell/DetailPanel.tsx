@@ -2,6 +2,7 @@
 import type { ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
 import { filesOf, type Block, type Transcript } from '../store/transcript';
 import { Icon } from '../ui/Icon';
+import { InfoTip } from '../ui/InfoTip';
 import { FileGlyph } from '../ui/FileIcon';
 import { activityText } from './activity';
 import { fileFolder, fileName, formatDuration, formatUsd, toolLabel, toolTarget } from '../chat/format';
@@ -86,7 +87,11 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
               ) : null}
               {project?.folder || session.cwd ? (
                 <>
-                  <dt>文件夹</dt>
+                  <dt>
+                    文件夹
+                    {/* Chosen by the user for this conversation: once, for good. */}
+                    {!project && session.canChooseCwd === false && session.role === 'top' && !session.parentId ? <InfoTip text="选定后不能更改" label="文件夹" /> : null}
+                  </dt>
                   <dd className="detail-folder">
                     <span className="detail-path" title={project?.folder ?? session.cwd}>
                       {project?.folder ?? session.cwd}

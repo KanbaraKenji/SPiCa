@@ -86,7 +86,10 @@ describe('Composer controls', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'deepseek-reasoner' }));
     expect(pickB).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Auto' }));
+    // Each item says what it does, the same sentence as on hover.
+    expect(screen.getByRole('menuitem', { name: /^Manual/ }).textContent).toBe('Manual不可逆操作先确认');
+    expect(screen.getByRole('menuitem', { name: /^Auto/ }).textContent).toBe('Auto不可逆操作直接执行；处理外部内容后的操作仍需确认');
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Auto/ }));
     expect(onApproval).toHaveBeenCalledWith('auto');
   });
 
@@ -194,6 +197,37 @@ describe('pictures in the input box', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'qwen-vl' }));
     expect(pick).toHaveBeenCalled();
   });
+
+  it('切换模型 with a picture waiting: models that take none say so and cannot be picked; without one the menu is as usual', async () => {
+    const pickFlash = vi.fn();
+    const options = [
+      { label: 'deepseek-v4-pro', current: true, images: false, onPick: vi.fn() },
+      { label: 'deepseek-flash', current: false, images: false, onPick: pickFlash },
+      { label: 'qwen-vl', current: false, images: true, onPick: vi.fn() },
+      { label: 'm1', current: false, images: null, onPick: vi.fn() },
+    ];
+    const { unmount } = render(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="pic4" tools={{ images: images(false), model: { label: 'deepseek-v4-pro', options } }} />);
+    fireEvent.click(screen.getByRole('button', { name: /deepseek-v4-pro/ }));
+    expect((screen.getByRole('menuitem', { name: /^deepseek-flash/ }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    pasteImage(screen.getByRole('textbox', { name: '消息' }));
+    await screen.findByText('当前模型不支持图片');
+    fireEvent.click(screen.getByRole('button', { name: '切换模型' }));
+    const flash = screen.getByRole('menuitem', { name: /^deepseek-flash/ }) as HTMLButtonElement;
+    expect(flash.textContent).toBe('deepseek-flash不支持图片');
+    expect(flash.disabled).toBe(true);
+    fireEvent.click(flash);
+    expect(pickFlash).not.toHaveBeenCalled();
+    // The one in use stays as it is (the line above the box already says it takes none); unknown ones are offered.
+    expect(screen.getByRole('menuitem', { name: /^deepseek-v4-pro/ }).textContent).toBe('deepseek-v4-pro当前 · 不支持图片');
+    expect((screen.getByRole('menuitem', { name: 'qwen-vl' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('menuitem', { name: 'm1' }) as HTMLButtonElement).disabled).toBe(false);
+    unmount();
+    // Pictures already in the conversation count too.
+    render(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="pic5" tools={{ model: { label: 'deepseek-v4-pro', hasPictures: true, options } }} />);
+    fireEvent.click(screen.getByRole('button', { name: /deepseek-v4-pro/ }));
+    expect((screen.getByRole('menuitem', { name: /^deepseek-flash/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
 });
 
 describe('the working folder', () => {
@@ -205,5 +239,20 @@ describe('the working folder', () => {
     rerender(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="f1" tools={{ folder: { path: 'D:/资料/报价', name: '报价', onPick } }} />);
     expect(screen.getByText('报价')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '选择工作文件夹' })).toBeNull();
+  });
+
+  it('a conversation that has not chosen one: 选择工作文件夹 in words, greyed while it runs; once chosen, its name, not a button', () => {
+    const onPick = vi.fn();
+    const { rerender } = render(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="f2" tools={{ folder: { path: '', name: '', onPick } }} />);
+    const pick = screen.getByRole('button', { name: '选择工作文件夹' });
+    expect(pick.textContent).toBe('选择工作文件夹');
+    rerender(<Composer running onSend={vi.fn()} onStop={vi.fn()} sessionKey="f2" tools={{ folder: { path: '', name: '', onPick, busy: true } }} />);
+    const busy = screen.getByRole('button', { name: '选择工作文件夹' });
+    expect(busy.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(busy);
+    expect(onPick).not.toHaveBeenCalled();
+    rerender(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="f2" tools={{ folder: { path: 'D:/资料/报价', name: '报价' } }} />);
+    expect(screen.getByText('报价').closest('button')).toBeNull();
+    expect(screen.getByTitle('工作文件夹：D:/资料/报价')).toBeTruthy();
   });
 });

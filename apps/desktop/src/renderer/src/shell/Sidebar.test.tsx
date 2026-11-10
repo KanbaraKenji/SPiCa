@@ -136,6 +136,19 @@ describe('Sidebar', () => {
     expect(screen.queryByRole('menuitem')).toBeNull();
   });
 
+  it('删除 in a conversation’s menu; a project’s conversation and sub-tasks have no such item', () => {
+    const onDeleteChat = vi.fn();
+    render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} onRename={vi.fn()} onDeleteChat={onDeleteChat} />);
+    fireEvent.contextMenu(screen.getByRole('button', { name: '整理本周来信' }));
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['重命名', '删除']);
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除' }));
+    expect(onDeleteChat).toHaveBeenCalledWith(expect.objectContaining({ id: SEED_IDS.chat2 }));
+    // Under a project: its manager's conversation has no 删除 of its own.
+    fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
+    fireEvent.contextMenu(screen.getByTitle('新品样机评审'));
+    expect(screen.queryByRole('menuitem', { name: '删除' })).toBeNull();
+  });
+
   it('pins, renames and deletes a project from its menu; pinned ones come first', () => {
     const onPin = vi.fn();
     const onRenameProject = vi.fn();

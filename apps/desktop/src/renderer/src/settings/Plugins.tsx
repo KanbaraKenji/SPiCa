@@ -12,12 +12,15 @@ import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
 import { useKeptDraft } from './drafts';
 import { Switch } from './Switch';
+import { InfoTip } from '../ui/InfoTip';
 import { MailSettings, type MailSettingsProps } from './MailSettings';
 import { SpicaStatusIcon } from '@spica/brand/react';
 
 export interface PluginsApi {
   run(cmd: PluginsCommand): Promise<PluginsResult>;
   onChanged(listener: () => void): () => void;
+  /** The system's folder picker, for 插件位置. */
+  pickFolder?: () => Promise<string | null>;
 }
 
 const SERVER_STATUS: Record<string, string> = {
@@ -261,10 +264,15 @@ function PluginDetail({
 }
 
 /** `mail`: the mail sorting settings, shown with the plugin(s) that provide mail. */
+/** What 模拟模式 does, on hover beside it. */
+export const MOCK_TIP = '插件改用演示数据，不连接真实系统。';
+
 export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsProps }) {
   const [state, setState] = useState<PluginsState | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  // 检查更新 running: said beside the result line until it ends.
+  const [checking, setChecking] = useState(false);
   const [location, setLocation, locationDone] = useKeptDraft('plugins.location', '');
   const [confirm, setConfirm] = useState<{ kind: 'uninstall' | 'rollback'; p: PluginView } | null>(null);
   const [query, setQuery] = useState('');
@@ -377,8 +385,6 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
         </div>
       ) : null}
 
-      {empty ? <p className="settings-hint plugins-empty">未安装插件</p> : null}
-
       {listView && !empty ? (
         <div className="plugins-bar">
           {plugins.length ? <input className="input plugins-search" value={query} placeholder="搜索插件" aria-label="搜索插件" spellCheck={false} onChange={(e) => setQuery(e.target.value)} /> : <span className="plugins-bar-gap" />}
@@ -398,8 +404,19 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
               ))}
             </div>
           ) : null}
-          <button type="button" className="btn btn-square" disabled={busy || !plugins.length} onClick={() => void run({ op: 'checkUpdates' })} aria-label="检查更新" title="检查更新">
-            <Icon name="refresh" size={16} />
+          <button
+            type="button"
+            className="btn btn-square"
+            disabled={busy || !plugins.length}
+            onClick={() => {
+              setChecking(true);
+              setNote(null);
+              void run({ op: 'checkUpdates' }).finally(() => setChecking(false));
+            }}
+            aria-label="检查更新"
+            title="检查更新"
+          >
+            {checking ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={16} />}
           </button>
           <button type="button" className={installOpen ? 'btn btn-square is-on' : 'btn btn-square'} aria-expanded={installOpen} disabled={empty} onClick={() => setInstalling(!installing)} aria-label="安装插件" title="安装插件">
             <Icon name="plus" size={16} />
@@ -409,6 +426,7 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
 
       {installOpen && listView ? (
         <div className="settings-group plugins-install">
+          {empty ? <h3 className="settings-subheading">安装插件</h3> : null}
           <form
             className="install-row"
             onSubmit={(e) => {
@@ -417,6 +435,22 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
             }}
           >
             <input className="input" value={location} spellCheck={false} placeholder="插件文件夹、.zip、共享盘路径或网址" aria-label="插件位置" onChange={(e) => setLocation(e.target.value)} />
+            {api.pickFolder ? (
+              <button
+                type="button"
+                className="btn btn-square"
+                disabled={busy}
+                onClick={() =>
+                  void api.pickFolder?.().then((dir) => {
+                    if (dir) setLocation(dir);
+                  })
+                }
+                aria-label="选择文件夹"
+                title="选择文件夹"
+              >
+                <Icon name="folder" size={16} />
+              </button>
+            ) : null}
             <button type="submit" className="btn btn-primary" disabled={busy || !location.trim()}>
               {busy ? <span className="spinner" aria-hidden /> : null}
               安装
@@ -440,7 +474,13 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
         </div>
       ) : null}
 
-      {note ? (
+      {empty ? <p className="settings-hint plugins-empty">未安装插件</p> : null}
+
+      {checking ? (
+        <p className="provider-result plugin-note" role="status">
+          正在检查更新…
+        </p>
+      ) : note ? (
         <p className={note.ok ? 'provider-result is-ok plugin-note' : 'provider-result is-bad plugin-note'} role="status">
           <SpicaStatusIcon name={note.ok ? 'done' : 'error'} size={15} />
           {note.text}
@@ -492,7 +532,11 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
         <div className="settings-group plugins-foot">
           <div className="setting-row">
             <div className="setting-text">
-              <span className="setting-title">模拟模式</span>
+              <span className="setting-title">
+                模拟模式
+                <InfoTip text={MOCK_TIP} label="模拟模式" />
+                {state.mock ? <span className="mock-tag">模拟数据</span> : null}
+              </span>
             </div>
             <Switch on={state.mock} label="模拟模式" disabled={busy} onChange={(on) => void run({ op: 'mock', on })} />
           </div>

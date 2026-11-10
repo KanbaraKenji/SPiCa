@@ -20,6 +20,8 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
   const [draft, setDraft, draftDone] = useKeptDraft('about.updateSource', ownSource);
   const deploy = update?.sourceFromDeploy ? update.source : '';
   const busy = update?.status === 'checking' || update?.status === 'downloading';
+  // Nothing to check against until a source is given (here or by the installer).
+  const noSource = update?.status === 'off';
   const commit = () => {
     if (draft.trim() !== ownSource) onSource(draft.trim());
     draftDone();
@@ -55,11 +57,24 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
             onChange={(e) => setDraft(e.target.value)}
             onBlur={commit}
           />
-          <button type="button" className="btn btn-square" disabled={busy || update?.status === 'off'} onClick={onCheck} aria-label="检查更新" title="检查更新">
+          {/* No source yet: shown greyed (not disabled, so hovering still says why). */}
+          <button
+            type="button"
+            className="btn btn-square"
+            disabled={busy}
+            aria-disabled={noSource || undefined}
+            onClick={() => !noSource && onCheck()}
+            aria-label="检查更新"
+            title={noSource ? '先填更新源' : '检查更新'}
+          >
             {busy ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={16} />}
           </button>
         </form>
-        {update?.message ? (
+        {update?.status === 'checking' ? (
+          <p className="provider-result plugin-note" role="status">
+            正在检查更新…
+          </p>
+        ) : update?.message && !noSource ? (
           <p className={update.status === 'error' ? 'provider-result is-bad plugin-note' : 'provider-result plugin-note'} role="status">
             {update.status === 'latest' || update.status === 'ready' ? <SpicaStatusIcon name="done" size={15} /> : update.status === 'error' ? <SpicaStatusIcon name="error" size={15} /> : null}
             {update.message}

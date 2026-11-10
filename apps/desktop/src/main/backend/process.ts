@@ -162,6 +162,8 @@ export class ProcessBackend implements AgentBackend {
   deleteProject: NonNullable<AgentApi['deleteProject']> = (...a) => this.call('deleteProject', ...a);
   setSessionModel: NonNullable<AgentApi['setSessionModel']> = (...a) => this.call('setSessionModel', ...a);
   setApprovalMode: NonNullable<AgentApi['setApprovalMode']> = (...a) => this.call('setApprovalMode', ...a);
+  setSessionCwd: NonNullable<AgentApi['setSessionCwd']> = (...a) => this.call('setSessionCwd', ...a);
+  deleteSession: NonNullable<AgentApi['deleteSession']> = (...a) => this.call('deleteSession', ...a);
 
   onEvent(listener: (event: CoreEvent) => void): () => void {
     this.#listeners.add(listener);

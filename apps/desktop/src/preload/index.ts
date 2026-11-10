@@ -45,6 +45,8 @@ const agent: AgentApi = {
   deleteProject: call('deleteProject'),
   setSessionModel: call('setSessionModel'),
   setApprovalMode: call('setApprovalMode'),
+  setSessionCwd: call('setSessionCwd'),
+  deleteSession: call('deleteSession'),
 };
 
 const bridge: DesktopBridge = {

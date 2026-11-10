@@ -1,7 +1,7 @@
 // Sessions and transcripts on the renderer side. Everything comes from the
 // backend through `window.spica.agent` and its event stream.
 import { useSyncExternalStore } from 'react';
-import type { AgentApi, ApprovalMode, CoreEvent, Message, ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
+import type { AgentApi, ApprovalMode, CoreEvent, Message, ProjectInfo, ProjectLogEntry, SessionInfo, SetCwdResult } from '@spica/protocol';
 import { Store } from './external';
 import { applyEvent, EMPTY_TRANSCRIPT, fromHistory, humanError, type Transcript } from './transcript';
 
@@ -62,6 +62,26 @@ export function friendlyError(err: unknown): string {
   if (!msg) return '操作失败，请重试。';
   // Messages the shell already wrote in Chinese pass through; backend English is translated.
   return /[\u4e00-\u9fff]/.test(msg) ? msg : humanError(msg);
+}
+
+/** What a refused 选择工作文件夹 means, in the window's words. */
+export function cwdErrorText(r: Extract<SetCwdResult, { ok: false }>): string {
+  const base = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
+  switch (r.code) {
+    case 'cwd.not_changeable':
+      return '工作文件夹已选定，不能更改。';
+    case 'cwd.busy':
+      return '对话进行中，结束后再选择工作文件夹。';
+    case 'cwd.bad_folder':
+      return '无法使用该文件夹，请选择其他文件夹。';
+    case 'cwd.move_failed': {
+      const which = r.file ? `「${base(r.file)}」` : '文件';
+      const left = r.notRestored?.length ? `；${r.notRestored.length} 个文件未能放回：${r.notRestored.map(base).join('、')}` : '';
+      return `移动${which}失败，已放回原处，工作文件夹未更改${left}。`;
+    }
+    default:
+      return '无法选择工作文件夹。';
+  }
 }
 
 export class AgentStore {
@@ -308,6 +328,38 @@ export class AgentStore {
     }
   }
 
+  /** Deletes a conversation (and its sub-agents) from Spica; the files it made stay. null when done, else what went wrong. */
+  async deleteSession(sessionId: string): Promise<string | null> {
+    if (!this.#api.deleteSession) return '当前版本不支持删除对话。';
+    try {
+      await this.#api.deleteSession(sessionId);
+      return null;
+    } catch (err) {
+      const msg = friendlyError(err);
+      this.state.set((v) => ({ ...v, notice: msg }));
+      return msg;
+    }
+  }
+
+  /** Chooses the working folder of a conversation that has none yet (once); what it made moves there. Says what went wrong, else null. */
+  async chooseCwd(sessionId: string, folder: string): Promise<string | null> {
+    if (!this.#api.setSessionCwd) return '当前版本不支持更改工作文件夹。';
+    try {
+      const r = await this.#api.setSessionCwd(sessionId, folder);
+      if (r.ok) {
+        this.#replace(r.info);
+        return null;
+      }
+      const msg = cwdErrorText(r);
+      this.state.set((v) => ({ ...v, notice: msg }));
+      return msg;
+    } catch (err) {
+      const msg = friendlyError(err);
+      this.state.set((v) => ({ ...v, notice: msg }));
+      return msg;
+    }
+  }
+
   /** Loads a project's recent activity once (live entries keep coming as events). */
   async loadProject(projectId: string): Promise<void> {
     if (!this.#api.getProject || this.state.get().activity[projectId]) return;
@@ -382,7 +434,9 @@ export class AgentStore {
           ...v,
           sessions: v.sessions.filter((s) => s.id !== gone),
           transcripts,
-          activeId: v.activeId === gone ? v.topId : v.activeId,
+          // The one open was deleted: the assistant's standing conversation, or the empty window when that was it
+          // (deleting a conversation by hand, the window then opens the one above it).
+          activeId: v.activeId === gone ? (v.topId && v.topId !== gone ? v.topId : null) : v.activeId,
         };
       });
     }
