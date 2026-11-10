@@ -18,7 +18,7 @@ import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
 import type { PluginService } from './plugins/types';
-import { pickedFiles, pickedFolder } from './dev-hooks';
+import { documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder } from './dev-hooks';
 import { FakePluginService } from './plugins/fake';
 import { UpdateService } from './update/service';
 import { spawn } from 'node:child_process';
@@ -91,9 +91,13 @@ app.setName(APP_NAME);
 const APP_USER_MODEL_ID = app.isPackaged ? APP_IDENTITY.id : `${APP_IDENTITY.id}.dev`;
 if (process.platform === 'win32') app.setAppUserModelId(APP_USER_MODEL_ID);
 // Screenshots must not read or change the user's own settings.
-//   SPICA_USER_DATA=<dir>    use another settings folder (manual checks without touching your own)
+//   SPICA_USER_DATA=<dir>    use another settings folder (manual checks without touching your own);
+//                            in a development run 文档 moves into it too (<dir>\Documents)
 if (process.env.SPICA_USER_DATA) app.setPath('userData', process.env.SPICA_USER_DATA);
 else if (automated) app.setPath('userData', mkdtempSync(join(tmpdir(), 'spica-shots-')));
+// A development run on another settings folder keeps out of your 文档 too (see documentsFolder).
+const devDocuments = documentsFolder(process.env, app.isPackaged, automated, app.getPath('userData'));
+if (devDocuments) app.setPath('documents', devDocuments);
 
 if (forcedTheme === 'dark' || forcedTheme === 'light') nativeTheme.themeSource = forcedTheme;
 
@@ -110,7 +114,6 @@ const workDir = join(app.getPath('userData'), 'work');
 const legacyDefaultCwd = join(app.getPath('documents'), APP_NAME);
 /** Where workflow files live unless the user picked another folder (设置 › 常规): under 文档, where he edits them. */
 const defaultWorkflowsDir = join(app.getPath('documents'), APP_NAME, 'workflows');
-if (backendKind === 'core') mkdirSync(defaultWorkflowsDir, { recursive: true });
 function workflowsDir(): string {
   return settings.get().workflowsDir || defaultWorkflowsDir;
 }
@@ -233,6 +236,7 @@ const backend: AgentBackend =
     : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd });
 console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own process)' : 'fake (demo data)'}`);
 const settings = new SettingsStore(app.getPath('userData'), { persist: !automated });
+if (backendKind === 'core' && makeWorkflowsDirAtStart(app.isPackaged, settings.get().workflowsDir)) mkdirSync(defaultWorkflowsDir, { recursive: true });
 const providers = new ProviderStore(
   app.getPath('userData'),
   {
