@@ -1,5 +1,5 @@
 // Main process of the Spica desktop shell.
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, safeStorage, shell } from 'electron';
@@ -26,6 +26,7 @@ import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
 import { ProcessBackend, type BackendStatus } from './backend/process';
 import { knownContextWindow, toProviderConfig } from './backend/to-config';
+import { iconFileName, pointShortcutsAt, REFRESH_GAP_MS, SHORTCUT_SETTLE_MS, shortcutFolders, type ShortcutIo } from './taskbar-icon';
 import { DEFAULT_PRICES, NET_HINTS, type ProviderConfig } from '@spica/core';
 import type { DesktopBackendConfig } from '../backend/config';
 import { readModelEnv } from './backend/model-env';
@@ -63,7 +64,9 @@ const hidden = process.env.SPICA_HIDDEN === '1' && !app.isPackaged;
 app.setName(APP_NAME);
 // The development build has its own id: with the same one as an installed Spica,
 // Windows groups its window under that shortcut and shows the shortcut's icon.
-const APP_USER_MODEL_ID = app.isPackaged ? 'dev.spica.desktop' : 'dev.spica.desktop.dev';
+// A package says its id in package.json (electron-builder extraMetadata, same as appId),
+// so a build under another id (a test copy, a company build) still matches its shortcuts.
+const APP_USER_MODEL_ID = app.isPackaged ? packagedAppUserModelId() : 'dev.spica.desktop.dev';
 if (process.platform === 'win32') app.setAppUserModelId(APP_USER_MODEL_ID);
 // Screenshots must not read or change the user's own settings.
 //   SPICA_USER_DATA=<dir>    use another settings folder (manual checks without touching your own)
@@ -233,6 +236,16 @@ function chromeColors(s: ShellSettings): { bg: string; chrome: string; ink: stri
   return { bg: t['--spica-bg'] ?? skin.bg, chrome: t['--spica-chrome'] ?? skin.bg, ink: t['--spica-muted'] ?? '#888888' };
 }
 
+function packagedAppUserModelId(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf8')) as { appUserModelId?: unknown };
+    if (typeof pkg.appUserModelId === 'string' && pkg.appUserModelId) return pkg.appUserModelId;
+  } catch {
+    // fall through
+  }
+  return 'dev.spica.desktop';
+}
+
 /** Keeps native parts (window background, caption buttons, scrollbars) in step with the skin. */
 function syncNativeChrome(win: BrowserWindow, s: ShellSettings): void {
   if (!forcedTheme) {
@@ -262,9 +275,10 @@ function windowIcon(): Electron.NativeImage | undefined {
 }
 
 /**
- * Puts the icon on the window and on its taskbar button. The taskbar would
- * otherwise show the shortcut's icon (the installer's tile), so the window
- * gets its own .ico, written next to the settings.
+ * Puts the icon on the window and on its taskbar button. An installed Spica's
+ * button shows its shortcut's icon (main/taskbar-icon.ts), so the shortcuts
+ * that start this exe are pointed at the same colour-matched .ico and the
+ * button is refreshed once Explorer has noticed.
  */
 function applyWindowIcon(win: BrowserWindow): void {
   const icon = windowIcon();
@@ -272,16 +286,69 @@ function applyWindowIcon(win: BrowserWindow): void {
   win.setIcon(icon);
   if (process.platform !== 'win32') return;
   try {
-    const ink = inkFor(nativeTheme.shouldUseDarkColorsForSystemIntegratedUI);
+    const images = [256, 48, 32, 16].map((size) => ({ size, png: icon.resize({ width: size, height: size, quality: 'best' }).toPNG() }));
+    const ico = icoFromPngs(images);
     const dir = join(app.getPath('userData'), 'icons');
     mkdirSync(dir, { recursive: true });
-    const file = join(dir, `taskbar-${ink}.ico`);
-    const images = [256, 48, 32, 16].map((size) => ({ size, png: icon.resize({ width: size, height: size, quality: 'best' }).toPNG() }));
-    writeFileSync(file, icoFromPngs(images));
+    const file = join(dir, iconFileName(ico));
+    if (!existsSync(file)) writeFileSync(file, ico);
     win.setAppDetails({ appId: APP_USER_MODEL_ID, appIconPath: file, appIconIndex: 0 });
+    if (shortcutIconsAllowed() && pointShortcutsAt(shortcutIo, shortcutFolders(app.getPath('appData')), process.execPath, file) > 0) {
+      clearTimeout(buttonRefresh);
+      buttonRefresh = setTimeout(() => refreshTaskbarButton(win, file), SHORTCUT_SETTLE_MS);
+    }
   } catch {
     // The window icon above is still set; only the taskbar button keeps the shortcut's icon.
   }
+}
+
+let buttonRefresh: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Only an installed (or portable) build touches shortcuts, and not while it runs
+ * on another settings folder (SPICA_USER_DATA): the shortcuts would point into it.
+ *   SPICA_SHORTCUT_ICONS=1   do it anyway (testing a separately installed test copy)
+ */
+function shortcutIconsAllowed(): boolean {
+  if (!app.isPackaged) return false;
+  return !process.env.SPICA_USER_DATA || process.env.SPICA_SHORTCUT_ICONS === '1';
+}
+
+const shortcutIo: ShortcutIo = {
+  list: (dir) => {
+    try {
+      return readdirSync(dir)
+        .filter((f) => f.toLowerCase().endsWith('.lnk'))
+        .map((f) => join(dir, f));
+    } catch {
+      return [];
+    }
+  },
+  read: (path) => {
+    try {
+      const s = shell.readShortcutLink(path);
+      return { target: s.target, ...(s.icon ? { icon: s.icon } : {}), ...(typeof s.iconIndex === 'number' ? { iconIndex: s.iconIndex } : {}) };
+    } catch {
+      return null;
+    }
+  },
+  setIcon: (path, icon) => {
+    try {
+      // 'update' keeps the other fields (its AppUserModelID too); the type still wants the target.
+      return shell.writeShortcutLink(path, 'update', { target: shell.readShortcutLink(path).target, icon, iconIndex: 0 });
+    } catch {
+      return false;
+    }
+  },
+};
+
+/** A passing AppUserModelID and back: Windows re-reads the shortcut for the button. */
+function refreshTaskbarButton(win: BrowserWindow, file: string): void {
+  if (win.isDestroyed()) return;
+  win.setAppDetails({ appId: `${APP_USER_MODEL_ID}.refresh` });
+  setTimeout(() => {
+    if (!win.isDestroyed()) win.setAppDetails({ appId: APP_USER_MODEL_ID, appIconPath: file, appIconIndex: 0 });
+  }, REFRESH_GAP_MS);
 }
 
 function applyZoom(win: BrowserWindow, factor: number): void {
