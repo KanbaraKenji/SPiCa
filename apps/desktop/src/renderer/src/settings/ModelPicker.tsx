@@ -19,7 +19,10 @@ export interface ModelPickerProps {
   selected: readonly ConnectionModel[];
   /** The catalog model a name was matched to (for 按名称匹配's title). */
   matchedNames: Record<string, string>;
+  /** Checked: in use; unchecked: kept in the list, not in use. */
   onToggle(model: ListedModel, on: boolean): void;
+  /** Takes a model out of the list (fetched or typed ones; the catalog's always come back). */
+  onRemove?: (id: string) => void;
   onWindow(id: string, value: number | null): void;
   onAdd(id: string): void;
   onFetch?: (() => void) | undefined;
@@ -43,7 +46,7 @@ function parseWindow(v: string): number | null {
   return Number.isFinite(n) ? n : Number.NaN;
 }
 
-export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle, onWindow, onAdd, onFetch, fetching, fetchError, error }: ModelPickerProps) {
+export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle, onRemove, onWindow, onAdd, onFetch, fetching, fetchError, error }: ModelPickerProps) {
   const [query, setQuery] = useState('');
   const [typed, setTyped] = useState('');
   const byId = new Map<string, { model: ListedModel; price?: CatalogPriceView }>();
@@ -53,7 +56,10 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
   const all = [...byId.values()];
   const q = query.trim().toLowerCase();
   const rows = q ? all.filter((r) => r.model.id.toLowerCase().includes(q) || r.model.label?.toLowerCase().includes(q)) : all;
-  const isOn = (id: string) => selected.find((m) => m.id === id);
+  // In the list and in use (unchecked ones stay in the list).
+  const isOn = (id: string) => selected.find((m) => m.id === id && m.enabled !== false);
+  const inList = (id: string) => selected.some((m) => m.id === id);
+  const fromCatalog = new Set(catalog.map((m) => m.id));
 
   const add = () => {
     const id = typed.trim();
@@ -80,13 +86,20 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
           const source = on ? SOURCE[on.contextFrom] : '';
           return (
             <li key={model.id} className={on ? 'model-row is-on' : 'model-row'}>
-              <label className="model-row-name">
-                <input type="checkbox" checked={Boolean(on)} onChange={(e) => onToggle(model, e.target.checked)} />
-                <span className="model-row-text">
-                  <span className="model-row-id">{model.label ? `${model.label} · ${model.id}` : model.id}</span>
-                  {price ? <span className="model-row-meta">{priceText(price)}</span> : null}
-                </span>
-              </label>
+              <span className="model-row-head">
+                <label className="model-row-name">
+                  <input type="checkbox" checked={Boolean(on)} onChange={(e) => onToggle(model, e.target.checked)} />
+                  <span className="model-row-text">
+                    <span className="model-row-id">{model.label ? `${model.label} · ${model.id}` : model.id}</span>
+                    {price ? <span className="model-row-meta">{priceText(price)}</span> : null}
+                  </span>
+                </label>
+                {onRemove && inList(model.id) && !fromCatalog.has(model.id) ? (
+                  <button type="button" className="text-btn model-row-remove" onClick={() => onRemove(model.id)} aria-label={`删除 ${model.id}`}>
+                    删除
+                  </button>
+                ) : null}
+              </span>
               {on ? (
                 <span className="model-row-window">
                   <span className="model-row-label">上下文上限</span>

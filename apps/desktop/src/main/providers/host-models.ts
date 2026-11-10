@@ -22,7 +22,7 @@ export function toHostConnection(p: ProviderView): HostConnection {
     hasSecret: p.hasSecret,
     ...(p.readOnly ? { readOnly: true } : {}),
     // A model saved before 上下文上限 existed has none yet (0: the agent is told it is missing).
-    models: p.models.map((m) => ({ id: m.id, contextWindow: m.contextWindow ?? 0, contextFrom: m.contextFrom })),
+    models: p.models.map((m) => ({ id: m.id, contextWindow: m.contextWindow ?? 0, contextFrom: m.contextFrom, ...(m.enabled === false ? { enabled: false } : {}) })),
   };
 }
 

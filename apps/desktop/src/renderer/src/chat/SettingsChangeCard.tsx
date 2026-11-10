@@ -59,7 +59,7 @@ function pointerText(p: Pointer, c: SettingsChangeMeta): string {
   return p.connectionId === c.id ? `「${c.name} · ${p.model}」` : `「${p.model}」（其他服务商）`;
 }
 
-const windowText = (m: { contextWindow: number; contextFrom: string }) =>
+const windowText = (m: { contextWindow: number | null; contextFrom: string }) =>
   `${m.contextWindow ? `${m.contextWindow.toLocaleString('en-US')} token` : '未设置'}${m.contextFrom === 'name-match' ? '（按名称匹配）' : ''}`;
 
 /** The rows the card lists: everything for a new connection, only what changed otherwise; moved pointers always. */
@@ -78,6 +78,8 @@ export function settingsChangeRows(c: SettingsChangeMeta): { label: string; valu
     add('consumerKey', c.consumerKey ? `尾号 ${c.consumerKey.replace(/^…/, '')}` : undefined, all || changed.has('consumerKey') || changed.has('clientId'));
     add('scope', c.scope ?? undefined);
     if (c.addedModels?.length && !all) rows.push({ label: '新增模型', value: c.addedModels.join('、') });
+    if (c.enabledModels?.length) rows.push({ label: '启用模型', value: c.enabledModels.join('、') });
+    if (c.disabledModels?.length) rows.push({ label: '停用模型', value: c.disabledModels.join('、') });
     if (c.removedModels?.length) rows.push({ label: '移除模型', value: c.removedModels.join('、') });
     if (c.models?.length && (all || changed.has('models') || c.addedModels?.length)) {
       const shown = all ? c.models : c.models.filter((m) => c.addedModels?.includes(m.id) || changed.has('models'));

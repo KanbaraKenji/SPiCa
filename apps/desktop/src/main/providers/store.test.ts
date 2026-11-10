@@ -79,6 +79,19 @@ describe('ProviderStore', () => {
     expect(store.resolved()[0]?.models.map((m) => m.id)).toEqual(['flash']);
   });
 
+  it('an unchecked model stays in the list (no 上下文上限 needed), is not offered, and the pointers leave it', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
+    const store = new ProviderStore(dir, box);
+    const v = store.save({ ...draft, models: [{ id: 'flash', contextWindow: 1000, contextFrom: 'catalog' }, { id: 'pro', contextWindow: 2000, contextFrom: 'catalog' }] });
+    store.setDefaultModel({ connectionId: v.id, model: 'pro' });
+    store.save({ ...draft, id: v.id, secret: undefined, models: [{ id: 'flash', contextWindow: 1000, contextFrom: 'catalog' }, { id: 'pro', contextWindow: 2000, contextFrom: 'catalog', enabled: false }, { id: 'later', contextWindow: null, contextFrom: 'user', enabled: false }] });
+    expect(store.defaultRef()).toEqual({ connectionId: v.id, model: 'flash' });
+    expect(store.resolved()[0]?.models.map((m) => m.id)).toEqual(['flash']);
+    // Still in the list, also after a restart.
+    const again = new ProviderStore(dir, box).list()[0]!;
+    expect(again.models.map((m) => [m.id, m.enabled !== false])).toEqual([['flash', true], ['pro', false], ['later', false]]);
+  });
+
   it('a second key of the same provider is a second connection; each shows its key tail', () => {
     const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
     const one = store.save({ ...draft, secret: 'sk-one-3f9a' });

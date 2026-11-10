@@ -17,7 +17,7 @@ import { Sidebar } from './shell/Sidebar';
 import { DetailPanel } from './shell/DetailPanel';
 import { Conversation, type ConversationActions, type WaitingChild } from './chat/Conversation';
 import type { ComposerTools } from './chat/Composer';
-import type { ModelRef, ProviderView } from '../../shared/providers';
+import { enabledModels, type ModelRef, type ProviderView } from '../../shared/providers';
 import { SettingsView, type SettingsTab } from './settings/SettingsView';
 import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
@@ -370,8 +370,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
 
   const id = state.activeId;
   // The model new conversations use: the settings' pointer (a connection may hold several models).
-  const firstModel = models.find((p) => p.models.length);
-  const defaultRef = pointers.default ?? (firstModel ? { connectionId: firstModel.id, model: firstModel.models[0]!.id } : null);
+  // Only models in use (checked) are offered anywhere.
+  const firstModel = models.find((p) => enabledModels(p.models).length);
+  const defaultRef = pointers.default ?? (firstModel ? { connectionId: firstModel.id, model: enabledModels(firstModel.models)[0]!.id } : null);
 
   // The model mail is sorted with (the core says so in mail.configured; else the default model).
   const triage = mail.triageModel ?? (defaultRef ? { providerId: defaultRef.connectionId, model: defaultRef.model } : null);
@@ -383,7 +384,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // Every ticked model of every connection, by connection (its key tail tells two keys of one provider apart).
   const isRef = (r: ModelRef | null, providerId: string, model: string) => Boolean(r && r.connectionId === providerId && r.model === model);
   const modelOptions = models.flatMap((p) =>
-    p.models.map((m) => {
+    enabledModels(p.models).map((m) => {
       const marks = [isRef(pointers.default, p.id, m.id) ? '默认' : '', isRef(pointers.strong, p.id, m.id) ? '强模型' : ''].filter(Boolean).join(' · ');
       return { providerId: p.id, model: m.id, group: `${p.name}${p.keyTail ? ` · 尾号 ${p.keyTail}` : ''}`, label: m.id, marks };
     }),

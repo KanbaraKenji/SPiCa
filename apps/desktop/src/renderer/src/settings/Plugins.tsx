@@ -82,6 +82,7 @@ function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy
         <button type="button" className="btn btn-small" disabled={busy || problem !== null || value === m.maxUsdPerDay} onClick={() => run({ op: 'modelLimit', name: p.name, maxUsdPerDay: value })}>
           保存
         </button>
+        {value !== m.maxUsdPerDay && limit.trim() !== '' ? <span className="provider-unsaved">未保存</span> : null}
         {off ? null : (
           <button type="button" className="btn btn-small" disabled={busy} onClick={() => run({ op: 'modelLimit', name: p.name, maxUsdPerDay: 0 })}>
             禁止使用模型

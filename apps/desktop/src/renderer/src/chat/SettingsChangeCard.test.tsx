@@ -53,6 +53,8 @@ describe('settings-change card (connections)', () => {
       action: 'change_connection',
       models: [{ id: 'claude-sonnet-5-5', contextWindow: 1_000_000, contextFrom: 'catalog' }],
       addedModels: [],
+      enabledModels: ['deepseek-flash'],
+      disabledModels: ['deepseek-v4-pro'],
       removedModels: ['team/claude-opus-5-5'],
       changes: ['models'],
       secret: 'unchanged',
@@ -61,6 +63,8 @@ describe('settings-change card (connections)', () => {
     } as SettingsChangeMeta;
     expect(settingsChangeTitle(changed)).toBe('本机脚本修改了服务商「测试网关」');
     expect(rows(changed)).toMatchObject({
+      启用模型: 'deepseek-flash',
+      停用模型: 'deepseek-v4-pro',
       移除模型: 'team/claude-opus-5-5',
       默认模型: '「测试网关 · team/claude-opus-5-5」 → 「测试网关 · claude-sonnet-5-5」',
     });

@@ -50,6 +50,21 @@ export interface ConnectionModel {
   /** Required for use; null only in older settings until it is filled in. */
   contextWindow: number | null;
   contextFrom: ContextFrom;
+  /**
+   * false: kept in this connection's list but not in use (他 2026-11-10: 「取消勾选和删除模型是两种
+   * 操作」) — not offered anywhere, no 上下文上限 needed. Absent: in use.
+   */
+  enabled?: boolean;
+}
+
+/** In use (checked in the connection's list). */
+export function isEnabled(m: Pick<ConnectionModel, 'enabled'>): boolean {
+  return m.enabled !== false;
+}
+
+/** The models in use, in list order. */
+export function enabledModels<T extends Pick<ConnectionModel, 'enabled'>>(models: readonly T[]): T[] {
+  return models.filter(isEnabled);
 }
 
 /** 「哪一条 + 哪个模型」: the default for new conversations, the one for heavy work. */
@@ -113,7 +128,8 @@ export function modelsOfDraft(d: ProviderDraft, saved: readonly ConnectionModel[
 
 /** The one-model form's fields for a list of models: the first is 模型, the second 强模型. */
 export function legacyModelFields(models: readonly ConnectionModel[]): Pick<ProviderFields, 'model' | 'strongModel' | 'contextWindow'> {
-  return { model: models[0]?.id ?? '', strongModel: models[1]?.id ?? '', contextWindow: models[0]?.contextWindow ?? null };
+  const on = enabledModels(models);
+  return { model: on[0]?.id ?? '', strongModel: on[1]?.id ?? '', contextWindow: on[0]?.contextWindow ?? null };
 }
 
 export interface TestResult {
@@ -170,7 +186,7 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: {
   const e: FieldErrors = {};
   if (!d.name.trim()) e.name = '请填写名称';
   // A whole ticked list (a connection with several models), or the one-model form.
-  const list = d.models?.filter((m) => m.id.trim());
+  const list = d.models?.filter((m) => m.id.trim() && isEnabled(m));
   if (list ? list.length === 0 : !d.model.trim()) e.model = list ? '请至少选择一个模型' : '请填写模型';
   const needsUrl = d.kind !== 'anthropic';
   if (needsUrl && !d.baseUrl.trim()) e.baseUrl = d.kind === 'wso2' ? '请填写网关地址' : '请填写接口地址';

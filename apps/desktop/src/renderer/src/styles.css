@@ -3729,3 +3729,27 @@ button.tree-twisty:hover {
   border-radius: var(--radius-m);
   box-shadow: var(--spica-shadow);
 }
+
+/* A model's row: name and price, its 删除 at the far end (away from the checkbox). */
+.model-row-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.model-row-head > .model-row-name {
+  flex: 1;
+}
+
+.model-row-remove {
+  flex: none;
+  font-size: 12px;
+  color: var(--spica-muted);
+}
+
+/* What saving will do to 默认模型 / 强模型. */
+.provider-pointer-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--spica-warning);
+}

@@ -226,7 +226,8 @@ describe('Models', () => {
     type('API Key', 'sk-1');
     cleanup();
     render(<Models api={api} />);
-    await screen.findByText('未保存');
+    // Marked in the list and beside 保存.
+    expect(await screen.findAllByText('未保存')).toHaveLength(2);
     expect((byLabel('名称') as HTMLInputElement).value).toBe('DeepSeek');
     expect((byLabel('API Key') as HTMLInputElement).value).toBe('sk-1');
   });
@@ -244,11 +245,48 @@ describe('Models', () => {
     expect(screen.queryByText('未保存')).toBeNull();
   });
 
+  it('unchecking keeps a model in the list (check it back); 删除 takes it out; the catalog’s cannot be deleted', async () => {
+    const api = fakeApi([saved({ name: 'DeepSeek', catalogId: 'deepseek', models: [{ id: 'deepseek-flash', contextWindow: 128_000, contextFrom: 'catalog' }, { id: 'my-model', contextWindow: 64_000, contextFrom: 'user' }] })]);
+    render(<Models api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: /DeepSeek/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /my-model/ }));
+    expect((screen.getByRole('checkbox', { name: /my-model/ }) as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(screen.getByRole('checkbox', { name: /my-model/ }));
+    expect((screen.getByRole('checkbox', { name: /my-model/ }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByRole('button', { name: '删除 deepseek-flash' })).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: /my-model/ }));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ models: [expect.objectContaining({ id: 'deepseek-flash' }), expect.objectContaining({ id: 'my-model', enabled: false })] })));
+    fireEvent.click(screen.getByRole('button', { name: '删除 my-model' }));
+    expect(screen.queryByRole('checkbox', { name: /my-model/ })).toBeNull();
+  });
+
+  it('beside 保存: 未保存 while there are changes, and 取消 goes back to what is saved', async () => {
+    render(<Models api={fakeApi([saved()])} />);
+    fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
+    expect(screen.queryByRole('button', { name: '取消' })).toBeNull();
+    type('名称', '新网关');
+    expect(screen.getAllByText('未保存').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect((byLabel('名称') as HTMLInputElement).value).toBe('旧网关');
+    expect(screen.queryByText('未保存')).toBeNull();
+  });
+
+  it('unchecking the model 默认模型 points at says where it goes when saved', async () => {
+    const item = saved({ name: 'DeepSeek', models: [{ id: 'a', contextWindow: 1000, contextFrom: 'user' }, { id: 'b', contextWindow: 1000, contextFrom: 'user' }] });
+    const api = fakeApi([item]);
+    api.list = vi.fn(async () => ({ items: [item], problems: {}, default: { connectionId: 'p-1', model: 'a' }, strong: null }));
+    render(<Models api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: /DeepSeek/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^a/ }));
+    expect(screen.getByText('保存后，默认模型将改为「DeepSeek · b」。')).toBeTruthy();
+  });
+
   it('deletes only after confirming', async () => {
     const api = fakeApi([saved()]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
-    fireEvent.click(screen.getByRole('button', { name: /删除/ }));
+    fireEvent.click(screen.getByRole('button', { name: '删除' }));
     const dialog = screen.getByRole('alertdialog');
     expect(dialog.textContent).toContain('删除服务商「旧网关」？');
     expect(api.remove).not.toHaveBeenCalled();

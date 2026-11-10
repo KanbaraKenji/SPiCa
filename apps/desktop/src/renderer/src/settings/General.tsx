@@ -150,6 +150,7 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
         >
           保存
         </button>
+        {changed ? <span className="provider-unsaved">未保存</span> : null}
       </div>
       <div className="setting-row net-ca">
         <div className="setting-text">
@@ -337,6 +338,7 @@ function IgnoreRules({ mail, onSave }: { mail: MailPrefs; onSave(ignore: MailPre
         >
           保存
         </button>
+        {changed ? <span className="provider-unsaved">未保存</span> : null}
       </div>
     </div>
   );

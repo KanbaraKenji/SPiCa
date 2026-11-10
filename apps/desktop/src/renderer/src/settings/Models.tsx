@@ -7,6 +7,7 @@ import type { ProviderList } from '../../../shared/bridge';
 import type { CatalogProviderView, ListModelsView, ModelCatalogView, WindowMatch } from '../../../shared/catalog';
 import {
   emptyDraft,
+  enabledModels,
   kindLabel,
   legacyModelFields,
   PROVIDER_KINDS,
@@ -302,7 +303,16 @@ export function Models({ api }: { api: ProvidersApi }) {
 
   const toggle = (m: ListedModel, on: boolean) => {
     const models = draft.models ?? [];
-    if (!on) return set({ models: models.filter((x) => x.id !== m.id) });
+    const existing = models.find((x) => x.id === m.id);
+    // Unchecking keeps the model in the list, not in use (deleting is its own action).
+    if (!on) return existing ? set({ models: models.map((x) => (x.id === m.id ? { ...x, enabled: false } : x)) }) : undefined;
+    if (existing) {
+      const { enabled: _off, ...back } = existing;
+      void _off;
+      set({ models: models.map((x) => (x.id === m.id ? back : x)) });
+      if (back.contextWindow === null) matchLater(m.id);
+      return;
+    }
     const fromCatalog = provider?.models.find((x) => x.id === m.id);
     const entry: ConnectionModel = fromCatalog
       ? { id: m.id, contextWindow: fromCatalog.contextWindow, contextFrom: 'catalog' }
@@ -317,7 +327,7 @@ export function Models({ api }: { api: ProvidersApi }) {
     set({ models: (draft.models ?? []).map((x) => (x.id === id ? { ...x, contextWindow: value, contextFrom: 'user' } : x)) });
 
   const addTyped = (id: string) => {
-    if ((draft.models ?? []).some((x) => x.id === id)) return;
+    if ((draft.models ?? []).some((x) => x.id === id && x.enabled !== false)) return;
     toggle({ id }, true);
   };
 
@@ -413,12 +423,45 @@ export function Models({ api }: { api: ProvidersApi }) {
 
   // Every selected model, by connection, for 默认模型 and 强模型.
   const groups = items
-    .filter((p) => p.models.length)
+    .filter((p) => enabledModels(p.models).length)
     .map((p) => ({
       label: `${p.name}${p.keyTail ? ` · 尾号 ${p.keyTail}` : ''}`,
       // 「名称 · 模型」 open and closed: two connections of one provider can carry the same model.
-      options: p.models.map((m) => ({ key: refKey({ connectionId: p.id, model: m.id }), model: `${p.name} · ${m.id}` })),
+      options: enabledModels(p.models).map((m) => ({ key: refKey({ connectionId: p.id, model: m.id }), model: `${p.name} · ${m.id}` })),
     }));
+
+  // Unsaved changes in the open connection (drafts are kept when you look elsewhere).
+  const dirty = selected !== null && (selected === 'new' ? choice !== '' : Boolean(keptDraft(draftKey(selected))));
+  const discard = () => {
+    if (!selected) return;
+    dropDraft(draftKey(selected));
+    if (selected === 'new') {
+      setSelected(null);
+      return;
+    }
+    const back = savedDraft();
+    setDraft(back);
+    latest.current = { draft: back, selected };
+    setErrors({});
+    setResult(null);
+    setFetched(null);
+    setMatchedNames({});
+  };
+  // A pointer at a model this change takes out of use moves when saved (the store's rule): said before saving.
+  const pointerNote = (() => {
+    if (!current || !list) return '';
+    const on = enabledModels(draft.models ?? []).map((m) => m.id);
+    const notes: string[] = [];
+    const def = list.default;
+    if (def?.connectionId === current.id && !on.includes(def.model)) {
+      const other = items.find((p) => p.id !== current.id && enabledModels(p.models).length);
+      const to = on[0] ? `${draft.name || current.name} · ${on[0]}` : other ? `${other.name} · ${enabledModels(other.models)[0]!.id}` : '无';
+      notes.push(`默认模型将改为「${to}」`);
+    }
+    const strong = list.strong;
+    if (strong?.connectionId === current.id && !on.includes(strong.model)) notes.push(`强模型将改为「${on[0] ? `${draft.name || current.name} · ${on[0]}` : '无'}」`);
+    return notes.length ? `保存后，${notes.join('，')}。` : '';
+  })();
   const pointerOptions = groups.map((g) => (
     <optgroup key={g.label} label={g.label}>
       {g.options.map((o) => (
@@ -488,10 +531,10 @@ export function Models({ api }: { api: ProvidersApi }) {
                 {p.keyTail ? <span className="provider-tail">· 尾号 {p.keyTail}</span> : null}
               </span>
               <span className="provider-sub">
-                {kindLabel(p.kind)} · {p.models.length > 1 ? `${p.models.length} 个模型：${p.models.map((m) => m.id).join('、')}` : (p.models[0]?.id ?? '—')}
+                {kindLabel(p.kind)} · {enabledModels(p.models).length > 1 ? `${enabledModels(p.models).length} 个模型：${enabledModels(p.models).map((m) => m.id).join('、')}` : (enabledModels(p.models)[0]?.id ?? '—')}
               </span>
               {list?.problems[p.id] ? <span className="provider-problem">{list.problems[p.id]}</span> : null}
-              {!p.readOnly && p.models.some((m) => m.contextWindow === null) ? <span className="provider-problem">缺少上下文上限</span> : null}
+              {!p.readOnly && enabledModels(p.models).some((m) => m.contextWindow === null) ? <span className="provider-problem">缺少上下文上限</span> : null}
               {keptDraft(draftKey(p.id)) ? <span className="provider-unsaved">未保存</span> : null}
             </button>
             {p.isDefault ? <span className="provider-default">默认</span> : null}
@@ -608,6 +651,7 @@ export function Models({ api }: { api: ProvidersApi }) {
                     selected={draft.models ?? []}
                     matchedNames={matchedNames}
                     onToggle={toggle}
+                    onRemove={(id) => set({ models: (draft.models ?? []).filter((x) => x.id !== id) })}
                     onWindow={setWindow}
                     onAdd={addTyped}
                     onFetch={api.listModels ? () => void fetchModels() : undefined}
@@ -648,6 +692,11 @@ export function Models({ api }: { api: ProvidersApi }) {
             </>
           ) : null}
 
+          {pointerNote ? (
+            <p className="provider-pointer-note" role="status">
+              {pointerNote}
+            </p>
+          ) : null}
           <div className="provider-actions">
             {current ? (
               <button type="button" className="btn btn-quiet-danger" onClick={() => setDeleting(current)}>
@@ -661,6 +710,13 @@ export function Models({ api }: { api: ProvidersApi }) {
                 {result.ok ? <Icon name="check" size={14} /> : null}
                 {result.message}
               </span>
+            ) : null}
+            {/* Saved or not, beside 保存, where the change is made. */}
+            {dirty ? <span className="provider-unsaved">未保存</span> : null}
+            {dirty ? (
+              <button type="button" className="btn" onClick={discard} disabled={busy !== null}>
+                取消
+              </button>
             ) : null}
             {choice !== '' ? (
               <>

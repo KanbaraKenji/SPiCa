@@ -10,6 +10,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
+  enabledModels,
   legacyModelFields,
   modelsOfDraft,
   validateDraft,
@@ -81,7 +82,7 @@ function sanitizeModels(v: unknown): ConnectionModel[] {
     const id = str(r.id).trim();
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    out.push({ id, contextWindow: num(r.contextWindow), contextFrom: FROM.includes(r.contextFrom as ContextFrom) ? (r.contextFrom as ContextFrom) : 'user' });
+    out.push({ id, contextWindow: num(r.contextWindow), contextFrom: FROM.includes(r.contextFrom as ContextFrom) ? (r.contextFrom as ContextFrom) : 'user', ...(r.enabled === false ? { enabled: false } : {}) });
   }
   return out;
 }
@@ -178,7 +179,8 @@ export class ProviderStore {
 
   /** Every connection with the models it has, saved ones and outside ones. */
   #known(): ExternalConnection[] {
-    return [...this.#external(), ...this.#data.items.map((p) => ({ id: p.id, models: p.models.map((m) => m.id) }))];
+    // Only models in use count for the pointers (one unchecked is not there).
+    return [...this.#external(), ...this.#data.items.map((p) => ({ id: p.id, models: enabledModels(p.models).map((m) => m.id) }))];
   }
 
   #valid(ref: ModelRef | null): boolean {
@@ -303,7 +305,8 @@ export class ProviderStore {
       if (!secret && needsKey(p.catalogId)) continue;
       const { keys: _keys, ...fields } = p;
       void _keys;
-      out.push({ ...fields, ...legacyModelFields(p.models), secret: secret ?? '' });
+      // The core gets only the models in use.
+      out.push({ ...fields, models: enabledModels(p.models), ...legacyModelFields(p.models), secret: secret ?? '' });
     }
     return out;
   }
