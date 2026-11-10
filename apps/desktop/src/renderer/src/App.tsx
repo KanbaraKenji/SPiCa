@@ -431,6 +431,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // A conversation on a model that was unticked or whose connection was deleted.
   const shownGone = Boolean(shown && models.length && !modelOptions.some((o) => o.providerId === shown.providerId && o.model === shown.model));
   const shownProvider = shown ? models.find((p) => p.id === shown.providerId)?.name : undefined;
+  const shownWindow = shown ? models.find((p) => p.id === shown.providerId)?.models.find((m) => m.id === shown.model)?.contextWindow : undefined;
+  const ringWindow = session?.contextWindow || shownWindow || 0;
   const composerTools: ComposerTools = {
     pickFiles: () => bridge.pickFiles('添加附件'),
     pathForFile: bridge.pathForFile,
@@ -471,7 +473,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         }
       : {}),
     // No ring until the model's 上下文上限 is known (set in 设置 › 模型).
-    ...(session && typeof session.contextTokens === 'number' && session.contextWindow ? { context: { tokens: session.contextTokens, window: session.contextWindow, detail: () => bridge.contextBreakdown(session.id) } } : {}),
+    // The ring as soon as the model's 上下文上限 is known: empty before the first message, so the row does not shift.
+    ...(ringWindow ? { context: { tokens: session?.contextTokens ?? 0, window: ringWindow, ...(session ? { detail: () => bridge.contextBreakdown(session.id) } : {}) } } : {}),
   };
 
   const actions: ConversationActions = {
