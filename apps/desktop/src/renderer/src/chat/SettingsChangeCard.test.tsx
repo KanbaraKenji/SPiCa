@@ -8,46 +8,68 @@ import { applyEvent, fromHistory } from '../store/transcript';
 afterEach(cleanup);
 
 const added: SettingsChangeMeta = {
-  action: 'add_model',
+  action: 'add_connection',
   id: 'p-1',
   name: '测试网关',
   kind: 'wso2',
-  model: 'claude-sonnet-5-5',
   baseUrl: 'https://gateway.example.invalid/llm/v1',
   tokenUrl: 'https://gateway.example.invalid/oauth2/token',
   consumerKey: '…1234',
   scope: null,
-  contextWindow: 1_000_000,
+  models: [
+    { id: 'claude-sonnet-5-5', contextWindow: 1_000_000, contextFrom: 'catalog' },
+    { id: 'team/claude-opus-5-5', contextWindow: 1_000_000, contextFrom: 'name-match' },
+  ],
+  addedModels: ['claude-sonnet-5-5', 'team/claude-opus-5-5'],
   changes: ['new', 'default'],
   secret: 'new',
-  makeDefault: true,
-  test: { ok: false, code: 'net.dns' },
+  makeDefault: 'claude-sonnet-5-5',
+  test: { ok: false, model: 'claude-sonnet-5-5', code: 'net.dns' },
   by: 'mcp',
   confirmed: false,
   at: '2026-11-10T10:50:00+08:00',
 };
 
-describe('settings-change card', () => {
-  it('a new connection lists everything, the secret only as 新填, the key by its last 4', () => {
-    expect(settingsChangeTitle(added)).toBe('连接到 Spica 的脚本新增了模型连接「测试网关」');
-    const rows = Object.fromEntries(settingsChangeRows(added).map((r) => [r.label, r.value]));
-    expect(rows).toMatchObject({
+const rows = (c: SettingsChangeMeta) => Object.fromEntries(settingsChangeRows(c).map((r) => [r.label, r.value]));
+
+describe('settings-change card (connections)', () => {
+  it('a new connection lists everything: each model with its window, name-matched ones said so; the secret only as 新填', () => {
+    expect(settingsChangeTitle(added)).toBe('连接到 Spica 的脚本新增了服务商连接「测试网关」');
+    expect(rows(added)).toMatchObject({
       类型: 'WSO2 网关',
       网关地址: 'https://gateway.example.invalid/llm/v1',
-      '取 token 地址': 'https://gateway.example.invalid/oauth2/token',
       'Consumer Key': '末 4 位 1234',
-      模型: 'claude-sonnet-5-5',
-      上下文上限: '1,000,000 token',
+      'claude-sonnet-5-5': '上下文上限 1,000,000 token',
+      'team/claude-opus-5-5': '上下文上限 1,000,000 token（按名字对出来的）',
       'Consumer Secret': '新填（已加密保存）',
-      默认模型: '设成了默认',
+      新对话默认用: '「测试网关 · claude-sonnet-5-5」',
     });
-    expect(JSON.stringify(rows)).not.toContain('secret-');
+    expect(JSON.stringify(rows(added))).not.toContain('secret-');
   });
 
-  it('a change lists only what changed', () => {
-    const changed: SettingsChangeMeta = { ...added, action: 'change_model', changes: ['contextWindow'], secret: 'unchanged', makeDefault: false };
-    expect(settingsChangeTitle(changed)).toBe('连接到 Spica 的脚本改了模型连接「测试网关」');
-    expect(settingsChangeRows(changed)).toEqual([{ label: '上下文上限', value: '1,000,000 token' }]);
+  it('a change says which models were added and removed, and where the default moved', () => {
+    const changed: SettingsChangeMeta = {
+      ...added,
+      action: 'change_connection',
+      models: [{ id: 'claude-sonnet-5-5', contextWindow: 1_000_000, contextFrom: 'catalog' }],
+      addedModels: [],
+      removedModels: ['team/claude-opus-5-5'],
+      changes: ['models'],
+      secret: 'unchanged',
+      makeDefault: undefined,
+      defaultMoved: { from: { connectionId: 'p-1', model: 'team/claude-opus-5-5' }, to: { connectionId: 'p-1', model: 'claude-sonnet-5-5' } },
+    } as SettingsChangeMeta;
+    expect(settingsChangeTitle(changed)).toBe('连接到 Spica 的脚本改了服务商连接「测试网关」');
+    expect(rows(changed)).toMatchObject({
+      去了模型: 'team/claude-opus-5-5',
+      默认模型: '从 「测试网关 · team/claude-opus-5-5」 挪到了 「测试网关 · claude-sonnet-5-5」',
+    });
+  });
+
+  it('pointing the default or the strong model elsewhere', () => {
+    const def: SettingsChangeMeta = { action: 'set_default_model', id: 'p-2', name: 'DeepSeek 2', kind: 'openai-compatible', model: 'deepseek-flash', changes: ['default'], by: 'mcp', confirmed: false, at: added.at };
+    expect(settingsChangeTitle(def)).toBe('连接到 Spica 的脚本把新对话默认用的模型换成了「DeepSeek 2 · deepseek-flash」');
+    expect(settingsChangeTitle({ ...def, action: 'set_strong_model', model: undefined } as SettingsChangeMeta)).toBe('连接到 Spica 的脚本取消了重活用的模型');
   });
 
   it('says it was not confirmed and that the test failed; opens 设置 › 模型', () => {

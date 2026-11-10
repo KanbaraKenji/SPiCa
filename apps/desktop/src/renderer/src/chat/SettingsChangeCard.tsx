@@ -47,37 +47,55 @@ function fieldLabel(field: string, kind: SettingsChangeMeta['kind']): string | n
 
 export function settingsChangeTitle(c: SettingsChangeMeta): string {
   const who = `连接到 ${APP_NAME} 的脚本`;
-  if (c.action === 'set_default_model') return `${who}把「${c.name}」设成了默认模型`;
-  if (c.action === 'add_model') return `${who}新增了模型连接「${c.name}」`;
-  return `${who}改了模型连接「${c.name}」`;
+  if (c.action === 'set_default_model') return `${who}把新对话默认用的模型换成了「${c.name} · ${c.model ?? ''}」`;
+  if (c.action === 'set_strong_model') return c.model ? `${who}把重活用的模型换成了「${c.name} · ${c.model}」` : `${who}取消了重活用的模型`;
+  if (c.action === 'add_connection') return `${who}新增了服务商连接「${c.name}」`;
+  return `${who}改了服务商连接「${c.name}」`;
 }
 
-/** The rows the card lists: everything for a new connection, only what changed otherwise. */
+type Pointer = { connectionId: string; model: string } | null;
+
+/** A pointer as people read it: the model, and the connection when it is another one. */
+function pointerText(p: Pointer, c: SettingsChangeMeta): string {
+  if (!p) return '没有';
+  return p.connectionId === c.id ? `「${c.name} · ${p.model}」` : `「${p.model}」（另一条连接）`;
+}
+
+const windowText = (m: { contextWindow: number; contextFrom: string }) =>
+  `${m.contextWindow ? `${m.contextWindow.toLocaleString('en-US')} token` : '还没填上限'}${m.contextFrom === 'name-match' ? '（按名字对出来的）' : ''}`;
+
+/** The rows the card lists: everything for a new connection, only what changed otherwise; moved pointers always. */
 export function settingsChangeRows(c: SettingsChangeMeta): { label: string; value: string }[] {
-  const all = c.action === 'add_model';
-  const changed = new Set(c.changes);
-  const show = (field: string) => all || changed.has(field) || (field === 'consumerKey' && changed.has('clientId'));
   const rows: { label: string; value: string }[] = [];
-  const add = (field: string, value: string | null | undefined) => {
+  const all = c.action === 'add_connection';
+  const changed = new Set(c.changes);
+  const add = (field: string, value: string | null | undefined, show = all || changed.has(field)) => {
     const label = fieldLabel(field, c.kind);
-    if (label && show(field) && value !== undefined && value !== null && value !== '') rows.push({ label, value });
+    if (label && show && value !== undefined && value !== null && value !== '') rows.push({ label, value });
   };
-  if (c.action === 'set_default_model') return [{ label: '模型', value: `${KIND[c.kind]} · ${c.model}` }];
-  add('kind', KIND[c.kind]);
-  add('baseUrl', c.baseUrl);
-  add('tokenUrl', c.tokenUrl);
-  add('consumerKey', c.consumerKey ? `末 4 位 ${c.consumerKey.replace(/^…/, '')}` : undefined);
-  add('scope', c.scope ?? undefined);
-  add('model', c.model);
-  add('contextWindow', typeof c.contextWindow === 'number' ? `${c.contextWindow.toLocaleString('en-US')} token` : undefined);
-  if (c.secret && (all || changed.has('secret'))) rows.push({ label: c.kind === 'wso2' ? 'Consumer Secret' : 'API Key', value: c.secret === 'new' ? '新填（已加密保存）' : '未改动' });
-  // Any other changed field the core named, so nothing it changed goes unmentioned.
-  for (const f of c.changes) {
-    if (['new', 'kind', 'baseUrl', 'tokenUrl', 'clientId', 'consumerKey', 'scope', 'model', 'contextWindow', 'secret', 'default'].includes(f)) continue;
-    const label = fieldLabel(f, c.kind);
-    if (label) rows.push({ label, value: '已改' });
+  if (c.action === 'add_connection' || c.action === 'change_connection') {
+    add('kind', KIND[c.kind]);
+    add('baseUrl', c.baseUrl);
+    add('tokenUrl', c.tokenUrl);
+    add('consumerKey', c.consumerKey ? `末 4 位 ${c.consumerKey.replace(/^…/, '')}` : undefined, all || changed.has('consumerKey') || changed.has('clientId'));
+    add('scope', c.scope ?? undefined);
+    if (c.addedModels?.length && !all) rows.push({ label: '加了模型', value: c.addedModels.join('、') });
+    if (c.removedModels?.length) rows.push({ label: '去了模型', value: c.removedModels.join('、') });
+    if (c.models?.length && (all || changed.has('models') || c.addedModels?.length)) {
+      const shown = all ? c.models : c.models.filter((m) => c.addedModels?.includes(m.id) || changed.has('models'));
+      for (const m of shown) rows.push({ label: m.id, value: `上下文上限 ${windowText(m)}` });
+    }
+    if (c.secret && (all || changed.has('secret'))) rows.push({ label: c.kind === 'wso2' ? 'Consumer Secret' : 'API Key', value: c.secret === 'new' ? '新填（已加密保存）' : '未改动' });
+    for (const f of c.changes) {
+      if (['new', 'kind', 'baseUrl', 'tokenUrl', 'clientId', 'consumerKey', 'scope', 'models', 'secret', 'default', 'strong'].includes(f)) continue;
+      const label = fieldLabel(f, c.kind);
+      if (label) rows.push({ label, value: '已改' });
+    }
+    if (c.makeDefault) rows.push({ label: '新对话默认用', value: `「${c.name} · ${c.makeDefault}」` });
+    if (c.makeStrong) rows.push({ label: '重活用', value: `「${c.name} · ${c.makeStrong}」` });
   }
-  if (c.makeDefault || changed.has('default')) rows.push({ label: '默认模型', value: '设成了默认' });
+  if (c.defaultMoved) rows.push({ label: '默认模型', value: `从 ${pointerText(c.defaultMoved.from, c)} 挪到了 ${pointerText(c.defaultMoved.to, c)}` });
+  if (c.strongMoved) rows.push({ label: '重活用', value: `从 ${pointerText(c.strongMoved.from, c)} 挪到了 ${pointerText(c.strongMoved.to, c)}` });
   return rows;
 }
 
@@ -108,7 +126,7 @@ export function SettingsChangeCard({ change, onOpenSettings }: { change: Setting
       </dl>
       {test ? (
         <p className={test.ok ? 'settings-change-test is-ok' : 'settings-change-test is-bad'}>
-          {test.ok ? '保存前测试连接：通过' : '保存前测试连接没通过，脚本要求照样保存。可以到 设置 › 模型 里再测一次。'}
+          {test.ok ? `保存前测试连接${test.model ? `（${test.model}）` : ''}：通过` : '保存前测试连接没通过，脚本要求照样保存。可以到 设置 › 模型 里再测一次。'}
         </p>
       ) : null}
       <footer className="settings-change-foot">
