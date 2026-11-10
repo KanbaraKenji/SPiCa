@@ -46,6 +46,15 @@ SVG 是真矢量（可编辑路径），全部由 `packages/brand/src/` 的构�
 
 字标已转成路径写在 `packages/brand/src/wordmark.ts`，应用运行时不读字体文件；字体文件只用于重新生成字标。
 
+## 素材 `icons/`
+
+原样收进来的素材，不由脚本生成，也不要改。
+
+| 文件 | 内容 |
+|---|---|
+| `spica-check.svg` | 完成状态图标（带圈对钩），单色、颜色随调用处；要求见 `docs/check_icon.md`。应用里用 `@spica/brand/react` 的 `SpicaStatusIcon name="done"`，图形和本文件逐字一致（有测试核对） |
+| `spica-check-preview.svg` | 同一个对钩填了绿色的预览版，只用来看效果，不要直接引用 |
+
 ## 生成脚本
 
 | 文件 | 作用 |

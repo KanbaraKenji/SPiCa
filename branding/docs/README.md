@@ -98,13 +98,16 @@ npm run wordmark:from-font -w @spica/brand -- ../../branding/fonts/Gelasio-Bold.
 
 ```ts
 import '@spica/brand/styles.css';
-import { SpicaMark, SpicaBanner } from '@spica/brand/react';
+import { SpicaMark, SpicaBanner, SpicaStatusIcon } from '@spica/brand/react';
 import { markSvg, taskbarSvg, BRAND_COLORS } from '@spica/brand';
 
 <SpicaMark size={28} state="busy" />          // 状态见 animation.md
 <SpicaBanner height={28} tappable />           // 左上角横标，可点击
 taskbarSvg({ ink: '#F1F5F9', accent: '#62A9FF' }) // 主进程窗口图标
+<SpicaStatusIcon name="done" size={16} />       // 完成状态（带圈对钩），颜色取皮肤的 --spica-success
 ```
+
+带圈状态图标（完成、警告、错误、进行中这一族）统一线宽 2.5、圆圈半径 9.5，比菜单、按钮这类操作图标粗；所有表示完成的地方都用 `done`，不换成图标库自带的带圈对钩。要求见 `check_icon.md`。
 
 页面上设置 `--spica-accent`（任意 CSS 颜色）即可让长瓣跟随皮肤。
 
@@ -125,3 +128,4 @@ npm run brand:build -w @spica/brand
 | `README.md` | 本文：标志、几何、颜色、使用、重新生成 |
 | `animation.md` | 状态动效与开机画面 |
 | `files.md` | 每个成品文件的用途 |
+| `check_icon.md` | 完成状态图标（带圈对钩）的要求 |

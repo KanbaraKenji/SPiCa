@@ -1,0 +1,8 @@
+/* 带圈状态图标：颜色取皮肤的语义色；调用处另设 color 时以调用处为准（写在更具体的选择器里） */
+.spica-status-icon {
+  flex: none;
+  vertical-align: -0.15em;
+}
+.spica-status-icon[data-status='done'] {
+  color: var(--spica-success, #15803d);
+}

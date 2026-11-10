@@ -2,3 +2,4 @@
 export { SpicaMark, type MarkState, type SpicaMarkProps } from './SpicaMark.tsx';
 export { SpicaBanner, SpicaWordmark, MARK_ORIGIN, type SpicaBannerProps, type SpicaWordmarkProps } from './SpicaWordmark.tsx';
 export { SpicaSplash, type SpicaSplashProps } from './SpicaSplash.tsx';
+export { SpicaStatusIcon, type SpicaStatusIconProps } from './SpicaStatusIcon.tsx';
