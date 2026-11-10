@@ -567,7 +567,8 @@ export function settingsTools(rt: Runtime): McpTool[] {
           kind: d.kind,
           baseUrl: d.baseUrl,
           ...(d.kind === 'wso2' ? { tokenUrl: d.tokenUrl, consumerKey: maskTail(d.clientId), scope: d.scope || null } : {}),
-          models: d.models,
+          // the models in use (each has its context window); disabled ones are named in disabledModels
+          models: d.models.filter((m) => m.enabled !== false).map((m) => ({ id: m.id, contextWindow: m.contextWindow ?? 0, contextFrom: m.contextFrom })),
           addedModels: added,
           removedModels: removed,
           enabledModels: enabledNow,
