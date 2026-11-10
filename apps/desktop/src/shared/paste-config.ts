@@ -109,7 +109,7 @@ export function parsePastedConfig(text: string): PasteResult {
   const base = result.fields.baseUrl;
   if (base && /\/chat\/completions\/?$/i.test(base)) {
     result.fields.baseUrl = base.replace(/\/chat\/completions\/?$/i, '');
-    result.notes.push('地址去掉了结尾的 /chat/completions');
+    result.notes.push('已移除地址末尾的 /chat/completions');
   }
   if (result.fields.tokenUrl || result.fields.clientId) result.kind = 'wso2';
   else if (base && /anthropic\.com/i.test(base)) result.kind = 'anthropic';

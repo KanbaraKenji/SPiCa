@@ -18,7 +18,7 @@ MODEL_NAME=team/claude-sonnet-5-5
       baseUrl: 'https://gw.example.com/llm/v1',
       model: 'team/claude-sonnet-5-5',
     });
-    expect(r.notes).toEqual(['地址去掉了结尾的 /chat/completions']);
+    expect(r.notes).toEqual(['已移除地址末尾的 /chat/completions']);
     expect(r.unknown).toEqual([]);
   });
 

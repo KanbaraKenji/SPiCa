@@ -1,4 +1,4 @@
-// 「粘贴管理员给的配置」 at the top of the model form: paste the whole block,
+// 「粘贴配置」 at the top of the model form: paste the whole block,
 // the fields it recognises are filled in, the rest is listed to place by hand.
 // The pasted text lives only in this component's state (window memory).
 import { useState } from 'react';
@@ -49,8 +49,8 @@ export function PasteConfig({ kind, onApply }: { kind: ProviderKind; onApply(r: 
             spellCheck={false}
             autoFocus
             value={text}
-            aria-label="管理员给的配置"
-            placeholder={'把管理员给的整段配置粘进来，比如一行一项的 名字=值 或 名字: 值。\n只用来填下面的栏，不会存下这段文字。'}
+            aria-label="配置文本"
+            placeholder="KEY=VALUE，每行一项"
             onChange={(e) => setText(e.target.value)}
           />
           <div className="paste-config-actions">
@@ -64,18 +64,18 @@ export function PasteConfig({ kind, onApply }: { kind: ProviderKind; onApply(r: 
         </div>
       ) : (
         <button type="button" className="btn btn-small" onClick={() => setOpen(true)}>
-          粘贴管理员给的配置
+          粘贴配置
         </button>
       )}
       {done && !open ? (
         <div className="paste-config-result" role="status">
           <p className={done.filled.length ? 'paste-config-line' : 'paste-config-line is-none'}>
-            {done.filled.length ? `填好了 ${done.filled.length} 项：${done.filled.join('、')}。请核对一遍。` : '没认出能填的内容，请把各项直接填到下面的栏里。'}
+            {done.filled.length ? `已填入 ${done.filled.length} 项：${done.filled.join('、')}` : '未识别到可填入的项。'}
             {done.notes.length ? ` ${done.notes.join('；')}。` : ''}
           </p>
           {done.unknown.length ? (
             <>
-              <p className="paste-config-line">这几行认不出放哪一栏，请自己填：</p>
+              <p className="paste-config-line">未识别：</p>
               <ul className="paste-config-unknown">
                 {done.unknown.map((l, i) => (
                   <li key={i}>{l}</li>

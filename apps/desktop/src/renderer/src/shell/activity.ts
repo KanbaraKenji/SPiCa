@@ -23,25 +23,25 @@ export function activityText(e: EntryFields): string {
   const d = e.detail?.trim();
   switch (action) {
     case 'file.write':
-      return t ? `写了 ${t}` : '写了一个文件';
+      return t ? `写入 ${t}` : '写入一个文件';
     case 'file.edit':
-      return t ? `改了 ${t}` : '改了一个文件';
+      return t ? `修改 ${t}` : '修改一个文件';
     case 'file.delete':
-      return t ? `删了 ${t}` : '删了一个文件';
+      return t ? `删除 ${t}` : '删除一个文件';
     case 'command':
-      return t ? `运行了 ${t}` : '运行了一条命令';
+      return t ? `运行 ${t}` : '运行一条命令';
     case 'child.spawn':
-      return t ? `开了子任务${q(t)}` : '开了一个子任务';
+      return t ? `创建子任务${q(t)}` : '创建子任务';
     case 'child.report':
       return `${t ? `子任务${q(t)}` : '子任务'}回报${d ? `：${d}` : ''}`;
     case 'decision':
-      return `定了：${d ?? t ?? ''}`.replace(/：$/, '');
+      return `决定：${d ?? t ?? ''}`.replace(/：$/, '');
     case 'stage':
-      return `${t ? `进入阶段${q(t)}` : '换了阶段'}${d ? `：${d}` : ''}`;
+      return `${t ? `进入阶段${q(t)}` : '切换阶段'}${d ? `：${d}` : ''}`;
     case 'note':
       // The mail pipeline logs a received mail as a note: subject + mail id (<source>:<id>).
       if (t && d && /^[\w.-]+:\S+$/.test(d)) return `收到来信${q(t)}`;
-      return `记了：${d ?? t ?? ''}`.replace(/：$/, '');
+      return `记录：${d ?? t ?? ''}`.replace(/：$/, '');
     default:
       return d ?? t ?? '';
   }

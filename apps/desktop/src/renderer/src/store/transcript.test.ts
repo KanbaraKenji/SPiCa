@@ -93,7 +93,7 @@ describe('tools that were turned off', () => {
       content: [{ type: 'tool_result', toolUseId: 'c1', isError: true, content: 'Tool "notes__add_note" is no longer available (it was turned off or removed). Nothing was run.' }],
     });
     const t = fromHistory([note, call, result]);
-    expect(t.items[0]).toEqual({ kind: 'note', id: 'n', text: '这些工具已停用：notes__add_note、读取文件' });
+    expect(t.items[0]).toEqual({ kind: 'note', id: 'n', text: '工具已停用：notes__add_note、读取文件' });
     const r = t.items[1];
     expect(r?.kind === 'response' && r.blocks[0]?.type === 'tool' ? r.blocks[0].state : '').toBe('unavailable');
     // Live: the same from tool.end.
@@ -164,11 +164,11 @@ describe('file cards', () => {
   it('says what was read in one line', () => {
     const at = '2026-11-09T10:00:00+08:00';
     const base = { path: 'D:\\a', name: 'a', sizeBytes: 1, modifiedAt: at, extractedAt: at };
-    expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 30, read: { pages: '1-5' }, truncated: true })).toBe('PDF · 30 页 · 读了第 1-5 页 · 没读完');
-    expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 3, read: { pages: '1-3' } })).toBe('PDF · 3 页 · 全部读了');
-    expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: 'A', rows: 1, cols: 1 }, { name: 'B', rows: 1, cols: 1 }], read: { sheet: 'A, B' } })).toBe('Excel · 2 个表 · 全部读了');
-    expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: '报价', rows: 3, cols: 2 }], read: { sheet: '报价', rows: '1-3' } })).toBe('Excel · 1 个表 · 读了「报价」第 1-3 行');
-    expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 2, read: {}, noTextLayer: true })).toBe('PDF · 2 页 · 扫描件，读不出文字');
+    expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 30, read: { pages: '1-5' }, truncated: true })).toBe('PDF · 30 页 · 已读取第 1-5 页 · 未读完');
+    expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 3, read: { pages: '1-3' } })).toBe('PDF · 3 页 · 已全部读取');
+    expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: 'A', rows: 1, cols: 1 }, { name: 'B', rows: 1, cols: 1 }], read: { sheet: 'A, B' } })).toBe('Excel · 2 个表 · 已全部读取');
+    expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: '报价', rows: 3, cols: 2 }], read: { sheet: '报价', rows: '1-3' } })).toBe('Excel · 1 个表 · 已读取「报价」第 1-3 行');
+    expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 2, read: {}, noTextLayer: true })).toBe('PDF · 2 页 · 扫描件，无法读取文字');
   });
 
   it('keeps file details that arrive as events', () => {
@@ -194,8 +194,8 @@ describe('humanError', () => {
   it('says common failures in plain words', () => {
     expect(humanError('HTTP 401 Unauthorized')).toContain('密钥');
     expect(humanError('429 Too Many Requests')).toContain('限流');
-    expect(humanError('TypeError: fetch failed')).toContain('连不上');
-    expect(humanError('something odd')).toBe('出错了：something odd');
+    expect(humanError('TypeError: fetch failed')).toContain('无法连接');
+    expect(humanError('something odd')).toBe('出错：something odd');
   });
 });
 
@@ -257,6 +257,6 @@ describe('model errors', () => {
 
   it('falls back to its own plain words otherwise', () => {
     const t = applyEvent({ items: [] }, { type: 'error', message: 'HTTP 401 unauthorized', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
-    expect(t.error).toBe('模型密钥不对或已失效，请检查模型设置。');
+    expect(t.error).toBe('模型密钥无效或已失效，请检查模型设置。');
   });
 });

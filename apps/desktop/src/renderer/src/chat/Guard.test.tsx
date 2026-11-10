@@ -18,9 +18,9 @@ const msg = (over: Partial<Message>): Message => ({ id: 'x', seq: 1, sessionId: 
 describe('confirmations the guard asks for', () => {
   it('say why in Chinese and never show the English reason', () => {
     for (const [cause, text] of [
-      ['untrusted_turn', '这一步是看了外来内容后要做的不可逆操作，需要你确认。'],
-      ['outside_link', '要打开的链接只出现在来信或网页里，你没点过。'],
-      ['sensitive_file', '要读的是密钥类文件。'],
+      ['untrusted_turn', '处理外部内容后的不可逆操作，需要确认。'],
+      ['outside_link', '链接来自外部内容，需要确认。'],
+      ['sensitive_file', '将读取密钥类文件，需要确认。'],
     ] as const) {
       render(<ConfirmCard block={{ type: 'confirm', callId: 'c', name: 'web_fetch', input: { url: 'https://example.com/verify' }, reason: 'guard: outside link', cause }} onDecide={vi.fn()} />);
       expect(screen.getByText(text)).toBeTruthy();
@@ -53,14 +53,14 @@ describe('outside content that carried instructions', () => {
   it('shows one quiet line under the tool, from history and live', () => {
     const t = fromHistory([call, result]);
     render(<Conversation session={undefined} transcript={t} actions={{} as ConversationActions} />);
-    expect(screen.getByText('这个网页夹带了指令，已忽略')).toBeTruthy();
+    expect(screen.getByText('网页中含有指令，已忽略')).toBeTruthy();
     cleanup();
     let live: Transcript = { items: [] };
     live = applyEvent(live, ev({ type: 'tool.start', callId: 'w2', name: 'read_file', input: { path: 'a.txt' } }, 1));
     live = applyEvent(live, ev({ type: 'guard.flagged', callId: 'w2', note: { kind: 'file', source: 'read_file', signals: ['run_command'] } }, 2));
     live = applyEvent(live, ev({ type: 'tool.end', callId: 'w2', name: 'read_file', isError: false, preview: '…', durationMs: 5 }, 3));
     render(<Conversation session={undefined} transcript={live} actions={{} as ConversationActions} />);
-    expect(screen.getByText('这个文件里夹带了指令，已忽略')).toBeTruthy();
+    expect(screen.getByText('文件中含有指令，已忽略')).toBeTruthy();
   });
 
   it('nothing is said when nothing was found', () => {

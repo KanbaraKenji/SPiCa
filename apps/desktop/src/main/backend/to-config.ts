@@ -41,6 +41,27 @@ export function toProviderConfig(p: ConfigSource): ProviderConfig {
 }
 
 /**
+ * A model name matched the way the core matches it (for the demo backend): the
+ * catalog id's table, the kind's, then any; exact, then ignoring case, then
+ * without a vendor/ prefix. The real core answers this itself.
+ */
+export function matchWindowIn(prices: PriceTable, kind: string, model: string, catalogId?: string): { contextWindow: number; matched: string; how: 'exact' | 'name' } | null {
+  const tables = [catalogId ? prices[catalogId] : undefined, prices[kind], ...Object.values(prices)];
+  for (const t of tables) {
+    const w = t?.[model]?.contextWindow;
+    if (w) return { contextWindow: w, matched: model, how: 'exact' };
+  }
+  const norm = (s: string) => s.toLowerCase().trim();
+  const bare = (s: string) => norm(s).replace(/^.*\//, '');
+  for (const same of [(a: string, b: string) => norm(a) === norm(b), (a: string, b: string) => bare(a) === bare(b)]) {
+    for (const t of tables) {
+      for (const [id, row] of Object.entries(t ?? {})) if (id !== '*' && row.contextWindow && same(id, model)) return { contextWindow: row.contextWindow, matched: id, how: 'name' };
+    }
+  }
+  return null;
+}
+
+/**
  * The context window a price table knows for a model, the way the core looks it
  * up: the kind's exact entry, then an exact entry under any kind; never a `*` row.
  * For the demo backend; the real core answers this itself.

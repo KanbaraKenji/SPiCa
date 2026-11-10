@@ -64,7 +64,7 @@ describe('Appearance', () => {
 
   it('chooses when the opening animation plays', () => {
     render(<Harness />);
-    expect(screen.getByRole('radio', { name: '每天第一次' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('radio', { name: '每天首次' }).getAttribute('aria-checked')).toBe('true');
     fireEvent.click(screen.getByRole('radio', { name: '从不' }));
     expect(latest.splash).toBe('never');
   });

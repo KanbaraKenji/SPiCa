@@ -45,15 +45,15 @@ export function pluginCallProblem(content: string): string | null {
   const code = /^\[([A-Z_]+)\]/.exec(content)?.[1];
   switch (code) {
     case 'PLUGIN_DISABLED':
-      return '这个插件已经停用了。';
+      return '插件已停用。';
     case 'VIEW_NOT_FOUND':
-      return '这个插件页面已经不在了。';
+      return '插件页面不存在。';
     case 'TOOL_NOT_FOUND':
-      return '插件里没有这个工具。';
+      return '插件中没有该工具。';
     case 'TOOL_NOT_ALLOWED':
-      return '这个页面不能用这个工具（插件的页面清单里没写）。';
+      return '该页面无权使用此工具。';
     case 'UNSUPPORTED':
-      return '这个版本不能运行插件页面。';
+      return '当前版本不支持插件页面。';
     default:
       return null;
   }

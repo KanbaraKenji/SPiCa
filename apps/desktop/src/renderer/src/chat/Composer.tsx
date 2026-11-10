@@ -17,7 +17,8 @@ export interface ComposerTools {
   folder?: { name: string; path: string; onPick(): void };
   approval?: { mode: ApprovalMode; onChange(mode: ApprovalMode): void };
   /** The model this conversation uses; options to switch (a menu only when there is a choice). */
-  model?: { label: string; options: { label: string; current: boolean; onPick(): void }[] };
+  /** Options by connection (`group`); `marks`: 默认 / 强模型. */
+  model?: { label: string; options: { label: string; group?: string; marks?: string; current: boolean; onPick(): void }[] };
   /** Tokens the context takes now and the model's window (only when the window is known). */
   context?: { tokens: number; window: number };
 }
@@ -66,7 +67,7 @@ function ContextRing({ tokens, window }: { tokens: number; window: number }) {
 }
 
 const APPROVAL_TEXT: Record<ApprovalMode, string> = { manual: '每次确认', auto: '自动批准' };
-const APPROVAL_HINT = '自动批准：不可逆的操作直接执行并记下来；看过来信、网页等外来内容之后的操作仍会先问你。';
+const APPROVAL_HINT = '自动批准：不可逆操作直接执行；处理外部内容后的操作仍需确认。';
 
 export function Composer({ running, onSend, onStop, sessionKey, tools }: ComposerProps) {
   const [text, setText] = useState(() => drafts.get(sessionKey) ?? '');
@@ -118,7 +119,8 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
 
   const openMenu = (el: HTMLElement, items: MenuItem[]) => {
     const r = el.getBoundingClientRect();
-    setMenu({ items, x: r.left, y: r.top - 8 - items.length * 34 });
+    const groups = new Set(items.map((i) => i.group).filter(Boolean)).size;
+    setMenu({ items, x: r.left, y: r.top - 8 - items.length * 34 - groups * 24 });
   };
 
   const canSend = text.trim().length > 0;
@@ -134,7 +136,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
   }
   if (t.folder) {
     left.push(
-      <button key="folder" type="button" className="composer-chip" title={`工作文件夹：${t.folder.path}（点一下换一个）`} onClick={t.folder.onPick}>
+      <button key="folder" type="button" className="composer-chip" title={`工作文件夹：${t.folder.path}`} onClick={t.folder.onPick}>
         <Icon name="folder" size={14} />
         <span className="composer-chip-text">{t.folder.name}</span>
       </button>,
@@ -161,7 +163,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
               <span key={p} className="composer-file" title={p}>
                 <Icon name="file" size={14} />
                 <span className="composer-chip-text">{baseName(p)}</span>
-                <button type="button" className="composer-file-remove" aria-label={`去掉 ${baseName(p)}`} onClick={() => setAttached(files.filter((x) => x !== p))}>
+                <button type="button" className="composer-file-remove" aria-label={`移除 ${baseName(p)}`} onClick={() => setAttached(files.filter((x) => x !== p))}>
                   <Icon name="close" size={12} />
                 </button>
               </span>
@@ -173,7 +175,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
           className="composer-input"
           rows={1}
           value={text}
-          placeholder={running ? '补充或改方向，会在下一步生效' : `给 ${APP_NAME} 发消息`}
+          placeholder={running ? '补充说明（下一步生效）' : `给 ${APP_NAME} 发消息`}
           aria-label="消息"
           onChange={(e) => update(e.target.value)}
           onKeyDown={onKeyDown}
@@ -203,10 +205,18 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
               t.model.options.length > 1 ? (
                 <button
                   type="button"
-                  className="composer-chip"
+                  className="composer-chip composer-model"
                   aria-haspopup="menu"
-                  title="换模型（从下一步起用）"
-                  onClick={(e) => openMenu(e.currentTarget, t.model!.options.map((o) => ({ label: o.current ? `${o.label}（在用）` : o.label, onSelect: o.onPick })))}
+                  title="切换模型（下一步生效）"
+                  onClick={(e) =>
+                    openMenu(
+                      e.currentTarget,
+                      t.model!.options.map((o) => {
+                        const hint = [o.current ? '当前' : '', o.marks ?? ''].filter(Boolean).join(' · ');
+                        return { label: o.label, ...(o.group ? { group: o.group } : {}), ...(hint ? { hint } : {}), onSelect: o.onPick };
+                      }),
+                    )
+                  }
                 >
                   <span className="composer-chip-text">{t.model.label}</span>
                   <Icon name="chevronDown" size={12} />

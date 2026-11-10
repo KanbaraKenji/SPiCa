@@ -42,7 +42,7 @@ describe('model settings for the core (connections)', () => {
   });
 
   it('refuses unknown ids and read-only connections in plain words, with a code', () => {
-    expect(() => fromHostDraft({ ...toHostConnection(saved), id: 'nope' }, [saved])).toThrow('找不到这个模型配置。');
+    expect(() => fromHostDraft({ ...toHostConnection(saved), id: 'nope' }, [saved])).toThrow('找不到该模型配置。');
     expect(() => fromHostDraft({ ...toHostConnection(saved) }, [{ ...saved, readOnly: true }])).toThrow('开发配置文件');
     try {
       fromHostDraft({ ...toHostConnection(saved), id: 'nope' }, [saved]);

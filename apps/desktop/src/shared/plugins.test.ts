@@ -8,7 +8,7 @@ describe('plugin money', () => {
   });
 
   it('a fraction of a cent spent is not shown as nothing', () => {
-    expect(spentText(0.0002667)).toBe('不到 $0.01');
+    expect(spentText(0.0002667)).toBe('< $0.01');
     expect(spentText(0)).toBe('$0.00');
     expect(spentText(0.034)).toBe('$0.03');
   });

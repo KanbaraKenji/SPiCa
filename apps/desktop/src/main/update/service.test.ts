@@ -42,12 +42,12 @@ describe('UpdateService', () => {
 
   it('says it is up to date', async () => {
     const { s } = service(sourceWith('0.1.0'));
-    expect(await s.check()).toMatchObject({ status: 'latest', message: '已经是最新版本（0.1.0）。' });
+    expect(await s.check()).toMatchObject({ status: 'latest', message: '已是最新版本（0.1.0）。' });
   });
 
   it('refuses an installer whose checksum does not match', async () => {
     const { s, launchInstaller } = service(sourceWith('0.2.0', { badHash: true }));
-    expect(await s.check()).toMatchObject({ status: 'error', message: '下载的安装包校验不通过，没有安装。' });
+    expect(await s.check()).toMatchObject({ status: 'error', message: '安装包校验失败，未安装。' });
     expect(s.install()).toBe(false);
     expect(launchInstaller).not.toHaveBeenCalled();
   });

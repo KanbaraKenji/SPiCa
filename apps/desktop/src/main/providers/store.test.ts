@@ -37,8 +37,8 @@ describe('ProviderStore', () => {
 
   it('refuses incomplete forms in plain words', () => {
     const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
-    expect(() => store.save({ ...draft, baseUrl: 'api.example.com' })).toThrow('地址要以 http:// 或 https:// 开头');
-    expect(() => store.save({ ...emptyDraft('wso2'), name: 'w', baseUrl: 'https://g/v1', model: 'm', secret: 's' })).toThrow('填取 token 的地址');
+    expect(() => store.save({ ...draft, baseUrl: 'api.example.com' })).toThrow('地址须以 http:// 或 https:// 开头');
+    expect(() => store.save({ ...emptyDraft('wso2'), name: 'w', baseUrl: 'https://g/v1', model: 'm', secret: 's' })).toThrow('请填写取 token 地址');
   });
 
   it('a version 1 file becomes connections: same ids, model and strong model ticked, the default where it was', () => {
@@ -65,7 +65,7 @@ describe('ProviderStore', () => {
     expect(JSON.parse(readFileSync(join(dir, 'providers.json'), 'utf8')).version).toBe(2);
     expect(new ProviderStore(dir, box).list()).toEqual(store.list());
     // A model without a window still has to get one before the one-model form saves it.
-    expect(() => store.save({ ...draft, id: 'p-a', contextWindow: null })).toThrow('必须填这一项');
+    expect(() => store.save({ ...draft, id: 'p-a', contextWindow: null })).toThrow('请填写上下文上限');
   });
 
   it('one connection, several models; unticking the default model moves the pointer within the connection', () => {
@@ -109,7 +109,7 @@ describe('ProviderStore', () => {
 
   it('will not store a secret it cannot encrypt', () => {
     const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), { ...box, available: () => false });
-    expect(() => store.save(draft)).toThrow('没法安全保存密钥');
+    expect(() => store.save(draft)).toThrow('无法加密保存密钥');
   });
 });
 
@@ -117,16 +117,16 @@ describe('fake connection tester', () => {
   const test = createFakeTester({ delayMs: 0 });
   it('passes a complete form and fails a bad key or address', async () => {
     expect(await test(draft, undefined)).toMatchObject({ ok: true });
-    expect(await test({ ...draft, secret: 'bad-key' }, undefined)).toMatchObject({ ok: false, message: '密钥不对或已失效（401）。' });
+    expect(await test({ ...draft, secret: 'bad-key' }, undefined)).toMatchObject({ ok: false, message: '密钥无效或已失效（401）。' });
     expect(await test({ ...draft, baseUrl: 'https://gateway.invalid/v1' }, undefined)).toMatchObject({ ok: false });
-    expect(await test({ ...draft, model: '' }, undefined)).toMatchObject({ ok: false, message: '填要用的模型名' });
+    expect(await test({ ...draft, model: '' }, undefined)).toMatchObject({ ok: false, message: '请填写模型' });
   });
 
 describe('local providers', () => {
   it('save without a key when the catalog says none is needed; others still need one', () => {
     const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
     const local = { ...draft, name: 'Ollama', baseUrl: 'http://localhost:11434/v1', catalogId: 'ollama', secret: undefined };
-    expect(() => store.save(local)).toThrow('填 API Key');
+    expect(() => store.save(local)).toThrow('请填写 API Key');
     expect(store.save(local, { needsKey: false })).toMatchObject({ name: 'Ollama', hasSecret: false, catalogId: 'ollama' });
   });
 });

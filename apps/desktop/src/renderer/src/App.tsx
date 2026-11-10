@@ -11,7 +11,6 @@ import { PluginPage, type PluginTheme } from './shell/PluginFrame';
 import { FONT_UI, pluginThemeVars, type PluginView } from '../../shared/plugin-view';
 import { deriveTokens, schemeOf } from '../../shared/skin';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
-import { APP_NAME } from '../../shared/app-identity';
 import { sidebarBannerHeight, wordmarkProps } from './app-wordmark';
 import { useViewportWidth } from './shell/useViewportWidth';
 import { Sidebar } from './shell/Sidebar';
@@ -344,10 +343,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     theme: pluginTheme,
     changed: pluginsChanged,
     call: (tool: string, args: unknown, confirmed: boolean) => bridge.pluginViews.call(v.plugin, v.id, tool, args, confirmed),
-    confirm: (tool: string) => new Promise<boolean>((resolve) => setPluginAsk({ title: `「${v.pluginTitle}」要执行「${tool}」，这一步做了就撤不回。继续吗？`, resolve })),
+    confirm: (tool: string) => new Promise<boolean>((resolve) => setPluginAsk({ title: `「${v.pluginTitle}」将执行「${tool}」，此操作不可撤销。是否继续？`, resolve })),
     openFile: async (path: string) => {
       const abs = await bridge.pluginViews.file(v.plugin, path);
-      if (!abs) return '只能打开这个插件自己文件夹里的文件。';
+      if (!abs) return '仅能打开插件自身文件夹中的文件。';
       setPreview({ sessionId: null, path: abs });
       setView('chat');
       showRight(!state.activeId);
@@ -373,8 +372,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const isRef = (r: ModelRef | null, providerId: string, model: string) => Boolean(r && r.connectionId === providerId && r.model === model);
   const modelOptions = models.flatMap((p) =>
     p.models.map((m) => {
-      const marks = [isRef(pointers.default, p.id, m.id) ? '默认' : '', isRef(pointers.strong, p.id, m.id) ? '重活' : ''].filter(Boolean).join('·');
-      return { providerId: p.id, model: m.id, label: `${p.name}${p.keyTail ? ` · 尾号 ${p.keyTail}` : ''} · ${m.id}${marks ? `（${marks}）` : ''}` };
+      const marks = [isRef(pointers.default, p.id, m.id) ? '默认' : '', isRef(pointers.strong, p.id, m.id) ? '强模型' : ''].filter(Boolean).join(' · ');
+      return { providerId: p.id, model: m.id, group: `${p.name}${p.keyTail ? ` · 尾号 ${p.keyTail}` : ''}`, label: m.id, marks };
     }),
   );
   const using = session ? { providerId: session.providerId, model: session.model } : draft.providerId && draft.model ? { providerId: draft.providerId, model: draft.model } : null;
@@ -391,7 +390,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             path: draft.cwd || topCwd,
             name: (draft.cwd || topCwd).split(/[\\/]/).filter(Boolean).pop() || '默认文件夹',
             onPick: () =>
-              void bridge.pickFolder('选择这个对话的工作文件夹').then((dir) => {
+              void bridge.pickFolder('选择工作文件夹').then((dir) => {
                 if (dir) agent.setDraft({ cwd: dir });
               }),
           },
@@ -402,9 +401,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     ...(shown
       ? {
           model: {
-            label: shownGone ? `${shown.model}（已不在设置里）` : shown.model,
+            label: shownGone ? `${shown.model}（已移除）` : [models.find((p) => p.id === shown.providerId)?.name, shown.model].filter(Boolean).join(' · '),
             options: modelOptions.map((o) => ({
               label: o.label,
+              group: o.group,
+              marks: o.marks,
               current: o.providerId === shown.providerId && o.model === shown.model,
               onPick: () => (session ? void agent.setModel(session.id, o.providerId, o.model) : agent.setDraft({ providerId: o.providerId, model: o.model })),
             })),
@@ -515,7 +516,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         <div className="titlebar-title">
           {view === 'chat' && parent ? (
             <>
-              <button type="button" className="crumb" onClick={() => openSession(parent.id)} title={`回到 ${parent.title}`}>
+              <button type="button" className="crumb" onClick={() => openSession(parent.id)} title={`返回 ${parent.title}`}>
                 {parent.title}
               </button>
               <Icon name="chevronRight" size={12} className="crumb-sep" />
@@ -574,7 +575,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               <PluginPage key={viewKey(openPluginView)} {...pluginProps(openPluginView)} />
             ) : (
               <div className="plugin-page plugin-missing">
-                <p>这个插件页面已经不在了（插件可能被停用或卸载）。</p>
+                <p>插件页面不可用（插件已停用或已卸载）。</p>
               </div>
             )
           ) : view === 'inbox' ? (
@@ -691,7 +692,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       {deletingProject ? (
         <ConfirmDialog
           title={`删除项目「${deletingProject.name}」？`}
-          detail={`只删 ${APP_NAME} 里的这个项目和它的对话记录；项目文件夹和里面的文件不会动。`}
+          detail={`将删除该项目及其对话记录，不会删除项目文件夹中的文件。`}
           confirmLabel="删除"
           danger
           onCancel={() => setDeletingProject(null)}

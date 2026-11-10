@@ -54,7 +54,7 @@ describe('Composer controls', () => {
     render(<Composer running={false} onSend={onSend} onStop={vi.fn()} sessionKey="att" tools={{ pickFiles: async () => ['D:/资料/报价.xlsx', 'D:/资料/纪要.docx'] }} />);
     fireEvent.click(screen.getByRole('button', { name: '添加附件' }));
     expect(await screen.findByText('报价.xlsx')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '去掉 纪要.docx' }));
+    fireEvent.click(screen.getByRole('button', { name: '移除 纪要.docx' }));
     fireEvent.change(screen.getByRole('textbox', { name: '消息' }), { target: { value: '看看这份报价' } });
     fireEvent.keyDown(screen.getByRole('textbox', { name: '消息' }), { key: 'Enter' });
     expect(onSend).toHaveBeenCalledWith('看看这份报价', ['D:/资料/报价.xlsx']);
@@ -72,15 +72,17 @@ describe('Composer controls', () => {
         sessionKey="ctl"
         tools={{
           approval: { mode: 'manual', onChange: onApproval },
-          model: { label: 'deepseek-chat', options: [{ label: 'DeepSeek · deepseek-chat', current: true, onPick: vi.fn() }, { label: 'DeepSeek · deepseek-reasoner', current: false, onPick: pickB }] },
+          model: { label: 'deepseek-chat', options: [{ label: 'deepseek-chat', group: 'DeepSeek · 尾号 3f9a', marks: '默认', current: true, onPick: vi.fn() }, { label: 'deepseek-reasoner', group: 'DeepSeek · 尾号 3f9a', current: false, onPick: pickB }] },
           context: { tokens: 23_400, window: 128_000 },
         }}
       />,
     );
     expect(screen.getByRole('img', { name: '上下文已用 2.3 万 / 12.8 万（18%）' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /deepseek-chat/ }));
-    expect(screen.getByRole('menuitem', { name: 'DeepSeek · deepseek-chat（在用）' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'DeepSeek · deepseek-reasoner' }));
+    // One heading per connection; the tag says which is in use and which is the default.
+    expect(screen.getAllByText('DeepSeek · 尾号 3f9a')).toHaveLength(1);
+    expect(screen.getByRole('menuitem', { name: /^deepseek-chat/ }).textContent).toBe('deepseek-chat当前 · 默认');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'deepseek-reasoner' }));
     expect(pickB).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /每次确认/ }));
     fireEvent.click(screen.getByRole('menuitem', { name: '自动批准' }));

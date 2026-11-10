@@ -29,8 +29,8 @@ describe('FilePreview', () => {
     render(<FilePreview info={{ kind: 'markdown', name: 'a.md', path: 'D:/a.md', size: 9, text: '# 标题\n\n正文', truncated: false }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByRole('heading', { name: '标题' })).toBeTruthy();
     cleanup();
-    render(<FilePreview info={{ kind: 'missing', name: 'x.txt', path: 'D:/x.txt', size: 0, message: '找不到这个文件，可能已经被移走或删掉了。' }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.getByText(/找不到这个文件/)).toBeTruthy();
+    render(<FilePreview info={{ kind: 'missing', name: 'x.txt', path: 'D:/x.txt', size: 0, message: '找不到文件，可能已被移动或删除。' }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByText(/找不到文件/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: '用系统程序打开' })).toBeNull();
   });
 });

@@ -17,8 +17,8 @@ const SERVER_STATUS: Record<string, string> = {
   running: '运行中',
   starting: '启动中',
   restarting: '重启中',
-  stopped: '没在运行',
-  failed: '出错了',
+  stopped: '已停止',
+  failed: '错误',
 };
 
 export function Switch({ on, label, disabled, onChange }: { on: boolean; label: string; disabled?: boolean; onChange(on: boolean): void }) {
@@ -57,17 +57,17 @@ function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy
   return (
     <div className="plugin-model">
       <p className="plugin-model-line">
-        {off ? '它想用你配好的模型，现在不让它用。' : `会用你配好的模型，花费记在你的额度里，每天最多 ${usd(m.maxUsdPerDay)}。`}
+        {off ? '使用模型 · 已禁止' : `使用模型 · 每日上限 ${usd(m.maxUsdPerDay)}`}
         {typeof used === 'number' && !off ? (
           <span className={used >= m.maxUsdPerDay ? 'plugin-model-spent is-full' : 'plugin-model-spent'}>
-            {used >= m.maxUsdPerDay ? ` 今天花了 ${spentText(used)}，今天的额度用完了。` : ` 今天花了 ${spentText(used)}。`}
+            {used >= m.maxUsdPerDay ? ` · 今日 ${spentText(used)}（已达上限）` : ` · 今日 ${spentText(used)}`}
           </span>
         ) : null}
       </p>
-      <p className="plugin-model-reason">它说：{m.reason}</p>
+      <p className="plugin-model-reason">用途：{m.reason}</p>
       <div className="plugin-model-limit">
         <label className="plugin-model-input">
-          <span>每天最多 $</span>
+          <span>每日上限 $</span>
           <input
             className={problem ? 'input is-invalid' : 'input'}
             type="number"
@@ -75,21 +75,21 @@ function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy
             max={m.declaredMaxUsdPerDay}
             step={0.01}
             value={limit}
-            aria-label={`「${p.displayName}」每天最多花多少美元`}
+            aria-label={`「${p.displayName}」每日上限（美元）`}
             onChange={(e) => setLimit(e.target.value)}
           />
         </label>
         <button type="button" className="btn btn-small" disabled={busy || problem !== null || value === m.maxUsdPerDay} onClick={() => run({ op: 'modelLimit', name: p.name, maxUsdPerDay: value })}>
-          保存上限
+          保存
         </button>
         {off ? null : (
           <button type="button" className="btn btn-small" disabled={busy} onClick={() => run({ op: 'modelLimit', name: p.name, maxUsdPerDay: 0 })}>
-            不让它用模型
+            禁止使用模型
           </button>
         )}
         {m.userMaxUsdPerDay !== undefined ? (
           <button type="button" className="btn btn-small" disabled={busy} onClick={() => run({ op: 'modelLimit', name: p.name, maxUsdPerDay: null })}>
-            恢复成插件写的 {usd(m.declaredMaxUsdPerDay)}
+            恢复默认（{usd(m.declaredMaxUsdPerDay)}）
           </button>
         ) : null}
         {problem ? <span className="field-error">{problem}</span> : null}
@@ -118,10 +118,10 @@ function PluginCard({ p, busy, run, ask }: { p: PluginView; busy: boolean; run(c
       {p.description ? <p className="plugin-desc">{p.description}</p> : null}
       {p.model ? <ModelUse p={p} m={p.model} busy={busy} run={run} /> : null}
       {p.issues.length || failed.length ? (
-        <p className="plugin-problem">{[...p.issues, ...failed.map((s) => s.lastError ?? `「${s.id}」没有启动起来`)].join('；')}</p>
+        <p className="plugin-problem">{[...p.issues, ...failed.map((s) => s.lastError ?? `「${s.id}」启动失败`)].join('；')}</p>
       ) : null}
       <button type="button" className="fold-head plugin-more" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <span className="fold-label">{p.enabled ? `能用的工具 ${p.tools.length} 个` : '已停用，工具不可用'}</span>
+        <span className="fold-label">{p.enabled ? `工具 ${p.tools.length} 个` : '已停用'}</span>
         <Icon name="chevronRight" size={14} className="fold-chevron" />
       </button>
       {open ? (
@@ -135,7 +135,7 @@ function PluginCard({ p, busy, run, ask }: { p: PluginView; busy: boolean; run(c
             <dd>{p.mockSupported ? '支持' : '不支持'}</dd>
             {p.source ? (
               <>
-                <dt>装自</dt>
+                <dt>来源</dt>
                 <dd className="detail-path" title={p.source.location}>
                   {p.source.location}
                 </dd>
@@ -172,7 +172,7 @@ export function Plugins({ api }: { api: PluginsApi }) {
       try {
         const r = await api.run(cmd);
         setState(r.state);
-        setNote(r.message ? { ok: r.ok, text: r.message } : r.ok ? null : { ok: false, text: '没有成功，请再试一次。' });
+        setNote(r.message ? { ok: r.ok, text: r.message } : r.ok ? null : { ok: false, text: '操作失败，请重试。' });
         return r;
       } catch (e) {
         setNote({ ok: false, text: friendlyError(e) });
@@ -215,7 +215,6 @@ export function Plugins({ api }: { api: PluginsApi }) {
         <div className="setting-row">
           <div className="setting-text">
             <span className="setting-title">模拟模式</span>
-            <span className="settings-hint">插件用自带的样例数据回答，不连真实系统</span>
           </div>
           <Switch on={state?.mock ?? false} label="模拟模式" disabled={busy || !state} onChange={(on) => void run({ op: 'mock', on })} />
         </div>
@@ -235,7 +234,7 @@ export function Plugins({ api }: { api: PluginsApi }) {
             value={location}
             spellCheck={false}
             placeholder="插件文件夹、.zip、共享盘路径或网址"
-            aria-label="插件在哪里"
+            aria-label="插件位置"
             onChange={(e) => setLocation(e.target.value)}
           />
           <button type="submit" className="btn btn-primary" disabled={busy || !location.trim()}>
@@ -273,7 +272,7 @@ export function Plugins({ api }: { api: PluginsApi }) {
             检查更新
           </button>
         </div>
-        {state && state.plugins.length === 0 ? <p className="settings-hint">还没有安装插件</p> : null}
+        {state && state.plugins.length === 0 ? <p className="settings-hint">未安装插件</p> : null}
         <div className="plugin-list">
           {state?.plugins.map((p) => (
             <PluginCard key={p.name} p={p} busy={busy} run={(c) => void run(c)} ask={(kind, pl) => setConfirm({ kind, p: pl })} />
@@ -281,7 +280,7 @@ export function Plugins({ api }: { api: PluginsApi }) {
         </div>
         {state ? (
           <p className="plugin-root">
-            <span className="settings-hint">插件放在</span>
+            <span className="settings-hint">插件目录</span>
             <span className="detail-path" title={state.root}>
               {state.root}
             </span>
@@ -294,8 +293,8 @@ export function Plugins({ api }: { api: PluginsApi }) {
 
       {confirm ? (
         <ConfirmDialog
-          title={confirm.kind === 'uninstall' ? `删除插件「${confirm.p.displayName}」？` : `把「${confirm.p.displayName}」退回 ${confirm.p.previousVersion}？`}
-          confirmLabel={confirm.kind === 'uninstall' ? '删除' : '退回'}
+          title={confirm.kind === 'uninstall' ? `删除插件「${confirm.p.displayName}」？` : `将「${confirm.p.displayName}」回退到 ${confirm.p.previousVersion}？`}
+          confirmLabel={confirm.kind === 'uninstall' ? '删除' : '回退'}
           danger={confirm.kind === 'uninstall'}
           onConfirm={() => {
             const c = confirm;

@@ -101,7 +101,7 @@ export function usePreview(load: (sessionId: string | null, path: string) => Pro
     let alive = true;
     load(want.sessionId, want.path)
       .then((info) => alive && setState({ key, info }))
-      .catch(() => alive && setState({ key, info: { kind: 'missing', name: want.path.split(/[\\/]/).pop() ?? want.path, path: want.path, size: 0, message: '没能读出这个文件。' } }));
+      .catch(() => alive && setState({ key, info: { kind: 'missing', name: want.path.split(/[\\/]/).pop() ?? want.path, path: want.path, size: 0, message: '无法读取文件。' } }));
     return () => {
       alive = false;
     };

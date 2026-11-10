@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { DEFAULT_SETTINGS } from '../../../shared/settings';
 import { General, rangeStart, type GeneralProps } from './General';
 import { dropAllDrafts } from './drafts';
@@ -54,9 +54,9 @@ describe('导出使用日志', () => {
     expect(exportUsageLog).toHaveBeenCalledWith({});
     await vi.waitFor(() => expect(screen.getByRole('button', { name: '导出…' }).hasAttribute('disabled')).toBe(false));
     expect(screen.queryByText(/已导出/)).toBeNull();
-    exportUsageLog.mockResolvedValueOnce({ error: '写不进这个位置（可能被占用或没有权限），换一个文件夹试试。' });
+    exportUsageLog.mockResolvedValueOnce({ error: '无法写入该位置，请选择其他文件夹。' });
     fireEvent.click(screen.getByRole('button', { name: '导出…' }));
-    expect(await screen.findByText(/写不进这个位置/)).toBeTruthy();
+    expect(await screen.findByText(/无法写入该位置/)).toBeTruthy();
   });
 
   it('starts ranges at local midnight', () => {
@@ -71,10 +71,10 @@ describe('导出使用日志', () => {
 describe('turning mail sorting on', () => {
   it('asks first, naming the model the mail goes to; agreeing records when', () => {
     const p = setup({ mailModel: 'DeepSeek · deepseek-chat' });
-    fireEvent.click(screen.getByRole('switch', { name: '把来信分到项目' }));
+    fireEvent.click(screen.getByRole('switch', { name: '邮件分类' }));
     expect(p.onChange).not.toHaveBeenCalled();
-    expect(screen.getByText(/会发给「DeepSeek · deepseek-chat」分拣/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '打开' }));
+    expect(screen.getByText(/将发送给「DeepSeek · deepseek-chat」进行分类/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '开启' }));
     const patch = (p.onChange as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as { mail: { enabled: boolean; consentedAt: string } };
     expect(patch.mail.enabled).toBe(true);
     expect(Number.isNaN(Date.parse(patch.mail.consentedAt))).toBe(false);
@@ -82,7 +82,7 @@ describe('turning mail sorting on', () => {
 
   it('cancelling leaves it off', () => {
     const p = setup();
-    fireEvent.click(screen.getByRole('switch', { name: '把来信分到项目' }));
+    fireEvent.click(screen.getByRole('switch', { name: '邮件分类' }));
     fireEvent.click(screen.getByRole('button', { name: '取消' }));
     expect(p.onChange).not.toHaveBeenCalled();
   });
@@ -95,7 +95,9 @@ describe('填一半离开', () => {
     cleanup();
     const p = setup();
     expect((screen.getByLabelText(/^代理地址/) as HTMLInputElement).value).toBe('http://proxy.example.com:8080');
-    fireEvent.click(screen.getByRole('button', { name: '保存代理' }));
+    // The network group's 保存 (the mail rules above have their own).
+    const net = screen.getByRole('heading', { name: '网络' }).closest('.settings-group') as HTMLElement;
+    fireEvent.click(within(net).getByRole('button', { name: '保存' }));
     expect(p.onChange).toHaveBeenCalled();
     cleanup();
     setup();

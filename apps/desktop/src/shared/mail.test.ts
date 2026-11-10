@@ -18,12 +18,12 @@ const names = (id: string) => (id === 'p1' ? '样机评审' : undefined);
 
 describe('verdictOf', () => {
   it('says where the mail went and whether the user handled it', () => {
-    expect(verdictOf(base, names)).toEqual({ tone: 'project', text: '归到 样机评审', handled: '' });
+    expect(verdictOf(base, names)).toEqual({ tone: 'project', text: '归入 样机评审', handled: '' });
     expect(verdictOf({ ...base, feedback: { action: 'accept', at: base.updatedAt } }, names).handled).toBe('已采纳');
-    expect(verdictOf({ ...base, status: 'ignored', feedback: { action: 'ignore', at: base.updatedAt } }, names)).toEqual({ tone: 'ignore', text: '不用管', handled: '已忽略' });
-    expect(verdictOf({ ...base, status: 'new', triage: undefined }, names).text).toBe('正在分类');
+    expect(verdictOf({ ...base, status: 'ignored', feedback: { action: 'ignore', at: base.updatedAt } }, names)).toEqual({ tone: 'ignore', text: '无需处理', handled: '已忽略' });
+    expect(verdictOf({ ...base, status: 'new', triage: undefined }, names).text).toBe('分类中');
     expect(verdictOf({ ...base, triage: { ...base.triage!, decision: 'new', suggestion: '团建' } }, names).text).toBe('新事务：团建');
-    expect(verdictOf({ ...base, triage: { ...base.triage!, projectId: 'gone' } }, names).text).toBe('归到 已删除的项目');
+    expect(verdictOf({ ...base, triage: { ...base.triage!, projectId: 'gone' } }, names).text).toBe('归入 已删除的项目');
   });
 });
 
@@ -31,15 +31,15 @@ describe('reasonOf and surenessOf', () => {
   it('writes the core’s own reasons in words', () => {
     expect(reasonOf(base)).toBe('讲的是报价');
     expect(reasonOf({ ...base, triage: { ...base.triage!, by: 'rule', decision: 'ignore', reason: 'matches the ignore rule x' } })).toBe('按规则忽略');
-    expect(reasonOf({ ...base, triage: { ...base.triage!, by: 'sender_memory', decision: 'ignore', reason: 'you ignored…' } })).toBe('上次你忽略过');
-    expect(reasonOf({ ...base, triage: { ...base.triage!, by: 'sender_memory', reason: 'same sender…' } })).toBe('这个发件人的信你以前放进过这个项目');
+    expect(reasonOf({ ...base, triage: { ...base.triage!, by: 'sender_memory', decision: 'ignore', reason: 'you ignored…' } })).toBe('曾被忽略');
+    expect(reasonOf({ ...base, triage: { ...base.triage!, by: 'sender_memory', reason: 'same sender…' } })).toBe('该发件人的邮件曾归入此项目');
     expect(reasonOf({ ...base, feedback: { action: 'reassign', projectId: 'p1', at: base.updatedAt } })).toBe('');
   });
 
   it('shows how sure only for the model’s open decisions', () => {
-    expect(surenessOf(base)).toBe('把握大');
-    expect(surenessOf({ ...base, triage: { ...base.triage!, confidence: 0.6 } })).toBe('把握一般');
-    expect(surenessOf({ ...base, triage: { ...base.triage!, confidence: 0.2 } })).toBe('把握小');
+    expect(surenessOf(base)).toBe('置信度高');
+    expect(surenessOf({ ...base, triage: { ...base.triage!, confidence: 0.6 } })).toBe('置信度中');
+    expect(surenessOf({ ...base, triage: { ...base.triage!, confidence: 0.2 } })).toBe('置信度低');
     expect(surenessOf({ ...base, triage: { ...base.triage!, by: 'rule' } })).toBe('');
     expect(surenessOf({ ...base, feedback: { action: 'accept', at: base.updatedAt } })).toBe('');
   });

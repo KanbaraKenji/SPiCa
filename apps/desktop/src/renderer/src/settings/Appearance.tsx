@@ -7,7 +7,7 @@ import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
 
 const SPLASH_OPTIONS: { mode: SplashMode; label: string }[] = [
-  { mode: 'daily', label: '每天第一次' },
+  { mode: 'daily', label: '每天首次' },
   { mode: 'always', label: '每次' },
   { mode: 'never', label: '从不' },
 ];
@@ -212,7 +212,6 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
           <button type="button" className="btn" onClick={() => onChange({ zoom: DEFAULT_ZOOM })} disabled={settings.zoom === DEFAULT_ZOOM}>
             恢复 100%
           </button>
-          <span className="settings-hint">Ctrl + 滚轮 也能缩放，Ctrl + 0 恢复</span>
         </div>
       </div>
 
@@ -232,7 +231,6 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
             </button>
           ))}
         </div>
-        <p className="settings-hint splash-hint">播放时点一下或按任意键可以跳过</p>
       </div>
 
       {deleting ? <ConfirmDialog title={`删除皮肤「${deleting.name}」？`} confirmLabel="删除" danger onConfirm={() => remove(deleting)} onCancel={() => setDeleting(null)} /> : null}

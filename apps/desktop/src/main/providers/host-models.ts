@@ -33,11 +33,11 @@ export function toHostModelList(items: readonly ProviderView[], def: ModelRef | 
 /** A draft from the core in the settings page's shape; throws (in plain words) when it cannot be used. */
 export function fromHostDraft(d: HostConnectionDraft, existing: readonly ProviderView[]): ProviderDraft {
   const kind = SHELL_KIND[d.kind];
-  if (!kind) throw Object.assign(new Error(`不认识的模型类型「${String(d.kind)}」。`), { code: 'invalid_kind' });
+  if (!kind) throw Object.assign(new Error(`不支持的模型类型「${String(d.kind)}」。`), { code: 'invalid_kind' });
   if (d.id) {
     const cur = existing.find((p) => p.id === d.id);
-    if (!cur) throw Object.assign(new Error('找不到这个模型配置。'), { code: 'not_found' });
-    if (cur.readOnly) throw Object.assign(new Error('这一项来自开发配置文件，在这里改不了。'), { code: 'read_only' });
+    if (!cur) throw Object.assign(new Error('找不到该模型配置。'), { code: 'not_found' });
+    if (cur.readOnly) throw Object.assign(new Error('此项来自开发配置文件，无法修改。'), { code: 'read_only' });
   }
   const models = (d.models ?? []).map((m) => ({ id: String(m.id ?? '').trim(), contextWindow: typeof m.contextWindow === 'number' && m.contextWindow > 0 ? m.contextWindow : null, contextFrom: m.contextFrom ?? 'user' }));
   return {

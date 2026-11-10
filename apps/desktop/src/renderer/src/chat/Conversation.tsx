@@ -34,7 +34,7 @@ function MailNote({ ids, flagged = [], actions }: { ids: string[]; flagged?: str
         <span>收到 {ids.length} 封来信</span>
         {actions.openInbox ? (
           <button type="button" className="text-btn" onClick={actions.openInbox}>
-            去收件箱
+            打开收件箱
           </button>
         ) : null}
       </p>
@@ -43,7 +43,7 @@ function MailNote({ ids, flagged = [], actions }: { ids: string[]; flagged?: str
           {mails.map((m) => (
             <li key={m.id}>
               <span className="turn-mail-from">{m.fromName || m.fromAddress || '—'}</span>
-              <span className="turn-mail-subject">{m.subject || '（没有主题）'}</span>
+              <span className="turn-mail-subject">{m.subject || '（无主题）'}</span>
               {flagged.includes(m.id) ? <span className="guard-note">{GUARD_FLAG_TEXT.mail}</span> : null}
             </li>
           ))}
@@ -114,9 +114,9 @@ function EmptyState({ session, needsModel, onSetupModel }: { session: SessionInf
     return (
       <div className="empty-chat">
         <SpicaMark size={56} />
-        <p className="empty-chat-title">还没有配置模型</p>
+        <p className="empty-chat-title">未配置模型</p>
         <button type="button" className="btn btn-primary" onClick={onSetupModel}>
-          去设置模型
+          设置模型
         </button>
       </div>
     );
@@ -244,16 +244,16 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
             {waiting.map((w) => (
               <div key={w.id} className="resume-row waiting-row" role="status">
                 <span>
-                  「{w.title}」{w.status === 'awaiting_confirm' ? '在等你确认' : '在等你回答'}
+                  「{w.title}」{w.status === 'awaiting_confirm' ? '等待确认' : '等待回答'}
                 </span>
                 <button type="button" className="btn" onClick={() => actions.openSession(w.id)}>
-                  去处理
+                  处理
                 </button>
               </div>
             ))}
             {session?.status === 'interrupted' && !running ? (
               <div className="resume-row">
-                <span>上次没做完就中断了</span>
+                <span>上次运行已中断</span>
                 <button type="button" className="btn" onClick={actions.resume}>
                   继续
                 </button>
@@ -287,7 +287,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
         </div>
       ) : null}
       <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
-      {demo ? <p className="composer-note">现在的回答是演示数据</p> : null}
+      {demo ? <p className="composer-note">当前为演示数据</p> : null}
     </div>
   );
 }

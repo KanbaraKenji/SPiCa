@@ -45,14 +45,14 @@ function MailCard({ item, props, onMoveMenu }: { item: MailItem; props: InboxVie
   const others = props.projects.filter((p) => p.id !== t?.projectId);
   const manager = item.routedTo ?? (t?.projectId ? props.projects.find((p) => p.id === t.projectId)?.managerSessionId : undefined);
   return (
-    <article className={open ? 'mail-card is-open' : 'mail-card'} aria-label={item.subject || '没有主题'}>
+    <article className={open ? 'mail-card is-open' : 'mail-card'} aria-label={item.subject || '无主题'}>
       <div className="mail-top">
         <span className="mail-from" title={item.fromAddress ?? ''}>
           {item.fromName || item.fromAddress || '—'}
         </span>
         <span className="mail-time">{mailTime(item.receivedAt ?? item.createdAt, props.now)}</span>
       </div>
-      <p className="mail-subject">{item.subject || '（没有主题）'}</p>
+      <p className="mail-subject">{item.subject || '（无主题）'}</p>
       {item.preview ? <p className="mail-preview">{item.preview}</p> : null}
       <div className="mail-verdict">
         <span className={`mail-tag is-${verdict.tone}`}>
@@ -73,7 +73,7 @@ function MailCard({ item, props, onMoveMenu }: { item: MailItem; props: InboxVie
           ) : null}
           {open && t?.decision === 'new' && props.onNewProject ? (
             <button type="button" className="btn btn-small" onClick={() => props.onNewProject?.(item)}>
-              建成项目
+              新建项目
             </button>
           ) : null}
           {open && t?.decision !== 'new' ? (
@@ -96,13 +96,13 @@ function MailCard({ item, props, onMoveMenu }: { item: MailItem; props: InboxVie
                 onMoveMenu(item, r.left, r.bottom + 4);
               }}
             >
-              改归属
+              更改项目
               <Icon name="chevronDown" size={12} />
             </button>
           ) : null}
           {manager && item.status === 'routed' ? (
             <button type="button" className="btn btn-small btn-plain" onClick={() => props.onOpenSession(manager)}>
-              去项目看
+              打开项目
               <Icon name="arrowRight" size={12} />
             </button>
           ) : null}
@@ -122,7 +122,7 @@ export function InboxView(props: InboxViewProps) {
 
   const status = !prefs.enabled
     ? null
-    : [`每 ${prefs.intervalMinutes < 60 ? `${prefs.intervalMinutes} 分钟` : `${prefs.intervalMinutes / 60} 小时`}查一次`, mail.lastPolledAt ? `上次 ${mailTime(mail.lastPolledAt, props.now)}` : '']
+    : [`每 ${prefs.intervalMinutes < 60 ? `${prefs.intervalMinutes} 分钟` : `${prefs.intervalMinutes / 60} 小时`}检查`, mail.lastPolledAt ? `上次 ${mailTime(mail.lastPolledAt, props.now)}` : '']
         .filter(Boolean)
         .join(' · ');
 
@@ -145,7 +145,7 @@ export function InboxView(props: InboxViewProps) {
               <span className="settings-hint">
                 邮件分类已关闭
                 <button type="button" className="text-btn" onClick={props.onOpenSettings}>
-                  去打开
+                  开启
                 </button>
               </span>
             )}
@@ -166,16 +166,14 @@ export function InboxView(props: InboxViewProps) {
         ) : null}
 
         {!mail.supported ? (
-          <p className="inbox-empty">这个版本还不能收邮件。</p>
+          <p className="inbox-empty">当前版本不支持邮件。</p>
         ) : !mail.loaded ? null : sorted.length === 0 ? (
           <div className="inbox-empty">
-            <p className="inbox-empty-title">还没有来信</p>
-            <p className="settings-hint">来信从邮件插件来：在 设置 › 插件 装好并打开（比如 Outlook），之后会按设好的间隔查收，分好的信出现在这里。</p>
+            <p className="inbox-empty-title">没有邮件</p>
           </div>
         ) : shown.length === 0 ? (
           <div className="inbox-empty">
-            <p className="inbox-empty-title">都确认过了</p>
-            <p className="settings-hint">处理过的信在「全部」里。</p>
+            <p className="inbox-empty-title">全部已处理</p>
           </div>
         ) : (
           <div className="mail-list">

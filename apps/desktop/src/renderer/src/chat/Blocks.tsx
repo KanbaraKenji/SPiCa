@@ -63,11 +63,11 @@ function ToolRow({ block }: { block: ToolBlock }) {
   const meta = running ? (
     <span className="spinner" aria-label="进行中" />
   ) : block.state === 'error' ? (
-    <span className="text-danger">没有成功</span>
+    <span className="text-danger">失败</span>
   ) : block.state === 'unavailable' ? (
     <span>已停用，未执行</span>
   ) : block.state === 'timeout' ? (
-    <span>还在做，先不等了</span>
+    <span>未完成，已停止等待</span>
   ) : block.durationMs !== undefined ? (
     block.autoApproved ? `自动批准 · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs)
   ) : block.autoApproved ? (
@@ -113,7 +113,7 @@ export function FileCards({ files, onOpen }: { files: FileRef[]; onOpen(path: st
           <span className="file-card-text">
             <span className="file-card-name">{f.card?.name ?? fileName(f.path)}</span>
             <span className="file-card-sub">
-              {f.card ? fileCardLine(f.card) : `${f.tool === 'read_file' ? '读过' : f.tool === 'write_file' ? '写过' : '改过'}${fileFolder(f.path) ? ` · ${fileFolder(f.path)}` : ''}`}
+              {f.card ? fileCardLine(f.card) : `${f.tool === 'read_file' ? '已读取' : f.tool === 'write_file' ? '已写入' : '已修改'}${fileFolder(f.path) ? ` · ${fileFolder(f.path)}` : ''}`}
             </span>
           </span>
         </button>
@@ -161,9 +161,9 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
             <input
               className="input"
               value={draft}
-              placeholder={block.options.length ? '或者直接写你的回答' : '写你的回答'}
+              placeholder={block.options.length ? '或输入回答' : '输入回答'}
               onChange={(e) => setDraft(e.target.value)}
-              aria-label="你的回答"
+              aria-label="回答"
             />
             <button type="submit" className="btn btn-primary" disabled={!draft.trim()}>
               回答
@@ -221,15 +221,15 @@ export function SuggestCard({ block, onPick }: { block: Extract<Block, { type: '
 }
 
 const NOTE_HEAD: Record<ChildNote['kind'], string> = {
-  report: '做完了，回报',
-  relay: '你在那边说',
-  decision: '那边定了',
+  report: '已完成',
+  relay: '你的回复',
+  decision: '已决定',
 };
 
 /** A sub-agent's report, something the user said in a sub-session, or a decision made there. */
 export function ChildNoteCard({ note, onOpen }: { note: ChildNote; onOpen(id: string): void }) {
   const from = note.fromTitle ?? '子任务';
-  const head = note.kind === 'decision' && note.by === 'user' ? '你在那边定了' : NOTE_HEAD[note.kind];
+  const head = note.kind === 'decision' && note.by === 'user' ? '你已决定' : NOTE_HEAD[note.kind];
   return (
     <section className={`card note-card note-${note.kind}`} aria-label={`${from}：${head}`}>
       <header className="note-head">

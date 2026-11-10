@@ -48,7 +48,7 @@ export function NewProjectDialog({ onPickFolder, onCreate, onClose, initialName 
 
   const submit = async () => {
     if (!name.trim()) {
-      setError('起个项目名');
+      setError('请填写项目名称');
       nameRef.current?.focus();
       return;
     }
@@ -76,20 +76,20 @@ export function NewProjectDialog({ onPickFolder, onCreate, onClose, initialName 
         </p>
         <label className="form-field">
           <span className="field-label">名称</span>
-          <input ref={nameRef} className="input" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="比如：样机评审" />
+          <input ref={nameRef} className="input" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="样机评审" />
         </label>
         <label className="form-field">
           <span className="field-label">文件夹</span>
           <span className="form-inline">
-            <input className="input" value={folder} spellCheck={false} onChange={(e) => setFolder(e.target.value)} placeholder={`留空就在「文档\\${APP_NAME}」里新建一个`} />
+            <input className="input" value={folder} spellCheck={false} onChange={(e) => setFolder(e.target.value)} placeholder={`默认：文档\\${APP_NAME}`} />
             <button type="button" className="btn" onClick={() => void pick()}>
               选择…
             </button>
           </span>
         </label>
         <label className="form-field">
-          <span className="field-label">第一件事（可不填）</span>
-          <textarea className="input textarea" rows={3} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="交给项目经理的第一件事" />
+          <span className="field-label">首个任务（可选）</span>
+          <textarea className="input textarea" rows={3} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="首个任务" />
         </label>
         {error ? (
           <p className="field-error" role="alert">

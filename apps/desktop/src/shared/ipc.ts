@@ -39,6 +39,7 @@ export const DesktopChannel = {
   KnownContextWindow: 'spica:providers:known-window',
   ModelCatalog: 'spica:providers:catalog',
   ListProviderModels: 'spica:providers:list-models',
+  MatchContextWindow: 'spica:providers:match-window',
   /** invoke: 'state' | 'open' -> WorkflowsState */
   Workflows: 'spica:workflows',
   /** invoke: title -> string[] (Windows' file picker, several files; empty when cancelled) */

@@ -44,6 +44,13 @@ export interface ModelCatalogView {
   providers: CatalogProviderView[];
 }
 
+/** A model name matched to the catalog: its context window, the catalog's name for it, exact or by name. */
+export interface WindowMatch {
+  contextWindow: number;
+  matched: string;
+  how: 'exact' | 'name';
+}
+
 export type ListModelsView =
   | { ok: true; models: { id: string; label?: string; contextWindow?: number; maxOutput?: number; inCatalog: boolean; chat: boolean }[] }
   | { ok: false; code: string; hint?: string; httpStatus?: number; message: string };

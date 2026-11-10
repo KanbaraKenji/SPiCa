@@ -60,7 +60,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
               {/* A project's sub-task belongs to its manager, who is the project: say it once, under 项目. */}
               {parent && !(project && project.managerSessionId === parent.id) ? (
                 <>
-                  <dt>属于</dt>
+                  <dt>所属</dt>
                   <dd>
                     <button type="button" className="link-btn" onClick={() => onOpenSession(parent.id)}>
                       {parent.title}

@@ -4,8 +4,8 @@ import { AgentStore, friendlyError } from './agent';
 
 describe('friendlyError', () => {
   it('strips the IPC prefix and translates backend English', () => {
-    expect(friendlyError(new Error("Error invoking remote method 'spica:agent': Error: unknown provider: "))).toBe('还没有配置模型，先到 设置 › 模型 里添加一个。');
-    expect(friendlyError(new Error("Error invoking remote method 'x': Error: 地址要以 http:// 或 https:// 开头"))).toBe('地址要以 http:// 或 https:// 开头');
+    expect(friendlyError(new Error("Error invoking remote method 'spica:agent': Error: unknown provider: "))).toBe('未配置模型，请在 设置 › 模型 中添加。');
+    expect(friendlyError(new Error("Error invoking remote method 'x': Error: 地址须以 http:// 或 https:// 开头"))).toBe('地址须以 http:// 或 https:// 开头');
   });
 });
 
@@ -51,7 +51,7 @@ describe('AgentStore', () => {
     const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
     await store.init();
     await vi.waitFor(() => expect(store.state.get().projects.length).toBe(2));
-    expect(await store.renameProject('p-budget', '  ')).toBe('项目要有个名字。');
+    expect(await store.renameProject('p-budget', '  ')).toBe('请填写项目名称。');
     expect(await store.renameProject('p-budget', '2027 年度预算')).toBeNull();
     expect(store.state.get().sessions.find((x) => x.id === 's-pm-2')?.title).toBe('2027 年度预算');
     await store.open('s-w-4');

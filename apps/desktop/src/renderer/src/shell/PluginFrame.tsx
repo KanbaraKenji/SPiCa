@@ -55,7 +55,7 @@ export function PluginFrame({ view, theme, changed, call, confirm, openFile, not
           let r = await l.call(tool, args.args ?? {}, false);
           if (r.isError && r.content.startsWith(CONFIRM)) {
             if (!(await l.confirm(tool))) {
-              reply({ content: '用户没有同意，这一步没有执行。', isError: true, declined: true });
+              reply({ content: '用户已拒绝，未执行。', isError: true, declined: true });
               return;
             }
             r = await l.call(tool, args.args ?? {}, true);
@@ -70,7 +70,7 @@ export function PluginFrame({ view, theme, changed, call, confirm, openFile, not
           l.notify(String(args.text ?? '').slice(0, 300), args.kind === 'error' ? 'error' : 'info');
           reply(null);
         } else {
-          fail(`不认识的调用：${c}`);
+          fail(`不支持的调用：${c}`);
         }
       } catch (err) {
         fail(err instanceof Error ? err.message : String(err));
@@ -124,7 +124,7 @@ export function PluginPage(props: PluginFrameProps & { exists(plugin: string, pa
     return (
       <div className="plugin-page plugin-missing">
         <p>「{view.pluginTitle}」的页面打不开：找不到 {view.entry}。</p>
-        <p className="settings-hint">插件可能已经停用、正在更新，或者安装不完整。可以到 设置 › 插件 看看它的状态。</p>
+        <p className="settings-hint">插件不可用，请在 设置 › 插件 中查看状态。</p>
       </div>
     );
   }

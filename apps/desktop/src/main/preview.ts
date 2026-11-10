@@ -71,14 +71,14 @@ export async function readPreview(path: string, files: PreviewFiles): Promise<Pr
   let size: number;
   try {
     const st = await stat(path);
-    if (!st.isFile()) return { kind: 'unsupported', name, path, size: 0, message: '这是一个文件夹，不是文件。' };
+    if (!st.isFile()) return { kind: 'unsupported', name, path, size: 0, message: '这是文件夹，不是文件。' };
     size = st.size;
   } catch {
-    return { kind: 'missing', name, path, size: 0, message: '找不到这个文件，可能已经被移走或删掉了。' };
+    return { kind: 'missing', name, path, size: 0, message: '找不到文件，可能已被移动或删除。' };
   }
   const kind = kindOf(path);
   if (kind === 'pdf' || kind === 'image') return { kind, name, path, size, url: files.urlFor(path) };
-  if (kind === 'unsupported') return { kind, name, path, size, message: '这种文件还不能在这里预览。' };
+  if (kind === 'unsupported') return { kind, name, path, size, message: '不支持预览此类文件。' };
   const handle = await open(path, 'r');
   try {
     const length = Math.min(size, TEXT_LIMIT);

@@ -19,15 +19,15 @@ export type ProjectName = (projectId: string) => string | undefined;
 export function verdictOf(item: MailItem, projectName: ProjectName): MailVerdict {
   const t = item.triage;
   const fb = item.feedback;
-  if (fb?.action === 'ignore') return { tone: 'ignore', text: '不用管', handled: '已忽略' };
-  if (item.status === 'new' || !t) return { tone: 'pending', text: '正在分类', handled: '' };
-  const handled = fb?.action === 'accept' ? '已采纳' : fb?.action === 'reassign' ? '你改的' : '';
+  if (fb?.action === 'ignore') return { tone: 'ignore', text: '无需处理', handled: '已忽略' };
+  if (item.status === 'new' || !t) return { tone: 'pending', text: '分类中', handled: '' };
+  const handled = fb?.action === 'accept' ? '已采纳' : fb?.action === 'reassign' ? '已更改' : '';
   if (t.decision === 'project') {
     const name = (t.projectId && projectName(t.projectId)) || '已删除的项目';
-    return { tone: 'project', text: `归到 ${name}`, handled };
+    return { tone: 'project', text: `归入 ${name}`, handled };
   }
   if (t.decision === 'new') return { tone: 'new', text: t.suggestion ? `新事务：${t.suggestion}` : '新事务', handled };
-  return { tone: 'ignore', text: '不用管', handled };
+  return { tone: 'ignore', text: '无需处理', handled };
 }
 
 /** Why it was sorted this way, in words; empty when there is nothing to add. */
@@ -36,7 +36,7 @@ export function reasonOf(item: MailItem): string {
   if (!t || item.status === 'new') return '';
   if (item.feedback?.action === 'reassign') return '';
   if (t.by === 'rule') return '按规则忽略';
-  if (t.by === 'sender_memory') return t.decision === 'ignore' ? '上次你忽略过' : '这个发件人的信你以前放进过这个项目';
+  if (t.by === 'sender_memory') return t.decision === 'ignore' ? '曾被忽略' : '该发件人的邮件曾归入此项目';
   return t.reason.trim();
 }
 
@@ -44,9 +44,9 @@ export function reasonOf(item: MailItem): string {
 export function surenessOf(item: MailItem): string {
   const t = item.triage;
   if (!t || item.status === 'new' || t.by !== 'model' || item.feedback) return '';
-  if (t.confidence >= 0.8) return '把握大';
-  if (t.confidence >= 0.5) return '把握一般';
-  return '把握小';
+  if (t.confidence >= 0.8) return '置信度高';
+  if (t.confidence >= 0.5) return '置信度中';
+  return '置信度低';
 }
 
 /** Sorted and not yet handled by the user. */

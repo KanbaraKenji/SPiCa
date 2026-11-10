@@ -34,15 +34,15 @@ const rows = (c: SettingsChangeMeta) => Object.fromEntries(settingsChangeRows(c)
 
 describe('settings-change card (connections)', () => {
   it('a new connection lists everything: each model with its window, name-matched ones said so; the secret only as 新填', () => {
-    expect(settingsChangeTitle(added)).toBe('连接到 Spica 的脚本新增了服务商连接「测试网关」');
+    expect(settingsChangeTitle(added)).toBe('本机脚本添加了服务商「测试网关」');
     expect(rows(added)).toMatchObject({
-      类型: 'WSO2 网关',
+      类型: '公司网关（WSO2）',
       网关地址: 'https://gateway.example.invalid/llm/v1',
-      'Consumer Key': '末 4 位 1234',
+      'Consumer Key': '尾号 1234',
       'claude-sonnet-5-5': '上下文上限 1,000,000 token',
-      'team/claude-opus-5-5': '上下文上限 1,000,000 token（按名字对出来的）',
-      'Consumer Secret': '新填（已加密保存）',
-      新对话默认用: '「测试网关 · claude-sonnet-5-5」',
+      'team/claude-opus-5-5': '上下文上限 1,000,000 token（按名称匹配）',
+      'Consumer Secret': '已更新',
+      默认模型: '「测试网关 · claude-sonnet-5-5」',
     });
     expect(JSON.stringify(rows(added))).not.toContain('secret-');
   });
@@ -59,26 +59,26 @@ describe('settings-change card (connections)', () => {
       makeDefault: undefined,
       defaultMoved: { from: { connectionId: 'p-1', model: 'team/claude-opus-5-5' }, to: { connectionId: 'p-1', model: 'claude-sonnet-5-5' } },
     } as SettingsChangeMeta;
-    expect(settingsChangeTitle(changed)).toBe('连接到 Spica 的脚本改了服务商连接「测试网关」');
+    expect(settingsChangeTitle(changed)).toBe('本机脚本修改了服务商「测试网关」');
     expect(rows(changed)).toMatchObject({
-      去了模型: 'team/claude-opus-5-5',
-      默认模型: '从 「测试网关 · team/claude-opus-5-5」 挪到了 「测试网关 · claude-sonnet-5-5」',
+      移除模型: 'team/claude-opus-5-5',
+      默认模型: '「测试网关 · team/claude-opus-5-5」 → 「测试网关 · claude-sonnet-5-5」',
     });
   });
 
   it('pointing the default or the strong model elsewhere', () => {
     const def: SettingsChangeMeta = { action: 'set_default_model', id: 'p-2', name: 'DeepSeek 2', kind: 'openai-compatible', model: 'deepseek-flash', changes: ['default'], by: 'mcp', confirmed: false, at: added.at };
-    expect(settingsChangeTitle(def)).toBe('连接到 Spica 的脚本把新对话默认用的模型换成了「DeepSeek 2 · deepseek-flash」');
-    expect(settingsChangeTitle({ ...def, action: 'set_strong_model', model: undefined } as SettingsChangeMeta)).toBe('连接到 Spica 的脚本取消了重活用的模型');
+    expect(settingsChangeTitle(def)).toBe('本机脚本将默认模型设为「DeepSeek 2 · deepseek-flash」');
+    expect(settingsChangeTitle({ ...def, action: 'set_strong_model', model: undefined } as SettingsChangeMeta)).toBe('本机脚本清除了强模型');
   });
 
   it('says it was not confirmed and that the test failed; opens 设置 › 模型', () => {
     const open = vi.fn();
     render(<SettingsChangeCard change={added} onOpenSettings={open} />);
     expect(screen.getByRole('note', { name: settingsChangeTitle(added) })).toBeTruthy();
-    expect(screen.getByText('没有经过你确认，已经生效')).toBeTruthy();
-    expect(screen.getByText(/保存前测试连接没通过/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '在设置里查看' }));
+    expect(screen.getByText('未经确认，已生效')).toBeTruthy();
+    expect(screen.getByText(/连接测试：未通过/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '查看设置' }));
     expect(open).toHaveBeenCalled();
   });
 

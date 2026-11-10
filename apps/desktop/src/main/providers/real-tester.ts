@@ -32,28 +32,28 @@ function probeAdvice(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' | 'model'
   if (r.ok) {
     const ms = r.firstByteMs ?? r.latencyMs;
     // Say the model the user typed; the server's own name for it (an alias) only as an aside.
-    const alias = r.model && r.model !== model ? `，服务端回报的型号是「${r.model}」` : '';
-    return `连得上，模型「${model || r.model}」可以用（${Math.max(1, Math.round(ms))} 毫秒开始回应${alias}）。`;
+    const alias = r.model && r.model !== model ? `，服务端型号：${r.model}` : '';
+    return `连接成功：模型「${model || r.model}」（响应 ${Math.max(1, Math.round(ms))} 毫秒${alias}）。`;
   }
   switch (r.errorCode) {
     case 'auth':
-      return draft.kind === 'wso2' ? '取不到 token：请检查「Consumer Key」和「Consumer Secret」，以及「取 token 地址」。' : `密钥不对或已失效：请检查「${secretLabel(draft.kind)}」。`;
+      return draft.kind === 'wso2' ? '获取 token 失败，请检查 Consumer Key、Consumer Secret 和取 token 地址。' : `密钥无效或已失效，请检查 ${secretLabel(draft.kind)}。`;
     case 'not_found':
-      return `找不到模型「${model}」或这个地址：请检查「模型」和${url}。`;
+      return `找不到模型「${model}」或地址无效，请检查模型和${url}。`;
     case 'bad_request':
-      return `请求被拒绝了，多半是模型名不对：请检查「模型」（现在填的是「${model}」）。`;
+      return `请求被拒绝，请检查模型名「${model}」。`;
     case 'rate_limited':
-      return '接口太忙（被限流了），稍后再试；一直这样的话，把「同时请求」「每分钟请求」调小。';
+      return '请求被限流，请稍后重试或调低同时请求、每分钟请求。';
     case 'server':
-      return `模型服务出错了${r.httpStatus ? `（${r.httpStatus}）` : ''}，稍后再试。`;
+      return `模型服务错误${r.httpStatus ? `（${r.httpStatus}）` : ''}，请稍后重试。`;
     case 'network':
-      return draft.kind === 'wso2' ? `连不上：请检查网络、${url}和「取 token 地址」。` : `连不上：请检查网络和${url}。`;
+      return draft.kind === 'wso2' ? `连接失败，请检查网络、${url}和取 token 地址。` : `连接失败，请检查网络和${url}。`;
     case 'timeout':
-      return `等了 ${TIMEOUT_MS / 1000} 秒没有回应：请检查网络和${url}。`;
+      return `${TIMEOUT_MS / 1000} 秒内无响应，请检查网络和${url}。`;
     case 'aborted':
       return '已取消。';
     default:
-      return '没有连上，请检查表单里的各项再试一次。';
+      return '连接失败，请检查各项设置。';
   }
 }
 

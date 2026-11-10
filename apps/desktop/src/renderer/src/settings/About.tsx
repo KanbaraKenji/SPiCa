@@ -50,7 +50,7 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
             value={draft}
             spellCheck={false}
             aria-label="更新源"
-            placeholder={deploy ? `用安装包里的：${deploy}` : '共享盘文件夹或网址'}
+            placeholder={deploy ? `默认：${deploy}` : '共享盘文件夹或网址'}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={commit}
           />
@@ -59,7 +59,6 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
             检查更新
           </button>
         </form>
-        <p className="settings-hint about-hint">新版本和管理员发的公告都从这里取；留空就{deploy ? '用安装包里设好的地址' : '不检查'}。</p>
         {update?.message ? (
           <p className={update.status === 'error' ? 'provider-result is-bad plugin-note' : 'provider-result plugin-note'} role="status">
             {update.status === 'latest' || update.status === 'ready' ? <Icon name="check" size={14} /> : null}

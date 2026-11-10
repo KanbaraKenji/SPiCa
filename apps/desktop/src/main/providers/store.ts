@@ -218,7 +218,7 @@ export class ProviderStore {
     let keys = existing?.keys ?? [];
     const typed = draft.secret?.trim();
     if (typed) {
-      if (!this.#box.available()) throw new Error('这台电脑上没法安全保存密钥，没有保存。');
+      if (!this.#box.available()) throw new Error('无法加密保存密钥，未保存。');
       keys = [{ sealed: this.#box.encrypt(typed), tail: tailOf(typed) }];
     }
     const saved: SavedConnection = {
@@ -242,20 +242,20 @@ export class ProviderStore {
   /** Makes this connection's first model the default (the one-model form's 「设为默认」). */
   setDefault(id: string): void {
     const c = this.#known().find((x) => x.id === id);
-    if (!c) throw new Error('找不到这个模型配置。');
-    if (!c.models[0]) throw new Error('这一条还没有勾选模型。');
+    if (!c) throw new Error('找不到该模型配置。');
+    if (!c.models[0]) throw new Error('该服务商未选择模型。');
     this.setDefaultModel({ connectionId: id, model: c.models[0] });
   }
 
   setDefaultModel(ref: ModelRef): void {
-    if (!this.#valid(ref)) throw new Error('找不到这个模型。');
+    if (!this.#valid(ref)) throw new Error('找不到该模型。');
     this.#data.default = { ...ref };
     this.#write();
   }
 
   /** The model for heavy work; null: none. */
   setStrongModel(ref: ModelRef | null): void {
-    if (ref && !this.#valid(ref)) throw new Error('找不到这个模型。');
+    if (ref && !this.#valid(ref)) throw new Error('找不到该模型。');
     this.#data.strong = ref ? { ...ref } : null;
     this.#write();
   }

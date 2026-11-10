@@ -137,7 +137,7 @@ export class MailStore {
       // New mail is stored before it is sorted; fetch it so it shows as 「正在分类」.
       if (e.added > 0) void this.reload();
     } else if (e.type === 'error' && e.sessionId === this.state.get().threadId && /^mail source /.test(e.message)) {
-      this.state.set((v) => ({ ...v, problem: '上次查收没有成功，邮件插件没有回应。可以到 设置 › 插件 看看它的状态。' }));
+      this.state.set((v) => ({ ...v, problem: '邮件检查失败：邮件插件无响应。' }));
     }
   }
 }

@@ -91,7 +91,7 @@ export class UpdateService {
   async check(): Promise<UpdateState> {
     const { source } = this.#o.getSource();
     if (!source) {
-      this.#set({ status: 'off', message: '还没有设置更新源。' });
+      this.#set({ status: 'off', message: '未设置更新源。' });
       return this.state;
     }
     if (this.#busy) return this.state;
@@ -102,18 +102,18 @@ export class UpdateService {
       const yml = await this.#text(source, 'latest.yml');
       const latest = yml ? parseLatestYml(yml) : undefined;
       if (!latest) {
-        this.#set({ status: 'error', message: '更新源里没有找到版本信息（latest.yml）。' });
+        this.#set({ status: 'error', message: '更新源中缺少版本信息（latest.yml）。' });
         return this.state;
       }
       if (compareVersions(latest.version, this.#o.currentVersion) <= 0) {
-        this.#set({ status: 'latest', message: `已经是最新版本（${this.#o.currentVersion}）。` });
+        this.#set({ status: 'latest', message: `已是最新版本（${this.#o.currentVersion}）。` });
         return this.state;
       }
       if (this.#o.portable || !this.#o.packaged) {
         this.#set({
           status: 'manual',
           available: latest.version,
-          message: this.#o.portable ? `有新版本 ${latest.version}。便携版不能自己更新，请从更新源拿新的便携版。` : `有新版本 ${latest.version}（开发版不自动安装）。`,
+          message: this.#o.portable ? `有新版本 ${latest.version}。便携版不支持自动更新，请从更新源下载。` : `有新版本 ${latest.version}（开发版不自动安装）。`,
         });
         return this.state;
       }
@@ -123,15 +123,15 @@ export class UpdateService {
       await this.#bytesTo(source, latest.path, dest);
       const got = createHash('sha512').update(await readFile(dest)).digest('base64');
       if (got !== latest.sha512) {
-        this.#set({ status: 'error', message: '下载的安装包校验不通过，没有安装。' });
+        this.#set({ status: 'error', message: '安装包校验失败，未安装。' });
         return this.state;
       }
       this.#ready = dest;
-      this.#set({ status: 'ready', available: latest.version, message: `新版本 ${latest.version} 已经下好，重启就会更新。` });
+      this.#set({ status: 'ready', available: latest.version, message: `新版本 ${latest.version} 已下载，重启后更新。` });
       return this.state;
     } catch (err) {
       const msg = (err as Error).message ?? String(err);
-      this.#set({ status: 'error', message: /[一-鿿]/.test(msg) ? msg : `连不上更新源：${msg}` });
+      this.#set({ status: 'error', message: /[一-鿿]/.test(msg) ? msg : `无法连接更新源：${msg}` });
       return this.state;
     } finally {
       this.#busy = false;

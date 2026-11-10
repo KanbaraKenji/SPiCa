@@ -26,7 +26,8 @@ import type { PluginsCommand } from '../shared/plugins';
 import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
 import { ProcessBackend, type BackendStatus } from './backend/process';
-import { knownContextWindow, toProviderConfig } from './backend/to-config';
+import { knownContextWindow, matchWindowIn, toProviderConfig } from './backend/to-config';
+import type { WindowMatch } from '../shared/catalog';
 import { fromHostDraft, toHostConnection, toHostModelList } from './providers/host-models';
 import { iconFileName, pointShortcutsAt, REFRESH_GAP_MS, SHORTCUT_SETTLE_MS, shortcutFolders, type ShortcutIo } from './taskbar-icon';
 import {
@@ -515,7 +516,7 @@ ipcMain.handle(DesktopChannel.Agent, async (_e, method: unknown, args: unknown) 
   }
   const fn = backend[method as keyof AgentApi] as ((...a: unknown[]) => Promise<unknown>) | undefined;
   // Name the missing method, so a backend that lags behind the shell is easy to spot.
-  if (!fn) throw new Error(`这个版本还不支持这个操作（${method}）。`);
+  if (!fn) throw new Error(`当前版本不支持此操作（${method}）。`);
   return fn.apply(backend, Array.isArray(args) ? args : []);
 });
 
@@ -557,7 +558,7 @@ ipcMain.handle(DesktopChannel.PluginViews, async (): Promise<PluginView[]> => {
   return backend.pluginViews().catch(() => []);
 });
 ipcMain.handle(DesktopChannel.PluginViewCall, async (_e, plugin: unknown, view: unknown, tool: unknown, args: unknown, confirmed: unknown): Promise<PluginViewResult> => {
-  if (!(backend instanceof ProcessBackend)) return { content: '[UNSUPPORTED] 这个版本不能运行插件页面。', isError: true };
+  if (!(backend instanceof ProcessBackend)) return { content: '[UNSUPPORTED] 当前版本不支持插件页面。', isError: true };
   try {
     return await backend.pluginViewCall({ plugin: str(plugin), view: str(view), tool: str(tool), args: args ?? {}, confirmed: confirmed === true });
   } catch (err) {
@@ -567,7 +568,7 @@ ipcMain.handle(DesktopChannel.PluginViewCall, async (_e, plugin: unknown, view: 
     if (/[一-鿿]/.test(msg)) return { content: msg, isError: true };
     // Known causes in words (e.g. no model configured yet), else the plugin's own message.
     const human = humanError(msg);
-    return { content: human.startsWith('出错了：') ? `插件没有完成这次调用：${msg.slice(0, 300)}` : human, isError: true };
+    return { content: human.startsWith('出错了：') ? `插件调用失败：${msg.slice(0, 300)}` : human, isError: true };
   }
 });
 ipcMain.handle(DesktopChannel.PluginViewFile, async (_e, plugin: unknown, path: unknown): Promise<string | null> => {
@@ -602,12 +603,12 @@ async function servePluginFile(url: string): Promise<Response> {
 }
 
 ipcMain.handle(DesktopChannel.OpenFile, async (_e, sessionId: unknown, path: unknown): Promise<string | null> => {
-  if (typeof sessionId !== 'string' || typeof path !== 'string' || !path) return '文件路径不对。';
+  if (typeof sessionId !== 'string' || typeof path !== 'string' || !path) return '文件路径无效。';
   const session = await backend.getSession(sessionId);
   const full = isAbsolute(path) ? path : resolvePath(session?.cwd || app.getPath('home'), path);
   if (!existsSync(full)) return `找不到文件：${full}`;
   const error = await shell.openPath(full);
-  return error ? `打不开这个文件：${error}` : null;
+  return error ? `无法打开文件：${error}` : null;
 });
 
 // Updates and announcements. The source is the user's setting, else the
@@ -722,9 +723,9 @@ let lastLocalConnect = settings.get().localConnect;
 /** Problems the core reported for the network settings (e.g. a certificate file it cannot read), in words. */
 let networkProblems: string[] = [];
 function networkProblem(raw: string): string {
-  if (/ca|certificate|pem/i.test(raw)) return `读不了证书文件：${settings.get().network.caFile || raw}`;
-  if (/proxy/i.test(raw)) return `代理地址不对：${settings.get().network.proxy || raw}`;
-  return `网络设置有问题：${raw}`;
+  if (/ca|certificate|pem/i.test(raw)) return `无法读取证书文件：${settings.get().network.caFile || raw}`;
+  if (/proxy/i.test(raw)) return `代理地址无效：${settings.get().network.proxy || raw}`;
+  return `网络设置错误：${raw}`;
 }
 settings.onChange((s) => {
   if (!(backend instanceof ProcessBackend)) return;
@@ -764,7 +765,7 @@ ipcMain.handle(DesktopChannel.Workflows, async (_e, op: unknown): Promise<Workfl
   if (op === 'open') {
     if (dir === defaultWorkflowsDir) mkdirSync(dir, { recursive: true });
     const err = existsSync(dir) ? await shell.openPath(dir) : '文件夹不存在';
-    if (err) message = `打不开这个文件夹：${err}`;
+    if (err) message = `无法打开文件夹：${err}`;
   }
   if (!(backend instanceof ProcessBackend)) return { dir, names: ['产品开发（示例）'], problems: [], ...(message ? { message } : {}) };
   try {
@@ -778,19 +779,19 @@ ipcMain.handle(DesktopChannel.Workflows, async (_e, op: unknown): Promise<Workfl
 /** The core's workflow loading errors, in words. */
 function workflowProblem(raw: string): string {
   const folder = /^workflows folder (.+?): .*ENOENT/.exec(raw);
-  if (folder) return `找不到这个文件夹：${folder[1]}`;
+  if (folder) return `找不到文件夹：${folder[1]}`;
   const json = /^workflow (.+?): not valid JSON/.exec(raw);
-  if (json) return `${json[1]} 不是有效的 JSON，没有读进来。`;
+  if (json) return `${json[1]} 不是有效的 JSON，已跳过。`;
   const dup = /^workflow (.+?): id "(.+?)" is already defined/.exec(raw);
-  if (dup) return `${dup[1]}：编号「${dup[2]}」和别的工作流重复，没有读进来。`;
+  if (dup) return `${dup[1]}：编号「${dup[2]}」与其他工作流重复，已跳过。`;
   const other = /^workflow (.+?): (.*)$/.exec(raw);
-  if (other) return `${other[1]} 没有读进来：${other[2]}`;
+  if (other) return `${other[1]} 读取失败：${other[2]}`;
   return raw;
 }
 
 function friendly(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
-  return /[\u4e00-\u9fff]/.test(msg) ? msg : '后台没有响应，请稍后再试。';
+  return /[\u4e00-\u9fff]/.test(msg) ? msg : '后台无响应，请稍后重试。';
 }
 
 ipcMain.handle(DesktopChannel.PickFolder, async (_e, title: unknown): Promise<string | null> => {
@@ -829,7 +830,7 @@ ipcMain.handle(DesktopChannel.UsageLog, async (_e, raw: unknown): Promise<UsageL
     return { file: pick.filePath, records: rows.length };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (/EACCES|EPERM|EBUSY|EROFS|ENOENT/.test(msg)) return { error: '写不进这个位置（可能被占用或没有权限），换一个文件夹试试。' };
+    if (/EACCES|EPERM|EBUSY|EROFS|ENOENT/.test(msg)) return { error: '无法写入该位置，请选择其他文件夹。' };
     return { error: friendly(err) };
   }
 });
@@ -863,7 +864,7 @@ const pluginService: PluginService =
           mkdirSync(pluginRoot, { recursive: true });
           const err = await shell.openPath(pluginRoot);
           const r = await backend.plugins({ op: 'state' });
-          return err ? { ...r, ok: false, message: `打不开这个文件夹：${err}` } : r;
+          return err ? { ...r, ok: false, message: `无法打开文件夹：${err}` } : r;
         },
       }
     : new FakePluginService(pluginRoot);
@@ -908,15 +909,22 @@ ipcMain.handle(DesktopChannel.KnownContextWindow, async (_e, kind: ProviderKind,
   return fromCatalog ?? knownContextWindow(DEFAULT_PRICES, coreKind(kind), name);
 });
 ipcMain.handle(DesktopChannel.ModelCatalog, () => modelCatalog());
+ipcMain.handle(DesktopChannel.MatchContextWindow, async (_e, kind: ProviderKind, model: string, catalogId?: string | null): Promise<WindowMatch | null> => {
+  const name = String(model ?? '').trim();
+  if (!name) return null;
+  const cid = typeof catalogId === 'string' && catalogId ? catalogId : undefined;
+  if (backend instanceof ProcessBackend) return backend.matchContextWindow(coreKind(kind), name, cid).catch(() => null);
+  return matchWindowIn(DEFAULT_PRICES, coreKind(kind), name, cid);
+});
 ipcMain.handle(DesktopChannel.ListProviderModels, async (_e, draft: ProviderDraft): Promise<ListModelsResult> => {
   const secret = draft.secret?.trim() || (draft.id ? providers.secretOf(draft.id) : undefined) || '';
   const config = toProviderConfig({ ...draft, id: 'list-models', secret });
   if (backend instanceof ProcessBackend) {
-    return backend.listProviderModels(config).catch((err: unknown) => ({ ok: false, code: 'list.failed', message: err instanceof Error ? err.message : String(err), hint: '这次没有取到型号列表。下拉里的常用型号照样能选，也可以直接手填。' }));
+    return backend.listProviderModels(config).catch((err: unknown) => ({ ok: false, code: 'list.failed', message: err instanceof Error ? err.message : String(err), hint: '获取模型列表失败，请从列表选择或手动输入模型。' }));
   }
   // Demo data: the catalog's own list stands in for the provider's answer.
   const p = (await modelCatalog())?.providers.find((x) => x.id === draft.catalogId);
-  if (!p || p.listModels === 'none') return { ok: false, code: 'list.unsupported', message: 'demo', hint: '这家服务商没有公开型号列表。下拉里的常用型号照样能选，也可以直接手填。' };
+  if (!p || p.listModels === 'none') return { ok: false, code: 'list.unsupported', message: 'demo', hint: '该服务商不支持获取模型列表，请从列表选择或手动输入模型。' };
   return { ok: true, models: p.models.map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), contextWindow: m.contextWindow, inCatalog: true, chat: true })) };
 });
 

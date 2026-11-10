@@ -49,9 +49,9 @@ export function projectSummary(descendants: SessionInfo[]): string {
   const queued = descendants.filter((c) => c.status === 'queued').length;
   const waiting = descendants.filter(waitingForYou).length;
   const parts: string[] = [];
-  if (waiting) parts.push(`${waiting} 个等你`);
-  if (running) parts.push(`${running} 个在跑`);
-  if (queued) parts.push(`${queued} 个排队`);
+  if (waiting) parts.push(`${waiting} 个待处理`);
+  if (running) parts.push(`${running} 个运行中`);
+  if (queued) parts.push(`${queued} 个排队中`);
   return parts.join(' · ');
 }
 
@@ -88,7 +88,7 @@ function RenameField({ initial, onDone }: { initial: string; onDone(value: strin
       className="input tree-rename"
       value={value}
       maxLength={60}
-      aria-label="新名字"
+      aria-label="名称"
       autoFocus
       onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => setValue(e.target.value)}

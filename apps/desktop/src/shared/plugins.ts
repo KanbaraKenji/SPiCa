@@ -51,14 +51,14 @@ export function usd(n: number): string {
  * decimals would show as $0.00 (seen on 2026-11-10: $0.0002667 read 「$0.00」).
  */
 export function spentText(n: number): string {
-  if (n > 0 && n < 0.01) return '不到 $0.01';
+  if (n > 0 && n < 0.01) return '< $0.01';
   return usd(n);
 }
 
 /** What to tell someone installing or turning on a plugin that uses models. */
 export function modelUseNotice(m: PluginModelView): string {
-  if (m.maxUsdPerDay <= 0) return '它想用你配好的模型，现在不让它用。';
-  return `它会用你配好的模型，花费记在你的额度里，每天最多 ${usd(m.maxUsdPerDay)}。它说：${m.reason}`;
+  if (m.maxUsdPerDay <= 0) return '使用模型 · 已禁止';
+  return `使用模型 · 每日上限 ${usd(m.maxUsdPerDay)} · 用途：${m.reason}`;
 }
 
 export interface PluginsState {

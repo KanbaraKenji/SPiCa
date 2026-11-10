@@ -18,7 +18,7 @@ describe('AskCard', () => {
   it('answers with free text', () => {
     const onAnswer = vi.fn();
     render(<AskCard block={block} onAnswer={onAnswer} />);
-    fireEvent.change(screen.getByRole('textbox', { name: '你的回答' }), { target: { value: '写简短一点' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '回答' }), { target: { value: '写简短一点' } });
     fireEvent.click(screen.getByRole('button', { name: '回答' }));
     expect(onAnswer).toHaveBeenCalledWith('写简短一点');
   });

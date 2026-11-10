@@ -3,7 +3,7 @@
 import type { AgentApi, CoreEvent, SpicaBridge } from '@spica/protocol';
 import type { SettingsPatch, ShellSettings } from './settings';
 import type { ModelRef, ProviderDraft, ProviderKind, ProviderView, TestResult } from './providers';
-import type { ListModelsView, ModelCatalogView } from './catalog';
+import type { ListModelsView, ModelCatalogView, WindowMatch } from './catalog';
 import type { PluginsCommand, PluginsResult } from './plugins';
 import type { UpdateState } from './updates';
 import type { PluginView, PluginViewResult } from './plugin-view';
@@ -133,7 +133,7 @@ export interface DesktopBridge extends SpicaBridge {
     save(draft: ProviderDraft): Promise<ProviderList>;
     remove(id: string): Promise<ProviderList>;
     setDefault(id: string): Promise<ProviderList>;
-    /** 「新对话默认用」 / 「重活用」: which connection and model (null: no model for heavy work). */
+    /** 默认模型 / 强模型: which connection and model (null: no 强模型). */
     setPointer(which: 'default' | 'strong', ref: ModelRef | null): Promise<ProviderList>;
     test(draft: ProviderDraft): Promise<TestResult>;
     /** The context window Spica knows for this model (to pre-fill the form), or null. */
@@ -142,6 +142,8 @@ export interface DesktopBridge extends SpicaBridge {
     catalog(): Promise<ModelCatalogView | null>;
     /** 「从服务商获取」 for the form as it is (a saved key is used when the form leaves it empty). */
     listModels(draft: ProviderDraft): Promise<ListModelsView>;
+    /** A model name matched to the catalog (for its 上下文上限), or null. */
+    matchWindow(kind: ProviderKind, model: string, catalogId?: string | null): Promise<WindowMatch | null>;
     /** The models changed somewhere else (a connected script through the MCP service). */
     onChanged(listener: () => void): () => void;
   };

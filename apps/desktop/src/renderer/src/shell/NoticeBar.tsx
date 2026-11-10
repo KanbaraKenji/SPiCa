@@ -67,7 +67,7 @@ export function NoticeBar({ backend, onRetryBackend, update, settings, onInstall
     return (
       <div className="notice-bar is-warning" role="status">
         <span className="spinner" aria-hidden />
-        <span className="notice-text">后台正在恢复，马上就好</span>
+        <span className="notice-text">后台正在恢复…</span>
       </div>
     );
   }
@@ -89,7 +89,7 @@ export function NoticeBar({ backend, onRetryBackend, update, settings, onInstall
         <button type="button" className="btn btn-small btn-primary" onClick={onInstall}>
           重启并更新
         </button>
-        <button type="button" className="icon-btn notice-close" onClick={() => setUpdateClosed(update.available ?? null)} aria-label="稍后再说" title="稍后再说">
+        <button type="button" className="icon-btn notice-close" onClick={() => setUpdateClosed(update.available ?? null)} aria-label="稍后" title="稍后再说">
           <Icon name="close" size={14} />
         </button>
       </div>

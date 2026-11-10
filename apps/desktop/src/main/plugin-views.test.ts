@@ -38,7 +38,7 @@ describe('plugin pages', () => {
   });
 
   it('says plugin call failures in words', () => {
-    expect(pluginCallProblem('[TOOL_NOT_ALLOWED] delete_all')).toBe('这个页面不能用这个工具（插件的页面清单里没写）。');
+    expect(pluginCallProblem('[TOOL_NOT_ALLOWED] delete_all')).toBe('该页面无权使用此工具。');
     expect(pluginCallProblem('note not found')).toBeNull();
   });
 });

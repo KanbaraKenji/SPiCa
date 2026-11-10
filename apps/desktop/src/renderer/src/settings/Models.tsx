@@ -1,27 +1,32 @@
-// Settings > 模型: the model connections the agents use. Three kinds of form
-// (OpenAI compatible, Anthropic, WSO2 gateway), "测试连接", default choice.
+// Settings > 模型: the connections the agents use. A connection is one provider
+// (picked from the catalog, a company preset, 中转站 or 公司网关（WSO2）), one key,
+// and the models selected under it, each with its 上下文上限. 默认模型 and 强模型
+// point at a connection's model; they are set at the top of this page only.
 import { useEffect, useRef, useState } from 'react';
 import type { ProviderList } from '../../../shared/bridge';
+import type { CatalogProviderView, ListModelsView, ModelCatalogView, WindowMatch } from '../../../shared/catalog';
 import {
   emptyDraft,
   kindLabel,
+  legacyModelFields,
   PROVIDER_KINDS,
   secretLabel,
   validateDraft,
   WSO2_KEY_LABEL,
+  type ConnectionModel,
   type FieldErrors,
+  type ModelRef,
   type ProviderDraft,
   type ProviderKind,
   type ProviderView,
   type TestResult,
-  type ModelRef,
 } from '../../../shared/providers';
+import type { PasteResult } from '../../../shared/paste-config';
 import { friendlyError } from '../store/agent';
-import { tokenText } from '../chat/Composer';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
-import { APP_NAME } from '../../../shared/app-identity';
 import { dropDraft, keepDraft, keptDraft } from './drafts';
+import { ModelPicker, type ListedModel } from './ModelPicker';
 import { PasteConfig } from './PasteConfig';
 
 export interface ProvidersApi {
@@ -29,31 +34,46 @@ export interface ProvidersApi {
   save(draft: ProviderDraft): Promise<ProviderList>;
   remove(id: string): Promise<ProviderList>;
   setDefault(id: string): Promise<ProviderList>;
-  /** 「新对话默认用」 / 「重活用」; absent in older tests. */
+  /** 默认模型 / 强模型; absent in older tests. */
   setPointer?(which: 'default' | 'strong', ref: ModelRef | null): Promise<ProviderList>;
   test(draft: ProviderDraft): Promise<TestResult>;
-  /** The context window Spica knows for a model (pre-fills the form), or null. */
-  knownWindow?(kind: ProviderKind, model: string): Promise<number | null>;
+  /** The providers and models to pick from; absent: no catalog (only 中转站 and 公司网关). */
+  catalog?(): Promise<ModelCatalogView | null>;
+  /** 获取模型列表 for the form as it is. */
+  listModels?(draft: ProviderDraft): Promise<ListModelsView>;
+  /** A model name matched to the catalog, for its 上下文上限. */
+  matchWindow?(kind: ProviderKind, model: string, catalogId?: string | null): Promise<WindowMatch | null>;
   /** The models changed elsewhere (a connected script); the list is read again. */
   onChanged?(listener: () => void): () => void;
 }
 
-const WINDOW_HINT = '这个模型一次最多能装多少 token（上下文窗口）。不知道就查服务商的模型说明。';
-
-/** What to say under 上下文上限: filled in by Spica, how big that is, or what to put there. */
-function windowHint(value: number | null, prefilled: number | null): string {
-  if (value !== null && value === prefilled) return `${APP_NAME} 认识这个型号，已经填上（${tokenText(value)}），可以改。`;
-  if (value !== null && Number.isInteger(value) && value > 0) return `${tokenText(value)} token。${WINDOW_HINT}`;
-  return WINDOW_HINT;
-}
+const SHELL_KIND: Record<CatalogProviderView['kind'], ProviderKind> = { 'openai-compatible': 'openai', anthropic: 'anthropic', wso2: 'wso2' };
+const GROUPS: { group: CatalogProviderView['group']; label: string }[] = [
+  { group: 'company', label: '公司预置' },
+  { group: 'cn', label: '国内' },
+  { group: 'intl', label: '国际' },
+  { group: 'local', label: '本机' },
+];
+/** The two choices that are not in the catalog. */
+const WSO2 = '#wso2';
+const RELAY = '#relay';
 
 function draftFrom(p: ProviderView): ProviderDraft {
-  const { hasSecret: _h, isDefault: _d, readOnly: _r, ...fields } = p;
+  const { hasSecret: _h, isDefault: _d, readOnly: _r, keyTail: _t, ...fields } = p;
   void _h;
   void _d;
   void _r;
-  // An older main process (dev hot reload) does not send contextWindow yet.
-  return { ...fields, contextWindow: fields.contextWindow ?? null };
+  void _t;
+  return { ...fields, models: p.models.map((m) => ({ ...m })) };
+}
+
+/** Which 服务商 a draft is: its catalog entry, 公司网关（WSO2）, 中转站, or '' before one is picked. */
+function choiceOf(d: ProviderDraft, isNew: boolean): string {
+  if (d.catalogId) return d.catalogId;
+  if (d.kind === 'wso2') return WSO2;
+  // A new draft has no model list until a 服务商 is picked.
+  if (isNew && d.models === undefined) return '';
+  return RELAY;
 }
 
 interface FieldProps {
@@ -88,12 +108,9 @@ function Field({ label, value, onChange, error, placeholder, type = 'text', hint
   );
 }
 
-// Which model was open and what was typed into each one, kept while you look elsewhere.
+// Which connection was open and what was typed into each one, kept while you look elsewhere.
 const SELECTED = 'models.selected';
 const draftKey = (id: string | 'new') => `models.draft:${id}`;
-
-/** 强模型 and the two limits: first-time setup does not need them. */
-const MORE_FIELDS = ['strongModel', 'maxConcurrent', 'requestsPerMinute'] as const;
 
 /** A pointer as one <select> value (connection id and model, which ids never contain a tab). */
 const refKey = (r: ModelRef | null) => (r ? `${r.connectionId}\t${r.model}` : '');
@@ -102,10 +119,7 @@ const parseRefKey = (k: string): ModelRef | null => {
   return i > 0 ? { connectionId: k.slice(0, i), model: k.slice(i + 1) } : null;
 };
 
-function numText(v: number | null): string {
-  return v === null ? '' : String(v);
-}
-
+const numText = (v: number | null) => (v === null ? '' : String(v));
 function parseNum(v: string): number | null {
   const t = v.trim();
   if (!t) return null;
@@ -115,56 +129,60 @@ function parseNum(v: string): number | null {
 
 export function Models({ api }: { api: ProvidersApi }) {
   const [list, setList] = useState<ProviderList | null>(null);
+  const [catalog, setCatalog] = useState<ModelCatalogView | null>(null);
   const [selected, setSelectedState] = useState<string | 'new' | null>(() => keptDraft<string>(SELECTED) ?? null);
   const [draft, setDraft] = useState<ProviderDraft>(() => {
     const sel = keptDraft<string>(SELECTED);
     return (sel ? keptDraft<ProviderDraft>(draftKey(sel)) : undefined) ?? emptyDraft();
   });
-  const [more, setMore] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [result, setResult] = useState<TestResult | null>(null);
   const [busy, setBusy] = useState<'test' | 'save' | null>(null);
   const [deleting, setDeleting] = useState<ProviderView | null>(null);
-  // 上下文上限 Spica filled in by itself (so a later model change may replace it, and the hint says so).
-  const [prefilled, setPrefilledState] = useState<number | null>(null);
-  const prefilledRef = useRef<number | null>(null);
-  // The form as it is now, for answers that arrive after the user typed on.
+  const [fetched, setFetched] = useState<ListedModel[] | null>(null);
+  const [fetching, setFetching] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [matchedNames, setMatchedNames] = useState<Record<string, string>>({});
+  // The form as it is now, for answers that arrive after the user went on.
   const latest = useRef<{ draft: ProviderDraft; selected: string | 'new' | null }>({ draft, selected });
-  const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (lookupTimer.current) clearTimeout(lookupTimer.current);
-    },
-    [],
-  );
 
   useEffect(() => {
     let alive = true;
-    api
-      .list()
-      .then((l) => {
-        if (!alive) return;
-        setList(l);
-        // Back on this page with a model open: its draft if any, else what is saved.
-        const sel = keptDraft<string>(SELECTED);
-        if (!sel || sel === 'new') return;
-        const p = l.items.find((x) => x.id === sel);
-        if (!p) {
-          dropDraft(draftKey(sel));
-          dropDraft(SELECTED);
-          setSelectedState(null);
-        } else if (!keptDraft(draftKey(sel))) {
-          setDraft(draftFrom(p));
-          latest.current = { draft: draftFrom(p), selected: sel };
-        }
-      })
-      .catch((e: unknown) => alive && setResult({ ok: false, message: friendlyError(e) }));
+    const load = () =>
+      api
+        .list()
+        .then((l) => {
+          if (!alive) return;
+          setList(l);
+          // Back on this page with a connection open: its draft if any, else what is saved.
+          const sel = keptDraft<string>(SELECTED);
+          if (!sel || sel === 'new') return;
+          const p = l.items.find((x) => x.id === sel);
+          if (!p) {
+            dropDraft(draftKey(sel));
+            dropDraft(SELECTED);
+            setSelectedState(null);
+          } else if (!keptDraft(draftKey(sel))) {
+            setDraft(draftFrom(p));
+            latest.current = { draft: draftFrom(p), selected: sel };
+          }
+        })
+        .catch((e: unknown) => alive && setResult({ ok: false, message: friendlyError(e) }));
+    void load();
+    void api
+      .catalog?.()
+      .then((c) => alive && setCatalog(c))
+      .catch(() => undefined);
     // Changed by a connected script while this page is open: show the new list (drafts stay).
     const off = api.onChanged?.(() => {
       void api
         .list()
         .then((l) => alive && setList(l))
+        .catch(() => undefined);
+      void api
+        .catalog?.()
+        .then((c) => alive && setCatalog(c))
         .catch(() => undefined);
     });
     return () => {
@@ -176,6 +194,10 @@ export function Models({ api }: { api: ProvidersApi }) {
   const items = list?.items ?? [];
   const current = selected && selected !== 'new' ? items.find((p) => p.id === selected) : undefined;
   const hasSecret = Boolean(current?.hasSecret);
+  const providers = catalog?.providers ?? [];
+  const choice = choiceOf(draft, selected === 'new');
+  const provider = providers.find((p) => p.id === draft.catalogId);
+  const needsKey = provider ? provider.needsKey : true;
 
   function setSelected(id: string | 'new' | null) {
     setSelectedState(id);
@@ -183,15 +205,8 @@ export function Models({ api }: { api: ProvidersApi }) {
     else keepDraft(SELECTED, id, null);
   }
 
-  /** What the open model looks like saved (a blank form for a new one). */
   const savedDraft = (): ProviderDraft => (current ? draftFrom(current) : emptyDraft());
 
-  const setPrefilled = (n: number | null) => {
-    prefilledRef.current = n;
-    setPrefilledState(n);
-  };
-
-  /** A field the user changed no longer shows its old complaint (checked again on 保存 / 测试连接). */
   const clearErrors = (keys: string[]) =>
     setErrors((e) => {
       if (!keys.some((k) => k in e)) return e;
@@ -200,38 +215,18 @@ export function Models({ api }: { api: ProvidersApi }) {
       return rest;
     });
 
-  /** Show `next` and keep it as the draft of `sel` (compared with `base`, what is saved). */
-  const commit = (next: ProviderDraft, sel: string | 'new' | null, base: ProviderDraft) => {
-    setDraft(next);
-    latest.current = { draft: next, selected: sel };
-    if (sel) keepDraft(draftKey(sel), next, base);
+  /** Show `next` and keep it as the draft of the open connection; the first two models stay in step. */
+  const commit = (next: ProviderDraft) => {
+    const synced = { ...next, ...legacyModelFields(next.models ?? []) };
+    setDraft(synced);
+    latest.current = { draft: synced, selected };
+    if (selected) keepDraft(draftKey(selected), synced, savedDraft());
+    setResult(null);
   };
 
-  /** Ask what Spica knows of this model's window; fill it in unless the user typed one. */
-  const lookUp = (d: ProviderDraft, sel: string | 'new' | null, base: ProviderDraft) => {
-    const known = api.knownWindow;
-    const model = d.model.trim();
-    if (lookupTimer.current) clearTimeout(lookupTimer.current);
-    if (!known || !model) return;
-    lookupTimer.current = setTimeout(() => {
-      void known(d.kind, model)
-        .then((n) => {
-          const now = latest.current;
-          if (now.selected !== sel || now.draft.kind !== d.kind || now.draft.model.trim() !== model) return;
-          const typedByHand = now.draft.contextWindow !== null && now.draft.contextWindow !== prefilledRef.current;
-          if (typedByHand) return;
-          if (n) {
-            setPrefilled(n);
-            commit({ ...now.draft, contextWindow: n }, sel, base);
-            clearErrors(['contextWindow']);
-          } else if (prefilledRef.current !== null) {
-            // The earlier model was known, this one is not: do not leave its number behind.
-            setPrefilled(null);
-            commit({ ...now.draft, contextWindow: null }, sel, base);
-          }
-        })
-        .catch(() => undefined);
-    }, 300);
+  const set = (patch: Partial<ProviderDraft>) => {
+    commit({ ...draft, ...patch });
+    clearErrors(Object.keys(patch));
   };
 
   const open = (p: ProviderView | 'new') => {
@@ -240,32 +235,140 @@ export function Models({ api }: { api: ProvidersApi }) {
     setSelected(id);
     setDraft(next);
     latest.current = { draft: next, selected: id };
-    setPrefilled(null);
     setErrors({});
     setResult(null);
-    setMore(false);
-    // Saved before 上下文上限 existed: fill it in if Spica knows the model.
-    if (next.contextWindow === null) lookUp(next, id, p === 'new' ? emptyDraft() : draftFrom(p));
+    setAdvanced(false);
+    setFetched(null);
+    setFetchError(null);
+    setMatchedNames({});
   };
 
-  const set = (patch: Partial<ProviderDraft>) => {
-    const next = { ...draft, ...patch };
-    commit(next, selected, savedDraft());
-    setResult(null);
-    clearErrors(Object.keys(patch));
-    if ('contextWindow' in patch) setPrefilled(null);
-    if ('model' in patch || 'kind' in patch) lookUp(next, selected, savedDraft());
+  /** A name not used by another connection: 「DeepSeek」, then 「DeepSeek 2」… */
+  const freeName = (base: string) => {
+    const taken = new Set(items.filter((p) => p.id !== draft.id).map((p) => p.name));
+    if (!taken.has(base)) return base;
+    let n = 2;
+    while (taken.has(`${base} ${n}`)) n++;
+    return `${base} ${n}`;
   };
 
-  const changeKind = (kind: ProviderKind) => {
-    const blank = emptyDraft(kind);
-    set({ kind, baseUrl: draft.baseUrl && draft.kind !== 'anthropic' ? draft.baseUrl : blank.baseUrl });
+  const pick = (value: string) => {
+    setFetched(null);
+    setFetchError(null);
+    setMatchedNames({});
+    const keep = { ...(draft.id ? { id: draft.id } : {}), ...(draft.secret ? { secret: draft.secret } : {}) };
+    if (value === WSO2) return commit({ ...emptyDraft('wso2'), ...keep, models: [] });
+    if (value === RELAY) return commit({ ...emptyDraft('openai'), ...keep, models: [] });
+    const p = providers.find((x) => x.id === value);
+    if (!p) return;
+    const first = p.models.find((m) => m.role === 'default') ?? p.models[0];
+    commit({
+      ...emptyDraft(SHELL_KIND[p.kind]),
+      ...keep,
+      name: freeName(p.name),
+      baseUrl: p.baseUrl,
+      tokenUrl: p.tokenUrl ?? '',
+      scope: p.scope ?? '',
+      catalogId: p.id,
+      maxConcurrent: p.maxConcurrent ?? null,
+      requestsPerMinute: p.requestsPerMinute ?? null,
+      models: first ? [{ id: first.id, contextWindow: first.contextWindow, contextFrom: 'catalog' }] : [],
+    });
+    clearErrors(['name', 'baseUrl', 'model', 'contextWindow']);
+  };
+
+  /** A model's 上下文上限 matched by name in the catalog, filled in unless typed by hand meanwhile. */
+  const matchLater = (id: string) => {
+    if (!api.matchWindow) return;
+    const sel = selected;
+    void api
+      .matchWindow(draft.kind, id, draft.catalogId)
+      .then((m) => {
+        const now = latest.current;
+        if (!m || now.selected !== sel) return;
+        const models = now.draft.models ?? [];
+        const target = models.find((x) => x.id === id);
+        if (!target || target.contextWindow !== null) return;
+        const contextFrom: ConnectionModel['contextFrom'] = m.how === 'exact' ? 'catalog' : 'name-match';
+        if (m.how === 'name') setMatchedNames((n) => ({ ...n, [id]: m.matched }));
+        const next = { ...now.draft, models: models.map((x) => (x.id === id ? { ...x, contextWindow: m.contextWindow, contextFrom } : x)) };
+        const synced = { ...next, ...legacyModelFields(next.models) };
+        setDraft(synced);
+        latest.current = { draft: synced, selected: sel };
+        if (sel) keepDraft(draftKey(sel), synced, savedDraft());
+      })
+      .catch(() => undefined);
+  };
+
+  const toggle = (m: ListedModel, on: boolean) => {
+    const models = draft.models ?? [];
+    if (!on) return set({ models: models.filter((x) => x.id !== m.id) });
+    const fromCatalog = provider?.models.find((x) => x.id === m.id);
+    const entry: ConnectionModel = fromCatalog
+      ? { id: m.id, contextWindow: fromCatalog.contextWindow, contextFrom: 'catalog' }
+      : m.contextWindow
+        ? { id: m.id, contextWindow: m.contextWindow, contextFrom: 'provider' }
+        : { id: m.id, contextWindow: null, contextFrom: 'user' };
+    set({ models: [...models.filter((x) => x.id !== m.id), entry] });
+    if (entry.contextWindow === null) matchLater(m.id);
+  };
+
+  const setWindow = (id: string, value: number | null) =>
+    set({ models: (draft.models ?? []).map((x) => (x.id === id ? { ...x, contextWindow: value, contextFrom: 'user' } : x)) });
+
+  const addTyped = (id: string) => {
+    if ((draft.models ?? []).some((x) => x.id === id)) return;
+    toggle({ id }, true);
+  };
+
+  const fetchModels = async () => {
+    if (!api.listModels) return;
+    setFetching(true);
+    setFetchError(null);
+    try {
+      const r = await api.listModels(draft);
+      if (r.ok) setFetched(r.models.filter((m) => m.chat).map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}) })));
+      else setFetchError(r.hint || '获取模型列表失败，请从列表选择或手动输入模型。');
+    } catch (e) {
+      setFetchError(friendlyError(e));
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  /** 粘贴配置: the provider it names (by address), else 公司网关 / 中转站; then the fields. */
+  const applyPaste = (r: PasteResult) => {
+    const base = r.fields.baseUrl;
+    const host = (u: string) => {
+      try {
+        return new URL(u).host;
+      } catch {
+        return '';
+      }
+    };
+    const known = base ? providers.find((p) => p.baseUrl && host(p.baseUrl) === host(base)) : undefined;
+    const kind: ProviderKind = r.kind ?? (known ? SHELL_KIND[known.kind] : draft.kind === 'wso2' ? 'wso2' : 'openai');
+    const startFrom: ProviderDraft =
+      kind === 'wso2' ? { ...emptyDraft('wso2'), models: [] } : known ? { ...emptyDraft(SHELL_KIND[known.kind]), name: freeName(known.name), baseUrl: known.baseUrl, catalogId: known.id, models: [] } : { ...emptyDraft(kind), models: [] };
+    const { model, ...fields } = r.fields;
+    const next: ProviderDraft = { ...startFrom, ...(draft.id ? { id: draft.id } : {}), ...fields };
+    commit(next);
+    if (model) {
+      const fromCatalog = known?.models.find((x) => x.id === model);
+      const entry: ConnectionModel = fromCatalog ? { id: model, contextWindow: fromCatalog.contextWindow, contextFrom: 'catalog' } : { id: model, contextWindow: null, contextFrom: 'user' };
+      const withModel = { ...next, models: [entry] };
+      commit(withModel);
+      if (!fromCatalog) {
+        latest.current = { draft: { ...withModel, ...legacyModelFields(withModel.models) }, selected };
+        matchLater(model);
+      }
+    }
   };
 
   const check = (forTest = false): boolean => {
-    const e = validateDraft(draft, hasSecret, { forTest });
+    const e = validateDraft({ ...draft, models: draft.models ?? [] }, hasSecret, { forTest, needsKey });
     setErrors(e);
-    if (MORE_FIELDS.some((f) => f in e)) setMore(true);
+    if ((e.maxConcurrent || e.requestsPerMinute || (e.baseUrl && provider)) && !advanced) setAdvanced(true);
     return Object.keys(e).length === 0;
   };
 
@@ -302,19 +405,26 @@ export function Models({ api }: { api: ProvidersApi }) {
     }
   };
 
-  // Every ticked model, by connection, for 「新对话默认用」 and 「重活用」.
+  // Every selected model, by connection, for 默认模型 and 强模型.
   const groups = items
     .filter((p) => p.models.length)
     .map((p) => ({
       label: `${p.name}${p.keyTail ? ` · 尾号 ${p.keyTail}` : ''}`,
       options: p.models.map((m) => ({ key: refKey({ connectionId: p.id, model: m.id }), model: m.id })),
     }));
-  const options = groups.flatMap((g) => g.options);
+  const pointerOptions = groups.map((g) => (
+    <optgroup key={g.label} label={g.label}>
+      {g.options.map((o) => (
+        <option key={o.key} value={o.key}>
+          {o.model}
+        </option>
+      ))}
+    </optgroup>
+  ));
   const point = async (which: 'default' | 'strong', key: string) => {
     if (!api.setPointer) return;
-    const ref = parseRefKey(key);
     try {
-      setList(await api.setPointer(which, ref));
+      setList(await api.setPointer(which, parseRefKey(key)));
     } catch (e) {
       setResult({ ok: false, message: friendlyError(e) });
     }
@@ -332,68 +442,62 @@ export function Models({ api }: { api: ProvidersApi }) {
   };
 
   const editing = selected !== null && !current?.readOnly;
+  const isWso2 = choice === WSO2;
+  const isRelay = choice === RELAY;
+  const limits = (
+    <div className="field-pair">
+      <Field label="同时请求" type="number" value={numText(draft.maxConcurrent)} onChange={(v) => set({ maxConcurrent: parseNum(v) })} error={errors.maxConcurrent} placeholder="不限" />
+      <Field label="每分钟请求" type="number" value={numText(draft.requestsPerMinute)} onChange={(v) => set({ requestsPerMinute: parseNum(v) })} error={errors.requestsPerMinute} placeholder="不限" />
+    </div>
+  );
 
   return (
     <section className="settings-section">
-
-      {list && options.length ? (
+      {list && groups.length ? (
         <div className="model-pointers">
           <label className="model-pointer">
-            <span className="field-label">新对话默认用</span>
-            <select className="input" value={refKey(list.default ?? null)} onChange={(e) => void point('default', e.target.value)} aria-label="新对话默认用">
-              {groups.map((g) => (
-                <optgroup key={g.label} label={g.label}>
-                  {g.options.map((o) => (
-                    <option key={o.key} value={o.key}>
-                      {o.model}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
+            <span className="field-label">默认模型</span>
+            <select className="input" value={refKey(list.default ?? null)} onChange={(e) => void point('default', e.target.value)} aria-label="默认模型">
+              {pointerOptions}
             </select>
           </label>
           <label className="model-pointer">
-            <span className="field-label">重活用</span>
-            <select className="input" value={refKey(list.strong ?? null)} onChange={(e) => void point('strong', e.target.value)} aria-label="重活用">
-              <option value="">不单独指定</option>
-              {groups.map((g) => (
-                <optgroup key={g.label} label={g.label}>
-                  {g.options.map((o) => (
-                    <option key={o.key} value={o.key}>
-                      {o.model}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
+            <span className="field-label">强模型</span>
+            <select className="input" value={refKey(list.strong ?? null)} onChange={(e) => void point('strong', e.target.value)} aria-label="强模型">
+              <option value="">无</option>
+              {pointerOptions}
             </select>
           </label>
         </div>
       ) : null}
+
       <div className="provider-list" role="list">
-        {list && items.length === 0 ? <p className="settings-hint">还没有配置模型</p> : null}
+        {list && items.length === 0 ? <p className="settings-hint">未配置模型</p> : null}
         {items.map((p) => (
           <div key={p.id} role="listitem" className={selected === p.id ? 'provider-row is-on' : 'provider-row'}>
             <button type="button" className="provider-open" onClick={() => open(p)} aria-current={selected === p.id ? 'true' : undefined}>
-              <span className="provider-name">{p.name}</span>
+              <span className="provider-name">
+                {p.name}
+                {p.keyTail ? <span className="provider-tail">尾号 {p.keyTail}</span> : null}
+              </span>
               <span className="provider-sub">
-                {kindLabel(p.kind)}
-                {p.keyTail ? ` · 尾号 ${p.keyTail}` : ''} · {p.models.length > 1 ? `${p.models.length} 个模型：${p.models.map((m) => m.id).join('、')}` : p.model}
+                {kindLabel(p.kind)} · {p.models.length > 1 ? `${p.models.length} 个模型：${p.models.map((m) => m.id).join('、')}` : (p.models[0]?.id ?? '—')}
               </span>
               {list?.problems[p.id] ? <span className="provider-problem">{list.problems[p.id]}</span> : null}
-              {!p.readOnly && p.contextWindow === null ? <span className="provider-problem">还没填上下文上限，点开补上</span> : null}
-              {keptDraft(draftKey(p.id)) ? <span className="provider-unsaved">改了还没保存</span> : null}
+              {!p.readOnly && p.models.some((m) => m.contextWindow === null) ? <span className="provider-problem">缺少上下文上限</span> : null}
+              {keptDraft(draftKey(p.id)) ? <span className="provider-unsaved">未保存</span> : null}
             </button>
             {p.isDefault ? <span className="provider-default">默认</span> : null}
           </div>
         ))}
         <button type="button" className={selected === 'new' ? 'provider-add is-on' : 'provider-add'} onClick={() => open('new')}>
           <Icon name="plus" size={14} />
-          添加模型
-          {keptDraft(draftKey('new')) ? <span className="provider-unsaved">填了一半，还没保存</span> : null}
+          添加服务商
+          {keptDraft(draftKey('new')) ? <span className="provider-unsaved">未保存</span> : null}
         </button>
       </div>
 
-      {current?.readOnly ? <p className="settings-hint provider-readonly">这一项来自开发配置文件，在这里改不了。</p> : null}
+      {current?.readOnly ? <p className="settings-hint provider-readonly">此项来自开发配置文件，无法修改。</p> : null}
 
       {editing ? (
         <form
@@ -403,97 +507,137 @@ export function Models({ api }: { api: ProvidersApi }) {
             void save();
           }}
         >
-          <PasteConfig
-            key={selected ?? ''}
-            kind={draft.kind}
-            onApply={(r) => set({ ...(r.kind && r.kind !== draft.kind ? { kind: r.kind } : {}), ...r.fields })}
-          />
           <div className="field field-stack">
-            <span className="field-label">类型</span>
-            <div className="segmented" role="radiogroup" aria-label="类型">
-              {PROVIDER_KINDS.map((k) => (
-                <button key={k.kind} type="button" role="radio" aria-checked={draft.kind === k.kind} className={draft.kind === k.kind ? 'segment is-on' : 'segment'} onClick={() => changeKind(k.kind)}>
-                  {k.label}
-                </button>
-              ))}
-            </div>
+            <span className="field-label">服务商</span>
+            <span className="field-control provider-choice">
+              <select className="input" value={choice} aria-label="服务商" onChange={(e) => pick(e.target.value)}>
+                {choice === '' ? (
+                  <option value="" disabled>
+                    选择服务商
+                  </option>
+                ) : null}
+                {GROUPS.map((g) => {
+                  const ps = providers.filter((p) => p.group === g.group);
+                  return ps.length ? (
+                    <optgroup key={g.group} label={g.label}>
+                      {ps.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null;
+                })}
+                <optgroup label="其他">
+                  <option value={WSO2}>公司网关（WSO2）</option>
+                  <option value={RELAY}>中转站</option>
+                </optgroup>
+              </select>
+              <PasteConfig key={selected ?? ''} kind={draft.kind} onApply={applyPaste} />
+            </span>
           </div>
-          <Field label="名称" value={draft.name} onChange={(name) => set({ name })} error={errors.name} placeholder="比如：公司网关、DeepSeek" />
-          {draft.kind === 'anthropic' ? (
-            <Field label="接口地址" value={draft.baseUrl} onChange={(baseUrl) => set({ baseUrl })} error={errors.baseUrl} hint="用官方接口就保持默认" />
-          ) : (
-            <Field
-              label={draft.kind === 'wso2' ? '网关地址' : '接口地址'}
-              value={draft.baseUrl}
-              onChange={(baseUrl) => set({ baseUrl })}
-              error={errors.baseUrl}
-              placeholder={draft.kind === 'wso2' ? 'https://网关地址/模型路径/v1' : 'https://api.example.com/v1'}
-              hint={
-                draft.kind === 'wso2'
-                  ? '管理员给的模型接口地址，一般以 /v1 结尾，不带 /chat/completions'
-                  : '服务商说明里的接口地址，一般以 /v1 结尾，不带 /chat/completions'
-              }
-            />
-          )}
-          {draft.kind === 'wso2' ? (
+
+          {choice !== '' ? (
             <>
-              <Field
-                label="取 token 地址"
-                value={draft.tokenUrl}
-                onChange={(tokenUrl) => set({ tokenUrl })}
-                error={errors.tokenUrl}
-                placeholder="https://网关地址/oauth2/token"
-                hint="一般以 /token 或 /oauth2/token 结尾"
-              />
-              <Field
-                label={WSO2_KEY_LABEL}
-                value={draft.clientId}
-                onChange={(clientId) => set({ clientId })}
-                error={errors.clientId}
-                hint="也叫 Client ID。在 WSO2 开发者门户里，你的应用的 Production Keys 下面"
-              />
-            </>
-          ) : null}
-          <Field
-            label={secretLabel(draft.kind)}
-            type="password"
-            value={draft.secret ?? ''}
-            onChange={(secret) => set({ secret })}
-            error={errors.secret}
-            placeholder={hasSecret ? '已保存；不改就留空' : ''}
-            {...(draft.kind === 'wso2' ? { hint: '也叫 Client Secret。和 Consumer Key 在同一处（Production Keys）' } : {})}
-          />
-          {draft.kind === 'wso2' ? <Field label="Scope" value={draft.scope} onChange={(scope) => set({ scope })} hint="网关没要求就留空" /> : null}
-          <Field
-            label="模型"
-            value={draft.model}
-            onChange={(model) => set({ model })}
-            error={errors.model}
-            placeholder="平时用的模型名"
-            hint={draft.kind === 'wso2' ? '照管理员给的原样填，区分大小写，可以带斜杠' : '照服务商说明里的模型名原样填，区分大小写'}
-          />
-          <Field
-            label="上下文上限"
-            type="number"
-            value={numText(draft.contextWindow)}
-            onChange={(v) => set({ contextWindow: parseNum(v) })}
-            error={errors.contextWindow}
-            placeholder="比如 128000"
-            hint={windowHint(draft.contextWindow, prefilled)}
-          />
-          <div className="provider-more">
-            <button type="button" className="fold-head" aria-expanded={more} onClick={() => setMore((m) => !m)}>
-              <span className="fold-label">更多选项</span>
-              <Icon name="chevronRight" size={14} className="fold-chevron" />
-            </button>
-          </div>
-          {more ? (
-            <>
-              <Field label="强模型" value={draft.strongModel} onChange={(strongModel) => set({ strongModel })} hint="重活用的模型，可留空" />
-              <div className="field-pair">
-                <Field label="同时请求" type="number" value={numText(draft.maxConcurrent)} onChange={(v) => set({ maxConcurrent: parseNum(v) })} error={errors.maxConcurrent} hint="留空表示不限" />
-                <Field label="每分钟请求" type="number" value={numText(draft.requestsPerMinute)} onChange={(v) => set({ requestsPerMinute: parseNum(v) })} error={errors.requestsPerMinute} hint="留空表示不限" />
+              <Field label="名称" value={draft.name} onChange={(name) => set({ name })} error={errors.name} placeholder="DeepSeek" />
+
+              {isWso2 ? (
+                <>
+                  <Field label="网关地址" value={draft.baseUrl} onChange={(baseUrl) => set({ baseUrl })} error={errors.baseUrl} placeholder="https://gateway.example.com/llm/v1" hint="模型接口地址，通常以 /v1 结尾，不含 /chat/completions。" />
+                  <Field label="取 token 地址" value={draft.tokenUrl} onChange={(tokenUrl) => set({ tokenUrl })} error={errors.tokenUrl} placeholder="https://gateway.example.com/oauth2/token" hint="通常以 /token 或 /oauth2/token 结尾。" />
+                  <Field label={WSO2_KEY_LABEL} value={draft.clientId} onChange={(clientId) => set({ clientId })} error={errors.clientId} hint="即 Client ID，位于 WSO2 开发者门户中应用的 Production Keys。" />
+                </>
+              ) : null}
+
+              {isRelay ? (
+                <>
+                  <Field label="接口地址" value={draft.baseUrl} onChange={(baseUrl) => set({ baseUrl })} error={errors.baseUrl} placeholder="https://relay.example.com/v1" />
+                  <div className="field field-stack">
+                    <span className="field-label">协议</span>
+                    <div className="segmented" role="radiogroup" aria-label="协议">
+                      {PROVIDER_KINDS.filter((k) => k.kind !== 'wso2').map((k) => (
+                        <button key={k.kind} type="button" role="radio" aria-checked={draft.kind === k.kind} className={draft.kind === k.kind ? 'segment is-on' : 'segment'} onClick={() => set({ kind: k.kind })}>
+                          {k.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
+              {needsKey ? (
+                <label className="field field-stack">
+                  <span className="field-label">{secretLabel(draft.kind)}</span>
+                  <span className="field-control">
+                    <input
+                      className={errors.secret ? 'input is-invalid' : 'input'}
+                      type="password"
+                      value={draft.secret ?? ''}
+                      placeholder={hasSecret ? '已保存（留空不修改）' : ''}
+                      spellCheck={false}
+                      autoComplete="off"
+                      aria-invalid={errors.secret ? true : undefined}
+                      onChange={(e) => set({ secret: e.target.value })}
+                    />
+                    {errors.secret ? <span className="field-error">{errors.secret}</span> : null}
+                    {isWso2 ? <span className="field-hint">即 Client Secret，与 Consumer Key 位于同一位置。</span> : null}
+                    {provider?.docsUrl ? (
+                      <a className="field-link" href={provider.docsUrl} target="_blank" rel="noreferrer">
+                        API 文档
+                      </a>
+                    ) : null}
+                  </span>
+                </label>
+              ) : null}
+
+              {isWso2 ? <Field label="Scope" value={draft.scope} onChange={(scope) => set({ scope })} hint="可选。" /> : null}
+
+              <div className="field field-stack">
+                <span className="field-label">模型</span>
+                <span className="field-control">
+                  <ModelPicker
+                    catalog={provider?.models ?? []}
+                    fetched={fetched}
+                    selected={draft.models ?? []}
+                    matchedNames={matchedNames}
+                    onToggle={toggle}
+                    onWindow={setWindow}
+                    onAdd={addTyped}
+                    onFetch={api.listModels ? () => void fetchModels() : undefined}
+                    fetching={fetching}
+                    fetchError={fetchError}
+                    error={errors.model ?? errors.contextWindow}
+                  />
+                  {isWso2 ? <span className="field-hint">区分大小写，可包含斜杠。</span> : null}
+                </span>
               </div>
+
+              <div className="provider-more">
+                <button type="button" className="fold-head" aria-expanded={advanced} onClick={() => setAdvanced((a) => !a)}>
+                  <span className="fold-label">更多选项</span>
+                  <Icon name="chevronRight" size={14} className="fold-chevron" />
+                </button>
+              </div>
+              {advanced ? (
+                <>
+                  {provider ? (
+                    <>
+                      <div className="field field-stack">
+                        <span className="field-label">类型</span>
+                        <div className="segmented" role="radiogroup" aria-label="类型">
+                          {PROVIDER_KINDS.map((k) => (
+                            <button key={k.kind} type="button" role="radio" aria-checked={draft.kind === k.kind} className={draft.kind === k.kind ? 'segment is-on' : 'segment'} onClick={() => set({ kind: k.kind })}>
+                              {k.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <Field label="接口地址" value={draft.baseUrl} onChange={(baseUrl) => set({ baseUrl })} error={errors.baseUrl} />
+                    </>
+                  ) : null}
+                  {limits}
+                </>
+              ) : null}
             </>
           ) : null}
 
@@ -511,18 +655,22 @@ export function Models({ api }: { api: ProvidersApi }) {
                 {result.message}
               </span>
             ) : null}
-            <button type="button" className="btn" onClick={() => void test()} disabled={busy !== null}>
-              {busy === 'test' ? <span className="spinner" aria-hidden /> : null}
-              测试连接
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={busy !== null}>
-              保存
-            </button>
+            {choice !== '' ? (
+              <>
+                <button type="button" className="btn" onClick={() => void test()} disabled={busy !== null}>
+                  {busy === 'test' ? <span className="spinner" aria-hidden /> : null}
+                  测试连接
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={busy !== null}>
+                  保存
+                </button>
+              </>
+            ) : null}
           </div>
         </form>
       ) : null}
 
-      {deleting ? <ConfirmDialog title={`删除模型「${deleting.name}」？`} confirmLabel="删除" danger onConfirm={() => void remove(deleting)} onCancel={() => setDeleting(null)} /> : null}
+      {deleting ? <ConfirmDialog title={`删除服务商「${deleting.name}」？`} confirmLabel="删除" danger onConfirm={() => void remove(deleting)} onCancel={() => setDeleting(null)} /> : null}
     </section>
   );
 }

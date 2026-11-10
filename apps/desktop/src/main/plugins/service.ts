@@ -30,7 +30,7 @@ export function pluginErrorText(err: unknown): string {
   const base = e?.message ?? String(err);
   const first = e?.issues?.find((i) => i.severity === 'error')?.message;
   const text = first && !base.includes(first) ? `${base}（${first}）` : base;
-  return /[一-鿿]/.test(text) ? text : `没有成功：${text}`;
+  return /[一-鿿]/.test(text) ? text : `操作失败：${text}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -149,8 +149,8 @@ export class RealPluginService implements PluginService {
     const list = await listSource(src, this.#o.fetch ? { fetch: this.#o.fetch } : {});
     this.#remember(src);
     this.#available = new Map(list.map((a) => [`${a.name}@${a.version}`, a]));
-    if (list.length === 0) return '这里没有可以装的插件。';
-    return `找到 ${list.length} 个插件，点「安装」装上。`;
+    if (list.length === 0) return '未找到可安装的插件。';
+    return `找到 ${list.length} 个插件。`;
   }
 
   /** Installing means wanting to use it: turn it on unless it already is. */
@@ -162,14 +162,14 @@ export class RealPluginService implements PluginService {
   async #install(location: string): Promise<string> {
     const { manager } = this.#o;
     const where = location.trim().replace(/^"(.*)"$/, '$1');
-    if (!where) return '先填插件所在的文件夹、zip 文件或网址。';
+    if (!where) return '请填写插件的文件夹、zip 文件或网址。';
     if (isUrl(where)) {
       if (/\.zip(\?|$)/i.test(where)) {
         const res = await (this.#o.fetch ?? (fetch as unknown as FetchLike))(where);
         if (!res.ok) return `下载失败（${res.status}）。`;
         const d = await installZip(manager, Buffer.from(await res.arrayBuffer()), { kind: 'http', location: where });
         await this.#enableNew(d.name);
-        return withModelNotice(`已装上「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
+        return withModelNotice(`已安装「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
       }
       return this.#offer({ kind: 'http', location: where });
     }
@@ -177,22 +177,22 @@ export class RealPluginService implements PluginService {
     try {
       info = await stat(where);
     } catch {
-      return '找不到这个文件夹或文件。';
+      return '找不到该文件夹或文件。';
     }
     if (info.isFile()) {
-      if (!/\.zip$/i.test(where)) return '只能装插件文件夹或 .zip 文件。';
+      if (!/\.zip$/i.test(where)) return '仅支持插件文件夹或 .zip 文件。';
       const d = await installZip(manager, await readFile(where), { kind: isShare(where) ? 'share' : 'zip', location: where });
       await this.#enableNew(d.name);
-      return withModelNotice(`已装上「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
+      return withModelNotice(`已安装「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
     }
     const has = async (f: string) => stat(join(where, f)).then(() => true, () => false);
     if (await has(MANIFEST_FILE)) {
       const d = await manager.install(where, { kind: isShare(where) ? 'share' : 'folder', location: where });
       await this.#enableNew(d.name);
-      return withModelNotice(`已装上「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
+      return withModelNotice(`已安装「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
     }
     if (await has(INDEX_FILE)) return this.#offer({ kind: 'share', location: where });
-    return '这个文件夹里没有插件（没有 manifest.json，也没有 index.json）。';
+    return '该文件夹中没有插件（缺少 manifest.json 或 index.json）。';
   }
 
   async run(cmd: PluginsCommand): Promise<PluginsResult> {
@@ -211,12 +211,12 @@ export class RealPluginService implements PluginService {
         case 'modelLimit': {
           const d = manager.describe(cmd.name);
           const v = cmd.maxUsdPerDay;
-          if (v !== null && (!Number.isFinite(v) || v < 0)) return { ok: false, message: '上限要填 0 或正数（美元）。', state: this.#state() };
+          if (v !== null && (!Number.isFinite(v) || v < 0)) return { ok: false, message: '每日上限须为 0 或正数（美元）。', state: this.#state() };
           if (v !== null && d.model && v > d.model.declaredMaxUsdPerDay) {
-            return { ok: false, message: `不能高于插件自己写的 ${usd(d.model.declaredMaxUsdPerDay)}。`, state: this.#state() };
+            return { ok: false, message: `每日上限不能高于插件声明的 ${usd(d.model.declaredMaxUsdPerDay)}。`, state: this.#state() };
           }
           await manager.setModelLimit(cmd.name, v);
-          message = v === null ? '回到了插件自己写的上限。' : v === 0 ? '已不让它用模型。' : `每天最多 ${usd(v)}。`;
+          message = v === null ? '已恢复为插件声明的上限。' : v === 0 ? '已禁止使用模型。' : `每日上限：${usd(v)}。`;
           break;
         }
         case 'disable':
@@ -228,7 +228,7 @@ export class RealPluginService implements PluginService {
           break;
         case 'rollback': {
           const d = await manager.rollback(cmd.name);
-          message = `已退回 ${d.version}。`;
+          message = `已回退到 ${d.version}。`;
           break;
         }
         case 'mock':
@@ -239,27 +239,27 @@ export class RealPluginService implements PluginService {
           break;
         case 'installAvailable': {
           const entry = this.#available.get(cmd.key);
-          if (!entry) return { ok: false, message: '这一项已经不在了，再找一次。', state: this.#state() };
+          if (!entry) return { ok: false, message: '该项已不存在，请重新查找。', state: this.#state() };
           const d = await installAvailable(manager, entry, this.#o.fetch ? { fetch: this.#o.fetch } : {});
           await this.#enableNew(d.name);
-          message = withModelNotice(`已装上「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
+          message = withModelNotice(`已安装「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
           break;
         }
         case 'checkUpdates': {
           const sources = this.#sources();
           if (sources.length === 0) {
-            message = '还没有插件来源：从共享盘或网址装过插件以后，这里才能检查更新。';
+            message = '没有插件来源，无法检查更新。';
             break;
           }
           const { updates, errors } = await checkUpdates(manager, sources, this.#o.fetch ? { fetch: this.#o.fetch } : {});
           this.#updates = new Map(updates.map((u) => [u.name, u]));
-          message = updates.length ? `有 ${updates.length} 个插件可以更新。` : '都是最新的。';
-          if (errors.length) message += `（${errors.length} 个来源没连上）`;
+          message = updates.length ? `${updates.length} 个插件可更新。` : '已是最新版本。';
+          if (errors.length) message += `（${errors.length} 个来源连接失败）`;
           break;
         }
         case 'update': {
           const u = this.#updates.get(cmd.name);
-          if (!u) return { ok: false, message: '先点「检查更新」。', state: this.#state() };
+          if (!u) return { ok: false, message: '请先检查更新。', state: this.#state() };
           const d = await installAvailable(manager, u.entry, this.#o.fetch ? { fetch: this.#o.fetch } : {});
           this.#updates.delete(cmd.name);
           message = `已更新到 ${d.version}。`;
@@ -267,7 +267,7 @@ export class RealPluginService implements PluginService {
         }
         case 'openRoot': {
           const err = await this.#o.openFolder(this.#o.root);
-          if (err) message = `打不开这个文件夹：${err}`;
+          if (err) message = `无法打开文件夹：${err}`;
           break;
         }
       }

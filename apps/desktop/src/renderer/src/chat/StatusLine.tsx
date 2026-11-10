@@ -26,15 +26,15 @@ export function phaseOf(t: Transcript): { mark: MarkState; text: string } | null
   if (!run) return null;
   switch (run.status) {
     case 'queued':
-      return { mark: 'await', text: run.queuePosition ? `排队中，前面还有 ${Math.max(0, run.queuePosition - 1)} 个` : '排队中' };
+      return { mark: 'await', text: run.queuePosition ? `排队中（前面 ${Math.max(0, run.queuePosition - 1)} 个）` : '排队中' };
     case 'tool': {
       const name = runningTool(t);
       return { mark: 'tool', text: name ? `正在${toolLabel(name)}` : '正在调用工具' };
     }
     case 'awaiting_confirm':
-      return { mark: 'await', text: '等你确认' };
+      return { mark: 'await', text: '等待确认' };
     case 'awaiting_answer':
-      return { mark: 'await', text: '等你回答' };
+      return { mark: 'await', text: '等待回答' };
     default: {
       const last = t.items[t.items.length - 1];
       const block = last?.kind === 'response' ? last.blocks[last.blocks.length - 1] : undefined;

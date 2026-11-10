@@ -6,6 +6,10 @@ export interface MenuItem {
   label: string;
   /** Deletes something: shown in the danger color. */
   danger?: boolean;
+  /** A heading shown above the first item of each run with the same group. */
+  group?: string;
+  /** A short tag at the right end of the item. */
+  hint?: string;
   onSelect(): void;
 }
 
@@ -47,19 +51,26 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
 
   return (
     <div ref={ref} className="context-menu" role="menu" style={{ left: pos.left, top: pos.top }}>
-      {items.map((it) => (
-        <button
-          key={it.label}
-          type="button"
-          role="menuitem"
-          className={it.danger ? 'context-item is-danger' : 'context-item'}
-          onClick={() => {
-            onClose();
-            it.onSelect();
-          }}
-        >
-          {it.label}
-        </button>
+      {items.map((it, i) => (
+        <div key={`${it.group ?? ''}	${it.label}	${i}`} role="none">
+          {it.group && it.group !== items[i - 1]?.group ? (
+            <div className="context-group" role="presentation">
+              {it.group}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            role="menuitem"
+            className={it.danger ? 'context-item is-danger' : 'context-item'}
+            onClick={() => {
+              onClose();
+              it.onSelect();
+            }}
+          >
+            <span className="context-item-label">{it.label}</span>
+            {it.hint ? <span className="context-item-hint">{it.hint}</span> : null}
+          </button>
+        </div>
       ))}
     </div>
   );

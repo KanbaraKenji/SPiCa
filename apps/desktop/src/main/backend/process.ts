@@ -8,6 +8,7 @@ import { connectBackend, electronPort, type BackendClient, type HostMethods, typ
 export { toProviderConfig } from './to-config';
 import type { AgentApi, CoreEvent, ProbeResult } from '@spica/protocol';
 import type { PluginsCommand, PluginsResult } from '../../shared/plugins';
+import type { WindowMatch } from '../../shared/catalog';
 import type { DesktopBackendConfig } from '../../backend/config';
 import type { AgentBackend } from './types';
 import type { PluginView, PluginViewResult } from '../../shared/plugin-view';
@@ -83,7 +84,7 @@ export class ProcessBackend implements AgentBackend {
           if (wasStarted) this.#o.onRestarted();
           resolve();
         } else if (m?.type === 'failed') {
-          this.#o.onStatus({ state: 'failed', message: `后台没有启动起来：${m.message ?? ''}` });
+          this.#o.onStatus({ state: 'failed', message: `后台启动失败：${m.message ?? ''}` });
           resolve();
         } else if (m?.type === 'plugins.changed') {
           this.#o.onPluginsChanged();
@@ -105,8 +106,8 @@ export class ProcessBackend implements AgentBackend {
     const now = Date.now();
     this.#restarts = this.#restarts.filter((t) => now - t < 60_000);
     if (this.#restarts.length >= MAX_RESTARTS_PER_MINUTE) {
-      this.#rejectReady(new Error('后台反复出错，已经停下。'));
-      this.#o.onStatus({ state: 'failed', message: '后台反复出错，已经停下。' });
+      this.#rejectReady(new Error('后台多次出错，已停止。'));
+      this.#o.onStatus({ state: 'failed', message: '后台多次出错，已停止。' });
       return;
     }
     const delay = BACKOFF_MS[Math.min(this.#restarts.length, BACKOFF_MS.length - 1)] ?? 5000;
@@ -131,7 +132,7 @@ export class ProcessBackend implements AgentBackend {
       this.#client ??
       (await Promise.race([
         this.#ready,
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('后台没有响应，请稍后再试。')), CALL_WAIT_MS)),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('后台无响应，请稍后重试。')), CALL_WAIT_MS)),
       ]));
     return client.call<T>(method, ...params);
   }
@@ -186,6 +187,11 @@ export class ProcessBackend implements AgentBackend {
   /** Context window the core knows for a model (to pre-fill the settings form), or null. */
   async knownContextWindow(kind: 'openai-compatible' | 'anthropic' | 'wso2', model: string, catalogId?: string): Promise<number | null> {
     return (await this.call<number | null | undefined>('knownContextWindow', kind, model, catalogId)) ?? null;
+  }
+
+  /** A model name matched to the catalog (exact, else by name: case, a vendor/ prefix): its context window. */
+  async matchContextWindow(kind: 'openai-compatible' | 'anthropic' | 'wso2', model: string, catalogId?: string): Promise<WindowMatch | null> {
+    return (await this.call<WindowMatch | null | undefined>('matchContextWindow', kind, model, catalogId)) ?? null;
   }
 
   /** The providers and models the settings form offers (company presets first). */

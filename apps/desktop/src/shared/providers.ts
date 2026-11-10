@@ -7,7 +7,7 @@ export type ProviderKind = 'openai' | 'anthropic' | 'wso2';
 export const PROVIDER_KINDS: readonly { kind: ProviderKind; label: string }[] = [
   { kind: 'openai', label: 'OpenAI 兼容' },
   { kind: 'anthropic', label: 'Anthropic' },
-  { kind: 'wso2', label: 'WSO2 网关' },
+  { kind: 'wso2', label: '公司网关（WSO2）' },
 ];
 
 export function kindLabel(kind: ProviderKind): string {
@@ -36,7 +36,7 @@ export interface ProviderFields {
   requestsPerMinute: number | null;
   /** How many tokens `model` takes at once (its context window). Required when saving; null in older files. */
   contextWindow: number | null;
-  /** The catalog provider or company preset it was set up from (null: 自己填 / 公司网关, or older files). */
+  /** The catalog provider or company preset it was set up from (null: 中转站 / 公司网关, or older files). */
   catalogId: string | null;
 }
 
@@ -166,31 +166,31 @@ function isUrl(v: string): boolean {
  */
 export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: { forTest?: boolean; needsKey?: boolean } = {}): FieldErrors {
   const e: FieldErrors = {};
-  if (!d.name.trim()) e.name = '起个名字，方便在列表里认出来';
+  if (!d.name.trim()) e.name = '请填写名称';
   // A whole ticked list (a connection with several models), or the one-model form.
   const list = d.models?.filter((m) => m.id.trim());
-  if (list ? list.length === 0 : !d.model.trim()) e.model = list ? '至少勾选一个模型' : '填要用的模型名';
+  if (list ? list.length === 0 : !d.model.trim()) e.model = list ? '请至少选择一个模型' : '请填写模型';
   const needsUrl = d.kind !== 'anthropic';
-  if (needsUrl && !d.baseUrl.trim()) e.baseUrl = d.kind === 'wso2' ? '填网关地址' : '填接口地址';
-  else if (d.baseUrl.trim() && !isUrl(d.baseUrl)) e.baseUrl = '地址要以 http:// 或 https:// 开头';
+  if (needsUrl && !d.baseUrl.trim()) e.baseUrl = d.kind === 'wso2' ? '请填写网关地址' : '请填写接口地址';
+  else if (d.baseUrl.trim() && !isUrl(d.baseUrl)) e.baseUrl = '地址须以 http:// 或 https:// 开头';
   if (d.kind === 'wso2') {
-    if (!d.tokenUrl.trim()) e.tokenUrl = '填取 token 的地址';
-    else if (!isUrl(d.tokenUrl)) e.tokenUrl = '地址要以 http:// 或 https:// 开头';
-    if (!d.clientId.trim()) e.clientId = '填 Consumer Key';
+    if (!d.tokenUrl.trim()) e.tokenUrl = '请填写取 token 地址';
+    else if (!isUrl(d.tokenUrl)) e.tokenUrl = '地址须以 http:// 或 https:// 开头';
+    if (!d.clientId.trim()) e.clientId = '请填写 Consumer Key';
   }
   const secret = d.secret?.trim();
   // Local providers (Ollama, LM Studio) need no key.
-  if (!secret && !hasSavedSecret && opts.needsKey !== false) e.secret = `填 ${secretLabel(d.kind)}`;
+  if (!secret && !hasSavedSecret && opts.needsKey !== false) e.secret = `请填写 ${secretLabel(d.kind)}`;
   if (!opts.forTest && list) {
     const missing = list.find((m) => m.contextWindow === null || !Number.isInteger(m.contextWindow) || m.contextWindow < 1);
-    if (missing) e.contextWindow = `「${missing.id}」还没填上下文上限（这个模型一次最多能装多少 token，比如 128000）`;
+    if (missing) e.contextWindow = `请填写「${missing.id}」的上下文上限`;
   } else if (!opts.forTest) {
-    if (d.contextWindow === null) e.contextWindow = '必须填这一项，比如 128000';
-    else if (!Number.isInteger(d.contextWindow) || d.contextWindow < 1) e.contextWindow = '填正整数（token 数），比如 128000';
+    if (d.contextWindow === null) e.contextWindow = '请填写上下文上限';
+    else if (!Number.isInteger(d.contextWindow) || d.contextWindow < 1) e.contextWindow = '上下文上限须为正整数';
   }
   for (const k of ['maxConcurrent', 'requestsPerMinute'] as const) {
     const v = d[k];
-    if (v !== null && (!Number.isInteger(v) || v < 1)) e[k] = '填正整数，或者留空表示不限';
+    if (v !== null && (!Number.isInteger(v) || v < 1)) e[k] = '须为正整数或留空';
   }
   return e;
 }

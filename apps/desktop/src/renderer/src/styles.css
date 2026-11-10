@@ -1372,13 +1372,27 @@ button.tree-twisty:hover {
   min-width: 0;
 }
 
+/* Both sides give way on a narrow window: the chips shorten (ellipsis), the icons keep their size. */
+.composer-left,
 .composer-right {
+  flex: 0 1 auto;
+}
+
+.composer-bar .icon-btn,
+.composer-right > .composer-chip {
   flex: none;
+}
+
+/* On the right only the model gives way; 每次确认 stays whole. */
+.composer-right > .composer-model {
+  flex: 0 1 auto;
 }
 
 .composer-chip {
   height: 28px;
   max-width: 220px;
+  min-width: 0;
+  flex: 0 1 auto;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1402,10 +1416,13 @@ button.tree-twisty:hover {
 
 /* The model when there is nothing to switch to: plain text, not a button. */
 .composer-label {
+  min-width: 0;
   padding: 0 8px;
   font-size: 13px;
   color: var(--spica-faint);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .composer-context {
@@ -1950,7 +1967,7 @@ button.tree-twisty:hover {
 }
 
 /* Settings > models */
-/* 新对话默认用 / 重活用: at the top of 设置 › 模型, set in this one place. */
+/* 默认模型 / 强模型: at the top of 设置 › 模型, set in this one place. */
 .model-pointers {
   display: grid;
   gap: 8px;
@@ -2101,7 +2118,176 @@ button.tree-twisty:hover {
   border-color: var(--spica-danger);
 }
 
-/* 粘贴管理员给的配置: at the top of the model form. */
+/* 服务商 and 粘贴配置 on one line. */
+.provider-choice {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.field .provider-choice > .input {
+  flex: 1 1 220px;
+  max-width: 320px;
+}
+
+.provider-choice > .paste-config {
+  flex: 1 1 auto;
+}
+
+.provider-tail {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--spica-faint);
+}
+
+.field-link {
+  align-self: flex-start;
+  font-size: 12px;
+  color: var(--spica-accent-text);
+  text-decoration: none;
+}
+
+/* 模型: the provider's models with a checkbox each; the selected ones carry 上下文上限. */
+.model-picker {
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.model-picker-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-picker-gap {
+  flex: 1;
+}
+
+.model-picker-note {
+  margin: 0;
+}
+
+.model-picker-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--spica-border);
+  border-radius: var(--radius-m);
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.model-picker-list:empty {
+  display: none;
+}
+
+.model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--spica-border);
+}
+
+.model-row:first-child {
+  border-top: none;
+}
+
+.model-row-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.model-row-name > input {
+  flex: none;
+  margin: 0;
+  accent-color: var(--spica-accent);
+}
+
+.model-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.model-row-id {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.model-row:not(.is-on) .model-row-id {
+  color: var(--spica-muted);
+}
+
+.model-row-meta {
+  font-size: 12px;
+  color: var(--spica-faint);
+}
+
+.model-row-window {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.field .model-row-window > .input {
+  width: 120px;
+  height: 26px;
+  font-size: 13px;
+}
+
+.model-row-tag {
+  font-size: 12px;
+  color: var(--spica-faint);
+  white-space: nowrap;
+}
+
+.model-picker-add {
+  display: flex;
+  gap: 8px;
+}
+
+.field .model-picker-add > .input,
+.field .model-picker-head > .model-picker-search {
+  flex: 1;
+  max-width: none;
+  height: 28px;
+}
+
+@media (max-width: 640px) {
+  .model-pointer,
+  .field-stack {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .field-stack > .field-label {
+    padding-top: 0;
+  }
+
+  .model-row {
+    grid-template-columns: 1fr;
+  }
+
+  .model-row-window {
+    padding-left: 24px;
+  }
+
+  .provider-editor {
+    padding: 12px;
+  }
+}
+
+/* 粘贴配置: beside 服务商 in the model form. */
 .paste-config {
   display: flex;
   flex-direction: column;
@@ -2577,6 +2763,8 @@ button.tree-twisty:hover {
   position: fixed;
   z-index: 200;
   min-width: 140px;
+  width: max-content;
+  max-width: calc(100vw - 8px);
   padding: 4px;
   border-radius: var(--radius-m);
   background: var(--spica-raised);
@@ -2589,6 +2777,30 @@ button.tree-twisty:hover {
   padding: 0 10px;
   border-radius: var(--radius-s);
   text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.context-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.context-item-hint {
+  flex: none;
+  font-size: 12px;
+  color: var(--spica-faint);
+}
+
+/* A menu's group heading (the model menu: one per connection). */
+.context-group {
+  padding: 6px 10px 2px;
+  font-size: 12px;
+  color: var(--spica-faint);
 }
 
 .context-item:hover,

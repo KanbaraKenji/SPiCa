@@ -7,10 +7,10 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
   queued: '排队中',
   thinking: '思考中',
   tool: '调用工具中',
-  awaiting_confirm: '等你确认',
-  awaiting_answer: '等你回答',
+  awaiting_confirm: '等待确认',
+  awaiting_answer: '等待回答',
   done: '已完成',
-  error: '出错了',
+  error: '出错',
   aborted: '已停止',
   interrupted: '已中断',
 };

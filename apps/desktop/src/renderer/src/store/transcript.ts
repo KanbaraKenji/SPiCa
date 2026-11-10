@@ -78,7 +78,7 @@ function noteItem(m: Message): Item {
   if (change && typeof change === 'object' && typeof change.action === 'string') return { kind: 'settings', id: m.id, change };
   // The core's note that tools this conversation used were turned off; its body is English for the model.
   const gone = m.meta?.toolsUnavailable;
-  if (Array.isArray(gone) && gone.length) return { kind: 'note', id: m.id, text: `这些工具已停用：${gone.map((n) => toolLabel(String(n))).join('、')}` };
+  if (Array.isArray(gone) && gone.length) return { kind: 'note', id: m.id, text: `工具已停用：${gone.map((n) => toolLabel(String(n))).join('、')}` };
   const child = childNoteOf(m);
   return child ? { kind: 'note', id: m.id, text: child.text, child } : { kind: 'note', id: m.id, text: textOf(m) };
 }
@@ -454,7 +454,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       return t;
     }
     case 'budget.stop': {
-      t.error = `花费到上限了，已停下（已花 ${formatMoney(e.spentUsd)}，上限 ${formatMoney(e.limitUsd)}）。`;
+      t.error = `已达花费上限，已停止（已花费 ${formatMoney(e.spentUsd)}，上限 ${formatMoney(e.limitUsd)}）。`;
       return t;
     }
     default:
@@ -500,12 +500,12 @@ export function fileCardLine(card: FileCardMeta): string {
   const wholeFile =
     (r.pages !== undefined && card.pageCount !== undefined && (r.pages === `1-${card.pageCount}` || (card.pageCount === 1 && r.pages === '1'))) ||
     (card.sheets !== undefined && sheetsRead.length === card.sheets.length && !r.rows && !r.range);
-  if (wholeFile && !card.truncated) parts.push('全部读了');
-  else if (r.pages) parts.push(`读了第 ${r.pages} 页`);
-  else if (r.sheet) parts.push(`读了「${sheetsRead.join('、')}」${r.range ?? (r.rows ? `第 ${r.rows} 行` : '')}`);
-  else if (r.range) parts.push(`读了 ${r.range}`);
-  else if (r.rows) parts.push(`读了第 ${r.rows} 行`);
-  if (card.noTextLayer) parts.push('扫描件，读不出文字');
-  else if (card.truncated) parts.push('没读完');
+  if (wholeFile && !card.truncated) parts.push('已全部读取');
+  else if (r.pages) parts.push(`已读取第 ${r.pages} 页`);
+  else if (r.sheet) parts.push(`已读取「${sheetsRead.join('、')}」${r.range ?? (r.rows ? `第 ${r.rows} 行` : '')}`);
+  else if (r.range) parts.push(`已读取 ${r.range}`);
+  else if (r.rows) parts.push(`已读取第 ${r.rows} 行`);
+  if (card.noTextLayer) parts.push('扫描件，无法读取文字');
+  else if (card.truncated) parts.push('未读完');
   return parts.join(' · ');
 }

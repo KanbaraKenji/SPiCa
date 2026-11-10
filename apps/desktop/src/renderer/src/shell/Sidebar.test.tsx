@@ -44,7 +44,7 @@ describe('Sidebar', () => {
 
   it('summarises a collapsed project with only non-zero counts', () => {
     const kids = seed.sessions.filter((s) => s.parentId === SEED_IDS.pm);
-    expect(projectSummary(kids)).toBe('1 个等你 · 1 个在跑 · 1 个排队');
+    expect(projectSummary(kids)).toBe('1 个待处理 · 1 个运行中 · 1 个排队中');
     expect(projectSummary([])).toBe('');
   });
 
@@ -64,14 +64,14 @@ describe('Sidebar', () => {
     render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} onRename={onRename} />);
     fireEvent.contextMenu(screen.getByRole('button', { name: '整理本周来信' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }));
-    const field = screen.getByRole('textbox', { name: '新名字' });
+    const field = screen.getByRole('textbox', { name: '名称' });
     fireEvent.change(field, { target: { value: '本周来信' } });
     fireEvent.keyDown(field, { key: 'Enter' });
     expect(onRename).toHaveBeenCalledWith(SEED_IDS.chat2, '本周来信');
 
     fireEvent.contextMenu(screen.getByRole('button', { name: '看一下样机评审资料' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }));
-    fireEvent.keyDown(screen.getByRole('textbox', { name: '新名字' }), { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('textbox', { name: '名称' }), { key: 'Escape' });
     expect(onRename).toHaveBeenCalledTimes(1);
 
     // Without project actions, a project row has no menu.
@@ -102,15 +102,15 @@ describe('Sidebar', () => {
 
     fireEvent.contextMenu(screen.getByTitle('年度预算'));
     fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }));
-    const field = screen.getByRole('textbox', { name: '新名字' });
+    const field = screen.getByRole('textbox', { name: '名称' });
     // An empty name changes nothing for a project.
     fireEvent.change(field, { target: { value: '  ' } });
     fireEvent.keyDown(field, { key: 'Enter' });
     expect(onRenameProject).not.toHaveBeenCalled();
     fireEvent.contextMenu(screen.getByTitle('年度预算'));
     fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }));
-    fireEvent.change(screen.getByRole('textbox', { name: '新名字' }), { target: { value: '2027 年度预算' } });
-    fireEvent.keyDown(screen.getByRole('textbox', { name: '新名字' }), { key: 'Enter' });
+    fireEvent.change(screen.getByRole('textbox', { name: '名称' }), { target: { value: '2027 年度预算' } });
+    fireEvent.keyDown(screen.getByRole('textbox', { name: '名称' }), { key: 'Enter' });
     expect(onRenameProject).toHaveBeenCalledWith('p-budget', '2027 年度预算');
 
     fireEvent.contextMenu(screen.getByTitle('年度预算'));
@@ -121,7 +121,7 @@ describe('Sidebar', () => {
   it('collapsing a project shows the summary instead of children', () => {
     render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} />);
     fireEvent.click(screen.getByRole('button', { name: '收起 新品样机评审' }));
-    expect(screen.getByText('1 个等你 · 1 个在跑 · 1 个排队')).toBeTruthy();
+    expect(screen.getByText('1 个待处理 · 1 个运行中 · 1 个排队中')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /汇总测试报告/ })).toBeNull();
   });
 });

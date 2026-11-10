@@ -11,13 +11,13 @@ const LABELS: Record<string, string> = {
   web_fetch: '打开网页',
   web_search: '网页搜索',
   send_email: '发送邮件',
-  ask_user: '向你提问',
-  spawn_agent: '开子任务',
+  ask_user: '提问',
+  spawn_agent: '创建子任务',
   message_agent: '给子任务发消息',
   wait_agents: '等子任务完成',
-  record_decision: '记下决定',
+  record_decision: '记录决定',
   suggest_actions: '给出建议',
-  create_project: '建项目',
+  create_project: '创建项目',
   list_projects: '查看项目',
   open_project: '打开项目',
   project_status: '查看项目进度',
@@ -87,15 +87,15 @@ export function confirmTitle(name: string, input: unknown, reason: string): stri
 
 /** Why the core asks for a confirmation it would not ask otherwise (outside content was involved). */
 export const GUARD_CAUSE_TEXT: Record<string, string> = {
-  untrusted_turn: '这一步是看了外来内容后要做的不可逆操作，需要你确认。',
-  outside_link: '要打开的链接只出现在来信或网页里，你没点过。',
-  sensitive_file: '要读的是密钥类文件。',
+  untrusted_turn: '处理外部内容后的不可逆操作，需要确认。',
+  outside_link: '链接来自外部内容，需要确认。',
+  sensitive_file: '将读取密钥类文件，需要确认。',
 };
 
 /** Outside content that carried instructions; they were ignored, not followed. */
 export const GUARD_FLAG_TEXT: Record<string, string> = {
-  mail: '这封信夹带了指令，已忽略',
-  web: '这个网页夹带了指令，已忽略',
-  file: '这个文件里夹带了指令，已忽略',
-  mcp: '插件返回的内容夹带了指令，已忽略',
+  mail: '邮件中含有指令，已忽略',
+  web: '网页中含有指令，已忽略',
+  file: '文件中含有指令，已忽略',
+  mcp: '插件返回内容中含有指令，已忽略',
 };
