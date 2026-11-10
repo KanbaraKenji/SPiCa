@@ -14,6 +14,14 @@ describe('styles', () => {
     expect(block('.rail-head,\n.sidebar-head.is-over-rail')).toContain('justify-content: flex-start');
   });
 
+  it('a collapsed project row: the name first (it does not shrink, up to room left for a few characters of the summary); the summary gives way', () => {
+    const title = block('.tree-open:has(> .tree-summary) > .tree-title');
+    expect(title).toContain('flex: 1 0 auto');
+    expect(title).toContain('max-width: calc(100% - 84px)');
+    expect(block('.tree-summary')).toContain('flex: 0 1 auto');
+    expect(block('.tree-summary')).toContain('text-overflow: ellipsis');
+  });
+
   it('a sidebar row shows 更多 only under the pointer, when current, with the focus inside or with its menu open', () => {
     expect(block('.tree-more')).toContain('display: none');
     expect(block('.tree-row:hover .tree-more,\n.tree-row:focus-within .tree-more,\n.tree-row.is-active .tree-more,\n.tree-row.is-menu-open .tree-more')).toContain('display: inline-flex');

@@ -17,6 +17,24 @@ const EDGE = 8;
 interface Tip {
   text: string;
   rect: DOMRect;
+  /** A menu item's note: the menu's box, so the bubble goes beside the menu instead of over the item above. */
+  menu?: DOMRect;
+}
+
+/**
+ * Where the bubble goes. A menu item's: outside the menu, level with the item, on the right; on the left when
+ * the right has no room; above only when neither has. Anything else: above the element, centred, kept inside
+ * the window; below it when there is no room above.
+ */
+export function placeTip(t: Tip, w: number, h: number, win: { width: number; height: number }): { left: number; top: number } {
+  const r = t.rect;
+  if (t.menu) {
+    const top = Math.min(Math.max(EDGE, r.top + r.height / 2 - h / 2), win.height - h - EDGE);
+    if (t.menu.right + GAP + w <= win.width - EDGE) return { left: t.menu.right + GAP, top };
+    if (t.menu.left - GAP - w >= EDGE) return { left: t.menu.left - GAP - w, top };
+  }
+  const left = Math.min(Math.max(EDGE, r.left + r.width / 2 - w / 2), win.width - w - EDGE);
+  return { left, top: r.top - GAP - h >= EDGE ? r.top - GAP - h : r.bottom + GAP };
 }
 
 const tipOf = (el: HTMLElement) => el.getAttribute('data-tip') ?? el.dataset.heldTitle ?? el.getAttribute('title') ?? '';
@@ -70,7 +88,9 @@ export function HoverTips() {
       hold(el);
       if (!tipWanted(el)) return;
       timer = setTimeout(() => {
-        if (current === el && el.isConnected) setTip({ text: tipOf(el), rect: el.getBoundingClientRect() });
+        if (current !== el || !el.isConnected) return;
+        const menu = el.getAttribute('role') === 'menuitem' ? el.closest('[role="menu"]') : null;
+        setTip({ text: tipOf(el), rect: el.getBoundingClientRect(), ...(menu ? { menu: menu.getBoundingClientRect() } : {}) });
       }, wait);
     };
     const over = (e: PointerEvent) => start(target(e.target), DELAY_MS);
@@ -104,19 +124,13 @@ export function HoverTips() {
     };
   }, []);
 
-  // Above the element, centred, kept inside the window; below it when there is no room above.
   useLayoutEffect(() => {
     const b = bubble.current;
     if (!tip || !b) {
       setPos(null);
       return;
     }
-    const w = b.offsetWidth;
-    const h = b.offsetHeight;
-    const r = tip.rect;
-    const left = Math.min(Math.max(EDGE, r.left + r.width / 2 - w / 2), window.innerWidth - w - EDGE);
-    const top = r.top - GAP - h >= EDGE ? r.top - GAP - h : r.bottom + GAP;
-    setPos({ left, top });
+    setPos(placeTip(tip, b.offsetWidth, b.offsetHeight, { width: window.innerWidth, height: window.innerHeight }));
   }, [tip]);
 
   if (!tip) return null;

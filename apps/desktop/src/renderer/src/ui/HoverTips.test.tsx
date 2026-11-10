@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { HoverTips, tipWanted } from './HoverTips';
+import { HoverTips, placeTip, tipWanted } from './HoverTips';
 
 afterEach(() => {
   cleanup();
@@ -95,5 +95,23 @@ describe('a name that may be cut short (data-tip-clipped)', () => {
     sized(el, 0, 0, false);
     expect(tipWanted(el)).toBe(true);
     expect(tipWanted(document.createElement('button'))).toBe(true);
+  });
+});
+
+describe('where the bubble goes', () => {
+  const rect = (left: number, top: number, width: number, height: number) => ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
+  const win = { width: 1280, height: 800 };
+
+  it('a menu item’s: beside the menu, level with the item, on the right; on the left when the right has no room; above when neither has', () => {
+    const item = rect(900, 640, 200, 28);
+    expect(placeTip({ text: '不支持图片', rect: item, menu: rect(894, 486, 214, 226) }, 80, 26, win)).toEqual({ left: 1108 + 6, top: 640 + 14 - 13 });
+    const atRight = rect(1100, 640, 170, 28);
+    expect(placeTip({ text: '不支持图片', rect: atRight, menu: rect(1094, 486, 180, 226) }, 80, 26, win)).toEqual({ left: 1094 - 6 - 80, top: 641 });
+    const wide = rect(4, 640, 1272, 28);
+    expect(placeTip({ text: '不支持图片', rect: wide, menu: rect(2, 486, 1276, 226) }, 80, 26, win)).toEqual({ left: 600, top: 640 - 6 - 26 });
+  });
+
+  it('anything else: above the element, centred', () => {
+    expect(placeTip({ text: '更多', rect: rect(227, 202, 24, 24) }, 40, 26, win)).toEqual({ left: 219, top: 170 });
   });
 });

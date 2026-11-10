@@ -494,8 +494,7 @@ a:hover {
   background: var(--spica-active);
 }
 
-/* The name keeps a few characters when the row is crowded (a collapsed project's summary,
-   the 更多 button); the summary gives way first. */
+/* The name keeps a few characters when the row is crowded (the 更多 button). */
 .tree-title {
   flex: 1 1 auto;
   min-width: 3em;
@@ -577,8 +576,16 @@ button.tree-twisty:hover {
   text-align: left;
 }
 
+/* A collapsed project: its name first, in full when it fits; the summary takes what is left (an ellipsis
+   when that is not enough, the whole on hover), but never less than room for a few characters
+   (「1 个待处…」), so a long name gives way too. */
+.tree-open:has(> .tree-summary) > .tree-title {
+  flex: 1 0 auto;
+  max-width: calc(100% - 84px);
+}
+
 .tree-summary {
-  flex: 0 4 auto;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
