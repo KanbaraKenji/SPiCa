@@ -84,3 +84,21 @@ it('an address with a query keeps it (the path goes before it), and a version li
   await rt.close();
   expect(gw.requests.at(-1)!.path).toBe('/openai/deployments/gpt4o/chat/completions');
 });
+
+it('hints that read differently for a WSO2 gateway: a key besides the token, no model list', async () => {
+  const { netHint, NET_HINTS } = await import('./net.ts');
+  expect(netHint('wso2.missing_credentials', 'wso2')).toBe('请求缺少凭据（WSO2 900902），网关可能还要求在请求头中带 API Key，请向网关管理员确认。');
+  expect(netHint('wso2.missing_credentials', 'openai-compatible')).toBe(NET_HINTS['wso2.missing_credentials']); // others: switch to the gateway kind
+  expect(netHint('list.unsupported', 'wso2')).toBe('网关未提供模型列表，请手动输入模型。');
+  expect(netHint('list.unsupported', 'openai-compatible')).toBe(NET_HINTS['list.unsupported']);
+  const { listProviderModels } = await import('./catalog/list-models.ts');
+  const { BUILTIN_CATALOG } = await import('./catalog/builtin.ts');
+  const g = await startGateway({ oauth: { clientId: 'id-1', clientSecret: 'secret-1' } });
+  try {
+    g.onRequest(() => ({ status: 404, errorBody: '{"code":"404","description":"No matching resource found"}' }));
+    const r = await listProviderModels({ kind: 'wso2', baseUrl: `${g.baseUrl}/llm/1.0`, oauth: { tokenUrl: `${g.baseUrl}/oauth2/token`, clientId: 'id-1', clientSecret: 'secret-1' } }, BUILTIN_CATALOG);
+    expect(r).toMatchObject({ ok: false, code: 'list.unsupported', hint: '网关未提供模型列表，请手动输入模型。' });
+  } finally {
+    await g.stop();
+  }
+});

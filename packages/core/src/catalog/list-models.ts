@@ -2,7 +2,7 @@
 // so the form offers models the catalog does not list. Never required: when it
 // fails (no such endpoint, wrong key, network) the form keeps the catalog list
 // and lets the user type a name.
-import { htmlTitle, httpErrorCode, looksLikeHtml, NET_HINTS, netErrorCode, netFetch } from '../net.ts';
+import { htmlTitle, httpErrorCode, looksLikeHtml, netErrorCode, netFetch, netHint } from '../net.ts';
 import { joinUrl } from '../providers/http.ts';
 import { OAuthClientCredentials } from '../providers/wso2.ts';
 import { redact } from '../util.ts';
@@ -71,7 +71,7 @@ export async function listProviderModels(req: ListModelsRequest, catalog: ModelC
   const fail = (code: string, message: string, httpStatus?: number): ListModelsResult => ({
     ok: false,
     code,
-    ...(NET_HINTS[code] ? { hint: NET_HINTS[code] } : {}),
+    ...(netHint(code, req.kind) ? { hint: netHint(code, req.kind) } : {}),
     ...(httpStatus ? { httpStatus } : {}),
     message: redact(message, secrets).slice(0, 300),
   });
