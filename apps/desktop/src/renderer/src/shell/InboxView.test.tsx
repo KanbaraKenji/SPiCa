@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { seedMail, FAKE_PROJECTS } from '../../../main/backend/fake-mail';
 import { DEFAULT_SETTINGS } from '../../../shared/settings';
+import { mailTime } from '../../../shared/mail';
 import type { MailView } from '../store/mail';
 import { InboxView, type InboxViewProps } from './InboxView';
 
@@ -106,11 +107,14 @@ describe('InboxView', () => {
   });
 
   it('after 现在查收: when, and what it found, also when nothing new came', () => {
-    setup({ mail: view({ lastPolledAt: '2026-11-09T09:58:00+08:00', lastAdded: 0 }), prefs: { ...DEFAULT_SETTINGS.mail, enabled: true } });
-    expect(screen.getByText(/上次 09:58 · 没有新邮件/)).toBeTruthy();
+    // The time is shown in the machine's zone; the expectation uses the same formatter.
+    const polled = '2026-11-09T09:58:00+08:00';
+    const at = mailTime(polled, now);
+    setup({ mail: view({ lastPolledAt: polled, lastAdded: 0 }), prefs: { ...DEFAULT_SETTINGS.mail, enabled: true } });
+    expect(screen.getByText(`上次 ${at} · 没有新邮件`, { exact: false })).toBeTruthy();
     cleanup();
-    setup({ mail: view({ lastPolledAt: '2026-11-09T09:58:00+08:00', lastAdded: 3 }), prefs: { ...DEFAULT_SETTINGS.mail, enabled: true } });
-    expect(screen.getByText(/上次 09:58 · 3 封新邮件/)).toBeTruthy();
+    setup({ mail: view({ lastPolledAt: polled, lastAdded: 3 }), prefs: { ...DEFAULT_SETTINGS.mail, enabled: true } });
+    expect(screen.getByText(`上次 ${at} · 3 封新邮件`, { exact: false })).toBeTruthy();
     cleanup();
     // While it runs: the button shows it is working and cannot be clicked again.
     setup({ mail: view({ polling: true }) });
