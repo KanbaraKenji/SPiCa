@@ -151,6 +151,8 @@ export function Models({ api }: { api: ProvidersApi }) {
   const fetchRun = useGuard();
   const [deleting, setDeleting] = useState<ProviderView | null>(null);
   const [fetched, setFetched] = useState<ListedModel[] | null>(null);
+  // What the last 获取模型列表 found, beside the button, until the next change (like 已保存).
+  const [fetchNote, setFetchNote] = useState<string | null>(null);
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [matchedNames, setMatchedNames] = useState<Record<string, string>>({});
@@ -232,6 +234,7 @@ export function Models({ api }: { api: ProvidersApi }) {
     latest.current = { draft: synced, selected };
     if (selected) keepDraft(draftKey(selected), synced, savedDraft());
     setResult(null);
+    setFetchNote(null);
   };
 
   const set = (patch: Partial<ProviderDraft>) => {
@@ -249,6 +252,7 @@ export function Models({ api }: { api: ProvidersApi }) {
     setResult(null);
     setAdvanced(false);
     setFetched(null);
+    setFetchNote(null);
     setFetchError(null);
     setMatchedNames({});
   };
@@ -344,10 +348,17 @@ export function Models({ api }: { api: ProvidersApi }) {
     if (!api.listModels) return;
     setFetching(true);
     setFetchError(null);
+    setFetchNote(null);
+    // Already in the list before this fetch: the preset's models, an earlier fetch, the ones added.
+    const known = new Set([...(provider?.models ?? []).map((m) => m.id), ...(fetched ?? []).map((m) => m.id), ...(draft.models ?? []).map((m) => m.id)]);
     try {
       const r = await api.listModels(draft);
-      if (r.ok) setFetched(r.models.filter((m) => m.chat).map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}) })));
-      else setFetchError(r.hint || '获取模型列表失败，请从列表选择或手动输入模型。');
+      if (r.ok) {
+        const got = r.models.filter((m) => m.chat).map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}) }));
+        setFetched(got);
+        const added = got.filter((m) => !known.has(m.id)).length;
+        setFetchNote(`已获取 ${got.length} 个模型，${added ? `新增 ${added} 个` : '没有新增'}`);
+      } else setFetchError(r.hint || '获取模型列表失败，请从列表选择或手动输入模型。');
     } catch (e) {
       setFetchError(friendlyError(e));
     } finally {
@@ -454,6 +465,7 @@ export function Models({ api }: { api: ProvidersApi }) {
     setErrors({});
     setResult(null);
     setFetched(null);
+    setFetchNote(null);
     setMatchedNames({});
   };
   // A pointer at a model this change takes out of use moves when saved (the store's rule): said before saving.
@@ -681,6 +693,7 @@ export function Models({ api }: { api: ProvidersApi }) {
                     onFetch={api.listModels ? () => void fetchRun(fetchModels) : undefined}
                     fetching={fetching}
                     fetchError={fetchError}
+                    fetchNote={fetchNote}
                     error={errors.model ?? errors.contextWindow}
                   />
                 </span>

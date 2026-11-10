@@ -204,6 +204,29 @@ describe('Models', () => {
     expect(api.save).toHaveBeenCalledTimes(1);
   });
 
+  it('获取模型列表 says how many it got and how many are new, until the next change', async () => {
+    const api = fakeApi();
+    api.listModels = vi.fn(async () => ({
+      ok: true as const,
+      models: [
+        { id: 'deepseek-flash', inCatalog: true, chat: true },
+        { id: 'deepseek-v4-pro', inCatalog: true, chat: true },
+        { id: 'deepseek-chat', inCatalog: false, chat: true },
+        { id: 'text-embed', inCatalog: false, chat: false },
+      ],
+    }));
+    await openNew(api);
+    choose('deepseek');
+    fireEvent.click(screen.getByRole('button', { name: '获取模型列表' }));
+    expect((await screen.findByRole('status')).textContent).toBe('已获取 3 个模型，新增 1 个');
+    // Again: nothing new this time.
+    fireEvent.click(screen.getByRole('button', { name: '获取模型列表' }));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('已获取 3 个模型，没有新增'));
+    // Any change to the form clears it, as 已保存 is cleared.
+    type('名称', 'DeepSeek 备用');
+    expect(screen.queryByText(/已获取/)).toBeNull();
+  });
+
   it('tests, saves, and then keeps the key hidden', async () => {
     const api = await openNew();
     choose('deepseek');

@@ -32,6 +32,8 @@ export interface ModelPickerProps {
   onFetch?: (() => void) | undefined;
   fetching: boolean;
   fetchError: string | null;
+  /** What the last fetch found (「已获取 N 个模型，新增 M 个」), shown beside the button. */
+  fetchNote?: string | null;
   error?: string | undefined;
 }
 
@@ -54,7 +56,7 @@ function parseWindow(v: string): number | null {
   return Number.isFinite(n) ? n : Number.NaN;
 }
 
-export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle, onRemove, onWindow, onAdd, onFetch, fetching, fetchError, error }: ModelPickerProps) {
+export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle, onRemove, onWindow, onAdd, onFetch, fetching, fetchError, fetchNote, error }: ModelPickerProps) {
   const [query, setQuery] = useState('');
   const [typed, setTyped] = useState('');
   const [typing, setTyping] = useState(false);
@@ -200,6 +202,12 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
             手动输入模型
           </button>
         )}
+        {onFetch && fetchNote ? (
+          <span className="provider-result is-ok" role="status">
+            <SpicaStatusIcon name="done" size={15} />
+            {fetchNote}
+          </span>
+        ) : null}
       </div>
       {error ? <p className="field-error model-picker-note">{error}</p> : null}
     </div>
