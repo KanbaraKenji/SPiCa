@@ -50,6 +50,8 @@ export class OpenAICompatibleProvider implements Provider {
   readonly capabilities = { serverWebSearch: false };
   readonly #opts: OpenAICompatibleOptions;
   readonly #auth: AuthSource | undefined;
+  /** The server refused stream_options (it streams, but does not know that field): leave it out from now on. */
+  #noStreamOptions = false;
   /** The server refused stream: true (a gateway that cannot stream): ask without streaming from now on. */
   #noStream = false;
 
@@ -85,19 +87,33 @@ export class OpenAICompatibleProvider implements Provider {
 
   async *stream(req: ModelRequest, ctx: ProviderCallContext): AsyncGenerator<ProviderEvent, void> {
     const url = joinUrl(this.#opts.baseUrl, this.#opts.path ?? '/chat/completions');
-    const send = (streaming: boolean) => this.#post(url, req, ctx, streaming);
+    const send = (how: 'stream' | 'plain') => this.#post(url, req, ctx, how, !this.#noStreamOptions);
     let res: Response;
-    if (this.#noStream) res = await send(false);
+    if (this.#noStream) res = await send('plain');
     else {
       try {
-        res = await send(true);
+        res = await send('stream');
       } catch (err) {
-        // a gateway that cannot stream says so with a 400: ask again without streaming, and from now on
-        if (!(err instanceof ProviderError && err.status === 400 && /\bstream/i.test(err.message))) throw err;
-        this.#noStream = true;
-        res = await send(false);
+        let why = streamRefusal(err);
+        // step 1: the gateway streams but does not know stream_options: stream again without it, and from now on
+        if (why === 'stream_options' && !this.#noStreamOptions) {
+          this.#noStreamOptions = true;
+          try {
+            res = await send('stream');
+            why = undefined;
+          } catch (again) {
+            why = streamRefusal(again);
+            if (why !== 'stream') throw again;
+          }
+        } else if (why !== 'stream') throw err;
+        // step 2: it refuses streaming itself: ask without streaming, and from now on
+        if (why === 'stream') {
+          this.#noStream = true;
+          res = await send('plain');
+        }
       }
     }
+    res = res!;
     if (!res.body) throw new ProviderError('empty response body', { retryable: true });
     const type = res.headers.get('content-type') ?? '';
     if (/application\/json/i.test(type) && !/event-stream/i.test(type)) {
@@ -118,12 +134,11 @@ export class OpenAICompatibleProvider implements Provider {
     }
   }
 
-  #post(url: string, req: ModelRequest, ctx: ProviderCallContext, streaming: boolean): Promise<Response> {
+  #post(url: string, req: ModelRequest, ctx: ProviderCallContext, how: 'stream' | 'plain', streamOptions: boolean): Promise<Response> {
     const body = this.buildBody(req);
-    if (!streaming) {
-      body.stream = false;
-      delete body.stream_options;
-    }
+    const streaming = how === 'stream';
+    if (!streaming) body.stream = false;
+    if (!streaming || !streamOptions) delete body.stream_options;
     return postWithRetry({
       url,
       body: JSON.stringify(body),
@@ -140,6 +155,17 @@ export class OpenAICompatibleProvider implements Provider {
       ...(!this.#opts.path && !endsInVersion(this.#opts.baseUrl) ? { unversionedBase: true } : {}),
     });
   }
+}
+
+/**
+ * Why a 400 refused the streamed request: the stream_options field (the server streams, but does not know that
+ * field), or streaming itself; undefined for any other 400 and other errors.
+ */
+function streamRefusal(err: unknown): 'stream_options' | 'stream' | undefined {
+  if (!(err instanceof ProviderError) || err.status !== 400) return undefined;
+  if (/stream_options|include_usage/i.test(err.message)) return 'stream_options';
+  if (/\bstream(ing)?\b/i.test(err.message)) return 'stream';
+  return undefined;
 }
 
 /** A stream that broke off or went quiet: a coded error the window can word (not a bare "terminated"). */

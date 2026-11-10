@@ -190,6 +190,42 @@ describe('gateways that do not stream, or cut the stream', () => {
     await expect(run(openaiProvider(gw), req())).rejects.toMatchObject({ status: 400 });
   });
 
+  it('step 1: a gateway that only refuses stream_options still streams, without that field from then on', async () => {
+    const strict = await startGateway({ apiKey: 'test-key-123456', rejectStreamOptions: true });
+    try {
+      strict.onRequest(() => ({ text: ['still ', 'streaming'] }));
+      const p = new OpenAICompatibleProvider({ id: 'x', baseUrl: `${strict.baseUrl}/v1`, apiKey: 'test-key-123456', retry: FAST_RETRY });
+      const first = await run(p, req());
+      expect(first.events.filter((e) => e.type === 'text').length).toBe(2); // streamed, not one block
+      expect(first.response.content).toEqual([{ type: 'text', text: 'still streaming' }]);
+      expect(strict.requests.map((r) => [r.body.stream, 'stream_options' in r.body])).toEqual([[true, true], [true, false]]); // refused with it, streamed without
+      await run(p, req());
+      expect(strict.requests.map((r) => [r.body.stream, 'stream_options' in r.body])).toEqual([[true, true], [true, false], [true, false]]); // remembered
+    } finally {
+      await strict.stop();
+    }
+  });
+
+  it('step 2: refused again for streaming itself once stream_options is gone: asked without streaming, and from then on', async () => {
+    gw.onRequest((r) =>
+      'stream_options' in r.body
+        ? { status: 400, errorBody: '{"error":{"message":"Unrecognized request argument supplied: stream_options"}}' }
+        : r.body.stream
+          ? { status: 400, errorBody: '{"error":{"message":"streaming is not supported"}}' }
+          : { json: completion() },
+    );
+    const p = openaiProvider(gw);
+    expect((await run(p, req())).response.content).toEqual([{ type: 'text', text: 'whole answer' }]);
+    expect(gw.requests.map((r) => [r.body.stream, 'stream_options' in r.body])).toEqual([
+      [true, true],
+      [true, false],
+      [false, false],
+    ]);
+    await run(p, req());
+    expect(gw.requests.at(-1)!.body.stream).toBe(false); // straight to not streaming
+    expect(gw.requests).toHaveLength(4);
+  });
+
   it('a stream that breaks off or goes quiet ends with a coded error, not a bare "terminated"', async () => {
     const { createServer } = await import('node:http');
     const { listenFetchable } = await import('../net.ts');

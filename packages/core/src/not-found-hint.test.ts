@@ -41,7 +41,7 @@ it('a 404 at an address without a version says to check for /v1; with /v1 it say
   expect(await codeOf(`${gw.baseUrl}/api/v2`)).toBe('gateway.not_found');
 });
 
-it('a WSO2 gateway names its own field and its own kind of version (context + version, like /llm/1.0), in the conversation and in test connection (one place: netHint)', async () => {
+it('a WSO2 gateway names its own field and its own kind of version (path + version, like /llm/1.0), in the conversation and in test connection (one place: netHint)', async () => {
   const g = await startGateway({ oauth: { clientId: 'id-1', clientSecret: 'secret-1' } });
   try {
     g.onRequest(() => ({ status: 404, errorBody: '{"error":"no such resource"}' }));
@@ -52,9 +52,9 @@ it('a WSO2 gateway names its own field and its own kind of version (context + ve
     await rt.createSession().send('hi').done;
     await rt.close();
     const error = events.find((e) => e.type === 'error') as { code?: string; hint?: string };
-    expect(error).toMatchObject({ code: 'gateway.not_found_version', hint: '路径无效（HTTP 404），请检查「网关地址」是否包含 API 的上下文和版本（如 /llm/1.0）。' });
+    expect(error).toMatchObject({ code: 'gateway.not_found_version', hint: '路径无效（HTTP 404），请检查「网关地址」是否包含 API 的路径和版本（如 /llm/1.0）。' });
     const tested = await probeConfig({ id: 'form', kind: 'wso2', baseUrl: `${g.baseUrl}/llm`, oauth }, 'm');
-    expect(tested.hint).toBe('模型调用失败：路径无效（HTTP 404），请检查「网关地址」是否包含 API 的上下文和版本（如 /llm/1.0）。');
+    expect(tested.hint).toBe('模型调用失败：路径无效（HTTP 404），请检查「网关地址」是否包含 API 的路径和版本（如 /llm/1.0）。');
   } finally {
     await g.stop();
   }

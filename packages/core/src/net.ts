@@ -358,12 +358,12 @@ export const NET_HINTS: Record<string, string> = {
 };
 
 /**
- * Hints that read differently for a kind of connection. A WSO2 API's address ends in its context and version
+ * Hints that read differently for a kind of connection. A WSO2 API's address ends in its path and version
  * (/llm/1.0), not in /v1.
  */
 const KIND_HINTS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   wso2: {
-    'gateway.not_found_version': '路径无效（HTTP 404），请检查「网关地址」是否包含 API 的上下文和版本（如 /llm/1.0）。',
+    'gateway.not_found_version': '路径无效（HTTP 404），请检查「网关地址」是否包含 API 的路径和版本（如 /llm/1.0）。',
     // the connection is a WSO2 gateway already: the gateway wants a key besides the token
     'wso2.missing_credentials': '请求缺少凭据（WSO2 900902），网关可能还要求在请求头中带 API Key，请向网关管理员确认。',
     'list.unsupported': '网关未提供模型列表，请手动输入模型。',

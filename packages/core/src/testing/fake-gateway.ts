@@ -47,6 +47,8 @@ export interface FakeGatewayOptions {
   /** Static API key accepted as Bearer / x-api-key. If unset and oauth unset, auth is not checked. */
   apiKey?: string;
   oauth?: { clientId: string; clientSecret: string; tokenTtlMs?: number };
+  /** Like gateways that stream but do not know stream_options: a request with it gets a 400 naming it. */
+  rejectStreamOptions?: boolean;
 }
 
 export class FakeGateway {
@@ -151,6 +153,10 @@ export class FakeGateway {
       this.#open.delete(res);
     });
     if (reply.delayMs) await wait(reply.delayMs);
+    if (this.#opts.rejectStreamOptions && body.stream_options !== undefined) {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      return void res.end(JSON.stringify({ error: { message: 'Unrecognized request argument supplied: stream_options', type: 'invalid_request_error' } }));
+    }
     if (reply.json !== undefined) {
       res.writeHead(200, { 'content-type': 'application/json', ...reply.headers });
       return void res.end(reply.json);
