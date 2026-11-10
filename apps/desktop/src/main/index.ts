@@ -44,7 +44,7 @@ import type { DesktopBackendConfig } from '../backend/config';
 import { readModelEnv } from './backend/model-env';
 import { SettingsStore } from './settings-store';
 import { captureOnce, runShots } from './shots';
-import { flatten, icoFromPngs, inkFor } from './icon';
+import { flatten, icoFromPngs, inkFor, TASKBAR_FRAME_SIZES } from './icon';
 import { PREVIEW_SCHEME, PreviewFiles, readPreview } from './preview';
 import { BRIDGE_JS, contentType, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
 import { FONT_UI, type PluginView, type PluginViewResult } from '../shared/plugin-view';
@@ -326,25 +326,54 @@ function windowIcon(): Electron.NativeImage | undefined {
  * button is refreshed once Explorer has noticed.
  */
 function applyWindowIcon(win: BrowserWindow): void {
-  const icon = windowIcon();
-  if (!icon) return;
-  win.setIcon(icon);
-  if (process.platform !== 'win32') return;
+  if (process.platform !== 'win32') {
+    const icon = windowIcon();
+    if (icon) win.setIcon(icon);
+    return;
+  }
   try {
-    const images = [256, 48, 32, 16].map((size) => ({ size, png: icon.resize({ width: size, height: size, quality: 'best' }).toPNG() }));
-    const ico = icoFromPngs(images);
+    const ico = taskbarIco();
+    if (!ico) {
+      const icon = windowIcon();
+      if (icon) win.setIcon(icon);
+      return;
+    }
     const dir = join(app.getPath('userData'), 'icons');
     mkdirSync(dir, { recursive: true });
     const file = join(dir, iconFileName(ico));
     if (!existsSync(file)) writeFileSync(file, ico);
+    // The same .ico on the window: title bar and Alt+Tab take their own size from it too.
+    const fromFile = nativeImage.createFromPath(file);
+    if (!fromFile.isEmpty()) win.setIcon(fromFile);
     win.setAppDetails({ appId: APP_USER_MODEL_ID, appIconPath: file, appIconIndex: 0 });
     if (shortcutIconsAllowed() && pointShortcutsAt(shortcutIo, shortcutFolders(app.getPath('appData')), process.execPath, file) > 0) {
       clearTimeout(buttonRefresh);
       buttonRefresh = setTimeout(() => refreshTaskbarButton(win, file), SHORTCUT_SETTLE_MS);
     }
   } catch {
-    // The window icon above is still set; only the taskbar button keeps the shortcut's icon.
+    const icon = windowIcon();
+    if (icon) win.setIcon(icon);
   }
+}
+
+/**
+ * The taskbar .ico: the brand's mask drawn at each size (spica-taskbar-<n>.png,
+ * a white flower on transparent, centred on the pixel grid), coloured for the
+ * taskbar (white on dark, black on light). No frame is scaled from another, so
+ * 150% (36 px) and the other scalings stay sharp. Undefined when the masks are missing.
+ */
+function taskbarIco(): Uint8Array | undefined {
+  const ink = inkFor(nativeTheme.shouldUseDarkColorsForSystemIntegratedUI);
+  const images: { size: number; png: Uint8Array }[] = [];
+  for (const size of TASKBAR_FRAME_SIZES) {
+    const file = join(app.getAppPath(), 'resources', 'branding', 'png', `spica-taskbar-${size}.png`);
+    if (!existsSync(file)) continue;
+    const mask = nativeImage.createFromPath(file);
+    if (mask.isEmpty()) continue;
+    const coloured = nativeImage.createFromBitmap(Buffer.from(flatten(mask.toBitmap(), ink)), mask.getSize());
+    images.push({ size, png: coloured.toPNG() });
+  }
+  return images.length ? icoFromPngs(images) : undefined;
 }
 
 let buttonRefresh: ReturnType<typeof setTimeout> | undefined;

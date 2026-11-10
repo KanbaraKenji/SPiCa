@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { flatten, icoFromPngs, inkFor } from './icon';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { flatten, icoFromPngs, inkFor, TASKBAR_FRAME_SIZES } from './icon';
 
 describe('taskbar icon', () => {
   it('is one flat color with the same shape (premultiplied BGRA)', () => {
@@ -30,5 +32,19 @@ describe('taskbar icon', () => {
     expect([ico[22], v.getUint32(30, true), v.getUint32(34, true)]).toEqual([32, 6, 43]);
     expect([...ico.slice(38, 43)]).toEqual([...a]);
     expect([...ico.slice(43)]).toEqual([...b]);
+  });
+
+  it('the brand draws a mask for every taskbar size; an .ico of them lists every frame', () => {
+    const dir = join(__dirname, '..', '..', 'resources', 'branding', 'png');
+    const images = TASKBAR_FRAME_SIZES.map((size) => {
+      const png = readFileSync(join(dir, `spica-taskbar-${size}.png`));
+      // PNG IHDR: width and height at bytes 16-23, drawn at that size (not scaled from another).
+      expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([size, size]);
+      return { size, png: new Uint8Array(png) };
+    });
+    const ico = Buffer.from(icoFromPngs(images));
+    expect(ico.readUInt16LE(4)).toBe(12);
+    const widths = TASKBAR_FRAME_SIZES.map((_, i) => ico[6 + i * 16]);
+    expect(widths).toEqual(TASKBAR_FRAME_SIZES.map((s) => (s >= 256 ? 0 : s)));
   });
 });

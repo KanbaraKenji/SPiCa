@@ -54,3 +54,6 @@ export function icoFromPngs(images: { size: number; png: Uint8Array }[]): Uint8A
 export function inkFor(darkTaskbar: boolean): IconInk {
   return darkTaskbar ? 'white' : 'black';
 }
+
+/** The sizes the brand draws the taskbar mask at (spica-taskbar-<n>.png): 100%–200% scaling of 16, 24, 32 and 48, plus 64 and 256. */
+export const TASKBAR_FRAME_SIZES = [16, 20, 24, 28, 30, 32, 36, 40, 42, 48, 64, 256] as const;
