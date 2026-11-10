@@ -606,7 +606,8 @@ export function Models({ api }: { api: ProvidersApi }) {
 
           {choice !== '' ? (
             <>
-              <Field label="名称" value={draft.name} onChange={(name) => set({ name })} error={errors.name} placeholder="DeepSeek" />
+              {/* The example is the preset picked (none for 中转站 / 公司网关). */}
+              <Field label="名称" value={draft.name} onChange={(name) => set({ name })} error={errors.name} {...(provider?.name ? { placeholder: provider.name } : {})} />
 
               {isWso2 ? (
                 <>

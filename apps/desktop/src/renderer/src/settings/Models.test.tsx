@@ -155,6 +155,14 @@ describe('Models', () => {
     expect(screen.getByText('请填写网关地址')).toBeTruthy();
   });
 
+  it('the name field’s example is the preset picked, none for 中转站', async () => {
+    await openNew();
+    choose('deepseek');
+    expect((byLabel('名称') as HTMLInputElement).placeholder).toBe('DeepSeek');
+    choose('#relay');
+    expect((byLabel('名称') as HTMLInputElement).placeholder).toBe('');
+  });
+
   it('a model typed by hand needs its 上下文上限 before saving', async () => {
     const api = await openNew();
     choose('#relay');

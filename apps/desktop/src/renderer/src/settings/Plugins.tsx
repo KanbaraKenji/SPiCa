@@ -398,10 +398,10 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
               ))}
             </div>
           ) : null}
-          <button type="button" className="icon-btn" disabled={busy || !plugins.length} onClick={() => void run({ op: 'checkUpdates' })} aria-label="检查更新" title="检查更新">
+          <button type="button" className="btn btn-square" disabled={busy || !plugins.length} onClick={() => void run({ op: 'checkUpdates' })} aria-label="检查更新" title="检查更新">
             <Icon name="refresh" size={16} />
           </button>
-          <button type="button" className={installOpen ? 'icon-btn is-on' : 'icon-btn'} aria-expanded={installOpen} disabled={empty} onClick={() => setInstalling(!installing)} aria-label="安装插件" title="安装插件">
+          <button type="button" className={installOpen ? 'btn btn-square is-on' : 'btn btn-square'} aria-expanded={installOpen} disabled={empty} onClick={() => setInstalling(!installing)} aria-label="安装插件" title="安装插件">
             <Icon name="plus" size={16} />
           </button>
         </div>

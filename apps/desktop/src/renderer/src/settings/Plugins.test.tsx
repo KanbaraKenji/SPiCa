@@ -91,6 +91,13 @@ describe('Plugins', () => {
     expect(within(screen.getByRole('region', { name: '笔记（示例）' })).getByText('manifest.json 缺少 version')).toBeTruthy();
   });
 
+  it('检查更新 and 安装插件 are the same square buttons as 检查更新 in 关于', async () => {
+    render(<Plugins api={api()} />);
+    await screen.findByRole('navigation', { name: '插件列表' });
+    expect(screen.getByRole('button', { name: '检查更新' }).className).toContain('btn-square');
+    expect(screen.getByRole('button', { name: '安装插件' }).className).toContain('btn-square');
+  });
+
   it('no plugins: says so, and the place to install is open', async () => {
     render(<Plugins api={apiWith(() => [])} />);
     expect(await screen.findByText('未安装插件')).toBeTruthy();
