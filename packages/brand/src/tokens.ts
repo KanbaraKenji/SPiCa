@@ -18,8 +18,11 @@ export interface ThemeColors {
 export const BRAND_COLORS = Object.freeze({
   dark: Object.freeze<ThemeColors>({ ink: '#F1F5F9', accent: '#62A9FF', background: '#0F1522' }),
   light: Object.freeze<ThemeColors>({ ink: '#0F172A', accent: '#2F7DE1', background: '#F8FAFC' }),
-  /** 写死颜色的应用图标（安装程序、exe、卸载条目）：白花 + 深色细边，深浅底上都看得见 */
-  fixedIcon: Object.freeze({ ink: '#F8FAFC', rim: '#0F172A' }),
+  /**
+   * 写死颜色的应用图标（安装程序、exe、卸载条目）：单色花，透明底。
+   * 这些位置跟不了系统深浅，颜色待他定（白 #F1F5F9 / 近黑 #0F172A / 蓝 #2F7DE1），先按深色任务栏那一版的白色。
+   */
+  fixedIcon: Object.freeze({ ink: '#F1F5F9' }),
   /** accent lock：彩蛋解锁后长瓣常驻的颜色 */
   accentLock: '#39C5BB',
 });

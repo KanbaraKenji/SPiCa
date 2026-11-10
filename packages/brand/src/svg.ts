@@ -2,7 +2,7 @@
  * 纯字符串版 SVG 构造器：给导出脚本、开机首帧、主进程窗口图标用。
  * React 组件另有 JSX 版，几何同源（geometry.ts / wordmark.ts）。
  */
-import { MARK_CENTER, MARK_GEOMETRY, MARK_PARAMS, MARK_VIEWBOX, TASKBAR_PARAMS, fmt, markGeometry, type MarkParams } from './geometry.ts';
+import { MARK_CENTER, MARK_GEOMETRY, MARK_VIEWBOX, TASKBAR_PARAMS, fmt, markGeometry, type MarkParams } from './geometry.ts';
 import { BRAND_COLORS } from './tokens.ts';
 import { WORDMARK, type Wordmark } from './wordmark.ts';
 
@@ -56,26 +56,6 @@ export function markSvg(opts: MarkSvgOptions = {}): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MARK_VIEWBOX} ${MARK_VIEWBOX}"${size}${cls}${attr}>${el}${markBody(opts)}</svg>`;
 }
 
-/** 写死图标的花缩到 93%，给外圈细边留出画框 */
-export const FIXED_ICON_FIT = 0.93;
-
-/**
- * 写死颜色的应用图标：安装程序、资源管理器里的 exe、卸载条目这些不能随任务栏深浅换色的位置。
- * 无底白花，外加一圈深色细边，白底和深底上都看得见。
- * 边宽按输出像素算：48px 及以下约 1px，再大按比例（size / 48）；48px 及以下用光学版几何，64px 起用原版花。
- */
-export function fixedIconSvg(size: number): string {
-  const params = size <= 48 ? TASKBAR_PARAMS : MARK_PARAMS;
-  const { ink, rim } = BRAND_COLORS.fixedIcon;
-  const rimPx = Math.max(1, size / 48);
-  // 描边一半被花盖住，所以乘 2；再除掉花组和外层的放大，换回 64 画框单位
-  const width = (2 * rimPx * MARK_VIEWBOX) / size / (params.scale * FIXED_ICON_FIT);
-  const c = fmt(MARK_CENTER);
-  const rimLayer = `<g stroke="${rim}" stroke-width="${fmt(width)}" stroke-linejoin="round">${markBody({ ink: rim, accent: rim, params })}</g>`;
-  const flower = markBody({ ink, accent: ink, params });
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MARK_VIEWBOX} ${MARK_VIEWBOX}" width="${size}" height="${size}" aria-hidden="true"><g transform="translate(${c} ${c}) scale(${fmt(FIXED_ICON_FIT)}) translate(-${c} -${c})">${rimLayer}${flower}</g></svg>`;
-}
-
 /**
  * 任务栏 / 窗口图标的帧尺寸：覆盖 100%～200% 缩放下 Windows 实际取用的边长
  * （小图标 16·20·24·28·32，任务栏 24·30·36·42·48，开始菜单和 Alt-Tab 32·40·48·64，大图 256）。
@@ -98,6 +78,14 @@ export function taskbarFrameSvg(size: number, colors: { ink: string; accent?: st
   const dy = snap(geo.cy) / px;
   const body = markBody({ ink: colors.ink, accent: colors.accent ?? colors.ink, params });
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MARK_VIEWBOX} ${MARK_VIEWBOX}" width="${size}" height="${size}" aria-hidden="true"><g transform="translate(${fmt(dx)} ${fmt(dy)})">${body}</g></svg>`;
+}
+
+/**
+ * 写死颜色的应用图标：安装程序、资源管理器里的 exe、卸载条目这些不能随任务栏深浅换色的位置。
+ * 单色花直接画在透明底上，不加底板、描边、阴影；每个尺寸都用光学版几何按尺寸直接出图（同 taskbarFrameSvg）。
+ */
+export function fixedIconSvg(size: number, ink: string = BRAND_COLORS.fixedIcon.ink): string {
+  return taskbarFrameSvg(size, { ink });
 }
 
 /** 任务栏 / 窗口图标：无底、光学版几何 */

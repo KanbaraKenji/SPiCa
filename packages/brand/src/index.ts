@@ -31,7 +31,6 @@ export {
   taskbarFrameSvg,
   TASKBAR_FRAME_SIZES,
   fixedIconSvg,
-  FIXED_ICON_FIT,
   wordmarkBody,
   wordmarkSvg,
   wordmarkViewBox,
