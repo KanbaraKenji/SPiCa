@@ -782,38 +782,39 @@ button.tree-twisty:hover {
   color: var(--spica-muted);
 }
 
-/* A model setting a connected script changed: stands out from tool rows (他: 「比较明显」).
-   Three looks to choose from (data-settings-card on <html>: a = 提示条, b = 色头卡, c = 大横幅). */
+/* A model setting a connected script changed: stands out from tool rows (他: 「比较明显」;
+   他挑了 B, 2026-11-10): an accent-outlined card with a filled accent header. */
 .settings-change {
   margin: 4px 0;
-  padding: 12px 14px;
+  overflow: hidden;
   border-radius: var(--radius-l);
-  background: color-mix(in srgb, var(--spica-accent) 9%, var(--spica-surface));
-  border-left: 3px solid var(--spica-accent);
+  border: 1.5px solid var(--spica-accent);
+  background: var(--spica-surface);
 }
 
 .settings-change-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--spica-accent);
+  padding: 10px 14px;
+  background: var(--spica-accent);
+  color: var(--spica-on-accent);
 }
 
 .settings-change-title {
   flex: 1;
   min-width: 0;
   font-weight: 600;
-  color: var(--spica-ink);
 }
 
 .settings-change-time {
   flex: none;
   font-size: 12px;
-  color: var(--spica-muted);
+  opacity: 0.85;
 }
 
 .settings-change-facts {
-  margin: 10px 0 0;
+  margin: 12px 14px 0;
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: 4px 14px;
@@ -835,7 +836,7 @@ button.tree-twisty:hover {
 }
 
 .settings-change-test {
-  margin: 10px 0 0;
+  margin: 10px 14px 0;
   font-size: 13px;
 }
 
@@ -848,7 +849,9 @@ button.tree-twisty:hover {
 }
 
 .settings-change-foot {
-  margin-top: 10px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--spica-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -858,54 +861,6 @@ button.tree-twisty:hover {
 .settings-change-note {
   font-size: 12px;
   color: var(--spica-muted);
-}
-
-/* b: a bordered card with a filled accent header. */
-:root[data-settings-card='b'] .settings-change {
-  padding: 0;
-  overflow: hidden;
-  background: var(--spica-surface);
-  border: 1.5px solid var(--spica-accent);
-}
-
-:root[data-settings-card='b'] .settings-change-head {
-  padding: 10px 14px;
-  background: var(--spica-accent);
-  color: #fff;
-}
-
-:root[data-settings-card='b'] .settings-change-title,
-:root[data-settings-card='b'] .settings-change-time {
-  color: #fff;
-}
-
-:root[data-settings-card='b'] .settings-change-facts,
-:root[data-settings-card='b'] .settings-change-test {
-  margin: 12px 14px 0;
-}
-
-:root[data-settings-card='b'] .settings-change-foot {
-  margin: 12px 0 0;
-  padding: 10px 14px;
-  border-top: 1px solid var(--spica-border);
-}
-
-/* c: a wide banner across the conversation, big title, facts in two columns. */
-:root[data-settings-card='c'] .settings-change {
-  padding: 18px 20px;
-  border-left: none;
-  border: 1px solid color-mix(in srgb, var(--spica-accent) 45%, transparent);
-  background: color-mix(in srgb, var(--spica-accent) 14%, var(--spica-surface));
-  text-align: left;
-}
-
-:root[data-settings-card='c'] .settings-change-head {
-  font-size: 16px;
-}
-
-:root[data-settings-card='c'] .settings-change-facts {
-  grid-template-columns: max-content 1fr max-content 1fr;
-  margin-top: 14px;
 }
 
 .turn-error {
