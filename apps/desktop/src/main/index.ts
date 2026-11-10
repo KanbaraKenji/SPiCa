@@ -96,7 +96,7 @@ if (forcedTheme === 'dark' || forcedTheme === 'light') nativeTheme.themeSource =
 //   SPICA_DEV_MODELS=0       ignore .env.local (see the app as a first-time user would)
 const modelEnv = app.isPackaged || automated || process.env.SPICA_DEV_MODELS === '0' ? {} : readModelEnv(resolvePath(app.getAppPath(), '../../.env.local'));
 const backendKind = chooseBackend({ requested: process.env.SPICA_BACKEND, automated });
-// A conversation without a folder gets its own in the core's data folder (他 2026-11-10: 「文件夹默认没有」);
+// A conversation without a folder gets its own in the core's data folder (none is picked by default);
 // this is only the core's fallback, and nothing for it is made under 文档.
 const workDir = join(app.getPath('userData'), 'work');
 /** Where workflow files live unless the user picked another folder (设置 › 常规): under 文档, where he edits them. */
@@ -545,6 +545,13 @@ const previewFiles = new PreviewFiles();
 
 ipcMain.handle(DesktopChannel.ProjectRead, async (_e, projectId: unknown) => {
   if (typeof projectId === 'string' && backend instanceof ProcessBackend) await backend.markProjectRead(projectId).catch(() => undefined);
+});
+
+// The card under the context ring: the real core, or the demo data's made-up parts.
+ipcMain.handle(DesktopChannel.ContextBreakdown, async (_e, sessionId: unknown) => {
+  if (typeof sessionId !== 'string') return null;
+  if (backend instanceof ProcessBackend || backend instanceof FakeBackend) return backend.contextBreakdown(sessionId).catch(() => null);
+  return null;
 });
 
 // Pictures for a message: pasted ones saved as PNG, large ones made to fit (main/images.ts).

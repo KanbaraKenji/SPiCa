@@ -51,14 +51,14 @@ export interface ConnectionModel {
   contextWindow: number | null;
   contextFrom: ContextFrom;
   /**
-   * false: kept in this connection's list but not in use (他 2026-11-10: 「取消勾选和删除模型是两种
-   * 操作」) — not offered anywhere, no 上下文上限 needed. Absent: in use.
+   * false: kept in this connection's list but not in use (unticking is not deleting) — not
+   * offered anywhere, no 上下文上限 needed. Absent: in use.
    */
   enabled?: boolean;
 }
 
 /**
- * The characters of a key that may be shown (他 2026-11-10: 「也要首位+末尾」), never more than a
+ * The characters of a key that may be shown (its start and its end), never more than a
  * third of it: 24 characters or more → the first 4 and the last 4; 12–23 → the last 4; shorter → none.
  */
 export function keyMaskParts(key: string): { head: string; tail: string } {

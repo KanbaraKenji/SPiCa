@@ -1,4 +1,4 @@
-// Pictures attached to a message (他 2026-11-10: 「截图内容直接能粘贴到对话框中」).
+// Pictures attached to a message: pasted screenshots, dropped or picked images.
 // A pasted screenshot arrives as bytes from the input box at the moment of the
 // paste (the clipboard is never read here); it is saved as a PNG. A dropped or
 // picked picture larger than the core's IMAGE_LIMITS is saved smaller (PNG stays

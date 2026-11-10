@@ -3,7 +3,7 @@
 // In the box: the text, attachments, send. Under the box: the working folder
 // (new conversation) on the left; model, approval and how full the context is
 // on the right.
-import { useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { ApprovalMode } from '@spica/protocol';
 import { ContextMenu, type MenuItem } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
@@ -11,6 +11,11 @@ import { FileGlyph } from '../ui/FileIcon';
 import { ImageViewer } from '../ui/ImageViewer';
 import { APP_NAME } from '../../../shared/app-identity';
 import { SpicaStatusIcon } from '@spica/brand/react';
+import type { ContextBreakdown } from '@spica/protocol';
+import { tokenText } from './tokens';
+import { ContextCard } from './ContextCard';
+
+export { tokenText };
 
 export interface ComposerTools {
   /** Windows' file picker; absent: no attachments. */
@@ -25,7 +30,8 @@ export interface ComposerTools {
   /** `label`: the model's name; `provider` and `note` are shown beside it in the secondary colour. */
   model?: { label: string; provider?: string; note?: string; options: { label: string; group?: string; marks?: string; current: boolean; onPick(): void }[] };
   /** Tokens the context takes now and the model's window (only when the window is known). */
-  context?: { tokens: number; window: number };
+  /** `detail`: what the context is made of, for the card the ring opens. */
+  context?: { tokens: number; window: number; detail?: () => Promise<ContextBreakdown | null> };
   /** Pictures: pasted (Ctrl+V), dropped or picked; absent: pictures are attached as plain files. */
   images?: {
     fromPaste(data: ArrayBuffer): Promise<{ path: string; url: string } | null>;
@@ -54,13 +60,6 @@ export function isComposing(e: KeyboardEvent): boolean {
   return e.nativeEvent.isComposing || e.keyCode === 229;
 }
 
-/** Token counts in k: 28200 -> 「28.2k」, 160000 -> 「160k」, 980 -> 「980」. */
-export function tokenText(n: number): string {
-  if (n < 1000) return String(Math.round(n));
-  const k = n / 1000;
-  return `${k >= 100 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, '')}k`;
-}
-
 const baseName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 
 /** 「28.2k / 160k 18%」: what the ring shows on hover. */
@@ -68,14 +67,50 @@ export function contextText(tokens: number, window: number): string {
   return `${tokenText(tokens)} / ${tokenText(window)} ${Math.min(100, Math.round((tokens / window) * 100))}%`;
 }
 
-/** The ring alone; the numbers show while the pointer is on it (or it has the focus). */
-function ContextRing({ tokens, window }: { tokens: number; window: number }) {
+/** The ring alone; the numbers show while the pointer is on it (or it has the focus).
+ *  With `detail`, a click opens the card of what the context is made of (ContextCard). */
+function ContextRing({ tokens, window, detail }: { tokens: number; window: number; detail?: () => Promise<ContextBreakdown | null> }) {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<ContextBreakdown | null>(null);
+  const wrap = useRef<HTMLSpanElement>(null);
+  const load = useRef(detail);
+  useEffect(() => {
+    load.current = detail;
+  });
+  // Asked again while open whenever the count moves (a step finished).
+  useEffect(() => {
+    if (!open || !load.current) return;
+    let live = true;
+    void load
+      .current()
+      .then((d) => live && setData(d))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [open, tokens, window]);
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: MouseEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', down);
+    document.addEventListener('keydown', key);
+    return () => {
+      document.removeEventListener('mousedown', down);
+      document.removeEventListener('keydown', key);
+    };
+  }, [open]);
   const text = contextText(tokens, window);
   const share = Math.min(1, tokens / window);
   const r = 7;
   const c = 2 * Math.PI * r;
-  return (
-    <span className={share >= 0.8 ? 'composer-context is-full' : 'composer-context'} role="img" aria-label={`上下文占用 ${text}`} tabIndex={0}>
+  const cls = ['composer-context', share >= 0.8 ? 'is-full' : '', open ? 'is-open' : ''].filter(Boolean).join(' ');
+  const ring = (
+    <>
       <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
         <circle cx="9" cy="9" r={r} className="ring-track" />
         <circle cx="9" cy="9" r={r} className="ring-fill" strokeDasharray={`${c * share} ${c}`} transform="rotate(-90 9 9)" />
@@ -83,6 +118,25 @@ function ContextRing({ tokens, window }: { tokens: number; window: number }) {
       <span className="composer-tip" aria-hidden>
         {text}
       </span>
+    </>
+  );
+  if (!detail) {
+    return (
+      <span className={cls} role="img" aria-label={`上下文占用 ${text}`} tabIndex={0}>
+        {ring}
+      </span>
+    );
+  }
+  return (
+    <span className="composer-context-wrap" ref={wrap}>
+      <button type="button" className={cls} aria-label={`上下文占用 ${text}`} aria-expanded={open} onClick={() => setOpen(!open)}>
+        {ring}
+      </button>
+      {open && data ? (
+        <span className="composer-context-card">
+          <ContextCard data={data} />
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -376,7 +430,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
                 <span className="composer-chip-text">{APPROVAL_TEXT[t.approval.mode]}</span>
               </button>
             ) : null}
-            {t.context ? <ContextRing tokens={t.context.tokens} window={t.context.window} /> : null}
+            {t.context ? <ContextRing key={sessionKey} tokens={t.context.tokens} window={t.context.window} {...(t.context.detail ? { detail: t.context.detail } : {})} /> : null}
           </div>
         </div>
       ) : null}

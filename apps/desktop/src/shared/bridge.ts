@@ -1,6 +1,6 @@
 // The typed bridge the renderer sees as `window.spica`. Everything the UI can
 // do goes through here; there is no other way to reach the backend.
-import type { AgentApi, CoreEvent, SpicaBridge } from '@spica/protocol';
+import type { AgentApi, ContextBreakdown, CoreEvent, SpicaBridge } from '@spica/protocol';
 import type { SettingsPatch, ShellSettings } from './settings';
 import type { ModelRef, ProviderDraft, ProviderKind, ProviderView, TestResult } from './providers';
 import type { ListModelsView, ModelCatalogView, WindowMatch } from './catalog';
@@ -96,6 +96,8 @@ export interface DesktopBridge extends SpicaBridge {
   pathForFile(file: File): string;
   /** A project's progress reports have been seen (clears its unread mark). */
   markProjectRead(projectId: string): Promise<void>;
+  /** What a conversation's context is made of (the card under the context ring); null when not known. */
+  contextBreakdown(sessionId: string): Promise<ContextBreakdown | null>;
   /** Pictures attached to a message. */
   images: {
     /** A pasted picture (its bytes, read at the paste): saved for sending; null when it is not a picture. */

@@ -1,6 +1,5 @@
 // A model setting changed by a script connected to the app (the core's MCP
-// tools), shown in the conversation so it cannot go unnoticed (他 2026-11-10:
-// 「改了以后在对话里要比较明显的展示出该改动」). Drawn from the note's
+// tools), shown in the conversation so it cannot go unnoticed. Drawn from the note's
 // meta.settingsChange, never from its text; it stays in the history.
 import type { SettingsChangeMeta } from '@spica/protocol';
 import { Icon } from '../ui/Icon';

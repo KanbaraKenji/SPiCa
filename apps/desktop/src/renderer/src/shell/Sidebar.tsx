@@ -18,8 +18,8 @@ export interface SidebarProps {
   onSettings(): void;
   settingsOpen: boolean;
   /**
-   * The assistant's default thread (getTopSession). Not singled out any more (他 2026-11-10:
-   * the assistant is the voice of every conversation outside a project): it is one of 对话.
+   * The assistant's default thread (getTopSession). Not singled out any more (the assistant is
+   * the voice of every conversation outside a project): it is one of 对话.
    */
   topId?: string | null;
   /** Sets a session's name; an empty name goes back to the automatic one. Absent: no renaming. */
@@ -37,7 +37,7 @@ export interface SidebarProps {
   /** Pages plugins add to the sidebar (views with placement sidebar); they open in the main pane. */
   pluginPages?: { key: string; title: string; icon?: string; open: boolean; onOpen(): void }[];
   /**
-   * The collapsed sidebar: one column of icons (他 2026-11-10). Built from the same
+   * The collapsed sidebar: one column of icons. Built from the same
    * blocks as the full sidebar, so 新对话, 收件箱, 助理, the plugins and 设置 sit at
    * the same height in both; 项目 opens a menu of the projects.
    */
@@ -387,7 +387,7 @@ export function Sidebar({
           </button>
         ) : null}
       </div>
-      {/* 对话 and 项目 as two tabs, each half the width (他 2026-11-10). The one not shown carries a dot
+      {/* 对话 and 项目 as two tabs, each half the width. The one not shown carries a dot
           when something in it has news. */}
       <div className="tabs side-tabs" role="tablist" aria-label="列表">
         {(['chats', 'projects'] as const).map((t) => (

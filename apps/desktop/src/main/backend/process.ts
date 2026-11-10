@@ -6,7 +6,7 @@
 import { MessageChannelMain, utilityProcess, type UtilityProcess } from 'electron';
 import { connectBackend, electronPort, type BackendClient, type HostMethods, type ListModelsResult, type ModelCatalog, type ProviderConfig, type SettingsPatch } from '@spica/core';
 export { toProviderConfig } from './to-config';
-import type { AgentApi, CoreEvent, ProbeResult } from '@spica/protocol';
+import type { AgentApi, ContextBreakdown, CoreEvent, ProbeResult } from '@spica/protocol';
 import type { PluginsCommand, PluginsResult } from '../../shared/plugins';
 import type { WindowMatch } from '../../shared/catalog';
 import type { DesktopBackendConfig } from '../../backend/config';
@@ -193,6 +193,11 @@ export class ProcessBackend implements AgentBackend {
   /** A project's reports have been seen: the core clears its unread count (and sends project.updated). */
   async markProjectRead(projectId: string): Promise<void> {
     await this.call('markProjectRead', projectId);
+  }
+
+  /** What a conversation's context is made of, without a model call; null for an unknown session. */
+  async contextBreakdown(sessionId: string): Promise<ContextBreakdown | null> {
+    return (await this.call<ContextBreakdown | null | undefined>('contextBreakdown', sessionId)) ?? null;
   }
 
   /** Whether a model takes pictures (the catalog, or a refusal the core remembers); null: not known. */

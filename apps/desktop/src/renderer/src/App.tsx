@@ -101,7 +101,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // 主页: the empty page before any conversation is open, and whatever Spica opens
   // by itself at start (the assistant's main conversation) until you open a
   // conversation yourself. The right panel starts closed there and opening it
-  // lasts only this visit; conversations keep the saved choice (他 2026-11-10).
+  // lasts only this visit; conversations keep the saved choice.
   // Not before the list has loaded, so start-up does not jump.
   // The conversation open when the list loaded; once another one is open (picked,
   // or a new one started) that is over for this run.
@@ -146,7 +146,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     [floating, shell, atHome, homeRight],
   );
 
-  // The right panel over the whole conversation (他 2026-11-10: 「和 claude 同款 expand」); for this visit only.
+  // The right panel over the whole conversation (an expand button, Ctrl+Shift+\); for this visit only.
   const [rightMax, setRightMax] = useState(false);
   // Only while the right panel is there to show (set below, once the layout is known).
   const [canMax, setCanMax] = useState(false);
@@ -464,7 +464,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         }
       : {}),
     // No ring until the model's 上下文上限 is known (set in 设置 › 模型).
-    ...(session && typeof session.contextTokens === 'number' && session.contextWindow ? { context: { tokens: session.contextTokens, window: session.contextWindow } } : {}),
+    ...(session && typeof session.contextTokens === 'number' && session.contextWindow ? { context: { tokens: session.contextTokens, window: session.contextWindow, detail: () => bridge.contextBreakdown(session.id) } } : {}),
   };
 
   const actions: ConversationActions = {
@@ -556,7 +556,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // main pane and the detail panel.
   return (
     <div className="app" data-left={layout.left} data-right={view === 'chat' ? layout.right : 'hidden'}>
-      {/* Sidebar closed: a column of icons stays (他 2026-11-10); resting on it opens the full
+      {/* Sidebar closed: a column of icons stays; resting on it opens the full
           sidebar over it for a moment, every row where its icon was (except 项目, see Sidebar). */}
       {layout.left !== 'docked' ? (
         <div

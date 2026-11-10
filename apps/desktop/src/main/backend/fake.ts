@@ -5,6 +5,7 @@
 import type {
   AgentRole,
   ContentBlock,
+  ContextBreakdown,
   CoreEvent,
   CoreEventBody,
   CreateProjectRequest,
@@ -284,6 +285,39 @@ export class FakeBackend implements AgentBackend {
     // Like the core: the first top-level session is the assistant's default thread; made on first call.
     const top = [...this.#sessions.values()].find((s) => s.role === 'top' && !s.parentId);
     return top ? structuredClone(top) : this.createSession({ role: 'top' });
+  }
+
+  /** Made-up parts for the card under the context ring, adding up to the conversation's context. */
+  async contextBreakdown(sessionId: string): Promise<ContextBreakdown | null> {
+    const s = this.#sessions.get(sessionId);
+    if (!s) return null;
+    const window = s.contextWindow ?? null;
+    const total = s.contextTokens ?? 9_800;
+    const measured = typeof s.contextTokens === 'number';
+    const part = (share: number) => Math.round(total * share);
+    const parts: ContextBreakdown['parts'] = measured
+      ? [
+          { key: 'system', tokens: part(0.245), estimated: true, children: [{ key: 'system.base', tokens: part(0.17) }, { key: 'system.rules', tokens: part(0.075) }] },
+          { key: 'tools', tokens: part(0.103), estimated: true },
+          {
+            key: 'messages',
+            tokens: total - part(0.245) - part(0.103),
+            estimated: true,
+            children: [
+              { key: 'messages.user', tokens: part(0.11) },
+              { key: 'messages.assistant', tokens: part(0.241) },
+              { key: 'messages.tool_results', tokens: part(0.259) },
+              { key: 'messages.notes', tokens: part(0.014) },
+              { key: 'messages.images', tokens: total - part(0.245) - part(0.103) - part(0.11) - part(0.241) - part(0.259) - part(0.014) },
+            ],
+          },
+        ]
+      : [
+          { key: 'system', tokens: part(0.704), estimated: true, children: [{ key: 'system.base', tokens: part(0.49) }, { key: 'system.rules', tokens: part(0.214) }] },
+          { key: 'tools', tokens: total - part(0.704), estimated: true },
+        ];
+    const outputReserve = window ? Math.min(32_000, Math.round(window / 5)) : 0;
+    return { window, total, measured, parts, outputReserve, free: window ? Math.max(0, window - total - outputReserve) : null };
   }
 
   async listProjects(): Promise<ProjectInfo[]> {

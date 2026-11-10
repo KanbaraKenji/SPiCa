@@ -42,6 +42,7 @@ export const DesktopChannel = {
   MatchContextWindow: 'spica:providers:match-window',
   Images: 'spica:images',
   ProjectRead: 'spica:projects:read',
+  ContextBreakdown: 'spica:context:breakdown',
   /** invoke: 'state' | 'open' -> WorkflowsState */
   Workflows: 'spica:workflows',
   /** invoke: title -> string[] (Windows' file picker, several files; empty when cancelled) */
