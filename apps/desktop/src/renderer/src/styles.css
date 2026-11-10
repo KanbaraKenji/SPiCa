@@ -3840,6 +3840,8 @@ button.ctx-row:hover {
   flex: none;
   display: flex;
   align-items: center;
+  /* Not the docked head's space-between: the brand right after the toggle, not at the far end. */
+  justify-content: flex-start;
   gap: 8px;
   padding: 0 0 0 11px;
   -webkit-app-region: drag;

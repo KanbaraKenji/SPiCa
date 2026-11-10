@@ -755,7 +755,7 @@ export function Models({ api }: { api: ProvidersApi }) {
         </form>
       ) : null}
 
-      {deleting ? <ConfirmDialog title={`删除服务商「${deleting.name}」？`} confirmLabel="删除" danger onConfirm={() => void run(() => remove(deleting))} onCancel={() => setDeleting(null)} /> : null}
+      {deleting ? <ConfirmDialog title={`删除服务商「${deleting.name}」？`} detail="使用该服务商的对话，下次发消息时需重新选择模型；已保存的 Key 一并删除。" confirmLabel="删除" danger onConfirm={() => void run(() => remove(deleting))} onCancel={() => setDeleting(null)} /> : null}
     </section>
   );
 }

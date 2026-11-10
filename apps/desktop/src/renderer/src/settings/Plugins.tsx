@@ -57,7 +57,9 @@ function List({ label, items }: { label: string; items: string[] }) {
  * raise above the plugin's own) or set to nothing.
  */
 function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy: boolean; run(cmd: PluginsCommand): void }) {
-  const [limit, setLimit] = useState(String(m.maxUsdPerDay));
+  // Typed but not saved: kept like the provider form (leave the page and come back, it is still there).
+  const [limit, setLimit, limitDone] = useKeptDraft(`plugins.limit.${p.name}`, String(m.maxUsdPerDay));
+  // Saved elsewhere (保存, 禁止使用模型, 恢复默认): the field shows the new value.
   const [prev, setPrev] = useState(m.maxUsdPerDay);
   if (prev !== m.maxUsdPerDay) {
     setPrev(m.maxUsdPerDay);
@@ -92,17 +94,41 @@ function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy
             onChange={(e) => setLimit(e.target.value)}
           />
         </label>
-        <button type="button" className="btn btn-small" disabled={busy || problem !== null || value === m.maxUsdPerDay} onClick={() => run({ op: 'modelLimit', name: p.name, maxUsdPerDay: value })}>
+        <button
+          type="button"
+          className="btn btn-small"
+          disabled={busy || problem !== null || value === m.maxUsdPerDay}
+          onClick={() => {
+            run({ op: 'modelLimit', name: p.name, maxUsdPerDay: value });
+            limitDone();
+          }}
+        >
           保存
         </button>
         {value !== m.maxUsdPerDay && limit.trim() !== '' ? <span className="provider-unsaved">未保存</span> : null}
         {off ? null : (
-          <button type="button" className="btn btn-small" disabled={busy} onClick={() => run({ op: 'modelLimit', name: p.name, maxUsdPerDay: 0 })}>
+          <button
+            type="button"
+            className="btn btn-small"
+            disabled={busy}
+            onClick={() => {
+              run({ op: 'modelLimit', name: p.name, maxUsdPerDay: 0 });
+              limitDone();
+            }}
+          >
             禁止使用模型
           </button>
         )}
         {m.userMaxUsdPerDay !== undefined ? (
-          <button type="button" className="btn btn-small" disabled={busy} onClick={() => run({ op: 'modelLimit', name: p.name, maxUsdPerDay: null })}>
+          <button
+            type="button"
+            className="btn btn-small"
+            disabled={busy}
+            onClick={() => {
+              run({ op: 'modelLimit', name: p.name, maxUsdPerDay: null });
+              limitDone();
+            }}
+          >
             恢复默认（{usd(m.declaredMaxUsdPerDay)}）
           </button>
         ) : null}
@@ -485,6 +511,7 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
       {confirm ? (
         <ConfirmDialog
           title={confirm.kind === 'uninstall' ? `删除插件「${confirm.p.displayName}」？` : `将「${confirm.p.displayName}」回退到 ${confirm.p.previousVersion}？`}
+          {...(confirm.kind === 'uninstall' ? { detail: '该插件的工具和页面将不再可用。' } : {})}
           confirmLabel={confirm.kind === 'uninstall' ? '删除' : '回退'}
           danger={confirm.kind === 'uninstall'}
           onConfirm={() => {

@@ -140,6 +140,31 @@ describe('Plugins', () => {
   });
 });
 
+describe('daily limit typed but not saved', () => {
+  it('says 未保存, and is still there after leaving the page and coming back', async () => {
+    const a = api();
+    const first = render(<Plugins api={a} />);
+    const input = (await screen.findByLabelText('「笔记（示例）」每日上限（美元）')) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '0.05' } });
+    expect(within(screen.getByRole('region', { name: '笔记（示例）' })).getByText('未保存')).toBeTruthy();
+    first.unmount();
+    render(<Plugins api={a} />);
+    expect(((await screen.findByLabelText('「笔记（示例）」每日上限（美元）')) as HTMLInputElement).value).toBe('0.05');
+    // Saved: the draft is gone, the field shows what is saved.
+    fireEvent.click(within(screen.getByRole('region', { name: '笔记（示例）' })).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(screen.getByText(/使用模型 · 每日上限 \$0\.05/)).toBeTruthy());
+    expect(screen.queryByText('未保存')).toBeNull();
+  });
+});
+
+describe('what deleting does, said in the confirm box', () => {
+  it('a plugin: its tools and pages', async () => {
+    render(<Plugins api={api()} />);
+    fireEvent.click(within((await screen.findByRole('region', { name: '笔记（示例）' })) as HTMLElement).getByRole('button', { name: '删除' }));
+    expect(screen.getByRole('alertdialog').textContent).toContain('该插件的工具和页面将不再可用。');
+  });
+});
+
 describe('mail sorting, with the plugin that provides mail', () => {
   const mail = (over: { model?: string } = {}) => ({ prefs: DEFAULT_SETTINGS.mail, onChange: vi.fn(), ...over });
 

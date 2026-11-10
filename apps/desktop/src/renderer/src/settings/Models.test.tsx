@@ -315,6 +315,7 @@ describe('Models', () => {
     fireEvent.click(screen.getByRole('button', { name: '删除' }));
     const dialog = screen.getByRole('alertdialog');
     expect(dialog.textContent).toContain('删除服务商「旧网关」？');
+    expect(dialog.textContent).toContain('使用该服务商的对话，下次发消息时需重新选择模型；已保存的 Key 一并删除。');
     expect(api.remove).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole('button', { name: '删除' }));
     await waitFor(() => expect(api.remove).toHaveBeenCalledWith('p-1'));
