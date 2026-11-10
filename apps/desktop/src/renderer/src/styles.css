@@ -3757,3 +3757,29 @@ button.tree-twisty:hover {
 .provider-problem.is-warning {
   color: var(--spica-warning);
 }
+
+/* 对话 / 项目 in the sidebar: two tabs filling its width, half each. */
+.side-tabs {
+  display: flex;
+  margin: 10px 8px 6px;
+}
+
+.side-tabs .tab {
+  flex: 1;
+  position: relative;
+}
+
+/* Something new in the list not shown. */
+.tab-dot {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--spica-accent);
+}
+
+.side-new-project {
+  color: var(--spica-muted);
+}

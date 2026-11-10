@@ -13,6 +13,8 @@ describe('Sidebar', () => {
     const onOpen = vi.fn();
     render(<Sidebar sessions={seed.sessions} activeId={SEED_IDS.chat} onOpen={onOpen} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} />);
     expect(screen.getByRole('button', { name: '整理本周来信' })).toBeTruthy();
+    // Projects are on their own tab.
+    fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
     // 新品样机评审 has running children, so they are visible.
     fireEvent.click(screen.getByRole('button', { name: /起草评审纪要/ }));
     expect(onOpen).toHaveBeenCalledWith(SEED_IDS.minutes);
@@ -39,6 +41,9 @@ describe('Sidebar', () => {
     fireEvent.click(screen.getByRole('button', { name: /收件箱/ }));
     expect(onInbox).toHaveBeenCalled();
     expect(screen.getByLabelText('3 封待确认')).toBeTruthy();
+    // The 项目 tab, not shown, says it has news.
+    expect(screen.getByRole('tab', { name: /项目/ }).querySelector('.tab-dot')).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
     expect(screen.getByRole('button', { name: /年度预算.*有新来信/ })).toBeTruthy();
   });
 
@@ -51,7 +56,7 @@ describe('Sidebar', () => {
   it('lists every conversation outside a project flat under 对话, the default thread one of them', () => {
     const sessions = seed.sessions.map((s) => (s.id === SEED_IDS.chat ? { ...s, title: '助理' } : s));
     render(<Sidebar sessions={sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} topId={SEED_IDS.chat} />);
-    expect(screen.getByRole('heading', { name: '对话' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '对话' }).getAttribute('aria-selected')).toBe('true');
     // No row is singled out to hold the others.
     expect(screen.queryByRole('button', { name: /^(收起|展开) 助理$/ })).toBeNull();
     expect(screen.getByRole('button', { name: '助理' })).toBeTruthy();
@@ -109,6 +114,7 @@ describe('Sidebar', () => {
     expect(onRename).toHaveBeenCalledTimes(1);
 
     // Without project actions, a project row has no menu.
+    fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
     fireEvent.contextMenu(screen.getByTitle('新品样机评审'));
     expect(screen.queryByRole('menuitem')).toBeNull();
   });
@@ -119,6 +125,7 @@ describe('Sidebar', () => {
     const onDeleteProject = vi.fn();
     const props = { sessions: seed.sessions, activeId: null, onOpen: vi.fn(), onNewChat: vi.fn(), onSettings: vi.fn(), settingsOpen: false, onPin, onRenameProject, onDeleteProject };
     const { rerender } = render(<Sidebar {...props} />);
+    fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
     const order = () => [...document.querySelectorAll('.tree-section')].at(-1)!.querySelectorAll(':scope > .tree-row .tree-title');
     const names = () => [...order()].map((e) => e.textContent);
     expect(names()[0]).toBe('新品样机评审');
@@ -154,6 +161,7 @@ describe('Sidebar', () => {
 
   it('collapsing a project shows the summary instead of children', () => {
     render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} />);
+    fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
     fireEvent.click(screen.getByRole('button', { name: '收起 新品样机评审' }));
     expect(screen.getByText('1 个待处理 · 1 个运行中 · 1 个排队中')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /汇总测试报告/ })).toBeNull();

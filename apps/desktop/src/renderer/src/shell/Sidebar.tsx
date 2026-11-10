@@ -267,6 +267,19 @@ export function Sidebar({
     ];
   };
 
+  // Which list the full sidebar shows; it follows the conversation you open (one in a project → 项目).
+  const [listTab, setListTab] = useState<'chats' | 'projects'>('chats');
+  const [followed, setFollowed] = useState<string | null>(null);
+  if (activeId !== followed) {
+    setFollowed(activeId);
+    const byIdNow = new Map(sessions.map((x) => [x.id, x]));
+    let at = activeId ? byIdNow.get(activeId) : undefined;
+    while (at?.parentId && at.role !== 'manager') at = byIdNow.get(at.parentId);
+    if (at) setListTab(at.role === 'manager' ? 'projects' : 'chats');
+  }
+  const projectIds = new Set(projects.map((p) => p.id));
+  const projectsNews = [...(notes?.keys() ?? [])].some((id) => projectIds.has(id));
+  const chatsNews = [...(notes?.keys() ?? [])].some((id) => !projectIds.has(id));
   // 对话 and 项目 on the icon column: their lists as a menu.
   const [railMenu, setRailMenu] = useState<{ items: { label: string; onSelect(): void }[]; x: number; y: number } | null>(null);
   if (compact) {
@@ -374,31 +387,37 @@ export function Sidebar({
           </button>
         ) : null}
       </div>
-      <div className="sidebar-scroll">
-        {/* Every conversation outside a project, newest first; the assistant speaks in all of them. */}
-        {chats.length ? (
+      {/* 对话 and 项目 as two tabs, each half the width (他 2026-11-10). The one not shown carries a dot
+          when something in it has news. */}
+      <div className="tabs side-tabs" role="tablist" aria-label="列表">
+        {(['chats', 'projects'] as const).map((t) => (
+          <button key={t} type="button" role="tab" aria-selected={listTab === t} className={listTab === t ? 'tab is-on' : 'tab'} onClick={() => setListTab(t)}>
+            {t === 'chats' ? '对话' : '项目'}
+            {listTab !== t && (t === 'chats' ? chatsNews : projectsNews) ? <span className="tab-dot" role="img" aria-label="有新消息" /> : null}
+          </button>
+        ))}
+      </div>
+      <div className="sidebar-scroll" role="tabpanel">
+        {listTab === 'chats' ? (
+          // Every conversation outside a project, newest first; the assistant speaks in all of them.
           <section className="tree-section">
-            <h2 className="tree-heading">对话</h2>
             {chats.map((s) => (
               <Node key={s.id} s={s} depth={0} tree={tree} />
             ))}
           </section>
-        ) : null}
-        {projects.length || onNewProject ? (
+        ) : (
           <section className="tree-section">
-            <div className="tree-heading-row">
-              <h2 className="tree-heading">项目</h2>
-              {onNewProject ? (
-                <button type="button" className="icon-btn tree-heading-btn" onClick={onNewProject} aria-label="新项目" title="新项目">
-                  <Icon name="plus" size={14} />
-                </button>
-              ) : null}
-            </div>
             {projects.map((p) => (
               <Node key={p.id} s={p} depth={0} tree={tree} />
             ))}
+            {onNewProject ? (
+              <button type="button" className="side-action side-new-project" onClick={onNewProject}>
+                <Icon name="plus" />
+                <span>新项目</span>
+              </button>
+            ) : null}
           </section>
-        ) : null}
+        )}
       </div>
       {pluginPages.length ? (
         <section className="tree-section side-plugins" aria-label="插件">
