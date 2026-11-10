@@ -156,6 +156,7 @@
   - 为什么不用 electron-updater：它的 generic 源只认 HTTP，公司常用共享盘。这里自己读 electron-builder 生成的同一份 `latest.yml`，校验 sha512，再静默运行按用户安装的安装包（`--updated /S --force-run`），装完自动打开新版本。
   - 启动 10 秒后查一次，之后每 4 小时一次；有新版本就先下载校验，标题栏显示「新版本 x 已经下好 [重启并更新]」。便携版只提示「有新版本，请从更新源拿新的便携版」。
 - **公告**：`announcements.json` 形如 `{ "announcements": [ { "id": "…", "text": "…", "level": "info|warning", "link": "https://…", "start": "…", "end": "…" } ] }`。启动 3 秒后取一次、之后每 30 分钟一次；上次取到的存在设置里，下次一打开就先显示（不让人等）。显示在标题栏右侧的空白处，不遮挡、不挤动任何东西；点 ✕ 关掉的不再显示。
+- **Electron fuses**（2026-11-10）：打包时翻掉两个开关，装好的版本带 `--inspect` / `--inspect-brk` 不开调试口，也不读 `NODE_OPTIONS`（两者都能让启动它的人在主进程里跑代码）；run-as-node 保留，插件的 Node server 靠它起。实测：装好的测试副本带 `--inspect=9231` 和 `NODE_OPTIONS=--inspect=9232` 启动，两个端口都连不上；示例插件 notes 的 server 照常「运行中」。安装版的自动化测试只用 Chromium 的 `--remote-debugging-port`（只到渲染层）。
 - **子进程不弹窗**：外壳自己起的子进程（更新时运行安装包）一律 `windowsHide: true`；内核和插件的子进程由它们自己保证。
 - **真机走查（2026-11-09）**：
   1. 出 0.1.0，静默安装 → 装在用户目录、HKCU 有卸载项，全程没要管理员；

@@ -23,6 +23,14 @@ extraResources:
     to: deploy.json
     filter: ["**/*"]
 asar: true
+# Electron fuses, flipped in the packaged exe: an installed Spica does not open a
+# debugger on --inspect / --inspect-brk, nor read NODE_OPTIONS (either would let
+# whoever starts it run code in the main process). Run-as-node stays on: plugin
+# servers written in Node run on this exe (ELECTRON_RUN_AS_NODE).
+electronFuses:
+  runAsNode: true
+  enableNodeCliInspectArguments: false
+  enableNodeOptionsEnvironmentVariable: false
 npmRebuild: false
 win:
   icon: resources/branding/spica.ico
