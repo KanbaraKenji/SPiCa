@@ -1,7 +1,10 @@
-// Settings > 插件: what is installed, turn each on or off (its tools appear or
-// vanish at once), mock mode, install from a folder / zip / shared folder /
-// web address, updates and going back one version.
-import { useCallback, useEffect, useState } from 'react';
+// Settings > 插件: the installed plugins as a list on the left (已启用 / 已停用,
+// with search and a status filter) and the one picked on the right with its
+// switch, update, model budget, mail sorting, tools and going back / deleting.
+// A plugin turned on or off stays where it is in the list while the page is
+// open; it moves to its group the next time the page opens. Mock mode and the
+// plugin folder are at the bottom; installing opens from the + at the top.
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { spentText, usd, type PluginModelView, type PluginsCommand, type PluginsResult, type PluginsState, type PluginView } from '../../../shared/plugins';
 import { friendlyError } from '../store/agent';
 import { ConfirmDialog } from '../ui/Dialog';
@@ -25,6 +28,18 @@ const SERVER_STATUS: Record<string, string> = {
 };
 
 export { Switch } from './Switch';
+
+type Filter = 'all' | 'on' | 'update' | 'problem';
+
+/** What is wrong with a plugin, in words (its issues and servers that failed); empty when nothing. */
+export function pluginProblems(p: PluginView): string[] {
+  return [...p.issues, ...p.servers.filter((s) => s.status === 'failed').map((s) => s.lastError ?? `「${s.id}」启动失败`)];
+}
+
+const matches = (p: PluginView, f: Filter) => (f === 'on' ? p.enabled : f === 'update' ? Boolean(p.update) : f === 'problem' ? pluginProblems(p).length > 0 : true);
+
+/** Below this width the list and the detail take turns (the detail has a way back). */
+const NARROW = 620;
 
 function List({ label, items }: { label: string; items: string[] }) {
   return (
@@ -96,11 +111,53 @@ function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy
   );
 }
 
-function PluginCard({ p, busy, run, ask, mail }: { p: PluginView; busy: boolean; run(cmd: PluginsCommand): void; ask(kind: 'uninstall' | 'rollback', p: PluginView): void; mail?: MailSettingsProps | undefined }) {
-  const [open, setOpen] = useState(false);
-  const failed = p.servers.filter((s) => s.status === 'failed');
+/** One row of the list: name, a refresh mark when there is an update, the error mark when something is wrong. */
+function PluginRow({ p, on, onPick }: { p: PluginView; on: boolean; onPick(): void }) {
+  const problems = pluginProblems(p);
   return (
-    <section className={p.enabled ? 'card plugin-card' : 'card plugin-card is-off'} aria-label={p.displayName}>
+    <li>
+      <button type="button" className={['plugin-row', on ? 'is-on' : '', p.enabled ? '' : 'is-off'].filter(Boolean).join(' ')} aria-current={on ? 'true' : undefined} onClick={onPick}>
+        <span className="plugin-row-icon" aria-hidden>
+          <Icon name="plugin" size={15} />
+        </span>
+        <span className="plugin-row-name">{p.displayName}</span>
+        {p.update ? (
+          <span className="plugin-row-mark" role="img" aria-label={`有更新：${p.update}`} title={`有更新：${p.update}`}>
+            <Icon name="refresh" size={12} />
+          </span>
+        ) : null}
+        {problems.length ? <SpicaStatusIcon name="error" size={13} title={problems.join('；')} /> : null}
+        {p.enabled ? null : <span className="visually-hidden">已停用</span>}
+      </button>
+    </li>
+  );
+}
+
+/** The plugin picked: switch at the top, then what it does, what it needs, what it has. */
+function PluginDetail({
+  p,
+  busy,
+  run,
+  ask,
+  mail,
+  onBack,
+}: {
+  p: PluginView;
+  busy: boolean;
+  run(cmd: PluginsCommand): void;
+  ask(kind: 'uninstall' | 'rollback', p: PluginView): void;
+  mail?: MailSettingsProps | undefined;
+  onBack?: (() => void) | undefined;
+}) {
+  const problems = pluginProblems(p);
+  return (
+    <section className={p.enabled ? 'card plugin-card plugin-detail' : 'card plugin-card plugin-detail is-off'} aria-label={p.displayName}>
+      {onBack ? (
+        <button type="button" className="text-btn plugin-back" onClick={onBack}>
+          <Icon name="back" size={14} />
+          插件
+        </button>
+      ) : null}
       <header className="plugin-head">
         <div className="plugin-title">
           <span className="plugin-name">{p.displayName}</span>
@@ -114,49 +171,45 @@ function PluginCard({ p, busy, run, ask, mail }: { p: PluginView; busy: boolean;
         <Switch on={p.enabled} label={p.enabled ? `停用「${p.displayName}」` : `启用「${p.displayName}」`} disabled={busy} onChange={(on) => run({ op: on ? 'enable' : 'disable', name: p.name })} />
       </header>
       {p.description ? <p className="plugin-desc">{p.description}</p> : null}
+      {p.enabled ? null : <p className="plugin-off">已停用</p>}
+      {problems.length ? (
+        <p className="plugin-problem status-with-icon">
+          <SpicaStatusIcon name="error" size={14} />
+          {problems.join('；')}
+        </p>
+      ) : null}
       {mail ? (
         <div className="plugin-mail">
           <MailSettings {...mail} />
         </div>
       ) : null}
       {p.model ? <ModelUse p={p} m={p.model} busy={busy} run={run} /> : null}
-      {p.issues.length || failed.length ? (
-        <p className="plugin-problem">{[...p.issues, ...failed.map((s) => s.lastError ?? `「${s.id}」启动失败`)].join('；')}</p>
-      ) : null}
-      <button type="button" className="fold-head plugin-more" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <span className="fold-label">{p.enabled ? `工具 ${p.tools.length} 个` : '已停用'}</span>
-        <Icon name="chevronRight" size={14} className="fold-chevron" />
-      </button>
-      {open ? (
-        <div className="plugin-details">
-          <dl className="detail-facts">
-            <List label="工具" items={p.tools} />
-            <List label="技能" items={p.skills.map((s) => s.name)} />
-            <List label="命令" items={p.commands.map((c) => `/${c.id}`)} />
-            <List label="进程" items={p.servers.map((s) => `${s.id}（${SERVER_STATUS[s.status] ?? s.status}）`)} />
-            <dt>模拟模式</dt>
-            <dd>{p.mockSupported ? '支持' : '不支持'}</dd>
-            {p.source ? (
-              <>
-                <dt>来源</dt>
-                <dd className="detail-path" title={p.source.location}>
-                  {p.source.location}
-                </dd>
-              </>
-            ) : null}
-          </dl>
-          <div className="plugin-actions">
-            {p.previousVersion ? (
-              <button type="button" className="btn btn-small" disabled={busy} onClick={() => ask('rollback', p)}>
-                回退到 {p.previousVersion}
-              </button>
-            ) : null}
-            <button type="button" className="btn btn-small btn-quiet-danger btn-square" disabled={busy} onClick={() => ask('uninstall', p)} aria-label="删除" title="删除">
-              <Icon name="trash" size={14} />
-            </button>
-          </div>
-        </div>
-      ) : null}
+      <dl className="detail-facts plugin-facts">
+        <List label="工具" items={p.tools} />
+        <List label="技能" items={p.skills.map((s) => s.name)} />
+        <List label="命令" items={p.commands.map((c) => `/${c.id}`)} />
+        <List label="进程" items={p.servers.map((s) => `${s.id}（${SERVER_STATUS[s.status] ?? s.status}）`)} />
+        <dt>模拟模式</dt>
+        <dd>{p.mockSupported ? '支持' : '不支持'}</dd>
+        {p.source ? (
+          <>
+            <dt>来源</dt>
+            <dd className="detail-path" title={p.source.location}>
+              {p.source.location}
+            </dd>
+          </>
+        ) : null}
+      </dl>
+      <div className="plugin-actions">
+        {p.previousVersion ? (
+          <button type="button" className="btn btn-small" disabled={busy} onClick={() => ask('rollback', p)}>
+            回退到 {p.previousVersion}
+          </button>
+        ) : null}
+        <button type="button" className="btn btn-small btn-quiet-danger btn-square" disabled={busy} onClick={() => ask('uninstall', p)} aria-label="删除" title="删除">
+          <Icon name="trash" size={14} />
+        </button>
+      </div>
     </section>
   );
 }
@@ -168,8 +221,37 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [location, setLocation, locationDone] = useKeptDraft('plugins.location', '');
   const [confirm, setConfirm] = useState<{ kind: 'uninstall' | 'rollback'; p: PluginView } | null>(null);
-  // Plugins that provide mail (enabled): one shows the mail settings in its card; two or more, once above 已安装.
-  const mailSources = mail ? (state?.plugins ?? []).filter((p) => p.mail) : [];
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
+  const [picked, setPicked] = useState<string | null>(null);
+  const [installing, setInstalling] = useState(false);
+  // Which group each plugin is shown in, fixed while the page is open (turning one off does not move it).
+  const [groupOf, setGroupOf] = useState<Record<string, boolean>>({});
+  // Narrow: the list and the detail take turns.
+  const root = useRef<HTMLElement>(null);
+  const [narrow, setNarrow] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
+  // Turning narrow starts at the list.
+  const [wasNarrow, setWasNarrow] = useState(false);
+  if (wasNarrow !== narrow) {
+    setWasNarrow(narrow);
+    if (narrow) setShowDetail(false);
+  }
+  const plugins = useMemo(() => state?.plugins ?? [], [state]);
+  // Plugins that provide mail (enabled): one shows the mail settings in its detail; two or more, once above the list.
+  const mailSources = mail ? plugins.filter((p) => p.mail) : [];
+
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setNarrow(el.clientWidth < NARROW));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // A plugin seen for the first time (page opened, or just installed) goes to the group of its state then.
+  const missing = plugins.filter((p) => !(p.name in groupOf));
+  if (missing.length) setGroupOf({ ...groupOf, ...Object.fromEntries(missing.map((p) => [p.name, p.enabled])) });
 
   const run = useCallback(
     async (cmd: PluginsCommand) => {
@@ -211,65 +293,27 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
     if (r?.ok && !r.state.available?.length) {
       setLocation('');
       locationDone();
+      setInstalling(false);
+      const added = r.state.plugins.find((p) => !plugins.some((x) => x.name === p.name));
+      if (added) setPicked(added.name);
     }
   };
 
+  const q = query.trim().toLowerCase();
+  const shown = plugins.filter((p) => matches(p, filter) && (!q || `${p.displayName} ${p.name} ${p.description}`.toLowerCase().includes(q)));
+  const groups = [
+    { key: 'on', title: '已启用', items: shown.filter((p) => groupOf[p.name] ?? p.enabled) },
+    { key: 'off', title: '已停用', items: shown.filter((p) => !(groupOf[p.name] ?? p.enabled)) },
+  ].filter((g) => g.items.length);
+  const current = shown.find((p) => p.name === picked) ?? groups[0]?.items[0];
+  const count = (f: Filter) => plugins.filter((p) => matches(p, f)).length;
+  const empty = state !== null && plugins.length === 0;
+  const installOpen = installing || empty;
+  const listView = !narrow || !showDetail;
+  const detailView = !narrow || showDetail;
+
   return (
-    <section className="settings-section">
-      <div className="settings-group">
-        <div className="setting-row">
-          <div className="setting-text">
-            <span className="setting-title">模拟模式</span>
-          </div>
-          <Switch on={state?.mock ?? false} label="模拟模式" disabled={busy || !state} onChange={(on) => void run({ op: 'mock', on })} />
-        </div>
-      </div>
-
-      <div className="settings-group">
-        <h3 className="settings-subheading">安装插件</h3>
-        <form
-          className="install-row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void install();
-          }}
-        >
-          <input
-            className="input"
-            value={location}
-            spellCheck={false}
-            placeholder="插件文件夹、.zip、共享盘路径或网址"
-            aria-label="插件位置"
-            onChange={(e) => setLocation(e.target.value)}
-          />
-          <button type="submit" className="btn btn-primary" disabled={busy || !location.trim()}>
-            {busy ? <span className="spinner" aria-hidden /> : null}
-            安装
-          </button>
-        </form>
-        {note ? (
-          <p className={note.ok ? 'provider-result is-ok plugin-note' : 'provider-result is-bad plugin-note'} role="status">
-            <SpicaStatusIcon name={note.ok ? 'done' : 'error'} size={15} />
-            {note.text}
-          </p>
-        ) : null}
-        {state?.available?.length ? (
-          <ul className="available-list">
-            {state.available.map((a) => (
-              <li key={a.key} className="available-item">
-                <span className="available-text">
-                  <span className="plugin-name">{a.name}</span> <span className="plugin-version">{a.version}</span>
-                  {a.description ? <span className="settings-hint"> {a.description}</span> : null}
-                </span>
-                <button type="button" className="btn btn-small" disabled={busy} onClick={() => void run({ op: 'installAvailable', key: a.key })}>
-                  安装
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-
+    <section className={narrow ? 'settings-section plugins-page is-narrow' : 'settings-section plugins-page'} ref={root}>
       {mail && mailSources.length > 1 ? (
         <div className="settings-group">
           <div className="card plugin-mail-shared">
@@ -282,20 +326,127 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
         </div>
       ) : null}
 
-      <div className="settings-group">
+      {empty ? <p className="settings-hint plugins-empty">未安装插件</p> : null}
+
+      {listView && !empty ? (
         <div className="plugins-bar">
-          <h3 className="settings-subheading">已安装</h3>
-          <button type="button" className="icon-btn" disabled={busy || !state?.plugins.length} onClick={() => void run({ op: 'checkUpdates' })} aria-label="检查更新" title="检查更新">
+          {plugins.length ? <input className="input plugins-search" value={query} placeholder="搜索插件" aria-label="搜索插件" spellCheck={false} onChange={(e) => setQuery(e.target.value)} /> : <span className="plugins-bar-gap" />}
+          {plugins.length ? (
+            <div className="segmented plugins-filter" role="radiogroup" aria-label="筛选">
+              {(
+                [
+                  ['all', '全部'],
+                  ['on', '已启用'],
+                  ['update', '有更新'],
+                  ['problem', '有问题'],
+                ] as const
+              ).map(([f, label]) => (
+                <button key={f} type="button" role="radio" aria-checked={filter === f} className={filter === f ? 'segment is-on' : 'segment'} onClick={() => setFilter(f)}>
+                  {label} {count(f)}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <button type="button" className="icon-btn" disabled={busy || !plugins.length} onClick={() => void run({ op: 'checkUpdates' })} aria-label="检查更新" title="检查更新">
             <Icon name="refresh" size={16} />
           </button>
+          <button type="button" className={installOpen ? 'icon-btn is-on' : 'icon-btn'} aria-expanded={installOpen} disabled={empty} onClick={() => setInstalling(!installing)} aria-label="安装插件" title="安装插件">
+            <Icon name="plus" size={16} />
+          </button>
         </div>
-        {state && state.plugins.length === 0 ? <p className="settings-hint">未安装插件</p> : null}
-        <div className="plugin-list">
-          {state?.plugins.map((p) => (
-            <PluginCard key={p.name} p={p} busy={busy} run={(c) => void run(c)} ask={(kind, pl) => setConfirm({ kind, p: pl })} mail={mailSources.length === 1 && p.mail ? mail : undefined} />
-          ))}
+      ) : null}
+
+      {installOpen && listView ? (
+        <div className="settings-group plugins-install">
+          <form
+            className="install-row"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void install();
+            }}
+          >
+            <input className="input" value={location} spellCheck={false} placeholder="插件文件夹、.zip、共享盘路径或网址" aria-label="插件位置" onChange={(e) => setLocation(e.target.value)} />
+            <button type="submit" className="btn btn-primary" disabled={busy || !location.trim()}>
+              {busy ? <span className="spinner" aria-hidden /> : null}
+              安装
+            </button>
+          </form>
+          {state?.available?.length ? (
+            <ul className="available-list">
+              {state.available.map((a) => (
+                <li key={a.key} className="available-item">
+                  <span className="available-text">
+                    <span className="plugin-name">{a.name}</span> <span className="plugin-version">{a.version}</span>
+                    {a.description ? <span className="settings-hint"> {a.description}</span> : null}
+                  </span>
+                  <button type="button" className="btn btn-small" disabled={busy} onClick={() => void run({ op: 'installAvailable', key: a.key })}>
+                    安装
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
-        {state ? (
+      ) : null}
+
+      {note ? (
+        <p className={note.ok ? 'provider-result is-ok plugin-note' : 'provider-result is-bad plugin-note'} role="status">
+          <SpicaStatusIcon name={note.ok ? 'done' : 'error'} size={15} />
+          {note.text}
+        </p>
+      ) : null}
+
+      {plugins.length ? (
+        <div className="plugins-two">
+          {listView ? (
+            <nav className="plugins-list" aria-label="插件列表">
+              {groups.length ? (
+                groups.map((g) => (
+                  <div key={g.key} className="plugins-group">
+                    <h3 className="plugins-group-title">
+                      {g.title} {g.items.length}
+                    </h3>
+                    <ul>
+                      {g.items.map((p) => (
+                        <PluginRow
+                          key={p.name}
+                          p={p}
+                          on={!narrow && current?.name === p.name}
+                          onPick={() => {
+                            setPicked(p.name);
+                            setShowDetail(true);
+                          }}
+                        />
+                      ))}
+                    </ul>
+                  </div>
+                ))
+              ) : (
+                <p className="settings-hint plugins-none">{q ? '没有匹配的插件' : '没有符合条件的插件'}</p>
+              )}
+            </nav>
+          ) : null}
+          {detailView && current ? (
+            <PluginDetail
+              p={current}
+              busy={busy}
+              run={(c) => void run(c)}
+              ask={(kind, pl) => setConfirm({ kind, p: pl })}
+              mail={mailSources.length === 1 && current.mail ? mail : undefined}
+              onBack={narrow ? () => setShowDetail(false) : undefined}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
+      {state && listView ? (
+        <div className="settings-group plugins-foot">
+          <div className="setting-row">
+            <div className="setting-text">
+              <span className="setting-title">模拟模式</span>
+            </div>
+            <Switch on={state.mock} label="模拟模式" disabled={busy} onChange={(on) => void run({ op: 'mock', on })} />
+          </div>
           <p className="plugin-root">
             <span className="settings-hint">插件目录</span>
             <span className="detail-path" title={state.root}>
@@ -305,8 +456,8 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
               <Icon name="folder" size={16} />
             </button>
           </p>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {confirm ? (
         <ConfirmDialog

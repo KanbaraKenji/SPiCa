@@ -2839,25 +2839,166 @@ button.ctx-row:hover {
   overflow-wrap: anywhere;
 }
 
+.plugin-card {
+  padding: 12px 16px;
+}
+
+/* 插件 page: search, filter, check for updates, install along the top; list and detail below. */
 .plugins-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
-.plugins-bar .settings-subheading {
+.plugins-bar .plugins-search {
+  flex: 1 1 160px;
+  min-width: 0;
+  max-width: none;
+  height: 30px;
+}
+
+.plugins-bar-gap {
+  flex: 1;
+}
+
+.plugins-filter .segment {
+  white-space: nowrap;
+}
+
+.plugins-install {
+  margin-bottom: 12px;
+}
+
+/* Narrow: search and the two icons on one row, the filter on the next. */
+.plugins-page.is-narrow .plugins-filter {
+  order: 2;
+  flex-basis: 100%;
+}
+
+.plugins-page.is-narrow .plugins-filter .segment {
+  flex: 1;
+}
+
+.plugins-empty,
+.plugins-none {
+  margin: 8px 0;
+}
+
+.plugins-two {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.plugins-page.is-narrow .plugins-two {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.plugins-list {
+  border: 1px solid var(--spica-border-strong);
+  border-radius: var(--radius-m);
+  background: var(--spica-surface);
+  padding: 4px 0;
+}
+
+.plugins-list ul {
+  list-style: none;
   margin: 0;
+  padding: 0;
 }
 
-.plugin-list {
+.plugins-group + .plugins-group {
+  margin-top: 4px;
+}
+
+.plugins-group-title {
+  margin: 0;
+  padding: 6px 12px 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--spica-faint);
+}
+
+.plugin-row {
+  width: 100%;
+  height: 34px;
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: var(--spica-ink);
+  text-align: left;
 }
 
-.plugin-card {
-  padding: 12px 16px;
+.plugin-row:hover {
+  background: var(--spica-hover);
+}
+
+.plugin-row.is-on {
+  background: var(--spica-active);
+}
+
+.plugin-row-icon {
+  display: inline-flex;
+  color: var(--spica-muted);
+}
+
+.plugin-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Turned off: the icon fainter, the name in the secondary colour. */
+.plugin-row.is-off .plugin-row-icon {
+  opacity: 0.45;
+}
+
+.plugin-row.is-off .plugin-row-name {
+  color: var(--spica-muted);
+}
+
+.plugin-row-mark {
+  display: inline-flex;
+  color: var(--spica-accent-text);
+}
+
+.plugin-off {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--spica-muted);
+}
+
+.plugin-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: -4px 0 8px -4px;
+}
+
+.plugin-facts {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--spica-border);
+}
+
+.plugins-foot {
+  margin-top: 20px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .plugin-card.is-off .plugin-name,
@@ -2994,16 +3135,6 @@ button.ctx-row:hover {
 
 .plugin-model-input .input {
   width: 84px;
-}
-
-.plugin-more {
-  margin: 6px 0 0 -8px;
-}
-
-.plugin-details {
-  margin-top: 6px;
-  padding-top: 10px;
-  border-top: 1px solid var(--spica-border);
 }
 
 .plugin-actions {

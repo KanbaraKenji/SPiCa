@@ -72,6 +72,7 @@ function overlayHeight(zoom: number): number {
 //   SPICA_SAVE_TO=<dir>      save files (usage log) there without asking (not in installed builds)
 //   SPICA_PICK_FOLDER=<dir>  the folder picker answers this without showing (not in installed builds)
 //   SPICA_PICK_FILES=<a;b>   the file picker answers these without showing (not in installed builds)
+//   SPICA_DEMO_PLUGINS=many  the demo's plugin list has twelve plugins (screenshots; not in installed builds)
 //   SPICA_HIDDEN=1           never show the window: test scripts drive it over DevTools while
 //                            someone is using the computer (not in installed builds)
 const forcedTheme = process.env.SPICA_THEME;
@@ -923,7 +924,7 @@ const pluginService: PluginService =
           return err ? { ...r, ok: false, message: `无法打开文件夹：${err}` } : r;
         },
       }
-    : new FakePluginService(pluginRoot);
+    : new FakePluginService(pluginRoot, { many: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'many' });
 ipcMain.handle(DesktopChannel.Plugins, async (_e, cmd: PluginsCommand) => {
   const r = await pluginService.run(cmd);
   // The real core reports plugin changes itself; the demo's list says so here.

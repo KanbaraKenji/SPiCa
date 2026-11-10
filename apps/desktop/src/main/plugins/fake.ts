@@ -27,13 +27,49 @@ function withoutModel(p: PluginView): PluginView {
   return rest;
 }
 
+/** Ten more made-up plugins (SPICA_DEMO_PLUGINS=many): a page of twelve for screenshots, some off, one with an update, one with a problem. */
+const MORE: [string, string, string, boolean][] = [
+  ['quote-check', '报价单核对', '按供应商价目表核对报价单。', true],
+  ['contract-review', '合同审阅', '标出合同里的付款与违约条款。', true],
+  ['minutes', '会议纪要', '从录音文字整理纪要。', true],
+  ['drawing-diff', '图纸比对', '比较两版图纸的尺寸差异。', true],
+  ['erp', 'ERP 查询', '查库存、订单和物料。', true],
+  ['calendar', '日程', 'Outlook 日历。', false],
+  ['translate', '翻译', '中英日互译。', true],
+  ['web-fetch', '网页抓取', '抓取网页正文。', false],
+  ['file-search', '文件检索', '在共享盘里按内容找文件。', true],
+  ['expenses', '报销助手', '整理发票，填报销单。', true],
+];
+
+function morePlugins(): PluginView[] {
+  return MORE.map(([name, displayName, description, enabled]) => {
+    const tools = enabled ? ['search', 'read'] : [];
+    return {
+      ...withoutModel(structuredClone(EXAMPLE)),
+      name,
+      displayName,
+      description,
+      version: '1.0.0',
+      previousVersion: undefined,
+      enabled,
+      tools,
+      skills: [],
+      commands: [],
+      servers: [{ id: name, status: name === 'drawing-diff' ? 'failed' : enabled ? 'running' : 'stopped', tools, ...(name === 'drawing-diff' ? { lastError: '「drawing-diff」启动失败：找不到 dwgread.exe' } : {}) }],
+      ...(name === 'quote-check' ? { update: '1.1.0' } : {}),
+    } as PluginView;
+  });
+}
+
 export class FakePluginService implements PluginService {
   #plugins: PluginView[] = [structuredClone(EXAMPLE), { ...withoutModel(structuredClone(EXAMPLE)), name: 'mail-digest', displayName: '来信摘要（示例）', description: '把收件箱里的新邮件整理成摘要，按项目归类。', version: '1.0.0', enabled: true, mail: true, tools: ['list_messages', 'read_message'], skills: [], commands: [], servers: [{ id: 'mail', status: 'running', tools: ['list_messages', 'read_message'] }], previousVersion: undefined, update: '1.1.0' } as PluginView];
   #mock = false;
   readonly #root: string;
 
-  constructor(root: string) {
+  /** `many`: twelve plugins instead of two (screenshots of a full page). */
+  constructor(root: string, opts: { many?: boolean } = {}) {
     this.#root = root;
+    if (opts.many) this.#plugins.push(...morePlugins());
   }
 
   onChange(): () => void {
