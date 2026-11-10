@@ -8,6 +8,7 @@
   },
   "include": [
     "electron.vite.config.ts",
+    "../../packages/brand/scripts/opentype.d.ts",
     "src/main",
     "src/preload",
     "src/shared",

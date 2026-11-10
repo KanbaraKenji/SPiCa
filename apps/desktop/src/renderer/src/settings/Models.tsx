@@ -19,6 +19,7 @@ import { friendlyError } from '../store/agent';
 import { tokenText } from '../chat/Composer';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
+import { APP_NAME } from '../../../shared/app-identity';
 import { dropDraft, keepDraft, keptDraft } from './drafts';
 
 export interface ProvidersApi {
@@ -35,7 +36,7 @@ const WINDOW_HINT = '这个模型一次最多能装多少 token（上下文窗�
 
 /** What to say under 上下文上限: filled in by Spica, how big that is, or what to put there. */
 function windowHint(value: number | null, prefilled: number | null): string {
-  if (value !== null && value === prefilled) return `Spica 认识这个型号，已经填上（${tokenText(value)}），可以改。`;
+  if (value !== null && value === prefilled) return `${APP_NAME} 认识这个型号，已经填上（${tokenText(value)}），可以改。`;
   if (value !== null && Number.isInteger(value) && value > 0) return `${tokenText(value)} token。${WINDOW_HINT}`;
   return WINDOW_HINT;
 }

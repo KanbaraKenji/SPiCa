@@ -12,6 +12,7 @@ import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
 import { mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
+import { APP_IDENTITY } from '../shared/app-identity';
 import { coreKind, type ProviderDraft, type ProviderKind, type ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
@@ -38,7 +39,8 @@ import { BRIDGE_JS, contentType, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN
 import { FONT_UI, type PluginView, type PluginViewResult } from '../shared/plugin-view';
 import { readFile } from 'node:fs/promises';
 
-const APP_NAME = 'Spica';
+// Spica, or the name a company's deploy.json gave it when packaging.
+const APP_NAME = APP_IDENTITY.name;
 /** Title bar height in CSS px at 100% zoom; must match `--spica-titlebar-h` in the renderer. */
 const TITLEBAR_HEIGHT = 40;
 
@@ -64,9 +66,9 @@ const hidden = process.env.SPICA_HIDDEN === '1' && !app.isPackaged;
 app.setName(APP_NAME);
 // The development build has its own id: with the same one as an installed Spica,
 // Windows groups its window under that shortcut and shows the shortcut's icon.
-// A package says its id in package.json (electron-builder extraMetadata, same as appId),
-// so a build under another id (a test copy, a company build) still matches its shortcuts.
-const APP_USER_MODEL_ID = app.isPackaged ? packagedAppUserModelId() : 'dev.spica.desktop.dev';
+// The package's id is the installer's appId (deploy.json, else dev.spica.desktop), so the
+// window matches its shortcuts; a renamed build has its own.
+const APP_USER_MODEL_ID = app.isPackaged ? APP_IDENTITY.id : `${APP_IDENTITY.id}.dev`;
 if (process.platform === 'win32') app.setAppUserModelId(APP_USER_MODEL_ID);
 // Screenshots must not read or change the user's own settings.
 //   SPICA_USER_DATA=<dir>    use another settings folder (manual checks without touching your own)
@@ -80,7 +82,7 @@ if (forcedTheme === 'dark' || forcedTheme === 'light') nativeTheme.themeSource =
 //   SPICA_DEV_MODELS=0       ignore .env.local (see the app as a first-time user would)
 const modelEnv = app.isPackaged || automated || process.env.SPICA_DEV_MODELS === '0' ? {} : readModelEnv(resolvePath(app.getAppPath(), '../../.env.local'));
 const backendKind = chooseBackend({ requested: process.env.SPICA_BACKEND, automated });
-const workDir = join(app.getPath('documents'), 'Spica');
+const workDir = join(app.getPath('documents'), APP_NAME);
 /** Where workflow files live unless the user picked another folder (设置 › 常规). */
 const defaultWorkflowsDir = join(workDir, 'workflows');
 if (backendKind === 'core') mkdirSync(defaultWorkflowsDir, { recursive: true });
@@ -234,16 +236,6 @@ function chromeColors(s: ShellSettings): { bg: string; chrome: string; ink: stri
   const skin = resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins);
   const t = deriveTokens(skin);
   return { bg: t['--spica-bg'] ?? skin.bg, chrome: t['--spica-chrome'] ?? skin.bg, ink: t['--spica-muted'] ?? '#888888' };
-}
-
-function packagedAppUserModelId(): string {
-  try {
-    const pkg = JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf8')) as { appUserModelId?: unknown };
-    if (typeof pkg.appUserModelId === 'string' && pkg.appUserModelId) return pkg.appUserModelId;
-  } catch {
-    // fall through
-  }
-  return 'dev.spica.desktop';
 }
 
 /** Keeps native parts (window background, caption buttons, scrollbars) in step with the skin. */

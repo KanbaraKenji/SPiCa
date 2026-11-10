@@ -15,11 +15,12 @@ import { serveMcpHttp, type McpHttpServer, type Runtime } from '@spica/core';
 import { attachBackend as attachPlugins } from '@spica/plugins';
 import { RealPluginService } from '../main/plugins/service';
 import type { PluginsCommand } from '../shared/plugins';
+import { APP_NAME } from '../shared/app-identity';
 
 export interface DesktopHostOptions {
   pluginRoot: string;
   pluginSourcesFile: string;
-  /** Where local scripts find the HTTP MCP service ({ url, tokenFile, pid, startedAt }); absent: no such service. */
+  /** Where local scripts find the HTTP MCP service ({ url, tokenFile, pid, startedAt, appName }); absent: no such service. */
   mcpInfoFile?: string;
   /** The bearer token, one line, readable by this user only. */
   mcpTokenFile?: string;
@@ -64,7 +65,8 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
     await mkdir(dirname(options.mcpTokenFile), { recursive: true });
     await writeFile(options.mcpTokenFile, `${http.token}\n`, { mode: 0o600 });
     // The token never goes into this file, only where to read it.
-    const info = { url: http.url, tokenFile: options.mcpTokenFile, pid: process.pid, startedAt: new Date().toISOString() };
+    // appName: which app this is (Spica, or a company build's own name), for scripts to check.
+    const info = { url: http.url, tokenFile: options.mcpTokenFile, pid: process.pid, startedAt: new Date().toISOString(), appName: APP_NAME };
     await writeFile(options.mcpInfoFile, `${JSON.stringify(info, null, 2)}\n`, 'utf8');
     return httpState();
   };

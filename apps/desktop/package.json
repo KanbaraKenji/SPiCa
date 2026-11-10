@@ -15,7 +15,7 @@
     "preshots": "install-electron",
     "shots": "node scripts/shots.mjs",
     "predist": "install-electron",
-    "dist": "electron-vite build && electron-builder --win --publish never",
+    "dist": "node scripts/dist.mjs",
     "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json"
   },
   "devDependencies": {

@@ -6,6 +6,7 @@ import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode }
 import type { ApprovalMode } from '@spica/protocol';
 import { ContextMenu, type MenuItem } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
+import { APP_NAME } from '../../../shared/app-identity';
 
 export interface ComposerTools {
   /** Windows' file picker; absent: no attachments. */
@@ -172,7 +173,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
           className="composer-input"
           rows={1}
           value={text}
-          placeholder={running ? '补充或改方向，会在下一步生效' : '给 Spica 发消息'}
+          placeholder={running ? '补充或改方向，会在下一步生效' : `给 ${APP_NAME} 发消息`}
           aria-label="消息"
           onChange={(e) => update(e.target.value)}
           onKeyDown={onKeyDown}

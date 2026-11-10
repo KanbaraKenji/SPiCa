@@ -2,10 +2,8 @@
 # and a portable exe. See docs/design/desktop-shell.md, "打包与更新".
 #   npm run dist -w @spica/desktop
 appId: dev.spica.desktop
-# The running app reads this to name itself to Windows the same as its shortcuts
-# (taskbar grouping and icon). Keep it equal to appId.
-extraMetadata:
-  appUserModelId: dev.spica.desktop
+# appId and productName are Spica's; a company's deploy.json replaces them at
+# packaging time (scripts/dist.mjs), with the shortcut name, file names and icon.
 productName: Spica
 copyright: Copyright The Spica Authors
 directories:

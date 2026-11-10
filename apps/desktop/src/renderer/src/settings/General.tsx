@@ -8,6 +8,7 @@ import { Icon } from '../ui/Icon';
 import { useKeptDraft } from './drafts';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Switch } from './Plugins';
+import { APP_NAME } from '../../../shared/app-identity';
 
 export interface WorkflowsApi {
   run(op: 'state' | 'open' | 'reload'): Promise<WorkflowsState>;
@@ -60,10 +61,10 @@ function Developer({ settings, onChange, localConnect }: GeneralProps) {
       <h3 className="settings-subheading">开发者</h3>
       <div className="setting-row">
         <div className="setting-text">
-          <span className="setting-title">允许本机脚本连接 Spica</span>
-          <span className="settings-hint">打开后，这台电脑上的脚本（比如插件的安装脚本）可以连上正在运行的 Spica。只对本机开放，要带上令牌才能连。不用时请关掉。</span>
+          <span className="setting-title">允许本机脚本连接 {APP_NAME}</span>
+          <span className="settings-hint">打开后，这台电脑上的脚本（比如插件的安装脚本）可以连上正在运行的 {APP_NAME}。只对本机开放，要带上令牌才能连。不用时请关掉。</span>
         </div>
-        <Switch on={on} label="允许本机脚本连接 Spica" onChange={(v) => onChange({ localConnect: v })} />
+        <Switch on={on} label={`允许本机脚本连接 ${APP_NAME}`} onChange={(v) => onChange({ localConnect: v })} />
       </div>
       {on ? (
         <div className="setting-row">
@@ -453,7 +454,7 @@ export function General(props: GeneralProps) {
       {askingMail ? (
         <ConfirmDialog
           title="把来信交给模型分拣？"
-          detail={`打开后，邮件插件读到的新来信（发件人、主题和正文开头）会发给${mailModel ? `「${mailModel}」` : '当前设置的模型'}分拣；归到项目的信，项目经理会用它自己对话的模型去读。用公司邮箱时，请确认这个模型可以处理公司邮件。Spica 只给建议，不会替你发信。`}
+          detail={`打开后，邮件插件读到的新来信（发件人、主题和正文开头）会发给${mailModel ? `「${mailModel}」` : '当前设置的模型'}分拣；归到项目的信，项目经理会用它自己对话的模型去读。用公司邮箱时，请确认这个模型可以处理公司邮件。${APP_NAME} 只给建议，不会替你发信。`}
           confirmLabel="打开"
           onCancel={() => setAskingMail(false)}
           onConfirm={() => {

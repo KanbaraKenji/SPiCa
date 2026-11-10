@@ -3,6 +3,7 @@
 import { useKeptDraft } from './drafts';
 import type { UpdateState } from '../../../shared/updates';
 import { Icon } from '../ui/Icon';
+import { APP_NAME } from '../../../shared/app-identity';
 
 export interface AboutProps {
   version: string;
@@ -27,7 +28,9 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
       <div className="settings-group">
         <div className="setting-row">
           <div className="setting-text">
-            <span className="setting-title">Spica {version}</span>
+            <span className="setting-title">
+              {APP_NAME} {version}
+            </span>
             {update?.portable ? <span className="settings-hint">便携版</span> : null}
           </div>
         </div>

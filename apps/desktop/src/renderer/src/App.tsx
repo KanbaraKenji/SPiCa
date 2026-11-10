@@ -11,6 +11,8 @@ import { PluginPage, type PluginTheme } from './shell/PluginFrame';
 import { FONT_UI, pluginThemeVars, type PluginView } from '../../shared/plugin-view';
 import { deriveTokens, schemeOf } from '../../shared/skin';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
+import { APP_NAME } from '../../shared/app-identity';
+import { sidebarBannerHeight, wordmarkProps } from './app-wordmark';
 import { useViewportWidth } from './shell/useViewportWidth';
 import { Sidebar } from './shell/Sidebar';
 import { DetailPanel } from './shell/DetailPanel';
@@ -26,6 +28,9 @@ import { needsYou, unseenByManager } from '../../shared/mail';
 import type { MailItem } from '@spica/protocol';
 import { Icon } from './ui/Icon';
 import { SpicaBanner } from '@spica/brand/react';
+
+/** The sidebar's wordmark: 22 px high, smaller for a long app name. */
+const BANNER_HEIGHT = sidebarBannerHeight();
 
 export interface AppProps {
   version?: string;
@@ -428,7 +433,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         >
           {resizer('left')}
           <div className="sidebar-head">
-            <SpicaBanner height={22} className="sidebar-brand" />
+            <SpicaBanner height={BANNER_HEIGHT} className="sidebar-brand" {...wordmarkProps} />
             {sidebarToggle}
           </div>
           <Sidebar
@@ -665,7 +670,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       {deletingProject ? (
         <ConfirmDialog
           title={`删除项目「${deletingProject.name}」？`}
-          detail="只删 Spica 里的这个项目和它的对话记录；项目文件夹和里面的文件不会动。"
+          detail={`只删 ${APP_NAME} 里的这个项目和它的对话记录；项目文件夹和里面的文件不会动。`}
           confirmLabel="删除"
           danger
           onCancel={() => setDeletingProject(null)}

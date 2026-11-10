@@ -1,6 +1,7 @@
 // "新项目": name, folder (typed or picked), and optionally the first task for
 // the project manager. Creating it opens the project manager's conversation.
 import { useEffect, useId, useRef, useState } from 'react';
+import { APP_NAME } from '../../../shared/app-identity';
 
 export interface NewProjectInput {
   name: string;
@@ -80,7 +81,7 @@ export function NewProjectDialog({ onPickFolder, onCreate, onClose, initialName 
         <label className="form-field">
           <span className="field-label">文件夹</span>
           <span className="form-inline">
-            <input className="input" value={folder} spellCheck={false} onChange={(e) => setFolder(e.target.value)} placeholder="留空就在「文档\Spica」里新建一个" />
+            <input className="input" value={folder} spellCheck={false} onChange={(e) => setFolder(e.target.value)} placeholder={`留空就在「文档\\${APP_NAME}」里新建一个`} />
             <button type="button" className="btn" onClick={() => void pick()}>
               选择…
             </button>

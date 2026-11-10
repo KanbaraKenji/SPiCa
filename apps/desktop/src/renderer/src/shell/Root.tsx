@@ -5,6 +5,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { SpicaMark, SpicaSplash } from '@spica/brand/react';
 import { SPLASH_FINISH_AFTER } from '@spica/brand';
+import { wordmarkProps } from '../app-wordmark';
 
 /**
  * The full opening plays about this long however fast start-up is (he asked for
@@ -86,7 +87,7 @@ export function Root({ splash: mode, ready, version, children }: RootProps) {
             if (skipping && e.target === e.currentTarget) setSplash(false);
           }}
         >
-          <SpicaSplash ready={loaded} onDone={() => setSplash(false)} theme={scheme} caption={version ? `v${version}` : undefined} />
+          <SpicaSplash ready={loaded} onDone={() => setSplash(false)} theme={scheme} caption={version ? `v${version}` : undefined} {...wordmarkProps} />
         </div>
       ) : null}
     </div>
