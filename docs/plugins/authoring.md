@@ -58,7 +58,7 @@ Spica 启动 server 时会给这些环境变量：
 | `SPICA_MOCK` | `1` 表示用户开了模拟模式 |
 | `SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION` | 名字和版本 |
 | `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`、`NODE_USE_ENV_PROXY` | 应用的代理设置（设置 › 常规 › 网络），没设代理时不给 |
-| `NODE_EXTRA_CA_CERTS`、`NODE_USE_SYSTEM_CA`、`SSL_CERT_FILE`、`REQUESTS_CA_BUNDLE`、`CURL_CA_BUNDLE` | 应用信任的证书（系统证书和额外信任的文件），Node 的 `fetch` / `https` 直接就用上了 |
+| `NODE_EXTRA_CA_CERTS`、`NODE_USE_SYSTEM_CA`、`SSL_CERT_FILE`、`REQUESTS_CA_BUNDLE`、`CURL_CA_BUNDLE` | 应用信任的证书（系统证书和额外信任的文件），Node 的 `fetch` / `https` 直接就用上了（这一行和上一行从 0.1.0-rc.2 起才有） |
 
 其他环境变量只继承白名单（PATH、TEMP、用户目录这类），名字带 KEY、TOKEN、SECRET 的一律不传。所以服务地址和凭据不要从环境变量读，放 `SPICA_PLUGIN_DATA` 里的配置文件，由插件自己的设置页经 `services/` 里的工具保存；证书和代理不要自己处理。用户改了网络设置，正在运行的插件 server 会自动重启一次。写法见 `skills/spica-plugin-author/references/internal-services.md`。
 
@@ -182,6 +182,21 @@ if (process.env.SPICA_MOCK === '1') {
 - 列表结果默认按这些字段读：`messages` 数组，每条有 `id`、`from_name`、`from_address`、`subject`、`received`、`preview`。字段名不一样时用 `fields` 对应，例如 `"fields": { "list": "items", "subject": "title" }`。
 - 列表调用默认带 `{ "unread_only": true, "limit": 50 }`，要改就写 `list_args`。
 - 例子：`plugins/outlook-mail/manifest.json`。
+
+## 6c. 用 Spica 里配好的模型（可选）
+
+插件要让模型写摘要、分类、改写时，不用自带 key，借用户在 Spica 里配好的模型（MCP 的取样，sampling），需要 Spica 0.1.0-rc.2 之后发布的版本：
+
+```json
+"permissions": { "model": { "reason": "给笔记写摘要", "max_usd_per_day": 0.2 } }
+```
+
+- `reason` 必填，安装和启用时给用户看；每天的上限缺省 0.5 美元，用户可以在插件页调低（调成 0 就是不让用）。每个插件同时最多 2 个请求、每分钟最多 30 个，用户的总预算也照样管着。
+- 用官方 SDK 时调 `server.createMessage({ messages, maxTokens, systemPrompt?, modelPreferences? })`；不用 SDK 的写法见示例插件的 `summarize_note`（`plugins/example-notes/server/index.js`）。只能传文字，不能带工具，看不到用户的对话。
+- 先看 `initialize` 里的 `capabilities.sampling`：没有就是没申请、上限是 0，或者 Spica 太旧，给用户一句提示。
+- 选模型：什么都不写用默认模型；要强模型把 `intelligencePriority` 设到 0.7 以上，或在 `hints` 里写 `{ name: 'strong' }`；点名用 `hints: [{ name: 'example-large-model' }]`，没配就退回默认模型，结果里带 `_meta.spica.fallback`，`model` 是实际用的那个；必须用点名的模型就加 `_meta: { spica: { requireModel: true } }`，没配就被拒（`model_not_configured`）。
+- 被拒绝时是 JSON-RPC 错误 `-32000`，`data.code` 是 `invalid`、`no_model`、`model_not_configured`、`budget`、`rate_limited`、`failed` 之一，要转成一句告诉用户怎么办的话。
+- 页面脚本不能直接用，要用就调自己 server 的工具。
 
 ## 7. 本地试
 

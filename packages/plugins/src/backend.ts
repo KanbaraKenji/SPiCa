@@ -138,6 +138,12 @@ export function pluginMethods(pm: PluginManager): Record<string, (...params: unk
       const args = r.args && typeof r.args === 'object' && !Array.isArray(r.args) ? (r.args as Record<string, unknown>) : {};
       return pm.viewCall(String(r.plugin ?? ''), String(r.view ?? ''), String(r.tool ?? ''), args, { confirmed: r.confirmed === true });
     },
+    // Plugins using the user's models: why, the limit in force and today's spend; and the user's own limit.
+    pluginModelUsage: () => pm.modelUsage(),
+    pluginSetModelLimit: (req) => {
+      const r = (req ?? {}) as { plugin?: unknown; maxUsdPerDay?: unknown };
+      return pm.setModelLimit(String(r.plugin ?? ''), r.maxUsdPerDay === null || r.maxUsdPerDay === undefined ? null : Number(r.maxUsdPerDay));
+    },
   };
 }
 

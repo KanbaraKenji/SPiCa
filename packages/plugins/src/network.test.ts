@@ -8,11 +8,11 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createServer as createHttp, type Server } from 'node:http';
 import { createServer as createHttps } from 'node:https';
-import { connect as netConnect, type AddressInfo, type Socket } from 'node:net';
+import { connect as netConnect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { configureNetwork } from '@spica/core';
+import { configureNetwork, listenFetchable } from '@spica/core';
 import { callTool, manifest, rig, until, writePlugin, type Rig } from './testing/helpers.ts';
 
 // A fictional internal host name; the test proxy sends every tunnel to 127.0.0.1.
@@ -57,7 +57,8 @@ const hasOpenssl = (() => {
   }
 })();
 
-const listen = (s: Server) => new Promise<number>((done) => s.listen(0, '127.0.0.1', () => done((s.address() as AddressInfo).port)));
+// Never a port fetch refuses (some in the local range are; see listenFetchable).
+const listen = (s: Server) => listenFetchable(s);
 
 /** The plugin: plain fetch and https.get, no certificate or proxy code. The address comes from its data folder. */
 const SERVER = `import { readFileSync } from 'node:fs';

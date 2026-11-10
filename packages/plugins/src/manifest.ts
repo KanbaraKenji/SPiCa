@@ -31,7 +31,15 @@ export interface PluginPermissions {
   irreversible: string[];
   /** Hook kinds the plugin's hook modules may register. Anything else is refused. */
   hooks: HookKind[];
+  /**
+   * Use the models the user has set up (MCP sampling). Shown at install and
+   * enable; the plugin needs no key of its own and spends at most maxUsdPerDay.
+   */
+  model?: { reason: string; maxUsdPerDay: number };
 }
+
+/** Daily limit for a plugin using the user's models when the manifest gives none (same as the core's default). */
+export const DEFAULT_MODEL_USD_PER_DAY = 0.5;
 
 export interface PluginManifest {
   manifestVersion: number;
@@ -252,6 +260,26 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
       if (!(HOOK_KINDS as readonly string[]).includes(h)) err('permissions.hooks', `不认识的钩子「${h}」，可选：${HOOK_KINDS.join('、')}。`);
     }
     permissions.hooks = hooks.filter((h): h is HookKind => (HOOK_KINDS as readonly string[]).includes(h));
+    const model = p.model;
+    if (model !== undefined) {
+      if (!isObj(model)) err('permissions.model', '「permissions.model」应该是对象，例如 { "reason": "给笔记写摘要", "max_usd_per_day": 0.2 }。');
+      else {
+        const reason = typeof model.reason === 'string' ? model.reason.trim() : '';
+        if (!reason) err('permissions.model.reason', '要写一句为什么要用模型（安装和启用时给用户看），例如 "给笔记写摘要"。');
+        else if (reason.length > 200) err('permissions.model.reason', '理由写一句话就够，不要超过 200 个字。');
+        let max = DEFAULT_MODEL_USD_PER_DAY;
+        const m = model.max_usd_per_day;
+        if (m !== undefined) {
+          if (typeof m !== 'number' || !Number.isFinite(m) || m <= 0) err('permissions.model.max_usd_per_day', '「max_usd_per_day」是每天最多花多少美元，写一个大于 0 的数，例如 0.2。');
+          else {
+            max = m;
+            if (m > 5) warn('permissions.model.max_usd_per_day', `每天最多 ${m} 美元偏高，确认一下；用户还可以在插件页把它调低。`);
+          }
+        }
+        for (const k of Object.keys(model)) if (k !== 'reason' && k !== 'max_usd_per_day') warn(`permissions.model.${k}`, `不认识的字段「${k}」，会被忽略。`);
+        if (reason && reason.length <= 200) permissions.model = { reason, maxUsdPerDay: max };
+      }
+    }
     const ws = p.workspace;
     if (ws !== undefined) {
       if (ws === 'none' || ws === 'read' || ws === 'write') permissions.workspace = ws;

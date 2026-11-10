@@ -4,14 +4,26 @@
   "version": "0.1.0",
   "display_name": "Notes (example)",
   "description": "Keep notes in a local notebook and look things up in a fictional sample catalog. Shows every part of a Spica plugin.",
-  "author": { "name": "Spica contributors" },
+  "author": {
+    "name": "Spica contributors"
+  },
   "license": "Apache-2.0",
-  "compatibility": { "spica": ">=0.1.0" },
+  "compatibility": {
+    "spica": ">=0.1.0"
+  },
   "permissions": {
     "network": [],
     "workspace": "none",
-    "irreversible": ["delete_note"],
-    "hooks": ["inject"]
+    "irreversible": [
+      "delete_note"
+    ],
+    "hooks": [
+      "inject"
+    ],
+    "model": {
+      "reason": "Summarize a note when you ask (summarize_note).",
+      "max_usd_per_day": 0.1
+    }
   },
   "mock": {
     "supported": true,

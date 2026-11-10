@@ -41,6 +41,7 @@
 | `permissions.workspace` | 否 | 对会话工作文件夹（项目文件夹）的访问：`none`（默认）/ `read` / `write`；现在只展示，第 7 节写了以后怎么拦 |
 | `permissions.irreversible` | 否 | 不可撤销的工具（写 server 里的原名），调用前一律要用户确认 |
 | `permissions.hooks` | 否 | 钩子模块允许挂哪几类：`inject`、`beforeRequest`、`afterResponse`、`beforeTool`、`afterTool`。没声明的一律不挂 |
+| `permissions.model` | 否 | 借用户配好的模型（MCP 取样）：`{ "reason": "一句为什么", "max_usd_per_day": 0.2 }`。`reason` 必填（安装、启用时给用户看，第一次用不再确认），上限缺省 0.5 美元/天。起 server 时 manager 在 `connectMcp` 的配置里加 `sampling: { pluginId, maxUsdPerDay }`，上限取清单值和用户在插件页设的值中较小的；用户设 0 或没声明就不传，server 拿不到 `capabilities.sampling`。用户改上限会重启这个插件的 server |
 | `mock` | 否 | `{ "supported": true, "description": "…" }` |
 | `mail` | 否 | 这个插件是邮件来源：`{ "list_tool": "list_messages", "read_tool": "read_message" }`（server 里的原名）；可选 `server`（有多个 MCP server 时必填）、`list_args`、`fields`（列表结果字段名和内核默认不同时）。启用时插件包调 `runtime.mail.addSource({ id: 插件名, listTool: '<server名>__list_messages', … })`，停用时撤掉；部署配置里不用再写带前缀的工具名 |
 
@@ -218,13 +219,15 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 | `listSource`、`checkUpdates`、`installAvailable` | 来源、更新提示、一键更新 |
 | `commands()`、`expandCommand(name, args)` | 输入框里的 `/` 命令 |
 | `views()` → `PluginView[]`、`resolveViewFile(插件, 相对路径)`、`viewCall(插件, 视图, 工具, 参数, { confirmed })` | 插件页面：列表、取文件、调工具（见第 2 节「视图」） |
+| `describe(name).model`、`modelUsage()`、`setModelLimit(name, 美元 | null)` | 用模型的插件：理由、生效的上限、清单上限、用户上限、今天花了多少（`spentTodayUsd`，来自内核 `runtime.sampler.spentToday`）；用户自己的上限（`null` = 回到清单值，`0` = 不让用） |
+| `restartServers()` | 网络设置变了：重启在运行的插件 server（后端扩展的 `networkChanged()` 调它） |
 | `on(listener)` → `PluginEvent` | `plugin.installed / uninstalled / enabled / disabled / error`、`server.status`、`hook.error`、`mock.changed` |
 
 所有面向用户的报错都是中文人话（`PluginError.message`，带 `issues` 明细）。
 
 **在后端进程里**：插件包是内核后端的一个扩展（`BackendConfig.extensions: [{ module: '@spica/plugins', options: { root } }]`），内核在 `restore()` 之后调 `attachBackend(runtime, options)`：建 `PluginManager`、`load()`，交回
 - 本程序 MCP 服务上的工具：`spica_plugins_list`、`spica_plugin_describe`、`spica_plugin_install {path, enable?}`（文件夹或 zip）、`spica_plugin_enable` / `disable` / `uninstall` / `rollback {name}`、`spica_plugins_set_mock {on}`；当前工具表用内核的 `spica_list_tools`。
-- 后端端口上的方法（外壳插件页走同一个进程）：`pluginsList`、`pluginDescribe`、`pluginCheck`、`pluginInstall`、`pluginEnable`、`pluginDisable`、`pluginUninstall`、`pluginRollback`、`pluginsMock`、`pluginsSetMock`、`pluginCommands`、`pluginExpandCommand`；插件页面用 `pluginViews()`、`pluginViewFile({ plugin, path })` → 绝对路径或 `null`、`pluginViewCall({ plugin, view, tool, args, confirmed? })`。
+- 后端端口上的方法（外壳插件页走同一个进程）：`pluginsList`、`pluginDescribe`、`pluginCheck`、`pluginInstall`、`pluginEnable`、`pluginDisable`、`pluginUninstall`、`pluginRollback`、`pluginsMock`、`pluginsSetMock`、`pluginCommands`、`pluginExpandCommand`；插件页面用 `pluginViews()`、`pluginViewFile({ plugin, path })` → 绝对路径或 `null`、`pluginViewCall({ plugin, view, tool, args, confirmed? })`；用模型的插件用 `pluginModelUsage()` → `[{ plugin, displayName, enabled, reason, maxUsdPerDay, declaredMaxUsdPerDay, userMaxUsdPerDay?, spentTodayUsd? }]`、`pluginSetModelLimit({ plugin, maxUsdPerDay })`（`null` 回到清单值）→ 新的 `PluginDescription`。
 - 关闭时先停插件进程，再关内核。
 
 J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型，读 .env.local）：装上 → 工具出现 → Agent 调 `notes__write_note` / `notes__read_note` → 停用 → 工具消失、Agent 也调不到。
@@ -257,3 +260,4 @@ J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型�
   - 本机连接：桌面版在 设置 › 常规 › 开发者 打开「允许本机脚本连接 Spica」后写 `<userData>/mcp-http.json`（`{ url, tokenFile, pid, startedAt }`，令牌在 `<userData>/mcp-token`，关掉或退出时删），`install.mjs` 不带连接参数时就读它；没开时用 设置 › 插件 粘 zip 路径装。
   - 应用名：打包时可以换成别的名字（外壳读 deploy.json）。`PluginManagerOptions` / 后端扩展的 options 多了 `appName`（缺省 `Spica`），只换给用户看的中文提示；`readPluginFolder` / `parseManifest` / `unpackPlugin` / `verifyPackage` / `packPlugin` / `runtimeHost` 也接 `{ appName }`。包名、`window.spica`、`spica_` 工具名、`--spica-*` 变量、`SPICA_` 环境变量、清单的 `compatibility.spica`、`.spicaignore` 都不跟着变。`install.mjs` 加 `--app <名字>`，不带时会在 `%APPDATA%` 下找唯一一个写了 `appName` 且在运行的 `mcp-http.json`。
   - 插件共用应用的网络设置：插件 server 进程拿到和应用一样的代理和信任名单（注入在内核 f8d328d 的 connectMcp 里，插件这边不用改起进程的代码）；改了网络设置后，内核调后端扩展的 `networkChanged()`，manager 的 `restartServers()` 把在运行的 server 重启一遍。我替他定的：改设置后**自动重启插件进程**，不等下次启动（环境变量只在进程启动时读；重启那几秒工具会先撤掉再回来）。`network.test.ts`：用本机自签证书的假内网服务加一个 CONNECT 代理，插件里没有一行证书和代理代码，能连上；取消信任、重启后就被拒。skill：凭据不再「从环境变量读」，改成放 `SPICA_PLUGIN_DATA/config.json`、插件自己的设置页经 `services/` 保存；新增 `references/internal-services.md`；`check.mjs` 看到代码读拿不到的环境变量会提醒。设置页模板这次没进脚手架，先在文档里给写法，等有插件真用到再做。
+  - 插件借用用户配好的模型（MCP 取样，内核半边 1aa892e）：清单 `permissions.model { reason, max_usd_per_day }`；manager 起 server 时传 `sampling: { pluginId, maxUsdPerDay }`（清单值和用户值取小，0 或没声明不传）；`describe().model` / `modelUsage()` / `setModelLimit()`，后端端口 `pluginModelUsage` / `pluginSetModelLimit` 给外壳的插件页显示「今天花了多少」和调上限。示例插件加了 `summarize_note`（自己写的 JSON-RPC，不用 SDK），`model.test.ts` 用假模型服务从头走一遍。示例插件的目录服务地址也从环境变量改成数据文件夹里的 `config.json`。skill：`references/model.md`。

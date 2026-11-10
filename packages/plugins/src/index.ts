@@ -2,6 +2,7 @@
 export {
   MANIFEST_FILE,
   MANIFEST_VERSION,
+  DEFAULT_MODEL_USD_PER_DAY,
   DEFAULT_APP_NAME,
   HOOK_KINDS,
   NAME_PATTERN,
@@ -41,6 +42,7 @@ export {
   type PluginDescription,
   type PluginEvent,
   type PluginView,
+  type PluginModelUse,
   type ViewCallResult,
   type PluginSource,
   type InstalledRecord,

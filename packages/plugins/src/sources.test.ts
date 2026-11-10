@@ -4,6 +4,7 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { listenFetchable } from '@spica/core';
 
 // These tests start real server processes; give them room on a busy machine.
 vi.setConfig({ testTimeout: 30_000 });
@@ -39,9 +40,8 @@ async function serve(dir: string): Promise<string> {
       res.writeHead(404).end('not found');
     }
   });
-  await new Promise<void>((res) => server!.listen(0, '127.0.0.1', () => res()));
-  const addr = server.address() as { port: number };
-  return `http://127.0.0.1:${addr.port}/index.json`;
+  const port = await listenFetchable(server);
+  return `http://127.0.0.1:${port}/index.json`;
 }
 
 describe('zip and packages', () => {

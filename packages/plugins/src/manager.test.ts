@@ -23,7 +23,7 @@ afterEach(async () => {
   for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true });
 });
 
-const NOTES_TOOLS = ['notes__list_notes', 'notes__read_note', 'notes__write_note', 'notes__delete_note', 'notes__search_catalog'];
+const NOTES_TOOLS = ['notes__list_notes', 'notes__read_note', 'notes__write_note', 'notes__delete_note', 'notes__summarize_note', 'notes__search_catalog'];
 
 describe('enable and disable', () => {
   it('J6: installed plugin tools appear, work, and disappear completely on disable', async () => {

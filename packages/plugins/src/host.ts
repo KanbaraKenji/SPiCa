@@ -1,7 +1,7 @@
 // What the plugin system needs from the agent core. Kept as a small port so
 // the plugin package does not reach into core internals, and tests can use a
 // fake. `runtimeHost()` adapts a @spica/core Runtime to it.
-import type { Hooks, Tool } from '@spica/core';
+import type { Hooks, SamplingGrant, Tool } from '@spica/core';
 import { appNameOf, type MessageOptions } from './manifest.ts';
 
 /** How to start one MCP server (stdio). Mirrors @spica/core's McpServerConfig. */
@@ -19,6 +19,8 @@ export interface McpLaunch {
   stderrLog?: (chunk: string) => void;
   /** The process ended; `expected` is true after disconnect(). */
   onExit?: (info: McpExit) => void;
+  /** The server may use the user's models (MCP sampling); only for plugins whose manifest asks for it. Read at start. */
+  sampling?: SamplingGrant;
 }
 
 export interface McpExit {
@@ -54,6 +56,8 @@ export interface PluginHost {
    * traced, confirmed: true means the page already asked the user. Absent on older cores.
    */
   callPluginTool?(plugin: string, tool: string, args: Record<string, unknown>, opts: { confirmed?: boolean }): Promise<PluginToolCallResult>;
+  /** USD a plugin spent today on the user's models (MCP sampling). Absent on cores without sampling. */
+  modelSpentToday?(plugin: string): number;
 }
 
 /** Mirrors @spica/core's PluginToolResult. */
@@ -86,6 +90,7 @@ export interface RuntimeLike {
   mail?: { addSource(src: MailSourceSpec): () => void };
   invokeTool?(name: string, input: Record<string, unknown>): Promise<{ content: string; isError: boolean }>;
   callPluginTool?(plugin: string, tool: string, args: Record<string, unknown>, opts?: { confirmed?: boolean }): Promise<PluginToolCallResult>;
+  sampler?: { spentToday(pluginId: string): number };
 }
 
 export function runtimeHost(rt: RuntimeLike, opts: MessageOptions = {}): PluginHost {
@@ -108,5 +113,6 @@ export function runtimeHost(rt: RuntimeLike, opts: MessageOptions = {}): PluginH
     ...(rt.callPluginTool
       ? { callPluginTool: (plugin: string, tool: string, args: Record<string, unknown>, opts: { confirmed?: boolean }) => rt.callPluginTool!(plugin, tool, args, opts) }
       : {}),
+    ...(rt.sampler ? { modelSpentToday: (plugin: string) => rt.sampler!.spentToday(plugin) } : {}),
   };
 }

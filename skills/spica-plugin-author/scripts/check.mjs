@@ -74,6 +74,17 @@ export async function check(dir, opts = {}) {
   const perm = m.permissions ?? {};
   if (!m.permissions) warn('manifest.json', '没有 permissions：默认什么都不声明，用到钩子或不可逆工具时要写');
   if (perm.workspace !== undefined && !['none', 'read', 'write'].includes(perm.workspace)) err('manifest.json', 'permissions.workspace 只能是 none、read 或 write');
+  if (perm.model !== undefined) {
+    const pm = perm.model;
+    if (typeof pm !== 'object' || pm === null || Array.isArray(pm)) err('manifest.json', 'permissions.model 应该是对象，例如 { "reason": "给笔记写摘要", "max_usd_per_day": 0.2 }');
+    else {
+      if (typeof pm.reason !== 'string' || !pm.reason.trim()) err('manifest.json', 'permissions.model.reason 要写一句为什么要用模型（安装和启用时给用户看）');
+      else if (pm.reason.trim().length > 200) err('manifest.json', 'permissions.model.reason 写一句话就够，不要超过 200 个字');
+      const max = pm.max_usd_per_day;
+      if (max !== undefined && (typeof max !== 'number' || !Number.isFinite(max) || max <= 0)) err('manifest.json', 'permissions.model.max_usd_per_day 是每天最多花多少美元，写一个大于 0 的数');
+      else if (typeof max === 'number' && max > 5) warn('manifest.json', `permissions.model.max_usd_per_day 是 ${max}，每天偏高，确认一下`);
+    }
+  }
   const irreversible = Array.isArray(perm.irreversible) ? perm.irreversible : [];
   if (perm.irreversible !== undefined && !Array.isArray(perm.irreversible)) err('manifest.json', 'permissions.irreversible 要写成工具名列表');
   const hookKinds = Array.isArray(perm.hooks) ? perm.hooks : [];

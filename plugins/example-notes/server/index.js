@@ -6,8 +6,13 @@
 //   SPICA_PLUGIN_DATA  folder this plugin may write to (notes live in notes/)
 //   SPICA_PLUGIN_DIR   the installed plugin folder (read-only)
 //   SPICA_MOCK         "1" when global mock mode is on
-// Optional:
-//   CATALOG_URL        base URL of a real catalog service (GET ?q=...)
+// Settings live in <SPICA_PLUGIN_DATA>/config.json (installed plugins get no
+// environment variables of their own):
+//   { "catalogUrl": "https://catalog.example.test/search" }  real catalog service (GET ?q=...)
+//
+// summarize_note uses the model the user has set up in Spica (MCP sampling,
+// manifest permissions.model): the plugin needs no key, and Spica counts the
+// cost against the plugin's daily limit.
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -43,6 +48,12 @@ const tools = [
     name: 'delete_note',
     description: 'Delete a note by title. Cannot be undone.',
     inputSchema: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
+  },
+  {
+    name: 'summarize_note',
+    description: 'Summarize one note in two or three sentences, using the model set up in Spica.',
+    inputSchema: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
+    annotations: { readOnlyHint: true },
   },
   {
     name: 'search_catalog',
@@ -83,10 +94,10 @@ async function searchCatalog(query) {
       : `No sample entries match "${query}".`;
     return { text: `[sample data — mock mode]\n${body}` };
   }
-  const base = process.env.CATALOG_URL;
+  const base = await readFile(join(dataDir, 'config.json'), 'utf8').then((t) => JSON.parse(t).catalogUrl, () => undefined);
   if (!base) {
     return {
-      text: 'The catalog service is not configured on this computer. Turn on mock mode in Spica to use the sample data.',
+      text: 'The catalog service is not configured on this computer (catalogUrl in config.json). Turn on mock mode in Spica to use the sample data.',
       isError: true,
     };
   }
@@ -126,6 +137,8 @@ async function call(name, args) {
       await rm(file);
       return { text: `Deleted note "${args.title}".` };
     }
+    case 'summarize_note':
+      return summarizeNote(args.title);
     case 'search_catalog':
       return searchCatalog(args.query);
     default:
@@ -135,6 +148,50 @@ async function call(name, args) {
 
 const send = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`);
 
+// ---- asking Spica for a model answer (MCP sampling) ----
+// Spica offers capabilities.sampling in initialize only to plugins whose
+// manifest has permissions.model. A refusal is a JSON-RPC error -32000 whose
+// data.code says why.
+let canSample = false;
+let nextId = 1;
+const pending = new Map();
+
+function createMessage(params) {
+  const id = `s${nextId++}`;
+  send({ id, method: 'sampling/createMessage', params });
+  return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+}
+
+const REFUSALS = {
+  no_model: 'No model is set up in Spica yet. Add one under Settings › Models.',
+  model_not_configured: 'The model this plugin asked for is not set up in Spica.',
+  budget: "This plugin has used up today's model budget. Raise its limit on the plugin page, or try tomorrow.",
+  rate_limited: 'Too many model requests at once. Try again in a minute.',
+};
+
+async function summarizeNote(title) {
+  let text;
+  try {
+    text = await readFile(noteFile(title), 'utf8');
+  } catch (err) {
+    if (err.code === 'ENOENT') return { text: `No note titled "${title}".`, isError: true };
+    throw err;
+  }
+  if (!canSample) return { text: 'This Spica does not let the plugin use a model.', isError: true };
+  try {
+    const r = await createMessage({
+      systemPrompt: 'You summarize notes. Answer with the summary only.',
+      messages: [{ role: 'user', content: { type: 'text', text: `Summarize this note in two or three sentences:\n\n${text.slice(0, 8000)}` } }],
+      maxTokens: 300,
+      modelPreferences: { intelligencePriority: 0.2 },
+    });
+    const summary = Array.isArray(r.content) ? r.content.map((c) => c.text ?? '').join('') : (r.content?.text ?? '');
+    return { text: `${summary.trim()}\n\n(model: ${r.model})` };
+  } catch (err) {
+    return { text: REFUSALS[err.data?.code] ?? `The model did not answer: ${err.message}`, isError: true };
+  }
+}
+
 createInterface({ input: process.stdin }).on('line', async (line) => {
   let msg;
   try {
@@ -143,9 +200,18 @@ createInterface({ input: process.stdin }).on('line', async (line) => {
     return;
   }
   if (msg.id === undefined) return; // notifications need no answer
+  if (msg.method === undefined) {
+    // an answer to one of our requests (sampling/createMessage)
+    const p = pending.get(msg.id);
+    pending.delete(msg.id);
+    if (p && msg.error) p.reject(Object.assign(new Error(msg.error.message), { data: msg.error.data }));
+    else p?.resolve(msg.result);
+    return;
+  }
   try {
     switch (msg.method) {
       case 'initialize':
+        canSample = Boolean(msg.params?.capabilities?.sampling);
         return send({
           id: msg.id,
           result: {

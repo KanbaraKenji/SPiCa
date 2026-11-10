@@ -11,7 +11,7 @@ import type { Hooks, Tool } from '@spica/core';
 import type { HookModule, PluginContext } from './authoring.ts';
 import { expandCommand, hasErrors, insidePlugin, readPluginFolder, type CommandDef, type PluginFolder, type ServerDef, type ViewDef } from './folder.ts';
 import type { McpExit, McpHandle, McpLaunch, PluginHost } from './host.ts';
-import { HOOK_KINDS, appNameOf, compareVersions, satisfies, type HookKind, type Issue, type PluginManifest } from './manifest.ts';
+import { DEFAULT_MODEL_USD_PER_DAY, HOOK_KINDS, appNameOf, compareVersions, satisfies, type HookKind, type Issue, type PluginManifest } from './manifest.ts';
 
 export const SPICA_VERSION = '0.1.0';
 
@@ -41,6 +41,8 @@ export interface InstalledRecord {
   previous?: string;
   source?: PluginSource;
   installedAt: string;
+  /** The user's own daily limit for this plugin's use of their models (USD); the lower of this and the manifest's applies. */
+  modelMaxUsdPerDay?: number;
 }
 
 interface StateFile {
@@ -71,7 +73,23 @@ export interface PluginDescription {
   views: { id: string; title: string; placement: ViewDef['placement']; entry: string; icon?: string; tools?: string[] }[];
   /** Set while the plugin is enabled and registered as a mail source. */
   mail?: { listTool: string; readTool: string };
+  /** Present when the manifest asks to use the user's models (permissions.model). */
+  model?: PluginModelUse;
   issues: Issue[];
+}
+
+/** A plugin's use of the user's models, for the plugin page. */
+export interface PluginModelUse {
+  /** Why it wants to (from the manifest), shown at install and enable. */
+  reason: string;
+  /** The limit in force: the lower of the manifest's and the user's. */
+  maxUsdPerDay: number;
+  /** The manifest's limit (default 0.5). */
+  declaredMaxUsdPerDay: number;
+  /** The user's own limit, when set. */
+  userMaxUsdPerDay?: number;
+  /** Spent today, USD (absent when the core cannot tell). */
+  spentTodayUsd?: number;
 }
 
 export type PluginEvent =
@@ -438,6 +456,65 @@ export class PluginManager {
     });
   }
 
+  #modelLimit(name: string, m: PluginManifest): number {
+    const declared = m.permissions.model?.maxUsdPerDay ?? DEFAULT_MODEL_USD_PER_DAY;
+    const user = this.#state.plugins[name]?.modelMaxUsdPerDay;
+    return user === undefined ? declared : Math.min(declared, user);
+  }
+
+  #modelUse(name: string, m: PluginManifest): PluginModelUse {
+    const user = this.#state.plugins[name]?.modelMaxUsdPerDay;
+    let spent: number | undefined;
+    try {
+      spent = this.#host.modelSpentToday?.(name);
+    } catch {
+      spent = undefined;
+    }
+    return {
+      reason: m.permissions.model?.reason ?? '',
+      maxUsdPerDay: this.#modelLimit(name, m),
+      declaredMaxUsdPerDay: m.permissions.model?.maxUsdPerDay ?? DEFAULT_MODEL_USD_PER_DAY,
+      ...(user !== undefined ? { userMaxUsdPerDay: user } : {}),
+      ...(typeof spent === 'number' && Number.isFinite(spent) ? { spentTodayUsd: spent } : {}),
+    };
+  }
+
+  /** Plugins that may use the user's models: why, the limit and what they spent today (for the plugin page). */
+  modelUsage(): ({ plugin: string; displayName: string; enabled: boolean } & PluginModelUse)[] {
+    const out: ({ plugin: string; displayName: string; enabled: boolean } & PluginModelUse)[] = [];
+    for (const name of Object.keys(this.#state.plugins).sort()) {
+      const m = this.#folders.get(name)?.manifest;
+      if (!m?.permissions.model) continue;
+      out.push({ plugin: name, displayName: m.displayName, enabled: this.#active.has(name), ...this.#modelUse(name, m) });
+    }
+    return out;
+  }
+
+  /**
+   * The user's own daily limit for a plugin's use of their models (USD), or
+   * null to go back to the manifest's. Its servers restart so the new limit applies.
+   */
+  setModelLimit(name: string, maxUsdPerDay: number | null): Promise<PluginDescription> {
+    return this.#serial(async () => {
+      const rec = this.#require(name);
+      if (!this.#folders.get(name)?.manifest?.permissions.model) throw new PluginError(`「${name}」没有申请使用模型，不用设上限。`);
+      if (maxUsdPerDay === null) delete rec.modelMaxUsdPerDay;
+      else if (typeof maxUsdPerDay !== 'number' || !Number.isFinite(maxUsdPerDay) || maxUsdPerDay < 0) throw new PluginError('每天的上限要写一个不小于 0 的数（美元），0 表示不让它用。');
+      else rec.modelMaxUsdPerDay = maxUsdPerDay;
+      await this.#saveState();
+      const a = this.#active.get(name);
+      if (a) {
+        void this.#log(name, 'restarting servers: model limit changed');
+        for (const run of a.servers) {
+          await this.#stopServer(a, run);
+          run.restarts = [];
+          await this.#startServer(a, run).catch(() => undefined);
+        }
+      }
+      return this.#describe(name);
+    });
+  }
+
   #require(name: string): InstalledRecord {
     const rec = this.#state.plugins[name];
     if (!rec) throw new PluginError(`没有装「${name}」这个插件。`);
@@ -690,6 +767,10 @@ export class PluginManager {
       inheritEnv: this.#inheritEnv,
       cwd: a.folder.root,
       ...(def.timeoutMs ? { timeoutMs: def.timeoutMs } : {}),
+      // A limit of 0 (the user turned it off) means no model at all: the server is not offered sampling.
+      ...(a.manifest.permissions.model && this.#modelLimit(name, a.manifest) > 0
+        ? { sampling: { pluginId: name, maxUsdPerDay: this.#modelLimit(name, a.manifest) } }
+        : {}),
       stderrLog: (chunk) => void this.#log(name, `[${def.id}] ${chunk.trimEnd()}`),
       onExit: (info) => this.#onExit(a, run, info),
     };
@@ -812,6 +893,7 @@ export class PluginManager {
       }),
       views: (folder?.views ?? []).map((v) => ({ id: v.id, title: v.title, placement: v.placement, entry: v.entry, ...(v.icon ? { icon: v.icon } : {}), ...(v.tools ? { tools: v.tools } : {}) })),
       ...(a?.mail ? { mail: a.mail } : {}),
+      ...(m?.permissions.model ? { model: this.#modelUse(name, m) } : {}),
       issues: folder?.issues ?? [],
     };
   }

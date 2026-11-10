@@ -37,6 +37,7 @@
 | `permissions.workspace` | 否 | `none`（默认）/ `read` / `write`：对项目文件夹的访问 |
 | `permissions.irreversible` | 否 | 不可撤销的工具（server 里的原名），每次调用前问用户 |
 | `permissions.hooks` | 否 | 用到的钩子类型；没写的不生效 |
+| `permissions.model` | 否 | 借用户在 Spica 里配好的模型：`{ "reason": "一句为什么", "max_usd_per_day": 0.2 }`，上限缺省 0.5 美元/天。见 `model.md`（rc.2 之后的版本才有） |
 | `mock` | 否 | `{ "supported": true, "description": "模拟时会怎样" }` |
 | `mail` | 否 | 邮件来源声明，见 `mail.md` |
 
