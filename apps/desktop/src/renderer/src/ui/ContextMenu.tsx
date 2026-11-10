@@ -72,7 +72,9 @@ export function ContextMenu({ x, y, items, onClose, anchor }: { x: number; y: nu
   }, [onClose, anchor]);
 
   return (
-    <div ref={ref} className="context-menu" role="menu" style={{ left: pos.left, top: pos.top }}>
+    // One item lit at a time: the first takes the keyboard focus on opening; once the pointer moves onto
+    // another, the focus goes to the menu itself, so only the item under the pointer is lit.
+    <div ref={ref} className="context-menu" role="menu" tabIndex={-1} style={{ left: pos.left, top: pos.top }}>
       {items.map((it, i) => (
         <div key={`${it.group ?? ''}	${it.label}	${i}`} role="none">
           {it.group && it.group !== items[i - 1]?.group ? (
@@ -87,6 +89,10 @@ export function ContextMenu({ x, y, items, onClose, anchor }: { x: number; y: nu
             aria-disabled={it.disabled || undefined}
             // Its own note (why it cannot be picked), else the label when it is cut short.
             {...(it.title ? { title: it.title } : { title: it.label, 'data-tip-clipped': '.context-item-label' })}
+            onPointerMove={(e) => {
+              const focused = document.activeElement;
+              if (focused !== e.currentTarget && focused instanceof HTMLElement && ref.current?.contains(focused)) ref.current.focus({ preventScroll: true });
+            }}
             onClick={() => {
               if (it.disabled) return;
               onClose();

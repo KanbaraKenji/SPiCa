@@ -49,3 +49,20 @@ describe('ContextMenu under a button', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('one item lit at a time', () => {
+  it('the first item has the focus on opening; moving the pointer onto another takes it away, so only that one is lit', () => {
+    const two = [
+      { label: '重命名', onSelect: () => {} },
+      { label: '删除', danger: true, onSelect: () => {} },
+    ];
+    render(<ContextMenu x={10} y={10} items={two} onClose={() => {}} />);
+    const [first, second] = screen.getAllByRole('menuitem');
+    expect(document.activeElement).toBe(first);
+    fireEvent.pointerMove(second!);
+    expect(document.activeElement).toBe(screen.getByRole('menu'));
+    // Moving within the same item again changes nothing; the menu stays open and usable.
+    fireEvent.pointerMove(second!);
+    expect(document.activeElement).toBe(screen.getByRole('menu'));
+  });
+});

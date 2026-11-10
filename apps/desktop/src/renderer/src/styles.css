@@ -3345,6 +3345,10 @@ button.ctx-row:hover {
 }
 
 /* Right-click menu */
+.context-menu:focus {
+  outline: none;
+}
+
 .context-menu {
   position: fixed;
   z-index: 200;
