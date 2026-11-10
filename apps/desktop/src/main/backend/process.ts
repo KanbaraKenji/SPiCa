@@ -181,6 +181,11 @@ export class ProcessBackend implements AgentBackend {
     return this.call<ProbeResult>('probeProvider', config, model);
   }
 
+  /** Context window the core knows for a model (to pre-fill the settings form), or null. */
+  async knownContextWindow(kind: 'openai-compatible' | 'anthropic' | 'wso2', model: string): Promise<number | null> {
+    return (await this.call<number | null | undefined>('knownContextWindow', kind, model)) ?? null;
+  }
+
   plugins(cmd: PluginsCommand): Promise<PluginsResult> {
     return this.call<PluginsResult>('plugins', cmd);
   }

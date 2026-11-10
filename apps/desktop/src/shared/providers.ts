@@ -34,6 +34,8 @@ export interface ProviderFields {
   maxConcurrent: number | null;
   /** Requests per minute (empty = no limit). */
   requestsPerMinute: number | null;
+  /** How many tokens `model` takes at once (its context window). Required when saving; null in older files. */
+  contextWindow: number | null;
 }
 
 /** What the settings page shows for a saved provider. */
@@ -74,7 +76,13 @@ export function emptyDraft(kind: ProviderKind = 'openai'): ProviderDraft {
     scope: '',
     maxConcurrent: null,
     requestsPerMinute: null,
+    contextWindow: null,
   };
+}
+
+/** Kind names as the core's ProviderConfig spells them. */
+export function coreKind(kind: ProviderKind): 'openai-compatible' | 'anthropic' | 'wso2' {
+  return kind === 'openai' ? 'openai-compatible' : kind;
 }
 
 export function secretLabel(kind: ProviderKind): string {
@@ -87,8 +95,11 @@ function isUrl(v: string): boolean {
   return /^https?:\/\/[^\s/]+/i.test(v.trim());
 }
 
-/** Field problems in plain words; empty object = ready to save. */
-export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean): FieldErrors {
+/**
+ * Field problems in plain words; empty object = ready to save. `forTest`: only what
+ * 测试连接 needs (上下文上限 can be filled in after the connection works).
+ */
+export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: { forTest?: boolean } = {}): FieldErrors {
   const e: FieldErrors = {};
   if (!d.name.trim()) e.name = '起个名字，方便在列表里认出来';
   if (!d.model.trim()) e.model = '填要用的模型名';
@@ -102,6 +113,10 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean): FieldE
   }
   const secret = d.secret?.trim();
   if (!secret && !hasSavedSecret) e.secret = `填 ${secretLabel(d.kind)}`;
+  if (!opts.forTest) {
+    if (d.contextWindow === null) e.contextWindow = '必须填：这个模型一次最多能装多少 token。不知道就查服务商的模型说明，比如 128000';
+    else if (!Number.isInteger(d.contextWindow) || d.contextWindow < 1) e.contextWindow = '填正整数（token 数），比如 128000';
+  }
   for (const k of ['maxConcurrent', 'requestsPerMinute'] as const) {
     const v = d[k];
     if (v !== null && (!Number.isInteger(v) || v < 1)) e[k] = '填正整数，或者留空表示不限';

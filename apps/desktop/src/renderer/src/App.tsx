@@ -369,7 +369,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           },
         }
       : {}),
-    ...(session && typeof session.contextTokens === 'number' ? { context: { tokens: session.contextTokens, window: session.contextWindow ?? null } } : {}),
+    // No ring until the model's 上下文上限 is known (set in 设置 › 模型).
+    ...(session && typeof session.contextTokens === 'number' && session.contextWindow ? { context: { tokens: session.contextTokens, window: session.contextWindow } } : {}),
   };
 
   const actions: ConversationActions = {

@@ -33,6 +33,7 @@ export const DesktopChannel = {
   DeleteProvider: 'spica:providers:delete',
   SetDefaultProvider: 'spica:providers:default',
   TestProvider: 'spica:providers:test',
+  KnownContextWindow: 'spica:providers:known-window',
   /** invoke: 'state' | 'open' -> WorkflowsState */
   Workflows: 'spica:workflows',
   /** invoke: title -> string[] (Windows' file picker, several files; empty when cancelled) */

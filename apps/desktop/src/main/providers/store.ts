@@ -47,6 +47,7 @@ function sanitizeFields(v: Record<string, unknown>): ProviderFields {
     scope: str(v.scope).trim(),
     maxConcurrent: num(v.maxConcurrent),
     requestsPerMinute: num(v.requestsPerMinute),
+    contextWindow: num(v.contextWindow),
   };
 }
 

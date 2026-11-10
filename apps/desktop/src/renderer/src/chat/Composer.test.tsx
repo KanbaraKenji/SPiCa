@@ -87,19 +87,19 @@ describe('Composer controls', () => {
     expect(onApproval).toHaveBeenCalledWith('auto');
   });
 
-  it('a single model is plain text; an unknown window shows only the count; no folder once a conversation exists', () => {
+  it('a single model is plain text; no ring without a context window; no folder once a conversation exists', () => {
     render(
       <Composer
         running={false}
         onSend={vi.fn()}
         onStop={vi.fn()}
         sessionKey="one"
-        tools={{ model: { label: 'gpt-mini', options: [{ label: '公司网关 · gpt-mini', current: true, onPick: vi.fn() }] }, context: { tokens: 980, window: null } }}
+        tools={{ model: { label: 'gpt-mini', options: [{ label: '公司网关 · gpt-mini', current: true, onPick: vi.fn() }] }, }}
       />,
     );
     expect(screen.queryByRole('button', { name: /gpt-mini/ })).toBeNull();
     expect(screen.getByText('gpt-mini')).toBeTruthy();
-    expect(screen.getByRole('img', { name: '上下文已用 980 token' })).toBeTruthy();
+    expect(screen.queryByRole('img', { name: /上下文已用/ })).toBeNull();
     expect(screen.queryByTitle(/工作文件夹/)).toBeNull();
   });
 });

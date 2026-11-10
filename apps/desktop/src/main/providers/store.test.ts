@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -12,7 +12,7 @@ const box: SecretBox = {
   decrypt: (s) => Buffer.from(s, 'base64').toString().replace(/^sealed:/, ''),
 };
 
-const draft = { ...emptyDraft('openai'), name: '测试网关', baseUrl: 'https://api.example.com/v1', model: 'model-a', secret: 'sk-123' };
+const draft = { ...emptyDraft('openai'), name: '测试网关', baseUrl: 'https://api.example.com/v1', model: 'model-a', contextWindow: 128_000, secret: 'sk-123' };
 
 describe('ProviderStore', () => {
   it('saves, encrypts the secret, and never returns it', () => {
@@ -39,6 +39,18 @@ describe('ProviderStore', () => {
     const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
     expect(() => store.save({ ...draft, baseUrl: 'api.example.com' })).toThrow('地址要以 http:// 或 https:// 开头');
     expect(() => store.save({ ...emptyDraft('wso2'), name: 'w', baseUrl: 'https://g/v1', model: 'm', secret: 's' })).toThrow('填取 token 的地址');
+  });
+
+  it('a model saved before 上下文上限 existed loads with none (the form asks for it)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
+    const store = new ProviderStore(dir, box);
+    store.save(draft);
+    const file = join(dir, 'providers.json');
+    const raw = JSON.parse(readFileSync(file, 'utf8')) as { items: Record<string, unknown>[] };
+    delete raw.items[0]!.contextWindow;
+    writeFileSync(file, JSON.stringify(raw));
+    expect(new ProviderStore(dir, box).list()[0]?.contextWindow).toBeNull();
+    expect(() => new ProviderStore(dir, box).save({ ...draft, contextWindow: null })).toThrow('这个模型一次最多能装多少 token');
   });
 
   it('moves the default when the default one is deleted', () => {

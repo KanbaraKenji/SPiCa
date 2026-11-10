@@ -32,6 +32,7 @@ function fakeApi(initial: ProviderView[] = []) {
       return list();
     }),
     test: vi.fn(async () => ({ ok: true, message: '连得上，模型「m」可以用。' })),
+    knownWindow: vi.fn(async (_kind: string, model: string) => (model === 'claude-sonnet-5-5' ? 1_000_000 : null)),
   };
   return api;
 }
@@ -66,6 +67,7 @@ describe('Models', () => {
     type('接口地址', 'https://api.example.com/v1');
     type('API Key', 'sk-1');
     type('模型', 'm');
+    type(/^上下文上限/, '128000');
     fireEvent.click(screen.getByRole('button', { name: '测试连接' }));
     expect(await screen.findByText('连得上，模型「m」可以用。')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
@@ -115,7 +117,7 @@ describe('Models', () => {
 
   it('each model keeps its own unsaved edit; saving clears it', async () => {
     const api = fakeApi([
-      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, hasSecret: true, isDefault: true },
+      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, hasSecret: true, isDefault: true },
     ]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
@@ -131,7 +133,7 @@ describe('Models', () => {
 
   it('typing a field back to what is saved is not a draft', async () => {
     const api = fakeApi([
-      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, hasSecret: true, isDefault: true },
+      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, hasSecret: true, isDefault: true },
     ]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
@@ -142,7 +144,7 @@ describe('Models', () => {
 
   it('deletes only after confirming', async () => {
     const api = fakeApi([
-      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, hasSecret: true, isDefault: true },
+      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, hasSecret: true, isDefault: true },
     ]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
@@ -152,5 +154,49 @@ describe('Models', () => {
     expect(api.remove).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole('button', { name: '删除' }));
     await waitFor(() => expect(api.remove).toHaveBeenCalledWith('p-1'));
+  });
+
+  it('上下文上限 is required, and says what to put there', async () => {
+    const api = fakeApi();
+    render(<Models api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: /添加模型/ }));
+    expect(screen.getByText('这个模型一次最多能装多少 token（上下文窗口）。不知道就查服务商的模型说明。')).toBeTruthy();
+    type('名称', '公司网关');
+    type('接口地址', 'https://api.example.com/v1');
+    type('API Key', 'sk-1');
+    type('模型', 'deepseek-flash');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(screen.getByText('必须填：这个模型一次最多能装多少 token。不知道就查服务商的模型说明，比如 128000')).toBeTruthy();
+    expect(api.save).not.toHaveBeenCalled();
+    type(/^上下文上限/, '64000.5');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(screen.getByText('填正整数（token 数），比如 128000')).toBeTruthy();
+    type(/^上下文上限/, '64000');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ model: 'deepseek-flash', contextWindow: 64_000 })));
+  });
+
+  it('fills in 上下文上限 for a model Spica knows; a number typed by hand stays', async () => {
+    const api = fakeApi();
+    render(<Models api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: /添加模型/ }));
+    type('模型', 'claude-sonnet-5-5');
+    await waitFor(() => expect((screen.getByLabelText(/^上下文上限/) as HTMLInputElement).value).toBe('1000000'));
+    expect(screen.getByText('Spica 认识这个型号，已经填上（100 万），可以改。')).toBeTruthy();
+    // Switching to a model it does not know takes the filled-in number away again.
+    type('模型', 'deepseek-flash');
+    await waitFor(() => expect((screen.getByLabelText(/^上下文上限/) as HTMLInputElement).value).toBe(''));
+    type(/^上下文上限/, '64000');
+    type('模型', 'claude-sonnet-5-5');
+    await new Promise((r) => setTimeout(r, 450));
+    expect((screen.getByLabelText(/^上下文上限/) as HTMLInputElement).value).toBe('64000');
+  });
+
+  it('a model saved without 上下文上限 says so in the list', async () => {
+    const api = fakeApi([
+      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: null, hasSecret: true, isDefault: true },
+    ]);
+    render(<Models api={api} />);
+    expect(await screen.findByText('还没填上下文上限，点开补上')).toBeTruthy();
   });
 });

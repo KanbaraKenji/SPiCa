@@ -12,7 +12,7 @@ import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
 import { mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
-import type { ProviderDraft, ProviderView } from '../shared/providers';
+import { coreKind, type ProviderDraft, type ProviderKind, type ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
@@ -25,8 +25,8 @@ import type { PluginsCommand } from '../shared/plugins';
 import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
 import { ProcessBackend, type BackendStatus } from './backend/process';
-import { toProviderConfig } from './backend/to-config';
-import type { ProviderConfig } from '@spica/core';
+import { knownContextWindow, toProviderConfig } from './backend/to-config';
+import { DEFAULT_PRICES, type ProviderConfig } from '@spica/core';
 import type { DesktopBackendConfig } from '../backend/config';
 import { readModelEnv } from './backend/model-env';
 import { SettingsStore } from './settings-store';
@@ -177,7 +177,7 @@ let providerProblems: Record<string, string> = {};
 
 /** Models from the developer's .env.local, shown read-only on the settings page. */
 function envProviders(): ProviderView[] {
-  const base = { strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, hasSecret: true, isDefault: false, readOnly: true };
+  const base = { strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: null, hasSecret: true, isDefault: false, readOnly: true };
   const out: ProviderView[] = [];
   if (modelEnv.openai) out.push({ ...base, id: 'openai', kind: 'openai', name: '开发用模型（.env.local）', baseUrl: modelEnv.openai.baseUrl, model: modelEnv.openai.model });
   if (modelEnv.anthropic) out.push({ ...base, id: 'anthropic', kind: 'anthropic', name: '开发用模型（.env.local）', baseUrl: '', model: modelEnv.anthropic.model });
@@ -698,6 +698,12 @@ ipcMain.handle(DesktopChannel.SetDefaultProvider, (_e, id: string) => {
 ipcMain.handle(DesktopChannel.TestProvider, (_e, draft: ProviderDraft) =>
   testConnection(draft, draft.id ? providers.secretOf(draft.id) : undefined),
 );
+ipcMain.handle(DesktopChannel.KnownContextWindow, async (_e, kind: ProviderKind, model: string): Promise<number | null> => {
+  const name = String(model ?? '').trim();
+  if (!name) return null;
+  if (backend instanceof ProcessBackend) return backend.knownContextWindow(coreKind(kind), name).catch(() => null);
+  return knownContextWindow(DEFAULT_PRICES, coreKind(kind), name);
+});
 
 backend.onEvent((event) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DesktopChannel.AgentEvent, event);

@@ -17,8 +17,8 @@ export interface ComposerTools {
   approval?: { mode: ApprovalMode; onChange(mode: ApprovalMode): void };
   /** The model this conversation uses; options to switch (a menu only when there is a choice). */
   model?: { label: string; options: { label: string; current: boolean; onPick(): void }[] };
-  /** Tokens the context takes now and the model's window (null: unknown). */
-  context?: { tokens: number; window: number | null };
+  /** Tokens the context takes now and the model's window (only when the window is known). */
+  context?: { tokens: number; window: number };
 }
 
 export interface ComposerProps {
@@ -47,15 +47,8 @@ export function tokenText(n: number): string {
 
 const baseName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 
-function ContextRing({ tokens, window }: { tokens: number; window: number | null }) {
-  const label = window ? `上下文已用 ${tokenText(tokens)} / ${tokenText(window)}（${Math.min(100, Math.round((tokens / window) * 100))}%）` : `上下文已用 ${tokenText(tokens)} token`;
-  if (!window) {
-    return (
-      <span className="composer-context" role="img" aria-label={label} title={label}>
-        {tokenText(tokens)}
-      </span>
-    );
-  }
+function ContextRing({ tokens, window }: { tokens: number; window: number }) {
+  const label = `上下文已用 ${tokenText(tokens)} / ${tokenText(window)}（${Math.min(100, Math.round((tokens / window) * 100))}%）`;
   const share = Math.min(1, tokens / window);
   const r = 7;
   const c = 2 * Math.PI * r;

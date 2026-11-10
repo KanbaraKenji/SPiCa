@@ -2,7 +2,7 @@
 // do goes through here; there is no other way to reach the backend.
 import type { AgentApi, CoreEvent, SpicaBridge } from '@spica/protocol';
 import type { SettingsPatch, ShellSettings } from './settings';
-import type { ProviderDraft, ProviderView, TestResult } from './providers';
+import type { ProviderDraft, ProviderKind, ProviderView, TestResult } from './providers';
 import type { PluginsCommand, PluginsResult } from './plugins';
 import type { UpdateState } from './updates';
 import type { PluginView, PluginViewResult } from './plugin-view';
@@ -127,5 +127,7 @@ export interface DesktopBridge extends SpicaBridge {
     remove(id: string): Promise<ProviderList>;
     setDefault(id: string): Promise<ProviderList>;
     test(draft: ProviderDraft): Promise<TestResult>;
+    /** The context window Spica knows for this model (to pre-fill the form), or null. */
+    knownWindow(kind: ProviderKind, model: string): Promise<number | null>;
   };
 }

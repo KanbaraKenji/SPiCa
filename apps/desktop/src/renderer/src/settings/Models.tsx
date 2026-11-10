@@ -1,6 +1,6 @@
 // Settings > 模型: the model connections the agents use. Three kinds of form
 // (OpenAI compatible, Anthropic, WSO2 gateway), "测试连接", default choice.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ProviderList } from '../../../shared/bridge';
 import {
   emptyDraft,
@@ -15,6 +15,7 @@ import {
   type TestResult,
 } from '../../../shared/providers';
 import { friendlyError } from '../store/agent';
+import { tokenText } from '../chat/Composer';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
 import { dropDraft, keepDraft, keptDraft } from './drafts';
@@ -25,6 +26,17 @@ export interface ProvidersApi {
   remove(id: string): Promise<ProviderList>;
   setDefault(id: string): Promise<ProviderList>;
   test(draft: ProviderDraft): Promise<TestResult>;
+  /** The context window Spica knows for a model (pre-fills the form), or null. */
+  knownWindow?(kind: ProviderKind, model: string): Promise<number | null>;
+}
+
+const WINDOW_HINT = '这个模型一次最多能装多少 token（上下文窗口）。不知道就查服务商的模型说明。';
+
+/** What to say under 上下文上限: filled in by Spica, how big that is, or what to put there. */
+function windowHint(value: number | null, prefilled: number | null): string {
+  if (value !== null && value === prefilled) return `Spica 认识这个型号，已经填上（${tokenText(value)}），可以改。`;
+  if (value !== null && Number.isInteger(value) && value > 0) return `${tokenText(value)} token。${WINDOW_HINT}`;
+  return WINDOW_HINT;
 }
 
 function draftFrom(p: ProviderView): ProviderDraft {
@@ -32,7 +44,8 @@ function draftFrom(p: ProviderView): ProviderDraft {
   void _h;
   void _d;
   void _r;
-  return fields;
+  // An older main process (dev hot reload) does not send contextWindow yet.
+  return { ...fields, contextWindow: fields.contextWindow ?? null };
 }
 
 interface FieldProps {
@@ -96,6 +109,19 @@ export function Models({ api }: { api: ProvidersApi }) {
   const [result, setResult] = useState<TestResult | null>(null);
   const [busy, setBusy] = useState<'test' | 'save' | null>(null);
   const [deleting, setDeleting] = useState<ProviderView | null>(null);
+  // 上下文上限 Spica filled in by itself (so a later model change may replace it, and the hint says so).
+  const [prefilled, setPrefilledState] = useState<number | null>(null);
+  const prefilledRef = useRef<number | null>(null);
+  // The form as it is now, for answers that arrive after the user typed on.
+  const latest = useRef<{ draft: ProviderDraft; selected: string | 'new' | null }>({ draft, selected });
+  const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (lookupTimer.current) clearTimeout(lookupTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -112,7 +138,10 @@ export function Models({ api }: { api: ProvidersApi }) {
           dropDraft(draftKey(sel));
           dropDraft(SELECTED);
           setSelectedState(null);
-        } else if (!keptDraft(draftKey(sel))) setDraft(draftFrom(p));
+        } else if (!keptDraft(draftKey(sel))) {
+          setDraft(draftFrom(p));
+          latest.current = { draft: draftFrom(p), selected: sel };
+        }
       })
       .catch((e: unknown) => alive && setResult({ ok: false, message: friendlyError(e) }));
     return () => {
@@ -133,20 +162,75 @@ export function Models({ api }: { api: ProvidersApi }) {
   /** What the open model looks like saved (a blank form for a new one). */
   const savedDraft = (): ProviderDraft => (current ? draftFrom(current) : emptyDraft());
 
+  const setPrefilled = (n: number | null) => {
+    prefilledRef.current = n;
+    setPrefilledState(n);
+  };
+
+  /** A field the user changed no longer shows its old complaint (checked again on 保存 / 测试连接). */
+  const clearErrors = (keys: string[]) =>
+    setErrors((e) => {
+      if (!keys.some((k) => k in e)) return e;
+      const rest = { ...e };
+      for (const k of keys) delete rest[k as keyof FieldErrors];
+      return rest;
+    });
+
+  /** Show `next` and keep it as the draft of `sel` (compared with `base`, what is saved). */
+  const commit = (next: ProviderDraft, sel: string | 'new' | null, base: ProviderDraft) => {
+    setDraft(next);
+    latest.current = { draft: next, selected: sel };
+    if (sel) keepDraft(draftKey(sel), next, base);
+  };
+
+  /** Ask what Spica knows of this model's window; fill it in unless the user typed one. */
+  const lookUp = (d: ProviderDraft, sel: string | 'new' | null, base: ProviderDraft) => {
+    const known = api.knownWindow;
+    const model = d.model.trim();
+    if (lookupTimer.current) clearTimeout(lookupTimer.current);
+    if (!known || !model) return;
+    lookupTimer.current = setTimeout(() => {
+      void known(d.kind, model)
+        .then((n) => {
+          const now = latest.current;
+          if (now.selected !== sel || now.draft.kind !== d.kind || now.draft.model.trim() !== model) return;
+          const typedByHand = now.draft.contextWindow !== null && now.draft.contextWindow !== prefilledRef.current;
+          if (typedByHand) return;
+          if (n) {
+            setPrefilled(n);
+            commit({ ...now.draft, contextWindow: n }, sel, base);
+            clearErrors(['contextWindow']);
+          } else if (prefilledRef.current !== null) {
+            // The earlier model was known, this one is not: do not leave its number behind.
+            setPrefilled(null);
+            commit({ ...now.draft, contextWindow: null }, sel, base);
+          }
+        })
+        .catch(() => undefined);
+    }, 300);
+  };
+
   const open = (p: ProviderView | 'new') => {
     const id = p === 'new' ? 'new' : p.id;
+    const next = keptDraft<ProviderDraft>(draftKey(id)) ?? (p === 'new' ? emptyDraft() : draftFrom(p));
     setSelected(id);
-    setDraft(keptDraft<ProviderDraft>(draftKey(id)) ?? (p === 'new' ? emptyDraft() : draftFrom(p)));
+    setDraft(next);
+    latest.current = { draft: next, selected: id };
+    setPrefilled(null);
     setErrors({});
     setResult(null);
     setMore(false);
+    // Saved before 上下文上限 existed: fill it in if Spica knows the model.
+    if (next.contextWindow === null) lookUp(next, id, p === 'new' ? emptyDraft() : draftFrom(p));
   };
 
   const set = (patch: Partial<ProviderDraft>) => {
     const next = { ...draft, ...patch };
-    setDraft(next);
-    if (selected) keepDraft(draftKey(selected), next, savedDraft());
+    commit(next, selected, savedDraft());
     setResult(null);
+    clearErrors(Object.keys(patch));
+    if ('contextWindow' in patch) setPrefilled(null);
+    if ('model' in patch || 'kind' in patch) lookUp(next, selected, savedDraft());
   };
 
   const changeKind = (kind: ProviderKind) => {
@@ -154,15 +238,15 @@ export function Models({ api }: { api: ProvidersApi }) {
     set({ kind, baseUrl: draft.baseUrl && draft.kind !== 'anthropic' ? draft.baseUrl : blank.baseUrl });
   };
 
-  const check = (): boolean => {
-    const e = validateDraft(draft, hasSecret);
+  const check = (forTest = false): boolean => {
+    const e = validateDraft(draft, hasSecret, { forTest });
     setErrors(e);
     if (MORE_FIELDS.some((f) => f in e)) setMore(true);
     return Object.keys(e).length === 0;
   };
 
   const test = async () => {
-    if (!check()) return;
+    if (!check(true)) return;
     setBusy('test');
     try {
       setResult(await api.test(draft));
@@ -184,6 +268,7 @@ export function Models({ api }: { api: ProvidersApi }) {
       if (saved) {
         setSelected(saved.id);
         setDraft(draftFrom(saved));
+        latest.current = { draft: draftFrom(saved), selected: saved.id };
       }
       setResult({ ok: true, message: '已保存' });
     } catch (e) {
@@ -227,6 +312,7 @@ export function Models({ api }: { api: ProvidersApi }) {
                 {kindLabel(p.kind)} · {p.model}
               </span>
               {list?.problems[p.id] ? <span className="provider-problem">{list.problems[p.id]}</span> : null}
+              {!p.readOnly && p.contextWindow === null ? <span className="provider-problem">还没填上下文上限，点开补上</span> : null}
               {keptDraft(draftKey(p.id)) ? <span className="provider-unsaved">改了还没保存</span> : null}
             </button>
             {p.isDefault ? (
@@ -293,6 +379,15 @@ export function Models({ api }: { api: ProvidersApi }) {
           />
           {draft.kind === 'wso2' ? <Field label="Scope" value={draft.scope} onChange={(scope) => set({ scope })} hint="网关没要求就留空" /> : null}
           <Field label="模型" value={draft.model} onChange={(model) => set({ model })} error={errors.model} placeholder="平时用的模型名" />
+          <Field
+            label="上下文上限"
+            type="number"
+            value={numText(draft.contextWindow)}
+            onChange={(v) => set({ contextWindow: parseNum(v) })}
+            error={errors.contextWindow}
+            placeholder="比如 128000"
+            hint={windowHint(draft.contextWindow, prefilled)}
+          />
           <div className="provider-more">
             <button type="button" className="fold-head" aria-expanded={more} onClick={() => setMore((m) => !m)}>
               <span className="fold-label">更多选项</span>

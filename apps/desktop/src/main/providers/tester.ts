@@ -13,7 +13,7 @@ export interface FakeTesterOptions {
 
 export function createFakeTester({ delayMs = 700 }: FakeTesterOptions = {}): ConnectionTester {
   return async (draft, savedSecret) => {
-    const errors = validateDraft(draft, Boolean(savedSecret));
+    const errors = validateDraft(draft, Boolean(savedSecret), { forTest: true });
     const first = Object.values(errors)[0];
     if (first) return { ok: false, message: first };
     if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
