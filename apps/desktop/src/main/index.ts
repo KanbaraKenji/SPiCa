@@ -52,10 +52,13 @@ function overlayHeight(zoom: number): number {
 //   SPICA_SHOTS=<dir>        render the screenshot matrix into <dir> and quit
 //   SPICA_BACKEND=fake|core  pick the backend (default: the real core; screenshots use the fake)
 //   SPICA_SAVE_TO=<dir>      save files (usage log) there without asking (not in installed builds)
+//   SPICA_HIDDEN=1           never show the window: test scripts drive it over DevTools while
+//                            someone is using the computer (not in installed builds)
 const forcedTheme = process.env.SPICA_THEME;
 const capturePath = process.env.SPICA_CAPTURE;
 const shotsDir = process.env.SPICA_SHOTS;
 const automated = Boolean(capturePath || shotsDir);
+const hidden = process.env.SPICA_HIDDEN === '1' && !app.isPackaged;
 
 app.setName(APP_NAME);
 // The development build has its own id: with the same one as an installed Spica,
@@ -313,7 +316,7 @@ function createMainWindow(): BrowserWindow {
     },
   });
 
-  if (!automated) win.once('ready-to-show', () => win.show());
+  if (!automated && !hidden) win.once('ready-to-show', () => win.show());
 
   // Ctrl+wheel. We own the zoom level (Electron's own per-origin zoom is not persisted).
   win.webContents.on('zoom-changed', (_e, direction) => applyZoom(win, stepZoom(settings.get().zoom, direction)));
