@@ -74,6 +74,13 @@ export class AgentStore {
     source.onAgentEvent((e) => this.#onEvent(e));
   }
 
+  /** 默认模型 now (设置 › 模型): what a conversation not yet given a model by hand starts with. */
+  #defaultModel: { providerId: string; model: string } | null = null;
+
+  setDefaultModel(ref: { providerId: string; model: string } | null): void {
+    this.#defaultModel = ref;
+  }
+
   async init(preferredId?: string): Promise<void> {
     void this.#refreshProjects();
     if (this.#api.getTopSession) {
@@ -89,6 +96,12 @@ export class AgentStore {
       this.state.set((v) => ({ ...v, sessions, loaded: true, activeId: v.activeId ?? first }));
       void this.#nameUntitled(sessions);
       if (first) await this.load(first);
+      // Nothing said in it yet: start on the empty window instead (it shows and uses 默认模型 as it is now;
+      // the first message still goes into this conversation).
+      const opened = sessions.find((s) => s.id === first);
+      if (first && !preferredId && opened?.role === 'top' && !this.state.get().transcripts[first]?.items.length) {
+        this.state.set((v) => ({ ...v, activeId: v.activeId === first ? null : v.activeId }));
+      }
     } catch (err) {
       this.state.set((v) => ({ ...v, loaded: true, notice: friendlyError(err) }));
     }
@@ -136,16 +149,18 @@ export class AgentStore {
         // empty (first use, and no other folder was chosen), otherwise a new conversation.
         const draft = this.state.get().draft;
         const top = draft.cwd ? null : await this.#emptyTop();
+        // The model picked in the empty window, else 默认模型 as it is now (not what it was when the thread was made).
+        const model = draft.providerId && draft.model ? { providerId: draft.providerId, model: draft.model } : this.#defaultModel;
         if (top) {
           target = top.id;
-          if (draft.providerId && draft.model && this.#api.setSessionModel) await this.#api.setSessionModel(top.id, draft.providerId, draft.model);
+          if (model && (model.providerId !== top.providerId || model.model !== top.model) && this.#api.setSessionModel) await this.#api.setSessionModel(top.id, model.providerId, model.model);
           if (draft.approvalMode !== top.approvalMode && this.#api.setApprovalMode) await this.#api.setApprovalMode(top.id, draft.approvalMode);
           this.state.set((v) => ({ ...v, activeId: top.id, transcripts: { ...v.transcripts, [top.id]: v.transcripts[top.id] ?? { items: [] } } }));
         } else {
           const s = await this.#api.createSession({
             role: 'top',
             ...(draft.cwd ? { cwd: draft.cwd } : {}),
-            ...(draft.providerId && draft.model ? { providerId: draft.providerId, model: draft.model } : {}),
+            ...(model ? { providerId: model.providerId, model: model.model } : {}),
             approvalMode: draft.approvalMode,
           });
           target = s.id;

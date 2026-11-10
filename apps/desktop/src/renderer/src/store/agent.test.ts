@@ -42,6 +42,21 @@ describe('AgentStore', () => {
     backend.dispose();
   });
 
+  it('opens on the empty window while nothing was said, and the first message uses 默认模型 as it is now', async () => {
+    const backend = new FakeBackend({ speed: 0, seed: false });
+    const top = await backend.getTopSession();
+    const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
+    await store.init();
+    expect(store.state.get().activeId).toBeNull();
+    // 默认模型 was changed after the thread was made.
+    store.setDefaultModel({ providerId: 'p-2', model: 'deepseek-v4-pro' });
+    await store.send(null, '你好');
+    expect(store.state.get().activeId).toBe(top.id);
+    const now = await backend.getSession(top.id);
+    expect([now?.providerId, now?.model]).toEqual(['p-2', 'deepseek-v4-pro']);
+    backend.dispose();
+  });
+
   it('names untitled conversations by their first line after a restart', async () => {
     const backend = new FakeBackend({ speed: 0, seed: false });
     const first = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });

@@ -395,6 +395,12 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // Only models in use (checked) are offered anywhere.
   const firstModel = models.find((p) => enabledModels(p.models).length);
   const defaultRef = pointers.default ?? (firstModel ? { connectionId: firstModel.id, model: enabledModels(firstModel.models)[0]!.id } : null);
+  // The store starts the first conversation with 默认模型 as it is now.
+  const defaultKey = defaultRef ? `${defaultRef.connectionId}\u0000${defaultRef.model}` : '';
+  useEffect(() => {
+    const [providerId, model] = defaultKey.split('\u0000');
+    agent.setDefaultModel(providerId && model ? { providerId, model } : null);
+  }, [agent, defaultKey]);
 
   // The model mail is sorted with (the core says so in mail.configured; else the default model).
   const triage = mail.triageModel ?? (defaultRef ? { providerId: defaultRef.connectionId, model: defaultRef.model } : null);
