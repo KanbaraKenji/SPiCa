@@ -2,7 +2,8 @@
 // with search and a status filter) and the one picked on the right with its
 // switch, update, model budget, mail sorting, tools and going back / deleting.
 // A plugin turned on or off stays where it is in the list while the page is
-// open; it moves to its group the next time the page opens. Mock mode and the
+// open; it moves to its group the next time the page opens (the counts are only
+// in the filter, as things are now). Mock mode and the
 // plugin folder are at the bottom; installing opens from the + at the top.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { spentText, usd, type PluginModelView, type PluginsCommand, type PluginsResult, type PluginsState, type PluginView } from '../../../shared/plugins';
@@ -111,15 +112,33 @@ function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy
   );
 }
 
+/** Badge colours: mid tones that carry white text on a light or a dark skin. */
+const BADGE_COLOURS = ['#4f7cff', '#16a37f', '#c2410c', '#7c3aed', '#0e7490', '#b45309', '#be185d', '#4d7c0f', '#1d4ed8', '#9333ea', '#0f766e', '#a16207'];
+
+/** A plugin's badge: the first character of its name (a letter in upper case) on a colour its id always gets. */
+export function pluginBadge(p: Pick<PluginView, 'name' | 'displayName'>): { letter: string; colour: string } {
+  const first = [...(p.displayName.trim() || p.name)][0] ?? '?';
+  let h = 0;
+  for (const ch of p.name) h = (h * 31 + ch.codePointAt(0)!) >>> 0;
+  return { letter: /[a-z]/i.test(first) ? first.toUpperCase() : first, colour: BADGE_COLOURS[h % BADGE_COLOURS.length]! };
+}
+
+function Badge({ p }: { p: PluginView }) {
+  const b = pluginBadge(p);
+  return (
+    <span className="plugin-badge" style={{ background: b.colour }} aria-hidden>
+      {b.letter}
+    </span>
+  );
+}
+
 /** One row of the list: name, a refresh mark when there is an update, the error mark when something is wrong. */
 function PluginRow({ p, on, onPick }: { p: PluginView; on: boolean; onPick(): void }) {
   const problems = pluginProblems(p);
   return (
     <li>
       <button type="button" className={['plugin-row', on ? 'is-on' : '', p.enabled ? '' : 'is-off'].filter(Boolean).join(' ')} aria-current={on ? 'true' : undefined} onClick={onPick}>
-        <span className="plugin-row-icon" aria-hidden>
-          <Icon name="plugin" size={15} />
-        </span>
+        <Badge p={p} />
         <span className="plugin-row-name">{p.displayName}</span>
         {p.update ? (
           <span className="plugin-row-mark" role="img" aria-label={`有更新：${p.update}`} title={`有更新：${p.update}`}>
@@ -160,6 +179,7 @@ function PluginDetail({
       ) : null}
       <header className="plugin-head">
         <div className="plugin-title">
+          <Badge p={p} />
           <span className="plugin-name">{p.displayName}</span>
           <span className="plugin-version">{p.version}</span>
         </div>
@@ -403,9 +423,7 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
               {groups.length ? (
                 groups.map((g) => (
                   <div key={g.key} className="plugins-group">
-                    <h3 className="plugins-group-title">
-                      {g.title} {g.items.length}
-                    </h3>
+                    <h3 className="plugins-group-title">{g.title}</h3>
                     <ul>
                       {g.items.map((p) => (
                         <PluginRow

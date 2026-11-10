@@ -2942,9 +2942,22 @@ button.ctx-row:hover {
   background: var(--spica-active);
 }
 
-.plugin-row-icon {
-  display: inline-flex;
-  color: var(--spica-muted);
+/* A plugin's badge: its first character on its own colour (list rows and the detail's title). */
+.plugin-badge {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.plugin-detail.is-off .plugin-badge {
+  opacity: 0.45;
 }
 
 .plugin-row-name {
@@ -2956,7 +2969,7 @@ button.ctx-row:hover {
 }
 
 /* Turned off: the icon fainter, the name in the secondary colour. */
-.plugin-row.is-off .plugin-row-icon {
+.plugin-row.is-off .plugin-badge {
   opacity: 0.45;
 }
 
@@ -3016,7 +3029,7 @@ button.ctx-row:hover {
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
 }
 

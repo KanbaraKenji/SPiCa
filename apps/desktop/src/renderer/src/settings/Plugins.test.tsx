@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { Plugins, type PluginsApi } from './Plugins';
+import { Plugins, pluginBadge, type PluginsApi } from './Plugins';
 import { FakePluginService } from '../../../main/plugins/fake';
 import { dropAllDrafts } from './drafts';
 import { DEFAULT_SETTINGS } from '../../../shared/settings';
@@ -38,7 +38,9 @@ describe('Plugins', () => {
   it('lists the plugins by 已启用 / 已停用 and shows the one picked on the right, its switch on top', async () => {
     render(<Plugins api={api()} />);
     const detail = (await screen.findByRole('region', { name: '笔记（示例）' })) as HTMLElement;
-    expect(within(list()).getByText('已启用 2')).toBeTruthy();
+    // The groups say what they are; the counts are only in the filter.
+    expect(within(list()).getByRole('heading', { name: '已启用' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: '已启用 2' })).toBeTruthy();
     expect(within(detail).getByRole('switch', { name: '停用「笔记（示例）」' })).toBeTruthy();
     // The tools are listed in the detail, no folding.
     expect(within(detail).getByText('工具')).toBeTruthy();
@@ -51,16 +53,16 @@ describe('Plugins', () => {
     const first = render(<Plugins api={a} />);
     fireEvent.click(await screen.findByRole('switch', { name: '停用「笔记（示例）」' }));
     await waitFor(() => expect(screen.getByRole('switch', { name: '启用「笔记（示例）」' }).getAttribute('aria-checked')).toBe('false'));
-    // Still in 已启用, shown as off; the group counts the rows it shows.
-    expect(groupOf('笔记')).toBe('已启用 2');
+    // Still in 已启用, shown as off.
+    expect(groupOf('笔记')).toBe('已启用');
     expect(within(list()).getByRole('button', { name: /笔记/ }).className).toContain('is-off');
     expect(within(screen.getByRole('region', { name: '笔记（示例）' })).getByText('已停用')).toBeTruthy();
     // The filter counts what is so now.
     expect(screen.getByRole('radio', { name: '已启用 1' })).toBeTruthy();
     first.unmount();
     render(<Plugins api={a} />);
-    await waitFor(() => expect(groupOf('笔记')).toBe('已停用 1'));
-    expect(groupOf('来信摘要')).toBe('已启用 1');
+    await waitFor(() => expect(groupOf('笔记')).toBe('已停用'));
+    expect(groupOf('来信摘要')).toBe('已启用');
   });
 
   it('marks an update in the list; the detail offers it; the mock switch is at the bottom', async () => {
@@ -179,5 +181,15 @@ describe('mail sorting, with the plugin that provides mail', () => {
     render(<Plugins api={apiWith((ps) => ps.map((p) => ({ ...p, enabled: true, mail: true })))} mail={mail()} />);
     await waitFor(() => expect(screen.getAllByRole('switch', { name: '邮件分类' })).toHaveLength(1));
     expect(screen.getByText('笔记（示例）、来信摘要（示例）')).toBeTruthy();
+  });
+});
+
+describe('plugin badges', () => {
+  it('the first character (letters in upper case) on a colour the plugin always gets', () => {
+    expect(pluginBadge({ name: 'outlook', displayName: 'Outlook mail' }).letter).toBe('O');
+    expect(pluginBadge({ name: 'notes', displayName: '笔记（示例）' }).letter).toBe('笔');
+    expect(pluginBadge({ name: 'erp', displayName: 'erp 查询' }).letter).toBe('E');
+    expect(pluginBadge({ name: 'notes', displayName: '笔记' }).colour).toBe(pluginBadge({ name: 'notes', displayName: '另一个名字' }).colour);
+    expect(pluginBadge({ name: 'notes', displayName: '笔记' }).colour).toMatch(/^#[0-9a-f]{6}$/);
   });
 });
