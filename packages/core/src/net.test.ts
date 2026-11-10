@@ -8,7 +8,7 @@ import { createServer as createHttps } from 'node:https';
 import { connect as netConnect, type AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { configureNetwork, netErrorCode, netFetch, networkStatus, proxyFor } from './net.ts';
+import { configureNetwork, gatewayFaultCode, httpErrorCode, NET_HINTS, netErrorCode, netFetch, networkStatus, proxyFor } from './net.ts';
 import { probeProvider } from './providers/probe.ts';
 import { Wso2Provider } from './providers/wso2.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
@@ -245,6 +245,83 @@ describe('readable errors and WSO2', () => {
     expect(r.message).toMatch(/120 minutes behind/);
     const base2 = await gateway({ token: (res) => res.writeHead(200, { 'content-type': 'application/json' }).end('{"access_token":"t","expires_in":3600}') });
     expect(await probeProvider(wso2(base2), { model: 'm' })).toMatchObject({ code: 'wso2.token_not_accepted' });
+  });
+
+  it('WSO2 fault numbers in the error body become their own codes and hints; unknown ones keep the HTTP status code', () => {
+    expect(gatewayFaultCode('{"fault":{"code":900908,"message":"Resource forbidden","description":"User is NOT authorized to access the Resource"}}')).toBe('wso2.not_subscribed');
+    expect(gatewayFaultCode('{"code":"900901","message":"Invalid Credentials","description":"Access failure for API: /x/v1"}')).toBe('wso2.invalid_credentials');
+    expect(
+      gatewayFaultCode('<ams:fault xmlns:ams="http://wso2.org/apimanager/security"><ams:code>900910</ams:code><ams:message>The access token does not allow you to access the requested resource</ams:message></ams:fault>'),
+    ).toBe('wso2.scope');
+    expect(gatewayFaultCode('<fault><code>900802</code><message>Message throttled out</message></fault>')).toBe('wso2.throttled');
+    expect(['900800', '900803', '900902', '900907', '900909'].map((n) => gatewayFaultCode(`{"code":${n}}`))).toEqual([
+      'wso2.throttled',
+      'wso2.throttled',
+      'wso2.missing_credentials',
+      'wso2.api_blocked',
+      'wso2.subscription_inactive',
+    ]);
+    // not a known fault number, or no fault at all: what the status says
+    expect(gatewayFaultCode('{"fault":{"code":900999}}')).toBeUndefined();
+    expect(gatewayFaultCode('{"error":{"code":"invalid_api_key"}}')).toBeUndefined();
+    expect(httpErrorCode(403, 'application/json', '{"fault":{"code":900999}}')).toBe('gateway.forbidden');
+    expect(httpErrorCode(403, 'application/json', '{"fault":{"code":900908}}')).toBe('wso2.not_subscribed');
+    for (const c of ['wso2.invalid_credentials', 'wso2.missing_credentials', 'wso2.throttled', 'wso2.not_subscribed', 'wso2.scope', 'wso2.api_blocked', 'wso2.subscription_inactive']) {
+      expect(NET_HINTS[c]).toMatch(/WSO2 9008|WSO2 9009/);
+    }
+    expect(NET_HINTS['wso2.not_subscribed']).toMatch(/开发者门户.*订阅|找管理员/);
+  });
+
+  it('test connection and model calls name the fault; 900901 gets one new token first', async () => {
+    let tokens = 0;
+    const token = (res: import('node:http').ServerResponse) => {
+      tokens++;
+      res.writeHead(200, { 'content-type': 'application/json' }).end(`{"access_token":"t${tokens}","expires_in":3600}`);
+    };
+    const json = (res: import('node:http').ServerResponse, status: number, body: string) => res.writeHead(status, { 'content-type': 'application/json' }).end(body);
+    const xml = (res: import('node:http').ServerResponse, status: number, body: string) => res.writeHead(status, { 'content-type': 'application/xml' }).end(body);
+
+    // not subscribed (JSON fault)
+    let base = await gateway({ token, model: (res) => json(res, 403, '{"fault":{"code":900908,"message":"Resource forbidden"}}') });
+    let r = await probeProvider(wso2(base), { model: 'm' });
+    expect(r).toMatchObject({ ok: false, stage: 'model', code: 'wso2.not_subscribed', errorCode: 'auth', httpStatus: 403 });
+    expect(r.hint).toMatch(/^调模型失败：这个应用还没订阅这个接口/);
+
+    // scope too narrow (XML fault)
+    base = await gateway({ token, model: (res) => xml(res, 403, '<ams:fault xmlns:ams="http://wso2.org/apimanager/security"><ams:code>900910</ams:code></ams:fault>') });
+    expect(await probeProvider(wso2(base), { model: 'm' })).toMatchObject({ code: 'wso2.scope' });
+
+    // throttled
+    base = await gateway({ token, model: (res) => json(res, 429, '{"fault":{"code":900802,"message":"Message throttled out"}}') });
+    expect(await probeProvider(wso2(base), { model: 'm' })).toMatchObject({ code: 'wso2.throttled', errorCode: 'rate_limited' });
+
+    // 900901 once (the token expired early): a new token, then it works
+    tokens = 0;
+    let modelCalls = 0;
+    base = await gateway({
+      token,
+      model: (res) => {
+        modelCalls++;
+        if (modelCalls === 1) return json(res, 401, '{"fault":{"code":900901,"message":"Invalid Credentials"}}');
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.end(
+          'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"content":"pong"}}]}\n\n' +
+            'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}\n\ndata: [DONE]\n\n',
+        );
+      },
+    });
+    // (test connection takes the first token, the model call is refused, a second token, then it works)
+    expect(await probeProvider(wso2(base), { model: 'm' })).toMatchObject({ ok: true });
+    expect({ tokens, modelCalls }).toEqual({ tokens: 2, modelCalls: 2 });
+
+    // 900901 every time: one new token only, then the fault is named
+    tokens = 0;
+    modelCalls = 0;
+    base = await gateway({ token, model: (res) => (modelCalls++, json(res, 401, '{"fault":{"code":900901,"message":"Invalid Credentials"}}')) });
+    r = await probeProvider(wso2(base), { model: 'm' });
+    expect(r).toMatchObject({ code: 'wso2.invalid_credentials', httpStatus: 401 });
+    expect(r.hint).toMatch(/已自动重新取过一次 token/);
+    expect({ tokens, modelCalls }).toEqual({ tokens: 2, modelCalls: 2 });
   });
 
   it('network causes map to stable codes', () => {

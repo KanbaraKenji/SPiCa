@@ -102,7 +102,10 @@ export async function postWithRetry(opts: PostOptions): Promise<Response> {
     if (res.ok) return res;
 
     const text = await safeText(res);
-    if (res.status === 401 && opts.auth?.refresh && !refreshed) {
+    let code = httpErrorCode(res.status, res.headers.get('content-type'), text);
+    // rejected credentials (401, or a gateway's "invalid credentials / token expired" fault): get a new token once
+    const rejected = res.status === 401 || code === 'wso2.invalid_credentials';
+    if (rejected && opts.auth?.refresh && !refreshed) {
       refreshed = true;
       if (await opts.auth.refresh(opts.signal)) {
         attempt--; // the refresh retry does not count against the retry budget
@@ -111,12 +114,15 @@ export async function postWithRetry(opts: PostOptions): Promise<Response> {
     }
     const retryable = res.status === 408 || res.status === 409 || res.status === 429 || res.status >= 500;
     const html = looksLikeHtml(res.headers.get('content-type'), text);
-    let code = httpErrorCode(res.status, res.headers.get('content-type'), text);
-    if (res.status === 401 && refreshed && opts.auth?.diagnose) code = opts.auth.diagnose().code;
+    // a fresh token was refused too: say why if the token source can tell (clock skew, ...)
+    // (a gateway fault that already names the cause keeps its code unless the clock is off)
+    const asked = rejected && refreshed && (code === 'gateway.unauthorized' || code === 'wso2.invalid_credentials') ? opts.auth?.diagnose?.() : undefined;
+    const diagnosed = asked && (code === 'gateway.unauthorized' || asked.code === 'wso2.clock_skew') ? asked : undefined;
+    if (diagnosed) code = diagnosed.code;
     const detail = html
       ? `the gateway returned an HTML page${htmlTitle(text) ? ` "${htmlTitle(text)}"` : ''} instead of API data`
       : text.slice(0, 500);
-    const extra = res.status === 401 && refreshed && opts.auth?.diagnose ? ` (${opts.auth.diagnose().detail})` : '';
+    const extra = diagnosed ? ` (${diagnosed.detail})` : '';
     lastError = new ProviderError(redact(`HTTP ${res.status} [${code}]: ${detail}${extra}`, opts.secrets), {
       status: res.status,
       retryable,

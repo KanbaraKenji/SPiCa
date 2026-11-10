@@ -120,7 +120,7 @@
 - **wso2**（`providers/wso2.ts`）：openai-compatible 外包一层 OAuth2 client credentials。第一次请求前取 token（client id / secret 默认走 HTTP Basic，可改放表单，scope 可配），缓存到过期前 60 秒；多个会话同时要 token 只发一次请求；网关回 401 时作废缓存、重取一次、重发一次（不占重试次数）；凭据被拒不重试，错误里不出现 secret；每次取 token 记一条 `kind: 'auth'` 记录。
 - **共用 http 层**（`providers/http.ts`）：408 / 409 / 429 / 5xx / 网络错重试，指数退避加抖动，尊重 Retry-After；只在拿到响应头之前重试（流已开始吐字就不重试，免得界面上出现重复文字）；等响应头有超时，读流有空闲超时；错误信息过一遍去敏。**软停止**：用户插话或停止时不中止连接，拿到响应头之前就不等了、等它回来再丢掉正文，之后由读流的一方 `cancel()`；只有「等响应头超时」才硬中止（原因见第 20 节）。
 - **测试连接**（`providers/probe.ts`）：按给定配置发一次最小请求，返回是否成功、延迟、服务端报的模型名；失败时给 `stage`（`token` = 取 token 这一步，`model` = 调模型这一步，WSO2 先单独取一次 token 再调模型）、`code`（见下表）和中文 `hint`（「取 token 失败：…」「调模型失败：…」）。不进任何会话，记一条 `initiator: 'runtime:probe'` 的记录。
-- **WSO2 的几种失败**：token 地址连不上 → `wso2.token_unreachable`，若是证书或代理问题则直接给 `tls.*` / `proxy.*`；凭据或 scope 不对 → `wso2.token_rejected`；token 地址回的是网页或不是 token → `wso2.token_bad_response`（报网页标题，不把整页塞进错误）；token 快过期时提前 60 秒换新的；网关回 401 时作废缓存重取一次，重取后仍 401：本机时间和网关（按 token 响应的 Date 头）相差超过 5 分钟就报 `wso2.clock_skew`，否则报 `wso2.token_not_accepted`（多半是应用没订阅这个接口）。模型调用回网页错误页 → `gateway.html`。
+- **WSO2 的几种失败**：token 地址连不上 → `wso2.token_unreachable`，若是证书或代理问题则直接给 `tls.*` / `proxy.*`；凭据或 scope 不对 → `wso2.token_rejected`；token 地址回的是网页或不是 token → `wso2.token_bad_response`（报网页标题，不把整页塞进错误）；token 快过期时提前 60 秒换新的；网关回 401 时作废缓存重取一次，重取后仍 401：本机时间和网关（按 token 响应的 Date 头）相差超过 5 分钟就报 `wso2.clock_skew`，否则报 `wso2.token_not_accepted`（多半是应用没订阅这个接口）。模型调用回网页错误页 → `gateway.html`。网关拒绝时正文里带 WSO2 的 fault 编号（JSON `{"fault":{"code":…}}` 或 `{"code":…}`，或 XML `<ams:code>`），认识的编号优先于按 HTTP 状态给的码（`gatewayFaultCode()`，见下表）；900901（凭据无效或 token 过期）不论状态码，都先作废 token 重取一次再发；仍是 900901 就报 `wso2.invalid_credentials`，本机时间差太多时报 `wso2.clock_skew`。不认识的编号照旧按状态码给。
 
 **网络**（`net.ts`，M10）：所有对外请求（各 provider、取 token、web_fetch、web_search）都走 `netFetch`。
 - 设置 `network: { proxy: { url, noProxy[] } | null, caFile, useSystemCa }`，在后台配置里给，或用 `configure({ network })` 运行中改，下一个请求生效；端口方法 `networkSettings()` 返回当前生效的值（代理不带密码）。
@@ -144,6 +144,13 @@
 | `gateway.html` | 网关回了一个网页（拦截页、登录页、错误页），不是接口数据 |
 | `gateway.unauthorized` / `gateway.forbidden` / `gateway.not_found` / `gateway.bad_request` / `gateway.rate_limited` / `gateway.server` | 401 / 403 / 404 / 400 / 429 / 5xx |
 | `wso2.token_unreachable` / `wso2.token_rejected` / `wso2.token_bad_response` / `wso2.token_not_accepted` / `wso2.clock_skew` | 见上 |
+| `wso2.invalid_credentials` | 900901：凭据无效或 token 过期（已重取一次 token 仍不行） |
+| `wso2.missing_credentials` | 900902：请求没带凭据 |
+| `wso2.throttled` | 900800 / 900802 / 900803：网关限流（按状态码照常重试） |
+| `wso2.not_subscribed` | 900908：应用没订阅这个接口 |
+| `wso2.scope` | 900910：token 的 scope 不够 |
+| `wso2.api_blocked` | 900907：接口在网关上被暂停 |
+| `wso2.subscription_inactive` | 900909：订阅未生效（待审批或被暂停） |
 
 ## 7. 钩子
 
@@ -437,6 +444,7 @@
 
 | 里程碑 | 日期 | 测试 | 真模型冒烟 |
 |---|---|---|---|
+| M12 | 2026-11-10 | 新增 2 条：WSO2 fault 编号（JSON / XML 两种格式、7 类编号、不认识的照旧按状态码、每类都有中文说明）；测试连接报出对应编号的说明，900901 先重取一次 token 再报错，第二次成功就不报 | — |
 | M11 | 2026-11-10 | 新增 2 条：模型设置里的上下文上限（不用填价格、优先于价表、运行中改了打开的会话立刻更新、填错的值给警告、`knownContextWindow` 给表单预填）；全新安装没配模型时改设置不报错、不建会话（设置、邮件设置、项目的事件发到默认线程，没有就发到空会话 id） | — |
 | M10 | 2026-11-10 | 新增：插件界面直接调工具 3 条（结果原样、不进历史、不经模型、只能调自己的、不可逆的等用户确认并且拒绝时什么都不跑、钩子照样能拦、限流）；代理（模型调用经本地代理、noProxy 直连、运行中改、环境变量兜底、`null` 关掉、密码不外露、要登录的代理）；证书（用 openssl 现场生成自签 CA，没配 `caFile` 时握手失败并报 `tls.untrusted`，配上后直连和经代理都通，拿掉后又失败，读不了的文件只警告）；WSO2 和测试连接（token 地址回登录页 / 凭据错 / 连不上 → stage token，网关回 HTML 错误页 → stage model + `gateway.html`，重取后仍 401 时报 `wso2.clock_skew` 或 `wso2.token_not_accepted`）；邮件默认关闭并给出 `triageModel`。core + plugins + 评测插件 + apps/desktop 共 384 条 | — |
 | M9 | 2026-11-10 | 新增会话级控制 5 条和项目重命名 / 删除 2 条（删除时停掉在跑的子会话、文件夹不动、来信改回新事务、发件人记忆清掉、另一个项目不受影响、重启后不回来）；会话级控制：每次模型调用后的上下文用量和模型窗口（重启后还在）；默认价表的 Claude 窗口和 Haiku 长提示价；改模型在下一次调用生效、正在进行的不动、备注不插进工具对中间、回传给父会话；附件按外来数据围栏、给卡片、读不了的报错、带附件的一轮里不可逆动作仍要确认；批准方式 auto 放行不可逆工具并记录，钩子要求的确认和守卫的确认照样要人，子 Agent 继承。core + plugins + 评测插件 + apps/desktop 共 359 条 | — |

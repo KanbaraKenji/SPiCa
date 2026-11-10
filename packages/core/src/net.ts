@@ -234,7 +234,44 @@ export const NET_HINTS: Record<string, string> = {
   'wso2.token_bad_response': '取 token 的地址返回的不是 token：多半是 token 地址写错了，或被代理拦截页、登录页替换了。',
   'wso2.token_not_accepted': '网关不接受新取的 token（重取后仍是 401）：应用没有订阅这个接口，或本机时间偏差太大。',
   'wso2.clock_skew': '本机时间和网关相差太多：token 可能被判成过期或还没生效。请校准系统时间。',
+  // fault numbers in a WSO2 API gateway's error body (see gatewayFaultCode)
+  'wso2.invalid_credentials': '网关说凭据无效或 token 已过期（WSO2 900901），已自动重新取过一次 token 仍不行：检查 key，或 client id / client secret；应用的密钥在开发者门户里重新生成过的话，要换成新的。',
+  'wso2.missing_credentials': '请求没带凭据（WSO2 900902）：填上 key；网关要求先用 client id / client secret 取 token 的话，模型类型要选 WSO2。',
+  'wso2.throttled': '网关限流（WSO2 900800–900803）：这个应用或订阅的调用额度暂时用完了，已自动重试；仍失败就调低并发、过一会再试，或请管理员提高订阅的额度等级。',
+  'wso2.not_subscribed': '这个应用还没订阅这个接口（WSO2 900908）：去 WSO2 开发者门户给应用订阅这个 API，或找管理员。',
+  'wso2.scope': 'token 的权限范围不够（WSO2 900910）：在模型设置的 scope 里填上这个接口要求的范围，或找管理员给应用开权限。',
+  'wso2.api_blocked': '这个接口在网关上被暂停了（WSO2 900907）：找管理员。',
+  'wso2.subscription_inactive': '订阅还没生效（WSO2 900909）：可能在等审批或被暂停了。去开发者门户看订阅状态，或找管理员。',
 };
+
+const WSO2_FAULTS: Record<string, string> = {
+  '900901': 'wso2.invalid_credentials',
+  '900902': 'wso2.missing_credentials',
+  '900800': 'wso2.throttled',
+  '900802': 'wso2.throttled',
+  '900803': 'wso2.throttled',
+  '900907': 'wso2.api_blocked',
+  '900908': 'wso2.not_subscribed',
+  '900909': 'wso2.subscription_inactive',
+  '900910': 'wso2.scope',
+};
+
+/**
+ * Code for a WSO2 API gateway fault in an error body, when it carries one of
+ * the known fault numbers: JSON `{"fault":{"code":900901,…}}` or `{"code":"900908",…}`,
+ * or XML `<ams:fault><ams:code>900901</ams:code>…`. Unknown numbers and other bodies: undefined.
+ */
+export function gatewayFaultCode(body: string): string | undefined {
+  let n: string | undefined;
+  try {
+    const j = JSON.parse(body) as { code?: unknown; fault?: { code?: unknown } } | null;
+    const c = j && typeof j === 'object' ? (j.fault && typeof j.fault === 'object' ? j.fault.code : j.code) : undefined;
+    if (typeof c === 'number' || typeof c === 'string') n = String(c).trim();
+  } catch {
+    n = /<(?:[\w-]+:)?code>\s*(\d{6})\s*<\/(?:[\w-]+:)?code>/.exec(body)?.[1];
+  }
+  return n ? WSO2_FAULTS[n] : undefined;
+}
 
 /** Code for an error thrown by fetch / node:http / tls (looks through `cause`). */
 export function netErrorCode(err: unknown): string {
@@ -262,6 +299,8 @@ export function netErrorCode(err: unknown): string {
 /** Code for an unsuccessful HTTP response from a gateway or model API. */
 export function httpErrorCode(status: number, contentType: string | null, body: string): string {
   if (looksLikeHtml(contentType, body)) return 'gateway.html';
+  const fault = gatewayFaultCode(body);
+  if (fault) return fault;
   if (status === 401) return 'gateway.unauthorized';
   if (status === 403) return 'gateway.forbidden';
   if (status === 404) return 'gateway.not_found';
