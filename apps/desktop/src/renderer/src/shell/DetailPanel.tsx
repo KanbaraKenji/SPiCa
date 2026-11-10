@@ -2,6 +2,7 @@
 import type { ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
 import { filesOf, type Block, type Transcript } from '../store/transcript';
 import { Icon } from '../ui/Icon';
+import { FileGlyph } from '../ui/FileIcon';
 import { activityText } from './activity';
 import { fileFolder, fileName, formatDuration, formatUsd, toolLabel, toolTarget } from '../chat/format';
 
@@ -149,7 +150,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
               {files.map((f) => (
                 <li key={f.path}>
                   <button type="button" className="detail-file" onClick={() => (onPreviewFile ?? onOpenFile)(f.path)} title={`查看 ${f.path}`}>
-                    <Icon name="file" size={14} />
+                    <FileGlyph name={f.path} />
                     <span className="detail-file-name">{fileName(f.path)}</span>
                     {fileFolder(f.path) ? <span className="detail-item-sub">{fileFolder(f.path)}</span> : null}
                   </button>

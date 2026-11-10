@@ -6,6 +6,7 @@ import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode }
 import type { ApprovalMode } from '@spica/protocol';
 import { ContextMenu, type MenuItem } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
+import { FileGlyph } from '../ui/FileIcon';
 import { APP_NAME } from '../../../shared/app-identity';
 
 export interface ComposerTools {
@@ -161,7 +162,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
           <div className="composer-files">
             {files.map((p) => (
               <span key={p} className="composer-file" title={p}>
-                <Icon name="file" size={14} />
+                <FileGlyph name={p} />
                 <span className="composer-chip-text">{baseName(p)}</span>
                 <button type="button" className="composer-file-remove" aria-label={`移除 ${baseName(p)}`} onClick={() => setAttached(files.filter((x) => x !== p))}>
                   <Icon name="close" size={12} />

@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import type { PreviewInfo } from '../../../shared/bridge';
 import { MarkdownText } from '../chat/Blocks';
 import { Icon } from '../ui/Icon';
+import { FileGlyph } from '../ui/FileIcon';
 
 export interface FilePreviewProps {
   /** null while loading. */
@@ -48,7 +49,7 @@ export function FilePreview({ info, onOpenExternal, onClose }: FilePreviewProps)
   return (
     <section className="preview" aria-label={info ? `预览 ${info.name}` : '预览'}>
       <header className="preview-head">
-        <Icon name="file" size={14} />
+        <FileGlyph name={info?.name ?? ''} />
         <span className="preview-name" title={info?.path ?? ''}>
           {info?.name ?? ''}
         </span>

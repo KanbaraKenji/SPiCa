@@ -5,6 +5,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, type Block, type ChildNote, type FileRef } from '../store/transcript';
 import { Icon } from '../ui/Icon';
+import { FileBadge } from '../ui/FileIcon';
 import { confirmTitle, fileFolder, fileName, formatDuration, GUARD_CAUSE_TEXT, toolLabel, toolTarget } from './format';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
@@ -107,9 +108,7 @@ export function FileCards({ files, onOpen }: { files: FileRef[]; onOpen(path: st
     <div className="file-cards">
       {files.map((f) => (
         <button key={f.path} type="button" className="card file-card" onClick={() => onOpen(f.path)} title={`打开 ${f.path}`}>
-          <span className="file-card-icon">
-            <Icon name="file" size={18} />
-          </span>
+          <FileBadge name={f.card?.name ?? fileName(f.path)} />
           <span className="file-card-text">
             <span className="file-card-name">{f.card?.name ?? fileName(f.path)}</span>
             <span className="file-card-sub">
