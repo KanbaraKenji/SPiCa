@@ -18,7 +18,7 @@ import {
   type SourceConfig,
   type UpdateInfo,
 } from '@spica/plugins';
-import type { PluginsCommand, PluginsResult, PluginsState, PluginView } from '../../shared/plugins';
+import { modelUseNotice, usd, type PluginsCommand, type PluginsResult, type PluginsState, type PluginView } from '../../shared/plugins';
 import type { PluginService } from './types';
 
 export type { PluginService } from './types';
@@ -65,7 +65,24 @@ function toView(d: PluginDescription, update?: string): PluginView {
     servers: d.servers.map((s) => ({ id: s.id, status: s.status, tools: s.tools.map((t) => t.replace(new RegExp(`^${d.name}__`), '')), ...(s.lastError ? { lastError: s.lastError } : {}) })),
     issues: d.issues.filter((i) => i.severity === 'error').map((i) => i.message),
     ...(update ? { update } : {}),
+    ...(d.model
+      ? {
+          model: {
+            reason: d.model.reason,
+            maxUsdPerDay: d.model.maxUsdPerDay,
+            declaredMaxUsdPerDay: d.model.declaredMaxUsdPerDay,
+            ...(d.model.userMaxUsdPerDay !== undefined ? { userMaxUsdPerDay: d.model.userMaxUsdPerDay } : {}),
+            ...(d.model.spentTodayUsd !== undefined ? { spentTodayUsd: d.model.spentTodayUsd } : {}),
+          },
+        }
+      : {}),
   };
+}
+
+/** After installing or turning on: what it is, plus the model use it asks for. */
+function withModelNotice(text: string, d: PluginDescription): string {
+  const m = toView(d).model;
+  return m ? `${text}${modelUseNotice(m)}` : text;
 }
 
 const isUrl = (s: string) => /^https?:\/\//i.test(s);
@@ -152,7 +169,7 @@ export class RealPluginService implements PluginService {
         if (!res.ok) return `下载失败（${res.status}）。`;
         const d = await installZip(manager, Buffer.from(await res.arrayBuffer()), { kind: 'http', location: where });
         await this.#enableNew(d.name);
-        return `已装上「${d.displayName || d.name}」${d.version}。`;
+        return withModelNotice(`已装上「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
       }
       return this.#offer({ kind: 'http', location: where });
     }
@@ -166,13 +183,13 @@ export class RealPluginService implements PluginService {
       if (!/\.zip$/i.test(where)) return '只能装插件文件夹或 .zip 文件。';
       const d = await installZip(manager, await readFile(where), { kind: isShare(where) ? 'share' : 'zip', location: where });
       await this.#enableNew(d.name);
-      return `已装上「${d.displayName || d.name}」${d.version}。`;
+      return withModelNotice(`已装上「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
     }
     const has = async (f: string) => stat(join(where, f)).then(() => true, () => false);
     if (await has(MANIFEST_FILE)) {
       const d = await manager.install(where, { kind: isShare(where) ? 'share' : 'folder', location: where });
       await this.#enableNew(d.name);
-      return `已装上「${d.displayName || d.name}」${d.version}。`;
+      return withModelNotice(`已装上「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
     }
     if (await has(INDEX_FILE)) return this.#offer({ kind: 'share', location: where });
     return '这个文件夹里没有插件（没有 manifest.json，也没有 index.json）。';
@@ -185,9 +202,23 @@ export class RealPluginService implements PluginService {
       switch (cmd.op) {
         case 'state':
           break;
-        case 'enable':
+        case 'enable': {
           await manager.enable(cmd.name);
+          const d = manager.describe(cmd.name);
+          if (d.model) message = withModelNotice('已启用。', d);
           break;
+        }
+        case 'modelLimit': {
+          const d = manager.describe(cmd.name);
+          const v = cmd.maxUsdPerDay;
+          if (v !== null && (!Number.isFinite(v) || v < 0)) return { ok: false, message: '上限要填 0 或正数（美元）。', state: this.#state() };
+          if (v !== null && d.model && v > d.model.declaredMaxUsdPerDay) {
+            return { ok: false, message: `不能高于插件自己写的 ${usd(d.model.declaredMaxUsdPerDay)}。`, state: this.#state() };
+          }
+          await manager.setModelLimit(cmd.name, v);
+          message = v === null ? '回到了插件自己写的上限。' : v === 0 ? '已不让它用模型。' : `每天最多 ${usd(v)}。`;
+          break;
+        }
         case 'disable':
           await manager.disable(cmd.name);
           break;
@@ -211,7 +242,7 @@ export class RealPluginService implements PluginService {
           if (!entry) return { ok: false, message: '这一项已经不在了，再找一次。', state: this.#state() };
           const d = await installAvailable(manager, entry, this.#o.fetch ? { fetch: this.#o.fetch } : {});
           await this.#enableNew(d.name);
-          message = `已装上「${d.displayName || d.name}」${d.version}。`;
+          message = withModelNotice(`已装上「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
           break;
         }
         case 'checkUpdates': {

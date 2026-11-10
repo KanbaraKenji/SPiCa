@@ -2,7 +2,7 @@
 // vanish at once), mock mode, install from a folder / zip / shared folder /
 // web address, updates and going back one version.
 import { useCallback, useEffect, useState } from 'react';
-import type { PluginsCommand, PluginsResult, PluginsState, PluginView } from '../../../shared/plugins';
+import { usd, type PluginModelView, type PluginsCommand, type PluginsResult, type PluginsState, type PluginView } from '../../../shared/plugins';
 import { friendlyError } from '../store/agent';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
@@ -38,6 +38,66 @@ function List({ label, items }: { label: string; items: string[] }) {
   );
 }
 
+/**
+ * A plugin that uses the user's models: what that means for their budget, the
+ * plugin's own reason, today's spending, and a daily limit they can lower (not
+ * raise above the plugin's own) or set to nothing.
+ */
+function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy: boolean; run(cmd: PluginsCommand): void }) {
+  const [limit, setLimit] = useState(String(m.maxUsdPerDay));
+  const [prev, setPrev] = useState(m.maxUsdPerDay);
+  if (prev !== m.maxUsdPerDay) {
+    setPrev(m.maxUsdPerDay);
+    setLimit(String(m.maxUsdPerDay));
+  }
+  const value = Number(limit);
+  const problem = limit.trim() === '' || !Number.isFinite(value) || value < 0 ? '填 0 或正数' : value > m.declaredMaxUsdPerDay ? `不能高于 ${usd(m.declaredMaxUsdPerDay)}` : null;
+  const off = m.maxUsdPerDay <= 0;
+  const used = m.spentTodayUsd;
+  return (
+    <div className="plugin-model">
+      <p className="plugin-model-line">
+        {off ? '它想用你配好的模型，现在不让它用。' : `会用你配好的模型，花费记在你的额度里，每天最多 ${usd(m.maxUsdPerDay)}。`}
+        {typeof used === 'number' && !off ? (
+          <span className={used >= m.maxUsdPerDay ? 'plugin-model-spent is-full' : 'plugin-model-spent'}>
+            {used >= m.maxUsdPerDay ? ` 今天花了 ${usd(used)}，今天的额度用完了。` : ` 今天花了 ${usd(used)}。`}
+          </span>
+        ) : null}
+      </p>
+      <p className="plugin-model-reason">它说：{m.reason}</p>
+      <div className="plugin-model-limit">
+        <label className="plugin-model-input">
+          <span>每天最多 $</span>
+          <input
+            className={problem ? 'input is-invalid' : 'input'}
+            type="number"
+            min={0}
+            max={m.declaredMaxUsdPerDay}
+            step={0.01}
+            value={limit}
+            aria-label={`「${p.displayName}」每天最多花多少美元`}
+            onChange={(e) => setLimit(e.target.value)}
+          />
+        </label>
+        <button type="button" className="btn btn-small" disabled={busy || problem !== null || value === m.maxUsdPerDay} onClick={() => run({ op: 'modelLimit', name: p.name, maxUsdPerDay: value })}>
+          保存上限
+        </button>
+        {off ? null : (
+          <button type="button" className="btn btn-small" disabled={busy} onClick={() => run({ op: 'modelLimit', name: p.name, maxUsdPerDay: 0 })}>
+            不让它用模型
+          </button>
+        )}
+        {m.userMaxUsdPerDay !== undefined ? (
+          <button type="button" className="btn btn-small" disabled={busy} onClick={() => run({ op: 'modelLimit', name: p.name, maxUsdPerDay: null })}>
+            恢复成插件写的 {usd(m.declaredMaxUsdPerDay)}
+          </button>
+        ) : null}
+        {problem ? <span className="field-error">{problem}</span> : null}
+      </div>
+    </div>
+  );
+}
+
 function PluginCard({ p, busy, run, ask }: { p: PluginView; busy: boolean; run(cmd: PluginsCommand): void; ask(kind: 'uninstall' | 'rollback', p: PluginView): void }) {
   const [open, setOpen] = useState(false);
   const failed = p.servers.filter((s) => s.status === 'failed');
@@ -56,6 +116,7 @@ function PluginCard({ p, busy, run, ask }: { p: PluginView; busy: boolean; run(c
         <Switch on={p.enabled} label={p.enabled ? `停用「${p.displayName}」` : `启用「${p.displayName}」`} disabled={busy} onChange={(on) => run({ op: on ? 'enable' : 'disable', name: p.name })} />
       </header>
       {p.description ? <p className="plugin-desc">{p.description}</p> : null}
+      {p.model ? <ModelUse p={p} m={p.model} busy={busy} run={run} /> : null}
       {p.issues.length || failed.length ? (
         <p className="plugin-problem">{[...p.issues, ...failed.map((s) => s.lastError ?? `「${s.id}」没有启动起来`)].join('；')}</p>
       ) : null}

@@ -17,10 +17,18 @@ const EXAMPLE: PluginView = {
   tools: ['add_note', 'list_notes', 'delete_note', 'catalog_lookup'],
   servers: [{ id: 'notes-server', status: 'running', tools: ['add_note', 'list_notes', 'delete_note', 'catalog_lookup'] }],
   issues: [],
+  model: { reason: '把一篇长笔记缩成几句话时，要用模型。', maxUsdPerDay: 0.2, declaredMaxUsdPerDay: 0.2, spentTodayUsd: 0.03 },
 };
 
+/** The example without model use (the second demo plugin does not ask for models). */
+function withoutModel(p: PluginView): PluginView {
+  const { model: _model, ...rest } = p;
+  void _model;
+  return rest;
+}
+
 export class FakePluginService implements PluginService {
-  #plugins: PluginView[] = [structuredClone(EXAMPLE), { ...structuredClone(EXAMPLE), name: 'mail-digest', displayName: '来信摘要（示例）', description: '把收件箱里的新邮件整理成摘要，按项目归类。', version: '1.0.0', enabled: false, tools: [], skills: [], commands: [], servers: [{ id: 'mail', status: 'stopped', tools: [] }], previousVersion: undefined, update: '1.1.0' } as PluginView];
+  #plugins: PluginView[] = [structuredClone(EXAMPLE), { ...withoutModel(structuredClone(EXAMPLE)), name: 'mail-digest', displayName: '来信摘要（示例）', description: '把收件箱里的新邮件整理成摘要，按项目归类。', version: '1.0.0', enabled: false, tools: [], skills: [], commands: [], servers: [{ id: 'mail', status: 'stopped', tools: [] }], previousVersion: undefined, update: '1.1.0' } as PluginView];
   #mock = false;
   readonly #root: string;
 
@@ -59,6 +67,18 @@ export class FakePluginService implements PluginService {
         break;
       case 'install':
         return { ok: false, message: '演示数据里不能安装插件。', state: this.#state() };
+      case 'modelLimit':
+        if (p?.model) {
+          const v = cmd.maxUsdPerDay;
+          if (v === null) {
+            delete p.model.userMaxUsdPerDay;
+            p.model.maxUsdPerDay = p.model.declaredMaxUsdPerDay;
+          } else {
+            p.model.userMaxUsdPerDay = v;
+            p.model.maxUsdPerDay = Math.min(v, p.model.declaredMaxUsdPerDay);
+          }
+        }
+        break;
       default:
         break;
     }

@@ -123,7 +123,14 @@ function backendConfig(): DesktopBackendConfig {
       dbPath: join(app.getPath('userData'), 'spica.db'),
       providers: [...envConfigs, ...saved.map(toProviderConfig)],
       // An empty provider id makes session creation fail; the UI then says "还没有配置模型".
-      defaults: { providerId: current?.providerId ?? '', model: current?.model ?? '', maxTokens: 4096, maxTurns: 30 },
+      defaults: {
+        providerId: current?.providerId ?? '',
+        model: current?.model ?? '',
+        maxTokens: 4096,
+        maxTurns: 30,
+        // The default connection's model for heavy work: plugins that ask for a strong model get it.
+        ...(chosen?.strongModel ? { strongModel: chosen.strongModel } : {}),
+      },
       cwd: workDir,
       locale: 'zh-CN',
       // What the models are told they work in (Spica, or deploy.json's name).

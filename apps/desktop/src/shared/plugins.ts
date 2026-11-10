@@ -23,6 +23,33 @@ export interface PluginView {
   issues: string[];
   /** A newer version found by "检查更新". */
   update?: string;
+  /** Present when the plugin asks to use the user's models (permissions.model). */
+  model?: PluginModelView;
+}
+
+/** A plugin's use of the user's models: why, the daily limit in USD, today's spending. */
+export interface PluginModelView {
+  /** The plugin's own sentence on why it wants to. */
+  reason: string;
+  /** The limit in force (the lower of the plugin's and the user's). */
+  maxUsdPerDay: number;
+  /** What the plugin itself asks for; the user may go lower, not higher. */
+  declaredMaxUsdPerDay: number;
+  /** The user's own limit, when set (0: not allowed at all). */
+  userMaxUsdPerDay?: number;
+  /** Spent today; absent when it cannot be told. */
+  spentTodayUsd?: number;
+}
+
+/** 「$0.20」: US dollars, two decimals (cents matter at these limits). */
+export function usd(n: number): string {
+  return `$${n.toFixed(2)}`;
+}
+
+/** What to tell someone installing or turning on a plugin that uses models. */
+export function modelUseNotice(m: PluginModelView): string {
+  if (m.maxUsdPerDay <= 0) return '它想用你配好的模型，现在不让它用。';
+  return `它会用你配好的模型，花费记在你的额度里，每天最多 ${usd(m.maxUsdPerDay)}。它说：${m.reason}`;
 }
 
 export interface PluginsState {
@@ -44,6 +71,8 @@ export type PluginsCommand =
   /** One entry from `available`. */
   | { op: 'installAvailable'; key: string }
   | { op: 'checkUpdates' }
+  /** The daily limit for a plugin's model use: a number (0 = not at all), null = back to the plugin's own. */
+  | { op: 'modelLimit'; name: string; maxUsdPerDay: number | null }
   | { op: 'openRoot' };
 
 export interface PluginsResult {

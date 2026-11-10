@@ -52,4 +52,23 @@ describe('Plugins', () => {
     render(<Plugins api={a} />);
     expect(((await screen.findByLabelText('插件在哪里')) as HTMLInputElement).value).toBe('D:\\plugins\\notes-0.1.0.zip');
   });
+
+  it('a plugin that uses models says so, with its reason, today’s spending and a limit to lower', async () => {
+    render(<Plugins api={api()} />);
+    const card = (await screen.findByRole('region', { name: '笔记（示例）' })) as HTMLElement;
+    expect(within(card).getByText(/会用你配好的模型，花费记在你的额度里，每天最多 \$0\.20。/)).toBeTruthy();
+    expect(within(card).getByText(/今天花了 \$0\.03。/)).toBeTruthy();
+    expect(within(card).getByText('它说：把一篇长笔记缩成几句话时，要用模型。')).toBeTruthy();
+    const input = within(card).getByLabelText('「笔记（示例）」每天最多花多少美元');
+    fireEvent.change(input, { target: { value: '0.5' } });
+    expect(within(card).getByText('不能高于 $0.20')).toBeTruthy();
+    expect((within(card).getByRole('button', { name: '保存上限' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(input, { target: { value: '0.1' } });
+    fireEvent.click(within(card).getByRole('button', { name: '保存上限' }));
+    await waitFor(() => expect(within(card).getByText(/每天最多 \$0\.10。/)).toBeTruthy());
+    fireEvent.click(within(card).getByRole('button', { name: '恢复成插件写的 $0.20' }));
+    await waitFor(() => expect(within(card).getByText(/每天最多 \$0\.20。/)).toBeTruthy());
+    fireEvent.click(within(card).getByRole('button', { name: '不让它用模型' }));
+    await waitFor(() => expect(within(card).getByText('它想用你配好的模型，现在不让它用。')).toBeTruthy());
+  });
 });

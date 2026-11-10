@@ -2384,6 +2384,46 @@ button.tree-twisty:hover {
   color: var(--spica-danger);
 }
 
+.plugin-model {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  background: var(--spica-hover);
+  font-size: 13px;
+}
+
+.plugin-model-line,
+.plugin-model-reason {
+  margin: 0;
+}
+
+.plugin-model-reason {
+  margin-top: 4px;
+  color: var(--spica-muted);
+}
+
+.plugin-model-spent.is-full {
+  color: var(--spica-danger);
+}
+
+.plugin-model-limit {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.plugin-model-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.plugin-model-input .input {
+  width: 84px;
+}
+
 .plugin-more {
   margin: 6px 0 0 -8px;
 }
