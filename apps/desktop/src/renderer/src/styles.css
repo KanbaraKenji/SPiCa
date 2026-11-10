@@ -3622,3 +3622,110 @@ button.tree-twisty:hover {
 .settings-group .setting-row + .setting-row {
   margin-top: 8px;
 }
+
+/* Pictures in the input box (pasted, dropped, picked): thumbnails, removable, full size on a click. */
+.composer-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.composer-thumb {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex: none;
+}
+
+.composer-thumb-open {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--spica-border-strong);
+  background: var(--spica-surface);
+}
+
+.composer-thumb-open img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.composer-thumb-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--spica-ink);
+  color: var(--spica-bg);
+}
+
+/* The model in use takes no pictures: one line, and the way to another model. */
+.composer-warn {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--spica-warning);
+}
+
+/* Pictures sent with a message, under its bubble. */
+.turn-pictures {
+  align-self: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+  max-width: 85%;
+}
+
+.turn-picture {
+  width: 120px;
+  height: 90px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-l);
+  border: 1px solid var(--spica-border-strong);
+  background: var(--spica-surface);
+}
+
+.turn-picture img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.turn-attach-note {
+  align-self: flex-end;
+}
+
+/* A picture at full size over the window. */
+.image-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: var(--spica-scrim);
+  cursor: zoom-out;
+}
+
+.image-viewer img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-m);
+  box-shadow: var(--spica-shadow);
+}

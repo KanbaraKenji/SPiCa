@@ -190,6 +190,12 @@ export class ProcessBackend implements AgentBackend {
   }
 
   /** A model name matched to the catalog (exact, else by name: case, a vendor/ prefix): its context window. */
+  /** Whether a model takes pictures (the catalog, or a refusal the core remembers); null: not known. */
+  async modelTakesImages(providerId: string, model: string): Promise<boolean | null> {
+    const r = await this.call<boolean | null | undefined>('modelTakesImages', providerId, model);
+    return typeof r === 'boolean' ? r : null;
+  }
+
   async matchContextWindow(kind: 'openai-compatible' | 'anthropic' | 'wso2', model: string, catalogId?: string): Promise<WindowMatch | null> {
     return (await this.call<WindowMatch | null | undefined>('matchContextWindow', kind, model, catalogId)) ?? null;
   }

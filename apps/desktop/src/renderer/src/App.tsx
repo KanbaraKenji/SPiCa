@@ -390,11 +390,33 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   );
   const using = session ? { providerId: session.providerId, model: session.model } : draft.providerId && draft.model ? { providerId: draft.providerId, model: draft.model } : null;
   const shown = using ?? (defaultRef ? { providerId: defaultRef.connectionId, model: defaultRef.model } : null);
+  // Whether the model in use takes pictures: asked again when it changes or a turn ended in an error
+  // (a refusal is remembered by the core).
+  const [imagesAccepted, setImagesAccepted] = useState<{ key: string; ok: boolean | null } | null>(null);
+  const shownKey = shown ? `${shown.providerId}	${shown.model}` : '';
+  const turnError = transcript.error ?? '';
+  useEffect(() => {
+    if (!shown) return;
+    let alive = true;
+    void bridge.images
+      .accepted(shown.providerId, shown.model)
+      .then((ok) => alive && setImagesAccepted({ key: shownKey, ok }))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- shownKey stands for shown
+  }, [bridge, shownKey, turnError]);
   // A conversation on a model that was unticked or whose connection was deleted.
   const shownGone = Boolean(shown && models.length && !modelOptions.some((o) => o.providerId === shown.providerId && o.model === shown.model));
   const composerTools: ComposerTools = {
     pickFiles: () => bridge.pickFiles('添加附件'),
     pathForFile: bridge.pathForFile,
+    images: {
+      fromPaste: bridge.images.fromPaste,
+      prepare: bridge.images.prepare,
+      accepted: imagesAccepted?.key === shownKey ? imagesAccepted.ok : null,
+    },
     ...(session
       ? {}
       : {
@@ -441,6 +463,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       setSettingsTab('models');
       setView('settings');
     },
+    imageUrl: bridge.images.url,
   };
 
   const leftShown = layout.left !== 'hidden';

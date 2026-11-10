@@ -137,6 +137,10 @@ export interface Attachment {
   file?: FileCardMeta;
   /** It could not be read. */
   failed?: boolean;
+  /** A picture: the core's own copy (shown as a thumbnail). */
+  image?: { path: string; width: number; height: number };
+  /** Why a picture was not attached (worded by the UI). */
+  code?: 'image.too_large' | 'image.too_many' | 'image.unreadable';
 }
 
 export type Item =
@@ -188,14 +192,22 @@ function textOf(message: Message): string {
     .join('');
 }
 
-function attachmentsOf(m: Message): { path: string; name: string; block: number | null; file?: FileCardMeta; error?: string }[] | undefined {
+function attachmentsOf(m: Message): { path: string; name: string; block: number | null; file?: FileCardMeta; error?: string; image?: { path: string; width: number; height: number }; code?: Attachment['code'] }[] | undefined {
   const list = m.meta?.attachments;
   return Array.isArray(list) && list.length ? list : undefined;
 }
 
 function userItem(m: Message): Item {
   const list = attachmentsOf(m);
-  const att = list?.map((a): Attachment => ({ path: a.path, name: a.name, ...(a.file ? { file: a.file } : {}), ...(a.block === null ? { failed: true } : {}) }));
+  const att = list?.map(
+    (a): Attachment => ({
+      path: a.path,
+      name: a.name,
+      ...(a.file ? { file: a.file } : {}),
+      ...(a.image ? { image: { path: a.image.path, width: a.image.width, height: a.image.height } } : a.block === null ? { failed: true } : {}),
+      ...(a.code ? { code: a.code } : {}),
+    }),
+  );
   // With attachments, the first block is what was typed; the rest is for the model (a file that
   // could not be read is said in English there, and shown here as the attachment marked failed).
   const first = m.content[0];

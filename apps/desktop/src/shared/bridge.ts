@@ -94,6 +94,17 @@ export interface DesktopBridge extends SpicaBridge {
   pickFiles(title?: string): Promise<string[]>;
   /** The path of a file dropped on the window ('' when it has none). */
   pathForFile(file: File): string;
+  /** Pictures attached to a message. */
+  images: {
+    /** A pasted picture (its bytes, read at the paste): saved for sending; null when it is not a picture. */
+    fromPaste(data: ArrayBuffer): Promise<{ path: string; url: string } | null>;
+    /** A dropped or picked file: a picture comes back made to fit and with a URL to show it; null for other files. */
+    prepare(path: string): Promise<{ path: string; url: string } | null>;
+    /** A URL to show a picture (a sent one, from the conversation's record). */
+    url(path: string): Promise<string>;
+    /** Whether a model takes pictures: false no, null not known (it is tried). */
+    accepted(providerId: string, model: string): Promise<boolean | null>;
+  };
   /** Asks where to save, then writes the usage log (JSON Lines; keys and addresses removed by the core). */
   exportUsageLog(req: UsageLogRequest): Promise<UsageLogResult>;
   /** A file of this session (relative paths are in its folder), ready for the right panel. */

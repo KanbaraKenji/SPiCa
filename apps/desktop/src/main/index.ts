@@ -48,6 +48,7 @@ import { captureOnce, runShots } from './shots';
 import { flatten, icoFromPngs, inkFor, TASKBAR_FRAME_SIZES } from './icon';
 import { followTaskbarTheme, readTaskbarDark } from './taskbar-theme';
 import { PREVIEW_SCHEME, PreviewFiles, readPreview } from './preview';
+import { AttachImages } from './images';
 import { BRIDGE_JS, contentType, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
 import { FONT_UI, type PluginView, type PluginViewResult } from '../shared/plugin-view';
 import { readFile } from 'node:fs/promises';
@@ -539,6 +540,29 @@ protocol.registerSchemesAsPrivileged([
   { scheme: PLUGIN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
 const previewFiles = new PreviewFiles();
+
+// Pictures for a message: pasted ones saved as PNG, large ones made to fit (main/images.ts).
+const attachImages = new AttachImages(join(app.getPath('userData'), 'attach-images'), {
+  fromBuffer: (data) => nativeImage.createFromBuffer(data),
+  fromPath: (path) => nativeImage.createFromPath(path),
+});
+attachImages.sweep();
+ipcMain.handle(DesktopChannel.Images, async (_e, op: unknown, a: unknown, b: unknown) => {
+  if (op === 'fromPaste') {
+    const data = a instanceof ArrayBuffer ? Buffer.from(a) : ArrayBuffer.isView(a) ? Buffer.from(a.buffer, a.byteOffset, a.byteLength) : null;
+    const path = data ? attachImages.fromPaste(data) : null;
+    return path ? { path, url: previewFiles.urlFor(path) } : null;
+  }
+  if (op === 'prepare' && typeof a === 'string') {
+    const path = attachImages.prepare(a);
+    return path ? { path, url: previewFiles.urlFor(path) } : null;
+  }
+  if (op === 'url' && typeof a === 'string') return previewFiles.urlFor(a);
+  if (op === 'accepted' && typeof a === 'string' && typeof b === 'string') {
+    return backend instanceof ProcessBackend ? backend.modelTakesImages(a, b).catch(() => null) : null;
+  }
+  return null;
+});
 
 ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unknown) => {
   const raw = typeof path === 'string' ? path : '';

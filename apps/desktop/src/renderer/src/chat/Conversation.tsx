@@ -1,7 +1,8 @@
 // The main pane: the transcript of one session, streamed live, and its input box.
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MailItem, SessionInfo } from '@spica/protocol';
-import { filesOf, isRunning, type Block, type Item, type Transcript } from '../store/transcript';
+import { filesOf, isRunning, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
+import { ImageViewer } from '../ui/ImageViewer';
 import { SpicaMark } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
 import { AskCard, ChildNoteCard, ConfirmCard, FileCards, MarkdownText, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
@@ -23,6 +24,37 @@ export interface ConversationActions {
   openInbox?: () => void;
   /** 设置 › 模型 (from a settings-change card). */
   openModelSettings?: () => void;
+  /** A URL to show a sent picture. */
+  imageUrl?: (path: string) => Promise<string>;
+}
+
+/** Why a picture was not sent, in words. */
+const IMAGE_CODE_TEXT: Record<NonNullable<Attachment['code']>, string> = {
+  'image.too_large': '图片过大，未发送',
+  'image.too_many': '图片数量超过上限，未发送',
+  'image.unreadable': '无法读取图片，未发送',
+};
+
+/** A sent picture under the message: a thumbnail, full size on a click. */
+function SentPicture({ a, url }: { a: Attachment; url?: (path: string) => Promise<string> }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const path = a.image?.path ?? '';
+  useEffect(() => {
+    let alive = true;
+    if (path && url) void url(path).then((u) => alive && setSrc(u)).catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [path, url]);
+  return (
+    <>
+      <button type="button" className="turn-picture" onClick={() => src && setOpen(true)} aria-label={`查看 ${a.name}`} title={a.name}>
+        {src ? <img src={src} alt="" /> : null}
+      </button>
+      {open && src ? <ImageViewer url={src} name={a.name} onClose={() => setOpen(false)} /> : null}
+    </>
+  );
 }
 
 function MailNote({ ids, flagged = [], actions }: { ids: string[]; flagged?: string[] | undefined; actions: ConversationActions }) {
@@ -218,10 +250,27 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                       {item.steer ? <span className="turn-user-tag">插话</span> : null}
                       <p className="turn-user-text">{item.text}</p>
                     </div>
-                    {item.attachments?.length ? (
+                    {item.attachments?.some((a) => a.image) ? (
+                      <div className="turn-pictures">
+                        {item.attachments
+                          .filter((a) => a.image)
+                          .map((a) => (
+                            <SentPicture key={a.image!.path} a={a} {...(actions.imageUrl ? { url: actions.imageUrl } : {})} />
+                          ))}
+                      </div>
+                    ) : null}
+                    {item.attachments?.some((a) => a.code) ? (
+                      <p className="turn-note turn-attach-note">
+                        {item.attachments
+                          .filter((a) => a.code)
+                          .map((a) => `${a.name}：${IMAGE_CODE_TEXT[a.code!]}`)
+                          .join('；')}
+                      </p>
+                    ) : null}
+                    {item.attachments?.some((a) => !a.image && !a.code) ? (
                       <div className="turn-attachments">
                         <FileCards
-                          files={item.attachments.map((a) => ({ path: a.path, tool: 'read_file', ...(a.file ? { card: a.file } : {}) }))}
+                          files={item.attachments.filter((a) => !a.image && !a.code).map((a) => ({ path: a.path, tool: 'read_file', ...(a.file ? { card: a.file } : {}) }))}
                           onOpen={actions.openFile}
                         />
                       </div>

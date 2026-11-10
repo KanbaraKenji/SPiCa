@@ -74,6 +74,12 @@ const bridge: DesktopBridge = {
     }
   },
   openFile: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.OpenFile, sessionId, path) as Promise<string | null>,
+  images: {
+    fromPaste: (data) => ipcRenderer.invoke(DesktopChannel.Images, 'fromPaste', data) as Promise<{ path: string; url: string } | null>,
+    prepare: (path) => ipcRenderer.invoke(DesktopChannel.Images, 'prepare', path) as Promise<{ path: string; url: string } | null>,
+    url: (path) => ipcRenderer.invoke(DesktopChannel.Images, 'url', path) as Promise<string>,
+    accepted: (providerId, model) => ipcRenderer.invoke(DesktopChannel.Images, 'accepted', providerId, model) as Promise<boolean | null>,
+  },
   backend: {
     status: () => ipcRenderer.invoke(DesktopChannel.BackendStatus) as Promise<BackendState>,
     onStatus: (listener) => subscribe<BackendState>(DesktopChannel.BackendStatus, listener),

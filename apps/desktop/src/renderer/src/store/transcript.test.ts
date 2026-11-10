@@ -111,6 +111,29 @@ describe('notes the core writes for the model', () => {
   });
 });
 
+describe('pictures sent with a message', () => {
+  it('come back from the record as thumbnails (the core’s copy); a refused one with its reason', () => {
+    const m: Message = {
+      id: 'u3', seq: 1, sessionId: 's', role: 'user', kind: 'user', createdAt: '',
+      content: [{ type: 'text', text: '图里写了什么？' }, { type: 'image', path: 'D:/media/s/1.png', mediaType: 'image/png', width: 800, height: 600, bytes: 1000 }],
+      meta: {
+        attachments: [
+          { path: 'C:/tmp/a.png', name: 'a.png', block: 1, image: { path: 'D:/media/s/1.png', mediaType: 'image/png', width: 800, height: 600, bytes: 1000, resized: false } },
+          { path: 'C:/tmp/big.jpg', name: 'big.jpg', block: null, code: 'image.too_large' },
+        ],
+      },
+    };
+    expect(fromHistory([m]).items[0]).toMatchObject({
+      kind: 'user',
+      text: '图里写了什么？',
+      attachments: [
+        { name: 'a.png', image: { path: 'D:/media/s/1.png', width: 800, height: 600 } },
+        { name: 'big.jpg', code: 'image.too_large' },
+      ],
+    });
+  });
+});
+
 describe('tools that were turned off', () => {
   const msg = (over: Partial<Message>): Message => ({
     id: 'x',

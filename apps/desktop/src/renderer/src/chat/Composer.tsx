@@ -2,11 +2,12 @@
 // composing (Chinese pinyin etc.), Enter confirms the candidate and never sends.
 // Below the text: attachments and the working folder (new conversation) on the
 // left; approval, model and how full the context is on the right.
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import type { ApprovalMode } from '@spica/protocol';
 import { ContextMenu, type MenuItem } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { FileGlyph } from '../ui/FileIcon';
+import { ImageViewer } from '../ui/ImageViewer';
 import { APP_NAME } from '../../../shared/app-identity';
 
 export interface ComposerTools {
@@ -22,6 +23,13 @@ export interface ComposerTools {
   model?: { label: string; options: { label: string; group?: string; marks?: string; current: boolean; onPick(): void }[] };
   /** Tokens the context takes now and the model's window (only when the window is known). */
   context?: { tokens: number; window: number };
+  /** Pictures: pasted (Ctrl+V), dropped or picked; absent: pictures are attached as plain files. */
+  images?: {
+    fromPaste(data: ArrayBuffer): Promise<{ path: string; url: string } | null>;
+    prepare(path: string): Promise<{ path: string; url: string } | null>;
+    /** false: the model in use cannot take pictures (sending waits until another is picked). */
+    accepted: boolean | null;
+  };
 }
 
 export interface ComposerProps {
@@ -35,6 +43,8 @@ export interface ComposerProps {
 
 const drafts = new Map<string, string>();
 const attached = new Map<string, string[]>();
+/** Picture attachments: path -> URL to show it (kept with the drafts). */
+const thumbs = new Map<string, string>();
 
 /** True while an input method is composing; keyCode 229 covers Chromium's IME keydown. */
 export function isComposing(e: KeyboardEvent): boolean {
@@ -75,7 +85,9 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
   const [files, setFiles] = useState<string[]>(() => attached.get(sessionKey) ?? []);
   const [prevKey, setPrevKey] = useState(sessionKey);
   const [menu, setMenu] = useState<{ items: MenuItem[]; x: number; y: number } | null>(null);
+  const [viewing, setViewing] = useState<{ url: string; name: string } | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const modelBtn = useRef<HTMLButtonElement>(null);
 
   if (prevKey !== sessionKey) {
     setPrevKey(sessionKey);
@@ -103,13 +115,64 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
     setFiles(unique);
     attached.set(sessionKey, unique);
   };
+  // Pictures are saved before they are added: add to the list as it is then, not as it was.
+  const addAttached = (more: string[]) =>
+    setFiles((prev) => {
+      const unique = [...new Set([...prev, ...more])].slice(0, 20);
+      attached.set(sessionKey, unique);
+      return unique;
+    });
+  // Removed from the list as it is now (several quick clicks each take one off).
+  const removeAttached = (path: string) =>
+    setFiles((prev) => {
+      const next = prev.filter((x) => x !== path);
+      attached.set(sessionKey, next);
+      return next;
+    });
 
+  const t = tools ?? {};
+  const pictures = files.filter((p) => thumbs.has(p));
+  const blocked = pictures.length > 0 && t.images?.accepted === false;
   const send = () => {
     const value = text.trim();
-    if (!value) return;
+    if ((!value && !files.length) || blocked) return;
     onSend(value, files);
     update('');
     setAttached([]);
+  };
+
+  /** Adds files: pictures are made to fit and get a thumbnail, others are attached as they are. */
+  const addPaths = async (paths: string[]) => {
+    const out: string[] = [];
+    for (const p of paths) {
+      const r = t.images ? await t.images.prepare(p).catch(() => null) : null;
+      if (r) thumbs.set(r.path, r.url);
+      out.push(r?.path ?? p);
+    }
+    if (out.length) addAttached(out);
+  };
+
+  // Ctrl+V with a picture (and no text) on the clipboard: it is attached. Only at the paste.
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const img = t.images;
+    if (!img) return;
+    const items = [...e.clipboardData.items];
+    const pics = items.filter((i) => i.kind === 'file' && i.type.startsWith('image/'));
+    if (!pics.length || e.clipboardData.types.includes('text/plain')) return;
+    e.preventDefault();
+    void (async () => {
+      const out: string[] = [];
+      for (const it of pics) {
+        const f = it.getAsFile();
+        if (!f) continue;
+        const r = await img.fromPaste(await f.arrayBuffer()).catch(() => null);
+        if (r) {
+          thumbs.set(r.path, r.url);
+          out.push(r.path);
+        }
+      }
+      if (out.length) addAttached(out);
+    })();
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -124,13 +187,12 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
     setMenu({ items, x: r.left, y: r.top - 8 - items.length * 34 - groups * 24 });
   };
 
-  const canSend = text.trim().length > 0;
-  const t = tools ?? {};
+  const canSend = (text.trim().length > 0 || files.length > 0) && !blocked;
   const left: ReactNode[] = [];
   if (t.pickFiles) {
     const pick = t.pickFiles;
     left.push(
-      <button key="attach" type="button" className="icon-btn" aria-label="添加附件" title="添加附件" onClick={() => void pick().then((p) => p.length && setAttached([...files, ...p]))}>
+      <button key="attach" type="button" className="icon-btn" aria-label="添加附件" title="添加附件" onClick={() => void pick().then((p) => p.length && void addPaths(p))}>
         <Icon name="plus" size={16} />
       </button>,
     );
@@ -155,16 +217,40 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
           const paths = [...e.dataTransfer.files].map((f) => t.pathForFile!(f)).filter(Boolean);
           if (!paths.length) return;
           e.preventDefault();
-          setAttached([...files, ...paths]);
+          void addPaths(paths);
         }}
       >
-        {files.length ? (
+        {pictures.length ? (
+          <div className="composer-thumbs">
+            {pictures.map((p) => (
+              <span key={p} className="composer-thumb">
+                <button type="button" className="composer-thumb-open" onClick={() => setViewing({ url: thumbs.get(p)!, name: baseName(p) })} aria-label={`查看 ${baseName(p)}`} title={baseName(p)}>
+                  <img src={thumbs.get(p)} alt="" />
+                </button>
+                <button type="button" className="composer-thumb-remove" aria-label={`移除 ${baseName(p)}`} title="移除" onClick={() => removeAttached(p)}>
+                  <Icon name="close" size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {blocked ? (
+          <p className="composer-warn" role="status">
+            当前模型不支持图片，请切换模型。
+            {t.model && t.model.options.length > 1 ? (
+              <button type="button" className="text-btn" onClick={() => modelBtn.current?.click()}>
+                切换模型
+              </button>
+            ) : null}
+          </p>
+        ) : null}
+        {files.length > pictures.length ? (
           <div className="composer-files">
-            {files.map((p) => (
+            {files.filter((p) => !thumbs.has(p)).map((p) => (
               <span key={p} className="composer-file" title={p}>
                 <FileGlyph name={p} />
                 <span className="composer-chip-text">{baseName(p)}</span>
-                <button type="button" className="composer-file-remove" aria-label={`移除 ${baseName(p)}`} onClick={() => setAttached(files.filter((x) => x !== p))}>
+                <button type="button" className="composer-file-remove" aria-label={`移除 ${baseName(p)}`} onClick={() => removeAttached(p)}>
                   <Icon name="close" size={12} />
                 </button>
               </span>
@@ -180,6 +266,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
           aria-label="消息"
           onChange={(e) => update(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
         />
         <div className="composer-bar">
           <div className="composer-left">{left}</div>
@@ -205,6 +292,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
             {t.model ? (
               t.model.options.length > 1 ? (
                 <button
+                  ref={modelBtn}
                   type="button"
                   className="composer-chip composer-model"
                   aria-haspopup="menu"
@@ -239,6 +327,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
         </div>
       </div>
       {menu ? <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} /> : null}
+      {viewing ? <ImageViewer url={viewing.url} name={viewing.name} onClose={() => setViewing(null)} /> : null}
     </div>
   );
 }

@@ -105,3 +105,63 @@ describe('Composer controls', () => {
     expect(screen.queryByTitle(/工作文件夹/)).toBeNull();
   });
 });
+
+describe('pictures in the input box', () => {
+  const pasteImage = (el: HTMLElement, withText = false) =>
+    fireEvent.paste(el, {
+      clipboardData: {
+        items: [{ kind: 'file', type: 'image/png', getAsFile: () => ({ arrayBuffer: async () => new ArrayBuffer(4) }) }],
+        types: withText ? ['Files', 'text/plain'] : ['Files'],
+      },
+    });
+  const images = (accepted: boolean | null = true) => ({
+    fromPaste: vi.fn(async () => ({ path: 'C:/tmp/a.png', url: 'spica-file://f/1' })),
+    prepare: vi.fn(async (p: string) => (p.endsWith('.png') ? { path: p, url: 'spica-file://f/2' } : null)),
+    accepted,
+  });
+
+  it('Ctrl+V with a picture attaches it as a thumbnail; it can be removed; a picture alone can be sent', async () => {
+    const onSend = vi.fn();
+    const img = images();
+    render(<Composer running={false} onSend={onSend} onStop={vi.fn()} sessionKey="pic1" tools={{ images: img }} />);
+    pasteImage(screen.getByRole('textbox', { name: '消息' }));
+    expect(await screen.findByRole('button', { name: '查看 a.png' })).toBeTruthy();
+    expect(img.fromPaste).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    expect(onSend).toHaveBeenCalledWith('', ['C:/tmp/a.png']);
+    expect(screen.queryByRole('button', { name: '查看 a.png' })).toBeNull();
+    pasteImage(screen.getByRole('textbox', { name: '消息' }));
+    fireEvent.click(await screen.findByRole('button', { name: '移除 a.png' }));
+    expect(screen.queryByRole('button', { name: '查看 a.png' })).toBeNull();
+  });
+
+  it('text on the clipboard is pasted as text, the picture left alone', () => {
+    const img = images();
+    render(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="pic2" tools={{ images: img }} />);
+    pasteImage(screen.getByRole('textbox', { name: '消息' }), true);
+    expect(img.fromPaste).not.toHaveBeenCalled();
+  });
+
+  it('a model that takes no pictures: one line, a way to switch, and sending waits', async () => {
+    const onSend = vi.fn();
+    const pick = vi.fn();
+    render(
+      <Composer
+        running={false}
+        onSend={onSend}
+        onStop={vi.fn()}
+        sessionKey="pic3"
+        tools={{
+          images: images(false),
+          model: { label: 'deepseek-v4-pro', options: [{ label: 'deepseek-v4-pro', current: true, onPick: vi.fn() }, { label: 'qwen-vl', current: false, onPick: pick }] },
+        }}
+      />,
+    );
+    pasteImage(screen.getByRole('textbox', { name: '消息' }));
+    expect(await screen.findByText('当前模型不支持图片，请切换模型。')).toBeTruthy();
+    expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '切换模型' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'qwen-vl' }));
+    expect(pick).toHaveBeenCalled();
+  });
+});
