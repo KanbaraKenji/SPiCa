@@ -331,6 +331,10 @@ export const NET_HINTS: Record<string, string> = {
   'gateway.unauthorized': '凭据无效（HTTP 401），请检查 API Key。',
   'gateway.forbidden': '无访问权限（HTTP 403），请检查订阅和模型权限。',
   'gateway.not_found': '路径无效（HTTP 404），请检查接口地址和模型名。',
+  // test connection only: a 404 at an address not ending in a version, also with /v1 added
+  'gateway.not_found_version': '路径无效（HTTP 404），请检查 接口地址 是否需要以 /v1 结尾。',
+  // test connection only: it worked once /v1 was added (the form takes the new address)
+  'address.v1_added': '已在 接口地址 末尾补上 /v1，连接成功。',
   'gateway.bad_request': '请求无效（HTTP 400），请检查模型名和参数。',
   'gateway.rate_limited': '请求过于频繁（HTTP 429），请调低 同时请求。',
   'gateway.server': '服务端错误（HTTP 5xx），请稍后重试。',

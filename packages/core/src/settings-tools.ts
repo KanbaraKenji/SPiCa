@@ -187,6 +187,7 @@ function testView(kind: CoreKind, model: string, r: ProbeResult) {
     latencyMs: r.latencyMs,
     ...(r.firstByteMs !== undefined ? { firstByteMs: r.firstByteMs } : {}),
     ...(r.model ? { serverModel: r.model } : {}),
+    ...(r.suggestedBaseUrl ? { suggestedBaseUrl: r.suggestedBaseUrl } : {}),
   };
 }
 
@@ -515,6 +516,12 @@ export function settingsTools(rt: Runtime): McpTool[] {
         }
         const tested = await test(d.kind, config, testModel);
         if (!tested.ok && a.saveIfTestFails !== true) return { saved: false, test: tested };
+        // the address only worked with /v1 added: save that one, and say so (as the form does)
+        const baseUrlAdjusted = tested.suggestedBaseUrl ? { from: d.baseUrl, to: tested.suggestedBaseUrl } : undefined;
+        if (baseUrlAdjusted) {
+          d.baseUrl = baseUrlAdjusted.to;
+          if (existing && !changes.includes('baseUrl')) changes.unshift('baseUrl');
+        }
         const card = {
           action: existing ? 'change_connection' : 'add_connection',
           ...(existing ? { id: existing.id } : {}),
@@ -555,6 +562,7 @@ export function settingsTools(rt: Runtime): McpTool[] {
               });
               return {
                 saved: true,
+                ...(baseUrlAdjusted ? { baseUrlAdjusted } : {}),
                 connection: view(after.connections.find((c) => c.id === saved.id) ?? saved, after),
                 default: after.default,
                 strong: after.strong,

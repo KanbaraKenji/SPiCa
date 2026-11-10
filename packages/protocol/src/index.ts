@@ -486,6 +486,12 @@ export interface ProbeResult {
   httpStatus?: number;
   /** Technical detail (redacted), for logs and "show details". */
   message?: string;
+  /**
+   * The address that worked when the given one answered 404: the same with /v1
+   * added (code address.v1_added). The form puts it in; the saved address is
+   * what conversations use, nothing is changed behind the user's back.
+   */
+  suggestedBaseUrl?: string;
 }
 
 export interface SuggestedAction {

@@ -8,6 +8,8 @@ import type { LimiterConfig } from '../limiter.ts';
 import { AnthropicProvider } from '../providers/anthropic.ts';
 import { OpenAICompatibleProvider } from '../providers/openai.ts';
 import { probeProvider } from '../providers/probe.ts';
+import { NET_HINTS } from '../net.ts';
+import type { ProbeResult } from '../types.ts';
 import type { Provider } from '../providers/types.ts';
 import { Wso2Provider } from '../providers/wso2.ts';
 import { Runtime } from '../runtime.ts';
@@ -181,6 +183,26 @@ export function createProvider(c: ProviderConfig): Provider {
     default:
       throw new Error(`provider ${(c as ProviderConfig).id}: unknown kind ${(c as ProviderConfig).kind}`);
   }
+}
+
+/**
+ * Test connection with a configuration from the settings form or an agent. A
+ * gateway that answers 404 to an address not ending in a version (/v1, /v2...)
+ * often wants /v1: try once more with /v1 added. When that works the result
+ * carries `suggestedBaseUrl` (the form puts it in and says so); when it does not,
+ * the first 404 is reported with a hint to check the address's ending. Only the
+ * test does this: requests of a conversation use the address as saved.
+ */
+export async function probeConfig(config: ProviderConfig, model: string, opts: { tracer?: Runtime['tracer']; timeoutMs?: number } = {}): Promise<ProbeResult> {
+  const run = (c: ProviderConfig) => probeProvider(createProvider(c), { model, ...(opts.tracer ? { tracer: opts.tracer } : {}), ...(opts.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}) });
+  const first = await run(config);
+  const base = (config.baseUrl ?? '').replace(/\/+$/, '');
+  const versioned = /\/v\d+$/i.test(base);
+  if (first.ok || first.httpStatus !== 404 || first.stage !== 'model' || !base || versioned || config.kind === 'anthropic') return first;
+  const suggested = `${base}/v1`;
+  const again = await run({ ...config, baseUrl: suggested });
+  if (again.ok) return { ...again, suggestedBaseUrl: suggested, code: 'address.v1_added', hint: NET_HINTS['address.v1_added']! };
+  return { ...first, code: 'gateway.not_found_version', hint: `模型调用失败：${NET_HINTS['gateway.not_found_version']!}` };
 }
 
 /** Take the single-writer lock for a database; throws when another live process holds it. */
@@ -380,7 +402,7 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
     const port: { server?: BackendServer } = {};
     runtime.settingsBridge = {
       host: (method, params = []) => (port.server ? port.server.callHost(method, params) : Promise.reject(Object.assign(new Error('backend starting'), { code: 'host_unavailable' }))),
-      probe: (config, model) => probeProvider(createProvider(config), { model, tracer: runtime.tracer }),
+      probe: (config, model) => probeConfig(config, model, { tracer: runtime.tracer }),
       providerConfig: (id) => runningConfigs.get(runtime)?.get(id),
       network: () => networkStatus(),
     };
@@ -436,8 +458,7 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
         /** Current mail settings and whether polling runs. */
         mailSettings: () => ({ ...runtime.mail.settings, running: runtime.mail.running, sources: runtime.mail.activeSources.map((s) => s.id) }),
         /** Test connection with a provider config from the settings form. */
-        probeProvider: (config: unknown, model: unknown) =>
-          probeProvider(createProvider(config as ProviderConfig), { model: String(model), tracer: runtime.tracer }),
+        probeProvider: (config: unknown, model: unknown) => probeConfig(config as ProviderConfig, String(model), { tracer: runtime.tracer }),
         /** Context window the core knows for a model (to pre-fill the settings form), or null. kind: ProviderConfig kind. */
         knownContextWindow: (kind: unknown, model: unknown, catalogId?: unknown) =>
           runtime.ledger.knownContextWindow(String(kind), String(model), typeof catalogId === 'string' ? catalogId : undefined),

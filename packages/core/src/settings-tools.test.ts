@@ -389,6 +389,26 @@ describe('model settings over Spica MCP', () => {
     });
   });
 
+  it('an address that only works with /v1 added: the agent\'s save uses the same test, saves that address and says so', async () => {
+    const s = createServer((req, res) => {
+      req.resume();
+      if (req.url === '/api/v1/chat/completions') {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        return void res.end('data: {"id":"c","model":"m1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}\n\ndata: [DONE]\n\n');
+      }
+      res.writeHead(404, { 'content-type': 'application/json' }).end('{}');
+    });
+    const base = `http://127.0.0.1:${await listenFetchable(s)}`;
+    closers.push(() => new Promise<void>((r) => (s.closeAllConnections(), s.close(() => r()))));
+    const { call, win, events } = await setup();
+    expect(await call('spica_test_model', { kind: 'openai-compatible', baseUrl: `${base}/api`, model: 'm1', apiKey: API_KEY })).toMatchObject({ ok: true, suggestedBaseUrl: `${base}/api/v1` });
+    const r = await call('spica_save_model', { kind: 'openai-compatible', name: 'Gateway', baseUrl: `${base}/api`, apiKey: API_KEY, model: 'm1', contextWindow: 8000 });
+    expect(r).toMatchObject({ saved: true, baseUrlAdjusted: { from: `${base}/api`, to: `${base}/api/v1` }, connection: { baseUrl: `${base}/api/v1` } });
+    expect(win.list().connections[0]!.baseUrl).toBe(`${base}/api/v1`);
+    const change = events.find((e) => e.type === 'settings.changed');
+    expect(change?.type === 'settings.changed' ? change.change.baseUrl : null).toBe(`${base}/api/v1`); // the card shows the address that is saved
+  });
+
   it('a user who has not answered yet: the agent hears it is waiting and asks again', async () => {
     const { b, client, events, call } = await setup({ confirm: true });
     b.runtime.settingsBridge!.waitMs = 30;
