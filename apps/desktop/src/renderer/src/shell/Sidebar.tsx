@@ -60,7 +60,19 @@ function waitingForYou(s: SessionInfo): boolean {
   return s.status === 'awaiting_answer' || s.status === 'awaiting_confirm';
 }
 
-/** Collapsed row summary over everything below it: only counts that are not zero. */
+/**
+ * A collapsed row's one mark for everything below it: the most pressing state there. Something waiting for
+ * you (the same mark its row has), else something running, else something queued; null: nothing going on.
+ */
+export function rollupStatus(descendants: SessionInfo[]): SessionInfo['status'] | null {
+  const waiting = descendants.find(waitingForYou);
+  if (waiting) return waiting.status;
+  if (descendants.some((c) => c.status === 'thinking' || c.status === 'tool')) return 'thinking';
+  if (descendants.some((c) => c.status === 'queued')) return 'queued';
+  return null;
+}
+
+/** Collapsed row's counts over everything below it, said on hovering its mark: only counts that are not zero. */
 export function projectSummary(descendants: SessionInfo[]): string {
   const running = descendants.filter((c) => c.status === 'thinking' || c.status === 'tool').length;
   const queued = descendants.filter((c) => c.status === 'queued').length;
@@ -146,9 +158,8 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
   // Rows with something going on below them (or the open session) start expanded.
   const open =
     s.id in tree.expanded ? tree.expanded[s.id] === true : tree.openByDefault.has(s.id) || all.some((k) => isRunning(k.status) || k.id === tree.activeId);
-  const summary = kids.length && !open ? projectSummary(all) : '';
-  // Something below waits for the user: the summary in the warning colour (by state, not by its words).
-  const waiting = Boolean(summary) && all.some(waitingForYou);
+  // Collapsed: one mark for what goes on below (no words, no numbers on the row); the counts on hover.
+  const rollup = kids.length && !open ? rollupStatus(all) : null;
   const active = !tree.settingsOpen && s.id === tree.activeId;
   const name = s.title ?? '';
   const menuOpen = tree.menuFor === s.id;
@@ -188,7 +199,7 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
               </span>
             ) : null}
             {tree.notes?.get(s.id) && !active ? <NewDot text={tree.notes.get(s.id)!} /> : null}
-            {summary ? <span className={waiting ? 'tree-summary is-waiting' : 'tree-summary'} title={summary}>{summary}</span> : <StatusMark status={s.status} />}
+            {rollup ? <StatusMark status={rollup} note={projectSummary(all)} /> : <StatusMark status={s.status} />}
           </button>
         )}
         {more ? (

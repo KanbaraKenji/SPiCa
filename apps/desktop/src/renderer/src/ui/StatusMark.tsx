@@ -30,11 +30,13 @@ const ICON: Partial<Record<SessionStatus, StatusIconName>> = {
   done: 'done',
 };
 
-export function StatusMark({ status }: { status: SessionStatus }) {
+/** `note`: said on hover and to screen readers instead of the state's name (a collapsed project's counts). */
+export function StatusMark({ status, note }: { status: SessionStatus; note?: string }) {
   const name = ICON[status];
   if (!name) return <span className="status-mark" aria-hidden />;
+  const said = note || STATUS_LABEL[status];
   return (
-    <span className="status-mark" role="img" aria-label={STATUS_LABEL[status]} title={STATUS_LABEL[status]}>
+    <span className="status-mark" role="img" aria-label={said} title={said}>
       <SpicaStatusIcon name={name} size={12} />
     </span>
   );

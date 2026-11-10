@@ -2,7 +2,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
-import { projectSummary, Sidebar } from './Sidebar';
+import { projectSummary, rollupStatus, Sidebar } from './Sidebar';
+import type { SessionInfo } from '@spica/protocol';
 
 afterEach(cleanup);
 
@@ -242,23 +243,24 @@ describe('Sidebar', () => {
     expect(within(row).getByRole('textbox', { name: '名称' })).toBeTruthy();
   });
 
-  it('collapsing a project shows the summary instead of children', () => {
+  it('collapsing a project shows one mark for what goes on below, no words or numbers; the counts on hover', () => {
     render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} />);
     fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
     fireEvent.click(screen.getByRole('button', { name: '收起 新品样机评审' }));
-    expect(screen.getByText('1 个待处理 · 1 个运行中 · 1 个排队中')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /汇总测试报告/ })).toBeNull();
+    const row = screen.getByTitle('新品样机评审').closest('.tree-row') as HTMLElement;
+    expect(row.textContent).toBe('新品样机评审');
+    // 起草评审纪要 waits for an answer: the mark is the one its own row has, its note the counts.
+    const mark = row.querySelector('.status-mark') as HTMLElement;
+    expect(mark.getAttribute('title')).toBe('1 个待处理 · 1 个运行中 · 1 个排队中');
+    expect(mark.getAttribute('aria-label')).toBe('1 个待处理 · 1 个运行中 · 1 个排队中');
   });
 
-  it('a collapsed project’s summary is in the warning colour while something below waits for you (by state, not by its words)', () => {
-    const props = { activeId: null, onOpen: vi.fn(), onNewChat: vi.fn(), onSettings: vi.fn(), settingsOpen: false };
-    const { rerender } = render(<Sidebar sessions={seed.sessions} {...props} />);
-    fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
-    fireEvent.click(screen.getByRole('button', { name: '收起 新品样机评审' }));
-    expect(screen.getByText('1 个待处理 · 1 个运行中 · 1 个排队中').className).toBe('tree-summary is-waiting');
-    // Nothing waits any more (the sub-task that asked is running again): the plain colour.
-    const none = seed.sessions.map((x) => (x.id === SEED_IDS.minutes ? { ...x, status: 'thinking' as const } : x));
-    rerender(<Sidebar sessions={none} {...props} />);
-    expect(screen.getByText('2 个运行中 · 1 个排队中').className).toBe('tree-summary');
+  it('the mark of a collapsed project is the most pressing state below: waiting for you, else running, else queued, else its own', () => {
+    const s = (id: string, status: SessionInfo['status']) => ({ id, status }) as SessionInfo;
+    expect(rollupStatus([s('a', 'thinking'), s('b', 'awaiting_confirm'), s('c', 'queued')])).toBe('awaiting_confirm');
+    expect(rollupStatus([s('a', 'queued'), s('b', 'tool')])).toBe('thinking');
+    expect(rollupStatus([s('a', 'done'), s('b', 'queued')])).toBe('queued');
+    expect(rollupStatus([s('a', 'done'), s('b', 'idle')])).toBeNull();
   });
 });
