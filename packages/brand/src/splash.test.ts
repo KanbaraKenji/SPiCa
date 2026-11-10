@@ -143,10 +143,12 @@ describe('收尾', () => {
         let prev = 0;
         let first = 0;
         let last = 0;
+        // 每个时刻只算一帧，和下一步共用（采样和断言不变，计算量减半）
+        let a = splashFrame(d.start, ready, o).stars[0]!;
         for (let t = d.start; t < d.end - dt; t += dt) {
-          const a = splashFrame(t, ready, o).stars[0]!;
           const b = splashFrame(t + dt, ready, o).stars[0]!;
           const v = Math.hypot(b.x - a.x, b.y - a.y) / dt;
+          a = b;
           expect(v).toBeGreaterThanOrEqual(prev - 1); // 1 像素/秒的数值误差
           if (!first) first = v;
           last = v;
@@ -155,7 +157,8 @@ describe('收尾', () => {
         expect(last / first).toBeGreaterThan(1.45);
       }
     }
-  });
+    // 纯计算，不看真实时钟；单独跑约 0.5 秒，机器满负载时会慢上十倍，给足时限
+  }, 30_000);
 
   it('拖尾：加载中短而淡，收尾拉长变浓，合心后收进花心再消失', () => {
     const F = SPLASH_FINISH;
@@ -381,16 +384,13 @@ describe('拖尾光带', () => {
 });
 
 describe('逐帧连续性（按 60 帧/秒走完整段，几种 ready 时刻）', () => {
-  // 光带长度 ≈ 轮廓周长的一半
-  const ribbonLen = (f: ReturnType<typeof splashFrame>, companion: boolean) =>
-    f.ribbons
-      .filter((x) => x.companion === companion)
-      .reduce((sum, x) => {
-        const pts = x.d.replace(/[MZ]/g, '').split('L').map((p) => p.trim().split(/\s+/).map(Number));
-        let per = 0;
-        for (let i = 1; i < pts.length; i++) per += Math.hypot(pts[i]![0]! - pts[i - 1]![0]!, pts[i]![1]! - pts[i - 1]![1]!);
-        return sum + per / 2;
-      }, 0);
+  // 一条光带的长度 ≈ 轮廓周长的一半
+  const bandLen = (d: string) => {
+    const pts = d.replace(/[MZ]/g, '').split('L').map((p) => p.trim().split(/\s+/).map(Number));
+    let per = 0;
+    for (let i = 1; i < pts.length; i++) per += Math.hypot(pts[i]![0]! - pts[i - 1]![0]!, pts[i]![1]! - pts[i - 1]![1]!);
+    return per / 2;
+  };
 
   it('星的位移没有跳变，光带长度没有骤降（合心后尾巴收进花心，也是逐帧收短）', () => {
     for (const ready of [3, 5.37, 7, 12.25]) {
@@ -412,12 +412,15 @@ describe('逐帧连续性（按 60 帧/秒走完整段，几种 ready 时刻）'
         prevStar = s ?? null;
         if (!s) prevStep = null;
         for (const front of [true, false]) expect(f.ribbons.filter((x) => x.front === front).length).toBeLessThanOrEqual(SPLASH_RIBBON_SLOTS); // 组件里的位置够用，不会漏画
-        const len: [number, number] = [ribbonLen(f, false), ribbonLen(f, true)];
+        // 每条光带的长度只算一次，下面的总长和亮度总量共用
+        const bands = f.ribbons.map((x) => ({ companion: x.companion, opacity: x.opacity, len: bandLen(x.d) }));
+        const total = (companion: boolean) => bands.filter((x) => x.companion === companion).reduce((sum, x) => sum + x.len, 0);
+        const len: [number, number] = [total(false), total(true)];
         if (prevLen) {
           for (const k of [0, 1] as const) expect(prevLen[k] - len[k]).toBeLessThan(80); // 一帧最多收短 80 像素（星最快约 75 像素/帧）
         }
         // 光带的「亮度总量」（长度 × 透明度）逐帧变化不超过最亮时的 25%：不会一帧整圈亮、下一帧整圈灭
-        const glow = f.ribbons.filter((x) => !x.companion).reduce((sum, x) => sum + ribbonLen({ ...f, ribbons: [x] }, false) * x.opacity, 0);
+        const glow = bands.filter((x) => !x.companion).reduce((sum, x) => sum + x.len * x.opacity, 0);
         if (prevGlow !== null) expect(Math.abs(glow - prevGlow)).toBeLessThan(0.25 * 212);
         prevGlow = glow;
         if (t > ready + S.merge + 0.1 && len[0] > 50) sawDrain = true;
@@ -425,7 +428,8 @@ describe('逐帧连续性（按 60 帧/秒走完整段，几种 ready 时刻）'
       }
       expect(sawDrain).toBe(true); // 合心 0.1 秒后尾巴还在往里收
     }
-  });
+    // 纯计算，不看真实时钟；单独跑约 0.5 秒，机器满负载时会慢上十倍，给足时限
+  }, 30_000);
 });
 
 describe('大半径段的轨道几何', () => {
