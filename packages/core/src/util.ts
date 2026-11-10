@@ -49,11 +49,11 @@ export function redact(text: string, secrets: readonly string[] = []): string {
     .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[redacted]') // JWT
     .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/:@]+:[^\s/@]+@/gi, '$1[redacted]@') // user:password@ in URLs
     .replace(/((?:Bearer|Basic)\s+)[A-Za-z0-9._~+/=-]{8,}/gi, '$1[redacted]')
-    .replace(/("?(?:api[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|secret[_-]?key|private[_-]?key|password|passwd|(?<![A-Za-z])token|(?<![A-Za-z])secret)"?\s*[:=]\s*"?)[^\s",}]+/gi, '$1[redacted]');
+    .replace(/("?(?:api[_-]?key|client[_-]?secret|consumer[_-]?secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|secret[_-]?key|private[_-]?key|password|passwd|(?<![A-Za-z])token|(?<![A-Za-z])secret)"?\s*[:=]\s*"?)[^\s",}]+/gi, '$1[redacted]');
 }
 
 /** Field names whose values are credentials, whatever they look like. */
-export const SECRET_FIELD = /^(api[_-]?key|x-api-key|apikey|client[_-]?secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|token|secret|secret[_-]?key|private[_-]?key|password|passwd|authorization|cookie)$/i;
+export const SECRET_FIELD = /^(api[_-]?key|x-api-key|apikey|client[_-]?secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|token|secret|secret[_-]?key|private[_-]?key|password|passwd|authorization|cookie|consumer[_-]?secret|consumer[_-]?key)$/i;
 
 /** Redact every string inside a JSON-like value; values of credential-named fields are replaced outright. */
 export function redactDeep(v: unknown, secrets: readonly string[] = []): unknown {

@@ -244,8 +244,6 @@ export interface AttachmentMeta {
   file?: FileCardMeta;
   /** Why it could not be read (English, for logs). */
   error?: string;
-  /** For a call that needed confirmation: who gave it ('user' = the confirmation card, 'view' = a plugin view that asked the user itself). */
-  confirmedBy?: 'user' | 'view';
 }
 
 /** An open question or confirmation the session is waiting on. */
@@ -266,7 +264,8 @@ export interface GuardNote {
  * plugin set it to automatic); outside_link = opening a link that came from outside content; sensitive_file = reading a
  * credential file after outside content.
  */
-export type GuardCause = 'untrusted_turn' | 'outside_link' | 'sensitive_file' | 'plugin_view';
+/** settings_change: a script connected to Spica's MCP service asks to change the model settings (only the window can answer). */
+export type GuardCause = 'untrusted_turn' | 'outside_link' | 'sensitive_file' | 'plugin_view' | 'settings_change';
 
 /** What a plugin's own view gets back from callPluginTool (the tool's text as is). */
 export interface PluginToolResult {
@@ -447,7 +446,8 @@ export type CoreEventType = CoreEvent['type'];
 // Traceable records
 // ---------------------------------------------------------------------------
 
-export type TraceKind = 'model' | 'search' | 'fetch' | 'mcp' | 'auth' | 'other';
+/** 'settings': a setting changed from outside the window (Spica's MCP service), no external request. */
+export type TraceKind = 'model' | 'search' | 'fetch' | 'mcp' | 'auth' | 'settings' | 'other';
 
 /**
  * One external request (model, search, web fetch, MCP, token endpoint).
@@ -485,6 +485,10 @@ export interface TraceRecord {
   httpStatus?: number;
   attempts?: number;
   error?: string;
+  /** For a call that needed confirmation: who gave it ('user' = the confirmation card, 'view' = a plugin view that asked the user itself). */
+  confirmedBy?: 'user' | 'view';
+  /** kind 'settings': names of the fields that changed (never their values). */
+  changes?: string[];
 }
 
 // ---------------------------------------------------------------------------

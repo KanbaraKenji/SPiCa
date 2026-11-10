@@ -17,11 +17,13 @@ import { connectMcp, type McpServerConfig, type McpStdioClient } from './mcp/cli
 import { fileTools } from './tools/fs-tools.ts';
 import { ToolRegistry, validateInput, type FileExtractor, type Tool } from './tools/types.ts';
 import { Tracer } from './trace.ts';
+import type { SettingsBridge } from './settings-tools.ts';
 import type {
   AgentRole,
   ChildNoteMeta,
   CreateProjectRequest,
   CreateSessionRequest,
+  GuardCause,
   Message,
   ProjectDetail,
   PluginToolResult,
@@ -142,6 +144,15 @@ export class Runtime implements RuntimeInternals {
   readonly #mcp = new Map<string, { client: McpStdioClient; source: string; disconnect: () => Promise<void> }>();
   readonly #reports = new Map<string, string>();
   readonly #viewConfirms = new Map<string, (approved: boolean) => void>();
+  /** Confirmations only the window may answer (not Spica's MCP service: the asking script would answer itself). */
+  readonly #userOnly = new Set<string>();
+  /**
+   * How Spica's MCP service reaches the host's settings (set by startBackend; see
+   * settings-tools.ts). Undefined: the settings tools say they are not available.
+   */
+  settingsBridge: SettingsBridge | undefined;
+  /** Changes to the settings from Spica's MCP service wait for the user's confirmation (default on). */
+  confirmSettingsChanges = true;
   readonly #viewLimiters = new Map<string, RateLimiter>();
 
   constructor(opts: RuntimeOptions) {
@@ -646,20 +657,46 @@ export class Runtime implements RuntimeInternals {
   }
 
   #askView(host: Session | undefined, callId: string, name: string, input: unknown, reason: string): Promise<boolean> {
-    // without any session yet the card goes out on the runtime ('' session id); the UI shows it anyway
-    const where = { sessionId: host?.id ?? '', parentChain: host?.parentChain ?? [] };
-    return new Promise((resolve) => {
+    return this.askOutsideSession({ callId, name, input, reason, cause: 'plugin_view', ...(host ? { host } : {}) }).answer;
+  }
+
+  /**
+   * Show a confirmation card that belongs to no conversation (a plugin view's
+   * action, a settings change from a script). It goes out on `host` or the runtime
+   * ('' session id); answered with confirm(anySessionId, callId, approved).
+   * `userOnly`: Spica's MCP service may not answer it. Unanswered after 10 minutes: no.
+   */
+  askOutsideSession(card: {
+    name: string;
+    input: unknown;
+    reason: string;
+    cause: GuardCause;
+    callId?: string;
+    host?: Session;
+    userOnly?: boolean;
+  }): { callId: string; answer: Promise<boolean> } {
+    const callId = card.callId ?? newId('ask');
+    const where = { sessionId: card.host?.id ?? '', parentChain: card.host?.parentChain ?? [] };
+    if (card.userOnly) this.#userOnly.add(callId);
+    const answer = new Promise<boolean>((resolve) => {
       const timer = setTimeout(() => finish(false), 10 * 60_000); // nobody answered: no
       timer.unref?.();
       const finish = (approved: boolean) => {
         clearTimeout(timer);
         this.#viewConfirms.delete(callId);
+        this.#userOnly.delete(callId);
         this.events.emit(where, { type: 'confirm.resolved', callId, approved });
         resolve(approved);
       };
       this.#viewConfirms.set(callId, finish);
-      this.events.emit(where, { type: 'confirm.request', callId, name, input, reason, cause: 'plugin_view' });
+      this.events.emit(where, { type: 'confirm.request', callId, name: card.name, input: card.input, reason: card.reason, cause: card.cause });
     });
+    return { callId, answer };
+  }
+
+  /** True for a confirmation only the window may answer (see askOutsideSession). */
+  isUserOnlyConfirm(callId: string): boolean {
+    return this.#userOnly.has(callId);
   }
 
   #viewLimiter(pluginId: string): RateLimiter {
@@ -886,6 +923,11 @@ export class Runtime implements RuntimeInternals {
    * records, relays, project activity and mail, filtered by project and time.
    * Model keys, endpoint addresses and key-looking strings are redacted.
    */
+  /** Remove every registered secret value from a text (see addRedactions); reveals nothing. */
+  redact(text: string): string {
+    return redact(text, [...this.#secrets]);
+  }
+
   exportUsageLog(filter: UsageLogFilter = {}): string {
     return exportUsageLog(this.store, filter, { secrets: [...this.#secrets] });
   }

@@ -98,6 +98,8 @@ export interface BackendConfig {
    * HTTPS_PROXY / HTTP_PROXY / NO_PROXY and NODE_EXTRA_CA_CERTS.
    */
   network?: NetworkConfig;
+  /** Spica's MCP service changing settings (spica_save_model, ...): whether each change waits for the user's confirmation. Default true. */
+  agentSettings?: { confirmChanges?: boolean };
 }
 
 /** What attachBackend() of an extension module returns. */
@@ -210,6 +212,14 @@ export interface SettingsPatch {
   mail?: Omit<MailConfig, 'sources'>;
   /** Proxy / certificates; applies to the next request. */
   network?: NetworkConfig;
+  agentSettings?: BackendConfig['agentSettings'];
+}
+
+/** The provider configurations a runtime runs with now (secrets included; never leaves the backend). */
+const runningConfigs = new WeakMap<Runtime, Map<string, ProviderConfig>>();
+
+function rememberConfigs(runtime: Runtime, providers: ProviderConfig[]): void {
+  runningConfigs.set(runtime, new Map(providers.map((p) => [p.id, p])));
 }
 
 /** Apply a settings patch to a running runtime; emits runtime.configured. */
@@ -225,6 +235,7 @@ export function applySettings(runtime: Runtime, patch: SettingsPatch): { changed
     }
     for (const id of runtime.providerIds) if (!keep.has(id)) runtime.removeProvider(id);
     warnings.push(...applyContextWindows(runtime, patch.providers, previous));
+    rememberConfigs(runtime, patch.providers);
     changed.push('providers');
   }
   if (patch.defaults) {
@@ -258,6 +269,10 @@ export function applySettings(runtime: Runtime, patch: SettingsPatch): { changed
   if (patch.network) {
     warnings.push(...configureNetwork(patch.network).warnings);
     changed.push('network');
+  }
+  if (patch.agentSettings?.confirmChanges !== undefined) {
+    runtime.confirmSettingsChanges = patch.agentSettings.confirmChanges;
+    changed.push('agentSettings');
   }
   runtime.events.emit(runtime.eventHost, { type: 'runtime.configured', changed, warnings });
   return { changed, warnings };
@@ -320,6 +335,16 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
     });
     warnings.push(...runtime.workflowErrors);
     warnings.push(...applyContextWindows(runtime, cfg.providers, []));
+    rememberConfigs(runtime, cfg.providers);
+    if (cfg.agentSettings?.confirmChanges === false) runtime.confirmSettingsChanges = false;
+    // the settings tools on Spica's MCP service reach the window's settings through the port (server is set below)
+    const port: { server?: BackendServer } = {};
+    runtime.settingsBridge = {
+      host: (method, params = []) => (port.server ? port.server.callHost(method, params) : Promise.reject(Object.assign(new Error('backend starting'), { code: 'host_unavailable' }))),
+      probe: (config, model) => probeProvider(createProvider(config), { model, tracer: runtime.tracer }),
+      providerConfig: (id) => runningConfigs.get(runtime)?.get(id),
+      network: () => networkStatus(),
+    };
     const restored = runtime.restore();
     const extensions: BackendExtension[] = [];
     for (const ext of cfg.extensions ?? []) {
@@ -377,6 +402,7 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
         knownContextWindow: (kind: unknown, model: unknown) => runtime.ledger.knownContextWindow(String(kind), String(model)),
       },
     });
+    port.server = server;
     let closed = false;
     return {
       runtime,

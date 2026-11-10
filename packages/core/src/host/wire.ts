@@ -33,7 +33,27 @@ export interface WireReady {
   warnings: string[];
 }
 
-export type WireMessage = WireRequest | WireResponse | WireEvent | WireReady;
+/**
+ * core → host: call a method the host registered (connectBackend's hostMethods),
+ * e.g. save a model connection where the host keeps its settings. Carries secrets
+ * the host must store; never goes into the event stream.
+ */
+export interface WireHostRequest {
+  t: 'hreq';
+  id: number;
+  method: string;
+  params: unknown[];
+}
+
+/** host → core: the result of a host request. */
+export interface WireHostResponse {
+  t: 'hres';
+  id: number;
+  result?: unknown;
+  error?: { code: string; message: string };
+}
+
+export type WireMessage = WireRequest | WireResponse | WireEvent | WireReady | WireHostRequest | WireHostResponse;
 
 /**
  * Minimal port: Electron's MessagePortMain and Node's worker_threads

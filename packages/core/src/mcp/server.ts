@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline';
 import type { Readable, Writable } from 'node:stream';
 import { createAgentApi } from '../api.ts';
 import type { Runtime } from '../runtime.ts';
+import { settingsTools } from '../settings-tools.ts';
 import type { CoreEvent, Message } from '../types.ts';
 
 /** A tool on Spica's MCP service. Extensions (e.g. the plugin package) add their own. */
@@ -103,7 +104,16 @@ export function spicaMcpTools(rt: Runtime, events: CoreEvent[]): McpTool[] {
     },
     { name: 'spica_steer', description: 'Insert a message into a running session; mode "next" (turn boundary) or "interrupt".', inputSchema: obj({ session_id: str, text: str, mode: { type: 'string', enum: ['next', 'interrupt'] } }, ['session_id', 'text']), run: (a) => api.steer(String(a.session_id), String(a.text), a.mode === 'interrupt' ? 'interrupt' : 'next') },
     { name: 'spica_answer', description: 'Answer an ask_user question card.', inputSchema: obj({ session_id: str, call_id: str, answer: str }, ['session_id', 'call_id', 'answer']), run: (a) => api.answer(String(a.session_id), String(a.call_id), String(a.answer)) },
-    { name: 'spica_confirm', description: 'Approve or decline an action waiting for confirmation.', inputSchema: obj({ session_id: str, call_id: str, approved: { type: 'boolean' } }, ['session_id', 'call_id', 'approved']), run: (a) => api.confirm(String(a.session_id), String(a.call_id), a.approved === true) },
+    {
+      name: 'spica_confirm',
+      description: 'Approve or decline an action waiting for confirmation. Settings changes asked for through this service are answered only in the Spica window.',
+      inputSchema: obj({ session_id: str, call_id: str, approved: { type: 'boolean' } }, ['session_id', 'call_id', 'approved']),
+      run: async (a) => {
+        // the script that asked would be answering itself
+        if (rt.isUserOnlyConfirm(String(a.call_id))) throw new Error('this confirmation can be answered only by the user in the Spica window');
+        return api.confirm(String(a.session_id), String(a.call_id), a.approved === true);
+      },
+    },
     { name: 'spica_abort', description: 'Stop a session.', inputSchema: obj({ session_id: str }, ['session_id']), run: (a) => api.abort(String(a.session_id)) },
     { name: 'spica_resume', description: 'Continue a session that was interrupted (e.g. by a restart).', inputSchema: obj({ session_id: str }, ['session_id']), run: (a) => api.resume(String(a.session_id)) },
     { name: 'spica_rename_session', description: 'Set or clear a session title.', inputSchema: obj({ session_id: str, title: str }, ['session_id']), run: (a) => api.renameSession(String(a.session_id), typeof a.title === 'string' ? a.title : null) },
@@ -191,6 +201,7 @@ export function spicaMcpTools(rt: Runtime, events: CoreEvent[]): McpTool[] {
         }),
     },
     { name: 'spica_export_traces', description: 'Traceable records (JSON Lines).', inputSchema: obj({ session_id: str }), run: (a) => api.exportTraces(a.session_id ? { sessionId: String(a.session_id) } : undefined) },
+    ...settingsTools(rt),
   ];
 }
 
@@ -245,7 +256,7 @@ export function mcpDispatcher(rt: Runtime, opts: McpServeOptions = {}): { handle
             structuredContent: typeof value === 'object' && !Array.isArray(value) ? value : { value },
           });
         } catch (err) {
-          return reply({ content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }], isError: true });
+          return reply({ content: [{ type: 'text', text: rt.redact(err instanceof Error ? err.message : String(err)) }], isError: true });
         }
       }
       default:

@@ -23,7 +23,16 @@ export interface BackendClient {
   ready: Promise<Omit<WireReady, 't'>>;
   /** Fail every pending call (e.g. the backend process died). */
   fail(reason: string): void;
+  /** Methods the backend may call on this side (see HostMethods); replaces those given before. */
+  setHostMethods(methods: HostMethods): void;
 }
+
+/**
+ * What the host lets the backend call (WireHostRequest), e.g. the desktop
+ * shell's model settings store: 'models.list', 'models.save', 'models.setDefault'
+ * (see settings-tools.ts). A thrown error goes back with its `code` if it has one.
+ */
+export type HostMethods = Record<string, (...params: never[]) => unknown>;
 
 const API_METHODS = [
   'createSession',
@@ -53,7 +62,8 @@ const API_METHODS = [
   'mailFeedback',
 ] as const;
 
-export function connectBackend(port: PortLike, opts: { timeoutMs?: number } = {}): BackendClient {
+export function connectBackend(port: PortLike, opts: { timeoutMs?: number; hostMethods?: HostMethods } = {}): BackendClient {
+  let hostMethods: HostMethods = opts.hostMethods ?? {};
   let next = 1;
   const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer?: ReturnType<typeof setTimeout> }>();
   const listeners = new Set<(e: CoreEvent) => void>();
@@ -76,6 +86,21 @@ export function connectBackend(port: PortLike, opts: { timeoutMs?: number } = {}
       if (p.timer) clearTimeout(p.timer);
       if (msg.error) p.reject(new BackendError(msg.error.code, msg.error.message));
       else p.resolve(msg.result ?? undefined);
+    } else if (msg.t === 'hreq') {
+      const fn = hostMethods[msg.method] as ((...p: unknown[]) => unknown) | undefined;
+      if (!fn) {
+        port.post({ t: 'hres', id: msg.id, error: { code: 'unknown_method', message: `the host has no method ${msg.method}` } });
+        return;
+      }
+      void (async () => {
+        try {
+          const result = await fn(...(msg.params ?? []));
+          port.post({ t: 'hres', id: msg.id, result: result === undefined ? null : result });
+        } catch (err) {
+          const code = (err as { code?: unknown })?.code;
+          port.post({ t: 'hres', id: msg.id, error: { code: typeof code === 'string' ? code : 'failed', message: err instanceof Error ? err.message : String(err) } });
+        }
+      })();
     } else if (msg.t === 'ready') {
       const { t: _t, ...rest } = msg;
       void _t;
@@ -105,6 +130,9 @@ export function connectBackend(port: PortLike, opts: { timeoutMs?: number } = {}
     onEvent: (cb) => {
       listeners.add(cb);
       return () => listeners.delete(cb);
+    },
+    setHostMethods: (methods) => {
+      hostMethods = methods;
     },
     fail: (reason) => {
       for (const [id, p] of pending) {

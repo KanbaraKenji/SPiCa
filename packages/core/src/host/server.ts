@@ -22,6 +22,8 @@ export class BackendServer {
   readonly #size: number;
   readonly #methods: Record<string, (...params: unknown[]) => unknown>;
   readonly #off: () => void;
+  #nextHost = 1;
+  readonly #hostPending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
 
   constructor(rt: Runtime, opts: BackendServerOptions = {}) {
     this.#rt = rt;
@@ -56,7 +58,36 @@ export class BackendServer {
     this.#ports.delete(port);
   }
 
+  /**
+   * Call a method the host registered (connectBackend's hostMethods) on the most
+   * recently attached host. Rejects with code 'host_unavailable' when there is no
+   * host or it does not have the method, 'timeout' when it does not answer.
+   */
+  callHost(method: string, params: unknown[] = [], timeoutMs = 30_000): Promise<unknown> {
+    const port = [...this.#ports].at(-1);
+    if (!port) return Promise.reject(hostError('host_unavailable', 'no window is connected to this backend'));
+    return new Promise((resolve, reject) => {
+      const id = this.#nextHost++;
+      const timer = setTimeout(() => {
+        this.#hostPending.delete(id);
+        reject(hostError('timeout', `the window did not answer ${method}`));
+      }, timeoutMs);
+      timer.unref?.();
+      this.#hostPending.set(id, { resolve, reject, timer });
+      port.post({ t: 'hreq', id, method, params });
+    });
+  }
+
   async #handle(port: PortLike, msg: WireMessage): Promise<void> {
+    if (msg.t === 'hres') {
+      const p = this.#hostPending.get(msg.id);
+      if (!p) return;
+      this.#hostPending.delete(msg.id);
+      clearTimeout(p.timer);
+      if (msg.error) p.reject(hostError(msg.error.code === 'unknown_method' ? 'host_unavailable' : msg.error.code, msg.error.message));
+      else p.resolve(msg.result ?? undefined);
+      return;
+    }
     if (msg.t !== 'req') return;
     const fn = this.#methods[msg.method];
     if (!fn) {
@@ -73,6 +104,11 @@ export class BackendServer {
 
   close(): void {
     this.#off();
+    for (const [id, p] of this.#hostPending) {
+      clearTimeout(p.timer);
+      p.reject(hostError('host_unavailable', 'backend closed'));
+      this.#hostPending.delete(id);
+    }
     for (const p of this.#ports) p.close?.();
     this.#ports.clear();
   }
@@ -80,4 +116,8 @@ export class BackendServer {
   get runtime(): Runtime {
     return this.#rt;
   }
+}
+
+function hostError(code: string, message: string): Error {
+  return Object.assign(new Error(message), { code });
 }

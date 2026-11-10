@@ -14,6 +14,7 @@ export interface TraceStart {
   providerId?: string;
   model?: string;
   confirmedBy?: 'user' | 'view';
+  changes?: string[];
 }
 
 export type TraceFinish = Partial<

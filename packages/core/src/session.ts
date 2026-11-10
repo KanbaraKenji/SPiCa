@@ -1200,6 +1200,7 @@ const GUARD_REASON: Record<GuardCause, string> = {
   outside_link: 'this link comes from outside content (e.g. a mail), not from you',
   sensitive_file: 'reading a credential file while acting on outside content',
   plugin_view: 'a plugin view asks to run an irreversible action',
+  settings_change: 'a script connected to Spica asks to change the settings',
 };
 
 export const TEAM_RULE =
