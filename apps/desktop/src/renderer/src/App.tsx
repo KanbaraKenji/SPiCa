@@ -26,6 +26,7 @@ import { MailStore, useMail } from './store/mail';
 import { needsYou, unseenByManager } from '../../shared/mail';
 import type { MailItem } from '@spica/protocol';
 import { Icon } from './ui/Icon';
+import { HoverTips } from './ui/HoverTips';
 import { SpicaBanner } from '@spica/brand/react';
 
 /** The sidebar's wordmark: 22 px high, smaller for a long app name. */
@@ -566,6 +567,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // main pane and the detail panel.
   return (
     <div className="app" data-left={layout.left} data-right={view === 'chat' ? layout.right : 'hidden'}>
+      <HoverTips />
       {/* Sidebar closed: a column of icons stays; resting on it opens the full
           sidebar over it for a moment, every row where its icon was (except 项目, see Sidebar). */}
       {layout.left !== 'docked' ? (
@@ -720,7 +722,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           {state.notice ? (
             <div className="toast" role="alert">
               <span>{state.notice}</span>
-              <button type="button" className="icon-btn" onClick={() => agent.dismissNotice()} aria-label="关闭提示">
+              <button type="button" className="icon-btn" onClick={() => agent.dismissNotice()} aria-label="关闭提示" title="关闭">
                 <Icon name="close" size={14} />
               </button>
             </div>

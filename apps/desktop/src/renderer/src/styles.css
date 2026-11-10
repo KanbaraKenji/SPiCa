@@ -1485,34 +1485,6 @@ button.tree-twisty:hover {
   background: var(--spica-hover);
 }
 
-.composer-tip {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 6px);
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: var(--spica-menu);
-  box-shadow: var(--spica-shadow);
-  color: var(--spica-ink);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s;
-  z-index: 3;
-}
-
-.composer-context:hover .composer-tip,
-.composer-context:focus-visible .composer-tip {
-  opacity: 1;
-}
-
-/* While the card is open the numbers are on it. */
-.composer-context.is-open .composer-tip {
-  opacity: 0;
-}
-
 .composer-context.is-open {
   background: var(--spica-hover);
 }
@@ -2467,21 +2439,13 @@ button.ctx-row:hover {
 }
 
 .info-tip {
-  position: relative;
   outline: none;
 }
 
-.info-tip:hover,
-.info-tip:focus-visible {
-  color: var(--spica-muted);
-}
-
-/* The note: the same bubble as the numbers over the context ring. */
-.info-tip-text {
-  position: absolute;
-  left: -8px;
-  bottom: calc(100% + 6px);
-  width: max-content;
+/* The app's one hover note (HoverTips): names of icon buttons, notes, full texts. */
+.hover-tip {
+  position: fixed;
+  z-index: 1000;
   max-width: 320px;
   padding: 4px 8px;
   border-radius: 8px;
@@ -2491,30 +2455,21 @@ button.ctx-row:hover {
   font-size: 12px;
   font-weight: 400;
   line-height: 1.5;
-  white-space: normal;
-  opacity: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
   pointer-events: none;
-  transition: opacity 0.12s;
-  z-index: 5;
 }
 
-.info-tip:hover .info-tip-text,
-.info-tip:focus-visible .info-tip-text {
-  opacity: 1;
+.info-tip:hover,
+.info-tip:focus-visible {
+  color: var(--spica-muted);
 }
+
 
 .model-row .info-tip {
   margin-left: 0;
 }
 
-/* In the model list (it scrolls), beside the icon instead of above it. */
-.model-row .info-tip-text {
-  left: auto;
-  right: calc(100% + 6px);
-  bottom: auto;
-  top: 50%;
-  transform: translateY(-50%);
-}
 
 /* A known 上下文上限 in short (128k); a click edits it. */
 .model-row-size {

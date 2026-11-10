@@ -159,7 +159,7 @@ export function InboxView(props: InboxViewProps) {
         {mail.problem ? (
           <div className="inbox-problem" role="alert">
             <span>{mail.problem}</span>
-            <button type="button" className="icon-btn" onClick={props.onDismissProblem} aria-label="关闭提示">
+            <button type="button" className="icon-btn" onClick={props.onDismissProblem} aria-label="关闭提示" title="关闭">
               <Icon name="close" size={14} />
             </button>
           </div>

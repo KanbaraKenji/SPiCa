@@ -198,13 +198,13 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
         <h3 className="settings-subheading">缩放</h3>
         <div className="zoom-row">
           <div className="stepper" role="group" aria-label="缩放">
-            <button type="button" className="icon-btn" onClick={() => onChange({ zoom: stepZoom(settings.zoom, 'out') })} disabled={zoomIndex <= 0} aria-label="缩小">
+            <button type="button" className="icon-btn" onClick={() => onChange({ zoom: stepZoom(settings.zoom, 'out') })} disabled={zoomIndex <= 0} aria-label="缩小" title="缩小">
               <Icon name="minus" size={14} />
             </button>
             <span className="stepper-value num" aria-live="polite">
               {zoomLabel(settings.zoom)}
             </span>
-            <button type="button" className="icon-btn" onClick={() => onChange({ zoom: stepZoom(settings.zoom, 'in') })} disabled={zoomIndex >= ZOOM_STEPS.length - 1} aria-label="放大">
+            <button type="button" className="icon-btn" onClick={() => onChange({ zoom: stepZoom(settings.zoom, 'in') })} disabled={zoomIndex >= ZOOM_STEPS.length - 1} aria-label="放大" title="放大">
               <Icon name="plus" size={14} />
             </button>
           </div>

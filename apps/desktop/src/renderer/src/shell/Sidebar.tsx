@@ -175,7 +175,7 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
           </button>
         )}
         {kids.length ? (
-          <button type="button" className="tree-twisty" aria-label={open ? `收起 ${name}` : `展开 ${name}`} aria-expanded={open} onClick={() => tree.setExpanded(s.id, !open)}>
+          <button type="button" className="tree-twisty" aria-label={open ? `收起 ${name}` : `展开 ${name}`} title={open ? '收起' : '展开'} aria-expanded={open} onClick={() => tree.setExpanded(s.id, !open)}>
             <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
           </button>
         ) : null}
@@ -384,7 +384,7 @@ export function Sidebar({
             <Icon name="inbox" />
             <span>收件箱</span>
             {inbox.count ? (
-              <span className="side-count" aria-label={`${inbox.count} 封待确认`}>
+              <span className="side-count" aria-label={`${inbox.count} 封待确认`} title={`${inbox.count} 封待确认`}>
                 {inbox.count}
               </span>
             ) : null}

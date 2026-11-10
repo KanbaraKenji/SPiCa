@@ -115,21 +115,18 @@ function ContextRing({ tokens, window, detail }: { tokens: number; window: numbe
         <circle cx="9" cy="9" r={r} className="ring-track" />
         <circle cx="9" cy="9" r={r} className="ring-fill" strokeDasharray={`${c * share} ${c}`} transform="rotate(-90 9 9)" />
       </svg>
-      <span className="composer-tip" aria-hidden>
-        {text}
-      </span>
     </>
   );
   if (!detail) {
     return (
-      <span className={cls} role="img" aria-label={`上下文占用 ${text}`} tabIndex={0}>
+      <span className={cls} role="img" aria-label={`上下文占用 ${text}`} data-tip={text} tabIndex={0}>
         {ring}
       </span>
     );
   }
   return (
     <span className="composer-context-wrap" ref={wrap}>
-      <button type="button" className={cls} aria-label={`上下文占用 ${text}`} aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button type="button" className={cls} aria-label={`上下文占用 ${text}`} aria-expanded={open} {...(open ? {} : { 'data-tip': text })} onClick={() => setOpen(!open)}>
         {ring}
       </button>
       {open && data ? (
@@ -376,7 +373,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
               <span key={p} className="composer-file" title={p}>
                 <FileGlyph name={p} />
                 <span className="composer-chip-text">{baseName(p)}</span>
-                <button type="button" className="composer-file-remove" aria-label={`移除 ${baseName(p)}`} onClick={() => removeAttached(p)}>
+                <button type="button" className="composer-file-remove" aria-label={`移除 ${baseName(p)}`} title="移除" onClick={() => removeAttached(p)}>
                   <Icon name="close" size={12} />
                 </button>
               </span>

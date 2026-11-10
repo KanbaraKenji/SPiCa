@@ -103,7 +103,7 @@ describe('Models', () => {
     const size = screen.getByRole('button', { name: 'deepseek-flash 上下文上限' });
     expect(size.textContent).toBe('128k');
     expect(size.getAttribute('title')).toBe('上下文上限 128,000 token（来自目录）');
-    expect(screen.getByRole('img', { name: 'deepseek-flash 官方价：输入 ¥2 / 输出 ¥8（每百万 token）' }).textContent).toBe('输入 ¥2 / 输出 ¥8（每百万 token）');
+    expect(screen.getByRole('img', { name: 'deepseek-flash 官方价：输入 ¥2 / 输出 ¥8（每百万 token）' }).getAttribute('data-tip')).toBe('输入 ¥2 / 输出 ¥8（每百万 token）');
     // A click on the number edits it.
     fireEvent.click(size);
     expect((screen.getByLabelText('deepseek-flash 上下文上限') as HTMLInputElement).value).toBe('128000');
@@ -146,9 +146,9 @@ describe('Models', () => {
     expect(byLabel('网关地址').getAttribute('aria-description')).toBe('模型接口地址，通常以 /v1 结尾，不含 /chat/completions。');
     expect(byLabel('Consumer Key').getAttribute('aria-description')).toBe('即 Client ID，位于 WSO2 开发者门户中应用的 Production Keys。');
     expect(byLabel('Consumer Secret').getAttribute('aria-description')).toBe('即 Client Secret，与 Consumer Key 位于同一位置。');
-    expect([...document.querySelectorAll('.info-tip-text')].map((t) => t.textContent)).toContain('即 Client Secret，与 Consumer Key 位于同一位置。');
+    expect([...document.querySelectorAll('.info-tip')].map((t) => t.getAttribute('data-tip'))).toContain('即 Client Secret，与 Consumer Key 位于同一位置。');
     // Not a line under the field any more: only inside the info icon.
-    expect(screen.getAllByText('模型接口地址，通常以 /v1 结尾，不含 /chat/completions。').every((el) => el.closest('.info-tip'))).toBe(true);
+    expect(screen.queryByText('模型接口地址，通常以 /v1 结尾，不含 /chat/completions。')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '测试连接' }));
     expect(screen.getByText('请填写 Consumer Key')).toBeTruthy();
     expect(screen.getByText('请填写 Consumer Secret')).toBeTruthy();
