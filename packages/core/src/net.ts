@@ -237,7 +237,7 @@ export const NET_HINTS: Record<string, string> = {
   // fault numbers in a WSO2 API gateway's error body (see gatewayFaultCode)
   'wso2.invalid_credentials': '网关说凭据无效或 token 已过期（WSO2 900901），已自动重新取过一次 token 仍不行：检查 key，或 client id / client secret；应用的密钥在开发者门户里重新生成过的话，要换成新的。',
   'wso2.missing_credentials': '请求没带凭据（WSO2 900902）：填上 key；网关要求先用 client id / client secret 取 token 的话，模型类型要选 WSO2。',
-  'wso2.throttled': '网关限流（WSO2 900800–900803）：这个应用或订阅的调用额度暂时用完了，已自动重试；仍失败就调低并发、过一会再试，或请管理员提高订阅的额度等级。',
+  'wso2.throttled': '网关限流（WSO2 900800–900804）：这个应用或订阅的调用额度暂时用完了，已自动重试；仍失败就调低并发、过一会再试，或请管理员提高订阅的额度等级。',
   'wso2.not_subscribed': '这个应用还没订阅这个接口（WSO2 900908）：去 WSO2 开发者门户给应用订阅这个 API，或找管理员。',
   'wso2.scope': 'token 的权限范围不够（WSO2 900910）：在模型设置的 scope 里填上这个接口要求的范围，或找管理员给应用开权限。',
   'wso2.api_blocked': '这个接口在网关上被暂停了（WSO2 900907）：找管理员。',
@@ -248,8 +248,10 @@ const WSO2_FAULTS: Record<string, string> = {
   '900901': 'wso2.invalid_credentials',
   '900902': 'wso2.missing_credentials',
   '900800': 'wso2.throttled',
+  '900801': 'wso2.throttled', // hard limit (503)
   '900802': 'wso2.throttled',
   '900803': 'wso2.throttled',
+  '900804': 'wso2.throttled', // subscription level (429)
   '900907': 'wso2.api_blocked',
   '900908': 'wso2.not_subscribed',
   '900909': 'wso2.subscription_inactive',

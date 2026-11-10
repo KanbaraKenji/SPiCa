@@ -254,7 +254,9 @@ describe('readable errors and WSO2', () => {
       gatewayFaultCode('<ams:fault xmlns:ams="http://wso2.org/apimanager/security"><ams:code>900910</ams:code><ams:message>The access token does not allow you to access the requested resource</ams:message></ams:fault>'),
     ).toBe('wso2.scope');
     expect(gatewayFaultCode('<fault><code>900802</code><message>Message throttled out</message></fault>')).toBe('wso2.throttled');
-    expect(['900800', '900803', '900902', '900907', '900909'].map((n) => gatewayFaultCode(`{"code":${n}}`))).toEqual([
+    expect(['900800', '900801', '900803', '900804', '900902', '900907', '900909'].map((n) => gatewayFaultCode(`{"code":${n}}`))).toEqual([
+      'wso2.throttled',
+      'wso2.throttled',
       'wso2.throttled',
       'wso2.throttled',
       'wso2.missing_credentials',
