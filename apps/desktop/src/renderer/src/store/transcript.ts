@@ -237,7 +237,9 @@ function asAsk(callId: string, input: unknown): Block {
 }
 
 /** Strips the fetch-time first line the core puts on every tool result. */
-export function resultBody(content: string): string {
+export function resultBody(raw: string): string {
+  // Outside content arrives fenced for the model (<untrusted_data …> … </untrusted_data>): shown without the fence.
+  const content = raw.replace(/^<untrusted_data\b[^>]*>\n?/, '').replace(/\n?<\/untrusted_data>\s*$/, '');
   const nl = content.indexOf('\n');
   const first = nl < 0 ? content : content.slice(0, nl);
   // The core writes "[fetched at <ISO>]"; older/fake results use a bare ISO line.

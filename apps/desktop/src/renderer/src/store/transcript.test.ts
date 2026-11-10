@@ -247,6 +247,9 @@ describe('file cards', () => {
 });
 
 describe('resultBody', () => {
+  it('shows outside content without the fence written for the model', () => {
+    expect(resultBody('<untrusted_data kind="history" source="search_history">\n1 piece found:\n- a\n</untrusted_data>')).toBe('1 piece found:\n- a');
+  });
   it('drops the fetch-time line', () => {
     expect(resultBody('2026-11-09T10:00:00.000+08:00\nhello')).toBe('hello');
     expect(resultBody('plain')).toBe('plain');
