@@ -1,11 +1,11 @@
 // The main pane: the transcript of one session, streamed live, and its input box.
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MailItem, SessionInfo } from '@spica/protocol';
-import { filesOf, isRunning, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
+import { filesOf, historyRef, isRunning, itemAtSeq, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
 import { ImageViewer } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
-import { AskCard, ChildNoteCard, ConfirmCard, FileCards, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
+import { AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
 import { Composer, type ComposerTools } from './Composer';
 import { StatusLine } from './StatusLine';
 import { GUARD_FLAG_TEXT } from './format';
@@ -18,6 +18,8 @@ export interface ConversationActions {
   confirm(callId: string, approved: boolean): void;
   openFile(path: string): void;
   openSession(id: string): void;
+  /** From a history row or link: opens that conversation at message number `seq`, with a way back. */
+  openFound?: (id: string, seq?: number) => void;
   resume(): void;
   /** Mail by id, for 「收到来信」 in a project's conversation. */
   mailById?: (id: string) => MailItem | undefined;
@@ -99,11 +101,11 @@ function segments(blocks: Block[]): Segment[] {
   return out;
 }
 
-function Response({ item, live, actions, cards }: { item: Extract<Item, { kind: 'response' }>; live: boolean; actions: ConversationActions; cards: Transcript['fileCards'] }) {
+function Response({ item, live, actions, cards, at }: { item: Extract<Item, { kind: 'response' }>; live: boolean; actions: ConversationActions; cards: Transcript['fileCards']; at?: Record<string, string> }) {
   const segs = segments(item.blocks);
   const files = filesOf(item.blocks, cards);
   return (
-    <div className="turn-response">
+    <div className="turn-response" {...at}>
       {segs.map((s, i) => {
         if (s.kind === 'tools') {
           // Outside content that carried instructions: one quiet line per kind, under the tools.
@@ -207,7 +209,11 @@ function useStickToBottom(dep: unknown) {
     stick.current = true;
     el.scrollTo({ top: el.scrollHeight });
   };
-  return { ref, away, toBottom };
+  /** Stop following new text (the view was moved to a found message on purpose); 回到最新 shows once it scrolled. */
+  const unpin = () => {
+    stick.current = false;
+  };
+  return { ref, away, toBottom, unpin };
 }
 
 export interface ConversationProps {
@@ -223,6 +229,8 @@ export interface ConversationProps {
   waiting?: WaitingChild[];
   /** Controls in the input box (attachments, folder, approval, model, context). */
   composerTools?: ComposerTools;
+  /** Opened from a history row or link: the message to scroll to and mark, and the way back. */
+  found?: { seq?: number; back?: { title: string; onBack(): void } };
 }
 
 export interface WaitingChild {
@@ -231,24 +239,45 @@ export interface WaitingChild {
   status: 'awaiting_confirm' | 'awaiting_answer';
 }
 
-export function Conversation({ session, transcript, actions, demo, needsModel = false, onSetupModel, waiting = [], composerTools }: ConversationProps) {
+export function Conversation({ session, transcript, actions, demo, needsModel = false, onSetupModel, waiting = [], composerTools, found }: ConversationProps) {
   const running = isRunning(transcript.run?.status) || isRunning(session?.status);
-  const { ref, away, toBottom } = useStickToBottom(transcript);
+  const { ref, away, toBottom, unpin } = useStickToBottom(transcript);
   const items = transcript.items;
   const lastIndex = items.length - 1;
+  // Opened at a found message: the item that holds it, scrolled to once it is there, and marked.
+  const foundItem = found?.seq !== undefined ? itemAtSeq(transcript, found.seq) : undefined;
+  const scrolledTo = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (!foundItem || scrolledTo.current === `${session?.id}|${foundItem}`) return;
+    const el = ref.current?.querySelector<HTMLElement>(`[data-item="${CSS.escape(foundItem)}"]`);
+    if (!el) return;
+    scrolledTo.current = `${session?.id}|${foundItem}`;
+    unpin();
+    el.scrollIntoView?.({ block: 'center' });
+  });
+  const resolveRef = (n: number) => historyRef(transcript, n);
+  const mark = (id: string): Record<string, string> => (id === foundItem ? { 'data-item': id, 'data-found': '' } : { 'data-item': id });
   return (
-    <OpenSessionContext.Provider value={actions.openSession}>
+    <OpenSessionContext.Provider value={actions.openFound ?? actions.openSession}>
+    <HistoryRefContext.Provider value={resolveRef}>
+    <HistoryCardsContext.Provider value={transcript.historyCards}>
     <div className="conversation">
       <div className="transcript" ref={ref}>
         {items.length === 0 && !running ? (
           <EmptyState session={session} needsModel={needsModel} {...(onSetupModel ? { onSetupModel } : {})} />
         ) : (
           <div className="transcript-column">
+            {found?.back ? (
+              <button type="button" className="history-back" onClick={found.back.onBack}>
+                <Icon name="back" size={14} />
+                <span>返回「{found.back.title}」</span>
+              </button>
+            ) : null}
             {items.map((item, i) => {
               if (item.kind === 'user')
                 return (
                   <Fragment key={item.id}>
-                    <div className={item.steer ? 'turn-user is-steer' : 'turn-user'}>
+                    <div className={item.steer ? 'turn-user is-steer' : 'turn-user'} {...mark(item.id)}>
                       {item.steer ? <span className="turn-user-tag">补充</span> : null}
                       <p className="turn-user-text">{item.text}</p>
                     </div>
@@ -286,11 +315,11 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                 return item.child ? (
                   <ChildNoteCard key={item.id} note={item.child} onOpen={actions.openSession} />
                 ) : (
-                  <p key={item.id} className="turn-note">
+                  <p key={item.id} className="turn-note" {...mark(item.id)}>
                     {item.text}
                   </p>
                 );
-              return <Response key={item.id} item={item} live={running && i === lastIndex} actions={actions} cards={transcript.fileCards} />;
+              return <Response key={item.id} item={item} live={running && i === lastIndex} actions={actions} cards={transcript.fileCards} at={mark(item.id)} />;
             })}
             <StatusLine transcript={transcript} />
             {waiting.map((w) => (
@@ -345,6 +374,8 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
       <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
       {demo ? <p className="composer-note">当前为演示数据</p> : null}
     </div>
+    </HistoryCardsContext.Provider>
+    </HistoryRefContext.Provider>
     </OpenSessionContext.Provider>
   );
 }

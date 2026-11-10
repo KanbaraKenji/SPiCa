@@ -41,6 +41,34 @@ describe('a sub-task that waits for the user', () => {
   });
 });
 
+describe('opened from a history row or link', () => {
+  it('scrolls to the message, marks it, and has a way back to where it was opened from', () => {
+    const onBack = vi.fn();
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    render(
+      <Conversation
+        session={session({ id: 'old', status: 'idle' })}
+        transcript={{
+          items: [
+            { kind: 'user', id: 'u1', text: '看一下报价单', steer: false },
+            { kind: 'response', id: 'r1', blocks: [{ type: 'text', text: '合计 12,800 元' }], interrupted: false },
+            { kind: 'user', id: 'u2', text: '好的', steer: false },
+          ],
+          seqs: { u1: 1, r1: 2, u2: 6 },
+        }}
+        actions={{ openSession: vi.fn() } as unknown as ConversationActions}
+        found={{ seq: 4, back: { title: '我以前问过的那份报价单，合计是多少？', onBack } }}
+      />,
+    );
+    const marked = document.querySelector('[data-found]');
+    expect(marked?.textContent).toContain('合计 12,800 元');
+    expect(scrolled).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '返回「我以前问过的那份报价单，合计是多少？」' }));
+    expect(onBack).toHaveBeenCalled();
+  });
+});
+
 describe('DetailPanel', () => {
   const project: ProjectInfo = {
     id: 'p',

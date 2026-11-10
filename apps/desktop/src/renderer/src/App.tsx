@@ -309,6 +309,15 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     if (layout.left === 'floating') setFloating(null);
     void agent.open(id);
   };
+  // Opened from a history row or link: the message to show, and the conversation it was opened from (返回).
+  // Kept while that conversation is open; going anywhere else ends it.
+  const [found, setFound] = useState<{ sessionId: string; seq?: number; from: string | null; reached: boolean } | null>(null);
+  if (found && !found.reached && state.activeId === found.sessionId) setFound({ ...found, reached: true });
+  else if (found?.reached && state.activeId !== found.sessionId) setFound(null);
+  const openFound = (id: string, seq?: number) => {
+    setFound({ sessionId: id, ...(seq !== undefined ? { seq } : {}), from: state.activeId, reached: false });
+    openSession(id);
+  };
   // Files open in the right panel (read-only preview); 用系统程序打开 there hands them to Windows.
   const previewFile = (path: string) => {
     setPreview({ sessionId: state.activeId, path });
@@ -481,6 +490,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     confirm: (callId, ok) => id && void agent.confirm(id, callId, ok),
     openFile: previewFile,
     openSession: (sid) => openSession(sid),
+    openFound,
     resume: () => id && void agent.resume(id),
     ...(mail.supported ? { mailById, openInbox: () => setView('inbox') } : {}),
     openModelSettings: () => {
@@ -488,6 +498,24 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       setView('settings');
     },
     imageUrl: bridge.images.url,
+  };
+
+  const foundView = (f: NonNullable<typeof found>) => {
+    const from = f.from ? sessions.find((s) => s.id === f.from) : undefined;
+    return {
+      ...(f.seq !== undefined ? { seq: f.seq } : {}),
+      ...(from && from.id !== f.sessionId
+        ? {
+            back: {
+              title: from.title || '新对话',
+              onBack: () => {
+                setFound(null);
+                openSession(from.id);
+              },
+            },
+          }
+        : {}),
+    };
   };
 
   const leftShown = layout.left !== 'hidden';
@@ -702,6 +730,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               needsModel={modelReady === false && !shell.demo}
               waiting={waiting}
               composerTools={composerTools}
+              {...(found && found.sessionId === state.activeId ? { found: foundView(found) } : {})}
               onSetupModel={() => {
                 setSettingsTab('models');
                 setView('settings');

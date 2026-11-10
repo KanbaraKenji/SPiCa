@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { CoreEvent, Message } from '@spica/protocol';
+import type { CoreEvent, HistoryCardMeta, Message } from '@spica/protocol';
 import { FakeBackend } from '../../../main/backend/fake';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
-import { applyEvent, askAnswer, fileCardLine, filesOf, fromHistory, humanError, resultBody, type Transcript } from './transcript';
+import { applyEvent, askAnswer, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, type Transcript } from './transcript';
 
 describe('fromHistory', () => {
   const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
@@ -243,6 +243,46 @@ describe('file cards', () => {
     const file = { path: 'D:\\b.txt', name: 'b.txt', kind: 'text' as const, sizeBytes: 3, modifiedAt: at, extractedAt: at, read: { rows: '1-3' } };
     const t = applyEvent({ items: [] }, { seq: 1, at, sessionId: 's', parentChain: [], type: 'file.card', callId: 'c1', file });
     expect(t.fileCards).toEqual({ c1: file });
+  });
+});
+
+describe('history: what the history tools found, and where each message starts', () => {
+  const at = '2026-11-09T10:00:00+08:00';
+  const card = (ref: number, sessionId: string, seq?: number): HistoryCardMeta => ({
+    tool: 'search_history',
+    total: 1,
+    rows: [{ ref, sessionId, name: '看一下报价单', at, ...(seq !== undefined ? { seq } : {}), text: '合计 12,800 元' }],
+  });
+  const msg = (seq: number, over: Partial<Message>): Message => ({ id: `m${seq}`, sessionId: 's', seq, role: 'user', kind: 'user', content: [{ type: 'text', text: '' }], createdAt: at, ...over }) as Message;
+
+  it('keeps the cards stored with the results, numbers each item by its first message, and finds a place by number', () => {
+    const t = fromHistory([
+      msg(1, { content: [{ type: 'text', text: '以前问过的报价单' }] }),
+      msg(2, { role: 'assistant', kind: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'search_history', input: { query: '报价' } }] }),
+      msg(3, { kind: 'tool_results', content: [{ type: 'tool_result', toolUseId: 'c1', content: 'found' }], meta: { historyCards: { c1: card(1, 'ses_old', 6) } } }),
+      msg(4, { role: 'assistant', kind: 'assistant', content: [{ type: 'text', text: '在[看一下报价单](history:1)里说过' }] }),
+      msg(5, { content: [{ type: 'text', text: '谢谢' }] }),
+    ]);
+    expect(t.historyCards?.c1?.rows[0]?.sessionId).toBe('ses_old');
+    expect(t.items.map((i) => [i.kind, t.seqs?.[i.id]])).toEqual([
+      ['user', 1],
+      ['response', 2],
+      ['user', 5],
+    ]);
+    expect(itemAtSeq(t, 3)).toBe(t.items[1]?.id);
+    expect(itemAtSeq(t, 5)).toBe(t.items[2]?.id);
+    expect(historyRef(t, 1)).toEqual({ sessionId: 'ses_old', seq: 6 });
+    expect(historyRef(t, 2)).toBeUndefined();
+  });
+
+  it('read_history: one number for the whole conversation, so its link opens it without scrolling', () => {
+    const read: HistoryCardMeta = { tool: 'read_history', total: 2, rows: [1, 2].map((seq) => ({ ref: 5, sessionId: 'ses_r', name: '报价', at, seq, who: 'user' as const, text: '…' })) };
+    expect(historyRef({ items: [], historyCards: { c9: read } }, 5)).toEqual({ sessionId: 'ses_r' });
+  });
+
+  it('keeps a card that arrives as an event', () => {
+    const t = applyEvent({ items: [] }, { seq: 1, at, sessionId: 's', parentChain: [], type: 'history.card', callId: 'c2', card: card(3, 'ses_b') });
+    expect(historyRef(t, 3)).toEqual({ sessionId: 'ses_b' });
   });
 });
 

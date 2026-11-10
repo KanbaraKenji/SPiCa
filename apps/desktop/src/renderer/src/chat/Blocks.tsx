@@ -1,33 +1,64 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
 import { createContext, memo, useContext, useState, type ReactNode } from 'react';
-import Markdown from 'react-markdown';
+import type { HistoryCardMeta } from '@spica/protocol';
+import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, type Block, type ChildNote, type FileRef } from '../store/transcript';
 import { Icon } from '../ui/Icon';
 import { FileBadge } from '../ui/FileIcon';
 import { confirmTitle, fileFolder, fileName, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS, toolLabel, toolTarget } from './format';
 
-/** Opens a conversation by id (links in what the assistant found in earlier conversations). */
-export const OpenSessionContext = createContext<((id: string) => void) | null>(null);
+/** Opens a conversation by id, at message number `seq` when given (rows and links from earlier conversations). */
+export const OpenSessionContext = createContext<((id: string, seq?: number) => void) | null>(null);
+/** Where history:n links in this conversation go (its history tools' rows by their number). */
+export const HistoryRefContext = createContext<((ref: number) => { sessionId: string; seq?: number } | undefined) | null>(null);
+/** What the history tools found in this conversation, by call id. */
+export const HistoryCardsContext = createContext<Record<string, HistoryCardMeta> | undefined>(undefined);
 
-/** A history tool's result with each conversation it names (ses_…, ses_…#n) as a link to it. */
-function HistoryResult({ text }: { text: string }) {
+const HISTORY_COLUMN: Record<HistoryCardMeta['tool'], string> = { search_history: '匹配内容', read_history: '内容', find_history_files: '文件' };
+
+/** What a history tool found, as a two-column table: the conversation, and the matching text (or the file).
+ *  A row opens that conversation at the message. The text given to the model is not shown. */
+function HistoryTable({ card }: { card: HistoryCardMeta }) {
   const open = useContext(OpenSessionContext);
-  if (!open) return <pre className="tool-result">{text}</pre>;
-  const parts = text.split(/(\bses_[A-Za-z0-9_-]+(?:#\d+)?)/g);
+  if (!card.rows.length) return <p className="tool-empty">没有找到</p>;
   return (
-    <pre className="tool-result">
-      {parts.map((p, i) =>
-        /^ses_/.test(p) ? (
-          <button key={i} type="button" className="text-btn history-link" onClick={() => open(p.split('#')[0]!)} title="打开该对话">
-            {p}
+    <div className="history-table">
+      <div className="history-head" aria-hidden>
+        <span>对话</span>
+        <span>{HISTORY_COLUMN[card.tool]}</span>
+      </div>
+      {card.rows.map((r) => {
+        const name = r.name ?? '未命名对话';
+        const project = r.projectName && r.projectName !== name ? r.projectName : '';
+        const right = card.tool === 'find_history_files' ? (r.path ?? r.text) : r.text;
+        return (
+          <button key={`${r.ref}|${r.sessionId}|${r.seq ?? 0}`} type="button" className="history-row" onClick={() => open?.(r.sessionId, r.seq)} aria-label={`打开「${name}」`}>
+            <span className="history-name">
+              {name}
+              {project ? <span className="history-project">{project}</span> : null}
+            </span>
+            <span className="history-text">{right}</span>
           </button>
-        ) : (
-          p
-        ),
-      )}
-    </pre>
+        );
+      })}
+      {card.total > card.rows.length ? <p className="history-more">共 {card.total} 条，显示最近 {card.rows.length} 条</p> : null}
+    </div>
+  );
+}
+
+/** [name](history:n) in an answer: opens that conversation at the place; plain text when the number is not known here. */
+function HistoryLink({ href, children }: { href: string; children: ReactNode }) {
+  const open = useContext(OpenSessionContext);
+  const resolve = useContext(HistoryRefContext);
+  const digits = href.slice('history:'.length);
+  const to = /^\d+$/.test(digits) ? resolve?.(Number(digits)) : undefined;
+  if (!to || !open) return <>{children}</>;
+  return (
+    <button type="button" className="text-btn history-link" onClick={() => open(to.sessionId, to.seq)}>
+      {children}
+    </button>
   );
 }
 import { SpicaStatusIcon } from '@spica/brand/react';
@@ -39,12 +70,17 @@ export const MarkdownText = memo(function MarkdownText({ text }: { text: string 
     <div className="md">
       <Markdown
         remarkPlugins={[remarkGfm]}
+        // history:n (a place in an earlier conversation) is kept; other addresses as react-markdown allows them.
+        urlTransform={(url) => (url.startsWith('history:') ? url : defaultUrlTransform(url))}
         components={{
-          a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noreferrer" title={href}>
-              {children}
-            </a>
-          ),
+          a: ({ href, children }) =>
+            href?.startsWith('history:') ? (
+              <HistoryLink href={href}>{children}</HistoryLink>
+            ) : (
+              <a href={href} target="_blank" rel="noreferrer" title={href}>
+                {children}
+              </a>
+            ),
         }}
       >
         {text}
@@ -108,9 +144,10 @@ function ToolRow({ block }: { block: ToolBlock }) {
     'Auto'
   ) : null;
   const body = block.result ?? block.preview;
+  const card = useContext(HistoryCardsContext)?.[block.callId];
   return (
     <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={<Icon name="tool" size={14} />} label={toolLine(block)} meta={meta}>
-      {body ? HISTORY_TOOLS.has(block.name) ? <HistoryResult text={body} /> : <pre className="tool-result">{body}</pre> : <p className="tool-empty">—</p>}
+      {card && HISTORY_TOOLS.has(block.name) ? <HistoryTable card={card} /> : body ? <pre className="tool-result">{body}</pre> : <p className="tool-empty">—</p>}
     </Disclosure>
   );
 }

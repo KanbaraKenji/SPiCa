@@ -1,6 +1,6 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
-import type { CoreEvent, FileCardMeta, GuardCause, Message, PendingItem, SessionStatus, SettingsChangeMeta, UntrustedKind } from '@spica/protocol';
+import type { CoreEvent, FileCardMeta, GuardCause, HistoryCardMeta, Message, PendingItem, SessionStatus, SettingsChangeMeta, UntrustedKind } from '@spica/protocol';
 import { humanError } from '../../../shared/errors';
 import { toolLabel } from '../chat/format';
 
@@ -175,6 +175,31 @@ export interface Transcript {
   queued?: { id: string; text: string }[];
   /** File details the core reported for read_file calls (file.card), by call id. */
   fileCards?: Record<string, FileCardMeta>;
+  /** What the history tools found (history.card), by call id: the table under the tool row, and where [name](history:n) links go. */
+  historyCards?: Record<string, HistoryCardMeta>;
+  /** The number of the first stored message in each item, by item id (to scroll to a message by its number). */
+  seqs?: Record<string, number>;
+}
+
+/** The item that holds message number `seq`: the last one that starts at or before it. */
+export function itemAtSeq(t: Transcript, seq: number): string | undefined {
+  let found: string | undefined;
+  for (const it of t.items) {
+    const at = t.seqs?.[it.id];
+    if (at !== undefined && at <= seq) found = it.id;
+  }
+  return found;
+}
+
+/** A row the model can point at as history:n in this conversation (the newest card that has it).
+ *  read_history's rows share one number for the whole conversation: opened, not scrolled. */
+export function historyRef(t: Transcript, ref: number): { sessionId: string; seq?: number } | undefined {
+  let hit: { sessionId: string; seq?: number } | undefined;
+  for (const card of Object.values(t.historyCards ?? {})) {
+    const row = card.rows.find((r) => r.ref === ref);
+    if (row) hit = { sessionId: row.sessionId, ...(row.seq !== undefined && card.tool !== 'read_history' ? { seq: row.seq } : {}) };
+  }
+  return hit;
 }
 
 export const EMPTY_TRANSCRIPT: Transcript = { items: [] };
@@ -272,7 +297,16 @@ function findBlock<T extends Block['type']>(items: Item[], type: T, callId: stri
 export function fromHistory(messages: readonly Message[], pending: readonly PendingItem[] = []): Transcript {
   const items: Item[] = [];
   const cards: Record<string, FileCardMeta> = {};
+  const history: Record<string, HistoryCardMeta> = {};
+  const seqs: Record<string, number> = {};
+  // After each message: the item it went into starts at that message's number (if it is the first one there).
+  const mark = (m: Message) => {
+    const last = items[items.length - 1];
+    if (last && !(last.id in seqs)) seqs[last.id] = m.seq;
+  };
   for (const m of messages) {
+    const found = m.meta?.historyCards;
+    if (found && typeof found === 'object') Object.assign(history, found);
     if (m.role === 'assistant') {
       const r = lastResponse(items, m.id);
       if (m.meta?.interrupted === true) r.interrupted = true;
@@ -291,6 +325,7 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
           else r.blocks.push({ type: 'tool', callId: b.id, name: b.name, input: b.input, state: 'done' });
         }
       }
+      mark(m);
       continue;
     }
     if (m.kind === 'tool_results') {
@@ -320,6 +355,7 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
         const ask = findBlock(items, 'ask', b.toolUseId);
         if (ask) ask.answer = askAnswer(b.content);
       }
+      mark(m);
       continue;
     }
     const mailIds = mailIdsOf(m);
@@ -329,8 +365,9 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
       const note = noteItem(m);
       if (note) items.push(note);
     }
+    mark(m);
   }
-  const t: Transcript = { items, ...(Object.keys(cards).length ? { fileCards: cards } : {}) };
+  const t: Transcript = { items, ...(Object.keys(cards).length ? { fileCards: cards } : {}), ...(Object.keys(history).length ? { historyCards: history } : {}), seqs };
   for (const p of pending) applyPending(t, p);
   return t;
 }
@@ -420,6 +457,10 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     }
     case 'file.card': {
       t.fileCards = { ...(t.fileCards ?? {}), [e.callId]: e.file };
+      return t;
+    }
+    case 'history.card': {
+      t.historyCards = { ...(t.historyCards ?? {}), [e.callId]: e.card };
       return t;
     }
     case 'tool.end': {

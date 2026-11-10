@@ -4260,10 +4260,134 @@ button.ctx-row:hover {
 }
 
 /* A conversation named in what the assistant found in earlier ones: opens it. */
-.tool-result .history-link {
+/* What a history tool found: two columns, the conversation and the matching text (or file).
+   A row opens that conversation at the message. */
+.history-table {
+  border: 1px solid var(--spica-border-strong);
+  border-radius: var(--radius-s);
+  background: var(--spica-surface);
+  overflow: hidden;
+}
+
+.history-head,
+.history-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 32%) 1fr;
+  gap: 14px;
+  padding: 7px 12px;
+}
+
+.history-head {
+  font-size: 12px;
+  color: var(--spica-muted);
+  border-bottom: 1px solid var(--spica-border-strong);
+}
+
+.history-row {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--spica-border);
+  background: none;
+  color: inherit;
   font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-head + .history-row {
+  border-top: 0;
+}
+
+.history-row:hover {
+  background: var(--spica-hover);
+}
+
+.history-name {
+  min-width: 0;
+  color: var(--spica-ink);
+  overflow-wrap: anywhere;
+}
+
+.history-project {
+  display: block;
+  font-size: 12px;
+  color: var(--spica-muted);
+}
+
+.history-text {
+  min-width: 0;
+  color: var(--spica-muted);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.history-more {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--spica-muted);
+  border-top: 1px solid var(--spica-border);
+}
+
+/* A conversation named in an answer as [name](history:n): opens it at that place. */
+.history-link {
+  display: inline;
+  margin: 0;
   padding: 0;
+  font: inherit;
   color: var(--spica-accent-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  vertical-align: baseline;
+}
+
+.history-link:hover {
+  background: none;
+  text-decoration-thickness: 2px;
+}
+
+/* Opened from a history row or link: the way back, above the conversation. */
+.history-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px 12px 5px 8px;
+  border: 1px solid var(--spica-border-strong);
+  border-radius: 999px;
+  background: var(--spica-surface);
+  color: var(--spica-ink);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.history-back span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-back:hover {
+  background: var(--spica-hover);
+}
+
+/* The message it was opened at. */
+.turn-response[data-found],
+.turn-note[data-found] {
+  border-radius: 8px;
+  background: var(--spica-accent-soft);
+  box-shadow: 0 0 0 6px var(--spica-accent-soft);
+}
+
+.turn-user[data-found] {
+  box-shadow: 0 0 0 2px var(--spica-accent);
 }
 
 /* A status icon in front of its words. */
