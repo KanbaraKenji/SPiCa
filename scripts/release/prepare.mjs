@@ -2,8 +2,8 @@
 // Prepare a release locally: set the version, commit it and create the tag.
 // Pushing is a separate, deliberate step.
 //
-//   npm run release:prepare -- 0.2.0        # exact version
-//   npm run release:prepare -- patch        # or patch / minor / major
+//   npm run release:prepare -- 0.2.0        # exact version, also 0.2.0-rc.1
+//   npm run release:prepare -- patch        # or patch / minor / major (from a plain x.y.z only)
 //   npm run release:prepare -- 0.2.0 --dry-run
 //
 // What it changes: "version" in the root package.json and apps/desktop/package.json
@@ -16,6 +16,7 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { nextVersion } from './version.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const FILES = ['package.json', 'apps/desktop/package.json', 'package-lock.json'];
@@ -38,19 +39,9 @@ const readJson = (rel) => JSON.parse(readFileSync(join(root, rel), 'utf8'));
 if (!wanted) fail('give a version (for example 0.2.0) or patch / minor / major.');
 
 const current = readJson('apps/desktop/package.json').version;
-const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(current);
-if (!m) fail(`current version "${current}" is not x.y.z.`);
-const [maj, min, pat] = m.slice(1).map(Number);
-const next =
-  wanted === 'major'
-    ? `${maj + 1}.0.0`
-    : wanted === 'minor'
-      ? `${maj}.${min + 1}.0`
-      : wanted === 'patch'
-        ? `${maj}.${min}.${pat + 1}`
-        : wanted.replace(/^v/, '');
-if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(next)) fail(`"${wanted}" is not a version like 0.2.0.`);
-if (next === current) fail(`version is already ${current}.`);
+const result = nextVersion(current, wanted);
+if ('error' in result) fail(result.error);
+const { next } = result;
 
 const tag = `v${next}`;
 if (git('tag', '--list', tag)) fail(`tag ${tag} already exists.`);

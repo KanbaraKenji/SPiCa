@@ -75,8 +75,10 @@ A hit fails with the file and line; the word itself is never printed.
 
 ## Releases
 
-1. `npm run release:prepare -- 0.2.0` (or `patch` / `minor` / `major`) sets the version,
-   commits it and creates the tag `v0.2.0` locally.
+1. `npm run release:prepare -- 0.2.0` sets the version, commits it and creates the tag
+   `v0.2.0` locally. Any exact version works, including prereleases (`0.2.0-rc.1`) and
+   going from a prerelease to the final release. `patch` / `minor` / `major` count up
+   from a plain `x.y.z` only.
 2. Pushing the tag (`git push origin main v0.2.0`) runs
    `.github/workflows/release.yml`, which builds the per-user installer and the portable
    exe on Windows, packs the official plugins in `plugins/` (`npm run pack:plugins`: zip,
