@@ -33,7 +33,7 @@ export type ContextFrom = 'user' | 'catalog' | 'provider' | 'name-match';
 
 export interface HostConnectionModel {
   id: string;
-  /** Required: every ticked model has one. */
+  /** Required: every ticked model has one. 0 = missing (e.g. moved over from older settings): the tools say so and ask for it. */
   contextWindow: number;
   contextFrom: ContextFrom;
 }
@@ -70,32 +70,6 @@ export interface HostModelList {
   default: HostModelPointer | null;
   strong: HostModelPointer | null;
 }
-
-/**
- * @deprecated One model per entry, the shape before connections had several
- * models. Kept only until the desktop shell's host methods move to HostConnection.
- */
-export interface HostModel {
-  id: string;
-  kind: CoreKind;
-  name: string;
-  baseUrl: string;
-  model: string;
-  strongModel: string;
-  tokenUrl: string;
-  clientId: string;
-  scope: string;
-  contextWindow: number | null;
-  maxConcurrent: number | null;
-  requestsPerMinute: number | null;
-  hasSecret: boolean;
-  isDefault: boolean;
-  readOnly?: boolean;
-  catalogId?: string;
-}
-
-/** @deprecated See HostModel. */
-export type HostModelDraft = Omit<HostModel, 'id' | 'hasSecret' | 'isDefault' | 'readOnly'> & { id?: string; secret?: string };
 
 /** What the core asks the host to save: the whole list of ticked models; `secret` undefined keeps the saved one. */
 export type HostConnectionDraft = Omit<HostConnection, 'id' | 'hasSecret' | 'readOnly'> & { id?: string; secret?: string };
@@ -184,6 +158,8 @@ function view(c: HostConnection, list: HostModelList) {
     ...(c.catalogId ? { preset: c.catalogId } : {}),
     models: c.models.map((m) => ({
       ...m,
+      // 0 = none yet (older settings): say so instead of showing a number
+      ...(m.contextWindow > 0 ? {} : { contextWindow: null, needsContextWindow: true }),
       ...(list.default?.connectionId === c.id && list.default.model === m.id ? { isDefault: true } : {}),
       ...(list.strong?.connectionId === c.id && list.strong.model === m.id ? { isStrong: true } : {}),
     })),
@@ -257,7 +233,7 @@ export function settingsTools(rt: Runtime): McpTool[] {
       const kept = keep.find((m) => m.id === w.id);
       if (Number.isNaN(w.contextWindow)) throw new SettingsError('invalid', `a positive whole number (field contextWindow of ${w.id})`);
       if (w.contextWindow) out.push({ id: w.id, contextWindow: w.contextWindow, contextFrom: 'user' });
-      else if (kept) out.push(kept);
+      else if (kept && kept.contextWindow > 0) out.push(kept);
       else {
         const found = rt.ledger.matchContextWindow(kind, w.id, catalogId);
         if (found) out.push({ id: w.id, contextWindow: found.contextWindow, contextFrom: found.how === 'exact' ? 'catalog' : 'name-match' });

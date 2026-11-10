@@ -363,6 +363,32 @@ describe('model settings over Spica MCP', () => {
     expect(seen.join('\n')).not.toContain(API_KEY);
   });
 
+  it('a model without a context window yet (moved over from older settings) is listed as missing one, and a save asks for it', async () => {
+    const { call, win } = await setup();
+    const saved = await win.methods['models.save']({
+      kind: 'openai-compatible',
+      name: 'Old',
+      baseUrl: `${gw.baseUrl}/v1`,
+      tokenUrl: '',
+      clientId: '',
+      scope: '',
+      maxConcurrent: null,
+      requestsPerMinute: null,
+      secret: API_KEY,
+      models: [
+        { id: 'm1', contextWindow: 64_000, contextFrom: 'user' },
+        { id: 'm-old-strong', contextWindow: 0, contextFrom: 'user' },
+      ],
+    });
+    const listed = (await call('spica_list_models')) as { connections: { models: Record<string, unknown>[] }[] };
+    expect(listed.connections[0]!.models[1]).toMatchObject({ id: 'm-old-strong', contextWindow: null, needsContextWindow: true });
+    expect((await call('spica_save_model', { id: saved.id, name: 'Old one' })).error).toMatch(/^\[context_window_required\] .*m-old-strong/);
+    expect(await call('spica_save_model', { id: saved.id, models: [{ id: 'm1' }, { id: 'm-old-strong', contextWindow: 200_000 }] })).toMatchObject({
+      saved: true,
+      connection: { models: [{ id: 'm1', contextWindow: 64_000 }, { id: 'm-old-strong', contextWindow: 200_000, contextFrom: 'user' }] },
+    });
+  });
+
   it('a user who has not answered yet: the agent hears it is waiting and asks again', async () => {
     const { b, client, events, call } = await setup({ confirm: true });
     b.runtime.settingsBridge!.waitMs = 30;

@@ -78,7 +78,7 @@ export { DEFAULT_RETRY, type RetryPolicy } from './providers/http.ts';
 export { probeProvider, type ProbeOptions } from './providers/probe.ts';
 export { BackendServer, type BackendServerOptions } from './host/server.ts';
 export { connectBackend, BackendError, type BackendClient, type HostMethods } from './host/client.ts';
-export { settingsTools, SettingsError, maskTail, type SettingsBridge, type HostModel, type HostModelDraft, type HostConnection, type HostConnectionDraft, type HostConnectionModel, type HostModelList, type HostModelPointer, type ContextFrom } from './settings-tools.ts';
+export { settingsTools, SettingsError, maskTail, type SettingsBridge, type HostConnection, type HostConnectionDraft, type HostConnectionModel, type HostModelList, type HostModelPointer, type ContextFrom } from './settings-tools.ts';
 export { PluginSampler, SamplingError, type SamplingGrant } from './sampling.ts';
 export { BUILTIN_CATALOG } from './catalog/builtin.ts';
 export {
