@@ -46,3 +46,10 @@ export function devSwitch(env: NodeJS.ProcessEnv, packaged: boolean, name: 'SPIC
   if (packaged) return undefined;
   return env[name] || undefined;
 }
+
+/**
+ * The workflow folder the screenshots show (设置 › 常规). Their own settings folder is a temporary one under the
+ * user's profile, so the default would put the developer's user name into committed images; this neutral one,
+ * like the demo data's D:\工作\… folders, is only shown (the demo backend reads no workflow files).
+ */
+export const SHOTS_WORKFLOWS_DIR = 'D:\\工作\\Spica\\workflows';

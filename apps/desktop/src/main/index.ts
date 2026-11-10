@@ -18,7 +18,7 @@ import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
 import type { PluginService } from './plugins/types';
-import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder } from './dev-hooks';
+import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder, SHOTS_WORKFLOWS_DIR } from './dev-hooks';
 import { withErrorHint } from './error-hint';
 import { FakePluginService } from './plugins/fake';
 import { UpdateService } from './update/service';
@@ -114,7 +114,8 @@ const workDir = join(app.getPath('userData'), 'work');
 // still choose a folder once; their files stay here. Only compared against, never created or written.
 const legacyDefaultCwd = join(app.getPath('documents'), APP_NAME);
 /** Where workflow files live unless the user picked another folder (设置 › 常规): under 文档, where he edits them. */
-const defaultWorkflowsDir = join(app.getPath('documents'), APP_NAME, 'workflows');
+// Screenshots show a neutral default instead of one under the user's profile (SHOTS_WORKFLOWS_DIR); nothing is made there.
+const defaultWorkflowsDir = automated ? SHOTS_WORKFLOWS_DIR : join(app.getPath('documents'), APP_NAME, 'workflows');
 function workflowsDir(): string {
   return settings.get().workflowsDir || defaultWorkflowsDir;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder } from './dev-hooks';
+import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder, SHOTS_WORKFLOWS_DIR } from './dev-hooks';
 
 describe('picker answers for test scripts', () => {
   const env = { SPICA_PICK_FOLDER: 'C:/demo', SPICA_PICK_FILES: 'C:/a.png;C:/b.png;' };
@@ -51,5 +51,12 @@ describe('the demo backend and screenshot switches', () => {
     expect(devSwitch(env, true, 'SPICA_BACKEND')).toBeUndefined();
     expect(devSwitch(env, true, 'SPICA_CAPTURE')).toBeUndefined();
     expect(devSwitch(env, true, 'SPICA_SHOTS')).toBeUndefined();
+  });
+});
+
+describe('the workflow folder the screenshots show', () => {
+  it('is a neutral one, with no user name in it', () => {
+    expect(SHOTS_WORKFLOWS_DIR).not.toMatch(/Users|AppData|Temp/i);
+    expect(SHOTS_WORKFLOWS_DIR).toMatch(/workflows$/);
   });
 });
