@@ -28,6 +28,8 @@ export {
   markBody,
   markSvg,
   taskbarSvg,
+  taskbarFrameSvg,
+  TASKBAR_FRAME_SIZES,
   fixedIconSvg,
   FIXED_ICON_FIT,
   wordmarkBody,

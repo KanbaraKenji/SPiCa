@@ -14,7 +14,7 @@ import { Resvg } from '@resvg/resvg-js';
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BANNER_LAYOUT, bannerSvg, fixedIconSvg, markSvg, taskbarSvg, wordmarkSvg } from '../src/svg.ts';
+import { BANNER_LAYOUT, TASKBAR_FRAME_SIZES, bannerSvg, fixedIconSvg, markSvg, taskbarFrameSvg, taskbarSvg, wordmarkSvg } from '../src/svg.ts';
 import { BRAND_COLORS } from '../src/tokens.ts';
 import { buildIco } from './ico.ts';
 
@@ -22,7 +22,8 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 const TARGETS = [path.join(repo, 'apps/desktop/resources/branding'), path.join(repo, 'branding')];
 
 const ICON_SIZES = [16, 24, 32, 48, 64, 128, 256, 512, 1024] as const;
-const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256] as const;
+/** 写死图标 spica.ico 的帧：100%～200% 缩放下用到的边长都有一帧，Windows 不用再缩 */
+const ICO_SIZES = [16, 20, 24, 28, 30, 32, 36, 40, 42, 48, 64, 128, 256] as const;
 /** 窗口图标兜底位图的边长 */
 const WIN_ICON_SIZE = 256;
 /** 横标位图倍率（画框 × 4，64 高的横标出 256 高） */
@@ -57,6 +58,8 @@ function rasterFiles(): Record<string, Uint8Array> {
   // 运行态窗口图标首帧兜底：无底、光学版；深色任务栏用亮花，浅色任务栏用深花
   out['spica-win-dark.png'] = raster(taskbarSvg({ ink: dark.ink, accent: dark.accent }), WIN_ICON_SIZE);
   out['spica-win-light.png'] = raster(taskbarSvg({ ink: light.ink, accent: light.accent }), WIN_ICON_SIZE);
+  // 运行时任务栏图标的逐帧蒙版：白花、透明底，每个尺寸直接出图；外壳按任务栏深浅上色后拼成 ico
+  for (const s of TASKBAR_FRAME_SIZES) out[`spica-taskbar-${s}.png`] = raster(taskbarFrameSvg(s, { ink: '#FFFFFF' }), s);
   // 横标位图：带底色，宣传 / 文档用
   for (const [name, c] of [['dark', dark], ['light', light]] as const) {
     const svg = bannerSvg({ ink: c.ink, accent: c.accent, background: c.background });

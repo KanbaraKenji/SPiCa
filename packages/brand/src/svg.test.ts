@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BANNER_LAYOUT, bannerSvg, fixedIconSvg, markSvg, taskbarSvg, wordmarkSvg } from './svg.ts';
+import { BANNER_LAYOUT, TASKBAR_FRAME_SIZES, bannerSvg, fixedIconSvg, markSvg, taskbarFrameSvg, taskbarSvg, wordmarkSvg } from './svg.ts';
 import { BRAND_COLORS } from './tokens.ts';
 
 const dark = BRAND_COLORS.dark;
@@ -47,6 +47,23 @@ describe('SVG 构造器', () => {
     expect(svg).toContain('scale(1.22)');
     expect(svg).toContain('r="5.2"');
     expect(svg).toMatchSnapshot();
+  });
+
+  it('任务栏逐帧：按尺寸出图，花心落在像素格上，挪动不超过半像素', () => {
+    expect(TASKBAR_FRAME_SIZES).toEqual(expect.arrayContaining([16, 20, 24, 30, 32, 36, 40, 48, 256]));
+    for (const size of TASKBAR_FRAME_SIZES) {
+      const svg = taskbarFrameSvg(size, { ink: '#fff' });
+      expect(svg).toContain(`width="${size}" height="${size}"`);
+      expect(svg).toContain('scale(1.22)');
+      const [dx, dy] = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(svg)!.slice(1).map(Number) as [number, number];
+      const px = size / 64;
+      expect(Math.abs(dx * px)).toBeLessThanOrEqual(0.5 + 1e-3);
+      expect(Math.abs(dy * px)).toBeLessThanOrEqual(0.5 + 1e-3);
+      // 花心（32, 37.65）挪完后落在像素中心或格线上
+      const frac = (v: number) => Math.abs(v - Math.round(v * 2) / 2);
+      expect(frac((32 + dx) * px)).toBeLessThan(2e-3);
+      expect(frac((37.65 + dy) * px)).toBeLessThan(2e-3);
+    }
   });
 
   it('任务栏图标：逐瓣颜色盖过长短瓣规则', () => {

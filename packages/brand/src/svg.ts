@@ -76,6 +76,30 @@ export function fixedIconSvg(size: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MARK_VIEWBOX} ${MARK_VIEWBOX}" width="${size}" height="${size}" aria-hidden="true"><g transform="translate(${c} ${c}) scale(${fmt(FIXED_ICON_FIT)}) translate(-${c} -${c})">${rimLayer}${flower}</g></svg>`;
 }
 
+/**
+ * 任务栏 / 窗口图标的帧尺寸：覆盖 100%～200% 缩放下 Windows 实际取用的边长
+ * （小图标 16·20·24·28·32，任务栏 24·30·36·42·48，开始菜单和 Alt-Tab 32·40·48·64，大图 256）。
+ */
+export const TASKBAR_FRAME_SIZES = [16, 20, 24, 28, 30, 32, 36, 40, 42, 48, 64, 256] as const;
+
+/**
+ * 任务栏 / 窗口图标的一帧：按输出边长直接出图，不从大图缩。
+ * 花心挪到像素格上（花心直径取整后是奇数就落在像素中心，偶数落在格线上），挪动不超过半像素，
+ * 这样竖直的 12 点钟长瓣和花心在小尺寸下边缘最清楚。几何缺省光学版。
+ */
+export function taskbarFrameSvg(size: number, colors: { ink: string; accent?: string; params?: Readonly<MarkParams> }): string {
+  const params = colors.params ?? TASKBAR_PARAMS;
+  const geo = markGeometry(params);
+  const px = size / MARK_VIEWBOX;
+  const hubPx = 2 * params.hubRadius * params.scale * px;
+  const half = Math.round(hubPx) % 2 === 1 ? 0.5 : 0;
+  const snap = (v: number) => Math.round(v * px - half) + half - v * px;
+  const dx = snap(geo.cx) / px;
+  const dy = snap(geo.cy) / px;
+  const body = markBody({ ink: colors.ink, accent: colors.accent ?? colors.ink, params });
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MARK_VIEWBOX} ${MARK_VIEWBOX}" width="${size}" height="${size}" aria-hidden="true"><g transform="translate(${fmt(dx)} ${fmt(dy)})">${body}</g></svg>`;
+}
+
 /** 任务栏 / 窗口图标：无底、光学版几何 */
 export function taskbarSvg(colors: { ink: string; accent: string; size?: number; petalFills?: readonly string[]; hubFill?: string }): string {
   return markSvg({ ...colors, params: TASKBAR_PARAMS });
