@@ -22,14 +22,24 @@ export function anthropicProvider(gw: FakeGateway, id = 'fake-anthropic'): Anthr
   return new AnthropicProvider({ id, baseUrl: `${gw.baseUrl}/v1`, apiKey: 'test-key-123456', retry: FAST_RETRY });
 }
 
+/**
+ * A runtime talking to the fake gateway. It is closed when the gateway stops
+ * (before the gateway cuts its connections), so no test leaves sessions running
+ * into the next one; closing it in the test as well is fine (close runs once).
+ */
 export function makeRuntime(gw: FakeGateway, opts: Partial<RuntimeOptions> = {}): Runtime {
-  return new Runtime({
+  const rt = new Runtime({
     providers: opts.providers ?? [openaiProvider(gw)],
     defaults: opts.defaults ?? { providerId: 'fake-openai', model: 'fake-model', maxTokens: 512 },
     ...opts,
     // what a deployment registers from its provider configuration (startBackend does this)
     redactions: ['test-key-123456', `${gw.baseUrl}/v1`, ...(opts.redactions ?? [])],
   });
+  const close = rt.close.bind(rt);
+  let closing: Promise<void> | undefined;
+  rt.close = () => (closing ??= close());
+  gw.closeBeforeStop(() => rt.close());
+  return rt;
 }
 
 /** Record every event the runtime emits. */

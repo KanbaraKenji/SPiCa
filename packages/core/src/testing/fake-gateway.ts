@@ -58,6 +58,8 @@ export class FakeGateway {
   readonly #opts: FakeGatewayOptions;
   inFlight = 0;
   maxInFlight = 0;
+  /** Run before the server goes away (makeRuntime registers its runtime's close here). */
+  readonly #beforeStop: (() => Promise<void>)[] = [];
 
   constructor(opts: FakeGatewayOptions = {}) {
     this.#opts = opts;
@@ -75,7 +77,24 @@ export class FakeGateway {
     return this;
   }
 
+  /**
+   * Call `fn` first when the gateway stops. Runtimes made for this gateway are
+   * closed this way before their streams are cut: cutting a live stream is what
+   * occasionally crashes Node 24.15 on Windows natively (see scripts/diag), and
+   * a runtime left running would keep calling into the next test.
+   */
+  closeBeforeStop(fn: () => Promise<void>): void {
+    this.#beforeStop.push(fn);
+  }
+
   async stop(): Promise<void> {
+    for (const fn of this.#beforeStop.splice(0)) {
+      try {
+        await fn();
+      } catch {
+        // a runtime that cannot close cleanly must not keep the gateway up
+      }
+    }
     for (const res of this.#open) res.destroy();
     await new Promise<void>((r) => {
       if (!this.#server) return r();
