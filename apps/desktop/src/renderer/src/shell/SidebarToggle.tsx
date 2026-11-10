@@ -1,5 +1,6 @@
 // The sidebar's open / close button (Ctrl+B). Collapsed, the lists (对话, 项目)
 // are not on the icon column, so what is new in them shows as a dot here.
+import type { ReactNode } from 'react';
 import { Icon } from '../ui/Icon';
 import { NewDot } from '../ui/NewDot';
 
@@ -9,5 +10,18 @@ export function SidebarToggle({ shown, news, onToggle }: { shown: boolean; news:
       <Icon name="sidebar" />
       {!shown && news ? <NewDot text={news} /> : null}
     </button>
+  );
+}
+
+/** The sidebar's top row. Slid out by resting on the icon column (not opened on purpose): only the
+ *  toggle, where the column has it, and no brand. Opened with the toggle: the brand, then the toggle at the end. */
+export function SidebarHead({ peek, toggle, brand }: { peek: boolean; toggle: ReactNode; brand: ReactNode }) {
+  return peek ? (
+    <div className="sidebar-head is-over-rail">{toggle}</div>
+  ) : (
+    <div className="sidebar-head">
+      {brand}
+      {toggle}
+    </div>
   );
 }

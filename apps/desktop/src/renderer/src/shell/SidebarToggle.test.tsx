@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { SidebarToggle } from './SidebarToggle';
+import { SidebarHead, SidebarToggle } from './SidebarToggle';
 
 afterEach(cleanup);
 
@@ -22,5 +22,25 @@ describe('SidebarToggle', () => {
     cleanup();
     render(<SidebarToggle shown={false} news="" onToggle={vi.fn()} />);
     expect(screen.queryByRole('img')).toBeNull();
+  });
+});
+
+describe('SidebarHead', () => {
+  const toggle = <SidebarToggle shown news="" onToggle={vi.fn()} />;
+  const brand = <span>Spica</span>;
+
+  it('slid out by resting on the icon column: only the toggle, where the column has it; no brand', () => {
+    const { container } = render(<SidebarHead peek toggle={toggle} brand={brand} />);
+    expect(screen.queryByText('Spica')).toBeNull();
+    expect(container.querySelector('.sidebar-head')?.className).toContain('is-over-rail');
+    expect(screen.getByRole('button', { name: '收起侧栏' })).toBeTruthy();
+  });
+
+  it('opened with the toggle: the brand first, the toggle at the end', () => {
+    const { container } = render(<SidebarHead peek={false} toggle={toggle} brand={brand} />);
+    const head = container.querySelector('.sidebar-head')!;
+    expect(head.className).not.toContain('is-over-rail');
+    expect(head.firstElementChild?.textContent).toBe('Spica');
+    expect(head.lastElementChild?.getAttribute('aria-label')).toBe('收起侧栏');
   });
 });

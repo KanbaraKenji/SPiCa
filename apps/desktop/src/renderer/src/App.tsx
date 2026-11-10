@@ -29,7 +29,7 @@ import { Icon } from './ui/Icon';
 import { sidebarNews } from './shell/sidebar-news';
 import { usePeek } from './shell/peek';
 import { joinNotes } from './ui/NewDot';
-import { SidebarToggle } from './shell/SidebarToggle';
+import { SidebarHead, SidebarToggle } from './shell/SidebarToggle';
 import { HoverTips } from './ui/HoverTips';
 import { SpicaBanner } from '@spica/brand/react';
 
@@ -607,18 +607,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           {...(peekOpen ? { onMouseEnter: peek.cancel, onMouseLeave: () => peek.closeSoon(peekOpen) } : {})}
         >
           {resizer('left')}
-          {layout.left === 'docked' ? (
-            <div className="sidebar-head">
-              <SpicaBanner height={BANNER_HEIGHT} className="sidebar-brand" {...wordmarkProps} />
-              {sidebarToggle}
-            </div>
-          ) : (
-            // Over the icon column: the toggle stays where the column has it, the brand after it.
-            <div className="sidebar-head is-over-rail">
-              {sidebarToggle}
-              <SpicaBanner height={BANNER_HEIGHT} className="sidebar-brand" {...wordmarkProps} />
-            </div>
-          )}
+          <SidebarHead peek={peekOpen} toggle={sidebarToggle} brand={<SpicaBanner height={BANNER_HEIGHT} className="sidebar-brand" {...wordmarkProps} />} />
           {sidebarEl(false)}
         </div>
       ) : null}
