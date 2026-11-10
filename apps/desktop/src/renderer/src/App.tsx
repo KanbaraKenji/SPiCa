@@ -146,12 +146,22 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     [floating, shell, atHome, homeRight],
   );
 
-  // Shortcuts: Ctrl+B sidebar, Ctrl+Alt+B details, Esc closes a floating panel or settings.
+  // The right panel over the whole conversation (他 2026-11-10: 「和 claude 同款 expand」); for this visit only.
+  const [rightMax, setRightMax] = useState(false);
+  // Only while the right panel is there to show (set below, once the layout is known).
+  const [canMax, setCanMax] = useState(false);
+
+  // Shortcuts: Ctrl+B sidebar, Ctrl+Alt+B details, Ctrl+Shift+\ right panel over the conversation,
+  // Esc closes a floating panel or settings.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         toggle(e.altKey ? 'right' : 'left');
+      } else if (e.ctrlKey && e.shiftKey && !e.altKey && e.code === 'Backslash') {
+        if (!canMax) return;
+        e.preventDefault();
+        setRightMax((v) => !v);
       } else if (e.key === 'Escape' && !e.defaultPrevented) {
         if (floating) setFloating(null);
         else if (view !== 'chat') setView('chat');
@@ -159,7 +169,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggle, floating, view]);
+  }, [toggle, floating, view, canMax]);
 
   // Sidebar collapsed: resting the pointer on the window's left edge slides it out
   // for a moment (like Claude Desktop); it goes away once the pointer leaves it.
@@ -433,6 +443,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
 
   const leftShown = layout.left !== 'hidden';
   const rightShown = layout.right !== 'hidden';
+  // Maximized only while the panel is there to show; closing it or leaving the conversation ends that.
+  const rightCanMax = rightShown && view === 'chat';
+  if (canMax !== rightCanMax) setCanMax(rightCanMax);
+  if (rightMax && !rightCanMax) setRightMax(false);
   const title = view === 'settings' ? '设置' : view === 'inbox' ? '收件箱' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
 
   const sidebarToggle = (
@@ -537,6 +551,18 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           onDismissNotice={(nid) => shell.update({ dismissedNotices: [...settings.dismissedNotices, nid] })}
         />
         <div className="titlebar-right">
+          {view === 'chat' && rightShown ? (
+            <button
+              type="button"
+              className={rightMax ? 'icon-btn is-on' : 'icon-btn'}
+              onClick={() => setRightMax((v) => !v)}
+              aria-label={rightMax ? '还原' : '最大化'}
+              aria-pressed={rightMax}
+              title={rightMax ? '还原（Ctrl+Shift+\\）' : '最大化（Ctrl+Shift+\\）'}
+            >
+              <Icon name={rightMax ? 'restore' : 'maximize'} />
+            </button>
+          ) : null}
           {view === 'chat' ? (
             <button type="button" data-panel-toggle className={rightShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('right')} aria-label={rightShown ? '收起详情' : '展开详情'} aria-pressed={rightShown} title="详情（Ctrl+Alt+B）">
               <Icon name="detail" />
@@ -625,8 +651,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         </main>
 
         {rightShown && view === 'chat' ? (
-          <div className={`panel panel-right is-${layout.right}`} style={{ width: widths.right }}>
-            {resizer('right')}
+          <div className={`panel panel-right is-${layout.right}${rightMax ? ' is-max' : ''}`} style={rightMax ? undefined : { width: widths.right }}>
+            {rightMax ? null : resizer('right')}
             {panelPages.length && !preview ? (
               <div className="tabs right-tabs" role="tablist" aria-label="右栏">
                 <button type="button" role="tab" aria-selected={!panelPluginView} className={!panelPluginView ? 'tab is-on' : 'tab'} onClick={() => setRightTab('detail')}>

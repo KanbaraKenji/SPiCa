@@ -248,6 +248,16 @@ a:hover {
   right: 0;
 }
 
+/* 最大化: the right panel over the whole conversation (which stays underneath, scroll kept). */
+.panel.panel-right.is-max {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  z-index: 31;
+  box-shadow: none;
+  border-left: 0;
+}
+
 .panel-left.is-floating {
   z-index: 30;
 }
@@ -1195,6 +1205,14 @@ button.tree-twisty:hover {
   border-radius: var(--radius-m);
   background: var(--spica-accent-soft);
   color: var(--spica-accent-text);
+}
+
+/* The file's type on its colour (PDF, DOC, XLS…); same on light and dark. */
+.file-card-icon.is-typed {
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .file-card-text {

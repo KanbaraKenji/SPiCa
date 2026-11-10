@@ -25,6 +25,8 @@ const PATHS = {
   arrowRight: 'M3 8h10 M9 4l4 4-4 4',
   dot: 'M8 7.2a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6z',
   inbox: 'M2.5 9.5l1.8-6h7.4l1.8 6v3h-11z M2.5 9.5h3.2l.8 1.5h3l.8-1.5h3.2',
+  maximize: 'M9.5 2.5h4v4 M13.5 2.5L9 7 M6.5 13.5h-4v-4 M2.5 13.5L7 9',
+  restore: 'M13.5 2.5L9.5 6.5 M9.5 3v3.5H13 M2.5 13.5l4-4 M6.5 13V9.5H3',
 } as const;
 
 export type IconName = keyof typeof PATHS;
