@@ -803,10 +803,13 @@ button.tree-twisty:hover {
   gap: 8px;
 }
 
+/* A note line in the conversation (工作文件夹已选为 …, 已切换模型 …): a long path or name breaks anywhere
+   rather than running past the window's edge. */
 .turn-note {
   margin: 0;
   font-size: 13px;
   color: var(--spica-muted);
+  overflow-wrap: anywhere;
 }
 
 /* A model setting a connected script changed: stands out from tool rows (他: 「比较明显」;

@@ -14,6 +14,10 @@ describe('styles', () => {
     expect(block('.rail-head,\n.sidebar-head.is-over-rail')).toContain('justify-content: flex-start');
   });
 
+  it('a note line in the conversation breaks a long path instead of running past the window', () => {
+    expect(block('.turn-note')).toContain('overflow-wrap: anywhere');
+  });
+
   it('nothing is underlined (links and text buttons are told by colour and the pointer, not a line)', () => {
     expect(css).not.toMatch(/text-decoration(-line)?:\s*underline/);
     expect(css).not.toMatch(/text-underline/);
