@@ -82,10 +82,11 @@ export function taskbarFrameSvg(size: number, colors: { ink: string; accent?: st
 
 /**
  * 写死颜色的应用图标：安装程序、资源管理器里的 exe、卸载条目这些不能随任务栏深浅换色的位置。
- * 单色花直接画在透明底上，不加底板、描边、阴影；每个尺寸都用光学版几何按尺寸直接出图（同 taskbarFrameSvg）。
+ * 花直接画在透明底上，不加底板、描边、阴影：长瓣用 accent，短瓣和花心用 ink（缺省 BRAND_COLORS.fixedIcon）。
+ * 每个尺寸都用光学版几何按尺寸直接出图（同 taskbarFrameSvg）。
  */
-export function fixedIconSvg(size: number, ink: string = BRAND_COLORS.fixedIcon.ink): string {
-  return taskbarFrameSvg(size, { ink });
+export function fixedIconSvg(size: number, colors: { ink: string; accent: string } = BRAND_COLORS.fixedIcon): string {
+  return taskbarFrameSvg(size, colors);
 }
 
 /** 任务栏 / 窗口图标：无底、光学版几何 */

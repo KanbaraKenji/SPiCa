@@ -15,16 +15,19 @@ export interface ThemeColors {
   background: string;
 }
 
+const LIGHT_INK = '#0F172A';
+const ACCENT_LOCK = '#39C5BB';
+
 export const BRAND_COLORS = Object.freeze({
   dark: Object.freeze<ThemeColors>({ ink: '#F1F5F9', accent: '#62A9FF', background: '#0F1522' }),
-  light: Object.freeze<ThemeColors>({ ink: '#0F172A', accent: '#2F7DE1', background: '#F8FAFC' }),
+  light: Object.freeze<ThemeColors>({ ink: LIGHT_INK, accent: '#2F7DE1', background: '#F8FAFC' }),
   /**
-   * 写死颜色的应用图标（安装程序、exe、卸载条目）：单色花，透明底。
-   * 这些位置跟不了系统深浅，颜色待他定（白 #F1F5F9 / 近黑 #0F172A / 蓝 #2F7DE1），先按深色任务栏那一版的白色。
+   * 写死颜色的应用图标（安装程序、exe、卸载条目）：两色花，透明底。
+   * 三片长瓣 #39C5BB（与 accentLock 同值），六片短瓣和花心用浅色主题的墨色。
    */
-  fixedIcon: Object.freeze({ ink: '#F1F5F9' }),
+  fixedIcon: Object.freeze({ ink: LIGHT_INK, accent: ACCENT_LOCK }),
   /** accent lock：彩蛋解锁后长瓣常驻的颜色 */
-  accentLock: '#39C5BB',
+  accentLock: ACCENT_LOCK,
 });
 
 /** 页面上用到的 CSS 变量名 */

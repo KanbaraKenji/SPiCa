@@ -19,8 +19,10 @@ describe('SVG 构造器', () => {
     expect(svg).toContain('<title>Spica &lt;home&gt;</title>');
   });
 
-  it('写死的应用图标：单色花、透明底，不加描边，所有尺寸都用光学版', () => {
-    const { ink } = BRAND_COLORS.fixedIcon;
+  it('写死的应用图标：两色花、透明底，不加描边，所有尺寸都用光学版', () => {
+    const { ink, accent } = BRAND_COLORS.fixedIcon;
+    expect(accent).toBe(BRAND_COLORS.accentLock);
+    expect(ink).toBe(BRAND_COLORS.light.ink);
     for (const size of [16, 24, 48, 256]) {
       const svg = fixedIconSvg(size);
       expect(svg).not.toContain('<rect');
@@ -28,9 +30,11 @@ describe('SVG 构造器', () => {
       expect(svg).not.toContain('filter');
       expect(svg).toContain(`width="${size}" height="${size}"`);
       expect(svg).toContain('scale(1.22)'); // 光学版
-      expect(svg.match(/fill="([^"]+)"/g)).toEqual(Array(10).fill(`fill="${ink}"`)); // 九瓣 + 轴，一种颜色
+      // 12 点钟起顺时针九片瓣，第 1、4、7 片是长瓣；最后是花心
+      const fills = svg.match(/fill="([^"]+)"/g)!.map((f) => f.slice(6, -1));
+      expect(fills).toEqual([accent, ink, ink, accent, ink, ink, accent, ink, ink, ink]);
     }
-    expect(fixedIconSvg(24, '#2F7DE1')).toContain('fill="#2F7DE1"');
+    expect(fixedIconSvg(24, { ink: '#000', accent: '#2F7DE1' })).toContain('fill="#2F7DE1"');
     expect(fixedIconSvg(256)).toMatchSnapshot();
   });
 
