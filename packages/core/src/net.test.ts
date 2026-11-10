@@ -273,7 +273,7 @@ describe('readable errors and WSO2', () => {
     let base = await gateway({ token: (r) => html(r, 200, 'Sign in - Corporate Portal') });
     let r = await probeProvider(wso2(base), { model: 'm' });
     expect(r).toMatchObject({ ok: false, stage: 'token', code: 'wso2.token_bad_response' });
-    expect(r.hint).toMatch(/^取 token 失败：/);
+    expect(r.hint).toMatch(/^获取 token 失败：/);
     expect(r.message).toContain('Sign in - Corporate Portal');
     expect(r.message).not.toContain('<html');
 
@@ -287,7 +287,7 @@ describe('readable errors and WSO2', () => {
     base = await gateway({ token, model: (res) => html(res, 502, 'Bad Gateway') });
     r = await probeProvider(wso2(base), { model: 'm' });
     expect(r).toMatchObject({ stage: 'model', code: 'gateway.html', httpStatus: 502 });
-    expect(r.hint).toMatch(/^调模型失败：网关返回了一个网页/);
+    expect(r.hint).toMatch(/^模型调用失败：网关返回网页/);
     expect(r.message).toContain('"Bad Gateway"');
 
     // nothing listens there
@@ -331,7 +331,7 @@ describe('readable errors and WSO2', () => {
     for (const c of ['wso2.invalid_credentials', 'wso2.missing_credentials', 'wso2.throttled', 'wso2.not_subscribed', 'wso2.scope', 'wso2.api_blocked', 'wso2.subscription_inactive']) {
       expect(NET_HINTS[c]).toMatch(/WSO2 9008|WSO2 9009/);
     }
-    expect(NET_HINTS['wso2.not_subscribed']).toMatch(/开发者门户.*订阅|找管理员/);
+    expect(NET_HINTS['wso2.not_subscribed']).toMatch(/WSO2 开发者门户中订阅/);
   });
 
   it('test connection and model calls name the fault; 900901 gets one new token first', async () => {
@@ -347,7 +347,7 @@ describe('readable errors and WSO2', () => {
     let base = await gateway({ token, model: (res) => json(res, 403, '{"fault":{"code":900908,"message":"Resource forbidden"}}') });
     let r = await probeProvider(wso2(base), { model: 'm' });
     expect(r).toMatchObject({ ok: false, stage: 'model', code: 'wso2.not_subscribed', errorCode: 'auth', httpStatus: 403 });
-    expect(r.hint).toMatch(/^调模型失败：这个应用还没订阅这个接口/);
+    expect(r.hint).toMatch(/^模型调用失败：应用未订阅此 API/);
 
     // scope too narrow (XML fault)
     base = await gateway({ token, model: (res) => xml(res, 403, '<ams:fault xmlns:ams="http://wso2.org/apimanager/security"><ams:code>900910</ams:code></ams:fault>') });
@@ -382,7 +382,7 @@ describe('readable errors and WSO2', () => {
     base = await gateway({ token, model: (res) => (modelCalls++, json(res, 401, '{"fault":{"code":900901,"message":"Invalid Credentials"}}')) });
     r = await probeProvider(wso2(base), { model: 'm' });
     expect(r).toMatchObject({ code: 'wso2.invalid_credentials', httpStatus: 401 });
-    expect(r.hint).toMatch(/已自动重新取过一次 token/);
+    expect(r.hint).toMatch(/请检查 Consumer Key 和 Consumer Secret/);
     expect({ tokens, modelCalls }).toEqual({ tokens: 2, modelCalls: 2 });
   });
 

@@ -89,7 +89,7 @@ export async function probeProvider(provider: Provider, opts: ProbeOptions): Pro
       errorCode,
       stage,
       ...(code ? { code } : {}),
-      ...(hint ? { hint: stage === 'token' ? `取 token 失败：${hint}` : `调模型失败：${hint}` } : {}),
+      ...(hint ? { hint: stage === 'token' ? `获取 token 失败：${hint}` : `模型调用失败：${hint}` } : {}),
       ...(status ? { httpStatus: status } : {}),
       message,
     };

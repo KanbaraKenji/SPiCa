@@ -119,7 +119,7 @@
 - **anthropic**（`providers/anthropic.ts`）：Messages API 原生流式；thinking 连同签名只回传给产生它的 provider；系统提示、工具表最后一项、最后一条消息打 `cache_control`；同角色连续消息合并、tool_result 排在用户轮最前；托管搜索等模型托管的块作为 `opaque` 原样保存回传。
 - **wso2**（`providers/wso2.ts`）：openai-compatible 外包一层 OAuth2 client credentials。第一次请求前取 token（client id / secret 默认走 HTTP Basic，可改放表单，scope 可配），缓存到过期前 60 秒；多个会话同时要 token 只发一次请求；网关回 401 时作废缓存、重取一次、重发一次（不占重试次数）；凭据被拒不重试，错误里不出现 secret；每次取 token 记一条 `kind: 'auth'` 记录。
 - **共用 http 层**（`providers/http.ts`）：408 / 409 / 429 / 5xx / 网络错重试，指数退避加抖动，尊重 Retry-After；只在拿到响应头之前重试（流已开始吐字就不重试，免得界面上出现重复文字）；等响应头有超时，读流有空闲超时；错误信息过一遍去敏。**软停止**：用户插话或停止时不中止连接，拿到响应头之前就不等了、等它回来再丢掉正文，之后由读流的一方 `cancel()`；只有「等响应头超时」才硬中止（原因见第 20 节）。
-- **测试连接**（`providers/probe.ts`）：按给定配置发一次最小请求，返回是否成功、延迟、服务端报的模型名；失败时给 `stage`（`token` = 取 token 这一步，`model` = 调模型这一步，WSO2 先单独取一次 token 再调模型）、`code`（见下表）和中文 `hint`（「取 token 失败：…」「调模型失败：…」）。不进任何会话，记一条 `initiator: 'runtime:probe'` 的记录。
+- **测试连接**（`providers/probe.ts`）：按给定配置发一次最小请求，返回是否成功、延迟、服务端报的模型名；失败时给 `stage`（`token` = 取 token 这一步，`model` = 调模型这一步，WSO2 先单独取一次 token 再调模型）、`code`（见下表）和中文 `hint`（「获取 token 失败：…」「模型调用失败：…」）。不进任何会话，记一条 `initiator: 'runtime:probe'` 的记录。
 - **WSO2 的几种失败**：token 地址连不上 → `wso2.token_unreachable`，若是证书或代理问题则直接给 `tls.*` / `proxy.*`；凭据或 scope 不对 → `wso2.token_rejected`；token 地址回的是网页或不是 token → `wso2.token_bad_response`（报网页标题，不把整页塞进错误）；token 快过期时提前 60 秒换新的；网关回 401 时作废缓存重取一次，重取后仍 401：本机时间和网关（按 token 响应的 Date 头）相差超过 5 分钟就报 `wso2.clock_skew`，否则报 `wso2.token_not_accepted`（多半是应用没订阅这个接口）。模型调用回网页错误页 → `gateway.html`。网关拒绝时正文里带 WSO2 的 fault 编号（JSON `{"fault":{"code":…}}` 或 `{"code":…}`，或 XML `<ams:code>`），认识的编号优先于按 HTTP 状态给的码（`gatewayFaultCode()`，见下表）；900901（凭据无效或 token 过期）不论状态码，都先作废 token 重取一次再发；仍是 900901 就报 `wso2.invalid_credentials`，本机时间差太多时报 `wso2.clock_skew`。不认识的编号照旧按状态码给。
 
 **网络**（`net.ts`，M10）：所有对外请求（各 provider、取 token、web_fetch、web_search）都走 `netFetch`。
@@ -236,7 +236,7 @@
 ## 12. 花费、限流与并行
 
 - **价表**是数据（`cost.ts`），按 provider id、再按种类、再按模型查，`*` 兜底，可整体覆盖、运行中可换。条目可带 `contextWindow`（只从确切的模型条目取，不从 `*` 推测）和 `longContext { above, input, output, … }`（提示超过 above 个 token 时用的另一档价格）。默认表里 Claude Haiku / Sonnet / Opus 5.5 的窗口是 100 万 token（设置表单用后台方法 `knownContextWindow(kind, model)` 取这个值预填，先按种类、再按任何 provider 下同名的确切条目，不看设置里填的值）；Haiku 5.5 的提示超过 10 万 token 时按 0.50 / 2.50 USD 算。查不到时用故意偏高的兜底价（输入 10、输出 50 USD / 百万 token），绝不按 0 算。Claude 的价格按官方表；DeepSeek 的价格是占位，标 `unverified`，只影响估算准不准，不影响上限生效。
-- **模型目录**（`catalog/`）：添加模型时的「服务商」和「型号」下拉、默认价格表和已知上下文上限都出自这一份，不再两处各记各的。
+- **模型目录**（`catalog/`）：「添加服务商」和「模型」的下拉、默认价格表和已知上下文上限都出自这一份，不再两处各记各的。
   - 数据：`catalog/builtin.ts`（随版本带，schema `spica.model-catalog`，version 是日期）。每家服务商：id、名字、分组（cn / intl / local）、类型、接口地址、文档页、怎么列型号（listModels）、要不要 Key；每个型号：API 里的 id、上下文上限、最大输出、角色（default / strong / cheap，表单拿它预选）、官方价格（没取到就不写）。**每条都有 `source`（官方页面）和 `checked`（核对日期）**，缺了 `catalogProblems()` 不让进，测试守着。全部按各家官方文档自己整理，不用任何数据集；new-api 是 AGPL-3.0 加额外条款，不搬它的任何东西；models.dev、LiteLLM、one-api 是 MIT，将来要用先建 THIRD-PARTY-NOTICES。
   - 价格：`DEFAULT_PRICES = pricesFromCatalog(目录)`，按目录里的服务商 id 一张表，再按类型一张（手填的连接也能按型号名查到）；人民币按目录的 `fx.usdPerCny`（故意取高）换成美元，DeepSeek 按高峰价。没有官方价的型号只带上下文上限，价格用类型的偏高兜底（`unverified`）——**界面上不能把兜底价当成这个型号的价格显示**，`spica_list_presets` 和 `modelCatalog()` 只给官方价。连接配置的 `catalogId` 记它是从哪家选的，查价格和上下文上限依次看：设置里填的 → provider id → catalogId → 类型 → `*`。部署自己给了 `prices` 时用它的表。
   - 更新：`configure({ catalog })`（外壳从更新源取 model-catalog.json），校验过、version 比内置的新才用，不然给警告用内置的。

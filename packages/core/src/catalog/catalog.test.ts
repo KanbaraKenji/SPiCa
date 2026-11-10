@@ -169,7 +169,7 @@ describe('get the models from the provider', () => {
       res.writeHead(200, { 'content-type': 'text/plain' }).end('hello');
     });
     const ask = (path: string) => listProviderModels({ kind: 'openai-compatible', baseUrl: `${base}/${path}`, apiKey: 'sk-list-test-123456' }, BUILTIN_CATALOG);
-    expect(await ask('none/v1')).toMatchObject({ ok: false, code: 'list.unsupported', hint: expect.stringMatching(/不提供型号列表/) });
+    expect(await ask('none/v1')).toMatchObject({ ok: false, code: 'list.unsupported', hint: expect.stringMatching(/不支持获取模型列表/) });
     const refused = await ask('key/v1');
     expect(refused).toMatchObject({ ok: false, code: 'gateway.unauthorized', httpStatus: 401 });
     expect(JSON.stringify(refused)).not.toContain('sk-list-test-123456');

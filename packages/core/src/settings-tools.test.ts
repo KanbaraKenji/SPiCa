@@ -227,7 +227,7 @@ describe('model settings over Spica MCP', () => {
     const nowhere = await closedUrl();
     const r = await call('spica_save_model', { kind: 'openai-compatible', name: 'Nowhere', baseUrl: `${nowhere}/v1`, model: 'm1', apiKey: API_KEY, contextWindow: 8000 });
     expect(r).toMatchObject({ saved: false, test: { ok: false, steps: { model: 'failed' }, code: 'net.refused' } });
-    expect((r.test as { hint: string }).hint).toMatch(/^调模型失败：/);
+    expect((r.test as { hint: string }).hint).toMatch(/^模型调用失败：/);
     expect(asks(events)).toEqual([]);
     expect(win.list().connections).toEqual([]);
 
