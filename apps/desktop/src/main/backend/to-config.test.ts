@@ -18,7 +18,7 @@ describe('toProviderConfig', () => {
 describe('knownContextWindow', () => {
   it('knows a model behind a gateway by its exact name, and nothing from a * row', () => {
     expect(knownContextWindow(DEFAULT_PRICES, 'wso2', 'claude-sonnet-5-5')).toBe(1_000_000);
-    expect(knownContextWindow(DEFAULT_PRICES, 'openai-compatible', 'deepseek-flash')).toBeNull();
+    expect(knownContextWindow(DEFAULT_PRICES, 'openai-compatible', 'nobody-knows-this')).toBeNull();
     expect(knownContextWindow(DEFAULT_PRICES, 'anthropic', 'claude-unknown')).toBeNull();
   });
 });
