@@ -144,6 +144,8 @@ describe('the assistant looking through earlier conversations', () => {
         </HistoryRefContext.Provider>
       </OpenSessionContext.Provider>,
     );
+    // Told apart by the pointer and a hover note, not a line under it.
+    expect(screen.getByRole('button', { name: '看一下报价单' }).getAttribute('title')).toBe('打开对话');
     fireEvent.click(screen.getByRole('button', { name: '看一下报价单' }));
     expect(open).toHaveBeenCalledWith('ses_ab12', 4);
     expect(screen.queryByRole('button', { name: '另一条' })).toBeNull();

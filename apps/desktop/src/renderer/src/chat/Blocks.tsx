@@ -56,7 +56,7 @@ function HistoryLink({ href, children }: { href: string; children: ReactNode }) 
   const to = /^\d+$/.test(digits) ? resolve?.(Number(digits)) : undefined;
   if (!to || !open) return <>{children}</>;
   return (
-    <button type="button" className="text-btn history-link" onClick={() => open(to.sessionId, to.seq)}>
+    <button type="button" className="text-btn history-link" title="打开对话" onClick={() => open(to.sessionId, to.seq)}>
       {children}
     </button>
   );
