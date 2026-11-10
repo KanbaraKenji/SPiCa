@@ -5,8 +5,17 @@ const PATHS = {
   sidebar: 'M2.5 3.5h11v9h-11z M6 3.5v9',
   detail: 'M2.5 3.5h11v9h-11z M10 3.5v9',
   plus: 'M8 3v10 M3 8h10',
+  // A gear (他 2026-11-10: the old one read as a sun).
   settings:
-    'M8 5.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8z M8 1.8v1.6 M8 12.6v1.6 M1.8 8h1.6 M12.6 8h1.6 M3.6 3.6l1.15 1.15 M11.25 11.25l1.15 1.15 M3.6 12.4l1.15-1.15 M11.25 4.75l1.15-1.15',
+    'M6.54 3.22 L6.78 1.41 L9.22 1.41 L9.46 3.22 L10.35 3.59 L11.79 2.48 L13.52 4.21 L12.41 5.65 L12.78 6.54 L14.59 6.78 L14.59 9.22 L12.78 9.46 L12.41 10.35 L13.52 11.79 L11.79 13.52 L10.35 12.41 L9.46 12.78 L9.22 14.59 L6.78 14.59 L6.54 12.78 L5.65 12.41 L4.21 13.52 L2.48 11.79 L3.59 10.35 L3.22 9.46 L1.41 9.22 L1.41 6.78 L3.22 6.54 L3.59 5.65 L2.48 4.21 L4.21 2.48 L5.65 3.59z M8 5.8a2.2 2.2 0 1 0 0 4.4 2.2 2.2 0 0 0 0-4.4z',
+  // 新对话: a page and a pen (the plus stays for 新项目, 添加附件, 新建皮肤, 放大).
+  newChat: 'M13.5 8.5v5h-11v-11h5 M11.6 2.1l2.3 2.3-5.6 5.6H6V7.7z',
+  // 助理: the assistant's main conversation.
+  assistant: 'M2.5 3h11v8h-6.5l-3 2.5V11h-1.5z',
+  // A plugin page without its own icon.
+  plugin: 'M2.5 2.5h4.5v4.5h-4.5z M9 2.5h4.5v4.5H9z M2.5 9h4.5v4.5h-4.5z M9 9h4.5v4.5H9z',
+  // A confirmation (something needs your permission).
+  shield: 'M8 1.8l5 1.9v4.1c0 3.1-2.1 5.3-5 6.4-2.9-1.1-5-3.3-5-6.4V3.7z',
   chevronRight: 'M6 4l4 4-4 4',
   chevronDown: 'M4 6l4 4 4-4',
   back: 'M10 4L6 8l4 4',

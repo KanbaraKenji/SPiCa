@@ -266,7 +266,7 @@ export function Sidebar({
     <nav className="sidebar" aria-label="会话">
       <div className="sidebar-top">
         <button type="button" className="side-action" onClick={onNewChat}>
-          <Icon name="plus" />
+          <Icon name="newChat" />
           <span>新对话</span>
         </button>
         {inbox ? (
@@ -315,7 +315,7 @@ export function Sidebar({
           <h2 className="tree-heading">插件</h2>
           {pluginPages.map((p) => (
             <button key={p.key} type="button" className={p.open ? 'side-action is-active' : 'side-action'} onClick={p.onOpen} aria-current={p.open ? 'page' : undefined} title={p.title}>
-              {p.icon ? <img className="side-plugin-icon" src={p.icon} alt="" /> : <Icon name="dot" />}
+              {p.icon ? <img className="side-plugin-icon" src={p.icon} alt="" /> : <Icon name="plugin" />}
               <span className="side-action-text">{p.title}</span>
             </button>
           ))}
