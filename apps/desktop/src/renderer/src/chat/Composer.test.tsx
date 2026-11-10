@@ -72,7 +72,7 @@ describe('Composer controls', () => {
         sessionKey="ctl"
         tools={{
           approval: { mode: 'manual', onChange: onApproval },
-          model: { label: 'deepseek-chat', options: [{ label: 'deepseek-chat', group: 'DeepSeek · 尾号 3f9a', marks: '默认', current: true, onPick: vi.fn() }, { label: 'deepseek-reasoner', group: 'DeepSeek · 尾号 3f9a', current: false, onPick: pickB }] },
+          model: { label: 'deepseek-chat', options: [{ label: 'deepseek-chat', group: 'DeepSeek · sk-0****3f9a', marks: '默认', current: true, onPick: vi.fn() }, { label: 'deepseek-reasoner', group: 'DeepSeek · sk-0****3f9a', current: false, onPick: pickB }] },
           context: { tokens: 23_400, window: 128_000 },
         }}
       />,
@@ -81,7 +81,7 @@ describe('Composer controls', () => {
     expect(screen.getByRole('img', { name: '上下文占用 23.4k / 128k 18%' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /deepseek-chat/ }));
     // One heading per connection; the tag says which is in use and which is the default.
-    expect(screen.getAllByText('DeepSeek · 尾号 3f9a')).toHaveLength(1);
+    expect(screen.getAllByText('DeepSeek · sk-0****3f9a')).toHaveLength(1);
     expect(screen.getByRole('menuitem', { name: /^deepseek-chat/ }).textContent).toBe('deepseek-chat当前 · 默认');
     fireEvent.click(screen.getByRole('menuitem', { name: 'deepseek-reasoner' }));
     expect(pickB).toHaveBeenCalled();

@@ -57,20 +57,6 @@ export interface ConnectionModel {
   enabled?: boolean;
 }
 
-/**
- * The characters of a key that may be shown (its start and its end), never more than a
- * third of it: 24 characters or more → the first 4 and the last 4; 12–23 → the last 4; shorter → none.
- */
-export function keyMaskParts(key: string): { head: string; tail: string } {
-  const k = key.trim();
-  return { head: k.length >= 24 ? k.slice(0, 4) : '', tail: k.length >= 12 ? k.slice(-4) : '' };
-}
-
-/** 「sk-a****3f9a」, 「****3f9a」 or 「****」. */
-export function keyMaskText(parts: { head: string; tail: string }): string {
-  return `${parts.head}****${parts.tail}`;
-}
-
 /** In use (checked in the connection's list). */
 export function isEnabled(m: Pick<ConnectionModel, 'enabled'>): boolean {
   return m.enabled !== false;

@@ -2,7 +2,8 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { emptyDraft, keyMaskParts, keyMaskText } from '../../shared/providers';
+import { keyMaskParts, keyMaskText } from '@spica/protocol';
+import { emptyDraft } from '../../shared/providers';
 import { ProviderStore, type SecretBox } from './store';
 import { createFakeTester } from './tester';
 

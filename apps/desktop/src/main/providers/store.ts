@@ -6,13 +6,12 @@
 //
 // File versions: 1 (until 2026-11-10) held one model per entry (model,
 // strongModel, contextWindow, secret, defaultId); it is read and rewritten as 2.
+import { keyMaskParts, keyMaskText } from '@spica/protocol';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   enabledModels,
-  keyMaskParts,
-  keyMaskText,
   legacyModelFields,
   modelsOfDraft,
   validateDraft,

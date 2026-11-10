@@ -47,6 +47,12 @@ describe('settings-change card (connections)', () => {
     expect(JSON.stringify(rows(added))).not.toContain('secret-');
   });
 
+  it('the Consumer Key as the core masked it (first and last characters); older records read ****1234', () => {
+    expect(rows({ ...added, consumerKey: 'fa8x****8c21' })['Consumer Key']).toBe('fa8x****8c21');
+    expect(rows({ ...added, consumerKey: '****8c21' })['Consumer Key']).toBe('****8c21');
+    expect(rows(added)['Consumer Key']).toBe('****1234');
+  });
+
   it('a change says which models were added and removed, and where the default moved', () => {
     const changed: SettingsChangeMeta = {
       ...added,

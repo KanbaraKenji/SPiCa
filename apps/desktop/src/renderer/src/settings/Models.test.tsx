@@ -4,7 +4,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { Models, type ProvidersApi } from './Models';
 import type { ProviderList } from '../../../shared/bridge';
 import type { ModelCatalogView } from '../../../shared/catalog';
-import { emptyDraft, keyMaskParts, keyMaskText, type ProviderDraft, type ProviderView } from '../../../shared/providers';
+import { keyMaskParts, keyMaskText } from '@spica/protocol';
+import { emptyDraft, type ProviderDraft, type ProviderView } from '../../../shared/providers';
 import { dropAllDrafts } from './drafts';
 
 afterEach(() => {
