@@ -357,6 +357,14 @@ export const NET_HINTS: Record<string, string> = {
   'wso2.subscription_inactive': '订阅未生效（WSO2 900909），请在 WSO2 开发者门户中查看订阅状态。',
 };
 
+/**
+ * Hints that read differently for a kind of connection. A WSO2 API's address ends in its context and version
+ * (/llm/1.0), not in /v1.
+ */
+const KIND_HINTS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  wso2: { 'gateway.not_found_version': '路径无效（HTTP 404），请检查「网关地址」是否包含 API 的上下文和版本（如 /llm/1.0）。' },
+};
+
 /** What the settings form calls a connection's address, by its kind (the hints name the field the user sees). */
 export const ADDRESS_FIELD: Readonly<Record<string, string>> = { 'openai-compatible': '接口地址', anthropic: '接口地址', wso2: '网关地址' };
 
@@ -367,6 +375,8 @@ export const ADDRESS_FIELD: Readonly<Record<string, string>> = { 'openai-compati
 export function netHint(code: string | undefined, kind?: string): string | undefined {
   const hint = code ? NET_HINTS[code] : undefined;
   if (!hint) return undefined;
+  const own = kind ? KIND_HINTS[kind]?.[code!] : undefined;
+  if (own) return own;
   const field = (kind && ADDRESS_FIELD[kind]) || '接口地址';
   return field === '接口地址' ? hint : hint.replaceAll('接口地址', field);
 }

@@ -3,6 +3,7 @@
 // fails (no such endpoint, wrong key, network) the form keeps the catalog list
 // and lets the user type a name.
 import { htmlTitle, httpErrorCode, looksLikeHtml, NET_HINTS, netErrorCode, netFetch } from '../net.ts';
+import { joinUrl } from '../providers/http.ts';
 import { OAuthClientCredentials } from '../providers/wso2.ts';
 import { redact } from '../util.ts';
 import type { CatalogProvider, ListStyle, ModelCatalog } from './catalog.ts';
@@ -114,7 +115,7 @@ export async function listProviderModels(req: ListModelsRequest, catalog: ModelC
   if (style === 'anthropic') {
     let after: string | undefined;
     for (let page = 0; page < 20; page++) {
-      const r = await getJson(`${base}/models?limit=1000${after ? `&after_id=${encodeURIComponent(after)}` : ''}`);
+      const r = await getJson(joinUrl(base, `/models?limit=1000${after ? `&after_id=${encodeURIComponent(after)}` : ''}`));
       if (!r.ok) return r.result;
       const list = listOf(r.body);
       if (!list) return fail('list.bad_response', 'no model list in the answer');
@@ -127,13 +128,13 @@ export async function listProviderModels(req: ListModelsRequest, catalog: ModelC
     // its own API has the context window; the OpenAI-compatible list does not
     const origin = base.replace(/\/v1$/, '');
     let r = await getJson(`${origin}/api/v1/models`);
-    if (!r.ok) r = await getJson(`${base}/models`);
+    if (!r.ok) r = await getJson(joinUrl(base, '/models'));
     if (!r.ok) return r.result;
     const list = listOf(r.body);
     if (!list) return fail('list.bad_response', 'no model list in the answer');
     found.push(...list.map(entry));
   } else {
-    const r = await getJson(`${base}/models${style === 'openai-chat' ? '?sub_type=chat' : ''}`);
+    const r = await getJson(joinUrl(base, `/models${style === 'openai-chat' ? '?sub_type=chat' : ''}`));
     if (!r.ok) return r.result;
     const list = listOf(r.body);
     if (!list) return fail('list.bad_response', 'no model list in the answer');

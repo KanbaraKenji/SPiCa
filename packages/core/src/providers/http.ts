@@ -170,6 +170,33 @@ async function safeText(res: Response): Promise<string> {
 }
 
 /** Host part of a URL for traces; never includes path, query or credentials. */
+/**
+ * The address plus a path, keeping the address's query: a gateway may want ?api-version=… on every call (Azure
+ * OpenAI behind it). A query in `path` is added to it.
+ */
+export function joinUrl(base: string, path: string): string {
+  const [p, q] = path.split('?') as [string, string | undefined];
+  try {
+    const u = new URL(base);
+    u.pathname = u.pathname.replace(/\/+$/, '') + p;
+    for (const [k, v] of new URLSearchParams(q ?? '')) u.searchParams.append(k, v);
+    return u.toString();
+  } catch {
+    return base.replace(/\/+$/, '') + path;
+  }
+}
+
+/** The address ends in an API version: /v1, /v2, or a WSO2 API's version like /1.0 or /v1.0 (the query does not count). */
+export function endsInVersion(base: string): boolean {
+  let path = base;
+  try {
+    path = new URL(base).pathname;
+  } catch {
+    // not a URL: look at the text
+  }
+  return /\/v?\d+(\.\d+)*\/?$/i.test(path);
+}
+
 export function hostOf(url: string): string {
   try {
     return new URL(url).host;

@@ -41,7 +41,7 @@ it('a 404 at an address without a version says to check for /v1; with /v1 it say
   expect(await codeOf(`${gw.baseUrl}/api/v2`)).toBe('gateway.not_found');
 });
 
-it('a WSO2 gateway names its own field: 网关地址, in the conversation and in test connection (one place: netHint)', async () => {
+it('a WSO2 gateway names its own field and its own kind of version (context + version, like /llm/1.0), in the conversation and in test connection (one place: netHint)', async () => {
   const g = await startGateway({ oauth: { clientId: 'id-1', clientSecret: 'secret-1' } });
   try {
     g.onRequest(() => ({ status: 404, errorBody: '{"error":"no such resource"}' }));
@@ -52,9 +52,9 @@ it('a WSO2 gateway names its own field: 网关地址, in the conversation and in
     await rt.createSession().send('hi').done;
     await rt.close();
     const error = events.find((e) => e.type === 'error') as { code?: string; hint?: string };
-    expect(error).toMatchObject({ code: 'gateway.not_found_version', hint: '路径无效（HTTP 404），请检查「网关地址」是否需要以 /v1 结尾。' });
+    expect(error).toMatchObject({ code: 'gateway.not_found_version', hint: '路径无效（HTTP 404），请检查「网关地址」是否包含 API 的上下文和版本（如 /llm/1.0）。' });
     const tested = await probeConfig({ id: 'form', kind: 'wso2', baseUrl: `${g.baseUrl}/llm`, oauth }, 'm');
-    expect(tested.hint).toBe('模型调用失败：路径无效（HTTP 404），请检查「网关地址」是否需要以 /v1 结尾。');
+    expect(tested.hint).toBe('模型调用失败：路径无效（HTTP 404），请检查「网关地址」是否包含 API 的上下文和版本（如 /llm/1.0）。');
   } finally {
     await g.stop();
   }
@@ -65,4 +65,22 @@ it('a WSO2 gateway names its own field: 网关地址, in the conversation and in
   await rt.createSession().send('hi').done;
   await rt.close();
   expect(events.find((e) => e.type === 'error')).toMatchObject({ hint: '路径无效（HTTP 404），请检查「接口地址」是否需要以 /v1 结尾。' });
+});
+
+it('an address with a query keeps it (the path goes before it), and a version like /1.0 or /v1.0 counts as a version', async () => {
+  const { endsInVersion, joinUrl } = await import('./providers/http.ts');
+  expect(joinUrl('https://gw.example.com/azure/openai/deployments/gpt4o?api-version=2024-10-21', '/chat/completions')).toBe(
+    'https://gw.example.com/azure/openai/deployments/gpt4o/chat/completions?api-version=2024-10-21',
+  );
+  expect(joinUrl('https://gw.example.com/llm/1.0/', '/models?limit=10')).toBe('https://gw.example.com/llm/1.0/models?limit=10');
+  expect(joinUrl('https://gw.example.com/x?api-version=1', '/models?limit=10')).toBe('https://gw.example.com/x/models?api-version=1&limit=10');
+  expect(['/v1', '/llm/1.0', '/llm/v1.0', '/api/v2/'].map((p) => endsInVersion(`https://gw.example.com${p}`))).toEqual([true, true, true, true]);
+  expect(['', '/llm', '/openai/deployments/gpt4o?api-version=2024-10-21'].map((p) => endsInVersion(`https://gw.example.com${p}`))).toEqual([false, false, false]);
+  // a conversation over such an address: the request goes to the path with the query kept
+  gw.onRequest(() => ({ text: 'ok' }));
+  const provider = new OpenAICompatibleProvider({ id: 'p', baseUrl: `${gw.baseUrl}/openai/deployments/gpt4o?api-version=2024-10-21`, apiKey: 'test-key-123456', retry: FAST_RETRY });
+  const rt = makeRuntime(gw, { cwd: dir, providers: [provider], defaults: { providerId: 'p', model: 'm', maxTokens: 64 } });
+  expect((await rt.createSession().send('hi').done).reason).toBe('completed');
+  await rt.close();
+  expect(gw.requests.at(-1)!.path).toBe('/openai/deployments/gpt4o/chat/completions');
 });

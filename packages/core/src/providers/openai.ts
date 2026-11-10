@@ -1,7 +1,7 @@
 // OpenAI-compatible chat completions provider (/v1/chat/completions, SSE).
 // Used for any gateway that speaks this protocol (hosted APIs, LiteLLM, ...).
 import { imageBase64 } from '../images.ts';
-import { DEFAULT_RETRY, hostOf, postWithRetry, staticAuth, type RetryPolicy } from './http.ts';
+import { DEFAULT_RETRY, endsInVersion, hostOf, joinUrl, postWithRetry, staticAuth, type RetryPolicy } from './http.ts';
 import { parseSse } from './sse.ts';
 import {
   ProviderError,
@@ -84,7 +84,7 @@ export class OpenAICompatibleProvider implements Provider {
   }
 
   async *stream(req: ModelRequest, ctx: ProviderCallContext): AsyncGenerator<ProviderEvent, void> {
-    const url = this.#opts.baseUrl.replace(/\/+$/, '') + (this.#opts.path ?? '/chat/completions');
+    const url = joinUrl(this.#opts.baseUrl, this.#opts.path ?? '/chat/completions');
     const send = (streaming: boolean) => this.#post(url, req, ctx, streaming);
     let res: Response;
     if (this.#noStream) res = await send(false);
@@ -137,7 +137,7 @@ export class OpenAICompatibleProvider implements Provider {
       ...(ctx.onRetry ? { onRetry: ctx.onRetry } : {}),
       ...(this.#opts.fetchImpl ? { fetchImpl: this.#opts.fetchImpl } : {}),
       // a saved address without /v1 (it is added only by test connection, not here): a 404 says to check its ending
-      ...(!this.#opts.path && !/\/v\d+$/i.test(this.#opts.baseUrl.replace(/\/+$/, '')) ? { unversionedBase: true } : {}),
+      ...(!this.#opts.path && !endsInVersion(this.#opts.baseUrl) ? { unversionedBase: true } : {}),
     });
   }
 }
