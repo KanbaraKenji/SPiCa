@@ -40,25 +40,80 @@ export interface ProviderFields {
   catalogId: string | null;
 }
 
-/** What the settings page shows for a saved provider. */
+/** Where a model's context window came from. */
+export type ContextFrom = 'user' | 'catalog' | 'provider' | 'name-match';
+
+/** One model ticked under a connection, with its own context window. */
+export interface ConnectionModel {
+  /** As the API takes it. */
+  id: string;
+  /** Required for use; null only in older settings until it is filled in. */
+  contextWindow: number | null;
+  contextFrom: ContextFrom;
+}
+
+/** 「哪一条 + 哪个模型」: the default for new conversations, the one for heavy work. */
+export interface ModelRef {
+  connectionId: string;
+  model: string;
+}
+
+/**
+ * What the settings page shows for a saved connection: one provider, one key,
+ * the models ticked under it. `model` / `strongModel` / `contextWindow` are the
+ * first two models, for the form that still edits one model at a time.
+ */
 export interface ProviderView extends ProviderFields {
   id: string;
   hasSecret: boolean;
+  /** The last 4 characters of its key (tells two keys of one provider apart); null without one. */
+  keyTail: string | null;
+  /** The models ticked under this connection. */
+  models: ConnectionModel[];
+  /** Holds the model new conversations use. */
   isDefault: boolean;
   /** Comes from the developer's .env.local and cannot be edited here. */
   readOnly?: boolean;
 }
 
-/** What the settings page sends to save or test. `secret` undefined = keep the saved one. */
+/**
+ * What the settings page sends to save or test. `secret` undefined = keep the
+ * saved one. `models` is the whole ticked list; without it, `model` (and
+ * `strongModel`) are the list (the one-model form).
+ */
 export interface ProviderDraft extends ProviderFields {
   id?: string;
   secret?: string;
+  models?: ConnectionModel[];
 }
 
-/** A provider with its secret, for building the real connection (main process only). */
+/** A connection with its key, for building the real connection (main process only). */
 export interface ResolvedProvider extends ProviderFields {
   id: string;
   secret: string;
+  models: ConnectionModel[];
+}
+
+/**
+ * The ticked models a draft stands for: its `models`, or `model` (with the
+ * form's 上下文上限) and `strongModel` (keeping what was known of it).
+ */
+export function modelsOfDraft(d: ProviderDraft, saved: readonly ConnectionModel[] = []): ConnectionModel[] {
+  if (d.models) return d.models.filter((m) => m.id.trim()).map((m) => ({ ...m, id: m.id.trim() }));
+  const out: ConnectionModel[] = [];
+  const main = d.model.trim();
+  if (main) out.push({ id: main, contextWindow: d.contextWindow, contextFrom: saved.find((m) => m.id === main && m.contextWindow === d.contextWindow)?.contextFrom ?? 'user' });
+  const strong = d.strongModel.trim();
+  if (strong && strong !== main) {
+    const known = saved.find((m) => m.id === strong);
+    out.push(known ?? { id: strong, contextWindow: null, contextFrom: 'user' });
+  }
+  return out;
+}
+
+/** The one-model form's fields for a list of models: the first is 模型, the second 强模型. */
+export function legacyModelFields(models: readonly ConnectionModel[]): Pick<ProviderFields, 'model' | 'strongModel' | 'contextWindow'> {
+  return { model: models[0]?.id ?? '', strongModel: models[1]?.id ?? '', contextWindow: models[0]?.contextWindow ?? null };
 }
 
 export interface TestResult {
@@ -112,7 +167,9 @@ function isUrl(v: string): boolean {
 export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: { forTest?: boolean; needsKey?: boolean } = {}): FieldErrors {
   const e: FieldErrors = {};
   if (!d.name.trim()) e.name = '起个名字，方便在列表里认出来';
-  if (!d.model.trim()) e.model = '填要用的模型名';
+  // A whole ticked list (a connection with several models), or the one-model form.
+  const list = d.models?.filter((m) => m.id.trim());
+  if (list ? list.length === 0 : !d.model.trim()) e.model = list ? '至少勾选一个模型' : '填要用的模型名';
   const needsUrl = d.kind !== 'anthropic';
   if (needsUrl && !d.baseUrl.trim()) e.baseUrl = d.kind === 'wso2' ? '填网关地址' : '填接口地址';
   else if (d.baseUrl.trim() && !isUrl(d.baseUrl)) e.baseUrl = '地址要以 http:// 或 https:// 开头';
@@ -124,7 +181,10 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: {
   const secret = d.secret?.trim();
   // Local providers (Ollama, LM Studio) need no key.
   if (!secret && !hasSavedSecret && opts.needsKey !== false) e.secret = `填 ${secretLabel(d.kind)}`;
-  if (!opts.forTest) {
+  if (!opts.forTest && list) {
+    const missing = list.find((m) => m.contextWindow === null || !Number.isInteger(m.contextWindow) || m.contextWindow < 1);
+    if (missing) e.contextWindow = `「${missing.id}」还没填上下文上限（这个模型一次最多能装多少 token，比如 128000）`;
+  } else if (!opts.forTest) {
     if (d.contextWindow === null) e.contextWindow = '必须填这一项，比如 128000';
     else if (!Number.isInteger(d.contextWindow) || d.contextWindow < 1) e.contextWindow = '填正整数（token 数），比如 128000';
   }

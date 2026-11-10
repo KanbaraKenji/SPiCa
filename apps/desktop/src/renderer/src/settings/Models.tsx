@@ -14,6 +14,7 @@ import {
   type ProviderKind,
   type ProviderView,
   type TestResult,
+  type ModelRef,
 } from '../../../shared/providers';
 import { friendlyError } from '../store/agent';
 import { tokenText } from '../chat/Composer';
@@ -28,6 +29,8 @@ export interface ProvidersApi {
   save(draft: ProviderDraft): Promise<ProviderList>;
   remove(id: string): Promise<ProviderList>;
   setDefault(id: string): Promise<ProviderList>;
+  /** 「新对话默认用」 / 「重活用」; absent in older tests. */
+  setPointer?(which: 'default' | 'strong', ref: ModelRef | null): Promise<ProviderList>;
   test(draft: ProviderDraft): Promise<TestResult>;
   /** The context window Spica knows for a model (pre-fills the form), or null. */
   knownWindow?(kind: ProviderKind, model: string): Promise<number | null>;
@@ -91,6 +94,13 @@ const draftKey = (id: string | 'new') => `models.draft:${id}`;
 
 /** 强模型 and the two limits: first-time setup does not need them. */
 const MORE_FIELDS = ['strongModel', 'maxConcurrent', 'requestsPerMinute'] as const;
+
+/** A pointer as one <select> value (connection id and model, which ids never contain a tab). */
+const refKey = (r: ModelRef | null) => (r ? `${r.connectionId}\t${r.model}` : '');
+const parseRefKey = (k: string): ModelRef | null => {
+  const i = k.indexOf('\t');
+  return i > 0 ? { connectionId: k.slice(0, i), model: k.slice(i + 1) } : null;
+};
 
 function numText(v: number | null): string {
   return v === null ? '' : String(v);
@@ -292,9 +302,19 @@ export function Models({ api }: { api: ProvidersApi }) {
     }
   };
 
-  const makeDefault = async (id: string) => {
+  // Every ticked model, by connection, for 「新对话默认用」 and 「重活用」.
+  const groups = items
+    .filter((p) => p.models.length)
+    .map((p) => ({
+      label: `${p.name}${p.keyTail ? ` · 尾号 ${p.keyTail}` : ''}`,
+      options: p.models.map((m) => ({ key: refKey({ connectionId: p.id, model: m.id }), model: m.id })),
+    }));
+  const options = groups.flatMap((g) => g.options);
+  const point = async (which: 'default' | 'strong', key: string) => {
+    if (!api.setPointer) return;
+    const ref = parseRefKey(key);
     try {
-      setList(await api.setDefault(id));
+      setList(await api.setPointer(which, ref));
     } catch (e) {
       setResult({ ok: false, message: friendlyError(e) });
     }
@@ -316,6 +336,39 @@ export function Models({ api }: { api: ProvidersApi }) {
   return (
     <section className="settings-section">
 
+      {list && options.length ? (
+        <div className="model-pointers">
+          <label className="model-pointer">
+            <span className="field-label">新对话默认用</span>
+            <select className="input" value={refKey(list.default ?? null)} onChange={(e) => void point('default', e.target.value)} aria-label="新对话默认用">
+              {groups.map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.options.map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.model}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          <label className="model-pointer">
+            <span className="field-label">重活用</span>
+            <select className="input" value={refKey(list.strong ?? null)} onChange={(e) => void point('strong', e.target.value)} aria-label="重活用">
+              <option value="">不单独指定</option>
+              {groups.map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.options.map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.model}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
       <div className="provider-list" role="list">
         {list && items.length === 0 ? <p className="settings-hint">还没有配置模型</p> : null}
         {items.map((p) => (
@@ -323,19 +376,14 @@ export function Models({ api }: { api: ProvidersApi }) {
             <button type="button" className="provider-open" onClick={() => open(p)} aria-current={selected === p.id ? 'true' : undefined}>
               <span className="provider-name">{p.name}</span>
               <span className="provider-sub">
-                {kindLabel(p.kind)} · {p.model}
+                {kindLabel(p.kind)}
+                {p.keyTail ? ` · 尾号 ${p.keyTail}` : ''} · {p.models.length > 1 ? `${p.models.length} 个模型：${p.models.map((m) => m.id).join('、')}` : p.model}
               </span>
               {list?.problems[p.id] ? <span className="provider-problem">{list.problems[p.id]}</span> : null}
               {!p.readOnly && p.contextWindow === null ? <span className="provider-problem">还没填上下文上限，点开补上</span> : null}
               {keptDraft(draftKey(p.id)) ? <span className="provider-unsaved">改了还没保存</span> : null}
             </button>
-            {p.isDefault ? (
-              <span className="provider-default">默认</span>
-            ) : (
-              <button type="button" className="btn btn-small" onClick={() => void makeDefault(p.id)}>
-                设为默认
-              </button>
-            )}
+            {p.isDefault ? <span className="provider-default">默认</span> : null}
           </div>
         ))}
         <button type="button" className={selected === 'new' ? 'provider-add is-on' : 'provider-add'} onClick={() => open('new')}>

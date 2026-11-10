@@ -18,7 +18,7 @@ import { Sidebar } from './shell/Sidebar';
 import { DetailPanel } from './shell/DetailPanel';
 import { Conversation, type ConversationActions, type WaitingChild } from './chat/Conversation';
 import type { ComposerTools } from './chat/Composer';
-import type { ProviderView } from '../../shared/providers';
+import type { ModelRef, ProviderView } from '../../shared/providers';
 import { SettingsView, type SettingsTab } from './settings/SettingsView';
 import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
@@ -75,6 +75,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // Whether any model is configured; checked at start and whenever settings close.
   const [modelReady, setModelReady] = useState<boolean | null>(null);
   const [models, setModels] = useState<ProviderView[]>([]);
+  const [pointers, setPointers] = useState<{ default: ModelRef | null; strong: ModelRef | null }>({ default: null, strong: null });
   // The core asks which conversation is open ('ui.activeSession') to put settings-change cards there too.
   useEffect(() => bridge.reportActiveSession(state.activeId), [bridge, state.activeId]);
   // A connected script changed the models (through the MCP service): look again.
@@ -89,6 +90,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         if (!alive) return;
         setModelReady(l.items.length > 0);
         setModels(l.items);
+        setPointers({ default: l.default ?? null, strong: l.strong ?? null });
       })
       .catch(() => {
         if (alive) setModelReady(null);
@@ -356,19 +358,29 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   });
 
   const id = state.activeId;
-  const usingDefaultModel = models.find((p) => p.isDefault) ?? models[0];
+  // The model new conversations use: the settings' pointer (a connection may hold several models).
+  const firstModel = models.find((p) => p.models.length);
+  const defaultRef = pointers.default ?? (firstModel ? { connectionId: firstModel.id, model: firstModel.models[0]!.id } : null);
 
   // The model mail is sorted with (the core says so in mail.configured; else the default model).
-  const triage = mail.triageModel ?? (usingDefaultModel ? { providerId: usingDefaultModel.id, model: usingDefaultModel.model } : null);
+  const triage = mail.triageModel ?? (defaultRef ? { providerId: defaultRef.connectionId, model: defaultRef.model } : null);
   const mailModelLabel = triage ? `${models.find((p) => p.id === triage.providerId)?.name ?? triage.providerId} · ${triage.model}` : '';
 
   // The input box's controls: what the next message goes out with.
   const draft = state.draft;
   const topCwd = state.sessions.find((s) => s.id === state.topId)?.cwd ?? '';
-  const modelOptions = models.flatMap((p) => [...new Set([p.model, p.strongModel].filter(Boolean))].map((m) => ({ providerId: p.id, model: m, label: `${p.name} · ${m}` })));
+  // Every ticked model of every connection, by connection (its key tail tells two keys of one provider apart).
+  const isRef = (r: ModelRef | null, providerId: string, model: string) => Boolean(r && r.connectionId === providerId && r.model === model);
+  const modelOptions = models.flatMap((p) =>
+    p.models.map((m) => {
+      const marks = [isRef(pointers.default, p.id, m.id) ? '默认' : '', isRef(pointers.strong, p.id, m.id) ? '重活' : ''].filter(Boolean).join('·');
+      return { providerId: p.id, model: m.id, label: `${p.name}${p.keyTail ? ` · 尾号 ${p.keyTail}` : ''} · ${m.id}${marks ? `（${marks}）` : ''}` };
+    }),
+  );
   const using = session ? { providerId: session.providerId, model: session.model } : draft.providerId && draft.model ? { providerId: draft.providerId, model: draft.model } : null;
-  const usingDefault = usingDefaultModel;
-  const shown = using ?? (usingDefault ? { providerId: usingDefault.id, model: usingDefault.model } : null);
+  const shown = using ?? (defaultRef ? { providerId: defaultRef.connectionId, model: defaultRef.model } : null);
+  // A conversation on a model that was unticked or whose connection was deleted.
+  const shownGone = Boolean(shown && models.length && !modelOptions.some((o) => o.providerId === shown.providerId && o.model === shown.model));
   const composerTools: ComposerTools = {
     pickFiles: () => bridge.pickFiles('添加附件'),
     pathForFile: bridge.pathForFile,
@@ -390,7 +402,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     ...(shown
       ? {
           model: {
-            label: shown.model,
+            label: shownGone ? `${shown.model}（已不在设置里）` : shown.model,
             options: modelOptions.map((o) => ({
               label: o.label,
               current: o.providerId === shown.providerId && o.model === shown.model,

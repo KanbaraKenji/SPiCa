@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Models, type ProvidersApi } from './Models';
 import type { ProviderList } from '../../../shared/bridge';
-import type { ProviderDraft, ProviderView } from '../../../shared/providers';
+import { emptyDraft, type ProviderDraft, type ProviderView } from '../../../shared/providers';
 import { dropAllDrafts } from './drafts';
 
 afterEach(() => {
@@ -19,7 +19,8 @@ function fakeApi(initial: ProviderView[] = []) {
     save: vi.fn(async (d: ProviderDraft) => {
       const { secret, ...fields } = d;
       const id = d.id ?? `p-${items.length + 1}`;
-      const view: ProviderView = { ...fields, id, hasSecret: Boolean(secret) || Boolean(items.find((i) => i.id === id)?.hasSecret), isDefault: items.length === 0 };
+      const models = fields.models ?? (fields.model ? [{ id: fields.model, contextWindow: fields.contextWindow, contextFrom: 'user' as const }] : []);
+      const view: ProviderView = { ...fields, models, id, keyTail: secret ? secret.slice(-4) : null, hasSecret: Boolean(secret) || Boolean(items.find((i) => i.id === id)?.hasSecret), isDefault: items.length === 0 };
       items = d.id ? items.map((i) => (i.id === id ? view : i)) : [...items, view];
       return list();
     }),
@@ -137,7 +138,7 @@ describe('Models', () => {
 
   it('each model keeps its own unsaved edit; saving clears it', async () => {
     const api = fakeApi([
-      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, catalogId: null, hasSecret: true, isDefault: true },
+      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, catalogId: null, keyTail: null, models: [{ id: 'm', contextWindow: 128_000, contextFrom: 'user' }], hasSecret: true, isDefault: true },
     ]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
@@ -153,7 +154,7 @@ describe('Models', () => {
 
   it('typing a field back to what is saved is not a draft', async () => {
     const api = fakeApi([
-      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, catalogId: null, hasSecret: true, isDefault: true },
+      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, catalogId: null, keyTail: null, models: [{ id: 'm', contextWindow: 128_000, contextFrom: 'user' }], hasSecret: true, isDefault: true },
     ]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
@@ -164,7 +165,7 @@ describe('Models', () => {
 
   it('deletes only after confirming', async () => {
     const api = fakeApi([
-      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, catalogId: null, hasSecret: true, isDefault: true },
+      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: 128_000, catalogId: null, keyTail: null, models: [{ id: 'm', contextWindow: 128_000, contextFrom: 'user' }], hasSecret: true, isDefault: true },
     ]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
@@ -215,7 +216,7 @@ describe('Models', () => {
 
   it('a model saved without 上下文上限 says so in the list', async () => {
     const api = fakeApi([
-      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: null, catalogId: null, hasSecret: true, isDefault: true },
+      { id: 'p-1', kind: 'openai', name: '旧网关', baseUrl: 'https://a/v1', model: 'm', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: null, catalogId: null, keyTail: null, models: [{ id: 'm', contextWindow: null, contextFrom: 'user' }], hasSecret: true, isDefault: true },
     ]);
     render(<Models api={api} />);
     expect(await screen.findByText('还没填上下文上限，点开补上')).toBeTruthy();
@@ -241,5 +242,32 @@ describe('Models', () => {
     expect(screen.getByText('OWNER=IT')).toBeTruthy();
     // The pasted text is gone from the window once used.
     expect(screen.queryByLabelText('管理员给的配置')).toBeNull();
+  });
+
+  it('新对话默认用 / 重活用 list every ticked model by connection and set the pointers', async () => {
+    const conn = (id: string, name: string, tail: string, models: string[]): ProviderView => ({
+      ...emptyDraft('openai'),
+      id,
+      name,
+      baseUrl: 'https://api.example.com/v1',
+      model: models[0]!,
+      contextWindow: 1000,
+      keyTail: tail,
+      models: models.map((m) => ({ id: m, contextWindow: 1000, contextFrom: 'catalog' as const })),
+      hasSecret: true,
+      isDefault: id === 'p-1',
+    });
+    const items = [conn('p-1', 'DeepSeek', '3f9a', ['deepseek-flash', 'deepseek-v4-pro']), conn('p-2', 'DeepSeek 2', '81c2', ['deepseek-flash'])];
+    const api = fakeApi(items);
+    const list = { items, problems: {}, default: { connectionId: 'p-1', model: 'deepseek-flash' }, strong: null };
+    api.list = vi.fn(async () => list);
+    api.setPointer = vi.fn(async () => list);
+    render(<Models api={api} />);
+    const def = (await screen.findByLabelText('新对话默认用')) as HTMLSelectElement;
+    expect([...def.querySelectorAll('optgroup')].map((g) => g.label)).toEqual(['DeepSeek · 尾号 3f9a', 'DeepSeek 2 · 尾号 81c2']);
+    expect(def.selectedOptions[0]?.textContent).toBe('deepseek-flash');
+    fireEvent.change(screen.getByLabelText('重活用'), { target: { value: 'p-1	deepseek-v4-pro' } });
+    await waitFor(() => expect(api.setPointer).toHaveBeenCalledWith('strong', { connectionId: 'p-1', model: 'deepseek-v4-pro' }));
+    expect(screen.getByText(/尾号 81c2/)).toBeTruthy();
   });
 });

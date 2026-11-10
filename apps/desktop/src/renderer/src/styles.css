@@ -1950,6 +1950,20 @@ button.tree-twisty:hover {
 }
 
 /* Settings > models */
+/* 新对话默认用 / 重活用: at the top of 设置 › 模型, set in this one place. */
+.model-pointers {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.model-pointer {
+  display: grid;
+  grid-template-columns: 116px minmax(0, 420px);
+  align-items: center;
+  gap: 12px;
+}
+
 .provider-list {
   display: flex;
   flex-direction: column;

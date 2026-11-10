@@ -2,7 +2,7 @@
 // do goes through here; there is no other way to reach the backend.
 import type { AgentApi, CoreEvent, SpicaBridge } from '@spica/protocol';
 import type { SettingsPatch, ShellSettings } from './settings';
-import type { ProviderDraft, ProviderKind, ProviderView, TestResult } from './providers';
+import type { ModelRef, ProviderDraft, ProviderKind, ProviderView, TestResult } from './providers';
 import type { ListModelsView, ModelCatalogView } from './catalog';
 import type { PluginsCommand, PluginsResult } from './plugins';
 import type { UpdateState } from './updates';
@@ -12,6 +12,10 @@ import type { PluginView, PluginViewResult } from './plugin-view';
 export interface ProviderList {
   items: ProviderView[];
   problems: Record<string, string>;
+  /** The model new conversations use (null: none yet). */
+  default?: ModelRef | null;
+  /** The model for heavy work (null: none set). */
+  strong?: ModelRef | null;
 }
 
 /** Settings > 常规: the workflow folder and what the core read from it. */
@@ -129,6 +133,8 @@ export interface DesktopBridge extends SpicaBridge {
     save(draft: ProviderDraft): Promise<ProviderList>;
     remove(id: string): Promise<ProviderList>;
     setDefault(id: string): Promise<ProviderList>;
+    /** 「新对话默认用」 / 「重活用」: which connection and model (null: no model for heavy work). */
+    setPointer(which: 'default' | 'strong', ref: ModelRef | null): Promise<ProviderList>;
     test(draft: ProviderDraft): Promise<TestResult>;
     /** The context window Spica knows for this model (to pre-fill the form), or null. */
     knownWindow(kind: ProviderKind, model: string, catalogId?: string | null): Promise<number | null>;

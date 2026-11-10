@@ -1,9 +1,19 @@
 // Settings-page models in the shape the core's backend takes.
 import type { PriceTable, ProviderConfig } from '@spica/core';
-import type { ResolvedProvider } from '../../shared/providers';
+import type { ConnectionModel, ProviderFields } from '../../shared/providers';
 
-/** A settings-page model as the core's backend expects it. */
-export function toProviderConfig(p: ResolvedProvider): ProviderConfig {
+/** A connection (or the form being tested) with its key: the connection's models when it has them. */
+export type ConfigSource = ProviderFields & { id: string; secret: string; models?: readonly ConnectionModel[] };
+
+/** Model name -> context window, for every ticked model that has one. */
+function windowsOf(p: ConfigSource): Record<string, number> {
+  const list = p.models ?? (p.model ? [{ id: p.model, contextWindow: p.contextWindow }] : []);
+  return Object.fromEntries(list.filter((m) => m.contextWindow).map((m) => [m.id, m.contextWindow as number]));
+}
+
+/** A settings-page connection as the core's backend expects it. */
+export function toProviderConfig(p: ConfigSource): ProviderConfig {
+  const windows = windowsOf(p);
   const limits = {
     ...(p.maxConcurrent ? { maxConcurrent: p.maxConcurrent } : {}),
     ...(p.requestsPerMinute ? { requestsPerMinute: p.requestsPerMinute } : {}),
@@ -11,8 +21,8 @@ export function toProviderConfig(p: ResolvedProvider): ProviderConfig {
   const base = {
     id: p.id,
     ...(Object.keys(limits).length ? { limits } : {}),
-    // One model per entry here; the core falls back to what it knows for any other name.
-    ...(p.contextWindow && p.model ? { contextWindows: { [p.model]: p.contextWindow } } : {}),
+    // Every ticked model's window; the core falls back to what it knows for any other name.
+    ...(Object.keys(windows).length ? { contextWindows: windows } : {}),
     ...(p.catalogId ? { catalogId: p.catalogId } : {}),
   };
   switch (p.kind) {

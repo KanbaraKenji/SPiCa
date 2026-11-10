@@ -34,6 +34,7 @@ export const DesktopChannel = {
   SaveProvider: 'spica:providers:save',
   DeleteProvider: 'spica:providers:delete',
   SetDefaultProvider: 'spica:providers:default',
+  SetModelPointer: 'spica:providers:pointer',
   TestProvider: 'spica:providers:test',
   KnownContextWindow: 'spica:providers:known-window',
   ModelCatalog: 'spica:providers:catalog',

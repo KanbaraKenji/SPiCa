@@ -13,7 +13,7 @@ import { mailForCore, networkForCore, type ShellSettings } from '../shared/setti
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import { APP_IDENTITY } from '../shared/app-identity';
-import { coreKind, type ProviderDraft, type ProviderKind, type ProviderView } from '../shared/providers';
+import { coreKind, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
@@ -27,7 +27,7 @@ import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
 import { ProcessBackend, type BackendStatus } from './backend/process';
 import { knownContextWindow, toProviderConfig } from './backend/to-config';
-import { fromHostDraft, toHostModel } from './providers/host-models';
+import { fromHostDraft, toHostConnection, toHostModelList } from './providers/host-models';
 import { iconFileName, pointShortcutsAt, REFRESH_GAP_MS, SHORTCUT_SETTLE_MS, shortcutFolders, type ShortcutIo } from './taskbar-icon';
 import {
   BUILTIN_CATALOG,
@@ -35,7 +35,7 @@ import {
   effectiveCatalog,
   NET_HINTS,
   type CatalogPreset,
-  type HostModelDraft,
+  type HostConnectionDraft,
   type ListModelsResult,
   type ModelCatalog,
   type ProviderConfig,
@@ -121,13 +121,10 @@ function backendConfig(): DesktopBackendConfig {
   const envConfigs: ProviderConfig[] = [];
   if (modelEnv.openai) envConfigs.push({ id: 'openai', kind: 'openai-compatible', baseUrl: modelEnv.openai.baseUrl, apiKey: modelEnv.openai.apiKey, limits: { maxConcurrent: 4, requestsPerMinute: 60 } });
   if (modelEnv.anthropic) envConfigs.push({ id: 'anthropic', kind: 'anthropic', apiKey: modelEnv.anthropic.apiKey, limits: { maxConcurrent: 2, requestsPerMinute: 30 } });
-  const saved = providers.resolved();
-  const def = providers.defaultId();
-  const envModel: Record<string, string> = {};
-  if (modelEnv.openai) envModel.openai = modelEnv.openai.model;
-  if (modelEnv.anthropic) envModel.anthropic = modelEnv.anthropic.model;
-  const chosen = saved.find((p) => p.id === def);
-  const current = chosen ? { providerId: chosen.id, model: chosen.model } : def && envModel[def] ? { providerId: def, model: envModel[def] } : null;
+  const saved = providers.resolved((catalogId) => needsKeyFor(catalogCache, catalogId));
+  const def = providers.defaultRef();
+  const strong = providers.strongRef();
+  const current = def ? { providerId: def.connectionId, model: def.model } : null;
   return {
     core: {
       dbPath: join(app.getPath('userData'), 'spica.db'),
@@ -138,8 +135,8 @@ function backendConfig(): DesktopBackendConfig {
         model: current?.model ?? '',
         maxTokens: 4096,
         maxTurns: 30,
-        // The default connection's model for heavy work: plugins that ask for a strong model get it.
-        ...(chosen?.strongModel ? { strongModel: chosen.strongModel } : {}),
+        // The model for heavy work: plugins that ask for a strong model get it (it may be on another connection).
+        ...(strong ? { strongModel: strong.model, ...(strong.connectionId !== current?.providerId ? { strongProviderId: strong.connectionId } : {}) } : {}),
       },
       cwd: workDir,
       locale: 'zh-CN',
@@ -193,18 +190,26 @@ const backend: AgentBackend =
         hostMethods: {
           // The core's model-settings tools (a connected script asked). Same store and
           // checks as the settings page; plain-language errors go back to the agent.
-          'models.list': () => providerList().items.map(toHostModel),
-          'models.save': (draft: HostModelDraft) => {
+          'models.list': () => {
+            const l = providerList();
+            return toHostModelList(l.items, l.default ?? null, l.strong ?? null);
+          },
+          'models.save': (draft: HostConnectionDraft) => {
             const shellDraft = fromHostDraft(draft, providerList().items);
             const saved = providers.save(shellDraft, { needsKey: needsKeyFor(catalogCache, shellDraft.catalogId) });
             applyProviders();
             sendToWindow(DesktopChannel.ProvidersChanged);
-            return toHostModel(providerList().items.find((p) => p.id === saved.id) ?? saved);
+            return toHostConnection(providerList().items.find((p) => p.id === saved.id) ?? saved);
           },
           // The conversation open in the window: the core writes its settings-change card there too.
           'ui.activeSession': () => activeSessionId,
-          'models.setDefault': (id: string) => {
-            providers.setDefault(String(id));
+          'models.setDefault': (ref: ModelRef) => {
+            providers.setDefaultModel({ connectionId: String(ref?.connectionId ?? ''), model: String(ref?.model ?? '') });
+            applyProviders();
+            sendToWindow(DesktopChannel.ProvidersChanged);
+          },
+          'models.setStrong': (ref: ModelRef | null) => {
+            providers.setStrongModel(ref ? { connectionId: String(ref.connectionId ?? ''), model: String(ref.model ?? '') } : null);
             applyProviders();
             sendToWindow(DesktopChannel.ProvidersChanged);
           },
@@ -220,7 +225,7 @@ const providers = new ProviderStore(
     encrypt: (plain) => safeStorage.encryptString(plain).toString('base64'),
     decrypt: (sealed) => safeStorage.decryptString(Buffer.from(sealed, 'base64')),
   },
-  () => envProviders().map((p) => p.id),
+  () => envProviders().map((p) => ({ id: p.id, models: p.models.map((m) => m.id) })),
 );
 // Screenshots and tests never touch the network; a normal run really calls the model.
 const testConnection =
@@ -229,23 +234,24 @@ let providerProblems: Record<string, string> = {};
 
 /** Models from the developer's .env.local, shown read-only on the settings page. */
 function envProviders(): ProviderView[] {
-  const base = { strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: null, catalogId: null, hasSecret: true, isDefault: false, readOnly: true };
+  const base = { strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: null, catalogId: null, hasSecret: true, keyTail: null, isDefault: false, readOnly: true };
+  const one = (model: string): ConnectionModel[] => [{ id: model, contextWindow: null, contextFrom: 'catalog' }];
   const out: ProviderView[] = [];
-  if (modelEnv.openai) out.push({ ...base, id: 'openai', kind: 'openai', name: '开发用模型（.env.local）', baseUrl: modelEnv.openai.baseUrl, model: modelEnv.openai.model });
-  if (modelEnv.anthropic) out.push({ ...base, id: 'anthropic', kind: 'anthropic', name: '开发用模型（.env.local）', baseUrl: '', model: modelEnv.anthropic.model });
+  if (modelEnv.openai) out.push({ ...base, id: 'openai', kind: 'openai', name: '开发用模型（.env.local）', baseUrl: modelEnv.openai.baseUrl, model: modelEnv.openai.model, models: one(modelEnv.openai.model) });
+  if (modelEnv.anthropic) out.push({ ...base, id: 'anthropic', kind: 'anthropic', name: '开发用模型（.env.local）', baseUrl: '', model: modelEnv.anthropic.model, models: one(modelEnv.anthropic.model) });
   return out;
 }
 
 function providerList(): ProviderList {
   const def = providers.defaultId();
   const env = envProviders().map((p) => ({ ...p, isDefault: p.id === def }));
-  return { items: [...env, ...providers.list()], problems: providerProblems };
+  return { items: [...env, ...providers.list()], problems: providerProblems, default: providers.defaultRef(), strong: providers.strongRef() };
 }
 
 /** Hands saved providers to the backend; remembers which ones it could not use. */
 function applyProviders(): void {
   if (!backend.configure) return;
-  const problems = backend.configure(providers.resolved(), providers.defaultId());
+  const problems = backend.configure(providers.resolved((catalogId) => needsKeyFor(catalogCache, catalogId)), providers.defaultId());
   providerProblems = Object.fromEntries(problems.map((p) => [p.id, p.reason]));
 }
 if (forcedTheme === 'dark' || forcedTheme === 'light') settings.update({ skin: forcedTheme });
@@ -851,6 +857,13 @@ ipcMain.handle(DesktopChannel.DeleteProvider, (_e, id: string) => {
 });
 ipcMain.handle(DesktopChannel.SetDefaultProvider, (_e, id: string) => {
   providers.setDefault(id);
+  applyProviders();
+  return providerList();
+});
+ipcMain.handle(DesktopChannel.SetModelPointer, (_e, which: 'default' | 'strong', ref: ModelRef | null) => {
+  const r = ref ? { connectionId: String(ref.connectionId ?? ''), model: String(ref.model ?? '') } : null;
+  if (which === 'strong') providers.setStrongModel(r);
+  else if (r) providers.setDefaultModel(r);
   applyProviders();
   return providerList();
 });

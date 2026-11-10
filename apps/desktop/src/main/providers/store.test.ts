@@ -41,16 +41,50 @@ describe('ProviderStore', () => {
     expect(() => store.save({ ...emptyDraft('wso2'), name: 'w', baseUrl: 'https://g/v1', model: 'm', secret: 's' })).toThrow('填取 token 的地址');
   });
 
-  it('a model saved before 上下文上限 existed loads with none (the form asks for it)', () => {
+  it('a version 1 file becomes connections: same ids, model and strong model ticked, the default where it was', () => {
     const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
+    const sealed = box.encrypt('sk-old-9f3a');
+    writeFileSync(
+      join(dir, 'providers.json'),
+      JSON.stringify({
+        defaultId: 'p-b',
+        items: [
+          { id: 'p-a', kind: 'openai', name: 'A', baseUrl: 'https://a.example.com/v1', model: 'm-a', strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, secret: sealed },
+          { id: 'p-b', kind: 'openai', name: 'B', baseUrl: 'https://b.example.com/v1', model: 'm-b', strongModel: 'm-b-pro', contextWindow: 64000, tokenUrl: '', clientId: '', scope: '', maxConcurrent: 2, requestsPerMinute: null, secret: sealed },
+        ],
+      }),
+    );
     const store = new ProviderStore(dir, box);
-    store.save(draft);
-    const file = join(dir, 'providers.json');
-    const raw = JSON.parse(readFileSync(file, 'utf8')) as { items: Record<string, unknown>[] };
-    delete raw.items[0]!.contextWindow;
-    writeFileSync(file, JSON.stringify(raw));
-    expect(new ProviderStore(dir, box).list()[0]?.contextWindow).toBeNull();
-    expect(() => new ProviderStore(dir, box).save({ ...draft, contextWindow: null })).toThrow('必须填这一项');
+    const [a, b] = store.list();
+    expect(a).toMatchObject({ id: 'p-a', models: [{ id: 'm-a', contextWindow: null }], keyTail: '9f3a', hasSecret: true });
+    expect(b).toMatchObject({ id: 'p-b', maxConcurrent: 2, models: [{ id: 'm-b', contextWindow: 64000 }, { id: 'm-b-pro', contextWindow: null }] });
+    expect(store.defaultRef()).toEqual({ connectionId: 'p-b', model: 'm-b' });
+    expect(store.strongRef()).toEqual({ connectionId: 'p-b', model: 'm-b-pro' });
+    expect(store.secretOf('p-a')).toBe('sk-old-9f3a');
+    // Rewritten as version 2 once; reading it again gives the same.
+    expect(JSON.parse(readFileSync(join(dir, 'providers.json'), 'utf8')).version).toBe(2);
+    expect(new ProviderStore(dir, box).list()).toEqual(store.list());
+    // A model without a window still has to get one before the one-model form saves it.
+    expect(() => store.save({ ...draft, id: 'p-a', contextWindow: null })).toThrow('必须填这一项');
+  });
+
+  it('one connection, several models; unticking the default model moves the pointer within the connection', () => {
+    const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
+    const v = store.save({ ...draft, models: [{ id: 'flash', contextWindow: 1000, contextFrom: 'catalog' }, { id: 'pro', contextWindow: 2000, contextFrom: 'catalog' }] });
+    store.setDefaultModel({ connectionId: v.id, model: 'pro' });
+    store.setStrongModel({ connectionId: v.id, model: 'pro' });
+    store.save({ ...draft, id: v.id, secret: undefined, models: [{ id: 'flash', contextWindow: 1000, contextFrom: 'catalog' }] });
+    expect(store.defaultRef()).toEqual({ connectionId: v.id, model: 'flash' });
+    expect(store.strongRef()).toEqual({ connectionId: v.id, model: 'flash' });
+    expect(store.resolved()[0]?.models.map((m) => m.id)).toEqual(['flash']);
+  });
+
+  it('a second key of the same provider is a second connection; each shows its key tail', () => {
+    const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
+    const one = store.save({ ...draft, secret: 'sk-one-3f9a' });
+    const two = store.save({ ...draft, name: 'DeepSeek 2', secret: 'sk-two-81c2' });
+    expect([one.keyTail, two.keyTail]).toEqual(['3f9a', '81c2']);
+    expect(one.id).not.toBe(two.id);
   });
 
   it('moves the default when the default one is deleted', () => {
@@ -63,7 +97,7 @@ describe('ProviderStore', () => {
   });
 
   it('does not take the default away from an existing outside model', () => {
-    const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box, () => ['openai']);
+    const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box, () => [{ id: 'openai', models: ['gpt-x'] }]);
     const v = store.save(draft);
     expect(store.defaultId()).toBe('openai');
     expect(v.isDefault).toBe(false);

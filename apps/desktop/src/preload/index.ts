@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'ele
 import { IpcChannel, type AgentApi, type AppInfo, type CoreEvent } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
 import type { BackendState, DesktopBridge, LocalConnectInfo, NetworkState, PreviewInfo, ProviderList, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
-import type { ProviderDraft, ProviderKind, TestResult } from '../shared/providers';
+import type { ModelRef, ProviderDraft, ProviderKind, TestResult } from '../shared/providers';
 import type { PluginsCommand, PluginsResult } from '../shared/plugins';
 import type { UpdateState } from '../shared/updates';
 import type { SettingsPatch, ShellSettings } from '../shared/settings';
@@ -98,6 +98,7 @@ const bridge: DesktopBridge = {
     save: (draft: ProviderDraft) => ipcRenderer.invoke(DesktopChannel.SaveProvider, draft) as Promise<ProviderList>,
     remove: (id: string) => ipcRenderer.invoke(DesktopChannel.DeleteProvider, id) as Promise<ProviderList>,
     setDefault: (id: string) => ipcRenderer.invoke(DesktopChannel.SetDefaultProvider, id) as Promise<ProviderList>,
+    setPointer: (which: 'default' | 'strong', ref: ModelRef | null) => ipcRenderer.invoke(DesktopChannel.SetModelPointer, which, ref) as Promise<ProviderList>,
     test: (draft: ProviderDraft) => ipcRenderer.invoke(DesktopChannel.TestProvider, draft) as Promise<TestResult>,
     knownWindow: (kind: ProviderKind, model: string, catalogId?: string | null) => ipcRenderer.invoke(DesktopChannel.KnownContextWindow, kind, model, catalogId ?? null) as Promise<number | null>,
     catalog: () => ipcRenderer.invoke(DesktopChannel.ModelCatalog) as Promise<ModelCatalogView | null>,
