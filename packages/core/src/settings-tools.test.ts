@@ -54,15 +54,18 @@ function fakeWindow(client: () => BackendClient) {
       ? { oauth: { tokenUrl: c.tokenUrl, clientId: c.clientId, clientSecret: secrets.get(c.id)!, ...(c.scope ? { scope: c.scope } : {}) } }
       : { apiKey: secrets.get(c.id)! }),
     ...(c.catalogId ? { catalogId: c.catalogId } : {}),
-    contextWindows: Object.fromEntries(c.models.map((m) => [m.id, m.contextWindow])),
+    // like the window: only enabled models with a context window go to the core
+    contextWindows: Object.fromEntries(c.models.filter((m) => m.enabled !== false && m.contextWindow).map((m) => [m.id, m.contextWindow as number])),
   });
   const fix = (p: HostModelPointer | null): HostModelPointer | null => {
     if (!p) return null;
     const c = conns.find((x) => x.id === p.connectionId);
-    if (c?.models.some((m) => m.id === p.model)) return p;
-    if (c?.models[0]) return { connectionId: c.id, model: c.models[0].id };
-    const any = conns.find((x) => x.models.length > 0);
-    return any ? { connectionId: any.id, model: any.models[0]!.id } : null;
+    // a disabled model counts as gone (as in the window)
+    const usable = (x: typeof c) => (x?.models ?? []).filter((m) => m.enabled !== false);
+    if (usable(c).some((m) => m.id === p.model)) return p;
+    if (usable(c)[0]) return { connectionId: c!.id, model: usable(c)[0]!.id };
+    const any = conns.find((x) => usable(x).length > 0);
+    return any ? { connectionId: any.id, model: usable(any)[0]!.id } : null;
   };
   const push = async () => {
     await client().call('configure', {
@@ -83,7 +86,8 @@ function fakeWindow(client: () => BackendClient) {
         const i = conns.findIndex((c) => c.id === id);
         if (i >= 0) conns[i] = saved;
         else conns.push(saved);
-        def = fix(def) ?? (saved.models[0] ? { connectionId: id, model: saved.models[0].id } : null);
+        const first = saved.models.find((m) => m.enabled !== false);
+        def = fix(def) ?? (first ? { connectionId: id, model: first.id } : null);
         strong = fix(strong);
         await push();
         return list().connections.find((c) => c.id === id)!;
@@ -199,7 +203,7 @@ describe('model settings over Spica MCP', () => {
 
     // listed and tested by id, without the key
     expect(await call('spica_list_models')).toEqual({
-      connections: [expect.objectContaining({ id, kind: 'openai-compatible', hasSecret: true, models: [{ id: 'm1', contextWindow: 64_000, contextFrom: 'user', isDefault: true }] })],
+      connections: [expect.objectContaining({ id, kind: 'openai-compatible', hasSecret: true, models: [{ id: 'm1', contextWindow: 64_000, contextFrom: 'user', enabled: true, isDefault: true }] })],
       default: { connectionId: id, model: 'm1' },
       strong: null,
     });
@@ -407,6 +411,27 @@ describe('model settings over Spica MCP', () => {
     expect(win.list().connections[0]!.baseUrl).toBe(`${base}/api/v1`);
     const change = events.find((e) => e.type === 'settings.changed');
     expect(change?.type === 'settings.changed' ? change.change.baseUrl : null).toBe(`${base}/api/v1`); // the card shows the address that is saved
+  });
+
+  it('disable, enable and remove are different: a disabled model stays in the list without a context window, enabling asks for one, the card says which', async () => {
+    const { call, events } = await setup();
+    const r = await call('spica_save_model', { kind: 'openai-compatible', name: 'G', baseUrl: `${gw.baseUrl}/v1`, apiKey: API_KEY, models: [{ id: 'm1', contextWindow: 8000 }, { id: 'm-x', enabled: false }] });
+    const id = String((r.connection as { id: string }).id);
+    expect(r).toMatchObject({ saved: true, connection: { models: [{ id: 'm1', enabled: true }, { id: 'm-x', enabled: false, contextWindow: null }] } });
+    expect((r.connection as { models: Record<string, unknown>[] }).models[1]).not.toHaveProperty('needsContextWindow');
+    expect((await call('spica_save_model', { id, makeDefault: 'm-x' })).error).toMatch(/not one of this connection's enabled models/);
+    expect((await call('spica_save_model', { id, enableModels: ['m-x'] })).error).toMatch(/^\[context_window_required\] .*m-x/);
+    expect(await call('spica_save_model', { id, enableModels: [{ id: 'm-x', contextWindow: 16_000 }], makeDefault: 'm-x' })).toMatchObject({ saved: true, default: { connectionId: id, model: 'm-x' } });
+    const cards = () => events.filter((e) => e.type === 'settings.changed').map((e) => (e.type === 'settings.changed' ? e.change : null));
+    expect(cards().at(-1)).toMatchObject({ enabledModels: ['m-x'], disabledModels: [], addedModels: [], removedModels: [] });
+    // disabling the default: it moves, and the card says so
+    expect(await call('spica_save_model', { id, disableModels: ['m-x'] })).toMatchObject({ saved: true, default: { connectionId: id, model: 'm1' } });
+    expect(cards().at(-1)).toMatchObject({ disabledModels: ['m-x'], enabledModels: [], removedModels: [], defaultMoved: { from: { connectionId: id, model: 'm-x' }, to: { connectionId: id, model: 'm1' } } });
+    expect(await call('spica_set_default_model', { id, model: 'm-x' })).toMatchObject({ error: expect.stringMatching(/enabled models/) });
+    // removing takes it out of the list
+    expect(await call('spica_save_model', { id, removeModels: ['m-x'] })).toMatchObject({ saved: true, connection: { models: [{ id: 'm1' }] } });
+    expect(cards().at(-1)).toMatchObject({ removedModels: ['m-x'], disabledModels: [] });
+    expect((await call('spica_save_model', { id, disableModels: ['m1'] })).error).toMatch(/at least one enabled model/);
   });
 
   it('a user who has not answered yet: the agent hears it is waiting and asks again', async () => {

@@ -89,7 +89,7 @@ export class PluginSampler {
       let all: { providerId: string; model: string }[] = [];
       try {
         const answer = (await this.#rt.settingsBridge?.host('models.list')) as HostModelList | undefined;
-        all = (answer?.connections ?? []).flatMap((c) => (c.models ?? []).map((m) => ({ providerId: c.id, model: m.id })));
+        all = (answer?.connections ?? []).flatMap((c) => (c.models ?? []).filter((m) => m.enabled !== false).map((m) => ({ providerId: c.id, model: m.id })));
       } catch {
         // no window: only the defaults are known
       }

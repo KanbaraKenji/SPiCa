@@ -205,10 +205,13 @@ export interface SettingsChangeMeta {
   consumerKey?: string;
   scope?: string | null;
   /** add / change: the models ticked now, each with its context window and where it came from ('name-match': matched by name in the catalog). */
-  models?: { id: string; contextWindow: number; contextFrom: 'user' | 'catalog' | 'provider' | 'name-match' }[];
-  /** add / change: models ticked or unticked by this change. */
+  models?: { id: string; contextWindow: number | null; contextFrom: 'user' | 'catalog' | 'provider' | 'name-match'; enabled?: boolean }[];
+  /** add / change: models added to / removed from the connection's list by this change. */
   addedModels?: string[];
   removedModels?: string[];
+  /** change: models turned on again / turned off (kept in the list, not in use) by this change. */
+  enabledModels?: string[];
+  disabledModels?: string[];
   /** set_default_model / set_strong_model: the model pointed at. */
   model?: string;
   /** Names of the changed fields ('new' for a new connection, 'models', 'default', 'strong', ...). */

@@ -33,9 +33,14 @@ export type ContextFrom = 'user' | 'catalog' | 'provider' | 'name-match';
 
 export interface HostConnectionModel {
   id: string;
-  /** Required: every ticked model has one. 0 = missing (e.g. moved over from older settings): the tools say so and ask for it. */
-  contextWindow: number;
+  /**
+   * Required for an enabled model. 0 or null = missing (e.g. moved over from older
+   * settings, or a disabled model): the tools say so and ask for it when it is enabled.
+   */
+  contextWindow: number | null;
   contextFrom: ContextFrom;
+  /** false: kept in the connection's list but not in use (not offered, not a default); absent = true. */
+  enabled?: boolean;
 }
 
 /** A model connection as the host lists it: one address, one key, the models ticked under it (no secret). */
@@ -158,8 +163,9 @@ function view(c: HostConnection, list: HostModelList) {
     ...(c.catalogId ? { preset: c.catalogId } : {}),
     models: c.models.map((m) => ({
       ...m,
-      // 0 = none yet (older settings): say so instead of showing a number
-      ...(m.contextWindow > 0 ? {} : { contextWindow: null, needsContextWindow: true }),
+      enabled: m.enabled !== false,
+      // 0 / null = none yet (older settings, or a disabled model): say so instead of showing a number
+      ...((m.contextWindow ?? 0) > 0 ? {} : { contextWindow: null, ...(m.enabled !== false ? { needsContextWindow: true } : {}) }),
       ...(list.default?.connectionId === c.id && list.default.model === m.id ? { isDefault: true } : {}),
       ...(list.strong?.connectionId === c.id && list.strong.model === m.id ? { isStrong: true } : {}),
     })),
@@ -192,15 +198,24 @@ function testView(kind: CoreKind, model: string, r: ProbeResult) {
 }
 
 type Args = Record<string, unknown>;
+type Wanted = { id: string; contextWindow?: number; enabled?: boolean };
 const text = (v: unknown) => (typeof v === 'string' ? v.trim() : undefined);
 const count = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : v === undefined ? undefined : NaN);
 /** [{ id, contextWindow? }] from a list of objects or of names. */
-const modelArgs = (v: unknown): { id: string; contextWindow?: number }[] | undefined =>
+const modelArgs = (v: unknown): Wanted[] | undefined =>
   Array.isArray(v)
     ? v
-        .map((x) => (typeof x === 'string' ? { id: x.trim() } : { id: String((x as { id?: unknown })?.id ?? '').trim(), contextWindow: count((x as { contextWindow?: unknown })?.contextWindow) }))
+        .map((x) =>
+          typeof x === 'string'
+            ? { id: x.trim() }
+            : {
+                id: String((x as { id?: unknown })?.id ?? '').trim(),
+                contextWindow: count((x as { contextWindow?: unknown })?.contextWindow),
+                enabled: (x as { enabled?: unknown })?.enabled === false ? false : undefined,
+              },
+        )
         .filter((x) => x.id)
-        .map((x) => (x.contextWindow === undefined ? { id: x.id } : { id: x.id, contextWindow: x.contextWindow }))
+        .map((x) => ({ id: x.id, ...('contextWindow' in x && x.contextWindow !== undefined ? { contextWindow: x.contextWindow } : {}), ...('enabled' in x && x.enabled === false ? { enabled: false } : {}) }))
     : undefined;
 
 export function settingsTools(rt: Runtime): McpTool[] {
@@ -227,17 +242,20 @@ export function settingsTools(rt: Runtime): McpTool[] {
   const waiting = new Map<string, Promise<unknown>>();
 
   /** A context window for each model: given, the catalog's, or matched by name; the ones without are named. */
-  const windows = (kind: CoreKind, catalogId: string | undefined, wanted: { id: string; contextWindow?: number }[], keep: HostConnectionModel[]) => {
+  const windows = (kind: CoreKind, catalogId: string | undefined, wanted: Wanted[], keep: HostConnectionModel[]) => {
     const out: HostConnectionModel[] = [];
     const missing: string[] = [];
     for (const w of wanted) {
       const kept = keep.find((m) => m.id === w.id);
+      const off = w.enabled === false ? { enabled: false } : {};
       if (Number.isNaN(w.contextWindow)) throw new SettingsError('invalid', `a positive whole number (field contextWindow of ${w.id})`);
-      if (w.contextWindow) out.push({ id: w.id, contextWindow: w.contextWindow, contextFrom: 'user' });
-      else if (kept && kept.contextWindow > 0) out.push(kept);
+      if (w.contextWindow) out.push({ id: w.id, contextWindow: w.contextWindow, contextFrom: 'user', ...off });
+      else if (kept && (kept.contextWindow ?? 0) > 0) out.push({ id: kept.id, contextWindow: kept.contextWindow, contextFrom: kept.contextFrom, ...off });
       else {
         const found = rt.ledger.matchContextWindow(kind, w.id, catalogId);
-        if (found) out.push({ id: w.id, contextWindow: found.contextWindow, contextFrom: found.how === 'exact' ? 'catalog' : 'name-match' });
+        if (found) out.push({ id: w.id, contextWindow: found.contextWindow, contextFrom: found.how === 'exact' ? 'catalog' : 'name-match', ...off });
+        // a disabled model may stay without one; it needs one when it is enabled
+        else if (w.enabled === false) out.push({ id: w.id, contextWindow: kept?.contextWindow ?? null, contextFrom: kept?.contextFrom ?? 'user', enabled: false });
         else missing.push(w.id);
       }
     }
@@ -271,18 +289,27 @@ export function settingsTools(rt: Runtime): McpTool[] {
     const given = modelArgs(a.models);
     const single = text(a.model) ? [{ id: text(a.model)!, ...(a.contextWindow !== undefined ? { contextWindow: count(a.contextWindow) } : {}) }] : undefined;
     const add = [...(modelArgs(a.addModels) ?? []), ...(given ? [] : (single ?? []))];
-    const remove = new Set((Array.isArray(a.removeModels) ? a.removeModels : []).map((x) => String(x)));
+    const names = (v: unknown) => new Set((Array.isArray(v) ? v : []).map((x) => String(typeof x === 'string' ? x : ((x as { id?: unknown })?.id ?? ''))));
+    const remove = names(a.removeModels);
+    const disable = names(a.disableModels);
+    const enable = modelArgs(a.enableModels) ?? [];
     const before = existing?.models ?? [];
-    let wanted: { id: string; contextWindow?: number }[] =
-      given ?? (existing ? before.map((m) => ({ id: m.id })) : fromPreset ? preset.models.filter((m) => m.role === 'default' || m.role === 'strong').map((m) => ({ id: m.id })) : []);
+    let wanted: Wanted[] =
+      given ??
+      (existing
+        ? before.map((m) => ({ id: m.id, ...(m.enabled === false ? { enabled: false } : {}) }))
+        : fromPreset
+          ? preset.models.filter((m) => m.role === 'default' || m.role === 'strong').map((m) => ({ id: m.id }))
+          : []);
     if (fromPreset && !given && wanted.length === 0 && preset.models[0]) wanted = [{ id: preset.models[0].id }];
-    for (const m of add) {
+    for (const m of [...add, ...enable]) {
       const i = wanted.findIndex((w) => w.id === m.id);
-      if (i >= 0) wanted[i] = m;
+      if (i >= 0) wanted[i] = { ...m }; // enabled again
       else wanted.push(m);
     }
-    wanted = wanted.filter((w) => !remove.has(w.id));
+    wanted = wanted.filter((w) => !remove.has(w.id)).map((w) => (disable.has(w.id) ? { ...w, enabled: false } : w));
     if (purpose === 'save' && wanted.length === 0) throw new SettingsError('invalid', 'at least one model (field models)');
+    if (purpose === 'save' && !wanted.some((w) => w.enabled !== false)) throw new SettingsError('invalid', 'at least one enabled model (fields models / enableModels)');
 
     const d: HostConnectionDraft = {
       ...(id ? { id } : {}),
@@ -333,6 +360,9 @@ export function settingsTools(rt: Runtime): McpTool[] {
     };
     const added = d.models.filter((m) => !before.some((b) => b.id === m.id)).map((m) => m.id);
     const removed = before.filter((b) => !d.models.some((m) => m.id === b.id)).map((m) => m.id);
+    const was = (id: string) => before.find((b) => b.id === id);
+    const enabledNow = d.models.filter((m) => m.enabled !== false && was(m.id)?.enabled === false).map((m) => m.id);
+    const disabledNow = d.models.filter((m) => m.enabled === false && was(m.id) && was(m.id)!.enabled !== false).map((m) => m.id);
     const changes = existing
       ? (['kind', 'name', 'baseUrl', 'tokenUrl', 'scope', 'maxConcurrent', 'requestsPerMinute'] as const)
           .filter((k) => (k === 'kind' ? kindOf(existing.kind) !== d.kind : existing[k] !== d[k]))
@@ -340,12 +370,13 @@ export function settingsTools(rt: Runtime): McpTool[] {
           .concat(
             existing.clientId !== d.clientId ? ['consumerKey'] : [],
             d.secret ? [kind === 'wso2' ? 'consumerSecret' : 'apiKey'] : [],
-            added.length || removed.length || d.models.some((m) => before.find((b) => b.id === m.id)?.contextWindow !== m.contextWindow && before.some((b) => b.id === m.id)) ? ['models'] : [],
+            added.length || removed.length || enabledNow.length || disabledNow.length || d.models.some((m) => was(m.id) && was(m.id)!.contextWindow !== m.contextWindow) ? ['models'] : [],
           )
       : ['new'];
-    // the model to test: one being added, else the one asked for, else the first
-    const testModel = added[0] ?? text(a.model) ?? (wanted[0]?.id || '');
-    return { d, config, existing, changes, added, removed, testModel, all };
+    // the model to test: an enabled one being added or enabled, else the one asked for, else the first enabled one
+    const on = (id: string) => wanted.find((w) => w.id === id)?.enabled !== false;
+    const testModel = [...added, ...enabledNow].find(on) ?? text(a.model) ?? (wanted.find((w) => w.enabled !== false)?.id || wanted[0]?.id || '');
+    return { d, config, existing, changes, added, removed, enabledNow, disabledNow, testModel, all };
   };
 
   const test = async (kind: CoreKind, config: ProviderConfig, model: string) => testView(kind, model, await bridge().probe(config, model));
@@ -496,15 +527,18 @@ export function settingsTools(rt: Runtime): McpTool[] {
       name: 'spica_save_model',
       description:
         `Add (no id) or change (id) a model connection: one address and one key with the models ticked under it (several models of a provider share one key: ask for the key once). ` +
-        'models replaces the ticked list; addModels / removeModels change it; a new connection from a preset gets the preset\'s recommended models when none are given. ' +
-        `Every model needs a context window: given, or known to ${app} (also matched by name for relays that spell it differently); otherwise nothing is saved. ` +
+        'models replaces the list; addModels / removeModels add or remove models, disableModels / enableModels turn them off and on (a disabled model stays in the list, unused); ' +
+        'a new connection from a preset gets the preset\'s recommended models when none are given. ' +
+        `Every enabled model needs a context window: given, or known to ${app} (also matched by name for relays that spell it differently); otherwise nothing is saved. ` +
         `It tests one model first; a failed test saves nothing unless saveIfTestFails. The change is shown to the user in ${app}'s conversations (if ${app} is set up to ask first, it waits for the user to confirm in the window). ` +
         'Fields left out keep their saved value; the key / secret is stored encrypted and never returned. If the user has not answered yet the result is status waiting_for_user with a requestId for spica_settings_result.',
       inputSchema: obj({
         ...FIELDS,
         models: { type: 'array', items: modelItem, description: 'All models to tick (replaces the saved list).' },
         addModels: { type: 'array', items: modelItem, description: 'Models to tick in addition.' },
-        removeModels: { type: 'array', items: str, description: 'Model names to untick.' },
+        removeModels: { type: 'array', items: str, description: 'Model names to remove from the connection\'s list.' },
+        disableModels: { type: 'array', items: str, description: 'Model names to disable: kept in the list, not in use (no context window needed).' },
+        enableModels: { type: 'array', items: modelItem, description: 'Disabled models to enable again (each needs a context window, given or known).' },
         model: { ...str, description: 'Shorthand for one model to add.' },
         contextWindow: { ...int, description: 'With model: its context window.' },
         makeDefault: { ...str, description: 'Make this model of the connection the default for new conversations.' },
@@ -512,11 +546,11 @@ export function settingsTools(rt: Runtime): McpTool[] {
         saveIfTestFails: { type: 'boolean', description: 'Save even when the test fails.' },
       }),
       run: async (a) => {
-        const { d, config, existing, changes, added, removed, testModel, all } = await draftFrom(a, 'save');
+        const { d, config, existing, changes, added, removed, enabledNow, disabledNow, testModel, all } = await draftFrom(a, 'save');
         const makeDefault = text(a.makeDefault) || undefined;
         const makeStrong = text(a.makeStrong) || undefined;
         for (const [field, m] of [['makeDefault', makeDefault], ['makeStrong', makeStrong]] as const) {
-          if (m && !d.models.some((x) => x.id === m)) throw new SettingsError('invalid', `${m} is not one of this connection's models (field ${field})`);
+          if (m && !d.models.some((x) => x.id === m && x.enabled !== false)) throw new SettingsError('invalid', `${m} is not one of this connection's enabled models (field ${field})`);
         }
         const tested = await test(d.kind, config, testModel);
         if (!tested.ok && a.saveIfTestFails !== true) return { saved: false, test: tested };
@@ -536,6 +570,8 @@ export function settingsTools(rt: Runtime): McpTool[] {
           models: d.models,
           addedModels: added,
           removedModels: removed,
+          enabledModels: enabledNow,
+          disabledModels: disabledNow,
           changes,
           secret: d.secret ? 'new' : 'unchanged',
           ...(makeDefault ? { makeDefault } : {}),
@@ -594,8 +630,8 @@ export function settingsTools(rt: Runtime): McpTool[] {
         const l = await list();
         const c = l.connections.find((x) => x.id === id);
         if (!c) throw new SettingsError('not_found', `no model connection with id ${id} (see spica_list_models)`);
-        const model = text(a.model) || c.models[0]?.id;
-        if (!model || !c.models.some((m) => m.id === model)) throw new SettingsError('invalid', `${model ?? '(none)'} is not one of this connection's models (field model)`);
+        const model = text(a.model) || c.models.find((m) => m.enabled !== false)?.id;
+        if (!model || !c.models.some((m) => m.id === model && m.enabled !== false)) throw new SettingsError('invalid', `${model ?? '(none)'} is not one of this connection's enabled models (field model)`);
         const which = strong ? 'strong' : 'default';
         const target = pointerTo(id, model);
         if (samePointer(l[which], target)) return { [which]: target };
