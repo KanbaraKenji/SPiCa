@@ -17,6 +17,8 @@ export interface ScriptedToolCall {
 export interface ScriptedReply {
   /** Return this HTTP status with `errorBody` instead of a stream. */
   status?: number;
+  /** Answer 200 with this JSON body instead of a stream (a gateway that does not stream). */
+  json?: string;
   errorBody?: string;
   headers?: Record<string, string>;
   /** Answer text; an array is sent as separate deltas. */
@@ -149,6 +151,10 @@ export class FakeGateway {
       this.#open.delete(res);
     });
     if (reply.delayMs) await wait(reply.delayMs);
+    if (reply.json !== undefined) {
+      res.writeHead(200, { 'content-type': 'application/json', ...reply.headers });
+      return void res.end(reply.json);
+    }
     if (reply.status && reply.status >= 400) {
       res.writeHead(reply.status, { 'content-type': 'application/json', ...reply.headers });
       return void res.end(reply.errorBody ?? JSON.stringify({ error: { message: `scripted ${reply.status}` } }));

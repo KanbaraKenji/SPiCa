@@ -13,7 +13,8 @@ import {
   type ProviderEvent,
 } from './types.ts';
 import type { ContentBlock, Message, StopReason, Usage } from '../types.ts';
-import { newId } from '../util.ts';
+import { netErrorCode } from '../net.ts';
+import { isAbortError, newId } from '../util.ts';
 
 export interface OpenAICompatibleOptions {
   id: string;
@@ -49,6 +50,8 @@ export class OpenAICompatibleProvider implements Provider {
   readonly capabilities = { serverWebSearch: false };
   readonly #opts: OpenAICompatibleOptions;
   readonly #auth: AuthSource | undefined;
+  /** The server refused stream: true (a gateway that cannot stream): ask without streaming from now on. */
+  #noStream = false;
 
   constructor(opts: OpenAICompatibleOptions) {
     this.id = opts.id;
@@ -82,10 +85,49 @@ export class OpenAICompatibleProvider implements Provider {
 
   async *stream(req: ModelRequest, ctx: ProviderCallContext): AsyncGenerator<ProviderEvent, void> {
     const url = this.#opts.baseUrl.replace(/\/+$/, '') + (this.#opts.path ?? '/chat/completions');
-    const res = await postWithRetry({
+    const send = (streaming: boolean) => this.#post(url, req, ctx, streaming);
+    let res: Response;
+    if (this.#noStream) res = await send(false);
+    else {
+      try {
+        res = await send(true);
+      } catch (err) {
+        // a gateway that cannot stream says so with a 400: ask again without streaming, and from now on
+        if (!(err instanceof ProviderError && err.status === 400 && /\bstream/i.test(err.message))) throw err;
+        this.#noStream = true;
+        res = await send(false);
+      }
+    }
+    if (!res.body) throw new ProviderError('empty response body', { retryable: true });
+    const type = res.headers.get('content-type') ?? '';
+    if (/application\/json/i.test(type) && !/event-stream/i.test(type)) {
+      // the whole answer at once: a gateway that does not stream (or ignores stream: true)
+      yield* fromCompletion(await res.text(), { providerId: this.id, reasoningField: this.#opts.reasoning?.field ?? 'reasoning_content', fallbackModel: req.model });
+      return;
+    }
+    try {
+      yield* parseOpenAIStream(res.body, {
+        providerId: this.id,
+        reasoningField: this.#opts.reasoning?.field ?? 'reasoning_content',
+        idleTimeoutMs: this.#opts.idleTimeoutMs ?? 90_000,
+        signal: ctx.signal,
+        fallbackModel: req.model,
+      });
+    } catch (err) {
+      throw streamError(err, ctx.signal);
+    }
+  }
+
+  #post(url: string, req: ModelRequest, ctx: ProviderCallContext, streaming: boolean): Promise<Response> {
+    const body = this.buildBody(req);
+    if (!streaming) {
+      body.stream = false;
+      delete body.stream_options;
+    }
+    return postWithRetry({
       url,
-      body: JSON.stringify(this.buildBody(req)),
-      headers: { accept: 'text/event-stream', ...this.#opts.headers },
+      body: JSON.stringify(body),
+      headers: { accept: streaming ? 'text/event-stream' : 'application/json', ...this.#opts.headers },
       ...(this.#auth ? { auth: this.#auth } : {}),
       signal: ctx.signal,
       timeoutMs: this.#opts.timeoutMs ?? 120_000,
@@ -97,15 +139,74 @@ export class OpenAICompatibleProvider implements Provider {
       // a saved address without /v1 (it is added only by test connection, not here): a 404 says to check its ending
       ...(!this.#opts.path && !/\/v\d+$/i.test(this.#opts.baseUrl.replace(/\/+$/, '')) ? { unversionedBase: true } : {}),
     });
-    if (!res.body) throw new ProviderError('empty response body', { retryable: true });
-    yield* parseOpenAIStream(res.body, {
-      providerId: this.id,
-      reasoningField: this.#opts.reasoning?.field ?? 'reasoning_content',
-      idleTimeoutMs: this.#opts.idleTimeoutMs ?? 90_000,
-      signal: ctx.signal,
-      fallbackModel: req.model,
-    });
   }
+}
+
+/** A stream that broke off or went quiet: a coded error the window can word (not a bare "terminated"). */
+function streamError(err: unknown, signal: AbortSignal): unknown {
+  if (signal.aborted || isAbortError(err) || err instanceof ProviderError) return err;
+  const message = err instanceof Error ? err.message : String(err);
+  if ((err as { name?: unknown })?.name === 'StreamIdleError') {
+    return new ProviderError(`no data from the model for too long [gateway.stream_idle] (${message})`, { retryable: false, code: 'gateway.stream_idle' });
+  }
+  const code = netErrorCode(err);
+  return new ProviderError(`the answer broke off [${code}] (${message})`, { retryable: false, code });
+}
+
+interface OpenAICompletion {
+  model?: string;
+  error?: { message?: unknown };
+  usage?: OpenAIUsage | null;
+  choices?: {
+    message?: {
+      content?: string | { type?: string; text?: string }[] | null;
+      tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[];
+      [k: string]: unknown;
+    };
+    finish_reason?: string | null;
+  }[];
+}
+
+/** A complete (not streamed) chat completion, as the same events a stream gives. */
+export async function* fromCompletion(raw: string, opts: { providerId: string; reasoningField: string; fallbackModel: string }): AsyncGenerator<ProviderEvent, void> {
+  let c: OpenAICompletion;
+  try {
+    c = JSON.parse(raw) as OpenAICompletion;
+  } catch {
+    throw new ProviderError(`the answer is not JSON [gateway.bad_response]: ${raw.slice(0, 200)}`, { retryable: false, code: 'gateway.bad_response' });
+  }
+  if (c.error) throw new ProviderError(`error: ${String(c.error.message ?? 'unknown').slice(0, 300)}`, { retryable: false });
+  const choice = c.choices?.[0];
+  if (!choice?.message) throw new ProviderError(`the answer has no message [gateway.bad_response]: ${raw.slice(0, 200)}`, { retryable: false, code: 'gateway.bad_response' });
+  const m = choice.message;
+  const text = typeof m.content === 'string' ? m.content : (m.content ?? []).map((p) => (typeof p?.text === 'string' ? p.text : '')).join('');
+  const reasoning = typeof m[opts.reasoningField] === 'string' ? (m[opts.reasoningField] as string) : '';
+  const content: ContentBlock[] = [];
+  if (reasoning) {
+    yield { type: 'thinking', delta: reasoning };
+    content.push({ type: 'thinking', text: reasoning, provider: opts.providerId });
+  }
+  if (text) {
+    yield { type: 'text', delta: text };
+    content.push({ type: 'text', text });
+  }
+  for (const tc of m.tool_calls ?? []) {
+    const id = tc.id ?? newId('call');
+    const name = tc.function?.name ?? '';
+    yield { type: 'tool_call', id, name };
+    content.push({ type: 'tool_use', id, name, input: parseArgs(tc.function?.arguments ?? '') });
+  }
+  const finish = choice.finish_reason ?? undefined;
+  yield {
+    type: 'response',
+    response: {
+      content,
+      stopReason: mapFinish(finish, (m.tool_calls ?? []).length > 0),
+      ...(finish ? { rawStopReason: finish } : {}),
+      usage: c.usage ? parseUsage(c.usage) : { inputTokens: 0, outputTokens: 0 },
+      model: c.model ?? opts.fallbackModel,
+    },
+  };
 }
 
 interface ToolCallAcc {

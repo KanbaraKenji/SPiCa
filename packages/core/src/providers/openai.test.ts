@@ -160,3 +160,54 @@ describe('toOpenAIMessages', () => {
     expect(out[0]).not.toHaveProperty('reasoning_content');
   });
 });
+
+describe('gateways that do not stream, or cut the stream', () => {
+  const completion = (over: Record<string, unknown> = {}) =>
+    JSON.stringify({ id: 'c', model: 'gw-model', choices: [{ index: 0, message: { role: 'assistant', content: 'whole answer', ...over }, finish_reason: 'stop' }], usage: { prompt_tokens: 7, completion_tokens: 2 } });
+
+  it('a complete JSON answer (stream ignored) is read as the answer, tool calls included, not as an empty stream', async () => {
+    gw.enqueue({ json: completion() });
+    const { events, response } = await run(openaiProvider(gw), req());
+    expect(events.filter((e) => e.type === 'text')).toEqual([{ type: 'text', delta: 'whole answer' }]);
+    expect(response).toMatchObject({ content: [{ type: 'text', text: 'whole answer' }], stopReason: 'end', usage: { inputTokens: 7, outputTokens: 2 }, model: 'gw-model' });
+    gw.enqueue({ json: completion({ content: null, tool_calls: [{ id: 't1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.txt"}' } }] }) });
+    const tools = await run(openaiProvider(gw), req());
+    expect(tools.response).toMatchObject({ content: [{ type: 'tool_use', id: 't1', name: 'read_file', input: { path: 'a.txt' } }], stopReason: 'tool_use' });
+    gw.enqueue({ json: '{"unexpected":true}' });
+    await expect(run(openaiProvider(gw), req())).rejects.toMatchObject({ code: 'gateway.bad_response' });
+  });
+
+  it('a gateway that refuses stream: true with a 400 is asked again without streaming, and from then on', async () => {
+    gw.onRequest((r) => (r.body.stream ? { status: 400, errorBody: '{"error":{"message":"stream is not supported"}}' } : { json: completion() }));
+    const p = openaiProvider(gw);
+    expect((await run(p, req())).response.content).toEqual([{ type: 'text', text: 'whole answer' }]);
+    expect(gw.requests.map((r) => r.body.stream)).toEqual([true, false]);
+    expect(gw.requests[1]!.body).not.toHaveProperty('stream_options');
+    await run(p, req());
+    expect(gw.requests.map((r) => r.body.stream)).toEqual([true, false, false]); // remembered
+    // another 400 is not taken for this
+    gw.onRequest(() => ({ status: 400, errorBody: '{"error":{"message":"model not found"}}' }));
+    await expect(run(openaiProvider(gw), req())).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('a stream that breaks off or goes quiet ends with a coded error, not a bare "terminated"', async () => {
+    const { createServer } = await import('node:http');
+    const { listenFetchable } = await import('../net.ts');
+    const s = createServer((_q, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.write('data: {"choices":[{"index":0,"delta":{"content":"par"}}]}\n\n');
+      setTimeout(() => res.destroy(), 30);
+    });
+    const port = await listenFetchable(s);
+    try {
+      const cut = new OpenAICompatibleProvider({ id: 'x', baseUrl: `http://127.0.0.1:${port}/v1`, retry: FAST_RETRY });
+      await expect(run(cut, req())).rejects.toMatchObject({ name: 'ProviderError', code: 'net.reset' });
+    } finally {
+      s.closeAllConnections();
+      await new Promise((r) => s.close(r));
+    }
+    gw.enqueue({ text: ['a', 'b'], hangAfterChunks: 1 });
+    const quiet = new OpenAICompatibleProvider({ id: 'x', baseUrl: `${gw.baseUrl}/v1`, apiKey: 'test-key-123456', idleTimeoutMs: 150, retry: FAST_RETRY });
+    await expect(run(quiet, req())).rejects.toMatchObject({ code: 'gateway.stream_idle' });
+  });
+});

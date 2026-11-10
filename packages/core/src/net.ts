@@ -338,6 +338,8 @@ export const NET_HINTS: Record<string, string> = {
   'gateway.bad_request': '请求无效（HTTP 400），请检查模型名和参数。',
   'gateway.rate_limited': '请求过于频繁（HTTP 429），请调低「同时请求」。',
   'gateway.server': '服务端错误（HTTP 5xx），请稍后重试。',
+  'gateway.stream_idle': '长时间没有收到模型的返回，请稍后重试。',
+  'gateway.bad_response': '返回的内容不是模型的回答，请检查「接口地址」。',
   'wso2.token_unreachable': '无法连接取 token 地址。',
   'wso2.token_rejected': '获取 token 被拒绝，请检查 Consumer Key、Consumer Secret 和 Scope。',
   'wso2.token_bad_response': '取 token 地址返回内容无效，请检查地址和代理设置。',

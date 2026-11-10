@@ -86,8 +86,9 @@ async function readWithIdle(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      void reader.cancel().catch(() => {});
+      // fail first: cancelling settles the pending read as done, which would end a cut-short answer as if complete
       reject(Object.assign(new Error(`stream idle for ${idleMs} ms`), { name: 'StreamIdleError' }));
+      void reader.cancel().catch(() => {});
     }, idleMs);
   });
   try {

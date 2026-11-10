@@ -53,3 +53,20 @@ describe('parseSse', () => {
     expect(out).toEqual([{ event: 'message', data: '你好' }]);
   });
 });
+
+describe('a stream that goes quiet', () => {
+  it('fails with StreamIdleError after the idle time instead of ending as if complete', async () => {
+    const enc = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(ctl) {
+        ctl.enqueue(enc.encode('data: first\n\n')); // then nothing, and the stream stays open
+      },
+    });
+    const got: string[] = [];
+    const run = (async () => {
+      for await (const ev of parseSse(body, { idleTimeoutMs: 50 })) got.push(ev.data);
+    })();
+    await expect(run).rejects.toMatchObject({ name: 'StreamIdleError' });
+    expect(got).toEqual(['first']);
+  });
+});
