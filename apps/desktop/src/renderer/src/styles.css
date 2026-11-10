@@ -494,9 +494,11 @@ a:hover {
   background: var(--spica-active);
 }
 
+/* The name keeps a few characters when the row is crowded (a collapsed project's summary,
+   the 更多 button); the summary gives way first. */
 .tree-title {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: 3em;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -518,6 +520,50 @@ button.tree-twisty:hover {
   color: var(--spica-ink);
 }
 
+/* 更多 (…) at a row's end: only on the row under the pointer, the current row, a row with
+   the focus inside and a row whose menu is open; elsewhere it takes no room. */
+.tree-more {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-s);
+  background: var(--spica-control);
+  color: var(--spica-muted);
+}
+
+.tree-row:hover .tree-more,
+.tree-row:focus-within .tree-more,
+.tree-row.is-active .tree-more,
+.tree-row.is-menu-open .tree-more {
+  display: inline-flex;
+}
+
+.tree-more:hover,
+.tree-row.is-menu-open .tree-more {
+  background: var(--spica-control-hover);
+  color: var(--spica-ink);
+}
+
+/* Dark, on the current row: one step lighter than the row. */
+:root[data-scheme='dark'] .tree-row.is-active .tree-more {
+  background: color-mix(in srgb, var(--spica-active) 92%, #ffffff);
+}
+
+:root[data-scheme='dark'] .tree-row.is-active .tree-more:hover,
+:root[data-scheme='dark'] .tree-row.is-active.is-menu-open .tree-more {
+  background: color-mix(in srgb, var(--spica-active) 86%, #ffffff);
+}
+
+/* Light: the rows are grey, so the button is the lightest there is (the menu's white). */
+:root[data-scheme='light'] .tree-more,
+:root[data-scheme='light'] .tree-more:hover,
+:root[data-scheme='light'] .tree-row.is-menu-open .tree-more {
+  background: var(--spica-menu);
+}
+
 .tree-open {
   flex: 1;
   min-width: 0;
@@ -532,7 +578,11 @@ button.tree-twisty:hover {
 }
 
 .tree-summary {
-  flex: none;
+  flex: 0 4 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 12px;
   font-weight: 400;
   color: var(--spica-muted);

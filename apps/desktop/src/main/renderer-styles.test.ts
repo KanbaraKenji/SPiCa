@@ -13,4 +13,9 @@ describe('styles', () => {
   it('over the icon column the brand sits right after the sidebar toggle, not at the far end', () => {
     expect(block('.rail-head,\n.sidebar-head.is-over-rail')).toContain('justify-content: flex-start');
   });
+
+  it('a sidebar row shows 更多 only under the pointer, when current, with the focus inside or with its menu open', () => {
+    expect(block('.tree-more')).toContain('display: none');
+    expect(block('.tree-row:hover .tree-more,\n.tree-row:focus-within .tree-more,\n.tree-row.is-active .tree-more,\n.tree-row.is-menu-open .tree-more')).toContain('display: inline-flex');
+  });
 });

@@ -85,6 +85,10 @@ interface TreeProps {
   editing: string | null;
   /** Right-click or F2 on a row (absent: no menu). */
   startRename?: (s: SessionInfo, at?: { x: number; y: number }) => void;
+  /** The 更多 button at a row's end: its menu (the same as right-click) under the button; again closes it. */
+  toggleMenu?: (s: SessionInfo, button: HTMLElement) => void;
+  /** Row whose menu is open, if any. */
+  menuFor: string | null;
   finishRename(s: SessionInfo, value: string | null): void;
   notes?: ReadonlyMap<string, string>;
   /** Rows that have a menu (conversations to rename; projects to rename, pin, delete). */
@@ -145,11 +149,14 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
   const summary = kids.length && !open ? projectSummary(all) : '';
   const active = !tree.settingsOpen && s.id === tree.activeId;
   const name = s.title ?? '';
+  const menuOpen = tree.menuFor === s.id;
+  const more = tree.toggleMenu && tree.hasMenu(s) && tree.editing !== s.id ? tree.toggleMenu : null;
   return (
     <>
       {/* Text lines up with the section heading; each level in is one step. The expand
-          arrow sits at the right end, only on rows that have something under them. */}
-      <div className={active ? 'tree-row is-active' : 'tree-row'} style={{ paddingLeft: depth * 16 }}>
+          arrow sits at the right end, only on rows that have something under them.
+          更多 (…) shows on the row under the pointer, the current one and one whose menu is open. */}
+      <div className={['tree-row', active ? 'is-active' : '', menuOpen ? 'is-menu-open' : ''].filter(Boolean).join(' ')} style={{ paddingLeft: depth * 16 }}>
         {tree.editing === s.id ? (
           <RenameField initial={name} onDone={(v) => tree.finishRename(s, v)} />
         ) : (
@@ -178,9 +185,14 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
               </span>
             ) : null}
             {tree.notes?.get(s.id) && !active ? <NewDot text={tree.notes.get(s.id)!} /> : null}
-            {summary ? <span className={/等你/.test(summary) ? 'tree-summary is-waiting' : 'tree-summary'}>{summary}</span> : <StatusMark status={s.status} />}
+            {summary ? <span className={/等你/.test(summary) ? 'tree-summary is-waiting' : 'tree-summary'} title={summary}>{summary}</span> : <StatusMark status={s.status} />}
           </button>
         )}
+        {more ? (
+          <button type="button" className="tree-more" aria-label="更多" title="更多" aria-haspopup="menu" aria-expanded={menuOpen} onClick={(e) => more(s, e.currentTarget)}>
+            <Icon name="more" size={16} />
+          </button>
+        ) : null}
         {kids.length ? (
           <button type="button" className="tree-twisty" aria-label={open ? `收起 ${name}` : `展开 ${name}`} title={open ? '收起' : '展开'} aria-expanded={open} onClick={() => tree.setExpanded(s.id, !open)}>
             <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
@@ -230,7 +242,7 @@ export function Sidebar({
 
   const [expanded, setExpandedState] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ s: SessionInfo; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ s: SessionInfo; x: number; y: number; anchor?: HTMLElement } | null>(null);
   const tree: TreeProps = {
     childrenOf,
     activeId,
@@ -242,6 +254,7 @@ export function Sidebar({
     onOpen,
     openByDefault: new Set<string>(),
     editing,
+    menuFor: menu?.s.id ?? null,
     pinned: new Set(pinned),
     hasMenu: (s) => (s.role === 'manager' ? Boolean(s.projectId && (onPin || onRenameProject || onDeleteProject)) : Boolean(onRename || (onDeleteChat && isOwnChat(s)))),
     ...(onRename || onPin || onRenameProject || onDeleteProject || onDeleteChat
@@ -249,6 +262,10 @@ export function Sidebar({
           startRename: (s: SessionInfo, at?: { x: number; y: number }) => {
             if (at) setMenu({ s, ...at });
             else setEditing(s.id);
+          },
+          toggleMenu: (s: SessionInfo, button: HTMLElement) => {
+            if (menu?.s.id === s.id) return setMenu(null);
+            setMenu({ s, x: 0, y: 0, anchor: button });
           },
         }
       : {}),
@@ -398,6 +415,7 @@ export function Sidebar({
           x={menu.x}
           y={menu.y}
           items={menuItems(menu.s)}
+          anchor={menu.anchor ?? null}
           onClose={() => setMenu(null)}
         />
       ) : null}

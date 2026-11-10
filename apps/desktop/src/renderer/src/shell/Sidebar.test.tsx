@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
 import { projectSummary, Sidebar } from './Sidebar';
 
@@ -187,6 +187,59 @@ describe('Sidebar', () => {
     fireEvent.contextMenu(screen.getByTitle('年度预算'));
     fireEvent.click(screen.getByRole('menuitem', { name: '删除' }));
     expect(onDeleteProject).toHaveBeenCalledWith('p-budget', '年度预算');
+  });
+
+  it('更多 (…) at a row’s end opens the right-click menu under it; again closes it; it does not open the conversation', () => {
+    const onOpen = vi.fn();
+    const onDeleteChat = vi.fn();
+    render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={onOpen} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} onRename={vi.fn()} onDeleteChat={onDeleteChat} />);
+    const row = screen.getByRole('button', { name: '整理本周来信' }).closest('.tree-row') as HTMLElement;
+    const more = within(row).getByRole('button', { name: '更多' });
+    expect(more.getAttribute('aria-haspopup')).toBe('menu');
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(more);
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['重命名', '删除']);
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    expect(row.className).toContain('is-menu-open');
+    expect(onOpen).not.toHaveBeenCalled();
+
+    // Pressing it again closes the menu (the press is not taken as a click elsewhere).
+    fireEvent.pointerDown(more);
+    fireEvent.click(more);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(row.className).not.toContain('is-menu-open');
+
+    // A press elsewhere closes it too; an item does what right-click's does.
+    fireEvent.click(more);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('menu')).toBeNull();
+    fireEvent.click(more);
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除' }));
+    expect(onDeleteChat).toHaveBeenCalledWith(expect.objectContaining({ id: SEED_IDS.chat2 }));
+  });
+
+  it('更多 is on every row that has a menu: projects with actions, sub-tasks (rename); not without one', () => {
+    const props = { sessions: seed.sessions, activeId: null, onOpen: vi.fn(), onNewChat: vi.fn(), onSettings: vi.fn(), settingsOpen: false };
+    const { rerender } = render(<Sidebar {...props} />);
+    expect(screen.queryAllByRole('button', { name: '更多' })).toHaveLength(0);
+    rerender(<Sidebar {...props} onRename={vi.fn()} onPin={vi.fn()} onRenameProject={vi.fn()} onDeleteProject={vi.fn()} />);
+    fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
+    const project = screen.getByTitle('年度预算').closest('.tree-row') as HTMLElement;
+    fireEvent.click(within(project).getByRole('button', { name: '更多' }));
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['重命名', '置顶', '删除']);
+    const sub = screen.getByRole('button', { name: /起草评审纪要/ }).closest('.tree-row') as HTMLElement;
+    fireEvent.click(within(sub).getByRole('button', { name: '更多' }));
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['重命名']);
+  });
+
+  it('while a row is renamed it has no 更多', () => {
+    render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} onRename={vi.fn()} />);
+    const row = screen.getByRole('button', { name: '整理本周来信' }).closest('.tree-row') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: '更多' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }));
+    expect(within(row).queryByRole('button', { name: '更多' })).toBeNull();
+    expect(within(row).getByRole('textbox', { name: '名称' })).toBeTruthy();
   });
 
   it('collapsing a project shows the summary instead of children', () => {

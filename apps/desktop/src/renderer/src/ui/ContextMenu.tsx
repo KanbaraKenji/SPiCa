@@ -1,5 +1,6 @@
-// A small right-click menu at the pointer. Closes on Esc, a click elsewhere,
-// scrolling or resizing. Positions in CSS px, so page zoom keeps it in place.
+// A small right-click menu at the pointer, or under a button that opens it (`anchor`).
+// Closes on Esc, a click elsewhere, scrolling or resizing. Positions in CSS px, so
+// page zoom keeps it in place.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 export interface MenuItem {
@@ -17,7 +18,11 @@ export interface MenuItem {
   onSelect(): void;
 }
 
-export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose(): void }) {
+/**
+ * `anchor`: the button that opened the menu. The menu sits under it (above it when there is no
+ * room below), and pressing that button again is left to the button, so a second click closes.
+ */
+export function ContextMenu({ x, y, items, onClose, anchor }: { x: number; y: number; items: MenuItem[]; onClose(): void; anchor?: HTMLElement | null }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
 
@@ -26,14 +31,23 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
     const el = ref.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    setPos({ left: Math.max(4, Math.min(x, window.innerWidth - r.width - 4)), top: Math.max(4, Math.min(y, window.innerHeight - r.height - 4)) });
+    let left = x;
+    let top = y;
+    // Measured here, once the button is shown (it may appear only with its menu open).
+    if (anchor) {
+      const a = anchor.getBoundingClientRect();
+      left = a.left;
+      top = a.bottom + 4 + r.height <= window.innerHeight - 4 ? a.bottom + 4 : a.top - 4 - r.height;
+    }
+    setPos({ left: Math.max(4, Math.min(left, window.innerWidth - r.width - 4)), top: Math.max(4, Math.min(top, window.innerHeight - r.height - 4)) });
     el.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
-  }, [x, y]);
+  }, [x, y, anchor]);
 
   useEffect(() => {
     const close = () => onClose();
     const onDown = (e: PointerEvent) => {
-      if (!ref.current?.contains(e.target as Node)) onClose();
+      const t = e.target as Node;
+      if (!ref.current?.contains(t) && !anchor?.contains(t)) onClose();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -51,7 +65,7 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
       window.removeEventListener('resize', close);
       window.removeEventListener('wheel', close);
     };
-  }, [onClose]);
+  }, [onClose, anchor]);
 
   return (
     <div ref={ref} className="context-menu" role="menu" style={{ left: pos.left, top: pos.top }}>

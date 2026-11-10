@@ -141,6 +141,7 @@
 - **子任务在等你**：父对话状态行下面点名「「子Agent A…」在等你确认 [去处理]」。等子任务超时写「还在做，先不等了」，不再红字「没有成功」。
 - **右栏预览**（`shell/FilePreview.tsx`、`main/preview.ts`）：点文件卡在右栏只读打开——PDF 用内置查看器，Markdown 渲染，文本 / 代码等宽带行号（GB18030 的中文也认），HTML 放进不许脚本的沙箱，图片；文本超过 512 KB 只显示前面并说明；别的格式说「还不能在这里预览」。「用系统程序打开」交给 Windows。PDF 和图片经 `spica-file://<令牌>` 读，只有你点开的那个文件拿得到。预览时右栏至少 520 宽（窗口允许时）。
 - **项目右键菜单**：重命名（原地改名，空名字不改）、置顶 / 取消置顶（排最前、名字后面一个小图钉，记在外壳设置里）、删除（确认框写明「只删 Spica 里的这个项目和它的对话记录；项目文件夹和里面的文件不会动」）。接内核 `renameProject` / `deleteProject` 和 `session.deleted` / `project.deleted`。
+- **行尾的「…」（更多）**：侧栏里有菜单的行（对话：重命名、删除；项目：重命名、置顶、删除；子任务：重命名），在指针停着、当前打开、焦点在行内、菜单开着时，行尾出一个 24px 的圆角小方按钮，点开就是右键的那个菜单，从按钮下方弹出（下面放不下就往上），再点一次关掉；右键照旧。其他时候不占位置。按钮底色：深色在普通行用「小按钮」那一档，当前行比行底亮一档；浅色一律白。名字最少留 3 个字，项目收起时的摘要先让位、放不下用省略号，悬停看全文。
 - **插件页面**（`shell/PluginFrame.tsx`、`main/plugin-views.ts`）：插件在 `views/<id>.json` 里声明的页面。`placement: sidebar` 的在左栏「插件」下面一个入口，点开占主窗；`panel` 的是右栏顶部的标签（「详情 / Quick note」）。页面在沙箱 iframe（`allow-scripts allow-forms`，没有同源）里，文件只经 `spica-plugin://<插件>/<路径>` 向插件系统要（每次问 `pluginViewFile`），页面 CSP 只放本插件、不能联网。入口页先注入主题变量（`--spica-bg / surface / fg / muted / border / accent / danger / font / radius`）和 `window.spica` 桥：`callTool`（只能用这个页面清单里的工具；不可逆的先弹 Spica 的确认框）、`onEvent`（theme、plugin.changed）、`theme`、`openFile`（本插件的文件，在右栏预览）、`notify`。每个调用按发消息的 iframe 认插件。插件停用时入口消失，打开着的页面换成一句说明。
 - **任务栏图标**：运行时把品牌 PNG 重新上色成单色花（深色任务栏白、浅色黑，无底），存成 `<userData>\icons	askbar-<内容哈希>.ico`（换一种颜色就是另一个文件；以后每片瓣单独配色也走这条路）。装好的版本里，任务栏按钮用的是和窗口同一个 AppUserModelID 的快捷方式的图标，不是窗口自己的图标，而且只在按钮出现时读一次（2026-11-10 在装好的测试副本上实测，见 `main/taskbar-icon.ts` 开头）。所以启动时和系统深浅变化时：把开始菜单和固定到任务栏里启动这个 exe 的快捷方式改指到这个 .ico，等约 3.5 秒（资源管理器要一会儿才注意到），再让窗口换一个临时 AppUserModelID 再换回来，按钮当场换成新图标，不会多出一个按钮、不闪。桌面快捷方式不改（桌面是壁纸，不是任务栏）；安装程序、exe、卸载条目里写死的图标用品牌的「白花黑边」。便携版没有快捷方式，按钮用窗口自己的图标。开发版用独立的 AppUserModelID（`dev.spica.desktop.dev`）；带 `SPICA_USER_DATA` 运行时不改快捷方式（`SPICA_SHORTCUT_ICONS=1` 才改，测试副本用）。安装版的 AppUserModelID 从打包时的 `extraMetadata.appUserModelId` 读（和 appId 一致），另起标识打的包（测试副本、以后的公司版）也能对上自己的快捷方式。
 
@@ -192,7 +193,7 @@ npm run shots -w @spica/desktop -- main         # 只出某几页，逗号分隔
 ## 12. 故意没做的事
 
 - 分区缩放（左栏 / 主窗 / 右栏各自缩放）：立项书写「之后」。
-- 会话搜索、普通对话的删除：还没有入口（项目可以删；对话可以右键改名）。
+- 会话搜索：还没有入口。
 - 会话名：内核新会话的名字是空的，界面上用第一句话当名字。
 - 花标、状态动效、开机画面全部来自 `@spica/brand`，外壳不自己画；窗口 / 任务栏图标由 `resources/branding/png/spica-win-{dark,light}.png` 运行时重新上色（见 8a）。
 - 文件卡只认 `read_file / write_file / edit_file` 的 `path`，模型在正文里提到的文件不会变成卡片。
