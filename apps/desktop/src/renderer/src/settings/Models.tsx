@@ -30,6 +30,8 @@ export interface ProvidersApi {
   test(draft: ProviderDraft): Promise<TestResult>;
   /** The context window Spica knows for a model (pre-fills the form), or null. */
   knownWindow?(kind: ProviderKind, model: string): Promise<number | null>;
+  /** The models changed elsewhere (a connected script); the list is read again. */
+  onChanged?(listener: () => void): () => void;
 }
 
 const WINDOW_HINT = '这个模型一次最多能装多少 token（上下文窗口）。不知道就查服务商的模型说明。';
@@ -146,8 +148,16 @@ export function Models({ api }: { api: ProvidersApi }) {
         }
       })
       .catch((e: unknown) => alive && setResult({ ok: false, message: friendlyError(e) }));
+    // Changed by a connected script while this page is open: show the new list (drafts stay).
+    const off = api.onChanged?.(() => {
+      void api
+        .list()
+        .then((l) => alive && setList(l))
+        .catch(() => undefined);
+    });
     return () => {
       alive = false;
+      off?.();
     };
   }, [api]);
 

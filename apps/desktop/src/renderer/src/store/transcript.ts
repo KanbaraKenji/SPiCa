@@ -1,6 +1,6 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
-import type { CoreEvent, FileCardMeta, GuardCause, Message, PendingItem, SessionStatus, UntrustedKind } from '@spica/protocol';
+import type { CoreEvent, FileCardMeta, GuardCause, Message, PendingItem, SessionStatus, SettingsChangeMeta, UntrustedKind } from '@spica/protocol';
 import { humanError } from '../../../shared/errors';
 import { toolLabel } from '../chat/format';
 
@@ -74,6 +74,8 @@ export function childNoteOf(m: Message): ChildNote | undefined {
 }
 
 function noteItem(m: Message): Item {
+  const change = m.meta?.settingsChange;
+  if (change && typeof change === 'object' && typeof change.action === 'string') return { kind: 'settings', id: m.id, change };
   // The core's note that tools this conversation used were turned off; its body is English for the model.
   const gone = m.meta?.toolsUnavailable;
   if (Array.isArray(gone) && gone.length) return { kind: 'note', id: m.id, text: `这些工具已停用：${gone.map((n) => toolLabel(String(n))).join('、')}` };
@@ -117,6 +119,8 @@ export type Item =
   /** New mail for this project (the core's English instructions to the agent are not shown). */
   | { kind: 'mail'; id: string; mailIds: string[]; flagged?: string[] }
   | { kind: 'note'; id: string; text: string; child?: ChildNote }
+  /** A model setting a connected script changed (the card; meta.settingsChange). */
+  | { kind: 'settings'; id: string; change: SettingsChangeMeta }
   | { kind: 'response'; id: string; blocks: Block[]; interrupted: boolean };
 
 export interface RunState {

@@ -64,6 +64,7 @@ const bridge: DesktopBridge = {
   },
   preview: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.Preview, sessionId, path) as Promise<PreviewInfo>,
   pickFiles: (title) => ipcRenderer.invoke(DesktopChannel.PickFiles, title) as Promise<string[]>,
+  reportActiveSession: (id: string | null) => ipcRenderer.send(DesktopChannel.ActiveSession, id),
   pathForFile: (file) => {
     try {
       return webUtils.getPathForFile(file);
@@ -98,6 +99,7 @@ const bridge: DesktopBridge = {
     setDefault: (id: string) => ipcRenderer.invoke(DesktopChannel.SetDefaultProvider, id) as Promise<ProviderList>,
     test: (draft: ProviderDraft) => ipcRenderer.invoke(DesktopChannel.TestProvider, draft) as Promise<TestResult>,
     knownWindow: (kind: ProviderKind, model: string) => ipcRenderer.invoke(DesktopChannel.KnownContextWindow, kind, model) as Promise<number | null>,
+    onChanged: (listener: () => void) => subscribe<void>(DesktopChannel.ProvidersChanged, () => listener()),
   },
 };
 

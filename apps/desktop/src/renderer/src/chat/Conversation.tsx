@@ -8,6 +8,7 @@ import { AskCard, ChildNoteCard, ConfirmCard, FileCards, MarkdownText, SuggestCa
 import { Composer, type ComposerTools } from './Composer';
 import { StatusLine } from './StatusLine';
 import { GUARD_FLAG_TEXT } from './format';
+import { SettingsChangeCard } from './SettingsChangeCard';
 
 export interface ConversationActions {
   send(text: string, attachments?: string[]): void;
@@ -20,6 +21,8 @@ export interface ConversationActions {
   /** Mail by id, for 「收到来信」 in a project's conversation. */
   mailById?: (id: string) => MailItem | undefined;
   openInbox?: () => void;
+  /** 设置 › 模型 (from a settings-change card). */
+  openModelSettings?: () => void;
 }
 
 function MailNote({ ids, flagged = [], actions }: { ids: string[]; flagged?: string[] | undefined; actions: ConversationActions }) {
@@ -226,6 +229,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                   </Fragment>
                 );
               if (item.kind === 'mail') return <MailNote key={item.id} ids={item.mailIds} flagged={item.flagged} actions={actions} />;
+              if (item.kind === 'settings') return <SettingsChangeCard key={item.id} change={item.change} onOpenSettings={actions.openModelSettings} />;
               if (item.kind === 'note')
                 return item.child ? (
                   <ChildNoteCard key={item.id} note={item.child} onOpen={actions.openSession} />

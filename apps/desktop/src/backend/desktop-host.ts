@@ -34,7 +34,7 @@ interface ParentPort {
 }
 
 export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
-  const plugins = await attachPlugins(rt, { root: options.pluginRoot });
+  const plugins = await attachPlugins(rt, { root: options.pluginRoot, appName: APP_NAME });
   const page = new RealPluginService({
     manager: plugins.manager,
     root: options.pluginRoot,
@@ -92,6 +92,8 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
         return { file: req.file, records: Math.max(0, lines - 1) };
       },
     },
+    // The app's network settings changed (the core calls this): plugin servers restart to use them.
+    networkChanged: () => plugins.networkChanged(),
     close: async () => {
       await stopHttp();
       await plugins.close();

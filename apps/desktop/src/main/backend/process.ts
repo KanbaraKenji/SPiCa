@@ -4,7 +4,7 @@
 // minute). The window never goes down with it: calls wait while it restarts,
 // and the restarted core restores every session from the database.
 import { MessageChannelMain, utilityProcess, type UtilityProcess } from 'electron';
-import { connectBackend, electronPort, type BackendClient, type ProviderConfig, type SettingsPatch } from '@spica/core';
+import { connectBackend, electronPort, type BackendClient, type HostMethods, type ProviderConfig, type SettingsPatch } from '@spica/core';
 export { toProviderConfig } from './to-config';
 import type { AgentApi, CoreEvent, ProbeResult } from '@spica/protocol';
 import type { PluginsCommand, PluginsResult } from '../../shared/plugins';
@@ -29,6 +29,8 @@ export interface ProcessBackendOptions {
   /** The core came back after a crash: the window reloads sessions. */
   onRestarted(): void;
   onPluginsChanged(): void;
+  /** Methods the core may call on this process (model settings for its MCP tools). */
+  hostMethods?: HostMethods;
 }
 
 export class ProcessBackend implements AgentBackend {
@@ -66,7 +68,7 @@ export class ProcessBackend implements AgentBackend {
     child.stdout?.on('data', (d: Buffer) => process.stdout.write(`[backend] ${d}`));
     child.stderr?.on('data', (d: Buffer) => process.stderr.write(`[backend] ${d}`));
     const { port1, port2 } = new MessageChannelMain();
-    const client = connectBackend(electronPort(port1));
+    const client = connectBackend(electronPort(port1), this.#o.hostMethods ? { hostMethods: this.#o.hostMethods } : {});
     client.onEvent((e) => {
       for (const l of this.#listeners) l(e);
     });

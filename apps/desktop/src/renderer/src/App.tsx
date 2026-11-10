@@ -75,6 +75,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // Whether any model is configured; checked at start and whenever settings close.
   const [modelReady, setModelReady] = useState<boolean | null>(null);
   const [models, setModels] = useState<ProviderView[]>([]);
+  // The core asks which conversation is open ('ui.activeSession') to put settings-change cards there too.
+  useEffect(() => bridge.reportActiveSession(state.activeId), [bridge, state.activeId]);
+  // A connected script changed the models (through the MCP service): look again.
+  const [modelsChanged, setModelsChanged] = useState(0);
+  useEffect(() => bridge.providers.onChanged(() => setModelsChanged((n) => n + 1)), [bridge]);
   useEffect(() => {
     if (view !== 'chat') return;
     let alive = true;
@@ -91,7 +96,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     return () => {
       alive = false;
     };
-  }, [bridge, view]);
+  }, [bridge, view, modelsChanged]);
   // 主页: the empty page before any conversation is open, and whatever Spica opens
   // by itself at start (the assistant's main conversation) until you open a
   // conversation yourself. The right panel starts closed there and opening it
@@ -407,6 +412,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     openSession: (sid) => openSession(sid),
     resume: () => id && void agent.resume(id),
     ...(mail.supported ? { mailById, openInbox: () => setView('inbox') } : {}),
+    openModelSettings: () => {
+      setSettingsTab('models');
+      setView('settings');
+    },
   };
 
   const leftShown = layout.left !== 'hidden';

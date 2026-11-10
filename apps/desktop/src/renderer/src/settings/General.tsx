@@ -62,7 +62,7 @@ function Developer({ settings, onChange, localConnect }: GeneralProps) {
       <div className="setting-row">
         <div className="setting-text">
           <span className="setting-title">允许本机脚本连接 {APP_NAME}</span>
-          <span className="settings-hint">打开后，这台电脑上的脚本（比如插件的安装脚本）可以连上正在运行的 {APP_NAME}。只对本机开放，要带上令牌才能连。不用时请关掉。</span>
+          <span className="settings-hint">打开后，这台电脑上的脚本（比如插件的安装脚本）可以连上正在运行的 {APP_NAME}。只对本机开放，要带上令牌才能连。连上来的脚本可以直接改模型设置，每次改动都会显示在对话里。不用时请关掉。</span>
         </div>
         <Switch on={on} label={`允许本机脚本连接 ${APP_NAME}`} onChange={(v) => onChange({ localConnect: v })} />
       </div>

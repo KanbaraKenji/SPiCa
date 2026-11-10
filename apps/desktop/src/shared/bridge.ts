@@ -71,6 +71,8 @@ export interface UsageLogRequest {
 export type UsageLogResult = { file: string; records: number } | { error: string } | null;
 
 export interface DesktopBridge extends SpicaBridge {
+  /** Tells the main process which conversation is open (null: none), for the core's 'ui.activeSession'. */
+  reportActiveSession(id: string | null): void;
   /** The agent backend (fake until the core's first milestone; same interface either way). */
   agent: AgentApi;
   onAgentEvent(listener: (event: CoreEvent) => void): () => void;
@@ -129,5 +131,7 @@ export interface DesktopBridge extends SpicaBridge {
     test(draft: ProviderDraft): Promise<TestResult>;
     /** The context window Spica knows for this model (to pre-fill the form), or null. */
     knownWindow(kind: ProviderKind, model: string): Promise<number | null>;
+    /** The models changed somewhere else (a connected script through the MCP service). */
+    onChanged(listener: () => void): () => void;
   };
 }

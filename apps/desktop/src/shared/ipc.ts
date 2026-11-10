@@ -26,6 +26,8 @@ export const DesktopChannel = {
   Plugins: 'spica:plugins',
   /** main -> renderer: plugins changed on their own (server crashed, ...) */
   PluginsChanged: 'spica:plugins:changed',
+  ProvidersChanged: 'spica:providers:changed',
+  ActiveSession: 'spica:ui:active-session',
   /** renderer -> main: 'in' | 'out' | 'reset' (Ctrl+wheel and zoom keys caught in the page) */
   Zoom: 'spica:zoom',
   ListProviders: 'spica:providers:list',

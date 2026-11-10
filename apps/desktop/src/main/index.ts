@@ -27,8 +27,9 @@ import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
 import { ProcessBackend, type BackendStatus } from './backend/process';
 import { knownContextWindow, toProviderConfig } from './backend/to-config';
+import { fromHostDraft, toHostModel } from './providers/host-models';
 import { iconFileName, pointShortcutsAt, REFRESH_GAP_MS, SHORTCUT_SETTLE_MS, shortcutFolders, type ShortcutIo } from './taskbar-icon';
-import { DEFAULT_PRICES, NET_HINTS, type ProviderConfig } from '@spica/core';
+import { DEFAULT_PRICES, NET_HINTS, type HostModelDraft, type ProviderConfig } from '@spica/core';
 import type { DesktopBackendConfig } from '../backend/config';
 import { readModelEnv } from './backend/model-env';
 import { SettingsStore } from './settings-store';
@@ -125,6 +126,8 @@ function backendConfig(): DesktopBackendConfig {
       defaults: { providerId: current?.providerId ?? '', model: current?.model ?? '', maxTokens: 4096, maxTurns: 30 },
       cwd: workDir,
       locale: 'zh-CN',
+      // What the models are told they work in (Spica, or deploy.json's name).
+      appName: APP_NAME,
       workflowsDir: workflowsDir(),
       // Mail sources come from mail plugins (they register themselves); here only on / off and the interval.
       mail: mailForCore(settings.get().mail),
@@ -148,6 +151,11 @@ function sendToWindow(channel: string, ...args: unknown[]): void {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, ...args);
 }
 
+let activeSessionId: string | null = null;
+ipcMain.on(DesktopChannel.ActiveSession, (_e, id: unknown) => {
+  activeSessionId = typeof id === 'string' && id ? id : null;
+});
+
 let backendStatus: BackendStatus = { state: backendKind === 'core' ? 'starting' : 'ready' };
 const backend: AgentBackend =
   backendKind === 'core'
@@ -162,6 +170,24 @@ const backend: AgentBackend =
         },
         onRestarted: () => sendToWindow(DesktopChannel.BackendRestarted),
         onPluginsChanged: () => sendToWindow(DesktopChannel.PluginsChanged),
+        hostMethods: {
+          // The core's model-settings tools (a connected script asked). Same store and
+          // checks as the settings page; plain-language errors go back to the agent.
+          'models.list': () => providerList().items.map(toHostModel),
+          'models.save': (draft: HostModelDraft) => {
+            const saved = providers.save(fromHostDraft(draft, providerList().items));
+            applyProviders();
+            sendToWindow(DesktopChannel.ProvidersChanged);
+            return toHostModel(providerList().items.find((p) => p.id === saved.id) ?? saved);
+          },
+          // The conversation open in the window: the core writes its settings-change card there too.
+          'ui.activeSession': () => activeSessionId,
+          'models.setDefault': (id: string) => {
+            providers.setDefault(String(id));
+            applyProviders();
+            sendToWindow(DesktopChannel.ProvidersChanged);
+          },
+        },
       })
     : new FakeBackend({ speed: automated ? 0 : 1 });
 console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own process)' : 'fake (demo data)'}`);
