@@ -129,6 +129,21 @@ describe('project managers stand on their own', () => {
     expect((await api.getTopSession!()).id).toBe(a.id);
     await rt.close();
   });
+
+  it('getTopSession is never the mail-sorting thread, even right after it sorted mail', async () => {
+    const { TOP_TEMPLATE } = await import('./projects.ts');
+    gw.onRequest(() => ({ text: 'ok' }));
+    const rt = makeRuntime(gw, { cwd: dir, templates: [{ ...TOP_TEMPLATE, id: 'mail-triage' }] });
+    const chat = rt.createSession();
+    await chat.send('hello').done;
+    await new Promise((r) => setTimeout(r, 5));
+    const triage = rt.createSession({ templateId: 'mail-triage' });
+    await triage.send('New mail to sort (1).', { author: 'runtime' }).done;
+    expect(triage.info().updatedAt > chat.info().updatedAt).toBe(true);
+    expect((await createAgentApi(rt).getTopSession!()).id).toBe(chat.id);
+    expect(rt.top().id).toBe(chat.id); // what settings notes fall back to when no conversation is open
+    await rt.close();
+  });
 });
 
 describe('a conversation without a folder', () => {

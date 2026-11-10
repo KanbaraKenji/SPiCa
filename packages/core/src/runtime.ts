@@ -623,7 +623,11 @@ export class Runtime implements RuntimeInternals {
   }
 
   #existingTop(): Session | undefined {
-    const threads = this.sessions().filter((s) => s.info().role === 'top' && s.parentId === null && !s.info().projectId);
+    // the user's conversations only: not the mail-sorting thread or another background thread made from its own template
+    const threads = this.sessions().filter((s) => {
+      const info = s.info();
+      return info.role === 'top' && s.parentId === null && !info.projectId && (info.templateId === undefined || info.templateId === 'top');
+    });
     return threads.sort((a, b) => (a.info().updatedAt < b.info().updatedAt ? 1 : a.info().updatedAt > b.info().updatedAt ? -1 : 0))[0];
   }
 
