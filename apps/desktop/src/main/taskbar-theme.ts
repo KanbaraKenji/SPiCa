@@ -10,6 +10,7 @@
 // things have settled, reads that value (nativeTheme only when it cannot be
 // read), and redraws only when the colour actually changed.
 import { execFile } from 'node:child_process';
+import { win32 } from 'node:path';
 
 const PERSONALIZE = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize';
 
@@ -23,12 +24,28 @@ export function parseSystemUsesLightTheme(out: string): boolean | null {
   return parseInt(m[1]!, 16) === 0;
 }
 
-/** The taskbar's colour from the registry; null when it cannot be read (not Windows, older Windows, reg failed). */
-export function readTaskbarDark(): Promise<boolean | null> {
-  if (process.platform !== 'win32') return Promise.resolve(null);
+/**
+ * reg.exe by its full path in the system folder: a bare 「reg」 would first be
+ * looked for next to the program and in the current folder. Null without SystemRoot.
+ */
+export function regExePath(env: NodeJS.ProcessEnv): string | null {
+  const root = env.SystemRoot ?? env.SYSTEMROOT;
+  return root && win32.isAbsolute(root) ? win32.join(root, 'System32', 'reg.exe') : null;
+}
+
+type Run = (file: string, args: string[], opts: { windowsHide: boolean; timeout: number }, done: (err: Error | null, stdout: string) => void) => void;
+const runFile: Run = (file, args, opts, done) => {
+  execFile(file, args, opts, (err, stdout) => done(err, String(stdout)));
+};
+
+/** The taskbar's colour from the registry; null when it cannot be read (not Windows, no SystemRoot, older Windows, reg failed). */
+export function readTaskbarDark(env: NodeJS.ProcessEnv = process.env, run: Run = runFile, platform: NodeJS.Platform = process.platform): Promise<boolean | null> {
+  if (platform !== 'win32') return Promise.resolve(null);
+  const reg = regExePath(env);
+  if (!reg) return Promise.resolve(null);
   return new Promise((resolve) => {
-    execFile('reg', ['query', PERSONALIZE, '/v', 'SystemUsesLightTheme'], { windowsHide: true, timeout: 3000 }, (err, stdout) => {
-      resolve(err ? null : parseSystemUsesLightTheme(String(stdout)));
+    run(reg, ['query', PERSONALIZE, '/v', 'SystemUsesLightTheme'], { windowsHide: true, timeout: 3000 }, (err, stdout) => {
+      resolve(err ? null : parseSystemUsesLightTheme(stdout));
     });
   });
 }

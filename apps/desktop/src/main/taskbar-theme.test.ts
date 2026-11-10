@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { followTaskbarTheme, parseSystemUsesLightTheme, THEME_SETTLE_MS } from './taskbar-theme';
+import { followTaskbarTheme, parseSystemUsesLightTheme, readTaskbarDark, regExePath, THEME_SETTLE_MS } from './taskbar-theme';
 
 // A stand-in for Electron's nativeTheme value and the registry value, which the tests move independently.
 function world(start: { native: boolean; system: boolean | null }) {
@@ -92,5 +92,22 @@ describe('taskbar icon colour', () => {
     w.state.native = false;
     await w.settle();
     expect(w.applied).toEqual([true, false]);
+  });
+
+  it('runs reg.exe from the system folder by its full path; without SystemRoot it does not run anything', async () => {
+    expect(regExePath({ SystemRoot: 'C:\\Windows' })).toBe('C:\\Windows\\System32\\reg.exe');
+    expect(regExePath({ SYSTEMROOT: 'D:\\WINDOWS' })).toBe('D:\\WINDOWS\\System32\\reg.exe');
+    expect(regExePath({})).toBeNull();
+    expect(regExePath({ SystemRoot: 'Windows' })).toBeNull();
+    const ran: string[] = [];
+    const run = (file: string, _args: string[], _o: unknown, done: (err: Error | null, out: string) => void) => {
+      ran.push(file);
+      done(null, '    SystemUsesLightTheme    REG_DWORD    0x0');
+    };
+    expect(await readTaskbarDark({ SystemRoot: 'C:\\Windows' }, run, 'win32')).toBe(true);
+    expect(ran).toEqual(['C:\\Windows\\System32\\reg.exe']);
+    // No SystemRoot: nothing runs, and the icon falls back to nativeTheme's answer.
+    expect(await readTaskbarDark({}, run, 'win32')).toBeNull();
+    expect(ran).toHaveLength(1);
   });
 });
