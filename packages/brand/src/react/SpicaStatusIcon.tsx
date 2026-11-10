@@ -12,8 +12,9 @@ export interface SpicaStatusIconProps {
 }
 
 /**
- * 带圈状态图标。颜色缺省取皮肤的语义色（完成 → --spica-success，见 status.css），
- * 调用处设了 color 就跟调用处走。
+ * 带圈状态图标。颜色缺省取皮肤的语义色（完成 → 成功色，警告 / 等待确认 / 提问 → 警告色，错误 → 错误色，
+ * 进行中 / 提示 → 强调色，已停止 / 排队 → 次要文字色；见 status.css），调用处设了 color 就跟调用处走。
+ * 进行中的亮弧会转（减弱动效时不转）。
  */
 export function SpicaStatusIcon({ name, size = 16, title, className, style }: SpicaStatusIconProps) {
   const maskId = `spica-status-${useId().replace(/:/g, '')}`;

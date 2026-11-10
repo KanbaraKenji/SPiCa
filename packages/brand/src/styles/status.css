@@ -6,3 +6,36 @@
 .spica-status-icon[data-status='done'] {
   color: var(--spica-success, #15803d);
 }
+.spica-status-icon[data-status='running'],
+.spica-status-icon[data-status='info'] {
+  color: var(--spica-accent, #2f7de1);
+}
+.spica-status-icon[data-status='warning'],
+.spica-status-icon[data-status='waiting'],
+.spica-status-icon[data-status='question'] {
+  color: var(--spica-warning, #b45309);
+}
+.spica-status-icon[data-status='error'] {
+  color: var(--spica-danger, #dc2626);
+}
+.spica-status-icon[data-status='stopped'],
+.spica-status-icon[data-status='queued'] {
+  color: var(--spica-muted, #666666);
+}
+
+/* 进行中：亮弧绕圆心转，一圈 1 秒 */
+.spica-status-icon .spica-status-spin {
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+  animation: spica-status-spin 1s linear infinite;
+}
+@keyframes spica-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spica-status-icon .spica-status-spin {
+    animation: none;
+  }
+}

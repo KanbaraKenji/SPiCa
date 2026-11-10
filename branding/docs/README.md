@@ -107,7 +107,7 @@ taskbarSvg({ ink: '#F1F5F9', accent: '#62A9FF' }) // 主进程窗口图标
 <SpicaStatusIcon name="done" size={16} />       // 完成状态（带圈对钩），颜色取皮肤的 --spica-success
 ```
 
-带圈状态图标（完成、警告、错误、进行中这一族）统一线宽 2.5、圆圈半径 9.5，比菜单、按钮这类操作图标粗；所有表示完成的地方都用 `done`，不换成图标库自带的带圈对钩。要求见 `check_icon.md`。
+带圈状态图标一共九个（完成、进行中、警告、错误、等待确认、提问、已停止、排队、提示），统一线宽 2.5、圆圈半径 9.5，比菜单、按钮这类操作图标粗；所有表示完成的地方都用 `done`，不换成图标库自带的带圈对钩。见 `status_icons.md` 和 `check_icon.md`。
 
 页面上设置 `--spica-accent`（任意 CSS 颜色）即可让长瓣跟随皮肤。
 
@@ -129,3 +129,4 @@ npm run brand:build -w @spica/brand
 | `animation.md` | 状态动效与开机画面 |
 | `files.md` | 每个成品文件的用途 |
 | `check_icon.md` | 完成状态图标（带圈对钩）的要求 |
+| `status_icons.md` | 带圈状态图标这一族：九个状态、画法、颜色、用法 |

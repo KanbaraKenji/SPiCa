@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { BANNER_LAYOUT, TASKBAR_FRAME_SIZES, bannerSvg, fixedIconSvg, markSvg, taskbarFrameSvg, taskbarSvg, wordmarkSvg } from '../src/svg.ts';
 import { BRAND_COLORS } from '../src/tokens.ts';
 import { buildIco } from './ico.ts';
+import { STATUS_ICON_NAMES, statusIconSvg } from '../src/status-icons.ts';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const TARGETS = [path.join(repo, 'apps/desktop/resources/branding'), path.join(repo, 'branding')];
@@ -90,6 +91,12 @@ function main() {
     writeFileSync(path.join(root, 'spica.ico'), ico);
     console.log(`已生成 ${path.relative(repo, root)}：${Object.keys(svgs).length} 个 SVG、${Object.keys(pngs).length} 张 PNG、spica.ico`);
   }
+
+  // 带圈状态图标的单个 SVG（单色、currentColor），放在品牌素材 icons/ 里；完成那个是他给的原件，不覆盖
+  const icons = path.join(repo, 'branding/icons');
+  const names = STATUS_ICON_NAMES.filter((n) => n !== 'done');
+  for (const n of names) writeFileSync(path.join(icons, `spica-${n}.svg`), statusIconSvg(n) + '\n');
+  console.log(`已生成 branding/icons：${names.length} 个状态图标`);
 }
 
 main();

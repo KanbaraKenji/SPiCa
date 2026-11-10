@@ -69,4 +69,4 @@ export {
   type SplashRibbon,
   type StarStreak,
 } from './splash.ts';
-export { STATUS_ICON_GRID, STATUS_ICON_TONE, statusIconBody, statusIconSvg, type StatusIconName } from './status-icons.ts';
+export { STATUS_ICON_GRID, STATUS_ICON_NAMES, STATUS_ICON_TONE, statusIconBody, statusIconSvg, type StatusIconName } from './status-icons.ts';

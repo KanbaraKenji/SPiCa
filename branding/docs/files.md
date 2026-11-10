@@ -48,12 +48,13 @@ SVG 是真矢量（可编辑路径），全部由 `packages/brand/src/` 的构�
 
 ## 素材 `icons/`
 
-原样收进来的素材，不由脚本生成，也不要改。
+完成图标是原样收进来的素材，不由脚本生成，也不要改；同一族另外八个由 `brand:build` 生成。画法和用途见 `docs/status_icons.md`。
 
 | 文件 | 内容 |
 |---|---|
 | `spica-check.svg` | 完成状态图标（带圈对钩），单色、颜色随调用处；要求见 `docs/check_icon.md`。应用里用 `@spica/brand/react` 的 `SpicaStatusIcon name="done"`，图形和本文件逐字一致（有测试核对） |
 | `spica-check-preview.svg` | 同一个对钩填了绿色的预览版，只用来看效果，不要直接引用 |
+| `spica-running.svg`、`spica-warning.svg`、`spica-error.svg`、`spica-waiting.svg`、`spica-question.svg`、`spica-stopped.svg`、`spica-queued.svg`、`spica-info.svg` | 同一族的另外八个状态图标（进行中、警告、错误、等待确认、提问、已停止、排队、提示），单色、currentColor；脚本生成，和 `SpicaStatusIcon` 同一份代码 |
 
 ## 生成脚本
 
