@@ -20,7 +20,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 3. **实现工具**：改 `server/tools.js`（工具清单和参数）、`server/backend.js`（数据从哪来）、`server/errors.js`（错误码）。每个工具都要写清：
    - `description`：做什么、什么时候用、返回什么。模型只看得到这一句。
    - 参数：`inputSchema` 里每个字段的类型和说明，必填的写进 `required`。
-   - 返回：JSON 对象（页面拿到的是解析好的 `data`），字段名固定下来。
+   - 返回：JSON 对象（页面收到的是解析好的 `data`），字段名固定下来。
    - 是否不可逆：是的话写进 `manifest.json` 的 `permissions.irreversible`，并加 `annotations.destructiveHint: true`。
    - 出错时抛 `PluginToolError('错误码')`，结果文字是 `[错误码] 一句中文人话`，说清怎么办。见 `references/errors.md`。
 4. **模拟模式必须能跑通**：`SPICA_MOCK=1` 时全部工具都用 `mock/` 里的虚构数据回答，不连任何真服务。连不上真服务时返回 `[SERVICE_UNREACHABLE]` 并建议打开模拟模式。见 `references/mock-mode.md`。
@@ -46,7 +46,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 - [ ] **没有密钥**：插件包里没有 API key、令牌、密码、私钥、`.env`（`check.mjs` 会查常见格式，但它不是全部）。需要凭据时，从 `SPICA_PLUGIN_DATA` 里的配置文件读，由插件自己的设置页通过 `services/` 里的工具保存，见 `references/internal-services.md`。**不要从环境变量读**：装进 Spica 后只传白名单变量，名字带 KEY、TOKEN、SECRET 的一律不传，`check.mjs` 看到会提醒。
 - [ ] **没有写死公司专属的东西**：服务地址、部门名、项目代号不写进代码，放 `SPICA_PLUGIN_DATA` 里的配置文件；示例和模拟数据全是虚构的。
 - [ ] **证书和代理没自己处理**：没有 `rejectUnauthorized: false`，没有打进包里的证书，也没自己读代理设置。这些由 Spica 代管（0.1.0-rc.2 起）。
-- [ ] **用模型的写了 `permissions.model`**：理由一句话，上限合理；没拿到模型能力时工具会给提示，不会崩溃。
+- [ ] **用模型的写了 `permissions.model`**：理由一句话，上限合理；没有模型能力时工具会给提示，不会崩溃。
 - [ ] **权限最小**：`permissions.workspace` 用得到才写 `read` / `write`；`permissions.hooks` 只写真用到的钩子类型；页面的 `permissions.tools` 只列页面要用的工具。
 - [ ] **不可逆都标了**：会删除、发送、提交、改外部系统的工具都在 `permissions.irreversible` 里。
 - [ ] **日志不记正文**：stderr 只写工具名、错误码、耗时，不写邮件正文、文件内容、个人信息。
@@ -90,7 +90,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 包公司内部服务的插件，先读 `references/internal-services.md`。要点：
 
 - **地址和凭据**放 `SPICA_PLUGIN_DATA/config.json`。用户在插件**自己的页面**里填，页面经 `services/` 里的工具保存（模型看不到这些工具）。Spica 没有统一的插件设置表单。
-- **证书和代理由 Spica 代管**（Spica 0.1.0-rc.2 起；rc.1 和更早的版本不代管，插件连公司内网会报证书错误）：插件进程拿到的代理和信任名单和 Spica 自己的一样，Node 里直接用 `fetch` / `https`。用户改了网络设置，插件 server 会自动重启一次，之后的请求就按新设置走。
+- **证书和代理由 Spica 代管**（Spica 0.1.0-rc.2 起；rc.1 和更早的版本不代管，插件连公司内网会报证书错误）：插件进程获得的代理和信任名单和 Spica 自己的一样，Node 里直接用 `fetch` / `https`。用户改了网络设置，插件 server 会自动重启一次，之后的请求就按新设置走。
 - **工具按用户要办的事设计**，不是一个接口一个工具，一个插件十个以内。
 - **应用改了名**：插件不用改，`install.mjs` 加 `--app <应用名>`。
 

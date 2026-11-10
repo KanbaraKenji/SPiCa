@@ -1,10 +1,10 @@
 # 连内部接口
 
-插件多半是在给公司内部的某个服务包一层：工单、库存、报表、审批……这一页说四件事：地址和凭据放哪、证书和代理、工具怎么设计、应用改了名怎么连。
+插件通常是在给公司内部的某个服务包一层：工单、库存、报表、审批……这一页说四件事：地址和凭据放哪、证书和代理、工具怎么设计、应用改了名怎么连。
 
 ## 一、地址和凭据放哪
 
-**不要写进代码，也不要从环境变量读。** 装进 Spica 后，插件进程只拿到一份白名单里的环境变量（`PATH`、`TEMP`、`APPDATA` 这类），名字带 `KEY`、`TOKEN`、`SECRET` 的一律不传。你在开发机上设的 `EXAMPLE_API_TOKEN`，装进去后就读不到了。`check.mjs` 看到代码读这种变量会提醒你。
+**不要写进代码，也不要从环境变量读。** 装进 Spica 后，插件进程只获得一份白名单里的环境变量（`PATH`、`TEMP`、`APPDATA` 这类），名字带 `KEY`、`TOKEN`、`SECRET` 的一律不传。你在开发机上设的 `EXAMPLE_API_TOKEN`，装进去后就读取不到了。`check.mjs` 看到代码读这种变量会提醒你。
 
 真能用的有两种：
 
@@ -53,15 +53,15 @@ export async function saveSettings({ baseUrl, token }) {
 
 ## 二、证书和代理：Spica 代管，你不用写
 
-> **版本**：从 Spica 0.1.0-rc.2 起才代管。rc.1 和更早的版本里，插件进程拿不到应用的代理和证书，连公司内网可能报证书错误；这时请用户升级 Spica，不要在插件里绕开证书检查。
+> **版本**：从 Spica 0.1.0-rc.2 起才代管。rc.1 和更早的版本里，插件进程无法获得应用的代理和证书，连公司内网可能报证书错误；这时请用户升级 Spica，不要在插件里绕开证书检查。
 
-公司内网的服务常用公司自己发的证书，出外网还要走代理。Spica 自己连网时，信任的是 Windows 系统证书，加上 **设置 › 常规 › 网络** 里额外信任的证书文件，代理也照那里填的走。插件的 server 进程启动时会拿到同一套设置：
+公司内网的服务常用公司自己发的证书，出外网还要走代理。Spica 自己连网时，信任的是 Windows 系统证书，加上 **设置 › 常规 › 网络** 里的「信任的证书文件」，代理也按那里的设置走。插件的 server 进程启动时使用同一套设置：
 
 | 给了什么 | 谁用 |
 |---|---|
 | `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`（大小写各一份），加 `NODE_USE_ENV_PROXY=1` | Node 的 `fetch`、`https`；多数自带可执行文件也认这几个代理变量 |
-| `NODE_EXTRA_CA_CERTS`（额外信任的证书），`NODE_USE_SYSTEM_CA=1` | Node |
-| `SSL_CERT_FILE`、`REQUESTS_CA_BUNDLE`、`CURL_CA_BUNDLE`：一个完整的证书文件（公共根证书 + 系统证书 + 额外信任的） | 自带可执行文件：OpenSSL 系、Python requests、curl、Go |
+| `NODE_EXTRA_CA_CERTS`（系统证书和信任的证书文件里的证书），`NODE_USE_SYSTEM_CA=1` | Node |
+| `SSL_CERT_FILE`、`REQUESTS_CA_BUNDLE`、`CURL_CA_BUNDLE`：一个完整的证书文件（公共根证书 + 系统证书 + 信任的证书文件） | 自带可执行文件：OpenSSL 系、Python requests、curl、Go |
 
 所以：
 

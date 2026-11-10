@@ -35,7 +35,7 @@ describe('plugin tools on the MCP service', () => {
     expect(await tool('spica_plugins_list').run({})).toMatchObject({ mock: false, plugins: [{ name: 'notes', enabled: true }] });
     await tool('spica_plugin_disable').run({ name: 'notes' });
     expect(await listTools()).toEqual([]);
-    await expect(tool('spica_plugin_enable').run({ name: 'nope' })).rejects.toThrow(/没有装「nope」/);
+    await expect(tool('spica_plugin_enable').run({ name: 'nope' })).rejects.toThrow(/未安装插件「nope」/);
     await expect(tool('spica_plugin_install').run({ path: join(root, 'missing') })).rejects.toThrow(/找不到/);
 
     // Enabled again → a new backend on the same root brings it back.

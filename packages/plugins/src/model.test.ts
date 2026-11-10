@@ -89,7 +89,7 @@ describe('plugins using the user\'s models', () => {
     expect(pm.describe('notes').model).toBeUndefined();
     await callTool(rt, 'notes__write_note', { title: 'Meeting', text: 'text' });
     expect((await callTool(rt, 'notes__summarize_note', { title: 'Meeting' })).content).toBe('This Spica does not let the plugin use a model.');
-    await expect(pm.setModelLimit('notes', 1)).rejects.toThrow('没有申请使用模型');
+    await expect(pm.setModelLimit('notes', 1)).rejects.toThrow('「notes」未申请使用模型。');
   });
 
   it('manifest: permissions.model needs a reason; the daily limit is a positive number (default 0.5)', () => {

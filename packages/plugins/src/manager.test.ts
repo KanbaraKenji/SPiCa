@@ -364,12 +364,12 @@ describe('views (plugin pages)', () => {
     r = await rig();
     const check = await r.pm.check(dir);
     const text = check.issues.map((i) => `${i.where}: ${i.message}`).join('\n');
-    expect(text).toMatch(/views\/a\.json: entry 要写插件文件夹里的相对路径/);
+    expect(text).toMatch(/views\/a\.json: entry 须为插件文件夹内的相对路径/);
     expect(text).toMatch(/views\/b\.json: 视图的 placement 只能是 sidebar 或 panel/);
     expect(text).toMatch(/views\/c\.json: entry 指向的 ui\/missing\.html 不存在/);
-    expect(text).toMatch(/views\/d\.json: permissions\.tools 是本插件工具的原名列表/);
-    expect(text).toMatch(/views\/e\.json: icon 要指向 \.svg 文件/);
-    expect(text).toMatch(/views\/f\.json: 视图声明不是合法的 JSON/);
+    expect(text).toMatch(/views\/d\.json: permissions\.tools 须为本插件工具的原名列表/);
+    expect(text).toMatch(/views\/e\.json: icon 须指向 \.svg 文件/);
+    expect(text).toMatch(/views\/f\.json: 视图声明不是有效的 JSON/);
     expect(check.views).toEqual([]);
   });
 });
@@ -381,7 +381,7 @@ describe('app name in messages', () => {
     const rt = makeRuntime();
     const root = await mkdtemp(join(tmpdir(), 'spica-plugins-'));
     dirs.push(root);
-    const pm = new PluginManager({ host: runtimeHost(rt, msg), root, spicaVersion: '0.1.0', ...msg });
+    const pm = new PluginManager({ host: runtimeHost(rt), root, spicaVersion: '0.1.0', ...msg });
     expect(pm.appName).toBe('Acme Desk');
     const future = await writePlugin({ 'manifest.json': manifest('future', { compatibility: { spica: '>=9.0.0' } }) });
     dirs.push(future);
@@ -394,15 +394,15 @@ describe('app name in messages', () => {
     });
     dirs.push(odd);
     const text = (await readPluginFolder(odd, msg)).issues.map((i) => i.message).join(' | ');
-    expect(text).toContain('没有声明兼容的 Acme Desk 版本（compatibility.spica）');
-    expect(text).toContain('用 Acme Desk 自带的 Node');
+    expect(text).toContain('未声明 compatibility.spica，视为兼容所有版本。');
+    expect(text).toContain('由 Acme Desk 自带的 Node 运行 .js');
     // Without a name, the default stays.
-    expect((await readPluginFolder(odd)).issues.map((i) => i.message).join(' | ')).toContain('没有声明兼容的 Spica 版本');
+    expect((await readPluginFolder(odd)).issues.map((i) => i.message).join(' | ')).toContain('由 Spica 自带的 Node 运行 .js');
     // Not a plugin package.
     await expect(unpackPlugin(writeZip([{ name: 'readme.txt', data: Buffer.from('hi') }]), join(root, 'x'), msg)).rejects.toThrow('不是 Acme Desk 插件包');
     // Host without MCP support.
-    const bare = runtimeHost({ ...rt, connectMcp: undefined } as never, msg);
-    await expect(bare.connectMcp!({ command: 'x' } as never, 'plugin:x')).rejects.toThrow('这个版本的 Acme Desk 内核还不能启动 MCP server');
+    const bare = runtimeHost({ ...rt, connectMcp: undefined } as never);
+    await expect(bare.connectMcp!({ command: 'x' } as never, 'plugin:x')).rejects.toThrow('当前版本不支持启动 MCP server');
     await pm.shutdown();
   });
 });
@@ -465,7 +465,7 @@ describe('failures', () => {
     await r.pm.enable('crashy');
     await until(() => r!.pm.describe('crashy').servers[0]!.status === 'failed', 10_000);
     const d = r.pm.describe('crashy');
-    expect(d.servers[0]).toMatchObject({ status: 'failed', restarts: 2, lastError: expect.stringContaining('崩溃了 3 次') });
+    expect(d.servers[0]).toMatchObject({ status: 'failed', restarts: 2, lastError: expect.stringContaining('崩溃 3 次') });
     expect(toolNames(r.rt)).toEqual([]);
     expect(r.events).toContainEqual(expect.objectContaining({ type: 'plugin.error', name: 'crashy', message: expect.stringContaining('已停止重启') }));
     expect(await readFile(r.pm.logFile('crashy'), 'utf8')).toContain('out of cheese');
@@ -511,7 +511,7 @@ describe('failures', () => {
     dirs.push(dir);
     r = await rig();
     await r.pm.install(dir);
-    await expect(r.pm.enable('nostart')).rejects.toThrow(/「nostart」启用失败：进程 srv 没能启动/);
+    await expect(r.pm.enable('nostart')).rejects.toThrow(/「nostart」启用失败：进程 srv 启动失败/);
     expect(r.pm.describe('nostart').enabled).toBe(false);
   });
 
@@ -519,7 +519,7 @@ describe('failures', () => {
     const dir = await writePlugin({ 'manifest.json': { manifest_version: 1, name: 'X' } });
     dirs.push(dir);
     r = await rig();
-    await expect(r.pm.install(dir)).rejects.toThrow(/没有装上：[\s\S]*name[\s\S]*version[\s\S]*description/);
+    await expect(r.pm.install(dir)).rejects.toThrow(/插件有错误，未安装：[\s\S]*name[\s\S]*version[\s\S]*description/);
   });
 
   it('a plugin for a newer Spica is refused', async () => {

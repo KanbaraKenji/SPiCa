@@ -79,7 +79,7 @@ export async function packPlugin(
 ): Promise<{ file: string; sha256: string; name: string; version: string; files: number }> {
   const folder = await readPluginFolder(dir, opts);
   if (!folder.manifest || hasErrors(folder.issues)) {
-    throw new Error(`插件有问题，不能打包：\n${folder.issues.filter((i) => i.severity === 'error').map((i) => `· ${i.where}：${i.message}`).join('\n')}`);
+    throw new Error(`插件有错误，无法打包：\n${folder.issues.filter((i) => i.severity === 'error').map((i) => `· ${i.where}：${i.message}`).join('\n')}`);
   }
   const rules = await readFile(join(folder.root, IGNORE_FILE), 'utf8').then(parseIgnore, () => []);
   const files = await walk(folder.root, rules);
@@ -88,7 +88,7 @@ export async function packPlugin(
   const buf = writeZip(entries);
   const check = await verifyPackage(buf, undefined, opts);
   if (!check.ok) {
-    throw new Error(`打出来的包装不上，没有写出（多半是 ${IGNORE_FILE} 排除了要用的文件）：\n${check.folder.issues.filter((i) => i.severity === 'error').map((i) => `· ${i.where}：${i.message}`).join('\n')}`);
+    throw new Error(`打包结果无法安装，未写出（请检查 ${IGNORE_FILE} 是否排除了需要的文件）：\n${check.folder.issues.filter((i) => i.severity === 'error').map((i) => `· ${i.where}：${i.message}`).join('\n')}`);
   }
   await mkdir(outDir, { recursive: true });
   const file = join(outDir, `${folder.manifest.name}-${folder.manifest.version}.zip`);
@@ -129,7 +129,7 @@ export async function verifyPackage(zip: Buffer, expectedSha256?: string, opts: 
   try {
     if (expectedSha256 && expectedSha256.toLowerCase() !== sum) {
       return {
-        folder: { root: tmp, skills: [], commands: [], servers: [], hooks: [], views: [], issues: [{ where: '校验和', severity: 'error', message: '下载的文件和来源公布的校验和对不上，可能损坏或被替换，没有安装。' }] },
+        folder: { root: tmp, skills: [], commands: [], servers: [], hooks: [], views: [], issues: [{ where: '校验和', severity: 'error', message: '校验和不匹配，文件可能已损坏或被替换，未安装。' }] },
         sha256: sum,
         ok: false,
       };

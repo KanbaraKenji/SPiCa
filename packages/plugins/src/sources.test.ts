@@ -56,7 +56,7 @@ describe('zip and packages', () => {
     ]);
     expect(() => readZip(writeZip([{ name: '../evil.txt', data: Buffer.from('x') }]))).toThrow(/不安全的路径/);
     expect(() => readZip(writeZip([{ name: 'C:/Windows/evil.txt', data: Buffer.from('x') }]))).toThrow(/不安全的路径/);
-    expect(() => readZip(Buffer.from('not a zip at all, just text'))).toThrow(/不是 zip 文件/);
+    expect(() => readZip(Buffer.from('not a zip at all, just text'))).toThrow(/不是有效的 zip 文件/);
   });
 
   it('packs the example plugin reproducibly and verifies it', async () => {
@@ -69,7 +69,7 @@ describe('zip and packages', () => {
     expect(await verifyPackage(buf, a.sha256)).toMatchObject({ ok: true, folder: { manifest: { name: 'notes' } } });
     const bad = await verifyPackage(buf, 'deadbeef');
     expect(bad.ok).toBe(false);
-    expect(bad.folder.issues[0]!.message).toMatch(/校验和对不上/);
+    expect(bad.folder.issues[0]!.message).toMatch(/校验和不匹配/);
   });
 
   it('unpacks a zip whose files sit in one top folder (Windows "compressed folder")', async () => {
@@ -122,7 +122,7 @@ describe('sources, updates and rollback', () => {
 
   it('missing shared folder and unreachable HTTP give plain messages', async () => {
     await expect(listSource({ kind: 'share', location: 'Z:\\no\\such\\share' })).rejects.toThrow(/找不到共享文件夹/);
-    await expect(listSource({ kind: 'http', location: 'http://127.0.0.1:9/index.json', label: '测试源' })).rejects.toThrow(/连不上插件源 测试源/);
+    await expect(listSource({ kind: 'http', location: 'http://127.0.0.1:9/index.json', label: '测试源' })).rejects.toThrow(/无法连接插件源 测试源/);
   });
 
   it('update from a shared folder, then roll back', async () => {
@@ -167,7 +167,7 @@ describe('sources, updates and rollback', () => {
     const zipPath = join(site, 'notes-0.3.0.zip');
     const good = await readFile(zipPath);
     await writeFile(zipPath, Buffer.concat([good, Buffer.from('x')]));
-    await expect(installAvailable(r.pm, list[0]!)).rejects.toThrow(/校验和对不上/);
+    await expect(installAvailable(r.pm, list[0]!)).rejects.toThrow(/校验和不匹配/);
     expect(r.pm.list()).toEqual([]);
 
     await writeFile(zipPath, good);
@@ -182,7 +182,7 @@ describe('sources, updates and rollback', () => {
     const url = await serve(site);
     r = await rig();
     const [entry] = await listSource({ kind: 'http', location: url });
-    await expect(installAvailable(r.pm, entry!)).rejects.toThrow(/没有写校验和/);
+    await expect(installAvailable(r.pm, entry!)).rejects.toThrow(/缺少校验和/);
   });
 
   it('a broken new version does not replace a working one', async () => {
@@ -192,7 +192,7 @@ describe('sources, updates and rollback', () => {
     const broken = await exampleAt('0.9.0');
     await writeFile(join(broken, 'server', 'index.js'), 'process.exit(2);');
     dirs.push(broken);
-    await expect(r.pm.install(broken)).rejects.toThrow(/新版本 0\.9\.0 启动失败，已退回 0\.1\.0/);
+    await expect(r.pm.install(broken)).rejects.toThrow(/新版本 0\.9\.0 启动失败，已回退到 0\.1\.0/);
     expect(r.pm.describe('notes')).toMatchObject({ version: '0.1.0', enabled: true });
     expect(toolNames(r.rt)).toContain('notes__list_notes');
   });

@@ -178,7 +178,7 @@ export function parseManifest(text: string, where = MANIFEST_FILE, opts: Message
     raw = JSON.parse(stripBom(text));
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    return { issues: [{ where, severity: 'error', message: `清单不是合法的 JSON（${detail}）。检查有没有多余的逗号或缺了引号。` }] };
+    return { issues: [{ where, severity: 'error', message: `清单不是有效的 JSON（${detail}），请检查逗号和引号。` }] };
   }
   return validateManifest(raw, where, opts);
 }
@@ -189,7 +189,7 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
   const err = (path: string, message: string) => issues.push({ where: `${where} · ${path}`, severity: 'error', message });
   const warn = (path: string, message: string) => issues.push({ where: `${where} · ${path}`, severity: 'warning', message });
   if (!isObj(raw)) {
-    err('(根)', '清单最外层应该是一个对象 { … }。');
+    err('(根)', '清单顶层须为对象 { … }。');
     return { issues };
   }
   const str = (key: string, required: boolean): string | undefined => {
@@ -199,26 +199,26 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
       return undefined;
     }
     if (typeof v !== 'string') {
-      err(key, `「${key}」应该是文字，现在是 ${typeof v}。`);
+      err(key, `「${key}」须为文字，当前为 ${typeof v}。`);
       return undefined;
     }
     return v;
   };
 
   const mv = raw.manifest_version;
-  if (mv === undefined) err('manifest_version', `缺少「manifest_version」，现在只支持 ${MANIFEST_VERSION}。`);
-  else if (mv !== MANIFEST_VERSION) err('manifest_version', `不认识的清单版本 ${JSON.stringify(mv)}，这个 ${app} 只支持 ${MANIFEST_VERSION}。`);
+  if (mv === undefined) err('manifest_version', `缺少「manifest_version」，当前只支持 ${MANIFEST_VERSION}。`);
+  else if (mv !== MANIFEST_VERSION) err('manifest_version', `清单版本 ${JSON.stringify(mv)} 无效，${app} 当前只支持 ${MANIFEST_VERSION}。`);
 
   const name = str('name', true);
   if (name !== undefined && !NAME_PATTERN.test(name)) {
-    err('name', `插件名「${name}」不合格：只能用小写字母、数字和 -，以字母开头，2 到 24 个字符（它会成为工具名的前缀）。`);
+    err('name', `插件名「${name}」无效：只能用小写字母、数字和 -，以字母开头，2 到 24 个字符（用作工具名前缀）。`);
   }
   const version = str('version', true);
-  if (version !== undefined && !isSemver(version)) err('version', `版本号「${version}」不合格，应该像 1.2.3 这样三段数字。`);
+  if (version !== undefined && !isSemver(version)) err('version', `版本号「${version}」无效，须为三段数字，例如 1.2.3。`);
   const description = str('description', true);
   const displayName = str('display_name', false);
   const license = str('license', false);
-  if (license === undefined) warn('license', '没有写许可证（license），别人不知道能不能用。');
+  if (license === undefined) warn('license', '缺少 license，例如 "Apache-2.0"。');
   const homepage = str('homepage', false);
 
   let author: PluginManifest['author'] | undefined;
@@ -227,28 +227,28 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
     author = { name: raw.author.name };
     if (typeof raw.author.email === 'string') author.email = raw.author.email;
     if (typeof raw.author.url === 'string') author.url = raw.author.url;
-  } else err('author', '缺少作者（author），写成 { "name": "…" }。');
+  } else err('author', '缺少 author，例如 { "name": "…" }。');
 
   let spica = '*';
   const compat = raw.compatibility;
   if (compat !== undefined) {
-    if (!isObj(compat)) err('compatibility', '「compatibility」应该是对象，例如 { "spica": ">=0.1.0" }。');
+    if (!isObj(compat)) err('compatibility', '「compatibility」须为对象，例如 { "spica": ">=0.1.0" }。');
     else if (compat.spica !== undefined) {
       if (typeof compat.spica !== 'string' || !satisfiesParse(compat.spica)) {
-        err('compatibility.spica', `看不懂兼容范围 ${JSON.stringify(compat.spica)}，写成 ">=0.1.0" 或 "^0.1.0" 这样。`);
+        err('compatibility.spica', `兼容范围 ${JSON.stringify(compat.spica)} 无效，例如 ">=0.1.0" 或 "^0.1.0"。`);
       } else spica = compat.spica;
     }
-  } else warn('compatibility', `没有声明兼容的 ${app} 版本（compatibility.spica），默认当作都兼容。`);
+  } else warn('compatibility', '未声明 compatibility.spica，视为兼容所有版本。');
 
   const permissions: PluginPermissions = { network: [], workspace: 'none', irreversible: [], hooks: [] };
   const p = raw.permissions;
-  if (p !== undefined && !isObj(p)) err('permissions', '「permissions」应该是对象。');
+  if (p !== undefined && !isObj(p)) err('permissions', '「permissions」须为对象。');
   if (isObj(p)) {
     const list = (key: string): string[] => {
       const v = p[key];
       if (v === undefined) return [];
       if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) {
-        err(`permissions.${key}`, `「permissions.${key}」应该是文字列表，例如 ["a", "b"]。`);
+        err(`permissions.${key}`, `「permissions.${key}」须为文字列表，例如 ["a", "b"]。`);
         return [];
       }
       return v as string[];
@@ -257,40 +257,40 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
     permissions.irreversible = list('irreversible');
     const hooks = list('hooks');
     for (const h of hooks) {
-      if (!(HOOK_KINDS as readonly string[]).includes(h)) err('permissions.hooks', `不认识的钩子「${h}」，可选：${HOOK_KINDS.join('、')}。`);
+      if (!(HOOK_KINDS as readonly string[]).includes(h)) err('permissions.hooks', `未知钩子「${h}」，可选：${HOOK_KINDS.join('、')}。`);
     }
     permissions.hooks = hooks.filter((h): h is HookKind => (HOOK_KINDS as readonly string[]).includes(h));
     const model = p.model;
     if (model !== undefined) {
-      if (!isObj(model)) err('permissions.model', '「permissions.model」应该是对象，例如 { "reason": "给笔记写摘要", "max_usd_per_day": 0.2 }。');
+      if (!isObj(model)) err('permissions.model', '「permissions.model」须为对象，例如 { "reason": "给笔记写摘要", "max_usd_per_day": 0.2 }。');
       else {
         const reason = typeof model.reason === 'string' ? model.reason.trim() : '';
-        if (!reason) err('permissions.model.reason', '要写一句为什么要用模型（安装和启用时给用户看），例如 "给笔记写摘要"。');
-        else if (reason.length > 200) err('permissions.model.reason', '理由写一句话就够，不要超过 200 个字。');
+        if (!reason) err('permissions.model.reason', '缺少 permissions.model.reason，例如 "给笔记写摘要"。');
+        else if (reason.length > 200) err('permissions.model.reason', 'reason 不能超过 200 字。');
         let max = DEFAULT_MODEL_USD_PER_DAY;
         const m = model.max_usd_per_day;
         if (m !== undefined) {
-          if (typeof m !== 'number' || !Number.isFinite(m) || m <= 0) err('permissions.model.max_usd_per_day', '「max_usd_per_day」是每天最多花多少美元，写一个大于 0 的数，例如 0.2。');
+          if (typeof m !== 'number' || !Number.isFinite(m) || m <= 0) err('permissions.model.max_usd_per_day', 'max_usd_per_day 须为大于 0 的数（美元），例如 0.2。');
           else {
             max = m;
-            if (m > 5) warn('permissions.model.max_usd_per_day', `每天最多 ${m} 美元偏高，确认一下；用户还可以在插件页把它调低。`);
+            if (m > 5) warn('permissions.model.max_usd_per_day', `每日上限 ${m} 美元偏高，请确认。`);
           }
         }
-        for (const k of Object.keys(model)) if (k !== 'reason' && k !== 'max_usd_per_day') warn(`permissions.model.${k}`, `不认识的字段「${k}」，会被忽略。`);
+        for (const k of Object.keys(model)) if (k !== 'reason' && k !== 'max_usd_per_day') warn(`permissions.model.${k}`, `未知字段「${k}」，已忽略。`);
         if (reason && reason.length <= 200) permissions.model = { reason, maxUsdPerDay: max };
       }
     }
     const ws = p.workspace;
     if (ws !== undefined) {
       if (ws === 'none' || ws === 'read' || ws === 'write') permissions.workspace = ws;
-      else err('permissions.workspace', `「permissions.workspace」只能是 "none"、"read" 或 "write"，现在是 ${JSON.stringify(ws)}。`);
+      else err('permissions.workspace', `「permissions.workspace」只能是 "none"、"read" 或 "write"，当前为 ${JSON.stringify(ws)}。`);
     }
   }
 
   const mock: PluginManifest['mock'] = { supported: false };
   if (raw.mock !== undefined) {
     if (!isObj(raw.mock) || typeof raw.mock.supported !== 'boolean') {
-      err('mock', '「mock」应该写成 { "supported": true, "description": "…" }。');
+      err('mock', '「mock」须为 { "supported": true, "description": "…" }。');
     } else {
       mock.supported = raw.mock.supported;
       if (typeof raw.mock.description === 'string') mock.description = raw.mock.description;
@@ -302,16 +302,16 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
     const m = raw.mail;
     const tool = (v: unknown) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,60}$/.test(v);
     if (!isObj(m) || !tool(m.list_tool) || !tool(m.read_tool)) {
-      err('mail', '「mail」要写成 { "list_tool": "列邮件的工具名", "read_tool": "读一封邮件的工具名" }，工具名写 server 里的原名（不带插件前缀）。');
+      err('mail', '「mail」须为 { "list_tool": "列邮件的工具名", "read_tool": "读一封邮件的工具名" }，工具名为 server 中的原名（不带插件前缀）。');
     } else {
       mail = { listTool: m.list_tool as string, readTool: m.read_tool as string };
       if (m.server !== undefined) {
         if (typeof m.server === 'string' && m.server) mail.server = m.server;
-        else err('mail.server', '「mail.server」要写 mcp/ 下的文件名（不带 .json）。');
+        else err('mail.server', '「mail.server」须为 mcp/ 下的文件名（不带 .json）。');
       }
       if (m.list_args !== undefined) {
         if (isObj(m.list_args)) mail.listArgs = m.list_args;
-        else err('mail.list_args', '「mail.list_args」应该是对象，例如 { "unread_only": true }。');
+        else err('mail.list_args', '「mail.list_args」须为对象，例如 { "unread_only": true }。');
       }
       if (m.fields !== undefined) {
         const keys: Record<string, keyof NonNullable<MailDeclaration['fields']>> = {
@@ -324,7 +324,7 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
           preview: 'preview',
         };
         if (!isObj(m.fields) || Object.entries(m.fields).some(([k, v]) => !(k in keys) || typeof v !== 'string')) {
-          err('mail.fields', `「mail.fields」只能写这些键：${Object.keys(keys).join('、')}，值是列表结果里的字段名。`);
+          err('mail.fields', `「mail.fields」只能包含这些键：${Object.keys(keys).join('、')}，值为列表结果中的字段名。`);
         } else mail.fields = Object.fromEntries(Object.entries(m.fields).map(([k, v]) => [keys[k], v as string]));
       }
     }

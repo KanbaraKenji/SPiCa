@@ -319,7 +319,7 @@ export class PluginManager {
     return this.#serial(async () => {
       const folder = await this.check(dir);
       if (!folder.manifest || hasErrors(folder.issues)) {
-        throw new PluginError(summarise(folder.issues, '插件有问题，没有装上'), folder.issues);
+        throw new PluginError(summarise(folder.issues, '插件有错误，未安装'), folder.issues);
       }
       const { name, version } = folder.manifest;
       const target = this.installDir(name, version);
@@ -353,7 +353,7 @@ export class PluginManager {
             await this.#enable(name).catch(() => undefined);
           }
           await this.#saveState();
-          throw new PluginError(`新版本 ${version} 启动失败，已退回 ${old?.current ?? '之前的版本'}：${(err as Error).message}`);
+          throw new PluginError(`新版本 ${version} 启动失败，已回退到 ${old?.current ?? '上一版本'}：${(err as Error).message}`);
         }
       }
       await this.#saveState();
@@ -367,7 +367,7 @@ export class PluginManager {
   rollback(name: string): Promise<PluginDescription> {
     return this.#serial(async () => {
       const rec = this.#require(name);
-      if (!rec.previous) throw new PluginError(`「${name}」没有可退回的上一版。`);
+      if (!rec.previous) throw new PluginError(`「${name}」没有可回退的版本。`);
       const target = rec.previous;
       const wasEnabled = this.#active.has(name);
       if (wasEnabled) await this.#disable(name);
@@ -497,9 +497,9 @@ export class PluginManager {
   setModelLimit(name: string, maxUsdPerDay: number | null): Promise<PluginDescription> {
     return this.#serial(async () => {
       const rec = this.#require(name);
-      if (!this.#folders.get(name)?.manifest?.permissions.model) throw new PluginError(`「${name}」没有申请使用模型，不用设上限。`);
+      if (!this.#folders.get(name)?.manifest?.permissions.model) throw new PluginError(`「${name}」未申请使用模型。`);
       if (maxUsdPerDay === null) delete rec.modelMaxUsdPerDay;
-      else if (typeof maxUsdPerDay !== 'number' || !Number.isFinite(maxUsdPerDay) || maxUsdPerDay < 0) throw new PluginError('每天的上限要写一个不小于 0 的数（美元），0 表示不让它用。');
+      else if (typeof maxUsdPerDay !== 'number' || !Number.isFinite(maxUsdPerDay) || maxUsdPerDay < 0) throw new PluginError('每日上限须为不小于 0 的数（美元），0 表示禁止使用模型。');
       else rec.modelMaxUsdPerDay = maxUsdPerDay;
       await this.#saveState();
       const a = this.#active.get(name);
@@ -517,7 +517,7 @@ export class PluginManager {
 
   #require(name: string): InstalledRecord {
     const rec = this.#state.plugins[name];
-    if (!rec) throw new PluginError(`没有装「${name}」这个插件。`);
+    if (!rec) throw new PluginError(`未安装插件「${name}」。`);
     return rec;
   }
 
@@ -526,7 +526,7 @@ export class PluginManager {
     const folder = this.#folders.get(name);
     if (!folder?.manifest || hasErrors(folder.issues)) {
       const issues = folder?.issues ?? [];
-      const msg = summarise(issues, `「${name}」有问题，不能启用`);
+      const msg = summarise(issues, `「${name}」有错误，无法启用`);
       this.#emit({ type: 'plugin.error', name, message: msg });
       throw new PluginError(msg, issues);
     }
@@ -643,7 +643,7 @@ export class PluginManager {
             const run = a.servers.find((r) => r.def.kind === 'mcp' && call.name.startsWith(`${r.launchName}__`));
             if (!run) return;
             const bare = call.name.slice(run.launchName.length + 2);
-            if (irreversible.includes(bare)) return { action: 'confirm', reason: `「${a.manifest.displayName}」声明这个操作不可撤销` };
+            if (irreversible.includes(bare)) return { action: 'confirm', reason: `「${a.manifest.displayName}」：此操作不可撤销` };
             return;
           },
         },
@@ -792,7 +792,7 @@ export class PluginManager {
     } catch (err) {
       run.lastError = (err as Error).message;
       this.#setStatus(a, run, 'failed', run.lastError);
-      throw new Error(`进程 ${run.def.id} 没能启动：${run.lastError}`, { cause: err });
+      throw new Error(`进程 ${run.def.id} 启动失败：${run.lastError}`, { cause: err });
     }
   }
 
@@ -823,7 +823,7 @@ export class PluginManager {
     const tail = info.stderrTail.trim().split('\n').slice(-3).join(' / ');
     void this.#log(a.manifest.name, `[${run.def.id}] exited (code ${info.code ?? '?'})${tail ? `: ${tail}` : ''}`);
     if (run.restarts.length >= run.def.restart.maxRestarts) {
-      run.lastError = `进程 ${run.def.id} 在 ${Math.round(run.def.restart.windowMs / 1000)} 秒内崩溃了 ${run.restarts.length + 1} 次，已停止重启。详情见插件日志。`;
+      run.lastError = `进程 ${run.def.id} 在 ${Math.round(run.def.restart.windowMs / 1000)} 秒内崩溃 ${run.restarts.length + 1} 次，已停止重启，详见插件日志。`;
       this.#setStatus(a, run, 'failed', run.lastError);
       this.#emit({ type: 'plugin.error', name: a.manifest.name, message: `「${a.manifest.displayName}」${run.lastError}` });
       return;
@@ -983,12 +983,12 @@ export class PluginManager {
   async viewCall(plugin: string, viewId: string, tool: string, args: Record<string, unknown> = {}, opts: { confirmed?: boolean } = {}): Promise<ViewCallResult> {
     const fail = (code: string, text: string): ViewCallResult => ({ content: `[${code}] ${text}`, isError: true });
     const a = this.#active.get(plugin);
-    if (!a) return fail('PLUGIN_DISABLED', `插件「${plugin}」没有启用。`);
+    if (!a) return fail('PLUGIN_DISABLED', `插件「${plugin}」未启用。`);
     const v = a.folder.views.find((x) => x.id === viewId);
-    if (!v) return fail('VIEW_NOT_FOUND', `插件「${a.manifest.displayName}」没有叫 ${viewId} 的页面。`);
+    if (!v) return fail('VIEW_NOT_FOUND', `插件「${a.manifest.displayName}」中没有页面 ${viewId}。`);
     const full = this.#ownTools(a).get(tool);
-    if (!full) return fail('TOOL_NOT_FOUND', `插件「${a.manifest.displayName}」现在没有 ${tool} 这个工具（server 可能还没起来）。`);
-    if (v.tools && !v.tools.includes(tool)) return fail('TOOL_NOT_ALLOWED', `这个页面没有声明可以调 ${tool}（views/${viewId}.json 的 permissions.tools）。`);
+    if (!full) return fail('TOOL_NOT_FOUND', `插件「${a.manifest.displayName}」暂无工具 ${tool}。`);
+    if (v.tools && !v.tools.includes(tool)) return fail('TOOL_NOT_ALLOWED', `该页面未声明工具 ${tool} 的权限（views/${viewId}.json 的 permissions.tools）。`);
     // Confirmation: the shell asks the user itself on [CONFIRM_REQUIRED], then
     // calls again with confirmed: true.
     const input = args && typeof args === 'object' ? args : {};
@@ -1003,12 +1003,12 @@ export class PluginManager {
       } catch (err) {
         // The page always gets a result, never an exception.
         void this.#log(plugin, `page ${viewId} could not call ${tool}: ${err instanceof Error ? err.message : String(err)}`);
-        return fail('CALL_FAILED', `没能调用 ${tool}，详情在插件日志里。`);
+        return fail('CALL_FAILED', `工具 ${tool} 调用失败，详见插件日志。`);
       }
       if (out.needsConfirmation || out.declined) {
         // Our permission hook gives a Chinese reason; the core's default is English.
-        const why = /[一-鿿]/.test(out.content) ? out.content : `「${a.manifest.displayName}」的这个操作不可撤销`;
-        return fail('CONFIRM_REQUIRED', `${why}，需要你确认。`);
+        const why = /[一-鿿]/.test(out.content) ? out.content : `「${a.manifest.displayName}」：此操作不可撤销`;
+        return fail('CONFIRM_REQUIRED', `${why}，需要确认。`);
       }
       if (out.isError && out.content.startsWith('Blocked: ')) {
         // A hook refused it; keep the hook's own code when it gave one.
@@ -1018,11 +1018,11 @@ export class PluginManager {
     } else if (this.#host.invokeTool) {
       // Older cores: no hooks on this path, so check the declared irreversible tools here.
       if (a.manifest.permissions.irreversible.includes(tool) && opts.confirmed !== true) {
-        return fail('CONFIRM_REQUIRED', `「${a.manifest.displayName}」的这个操作不可撤销，需要你确认。`);
+        return fail('CONFIRM_REQUIRED', `「${a.manifest.displayName}」：此操作不可撤销，需要确认。`);
       }
       r = await this.#host.invokeTool(full, input);
     } else {
-      return fail('UNSUPPORTED', `这个版本的 ${this.#app} 内核还不能从页面直接调工具。`);
+      return fail('UNSUPPORTED', '当前版本不支持从页面调用工具。');
     }
     let data: unknown;
     try {
@@ -1048,6 +1048,6 @@ function summarise(issues: readonly Issue[], head: string): string {
   const errors = issues.filter((i) => i.severity === 'error');
   if (errors.length === 0) return head;
   const lines = errors.slice(0, 5).map((i) => `· ${i.where}：${i.message}`);
-  if (errors.length > 5) lines.push(`· 另外还有 ${errors.length - 5} 处`);
+  if (errors.length > 5) lines.push(`· 另有 ${errors.length - 5} 处`);
   return `${head}：\n${lines.join('\n')}`;
 }

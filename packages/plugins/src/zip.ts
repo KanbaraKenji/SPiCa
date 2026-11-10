@@ -95,10 +95,10 @@ export function readZip(buf: Buffer, limits: { maxEntries?: number; maxBytes?: n
       break;
     }
   }
-  if (endAt < 0) throw new ZipError('不是 zip 文件，或者文件不完整（下载没下完？）。');
+  if (endAt < 0) throw new ZipError('不是有效的 zip 文件，或文件不完整。');
   const count = buf.readUInt16LE(endAt + 10);
   const cdOffset = buf.readUInt32LE(endAt + 16);
-  if (count > maxEntries) throw new ZipError(`压缩包里文件太多（${count} 个）。`);
+  if (count > maxEntries) throw new ZipError(`压缩包中文件过多（${count} 个）。`);
   const out: ZipEntry[] = [];
   let p = cdOffset;
   let total = 0;
@@ -115,17 +115,17 @@ export function readZip(buf: Buffer, limits: { maxEntries?: number; maxBytes?: n
     const rawName = buf.subarray(p + 46, p + 46 + nlen).toString('utf8');
     p += 46 + nlen + xlen + clen;
     const name = safeEntryName(rawName);
-    if (!name) throw new ZipError(`压缩包里有不安全的路径「${rawName}」，拒绝解开。`);
+    if (!name) throw new ZipError(`压缩包中有不安全的路径「${rawName}」，已拒绝解压。`);
     total += usize;
-    if (total > maxBytes) throw new ZipError('压缩包解开后太大。');
+    if (total > maxBytes) throw new ZipError('压缩包解压后过大。');
     if (buf.readUInt32LE(lho) !== LOCAL) throw new ZipError('压缩包文件头损坏。');
     const start = lho + 30 + buf.readUInt16LE(lho + 26) + buf.readUInt16LE(lho + 28);
     const body = buf.subarray(start, start + csize);
     let data: Buffer;
     if (method === 0) data = Buffer.from(body);
     else if (method === 8) data = inflateRawSync(body, { maxOutputLength: Math.max(usize, 1) });
-    else throw new ZipError(`压缩包用了不支持的压缩方式（${method}），请用普通 zip 重新打包。`);
-    if (data.length !== usize || (crc32(data) >>> 0) !== crc) throw new ZipError(`压缩包里的「${name}」校验失败，文件可能损坏。`);
+    else throw new ZipError(`压缩包使用了不支持的压缩方式（${method}），请用普通 zip 重新打包。`);
+    if (data.length !== usize || (crc32(data) >>> 0) !== crc) throw new ZipError(`压缩包中的「${name}」校验失败，文件可能已损坏。`);
     out.push({ name, data });
   }
   return out;

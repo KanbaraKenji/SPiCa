@@ -2,7 +2,6 @@
 // the plugin package does not reach into core internals, and tests can use a
 // fake. `runtimeHost()` adapts a @spica/core Runtime to it.
 import type { Hooks, SamplingGrant, Tool } from '@spica/core';
-import { appNameOf, type MessageOptions } from './manifest.ts';
 
 /** How to start one MCP server (stdio). Mirrors @spica/core's McpServerConfig. */
 export interface McpLaunch {
@@ -93,13 +92,12 @@ export interface RuntimeLike {
   sampler?: { spentToday(pluginId: string): number };
 }
 
-export function runtimeHost(rt: RuntimeLike, opts: MessageOptions = {}): PluginHost {
-  const app = appNameOf(opts);
+export function runtimeHost(rt: RuntimeLike): PluginHost {
   return {
     registerHooks: (source, hooks, opts) => rt.hooks.register(source, hooks, opts),
     registerTool: (tool, source) => rt.tools.register(tool, source),
     async connectMcp(config, source) {
-      if (!rt.connectMcp) throw new Error(`这个版本的 ${app} 内核还不能启动 MCP server。`);
+      if (!rt.connectMcp) throw new Error('当前版本不支持启动 MCP server。');
       const h = await rt.connectMcp(config, { source });
       return { tools: h.tools, disconnect: async () => void (await h.disconnect()) };
     },

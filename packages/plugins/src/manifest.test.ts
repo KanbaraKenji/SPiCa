@@ -34,14 +34,14 @@ describe('manifest', () => {
     expect(text).toMatch(/name.*小写字母/);
     expect(text).toMatch(/version.*1\.2\.3/);
     expect(text).toContain('缺少「description」');
-    expect(text).toContain('缺少作者');
-    expect(text).toContain('不认识的钩子「onStart」');
+    expect(text).toContain('缺少 author');
+    expect(text).toContain('未知钩子「onStart」');
     expect(text).toContain('permissions.workspace');
   });
 
   it('reports broken JSON instead of throwing', () => {
     const { issues } = parseManifest('{ "name": "x", }');
-    expect(issues[0]!.message).toMatch(/不是合法的 JSON/);
+    expect(issues[0]!.message).toMatch(/不是有效的 JSON/);
   });
 
   it('compares versions and ranges', () => {
@@ -83,8 +83,8 @@ describe('plugin folder', () => {
     const f = await readPluginFolder(tmp);
     const text = f.issues.map((i) => `${i.where}: ${i.message}`).join('\n');
     expect(text).toMatch(/escape\.json.*不能用绝对路径或 \.\./);
-    expect(text).toMatch(/script\.json.*控制台窗口/);
-    expect(text).toMatch(/py\.json.*独立可执行文件/);
+    expect(text).toMatch(/script\.json.*入口不能是脚本/);
+    expect(text).toMatch(/py\.json.*须打包为可执行文件/);
     expect(text).toMatch(/env\.json.*SPICA_/);
     expect(f.servers).toEqual([]);
     expect(insidePlugin(tmp, 'C:\\Windows\\x.exe')).toBeUndefined();
@@ -95,7 +95,7 @@ describe('plugin folder', () => {
   it('a folder without manifest says so', async () => {
     tmp = await mkdtemp(join(tmpdir(), 'spica-folder-'));
     const f = await readPluginFolder(tmp);
-    expect(f.issues[0]!.message).toMatch(/没有 manifest\.json/);
+    expect(f.issues[0]!.message).toMatch(/缺少 manifest\.json，不是插件文件夹/);
   });
 
   it('parses frontmatter and expands command arguments', () => {

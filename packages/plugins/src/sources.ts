@@ -90,13 +90,13 @@ function parseIndex(text: string, where: string): IndexFile {
   try {
     raw = JSON.parse(stripBom(text));
   } catch {
-    throw new Error(`${where} 不是合法的 JSON。`);
+    throw new Error(`${where} 不是有效的 JSON。`);
   }
   const idx = raw as Partial<IndexFile>;
-  if (idx.index_version !== 1 || !Array.isArray(idx.plugins)) throw new Error(`${where} 的格式不对：需要 { "index_version": 1, "plugins": [ … ] }。`);
+  if (idx.index_version !== 1 || !Array.isArray(idx.plugins)) throw new Error(`${where} 格式无效，须为 { "index_version": 1, "plugins": [ … ] }。`);
   for (const p of idx.plugins) {
     if (typeof p?.name !== 'string' || typeof p.version !== 'string' || typeof p.file !== 'string') {
-      throw new Error(`${where} 里有一条缺 name / version / file。`);
+      throw new Error(`${where} 中有一条缺少 name / version / file。`);
     }
   }
   return idx as IndexFile;
@@ -109,13 +109,13 @@ export async function listSource(src: SourceConfig, opts: SourceOptions = {}): P
     try {
       text = await getText(src.location, opts);
     } catch (err) {
-      throw new Error(`连不上插件源 ${src.label ?? src.location}（${(err as Error).message}）。`, { cause: err });
+      throw new Error(`无法连接插件源 ${src.label ?? src.location}（${(err as Error).message}）。`, { cause: err });
     }
     const idx = parseIndex(text, src.location);
     return idx.plugins.map((p) => ({ ...p, source: src, location: new URL(p.file, src.location).href, form: 'zip' as const }));
   }
   const root = resolve(src.location);
-  if (!(await isDir(root))) throw new Error(`找不到共享文件夹 ${src.location}，检查盘有没有连上。`);
+  if (!(await isDir(root))) throw new Error(`找不到共享文件夹 ${src.location}，请检查网络驱动器是否已连接。`);
   try {
     const idx = parseIndex(await readFile(join(root, INDEX_FILE), 'utf8'), join(root, INDEX_FILE));
     return idx.plugins.map((p) => ({
@@ -185,7 +185,7 @@ export async function installAvailable(manager: PluginManager, entry: Available,
     const desc = await manager.install(entry.location, source);
     return desc;
   }
-  if (entry.source.kind === 'http' && !entry.sha256) throw new Error(`插件源里「${entry.name}」没有写校验和（sha256），出于安全没有安装。`);
+  if (entry.source.kind === 'http' && !entry.sha256) throw new Error(`插件源中「${entry.name}」缺少校验和（sha256），未安装。`);
   let buf: Buffer;
   try {
     buf = entry.source.kind === 'http' ? await getBytes(entry.location, opts) : await readFile(entry.location);
@@ -193,7 +193,7 @@ export async function installAvailable(manager: PluginManager, entry: Available,
     throw new Error(`下载「${entry.name}」${entry.version} 失败（${(err as Error).message}）。`, { cause: err });
   }
   if (entry.sha256 && sha256(buf) !== entry.sha256.toLowerCase()) {
-    throw new Error(`「${entry.name}」${entry.version} 的校验和对不上，文件可能损坏或被替换，没有安装。`);
+    throw new Error(`「${entry.name}」${entry.version} 校验和不匹配，文件可能已损坏或被替换，未安装。`);
   }
   return installZip(manager, buf, source);
 }
@@ -204,7 +204,7 @@ export async function installZip(manager: PluginManager, buf: Buffer, source: Pl
   try {
     const folder = await unpackPlugin(buf, tmp, { appName: manager.appName });
     if (!folder.manifest || hasErrors(folder.issues)) {
-      throw new Error(`插件包有问题：\n${folder.issues.filter((i) => i.severity === 'error').map((i) => `· ${i.where}：${i.message}`).join('\n')}`);
+      throw new Error(`插件包有错误：\n${folder.issues.filter((i) => i.severity === 'error').map((i) => `· ${i.where}：${i.message}`).join('\n')}`);
     }
     return await manager.install(tmp, source);
   } finally {

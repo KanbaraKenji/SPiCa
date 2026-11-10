@@ -132,7 +132,7 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
 
   const manifestPath = join(root, MANIFEST_FILE);
   if (!(await exists(manifestPath))) {
-    issue(MANIFEST_FILE, `这个文件夹里没有 ${MANIFEST_FILE}，不是一个插件文件夹（${out.root}）。`);
+    issue(MANIFEST_FILE, `缺少 ${MANIFEST_FILE}，不是插件文件夹（${out.root}）。`);
     return out;
   }
   const parsed = parseManifest(await readFile(manifestPath, 'utf8'), MANIFEST_FILE, opts);
@@ -150,8 +150,8 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
     }
     const { data, body } = parseFrontmatter(await readFile(file, 'utf8'));
     if (!ID.test(e.name)) issue(where, `技能文件夹名「${e.name}」只能用小写字母、数字、- 和 _。`);
-    if (!data.description) issue(where, '技能缺少 description（开头 --- 之间写 description: …），模型靠它判断什么时候用。');
-    if (!body) issue(where, '技能正文是空的。');
+    if (!data.description) issue(where, '技能缺少 description，请在开头 --- 之间写 description: …。');
+    if (!body) issue(where, '技能正文为空。');
     out.skills.push({ id: e.name, name: data.name || e.name, description: data.description ?? '', body, file });
   }
 
@@ -163,7 +163,7 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
     const file = join(root, 'commands', e.name);
     const { data, body } = parseFrontmatter(await readFile(file, 'utf8'));
     if (!ID.test(id)) issue(where, `命令名「${id}」只能用小写字母、数字、- 和 _。`);
-    if (!body) issue(where, '命令正文是空的，正文就是发给 Agent 的话。');
+    if (!body) issue(where, '命令正文为空。');
     out.commands.push({
       id,
       description: data.description ?? '',
@@ -189,7 +189,7 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
   }
   const ids = out.servers.map((s) => s.id);
   for (const id of new Set(ids)) {
-    if (ids.filter((x) => x === id).length > 1) issue(`mcp/${id}.json`, `mcp/ 和 services/ 里都有「${id}」，名字要错开。`);
+    if (ids.filter((x) => x === id).length > 1) issue(`mcp/${id}.json`, `mcp/ 与 services/ 中的「${id}」重名，请改名。`);
   }
 
   // hooks/*.js | *.mjs
@@ -197,7 +197,7 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
     if (e.isDir) continue;
     if (/\.(m?js)$/.test(e.name)) out.hooks.push({ id: e.name, file: join(root, 'hooks', e.name) });
     else if (/\.(m?ts|cjs)$/.test(e.name)) {
-      issue(`hooks/${e.name}`, '钩子只收 ESM 的 .js / .mjs 文件。用 TypeScript 写的请先编译成 .js 再放进来。', 'warning');
+      issue(`hooks/${e.name}`, '钩子须为 ESM 的 .js 或 .mjs 文件（TypeScript 请先编译为 .js）。', 'warning');
     }
   }
 
@@ -210,15 +210,15 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
     try {
       v = JSON.parse(stripBom(await readFile(join(root, 'views', e.name), 'utf8'))) as Record<string, unknown>;
     } catch {
-      issue(where, '视图声明不是合法的 JSON。');
+      issue(where, '视图声明不是有效的 JSON。');
       continue;
     }
     const before = out.issues.length;
     const relFile = async (field: string, value: unknown, ext: RegExp, example: string): Promise<string | undefined> => {
       if (value === undefined) return undefined;
       const abs = typeof value === 'string' ? insidePlugin(out.root, value) : undefined;
-      if (!abs) issue(where, `${field} 要写插件文件夹里的相对路径，不能用 .. 或绝对路径，例如 "${example}"。`);
-      else if (!ext.test(value as string)) issue(where, `${field} 要指向 ${example.slice(example.lastIndexOf('.'))} 文件。`);
+      if (!abs) issue(where, `${field} 须为插件文件夹内的相对路径，不能用 .. 或绝对路径，例如 "${example}"。`);
+      else if (!ext.test(value as string)) issue(where, `${field} 须指向 ${example.slice(example.lastIndexOf('.'))} 文件。`);
       else if (!(await exists(abs))) issue(where, `${field} 指向的 ${value as string} 不存在。`);
       else return relative(out.root, abs).split(sep).join('/');
       return undefined;
@@ -233,10 +233,10 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
     let tools: string[] | undefined;
     const perm = v.permissions as { tools?: unknown } | undefined;
     if (perm !== undefined) {
-      if (typeof perm !== 'object' || perm === null || Array.isArray(perm)) issue(where, 'permissions 要写成 { "tools": ["工具名", ...] }。');
+      if (typeof perm !== 'object' || perm === null || Array.isArray(perm)) issue(where, 'permissions 须为 { "tools": ["工具名", ...] }。');
       else if (perm.tools !== undefined) {
         if (!Array.isArray(perm.tools) || perm.tools.some((t) => typeof t !== 'string' || !t || t.includes('__'))) {
-          issue(where, 'permissions.tools 是本插件工具的原名列表（不带插件前缀），例如 ["list_notes"]。');
+          issue(where, 'permissions.tools 须为本插件工具的原名列表（不带插件前缀），例如 ["list_notes"]。');
         } else tools = [...new Set(perm.tools as string[])];
       }
     }
@@ -249,9 +249,9 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
   const mail = out.manifest?.mail;
   if (mail) {
     const mcp = out.servers.filter((s) => s.kind === 'mcp');
-    if (mail.server && !mcp.some((s) => s.id === mail.server)) issue('manifest.json · mail.server', `mcp/ 里没有「${mail.server}」。`);
+    if (mail.server && !mcp.some((s) => s.id === mail.server)) issue('manifest.json · mail.server', `mcp/ 中没有「${mail.server}」。`);
     else if (!mail.server && mcp.length !== 1) {
-      issue('manifest.json · mail', mcp.length === 0 ? '声明了邮件来源，但插件里没有 MCP server。' : '插件有多个 MCP server，请在 mail.server 写明用哪一个。');
+      issue('manifest.json · mail', mcp.length === 0 ? '声明了邮件来源，但插件里没有 MCP server。' : '插件有多个 MCP server，请在 mail.server 中指定。');
     }
   }
 
@@ -261,7 +261,7 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
   }
   // Hook kinds declared but no hook modules (or the reverse) is worth a warning.
   if (out.manifest && out.hooks.length > 0 && out.manifest.permissions.hooks.length === 0) {
-    issue('manifest.json · permissions.hooks', 'hooks/ 里有钩子，但清单的 permissions.hooks 没声明用哪几类，钩子不会生效。');
+    issue('manifest.json · permissions.hooks', 'permissions.hooks 未声明钩子类型，钩子不会生效，例如 ["inject"]。');
   }
   return out;
 }
@@ -279,7 +279,7 @@ function parseServer(
   try {
     raw = JSON.parse(stripBom(text)) as Record<string, unknown>;
   } catch {
-    issue(where, '声明不是合法的 JSON。');
+    issue(where, '声明不是有效的 JSON。');
     return undefined;
   }
   let ok = true;
@@ -292,27 +292,27 @@ function parseServer(
   if (runtime !== 'node' && runtime !== 'binary') {
     bad(
       runtime === 'python'
-        ? 'Python 类 server 这一版只支持插件自带的独立可执行文件：把 runtime 写成 "binary"，entry 指向打包好的 .exe。'
-        : `「runtime」只能是 "node"（用 ${app} 自带的 Node 跑 .js）或 "binary"（插件自带的可执行文件）。`,
+        ? 'Python server 须打包为可执行文件：runtime 设为 "binary"，entry 指向 .exe。'
+        : `「runtime」只能是 "node"（由 ${app} 自带的 Node 运行 .js）或 "binary"（插件自带的可执行文件）。`,
     );
   }
   const entryRel = raw.entry;
   const entry = typeof entryRel === 'string' ? insidePlugin(root, entryRel) : undefined;
-  if (!entry) bad('「entry」要写插件文件夹里的相对路径，不能用绝对路径或 ..。');
-  else if (runtime === 'node' && !/\.(m?js|cjs)$/.test(entry)) bad('Node 类 server 的 entry 要是 .js / .mjs / .cjs 文件。');
+  if (!entry) bad('「entry」须为插件文件夹内的相对路径，不能用绝对路径或 ..。');
+  else if (runtime === 'node' && !/\.(m?js|cjs)$/.test(entry)) bad('Node server 的 entry 须为 .js / .mjs / .cjs 文件。');
   else if (runtime === 'binary' && /\.(cmd|bat|ps1|vbs)$/i.test(entry)) {
-    bad('不能用脚本（.cmd / .bat / .ps1）当入口：它们会弹控制台窗口。请打包成 .exe。');
+    bad('入口不能是脚本（.cmd / .bat / .ps1），请打包为 .exe。');
   }
   const args = raw.args ?? [];
-  if (!Array.isArray(args) || args.some((a) => typeof a !== 'string')) bad('「args」应该是文字列表。');
+  if (!Array.isArray(args) || args.some((a) => typeof a !== 'string')) bad('「args」须为文字列表。');
   const env = raw.env ?? {};
   if (typeof env !== 'object' || env === null || Array.isArray(env) || Object.values(env).some((v) => typeof v !== 'string')) {
-    bad('「env」应该是 { "名字": "值" } 这样的对象，值都是文字。');
-  } else if (Object.keys(env).some((k) => k.startsWith('SPICA_'))) bad('「env」里不能自己设 SPICA_ 开头的变量，这些由宿主填。');
+    bad('「env」须为 { "名字": "值" } 形式的对象，值为文字。');
+  } else if (Object.keys(env).some((k) => k.startsWith('SPICA_'))) bad('「env」中不能设置 SPICA_ 开头的变量。');
   const restart = (raw.restart ?? {}) as Record<string, unknown>;
   const maxRestarts = typeof restart.max_restarts === 'number' ? restart.max_restarts : 3;
   const windowSeconds = typeof restart.window_seconds === 'number' ? restart.window_seconds : 60;
-  if (maxRestarts < 0 || maxRestarts > 10) bad('「restart.max_restarts」要在 0 到 10 之间。');
+  if (maxRestarts < 0 || maxRestarts > 10) bad('「restart.max_restarts」须在 0 到 10 之间。');
   if (!ok) return undefined;
   return {
     id,

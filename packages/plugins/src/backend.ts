@@ -165,7 +165,7 @@ export async function attachBackend(
 }> {
   if (!options?.root) throw new Error('plugins extension needs options.root');
   const pm = new PluginManager({
-    host: runtimeHost(rt, { appName: options.appName }),
+    host: runtimeHost(rt),
     root: options.root,
     ...(options.appName ? { appName: options.appName } : {}),
     ...(options.nodePath ? { nodePath: options.nodePath } : {}),
