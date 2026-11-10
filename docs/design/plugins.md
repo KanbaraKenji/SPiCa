@@ -243,15 +243,16 @@ J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型�
 
 ## 12. 交接（2026-11-09）
 
-- **做了什么**：`@spica/plugins`（清单、文件夹、启用 / 停用全撤、失败回滚、崩溃重启上限、模拟模式、describe()、zip 打包与校验、共享盘 / HTTP 来源、更新与回滚、环境变量白名单）；示例插件 `plugins/example-notes`；J6 冒烟 `npm run smoke:plugins -w @spica/plugins`（13 项）和真模型版 `smoke:plugins:model`；本文和作者指南。提交 2caf365、6064913 和本次。
-- **内核配合**（已提交 e473a9d）：`connectMcp(config, { source })`、`onExit`、`stderrLog`、可等待的 `disconnect()`、单个 server 只撤自己的工具、`inheritEnv` 白名单。
+- **做了什么**：`@spica/plugins`（清单、文件夹、启用 / 停用全撤、失败回滚、崩溃重启上限、模拟模式、describe()、zip 打包与校验、共享盘 / HTTP 来源、更新与回滚、环境变量白名单）；示例插件 `plugins/example-notes`；J6 冒烟 `npm run smoke:plugins -w @spica/plugins`（13 项）和真模型版 `smoke:plugins:model`；本文和作者指南。提交 b0e3fe6、6080a52 和本次。
+- **内核配合**（已提交 2e0bb76）：`connectMcp(config, { source })`、`onExit`、`stderrLog`、可等待的 `disconnect()`、单个 server 只撤自己的工具、`inheritEnv` 白名单。
 - **故意没做**：插件页界面与模拟数据标记（归桌面外壳，接口见第 9 节）；工作文件夹 / 网络权限的强制拦截；插件设置表单（MCPB 的 user_config）；包签名；宿主托管 Python（方案见第 5 节，何时做待他拍板）。视图的渲染归桌面外壳（接口见第 2 节「视图」）。
 - **J6 经 MCP**：`npm run journey:j6 -w @spica/plugins`，7 项全过（DeepSeek flash）。
 - **下一步**：外壳经后端端口的 plugin* 方法做插件页，不用自己建 `PluginManager`；插件根建议 `%APPDATA%\Spica\plugins`，写进后端配置的 extensions.options.root。之后官方 Outlook 插件按本格式写。
 - **他该看什么**：跑 J6 冒烟看 13 行 ✓；翻 `plugins/example-notes` 看一个插件长什么样。
 - **注意**：插件测试要起真进程，机器很忙时默认 5 秒会超时，测试文件里已放宽到 30 秒。
 - **2026-11-10 补**：
-  - 插件包可用 `.spicaignore` 排除开发文件（1585374），Outlook 插件已加（8988ad1）。
-  - 插件页面定稿：`views/*.json`、`views()` / `resolveViewFile()` / `viewCall()`、后端端口 `pluginViews` / `pluginViewFile` / `pluginViewCall`，和桌面外壳对好的 `window.spica` 约定见第 2 节「视图」（fb0d42b）；示例插件有 sidebar 的 Notebook 和 panel 的 Quick note（eaa96f7）。
-  - 给公司端 Claude Code / Codex 用的 skill：`skills/spica-plugin-author`（脚手架、校验打包、安装、页面预览，7105d2f 起）；`packages/plugins/src/skill.test.ts` 用它从零做插件，经 stdio 和 HTTP 装进 Spica 再撤掉。
+  - 插件包可用 `.spicaignore` 排除开发文件（6e98464），Outlook 插件已加（b225395）。
+  - 插件页面定稿：`views/*.json`、`views()` / `resolveViewFile()` / `viewCall()`、后端端口 `pluginViews` / `pluginViewFile` / `pluginViewCall`，和桌面外壳对好的 `window.spica` 约定见第 2 节「视图」（3865844）；示例插件有 sidebar 的 Notebook 和 panel 的 Quick note（d9428d8）。
+  - 给公司端 Claude Code / Codex 用的 skill：`skills/spica-plugin-author`（脚手架、校验打包、安装、页面预览，9db40ef 起）；`packages/plugins/src/skill.test.ts` 用它从零做插件，经 stdio 和 HTTP 装进 Spica 再撤掉。
   - 本机连接：桌面版在 设置 › 常规 › 开发者 打开「允许本机脚本连接 Spica」后写 `<userData>/mcp-http.json`（`{ url, tokenFile, pid, startedAt }`，令牌在 `<userData>/mcp-token`，关掉或退出时删），`install.mjs` 不带连接参数时就读它；没开时用 设置 › 插件 粘 zip 路径装。
+  - 应用名：打包时可以换成别的名字（外壳读 deploy.json）。`PluginManagerOptions` / 后端扩展的 options 多了 `appName`（缺省 `Spica`），只换给用户看的中文提示；`readPluginFolder` / `parseManifest` / `unpackPlugin` / `verifyPackage` / `packPlugin` / `runtimeHost` 也接 `{ appName }`。包名、`window.spica`、`spica_` 工具名、`--spica-*` 变量、`SPICA_` 环境变量、清单的 `compatibility.spica`、`.spicaignore` 都不跟着变。`install.mjs` 加 `--app <名字>`，不带时会在 `%APPDATA%` 下找唯一一个写了 `appName` 且在运行的 `mcp-http.json`。

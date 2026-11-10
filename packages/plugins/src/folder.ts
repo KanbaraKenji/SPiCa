@@ -2,7 +2,7 @@
 // and the extension parts (hooks, services, views). Nothing is started here.
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { MANIFEST_FILE, parseManifest, stripBom, type Issue, type PluginManifest } from './manifest.ts';
+import { MANIFEST_FILE, appNameOf, parseManifest, stripBom, type Issue, type MessageOptions, type PluginManifest } from './manifest.ts';
 
 export interface SkillDef {
   /** Folder name under skills/. */
@@ -126,7 +126,7 @@ async function list(dir: string): Promise<{ name: string; isDir: boolean }[]> {
 
 const ID = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 
-export async function readPluginFolder(root: string): Promise<PluginFolder> {
+export async function readPluginFolder(root: string, opts: MessageOptions = {}): Promise<PluginFolder> {
   const out: PluginFolder = { root: resolve(root), skills: [], commands: [], servers: [], hooks: [], views: [], issues: [] };
   const issue = (where: string, message: string, severity: Issue['severity'] = 'error') => out.issues.push({ where, message, severity });
 
@@ -135,7 +135,7 @@ export async function readPluginFolder(root: string): Promise<PluginFolder> {
     issue(MANIFEST_FILE, `这个文件夹里没有 ${MANIFEST_FILE}，不是一个插件文件夹（${out.root}）。`);
     return out;
   }
-  const parsed = parseManifest(await readFile(manifestPath, 'utf8'));
+  const parsed = parseManifest(await readFile(manifestPath, 'utf8'), MANIFEST_FILE, opts);
   out.issues.push(...parsed.issues);
   if (parsed.manifest) out.manifest = parsed.manifest;
 
@@ -180,7 +180,7 @@ export async function readPluginFolder(root: string): Promise<PluginFolder> {
       if (e.isDir || !e.name.endsWith('.json')) continue;
       const id = e.name.slice(0, -5);
       const where = `${dirName}/${e.name}`;
-      const def = parseServer(out.root, id, kind, await readFile(join(root, dirName, e.name), 'utf8'), where, issue);
+      const def = parseServer(out.root, id, kind, await readFile(join(root, dirName, e.name), 'utf8'), where, issue, appNameOf(opts));
       if (def) {
         if (!(await exists(def.entry))) issue(where, `找不到入口文件 ${relative(out.root, def.entry)}。`);
         out.servers.push(def);
@@ -273,6 +273,7 @@ function parseServer(
   text: string,
   where: string,
   issue: (where: string, message: string, severity?: Issue['severity']) => void,
+  app: string,
 ): ServerDef | undefined {
   let raw: Record<string, unknown>;
   try {
@@ -292,7 +293,7 @@ function parseServer(
     bad(
       runtime === 'python'
         ? 'Python 类 server 这一版只支持插件自带的独立可执行文件：把 runtime 写成 "binary"，entry 指向打包好的 .exe。'
-        : '「runtime」只能是 "node"（用 Spica 自带的 Node 跑 .js）或 "binary"（插件自带的可执行文件）。',
+        : `「runtime」只能是 "node"（用 ${app} 自带的 Node 跑 .js）或 "binary"（插件自带的可执行文件）。`,
     );
   }
   const entryRel = raw.entry;

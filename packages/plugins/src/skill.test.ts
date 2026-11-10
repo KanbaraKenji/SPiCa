@@ -153,6 +153,26 @@ describe('plugin-author skill', () => {
     expect(r.out).toMatch(/页面：Board（sidebar）/);
     expect(r.out).toMatch(/Agent 调了：board__add_item/);
     expect(r.out).toMatch(/停用后插件的工具全部撤掉了/);
+
+    // A build packaged under another name keeps its folder under <appData>/<name>.
+    const appData = join(work, 'app-data');
+    const perUser = process.platform === 'darwin' ? join(appData, 'Library', 'Application Support') : appData;
+    const env = { SPICA_USER_DATA: '', APPDATA: appData, XDG_CONFIG_HOME: appData, HOME: appData };
+    const renamed = join(perUser, 'Acme Desk');
+    await mkdir(renamed, { recursive: true });
+    const info = (pid: number) => JSON.stringify({ appName: 'Acme Desk', url, tokenFile, pid, startedAt: new Date().toISOString() });
+    await writeFile(join(renamed, 'mcp-http.json'), info(2 ** 30));
+    const stale = await script('install.mjs', [zip, '--app', 'Acme Desk'], env);
+    expect(stale.out).toMatch(/Acme Desk 上次开过本机连接，但现在没在运行[\s\S]*在 Acme Desk 的 设置 › 常规 › 开发者 里打开「允许本机脚本连接 Acme Desk」/);
+    expect((await script('install.mjs', [zip, '--user-data', renamed, '--app', 'Other Desk'], env)).out).toMatch(/是「Acme Desk」写的，不是你说的「Other Desk」/);
+    await writeFile(join(renamed, 'mcp-http.json'), info(child.pid!));
+    // No --app: the one running renamed copy is found.
+    const found = await script('install.mjs', [zip, '--no-enable'], env);
+    expect(found.out).toMatch(/连接正在运行的 Acme Desk/);
+    // Two running copies: asks which one.
+    await mkdir(join(perUser, 'Beta Desk'), { recursive: true });
+    await writeFile(join(perUser, 'Beta Desk', 'mcp-http.json'), info(child.pid!).replace('Acme Desk', 'Beta Desk'));
+    expect((await script('install.mjs', [zip], env)).out).toMatch(/有好几个应用开着本机连接：(Acme Desk、Beta Desk|Beta Desk、Acme Desk)。用 --app/);
   });
 
   it('the packed zip passes the real plugin manager, and its page can call its tools', async () => {

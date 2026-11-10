@@ -22,6 +22,8 @@ export interface PluginBackendOptions {
   mock?: boolean;
   nodePath?: string;
   inheritEnv?: string[];
+  /** App name in user-facing messages (a branded build passes its own). Default 'Spica'. */
+  appName?: string;
 }
 
 const str = { type: 'string' } as const;
@@ -155,8 +157,9 @@ export async function attachBackend(
 }> {
   if (!options?.root) throw new Error('plugins extension needs options.root');
   const pm = new PluginManager({
-    host: runtimeHost(rt),
+    host: runtimeHost(rt, { appName: options.appName }),
     root: options.root,
+    ...(options.appName ? { appName: options.appName } : {}),
     ...(options.nodePath ? { nodePath: options.nodePath } : {}),
     ...(options.inheritEnv ? { inheritEnv: options.inheritEnv } : {}),
   });

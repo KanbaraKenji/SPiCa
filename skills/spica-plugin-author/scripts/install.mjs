@@ -7,8 +7,10 @@
 //   default  node install.mjs <zip>
 //          the running desktop Spica, when its local MCP connection is switched on:
 //          it writes <userData>/mcp-http.json ({ url, tokenFile, pid }), e.g.
-//          %APPDATA%\Spica\mcp-http.json. --user-data <folder> or SPICA_USER_DATA
-//          point elsewhere.
+//          %APPDATA%\Spica\mcp-http.json. A build packaged under another name keeps
+//          it in %APPDATA%\<app name>: pass --app <name>, or let the script find the
+//          one running copy. --user-data <folder> or SPICA_USER_DATA point at a
+//          folder directly.
 //   HTTP   node install.mjs <zip> --http http://127.0.0.1:<port>/mcp --token-file <file>
 //          (token also from the SPICA_MCP_TOKEN environment variable; never on the command line)
 //   stdio  node install.mjs <zip> --stdio <backend.json> --spica <Spica source folder>
@@ -21,7 +23,7 @@
 //   --disable-after       disable the plugin at the end and check its tools are gone
 //   --no-enable           install only
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,6 +43,7 @@ function parse(argv) {
     else if (a === '--stdio') o.stdio = val();
     else if (a === '--spica') o.spica = val();
     else if (a === '--user-data') o.userData = val();
+    else if (a === '--app') o.app = val();
     else if (a === '--run') o.run = val();
     else if (a === '--timeout') o.timeout = Number(val());
     else if (a === '--disable-after') o.disableAfter = true;
@@ -66,52 +69,107 @@ async function connect(o, log) {
     log(`启动 Spica 的 MCP 服务（${resolve(o.stdio)}）`);
     return new StdioClient({ command: process.execPath, args: [entry, '--config', resolve(o.stdio)], cwd: spica, timeoutMs: 60_000 });
   }
-  const running = await desktopConnection(o.userData);
+  const running = await desktopConnection(o.userData, o.app);
   if (running.ok) {
-    log(`连接正在运行的 Spica（${running.url}）`);
+    log(`连接正在运行的 ${running.appName}（${running.url}）`);
     return new HttpClient({ url: running.url, token: running.token, timeoutMs: 60_000 });
   }
+  const app = running.appName;
   throw new Error(
     `${running.reason}\n` +
-      '办法：在 Spica 的 设置 › 常规 › 开发者 里打开「允许本机脚本连接 Spica」后再跑一次；或者在 设置 › 插件 里粘贴 zip 的完整路径手动安装；' +
+      `办法：在 ${app} 的 设置 › 常规 › 开发者 里打开「允许本机脚本连接 ${app}」后再跑一次（应用改过名就加 --app <名字>）；或者在 设置 › 插件 里粘贴 zip 的完整路径手动安装；` +
       '开发时也可以用 --http 或 --stdio 连自己起的服务。见 references/connect.md。',
   );
 }
 
-/** Spica's per-user folder (Electron userData for the app named "Spica"). */
-export function userDataDir(override) {
+const DEFAULT_APP = 'Spica';
+const INFO_FILE = 'mcp-http.json';
+
+/** Where Electron keeps per-user folders (one subfolder per app name). */
+function appDataRoot() {
+  if (process.platform === 'win32') return process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming');
+  if (process.platform === 'darwin') return join(homedir(), 'Library', 'Application Support');
+  return process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config');
+}
+
+/**
+ * The app's per-user folder (Electron userData). --user-data / SPICA_USER_DATA
+ * win; otherwise <appData>/<app name>, default "Spica".
+ */
+export function userDataDir(override, app) {
   if (override) return resolve(override);
   if (process.env.SPICA_USER_DATA) return resolve(process.env.SPICA_USER_DATA);
-  if (process.platform === 'win32') return join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'Spica');
-  if (process.platform === 'darwin') return join(homedir(), 'Library', 'Application Support', 'Spica');
-  return join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'Spica');
+  return join(appDataRoot(), app || DEFAULT_APP);
+}
+
+function alive(pid) {
+  if (typeof pid !== 'number') return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code !== 'ESRCH';
+  }
+}
+
+async function readInfo(file) {
+  try {
+    return JSON.parse(await readFile(file, 'utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A build packaged under another name and started without --app: look in the
+ * per-user folders for a mcp-http.json that names its app and is still running.
+ */
+async function findRenamed() {
+  const root = appDataRoot();
+  let entries;
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const found = [];
+  for (const e of entries) {
+    if (!e.isDirectory() || e.name === DEFAULT_APP) continue;
+    const dir = join(root, e.name);
+    if (!existsSync(join(dir, INFO_FILE))) continue;
+    const info = await readInfo(join(dir, INFO_FILE));
+    if (info && typeof info.appName === 'string' && typeof info.url === 'string' && alive(info.pid)) found.push({ dir, appName: info.appName });
+  }
+  return found;
 }
 
 /** Read <userData>/mcp-http.json written by the running desktop app. */
-export async function desktopConnection(override) {
-  const dir = userDataDir(override);
-  const file = join(dir, 'mcp-http.json');
-  let info;
-  try {
-    info = JSON.parse(await readFile(file, 'utf8'));
-  } catch {
-    return { ok: false, reason: `没找到正在运行、而且开了本机连接的 Spica（${file} 不存在）。` };
-  }
-  if (typeof info.pid === 'number') {
-    try {
-      process.kill(info.pid, 0);
-    } catch (err) {
-      if (err.code === 'ESRCH') return { ok: false, reason: 'Spica 上次开过本机连接，但现在没在运行。' };
+export async function desktopConnection(override, app) {
+  let dir = userDataDir(override, app);
+  if (!override && !app && !process.env.SPICA_USER_DATA && !existsSync(join(dir, INFO_FILE))) {
+    const renamed = await findRenamed();
+    if (renamed.length === 1) dir = renamed[0].dir;
+    else if (renamed.length > 1) {
+      return { ok: false, appName: DEFAULT_APP, reason: `有好几个应用开着本机连接：${renamed.map((r) => r.appName).join('、')}。用 --app <名字> 选一个。` };
     }
   }
-  if (typeof info.url !== 'string' || typeof info.tokenFile !== 'string') return { ok: false, reason: `${file} 的内容不对（要有 url 和 tokenFile）。` };
+  const file = join(dir, INFO_FILE);
+  const info = await readInfo(file);
+  const name = (typeof info?.appName === 'string' && info.appName) || app || DEFAULT_APP;
+  const fail = (reason) => ({ ok: false, appName: name, reason });
+  if (!info) return fail(`没找到正在运行、而且开了本机连接的 ${name}（${file} 不存在）。`);
+  if (app && typeof info.appName === 'string' && info.appName.toLowerCase() !== app.toLowerCase()) {
+    return fail(`${file} 是「${info.appName}」写的，不是你说的「${app}」。检查 --app 或 --user-data。`);
+  }
+  if (!alive(info.pid)) return fail(`${name} 上次开过本机连接，但现在没在运行。`);
+  if (typeof info.url !== 'string' || typeof info.tokenFile !== 'string') return fail(`${file} 的内容不对（要有 url 和 tokenFile）。`);
   let token;
   try {
     token = (await readFile(info.tokenFile, 'utf8')).trim();
   } catch {
-    return { ok: false, reason: `读不到令牌文件 ${info.tokenFile}。` };
+    return fail(`读不到令牌文件 ${info.tokenFile}。`);
   }
-  return token ? { ok: true, url: info.url, token } : { ok: false, reason: '令牌文件是空的。' };
+  return token ? { ok: true, appName: name, url: info.url, token } : fail('令牌文件是空的。');
 }
 
 const pluginTools = (names, plugin) => names.filter((n) => n.startsWith(`${plugin}__`) || n.startsWith(`${plugin}-`));
@@ -182,7 +240,7 @@ if (isMain) {
     process.exit(2);
   }
   if (o.help || !o.path) {
-    console.log('用法：node install.mjs <插件包.zip 或文件夹> [--user-data <Spica 用户文件夹> | --http <地址> --token-file <文件> | --stdio <backend.json> --spica <源码文件夹>] [--run "一句话"] [--disable-after] [--no-enable]');
+    console.log('用法：node install.mjs <插件包.zip 或文件夹> [--app <应用名> | --user-data <用户文件夹> | --http <地址> --token-file <文件> | --stdio <backend.json> --spica <源码文件夹>] [--run "一句话"] [--disable-after] [--no-enable]');
     process.exit(o.help ? 0 : 2);
   }
   try {

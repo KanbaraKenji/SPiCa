@@ -59,6 +59,8 @@ export interface SourceOptions {
   fetch?: FetchLike;
   timeoutMs?: number;
   spicaVersion?: string;
+  /** App name in user-facing messages. Default 'Spica'. */
+  appName?: string;
 }
 
 async function isDir(p: string): Promise<boolean> {
@@ -130,11 +132,11 @@ export async function listSource(src: SourceConfig, opts: SourceOptions = {}): P
   for (const e of await readdir(root, { withFileTypes: true })) {
     const abs = join(root, e.name);
     if (e.isDirectory()) {
-      const f = await readPluginFolder(abs);
+      const f = await readPluginFolder(abs, opts);
       if (f.manifest) out.push({ name: f.manifest.name, version: f.manifest.version, file: `${e.name}/`, spica: f.manifest.spica, description: f.manifest.description, source: src, location: abs, form: 'folder' });
     } else if (e.isFile() && e.name.endsWith('.zip')) {
       const buf = await readFile(abs);
-      const v = await verifyPackage(buf).catch(() => undefined);
+      const v = await verifyPackage(buf, undefined, opts).catch(() => undefined);
       const m = v?.folder.manifest;
       if (m) out.push({ name: m.name, version: m.version, file: e.name, sha256: v.sha256, spica: m.spica, description: m.description, source: src, location: abs, form: 'zip' });
     }
@@ -200,7 +202,7 @@ export async function installAvailable(manager: PluginManager, entry: Available,
 export async function installZip(manager: PluginManager, buf: Buffer, source: PluginSource): Promise<PluginDescription> {
   const tmp = await mkdtemp(join(tmpdir(), 'spica-plugin-'));
   try {
-    const folder = await unpackPlugin(buf, tmp);
+    const folder = await unpackPlugin(buf, tmp, { appName: manager.appName });
     if (!folder.manifest || hasErrors(folder.issues)) {
       throw new Error(`插件包有问题：\n${folder.issues.filter((i) => i.severity === 'error').map((i) => `· ${i.where}：${i.message}`).join('\n')}`);
     }

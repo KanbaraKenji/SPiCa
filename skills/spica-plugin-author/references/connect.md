@@ -11,6 +11,11 @@
    ```
    脚本自己读 `mcp-http.json` 和令牌文件。Spica 装在别的用户文件夹时，加 `--user-data <文件夹>`，或设环境变量 `SPICA_USER_DATA`。
 3. 看到「没找到正在运行、而且开了本机连接的 Spica」：Spica 没开，或者这个开关没打开。打开就行，或者用第二种办法。
+4. **应用改过名**（打包时填了别的应用名，比如「Acme Desk」）：用户文件夹跟着变成 `%APPDATA%\<应用名>`，开关也叫「允许本机脚本连接 <应用名>」。
+   - 只开着一个改了名的应用时不用加参数：脚本会在 `%APPDATA%` 下找到那份 `mcp-http.json`（里面写着 `appName`）。
+   - 开着好几个时脚本会列出名字，加 `--app <应用名>` 选一个，例如 `--app "Acme Desk"`。
+   - `--app` 和文件里的 `appName` 对不上时脚本会拒绝。`--user-data` 照样能直接指文件夹。
+   - 改名只改显示的名字：工具名还是 `spica_…`，环境变量还是 `SPICA_…`，清单里还是 `compatibility.spica`，`window.spica` 和 `.spicaignore` 都不变。
 
 ## 二、开关没开：在设置里手动装
 

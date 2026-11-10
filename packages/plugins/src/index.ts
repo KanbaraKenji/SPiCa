@@ -2,6 +2,7 @@
 export {
   MANIFEST_FILE,
   MANIFEST_VERSION,
+  DEFAULT_APP_NAME,
   HOOK_KINDS,
   NAME_PATTERN,
   parseManifest,
@@ -14,6 +15,7 @@ export {
   type PluginManifest,
   type PluginPermissions,
   type MailDeclaration,
+  type MessageOptions,
 } from './manifest.ts';
 export {
   readPluginFolder,

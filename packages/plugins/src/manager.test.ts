@@ -10,6 +10,9 @@ vi.setConfig({ testTimeout: 30_000 });
 import { Runtime } from '@spica/core';
 import { PluginManager } from './manager.ts';
 import { runtimeHost } from './host.ts';
+import { readPluginFolder } from './folder.ts';
+import { unpackPlugin } from './pack.ts';
+import { writeZip } from './zip.ts';
 import { EXAMPLE_PLUGIN, OUTLOOK_PLUGIN, callTool, hookCtx, makeRuntime, manifest, rig, toolNames, until, writePlugin, type Rig } from './testing/helpers.ts';
 
 let r: Rig | undefined;
@@ -368,6 +371,39 @@ describe('views (plugin pages)', () => {
     expect(text).toMatch(/views\/e\.json: icon 要指向 \.svg 文件/);
     expect(text).toMatch(/views\/f\.json: 视图声明不是合法的 JSON/);
     expect(check.views).toEqual([]);
+  });
+});
+
+describe('app name in messages', () => {
+  it('a branded build shows its own name; nothing else changes', async () => {
+    const msg = { appName: 'Acme Desk' };
+    // Manager: compatibility message.
+    const rt = makeRuntime();
+    const root = await mkdtemp(join(tmpdir(), 'spica-plugins-'));
+    dirs.push(root);
+    const pm = new PluginManager({ host: runtimeHost(rt, msg), root, spicaVersion: '0.1.0', ...msg });
+    expect(pm.appName).toBe('Acme Desk');
+    const future = await writePlugin({ 'manifest.json': manifest('future', { compatibility: { spica: '>=9.0.0' } }) });
+    dirs.push(future);
+    await expect(pm.install(future)).rejects.toThrow(/这个插件要求 Acme Desk >=9.0.0/);
+    // Folder and manifest checks.
+    const odd = await writePlugin({
+      'manifest.json': { ...(manifest('odd') as Record<string, unknown>), compatibility: undefined },
+      'mcp/srv.json': { runtime: 'ruby', entry: 'srv.rb' },
+      'srv.rb': '',
+    });
+    dirs.push(odd);
+    const text = (await readPluginFolder(odd, msg)).issues.map((i) => i.message).join(' | ');
+    expect(text).toContain('没有声明兼容的 Acme Desk 版本（compatibility.spica）');
+    expect(text).toContain('用 Acme Desk 自带的 Node');
+    // Without a name, the default stays.
+    expect((await readPluginFolder(odd)).issues.map((i) => i.message).join(' | ')).toContain('没有声明兼容的 Spica 版本');
+    // Not a plugin package.
+    await expect(unpackPlugin(writeZip([{ name: 'readme.txt', data: Buffer.from('hi') }]), join(root, 'x'), msg)).rejects.toThrow('不是 Acme Desk 插件包');
+    // Host without MCP support.
+    const bare = runtimeHost({ ...rt, connectMcp: undefined } as never, msg);
+    await expect(bare.connectMcp!({ command: 'x' } as never, 'plugin:x')).rejects.toThrow('这个版本的 Acme Desk 内核还不能启动 MCP server');
+    await pm.shutdown();
   });
 });
 

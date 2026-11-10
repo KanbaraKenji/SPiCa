@@ -11,7 +11,7 @@ import type { Hooks, Tool } from '@spica/core';
 import type { HookModule, PluginContext } from './authoring.ts';
 import { expandCommand, hasErrors, insidePlugin, readPluginFolder, type CommandDef, type PluginFolder, type ServerDef, type ViewDef } from './folder.ts';
 import type { McpExit, McpHandle, McpLaunch, PluginHost } from './host.ts';
-import { HOOK_KINDS, compareVersions, satisfies, type HookKind, type Issue, type PluginManifest } from './manifest.ts';
+import { HOOK_KINDS, appNameOf, compareVersions, satisfies, type HookKind, type Issue, type PluginManifest } from './manifest.ts';
 
 export const SPICA_VERSION = '0.1.0';
 
@@ -118,6 +118,8 @@ export interface PluginManagerOptions {
   baseEnv?: Record<string, string>;
   /** Host variables servers inherit. Default PLUGIN_INHERIT_ENV. */
   inheritEnv?: readonly string[];
+  /** App name in user-facing messages (a branded build passes its own). Default 'Spica'. */
+  appName?: string;
 }
 
 /** Thrown with a message meant for the user. */
@@ -158,6 +160,10 @@ export class PluginManager {
   readonly #host: PluginHost;
   readonly #root: string;
   readonly #spica: string;
+  readonly #app: string;
+  get #msg() {
+    return { appName: this.#app };
+  }
   readonly #node: string;
   readonly #baseEnv: Record<string, string>;
   readonly #inheritEnv: string[];
@@ -172,6 +178,7 @@ export class PluginManager {
     this.#host = opts.host;
     this.#root = resolve(opts.root);
     this.#spica = opts.spicaVersion ?? SPICA_VERSION;
+    this.#app = appNameOf(opts);
     this.#node = opts.nodePath ?? process.execPath;
     this.#baseEnv = opts.baseEnv ?? {};
     this.#inheritEnv = [...(opts.inheritEnv ?? PLUGIN_INHERIT_ENV)];
@@ -179,6 +186,11 @@ export class PluginManager {
 
   get root(): string {
     return this.#root;
+  }
+
+  /** App name used in messages meant for the user. */
+  get appName(): string {
+    return this.#app;
   }
 
   on(listener: (e: PluginEvent) => void): () => void {
@@ -247,7 +259,7 @@ export class PluginManager {
       const enabled: string[] = [];
       const failed: { name: string; message: string }[] = [];
       for (const rec of Object.values(this.#state.plugins)) {
-        const folder = await readPluginFolder(this.installDir(rec.name, rec.current));
+        const folder = await readPluginFolder(this.installDir(rec.name, rec.current), this.#msg);
         this.#folders.set(rec.name, folder);
         if (!rec.enabled) continue;
         try {
@@ -269,12 +281,12 @@ export class PluginManager {
 
   /** Validate a plugin folder without installing it. */
   async check(dir: string): Promise<PluginFolder> {
-    const folder = await readPluginFolder(dir);
+    const folder = await readPluginFolder(dir, this.#msg);
     if (folder.manifest && !satisfies(this.#spica, folder.manifest.spica)) {
       folder.issues.push({
         where: 'manifest.json · compatibility.spica',
         severity: 'error',
-        message: `这个插件要求 Spica ${folder.manifest.spica}，当前是 ${this.#spica}。`,
+        message: `这个插件要求 ${this.#app} ${folder.manifest.spica}，当前是 ${this.#spica}。`,
       });
     }
     return folder;
@@ -310,7 +322,7 @@ export class PluginManager {
         installedAt: new Date().toISOString(),
       };
       this.#state.plugins[name] = rec;
-      this.#folders.set(name, await readPluginFolder(target));
+      this.#folders.set(name, await readPluginFolder(target, this.#msg));
       await mkdir(this.dataDir(name), { recursive: true });
       if (wasEnabled) {
         try {
@@ -319,7 +331,7 @@ export class PluginManager {
           // New version does not start: go back to the old one.
           if (old) {
             this.#state.plugins[name] = old;
-            this.#folders.set(name, await readPluginFolder(this.installDir(name, old.current)));
+            this.#folders.set(name, await readPluginFolder(this.installDir(name, old.current), this.#msg));
             await this.#enable(name).catch(() => undefined);
           }
           await this.#saveState();
@@ -342,7 +354,7 @@ export class PluginManager {
       const wasEnabled = this.#active.has(name);
       if (wasEnabled) await this.#disable(name);
       this.#state.plugins[name] = { ...rec, current: target, previous: rec.current, installedAt: new Date().toISOString() };
-      this.#folders.set(name, await readPluginFolder(this.installDir(name, target)));
+      this.#folders.set(name, await readPluginFolder(this.installDir(name, target), this.#msg));
       if (wasEnabled) await this.#enable(name);
       await this.#saveState();
       await this.#log(name, `rolled back ${rec.current} → ${target}`);
@@ -557,7 +569,7 @@ export class PluginManager {
     const run = a.servers.find((r) => r.def.kind === 'mcp' && (!mail.server || r.def.id === mail.server));
     if (!run) return;
     if (!this.#host.addMailSource) {
-      void this.#log(a.manifest.name, 'declares a mail source, but this Spica core has no mail pipeline; skipped');
+      void this.#log(a.manifest.name, `declares a mail source, but this ${this.#app} core has no mail pipeline; skipped`);
       return;
     }
     const src = {
@@ -909,7 +921,7 @@ export class PluginManager {
       }
       r = await this.#host.invokeTool(full, input);
     } else {
-      return fail('UNSUPPORTED', '这个版本的 Spica 内核还不能从页面直接调工具。');
+      return fail('UNSUPPORTED', `这个版本的 ${this.#app} 内核还不能从页面直接调工具。`);
     }
     let data: unknown;
     try {

@@ -6,6 +6,18 @@
 
 export const MANIFEST_FILE = 'manifest.json';
 export const MANIFEST_VERSION = 1;
+/** Name shown to users in messages; a branded build passes its own (only text changes, never identifiers). */
+export const DEFAULT_APP_NAME = 'Spica';
+
+/** Options for functions that produce messages meant for the user. */
+export interface MessageOptions {
+  /** App name in user-facing messages. Default DEFAULT_APP_NAME. */
+  appName?: string;
+}
+
+export function appNameOf(opts?: MessageOptions): string {
+  return opts?.appName?.trim() || DEFAULT_APP_NAME;
+}
 
 export type HookKind = 'inject' | 'beforeRequest' | 'afterResponse' | 'beforeTool' | 'afterTool';
 export const HOOK_KINDS: readonly HookKind[] = ['inject', 'beforeRequest', 'afterResponse', 'beforeTool', 'afterTool'];
@@ -152,7 +164,7 @@ type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** Parse the text of manifest.json. Returns the manifest when there are no errors. */
-export function parseManifest(text: string, where = MANIFEST_FILE): { manifest?: PluginManifest; issues: Issue[] } {
+export function parseManifest(text: string, where = MANIFEST_FILE, opts: MessageOptions = {}): { manifest?: PluginManifest; issues: Issue[] } {
   let raw: unknown;
   try {
     raw = JSON.parse(stripBom(text));
@@ -160,10 +172,11 @@ export function parseManifest(text: string, where = MANIFEST_FILE): { manifest?:
     const detail = err instanceof Error ? err.message : String(err);
     return { issues: [{ where, severity: 'error', message: `清单不是合法的 JSON（${detail}）。检查有没有多余的逗号或缺了引号。` }] };
   }
-  return validateManifest(raw, where);
+  return validateManifest(raw, where, opts);
 }
 
-export function validateManifest(raw: unknown, where = MANIFEST_FILE): { manifest?: PluginManifest; issues: Issue[] } {
+export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: MessageOptions = {}): { manifest?: PluginManifest; issues: Issue[] } {
+  const app = appNameOf(opts);
   const issues: Issue[] = [];
   const err = (path: string, message: string) => issues.push({ where: `${where} · ${path}`, severity: 'error', message });
   const warn = (path: string, message: string) => issues.push({ where: `${where} · ${path}`, severity: 'warning', message });
@@ -186,7 +199,7 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE): { manifes
 
   const mv = raw.manifest_version;
   if (mv === undefined) err('manifest_version', `缺少「manifest_version」，现在只支持 ${MANIFEST_VERSION}。`);
-  else if (mv !== MANIFEST_VERSION) err('manifest_version', `不认识的清单版本 ${JSON.stringify(mv)}，这个 Spica 只支持 ${MANIFEST_VERSION}。`);
+  else if (mv !== MANIFEST_VERSION) err('manifest_version', `不认识的清单版本 ${JSON.stringify(mv)}，这个 ${app} 只支持 ${MANIFEST_VERSION}。`);
 
   const name = str('name', true);
   if (name !== undefined && !NAME_PATTERN.test(name)) {
@@ -217,7 +230,7 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE): { manifes
         err('compatibility.spica', `看不懂兼容范围 ${JSON.stringify(compat.spica)}，写成 ">=0.1.0" 或 "^0.1.0" 这样。`);
       } else spica = compat.spica;
     }
-  } else warn('compatibility', '没有声明兼容的 Spica 版本（compatibility.spica），默认当作都兼容。');
+  } else warn('compatibility', `没有声明兼容的 ${app} 版本（compatibility.spica），默认当作都兼容。`);
 
   const permissions: PluginPermissions = { network: [], workspace: 'none', irreversible: [], hooks: [] };
   const p = raw.permissions;
