@@ -66,6 +66,10 @@ describe('probeMessage', () => {
     expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'not_found' }, openai)).toBe('找不到模型「m1」或这个地址：请检查「模型」和「接口地址」。');
     expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'network' }, wso2)).toContain('取 token 地址');
     expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'rate_limited' }, openai)).toContain('同时请求');
+    // WSO2 fault codes: only the core's hint, no generic line after it.
+    // (900908 comes back as 403: it must not be told to check the key.)
+    const sub = '调模型失败：这个应用还没订阅这个接口（WSO2 900908）：去 WSO2 开发者门户给应用订阅这个 API，或找管理员。';
+    expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'auth', code: 'wso2.not_subscribed', hint: sub }, wso2)).toBe(sub);
     expect(probeMessage({ ok: true, latencyMs: 900, firstByteMs: 420, model: 'm1-2026' }, openai)).toBe('连得上，模型「m1」可以用（420 毫秒开始回应，服务端回报的型号是「m1-2026」）。');
     expect(probeMessage({ ok: true, latencyMs: 900, firstByteMs: 420, model: 'm1' }, openai)).toBe('连得上，模型「m1」可以用（420 毫秒开始回应）。');
   });

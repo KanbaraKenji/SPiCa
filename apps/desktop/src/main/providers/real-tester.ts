@@ -18,6 +18,8 @@ export function probeMessage(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' |
   // The core names the cause (取 token 失败：… / 调模型失败：…, TLS, proxy...); ours says which field to check.
   const hint = r.ok ? '' : (r.hint ?? '').trim();
   if (!hint) return advice;
+  // The gateway's own fault codes: the core's hint already says what to do and where.
+  if (r.code?.startsWith('wso2.')) return hint;
   // For a wrong key / model / request ours repeats the core's cause before its colon: keep only what to check.
   const repeats = r.errorCode === 'auth' || r.errorCode === 'not_found' || r.errorCode === 'bad_request';
   const check = repeats ? (/：(请检查.+)$/.exec(advice)?.[1] ?? advice) : advice;

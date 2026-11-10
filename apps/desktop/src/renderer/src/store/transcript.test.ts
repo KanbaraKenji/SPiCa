@@ -246,3 +246,17 @@ describe('applyEvent', () => {
     expect(t.lastRun).toMatchObject({ durationMs: 1000 });
   });
 });
+
+describe('model errors', () => {
+  const at = '2026-11-10T10:00:00Z';
+  it('says the core’s own words when main added them for a known code (WSO2 fault)', () => {
+    const hint = '这个应用还没订阅这个接口（WSO2 900908）：去 WSO2 开发者门户给应用订阅这个 API，或找管理员。';
+    const t = applyEvent({ items: [] }, { type: 'error', message: 'HTTP 403', code: 'wso2.not_subscribed', hint, seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
+    expect(t.error).toBe(hint);
+  });
+
+  it('falls back to its own plain words otherwise', () => {
+    const t = applyEvent({ items: [] }, { type: 'error', message: 'HTTP 401 unauthorized', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
+    expect(t.error).toBe('模型密钥不对或已失效，请检查模型设置。');
+  });
+});

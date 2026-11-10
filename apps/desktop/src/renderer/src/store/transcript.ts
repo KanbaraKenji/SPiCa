@@ -444,7 +444,9 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     }
     case 'error': {
       // Retries are the core's business; only a final error reaches the user.
-      if (!e.retryable) t.error = humanError(e.message);
+      // The main process adds the core's own words for errors it knows by code (WSO2 faults).
+      const hint = (e as { hint?: unknown }).hint;
+      if (!e.retryable) t.error = typeof hint === 'string' && hint ? hint : humanError(e.message);
       return t;
     }
     case 'budget.stop': {

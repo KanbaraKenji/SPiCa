@@ -26,7 +26,7 @@ import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
 import { ProcessBackend, type BackendStatus } from './backend/process';
 import { knownContextWindow, toProviderConfig } from './backend/to-config';
-import { DEFAULT_PRICES, type ProviderConfig } from '@spica/core';
+import { DEFAULT_PRICES, NET_HINTS, type ProviderConfig } from '@spica/core';
 import type { DesktopBackendConfig } from '../backend/config';
 import { readModelEnv } from './backend/model-env';
 import { SettingsStore } from './settings-store';
@@ -705,8 +705,19 @@ ipcMain.handle(DesktopChannel.KnownContextWindow, async (_e, kind: ProviderKind,
   return knownContextWindow(DEFAULT_PRICES, coreKind(kind), name);
 });
 
+/**
+ * A model error the core knows by code (e.g. a WSO2 gateway fault) carries the
+ * core's own words for it (NET_HINTS), so the conversation says what to do.
+ */
+function withErrorHint<E extends { type: string }>(event: E): E {
+  if (event.type !== 'error') return event;
+  const code = (event as { code?: unknown }).code;
+  const hint = typeof code === 'string' ? NET_HINTS[code] : undefined;
+  return hint ? { ...event, hint } : event;
+}
+
 backend.onEvent((event) => {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DesktopChannel.AgentEvent, event);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DesktopChannel.AgentEvent, withErrorHint(event));
 });
 settings.onChange((s) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
