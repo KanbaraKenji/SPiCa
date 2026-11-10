@@ -35,3 +35,14 @@ export function documentsFolder(env: NodeJS.ProcessEnv, packaged: boolean, autom
 export function makeWorkflowsDirAtStart(packaged: boolean, chosenDir: string): boolean {
   return packaged && !chosenDir;
 }
+
+/**
+ * A development-only switch: its value in a development build, nothing in an installed one, whatever the
+ * environment says. SPICA_BACKEND (the demo backend), SPICA_CAPTURE and SPICA_SHOTS (screenshot and quit)
+ * go through it, so an installed Spica started with them still runs on its real data and does not quit.
+ * SPICA_USER_DATA and SPICA_THEME are not among them: the install smoke test uses them on installed builds.
+ */
+export function devSwitch(env: NodeJS.ProcessEnv, packaged: boolean, name: 'SPICA_BACKEND' | 'SPICA_CAPTURE' | 'SPICA_SHOTS'): string | undefined {
+  if (packaged) return undefined;
+  return env[name] || undefined;
+}

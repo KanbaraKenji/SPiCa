@@ -18,7 +18,7 @@ import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
 import type { PluginService } from './plugins/types';
-import { documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder } from './dev-hooks';
+import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder } from './dev-hooks';
 import { withErrorHint } from './error-hint';
 import { FakePluginService } from './plugins/fake';
 import { UpdateService } from './update/service';
@@ -66,9 +66,10 @@ function overlayHeight(zoom: number): number {
 
 // Dev-only switches, used by scripts and screenshots:
 //   SPICA_THEME=dark|light   force the color scheme instead of following the system
-//   SPICA_CAPTURE=<file.png> render the window once, save a PNG and quit
-//   SPICA_SHOTS=<dir>        render the screenshot matrix into <dir> and quit
-//   SPICA_BACKEND=fake|core  pick the backend (default: the real core; screenshots use the fake)
+//   SPICA_CAPTURE=<file.png> render the window once, save a PNG and quit (not in installed builds)
+//   SPICA_SHOTS=<dir>        render the screenshot matrix into <dir> and quit (not in installed builds)
+//   SPICA_BACKEND=fake|core  pick the backend (default: the real core; screenshots use the fake;
+//                            not in installed builds)
 //   SPICA_SAVE_TO=<dir>      save files (usage log) there without asking (not in installed builds)
 //   SPICA_PICK_FOLDER=<dir>  the folder picker answers this without showing (not in installed builds)
 //   SPICA_PICK_FILES=<a;b>   the file picker answers these without showing (not in installed builds)
@@ -76,8 +77,8 @@ function overlayHeight(zoom: number): number {
 //   SPICA_HIDDEN=1           never show the window: test scripts drive it over DevTools while
 //                            someone is using the computer (not in installed builds)
 const forcedTheme = process.env.SPICA_THEME;
-const capturePath = process.env.SPICA_CAPTURE;
-const shotsDir = process.env.SPICA_SHOTS;
+const capturePath = devSwitch(process.env, app.isPackaged, 'SPICA_CAPTURE');
+const shotsDir = devSwitch(process.env, app.isPackaged, 'SPICA_SHOTS');
 const automated = Boolean(capturePath || shotsDir);
 const hidden = process.env.SPICA_HIDDEN === '1' && !app.isPackaged;
 // A hidden test window is kept painting (Windows would report it as covered and Chromium would stop drawing it).
@@ -105,7 +106,7 @@ if (forcedTheme === 'dark' || forcedTheme === 'light') nativeTheme.themeSource =
 // Screenshots never read it, so no local model shows up in committed images.
 //   SPICA_DEV_MODELS=0       ignore .env.local (see the app as a first-time user would)
 const modelEnv = app.isPackaged || automated || process.env.SPICA_DEV_MODELS === '0' ? {} : readModelEnv(resolvePath(app.getAppPath(), '../../.env.local'));
-const backendKind = chooseBackend({ requested: process.env.SPICA_BACKEND, automated });
+const backendKind = chooseBackend({ requested: devSwitch(process.env, app.isPackaged, 'SPICA_BACKEND'), automated });
 // A conversation without a folder gets its own in the core's data folder (none is picked by default);
 // this is only the core's fallback, and nothing for it is made under 文档.
 const workDir = join(app.getPath('userData'), 'work');

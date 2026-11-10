@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder } from './dev-hooks';
+import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder } from './dev-hooks';
 
 describe('picker answers for test scripts', () => {
   const env = { SPICA_PICK_FOLDER: 'C:/demo', SPICA_PICK_FILES: 'C:/a.png;C:/b.png;' };
@@ -35,5 +35,21 @@ describe('the default workflow folder at start', () => {
     expect(makeWorkflowsDirAtStart(true, '')).toBe(true);
     expect(makeWorkflowsDirAtStart(true, 'D:\\流程')).toBe(false);
     expect(makeWorkflowsDirAtStart(false, '')).toBe(false);
+  });
+});
+
+describe('the demo backend and screenshot switches', () => {
+  const env = { SPICA_BACKEND: 'fake', SPICA_CAPTURE: 'C:/x.png', SPICA_SHOTS: 'C:/shots' };
+  it('work in a development build', () => {
+    expect(devSwitch(env, false, 'SPICA_BACKEND')).toBe('fake');
+    expect(devSwitch(env, false, 'SPICA_CAPTURE')).toBe('C:/x.png');
+    expect(devSwitch(env, false, 'SPICA_SHOTS')).toBe('C:/shots');
+    expect(devSwitch({}, false, 'SPICA_SHOTS')).toBeUndefined();
+  });
+
+  it('do nothing in an installed build: real data, no screenshot, no quitting', () => {
+    expect(devSwitch(env, true, 'SPICA_BACKEND')).toBeUndefined();
+    expect(devSwitch(env, true, 'SPICA_CAPTURE')).toBeUndefined();
+    expect(devSwitch(env, true, 'SPICA_SHOTS')).toBeUndefined();
   });
 });
