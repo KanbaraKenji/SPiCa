@@ -42,7 +42,7 @@ describe('test connection and a missing /v1', () => {
   it('an address without /v1 that works once /v1 is added: ok, with the address to use and a plain hint', async () => {
     const g = await gateway('/api/v1');
     const r = await probeConfig(config(`${g.base}/api`), 'm');
-    expect(r).toMatchObject({ ok: true, suggestedBaseUrl: `${g.base}/api/v1`, code: 'address.v1_added', hint: '已在 接口地址 末尾补上 /v1，连接成功。' });
+    expect(r).toMatchObject({ ok: true, suggestedBaseUrl: `${g.base}/api/v1`, code: 'address.v1_added', hint: '已在接口地址末尾补上 /v1，连接成功。' });
     expect(g.paths).toEqual(['/api/chat/completions', '/api/v1/chat/completions']);
     // a trailing slash is not a different address
     expect(await probeConfig(config(`${g.base}/api/`), 'm')).toMatchObject({ ok: true, suggestedBaseUrl: `${g.base}/api/v1` });
@@ -63,7 +63,7 @@ describe('test connection and a missing /v1', () => {
   it('still 404 with /v1 added: the first 404, with a hint to check the ending of the address', async () => {
     const g = await gateway(null);
     const r = await probeConfig(config(`${g.base}/api`), 'm');
-    expect(r).toMatchObject({ ok: false, httpStatus: 404, code: 'gateway.not_found_version', hint: '模型调用失败：路径无效（HTTP 404），请检查 接口地址 是否需要以 /v1 结尾。' });
+    expect(r).toMatchObject({ ok: false, httpStatus: 404, code: 'gateway.not_found_version', hint: '模型调用失败：路径无效（HTTP 404），请检查接口地址是否需要以 /v1 结尾。' });
     expect(r).not.toHaveProperty('suggestedBaseUrl');
     expect(g.paths).toEqual(['/api/chat/completions', '/api/v1/chat/completions']);
     expect(JSON.stringify(r)).not.toContain('sk-probe-test-123456');

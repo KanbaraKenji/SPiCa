@@ -52,9 +52,9 @@ it('a WSO2 gateway names its own field: 网关地址, in the conversation and in
     await rt.createSession().send('hi').done;
     await rt.close();
     const error = events.find((e) => e.type === 'error') as { code?: string; hint?: string };
-    expect(error).toMatchObject({ code: 'gateway.not_found_version', hint: '路径无效（HTTP 404），请检查 网关地址 是否需要以 /v1 结尾。' });
+    expect(error).toMatchObject({ code: 'gateway.not_found_version', hint: '路径无效（HTTP 404），请检查网关地址是否需要以 /v1 结尾。' });
     const tested = await probeConfig({ id: 'form', kind: 'wso2', baseUrl: `${g.baseUrl}/llm`, oauth }, 'm');
-    expect(tested.hint).toBe('模型调用失败：路径无效（HTTP 404），请检查 网关地址 是否需要以 /v1 结尾。');
+    expect(tested.hint).toBe('模型调用失败：路径无效（HTTP 404），请检查网关地址是否需要以 /v1 结尾。');
   } finally {
     await g.stop();
   }
@@ -64,5 +64,5 @@ it('a WSO2 gateway names its own field: 网关地址, in the conversation and in
   const events = captureEvents(rt);
   await rt.createSession().send('hi').done;
   await rt.close();
-  expect(events.find((e) => e.type === 'error')).toMatchObject({ hint: '路径无效（HTTP 404），请检查 接口地址 是否需要以 /v1 结尾。' });
+  expect(events.find((e) => e.type === 'error')).toMatchObject({ hint: '路径无效（HTTP 404），请检查接口地址是否需要以 /v1 结尾。' });
 });
