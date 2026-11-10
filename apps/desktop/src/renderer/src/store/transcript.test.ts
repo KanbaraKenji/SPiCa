@@ -67,6 +67,50 @@ describe('notes from sub-agents', () => {
   });
 });
 
+describe('notes the core writes for the model', () => {
+  const base = { sessionId: 's', seq: 1, role: 'user' as const, kind: 'note' as const, createdAt: '' };
+  it('a model switch is 已切换模型：A → B, not the English line', () => {
+    const m: Message = {
+      ...base,
+      id: 'm1',
+      content: [{ type: 'text', text: '[The user switched this conversation from deepseek-flash to deepseek-v4-pro. Carry on as before.]' }],
+      meta: { author: 'runtime', decision: true, modelChange: { from: { providerId: 'p1', model: 'deepseek-flash' }, to: { providerId: 'p1', model: 'deepseek-v4-pro' } } },
+    };
+    expect(fromHistory([m]).items).toEqual([{ kind: 'note', id: 'm1', text: '已切换模型：deepseek-flash → deepseek-v4-pro' }]);
+    // The same live, when the note arrives as a message event.
+    const live = applyEvent({ items: [] }, { type: 'message', message: m } as unknown as CoreEvent);
+    expect(live.items).toEqual([{ kind: 'note', id: 'm1', text: '已切换模型：deepseek-flash → deepseek-v4-pro' }]);
+  });
+  it('a sub-agent that wrote no report: 无报告内容, not the English placeholder', () => {
+    const m: Message = {
+      ...base,
+      id: 'r1',
+      kind: 'report',
+      content: [{ type: 'text', text: '[Report from sub-agent "x" (s-2)]\n(finished without a written report)' }],
+      meta: { author: 'child', kind: 'report', fromSessionId: 's-2', fromTitle: 'x', at: '', text: '(finished without a written report)' },
+    };
+    const item = fromHistory([m]).items[0];
+    expect(item).toMatchObject({ kind: 'note', text: '无报告内容', child: { text: '无报告内容' } });
+  });
+  it('another note of the core is not shown as its text', () => {
+    const m: Message = { ...base, id: 'x1', content: [{ type: 'text', text: '[System note] Something for the model.' }], meta: { author: 'runtime' } };
+    expect(fromHistory([m]).items).toEqual([]);
+  });
+  it('a file that could not be read: what you typed, and the file marked failed (not the English sentence)', () => {
+    const m: Message = {
+      ...base,
+      id: 'u2',
+      kind: 'user',
+      content: [
+        { type: 'text', text: '看看这个' },
+        { type: 'text', text: '[The user attached 坏.pdf, but it could not be read: unreadable]' },
+      ],
+      meta: { attachments: [{ path: 'D:/坏.pdf', name: '坏.pdf', block: null, error: 'unreadable' }] },
+    };
+    expect(fromHistory([m]).items[0]).toMatchObject({ kind: 'user', text: '看看这个', attachments: [{ name: '坏.pdf', failed: true }] });
+  });
+});
+
 describe('tools that were turned off', () => {
   const msg = (over: Partial<Message>): Message => ({
     id: 'x',

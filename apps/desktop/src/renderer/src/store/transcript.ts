@@ -73,14 +73,39 @@ export function childNoteOf(m: Message): ChildNote | undefined {
   };
 }
 
-function noteItem(m: Message): Item {
+/** The core's placeholder when a sub-agent finished without writing anything (older records). */
+const NO_REPORT = '(finished without a written report)';
+
+/** The model a modelChange meta names, or undefined. */
+function modelOf(v: unknown): string | undefined {
+  return v && typeof v === 'object' && typeof (v as { model?: unknown }).model === 'string' ? (v as { model: string }).model : undefined;
+}
+
+/**
+ * A note in the conversation, in words for people. The core's own notes are
+ * written for the model (English, in brackets); they are shown from their meta,
+ * and one this does not know is not shown at all rather than as that text.
+ */
+function noteItem(m: Message): Item | undefined {
   const change = m.meta?.settingsChange;
   if (change && typeof change === 'object' && typeof change.action === 'string') return { kind: 'settings', id: m.id, change };
-  // The core's note that tools this conversation used were turned off; its body is English for the model.
+  // Tools this conversation used were turned off.
   const gone = m.meta?.toolsUnavailable;
   if (Array.isArray(gone) && gone.length) return { kind: 'note', id: m.id, text: `工具已停用：${gone.map((n) => toolLabel(String(n))).join('、')}` };
+  // The user switched the conversation's model.
+  const switched = m.meta?.modelChange as { from?: unknown; to?: unknown } | undefined;
+  if (switched && typeof switched === 'object') {
+    const from = modelOf(switched.from);
+    const to = modelOf(switched.to);
+    if (to) return { kind: 'note', id: m.id, text: from ? `已切换模型：${from} → ${to}` : `已切换模型：${to}` };
+  }
   const child = childNoteOf(m);
-  return child ? { kind: 'note', id: m.id, text: child.text, child } : { kind: 'note', id: m.id, text: textOf(m) };
+  if (child) {
+    const empty = child.kind === 'report' && (child.text.trim() === '' || child.text === NO_REPORT);
+    return { kind: 'note', id: m.id, text: empty ? '无报告内容' : child.text, child: empty ? { ...child, text: '无报告内容' } : child };
+  }
+  if (m.meta?.author === 'runtime') return undefined;
+  return { kind: 'note', id: m.id, text: textOf(m) };
 }
 
 /** Mail the core handed to a project manager (meta.mails on its message): ids into the inbox. */
@@ -169,8 +194,13 @@ function attachmentsOf(m: Message): { path: string; name: string; block: number 
 }
 
 function userItem(m: Message): Item {
-  const att = attachmentsOf(m)?.map((a): Attachment => ({ path: a.path, name: a.name, ...(a.file ? { file: a.file } : {}), ...(a.block === null ? { failed: true } : {}) }));
-  return { kind: 'user', id: m.id, text: textOf(m), steer: m.kind === 'steer', ...(att ? { attachments: att } : {}) };
+  const list = attachmentsOf(m);
+  const att = list?.map((a): Attachment => ({ path: a.path, name: a.name, ...(a.file ? { file: a.file } : {}), ...(a.block === null ? { failed: true } : {}) }));
+  // With attachments, the first block is what was typed; the rest is for the model (a file that
+  // could not be read is said in English there, and shown here as the attachment marked failed).
+  const first = m.content[0];
+  const text = list?.length ? (first?.type === 'text' ? first.text : '') : textOf(m);
+  return { kind: 'user', id: m.id, text, steer: m.kind === 'steer', ...(att ? { attachments: att } : {}) };
 }
 
 function asSuggest(callId: string, input: unknown): Block {
@@ -281,7 +311,10 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
     const mailIds = mailIdsOf(m);
     if (mailIds) items.push(mailItem(m, mailIds));
     else if (m.kind === 'user' || m.kind === 'steer') items.push(userItem(m));
-    else items.push(noteItem(m));
+    else {
+      const note = noteItem(m);
+      if (note) items.push(note);
+    }
   }
   const t: Transcript = { items, ...(Object.keys(cards).length ? { fileCards: cards } : {}) };
   for (const p of pending) applyPending(t, p);
@@ -329,7 +362,8 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         if (!items.some((i) => i.id === m.id)) items.push(userItem(m));
         if (t.queued?.some((q) => q.id === m.id)) t.queued = t.queued.filter((q) => q.id !== m.id);
       } else if (m.role === 'user' && (m.kind === 'relay' || m.kind === 'report' || m.kind === 'note')) {
-        if (!items.some((i) => i.id === m.id)) items.push(noteItem(m));
+        const note = items.some((i) => i.id === m.id) ? undefined : noteItem(m);
+        if (note) items.push(note);
       } else if (m.role === 'assistant' && m.meta?.interrupted === true) {
         lastResponse(items, respId).interrupted = true;
       }
