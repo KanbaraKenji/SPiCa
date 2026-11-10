@@ -120,6 +120,9 @@ describe('looking things up in earlier conversations', () => {
     expect(found.content).toMatch(/^3 pieces found:/);
     expect(found.content).toContain(`${older.id}#1`);
     expect(found.content).toContain('(project Widgets)');
+    // a conversation without a title is named by its first message, as in the window
+    expect(found.content).toContain('- The supplier for the BLUE-WIDGET housing… · ');
+    expect(found.content).not.toContain('untitled');
     expect(found.content).not.toContain('sk-history-secret-123456');
     expect((await search.execute({ query: 'blue-widget', project: 'Widgets' }, ctx(rt, now.id))).content).toMatch(/^1 piece found:/);
     expect((await search.execute({ query: 'nothing-like-this' }, ctx(rt, now.id))).content).toMatch(/^Nothing found/);
@@ -128,6 +131,8 @@ describe('looking things up in earlier conversations', () => {
     expect(read.content).toMatch(/messages 1–2 of \d+/);
     expect(read.content).toContain('Acme Plastics');
 
+    const empty = rt.createSession();
+    expect((await rt.tools.get('read_history')!.execute({ session_id: empty.id }, ctx(rt, now.id))).content).toMatch(/^新对话 · /);
     const files = await rt.tools.get('find_history_files')!.execute({ name: 'quote' }, ctx(rt, now.id));
     expect(files.content).toContain(`${file} · attached`);
 

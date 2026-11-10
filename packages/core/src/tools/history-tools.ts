@@ -36,10 +36,17 @@ function textOf(m: Message): string {
 
 const who = (m: Message) => (m.role === 'assistant' ? 'agent' : m.kind === 'user' || m.kind === 'steer' ? 'user' : m.kind);
 
+/** A conversation's name as the window shows it: its title, else its first message (first line), else 新对话. */
 function sessionLabel(rt: Runtime, id: string): string {
   const rec = rt.store.getSession(id);
   const project = rec?.config.projectId ? rt.store.getProject(rec.config.projectId) : undefined;
-  return `${rec?.title ?? 'untitled'}${project ? ` (project ${project.name})` : ''}`;
+  let name = rec?.title?.trim();
+  if (!name) {
+    const first = rt.store.listMessages(id).find((m) => m.role === 'user' && m.kind === 'user');
+    const line = first?.content.map((b) => (b.type === 'text' ? b.text : '')).join('').split('\n')[0]?.trim();
+    name = line ? cap(line, 40) : '新对话';
+  }
+  return `${name}${project ? ` (project ${project.name})` : ''}`;
 }
 
 function cap(s: string, n: number): string {
