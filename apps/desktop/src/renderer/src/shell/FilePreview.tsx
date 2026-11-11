@@ -8,11 +8,15 @@ import { MarkdownText } from '../chat/Blocks';
 import { Icon } from '../ui/Icon';
 import { FileGlyph } from '../ui/FileIcon';
 import { MaxButton, type MaxState } from '../ui/MaxButton';
+import { clipboard } from '../ui/clipboard';
+import { CopyButton } from '../ui/CopyButton';
 
 export interface FilePreviewProps {
   /** null while loading. */
   info: PreviewInfo | null;
   onOpenExternal(path: string): void;
+  /** 打开所在文件夹 (the file selected in Explorer); absent: no such button. */
+  onReveal?: (path: string) => void;
   onClose(): void;
   /** The preview over the whole conversation: whether it is, and the button's press. Absent: no such button. */
   max?: MaxState;
@@ -48,7 +52,7 @@ function Lines({ text }: { text: string }) {
   );
 }
 
-export function FilePreview({ info, onOpenExternal, onClose, max }: FilePreviewProps) {
+export function FilePreview({ info, onOpenExternal, onReveal, onClose, max }: FilePreviewProps) {
   return (
     <section className="preview" aria-label={info ? `预览 ${info.name}` : '预览'}>
       <header className="preview-head">
@@ -57,6 +61,12 @@ export function FilePreview({ info, onOpenExternal, onClose, max }: FilePreviewP
           {info?.name ?? ''}
         </span>
         {max ? <MaxButton max={max} /> : null}
+        {info && info.kind !== 'missing' && onReveal ? (
+          <button type="button" className="icon-btn" onClick={() => onReveal(info.path)} aria-label="打开所在文件夹" title="打开所在文件夹">
+            <Icon name="folder" size={15} />
+          </button>
+        ) : null}
+        {info && info.kind !== 'missing' ? <CopyButton className="icon-btn" label="复制路径" copy={() => clipboard.write(info.path)} /> : null}
         {info && info.kind !== 'missing' ? (
           <button type="button" className="icon-btn" onClick={() => onOpenExternal(info.path)} aria-label="用系统程序打开" title="用系统程序打开">
             <Icon name="external" size={15} />

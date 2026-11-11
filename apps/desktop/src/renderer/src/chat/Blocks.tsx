@@ -9,6 +9,7 @@ import { Icon } from '../ui/Icon';
 import { FileBadge } from '../ui/FileIcon';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
+import { fullPath } from './local-path';
 import { tableRows, toCsv, toHtml, toTsv } from './table-data';
 import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS, toolLabel, toolTarget } from './format';
 
@@ -300,22 +301,41 @@ export function ToolGroup({ blocks, since }: { blocks: ToolBlock[]; since?: numb
   );
 }
 
-export function FileCards({ files, onOpen }: { files: FileRef[]; onOpen(path: string): void }) {
+/** A file card's two actions at its right end, always there: 打开所在文件夹 and 复制路径. */
+export interface FileCardActions {
+  /** Shows the file selected in Explorer (an absolute path). */
+  reveal(path: string): void;
+  /** The conversation's working folder, for a path the model wrote relative to it. */
+  cwd?: string | undefined;
+}
+
+export function FileCards({ files, onOpen, actions }: { files: FileRef[]; onOpen(path: string): void; actions?: FileCardActions | undefined }) {
   if (files.length === 0) return null;
   return (
     <div className="file-cards">
       {files.map((f) => {
         const shown = f.shown ?? f.path;
+        const full = fullPath(f.path, actions?.cwd);
         return (
-          <button key={f.path} type="button" className="card file-card" onClick={() => onOpen(f.path)} title={`打开 ${f.path}`}>
-            <FileBadge name={f.card?.name ?? fileName(shown)} />
-            <span className="file-card-text">
-              <span className="file-card-name">{f.card?.name ?? fileName(shown)}</span>
-              <span className="file-card-sub">
-                {f.card ? fileCardLine(f.card) : `${f.tool === 'read_file' ? '已读取' : f.tool === 'write_file' ? '已写入' : '已修改'}${fileFolder(shown) ? ` · ${fileFolder(shown)}` : ''}`}
+          <div key={f.path} className="card file-card">
+            <button type="button" className="file-card-main" onClick={() => onOpen(f.path)} title={`打开 ${full}`}>
+              <FileBadge name={f.card?.name ?? fileName(shown)} />
+              <span className="file-card-text">
+                <span className="file-card-name">{f.card?.name ?? fileName(shown)}</span>
+                <span className="file-card-sub">
+                  {f.card ? fileCardLine(f.card) : `${f.tool === 'read_file' ? '已读取' : f.tool === 'write_file' ? '已写入' : '已修改'}${fileFolder(shown) ? ` · ${fileFolder(shown)}` : ''}`}
+                </span>
               </span>
-            </span>
-          </button>
+            </button>
+            {actions ? (
+              <span className="file-card-tools">
+                <button type="button" className="icon-btn md-tool" aria-label="打开所在文件夹" title="打开所在文件夹" onClick={() => actions.reveal(full)}>
+                  <Icon name="folder" size={14} />
+                </button>
+                <CopyButton className="icon-btn md-tool" label="复制路径" copy={() => clipboard.write(full)} />
+              </span>
+            ) : null}
+          </div>
         );
       })}
     </div>

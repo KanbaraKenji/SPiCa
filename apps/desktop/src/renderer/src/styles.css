@@ -1156,7 +1156,7 @@ button.tree-twisty:hover {
   margin-bottom: 2px;
 }
 
-/* The small icon buttons on code blocks and tables. */
+/* The small icon buttons on code blocks, tables and file cards. */
 .icon-btn.md-tool {
   width: 26px;
   height: 26px;
@@ -1359,12 +1359,29 @@ button.tree-twisty:hover {
   max-width: min(360px, 100%);
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px 8px 10px;
-  text-align: left;
+  gap: 4px;
+  padding: 0 6px 0 0;
 }
 
-.file-card:hover {
+/* The card's main part opens the file; 打开所在文件夹 and 复制路径 sit at its right end. */
+.file-card-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px 8px 10px;
+  text-align: left;
+  border-radius: inherit;
+}
+
+.file-card-tools {
+  flex: none;
+  display: flex;
+}
+
+/* Lit only over the part that opens the file, not over its two buttons (they light on their own). */
+.file-card:has(.file-card-main:hover) {
   background: var(--spica-hover);
   border-color: var(--spica-border-strong);
 }

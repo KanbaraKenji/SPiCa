@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-// What an answer's code blocks and tables can do: copy, export.
+// What an answer's code blocks, tables and file cards can do: copy, export, show in Explorer.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { AnswerToolsContext, MarkdownText, type AnswerTools } from './Blocks';
+import { AnswerToolsContext, FileCards, MarkdownText, type AnswerTools } from './Blocks';
 import { clipboard } from '../ui/clipboard';
 
 afterEach(() => {
@@ -61,5 +61,26 @@ describe('a table', () => {
     cleanup();
     answer(table);
     expect(screen.queryByRole('button', { name: '导出 CSV' })).toBeNull();
+  });
+});
+
+describe('a file card', () => {
+  it('打开所在文件夹 and 复制路径 use the full path (a relative one in the working folder); the card still opens the file', async () => {
+    const write = vi.spyOn(clipboard, 'write').mockResolvedValue();
+    const reveal = vi.fn();
+    const onOpen = vi.fn();
+    render(<FileCards files={[{ path: '资料\\需求说明.docx', tool: 'read_file' }]} onOpen={onOpen} actions={{ reveal, cwd: 'D:\\工作\\样机评审' }} />);
+    fireEvent.click(screen.getByRole('button', { name: '打开所在文件夹' }));
+    expect(reveal).toHaveBeenCalledWith('D:\\工作\\样机评审\\资料\\需求说明.docx');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '复制路径' })));
+    expect(write).toHaveBeenCalledWith('D:\\工作\\样机评审\\资料\\需求说明.docx');
+    fireEvent.click(screen.getByRole('button', { name: /需求说明\.docx/ }));
+    expect(onOpen).toHaveBeenCalledWith('资料\\需求说明.docx');
+  });
+
+  it('without Explorer (no actions) it has no buttons of its own', () => {
+    render(<FileCards files={[{ path: 'D:\\a.docx', tool: 'read_file' }]} onOpen={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: '打开所在文件夹' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '复制路径' })).toBeNull();
   });
 });

@@ -19,6 +19,8 @@ export interface ConversationActions {
   answer(callId: string, answer: string): void;
   confirm(callId: string, approved: boolean): void;
   openFile(path: string): void;
+  /** 打开所在文件夹 on a file card (an absolute path). */
+  revealFile?: (path: string) => void;
   /** 导出 CSV on a table in an answer; resolves to whether it was saved. */
   saveCsv?: (text: string) => Promise<boolean>;
   openSession(id: string): void;
@@ -93,6 +95,11 @@ function MailNote({ ids, flagged = [], actions }: { ids: string[]; flagged?: str
   );
 }
 
+/** 打开所在文件夹 and 复制路径 on file cards, where Explorer can be reached. */
+function fileActions(actions: ConversationActions, cwd: string | undefined) {
+  return actions.revealFile ? { reveal: actions.revealFile, cwd } : undefined;
+}
+
 type Segment = { kind: 'tools'; blocks: Extract<Block, { type: 'tool' }>[] } | { kind: 'one'; block: Exclude<Block, { type: 'tool' }> };
 
 function segments(blocks: Block[]): Segment[] {
@@ -118,6 +125,7 @@ function Response({
   at,
   regen,
   after,
+  cwd,
 }: {
   item: Extract<Item, { kind: 'response' }>;
   live: boolean;
@@ -125,6 +133,8 @@ function Response({
   actions: ConversationActions;
   cards: Transcript['fileCards'];
   moved?: CwdChangeMeta;
+  /** The conversation's working folder (a relative path on a file card is in it). */
+  cwd?: string | undefined;
   at?: Record<string, string>;
   regen?: { state: RegenerateState; last: boolean } | undefined;
   /** How many items follow it in the conversation. */
@@ -182,7 +192,7 @@ function Response({
             return null;
         }
       })}
-      {live ? null : <FileCards files={files} onOpen={actions.openFile} />}
+      {live ? null : <FileCards files={files} onOpen={actions.openFile} actions={fileActions(actions, cwd)} />}
       {item.interrupted && newest ? <p className="turn-note">（中断）</p> : null}
       {live ? null : (
         <MessageActions
@@ -375,6 +385,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                         <FileCards
                           files={item.attachments.filter((a) => !a.image && !a.code).map((a) => ({ path: a.path, tool: 'read_file', ...(a.file ? { card: a.file } : {}) }))}
                           onOpen={actions.openFile}
+                          actions={fileActions(actions, session?.cwd)}
                         />
                       </div>
                     ) : null}
@@ -401,7 +412,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                     {item.text}
                   </p>
                 );
-              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} after={lastIndex - i} regen={regen && session?.role === 'top' ? { state: regen, last: item.anchorId === regen.anchorId || items[i - 1]?.id === regen.anchorId } : undefined} actions={actions} cards={transcript.fileCards} moved={moves.get(item.id)} at={mark(item.id)} />;
+              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} after={lastIndex - i} regen={regen && session?.role === 'top' ? { state: regen, last: item.anchorId === regen.anchorId || items[i - 1]?.id === regen.anchorId } : undefined} actions={actions} cards={transcript.fileCards} moved={moves.get(item.id)} cwd={session?.cwd} at={mark(item.id)} />;
             })}
             <StatusLine transcript={transcript} />
             {waiting.map((w) => (

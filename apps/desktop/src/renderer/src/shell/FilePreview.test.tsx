@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { FilePreview } from './FilePreview';
+import { clipboard } from '../ui/clipboard';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe('FilePreview', () => {
   it('numbers the lines of a text file and says when it was cut', () => {
@@ -41,7 +45,7 @@ describe('the expand button in the preview head', () => {
     const toggle = vi.fn();
     const { rerender } = render(<FilePreview info={info} onOpenExternal={vi.fn()} onClose={vi.fn()} max={{ on: false, toggle }} />);
     const head = document.querySelector('.preview-head') as HTMLElement;
-    expect([...head.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual(['最大化', '用系统程序打开', '关闭预览']);
+    expect([...head.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual(['最大化', '复制路径', '用系统程序打开', '关闭预览']);
     const max = screen.getByRole('button', { name: '最大化' });
     expect(max.getAttribute('aria-pressed')).toBe('false');
     expect(max.getAttribute('title')).toBe('最大化（Ctrl+Shift+\\）');
@@ -52,6 +56,24 @@ describe('the expand button in the preview head', () => {
   });
   it('without it (nothing to expand) the head has only its own two buttons', () => {
     render(<FilePreview info={info} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
-    expect([...document.querySelectorAll('.preview-head button')].map((b) => b.getAttribute('aria-label'))).toEqual(['用系统程序打开', '关闭预览']);
+    expect([...document.querySelectorAll('.preview-head button')].map((b) => b.getAttribute('aria-label'))).toEqual(['复制路径', '用系统程序打开', '关闭预览']);
+  });
+});
+
+describe('the file’s place, from the preview head', () => {
+  const info = { kind: 'text' as const, name: '报价汇总.csv', path: 'D:\\工作\\报价汇总.csv', size: 7, text: 'a', truncated: false };
+  it('打开所在文件夹 and 复制路径 before 用系统程序打开, with the full path', async () => {
+    const write = vi.spyOn(clipboard, 'write').mockResolvedValue();
+    const onReveal = vi.fn();
+    render(<FilePreview info={info} onOpenExternal={vi.fn()} onReveal={onReveal} onClose={vi.fn()} />);
+    expect([...document.querySelectorAll('.preview-head button')].map((b) => b.getAttribute('aria-label'))).toEqual(['打开所在文件夹', '复制路径', '用系统程序打开', '关闭预览']);
+    fireEvent.click(screen.getByRole('button', { name: '打开所在文件夹' }));
+    expect(onReveal).toHaveBeenCalledWith('D:\\工作\\报价汇总.csv');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '复制路径' })));
+    expect(write).toHaveBeenCalledWith('D:\\工作\\报价汇总.csv');
+  });
+  it('not for a file that is not there', () => {
+    render(<FilePreview info={{ kind: 'missing', name: 'x.txt', path: 'D:/x.txt', size: 0, message: '找不到文件。' }} onOpenExternal={vi.fn()} onReveal={vi.fn()} onClose={vi.fn()} />);
+    expect([...document.querySelectorAll('.preview-head button')].map((b) => b.getAttribute('aria-label'))).toEqual(['关闭预览']);
   });
 });

@@ -559,6 +559,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     answer: (callId, a) => id && void agent.answer(id, callId, a),
     confirm: (callId, ok) => id && void agent.confirm(id, callId, ok),
     openFile: previewFile,
+    revealFile: (path) => void bridge.showInFolder(path).then(showNotice, (err: unknown) => showNotice(friendlyError(err))),
     saveCsv: (text) =>
       bridge.saveCsv('', text).then(
         (r) => {
@@ -864,6 +865,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                     void bridge.openFile(preview.sessionId, p).then((err) => err && agent.state.set((v) => ({ ...v, notice: err })));
                   }
                 }}
+                onReveal={(p) => void bridge.showInFolder(p).then(showNotice, (err: unknown) => showNotice(friendlyError(err)))}
                 onClose={() => setPreview(null)}
                 max={panelMax}
               />
