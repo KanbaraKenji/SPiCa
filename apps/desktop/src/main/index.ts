@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
 import { humanError } from '../shared/errors';
-import { deriveTokens, over, resolveSkin, schemeOf } from '../shared/skin';
+import { CAPTION_BACK, captionSymbol, deriveTokens, resolveSkin, schemeOf, type WindowCover } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
 import { mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
@@ -315,14 +315,14 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
 
 let mainWindow: BrowserWindow | undefined;
 
-function chromeColors(s: ShellSettings): { bg: string; chrome: string; ink: string; scrim: string } {
+function chromeColors(s: ShellSettings): { bg: string; chrome: string; ink: string; scrim: string; dark: boolean } {
   const skin = resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins);
   const t = deriveTokens(skin);
-  return { bg: t['--spica-bg'] ?? skin.bg, chrome: t['--spica-chrome'] ?? skin.bg, ink: t['--spica-muted'] ?? '#888888', scrim: t['--spica-scrim'] ?? 'rgba(0, 0, 0, 0.5)' };
+  return { bg: t['--spica-bg'] ?? skin.bg, chrome: t['--spica-chrome'] ?? skin.bg, ink: t['--spica-muted'] ?? '#888888', scrim: t['--spica-scrim'] ?? 'rgba(0, 0, 0, 0.5)', dark: schemeOf(skin.bg) === 'dark' };
 }
 
-/** A scrim covers the page (a dialog, a picture at full size): the caption buttons, drawn by Windows, dim with it. */
-let dimmed = false;
+/** What covers the page (the opening animation, a scrim): the caption symbols Windows draws follow it. */
+let cover: WindowCover = null;
 
 /** Keeps native parts (window background, caption buttons, scrollbars) in step with the skin. */
 function syncNativeChrome(win: BrowserWindow, s: ShellSettings): void {
@@ -335,9 +335,9 @@ function syncNativeChrome(win: BrowserWindow, s: ShellSettings): void {
   const c = chromeColors(s);
   win.setBackgroundColor(c.bg);
   if (process.platform === 'win32') {
-    const dim = (color: string) => (dimmed ? over(color, c.scrim) : color);
-    win.setTitleBarOverlay({ color: dim(c.chrome), symbolColor: dim(c.ink), height: overlayHeight(s.zoom) });
-    if (!app.isPackaged && process.env.SPICA_HIDDEN === '1') console.log(`[spica] caption buttons: ${dim(c.chrome)} / ${dim(c.ink)}`);
+    const symbol = captionSymbol(c.ink, c.scrim, cover, c.dark);
+    win.setTitleBarOverlay({ color: CAPTION_BACK, symbolColor: symbol, height: overlayHeight(s.zoom) });
+    if (!app.isPackaged && process.env.SPICA_HIDDEN === '1') console.log(`[spica] caption buttons: ${CAPTION_BACK} / ${symbol}`);
   }
 }
 
@@ -482,7 +482,7 @@ function createMainWindow(): BrowserWindow {
     show: false,
     backgroundColor: c.bg,
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: c.chrome, symbolColor: c.ink, height: overlayHeight(s.zoom) },
+    titleBarOverlay: { color: CAPTION_BACK, symbolColor: c.ink, height: overlayHeight(s.zoom) },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
@@ -956,9 +956,10 @@ ipcMain.handle(DesktopChannel.PickFiles, async (_e, title: unknown): Promise<str
   return r.canceled ? [] : r.filePaths.slice(0, 20);
 });
 
-ipcMain.on(DesktopChannel.Dimmed, (_e, on: unknown) => {
-  if (dimmed === (on === true)) return;
-  dimmed = on === true;
+ipcMain.on(DesktopChannel.Cover, (_e, what: unknown) => {
+  const next: WindowCover = what === 'splash' || what === 'scrim' ? what : null;
+  if (cover === next) return;
+  cover = next;
   if (mainWindow && !mainWindow.isDestroyed()) syncNativeChrome(mainWindow, settings.get());
 });
 

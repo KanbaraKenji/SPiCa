@@ -1,6 +1,7 @@
 // The typed bridge the renderer sees as `window.spica`. Everything the UI can
 // do goes through here; there is no other way to reach the backend.
 import type { AgentApi, ContextBreakdown, CoreEvent, SpicaBridge } from '@spica/protocol';
+import type { WindowCover } from './skin';
 import type { SettingsPatch, ShellSettings } from './settings';
 import type { ModelRef, ProviderDraft, ProviderKind, ProviderView, TestResult } from './providers';
 import type { ListModelsView, ModelCatalogView, WindowMatch } from './catalog';
@@ -80,8 +81,8 @@ export type UsageLogResult = { file: string; records: number } | { error: string
 export interface DesktopBridge extends SpicaBridge {
   /** Tells the main process which conversation is open (null: none), for the core's 'ui.activeSession'. */
   reportActiveSession(id: string | null): void;
-  /** Tells the main process a scrim covers the window (true) or no longer does, so the caption buttons dim too. */
-  reportDimmed(on: boolean): void;
+  /** Tells the main process what covers the window (the opening animation, a scrim, nothing), for the caption symbols. */
+  reportCover(cover: WindowCover): void;
   /** The agent backend (fake until the core's first milestone; same interface either way). */
   agent: AgentApi;
   onAgentEvent(listener: (event: CoreEvent) => void): () => void;

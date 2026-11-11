@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { SPLASH_INK } from '../shared/skin';
 
 const css = readFileSync(join(__dirname, '../renderer/src/styles.css'), 'utf8');
 const block = (selector: string) => {
@@ -130,5 +131,13 @@ describe('the sidebar in a short window', () => {
     expect(block('.sidebar-scroll')).toContain('overflow-y: auto');
     expect(block('.sidebar-scroll')).toContain('min-height: 0');
     for (const kept of ['.sidebar-top', '.sidebar-bottom', '.side-plugins']) expect(block(kept)).toContain('flex: none');
+  });
+});
+
+describe('the caption symbols over the opening animation', () => {
+  it('take the animation’s own text colours (the ones its style sheet uses)', () => {
+    const splash = readFileSync(join(__dirname, '../../../../packages/brand/src/styles/splash.css'), 'utf8');
+    expect(splash).toMatch(new RegExp(`\\[data-theme='dark'\\] \\{[^}]*--spica-splash-ink: ${SPLASH_INK.dark};`));
+    expect(splash).toMatch(new RegExp(`\\[data-theme='light'\\] \\{[^}]*--spica-splash-ink: ${SPLASH_INK.light};`));
   });
 });

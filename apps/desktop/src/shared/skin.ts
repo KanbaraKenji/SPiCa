@@ -125,10 +125,7 @@ export function mix(a: string, b: string, t: number): string {
   return toHex({ r: x.r + (y.r - x.r) * t, g: x.g + (y.g - x.g) * t, b: x.b + (y.b - x.b) * t });
 }
 
-/**
- * A see-through layer over a solid color, as the eye gets it: 'rgba(r, g, b, a)' (or a hex, which simply covers)
- * over a hex. The caption buttons are drawn by Windows, under no scrim, so they get this color instead.
- */
+/** A see-through layer over a solid color, as the eye gets it: 'rgba(r, g, b, a)' (or a hex, which simply covers) over a hex. */
 export function over(base: string, layer: string): string {
   const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(layer.trim());
   if (!m) return layer.startsWith('#') ? layer : base;
@@ -241,4 +238,24 @@ export function deriveTokens(skin: Skin): Tokens {
 export function resolveSkin(choice: SkinChoice, systemDark: boolean, custom: readonly Skin[]): Skin {
   if (choice === 'system') return systemDark ? DARK_SKIN : LIGHT_SKIN;
   return [...BUILTIN_SKINS, ...custom].find((s) => s.id === choice) ?? (systemDark ? DARK_SKIN : LIGHT_SKIN);
+}
+
+/** What lies over the whole window just now: the opening animation, a scrim (a dialog, a picture at full size), or nothing. */
+export type WindowCover = 'splash' | 'scrim' | null;
+
+/**
+ * The minimise, maximise and close buttons are drawn by Windows over the page. Their own background is
+ * see-through, so what is under them is the page itself (the title bar, a scrim, the opening animation) and it
+ * changes and fades with the page. Windows still draws the three symbols (and its own hover highlight).
+ */
+export const CAPTION_BACK = '#00000000';
+
+/** The opening animation's text colour (@spica/brand styles/splash.css, --spica-splash-ink). */
+export const SPLASH_INK = { dark: '#f1f5f9', light: '#0f172a' } as const;
+
+/** The symbols' colour: the page's muted text, under a scrim as the scrim makes it, over the opening animation its text colour. */
+export function captionSymbol(ink: string, scrim: string, cover: WindowCover, dark: boolean): string {
+  if (cover === 'splash') return SPLASH_INK[dark ? 'dark' : 'light'];
+  if (cover === 'scrim') return over(ink, scrim);
+  return ink;
 }

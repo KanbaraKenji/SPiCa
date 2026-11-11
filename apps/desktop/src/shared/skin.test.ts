@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrast, DARK_SKIN, deriveTokens, LIGHT_SKIN, normalizeHex, ON_ACCENT_WHITE_MIN, over, resolveSkin, schemeOf } from './skin';
+import { CAPTION_BACK, captionSymbol, contrast, DARK_SKIN, deriveTokens, LIGHT_SKIN, normalizeHex, ON_ACCENT_WHITE_MIN, over, resolveSkin, schemeOf } from './skin';
 
 describe('normalizeHex', () => {
   it('accepts short and long forms, with or without #', () => {
@@ -72,18 +72,11 @@ describe('resolveSkin', () => {
   });
 });
 
-describe('over (the caption buttons under a scrim)', () => {
+describe('over (a see-through layer)', () => {
   it('a see-through layer over a color, as the eye gets it', () => {
     expect(over('#ffffff', 'rgba(0, 0, 0, 0.5)')).toBe('#808080');
     expect(over('#fafafa', 'rgba(15, 23, 42, 0.28)')).toBe(over('#fafafa', 'rgba(15,23,42,.28)'));
     expect(contrast(over('#fafafa', 'rgba(15, 23, 42, 0.28)'), '#fafafa')).toBeGreaterThan(1.3);
-  });
-
-  it('both built-in skins: the buttons come out as dark as the page under their scrim', () => {
-    for (const skin of [LIGHT_SKIN, DARK_SKIN]) {
-      const t = deriveTokens(skin);
-      expect(over(t['--spica-chrome']!, t['--spica-scrim']!)).not.toBe(t['--spica-chrome']);
-    }
   });
 
   it('an opaque or unreadable layer', () => {
@@ -110,4 +103,23 @@ describe('text on the accent (主按钮, 发送)', () => {
     expect(white).toBeGreaterThanOrEqual(ON_ACCENT_WHITE_MIN);
     expect(white - ON_ACCENT_WHITE_MIN).toBeLessThan(0.1);
   });
+});
+
+describe('the caption buttons Windows draws', () => {
+  it('have a see-through background (the page shows under them), whatever covers the page', () => {
+    expect(CAPTION_BACK).toBe('#00000000');
+  });
+
+  it('symbols: the muted text colour; under a scrim as the scrim makes it; over the opening animation its text colour', () => {
+    for (const skin of [LIGHT_SKIN, DARK_SKIN]) {
+      const t = deriveTokens(skin);
+      const ink = t['--spica-muted']!;
+      const dark = skin === DARK_SKIN;
+      expect(captionSymbol(ink, t['--spica-scrim']!, null, dark)).toBe(ink);
+      expect(captionSymbol(ink, t['--spica-scrim']!, 'scrim', dark)).toBe(over(ink, t['--spica-scrim']!));
+      expect(captionSymbol(ink, t['--spica-scrim']!, 'scrim', dark)).not.toBe(ink);
+      expect(captionSymbol(ink, t['--spica-scrim']!, 'splash', dark)).toBe(dark ? '#f1f5f9' : '#0f172a');
+    }
+  });
+
 });
