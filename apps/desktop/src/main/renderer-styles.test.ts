@@ -24,17 +24,26 @@ describe('styles', () => {
     expect(block('.history-link:hover')).toContain('color: var(--spica-accent)');
   });
 
-  it('a sidebar row shows 更多 only under the pointer, when current, with the focus inside or with its menu open; its place is always kept, so nothing moves', () => {
-    expect(block('.tree-more')).toContain('visibility: hidden');
-    expect(block('.tree-more')).not.toContain('display: none');
-    expect(block('.tree-row:hover .tree-more,\n.tree-row:focus-within .tree-more,\n.tree-row.is-active .tree-more,\n.tree-row.is-menu-open .tree-more')).toContain('visibility: visible');
-    expect(block('.tree-more-space')).toContain('width: 24px');
+  it('更多 stands in the status place (the same box at the row end) and never appears on hover, so nothing moves', () => {
+    for (const box of ['.tree-more', '.status-slot']) {
+      expect(block(box)).toContain('width: 24px');
+      expect(block(box)).toContain('height: 24px');
+      expect(block(box)).toContain('margin-left: auto');
+    }
+    expect(css).not.toMatch(/:hover .tree-more/);
+    expect(css).not.toMatch(/tree-more-space/);
+  });
+
+  it('on a light skin the waiting dot is a plain yellow with a fine darker edge; elsewhere the warning colour', () => {
+    expect(block('.status-slot.is-waiting .slot-dot')).toContain('background: var(--spica-warning)');
+    const light = block(":root[data-scheme='light'] .status-slot.is-waiting .slot-dot");
+    expect(light).toContain('background: #f7c31a');
+    expect(light).toContain('box-shadow: inset 0 0 0 1px #c9980a');
   });
 
   it('a sidebar row: the name is only as wide as its text (the arrow follows it), the status place is pushed to the end, the whole row opens', () => {
     expect(block('.tree-title')).toContain('flex: 0 1 auto');
     expect(block('.tree-open')).toContain('flex: 0 1 auto');
-    expect(block('.status-slot')).toContain('margin: 0 4px 0 auto');
     expect(block('.tree-open::after')).toContain('inset: 0');
     expect(block('.tree-open:focus-visible::after')).toContain('outline: 2px solid var(--spica-accent)');
     for (const above of ['.tree-twisty', '.tree-more', '.status-slot', '.tree-pin']) expect(block(above)).toContain('z-index: 1');

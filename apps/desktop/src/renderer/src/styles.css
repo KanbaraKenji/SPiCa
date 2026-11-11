@@ -524,35 +524,21 @@ button.tree-twisty:hover {
   color: var(--spica-ink);
 }
 
-/* 更多 (…) at a row's end: seen only on the row under the pointer, the current row, a row with
-   the focus inside and a row whose menu is open. Its place is kept on every row (an empty one on
-   rows without a menu), so the status place beside it is at the same spot on all rows and never moves. */
-.tree-more-space {
-  width: 24px;
-  height: 24px;
-  flex: none;
-}
-
+/* 更多 (…) only on the row that is open, where it stands in the status place (same box, same spot).
+   Nothing appears on hovering a row, so nothing moves. */
 .tree-more {
   position: relative;
   z-index: 1;
   width: 24px;
   height: 24px;
   flex: none;
+  margin-left: auto;
   display: inline-flex;
-  visibility: hidden;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-s);
   background: var(--spica-control);
   color: var(--spica-muted);
-}
-
-.tree-row:hover .tree-more,
-.tree-row:focus-within .tree-more,
-.tree-row.is-active .tree-more,
-.tree-row.is-menu-open .tree-more {
-  visibility: visible;
 }
 
 .tree-more:hover,
@@ -611,14 +597,15 @@ button.tree-twisty:hover {
 
 /* Status glyph in the tree: fixed 12px box so titles line up. */
 /* One status place per row, at its end: a dot (waiting for you, an error, something new) or a
-   small icon (running, queued, stopped). Kept when empty. */
+   small icon (running, queued, stopped). Kept when empty; as large as 更多, which stands in it on
+   the row that is open. */
 .status-slot {
   position: relative;
   z-index: 1;
-  width: 12px;
-  height: 12px;
+  width: 24px;
+  height: 24px;
   flex: none;
-  margin: 0 4px 0 auto;
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -633,6 +620,13 @@ button.tree-twisty:hover {
 
 .status-slot.is-waiting .slot-dot {
   background: var(--spica-warning);
+}
+
+/* On a light skin the warning colour is a brown made for text; the dot is a plain yellow there,
+   with a fine darker edge so it stays clear on the pale sidebar. */
+:root[data-scheme='light'] .status-slot.is-waiting .slot-dot {
+  background: #f7c31a;
+  box-shadow: inset 0 0 0 1px #c9980a;
 }
 
 .status-slot.is-error .slot-dot {
@@ -3617,7 +3611,7 @@ button.ctx-row:hover {
   color: var(--spica-muted);
 }
 
-/* Something new (NewDot): one small dot, on a row, on the tab not shown and on the sidebar toggle when collapsed. */
+/* Something new (NewDot): one small dot on the sidebar toggle while the sidebar is collapsed. */
 .new-dot {
   flex: none;
   width: 6px;
@@ -3626,11 +3620,6 @@ button.ctx-row:hover {
   background: var(--spica-accent);
 }
 
-.tab .new-dot {
-  position: absolute;
-  top: 6px;
-  right: 10px;
-}
 
 .rail-head [data-panel-toggle] {
   position: relative;

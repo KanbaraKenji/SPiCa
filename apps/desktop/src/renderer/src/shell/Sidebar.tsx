@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import { ContextMenu } from '../ui/ContextMenu';
 import type { SessionInfo } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
-import { NewDot, joinNotes } from '../ui/NewDot';
+import { joinNotes } from '../ui/NewDot';
 import { StatusSlot } from '../ui/StatusMark';
 import { isRunning } from '../store/transcript';
 import { rollupText, slotsOf, topSlot } from './row-status';
@@ -145,14 +145,16 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
   const slot = topSlot([...own, ...below]);
   const name = s.title ?? '';
   const menuOpen = tree.menuFor === s.id;
-  const more = tree.toggleMenu && tree.hasMenu(s) && tree.editing !== s.id ? tree.toggleMenu : null;
+  // 更多 (…) only on the row that is open: there it takes the status place. Every row has the same menu on right-click.
+  const more = active && tree.toggleMenu && tree.hasMenu(s) && tree.editing !== s.id ? tree.toggleMenu : null;
   const toggle = () => tree.setExpanded(s.id, !open);
   return (
     <>
       {/* Text lines up with the section heading; each level in is one step. After the name, on rows
-          with something under them, the expand arrow; at the end the status place, then 更多 (…),
-          seen on the row under the pointer, the current one and one whose menu is open. Both keep
-          their place on every row, so nothing moves. A click anywhere else on the row opens it. */}
+          with something under them, the expand arrow; at the end the status place. On the row that is
+          open, 更多 (…) stands in that same place instead (its menu under the button); nothing shows
+          on hovering, so nothing moves. A click anywhere else on the row opens it; a right-click
+          anywhere on it opens the same menu at the pointer. */}
       <div
         className={['tree-row', active ? 'is-active' : '', menuOpen ? 'is-menu-open' : ''].filter(Boolean).join(' ')}
         style={{ paddingLeft: depth * 16 }}
@@ -196,16 +198,14 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
                 <Icon name="pin" size={12} />
               </span>
             ) : null}
-            <StatusSlot slot={slot} {...(below.length ? { text: rollupText([...own, ...below]) } : own.length > 1 ? { text: joinNotes(own.map((x) => x.text)) } : {})} onClick={() => tree.onOpen(s.id)} />
+            {more ? null : <StatusSlot slot={slot} {...(below.length ? { text: rollupText([...own, ...below]) } : own.length > 1 ? { text: joinNotes(own.map((x) => x.text)) } : {})} onClick={() => tree.onOpen(s.id)} />}
           </>
         )}
         {more ? (
           <button type="button" className="tree-more" aria-label="更多" title="更多" aria-haspopup="menu" aria-expanded={menuOpen} onClick={(e) => more(s, e.currentTarget)}>
             <Icon name="more" size={16} />
           </button>
-        ) : tree.editing === s.id ? null : (
-          <span className="tree-more-space" aria-hidden />
-        )}
+        ) : null}
       </div>
       {open ? kids.map((k) => <Node key={k.id} s={k} depth={depth + 1} tree={tree} />) : null}
     </>
@@ -317,10 +317,6 @@ export function Sidebar({
     while (at?.parentId && at.role !== 'manager') at = byIdNow.get(at.parentId);
     if (at) setListTab(at.role === 'manager' ? 'projects' : 'chats');
   }
-  const projectIds = new Set(projects.map((p) => p.id));
-  // What is new under each tab, for its dot ('' when nothing).
-  const projectsNews = joinNotes([...(notes ?? [])].filter(([id]) => projectIds.has(id)).map(([, n]) => n));
-  const chatsNews = joinNotes([...(notes ?? [])].filter(([id]) => !projectIds.has(id)).map(([, n]) => n));
   if (compact) {
     // Only actions here; the lists (对话, 项目) come with the full sidebar, slid out by resting on this column.
     return (
@@ -362,13 +358,11 @@ export function Sidebar({
 
   return (
     <nav className="sidebar" aria-label="对话">
-      {/* 对话 and 项目 as two tabs right under the brand row, each half the width. The one not
-          shown carries a dot when something in it has news. */}
+      {/* 对话 and 项目 as two tabs right under the brand row, each half the width. */}
       <div className="tabs side-tabs" role="tablist" aria-label="列表">
         {(['chats', 'projects'] as const).map((t) => (
           <button key={t} type="button" role="tab" aria-selected={listTab === t} className={listTab === t ? 'tab is-on' : 'tab'} onClick={() => setListTab(t)}>
             {t === 'chats' ? '对话' : '项目'}
-            {listTab !== t && (t === 'chats' ? chatsNews : projectsNews) ? <NewDot text={t === 'chats' ? chatsNews : projectsNews} /> : null}
           </button>
         ))}
       </div>

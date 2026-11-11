@@ -41,15 +41,16 @@ describe('Sidebar', () => {
     fireEvent.click(screen.getByRole('button', { name: /收件箱/ }));
     expect(onInbox).toHaveBeenCalled();
     expect(screen.getByLabelText('3 封待确认')).toBeTruthy();
-    // The 项目 tab, not shown, carries the dot; on hover it says what is new under it (each kind once).
-    expect(screen.getByRole('img', { name: '有新来信 · 有新回报' }).closest('[role="tab"]')?.textContent).toContain('项目');
+    // The tabs carry no dot: what is new shows on the rows.
+    expect(screen.getByRole('tablist').querySelector('[role="img"]')).toBeNull();
+    expect(screen.getByRole('tab', { name: '项目' }).textContent).toBe('项目');
     fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
     // On the project row: the dot alone, no words on the row.
     expect(within(screen.getByTitle('年度预算').closest('.tree-row') as HTMLElement).getByRole('img', { name: '有新来信' }).className).toBe('status-slot is-news');
     expect(screen.queryByText('有新来信')).toBeNull();
   });
 
-  it('without 收件箱 (no mail plugin) a project with an unseen report still has its dot, on the row and on the tab', () => {
+  it('without 收件箱 (no mail plugin) a project with an unseen report still says so on its row; the tab has no dot', () => {
     render(
       <Sidebar
         sessions={seed.sessions}
@@ -62,7 +63,7 @@ describe('Sidebar', () => {
       />,
     );
     expect(screen.queryByRole('button', { name: /收件箱/ })).toBeNull();
-    expect(screen.getByRole('img', { name: '有新回报' }).closest('[role="tab"]')?.textContent).toContain('项目');
+    expect(screen.queryByRole('img', { name: /有新回报/ })).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
     // The project is running, so its one status place shows that; the report is still said there.
     const slot = screen.getByRole('img', { name: /有新回报/ });
@@ -187,14 +188,24 @@ describe('Sidebar', () => {
     expect(onDeleteProject).toHaveBeenCalledWith('p-budget', '年度预算');
   });
 
-  it('更多 (…) at a row’s end opens the right-click menu under it; again closes it; it does not open the conversation', () => {
+  it('更多 (…) is only on the row that is open, in place of its status; its menu is the right-click one, under the button; again closes it', () => {
     const onOpen = vi.fn();
     const onDeleteChat = vi.fn();
-    render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={onOpen} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} onRename={vi.fn()} onDeleteChat={onDeleteChat} />);
+    render(<Sidebar sessions={seed.sessions} activeId={SEED_IDS.chat2} onOpen={onOpen} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} onRename={vi.fn()} onDeleteChat={onDeleteChat} />);
+    // One 更多 in the whole list: on the open row, where the status place would be.
+    expect(screen.getAllByRole('button', { name: '更多' })).toHaveLength(1);
     const row = screen.getByRole('button', { name: '整理本周来信' }).closest('.tree-row') as HTMLElement;
     const more = within(row).getByRole('button', { name: '更多' });
+    expect(row.lastElementChild).toBe(more);
+    expect(row.querySelector('.status-slot')).toBeNull();
     expect(more.getAttribute('aria-haspopup')).toBe('menu');
     expect(more.getAttribute('aria-expanded')).toBe('false');
+    // The other rows keep their status place and have no button, hovered or not.
+    const other = screen.getByRole('button', { name: '看一下样机评审资料' }).closest('.tree-row') as HTMLElement;
+    fireEvent.mouseEnter(other);
+    fireEvent.mouseOver(other);
+    expect(within(other).queryByRole('button', { name: '更多' })).toBeNull();
+    expect(other.lastElementChild?.className).toMatch(/^status-slot/);
 
     fireEvent.click(more);
     expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['重命名', '删除']);
@@ -217,27 +228,40 @@ describe('Sidebar', () => {
     expect(onDeleteChat).toHaveBeenCalledWith(expect.objectContaining({ id: SEED_IDS.chat2 }));
   });
 
-  it('更多 is on every row that has a menu: projects with actions, sub-tasks (rename); not without one', () => {
-    const props = { sessions: seed.sessions, activeId: null, onOpen: vi.fn(), onNewChat: vi.fn(), onSettings: vi.fn(), settingsOpen: false };
-    const { rerender } = render(<Sidebar {...props} />);
-    expect(screen.queryAllByRole('button', { name: '更多' })).toHaveLength(0);
-    rerender(<Sidebar {...props} onRename={vi.fn()} onPin={vi.fn()} onRenameProject={vi.fn()} onDeleteProject={vi.fn()} />);
+  it('a right-click anywhere on any row opens the same menu at the pointer; the row keeps its status place and gets no 更多', () => {
+    render(<Sidebar sessions={seed.sessions} activeId={SEED_IDS.chat2} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} onRename={vi.fn()} onPin={vi.fn()} onRenameProject={vi.fn()} onDeleteProject={vi.fn()} onDeleteChat={vi.fn()} />);
+    const other = screen.getByRole('button', { name: '看一下样机评审资料' }).closest('.tree-row') as HTMLElement;
+    fireEvent.contextMenu(other.querySelector('.status-slot')!, { clientX: 120, clientY: 90 });
+    const menu = screen.getByRole('menu');
+    expect(menu.style.left).toBe('120px');
+    expect(menu.style.top).toBe('90px');
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['重命名', '删除']);
+    expect(within(other).queryByRole('button', { name: '更多' })).toBeNull();
+    expect(other.querySelector('.status-slot')).toBeTruthy();
+    fireEvent.pointerDown(document.body);
+    // Projects and sub-tasks too, each with its own items.
     fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
-    const project = screen.getByTitle('年度预算').closest('.tree-row') as HTMLElement;
-    fireEvent.click(within(project).getByRole('button', { name: '更多' }));
+    fireEvent.contextMenu(screen.getByTitle('年度预算'), { clientX: 60, clientY: 200 });
     expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['重命名', '置顶', '删除']);
-    const sub = screen.getByRole('button', { name: /起草评审纪要/ }).closest('.tree-row') as HTMLElement;
-    fireEvent.click(within(sub).getByRole('button', { name: '更多' }));
+    fireEvent.pointerDown(document.body);
+    fireEvent.contextMenu(screen.getByRole('button', { name: '起草评审纪要' }), { clientX: 60, clientY: 240 });
     expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['重命名']);
   });
 
-  it('while a row is renamed it has no 更多', () => {
-    render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} onRename={vi.fn()} />);
+  it('更多 only where the open row has a menu: none without actions; none while the row is renamed', () => {
+    const props = { sessions: seed.sessions, activeId: SEED_IDS.chat2, onOpen: vi.fn(), onNewChat: vi.fn(), onSettings: vi.fn(), settingsOpen: false };
+    const { rerender } = render(<Sidebar {...props} />);
+    expect(screen.queryAllByRole('button', { name: '更多' })).toHaveLength(0);
+    expect(screen.getByRole('button', { name: '整理本周来信' }).closest('.tree-row')!.querySelector('.status-slot')).toBeTruthy();
+    rerender(<Sidebar {...props} onRename={vi.fn()} />);
     const row = screen.getByRole('button', { name: '整理本周来信' }).closest('.tree-row') as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: '更多' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }));
     expect(within(row).queryByRole('button', { name: '更多' })).toBeNull();
     expect(within(row).getByRole('textbox', { name: '名称' })).toBeTruthy();
+    // Another view (settings, the inbox) is open: no row is the open one, so no 更多.
+    rerender(<Sidebar {...props} onRename={vi.fn()} settingsOpen />);
+    expect(screen.queryAllByRole('button', { name: '更多' })).toHaveLength(0);
   });
 
   it('collapsing a project shows one mark for what goes on below, no words or numbers; the counts on hover', () => {
@@ -262,9 +286,9 @@ describe('Sidebar', () => {
     for (const row of document.querySelectorAll('.tree-row')) {
       expect(row.querySelectorAll('.status-slot')).toHaveLength(1);
       expect(row.querySelector('.new-dot')).toBeNull();
-      // The last thing on every row is 更多 or the space kept for it; the status place is right before it.
-      expect(row.lastElementChild?.className).toMatch(/^tree-more(-space)?$/);
-      expect(row.lastElementChild?.previousElementSibling?.className).toMatch(/^status-slot/);
+      // No row is open here: the status place is the last thing on every row.
+      expect(row.lastElementChild?.className).toMatch(/^status-slot/);
+      expect(row.querySelector('.tree-more')).toBeNull();
     }
     const slotOf = (title: string) => screen.getByTitle(title).closest('.tree-row')!.querySelector('.status-slot') as HTMLElement;
     // Running and with a report: the ring, not the dot.
