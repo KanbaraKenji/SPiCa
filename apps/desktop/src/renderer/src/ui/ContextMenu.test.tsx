@@ -48,6 +48,22 @@ describe('ContextMenu under a button', () => {
     fireEvent.pointerDown(document.body);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('side above: 4px over the button whatever the menu holds; under it only when there is no room above', () => {
+    for (const height of [108, 144, 172]) {
+      menuSize(height);
+      const anchor = button({ left: 300, top: 700, bottom: 728 });
+      render(<ContextMenu x={0} y={0} items={items} anchor={anchor} side="above" onClose={() => {}} />);
+      expect(screen.getByRole('menu').style.top).toBe(`${700 - 4 - height}px`);
+      expect(screen.getByRole('menu').style.left).toBe('300px');
+      cleanup();
+      vi.restoreAllMocks();
+    }
+    menuSize(144);
+    const anchor = button({ left: 300, top: 60, bottom: 88 });
+    render(<ContextMenu x={0} y={0} items={items} anchor={anchor} side="above" onClose={() => {}} />);
+    expect(screen.getByRole('menu').style.top).toBe('92px');
+  });
 });
 
 describe('one item lit at a time', () => {

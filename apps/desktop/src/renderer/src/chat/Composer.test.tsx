@@ -93,6 +93,24 @@ describe('Composer controls', () => {
     expect(onApproval).toHaveBeenCalledWith('auto');
   });
 
+  it('the menus under the box sit 4px over their button, by the size they are drawn at; the same button again closes', () => {
+    const options = ['a', 'b', 'c', 'd'].map((label, i) => ({ label, group: i < 2 ? '甲' : '乙', current: i === 0, onPick: vi.fn() }));
+    render(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="place" tools={{ approval: { mode: 'manual', onChange: vi.fn() }, model: { label: 'a', options } }} />);
+    const rect = (top: number, height: number) => ({ left: 500, top, right: 700, bottom: top + height, width: 200, height, x: 500, y: top, toJSON: () => ({}) }) as DOMRect;
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('context-menu') ? rect(0, 172) : this.classList.contains('composer-chip') ? rect(700, 28) : rect(0, 0);
+    });
+    const model = screen.getByRole('button', { name: /^a/ });
+    fireEvent.click(model);
+    expect(screen.getByRole('menu').style.top).toBe(`${700 - 4 - 172}px`);
+    expect(screen.getByRole('menu').style.left).toBe('500px');
+    fireEvent.click(model);
+    expect(screen.queryByRole('menu')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
+    expect(screen.getByRole('menu').style.top).toBe(`${700 - 4 - 172}px`);
+    spy.mockRestore();
+  });
+
   it('a single model is plain text; no ring without a context window; no folder once a conversation exists', () => {
     render(
       <Composer

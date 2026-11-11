@@ -25,8 +25,10 @@ export interface MenuItem {
 /**
  * `anchor`: the button that opened the menu. The menu sits under it (above it when there is no
  * room below), and pressing that button again is left to the button, so a second click closes.
+ * `side: 'above'`: over the button first (the row under the message box), under it only when
+ * there is no room above. Either way 4px from the button, measured from the menu as drawn.
  */
-export function ContextMenu({ x, y, items, onClose, anchor }: { x: number; y: number; items: MenuItem[]; onClose(): void; anchor?: HTMLElement | null }) {
+export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { x: number; y: number; items: MenuItem[]; onClose(): void; anchor?: HTMLElement | null; side?: 'above' | 'below' }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
 
@@ -41,11 +43,15 @@ export function ContextMenu({ x, y, items, onClose, anchor }: { x: number; y: nu
     if (anchor) {
       const a = anchor.getBoundingClientRect();
       left = a.left;
-      top = a.bottom + 4 + r.height <= window.innerHeight - 4 ? a.bottom + 4 : a.top - 4 - r.height;
+      const below = a.bottom + 4;
+      const above = a.top - 4 - r.height;
+      const fitsBelow = below + r.height <= window.innerHeight - 4;
+      const fitsAbove = above >= 4;
+      top = side === 'above' ? (fitsAbove || !fitsBelow ? above : below) : fitsBelow ? below : above;
     }
     setPos({ left: Math.max(4, Math.min(left, window.innerWidth - r.width - 4)), top: Math.max(4, Math.min(top, window.innerHeight - r.height - 4)) });
     el.querySelector<HTMLButtonElement>('button:not([aria-disabled="true"])')?.focus();
-  }, [x, y, anchor]);
+  }, [x, y, anchor, side]);
 
   useEffect(() => {
     const close = () => onClose();

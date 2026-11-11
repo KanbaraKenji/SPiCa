@@ -208,7 +208,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
   const [text, setText] = useState(() => drafts.get(sessionKey) ?? '');
   const [files, setFiles] = useState<string[]>(() => attached.get(sessionKey) ?? []);
   const [prevKey, setPrevKey] = useState(sessionKey);
-  const [menu, setMenu] = useState<{ items: MenuItem[]; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ items: MenuItem[]; anchor: HTMLElement } | null>(null);
   const [viewing, setViewing] = useState<{ url: string; name: string } | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   const modelBtn = useRef<HTMLButtonElement>(null);
@@ -305,12 +305,8 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
     send();
   };
 
-  const openMenu = (el: HTMLElement, items: MenuItem[]) => {
-    const r = el.getBoundingClientRect();
-    const groups = new Set(items.map((i) => i.group).filter(Boolean)).size;
-    const details = items.filter((i) => i.detail).length;
-    setMenu({ items, x: r.left, y: r.top - 8 - items.length * 34 - groups * 24 - details * 18 });
-  };
+  // Over the button that opens it, placed by the menu from its own size; the same button again closes it.
+  const openMenu = (el: HTMLElement, items: MenuItem[]) => setMenu((now) => (now?.anchor === el ? null : { items, anchor: el }));
 
   const canSend = (text.trim().length > 0 || files.length > 0) && !blocked;
   const left: ReactNode[] = [];
@@ -458,7 +454,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
         </div>
       ) : null}
       </div>
-      {menu ? <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} /> : null}
+      {menu ? <ContextMenu x={0} y={0} items={menu.items} anchor={menu.anchor} side="above" onClose={() => setMenu(null)} /> : null}
       {viewing ? <ImageViewer url={viewing.url} name={viewing.name} onClose={() => setViewing(null)} /> : null}
     </div>
   );
