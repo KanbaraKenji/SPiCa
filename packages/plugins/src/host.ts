@@ -19,6 +19,8 @@ export interface McpLaunch {
   maxCallMs?: number;
   /** At most this many tool calls in the server at once; the rest wait their turn. */
   concurrency?: number;
+  /** Stopping the server also ends the processes it started (Windows). */
+  endTree?: boolean;
   /** Server stderr, for the plugin log  */
   stderrLog?: (chunk: string) => void;
   /** The process ended; `expected` is true after disconnect(). */

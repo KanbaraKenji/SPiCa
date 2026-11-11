@@ -19,7 +19,7 @@ describe('plugin tools on the MCP service', () => {
   it('J6 through the tools: install, tools appear, disable, tools gone; state comes back after restart', async () => {
     const rt = makeRuntime();
     const root = await mkdtemp(join(tmpdir(), 'spica-backend-'));
-    const ext = await attachBackend(rt, { root });
+    const ext = await attachBackend(rt, { root, endTree: false });
     cleanup = async () => {
       await ext.close();
       await rm(root, { recursive: true, force: true });
@@ -42,7 +42,7 @@ describe('plugin tools on the MCP service', () => {
     await tool('spica_plugin_enable').run({ name: 'notes' });
     await ext.close();
     const rt2 = makeRuntime();
-    const ext2 = await attachBackend(rt2, { root, mock: true });
+    const ext2 = await attachBackend(rt2, { root, mock: true, endTree: false });
     cleanup = async () => {
       await ext2.close();
       await rm(root, { recursive: true, force: true });
@@ -56,7 +56,7 @@ describe('plugin tools on the MCP service', () => {
   it('page methods for the shell: list pages, resolve files, call tools through the real runtime', async () => {
     const rt = makeRuntime();
     const root = await mkdtemp(join(tmpdir(), 'spica-backend-'));
-    const ext = await attachBackend(rt, { root });
+    const ext = await attachBackend(rt, { root, endTree: false });
     cleanup = async () => {
       await ext.close();
       await rm(root, { recursive: true, force: true });

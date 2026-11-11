@@ -69,6 +69,7 @@
 - `expose_tools`：`mcp/` 默认 true，`services/` 默认 false。
 - `timeout_seconds`：多久没有结果、也没有进度就算这次调用失败（缺省 60）。`max_call_seconds`：一直在报进度也最多等多久（缺省 3600，必须大于 0）。内核调工具时带 progressToken，收到这次调用的进度就重新计时；超时或用户停止时给 server 发 `notifications/cancelled`。插件页面直接调工具（`callPluginTool`）也一样，没有另外写死的时限；后台方法 `pluginViewCall` 可以带外壳自己定的 `callId`，页面关掉或重新加载时外壳调 `pluginViewCancel({ callId })` 停掉它，server 会收到取消。写法见作者指南 2c 节。
 - `concurrency`：这个 server 同时最多处理几个工具调用（1 或更大的整数，缺省不限），多出来的按先后排队；对话和插件页面走同一个队列；排队的时间不算进 `timeout_seconds` 和 `max_call_seconds`；排着时被停止或对话被删就离开队列，server 停用或崩溃时排着的都报错。界面上还看不出「在等」（内核有 `McpStdioClient.waiting`，要给界面得加 protocol 的事件）。跨应用的独占由插件自己用系统的锁（作者指南 2e 节）。
+- 停 server（停用、重装、升级、改网络设置重启、应用退出）：插件的 server 起的时候带 `endTree`，停的时候内核先记下它名下的全部后代进程，关 stdin，server 宽限 3 秒，server 没了以后记下的进程再给 1 秒，还活着的逐个结束，留下的进程不再占着安装文件夹。替用户打开的程序必须经一个马上退出的中间进程启动（父进程链断开，不在名单里），见作者指南 2d 节。只在 Windows 上做。应用的后端（`attachBackend`）缺省打开；直接建 `PluginManager` 时（测试、脚本）缺省关着，要用就传 `endTree: true`：每次停都要查一次全机进程，起停 server 很多的测试在忙的机器上会被拖慢到超时，只有专门测这件事的测试打开。
 
 ### 钩子模块 `hooks/*.js`
 

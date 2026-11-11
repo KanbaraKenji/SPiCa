@@ -3,6 +3,8 @@
 // process's working folder and the files it has open cannot be deleted, so
 // the plugin must be stopped, and its processes gone, before its folder is
 // replaced.
+import { useProcessLister } from '../../core/src/mcp/process-tree.ts';
+import { registryLister } from '../../core/src/testing/process-list.ts';
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -28,7 +30,7 @@ afterEach(async () => {
 
 /** The helper a server starts: holds the plugin folder as its working folder; `lingerMs` after its stdin closes it exits (never, when -1). */
 const HELPER = `const linger = Number(process.argv[2]);
-require('node:fs').writeFileSync(require('node:path').join(process.env.SPICA_PLUGIN_DATA, 'helper-' + process.pid + '.pid'), '');
+require('node:fs').writeFileSync(require('node:path').join(process.env.SPICA_PLUGIN_DATA, 'helper-' + process.pid + '-' + process.ppid + '.pid'), '');
 setInterval(() => {}, 1000);
 process.stdin.on('end', () => { if (linger >= 0) setTimeout(() => process.exit(0), linger); });
 process.stdin.resume();
@@ -37,11 +39,19 @@ process.stdin.resume();
 /**
  * An MCP server with one tool, ping; with `helper` it first starts helper.cjs
  * detached, so it outlives the server (on Windows a non-detached child of a Node
- * server is ended with it; a detached one, or one a bundled .exe starts, is not).
+ * server is ended with it; a detached one is not, but stopping a plugin ends it
+ * at the end of the grace time). With `outside`, the helper is started through
+ * a launcher that exits at once: outside the server's tree, nothing ends it.
  */
-const server = (helper: number | null) => `import { spawn } from 'node:child_process';
+const server = (helper: number | null, outside = false) => `import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-${helper === null ? '' : `spawn(process.execPath, ['helper.cjs', '${helper}'], { stdio: ['pipe', 'ignore', 'ignore'], detached: true, windowsHide: true });`}
+${
+  helper === null
+    ? ''
+    : outside
+      ? `spawn(process.execPath, ['-e', "require('node:child_process').spawn(process.execPath, ['helper.cjs', '${helper}'], { stdio: ['pipe', 'ignore', 'ignore'], detached: true, windowsHide: true }).unref()"], { stdio: 'ignore', windowsHide: true });`
+      : `spawn(process.execPath, ['helper.cjs', '${helper}'], { stdio: ['pipe', 'ignore', 'ignore'], detached: true, windowsHide: true });`
+}
 const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\\n');
 createInterface({ input: process.stdin }).on('line', (l) => {
   const m = JSON.parse(l);
@@ -51,11 +61,11 @@ createInterface({ input: process.stdin }).on('line', (l) => {
 });
 `;
 
-async function plugin(name: string, helper: number | null): Promise<string> {
+async function plugin(name: string, helper: number | null, outside = false): Promise<string> {
   const dir = await writePlugin({
     'manifest.json': manifest(name),
     'mcp/srv.json': { runtime: 'node', entry: 'srv.js' },
-    'srv.js': server(helper),
+    'srv.js': server(helper, outside),
     'package.json': { type: 'module' },
     'helper.cjs': HELPER,
   });
@@ -88,7 +98,7 @@ describe('reinstalling the running version', () => {
 /** Stop helpers left running on purpose (they never exit by themselves). */
 async function killHelpers(dataDir: string): Promise<void> {
   for (const f of await readdir(dataDir).catch(() => [] as string[])) {
-    const m = /^helper-(\d+)\.pid$/.exec(f);
+    const m = /^helper-(\d+)-\d+\.pid$/.exec(f);
     if (!m) continue;
     try {
       process.kill(Number(m[1]));
@@ -99,9 +109,30 @@ async function killHelpers(dataDir: string): Promise<void> {
 }
 
 describe("when the plugin's processes do not let go", () => {
-  it('a helper that never exits: the reinstall is refused plainly and the plugin keeps working; once it is gone, the reinstall works', async () => {
+  it.runIf(process.platform === 'win32')('a detached helper that never exits is ended with the plugin, so the reinstall works', async () => {
+    r = await rig(undefined, { endTree: true });
+    const src = await plugin('reinst-detached', -1);
+    await r.pm.install(src);
+    await r.pm.enable('reinst-detached');
+    const data = r.pm.dataDir('reinst-detached');
+    // the helper as registered, listed at once (no waiting for the machine's process list)
+    const quick = registryLister(() => [data]);
+    let lists = 0;
+    useProcessLister((ms) => (lists++, quick(ms)));
+    try {
+      await new Promise((done) => setTimeout(done, 500)); // the helper is running
+      const d = await r.pm.install(src);
+      expect(d).toMatchObject({ enabled: true, servers: [{ status: 'running' }] });
+      expect(lists).toBeGreaterThan(0); // the stop used it
+    } finally {
+      useProcessLister();
+      await killHelpers(data);
+    }
+  });
+
+  it("a helper outside the plugin's process tree that never exits: the reinstall is refused plainly and the plugin keeps working; once it is gone, the reinstall works", async () => {
     r = await rig();
-    const src = await plugin('reinst-stuck', -1);
+    const src = await plugin('reinst-stuck', -1, true);
     await r.pm.install(src);
     await r.pm.enable('reinst-stuck');
     const data = r.pm.dataDir('reinst-stuck');
@@ -121,9 +152,9 @@ describe("when the plugin's processes do not let go", () => {
     expect(d).toMatchObject({ enabled: true, servers: [{ status: 'running' }] });
   });
 
-  it('a helper that never exits: uninstall is refused, the plugin keeps working with all its files; once it is gone, uninstall works', async () => {
+  it("a helper outside the plugin's process tree that never exits: uninstall is refused, the plugin keeps working with all its files; once it is gone, uninstall works", async () => {
     r = await rig();
-    await r.pm.install(await plugin('uninst-stuck', -1));
+    await r.pm.install(await plugin('uninst-stuck', -1, true));
     await r.pm.enable('uninst-stuck');
     const data = r.pm.dataDir('uninst-stuck');
     try {

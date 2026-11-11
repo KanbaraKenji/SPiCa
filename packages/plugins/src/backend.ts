@@ -22,6 +22,8 @@ export interface PluginBackendOptions {
   mock?: boolean;
   nodePath?: string;
   inheritEnv?: string[];
+  /** Stopping a server also ends what it started (default true here; see PluginManagerOptions.endTree). */
+  endTree?: boolean;
   /** App name in user-facing messages (a branded build passes its own). Default 'Spica'. */
   appName?: string;
 }
@@ -192,6 +194,7 @@ export async function attachBackend(
     ...(options.appName ? { appName: options.appName } : {}),
     ...(options.nodePath ? { nodePath: options.nodePath } : {}),
     ...(options.inheritEnv ? { inheritEnv: options.inheritEnv } : {}),
+    endTree: options.endTree ?? true,
   });
   const loaded = await pm.load();
   if (options.mock !== undefined) await pm.setMock(options.mock);

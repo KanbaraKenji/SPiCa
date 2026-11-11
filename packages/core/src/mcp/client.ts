@@ -15,6 +15,7 @@ import { producedFileCard } from '../tools/file-card.ts';
 import type { ImageBlock } from '../types.ts';
 import { keepMedia, type KeptMedia } from './media.ts';
 import { childEnv } from '../util.ts';
+import { descendants, endTree, listProcesses } from './process-tree.ts';
 
 export interface McpServerConfig {
   /** Short name; tools appear as `<name>__<tool>`. */
@@ -52,6 +53,15 @@ export interface McpServerConfig {
    * maxCallMs: both start when the call is sent. Default: no limit.
    */
   concurrency?: number;
+  /**
+   * Stopping the server also ends the processes it started and theirs
+   * (Windows; see process-tree.ts): what is still running when the grace time
+   * is over is ended. A program started through a launcher that has exited is
+   * not in the tree. Set for plugin servers. Default false.
+   */
+  endTree?: boolean;
+  /** How long close() waits for the process list before stopping the server anyway. Default 3 s. */
+  endTreeWaitMs?: number;
   /**
    * Called once when the server process ends. `expected` is true when it was
    * stopped by disconnect()/close(); otherwise it crashed or quit by itself.
@@ -117,6 +127,9 @@ export class McpStdioClient {
   #closed = false;
   #closing = false;
   #exited: Promise<void> = Promise.resolve();
+  /** Set by the first close(): resolves when the server and, with endTree, its tree are gone. */
+  #stopped: Promise<void> | undefined;
+  #startedAt = 0;
   /** Requests the server sent us that are still running (for notifications/cancelled). */
   readonly #serving = new Map<number | string, AbortController>();
   /** Tool calls waiting for their turn (config.concurrency), oldest first. */
@@ -137,6 +150,11 @@ export class McpStdioClient {
     return !!this.#child && !this.#closed;
   }
 
+  /** The server's process id, once started. */
+  get pid(): number | undefined {
+    return this.#child?.pid;
+  }
+
   async connect(): Promise<void> {
     const c = this.config;
     const child = spawn(c.command, c.args ?? [], {
@@ -147,6 +165,7 @@ export class McpStdioClient {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.#child = child;
+    this.#startedAt = Date.now();
     this.#exited = new Promise((r) => child.once('close', () => r()));
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (d: string) => this.#onData(d));
@@ -366,26 +385,77 @@ export class McpStdioClient {
    * Stop the server the way the MCP stdio transport describes: close its
    * stdin, give it `graceMs` to exit on its own (so it can clean up), then
    * kill it. Resolves when the process has exited (so its files can be
-   * deleted right after, which matters on Windows).
+   * deleted right after, which matters on Windows). With endTree, also when
+   * the processes it started are gone: what is still running at the end of
+   * the grace time is ended.
    */
   close(graceMs = 3000): Promise<void> {
     this.#closing = true;
     const child = this.#child;
     if (!this.#closed) this.#fail(new Error(`MCP server "${this.config.name}" was disconnected`));
-    if (!child || child.exitCode !== null || child.signalCode !== null) return this.#exited;
-    try {
-      child.stdin.end();
-    } catch {
-      // already gone
-    }
-    const timer = setTimeout(() => {
+    // a server that has already ended (crashed) is not looked into: its restart must not wait
+    if (!child || child.exitCode !== null || child.signalCode !== null) return this.#stopped ?? this.#exited;
+    if (this.#stopped) return this.#stopped;
+    // With endTree, list what the server started before telling it to stop:
+    // once it exits, the children Node tied to it end too, and their own
+    // children would no longer be traceable to it. The grace time starts after.
+    // A list taken for another server a moment ago serves (stops in a row).
+    const listMs = Math.max(10_000, this.config.endTreeWaitMs ?? 0);
+    const tree =
+      this.config.endTree && child.pid !== undefined
+        ? listProcesses({ notBefore: this.#startedAt, timeoutMs: listMs }).then(({ procs, error }) => {
+            if (error) this.#log(`[spica] could not list the processes this server started (${error}); only the server is stopped`);
+            return descendants(procs, child.pid!, this.#startedAt);
+          })
+        : Promise.resolve([]);
+    let deadline = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = (): void => {
+      deadline = Date.now() + graceMs;
+      if (child.exitCode !== null || child.signalCode !== null) return;
       try {
-        child.kill();
+        child.stdin.end();
       } catch {
         // already gone
       }
-    }, graceMs);
-    return this.#exited.finally(() => clearTimeout(timer));
+      timer = setTimeout(() => {
+        try {
+          child.kill();
+        } catch {
+          // already gone
+        }
+      }, graceMs);
+    };
+    // Wait for the list at most endTreeWaitMs before stopping the server (the app gives the core only a few
+    // seconds to close). A list that comes later still finds what the server started directly, though not
+    // what those started.
+    const waitForList = new Promise<void>((r) => setTimeout(r, this.config.endTreeWaitMs ?? 3_000));
+    this.#stopped = Promise.race([tree, waitForList])
+      .then(() => {
+        stop();
+        // once the server is gone, what it started gets 1 s more to wind up (not the whole grace)
+        return this.#exited
+          .finally(() => clearTimeout(timer))
+          .then(() => {
+            const windUp = Date.now() + 1_000;
+            const log = (line: string): void => this.#log(line);
+            return tree.then((t) => endTree(t, Math.min(deadline, windUp), { timeoutMs: listMs, log }));
+          });
+      })
+      .then(
+        () => undefined,
+        () => undefined,
+      );
+    return this.#stopped;
+  }
+
+  /** A line of our own in the server's log (the plugin log). */
+  #log(line: string): void {
+    try {
+      this.config.stderrLog?.(`${line}\n`);
+    } catch {
+      // a broken log sink must not break the client
+    }
   }
 
   #onData(chunk: string): void {

@@ -157,6 +157,13 @@ export interface PluginManagerOptions {
   spicaVersion?: string;
   /** Node executable for Node-type servers. Default: process.execPath (Electron runs it as Node). */
   nodePath?: string;
+  /**
+   * Stopping a server also ends the processes it started (Windows; each stop
+   * then lists the machine's processes once). Default false here; the app's
+   * backend (attachBackend) turns it on. Tests that start and stop many
+   * servers leave it off.
+   */
+  endTree?: boolean;
   /** Extra environment for every server (e.g. proxy settings). SPICA_* keys are set by the manager. */
   baseEnv?: Record<string, string>;
   /** Host variables servers inherit. Default PLUGIN_INHERIT_ENV. */
@@ -244,6 +251,7 @@ export class PluginManager {
   readonly #node: string;
   readonly #baseEnv: Record<string, string>;
   readonly #inheritEnv: string[];
+  readonly #endTree: boolean;
   #state: StateFile = { version: 1, mock: false, plugins: {} };
   readonly #folders = new Map<string, PluginFolder>();
   readonly #active = new Map<string, Active>();
@@ -259,6 +267,7 @@ export class PluginManager {
     this.#node = opts.nodePath ?? process.execPath;
     this.#baseEnv = opts.baseEnv ?? {};
     this.#inheritEnv = [...(opts.inheritEnv ?? PLUGIN_INHERIT_ENV)];
+    this.#endTree = opts.endTree ?? false;
   }
 
   get root(): string {
@@ -944,6 +953,8 @@ export class PluginManager {
       ...(def.timeoutMs ? { timeoutMs: def.timeoutMs } : {}),
       ...(def.maxCallMs ? { maxCallMs: def.maxCallMs } : {}),
       ...(def.concurrency ? { concurrency: def.concurrency } : {}),
+      // stopping the plugin also ends what its server started (programs for the user start outside the tree, see the guide)
+      endTree: this.#endTree,
       // A limit of 0 (the user turned it off) means no model at all: the server is not offered sampling.
       ...(a.manifest.permissions.model && this.#modelLimit(name, a.manifest) > 0
         ? { sampling: { pluginId: name, maxUsdPerDay: this.#modelLimit(name, a.manifest) } }
