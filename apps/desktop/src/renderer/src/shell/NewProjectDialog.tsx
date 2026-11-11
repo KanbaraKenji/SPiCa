@@ -3,6 +3,7 @@
 import { useId, useRef, useState } from "react";
 import { useModal } from "../ui/useModal";
 import { useGuard } from "../ui/guard";
+import { Icon } from "../ui/Icon";
 import { APP_NAME } from "../../../shared/app-identity";
 
 export interface NewProjectInput {
@@ -104,8 +105,14 @@ export function NewProjectDialog({
               onChange={(e) => setFolder(e.target.value)}
               placeholder={`默认：文档\\${APP_NAME}`}
             />
-            <button type="button" className="btn" onClick={() => void pick()}>
-              选择…
+            <button
+              type="button"
+              className="btn btn-square"
+              onClick={() => void pick()}
+              aria-label="选择文件夹"
+              title="选择文件夹"
+            >
+              <Icon name="folder" size={16} />
             </button>
           </span>
         </label>

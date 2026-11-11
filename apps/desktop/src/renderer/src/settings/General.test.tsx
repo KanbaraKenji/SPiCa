@@ -85,3 +85,17 @@ describe('填一半离开', () => {
     expect((screen.getByLabelText(/^代理地址/) as HTMLInputElement).value).toBe('');
   });
 });
+
+describe('信任的证书文件', () => {
+  it('the picker is an icon button named 选择文件; the file it returns is saved', async () => {
+    const pickFiles = vi.fn(async () => ['D:\\工作\\certs\\corp-root.pem']);
+    const p = setup({ pickFiles });
+    const pick = screen.getByRole('button', { name: '选择文件' });
+    expect(pick.className).toBe('btn btn-square');
+    expect(pick.getAttribute('title')).toBe('选择文件');
+    expect(pick.textContent).toBe('');
+    fireEvent.click(pick);
+    await vi.waitFor(() => expect(p.onChange).toHaveBeenCalled());
+    expect(JSON.stringify(vi.mocked(p.onChange).mock.calls[0])).toContain('corp-root.pem');
+  });
+});

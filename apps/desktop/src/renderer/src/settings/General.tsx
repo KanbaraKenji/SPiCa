@@ -164,14 +164,16 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
           {pickFiles ? (
             <button
               type="button"
-              className="btn"
+              className="btn btn-square"
               onClick={() =>
                 void pickFiles('选择证书文件（.pem / .crt）').then((files) => {
                   if (files[0]) save({ caFile: files[0] });
                 })
               }
+              aria-label="选择文件"
+              title="选择文件"
             >
-              选择文件
+              <Icon name="folder" size={16} />
             </button>
           ) : null}
           {saved.caFile ? (

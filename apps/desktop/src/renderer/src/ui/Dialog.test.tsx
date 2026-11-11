@@ -95,3 +95,21 @@ describe('dialogs keep the keyboard', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '取消' }));
   });
 });
+
+describe('新项目: picking the folder', () => {
+  it('the picker is an icon button named 选择文件夹; what it returns fills the folder and, when empty, the name', async () => {
+    const onPickFolder = vi.fn(async () => 'D:\\工作\\样机评审');
+    render(<NewProjectDialog onPickFolder={onPickFolder} onCreate={async () => null} onClose={vi.fn()} />);
+    const pick = screen.getByRole('button', { name: '选择文件夹' });
+    expect(pick.className).toBe('btn btn-square');
+    expect(pick.getAttribute('title')).toBe('选择文件夹');
+    expect(pick.textContent).toBe('');
+    expect(pick.getAttribute('type')).toBe('button');
+    await act(async () => {
+      fireEvent.click(pick);
+    });
+    expect(onPickFolder).toHaveBeenCalledTimes(1);
+    expect((screen.getByPlaceholderText(/^默认：/) as HTMLInputElement).value).toBe('D:\\工作\\样机评审');
+    expect((screen.getByPlaceholderText('样机评审') as HTMLInputElement).value).toBe('样机评审');
+  });
+});
