@@ -191,9 +191,21 @@ function isUrl(v: string): boolean {
  * Field problems in plain words; empty object = ready to save. `forTest`: only what
  * 测试连接 needs (上下文上限 can be filled in after the connection works).
  */
-export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: { forTest?: boolean; needsKey?: boolean } = {}): FieldErrors {
+/** Whether `name` is one of `others`, leaving out spaces at the ends and the case of letters. */
+export function sameNameAs(name: string, others: readonly string[]): boolean {
+  const key = (x: string) => x.trim().toLowerCase();
+  return others.some((o) => key(o) === key(name));
+}
+
+/** Every name a connection from .env.local can carry: taken, so a saved connection can never read the same. */
+export const DEV_CONNECTION_NAMES: readonly string[] = [devConnectionName('openai', false), devConnectionName('openai', true), devConnectionName('anthropic', true)];
+
+export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: { forTest?: boolean; needsKey?: boolean; otherNames?: readonly string[] } = {}): FieldErrors {
   const e: FieldErrors = {};
   if (!d.name.trim()) e.name = '请填写名称';
+  // No two connections with one name (`otherNames`: every other connection's, the ones from .env.local too).
+  // Only when saving: a name does not matter for testing the connection.
+  else if (!opts.forTest && sameNameAs(d.name, opts.otherNames ?? [])) e.name = '名称已存在';
   // A whole ticked list (a connection with several models), or the one-model form.
   const list = d.models?.filter((m) => m.id.trim() && isEnabled(m));
   if (list ? list.length === 0 : !d.model.trim()) e.model = list ? '请至少选择一个模型' : '请填写模型';

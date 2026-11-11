@@ -207,3 +207,40 @@ describe('local providers', () => {
     expect(keyMaskText(keyMaskParts('short-key'))).toBe('****');
   });
 });
+
+describe('no two connections with one name', () => {
+  const dir = () => mkdtempSync(join(tmpdir(), 'spica-prov-'));
+
+  it('a new connection, or a rename, cannot take another connection’s name (spaces and letter case aside); its own name it keeps', () => {
+    const store = new ProviderStore(dir(), box);
+    const first = store.save(draft);
+    expect(() => store.save({ ...draft, name: '测试网关' })).toThrow('名称已存在');
+    expect(() => store.save({ ...draft, name: ' 测试网关 ' })).toThrow('名称已存在');
+    const second = store.save({ ...draft, name: 'Relay' });
+    expect(() => store.save({ ...draft, id: second.id, name: 'relay ' })).not.toThrow();
+    expect(() => store.save({ ...draft, id: second.id, name: '测试网关' })).toThrow('名称已存在');
+    // Saving a connection again under its own name is not a clash.
+    expect(store.save({ ...draft, id: first.id }).name).toBe('测试网关');
+    expect(store.list().map((p) => p.name)).toEqual(['测试网关', 'relay']);
+  });
+
+  it('the names connections from .env.local carry are taken too', () => {
+    const store = new ProviderStore(dir(), box);
+    for (const name of ['开发用模型（.env.local）', '开发用模型（OpenAI 兼容）', '开发用模型（Anthropic）']) expect(() => store.save({ ...draft, name })).toThrow('名称已存在');
+  });
+
+  it('two saved under one name before this rule are both still listed and used; each must be renamed only when it is next saved', () => {
+    const d = dir();
+    const store = new ProviderStore(d, box);
+    const a = store.save(draft);
+    const b = store.save({ ...draft, name: '另一个' });
+    // As an older version could leave it: the same name twice.
+    const file = join(d, 'providers.json');
+    writeFileSync(file, readFileSync(file, 'utf8').replace('"另一个"', '"测试网关"'));
+    const later = new ProviderStore(d, box);
+    expect(later.list().map((p) => p.name)).toEqual(['测试网关', '测试网关']);
+    expect(later.resolved().map((p) => p.id)).toEqual([a.id, b.id]);
+    expect(() => later.save({ ...draft, id: b.id, name: '测试网关', model: 'model-b' })).toThrow('名称已存在');
+    expect(later.save({ ...draft, id: b.id, name: '测试网关 2', model: 'model-b' }).name).toBe('测试网关 2');
+  });
+});

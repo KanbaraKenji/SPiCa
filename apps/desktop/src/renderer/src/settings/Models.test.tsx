@@ -423,3 +423,19 @@ describe('two connections with one name', () => {
     errors.mockRestore();
   });
 });
+
+describe('a name already in use', () => {
+  it('is refused on saving, under the 名称 field, in the page’s own error style; another name saves', async () => {
+    const api = await openNew(fakeApi([saved({ name: '旧网关' })]));
+    choose('#relay');
+    type('名称', '旧网关');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    const error = await screen.findByText('名称已存在');
+    expect(error.className).toContain('field-error');
+    expect(byLabel('名称').getAttribute('aria-invalid')).toBe('true');
+    expect(api.save).not.toHaveBeenCalled();
+    type('名称', '新网关');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(screen.queryByText('名称已存在')).toBeNull());
+  });
+});

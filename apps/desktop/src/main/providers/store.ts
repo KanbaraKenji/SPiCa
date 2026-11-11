@@ -15,6 +15,7 @@ import {
   legacyModelFields,
   modelsOfDraft,
   validateDraft,
+  DEV_CONNECTION_NAMES,
   type ConnectionModel,
   type ContextFrom,
   type ModelRef,
@@ -243,7 +244,9 @@ export class ProviderStore {
    */
   save(draft: ProviderDraft, opts: { needsKey?: boolean } = {}): ProviderView {
     const existing = draft.id ? this.#data.items.find((p) => p.id === draft.id) : undefined;
-    const errors = validateDraft(draft, existing ? existing.keys.length > 0 : false, opts);
+    // The name must not be another connection's (saved here, or one of those read from .env.local).
+    const otherNames = [...this.#data.items.filter((p) => p.id !== draft.id).map((p) => p.name), ...DEV_CONNECTION_NAMES];
+    const errors = validateDraft(draft, existing ? existing.keys.length > 0 : false, { ...opts, otherNames });
     const first = Object.values(errors)[0];
     if (first) throw new Error(first);
     let keys = existing?.keys ?? [];

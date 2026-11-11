@@ -13,6 +13,7 @@ import {
   PROVIDER_KINDS,
   secretLabel,
   validateDraft,
+  DEV_CONNECTION_NAMES,
   WSO2_KEY_LABEL,
   type ConnectionModel,
   type FieldErrors,
@@ -259,7 +260,7 @@ export function Models({ api }: { api: ProvidersApi }) {
 
   /** A name not used by another connection: 「DeepSeek」, then 「DeepSeek 2」… */
   const freeName = (base: string) => {
-    const taken = new Set(items.filter((p) => p.id !== draft.id).map((p) => p.name));
+    const taken = new Set([...items.filter((p) => p.id !== draft.id).map((p) => p.name), ...DEV_CONNECTION_NAMES]);
     if (!taken.has(base)) return base;
     let n = 2;
     while (taken.has(`${base} ${n}`)) n++;
@@ -396,7 +397,9 @@ export function Models({ api }: { api: ProvidersApi }) {
   };
 
   const check = (forTest = false): boolean => {
-    const e = validateDraft({ ...draft, models: draft.models ?? [] }, hasSecret, { forTest, needsKey });
+    // Names of the other connections (the read-only ones from .env.local too): a name cannot be used twice.
+    const otherNames = [...items.filter((p) => p.id !== draft.id).map((p) => p.name), ...DEV_CONNECTION_NAMES];
+    const e = validateDraft({ ...draft, models: draft.models ?? [] }, hasSecret, { forTest, needsKey, otherNames });
     setErrors(e);
     if ((e.maxConcurrent || e.requestsPerMinute || (e.baseUrl && provider)) && !advanced) setAdvanced(true);
     return Object.keys(e).length === 0;
