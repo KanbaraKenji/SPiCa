@@ -1098,7 +1098,7 @@ export class Session {
       services: this.#rt.services(this),
       callId: draft.callId,
       emit: (body) => {
-        if (body.type === 'file.card') cards = { ...cards, fileCard: body.file };
+        if (body.type === 'file.card') cards = { ...cards, fileCard: body.file, ...(body.files ? { fileCards: body.files } : {}) };
         if (body.type === 'suggest.actions') cards = { ...cards, suggestion: { title: body.title, actions: body.actions } };
         if (body.type === 'history.card') cards = { ...cards, history: body.card };
         this.#emit(body);
@@ -1141,6 +1141,7 @@ export class Session {
     const records = new Map(this.#rt.store.listToolCalls(this.id, assistant.id).map((r) => [r.id, r]));
     const content: ContentBlock[] = [];
     const fileCards: NonNullable<MessageMeta['fileCards']> = {};
+    const fileCardLists: NonNullable<MessageMeta['fileCardLists']> = {};
     const suggestedActions: NonNullable<MessageMeta['suggestedActions']> = {};
     const historyCards: NonNullable<MessageMeta['historyCards']> = {};
     const guard: Record<string, GuardNote> = {};
@@ -1151,6 +1152,7 @@ export class Session {
       if (r?.cards?.autoApproved) autoApproved.push(b.id);
       if (r?.cards?.guard) guard[b.id] = r.cards.guard;
       if (r?.cards?.fileCard) fileCards[b.id] = r.cards.fileCard;
+      if (r?.cards?.fileCards) fileCardLists[b.id] = r.cards.fileCards;
       if (r?.cards?.suggestion) suggestedActions[b.id] = r.cards.suggestion;
       if (r?.cards?.history) historyCards[b.id] = r.cards.history;
       content.push({
@@ -1164,6 +1166,7 @@ export class Session {
     const meta: MessageMeta = {
       author: 'runtime',
       ...(Object.keys(fileCards).length > 0 ? { fileCards } : {}),
+      ...(Object.keys(fileCardLists).length > 0 ? { fileCardLists } : {}),
       ...(Object.keys(suggestedActions).length > 0 ? { suggestedActions } : {}),
       ...(Object.keys(historyCards).length > 0 ? { historyCards } : {}),
       ...(Object.keys(guard).length > 0 ? { guard } : {}),

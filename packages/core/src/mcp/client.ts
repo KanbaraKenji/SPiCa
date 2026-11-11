@@ -5,10 +5,13 @@
 // stopped is cancelled at the server (notifications/cancelled).
 // External tools are added to the tool registry under source `mcp:<name>`.
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { statSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import type { Tracer } from '../trace.ts';
 import type { Tool, ToolRegistry } from '../tools/types.ts';
 import { withNetworkEnv } from '../net.ts';
 import type { SamplingGrant } from '../sampling.ts';
+import { producedFileCard } from '../tools/file-card.ts';
 import { childEnv } from '../util.ts';
 
 export interface McpServerConfig {
@@ -190,7 +193,7 @@ export class McpStdioClient {
     args: unknown,
     signal?: AbortSignal,
     onProgress?: (p: McpProgress) => void,
-  ): Promise<{ content: string; isError: boolean }> {
+  ): Promise<{ content: string; isError: boolean; files?: string[] }> {
     const done = await this.#takeTurn(signal);
     let answer: unknown;
     try {
@@ -199,17 +202,23 @@ export class McpStdioClient {
       done();
     }
     const result = answer as {
-      content?: { type: string; text?: string; resource?: { text?: string; uri?: string }; mimeType?: string }[];
+      content?: { type: string; text?: string; uri?: string; resource?: { text?: string; uri?: string }; mimeType?: string }[];
       structuredContent?: unknown;
       isError?: boolean;
     };
+    const files: string[] = [];
     const parts = (result.content ?? []).map((c) => {
       if (c.type === 'text') return c.text ?? '';
       if (c.type === 'resource') return c.resource?.text ?? `[resource ${c.resource?.uri ?? ''}]`;
+      if (c.type === 'resource_link') {
+        const link = linkLine(c.uri);
+        if (link.file) files.push(link.file);
+        return link.line;
+      }
       return `[${c.type}${c.mimeType ? ` ${c.mimeType}` : ''} omitted]`;
     });
     if (parts.length === 0 && result.structuredContent !== undefined) parts.push(JSON.stringify(result.structuredContent));
-    return { content: parts.join('\n'), isError: !!result.isError };
+    return { content: parts.join('\n'), isError: !!result.isError, ...(files.length > 0 ? { files } : {}) };
   }
 
   /**
@@ -442,6 +451,28 @@ export class McpStdioClient {
   }
 }
 
+/**
+ * What the model reads for a resource_link (MCP 2025-06-18), and the local file
+ * it names, if any: only a file:// URI of an existing file is a file. The spec
+ * allows file:// URIs that are not on disk; those, folders, missing files and
+ * other schemes are said as they are.
+ */
+export function linkLine(uri: unknown): { line: string; file?: string } {
+  const u = typeof uri === 'string' ? uri : '';
+  if (!/^file:/i.test(u)) return { line: `链接：${u}` };
+  let path: string;
+  try {
+    path = fileURLToPath(u);
+  } catch {
+    return { line: `链接：${u}` };
+  }
+  const info = statSync(path, { throwIfNoEntry: false });
+  if (!info) return { line: `文件（不存在）：${path}` };
+  if (info.isDirectory()) return { line: `文件夹：${path}` };
+  if (!info.isFile()) return { line: `链接：${u}` };
+  return { line: `文件：${path}`, file: path };
+}
+
 /** Tool name as the model sees it: `<server>__<tool>`, restricted to safe characters. */
 export function mcpToolName(server: string, tool: string): string {
   return `${server}__${tool}`.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64);
@@ -473,7 +504,10 @@ export function mcpTools(client: McpStdioClient, infos: McpToolInfo[], tracer: T
       try {
         const r = await client.callTool(info.name, input, ctx.signal);
         trace.finish({ status: r.isError ? 'error' : 'ok', bytes: r.content.length });
-        return r;
+        // files the tool made (resource_link to a local file): one card each, in order
+        const cards = (await Promise.all((r.files ?? []).map((f) => producedFileCard(f, 'produced')))).filter((c) => c !== undefined);
+        if (cards.length > 0) ctx.emit({ type: 'file.card', callId: ctx.callId, file: cards[0]!, files: cards });
+        return { content: r.content, isError: r.isError };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         trace.finish({ status: ctx.signal.aborted ? 'aborted' : 'error', error: message });

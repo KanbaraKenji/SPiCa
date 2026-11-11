@@ -680,7 +680,7 @@ export function filesOf(blocks: readonly Block[], cards: Record<string, FileCard
   return [...seen.values()];
 }
 
-const KIND_LABEL: Record<FileCardMeta['kind'], string> = { pdf: 'PDF', docx: 'Word', xlsx: 'Excel', csv: 'CSV', pptx: 'PPT', text: '文本' };
+const KIND_LABEL: Record<FileCardMeta['kind'], string> = { pdf: 'PDF', docx: 'Word', xlsx: 'Excel', csv: 'CSV', pptx: 'PPT', text: '文本', other: '文件' };
 
 /** One line under the file name: what kind, how big, what was read, and anything to watch out for. */
 export function fileCardLine(card: FileCardMeta): string {

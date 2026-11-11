@@ -203,7 +203,7 @@ npm run shots -w @spica/desktop -- main         # 只出某几页，逗号分隔
 - 会话搜索：还没有入口。
 - 会话名：内核新会话的名字是空的，界面上用第一句话当名字。
 - 花标、状态动效、开机画面全部来自 `@spica/brand`，外壳不自己画；窗口 / 任务栏图标由 `resources/branding/png/spica-win-{dark,light}.png` 运行时重新上色（见 8a）。
-- 文件卡只认 `read_file / write_file / edit_file` 的 `path`，模型在正文里提到的文件不会变成卡片。
+- 文件卡来自内核的 `file.card` 事件和工具结果消息的 `meta.fileCards` / `meta.fileCardLists`（一次调用可以有多张，例如 MCP 工具结果里每个指向本机文件的 `resource_link` 一张）；`read_file / write_file / edit_file` 还能从参数的 `path` 补卡。模型在正文里提到的文件不会变成卡片。外壳的 `filesOf` 目前还只认这三个工具；别的工具的卡、一次多张、通用类型（`kind: 'other'`）和 `origin` 的画法，外壳还没做。
 - `body` 默认不可选中（界面像应用不像网页），对话正文、输入框、路径单独打开了选中。
 - 任务栏状态灯、彩蛋：不在三个里程碑里。
 - 收件箱里不能直接回信、移动、标已读：这些只在项目经理的对话里经插件的确认规则做。新项目对话框里还不能选工作流。

@@ -42,6 +42,8 @@ export interface SessionConfig {
 
 export interface ToolCallCards {
   fileCard?: import('../types.ts').FileCardMeta;
+  /** Every file card of the call, in order, when it has several (fileCard is the first). */
+  fileCards?: import('../types.ts').FileCardMeta[];
   suggestion?: { title: string; actions: import('../types.ts').SuggestedAction[] };
   /** What a history tool found (rows with their [n] numbers). */
   history?: import('../types.ts').HistoryCardMeta;

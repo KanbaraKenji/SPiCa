@@ -337,6 +337,8 @@ export interface MessageMeta {
   stopReason?: StopReason;
   /** tool_results messages: file cards produced by the calls, by call id. */
   fileCards?: Record<string, FileCardMeta>;
+  /** tool_results messages: every file card of a call, by call id, in order (fileCards keeps the first). */
+  fileCardLists?: Record<string, FileCardMeta[]>;
   /** tool_results messages: suggestion cards produced by the calls, by call id. */
   suggestedActions?: Record<string, { title: string; actions: SuggestedAction[] }>;
   /** tool_results messages: what the history tools found, by call id. */
@@ -551,8 +553,11 @@ export type CoreEventBody =
   /** regenerate: these messages (the answer to `anchorId`) are now old answer `version`; a new answer follows. */
   | { type: 'messages.superseded'; anchorId: string; messageIds: string[]; version: number }
   | { type: 'tool.start'; callId: string; name: string; input: unknown }
-  /** A file was read (read_file); render a file card. Sent before the tool's `tool.end`. */
-  | { type: 'file.card'; callId: string; file: FileCardMeta }
+  /**
+   * A file was read (read_file) or made by a call; render a file card. Sent before the tool's `tool.end`.
+   * `files`: every card of the call, in order, when it has several (`file` is the first).
+   */
+  | { type: 'file.card'; callId: string; file: FileCardMeta; files?: FileCardMeta[] }
   | {
       type: 'tool.end';
       callId: string;
@@ -666,12 +671,19 @@ export interface HistoryCardRow {
   how?: 'attached' | 'attached_image' | 'read' | 'written' | 'edited';
 }
 
-/** What a file card shows about a file the agent read (event `file.card`). */
+/** What a file card shows about a file the agent read or a call made (event `file.card`). */
 export interface FileCardMeta {
   /** Absolute path. */
   path: string;
   name: string;
-  kind: 'pdf' | 'docx' | 'xlsx' | 'csv' | 'pptx' | 'text';
+  /** `other`: any other file (an archive, an image, a drawing): no preview here; it opens with the system program. */
+  kind: 'pdf' | 'docx' | 'xlsx' | 'csv' | 'pptx' | 'text' | 'other';
+  /**
+   * How the file came about: read; created or modified by the call; produced by the call without saying
+   * which (an MCP tool's resource_link). Absent means read. When not read, `read` is empty, `extractedAt`
+   * is when the card was made, and the fields about the content (pages, sheets, ...) are left out.
+   */
+  origin?: 'read' | 'created' | 'modified' | 'produced';
   sizeBytes: number;
   /** ISO 8601 with offset. */
   modifiedAt: string;

@@ -99,6 +99,15 @@ Spica 启动 server 时会给这些环境变量：
 - 文件夹由工具参数传进来（例如 `dest_folder`，写进 `required`），参数说明写明「用户在对话里给出的文件夹，不要自己猜」。没给就返回错误请用户说一个，不要退回到某个默认的外部文件夹。
 - 只写这个文件夹和它下面：先解析成绝对路径，文件名里带 `..`、盘符或绝对路径的一律拒绝，不往上一级、别的盘或别的文件夹写。文件夹不存在就按用户给的路径建出来，不换地方。
 - 结果里原样写出实际写到的完整路径和文件名，让用户看得到东西放在哪。
+- 每个写出的文件，在结果的 `content` 里再附一项 MCP 标准的 `resource_link`，Spica 就会在对话里给它出一张文件卡（能预览、能用系统程序打开），一次调用几个文件就几张：
+
+  ```js
+  import { basename } from 'node:path';
+  import { pathToFileURL } from 'node:url';
+  content.push({ type: 'resource_link', uri: pathToFileURL(fullPath).href, name: basename(fullPath), mimeType: 'application/pdf' });
+  ```
+
+  `uri` 必须是本机已存在文件的 `file://` 地址（用 `pathToFileURL` 生成，盘符、共享盘路径、空格和中文都能处理）。模型看到的是一行「文件：<完整路径>」；指到文件夹、指到不存在的文件、不是 `file://` 的，不出卡，模型看到「文件夹：」「文件（不存在）：」「链接：」开头的一行。插件页面直接调工具时没有卡，拿到的文字也是这几行。
 - 默认不覆盖：同名文件已经存在就跳过，并在结果里列出来。要覆盖已有文件，做成一个单独的工具（例如 `download_replace`），写进 `permissions.irreversible`，Spica 每次调用前都会先问用户。
 - `permissions.workspace` 只管会话的项目文件夹；写用户点名的文件夹不用为此声明 `write`。这几条现在是约定，Spica 不拦，`check.mjs` 也不查。
 
