@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useState } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Appearance } from './Appearance';
-import { applyPatch, DEFAULT_SETTINGS, type ShellSettings } from '../../../shared/settings';
+import { applyPatch, DEFAULT_SETTINGS, sanitizeSettings, type ShellSettings } from '../../../shared/settings';
+import { applyTextSize } from '../theme';
 import { resolveSkin } from '../../../shared/skin';
 
 afterEach(cleanup);
@@ -67,6 +68,24 @@ describe('Appearance', () => {
     expect(screen.getByRole('radio', { name: '每天首次' }).getAttribute('aria-checked')).toBe('true');
     fireEvent.click(screen.getByRole('radio', { name: '从不' }));
     expect(latest.splash).toBe('never');
+  });
+
+  it('文字大小: 小 / 中 / 大, 中 by default; kept, and set on the page for the conversation’s sizes', () => {
+    render(<Harness />);
+    const group = screen.getByRole('radiogroup', { name: '文字大小' });
+    expect([...group.querySelectorAll('[role="radio"]')].map((b) => [b.textContent, b.getAttribute('aria-checked')])).toEqual([
+      ['小', 'false'],
+      ['中', 'true'],
+      ['大', 'false'],
+    ]);
+    fireEvent.click(screen.getByRole('radio', { name: '大' }));
+    expect(latest.textSize).toBe('lg');
+    expect(sanitizeSettings({ textSize: 'sm' }).textSize).toBe('sm');
+    expect(sanitizeSettings({ textSize: 'huge' }).textSize).toBe('md');
+    expect(sanitizeSettings({}).textSize).toBe('md');
+    const root = document.createElement('div');
+    applyTextSize('lg', root);
+    expect(root.dataset.textSize).toBe('lg');
   });
 
   it('zooms in steps and resets', () => {

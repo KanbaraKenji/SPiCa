@@ -2,10 +2,16 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { BUILTIN_SKINS, DARK_SKIN, deriveTokens, LIGHT_SKIN, normalizeHex, type Skin, type SkinChoice } from '../../../shared/skin';
 import { DEFAULT_ZOOM, stepZoom, ZOOM_STEPS, zoomLabel } from '../../../shared/zoom';
-import type { SettingsPatch, ShellSettings, SplashMode } from '../../../shared/settings';
+import type { SettingsPatch, ShellSettings, SplashMode, TextSize } from '../../../shared/settings';
 import { ConfirmDialog } from '../ui/Dialog';
 import { CodeThemes } from './CodeThemes';
 import { Icon } from '../ui/Icon';
+
+const TEXT_SIZES: { size: TextSize; label: string }[] = [
+  { size: 'sm', label: '小' },
+  { size: 'md', label: '中' },
+  { size: 'lg', label: '大' },
+];
 
 const SPLASH_OPTIONS: { mode: SplashMode; label: string }[] = [
   { mode: 'daily', label: '每天首次' },
@@ -197,6 +203,24 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
             </div>
           </div>
         ) : null}
+      </div>
+
+      <div className="settings-group">
+        <h3 className="settings-subheading">文字大小</h3>
+        <div className="segmented" role="radiogroup" aria-label="文字大小">
+          {TEXT_SIZES.map((o) => (
+            <button
+              key={o.size}
+              type="button"
+              role="radio"
+              aria-checked={settings.textSize === o.size}
+              className={settings.textSize === o.size ? 'segment is-on' : 'segment'}
+              onClick={() => onChange({ textSize: o.size })}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="settings-group">

@@ -4,7 +4,7 @@ import type { DesktopBridge, ShellState } from '../../../shared/bridge';
 import { applyPatch, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
 import { resolveSkin, schemeOf, type Skin } from '../../../shared/skin';
 import { Store } from './external';
-import { applyCodeSize, applyCodeTheme, applySkin } from '../theme';
+import { applyCodeSize, applyCodeTheme, applySkin, applyTextSize } from '../theme';
 
 export interface ShellView {
   settings: ShellSettings;
@@ -64,6 +64,7 @@ export class ShellStore {
     applySkin(skin);
     applyCodeTheme(this.state.get().settings.codeTheme, schemeOf(skin.bg));
     applyCodeSize(this.state.get().settings.codeSize);
+    applyTextSize(this.state.get().settings.textSize);
   }
 }
 

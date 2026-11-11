@@ -53,6 +53,9 @@ export function clampPanelWidth(side: 'left' | 'right', width: number): number {
 /** When the full opening animation plays: the first launch each day, every launch, or never. */
 export type SplashMode = 'daily' | 'always' | 'never';
 
+/** 外观 › 文字大小: the conversation's text, one step down or up (the Claude app's 小 / 中 / 大). */
+export type TextSize = 'sm' | 'md' | 'lg';
+
 /** Sorting incoming mail into projects (the core's mail pipeline). */
 export interface MailPrefs {
   /** On only after the user turned it on and agreed (consentedAt): mail content goes to a model. */
@@ -99,6 +102,8 @@ export interface ShellSettings {
   codeTheme: { light: string; dark: string };
   /** 外观 › 代码 › 字号: the font size of code blocks in answers, in px (shared/code-themes.ts CODE_SIZES). */
   codeSize: number;
+  /** 外观 › 文字大小: the conversation's text (not the sidebar's or the settings'). */
+  textSize: TextSize;
   /** 常规 › 文件预览: the plugin preview page chosen per kind of file ({ ".docx": "<plugin>/<page id>" }); none: the app's own. */
   previewers: Record<string, string>;
 }
@@ -122,6 +127,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   memory: true,
   codeTheme: { light: SKIN_CODE_THEME, dark: SKIN_CODE_THEME },
   codeSize: DEFAULT_CODE_SIZE,
+  textSize: 'md',
   previewers: {},
   doneNews: [],
 };
@@ -212,7 +218,8 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const ct = (v.codeTheme && typeof v.codeTheme === 'object' ? v.codeTheme : {}) as Record<string, unknown>;
   const codeTheme = { light: codeThemeId(ct.light, 'light'), dark: codeThemeId(ct.dark, 'dark') };
   const previewers = sanitizePreviewers(v.previewers);
-  return { codeTheme, codeSize: codeSize(v.codeSize), previewers, localConnect, memory, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
+  const textSize: TextSize = v.textSize === 'sm' || v.textSize === 'lg' ? v.textSize : 'md';
+  return { codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

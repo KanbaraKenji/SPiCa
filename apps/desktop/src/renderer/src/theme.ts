@@ -9,6 +9,11 @@ export function applySkin(skin: Skin, root: HTMLElement = document.documentEleme
   root.style.colorScheme = schemeOf(skin.bg);
 }
 
+/** Sets the conversation's text size (外观 › 文字大小); the style sheet moves its sizes for 小 and 大. */
+export function applyTextSize(size: 'sm' | 'md' | 'lg', root: HTMLElement = document.documentElement): void {
+  root.dataset.textSize = size;
+}
+
 /** Sets the font size of code blocks in answers (外观 › 代码 › 字号). */
 export function applyCodeSize(px: number, root: HTMLElement = document.documentElement): void {
   root.style.setProperty('--code-size', `${px}px`);
