@@ -89,3 +89,24 @@ describe('settings › 插件 list rows', () => {
     expect(block('.plugin-row-version')).toContain('flex: none');
   });
 });
+
+describe('renaming in place', () => {
+  it('in the sidebar the field is the row itself: full height, to both ends of the row, its corners; the name stays put (10px in: 1 border + 9)', () => {
+    const f = block('.input.tree-rename');
+    expect(block('.tree-row')).toContain('height: 32px');
+    expect(f).toContain('height: 32px');
+    expect(f).toContain('margin: 0 -4px 0 0');
+    expect(block('.tree-row')).toContain('padding-right: 4px');
+    expect(f).toContain('padding: 0 8px 0 9px');
+    expect(f).toContain('border-radius: var(--radius-m)');
+  });
+
+  it('in the title bar the field is the name’s own box (24 high, same left edge, text 6px in: 1 border + 5) and wins over .input', () => {
+    const f = block('.input.titlebar-rename');
+    expect(f).toContain('height: 24px');
+    expect(f).toContain('margin-left: -6px');
+    expect(f).toContain('padding: 0 6px 0 5px');
+    expect(block('.titlebar-name')).toContain('padding: 2px 6px');
+    expect(f).toContain('color: var(--spica-ink)');
+  });
+});

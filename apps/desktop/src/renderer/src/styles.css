@@ -203,13 +203,16 @@ a:hover {
   background: var(--spica-hover);
 }
 
-.titlebar-rename {
+/* Renaming from the title bar: the name's own box (height, left edge, text position), longer for typing. */
+.input.titlebar-rename {
   flex: 0 1 320px;
   min-width: 80px;
-  height: 26px;
+  height: 24px;
   margin-left: -6px;
-  padding: 0 6px;
+  padding: 0 6px 0 5px;
+  border-radius: var(--radius-s);
   font-size: 13px;
+  color: var(--spica-ink);
   -webkit-app-region: no-drag;
 }
 
@@ -3594,13 +3597,15 @@ button.ctx-row:hover {
   outline: none;
 }
 
-/* Renaming a row in place */
-.tree-rename {
+/* Renaming a row in place: the field is the row's own box (same width, height and corners
+   as the row's highlight) and the name does not move when it turns into a field. */
+.input.tree-rename {
   flex: 1;
   min-width: 0;
-  height: 26px;
-  margin: 0 4px;
-  padding: 0 6px;
+  height: 32px;
+  margin: 0 -4px 0 0;
+  padding: 0 8px 0 9px;
+  border-radius: var(--radius-m);
 }
 
 /* Long activity lines (reports, decisions) stay at two lines; the tooltip has all of it. */
