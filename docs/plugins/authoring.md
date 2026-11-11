@@ -89,6 +89,8 @@ Spica 启动 server 时会给这些环境变量：
 - 往 stdout 只写协议消息；日志写 stderr，Spica 会存进插件日志。
 - 工具出错时返回 `isError: true` 的结果，写一句模型和人都看得懂的话，不要直接崩溃。
 - 只读的工具（只查、只读，不写文件、不发东西、不改任何系统）在工具定义里写 `annotations: { readOnlyHint: true }`。这是 MCP 规范的写法，意思是「这个工具不改动它所处的环境」，不写就当 `false`。没声明的工具，Spica 当成会有改动：一轮回答里调过它，这一轮就不能「重新生成」。
+- 工具可以在结果里返回图片（`{ type: 'image', data: <base64>, mimeType: 'image/png' }`）和音频（`type: 'audio'`），MCP 规范的写法。Spica 把它们存成文件放在这次对话的文件夹里（对话删了一起删），每个出一张文件卡；模型看到一行「图片：<路径>」或「音频：<路径>（模型听不到内容）」。PNG、JPEG、GIF、WEBP 的图片在当前模型能看图时一起发给模型（太大的先缩小），别的格式只出卡。插件页面直接调工具时不保存，页面拿到的还是「[image … omitted]」。
+- 返回结构化结果（`structuredContent`）时，照规范在 `content` 里同时放一份同样的 JSON 文字：有 `content` 时模型只读得到 `content`，`structuredContent` 只在没有别的内容时才给模型。
 - 进程崩溃 Spica 会自动重启，但 60 秒内超过 3 次就停（可在声明里用 `restart` 改）。
 - Python 写的 server：这一版请用 PyInstaller 之类打成 `.exe`，声明写 `"runtime": "binary"`、`"entry": "bin/server.exe"`。别用 `.bat` / `.cmd` 启动，会弹黑窗口，Spica 会拒绝。
 

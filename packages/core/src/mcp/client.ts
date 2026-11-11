@@ -12,6 +12,8 @@ import type { Tool, ToolRegistry } from '../tools/types.ts';
 import { withNetworkEnv } from '../net.ts';
 import type { SamplingGrant } from '../sampling.ts';
 import { producedFileCard } from '../tools/file-card.ts';
+import type { ImageBlock } from '../types.ts';
+import { keepMedia, type KeptMedia } from './media.ts';
 import { childEnv } from '../util.ts';
 
 export interface McpServerConfig {
@@ -69,9 +71,11 @@ export interface McpServerConfig {
 
 export interface McpToolInfo {
   name: string;
+  /** Display name for people (MCP 2025-06-18; older servers put it in annotations.title). */
+  title?: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
-  annotations?: { destructiveHint?: boolean; readOnlyHint?: boolean };
+  annotations?: { destructiveHint?: boolean; readOnlyHint?: boolean; title?: string };
 }
 
 /** One notifications/progress from the server for a running call. */
@@ -193,7 +197,9 @@ export class McpStdioClient {
     args: unknown,
     signal?: AbortSignal,
     onProgress?: (p: McpProgress) => void,
-  ): Promise<{ content: string; isError: boolean; files?: string[] }> {
+    /** Keeps an image or audio item as a file (the conversation's media folder); without it they are left out. */
+    keep?: (kind: 'image' | 'audio', data: string, mimeType: string) => KeptMedia | undefined,
+  ): Promise<{ content: string; isError: boolean; files?: string[]; images?: ImageBlock[] }> {
     const done = await this.#takeTurn(signal);
     let answer: unknown;
     try {
@@ -202,11 +208,12 @@ export class McpStdioClient {
       done();
     }
     const result = answer as {
-      content?: { type: string; text?: string; uri?: string; resource?: { text?: string; uri?: string }; mimeType?: string }[];
+      content?: { type: string; text?: string; uri?: string; data?: string; resource?: { text?: string; uri?: string }; mimeType?: string }[];
       structuredContent?: unknown;
       isError?: boolean;
     };
     const files: string[] = [];
+    const images: ImageBlock[] = [];
     const parts = (result.content ?? []).map((c) => {
       if (c.type === 'text') return c.text ?? '';
       if (c.type === 'resource') return c.resource?.text ?? `[resource ${c.resource?.uri ?? ''}]`;
@@ -215,10 +222,21 @@ export class McpStdioClient {
         if (link.file) files.push(link.file);
         return link.line;
       }
+      if ((c.type === 'image' || c.type === 'audio') && keep && typeof c.data === 'string') {
+        const kept = keep(c.type, c.data, c.mimeType ?? '');
+        if (kept) {
+          files.push(kept.path);
+          if (kept.image) images.push(kept.image);
+          if (c.type === 'audio') return `音频：${kept.path}（模型听不到内容）`;
+          return kept.image ? `图片：${kept.path}` : `图片：${kept.path}（格式或大小不合适，没有发给模型）`;
+        }
+      }
       return `[${c.type}${c.mimeType ? ` ${c.mimeType}` : ''} omitted]`;
     });
+    // structuredContent: the spec asks servers to repeat it as JSON text, and servers that wrap a
+    // non-object result ({ value }) say it differently there; so it is given only when nothing else is
     if (parts.length === 0 && result.structuredContent !== undefined) parts.push(JSON.stringify(result.structuredContent));
-    return { content: parts.join('\n'), isError: !!result.isError, ...(files.length > 0 ? { files } : {}) };
+    return { content: parts.join('\n'), isError: !!result.isError, ...(files.length > 0 ? { files } : {}), ...(images.length > 0 ? { images } : {}) };
   }
 
   /**
@@ -488,6 +506,7 @@ export function mcpTools(client: McpStdioClient, infos: McpToolInfo[], tracer: T
       inputSchema: info.inputSchema ?? { type: 'object' },
     },
     irreversible: info.annotations?.destructiveHint === true,
+    ...(info.title || info.annotations?.title ? { title: info.title || info.annotations!.title! } : {}),
     // declared read-only: a round that called it can still be regenerated
     ...(info.annotations?.readOnlyHint === true ? { readOnly: true } : {}),
     // whatever an MCP server returns comes from outside Spica (mail, external systems)
@@ -502,12 +521,15 @@ export function mcpTools(client: McpStdioClient, infos: McpToolInfo[], tracer: T
         ...(ctx.confirmedBy ? { confirmedBy: ctx.confirmedBy } : {}),
       });
       try {
-        const r = await client.callTool(info.name, input, ctx.signal);
+        // images and audio are kept in the conversation's media folder (a plugin page's call has none: left out)
+        const dir = ctx.mediaDir;
+        const keep = dir ? (kind: 'image' | 'audio', data: string, type: string) => keepMedia(dir, kind, data, type) : undefined;
+        const r = await client.callTool(info.name, input, ctx.signal, undefined, keep);
         trace.finish({ status: r.isError ? 'error' : 'ok', bytes: r.content.length });
-        // files the tool made (resource_link to a local file): one card each, in order
+        // files the tool made (resource_link to a local file, kept images and audio): one card each, in order
         const cards = (await Promise.all((r.files ?? []).map((f) => producedFileCard(f, 'produced')))).filter((c) => c !== undefined);
         if (cards.length > 0) ctx.emit({ type: 'file.card', callId: ctx.callId, file: cards[0]!, files: cards });
-        return { content: r.content, isError: r.isError };
+        return { content: r.content, isError: r.isError, ...(r.images ? { images: r.images } : {}) };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         trace.finish({ status: ctx.signal.aborted ? 'aborted' : 'error', error: message });

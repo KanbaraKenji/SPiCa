@@ -22,6 +22,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
    - 参数：`inputSchema` 里每个字段的类型和说明，必填的写进 `required`。
    - 返回：JSON 对象（页面收到的是解析好的 `data`），字段名固定下来。
    - 是否不可逆：是的话写进 `manifest.json` 的 `permissions.irreversible`，并加 `annotations.destructiveHint: true`。
+   - 要给用户看图、听音频的：在结果里返回 `image` / `audio`（base64），Spica 存成文件出卡，图片在模型能看图时一起发给模型；结构化结果在 `content` 里同时放一份 JSON 文字。
    - 要跑几分钟以上的（批量下载、导出）：干活时报进度，收到取消就停手，见 `references/manifest.md`「要跑很久的工具」。
    - 出错时抛 `PluginToolError('错误码')`，结果文字是 `[错误码] 一句中文人话`，说清怎么办。见 `references/errors.md`。
 4. **模拟模式必须能跑通**：`SPICA_MOCK=1` 时全部工具都用 `mock/` 里的虚构数据回答，不连任何真服务。连不上真服务时返回 `[SERVICE_UNREACHABLE]` 并建议打开模拟模式。见 `references/mock-mode.md`。

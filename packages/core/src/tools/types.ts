@@ -15,6 +15,8 @@ export interface ToolContext {
   services: Record<string, unknown>;
   /** Id of the current tool call. */
   callId: string;
+  /** Where the call may keep files it got for this conversation (images, audio); deleted with the conversation. */
+  mediaDir?: string;
   /** Publish an event on behalf of this session (e.g. a card for the UI). */
   emit(body: CoreEventBody): void;
   /** Who started the call, for traceable records (default `tool:<name>`; a plugin view is `view:<plugin>`). */
@@ -26,6 +28,11 @@ export interface ToolContext {
 export interface ToolOutput {
   content: string;
   isError?: boolean;
+  /**
+   * Images the call returned, kept in the conversation's media folder: they go to the model after the
+   * results (when it takes images), like images attached to a message.
+   */
+  images?: import('../types.ts').ImageBlock[];
 }
 
 export interface Tool {

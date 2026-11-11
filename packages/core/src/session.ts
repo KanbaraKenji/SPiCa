@@ -1098,6 +1098,7 @@ export class Session {
       extractors: this.#rt.extractors,
       services: this.#rt.services(this),
       callId: draft.callId,
+      mediaDir: this.#rt.mediaDir(this.id),
       emit: (body) => {
         if (body.type === 'file.card') cards = { ...cards, fileCard: body.file, ...(body.files ? { fileCards: body.files } : {}) };
         if (body.type === 'suggest.actions') cards = { ...cards, suggestion: { title: body.title, actions: body.actions } };
@@ -1109,6 +1110,7 @@ export class Session {
     try {
       const r = await tool.execute((draft.input ?? {}) as Record<string, unknown>, ctx);
       out = { content: r.content, isError: !!r.isError };
+      if (r.images?.length) cards = { ...cards, images: r.images };
     } catch (err) {
       out = signal.aborted
         ? { content: 'Aborted: the user interrupted this tool call.', isError: true }
@@ -1167,6 +1169,11 @@ export class Session {
         content: r?.result ?? 'No result recorded.',
         ...(r && r.status !== 'ok' ? { isError: true } : {}),
       });
+    }
+    // images the calls returned go after all the results, as images attached to a message do
+    // (left out at request time for a model that does not take images)
+    for (const b of assistant.content) {
+      if (b.type === 'tool_use') content.push(...(records.get(b.id)?.cards?.images ?? []));
     }
     if (content.length === 0) return;
     const meta: MessageMeta = {

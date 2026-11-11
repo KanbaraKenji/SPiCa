@@ -49,6 +49,8 @@ export interface ToolCallCards {
   history?: import('../types.ts').HistoryCardMeta;
   /** The web pages a web_fetch / web_search call used. */
   sources?: import('../types.ts').SourceCardMeta;
+  /** Images the call returned (kept copies), sent to the model after the results. */
+  images?: import('../types.ts').ImageBlock[];
   /** The result was outside content and went to the model fenced as data. */
   guard?: import('../types.ts').GuardNote;
   /** Ran without asking (approval mode auto). */
