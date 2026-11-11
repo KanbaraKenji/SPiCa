@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "display_name": "Notes (example)",
   "description": "Keep notes in a local notebook and look things up in a fictional sample catalog. Shows every part of a Spica plugin.",
-  "icon": "icon.svg",
+  "icon": {
+    "light": "icon-light.svg",
+    "dark": "icon-dark.svg"
+  },
   "author": {
     "name": "Spica contributors"
   },

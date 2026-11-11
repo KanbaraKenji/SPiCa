@@ -31,7 +31,7 @@
 | `description` | 是 | 一句话 |
 | `author` | 是 | `{ "name": "…" }` |
 | `display_name` | 否 | 界面上的名字 |
-| `icon` | 否 | 插件自己的图标：插件文件夹里的 `.svg`，不大于 64 KB，见下面「插件图标」 |
+| `icon` | 否 | 插件自己的图标：插件文件夹里的 `.svg`，不大于 64 KB；浅色和深色皮肤各一款时写 `{ "light": …, "dark": … }`。见下面「插件图标」 |
 | `license` | 否 | 如 `Apache-2.0` |
 | `compatibility.spica` | 否 | 如 `>=0.1.0` |
 | `permissions.network` | 否 | 会访问的主机名单（现在只展示） |
@@ -50,11 +50,18 @@
 "icon": "icon.svg"
 ```
 
-- 只收 `.svg`；插件文件夹里的相对路径，不能用 `..`、绝对路径；文件要存在；不大于 64 KB。写错了插件装不上。
+浅色皮肤和深色皮肤各用一款时：
+
+```json
+"icon": { "light": "icon-light.svg", "dark": "icon-dark.svg" }
+```
+
+- 只给一款：两种皮肤都用它。给两款：`light` 用在浅色皮肤，`dark` 用在深色皮肤，两个都要写；他换皮肤时图标跟着换。
+- 只收 `.svg`；插件文件夹里的相对路径，不能用 `..`、绝对路径；文件要存在；每个不大于 64 KB。写错了插件装不上，提示里写是 `icon`、`icon.light` 还是 `icon.dark`。
 - 按 24×24 画、画满，显示成 22 像素见方的圆角方块。
 - 只当图片显示：脚本、事件属性、外部链接都不生效，`check.mjs` 会提醒删掉。
-- 颜色写死，不跟随明暗（`currentColor` 是黑色），深浅两种皮肤上都要看得清，带底色的方块最稳。页面的 `icon` 跟随主题，两者不同。
-- `scaffold.mjs` 生成的插件自带 `icon.svg`；例子见 `plugins/example-notes/icon.svg`。
+- 颜色写死，不跟随明暗（`currentColor` 是黑色）。只给一款时深浅两种皮肤上都要看得清，带底色的方块最稳；分开给就各按各的底色画。页面的 `icon` 跟随主题，两者不同。
+- `scaffold.mjs` 生成的插件自带浅色、深色两款（`icon-light.svg`、`icon-dark.svg`）；例子见 `plugins/example-notes` 的这两个文件。
 
 ## `mcp/<id>.json` / `services/<id>.json`
 

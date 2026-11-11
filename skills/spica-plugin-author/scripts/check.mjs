@@ -69,11 +69,17 @@ export async function check(dir, opts = {}) {
   if (typeof m.display_name !== 'string' || !m.display_name.trim()) warn('manifest.json', '没有 display_name，界面上会显示 name');
   if (m.icon === undefined) warn('manifest.json', '没有 icon，插件列表里会用名字的第一个字代替（写法见 references/manifest.md「插件图标」）');
   else {
-    const icon = inside(m.icon);
-    if (!icon || typeof m.icon !== 'string' || !/\.svg$/i.test(m.icon) || !existsSync(icon)) err('manifest.json', 'icon 要指向插件文件夹里存在的 .svg，例如 "icon.svg"');
-    else if (statSync(icon).size > 64 * 1024) err('manifest.json', `icon 文件不能大于 64 KB（当前 ${Math.ceil(statSync(icon).size / 1024)} KB）`);
-    else if (/<script\b|<foreignObject\b|\son[a-z]+\s*=|(?:xlink:)?href\s*=\s*["'](?!#)/i.test(await readFile(icon, 'utf8'))) {
-      warn('manifest.json', 'icon 里有脚本、事件属性或外部链接：图标只当图片显示，这些都不会生效，删掉');
+    // One path for both skins, or { "light": …, "dark": … }.
+    const two = typeof m.icon === 'object' && m.icon !== null && !Array.isArray(m.icon);
+    const files = typeof m.icon === 'string' ? [['icon', m.icon]] : two && typeof m.icon.light === 'string' && typeof m.icon.dark === 'string' ? [['icon.light', m.icon.light], ['icon.dark', m.icon.dark]] : null;
+    if (!files) err('manifest.json', 'icon 要写插件文件夹里的 .svg，例如 "icon.svg"；浅色和深色各一款时写 { "light": "icon-light.svg", "dark": "icon-dark.svg" }');
+    for (const [field, rel] of files ?? []) {
+      const icon = inside(rel);
+      if (!icon || !/\.svg$/i.test(rel) || !existsSync(icon)) err('manifest.json', `${field} 要指向插件文件夹里存在的 .svg，例如 "icon.svg"`);
+      else if (statSync(icon).size > 64 * 1024) err('manifest.json', `${field} 文件不能大于 64 KB（当前 ${Math.ceil(statSync(icon).size / 1024)} KB）`);
+      else if (/<script\b|<foreignObject\b|\son[a-z]+\s*=|(?:xlink:)?href\s*=\s*["'](?!#)/i.test(await readFile(icon, 'utf8'))) {
+        warn('manifest.json', `${field} 里有脚本、事件属性或外部链接：图标只当图片显示，这些都不会生效，删掉`);
+      }
     }
   }
   const author = typeof m.author === 'string' ? m.author : m.author?.name;

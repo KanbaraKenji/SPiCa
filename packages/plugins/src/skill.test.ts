@@ -235,6 +235,14 @@ describe('plugin-author skill', () => {
     expect(busy.code, busy.out).toBe(0);
     await setIcon(undefined);
     expect((await run()).out).toMatch(/没有 icon，插件列表里会用名字的第一个字代替/);
+    // One for each skin: each is checked and named.
+    const m = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as Record<string, unknown>;
+    m.icon = { light: 'icon-light.svg', dark: 'gone.svg' };
+    await writeFile(join(root, 'manifest.json'), JSON.stringify(m));
+    expect((await run()).out).toMatch(/manifest\.json：icon\.dark 要指向插件文件夹里存在的 \.svg/);
+    m.icon = { light: 'icon-light.svg' };
+    await writeFile(join(root, 'manifest.json'), JSON.stringify(m));
+    expect((await run()).out).toMatch(/浅色和深色各一款时写 \{ "light": "icon-light\.svg", "dark": "icon-dark\.svg" \}/);
   });
 
   it('check warns about environment variables a plugin will not get once installed', async () => {

@@ -74,7 +74,7 @@ describe('zip and packages', () => {
   });
 
   it('unpacks a zip whose files sit in one top folder (Windows "compressed folder")', async () => {
-    const files = ['manifest.json', 'icon.svg', 'mcp/notes.json', 'server/index.js', 'mock/catalog.json'];
+    const files = ['manifest.json', 'icon-light.svg', 'icon-dark.svg', 'mcp/notes.json', 'server/index.js', 'mock/catalog.json'];
     const entries = await Promise.all(files.map(async (f) => ({ name: `notes-folder/${f}`, data: await readFile(join(EXAMPLE_PLUGIN, f)) })));
     const target = await temp();
     const folder = await unpackPlugin(writeZip(entries), target);
