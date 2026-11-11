@@ -30,6 +30,7 @@ import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
 import { writeDemoChart } from './backend/demo-image';
 import { ProcessBackend, type BackendStatus } from './backend/process';
+import { wireQuit } from './quit';
 import { knownContextWindow, matchWindowIn, toProviderConfig } from './backend/to-config';
 import type { WindowMatch } from '../shared/catalog';
 import { fromHostDraft, toHostConnection, toHostModelList } from './providers/host-models';
@@ -1196,18 +1197,18 @@ void app.whenReady().then(() => {
   });
 });
 
-let quitting = false;
-app.on('before-quit', (e) => {
-  settings.flush();
-  if (quitting) return;
-  // Plugin servers are child processes: stop them before the app goes away.
-  quitting = true;
-  e.preventDefault();
-  // The core closes cleanly (running sessions become "interrupted", plugin servers stop).
-  const stop = backend instanceof ProcessBackend ? backend.shutdown() : pluginService.dispose().then(() => backend.dispose());
-  void Promise.race([stop, new Promise((r) => setTimeout(r, 6000))])
-    .catch(() => {})
-    .finally(() => app.quit());
+// Plugin servers are child processes: the core closes cleanly first (running sessions become "interrupted",
+// plugin servers and what they started stop), then the app quits; still here 3 s later, it is ended (main/quit.ts).
+wireQuit({
+  app,
+  flush: () => settings.flush(),
+  stop: () => (backend instanceof ProcessBackend ? backend.shutdown() : pluginService.dispose().then(() => backend.dispose())),
+  stopLimitMs: 6000,
+  exitAfterMs: 3000,
+  log: (line) => {
+    if (!app.isPackaged) console.log(line);
+  },
+  warn: (line) => console.warn(line),
 });
 
 app.on('window-all-closed', () => {
