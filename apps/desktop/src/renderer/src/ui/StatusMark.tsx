@@ -1,43 +1,18 @@
-// Small status glyph for a session in the tree. Running states animate
-// gently; waiting-for-you is the only colored one, so it stands out.
-import type { SessionStatus } from '@spica/protocol';
-import type { StatusIconName } from '@spica/brand';
+// The one status place at the end of a sidebar row: a coloured dot (waiting for you, an error,
+// something new) or a small icon from the brand's status family (running, queued, stopped).
 import { SpicaStatusIcon } from '@spica/brand/react';
+import type { Slot } from '../shell/row-status';
 
-export const STATUS_LABEL: Record<SessionStatus, string> = {
-  idle: '空闲',
-  queued: '排队中',
-  thinking: '思考中',
-  tool: '调用工具中',
-  awaiting_confirm: '等待确认',
-  awaiting_answer: '等待回答',
-  done: '已完成',
-  error: '出错',
-  aborted: '已停止',
-  interrupted: '已中断',
-};
+const ICON = { running: 'running', queued: 'queued', stopped: 'stopped' } as const;
 
-/** Each state's icon from the brand's status family; idle shows nothing. */
-const ICON: Partial<Record<SessionStatus, StatusIconName>> = {
-  thinking: 'running',
-  tool: 'running',
-  queued: 'queued',
-  awaiting_confirm: 'waiting',
-  awaiting_answer: 'question',
-  error: 'error',
-  interrupted: 'error',
-  aborted: 'stopped',
-  done: 'done',
-};
-
-/** `note`: said on hover and to screen readers instead of the state's name (a collapsed project's counts). */
-export function StatusMark({ status, note }: { status: SessionStatus; note?: string }) {
-  const name = ICON[status];
-  if (!name) return <span className="status-mark" aria-hidden />;
-  const said = note || STATUS_LABEL[status];
+/** `text`: said instead of the state's own name (a collapsed row's counts). The place is kept when there is nothing to show. */
+export function StatusSlot({ slot, text, onClick }: { slot: Slot | null; text?: string; onClick?: () => void }) {
+  if (!slot) return <span className="status-slot" aria-hidden onClick={onClick} />;
+  const said = text || slot.text;
+  const icon = slot.kind === 'running' || slot.kind === 'queued' || slot.kind === 'stopped' ? ICON[slot.kind] : null;
   return (
-    <span className="status-mark" role="img" aria-label={said} title={said}>
-      <SpicaStatusIcon name={name} size={12} />
+    <span className={`status-slot is-${slot.kind}`} role="img" aria-label={said} title={said} onClick={onClick}>
+      {icon ? <SpicaStatusIcon name={icon} size={12} /> : <span className="slot-dot" />}
     </span>
   );
 }

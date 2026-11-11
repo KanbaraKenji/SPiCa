@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
-import { projectSummary, rollupStatus, Sidebar } from './Sidebar';
+import { Sidebar } from './Sidebar';
 import type { SessionInfo } from '@spica/protocol';
 
 afterEach(cleanup);
@@ -46,7 +46,7 @@ describe('Sidebar', () => {
     expect(screen.getByRole('img', { name: '有新来信 · 有新回报' }).closest('[role="tab"]')?.textContent).toContain('项目');
     fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
     // On the project row: the dot alone, no words on the row.
-    expect(screen.getByRole('button', { name: /年度预算.*有新来信/ })).toBeTruthy();
+    expect(within(screen.getByTitle('年度预算').closest('.tree-row') as HTMLElement).getByRole('img', { name: '有新来信' }).className).toBe('status-slot is-news');
     expect(screen.queryByText('有新来信')).toBeNull();
   });
 
@@ -65,13 +65,11 @@ describe('Sidebar', () => {
     expect(screen.queryByRole('button', { name: /收件箱/ })).toBeNull();
     expect(screen.getByRole('img', { name: '有新回报' }).closest('[role="tab"]')?.textContent).toContain('项目');
     fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
-    expect(screen.getByRole('img', { name: '有新回报' }).closest('.tree-row')).toBeTruthy();
-  });
-
-  it('summarises a collapsed project with only non-zero counts', () => {
-    const kids = seed.sessions.filter((s) => s.parentId === SEED_IDS.pm);
-    expect(projectSummary(kids)).toBe('1 个待处理 · 1 个运行中 · 1 个排队中');
-    expect(projectSummary([])).toBe('');
+    // The project is running, so its one status place shows that; the report is still said there.
+    const slot = screen.getByRole('img', { name: /有新回报/ });
+    expect(slot.closest('.tree-row')?.textContent).toBe('新品样机评审');
+    expect(slot.className).toBe('status-slot is-running');
+    expect(slot.getAttribute('title')).toMatch(/^(思考中|调用工具中) · 有新回报$/);
   });
 
   it('lists every conversation outside a project flat under 对话, the default thread one of them', () => {
@@ -251,17 +249,70 @@ describe('Sidebar', () => {
     const row = screen.getByTitle('新品样机评审').closest('.tree-row') as HTMLElement;
     expect(row.textContent).toBe('新品样机评审');
     // 起草评审纪要 waits for an answer: the mark is the one its own row has, its note the counts.
-    const mark = row.querySelector('.status-mark') as HTMLElement;
-    expect(mark.getAttribute('title')).toBe('1 个待处理 · 1 个运行中 · 1 个排队中');
-    expect(mark.getAttribute('aria-label')).toBe('1 个待处理 · 1 个运行中 · 1 个排队中');
+    const mark = row.querySelector('.status-slot') as HTMLElement;
+    expect(row.querySelectorAll('.status-slot')).toHaveLength(1);
+    expect(mark.className).toBe('status-slot is-waiting');
+    // The counts are over the row itself (the project is running too) and everything below it.
+    expect(mark.getAttribute('title')).toBe('1 个待处理 · 2 个运行中 · 1 个排队中');
+    expect(mark.getAttribute('aria-label')).toBe('1 个待处理 · 2 个运行中 · 1 个排队中');
   });
 
-  it('the mark of a collapsed project is the most pressing state below: waiting for you, else running, else queued, else its own', () => {
-    const s = (id: string, status: SessionInfo['status']) => ({ id, status }) as SessionInfo;
-    expect(rollupStatus([s('a', 'thinking'), s('b', 'awaiting_confirm'), s('c', 'queued')])).toBe('awaiting_confirm');
-    expect(rollupStatus([s('a', 'queued'), s('b', 'tool')])).toBe('thinking');
-    expect(rollupStatus([s('a', 'done'), s('b', 'queued')])).toBe('queued');
-    expect(rollupStatus([s('a', 'done'), s('b', 'idle')])).toBeNull();
+  it('one status place per row, at the same spot on all of them: news and a state never show side by side', () => {
+    render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} onRename={vi.fn()} notes={new Map([[SEED_IDS.pm, '有新回报'], [SEED_IDS.pm2, '有新来信']])} unseenDone={new Set([SEED_IDS.budget])} />);
+    fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
+    for (const row of document.querySelectorAll('.tree-row')) {
+      expect(row.querySelectorAll('.status-slot')).toHaveLength(1);
+      expect(row.querySelector('.new-dot')).toBeNull();
+      // The last thing on every row is 更多 or the space kept for it; the status place is right before it.
+      expect(row.lastElementChild?.className).toMatch(/^tree-more(-space)?$/);
+      expect(row.lastElementChild?.previousElementSibling?.className).toMatch(/^status-slot/);
+    }
+    const slotOf = (title: string) => screen.getByTitle(title).closest('.tree-row')!.querySelector('.status-slot') as HTMLElement;
+    // Running and with a report: the ring, not the dot.
+    expect(slotOf('新品样机评审').className).toBe('status-slot is-running');
+    expect(slotOf('起草评审纪要').className).toBe('status-slot is-waiting');
+    expect(slotOf('汇总测试报告').className).toBe('status-slot is-queued');
+    // Collapsed with mail and a sub-task finished but not opened: one blue dot, both said on hover.
+    expect(slotOf('年度预算').className).toBe('status-slot is-news');
+    expect(slotOf('年度预算').getAttribute('title')).toBe('1 个已完成 · 有新来信');
+    fireEvent.click(screen.getByRole('button', { name: '展开 年度预算' }));
+    expect(slotOf('年度预算').getAttribute('title')).toBe('有新来信');
+    expect(slotOf('核对三季度支出').getAttribute('aria-label')).toBe('已完成');
+  });
+
+  it('a finished sub-task already opened shows nothing; so does an idle row', () => {
+    render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} />);
+    fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
+    fireEvent.click(screen.getByRole('button', { name: '展开 年度预算' }));
+    for (const title of ['年度预算', '核对三季度支出']) {
+      const slot = screen.getByTitle(title).closest('.tree-row')!.querySelector('.status-slot') as HTMLElement;
+      expect(slot.className).toBe('status-slot');
+      expect(slot.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+
+  it('the expand arrow is a button of its own right after the name; it and the arrow keys only expand or collapse', () => {
+    const onOpen = vi.fn();
+    render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={onOpen} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} />);
+    fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
+    const name = screen.getByRole('button', { name: '年度预算' });
+    const arrow = screen.getByRole('button', { name: '展开 年度预算' });
+    expect(name.nextElementSibling).toBe(arrow);
+    expect(name.contains(arrow)).toBe(false);
+    expect(arrow.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(arrow);
+    expect(screen.getByRole('button', { name: '收起 年度预算' }).getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('button', { name: '核对三季度支出' })).toBeTruthy();
+    fireEvent.keyDown(name, { key: 'ArrowLeft' });
+    expect(screen.queryByRole('button', { name: '核对三季度支出' })).toBeNull();
+    fireEvent.keyDown(name, { key: 'ArrowRight' });
+    expect(screen.getByRole('button', { name: '核对三季度支出' })).toBeTruthy();
+    expect(onOpen).not.toHaveBeenCalled();
+    // Rows with nothing under them have no arrow.
+    expect(screen.queryByRole('button', { name: /^(展开|收起) 核对三季度支出/ })).toBeNull();
+    // The status place and the rest of the row open the conversation.
+    fireEvent.click(screen.getByTitle('年度预算').closest('.tree-row')!.querySelector('.status-slot')!);
+    expect(onOpen).toHaveBeenCalledWith(SEED_IDS.pm2);
   });
 });
 

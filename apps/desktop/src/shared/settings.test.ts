@@ -41,3 +41,12 @@ describe('opening animation', () => {
     expect(sanitizeSettings({ splash: 'sometimes', splashShownOn: 'yesterday' })).toMatchObject({ splash: 'daily', splashShownOn: null });
   });
 });
+
+describe('doneSeen (finished sub-tasks already opened)', () => {
+  it('is null until something is recorded; a saved list keeps its ids once each, junk dropped', () => {
+    expect(sanitizeSettings({}).doneSeen).toBeNull();
+    expect(sanitizeSettings({ doneSeen: 'x' }).doneSeen).toBeNull();
+    expect(sanitizeSettings({ doneSeen: [] }).doneSeen).toEqual([]);
+    expect(sanitizeSettings({ doneSeen: ['a', 'b', 'a', 3, '', null] }).doneSeen).toEqual(['a', 'b']);
+  });
+});

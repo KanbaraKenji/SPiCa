@@ -475,6 +475,7 @@ a:hover {
 }
 
 .tree-row {
+  position: relative;
   width: 100%;
   height: 32px;
   display: flex;
@@ -494,18 +495,22 @@ a:hover {
   background: var(--spica-active);
 }
 
-/* The name keeps a few characters when the row is crowded (the 更多 button). */
+/* The name keeps a few characters when the row is crowded; it is only as wide as its text, so the
+   expand arrow comes right after it. */
 .tree-title {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 3em;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
+/* The expand arrow right after the name, only on rows with something under them. */
 .tree-twisty {
-  width: 24px;
-  height: 24px;
+  position: relative;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -519,13 +524,23 @@ button.tree-twisty:hover {
   color: var(--spica-ink);
 }
 
-/* 更多 (…) at a row's end: only on the row under the pointer, the current row, a row with
-   the focus inside and a row whose menu is open; elsewhere it takes no room. */
-.tree-more {
+/* 更多 (…) at a row's end: seen only on the row under the pointer, the current row, a row with
+   the focus inside and a row whose menu is open. Its place is kept on every row (an empty one on
+   rows without a menu), so the status place beside it is at the same spot on all rows and never moves. */
+.tree-more-space {
   width: 24px;
   height: 24px;
   flex: none;
-  display: none;
+}
+
+.tree-more {
+  position: relative;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: inline-flex;
+  visibility: hidden;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-s);
@@ -537,7 +552,7 @@ button.tree-twisty:hover {
 .tree-row:focus-within .tree-more,
 .tree-row.is-active .tree-more,
 .tree-row.is-menu-open .tree-more {
-  display: inline-flex;
+  visibility: visible;
 }
 
 .tree-more:hover,
@@ -564,27 +579,58 @@ button.tree-twisty:hover {
 }
 
 .tree-open {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   height: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
   /* Same left edge as .tree-heading text. */
   padding-left: 10px;
-  padding-right: 4px;
+  padding-right: 2px;
   text-align: left;
 }
 
+/* The whole row opens the conversation: the name's button reaches over it; the arrow, the pin,
+   the status place and 更多 sit above that. */
+.tree-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-m);
+}
+
 /* Status glyph in the tree: fixed 12px box so titles line up. */
-.status-mark {
+/* One status place per row, at its end: a dot (waiting for you, an error, something new) or a
+   small icon (running, queued, stopped). Kept when empty. */
+.status-slot {
+  position: relative;
+  z-index: 1;
   width: 12px;
   height: 12px;
   flex: none;
+  margin: 0 4px 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--spica-faint);
+}
+
+.slot-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.status-slot.is-waiting .slot-dot {
+  background: var(--spica-warning);
+}
+
+.status-slot.is-error .slot-dot {
+  background: var(--spica-danger);
+}
+
+.status-slot.is-news .slot-dot {
+  background: var(--spica-accent);
 }
 
 /* The state itself comes from the brand's status icons (SpicaStatusIcon). */
@@ -3935,7 +3981,10 @@ button.ctx-row:hover {
 
 /* A pinned project: a small mark after its name (not a button; the menu pins and unpins). */
 .tree-pin {
+  position: relative;
+  z-index: 1;
   flex: none;
+  margin-left: 4px;
   display: inline-flex;
   color: var(--spica-faint);
 }

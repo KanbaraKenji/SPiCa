@@ -24,6 +24,7 @@ import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
 import { InboxView, type InboxProject } from './shell/InboxView';
 import { MailStore, useMail } from './store/mail';
 import { needsYou, unseenByManager } from '../../shared/mail';
+import { nextDoneSeen, unseenDone } from './shell/row-status';
 import type { MailItem, SessionInfo } from '@spica/protocol';
 import { Icon } from './ui/Icon';
 import { sidebarNews } from './shell/sidebar-news';
@@ -277,6 +278,13 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       shell.update({ mailSeen: { ...shell.settings.mailSeen, [state.activeId]: new Date().toISOString() } });
     }
   }, [view, state.activeId, unseen, shell]);
+  // Finished sub-tasks not opened since they finished: news on their row. Opening one records it.
+  const doneNews = useMemo(() => unseenDone(sessions, settings.doneSeen), [sessions, settings.doneSeen]);
+  useEffect(() => {
+    if (!state.loaded) return;
+    const next = nextDoneSeen(sessions, shell.settings.doneSeen, view === 'chat' ? state.activeId : null);
+    if (next) shell.update({ doneSeen: next });
+  }, [state.loaded, sessions, view, state.activeId, shell]);
   const mailById = useMemo(() => {
     const map = new Map(mail.items.map((m) => [m.id, m]));
     return (mid: string): MailItem | undefined => map.get(mid);
@@ -638,6 +646,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         },
         notes: sidebarNotes,
       })}
+      unseenDone={doneNews}
     />
   );
 

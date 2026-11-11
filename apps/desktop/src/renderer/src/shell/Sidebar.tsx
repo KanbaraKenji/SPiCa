@@ -1,13 +1,14 @@
 // Left sidebar: conversations with the assistant, then each project, each with
 // the sub-agents it started (at any depth). Every row opens that session's
-// conversation; the arrow in front only expands or collapses.
+// conversation; the arrow after its name only expands or collapses.
 import { useMemo, useState } from 'react';
 import { ContextMenu } from '../ui/ContextMenu';
 import type { SessionInfo } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
 import { NewDot, joinNotes } from '../ui/NewDot';
-import { StatusMark } from '../ui/StatusMark';
+import { StatusSlot } from '../ui/StatusMark';
 import { isRunning } from '../store/transcript';
+import { rollupText, slotsOf, topSlot } from './row-status';
 
 export interface SidebarProps {
   sessions: SessionInfo[];
@@ -29,6 +30,8 @@ export interface SidebarProps {
   inbox?: { count: number; open: boolean; onOpen(): void };
   /** Short words after a row's title, by session id (e.g. 「有新来信」 on a project). */
   notes?: ReadonlyMap<string, string>;
+  /** Finished sub-tasks not opened since they finished: news on their row (and on a collapsed row above them). */
+  unseenDone?: ReadonlySet<string>;
   /** Project ids pinned to the top, in pin order. */
   pinned?: readonly string[];
   onPin?: (projectId: string, pinned: boolean) => void;
@@ -47,6 +50,8 @@ export interface SidebarProps {
   compact?: boolean;
 }
 
+const NONE: ReadonlySet<string> = new Set();
+
 /** A conversation the user started (not a project's, not a sub-task): one that can be deleted on its own. */
 function isOwnChat(s: SessionInfo): boolean {
   return s.role === 'top' && !s.parentId;
@@ -54,34 +59,6 @@ function isOwnChat(s: SessionInfo): boolean {
 
 function byRecent(a: SessionInfo, b: SessionInfo): number {
   return b.updatedAt.localeCompare(a.updatedAt);
-}
-
-function waitingForYou(s: SessionInfo): boolean {
-  return s.status === 'awaiting_answer' || s.status === 'awaiting_confirm';
-}
-
-/**
- * A collapsed row's one mark for everything below it: the most pressing state there. Something waiting for
- * you (the same mark its row has), else something running, else something queued; null: nothing going on.
- */
-export function rollupStatus(descendants: SessionInfo[]): SessionInfo['status'] | null {
-  const waiting = descendants.find(waitingForYou);
-  if (waiting) return waiting.status;
-  if (descendants.some((c) => c.status === 'thinking' || c.status === 'tool')) return 'thinking';
-  if (descendants.some((c) => c.status === 'queued')) return 'queued';
-  return null;
-}
-
-/** Collapsed row's counts over everything below it, said on hovering its mark: only counts that are not zero. */
-export function projectSummary(descendants: SessionInfo[]): string {
-  const running = descendants.filter((c) => c.status === 'thinking' || c.status === 'tool').length;
-  const queued = descendants.filter((c) => c.status === 'queued').length;
-  const waiting = descendants.filter(waitingForYou).length;
-  const parts: string[] = [];
-  if (waiting) parts.push(`${waiting} 个待处理`);
-  if (running) parts.push(`${running} 个运行中`);
-  if (queued) parts.push(`${queued} 个排队中`);
-  return parts.join(' · ');
 }
 
 interface TreeProps {
@@ -103,6 +80,7 @@ interface TreeProps {
   menuFor: string | null;
   finishRename(s: SessionInfo, value: string | null): void;
   notes?: ReadonlyMap<string, string>;
+  unseenDone: ReadonlySet<string>;
   /** Rows that have a menu (conversations to rename; projects to rename, pin, delete). */
   hasMenu(s: SessionInfo): boolean;
   pinned: ReadonlySet<string>;
@@ -158,60 +136,76 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
   // Rows with something going on below them (or the open session) start expanded.
   const open =
     s.id in tree.expanded ? tree.expanded[s.id] === true : tree.openByDefault.has(s.id) || all.some((k) => isRunning(k.status) || k.id === tree.activeId);
-  // Collapsed: one mark for what goes on below (no words, no numbers on the row); the counts on hover.
-  const rollup = kids.length && !open ? rollupStatus(all) : null;
   const active = !tree.settingsOpen && s.id === tree.activeId;
+  // One status place per row: its own most pressing state (anything else it has is said on hover);
+  // collapsed, the most pressing of it and everything below it, with the counts on hover.
+  const said = (x: SessionInfo, isActive: boolean) => slotsOf(x, { note: tree.notes?.get(x.id), active: isActive, unseenDone: tree.unseenDone.has(x.id) });
+  const own = said(s, active);
+  const below = kids.length && !open ? all.flatMap((k) => said(k, !tree.settingsOpen && k.id === tree.activeId)) : [];
+  const slot = topSlot([...own, ...below]);
   const name = s.title ?? '';
   const menuOpen = tree.menuFor === s.id;
   const more = tree.toggleMenu && tree.hasMenu(s) && tree.editing !== s.id ? tree.toggleMenu : null;
+  const toggle = () => tree.setExpanded(s.id, !open);
   return (
     <>
-      {/* Text lines up with the section heading; each level in is one step. The expand
-          arrow sits at the right end, only on rows that have something under them.
-          更多 (…) shows on the row under the pointer, the current one and one whose menu is open. */}
-      <div className={['tree-row', active ? 'is-active' : '', menuOpen ? 'is-menu-open' : ''].filter(Boolean).join(' ')} style={{ paddingLeft: depth * 16 }}>
+      {/* Text lines up with the section heading; each level in is one step. After the name, on rows
+          with something under them, the expand arrow; at the end the status place, then 更多 (…),
+          seen on the row under the pointer, the current one and one whose menu is open. Both keep
+          their place on every row, so nothing moves. A click anywhere else on the row opens it. */}
+      <div
+        className={['tree-row', active ? 'is-active' : '', menuOpen ? 'is-menu-open' : ''].filter(Boolean).join(' ')}
+        style={{ paddingLeft: depth * 16 }}
+        onContextMenu={(e) => {
+          if (!tree.startRename || !tree.hasMenu(s) || tree.editing === s.id) return;
+          e.preventDefault();
+          tree.startRename(s, { x: e.clientX, y: e.clientY });
+        }}
+      >
         {tree.editing === s.id ? (
           <RenameField initial={name} onDone={(v) => tree.finishRename(s, v)} />
         ) : (
-          <button
-            type="button"
-            className="tree-open"
-            onClick={() => tree.onOpen(s.id)}
-            onContextMenu={(e) => {
-              if (!tree.startRename || !tree.hasMenu(s)) return;
-              e.preventDefault();
-              tree.startRename(s, { x: e.clientX, y: e.clientY });
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'F2' && tree.startRename && tree.hasMenu(s)) {
-                e.preventDefault();
-                tree.startRename(s);
-              }
-            }}
-            aria-current={active ? 'page' : undefined}
-            title={name}
-            data-tip-clipped=".tree-title"
-          >
-            <span className="tree-title">{name}</span>
+          <>
+            <button
+              type="button"
+              className="tree-open"
+              onClick={() => tree.onOpen(s.id)}
+              onKeyDown={(e) => {
+                // Right opens what is under the row, left closes it (the arrow button does the same).
+                if (kids.length && (e.key === 'ArrowRight' || e.key === 'ArrowLeft') && open !== (e.key === 'ArrowRight')) {
+                  e.preventDefault();
+                  toggle();
+                } else if (e.key === 'F2' && tree.startRename && tree.hasMenu(s)) {
+                  e.preventDefault();
+                  tree.startRename(s);
+                }
+              }}
+              aria-current={active ? 'page' : undefined}
+              title={name}
+              data-tip-clipped=".tree-title"
+            >
+              <span className="tree-title">{name}</span>
+            </button>
+            {kids.length ? (
+              <button type="button" className="tree-twisty" aria-label={open ? `收起 ${name}` : `展开 ${name}`} title={open ? '收起' : '展开'} aria-expanded={open} onClick={toggle}>
+                <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} />
+              </button>
+            ) : null}
             {s.projectId && tree.pinned.has(s.projectId) ? (
-              <span className="tree-pin" title="已置顶">
+              <span className="tree-pin" title="已置顶" onClick={() => tree.onOpen(s.id)}>
                 <Icon name="pin" size={12} />
               </span>
             ) : null}
-            {tree.notes?.get(s.id) && !active ? <NewDot text={tree.notes.get(s.id)!} /> : null}
-            {rollup ? <StatusMark status={rollup} note={projectSummary(all)} /> : <StatusMark status={s.status} />}
-          </button>
+            <StatusSlot slot={slot} {...(below.length ? { text: rollupText([...own, ...below]) } : own.length > 1 ? { text: joinNotes(own.map((x) => x.text)) } : {})} onClick={() => tree.onOpen(s.id)} />
+          </>
         )}
         {more ? (
           <button type="button" className="tree-more" aria-label="更多" title="更多" aria-haspopup="menu" aria-expanded={menuOpen} onClick={(e) => more(s, e.currentTarget)}>
             <Icon name="more" size={16} />
           </button>
-        ) : null}
-        {kids.length ? (
-          <button type="button" className="tree-twisty" aria-label={open ? `收起 ${name}` : `展开 ${name}`} title={open ? '收起' : '展开'} aria-expanded={open} onClick={() => tree.setExpanded(s.id, !open)}>
-            <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
-          </button>
-        ) : null}
+        ) : tree.editing === s.id ? null : (
+          <span className="tree-more-space" aria-hidden />
+        )}
       </div>
       {open ? kids.map((k) => <Node key={k.id} s={k} depth={depth + 1} tree={tree} />) : null}
     </>
@@ -229,6 +223,7 @@ export function Sidebar({
   onRename,
   inbox,
   notes,
+  unseenDone,
   pinned = [],
   onPin,
   onRenameProject,
@@ -263,6 +258,7 @@ export function Sidebar({
     // Another view (settings, inbox) is open: no row is the current one.
     settingsOpen: settingsOpen || Boolean(inbox?.open),
     ...(notes ? { notes } : {}),
+    unseenDone: unseenDone ?? NONE,
     expanded,
     setExpanded: (id, open) => setExpandedState((e) => ({ ...e, [id]: open })),
     onOpen,
