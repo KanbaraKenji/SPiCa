@@ -3476,12 +3476,12 @@ button.ctx-row:hover {
   gap: 16px;
 }
 
-/* The tick of the choice in force; its place is kept on the other items so the labels line up. */
+/* The tick of the choice in force, at the end of its row (after the words on the right, if any). */
 .context-item-check {
   flex: none;
   width: 14px;
   height: 14px;
-  margin-right: -8px;
+  margin-left: -8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

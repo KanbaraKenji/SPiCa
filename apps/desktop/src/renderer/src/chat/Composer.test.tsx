@@ -88,9 +88,10 @@ describe('Composer controls', () => {
     expect(inUse.querySelector('.context-item-check svg')).toBeTruthy();
     const other = screen.getByRole('menuitemradio', { name: 'deepseek-reasoner' });
     expect(other.getAttribute('aria-checked')).toBe('false');
-    // The other keeps the tick's place, empty, so the two names line up.
-    expect(other.querySelector('.context-item-check')).toBeTruthy();
-    expect(other.querySelector('.context-item-check svg')).toBeNull();
+    // The tick comes last on its row, after 默认; the other row has none and nothing in front of its name.
+    expect(inUse.lastElementChild?.className).toBe('context-item-check');
+    expect(other.querySelector('.context-item-check')).toBeNull();
+    expect(inUse.firstElementChild?.className).toBe('context-item-label');
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'deepseek-reasoner' }));
     expect(pickB).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Manual' }));

@@ -96,13 +96,15 @@ describe('group headings', () => {
 });
 
 describe('a menu of choices', () => {
-  it('the one in force has a tick and says so to screen readers; every item keeps the tick’s place', () => {
+  it('the one in force has a tick at the end of its row and says so to screen readers; nothing is put in front of the labels', () => {
     const pick = (label: string, checked: boolean) => ({ label, checked, onSelect: () => {} });
     render(<ContextMenu x={0} y={0} items={[pick('甲', false), pick('乙', true), pick('丙', false)]} onClose={() => {}} />);
     const rows = screen.getAllByRole('menuitemradio');
     expect(rows.map((r) => r.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false']);
     expect(rows.map((r) => Boolean(r.querySelector('.context-item-check svg')))).toEqual([false, true, false]);
-    expect(rows.every((r) => r.firstElementChild?.className === 'context-item-check')).toBe(true);
+    expect(rows.map((r) => r.querySelectorAll('.context-item-check').length)).toEqual([0, 1, 0]);
+    expect(rows.every((r) => r.firstElementChild?.className === 'context-item-label')).toBe(true);
+    expect(rows[1]!.lastElementChild?.className).toBe('context-item-check');
     expect(rows.map((r) => r.textContent)).toEqual(['甲', '乙', '丙']);
   });
   it('a menu of actions has no tick place', () => {

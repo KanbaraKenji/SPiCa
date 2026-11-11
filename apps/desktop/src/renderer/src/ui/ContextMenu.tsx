@@ -21,8 +21,8 @@ export interface MenuItem {
   /** Said on hover. */
   title?: string;
   /**
-   * One of a set of choices: true on the one in force (a tick in front of it), false on the others. When any
-   * item of a menu says so, every item keeps the tick's place, so the labels line up.
+   * One of a set of choices: true on the one in force (a tick at the end of its row), false on the others.
+   * Nothing is kept in front of the labels for it, so the menu is no wider than its words.
    */
   checked?: boolean;
   /** Right after the label (a mark such as 支持图片). */
@@ -87,7 +87,6 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
     };
   }, [onClose, anchor]);
 
-  const choices = items.some((it) => it.checked !== undefined);
   return (
     // One item lit at a time: the first takes the keyboard focus on opening; once the pointer moves onto
     // another, the focus goes to the menu itself, so only the item under the pointer is lit.
@@ -117,11 +116,6 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
               it.onSelect();
             }}
           >
-            {choices ? (
-              <span className="context-item-check" aria-hidden>
-                {it.checked ? <Icon name="check" size={14} /> : null}
-              </span>
-            ) : null}
             {it.detail ? (
               <span className="context-item-text">
                 <span className="context-item-label">
@@ -137,6 +131,11 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
               </span>
             )}
             {it.hint ? <span className="context-item-hint">{it.hint}</span> : null}
+            {it.checked ? (
+              <span className="context-item-check" aria-hidden>
+                <Icon name="check" size={14} />
+              </span>
+            ) : null}
           </button>
         </div>
       ))}
