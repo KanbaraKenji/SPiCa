@@ -77,6 +77,8 @@ export interface UsageLogRequest {
 
 /** null: the save dialog was cancelled. */
 export type UsageLogResult = { file: string; records: number } | { error: string } | null;
+/** A table saved as CSV: where it went, why not, or null when the dialog was cancelled. */
+export type SaveCsvResult = { file: string } | { error: string } | null;
 
 export interface DesktopBridge extends SpicaBridge {
   /** Tells the main process which conversation is open (null: none), for the core's 'ui.activeSession'. */
@@ -131,8 +133,12 @@ export interface DesktopBridge extends SpicaBridge {
     /** A file inside the plugin's folder, as an absolute path; null when it is not one. */
     file(plugin: string, path: string): Promise<string | null>;
   };
-  /** Shows a file selected in Explorer. */
-  showInFolder(path: string): void;
+  /** Shows a file (or folder) selected in Explorer. An absolute path; resolves to what to show when it is not there. */
+  showInFolder(path: string): Promise<string | null>;
+  /** Opens a folder in Explorer. An absolute path; resolves to what to show when it is not a folder that is there. */
+  openFolder(path: string): Promise<string | null>;
+  /** Saves a table as CSV where the user picks (`name`: the suggested file name). */
+  saveCsv(name: string, text: string): Promise<SaveCsvResult>;
   backend: {
     status(): Promise<BackendState>;
     onStatus(listener: (s: BackendState) => void): () => void;

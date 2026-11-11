@@ -66,6 +66,10 @@ export const DesktopChannel = {
   PluginViewFile: 'spica:pluginViewFile',
   /** invoke: UsageLogRequest -> UsageLogResult (asks where to save first) */
   UsageLog: 'spica:usageLog',
-  /** send: a file path to show in Explorer */
+  /** invoke: absolute path -> null, or what to show (a file or folder selected in Explorer) */
   ShowInFolder: 'spica:showInFolder',
+  /** invoke: absolute folder path -> null, or what to show (the folder opened in Explorer) */
+  OpenFolder: 'spica:openFolder',
+  /** invoke: (suggested name, CSV text) -> SaveCsvResult (asks where to save first) */
+  SaveCsv: 'spica:saveCsv',
 } as const;

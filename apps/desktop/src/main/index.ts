@@ -1,5 +1,5 @@
 // Main process of the Spica desktop shell.
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, safeStorage, shell } from 'electron';
@@ -11,14 +11,15 @@ import { CAPTION_BACK, captionSymbol, deriveTokens, resolveSkin, schemeOf, type 
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
 import { mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
-import type { ProviderList, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
+import type { ProviderList, SaveCsvResult, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import { APP_IDENTITY } from '../shared/app-identity';
 import { coreKind, devConnectionName, secretLabel, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
 import type { PluginService } from './plugins/types';
-import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder, SHOTS_WORKFLOWS_DIR } from './dev-hooks';
+import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder, recordShellTo, shellRecord, SHOTS_WORKFLOWS_DIR } from './dev-hooks';
+import { checkLocalPath, csvFileName, csvFileText, type PathKind } from './local-paths';
 import { withErrorHint } from './error-hint';
 import { FakePluginService } from './plugins/fake';
 import { UpdateService } from './update/service';
@@ -70,7 +71,8 @@ function overlayHeight(zoom: number): number {
 //   SPICA_SHOTS=<dir>        render the screenshot matrix into <dir> and quit (not in installed builds)
 //   SPICA_BACKEND=fake|core  pick the backend (default: the real core; screenshots use the fake;
 //                            not in installed builds)
-//   SPICA_SAVE_TO=<dir>      save files (usage log) there without asking (not in installed builds)
+//   SPICA_SAVE_TO=<dir>      save files (usage log, a table's CSV) there without asking (not in installed builds)
+//   SPICA_RECORD_SHELL=<file> write what would open in Explorer to this file instead (not in installed builds)
 //   SPICA_PICK_FOLDER=<dir>  the folder picker answers this without showing (not in installed builds)
 //   SPICA_PICK_FILES=<a;b>   the file picker answers these without showing (not in installed builds)
 //   SPICA_DEMO_PLUGINS=many  the demo's plugin list has twelve plugins (screenshots; not in installed builds)
@@ -943,8 +945,54 @@ ipcMain.handle(DesktopChannel.UsageLog, async (_e, raw: unknown): Promise<UsageL
   }
 });
 
-ipcMain.on(DesktopChannel.ShowInFolder, (_e, path: unknown) => {
-  if (typeof path === 'string' && existsSync(path)) shell.showItemInFolder(path);
+// Explorer for paths from the page (main/local-paths.ts checks them). SPICA_RECORD_SHELL (development only):
+// written to that file instead, so test scripts never open a window on the screen.
+const recordShell = recordShellTo(process.env, app.isPackaged);
+const pathKind = (p: string): PathKind => {
+  try {
+    const st = statSync(p);
+    return st.isDirectory() ? 'folder' : st.isFile() ? 'file' : null;
+  } catch {
+    return null;
+  }
+};
+ipcMain.handle(DesktopChannel.ShowInFolder, (_e, path: unknown): string | null => {
+  const r = checkLocalPath(path, 'any', pathKind);
+  if (!r.ok) return r.error;
+  if (recordShell) appendFileSync(recordShell, shellRecord('showInFolder', r.path));
+  else shell.showItemInFolder(r.path);
+  return null;
+});
+ipcMain.handle(DesktopChannel.OpenFolder, async (_e, path: unknown): Promise<string | null> => {
+  const r = checkLocalPath(path, 'folder', pathKind);
+  if (!r.ok) return r.error;
+  if (recordShell) {
+    appendFileSync(recordShell, shellRecord('openFolder', r.path));
+    return null;
+  }
+  const error = await shell.openPath(r.path);
+  return error ? `无法打开文件夹：${error}` : null;
+});
+
+ipcMain.handle(DesktopChannel.SaveCsv, async (_e, name: unknown, text: unknown): Promise<SaveCsvResult> => {
+  if (typeof text !== 'string' || text.length > 20_000_000) return { error: '无法导出该表格。' };
+  const opts: Electron.SaveDialogOptions = { title: '导出 CSV', defaultPath: join(app.getPath('documents'), csvFileName(name)), filters: [{ name: 'CSV', extensions: ['csv'] }] };
+  // SPICA_SAVE_TO=<folder> (development only): skip the dialog, so scripts never leave one open.
+  const saveTo = app.isPackaged ? '' : (process.env.SPICA_SAVE_TO ?? '');
+  const pick = saveTo
+    ? { canceled: false, filePath: join(saveTo, basename(opts.defaultPath ?? '表格.csv')) }
+    : mainWindow
+      ? await dialog.showSaveDialog(mainWindow, opts)
+      : await dialog.showSaveDialog(opts);
+  if (pick.canceled || !pick.filePath) return null;
+  try {
+    writeFileSync(pick.filePath, csvFileText(text), 'utf8');
+    return { file: pick.filePath };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/EACCES|EPERM|EBUSY|EROFS|ENOENT/.test(msg)) return { error: '无法写入该位置，请选择其他文件夹。' };
+    return { error: friendly(err) };
+  }
 });
 
 ipcMain.handle(DesktopChannel.PickFiles, async (_e, title: unknown): Promise<string[]> => {

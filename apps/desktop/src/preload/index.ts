@@ -2,7 +2,7 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import { IpcChannel, type AgentApi, type AppInfo, type ContextBreakdown, type CoreEvent } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
-import type { BackendState, DesktopBridge, LocalConnectInfo, NetworkState, PreviewInfo, ProviderList, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
+import type { BackendState, DesktopBridge, LocalConnectInfo, NetworkState, PreviewInfo, ProviderList, SaveCsvResult, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import type { ModelRef, ProviderDraft, ProviderKind, TestResult } from '../shared/providers';
 import type { PluginsCommand, PluginsProgress, PluginsResult } from '../shared/plugins';
 import type { UpdateState } from '../shared/updates';
@@ -106,7 +106,9 @@ const bridge: DesktopBridge = {
     run: (op) => ipcRenderer.invoke(DesktopChannel.Workflows, op) as Promise<WorkflowsState>,
   },
   exportUsageLog: (req) => ipcRenderer.invoke(DesktopChannel.UsageLog, req) as Promise<UsageLogResult>,
-  showInFolder: (path) => ipcRenderer.send(DesktopChannel.ShowInFolder, path),
+  showInFolder: (path) => ipcRenderer.invoke(DesktopChannel.ShowInFolder, path) as Promise<string | null>,
+  openFolder: (path) => ipcRenderer.invoke(DesktopChannel.OpenFolder, path) as Promise<string | null>,
+  saveCsv: (name, text) => ipcRenderer.invoke(DesktopChannel.SaveCsv, name, text) as Promise<SaveCsvResult>,
   providers: {
     list: () => ipcRenderer.invoke(DesktopChannel.ListProviders) as Promise<ProviderList>,
     save: (draft: ProviderDraft) => ipcRenderer.invoke(DesktopChannel.SaveProvider, draft) as Promise<ProviderList>,

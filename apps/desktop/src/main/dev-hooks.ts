@@ -15,6 +15,21 @@ export function pickedFiles(env: NodeJS.ProcessEnv, packaged: boolean): string[]
 }
 
 /**
+ * SPICA_RECORD_SHELL=<file> (development only): what would open in Explorer (打开所在文件夹, a folder path in an
+ * answer) is written to this file, one JSON line each, instead of opening a window on the screen; test scripts
+ * read it back. null: open for real (always in an installed build).
+ */
+export function recordShellTo(env: NodeJS.ProcessEnv, packaged: boolean): string | null {
+  if (packaged) return null;
+  return env.SPICA_RECORD_SHELL || null;
+}
+
+/** One line of that file. */
+export function shellRecord(op: 'showInFolder' | 'openFolder', path: string): string {
+  return `${JSON.stringify({ op, path })}\n`;
+}
+
+/**
  * Where 文档 is for a development run on another settings folder (SPICA_USER_DATA, or the screenshots' own):
  * a Documents folder inside it, so the default workflow folder, the export's default place and the folder
  * conversations shared up to 0.1.0-rc.2 never point into the developer's own 文档. null: the system's.

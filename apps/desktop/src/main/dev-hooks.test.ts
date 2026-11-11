@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder, SHOTS_WORKFLOWS_DIR } from './dev-hooks';
+import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder, recordShellTo, shellRecord, SHOTS_WORKFLOWS_DIR } from './dev-hooks';
 
 describe('picker answers for test scripts', () => {
   const env = { SPICA_PICK_FOLDER: 'C:/demo', SPICA_PICK_FILES: 'C:/a.png;C:/b.png;' };
@@ -14,6 +14,18 @@ describe('picker answers for test scripts', () => {
   it('never in an installed build, even when the environment sets them', () => {
     expect(pickedFolder(env, true)).toBeNull();
     expect(pickedFiles(env, true)).toBeNull();
+  });
+});
+
+describe('Explorer recorded for test scripts', () => {
+  it('records instead of opening in a development build when set', () => {
+    expect(recordShellTo({ SPICA_RECORD_SHELL: 'C:/rec.jsonl' }, false)).toBe('C:/rec.jsonl');
+    expect(recordShellTo({}, false)).toBeNull();
+    expect(shellRecord('openFolder', 'D:\\工作\\')).toBe('{"op":"openFolder","path":"D:\\\\工作\\\\"}\n');
+  });
+
+  it('never in an installed build: Explorer opens', () => {
+    expect(recordShellTo({ SPICA_RECORD_SHELL: 'C:/rec.jsonl' }, true)).toBeNull();
   });
 });
 
