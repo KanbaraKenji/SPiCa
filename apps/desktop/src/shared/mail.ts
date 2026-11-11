@@ -54,22 +54,6 @@ export function needsYou(item: MailItem): boolean {
   return item.status !== 'new' && !item.feedback;
 }
 
-/**
- * Mail a project manager received that the user has not looked at yet, per
- * manager session. Mail the user accepted or ignored in the inbox no longer counts.
- */
-export function unseenByManager(items: readonly MailItem[], seen: Readonly<Record<string, string>>): Map<string, number> {
-  const out = new Map<string, number>();
-  for (const m of items) {
-    if (m.status !== 'routed' || !m.routedTo) continue;
-    if (m.feedback && m.feedback.action !== 'reassign') continue;
-    const since = seen[m.routedTo];
-    if (since && Date.parse(m.updatedAt) <= Date.parse(since)) continue;
-    out.set(m.routedTo, (out.get(m.routedTo) ?? 0) + 1);
-  }
-  return out;
-}
-
 /** 「10:32」 today, 「11月8日」 on other days. */
 export function mailTime(iso: string | undefined, now: Date = new Date()): string {
   if (!iso) return '';

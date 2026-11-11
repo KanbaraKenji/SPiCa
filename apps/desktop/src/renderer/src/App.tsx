@@ -23,14 +23,13 @@ import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
 import { InboxView, type InboxProject } from './shell/InboxView';
 import { MailStore, useMail } from './store/mail';
-import { needsYou, unseenByManager } from '../../shared/mail';
+import { needsYou } from '../../shared/mail';
 import { nextDoneNews, unseenDone } from './shell/row-status';
 import type { MailItem, SessionInfo } from '@spica/protocol';
 import { Icon } from './ui/Icon';
 import { sidebarNews } from './shell/sidebar-news';
 import { watchScrim } from './ui/dim';
 import { usePeek } from './shell/peek';
-import { joinNotes } from './ui/NewDot';
 import { RailHead, SidebarHead, SidebarToggle } from './shell/SidebarToggle';
 import { HoverTips } from './ui/HoverTips';
 import { SpicaBanner } from '@spica/brand/react';
@@ -260,24 +259,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     }
     return out;
   }, [state.projects, sessions]);
-  const unseen = useMemo(() => unseenByManager(mail.items, settings.mailSeen), [mail.items, settings.mailSeen]);
-  // What is new for a project (the dot after it in the sidebar, its hover text): new mail, progress reports nobody has seen yet.
-  const sidebarNotes = useMemo(() => {
-    const notes = new Map<string, string>([...unseen.keys()].map((sid) => [sid, '有新来信']));
-    for (const p of state.projects) {
-      if (!p.unread) continue;
-      const had = notes.get(p.managerSessionId);
-      notes.set(p.managerSessionId, had ? `${had} · 有新回报` : '有新回报');
-    }
-    return notes;
-  }, [unseen, state.projects]);
   const inboxCount = mail.items.filter(needsYou).length;
-  // Looking at a project's conversation clears its 「有新来信」.
-  useEffect(() => {
-    if (view === 'chat' && state.activeId && unseen.has(state.activeId)) {
-      shell.update({ mailSeen: { ...shell.settings.mailSeen, [state.activeId]: new Date().toISOString() } });
-    }
-  }, [view, state.activeId, unseen, shell]);
   // Finished sub-tasks not opened since they finished: news on their row. Opening one records it.
   const doneNews = useMemo(() => unseenDone(sessions, settings.doneNews ?? []), [sessions, settings.doneNews]);
   const statusBefore = useRef<Map<string, SessionInfo['status']> | null>(null);
@@ -599,7 +581,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   if (rightMax && !rightCanMax) setRightMax(false);
   const title = view === 'settings' ? '设置' : view === 'inbox' ? '收件箱' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
 
-  const sidebarToggle = <SidebarToggle shown={leftShown} news={joinNotes(sidebarNotes.values())} onToggle={() => toggle('left')} />;
+  const sidebarToggle = <SidebarToggle shown={leftShown} onToggle={() => toggle('left')} />;
 
   // The sidebar, full (docked or over the window) or as the column of icons left when it is closed.
   const sidebarEl = (compact: boolean) => (

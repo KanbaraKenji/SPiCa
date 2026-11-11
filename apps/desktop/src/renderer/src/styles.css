@@ -3637,26 +3637,6 @@ button.ctx-row:hover {
   color: var(--spica-muted);
 }
 
-/* Something new (NewDot): one small dot on the sidebar toggle while the sidebar is collapsed. */
-.new-dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--spica-accent);
-}
-
-
-.rail-head [data-panel-toggle] {
-  position: relative;
-}
-
-.rail-head [data-panel-toggle] .new-dot {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-}
-
 .inbox {
   flex: 1;
   min-height: 0;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MailItem } from '@spica/protocol';
-import { mailTime, needsYou, reasonOf, surenessOf, unseenByManager, verdictOf } from './mail';
+import { mailTime, needsYou, reasonOf, surenessOf, verdictOf } from './mail';
 import { mailForCore, sanitizeSettings } from './settings';
 
 const base: MailItem = {
@@ -45,16 +45,10 @@ describe('reasonOf and surenessOf', () => {
   });
 });
 
-describe('needsYou and unseenByManager', () => {
-  it('counts mail a manager got after the user last looked', () => {
+describe('needsYou', () => {
+  it('mail handed to a project waits for you; mail not sorted yet does not', () => {
     expect(needsYou(base)).toBe(true);
     expect(needsYou({ ...base, status: 'new' })).toBe(false);
-    expect(unseenByManager([base], {}).get('pm-1')).toBe(1);
-    // Seen later than it arrived (other time zone notation too).
-    expect(unseenByManager([base], { 'pm-1': '2026-11-09T02:05:00.000Z' }).size).toBe(0);
-    expect(unseenByManager([base], { 'pm-1': '2026-11-09T01:00:00.000Z' }).get('pm-1')).toBe(1);
-    // Accepted in the inbox: handled there.
-    expect(unseenByManager([{ ...base, feedback: { action: 'accept', at: base.updatedAt } }], {}).size).toBe(0);
   });
 });
 
@@ -74,9 +68,8 @@ describe('mail settings', () => {
     expect(sanitizeSettings({ mail: { enabled: true } }).mail.enabled).toBe(false);
     expect(sanitizeSettings({ mail: { enabled: true, consentedAt: '2026-11-10T01:00:00+08:00' } }).mail.enabled).toBe(true);
     expect(mailForCore({ enabled: true, consentedAt: null, intervalMinutes: 5, ignore: { from: [], subject: [] } })).toEqual({ enabled: false, intervalMinutes: 5, ignore: { from: [], subject: [] } });
-    const s = sanitizeSettings({ mail: { enabled: false, intervalMinutes: 0, ignore: { from: [' news@ ', '', 3], subject: 'x' } }, workflowsDir: ' D:\\流程 ', mailSeen: { a: 'nope', b: '2026-11-09T10:00:00Z' } });
+    const s = sanitizeSettings({ mail: { enabled: false, intervalMinutes: 0, ignore: { from: [' news@ ', '', 3], subject: 'x' } }, workflowsDir: ' D:\\流程 ' });
     expect(s.mail).toEqual({ enabled: false, consentedAt: null, intervalMinutes: 1, ignore: { from: ['news@'], subject: [] } });
     expect(s.workflowsDir).toBe('D:\\流程');
-    expect(s.mailSeen).toEqual({ b: '2026-11-09T10:00:00Z' });
   });
 });
