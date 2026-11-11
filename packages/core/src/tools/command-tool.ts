@@ -28,6 +28,8 @@ export function createRunCommandTool(opts: CommandToolOptions = {}): Tool {
   const defTimeout = opts.defaultTimeoutMs ?? 120_000;
   const maxTimeout = opts.maxTimeoutMs ?? 600_000;
   return {
+    category: 'command',
+    summaryParam: 'description',
     spec: {
       name: 'run_command',
       description:
@@ -40,6 +42,10 @@ export function createRunCommandTool(opts: CommandToolOptions = {}): Tool {
           command: { type: 'string' },
           timeout_seconds: { type: 'integer' },
           cwd: { type: 'string', description: 'Folder to run in (default: the working folder).' },
+          description: {
+            type: 'string',
+            description: "What this command does for the task, in one short sentence in the user's language (shown to the user instead of the command).",
+          },
         },
         required: ['command'],
       },

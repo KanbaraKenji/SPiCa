@@ -2,6 +2,8 @@
 // cache); every request leaves a traceable record.
 import type { Tool, ToolContext } from './types.ts';
 import { netFetch } from '../net.ts';
+import { isoNow } from '../events.ts';
+import type { SourceCardMeta } from '../types.ts';
 
 const MAX_BYTES = 5_000_000;
 const DEFAULT_MAX_CHARS = 40_000;
@@ -21,6 +23,7 @@ export function createWebFetchTool(opts: WebFetchOptions = {}): Tool {
   const doFetch = opts.fetchImpl ?? netFetch;
   return {
     readOnly: true,
+    category: 'web',
     untrusted: 'web',
     targetUrl: (input) => (typeof input.url === 'string' ? input.url : undefined),
     spec: {
@@ -84,7 +87,12 @@ export function createWebFetchTool(opts: WebFetchOptions = {}): Tool {
           return { content: `${head}\n[binary content, ${bytes.length} bytes; not shown]`, isError: res.status >= 400 };
         }
         const raw = new TextDecoder().decode(bytes);
-        let text = /html/i.test(type) || /^\s*<(!doctype html|html)/i.test(raw) ? htmlToText(raw) : raw;
+        const html = /html/i.test(type) || /^\s*<(!doctype html|html)/i.test(raw);
+        if (res.status < 400) {
+          const card: SourceCardMeta = { tool: 'web_fetch', sources: [{ url: current.href, title: html ? pageTitle(raw) : null, fetchedAt: isoNow() }] };
+          ctx.emit({ type: 'source.card', callId: ctx.callId, card });
+        }
+        let text = html ? htmlToText(raw) : raw;
         let note = truncated ? `\n[download stopped at ${MAX_BYTES} bytes]` : '';
         if (text.length > maxChars) {
           note += `\n[showing first ${maxChars} of ${text.length} characters]`;
@@ -136,6 +144,19 @@ function looksBinary(b: Uint8Array): boolean {
 }
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '–', mdash: '—', hellip: '…', copy: '©', reg: '®' };
+
+/** The page's title from its HTML title element (entities decoded, spaces collapsed); null when it has none. */
+export function pageTitle(html: string): string | null {
+  const raw = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1];
+  if (!raw) return null;
+  const t = raw
+    .replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e: string) =>
+      e[0] === '#' ? String.fromCodePoint(e[1]?.toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : (ENTITIES[e.toLowerCase()] ?? m),
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
+  return t ? t.slice(0, 300) : null;
+}
 
 /** Plain-text rendering of HTML: drops scripts/styles, keeps headings, lists, links. */
 export function htmlToText(html: string): string {
@@ -240,6 +261,7 @@ function pick(obj: unknown, path: string): unknown {
 export function createWebSearchTool(backend: SearchBackend): Tool {
   return {
     readOnly: true,
+    category: 'web',
     untrusted: 'web',
     spec: {
       name: 'web_search',
@@ -270,6 +292,15 @@ export function createWebSearchTool(backend: SearchBackend): Tool {
         const results = await backend.search(query, { count, signal: ctx.signal, ctx });
         trace.finish({ status: 'ok', bytes: JSON.stringify(results).length });
         if (results.length === 0) return { content: `No results for "${query}".` };
+        const at = isoNow();
+        const sources = results.map((r) => ({
+          url: r.url,
+          title: r.title.trim() || null,
+          ...(r.snippet ? { snippet: r.snippet.slice(0, 300) } : {}),
+          ...(r.published ? { published: r.published } : {}),
+          fetchedAt: at,
+        }));
+        ctx.emit({ type: 'source.card', callId: ctx.callId, card: { tool: 'web_search', query, sources } });
         const lines = results.map(
           (r, i) => `${i + 1}. ${r.title}\n   ${r.url}${r.published ? `\n   published: ${r.published}` : ''}${r.snippet ? `\n   ${r.snippet}` : ''}`,
         );

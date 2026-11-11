@@ -110,7 +110,7 @@
 | 状态 | `status`（idle / queued / thinking / tool / awaiting_confirm / awaiting_answer / done / error / aborted / interrupted）、`queue`（排队位次，只在变化时发） |
 | 流式 | `text.delta`、`thinking.delta`、`tool.call`（模型开始写某个工具调用） |
 | 消息 | `message`（一条完整消息入库，界面以它为准）、`message.replaced`（钩子改了已流出的回答）、`messages.superseded`（重新生成：这些消息成了旧的第几版，第 11 节） |
-| 工具 | `tool.start`、`tool.end`（结果开头、耗时）、`file.card`、`suggest.actions` |
+| 工具 | `tool.start`（带类别、一句说明、名字，见第 8 节）、`tool.end`（结果开头、耗时）、`file.card`、`source.card`（查网页用到的页面）、`suggest.actions` |
 | 等用户 | `confirm.request`（带 `cause` 时是守卫要求的）、`confirm.resolved`、`confirm.auto`（批准方式为 auto 时自动通过的调用）、`ask.request`、`ask.resolved` |
 | 守卫 | `guard.flagged`（外来内容里有像指令的文字） |
 | 花费 | `usage`、`cost`（运行 / 会话 / 全局累计，过警戒线带 warning）、`budget.stop` |
@@ -202,6 +202,11 @@
 - 每个工具结果的第一行是 `[fetched at 2026-11-09T15:20:42.988+08:00]`（本地时间带时区），系统提示告诉模型旧结果可能过期；内核不缓存外部数据。
 - 工具输入先按 JSON schema 粗校验（必填、基本类型），不合格直接回错误结果。子会话默认继承父会话的工具白名单。
 - **确认与提问**：同一轮里要确认的调用挂起，其余照常执行，结果先存进 `tool_calls` 表；会话转 `awaiting_confirm` / `awaiting_answer`，发 `confirm.request` / `ask.request`，本次运行结束。用户 `confirm(callId, true/false)` 或 `answer(callId, 文字)`，全部挂起项都有了结果后，这一轮所有结果按调用顺序合成一条 `tool_results`，开新的运行。拒绝的动作不执行，结果是「用户拒绝了，别重试」，记录状态 `denied`。挂起状态全在存储里，重启后照样能答。
+- **类别和一句说明**（`ToolCallInfo { category, summary?, title? }`，给界面拼「Ran 4 commands, created a file」这种概述）：
+  - 每个内置工具声明 `Tool.category`：command、read、write、web、history、agent、message、ask、project、mail；插件注册的没写就是 plugin，不认识的是 other。工具被撤掉以后照样按注册来源算（`ToolRegistry.categoryOf`）。
+  - `summary` 是模型写的「这一步在干什么」：工具用 `Tool.summaryParam` 指明哪个参数是它。现在只有 run_command 的 `description`，交付规则里要求每次都写；最长 200 字。插件工具不往参数表里加字段（可能和插件自己的参数撞名），用 `Tool.title`（MCP 的 title）。
+  - 在 `tool.start` 里带上；tool_results 消息的 `meta.toolInfo[调用 id]` 也存一份，没执行的调用（拒绝、工具不在）也在里面。老消息没有这一项，界面按工具名猜。
+- **来源卡**（`source.card`，`meta.sourceCards[调用 id]`，`SourceCardMeta { tool, query?, sources[] }`）：web_fetch 成功时一行（跳转之后的地址、网页的 title），web_search 每个结果一行（标题、摘要、发布日期）。托管搜索的来源藏在服务商私有块里，这一版不出。
 - **只读声明**（`Tool.readOnly`）：调用它不改任何东西。只用来判断一轮能不能重新生成（第 11 节），不影响确认。MCP 工具取 `annotations.readOnlyHint === true`。
 - **工具被停用之后**（插件停用、MCP server 断开）：每轮按当时的工具表发请求。注册表记着哪些工具是被撤掉的；会话里以前用过、现在被撤掉的，下一轮前写一条运行时备注（`kind: 'note'`，`meta.toolsUnavailable`），同一批只说一次。模型照旧调了，结果是「已不可用，什么都没执行」，记录状态 `unavailable`；重启后插件还没起来的情况不发这条备注。
 - **插件界面直接调自己的工具**（`callPluginTool(插件, 工具, 参数, { sessionId? })`）：插件的视图（iframe）不经模型、直接调这个插件注册的工具，工具名可以写完整名字（如 `outlook__list_messages`，插件有多个 server、前缀不同也行），也可以只写插件前缀后面的部分；一律按注册来源 `plugin:<名字>` 校验，别的插件的工具调不了。插件视图已经自己问过用户时传 `confirmed: true`，就不再发确认，直接执行，可追溯记录里记 `confirmedBy: 'view'`；传 `confirmed: false` 时不发确认卡，需要确认就立刻返回 `{ isError: true, needsConfirmation: true, content: 原因 }`，什么都不执行，由调用方问过用户后带 `confirmed: true` 再调；不传才发确认卡等用户；经确认卡同意的记 `confirmedBy: 'user'`。不进任何会话的历史，结果文字原样返回 `{ content, isError, declined? }`。钩子照常生效，deny 就拦下；不可逆工具和钩子要求确认的工具，先在 `sessionId`（不给就是默认顶层线程）上发 `confirm.request`，带 `cause: 'plugin_view'`，用户用 `confirm(同一会话, callId, 是否同意)` 回答。10 分钟没人答就算拒绝。这种确认不进存储，重启就没了。没给 sessionId 时只借用已有的默认顶层线程，不会新建（建会话要有模型），所以全新安装、还没配模型时插件页面也能用：钩子拿到一个合成的会话信息（id `view:<插件>`，cwd 是部署的工作文件夹），确认卡这时用空的会话 id 发出。同一个插件的调用共用一个限流器（同时 4 个、每分钟 120 个）。没有写死的时限：MCP 工具按自己的 timeout_seconds、max_call_seconds 和进度来，`opts.signal`（页面走了）或 `Runtime.close()` 停掉调用并通知 server。`invokeTool`（邮件流水线取列表）同样不再另设时限，`close()` 停掉它。MCP 工具的可追溯记录发起者写 `view:<插件>`，给了 sessionId 就挂在那个会话上。

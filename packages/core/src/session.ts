@@ -24,6 +24,7 @@ import type {
   RegenerateResult,
   RegenerateState,
   SessionInfo,
+  ToolCallInfo,
   SessionStatus,
   SteerMode,
   ToolUseBlock,
@@ -1082,7 +1083,7 @@ export class Session {
     signal: AbortSignal,
     hctx: HookContext,
   ): Promise<{ content: string; isError: boolean; cards?: ToolCallCards }> {
-    this.#emit({ type: 'tool.start', callId: draft.callId, name: draft.name, input: draft.input });
+    this.#emit({ type: 'tool.start', callId: draft.callId, name: draft.name, input: draft.input, ...this.#toolInfo(draft.name, draft.input) });
     // Card events are also kept with the call, so history can rebuild them.
     let cards: ToolCallCards | undefined;
     const t0 = performance.now();
@@ -1101,6 +1102,7 @@ export class Session {
         if (body.type === 'file.card') cards = { ...cards, fileCard: body.file, ...(body.files ? { fileCards: body.files } : {}) };
         if (body.type === 'suggest.actions') cards = { ...cards, suggestion: { title: body.title, actions: body.actions } };
         if (body.type === 'history.card') cards = { ...cards, history: body.card };
+        if (body.type === 'source.card') cards = { ...cards, sources: body.card };
         this.#emit(body);
       },
     };
@@ -1144,6 +1146,8 @@ export class Session {
     const fileCardLists: NonNullable<MessageMeta['fileCardLists']> = {};
     const suggestedActions: NonNullable<MessageMeta['suggestedActions']> = {};
     const historyCards: NonNullable<MessageMeta['historyCards']> = {};
+    const sourceCards: NonNullable<MessageMeta['sourceCards']> = {};
+    const toolInfo: NonNullable<MessageMeta['toolInfo']> = {};
     const guard: Record<string, GuardNote> = {};
     const autoApproved: string[] = [];
     for (const b of assistant.content) {
@@ -1155,6 +1159,8 @@ export class Session {
       if (r?.cards?.fileCards) fileCardLists[b.id] = r.cards.fileCards;
       if (r?.cards?.suggestion) suggestedActions[b.id] = r.cards.suggestion;
       if (r?.cards?.history) historyCards[b.id] = r.cards.history;
+      if (r?.cards?.sources) sourceCards[b.id] = r.cards.sources;
+      toolInfo[b.id] = this.#toolInfo(b.name, b.input);
       content.push({
         type: 'tool_result',
         toolUseId: b.id,
@@ -1169,6 +1175,8 @@ export class Session {
       ...(Object.keys(fileCardLists).length > 0 ? { fileCardLists } : {}),
       ...(Object.keys(suggestedActions).length > 0 ? { suggestedActions } : {}),
       ...(Object.keys(historyCards).length > 0 ? { historyCards } : {}),
+      ...(Object.keys(sourceCards).length > 0 ? { sourceCards } : {}),
+      toolInfo,
       ...(Object.keys(guard).length > 0 ? { guard } : {}),
       ...(autoApproved.length > 0 ? { autoApproved } : {}),
     };
@@ -1279,6 +1287,14 @@ export class Session {
     else this.#rt.store.appendMessage(message);
     this.#emit({ type: 'message', message });
     return message;
+  }
+
+  /** What kind of step a call is, and the model's one-line description of it when it gave one (run_command). */
+  #toolInfo(name: string, input: unknown): ToolCallInfo {
+    const tool = this.#rt.tools.get(name);
+    const said = tool?.summaryParam ? (input as Record<string, unknown> | null)?.[tool.summaryParam] : undefined;
+    const summary = typeof said === 'string' ? said.trim().slice(0, 200) : '';
+    return { category: this.#rt.tools.categoryOf(name), ...(summary ? { summary } : {}), ...(tool?.title ? { title: tool.title } : {}) };
   }
 
   /** Whether an earlier assistant message (not `exceptId`) called this tool. */
@@ -1401,7 +1417,13 @@ export class Session {
     return [
       DATA_RULE,
       languageLine(this.#record.config.locale, this.#userHasWritten()),
-      talksToUser ? deliveryRule({ cwd: this.#record.config.cwd, suggest: tools.some((t) => t.spec.name === 'suggest_actions') }) : '',
+      talksToUser
+        ? deliveryRule({
+            cwd: this.#record.config.cwd,
+            suggest: tools.some((t) => t.spec.name === 'suggest_actions'),
+            describe: tools.some((t) => t.spec.name === 'run_command'),
+          })
+        : '',
       this.#leadsOthers() ? TEAM_RULE : '',
     ].filter(Boolean);
   }
@@ -1489,7 +1511,7 @@ export const TEAM_RULE =
  * code; folders end with a separator), local images embedded, web sources linked, next steps as buttons, and a short
  * plain-text wrap-up after longer work. Kept short on purpose: it goes with every request.
  */
-export function deliveryRule(opts: { cwd: string; suggest: boolean; platform?: NodeJS.Platform }): string {
+export function deliveryRule(opts: { cwd: string; suggest: boolean; describe?: boolean; platform?: NodeJS.Platform }): string {
   const sep = (opts.platform ?? process.platform) === 'win32' ? '\\' : '/';
   // examples inside the real working folder: a made-up drive or folder gets copied into answers
   const folder = opts.cwd.endsWith(sep) ? opts.cwd : opts.cwd + sep;
@@ -1501,6 +1523,7 @@ export function deliveryRule(opts: { cwd: string; suggest: boolean; platform?: N
     `- To show an image file, embed it with its absolute path: ![what it shows](<${image}>). Only local files display, not web images.`,
     '- When you used web pages, cite them as links, e.g. [page title](https://example.com/page), next to what they support.',
     opts.suggest ? '- When there are useful next steps, offer them with suggest_actions rather than as questions in the text.' : '',
+    opts.describe ? "- Give every run_command call a description: one short sentence in the user's language saying what the step is for." : '',
     '- After a task that took several steps, end with a few plain sentences: what you did, where the results are, and what is left or could come next. No heading or table for this.',
   ]
     .filter(Boolean)

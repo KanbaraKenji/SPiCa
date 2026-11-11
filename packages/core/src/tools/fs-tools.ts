@@ -36,6 +36,7 @@ function isBinary(buf: Buffer): boolean {
 }
 
 export const readFileTool: Tool = {
+  category: 'read',
   readOnly: true,
   untrusted: 'file',
   targetPath: (input) => (typeof input.path === 'string' ? input.path : undefined),
@@ -135,6 +136,7 @@ export const readFileTool: Tool = {
 };
 
 export const writeFileTool: Tool = {
+  category: 'write',
   spec: {
     name: 'write_file',
     description: 'Create or overwrite a text file with the given content. Parent folders are created as needed.',
@@ -163,6 +165,7 @@ export const writeFileTool: Tool = {
 };
 
 export const editFileTool: Tool = {
+  category: 'write',
   spec: {
     name: 'edit_file',
     description:
@@ -206,6 +209,7 @@ export const editFileTool: Tool = {
 };
 
 export const listDirTool: Tool = {
+  category: 'read',
   readOnly: true,
   spec: {
     name: 'list_dir',
@@ -237,6 +241,7 @@ export const listDirTool: Tool = {
 const MAX_GLOB = 500;
 
 export const globTool: Tool = {
+  category: 'read',
   readOnly: true,
   spec: {
     name: 'glob',
@@ -281,6 +286,7 @@ const MAX_GREP = 200;
 const MAX_GREP_FILE_BYTES = 5_000_000;
 
 export const grepTool: Tool = {
+  category: 'read',
   readOnly: true,
   untrusted: 'file',
   spec: {

@@ -55,6 +55,7 @@ function describe(d: ProjectDetail): string {
 }
 
 export const createProjectTool: Tool = {
+  category: 'project',
   spec: {
     name: 'create_project',
     description:
@@ -90,6 +91,7 @@ export const createProjectTool: Tool = {
 };
 
 export const listProjectsTool: Tool = {
+  category: 'project',
   readOnly: true,
   spec: {
     name: 'list_projects',
@@ -115,6 +117,7 @@ export const listProjectsTool: Tool = {
 };
 
 export const openProjectTool: Tool = {
+  category: 'project',
   readOnly: true,
   spec: {
     name: 'open_project',
@@ -133,6 +136,7 @@ export const openProjectTool: Tool = {
 };
 
 export const projectStatusTool: Tool = {
+  category: 'project',
   readOnly: true,
   spec: {
     name: 'project_status',
@@ -147,6 +151,7 @@ export const projectStatusTool: Tool = {
 };
 
 export const setStageTool: Tool = {
+  category: 'project',
   spec: {
     name: 'set_stage',
     description: 'Move your project to another stage of its workflow (id or name), with a short note on why. The top-level agent is told.',
@@ -160,6 +165,7 @@ export const setStageTool: Tool = {
 };
 
 export const addWorkObjectTool: Tool = {
+  category: 'project',
   spec: {
     name: 'add_work_object',
     description: 'Add a work object (e.g. a product, a part) to your project. The level must be one of the workflow\'s levels; give parent_id when the level has a parent level.',
@@ -181,6 +187,7 @@ export const addWorkObjectTool: Tool = {
 };
 
 export const listWorkObjectsTool: Tool = {
+  category: 'project',
   readOnly: true,
   spec: {
     name: 'list_work_objects',

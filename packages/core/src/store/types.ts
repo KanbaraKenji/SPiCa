@@ -47,6 +47,8 @@ export interface ToolCallCards {
   suggestion?: { title: string; actions: import('../types.ts').SuggestedAction[] };
   /** What a history tool found (rows with their [n] numbers). */
   history?: import('../types.ts').HistoryCardMeta;
+  /** The web pages a web_fetch / web_search call used. */
+  sources?: import('../types.ts').SourceCardMeta;
   /** The result was outside content and went to the model fenced as data. */
   guard?: import('../types.ts').GuardNote;
   /** Ran without asking (approval mode auto). */

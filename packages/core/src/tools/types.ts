@@ -37,6 +37,12 @@ export interface Tool {
    * declared read-only cannot be regenerated, because running it again would do it twice.
    */
   readOnly?: boolean;
+  /** What kind of step a call is, for the window's summaries. Tools a plugin registers count as 'plugin' without it. */
+  category?: import('../types.ts').ToolCategory;
+  /** A name for people (a plugin tool's MCP title), shown instead of the tool name. */
+  title?: string;
+  /** The input field in which the model says what the step is for (run_command: description); it becomes the summary. */
+  summaryParam?: string;
   /**
    * `ask`: the call pauses the run until the user answers (ask_user).
    * The tool's execute() is not called; the answer becomes the result.
@@ -137,6 +143,17 @@ export class ToolRegistry {
 
   get(name: string): Tool | undefined {
     return this.#tools.get(name)?.tool;
+  }
+
+  /**
+   * The category of a tool, also of one that was removed: its own, else 'plugin' for anything not registered by the
+   * core, else 'other'.
+   */
+  categoryOf(name: string): import('../types.ts').ToolCategory {
+    const e = this.#tools.get(name);
+    if (e?.tool.category) return e.tool.category;
+    const source = e?.source ?? this.#removed.get(name);
+    return source && source !== 'core' ? 'plugin' : 'other';
   }
 
   /** Every registered tool with the source that registered it. */

@@ -440,6 +440,7 @@ export class MailPipeline {
 
 /** The triage thread's only way to answer: structured results, validated by the core. */
 export const triageMailTool: Tool = {
+  category: 'mail',
   spec: {
     name: 'triage_mail',
     description:

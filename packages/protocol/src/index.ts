@@ -343,6 +343,10 @@ export interface MessageMeta {
   suggestedActions?: Record<string, { title: string; actions: SuggestedAction[] }>;
   /** tool_results messages: what the history tools found, by call id. */
   historyCards?: Record<string, HistoryCardMeta>;
+  /** tool_results messages: what kind of step each call was, by call id (older messages have none: go by tool name). */
+  toolInfo?: Record<string, ToolCallInfo>;
+  /** tool_results messages: the web pages each web_fetch / web_search call used, by call id. */
+  sourceCards?: Record<string, SourceCardMeta>;
   [key: string]: unknown;
 }
 
@@ -552,7 +556,8 @@ export type CoreEventBody =
   | { type: 'message.replaced'; messageId: string; content: ContentBlock[] }
   /** regenerate: these messages (the answer to `anchorId`) are now old answer `version`; a new answer follows. */
   | { type: 'messages.superseded'; anchorId: string; messageIds: string[]; version: number }
-  | { type: 'tool.start'; callId: string; name: string; input: unknown }
+  /** category, summary, title: what the step is, for the window's summaries (see ToolCallInfo). */
+  | { type: 'tool.start'; callId: string; name: string; input: unknown; category?: ToolCategory; summary?: string; title?: string }
   /**
    * A file was read (read_file) or made by a call; render a file card. Sent before the tool's `tool.end`.
    * `files`: every card of the call, in order, when it has several (`file` is the first).
@@ -586,6 +591,8 @@ export type CoreEventBody =
   | { type: 'suggest.actions'; callId: string; title: string; actions: SuggestedAction[] }
   /** What a history tool found (search_history, read_history, find_history_files), as rows. Sent before the tool's `tool.end`. */
   | { type: 'history.card'; callId: string; card: HistoryCardMeta }
+  /** web_fetch / web_search: the pages a call used (kept in tool_results meta.sourceCards by call id). */
+  | { type: 'source.card'; callId: string; card: SourceCardMeta }
   /** Tokens and estimated cost of one model call. */
   | { type: 'usage'; usage: Usage; costUsd: number; providerId: string; model: string }
   /** Running totals; `warning` when a total passes the warning threshold of its limit. */
@@ -637,6 +644,55 @@ export type CoreEventBody =
  * (no runtime notes, reports or tool output), and background conversations
  * (mail sorting) are not searched.
  */
+/**
+ * What kind of step a tool call is, so the window can sum a group up ("Ran 4 commands, created a file, read a file")
+ * without guessing from tool names. write covers new and changed files (the file card's origin tells which);
+ * plugin is any tool a plugin registered.
+ */
+export type ToolCategory =
+  | 'command'
+  | 'read'
+  | 'write'
+  | 'web'
+  | 'history'
+  | 'agent'
+  | 'message'
+  | 'ask'
+  | 'project'
+  | 'mail'
+  | 'plugin'
+  | 'other';
+
+/** One tool call as the window sums it up (tool.start, and meta.toolInfo of the tool_results message). */
+export interface ToolCallInfo {
+  category: ToolCategory;
+  /** What this step is for, one sentence in the user's language, written by the model (run_command's description). */
+  summary?: string;
+  /** The tool's name for people, when it has one (a plugin tool's MCP title). */
+  title?: string;
+}
+
+/** The web pages one web_fetch or web_search call used (event source.card): a source card or footnotes. */
+export interface SourceCardMeta {
+  tool: 'web_fetch' | 'web_search';
+  /** web_search: the words searched for. */
+  query?: string;
+  sources: SourceRow[];
+}
+
+export interface SourceRow {
+  /** The page's address (web_fetch: where it ended up after redirects). */
+  url: string;
+  /** The page's title (web_fetch: from the HTML title; web_search: as the search gave it); null when there is none. */
+  title: string | null;
+  /** web_search: the snippet the search gave. */
+  snippet?: string;
+  /** web_search: the publication date the search gave, as given. */
+  published?: string;
+  /** ISO 8601 with offset: when it was fetched or found. */
+  fetchedAt: string;
+}
+
 export interface HistoryCardMeta {
   tool: 'search_history' | 'read_history' | 'find_history_files';
   /** The words searched for (search), the part of the file name (files); absent for read. */

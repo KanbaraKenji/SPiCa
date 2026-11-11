@@ -230,6 +230,7 @@ function emitCard(ctx: ToolContext, rt: Runtime, card: HistoryCardMeta): void {
 const REF_PROPERTY = { type: 'integer', description: 'The number of a result from search_history or find_history_files, like 3 for [3].' };
 
 export const searchHistoryTool: Tool = {
+  category: 'history',
   readOnly: true,
   spec: {
     name: 'search_history',
@@ -330,6 +331,7 @@ export const searchHistoryTool: Tool = {
 };
 
 export const readHistoryTool: Tool = {
+  category: 'history',
   readOnly: true,
   spec: {
     name: 'read_history',
@@ -382,6 +384,7 @@ export const readHistoryTool: Tool = {
 };
 
 export const findFilesTool: Tool = {
+  category: 'history',
   readOnly: true,
   spec: {
     name: 'find_history_files',

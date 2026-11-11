@@ -10,6 +10,7 @@ function runtimeOf(ctx: ToolContext): Runtime {
 }
 
 export const askUserTool: Tool = {
+  category: 'ask',
   readOnly: true,
   spec: {
     name: 'ask_user',
@@ -33,6 +34,7 @@ export const askUserTool: Tool = {
 };
 
 export const spawnAgentTool: Tool = {
+  category: 'agent',
   spec: {
     name: 'spawn_agent',
     description:
@@ -64,6 +66,7 @@ export const spawnAgentTool: Tool = {
 };
 
 export const messageAgentTool: Tool = {
+  category: 'message',
   spec: {
     name: 'message_agent',
     description:
@@ -90,6 +93,7 @@ export const messageAgentTool: Tool = {
 };
 
 export const waitAgentsTool: Tool = {
+  category: 'agent',
   readOnly: true,
   spec: {
     name: 'wait_agents',
@@ -142,6 +146,7 @@ export const waitAgentsTool: Tool = {
 };
 
 export const recordDecisionTool: Tool = {
+  category: 'message',
   spec: {
     name: 'record_decision',
     description:
@@ -161,6 +166,7 @@ export const recordDecisionTool: Tool = {
 };
 
 export const suggestActionsTool: Tool = {
+  category: 'ask',
   readOnly: true,
   spec: {
     name: 'suggest_actions',

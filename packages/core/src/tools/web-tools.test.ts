@@ -5,8 +5,9 @@ import { listenFetchable } from '../net.ts';
 import { MemoryStore } from '../store/memory.ts';
 import { anthropicProvider, makeRuntime, openaiProvider, startGateway } from '../testing/helpers.ts';
 import { Tracer } from '../trace.ts';
+import type { CoreEventBody } from '../types.ts';
 import type { ToolContext } from './types.ts';
-import { createWebFetchTool, createWebSearchTool, htmlToText, jsonSearchBackend } from './web-tools.ts';
+import { createWebFetchTool, createWebSearchTool, htmlToText, jsonSearchBackend, pageTitle } from './web-tools.ts';
 
 // gateways, child processes and local servers start slowly when several full runs share the machine
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
@@ -166,5 +167,51 @@ describe('web_search', () => {
     } finally {
       await gw.stop();
     }
+  });
+});
+
+describe('source cards', () => {
+  const capture = () => {
+    const seen: CoreEventBody[] = [];
+    return { seen, c: { ...ctx(), emit: (b: CoreEventBody) => void seen.push(b) } };
+  };
+
+  it('web_fetch: the page it ended up on, with its title; none for errors', async () => {
+    const tool = createWebFetchTool();
+    const { seen, c } = capture();
+    await tool.execute({ url: `${base}/redirect` }, c);
+    expect(seen).toEqual([
+      { type: 'source.card', callId: 'c1', card: { tool: 'web_fetch', sources: [{ url: `${base}/page`, title: 'Offer page', fetchedAt: expect.any(String) }] } },
+    ]);
+    const plain = capture();
+    await tool.execute({ url: `${base}/long` }, plain.c);
+    expect(plain.seen[0]).toMatchObject({ card: { sources: [{ url: `${base}/long`, title: null }] } });
+    const missing = capture();
+    await tool.execute({ url: `${base}/missing` }, missing.c);
+    expect(missing.seen).toEqual([]);
+  });
+
+  it('web_search: every result, with the query', async () => {
+    const tool = createWebSearchTool(
+      jsonSearchBackend({ id: 'test-search', url: `${base}/search?q={query}&n={count}`, resultsPath: 'data.items', fields: { title: 'name', url: 'link', snippet: 'desc', published: 'date' } }),
+    );
+    const { seen, c } = capture();
+    await tool.execute({ query: 'iso', count: 2 }, c);
+    expect(seen[0]).toMatchObject({
+      type: 'source.card',
+      card: {
+        tool: 'web_search',
+        query: 'iso',
+        sources: [
+          { url: 'https://r.example/1', title: 'iso result 1', snippet: 'snippet', published: '2026-11-01' },
+          { url: 'https://r.example/2', title: 'iso result 2' },
+        ],
+      },
+    });
+  });
+
+  it('page titles: entities decoded, spaces collapsed, none when missing', () => {
+    expect(pageTitle('<title>\n  A &amp; B &#8364;  </title>')).toBe('A & B €');
+    expect(pageTitle('<p>no title</p>')).toBeNull();
   });
 });
