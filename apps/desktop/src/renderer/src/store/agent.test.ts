@@ -22,6 +22,15 @@ describe('conversation names', () => {
 describe('AgentStore', () => {
   it('keeps every file card of a call across the reload after a run (they only arrive as events)', async () => {
     const backend = new FakeBackend({ speed: 0, seed: false });
+    // Stored history without the lists (as when the event came but the stored meta has only the first card).
+    const getMessages = backend.getMessages.bind(backend);
+    backend.getMessages = async (...args: Parameters<typeof getMessages>) =>
+      (await getMessages(...args)).map((m) => {
+        if (!m.meta?.fileCardLists) return m;
+        const { fileCardLists, ...meta } = m.meta;
+        void fileCardLists;
+        return { ...m, meta };
+      });
     const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
     await store.init();
     await store.send(null, '把报价汇总一下');

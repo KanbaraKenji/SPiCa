@@ -40,6 +40,29 @@ describe('a call’s line', () => {
     expect(toolLineText(call('mystery_tool'))).toBe('mystery_tool');
   });
 
+  it('a call announced before its input arrived says what kind of thing it touches', () => {
+    const bare = (name: string): ToolCall => ({ name, input: undefined });
+    expect(['write_file', 'read_file', 'run_command', 'list_dir', 'grep', 'web_fetch', 'web_search', 'search_history'].map((n) => toolLineText(bare(n)))).toEqual([
+      'Wrote a file',
+      'Read a file',
+      'Ran a command',
+      'Listed a folder',
+      'Searched files',
+      'Fetched a page',
+      'Searched the web',
+      'Searched conversations',
+    ]);
+    expect(runningWords(bare('read_file'))).toBe('Reading a file');
+    expect(runningGroup([bare('write_file'), bare('list_dir')])).toBe('Writing a file and 1 more');
+  });
+
+  it('project tools that change things say what changed', () => {
+    expect(toolLineText(call('set_stage', { stage: '评审' }))).toBe('Moved the project to 「评审」');
+    expect(toolLineText(call('add_work_object', { level: 'part', name: '外壳' }))).toBe('Added 「外壳」');
+    expect(toolLineText(call('open_project', { project: '年度预算' }))).toBe('Checked 「年度预算」');
+    expect(groupWords([{ call: call('set_stage', { stage: 'a' }) }, { call: call('add_work_object', { name: 'b' }) }, { call: call('list_projects') }])).toBe('Updated a project, checked projects');
+  });
+
   it('while it runs', () => {
     expect(runningWords(call('run_command', { command: 'Get-ChildItem' }))).toBe('Running Get-ChildItem');
     expect(runningWords(call('read_file', { path: 'a.docx' }))).toBe('Reading a.docx');
@@ -54,6 +77,22 @@ describe('a group’s line', () => {
     expect(groupWords([cmd, { call: call('write_file', { path: 'q5.py' }), card: card('created') }, cmd, { call: call('read_file', { path: 'a' }) }, cmd, cmd])).toBe('Ran 4 commands, created a file, read a file');
     expect(groupWords([{ call: call('web_fetch', { url: 'https://a' }) }, { call: call('web_fetch', { url: 'https://b' }) }, { call: call('web_search', { query: 'q' }) }])).toBe('Fetched 2 pages, searched the web');
     expect(groupWords([{ call: call('notes__a') }, { call: call('notes__b') }, { call: call('x') }])).toBe('Used 「Notes」, used a tool');
+  });
+});
+
+describe('calls not finished yet', () => {
+  it('in the open list, a running or waiting call says what it is doing, not what it did', () => {
+    render(
+      <ToolGroup
+        blocks={[
+          { type: 'tool', callId: 'a', name: 'read_file', input: { path: 'a.docx' }, state: 'done' },
+          { type: 'tool', callId: 'b', name: 'write_file', input: undefined, state: 'pending' },
+          { type: 'tool', callId: 'c', name: 'run_command', input: { command: 'Get-Item .' }, state: 'running' },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getAllByRole('button')[0]!);
+    expect([...document.querySelectorAll('.tool-item-head .tool-text')].map((e) => e.textContent)).toEqual(['Read a.docx', 'Writing a file', 'Running Get-Item .']);
   });
 });
 

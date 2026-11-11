@@ -71,21 +71,26 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       return head ? { verb: 'Ran', ...cut(head) } : { verb: 'Ran', object: 'a command' };
     }
     case 'read_file':
-      return { verb: 'Read', object: baseName(arg(c, 'path')), full: arg(c, 'path') };
-    case 'list_dir':
-      return { verb: 'Listed', object: arg(c, 'path') === '.' || !arg(c, 'path') ? 'the working folder' : `${baseName(arg(c, 'path'))}\\`, full: arg(c, 'path') };
+      return arg(c, 'path') ? { verb: 'Read', object: baseName(arg(c, 'path')), full: arg(c, 'path') } : { verb: 'Read', object: 'a file' };
+    case 'list_dir': {
+      const path = arg(c, 'path');
+      // No input yet (the call has only been announced): just a folder.
+      if (c.input === undefined) return { verb: 'Listed', object: 'a folder' };
+      return { verb: 'Listed', object: path === '.' || !path ? 'the working folder' : `${baseName(path)}\\`, full: path };
+    }
     case 'glob':
     case 'grep':
-      return { verb: 'Searched files for', object: quoted(arg(c, 'pattern')) };
+      return arg(c, 'pattern') ? { verb: 'Searched files for', object: quoted(arg(c, 'pattern')) } : { verb: 'Searched', object: 'files' };
     case 'write_file':
     case 'edit_file': {
-      const name = card?.name ?? baseName(arg(c, 'path'));
+      const name = card?.name ?? (arg(c, 'path') ? baseName(arg(c, 'path')) : 'a file');
       const lines = card?.lines ? `${card.lines.added ? ` +${card.lines.added}` : ''}${card.lines.removed ? ` −${card.lines.removed}` : ''}` : '';
       const verb = card?.origin === 'created' ? 'Created' : card?.origin === 'modified' || n === 'edit_file' ? 'Edited' : 'Wrote';
       return { verb, object: `${name}${lines}`, full: card?.path ?? arg(c, 'path') };
     }
     case 'web_fetch': {
       const url = arg(c, 'url');
+      if (!url) return { verb: 'Fetched', object: 'a page' };
       let shown = url;
       try {
         const u = new URL(url);
@@ -96,9 +101,9 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       return { verb: 'Fetched', ...cut(shown), full: url };
     }
     case 'web_search':
-      return { verb: 'Searched the web for', object: quoted(arg(c, 'query')) };
+      return arg(c, 'query') ? { verb: 'Searched the web for', object: quoted(arg(c, 'query')) } : { verb: 'Searched', object: 'the web' };
     case 'search_history':
-      return { verb: 'Searched conversations for', object: quoted(arg(c, 'query')) };
+      return arg(c, 'query') ? { verb: 'Searched conversations for', object: quoted(arg(c, 'query')) } : { verb: 'Searched', object: 'conversations' };
     case 'read_history':
       return { verb: 'Read', object: 'an earlier conversation' };
     case 'find_history_files':
@@ -120,7 +125,15 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       return { verb: 'Presented', object: k === 1 ? '1 file' : `${k} files` };
     }
     case 'create_project':
-      return { verb: 'Created project', object: named(arg(c, 'name')) };
+      return arg(c, 'name') ? { verb: 'Created project', object: named(arg(c, 'name')) } : { verb: 'Created', object: 'a project' };
+    case 'set_stage':
+      return { verb: 'Moved', object: arg(c, 'stage') ? `the project to ${named(arg(c, 'stage'))}` : 'the project' };
+    case 'add_work_object':
+      return { verb: 'Added', object: arg(c, 'name') ? named(arg(c, 'name')) : 'a work object' };
+    case 'open_project':
+      return { verb: 'Checked', object: arg(c, 'project') ? named(arg(c, 'project')) : 'a project' };
+    case 'project_status':
+      return { verb: 'Checked', object: 'the project' };
     case 'triage_mail': {
       const results = (c.input as { results?: unknown } | undefined)?.results;
       const k = Array.isArray(results) ? results.length : 0;
@@ -130,7 +143,7 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       break;
   }
   const kind = categoryOf(c);
-  if (kind === 'project') return { verb: 'Checked', object: arg(c, 'name') ? named(arg(c, 'name')) : 'projects' };
+  if (kind === 'project') return { verb: 'Checked', object: 'projects' };
   if (kind === 'plugin') return { verb: '', object: pluginName(c) };
   return { verb: '', object: n };
 }
@@ -161,6 +174,8 @@ export function runningWords(c: ToolCall): string {
     Recorded: 'Recording',
     Presented: 'Presenting',
     'Created project': 'Creating project',
+    Moved: 'Moving',
+    Added: 'Adding',
     Checked: 'Checking',
     Sorted: 'Sorting',
   };
@@ -217,6 +232,9 @@ function phrase(c: ToolCall, card?: FileCardMeta): { key: string; say(n: number)
       return { key: 'presented', say: () => toolLineText(c).replace(/^Presented/, 'presented') };
     case 'create_project':
       return { key: 'created-project', say: (n) => (n === 1 ? 'created a project' : `created ${n} projects`) };
+    case 'set_stage':
+    case 'add_work_object':
+      return { key: 'updated-project', say: () => 'updated a project' };
     case 'triage_mail':
       return { key: 'mail', say: () => 'sorted mail' };
     default:

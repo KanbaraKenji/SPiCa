@@ -393,7 +393,7 @@ function ToolItem({ block }: { block: ToolBlock }) {
     <div className={open ? 'tool-item is-open' : 'tool-item'}>
       <button type="button" className="tool-item-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <span className="fold-icon">{toolIcon(block)}</span>
-        <ToolText block={block} />
+        {block.state === 'running' || block.state === 'pending' ? <span className="tool-text">{runningWords(block)}</span> : <ToolText block={block} />}
         {toolMeta(block) ? <span className="fold-meta">{toolMeta(block)}</span> : null}
         <Icon name="chevronRight" size={14} className="fold-chevron" />
       </button>
@@ -415,7 +415,7 @@ function ToolRow({ block, since }: { block: ToolBlock; since?: number | undefine
       open={open}
       onToggle={() => setOpen((o) => !o)}
       icon={now ? LIVE_MARK : toolIcon(block)}
-      label={now ? runningWords(block) : <ToolText block={block} />}
+      label={now || block.state === 'running' || block.state === 'pending' ? runningWords(block) : <ToolText block={block} />}
       meta={toolMeta(block)}
       tail={now ? <RunClock since={since} /> : undefined}
     >
