@@ -7,6 +7,7 @@ import type { PreviewInfo } from '../../../shared/bridge';
 import { MarkdownText } from '../chat/Blocks';
 import { Icon } from '../ui/Icon';
 import { FileGlyph } from '../ui/FileIcon';
+import { MaxButton, type MaxState } from '../ui/MaxButton';
 
 export interface FilePreviewProps {
   /** null while loading. */
@@ -14,7 +15,7 @@ export interface FilePreviewProps {
   onOpenExternal(path: string): void;
   onClose(): void;
   /** The preview over the whole conversation: whether it is, and the button's press. Absent: no such button. */
-  max?: { on: boolean; toggle(): void };
+  max?: MaxState;
 }
 
 function sizeText(n: number): string {
@@ -55,11 +56,7 @@ export function FilePreview({ info, onOpenExternal, onClose, max }: FilePreviewP
         <span className="preview-name" title={info?.path ?? ''}>
           {info?.name ?? ''}
         </span>
-        {max ? (
-          <button type="button" className={max.on ? 'icon-btn is-on' : 'icon-btn'} onClick={max.toggle} aria-label={max.on ? '还原' : '最大化'} aria-pressed={max.on} title={max.on ? '还原（Ctrl+Shift+\\）' : '最大化（Ctrl+Shift+\\）'}>
-            <Icon name={max.on ? 'restore' : 'maximize'} size={15} />
-          </button>
-        ) : null}
+        {max ? <MaxButton max={max} /> : null}
         {info && info.kind !== 'missing' ? (
           <button type="button" className="icon-btn" onClick={() => onOpenExternal(info.path)} aria-label="用系统程序打开" title="用系统程序打开">
             <Icon name="external" size={15} />

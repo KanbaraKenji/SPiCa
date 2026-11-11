@@ -681,8 +681,13 @@ button.tree-twisty:hover {
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 2px;
   padding: 0 8px 0 16px;
+}
+
+/* The heading (or the space kept for it) takes the row; the buttons sit together at its end. */
+.detail-head > span:first-child {
+  flex: 1;
 }
 
 .detail-heading {
@@ -4353,9 +4358,22 @@ button.ctx-row:hover {
 }
 
 /* Tabs on top of the right panel when plugins add pages there. */
-.right-tabs {
+/* The tab row of a right panel with plugin pages: the tabs, and 最大化 at its end. */
+.right-head {
   flex: none;
-  margin: 8px 10px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 8px 0 10px;
+}
+
+.right-head .right-tabs {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.right-head > .icon-btn {
+  margin-left: auto;
 }
 
 .panel-right {

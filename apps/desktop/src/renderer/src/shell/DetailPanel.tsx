@@ -3,6 +3,7 @@ import type { ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol'
 import { filesOf, type Block, type Transcript } from '../store/transcript';
 import { changesAfter } from '../store/relocate';
 import { Icon } from '../ui/Icon';
+import { MaxButton, type MaxState } from '../ui/MaxButton';
 import { InfoTip } from '../ui/InfoTip';
 import { FileGlyph } from '../ui/FileIcon';
 import { activityText } from './activity';
@@ -25,6 +26,8 @@ export interface DetailPanelProps {
   project?: ProjectInfo | undefined;
   activity?: ProjectLogEntry[];
   onClose?: () => void;
+  /** The panel over the whole conversation: the button at the right end of this head. Absent: no such button (a tab row above has it). */
+  max?: MaxState | undefined;
   /** A tab above already says 详情: leave out the heading (the close button stays). */
   hideHeading?: boolean;
 }
@@ -37,7 +40,7 @@ function clock(iso: string): string {
 
 const ROLE_LABEL: Record<SessionInfo['role'], string> = { top: '对话', manager: '项目经理', worker: '子任务' };
 
-export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false }: DetailPanelProps) {
+export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, max }: DetailPanelProps) {
   const blocks = transcript.items.flatMap((i) => (i.kind === 'response' ? i.blocks : []));
   const tools = blocks.filter((b): b is ToolBlock => b.type === 'tool');
   // Per answer, so files named before the working-folder note are where it put them; each file once.
@@ -47,9 +50,10 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
   ];
   return (
     <aside className="detail" aria-label="详情">
-      {hideHeading && !onClose ? null : (
+      {hideHeading && !onClose && !max ? null : (
       <header className="detail-head">
         {hideHeading ? <span /> : <span className="detail-heading">详情</span>}
+        {max ? <MaxButton max={max} /> : null}
         {onClose ? (
           <button type="button" className="icon-btn" onClick={onClose} aria-label="关闭详情" title="关闭详情">
             <Icon name="close" size={14} />

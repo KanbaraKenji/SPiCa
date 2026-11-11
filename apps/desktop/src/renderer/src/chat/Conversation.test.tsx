@@ -90,6 +90,23 @@ describe('DetailPanel', () => {
     expect(screen.getAllByText('验收-样机评审')).toHaveLength(1);
   });
 
+  it('最大化 sits at the end of its own head, before 关闭详情; a press toggles it', () => {
+    const toggle = vi.fn();
+    render(<DetailPanel {...props} session={session({ id: 'w', role: 'worker' })} parent={undefined} max={{ on: false, toggle }} onClose={vi.fn()} />);
+    const head = document.querySelector('.detail-head') as HTMLElement;
+    expect(head.querySelector('.detail-heading')?.textContent).toBe('详情');
+    expect([...head.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual(['最大化', '关闭详情']);
+    const max = screen.getByRole('button', { name: '最大化' });
+    expect(max.getAttribute('title')).toBe('最大化（Ctrl+Shift+\\）');
+    fireEvent.click(max);
+    expect(toggle).toHaveBeenCalled();
+    cleanup();
+    // Under a tab row (plugin pages beside it) the tab row has the button; no head here.
+    render(<DetailPanel {...props} session={session({ id: 'w', role: 'worker' })} parent={undefined} hideHeading />);
+    expect(document.querySelector('.detail-head')).toBeNull();
+    expect(screen.queryByRole('button', { name: '最大化' })).toBeNull();
+  });
+
   it('still says what a deeper sub-task belongs to', () => {
     render(<DetailPanel {...props} session={session({ id: 'w2', role: 'worker', parentId: 'w', parentChain: ['w', 'pm'] })} parent={session({ id: 'w', role: 'worker', title: '整理报价' })} project={project} />);
     expect(screen.getByText('所属')).toBeTruthy();

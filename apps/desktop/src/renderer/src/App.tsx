@@ -29,6 +29,7 @@ import { needsYou } from '../../shared/mail';
 import { nextDoneNews, unseenDone } from './shell/row-status';
 import type { MailItem, SessionInfo } from '@spica/protocol';
 import { Icon } from './ui/Icon';
+import { MaxButton } from './ui/MaxButton';
 import { sidebarNews } from './shell/sidebar-news';
 import { watchScrim } from './ui/dim';
 import { usePeek } from './shell/peek';
@@ -589,6 +590,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const rightCanMax = rightShown && view === 'chat';
   if (canMax !== rightCanMax) setCanMax(rightCanMax);
   if (rightMax && !rightCanMax) setRightMax(false);
+  const panelMax = { on: rightMax, toggle: () => setRightMax((v) => !v) };
   const title = view === 'settings' ? '设置' : view === 'inbox' ? '收件箱' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
 
   // What can be done to a session by its name; the sidebar's rows and the name in the title bar share it.
@@ -728,20 +730,6 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           onDismissNotice={(nid) => shell.update({ dismissedNotices: [...settings.dismissedNotices, nid] })}
         />
         <div className="titlebar-right">
-          {/* The right panel over the conversation. While a file is previewed this button is in the
-              preview's own head (beside 用系统程序打开); here only for the details and plugin pages. */}
-          {view === 'chat' && rightShown && !preview ? (
-            <button
-              type="button"
-              className={rightMax ? 'icon-btn is-on' : 'icon-btn'}
-              onClick={() => setRightMax((v) => !v)}
-              aria-label={rightMax ? '还原' : '最大化'}
-              aria-pressed={rightMax}
-              title={rightMax ? '还原（Ctrl+Shift+\\）' : '最大化（Ctrl+Shift+\\）'}
-            >
-              <Icon name={rightMax ? 'restore' : 'maximize'} />
-            </button>
-          ) : null}
           {view === 'chat' ? (
             <button type="button" data-panel-toggle className={rightShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('right')} aria-label={rightShown ? '收起详情' : '展开详情'} aria-pressed={rightShown} title="详情（Ctrl+Alt+B）">
               <Icon name="detail" />
@@ -835,6 +823,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           <div className={`panel panel-right is-${layout.right}${rightMax ? ' is-max' : ''}`} style={rightMax ? undefined : { width: widths.right }}>
             {rightMax ? null : resizer('right')}
             {panelPages.length && !preview ? (
+              <div className="right-head">
               <div className="tabs right-tabs" role="tablist" aria-label="右栏">
                 <button type="button" role="tab" aria-selected={!panelPluginView} className={!panelPluginView ? 'tab is-on' : 'tab'} onClick={() => setRightTab('detail')}>
                   详情
@@ -844,6 +833,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                     {v.title}
                   </button>
                 ))}
+              </div>
+              {/* The panel over the conversation: at the end of the tab row (the preview and the details have their own heads). */}
+              <MaxButton max={panelMax} />
               </div>
             ) : null}
             {panelPluginView && !preview ? (
@@ -857,7 +849,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                   }
                 }}
                 onClose={() => setPreview(null)}
-                max={{ on: rightMax, toggle: () => setRightMax((v) => !v) }}
+                max={panelMax}
               />
             ) : (
             <DetailPanel
@@ -872,6 +864,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               activity={project ? (state.activity[project.id] ?? []) : []}
               onClose={layout.right === 'floating' ? () => setFloating(null) : undefined}
               hideHeading={panelPages.length > 0}
+              max={panelPages.length ? undefined : panelMax}
             />
             )}
           </div>
