@@ -50,6 +50,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 - [ ] **用模型的写了 `permissions.model`**：理由一句话，上限合理；没有模型能力时工具会给提示，不会崩溃。
 - [ ] **权限最小**：`permissions.workspace` 用得到才写 `read` / `write`；`permissions.hooks` 只写真用到的钩子类型；页面的 `permissions.tools` 只列页面要用的工具。
 - [ ] **只写该写的地方**：自己的数据只写 `SPICA_PLUGIN_DATA`；下载、导出的文件只写用户在对话里点名的文件夹（从参数传进来、不猜、不出这个文件夹），结果里写出完整路径，覆盖已有文件的工具写进 `permissions.irreversible`。见 `references/hooks-permissions.md`「写文件」。
+- [ ] **拉起的进程收得干净**：server 和辅助进程在 stdin 关闭时自己退出，辅助进程不用 `detached`；替用户打开、之后用户还要用的程序经一个马上退出的中间进程启动，当前文件夹不在插件文件夹里。见 `references/processes.md`。
 - [ ] **不可逆都标了**：会删除、发送、提交、改外部系统的工具都在 `permissions.irreversible` 里。
 - [ ] **日志不记正文**：stderr 只写工具名、错误码、耗时，不写邮件正文、文件内容、个人信息。
 - [ ] **提示是中文人话**：每个错误码都有一句告诉用户「发生了什么、该怎么办」的中文。
@@ -110,5 +111,6 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 | `references/connect.md` | 怎么连上 Spica（桌面版开关、HTTP + 令牌 / stdio、改了名的应用），装不上时怎么办 |
 | `references/model.md` | 借用 Spica 里配好的模型：申请、调用、选模型、被拒绝时怎么说 |
 | `references/internal-services.md` | 连内部接口：地址和凭据放哪、设置页写法、证书和代理、工具怎么设计 |
+| `references/processes.md` | 插件拉起的进程：Spica 怎么结束 server，辅助进程怎么退出，替用户打开的程序怎么独立启动 |
 
 更完整的说明在 Spica 仓库的 `docs/plugins/authoring.md`（作者指南）和 `docs/design/plugins.md`（设计），能跑的例子在 `plugins/example-notes`（带页面）。

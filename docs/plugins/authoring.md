@@ -96,7 +96,7 @@ Spica 启动 server 时会给这些环境变量：
 
 ## 2c. 要跑很久的工具（批量下载、导出一类）
 
-Spica 调工具时等的是「有没有动静」：`mcp/<id>.json` 的 `timeout_seconds`（缺省 60）秒里既没有结果、也没有进度，这次调用就算失败。工具一直在报进度，就一直等，最长等 `max_call_seconds`（缺省 3600，也就是 60 分钟），到了照样停。需要 Spica 0.1.0-rc.2 之后发布的版本，更早的版本不管进度，`timeout_seconds` 一到就停。
+Spica 调工具时等的是「有没有动静」：`mcp/<id>.json` 的 `timeout_seconds`（缺省 60）秒里既没有结果、也没有进度，这次调用就算失败。工具一直在报进度，就一直等，最长等 `max_call_seconds`（缺省 3600，也就是 60 分钟），到了照样停。
 
 ```json
 { "runtime": "node", "entry": "server/index.js", "timeout_seconds": 60, "max_call_seconds": 7200 }
@@ -115,6 +115,69 @@ send({ method: 'notifications/progress', params: { progressToken: token, progres
 - 用官方 SDK 时：进度用工具处理函数第二个参数里的 `extra._meta?.progressToken` 和 `extra.sendNotification(...)`，取消看 `extra.signal`。
 - `max_call_seconds` 防的是插件卡死或写坏了一直报进度；要做几个小时的活，拆成「开始 / 查进度 / 取结果」几个工具更稳，模型可以分几次调。
 - 插件页面用 `window.spica.callTool` 调工具时也按同一套规矩等，没有另外的时限。
+
+## 2d. 插件拉起的进程
+
+server 常常还要拉起别的进程。分两类，规矩不一样：**辅助进程**（打包进插件、替 server 干活的程序）要跟着插件一起结束；**替用户打开的程序**（之后用户自己还要用的桌面程序）要和插件完全分开，插件怎样都不能影响它。
+
+### Spica 怎么结束 server
+
+停用插件、重装或升级、改了网络设置要重启、应用正常退出，这几种时候 Spica 都是同一个做法：先关掉 server 的 stdin，等它自己退出；3 秒后还没退，就强行结束 server 这一个进程。Spica 不去找 server 拉起的其他进程。
+
+下表是在 Windows 上实测的（server 用 Node 写；「应用被强行结束」是应用自己一个进程被结束，「整棵进程树被结束」是任务管理器的「结束进程树」或 `taskkill /T /F` 这一类）：
+
+| server 拉起的进程 | 停用、重装、升级、重启、应用退出 | 应用被强行结束 | 整棵进程树被结束 |
+|---|---|---|---|
+| 用普通方式拉起的（`spawn`，不加 `detached`） | 跟着结束 | 跟着结束 | 跟着结束 |
+| `detached: true` 拉起的 | 留着 | 留着 | **被结束** |
+| 上面两种再拉起的子进程（例如辅助程序 `.exe` 打开的程序） | 留着 | 留着 | **被结束** |
+| 经一个马上退出的中间进程启动的（见下面的写法） | 留着 | 留着 | 留着 |
+
+- 「跟着结束」是 Node 做的：它把用普通方式拉起的直接子进程放进 Windows 的作业对象，父进程一没就全部结束，不管父进程是自己退出的还是被强杀的。这些子进程再拉起的进程不在里面。
+- `detached` 不够：进程虽然不跟着 server 结束，可它的父进程还是 server，「整棵进程树被结束」时是顺着父进程往下找的，照样会被找到、结束。一个带 COM 注册的桌面程序被这样结束到一半，用户再开也连不上，只能重启电脑。
+- 留下来的进程，当前文件夹如果还在插件的安装文件夹里（不特意设的话，从 server 继承来的就是它），同版本重装时会报「安装文件夹仍被占用」。
+- 没有实测、按文档推断的：`"runtime": "binary"` 的 server（自己的 `.exe`）不经过 Node，它拉起的进程在 server 被结束时**都不会**跟着结束，要自己收尾。
+
+### server 和辅助进程：stdin 一关就退出
+
+- server 在 stdin 关闭时自己退出，不要等 Spica 3 秒后强杀。不用 SDK 的写法：`readline.createInterface({ input: process.stdin }).on('close', () => process.exit(0))`。
+- 辅助进程也一样：server 给它开一个 stdin 管道，辅助进程读到 stdin 关闭（Node 里是 `process.stdin` 的 `end` / `close` 事件，`.exe` 里是读 stdin 返回 0 字节）就收尾退出。server 无论怎么结束，这根管道都会断，辅助进程就能自己走。
+- 辅助进程不要用 `detached`，也不要再拉起要常驻的进程，否则停用后会留着、占着安装文件夹。
+
+### 替用户打开的程序：经一个马上退出的中间进程启动
+
+要让程序的父进程不再是插件：先起一个中间进程，由它启动程序后马上退出。同时把程序的当前文件夹设到插件文件夹外面，并去掉 Spica 给插件进程设的 `ELECTRON_RUN_AS_NODE`（否则用 Electron 做的程序会起不来）。两种写法，任选其一：
+
+```js
+import { spawn } from 'node:child_process';
+import { homedir } from 'node:os';
+
+// Node 写法：中间进程是 Spica 自带的 Node，启动程序后立刻退出
+const LAUNCH = `
+const [program, cwd, ...args] = process.argv.slice(1);
+const env = { ...process.env };
+delete env.ELECTRON_RUN_AS_NODE;
+require('node:child_process').spawn(program, args, { cwd, env, detached: true, stdio: 'ignore' }).unref();
+`;
+export function openForUser(program, args = [], cwd = homedir()) {
+  spawn(process.execPath, ['-e', LAUNCH, program, cwd, ...args], { stdio: 'ignore', windowsHide: true });
+}
+
+// Windows 写法：PowerShell 的 Start-Process（路径经环境变量传，不用处理引号）
+export function openForUserPowerShell(program, cwd = homedir()) {
+  const env = { ...process.env, OPEN_PROGRAM: program, OPEN_CWD: cwd };
+  delete env.ELECTRON_RUN_AS_NODE;
+  spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Start-Process -FilePath $env:OPEN_PROGRAM -WorkingDirectory $env:OPEN_CWD'],
+    { stdio: 'ignore', windowsHide: true, env });
+}
+```
+
+- 这两种写法在上表的每一种情况下都实测过：程序都留着、能继续用，同版本重装也不报占用。
+- 要从插件自带的 `.exe` 里打开程序，同样经中间进程：例如执行 `powershell.exe -NoProfile -Command "Start-Process -FilePath '<程序>' -WorkingDirectory '<文件夹>'"`。只在 `CreateProcess` 里加 `DETACHED_PROCESS`、`CREATE_NEW_PROCESS_GROUP`、`CREATE_BREAKAWAY_FROM_JOB` 不够：父进程还是你的 `.exe`，整棵进程树被结束时照样会被找到。
+- 程序有界面的，不要给它加 `windowsHide` 或 `-WindowStyle Hidden`，否则窗口会被藏起来。
+- 程序已经开着时，先找到它再用，不要每次都新开一个。
+- 带 COM 注册的真实程序没有实测（用能回应的测试程序代替）。按上表推断：程序不在插件的进程树里，就不会被「结束到一半」。
+- `check.mjs` 不查这一条：上面的推荐写法里中间进程本身就用了 `detached`，单看代码分不出对错；辅助程序 `.exe` 里怎么打开程序，在编译好的文件里看不到。交付前按这一节自己核一遍。
 
 ## 3. 加一个技能
 
