@@ -13,7 +13,7 @@ import { mailForCore, networkForCore, type ShellSettings } from '../shared/setti
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import { APP_IDENTITY } from '../shared/app-identity';
-import { coreKind, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderView } from '../shared/providers';
+import { coreKind, secretLabel, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
@@ -266,7 +266,11 @@ function envProviders(): ProviderView[] {
 function providerList(): ProviderList {
   const def = providers.defaultId();
   const env = envProviders().map((p) => ({ ...p, isDefault: p.id === def }));
-  return { items: [...env, ...providers.list()], problems: providerProblems, default: providers.defaultRef(), strong: providers.strongRef() };
+  const saved = providers.list();
+  // A key sealed elsewhere (another settings folder, e.g. SPICA_USER_DATA): the connection never reaches the core.
+  const unreadable = new Set(providers.unreadableKeys());
+  const keyProblems = Object.fromEntries(saved.filter((p) => unreadable.has(p.id)).map((p) => [p.id, `${secretLabel(p.kind)} 无法读取，请重新输入并保存。`]));
+  return { items: [...env, ...saved], problems: { ...keyProblems, ...providerProblems }, default: providers.defaultRef(), strong: providers.strongRef() };
 }
 
 /** Hands saved providers to the backend; remembers which ones it could not use. */

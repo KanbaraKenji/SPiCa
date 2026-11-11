@@ -29,6 +29,18 @@ describe('ProviderStore', () => {
     expect(new ProviderStore(dir, box).list()).toHaveLength(1);
   });
 
+  it('names the connections whose saved key cannot be opened here (sealed in another settings folder)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
+    const saved = new ProviderStore(dir, box).save(draft);
+    expect(new ProviderStore(dir, box).unreadableKeys()).toEqual([]);
+    const elsewhere = new ProviderStore(dir, { ...box, decrypt: () => { throw new Error('Error while decrypting the ciphertext provided to safeStorage.decryptString.'); } });
+    expect(elsewhere.unreadableKeys()).toEqual([saved.id]);
+    expect(elsewhere.resolved()).toEqual([]);
+    // Saving the key again in this folder makes it usable.
+    elsewhere.save({ ...draft, id: saved.id, secret: 'sk-456' });
+    expect(new ProviderStore(dir, box).unreadableKeys()).toEqual([]);
+  });
+
   it('keeps the saved secret when the draft leaves it empty', () => {
     const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
     const v = store.save(draft);

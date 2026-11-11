@@ -326,6 +326,15 @@ export class ProviderStore {
     }
   }
 
+  /**
+   * Connections with a saved key this Windows user cannot open here (the key was sealed in another settings
+   * folder or on another computer: the sealing key lives in that folder's Local State). They are left out of
+   * resolved(), so the page has to say why. Call once the app is ready.
+   */
+  unreadableKeys(): string[] {
+    return this.#data.items.filter((p) => p.keys[0]?.sealed && this.secretOf(p.id) === undefined).map((p) => p.id);
+  }
+
   /** Everything needed to connect. Without a key only when `needsKey` says the provider takes none. */
   resolved(needsKey: (catalogId: string | null) => boolean = () => true): ResolvedProvider[] {
     const out: ResolvedProvider[] = [];
