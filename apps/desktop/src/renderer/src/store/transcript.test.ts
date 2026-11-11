@@ -370,6 +370,49 @@ describe('model errors', () => {
     const t = applyEvent({ items: [] }, { type: 'error', message: 'HTTP 401 unauthorized', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
     expect(t.error).toBe('模型密钥无效或已失效，请检查模型设置。');
   });
+
+  // The core's retries and its final error both say retryable (the kind of error); the run's end tells them apart.
+  const base = { at, sessionId: 's', parentChain: [] };
+  const retry = (seq: number) => ({ ...base, seq, type: 'error', message: 'retrying model call (ProviderError: token endpoint unreachable [wso2.token_unreachable / net.refused])', retryable: true }) as CoreEvent;
+  const unreachable = (seq: number) =>
+    ({ ...base, seq, type: 'error', message: 'request failed [wso2.token_unreachable] (ProviderError: token endpoint unreachable)', retryable: true, code: 'wso2.token_unreachable', hint: '无法连接取 token 地址。' }) as CoreEvent;
+  const status = (seq: number, s: 'thinking' | 'idle' | 'error') => ({ ...base, seq, type: 'status', status: s }) as CoreEvent;
+  const end = (seq: number, reason: 'completed' | 'error' | 'aborted', detail?: string) => ({ ...base, seq, type: 'run.end', reason, ...(detail ? { detail } : {}) }) as CoreEvent;
+  const play = (events: CoreEvent[]) => events.reduce<Transcript>((t, e) => applyEvent(t, e, 1000), { items: [] });
+
+  it('shows the last error in the core’s words when the run ends in it, retryable or not', () => {
+    const t = play([status(1, 'thinking'), retry(2), retry(3), unreachable(4), status(5, 'error'), end(6, 'error', 'request failed [wso2.token_unreachable]')]);
+    expect(t.error).toBe('无法连接取 token 地址。');
+    expect(t.lastFailure).toBeUndefined();
+  });
+
+  it('leaves nothing when a retry then succeeds', () => {
+    const t = play([status(1, 'thinking'), retry(2), status(3, 'idle'), end(4, 'completed')]);
+    expect(t.error).toBeUndefined();
+    expect(t.lastFailure).toBeUndefined();
+  });
+
+  it('leaves nothing when the user stops the run during retries', () => {
+    const t = play([status(1, 'thinking'), retry(2), status(3, 'idle'), end(4, 'aborted')]);
+    expect(t.error).toBeUndefined();
+  });
+
+  it('does not carry an old failure into the next run', () => {
+    let t = play([status(1, 'thinking'), unreachable(2), status(3, 'error'), end(4, 'error')]);
+    expect(t.error).toBe('无法连接取 token 地址。');
+    t = [status(5, 'thinking'), retry(6), status(7, 'idle'), end(8, 'completed')].reduce((x, e) => applyEvent(x, e, 1000), t);
+    expect(t.error).toBeUndefined();
+  });
+
+  it('a run that ends in an error without an error event says what the core said', () => {
+    const t = play([status(1, 'thinking'), status(2, 'error'), end(3, 'error', 'model stream ended without a response')]);
+    expect(t.error).toBe('出错：model stream ended without a response');
+  });
+
+  it('keeps an error already shown (a non-retryable one) at the end of the run', () => {
+    const t = play([status(1, 'thinking'), { ...base, seq: 2, type: 'error', message: 'HTTP 401 unauthorized' } as CoreEvent, end(3, 'error', 'HTTP 401')]);
+    expect(t.error).toBe('模型密钥无效或已失效，请检查模型设置。');
+  });
 });
 
 describe('the working folder chosen later', () => {

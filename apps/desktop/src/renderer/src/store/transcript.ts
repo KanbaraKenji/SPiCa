@@ -189,6 +189,8 @@ export interface Transcript {
   run?: RunState;
   lastRun?: FinishedRun;
   error?: string;
+  /** The words of the last error the core marked retryable (a network error, 5xx, 429...): shown only if the run then ends in an error. */
+  lastFailure?: string;
   /** Messages sent while a run was going, not yet taken in by the agent. */
   queued?: { id: string; text: string }[];
   /** File details the core reported for read_file calls (file.card), by call id. */
@@ -532,6 +534,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         const startedAt = t.run?.startedAt ?? now;
         t.run = { startedAt, status: e.status, ...(e.detail ? { detail: e.detail } : {}) };
         delete t.error;
+        delete t.lastFailure;
       } else if (t.run) {
         t.lastRun = { endedAt: now, durationMs: now - t.run.startedAt, reason: e.status };
         delete t.run;
@@ -554,10 +557,22 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       return t;
     }
     case 'error': {
-      // Retries are the core's business; only a final error reaches the user.
       // The main process adds the core's own words for errors it knows by code (WSO2 faults).
       const hint = (e as { hint?: unknown }).hint;
-      if (!e.retryable) t.error = typeof hint === 'string' && hint ? hint : humanError(e.message);
+      const words = typeof hint === 'string' && hint ? hint : humanError(e.message);
+      // `retryable` says what kind of error it is (network, 5xx, 429), not that the core is still trying:
+      // the core's retries and its final error both carry it. Such an error is shown when the run ends
+      // in an error (run.end); a retry that then succeeds leaves nothing behind.
+      if (e.retryable) t.lastFailure = words;
+      else t.error = words;
+      return t;
+    }
+    case 'run.end': {
+      if (e.reason === 'error' && !t.error) {
+        const words = t.lastFailure ?? (e.detail ? humanError(e.detail) : undefined);
+        if (words) t.error = words;
+      }
+      delete t.lastFailure;
       return t;
     }
     case 'budget.stop': {
