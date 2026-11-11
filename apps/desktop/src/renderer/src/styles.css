@@ -4752,3 +4752,52 @@ button.ctx-row:hover {
 .side-new-project {
   color: var(--spica-muted);
 }
+
+/* A typed location with nothing to install: in place of the list and the detail, across both. */
+.plugins-notfound {
+  grid-column: 1 / -1;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.plugins-notfound-title {
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.plugins-notfound-where {
+  margin: 0;
+  max-width: 100%;
+  font-size: 13px;
+  color: var(--spica-ink);
+  overflow-wrap: anywhere;
+}
+
+.plugins-notfound-detail {
+  margin: 0;
+  max-width: 100%;
+  font-size: 13px;
+  color: var(--spica-muted);
+  overflow-wrap: anywhere;
+}
+
+.plugins-notfound-actions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.plugins-notfound-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

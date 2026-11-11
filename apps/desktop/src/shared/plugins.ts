@@ -101,12 +101,21 @@ export interface PluginPackage {
   installed?: string;
 }
 
+/**
+ * Why nothing could be installed from a typed location: it is not there, it could not be opened (or what is
+ * there is not a usable package), it could not be reached (an address, a shared folder), or there is no
+ * plugin package in it.
+ */
+export type NotFoundReason = 'missing' | 'unreadable' | 'unreachable' | 'empty';
+
 /** What a location typed into the search box held (the latest lookup). */
 export interface PluginsFound {
   location: string;
   packages: PluginPackage[];
   /** Nothing to install there, in words (not found, no plugin in it, the address cannot be reached). */
   error?: string;
+  /** Which of the ways it failed; with `error`. */
+  reason?: NotFoundReason;
 }
 
 export interface PluginsState {

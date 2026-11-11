@@ -200,8 +200,39 @@ describe('Plugins', () => {
     expect(screen.getByText('已安装「note-box」1.0.0。')).toBeTruthy();
     fireEvent.change(box, { target: { value: 'D:\\插件\\不存在' } });
     fireEvent.submit(box.closest('form')!);
-    expect(await within(list()).findByText('找不到该文件夹或文件。')).toBeTruthy();
+    expect(await screen.findByRole('status', { name: '找不到该位置' })).toBeTruthy();
     expect(screen.queryByText('已安装「note-box」1.0.0。')).toBeNull();
+  });
+
+  it('nothing to install at a typed location: what was looked at, which way it failed, and what to do next', async () => {
+    const pickFolder = vi.fn(async () => null);
+    render(<Plugins api={{ ...api(), pickFolder }} />);
+    await screen.findByRole('region', { name: '笔记（示例）' });
+    const box = screen.getByLabelText('搜索插件') as HTMLInputElement;
+    const lookAt = async (where: string, title: string) => {
+      fireEvent.change(box, { target: { value: where } });
+      fireEvent.submit(box.closest('form')!);
+      return (await screen.findByRole('status', { name: title })) as HTMLElement;
+    };
+    const buttons = (card: HTMLElement) => within(card).getAllByRole('button').map((b) => b.textContent);
+    let card = await lookAt('D:\\插件\\不存在', '找不到该位置');
+    expect(within(card).getByText('D:\\插件\\不存在')).toBeTruthy();
+    expect(buttons(card)).toEqual(['选择文件夹', '清除']);
+    // No list, no detail: the card is in their place.
+    expect(screen.queryByRole('navigation', { name: '插件列表' })).toBeNull();
+    card = await lookAt('D:\\插件\\打不开.zip', '无法打开');
+    expect(within(card).getByText('压缩包里没有 manifest.json，不是 Spica 插件包。')).toBeTruthy();
+    expect(buttons(card)).toEqual(['选择文件夹', '重试', '清除']);
+    card = await lookAt('https://example.com/连不上/index.json', '无法连接');
+    expect(buttons(card)).toEqual(['选择文件夹', '重试', '清除']);
+    card = await lookAt('D:\\插件\\没有插件', '没有找到插件');
+    expect(within(card).getByText('可安装：插件文件夹、.zip、带 index.json 的文件夹或网址')).toBeTruthy();
+    fireEvent.click(within(card).getByRole('button', { name: '选择文件夹' }));
+    expect(pickFolder).toHaveBeenCalledTimes(1);
+    // 清除: back to the list.
+    fireEvent.click(within(card).getByRole('button', { name: '清除' }));
+    expect(box.value).toBe('');
+    expect(await screen.findByRole('navigation', { name: '插件列表' })).toBeTruthy();
   });
 
   it('选择文件夹 puts the folder in the box and looks at it', async () => {

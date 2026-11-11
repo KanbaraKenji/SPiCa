@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PluginManager } from '@spica/plugins';
-import { RealPluginService } from './service';
+import { RealPluginService, unreachableText } from './service';
 
 // Only what the service touches for checking updates and opening the folder: no plugins installed.
 const manager = {
@@ -156,13 +156,22 @@ describe('the one box: looking at a typed location, installing what is there', (
     expect(r).toMatchObject({ ok: false, message: '找不到该文件夹或文件。' });
     const f = await svc.run({ op: 'find', location: join(dir, 'nowhere') });
     expect(f.ok).toBe(true);
-    expect(f.state.found).toEqual({ location: join(dir, 'nowhere'), packages: [], error: '找不到该文件夹或文件。' });
+    expect(f.state.found).toEqual({ location: join(dir, 'nowhere'), packages: [], error: '找不到该文件夹或文件。', reason: 'missing' });
   });
 
   it('a folder with neither manifest.json nor index.json: nothing to install, said so', async () => {
     const { svc, dir } = rigged();
     mkdirSync(join(dir, 'empty'));
-    expect((await svc.run({ op: 'find', location: join(dir, 'empty') })).state.found?.error).toBe('该文件夹中没有插件（缺少 manifest.json 或 index.json）。');
+    expect((await svc.run({ op: 'find', location: join(dir, 'empty') })).state.found).toMatchObject({ error: '该文件夹中没有插件（缺少 manifest.json 或 index.json）。', reason: 'empty' });
+    // A file that is not a package at all, and a .zip that is not a plugin package.
+    writeFileSync(join(dir, 'notes.txt'), 'x');
+    expect((await svc.run({ op: 'find', location: join(dir, 'notes.txt') })).state.found?.reason).toBe('empty');
+    writeFileSync(join(dir, 'broken.zip'), 'not a zip');
+    expect((await svc.run({ op: 'find', location: join(dir, 'broken.zip') })).state.found?.reason).toBe('unreadable');
+    // An address that does not answer.
+    const gone = await svc.run({ op: 'find', location: 'http://127.0.0.1:9/index.json' });
+    expect(gone.state.found).toMatchObject({ reason: 'unreachable' });
+    expect(gone.state.found?.error).toBe('服务器没有响应。');
   });
 
   it('a plugin folder (in quotes, as Explorer copies it) is listed with what it says, installed only when asked, with each step under the page’s job, then turned on', async () => {
@@ -203,5 +212,13 @@ describe('the one box: looking at a typed location, installing what is there', (
     const r = await svc.run({ op: 'refreshSources' });
     expect(r.state.available?.map((a) => [a.name, a.version, a.description])).toEqual([['other', '0.3.0', 'Another.']]);
     expect(r.state.sourceErrors).toEqual([join(dir, 'gone')]);
+  });
+});
+
+describe('why an address did not answer, in words', () => {
+  it('no answer, an HTTP status, a timeout', () => {
+    expect(unreachableText('无法连接插件源 http://x/index.json（fetch failed）。')).toBe('服务器没有响应。');
+    expect(unreachableText('无法连接插件源 http://x/index.json（HTTP 404）。')).toBe('服务器返回 HTTP 404。');
+    expect(unreachableText('无法连接插件源 http://x/index.json（The operation was aborted due to timeout）。')).toBe('连接超时。');
   });
 });

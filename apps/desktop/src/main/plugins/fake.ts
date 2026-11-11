@@ -127,10 +127,13 @@ export class FakePluginService implements PluginService {
     };
   }
 
-  /** A demo lookup: a .zip or folder path is one package named after it; a path with 「不存在」 is not there. */
+  /** A demo lookup: a .zip or folder path is one package named after it; 「不存在」「打不开」「连不上」「没有插件」 in it act out each way of finding nothing. */
   #find(location: string): PluginsFound {
     const where = unquote(location);
-    if (/不存在/.test(where)) return { location: where, packages: [], error: '找不到该文件夹或文件。' };
+    if (/不存在/.test(where)) return { location: where, packages: [], error: '找不到该文件夹或文件。', reason: 'missing' };
+    if (/打不开/.test(where)) return { location: where, packages: [], error: '压缩包里没有 manifest.json，不是 Spica 插件包。', reason: 'unreadable' };
+    if (/连不上/.test(where)) return { location: where, packages: [], error: `无法连接插件源 ${where}（HTTP 503）。`, reason: 'unreachable' };
+    if (/没有插件/.test(where)) return { location: where, packages: [], error: '该文件夹中没有插件（缺少 manifest.json 或 index.json）。', reason: 'empty' };
     const base = where.split(/[\\/]/).filter(Boolean).pop() ?? where;
     const name = base.replace(/\.zip$/i, '').replace(/-\d+\.\d+\.\d+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-') || 'plugin';
     const kind: PluginPackage['kind'] = /^https?:/i.test(where) ? 'http' : /\.zip$/i.test(where) ? 'zip' : 'folder';

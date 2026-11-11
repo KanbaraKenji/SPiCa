@@ -33,6 +33,7 @@ import {
   unquote,
   usd,
   type PluginIconView,
+  type NotFoundReason,
   type PluginPackage,
   type PluginsCommand,
   type PluginsProgress,
@@ -112,9 +113,33 @@ function withModelNotice(text: string, d: PluginDescription): string {
 
 const isUrl = (s: string) => /^https?:\/\//i.test(s);
 const isShare = (s: string) => s.startsWith('\\\\') || s.startsWith('//');
+/** \\server\share of a shared-folder path. */
+const shareRoot = (s: string) => {
+  const parts = s.replace(/^[\\/]+/, '').split(/[\\/]/);
+  return `\\\\${parts[0] ?? ''}\\${parts[1] ?? ''}`;
+};
 
-/** Something that cannot be done, said plainly: the page shows it as a failure. */
-class Refusal extends Error {}
+/**
+ * Why an address did not answer, in words (the page already shows the address): the part in brackets of the
+ * plugin system's 「无法连接插件源 … （…）。」.
+ */
+export function unreachableText(text: string): string {
+  const why = /（([^（）]*)）。?$/.exec(text)?.[1] ?? '';
+  const http = /HTTP (\d+)/.exec(why)?.[1];
+  if (http) return `服务器返回 HTTP ${http}。`;
+  if (/timeout|timed out|aborted/i.test(why)) return '连接超时。';
+  return '服务器没有响应。';
+}
+
+/** Something that cannot be done, said plainly: the page shows it as a failure. `reason`: for a lookup, which kind. */
+class Refusal extends Error {
+  constructor(
+    message: string,
+    readonly reason: NotFoundReason = 'unreadable',
+  ) {
+    super(message);
+  }
+}
 
 /** An SVG file as a data: URL, when it is there and not too big. */
 function iconFile(file: string): string | undefined {
@@ -163,7 +188,7 @@ export class RealPluginService implements PluginService {
   #fromSources = new Map<string, Available>();
   #sourceErrors: string[] = [];
   /** The latest lookup of a typed location. */
-  #found: { location: string; items: Map<string, Found>; error?: string } | undefined;
+  #found: { location: string; items: Map<string, Found>; error?: string; reason?: NotFoundReason } | undefined;
   #updates = new Map<string, UpdateInfo>();
   /** Icons read so far: file path -> [modified time, data: URL]. */
   #icons = new Map<string, [number, string]>();
@@ -235,6 +260,7 @@ export class RealPluginService implements PluginService {
             return now ? { ...rest, installed: now } : rest;
           }),
           ...(this.#found.error ? { error: this.#found.error } : {}),
+          ...(this.#found.reason ? { reason: this.#found.reason } : {}),
         }
       : undefined;
     return {
@@ -314,14 +340,19 @@ export class RealPluginService implements PluginService {
       const where = unquote(location);
       const items = new Map<string, Found>();
       let error: string | undefined;
+      let reason: NotFoundReason | undefined;
       try {
         await this.#look(where, items);
-        if (items.size === 0) error = '未找到可安装的插件。';
+        if (items.size === 0) {
+          error = '未找到可安装的插件。';
+          reason = 'empty';
+        }
       } catch (err) {
         error = err instanceof Refusal ? err.message : pluginErrorText(err);
+        reason = err instanceof Refusal ? err.reason : 'unreadable';
       }
       if (seq !== this.#lookupSeq) return;
-      this.#found = { location: where, items, ...(error ? { error } : {}) };
+      this.#found = { location: where, items, ...(error ? { error } : {}), ...(reason ? { reason } : {}) };
     });
   }
 
@@ -346,21 +377,38 @@ export class RealPluginService implements PluginService {
         return;
       }
       const src: SourceConfig = { kind: 'http', location: where };
-      fromIndex(src, await listSource(src, this.#sourceOpts()));
+      let list: Available[];
+      try {
+        list = await listSource(src, this.#sourceOpts());
+      } catch (err) {
+        // Not reached, or what came back is not an index.
+        const text = pluginErrorText(err);
+        if (/无法连接/.test(text)) throw new Refusal(unreachableText(text), 'unreachable');
+        throw new Refusal(text, 'unreadable');
+      }
+      fromIndex(src, list);
       return;
     }
     let info;
     try {
       info = await stat(where);
-    } catch {
-      throw new Refusal('找不到该文件夹或文件。');
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT' || code === 'ENOTDIR') {
+        // A shared folder whose server does not answer looks the same as one that is not there; say which it may be.
+        if (isShare(where) && !(await stat(shareRoot(where)).then(() => true, () => false))) throw new Refusal(`无法连接共享文件夹 ${shareRoot(where)}。`, 'unreachable');
+        throw new Refusal('找不到该文件夹或文件。', 'missing');
+      }
+      throw new Refusal(`无法打开（${code ?? (err as Error).message}）。`, isShare(where) ? 'unreachable' : 'unreadable');
     }
     if (info.isFile()) {
-      if (!/\.zip$/i.test(where)) throw new Refusal('仅支持插件文件夹或 .zip 文件。');
+      if (!/\.zip$/i.test(where)) throw new Refusal('仅支持插件文件夹或 .zip 文件。', 'empty');
       const kind = isShare(where) ? 'share' : 'zip';
       const tmp = await mkdtemp(join(tmpdir(), 'spica-look-'));
       try {
-        const folder = await unpackPlugin(await readFile(where), tmp, { appName: manager.appName });
+        const folder = await unpackPlugin(await readFile(where), tmp, { appName: manager.appName }).catch((err: unknown) => {
+          throw new Refusal(pluginErrorText(err), 'unreadable');
+        });
         if (!folder.manifest || hasErrors(folder.issues)) throw new Refusal(`插件包有错误：${folder.issues.find((i) => i.severity === 'error')?.message ?? ''}`);
         const key = `found:${where}`;
         items.set(key, {
@@ -386,10 +434,12 @@ export class RealPluginService implements PluginService {
     }
     if (await has(INDEX_FILE)) {
       const src: SourceConfig = { kind: 'share', location: where };
-      fromIndex(src, await listSource(src, this.#sourceOpts()));
+      fromIndex(src, await listSource(src, this.#sourceOpts()).catch((err: unknown) => {
+        throw new Refusal(pluginErrorText(err), 'unreadable');
+      }));
       return;
     }
-    throw new Refusal('该文件夹中没有插件（缺少 manifest.json 或 index.json）。');
+    throw new Refusal('该文件夹中没有插件（缺少 manifest.json 或 index.json）。', 'empty');
   }
 
   /** Installing means wanting to use it: turn it on unless it already is. */

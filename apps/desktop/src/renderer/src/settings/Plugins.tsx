@@ -15,6 +15,8 @@ import {
   unquote,
   usd,
   type InstallStepView,
+  type NotFoundReason,
+  type PluginsFound,
   type PluginIconView,
   type PluginModelView,
   type PluginPackage,
@@ -404,6 +406,52 @@ function PackageDetail({ a, busy, running, install, onBack }: { a: PluginPackage
   );
 }
 
+const NOT_FOUND_TITLE: Record<NotFoundReason, string> = {
+  missing: '找不到该位置',
+  unreadable: '无法打开',
+  unreachable: '无法连接',
+  empty: '没有找到插件',
+};
+
+/**
+ * A typed location held nothing to install: what was looked at, which way it failed, and what can be done
+ * next (pick a folder, try again when it could not be reached or opened, or clear the box).
+ */
+function NotFound({ found, onPick, onRetry, onClear }: { found: PluginsFound; onPick?: (() => void) | undefined; onRetry(): void; onClear(): void }) {
+  const reason = found.reason ?? 'unreadable';
+  const title = NOT_FOUND_TITLE[reason];
+  return (
+    <section className="card plugins-notfound" role="status" aria-label={title}>
+      <SpicaStatusIcon name={reason === 'empty' ? 'info' : 'warning'} size={22} />
+      <h3 className="plugins-notfound-title">{title}</h3>
+      <p className="plugins-notfound-where" title={found.location}>
+        {found.location}
+      </p>
+      {reason === 'empty' ? (
+        <p className="plugins-notfound-detail">可安装：插件文件夹、.zip、带 index.json 的文件夹或网址</p>
+      ) : reason !== 'missing' && found.error ? (
+        <p className="plugins-notfound-detail">{found.error}</p>
+      ) : null}
+      <div className="plugins-notfound-actions">
+        {onPick ? (
+          <button type="button" className="btn btn-small" onClick={onPick}>
+            <Icon name="folder" size={14} />
+            选择文件夹
+          </button>
+        ) : null}
+        {reason === 'unreachable' || reason === 'unreadable' ? (
+          <button type="button" className="btn btn-small" onClick={onRetry}>
+            重试
+          </button>
+        ) : null}
+        <button type="button" className="btn btn-small" onClick={onClear}>
+          清除
+        </button>
+      </div>
+    </section>
+  );
+}
+
 /** What 模拟模式 does, on hover beside it. */
 export const MOCK_TIP = '插件改用演示数据，不连接真实系统。';
 
@@ -597,7 +645,18 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
     setPicked(key);
     setShowDetail(true);
   };
-  const emptyText = located ? (looking ? '正在查找…' : (found?.error ?? '')) : q ? '没有匹配的插件' : '没有符合条件的插件';
+  const emptyText = located ? (looking ? '正在查找…' : '') : q ? '没有匹配的插件' : '没有符合条件的插件';
+  // A typed location with nothing to install: said in full in place of the list and the detail.
+  const notFound = located && !looking && found?.error ? found : undefined;
+  const pickFolder = api.pickFolder
+    ? () =>
+        void api.pickFolder?.().then((dir) => {
+          if (dir) {
+            setQuery(dir);
+            look(dir);
+          }
+        })
+    : undefined;
 
   return (
     <section className={narrow ? 'settings-section plugins-page is-narrow' : 'settings-section plugins-page'} ref={root}>
@@ -634,21 +693,8 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
                 if ((e.nativeEvent as InputEvent).inputType === 'insertFromPaste') look(e.target.value);
               }}
             />
-            {api.pickFolder ? (
-              <button
-                type="button"
-                className="btn btn-square"
-                onClick={() =>
-                  void api.pickFolder?.().then((dir) => {
-                    if (dir) {
-                      setQuery(dir);
-                      look(dir);
-                    }
-                  })
-                }
-                aria-label="选择文件夹"
-                title="选择文件夹"
-              >
+            {pickFolder ? (
+              <button type="button" className="btn btn-square" onClick={pickFolder} aria-label="选择文件夹" title="选择文件夹">
                 <Icon name="folder" size={16} />
               </button>
             ) : null}
@@ -699,7 +745,11 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
         </p>
       ) : null}
 
-      {nothing ? null : (
+      {nothing ? null : notFound ? (
+        <div className="plugins-two">
+          <NotFound found={notFound} onPick={pickFolder} onRetry={() => look(query)} onClear={() => setQuery('')} />
+        </div>
+      ) : (
         <div className="plugins-two">
           {listView ? (
             <nav className="plugins-list" aria-label="插件列表">
