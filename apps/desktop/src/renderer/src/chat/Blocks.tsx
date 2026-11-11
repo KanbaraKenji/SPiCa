@@ -9,6 +9,8 @@ import { Icon } from '../ui/Icon';
 import { FileBadge } from '../ui/FileIcon';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
+import { ImageViewer } from '../ui/ImageViewer';
+import { imageSource } from './answer-image';
 import { fullPath, openablePathKind } from './local-path';
 import { tableRows, toCsv, toHtml, toTsv } from './table-data';
 import { blockLanguage, blockLanguageName, colourSplit, highlightCode } from './highlight';
@@ -82,6 +84,10 @@ export interface AnswerTools {
   cwd?: string | undefined;
   /** 导出 CSV on a table; absent: no such button. */
   saveCsv?: ((text: string) => Promise<boolean>) | undefined;
+  /** A URL that shows a local picture (the app's file scheme); absent: local pictures show as their caption. */
+  imageUrl?: ((path: string) => Promise<string>) | undefined;
+  /** Pictures on the web: loaded as the answer shows ('auto'), only after a click ('click'), or never (absent). */
+  webImages?: 'auto' | 'click' | undefined;
 }
 export const AnswerToolsContext = createContext<AnswerTools | null>(null);
 
@@ -207,13 +213,55 @@ function SaveCsvButton({ save, rows }: { save(text: string): Promise<boolean>; r
   );
 }
 
+/**
+ * A picture in an answer: a local file, or one on the web (see answer-image.ts); a click shows it full size.
+ * One that may not load, or fails to, is its caption in quiet text.
+ */
+function MdImage({ src, alt }: { src?: string | undefined; alt?: string | undefined }) {
+  const tools = useContext(AnswerToolsContext);
+  const source = imageSource(src, tools?.cwd);
+  const [url, setUrl] = useState<string | null>(source.kind === 'data' || (source.kind === 'web' && tools?.webImages === 'auto') ? source.url : null);
+  const [failed, setFailed] = useState(false);
+  const [big, setBig] = useState(false);
+  const localPath = source.kind === 'local' ? source.path : '';
+  const toUrl = tools?.imageUrl;
+  useEffect(() => {
+    let alive = true;
+    if (localPath && toUrl) void toUrl(localPath).then((u) => alive && setUrl(u), () => alive && setFailed(true));
+    return () => {
+      alive = false;
+    };
+  }, [localPath, toUrl]);
+  const caption = alt || '图片';
+  if (failed || source.kind === 'blocked' || (source.kind === 'web' && !tools?.webImages) || (source.kind === 'local' && !toUrl))
+    return <span className="md-image-caption">{caption}</span>;
+  if (!url && source.kind === 'web')
+    return (
+      <button type="button" className="md-image-ask" title={source.url} onClick={() => setUrl(source.url)}>
+        <Icon name="eye" size={14} />
+        <span>显示图片</span>
+        <span className="md-image-host">{source.host}</span>
+      </button>
+    );
+  if (!url) return <span className="md-image-wait" />;
+  return (
+    <>
+      <button type="button" className="md-image" onClick={() => setBig(true)} title={caption}>
+        <img src={url} alt={caption} onError={() => setFailed(true)} />
+      </button>
+      {big ? <ImageViewer url={url} name={caption} onClose={() => setBig(false)} /> : null}
+    </>
+  );
+}
+
 export const MarkdownText = memo(function MarkdownText({ text }: { text: string }) {
   return (
     <div className="md">
       <Markdown
         remarkPlugins={[remarkGfm]}
         // history:n (a place in an earlier conversation) is kept; other addresses as react-markdown allows them.
-        urlTransform={(url) => (url.startsWith('history:') ? url : defaultUrlTransform(url))}
+        // A picture's address is kept as written (local paths too): MdImage decides what may load.
+        urlTransform={(url, key, node) => (url.startsWith('history:') || (key === 'src' && node.tagName === 'img') ? url : defaultUrlTransform(url))}
         components={{
           a: ({ href, children }) =>
             href?.startsWith('history:') ? (
@@ -230,6 +278,7 @@ export const MarkdownText = memo(function MarkdownText({ text }: { text: string 
           ),
           code: ({ className, children }) => <InlineCode className={className}>{children}</InlineCode>,
           table: ({ children }) => <MdTable>{children}</MdTable>,
+          img: ({ src, alt }) => <MdImage src={typeof src === 'string' ? src : undefined} alt={alt} />,
         }}
       >
         {text}

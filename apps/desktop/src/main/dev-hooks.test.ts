@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder, recordShellTo, shellRecord, SHOTS_WORKFLOWS_DIR } from './dev-hooks';
+import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, mockWebFolder, pickedFiles, pickedFolder, recordShellTo, shellRecord, SHOTS_WORKFLOWS_DIR } from './dev-hooks';
 
 describe('picker answers for test scripts', () => {
   const env = { SPICA_PICK_FOLDER: 'C:/demo', SPICA_PICK_FILES: 'C:/a.png;C:/b.png;' };
@@ -26,6 +26,14 @@ describe('Explorer recorded for test scripts', () => {
 
   it('never in an installed build: Explorer opens', () => {
     expect(recordShellTo({ SPICA_RECORD_SHELL: 'C:/rec.jsonl' }, true)).toBeNull();
+  });
+});
+
+describe('pictures on the web for screenshots', () => {
+  it('answered from a folder in a development build when set; never in an installed one', () => {
+    expect(mockWebFolder({ SPICA_MOCK_WEB: 'C:/web' }, false)).toBe('C:/web');
+    expect(mockWebFolder({}, false)).toBeNull();
+    expect(mockWebFolder({ SPICA_MOCK_WEB: 'C:/web' }, true)).toBeNull();
   });
 });
 

@@ -10,6 +10,7 @@ import { AnswerSources, AnswerToolsContext, AskCard, ChildNoteCard, ConfirmCard,
 import { Composer, type ComposerTools } from './Composer';
 import { answerText, MessageActions } from './MessageActions';
 import { answerSources } from './sources';
+import { WEB_IMAGES } from './answer-image';
 import { StatusLine } from './StatusLine';
 import { GUARD_FLAG_TEXT } from './format';
 import { SettingsChangeCard } from './SettingsChangeCard';
@@ -343,8 +344,11 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
   const resolveRef = (n: number) => historyRef(transcript, n);
   const mark = (id: string): Record<string, string> => (id === foundItem ? { 'data-item': id, 'data-found': '' } : { 'data-item': id });
   const answerTools = useMemo(
-    () => (actions.openFolder ? { openFile: actions.openFile, openFolder: actions.openFolder, saveCsv: actions.saveCsv, cwd: session?.cwd } : null),
-    [actions.openFile, actions.openFolder, actions.saveCsv, session?.cwd],
+    () =>
+      actions.openFolder
+        ? { openFile: actions.openFile, openFolder: actions.openFolder, saveCsv: actions.saveCsv, cwd: session?.cwd, imageUrl: actions.imageUrl, webImages: WEB_IMAGES }
+        : null,
+    [actions.openFile, actions.openFolder, actions.saveCsv, session?.cwd, actions.imageUrl],
   );
   return (
     <AnswerToolsContext.Provider value={answerTools}>

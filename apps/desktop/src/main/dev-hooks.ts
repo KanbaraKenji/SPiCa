@@ -24,7 +24,16 @@ export function recordShellTo(env: NodeJS.ProcessEnv, packaged: boolean): string
   return env.SPICA_RECORD_SHELL || null;
 }
 
-/** One line of that file. */
+/**
+ * SPICA_MOCK_WEB=<folder> (development only): pictures on the web for screenshots without the network.
+ * null: https as usual (always in an installed build).
+ */
+export function mockWebFolder(env: NodeJS.ProcessEnv, packaged: boolean): string | null {
+  if (packaged) return null;
+  return env.SPICA_MOCK_WEB || null;
+}
+
+/** One line of the SPICA_RECORD_SHELL file. */
 export function shellRecord(op: 'showInFolder' | 'openFolder', path: string): string {
   return `${JSON.stringify({ op, path })}\n`;
 }

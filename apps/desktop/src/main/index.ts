@@ -18,7 +18,7 @@ import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
 import type { PluginService } from './plugins/types';
-import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, pickedFiles, pickedFolder, recordShellTo, shellRecord, SHOTS_WORKFLOWS_DIR } from './dev-hooks';
+import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, mockWebFolder, pickedFiles, pickedFolder, recordShellTo, shellRecord, SHOTS_WORKFLOWS_DIR } from './dev-hooks';
 import { checkLocalPath, csvFileName, csvFileText, type PathKind } from './local-paths';
 import { withErrorHint } from './error-hint';
 import { FakePluginService } from './plugins/fake';
@@ -74,6 +74,7 @@ function overlayHeight(zoom: number): number {
 //                            not in installed builds)
 //   SPICA_SAVE_TO=<dir>      save files (usage log, a table's CSV) there without asking (not in installed builds)
 //   SPICA_RECORD_SHELL=<file> write what would open in Explorer to this file instead (not in installed builds)
+//   SPICA_MOCK_WEB=<dir>     https://example.com/<name> answered from <dir>, other https refused (not in installed builds)
 //   SPICA_PICK_FOLDER=<dir>  the folder picker answers this without showing (not in installed builds)
 //   SPICA_PICK_FILES=<a;b>   the file picker answers these without showing (not in installed builds)
 //   SPICA_DEMO_PLUGINS=many  the demo's plugin list has twelve plugins (screenshots; not in installed builds)
@@ -1119,6 +1120,14 @@ void app.whenReady().then(() => {
   // Keys moved from an older providers.json before the app was ready could not be read then: show their first and last characters.
   providers.fillKeyMasks();
   Menu.setApplicationMenu(null);
+  // SPICA_MOCK_WEB=<folder> (development only; screenshots of pictures on the web): https://example.com/<name> is
+  // answered from that folder and any other https request gets a 404, so nothing leaves the machine.
+  const mockWeb = mockWebFolder(process.env, app.isPackaged);
+  if (mockWeb)
+    protocol.handle('https', (req) => {
+      const u = new URL(req.url);
+      return u.host === 'example.com' ? net.fetch(pathToFileURL(join(mockWeb, basename(u.pathname))).toString()) : new Response('', { status: 404 });
+    });
   protocol.handle(PLUGIN_SCHEME, (req) => servePluginFile(req.url));
   protocol.handle(PREVIEW_SCHEME, (req) => {
     const file = previewFiles.pathOf(req.url);

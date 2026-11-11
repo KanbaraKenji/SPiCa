@@ -1232,6 +1232,53 @@ pre .hl-section {
   background: var(--spica-accent-soft);
 }
 
+/* A picture in an answer: at most 360 high, full size on a click. */
+.md .md-image {
+  display: block;
+  max-width: 100%;
+  margin: 4px 0;
+  padding: 0;
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.md .md-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+}
+
+/* A picture on the web, before it loads: 显示图片 and the site it would come from. */
+.md-image-ask {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+  padding: 6px 12px;
+  border-radius: var(--radius-m);
+  border: 1px dashed var(--spica-border-strong);
+  color: var(--spica-ink);
+}
+
+.md-image-ask:hover {
+  background: var(--spica-hover);
+}
+
+.md-image-host {
+  color: var(--spica-muted);
+  font-size: 12px;
+}
+
+.md-image-caption {
+  color: var(--spica-muted);
+}
+
+.md-image-wait {
+  display: block;
+  height: 120px;
+}
+
 /* Collapsible inline rows (thinking, tool calls) */
 .fold {
   align-self: flex-start;
