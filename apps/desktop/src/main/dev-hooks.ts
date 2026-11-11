@@ -33,6 +33,16 @@ export function mockWebFolder(env: NodeJS.ProcessEnv, packaged: boolean): string
   return env.SPICA_MOCK_WEB || null;
 }
 
+/**
+ * SPICA_MOCK_FILES=<folder> (development only): a file the right panel is asked to show that is not on disk (the
+ * demo answers' D:\工作\… files) is read from this folder by its name, so screenshots show real Word and Excel
+ * files without making those folders. null: as asked (always in an installed build).
+ */
+export function mockFilesFolder(env: NodeJS.ProcessEnv, packaged: boolean): string | null {
+  if (packaged) return null;
+  return env.SPICA_MOCK_FILES || null;
+}
+
 /** One line of the SPICA_RECORD_SHELL file. */
 export function shellRecord(op: 'showInFolder' | 'openFolder', path: string): string {
   return `${JSON.stringify({ op, path })}\n`;

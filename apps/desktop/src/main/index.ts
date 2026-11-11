@@ -18,7 +18,7 @@ import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
 import type { PluginService } from './plugins/types';
-import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, mockWebFolder, pickedFiles, pickedFolder, recordShellTo, shellRecord, SHOTS_WORKFLOWS_DIR } from './dev-hooks';
+import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, mockFilesFolder, mockWebFolder, pickedFiles, pickedFolder, recordShellTo, shellRecord, SHOTS_WORKFLOWS_DIR } from './dev-hooks';
 import { checkLocalPath, csvFileName, csvFileText, type PathKind } from './local-paths';
 import { withErrorHint } from './error-hint';
 import { FakePluginService } from './plugins/fake';
@@ -630,10 +630,16 @@ ipcMain.handle(DesktopChannel.Images, async (_e, op: unknown, a: unknown, b: unk
   return null;
 });
 
+// SPICA_MOCK_FILES (development only, see dev-hooks.ts): a demo file that is not on disk is read from that folder.
+const mockFiles = mockFilesFolder(process.env, app.isPackaged);
+function previewPath(full: string): string {
+  return mockFiles && !existsSync(full) ? join(mockFiles, basename(full)) : full;
+}
+
 ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unknown, sheet: unknown) => {
   const raw = typeof path === 'string' ? path : '';
   const session = typeof sessionId === 'string' && sessionId ? await backend.getSession(sessionId).catch(() => undefined) : undefined;
-  const full = isAbsolute(raw) ? raw : resolvePath(session?.cwd || app.getPath('home'), raw);
+  const full = previewPath(isAbsolute(raw) ? raw : resolvePath(session?.cwd || app.getPath('home'), raw));
   return readPreview(full, previewFiles, typeof sheet === 'number' && Number.isInteger(sheet) && sheet > 0 ? sheet : undefined);
 });
 
