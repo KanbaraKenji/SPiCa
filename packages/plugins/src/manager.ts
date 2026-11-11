@@ -485,8 +485,9 @@ export class PluginManager {
       }
       delete this.#state.plugins[name];
       this.#folders.delete(name);
-      await whenFree(() => rm(aside, { recursive: true, force: true })).catch(() => undefined);
+      // Record first: a folder left aside without a record is only removed at the next start.
       await this.#saveState();
+      await whenFree(() => rm(aside, { recursive: true, force: true })).catch(() => undefined);
       this.#emit({ type: 'plugin.uninstalled', name });
     });
   }
@@ -558,17 +559,33 @@ export class PluginManager {
   async #removeLeftovers(): Promise<void> {
     const installed = join(this.#root, 'installed');
     // '~' never appears in a plugin name or a version, so a real folder never matches.
-    const aside = /~(old|new|bad|removing)-[a-z0-9-]+$/;
+    const aside = /^(.+)~(old|new|bad|removing)-[a-z0-9-]+$/;
     const drop = (p: string) => rm(p, { recursive: true, force: true }).catch(() => undefined);
+    /** Put an aside folder back when it is the only copy left, else remove it. */
+    const settle = async (dir: string, entries: string[], keepWhenMissing: (kind: string, real: string) => boolean) => {
+      // Newest first, so with several the latest one is the one put back.
+      for (const n of entries.filter((x) => aside.test(x)).sort().reverse()) {
+        const [, real, kind] = aside.exec(n)!;
+        const from = join(dir, n);
+        if (keepWhenMissing(kind!, real!) && !(await isDir(join(dir, real!)))) {
+          await rename(from, join(dir, real!)).catch(() => drop(from));
+        } else {
+          await drop(from);
+        }
+      }
+    };
+    const names = await readdir(installed, { withFileTypes: true }).catch(() => []);
+    // An uninstall cut short before its record was removed: the plugin is still installed.
+    await settle(
+      installed,
+      names.filter((e) => e.isDirectory()).map((e) => e.name),
+      (kind, real) => kind === 'removing' && !!this.#state.plugins[real],
+    );
     for (const e of await readdir(installed, { withFileTypes: true }).catch(() => [])) {
-      if (!e.isDirectory()) continue;
-      if (aside.test(e.name)) {
-        await drop(join(installed, e.name));
-        continue;
-      }
-      for (const v of await readdir(join(installed, e.name), { withFileTypes: true }).catch(() => [])) {
-        if (v.isDirectory() && aside.test(v.name)) await drop(join(installed, e.name, v.name));
-      }
+      if (!e.isDirectory() || aside.test(e.name)) continue;
+      const versions = (await readdir(join(installed, e.name), { withFileTypes: true }).catch(() => [])).filter((v) => v.isDirectory()).map((v) => v.name);
+      // A reinstall cut short between moving the old files aside and putting new ones in: the old ones are the only copy.
+      await settle(join(installed, e.name), versions, (kind) => kind === 'old');
     }
   }
 

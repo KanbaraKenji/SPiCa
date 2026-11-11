@@ -3,7 +3,7 @@
 // process's working folder and the files it has open cannot be deleted, so
 // the plugin must be stopped, and its processes gone, before its folder is
 // replaced.
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -221,6 +221,28 @@ describe('when another program holds a folder (acted out: a virus scanner readin
     await again.load();
     expect((await readdir(base)).sort()).toEqual(['leftovers']);
     expect((await readdir(join(base, 'leftovers'))).sort()).toEqual(['1.0.0', '1.0.0-rc.old-2']);
+    await again.shutdown();
+  });
+
+  it('when the folder left aside is the only copy (cut short mid-swap, or mid-uninstall), it is put back instead', async () => {
+    r = await rig();
+    await r.pm.install(await plugin('midswap', null));
+    await r.pm.install(await plugin('midremove', null));
+    await r.pm.enable('midswap');
+    await r.pm.shutdown();
+    const base = join(r.pm.root, 'installed');
+    // Reinstall cut short: the old files were moved aside, the new ones never moved in.
+    await rename(join(base, 'midswap', '1.0.0'), join(base, 'midswap', '1.0.0~old-abc1-2'));
+    await mkdir(join(base, 'midswap', '1.0.0~new-abc1-2'), { recursive: true });
+    // Uninstall cut short: the folder was moved aside, the record still says installed.
+    await rename(join(base, 'midremove'), join(base, 'midremove~removing-abc1'));
+    const again = new PluginManager({ host: runtimeHost(r.rt), root: r.pm.root });
+    const loaded = await again.load();
+    expect(loaded.enabled).toEqual(['midswap']);
+    expect((await readdir(base)).sort()).toEqual(['midremove', 'midswap']);
+    expect(await readdir(join(base, 'midswap'))).toEqual(['1.0.0']);
+    expect(await readdir(join(base, 'midremove', '1.0.0'))).toContain('srv.js');
+    expect(toolNames(r.rt)).toContain('midswap__ping');
     await again.shutdown();
   });
 });
