@@ -169,7 +169,7 @@ function Response({
   const files = filesOf(blocks, cards, moved, lists);
   const tools = useContext(AnswerToolsContext);
   const webImages = webImagesFor(blocks, live);
-  const answerTools = useMemo(() => (tools ? { ...tools, webImages } : null), [tools, webImages]);
+  const answerTools = tools ? { ...tools, webImages } : null;
   return (
     <AnswerToolsContext.Provider value={answerTools}>
     <div className="turn-response" {...at}>
