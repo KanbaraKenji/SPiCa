@@ -213,6 +213,38 @@ describe('Sidebar', () => {
     expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['重命名']);
   });
 
+  it('a double-click on a row edits its name; on its arrow or on 更多 it does not; rows that cannot be renamed ignore it', () => {
+    const onRename = vi.fn();
+    const props = { sessions: seed.sessions, activeId: SEED_IDS.chat2, onOpen: vi.fn(), onNewChat: vi.fn(), onSettings: vi.fn(), settingsOpen: false };
+    const { rerender } = render(<Sidebar {...props} onRename={onRename} onPin={vi.fn()} />);
+    const name = screen.getByRole('button', { name: '看一下样机评审资料' });
+    fireEvent.doubleClick(name);
+    const box = screen.getByRole('textbox', { name: '名称' }) as HTMLInputElement;
+    expect(box.value).toBe('看一下样机评审资料');
+    fireEvent.change(box, { target: { value: '样机评审' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(onRename).toHaveBeenCalledWith(SEED_IDS.chat, '样机评审');
+    // 更多 on the open row is a button of its own: a double-click there edits nothing.
+    fireEvent.doubleClick(screen.getByRole('button', { name: '更多' }));
+    expect(screen.queryByRole('textbox', { name: '名称' })).toBeNull();
+    // A project that can only be pinned (no renaming on offer): its row has a menu, but a double-click edits nothing.
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(screen.getByRole('tab', { name: /^项目/ }));
+    fireEvent.doubleClick(screen.getByRole('button', { name: '年度预算' }));
+    expect(screen.queryByRole('textbox', { name: '名称' })).toBeNull();
+    // The expand arrow: only expands.
+    fireEvent.doubleClick(screen.getByRole('button', { name: '展开 年度预算' }));
+    expect(screen.queryByRole('textbox', { name: '名称' })).toBeNull();
+    // A sub-task can be renamed: the double-click works there.
+    fireEvent.doubleClick(screen.getByRole('button', { name: '起草评审纪要' }));
+    expect((screen.getByRole('textbox', { name: '名称' }) as HTMLInputElement).value).toBe('起草评审纪要');
+    fireEvent.keyDown(screen.getByRole('textbox', { name: '名称' }), { key: 'Escape' });
+    // Nothing on offer at all: nothing happens.
+    rerender(<Sidebar {...props} />);
+    fireEvent.doubleClick(screen.getByRole('button', { name: '年度预算' }));
+    expect(screen.queryByRole('textbox', { name: '名称' })).toBeNull();
+  });
+
   it('更多 only where the open row has a menu: none without actions; none while the row is renamed', () => {
     const props = { sessions: seed.sessions, activeId: SEED_IDS.chat2, onOpen: vi.fn(), onNewChat: vi.fn(), onSettings: vi.fn(), settingsOpen: false };
     const { rerender } = render(<Sidebar {...props} />);

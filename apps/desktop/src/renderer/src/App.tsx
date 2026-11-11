@@ -14,6 +14,8 @@ import { DEFAULT_SETTINGS } from '../../shared/settings';
 import { sidebarBannerHeight, wordmarkProps } from './app-wordmark';
 import { useViewportWidth } from './shell/useViewportWidth';
 import { Sidebar } from './shell/Sidebar';
+import { canRename, commitRename, hasRowMenu, RenameField, rowMenuItems, type RowActions } from './shell/row-menu';
+import { ContextMenu } from './ui/ContextMenu';
 import { DetailPanel } from './shell/DetailPanel';
 import { Conversation, type ConversationActions, type WaitingChild } from './chat/Conversation';
 import type { ComposerTools } from './chat/Composer';
@@ -155,6 +157,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     },
     [floating, shell, atHome, homeRight, peeking],
   );
+
+  // The open conversation's name being edited in the title bar (its session id), and its menu there.
+  const [titleEditing, setTitleEditing] = useState<string | null>(null);
+  const [titleMenu, setTitleMenu] = useState<{ x: number; y: number } | null>(null);
+  const openTitleMenu = (e: { preventDefault(): void; clientX: number; clientY: number }) => {
+    e.preventDefault();
+    setTitleMenu({ x: e.clientX, y: e.clientY });
+  };
 
   // The right panel over the whole conversation (an expand button, Ctrl+Shift+\); for this visit only.
   const [rightMax, setRightMax] = useState(false);
@@ -581,6 +591,21 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   if (rightMax && !rightCanMax) setRightMax(false);
   const title = view === 'settings' ? '设置' : view === 'inbox' ? '收件箱' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
 
+  // What can be done to a session by its name; the sidebar's rows and the name in the title bar share it.
+  const rowActions: RowActions = {
+    pinned: settings.pinnedProjects ?? [],
+    onRename: (sid, name) => void agent.rename(sid, name),
+    onPin: (pid, pin) => {
+      const now = (settings.pinnedProjects ?? []).filter((x) => x !== pid);
+      shell.update({ pinnedProjects: pin ? [...now, pid] : now });
+    },
+    ...(bridge.agent.renameProject ? { onRenameProject: (pid: string, name: string) => void agent.renameProject(pid, name) } : {}),
+    ...(bridge.agent.deleteProject ? { onDeleteProject: (pid: string, name: string) => setDeletingProject({ id: pid, name }) } : {}),
+    ...(bridge.agent.deleteSession ? { onDeleteChat: (s: SessionInfo) => setDeletingChat({ id: s.id, name: s.title || '新对话' }) } : {}),
+  };
+  // The open conversation's name in the title bar: a click edits it, a right-click opens its menu.
+  const named = view === 'chat' ? session : undefined;
+
   const sidebarToggle = <SidebarToggle shown={leftShown} onToggle={() => toggle('left')} />;
 
   // The sidebar, full (docked or over the window) or as the column of icons left when it is closed.
@@ -601,7 +626,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       }}
       settingsOpen={view === 'settings'}
       topId={state.topId}
-      onRename={(sid, title) => void agent.rename(sid, title)}
+      {...(rowActions.onRename ? { onRename: rowActions.onRename } : {})}
       pluginPages={sidebarPages.map((v) => ({
         key: viewKey(v),
         title: v.title,
@@ -613,14 +638,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           setFloating(null);
         },
       }))}
-      pinned={settings.pinnedProjects ?? []}
-      onPin={(pid, pin) => {
-        const now = (settings.pinnedProjects ?? []).filter((x) => x !== pid);
-        shell.update({ pinnedProjects: pin ? [...now, pid] : now });
-      }}
-      {...(bridge.agent.renameProject ? { onRenameProject: (pid: string, name: string) => void agent.renameProject(pid, name) } : {})}
-      {...(bridge.agent.deleteProject ? { onDeleteProject: (pid: string, name: string) => setDeletingProject({ id: pid, name }) } : {})}
-      {...(bridge.agent.deleteSession ? { onDeleteChat: (s: SessionInfo) => setDeletingChat({ id: s.id, name: s.title || '新对话' }) } : {})}
+      pinned={rowActions.pinned}
+      {...(rowActions.onPin ? { onPin: rowActions.onPin } : {})}
+      {...(rowActions.onRenameProject ? { onRenameProject: rowActions.onRenameProject } : {})}
+      {...(rowActions.onDeleteProject ? { onDeleteProject: rowActions.onDeleteProject } : {})}
+      {...(rowActions.onDeleteChat ? { onDeleteChat: rowActions.onDeleteChat } : {})}
       {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject({}) } : {})}
       {...sidebarNews({
         inboxShown: mail.supported && mailSource,
@@ -675,9 +697,25 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               <Icon name="chevronRight" size={12} className="crumb-sep" />
             </>
           ) : null}
-          <span className="titlebar-text" title={title} data-tip-clipped="">
-            {title}
-          </span>
+          {named && titleEditing === named.id ? (
+            <RenameField
+              className="input titlebar-rename"
+              initial={title}
+              onDone={(v) => {
+                setTitleEditing(null);
+                commitRename(named, v, rowActions);
+              }}
+            />
+          ) : named && canRename(named, rowActions) ? (
+            <button type="button" className="titlebar-text titlebar-name" title={title} data-tip-clipped="" onClick={() => setTitleEditing(named.id)} onContextMenu={openTitleMenu}>
+              {title}
+            </button>
+          ) : (
+            <span className="titlebar-text" title={title} data-tip-clipped="" {...(named && hasRowMenu(named, rowActions) ? { onContextMenu: openTitleMenu } : {})}>
+              {title}
+            </span>
+          )}
+          {named && titleMenu ? <ContextMenu x={titleMenu.x} y={titleMenu.y} items={rowMenuItems(named, rowActions, () => setTitleEditing(named.id))} onClose={() => setTitleMenu(null)} /> : null}
         </div>
         {/* Updates, announcements and backend recovery live in the title bar's free
             space: nothing in the window is covered and nothing moves. */}

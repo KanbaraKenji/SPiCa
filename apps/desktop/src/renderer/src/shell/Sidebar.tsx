@@ -8,6 +8,7 @@ import { Icon } from '../ui/Icon';
 import { StatusSlot } from '../ui/StatusMark';
 import { isRunning } from '../store/transcript';
 import { rollupText, slotsOf, topSlot } from './row-status';
+import { canRename, commitRename, hasRowMenu, RenameField, rowMenuItems, type RowActions } from './row-menu';
 
 export interface SidebarProps {
   sessions: SessionInfo[];
@@ -49,11 +50,6 @@ export interface SidebarProps {
 
 const NONE: ReadonlySet<string> = new Set();
 
-/** A conversation the user started (not a project's, not a sub-task): one that can be deleted on its own. */
-function isOwnChat(s: SessionInfo): boolean {
-  return s.role === 'top' && !s.parentId;
-}
-
 function byRecent(a: SessionInfo, b: SessionInfo): number {
   return b.updatedAt.localeCompare(a.updatedAt);
 }
@@ -79,39 +75,9 @@ interface TreeProps {
   unseenDone: ReadonlySet<string>;
   /** Rows that have a menu (conversations to rename; projects to rename, pin, delete). */
   hasMenu(s: SessionInfo): boolean;
+  /** Rows whose name can be changed (a double-click on the row starts it). */
+  canRename(s: SessionInfo): boolean;
   pinned: ReadonlySet<string>;
-}
-
-function RenameField({ initial, onDone }: { initial: string; onDone(value: string | null): void }) {
-  const [value, setValue] = useState(initial);
-  const [done, setDone] = useState(false);
-  const finish = (v: string | null) => {
-    if (done) return;
-    setDone(true);
-    onDone(v);
-  };
-  return (
-    <input
-      className="input tree-rename"
-      value={value}
-      maxLength={60}
-      aria-label="名称"
-      autoFocus
-      onFocus={(e) => e.currentTarget.select()}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={() => finish(value)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
-          e.preventDefault();
-          finish(value);
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          e.stopPropagation();
-          finish(null);
-        }
-      }}
-    />
-  );
 }
 
 function descendantsOf(id: string, childrenOf: Map<string, SessionInfo[]>): SessionInfo[] {
@@ -171,6 +137,10 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
               type="button"
               className="tree-open"
               onClick={() => tree.onOpen(s.id)}
+              // A double-click on the row (not on its arrow or 更多, which are buttons of their own) edits the name.
+              onDoubleClick={() => {
+                if (tree.startRename && tree.canRename(s)) tree.startRename(s);
+              }}
               onKeyDown={(e) => {
                 // Right opens what is under the row, left closes it (the arrow button does the same).
                 if (kids.length && (e.key === 'ArrowRight' || e.key === 'ArrowLeft') && open !== (e.key === 'ArrowRight')) {
@@ -247,6 +217,8 @@ export function Sidebar({
     return { chats, projects, childrenOf };
   }, [sessions, pinOrder]);
 
+  // One set of rules with the name in the title bar (row-menu).
+  const actions: RowActions = { pinned, ...(onRename ? { onRename } : {}), ...(onPin ? { onPin } : {}), ...(onRenameProject ? { onRenameProject } : {}), ...(onDeleteProject ? { onDeleteProject } : {}), ...(onDeleteChat ? { onDeleteChat } : {}) };
   const [expanded, setExpandedState] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ s: SessionInfo; x: number; y: number; anchor?: HTMLElement } | null>(null);
@@ -263,7 +235,8 @@ export function Sidebar({
     editing,
     menuFor: menu?.s.id ?? null,
     pinned: new Set(pinned),
-    hasMenu: (s) => (s.role === 'manager' ? Boolean(s.projectId && (onPin || onRenameProject || onDeleteProject)) : Boolean(onRename || (onDeleteChat && isOwnChat(s)))),
+    hasMenu: (s) => hasRowMenu(s, actions),
+    canRename: (s) => canRename(s, actions),
     ...(onRename || onPin || onRenameProject || onDeleteProject || onDeleteChat
       ? {
           startRename: (s: SessionInfo, at?: { x: number; y: number }) => {
@@ -278,31 +251,11 @@ export function Sidebar({
       : {}),
     finishRename: (s, value) => {
       setEditing(null);
-      if (value === null) return;
-      const next = value.trim();
-      if (next === (s.title ?? '')) return;
-      if (s.role === 'manager') {
-        // A project keeps a name: an empty one changes nothing.
-        if (next && s.projectId && onRenameProject) onRenameProject(s.projectId, next);
-      } else if (onRename) onRename(s.id, next || null);
+      commitRename(s, value, actions);
     },
   };
 
-  const menuItems = (row: SessionInfo) => {
-    if (row.role !== 'manager')
-      return [
-        ...(onRename ? [{ label: '重命名', onSelect: () => setEditing(row.id) }] : []),
-        ...(onDeleteChat && isOwnChat(row) ? [{ label: '删除', danger: true, onSelect: () => onDeleteChat(row) }] : []),
-      ];
-    const pid = row.projectId;
-    if (!pid) return [];
-    const isPinned = pinOrder.has(pid);
-    return [
-      ...(onRenameProject ? [{ label: '重命名', onSelect: () => setEditing(row.id) }] : []),
-      ...(onPin ? [{ label: isPinned ? '取消置顶' : '置顶', onSelect: () => onPin(pid, !isPinned) }] : []),
-      ...(onDeleteProject ? [{ label: '删除', danger: true, onSelect: () => onDeleteProject(pid, row.title ?? '') }] : []),
-    ];
-  };
+  const menuItems = (row: SessionInfo) => rowMenuItems(row, actions, () => setEditing(row.id));
 
   // Which list the full sidebar shows; it follows the conversation you open (one in a project → 项目).
   const [listTab, setListTab] = useState<'chats' | 'projects'>('chats');
