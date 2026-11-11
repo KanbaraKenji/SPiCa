@@ -36,6 +36,7 @@
     "highlight.js": "11.11.2",
     "jsdom": "31.0.0",
     "lowlight": "3.3.0",
+    "mermaid": "12.2.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "10.1.0",
