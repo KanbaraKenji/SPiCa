@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrast, DARK_SKIN, deriveTokens, LIGHT_SKIN, normalizeHex, over, resolveSkin, schemeOf } from './skin';
+import { contrast, DARK_SKIN, deriveTokens, LIGHT_SKIN, normalizeHex, ON_ACCENT_WHITE_MIN, over, resolveSkin, schemeOf } from './skin';
 
 describe('normalizeHex', () => {
   it('accepts short and long forms, with or without #', () => {
@@ -27,7 +27,7 @@ describe('deriveTokens', () => {
     expect(contrast(t['--spica-faint']!, t['--spica-bg']!)).toBeGreaterThanOrEqual(2.5);
     expect(contrast(t['--spica-muted']!, t['--spica-bg']!)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(t['--spica-accent-text']!, t['--spica-bg']!)).toBeGreaterThanOrEqual(3);
-    expect(contrast(t['--spica-on-accent']!, t['--spica-accent']!)).toBeGreaterThanOrEqual(3);
+    expect(contrast(t['--spica-on-accent']!, t['--spica-accent']!)).toBeGreaterThanOrEqual(ON_ACCENT_WHITE_MIN);
   });
   // The reference's values, measured (统筹 2026-11-10); each must come out exactly.
   const measured = {
@@ -94,16 +94,20 @@ describe('over (the caption buttons under a scrim)', () => {
 
 describe('text on the accent (主按钮, 发送)', () => {
   const on = (accent: string, bg = '#ffffff') => deriveTokens({ id: 't', name: 't', bg, accent })['--spica-on-accent'];
-  it("white wherever white reads clearly: the light skin's blue, and the darker presets", () => {
+  it("white on both built-in skins' blue and on every preset but the lightest", () => {
     expect(deriveTokens(LIGHT_SKIN)['--spica-on-accent']).toBe('#ffffff');
-    for (const a of ['#2f7de1', '#7c5cff', '#e0559a', '#3aa55c']) expect([a, on(a)]).toEqual([a, '#ffffff']);
+    expect(deriveTokens(DARK_SKIN)['--spica-on-accent']).toBe('#ffffff');
+    for (const a of ['#2f7de1', '#62a9ff', '#7c5cff', '#e0559a', '#e8833a', '#3aa55c']) expect([a, on(a)]).toEqual([a, '#ffffff']);
   });
-  it("dark only where the accent is too light for white: the dark skin's blue, 39, orange, yellow", () => {
-    expect(deriveTokens(DARK_SKIN)['--spica-on-accent']).toBe('#0b0d12');
-    for (const a of ['#39c5bb', '#e8833a', '#ffd400']) expect([a, on(a)]).toEqual([a, '#0b0d12']);
-    expect(on('#62a9ff', '#191919')).toBe('#0b0d12');
+  it('dark only where the accent is too light for white: 39, yellow, a pale blue, white itself', () => {
+    for (const a of ['#39c5bb', '#fbbf24', '#ffd400', '#a8c8ff', '#ffffff']) expect([a, on(a)]).toEqual([a, '#0b0d12']);
   });
-  it('either way at least 3:1', () => {
-    for (const a of ['#2f7de1', '#62a9ff', '#39c5bb', '#7c5cff', '#e0559a', '#e8833a', '#3aa55c', '#ffd400', '#1a2a6c', '#808080']) expect(contrast(on(a)!, a)).toBeGreaterThanOrEqual(3);
+  it('the text never falls under the least contrast, whatever the accent', () => {
+    for (const a of ['#2f7de1', '#62a9ff', '#39c5bb', '#7c5cff', '#e0559a', '#e8833a', '#3aa55c', '#ffd400', '#1a2a6c', '#808080', '#ffffff', '#000000']) expect(contrast(on(a)!, a)).toBeGreaterThanOrEqual(ON_ACCENT_WHITE_MIN);
+  });
+  it("the least contrast sits just under white on the dark skin's blue", () => {
+    const white = contrast('#ffffff', DARK_SKIN.accent);
+    expect(white).toBeGreaterThanOrEqual(ON_ACCENT_WHITE_MIN);
+    expect(white - ON_ACCENT_WHITE_MIN).toBeLessThan(0.1);
   });
 });

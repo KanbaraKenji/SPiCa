@@ -169,8 +169,11 @@ function readable(color: string, bg: string, ink: string, min: number): string {
 /** Every color token the UI uses, as CSS custom property name -> value. */
 export type Tokens = Record<`--spica-${string}`, string>;
 
-/** The least contrast at which text on the accent stays white. */
-export const ON_ACCENT_WHITE_MIN = 3;
+/**
+ * The least contrast at which text on the accent stays white. Set so that the built-in dark skin's blue
+ * (white on it: 2.43) still takes white; an accent lighter than that takes the dark text.
+ */
+export const ON_ACCENT_WHITE_MIN = 2.4;
 
 export function deriveTokens(skin: Skin): Tokens {
   const bg = skin.bg;
@@ -180,8 +183,8 @@ export function deriveTokens(skin: Skin): Tokens {
   const ink = skin.fixed?.['--spica-ink'] ?? readable(dark ? DARK_INK : LIGHT_INK, bg, dark ? '#ffffff' : '#000000', 7);
   const accent = skin.accent;
   const accentText = readable(accent, bg, ink, 3);
-  // Text on the accent (主按钮, 发送): white when white reads clearly enough (3:1, as for buttons and large
-  // text); dark only on an accent too light for white. Not "whichever contrasts more": on a mid blue the dark
+  // Text on the accent (主按钮, 发送): white while white still reads on it (ON_ACCENT_WHITE_MIN), dark only on
+  // an accent too light for white. Not "whichever contrasts more": on a mid blue the dark
   // wins by a hair and the button reads as dark text on blue.
   const onAccent = contrast('#ffffff', accent) >= ON_ACCENT_WHITE_MIN ? '#ffffff' : '#0b0d12';
   const danger = dark ? '#f87171' : '#dc2626';
