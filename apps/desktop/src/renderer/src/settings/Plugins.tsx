@@ -512,6 +512,8 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
       if (!isLocation(text)) return;
       const n = ++lookSeq.current;
       setLooking(n);
+      // The result line was about the last action, not this place.
+      setNote(null);
       void api
         .run({ op: 'find', location: unquote(text) })
         .then((r) => {

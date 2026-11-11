@@ -196,10 +196,12 @@ describe('Plugins', () => {
     await waitFor(() => expect((box as HTMLInputElement).value).toBe(''));
     expect(within(await screen.findByRole('region', { name: 'note-box' })).getByRole('switch', { name: '停用「note-box」' })).toBeTruthy();
     expect(groupOf('note-box')).toBe('已启用');
-    // Not there: said where the list would be.
+    // The result line of that install goes once another place is looked at; not there: said where the list would be.
+    expect(screen.getByText('已安装「note-box」1.0.0。')).toBeTruthy();
     fireEvent.change(box, { target: { value: 'D:\\插件\\不存在' } });
     fireEvent.submit(box.closest('form')!);
     expect(await within(list()).findByText('找不到该文件夹或文件。')).toBeTruthy();
+    expect(screen.queryByText('已安装「note-box」1.0.0。')).toBeNull();
   });
 
   it('选择文件夹 puts the folder in the box and looks at it', async () => {
