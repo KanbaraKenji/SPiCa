@@ -12,6 +12,7 @@ import { CopyButton } from '../ui/CopyButton';
 import { ImageViewer } from '../ui/ImageViewer';
 import { imageSource } from './answer-image';
 import { drawFlow, pageMode, svgUrl } from './flow-draw';
+import { commandFacts, dangerSpans } from './command-plain';
 import { fullPath, openablePathKind } from './local-path';
 import { tableRows, toCsv, toHtml, toTsv } from './table-data';
 import { blockLanguage, blockLanguageName, colourSplit, highlightCode } from './highlight';
@@ -581,19 +582,38 @@ function ToolDetail({ block }: { block: ToolBlock }) {
   );
 }
 
-/** A command as written: $ and the command, coloured as PowerShell, in a box that scrolls on its own. */
-function CommandBox({ command }: { command: string }) {
-  const coloured = useMemo(() => highlightCode('powershell', command), [command]);
+/**
+ * A command as written: $ and the command, coloured as PowerShell, in a box that scrolls on its own. `marks`
+ * (where the dangerous words are): those words on a red ground in place of the colours. `bare`: no box and no
+ * head of its own (the card it is in is the box and has the copy button).
+ */
+function CommandBox({ command, marks, bare }: { command: string; marks?: [number, number][] | undefined; bare?: boolean }) {
+  const red = marks && marks.length ? marks : null;
+  const coloured = useMemo(() => (red ? null : highlightCode('powershell', command)), [command, red]);
+  let body: ReactNode = coloured ?? command;
+  if (red) {
+    const parts: ReactNode[] = [];
+    let at = 0;
+    red.forEach(([a, b], i) => {
+      if (a < at) return;
+      parts.push(command.slice(at, a), <mark key={i} className="cmd-danger">{command.slice(a, b)}</mark>);
+      at = b;
+    });
+    parts.push(command.slice(at));
+    body = parts;
+  }
   return (
-    <div className="tool-command">
-      <div className="code-head">
-        <span className="code-lang" />
-        <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(command)} />
-      </div>
+    <div className={bare ? 'tool-command is-bare' : 'tool-command'}>
+      {bare ? null : (
+        <div className="code-head">
+          <span className="code-lang" />
+          <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(command)} />
+        </div>
+      )}
       <pre>
         <code>
           <span className="tool-prompt">$ </span>
-          {coloured ?? command}
+          {body}
         </code>
       </pre>
     </div>
@@ -836,9 +856,9 @@ const ARG_LABEL: Record<string, string> = {
  * Exactly what a confirmation would let run, nothing cut: a command in its code box, other calls their
  * arguments in full. Not the model's description of the step: it may not match what would run.
  */
-export function ConfirmTarget({ name, input }: { name: string; input: unknown }) {
+export function ConfirmTarget({ name, input, bare }: { name: string; input: unknown; bare?: boolean }) {
   const v = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
-  if (name === 'run_command' && typeof v.command === 'string') return <CommandBox command={v.command} />;
+  if (name === 'run_command' && typeof v.command === 'string') return <CommandBox command={v.command} marks={dangerSpans(v.command)} bare={bare} />;
   const rows = Object.entries(v).filter(([k, val]) => k !== 'description' && val !== undefined && val !== null && val !== '');
   if (!rows.length) return null;
   return (
@@ -853,31 +873,45 @@ export function ConfirmTarget({ name, input }: { name: string; input: unknown })
   );
 }
 
+/**
+ * A confirmation: the card is what would run. One slim row (what it will do, 无法撤销 when it cannot be taken
+ * back, copy for a command, 拒绝 / 允许 or what was decided), then the command in full or the call's arguments.
+ * For a command, the title is the app's own reading of it (运行命令 when it cannot tell), not the model's words.
+ */
 export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type: 'confirm' }>; onDecide(approved: boolean): void }) {
   const decided = block.approved !== undefined;
+  const input = block.input && typeof block.input === 'object' ? (block.input as Record<string, unknown>) : {};
+  const command = block.name === 'run_command' && typeof input.command === 'string' ? input.command : null;
+  const facts = command !== null ? commandFacts(command) : [];
+  const danger = facts.some((f) => f.danger);
+  const title = command === null ? confirmTitle(block.name, block.input, block.reason) : facts.length ? facts.map((f) => f.text).join('；') : '运行命令';
+  const cls = ['card', 'confirm-card', danger ? 'is-danger' : '', decided ? 'is-done' : ''].filter(Boolean).join(' ');
   return (
-    <section className={decided ? 'card confirm-card is-done' : 'card confirm-card'} aria-label="确认">
+    <section className={cls} aria-label="确认">
       <header className="card-head">
-        <Icon name="shield" size={16} className="card-head-icon" />
-        <span className="card-title">{confirmTitle(block.name, block.input, block.reason)}</span>
+        <SpicaStatusIcon name={danger ? 'warning' : 'info'} size={16} />
+        <span className="card-title">{title}</span>
+        {danger ? <span className="confirm-undo">无法撤销</span> : null}
+        <span className="confirm-spacer" />
+        {command !== null ? <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(command)} /> : null}
+        {decided ? (
+          <p className="card-answer">
+            <SpicaStatusIcon name={block.approved ? 'done' : 'stopped'} size={15} />
+            <span>{block.approved ? '已允许' : '已拒绝'}</span>
+          </p>
+        ) : (
+          <div className="card-actions">
+            <button type="button" className="btn" onClick={() => onDecide(false)}>
+              拒绝
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => onDecide(true)}>
+              允许
+            </button>
+          </div>
+        )}
       </header>
-      <ConfirmTarget name={block.name} input={block.input} />
+      <ConfirmTarget name={block.name} input={block.input} bare />
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
-      {decided ? (
-        <p className="card-answer">
-          <SpicaStatusIcon name={block.approved ? 'done' : 'stopped'} size={15} />
-          <span>{block.approved ? '已允许' : '已拒绝'}</span>
-        </p>
-      ) : (
-        <div className="card-actions">
-          <button type="button" className="btn" onClick={() => onDecide(false)}>
-            拒绝
-          </button>
-          <button type="button" className="btn btn-primary" onClick={() => onDecide(true)}>
-            允许
-          </button>
-        </div>
-      )}
     </section>
   );
 }

@@ -51,6 +51,45 @@ describe('ConfirmCard', () => {
     expect(screen.queryByText(/列出文件/)).toBeNull();
   });
 
+  it('a command that cannot be taken back: what it does in the title row, 无法撤销, the dangerous words marked', () => {
+    const command = "Get-ChildItem 'D:\\工作\\样机评审' | Measure-Object; Remove-Item 'D:\\工作\\样机评审' -Recurse -Force";
+    const onDecide = vi.fn();
+    render(<ConfirmCard block={{ type: 'confirm', callId: 'c5', name: 'run_command', input: { command, description: '整理旧的报价文件' }, reason: '运行命令' }} onDecide={onDecide} />);
+    const card = document.querySelector('.confirm-card')!;
+    expect(card.classList.contains('is-danger')).toBe(true);
+    const head = card.querySelector('.card-head')!;
+    expect(head.querySelector('.card-title')?.textContent).toBe('删除 D:\\工作\\样机评审（含其中所有内容）');
+    expect(head.querySelector('.confirm-undo')?.textContent).toBe('无法撤销');
+    // Copy, 拒绝 and 允许 are in the same row as what is being confirmed.
+    expect(head.querySelector('.md-tool')).toBeTruthy();
+    expect([...head.querySelectorAll('.card-actions button')].map((b) => b.textContent)).toEqual(['拒绝', '允许']);
+    expect([...card.querySelectorAll('.cmd-danger')].map((m) => m.textContent)).toEqual(['Remove-Item', '-Recurse', '-Force']);
+    expect(card.querySelector('.tool-command.is-bare .code-head')).toBeNull();
+    expect(screen.queryByText(/整理旧的报价文件/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '拒绝' }));
+    expect(onDecide).toHaveBeenCalledWith(false);
+  });
+
+  it('a command that changes nothing it cannot take back: 运行命令, no 无法撤销, the command coloured as usual', () => {
+    const command = "python 导出各家报价.py --out './报价' 2>&1";
+    render(<ConfirmCard block={{ type: 'confirm', callId: 'c6', name: 'run_command', input: { command }, reason: '运行命令' }} onDecide={vi.fn()} />);
+    const card = document.querySelector('.confirm-card')!;
+    expect(card.classList.contains('is-danger')).toBe(false);
+    expect(card.querySelector('.card-title')?.textContent).toBe('运行命令');
+    expect(card.querySelector('.confirm-undo')).toBeNull();
+    expect(card.querySelector('.cmd-danger')).toBeNull();
+    expect(card.querySelector('.tool-command pre')?.textContent).toBe(`$ ${command}`);
+  });
+
+  it('decided: what was decided in place of the buttons, the card back to quiet', () => {
+    const command = 'Remove-Item a.txt';
+    render(<ConfirmCard block={{ type: 'confirm', callId: 'c7', name: 'run_command', input: { command }, reason: '运行命令', approved: true }} onDecide={vi.fn()} />);
+    const card = document.querySelector('.confirm-card')!;
+    expect(card.classList.contains('is-done')).toBe(true);
+    expect(card.querySelector('.card-head .card-answer')?.textContent).toBe('已允许');
+    expect(card.querySelector('.card-actions')).toBeNull();
+  });
+
   it('other calls: their arguments in full, under names people read', () => {
     const body = '各位好，'.repeat(40);
     render(<ConfirmCard block={{ type: 'confirm', callId: 'c4', name: 'mail__send', input: { to: 'team@example.com', subject: '样机评审时间', body }, reason: '发送邮件' }} onDecide={vi.fn()} />);

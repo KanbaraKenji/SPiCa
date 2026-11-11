@@ -4734,17 +4734,83 @@ button.ctx-row:hover {
   margin-top: 6px;
 }
 
-/* Why a confirmation is asked (the guard's cause), under the card title. */
-.card-why {
-  margin: 6px 0 0 26px;
-  font-size: 13px;
-  color: var(--spica-muted);
+/* A confirmation: the card is what would run. A slim row (what it will do, 无法撤销, copy, 拒绝 / 允许), a thin line,
+   then the command in full or the call's arguments, from edge to edge. */
+.confirm-card {
+  padding: 0;
+  overflow: hidden;
 }
 
-/* A confirmation: exactly what would run, in full, under its short title. */
+.confirm-card > .card-head {
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 8px 6px 12px;
+}
+
+.confirm-card > .card-head > svg,
+.confirm-card > .card-head > .md-tool {
+  flex: none;
+}
+
+.confirm-undo {
+  flex: none;
+  font-size: 12px;
+  color: var(--spica-danger);
+}
+
+.confirm-spacer {
+  flex: 1;
+}
+
+.confirm-card > .card-head .card-actions {
+  flex: none;
+  margin: 0;
+}
+
+.confirm-card > .card-head .card-answer {
+  flex: none;
+  margin: 0 4px 0 0;
+}
+
+.confirm-card:not(.is-done).is-danger {
+  border-color: var(--spica-danger);
+}
+
 .confirm-card > .tool-command,
 .confirm-card > .confirm-args {
-  margin: 8px 0 0 26px;
+  margin: 0;
+  border-top: 1px solid var(--spica-border);
+}
+
+.confirm-card > .confirm-args {
+  padding: 8px 12px;
+}
+
+.tool-command.is-bare {
+  border: 0;
+  border-radius: 0;
+}
+
+.tool-command.is-bare pre {
+  padding: 8px 12px;
+}
+
+/* A dangerous word in a command to be confirmed (Remove-Item, -Recurse, -Force, an overwriting >). */
+.cmd-danger {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: var(--spica-danger-soft);
+  color: var(--spica-danger);
+}
+
+/* Why a confirmation is asked (the guard's cause), at the foot of the card. */
+.card-why {
+  margin: 0;
+  padding: 6px 12px 8px;
+  border-top: 1px solid var(--spica-divider);
+  font-size: 13px;
+  color: var(--spica-muted);
 }
 
 .confirm-args {
