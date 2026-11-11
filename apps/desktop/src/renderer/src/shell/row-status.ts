@@ -1,6 +1,5 @@
 // A sidebar row's one status place: what it shows, and which finished sub-tasks still count as news.
 import type { SessionInfo, SessionStatus } from '@spica/protocol';
-import { joinNotes } from '../ui/NewDot';
 
 export const STATUS_LABEL: Record<SessionStatus, string> = {
   idle: '空闲',
@@ -18,7 +17,7 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
 /**
  * What a row can show, most pressing first. Only one is drawn at a time:
  * waiting for you (yellow dot) > error, interrupted (red dot) > running (ring) >
- * news: mail, a report, a sub-task finished and not opened yet (blue dot) > queued > stopped.
+ * news: a sub-task finished and not opened yet (blue dot) > queued > stopped.
  * Idle rows and finished ones already opened show nothing.
  */
 export type SlotKind = 'waiting' | 'error' | 'running' | 'news' | 'queued' | 'stopped';
@@ -33,12 +32,11 @@ export interface Slot {
 const DONE = STATUS_LABEL.done;
 
 /** Everything one row has to say; `topSlot` picks the one that is drawn. */
-export function slotsOf(s: SessionInfo, o: { note?: string | undefined; active: boolean; unseenDone: boolean }): Slot[] {
+export function slotsOf(s: SessionInfo, o: { active: boolean; unseenDone: boolean }): Slot[] {
   const out: Slot[] = [];
   if (s.status === 'awaiting_answer' || s.status === 'awaiting_confirm') out.push({ kind: 'waiting', text: STATUS_LABEL[s.status] });
   if (s.status === 'error' || s.status === 'interrupted') out.push({ kind: 'error', text: STATUS_LABEL[s.status] });
   if (s.status === 'thinking' || s.status === 'tool') out.push({ kind: 'running', text: STATUS_LABEL[s.status] });
-  if (o.note && !o.active) out.push({ kind: 'news', text: o.note });
   if (s.status === 'done' && !o.active && o.unseenDone) out.push({ kind: 'news', text: DONE });
   if (s.status === 'queued') out.push({ kind: 'queued', text: STATUS_LABEL.queued });
   if (s.status === 'aborted') out.push({ kind: 'stopped', text: STATUS_LABEL.aborted });
@@ -53,7 +51,7 @@ export function topSlot(slots: readonly Slot[]): Slot | null {
   return null;
 }
 
-/** A collapsed row's hover text: counts over it and everything below it (only those not zero), then what is new. */
+/** A collapsed row's hover text: counts over it and everything below it (only those not zero). */
 export function rollupText(slots: readonly Slot[]): string {
   const count = (k: SlotKind) => slots.filter((x) => x.kind === k).length;
   const done = slots.filter((x) => x.kind === 'news' && x.text === DONE).length;
@@ -64,7 +62,7 @@ export function rollupText(slots: readonly Slot[]): string {
   if (done) parts.push(`${done} 个已完成`);
   if (count('queued')) parts.push(`${count('queued')} 个排队中`);
   if (count('stopped')) parts.push(`${count('stopped')} 个已停止`);
-  return joinNotes([...parts, ...slots.filter((x) => x.kind === 'news' && x.text !== DONE).map((x) => x.text)]);
+  return parts.join(' · ');
 }
 
 /** Finished sub-tasks nobody has opened since they finished: the recorded ones that are still finished. */

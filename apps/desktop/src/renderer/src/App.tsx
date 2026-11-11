@@ -650,7 +650,6 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             setFloating(null);
           },
         },
-        notes: sidebarNotes,
       })}
       unseenDone={doneNews}
     />

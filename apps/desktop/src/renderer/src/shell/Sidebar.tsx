@@ -5,7 +5,6 @@ import { useMemo, useState } from 'react';
 import { ContextMenu } from '../ui/ContextMenu';
 import type { SessionInfo } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
-import { joinNotes } from '../ui/NewDot';
 import { StatusSlot } from '../ui/StatusMark';
 import { isRunning } from '../store/transcript';
 import { rollupText, slotsOf, topSlot } from './row-status';
@@ -28,8 +27,6 @@ export interface SidebarProps {
   onRename?: (id: string, title: string | null) => void;
   /** The 收件箱 row; absent when the backend has no mail. `count` = mails waiting for the user. */
   inbox?: { count: number; open: boolean; onOpen(): void };
-  /** Short words after a row's title, by session id (e.g. 「有新来信」 on a project). */
-  notes?: ReadonlyMap<string, string>;
   /** Finished sub-tasks not opened since they finished: news on their row (and on a collapsed row above them). */
   unseenDone?: ReadonlySet<string>;
   /** Project ids pinned to the top, in pin order. */
@@ -79,7 +76,6 @@ interface TreeProps {
   /** Row whose menu is open, if any. */
   menuFor: string | null;
   finishRename(s: SessionInfo, value: string | null): void;
-  notes?: ReadonlyMap<string, string>;
   unseenDone: ReadonlySet<string>;
   /** Rows that have a menu (conversations to rename; projects to rename, pin, delete). */
   hasMenu(s: SessionInfo): boolean;
@@ -139,9 +135,12 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
   const active = !tree.settingsOpen && s.id === tree.activeId;
   // One status place per row: its own most pressing state (anything else it has is said on hover);
   // collapsed, the most pressing of it and everything below it, with the counts on hover.
-  const said = (x: SessionInfo, isActive: boolean) => slotsOf(x, { note: tree.notes?.get(x.id), active: isActive, unseenDone: tree.unseenDone.has(x.id) });
-  const own = said(s, active);
-  const below = kids.length && !open ? all.flatMap((k) => said(k, !tree.settingsOpen && k.id === tree.activeId)) : [];
+  // A project's row is the project, not a conversation: it shows no state, its own or of what is below it.
+  // What goes on in a project is on the rows under it (a project with something running or waiting opens itself).
+  const isProject = s.role === 'manager';
+  const said = (x: SessionInfo, isActive: boolean) => slotsOf(x, { active: isActive, unseenDone: tree.unseenDone.has(x.id) });
+  const own = isProject ? [] : said(s, active);
+  const below = !isProject && kids.length && !open ? all.flatMap((k) => said(k, !tree.settingsOpen && k.id === tree.activeId)) : [];
   const slot = topSlot([...own, ...below]);
   const name = s.title ?? '';
   const menuOpen = tree.menuFor === s.id;
@@ -198,7 +197,7 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
                 <Icon name="pin" size={12} />
               </span>
             ) : null}
-            {more ? null : <StatusSlot slot={slot} {...(below.length ? { text: rollupText([...own, ...below]) } : own.length > 1 ? { text: joinNotes(own.map((x) => x.text)) } : {})} onClick={() => tree.onOpen(s.id)} />}
+            {more ? null : <StatusSlot slot={slot} {...(below.length ? { text: rollupText([...own, ...below]) } : own.length > 1 ? { text: own.map((x) => x.text).join(' · ') } : {})} onClick={() => tree.onOpen(s.id)} />}
           </>
         )}
         {more ? (
@@ -222,7 +221,6 @@ export function Sidebar({
   settingsOpen,
   onRename,
   inbox,
-  notes,
   unseenDone,
   pinned = [],
   onPin,
@@ -257,7 +255,6 @@ export function Sidebar({
     activeId,
     // Another view (settings, inbox) is open: no row is the current one.
     settingsOpen: settingsOpen || Boolean(inbox?.open),
-    ...(notes ? { notes } : {}),
     unseenDone: unseenDone ?? NONE,
     expanded,
     setExpanded: (id, open) => setExpandedState((e) => ({ ...e, [id]: open })),

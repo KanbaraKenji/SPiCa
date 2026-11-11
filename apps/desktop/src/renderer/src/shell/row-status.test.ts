@@ -21,22 +21,21 @@ describe('the one status place of a row', () => {
   });
 
   it('the most pressing wins: waiting, error, running, news, queued, stopped', () => {
-    const over = (...list: SessionInfo['status'][]) => topSlot(list.flatMap((st, i) => slotsOf(s(String(i), st), { note: i === 0 ? '有新来信' : undefined, active: false, unseenDone: false })))?.kind;
+    const over = (...list: SessionInfo['status'][]) => topSlot(list.flatMap((st, i) => slotsOf(s(String(i), st), { active: false, unseenDone: st === 'done' })))?.kind;
     expect(over('thinking', 'awaiting_confirm', 'error')).toBe('waiting');
     expect(over('thinking', 'error', 'queued')).toBe('error');
-    expect(over('idle', 'tool', 'queued')).toBe('running');
-    expect(over('idle', 'queued', 'aborted')).toBe('news');
-    expect(topSlot([...slotsOf(s('a', 'aborted'), quiet), ...slotsOf(s('b', 'queued'), quiet)])?.kind).toBe('queued');
+    expect(over('done', 'tool', 'queued')).toBe('running');
+    expect(over('done', 'queued', 'aborted')).toBe('news');
+    expect(over('idle', 'aborted', 'queued')).toBe('queued');
   });
 
-  it('news is not shown on the row that is open; a finished sub-task is news until it is opened', () => {
-    expect(slotsOf(s('a', 'idle'), { note: '有新回报', active: true, unseenDone: false })).toEqual([]);
-    expect(slotsOf(s('a', 'idle'), { note: '有新回报', active: false, unseenDone: false })).toEqual([{ kind: 'news', text: '有新回报' }]);
+  it('a finished sub-task is news until it is opened, and never on the row that is open', () => {
     expect(slotsOf(s('a', 'done'), { active: false, unseenDone: true })).toEqual([{ kind: 'news', text: '已完成' }]);
     expect(slotsOf(s('a', 'done'), { active: true, unseenDone: true })).toEqual([]);
+    expect(slotsOf(s('a', 'done'), { active: false, unseenDone: false })).toEqual([]);
   });
 
-  it('a collapsed row says the counts that are not zero, then what is new, each once', () => {
+  it('a collapsed row says the counts that are not zero', () => {
     const all = [
       ...slotsOf(s('a', 'awaiting_answer'), quiet),
       ...slotsOf(s('b', 'tool'), quiet),
@@ -45,10 +44,8 @@ describe('the one status place of a row', () => {
       ...slotsOf(s('e', 'done'), { active: false, unseenDone: true }),
       ...slotsOf(s('f', 'queued'), quiet),
       ...slotsOf(s('g', 'aborted'), quiet),
-      ...slotsOf(s('h', 'idle'), { note: '有新来信 · 有新回报', active: false, unseenDone: false }),
-      ...slotsOf(s('i', 'idle'), { note: '有新来信', active: false, unseenDone: false }),
     ];
-    expect(rollupText(all)).toBe('1 个待处理 · 1 个出错 · 2 个运行中 · 1 个已完成 · 1 个排队中 · 1 个已停止 · 有新来信 · 有新回报');
+    expect(rollupText(all)).toBe('1 个待处理 · 1 个出错 · 2 个运行中 · 1 个已完成 · 1 个排队中 · 1 个已停止');
     expect(rollupText([])).toBe('');
   });
 });

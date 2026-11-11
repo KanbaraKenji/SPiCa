@@ -1,19 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { sidebarNews } from './sidebar-news';
 
-describe('what the sidebar shows as new', () => {
+describe('the 收件箱 entry of the sidebar', () => {
   const inbox = { count: 3, open: false, onOpen: vi.fn() };
-  const notes = new Map([['ses_pm', '有新回报']]);
 
-  it('without a mail plugin: no 收件箱, but a project with an unseen report keeps its dot', () => {
-    const news = sidebarNews({ inboxShown: false, inbox, notes });
-    expect(news.inbox).toBeUndefined();
-    expect(news.notes?.get('ses_pm')).toBe('有新回报');
+  it('without a mail plugin: no 收件箱', () => {
+    expect(sidebarNews({ inboxShown: false, inbox })).toEqual({});
   });
 
-  it('with a mail plugin: 收件箱 and the dots', () => {
-    const news = sidebarNews({ inboxShown: true, inbox, notes });
-    expect(news.inbox).toBe(inbox);
-    expect(news.notes).toBe(notes);
+  it('with a mail plugin: 收件箱', () => {
+    expect(sidebarNews({ inboxShown: true, inbox }).inbox).toBe(inbox);
   });
 });
