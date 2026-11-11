@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentApi, CoreEvent } from '@spica/protocol';
-import { FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
+import { FAKE_EXPORT_FILES, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
 import { SEED_IDS } from './fake-seed';
 
 function collect(backend: FakeBackend) {
@@ -173,6 +173,13 @@ describe('FakeBackend', () => {
     expect(FAKE_SUMMARY_ANSWER).toMatch(/`[A-Z]:\\[^`]+\\`/);
     expect(FAKE_SUMMARY_ANSWER).toContain('```powershell');
     expect(FAKE_SUMMARY_ANSWER).toContain('| 供应商 |');
+    // As the core does: the kind of each step, and cards for what was made (a command's several, then present_files).
+    const starts = events.filter((e): e is Extract<CoreEvent, { type: 'tool.start' }> => e.type === 'tool.start').map((e) => [e.name, e.category]);
+    expect(starts).toEqual(expect.arrayContaining([['write_file', 'write'], ['run_command', 'command'], ['present_files', 'present']]));
+    const cards = events.filter((e): e is Extract<CoreEvent, { type: 'file.card' }> => e.type === 'file.card');
+    const command = cards.find((e) => e.files?.length === FAKE_EXPORT_FILES.length);
+    expect(command?.files?.map((f) => [f.path, f.origin])).toEqual(FAKE_EXPORT_FILES.map((p, i) => [p, i === 0 ? 'modified' : 'created']));
+    expect(cards.find((e) => e.file.path === FAKE_SUMMARY_FILE && e.file.lines)?.file).toMatchObject({ origin: 'created', lines: { added: 5, removed: 0 } });
   });
 
   it('waits for confirmation and continues after the decision', async () => {

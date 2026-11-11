@@ -10,6 +10,7 @@ import type {
   CoreEventBody,
   CreateProjectRequest,
   CreateSessionRequest,
+  FileCardMeta,
   MailFeedback,
   MailItem,
   MailPollResult,
@@ -26,6 +27,7 @@ import type {
   SessionStatus,
   SetCwdResult,
   SteerMode,
+  ToolCategory,
 } from '@spica/protocol';
 import { REGENERATE_HINTS } from '@spica/protocol';
 import type { AgentBackend } from './types';
@@ -62,6 +64,9 @@ class Aborted extends Error {}
 /** Tools of the script that only read (a round that used only these can be regenerated, as in the core). */
 const READ_ONLY_TOOLS = new Set(['list_dir', 'read_file', 'glob', 'grep', 'web_fetch', 'web_search', 'ask_user', 'suggest_actions']);
 const ANSWER_KINDS = new Set<MessageKind>(['assistant', 'tool_results', 'steer']);
+
+/** What the 汇总 answer's command leaves behind: one file it changed, then new ones. */
+export const FAKE_EXPORT_FILES = ['D:\\工作\\样机评审\\报价\\索引.csv', ...['华东精密', '启明电子', '远航塑胶', '恒信五金', '东方模具', '新锐包装', '海联物流'].map((n) => `D:\\工作\\样机评审\\报价\\${n}.csv`)];
 
 /** The file the 汇总 answer writes, and the answer: paths in inline code, a table and a code block. */
 export const FAKE_SUMMARY_FILE = 'D:\\工作\\样机评审\\报价汇总.xlsx';
@@ -655,14 +660,17 @@ export class FakeBackend implements AgentBackend {
   }
 
   /** One tool call; `fail`: it ends in an error with `result` as the error text. */
-  async #tool(sessionId: string, run: Run, name: string, input: unknown, result: string, ms: number, fail = false): Promise<ContentBlock[]> {
+  /** `made`: what the call says about itself (its kind, and the cards of files it made), as the core does. */
+  async #tool(sessionId: string, run: Run, name: string, input: unknown, result: string, ms: number, fail = false, made: { category?: ToolCategory; cards?: FileCardMeta[] } = {}): Promise<ContentBlock[]> {
     const callId = this.#id('call');
     this.#emit(sessionId, { type: 'tool.call', callId, name });
-    this.#emit(sessionId, { type: 'tool.start', callId, name, input });
+    this.#emit(sessionId, { type: 'tool.start', callId, name, input, ...(made.category ? { category: made.category } : {}) });
     this.#setStatus(sessionId, 'tool', name);
     await this.#sleep(ms, run.controller.signal);
     const path = (input as { path?: unknown }).path;
     if (name === 'read_file' && typeof path === 'string' && !fail) this.#emit(sessionId, { type: 'file.card', callId, file: fakeCard(path, this.#now()) });
+    const cards = made.cards ?? [];
+    if (cards.length && !fail) this.#emit(sessionId, { type: 'file.card', callId, file: cards[0]!, ...(cards.length > 1 ? { files: cards } : {}) });
     const content = fail ? result : `${isoAt(this.#now())}\n${result}`;
     this.#emit(sessionId, { type: 'tool.end', callId, name, isError: fail, preview: result.slice(0, 160), durationMs: ms });
     return [
@@ -781,7 +789,23 @@ export class FakeBackend implements AgentBackend {
         blocks.push({ type: 'text', text: after });
       } else if (/汇总/.test(text)) {
         // For screenshots of what an answer can hold: a file it wrote, paths, a table and a code block.
-        blocks.push(...(await this.#tool(sessionId, run, 'write_file', { path: FAKE_SUMMARY_FILE }, '已写入 4 行', 600)));
+        const at = isoAt(this.#now());
+        const made = (path: string, origin: 'created' | 'modified', lines?: { added: number; removed: number }): FileCardMeta => ({
+          path,
+          name: path.split('\\').pop() ?? path,
+          kind: path.endsWith('.xlsx') ? 'xlsx' : path.endsWith('.csv') ? 'csv' : 'other',
+          sizeBytes: 2048,
+          modifiedAt: at,
+          extractedAt: at,
+          read: {},
+          origin,
+          ...(lines ? { lines } : {}),
+        });
+        blocks.push(...(await this.#tool(sessionId, run, 'write_file', { path: FAKE_SUMMARY_FILE }, '已写入 4 行', 600, false, { category: 'write', cards: [made(FAKE_SUMMARY_FILE, 'created', { added: 5, removed: 0 })] })));
+        // A command that leaves several files behind (the core reports up to 20).
+        const exports = FAKE_EXPORT_FILES.map((f, i) => made(f, i === 0 ? 'modified' : 'created'));
+        blocks.push(...(await this.#tool(sessionId, run, 'run_command', { command: 'python 导出各家报价.py', description: '导出各家报价' }, '导出 8 个文件', 600, false, { category: 'command', cards: exports })));
+        blocks.push(...(await this.#tool(sessionId, run, 'present_files', { paths: [FAKE_SUMMARY_FILE] }, '已交付 1 个文件', 200, false, { category: 'present', cards: [made(FAKE_SUMMARY_FILE, 'created')] })));
         this.#setStatus(sessionId, 'thinking');
         await this.#stream(sessionId, 'text', FAKE_SUMMARY_ANSWER, signal);
         blocks.push({ type: 'text', text: FAKE_SUMMARY_ANSWER });
