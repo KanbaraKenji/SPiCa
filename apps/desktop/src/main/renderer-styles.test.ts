@@ -70,3 +70,14 @@ describe('the model under the message box', () => {
     expect(css.indexOf('.composer-model-text {\n  display: flex')).toBeLessThan(css.indexOf('.composer-model-text {\n    display: none'));
   });
 });
+
+describe('settings › 插件 fills the window', () => {
+  it('the page is the window tall (a floor past which it scrolls again); list and detail stretch and scroll on their own', () => {
+    const page = block('.settings-column.is-fill');
+    expect(page).toContain('height: 100%');
+    expect(page).toMatch(/min-height: \d+px/);
+    expect(block('.is-fill .plugins-two')).toContain('align-items: stretch');
+    expect(block('.is-fill .plugins-two')).toContain('flex: 1');
+    expect(block('.is-fill .plugins-list,\n.is-fill .plugin-detail')).toContain('overflow-y: auto');
+  });
+});

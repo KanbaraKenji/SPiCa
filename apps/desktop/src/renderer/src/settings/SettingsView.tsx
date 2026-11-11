@@ -47,7 +47,8 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
   const { settings } = useShell(shell);
   return (
     <div className="settings">
-      <div className="settings-column">
+      {/* 插件: the list and the detail fill the window's height (each scrolls on its own). */}
+      <div className={tab === 'plugins' ? 'settings-column is-fill' : 'settings-column'}>
         <div className="settings-top">
           {/* Only the arrow: he wants no text on it; the name is for hover and screen readers. */}
           <button type="button" className="icon-btn settings-back" aria-label="返回对话" title="返回对话（Esc）" onClick={onBack}>
@@ -70,7 +71,7 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
           ))}
         </div>
         </div>
-        <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+        <div role="tabpanel" className="settings-panel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
           {tab === 'general' ? (
             <General
               settings={settings}
