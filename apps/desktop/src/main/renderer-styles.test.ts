@@ -161,34 +161,39 @@ describe('the row under every message', () => {
   });
 });
 
-describe('code sizes', () => {
-  it('a code block in an answer follows 外观 › 代码 › 字号 (13px unless picked); a command box, a tool output and a confirmation keep their own', () => {
-    expect(block('.md pre code')).toContain('font-size: var(--code-size, 13px)');
-    expect(block('.tool-command pre')).toContain('font-size: 12px');
-    expect(block('.tool-result')).toContain('font-size: 12px');
-    expect(block('.confirm-args dd')).toContain('font-size: 12px');
-    expect(block('.preview-code')).toContain('font-size: 12.5px');
-  });
-});
-
-describe('rows in the conversation', () => {
-  it('思考过程, a tool group’s line and Running … are the size of the answer text; what opens under them keeps its own', () => {
-    expect(block(':root')).toContain('--chat-text: 15px');
+describe('the conversation’s sizes (the Claude app’s 舒展 / 中)', () => {
+  it('text 16 on 24: answers, your messages, the input box, and the rows that stand in an answer', () => {
+    expect(block(':root')).toContain('--chat-text: 16px');
+    expect(block(':root')).toContain('--chat-line: 24px');
+    for (const sel of ['.turn-response .md', '.turn-user-text', '.composer-input']) expect(block(sel), sel).toContain('line-height: var(--chat-line)');
+    for (const sel of ['.turn-user-text', '.composer-input', '.fold-head']) expect(block(sel), sel).toContain('font-size: var(--chat-text)');
     expect(block('.turn-response .md')).toContain('font-size: var(--chat-text)');
-    expect(block('.fold-head')).toContain('font-size: var(--chat-text)');
-    // The time at the end of the row and the steps under an open group are not changed.
+    // Code in a sentence stays in proportion to the text.
+    expect(block('.turn-response .md :not(pre) > code')).toContain('font-size: 0.9em');
+  });
+
+  it('secondary lines 14 on 20: the steps under a group and what opens under a row, notes, a confirmation’s labels, the detail lists', () => {
+    expect(block(':root')).toContain('--chat-small: 14px');
+    expect(block(':root')).toContain('--chat-small-line: 20px');
+    for (const sel of ['.tool-item-head', '.fold-body', '.thinking-text', '.turn-note', '\n.confirm-args', '.detail-list'])
+      expect(block(sel), sel).toContain('font-size: var(--chat-small)');
+    // The time at the end of a row stays a caption.
     expect(block('.fold-meta')).toContain('font-size: 12px');
-    expect(block('.fold-body')).not.toContain('font-size');
-    expect(block('.tool-item-head')).not.toContain('font-size');
-    expect(block('.thinking-text')).toContain('font-size: 13px');
+  });
+
+  it('everything in the code font that shows code follows 外观 › 代码 › 字号, on lines in proportion to 13 on 19', () => {
+    expect(block(':root')).toContain('--code-size: 13px');
+    expect(block(':root')).toContain('--code-line: calc(var(--code-size) * 19 / 13)');
+    for (const sel of ['.md pre code', '.tool-command pre', '.tool-args', '.tool-result', '.confirm-args dd', '.preview-code', '.code-theme-preview'])
+      expect(block(sel), sel).toContain('font-size: var(--code-size);\n  line-height: var(--code-line)');
   });
 });
 
 describe('the input box', () => {
-  it('corners of 12px (as on the cards), and the row under it ends where the bottom edge starts to turn', () => {
+  it('corners of 12px (as on the cards); the row under it starts and ends where the bottom edge starts to turn', () => {
     expect(block('.composer-wrap')).toContain('--composer-radius: var(--radius-l)');
     expect(block(':root')).toContain('--radius-l: 12px');
     expect(block('.composer')).toContain('border-radius: var(--composer-radius)');
-    expect(block('.composer-below')).toContain('margin: 4px calc(var(--composer-radius) - 7px) 0 -4px');
+    expect(block('.composer-below')).toContain('margin: 4px calc(var(--composer-radius) - 7px) 0 calc(var(--composer-radius) - 8px)');
   });
 });

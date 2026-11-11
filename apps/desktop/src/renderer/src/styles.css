@@ -3,9 +3,16 @@
    (shared/skin.ts). The values below are only first-paint fallbacks. */
 :root {
   color-scheme: light dark;
-  /* The size of the conversation's text (an answer); the rows that stand in it (思考过程, a tool group's line,
-     Running …) are the same size. */
-  --chat-text: 15px;
+  /* The conversation's sizes (the Claude app's 舒展 / 中): the text (an answer, your messages, the input box, and
+     the rows that stand in an answer: 思考过程, a tool group's line, Running …) 16px on 24px lines; what opens under
+     a row and other secondary lines 14px on 20px; anything in the code font the code size (外观 › 代码 › 字号, set
+     on the page as --code-size) on lines in the same proportion as 13px on 19px. */
+  --chat-text: 16px;
+  --chat-line: 24px;
+  --chat-small: 14px;
+  --chat-small-line: 20px;
+  --code-size: 13px;
+  --code-line: calc(var(--code-size) * 19 / 13);
   --spica-bg: #f7f8fa;
   --spica-chrome: #eff1f4;
   --spica-ink: #111827;
@@ -760,7 +767,8 @@ button.tree-twisty:hover {
   list-style: none;
   margin: 0;
   padding: 0;
-  font-size: 13px;
+  font-size: var(--chat-small);
+  line-height: var(--chat-small-line);
 }
 
 .detail-item {
@@ -888,8 +896,8 @@ button.tree-twisty:hover {
 
 .turn-user-text {
   margin: 0;
-  font-size: 15px;
-  line-height: 21px;
+  font-size: var(--chat-text);
+  line-height: var(--chat-line);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -915,7 +923,8 @@ button.tree-twisty:hover {
    rather than running past the window's edge. */
 .turn-note {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--chat-small);
+  line-height: var(--chat-small-line);
   color: var(--spica-muted);
   overflow-wrap: anywhere;
 }
@@ -1015,11 +1024,28 @@ button.tree-twisty:hover {
   line-height: 1.7;
 }
 
-/* Answers in the conversation: the reference's size (15px, 21px lines). */
+/* Answers in the conversation: --chat-text on --chat-line; headings and code in a sentence in proportion. */
 .turn-response .md {
   font-size: var(--chat-text);
-  line-height: 21px;
+  line-height: var(--chat-line);
 }
+.turn-response .md h1 {
+  font-size: 1.25em;
+}
+
+.turn-response .md h2 {
+  font-size: 1.125em;
+}
+
+.turn-response .md h3,
+.turn-response .md h4 {
+  font-size: 1em;
+}
+
+.turn-response .md :not(pre) > code {
+  font-size: 0.9em;
+}
+
 
 .md > :first-child {
   margin-top: 0;
@@ -1094,7 +1120,8 @@ button.tree-twisty:hover {
 .md pre code {
   padding: 0;
   background: none;
-  font-size: var(--code-size, 13px);
+  font-size: var(--code-size);
+  line-height: var(--code-line);
 }
 
 .md blockquote {
@@ -1340,8 +1367,8 @@ pre .hl-punctuation {
   background: var(--code-bg, var(--spica-surface));
   color: var(--code-fg, var(--spica-ink));
   font-family: var(--font-mono);
-  font-size: var(--code-size, 13px);
-  line-height: 1.6;
+  font-size: var(--code-size);
+  line-height: var(--code-line);
   overflow-x: auto;
 }
 
@@ -1520,6 +1547,8 @@ pre .hl-punctuation {
   margin: 4px 0 6px 14px;
   padding-left: 14px;
   border-left: 1px solid var(--spica-border);
+  font-size: var(--chat-small);
+  line-height: var(--chat-small-line);
 }
 
 /* Web pages: under an answer as a row of chips (来源), inside a web call's line as a list. Both open in the browser. */
@@ -1625,6 +1654,8 @@ pre .hl-punctuation {
 
 .tool-item-head {
   width: 100%;
+  font-size: var(--chat-small);
+  line-height: var(--chat-small-line);
   min-height: 32px;
   display: flex;
   align-items: center;
@@ -1693,8 +1724,8 @@ pre .hl-punctuation {
   overflow: auto;
   padding: 0 10px 8px;
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: var(--code-size);
+  line-height: var(--code-line);
 }
 
 .tool-prompt {
@@ -1711,8 +1742,8 @@ pre .hl-punctuation {
   background: var(--spica-surface);
   border: 1px solid var(--spica-border);
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: var(--code-size);
+  line-height: var(--code-line);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--spica-muted);
@@ -1722,7 +1753,8 @@ pre .hl-punctuation {
   margin: 0;
   white-space: pre-wrap;
   color: var(--spica-muted);
-  font-size: 13px;
+  font-size: var(--chat-small);
+  line-height: var(--chat-small-line);
 }
 
 .tool-result {
@@ -1734,8 +1766,8 @@ pre .hl-punctuation {
   background: var(--spica-surface);
   border: 1px solid var(--spica-border);
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: var(--code-size);
+  line-height: var(--code-line);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -2101,16 +2133,16 @@ pre .hl-punctuation {
 .composer-input {
   flex: 1;
   min-width: 0;
-  min-height: 20px;
+  min-height: 24px;
   max-height: 40vh;
-  margin: 5px 0;
+  margin: 3px 0;
   padding: 0 4px;
   border: 0;
   outline: none;
   resize: none;
   background: transparent;
-  font-size: 15px;
-  line-height: 20px;
+  font-size: var(--chat-text);
+  line-height: var(--chat-line);
   user-select: text;
 }
 
@@ -2147,15 +2179,15 @@ pre .hl-punctuation {
 }
 
 /* Under the box: the folder on the left; model, Manual / Auto and the ring on the right. */
-/* The right end: the context ring's outer edge (6px padding in its button, 1px inside its 18px box) stands
-   where the box's bottom edge starts to turn. */
+/* Both ends stand where the box's bottom edge starts to turn: on the left the first chip's content (8px padding
+   in the chip), on the right the context ring's outer edge (6px padding in its button, 1px inside its 18px box). */
 .composer-below {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   min-height: 28px;
-  margin: 4px calc(var(--composer-radius) - 7px) 0 -4px;
+  margin: 4px calc(var(--composer-radius) - 7px) 0 calc(var(--composer-radius) - 8px);
 }
 
 .composer-below-left,
@@ -4839,7 +4871,8 @@ button.ctx-row:hover {
   grid-template-columns: auto minmax(0, 1fr);
   gap: 4px 12px;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--chat-small);
+  line-height: var(--chat-small-line);
 }
 
 .confirm-args dt {
@@ -4852,8 +4885,8 @@ button.ctx-row:hover {
   max-height: 200px;
   overflow: auto;
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: var(--code-size);
+  line-height: var(--code-line);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -5075,8 +5108,8 @@ button.ctx-row:hover {
   overflow: auto;
   padding: 8px 0;
   font-family: var(--font-mono);
-  font-size: 12.5px;
-  line-height: 1.55;
+  font-size: var(--code-size);
+  line-height: var(--code-line);
   user-select: text;
 }
 
@@ -5450,7 +5483,8 @@ button.ctx-row:hover {
   background: none;
   color: inherit;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--chat-small);
+  line-height: var(--chat-small-line);
   text-align: left;
   cursor: pointer;
 }
