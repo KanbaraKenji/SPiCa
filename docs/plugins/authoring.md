@@ -79,6 +79,28 @@ Spica 启动 server 时会给这些环境变量：
 - 默认不覆盖：同名文件已经存在就跳过，并在结果里列出来。要覆盖已有文件，做成一个单独的工具（例如 `download_replace`），写进 `permissions.irreversible`，Spica 每次调用前都会先问用户。
 - `permissions.workspace` 只管会话的项目文件夹；写用户点名的文件夹不用为此声明 `write`。这几条现在是约定，Spica 不拦，`check.mjs` 也不查。
 
+## 2c. 要跑很久的工具（批量下载、导出一类）
+
+Spica 调工具时等的是「有没有动静」：`mcp/<id>.json` 的 `timeout_seconds`（缺省 60）秒里既没有结果、也没有进度，这次调用就算失败。工具一直在报进度，就一直等，最长等 `max_call_seconds`（缺省 3600，也就是 60 分钟），到了照样停。需要 Spica 0.1.0-rc.2 之后发布的版本，更早的版本不管进度，`timeout_seconds` 一到就停。
+
+```json
+{ "runtime": "node", "entry": "server/index.js", "timeout_seconds": 60, "max_call_seconds": 7200 }
+```
+
+报进度用 MCP 的进度通知（progress）。Spica 调工具时会在请求里带 `params._meta.progressToken`，工具干活时隔一阵发一条（不用 SDK 的写法，`send` 同示例插件）：
+
+```js
+const token = msg.params._meta?.progressToken;
+// 每做完一批发一次；progress 必须越来越大，total、message 可以不写
+send({ method: 'notifications/progress', params: { progressToken: token, progress: done, total: all, message: `${done}/${all} 个文件` } });
+```
+
+- 隔 10 到 30 秒报一次就够，别每个文件都报。没有 `progressToken` 就不报（旧版 Spica 不带，照旧按 `timeout_seconds` 算）。
+- 超时或用户点了停止，Spica 会发 `notifications/cancelled`（`params.requestId` 是这次调用的 id）。收到就停手、释放资源，不用再回结果，回了也没人收。已经写好的文件留着，下次调用时跳过已有的，从没做完的地方接着做。
+- 用官方 SDK 时：进度用工具处理函数第二个参数里的 `extra._meta?.progressToken` 和 `extra.sendNotification(...)`，取消看 `extra.signal`。
+- `max_call_seconds` 防的是插件卡死或写坏了一直报进度；要做几个小时的活，拆成「开始 / 查进度 / 取结果」几个工具更稳，模型可以分几次调。
+- 插件页面直接调工具时，这一版 Spica 不管进度，120 秒就停，长活别放在页面按钮上直接跑。
+
 ## 3. 加一个技能
 
 `todo/skills/planning/SKILL.md`：

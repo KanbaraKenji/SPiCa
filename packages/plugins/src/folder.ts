@@ -35,7 +35,10 @@ export interface ServerDef {
   args: string[];
   env: Record<string, string>;
   description?: string;
+  /** No answer and no progress for this long: the call fails (timeout_seconds, default 60 s in the core). */
   timeoutMs?: number;
+  /** The longest one call may run even while reporting progress (max_call_seconds, default 60 min in the core). */
+  maxCallMs?: number;
   restart: { maxRestarts: number; windowMs: number };
   /** Give the server's tools to the model. Default: true for mcp/, false for services/. */
   exposeTools: boolean;
@@ -313,6 +316,10 @@ function parseServer(
   const maxRestarts = typeof restart.max_restarts === 'number' ? restart.max_restarts : 3;
   const windowSeconds = typeof restart.window_seconds === 'number' ? restart.window_seconds : 60;
   if (maxRestarts < 0 || maxRestarts > 10) bad('「restart.max_restarts」须在 0 到 10 之间。');
+  const maxCall = raw.max_call_seconds;
+  if (maxCall !== undefined && (typeof maxCall !== 'number' || !Number.isFinite(maxCall) || maxCall <= 0)) {
+    bad('「max_call_seconds」须为大于 0 的秒数（一次调用最长多久，哪怕一直在报进度）。');
+  }
   if (!ok) return undefined;
   return {
     id,
@@ -323,6 +330,7 @@ function parseServer(
     env: env as Record<string, string>,
     ...(typeof raw.description === 'string' ? { description: raw.description } : {}),
     ...(typeof raw.timeout_seconds === 'number' ? { timeoutMs: raw.timeout_seconds * 1000 } : {}),
+    ...(typeof maxCall === 'number' ? { maxCallMs: maxCall * 1000 } : {}),
     restart: { maxRestarts, windowMs: windowSeconds * 1000 },
     exposeTools: typeof raw.expose_tools === 'boolean' ? raw.expose_tools : kind === 'mcp',
   };

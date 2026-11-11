@@ -15,6 +15,9 @@ import { fileURLToPath } from 'node:url';
 import { StdioClient, pluginEnv } from './lib/mcp.mjs';
 import { stripBom } from './lib/pack.mjs';
 
+/** Spica stops a tool call from a plugin page after 120 s, progress or not (callPluginTool in the core). */
+const PAGE_CALL_LIMIT_MS = 120_000;
+
 const THEMES = {
   light: { bg: '#ffffff', surface: '#f4f4f5', fg: '#18181b', muted: '#71717a', border: '#e4e4e7', accent: '#4f46e5', danger: '#dc2626' },
   dark: { bg: '#17171b', surface: '#26262c', fg: '#ececf1', muted: '#9d9da8', border: '#36363f', accent: '#8b93f8', danger: '#f87171' },
@@ -44,6 +47,9 @@ export async function startPreview(dir, opts = {}) {
         command: s.runtime === 'node' ? process.execPath : entry,
         args: s.runtime === 'node' ? [entry, ...(s.args ?? [])] : (s.args ?? []),
         cwd: root,
+        // as in Spica: the server's own timeout; a page's tool call is stopped after 120 s even with progress
+        ...(typeof s.timeout_seconds === 'number' ? { timeoutMs: s.timeout_seconds * 1000 } : {}),
+        maxCallMs: PAGE_CALL_LIMIT_MS,
         env: pluginEnv({ ...(s.env ?? {}), SPICA_MOCK: opts.real ? '0' : '1', SPICA_PLUGIN_NAME: m.name, SPICA_PLUGIN_VERSION: m.version, SPICA_PLUGIN_DIR: root, SPICA_PLUGIN_DATA: join(data, f) }),
       });
       await client.initialize();

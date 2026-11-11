@@ -906,6 +906,7 @@ export class PluginManager {
       inheritEnv: this.#inheritEnv,
       cwd: a.folder.root,
       ...(def.timeoutMs ? { timeoutMs: def.timeoutMs } : {}),
+      ...(def.maxCallMs ? { maxCallMs: def.maxCallMs } : {}),
       // A limit of 0 (the user turned it off) means no model at all: the server is not offered sampling.
       ...(a.manifest.permissions.model && this.#modelLimit(name, a.manifest) > 0
         ? { sampling: { pluginId: name, maxUsdPerDay: this.#modelLimit(name, a.manifest) } }

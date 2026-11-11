@@ -50,9 +50,25 @@
 - `runtime`：`node`（用 Spica 自带的 Node 跑）或 `binary`（插件自带的 `.exe`）。Python 这一版请打成 `.exe`。
 - `entry`：插件文件夹里的相对路径；不能用 `.cmd/.bat/.ps1/.vbs`（会弹黑窗口）。
 - `env` 里不能自己设 `SPICA_` 开头的变量。
+- `timeout_seconds`：多久没有结果、也没有进度就算失败（缺省 60）。`max_call_seconds`：工具一直在报进度时最多等多久（缺省 3600）。要跑很久的工具要报进度，写法见下面「要跑很久的工具」。
 - 插件只有一个 `mcp/` server 时，工具名是 `<插件名>__<工具>`；有多个时是 `<插件名>-<id>__<工具>`。
 
 Spica 启动 server 时给的环境变量：`SPICA_PLUGIN_DATA`（插件自己的数据文件夹，升级、回滚都保留；除了它只写用户在对话里点名的文件夹，见 `hooks-permissions.md`「写文件」）、`SPICA_PLUGIN_DIR`（安装目录，只读）、`SPICA_MOCK`（`1` = 模拟模式）、`SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION`。另外给应用的网络设置：代理（`HTTPS_PROXY` 等，加 `NODE_USE_ENV_PROXY=1`）和信任的证书（`NODE_EXTRA_CA_CERTS`、`SSL_CERT_FILE` 等），见 `internal-services.md`。其他环境变量只继承白名单（PATH、TEMP、用户目录、`COMPUTERNAME`、`USERNAME` 这类；取电脑名也可以用 `os.hostname()`），像密钥的名字一律不传，所以凭据不要从环境变量读。
+
+### 要跑很久的工具
+
+批量下载、导出这类一次要几分钟到几十分钟的工具，要报进度，否则 `timeout_seconds` 一到就被停掉：
+
+```js
+const token = msg.params._meta?.progressToken;   // Spica 调工具时带；没有就不报
+send({ method: 'notifications/progress', params: { progressToken: token, progress: done, total: all, message: `${done}/${all} 个文件` } });
+```
+
+- 隔 10 到 30 秒报一次；`progress` 必须越来越大。
+- 收到 `notifications/cancelled`（`params.requestId` 是这次调用的 id）就停手，不用再回结果；已写好的文件留着，下次跳过已有的接着做。
+- 用官方 SDK：`extra._meta?.progressToken`、`extra.sendNotification(...)`，取消看 `extra.signal`。
+- 一直报进度也最多等 `max_call_seconds`（缺省 3600）；更长的活拆成「开始 / 查进度 / 取结果」几个工具。插件页面直接调工具时 120 秒就停，不看进度。
+- `preview.mjs` 和 `check.mjs` 也按这套规矩等。
 
 ## `views/<id>.json`
 

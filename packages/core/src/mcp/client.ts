@@ -1,5 +1,8 @@
 // Minimal MCP client over stdio (newline-delimited JSON-RPC 2.0):
 // initialize → notifications/initialized → tools/list → tools/call.
+// Tool calls ask for progress (MCP 2025-06-18 progress utility): a report
+// restarts the wait, up to an overall limit; a call that times out or is
+// stopped is cancelled at the server (notifications/cancelled).
 // External tools are added to the tool registry under source `mcp:<name>`.
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { Tracer } from '../trace.ts';
@@ -26,8 +29,18 @@ export interface McpServerConfig {
    */
   inheritEnv?: 'all' | string[];
   cwd?: string;
-  /** Per-request timeout. Default 60 s. */
+  /**
+   * How long a request may go without an answer. Default 60 s. A tool call
+   * carries a progress token, and each progress notification for it starts
+   * the wait again, so a long tool that keeps reporting progress can finish.
+   */
   timeoutMs?: number;
+  /**
+   * The longest a request may run even while the server keeps reporting
+   * progress (the MCP spec asks for such a maximum). Default 60 min; never
+   * shorter than timeoutMs.
+   */
+  maxCallMs?: number;
   /**
    * Called once when the server process ends. `expected` is true when it was
    * stopped by disconnect()/close(); otherwise it crashed or quit by itself.
@@ -52,13 +65,32 @@ export interface McpToolInfo {
   annotations?: { destructiveHint?: boolean; readOnlyHint?: boolean };
 }
 
+/** One notifications/progress from the server for a running call. */
+export interface McpProgress {
+  progress: number;
+  total?: number;
+  message?: string;
+}
+
+export interface McpRequestOptions {
+  signal?: AbortSignal;
+  /** Ask the server for progress (adds _meta.progressToken); each report restarts the wait. */
+  onProgress?(p: McpProgress): void;
+}
+
 interface Pending {
   resolve: (v: unknown) => void;
   reject: (e: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
+  /** Waits for the next sign of life (an answer or a progress report). */
+  idle: ReturnType<typeof setTimeout>;
+  /** The overall limit, progress or not. */
+  overall: ReturnType<typeof setTimeout>;
+  onProgress?: (p: McpProgress) => void;
 }
 
 const PROTOCOL_VERSION = '2025-06-18';
+const DEFAULT_TIMEOUT_MS = 60_000;
+const DEFAULT_MAX_CALL_MS = 60 * 60_000;
 
 export class McpStdioClient {
   readonly config: McpServerConfig;
@@ -133,8 +165,17 @@ export class McpStdioClient {
     return tools;
   }
 
-  async callTool(name: string, args: unknown, signal?: AbortSignal): Promise<{ content: string; isError: boolean }> {
-    const result = (await this.request('tools/call', { name, arguments: args ?? {} }, signal)) as {
+  /**
+   * Call a tool. The call asks for progress: while the server keeps reporting
+   * it, the call does not time out (up to maxCallMs). `onProgress` sees each report.
+   */
+  async callTool(
+    name: string,
+    args: unknown,
+    signal?: AbortSignal,
+    onProgress?: (p: McpProgress) => void,
+  ): Promise<{ content: string; isError: boolean }> {
+    const result = (await this.request('tools/call', { name, arguments: args ?? {} }, { ...(signal ? { signal } : {}), onProgress: onProgress ?? (() => {}) })) as {
       content?: { type: string; text?: string; resource?: { text?: string; uri?: string }; mimeType?: string }[];
       structuredContent?: unknown;
       isError?: boolean;
@@ -148,27 +189,78 @@ export class McpStdioClient {
     return { content: parts.join('\n'), isError: !!result.isError };
   }
 
-  request(method: string, params: unknown, signal?: AbortSignal): Promise<unknown> {
+  /**
+   * Send a request and wait for its answer. Without an answer (or, when
+   * `onProgress` is given, a progress report) within timeoutMs, or after
+   * maxCallMs in any case, the request fails and the server is told to stop
+   * (notifications/cancelled; never for initialize, which the spec forbids).
+   * An answer that arrives after that is ignored.
+   */
+  request(method: string, params: unknown, opts: McpRequestOptions = {}): Promise<unknown> {
     if (!this.#child || this.#closed) return Promise.reject(new Error(`MCP server "${this.config.name}" is not running`));
     const id = this.#nextId++;
+    const name = this.config.name;
+    const idleMs = this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const overallMs = Math.max(this.config.maxCallMs ?? DEFAULT_MAX_CALL_MS, idleMs);
+    const { signal, onProgress } = opts;
+    // The token is the request id: unique among running requests, as the spec requires.
+    const sent =
+      onProgress && params && typeof params === 'object'
+        ? { ...params, _meta: { ...((params as { _meta?: object })._meta ?? {}), progressToken: id } }
+        : params;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      if (signal?.aborted) return reject(Object.assign(new Error('aborted'), { name: 'AbortError' })); // never sent
+      const onAbort = (): void => end(Object.assign(new Error('aborted'), { name: 'AbortError' }), 'user interrupted');
+      /** Settle once: clear both timers, forget the request, tell the server to stop when `cancel` is given. */
+      const end = (err: Error | undefined, cancel?: string, value?: unknown): void => {
+        const p = this.#pending.get(id);
+        if (!p) return;
+        clearTimeout(p.idle);
+        clearTimeout(p.overall);
         this.#pending.delete(id);
-        reject(new Error(`MCP server "${this.config.name}" did not answer ${method} within ${(this.config.timeoutMs ?? 60_000) / 1000} s`));
-      }, this.config.timeoutMs ?? 60_000);
-      this.#pending.set(id, { resolve, reject, timer });
-      signal?.addEventListener(
-        'abort',
-        () => {
-          if (!this.#pending.has(id)) return;
-          clearTimeout(timer);
-          this.#pending.delete(id);
-          this.notify('notifications/cancelled', { requestId: id, reason: 'user interrupted' });
-          reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
-        },
-        { once: true },
-      );
-      this.#child!.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+        signal?.removeEventListener('abort', onAbort);
+        if (cancel && method !== 'initialize') this.notify('notifications/cancelled', { requestId: id, reason: cancel });
+        if (err) reject(err);
+        else resolve(value);
+      };
+      const idle = (): ReturnType<typeof setTimeout> =>
+        setTimeout(
+          () =>
+            end(
+              new Error(`MCP server "${name}" did not answer ${method} within ${idleMs / 1000} s${onProgress ? ' and reported no progress' : ''}; it was told to stop`),
+              `timed out: no answer${onProgress ? ' or progress' : ''} within ${idleMs / 1000} s`,
+            ),
+          idleMs,
+        );
+      const pending: Pending = {
+        resolve: (v) => end(undefined, undefined, v),
+        reject: (e) => end(e),
+        idle: idle(),
+        overall: setTimeout(
+          () =>
+            end(
+              new Error(`MCP server "${name}" did not finish ${method} within ${overallMs / 1000} s (the limit for one call, progress or not); it was told to stop`),
+              `timed out: the limit for one call is ${overallMs / 1000} s`,
+            ),
+          overallMs,
+        ),
+        ...(onProgress
+          ? {
+              onProgress: (p: McpProgress) => {
+                clearTimeout(pending.idle);
+                pending.idle = idle();
+                try {
+                  onProgress(p);
+                } catch {
+                  // a broken progress listener must not break the call
+                }
+              },
+            }
+          : {}),
+      };
+      this.#pending.set(id, pending);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      this.#child!.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params: sent })}\n`);
     });
   }
 
@@ -221,6 +313,17 @@ export class McpStdioClient {
         if (msg.method === 'notifications/cancelled') {
           const id = msg.params?.requestId as number | string | undefined;
           if (id !== undefined) this.#serving.get(id)?.abort();
+        } else if (msg.method === 'notifications/progress') {
+          // Only a running request that asked for progress; any other token is ignored.
+          const q = msg.params ?? {};
+          const p = typeof q.progressToken === 'number' ? this.#pending.get(q.progressToken) : undefined;
+          if (p?.onProgress && typeof q.progress === 'number') {
+            p.onProgress({
+              progress: q.progress,
+              ...(typeof q.total === 'number' ? { total: q.total } : {}),
+              ...(typeof q.message === 'string' ? { message: q.message } : {}),
+            });
+          }
         } else if (msg.id !== undefined && msg.method === 'sampling/createMessage' && this.config.onSampling) {
           this.#serve(msg.id, msg.params);
         } else if (msg.id !== undefined && msg.method) {
@@ -229,9 +332,7 @@ export class McpStdioClient {
         continue;
       }
       const p = this.#pending.get(msg.id);
-      if (!p) continue;
-      this.#pending.delete(msg.id);
-      clearTimeout(p.timer);
+      if (!p) continue; // late: the request already timed out or was stopped
       if (msg.error) p.reject(new Error(`MCP error ${msg.error.code ?? ''}: ${msg.error.message ?? 'unknown'}`));
       else p.resolve(msg.result);
     }
@@ -270,11 +371,7 @@ export class McpStdioClient {
     this.#closed = true;
     for (const [, ctl] of this.#serving) ctl.abort();
     this.#serving.clear();
-    for (const [, p] of this.#pending) {
-      clearTimeout(p.timer);
-      p.reject(err);
-    }
-    this.#pending.clear();
+    for (const p of [...this.#pending.values()]) p.reject(err); // clears its timers and forgets it
   }
 }
 

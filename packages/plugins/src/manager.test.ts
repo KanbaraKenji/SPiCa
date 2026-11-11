@@ -565,6 +565,45 @@ describe('failures', () => {
     }
   });
 
+  it('a long tool that reports progress outlives timeout_seconds, up to max_call_seconds', async () => {
+    // Scaled down: timeout_seconds 2 stands for 60 s; the tool reports progress every 0.2 s.
+    const dir = await writePlugin({
+      'manifest.json': manifest('slowpoke'),
+      'mcp/srv.json': { runtime: 'node', entry: 'srv.js', timeout_seconds: 2, max_call_seconds: 4 },
+      'srv.js': `import { createInterface } from 'node:readline';
+        const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\\n');
+        const jobs = new Map();
+        createInterface({ input: process.stdin }).on('line', (l) => {
+          const m = JSON.parse(l);
+          if (m.method === 'notifications/cancelled') { const j = jobs.get(m.params.requestId); if (j) { clearInterval(j.tick); clearTimeout(j.done); } return; }
+          if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 's' } } });
+          if (m.method === 'tools/list') send({ id: m.id, result: { tools: [{ name: 'fetch_all', inputSchema: { type: 'object' } }] } });
+          if (m.method === 'tools/call') {
+            const token = m.params._meta?.progressToken;
+            let n = 0;
+            const tick = setInterval(() => send({ method: 'notifications/progress', params: { progressToken: token, progress: ++n } }), 200);
+            const done = setTimeout(() => { clearInterval(tick); send({ id: m.id, result: { content: [{ type: 'text', text: 'fetched ' + n } ] } }); }, m.params.arguments.ms);
+            jobs.set(m.id, { tick, done });
+          }
+        });`,
+    });
+    dirs.push(dir);
+    r = await rig();
+    await r.pm.install(dir);
+    await r.pm.enable('slowpoke');
+    const ok = await callTool(r.rt, 'slowpoke__fetch_all', { ms: 3000 });
+    expect(ok).toMatchObject({ isError: false, content: expect.stringMatching(/^fetched \d+$/) });
+    const capped = await callTool(r.rt, 'slowpoke__fetch_all', { ms: 8000 });
+    expect(capped).toMatchObject({ isError: true, content: expect.stringMatching(/did not finish tools\/call within 4 s/) });
+  });
+
+  it('max_call_seconds must be a positive number of seconds', async () => {
+    const dir = await writePlugin({ 'manifest.json': manifest('badcap'), 'mcp/srv.json': { runtime: 'node', entry: 'srv.js', max_call_seconds: 0 }, 'srv.js': '' });
+    dirs.push(dir);
+    const folder = await readPluginFolder(dir);
+    expect(JSON.stringify(folder.issues)).toContain('max_call_seconds');
+  });
+
   it('the core, the plugin manager and the author kit pass the same host variables', async () => {
     const { DEFAULT_CHILD_ENV } = await import('../../core/src/util.ts');
     const kitFile = new URL('../../../skills/spica-plugin-author/scripts/lib/mcp.mjs', import.meta.url).href;

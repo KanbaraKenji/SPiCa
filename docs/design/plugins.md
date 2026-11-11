@@ -56,6 +56,7 @@
   "args": [],
   "env": { "LOG_LEVEL": "info" },
   "timeout_seconds": 30,
+  "max_call_seconds": 3600,
   "restart": { "max_restarts": 3, "window_seconds": 60 },
   "expose_tools": true
 }
@@ -65,6 +66,7 @@
 - `entry` 必须是插件文件夹里的相对路径；绝对路径、`..`、盘符一律拒绝。`binary` 不能是 `.cmd/.bat/.ps1/.vbs`（会弹控制台）。
 - `env` 不能自己设 `SPICA_` 开头的变量。
 - `expose_tools`：`mcp/` 默认 true，`services/` 默认 false。
+- `timeout_seconds`：多久没有结果、也没有进度就算这次调用失败（缺省 60）。`max_call_seconds`：一直在报进度也最多等多久（缺省 3600，必须大于 0）。内核调工具时带 progressToken，收到这次调用的进度就重新计时；超时或用户停止时给 server 发 `notifications/cancelled`。插件页面直接调工具的那条路（`callPluginTool`）这一版另有 120 秒的硬上限，不看进度。写法见作者指南 2c 节。
 
 ### 钩子模块 `hooks/*.js`
 

@@ -24,6 +24,8 @@ export function pluginEnv(extra = {}) {
   return { ...env, ...extra };
 }
 const CLIENT = { name: 'spica-plugin-author', version: '0.1.0' };
+/** The longest one tool call may run even while reporting progress (Spica's default for max_call_seconds). */
+const MAX_CALL_MS = 60 * 60_000;
 
 /** Text of a tools/call result; JSON is parsed when it looks like JSON. */
 export function resultValue(result) {
@@ -69,10 +71,11 @@ export class StdioClient extends Base {
   #stderr = [];
   #exited = null;
 
-  /** @param {{ command: string, args?: string[], env?: Record<string,string>, cwd?: string, timeoutMs?: number }} o */
+  /** @param {{ command: string, args?: string[], env?: Record<string,string>, cwd?: string, timeoutMs?: number, maxCallMs?: number }} o */
   constructor(o) {
     super();
     this.timeoutMs = o.timeoutMs ?? 60_000;
+    this.maxCallMs = o.maxCallMs ?? MAX_CALL_MS;
     this.#child = spawn(o.command, o.args ?? [], {
       cwd: o.cwd,
       env: o.env ?? process.env,
@@ -97,10 +100,12 @@ export class StdioClient extends Base {
         this.#stderr.push(`[stdout 不是协议消息] ${line.slice(0, 200)}`);
         return;
       }
-      const p = msg.id !== undefined ? this.#pending.get(msg.id) : undefined;
-      if (!p) return;
+      // progress for a running tool call restarts its wait (as in Spica)
+      if (msg.method === 'notifications/progress') return this.#pending.get(msg.params?.progressToken)?.touch?.();
+      const p = msg.id !== undefined && !msg.method ? this.#pending.get(msg.id) : undefined;
+      if (!p) return; // unknown, or late: the request already timed out
       this.#pending.delete(msg.id);
-      clearTimeout(p.timer);
+      p.clear();
       if (msg.error) p.reject(new Error(`${msg.error.message ?? 'error'}${msg.error.code ? ` (${msg.error.code})` : ''}`));
       else p.resolve(msg.result);
     });
@@ -112,22 +117,53 @@ export class StdioClient extends Base {
 
   #fail(err) {
     for (const p of this.#pending.values()) {
-      clearTimeout(p.timer);
+      p.clear();
       p.reject(err);
     }
     this.#pending.clear();
   }
 
+  /**
+   * Like Spica: a tool call carries a progress token, each progress report
+   * restarts the wait (up to maxCallMs in all), and a request that times
+   * out is cancelled at the server (never initialize).
+   */
   request(method, params, timeoutMs = this.timeoutMs) {
     if (this.#exited !== null) return Promise.reject(new Error(`进程已经退出（代码 ${this.#exited}）：\n${this.stderrTail()}`));
     const id = this.nextId();
+    const progress = method === 'tools/call';
+    const sent = progress ? { ...params, _meta: { ...(params?._meta ?? {}), progressToken: id } } : params;
+    const overallMs = Math.max(this.maxCallMs, timeoutMs);
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const giveUp = (message) => {
+        const p = this.#pending.get(id);
+        if (!p) return;
+        p.clear();
         this.#pending.delete(id);
-        reject(new Error(`${method} 超过 ${Math.round(timeoutMs / 1000)} 秒没有回应`));
-      }, timeoutMs);
-      this.#pending.set(id, { resolve, reject, timer });
-      this.#child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+        if (method !== 'initialize') this.notify('notifications/cancelled', { requestId: id, reason: 'timed out' });
+        reject(new Error(message));
+      };
+      const idle = () => setTimeout(() => giveUp(`${method} 超过 ${Math.round(timeoutMs / 1000)} 秒没有回应${progress ? '，也没有报进度' : ''}`), timeoutMs);
+      const p = {
+        resolve,
+        reject,
+        timer: idle(),
+        overall: setTimeout(() => giveUp(`${method} 超过 ${Math.round(overallMs / 1000)} 秒还没做完（一次调用的上限）`), overallMs),
+        clear() {
+          clearTimeout(p.timer);
+          clearTimeout(p.overall);
+        },
+        ...(progress
+          ? {
+              touch() {
+                clearTimeout(p.timer);
+                p.timer = idle();
+              },
+            }
+          : {}),
+      };
+      this.#pending.set(id, p);
+      this.#child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params: sent })}\n`);
     });
   }
 
