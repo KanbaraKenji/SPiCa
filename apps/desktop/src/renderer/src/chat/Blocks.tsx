@@ -86,6 +86,8 @@ export interface AnswerTools {
   saveCsv?: ((text: string) => Promise<boolean>) | undefined;
   /** A URL that shows a local picture (the app's file scheme); absent: local pictures show as their caption. */
   imageUrl?: ((path: string) => Promise<string>) | undefined;
+  /** An HTML code block's card was clicked: the page in the right panel (its title, and the HTML). */
+  previewHtml?: ((title: string, html: string) => void) | undefined;
   /** Pictures on the web: loaded as the answer shows ('auto'), only after a click ('click'), or never (absent). */
   webImages?: 'auto' | 'click' | undefined;
 }
@@ -107,9 +109,58 @@ interface PreNode {
  * closed yet). A coloured line never changes back, and colouring does not move the text.
  */
 function CodeBlock({ node, source, children }: { node?: PreNode | undefined; source: string; children?: ReactNode }) {
-  const ref = useRef<HTMLPreElement>(null);
   const code = node?.children?.find((c) => c.type === 'element' && c.tagName === 'code');
   const name = blockLanguageName(code?.properties?.className);
+  const tools = useContext(AnswerToolsContext);
+  if (tools?.previewHtml && /^html?$/i.test(name)) {
+    const raw = code?.children?.map((t) => (t.type === 'text' ? (t.value ?? '') : '')).join('') ?? '';
+    const end = node?.position?.end?.offset;
+    const closed = end !== undefined && /(?:`{3,}|~{3,})[ \t]*$/.test(source.slice(0, end));
+    return <HtmlCard html={raw.replace(/\n$/, '')} closed={closed} open={tools.previewHtml} />;
+  }
+  return <CodeBlockBody node={node} source={source} code={code} name={name}>{children}</CodeBlockBody>;
+}
+
+/** What an HTML page is called: its <title>, else its first heading, else HTML. */
+export function htmlTitle(html: string): string {
+  const pick = (re: RegExp) => re.exec(html)?.[1]?.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  return pick(/<title[^>]*>([\s\S]*?)<\/title>/i) || pick(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i) || 'HTML';
+}
+
+/**
+ * An HTML code block in an answer is a card, not code: its title and how long it is; a click shows the page in
+ * the right panel (in the preview's sandbox: no scripts, nothing from the network), where it can be switched to
+ * its code. While it is still being written the card waits; 复制 copies the HTML.
+ */
+function HtmlCard({ html, closed, open }: { html: string; closed: boolean; open(title: string, html: string): void }) {
+  const title = htmlTitle(html);
+  const lines = html ? html.split('\n').length : 0;
+  return (
+    <div className="card file-card html-card">
+      <button
+        type="button"
+        className="file-card-main"
+        aria-disabled={closed ? undefined : 'true'}
+        title={closed ? '预览' : undefined}
+        onClick={() => {
+          if (closed) open(title, html);
+        }}
+      >
+        <FileBadge name="page.html" />
+        <span className="file-card-text">
+          <span className="file-card-name">{title}</span>
+          <span className="file-card-sub">HTML · {lines} 行</span>
+        </span>
+      </button>
+      <span className="file-card-tools">
+        <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(html)} />
+      </span>
+    </div>
+  );
+}
+
+function CodeBlockBody({ node, source, code, name, children }: { node?: PreNode | undefined; source: string; code: NonNullable<PreNode['children']>[number] | undefined; name: string; children?: ReactNode }) {
+  const ref = useRef<HTMLPreElement>(null);
   const language = blockLanguage(code?.properties?.className);
   const raw = code?.children?.map((t) => (t.type === 'text' ? (t.value ?? '') : '')).join('') ?? '';
   const end = node?.position?.end?.offset;

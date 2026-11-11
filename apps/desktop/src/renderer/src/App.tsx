@@ -1,6 +1,6 @@
 // The window: title bar, left sidebar, main pane (conversation or settings), right detail panel.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DesktopBridge } from '../../shared/bridge';
+import type { DesktopBridge, PreviewInfo } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
 import { computeLayout, panelWidths, toggleFrom, type Floating } from './shell/layout';
@@ -75,8 +75,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   /** The new-project dialog; from a 「新事务」 mail it carries the mail and the suggested name. */
   const [newProject, setNewProject] = useState<null | { name?: string; mailId?: string }>(null);
   /** The file shown in the right panel instead of the details, if any. */
-  const [preview, setPreview] = useState<{ sessionId: string | null; path: string } | null>(null);
-  const previewInfo = usePreview(bridge.preview, preview);
+  // A file to show in the right panel, or (inline) a page from an answer's HTML code block.
+  const [preview, setPreview] = useState<{ sessionId: string | null; path: string; inline?: PreviewInfo } | null>(null);
+  const loadedPreview = usePreview(bridge.preview, preview && !preview.inline ? preview : null);
+  const previewInfo = preview?.inline ?? loadedPreview;
   /** The project the user asked to delete (waiting for the confirmation). */
   const [deletingProject, setDeletingProject] = useState<null | { id: string; name: string }>(null);
   const [deletingChat, setDeletingChat] = useState<null | { id: string; name: string }>(null);
@@ -583,6 +585,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       setView('settings');
     },
     imageUrl: bridge.images.url,
+    previewHtml: (title, html) => {
+      setPreview({ sessionId: null, path: '', inline: { kind: 'html', name: title, path: '', size: html.length, text: html, truncated: false } });
+      showRight(atHome);
+    },
   };
 
   const foundView = (f: NonNullable<typeof found>) => {

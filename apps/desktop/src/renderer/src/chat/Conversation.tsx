@@ -25,6 +25,8 @@ export interface ConversationActions {
   openFolder?: (path: string) => void;
   /** 打开所在文件夹 on a file card (an absolute path). */
   revealFile?: (path: string) => void;
+  /** An HTML code block's card: the page in the right panel. */
+  previewHtml?: (title: string, html: string) => void;
   /** 导出 CSV on a table in an answer; resolves to whether it was saved. */
   saveCsv?: (text: string) => Promise<boolean>;
   openSession(id: string): void;
@@ -346,9 +348,9 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
   const answerTools = useMemo(
     () =>
       actions.openFolder
-        ? { openFile: actions.openFile, openFolder: actions.openFolder, saveCsv: actions.saveCsv, cwd: session?.cwd, imageUrl: actions.imageUrl, webImages: WEB_IMAGES }
+        ? { openFile: actions.openFile, openFolder: actions.openFolder, saveCsv: actions.saveCsv, cwd: session?.cwd, imageUrl: actions.imageUrl, webImages: WEB_IMAGES, previewHtml: actions.previewHtml }
         : null,
-    [actions.openFile, actions.openFolder, actions.saveCsv, session?.cwd, actions.imageUrl],
+    [actions.openFile, actions.openFolder, actions.saveCsv, session?.cwd, actions.imageUrl, actions.previewHtml],
   );
   return (
     <AnswerToolsContext.Provider value={answerTools}>
