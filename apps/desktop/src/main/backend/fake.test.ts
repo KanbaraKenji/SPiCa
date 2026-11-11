@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentApi, CoreEvent } from '@spica/protocol';
-import { FAKE_EXPORT_FILES, FAKE_FLOW_ANSWER, FAKE_LONG_COMMAND, FAKE_SEARCH_RESULTS, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
+import { FAKE_EXPORT_FILES, FAKE_FLOW_ANSWER, FAKE_LONG_COMMAND, FAKE_MINUTES_ANSWER, FAKE_SEARCH_RESULTS, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
 import { SEED_IDS } from './fake-seed';
 
 function collect(backend: FakeBackend) {
@@ -155,6 +155,19 @@ describe('FakeBackend', () => {
     });
     const messages = await b.getMessages(chat.id);
     expect(messages.map((m) => m.kind)).toEqual(['user', 'assistant', 'tool_results', 'assistant', 'tool_results']);
+  });
+
+  it('纪要 answers with headings, a list, inline code and a code block (for screenshots of the text)', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '把这些要点整理成评审纪要');
+    await until((e) => e.type === 'run.end');
+    const text = (await b.getMessages(chat.id)).flatMap((m) => m.content).filter((c) => c.type === 'text').map((c) => (c as { text: string }).text);
+    expect(text).toContain(FAKE_MINUTES_ANSWER);
+    expect(FAKE_MINUTES_ANSWER).toMatch(/^## /);
+    expect(FAKE_MINUTES_ANSWER).toContain('\n### ');
+    expect(FAKE_MINUTES_ANSWER).toContain('```text');
   });
 
   it('汇总 writes a file and answers with paths, a table and a code block (for screenshots)', async () => {

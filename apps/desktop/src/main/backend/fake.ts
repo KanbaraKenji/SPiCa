@@ -111,6 +111,21 @@ export const FAKE_SUMMARY_ANSWER =
   '```\n\n' +
   '远航塑胶和恒信五金还没回价，`单价` 列先留空。';
 
+/** The 纪要 answer, for screenshots of the conversation's text: headings, a list, inline code and a code block. */
+export const FAKE_MINUTES_ANSWER =
+  '## 样机评审纪要\n\n' +
+  '### 结论\n\n' +
+  '1. **外壳尺寸** 定为 120×80×24 mm，比上一版薄 2 mm。\n' +
+  '2. **续航** 实测 11.5 小时，高于 10 小时的要求。\n' +
+  '3. **交付** 首批样机 20 台，月底前交付。\n\n' +
+  '### 待办\n\n' +
+  '- 跟进 `远航塑胶` 和 `恒信五金` 的报价\n' +
+  '- 两家回价后更新汇总表\n\n' +
+  '```text\n' +
+  '负责人：采购部\n' +
+  '截止：本周五\n' +
+  '```';
+
 /** Splits text into small chunks the way a model stream arrives. */
 export function chunk(text: string, size = 3): string[] {
   const out: string[] = [];
@@ -908,6 +923,9 @@ export class FakeBackend implements AgentBackend {
           '![旧版报价图](<\\\\files\\proj\\old.png>)';
         await this.#stream(sessionId, 'text', answer, signal);
         blocks.push({ type: 'text', text: answer });
+      } else if (/纪要/.test(text)) {
+        await this.#stream(sessionId, 'text', FAKE_MINUTES_ANSWER, signal);
+        blocks.push({ type: 'text', text: FAKE_MINUTES_ANSWER });
       } else if (/汇总/.test(text)) {
         // For screenshots of what an answer can hold: a file it wrote, paths, a table and a code block.
         const at = isoAt(this.#now());
