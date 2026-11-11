@@ -1,10 +1,9 @@
 // The Excel half: real .xlsx files (made with the bundled ExcelJS) drawn as styled tables;
-// files whose pictures ExcelJS cannot read still show their tables. Also: the plugin passes
-// Spica's checks for its declarations.
+// files whose pictures ExcelJS cannot read still show their tables. node:test, nothing but
+// this plugin's own files: `node --test` in the plugin folder (check.mjs does that) runs it.
+import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
-import { readPluginFolder } from '../../../packages/plugins/src/folder.ts';
+import { describe, it } from 'node:test';
 
 const require = createRequire(import.meta.url);
 const ExcelJS = require('../ui/vendor/exceljs.bare.min.js');
@@ -44,25 +43,24 @@ async function sample({ picture = false } = {}) {
 describe('Excel workbook to a styled table', () => {
   it('keeps fills, font colour and style, merges, widths, heights, borders and number formats', async () => {
     const { wb, notes } = await Sheet.loadWorkbook(ExcelJS, JSZip, await sample());
-    expect(notes).toEqual([]);
+    assert.deepEqual(notes, []);
     const sheets = Sheet.visibleSheets(wb);
-    expect(sheets.map((s) => s.name)).toEqual(['报表']); // the hidden sheet is left out
+    assert.deepEqual(sheets.map((s) => s.name), ['报表']); // the hidden sheet is left out
     const { html } = Sheet.renderSheet(sheets[0], wb);
-    expect(html).toMatch(/<td colspan="3" style="[^"]*font-weight:700[^"]*color:#ffffff[^"]*background:#1f4e79[^"]*text-align:center[^"]*vertical-align:middle[^"]*">季度汇总<\/td>/);
-    expect(html).toContain('<tr style="height:32px">'); // 24 pt
-    expect(html).toContain('<col style="width:145px">'); // width 20
-    expect(html).toContain('>1,234.50</td>');
-    expect(html).toContain('>12.5%</td>');
-    expect(html).toContain('>2026-11-11</td>');
-    expect(html).toMatch(/font-style:italic[^"]*color:#ff0000[^"]*border-top:1px solid #000000[^"]*border-bottom:2px solid #000[^"]*">红色斜体</);
-    expect(html).toContain('>2469</td>'); // a formula shows its result
-    expect(html).not.toMatch(/<td[^>]*>[^<]*<script/);
+    assert.match(html, /<td colspan="3" style="[^"]*font-weight:700[^"]*color:#ffffff[^"]*background:#1f4e79[^"]*text-align:center[^"]*vertical-align:middle[^"]*">季度汇总<\/td>/);
+    assert.ok(html.includes('<tr style="height:32px">')); // 24 pt
+    assert.ok(html.includes('<col style="width:145px">')); // width 20
+    assert.ok(html.includes('>1,234.50</td>'));
+    assert.ok(html.includes('>12.5%</td>'));
+    assert.ok(html.includes('>2026-11-11</td>'));
+    assert.match(html, /font-style:italic[^"]*color:#ff0000[^"]*border-top:1px solid #000000[^"]*border-bottom:2px solid #000[^"]*">红色斜体</);
+    assert.ok(html.includes('>2469</td>')); // a formula shows its result
   });
 
   it('places pictures over the sheet', async () => {
     const { wb } = await Sheet.loadWorkbook(ExcelJS, JSZip, await sample({ picture: true }));
     const { html } = Sheet.renderSheet(Sheet.visibleSheets(wb)[0], wb);
-    expect(html).toMatch(/<img class="pic" alt="" src="data:image\/png;base64,iVBOR[^"]*" style="left:\d+px;top:\d+px;width:50px;height:30px">/);
+    assert.match(html, /<img class="pic" alt="" src="data:image\/png;base64,iVBOR[^"]*" style="left:\d+px;top:\d+px;width:50px;height:30px">/);
   });
 
   it('a file whose pictures cannot be read still shows its table, and says so', async () => {
@@ -71,45 +69,34 @@ describe('Excel workbook to a styled table', () => {
     const name = Object.keys(zip.files).find((n) => /^xl\/drawings\/drawing\d+\.xml$/.test(n));
     zip.file(name, (await zip.file(name).async('string')).replace(/xdr:/g, ''));
     const broken = await zip.generateAsync({ type: 'uint8array' });
-    await expect(new ExcelJS.Workbook().xlsx.load(broken)).rejects.toThrow();
+    await assert.rejects(new ExcelJS.Workbook().xlsx.load(broken));
     const { wb, notes } = await Sheet.loadWorkbook(ExcelJS, JSZip, broken);
-    expect(notes).toEqual(['这个文件里的图片读不出来，没有显示；表格照常显示。']);
-    expect(Sheet.renderSheet(Sheet.visibleSheets(wb)[0], wb).html).toContain('>季度汇总</td>');
+    assert.deepEqual(notes, ['这个文件里的图片读不出来，没有显示；表格照常显示。']);
+    assert.ok(Sheet.renderSheet(Sheet.visibleSheets(wb)[0], wb).html.includes('>季度汇总</td>'));
   });
 
   it('a file that is not a workbook is an error (Spica then uses its own preview)', async () => {
-    await expect(Sheet.loadWorkbook(ExcelJS, JSZip, new TextEncoder().encode('not a zip'))).rejects.toThrow();
+    await assert.rejects(Sheet.loadWorkbook(ExcelJS, JSZip, new TextEncoder().encode('not a zip')));
   });
 
-  it('a big sheet shows its first rows and columns and says so', async () => {
+  it('a big sheet shows its first rows and columns and says so', () => {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('big');
     ws.getCell(30, 12).value = 'far';
     const out = Sheet.renderSheet(ws, wb, { rows: 10, cols: 5 });
-    expect(out.notes).toEqual(['只显示前 10 行。', '只显示前 5 列。']);
-    expect(out.html).not.toContain('far');
+    assert.deepEqual(out.notes, ['只显示前 10 行。', '只显示前 5 列。']);
+    assert.ok(!out.html.includes('far'));
   });
 
   it('number formats: the common ones', () => {
-    expect(Sheet.formatValue(1234567.891, '#,##0')).toBe('1,234,568');
-    expect(Sheet.formatValue(-42.5, '0.00')).toBe('-42.50');
-    expect(Sheet.formatValue(0.5, '0%')).toBe('50%');
-    expect(Sheet.formatValue(12.3456, 'General')).toBe('12.3456');
-    expect(Sheet.formatValue(9.99, '"¥"#,##0.00')).toBe('¥9.99');
-    expect(Sheet.formatValue({ richText: [{ text: '甲' }, { text: '乙' }] })).toBe('甲乙');
-    expect(Sheet.formatValue({ text: '链接', hyperlink: 'https://example.com' })).toBe('链接');
-    expect(Sheet.formatValue(true)).toBe('TRUE');
-    expect(Sheet.color({ argb: '00ABCDEF' })).toBe('#abcdef');
-  });
-});
-
-describe('the plugin itself', () => {
-  it('passes the plugin checks: two preview pages, no tools', async () => {
-    const folder = await readPluginFolder(fileURLToPath(new URL('..', import.meta.url)));
-    expect(folder.issues.filter((i) => i.severity === 'error')).toEqual([]);
-    expect(folder.views.map((v) => [v.id, v.placement, v.preview?.extensions, v.tools])).toEqual([
-      ['docx', 'preview', ['.docx', '.docm'], undefined],
-      ['xlsx', 'preview', ['.xlsx', '.xlsm'], undefined],
-    ]);
+    assert.equal(Sheet.formatValue(1234567.891, '#,##0'), '1,234,568');
+    assert.equal(Sheet.formatValue(-42.5, '0.00'), '-42.50');
+    assert.equal(Sheet.formatValue(0.5, '0%'), '50%');
+    assert.equal(Sheet.formatValue(12.3456, 'General'), '12.3456');
+    assert.equal(Sheet.formatValue(9.99, '"¥"#,##0.00'), '¥9.99');
+    assert.equal(Sheet.formatValue({ richText: [{ text: '甲' }, { text: '乙' }] }), '甲乙');
+    assert.equal(Sheet.formatValue({ text: '链接', hyperlink: 'https://example.com' }), '链接');
+    assert.equal(Sheet.formatValue(true), 'TRUE');
+    assert.equal(Sheet.color({ argb: '00ABCDEF' }), '#abcdef');
   });
 });

@@ -12,5 +12,5 @@ Spica 的官方插件：Word（.docx / .docm）和 Excel（.xlsx / .xlsm）在�
 ## 开发
 
 - 页面不在 Spica 里打开时（直接用浏览器打开 `ui/docx.html`），会出一个选文件的按钮，选一个文件看效果。
-- `test/` 里的测试由仓库的 vitest 跑，不进插件包（`.spicaignore`）。
+- `test/` 里是 `node:test` 写的测试，在插件文件夹里 `node --test` 就能跑（skill 的 `check.mjs` 也这样跑），不进插件包（`.spicaignore`）。页面在 Spica 里的样子（假的桥、jsdom）和完整自查，在仓库的 `packages/plugins/src/office-preview.test.mjs` 里测。
 - 用到的库和来源、校验值见 `THIRD-PARTY.md`。
