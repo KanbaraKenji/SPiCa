@@ -410,3 +410,16 @@ describe('context window in short', () => {
     expect(windowText(64_500)).toBe('64.5k');
   });
 });
+
+describe('two connections with one name', () => {
+  it('默认模型 and 强模型 list both, each under its own heading, and React is given no duplicate key', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const name = '开发用模型（.env.local）';
+    render(<Models api={fakeApi([saved({ id: 'openai', name, readOnly: true }), saved({ id: 'anthropic', kind: 'anthropic', name, readOnly: true, isDefault: false, model: 'n', models: [{ id: 'n', contextWindow: 200_000, contextFrom: 'user' }] })])} />);
+    const pick = (await screen.findByLabelText('默认模型')) as HTMLSelectElement;
+    expect([...pick.querySelectorAll('optgroup')].map((g) => g.label)).toEqual([name, name]);
+    expect([...pick.querySelectorAll('option')].map((o) => o.textContent)).toEqual([`${name} · m`, `${name} · n`]);
+    expect(errors.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('same key'))).toEqual([]);
+    errors.mockRestore();
+  });
+});

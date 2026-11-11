@@ -541,6 +541,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             options: modelOptions.map((o) => ({
               label: o.label,
               group: o.group,
+              groupKey: o.providerId,
               marks: o.marks,
               images: imageSupport[`${o.providerId}|${o.model}`] ?? null,
               current: o.providerId === shown.providerId && o.model === shown.model,

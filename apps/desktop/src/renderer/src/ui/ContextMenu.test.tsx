@@ -82,3 +82,15 @@ describe('one item lit at a time', () => {
     expect(document.activeElement).toBe(screen.getByRole('menu'));
   });
 });
+
+describe('group headings', () => {
+  it('two groups whose headings read the same are still two groups when their keys differ; no key: told by the heading', () => {
+    const item = (label: string, group: string, groupKey?: string) => ({ label, group, ...(groupKey ? { groupKey } : {}), onSelect: () => {} });
+    render(<ContextMenu x={0} y={0} items={[item('a', '同名', 'one'), item('b', '同名', 'one'), item('c', '同名', 'two')]} onClose={() => {}} />);
+    expect(screen.getAllByText('同名')).toHaveLength(2);
+    cleanup();
+    render(<ContextMenu x={0} y={0} items={[item('a', '同名'), item('b', '同名'), item('c', '另一个')]} onClose={() => {}} />);
+    expect(screen.getAllByText('同名')).toHaveLength(1);
+    expect(screen.getAllByText('另一个')).toHaveLength(1);
+  });
+});

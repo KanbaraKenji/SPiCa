@@ -31,7 +31,7 @@ export interface ComposerTools {
   /** Options by connection (`group`); `marks`: 默认 / 强模型. */
   /** `label`: the model's name; `provider` and `note` are shown beside it in the secondary colour. */
   /** `images`: whether that model takes pictures (null: not known). `hasPictures`: the conversation already has some. */
-  model?: { label: string; provider?: string; note?: string; hasPictures?: boolean; options: { label: string; group?: string; marks?: string; current: boolean; images?: boolean | null; onPick(): void }[] };
+  model?: { label: string; provider?: string; note?: string; hasPictures?: boolean; options: { label: string; group?: string; groupKey?: string; marks?: string; current: boolean; images?: boolean | null; onPick(): void }[] };
   /** Tokens the context takes now and the model's window (only when the window is known). */
   /** `detail`: what the context is made of, for the card the ring opens. */
   context?: { tokens: number; window: number; detail?: () => Promise<ContextBreakdown | null> };
@@ -190,6 +190,7 @@ function ModelChip({ model, pictures, buttonRef, onOpen }: { model: ModelTool; p
             return {
               label: o.label,
               ...(o.group ? { group: o.group } : {}),
+              ...(o.groupKey ? { groupKey: o.groupKey } : {}),
               ...(hint ? { hint } : {}),
               ...(o.images === true ? { after: <ImageMark /> } : {}),
               ...(noImages ? { disabled: true, title: '不支持图片' } : {}),

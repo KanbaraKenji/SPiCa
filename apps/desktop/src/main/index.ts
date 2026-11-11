@@ -13,7 +13,7 @@ import { mailForCore, networkForCore, type ShellSettings } from '../shared/setti
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import { APP_IDENTITY } from '../shared/app-identity';
-import { coreKind, secretLabel, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderView } from '../shared/providers';
+import { coreKind, devConnectionName, secretLabel, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
@@ -258,8 +258,9 @@ function envProviders(): ProviderView[] {
   const base = { strongModel: '', tokenUrl: '', clientId: '', scope: '', maxConcurrent: null, requestsPerMinute: null, contextWindow: null, catalogId: null, hasSecret: true, keyMask: null, isDefault: false, readOnly: true };
   const one = (model: string): ConnectionModel[] => [{ id: model, contextWindow: null, contextFrom: 'catalog' }];
   const out: ProviderView[] = [];
-  if (modelEnv.openai) out.push({ ...base, id: 'openai', kind: 'openai', name: '开发用模型（.env.local）', baseUrl: modelEnv.openai.baseUrl, model: modelEnv.openai.model, models: one(modelEnv.openai.model) });
-  if (modelEnv.anthropic) out.push({ ...base, id: 'anthropic', kind: 'anthropic', name: '开发用模型（.env.local）', baseUrl: '', model: modelEnv.anthropic.model, models: one(modelEnv.anthropic.model) });
+  const both = Boolean(modelEnv.openai && modelEnv.anthropic);
+  if (modelEnv.openai) out.push({ ...base, id: 'openai', kind: 'openai', name: devConnectionName('openai', both), baseUrl: modelEnv.openai.baseUrl, model: modelEnv.openai.model, models: one(modelEnv.openai.model) });
+  if (modelEnv.anthropic) out.push({ ...base, id: 'anthropic', kind: 'anthropic', name: devConnectionName('anthropic', both), baseUrl: '', model: modelEnv.anthropic.model, models: one(modelEnv.anthropic.model) });
   return out;
 }
 

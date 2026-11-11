@@ -9,6 +9,8 @@ export interface MenuItem {
   danger?: boolean;
   /** A heading shown above the first item of each run with the same group. */
   group?: string;
+  /** What tells two groups apart when their headings read the same (two connections with one name); absent: the heading itself. */
+  groupKey?: string;
   /** A short tag at the right end of the item. */
   hint?: string;
   /** One line under the label saying what it does. */
@@ -21,6 +23,8 @@ export interface MenuItem {
   after?: ReactNode;
   onSelect(): void;
 }
+
+const groupOf = (it: MenuItem | undefined) => it?.groupKey ?? it?.group;
 
 /**
  * `anchor`: the button that opened the menu. The menu sits under it (above it when there is no
@@ -82,8 +86,8 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
     // another, the focus goes to the menu itself, so only the item under the pointer is lit.
     <div ref={ref} className="context-menu" role="menu" tabIndex={-1} style={{ left: pos.left, top: pos.top }}>
       {items.map((it, i) => (
-        <div key={`${it.group ?? ''}	${it.label}	${i}`} role="none">
-          {it.group && it.group !== items[i - 1]?.group ? (
+        <div key={`${groupOf(it) ?? ''}	${it.label}	${i}`} role="none">
+          {it.group && groupOf(it) !== groupOf(items[i - 1]) ? (
             <div className="context-group" role="presentation">
               {it.group}
             </div>

@@ -10,6 +10,14 @@ export const PROVIDER_KINDS: readonly { kind: ProviderKind; label: string }[] = 
   { kind: 'wso2', label: '公司网关（WSO2）' },
 ];
 
+/**
+ * The name of a connection read from .env.local (development builds). With both an OpenAI compatible and an
+ * Anthropic one configured, each says which it is, in the words the form uses for the kind.
+ */
+export function devConnectionName(kind: ProviderKind, both: boolean): string {
+  return both ? `开发用模型（.env.local，${kindLabel(kind)}）` : '开发用模型（.env.local）';
+}
+
 export function kindLabel(kind: ProviderKind): string {
   return PROVIDER_KINDS.find((k) => k.kind === kind)?.label ?? kind;
 }

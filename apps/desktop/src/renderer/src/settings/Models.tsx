@@ -445,6 +445,8 @@ export function Models({ api }: { api: ProvidersApi }) {
   const groups = items
     .filter((p) => enabledModels(p.models).length)
     .map((p) => ({
+      // Keyed by the connection: two connections can carry the same name.
+      id: p.id,
       label: `${p.name}${p.keyMask ? ` · ${p.keyMask}` : ''}`,
       // 「名称 · 模型」 open and closed: two connections of one provider can carry the same model.
       options: enabledModels(p.models).map((m) => ({ key: refKey({ connectionId: p.id, model: m.id }), model: `${p.name} · ${m.id}` })),
@@ -484,7 +486,7 @@ export function Models({ api }: { api: ProvidersApi }) {
     return notes.length ? `保存后，${notes.join('，')}。` : '';
   })();
   const pointerOptions = groups.map((g) => (
-    <optgroup key={g.label} label={g.label}>
+    <optgroup key={g.id} label={g.label}>
       {g.options.map((o) => (
         <option key={o.key} value={o.key}>
           {o.model}
