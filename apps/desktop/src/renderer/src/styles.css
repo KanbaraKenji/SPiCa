@@ -1553,6 +1553,7 @@ pre .hl-punctuation {
   border-radius: var(--radius-s);
   color: var(--spica-muted);
   font-size: var(--chat-text);
+  line-height: var(--chat-line);
   text-align: left;
 }
 

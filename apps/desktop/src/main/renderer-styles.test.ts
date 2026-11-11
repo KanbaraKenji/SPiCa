@@ -195,7 +195,7 @@ describe('the type scale (the Claude app’s, comfortable density)', () => {
 describe('the conversation’s sizes', () => {
   it('text 16 on 24: answers, your messages, the input box, and the rows that stand in an answer', () => {
     expect(block(':root')).toContain('--chat-text: var(--fs-prose);\n  --chat-line: var(--lh-prose)');
-    for (const sel of ['.turn-response .md', '.turn-user-text', '.composer-input']) expect(block(sel), sel).toContain('line-height: var(--chat-line)');
+    for (const sel of ['.turn-response .md', '.turn-user-text', '.composer-input', '.fold-head']) expect(block(sel), sel).toContain('line-height: var(--chat-line)');
     for (const sel of ['.turn-user-text', '.composer-input', '.fold-head', '.turn-response .md']) expect(block(sel), sel).toContain('font-size: var(--chat-text)');
   });
 
