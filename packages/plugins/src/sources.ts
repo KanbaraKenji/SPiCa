@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { hasErrors, readPluginFolder } from './folder.ts';
 import { compareVersions, satisfies, stripBom } from './manifest.ts';
-import type { PluginDescription, PluginManager, PluginSource } from './manager.ts';
+import type { InstallStep, PluginDescription, PluginManager, PluginSource } from './manager.ts';
 import { sha256, unpackPlugin, verifyPackage } from './pack.ts';
 
 export const INDEX_FILE = 'index.json';
@@ -52,7 +52,18 @@ export interface UpdateInfo {
   entry: Available;
 }
 
-export type FetchLike = (url: string, init?: { signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string> }>;
+export type FetchLike = (
+  url: string,
+  init?: { signal?: AbortSignal },
+) => Promise<{
+  ok: boolean;
+  status: number;
+  arrayBuffer(): Promise<ArrayBuffer>;
+  text(): Promise<string>;
+  /** Present on a real fetch Response: read in pieces so a download can say how far it is. */
+  body?: { getReader(): { read(): Promise<{ done: boolean; value?: Uint8Array }>; cancel(reason?: unknown): Promise<void> } } | null;
+  headers?: { get(name: string): string | null };
+}>;
 
 export interface SourceOptions {
   /** Defaults to global fetch. In the desktop app pass Electron's net.fetch so system proxy settings apply. */
@@ -61,7 +72,14 @@ export interface SourceOptions {
   spicaVersion?: string;
   /** App name in user-facing messages. Default 'Spica'. */
   appName?: string;
+  /** Installing: each step as it is reached, the download with its bytes (a few times a second at most). */
+  onProgress?: (p: InstallStep) => void;
 }
+
+/** A download fails when no data has come for this long (not when it is merely slow). */
+export const DOWNLOAD_IDLE_MS = 60_000;
+/** How often a download says how far it is, at most. */
+const PROGRESS_EVERY_MS = 250;
 
 async function isDir(p: string): Promise<boolean> {
   try {
@@ -78,11 +96,58 @@ async function getText(url: string, opts: SourceOptions): Promise<string> {
   return res.text();
 }
 
-async function getBytes(url: string, opts: SourceOptions): Promise<Buffer> {
+/**
+ * Download a package. It fails only when nothing has arrived for `timeoutMs`
+ * (DOWNLOAD_IDLE_MS by default), so a big package on a slow line still comes
+ * through; on the way it says how many bytes it has, and the total when the
+ * server gives one.
+ */
+export async function downloadPackage(url: string, opts: SourceOptions = {}): Promise<Buffer> {
   const f = opts.fetch ?? (globalThis.fetch as unknown as FetchLike);
-  const res = await f(url, { signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000) });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
+  const idleMs = opts.timeoutMs ?? DOWNLOAD_IDLE_MS;
+  const stop = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stillAlive = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => stop.abort(new Error(`${Math.round(idleMs / 1000)} 秒没有收到数据`)), idleMs);
+  };
+  stillAlive();
+  try {
+    const res = await f(url, { signal: stop.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const length = Number(res.headers?.get('content-length') ?? NaN);
+    const total = Number.isFinite(length) && length > 0 ? length : undefined;
+    const say = (received: number) => opts.onProgress?.({ step: 'download', received, ...(total ? { total } : {}) });
+    const reader = res.body?.getReader();
+    if (!reader) {
+      say(0);
+      const buf = Buffer.from(await res.arrayBuffer());
+      say(buf.length);
+      return buf;
+    }
+    const parts: Uint8Array[] = [];
+    let received = 0;
+    let said = 0;
+    say(0);
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      stillAlive();
+      parts.push(value);
+      received += value.length;
+      if (Date.now() - said >= PROGRESS_EVERY_MS) {
+        said = Date.now();
+        say(received);
+      }
+    }
+    say(received);
+    return Buffer.concat(parts);
+  } catch (err) {
+    throw stop.signal.aborted && stop.signal.reason instanceof Error ? stop.signal.reason : err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function parseIndex(text: string, where: string): IndexFile {
@@ -178,35 +243,39 @@ export async function checkUpdates(
   return { updates, errors };
 }
 
-/** Download (if needed), verify and install one entry. */
+/** Download (if needed), verify and install one entry; `onProgress` hears every step. */
 export async function installAvailable(manager: PluginManager, entry: Available, opts: SourceOptions = {}): Promise<PluginDescription> {
   const source: PluginSource = { kind: entry.source.kind, location: entry.location };
-  if (entry.form === 'folder') {
-    const desc = await manager.install(entry.location, source);
-    return desc;
-  }
+  const install = opts.onProgress ? { onProgress: opts.onProgress } : {};
+  if (entry.form === 'folder') return manager.install(entry.location, source, install);
   if (entry.source.kind === 'http' && !entry.sha256) throw new Error(`插件源中「${entry.name}」缺少校验和（sha256），未安装。`);
   let buf: Buffer;
   try {
-    buf = entry.source.kind === 'http' ? await getBytes(entry.location, opts) : await readFile(entry.location);
+    if (entry.source.kind === 'http') buf = await downloadPackage(entry.location, opts);
+    else {
+      opts.onProgress?.({ step: 'read' });
+      buf = await readFile(entry.location);
+    }
   } catch (err) {
     throw new Error(`下载「${entry.name}」${entry.version} 失败（${(err as Error).message}）。`, { cause: err });
   }
-  if (entry.sha256 && sha256(buf) !== entry.sha256.toLowerCase()) {
-    throw new Error(`「${entry.name}」${entry.version} 校验和不匹配，文件可能已损坏或被替换，未安装。`);
+  if (entry.sha256) {
+    opts.onProgress?.({ step: 'verify' });
+    if (sha256(buf) !== entry.sha256.toLowerCase()) throw new Error(`「${entry.name}」${entry.version} 校验和不匹配，文件可能已损坏或被替换，未安装。`);
   }
-  return installZip(manager, buf, source);
+  return installZip(manager, buf, source, install);
 }
 
 /** Install from zip bytes (a package the user picked, or a download). */
-export async function installZip(manager: PluginManager, buf: Buffer, source: PluginSource): Promise<PluginDescription> {
+export async function installZip(manager: PluginManager, buf: Buffer, source: PluginSource, opts: { onProgress?: (p: InstallStep) => void } = {}): Promise<PluginDescription> {
   const tmp = await mkdtemp(join(tmpdir(), 'spica-plugin-'));
   try {
+    opts.onProgress?.({ step: 'unpack' });
     const folder = await unpackPlugin(buf, tmp, { appName: manager.appName });
     if (!folder.manifest || hasErrors(folder.issues)) {
       throw new Error(`插件包有错误：\n${folder.issues.filter((i) => i.severity === 'error').map((i) => `· ${i.where}：${i.message}`).join('\n')}`);
     }
-    return await manager.install(tmp, source);
+    return await manager.install(tmp, source, opts.onProgress ? { onProgress: opts.onProgress } : {});
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }

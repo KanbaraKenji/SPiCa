@@ -59,6 +59,8 @@ export {
   checkUpdates,
   installAvailable,
   installZip,
+  downloadPackage,
+  DOWNLOAD_IDLE_MS,
   writeIndex,
   type SourceConfig,
   type SourceOptions,

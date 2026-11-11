@@ -9,7 +9,8 @@ import { listenFetchable } from '@spica/core';
 // These tests start real server processes; give them room on a busy machine.
 vi.setConfig({ testTimeout: 30_000 });
 import { packPlugin, unpackPlugin, verifyPackage } from './pack.ts';
-import { checkUpdates, installAvailable, installZip, listSource, writeIndex } from './sources.ts';
+import { checkUpdates, downloadPackage, installAvailable, installZip, listSource, writeIndex, type FetchLike } from './sources.ts';
+import type { InstallStep } from './manager.ts';
 import { EXAMPLE_PLUGIN, callTool, exampleAt, rig, toolNames, type Rig } from './testing/helpers.ts';
 import { readZip, writeZip } from './zip.ts';
 
@@ -35,7 +36,7 @@ async function serve(dir: string): Promise<string> {
   server = createServer(async (req, res) => {
     try {
       const body = await readFile(join(dir, decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)));
-      res.writeHead(200).end(body);
+      res.writeHead(200, { 'content-length': body.length }).end(body);
     } catch {
       res.writeHead(404).end('not found');
     }
@@ -173,6 +174,79 @@ describe('sources, updates and rollback', () => {
     await writeFile(zipPath, good);
     const d = await installAvailable(r.pm, list[0]!);
     expect(d).toMatchObject({ name: 'notes', version: '0.3.0', enabled: false, source: { kind: 'http' } });
+  });
+
+  it('installing from an HTTP source says each step: the download with its bytes and total, then verify, unpack, copy', async () => {
+    const site = await temp();
+    await packPlugin(await exampleAt('0.3.0'), site);
+    await writeIndex(site);
+    const url = await serve(site);
+    r = await rig();
+    const [entry] = await listSource({ kind: 'http', location: url });
+    const steps: InstallStep[] = [];
+    await installAvailable(r.pm, entry!, { onProgress: (p) => steps.push(p) });
+    const size = (await readFile(join(site, 'notes-0.3.0.zip'))).length;
+    const downloads = steps.filter((p) => p.step === 'download');
+    expect(downloads[0]).toEqual({ step: 'download', received: 0, total: size });
+    expect(downloads.at(-1)).toEqual({ step: 'download', received: size, total: size });
+    expect([...new Set(steps.map((p) => p.step))]).toEqual(['download', 'verify', 'unpack', 'copy']);
+  });
+
+  it('from a shared folder: read instead of download', async () => {
+    const share = await temp();
+    await packPlugin(await exampleAt('0.2.0'), share);
+    await writeIndex(share);
+    r = await rig();
+    const [entry] = await listSource({ kind: 'share', location: share });
+    const steps: string[] = [];
+    await installAvailable(r.pm, entry!, { onProgress: (p) => steps.push(p.step) });
+    expect(steps).toEqual(['read', 'verify', 'unpack', 'copy']);
+  });
+
+  it('a download fails only when nothing arrives for a while, not because it is slow; no total said when the server gives none', async () => {
+    // Bytes keep coming, slower than the idle limit allows in total: it still finishes.
+    let sent = 0;
+    const trickle: FetchLike = async () => ({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => new ArrayBuffer(0),
+      text: async () => '',
+      headers: { get: () => null },
+      body: {
+        getReader: () => ({
+          read: async () => {
+            if (sent >= 6) return { done: true };
+            await new Promise((res) => setTimeout(res, 60));
+            sent++;
+            return { done: false, value: new Uint8Array(10) };
+          },
+          cancel: async () => {},
+        }),
+      },
+    });
+    const seen: InstallStep[] = [];
+    const buf = await downloadPackage('http://x/p.zip', { fetch: trickle, timeoutMs: 150, onProgress: (p) => seen.push(p) });
+    expect(buf.length).toBe(60);
+    expect(seen.at(-1)).toEqual({ step: 'download', received: 60 });
+
+    // Nothing for longer than the limit: it stops and says why.
+    const stalled: FetchLike = async (_u, init) => ({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => new ArrayBuffer(0),
+      text: async () => '',
+      headers: { get: () => '1000' },
+      body: {
+        getReader: () => ({
+          read: () =>
+            new Promise((_res, rej) => {
+              init?.signal?.addEventListener('abort', () => rej(init.signal!.reason));
+            }),
+          cancel: async () => {},
+        }),
+      },
+    });
+    await expect(downloadPackage('http://x/p.zip', { fetch: stalled, timeoutMs: 100 })).rejects.toThrow('0 秒没有收到数据');
   });
 
   it('HTTP entries without a checksum are refused', async () => {
