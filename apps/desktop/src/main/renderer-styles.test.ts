@@ -81,3 +81,11 @@ describe('settings › 插件 fills the window', () => {
     expect(block('.is-fill .plugins-list,\n.is-fill .plugin-detail')).toContain('overflow-y: auto');
   });
 });
+
+describe('settings › 插件 list rows', () => {
+  it('a long name is cut before the version is (the version never shrinks)', () => {
+    expect(block('.plugin-row-name')).toContain('flex: 0 1 auto');
+    expect(block('.plugin-row-name')).toContain('text-overflow: ellipsis');
+    expect(block('.plugin-row-version')).toContain('flex: none');
+  });
+});

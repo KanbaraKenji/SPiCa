@@ -49,6 +49,18 @@ describe('Plugins', () => {
     expect(await screen.findByRole('region', { name: '来信摘要（示例）' })).toBeTruthy();
   });
 
+  it('each row in the list has the version after the name, in the same small secondary style as the detail', async () => {
+    render(<Plugins api={api()} />);
+    await screen.findByRole('region', { name: '笔记（示例）' });
+    const row = within(list()).getByRole('button', { name: /笔记/ });
+    const version = row.querySelector('.plugin-row-version');
+    expect(version?.textContent).toBe('0.2.0');
+    expect(version?.className).toContain('plugin-version');
+    expect(version?.previousElementSibling?.className).toBe('plugin-row-name');
+    // The detail's title uses the same class.
+    expect(screen.getByRole('region', { name: '笔记（示例）' }).querySelector('.plugin-title .plugin-version')?.textContent).toBe('0.2.0');
+  });
+
   it('a plugin turned off stays where it is while the page is open; it moves to 已停用 the next time', async () => {
     const a = api();
     const first = render(<Plugins api={a} />);

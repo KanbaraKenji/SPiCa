@@ -3064,7 +3064,7 @@ button.ctx-row:hover {
 
 .plugins-two {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
   gap: 12px;
   align-items: start;
 }
@@ -3150,12 +3150,18 @@ button.ctx-row:hover {
   opacity: 0.45;
 }
 
+/* A long name is cut, never the version after it; the marks keep to the row end. */
 .plugin-row-name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.plugin-row-version {
+  flex: none;
+  margin-right: auto;
 }
 
 /* Turned off: the icon fainter, the name in the secondary colour. */

@@ -161,7 +161,7 @@ function Badge({ p }: { p: PluginView }) {
   );
 }
 
-/** One row of the list: name, a refresh mark when there is an update, the error mark when something is wrong. */
+/** One row of the list: name and version, a refresh mark when there is an update, the error mark when something is wrong. */
 function PluginRow({ p, on, onPick }: { p: PluginView; on: boolean; onPick(): void }) {
   const problems = pluginProblems(p);
   return (
@@ -169,6 +169,7 @@ function PluginRow({ p, on, onPick }: { p: PluginView; on: boolean; onPick(): vo
       <button type="button" className={['plugin-row', on ? 'is-on' : '', p.enabled ? '' : 'is-off'].filter(Boolean).join(' ')} aria-current={on ? 'true' : undefined} onClick={onPick}>
         <Badge p={p} />
         <span className="plugin-row-name">{p.displayName}</span>
+        <span className="plugin-version plugin-row-version">{p.version}</span>
         {p.update ? (
           <span className="plugin-row-mark" role="img" aria-label={`有更新：${p.update}`} title={`有更新：${p.update}`}>
             <Icon name="refresh" size={12} />
