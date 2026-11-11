@@ -63,6 +63,24 @@ class Aborted extends Error {}
 const READ_ONLY_TOOLS = new Set(['list_dir', 'read_file', 'glob', 'grep', 'web_fetch', 'web_search', 'ask_user', 'suggest_actions']);
 const ANSWER_KINDS = new Set<MessageKind>(['assistant', 'tool_results', 'steer']);
 
+/** The file the 汇总 answer writes, and the answer: paths in inline code, a table and a code block. */
+export const FAKE_SUMMARY_FILE = 'D:\\工作\\样机评审\\报价汇总.xlsx';
+export const FAKE_SUMMARY_ANSWER =
+  '已汇总到 `D:\\工作\\样机评审\\报价汇总.xlsx`，原始报价在 `D:\\工作\\样机评审\\报价\\`。\n\n' +
+  '| 供应商 | 单价（元） | 交期 | 状态 |\n' +
+  '|---|---|---|---|\n' +
+  '| 华东精密 | 128.50 | 12 天 | 已回价 |\n' +
+  '| 启明电子 | 131.00 | 10 天 | 已回价 |\n' +
+  '| 远航塑胶 | — | — | 未回价 |\n' +
+  '| 恒信五金 | — | — | 未回价 |\n\n' +
+  '重新生成汇总表：\n\n' +
+  '```powershell\n' +
+  "$files = Get-ChildItem 'D:\\工作\\样机评审\\报价' -Filter *.xlsx\n" +
+  "$rows = $files | ForEach-Object { Import-Excel $_.FullName }\n" +
+  "$rows | Export-Excel 'D:\\工作\\样机评审\\报价汇总.xlsx' -AutoSize\n" +
+  '```\n\n' +
+  '远航塑胶和恒信五金还没回价，`单价` 列先留空。';
+
 /** Splits text into small chunks the way a model stream arrives. */
 export function chunk(text: string, size = 3): string[] {
   const out: string[] = [];
@@ -761,6 +779,12 @@ export class FakeBackend implements AgentBackend {
         const after = `好，按「${answer}」来写。`;
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
+      } else if (/汇总/.test(text)) {
+        // For screenshots of what an answer can hold: a file it wrote, paths, a table and a code block.
+        blocks.push(...(await this.#tool(sessionId, run, 'write_file', { path: FAKE_SUMMARY_FILE }, '已写入 4 行', 600)));
+        this.#setStatus(sessionId, 'thinking');
+        await this.#stream(sessionId, 'text', FAKE_SUMMARY_ANSWER, signal);
+        blocks.push({ type: 'text', text: FAKE_SUMMARY_ANSWER });
       } else {
         const answer = (opts.version ?? 1) > 1
           ? `第 ${opts.version} 版：重新看了一遍，按优先级排：\n\n` +

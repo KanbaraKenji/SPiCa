@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentApi, CoreEvent } from '@spica/protocol';
-import { FakeBackend } from './fake';
+import { FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
 import { SEED_IDS } from './fake-seed';
 
 function collect(backend: FakeBackend) {
@@ -155,6 +155,24 @@ describe('FakeBackend', () => {
     });
     const messages = await b.getMessages(chat.id);
     expect(messages.map((m) => m.kind)).toEqual(['user', 'assistant', 'tool_results', 'assistant', 'tool_results']);
+  });
+
+  it('汇总 writes a file and answers with paths, a table and a code block (for screenshots)', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '把报价汇总一下');
+    await until((e) => e.type === 'run.end');
+    expect(events.find((e) => e.type === 'tool.start' && e.name === 'write_file')).toMatchObject({ input: { path: FAKE_SUMMARY_FILE } });
+    const text = (await b.getMessages(chat.id))
+      .flatMap((m) => m.content)
+      .filter((c) => c.type === 'text')
+      .map((c) => (c as { text: string }).text)
+      .join('\n');
+    expect(text).toContain(FAKE_SUMMARY_ANSWER);
+    expect(FAKE_SUMMARY_ANSWER).toMatch(/`[A-Z]:\\[^`]+\\`/);
+    expect(FAKE_SUMMARY_ANSWER).toContain('```powershell');
+    expect(FAKE_SUMMARY_ANSWER).toContain('| 供应商 |');
   });
 
   it('waits for confirmation and continues after the decision', async () => {
