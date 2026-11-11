@@ -2,6 +2,7 @@
 // Closes on Esc, a click elsewhere, scrolling or resizing. Positions in CSS px, so
 // page zoom keeps it in place.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Icon } from './Icon';
 
 export interface MenuItem {
   label: string;
@@ -19,6 +20,11 @@ export interface MenuItem {
   disabled?: boolean;
   /** Said on hover. */
   title?: string;
+  /**
+   * One of a set of choices: true on the one in force (a tick in front of it), false on the others. When any
+   * item of a menu says so, every item keeps the tick's place, so the labels line up.
+   */
+  checked?: boolean;
   /** Right after the label (a mark such as 支持图片). */
   after?: ReactNode;
   onSelect(): void;
@@ -81,6 +87,7 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
     };
   }, [onClose, anchor]);
 
+  const choices = items.some((it) => it.checked !== undefined);
   return (
     // One item lit at a time: the first takes the keyboard focus on opening; once the pointer moves onto
     // another, the focus goes to the menu itself, so only the item under the pointer is lit.
@@ -94,7 +101,8 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
           ) : null}
           <button
             type="button"
-            role="menuitem"
+            role={it.checked === undefined ? 'menuitem' : 'menuitemradio'}
+            aria-checked={it.checked}
             className={it.danger ? 'context-item is-danger' : 'context-item'}
             aria-disabled={it.disabled || undefined}
             // Its own note (why it cannot be picked), else the label when it is cut short.
@@ -109,6 +117,11 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
               it.onSelect();
             }}
           >
+            {choices ? (
+              <span className="context-item-check" aria-hidden>
+                {it.checked ? <Icon name="check" size={14} /> : null}
+              </span>
+            ) : null}
             {it.detail ? (
               <span className="context-item-text">
                 <span className="context-item-label">

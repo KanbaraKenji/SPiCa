@@ -304,7 +304,7 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
           x={0}
           y={0}
           anchor={menu}
-          items={[{ id: '', name: '全部项目' }, ...projects].map((p) => ({ label: p.name, onSelect: () => setProjectId(p.id) }))}
+          items={[{ id: '', name: '全部项目' }, ...projects].map((p) => ({ label: p.name, checked: p.id === projectId, onSelect: () => setProjectId(p.id) }))}
           onClose={() => setMenu(null)}
         />
       ) : null}

@@ -188,9 +188,11 @@ function ModelChip({ model, pictures, buttonRef, onOpen }: { model: ModelTool; p
             // An eye after the models that take pictures. With pictures waiting or already in the conversation, one
             // the core says cannot take them is shown but not offered; hovering it says why.
             const noImages = (pictures || model.hasPictures) && o.images === false && !o.current;
-            const hint = [o.current ? '当前' : '', o.marks ?? ''].filter(Boolean).join(' · ');
+            // The one in use has the tick; the words after it are only 默认 / 强模型.
+            const hint = o.marks ?? '';
             return {
               label: o.label,
+              checked: o.current,
               ...(o.group ? { group: o.group } : {}),
               ...(o.groupKey ? { groupKey: o.groupKey } : {}),
               ...(hint ? { hint } : {}),
@@ -444,8 +446,8 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
                 onClick={(e) => {
                   const a = t.approval!;
                   openMenu(e.currentTarget, [
-                    { label: APPROVAL_TEXT.manual, detail: APPROVAL_DETAIL.manual, onSelect: () => a.onChange('manual') },
-                    { label: APPROVAL_TEXT.auto, detail: APPROVAL_DETAIL.auto, onSelect: () => a.onChange('auto') },
+                    { label: APPROVAL_TEXT.manual, detail: APPROVAL_DETAIL.manual, checked: a.mode === 'manual', onSelect: () => a.onChange('manual') },
+                    { label: APPROVAL_TEXT.auto, detail: APPROVAL_DETAIL.auto, checked: a.mode === 'auto', onSelect: () => a.onChange('auto') },
                   ]);
                 }}
               >

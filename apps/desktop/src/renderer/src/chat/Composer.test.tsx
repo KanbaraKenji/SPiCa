@@ -80,16 +80,27 @@ describe('Composer controls', () => {
     // The ring alone; the numbers are in its hover text.
     expect(screen.getByRole('img', { name: '上下文占用 23.4k / 128k 18%' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /deepseek-chat/ }));
-    // One heading per connection; the tag says which is in use and which is the default.
+    // One heading per connection. The model in use has the tick, not a word; the tag only says which is the default.
     expect(screen.getAllByText('DeepSeek · sk-0****3f9a')).toHaveLength(1);
-    expect(screen.getByRole('menuitem', { name: /^deepseek-chat/ }).textContent).toBe('deepseek-chat当前 · 默认');
-    fireEvent.click(screen.getByRole('menuitem', { name: 'deepseek-reasoner' }));
+    const inUse = screen.getByRole('menuitemradio', { name: /^deepseek-chat/ });
+    expect(inUse.textContent).toBe('deepseek-chat默认');
+    expect(inUse.getAttribute('aria-checked')).toBe('true');
+    expect(inUse.querySelector('.context-item-check svg')).toBeTruthy();
+    const other = screen.getByRole('menuitemradio', { name: 'deepseek-reasoner' });
+    expect(other.getAttribute('aria-checked')).toBe('false');
+    // The other keeps the tick's place, empty, so the two names line up.
+    expect(other.querySelector('.context-item-check')).toBeTruthy();
+    expect(other.querySelector('.context-item-check svg')).toBeNull();
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'deepseek-reasoner' }));
     expect(pickB).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
     // Each item says what it does, the same sentence as on hover.
-    expect(screen.getByRole('menuitem', { name: /^Manual/ }).textContent).toBe('Manual不可逆操作先确认');
-    expect(screen.getByRole('menuitem', { name: /^Auto/ }).textContent).toBe('Auto不可逆操作直接执行；处理外部内容后的操作仍需确认');
-    fireEvent.click(screen.getByRole('menuitem', { name: /^Auto/ }));
+    expect(screen.getByRole('menuitemradio', { name: /^Manual/ }).textContent).toBe('Manual不可逆操作先确认');
+    // The mode in force has the tick.
+    expect(screen.getByRole('menuitemradio', { name: /^Manual/ }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('menuitemradio', { name: /^Auto/ }).getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByRole('menuitemradio', { name: /^Auto/ }).textContent).toBe('Auto不可逆操作直接执行；处理外部内容后的操作仍需确认');
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /^Auto/ }));
     expect(onApproval).toHaveBeenCalledWith('auto');
   });
 
@@ -215,7 +226,7 @@ describe('pictures in the input box', () => {
     expect(await screen.findByText('当前模型不支持图片')).toBeTruthy();
     expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: '切换模型' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'qwen-vl' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'qwen-vl' }));
     expect(pick).toHaveBeenCalled();
   });
 
@@ -227,7 +238,7 @@ describe('pictures in the input box', () => {
     ];
     render(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="eye1" tools={{ model: { label: 'deepseek-v4-pro', options } }} />);
     fireEvent.click(screen.getByRole('button', { name: /deepseek-v4-pro/ }));
-    const eyeOf = (name: RegExp) => screen.getByRole('menuitem', { name }).querySelector('.image-mark');
+    const eyeOf = (name: RegExp) => screen.getByRole('menuitemradio', { name }).querySelector('.image-mark');
     expect(eyeOf(/^qwen-vl/)?.getAttribute('title')).toBe('支持图片');
     expect(eyeOf(/^deepseek-v4-pro/)).toBeNull();
     expect(eyeOf(/^m1/)).toBeNull();
@@ -242,7 +253,7 @@ describe('pictures in the input box', () => {
       { label: 'qwen-vl', current: false, images: true, onPick: vi.fn() },
       { label: 'm1', current: false, images: null, onPick: vi.fn() },
     ];
-    const off = (name: RegExp) => screen.getByRole('menuitem', { name }).getAttribute('aria-disabled') === 'true';
+    const off = (name: RegExp) => screen.getByRole('menuitemradio', { name }).getAttribute('aria-disabled') === 'true';
     const { unmount } = render(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="pic4" tools={{ images: images(false), model: { label: 'deepseek-v4-pro', options } }} />);
     fireEvent.click(screen.getByRole('button', { name: /deepseek-v4-pro/ }));
     expect(off(/^deepseek-flash/)).toBe(false);
@@ -250,7 +261,7 @@ describe('pictures in the input box', () => {
     pasteImage(screen.getByRole('textbox', { name: '消息' }));
     await screen.findByText('当前模型不支持图片');
     fireEvent.click(screen.getByRole('button', { name: '切换模型' }));
-    const flash = screen.getByRole('menuitem', { name: /^deepseek-flash/ });
+    const flash = screen.getByRole('menuitemradio', { name: /^deepseek-flash/ });
     // No words on the item: it cannot be picked, and hovering it says why.
     expect(flash.textContent).toBe('deepseek-flash');
     expect(off(/^deepseek-flash/)).toBe(true);
@@ -258,7 +269,7 @@ describe('pictures in the input box', () => {
     fireEvent.click(flash);
     expect(pickFlash).not.toHaveBeenCalled();
     // The one in use stays as it is (the line above the box already says it takes none); unknown ones are offered.
-    expect(screen.getByRole('menuitem', { name: /^deepseek-v4-pro/ }).textContent).toBe('deepseek-v4-pro当前');
+    expect(screen.getByRole('menuitemradio', { name: /^deepseek-v4-pro/ }).textContent).toBe('deepseek-v4-pro');
     expect(off(/^qwen-vl/)).toBe(false);
     expect(off(/^m1/)).toBe(false);
     unmount();

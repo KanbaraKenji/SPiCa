@@ -36,7 +36,10 @@ describe('导出使用日志', () => {
   it('exports one project for a time range and says how many records went where', async () => {
     const p = setup();
     fireEvent.click(screen.getByRole('button', { name: /全部项目/ }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '年度预算' }));
+    // The project in force (全部项目 to begin with) has the tick.
+    expect(screen.getByRole('menuitemradio', { name: '全部项目' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('menuitemradio', { name: '年度预算' }).getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(screen.getByRole('menuitemradio', { name: '年度预算' }));
     fireEvent.click(screen.getByRole('radio', { name: '最近 7 天' }));
     fireEvent.click(screen.getByRole('button', { name: '导出…' }));
     expect(p.exportUsageLog).toHaveBeenCalledWith({ projectId: 'p-budget', from: rangeStart('week', now) });
