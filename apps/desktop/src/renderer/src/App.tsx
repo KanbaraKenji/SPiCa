@@ -281,13 +281,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // Finished sub-tasks not opened since they finished: news on their row. Opening one records it.
   const doneNews = useMemo(() => unseenDone(sessions, settings.doneNews ?? []), [sessions, settings.doneNews]);
   const statusBefore = useRef<Map<string, SessionInfo['status']> | null>(null);
+  const [windowSince] = useState(() => new Date().toISOString());
   useEffect(() => {
     if (!state.loaded) return;
-    const next = nextDoneNews(statusBefore.current, sessions, shell.settings.doneNews ?? [], view === 'chat' ? state.activeId : null);
+    const next = nextDoneNews(statusBefore.current, sessions, shell.settings.doneNews ?? [], view === 'chat' ? state.activeId : null, windowSince);
     const seen = (statusBefore.current ??= new Map());
     for (const s of sessions) seen.set(s.id, s.status);
     if (next) shell.update({ doneNews: next });
-  }, [state.loaded, sessions, view, state.activeId, shell]);
+  }, [state.loaded, sessions, view, state.activeId, shell, windowSince]);
   const mailById = useMemo(() => {
     const map = new Map(mail.items.map((m) => [m.id, m]));
     return (mid: string): MailItem | undefined => map.get(mid);

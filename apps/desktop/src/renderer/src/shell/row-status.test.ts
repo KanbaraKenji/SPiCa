@@ -70,9 +70,18 @@ describe('which finished sub-tasks are still news', () => {
     expect(nextDoneNews(st(...later), later, ['c'], 'c')).toEqual([]);
   });
 
-  it('one that finishes while it is open is not news; one that was not in the list before and is finished is', () => {
-    const later = [s('a', 'done'), s('c', 'done'), s('new', 'done')];
-    expect(nextDoneNews(st(...list), later, [], 'c')).toEqual(['new']);
+  it('one that finishes while it is open is not news; one not in the list before is news only when it was started after this window', () => {
+    const made = (id: string, createdAt: string) => ({ ...s(id, 'done'), createdAt });
+    const later = [s('a', 'done'), s('c', 'done'), made('new', '2026-11-09T10:05:00.000Z'), made('old', '2026-11-08T09:00:00.000Z')];
+    expect(nextDoneNews(st(...list), later, [], 'c', '2026-11-09T10:00:00.000Z')).toEqual(['new']);
+  });
+
+  it('a first load that failed (an empty list, then the real one) does not light up old work', () => {
+    const old = { ...s('a', 'done'), createdAt: '2026-11-08T09:00:00.000Z' };
+    const since = '2026-11-09T10:00:00.000Z';
+    expect(nextDoneNews(null, [], [], null, since)).toBeNull();
+    expect(nextDoneNews(new Map(), [old], [], null, since)).toBeNull();
+    expect(nextDoneNews(new Map(), [old], [], null)).toBeNull();
   });
 
   it('one that runs again leaves the record, so its next finish is news again', () => {
