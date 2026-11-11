@@ -6,9 +6,10 @@ import { filesOf, historyRef, isRunning, itemAtSeq, type Attachment, type Block,
 import { ImageViewer } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
-import { AnswerToolsContext, AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, ToolCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
+import { AnswerSources, AnswerToolsContext, AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, SourceCardsContext, ToolCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
 import { Composer, type ComposerTools } from './Composer';
 import { answerText, MessageActions } from './MessageActions';
+import { answerSources } from './sources';
 import { StatusLine } from './StatusLine';
 import { GUARD_FLAG_TEXT } from './format';
 import { SettingsChangeCard } from './SettingsChangeCard';
@@ -129,6 +130,7 @@ function Response({
   after,
   cwd,
   lists,
+  sources,
 }: {
   item: Extract<Item, { kind: 'response' }>;
   live: boolean;
@@ -136,6 +138,7 @@ function Response({
   actions: ConversationActions;
   cards: Transcript['fileCards'];
   lists?: Transcript['fileCardLists'];
+  sources?: Transcript['sourceCards'];
   moved?: CwdChangeMeta;
   /** The conversation's working folder (a relative path on a file card is in it). */
   cwd?: string | undefined;
@@ -196,6 +199,7 @@ function Response({
             return null;
         }
       })}
+      {live ? null : <AnswerSources sources={answerSources(blocks, sources)} />}
       {live ? null : <FileCards files={files} onOpen={actions.openFile} actions={fileActions(actions, cwd)} />}
       {item.interrupted && newest ? <p className="turn-note">（中断）</p> : null}
       {live ? null : (
@@ -347,6 +351,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
     <HistoryRefContext.Provider value={resolveRef}>
     <HistoryCardsContext.Provider value={transcript.historyCards}>
     <ToolCardsContext.Provider value={transcript.fileCards}>
+    <SourceCardsContext.Provider value={transcript.sourceCards}>
     <div className="conversation">
       <div className="transcript" ref={ref}>
         {items.length === 0 && !running ? (
@@ -417,7 +422,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                     {item.text}
                   </p>
                 );
-              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} after={lastIndex - i} regen={regen && session?.role === 'top' ? { state: regen, last: item.anchorId === regen.anchorId || items[i - 1]?.id === regen.anchorId } : undefined} actions={actions} cards={transcript.fileCards} lists={transcript.fileCardLists} moved={moves.get(item.id)} cwd={session?.cwd} at={mark(item.id)} />;
+              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} after={lastIndex - i} regen={regen && session?.role === 'top' ? { state: regen, last: item.anchorId === regen.anchorId || items[i - 1]?.id === regen.anchorId } : undefined} actions={actions} cards={transcript.fileCards} lists={transcript.fileCardLists} sources={transcript.sourceCards} moved={moves.get(item.id)} cwd={session?.cwd} at={mark(item.id)} />;
             })}
             <StatusLine transcript={transcript} />
             {waiting.map((w) => (
@@ -472,6 +477,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
       <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
       {demo ? <p className="composer-note">当前为演示数据</p> : null}
     </div>
+    </SourceCardsContext.Provider>
     </ToolCardsContext.Provider>
     </HistoryCardsContext.Provider>
     </HistoryRefContext.Provider>

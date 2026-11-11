@@ -1,7 +1,7 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
 import { createContext, Fragment, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { FileCardMeta, HistoryCardMeta } from '@spica/protocol';
+import type { FileCardMeta, HistoryCardMeta, SourceCardMeta, SourceRow } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, fileCardVerb, type Block, type ChildNote, type FileRef } from '../store/transcript';
@@ -14,6 +14,7 @@ import { tableRows, toCsv, toHtml, toTsv } from './table-data';
 import { blockLanguage, blockLanguageName, colourSplit, highlightCode } from './highlight';
 import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS } from './format';
 import { groupWords, runningGroup, runningWords, toolWords } from './tool-words';
+import { hostOf } from './sources';
 
 /** Opens a conversation by id, at message number `seq` when given (rows and links from earlier conversations). */
 export const OpenSessionContext = createContext<((id: string, seq?: number) => void) | null>(null);
@@ -306,6 +307,57 @@ export function toolIcon(b: ToolBlock): ReactNode {
   }
 }
 
+/** The web pages each web_fetch / web_search call used, by call id. */
+export const SourceCardsContext = createContext<Record<string, SourceCardMeta> | undefined>(undefined);
+
+/** One web page: its title (the site when it has none), the site, and for a search result its snippet; opens in the browser. */
+function SourceLink({ row, className }: { row: SourceRow; className: string }) {
+  const host = hostOf(row.url);
+  return (
+    <a className={className} href={row.url} target="_blank" rel="noreferrer" title={row.url}>
+      <span className="source-title">{row.title || host}</span>
+      {row.title ? <span className="source-host">{host}</span> : null}
+      {row.snippet && className === 'source-row' ? <span className="source-snippet">{row.snippet}</span> : null}
+    </a>
+  );
+}
+
+/** What a web call found, inside its line: one page a row. */
+function SourceList({ card }: { card: SourceCardMeta }) {
+  if (!card.sources.length) return <p className="tool-empty">—</p>;
+  return (
+    <div className="source-list">
+      {card.sources.map((r) => (
+        <SourceLink key={r.url} row={r} className="source-row" />
+      ))}
+    </div>
+  );
+}
+
+/** Up to this many sources show under an answer; more fold behind 全部 N 个. */
+const SOURCES_SHOWN = 6;
+
+/** Under an answer: the web pages it rests on (see sources.ts), each opening in the browser. */
+export function AnswerSources({ sources }: { sources: SourceRow[] }) {
+  const [all, setAll] = useState(false);
+  if (!sources.length) return null;
+  const fold = sources.length > SOURCES_SHOWN + 1;
+  const shown = fold && !all ? sources.slice(0, SOURCES_SHOWN) : sources;
+  return (
+    <section className="answer-sources" aria-label="来源">
+      <span className="answer-sources-label">来源</span>
+      {shown.map((r) => (
+        <SourceLink key={r.url} row={r} className="source-chip" />
+      ))}
+      {fold ? (
+        <button type="button" className="btn file-cards-more" aria-expanded={all} onClick={() => setAll((v) => !v)}>
+          {all ? '收起' : `全部 ${sources.length} 个`}
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
 /** Each call's file card (write_file's says Created or Edited and the lines), by call id. */
 export const ToolCardsContext = createContext<Record<string, FileCardMeta> | undefined>(undefined);
 
@@ -355,7 +407,9 @@ function argsText(input: unknown): string {
  */
 function ToolDetail({ block }: { block: ToolBlock }) {
   const history = useContext(HistoryCardsContext)?.[block.callId];
+  const sources = useContext(SourceCardsContext)?.[block.callId];
   if (history && HISTORY_TOOLS.has(block.name)) return <HistoryTable card={history} />;
+  if (sources) return <SourceList card={sources} />;
   const body = block.result ?? block.preview;
   const command = block.name === 'run_command' ? toolArg(block, 'command') : '';
   const args = command ? '' : argsText(block.input);

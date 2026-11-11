@@ -1,7 +1,7 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
 import { relocate, shownPath } from './relocate';
-import type { CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, Message, PendingItem, SessionStatus, SettingsChangeMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
+import type { CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { humanError } from '../../../shared/errors';
 import { toolLabel } from '../chat/format';
 
@@ -218,6 +218,8 @@ export interface Transcript {
   fileCardLists?: Record<string, FileCardMeta[]>;
   /** What the history tools found (history.card), by call id: the table under the tool row, and where [name](history:n) links go. */
   historyCards?: Record<string, HistoryCardMeta>;
+  /** The web pages web_fetch / web_search used (source.card), by call id. */
+  sourceCards?: Record<string, SourceCardMeta>;
   /** The number of the first stored message in each item, by item id (to scroll to a message by its number). */
   seqs?: Record<string, number>;
 }
@@ -353,6 +355,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
   const items: Item[] = [];
   const cards: Record<string, FileCardMeta> = {};
   const cardLists: Record<string, FileCardMeta[]> = {};
+  const sources: Record<string, SourceCardMeta> = {};
   const history: Record<string, HistoryCardMeta> = {};
   const seqs: Record<string, number> = {};
   // After each message: the item it went into starts at that message's number (if it is the first one there).
@@ -391,6 +394,8 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
       if (stored && typeof stored === 'object') Object.assign(cards, stored as Record<string, FileCardMeta>);
       const storedLists = m.meta?.fileCardLists;
       if (storedLists && typeof storedLists === 'object') Object.assign(cardLists, storedLists);
+      const storedSources = m.meta?.sourceCards;
+      if (storedSources && typeof storedSources === 'object') Object.assign(sources, storedSources);
       const info = m.meta?.toolInfo;
       // Suggestion cards as the core stored them (they win over the tool call's raw input).
       const suggested = m.meta?.suggestedActions as Record<string, { title: string; actions: SuggestAction[] }> | undefined;
@@ -448,6 +453,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
         );
         Object.assign(cards, built.fileCards ?? {});
         Object.assign(cardLists, built.fileCardLists ?? {});
+        Object.assign(sources, built.sourceCards ?? {});
         Object.assign(history, built.historyCards ?? {});
         const last = msgs[msgs.length - 1];
         return { blocks: built.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])), ...(last?.createdAt ? { at: last.createdAt } : {}) };
@@ -465,6 +471,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
     items,
     ...(Object.keys(cards).length ? { fileCards: cards } : {}),
     ...(Object.keys(cardLists).length ? { fileCardLists: cardLists } : {}),
+    ...(Object.keys(sources).length ? { sourceCards: sources } : {}),
     ...(Object.keys(history).length ? { historyCards: history } : {}),
     seqs,
   };
@@ -571,6 +578,10 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     case 'file.card': {
       t.fileCards = { ...(t.fileCards ?? {}), [e.callId]: e.file };
       if (e.files?.length) t.fileCardLists = { ...(t.fileCardLists ?? {}), [e.callId]: e.files };
+      return t;
+    }
+    case 'source.card': {
+      t.sourceCards = { ...(t.sourceCards ?? {}), [e.callId]: e.card };
       return t;
     }
     case 'history.card': {

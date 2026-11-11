@@ -499,6 +499,7 @@ export class AgentStore {
         // file.card details only arrive as events; keep them across the reload.
         if (prev?.fileCards) next.fileCards = { ...prev.fileCards, ...(next.fileCards ?? {}) };
         if (prev?.fileCardLists) next.fileCardLists = { ...prev.fileCardLists, ...(next.fileCardLists ?? {}) };
+        if (prev?.sourceCards) next.sourceCards = { ...prev.sourceCards, ...(next.sourceCards ?? {}) };
         return { ...v, transcripts: { ...v.transcripts, [id]: next } };
       });
     } catch {
