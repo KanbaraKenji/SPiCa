@@ -53,6 +53,26 @@ describe('startBackend', () => {
     await b2.close();
   });
 
+  it('regenerate and getMessages with the old versions work over the port', async () => {
+    gw.enqueue({ text: 'first' }, { text: 'second' });
+    const b = await startBackend(config());
+    const ch = new MessageChannel();
+    b.server.attach(nodePort(ch.port1), { restored: b.restored, warnings: b.warnings });
+    const client = connectBackend(nodePort(ch.port2));
+    await client.ready;
+    const s = await client.api.createSession({});
+    await client.api.send(s.id, 'q');
+    await b.runtime.session(s.id)!.idle();
+    expect(await client.api.regenerate!(s.id)).toMatchObject({ ok: true, version: 2 });
+    await b.runtime.session(s.id)!.idle();
+    const text = (m: { content: { type: string; text?: string }[] }) => m.content.map((x) => x.text ?? '').join('');
+    expect((await client.api.getMessages(s.id)).map(text)).toEqual(['q', 'second']);
+    expect((await client.api.getMessages(s.id, { superseded: true })).map(text)).toEqual(['q', 'first', 'second']);
+    ch.port1.close();
+    ch.port2.close();
+    await b.close();
+  });
+
   it('a second process cannot open the same database; a stale lock is taken over', async () => {
     const path = join(dir, 'x.db');
     const { mkdir, writeFile } = await import('node:fs/promises');

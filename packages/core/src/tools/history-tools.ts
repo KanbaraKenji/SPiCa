@@ -422,6 +422,7 @@ export const findFilesTool: Tool = {
         for (const a of m.meta?.attachments ?? []) add(a.path, a.image ? 'attached_image' : 'attached', rec.id, m.seq, m.createdAt);
       }
       for (const c of rt.store.listToolCalls(rec.id)) {
+        if (!seqOf.has(c.messageId)) continue; // a call of a replaced answer (regenerate)
         const how = verbs[c.name];
         if (how && c.status === 'ok') add((c.input as { path?: unknown })?.path, how, rec.id, seqOf.get(c.messageId), c.endedAt ?? c.startedAt);
       }

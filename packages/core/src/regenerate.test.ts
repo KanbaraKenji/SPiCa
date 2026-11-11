@@ -121,7 +121,7 @@ describe('regenerating the last answer', () => {
     await rt.close();
   });
 
-  it('replaces the whole answer (tool calls, results, steers) but leaves notes where they are', async () => {
+  it('replaces the whole answer (tool calls and their results) but leaves notes where they are', async () => {
     const rt = makeRuntime(gw, { cwd: dir });
     writeFileSync(join(dir, 'a.txt'), 'hello');
     const chat = rt.createSession({ cwd: dir });
@@ -226,6 +226,43 @@ describe('regenerating the last answer', () => {
     await asker.send('search').done;
     const results = rt.store.listToolCalls(asker.id).find((c) => c.name === 'search_history');
     expect(results?.result ?? '').not.toContain('zebracorn first version');
+    await rt.close();
+  });
+
+  it('find_history_files does not list a file only a replaced answer read', async () => {
+    const rt = makeRuntime(gw, { cwd: dir });
+    writeFileSync(join(dir, 'only-old.txt'), 'x');
+    const old = rt.createSession({ cwd: dir });
+    gw.enqueue({ toolCalls: [{ name: 'read_file', args: { path: 'only-old.txt' } }] }, { text: 'read it' }, { text: 'did not read anything' });
+    await old.send('look').done;
+    old.regenerate();
+    await until(() => !old.running);
+    await old.idle();
+    const asker = rt.createSession();
+    gw.enqueue({ toolCalls: [{ name: 'find_history_files', args: {} }] }, { text: 'ok' });
+    await asker.send('files?').done;
+    const found = rt.store.listToolCalls(asker.id).find((c) => c.name === 'find_history_files');
+    expect(found?.status).toBe('ok');
+    expect(found?.result ?? '').not.toContain('only-old.txt');
+    await rt.close();
+  });
+
+  it('a steer sent during the round goes with the old answer', async () => {
+    const rt = makeRuntime(gw);
+    const chat = rt.createSession();
+    gw.enqueue({ text: ['slow', ' first'], chunkDelayMs: 200 }, { text: 'after the steer' }, { text: 'fresh' });
+    const h = chat.send('q');
+    await until(() => chat.running && gw.requests.length > 0);
+    chat.steer('also this', 'next');
+    await h.done;
+    await chat.idle();
+    expect(chat.messages().map((m) => m.kind)).toEqual(['user', 'assistant', 'steer', 'assistant']);
+    expect(chat.regenerate()).toMatchObject({ ok: true, version: 2 });
+    await until(() => !chat.running);
+    await chat.idle();
+    expect(chat.messages().map(text)).toEqual(['q', 'fresh']);
+    expect(chat.messages({ superseded: true }).filter((m) => m.superseded).map((m) => m.kind)).toEqual(['assistant', 'steer', 'assistant']);
+    expect(sent(gw.requests.at(-1))).not.toContain('also this');
     await rt.close();
   });
 });

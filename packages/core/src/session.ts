@@ -225,6 +225,8 @@ export class Session {
    */
   regenerate(messageId?: string): RegenerateResult {
     const refuse = (code: RegenerateCode): RegenerateResult => ({ ok: false, code, hint: REGENERATE_HINTS[code] });
+    // a listener reacting to run.end calls in before the ending run has let go
+    if (this.#run) return refuse('regenerate.running');
     const state = this.regenerateState();
     const { anchor, answer } = this.#lastRound();
     if (state.code === 'regenerate.role') return refuse(state.code);
