@@ -110,3 +110,9 @@ describe('renaming in place', () => {
     expect(f).toContain('color: var(--spica-ink)');
   });
 });
+
+describe('sidebar status place', () => {
+  it('stopped has the error’s red dot', () => {
+    expect(block('.status-slot.is-error .slot-dot,\n.status-slot.is-stopped .slot-dot')).toContain('background: var(--spica-danger)');
+  });
+});

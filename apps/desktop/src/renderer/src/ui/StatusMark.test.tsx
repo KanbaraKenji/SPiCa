@@ -1,8 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { StatusSlot } from './StatusMark';
 
 afterEach(cleanup);
@@ -15,8 +13,7 @@ describe('a sidebar row’s status place', () => {
     expect(mark.className).toBe('status-slot is-stopped');
     expect(mark.querySelector('.slot-dot')).toBeTruthy();
     expect(mark.querySelector('svg')).toBeNull();
-    const css = readFileSync(join(__dirname, '../styles.css'), 'utf8');
-    expect(css).toContain('.status-slot.is-error .slot-dot,\n.status-slot.is-stopped .slot-dot {\n  background: var(--spica-danger);');
+    // Its colour is the error's: see main/renderer-styles.test.ts.
   });
 
   it('running and queued keep their icons', () => {
