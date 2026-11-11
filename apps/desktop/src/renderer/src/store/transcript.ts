@@ -42,6 +42,8 @@ export type Block =
       durationMs?: number;
       /** What came back looked like instructions (outside content); the core told the model to ignore them. */
       flagged?: UntrustedKind;
+      /** What came back was outside content (a web page, mail, a file, a plugin's result), fenced as data by the core. */
+      outside?: UntrustedKind;
       /** Irreversible, but ran without asking: the conversation's approval is automatic. */
       autoApproved?: boolean;
       /** What kind of step it is, as the core said (tool.start, or the stored toolInfo); absent in older conversations. */
@@ -418,6 +420,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
           tool.preview = tool.result.slice(0, 160);
           tool.state = b.isError ? failedState(b.content) : 'done';
           const note = m.meta?.guard?.[b.toolUseId];
+          if (note) tool.outside = note.kind;
           if (note?.signals?.length) tool.flagged = note.kind;
           if (m.meta?.autoApproved?.includes(b.toolUseId)) tool.autoApproved = true;
           continue;
@@ -612,6 +615,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       // A tool's outside content looked like instructions (mail handed over is marked on its message instead).
       const tool = e.callId ? findBlock(items, 'tool', e.callId) : undefined;
       if (tool && e.note.signals.length) tool.flagged = e.note.kind;
+      if (tool) tool.outside = e.note.kind;
       return t;
     }
     case 'confirm.resolved': {

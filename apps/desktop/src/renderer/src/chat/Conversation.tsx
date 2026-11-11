@@ -1,5 +1,5 @@
 // The main pane: the transcript of one session, streamed live, and its input box.
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo } from '@spica/protocol';
 import { changesAfter } from '../store/relocate';
 import { filesOf, historyRef, isRunning, itemAtSeq, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
@@ -10,7 +10,7 @@ import { AnswerSources, AnswerToolsContext, AskCard, ChildNoteCard, ConfirmCard,
 import { Composer, type ComposerTools } from './Composer';
 import { answerText, MessageActions } from './MessageActions';
 import { answerSources } from './sources';
-import { WEB_IMAGES } from './answer-image';
+import { WEB_IMAGES, webImagesFor } from './answer-image';
 import { StatusLine } from './StatusLine';
 import { GUARD_FLAG_TEXT } from './format';
 import { SettingsChangeCard } from './SettingsChangeCard';
@@ -167,7 +167,11 @@ function Response({
   const blocks = view.blocks;
   const segs = segments(blocks);
   const files = filesOf(blocks, cards, moved, lists);
+  const tools = useContext(AnswerToolsContext);
+  const webImages = webImagesFor(blocks, live);
+  const answerTools = useMemo(() => (tools ? { ...tools, webImages } : null), [tools, webImages]);
   return (
+    <AnswerToolsContext.Provider value={answerTools}>
     <div className="turn-response" {...at}>
       {segs.map((s, i) => {
         if (s.kind === 'tools') {
@@ -225,6 +229,7 @@ function Response({
         />
       )}
     </div>
+    </AnswerToolsContext.Provider>
   );
 }
 

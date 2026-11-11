@@ -8,6 +8,17 @@
  */
 export const WEB_IMAGES: 'auto' | 'click' = 'auto';
 
+/**
+ * How an answer's pictures on the web show: WEB_IMAGES, except that an answer whose round brought in outside
+ * content (any call the core fenced as data) waits for a click, so text from a page or a mail cannot make the app
+ * fetch an address by itself. While the answer is still being written that is not known yet (the core says so with
+ * the stored results), so it waits too.
+ */
+export function webImagesFor(blocks: readonly { type: string; outside?: unknown }[], live: boolean): 'auto' | 'click' {
+  if (WEB_IMAGES === 'click' || live) return 'click';
+  return blocks.some((b) => b.type === 'tool' && b.outside) ? 'click' : 'auto';
+}
+
 export type ImageSource =
   | { kind: 'local'; path: string }
   | { kind: 'web'; url: string; host: string }
