@@ -18,6 +18,8 @@ export interface FilePreviewProps {
   /** 打开所在文件夹 (the file selected in Explorer); absent: no such button. */
   onReveal?: (path: string) => void;
   onClose(): void;
+  /** An Excel workbook: show its sheet number n (1-based). */
+  onSheet?: (n: number) => void;
   /** The preview over the whole conversation: whether it is, and the button's press. Absent: no such button. */
   max?: MaxState;
 }
@@ -52,15 +54,69 @@ function Lines({ text }: { text: string }) {
   );
 }
 
+/** An Excel sheet: its sheets as tabs above, the grid with Excel's column letters and row numbers. */
+function Sheet({ info, onSheet }: { info: Extract<PreviewInfo, { kind: 'sheet' }>; onSheet?: ((n: number) => void) | undefined }) {
+  return (
+    <>
+      {info.sheets.length > 1 ? (
+        <div className="tabs preview-sheets" role="tablist" aria-label="工作表">
+          {info.sheets.map((s, i) => (
+            <button key={`${i}|${s.name}`} type="button" role="tab" aria-selected={info.sheet === i + 1} className={info.sheet === i + 1 ? 'tab is-on' : 'tab'} onClick={() => onSheet?.(i + 1)}>
+              {s.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {info.truncated ? <p className="preview-note">仅显示前 {info.rows.length} 行（共 {info.sheets[info.sheet - 1]?.rows ?? info.rows.length} 行）</p> : null}
+      {info.rows.length ? (
+        <div className="preview-body preview-sheet">
+          <table>
+            <thead>
+              <tr>
+                <th aria-hidden />
+                {info.columns.map((c) => (
+                  <th key={c}>{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {info.rows.map((r) => (
+                <tr key={r.n}>
+                  <th>{r.n}</th>
+                  {info.columns.map((c, i) => (
+                    <td key={c}>{r.cells[i] ?? ''}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="preview-body preview-empty">
+          <p>此工作表为空</p>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** A Word document: shown as the text read from it (main/office-preview.ts), not a file with code of its own. */
+const WORD_NAME = /\.doc[xm]$/i;
+
+/** What a cut-off preview says: a Word document stops after 500 paragraphs, text after 512 KB. */
+function cutNote(info: { name: string; size: number }): string {
+  return WORD_NAME.test(info.name) ? '仅显示前 500 段' : `仅显示前 512 KB（共 ${sizeText(info.size)}）`;
+}
+
 /** What can be shown both ways in the panel: as a page or picture, and as its code. */
 function codeOf(info: PreviewInfo | null): string | null {
   if (!info) return null;
-  if (info.kind === 'html' || info.kind === 'markdown') return info.text;
+  if (info.kind === 'html' || (info.kind === 'markdown' && !WORD_NAME.test(info.name))) return info.text;
   if (info.kind === 'image' && info.text !== undefined) return info.text;
   return null;
 }
 
-export function FilePreview({ info, onOpenExternal, onReveal, onClose, max }: FilePreviewProps) {
+export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, max }: FilePreviewProps) {
   // 代码 / 预览: per file (another file opens as its preview again).
   const id = info ? `${info.kind}|${info.path}|${info.name}` : '';
   const [codeFor, setCodeFor] = useState<string | null>(null);
@@ -105,9 +161,11 @@ export function FilePreview({ info, onOpenExternal, onReveal, onClose, max }: Fi
         <div className="preview-body preview-image-wrap">
           <img className="preview-image" src={info.url} alt={info.name} />
         </div>
+      ) : info.kind === 'sheet' ? (
+        <Sheet info={info} onSheet={onSheet} />
       ) : info.kind === 'markdown' || info.kind === 'text' || info.kind === 'html' ? (
         <>
-          {info.truncated ? <p className="preview-note">仅显示前 512 KB（共 {sizeText(info.size)}）</p> : null}
+          {info.truncated ? <p className="preview-note">{cutNote(info)}</p> : null}
           {info.kind === 'markdown' ? (
             <div className="preview-body preview-md">
               <MarkdownText text={info.text} />
@@ -129,13 +187,13 @@ export function FilePreview({ info, onOpenExternal, onReveal, onClose, max }: Fi
 }
 
 /** Loads a preview whenever the requested file changes. */
-export function usePreview(load: (sessionId: string | null, path: string) => Promise<PreviewInfo>, want: { sessionId: string | null; path: string } | null): PreviewInfo | null {
+export function usePreview(load: (sessionId: string | null, path: string, sheet?: number) => Promise<PreviewInfo>, want: { sessionId: string | null; path: string; sheet?: number } | null): PreviewInfo | null {
   const [state, setState] = useState<{ key: string; info: PreviewInfo } | null>(null);
-  const key = want ? `${want.sessionId ?? ''}|${want.path}` : '';
+  const key = want ? `${want.sessionId ?? ''}|${want.path}|${want.sheet ?? ''}` : '';
   useEffect(() => {
     if (!want) return;
     let alive = true;
-    load(want.sessionId, want.path)
+    load(want.sessionId, want.path, want.sheet)
       .then((info) => alive && setState({ key, info }))
       .catch(() => alive && setState({ key, info: { kind: 'missing', name: want.path.split(/[\\/]/).pop() ?? want.path, path: want.path, size: 0, message: '无法读取文件。' } }));
     return () => {

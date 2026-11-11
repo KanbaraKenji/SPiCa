@@ -76,7 +76,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [newProject, setNewProject] = useState<null | { name?: string; mailId?: string }>(null);
   /** The file shown in the right panel instead of the details, if any. */
   // A file to show in the right panel, or (inline) a page from an answer's HTML code block.
-  const [preview, setPreview] = useState<{ sessionId: string | null; path: string; inline?: PreviewInfo } | null>(null);
+  const [preview, setPreview] = useState<{ sessionId: string | null; path: string; sheet?: number; inline?: PreviewInfo } | null>(null);
   const loadedPreview = usePreview(bridge.preview, preview && !preview.inline ? preview : null);
   const previewInfo = preview?.inline ?? loadedPreview;
   /** The project the user asked to delete (waiting for the confirmation). */
@@ -874,6 +874,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                   }
                 }}
                 onReveal={(p) => void bridge.showInFolder(p).then(showNotice, (err: unknown) => showNotice(friendlyError(err)))}
+                onSheet={(n) => setPreview((p) => (p ? { ...p, sheet: n } : p))}
                 onClose={() => setPreview(null)}
                 max={panelMax}
               />

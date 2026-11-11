@@ -51,7 +51,9 @@ export type PreviewInfo =
   /** `text`: an SVG's source, so the panel can show it as code too. */
   | { kind: 'pdf' | 'image'; name: string; path: string; size: number; url: string; text?: string }
   | { kind: 'markdown' | 'text' | 'html'; name: string; path: string; size: number; text: string; truncated: boolean }
-  | { kind: 'unsupported' | 'missing'; name: string; path: string; size: number; message: string };
+  | { kind: 'unsupported' | 'missing'; name: string; path: string; size: number; message: string }
+  /** An Excel sheet (`sheet`, 1-based, of `sheets`): Excel's column letters and row numbers, at most 500 rows. */
+  | { kind: 'sheet'; name: string; path: string; size: number; sheets: { name: string; rows: number; cols: number }[]; sheet: number; columns: string[]; rows: { n: number; cells: string[] }[]; truncated: boolean };
 
 /** 设置 › 常规 › 网络: what the core uses now (proxy password hidden) and problems, in words. */
 export interface NetworkState {
@@ -120,7 +122,8 @@ export interface DesktopBridge extends SpicaBridge {
   /** Asks where to save, then writes the usage log (JSON Lines; keys and addresses removed by the core). */
   exportUsageLog(req: UsageLogRequest): Promise<UsageLogResult>;
   /** A file of this session (relative paths are in its folder), ready for the right panel. */
-  preview(sessionId: string | null, path: string): Promise<PreviewInfo>;
+  /** `sheet`: which sheet of an Excel workbook (1-based; the first when absent). */
+  preview(sessionId: string | null, path: string, sheet?: number): Promise<PreviewInfo>;
   network(): Promise<NetworkState | null>;
   /** Whether local scripts can connect now, and where; null when off (or not possible). */
   localConnect(): Promise<LocalConnectInfo | null>;

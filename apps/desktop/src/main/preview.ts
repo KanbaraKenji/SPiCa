@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { open, readFile, stat } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import type { PreviewInfo } from '../shared/bridge';
+import { EXCEL, officePreview, WORD } from './office-preview';
 
 export const PREVIEW_SCHEME = 'spica-file';
 /** Text beyond this is not shown (the panel says so and offers the system program). */
@@ -21,7 +22,7 @@ const TEXT = new Set([
 
 export type PreviewKind = PreviewInfo['kind'];
 
-export function kindOf(path: string): Exclude<PreviewKind, 'missing'> {
+export function kindOf(path: string): Exclude<PreviewKind, 'missing' | 'sheet'> {
   const ext = extname(path).toLowerCase();
   if (ext === '.pdf') return 'pdf';
   if (IMAGE.has(ext)) return 'image';
@@ -66,7 +67,8 @@ export class PreviewFiles {
   }
 }
 
-export async function readPreview(path: string, files: PreviewFiles): Promise<PreviewInfo> {
+/** `sheet`: which sheet of an Excel workbook (1-based; the first when absent). */
+export async function readPreview(path: string, files: PreviewFiles, sheet?: number): Promise<PreviewInfo> {
   const name = basename(path);
   let size: number;
   try {
@@ -76,6 +78,8 @@ export async function readPreview(path: string, files: PreviewFiles): Promise<Pr
   } catch {
     return { kind: 'missing', name, path, size: 0, message: '找不到文件，可能已被移动或删除。' };
   }
+  const ext = extname(path).toLowerCase();
+  if (WORD.has(ext) || EXCEL.has(ext)) return officePreview(path, name, size, ext, sheet);
   const kind = kindOf(path);
   if (kind === 'pdf' || kind === 'image') {
     // An SVG is text too: its source comes along for the panel's 代码 view.

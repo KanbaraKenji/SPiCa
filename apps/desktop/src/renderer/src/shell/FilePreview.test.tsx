@@ -76,4 +76,35 @@ describe('the file’s place, from the preview head', () => {
     render(<FilePreview info={{ kind: 'missing', name: 'x.txt', path: 'D:/x.txt', size: 0, message: '找不到文件。' }} onOpenExternal={vi.fn()} onReveal={vi.fn()} onClose={vi.fn()} />);
     expect([...document.querySelectorAll('.preview-head button')].map((b) => b.getAttribute('aria-label'))).toEqual(['关闭预览']);
   });
+
+  it('an Excel sheet: a tab per sheet, the grid with column letters and row numbers, and a note when cut', () => {
+    const onSheet = vi.fn();
+    const info = {
+      kind: 'sheet' as const,
+      name: '库存.xlsx',
+      path: 'D:/库存.xlsx',
+      size: 9000,
+      sheets: [{ name: '库存', rows: 900, cols: 2 }, { name: '进货记录', rows: 3, cols: 4 }],
+      sheet: 1,
+      columns: ['A', 'B'],
+      rows: [{ n: 1, cells: ['品名', '数量'] }, { n: 2, cells: ['键盘', '150'] }],
+      truncated: true,
+    };
+    render(<FilePreview info={info} onOpenExternal={vi.fn()} onSheet={onSheet} onClose={vi.fn()} />);
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['库存', '进货记录']);
+    fireEvent.click(screen.getByRole('tab', { name: '进货记录' }));
+    expect(onSheet).toHaveBeenCalledWith(2);
+    expect([...document.querySelectorAll('.preview-sheet thead th')].map((t) => t.textContent)).toEqual(['', 'A', 'B']);
+    expect([...document.querySelectorAll('.preview-sheet tbody tr')].map((r) => r.textContent)).toEqual(['1品名数量', '2键盘150']);
+    expect(screen.getByText('仅显示前 2 行（共 900 行）')).toBeTruthy();
+    // Not a file with code of its own.
+    expect(screen.queryByRole('button', { name: '代码' })).toBeNull();
+  });
+
+  it('a Word document is shown as its text, says where it was cut, and has no 代码 view', () => {
+    render(<FilePreview info={{ kind: 'markdown', name: '纪要.docx', path: 'D:/纪要.docx', size: 9000, text: '# 纪要', truncated: true }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByRole('heading', { name: '纪要' })).toBeTruthy();
+    expect(screen.getByText('仅显示前 500 段')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '代码' })).toBeNull();
+  });
 });

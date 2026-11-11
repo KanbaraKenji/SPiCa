@@ -35,7 +35,10 @@ describe('file preview', () => {
     expect(pdf.kind).toBe('pdf');
     expect(pdf.kind === 'pdf' ? files.pathOf(pdf.url) : '').toBe(join(dir, 'r.pdf'));
     expect(files.pathOf('spica-file://f/not-a-token')).toBeUndefined();
-    expect(await readPreview(join(dir, 'q.xlsx'), files)).toMatchObject({ kind: 'unsupported', message: '不支持预览此类文件。' });
+    // A workbook that cannot be read (main/office-preview.ts reads the good ones).
+    expect(await readPreview(join(dir, 'q.xlsx'), files)).toMatchObject({ kind: 'unsupported', message: '无法读取此文件。' });
+    writeFileSync(join(dir, 'z.bin'), 'x');
+    expect(await readPreview(join(dir, 'z.bin'), files)).toMatchObject({ kind: 'unsupported', message: '不支持预览此类文件。' });
     expect(await readPreview(join(dir, 'gone.txt'), files)).toMatchObject({ kind: 'missing' });
     expect(await readPreview(dir, files)).toMatchObject({ kind: 'unsupported', message: '不是文件' });
   });

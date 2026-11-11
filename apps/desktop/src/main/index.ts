@@ -630,11 +630,11 @@ ipcMain.handle(DesktopChannel.Images, async (_e, op: unknown, a: unknown, b: unk
   return null;
 });
 
-ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unknown) => {
+ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unknown, sheet: unknown) => {
   const raw = typeof path === 'string' ? path : '';
   const session = typeof sessionId === 'string' && sessionId ? await backend.getSession(sessionId).catch(() => undefined) : undefined;
   const full = isAbsolute(raw) ? raw : resolvePath(session?.cwd || app.getPath('home'), raw);
-  return readPreview(full, previewFiles);
+  return readPreview(full, previewFiles, typeof sheet === 'number' && Number.isInteger(sheet) && sheet > 0 ? sheet : undefined);
 });
 
 ipcMain.handle(DesktopChannel.LocalConnect, async (): Promise<LocalConnectInfo | null> => {
