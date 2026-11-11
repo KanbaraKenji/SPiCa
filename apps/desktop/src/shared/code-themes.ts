@@ -4,7 +4,8 @@
 // offered for the other.
 
 export interface CodePalette {
-  bg: string;
+  /** Absent: the skin's own code background. */
+  bg?: string;
   fg: string;
   comment: string;
   keyword: string;
@@ -15,11 +16,31 @@ export interface CodePalette {
   /** Built-in names, types, tags. */
   type: string;
   variable: string;
+  /** Object keys, attributes. */
   attr: string;
+  /** Lines added and removed (diff); a background absent: the skin's. */
   addition: string;
-  additionBg: string;
+  additionBg?: string;
   deletion: string;
-  deletionBg: string;
+  deletionBg?: string;
+  // Finer parts some themes colour on their own; absent: as the group they belong to above.
+  /** Function names where they are declared (title.function). */
+  fn?: string;
+  /** Built-in names (console, Math). */
+  builtIn?: string;
+  /** `this`, `self` (variable.language). */
+  language?: string;
+  params?: string;
+  /** Properties (a.b), object keys. */
+  property?: string;
+  /** HTML and CSS attribute names. */
+  attrName?: string;
+  regex?: string;
+  /** true, false, null. */
+  literal?: string;
+  punctuation?: string;
+  /** Preprocessor lines, decorators. */
+  meta?: string;
 }
 
 export interface CodeTheme {
@@ -33,8 +54,19 @@ export interface CodeTheme {
 
 export const SKIN_CODE_THEME = 'skin';
 
+/**
+ * Claude 风格: the code colours of the Claude desktop app (one per kind of code element, taken from its package),
+ * on the skin's own code background. Everything not listed takes the text colour.
+ */
+const CLAUDE_DARK = { fg: 'hsl(220, 15%, 93%)', comment: 'hsl(220, 10%, 55%)', punctuation: 'hsl(220, 15%, 85%)', keyword: 'hsl(280, 85%, 72%)', string: 'hsl(95, 75%, 65%)', regex: 'hsl(95, 70%, 63%)', number: 'hsl(180, 80%, 65%)', property: 'hsl(355, 85%, 72%)', attrName: 'hsl(355, 80%, 70%)', fn: 'hsl(210, 100%, 72%)', variable: 'hsl(30, 95%, 68%)', params: 'hsl(30, 90%, 67%)' };
+const CLAUDE_LIGHT = { fg: 'hsl(220, 20%, 10%)', comment: 'hsl(220, 10%, 48%)', punctuation: 'hsl(220, 15%, 20%)', keyword: 'hsl(280, 100%, 38%)', string: 'hsl(120, 100%, 25%)', regex: 'hsl(120, 90%, 27%)', number: 'hsl(180, 100%, 25%)', property: 'hsl(355, 90%, 38%)', attrName: 'hsl(355, 85%, 40%)', fn: 'hsl(215, 100%, 38%)', variable: 'hsl(25, 100%, 35%)', params: 'hsl(25, 95%, 37%)' };
+function claude(c: typeof CLAUDE_DARK): CodePalette {
+  return { ...c, title: c.fg, type: c.fg, attr: c.property, builtIn: c.keyword, language: c.keyword, literal: c.fg, meta: c.fg, addition: c.string, deletion: c.property };
+}
+
 export const CODE_THEMES: readonly CodeTheme[] = [
   { id: SKIN_CODE_THEME, name: '跟随皮肤' },
+  { id: 'claude', name: 'Claude 风格', light: claude(CLAUDE_LIGHT), dark: claude(CLAUDE_DARK) },
   {
     id: 'github',
     name: 'GitHub',
@@ -92,23 +124,41 @@ export function codeThemeId(value: unknown, scheme: 'light' | 'dark'): string {
 export function codeThemeVars(id: string, scheme: 'light' | 'dark'): Record<string, string> {
   const p = CODE_THEMES.find((t) => t.id === id)?.[scheme];
   if (!p) return {};
-  return {
-    '--code-bg': p.bg,
-    '--code-fg': p.fg,
-    '--hl-comment': p.comment,
-    '--hl-keyword': p.keyword,
-    '--hl-string': p.string,
-    '--hl-number': p.number,
-    '--hl-title': p.title,
-    '--hl-type': p.type,
-    '--hl-variable': p.variable,
-    '--hl-attr': p.attr,
-    '--hl-addition': p.addition,
-    '--hl-addition-bg': p.additionBg,
-    '--hl-deletion': p.deletion,
-    '--hl-deletion-bg': p.deletionBg,
-  };
+  const out: Record<string, string> = {};
+  for (const [key, name] of Object.entries(VAR_OF) as [keyof CodePalette, string][]) {
+    const v = p[key];
+    if (v) out[name] = v;
+  }
+  return out;
 }
 
+/** The CSS variable for each part of a palette (styles.css .hl-* rules). */
+const VAR_OF: Record<keyof CodePalette, string> = {
+  bg: '--code-bg',
+  fg: '--code-fg',
+  comment: '--hl-comment',
+  keyword: '--hl-keyword',
+  string: '--hl-string',
+  number: '--hl-number',
+  title: '--hl-title',
+  type: '--hl-type',
+  variable: '--hl-variable',
+  attr: '--hl-attr',
+  addition: '--hl-addition',
+  additionBg: '--hl-addition-bg',
+  deletion: '--hl-deletion',
+  deletionBg: '--hl-deletion-bg',
+  fn: '--hl-function',
+  builtIn: '--hl-built-in',
+  language: '--hl-language',
+  params: '--hl-params',
+  property: '--hl-property',
+  attrName: '--hl-attr-name',
+  regex: '--hl-regex',
+  literal: '--hl-literal',
+  punctuation: '--hl-punctuation',
+  meta: '--hl-meta',
+};
+
 /** Every variable a palette may set (to clear them when going back to 跟随皮肤). */
-export const CODE_THEME_VARS = Object.keys(codeThemeVars('github', 'light'));
+export const CODE_THEME_VARS = Object.values(VAR_OF);

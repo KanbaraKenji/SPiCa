@@ -83,10 +83,15 @@ interface HNode {
   children?: HNode[];
 }
 
-/** highlight.js class names (hljs-keyword, hljs-title function_) as the page's own (hl-keyword, hl-title). */
+/**
+ * highlight.js class names as the page's own: hljs-keyword as hl-keyword, and a scope's narrower part with it
+ * (hljs-title function_ as hl-title hl-function_, hljs-variable language_ for `this` as hl-variable hl-language_).
+ */
 function classOf(className: unknown): string | undefined {
-  const names = (Array.isArray(className) ? className : []).filter((n): n is string => typeof n === 'string' && n.startsWith('hljs-'));
-  return names.length ? names.map((n) => `hl-${n.slice(5)}`).join(' ') : undefined;
+  const names = (Array.isArray(className) ? className : []).filter((n): n is string => typeof n === 'string');
+  const own = names.filter((n) => n.startsWith('hljs-')).map((n) => `hl-${n.slice(5)}`);
+  if (!own.length) return undefined;
+  return [...own, ...names.filter((n) => /^[a-z]+_+$/.test(n)).map((n) => `hl-${n}`)].join(' ');
 }
 
 function toReact(nodes: HNode[] | undefined, key: string): ReactNode[] {

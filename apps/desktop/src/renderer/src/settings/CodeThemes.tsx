@@ -14,9 +14,15 @@ const SAMPLE: { text: string; change?: '-' | '+' }[] = [
   { text: '}' },
 ];
 
-/** The variables a preview needs: the theme's, or for 跟随皮肤 the built-in light or dark skin's own colours. */
+/**
+ * The variables a preview needs: the built-in light or dark skin's own colours (跟随皮肤), with the theme's over
+ * them; what a theme leaves to the skin (Claude 风格's background) shows as on that skin, whatever skin is on now.
+ */
 function previewVars(id: string, scheme: 'light' | 'dark'): CSSProperties {
-  if (id !== SKIN_CODE_THEME) return codeThemeVars(id, scheme) as CSSProperties;
+  return { ...skinVars(scheme), ...(id === SKIN_CODE_THEME ? {} : codeThemeVars(id, scheme)) } as CSSProperties;
+}
+
+function skinVars(scheme: 'light' | 'dark'): Record<string, string | undefined> {
   const t = deriveTokens(scheme === 'light' ? LIGHT_SKIN : DARK_SKIN);
   return {
     '--code-bg': t['--spica-surface'],
@@ -32,7 +38,7 @@ function previewVars(id: string, scheme: 'light' | 'dark'): CSSProperties {
     '--hl-title': t['--spica-ink'],
     '--hl-addition-bg': `color-mix(in srgb, ${t['--spica-success']} 16%, transparent)`,
     '--hl-deletion-bg': t['--spica-danger-soft'],
-  } as CSSProperties;
+  };
 }
 
 export function CodeThemePreview({ id, scheme }: { id: string; scheme: 'light' | 'dark' }) {

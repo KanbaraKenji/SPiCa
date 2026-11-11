@@ -18,6 +18,13 @@ describe('code colours', () => {
     expect(block().textContent).toBe(code + '\n');
   });
 
+  it('a scope’s narrower part comes along (a declared function’s name, this), so a theme can colour it on its own', () => {
+    render(<MarkdownText text={'```js\nfunction greet(name) {\n  return this.x;\n}\n```'} />);
+    expect(document.querySelector('.md pre .hl-title.hl-function_')?.textContent).toBe('greet');
+    expect(document.querySelector('.md pre .hl-params')?.textContent).toBe('name');
+    expect(document.querySelector('.md pre .hl-variable.hl-language_')?.textContent).toBe('this');
+  });
+
   it('aliases work (ps1, bat, sh, html)', () => {
     for (const a of ['ps1', 'bat', 'sh', 'html', 'ts', 'py']) expect(blockLanguage(`language-${a}`), a).toBe(a);
   });

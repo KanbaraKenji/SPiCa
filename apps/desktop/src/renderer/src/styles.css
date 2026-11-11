@@ -1231,6 +1231,47 @@ pre .hl-deletion {
   background: var(--hl-deletion-bg);
 }
 
+/* Finer parts a code theme may colour on its own (Claude 风格 does); without it, as their group above. */
+pre .hl-built_in {
+  color: var(--hl-built-in, var(--hl-type));
+}
+
+pre .hl-title.hl-function_ {
+  color: var(--hl-function, var(--hl-title));
+}
+
+pre .hl-variable.hl-language_ {
+  color: var(--hl-language, var(--hl-variable));
+}
+
+pre .hl-regexp {
+  color: var(--hl-regex, var(--hl-string));
+}
+
+pre .hl-literal {
+  color: var(--hl-literal, var(--hl-number));
+}
+
+pre .hl-meta {
+  color: var(--hl-meta, var(--hl-comment));
+}
+
+pre .hl-attribute {
+  color: var(--hl-attr-name, var(--hl-attr));
+}
+
+pre .hl-params {
+  color: var(--hl-params, inherit);
+}
+
+pre .hl-property {
+  color: var(--hl-property, inherit);
+}
+
+pre .hl-punctuation {
+  color: var(--hl-punctuation, inherit);
+}
+
 /* 设置 › 外观 › 代码: a picker and a preview for light skins, the same for dark ones, side by side. */
 .code-themes {
   display: grid;

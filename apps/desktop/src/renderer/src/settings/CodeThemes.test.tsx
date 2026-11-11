@@ -10,7 +10,7 @@ afterEach(cleanup);
 
 describe('code themes', () => {
   it('a few well-known ones, each with what it has: light, dark or both', () => {
-    expect(CODE_THEMES.map((t) => t.id)).toEqual([SKIN_CODE_THEME, 'github', 'one', 'dracula', 'solarized', 'tokyo-night', 'catppuccin']);
+    expect(CODE_THEMES.map((t) => t.id)).toEqual([SKIN_CODE_THEME, 'claude', 'github', 'one', 'dracula', 'solarized', 'tokyo-night', 'catppuccin']);
     expect(codeThemesFor('light').map((t) => t.id)).not.toContain('dracula');
     expect(codeThemesFor('dark').map((t) => t.id)).toContain('dracula');
     for (const t of CODE_THEMES.filter((x) => x.id !== SKIN_CODE_THEME)) expect(t.light ?? t.dark, t.id).toBeTruthy();
@@ -39,6 +39,45 @@ describe('code themes', () => {
     expect(root.style.getPropertyValue('--code-bg')).toBe('#f6f8fa');
     applyCodeTheme({ light: SKIN_CODE_THEME, dark: SKIN_CODE_THEME }, 'light', root);
     expect(root.style.getPropertyValue('--code-bg')).toBe('');
+  });
+});
+
+describe('Claude 风格', () => {
+  it('the Claude app’s colours, one per kind of code element, on the skin’s own code background', () => {
+    const dark = codeThemeVars('claude', 'dark');
+    expect(dark).not.toHaveProperty('--code-bg');
+    expect(dark).toMatchObject({
+      '--code-fg': 'hsl(220, 15%, 93%)',
+      '--hl-keyword': 'hsl(280, 85%, 72%)',
+      '--hl-built-in': 'hsl(280, 85%, 72%)',
+      '--hl-language': 'hsl(280, 85%, 72%)',
+      '--hl-function': 'hsl(210, 100%, 72%)',
+      '--hl-params': 'hsl(30, 90%, 67%)',
+      '--hl-property': 'hsl(355, 85%, 72%)',
+      '--hl-attr': 'hsl(355, 85%, 72%)',
+      '--hl-attr-name': 'hsl(355, 80%, 70%)',
+      '--hl-regex': 'hsl(95, 70%, 63%)',
+      '--hl-punctuation': 'hsl(220, 15%, 85%)',
+      // Everything else in the text colour.
+      '--hl-title': 'hsl(220, 15%, 93%)',
+      '--hl-type': 'hsl(220, 15%, 93%)',
+      '--hl-literal': 'hsl(220, 15%, 93%)',
+    });
+    expect(codeThemeVars('claude', 'light')['--hl-function']).toBe('hsl(215, 100%, 38%)');
+    // The other themes set none of the finer parts: those keep their group's colour.
+    expect(Object.keys(codeThemeVars('github', 'dark'))).not.toContain('--hl-function');
+  });
+
+  it('named the same in both lists; its preview shows the light or dark skin’s background, whatever skin is on', () => {
+    render(<CodeThemes value={{ light: 'claude', dark: 'claude' }} onChange={vi.fn()} />);
+    for (const name of ['浅色代码配色', '深色代码配色']) {
+      const sel = screen.getByRole('combobox', { name }) as HTMLSelectElement;
+      expect(sel.selectedOptions[0]?.textContent).toBe('Claude 风格');
+    }
+    const [light, dark] = [...document.querySelectorAll('.code-theme-preview')] as HTMLElement[];
+    expect(light!.style.getPropertyValue('--code-bg')).not.toBe(dark!.style.getPropertyValue('--code-bg'));
+    expect(light!.style.getPropertyValue('--code-bg')).toBeTruthy();
+    expect(dark!.style.getPropertyValue('--hl-function')).toBe('hsl(210, 100%, 72%)');
   });
 });
 
