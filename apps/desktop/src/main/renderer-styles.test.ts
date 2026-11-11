@@ -151,3 +151,10 @@ describe('a plugin’s icon for each skin', () => {
     expect(block(":root[data-scheme='dark'] .plugin-icon.is-light,\n:root:not([data-scheme='dark']) .plugin-icon.is-dark")).toContain('display: none');
   });
 });
+
+describe('the row under every message', () => {
+  it('is always there: no rule hides it until the pointer comes', () => {
+    expect(block('.msg-actions')).not.toContain('visibility');
+    expect(css).not.toMatch(/:hover > \.msg-actions/);
+  });
+});

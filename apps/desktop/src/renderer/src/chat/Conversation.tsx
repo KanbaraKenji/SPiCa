@@ -1,6 +1,6 @@
 // The main pane: the transcript of one session, streamed live, and its input box.
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CwdChangeMeta, MailItem, SessionInfo } from '@spica/protocol';
+import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo } from '@spica/protocol';
 import { changesAfter } from '../store/relocate';
 import { filesOf, historyRef, isRunning, itemAtSeq, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
 import { ImageViewer } from '../ui/ImageViewer';
@@ -8,6 +8,7 @@ import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
 import { AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
 import { Composer, type ComposerTools } from './Composer';
+import { answerText, MessageActions } from './MessageActions';
 import { StatusLine } from './StatusLine';
 import { GUARD_FLAG_TEXT } from './format';
 import { SettingsChangeCard } from './SettingsChangeCard';
@@ -29,6 +30,8 @@ export interface ConversationActions {
   openModelSettings?: () => void;
   /** A URL to show a sent picture. */
   imageUrl?: (path: string) => Promise<string>;
+  /** 重新生成 the last answer (`messageId`: the answer it was clicked under). */
+  regenerate?: (messageId?: string) => void;
 }
 
 /** Why a picture was not sent, in words. */
@@ -103,9 +106,45 @@ function segments(blocks: Block[]): Segment[] {
 }
 
 /** `since`: the run's start, while this answer is the one being written (its last line then says what the run is doing, with the clock). */
-function Response({ item, live, since, actions, cards, moved, at }: { item: Extract<Item, { kind: 'response' }>; live: boolean; since?: number | undefined; actions: ConversationActions; cards: Transcript['fileCards']; moved?: CwdChangeMeta; at?: Record<string, string> }) {
-  const segs = segments(item.blocks);
-  const files = filesOf(item.blocks, cards, moved);
+function Response({
+  item,
+  live,
+  since,
+  actions,
+  cards,
+  moved,
+  at,
+  regen,
+  after,
+}: {
+  item: Extract<Item, { kind: 'response' }>;
+  live: boolean;
+  since?: number | undefined;
+  actions: ConversationActions;
+  cards: Transcript['fileCards'];
+  moved?: CwdChangeMeta;
+  at?: Record<string, string>;
+  regen?: { state: RegenerateState; last: boolean } | undefined;
+  /** How many items follow it in the conversation. */
+  after: number;
+}) {
+  // The answers 重新生成 left, oldest first, then this one; the newest shows unless another is picked.
+  const all = [...(item.versions ?? []), { blocks: item.blocks, at: item.at }];
+  const [picked, setPicked] = useState<number | null>(null);
+  const [count, setCount] = useState(all.length);
+  const [seenAfter, setSeenAfter] = useState(after);
+  if (count !== all.length || seenAfter !== after) {
+    // A new answer came, or a message was sent after this one: back to the newest (the conversation goes on from it).
+    setCount(all.length);
+    setSeenAfter(after);
+    setPicked(null);
+  }
+  const shown = picked ?? all.length - 1;
+  const newest = shown === all.length - 1;
+  const view = all[shown]!;
+  const blocks = view.blocks;
+  const segs = segments(blocks);
+  const files = filesOf(blocks, cards, moved);
   return (
     <div className="turn-response" {...at}>
       {segs.map((s, i) => {
@@ -135,13 +174,32 @@ function Response({ item, live, since, actions, cards, moved, at }: { item: Extr
           case 'confirm':
             return <ConfirmCard key={b.callId} block={b} onDecide={(ok) => actions.confirm(b.callId, ok)} />;
           case 'suggest':
-            return live ? null : <SuggestCard key={b.callId} block={b} onPick={actions.send} />;
+            // Not on an older answer: the next message always follows the newest one.
+            return live || !newest ? null : <SuggestCard key={b.callId} block={b} onPick={actions.send} />;
           default:
             return null;
         }
       })}
       {live ? null : <FileCards files={files} onOpen={actions.openFile} />}
-      {item.interrupted ? <p className="turn-note">（中断）</p> : null}
+      {item.interrupted && newest ? <p className="turn-note">（中断）</p> : null}
+      {live ? null : (
+        <MessageActions
+          text={answerText(blocks)}
+          at={view.at}
+          versions={all.length > 1 ? { shown, count: all.length, onShow: (n) => setPicked(n === all.length - 1 ? null : n) } : undefined}
+          regenerate={
+            regen && actions.regenerate && newest
+              ? {
+                  ...regen,
+                  onRegenerate: () => {
+                    setPicked(null);
+                    actions.regenerate?.(item.messageIds?.[item.messageIds.length - 1]);
+                  },
+                }
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 }
@@ -248,6 +306,8 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
   // Answers before the working-folder note: their files are where that note moved them (or left them).
   const moves = useMemo(() => changesAfter(items), [items]);
   const lastIndex = items.length - 1;
+  // The core's word on 重新生成 for the last round.
+  const regen = session?.regenerate;
   // Opened at a found message: the item that holds it, scrolled to once it is there, and marked.
   const foundItem = found?.seq !== undefined ? itemAtSeq(transcript, found.seq) : undefined;
   const scrolledTo = useRef<string | null>(null);
@@ -280,7 +340,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
             {items.map((item, i) => {
               if (item.kind === 'user')
                 return (
-                  <Fragment key={item.id}>
+                  <div key={item.id} className="turn-mine">
                     <div className={item.steer ? 'turn-user is-steer' : 'turn-user'} {...mark(item.id)}>
                       {item.steer ? <span className="turn-user-tag">补充</span> : null}
                       <p className="turn-user-text">{item.text}</p>
@@ -311,7 +371,18 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                         />
                       </div>
                     ) : null}
-                  </Fragment>
+                    <MessageActions
+                      mine
+                      text={item.text}
+                      at={item.at}
+                      regenerate={
+                        // A round that ended without any answer (an error before a word): 重新生成 from the message itself.
+                        regen && actions.regenerate && item.id === regen.anchorId && items[i + 1]?.kind !== 'response' && !running
+                          ? { state: regen, last: true, onRegenerate: () => actions.regenerate?.() }
+                          : undefined
+                      }
+                    />
+                  </div>
                 );
               if (item.kind === 'mail') return <MailNote key={item.id} ids={item.mailIds} flagged={item.flagged} actions={actions} />;
               if (item.kind === 'settings') return <SettingsChangeCard key={item.id} change={item.change} onOpenSettings={actions.openModelSettings} />;
@@ -323,7 +394,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                     {item.text}
                   </p>
                 );
-              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} actions={actions} cards={transcript.fileCards} moved={moves.get(item.id)} at={mark(item.id)} />;
+              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} after={lastIndex - i} regen={regen && session?.role === 'top' ? { state: regen, last: item.anchorId === regen.anchorId || items[i - 1]?.id === regen.anchorId } : undefined} actions={actions} cards={transcript.fileCards} moved={moves.get(item.id)} at={mark(item.id)} />;
             })}
             <StatusLine transcript={transcript} />
             {waiting.map((w) => (

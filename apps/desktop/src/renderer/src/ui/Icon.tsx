@@ -17,6 +17,7 @@ const PATHS = {
   // A confirmation (something needs your permission).
   shield: 'M8 1.8l5 1.9v4.1c0 3.1-2.1 5.3-5 6.4-2.9-1.1-5-3.3-5-6.4V3.7z',
   chevronRight: 'M6 4l4 4-4 4',
+  chevronLeft: 'M10 4L6 8l4 4',
   chevronDown: 'M4 6l4 4 4-4',
   back: 'M10 4L6 8l4 4',
   send: 'M8 13V3 M4 7l4-4 4 4',

@@ -862,8 +862,13 @@ button.tree-twisty:hover {
   border: 1px solid transparent;
 }
 
-.turn-user:first-child {
+.turn-mine:first-child > .turn-user {
   margin-top: 0;
+}
+
+/* A message of yours with what goes under it (pictures, files, its row): laid out as before, one box to hover. */
+.turn-mine {
+  display: contents;
 }
 
 .turn-user-text {
@@ -4800,4 +4805,51 @@ button.ctx-row:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+/* The row under every message: ‹ 1 / 2 ›, 复制, 重新生成, the time; always there, not only on hover. */
+.msg-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  margin: -4px 0 0 -6px;
+  color: var(--spica-muted);
+}
+
+.msg-actions.is-mine {
+  align-self: flex-end;
+  margin: -4px -6px 0 0;
+}
+
+.icon-btn.msg-action {
+  width: 28px;
+  height: 28px;
+}
+
+.icon-btn.msg-action[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.icon-btn.msg-action[aria-disabled='true']:hover {
+  background: none;
+}
+
+.msg-versions {
+  display: inline-flex;
+  align-items: center;
+}
+
+.msg-versions-text {
+  padding: 0 2px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.msg-time {
+  margin: 0 6px;
+  font-size: 12px;
+  color: var(--spica-faint);
+  font-variant-numeric: tabular-nums;
 }

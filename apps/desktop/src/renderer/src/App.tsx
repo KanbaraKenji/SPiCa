@@ -558,6 +558,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     openSession: (sid) => openSession(sid),
     openFound,
     resume: () => id && void agent.resume(id),
+    regenerate: (messageId) => id && void agent.regenerate(id, messageId),
     ...(mail.supported ? { mailById, openInbox: () => setView('inbox') } : {}),
     openModelSettings: () => {
       setSettingsTab('models');
