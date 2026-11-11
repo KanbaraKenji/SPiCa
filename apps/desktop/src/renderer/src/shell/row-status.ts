@@ -17,7 +17,7 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
 /**
  * What a row can show, most pressing first. Only one is drawn at a time:
  * waiting for you (yellow dot) > error, interrupted (red dot) > running (ring) >
- * news: a sub-task finished and not opened yet (blue dot) > queued > stopped.
+ * news: a sub-task finished and not opened yet (blue dot) > queued > stopped (red dot too).
  * Idle rows and finished ones already opened show nothing.
  */
 export type SlotKind = 'waiting' | 'error' | 'running' | 'news' | 'queued' | 'stopped';
