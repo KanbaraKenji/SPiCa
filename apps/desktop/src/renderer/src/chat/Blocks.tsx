@@ -1,6 +1,6 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
-import { createContext, memo, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { HistoryCardMeta } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -11,6 +11,7 @@ import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
 import { fullPath, openablePathKind } from './local-path';
 import { tableRows, toCsv, toHtml, toTsv } from './table-data';
+import { blockLanguage, highlightCode } from './highlight';
 import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS, toolLabel, toolTarget } from './format';
 
 /** Opens a conversation by id, at message number `seq` when given (rows and links from earlier conversations). */
@@ -85,13 +86,29 @@ export const AnswerToolsContext = createContext<AnswerTools | null>(null);
 /** Set inside a code block, so its code is not taken for inline code. */
 const InBlockContext = createContext(false);
 
-/** A code block: the code as written, 复制 at its top right (always there). */
-function CodeBlock({ children }: { children?: ReactNode }) {
+/** The parts of a code block's syntax node this needs: its code element, and where it ends in the answer's text. */
+interface PreNode {
+  position?: { end?: { offset?: number | undefined } } | undefined;
+  children?: { type: string; tagName?: string; properties?: { className?: unknown }; children?: { type: string; value?: string }[] }[];
+}
+
+/**
+ * A code block: the code as written, 复制 at its top right (always there). Coloured once its closing fence has
+ * come (`source`: the answer's text): while an answer streams in, an open block stays plain, so tokens do not
+ * change colour under the reader as more arrives.
+ */
+function CodeBlock({ node, source, children }: { node?: PreNode | undefined; source: string; children?: ReactNode }) {
   const ref = useRef<HTMLPreElement>(null);
+  const code = node?.children?.find((c) => c.type === 'element' && c.tagName === 'code');
+  const language = blockLanguage(code?.properties?.className);
+  const raw = code?.children?.map((t) => (t.type === 'text' ? (t.value ?? '') : '')).join('') ?? '';
+  const end = node?.position?.end?.offset;
+  const closed = end !== undefined && /(?:`{3,}|~{3,})[ \t]*$/.test(source.slice(0, end));
+  const coloured = useMemo(() => (language && closed ? highlightCode(language, raw) : null), [language, closed, raw]);
   return (
     <div className="code-block">
       <pre ref={ref}>
-        <InBlockContext.Provider value={true}>{children}</InBlockContext.Provider>
+        {coloured ? <code className={`language-${language}`}>{coloured}</code> : <InBlockContext.Provider value={true}>{children}</InBlockContext.Provider>}
       </pre>
       <div className="code-tools">
         <CopyButton className="icon-btn md-tool" copy={() => clipboard.write((ref.current?.textContent ?? '').replace(/\n$/, ''))} />
@@ -187,7 +204,11 @@ export const MarkdownText = memo(function MarkdownText({ text }: { text: string 
                 {children}
               </a>
             ),
-          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+          pre: ({ node, children }) => (
+            <CodeBlock node={node as PreNode | undefined} source={text}>
+              {children}
+            </CodeBlock>
+          ),
           code: ({ className, children }) => <InlineCode className={className}>{children}</InlineCode>,
           table: ({ children }) => <MdTable>{children}</MdTable>,
         }}

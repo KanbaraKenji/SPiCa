@@ -1136,6 +1136,51 @@ button.tree-twisty:hover {
   background: var(--spica-surface);
 }
 
+/* Code colours (chat/highlight.ts), from the skin: they follow light, dark and custom skins. */
+.md pre .hl-comment,
+.md pre .hl-quote,
+.md pre .hl-meta {
+  color: var(--spica-muted);
+}
+
+.md pre .hl-keyword,
+.md pre .hl-built_in,
+.md pre .hl-type,
+.md pre .hl-tag,
+.md pre .hl-name,
+.md pre .hl-selector-tag,
+.md pre .hl-selector-class,
+.md pre .hl-selector-id {
+  color: var(--spica-accent-text);
+}
+
+.md pre .hl-string,
+.md pre .hl-regexp,
+.md pre .hl-addition,
+.md pre .hl-template-tag {
+  color: var(--spica-success);
+}
+
+.md pre .hl-number,
+.md pre .hl-literal,
+.md pre .hl-symbol,
+.md pre .hl-bullet,
+.md pre .hl-variable,
+.md pre .hl-template-variable,
+.md pre .hl-attr,
+.md pre .hl-attribute {
+  color: var(--spica-warning);
+}
+
+.md pre .hl-deletion {
+  color: var(--spica-danger);
+}
+
+.md pre .hl-title,
+.md pre .hl-section {
+  font-weight: 600;
+}
+
 /* A table: 复制 and 导出 CSV in a row above its right end. */
 .md .md-table {
   width: fit-content;
