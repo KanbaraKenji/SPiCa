@@ -543,7 +543,8 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
     runningRef.current = undefined;
     setRunning(undefined);
     if (r?.ok) {
-      // Now it is installed (and on): its group is its state now, and it is the one shown.
+      // Now it is installed (and on): back to the list, its group is its state now, and it is the one shown.
+      if (isLocation(query)) setQuery('');
       setGroupOf((g) => {
         const { [name]: _gone, ...rest } = g;
         void _gone;
@@ -558,7 +559,12 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
   const found = located && state?.found && state.found.location === unquote(query) ? state.found : undefined;
   const hit = (text: string) => !q || text.toLowerCase().includes(q);
   const shown = located ? [] : plugins.filter((p) => matches(p, filter) && hit(`${p.displayName} ${p.name} ${p.description}`));
-  const offered = located ? (found?.packages ?? []) : filter === 'all' ? (state?.available ?? []).filter((a) => hit(`${pkgTitle(a)} ${a.name} ${a.description ?? ''}`)) : [];
+  // A package of a plugin already here goes by that plugin's name and icon when it does not say its own (an index says neither).
+  const known = (a: PluginPackage): PluginPackage => {
+    const p = a.installed ? plugins.find((x) => x.name === a.name) : undefined;
+    return p ? { ...a, displayName: a.displayName ?? p.displayName, ...(a.icon || !p.icon ? {} : { icon: p.icon }) } : a;
+  };
+  const offered = (located ? (found?.packages ?? []) : filter === 'all' ? (state?.available ?? []).filter((a) => hit(`${pkgTitle(a)} ${a.name} ${a.description ?? ''}`)) : []).map(known);
   const groups: { key: string; title: string; plugins?: PluginView[]; packages?: PluginPackage[] }[] = [
     { key: 'on', title: '已启用', plugins: shown.filter((p) => groupOf[p.name] ?? p.enabled) },
     { key: 'off', title: '已停用', plugins: shown.filter((p) => !(groupOf[p.name] ?? p.enabled)) },
