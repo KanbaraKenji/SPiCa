@@ -41,6 +41,8 @@ export default defineConfig({
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
     define: rendererDefine,
+    // elkjs (EPL-2.0) is not shipped: mermaid's optional elk layout gets a stub that refuses (src/renderer/flow/elk-stub.ts).
+    resolve: { alias: { 'elkjs/lib/elk.bundled.js': resolve(__dirname, 'src/renderer/flow/elk-stub.ts') } },
     // index: the app's page. flow: the sandboxed frame that draws flowcharts (src/renderer/flow/main.ts).
     build: {
       rollupOptions: {
