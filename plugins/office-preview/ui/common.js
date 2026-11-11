@@ -6,8 +6,14 @@
 (function () {
   'use strict';
 
-  function message(err) {
-    return err && err.message ? err.message : String(err);
+  /**
+   * The sentence for Spica's panel: the plugin's own reason when it gave one (err.forUser), else just
+   * failText; a library's wording (English, links) goes to the console instead.
+   */
+  function sentence(failText, err) {
+    if (err && err.forUser) return failText + '：' + err.message;
+    if (window.console) window.console.error(failText, err);
+    return failText;
   }
 
   /** run(draw, failText): draw(file, root) puts the file into root; failText starts the line Spica shows when it cannot. */
@@ -24,13 +30,13 @@
           status.hidden = true;
           if (bridge) bridge.ready();
         } catch (err) {
-          var text = failText + '：' + message(err);
+          var text = sentence(failText, err);
           if (bridge) bridge.fail(text);
           else status.textContent = text;
         }
       };
       if (bridge) {
-        bridge.file().then(show, function (err) { bridge.fail(failText + '：' + message(err)); });
+        bridge.file().then(show, function (err) { bridge.fail(sentence(failText, err)); });
         window.spica.onEvent(function (e) {
           if (e && e.type === 'preview.file') bridge.file().then(show);
         });

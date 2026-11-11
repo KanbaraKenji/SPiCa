@@ -65,8 +65,8 @@ describe('the Word page', () => {
 
   it('a file that is not a Word document: fail() with a sentence, nothing else', async () => {
     const told = await openPage(WORD, 'q.docx', new TextEncoder().encode('not a zip').buffer);
-    expect(told).toHaveLength(1);
-    expect(told[0]).toMatch(/^fail: 这个 Word 文件打不开：/);
+    // one short sentence; the library's own (English) wording stays in the console
+    expect(told).toEqual(['fail: 这个 Word 文件打不开']);
   });
 });
 

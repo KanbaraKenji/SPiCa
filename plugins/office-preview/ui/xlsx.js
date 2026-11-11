@@ -6,7 +6,7 @@
   window.OfficePreview.run(async function (file, root) {
     var got = await window.OfficeSheet.loadWorkbook(window.ExcelJS, window.JSZip, file.bytes);
     var sheets = window.OfficeSheet.visibleSheets(got.wb);
-    if (sheets.length === 0) throw new Error('里面没有能显示的工作表');
+    if (sheets.length === 0) throw Object.assign(new Error('里面没有能显示的工作表'), { forUser: true });
     root.replaceChildren();
     var tabs = document.createElement('div');
     tabs.className = 'tabs';
