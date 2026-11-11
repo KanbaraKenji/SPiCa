@@ -23,7 +23,7 @@ describe('the caption buttons dim with a scrim', () => {
     await settle();
     dialog.remove();
     await settle();
-    expect(said).toEqual([true, false]);
+    expect(said).toEqual([false, true, false]);
     stop();
   });
 
@@ -35,11 +35,19 @@ describe('the caption buttons dim with a scrim', () => {
     await settle();
     second.remove();
     await settle();
-    expect(said).toEqual([true]);
+    expect(said).toEqual([false, true]);
     first.remove();
     await settle();
-    expect(said).toEqual([true, false]);
+    expect(said).toEqual([false, true, false]);
     stop();
+  });
+
+  it('says how it starts even when nothing covers the page, so a reload under a dialog does not leave the buttons dimmed', () => {
+    const said: boolean[] = [];
+    const stop = watchScrim(document, (on) => said.push(on));
+    expect(said).toEqual([false]);
+    stop();
+    expect(said).toEqual([false]);
   });
 
   it('already covered when it starts; stopping while covered undims', () => {

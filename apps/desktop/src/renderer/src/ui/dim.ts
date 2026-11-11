@@ -5,10 +5,14 @@
 /** Everything that lays a scrim over the whole window. */
 export const SCRIM_SELECTOR = '.scrim, .image-viewer';
 
-/** Reports true when the first scrim appears and false when the last one goes; returns the stop. */
+/**
+ * Reports how the page starts, then true when the first scrim appears and false when the last one goes;
+ * returns the stop. The start is always said: a page reloaded under a dialog never said it closed, and the
+ * main process would keep the buttons dimmed.
+ */
 export function watchScrim(doc: Document, report: (on: boolean) => void): () => void {
   let on = Boolean(doc.querySelector(SCRIM_SELECTOR));
-  if (on) report(true);
+  report(on);
   const observer = new MutationObserver(() => {
     const now = Boolean(doc.querySelector(SCRIM_SELECTOR));
     if (now === on) return;
