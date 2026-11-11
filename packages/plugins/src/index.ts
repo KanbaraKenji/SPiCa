@@ -41,6 +41,8 @@ export {
   PLUGIN_INHERIT_ENV,
   type PluginManagerOptions,
   type PluginDescription,
+  type InstallStep,
+  type InstallOptions,
   type PluginEvent,
   type PluginView,
   type PluginModelUse,

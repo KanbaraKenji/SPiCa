@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runtimeHost } from './host.ts';
-import { PluginManager, fsOps } from './manager.ts';
+import { PluginManager, fsOps, type InstallStep } from './manager.ts';
 import { manifest, rig, toolNames, writePlugin, type Rig } from './testing/helpers.ts';
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 30_000 });
@@ -178,6 +178,26 @@ describe('when another program holds a folder (acted out: a virus scanner readin
       return realRename(from, to);
     };
   };
+
+  it('says each step while it reinstalls, and keeps saying how long the folder has been held while it retries', async () => {
+    r = await rig();
+    const src = await plugin('reinst-steps', null);
+    const first: string[] = [];
+    await r.pm.install(src, undefined, { onProgress: (p) => first.push(p.step) });
+    // A fresh install: only the copy (it is not on yet, nothing to stop or start).
+    expect(first).toEqual(['copy']);
+    await r.pm.enable('reinst-steps');
+    let tries = 0;
+    holdWhen((from) => from.includes('~new-') && ++tries <= 3);
+    fsOps.busyWaitMs = 5000;
+    const steps: InstallStep[] = [];
+    await r.pm.install(src, undefined, { onProgress: (p) => steps.push(p) });
+    expect([...new Set(steps.map((p) => p.step))]).toEqual(['copy', 'stop', 'replace', 'start']);
+    const held = steps.filter((p): p is Extract<InstallStep, { step: 'replace' }> => p.step === 'replace' && p.busyMs !== undefined);
+    expect(held).toHaveLength(3);
+    expect(held[2]!.busyMs).toBeGreaterThanOrEqual(held[0]!.busyMs!);
+    expect(r.pm.describe('reinst-steps')).toMatchObject({ enabled: true, servers: [{ status: 'running' }] });
+  });
 
   it('the new copy cannot be moved in: the old files go back, the plugin runs as before, nothing is left beside it', async () => {
     r = await rig();

@@ -32,6 +32,23 @@ export const PLUGIN_INHERIT_ENV: readonly string[] = [
 
 export type ServerStatus = 'stopped' | 'starting' | 'running' | 'restarting' | 'failed';
 
+/**
+ * Where an install is, for the shell to show while it runs. In order:
+ * download (bytes so far, and the total when the server says it) or read (a
+ * package on a share or this computer), verify (checksum), unpack, copy (into
+ * the install folder), stop (the running copy of the same plugin), replace
+ * (swapping folders; `busyMs` while Windows reports the folder in use and it
+ * retries), start (turning the plugin on).
+ */
+export type InstallStep =
+  | { step: 'download'; received: number; total?: number }
+  | { step: 'read' | 'verify' | 'unpack' | 'copy' | 'stop' | 'start' }
+  | { step: 'replace'; busyMs?: number };
+
+export interface InstallOptions {
+  onProgress?: (p: InstallStep) => void;
+}
+
 export interface PluginSource {
   kind: 'folder' | 'zip' | 'share' | 'http';
   /** Path or URL it came from. */
@@ -199,14 +216,16 @@ export const fsOps = { rename, busyWaitMs: 10_000 };
  * (a stopped server's own child processes can take a moment to exit; a virus
  * scanner may be reading a fresh copy).
  */
-async function whenFree<T>(op: () => Promise<T>, waitMs = fsOps.busyWaitMs): Promise<T> {
-  const until = Date.now() + waitMs;
+async function whenFree<T>(op: () => Promise<T>, waitMs = fsOps.busyWaitMs, onBusy?: (busyMs: number) => void): Promise<T> {
+  const start = Date.now();
+  const until = start + waitMs;
   for (;;) {
     try {
       return await op();
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if ((code !== 'EBUSY' && code !== 'EPERM' && code !== 'ENOTEMPTY' && code !== 'EACCES') || Date.now() > until) throw err;
+      onBusy?.(Date.now() - start);
       await new Promise((r) => setTimeout(r, 200));
     }
   }
@@ -353,8 +372,10 @@ export class PluginManager {
    * Install (or update to) the plugin in `dir`: copied into the install root.
    * The previous version is kept for rollback. If the plugin was enabled it is
    * switched over to the new version; if that fails, the old one is restored.
+   * `onProgress` hears each step (copy, stop, replace and its retries, start).
    */
-  install(dir: string, source?: PluginSource): Promise<PluginDescription> {
+  install(dir: string, source?: PluginSource, opts: InstallOptions = {}): Promise<PluginDescription> {
+    const say = opts.onProgress ?? (() => {});
     return this.#serial(async () => {
       const folder = await this.check(dir);
       if (!folder.manifest || hasErrors(folder.issues)) {
@@ -376,17 +397,23 @@ export class PluginManager {
         if (await isDir(target)) {
           const nonce = `${Date.now().toString(36)}-${++importNonce}`;
           const staged = `${target}~new-${nonce}`;
+          say({ step: 'copy' });
           await copy(staged);
-          if (wasEnabled) await this.#disable(name);
+          if (wasEnabled) {
+            say({ step: 'stop' });
+            await this.#disable(name);
+          }
           const aside = `${target}~old-${nonce}`;
           // Both moves wait while Windows reports a folder in use (the plugin's
           // processes, or a virus scanner reading the fresh copy). Either step
           // failing leaves the old files where they were and the plugin as it was.
           let step = 'old';
+          const busy = (busyMs: number) => say({ step: 'replace', busyMs });
+          say({ step: 'replace' });
           try {
-            await whenFree(() => fsOps.rename(target, aside));
+            await whenFree(() => fsOps.rename(target, aside), undefined, busy);
             step = 'new';
-            await whenFree(() => fsOps.rename(staged, target));
+            await whenFree(() => fsOps.rename(staged, target), undefined, busy);
           } catch (err) {
             if (step === 'new') await whenFree(() => fsOps.rename(aside, target)).catch(() => undefined);
             await rm(staged, { recursive: true, force: true }).catch(() => undefined);
@@ -396,6 +423,7 @@ export class PluginManager {
           }
           backup = aside;
         } else {
+          say({ step: 'copy' });
           await copy(target);
         }
       }
@@ -413,6 +441,7 @@ export class PluginManager {
       await mkdir(this.dataDir(name), { recursive: true });
       if (wasEnabled) {
         try {
+          say({ step: 'start' });
           await this.#enable(name);
         } catch (err) {
           // New version does not start: go back to the old one (for the same
