@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { contentType, injectIntoPage, pageCsp, parsePluginUrl, pluginThemeVars, themeCss } from './plugin-views';
+import { runInNewContext } from 'node:vm';
+import { BRIDGE_JS, contentType, injectIntoPage, pageCsp, parsePluginUrl, pluginThemeVars, themeCss } from './plugin-views';
 import { pluginCallId, pluginCallProblem } from '../shared/plugin-view';
 
 describe('plugin pages', () => {
@@ -40,6 +41,36 @@ describe('plugin pages', () => {
   it('says plugin call failures in words', () => {
     expect(pluginCallProblem('[TOOL_NOT_ALLOWED] delete_all')).toBe('该页面无权使用此工具。');
     expect(pluginCallProblem('note not found')).toBeNull();
+  });
+});
+
+describe('a preview page’s script failing before it is drawn (window.spica in the page)', () => {
+  /** Runs the bridge in a stand-in page; returns what it posts to the window and the page's own error listener. */
+  function page() {
+    const posted: { call?: string; args?: { text?: string } }[] = [];
+    const listeners: Record<string, ((e: unknown) => void)[]> = {};
+    const win: Record<string, unknown> = {
+      parent: { postMessage: (m: object) => posted.push(m) },
+      addEventListener: (type: string, fn: (e: unknown) => void) => (listeners[type] ??= []).push(fn),
+    };
+    runInNewContext(BRIDGE_JS, { window: win, document: { documentElement: { dataset: {}, style: {} } }, console });
+    const fire = (message: string) => listeners.error?.forEach((fn) => fn({ message }));
+    return { posted, fire, spica: win.spica as { preview: { ready(): Promise<unknown> } } };
+  }
+
+  it('an error before ready() is said; the browser’s ResizeObserver loop notice is not an error', () => {
+    const p = page();
+    p.fire('ResizeObserver loop completed with undelivered notifications.');
+    expect(p.posted.filter((m) => m.call === 'previewError')).toEqual([]);
+    p.fire('x is not defined');
+    expect(p.posted.filter((m) => m.call === 'previewError').map((m) => m.args?.text)).toEqual(['x is not defined']);
+  });
+
+  it('after ready() errors are the page’s own business', () => {
+    const p = page();
+    void p.spica.preview.ready();
+    p.fire('x is not defined');
+    expect(p.posted.filter((m) => m.call === 'previewError')).toEqual([]);
   });
 });
 

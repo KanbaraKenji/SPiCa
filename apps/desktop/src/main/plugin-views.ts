@@ -151,10 +151,12 @@ export const BRIDGE_JS = `(() => {
       },
     }),
   };
-  // Until the page says it is drawn, an error of its script means it cannot show the file.
+  // Until the page says it is drawn, an error of its script means it cannot show the file. Not the browser's
+  // ResizeObserver loop notice: it is no error of the page (a page fitting itself to the panel raises it).
   let drawn = false;
   const failed = (text) => {
-    if (!drawn) post({ call: 'previewError', id: 0, args: { text: String(text).slice(0, 300) } });
+    if (drawn || /^ResizeObserver loop/.test(String(text))) return;
+    post({ call: 'previewError', id: 0, args: { text: String(text).slice(0, 300) } });
   };
   window.addEventListener('error', (e) => failed(e.message || 'error'));
   window.addEventListener('unhandledrejection', (e) => failed((e.reason && e.reason.message) || e.reason || 'error'));
