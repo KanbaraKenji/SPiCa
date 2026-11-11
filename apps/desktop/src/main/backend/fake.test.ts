@@ -188,6 +188,18 @@ describe('FakeBackend', () => {
     expect(Object.values(lists).some((l) => l.length === FAKE_EXPORT_FILES.length)).toBe(true);
   });
 
+  it('画个图: a plugin tool hands back a picture (written by the hook main passes) as a produced card', async () => {
+    const b = new FakeBackend({ speed: 0, demoImage: () => 'C:\\demo\\报价对比图.png' });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '画个图');
+    await until((e) => e.type === 'run.end');
+    const start = events.find((e): e is Extract<CoreEvent, { type: 'tool.start' }> => e.type === 'tool.start' && e.name === 'charts__render');
+    expect(start?.category).toBe('plugin');
+    const card = events.find((e): e is Extract<CoreEvent, { type: 'file.card' }> => e.type === 'file.card' && e.file.origin === 'produced');
+    expect(card?.file).toMatchObject({ path: 'C:\\demo\\报价对比图.png', name: '报价对比图.png', kind: 'other' });
+  });
+
   it('查一下 searches the web and opens a page, with source cards sent and stored like the core', async () => {
     const b = new FakeBackend({ speed: 0 });
     const { events, until } = collect(b);

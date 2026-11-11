@@ -28,6 +28,7 @@ import { readFileSync } from 'node:fs';
 import type { PluginsCommand } from '../shared/plugins';
 import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
+import { writeDemoChart } from './backend/demo-image';
 import { ProcessBackend, type BackendStatus } from './backend/process';
 import { knownContextWindow, matchWindowIn, toProviderConfig } from './backend/to-config';
 import type { WindowMatch } from '../shared/catalog';
@@ -238,7 +239,7 @@ const backend: AgentBackend =
           },
         },
       })
-    : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd });
+    : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd, demoImage: () => writeDemoChart(join(app.getPath('userData'), 'demo-media')) });
 console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own process)' : 'fake (demo data)'}`);
 const settings = new SettingsStore(app.getPath('userData'), { persist: !automated });
 if (backendKind === 'core' && makeWorkflowsDirAtStart(app.isPackaged, settings.get().workflowsDir)) mkdirSync(defaultWorkflowsDir, { recursive: true });

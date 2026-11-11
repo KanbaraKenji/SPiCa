@@ -45,6 +45,8 @@ export interface FakeBackendOptions {
   now?: () => Date;
   /** Like the core's: the folder all conversations shared up to 0.1.0-rc.2; ones there choose a folder once, their files stay. */
   legacyDefaultCwd?: string;
+  /** Writes a picture a plugin tool would have returned and gives its path (the app's main process passes one). */
+  demoImage?: () => string;
 }
 
 type Listener = (event: CoreEvent) => void;
@@ -114,6 +116,7 @@ export class FakeBackend implements AgentBackend {
   readonly #speed: number;
   readonly #now: () => Date;
   readonly #legacyCwd: string | undefined;
+  readonly #demoImage: (() => string) | undefined;
   /** What a call said about itself until its result is stored (see #takeCallMeta). */
   readonly #callInfo = new Map<string, { category?: ToolCategory; summary?: string; cards?: FileCardMeta[]; sources?: SourceCardMeta }>();
   #seq = 0;
@@ -135,6 +138,7 @@ export class FakeBackend implements AgentBackend {
     this.#speed = options.speed ?? 1;
     this.#now = options.now ?? (() => new Date());
     this.#legacyCwd = options.legacyDefaultCwd;
+    this.#demoImage = options.demoImage;
     this.#mail = new FakeMailbox(
       this.#now,
       (sid, body) => this.#emit(sid, body),
@@ -803,7 +807,17 @@ export class FakeBackend implements AgentBackend {
       this.#setStatus(sessionId, 'thinking');
       await this.#sleep(300, signal);
 
-      if (/查一下/.test(text)) {
+      if (/画个图/.test(text)) {
+        // A plugin tool that returns a picture: as the core does, it is saved and handed over as a card (produced).
+        const path = this.#demoImage?.() ?? 'D:\\工作\\样机评审\\报价对比图.png';
+        const at = isoAt(this.#now());
+        const picture: FileCardMeta = { path, name: path.split(/[\\/]/).pop() ?? path, kind: 'other', sizeBytes: 4096, modifiedAt: at, extractedAt: at, read: {}, origin: 'produced' };
+        blocks.push(...(await this.#tool(sessionId, run, 'charts__render', { type: 'bar', title: '四家报价对比' }, '已生成 1 张图', 500, false, { category: 'plugin', cards: [picture] })));
+        this.#setStatus(sessionId, 'thinking');
+        const answer = '四家报价的对比图画好了。';
+        await this.#stream(sessionId, 'text', answer, signal);
+        blocks.push({ type: 'text', text: answer });
+      } else if (/查一下/.test(text)) {
         // Looking things up on the web: a search (four results, the answer cites one) and a page it opened.
         const at = isoAt(this.#now());
         const search: SourceCardMeta = { tool: 'web_search', query: '注塑模具 报价 行情', sources: FAKE_SEARCH_RESULTS.map((r) => ({ ...r, fetchedAt: at })) };
