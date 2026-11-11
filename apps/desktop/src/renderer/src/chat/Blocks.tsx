@@ -378,6 +378,7 @@ export const MarkdownText = memo(function MarkdownText({ text }: { text: string 
               <HistoryLink href={href}>{children}</HistoryLink>
             ) : (
               <a href={href} target="_blank" rel="noreferrer" title={href}>
+                {/^https?:/i.test(href ?? '') ? <Icon name="link" size={12} className="md-link-icon" /> : null}
                 {children}
               </a>
             ),

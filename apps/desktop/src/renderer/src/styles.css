@@ -1230,6 +1230,13 @@ pre .hl-section {
   cursor: pointer;
 }
 
+/* A link to a web page: a small link icon before its text, in the link's colour. */
+.md-link-icon {
+  display: inline-block;
+  margin-right: 2px;
+  vertical-align: -1px;
+}
+
 .md code.md-path:hover {
   background: var(--spica-accent-soft);
 }

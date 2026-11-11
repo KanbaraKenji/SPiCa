@@ -51,6 +51,8 @@ const PATHS = {
   download: 'M8 2.5v7.5 M4.8 6.8 8 10l3.2-3.2 M3 11.5v2h10v-2',
   // 代码: angle brackets (a file's source, as against its preview).
   code: 'M5.5 4.5 2 8l3.5 3.5 M10.5 4.5 14 8l-3.5 3.5',
+  // A link to a web page (before link text in answers).
+  link: 'M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2.3-2.3a2.6 2.6 0 0 0-3.7-3.7l-.9.9 M9.2 6.8a2.6 2.6 0 0 0-3.7 0L3.2 9.1a2.6 2.6 0 0 0 3.7 3.7l.9-.9',
   copy: 'M5.5 5.5h7.5v8H5.5z M3 10.5V2.5h7.5',
 } as const;
 

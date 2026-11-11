@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { CoreEvent, Message, SourceCardMeta } from '@spica/protocol';
-import { AnswerSources, SourceCardsContext, ToolGroup } from './Blocks';
+import { AnswerSources, MarkdownText, SourceCardsContext, ToolGroup } from './Blocks';
 import { answerSources, hostOf } from './sources';
 import { applyEvent, EMPTY_TRANSCRIPT, fromHistory, type Block } from '../store/transcript';
 
@@ -23,9 +23,18 @@ const page: SourceCardMeta = { tool: 'web_fetch', sources: [{ url: 'https://exam
 const tool = (callId: string, name: string, state: 'done' | 'error' = 'done'): Block => ({ type: 'tool', callId, name, input: {}, state });
 
 describe('which pages an answer rests on', () => {
-  it('every page it opened, and the search results it links to (each once)', () => {
-    const blocks: Block[] = [tool('s', 'web_search'), tool('f', 'web_fetch'), { type: 'text', text: '见 [乙](https://example.org/b) 和 https://example.com/guide。还有 [乙](https://example.org/b#x)' }];
-    expect(answerSources(blocks, { s: search, f: page }).map((r) => r.url)).toEqual(['https://example.org/b/', 'https://example.com/guide']);
+  it('only pages it opened that its text does not link (what the text links is not listed again)', () => {
+    const second: SourceCardMeta = { tool: 'web_fetch', sources: [{ url: 'https://example.com/other', title: '另一页', fetchedAt: at }] };
+    const blocks: Block[] = [tool('s', 'web_search'), tool('f', 'web_fetch'), tool('g', 'web_fetch'), { type: 'text', text: '见 [乙](https://example.org/b) 和 https://example.com/guide。还有 [乙](https://example.org/b#x)' }];
+    expect(answerSources(blocks, { s: search, f: page, g: second }).map((r) => r.url)).toEqual(['https://example.com/other']);
+    // Nothing unlinked: no 来源 at all.
+    expect(answerSources(blocks.slice(0, 2).concat(blocks[3]!), { s: search, f: page })).toEqual([]);
+  });
+
+  it('a link in an answer has a small link icon before its text', () => {
+    render(<MarkdownText text={'见 [模具报价指南](https://example.com/guide) 和 [以前的对话](history:1)'} />);
+    const links = [...document.querySelectorAll('.md a')];
+    expect(links.map((a) => Boolean(a.querySelector('.md-link-icon')))).toEqual([true]);
   });
 
   it('nothing from a failed call, or without cards', () => {
