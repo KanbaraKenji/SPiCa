@@ -66,6 +66,16 @@ describe('paths in an answer', () => {
     expect(screen.queryByRole('link')).toBeNull();
     expect(screen.getByText('D:\\工作\\a.xlsx').tagName).toBe('CODE');
   });
+
+  it('a network path opens only inside the working folder; another host stays plain code', () => {
+    const tools = answer('`\\\\files\\proj\\报价.xlsx` 和 `\\\\evil.example.com\\s\\a.xlsx`', { cwd: '\\\\files\\proj' })!;
+    fireEvent.click(screen.getByRole('link', { name: '\\\\files\\proj\\报价.xlsx' }));
+    expect(tools.openFile).toHaveBeenCalledWith('\\\\files\\proj\\报价.xlsx');
+    const other = screen.getByText('\\\\evil.example.com\\s\\a.xlsx');
+    expect(other.getAttribute('role')).toBeNull();
+    fireEvent.click(other);
+    expect(tools.openFile).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('a table', () => {

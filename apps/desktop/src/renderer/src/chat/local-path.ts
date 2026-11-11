@@ -5,10 +5,35 @@
 // A drive (D:\ or D:/) or a share (\\server\share\), then no characters Windows forbids in a path.
 const ABSOLUTE = /^(?:[A-Za-z]:[\\/]|\\\\[^\\/:*?"<>|\r\n]+[\\/][^\\/:*?"<>|\r\n]+(?:[\\/]|$))[^:*?"<>|\r\n]*$/;
 
+// Device paths (\\.\pipe\…, \\?\C:\…) are never paths to open.
+const DEVICE = /^[\\/]{2}[?.][\\/]/;
+
 /** 'file' or 'folder' when the inline code is exactly an absolute local path; null otherwise. */
 export function localPathKind(code: string): 'file' | 'folder' | null {
-  if (code !== code.trim() || code.length > 1024 || !ABSOLUTE.test(code)) return null;
+  if (code !== code.trim() || code.length > 1024 || DEVICE.test(code) || !ABSOLUTE.test(code)) return null;
   return /[\\/]$/.test(code) || /^\\\\[^\\/]+[\\/][^\\/]+$/.test(code) ? 'folder' : 'file';
+}
+
+/** Whether `path` is `folder` or inside it (`..` resolved first; letters' case ignored, as on Windows). */
+export function insideFolder(path: string, folder: string | undefined): boolean {
+  if (!folder) return false;
+  const norm = (p: string) => fullPath(p).replace(/[\\/]+/g, '\\').replace(/\\$/, '').toLowerCase();
+  const f = norm(folder);
+  const p = norm(path);
+  return p === f || p.startsWith(`${f}\\`);
+}
+
+/**
+ * Like localPathKind, for a path in an answer that a click would open. A network path (\\host\share\…) only
+ * inside the conversation's working folder: opening one makes Windows connect to that host and send the user's
+ * sign-in, and the answer's text may come from a web page or a mail that names a host of its own. Drive paths
+ * (mapped network drives too) open wherever they are.
+ */
+export function openablePathKind(code: string, cwd: string | undefined): 'file' | 'folder' | null {
+  const kind = localPathKind(code);
+  if (!kind) return null;
+  if (/^[\\/]{2}/.test(code) && !insideFolder(code, cwd)) return null;
+  return kind;
 }
 
 /**

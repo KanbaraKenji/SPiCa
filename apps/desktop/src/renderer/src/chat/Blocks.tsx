@@ -9,7 +9,7 @@ import { Icon } from '../ui/Icon';
 import { FileBadge } from '../ui/FileIcon';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
-import { fullPath, localPathKind } from './local-path';
+import { fullPath, openablePathKind } from './local-path';
 import { tableRows, toCsv, toHtml, toTsv } from './table-data';
 import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS, toolLabel, toolTarget } from './format';
 
@@ -75,6 +75,8 @@ export interface AnswerTools {
   openFile(path: string): void;
   /** A folder path clicked: opened in Explorer. */
   openFolder(path: string): void;
+  /** The conversation's working folder: a network path (\\host\share\…) opens only inside it. */
+  cwd?: string | undefined;
   /** 导出 CSV on a table; absent: no such button. */
   saveCsv?: ((text: string) => Promise<boolean>) | undefined;
 }
@@ -103,7 +105,7 @@ function InlineCode({ className, children }: { className?: string | undefined; c
   const inBlock = useContext(InBlockContext);
   const tools = useContext(AnswerToolsContext);
   const text = typeof children === 'string' ? children : null;
-  const kind = !inBlock && tools && text !== null ? localPathKind(text) : null;
+  const kind = !inBlock && tools && text !== null ? openablePathKind(text, tools.cwd) : null;
   if (!kind || !tools || text === null) return <code className={className}>{children}</code>;
   const open = () => (kind === 'folder' ? tools.openFolder(text) : tools.openFile(text));
   // A link role on the code itself (not a button around it), so a long path still wraps with the line.

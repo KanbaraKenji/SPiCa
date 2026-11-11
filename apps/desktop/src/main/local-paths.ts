@@ -10,7 +10,8 @@ export type PathKind = 'file' | 'folder' | null;
  * that ends with a separator); `'any'` a file or a folder (it is shown selected in its folder).
  */
 export function checkLocalPath(path: unknown, want: 'any' | 'folder', kindOf: (p: string) => PathKind): { ok: true; path: string } | { ok: false; error: string } {
-  if (typeof path !== 'string' || !path || path.length > 4096 || !(win32.isAbsolute(path) || posix.isAbsolute(path))) return { ok: false, error: '路径无效。' };
+  // Device paths (\\.\pipe\…, \\?\C:\…) are not files or folders to show.
+  if (typeof path !== 'string' || !path || path.length > 4096 || /^[\\/]{2}[?.][\\/]/.test(path) || !(win32.isAbsolute(path) || posix.isAbsolute(path))) return { ok: false, error: '路径无效。' };
   const kind = kindOf(path);
   if (want === 'folder') return kind === 'folder' ? { ok: true, path } : { ok: false, error: `找不到文件夹：${path}` };
   return kind ? { ok: true, path } : { ok: false, error: `找不到文件：${path}` };

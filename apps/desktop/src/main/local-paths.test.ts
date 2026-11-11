@@ -26,7 +26,8 @@ describe('paths the page hands to Explorer', () => {
       looked++;
       return kindOf(p);
     };
-    for (const p of ['报价汇总.xlsx', '.\\a', '', 42, null, 'D:'.padEnd(5000, 'x')]) expect(checkLocalPath(p, 'any', count)).toEqual({ ok: false, error: '路径无效。' });
+    for (const p of ['报价汇总.xlsx', '.\\a', '', 42, null, 'D:'.padEnd(5000, 'x'), '\\\\.\\pipe\\x', '\\\\?\\C:\\a.txt', '//./pipe/x', '//?/C:/a.txt'])
+      expect(checkLocalPath(p, 'any', count), String(p)).toEqual({ ok: false, error: '路径无效。' });
     expect(looked).toBe(0);
   });
 });

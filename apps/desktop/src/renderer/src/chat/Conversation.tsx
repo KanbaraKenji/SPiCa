@@ -336,8 +336,8 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
   const resolveRef = (n: number) => historyRef(transcript, n);
   const mark = (id: string): Record<string, string> => (id === foundItem ? { 'data-item': id, 'data-found': '' } : { 'data-item': id });
   const answerTools = useMemo(
-    () => (actions.openFolder ? { openFile: actions.openFile, openFolder: actions.openFolder, saveCsv: actions.saveCsv } : null),
-    [actions.openFile, actions.openFolder, actions.saveCsv],
+    () => (actions.openFolder ? { openFile: actions.openFile, openFolder: actions.openFolder, saveCsv: actions.saveCsv, cwd: session?.cwd } : null),
+    [actions.openFile, actions.openFolder, actions.saveCsv, session?.cwd],
   );
   return (
     <AnswerToolsContext.Provider value={answerTools}>
