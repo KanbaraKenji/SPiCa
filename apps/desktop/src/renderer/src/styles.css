@@ -1733,6 +1733,13 @@ pre .hl-section {
   color: var(--spica-muted);
 }
 
+/* An HTML code block's card in an answer: as wide as the file cards under it. */
+.md .html-card {
+  width: 300px;
+  max-width: 100%;
+  margin: 0 0 10px;
+}
+
 /* A picture file's card: the picture itself, small, where the type badge would be. */
 .file-card-picture {
   width: 40px;
