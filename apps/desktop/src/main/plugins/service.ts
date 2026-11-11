@@ -3,9 +3,10 @@
 // fixed example for screenshots and tests.
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import {
   checkUpdates,
+  ICON_MAX_BYTES,
   INDEX_FILE,
   installAvailable,
   installZip,
@@ -18,7 +19,7 @@ import {
   type SourceConfig,
   type UpdateInfo,
 } from '@spica/plugins';
-import { modelUseNotice, usd, type PluginsCommand, type PluginsResult, type PluginsState, type PluginView } from '../../shared/plugins';
+import { modelUseNotice, svgDataUrl, usd, type PluginsCommand, type PluginsResult, type PluginsState, type PluginView } from '../../shared/plugins';
 import type { PluginService } from './types';
 
 export type { PluginService } from './types';
@@ -48,7 +49,7 @@ export interface RealServiceOptions {
   fetch?: FetchLike;
 }
 
-function toView(d: PluginDescription, update?: string): PluginView {
+function toView(d: PluginDescription, update?: string, icon?: string): PluginView {
   return {
     name: d.name,
     displayName: d.displayName || d.name,
@@ -65,6 +66,7 @@ function toView(d: PluginDescription, update?: string): PluginView {
     servers: d.servers.map((s) => ({ id: s.id, status: s.status, tools: s.tools.map((t) => t.replace(new RegExp(`^${d.name}__`), '')), ...(s.lastError ? { lastError: s.lastError } : {}) })),
     issues: d.issues.filter((i) => i.severity === 'error').map((i) => i.message),
     ...(update ? { update } : {}),
+    ...(icon ? { icon } : {}),
     ...(d.mail ? { mail: true } : {}),
     ...(d.model
       ? {
@@ -93,6 +95,8 @@ export class RealPluginService implements PluginService {
   readonly #o: RealServiceOptions;
   #available = new Map<string, Available>();
   #updates = new Map<string, UpdateInfo>();
+  /** Icons read so far: file path -> [modified time, data: URL]. */
+  #icons = new Map<string, [number, string]>();
   #listeners = new Set<() => void>();
   #off: () => void;
 
@@ -117,13 +121,30 @@ export class RealPluginService implements PluginService {
     await this.#o.manager.shutdown();
   }
 
+  /** A plugin's own icon as a data: URL, read again only when the file changes; undefined when none or unreadable. */
+  #icon(d: PluginDescription): string | undefined {
+    if (!d.icon) return undefined;
+    const file = join(this.#o.manager.installDir(d.name, d.version), d.icon);
+    try {
+      const st = statSync(file);
+      if (!st.isFile() || st.size > ICON_MAX_BYTES) return undefined;
+      const known = this.#icons.get(file);
+      if (known && known[0] === st.mtimeMs) return known[1];
+      const url = svgDataUrl(readFileSync(file, 'utf8'));
+      this.#icons.set(file, [st.mtimeMs, url]);
+      return url;
+    } catch {
+      return undefined;
+    }
+  }
+
   #state(): PluginsState {
     const m = this.#o.manager;
     const available = [...this.#available.entries()]
       .filter(([, a]) => m.installedVersion(a.name) !== a.version)
       .map(([key, a]) => ({ key, name: a.name, version: a.version, ...(a.description ? { description: a.description } : {}) }));
     return {
-      plugins: m.list().map((d) => toView(d, this.#updates.get(d.name)?.available)),
+      plugins: m.list().map((d) => toView(d, this.#updates.get(d.name)?.available, this.#icon(d))),
       mock: m.mock,
       root: this.#o.root,
       ...(available.length ? { available } : {}),

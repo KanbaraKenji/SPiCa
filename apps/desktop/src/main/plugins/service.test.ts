@@ -72,3 +72,31 @@ describe('打开插件文件夹', () => {
     expect(r.message).toBeUndefined();
   });
 });
+
+describe('a plugin’s own icon', () => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#4f7cff"/></svg>';
+  function withPlugin(icon: string | undefined, write: (dir: string) => void) {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-plugin-icon-'));
+    dirs.push(dir);
+    write(dir);
+    const d = { name: 'demo', displayName: 'Demo', description: '', version: '1.0.0', enabled: true, mockSupported: false, skills: [], commands: [], tools: [], servers: [], issues: [], ...(icon ? { icon } : {}) };
+    const m = { ...manager, list: () => [d], installDir: () => dir } as unknown as PluginManager;
+    return new RealPluginService({ manager: m, root: join(dir, 'plugins'), sourcesFile: join(dir, 'sources.json'), openFolder: async () => '' });
+  }
+
+  it('goes to the page as a data: URL of the SVG (shown there only as a picture)', async () => {
+    const svc = withPlugin('art/icon.svg', (dir) => {
+      mkdirSync(join(dir, 'art'));
+      writeFileSync(join(dir, 'art', 'icon.svg'), svg);
+    });
+    const p = (await svc.run({ op: 'state' })).state.plugins[0]!;
+    expect(p.icon).toBe(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+  });
+
+  it('none declared, gone, or over 64 KB: no icon (the page draws the letter badge)', async () => {
+    expect((await withPlugin(undefined, () => {}).run({ op: 'state' })).state.plugins[0]!.icon).toBeUndefined();
+    expect((await withPlugin('icon.svg', () => {}).run({ op: 'state' })).state.plugins[0]!.icon).toBeUndefined();
+    const big = withPlugin('icon.svg', (dir) => writeFileSync(join(dir, 'icon.svg'), `<svg>${' '.repeat(64 * 1024)}</svg>`));
+    expect((await big.run({ op: 'state' })).state.plugins[0]!.icon).toBeUndefined();
+  });
+});

@@ -27,6 +27,8 @@ export interface PluginView {
   update?: string;
   /** Present when the plugin asks to use the user's models (permissions.model). */
   model?: PluginModelView;
+  /** The plugin's own icon as a data: URL (an SVG, shown only as a picture); absent: the letter badge. */
+  icon?: string;
 }
 
 /** A plugin's use of the user's models: why, the daily limit in USD, today's spending. */
@@ -41,6 +43,11 @@ export interface PluginModelView {
   userMaxUsdPerDay?: number;
   /** Spent today; absent when it cannot be told. */
   spentTodayUsd?: number;
+}
+
+/** An SVG's text as the data: URL an <img> shows (scripts in it never run there). */
+export function svgDataUrl(svg: string): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
 /** 「$0.20」: US dollars, two decimals (cents matter at these limits). */

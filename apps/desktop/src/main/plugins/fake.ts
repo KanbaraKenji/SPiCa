@@ -1,7 +1,12 @@
 // A plugin service with a fixed example, for screenshots, tests and
 // SPICA_BACKEND=fake. No Node imports, so renderer tests can use it.
-import type { PluginsCommand, PluginsResult, PluginsState, PluginView } from '../../shared/plugins';
+import { svgDataUrl, type PluginsCommand, type PluginsResult, type PluginsState, type PluginView } from '../../shared/plugins';
 import type { PluginService } from './types';
+
+/** plugins/example-notes/icon.svg: the demo's example has its own icon, the others the letter badge. */
+const EXAMPLE_ICON = svgDataUrl(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#f2b632"/><path d="M7 3.5h8l3 3V20H7z" fill="#fff8e6"/><path d="M15 3.5v3h3" fill="none" stroke="#c98a12" stroke-width="1.2" stroke-linejoin="round"/><path d="M9.5 11h6M9.5 14h6M9.5 17h4" fill="none" stroke="#a36f0a" stroke-width="1.4" stroke-linecap="round"/></svg>',
+);
 
 const EXAMPLE: PluginView = {
   name: 'notes',
@@ -18,12 +23,14 @@ const EXAMPLE: PluginView = {
   servers: [{ id: 'notes-server', status: 'running', tools: ['add_note', 'list_notes', 'delete_note', 'catalog_lookup'] }],
   issues: [],
   model: { reason: '把一篇长笔记缩成几句话时，要用模型。', maxUsdPerDay: 0.2, declaredMaxUsdPerDay: 0.2, spentTodayUsd: 0.03 },
+  icon: EXAMPLE_ICON,
 };
 
-/** The example without model use (the second demo plugin does not ask for models). */
-function withoutModel(p: PluginView): PluginView {
-  const { model: _model, ...rest } = p;
+/** The example without what is its own (model use, icon): the base of the other demo plugins. */
+function asOtherDemo(p: PluginView): PluginView {
+  const { model: _model, icon: _icon, ...rest } = p;
   void _model;
+  void _icon;
   return rest;
 }
 
@@ -45,7 +52,7 @@ function morePlugins(): PluginView[] {
   return MORE.map(([name, displayName, description, enabled]) => {
     const tools = enabled ? ['search', 'read'] : [];
     return {
-      ...withoutModel(structuredClone(EXAMPLE)),
+      ...asOtherDemo(structuredClone(EXAMPLE)),
       name,
       displayName,
       description,
@@ -62,7 +69,7 @@ function morePlugins(): PluginView[] {
 }
 
 export class FakePluginService implements PluginService {
-  #plugins: PluginView[] = [structuredClone(EXAMPLE), { ...withoutModel(structuredClone(EXAMPLE)), name: 'mail-digest', displayName: '来信摘要（示例）', description: '把收件箱里的新邮件整理成摘要，按项目归类。', version: '1.0.0', enabled: true, mail: true, tools: ['list_messages', 'read_message'], skills: [], commands: [], servers: [{ id: 'mail', status: 'running', tools: ['list_messages', 'read_message'] }], previousVersion: undefined, update: '1.1.0' } as PluginView];
+  #plugins: PluginView[] = [structuredClone(EXAMPLE), { ...asOtherDemo(structuredClone(EXAMPLE)), name: 'mail-digest', displayName: '来信摘要（示例）', description: '把收件箱里的新邮件整理成摘要，按项目归类。', version: '1.0.0', enabled: true, mail: true, tools: ['list_messages', 'read_message'], skills: [], commands: [], servers: [{ id: 'mail', status: 'running', tools: ['list_messages', 'read_message'] }], previousVersion: undefined, update: '1.1.0' } as PluginView];
   #mock = false;
   readonly #root: string;
 

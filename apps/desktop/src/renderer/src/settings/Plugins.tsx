@@ -152,7 +152,9 @@ export function pluginBadge(p: Pick<PluginView, 'name' | 'displayName'>): { lett
   return { letter: /[a-z]/i.test(first) ? first.toUpperCase() : first, colour: BADGE_COLOURS[h % BADGE_COLOURS.length]! };
 }
 
+/** The plugin's own icon (a picture only) when it has one, else its letter badge. */
 function Badge({ p }: { p: PluginView }) {
+  if (p.icon) return <img className="plugin-badge plugin-icon" src={p.icon} alt="" aria-hidden draggable={false} />;
   const b = pluginBadge(p);
   return (
     <span className="plugin-badge" style={{ background: b.colour }} aria-hidden>

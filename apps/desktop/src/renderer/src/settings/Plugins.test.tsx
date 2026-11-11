@@ -335,6 +335,19 @@ describe('mail sorting, with the plugin that provides mail', () => {
 });
 
 describe('plugin badges', () => {
+  it('a plugin with its own icon shows it (as a picture) in the list and the detail; the others their letter', async () => {
+    render(<Plugins api={api()} />);
+    const detail = (await screen.findByRole('region', { name: '笔记（示例）' })) as HTMLElement;
+    const own = within(list()).getByRole('button', { name: /笔记/ }).querySelector('.plugin-badge') as HTMLElement;
+    expect(own.tagName).toBe('IMG');
+    expect(own.getAttribute('src')).toMatch(/^data:image\/svg\+xml/);
+    expect(own.className).toContain('plugin-icon');
+    expect(detail.querySelector('.plugin-title img.plugin-icon')).toBeTruthy();
+    const other = within(list()).getByRole('button', { name: /来信摘要/ }).querySelector('.plugin-badge') as HTMLElement;
+    expect(other.tagName).toBe('SPAN');
+    expect(other.textContent).toBe('来');
+  });
+
   it('the first character (letters in upper case) on a colour the plugin always gets', () => {
     expect(pluginBadge({ name: 'outlook', displayName: 'Outlook mail' }).letter).toBe('O');
     expect(pluginBadge({ name: 'notes', displayName: '笔记（示例）' }).letter).toBe('笔');
