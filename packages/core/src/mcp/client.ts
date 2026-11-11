@@ -91,6 +91,8 @@ interface Pending {
 const PROTOCOL_VERSION = '2025-06-18';
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_CALL_MS = 60 * 60_000;
+/** Node fires a longer setTimeout after 1 ms, so a huge limit is held to this (about 24 days). */
+const MAX_TIMER_MS = 2 ** 31 - 1;
 
 export class McpStdioClient {
   readonly config: McpServerConfig;
@@ -200,8 +202,8 @@ export class McpStdioClient {
     if (!this.#child || this.#closed) return Promise.reject(new Error(`MCP server "${this.config.name}" is not running`));
     const id = this.#nextId++;
     const name = this.config.name;
-    const idleMs = this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const overallMs = Math.max(this.config.maxCallMs ?? DEFAULT_MAX_CALL_MS, idleMs);
+    const idleMs = Math.min(this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMER_MS);
+    const overallMs = Math.min(Math.max(this.config.maxCallMs ?? DEFAULT_MAX_CALL_MS, idleMs), MAX_TIMER_MS);
     const { signal, onProgress } = opts;
     // The token is the request id: unique among running requests, as the spec requires.
     const sent =

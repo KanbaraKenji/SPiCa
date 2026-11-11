@@ -566,10 +566,10 @@ describe('failures', () => {
   });
 
   it('a long tool that reports progress outlives timeout_seconds, up to max_call_seconds', async () => {
-    // Scaled down: timeout_seconds 2 stands for 60 s; the tool reports progress every 0.2 s.
+    // Scaled down: timeout_seconds 4 stands for 60 s; the tool reports progress every 0.2 s.
     const dir = await writePlugin({
       'manifest.json': manifest('slowpoke'),
-      'mcp/srv.json': { runtime: 'node', entry: 'srv.js', timeout_seconds: 2, max_call_seconds: 4 },
+      'mcp/srv.json': { runtime: 'node', entry: 'srv.js', timeout_seconds: 4, max_call_seconds: 8 },
       'srv.js': `import { createInterface } from 'node:readline';
         const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\\n');
         const jobs = new Map();
@@ -591,11 +591,11 @@ describe('failures', () => {
     r = await rig();
     await r.pm.install(dir);
     await r.pm.enable('slowpoke');
-    const ok = await callTool(r.rt, 'slowpoke__fetch_all', { ms: 3000 });
+    const ok = await callTool(r.rt, 'slowpoke__fetch_all', { ms: 6000 });
     expect(ok).toMatchObject({ isError: false, content: expect.stringMatching(/^fetched \d+$/) });
-    const capped = await callTool(r.rt, 'slowpoke__fetch_all', { ms: 8000 });
-    expect(capped).toMatchObject({ isError: true, content: expect.stringMatching(/did not finish tools\/call within 4 s/) });
-  });
+    const capped = await callTool(r.rt, 'slowpoke__fetch_all', { ms: 12_000 });
+    expect(capped).toMatchObject({ isError: true, content: expect.stringMatching(/did not finish tools\/call within 8 s/) });
+  }, 60_000);
 
   it('max_call_seconds must be a positive number of seconds', async () => {
     const dir = await writePlugin({ 'manifest.json': manifest('badcap'), 'mcp/srv.json': { runtime: 'node', entry: 'srv.js', max_call_seconds: 0 }, 'srv.js': '' });

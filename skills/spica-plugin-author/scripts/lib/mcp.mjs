@@ -26,6 +26,8 @@ export function pluginEnv(extra = {}) {
 const CLIENT = { name: 'spica-plugin-author', version: '0.1.0' };
 /** The longest one tool call may run even while reporting progress (Spica's default for max_call_seconds). */
 const MAX_CALL_MS = 60 * 60_000;
+/** Node fires a longer setTimeout after 1 ms, so a huge limit is held to this (about 24 days). */
+const MAX_TIMER_MS = 2 ** 31 - 1;
 
 /** Text of a tools/call result; JSON is parsed when it looks like JSON. */
 export function resultValue(result) {
@@ -128,12 +130,13 @@ export class StdioClient extends Base {
    * restarts the wait (up to maxCallMs in all), and a request that times
    * out is cancelled at the server (never initialize).
    */
-  request(method, params, timeoutMs = this.timeoutMs) {
+  request(method, params, wait = this.timeoutMs) {
+    const timeoutMs = Math.min(wait, MAX_TIMER_MS);
     if (this.#exited !== null) return Promise.reject(new Error(`进程已经退出（代码 ${this.#exited}）：\n${this.stderrTail()}`));
     const id = this.nextId();
     const progress = method === 'tools/call';
     const sent = progress ? { ...params, _meta: { ...(params?._meta ?? {}), progressToken: id } } : params;
-    const overallMs = Math.max(this.maxCallMs, timeoutMs);
+    const overallMs = Math.min(Math.max(this.maxCallMs, timeoutMs), MAX_TIMER_MS);
     return new Promise((resolve, reject) => {
       const giveUp = (message) => {
         const p = this.#pending.get(id);

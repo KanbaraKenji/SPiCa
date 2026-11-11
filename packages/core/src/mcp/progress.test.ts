@@ -1,7 +1,10 @@
 // Long tool calls: progress notifications keep a call alive, a timeout tells the server to stop.
-// Times are scaled down 100x: "60 s" is 600 ms, "3 minutes" is 1.8 s, "every 10 s" is every 100 ms.
-import { describe, expect, it, vi } from 'vitest';
-import { McpStdioClient } from './client.ts';
+// Times are scaled down 40x: "60 s" is 1.5 s, "3 minutes" is 4.5 s, "every 10 s" is every 250 ms.
+// Windows where a stall would cause a false failure are kept at 1.5 s or more (busy machines).
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FakeGateway } from '../testing/fake-gateway.ts';
+import { makeRuntime, startGateway } from '../testing/helpers.ts';
+import { McpStdioClient, type McpServerConfig } from './client.ts';
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -49,9 +52,9 @@ const seen = async (c: McpStdioClient) =>
 
 describe('long MCP tool calls', () => {
   it('a tool that reports progress every "10 s" for "3 minutes" finishes under a "60 s" timeout', async () => {
-    const c = await start({ timeoutMs: 600 });
+    const c = await start({ timeoutMs: 1500 });
     try {
-      const r = await c.callTool('long', { ms: 1800, every: 100 });
+      const r = await c.callTool('long', { ms: 4500, every: 250 });
       expect(r).toEqual({ content: expect.stringMatching(/^all \d+ steps done$/), isError: false });
       expect((await seen(c)).tokens).toEqual([expect.anything()]);
     } finally {
@@ -82,11 +85,11 @@ describe('long MCP tool calls', () => {
   });
 
   it('progress cannot keep a call alive past the overall limit', async () => {
-    const c = await start({ timeoutMs: 300, maxCallMs: 900 });
+    const c = await start({ timeoutMs: 1500, maxCallMs: 3000 });
     try {
       const t0 = Date.now();
-      await expect(c.callTool('long', { ms: 5000, every: 50 })).rejects.toThrow(/did not finish tools\/call within 0.9 s/);
-      expect(Date.now() - t0).toBeLessThan(2500);
+      await expect(c.callTool('long', { ms: 10_000, every: 100 })).rejects.toThrow(/did not finish tools\/call within 3 s/);
+      expect(Date.now() - t0).toBeLessThan(6000);
       await new Promise((r) => setTimeout(r, 200));
       expect((await seen(c)).cancelled).toEqual([{ requestId: expect.any(Number), reason: expect.stringMatching(/timed out/) }]);
     } finally {
@@ -109,10 +112,10 @@ describe('long MCP tool calls', () => {
   });
 
   it('reports each progress notification of the call to its listener', async () => {
-    const c = await start({ timeoutMs: 600 });
+    const c = await start({ timeoutMs: 5000 });
     try {
       const reports: unknown[] = [];
-      await c.callTool('long', { ms: 350, every: 100 }, undefined, (p) => reports.push(p));
+      await c.callTool('long', { ms: 1000, every: 100 }, undefined, (p) => reports.push(p));
       expect(reports.slice(0, 3)).toEqual([
         { progress: 1, message: 'step 1' },
         { progress: 2, message: 'step 2' },
@@ -123,8 +126,17 @@ describe('long MCP tool calls', () => {
     }
   });
 
+  it('a huge limit is not taken for "fire at once" (Node caps setTimeout at about 24 days)', async () => {
+    const c = await start({ timeoutMs: 1e12, maxCallMs: 1e15 });
+    try {
+      expect(await c.callTool('long', { ms: 300 })).toEqual({ content: 'all 0 steps done', isError: false });
+    } finally {
+      await c.close();
+    }
+  });
+
   it('stopping a long call tells the server, and a late answer is ignored', async () => {
-    const c = await start({ timeoutMs: 600 });
+    const c = await start({ timeoutMs: 5000 });
     try {
       const ac = new AbortController();
       const p = c.callTool('long', { ms: 1500, every: 100 }, ac.signal);
@@ -135,6 +147,33 @@ describe('long MCP tool calls', () => {
       expect(await c.callTool('long', { ms: 50 })).toMatchObject({ isError: false }); // the client still works
     } finally {
       await c.close();
+    }
+  });
+});
+
+describe('long MCP tool calls in a conversation', () => {
+  let gw: FakeGateway;
+  beforeEach(async () => {
+    gw = await startGateway();
+  });
+  afterEach(async () => {
+    await gw.stop();
+  });
+
+  it('the model calls a tool that reports progress for longer than the timeout and gets its result', async () => {
+    gw.enqueue({ toolCalls: [{ id: 'l1', name: 'long__long', args: { ms: 4500, every: 250 } }] }, { text: 'done' });
+    const rt = makeRuntime(gw);
+    try {
+      const config: McpServerConfig = { name: 'long', command: process.execPath, args: ['-e', SERVER] };
+      await rt.connectMcp(config);
+      config.timeoutMs = 1500; // after connect: a cold start may be slow; the client keeps this object
+      const s = rt.createSession();
+      const r = await s.send('fetch everything').done;
+      expect(r.reason).not.toBe('error');
+      expect(JSON.stringify(s.messages()[2]!.content)).toMatch(/all \d+ steps done/);
+      expect(rt.store.listTraces().find((t) => t.kind === 'mcp')).toMatchObject({ target: 'long', status: 'ok' });
+    } finally {
+      await rt.close();
     }
   });
 });

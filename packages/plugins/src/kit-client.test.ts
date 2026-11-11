@@ -32,6 +32,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
 
 type Kit = {
   StdioClient: new (o: { command: string; args: string[]; timeoutMs?: number; maxCallMs?: number }) => {
+    timeoutMs: number;
     initialize(): Promise<unknown>;
     callToolRaw(name: string, args: object): Promise<{ content: { text: string }[] }>;
     close(): Promise<void>;
@@ -42,9 +43,10 @@ const kitFile = new URL('../../../skills/spica-plugin-author/scripts/lib/mcp.mjs
 describe('author kit MCP client', () => {
   it('a call that reports progress outlives the timeout; one that does not is cancelled at the server', async () => {
     const { StdioClient } = (await import(kitFile)) as Kit;
-    const c = new StdioClient({ command: process.execPath, args: ['-e', SERVER], timeoutMs: 2000 });
+    const c = new StdioClient({ command: process.execPath, args: ['-e', SERVER] });
     try {
-      await c.initialize();
+      await c.initialize(); // with the default timeout: a cold start may be slow
+      c.timeoutMs = 2000;
       expect((await c.callToolRaw('long', { ms: 3000, every: 200 })).content[0]!.text).toMatch(/^done \d+$/);
       await expect(c.callToolRaw('long', { ms: 4000 })).rejects.toThrow(/超过 2 秒没有回应，也没有报进度/);
       const cancelled = JSON.parse((await c.callToolRaw('cancelled', {})).content[0]!.text) as { requestId: number }[];
@@ -56,9 +58,10 @@ describe('author kit MCP client', () => {
 
   it('progress cannot keep a call alive past the overall limit', async () => {
     const { StdioClient } = (await import(kitFile)) as Kit;
-    const c = new StdioClient({ command: process.execPath, args: ['-e', SERVER], timeoutMs: 2000, maxCallMs: 3000 });
+    const c = new StdioClient({ command: process.execPath, args: ['-e', SERVER], maxCallMs: 3000 });
     try {
-      await c.initialize();
+      await c.initialize(); // with the default timeout: a cold start may be slow
+      c.timeoutMs = 2000;
       await expect(c.callToolRaw('long', { ms: 8000, every: 200 })).rejects.toThrow(/超过 3 秒还没做完/);
     } finally {
       await c.close();
