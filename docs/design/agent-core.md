@@ -332,6 +332,7 @@
 | `projects` / `project_log` / `work_objects` | 项目、关键操作、工作对象 |
 | `mail_items` / `mail_senders` | 来信与分拣结果、发件人记忆 |
 | `memories` | 助理记住的用户的事（memory.md）：一条一行，替换和删除只改状态，不真删 |
+| `memory_tidies` | 记忆的每次整理：读了什么、改了哪几条、撤销了哪几条、花费；下次从哪读起记在 `meta` 表的 `memory_cursor:<owner>` |
 
 - 流式中的回答约每秒存一次，标 `meta.partial`；正常结束时就地改成完整消息。
 - `Runtime.restore()`：读回会话树、消息、回传；有挂起项的会话恢复成等确认 / 等回答；停在 thinking / tool / queued 的会话标成 `interrupted`，`resume()` 续跑：没有结果的工具调用补一条「上次运行在这个工具结束前停了」，写入排队中的插话，再调模型；存了一半的回答标 `interrupted`，模型下一轮也看得到；花费累计和上次真实输入 token 数从记录回填。

@@ -3,7 +3,9 @@
 // change, reads only what is new since the last tidy, and records the cost.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MemoryTidyRun } from './types.ts';
-import { check, TIDY_LIMITS } from './memory-tidy.ts';
+import { check, detailsOf, lostDetails, parseChanges, TIDY_LIMITS } from './memory-tidy.ts';
+import { SqliteStore } from './store/sqlite.ts';
+import { join } from 'node:path';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { makeRuntime, startGateway, tempDir } from './testing/helpers.ts';
 
@@ -215,5 +217,43 @@ describe('the checks', () => {
     );
     expect(out.refused).toBe(1);
     expect(out.plans.map((p) => (p.action === 'added' ? p.text : ''))).toEqual(['在上海工作']);
+  });
+});
+
+describe('details and answers', () => {
+  it('a rewrite or merge that drops a named person or a number the user did not change is refused', () => {
+    expect(detailsOf('周报每周五下午发给王经理，周会 10:30')).toEqual(['王经理', '10:30']);
+    expect(lostDetails('周报每周五下午发给王经理', '周报改成每周一上午发', '周报改成每周一上午发了。')).toEqual(['王经理']);
+    expect(lostDetails('周报每周五下午发给王经理', '周报每周一上午发给王经理', '周报改成每周一上午发了。')).toEqual([]);
+    // the user brings a new time: the old one may go
+    expect(lostDetails('周会周一上午 10 点', '周会周一下午 3 点', '周会改到下午 3 点了')).toEqual([]);
+    expect(lostDetails('总是附上来源，回答三五句', '附上来源')).toEqual([]);
+    const rt = makeRuntime(gw, { cwd: dir });
+    const old = rt.memory.add({ text: '周报每周五下午发给王经理', quote: 'x', by: 'user' }).item!;
+    const fed = [{ ref: 'c1#2', sessionId: 's', seq: 2, at: new Date(Date.now() + 1000).toISOString(), text: '周报改成每周一上午发了。' }];
+    const out = check(rt, [{ action: 'rewritten', id: old.id, text: '周报改成每周一上午发', ref: 'c1#2', quote: '周报改成每周一上午发' }], fed);
+    expect(out).toMatchObject({ plans: [], refused: 1 });
+    expect(check(rt, [{ action: 'rewritten', id: old.id, text: '周报每周一上午发给王经理', ref: 'c1#2', quote: '周报改成每周一上午发' }], fed).plans).toHaveLength(1);
+  });
+
+  it('an answer cut short keeps the changes written out in full', () => {
+    expect(parseChanges('{"changes":[{"action":"added","text":"a"},{"action":"merged","ids":[1,2],"text":"b"},{"action":"added","te')).toEqual([
+      { action: 'added', text: 'a' },
+      { action: 'merged', ids: [1, 2], text: 'b' },
+    ]);
+    expect(parseChanges('```json\n{"changes": []}\n```')).toEqual([]);
+    expect(parseChanges('sorry')).toBeUndefined();
+  });
+
+  it('a tidy cut off by a kill is shown as failed when the app opens again (立即整理 is not stuck)', async () => {
+    const path = join(dir, 'db', 'spica.db');
+    const store = new SqliteStore(path);
+    store.putMemoryTidy({ id: 0, by: 'user', status: 'running', startedAt: new Date().toISOString(), sessions: 1, messages: 3, changes: [], refused: 0 });
+    store.close();
+    const rt = makeRuntime(gw, { cwd: dir, store: new SqliteStore(path) });
+    expect(rt.memory.tidies()[0]).toMatchObject({ status: 'failed' });
+    gw.onRequest(() => ({ text: '{"changes":[]}' }));
+    expect(rt.memory.tidy('user')).toMatchObject({ started: true });
+    expect(await done(rt)).toMatchObject({ status: 'done' });
   });
 });

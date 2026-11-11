@@ -220,6 +220,10 @@ export class MemoryBook {
     this.#rt = rt;
     this.#enabled = opts.enabled ?? true;
     this.#autoTidy = opts.autoTidy ?? false;
+    // a tidy cut off by a crash or a kill stays running in the store: it ended without applying anything
+    for (const run of rt.store.listMemoryTidies(5)) {
+      if (run.status === 'running') rt.store.putMemoryTidy({ ...run, status: 'failed', error: 'stopped before it ended' });
+    }
   }
 
   /** 自动整理 in the settings: tidy when the app is idle (see startAutoTidy). Off by default. */
@@ -271,7 +275,12 @@ export class MemoryBook {
         run = rt.store.putMemoryTidy({ ...run, status: 'done', endedAt: isoNow(), changes, refused, costUsd, ...(until ? { until } : {}) });
         if (changes.length) rt.events.emit(rt.eventHost, { type: 'memory.changed', card: { action: 'tidied', count: changes.length } });
       } catch (err) {
-        run = rt.store.putMemoryTidy({ ...run, status: 'failed', endedAt: isoNow(), error: rt.redact(err instanceof Error ? err.message : String(err)) });
+        const failed: MemoryTidyRun = { ...run, status: 'failed', endedAt: isoNow(), error: rt.redact(err instanceof Error ? err.message : String(err)) };
+        try {
+          run = rt.store.putMemoryTidy(failed);
+        } catch {
+          run = failed; // the store closed with the app (close() aborted the call)
+        }
       } finally {
         this.#tidying = undefined;
         tell();

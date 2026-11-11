@@ -84,7 +84,7 @@ export class FakeMemory {
       if (changes.filter((c) => c.action === 'added').length >= 3) break;
       if (!/以后|习惯|一般|每周|总是/.test(m.text) || /记住|别记|忘掉/.test(m.text) || SECRET.test(m.text)) continue;
       if (this.#items.some((x) => (x.sessionId === m.sessionId && x.seq === m.seq) || overlap(m.text, x.text) >= 0.5)) continue;
-      const text = m.text.replace(/^(跟你说一下|对了)[，,：:\s]*/, '').slice(0, ITEM_CHARS);
+      const text = m.text.replace(/^(跟你说一下|对了)[，,：:\s]*/, '').replace(/^我/, '').slice(0, ITEM_CHARS);
       changes.push({ action: 'added', item: this.#put({ id: this.#next++, owner: 'user', text, quote: m.text, status: 'active', sessionId: m.sessionId, seq: m.seq, by: 'assistant', tidyId: id, createdAt: now, updatedAt: now }) });
     }
     const until = fresh.at(-1)?.at;

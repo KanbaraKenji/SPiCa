@@ -136,7 +136,8 @@ describe('设置 › 记忆 › 整理', () => {
 
   it('自动整理 is a switch; the latest tidy says when and what it changed, each change with 撤销, and 全部撤销', () => {
     const tidy = tidyOf();
-    setup({ tidy });
+    // the notes as they are after that tidy (what it made is there, what it forgot is forgotten)
+    setup({ tidy, items: [item(10), item(11), item(4, { status: 'forgotten', tidyId: 7 })] });
     fireEvent.click(screen.getByRole('switch', { name: '自动整理' }));
     expect(tidy.onAuto).toHaveBeenCalledWith(true);
     expect(document.querySelector('.memory-tidy-last')!.textContent).toMatch(/^最近一次：.+ · 4 条改动$/);
@@ -170,5 +171,26 @@ describe('设置 › 记忆 › 整理', () => {
     expect((screen.getByRole('switch', { name: '自动整理' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: '立即整理' }) as HTMLButtonElement).disabled).toBe(true);
     expect(document.querySelector('.memory-tidy-last')!.textContent).toMatch(/· 整理失败$/);
+  });
+});
+
+describe('设置 › 记忆 › 整理: what can still be undone', () => {
+  const change = (action: 'added' | 'forgotten', id: number, over = {}) => ({ action, item: item(id, { text: `第 ${id} 条`, ...over }) });
+  const done = (id: number, changes: MemoryTidyRun['changes']): MemoryTidyRun => ({ id, by: 'user', status: 'done', startedAt: '2026-11-12T03:10:00+08:00', sessions: 1, messages: 2, refused: 0, changes });
+
+  it('a later tidy with nothing to change does not hide the changes of the one before', () => {
+    const tidy: MemoryTidy = { runs: [done(9, []), done(8, [change('added', 20)])], auto: false, onAuto: vi.fn(), run: vi.fn(async () => null), undo: vi.fn(async () => undefined) };
+    setup({ items: [item(20)], tidy });
+    expect([...document.querySelectorAll('.memory-tidy-last')].map((e) => e.textContent!.replace(/\d+\/\d+ \d+:\d+/, 'T'))).toEqual(['最近一次：T · 无改动', 'T · 1 条改动']);
+    fireEvent.click(screen.getByRole('button', { name: '撤销' }));
+    expect(tidy.undo).toHaveBeenCalledWith(8, 0);
+  });
+
+  it('a note deleted below since, or one forgotten that came back: words only, no 撤销, no 全部撤销', () => {
+    const run = done(8, [change('added', 20), change('forgotten', 21, { status: 'forgotten', tidyId: 8 })]);
+    setup({ items: [item(20, { status: 'forgotten' }), item(21, { status: 'active', tidyId: 8 })], tidy: { runs: [run], auto: false, onAuto: vi.fn(), run: vi.fn(), undo: vi.fn() } });
+    expect([...document.querySelectorAll('.memory-tidy-change')].map((e) => e.textContent)).toEqual(['新增：第 20 条', '删除：第 21 条']);
+    expect(screen.queryByRole('button', { name: '撤销' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '全部撤销' })).toBeNull();
   });
 });

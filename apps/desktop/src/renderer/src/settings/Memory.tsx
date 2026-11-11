@@ -88,7 +88,7 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession,
           </div>
         ) : null}
       </div>
-      {tidy ? <TidyGroup tidy={tidy} enabled={enabled} /> : null}
+      {tidy ? <TidyGroup tidy={tidy} enabled={enabled} items={items} /> : null}
       <div className="settings-group">
         <div className="memory-head">
           <h3 className="settings-subheading">已记住</h3>
@@ -150,18 +150,33 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession,
   );
 }
 
-function TidyGroup({ tidy, enabled }: { tidy: MemoryTidy; enabled: boolean }) {
+/**
+ * Whether a change of a tidy still stands (so 撤销 can take it back): the note it made is still in the memory, or
+ * the note it forgot is still forgotten. Unknown items count as standing.
+ */
+export function changeStands(c: MemoryTidyChange, run: MemoryTidyRun, items: MemoryItem[] | null): boolean {
+  if (c.undone) return false;
+  if (!items) return true;
+  const now = items.find((m) => m.id === c.item.id);
+  return c.action === 'forgotten' ? now?.status === 'forgotten' && !now.undone && now.tidyId === run.id : now?.status === 'active';
+}
+
+const summary = (r: MemoryTidyRun) => (r.status === 'failed' ? '整理失败' : r.changes.length ? `${r.changes.length} 条改动` : '无改动');
+
+function TidyGroup({ tidy, enabled, items }: { tidy: MemoryTidy; enabled: boolean; items: MemoryItem[] | null }) {
   const [problem, setProblem] = useState<string | null>(null);
   const last = tidy.runs?.[0];
   const running = last?.status === 'running';
-  const open = last?.status === 'done' ? last.changes.some((c) => !c.undone) : false;
+  // the changes shown are the latest tidy's that changed something (a later one with nothing to change does not hide them)
+  const shown = tidy.runs?.find((r) => r.status === 'done' && r.changes.length > 0);
+  const open = shown ? shown.changes.some((c) => changeStands(c, shown, items)) : false;
   return (
     <div className="settings-group">
       <div className="memory-head">
         <h3 className="settings-subheading">整理</h3>
         <div className="memory-head-actions">
-          {open && last ? (
-            <button type="button" className="btn btn-small" onClick={() => void tidy.undo(last.id)}>
+          {open && shown ? (
+            <button type="button" className="btn btn-small" onClick={() => void tidy.undo(shown.id)}>
               全部撤销
             </button>
           ) : null}
@@ -179,19 +194,20 @@ function TidyGroup({ tidy, enabled }: { tidy: MemoryTidy; enabled: boolean }) {
         </div>
       </div>
       <p className="settings-hint memory-tidy-last">
-        {last && last.status !== 'running' ? `最近一次：${timeOf(last.endedAt ?? last.startedAt)} · ${last.status === 'failed' ? '整理失败' : last.changes.length ? `${last.changes.length} 条改动` : '无改动'}` : last ? '整理中' : '最近一次：—'}
+        {last && last.status !== 'running' ? `最近一次：${timeOf(last.endedAt ?? last.startedAt)} · ${summary(last)}` : last ? '整理中' : '最近一次：—'}
       </p>
       {problem ? <span className="field-error" role="alert">{problem}</span> : null}
-      {last?.status === 'done' && last.changes.length ? (
+      {shown && shown !== last ? <p className="settings-hint memory-tidy-last">{`${timeOf(shown.endedAt ?? shown.startedAt)} · ${summary(shown)}`}</p> : null}
+      {shown ? (
         <ul className="memory-list memory-tidy-list">
-          {last.changes.map((c, i) => (
-            <li key={`${last.id}-${i}`} className="turn-note memory-note memory-tidy-change">
+          {shown.changes.map((c, i) => (
+            <li key={`${shown.id}-${i}`} className="turn-note memory-note memory-tidy-change">
               {tidyChangeText(c)}
-              {c.undone ? null : (
-                <button type="button" className="text-btn memory-undo" onClick={() => void tidy.undo(last.id, i)}>
+              {changeStands(c, shown, items) ? (
+                <button type="button" className="text-btn memory-undo" onClick={() => void tidy.undo(shown.id, i)}>
                   撤销
                 </button>
-              )}
+              ) : null}
             </li>
           ))}
         </ul>

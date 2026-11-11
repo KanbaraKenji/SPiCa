@@ -127,7 +127,7 @@ describe('FakeBackend', () => {
     expect(await b.tidyMemories()).toMatchObject({ started: true, id: 1 });
     const run = (await until((e) => e.type === 'memory.tidy' && e.run.status === 'done')) as Extract<CoreEvent, { type: 'memory.tidy' }>;
     expect(run.run.changes.map((c) => c.action)).toEqual(['merged', 'added']);
-    expect((await b.listMemories()).map((m) => m.text)).toEqual(['回答尽量简短，先给结论。', '我一般晚上十一点后不看消息。']);
+    expect((await b.listMemories()).map((m) => m.text)).toEqual(['回答尽量简短，先给结论。', '一般晚上十一点后不看消息。']);
     expect((await b.undoMemoryTidy(1, 1))!.changes[1]!.undone).toBe(true);
     await b.undoMemoryTidy(1);
     expect((await b.listMemories()).map((m) => m.text)).toEqual(['回答尽量简短，先给结论。', '回答简短一点，先给结论。']);

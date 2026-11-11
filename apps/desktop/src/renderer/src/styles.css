@@ -5953,4 +5953,7 @@ button.ctx-row:hover {
 .memory-tidy-change {
   margin: 0;
   overflow-wrap: anywhere;
+  /* the settings' scale, not the conversation's 文字大小 */
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
