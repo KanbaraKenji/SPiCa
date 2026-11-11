@@ -102,7 +102,8 @@ function segments(blocks: Block[]): Segment[] {
   return out;
 }
 
-function Response({ item, live, actions, cards, moved, at }: { item: Extract<Item, { kind: 'response' }>; live: boolean; actions: ConversationActions; cards: Transcript['fileCards']; moved?: CwdChangeMeta; at?: Record<string, string> }) {
+/** `since`: the run's start, while this answer is the one being written (its last line then says what the run is doing, with the clock). */
+function Response({ item, live, since, actions, cards, moved, at }: { item: Extract<Item, { kind: 'response' }>; live: boolean; since?: number | undefined; actions: ConversationActions; cards: Transcript['fileCards']; moved?: CwdChangeMeta; at?: Record<string, string> }) {
   const segs = segments(item.blocks);
   const files = filesOf(item.blocks, cards, moved);
   return (
@@ -113,7 +114,7 @@ function Response({ item, live, actions, cards, moved, at }: { item: Extract<Ite
           const kinds = [...new Set(s.blocks.map((b) => b.flagged).filter((k): k is NonNullable<typeof k> => Boolean(k)))];
           return (
             <Fragment key={s.blocks[0]?.callId ?? i}>
-              <ToolGroup blocks={s.blocks} />
+              <ToolGroup blocks={s.blocks} since={live && i === segs.length - 1 ? since : undefined} />
               {kinds.map((k) => (
                 <p key={k} className="turn-note guard-note status-with-icon">
                   <SpicaStatusIcon name="info" size={14} />
@@ -128,7 +129,7 @@ function Response({ item, live, actions, cards, moved, at }: { item: Extract<Ite
           case 'text':
             return <MarkdownText key={i} text={b.text} />;
           case 'thinking':
-            return <ThinkingBlock key={i} text={b.text} live={live && i === segs.length - 1} />;
+            return <ThinkingBlock key={i} text={b.text} live={live && i === segs.length - 1} since={live && i === segs.length - 1 ? since : undefined} />;
           case 'ask':
             return <AskCard key={b.callId} block={b} onAnswer={(a) => actions.answer(b.callId, a)} />;
           case 'confirm':
@@ -322,7 +323,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                     {item.text}
                   </p>
                 );
-              return <Response key={item.id} item={item} live={running && i === lastIndex} actions={actions} cards={transcript.fileCards} moved={moves.get(item.id)} at={mark(item.id)} />;
+              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} actions={actions} cards={transcript.fileCards} moved={moves.get(item.id)} at={mark(item.id)} />;
             })}
             <StatusLine transcript={transcript} />
             {waiting.map((w) => (

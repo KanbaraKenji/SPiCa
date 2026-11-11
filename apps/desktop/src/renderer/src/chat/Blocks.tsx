@@ -1,13 +1,13 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
-import { createContext, memo, useContext, useState, type ReactNode } from 'react';
+import { createContext, memo, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { HistoryCardMeta } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, type Block, type ChildNote, type FileRef } from '../store/transcript';
 import { Icon } from '../ui/Icon';
 import { FileBadge } from '../ui/FileIcon';
-import { confirmTitle, fileFolder, fileName, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS, toolLabel, toolTarget } from './format';
+import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS, toolLabel, toolTarget } from './format';
 
 /** Opens a conversation by id, at message number `seq` when given (rows and links from earlier conversations). */
 export const OpenSessionContext = createContext<((id: string, seq?: number) => void) | null>(null);
@@ -61,7 +61,7 @@ function HistoryLink({ href, children }: { href: string; children: ReactNode }) 
     </button>
   );
 }
-import { SpicaStatusIcon } from '@spica/brand/react';
+import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
 
@@ -89,7 +89,7 @@ export const MarkdownText = memo(function MarkdownText({ text }: { text: string 
   );
 });
 
-function Disclosure({ open, onToggle, icon, label, meta, children }: { open: boolean; onToggle(): void; icon: ReactNode; label: ReactNode; meta?: ReactNode; children?: ReactNode }) {
+function Disclosure({ open, onToggle, icon, label, meta, tail, children }: { open: boolean; onToggle(): void; icon: ReactNode; label: ReactNode; meta?: ReactNode; tail?: ReactNode; children?: ReactNode }) {
   return (
     <div className={open ? 'fold fold-open' : 'fold'}>
       <button type="button" className="fold-head" aria-expanded={open} onClick={onToggle}>
@@ -97,16 +97,41 @@ function Disclosure({ open, onToggle, icon, label, meta, children }: { open: boo
         <span className="fold-label">{label}</span>
         {meta ? <span className="fold-meta">{meta}</span> : null}
         <Icon name="chevronRight" size={14} className="fold-chevron" />
+        {tail ? <span className="fold-meta">{tail}</span> : null}
       </button>
       {open ? <div className="fold-body">{children}</div> : null}
     </div>
   );
 }
 
-export function ThinkingBlock({ text, live }: { text: string; live: boolean }) {
+/**
+ * The time this run has taken, ticking: at the end of the line that says what it is doing now
+ * (that line stands in for the status line under the answer while it is there).
+ */
+function RunClock({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <span className="status-clock">{formatClock(now - since)}</span>;
+}
+
+/** The turning mark at the front of the line that says what the run is doing now. */
+const LIVE_MARK = <SpicaMark size={14} state="tool" className="fold-mark" />;
+
+/** `since`: this is what the run is doing right now (the run's start, for the clock at the end). */
+export function ThinkingBlock({ text, live, since }: { text: string; live: boolean; since?: number | undefined }) {
   const [open, setOpen] = useState(false);
+  const now = live && since !== undefined;
   return (
-    <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={<Icon name="thinking" size={14} />} label={live ? '正在思考' : '思考过程'}>
+    <Disclosure
+      open={open}
+      onToggle={() => setOpen((o) => !o)}
+      icon={now ? <SpicaMark size={14} state="think" className="fold-mark" /> : <Icon name="thinking" size={14} />}
+      label={live ? '正在思考' : '思考过程'}
+      tail={now ? <RunClock since={since} /> : undefined}
+    >
       <p className="thinking-text">{text}</p>
     </Disclosure>
   );
@@ -118,27 +143,40 @@ function toolLine(b: ToolBlock): string {
   return target ? `${verb}  ${target}` : verb;
 }
 
-function ToolRow({ block }: { block: ToolBlock }) {
+/**
+ * The first place of a tool's line says how it stands: turning while it runs, done, failed,
+ * stopped (timed out, or its plugin was off). Nothing after the name repeats it. A call not
+ * started yet keeps the tool icon and the turning ring after its name.
+ */
+function toolIcon(b: ToolBlock): ReactNode {
+  switch (b.state) {
+    case 'running':
+      return <SpicaStatusIcon name="running" size={14} title="进行中" />;
+    case 'done':
+      return <SpicaStatusIcon name="done" size={14} />;
+    case 'error':
+      return <SpicaStatusIcon name="error" size={14} />;
+    case 'unavailable':
+    case 'timeout':
+      return <SpicaStatusIcon name="stopped" size={14} />;
+    default:
+      return <Icon name="tool" size={14} />;
+  }
+}
+
+/** `since`: a call on its own that is what the run is doing now: said as 正在… with the run's clock at the end. */
+function ToolRow({ block, since }: { block: ToolBlock; since?: number | undefined }) {
   const [open, setOpen] = useState(false);
-  const running = block.state === 'running' || block.state === 'pending';
-  const meta = running ? (
+  const now = since !== undefined && block.state === 'running';
+  const meta = block.state === 'pending' ? (
     <SpicaStatusIcon name="running" size={14} title="进行中" />
   ) : block.state === 'error' ? (
-    <span className="status-with-icon text-danger">
-      <SpicaStatusIcon name="error" size={14} />
-      失败
-    </span>
+    <span className="text-danger">Failed</span>
   ) : block.state === 'unavailable' ? (
-    <span className="status-with-icon">
-      <SpicaStatusIcon name="stopped" size={14} />
-      已停用，未执行
-    </span>
+    '已停用，未执行'
   ) : block.state === 'timeout' ? (
-    <span className="status-with-icon">
-      <SpicaStatusIcon name="stopped" size={14} />
-      已超时
-    </span>
-  ) : block.durationMs !== undefined ? (
+    '已超时'
+  ) : block.state === 'running' ? null : block.durationMs !== undefined ? (
     block.autoApproved ? `Auto · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs)
   ) : block.autoApproved ? (
     'Auto'
@@ -146,30 +184,43 @@ function ToolRow({ block }: { block: ToolBlock }) {
   const body = block.result ?? block.preview;
   const card = useContext(HistoryCardsContext)?.[block.callId];
   return (
-    <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={<Icon name="tool" size={14} />} label={toolLine(block)} meta={meta}>
+    <Disclosure
+      open={open}
+      onToggle={() => setOpen((o) => !o)}
+      icon={now ? LIVE_MARK : toolIcon(block)}
+      label={now ? `正在${toolLine(block)}` : toolLine(block)}
+      meta={meta}
+      tail={now ? <RunClock since={since} /> : undefined}
+    >
       {card && HISTORY_TOOLS.has(block.name) ? <HistoryTable card={card} /> : body ? <pre className="tool-result">{body}</pre> : <p className="tool-empty">—</p>}
     </Disclosure>
   );
 }
 
-/** Consecutive tool calls fold into one line; a single call is its own line. */
-export function ToolGroup({ blocks }: { blocks: ToolBlock[] }) {
+/** What the group's line says while its tools run: the first running one by name, and how many when more run at once. */
+export function runningText(running: ToolBlock[]): string {
+  const first = running[0]!;
+  return running.length > 1 ? `正在${toolLabel(first.name)} 等 ${running.length} 个工具` : `正在${toolLine(first)}`;
+}
+
+/**
+ * Consecutive tool calls fold into one line; a single call is its own line. `since`: these are
+ * what the run is doing now: while some run, the line says so (the turning mark first, 正在 and
+ * the tool, the run's clock at the end) in place of the status line under the answer; after, it
+ * is 调用了 N 个工具 again, with how many failed.
+ */
+export function ToolGroup({ blocks, since }: { blocks: ToolBlock[]; since?: number | undefined }) {
   const [open, setOpen] = useState(false);
-  if (blocks.length === 1 && blocks[0]) return <ToolRow block={blocks[0]} />;
-  const running = blocks.find((b) => b.state === 'running' || b.state === 'pending');
+  if (blocks.length === 1 && blocks[0]) return <ToolRow block={blocks[0]} since={since} />;
+  const running = blocks.filter((b) => b.state === 'running');
+  const busy = running.length > 0 || blocks.some((b) => b.state === 'pending');
+  const now = since !== undefined && running.length > 0;
   const failed = blocks.filter((b) => b.state === 'error').length;
   const total = blocks.reduce((n, b) => n + (b.durationMs ?? 0), 0);
-  const label = running ? `${toolLine(running)}` : `调用了 ${blocks.length} 个工具`;
-  const meta = running ? (
-    <SpicaStatusIcon name="running" size={14} title="进行中" />
-  ) : failed ? (
-    <span className="status-with-icon text-danger">
-      <SpicaStatusIcon name="error" size={14} />
-      {failed} 个失败
-    </span>
-  ) : total ? formatDuration(total) : null;
+  const label = now ? runningText(running) : busy ? toolLine(running[0] ?? blocks.find((b) => b.state === 'pending')!) : `调用了 ${blocks.length} 个工具`;
+  const meta = busy ? (now ? null : <SpicaStatusIcon name="running" size={14} title="进行中" />) : failed ? <span className="text-danger">{failed} failed</span> : total ? formatDuration(total) : null;
   return (
-    <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={<Icon name="tool" size={14} />} label={label} meta={meta}>
+    <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={now ? LIVE_MARK : <Icon name="tool" size={14} />} label={label} meta={meta} tail={now ? <RunClock since={since} /> : undefined}>
       <div className="fold-list">
         {blocks.map((b) => (
           <ToolRow key={b.callId} block={b} />

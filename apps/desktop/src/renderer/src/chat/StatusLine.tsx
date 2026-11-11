@@ -43,8 +43,26 @@ export function phaseOf(t: Transcript): { mark: MarkState; text: string } | null
   }
 }
 
+/**
+ * The run is doing what the answer's last line already says, with the clock at its end: a tool
+ * running (alone or in its group), or thinking shown as it streams. The status line stays away then.
+ */
+export function shownInAnswer(t: Transcript): boolean {
+  if (!t.run) return false;
+  const last = t.items[t.items.length - 1];
+  if (last?.kind !== 'response') return false;
+  const blocks = last.blocks;
+  const end = blocks[blocks.length - 1];
+  if (end?.type === 'thinking') return t.run.status === 'thinking';
+  if (end?.type !== 'tool') return false;
+  // The tools at the end of the answer, as one group.
+  let i = blocks.length - 1;
+  while (i > 0 && blocks[i - 1]?.type === 'tool') i--;
+  return blocks.slice(i).some((b) => b.type === 'tool' && b.state === 'running');
+}
+
 export function StatusLine({ transcript }: { transcript: Transcript }) {
-  const phase = phaseOf(transcript);
+  const phase = shownInAnswer(transcript) ? null : phaseOf(transcript);
   const last = transcript.lastRun;
   const [now, setNow] = useState(() => Date.now());
   const active = Boolean(phase);
