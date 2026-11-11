@@ -143,9 +143,9 @@ server 常常还要拉起别的进程。分两类，规矩不一样：**辅助�
 
 停用插件、重装或升级、改了网络设置要重启、应用正常退出，这几种时候 Spica 都是同一个做法：先记下 server 拉起的全部进程（它的子进程、子进程的子进程……），再关掉 server 的 stdin，等它自己退出；3 秒后 server 还没退就强行结束它；server 没了以后，记下的进程再给最多 1 秒收尾，还活着的逐个结束。所以停一次插件要多花查一次进程的时间（实测约 1.4 秒，在一台同时开着很多程序的电脑上）；接连停好几个插件时（例如应用退出）共用一次。
 
-记名单时是顺着「谁是谁的父进程」找的：经一个已经退出的中间进程启动的程序，父进程已经不在，不在名单里，Spica 不会碰它。结束前会核对进程的创建时间，同一个编号被别的程序重新用了的不会误杀。这只在 Windows 上做；其他系统上 Spica 只结束 server 自己。查不了进程时（例如电脑上禁用了 PowerShell）也只结束 server，并在插件日志里写一行。电脑特别忙、3 秒内还没查完时，Spica 先照常停 server，查完再收；这时 server 直接拉起的进程照样会被结束，它们再拉起的可能漏掉。server 自己崩溃退出时不查，它留下的进程要等插件下次被停时才会被收。
+记名单时是顺着「谁是谁的父进程」找的：交给 Windows 打开的程序（父进程是 Windows 自己的进程），以及经一个已经退出的中间进程启动的程序，都不在名单里，Spica 不会碰它们。结束前会核对进程的创建时间，同一个编号被别的程序重新用了的不会误杀。这只在 Windows 上做；其他系统上 Spica 只结束 server 自己。查不了进程时（例如电脑上禁用了 PowerShell）也只结束 server，并在插件日志里写一行。电脑特别忙、3 秒内还没查完时，Spica 先照常停 server，查完再收；这时 server 直接拉起的进程照样会被结束，它们再拉起的可能漏掉。server 自己崩溃退出时不查，它留下的进程要等插件下次被停时才会被收。
 
-已知的限制：刚经中间进程打开程序、中间进程还没来得及退出的那一刻（实测 Node 写法约 0.2 秒，PowerShell 写法约 0.6 秒）正好停插件，那个程序会被当成插件的进程结束。
+已知的限制：刚打开程序的那一刻正好停插件会怎样，看你是怎么打开的。交给 Windows 打开的（见下面），程序可能没打开，但不会被结束；经自己写的中间进程打开的，中间进程还没来得及退出时（实测 Node 写法约 0.2 秒，PowerShell 写法约 0.6 秒），那个程序会被当成插件的进程结束。
 
 下表是在 Windows 上实测的（server 用 Node 写；「应用被强行结束」是应用自己一个进程被结束，「整棵进程树被结束」是任务管理器的「结束进程树」或 `taskkill /T /F` 这一类）：
 
@@ -154,7 +154,7 @@ server 常常还要拉起别的进程。分两类，规矩不一样：**辅助�
 | 用普通方式拉起的（`spawn`，不加 `detached`） | 结束 | 结束 | 结束 |
 | `detached: true` 拉起的 | **结束**（server 没了 1 秒后） | 留着 | 结束 |
 | 上面两种再拉起的子进程（例如辅助程序 `.exe` 打开的程序） | **结束**（server 没了 1 秒后） | 留着 | 结束 |
-| 经一个马上退出的中间进程启动的（见下面的写法） | 留着 | 留着 | 留着 |
+| 交给 Windows 打开的（explorer.exe 或 WMI，见下面的写法），或经一个马上退出的中间进程启动的 | 留着 | 留着 | 留着 |
 
 - 「跟着结束」是 Node 做的：它把用普通方式拉起的直接子进程放进 Windows 的作业对象，父进程一没就全部结束，不管父进程是自己退出的还是被强杀的。这些子进程再拉起的进程不在里面。
 - `detached` 不能让程序留下来：它的父进程还是 server，停插件时在名单里，「整棵进程树被结束」时也是顺着父进程找到的。一个带 COM 注册的桌面程序被这样结束到一半，用户再开也连不上，只能重启电脑。
@@ -167,40 +167,80 @@ server 常常还要拉起别的进程。分两类，规矩不一样：**辅助�
 - 辅助进程也一样：server 给它开一个 stdin 管道，辅助进程读到 stdin 关闭（Node 里是 `process.stdin` 的 `end` / `close` 事件，`.exe` 里是读 stdin 返回 0 字节）就收尾退出。server 无论怎么结束，这根管道都会断，辅助进程就能自己走。
 - 辅助进程不要用 `detached`，也不要再拉起要常驻的进程：Spica 会把它们记下，server 没了 1 秒后强行结束，来不及收尾；应用被强行结束时它们还会留着、占着安装文件夹。
 
-### 替用户打开的程序：必须经一个马上退出的中间进程启动
+### 替用户打开的程序：交给 Windows 去打开
 
-这是硬要求：不这样启动的程序，停用、重装、升级插件或应用退出时都会被 Spica 结束。要让程序的父进程不再是插件：先起一个中间进程，由它启动程序后马上退出。同时把程序的当前文件夹设到插件文件夹外面，并去掉 Spica 给插件进程设的 `ELECTRON_RUN_AS_NODE`（否则用 Electron 做的程序会起不来）。两种写法，任选其一：
+这是硬要求，有两条：
+
+1. **程序不能挂在插件下面。** 插件自己拉起的进程（包括加了 `detached` 的）停用、重装、升级插件或应用退出时，都会被 Spica 结束。
+2. **程序要拿到用户完整的环境变量。** 插件进程只继承白名单里的环境变量（见第 2 节的变量表）。插件自己启动的程序，或者经插件起的中间进程启动的程序，拿到的也只有这些；靠环境变量找配置、找组件的程序会报找不到配置，或者干脆起不来。
+
+所以不要自己当程序的父进程，交给 Windows 去打开。两种写法，程序的父进程都是 Windows 自己的进程，拿到的都是用户的整套环境变量（两种写法实测逐个变量相同，插件设的变量一个都不带过去）：
 
 ```js
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 
-// Node 写法：中间进程是 Spica 自带的 Node，启动程序后立刻退出
-const LAUNCH = `
-const [program, cwd, ...args] = process.argv.slice(1);
-const env = { ...process.env };
-delete env.ELECTRON_RUN_AS_NODE;
-require('node:child_process').spawn(program, args, { cwd, env, detached: true, stdio: 'ignore' }).unref();
-`;
-export function openForUser(program, args = [], cwd = homedir()) {
-  spawn(process.execPath, ['-e', LAUNCH, program, cwd, ...args], { stdio: 'ignore', windowsHide: true });
+// 首选：经 explorer.exe 打开，和用户双击这个程序一样。不能带参数。
+export function openForUser(program) {
+  if (!/\.exe$/i.test(program) || program.includes(',') || !existsSync(program)) throw new Error('not a program that explorer.exe can open: ' + program);
+  spawn('explorer.exe', [program], { stdio: 'ignore' });
 }
 
-// Windows 写法：PowerShell 的 Start-Process（路径经环境变量传，不用处理引号）
-export function openForUserPowerShell(program, cwd = homedir()) {
-  const env = { ...process.env, OPEN_PROGRAM: program, OPEN_CWD: cwd };
-  delete env.ELECTRON_RUN_AS_NODE;
-  spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Start-Process -FilePath $env:OPEN_PROGRAM -WorkingDirectory $env:OPEN_CWD'],
-    { stdio: 'ignore', windowsHide: true, env });
+// 要带参数、指定当前文件夹或者要进程号时：经 WMI 的 Win32_Process.Create 打开。返回程序的进程号。
+export function openForUserWithArgs(program, args = [], cwd = homedir()) {
+  for (const a of [program, ...args]) if (a.includes('"')) throw new Error('quotes are not supported: ' + a);
+  const commandLine = [program, ...args].map((a) => (a === '' || /\s/.test(a) ? `"${a}"` : a)).join(' ');
+  return new Promise((resolve, reject) => {
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', '$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $env:OPEN_CMD; CurrentDirectory = $env:OPEN_CWD }; "$($r.ReturnValue) $($r.ProcessId)"'],
+      { windowsHide: true, env: { ...process.env, OPEN_CMD: commandLine, OPEN_CWD: cwd } },
+      (err, stdout) => {
+        const [code, pid] = String(stdout).trim().split(' ').map(Number);
+        if (err || code !== 0) reject(new Error(`could not start ${program} (Win32_Process.Create returned ${code})`));
+        else resolve(pid);
+      },
+    );
+  });
 }
 ```
 
-- 这两种写法在上表的每一种情况下都实测过：程序都留着、能继续用，同版本重装也不报占用。
-- 要从插件自带的 `.exe` 里打开程序，同样经中间进程：例如执行 `powershell.exe -NoProfile -Command "Start-Process -FilePath '<程序>' -WorkingDirectory '<文件夹>'"`。只在 `CreateProcess` 里加 `DETACHED_PROCESS`、`CREATE_NEW_PROCESS_GROUP`、`CREATE_BREAKAWAY_FROM_JOB` 不够：父进程还是你的 `.exe`，整棵进程树被结束时照样会被找到。
-- 程序有界面的，不要给它加 `windowsHide` 或 `-WindowStyle Hidden`，否则窗口会被藏起来。
+- 这两段代码原样放进测试插件，在上表的七种情况下（停用、同版本重装、升级、改网络设置重启、应用正常退出、只强行结束应用、整棵进程树被结束）都实测过：程序都留着、能继续用，同版本重装也不报占用。有插件作者用 explorer.exe 的写法打开真实的、带 COM 的桌面客户端，在 Spica 还不结束整串进程的版本上核过除「只强行结束应用」以外的六种情况，程序都还能用；在现在的版本上还没有用真实程序核过。WMI 的写法没有用真实的带窗口、带 COM 的程序测过。
+- 要从插件自带的 `.exe` 里打开程序，做法一样：执行 `explorer.exe "<程序>"`，或者执行上面那行 PowerShell（`Invoke-CimMethod -ClassName Win32_Process -MethodName Create ...`）。
 - 程序已经开着时，先找到它再用，不要每次都新开一个。
-- 带 COM 注册的真实程序没有实测（用能回应的测试程序代替）。按上表推断：程序不在插件的进程树里，就不会被「结束到一半」。
-- `check.mjs` 不查这一条：上面的推荐写法里中间进程本身就用了 `detached`，单看代码分不出对错；辅助程序 `.exe` 里怎么打开程序，在编译好的文件里看不到。交付前按这一节自己核一遍。
+
+**经 explorer.exe 打开：限制**（在一台 Windows 11 上实测）
+
+- 没有查到微软写这种用法的文档：查到的 explorer.exe 命令行说明（微软知识库文章 Q130510「Command-Line Switches for Windows Explorer」）只写了 `/n`、`/e`、`/root`、`/select` 这几个开关。下面都是实测到的行为，以后的 Windows 版本可能变。
+- 不能带参数：命令行里程序后面再写参数，程序不会启动，反而会打开一个文件夹窗口。路径里有逗号也一样（explorer 把逗号当分隔符）。带空格、中文的路径没问题。
+- 看不出成没成功，也拿不到进程号：你起的 explorer.exe 不管成没成功退出码都是 1，约 0.3 到 0.5 秒就退出。要确认程序开了，自己按程序的路径去找进程。
+- 路径不对时不报错，可能开一个文件夹窗口或者弹框（没有实测），所以调用前先确认路径存在、是 `.exe`，上面的代码就是这样做的。
+- 程序的当前文件夹是 `C:\Windows\System32`，改不了。程序要特定的当前文件夹时，用 WMI 的写法。
+- 程序的父进程是 Windows 为这次打开另起的一个 explorer（命令行带 `/factory` 和 `-Embedding`），不是你起的那个，也不是桌面那个。它几分钟内自己退出（实测 1 到 3 分钟），程序照常开着。
+- 调用后你起的 explorer.exe 还没退出时（约 0.3 秒内）正好停插件，explorer.exe 会被当成插件的进程结束，程序就不会打开。不会出现程序打开了又被结束到一半。
+- Spica 以管理员身份运行时，打开的程序是什么权限，没有实测。
+
+**经 WMI 打开：限制**
+
+- 这是有文档的做法（Win32_Process 类的 Create 方法）。返回 0 是成功，2 是拒绝访问，3 是权限不够，9 是找不到路径，21 是参数不对；成功时给出程序的进程号。
+- 参数里不能有双引号（上面的代码会拒绝）；带空格的参数自动加上引号。参数、中文路径、当前文件夹都实测过。带空格又以反斜杠结尾的参数（例如 `C:\某个 文件夹\`）加了引号后，末尾的反斜杠会吃掉引号，参数就错了：先去掉末尾的反斜杠再传（按 Windows 的命令行规则推断，没有实测）。
+- 程序的父进程是 Windows 的 WMI 服务进程（WmiPrvSE），它很快就退出，程序照常开着。
+- 文档写着用这个方法起的进程「受作业对象限制，除非加 `CREATE_BREAKAWAY_FROM_JOB`」；在这台 Windows 11 上实测，程序不在任何作业对象里。别的 Windows 版本上先核一次：程序要是在作业对象里，大程序可能受 WMI 的配额限制。
+- 公司电脑上的安全软件常盯着「WMI 服务拉起程序」这种行为，可能拦下或者报警。用之前在目标电脑上试一次。
+- 每次要多起一个 PowerShell，一次约 1.3 到 1.5 秒（实测）。PowerShell 还没调到 WMI 时正好停插件，程序不会打开；调到之后程序已经不在插件下面了，不会被结束（这一条是按父进程推断的，没有单独实测）。
+
+**不推荐：自己写中间进程**
+
+以前这一节推荐过两种中间进程写法：Node 写法，中间进程 `detached` 启动程序后马上退出；PowerShell 的 `Start-Process`。它们照样能让程序不挂在插件下面（七种情况实测都留着），但程序拿到的是插件的环境变量（白名单，加上 `SPICA_` 开头的那些），会碰到上面第 2 条的问题。只有程序不靠环境变量、而且上面两种写法都用不了时才这样做。这时要给程序重建整套用户环境，不要只补几个变量：
+
+- 不要用 `Start-Process -UseNewEnvironment`：它给的环境实测只有 40 个变量，缺 `SystemRoot`、`USERPROFILE`、`APPDATA`、`ProgramFiles` 这些，`PATH` 也不全；测试程序在这份环境里一启动就崩了。
+- 在 `.exe` 里可以用 Windows 的 `CreateEnvironmentBlock`（传当前进程的令牌，`bInherit` 传 `FALSE`），得到的是用户登录时的整套环境；实测它比 explorer 打开时少 `USERNAME` 和 `USERDOMAIN` 两个，从自己的环境里补上。再把这份环境传给 `CreateProcess`（要加 `CREATE_UNICODE_ENVIRONMENT`）。这一条只核对过拿到的环境变量，没有跑上面的七种情况。
+- 中间进程还没退出时（实测 Node 写法约 0.2 秒，PowerShell 写法约 0.6 秒）正好停插件，那个程序会被当成插件的进程结束。
+- 当前文件夹要设到插件文件夹外面，并去掉 Spica 给插件进程设的 `ELECTRON_RUN_AS_NODE`（否则用 Electron 做的程序会起不来）。只在 `CreateProcess` 里加 `DETACHED_PROCESS`、`CREATE_NEW_PROCESS_GROUP`、`CREATE_BREAKAWAY_FROM_JOB` 不够：父进程还是你的 `.exe`。
+- 程序有界面的，不要给它加 `windowsHide` 或 `-WindowStyle Hidden`，否则窗口会被藏起来。
+
+`check.mjs` 不查这一条：插件里怎么打开程序，单看代码分不出是辅助进程还是替用户打开的程序；辅助程序 `.exe` 里怎么打开程序，在编译好的文件里看不到。交付前按这一节自己核一遍。
 
 ## 2e. 同时来的调用和只有一个的东西
 
