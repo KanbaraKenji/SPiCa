@@ -33,6 +33,28 @@ const lowlight = createLowlight({ bash, c, cpp, csharp, css, diff, dos, go, ini,
 /** Above this a block stays plain: colouring it would hold up the page (measured: see the test). */
 export const HIGHLIGHT_MAX_CHARS = 100_000;
 
+/**
+ * While a block is still streaming in, its finished lines are coloured as they come, up to this many; past it the
+ * coloured part stops growing until the block is closed (each new line colours the whole part again).
+ */
+export const LIVE_MAX_LINES = 300;
+
+/**
+ * Which part of a block to colour now: all of it once closed (within HIGHLIGHT_MAX_CHARS); while it streams in,
+ * its finished lines (not the one being written), at most LIVE_MAX_LINES. The coloured part only ever grows, so
+ * a line once coloured never turns plain again.
+ */
+export function colourSplit(code: string, closed: boolean): { done: string; rest: string } {
+  if (closed && code.length <= HIGHLIGHT_MAX_CHARS) return { done: code, rest: '' };
+  let end = 0;
+  for (let n = 0; n < LIVE_MAX_LINES; n++) {
+    const nl = code.indexOf('\n', end);
+    if (nl < 0) break;
+    end = nl + 1;
+  }
+  return { done: code.slice(0, end), rest: code.slice(end) };
+}
+
 /** The language a block names (its `language-…` class) as written, registered here or not; '' when none. */
 export function blockLanguageName(className: unknown): string {
   const names = Array.isArray(className) ? className : typeof className === 'string' ? className.split(/\s+/) : [];

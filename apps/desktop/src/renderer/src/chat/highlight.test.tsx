@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import { MarkdownText } from './Blocks';
-import { blockLanguage, HIGHLIGHT_MAX_CHARS, highlightCode } from './highlight';
+import { blockLanguage, colourSplit, HIGHLIGHT_MAX_CHARS, highlightCode, LIVE_MAX_LINES } from './highlight';
 
 afterEach(cleanup);
 
@@ -42,14 +42,30 @@ describe('code colours', () => {
     expect([...block().querySelectorAll('*')].every((el) => el.tagName === 'SPAN')).toBe(true);
   });
 
-  it('while an answer streams in, a block not closed yet stays plain (no colours changing under the reader)', () => {
+  it('while an answer streams in, finished lines are coloured and the line being written stays plain', () => {
+    const colouredText = () => [...document.querySelectorAll('.md pre code [class^="hl-"]')].map((e) => e.textContent).join('|');
     const { rerender } = render(<MarkdownText text={'看：\n\n```js\nconst a = "x'} />);
     expect(coloured()).toBe(0);
-    rerender(<MarkdownText text={'看：\n\n```js\nconst a = "x";\n'} />);
-    expect(coloured()).toBe(0);
-    rerender(<MarkdownText text={'看：\n\n```js\nconst a = "x";\n```'} />);
-    expect(coloured()).toBeGreaterThan(0);
-    expect(block().textContent).toBe('const a = "x";\n');
+    rerender(<MarkdownText text={'看：\n\n```js\nconst a = "x";\nlet b = "y'} />);
+    expect(colouredText()).toBe('const|"x"');
+    expect(block().textContent).toBe('const a = "x";\nlet b = "y\n');
+    rerender(<MarkdownText text={'看：\n\n```js\nconst a = "x";\nlet b = "y";\n'} />);
+    expect(colouredText()).toBe('const|"x"|let|"y"');
+    rerender(<MarkdownText text={'看：\n\n```js\nconst a = "x";\nlet b = "y";\n```'} />);
+    expect(colouredText()).toBe('const|"x"|let|"y"');
+    expect(block().textContent).toBe('const a = "x";\nlet b = "y";\n');
+  });
+
+  it('the coloured part only grows: live up to LIVE_MAX_LINES lines, the rest once the block is closed', () => {
+    const many = Array.from({ length: LIVE_MAX_LINES + 50 }, (_, i) => `x${i}`).join('\n');
+    const open = colourSplit(many + '\nhalf', false);
+    expect(open.done.split('\n').length - 1).toBe(LIVE_MAX_LINES);
+    expect(open.done + open.rest).toBe(many + '\nhalf');
+    expect(colourSplit('a\nb', false)).toEqual({ done: 'a\n', rest: 'b' });
+    expect(colourSplit('a\nb\n', true)).toEqual({ done: 'a\nb\n', rest: '' });
+    // Closed but over the limit: the part coloured while it streamed stays coloured, the rest plain.
+    const huge = 'y\n'.repeat(HIGHLIGHT_MAX_CHARS);
+    expect(colourSplit(huge, true).done.length).toBe(LIVE_MAX_LINES * 2);
   });
 
   it('the head shows the language as written (empty without one), and 复制', () => {

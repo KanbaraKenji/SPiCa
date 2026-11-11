@@ -11,7 +11,7 @@ import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
 import { fullPath, openablePathKind } from './local-path';
 import { tableRows, toCsv, toHtml, toTsv } from './table-data';
-import { blockLanguage, blockLanguageName, highlightCode } from './highlight';
+import { blockLanguage, blockLanguageName, colourSplit, highlightCode } from './highlight';
 import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS, toolLabel, toolTarget } from './format';
 
 /** Opens a conversation by id, at message number `seq` when given (rows and links from earlier conversations). */
@@ -94,8 +94,9 @@ interface PreNode {
 
 /**
  * A code block: a slim head with the language as written (empty when none) and 复制, always there; the code
- * below it, scrolling sideways on its own. Coloured once its closing fence has come (`source`: the answer's
- * text): while an answer streams in, an open block stays plain, so tokens do not change colour under the reader.
+ * below it, scrolling sideways on its own. Coloured line by line as it streams in: finished lines are coloured,
+ * the one being written stays plain until it ends (`source`: the answer's text, to see whether the block is
+ * closed yet). A coloured line never changes back, and colouring does not move the text.
  */
 function CodeBlock({ node, source, children }: { node?: PreNode | undefined; source: string; children?: ReactNode }) {
   const ref = useRef<HTMLPreElement>(null);
@@ -105,7 +106,13 @@ function CodeBlock({ node, source, children }: { node?: PreNode | undefined; sou
   const raw = code?.children?.map((t) => (t.type === 'text' ? (t.value ?? '') : '')).join('') ?? '';
   const end = node?.position?.end?.offset;
   const closed = end !== undefined && /(?:`{3,}|~{3,})[ \t]*$/.test(source.slice(0, end));
-  const coloured = useMemo(() => (language && closed ? highlightCode(language, raw) : null), [language, closed, raw]);
+  // The code's text always ends with a line break; while the block is open, its last line is finished only when
+  // the answer's text so far ends with one.
+  const upto = end !== undefined ? source.slice(0, end) : source;
+  const text = closed || upto.endsWith('\n') || !raw.endsWith('\n') ? raw : raw.slice(0, -1);
+  const { done, rest } = language ? colourSplit(text, closed) : { done: '', rest: text };
+  const tail = raw.slice(text.length);
+  const coloured = useMemo(() => (language && done ? highlightCode(language, done) : null), [language, done]);
   return (
     <div className="code-block">
       <div className="code-head">
@@ -116,6 +123,8 @@ function CodeBlock({ node, source, children }: { node?: PreNode | undefined; sou
         {coloured ? (
           <code className={`language-${language}`}>
             {coloured}
+            {rest}
+            {tail}
           </code>
         ) : (
           <InBlockContext.Provider value={true}>{children}</InBlockContext.Provider>
