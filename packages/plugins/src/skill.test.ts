@@ -210,6 +210,33 @@ describe('plugin-author skill', () => {
     expect(r2.out).toMatch(/permissions\.irreversible 里的 drop_everything 不是任何 server 的工具/);
   });
 
+  it('check: the plugin icon is an .svg in the folder, up to 64 KB; scripts and links in it are pointed out; none is a hint', async () => {
+    const parent = await temp('spica-skill-icon-');
+    await script('scaffold.mjs', ['shiny', '--dir', parent]);
+    const root = join(parent, 'shiny');
+    const setIcon = async (icon: string | undefined) => {
+      const m = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as Record<string, unknown>;
+      if (icon === undefined) delete m.icon;
+      else m.icon = icon;
+      await writeFile(join(root, 'manifest.json'), JSON.stringify(m));
+    };
+    const run = () => script('check.mjs', [root, '--no-tests', '--no-pack']);
+    // The scaffold gives one, so nothing is said.
+    expect((await run()).out).not.toMatch(/icon/);
+    await setIcon('missing.svg');
+    expect((await run()).out).toMatch(/manifest\.json：icon 要指向插件文件夹里存在的 \.svg/);
+    await writeFile(join(root, 'big.svg'), `<svg xmlns="http://www.w3.org/2000/svg">${' '.repeat(70 * 1024)}</svg>`);
+    await setIcon('big.svg');
+    expect((await run()).out).toMatch(/icon 文件不能大于 64 KB（当前 71 KB）/);
+    await writeFile(join(root, 'busy.svg'), '<svg xmlns="http://www.w3.org/2000/svg" onload="x()"><script>x()</script></svg>');
+    await setIcon('busy.svg');
+    const busy = await run();
+    expect(busy.out).toMatch(/icon 里有脚本、事件属性或外部链接/);
+    expect(busy.code, busy.out).toBe(0);
+    await setIcon(undefined);
+    expect((await run()).out).toMatch(/没有 icon，插件列表里会用名字的第一个字代替/);
+  });
+
   it('check warns about environment variables a plugin will not get once installed', async () => {
     const parent = await temp('spica-skill-env-');
     await script('scaffold.mjs', ['envy', '--dir', parent]);

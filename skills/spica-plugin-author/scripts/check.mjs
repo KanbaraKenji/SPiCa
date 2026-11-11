@@ -67,6 +67,15 @@ export async function check(dir, opts = {}) {
   if (!SEMVER.test(m.version ?? '')) err('manifest.json', 'version 要写三段数字，例如 0.1.0');
   if (typeof m.description !== 'string' || !m.description.trim()) err('manifest.json', '缺少 description（一句话说插件做什么）');
   if (typeof m.display_name !== 'string' || !m.display_name.trim()) warn('manifest.json', '没有 display_name，界面上会显示 name');
+  if (m.icon === undefined) warn('manifest.json', '没有 icon，插件列表里会用名字的第一个字代替（写法见 references/manifest.md「插件图标」）');
+  else {
+    const icon = inside(m.icon);
+    if (!icon || typeof m.icon !== 'string' || !/\.svg$/i.test(m.icon) || !existsSync(icon)) err('manifest.json', 'icon 要指向插件文件夹里存在的 .svg，例如 "icon.svg"');
+    else if (statSync(icon).size > 64 * 1024) err('manifest.json', `icon 文件不能大于 64 KB（当前 ${Math.ceil(statSync(icon).size / 1024)} KB）`);
+    else if (/<script\b|<foreignObject\b|\son[a-z]+\s*=|(?:xlink:)?href\s*=\s*["'](?!#)/i.test(await readFile(icon, 'utf8'))) {
+      warn('manifest.json', 'icon 里有脚本、事件属性或外部链接：图标只当图片显示，这些都不会生效，删掉');
+    }
+  }
   const author = typeof m.author === 'string' ? m.author : m.author?.name;
   if (typeof author !== 'string' || !author.trim()) err('manifest.json', 'author 要写作者或团队名：{ "name": "…" }');
   if (typeof m.license !== 'string') warn('manifest.json', '没有 license（SPDX 写法，例如 "Apache-2.0"）');

@@ -77,6 +77,7 @@ export async function scaffold(opts) {
 
   const files = [
     ['manifest.json.tmpl', 'manifest.json'],
+    ['icon.svg.tmpl', 'icon.svg'],
     ['package.json.tmpl', 'package.json'],
     ['spicaignore.tmpl', '.spicaignore'],
     ['README.md.tmpl', 'README.md'],

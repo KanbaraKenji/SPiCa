@@ -31,6 +31,7 @@
 | `description` | 是 | 一句话 |
 | `author` | 是 | `{ "name": "…" }` |
 | `display_name` | 否 | 界面上的名字 |
+| `icon` | 否 | 插件自己的图标：插件文件夹里的 `.svg`，不大于 64 KB，见下面「插件图标」 |
 | `license` | 否 | 如 `Apache-2.0` |
 | `compatibility.spica` | 否 | 如 `>=0.1.0` |
 | `permissions.network` | 否 | 会访问的主机名单（现在只展示） |
@@ -40,6 +41,20 @@
 | `permissions.model` | 否 | 借用户在 Spica 里配好的模型：`{ "reason": "一句为什么", "max_usd_per_day": 0.2 }`，上限缺省 0.5 美元/天。见 `model.md`（rc.2 之后的版本才有） |
 | `mock` | 否 | `{ "supported": true, "description": "模拟时会怎样" }` |
 | `mail` | 否 | 邮件来源声明，见 `mail.md` |
+
+## 插件图标
+
+设置 › 插件 的列表和详情里，插件名前面的图标。不写 `icon` 时显示名字的第一个字。
+
+```json
+"icon": "icon.svg"
+```
+
+- 只收 `.svg`；插件文件夹里的相对路径，不能用 `..`、绝对路径；文件要存在；不大于 64 KB。写错了插件装不上。
+- 按 24×24 画、画满，显示成 22 像素见方的圆角方块。
+- 只当图片显示：脚本、事件属性、外部链接都不生效，`check.mjs` 会提醒删掉。
+- 颜色写死，不跟随明暗（`currentColor` 是黑色），深浅两种皮肤上都要看得清，带底色的方块最稳。页面的 `icon` 跟随主题，两者不同。
+- `scaffold.mjs` 生成的插件自带 `icon.svg`；例子见 `plugins/example-notes/icon.svg`。
 
 ## `mcp/<id>.json` / `services/<id>.json`
 

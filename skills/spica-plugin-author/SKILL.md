@@ -54,6 +54,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 - [ ] **日志不记正文**：stderr 只写工具名、错误码、耗时，不写邮件正文、文件内容、个人信息。
 - [ ] **提示是中文人话**：每个错误码都有一句告诉用户「发生了什么、该怎么办」的中文。
 - [ ] **模拟模式能跑通**，`node --test` 全过，`check.mjs` 显示「可以装了」。
+- [ ] **图标是自己的**：`manifest.json` 的 `icon` 指向插件文件夹里的 `.svg`（不大于 64 KB），把脚手架给的那个换成这个插件自己的。见 `references/manifest.md`「插件图标」。
 - [ ] 改了功能就改 `version`（三段数字），Spica 靠它判断更新。
 
 ## 带界面的插件
@@ -100,7 +101,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 
 | 文件 | 内容 |
 |---|---|
-| `references/manifest.md` | 目录结构、`manifest.json`、`mcp/*.json`、`views/*.json` 字段 |
+| `references/manifest.md` | 目录结构、`manifest.json`（含插件图标 `icon`）、`mcp/*.json`、`views/*.json` 字段 |
 | `references/errors.md` | 工具错误码的写法；Spica 装插件、调页面时给的提示和怎么改 |
 | `references/hooks-permissions.md` | 钩子类型、权限声明、不可逆确认 |
 | `references/mock-mode.md` | 模拟模式怎么写 |
