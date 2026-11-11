@@ -97,6 +97,30 @@ npm run dev
 The first `npm run dev` downloads the Electron runtime (about 100 MB) once. When the
 window opens, add a model under **Settings › Models** (设置 › 模型).
 
+#### A company gateway in the development build
+
+The development build connects to a company gateway (WSO2) the same way the installed
+app does; a few things differ in where its settings come from.
+
+- `.env.local` holds only an OpenAI-compatible or Anthropic model (shown as
+  开发用模型（.env.local）). Add the gateway under **Settings › Models › 添加服务商 ›
+  公司网关（WSO2）** and check it with **测试连接**.
+- The `.env.local` model stays the default until you change **默认模型** on that page, or
+  pick the gateway's model with the model button under the message box.
+- With `SPICA_USER_DATA=<folder>` the build keeps its own settings folder. Keys saved in
+  another folder cannot be opened there (Windows seals them with a key kept in that
+  folder's `Local State`): enter the Consumer Secret again and save. The connection then
+  shows no problem line.
+- When **Settings › General › 代理地址** is empty, the app uses `HTTPS_PROXY`,
+  `HTTP_PROXY` and `NO_PROXY` from the environment it was started in; for `npm run dev`
+  that is your terminal, which may differ from what the Start menu gives the installed
+  app. The line under the network settings (当前：…) shows the proxy in force. If the
+  gateway is only reachable directly, add its host to `NO_PROXY` in that terminal, or
+  fill in 代理地址 and 不使用代理的地址 on the settings page.
+- If a model call fails, the reason shows under your message. If a tool call fails, its
+  row in the conversation says 失败; click the row for the reason (for example a wrong
+  argument or an unknown tool name).
+
 ## Architecture
 
 <p align="center">
