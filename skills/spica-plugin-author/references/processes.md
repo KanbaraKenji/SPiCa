@@ -57,7 +57,7 @@ export function openForUserWithArgs(program, args = [], cwd = homedir()) {
 ```
 
 - explorer.exe：没查到微软写这种用法的文档（实测行为）。不能带参数，路径里不能有逗号（带了不启动程序，反而开一个文件夹窗口）；退出码恒为 1，拿不到进程号；路径不对不报错，调用前先确认是存在的 `.exe`；当前文件夹固定是 `C:\Windows\System32`。
-- WMI：有文档；返回 0 是成功，给出进程号；参数里不能有双引号，带空格又以反斜杠结尾的参数先去掉末尾的反斜杠。文档写着这样起的进程受作业对象限制，在 Windows 11 上实测不在作业对象里，别的版本先核。公司电脑上的安全软件可能拦「WMI 服务拉起程序」，用前在目标电脑上试一次。
+- WMI：只在要带参数或指定当前文件夹时用，首选仍是 explorer.exe。有文档；返回 0 是成功，给出进程号；参数里不能有双引号，带空格又以反斜杠结尾的参数先去掉末尾的反斜杠。程序在不在作业对象里因机器而异（两台 Windows 11 上一台在、一台不在）；在的话，作业对象设了「关闭即结束」时，父进程 WmiPrvSE 退出可能把程序一起结束（还没观察到）。用前在目标电脑上核：用 WMI 打开一次，等程序的父进程 WmiPrvSE 退出后看程序还在不在；它一直不退就按有风险算，改用 explorer.exe。公司电脑上的安全软件可能拦「WMI 服务拉起程序」，用前在目标电脑上试一次。
 - 从插件自带的 `.exe` 里打开程序：执行 `explorer.exe "<程序>"`，或者上面那行 PowerShell。
 - 不推荐自己写中间进程（Node `detached` 启动后马上退出，或 `Start-Process`）：程序不挂在插件下面，但拿到的是插件的环境变量。非这样不可时，要重建整套用户环境：不要用 `Start-Process -UseNewEnvironment`（实测缺 `SystemRoot`、`USERPROFILE`、`APPDATA` 这些）；`.exe` 里用 `CreateEnvironmentBlock`，再补上 `USERNAME`、`USERDOMAIN`。只在 `.exe` 里加 `DETACHED_PROCESS` / `CREATE_NEW_PROCESS_GROUP` / `CREATE_BREAKAWAY_FROM_JOB` 不够：父进程还是插件。
 - 有界面的程序不要加 `windowsHide` / `-WindowStyle Hidden`。
