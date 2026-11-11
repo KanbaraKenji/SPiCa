@@ -88,6 +88,10 @@ describe('settings › 插件 list rows', () => {
     expect(block('.plugin-row-name')).toContain('flex: 0 1 auto');
     expect(block('.plugin-row-name')).toContain('text-overflow: ellipsis');
     expect(block('.plugin-row-version')).toContain('flex: none');
+    // Right after the name: the 8px gap of the row and of the detail's title, less 4.
+    expect(block('.plugin-row')).toContain('gap: 8px');
+    expect(block('.plugin-title')).toContain('gap: 8px');
+    expect(block('.plugin-row .plugin-version,\n.plugin-title .plugin-version')).toContain('margin-left: -4px');
   });
 });
 

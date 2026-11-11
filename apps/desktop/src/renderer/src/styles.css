@@ -3165,6 +3165,12 @@ button.ctx-row:hover {
   margin-right: auto;
 }
 
+/* The version right after the name: 4px from it (the row's and the title's gap is 8), in the list and the detail alike. */
+.plugin-row .plugin-version,
+.plugin-title .plugin-version {
+  margin-left: -4px;
+}
+
 /* Turned off: the icon fainter, the name in the secondary colour. */
 .plugin-row.is-off .plugin-badge {
   opacity: 0.45;
