@@ -3,6 +3,9 @@
    (shared/skin.ts). The values below are only first-paint fallbacks. */
 :root {
   color-scheme: light dark;
+  /* The size of the conversation's text (an answer); the rows that stand in it (思考过程, a tool group's line,
+     Running …) are the same size. */
+  --chat-text: 15px;
   --spica-bg: #f7f8fa;
   --spica-chrome: #eff1f4;
   --spica-ink: #111827;
@@ -1014,7 +1017,7 @@ button.tree-twisty:hover {
 
 /* Answers in the conversation: the reference's size (15px, 21px lines). */
 .turn-response .md {
-  font-size: 15px;
+  font-size: var(--chat-text);
   line-height: 21px;
 }
 
@@ -1472,7 +1475,7 @@ pre .hl-punctuation {
   padding: 0 8px;
   border-radius: var(--radius-s);
   color: var(--spica-muted);
-  font-size: 13px;
+  font-size: var(--chat-text);
   text-align: left;
 }
 

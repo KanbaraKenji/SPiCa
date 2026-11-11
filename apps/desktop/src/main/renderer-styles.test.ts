@@ -170,3 +170,16 @@ describe('code sizes', () => {
     expect(block('.preview-code')).toContain('font-size: 12.5px');
   });
 });
+
+describe('rows in the conversation', () => {
+  it('思考过程, a tool group’s line and Running … are the size of the answer text; what opens under them keeps its own', () => {
+    expect(block(':root')).toContain('--chat-text: 15px');
+    expect(block('.turn-response .md')).toContain('font-size: var(--chat-text)');
+    expect(block('.fold-head')).toContain('font-size: var(--chat-text)');
+    // The time at the end of the row and the steps under an open group are not changed.
+    expect(block('.fold-meta')).toContain('font-size: 12px');
+    expect(block('.fold-body')).not.toContain('font-size');
+    expect(block('.tool-item-head')).not.toContain('font-size');
+    expect(block('.thinking-text')).toContain('font-size: 13px');
+  });
+});
