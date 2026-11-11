@@ -1,7 +1,7 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
 import { relocate, shownPath } from './relocate';
-import type { CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, Message, PendingItem, SessionStatus, SettingsChangeMeta, UntrustedKind } from '@spica/protocol';
+import type { CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, Message, PendingItem, SessionStatus, SettingsChangeMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { humanError } from '../../../shared/errors';
 import { toolLabel } from '../chat/format';
 
@@ -44,6 +44,8 @@ export type Block =
       flagged?: UntrustedKind;
       /** Irreversible, but ran without asking: the conversation's approval is automatic. */
       autoApproved?: boolean;
+      /** What kind of step it is, as the core said (tool.start, or the stored toolInfo); absent in older conversations. */
+      category?: ToolCategory;
     }
   | { type: 'ask'; callId: string; question: string; options: string[]; answer?: string }
   | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause }
@@ -206,8 +208,10 @@ export interface Transcript {
   lastFailure?: string;
   /** Messages sent while a run was going, not yet taken in by the agent. */
   queued?: { id: string; text: string }[];
-  /** File details the core reported for read_file calls (file.card), by call id. */
+  /** File details the core reported (file.card), by call id: the call's first card. */
   fileCards?: Record<string, FileCardMeta>;
+  /** Every card of a call that reported several (a command, present_files, a plugin tool), in order, by call id. */
+  fileCardLists?: Record<string, FileCardMeta[]>;
   /** What the history tools found (history.card), by call id: the table under the tool row, and where [name](history:n) links go. */
   historyCards?: Record<string, HistoryCardMeta>;
   /** The number of the first stored message in each item, by item id (to scroll to a message by its number). */
@@ -339,6 +343,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
   const messages = old.size ? all.filter((m) => !m.superseded) : all;
   const items: Item[] = [];
   const cards: Record<string, FileCardMeta> = {};
+  const cardLists: Record<string, FileCardMeta[]> = {};
   const history: Record<string, HistoryCardMeta> = {};
   const seqs: Record<string, number> = {};
   // After each message: the item it went into starts at that message's number (if it is the first one there).
@@ -375,6 +380,9 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
     if (m.kind === 'tool_results') {
       const stored = m.meta?.fileCards;
       if (stored && typeof stored === 'object') Object.assign(cards, stored as Record<string, FileCardMeta>);
+      const storedLists = m.meta?.fileCardLists;
+      if (storedLists && typeof storedLists === 'object') Object.assign(cardLists, storedLists);
+      const info = m.meta?.toolInfo;
       // Suggestion cards as the core stored them (they win over the tool call's raw input).
       const suggested = m.meta?.suggestedActions as Record<string, { title: string; actions: SuggestAction[] }> | undefined;
       for (const [callId, sa] of Object.entries(suggested ?? {})) {
@@ -388,6 +396,8 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
         if (b.type !== 'tool_result') continue;
         const tool = findBlock(items, 'tool', b.toolUseId);
         if (tool) {
+          const category = info?.[b.toolUseId]?.category;
+          if (category) tool.category = category;
           tool.result = resultBody(b.content);
           tool.preview = tool.result.slice(0, 160);
           tool.state = b.isError ? failedState(b.content) : 'done';
@@ -426,6 +436,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
           }),
         );
         Object.assign(cards, built.fileCards ?? {});
+        Object.assign(cardLists, built.fileCardLists ?? {});
         Object.assign(history, built.historyCards ?? {});
         const last = msgs[msgs.length - 1];
         return { blocks: built.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])), ...(last?.createdAt ? { at: last.createdAt } : {}) };
@@ -439,7 +450,13 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
     cur.versions = versions;
     cur.anchorId = anchor;
   }
-  const t: Transcript = { items, ...(Object.keys(cards).length ? { fileCards: cards } : {}), ...(Object.keys(history).length ? { historyCards: history } : {}), seqs };
+  const t: Transcript = {
+    items,
+    ...(Object.keys(cards).length ? { fileCards: cards } : {}),
+    ...(Object.keys(cardLists).length ? { fileCardLists: cardLists } : {}),
+    ...(Object.keys(history).length ? { historyCards: history } : {}),
+    seqs,
+  };
   for (const p of pending) applyPending(t, p);
   return t;
 }
@@ -534,13 +551,15 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       if (existing) {
         existing.input = e.input;
         existing.state = 'running';
+        if (e.category) existing.category = e.category;
       } else {
-        lastResponse(items, respId).blocks.push({ type: 'tool', callId: e.callId, name: e.name, input: e.input, state: 'running' });
+        lastResponse(items, respId).blocks.push({ type: 'tool', callId: e.callId, name: e.name, input: e.input, state: 'running', ...(e.category ? { category: e.category } : {}) });
       }
       return t;
     }
     case 'file.card': {
       t.fileCards = { ...(t.fileCards ?? {}), [e.callId]: e.file };
+      if (e.files?.length) t.fileCardLists = { ...(t.fileCardLists ?? {}), [e.callId]: e.files };
       return t;
     }
     case 'history.card': {
@@ -659,25 +678,64 @@ export interface FileRef {
   shown?: string;
   tool: string;
   card?: FileCardMeta;
+  /** The kind of step the card came from (a command's cards say the file changed while it ran). */
+  category?: ToolCategory;
+  /** Lines added and removed by this round's writes and edits of the file, added up. */
+  lines?: { added: number; removed: number };
 }
 
 /**
- * Files the answer touched, in first-seen order; core file cards win over the bare path argument.
+ * Files the answer touched, one card each. A call may report several cards (`lists`, else its one card in
+ * `cards`); older conversations have none for write_file / edit_file, whose path argument stands in. When a
+ * file has several cards in the round: the one present_files handed over (those come first), else the latest;
+ * a card wins over a bare path; lines are added up over the round's writes and edits.
  * `moved`: the working-folder change after this answer, if any: the paths are where the files are now.
  */
-export function filesOf(blocks: readonly Block[], cards: Record<string, FileCardMeta> = {}, moved?: CwdChangeMeta): FileRef[] {
-  const seen = new Map<string, FileRef>();
+export function filesOf(blocks: readonly Block[], cards: Record<string, FileCardMeta> = {}, moved?: CwdChangeMeta, lists: Record<string, FileCardMeta[]> = {}): FileRef[] {
+  const seen = new Map<string, { ref: FileRef; order: number; presented: boolean }>();
+  const lines = new Map<string, { added: number; removed: number }>();
+  let order = 0;
   for (const b of blocks) {
-    if (b.type !== 'tool' || !FILE_TOOLS.has(b.name) || b.state === 'error') continue;
-    const card = cards[b.callId];
+    if (b.type !== 'tool' || b.state === 'error') continue;
+    const one = cards[b.callId];
+    const list = lists[b.callId] ?? (one ? [one] : []);
     const arg = (b.input as { path?: unknown } | undefined)?.path;
-    const written = card?.path ?? (typeof arg === 'string' ? arg : undefined);
-    const path = written ? relocate(written, moved) : undefined;
-    if (!path || seen.has(path)) continue;
-    const shown = path !== written ? shownPath(path, moved) : undefined;
-    seen.set(path, { path, tool: b.name, ...(shown && shown !== path ? { shown } : {}), ...(card ? { card } : {}) });
+    const entries: { written: string; card?: FileCardMeta }[] = list.length ? list.map((card) => ({ written: card.path, card })) : FILE_TOOLS.has(b.name) && typeof arg === 'string' ? [{ written: arg }] : [];
+    const presented = b.name === 'present_files' || b.category === 'present';
+    for (const { written, card } of entries) {
+      const path = relocate(written, moved);
+      if (!path) continue;
+      if (card?.lines) {
+        const sum = lines.get(path) ?? { added: 0, removed: 0 };
+        lines.set(path, { added: sum.added + card.lines.added, removed: sum.removed + card.lines.removed });
+      }
+      const prev = seen.get(path);
+      // A bare path never replaces a card or an earlier path; a later card does, unless present_files handed the file over.
+      if (prev && (!card || (prev.presented && !presented))) continue;
+      const shown = path !== written ? shownPath(path, moved) : undefined;
+      const ref: FileRef = { path, tool: b.name, ...(shown && shown !== path ? { shown } : {}), ...(card ? { card } : {}), ...(b.category ? { category: b.category } : {}) };
+      seen.set(path, { ref, order: prev?.order ?? order++, presented: presented || (prev?.presented ?? false) });
+    }
   }
-  return [...seen.values()];
+  const all = [...seen.values()];
+  all.sort((a, b) => Number(b.presented) - Number(a.presented) || a.order - b.order);
+  return all.map(({ ref }) => {
+    const sum = lines.get(ref.path);
+    return sum && (sum.added || sum.removed) ? { ...ref, lines: sum } : ref;
+  });
+}
+
+/**
+ * What a card says the round did with the file, in the tool rows' English (a card for a file that was read
+ * says what was read instead, fileCardLine): Created, Edited, Made, or for a command's cards, changed while it ran.
+ */
+export function fileCardVerb(f: FileRef): string | null {
+  const origin = f.card?.origin;
+  const command = f.category === 'command' || f.tool === 'run_command';
+  if (origin === 'created') return command ? 'Created while the command ran' : 'Created';
+  if (origin === 'modified') return command ? 'Changed while the command ran' : 'Edited';
+  if (origin === 'produced') return 'Made';
+  return null;
 }
 
 const KIND_LABEL: Record<FileCardMeta['kind'], string> = { pdf: 'PDF', docx: 'Word', xlsx: 'Excel', csv: 'CSV', pptx: 'PPT', text: '文本', other: '文件' };

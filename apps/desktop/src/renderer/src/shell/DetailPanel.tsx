@@ -47,7 +47,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
   // Per answer, so files named before the working-folder note are where it put them; each file once.
   const moves = changesAfter(transcript.items);
   const files = [
-    ...new Map(transcript.items.flatMap((i) => (i.kind === 'response' ? filesOf(i.blocks, transcript.fileCards, moves.get(i.id)) : [])).map((f) => [f.path, f] as const)).values(),
+    ...new Map(transcript.items.flatMap((i) => (i.kind === 'response' ? filesOf(i.blocks, transcript.fileCards, moves.get(i.id), transcript.fileCardLists) : [])).map((f) => [f.path, f] as const)).values(),
   ];
   return (
     <aside className="detail" aria-label="详情">

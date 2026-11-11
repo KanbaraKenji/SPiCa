@@ -28,6 +28,8 @@ const LABELS: Record<string, string> = {
   search_history: '查找对话记录',
   read_history: '读取对话记录',
   find_history_files: '查找对话中的文件',
+  // The files a task made, handed over to the user (they show as cards under the answer).
+  present_files: '交付文件',
 };
 
 /** Tools that read other conversations: their results name them as ses_…#n, shown as links. */

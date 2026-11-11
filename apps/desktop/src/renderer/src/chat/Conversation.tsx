@@ -128,12 +128,14 @@ function Response({
   regen,
   after,
   cwd,
+  lists,
 }: {
   item: Extract<Item, { kind: 'response' }>;
   live: boolean;
   since?: number | undefined;
   actions: ConversationActions;
   cards: Transcript['fileCards'];
+  lists?: Transcript['fileCardLists'];
   moved?: CwdChangeMeta;
   /** The conversation's working folder (a relative path on a file card is in it). */
   cwd?: string | undefined;
@@ -158,7 +160,7 @@ function Response({
   const view = all[shown]!;
   const blocks = view.blocks;
   const segs = segments(blocks);
-  const files = filesOf(blocks, cards, moved);
+  const files = filesOf(blocks, cards, moved, lists);
   return (
     <div className="turn-response" {...at}>
       {segs.map((s, i) => {
@@ -414,7 +416,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                     {item.text}
                   </p>
                 );
-              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} after={lastIndex - i} regen={regen && session?.role === 'top' ? { state: regen, last: item.anchorId === regen.anchorId || items[i - 1]?.id === regen.anchorId } : undefined} actions={actions} cards={transcript.fileCards} moved={moves.get(item.id)} cwd={session?.cwd} at={mark(item.id)} />;
+              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} after={lastIndex - i} regen={regen && session?.role === 'top' ? { state: regen, last: item.anchorId === regen.anchorId || items[i - 1]?.id === regen.anchorId } : undefined} actions={actions} cards={transcript.fileCards} lists={transcript.fileCardLists} moved={moves.get(item.id)} cwd={session?.cwd} at={mark(item.id)} />;
             })}
             <StatusLine transcript={transcript} />
             {waiting.map((w) => (

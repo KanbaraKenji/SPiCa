@@ -1497,6 +1497,26 @@ button.tree-twisty:hover {
   color: var(--spica-muted);
 }
 
+/* Lines a write added and removed (+8 −1), in the code colours' green and red. */
+.file-lines-added {
+  color: var(--spica-success);
+}
+
+.file-lines-removed {
+  color: var(--spica-danger);
+}
+
+/* 全部 N 个 / 收起 under the cards shown. */
+.file-cards-more {
+  align-self: flex-start;
+}
+
+/* Cards under an answer are one width, so a row of them lines up (a command can leave many); a long line
+   under the name is cut short. */
+.turn-response .file-card {
+  flex: 0 1 300px;
+}
+
 .suggest-card {
   padding: 6px;
 }

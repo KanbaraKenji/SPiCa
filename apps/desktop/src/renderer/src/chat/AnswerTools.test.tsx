@@ -121,6 +121,31 @@ describe('a file card', () => {
     expect(onOpen).toHaveBeenCalledWith('资料\\需求说明.docx');
   });
 
+  it('says what the round did with the file, with the lines added and removed', () => {
+    const at = '2026-11-11T20:00:00+08:00';
+    const made = { path: 'D:\\w\\q5.py', name: 'q5.py', kind: 'text' as const, sizeBytes: 9, modifiedAt: at, extractedAt: at, read: {}, origin: 'modified' as const };
+    render(<FileCards files={[{ path: made.path, tool: 'edit_file', card: made, lines: { added: 3, removed: 1 } }]} onOpen={vi.fn()} />);
+    const sub = document.querySelector('.file-card-sub')!;
+    expect(sub.textContent).toBe('Edited +3 −1');
+    expect(sub.querySelector('.file-lines-added')?.textContent).toBe(' +3');
+    expect(sub.querySelector('.file-lines-removed')?.textContent).toBe(' −1');
+  });
+
+  it('many cards (a command can report 20): six, then 全部 N 个; 收起 folds them again', () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ path: `D:\\w\\out-${i}.csv`, tool: 'run_command' }));
+    render(<FileCards files={many} onOpen={vi.fn()} />);
+    expect(document.querySelectorAll('.file-card').length).toBe(6);
+    fireEvent.click(screen.getByRole('button', { name: '全部 20 个' }));
+    expect(document.querySelectorAll('.file-card').length).toBe(20);
+    fireEvent.click(screen.getByRole('button', { name: '收起' }));
+    expect(document.querySelectorAll('.file-card').length).toBe(6);
+    cleanup();
+    // Seven fit as they are: folding would save only one card's room.
+    render(<FileCards files={many.slice(0, 7)} onOpen={vi.fn()} />);
+    expect(document.querySelectorAll('.file-card').length).toBe(7);
+    expect(screen.queryByRole('button', { name: /全部/ })).toBeNull();
+  });
+
   it('without Explorer (no actions) it has no buttons of its own', () => {
     render(<FileCards files={[{ path: 'D:\\a.docx', tool: 'read_file' }]} onOpen={vi.fn()} />);
     expect(screen.queryByRole('button', { name: '打开所在文件夹' })).toBeNull();

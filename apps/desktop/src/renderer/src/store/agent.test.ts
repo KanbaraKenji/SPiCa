@@ -20,6 +20,19 @@ describe('conversation names', () => {
 });
 
 describe('AgentStore', () => {
+  it('keeps every file card of a call across the reload after a run (they only arrive as events)', async () => {
+    const backend = new FakeBackend({ speed: 0, seed: false });
+    const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
+    await store.init();
+    await store.send(null, '把报价汇总一下');
+    const id = store.state.get().activeId!;
+    await vi.waitFor(() => {
+      const t = store.state.get().transcripts[id];
+      expect(t?.lastRun).toBeTruthy();
+      expect(Object.values(t?.fileCardLists ?? {}).some((l) => l.length === 8)).toBe(true);
+    });
+  });
+
   it('does not create a session until the first message is sent', async () => {
     const backend = new FakeBackend({ speed: 0, seed: false });
     const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });

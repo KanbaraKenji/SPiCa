@@ -4,7 +4,7 @@ import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, 
 import type { HistoryCardMeta } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { fileCardLine, type Block, type ChildNote, type FileRef } from '../store/transcript';
+import { fileCardLine, fileCardVerb, type Block, type ChildNote, type FileRef } from '../store/transcript';
 import { Icon } from '../ui/Icon';
 import { FileBadge } from '../ui/FileIcon';
 import { clipboard } from '../ui/clipboard';
@@ -385,11 +385,34 @@ export interface FileCardActions {
   cwd?: string | undefined;
 }
 
+/** Up to this many cards show at once; more (a command can report 20) fold behind 全部 N 个. */
+export const FILE_CARDS_SHOWN = 6;
+
+/** The second line of a card: what the round did with the file (Created +8 −1), or what was read. */
+function FileCardSub({ f }: { f: FileRef }) {
+  const verb = fileCardVerb(f);
+  if (verb)
+    return (
+      <span className="file-card-sub">
+        {verb}
+        {f.lines?.added ? <span className="file-lines-added"> +{f.lines.added}</span> : null}
+        {f.lines?.removed ? <span className="file-lines-removed"> −{f.lines.removed}</span> : null}
+      </span>
+    );
+  const shown = f.shown ?? f.path;
+  return <span className="file-card-sub">{f.card ? fileCardLine(f.card) : `${f.tool === 'read_file' ? '已读取' : f.tool === 'write_file' ? '已写入' : '已修改'}${fileFolder(shown) ? ` · ${fileFolder(shown)}` : ''}`}</span>;
+}
+
 export function FileCards({ files, onOpen, actions }: { files: FileRef[]; onOpen(path: string): void; actions?: FileCardActions | undefined }) {
+  const [all, setAll] = useState(false);
   if (files.length === 0) return null;
+  // Folded only when it saves at least two cards' room, so 全部 N 个 never stands in for a single card.
+  const fold = files.length > FILE_CARDS_SHOWN + 1;
+  const shownFiles = fold && !all ? files.slice(0, FILE_CARDS_SHOWN) : files;
   return (
+    <>
     <div className="file-cards">
-      {files.map((f) => {
+      {shownFiles.map((f) => {
         const shown = f.shown ?? f.path;
         const full = fullPath(f.path, actions?.cwd);
         return (
@@ -398,9 +421,7 @@ export function FileCards({ files, onOpen, actions }: { files: FileRef[]; onOpen
               <FileBadge name={f.card?.name ?? fileName(shown)} />
               <span className="file-card-text">
                 <span className="file-card-name">{f.card?.name ?? fileName(shown)}</span>
-                <span className="file-card-sub">
-                  {f.card ? fileCardLine(f.card) : `${f.tool === 'read_file' ? '已读取' : f.tool === 'write_file' ? '已写入' : '已修改'}${fileFolder(shown) ? ` · ${fileFolder(shown)}` : ''}`}
-                </span>
+                <FileCardSub f={f} />
               </span>
             </button>
             {actions ? (
@@ -415,6 +436,12 @@ export function FileCards({ files, onOpen, actions }: { files: FileRef[]; onOpen
         );
       })}
     </div>
+    {fold ? (
+      <button type="button" className="btn file-cards-more" aria-expanded={all} onClick={() => setAll((v) => !v)}>
+        {all ? '收起' : `全部 ${files.length} 个`}
+      </button>
+    ) : null}
+    </>
   );
 }
 
