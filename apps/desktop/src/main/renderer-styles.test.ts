@@ -161,24 +161,64 @@ describe('the row under every message', () => {
   });
 });
 
-describe('the conversation’s sizes (the Claude app’s 舒展 / 中)', () => {
-  it('text 16 on 24: answers, your messages, the input box, and the rows that stand in an answer', () => {
-    expect(block(':root')).toContain('--chat-text: 16px');
-    expect(block(':root')).toContain('--chat-line: 24px');
-    for (const sel of ['.turn-response .md', '.turn-user-text', '.composer-input']) expect(block(sel), sel).toContain('line-height: var(--chat-line)');
-    for (const sel of ['.turn-user-text', '.composer-input', '.fold-head']) expect(block(sel), sel).toContain('font-size: var(--chat-text)');
-    expect(block('.turn-response .md')).toContain('font-size: var(--chat-text)');
-    // Code in a sentence stays in proportion to the text.
-    expect(block('.turn-response .md :not(pre) > code')).toContain('font-size: 0.9em');
+describe('the type scale (the Claude app’s, comfortable density)', () => {
+  const root = block(':root');
+
+  it('six sizes, each with its line: caption 12/17, footnote 13/17, body 14/20, heading 15/20, prose 16/24, title 22/28', () => {
+    for (const [name, size, line] of [
+      ['caption', 12, 17],
+      ['footnote', 13, 17],
+      ['body', 14, 20],
+      ['heading', 15, 20],
+      ['prose', 16, 24],
+      ['title', 22, 28],
+    ] as const) {
+      expect(root, name).toContain(`--fs-${name}: ${size}px;\n  --lh-${name}: ${line}px;`);
+    }
+    expect(block('body')).toContain('font-size: var(--fs-body);\n  line-height: var(--lh-body)');
   });
 
-  it('secondary lines 14 on 20: the steps under a group and what opens under a row, notes, a confirmation’s labels, the detail lists', () => {
-    expect(block(':root')).toContain('--chat-small: 14px');
-    expect(block(':root')).toContain('--chat-small-line: 20px');
-    for (const sel of ['.tool-item-head', '.fold-body', '.thinking-text', '.turn-note', '\n.confirm-args', '.detail-list'])
+  it('no size or line height off the scale: only the variables, code in a sentence (0.9em) and the two badges drawn in a fixed box', () => {
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1]!.replace(/\/\*[\s\S]*?\*\//g, '').trim(), body: m[2]! }));
+    const offScale = rules
+      .filter((r) => !r.sel.startsWith(':root'))
+      .flatMap((r) => [...r.body.matchAll(/(font-size|line-height): ([^;]+);/g)].filter((m) => !m[2]!.startsWith('var(')).map((m) => `${r.sel} ${m[1]}: ${m[2]}`));
+    expect(offScale).toEqual([
+      '.md code font-size: 0.9em',
+      '.file-card-icon.is-typed font-size: 10px',
+      '.rail-badge font-size: 10px',
+      '.rail-badge line-height: 15px',
+    ]);
+  });
+});
+
+describe('the conversation’s sizes', () => {
+  it('text 16 on 24: answers, your messages, the input box, and the rows that stand in an answer', () => {
+    expect(block(':root')).toContain('--chat-text: var(--fs-prose);\n  --chat-line: var(--lh-prose)');
+    for (const sel of ['.turn-response .md', '.turn-user-text', '.composer-input']) expect(block(sel), sel).toContain('line-height: var(--chat-line)');
+    for (const sel of ['.turn-user-text', '.composer-input', '.fold-head', '.turn-response .md']) expect(block(sel), sel).toContain('font-size: var(--chat-text)');
+  });
+
+  it('an answer’s headings are never smaller than its text: h1 22/28, h2 18/27, h3–h6 the text (bold)', () => {
+    expect(block(':root')).toContain('--chat-h2: 18px;\n  --chat-h2-line: 27px;\n  --chat-h1: var(--fs-title);\n  --chat-h1-line: var(--lh-title)');
+    expect(block('.md h1')).toContain('font-size: var(--chat-h1)');
+    expect(block('.md h2')).toContain('font-size: var(--chat-h2)');
+    expect(css).toMatch(/\}\n\n\.md h3,\n\.md h4,\n\.md h5,\n\.md h6 \{\n {2}font-size: var\(--chat-text\);/);
+  });
+
+  it('secondary lines 14 on 20: the steps under a group and what opens under a row, notes, a confirmation’s labels', () => {
+    expect(block(':root')).toContain('--chat-small: var(--fs-body);\n  --chat-small-line: var(--lh-body)');
+    for (const sel of ['.tool-item-head', '.fold-body', '.thinking-text', '.turn-note', '\n.confirm-args', '\n.conversation'])
       expect(block(sel), sel).toContain('font-size: var(--chat-small)');
-    // The time at the end of a row stays a caption.
-    expect(block('.fold-meta')).toContain('font-size: 12px');
+    // The detail panel is not the conversation; the time at the end of a row stays a caption.
+    expect(block('.detail-list')).toContain('font-size: var(--fs-body)');
+    expect(block('.fold-meta')).toContain('font-size: var(--fs-caption)');
+  });
+
+  it('文字大小 小 / 大 move the conversation’s tiers one step (the input box is in it), nothing outside it', () => {
+    expect(block(":root[data-text-size='sm'] .conversation")).toContain('--chat-text: 15px;\n  --chat-line: 22px;\n  --chat-small: 13px;\n  --chat-small-line: 19px;\n  --chat-h2: 16px;\n  --chat-h2-line: 24px;\n  --chat-h1: 18px;\n  --chat-h1-line: 27px;');
+    expect(block(":root[data-text-size='lg'] .conversation")).toContain('--chat-text: 18px;\n  --chat-line: 27px;\n  --chat-small: 15px;\n  --chat-small-line: 22px;\n  --chat-h2: 22px;\n  --chat-h2-line: 28px;\n  --chat-h1: 22px;\n  --chat-h1-line: 28px;');
+    expect(css.match(/data-text-size/g)).toHaveLength(2);
   });
 
   it('everything in the code font that shows code follows 外观 › 代码 › 字号, on lines in proportion to 13 on 19', () => {

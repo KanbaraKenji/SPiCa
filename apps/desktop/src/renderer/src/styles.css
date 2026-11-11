@@ -3,14 +3,34 @@
    (shared/skin.ts). The values below are only first-paint fallbacks. */
 :root {
   color-scheme: light dark;
-  /* The conversation's sizes (the Claude app's 舒展 / 中): the text (an answer, your messages, the input box, and
-     the rows that stand in an answer: 思考过程, a tool group's line, Running …) 16px on 24px lines; what opens under
-     a row and other secondary lines 14px on 20px; anything in the code font the code size (外观 › 代码 › 字号, set
-     on the page as --code-size) on lines in the same proportion as 13px on 19px. */
-  --chat-text: 16px;
-  --chat-line: 24px;
-  --chat-small: 14px;
-  --chat-small-line: 20px;
+  /* The type scale, the Claude app's (comfortable density): every size in the app is one of these, with its line. */
+  --fs-caption: 12px;
+  --lh-caption: 17px;
+  --fs-footnote: 13px;
+  --lh-footnote: 17px;
+  --fs-body: 14px;
+  --lh-body: 20px;
+  --fs-heading: 15px;
+  --lh-heading: 20px;
+  --fs-prose: 16px;
+  --lh-prose: 24px;
+  --fs-title: 22px;
+  --lh-title: 28px;
+  /* The conversation follows 外观 › 文字大小 (these are 中; 小 and 大 are set on .conversation): the text (answers,
+     your messages, the input box, and the rows that stand in an answer: 思考过程, a tool group's line, Running …),
+     the secondary lines (what opens under a row, notes, a confirmation's labels) and an answer's headings, which
+     are never smaller than the text: h3–h6 its size (bold), h2 and h1 one and two steps up the prose steps
+     (13/19, 14/20, 15/22, 16/24, 18/27, with the title's 22/28 as the top). Code (外观 › 代码 › 字号, set on the
+     page as --code-size) is on lines in the proportion of 13px on 19px and does not follow the text size; nor do
+     captions, footnotes and titles. */
+  --chat-text: var(--fs-prose);
+  --chat-line: var(--lh-prose);
+  --chat-small: var(--fs-body);
+  --chat-small-line: var(--lh-body);
+  --chat-h2: 18px;
+  --chat-h2-line: 27px;
+  --chat-h1: var(--fs-title);
+  --chat-h1-line: var(--lh-title);
   --code-size: 13px;
   --code-line: calc(var(--code-size) * 19 / 13);
   --spica-bg: #f7f8fa;
@@ -44,8 +64,8 @@ body {
   background: var(--spica-bg);
   color: var(--spica-ink);
   font-family: var(--font-ui);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
@@ -187,7 +207,8 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   color: var(--spica-muted);
 }
 
@@ -221,7 +242,8 @@ a:hover {
   margin-left: -6px;
   padding: 0 6px 0 5px;
   border-radius: var(--radius-s);
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   color: var(--spica-ink);
   -webkit-app-region: no-drag;
 }
@@ -516,7 +538,8 @@ a:hover {
 .tree-heading {
   margin: 0;
   padding: 6px 10px 4px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   font-weight: 500;
   color: var(--spica-faint);
 }
@@ -730,7 +753,8 @@ button.tree-twisty:hover {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   font-weight: 500;
   color: var(--spica-faint);
 }
@@ -744,7 +768,8 @@ button.tree-twisty:hover {
   grid-template-columns: auto 1fr;
   gap: 6px 12px;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .detail-facts dt {
@@ -767,8 +792,8 @@ button.tree-twisty:hover {
   list-style: none;
   margin: 0;
   padding: 0;
-  font-size: var(--chat-small);
-  line-height: var(--chat-small-line);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .detail-item {
@@ -800,7 +825,8 @@ button.tree-twisty:hover {
 .detail-item-meta {
   flex: none;
   color: var(--spica-faint);
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   font-variant-numeric: tabular-nums;
 }
 
@@ -838,18 +864,22 @@ button.tree-twisty:hover {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
 }
 
 .detail-empty {
   margin: 0;
   color: var(--spica-faint);
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
 }
 
 /* ---------- Conversation ---------- */
 
 .conversation {
+  font-size: var(--chat-small);
+  line-height: var(--chat-small-line);
   flex: 1;
   min-height: 0;
   display: flex;
@@ -908,7 +938,8 @@ button.tree-twisty:hover {
 
 .turn-user-tag {
   display: block;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
   margin-bottom: 2px;
 }
@@ -956,7 +987,8 @@ button.tree-twisty:hover {
 
 .settings-change-time {
   flex: none;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   opacity: 0.85;
 }
 
@@ -965,7 +997,8 @@ button.tree-twisty:hover {
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: 4px 14px;
-  font-size: 13px;
+  font-size: var(--chat-small);
+  line-height: var(--chat-small-line);
 }
 
 .settings-change-row {
@@ -984,7 +1017,8 @@ button.tree-twisty:hover {
 
 .settings-change-test {
   margin: 10px 14px 0;
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
 }
 
 .settings-change-test.is-ok {
@@ -1006,7 +1040,8 @@ button.tree-twisty:hover {
 }
 
 .settings-change-note {
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
 }
 
@@ -1021,31 +1056,36 @@ button.tree-twisty:hover {
 /* Markdown answer text */
 .md {
   overflow-wrap: anywhere;
-  line-height: 1.7;
 }
 
-/* Answers in the conversation: --chat-text on --chat-line; headings and code in a sentence in proportion. */
+/* 外观 › 文字大小: 小 and 大 move the conversation's tiers one step down or up the Claude app's steps. */
+:root[data-text-size='sm'] .conversation {
+  --chat-text: 15px;
+  --chat-line: 22px;
+  --chat-small: 13px;
+  --chat-small-line: 19px;
+  --chat-h2: 16px;
+  --chat-h2-line: 24px;
+  --chat-h1: 18px;
+  --chat-h1-line: 27px;
+}
+
+:root[data-text-size='lg'] .conversation {
+  --chat-text: 18px;
+  --chat-line: 27px;
+  --chat-small: 15px;
+  --chat-small-line: 22px;
+  --chat-h2: 22px;
+  --chat-h2-line: 28px;
+  --chat-h1: 22px;
+  --chat-h1-line: 28px;
+}
+
+/* Answers in the conversation: --chat-text on --chat-line (headings and code in a sentence: the .md rules). */
 .turn-response .md {
   font-size: var(--chat-text);
   line-height: var(--chat-line);
 }
-.turn-response .md h1 {
-  font-size: 1.25em;
-}
-
-.turn-response .md h2 {
-  font-size: 1.125em;
-}
-
-.turn-response .md h3,
-.turn-response .md h4 {
-  font-size: 1em;
-}
-
-.turn-response .md :not(pre) > code {
-  font-size: 0.9em;
-}
-
 
 .md > :first-child {
   margin-top: 0;
@@ -1076,23 +1116,29 @@ button.tree-twisty:hover {
 .md h1,
 .md h2,
 .md h3,
-.md h4 {
+.md h4,
+.md h5,
+.md h6 {
   margin: 16px 0 8px;
-  line-height: 1.4;
   font-weight: 600;
 }
 
 .md h1 {
-  font-size: 20px;
+  font-size: var(--chat-h1);
+  line-height: var(--chat-h1-line);
 }
 
 .md h2 {
-  font-size: 17px;
+  font-size: var(--chat-h2);
+  line-height: var(--chat-h2-line);
 }
 
 .md h3,
-.md h4 {
-  font-size: 15px;
+.md h4,
+.md h5,
+.md h6 {
+  font-size: var(--chat-text);
+  line-height: var(--chat-line);
 }
 
 .md strong {
@@ -1101,7 +1147,7 @@ button.tree-twisty:hover {
 
 .md code {
   font-family: var(--font-mono);
-  font-size: 13.5px;
+  font-size: 0.9em;
   padding: 1px 4px;
   border-radius: 4px;
   background: var(--spica-code);
@@ -1175,7 +1221,8 @@ button.tree-twisty:hover {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
 }
 
@@ -1322,7 +1369,8 @@ pre .hl-punctuation {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .code-theme-pick .input {
@@ -1346,7 +1394,8 @@ pre .hl-punctuation {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .preview-kind-ext {
@@ -1469,7 +1518,8 @@ pre .hl-punctuation {
 
 .md-image-host {
   color: var(--spica-muted);
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
 }
 
 .md-image-caption {
@@ -1526,7 +1576,8 @@ pre .hl-punctuation {
 .fold-meta {
   flex: none;
   color: var(--spica-faint);
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   font-variant-numeric: tabular-nums;
   display: inline-flex;
   align-items: center;
@@ -1561,7 +1612,8 @@ pre .hl-punctuation {
 
 .answer-sources-label {
   margin-right: 2px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
 }
 
@@ -1575,7 +1627,8 @@ pre .hl-punctuation {
   border: 1px solid var(--spica-border);
   background: var(--spica-surface);
   color: var(--spica-ink);
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
 }
 
 .source-chip:hover {
@@ -1594,7 +1647,8 @@ pre .hl-punctuation {
 .source-host {
   flex: none;
   color: var(--spica-muted);
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
 }
 
 .source-list {
@@ -1629,7 +1683,8 @@ pre .hl-punctuation {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
 }
 
@@ -1937,7 +1992,8 @@ pre .hl-punctuation {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
 }
 
@@ -2012,7 +2068,8 @@ pre .hl-punctuation {
 
 .suggest-title {
   padding: 6px 10px 4px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
 }
 
@@ -2051,7 +2108,8 @@ pre .hl-punctuation {
   align-items: center;
   gap: 8px;
   color: var(--spica-muted);
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
 }
 
 .status-clock {
@@ -2073,7 +2131,8 @@ pre .hl-punctuation {
 
 .empty-chat-title {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
   font-weight: 500;
   text-align: center;
 }
@@ -2223,7 +2282,8 @@ pre .hl-punctuation {
   padding: 0 8px;
   border-radius: var(--radius-m);
   color: var(--spica-ink);
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .composer-chip:hover {
@@ -2287,7 +2347,8 @@ pre .hl-punctuation {
   align-items: center;
   gap: 4px;
   padding: 0 8px;
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   color: var(--spica-ink);
 }
 
@@ -2369,7 +2430,8 @@ pre .hl-punctuation {
   background: var(--spica-menu);
   box-shadow: var(--spica-shadow);
   color: var(--spica-ink);
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   text-align: left;
 }
 
@@ -2400,8 +2462,8 @@ pre .hl-punctuation {
   padding: 0 6px;
   border-radius: 4px;
   background: var(--spica-hover);
-  font-size: 11px;
-  line-height: 18px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
 }
 
 .ctx-bar {
@@ -2436,7 +2498,8 @@ pre .hl-punctuation {
   align-items: center;
   min-height: 26px;
   color: inherit;
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   text-align: left;
 }
 
@@ -2509,7 +2572,8 @@ button.ctx-row:hover {
   border-radius: var(--radius-m);
   border: 1px solid var(--spica-border);
   background: var(--spica-surface);
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .composer-file-remove {
@@ -2607,7 +2671,8 @@ button.ctx-row:hover {
 
 .dialog-title {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
   font-weight: 500;
   overflow-wrap: anywhere;
 }
@@ -2658,7 +2723,8 @@ button.ctx-row:hover {
 
 .settings-heading {
   margin: 0 0 16px;
-  font-size: 20px;
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
   font-weight: 600;
 }
 
@@ -2668,12 +2734,14 @@ button.ctx-row:hover {
 
 .settings-subheading {
   margin: 0 0 10px;
-  font-size: 14px;
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
   font-weight: 600;
 }
 
 .settings-hint {
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   color: var(--spica-faint);
 }
 
@@ -2704,7 +2772,8 @@ button.ctx-row:hover {
 
 .skin-name {
   padding: 0 2px;
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -2784,7 +2853,8 @@ button.ctx-row:hover {
 
 .field-label {
   color: var(--spica-muted);
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .field .input {
@@ -2820,7 +2890,8 @@ button.ctx-row:hover {
 .input-hex {
   width: 100px;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .color-presets {
@@ -2884,7 +2955,8 @@ button.ctx-row:hover {
   margin: -10px 0 0;
   padding: 0 24px 10px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-faint);
 }
 
@@ -2908,12 +2980,14 @@ button.ctx-row:hover {
   border-radius: var(--radius-m);
   border: 1px dashed var(--spica-border-strong);
   background: var(--spica-surface);
-  font-size: 13px;
+  font-size: var(--chat-small);
+  line-height: var(--chat-small-line);
 }
 
 .queued-tag {
   flex: none;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
 }
 
@@ -2934,7 +3008,8 @@ button.ctx-row:hover {
   align-items: baseline;
   gap: 8px;
   margin-bottom: 4px;
-  font-size: 13px;
+  font-size: var(--chat-small);
+  line-height: var(--chat-small-line);
 }
 
 .note-from {
@@ -2970,7 +3045,8 @@ button.ctx-row:hover {
   align-items: center;
   gap: 12px;
   color: var(--spica-muted);
-  font-size: 13px;
+  font-size: var(--chat-small);
+  line-height: var(--chat-small-line);
 }
 
 /* Opening animation layer (component from @spica/brand) */
@@ -3085,25 +3161,29 @@ button.ctx-row:hover {
 }
 
 .provider-sub {
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
 }
 
 .provider-problem {
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-danger);
 }
 
 .provider-default {
   flex: none;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
 }
 
 .btn-small {
   height: 28px;
   padding: 0 10px;
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 /* A button that is just an icon (its name on hover), as tall as the buttons and fields beside it. */
@@ -3177,7 +3257,8 @@ button.ctx-row:hover {
 }
 
 .field-error {
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-danger);
 }
 
@@ -3205,14 +3286,16 @@ button.ctx-row:hover {
 .provider-tail {
   margin-left: 6px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   font-weight: 400;
   color: var(--spica-faint);
 }
 
 .field-link {
   align-self: flex-start;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-accent-text);
   text-decoration: none;
 }
@@ -3236,7 +3319,8 @@ button.ctx-row:hover {
 
 .model-picker-sect {
   padding-top: 2px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-faint);
 }
 
@@ -3313,9 +3397,9 @@ button.ctx-row:hover {
   background: var(--spica-menu);
   box-shadow: var(--spica-shadow);
   color: var(--spica-ink);
-  font-size: 12px;
+  font-size: var(--fs-caption);
   font-weight: 400;
-  line-height: 1.5;
+  line-height: var(--lh-caption);
   white-space: pre-line;
   overflow-wrap: anywhere;
   pointer-events: none;
@@ -3338,7 +3422,8 @@ button.ctx-row:hover {
   height: 26px;
   padding: 0 6px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -3358,14 +3443,16 @@ button.ctx-row:hover {
 .field .model-row-window > .input {
   width: 112px;
   height: 26px;
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .model-row-warn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-warning);
   white-space: nowrap;
 }
@@ -3390,7 +3477,8 @@ button.ctx-row:hover {
   align-items: center;
   gap: 6px;
   border-radius: 14px;
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   color: var(--spica-muted);
 }
 
@@ -3489,10 +3577,10 @@ button.ctx-row:hover {
   height: auto;
   min-height: 132px;
   padding: 8px 10px;
-  line-height: 1.5;
+  line-height: var(--lh-caption);
   resize: vertical;
   font-family: var(--spica-mono, ui-monospace, Consolas, monospace);
-  font-size: 12px;
+  font-size: var(--fs-caption);
 }
 
 .paste-config-actions {
@@ -3502,7 +3590,8 @@ button.ctx-row:hover {
 }
 
 .paste-config-result {
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
 }
 
 .paste-config-line {
@@ -3517,7 +3606,8 @@ button.ctx-row:hover {
   margin: 4px 0 0;
   padding-left: 18px;
   font-family: var(--spica-mono, ui-monospace, Consolas, monospace);
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
   overflow-wrap: anywhere;
 }
@@ -3528,7 +3618,8 @@ button.ctx-row:hover {
 }
 
 .provider-unsaved {
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
 }
 
@@ -3591,7 +3682,8 @@ button.ctx-row:hover {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -3773,7 +3865,8 @@ button.ctx-row:hover {
 .plugins-group-title {
   margin: 0;
   padding: 6px 12px 4px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   font-weight: 400;
   color: var(--spica-faint);
 }
@@ -3785,7 +3878,8 @@ button.ctx-row:hover {
   align-items: center;
   gap: 8px;
   padding: 0 12px;
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   color: var(--spica-ink);
   text-align: left;
 }
@@ -3807,9 +3901,9 @@ button.ctx-row:hover {
   place-items: center;
   border-radius: 6px;
   color: #fff;
-  font-size: 12px;
+  font-size: var(--fs-caption);
   font-weight: 600;
-  line-height: 1;
+  line-height: var(--lh-caption);
 }
 
 .plugin-detail.is-off .plugin-badge {
@@ -3864,7 +3958,8 @@ button.ctx-row:hover {
 
 .plugin-off {
   margin: 6px 0 0;
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   color: var(--spica-muted);
 }
 
@@ -3895,7 +3990,8 @@ button.ctx-row:hover {
   border-radius: 10px;
   background: var(--spica-accent-soft);
   color: var(--spica-accent-text);
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -3936,20 +4032,23 @@ button.ctx-row:hover {
 }
 
 .plugin-version {
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
   font-variant-numeric: tabular-nums;
 }
 
 .plugin-desc {
   margin: 6px 0 0;
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   color: var(--spica-ink);
 }
 
 .plugin-problem {
   margin: 6px 0 0;
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   color: var(--spica-danger);
 }
 
@@ -3982,7 +4081,8 @@ button.ctx-row:hover {
 }
 
 .mail-title {
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   font-weight: 600;
 }
 
@@ -4002,7 +4102,8 @@ button.ctx-row:hover {
   align-items: center;
   gap: 12px;
   margin: 12px 0 0;
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
 }
 
 .plugin-model {
@@ -4010,7 +4111,8 @@ button.ctx-row:hover {
   padding: 10px 12px;
   border-radius: var(--radius-m);
   background: var(--spica-hover);
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
 }
 
 .plugin-model-line,
@@ -4068,7 +4170,8 @@ button.ctx-row:hover {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   color: var(--spica-ink);
 }
 
@@ -4111,7 +4214,8 @@ button.ctx-row:hover {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
 }
 
 .plugin-root > .settings-hint,
@@ -4149,7 +4253,8 @@ button.ctx-row:hover {
 
 .activity-time {
   flex: none;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-faint);
   font-variant-numeric: tabular-nums;
   padding-top: 1px;
@@ -4201,7 +4306,7 @@ button.ctx-row:hover {
   height: auto;
   padding: 8px 10px;
   resize: vertical;
-  line-height: 1.5;
+  line-height: var(--lh-body);
 }
 
 .dialog-form .dialog-actions {
@@ -4245,7 +4350,7 @@ button.ctx-row:hover {
   min-height: 28px;
   padding: 4px 10px;
   border-radius: var(--radius-m);
-  line-height: 20px;
+  line-height: var(--lh-body);
   text-align: left;
   display: flex;
   align-items: center;
@@ -4274,7 +4379,8 @@ button.ctx-row:hover {
 
 .context-item-hint {
   flex: none;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-faint);
 }
 
@@ -4288,8 +4394,8 @@ button.ctx-row:hover {
 }
 
 .context-item-detail {
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
 }
 
@@ -4322,7 +4428,8 @@ button.ctx-row:hover {
 /* A menu's group heading (the model menu: one per connection). */
 .context-group {
   padding: 6px 10px 2px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-faint);
 }
 
@@ -4399,7 +4506,8 @@ button.ctx-row:hover {
   border-radius: var(--radius-m);
   border: 1px solid var(--spica-border);
   background: var(--spica-raised);
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   -webkit-app-region: no-drag;
 }
 
@@ -4410,7 +4518,8 @@ button.ctx-row:hover {
 
 .notice-bar .btn-small {
   height: 22px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
 }
 
 .notice-icon {
@@ -4447,7 +4556,8 @@ button.ctx-row:hover {
 
 .side-count {
   margin-left: auto;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
 }
 
@@ -4493,7 +4603,8 @@ button.ctx-row:hover {
   border-radius: var(--radius-m);
   background: var(--spica-danger-soft);
   color: var(--spica-danger);
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
 }
 
 .inbox-empty {
@@ -4504,7 +4615,8 @@ button.ctx-row:hover {
 
 .inbox-empty-title {
   margin: 0 0 6px;
-  font-size: 15px;
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
   font-weight: 600;
   color: var(--spica-ink);
 }
@@ -4536,7 +4648,8 @@ button.ctx-row:hover {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .mail-from {
@@ -4560,7 +4673,8 @@ button.ctx-row:hover {
 
 .mail-preview {
   margin: 2px 0 0;
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   color: var(--spica-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4573,7 +4687,8 @@ button.ctx-row:hover {
   flex-wrap: wrap;
   gap: 4px 10px;
   margin-top: 10px;
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
 }
 
 /* Where the mail went: colored text with a dot, never a pill (not clickable). */
@@ -4631,7 +4746,8 @@ button.ctx-row:hover {
   align-items: center;
   gap: 4px;
   margin-right: 4px;
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   color: var(--spica-success);
 }
 
@@ -4659,7 +4775,8 @@ button.ctx-row:hover {
   border-radius: var(--radius-l);
   border: 1px solid var(--spica-border);
   background: var(--spica-surface);
-  font-size: 13px;
+  font-size: var(--chat-small);
+  line-height: var(--chat-small-line);
 }
 
 .turn-mail-head {
@@ -4721,7 +4838,7 @@ button.ctx-row:hover {
   padding: 8px 10px;
   resize: vertical;
   font-family: inherit;
-  line-height: 1.5;
+  line-height: var(--lh-body);
 }
 
 .rule-hint {
@@ -4775,7 +4892,8 @@ button.ctx-row:hover {
 /* The core flagged outside content that carried instructions (ignored, not followed). */
 .guard-note {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
 }
 
@@ -4808,7 +4926,8 @@ button.ctx-row:hover {
 
 .confirm-undo {
   flex: none;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-danger);
 }
 
@@ -4862,7 +4981,8 @@ button.ctx-row:hover {
   margin: 0;
   padding: 6px 12px 8px;
   border-top: 1px solid var(--spica-divider);
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   color: var(--spica-muted);
 }
 
@@ -4920,7 +5040,8 @@ button.ctx-row:hover {
 
 .dialog-detail {
   margin: 8px 0 0;
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   color: var(--spica-muted);
 }
 
@@ -5147,7 +5268,8 @@ button.ctx-row:hover {
 .preview-sheet table {
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 13px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .preview-sheet th,
@@ -5187,7 +5309,8 @@ button.ctx-row:hover {
   flex: none;
   margin: 0;
   padding: 8px 14px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
   background: var(--spica-warning-soft);
 }
@@ -5212,7 +5335,8 @@ button.ctx-row:hover {
   max-width: 150px;
   height: 26px;
   padding: 0 6px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
 }
 
 .preview-empty {
@@ -5382,7 +5506,8 @@ button.ctx-row:hover {
   border-radius: 12px;
   background: var(--spica-warning-soft);
   color: var(--spica-ink);
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
 }
 
 /* Pictures sent with a message, under its bubble. */
@@ -5448,7 +5573,8 @@ button.ctx-row:hover {
 /* What saving will do to 默认模型 / 强模型. */
 .provider-pointer-note {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-warning);
 }
 
@@ -5471,7 +5597,8 @@ button.ctx-row:hover {
 }
 
 .history-head {
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
   border-bottom: 1px solid var(--spica-border-strong);
 }
@@ -5505,7 +5632,8 @@ button.ctx-row:hover {
 
 .history-project {
   display: block;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
 }
 
@@ -5522,7 +5650,8 @@ button.ctx-row:hover {
 .history-more {
   margin: 0;
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-muted);
   border-top: 1px solid var(--spica-border);
 }
@@ -5556,7 +5685,8 @@ button.ctx-row:hover {
   background: var(--spica-surface);
   color: var(--spica-ink);
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   cursor: pointer;
 }
 
@@ -5632,14 +5762,16 @@ button.ctx-row:hover {
 
 .plugins-notfound-title {
   margin: 4px 0 0;
-  font-size: 15px;
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
   font-weight: 600;
 }
 
 .plugins-notfound-where {
   margin: 0;
   max-width: 100%;
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   color: var(--spica-ink);
   overflow-wrap: anywhere;
 }
@@ -5647,7 +5779,8 @@ button.ctx-row:hover {
 .plugins-notfound-detail {
   margin: 0;
   max-width: 100%;
-  font-size: 13px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   color: var(--spica-muted);
   overflow-wrap: anywhere;
 }
@@ -5702,13 +5835,15 @@ button.ctx-row:hover {
 
 .msg-versions-text {
   padding: 0 2px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   font-variant-numeric: tabular-nums;
 }
 
 .msg-time {
   margin: 0 6px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--spica-faint);
   font-variant-numeric: tabular-nums;
 }
@@ -5757,7 +5892,7 @@ button.ctx-row:hover {
 .memory-text,
 .memory-quote {
   overflow-wrap: anywhere;
-  line-height: 1.5;
+  line-height: var(--lh-body);
 }
 
 .memory-meta {
