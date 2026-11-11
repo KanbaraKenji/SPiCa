@@ -218,10 +218,10 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 |---|---|
 | `new PluginManager({ host: runtimeHost(runtime), root })`、`load()`、`shutdown()` | 主进程启动 / 关闭时 |
 | `list()`、`describe(name)` → `PluginDescription` | 列表与详情：版本、上一版、来源、权限、技能、命令、当前工具、钩子、进程状态、视图、问题 |
-| `check(文件夹)`、`install(文件夹, 来源)`、`installZip(manager, 字节, 来源)` | 「从文件夹 / zip 安装」 |
+| `check(文件夹)`、`install(文件夹, 来源, { onProgress })`、`installZip(manager, 字节, 来源, { onProgress })` | 「从文件夹 / zip 安装」；`onProgress` 收到每一步（`InstallStep`：download 带已收字节和总数 / read / verify / unpack / copy / stop / replace，文件夹被占用重试时带 `busyMs` / start） |
 | `enable`、`disable`、`uninstall`、`rollback` | 开关、删除、退回上一版 |
 | `setMock(on)`、`mock` | 模拟模式开关 |
-| `listSource`、`checkUpdates`、`installAvailable` | 来源、更新提示、一键更新 |
+| `listSource`、`checkUpdates`、`installAvailable(manager, 条目, { onProgress })`、`downloadPackage(网址, { onProgress })` | 来源、更新提示、一键更新；下载只在 60 秒收不到数据时才算失败（`DOWNLOAD_IDLE_MS`，慢不算），边下边报字节 |
 | `commands()`、`expandCommand(name, args)` | 输入框里的 `/` 命令 |
 | `views()` → `PluginView[]`、`resolveViewFile(插件, 相对路径)`、`viewCall(插件, 视图, 工具, 参数, { confirmed })` | 插件页面：列表、取文件、调工具（见第 2 节「视图」） |
 | `describe(name).model`、`modelUsage()`、`setModelLimit(name, 美元 | null)` | 用模型的插件：理由、生效的上限、清单上限、用户上限、今天花了多少（`spentTodayUsd`，来自内核 `runtime.sampler.spentToday`）；用户自己的上限（`null` = 回到清单值，`0` = 不让用） |
