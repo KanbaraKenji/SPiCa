@@ -52,7 +52,13 @@ export interface HookModuleDef {
   file: string;
 }
 
-export const VIEW_PLACEMENTS = ['sidebar', 'panel'] as const;
+export const VIEW_PLACEMENTS = ['sidebar', 'panel', 'preview'] as const;
+
+/** What a preview page may take: at most this big (the app's own limit), 20 MB when it does not say. */
+export const PREVIEW_MAX_MB = 100;
+export const PREVIEW_DEFAULT_MB = 20;
+/** Kinds the app shows as they are itself (PDF viewer, images): not offered to plugins. */
+const PREVIEW_BUILT_IN = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico']);
 
 /** The largest plugin icon (manifest.json · icon) accepted: an SVG of a few shapes is a few KB. */
 export const ICON_MAX_BYTES = 64 * 1024;
@@ -61,14 +67,19 @@ export interface ViewDef {
   /** File name without .json, e.g. "notebook". */
   id: string;
   title: string;
-  /** Where the shell shows it: a sidebar entry of its own, or a panel beside the conversation. */
+  /**
+   * Where the shell shows it: a sidebar entry of its own, a panel beside the conversation, or (preview)
+   * in the right panel for a file of the kinds in `preview`, when the user chose it in the settings.
+   */
   placement: (typeof VIEW_PLACEMENTS)[number];
   /** HTML entry, relative to the plugin folder (forward slashes). */
   entry: string;
   /** SVG icon, relative to the plugin folder. */
   icon?: string;
-  /** Tools of this plugin the page may call (names as the server lists them); undefined = all of them. */
+  /** Tools of this plugin the page may call (names as the server lists them); undefined = all of them, none for a preview page. */
   tools?: string[];
+  /** placement preview: the file kinds it shows (lower case, with the dot) and the largest file it takes. */
+  preview?: { extensions: string[]; maxBytes: number };
 }
 
 export interface PluginFolder {
@@ -262,6 +273,22 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
     if (v.entry === undefined) issue(where, '视图缺少 entry，例如 "ui/index.html"。');
     const entry = await relFile('entry', v.entry, /\.html?$/i, 'ui/index.html');
     const icon = await relFile('icon', v.icon, /\.svg$/i, 'ui/icon.svg');
+    let preview: ViewDef['preview'];
+    const pv = v.preview as { extensions?: unknown; max_mb?: unknown } | undefined;
+    if (placement === 'preview') {
+      if (typeof pv !== 'object' || pv === null || Array.isArray(pv)) issue(where, 'placement 为 preview 的视图须写 preview，例如 { "extensions": [".docx"] }。');
+      else {
+        const ext = pv.extensions;
+        if (!Array.isArray(ext) || ext.length === 0 || ext.some((x) => typeof x !== 'string' || !/^\.[a-z0-9]{1,10}$/.test(x))) {
+          issue(where, 'preview.extensions 须为小写、带点的扩展名列表，例如 [".docx", ".docm"]。');
+        } else if (ext.some((x) => PREVIEW_BUILT_IN.has(x))) {
+          issue(where, `preview.extensions 不能包含 ${(ext as string[]).filter((x) => PREVIEW_BUILT_IN.has(x)).join('、')}：PDF 和图片由应用自己预览。`);
+        }
+        const mb = pv.max_mb ?? PREVIEW_DEFAULT_MB;
+        if (typeof mb !== 'number' || !Number.isFinite(mb) || mb < 1 || mb > PREVIEW_MAX_MB) issue(where, `preview.max_mb 须为 1 到 ${PREVIEW_MAX_MB} 之间的数（能处理的最大文件，单位 MB）。`);
+        else if (Array.isArray(ext)) preview = { extensions: [...new Set(ext as string[])], maxBytes: Math.round(mb * 1024 * 1024) };
+      }
+    } else if (pv !== undefined) issue(where, 'preview 只用于 placement 为 preview 的视图。');
     let tools: string[] | undefined;
     const perm = v.permissions as { tools?: unknown } | undefined;
     if (perm !== undefined) {
@@ -273,7 +300,7 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
       }
     }
     if (out.issues.length === before && entry) {
-      out.views.push({ id, title: (v.title as string).trim(), placement: placement as ViewDef['placement'], entry, ...(icon ? { icon } : {}), ...(tools ? { tools } : {}) });
+      out.views.push({ id, title: (v.title as string).trim(), placement: placement as ViewDef['placement'], entry, ...(icon ? { icon } : {}), ...(tools ? { tools } : {}), ...(preview ? { preview } : {}) });
     }
   }
 

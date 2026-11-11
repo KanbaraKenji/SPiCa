@@ -38,6 +38,8 @@ const SECRET_PATTERNS = [
 // network settings (proxy, trusted certificates).
 const APP_SET_ENV = /^(SPICA_|NODE_EXTRA_CA_CERTS$|NODE_USE_SYSTEM_CA$|NODE_USE_ENV_PROXY$|SSL_CERT_FILE$|REQUESTS_CA_BUNDLE$|CURL_CA_BUNDLE$|ELECTRON_RUN_AS_NODE$|NODE_ENV$)/;
 const ENV_READS = /process\.env(?:\.([A-Za-z_]\w*)|\[\s*['"]([A-Za-z_]\w*)['"]\s*\])|os\.(?:environ(?:\.get\(\s*|\[\s*)|getenv\(\s*)['"]([A-Za-z_]\w*)['"]/g;
+/** File kinds Spica previews as they are itself; a preview page may not claim them. */
+const PREVIEW_BUILT_IN = ['.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico'];
 const SECRET_NAME = /KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL/i;
 
 export async function check(dir, opts = {}) {
@@ -170,7 +172,17 @@ export async function check(dir, opts = {}) {
       continue;
     }
     if (typeof v.title !== 'string' || !v.title.trim()) err(where, '缺少 title');
-    if (v.placement !== undefined && !['sidebar', 'panel'].includes(v.placement)) err(where, 'placement 只能是 sidebar 或 panel');
+    if (v.placement !== undefined && !['sidebar', 'panel', 'preview'].includes(v.placement)) err(where, 'placement 只能是 sidebar、panel 或 preview');
+    if (v.placement === 'preview') {
+      // a page that shows one file in the right panel (same rules as Spica's plugin manager)
+      const p = v.preview;
+      const ext = p?.extensions;
+      if (typeof p !== 'object' || p === null || Array.isArray(p)) err(where, 'placement 是 preview 时要写 preview，例如 { "extensions": [".docx"] }');
+      else if (!Array.isArray(ext) || ext.length === 0 || ext.some((x) => typeof x !== 'string' || !/^\.[a-z0-9]{1,10}$/.test(x))) err(where, 'preview.extensions 要写小写、带点的扩展名列表，例如 [".docx", ".docm"]');
+      else if (ext.some((x) => PREVIEW_BUILT_IN.includes(x))) err(where, 'preview.extensions 不能有 .pdf 和图片：这些由 Spica 自己预览');
+      if (p && p.max_mb !== undefined && (typeof p.max_mb !== 'number' || !(p.max_mb >= 1 && p.max_mb <= 100))) err(where, 'preview.max_mb 要写 1 到 100 之间的数（能处理的最大文件，单位 MB；不写是 20）');
+      if (v.permissions?.tools === undefined) warn(where, '预览页不写 permissions.tools 就不能调本插件的工具（它拿着用户的文件）；要调就把工具名列出来');
+    } else if (v.preview !== undefined) err(where, 'preview 只用于 placement 为 preview 的页面');
     const entry = inside(v.entry);
     if (!entry || !/\.html?$/i.test(v.entry)) err(where, 'entry 要写插件文件夹里的 .html 相对路径');
     else if (!existsSync(entry)) err(where, `entry 指向的 ${v.entry} 不存在`);

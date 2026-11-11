@@ -91,7 +91,7 @@ export interface PluginDescription {
   tools: string[];
   hooks: { module: string; kinds: HookKind[] }[];
   servers: { id: string; kind: 'mcp' | 'service'; runtime: 'node' | 'binary'; status: ServerStatus; restarts: number; tools: string[]; lastError?: string }[];
-  views: { id: string; title: string; placement: ViewDef['placement']; entry: string; icon?: string; tools?: string[] }[];
+  views: { id: string; title: string; placement: ViewDef['placement']; entry: string; icon?: string; tools?: string[]; preview?: ViewDef['preview'] }[];
   /** The plugin's own icon (manifest.json · icon) for a light and a dark skin (the same file when there is one), relative to its install folder; absent: none. */
   icon?: PluginIcon;
   /** Set while the plugin is enabled and registered as a mail source. */
@@ -139,6 +139,8 @@ export interface PluginView {
   tools: string[];
   /** Of those, the ones the user must confirm first. */
   irreversible: string[];
+  /** placement preview: the file kinds it shows and the largest file it takes (bytes). */
+  preview?: { extensions: string[]; maxBytes: number };
 }
 
 export interface ViewCallResult {
@@ -1066,7 +1068,7 @@ export class PluginManager {
           ...(run?.lastError ? { lastError: run.lastError } : {}),
         };
       }),
-      views: (folder?.views ?? []).map((v) => ({ id: v.id, title: v.title, placement: v.placement, entry: v.entry, ...(v.icon ? { icon: v.icon } : {}), ...(v.tools ? { tools: v.tools } : {}) })),
+      views: (folder?.views ?? []).map((v) => ({ id: v.id, title: v.title, placement: v.placement, entry: v.entry, ...(v.icon ? { icon: v.icon } : {}), ...(v.tools ? { tools: v.tools } : {}), ...(v.preview ? { preview: v.preview } : {}) })),
       ...(m?.icon ? { icon: m.icon } : {}),
       ...(a?.mail ? { mail: a.mail } : {}),
       ...(m?.permissions.model ? { model: this.#modelUse(name, m) } : {}),
@@ -1109,7 +1111,8 @@ export class PluginManager {
 
   #viewTools(a: Active, v: ViewDef): string[] {
     const own = [...this.#ownTools(a).keys()];
-    return v.tools ? v.tools.filter((t) => own.includes(t)) : own;
+    if (v.tools) return v.tools.filter((t) => own.includes(t));
+    return v.placement === 'preview' ? [] : own; // a preview page holds the user's file: no tools unless listed
   }
 
   /** Pages of the enabled plugins. Changes come with plugin.enabled / plugin.disabled / server.status events. */
@@ -1128,6 +1131,7 @@ export class PluginManager {
           ...(v.icon ? { icon: v.icon } : {}),
           tools,
           irreversible: tools.filter((t) => a.manifest.permissions.irreversible.includes(t)),
+          ...(v.preview ? { preview: v.preview } : {}),
         });
       }
     }
@@ -1170,7 +1174,9 @@ export class PluginManager {
     if (!v) return fail('VIEW_NOT_FOUND', `插件「${a.manifest.displayName}」中没有页面 ${viewId}。`);
     const full = this.#ownTools(a).get(tool);
     if (!full) return fail('TOOL_NOT_FOUND', `插件「${a.manifest.displayName}」暂无工具 ${tool}。`);
-    if (v.tools && !v.tools.includes(tool)) return fail('TOOL_NOT_ALLOWED', `该页面未声明工具 ${tool} 的权限（views/${viewId}.json 的 permissions.tools）。`);
+    // a preview page gets no tools unless it lists them (it holds the user's file)
+    const allowed = v.tools ?? (v.placement === 'preview' ? [] : undefined);
+    if (allowed && !allowed.includes(tool)) return fail('TOOL_NOT_ALLOWED', `该页面未声明工具 ${tool} 的权限（views/${viewId}.json 的 permissions.tools）。`);
     // Confirmation: the shell asks the user itself on [CONFIRM_REQUIRED], then
     // calls again with confirmed: true.
     const input = args && typeof args === 'object' ? args : {};

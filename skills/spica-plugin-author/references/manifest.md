@@ -99,4 +99,4 @@ send({ method: 'notifications/progress', params: { progressToken: token, progres
 { "title": "Board", "entry": "ui/index.html", "placement": "sidebar", "icon": "ui/icon.svg", "permissions": { "tools": ["list_items"] } }
 ```
 
-见 `ui.md`。
+`placement` 还可以是 `preview`（给某几种文件当预览，要写 `preview: { extensions, max_mb }`）。见 `ui.md`。

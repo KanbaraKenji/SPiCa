@@ -102,9 +102,12 @@ export const priority = 100; // 可选，小的先跑
 |---|---|---|
 | `title` | 是 | 侧栏 / 面板上显示的名字 |
 | `entry` | 是 | 插件目录里的 `.html`，相对路径，不许 `..`、绝对路径，文件要存在 |
-| `placement` | 否 | `sidebar`（默认，侧栏里一个入口）/ `panel`（对话旁边的面板） |
+| `placement` | 否 | `sidebar`（默认，侧栏里一个入口）/ `panel`（对话旁边的面板）/ `preview`（给 `preview.extensions` 里的文件当预览，在右侧栏打开） |
 | `icon` | 否 | 插件目录里的 `.svg` |
-| `permissions.tools` | 否 | 页面能调的本插件工具（server 里的原名，不带前缀）；不写 = 本插件全部工具，常驻进程的工具也算 |
+| `permissions.tools` | 否 | 页面能调的本插件工具（server 里的原名，不带前缀）；不写 = 本插件全部工具，常驻进程的工具也算；预览页不写 = 一个都不给（它拿着用户的文件） |
+| `preview` | placement 为 preview 时必填 | `extensions`：小写、带点的扩展名，不能有 .pdf 和图片（应用自己预览）；`max_mb`：能处理的最大文件，1 到 100，缺省 20。`views()` 里给 `preview: { extensions, maxBytes }` |
+
+**预览页**：右侧栏打开一个文件时，外壳按用户的设置（外壳自己的 `settings.json` 里 `previewers`：扩展名 → `插件/页面`，没写的用自带预览）决定用不用插件页。外壳主进程读这个文件（超过 `maxBytes` 不读），经桥把文件名、大小、修改时间、扩展名和字节交给页面，不给路径；页面读不了别的文件、写不回去、不能联网。页面慢（15 秒）、出错、插件没装时退回自带预览。桥接口 `spica.preview.file() / ready() / fail()` 和设置的界面归外壳。
 
 视图文件名（不含 `.json`）就是视图 id：小写字母、数字、`-`。
 

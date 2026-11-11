@@ -392,6 +392,36 @@ if (r.isError) showError(r.content); else render(r.data ?? r.content);
 - `permissions.irreversible` 里的工具（services/ 里的也算），页面调用时 Spica 会先弹确认框；用户拒绝时 `isError` 为真，`content` 以 `[CONFIRM_REQUIRED]` 开头。
 - 页面能调常驻进程（`services/`）的工具：这类工具不给模型、只给自己的页面用，适合做界面专用的接口。
 - `sidebar` 是侧栏里一个入口、点开占主区域，适合完整的功能页；`panel` 是对话旁边右栏的一个标签，适合边聊边用的小工具（按 320px 宽设计）。一个插件可以有多个页面。
+
+### 预览页（`placement: "preview"`）
+
+给某几种文件做「预览」（例如更像原样的 Word、Excel）：用户在 设置 里选了用它预览这种文件后，右侧栏打开这种文件时显示这个页面，Spica 把**这一个文件**交给它。没选的时候用 Spica 自带的预览。
+
+```json
+{
+  "title": "Word 原样预览",
+  "entry": "ui/docx.html",
+  "placement": "preview",
+  "preview": { "extensions": [".docx", ".docm"], "max_mb": 30 }
+}
+```
+
+- `extensions`：小写、带点的扩展名。不能有 `.pdf` 和图片，这些 Spica 自己就能原样显示。
+- `max_mb`：能处理的最大文件，1 到 100，不写是 20。文件更大时 Spica 用自带的预览。
+- 预览页不写 `permissions.tools` 就**不能调**本插件的工具（和别的页面相反）：它拿着用户的文件，别顺手交给 server。
+
+页面里这样拿文件（桥接口由 Spica 的界面提供）：
+
+```js
+const file = await window.spica.preview.file(); // { name, size, modifiedAt, extension, bytes: ArrayBuffer }，没有完整路径
+render(file.bytes);
+window.spica.preview.ready();                    // 画好了
+// 画不了时：window.spica.preview.fail('看不懂这个文件');  Spica 改用自带预览，并显示这句
+window.spica.onEvent((e) => { if (e.type === 'preview.file') location.reload(); }); // 用户换了一个文件
+```
+
+- 15 秒内没调 `ready()`，或者页面出错、崩溃，Spica 也改用自带的预览。
+- 拿不到别的文件，写不回去，照样不能联网；库文件放进插件，别从网上加载。
 - 完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）、`views/quick-note.json`（panel），页面在 `ui/`。
 
 ## 6. 模拟模式

@@ -695,6 +695,56 @@ describe('failures', () => {
     expect(cancelled.data).toHaveLength(1);
   }, 60_000);
 
+  it('a preview page: listed with the file kinds it shows, and no tools unless it lists them', async () => {
+    const server = `import { createInterface } from 'node:readline';
+      const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\\n');
+      createInterface({ input: process.stdin }).on('line', (l) => {
+        const m = JSON.parse(l);
+        if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 's' } } });
+        if (m.method === 'tools/list') send({ id: m.id, result: { tools: [{ name: 'convert', inputSchema: { type: 'object' } }] } });
+        if (m.method === 'tools/call') send({ id: m.id, result: { content: [{ type: 'text', text: 'converted' }] } });
+      });`;
+    const dir = await writePlugin({
+      'manifest.json': manifest('viewer'),
+      'mcp/srv.json': { runtime: 'node', entry: 'srv.js' },
+      'srv.js': server,
+      'views/word.json': { title: 'Word', entry: 'ui/word.html', placement: 'preview', preview: { extensions: ['.docx', '.docm'], max_mb: 30 } },
+      'views/sheet.json': { title: 'Sheet', entry: 'ui/sheet.html', placement: 'preview', preview: { extensions: ['.xlsx'] }, permissions: { tools: ['convert'] } },
+      'ui/word.html': '<!doctype html><title>w</title>',
+      'ui/sheet.html': '<!doctype html><title>s</title>',
+    });
+    dirs.push(dir);
+    r = await rig();
+    await r.pm.install(dir);
+    await r.pm.enable('viewer');
+    const views = r.pm.views();
+    expect(views.map((v) => [v.id, v.placement, v.preview, v.tools])).toEqual([
+      ['sheet', 'preview', { extensions: ['.xlsx'], maxBytes: 20 * 1024 * 1024 }, ['convert']],
+      ['word', 'preview', { extensions: ['.docx', '.docm'], maxBytes: 30 * 1024 * 1024 }, []],
+    ]);
+    // the page that did not list tools may not call any; the one that did may
+    expect(await r.pm.viewCall('viewer', 'word', 'convert')).toMatchObject({ isError: true, content: expect.stringMatching(/^\[TOOL_NOT_ALLOWED\]/) });
+    expect(await r.pm.viewCall('viewer', 'sheet', 'convert')).toMatchObject({ isError: false, content: 'converted' });
+  });
+
+  it('a preview page with a wrong declaration is refused, every problem named', async () => {
+    const dir = await writePlugin({
+      'manifest.json': manifest('badviewer'),
+      'views/a.json': { title: 'A', entry: 'ui/a.html', placement: 'preview' },
+      'views/b.json': { title: 'B', entry: 'ui/a.html', placement: 'preview', preview: { extensions: ['docx', '.PDF'] } },
+      'views/c.json': { title: 'C', entry: 'ui/a.html', placement: 'preview', preview: { extensions: ['.docx', '.pdf'], max_mb: 500 } },
+      'views/d.json': { title: 'D', entry: 'ui/a.html', placement: 'sidebar', preview: { extensions: ['.docx'] } },
+      'ui/a.html': '<!doctype html><title>a</title>',
+    });
+    dirs.push(dir);
+    const issues = (await readPluginFolder(dir)).issues.map((i) => `${i.where}: ${i.message}`).join('\n');
+    expect(issues).toMatch(/views\/a\.json: placement 为 preview 的视图须写 preview/);
+    expect(issues).toMatch(/views\/b\.json: preview\.extensions 须为小写、带点的扩展名列表/);
+    expect(issues).toMatch(/views\/c\.json: preview\.extensions 不能包含 \.pdf/);
+    expect(issues).toMatch(/views\/c\.json: preview\.max_mb 须为 1 到 100 之间的数/);
+    expect(issues).toMatch(/views\/d\.json: preview 只用于 placement 为 preview 的视图/);
+  });
+
   it('a plugin declaring concurrency: 1 gets its calls one after another; waiting calls end when it is disabled', async () => {
     const dir = await writePlugin({
       'manifest.json': manifest('solo'),
