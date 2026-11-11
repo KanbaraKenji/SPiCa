@@ -18,15 +18,18 @@ export function checkLocalPath(path: unknown, want: 'any' | 'folder', kindOf: (p
 
 /** The file name a CSV export suggests: the page's name made safe for Windows, with .csv; 表格.csv when there is none. */
 export function csvFileName(name: unknown): string {
-  const base = (typeof name === 'string' ? name : '')
+  const kept = [...(typeof name === 'string' ? name : '')].filter((ch) => ch.charCodeAt(0) >= 0x20).join('');
+  const base = kept
     .replace(/\.csv$/i, '')
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '')
+    .replace(/[\\/:*?"<>|]/g, '')
     .trim()
     .slice(0, 80);
   return `${base || '表格'}.csv`;
 }
 
+const BOM = '\uFEFF';
+
 /** What a CSV file holds: a byte-order mark first, so Excel reads it as UTF-8 (Chinese otherwise comes out garbled). */
 export function csvFileText(text: string): string {
-  return text.startsWith('﻿') ? text : `﻿${text}`;
+  return text.startsWith(BOM) ? text : `${BOM}${text}`;
 }

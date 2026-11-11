@@ -36,6 +36,7 @@ describe('CSV export', () => {
     expect(csvFileName('报价汇总')).toBe('报价汇总.csv');
     expect(csvFileName('a/b:c*?.CSV')).toBe('abc.csv');
     expect(csvFileName('')).toBe('表格.csv');
+    expect(csvFileName('报价\n汇总\t')).toBe('报价汇总.csv');
     expect(csvFileName(undefined)).toBe('表格.csv');
   });
 
