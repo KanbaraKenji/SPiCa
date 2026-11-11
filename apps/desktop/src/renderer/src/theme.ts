@@ -9,6 +9,11 @@ export function applySkin(skin: Skin, root: HTMLElement = document.documentEleme
   root.style.colorScheme = schemeOf(skin.bg);
 }
 
+/** Sets the font size of code blocks in answers (外观 › 代码 › 字号). */
+export function applyCodeSize(px: number, root: HTMLElement = document.documentElement): void {
+  root.style.setProperty('--code-size', `${px}px`);
+}
+
 /** Sets the code colours for the skin's scheme (外观 › 代码); 跟随皮肤 clears them, so the skin's own show. */
 export function applyCodeTheme(theme: { light: string; dark: string }, scheme: 'light' | 'dark', root: HTMLElement = document.documentElement): void {
   for (const name of CODE_THEME_VARS) root.style.removeProperty(name);

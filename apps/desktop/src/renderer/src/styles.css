@@ -1087,9 +1087,11 @@ button.tree-twisty:hover {
   overflow-x: auto;
 }
 
+/* A code block's size is its own (外观 › 代码 › 字号, 13px unless picked); code inside a sentence stays with the text. */
 .md pre code {
   padding: 0;
   background: none;
+  font-size: var(--code-size, 13px);
 }
 
 .md blockquote {
@@ -1298,6 +1300,11 @@ pre .hl-punctuation {
   min-width: 0;
 }
 
+.code-size-pick {
+  max-width: 160px;
+  margin-bottom: 12px;
+}
+
 /* 设置 › 常规 › 文件预览: a kind of file, then what shows it. */
 .preview-kinds {
   display: grid;
@@ -1330,7 +1337,7 @@ pre .hl-punctuation {
   background: var(--code-bg, var(--spica-surface));
   color: var(--code-fg, var(--spica-ink));
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--code-size, 13px);
   line-height: 1.6;
   overflow-x: auto;
 }

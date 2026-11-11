@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { CODE_THEMES, codeThemeId, codeThemesFor, codeThemeVars, SKIN_CODE_THEME } from '../../../shared/code-themes';
+import { CODE_SIZES, CODE_THEMES, codeThemeId, codeThemesFor, codeThemeVars, SKIN_CODE_THEME } from '../../../shared/code-themes';
 import { DEFAULT_SETTINGS, sanitizeSettings } from '../../../shared/settings';
-import { applyCodeTheme } from '../theme';
+import { applyCodeSize, applyCodeTheme } from '../theme';
 import { CodeThemes } from './CodeThemes';
 
 afterEach(cleanup);
@@ -42,6 +42,30 @@ describe('code themes', () => {
   });
 });
 
+describe('the size of code blocks', () => {
+  it('13px unless picked; only the listed sizes are kept', () => {
+    expect(CODE_SIZES).toEqual([12, 13, 14, 15]);
+    expect(DEFAULT_SETTINGS.codeSize).toBe(13);
+    expect(sanitizeSettings({}).codeSize).toBe(13);
+    expect(sanitizeSettings({ codeSize: 15 }).codeSize).toBe(15);
+    expect(sanitizeSettings({ codeSize: 40 }).codeSize).toBe(13);
+    expect(sanitizeSettings({ codeSize: '14' }).codeSize).toBe(13);
+  });
+
+  it('picked from a list in 代码; applied to the page as --code-size', () => {
+    const onSize = vi.fn();
+    render(<CodeThemes value={{ light: SKIN_CODE_THEME, dark: SKIN_CODE_THEME }} onChange={vi.fn()} size={13} onSize={onSize} />);
+    const sel = screen.getByRole('combobox', { name: '代码字号' }) as HTMLSelectElement;
+    expect([...sel.options].map((o) => o.textContent)).toEqual(['12px', '13px', '14px', '15px']);
+    expect(sel.value).toBe('13');
+    fireEvent.change(sel, { target: { value: '15' } });
+    expect(onSize).toHaveBeenCalledWith(15);
+    const root = document.createElement('div');
+    applyCodeSize(15, root);
+    expect(root.style.getPropertyValue('--code-size')).toBe('15px');
+  });
+});
+
 describe('Claude 风格', () => {
   it('the Claude app’s colours, one per kind of code element, on the skin’s own code background', () => {
     const dark = codeThemeVars('claude', 'dark');
@@ -69,7 +93,7 @@ describe('Claude 风格', () => {
   });
 
   it('named the same in both lists; its preview shows the light or dark skin’s background, whatever skin is on', () => {
-    render(<CodeThemes value={{ light: 'claude', dark: 'claude' }} onChange={vi.fn()} />);
+    render(<CodeThemes value={{ light: 'claude', dark: 'claude' }} onChange={vi.fn()} size={13} onSize={vi.fn()} />);
     for (const name of ['浅色代码配色', '深色代码配色']) {
       const sel = screen.getByRole('combobox', { name }) as HTMLSelectElement;
       expect(sel.selectedOptions[0]?.textContent).toBe('Claude 风格');
@@ -84,7 +108,7 @@ describe('Claude 风格', () => {
 describe('外观 › 代码', () => {
   it('a picker for light skins and one for dark ones, each with a preview with one changed line', () => {
     const onChange = vi.fn();
-    render(<CodeThemes value={{ light: SKIN_CODE_THEME, dark: 'one' }} onChange={onChange} />);
+    render(<CodeThemes value={{ light: SKIN_CODE_THEME, dark: 'one' }} onChange={onChange} size={13} onSize={vi.fn()} />);
     const dark = screen.getByRole('combobox', { name: '深色代码配色' }) as HTMLSelectElement;
     expect([...dark.options].map((o) => o.textContent)).toContain('Dracula');
     expect([...dark.options].map((o) => o.textContent)).toContain('One Dark Pro');

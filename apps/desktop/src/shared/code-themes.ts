@@ -162,3 +162,12 @@ const VAR_OF: Record<keyof CodePalette, string> = {
 
 /** Every variable a palette may set (to clear them when going back to 跟随皮肤). */
 export const CODE_THEME_VARS = Object.values(VAR_OF);
+
+/** 外观 › 代码 › 字号: the sizes a code block in an answer can be, in px; 13 unless picked. */
+export const CODE_SIZES = [12, 13, 14, 15] as const;
+export const DEFAULT_CODE_SIZE = 13;
+
+/** A stored size, or the default when it is not one of CODE_SIZES. */
+export function codeSize(value: unknown): number {
+  return typeof value === 'number' && (CODE_SIZES as readonly number[]).includes(value) ? value : DEFAULT_CODE_SIZE;
+}

@@ -160,3 +160,13 @@ describe('the row under every message', () => {
     expect(css).not.toMatch(/:hover > \.msg-actions/);
   });
 });
+
+describe('code sizes', () => {
+  it('a code block in an answer follows 外观 › 代码 › 字号 (13px unless picked); a command box, a tool output and a confirmation keep their own', () => {
+    expect(block('.md pre code')).toContain('font-size: var(--code-size, 13px)');
+    expect(block('.tool-command pre')).toContain('font-size: 12px');
+    expect(block('.tool-result')).toContain('font-size: 12px');
+    expect(block('.confirm-args dd')).toContain('font-size: 12px');
+    expect(block('.preview-code')).toContain('font-size: 12.5px');
+  });
+});

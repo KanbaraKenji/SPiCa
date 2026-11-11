@@ -201,7 +201,7 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
 
       <div className="settings-group">
         <h3 className="settings-subheading">代码</h3>
-        <CodeThemes value={settings.codeTheme} onChange={(codeTheme) => onChange({ codeTheme })} />
+        <CodeThemes value={settings.codeTheme} onChange={(codeTheme) => onChange({ codeTheme })} size={settings.codeSize} onSize={(codeSize) => onChange({ codeSize })} />
       </div>
 
       <div className="settings-group">
