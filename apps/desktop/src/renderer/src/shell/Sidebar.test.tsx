@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
 import { Sidebar } from './Sidebar';
-import type { SessionInfo } from '@spica/protocol';
 
 afterEach(cleanup);
 
