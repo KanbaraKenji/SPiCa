@@ -46,6 +46,16 @@ describe('Composer', () => {
     fireEvent.click(screen.getByRole('button', { name: '停止' }));
     expect(onStop).toHaveBeenCalled();
   });
+
+  it('one line: attach, the text and stop / send side by side in the box', () => {
+    const onSend = vi.fn();
+    render(<Composer running onSend={onSend} onStop={vi.fn()} sessionKey="s-row" tools={{ pickFiles: async () => [] }} />);
+    const row = document.querySelector('.composer > .composer-row')!;
+    expect([...row.children].map((e) => e.getAttribute('aria-label') ?? e.className)).toEqual(['composer-left', '消息', 'composer-right']);
+    expect(row.querySelector('.composer-left [aria-label="添加附件"]')).toBeTruthy();
+    expect([...row.querySelectorAll('.composer-right button')].map((b) => b.getAttribute('aria-label'))).toEqual(['停止', '发送']);
+    expect(document.querySelector('.composer-bar')).toBeNull();
+  });
 });
 
 describe('Composer controls', () => {

@@ -407,19 +407,19 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
             ))}
           </div>
         ) : null}
-        <textarea
-          ref={ref}
-          className="composer-input"
-          rows={1}
-          value={text}
-          placeholder={running ? '补充说明（下一步生效）' : `给 ${APP_NAME} 发消息`}
-          aria-label="消息"
-          onChange={(e) => update(e.target.value)}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-        />
-        <div className="composer-bar">
+        <div className="composer-row">
           <div className="composer-left">{left}</div>
+          <textarea
+            ref={ref}
+            className="composer-input"
+            rows={1}
+            value={text}
+            placeholder={running ? '补充说明（下一步生效）' : `给 ${APP_NAME} 发消息`}
+            aria-label="消息"
+            onChange={(e) => update(e.target.value)}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+          />
           <div className="composer-right">
             {running ? (
               <button type="button" className="icon-btn composer-stop" onClick={onStop} aria-label="停止" title="停止">
