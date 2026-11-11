@@ -59,6 +59,7 @@ export const DesktopChannel = {
   PluginViews: 'spica:pluginViews',
   /** invoke: (plugin, view, tool, args, confirmed) -> PluginViewResult */
   PluginViewCall: 'spica:pluginViewCall',
+  PluginViewCancel: 'spica:pluginViewCancel',
   /** invoke: (plugin, path) -> absolute path inside the plugin, or null */
   PluginViewFile: 'spica:pluginViewFile',
   /** invoke: UsageLogRequest -> UsageLogResult (asks where to save first) */

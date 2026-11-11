@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { contentType, injectIntoPage, pageCsp, parsePluginUrl, pluginThemeVars, themeCss } from './plugin-views';
-import { pluginCallProblem } from '../shared/plugin-view';
+import { pluginCallId, pluginCallProblem } from '../shared/plugin-view';
 
 describe('plugin pages', () => {
   it('reads plugin and path from the URL; never leaves the plugin', () => {
@@ -40,5 +40,13 @@ describe('plugin pages', () => {
   it('says plugin call failures in words', () => {
     expect(pluginCallProblem('[TOOL_NOT_ALLOWED] delete_all')).toBe('该页面无权使用此工具。');
     expect(pluginCallProblem('note not found')).toBeNull();
+  });
+});
+
+describe('the id of a page call (it names the call so it can be stopped)', () => {
+  it('a short plain string passes; anything else is nothing', () => {
+    expect(pluginCallId('3f2a9c1e-8b7d-4e21-9a55-0c1d2e3f4a5b')).toBe('3f2a9c1e-8b7d-4e21-9a55-0c1d2e3f4a5b');
+    expect(pluginCallId('call_1')).toBe('call_1');
+    for (const bad of [undefined, null, 7, {}, '', 'a b', 'a/b', '../x', 'x'.repeat(65)]) expect(pluginCallId(bad)).toBeUndefined();
   });
 });

@@ -123,7 +123,10 @@ export interface DesktopBridge extends SpicaBridge {
   /** Plugin pages (views/<id>.json of enabled plugins). */
   pluginViews: {
     list(): Promise<PluginView[]>;
-    call(plugin: string, view: string, tool: string, args: unknown, confirmed: boolean): Promise<PluginViewResult>;
+    /** `callId`: chosen by the caller, so the call can be stopped with `cancel` while it runs. */
+    call(plugin: string, view: string, tool: string, args: unknown, confirmed: boolean, callId?: string): Promise<PluginViewResult>;
+    /** Stops a call still running (its page closed, reloaded, or its plugin was turned off). Nothing happens for one already over. */
+    cancel(callId: string): void;
     /** A file inside the plugin's folder, as an absolute path; null when it is not one. */
     file(plugin: string, path: string): Promise<string | null>;
   };

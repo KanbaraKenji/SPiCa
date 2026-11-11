@@ -58,3 +58,8 @@ export function pluginCallProblem(content: string): string | null {
       return null;
   }
 }
+
+/** A page call's id as the window may send it (it names the call so it can be stopped): a short plain string, else nothing. */
+export function pluginCallId(v: unknown): string | undefined {
+  return typeof v === 'string' && /^[\w-]{1,64}$/.test(v) ? v : undefined;
+}

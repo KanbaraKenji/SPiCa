@@ -250,8 +250,14 @@ export class ProcessBackend implements AgentBackend {
     return this.call('pluginViewFile', req);
   }
 
-  pluginViewCall(req: { plugin: string; view: string; tool: string; args: unknown; confirmed?: boolean }): Promise<PluginViewResult> {
+  /** `callId`: lets pluginViewCancel stop this call while it runs. */
+  pluginViewCall(req: { plugin: string; view: string; tool: string; args: unknown; confirmed?: boolean; callId?: string }): Promise<PluginViewResult> {
     return this.call('pluginViewCall', req);
+  }
+
+  /** Stops a page's call still running (the plugin's server is told to stop); false when there is none by that id. */
+  pluginViewCancel(req: { callId: string }): Promise<boolean> {
+    return this.call('pluginViewCancel', req);
   }
 
   /** Writes the core's usage log to `file` (in the core's process: the log can be large). */

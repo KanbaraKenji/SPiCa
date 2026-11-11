@@ -62,7 +62,8 @@ const bridge: DesktopBridge = {
   localConnect: () => ipcRenderer.invoke(DesktopChannel.LocalConnect) as Promise<LocalConnectInfo | null>,
   pluginViews: {
     list: () => ipcRenderer.invoke(DesktopChannel.PluginViews) as Promise<PluginView[]>,
-    call: (plugin, view, tool, args, confirmed) => ipcRenderer.invoke(DesktopChannel.PluginViewCall, plugin, view, tool, args, confirmed) as Promise<PluginViewResult>,
+    call: (plugin, view, tool, args, confirmed, callId) => ipcRenderer.invoke(DesktopChannel.PluginViewCall, plugin, view, tool, args, confirmed, callId) as Promise<PluginViewResult>,
+    cancel: (callId) => ipcRenderer.send(DesktopChannel.PluginViewCancel, callId),
     file: (plugin, path) => ipcRenderer.invoke(DesktopChannel.PluginViewFile, plugin, path) as Promise<string | null>,
   },
   preview: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.Preview, sessionId, path) as Promise<PreviewInfo>,

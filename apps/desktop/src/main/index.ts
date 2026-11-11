@@ -51,7 +51,7 @@ import { followTaskbarTheme, readTaskbarDark } from './taskbar-theme';
 import { PREVIEW_SCHEME, PreviewFiles, readPreview } from './preview';
 import { AttachImages } from './images';
 import { BRIDGE_JS, contentType, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
-import { FONT_UI, type PluginView, type PluginViewResult } from '../shared/plugin-view';
+import { pluginCallId, FONT_UI, type PluginView, type PluginViewResult } from '../shared/plugin-view';
 import { readFile } from 'node:fs/promises';
 
 // Spica, or the name a company's deploy.json gave it when packaging.
@@ -646,14 +646,18 @@ ipcMain.handle(DesktopChannel.Network, async (): Promise<NetworkState | null> =>
 
 // Plugin pages: only through the plugin manager, which knows the plugin's folder and its pages' tools.
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
+const viewCallId = (v: unknown): { callId?: string } => {
+  const id = pluginCallId(v);
+  return id ? { callId: id } : {};
+};
 ipcMain.handle(DesktopChannel.PluginViews, async (): Promise<PluginView[]> => {
   if (!(backend instanceof ProcessBackend)) return [];
   return backend.pluginViews().catch(() => []);
 });
-ipcMain.handle(DesktopChannel.PluginViewCall, async (_e, plugin: unknown, view: unknown, tool: unknown, args: unknown, confirmed: unknown): Promise<PluginViewResult> => {
+ipcMain.handle(DesktopChannel.PluginViewCall, async (_e, plugin: unknown, view: unknown, tool: unknown, args: unknown, confirmed: unknown, callId: unknown): Promise<PluginViewResult> => {
   if (!(backend instanceof ProcessBackend)) return { content: '[UNSUPPORTED] 当前版本不支持插件页面。', isError: true };
   try {
-    return await backend.pluginViewCall({ plugin: str(plugin), view: str(view), tool: str(tool), args: args ?? {}, confirmed: confirmed === true });
+    return await backend.pluginViewCall({ plugin: str(plugin), view: str(view), tool: str(tool), args: args ?? {}, confirmed: confirmed === true, ...viewCallId(callId) });
   } catch (err) {
     // The plugin's own words beat a generic "no answer": the page shows them to whoever is fixing the plugin.
     const msg = err instanceof Error ? err.message : String(err);
@@ -663,6 +667,13 @@ ipcMain.handle(DesktopChannel.PluginViewCall, async (_e, plugin: unknown, view: 
     const human = humanError(msg);
     return { content: human.startsWith('出错：') ? `插件调用失败：${msg.slice(0, 300)}` : human, isError: true };
   }
+});
+// The page that made a call is gone (closed, reloaded, its plugin turned off): the call is stopped rather than
+// left to run to the plugin's own timeout with nobody to take its result.
+ipcMain.on(DesktopChannel.PluginViewCancel, (_e, callId: unknown) => {
+  const id = viewCallId(callId).callId;
+  if (!id || !(backend instanceof ProcessBackend)) return;
+  void backend.pluginViewCancel({ callId: id }).catch(() => undefined);
 });
 ipcMain.handle(DesktopChannel.PluginViewFile, async (_e, plugin: unknown, path: unknown): Promise<string | null> => {
   if (!(backend instanceof ProcessBackend)) return null;

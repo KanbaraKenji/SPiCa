@@ -401,7 +401,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     view: v,
     theme: pluginTheme,
     changed: pluginsChanged,
-    call: (tool: string, args: unknown, confirmed: boolean) => bridge.pluginViews.call(v.plugin, v.id, tool, args, confirmed),
+    call: (tool: string, args: unknown, confirmed: boolean, callId: string) => bridge.pluginViews.call(v.plugin, v.id, tool, args, confirmed, callId),
+    cancel: (callId: string) => bridge.pluginViews.cancel(callId),
     confirm: (tool: string) => new Promise<boolean>((resolve) => setPluginAsk({ title: `「${v.pluginTitle}」将执行「${tool}」，此操作不可撤销。`, resolve })),
     openFile: async (path: string) => {
       const abs = await bridge.pluginViews.file(v.plugin, path);

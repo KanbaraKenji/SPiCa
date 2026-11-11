@@ -16,7 +16,10 @@ export interface PluginFrameProps {
   theme: PluginTheme;
   /** Changes when plugins change (enabled, updated...), so the page can refresh. */
   changed: number;
-  call(tool: string, args: unknown, confirmed: boolean): Promise<PluginViewResult>;
+  /** `callId` names this call so it can be stopped while it runs. */
+  call(tool: string, args: unknown, confirmed: boolean, callId: string): Promise<PluginViewResult>;
+  /** Stops a call still running: its page is gone (closed, reloaded, its plugin turned off) and nobody takes the result. */
+  cancel(callId: string): void;
   /** Asks the user before an irreversible tool runs; resolves to the answer. */
   confirm(tool: string): Promise<boolean>;
   /** A file of this plugin, shown in the right panel; resolves to a problem in words, or null. */
@@ -26,13 +29,21 @@ export interface PluginFrameProps {
 
 const CONFIRM = '[CONFIRM_REQUIRED]';
 
-export function PluginFrame({ view, theme, changed, call, confirm, openFile, notify }: PluginFrameProps) {
+export function PluginFrame({ view, theme, changed, call, cancel, confirm, openFile, notify }: PluginFrameProps) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [ready, setReady] = useState(false);
-  const latest = useRef({ theme, call, confirm, openFile, notify });
+  const latest = useRef({ theme, call, cancel, confirm, openFile, notify });
   useEffect(() => {
-    latest.current = { theme, call, confirm, openFile, notify };
+    latest.current = { theme, call, cancel, confirm, openFile, notify };
   });
+  // Tool calls of the page as it is now that have not come back. `page` counts the page's loads: an answer
+  // for an earlier load is dropped (the new page numbers its calls from the start again).
+  const running = useRef(new Set<string>());
+  const page = useRef(0);
+  const stopRunning = () => {
+    for (const id of running.current) latest.current.cancel(id);
+    running.current.clear();
+  };
 
   const post = (msg: object) => ref.current?.contentWindow?.postMessage({ __spica: 1, ...msg }, '*');
 
@@ -43,22 +54,40 @@ export function PluginFrame({ view, theme, changed, call, confirm, openFile, not
       const d = e.data as { __spica?: number; call?: string; id?: number; args?: Record<string, unknown> } | null;
       if (!d || d.__spica !== 1 || typeof d.call !== 'string') return;
       const { call: c, id = 0, args = {} } = d;
-      const reply = (result: unknown) => post({ reply: id, result });
-      const fail = (error: string) => post({ reply: id, error });
+      // The page loaded again (its own reload, a navigation): what the page before it started is stopped.
+      if (c === 'ready') {
+        page.current += 1;
+        stopRunning();
+      }
+      const from = page.current;
+      const reply = (result: unknown) => from === page.current && post({ reply: id, result });
+      const fail = (error: string) => from === page.current && post({ reply: id, error });
       const l = latest.current;
+      // One tool call, known by an id while it runs so it can be stopped.
+      const run = async (tool: string, toolArgs: unknown, confirmed: boolean) => {
+        const callId = crypto.randomUUID();
+        running.current.add(callId);
+        try {
+          return await l.call(tool, toolArgs, confirmed, callId);
+        } finally {
+          running.current.delete(callId);
+        }
+      };
       try {
         if (c === 'ready') {
           setReady(true);
           post({ event: { type: 'theme', mode: l.theme.mode, vars: l.theme.vars } });
         } else if (c === 'callTool') {
           const tool = String(args.tool ?? '');
-          let r = await l.call(tool, args.args ?? {}, false);
+          let r = await run(tool, args.args ?? {}, false);
           if (r.isError && r.content.startsWith(CONFIRM)) {
             if (!(await l.confirm(tool))) {
               reply({ content: '用户已拒绝，未执行。', isError: true, declined: true });
               return;
             }
-            r = await l.call(tool, args.args ?? {}, true);
+            // The page went away while the question was open: nothing is run for it.
+            if (from !== page.current) return;
+            r = await run(tool, args.args ?? {}, true);
           }
           const problem = r.isError ? pluginCallProblem(r.content) : null;
           reply(problem ? { ...r, content: problem } : r);
@@ -77,7 +106,12 @@ export function PluginFrame({ view, theme, changed, call, confirm, openFile, not
       }
     };
     window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      // The page is closed (another view, the plugin turned off, the window's own reload).
+      page.current += 1;
+      stopRunning();
+    };
   }, []);
 
   // Theme and plugin changes are pushed to a page that said it is ready.
