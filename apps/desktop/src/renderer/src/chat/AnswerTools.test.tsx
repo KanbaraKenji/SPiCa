@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-// What an answer's code blocks, tables and file cards can do: copy, export, show in Explorer.
+// What an answer's code blocks, tables, paths and file cards can do: copy, export, open.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { AnswerToolsContext, FileCards, MarkdownText, type AnswerTools } from './Blocks';
 import { clipboard } from '../ui/clipboard';
+
+const SUMMARY = '已汇总到 `D:\\工作\\样机评审\\报价汇总.xlsx`，原始报价在 `D:\\工作\\样机评审\\报价\\`。\n\n`单价` 列先留空。';
 
 afterEach(() => {
   cleanup();
@@ -11,7 +13,7 @@ afterEach(() => {
 });
 
 function answer(text: string, tools: Partial<AnswerTools> | null = {}) {
-  const value = tools ? { ...tools } : null;
+  const value = tools ? { openFile: vi.fn(), openFolder: vi.fn(), ...tools } : null;
   render(
     <AnswerToolsContext.Provider value={value}>
       <MarkdownText text={text} />
@@ -29,9 +31,40 @@ describe('a code block', () => {
     expect(screen.getByRole('button', { name: '已复制' })).toBeTruthy();
   });
 
+  it('a path inside a code block stays code (only inline code opens)', () => {
+    answer('```\nD:\\工作\\样机评审\\\n```');
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
   it('has the button while the answer is still streaming in (nothing jumps when it ends)', () => {
     answer('```js\nconst a =');
     expect(screen.getByRole('button', { name: '复制' })).toBeTruthy();
+  });
+});
+
+describe('paths in an answer', () => {
+  it('a file opens in the right panel, a folder in Explorer', () => {
+    const tools = answer(SUMMARY)!;
+    fireEvent.click(screen.getByRole('link', { name: 'D:\\工作\\样机评审\\报价汇总.xlsx' }));
+    expect(tools.openFile).toHaveBeenCalledWith('D:\\工作\\样机评审\\报价汇总.xlsx');
+    const folder = screen.getByRole('link', { name: 'D:\\工作\\样机评审\\报价\\' });
+    expect(folder.getAttribute('title')).toBe('打开文件夹');
+    fireEvent.keyDown(folder, { key: 'Enter' });
+    expect(tools.openFolder).toHaveBeenCalledWith('D:\\工作\\样机评审\\报价\\');
+    expect(tools.openFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('other inline code stays plain code', () => {
+    answer(SUMMARY);
+    const code = screen.getByText('单价', { selector: 'code' });
+    expect(code.getAttribute('role')).toBeNull();
+    expect(code.className).toBe('');
+  });
+
+  it('where nothing can open them, paths are plain code too', () => {
+    answer('在 `D:\\工作\\a.xlsx`', null);
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByText('D:\\工作\\a.xlsx').tagName).toBe('CODE');
   });
 });
 

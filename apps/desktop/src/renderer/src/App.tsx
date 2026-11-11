@@ -559,6 +559,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     answer: (callId, a) => id && void agent.answer(id, callId, a),
     confirm: (callId, ok) => id && void agent.confirm(id, callId, ok),
     openFile: previewFile,
+    openFolder: (path) => void bridge.openFolder(path).then(showNotice, (err: unknown) => showNotice(friendlyError(err))),
     revealFile: (path) => void bridge.showInFolder(path).then(showNotice, (err: unknown) => showNotice(friendlyError(err))),
     saveCsv: (text) =>
       bridge.saveCsv('', text).then(

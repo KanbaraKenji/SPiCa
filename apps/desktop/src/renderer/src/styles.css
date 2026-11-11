@@ -1162,6 +1162,16 @@ button.tree-twisty:hover {
   height: 26px;
 }
 
+/* A full local path in inline code: opens on a click (no underline: the hand and the hover name say so). */
+.md code.md-path {
+  color: var(--spica-accent-text);
+  cursor: pointer;
+}
+
+.md code.md-path:hover {
+  background: var(--spica-accent-soft);
+}
+
 /* Collapsible inline rows (thinking, tool calls) */
 .fold {
   align-self: flex-start;

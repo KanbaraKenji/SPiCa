@@ -19,6 +19,8 @@ export interface ConversationActions {
   answer(callId: string, answer: string): void;
   confirm(callId: string, approved: boolean): void;
   openFile(path: string): void;
+  /** A folder path clicked in an answer: opened in Explorer. */
+  openFolder?: (path: string) => void;
   /** 打开所在文件夹 on a file card (an absolute path). */
   revealFile?: (path: string) => void;
   /** 导出 CSV on a table in an answer; resolves to whether it was saved. */
@@ -334,8 +336,8 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
   const resolveRef = (n: number) => historyRef(transcript, n);
   const mark = (id: string): Record<string, string> => (id === foundItem ? { 'data-item': id, 'data-found': '' } : { 'data-item': id });
   const answerTools = useMemo(
-    () => (actions.saveCsv ? { saveCsv: actions.saveCsv } : null),
-    [actions.saveCsv],
+    () => (actions.openFolder ? { openFile: actions.openFile, openFolder: actions.openFolder, saveCsv: actions.saveCsv } : null),
+    [actions.openFile, actions.openFolder, actions.saveCsv],
   );
   return (
     <AnswerToolsContext.Provider value={answerTools}>

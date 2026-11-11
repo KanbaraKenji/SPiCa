@@ -9,7 +9,7 @@ import { Icon } from '../ui/Icon';
 import { FileBadge } from '../ui/FileIcon';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
-import { fullPath } from './local-path';
+import { fullPath, localPathKind } from './local-path';
 import { tableRows, toCsv, toHtml, toTsv } from './table-data';
 import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS, toolLabel, toolTarget } from './format';
 
@@ -69,12 +69,19 @@ import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
 
-/** What an answer's tables can do here. */
+/** What an answer's paths and tables can do here: absent where nothing opens (the paths stay plain code). */
 export interface AnswerTools {
+  /** A file path clicked: shown in the right panel. */
+  openFile(path: string): void;
+  /** A folder path clicked: opened in Explorer. */
+  openFolder(path: string): void;
   /** 导出 CSV on a table; absent: no such button. */
   saveCsv?: ((text: string) => Promise<boolean>) | undefined;
 }
 export const AnswerToolsContext = createContext<AnswerTools | null>(null);
+
+/** Set inside a code block, so its code is not taken for inline code. */
+const InBlockContext = createContext(false);
 
 /** A code block: the code as written, 复制 at its top right (always there). */
 function CodeBlock({ children }: { children?: ReactNode }) {
@@ -82,12 +89,40 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   return (
     <div className="code-block">
       <pre ref={ref}>
-        {children}
+        <InBlockContext.Provider value={true}>{children}</InBlockContext.Provider>
       </pre>
       <div className="code-tools">
         <CopyButton className="icon-btn md-tool" copy={() => clipboard.write((ref.current?.textContent ?? '').replace(/\n$/, ''))} />
       </div>
     </div>
+  );
+}
+
+/** Inline code: a full local path in it opens (a file in the right panel, a folder in Explorer); anything else is code. */
+function InlineCode({ className, children }: { className?: string | undefined; children?: ReactNode }) {
+  const inBlock = useContext(InBlockContext);
+  const tools = useContext(AnswerToolsContext);
+  const text = typeof children === 'string' ? children : null;
+  const kind = !inBlock && tools && text !== null ? localPathKind(text) : null;
+  if (!kind || !tools || text === null) return <code className={className}>{children}</code>;
+  const open = () => (kind === 'folder' ? tools.openFolder(text) : tools.openFile(text));
+  // A link role on the code itself (not a button around it), so a long path still wraps with the line.
+  return (
+    <code
+      className="md-path"
+      role="link"
+      tabIndex={0}
+      title={kind === 'folder' ? '打开文件夹' : '预览'}
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open();
+        }
+      }}
+    >
+      {text}
+    </code>
   );
 }
 
@@ -151,6 +186,7 @@ export const MarkdownText = memo(function MarkdownText({ text }: { text: string 
               </a>
             ),
           pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+          code: ({ className, children }) => <InlineCode className={className}>{children}</InlineCode>,
           table: ({ children }) => <MdTable>{children}</MdTable>,
         }}
       >
