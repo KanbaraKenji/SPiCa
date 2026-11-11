@@ -87,10 +87,12 @@
   - 提到的文件和文件夹写完整的绝对路径，放在行内代码里，文件夹以分隔符结尾（界面认这种写法、点了能开）。
   - 本机图片用 `![说明](<绝对路径>)` 贴出来；网上的图界面现在不显示，不让用。
   - 用过的网页写成 `[标题](https://…)` 的链接。
+  - 做出了文件时，最后用 present_files 把要给用户的交出来，并说明它不代替下一步（这条对话有这个工具时才写）。
   - 有下一步时用 suggest_actions（这条对话有这个工具时才写这一句）。
+  - 每次调 run_command 都写 description：一句话、用用户的语言，说这一步在干什么（第 8 节）。
   - 多步的任务做完，用几句纯文字收尾：做了什么、产出在哪、还剩什么或接着能做什么，不用标题和表格（他定的：小结用纯文字，不做小结卡）。
   - 例子用这条对话真实的工作文件夹（并写明工作文件夹在哪）：例子里写一个编的盘符时，模型会照抄出不存在的路径。
-  - 真模型对比（DeepSeek flash，同样五个任务各跑两轮）：给出完整路径的回答从 10 次里 1 次到 7 次，并且都是真实路径；查网页附来源从 0/2 到 2/2；贴图从 1/2（相对路径）到 2/2；下一步按钮从 0/10 到 4/10。
+  - 真模型对比（DeepSeek flash，同样五个任务各跑两轮）：给出完整路径的回答从 10 次里 1 次到 7 次，并且都是真实路径；查网页附来源从 0/2 到 2/2；贴图从 1/2（相对路径）到 2/2；下一步按钮从 0/10 到 4/10。加了 present_files 那句以后，做文件的 8 次里 7 到 8 次最后都调了 present_files；下一步按钮先掉到 0/10，把这句挪到下一步那句前面、写明「不代替下一步」后是 5/10（各一轮十次，样本小）。
 - **语言规则**：用户在这个会话里亲手写过话时，按「用户最近一条亲手写的话」的语言回答，系统和其他 Agent 写的（常是英文）不算；还没写过（比如只收到过转来的信的项目经理）就一律用界面语言（`locale`，默认 zh-CN），工具调用前的那句短话也算在内。
 - **带队规则**：收到「用户在子会话里说了 / 定了什么」的备注时，它优先于原计划，要套用到总体结论，并在回答里说明是按用户在子会话里的改动调整的。
 
@@ -192,6 +194,7 @@
 | `run_command` | 所有 | Windows 走 PowerShell（`-EncodedCommand`，输出 UTF-8，透传退出码），其他系统走 sh；不弹窗；默认 120 秒、最长 600 秒；超时或打断时杀整棵进程树；超过 3 万字符的输出全文落盘、只回头尾和路径；**默认要确认**（标了不可逆）；命令继承本机的环境变量，但名字像密钥的（`SPICA_*`、`*KEY*`、`*TOKEN*`……）一律去掉；插件的 MCP server 只继承白名单 |
 | `web_fetch` | 所有 | 只收 http / https，内网照常放行；最多 5 次跳转、30 秒、5 MB；HTML 转纯文本保留链接；结果按外来内容围起来 |
 | `web_search` | 配了搜索接口时 | 接口可插（`SearchBackend`），自带通用的「GET 返回 JSON」适配器；会话用的模型有托管搜索且开着时改用托管搜索 |
+| `present_files` | 所有 | 把做出来的文件交给用户，出文件卡；只读，按文件时间标新建、修改或读取（见下面「做出来的文件出卡」） |
 | `ask_user` | 所有 | 提问卡，运行暂停到用户回答 |
 | `suggest_actions` | 所有 | 给几个「下一步」按钮，不等用户选；用户点哪个，外壳就把它的 prompt 当用户消息发进来 |
 | `spawn_agent` / `message_agent` / `wait_agents` / `record_decision` | 所有 | 会话树工具，见第 10 节 |
@@ -206,6 +209,10 @@
   - 每个内置工具声明 `Tool.category`：command、read、write、web、history、agent、message、ask、project、mail；插件注册的没写就是 plugin，不认识的是 other。工具被撤掉以后照样按注册来源算（`ToolRegistry.categoryOf`）。
   - `summary` 是模型写的「这一步在干什么」：工具用 `Tool.summaryParam` 指明哪个参数是它。现在只有 run_command 的 `description`，交付规则里要求每次都写；最长 200 字。插件工具不往参数表里加字段（可能和插件自己的参数撞名），用 `Tool.title`（MCP 的 title）。
   - 在 `tool.start` 里带上；tool_results 消息的 `meta.toolInfo[调用 id]` 也存一份，没执行的调用（拒绝、工具不在）也在里面。老消息没有这一项，界面按工具名猜。
+- **做出来的文件出卡**（`file.card` 的 `files`、tool_results 的 `meta.fileCardLists`，`FileCardMeta.origin`；共用 `tools/file-card.ts`、`tools/file-changes.ts`）：
+  - write_file / edit_file：新建是 created，改已有的是 modified，另带 `lines { added, removed }`（按行比，不看顺序：追加、删除、替换是准的，挪动的行不算；超过 2 MB 或不是文字的不算）。
+  - run_command：跑之前、跑完各列一次它的文件夹（只列名字，超过 2 万个文件就放弃、结果里写明；再并行读大小和修改时间），新出现的是 created，大小或时间变了的是 modified，最多 20 张卡，结果末尾给模型一行「changed in the folder while the command ran (other programs may have changed some too)」。缓存、版本库、字节码、锁文件、缩略图不算（`IGNORED_DIRS`、`ignoredFile`，一处定义、有测试）。实测（本机临时文件夹）：500 个文件 20 毫秒、5000 个约 0.2 秒、1.9 万个约 0.65 秒，每条命令要走两次；超过上限的不到 0.1 秒就放弃；跑完时超了也照样写明没比对。只在本机硬盘上量过，网络盘、同步盘上没量，所以另有时间上限：列一次超过 1 秒（`SNAPSHOT_MAX_MS`）就放弃。结果里分开写是哪一种（文件太多 / 列得太慢）、是跑之前还是跑之后（`notTrackedLine`）。漏的：写到文件夹外面的、命令结束后才由后台进程写的；多的：同时有别的东西在这个文件夹里写。
+  - present_files（只读、类别 present）：模型在最后把要交给用户的文件交出来。按文件的创建、修改时间和这一轮开始的时间（`ToolContext.roundStartedAt`，这一轮那句用户消息的时间）比：这一轮里新建的是 created、改过的是 modified，都不是的照实标 read，不标成做出来的；不存在的不出卡，告诉模型；同一个文件只出一张，一次最多 20 个。交付规则里有一句要求做完用它。
 - **来源卡**（`source.card`，`meta.sourceCards[调用 id]`，`SourceCardMeta { tool, query?, sources[] }`）：web_fetch 成功时一行（跳转之后的地址、网页的 title），web_search 每个结果一行（标题、摘要、发布日期）。托管搜索的来源藏在服务商私有块里，这一版不出。
 - **只读声明**（`Tool.readOnly`）：调用它不改任何东西。只用来判断一轮能不能重新生成（第 11 节），不影响确认。MCP 工具取 `annotations.readOnlyHint === true`。
 - **工具被停用之后**（插件停用、MCP server 断开）：每轮按当时的工具表发请求。注册表记着哪些工具是被撤掉的；会话里以前用过、现在被撤掉的，下一轮前写一条运行时备注（`kind: 'note'`，`meta.toolsUnavailable`），同一批只说一次。模型照旧调了，结果是「已不可用，什么都没执行」，记录状态 `unavailable`；重启后插件还没起来的情况不发这条备注。
@@ -264,7 +271,7 @@
   - `regenerate.no_turn`：还没有用户消息。`regenerate.running` / `regenerate.waiting`：在跑、在等确认或回答。
   - `regenerate.not_typed`：那一轮不是用户亲手发的话开头的（回报、转来的信）。
   - `regenerate.not_last`：调用时给的消息不在最后一轮。这一版只给最后一轮；中间轮要让后面的对话作废，接口上留了 `messageId`，以后放开不用改签名。
-  - **这一轮动过手**：这一轮执行过的工具调用里有没声明只读（`Tool.readOnly`）的，就不给，因为重跑等于再做一遍。按工具调用记录的状态算：`denied`（用户拒绝）、`unavailable`（没这个工具）没执行，不算；工具已不在注册表里的按动过算。`write_file` / `edit_file` 是 `regenerate.wrote_files`，`spawn_agent` / `message_agent` 是 `regenerate.spawned`，其余是 `regenerate.acted`（提示写「可能产生改动」：没声明只读、工具已不在，都不等于真的改过）。内置的只读工具：read_file、list_dir、glob、grep、web_fetch、web_search、search_history、read_history、find_history_files、list_projects、open_project、project_status、list_work_objects、ask_user、suggest_actions、wait_agents；插件的 MCP 工具声明了 `readOnlyHint` 才算只读。
+  - **这一轮动过手**：这一轮执行过的工具调用里有没声明只读（`Tool.readOnly`）的，就不给，因为重跑等于再做一遍。按工具调用记录的状态算：`denied`（用户拒绝）、`unavailable`（没这个工具）没执行，不算；工具已不在注册表里的按动过算。`write_file` / `edit_file` 是 `regenerate.wrote_files`，`spawn_agent` / `message_agent` 是 `regenerate.spawned`，其余是 `regenerate.acted`（提示写「可能产生改动」：没声明只读、工具已不在，都不等于真的改过）。内置的只读工具：read_file、list_dir、glob、grep、web_fetch、web_search、search_history、read_history、find_history_files、list_projects、open_project、project_status、list_work_objects、ask_user、suggest_actions、wait_agents、present_files；插件的 MCP 工具声明了 `readOnlyHint` 才算只读。
 - **允许的边角**：上一轮出错或被停（哪怕一个字都没回）也能重新生成，等于真正的重试；一个字都没回的那一轮不算一版。这一轮里的插话跟旧版一起收进旧版。新的一版又失败时旧版不恢复，可以再点一次。
 - **跑的是什么**：照常开一次运行，用的是会话**当时**的模型、批准方式和工具表（中途换过模型就用新的），附件用当初存下的内容块。用量、可追溯记录照记，旧版花掉的不退。不调 `onUserMessage`（用户没有新写话，标题、回传都不动）。
 - **事件先后**：`messages.superseded { anchorId, messageIds, version }` → `status thinking` → `session.updated`（running） → 照常的流式和 `message` → 最后的 `status` → `session.updated` → `run.end`。返回值 `{ ok: true, anchorId, version: 新版的号 }`；不行时 `{ ok: false, code, hint }`，什么都没改。

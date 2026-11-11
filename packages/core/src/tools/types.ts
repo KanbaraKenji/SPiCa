@@ -23,6 +23,8 @@ export interface ToolContext {
   initiator?: string;
   /** The call needed confirmation and got it (recorded in its traceable record). */
   confirmedBy?: 'user' | 'view';
+  /** ISO 8601: when the user message this round answers was written (present_files tells made from read by it). */
+  roundStartedAt?: string;
 }
 
 export interface ToolOutput {

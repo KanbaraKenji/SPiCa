@@ -4,8 +4,9 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Tool } from './types.ts';
+import { changeCards, changeLine, folderChanges, notTrackedLine, snapshotFolder } from './file-changes.ts';
 import { childEnv } from '../util.ts';
 
 export interface CommandToolOptions {
@@ -58,6 +59,8 @@ export function createRunCommandTool(opts: CommandToolOptions = {}): Tool {
       const timeoutMs = Math.min(maxTimeout, Math.max(1000, Number(input.timeout_seconds ?? defTimeout / 1000) * 1000 || defTimeout));
       const cwd = typeof input.cwd === 'string' ? (isAbsolute(input.cwd) ? input.cwd : resolve(ctx.cwd, input.cwd)) : ctx.cwd;
       const [file, args] = shellArgs(shell, command);
+      // what changes in the folder while it runs becomes file cards (not when the folder is too big to walk quickly)
+      const before = await snapshotFolder(cwd);
       const t0 = performance.now();
       // The user's environment, minus model keys and other secret-looking variables.
       const child = spawn(file, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: childEnv('all') });
@@ -106,8 +109,22 @@ export function createRunCommandTool(opts: CommandToolOptions = {}): Tool {
           : stopped === 'aborted'
             ? 'stopped: the user interrupted it (process killed)'
             : `exit code ${exit.code ?? 'unknown'}`;
+      let changed = '';
+      const after = before.skipped ? undefined : await snapshotFolder(cwd);
+      if (before.skipped) changed = `\n${notTrackedLine(before.skipped, 'before')}`;
+      else if (after?.skipped) changed = `\n${notTrackedLine(after.skipped, 'after')}`;
+      else if (after) {
+        const changes = folderChanges(before, after);
+        const cards = await changeCards(changes);
+        if (cards.length > 0) ctx.emit({ type: 'file.card', callId: ctx.callId, file: cards[0]!, files: cards });
+        const line = changeLine(changes, (abs) => {
+          const rel = relative(cwd, abs);
+          return rel.startsWith('..') || isAbsolute(rel) ? abs : rel;
+        });
+        if (line) changed = `\n${line}`;
+      }
       return {
-        content: `${status}, ${secs} s\n${output || '(no output)'}${note}`,
+        content: `${status}, ${secs} s\n${output || '(no output)'}${note}${changed}`,
         isError: stopped !== undefined || exit.code !== 0,
       };
     },

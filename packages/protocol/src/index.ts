@@ -660,6 +660,7 @@ export type ToolCategory =
   | 'ask'
   | 'project'
   | 'mail'
+  | 'present'
   | 'plugin'
   | 'other';
 
@@ -740,6 +741,11 @@ export interface FileCardMeta {
    * is when the card was made, and the fields about the content (pages, sheets, ...) are left out.
    */
   origin?: 'read' | 'created' | 'modified' | 'produced';
+  /**
+   * write_file / edit_file: lines added and removed by the call (lines that occur more or fewer times than before,
+   * order ignored). Absent when not counted (other calls, files over 2 MB, not text).
+   */
+  lines?: { added: number; removed: number };
   sizeBytes: number;
   /** ISO 8601 with offset. */
   modifiedAt: string;

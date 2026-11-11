@@ -1099,6 +1099,7 @@ export class Session {
       services: this.#rt.services(this),
       callId: draft.callId,
       mediaDir: this.#rt.mediaDir(this.id),
+      ...(this.#lastRound().anchor ? { roundStartedAt: this.#lastRound().anchor!.createdAt } : {}),
       emit: (body) => {
         if (body.type === 'file.card') cards = { ...cards, fileCard: body.file, ...(body.files ? { fileCards: body.files } : {}) };
         if (body.type === 'suggest.actions') cards = { ...cards, suggestion: { title: body.title, actions: body.actions } };
@@ -1434,6 +1435,7 @@ export class Session {
             cwd: this.#record.config.cwd,
             suggest: tools.some((t) => t.spec.name === 'suggest_actions'),
             describe: tools.some((t) => t.spec.name === 'run_command'),
+            present: tools.some((t) => t.spec.name === 'present_files'),
           })
         : '',
       this.#leadsOthers() ? TEAM_RULE : '',
@@ -1523,7 +1525,7 @@ export const TEAM_RULE =
  * code; folders end with a separator), local images embedded, web sources linked, next steps as buttons, and a short
  * plain-text wrap-up after longer work. Kept short on purpose: it goes with every request.
  */
-export function deliveryRule(opts: { cwd: string; suggest: boolean; describe?: boolean; platform?: NodeJS.Platform }): string {
+export function deliveryRule(opts: { cwd: string; suggest: boolean; describe?: boolean; present?: boolean; platform?: NodeJS.Platform }): string {
   const sep = (opts.platform ?? process.platform) === 'win32' ? '\\' : '/';
   // examples inside the real working folder: a made-up drive or folder gets copied into answers
   const folder = opts.cwd.endsWith(sep) ? opts.cwd : opts.cwd + sep;
@@ -1534,6 +1536,7 @@ export function deliveryRule(opts: { cwd: string; suggest: boolean; describe?: b
     `- Name each file or folder you made, changed or point to by its full absolute path in inline code, e.g. \`${file}\`; end a folder with a separator, as in \`${folder}\`. The user can click these. Never give only a file name or a relative path.`,
     `- To show an image file, embed it with its absolute path: ![what it shows](<${image}>). Only local files display, not web images.`,
     '- When you used web pages, cite them as links, e.g. [page title](https://example.com/page), next to what they support.',
+    opts.present ? '- When a task made files, hand the ones the user needs over with present_files at the end; it does not replace the next steps.' : '',
     opts.suggest ? '- When there are useful next steps, offer them with suggest_actions rather than as questions in the text.' : '',
     opts.describe ? "- Give every run_command call a description: one short sentence in the user's language saying what the step is for." : '',
     '- After a task that took several steps, end with a few plain sentences: what you did, where the results are, and what is left or could come next. No heading or table for this.',

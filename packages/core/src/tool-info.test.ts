@@ -66,6 +66,23 @@ describe('tool call info', () => {
     await rt.close();
   });
 
+  it('file cards of what the round made reach the message: written, then handed over with present_files', async () => {
+    const rt = makeRuntime(gw, { cwd: dir });
+    const s = rt.createSession({ cwd: dir });
+    gw.enqueue(
+      { toolCalls: [{ id: 'w', name: 'write_file', args: { path: 'out.md', content: 'a\nb\n' } }] },
+      { toolCalls: [{ id: 'p', name: 'present_files', args: { paths: ['out.md'] } }] },
+      { text: 'done' },
+    );
+    await s.send('make it').done;
+    const results = s.messages().filter((m) => m.kind === 'tool_results');
+    expect(results[0]!.meta?.fileCards?.w).toMatchObject({ name: 'out.md', origin: 'created', lines: { added: 2, removed: 0 } });
+    expect(results[1]!.meta?.fileCardLists?.p?.map((c) => c.origin)).toEqual(['created']); // the round's start came from the session
+    expect(results[1]!.meta?.toolInfo?.p).toEqual({ category: 'present' });
+    expect(s.info().regenerate?.code).toBe('regenerate.wrote_files'); // present_files changes nothing; the write still counts
+    await rt.close();
+  });
+
   it('a removed plugin tool still counts as a plugin step', () => {
     const rt = makeRuntime(gw);
     const off = rt.tools.register(pluginTool, 'plugin:notes');

@@ -5,6 +5,16 @@ import { basename } from 'node:path';
 import { isoNow } from '../events.ts';
 import type { FileCardMeta } from '../types.ts';
 import type { Tool, ToolContext } from './types.ts';
+import { producedFileCard } from './file-card.ts';
+import { LINE_COUNT_MAX_BYTES, lineDelta, oldText } from './file-changes.ts';
+
+/** The card for a file a write made: created or modified, with the lines added and removed when they were counted. */
+async function emitWriteCard(ctx: ToolContext, abs: string, existed: boolean, before: string | undefined, after: string): Promise<void> {
+  const card = await producedFileCard(abs, existed ? 'modified' : 'created');
+  if (!card) return;
+  const lines = existed ? (before !== undefined ? lineDelta(before, after) : undefined) : lineDelta('', after);
+  ctx.emit({ type: 'file.card', callId: ctx.callId, file: lines ? { ...card, lines } : card });
+}
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '.hg', '.svn', 'dist', 'out', '.venv', '__pycache__']);
 const MAX_READ_LINES = 2000;
@@ -155,9 +165,11 @@ export const writeFileTool: Tool = {
       () => true,
       () => false,
     );
+    const before = existed ? await oldText(abs) : undefined;
     await mkdir(dirname(abs), { recursive: true });
     const content = String(input.content ?? '');
     await writeFile(abs, content, 'utf8');
+    await emitWriteCard(ctx, abs, existed, before, content);
     return {
       content: `${existed ? 'Overwrote' : 'Created'} ${display(ctx, abs)} (${Buffer.byteLength(content)} bytes).`,
     };
@@ -204,6 +216,7 @@ export const editFileTool: Tool = {
     }
     const updated = input.replace_all === true ? original.split(target).join(replacement) : original.replace(target, () => replacement);
     await writeFile(abs, updated, 'utf8');
+    await emitWriteCard(ctx, abs, true, Buffer.byteLength(original) <= LINE_COUNT_MAX_BYTES ? original : undefined, updated);
     return { content: `Edited ${display(ctx, abs)}: ${input.replace_all === true ? count : 1} replacement(s).` };
   },
 };
@@ -354,4 +367,64 @@ export const grepTool: Tool = {
   },
 };
 
-export const fileTools: Tool[] = [readFileTool, writeFileTool, editFileTool, listDirTool, globTool, grepTool];
+/** At most this many files in one present_files call. */
+export const MAX_PRESENTED = 20;
+
+/**
+ * present_files: the model hands the user the files that are the result of the task, as file cards. Changes
+ * nothing. Made or read is decided from the file's times against the start of the round (the user's message):
+ * born in this round = created, changed in this round = modified, else read (never presented as made).
+ */
+export const presentFilesTool: Tool = {
+  readOnly: true,
+  category: 'present',
+  spec: {
+    name: 'present_files',
+    description:
+      'Hand files to the user as file cards they can open: the deliverables of the task. Call it once at the end with the files ' +
+      'the user should look at, especially ones a command made or ones outside the working folder. Files you only read are shown ' +
+      'as read. Paths are absolute or relative to the working folder; up to 20.',
+    inputSchema: {
+      type: 'object',
+      properties: { paths: { type: 'array', items: { type: 'string' } } },
+      required: ['paths'],
+    },
+  },
+  async execute(input, ctx) {
+    const given = Array.isArray(input.paths) ? input.paths.filter((p): p is string => typeof p === 'string' && p.trim() !== '') : [];
+    if (given.length === 0) return { content: 'paths is empty: give the files to hand over.', isError: true };
+    const since = ctx.roundStartedAt ? Date.parse(ctx.roundStartedAt) : NaN;
+    const cards: FileCardMeta[] = [];
+    const missing: string[] = [];
+    const folders: string[] = [];
+    const seen = new Set<string>();
+    for (const p of given.slice(0, MAX_PRESENTED)) {
+      const abs = resolvePath(ctx, p);
+      if (seen.has(abs)) continue;
+      seen.add(abs);
+      const s = await stat(abs).catch(() => undefined);
+      if (!s) {
+        missing.push(display(ctx, abs));
+        continue;
+      }
+      if (!s.isFile()) {
+        folders.push(display(ctx, abs));
+        continue;
+      }
+      // birthtime is 0 where the file system does not keep it: then only "changed" can be told
+      const born = s.birthtimeMs > 0 && s.birthtimeMs >= since;
+      const origin = Number.isNaN(since) ? 'produced' : born ? 'created' : s.mtimeMs >= since ? 'modified' : 'read';
+      const card = await producedFileCard(abs, origin === 'read' ? 'produced' : origin);
+      if (card) cards.push(origin === 'read' ? { ...card, origin: 'read' } : card);
+    }
+    if (cards.length > 0) ctx.emit({ type: 'file.card', callId: ctx.callId, file: cards[0]!, files: cards });
+    const shown = cards.map((c) => `${display(ctx, c.path)} (${c.origin})`).join(', ');
+    const more = given.length > MAX_PRESENTED ? ` Only the first ${MAX_PRESENTED} were taken.` : '';
+    const notFiles = folders.length ? ` Not files (folders: name them in the answer instead): ${folders.join(', ')}.` : '';
+    const notFound = missing.length ? ` Not found: ${missing.join(', ')}.` : '';
+    if (cards.length === 0) return { content: `No file cards made.${notFound}${notFiles}`, isError: true };
+    return { content: `Shown to the user: ${shown}.${notFound}${notFiles}${more}` };
+  },
+};
+
+export const fileTools: Tool[] = [readFileTool, writeFileTool, editFileTool, listDirTool, globTool, grepTool, presentFilesTool];
