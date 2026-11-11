@@ -334,6 +334,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     setPreview({ sessionId: state.activeId, path });
     showRight(atHome);
   };
+  /** A line in the notice bar (null: nothing to say). */
+  const showNotice = (text: string | null) => {
+    if (text) agent.state.set((v) => ({ ...v, notice: text }));
+  };
   const openFile = (path: string) => {
     if (!state.activeId) return;
     bridge
@@ -555,6 +559,17 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     answer: (callId, a) => id && void agent.answer(id, callId, a),
     confirm: (callId, ok) => id && void agent.confirm(id, callId, ok),
     openFile: previewFile,
+    saveCsv: (text) =>
+      bridge.saveCsv('', text).then(
+        (r) => {
+          if (r && 'error' in r) showNotice(r.error);
+          return Boolean(r && 'file' in r);
+        },
+        (err: unknown) => {
+          showNotice(friendlyError(err));
+          return false;
+        },
+      ),
     openSession: (sid) => openSession(sid),
     openFound,
     resume: () => id && void agent.resume(id),

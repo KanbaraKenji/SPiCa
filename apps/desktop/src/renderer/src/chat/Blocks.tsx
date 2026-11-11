@@ -1,12 +1,15 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
-import { createContext, memo, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, memo, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { HistoryCardMeta } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, type Block, type ChildNote, type FileRef } from '../store/transcript';
 import { Icon } from '../ui/Icon';
 import { FileBadge } from '../ui/FileIcon';
+import { clipboard } from '../ui/clipboard';
+import { CopyButton } from '../ui/CopyButton';
+import { tableRows, toCsv, toHtml, toTsv } from './table-data';
 import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS, toolLabel, toolTarget } from './format';
 
 /** Opens a conversation by id, at message number `seq` when given (rows and links from earlier conversations). */
@@ -65,6 +68,71 @@ import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
 
+/** What an answer's tables can do here. */
+export interface AnswerTools {
+  /** 导出 CSV on a table; absent: no such button. */
+  saveCsv?: ((text: string) => Promise<boolean>) | undefined;
+}
+export const AnswerToolsContext = createContext<AnswerTools | null>(null);
+
+/** A code block: the code as written, 复制 at its top right (always there). */
+function CodeBlock({ children }: { children?: ReactNode }) {
+  const ref = useRef<HTMLPreElement>(null);
+  return (
+    <div className="code-block">
+      <pre ref={ref}>
+        {children}
+      </pre>
+      <div className="code-tools">
+        <CopyButton className="icon-btn md-tool" copy={() => clipboard.write((ref.current?.textContent ?? '').replace(/\n$/, ''))} />
+      </div>
+    </div>
+  );
+}
+
+/** A table: 复制 (pastes into Excel as cells) and 导出 CSV above its right end. */
+function MdTable({ children }: { children?: ReactNode }) {
+  const ref = useRef<HTMLTableElement>(null);
+  const tools = useContext(AnswerToolsContext);
+  const rows = () => (ref.current ? tableRows(ref.current) : []);
+  return (
+    <div className="md-table">
+      <div className="md-table-tools">
+        <CopyButton className="icon-btn md-tool" copy={() => clipboard.writeRich(toTsv(rows()), toHtml(rows()))} />
+        {tools?.saveCsv ? <SaveCsvButton save={(text) => tools.saveCsv!(text)} rows={rows} /> : null}
+      </div>
+      <table ref={ref}>{children}</table>
+    </div>
+  );
+}
+
+function SaveCsvButton({ save, rows }: { save(text: string): Promise<boolean>; rows(): string[][] }) {
+  const [done, setDone] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const shown = done ? '已导出' : '导出 CSV';
+  return (
+    <button
+      type="button"
+      className="icon-btn md-tool"
+      aria-label={shown}
+      title={shown}
+      onClick={() =>
+        void save(toCsv(rows()))
+          .then((ok) => {
+            if (!ok) return;
+            setDone(true);
+            clearTimeout(timer.current);
+            timer.current = setTimeout(() => setDone(false), 1500);
+          })
+          .catch(() => undefined)
+      }
+    >
+      <Icon name={done ? 'check' : 'download'} size={14} />
+    </button>
+  );
+}
+
 export const MarkdownText = memo(function MarkdownText({ text }: { text: string }) {
   return (
     <div className="md">
@@ -81,6 +149,8 @@ export const MarkdownText = memo(function MarkdownText({ text }: { text: string 
                 {children}
               </a>
             ),
+          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+          table: ({ children }) => <MdTable>{children}</MdTable>,
         }}
       >
         {text}

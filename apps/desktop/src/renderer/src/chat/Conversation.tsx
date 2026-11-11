@@ -6,7 +6,7 @@ import { filesOf, historyRef, isRunning, itemAtSeq, type Attachment, type Block,
 import { ImageViewer } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
-import { AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
+import { AnswerToolsContext, AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
 import { Composer, type ComposerTools } from './Composer';
 import { answerText, MessageActions } from './MessageActions';
 import { StatusLine } from './StatusLine';
@@ -19,6 +19,8 @@ export interface ConversationActions {
   answer(callId: string, answer: string): void;
   confirm(callId: string, approved: boolean): void;
   openFile(path: string): void;
+  /** 导出 CSV on a table in an answer; resolves to whether it was saved. */
+  saveCsv?: (text: string) => Promise<boolean>;
   openSession(id: string): void;
   /** From a history row or link: opens that conversation at message number `seq`, with a way back. */
   openFound?: (id: string, seq?: number) => void;
@@ -321,7 +323,12 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
   });
   const resolveRef = (n: number) => historyRef(transcript, n);
   const mark = (id: string): Record<string, string> => (id === foundItem ? { 'data-item': id, 'data-found': '' } : { 'data-item': id });
+  const answerTools = useMemo(
+    () => (actions.saveCsv ? { saveCsv: actions.saveCsv } : null),
+    [actions.saveCsv],
+  );
   return (
+    <AnswerToolsContext.Provider value={answerTools}>
     <OpenSessionContext.Provider value={actions.openFound ?? actions.openSession}>
     <HistoryRefContext.Provider value={resolveRef}>
     <HistoryCardsContext.Provider value={transcript.historyCards}>
@@ -452,5 +459,6 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
     </HistoryCardsContext.Provider>
     </HistoryRefContext.Provider>
     </OpenSessionContext.Provider>
+    </AnswerToolsContext.Provider>
   );
 }

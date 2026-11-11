@@ -1115,6 +1115,53 @@ button.tree-twisty:hover {
   font-weight: 600;
 }
 
+/* A code block: 复制 at its top right, over the code (the code keeps room for it on the first line). */
+.md .code-block {
+  position: relative;
+  margin: 0 0 10px;
+}
+
+.md .code-block pre {
+  margin: 0;
+  padding-right: 44px;
+}
+
+.code-tools {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+
+.code-tools .md-tool {
+  background: var(--spica-surface);
+}
+
+/* A table: 复制 and 导出 CSV in a row above its right end. */
+.md .md-table {
+  width: fit-content;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 10px;
+}
+
+.md .md-table table {
+  margin: 0;
+}
+
+.md-table-tools {
+  align-self: flex-end;
+  display: flex;
+  gap: 2px;
+  margin-bottom: 2px;
+}
+
+/* The small icon buttons on code blocks and tables. */
+.icon-btn.md-tool {
+  width: 26px;
+  height: 26px;
+}
+
 /* Collapsible inline rows (thinking, tool calls) */
 .fold {
   align-self: flex-start;

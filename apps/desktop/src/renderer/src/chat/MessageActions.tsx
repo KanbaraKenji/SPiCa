@@ -1,9 +1,10 @@
 // The row under every message: copy it, 重新生成 (an answer of the last round), flip between the answers a
 // regenerate left (‹ 1 / 2 ›), and when it was written. Always there, not only on hover.
-import { useState } from 'react';
 import type { RegenerateState } from '@spica/protocol';
 import { REGENERATE_HINTS } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
+import { clipboard } from '../ui/clipboard';
+import { CopyButton } from '../ui/CopyButton';
 import { mailTime } from '../../../shared/mail';
 import type { Block } from '../store/transcript';
 
@@ -16,31 +17,7 @@ export function answerText(blocks: readonly Block[]): string {
     .join('\n\n');
 }
 
-/** Puts text on the clipboard (tests replace it; nothing else in the app writes the clipboard). */
-export const clipboard = { write: (text: string): Promise<void> => navigator.clipboard.writeText(text) };
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      className="icon-btn msg-action"
-      aria-label={copied ? '已复制' : '复制'}
-      title={copied ? '已复制' : '复制'}
-      onClick={() =>
-        void clipboard
-          .write(text)
-          .then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          })
-          .catch(() => undefined)
-      }
-    >
-      <Icon name={copied ? 'check' : 'copy'} size={14} />
-    </button>
-  );
-}
+export { clipboard };
 
 export interface RegenerateButton {
   /** The core's word on the last round (SessionInfo.regenerate). */
@@ -105,7 +82,7 @@ export function MessageActions({ text, at, regenerate, versions, mine = false }:
           </button>
         </span>
       ) : null}
-      {text ? <CopyButton text={text} /> : null}
+      {text ? <CopyButton copy={() => clipboard.write(text)} /> : null}
       {regenerate ? <Regenerate r={regenerate} /> : null}
       {time ? (
         <time className="msg-time" dateTime={at}>

@@ -47,6 +47,8 @@ const PATHS = {
   paste: 'M5.5 2.5h5v2h-5z M5.5 3.5h-2v10h9v-10h-2',
   external: 'M9 2.5h4.5V7 M13.5 2.5L8 8 M11.5 9.5v4h-9v-9h4',
   pencil: 'M11.2 2.6l2.2 2.2-7.6 7.6-2.9.7.7-2.9z',
+  // 导出: an arrow down onto a tray.
+  download: 'M8 2.5v7.5 M4.8 6.8 8 10l3.2-3.2 M3 11.5v2h10v-2',
   copy: 'M5.5 5.5h7.5v8H5.5z M3 10.5V2.5h7.5',
 } as const;
 
