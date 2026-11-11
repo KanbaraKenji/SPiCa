@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { SidebarHead, SidebarToggle } from './SidebarToggle';
+import { RailHead, SidebarHead, SidebarToggle } from './SidebarToggle';
 
 afterEach(cleanup);
 
@@ -42,5 +42,19 @@ describe('SidebarHead', () => {
     expect(head.className).not.toContain('is-over-rail');
     expect(head.firstElementChild?.textContent).toBe('Spica');
     expect(head.lastElementChild?.getAttribute('aria-label')).toBe('收起侧栏');
+  });
+});
+
+describe('the top of the icon column', () => {
+  it('resting on the toggle is what slides the sidebar out; the rest of the head does not', () => {
+    const onRest = vi.fn();
+    const onLeave = vi.fn();
+    const { container } = render(<RailHead toggle={<button type="button">开关</button>} onRest={onRest} onLeave={onLeave} />);
+    fireEvent.mouseOver(container.querySelector('.rail-head')!);
+    expect(onRest).not.toHaveBeenCalled();
+    fireEvent.mouseOver(screen.getByRole('button', { name: '开关' }));
+    expect(onRest).toHaveBeenCalledTimes(1);
+    fireEvent.mouseLeave(container.querySelector('.rail-toggle')!);
+    expect(onLeave).toHaveBeenCalledTimes(1);
   });
 });

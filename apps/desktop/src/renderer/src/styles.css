@@ -4047,6 +4047,12 @@ button.ctx-row:hover {
   -webkit-app-region: no-drag;
 }
 
+/* What slides the sidebar out when the pointer rests on it: the toggle alone. */
+.rail-toggle {
+  display: inline-flex;
+  -webkit-app-region: no-drag;
+}
+
 .sidebar.is-rail .side-action {
   position: relative;
   justify-content: flex-start;

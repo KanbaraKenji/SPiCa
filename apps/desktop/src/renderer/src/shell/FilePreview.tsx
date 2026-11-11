@@ -13,6 +13,8 @@ export interface FilePreviewProps {
   info: PreviewInfo | null;
   onOpenExternal(path: string): void;
   onClose(): void;
+  /** The preview over the whole conversation: whether it is, and the button's press. Absent: no such button. */
+  max?: { on: boolean; toggle(): void };
 }
 
 function sizeText(n: number): string {
@@ -45,7 +47,7 @@ function Lines({ text }: { text: string }) {
   );
 }
 
-export function FilePreview({ info, onOpenExternal, onClose }: FilePreviewProps) {
+export function FilePreview({ info, onOpenExternal, onClose, max }: FilePreviewProps) {
   return (
     <section className="preview" aria-label={info ? `预览 ${info.name}` : '预览'}>
       <header className="preview-head">
@@ -53,6 +55,11 @@ export function FilePreview({ info, onOpenExternal, onClose }: FilePreviewProps)
         <span className="preview-name" title={info?.path ?? ''}>
           {info?.name ?? ''}
         </span>
+        {max ? (
+          <button type="button" className={max.on ? 'icon-btn is-on' : 'icon-btn'} onClick={max.toggle} aria-label={max.on ? '还原' : '最大化'} aria-pressed={max.on} title={max.on ? '还原（Ctrl+Shift+\\）' : '最大化（Ctrl+Shift+\\）'}>
+            <Icon name={max.on ? 'restore' : 'maximize'} size={15} />
+          </button>
+        ) : null}
         {info && info.kind !== 'missing' ? (
           <button type="button" className="icon-btn" onClick={() => onOpenExternal(info.path)} aria-label="用系统程序打开" title="用系统程序打开">
             <Icon name="external" size={15} />

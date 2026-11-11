@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DesktopBridge } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
-import { computeLayout, panelWidths, toggleAction, type Floating } from './shell/layout';
+import { computeLayout, panelWidths, toggleFrom, type Floating } from './shell/layout';
 import { Resizer } from './shell/Resizer';
 import { ConfirmDialog } from './ui/Dialog';
 import { FilePreview, usePreview } from './shell/FilePreview';
@@ -31,7 +31,7 @@ import { sidebarNews } from './shell/sidebar-news';
 import { watchScrim } from './ui/dim';
 import { usePeek } from './shell/peek';
 import { joinNotes } from './ui/NewDot';
-import { SidebarHead, SidebarToggle } from './shell/SidebarToggle';
+import { RailHead, SidebarHead, SidebarToggle } from './shell/SidebarToggle';
 import { HoverTips } from './ui/HoverTips';
 import { SpicaBanner } from '@spica/brand/react';
 import { sameFolder } from './store/relocate';
@@ -147,14 +147,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     (side: 'left' | 'right') => {
       const saved = shell.settings.panels;
       const prefs = atHome ? { ...saved, right: homeRight } : saved;
-      const next = toggleAction(side, window.innerWidth, prefs, floating);
+      const next = toggleFrom(side, window.innerWidth, prefs, floating, peeking);
       if (atHome && side === 'right') setHomeRight(next.prefs.right);
       else if (next.prefs !== prefs) shell.update({ panels: atHome ? { ...next.prefs, right: saved.right } : next.prefs });
       setFloating(next.floating);
       // Opened or closed on purpose: no longer a peek from the edge.
       setPeeking(false);
     },
-    [floating, shell, atHome, homeRight],
+    [floating, shell, atHome, homeRight, peeking],
   );
 
   // The right panel over the whole conversation (an expand button, Ctrl+Shift+\); for this visit only.
@@ -182,8 +182,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     return () => window.removeEventListener('keydown', onKey);
   }, [toggle, floating, view, canMax]);
 
-  // Sidebar collapsed: resting the pointer on the icon column slides it out
-  // for a moment (like Claude Desktop); it goes away once the pointer leaves it.
+  // Sidebar collapsed: resting the pointer on its toggle slides it out for a moment;
+  // it goes away once the pointer leaves it. The icons of the column do not slide it out.
   const peek = usePeek(
     () => {
       setPeeking(true);
@@ -662,16 +662,12 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   return (
     <div className="app" data-left={layout.left} data-right={view === 'chat' ? layout.right : 'hidden'}>
       <HoverTips />
-      {/* Sidebar closed: a column of icons stays; resting on it opens the full
-          sidebar over it for a moment, every row where its icon was. */}
+      {/* Sidebar closed: a column of icons stays. Resting on the toggle at its top opens the full
+          sidebar over it for a moment, every row where its icon was; the icons themselves do not
+          (a press on one goes straight to its page). */}
       {layout.left !== 'docked' ? (
-        <div
-          className="panel panel-rail"
-          onMouseOver={(e) => ((e.target as Element).closest('[data-no-peek]') ? peek.cancel() : peek.openSoon(floating === 'left'))}
-          onMouseLeave={peek.cancel}
-          onMouseDown={peek.cancel}
-        >
-          <div className="rail-head">{sidebarToggle}</div>
+        <div className="panel panel-rail" onMouseDown={peek.cancel}>
+          <RailHead toggle={sidebarToggle} onRest={() => peek.openSoon(floating === 'left')} onLeave={peek.cancel} />
           {sidebarEl(true)}
         </div>
       ) : null}
@@ -713,7 +709,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           onDismissNotice={(nid) => shell.update({ dismissedNotices: [...settings.dismissedNotices, nid] })}
         />
         <div className="titlebar-right">
-          {view === 'chat' && rightShown ? (
+          {/* The right panel over the conversation. While a file is previewed this button is in the
+              preview's own head (beside 用系统程序打开); here only for the details and plugin pages. */}
+          {view === 'chat' && rightShown && !preview ? (
             <button
               type="button"
               className={rightMax ? 'icon-btn is-on' : 'icon-btn'}
@@ -840,6 +838,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                   }
                 }}
                 onClose={() => setPreview(null)}
+                max={{ on: rightMax, toggle: () => setRightMax((v) => !v) }}
               />
             ) : (
             <DetailPanel

@@ -25,3 +25,14 @@ export function SidebarHead({ peek, toggle, brand }: { peek: boolean; toggle: Re
     </div>
   );
 }
+
+/** The top of the icon column: the toggle. Resting the pointer on the toggle (nowhere else on the column) is what slides the sidebar out. */
+export function RailHead({ toggle, onRest, onLeave }: { toggle: ReactNode; onRest(): void; onLeave(): void }) {
+  return (
+    <div className="rail-head">
+      <span className="rail-toggle" onMouseOver={onRest} onMouseLeave={onLeave}>
+        {toggle}
+      </span>
+    </div>
+  );
+}

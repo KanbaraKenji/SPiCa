@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeLayout, DETAIL_MIN, DETAIL_WIDTH, MAIN_MIN_WIDTH, panelWidths, SIDEBAR_MIN, SIDEBAR_WIDTH, toggleAction } from './layout';
+import { computeLayout, DETAIL_MIN, DETAIL_WIDTH, MAIN_MIN_WIDTH, panelWidths, SIDEBAR_MIN, SIDEBAR_WIDTH, toggleAction, toggleFrom } from './layout';
 
 const both = { left: true, right: true };
 const wide = SIDEBAR_WIDTH + DETAIL_WIDTH + MAIN_MIN_WIDTH;
@@ -48,5 +48,18 @@ describe('toggleAction', () => {
   });
   it('docks a closed panel again when it fits', () => {
     expect(toggleAction('left', wide, { left: false, right: true }, null)).toEqual({ prefs: both, floating: null });
+  });
+});
+
+describe('the sidebar toggle pressed while the sidebar is only slid out', () => {
+  const closed = { left: false, right: true };
+  it('opens it for good: docked when it fits, left out on purpose when it does not', () => {
+    expect(toggleFrom('left', wide, closed, 'left', true)).toEqual({ prefs: both, floating: null });
+    expect(toggleFrom('left', 500, closed, 'left', true)).toEqual({ prefs: closed, floating: 'left' });
+  });
+  it('a sidebar left out on purpose (not slid out by resting) still closes on the press; the right panel is not affected', () => {
+    expect(toggleFrom('left', 500, closed, 'left', false)).toEqual({ prefs: closed, floating: null });
+    expect(toggleFrom('right', 800, both, 'right', true)).toEqual({ prefs: both, floating: null });
+    expect(toggleFrom('left', wide, both, null, false)).toEqual(toggleAction('left', wide, both, null));
   });
 });

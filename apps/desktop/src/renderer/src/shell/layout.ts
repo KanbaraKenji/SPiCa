@@ -49,6 +49,16 @@ export function toggleAction(
 }
 
 /**
+ * The sidebar's toggle pressed while the sidebar is only slid out over the icon column (opened by resting on
+ * the toggle, not on purpose): the press means "open it", so it acts as on a closed sidebar: docked when it
+ * fits, else left out on purpose. Without this the press would take the slid-out sidebar for an open one and
+ * close it, and resting on the button would slide it out again: pressing never opened it.
+ */
+export function toggleFrom(side: 'left' | 'right', viewportWidth: number, prefs: PanelPrefs, floating: Floating, peeking: boolean): { prefs: PanelPrefs; floating: Floating } {
+  return toggleAction(side, viewportWidth, prefs, side === 'left' && peeking && floating === 'left' ? null : floating);
+}
+
+/**
  * How wide each panel is drawn. Docked panels keep the widths the user chose
  * while the conversation has room; when the window gets narrower they give way
  * in proportion, down to their minimum. A floating panel keeps its width

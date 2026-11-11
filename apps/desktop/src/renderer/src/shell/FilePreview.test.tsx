@@ -34,3 +34,24 @@ describe('FilePreview', () => {
     expect(screen.queryByRole('button', { name: '用系统程序打开' })).toBeNull();
   });
 });
+
+describe('the expand button in the preview head', () => {
+  const info = { kind: 'text' as const, name: 'a.log', path: 'D:/a.log', size: 7, text: 'one', truncated: false };
+  it('sits left of 用系统程序打开, then 关闭预览; a press toggles, and it reads 还原 while expanded', () => {
+    const toggle = vi.fn();
+    const { rerender } = render(<FilePreview info={info} onOpenExternal={vi.fn()} onClose={vi.fn()} max={{ on: false, toggle }} />);
+    const head = document.querySelector('.preview-head') as HTMLElement;
+    expect([...head.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual(['最大化', '用系统程序打开', '关闭预览']);
+    const max = screen.getByRole('button', { name: '最大化' });
+    expect(max.getAttribute('aria-pressed')).toBe('false');
+    expect(max.getAttribute('title')).toBe('最大化（Ctrl+Shift+\\）');
+    fireEvent.click(max);
+    expect(toggle).toHaveBeenCalledTimes(1);
+    rerender(<FilePreview info={info} onOpenExternal={vi.fn()} onClose={vi.fn()} max={{ on: true, toggle }} />);
+    expect(screen.getByRole('button', { name: '还原' }).getAttribute('aria-pressed')).toBe('true');
+  });
+  it('without it (nothing to expand) the head has only its own two buttons', () => {
+    render(<FilePreview info={info} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    expect([...document.querySelectorAll('.preview-head button')].map((b) => b.getAttribute('aria-label'))).toEqual(['用系统程序打开', '关闭预览']);
+  });
+});
