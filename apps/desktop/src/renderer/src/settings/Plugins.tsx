@@ -1,12 +1,28 @@
-// Settings > 插件: the installed plugins as a list on the left (已启用 / 已停用,
-// with search and a status filter) and the one picked on the right with its
-// switch, update, model budget, mail sorting, tools and going back / deleting.
+// Settings > 插件: the plugins as a list on the left (已启用 / 已停用, and 未安装:
+// what the remembered sources offer) and the one picked on the right: its switch
+// beside the name, a row of what can be done to it (安装 / 更新到 / 回退到 /
+// 删除, and while it installs, how far it is), then its model budget, mail
+// sorting and what it has. One box at the top searches, or, given a folder,
+// .zip, shared folder or web address, lists what is there to install.
 // A plugin turned on or off stays where it is in the list while the page is
 // open; it moves to its group the next time the page opens (the counts are only
-// in the filter, as things are now). Mock mode and the
-// plugin folder are at the bottom; installing opens from the + at the top.
+// in the filter, as things are now). Mock mode and the plugin folder are at the bottom.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { spentText, usd, type PluginModelView, type PluginsCommand, type PluginsResult, type PluginsState, type PluginView } from '../../../shared/plugins';
+import {
+  isLocation,
+  spentText,
+  stepText,
+  unquote,
+  usd,
+  type InstallStepView,
+  type PluginModelView,
+  type PluginPackage,
+  type PluginsCommand,
+  type PluginsProgress,
+  type PluginsResult,
+  type PluginsState,
+  type PluginView,
+} from '../../../shared/plugins';
 import { friendlyError } from '../store/agent';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
@@ -19,7 +35,9 @@ import { SpicaStatusIcon } from '@spica/brand/react';
 export interface PluginsApi {
   run(cmd: PluginsCommand): Promise<PluginsResult>;
   onChanged(listener: () => void): () => void;
-  /** The system's folder picker, for 插件位置. */
+  /** How far an install the page started is. */
+  onProgress?: (listener: (p: PluginsProgress) => void) => () => void;
+  /** The system's folder picker: the folder goes into the box and is looked at. */
   pickFolder?: () => Promise<string | null>;
 }
 
@@ -145,7 +163,7 @@ function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy
 const BADGE_COLOURS = ['#4f7cff', '#16a37f', '#c2410c', '#7c3aed', '#0e7490', '#b45309', '#be185d', '#4d7c0f', '#1d4ed8', '#9333ea', '#0f766e', '#a16207'];
 
 /** A plugin's badge: the first character of its name (a letter in upper case) on a colour its id always gets. */
-export function pluginBadge(p: Pick<PluginView, 'name' | 'displayName'>): { letter: string; colour: string } {
+export function pluginBadge(p: { name: string; displayName: string }): { letter: string; colour: string } {
   const first = [...(p.displayName.trim() || p.name)][0] ?? '?';
   let h = 0;
   for (const ch of p.name) h = (h * 31 + ch.codePointAt(0)!) >>> 0;
@@ -153,9 +171,9 @@ export function pluginBadge(p: Pick<PluginView, 'name' | 'displayName'>): { lett
 }
 
 /** The plugin's own icon (a picture only) when it has one, else its letter badge. */
-function Badge({ p }: { p: PluginView }) {
-  if (p.icon) return <img className="plugin-badge plugin-icon" src={p.icon} alt="" aria-hidden draggable={false} />;
-  const b = pluginBadge(p);
+function Badge({ name, displayName, icon }: { name: string; displayName: string; icon?: string | undefined }) {
+  if (icon) return <img className="plugin-badge plugin-icon" src={icon} alt="" aria-hidden draggable={false} />;
+  const b = pluginBadge({ name, displayName });
   return (
     <span className="plugin-badge" style={{ background: b.colour }} aria-hidden>
       {b.letter}
@@ -163,13 +181,15 @@ function Badge({ p }: { p: PluginView }) {
   );
 }
 
+const pkgTitle = (a: PluginPackage) => a.displayName ?? a.name;
+
 /** One row of the list: name and version, a refresh mark when there is an update, the error mark when something is wrong. */
 function PluginRow({ p, on, onPick }: { p: PluginView; on: boolean; onPick(): void }) {
   const problems = pluginProblems(p);
   return (
     <li>
       <button type="button" className={['plugin-row', on ? 'is-on' : '', p.enabled ? '' : 'is-off'].filter(Boolean).join(' ')} aria-current={on ? 'true' : undefined} onClick={onPick}>
-        <Badge p={p} />
+        <Badge name={p.name} displayName={p.displayName} icon={p.icon} />
         <span className="plugin-row-name">{p.displayName}</span>
         <span className="plugin-version plugin-row-version">{p.version}</span>
         {p.update ? (
@@ -184,18 +204,76 @@ function PluginRow({ p, on, onPick }: { p: PluginView; on: boolean; onPick(): vo
   );
 }
 
-/** The plugin picked: switch at the top, then what it does, what it needs, what it has. */
+/** A package not installed (or found at a typed location): name and version, as a plugin's row. */
+function PackageRow({ a, on, onPick }: { a: PluginPackage; on: boolean; onPick(): void }) {
+  return (
+    <li>
+      <button type="button" className={on ? 'plugin-row is-on' : 'plugin-row'} aria-current={on ? 'true' : undefined} onClick={onPick}>
+        <Badge name={a.name} displayName={pkgTitle(a)} icon={a.icon} />
+        <span className="plugin-row-name">{pkgTitle(a)}</span>
+        {a.version ? <span className="plugin-version plugin-row-version">{a.version}</span> : <span className="plugin-row-version" />}
+      </button>
+    </li>
+  );
+}
+
+/** An install (or update) the page started and is waiting for. */
+interface Running {
+  job: string;
+  /** The plugin it is for (a package's name, or an installed plugin's). */
+  name: string;
+  startedAt: number;
+  step?: InstallStepView;
+}
+
+/** How far the install is: the step in words, the seconds so far; a bar while the download size is known. */
+function Progress({ run }: { run: Running }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const s = run.step;
+  const seconds = Math.max(0, Math.floor((now - run.startedAt) / 1000));
+  const held = s?.step === 'replace' && s.busyMs !== undefined;
+  const share = s?.step === 'download' && s.total ? Math.min(1, s.received / s.total) : null;
+  return (
+    <div className={held ? 'plugin-progress is-held' : 'plugin-progress'} role="status">
+      <span className="plugin-progress-line">
+        <SpicaStatusIcon name="running" size={14} />
+        <span className="plugin-progress-text">{s ? stepText(s) : '正在安装'}</span>
+        <span className="plugin-progress-time">{seconds} 秒</span>
+      </span>
+      {share !== null ? (
+        <span className="plugin-progress-bar" aria-hidden>
+          <span style={{ width: `${Math.round(share * 100)}%` }} />
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** The row of what can be done to it, at the top of the detail; while it installs, how far it is. */
+function Actions({ running, children }: { running: Running | undefined; children: React.ReactNode }) {
+  return <div className="plugin-actions">{running ? <Progress run={running} /> : children}</div>;
+}
+
+/** The plugin picked: switch beside its name, what can be done to it right below, then what it does, needs, has. */
 function PluginDetail({
   p,
   busy,
+  running,
   run,
+  update,
   ask,
   mail,
   onBack,
 }: {
   p: PluginView;
   busy: boolean;
+  running: Running | undefined;
   run(cmd: PluginsCommand): void;
+  update(): void;
   ask(kind: 'uninstall' | 'rollback', p: PluginView): void;
   mail?: MailSettingsProps | undefined;
   onBack?: (() => void) | undefined;
@@ -211,17 +289,27 @@ function PluginDetail({
       ) : null}
       <header className="plugin-head">
         <div className="plugin-title">
-          <Badge p={p} />
+          <Badge name={p.name} displayName={p.displayName} icon={p.icon} />
           <span className="plugin-name">{p.displayName}</span>
           <span className="plugin-version">{p.version}</span>
         </div>
+        <Switch on={p.enabled} label={p.enabled ? `停用「${p.displayName}」` : `启用「${p.displayName}」`} disabled={busy} onChange={(on) => run({ op: on ? 'enable' : 'disable', name: p.name })} />
+      </header>
+      <Actions running={running}>
         {p.update ? (
-          <button type="button" className="btn btn-small" disabled={busy} onClick={() => run({ op: 'update', name: p.name })}>
+          <button type="button" className="btn btn-small" disabled={busy} onClick={update}>
             更新到 {p.update}
           </button>
         ) : null}
-        <Switch on={p.enabled} label={p.enabled ? `停用「${p.displayName}」` : `启用「${p.displayName}」`} disabled={busy} onChange={(on) => run({ op: on ? 'enable' : 'disable', name: p.name })} />
-      </header>
+        {p.previousVersion ? (
+          <button type="button" className="btn btn-small" disabled={busy} onClick={() => ask('rollback', p)}>
+            回退到 {p.previousVersion}
+          </button>
+        ) : null}
+        <button type="button" className="btn btn-small btn-quiet-danger btn-square" disabled={busy} onClick={() => ask('uninstall', p)} aria-label="删除" title="删除">
+          <Icon name="trash" size={14} />
+        </button>
+      </Actions>
       {p.description ? <p className="plugin-desc">{p.description}</p> : null}
       {p.enabled ? null : <p className="plugin-off">已停用</p>}
       {problems.length ? (
@@ -252,23 +340,66 @@ function PluginDetail({
           </>
         ) : null}
       </dl>
-      <div className="plugin-actions">
-        {p.previousVersion ? (
-          <button type="button" className="btn btn-small" disabled={busy} onClick={() => ask('rollback', p)}>
-            回退到 {p.previousVersion}
-          </button>
-        ) : null}
-        <button type="button" className="btn btn-small btn-quiet-danger btn-square" disabled={busy} onClick={() => ask('uninstall', p)} aria-label="删除" title="删除">
-          <Icon name="trash" size={14} />
-        </button>
-      </div>
     </section>
   );
 }
 
-/** `mail`: the mail sorting settings, shown with the plugin(s) that provide mail. */
+/** What 安装 says for a package: install, install again (the same version), or install that version over the one there. */
+function installLabel(a: PluginPackage): string {
+  if (!a.installed) return '安装';
+  if (a.version === a.installed) return '重新安装';
+  return a.version ? `安装 ${a.version}` : '安装';
+}
+
+/** A package picked in the list: what it says about itself, where it is, and 安装 (with its progress) at the top. */
+function PackageDetail({ a, busy, running, install, onBack }: { a: PluginPackage; busy: boolean; running: Running | undefined; install(): void; onBack?: (() => void) | undefined }) {
+  return (
+    <section className="card plugin-card plugin-detail" aria-label={pkgTitle(a)}>
+      {onBack ? (
+        <button type="button" className="text-btn plugin-back" onClick={onBack}>
+          <Icon name="back" size={14} />
+          插件
+        </button>
+      ) : null}
+      <header className="plugin-head">
+        <div className="plugin-title">
+          <Badge name={a.name} displayName={pkgTitle(a)} icon={a.icon} />
+          <span className="plugin-name">{pkgTitle(a)}</span>
+          {a.version ? <span className="plugin-version">{a.version}</span> : null}
+        </div>
+      </header>
+      <Actions running={running}>
+        <button type="button" className="btn btn-small btn-primary" disabled={busy} onClick={install}>
+          {installLabel(a)}
+        </button>
+      </Actions>
+      {a.description ? <p className="plugin-desc">{a.description}</p> : null}
+      <dl className="detail-facts plugin-facts">
+        {a.installed ? (
+          <>
+            <dt>已安装</dt>
+            <dd>{a.installed}</dd>
+          </>
+        ) : null}
+        {a.skills ? <List label="技能" items={a.skills} /> : null}
+        {a.commands ? <List label="命令" items={a.commands} /> : null}
+        {a.pages ? <List label="页面" items={a.pages} /> : null}
+        <dt>来源</dt>
+        <dd className="detail-path" title={a.location} data-tip-clipped="">
+          {a.location}
+        </dd>
+      </dl>
+    </section>
+  );
+}
+
 /** What 模拟模式 does, on hover beside it. */
 export const MOCK_TIP = '插件改用演示数据，不连接真实系统。';
+
+/** How long a typed location rests before it is looked at (Enter, a paste or a picked folder look at once). */
+export const LOOK_AFTER_MS = 500;
+
+let jobs = 0;
 
 export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsProps }) {
   const [state, setState] = useState<PluginsState | null>(null);
@@ -277,12 +408,17 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
   const [note, setNote] = useState<{ tone: 'ok' | 'bad' | 'info'; text: string } | null>(null);
   // 检查更新 running: said beside the result line until it ends.
   const [checking, setChecking] = useState(false);
-  const [location, setLocation, locationDone] = useKeptDraft('plugins.location', '');
   const [confirm, setConfirm] = useState<{ kind: 'uninstall' | 'rollback'; p: PluginView } | null>(null);
-  const [query, setQuery] = useState('');
+  // The one box: a search term, or a folder / .zip / address to look at.
+  const [query, setQuery] = useKeptDraft('plugins.query', '');
   const [filter, setFilter] = useState<Filter>('all');
+  // What is picked: an installed plugin by name, or a package by 'pkg:' + key.
   const [picked, setPicked] = useState<string | null>(null);
-  const [installing, setInstalling] = useState(false);
+  // A lookup of a typed location is under way (its number; older answers are dropped).
+  const [looking, setLooking] = useState(0);
+  const lookSeq = useRef(0);
+  const [running, setRunning] = useState<Running | undefined>(undefined);
+  const runningRef = useRef<Running | undefined>(undefined);
   // Which group each plugin is shown in, fixed while the page is open (turning one off does not move it).
   const [groupOf, setGroupOf] = useState<Record<string, boolean>>({});
   // Narrow: the list and the detail take turns.
@@ -307,8 +443,9 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
     return () => ro.disconnect();
   }, []);
 
-  // A plugin seen for the first time (page opened, or just installed) goes to the group of its state then.
-  const missing = plugins.filter((p) => !(p.name in groupOf));
+  // A plugin seen for the first time (page opened, or just installed) goes to the group of its state then;
+  // one being installed waits until it is done (it is on only at the end).
+  const missing = plugins.filter((p) => !(p.name in groupOf) && p.name !== running?.name);
   if (missing.length) setGroupOf({ ...groupOf, ...Object.fromEntries(missing.map((p) => [p.name, p.enabled])) });
 
   // One plugin command at a time (install, enable, update, delete, limits…): a second click while one runs is dropped.
@@ -343,37 +480,105 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
           if (alive) setState(r.state);
         })
         .catch(() => {});
-    refresh();
+    // What the page had last time shows first; the remembered sources are listed again behind it (未安装).
+    void refresh().then(() =>
+      api
+        .run({ op: 'refreshSources' })
+        .then((r) => {
+          if (alive) setState(r.state);
+        })
+        .catch(() => {}),
+    );
     const off = api.onChanged(refresh);
+    const offProgress = api.onProgress?.((p) => {
+      const cur = runningRef.current;
+      if (!cur || p.job !== cur.job) return;
+      const { job: _job, ...step } = p;
+      void _job;
+      const next = { ...cur, step };
+      runningRef.current = next;
+      setRunning(next);
+    });
     return () => {
       alive = false;
       off();
+      offProgress?.();
     };
   }, [api]);
 
-  const install = async () => {
-    const r = await run({ op: 'install', location });
-    if (r?.ok && !r.state.available?.length) {
-      setLocation('');
-      locationDone();
-      setInstalling(false);
-      const added = r.state.plugins.find((p) => !plugins.some((x) => x.name === p.name));
-      if (added) setPicked(added.name);
+  /** Look at a typed location (not through run(): it never blocks or is blocked by a command, and says nothing in the result line). */
+  const look = useCallback(
+    (text: string) => {
+      if (!isLocation(text)) return;
+      const n = ++lookSeq.current;
+      setLooking(n);
+      void api
+        .run({ op: 'find', location: unquote(text) })
+        .then((r) => {
+          if (n === lookSeq.current) setState(r.state);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (n === lookSeq.current) setLooking(0);
+        });
+    },
+    [api],
+  );
+
+  // A location typed and left for a moment is looked at.
+  useEffect(() => {
+    if (!isLocation(query)) return;
+    const t = setTimeout(() => look(query), LOOK_AFTER_MS);
+    return () => clearTimeout(t);
+  }, [query, look]);
+
+  /** Install a package (or update a plugin) with its progress at the top of its detail; the result in the result line. */
+  const install = async (name: string, cmd: (job: string) => PluginsCommand) => {
+    const job = `${Date.now()}-${++jobs}`;
+    const r0: Running = { job, name, startedAt: Date.now() };
+    runningRef.current = r0;
+    setRunning(r0);
+    setNote(null);
+    const r = await run(cmd(job));
+    runningRef.current = undefined;
+    setRunning(undefined);
+    if (r?.ok) {
+      // Now it is installed (and on): its group is its state now, and it is the one shown.
+      setGroupOf((g) => {
+        const { [name]: _gone, ...rest } = g;
+        void _gone;
+        return rest;
+      });
+      if (r.state.plugins.some((p) => p.name === name)) setPicked(name);
     }
   };
 
-  const q = query.trim().toLowerCase();
-  const shown = plugins.filter((p) => matches(p, filter) && (!q || `${p.displayName} ${p.name} ${p.description}`.toLowerCase().includes(q)));
-  const groups = [
-    { key: 'on', title: '已启用', items: shown.filter((p) => groupOf[p.name] ?? p.enabled) },
-    { key: 'off', title: '已停用', items: shown.filter((p) => !(groupOf[p.name] ?? p.enabled)) },
-  ].filter((g) => g.items.length);
-  const current = shown.find((p) => p.name === picked) ?? groups[0]?.items[0];
+  const located = isLocation(query);
+  const q = located ? '' : query.trim().toLowerCase();
+  const found = located && state?.found && state.found.location === unquote(query) ? state.found : undefined;
+  const hit = (text: string) => !q || text.toLowerCase().includes(q);
+  const shown = located ? [] : plugins.filter((p) => matches(p, filter) && hit(`${p.displayName} ${p.name} ${p.description}`));
+  const offered = located ? (found?.packages ?? []) : filter === 'all' ? (state?.available ?? []).filter((a) => hit(`${pkgTitle(a)} ${a.name} ${a.description ?? ''}`)) : [];
+  const groups: { key: string; title: string; plugins?: PluginView[]; packages?: PluginPackage[] }[] = [
+    { key: 'on', title: '已启用', plugins: shown.filter((p) => groupOf[p.name] ?? p.enabled) },
+    { key: 'off', title: '已停用', plugins: shown.filter((p) => !(groupOf[p.name] ?? p.enabled)) },
+    // A location's packages of plugins already here are said apart from the new ones.
+    { key: 'have', title: '已安装', packages: offered.filter((a) => a.installed) },
+    { key: 'new', title: '未安装', packages: offered.filter((a) => !a.installed) },
+  ].filter((g) => (g.plugins ?? g.packages ?? []).length);
+  const firstKey = groups[0]?.plugins?.[0]?.name ?? (groups[0]?.packages?.[0] ? `pkg:${groups[0].packages[0].key}` : null);
+  const pickedKey = picked && (shown.some((p) => p.name === picked) || offered.some((a) => `pkg:${a.key}` === picked)) ? picked : firstKey;
+  const current = pickedKey && !pickedKey.startsWith('pkg:') ? shown.find((p) => p.name === pickedKey) : undefined;
+  const currentPkg = pickedKey?.startsWith('pkg:') ? offered.find((a) => `pkg:${a.key}` === pickedKey) : undefined;
   const count = (f: Filter) => plugins.filter((p) => matches(p, f)).length;
-  const empty = state !== null && plugins.length === 0;
-  const installOpen = installing || empty;
+  const nothing = state !== null && plugins.length === 0 && !(state.available?.length ?? 0) && !located;
   const listView = !narrow || !showDetail;
   const detailView = !narrow || showDetail;
+  const pick = (key: string) => {
+    setPicked(key);
+    setShowDetail(true);
+  };
+  const emptyText = located ? (looking ? '正在查找…' : (found?.error ?? '')) : q ? '没有匹配的插件' : '没有符合条件的插件';
 
   return (
     <section className={narrow ? 'settings-section plugins-page is-narrow' : 'settings-section plugins-page'} ref={root}>
@@ -389,9 +594,46 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
         </div>
       ) : null}
 
-      {listView && !empty ? (
+      {listView ? (
         <div className="plugins-bar">
-          {plugins.length ? <input className="input plugins-search" value={query} placeholder="搜索插件" aria-label="搜索插件" spellCheck={false} onChange={(e) => setQuery(e.target.value)} /> : <span className="plugins-bar-gap" />}
+          <form
+            className="plugins-find"
+            onSubmit={(e) => {
+              e.preventDefault();
+              look(query);
+            }}
+          >
+            <input
+              className="input plugins-search"
+              value={query}
+              placeholder="搜索插件，或输入路径、网址"
+              aria-label="搜索插件"
+              spellCheck={false}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                // Pasted: look now, not after the pause.
+                if ((e.nativeEvent as InputEvent).inputType === 'insertFromPaste') look(e.target.value);
+              }}
+            />
+            {api.pickFolder ? (
+              <button
+                type="button"
+                className="btn btn-square"
+                onClick={() =>
+                  void api.pickFolder?.().then((dir) => {
+                    if (dir) {
+                      setQuery(dir);
+                      look(dir);
+                    }
+                  })
+                }
+                aria-label="选择文件夹"
+                title="选择文件夹"
+              >
+                <Icon name="folder" size={16} />
+              </button>
+            ) : null}
+          </form>
           {plugins.length ? (
             <div className="segmented plugins-filter" role="radiogroup" aria-label="筛选">
               {(
@@ -422,63 +664,10 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
           >
             {checking ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={16} />}
           </button>
-          <button type="button" className={installOpen ? 'btn btn-square is-on' : 'btn btn-square'} aria-expanded={installOpen} disabled={empty} onClick={() => setInstalling(!installing)} aria-label="安装插件" title="安装插件">
-            <Icon name="plus" size={16} />
-          </button>
         </div>
       ) : null}
 
-      {installOpen && listView ? (
-        <div className="settings-group plugins-install">
-          {empty ? <h3 className="settings-subheading">安装插件</h3> : null}
-          <form
-            className="install-row"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void install();
-            }}
-          >
-            <input className="input" value={location} spellCheck={false} placeholder="插件文件夹、.zip、共享盘路径或网址" aria-label="插件位置" onChange={(e) => setLocation(e.target.value)} />
-            {api.pickFolder ? (
-              <button
-                type="button"
-                className="btn btn-square"
-                disabled={busy}
-                onClick={() =>
-                  void api.pickFolder?.().then((dir) => {
-                    if (dir) setLocation(dir);
-                  })
-                }
-                aria-label="选择文件夹"
-                title="选择文件夹"
-              >
-                <Icon name="folder" size={16} />
-              </button>
-            ) : null}
-            <button type="submit" className="btn btn-primary" disabled={busy || !location.trim()}>
-              {busy ? <span className="spinner" aria-hidden /> : null}
-              安装
-            </button>
-          </form>
-          {state?.available?.length ? (
-            <ul className="available-list">
-              {state.available.map((a) => (
-                <li key={a.key} className="available-item">
-                  <span className="available-text">
-                    <span className="plugin-name">{a.name}</span> <span className="plugin-version">{a.version}</span>
-                    {a.description ? <span className="settings-hint"> {a.description}</span> : null}
-                  </span>
-                  <button type="button" className="btn btn-small" disabled={busy} onClick={() => void run({ op: 'installAvailable', key: a.key })}>
-                    安装
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      ) : null}
-
-      {empty ? <p className="settings-hint plugins-empty">未安装插件</p> : null}
+      {nothing ? <p className="settings-hint plugins-empty">未安装插件</p> : null}
 
       {checking ? (
         <p className="provider-result plugin-note" role="status">
@@ -491,7 +680,7 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
         </p>
       ) : null}
 
-      {plugins.length ? (
+      {nothing ? null : (
         <div className="plugins-two">
           {listView ? (
             <nav className="plugins-list" aria-label="插件列表">
@@ -500,37 +689,43 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
                   <div key={g.key} className="plugins-group">
                     <h3 className="plugins-group-title">{g.title}</h3>
                     <ul>
-                      {g.items.map((p) => (
-                        <PluginRow
-                          key={p.name}
-                          p={p}
-                          on={!narrow && current?.name === p.name}
-                          onPick={() => {
-                            setPicked(p.name);
-                            setShowDetail(true);
-                          }}
-                        />
-                      ))}
+                      {g.plugins?.map((p) => <PluginRow key={p.name} p={p} on={!narrow && current?.name === p.name} onPick={() => pick(p.name)} />)}
+                      {g.packages?.map((a) => <PackageRow key={a.key} a={a} on={!narrow && currentPkg?.key === a.key} onPick={() => pick(`pkg:${a.key}`)} />)}
                     </ul>
                   </div>
                 ))
-              ) : (
-                <p className="settings-hint plugins-none">{q ? '没有匹配的插件' : '没有符合条件的插件'}</p>
-              )}
+              ) : emptyText ? (
+                <p className="settings-hint plugins-none">{emptyText}</p>
+              ) : null}
+              {!located && filter === 'all' && state?.sourceErrors?.length ? (
+                <p className="settings-hint plugins-none" title={state.sourceErrors.join('\n')}>
+                  {state.sourceErrors.length} 个插件来源连接失败
+                </p>
+              ) : null}
             </nav>
           ) : null}
           {detailView && current ? (
             <PluginDetail
               p={current}
               busy={busy}
+              running={running?.name === current.name ? running : undefined}
               run={(c) => void run(c)}
+              update={() => void install(current.name, (job) => ({ op: 'update', name: current.name, job }))}
               ask={(kind, pl) => setConfirm({ kind, p: pl })}
               mail={mailSources.length === 1 && current.mail ? mail : undefined}
               onBack={narrow ? () => setShowDetail(false) : undefined}
             />
+          ) : detailView && currentPkg ? (
+            <PackageDetail
+              a={currentPkg}
+              busy={busy}
+              running={running?.name === currentPkg.name ? running : undefined}
+              install={() => void install(currentPkg.name, (job) => ({ op: 'installAvailable', key: currentPkg.key, job }))}
+              onBack={narrow ? () => setShowDetail(false) : undefined}
+            />
           ) : null}
         </div>
-      ) : null}
+      )}
 
       {state && listView ? (
         <div className="settings-group plugins-foot">

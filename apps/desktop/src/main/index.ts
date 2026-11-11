@@ -207,6 +207,7 @@ const backend: AgentBackend =
         },
         onRestarted: () => sendToWindow(DesktopChannel.BackendRestarted),
         onPluginsChanged: () => sendToWindow(DesktopChannel.PluginsChanged),
+        onPluginsProgress: (p) => sendToWindow(DesktopChannel.PluginsProgress, p),
         hostMethods: {
           // The core's model-settings tools (a connected script asked). Same store and
           // checks as the settings page; plain-language errors go back to the agent.
@@ -982,7 +983,7 @@ const pluginService: PluginService =
           return err ? { ...r, ok: false, message: `无法打开文件夹：${err}` } : r;
         },
       }
-    : new FakePluginService(pluginRoot, { many: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'many' });
+    : new FakePluginService(pluginRoot, { many: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'many', onProgress: (p) => sendToWindow(DesktopChannel.PluginsProgress, p), stepMs: 700 });
 ipcMain.handle(DesktopChannel.Plugins, async (_e, cmd: PluginsCommand) => {
   const r = await pluginService.run(cmd);
   // The real core reports plugin changes itself; the demo's list says so here.

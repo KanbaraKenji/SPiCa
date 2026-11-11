@@ -7,7 +7,7 @@ import { MessageChannelMain, utilityProcess, type UtilityProcess } from 'electro
 import { connectBackend, electronPort, type BackendClient, type HostMethods, type ListModelsResult, type ModelCatalog, type ProviderConfig, type SettingsPatch } from '@spica/core';
 export { toProviderConfig } from './to-config';
 import type { AgentApi, ContextBreakdown, CoreEvent, ProbeResult } from '@spica/protocol';
-import type { PluginsCommand, PluginsResult } from '../../shared/plugins';
+import type { PluginsCommand, PluginsProgress, PluginsResult } from '../../shared/plugins';
 import type { WindowMatch } from '../../shared/catalog';
 import type { DesktopBackendConfig } from '../../backend/config';
 import type { AgentBackend } from './types';
@@ -30,6 +30,8 @@ export interface ProcessBackendOptions {
   /** The core came back after a crash: the window reloads sessions. */
   onRestarted(): void;
   onPluginsChanged(): void;
+  /** How far an install the plugin page started is. */
+  onPluginsProgress?(p: PluginsProgress): void;
   /** Methods the core may call on this process (model settings for its MCP tools). */
   hostMethods?: HostMethods;
 }
@@ -75,7 +77,7 @@ export class ProcessBackend implements AgentBackend {
     });
     const wasStarted = this.#started;
     const done = new Promise<void>((resolve) => {
-      child.on('message', (m: { type?: string; message?: string }) => {
+      child.on('message', (m: { type?: string; message?: string; progress?: PluginsProgress }) => {
         if (m?.type === 'started') {
           this.#client = client;
           this.#started = true;
@@ -88,6 +90,8 @@ export class ProcessBackend implements AgentBackend {
           resolve();
         } else if (m?.type === 'plugins.changed') {
           this.#o.onPluginsChanged();
+        } else if (m?.type === 'plugins.progress' && m.progress) {
+          this.#o.onPluginsProgress?.(m.progress);
         }
       });
     });

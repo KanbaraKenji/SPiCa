@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PluginManager } from '@spica/plugins';
@@ -98,5 +98,95 @@ describe('a plugin’s own icon', () => {
     expect((await withPlugin('icon.svg', () => {}).run({ op: 'state' })).state.plugins[0]!.icon).toBeUndefined();
     const big = withPlugin('icon.svg', (dir) => writeFileSync(join(dir, 'icon.svg'), `<svg>${' '.repeat(64 * 1024)}</svg>`));
     expect((await big.run({ op: 'state' })).state.plugins[0]!.icon).toBeUndefined();
+  });
+});
+
+describe('the one box: looking at a typed location, installing what is there', () => {
+  /** A manager that knows one plugin folder (anything with a manifest.json reads as "demo" 1.2.0) and records installs. */
+  function rigged() {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-plugin-find-'));
+    dirs.push(dir);
+    const installed = new Map<string, string>();
+    const enabled = new Set<string>();
+    const calls: string[] = [];
+    const describe_ = (name: string) => ({ name, displayName: name, description: '', version: installed.get(name)!, enabled: enabled.has(name), mockSupported: false, skills: [], commands: [], tools: [], servers: [], issues: [] });
+    const m = {
+      ...manager,
+      appName: 'Spica',
+      list: () => [...installed.keys()].map(describe_),
+      installedVersion: (n: string) => installed.get(n),
+      installDir: () => dir,
+      describe: describe_,
+      check: async (where: string) => ({ root: where, manifest: { name: 'demo', displayName: 'Demo', version: '1.2.0', description: 'A demo.' }, skills: [], commands: [], servers: [], hooks: [], views: [{ title: 'Board' }], issues: [] }),
+      install: async (where: string, _src: unknown, opts?: { onProgress?: (p: { step: string }) => void }) => {
+        calls.push(`install ${where}`);
+        opts?.onProgress?.({ step: 'copy' });
+        installed.set('demo', '1.2.0');
+        return describe_('demo');
+      },
+      enable: async (n: string) => {
+        enabled.add(n);
+        return describe_(n);
+      },
+    } as unknown as PluginManager;
+    const progress: unknown[] = [];
+    const sourcesFile = join(dir, 'sources.json');
+    const svc = new RealPluginService({ manager: m, root: join(dir, 'plugins'), sourcesFile, openFolder: async () => '', onProgress: (p) => progress.push(p) });
+    return { dir, svc, calls, progress, sourcesFile };
+  }
+
+  it('a path that is not there: said as a failure (the old install from a path said it as a success)', async () => {
+    const { svc, dir } = rigged();
+    const r = await svc.run({ op: 'install', location: join(dir, 'nowhere') });
+    expect(r).toMatchObject({ ok: false, message: '找不到该文件夹或文件。' });
+    const f = await svc.run({ op: 'find', location: join(dir, 'nowhere') });
+    expect(f.ok).toBe(true);
+    expect(f.state.found).toEqual({ location: join(dir, 'nowhere'), packages: [], error: '找不到该文件夹或文件。' });
+  });
+
+  it('a folder with neither manifest.json nor index.json: nothing to install, said so', async () => {
+    const { svc, dir } = rigged();
+    mkdirSync(join(dir, 'empty'));
+    expect((await svc.run({ op: 'find', location: join(dir, 'empty') })).state.found?.error).toBe('该文件夹中没有插件（缺少 manifest.json 或 index.json）。');
+  });
+
+  it('a plugin folder (in quotes, as Explorer copies it) is listed with what it says, installed only when asked, with each step under the page’s job, then turned on', async () => {
+    const { svc, dir, calls, progress } = rigged();
+    const folder = join(dir, 'demo');
+    mkdirSync(folder);
+    writeFileSync(join(folder, 'manifest.json'), '{}');
+    const f = await svc.run({ op: 'find', location: `"${folder}"` });
+    expect(f.state.found?.packages).toEqual([{ key: `found:${folder}`, name: 'demo', displayName: 'Demo', version: '1.2.0', description: 'A demo.', location: folder, kind: 'folder', skills: [], commands: [], pages: ['Board'] }]);
+    expect(calls).toEqual([]);
+    const r = await svc.run({ op: 'installAvailable', key: `found:${folder}`, job: 'j1' });
+    expect(r).toMatchObject({ ok: true, message: '已安装「demo」1.2.0。' });
+    expect(calls).toEqual([`install ${folder}`]);
+    expect(progress).toEqual([{ job: 'j1', step: 'copy' }, { job: 'j1', step: 'start' }]);
+    // Listed again, it now says which version is installed.
+    expect(r.state.found?.packages[0]?.installed).toBe('1.2.0');
+  });
+
+  it('a shared folder with an index is listed but not remembered; installing from it remembers it (未安装 lists it from then on)', async () => {
+    const { svc, dir, sourcesFile } = rigged();
+    const share = join(dir, 'share');
+    mkdirSync(join(share, 'demo'), { recursive: true });
+    writeFileSync(join(share, 'index.json'), JSON.stringify({ index_version: 1, plugins: [{ name: 'demo', version: '1.2.0', file: 'demo/', description: 'A demo.' }] }));
+    const f = await svc.run({ op: 'find', location: share });
+    expect(f.state.found?.packages.map((p) => [p.name, p.version, p.kind])).toEqual([['demo', '1.2.0', 'share']]);
+    expect(existsSync(sourcesFile)).toBe(false);
+    const key = f.state.found!.packages[0]!.key;
+    expect((await svc.run({ op: 'installAvailable', key })).ok).toBe(true);
+    expect(JSON.parse(readFileSync(sourcesFile, 'utf8'))).toEqual([{ kind: 'share', location: share }]);
+  });
+
+  it('未安装: the remembered sources listed again, the installed plugins left out; a source not reached is noted', async () => {
+    const { svc, dir, sourcesFile } = rigged();
+    const share = join(dir, 'share');
+    mkdirSync(share);
+    writeFileSync(join(share, 'index.json'), JSON.stringify({ index_version: 1, plugins: [{ name: 'other', version: '0.3.0', file: 'other-0.3.0.zip', description: 'Another.' }, { name: 'other', version: '0.2.0', file: 'other-0.2.0.zip' }] }));
+    writeFileSync(sourcesFile, JSON.stringify([{ kind: 'share', location: share }, { kind: 'share', location: join(dir, 'gone') }]));
+    const r = await svc.run({ op: 'refreshSources' });
+    expect(r.state.available?.map((a) => [a.name, a.version, a.description])).toEqual([['other', '0.3.0', 'Another.']]);
+    expect(r.state.sourceErrors).toEqual([join(dir, 'gone')]);
   });
 });

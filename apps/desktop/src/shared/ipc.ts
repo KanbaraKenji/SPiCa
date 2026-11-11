@@ -26,6 +26,8 @@ export const DesktopChannel = {
   Plugins: 'spica:plugins',
   /** main -> renderer: plugins changed on their own (server crashed, ...) */
   PluginsChanged: 'spica:plugins:changed',
+  /** main -> renderer: how far an install the plugin page started is */
+  PluginsProgress: 'spica:plugins:progress',
   ProvidersChanged: 'spica:providers:changed',
   ActiveSession: 'spica:ui:active-session',
   /** renderer -> main: a scrim covers the window (a dialog, a picture at full size) or not; the caption buttons dim with it. */

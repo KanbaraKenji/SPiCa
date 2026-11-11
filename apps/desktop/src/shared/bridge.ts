@@ -4,7 +4,7 @@ import type { AgentApi, ContextBreakdown, CoreEvent, SpicaBridge } from '@spica/
 import type { SettingsPatch, ShellSettings } from './settings';
 import type { ModelRef, ProviderDraft, ProviderKind, ProviderView, TestResult } from './providers';
 import type { ListModelsView, ModelCatalogView, WindowMatch } from './catalog';
-import type { PluginsCommand, PluginsResult } from './plugins';
+import type { PluginsCommand, PluginsProgress, PluginsResult } from './plugins';
 import type { UpdateState } from './updates';
 import type { PluginView, PluginViewResult } from './plugin-view';
 
@@ -145,6 +145,8 @@ export interface DesktopBridge extends SpicaBridge {
   plugins: {
     run(cmd: PluginsCommand): Promise<PluginsResult>;
     onChanged(listener: () => void): () => void;
+    /** How far an install the plugin page started is (its steps, the download's bytes). */
+    onProgress(listener: (p: PluginsProgress) => void): () => void;
   };
   workflows: {
     run(op: 'state' | 'open' | 'reload'): Promise<WorkflowsState>;

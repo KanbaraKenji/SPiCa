@@ -1,6 +1,6 @@
 // A plugin service with a fixed example, for screenshots, tests and
 // SPICA_BACKEND=fake. No Node imports, so renderer tests can use it.
-import { svgDataUrl, type PluginsCommand, type PluginsResult, type PluginsState, type PluginView } from '../../shared/plugins';
+import { svgDataUrl, unquote, type InstallStepView, type PluginPackage, type PluginsCommand, type PluginsFound, type PluginsProgress, type PluginsResult, type PluginsState, type PluginView } from '../../shared/plugins';
 import type { PluginService } from './types';
 
 /** plugins/example-notes/icon.svg: the demo's example has its own icon, the others the letter badge. */
@@ -68,14 +68,39 @@ function morePlugins(): PluginView[] {
   });
 }
 
+/** 未安装 in the demo: two made-up plugins a shared folder offers. */
+const DEMO_AVAILABLE: PluginPackage[] = [
+  { key: 'source:weekly-report@1.2.0', name: 'weekly-report', displayName: '周报助手', version: '1.2.0', description: '按模板整理本周进展。', location: '\\\\fileserver\\spica-plugins\\weekly-report-1.2.0.zip', kind: 'share' },
+  { key: 'source:glossary@0.3.0', name: 'glossary', displayName: '术语表', version: '0.3.0', description: '统一文档里的术语写法。', location: '\\\\fileserver\\spica-plugins\\glossary-0.3.0.zip', kind: 'share' },
+];
+
+/** The steps of a demo install from a share: read, verify, unpack, copy, start. A .zip address downloads 8 MB first. */
+function demoSteps(kind: PluginPackage['kind']): InstallStepView[] {
+  const total = 8 * 1024 * 1024;
+  const download: InstallStepView[] = kind === 'http' ? [0, 0.2, 0.4, 0.6, 0.8, 1].map((f) => ({ step: 'download', received: Math.round(total * f), total })) : [{ step: 'read' }];
+  return [...download, { step: 'verify' }, { step: 'unpack' }, { step: 'copy' }, { step: 'start' }];
+}
+
+export interface FakePluginOptions {
+  /** Twelve plugins instead of two (screenshots of a full page). */
+  many?: boolean;
+  /** Where the steps of a demo install go. */
+  onProgress?: (p: PluginsProgress) => void;
+  /** How long each demo install step takes (0: no wait, for tests). */
+  stepMs?: number;
+}
+
 export class FakePluginService implements PluginService {
   #plugins: PluginView[] = [structuredClone(EXAMPLE), { ...asOtherDemo(structuredClone(EXAMPLE)), name: 'mail-digest', displayName: '来信摘要（示例）', description: '把收件箱里的新邮件整理成摘要，按项目归类。', version: '1.0.0', enabled: true, mail: true, tools: ['list_messages', 'read_message'], skills: [], commands: [], servers: [{ id: 'mail', status: 'running', tools: ['list_messages', 'read_message'] }], previousVersion: undefined, update: '1.1.0' } as PluginView];
   #mock = false;
   readonly #root: string;
+  readonly #opts: FakePluginOptions;
+  #available: PluginPackage[] = structuredClone(DEMO_AVAILABLE);
+  #found: PluginsFound | undefined;
 
-  /** `many`: twelve plugins instead of two (screenshots of a full page). */
-  constructor(root: string, opts: { many?: boolean } = {}) {
+  constructor(root: string, opts: FakePluginOptions = {}) {
     this.#root = root;
+    this.#opts = opts;
     if (opts.many) this.#plugins.push(...morePlugins());
   }
 
@@ -88,7 +113,34 @@ export class FakePluginService implements PluginService {
   async dispose(): Promise<void> {}
 
   #state(): PluginsState {
-    return { plugins: structuredClone(this.#plugins), mock: this.#mock, root: this.#root };
+    return {
+      plugins: structuredClone(this.#plugins),
+      mock: this.#mock,
+      root: this.#root,
+      ...(this.#available.length ? { available: structuredClone(this.#available) } : {}),
+      ...(this.#found ? { found: structuredClone(this.#found) } : {}),
+    };
+  }
+
+  /** A demo lookup: a .zip or folder path is one package named after it; a path with 「不存在」 is not there. */
+  #find(location: string): PluginsFound {
+    const where = unquote(location);
+    if (/不存在/.test(where)) return { location: where, packages: [], error: '找不到该文件夹或文件。' };
+    const base = where.split(/[\\/]/).filter(Boolean).pop() ?? where;
+    const name = base.replace(/\.zip$/i, '').replace(/-\d+\.\d+\.\d+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-') || 'plugin';
+    const kind: PluginPackage['kind'] = /^https?:/i.test(where) ? 'http' : /\.zip$/i.test(where) ? 'zip' : 'folder';
+    const installed = this.#plugins.find((p) => p.name === name)?.version;
+    return { location: where, packages: [{ key: `found:${where}`, name, version: '1.0.0', description: '演示用的插件包。', location: where, kind, skills: [], commands: [], pages: [], ...(installed ? { installed } : {}) }] };
+  }
+
+  async #install(pkg: PluginPackage, job: string | undefined): Promise<void> {
+    for (const step of demoSteps(pkg.kind)) {
+      if (job) this.#opts.onProgress?.({ job, ...step });
+      if (this.#opts.stepMs) await new Promise((r) => setTimeout(r, this.#opts.stepMs));
+    }
+    this.#plugins = this.#plugins.filter((x) => x.name !== pkg.name);
+    this.#plugins.push({ ...asOtherDemo(structuredClone(EXAMPLE)), name: pkg.name, displayName: pkg.displayName ?? pkg.name, description: pkg.description ?? '', version: pkg.version ?? '1.0.0', previousVersion: undefined, source: { kind: pkg.kind, location: pkg.location }, tools: ['search'], skills: [], commands: [], servers: [{ id: pkg.name, status: 'running', tools: ['search'] }] } as PluginView);
+    this.#available = this.#available.filter((a) => a.key !== pkg.key);
   }
 
   async run(cmd: PluginsCommand): Promise<PluginsResult> {
@@ -112,6 +164,15 @@ export class FakePluginService implements PluginService {
         break;
       case 'install':
         return { ok: false, message: '演示数据里不能安装插件。', state: this.#state() };
+      case 'find':
+        this.#found = this.#find(cmd.location);
+        break;
+      case 'installAvailable': {
+        const pkg = [...this.#available, ...(this.#found?.packages ?? [])].find((a) => a.key === cmd.key);
+        if (!pkg) return { ok: false, message: '该项已不存在，请重新查找。', state: this.#state() };
+        await this.#install(pkg, cmd.job);
+        return { ok: true, message: `已安装「${pkg.displayName ?? pkg.name}」${pkg.version ?? ''}。`, state: this.#state() };
+      }
       case 'modelLimit':
         if (p?.model) {
           const v = cmd.maxUsdPerDay;

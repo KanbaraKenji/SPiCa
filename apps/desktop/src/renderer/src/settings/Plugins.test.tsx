@@ -6,7 +6,7 @@ import { Plugins, pluginBadge, type PluginsApi } from './Plugins';
 import { FakePluginService } from '../../../main/plugins/fake';
 import { dropAllDrafts } from './drafts';
 import { DEFAULT_SETTINGS } from '../../../shared/settings';
-import type { PluginsState, PluginView } from '../../../shared/plugins';
+import type { PluginsProgress, PluginsState, PluginView } from '../../../shared/plugins';
 
 afterEach(() => {
   cleanup();
@@ -103,13 +103,119 @@ describe('Plugins', () => {
     expect(within(screen.getByRole('region', { name: '笔记（示例）' })).getByText('manifest.json 缺少 version')).toBeTruthy();
   });
 
-  it('检查更新 and 安装插件 are the same square buttons as 检查更新 in 关于', async () => {
-    render(<Plugins api={api()} />);
+  it('检查更新 and 选择文件夹 are the same square buttons as 检查更新 in 关于; there is no separate install box', async () => {
+    render(<Plugins api={{ ...api(), pickFolder: async () => null }} />);
     await screen.findByRole('navigation', { name: '插件列表' });
     expect(screen.getByRole('button', { name: '检查更新' }).className).toContain('btn-square');
-    expect(screen.getByRole('button', { name: '安装插件' }).className).toContain('btn-square');
+    expect(screen.getByRole('button', { name: '选择文件夹' }).className).toContain('btn-square');
+    expect(screen.queryByRole('button', { name: '安装插件' })).toBeNull();
+    expect(screen.queryByLabelText('插件位置')).toBeNull();
+    expect((screen.getByLabelText('搜索插件') as HTMLInputElement).placeholder).toBe('搜索插件，或输入路径、网址');
   });
 
+  it('nothing installed and nothing offered: the box on top, 未安装插件 below it', async () => {
+    const empty: PluginsApi = {
+      run: async (cmd) => {
+        const r = await api().run(cmd);
+        const { available: _a, ...st } = r.state;
+        void _a;
+        return { ...r, state: { ...st, plugins: [] } };
+      },
+      onChanged: () => () => {},
+    };
+    render(<Plugins api={empty} />);
+    const none = await screen.findByText('未安装插件');
+    const box = screen.getByLabelText('搜索插件');
+    expect(box.compareDocumentPosition(none) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: '插件列表' })).toBeNull();
+  });
+
+  it('未安装: what the sources offer is listed after the installed ones; the search finds both', async () => {
+    render(<Plugins api={api()} />);
+    await screen.findByRole('region', { name: '笔记（示例）' });
+    expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['已启用', '未安装']);
+    expect(groupOf('周报助手')).toBe('未安装');
+    fireEvent.change(screen.getByLabelText('搜索插件'), { target: { value: '周报' } });
+    expect(within(list()).getAllByRole('button').map((b) => b.textContent)).toEqual(['周周报助手1.2.0']);
+    fireEvent.change(screen.getByLabelText('搜索插件'), { target: { value: '' } });
+    // Another filter than 全部 is about installed plugins only.
+    fireEvent.click(screen.getByRole('radio', { name: /^已启用/ }));
+    expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['已启用']);
+  });
+
+  it('a package picked: its detail has 安装 on a row of its own under the name; installing says each step and how long, then it is installed, on and shown', async () => {
+    const svc = new FakePluginService('C:\\Users\\me\\AppData\\Roaming\\Spica\\plugins');
+    const listeners = new Set<(p: PluginsProgress) => void>();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const a: PluginsApi = {
+      run: async (cmd) => {
+        if (cmd.op === 'installAvailable') {
+          // Say two steps, then wait to be let go: the page is looked at in between.
+          for (const l of listeners) l({ job: cmd.job!, step: 'download', received: 3 * 1024 * 1024, total: 8 * 1024 * 1024 });
+          await gate;
+        }
+        return svc.run(cmd);
+      },
+      onChanged: () => () => {},
+      onProgress: (l) => {
+        listeners.add(l);
+        return () => listeners.delete(l);
+      },
+    };
+    render(<Plugins api={a} />);
+    await screen.findByRole('region', { name: '笔记（示例）' });
+    pick('周报助手');
+    const detail = (await screen.findByRole('region', { name: '周报助手' })) as HTMLElement;
+    const actions = detail.querySelector('.plugin-actions') as HTMLElement;
+    // Right under the name, before the description.
+    expect(detail.querySelector('.plugin-head')?.nextElementSibling).toBe(actions);
+    expect(within(detail).getByText('\\\\fileserver\\spica-plugins\\weekly-report-1.2.0.zip')).toBeTruthy();
+    fireEvent.click(within(actions).getByRole('button', { name: '安装' }));
+    await waitFor(() => expect(within(detail).getByRole('status').textContent).toMatch(/^正在下载 3\.0 MB \/ 8\.0 MB\d+ 秒$/));
+    expect((detail.querySelector('.plugin-progress-bar > span') as HTMLElement).style.width).toBe('38%');
+    release();
+    // Now the installed plugin's own detail: its switch beside the name, on.
+    await waitFor(() => expect(within(screen.getByRole('region', { name: '周报助手' })).getByRole('switch', { name: '停用「周报助手」' })).toBeTruthy());
+    expect(groupOf('周报助手')).toBe('已启用');
+    expect(screen.getByText('已安装「周报助手」1.2.0。')).toBeTruthy();
+  });
+
+  it('a path typed in the box is looked at (after a pause, on Enter, or when pasted); what is there is listed to install', async () => {
+    render(<Plugins api={api()} />);
+    await screen.findByRole('region', { name: '笔记（示例）' });
+    const box = screen.getByLabelText('搜索插件');
+    fireEvent.change(box, { target: { value: '"D:\\插件\\note-box-1.0.0.zip"' } });
+    fireEvent.submit(box.closest('form')!);
+    await waitFor(() => expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['未安装']));
+    expect(within(list()).getByRole('button', { name: /note-box/ })).toBeTruthy();
+    const detail = (await screen.findByRole('region', { name: 'note-box' })) as HTMLElement;
+    expect(within(detail).getByRole('button', { name: '安装' })).toBeTruthy();
+    // Not there: said where the list would be.
+    fireEvent.change(box, { target: { value: 'D:\\插件\\不存在' } });
+    fireEvent.submit(box.closest('form')!);
+    expect(await within(list()).findByText('找不到该文件夹或文件。')).toBeTruthy();
+  });
+
+  it('选择文件夹 puts the folder in the box and looks at it', async () => {
+    const pickFolder = vi.fn(async () => 'D:/插件/outlook-mail');
+    render(<Plugins api={{ ...api(), pickFolder }} />);
+    fireEvent.click(await screen.findByRole('button', { name: '选择文件夹' }));
+    await waitFor(() => expect((screen.getByLabelText('搜索插件') as HTMLInputElement).value).toBe('D:/插件/outlook-mail'));
+    expect(await within(list()).findByRole('button', { name: /outlook-mail/ })).toBeTruthy();
+    expect(pickFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it('the plugin picked: 更新到, 回退到 and 删除 are on the row right under its name', async () => {
+    render(<Plugins api={api()} />);
+    const detail = (await screen.findByRole('region', { name: '笔记（示例）' })) as HTMLElement;
+    const actions = detail.querySelector('.plugin-head')?.nextElementSibling as HTMLElement;
+    expect(actions.className).toBe('plugin-actions');
+    expect(within(actions).getAllByRole('button').map((b) => b.textContent || b.getAttribute('aria-label'))).toEqual(['回退到 0.1.0', '删除']);
+    pick('来信摘要');
+    const mailDetail = (await screen.findByRole('region', { name: '来信摘要（示例）' })) as HTMLElement;
+    expect(within(mailDetail.querySelector('.plugin-actions') as HTMLElement).getAllByRole('button').map((b) => b.textContent || b.getAttribute('aria-label'))).toEqual(['更新到 1.1.0', '删除']);
+  });
   it('检查更新: while it runs it says so, then the result', async () => {
     const base = api();
     let finish: () => void = () => {};
@@ -174,25 +280,6 @@ describe('Plugins', () => {
     await waitFor(() => expect(Boolean(screen.queryByText('模拟数据'))).toBe(!on));
   });
 
-  it('no plugins: 安装插件 open on top, 未安装插件 where the list would be', async () => {
-    render(<Plugins api={apiWith(() => [])} />);
-    const none = await screen.findByText('未安装插件');
-    const heading = screen.getByRole('heading', { name: '安装插件' });
-    const field = screen.getByLabelText('插件位置');
-    // In the page's order: the heading, the field, then 未安装插件.
-    expect(heading.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(field.compareDocumentPosition(none) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.queryByLabelText('搜索插件')).toBeNull();
-  });
-
-  it('插件位置: a folder button opens the system picker and fills the field', async () => {
-    const pickFolder = vi.fn(async () => 'D:/插件/outlook-mail');
-    render(<Plugins api={{ ...apiWith(() => []), pickFolder }} />);
-    fireEvent.click(await screen.findByRole('button', { name: '选择文件夹' }));
-    await waitFor(() => expect((screen.getByLabelText('插件位置') as HTMLInputElement).value).toBe('D:/插件/outlook-mail'));
-    expect(pickFolder).toHaveBeenCalledTimes(1);
-  });
-
   it('deletes only after confirming', async () => {
     render(<Plugins api={api()} />);
     const detail = (await screen.findByRole('region', { name: '笔记（示例）' })) as HTMLElement;
@@ -201,19 +288,6 @@ describe('Plugins', () => {
     expect(dialog.textContent).toContain('删除插件「笔记（示例）」？');
     fireEvent.click(within(dialog).getByRole('button', { name: '删除' }));
     await waitFor(() => expect(screen.queryByRole('region', { name: '笔记（示例）' })).toBeNull());
-  });
-
-  it('install opens from the + at the top; the location typed but not installed is still there when you come back', async () => {
-    const a = api();
-    const first = render(<Plugins api={a} />);
-    expect(await screen.findByRole('region', { name: '笔记（示例）' })).toBeTruthy();
-    expect(screen.queryByLabelText('插件位置')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '安装插件' }));
-    fireEvent.change(screen.getByLabelText('插件位置'), { target: { value: 'D:\\plugins\\notes-0.1.0.zip' } });
-    first.unmount();
-    render(<Plugins api={a} />);
-    fireEvent.click(await screen.findByRole('button', { name: '安装插件' }));
-    expect((screen.getByLabelText('插件位置') as HTMLInputElement).value).toBe('D:\\plugins\\notes-0.1.0.zip');
   });
 
   it('a plugin that uses models says so, with its reason, today’s spending and a limit to lower', async () => {

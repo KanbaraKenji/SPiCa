@@ -3000,30 +3000,6 @@ button.ctx-row:hover {
   margin: 8px 0 0;
 }
 
-.available-list {
-  list-style: none;
-  margin: 10px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.available-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
-  border-radius: var(--radius-m);
-  border: 1px dashed var(--spica-border-strong);
-}
-
-.available-text {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
 .plugin-card {
   padding: 12px 16px;
 }
@@ -3044,16 +3020,16 @@ button.ctx-row:hover {
   height: 30px;
 }
 
-.plugins-bar-gap {
-  flex: 1;
+/* The one box (search, or a location to look at) and the folder picker that fills it. */
+.plugins-find {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
 }
 
 .plugins-filter .segment {
   white-space: nowrap;
-}
-
-.plugins-install {
-  margin-bottom: 12px;
 }
 
 /* Narrow: search and the two icons on one row, the filter on the next. */
@@ -3376,10 +3352,64 @@ button.ctx-row:hover {
   width: 84px;
 }
 
+/* What can be done to the plugin, right under its name; while it installs, how far it is, in the
+   same place and the same height (nothing below moves). */
 .plugin-actions {
-  margin-top: 12px;
+  margin-top: 10px;
+  min-height: 28px;
   display: flex;
+  align-items: center;
   gap: 8px;
+}
+
+.plugin-progress {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.plugin-progress-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--spica-ink);
+}
+
+.plugin-progress-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.plugin-progress-time {
+  flex: none;
+  color: var(--spica-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The folder held by another program while it retries: said in the warning colour. */
+.plugin-progress.is-held .plugin-progress-text {
+  color: var(--spica-warning);
+}
+
+.plugin-progress-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--spica-hover);
+  overflow: hidden;
+}
+
+.plugin-progress-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--spica-accent);
+  transition: width 0.25s ease-out;
 }
 
 .plugin-root {

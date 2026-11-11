@@ -4,7 +4,7 @@ import { IpcChannel, type AgentApi, type AppInfo, type ContextBreakdown, type Co
 import { DesktopChannel } from '../shared/ipc';
 import type { BackendState, DesktopBridge, LocalConnectInfo, NetworkState, PreviewInfo, ProviderList, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import type { ModelRef, ProviderDraft, ProviderKind, TestResult } from '../shared/providers';
-import type { PluginsCommand, PluginsResult } from '../shared/plugins';
+import type { PluginsCommand, PluginsProgress, PluginsResult } from '../shared/plugins';
 import type { UpdateState } from '../shared/updates';
 import type { SettingsPatch, ShellSettings } from '../shared/settings';
 import type { PluginView, PluginViewResult } from '../shared/plugin-view';
@@ -99,6 +99,7 @@ const bridge: DesktopBridge = {
   plugins: {
     run: (cmd: PluginsCommand) => ipcRenderer.invoke(DesktopChannel.Plugins, cmd) as Promise<PluginsResult>,
     onChanged: (listener) => subscribe<void>(DesktopChannel.PluginsChanged, () => listener()),
+    onProgress: (listener) => subscribe<PluginsProgress>(DesktopChannel.PluginsProgress, listener),
   },
   workflows: {
     run: (op) => ipcRenderer.invoke(DesktopChannel.Workflows, op) as Promise<WorkflowsState>,

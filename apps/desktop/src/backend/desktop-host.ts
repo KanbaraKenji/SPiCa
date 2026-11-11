@@ -35,15 +35,17 @@ interface ParentPort {
 
 export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
   const plugins = await attachPlugins(rt, { root: options.pluginRoot, appName: APP_NAME });
+  const parent = (process as unknown as { parentPort?: ParentPort }).parentPort;
   const page = new RealPluginService({
     manager: plugins.manager,
     root: options.pluginRoot,
     sourcesFile: options.pluginSourcesFile,
     // Opening folders is the main process's job (it handles 'openRoot' itself).
     openFolder: async () => '',
+    // How far an install the page started is, on its way to the window.
+    onProgress: (progress) => parent?.postMessage({ type: 'plugins.progress', progress }),
   });
   // Tell the main process when plugins change on their own (a server crashed, ...).
-  const parent = (process as unknown as { parentPort?: ParentPort }).parentPort;
   page.onChange(() => parent?.postMessage({ type: 'plugins.changed' }));
 
   let http: McpHttpServer | undefined;

@@ -1,25 +1,44 @@
 // The plugin page's backend. PluginService is the seam: the real one drives
 // @spica/plugins' PluginManager on the live runtime; the fake one serves a
 // fixed example for screenshots and tests.
-import { readFile, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import {
   checkUpdates,
+  downloadPackage,
+  hasErrors,
   ICON_MAX_BYTES,
   INDEX_FILE,
   installAvailable,
   installZip,
   listSource,
   MANIFEST_FILE,
+  newest,
+  SPICA_VERSION,
+  unpackPlugin,
   type Available,
   type FetchLike,
+  type InstallStep,
   type PluginDescription,
+  type PluginFolder,
   type PluginManager,
   type SourceConfig,
   type UpdateInfo,
 } from '@spica/plugins';
-import { modelUseNotice, svgDataUrl, usd, type PluginsCommand, type PluginsResult, type PluginsState, type PluginView } from '../../shared/plugins';
+import {
+  modelUseNotice,
+  svgDataUrl,
+  unquote,
+  usd,
+  type PluginPackage,
+  type PluginsCommand,
+  type PluginsProgress,
+  type PluginsResult,
+  type PluginsState,
+  type PluginView,
+} from '../../shared/plugins';
 import type { PluginService } from './types';
 
 export type { PluginService } from './types';
@@ -47,6 +66,8 @@ export interface RealServiceOptions {
   openFolder(path: string): Promise<string>;
   /** Electron's net.fetch, so the system proxy applies. */
   fetch?: FetchLike;
+  /** Each step of an install the page started (installAvailable / update with a `job`). */
+  onProgress?: (p: PluginsProgress) => void;
 }
 
 function toView(d: PluginDescription, update?: string, icon?: string): PluginView {
@@ -91,14 +112,63 @@ function withModelNotice(text: string, d: PluginDescription): string {
 const isUrl = (s: string) => /^https?:\/\//i.test(s);
 const isShare = (s: string) => s.startsWith('\\\\') || s.startsWith('//');
 
+/** Something that cannot be done, said plainly: the page shows it as a failure. */
+class Refusal extends Error {}
+
+/** An SVG file as a data: URL, when it is there and not too big. */
+function iconFile(file: string): string | undefined {
+  try {
+    const st = statSync(file);
+    if (!st.isFile() || st.size > ICON_MAX_BYTES) return undefined;
+    return svgDataUrl(readFileSync(file, 'utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
+/** What a plugin folder's manifest and parts say, as a package to offer. */
+function fromFolder(folder: PluginFolder, key: string, kind: PluginPackage['kind'], location: string, installed: string | undefined): PluginPackage {
+  const m = folder.manifest!;
+  const icon = m.icon ? iconFile(join(folder.root, m.icon)) : undefined;
+  return {
+    key,
+    name: m.name,
+    ...(m.displayName && m.displayName !== m.name ? { displayName: m.displayName } : {}),
+    version: m.version,
+    ...(m.description ? { description: m.description } : {}),
+    ...(icon ? { icon } : {}),
+    location,
+    kind,
+    skills: folder.skills.map((s) => s.name),
+    commands: folder.commands.map((c) => `/${c.id}`),
+    pages: folder.views.map((v) => v.title),
+    ...(installed ? { installed } : {}),
+  };
+}
+
+/** A package found at a typed location, and how to install it. */
+interface Found {
+  pkg: PluginPackage;
+  install(onProgress: (p: InstallStep) => void): Promise<PluginDescription>;
+  /** Installing from an index (a shared folder or web address): remember it as a source. */
+  source?: SourceConfig;
+}
+
 export class RealPluginService implements PluginService {
   readonly #o: RealServiceOptions;
-  #available = new Map<string, Available>();
+  /** 未安装: what the remembered sources offer, by key. */
+  #fromSources = new Map<string, Available>();
+  #sourceErrors: string[] = [];
+  /** The latest lookup of a typed location. */
+  #found: { location: string; items: Map<string, Found>; error?: string } | undefined;
   #updates = new Map<string, UpdateInfo>();
   /** Icons read so far: file path -> [modified time, data: URL]. */
   #icons = new Map<string, [number, string]>();
   #listeners = new Set<() => void>();
   #off: () => void;
+  /** Lookups and source listings run one at a time; a newer lookup makes a waiting one moot. */
+  #lookups: Promise<unknown> = Promise.resolve();
+  #lookupSeq = 0;
 
   constructor(o: RealServiceOptions) {
     this.#o = o;
@@ -140,14 +210,43 @@ export class RealPluginService implements PluginService {
 
   #state(): PluginsState {
     const m = this.#o.manager;
-    const available = [...this.#available.entries()]
-      .filter(([, a]) => m.installedVersion(a.name) !== a.version)
-      .map(([key, a]) => ({ key, name: a.name, version: a.version, ...(a.description ? { description: a.description } : {}) }));
+    // 未安装: plugins not installed at all, the newest each source offers.
+    const available = [...newest([...this.#fromSources.values()], SPICA_VERSION).values()]
+      .filter((a) => !m.installedVersion(a.name))
+      .map((a) => this.#indexPackage(`source:${a.source.location}:${a.name}@${a.version}`, a));
+    const installed = (name: string) => m.installedVersion(name);
+    const found = this.#found
+      ? {
+          location: this.#found.location,
+          packages: [...this.#found.items.values()].map((f) => {
+            const now = installed(f.pkg.name);
+            const { installed: _was, ...rest } = f.pkg;
+            void _was;
+            return now ? { ...rest, installed: now } : rest;
+          }),
+          ...(this.#found.error ? { error: this.#found.error } : {}),
+        }
+      : undefined;
     return {
       plugins: m.list().map((d) => toView(d, this.#updates.get(d.name)?.available, this.#icon(d))),
       mock: m.mock,
       root: this.#o.root,
       ...(available.length ? { available } : {}),
+      ...(this.#sourceErrors.length ? { sourceErrors: this.#sourceErrors } : {}),
+      ...(found ? { found } : {}),
+    };
+  }
+
+  #indexPackage(key: string, a: Available): PluginPackage {
+    const installed = this.#o.manager.installedVersion(a.name);
+    return {
+      key,
+      name: a.name,
+      version: a.version,
+      ...(a.description ? { description: a.description } : {}),
+      location: a.location,
+      kind: a.source.kind,
+      ...(installed ? { installed } : {}),
     };
   }
 
@@ -160,6 +259,7 @@ export class RealPluginService implements PluginService {
     }
   }
 
+  /** A source is remembered once something was installed from it (looking at it is not enough). */
   #remember(src: SourceConfig): void {
     const all = this.#sources();
     if (all.some((s) => s.kind === src.kind && s.location === src.location)) return;
@@ -167,54 +267,146 @@ export class RealPluginService implements PluginService {
     writeFileSync(this.#o.sourcesFile, JSON.stringify([...all, src], null, 2), 'utf8');
   }
 
-  async #offer(src: SourceConfig): Promise<string> {
-    const list = await listSource(src, this.#o.fetch ? { fetch: this.#o.fetch } : {});
-    this.#remember(src);
-    this.#available = new Map(list.map((a) => [`${a.name}@${a.version}`, a]));
-    if (list.length === 0) return '未找到可安装的插件。';
-    return `找到 ${list.length} 个插件。`;
+  #sourceOpts() {
+    return this.#o.fetch ? { fetch: this.#o.fetch } : {};
   }
 
-  /** Installing means wanting to use it: turn it on unless it already is. */
-  async #enableNew(name: string): Promise<void> {
-    const d = this.#o.manager.describe(name);
-    if (!d.enabled) await this.#o.manager.enable(name);
+  /** One lookup or listing at a time (a share that does not answer must not pile them up). */
+  #queue<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.#lookups.then(fn, fn);
+    this.#lookups = run.catch(() => undefined);
+    return run;
   }
 
-  async #install(location: string): Promise<string> {
+  /** 未安装: list every remembered source again; one that cannot be read is noted, not fatal. */
+  async #refreshSources(): Promise<void> {
+    await this.#queue(async () => {
+      const next = new Map<string, Available>();
+      const errors: string[] = [];
+      for (const src of this.#sources()) {
+        try {
+          for (const a of await listSource(src, this.#sourceOpts())) next.set(`${src.location}:${a.name}@${a.version}`, a);
+        } catch {
+          errors.push(src.location);
+        }
+      }
+      this.#fromSources = next;
+      this.#sourceErrors = errors;
+    });
+  }
+
+  /** What is at a typed location, as packages to install; installs nothing. */
+  async #find(location: string): Promise<void> {
+    const seq = ++this.#lookupSeq;
+    await this.#queue(async () => {
+      // A newer lookup is waiting: this one no longer matters.
+      if (seq !== this.#lookupSeq) return;
+      const where = unquote(location);
+      const items = new Map<string, Found>();
+      let error: string | undefined;
+      try {
+        await this.#look(where, items);
+        if (items.size === 0) error = '未找到可安装的插件。';
+      } catch (err) {
+        error = err instanceof Refusal ? err.message : pluginErrorText(err);
+      }
+      if (seq !== this.#lookupSeq) return;
+      this.#found = { location: where, items, ...(error ? { error } : {}) };
+    });
+  }
+
+  async #look(where: string, items: Map<string, Found>): Promise<void> {
     const { manager } = this.#o;
-    const where = location.trim().replace(/^"(.*)"$/, '$1');
-    if (!where) return '请填写插件的文件夹、zip 文件或网址。';
+    const installed = (name: string) => manager.installedVersion(name);
+    const fromIndex = (src: SourceConfig, list: Available[]) => {
+      for (const a of list) {
+        const key = `found:${a.location}`;
+        items.set(key, { pkg: this.#indexPackage(key, a), install: (say) => installAvailable(manager, a, { ...this.#sourceOpts(), onProgress: say }), source: src });
+      }
+    };
     if (isUrl(where)) {
       if (/\.zip(\?|$)/i.test(where)) {
-        const res = await (this.#o.fetch ?? (fetch as unknown as FetchLike))(where);
-        if (!res.ok) return `下载失败（${res.status}）。`;
-        const d = await installZip(manager, Buffer.from(await res.arrayBuffer()), { kind: 'http', location: where });
-        await this.#enableNew(d.name);
-        return withModelNotice(`已安装「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
+        // A package's own address: what is in it is known once it is downloaded.
+        const file = decodeURIComponent(new URL(where).pathname.split('/').pop() ?? '').replace(/\.zip$/i, '');
+        const key = `found:${where}`;
+        items.set(key, {
+          pkg: { key, name: file || where, location: where, kind: 'http' },
+          install: async (say) => installZip(manager, await downloadPackage(where, { ...this.#sourceOpts(), onProgress: say }), { kind: 'http', location: where }, { onProgress: say }),
+        });
+        return;
       }
-      return this.#offer({ kind: 'http', location: where });
+      const src: SourceConfig = { kind: 'http', location: where };
+      fromIndex(src, await listSource(src, this.#sourceOpts()));
+      return;
     }
     let info;
     try {
       info = await stat(where);
     } catch {
-      return '找不到该文件夹或文件。';
+      throw new Refusal('找不到该文件夹或文件。');
     }
     if (info.isFile()) {
-      if (!/\.zip$/i.test(where)) return '仅支持插件文件夹或 .zip 文件。';
-      const d = await installZip(manager, await readFile(where), { kind: isShare(where) ? 'share' : 'zip', location: where });
-      await this.#enableNew(d.name);
-      return withModelNotice(`已安装「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
+      if (!/\.zip$/i.test(where)) throw new Refusal('仅支持插件文件夹或 .zip 文件。');
+      const kind = isShare(where) ? 'share' : 'zip';
+      const tmp = await mkdtemp(join(tmpdir(), 'spica-look-'));
+      try {
+        const folder = await unpackPlugin(await readFile(where), tmp, { appName: manager.appName });
+        if (!folder.manifest || hasErrors(folder.issues)) throw new Refusal(`插件包有错误：${folder.issues.find((i) => i.severity === 'error')?.message ?? ''}`);
+        const key = `found:${where}`;
+        items.set(key, {
+          pkg: fromFolder(folder, key, kind, where, installed(folder.manifest.name)),
+          install: async (say) => {
+            say({ step: 'read' });
+            return installZip(manager, await readFile(where), { kind, location: where }, { onProgress: say });
+          },
+        });
+      } finally {
+        await rm(tmp, { recursive: true, force: true });
+      }
+      return;
     }
     const has = async (f: string) => stat(join(where, f)).then(() => true, () => false);
     if (await has(MANIFEST_FILE)) {
-      const d = await manager.install(where, { kind: isShare(where) ? 'share' : 'folder', location: where });
-      await this.#enableNew(d.name);
-      return withModelNotice(`已安装「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
+      const folder = await manager.check(where);
+      if (!folder.manifest || hasErrors(folder.issues)) throw new Refusal(`插件有错误：${folder.issues.find((i) => i.severity === 'error')?.message ?? ''}`);
+      const kind = isShare(where) ? 'share' : 'folder';
+      const key = `found:${where}`;
+      items.set(key, { pkg: fromFolder(folder, key, kind, where, installed(folder.manifest.name)), install: (say) => manager.install(where, { kind, location: where }, { onProgress: say }) });
+      return;
     }
-    if (await has(INDEX_FILE)) return this.#offer({ kind: 'share', location: where });
-    return '该文件夹中没有插件（缺少 manifest.json 或 index.json）。';
+    if (await has(INDEX_FILE)) {
+      const src: SourceConfig = { kind: 'share', location: where };
+      fromIndex(src, await listSource(src, this.#sourceOpts()));
+      return;
+    }
+    throw new Refusal('该文件夹中没有插件（缺少 manifest.json 或 index.json）。');
+  }
+
+  /** Installing means wanting to use it: turn it on unless it already is. */
+  async #enableNew(name: string, say?: (p: InstallStep) => void): Promise<void> {
+    const d = this.#o.manager.describe(name);
+    if (!d.enabled) {
+      say?.({ step: 'start' });
+      await this.#o.manager.enable(name);
+    }
+  }
+
+  #say(job: string | undefined): ((p: InstallStep) => void) | undefined {
+    const send = this.#o.onProgress;
+    return job && send ? (p) => send({ job, ...p }) : undefined;
+  }
+
+  /** The old one-step install of a typed location (kept for callers that do not look first). */
+  async #install(location: string): Promise<string> {
+    await this.#find(location);
+    const found = this.#found;
+    if (found?.error) throw new Refusal(found.error);
+    const items = [...(found?.items.values() ?? [])];
+    // A shared folder or address with an index: what is there is listed to pick from.
+    if (items.length !== 1 || items[0]!.source) return `找到 ${items.length} 个插件。`;
+    const d = await items[0]!.install(() => {});
+    await this.#enableNew(d.name);
+    return withModelNotice(`已安装「${d.displayName || d.name}」${d.version}。`, this.#o.manager.describe(d.name));
   }
 
   async run(cmd: PluginsCommand): Promise<PluginsResult> {
@@ -223,6 +415,12 @@ export class RealPluginService implements PluginService {
       let message: string | undefined;
       switch (cmd.op) {
         case 'state':
+          break;
+        case 'find':
+          await this.#find(cmd.location);
+          break;
+        case 'refreshSources':
+          await this.#refreshSources();
           break;
         case 'enable': {
           await manager.enable(cmd.name);
@@ -260,10 +458,15 @@ export class RealPluginService implements PluginService {
           message = await this.#install(cmd.location);
           break;
         case 'installAvailable': {
-          const entry = this.#available.get(cmd.key);
-          if (!entry) return { ok: false, message: '该项已不存在，请重新查找。', state: this.#state() };
-          const d = await installAvailable(manager, entry, this.#o.fetch ? { fetch: this.#o.fetch } : {});
-          await this.#enableNew(d.name);
+          const say = this.#say(cmd.job) ?? (() => {});
+          const found = this.#found?.items.get(cmd.key);
+          const listed = cmd.key.startsWith('source:') ? [...this.#fromSources.values()].find((a) => `source:${a.source.location}:${a.name}@${a.version}` === cmd.key) : undefined;
+          if (!found && !listed) return { ok: false, message: '该项已不存在，请重新查找。', state: this.#state() };
+          const d = found ? await found.install(say) : await installAvailable(manager, listed!, { ...this.#sourceOpts(), onProgress: say });
+          if (found?.source) this.#remember(found.source);
+          if (listed) this.#remember(listed.source);
+          this.#updates.delete(d.name);
+          await this.#enableNew(d.name, say);
           message = withModelNotice(`已安装「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
           break;
         }
@@ -271,7 +474,7 @@ export class RealPluginService implements PluginService {
           const sources = this.#sources();
           // Nothing to check against: a notice, not a result.
           if (sources.length === 0) return { ok: true, info: true, message: '没有插件来源，无法检查更新。', state: this.#state() };
-          const { updates, errors } = await checkUpdates(manager, sources, this.#o.fetch ? { fetch: this.#o.fetch } : {});
+          const { updates, errors } = await checkUpdates(manager, sources, this.#sourceOpts());
           this.#updates = new Map(updates.map((u) => [u.name, u]));
           const found = updates.length ? `${updates.length} 个插件可更新` : '没有可用更新';
           if (errors.length === sources.length) return { ok: false, message: `${errors.length} 个插件来源连接失败，无法检查更新。`, state: this.#state() };
@@ -283,7 +486,7 @@ export class RealPluginService implements PluginService {
         case 'update': {
           const u = this.#updates.get(cmd.name);
           if (!u) return { ok: false, message: '请先检查更新。', state: this.#state() };
-          const d = await installAvailable(manager, u.entry, this.#o.fetch ? { fetch: this.#o.fetch } : {});
+          const d = await installAvailable(manager, u.entry, { ...this.#sourceOpts(), ...(this.#say(cmd.job) ? { onProgress: this.#say(cmd.job)! } : {}) });
           this.#updates.delete(cmd.name);
           message = `已更新到 ${d.version}。`;
           break;
@@ -296,7 +499,7 @@ export class RealPluginService implements PluginService {
       }
       return { ok: true, state: this.#state(), ...(message ? { message } : {}) };
     } catch (err) {
-      return { ok: false, message: pluginErrorText(err), state: this.#state() };
+      return { ok: false, message: err instanceof Refusal ? err.message : pluginErrorText(err), state: this.#state() };
     }
   }
 }
