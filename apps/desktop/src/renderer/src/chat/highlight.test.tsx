@@ -52,6 +52,12 @@ describe('code colours', () => {
     expect(block().textContent).toBe('const a = "x";\n');
   });
 
+  it('the head shows the language as written (empty without one), and 复制', () => {
+    render(<MarkdownText text={'```PowerShell\nGet-Item .\n```\n\n```\nplain\n```'} />);
+    expect([...document.querySelectorAll('.code-lang')].map((e) => e.textContent)).toEqual(['PowerShell', '']);
+    expect(document.querySelectorAll('.code-head button[aria-label="复制"]').length).toBe(2);
+  });
+
   it('a long block near the limit is coloured and shown in reasonable time; past the limit it stays plain', () => {
     const lines = Array.from({ length: 1800 }, (_, i) => `const v${i} = compute("${i}", ${i} * 2); // line ${i}`).join('\n');
     expect(lines.length).toBeLessThan(HIGHLIGHT_MAX_CHARS);

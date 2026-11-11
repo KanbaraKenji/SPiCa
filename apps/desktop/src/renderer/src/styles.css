@@ -1115,25 +1115,40 @@ button.tree-twisty:hover {
   font-weight: 600;
 }
 
-/* A code block: 复制 at its top right, over the code (the code keeps room for it on the first line). */
+/* A code block: a slim head (the language, 复制 at its right end), the code under it scrolling sideways on its
+   own, so nothing ever covers a line of code. The box is the block's; the code inside has none of its own. */
 .md .code-block {
-  position: relative;
   margin: 0 0 10px;
+  border-radius: var(--radius-m);
+  background: var(--spica-surface);
+  border: 1px solid var(--spica-border);
+  overflow: hidden;
+}
+
+.code-head {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px 0 14px;
+}
+
+.code-lang {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--spica-muted);
 }
 
 .md .code-block pre {
   margin: 0;
-  padding-right: 44px;
-}
-
-.code-tools {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-}
-
-.code-tools .md-tool {
-  background: var(--spica-surface);
+  padding: 2px 14px 12px;
+  border: 0;
+  border-radius: 0;
+  background: none;
 }
 
 /* Code colours (chat/highlight.ts), from the skin: they follow light, dark and custom skins. */

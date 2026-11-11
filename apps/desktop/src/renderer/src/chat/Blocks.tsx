@@ -11,7 +11,7 @@ import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
 import { fullPath, openablePathKind } from './local-path';
 import { tableRows, toCsv, toHtml, toTsv } from './table-data';
-import { blockLanguage, highlightCode } from './highlight';
+import { blockLanguage, blockLanguageName, highlightCode } from './highlight';
 import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS, toolLabel, toolTarget } from './format';
 
 /** Opens a conversation by id, at message number `seq` when given (rows and links from earlier conversations). */
@@ -93,13 +93,14 @@ interface PreNode {
 }
 
 /**
- * A code block: the code as written, 复制 at its top right (always there). Coloured once its closing fence has
- * come (`source`: the answer's text): while an answer streams in, an open block stays plain, so tokens do not
- * change colour under the reader as more arrives.
+ * A code block: a slim head with the language as written (empty when none) and 复制, always there; the code
+ * below it, scrolling sideways on its own. Coloured once its closing fence has come (`source`: the answer's
+ * text): while an answer streams in, an open block stays plain, so tokens do not change colour under the reader.
  */
 function CodeBlock({ node, source, children }: { node?: PreNode | undefined; source: string; children?: ReactNode }) {
   const ref = useRef<HTMLPreElement>(null);
   const code = node?.children?.find((c) => c.type === 'element' && c.tagName === 'code');
+  const name = blockLanguageName(code?.properties?.className);
   const language = blockLanguage(code?.properties?.className);
   const raw = code?.children?.map((t) => (t.type === 'text' ? (t.value ?? '') : '')).join('') ?? '';
   const end = node?.position?.end?.offset;
@@ -107,12 +108,19 @@ function CodeBlock({ node, source, children }: { node?: PreNode | undefined; sou
   const coloured = useMemo(() => (language && closed ? highlightCode(language, raw) : null), [language, closed, raw]);
   return (
     <div className="code-block">
-      <pre ref={ref}>
-        {coloured ? <code className={`language-${language}`}>{coloured}</code> : <InBlockContext.Provider value={true}>{children}</InBlockContext.Provider>}
-      </pre>
-      <div className="code-tools">
+      <div className="code-head">
+        <span className="code-lang">{name}</span>
         <CopyButton className="icon-btn md-tool" copy={() => clipboard.write((ref.current?.textContent ?? '').replace(/\n$/, ''))} />
       </div>
+      <pre ref={ref}>
+        {coloured ? (
+          <code className={`language-${language}`}>
+            {coloured}
+          </code>
+        ) : (
+          <InBlockContext.Provider value={true}>{children}</InBlockContext.Provider>
+        )}
+      </pre>
     </div>
   );
 }

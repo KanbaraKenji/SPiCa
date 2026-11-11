@@ -33,6 +33,16 @@ const lowlight = createLowlight({ bash, c, cpp, csharp, css, diff, dos, go, ini,
 /** Above this a block stays plain: colouring it would hold up the page (measured: see the test). */
 export const HIGHLIGHT_MAX_CHARS = 100_000;
 
+/** The language a block names (its `language-…` class) as written, registered here or not; '' when none. */
+export function blockLanguageName(className: unknown): string {
+  const names = Array.isArray(className) ? className : typeof className === 'string' ? className.split(/\s+/) : [];
+  for (const n of names) {
+    const m = typeof n === 'string' ? /^language-(.+)$/.exec(n) : null;
+    if (m) return m[1]!;
+  }
+  return '';
+}
+
 /** The language a code block names (its `language-…` class), when it is one registered here. */
 export function blockLanguage(className: unknown): string | null {
   const names = Array.isArray(className) ? className : typeof className === 'string' ? className.split(/\s+/) : [];
