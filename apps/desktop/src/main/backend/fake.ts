@@ -882,6 +882,18 @@ export class FakeBackend implements AgentBackend {
         const after = `好，按「${answer}」来写。`;
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
+      } else if (/对比图/.test(text)) {
+        // Pictures in an answer: a local one (the demo's chart), one on the web, and one on a network share (never loaded).
+        const local = this.#demoImage?.() ?? 'D:\\工作\\样机评审\\报价对比图.png';
+        const answer =
+          '四家报价对比如下：\n\n' +
+          `![四家报价对比](<${local}>)\n\n` +
+          '网上找到的模具报价参考：\n\n' +
+          '![模具报价参考](https://example.com/mold-quote.png)\n\n' +
+          '共享盘里的旧图不显示：\n\n' +
+          '![旧版报价图](<\\\\files\\proj\\old.png>)';
+        await this.#stream(sessionId, 'text', answer, signal);
+        blocks.push({ type: 'text', text: answer });
       } else if (/汇总/.test(text)) {
         // For screenshots of what an answer can hold: a file it wrote, paths, a table and a code block.
         const at = isoAt(this.#now());

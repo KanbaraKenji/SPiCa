@@ -200,6 +200,18 @@ describe('FakeBackend', () => {
     expect(card?.file).toMatchObject({ path: 'C:\\demo\\报价对比图.png', name: '报价对比图.png', kind: 'other' });
   });
 
+  it('对比图 answers with three pictures: the demo’s local chart, one on the web, one on a network share', async () => {
+    const b = new FakeBackend({ speed: 0, demoImage: () => 'C:\\demo\\报价对比图.png' });
+    const { until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '做一张报价对比图');
+    await until((e) => e.type === 'run.end');
+    const text = (await b.getMessages(chat.id)).flatMap((m) => m.content).map((c) => (c.type === 'text' ? c.text : '')).join('\n');
+    expect(text).toContain('![四家报价对比](<C:\\demo\\报价对比图.png>)');
+    expect(text).toContain('](https://example.com/mold-quote.png)');
+    expect(text).toContain('](<\\\\files\\proj\\old.png>)');
+  });
+
   it('查一下 searches the web and opens a page, with source cards sent and stored like the core', async () => {
     const b = new FakeBackend({ speed: 0 });
     const { events, until } = collect(b);
