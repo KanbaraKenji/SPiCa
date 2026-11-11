@@ -191,6 +191,11 @@ describe('Plugins', () => {
     expect(within(list()).getByRole('button', { name: /note-box/ })).toBeTruthy();
     const detail = (await screen.findByRole('region', { name: 'note-box' })) as HTMLElement;
     expect(within(detail).getByRole('button', { name: '安装' })).toBeTruthy();
+    // Installed: the box is empty again and the plugin just installed is the one shown, in 已启用.
+    fireEvent.click(within(detail).getByRole('button', { name: '安装' }));
+    await waitFor(() => expect((box as HTMLInputElement).value).toBe(''));
+    expect(within(await screen.findByRole('region', { name: 'note-box' })).getByRole('switch', { name: '停用「note-box」' })).toBeTruthy();
+    expect(groupOf('note-box')).toBe('已启用');
     // Not there: said where the list would be.
     fireEvent.change(box, { target: { value: 'D:\\插件\\不存在' } });
     fireEvent.submit(box.closest('form')!);
