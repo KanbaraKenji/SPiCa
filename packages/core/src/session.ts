@@ -536,8 +536,9 @@ export class Session {
       ...(cfg.templateId ? { templateId: cfg.templateId } : {}),
     };
     const base = estimateTokens(withAppName(cfg.system, this.#rt.appName));
-    const rules = estimateTokens([DATA_RULE, languageLine(cfg.locale, this.#userHasWritten()), this.#leadsOthers() ? TEAM_RULE : ''].filter(Boolean).join('\n\n'));
-    const tools = estimateTokens(JSON.stringify(this.#rt.tools.list(env, cfg.tools).map((t) => t.spec)));
+    const visible = this.#rt.tools.list(env, cfg.tools);
+    const rules = estimateTokens(this.#rules(visible).join('\n\n'));
+    const tools = estimateTokens(JSON.stringify(visible.map((t) => t.spec)));
     const m = { user: 0, assistant: 0, tool_results: 0, notes: 0, images: 0 };
     for (const msg of this.#messages) {
       for (const b of msg.content) {
@@ -693,7 +694,7 @@ export class Session {
       const injections = await this.#rt.hooks.injections(hctx);
       let draft: RequestDraft = {
         segments: buildSegments(
-          [withAppName(cfg.system, this.#rt.appName), DATA_RULE, languageLine(cfg.locale, this.#userHasWritten()), this.#leadsOthers() ? TEAM_RULE : ''].filter(Boolean).join('\n\n'),
+          [withAppName(cfg.system, this.#rt.appName), ...this.#rules(tools)].join('\n\n'),
           this.#messages,
           injections,
         ),
@@ -1391,6 +1392,17 @@ export class Session {
     return this.#messages.some((m) => m.role === 'user' && (m.kind === 'user' || m.kind === 'steer') && (m.meta?.author ?? 'user') === 'user');
   }
 
+  /** What every system prompt carries after the session's own: data rule, language, how to hand over results, team rule. */
+  #rules(tools: readonly Tool[]): string[] {
+    const talksToUser = this.#record.config.templateId !== 'mail-triage'; // the mail sorter only records results
+    return [
+      DATA_RULE,
+      languageLine(this.#record.config.locale, this.#userHasWritten()),
+      talksToUser ? deliveryRule({ cwd: this.#record.config.cwd, suggest: tools.some((t) => t.spec.name === 'suggest_actions') }) : '',
+      this.#leadsOthers() ? TEAM_RULE : '',
+    ].filter(Boolean);
+  }
+
   /** Top-level agent, project manager, or any session that has sub-agents. */
   #leadsOthers(): boolean {
     return this.#record.role === 'top' || this.#record.role === 'manager' || this.#rt.hasChildren(this.id);
@@ -1468,6 +1480,29 @@ export const TEAM_RULE =
   'The user can talk to your sub-agents directly. When a note tells you what the user said or decided in a sub-agent ' +
   'session, that takes priority over your original plan: apply it to your overall result, and say in your answer that ' +
   'you adjusted it because of what the user said in that sub-agent session.';
+
+/**
+ * How to hand over what a task produced, so the answer is easy to use: paths the window can open (full path in inline
+ * code; folders end with a separator), local images embedded, web sources linked, next steps as buttons, and a short
+ * plain-text wrap-up after longer work. Kept short on purpose: it goes with every request.
+ */
+export function deliveryRule(opts: { cwd: string; suggest: boolean; platform?: NodeJS.Platform }): string {
+  const sep = (opts.platform ?? process.platform) === 'win32' ? '\\' : '/';
+  // examples inside the real working folder: a made-up drive or folder gets copied into answers
+  const folder = opts.cwd.endsWith(sep) ? opts.cwd : opts.cwd + sep;
+  const file = `${folder}summary.xlsx`;
+  const image = `${folder}chart 1.png`;
+  return [
+    `Handing over results (your working folder is \`${folder}\`; relative paths in tools resolve against it):`,
+    `- Name each file or folder you made, changed or point to by its full absolute path in inline code, e.g. \`${file}\`; end a folder with a separator, as in \`${folder}\`. The user can click these. Never give only a file name or a relative path.`,
+    `- To show an image file, embed it with its absolute path: ![what it shows](<${image}>). Only local files display, not web images.`,
+    '- When you used web pages, cite them as links, e.g. [page title](https://example.com/page), next to what they support.',
+    opts.suggest ? '- When there are useful next steps, offer them with suggest_actions rather than as questions in the text.' : '',
+    '- After a task that took several steps, end with a few plain sentences: what you did, where the results are, and what is left or could come next. No heading or table for this.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
 
 /** Answer in the user's language; before the user has written, use the interface language. */
 export function languageLine(locale: string | undefined, userHasWritten = true): string {

@@ -5,7 +5,7 @@ import type { FakeGateway } from './testing/fake-gateway.ts';
 import { anthropicProvider, captureEvents, makeRuntime, startGateway } from './testing/helpers.ts';
 import type { Tool } from './tools/types.ts';
 import { DATA_RULE } from './guard.ts';
-import { languageLine, TEAM_RULE } from './session.ts';
+import { deliveryRule, languageLine, TEAM_RULE } from './session.ts';
 
 // gateways, child processes and local servers start slowly when several full runs share the machine
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
@@ -47,7 +47,7 @@ describe('injection positions', () => {
     await s.send('question two').done;
 
     const msgs = gw.requests[1]!.body.messages as OAMessage[];
-    expect(msgs[0]).toEqual({ role: 'system', content: `SYS-BEFORE\n\nBASE\n\n${DATA_RULE}\n\n${languageLine('zh-CN')}\n\n${TEAM_RULE}\n\nSYS-AFTER` });
+    expect(msgs[0]).toEqual({ role: 'system', content: `SYS-BEFORE\n\nBASE\n\n${DATA_RULE}\n\n${languageLine('zh-CN')}\n\n${deliveryRule({ cwd: process.cwd(), suggest: true })}\n\n${TEAM_RULE}\n\nSYS-AFTER` });
     const flat = msgs.slice(1).map((m) => m.content ?? '');
     const at = (needle: string) => flat.findIndex((c) => c.includes(needle));
     // history = [question one, first answer]; input = [question two]
@@ -172,6 +172,6 @@ describe('tool hooks', () => {
     });
     rt.hooks.register('p', { inject: () => [{ position: 'system:before', text: 'PRE' }] });
     await rt.createSession({ system: 'BASE' }).send('hi').done;
-    expect(gw.requests[0]!.body.system).toEqual([{ type: 'text', text: `PRE\n\nBASE\n\n${DATA_RULE}\n\n${languageLine('zh-CN')}\n\n${TEAM_RULE}`, cache_control: { type: 'ephemeral' } }]);
+    expect(gw.requests[0]!.body.system).toEqual([{ type: 'text', text: `PRE\n\nBASE\n\n${DATA_RULE}\n\n${languageLine('zh-CN')}\n\n${deliveryRule({ cwd: process.cwd(), suggest: true })}\n\n${TEAM_RULE}`, cache_control: { type: 'ephemeral' } }]);
   });
 });
