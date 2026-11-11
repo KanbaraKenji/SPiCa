@@ -1,0 +1,6 @@
+{
+  "title": "Word 原样预览",
+  "entry": "ui/docx.html",
+  "placement": "preview",
+  "preview": { "extensions": [".docx", ".docm"], "max_mb": 30 }
+}

@@ -422,6 +422,7 @@ window.spica.onEvent((e) => { if (e.type === 'preview.file') location.reload(); 
 
 - 15 秒内没调 `ready()`，或者页面出错、崩溃，Spica 也改用自带的预览。
 - 拿不到别的文件，写不回去，照样不能联网；库文件放进插件，别从网上加载。
+- 完整例子：`plugins/office-preview`（Word、Excel 原样预览，两个预览页，库在 `ui/vendor/`，来源和校验值在 `THIRD-PARTY.md`）。
 - 完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）、`views/quick-note.json`（panel），页面在 `ui/`。
 
 ## 6. 模拟模式

@@ -1,0 +1,100 @@
+/* Colours come from Spica (--spica-*); the document itself keeps its own colours. */
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+body {
+  background: var(--spica-surface, #f3f3f3);
+  color: var(--spica-fg, #1f1f1f);
+  font-family: var(--spica-font, system-ui, sans-serif);
+  font-size: 13px;
+}
+.status {
+  padding: 12px 16px;
+  color: var(--spica-muted, #6b6b6b);
+}
+.pick {
+  margin: 0 16px;
+}
+#doc {
+  overflow: auto;
+  height: 100%;
+}
+
+/* Word: white pages on the panel colour, as on a desk */
+.docx-wrapper {
+  background: transparent !important;
+  padding: 16px !important;
+}
+.docx-wrapper > section.docx {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18) !important;
+  margin-bottom: 16px !important;
+}
+
+/* Excel */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--spica-border, #d0d0d0);
+  position: sticky;
+  left: 0;
+}
+.tabs button {
+  border: 1px solid var(--spica-border, #d0d0d0);
+  border-bottom: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 4px 10px;
+  border-radius: var(--spica-radius, 4px) var(--spica-radius, 4px) 0 0;
+  cursor: pointer;
+}
+.tabs button[aria-selected='true'] {
+  background: var(--spica-bg, #fff);
+  font-weight: 600;
+}
+.notes {
+  padding: 6px 10px;
+  color: var(--spica-muted, #6b6b6b);
+}
+.view {
+  padding: 8px;
+}
+.sheet-wrap {
+  position: relative;
+  display: inline-block;
+  background: #fff;
+}
+table.sheet {
+  border-collapse: collapse;
+  table-layout: fixed;
+  color: #000;
+  font-family: Calibri, 'Microsoft YaHei', sans-serif;
+  font-size: 11pt;
+}
+table.sheet td {
+  border: 1px solid #e1e1e1;
+  padding: 0 3px;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+table.sheet th {
+  background: #f2f2f2;
+  color: #555;
+  font-weight: 400;
+  font-size: 9pt;
+  border: 1px solid #d4d4d4;
+  padding: 0 4px;
+}
+table.sheet col.rowhead {
+  width: 40px;
+}
+table.sheet .hidden {
+  display: none;
+}
+img.pic {
+  position: absolute;
+}

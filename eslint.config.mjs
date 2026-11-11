@@ -14,6 +14,8 @@ export default tseslint.config(
       'branding/**',
       '.venv/**',
       '.idea/**',
+      // third-party libraries kept byte for byte as published (see each plugin's THIRD-PARTY.md)
+      'plugins/*/ui/vendor/**',
     ],
   },
   js.configs.recommended,

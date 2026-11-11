@@ -1,0 +1,13 @@
+{
+  "manifest_version": 1,
+  "name": "office-preview",
+  "version": "0.1.0",
+  "display_name": "Office 原样预览",
+  "description": "Word 和 Excel 文件按原样预览：字体、颜色、表格、合并单元格、图片、页眉页脚。在 设置 里选用它预览 .docx / .xlsx。",
+  "icon": "icon.svg",
+  "author": { "name": "Spica contributors" },
+  "license": "Apache-2.0",
+  "compatibility": { "spica": ">=0.1.0" },
+  "permissions": { "network": [], "workspace": "none", "irreversible": [], "hooks": [] },
+  "mock": { "supported": true, "description": "不连任何服务，模拟模式下照常工作。" }
+}

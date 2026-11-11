@@ -1,0 +1,6 @@
+{
+  "title": "Excel 原样预览",
+  "entry": "ui/xlsx.html",
+  "placement": "preview",
+  "preview": { "extensions": [".xlsx", ".xlsm"], "max_mb": 30 }
+}

@@ -8,3 +8,17 @@ Third-party font
 branding/fonts/Gelasio-Bold.ttf (the typeface the Spica wordmark is drawn from)
 Copyright 2022 The Gelasio Project Authors (https://github.com/SorkinType/Gelasio)
 Licensed under the SIL Open Font License, Version 1.1 (see branding/fonts/OFL.txt).
+
+Third-party libraries in the office-preview plugin
+---------------------------------------------------
+plugins/office-preview/ui/vendor/docx-preview.min.js (docx-preview 0.4.1)
+Copyright (c) 2016-2023 Volodymyr Baydalka
+Licensed under the Apache License, Version 2.0 (see plugins/office-preview/ui/vendor/LICENSE-docx-preview.txt).
+
+plugins/office-preview/ui/vendor/jszip.min.js (jszip 3.10.2)
+Copyright (c) 2009-2016 Stuart Knightley, David Duponchel, Franz Buchinger, António Afonso
+Dual licensed under the MIT license or the GPLv3; used here under the MIT license (see plugins/office-preview/ui/vendor/LICENSE-jszip.md).
+
+plugins/office-preview/ui/vendor/exceljs.bare.min.js (exceljs 4.4.0)
+Copyright (c) 2014-2019 Guyon Roche
+Licensed under the MIT License (see plugins/office-preview/ui/vendor/LICENSE-exceljs.txt).
