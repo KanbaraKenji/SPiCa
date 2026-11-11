@@ -87,9 +87,10 @@ describe('a plugin page’s tool calls can be stopped', () => {
     let answer!: (ok: boolean) => void;
     const t = setup({ confirm: vi.fn(() => new Promise<boolean>((r) => (answer = r))) });
     await t.say('ready', 0);
-    await t.say('callTool', 1, { tool: 'delete_note', args: {} });
+    await t.say('callTool', 1, { tool: 'delete_note', args: { id: 'n-7' } });
     await t.settle(0, { content: '[CONFIRM_REQUIRED] delete_note', isError: true });
-    expect(t.props.confirm).toHaveBeenCalledWith('delete_note');
+    // With what it would run with, so the question can show it.
+    expect(t.props.confirm).toHaveBeenCalledWith('delete_note', { id: 'n-7' });
     await act(async () => {
       answer(true);
       await Promise.resolve();

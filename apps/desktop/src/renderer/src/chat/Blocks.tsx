@@ -1,6 +1,6 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, Fragment, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { FileCardMeta, HistoryCardMeta } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -578,6 +578,43 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
   );
 }
 
+/** Names for the arguments people see when asked to confirm (what is not here shows by its own name). */
+const ARG_LABEL: Record<string, string> = {
+  path: '路径',
+  url: '网址',
+  to: '收件人',
+  cc: '抄送',
+  bcc: '密送',
+  subject: '标题',
+  body: '正文',
+  content: '内容',
+  text: '内容',
+  query: '搜索词',
+  title: '标题',
+  task: '任务',
+};
+
+/**
+ * Exactly what a confirmation would let run, nothing cut: a command in its code box, other calls their
+ * arguments in full. Not the model's description of the step: it may not match what would run.
+ */
+export function ConfirmTarget({ name, input }: { name: string; input: unknown }) {
+  const v = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+  if (name === 'run_command' && typeof v.command === 'string') return <CommandBox command={v.command} />;
+  const rows = Object.entries(v).filter(([k, val]) => k !== 'description' && val !== undefined && val !== null && val !== '');
+  if (!rows.length) return null;
+  return (
+    <dl className="confirm-args">
+      {rows.map(([k, val]) => (
+        <Fragment key={k}>
+          <dt>{ARG_LABEL[k] ?? k}</dt>
+          <dd>{typeof val === 'string' ? val : JSON.stringify(val, null, 2)}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}
+
 export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type: 'confirm' }>; onDecide(approved: boolean): void }) {
   const decided = block.approved !== undefined;
   return (
@@ -586,6 +623,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         <Icon name="shield" size={16} className="card-head-icon" />
         <span className="card-title">{confirmTitle(block.name, block.input, block.reason)}</span>
       </header>
+      <ConfirmTarget name={block.name} input={block.input} />
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
       {decided ? (
         <p className="card-answer">

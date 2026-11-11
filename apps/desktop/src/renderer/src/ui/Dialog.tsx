@@ -1,12 +1,12 @@
 // Modal confirmation. Says only what is being confirmed (no explanations).
 // The keyboard stays inside it (useModal); confirming fires once.
-import { useId, useRef } from 'react';
+import { useId, useRef, type ReactNode } from 'react';
 import { useModal } from './useModal';
 
 export interface ConfirmDialogProps {
   title: string;
-  /** One plain line under the title, when what happens is not obvious (e.g. what is not deleted). */
-  detail?: string;
+  /** One plain line under the title, when what happens is not obvious (e.g. what is not deleted); or what exactly would run. */
+  detail?: ReactNode;
   confirmLabel: string;
   danger?: boolean;
   onConfirm(): void;
@@ -25,7 +25,7 @@ export function ConfirmDialog({ title, detail, confirmLabel, danger, onConfirm, 
         <p className="dialog-title" id={id}>
           {title}
         </p>
-        {detail ? <p className="dialog-detail">{detail}</p> : null}
+        {detail ? typeof detail === 'string' ? <p className="dialog-detail">{detail}</p> : <div className="dialog-detail">{detail}</div> : null}
         <div className="dialog-actions">
           <button type="button" className="btn" onClick={onCancel}>
             取消

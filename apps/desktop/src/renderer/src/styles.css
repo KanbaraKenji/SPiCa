@@ -4401,6 +4401,49 @@ button.ctx-row:hover {
   color: var(--spica-muted);
 }
 
+/* A confirmation: exactly what would run, in full, under its short title. */
+.confirm-card > .tool-command,
+.confirm-card > .confirm-args {
+  margin: 8px 0 0 26px;
+}
+
+.confirm-args {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.confirm-args dt {
+  color: var(--spica-muted);
+  white-space: nowrap;
+}
+
+.confirm-args dd {
+  margin: 0;
+  max-height: 200px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Asked to allow it, a long command wraps: its end is never off to the side. */
+.confirm-card .tool-command pre,
+.dialog-detail .tool-command pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dialog-detail .confirm-args,
+.dialog-detail .tool-command {
+  margin-top: 4px;
+  color: var(--spica-ink);
+}
+
 .context-item.is-danger {
   color: var(--spica-danger);
 }

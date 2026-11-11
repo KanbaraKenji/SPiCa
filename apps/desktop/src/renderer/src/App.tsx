@@ -18,6 +18,7 @@ import { canRename, commitRename, hasRowMenu, RenameField, rowMenuItems, type Ro
 import { ContextMenu } from './ui/ContextMenu';
 import { DetailPanel } from './shell/DetailPanel';
 import { Conversation, type ConversationActions, type WaitingChild } from './chat/Conversation';
+import { ConfirmTarget } from './chat/Blocks';
 import type { ComposerTools } from './chat/Composer';
 import { enabledModels, type ModelRef, type ProviderView } from '../../shared/providers';
 import { SettingsView, type SettingsTab } from './settings/SettingsView';
@@ -352,7 +353,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [pluginsChanged, setPluginsChanged] = useState(0);
   const [openPlugin, setOpenPlugin] = useState<string | null>(null);
   const [rightTab, setRightTab] = useState<string>('detail');
-  const [pluginAsk, setPluginAsk] = useState<{ title: string; resolve(ok: boolean): void } | null>(null);
+  const [pluginAsk, setPluginAsk] = useState<{ title: string; tool: string; args: unknown; resolve(ok: boolean): void } | null>(null);
   // 设置 › 插件: the plugin commands, and the system folder picker for 插件位置.
   const pluginsApi = useMemo(() => ({ ...bridge.plugins, pickFolder: () => bridge.pickFolder('选择插件文件夹') }), [bridge]);
   // 收件箱 shows only while a plugin that provides mail is on.
@@ -400,7 +401,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     changed: pluginsChanged,
     call: (tool: string, args: unknown, confirmed: boolean, callId: string) => bridge.pluginViews.call(v.plugin, v.id, tool, args, confirmed, callId),
     cancel: (callId: string) => bridge.pluginViews.cancel(callId),
-    confirm: (tool: string) => new Promise<boolean>((resolve) => setPluginAsk({ title: `「${v.pluginTitle}」将执行「${tool}」，此操作不可撤销。`, resolve })),
+    confirm: (tool: string, args: unknown) => new Promise<boolean>((resolve) => setPluginAsk({ title: `「${v.pluginTitle}」将执行「${tool}」，此操作不可撤销。`, tool, args, resolve })),
     openFile: async (path: string) => {
       const abs = await bridge.pluginViews.file(v.plugin, path);
       if (!abs) return '仅能打开插件自身文件夹中的文件。';
@@ -896,6 +897,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       {pluginAsk ? (
         <ConfirmDialog
           title={pluginAsk.title}
+          detail={<ConfirmTarget name={pluginAsk.tool} input={pluginAsk.args} />}
           confirmLabel="继续"
           danger
           onCancel={() => {

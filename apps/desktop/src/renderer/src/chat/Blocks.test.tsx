@@ -40,6 +40,27 @@ describe('ConfirmCard', () => {
     fireEvent.click(screen.getByRole('button', { name: '允许' }));
     expect(onDecide).toHaveBeenCalledWith(true);
   });
+
+  it('shows exactly what would run, nothing cut: a long command to its last characters, never the model’s description', () => {
+    const command = `Get-ChildItem D:\\工作 -Recurse | Where-Object { $_.Length -gt 0 } | ${'Select-Object Name; '.repeat(7)}Remove-Item D:\\工作\\重要 -Recurse -Force`;
+    expect(command.length).toBeGreaterThan(200);
+    render(<ConfirmCard block={{ type: 'confirm', callId: 'c3', name: 'run_command', input: { command, description: '列出文件' }, reason: '运行命令' }} onDecide={vi.fn()} />);
+    const box = document.querySelector('.confirm-card .tool-command pre');
+    expect(box?.textContent).toBe(`$ ${command}`);
+    expect(box?.textContent?.endsWith('Remove-Item D:\\工作\\重要 -Recurse -Force')).toBe(true);
+    expect(screen.queryByText(/列出文件/)).toBeNull();
+  });
+
+  it('other calls: their arguments in full, under names people read', () => {
+    const body = '各位好，'.repeat(40);
+    render(<ConfirmCard block={{ type: 'confirm', callId: 'c4', name: 'mail__send', input: { to: 'team@example.com', subject: '样机评审时间', body }, reason: '发送邮件' }} onDecide={vi.fn()} />);
+    const rows = [...document.querySelectorAll('.confirm-args dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
+    expect(rows).toEqual([
+      ['收件人', 'team@example.com'],
+      ['标题', '样机评审时间'],
+      ['正文', body],
+    ]);
+  });
 });
 
 describe('SuggestCard and FileCards', () => {

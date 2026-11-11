@@ -21,7 +21,8 @@ export interface PluginFrameProps {
   /** Stops a call still running: its page is gone (closed, reloaded, its plugin turned off) and nobody takes the result. */
   cancel(callId: string): void;
   /** Asks the user before an irreversible tool runs; resolves to the answer. */
-  confirm(tool: string): Promise<boolean>;
+  /** Asks before a tool that needs confirmation runs; `args`: what it would run with (shown in full). */
+  confirm(tool: string, args: unknown): Promise<boolean>;
   /** A file of this plugin, shown in the right panel; resolves to a problem in words, or null. */
   openFile(path: string): Promise<string | null>;
   notify(text: string, kind: 'info' | 'error'): void;
@@ -81,7 +82,7 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
           const tool = String(args.tool ?? '');
           let r = await run(tool, args.args ?? {}, false);
           if (r.isError && r.content.startsWith(CONFIRM)) {
-            if (!(await l.confirm(tool))) {
+            if (!(await l.confirm(tool, args.args ?? {}))) {
               reply({ content: '用户已拒绝，未执行。', isError: true, declined: true });
               return;
             }
