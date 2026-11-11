@@ -27,8 +27,8 @@ export interface PluginView {
   update?: string;
   /** Present when the plugin asks to use the user's models (permissions.model). */
   model?: PluginModelView;
-  /** The plugin's own icon as a data: URL (an SVG, shown only as a picture); absent: the letter badge. */
-  icon?: string;
+  /** The plugin's own icon as data: URLs (SVGs, shown only as pictures), for a light and a dark skin; absent: the letter badge. */
+  icon?: PluginIconView;
 }
 
 /** A plugin's use of the user's models: why, the daily limit in USD, today's spending. */
@@ -48,6 +48,12 @@ export interface PluginModelView {
 /** An SVG's text as the data: URL an <img> shows (scripts in it never run there). */
 export function svgDataUrl(svg: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+/** A plugin's icon for each skin (the same picture twice when the plugin gives one). */
+export interface PluginIconView {
+  light: string;
+  dark: string;
 }
 
 /** 「$0.20」: US dollars, two decimals (cents matter at these limits). */
@@ -82,8 +88,8 @@ export interface PluginPackage {
   /** Absent for a .zip address: known only once it is downloaded. */
   version?: string;
   description?: string;
-  /** Its own icon as a data: URL, when the package was read (a folder or .zip) and has one. */
-  icon?: string;
+  /** Its own icon, when the package was read (a folder or .zip) and has one. */
+  icon?: PluginIconView;
   /** Where it is: the folder, the .zip, or the address of the package. */
   location: string;
   kind: 'folder' | 'zip' | 'share' | 'http';

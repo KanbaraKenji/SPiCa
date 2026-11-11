@@ -147,18 +147,28 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
   out.issues.push(...parsed.issues);
   if (parsed.manifest) out.manifest = parsed.manifest;
 
-  // manifest.json · icon: the plugin's own icon in the list and the detail (shown as a picture only).
+  // manifest.json · icon: the plugin's own icon in the list and the detail (shown as a picture only), one file
+  // for both skins or one for each.
   if (out.manifest?.icon !== undefined) {
-    const where = `${MANIFEST_FILE} · icon`;
-    const rel = out.manifest.icon;
-    const abs = insidePlugin(out.root, rel);
-    const size = abs ? await stat(abs).then((st) => (st.isFile() ? st.size : -1), () => -1) : -1;
-    if (!abs) issue(where, 'icon 须为插件文件夹内的相对路径，不能用 .. 或绝对路径，例如 "icon.svg"。');
-    else if (!/\.svg$/i.test(rel)) issue(where, 'icon 须指向 .svg 文件。');
-    else if (size < 0) issue(where, `icon 指向的 ${rel} 不存在。`);
-    else if (size > ICON_MAX_BYTES) issue(where, `icon 文件不能大于 ${ICON_MAX_BYTES / 1024} KB（当前 ${Math.ceil(size / 1024)} KB）。`);
-    else out.manifest.icon = relative(out.root, abs).split(sep).join('/');
-    if (out.issues.some((i) => i.where === where)) delete out.manifest.icon;
+    const icon = out.manifest.icon;
+    const one = icon.light === icon.dark;
+    const before = out.issues.length;
+    const checked: Partial<Record<'light' | 'dark', string>> = {};
+    for (const key of ['light', 'dark'] as const) {
+      if (one && key === 'dark') break;
+      const field = one ? 'icon' : `icon.${key}`;
+      const where = `${MANIFEST_FILE} · ${field}`;
+      const rel = icon[key];
+      const abs = insidePlugin(out.root, rel);
+      const size = abs ? await stat(abs).then((st) => (st.isFile() ? st.size : -1), () => -1) : -1;
+      if (!abs) issue(where, `${field} 须为插件文件夹内的相对路径，不能用 .. 或绝对路径，例如 "icon.svg"。`);
+      else if (!/\.svg$/i.test(rel)) issue(where, `${field} 须指向 .svg 文件。`);
+      else if (size < 0) issue(where, `${field} 指向的 ${rel} 不存在。`);
+      else if (size > ICON_MAX_BYTES) issue(where, `${field} 文件不能大于 ${ICON_MAX_BYTES / 1024} KB（当前 ${Math.ceil(size / 1024)} KB）。`);
+      else checked[key] = relative(out.root, abs).split(sep).join('/');
+    }
+    if (out.issues.length > before) delete out.manifest.icon;
+    else out.manifest.icon = { light: checked.light!, dark: one ? checked.light! : checked.dark! };
   }
 
   // skills/<id>/SKILL.md

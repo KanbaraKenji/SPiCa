@@ -3,10 +3,15 @@
 import { svgDataUrl, unquote, type InstallStepView, type PluginPackage, type PluginsCommand, type PluginsFound, type PluginsProgress, type PluginsResult, type PluginsState, type PluginView } from '../../shared/plugins';
 import type { PluginService } from './types';
 
-/** plugins/example-notes/icon.svg: the demo's example has its own icon, the others the letter badge. */
-const EXAMPLE_ICON = svgDataUrl(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#f2b632"/><path d="M7 3.5h8l3 3V20H7z" fill="#fff8e6"/><path d="M15 3.5v3h3" fill="none" stroke="#c98a12" stroke-width="1.2" stroke-linejoin="round"/><path d="M9.5 11h6M9.5 14h6M9.5 17h4" fill="none" stroke="#a36f0a" stroke-width="1.4" stroke-linecap="round"/></svg>',
-);
+/** plugins/example-notes/icon-light.svg and icon-dark.svg: the demo's example has its own icon, the others the letter badge. */
+const EXAMPLE_ICON = {
+  light: svgDataUrl(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#f2b632"/><path d="M7 3.5h8l3 3V20H7z" fill="#fff8e6"/><path d="M15 3.5v3h3" fill="none" stroke="#c98a12" stroke-width="1.2" stroke-linejoin="round"/><path d="M9.5 11h6M9.5 14h6M9.5 17h4" fill="none" stroke="#a36f0a" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  ),
+  dark: svgDataUrl(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#4a3a12"/><path d="M7 3.5h8l3 3V20H7z" fill="#f2b632"/><path d="M15 3.5v3h3" fill="none" stroke="#4a3a12" stroke-width="1.2" stroke-linejoin="round"/><path d="M9.5 11h6M9.5 14h6M9.5 17h4" fill="none" stroke="#4a3a12" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  ),
+};
 
 const EXAMPLE: PluginView = {
   name: 'notes',

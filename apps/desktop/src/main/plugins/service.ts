@@ -32,6 +32,7 @@ import {
   svgDataUrl,
   unquote,
   usd,
+  type PluginIconView,
   type PluginPackage,
   type PluginsCommand,
   type PluginsProgress,
@@ -70,7 +71,7 @@ export interface RealServiceOptions {
   onProgress?: (p: PluginsProgress) => void;
 }
 
-function toView(d: PluginDescription, update?: string, icon?: string): PluginView {
+function toView(d: PluginDescription, update?: string, icon?: PluginIconView): PluginView {
   return {
     name: d.name,
     displayName: d.displayName || d.name,
@@ -129,7 +130,9 @@ function iconFile(file: string): string | undefined {
 /** What a plugin folder's manifest and parts say, as a package to offer. */
 function fromFolder(folder: PluginFolder, key: string, kind: PluginPackage['kind'], location: string, installed: string | undefined): PluginPackage {
   const m = folder.manifest!;
-  const icon = m.icon ? iconFile(join(folder.root, m.icon)) : undefined;
+  const light = m.icon ? iconFile(join(folder.root, m.icon.light)) : undefined;
+  const dark = m.icon ? iconFile(join(folder.root, m.icon.dark)) : undefined;
+  const icon = light && dark ? { light, dark } : undefined;
   return {
     key,
     name: m.name,
@@ -191,10 +194,17 @@ export class RealPluginService implements PluginService {
     await this.#o.manager.shutdown();
   }
 
-  /** A plugin's own icon as a data: URL, read again only when the file changes; undefined when none or unreadable. */
-  #icon(d: PluginDescription): string | undefined {
+  /** A plugin's own icon, each skin's; undefined when none, or one of them cannot be read. */
+  #icon(d: PluginDescription): PluginIconView | undefined {
     if (!d.icon) return undefined;
-    const file = join(this.#o.manager.installDir(d.name, d.version), d.icon);
+    const dir = this.#o.manager.installDir(d.name, d.version);
+    const light = this.#iconFile(join(dir, d.icon.light));
+    const dark = d.icon.dark === d.icon.light ? light : this.#iconFile(join(dir, d.icon.dark));
+    return light && dark ? { light, dark } : undefined;
+  }
+
+  /** One icon file as a data: URL, read again only when the file changes. */
+  #iconFile(file: string): string | undefined {
     try {
       const st = statSync(file);
       if (!st.isFile() || st.size > ICON_MAX_BYTES) return undefined;

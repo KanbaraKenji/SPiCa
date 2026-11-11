@@ -145,3 +145,9 @@ describe('the caption symbols over the opening animation', () => {
     expect(splash).toMatch(new RegExp(`\\[data-theme='light'\\] \\{[^}]*--spica-splash-ink: ${SPLASH_INK.light};`));
   });
 });
+
+describe('a plugin’s icon for each skin', () => {
+  it('only the one for the skin in force shows (it changes with the skin, no reload)', () => {
+    expect(block(":root[data-scheme='dark'] .plugin-icon.is-light,\n:root:not([data-scheme='dark']) .plugin-icon.is-dark")).toContain('display: none');
+  });
+});

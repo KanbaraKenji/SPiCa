@@ -14,6 +14,7 @@ export {
   type HookKind,
   type Issue,
   type PluginManifest,
+  type PluginIcon,
   type PluginPermissions,
   type MailDeclaration,
   type MessageOptions,

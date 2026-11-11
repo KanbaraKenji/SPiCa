@@ -75,11 +75,11 @@ describe('打开插件文件夹', () => {
 
 describe('a plugin’s own icon', () => {
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#4f7cff"/></svg>';
-  function withPlugin(icon: string | undefined, write: (dir: string) => void) {
+  function withPlugin(icon: string | { light: string; dark: string } | undefined, write: (dir: string) => void) {
     const dir = mkdtempSync(join(tmpdir(), 'spica-plugin-icon-'));
     dirs.push(dir);
     write(dir);
-    const d = { name: 'demo', displayName: 'Demo', description: '', version: '1.0.0', enabled: true, mockSupported: false, skills: [], commands: [], tools: [], servers: [], issues: [], ...(icon ? { icon } : {}) };
+    const d = { name: 'demo', displayName: 'Demo', description: '', version: '1.0.0', enabled: true, mockSupported: false, skills: [], commands: [], tools: [], servers: [], issues: [], ...(icon ? { icon: typeof icon === 'string' ? { light: icon, dark: icon } : icon } : {}) };
     const m = { ...manager, list: () => [d], installDir: () => dir } as unknown as PluginManager;
     return new RealPluginService({ manager: m, root: join(dir, 'plugins'), sourcesFile: join(dir, 'sources.json'), openFolder: async () => '' });
   }
@@ -90,7 +90,22 @@ describe('a plugin’s own icon', () => {
       writeFileSync(join(dir, 'art', 'icon.svg'), svg);
     });
     const p = (await svc.run({ op: 'state' })).state.plugins[0]!;
-    expect(p.icon).toBe(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+    const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    expect(p.icon).toEqual({ light: url, dark: url });
+  });
+
+  it('one for each skin: both go, each its own picture; one of them unreadable: none (the letter badge)', async () => {
+    const dark = svg.replace('#4f7cff', '#1d2b55');
+    const svc = withPlugin({ light: 'icon-light.svg', dark: 'icon-dark.svg' }, (dir) => {
+      writeFileSync(join(dir, 'icon-light.svg'), svg);
+      writeFileSync(join(dir, 'icon-dark.svg'), dark);
+    });
+    expect((await svc.run({ op: 'state' })).state.plugins[0]!.icon).toEqual({
+      light: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+      dark: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(dark)}`,
+    });
+    const half = withPlugin({ light: 'icon-light.svg', dark: 'icon-dark.svg' }, (dir) => writeFileSync(join(dir, 'icon-light.svg'), svg));
+    expect((await half.run({ op: 'state' })).state.plugins[0]!.icon).toBeUndefined();
   });
 
   it('none declared, gone, or over 64 KB: no icon (the page draws the letter badge)', async () => {

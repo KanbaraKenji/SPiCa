@@ -424,6 +424,8 @@ describe('plugin badges', () => {
     expect(own.getAttribute('src')).toMatch(/^data:image\/svg\+xml/);
     expect(own.className).toContain('plugin-icon');
     expect(detail.querySelector('.plugin-title img.plugin-icon')).toBeTruthy();
+    // The example gives one for each skin: both are there, the style sheet shows the one for the skin in force.
+    expect([...detail.querySelectorAll('.plugin-title img.plugin-icon')].map((i) => i.className)).toEqual(['plugin-badge plugin-icon is-light', 'plugin-badge plugin-icon is-dark']);
     const other = within(list()).getByRole('button', { name: /来信摘要/ }).querySelector('.plugin-badge') as HTMLElement;
     expect(other.tagName).toBe('SPAN');
     expect(other.textContent).toBe('来');

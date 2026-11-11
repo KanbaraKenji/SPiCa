@@ -11,7 +11,7 @@ import type { Hooks, Tool } from '@spica/core';
 import type { HookModule, PluginContext } from './authoring.ts';
 import { expandCommand, hasErrors, insidePlugin, readPluginFolder, type CommandDef, type PluginFolder, type ServerDef, type ViewDef } from './folder.ts';
 import type { McpExit, McpHandle, McpLaunch, PluginHost } from './host.ts';
-import { DEFAULT_MODEL_USD_PER_DAY, HOOK_KINDS, appNameOf, compareVersions, satisfies, type HookKind, type Issue, type PluginManifest } from './manifest.ts';
+import { DEFAULT_MODEL_USD_PER_DAY, HOOK_KINDS, appNameOf, compareVersions, satisfies, type HookKind, type Issue, type PluginIcon, type PluginManifest } from './manifest.ts';
 
 export const SPICA_VERSION = '0.1.0';
 
@@ -92,8 +92,8 @@ export interface PluginDescription {
   hooks: { module: string; kinds: HookKind[] }[];
   servers: { id: string; kind: 'mcp' | 'service'; runtime: 'node' | 'binary'; status: ServerStatus; restarts: number; tools: string[]; lastError?: string }[];
   views: { id: string; title: string; placement: ViewDef['placement']; entry: string; icon?: string; tools?: string[] }[];
-  /** The plugin's own icon (manifest.json · icon), relative to its install folder; absent: none. */
-  icon?: string;
+  /** The plugin's own icon (manifest.json · icon) for a light and a dark skin (the same file when there is one), relative to its install folder; absent: none. */
+  icon?: PluginIcon;
   /** Set while the plugin is enabled and registered as a mail source. */
   mail?: { listTool: string; readTool: string };
   /** Present when the manifest asks to use the user's models (permissions.model). */

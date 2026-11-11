@@ -3145,10 +3145,16 @@ button.ctx-row:hover {
   opacity: 0.45;
 }
 
-/* The plugin's own icon in the badge's place: same size and corners, its own colours. */
+/* The plugin's own icon in the badge's place: same size and corners, its own colours. With one for
+   each skin, only the one for the skin in force shows. */
 .plugin-icon {
   display: block;
   object-fit: cover;
+}
+
+:root[data-scheme='dark'] .plugin-icon.is-light,
+:root:not([data-scheme='dark']) .plugin-icon.is-dark {
+  display: none;
 }
 
 /* A long name is cut, never the version after it; the marks keep to the row end. */

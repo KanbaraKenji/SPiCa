@@ -15,6 +15,7 @@ import {
   unquote,
   usd,
   type InstallStepView,
+  type PluginIconView,
   type PluginModelView,
   type PluginPackage,
   type PluginsCommand,
@@ -170,9 +171,19 @@ export function pluginBadge(p: { name: string; displayName: string }): { letter:
   return { letter: /[a-z]/i.test(first) ? first.toUpperCase() : first, colour: BADGE_COLOURS[h % BADGE_COLOURS.length]! };
 }
 
-/** The plugin's own icon (a picture only) when it has one, else its letter badge. */
-function Badge({ name, displayName, icon }: { name: string; displayName: string; icon?: string | undefined }) {
-  if (icon) return <img className="plugin-badge plugin-icon" src={icon} alt="" aria-hidden draggable={false} />;
+/**
+ * The plugin's own icon (a picture only) when it has one, else its letter badge. Two pictures, one per skin,
+ * when the plugin gives two: the style sheet shows the one for the skin in force (it changes with the skin).
+ */
+function Badge({ name, displayName, icon }: { name: string; displayName: string; icon?: PluginIconView | undefined }) {
+  if (icon && icon.light === icon.dark) return <img className="plugin-badge plugin-icon" src={icon.light} alt="" aria-hidden draggable={false} />;
+  if (icon)
+    return (
+      <>
+        <img className="plugin-badge plugin-icon is-light" src={icon.light} alt="" aria-hidden draggable={false} />
+        <img className="plugin-badge plugin-icon is-dark" src={icon.dark} alt="" aria-hidden draggable={false} />
+      </>
+    );
   const b = pluginBadge({ name, displayName });
   return (
     <span className="plugin-badge" style={{ background: b.colour }} aria-hidden>

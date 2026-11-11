@@ -57,8 +57,16 @@ export interface PluginManifest {
   /** The plugin is a mail source: which of its MCP tools list and read messages. */
   mail?: MailDeclaration;
   homepage?: string;
-  /** The plugin's own icon: an .svg inside the plugin folder (checked in readPluginFolder). */
-  icon?: string;
+  /**
+   * The plugin's own icon: .svg files inside the plugin folder (checked in readPluginFolder), one for a light
+   * skin and one for a dark skin. Written as one path (both skins) or { "light": …, "dark": … }.
+   */
+  icon?: PluginIcon;
+}
+
+export interface PluginIcon {
+  light: string;
+  dark: string;
 }
 
 export interface MailDeclaration {
@@ -222,7 +230,12 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
   const license = str('license', false);
   if (license === undefined) warn('license', '缺少 license，例如 "Apache-2.0"。');
   const homepage = str('homepage', false);
-  const icon = str('icon', false);
+  // icon: one path for both skins, or { "light": …, "dark": … } (the files are checked in readPluginFolder).
+  let icon: PluginIcon | undefined;
+  const rawIcon = raw.icon;
+  if (typeof rawIcon === 'string' && rawIcon) icon = { light: rawIcon, dark: rawIcon };
+  else if (isObj(rawIcon) && typeof rawIcon.light === 'string' && rawIcon.light && typeof rawIcon.dark === 'string' && rawIcon.dark) icon = { light: rawIcon.light, dark: rawIcon.dark };
+  else if (rawIcon !== undefined) err('icon', '「icon」须为插件文件夹里的 .svg，例如 "icon.svg"；浅色和深色各一款时写 { "light": "icon-light.svg", "dark": "icon-dark.svg" }。');
 
   let author: PluginManifest['author'] | undefined;
   if (typeof raw.author === 'string' && raw.author) author = { name: raw.author };

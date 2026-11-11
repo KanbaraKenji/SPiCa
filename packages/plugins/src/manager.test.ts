@@ -380,12 +380,32 @@ describe('views (plugin pages)', () => {
     dirs.push(dir);
     r = await rig();
     await r.pm.install(dir);
-    expect(r.pm.describe('iconic').icon).toBe('art/icon.svg');
+    // One icon: both skins use it.
+    expect(r.pm.describe('iconic').icon).toEqual({ light: 'art/icon.svg', dark: 'art/icon.svg' });
     // None declared: none described (the shell draws the letter badge).
     const plain = await writePlugin({ 'manifest.json': manifest('plain') });
     dirs.push(plain);
     await r.pm.install(plain);
     expect(r.pm.describe('plain').icon).toBeUndefined();
+  });
+
+  it('one icon for a light skin and one for a dark skin', async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="5" fill="#4f7cff"/></svg>';
+    const dir = await writePlugin({ 'manifest.json': { ...manifest('twotone'), icon: { light: 'icon-light.svg', dark: './art/icon-dark.svg' } }, 'icon-light.svg': svg, 'art/icon-dark.svg': svg });
+    dirs.push(dir);
+    r = await rig();
+    await r.pm.install(dir);
+    expect(r.pm.describe('twotone').icon).toEqual({ light: 'icon-light.svg', dark: 'art/icon-dark.svg' });
+    // Each is checked; the one that is wrong is named.
+    const bad = await writePlugin({ 'manifest.json': { ...manifest('twobad'), icon: { light: 'icon-light.svg', dark: 'missing.svg' } }, 'icon-light.svg': svg });
+    dirs.push(bad);
+    const check = await r.pm.check(bad);
+    expect(check.issues.map((i) => `${i.where}: ${i.message}`).join('\n')).toMatch(/manifest\.json · icon\.dark: icon\.dark 指向的 missing\.svg 不存在/);
+    expect(check.manifest?.icon).toBeUndefined();
+    // Only one of the two, or not a path: said how to write it.
+    const half = await writePlugin({ 'manifest.json': { ...manifest('twohalf'), icon: { light: 'icon-light.svg' } }, 'icon-light.svg': svg });
+    dirs.push(half);
+    expect((await r.pm.check(half)).issues.map((i) => `${i.where}: ${i.message}`).join('\n')).toMatch(/manifest\.json · icon: 「icon」须为插件文件夹里的 \.svg/);
   });
 
   it('a wrong icon is explained, and the plugin is not installed', async () => {
