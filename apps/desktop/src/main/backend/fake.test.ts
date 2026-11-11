@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentApi, CoreEvent } from '@spica/protocol';
-import { FAKE_EXPORT_FILES, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
+import { FAKE_EXPORT_FILES, FAKE_LONG_COMMAND, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
 import { SEED_IDS } from './fake-seed';
 
 function collect(backend: FakeBackend) {
@@ -186,6 +186,19 @@ describe('FakeBackend', () => {
     expect(Object.values(toolInfo)).toEqual(expect.arrayContaining([{ category: 'command', summary: '导出各家报价' }, { category: 'present' }]));
     const lists = Object.assign({}, ...meta.map((m) => m.fileCardLists ?? {})) as Record<string, unknown[]>;
     expect(Object.values(lists).some((l) => l.length === FAKE_EXPORT_FILES.length)).toBe(true);
+  });
+
+  it('删除 asks to confirm a long command (for screenshots of the confirmation card)', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '删除旧报价');
+    const req = await until((e) => e.type === 'confirm.request');
+    expect(req).toMatchObject({ name: 'run_command', input: { command: FAKE_LONG_COMMAND } });
+    expect(FAKE_LONG_COMMAND.length).toBeGreaterThan(200);
+    if (req.type !== 'confirm.request') throw new Error('unreachable');
+    await b.confirm(chat.id, req.callId, false);
+    expect(await until((e) => e.type === 'run.end')).toMatchObject({ reason: 'completed' });
   });
 
   it('waits for confirmation and continues after the decision', async () => {

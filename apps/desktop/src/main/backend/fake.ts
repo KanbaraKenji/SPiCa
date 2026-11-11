@@ -65,6 +65,10 @@ class Aborted extends Error {}
 const READ_ONLY_TOOLS = new Set(['list_dir', 'read_file', 'glob', 'grep', 'web_fetch', 'web_search', 'ask_user', 'suggest_actions']);
 const ANSWER_KINDS = new Set<MessageKind>(['assistant', 'tool_results', 'steer']);
 
+/** A long command for the confirmation demo: what it really does is at its end. */
+export const FAKE_LONG_COMMAND =
+  "Get-ChildItem 'D:\\工作\\样机评审\\报价' -Filter *.xlsx | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) } | Sort-Object LastWriteTime | Select-Object -First 50 | ForEach-Object { $_.FullName }; Remove-Item 'D:\\工作\\样机评审' -Recurse -Force";
+
 /** The kind of each step the demo takes (the core says it on tool.start). */
 const FAKE_CATEGORY: Partial<Record<string, ToolCategory>> = { list_dir: 'read', read_file: 'read', write_file: 'write', run_command: 'command', present_files: 'present' };
 
@@ -786,7 +790,27 @@ export class FakeBackend implements AgentBackend {
       this.#setStatus(sessionId, 'thinking');
       await this.#sleep(300, signal);
 
-      if (/确认|发送|发给/.test(text)) {
+      if (/删除/.test(text)) {
+        // A command that needs confirming, long enough that a cut title would hide its end (and the model's
+        // description says something milder than what it does).
+        const callId = this.#id('call');
+        const input = { command: FAKE_LONG_COMMAND, description: '整理旧的报价文件' };
+        const lead = '要清理旧报价，这条命令需要你确认。';
+        await this.#stream(sessionId, 'text', lead, signal);
+        blocks.push({ type: 'text', text: lead });
+        this.#emit(sessionId, { type: 'tool.call', callId, name: 'run_command' });
+        this.#emit(sessionId, { type: 'tool.start', callId, name: 'run_command', input, category: 'command', summary: input.description });
+        this.#addPending(sessionId, { kind: 'confirm', callId, toolName: 'run_command', input, reason: '运行命令', createdAt: isoAt(this.#now()) });
+        this.#emit(sessionId, { type: 'confirm.request', callId, name: 'run_command', input, reason: '运行命令' });
+        this.#setStatus(sessionId, 'awaiting_confirm', 'run_command');
+        const ok = (await this.#waitFor(run, callId)) === 'yes';
+        this.#emit(sessionId, { type: 'tool.end', callId, name: 'run_command', isError: !ok, preview: ok ? '已删除' : '用户拒绝了这条命令', durationMs: 300 });
+        blocks.push({ type: 'tool_use', id: callId, name: 'run_command', input }, { type: 'tool_result', toolUseId: callId, content: ok ? '已删除' : '用户拒绝了这条命令', isError: !ok });
+        this.#setStatus(sessionId, 'thinking');
+        const after = ok ? '\n\n旧报价已清理。' : '\n\n好的，没有运行。';
+        await this.#stream(sessionId, 'text', after, signal);
+        blocks.push({ type: 'text', text: after });
+      } else if (/确认|发送|发给/.test(text)) {
         const callId = this.#id('call');
         const input = { to: '项目组', subject: '样机评审时间', body: '各位好，样机评审定在周四下午两点。' };
         const lead = '我拟好了一封通知，发出前需要你确认。';
