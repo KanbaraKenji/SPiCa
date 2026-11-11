@@ -12,10 +12,11 @@ export const PROVIDER_KINDS: readonly { kind: ProviderKind; label: string }[] = 
 
 /**
  * The name of a connection read from .env.local (development builds). With both an OpenAI compatible and an
- * Anthropic one configured, each says which it is, in the words the form uses for the kind.
+ * Anthropic one configured, each says which it is instead, in the words the form uses for the kind (kept as
+ * short as the plain name: the model's name comes after it under the message box).
  */
 export function devConnectionName(kind: ProviderKind, both: boolean): string {
-  return both ? `开发用模型（.env.local，${kindLabel(kind)}）` : '开发用模型（.env.local）';
+  return both ? `开发用模型（${kindLabel(kind)}）` : '开发用模型（.env.local）';
 }
 
 export function kindLabel(kind: ProviderKind): string {
