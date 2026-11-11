@@ -3047,6 +3047,11 @@ button.ctx-row:hover {
   margin: 8px 0;
 }
 
+/* Inside the list's box: in from its edge like the group titles. */
+.plugins-list .plugins-none {
+  padding: 0 12px;
+}
+
 .plugins-two {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);

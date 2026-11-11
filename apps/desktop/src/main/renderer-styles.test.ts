@@ -116,3 +116,10 @@ describe('sidebar status place', () => {
     expect(block('.status-slot.is-error .slot-dot,\n.status-slot.is-stopped .slot-dot')).toContain('background: var(--spica-danger)');
   });
 });
+
+describe('settings › 插件 list texts', () => {
+  it('a line in the list (nothing found, sources not reached) keeps the group titles’ inset from the box edge', () => {
+    expect(block('.plugins-group-title')).toContain('padding: 6px 12px 4px');
+    expect(block('.plugins-list .plugins-none')).toContain('padding: 0 12px');
+  });
+});
