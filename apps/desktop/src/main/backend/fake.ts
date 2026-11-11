@@ -65,6 +65,9 @@ class Aborted extends Error {}
 const READ_ONLY_TOOLS = new Set(['list_dir', 'read_file', 'glob', 'grep', 'web_fetch', 'web_search', 'ask_user', 'suggest_actions']);
 const ANSWER_KINDS = new Set<MessageKind>(['assistant', 'tool_results', 'steer']);
 
+/** The kind of each step the demo takes (the core says it on tool.start). */
+const FAKE_CATEGORY: Partial<Record<string, ToolCategory>> = { list_dir: 'read', read_file: 'read', write_file: 'write', run_command: 'command', present_files: 'present' };
+
 /** What the 汇总 answer's command leaves behind: one file it changed, then new ones. */
 export const FAKE_EXPORT_FILES = ['D:\\工作\\样机评审\\报价\\索引.csv', ...['华东精密', '启明电子', '远航塑胶', '恒信五金', '东方模具', '新锐包装', '海联物流'].map((n) => `D:\\工作\\样机评审\\报价\\${n}.csv`)];
 
@@ -98,6 +101,8 @@ export class FakeBackend implements AgentBackend {
   readonly #speed: number;
   readonly #now: () => Date;
   readonly #legacyCwd: string | undefined;
+  /** What a call said about itself until its result is stored (see #takeCallMeta). */
+  readonly #callInfo = new Map<string, { category?: ToolCategory; summary?: string; cards?: FileCardMeta[] }>();
   #seq = 0;
   #ids = 0;
   #listeners = new Set<Listener>();
@@ -664,7 +669,11 @@ export class FakeBackend implements AgentBackend {
   async #tool(sessionId: string, run: Run, name: string, input: unknown, result: string, ms: number, fail = false, made: { category?: ToolCategory; cards?: FileCardMeta[] } = {}): Promise<ContentBlock[]> {
     const callId = this.#id('call');
     this.#emit(sessionId, { type: 'tool.call', callId, name });
-    this.#emit(sessionId, { type: 'tool.start', callId, name, input, ...(made.category ? { category: made.category } : {}) });
+    // As the core does: the kind of step, and the model's line on a command (its description argument).
+    const category = made.category ?? FAKE_CATEGORY[name];
+    const summary = name === 'run_command' ? (input as { description?: unknown }).description : undefined;
+    this.#emit(sessionId, { type: 'tool.start', callId, name, input, ...(category ? { category } : {}), ...(typeof summary === 'string' && summary ? { summary } : {}) });
+    this.#callInfo.set(callId, { ...(category ? { category } : {}), ...(typeof summary === 'string' && summary ? { summary } : {}), ...(made.cards?.length && !fail ? { cards: made.cards } : {}) });
     this.#setStatus(sessionId, 'tool', name);
     await this.#sleep(ms, run.controller.signal);
     const path = (input as { path?: unknown }).path;
@@ -694,8 +703,30 @@ export class FakeBackend implements AgentBackend {
     const own = blocks.filter((b) => b.type !== 'tool_result');
     const results = blocks.filter((b) => b.type === 'tool_result');
     if (own.length) this.#append(sessionId, 'assistant', 'assistant', own);
-    if (results.length) this.#append(sessionId, 'user', 'tool_results', results, { author: 'runtime' });
+    if (results.length) this.#append(sessionId, 'user', 'tool_results', results, { author: 'runtime', ...this.#takeCallMeta(results) });
     blocks.length = 0;
+  }
+
+  /** What the core stores with tool results so a reopened conversation looks the same: each call's kind and line, and its file cards. */
+  #takeCallMeta(results: ContentBlock[]): Record<string, unknown> {
+    const toolInfo: Record<string, { category: ToolCategory; summary?: string }> = {};
+    const fileCards: Record<string, FileCardMeta> = {};
+    const fileCardLists: Record<string, FileCardMeta[]> = {};
+    for (const r of results) {
+      if (r.type !== 'tool_result') continue;
+      const info = this.#callInfo.get(r.toolUseId);
+      this.#callInfo.delete(r.toolUseId);
+      if (!info) continue;
+      if (info.category) toolInfo[r.toolUseId] = { category: info.category, ...(info.summary ? { summary: info.summary } : {}) };
+      if (info.cards?.length) {
+        fileCards[r.toolUseId] = info.cards[0]!;
+        fileCardLists[r.toolUseId] = info.cards;
+      }
+    }
+    return {
+      ...(Object.keys(toolInfo).length ? { toolInfo } : {}),
+      ...(Object.keys(fileCards).length ? { fileCards, fileCardLists } : {}),
+    };
   }
 
   async #run(sessionId: string, text: string, opts: { resumeWith?: string; version?: number } = {}): Promise<void> {

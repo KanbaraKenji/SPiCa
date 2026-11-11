@@ -180,6 +180,12 @@ describe('FakeBackend', () => {
     const command = cards.find((e) => e.files?.length === FAKE_EXPORT_FILES.length);
     expect(command?.files?.map((f) => [f.path, f.origin])).toEqual(FAKE_EXPORT_FILES.map((p, i) => [p, i === 0 ? 'modified' : 'created']));
     expect(cards.find((e) => e.file.path === FAKE_SUMMARY_FILE && e.file.lines)?.file).toMatchObject({ origin: 'created', lines: { added: 5, removed: 0 } });
+    // Stored with the results, as the core stores them: a reopened conversation shows the same.
+    const meta = (await b.getMessages(chat.id)).filter((m) => m.kind === 'tool_results').map((m) => m.meta ?? {});
+    const toolInfo = Object.assign({}, ...meta.map((m) => m.toolInfo ?? {})) as Record<string, { category: string; summary?: string }>;
+    expect(Object.values(toolInfo)).toEqual(expect.arrayContaining([{ category: 'command', summary: '导出各家报价' }, { category: 'present' }]));
+    const lists = Object.assign({}, ...meta.map((m) => m.fileCardLists ?? {})) as Record<string, unknown[]>;
+    expect(Object.values(lists).some((l) => l.length === FAKE_EXPORT_FILES.length)).toBe(true);
   });
 
   it('waits for confirmation and continues after the decision', async () => {
