@@ -1,5 +1,5 @@
 // In-memory store (tests and ephemeral runs).
-import type { MailItem, Message, ProjectInfo, ProjectLogEntry, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { MailItem, MemoryItem, Message, ProjectInfo, ProjectLogEntry, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -17,6 +17,25 @@ export class MemoryStore implements Store {
   readonly #objects = new Map<string, WorkObject>();
   readonly #mail = new Map<string, MailItem>();
   readonly #senders = new Map<string, SenderDecision>();
+  readonly #memories = new Map<number, MemoryItem>();
+  #memorySeq = 0;
+
+  putMemory(m: MemoryItem): MemoryItem {
+    const item = m.id ? clone(m) : { ...clone(m), id: ++this.#memorySeq };
+    this.#memorySeq = Math.max(this.#memorySeq, item.id);
+    this.#memories.set(item.id, item);
+    return clone(item);
+  }
+  getMemory(id: number): MemoryItem | undefined {
+    const m = this.#memories.get(id);
+    return m && clone(m);
+  }
+  listMemories(owner: string, opts: { all?: boolean } = {}): MemoryItem[] {
+    return [...this.#memories.values()]
+      .filter((m) => m.owner === owner && (opts.all || m.status === 'active'))
+      .sort((a, b) => a.id - b.id)
+      .map(clone);
+  }
 
   upsertMail(m: MailItem): void {
     this.#mail.set(m.id, clone(m));

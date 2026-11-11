@@ -5678,3 +5678,95 @@ button.ctx-row:hover {
   color: var(--spica-faint);
   font-variant-numeric: tabular-nums;
 }
+
+/* 设置 › 记忆 and the 已记住 line in the conversation. */
+.memory-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.memory-head .settings-subheading {
+  margin: 0;
+}
+
+.memory-head-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.memory-head-actions .btn-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memory-row {
+  align-items: flex-start;
+}
+
+.memory-list .memory-row + .memory-row {
+  margin-top: 0;
+}
+
+.memory-text,
+.memory-quote {
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.memory-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+}
+
+.memory-from {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.memory-actions {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  margin: -4px -8px -4px 0;
+}
+
+.memory-edit {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.memory-input {
+  width: 100%;
+}
+
+.memory-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.memory-note .memory-undo {
+  margin-left: 8px;
+  white-space: nowrap;
+}

@@ -51,6 +51,12 @@ const API: Record<keyof AgentApi, true> = {
   listMail: true,
   pollMail: true,
   mailFeedback: true,
+  listMemories: true,
+  addMemory: true,
+  editMemory: true,
+  forgetMemory: true,
+  clearMemories: true,
+  undoMemory: true,
 };
 
 describe('FakeBackend', () => {
@@ -59,6 +65,50 @@ describe('FakeBackend', () => {
     const missing = Object.keys(API).filter((k) => typeof (backend as unknown as Record<string, unknown>)[k] !== 'function');
     expect(missing).toEqual([]);
     backend.dispose();
+  });
+
+  it('memory: a demo message saves with its line, a change replaces, 别记了 forgets, undo takes each back; not in projects or when off', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '记住：回答尽量简短，先给结论再说理由。');
+    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    const saved = events.find((e) => e.type === 'memory.changed' && e.sessionId === chat.id);
+    expect(saved).toMatchObject({ callId: expect.any(String), card: { action: 'saved', item: { id: 1, text: '回答尽量简短，先给结论再说理由。', sessionId: chat.id } } });
+    // kept with the result, so the line is there when the conversation is opened again
+    const stored = (await b.getMessages(chat.id)).find((m) => m.kind === 'tool_results');
+    expect(Object.values(stored?.meta?.memoryCards ?? {})).toMatchObject([{ action: 'saved' }]);
+
+    await b.send(chat.id, '记住：数据处理主要用 Python。');
+    await until(() => events.filter((x) => x.type === 'run.end' && x.sessionId === chat.id).length >= 2);
+    await b.send(chat.id, '数据处理以后改用 Julia，Python 用得少了。');
+    await until(() => events.filter((x) => x.type === 'run.end' && x.sessionId === chat.id).length >= 3);
+    const replaced = events.filter((e) => e.type === 'memory.changed' && e.sessionId === chat.id).at(-1);
+    expect(replaced).toMatchObject({ card: { action: 'replaced', previous: { text: '数据处理主要用 Python。', status: 'replaced' } } });
+    const newId = (replaced as Extract<CoreEvent, { type: 'memory.changed' }>).card.item!.id;
+    expect(await b.undoMemory(newId)).toMatchObject({ action: 'undone', item: { undone: true }, previous: { status: 'active' } });
+    expect(events.at(-1)).toMatchObject({ type: 'memory.changed', sessionId: '', card: { action: 'undone' } });
+
+    expect(await b.addMemory('邮箱密码是 hunter2')).toEqual({ refused: 'secret' });
+    expect(await b.addMemory('周报每周五下午发')).toMatchObject({ action: 'saved', item: { by: 'user' } });
+    expect(await b.editMemory(1, '   ')).toEqual({ refused: 'empty' });
+    expect(await b.forgetMemory(1)).toMatchObject({ action: 'forgotten', item: { status: 'forgotten' } });
+    expect((await b.listMemories({ all: true })).find((m) => m.id === 1)?.undone).toBeUndefined();
+    const before = (await b.listMemories()).length;
+    expect(await b.clearMemories()).toBe(before);
+    expect(await b.listMemories()).toEqual([]);
+
+    // a project's manager, and memory switched off: no line
+    const runs = () => events.filter((e) => e.type === 'run.end').length;
+    let n = runs();
+    await b.send(SEED_IDS.pm, '记住：报告用 A4 竖版。');
+    await until(() => runs() > n);
+    b.setMemoryEnabled(false);
+    n = runs();
+    await b.send(chat.id, '记住：报告用 A4 竖版。');
+    await until(() => runs() > n);
+    expect(await b.listMemories()).toEqual([]);
+    b.dispose();
   });
 
   it('lists the seed projects and makes new ones with a manager', async () => {

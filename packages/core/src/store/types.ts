@@ -1,7 +1,7 @@
 // Storage contract. The database is the source of truth for sessions,
 // messages, tool calls, pending questions, relays and traceable records.
 // Synchronous on purpose: the default backend is embedded SQLite.
-import type { AgentRole, MailItem, Message, PendingItem, ProjectInfo, ProjectLogEntry, SessionStatus, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { AgentRole, MailItem, MemoryItem, Message, PendingItem, ProjectInfo, ProjectLogEntry, SessionStatus, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 
 export type SenderDecision = { decision: 'project'; projectId: string } | { decision: 'ignore' };
 
@@ -55,6 +55,8 @@ export interface ToolCallCards {
   guard?: import('../types.ts').GuardNote;
   /** Ran without asking (approval mode auto). */
   autoApproved?: true;
+  /** What remember / forget changed in the user's memory. */
+  memory?: import('../types.ts').MemoryCardMeta;
 }
 
 /** Keyed by (sessionId, messageId, id): some gateways reuse call ids across turns. */
@@ -142,6 +144,12 @@ export interface Store {
   /** Sender memory: what the user did with this sender's mail (put it in a project, or ignored it). */
   setSenderDecision(address: string, d: SenderDecision): void;
   getSenderDecision(address: string): SenderDecision | undefined;
+
+  /** The user's memory across conversations. `id` 0 means a new item: the store gives the next number and returns it. */
+  putMemory(m: MemoryItem): MemoryItem;
+  getMemory(id: number): MemoryItem | undefined;
+  /** Oldest first; only the active ones unless `all`. */
+  listMemories(owner: string, opts?: { all?: boolean }): MemoryItem[];
 
   appendTrace(rec: TraceRecord): void;
   listTraces(filter?: { sessionId?: string }): TraceRecord[];

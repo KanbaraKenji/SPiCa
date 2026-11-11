@@ -3,7 +3,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
-import type { MailItem, Message, ProjectInfo, ProjectLogEntry, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { MailItem, MemoryItem, Message, ProjectInfo, ProjectLogEntry, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const SCHEMA_VERSION = 1;
@@ -62,6 +62,10 @@ CREATE TABLE IF NOT EXISTS mail_items (
   id TEXT PRIMARY KEY, source_id TEXT NOT NULL, status TEXT NOT NULL, project_id TEXT, created_at TEXT NOT NULL, data TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS mail_items_status ON mail_items(status, created_at);
+CREATE TABLE IF NOT EXISTS memories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, status TEXT NOT NULL, updated_at TEXT NOT NULL, data TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS memories_owner ON memories(owner, status);
 CREATE TABLE IF NOT EXISTS mail_senders (
   address TEXT PRIMARY KEY, project_id TEXT, updated_at TEXT NOT NULL, decision TEXT NOT NULL DEFAULT 'project'
 );
@@ -379,6 +383,32 @@ export class SqliteStore implements Store {
       throw err;
     }
   }
+  putMemory(m: MemoryItem): MemoryItem {
+    if (!m.id) {
+      const r = this.#q('INSERT INTO memories (owner, status, updated_at, data) VALUES (?, ?, ?, ?)').run(m.owner, m.status, m.updatedAt, '{}');
+      const item = { ...m, id: Number(r.lastInsertRowid) };
+      this.#q('UPDATE memories SET data = ? WHERE id = ?').run(json(item), item.id);
+      return item;
+    }
+    this.#q(
+      `INSERT INTO memories (id, owner, status, updated_at, data) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET owner = excluded.owner, status = excluded.status, updated_at = excluded.updated_at, data = excluded.data`,
+    ).run(m.id, m.owner, m.status, m.updatedAt, json(m));
+    return { ...m };
+  }
+  getMemory(id: number): MemoryItem | undefined {
+    const row = this.#q('SELECT data FROM memories WHERE id = ?').get(id) as Row | undefined;
+    return row && parse<MemoryItem>(row.data);
+  }
+  listMemories(owner: string, opts: { all?: boolean } = {}): MemoryItem[] {
+    const rows = (
+      opts.all
+        ? this.#q('SELECT data FROM memories WHERE owner = ? ORDER BY id').all(owner)
+        : this.#q("SELECT data FROM memories WHERE owner = ? AND status = 'active' ORDER BY id").all(owner)
+    ) as Row[];
+    return rows.map((r) => parse<MemoryItem>(r.data));
+  }
+
   getSenderDecision(address: string): SenderDecision | undefined {
     const row = this.#q('SELECT project_id, decision FROM mail_senders WHERE address = ?').get(address.toLowerCase()) as Row | undefined;
     if (!row) return undefined;

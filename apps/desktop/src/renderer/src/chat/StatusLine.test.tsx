@@ -18,6 +18,13 @@ describe('the status line under the answer', () => {
     expect(container.querySelector('.status-line')).toBeNull();
   });
 
+  it('is there while remember runs (its line only comes with the result): 正在保存记忆', () => {
+    const saving = live([{ type: 'tool', callId: 'm', name: 'remember', input: {}, state: 'running' }]);
+    expect(shownInAnswer(saving)).toBe(false);
+    const { container } = render(<StatusLine transcript={saving} />);
+    expect(container.textContent).toContain('正在保存记忆');
+  });
+
   it('is there otherwise: tools done and the answer not yet written, a call not started yet, nothing yet', () => {
     expect(shownInAnswer(live([tool('done')], 'thinking'))).toBe(false);
     expect(shownInAnswer(live([tool('pending')]))).toBe(false);

@@ -335,6 +335,27 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     setFound({ sessionId: id, ...(seq !== undefined ? { seq } : {}), from: state.activeId, reached: false });
     openSession(id);
   };
+  // 设置 › 记忆: an item's conversation, at the message it was saved from (no way back: it was opened from the settings).
+  const memorySettings = agent.hasMemory
+    ? {
+        items: state.memories,
+        api: {
+          add: (text: string) => agent.addMemory(text),
+          edit: (id: number, text: string) => agent.editMemory(id, text),
+          forget: (id: number) => agent.forgetMemory(id),
+          clear: () => agent.clearMemories(),
+        },
+        titleOf: (id: string) => {
+          const s = sessions.find((x) => x.id === id);
+          return s ? s.title || '新对话' : undefined;
+        },
+        onOpenSession: (id: string, seq?: number) => {
+          setFound({ sessionId: id, ...(seq !== undefined ? { seq } : {}), from: null, reached: false });
+          openSession(id);
+        },
+      }
+    : undefined;
+  const memoryLines = useMemo(() => ({ items: state.memories, undo: (id: number) => agent.undoMemory(id) }), [state.memories, agent]);
   // Files open in the right panel (read-only preview); 用系统程序打开 there hands them to Windows.
   const previewFile = (path: string) => {
     setPreview({ sessionId: state.activeId, path });
@@ -810,6 +831,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               pickFiles={bridge.pickFiles}
               {...(shell.demo ? {} : { localConnect: bridge.localConnect })}
               previewPages={previewPages}
+              {...(memorySettings ? { memory: memorySettings } : {})}
             />
           ) : view === 'plugin' ? (
             openPluginView ? (
@@ -848,6 +870,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               needsModel={modelReady === false && !shell.demo}
               waiting={waiting}
               composerTools={composerTools}
+              memory={memoryLines}
               {...(found && found.sessionId === state.activeId ? { found: foundView(found) } : {})}
               onSetupModel={() => {
                 setSettingsTab('models');

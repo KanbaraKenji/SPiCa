@@ -2,7 +2,7 @@
 import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo } from '@spica/protocol';
 import { changesAfter } from '../store/relocate';
-import { filesOf, historyRef, isRunning, itemAtSeq, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
+import { filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
 import { ImageViewer } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
@@ -14,6 +14,7 @@ import { WEB_IMAGES, webImagesFor } from './answer-image';
 import { StatusLine } from './StatusLine';
 import { GUARD_FLAG_TEXT } from './format';
 import { SettingsChangeCard } from './SettingsChangeCard';
+import { MemoryLinesContext, MemoryNote, type MemoryLines } from './MemoryNote';
 
 export interface ConversationActions {
   send(text: string, attachments?: string[]): void;
@@ -106,12 +107,17 @@ function fileActions(actions: ConversationActions, cwd: string | undefined) {
   return actions.revealFile ? { reveal: actions.revealFile, cwd, imageUrl: actions.imageUrl } : undefined;
 }
 
-type Segment = { kind: 'tools'; blocks: Extract<Block, { type: 'tool' }>[] } | { kind: 'one'; block: Exclude<Block, { type: 'tool' }> };
+type Segment =
+  | { kind: 'tools'; blocks: Extract<Block, { type: 'tool' }>[] }
+  | { kind: 'memory'; block: Extract<Block, { type: 'tool' }> }
+  | { kind: 'one'; block: Exclude<Block, { type: 'tool' }> };
 
 function segments(blocks: Block[]): Segment[] {
   const out: Segment[] = [];
   for (const b of blocks) {
-    if (b.type === 'tool') {
+    // remember / forget: their own line (the 已记住 line), not a step in a group.
+    if (b.type === 'tool' && MEMORY_TOOLS.has(b.name)) out.push({ kind: 'memory', block: b });
+    else if (b.type === 'tool') {
       const last = out[out.length - 1];
       if (last?.kind === 'tools') last.blocks.push(b);
       else out.push({ kind: 'tools', blocks: [b] });
@@ -134,6 +140,7 @@ function Response({
   cwd,
   lists,
   sources,
+  memoryCards,
 }: {
   item: Extract<Item, { kind: 'response' }>;
   live: boolean;
@@ -142,6 +149,7 @@ function Response({
   cards: Transcript['fileCards'];
   lists?: Transcript['fileCardLists'];
   sources?: Transcript['sourceCards'];
+  memoryCards?: Transcript['memoryCards'];
   moved?: CwdChangeMeta;
   /** The conversation's working folder (a relative path on a file card is in it). */
   cwd?: string | undefined;
@@ -174,6 +182,11 @@ function Response({
     <AnswerToolsContext.Provider value={answerTools}>
     <div className="turn-response" {...at}>
       {segs.map((s, i) => {
+        if (s.kind === 'memory') {
+          // Only what was changed: a call the core refused leaves no line (the answer says why).
+          const card = memoryCards?.[s.block.callId];
+          return card ? <MemoryNote key={s.block.callId} card={card} /> : null;
+        }
         if (s.kind === 'tools') {
           // Outside content that carried instructions: one quiet line per kind, under the tools.
           const kinds = [...new Set(s.blocks.map((b) => b.flagged).filter((k): k is NonNullable<typeof k> => Boolean(k)))];
@@ -320,6 +333,8 @@ export interface ConversationProps {
   composerTools?: ComposerTools;
   /** Opened from a history row or link: the message to scroll to and mark, and the way back. */
   found?: { seq?: number; back?: { title: string; onBack(): void } };
+  /** The user's memory, for the 已记住 lines and their 撤销. */
+  memory?: MemoryLines;
 }
 
 export interface WaitingChild {
@@ -328,7 +343,9 @@ export interface WaitingChild {
   status: 'awaiting_confirm' | 'awaiting_answer';
 }
 
-export function Conversation({ session, transcript, actions, demo, needsModel = false, onSetupModel, waiting = [], composerTools, found }: ConversationProps) {
+const NO_MEMORY: MemoryLines = { items: null };
+
+export function Conversation({ session, transcript, actions, demo, needsModel = false, onSetupModel, waiting = [], composerTools, found, memory = NO_MEMORY }: ConversationProps) {
   const running = isRunning(transcript.run?.status) || isRunning(session?.status);
   const { ref, away, toBottom, unpin } = useStickToBottom(transcript);
   const items = transcript.items;
@@ -358,6 +375,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
     [actions.openFile, actions.openFolder, actions.saveCsv, session?.cwd, actions.imageUrl, actions.previewHtml],
   );
   return (
+    <MemoryLinesContext.Provider value={memory}>
     <AnswerToolsContext.Provider value={answerTools}>
     <OpenSessionContext.Provider value={actions.openFound ?? actions.openSession}>
     <HistoryRefContext.Provider value={resolveRef}>
@@ -434,7 +452,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                     {item.text}
                   </p>
                 );
-              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} after={lastIndex - i} regen={regen && session?.role === 'top' ? { state: regen, last: item.anchorId === regen.anchorId || items[i - 1]?.id === regen.anchorId } : undefined} actions={actions} cards={transcript.fileCards} lists={transcript.fileCardLists} sources={transcript.sourceCards} moved={moves.get(item.id)} cwd={session?.cwd} at={mark(item.id)} />;
+              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} after={lastIndex - i} regen={regen && session?.role === 'top' ? { state: regen, last: item.anchorId === regen.anchorId || items[i - 1]?.id === regen.anchorId } : undefined} actions={actions} cards={transcript.fileCards} lists={transcript.fileCardLists} sources={transcript.sourceCards} memoryCards={transcript.memoryCards} moved={moves.get(item.id)} cwd={session?.cwd} at={mark(item.id)} />;
             })}
             <StatusLine transcript={transcript} />
             {waiting.map((w) => (
@@ -495,5 +513,6 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
     </HistoryRefContext.Provider>
     </OpenSessionContext.Provider>
     </AnswerToolsContext.Provider>
+    </MemoryLinesContext.Provider>
   );
 }

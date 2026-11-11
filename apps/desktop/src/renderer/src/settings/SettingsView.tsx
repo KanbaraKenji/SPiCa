@@ -1,4 +1,4 @@
-// Settings page, shown in the main pane: 常规 / 外观 / 模型 / 插件 / 关于 as tabs.
+// Settings page, shown in the main pane: 常规 / 外观 / 模型 / 记忆 / 插件 / 关于 as tabs.
 import type { ShellStore } from '../store/shell';
 import { useShell } from '../store/shell';
 import { Appearance } from './Appearance';
@@ -7,14 +7,16 @@ import { Plugins, type PluginsApi } from './Plugins';
 import { About } from './About';
 import { General, type GeneralProps, type WorkflowsApi } from './General';
 import { Icon } from '../ui/Icon';
+import { Memory, type MemoryProps } from './Memory';
 import type { UpdateState } from '../../../shared/updates';
 
-export type SettingsTab = 'general' | 'appearance' | 'models' | 'plugins' | 'about';
+export type SettingsTab = 'general' | 'appearance' | 'models' | 'memory' | 'plugins' | 'about';
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'general', label: '常规' },
   { id: 'appearance', label: '外观' },
   { id: 'models', label: '模型' },
+  { id: 'memory', label: '记忆' },
   { id: 'plugins', label: '插件' },
   { id: 'about', label: '关于' },
 ];
@@ -42,10 +44,13 @@ export interface SettingsViewProps {
   pickFiles?: GeneralProps['pickFiles'];
   localConnect?: GeneralProps['localConnect'];
   previewPages?: GeneralProps['previewPages'];
+  /** 记忆 (absent when the core keeps none: no tab). The switch is a shell setting. */
+  memory?: Omit<MemoryProps, 'enabled' | 'onEnabled'>;
 }
 
-export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, onBack, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages }: SettingsViewProps) {
+export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, onBack, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, memory }: SettingsViewProps) {
   const { settings } = useShell(shell);
+  const tabs = memory ? TABS : TABS.filter((t) => t.id !== 'memory');
   return (
     <div className="settings">
       {/* 插件: the list and the detail fill the window's height (each scrolls on its own). */}
@@ -56,7 +61,7 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
             <Icon name="back" size={16} />
           </button>
         <div className="tabs" role="tablist" aria-label="设置">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -92,6 +97,8 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
             <Appearance settings={settings} activeSkin={shell.activeSkin()} onChange={(p) => shell.update(p)} />
           ) : tab === 'models' ? (
             <Models api={providers} />
+          ) : tab === 'memory' && memory ? (
+            <Memory {...memory} enabled={settings.memory} onEnabled={(on) => shell.update({ memory: on })} />
           ) : tab === 'plugins' ? (
             <Plugins api={plugins} mail={{ prefs: settings.mail, onChange: (patch) => shell.update({ mail: { ...settings.mail, ...patch } }), ...(mailModel ? { model: mailModel } : {}) }} />
           ) : (

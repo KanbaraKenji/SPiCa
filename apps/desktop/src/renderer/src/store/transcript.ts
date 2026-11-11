@@ -1,7 +1,7 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
 import { relocate, shownPath } from './relocate';
-import type { CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
+import type { CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { humanError } from '../../../shared/errors';
 import { toolLabel } from '../chat/format';
 
@@ -222,6 +222,8 @@ export interface Transcript {
   historyCards?: Record<string, HistoryCardMeta>;
   /** The web pages web_fetch / web_search used (source.card), by call id. */
   sourceCards?: Record<string, SourceCardMeta>;
+  /** What remember / forget changed in the user's memory (memory.changed), by call id: the 已记住 line. */
+  memoryCards?: Record<string, MemoryCardMeta>;
   /** The number of the first stored message in each item, by item id (to scroll to a message by its number). */
   seqs?: Record<string, number>;
 }
@@ -258,6 +260,26 @@ function aboutCall(e: { category?: ToolCategory; summary?: string; title?: strin
 export const FILE_TOOLS = new Set(['read_file', 'write_file', 'edit_file']);
 const ASK_TOOL = 'ask_user';
 const SUGGEST_TOOL = 'suggest_actions';
+
+/** The core's memory tools: shown as the 已记住 line, not in the group of steps. */
+export const MEMORY_TOOLS = new Set(['remember', 'forget']);
+
+/**
+ * The 已记住 / 已更新 / 已忘记 line of a remember or forget call, as the item is now (`now`: the item in the
+ * memory, with replaced and forgotten ones; undefined while not known). 撤销 only while the change still
+ * stands; 已撤销 once it was undone; a change later deleted or replaced in the settings keeps its words only.
+ */
+export function memoryLine(card: MemoryCardMeta, now: MemoryItem | undefined): { text: string; undo: boolean } | undefined {
+  const item = card.item;
+  if (!item) return undefined;
+  const undone = card.action === 'forgotten' ? now?.status === 'active' : now?.undone === true;
+  if (undone) return { text: `已撤销：${item.text}`, undo: false };
+  const stands = !now || (card.action === 'forgotten' ? now.status === 'forgotten' : now.status === 'active');
+  if (card.action === 'replaced') return { text: `已更新：${item.text}${card.previous ? `（替换「${card.previous.text}」）` : ''}`, undo: stands };
+  if (card.action === 'forgotten') return { text: `已忘记：${item.text}`, undo: stands };
+  if (card.action === 'saved') return { text: `已记住：${item.text}`, undo: stands };
+  return undefined;
+}
 
 function textOf(message: Message): string {
   // The text of attached files rides in their own content blocks: not part of what was typed.
@@ -359,6 +381,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
   const cardLists: Record<string, FileCardMeta[]> = {};
   const sources: Record<string, SourceCardMeta> = {};
   const history: Record<string, HistoryCardMeta> = {};
+  const memory: Record<string, MemoryCardMeta> = {};
   const seqs: Record<string, number> = {};
   // After each message: the item it went into starts at that message's number (if it is the first one there).
   const mark = (m: Message) => {
@@ -398,6 +421,8 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
       if (storedLists && typeof storedLists === 'object') Object.assign(cardLists, storedLists);
       const storedSources = m.meta?.sourceCards;
       if (storedSources && typeof storedSources === 'object') Object.assign(sources, storedSources);
+      const storedMemory = m.meta?.memoryCards;
+      if (storedMemory && typeof storedMemory === 'object') Object.assign(memory, storedMemory);
       const info = m.meta?.toolInfo;
       // Suggestion cards as the core stored them (they win over the tool call's raw input).
       const suggested = m.meta?.suggestedActions as Record<string, { title: string; actions: SuggestAction[] }> | undefined;
@@ -458,6 +483,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
         Object.assign(cardLists, built.fileCardLists ?? {});
         Object.assign(sources, built.sourceCards ?? {});
         Object.assign(history, built.historyCards ?? {});
+        Object.assign(memory, built.memoryCards ?? {});
         const last = msgs[msgs.length - 1];
         return { blocks: built.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])), ...(last?.createdAt ? { at: last.createdAt } : {}) };
       });
@@ -476,6 +502,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
     ...(Object.keys(cardLists).length ? { fileCardLists: cardLists } : {}),
     ...(Object.keys(sources).length ? { sourceCards: sources } : {}),
     ...(Object.keys(history).length ? { historyCards: history } : {}),
+    ...(Object.keys(memory).length ? { memoryCards: memory } : {}),
     seqs,
   };
   for (const p of pending) applyPending(t, p);
@@ -589,6 +616,11 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     }
     case 'history.card': {
       t.historyCards = { ...(t.historyCards ?? {}), [e.callId]: e.card };
+      return t;
+    }
+    case 'memory.changed': {
+      // Changes made in the settings come without a call id (they are not a line in a conversation).
+      if (e.callId) t.memoryCards = { ...(t.memoryCards ?? {}), [e.callId]: e.card };
       return t;
     }
     case 'tool.end': {

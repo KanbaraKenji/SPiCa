@@ -48,6 +48,12 @@ const agent: AgentApi = {
   setApprovalMode: call('setApprovalMode'),
   setSessionCwd: call('setSessionCwd'),
   deleteSession: call('deleteSession'),
+  listMemories: call('listMemories'),
+  addMemory: call('addMemory'),
+  editMemory: call('editMemory'),
+  forgetMemory: call('forgetMemory'),
+  clearMemories: call('clearMemories'),
+  undoMemory: call('undoMemory'),
 };
 
 const bridge: DesktopBridge = {

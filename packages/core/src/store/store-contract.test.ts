@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { Message, ProjectInfo, ProjectLogEntry, WorkObject } from '../types.ts';
+import type { MemoryItem, Message, ProjectInfo, ProjectLogEntry, WorkObject } from '../types.ts';
 import { tempDir } from '../testing/helpers.ts';
 import { MemoryStore } from './memory.ts';
 import { SqliteStore } from './sqlite.ts';
@@ -109,6 +109,43 @@ describe('both stores keep the same', () => {
     mem.upsertProject({ ...project, unread: 0, stage: 'two' });
     reopened.upsertProject({ ...project, unread: 0, stage: 'two' });
     expect(reopened.getProject('prj_1')).toEqual(mem.getProject('prj_1'));
+    reopened.close();
+  });
+
+  it('memory items: numbered by the store, never reused, listed oldest first, active ones unless all', () => {
+    const item: MemoryItem = {
+      id: 0,
+      owner: 'user',
+      text: '喜欢简短回答',
+      quote: '回答尽量短',
+      status: 'active',
+      sessionId: 'ses_1',
+      seq: 3,
+      by: 'assistant',
+      createdAt: '2026-01-01T00:00:09.000+08:00',
+      updatedAt: '2026-01-01T00:00:09.000+08:00',
+    };
+    const path = join(dir, 'db', 'spica.db');
+    mkdirSync(join(dir, 'db'), { recursive: true });
+    const stores = [new MemoryStore(), new SqliteStore(path)];
+    const each = (s: Store) => {
+      const a = s.putMemory(item);
+      const b = s.putMemory({ ...item, text: '用 Julia', replaces: a.id });
+      s.putMemory({ ...a, status: 'replaced', replacedBy: b.id });
+      s.putMemory({ ...item, text: '别人的', owner: 'other' });
+      const c = s.putMemory({ ...item, text: '在上海' });
+      s.putMemory({ ...c, status: 'forgotten', undone: true, by: 'user' });
+      return { ids: [a.id, b.id, c.id], active: s.listMemories('user'), all: s.listMemories('user', { all: true }), one: s.getMemory(b.id), none: s.getMemory(99) };
+    };
+    const [mem, sql] = stores.map(each);
+    expect(sql).toEqual(mem);
+    expect(mem!.ids).toEqual([1, 2, 4]);
+    expect(mem!.active.map((m) => m.text)).toEqual(['用 Julia']);
+    expect(mem!.all.map((m) => [m.id, m.status, m.undone ?? false])).toEqual([[1, 'replaced', false], [2, 'active', false], [4, 'forgotten', true]]);
+    (stores[1] as SqliteStore).close();
+    const reopened = new SqliteStore(path);
+    expect(reopened.listMemories('user', { all: true })).toEqual(mem!.all);
+    expect(reopened.putMemory({ ...item, text: '新的' }).id).toBe(5);
     reopened.close();
   });
 

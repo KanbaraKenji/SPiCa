@@ -2,7 +2,7 @@
 // elapsed time for this run + what it is doing. After a run it shows
 // "已完成 · 用时" briefly, then goes away.
 import { useEffect, useState } from 'react';
-import type { Transcript } from '../store/transcript';
+import { MEMORY_TOOLS, type Transcript } from '../store/transcript';
 import { SpicaMark } from '@spica/brand/react';
 import { formatClock, formatDuration, toolLabel } from './format';
 
@@ -54,10 +54,12 @@ export function shownInAnswer(t: Transcript): boolean {
   const blocks = last.blocks;
   const end = blocks[blocks.length - 1];
   if (end?.type === 'thinking') return t.run.status === 'thinking';
-  if (end?.type !== 'tool') return false;
+  // remember / forget show nothing while they run (their line comes with the result): the status line says it.
+  const grouped = (b: (typeof blocks)[number] | undefined) => b?.type === 'tool' && !MEMORY_TOOLS.has(b.name);
+  if (!grouped(end)) return false;
   // The tools at the end of the answer, as one group.
   let i = blocks.length - 1;
-  while (i > 0 && blocks[i - 1]?.type === 'tool') i--;
+  while (i > 0 && grouped(blocks[i - 1])) i--;
   return blocks.slice(i).some((b) => b.type === 'tool' && b.state === 'running');
 }
 

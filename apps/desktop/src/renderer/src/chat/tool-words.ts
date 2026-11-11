@@ -119,6 +119,10 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       return { verb: 'Messaged', object: c.title ? named(c.title) : 'a sub-agent' };
     case 'record_decision':
       return { verb: 'Recorded', object: 'a decision' };
+    case 'remember':
+      return { verb: 'Saved', object: 'a memory' };
+    case 'forget':
+      return { verb: 'Deleted', object: 'a memory' };
     case 'present_files': {
       const paths = (c.input as { paths?: unknown } | undefined)?.paths;
       const k = Array.isArray(paths) ? paths.length : 0;

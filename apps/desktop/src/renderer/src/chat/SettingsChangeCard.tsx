@@ -3,6 +3,7 @@
 // meta.settingsChange, never from its text; it stays in the history.
 import type { SettingsChangeMeta } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
+import { timeOf } from './format';
 
 const KIND: Record<SettingsChangeMeta['kind'], string> = { 'openai-compatible': 'OpenAI 兼容', anthropic: 'Anthropic', wso2: '公司网关（WSO2）' };
 
@@ -97,11 +98,6 @@ export function settingsChangeRows(c: SettingsChangeMeta): { label: string; valu
   if (c.defaultMoved) rows.push({ label: '默认模型', value: `${pointerText(c.defaultMoved.from, c)} → ${pointerText(c.defaultMoved.to, c)}` });
   if (c.strongMoved) rows.push({ label: '强模型', value: `${pointerText(c.strongMoved.from, c)} → ${pointerText(c.strongMoved.to, c)}` });
   return rows;
-}
-
-function timeOf(at: string): string {
-  const d = new Date(at);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 export function SettingsChangeCard({ change, onOpenSettings }: { change: SettingsChangeMeta; onOpenSettings?: (() => void) | undefined }) {

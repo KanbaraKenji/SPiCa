@@ -116,6 +116,8 @@ export interface BackendConfig {
   network?: NetworkConfig;
   /** Spica's MCP service changing settings (spica_save_model, ...): whether each change waits for the user's confirmation. Default false (applied and shown in the conversations). */
   agentSettings?: { confirmChanges?: boolean };
+  /** The user's memory across the assistant's conversations (RuntimeOptions.memory). Default on. */
+  memory?: { enabled?: boolean };
 }
 
 /** What attachBackend() of an extension module returns. */
@@ -259,6 +261,8 @@ export interface SettingsPatch {
   /** Proxy / certificates; applies to the next request. */
   network?: NetworkConfig;
   agentSettings?: BackendConfig['agentSettings'];
+  /** The memory switch in the settings (off: conversations neither read nor save it; what is saved stays). */
+  memory?: { enabled: boolean };
   /** A newer model catalog (from the update source); used when valid and newer than the built-in one. */
   catalog?: unknown;
 }
@@ -334,6 +338,10 @@ export function applySettings(runtime: Runtime, patch: SettingsPatch): { changed
     warnings.push(...runtime.setCatalog({ update: patch.catalog }));
     changed.push('catalog');
   }
+  if (patch.memory) {
+    runtime.memory.setEnabled(patch.memory.enabled !== false);
+    changed.push('memory');
+  }
   if (patch.agentSettings?.confirmChanges !== undefined) {
     runtime.confirmSettingsChanges = patch.agentSettings.confirmChanges;
     changed.push('agentSettings');
@@ -402,6 +410,7 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
       ...(cfg.legacyDefaultCwd ? { legacyDefaultCwd: cfg.legacyDefaultCwd } : {}),
       ...(cfg.search ? { search: jsonSearchBackend(cfg.search) } : {}),
       ...(cfg.mail ? { mail: cfg.mail } : {}),
+      ...(cfg.memory ? { memory: cfg.memory } : {}),
     });
     warnings.push(...runtime.workflowErrors);
     warnings.push(...applyContextWindows(runtime, cfg.providers, []));

@@ -1,6 +1,6 @@
 // Right panel: details of the open session (tool calls, files, cost).
 import type { FileCardMeta, ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
-import { filesOf, type Block, type Transcript } from '../store/transcript';
+import { filesOf, MEMORY_TOOLS, type Block, type Transcript } from '../store/transcript';
 import { changesAfter } from '../store/relocate';
 import { Icon } from '../ui/Icon';
 import { MaxButton, type MaxState } from '../ui/MaxButton';
@@ -55,7 +55,8 @@ function ToolListText({ t, card }: { t: Parameters<typeof toolWords>[0]; card?: 
 
 export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, max }: DetailPanelProps) {
   const blocks = transcript.items.flatMap((i) => (i.kind === 'response' ? i.blocks : []));
-  const tools = blocks.filter((b): b is ToolBlock => b.type === 'tool');
+  // remember / forget are the 已记住 line in the conversation; listed here they would say it twice.
+  const tools = blocks.filter((b): b is ToolBlock => b.type === 'tool' && !MEMORY_TOOLS.has(b.name));
   // Per answer, so files named before the working-folder note are where it put them; each file once.
   const moves = changesAfter(transcript.items);
   const files = [

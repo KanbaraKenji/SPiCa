@@ -14,6 +14,9 @@ import type {
   MailFeedback,
   MailItem,
   MailPollResult,
+  MemoryCardMeta,
+  MemoryItem,
+  MemoryRefusal,
   Message,
   MessageKind,
   SourceCardMeta,
@@ -35,6 +38,12 @@ import type { AgentBackend } from './types';
 import { buildSeed, fakeCard } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
 import { isoAt } from './time';
+import { FakeMemory, type MemoryPlan } from './fake-memory';
+
+/** What the user typed in a message (its text blocks). */
+function textOf(m: Message | undefined): string {
+  return (m?.content ?? []).map((b) => (b.type === 'text' ? b.text : '')).join('');
+}
 
 export interface FakeBackendOptions {
   /** Multiplies every delay; 0 runs scripts instantly (tests). Default 1. */
@@ -140,7 +149,7 @@ export class FakeBackend implements AgentBackend {
   readonly #legacyCwd: string | undefined;
   readonly #demoImage: (() => string) | undefined;
   /** What a call said about itself until its result is stored (see #takeCallMeta). */
-  readonly #callInfo = new Map<string, { category?: ToolCategory; summary?: string; cards?: FileCardMeta[]; sources?: SourceCardMeta }>();
+  readonly #callInfo = new Map<string, { category?: ToolCategory; summary?: string; cards?: FileCardMeta[]; sources?: SourceCardMeta; memory?: MemoryCardMeta }>();
   #seq = 0;
   #ids = 0;
   #listeners = new Set<Listener>();
@@ -155,12 +164,17 @@ export class FakeBackend implements AgentBackend {
   #globalCost = 0;
   #projects = new Map<string, ProjectInfo>();
   readonly #mail: FakeMailbox;
+  readonly #memory: FakeMemory;
 
   constructor(options: FakeBackendOptions = {}) {
     this.#speed = options.speed ?? 1;
     this.#now = options.now ?? (() => new Date());
     this.#legacyCwd = options.legacyDefaultCwd;
     this.#demoImage = options.demoImage;
+    this.#memory = new FakeMemory(
+      () => isoAt(this.#now()),
+      (sid, body) => this.#emit(sid, body),
+    );
     this.#mail = new FakeMailbox(
       this.#now,
       (sid, body) => this.#emit(sid, body),
@@ -560,6 +574,34 @@ export class FakeBackend implements AgentBackend {
   }
 
   /** Like the core: the conversation and its sub-agents go, a project manager only with its project. */
+  setMemoryEnabled(on: boolean): void {
+    this.#memory.enabled = on;
+  }
+
+  async listMemories(opts?: { all?: boolean }): Promise<MemoryItem[]> {
+    return this.#memory.list(opts);
+  }
+
+  async addMemory(text: string): Promise<MemoryCardMeta | MemoryRefusal> {
+    return this.#memory.addOwn(text);
+  }
+
+  async editMemory(id: number, text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
+    return this.#memory.edit(id, text);
+  }
+
+  async forgetMemory(id: number): Promise<MemoryCardMeta | undefined> {
+    return this.#memory.forget(id, 'user');
+  }
+
+  async clearMemories(): Promise<number> {
+    return this.#memory.clear();
+  }
+
+  async undoMemory(id: number): Promise<MemoryCardMeta | undefined> {
+    return this.#memory.undo(id);
+  }
+
   async deleteSession(sessionId: string): Promise<void> {
     this.#requireSession(sessionId);
     const project = [...this.#projects.values()].find((p) => p.managerSessionId === sessionId);
@@ -728,6 +770,29 @@ export class FakeBackend implements AgentBackend {
     ];
   }
 
+  /** remember / forget as the core runs them: the card goes out with the call id and is kept with the result. */
+  #remember(sessionId: string, plan: MemoryPlan): ContentBlock[] {
+    const callId = this.#id('call');
+    const userSeq = [...(this.#messages.get(sessionId) ?? [])].reverse().find((m) => m.role === 'user' && m.kind === 'user')?.seq;
+    const quote = textOf(this.#messages.get(sessionId)?.find((m) => m.seq === userSeq));
+    const name = plan.action === 'forget' ? 'forget' : 'remember';
+    const input = plan.action === 'forget' ? { id: plan.id, quote } : { text: plan.text, quote, ...(plan.action === 'replace' ? { replaces: plan.replaces } : {}) };
+    this.#emit(sessionId, { type: 'tool.call', callId, name });
+    this.#emit(sessionId, { type: 'tool.start', callId, name, input, category: 'other' });
+    const card =
+      plan.action === 'forget'
+        ? this.#memory.forget(plan.id, 'assistant', true)
+        : this.#memory.add({ text: plan.text, quote, by: 'assistant', sessionId, ...(userSeq !== undefined ? { seq: userSeq } : {}), ...(plan.action === 'replace' ? { replaces: plan.replaces } : {}) });
+    if (card) this.#emit(sessionId, { type: 'memory.changed', callId, card });
+    this.#callInfo.set(callId, { category: 'other', ...(card ? { memory: card } : {}) });
+    const result = card?.item ? (card.action === 'forgotten' ? `Forgot [${card.item.id}].` : `Saved as [${card.item.id}].`) : 'Nothing changed.';
+    this.#emit(sessionId, { type: 'tool.end', callId, name, isError: false, preview: result, durationMs: 20 });
+    return [
+      { type: 'tool_use', id: callId, name, input },
+      { type: 'tool_result', toolUseId: callId, content: result },
+    ];
+  }
+
   #charge(sessionId: string, inputTokens: number, outputTokens: number): void {
     const costUsd = (inputTokens * 0.27 + outputTokens * 1.1) / 1_000_000;
     const s = this.#sessions.get(sessionId);
@@ -753,6 +818,7 @@ export class FakeBackend implements AgentBackend {
     const fileCards: Record<string, FileCardMeta> = {};
     const fileCardLists: Record<string, FileCardMeta[]> = {};
     const sourceCards: Record<string, SourceCardMeta> = {};
+    const memoryCards: Record<string, MemoryCardMeta> = {};
     for (const r of results) {
       if (r.type !== 'tool_result') continue;
       const info = this.#callInfo.get(r.toolUseId);
@@ -760,6 +826,7 @@ export class FakeBackend implements AgentBackend {
       if (!info) continue;
       if (info.category) toolInfo[r.toolUseId] = { category: info.category, ...(info.summary ? { summary: info.summary } : {}) };
       if (info.sources) sourceCards[r.toolUseId] = info.sources;
+      if (info.memory) memoryCards[r.toolUseId] = info.memory;
       if (info.cards?.length) {
         fileCards[r.toolUseId] = info.cards[0]!;
         fileCardLists[r.toolUseId] = info.cards;
@@ -769,6 +836,7 @@ export class FakeBackend implements AgentBackend {
       ...(Object.keys(toolInfo).length ? { toolInfo } : {}),
       ...(Object.keys(fileCards).length ? { fileCards, fileCardLists } : {}),
       ...(Object.keys(sourceCards).length ? { sourceCards } : {}),
+      ...(Object.keys(memoryCards).length ? { memoryCards } : {}),
     };
   }
 
@@ -788,6 +856,25 @@ export class FakeBackend implements AgentBackend {
         blocks.push({ type: 'text', text: reply });
         this.#commitAssistant(sessionId, blocks);
         this.#charge(sessionId, 1800, 120);
+        this.#emit(sessionId, { type: 'turn.end', turn });
+        this.#finish(sessionId, 'completed');
+        return;
+      }
+
+      // 「记住…」「改用…」「…别记了」 in the assistant's own conversations: the memory line, then a short answer.
+      const info = this.#sessions.get(sessionId);
+      const plan = info && info.role === 'top' && !info.projectId ? this.#memory.plan(text) : undefined;
+      if (plan) {
+        await this.#sleep(400, signal);
+        blocks.push(...this.#remember(sessionId, plan));
+        this.#commitAssistant(sessionId, blocks);
+        this.#emit(sessionId, { type: 'turn.end', turn });
+        this.#emit(sessionId, { type: 'turn.start', turn: ++turn });
+        const reply = plan.action === 'forget' ? '好的，这条已经删掉了。' : plan.action === 'replace' ? '好的，已经按新的改过来了。' : '好的，记住了。';
+        await this.#stream(sessionId, 'text', reply, signal);
+        blocks.push({ type: 'text', text: reply });
+        this.#commitAssistant(sessionId, blocks);
+        this.#charge(sessionId, 1800, 60);
         this.#emit(sessionId, { type: 'turn.end', turn });
         this.#finish(sessionId, 'completed');
         return;

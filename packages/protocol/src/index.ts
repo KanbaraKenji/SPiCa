@@ -347,6 +347,8 @@ export interface MessageMeta {
   toolInfo?: Record<string, ToolCallInfo>;
   /** tool_results messages: the web pages each web_fetch / web_search call used, by call id. */
   sourceCards?: Record<string, SourceCardMeta>;
+  /** tool_results messages: what remember / forget changed, by call id (the "Saved: …" line). */
+  memoryCards?: Record<string, MemoryCardMeta>;
   [key: string]: unknown;
 }
 
@@ -593,6 +595,12 @@ export type CoreEventBody =
   | { type: 'history.card'; callId: string; card: HistoryCardMeta }
   /** web_fetch / web_search: the pages a call used (kept in tool_results meta.sourceCards by call id). */
   | { type: 'source.card'; callId: string; card: SourceCardMeta }
+  /**
+   * The user's memory changed: the assistant saved, replaced or forgot an item
+   * (callId set, the "Saved: …" line with its undo), or the user edited,
+   * deleted, restored or cleared items in the settings (no callId).
+   */
+  | { type: 'memory.changed'; callId?: string; card: MemoryCardMeta }
   /** Tokens and estimated cost of one model call. */
   | { type: 'usage'; usage: Usage; costUsd: number; providerId: string; model: string }
   /** Running totals; `warning` when a total passes the warning threshold of its limit. */
@@ -701,6 +709,51 @@ export interface HistoryCardMeta {
   /** How many there are in all, counted like the rows (search: conversations); `rows` may be fewer (the newest). */
   total: number;
   rows: HistoryCardRow[];
+}
+
+/**
+ * One thing the assistant remembers about the user across conversations: a
+ * short sentence, with the user's own words it rests on. Kept when replaced or
+ * forgotten (status), so a change can be undone.
+ */
+export interface MemoryItem {
+  /** The short number the model and the window use ([n]); never reused. */
+  id: number;
+  /** Whose memory it is. Only 'user' (the user themself) for now. */
+  owner: string;
+  text: string;
+  /** The user's words the item rests on, as typed in the conversation (redacted). */
+  quote: string;
+  status: 'active' | 'replaced' | 'forgotten';
+  /** Forgotten by the undo on its "Saved: …" line (not deleted in the settings or cleared). */
+  undone?: boolean;
+  /** The item this one took the place of / the item that took this one's place. */
+  replaces?: number;
+  replacedBy?: number;
+  /** Conversation it was saved in, and the number (seq) of the user's message the quote is from; absent when added in the settings. */
+  sessionId?: string;
+  seq?: number;
+  /** Who made the last change: the assistant (a tool call) or the user (settings). */
+  by: 'assistant' | 'user';
+  /** ISO 8601 with offset. */
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Why an item typed in the settings was not kept: nothing typed, longer than 200 characters, or it looks like a key, password or ID number. */
+export interface MemoryRefusal {
+  refused: 'empty' | 'too_long' | 'secret';
+}
+
+/** What changed in the user's memory (event `memory.changed`, kept in `MessageMeta.memoryCards` when a tool did it). */
+export interface MemoryCardMeta {
+  action: 'saved' | 'replaced' | 'forgotten' | 'edited' | 'restored' | 'cleared' | 'undone';
+  /** The item saved, edited, forgotten or restored (absent for cleared). */
+  item?: MemoryItem;
+  /** replaced: the item that was taken out. */
+  previous?: MemoryItem;
+  /** cleared: how many items were forgotten. */
+  count?: number;
 }
 
 export interface HistoryCardRow {
@@ -945,6 +998,19 @@ export interface AgentApi {
    * `session.deleted` for each. A project manager cannot be deleted on its own (delete the project). Traceable records stay.
    */
   deleteSession?(sessionId: string): Promise<void>;
+  // The user's memory (the assistant's conversations; see docs/design/memory.md). Every change sends memory.changed.
+  /** Active items oldest first; with `all` also the replaced and forgotten ones (to tell an undone "Saved: …" line). */
+  listMemories?(opts?: { all?: boolean }): Promise<MemoryItem[]>;
+  /** The user adds an item in the settings (no quote; secrets refused). */
+  addMemory?(text: string): Promise<MemoryCardMeta | MemoryRefusal>;
+  /** Change the sentence of an active item; undefined when it is gone. */
+  editMemory?(id: number, text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
+  /** Delete an item (kept as forgotten). */
+  forgetMemory?(id: number): Promise<MemoryCardMeta | undefined>;
+  /** Delete every active item (kept as forgotten); how many. */
+  clearMemories?(): Promise<number>;
+  /** The undo on a "Saved: …" line: a save is taken back, a replacement gives way to the old item, a forgotten item returns. */
+  undoMemory?(id: number): Promise<MemoryCardMeta | undefined>;
   /**
    * A plugin's view (its iframe) calls one of that plugin's own tools: no model, nothing in any session's history.
    * Irreversible tools (and tools a hook wants confirmed) ask the user first: confirm.request with cause 'plugin_view'

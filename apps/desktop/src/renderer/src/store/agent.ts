@@ -1,7 +1,7 @@
 // Sessions and transcripts on the renderer side. Everything comes from the
 // backend through `window.spica.agent` and its event stream.
 import { useSyncExternalStore } from 'react';
-import type { AgentApi, ApprovalMode, CoreEvent, Message, ProjectInfo, ProjectLogEntry, SessionInfo, SetCwdResult } from '@spica/protocol';
+import type { AgentApi, ApprovalMode, CoreEvent, MemoryCardMeta, MemoryItem, MemoryRefusal, Message, ProjectInfo, ProjectLogEntry, SessionInfo, SetCwdResult } from '@spica/protocol';
 import { Store } from './external';
 import { applyEvent, EMPTY_TRANSCRIPT, fromHistory, humanError, type Transcript } from './transcript';
 
@@ -23,6 +23,8 @@ export interface AgentView {
   notice?: string;
   /** Choices in the empty window, used when its first message starts a conversation. */
   draft: NewChatDraft;
+  /** The user's memory with replaced and forgotten items (oldest first); null until loaded or when the core has none. */
+  memories: MemoryItem[] | null;
 }
 
 /** What the input box offers before a conversation exists. Empty = the core's defaults. */
@@ -85,7 +87,7 @@ export function cwdErrorText(r: Extract<SetCwdResult, { ok: false }>): string {
 }
 
 export class AgentStore {
-  readonly state = new Store<AgentView>({ sessions: [], loaded: false, activeId: null, transcripts: {}, globalCostUsd: 0, firstLines: {}, projects: [], activity: {}, topId: null, draft: { approvalMode: 'manual' } });
+  readonly state = new Store<AgentView>({ sessions: [], loaded: false, activeId: null, transcripts: {}, globalCostUsd: 0, firstLines: {}, projects: [], activity: {}, topId: null, draft: { approvalMode: 'manual' }, memories: null });
   readonly #api: AgentApi;
   #loading = new Set<string>();
 
@@ -103,6 +105,7 @@ export class AgentStore {
 
   async init(preferredId?: string): Promise<void> {
     void this.#refreshProjects();
+    void this.refreshMemories();
     if (this.#api.getTopSession) {
       // Projects hang under the core's top-level agent; knowing it lets the sidebar name it.
       void this.#api
@@ -475,6 +478,56 @@ export class AgentStore {
     // New sessions (a sub-agent was spawned): refresh the tree (cheap; the list is small).
     if (e.type === 'child.spawned' || (e.type === 'status' && !this.state.get().sessions.some((s) => s.id === e.sessionId))) void this.#refreshSessions();
     if (e.type === 'run.end') void this.#reload(e.sessionId);
+    if (e.type === 'memory.changed') void this.refreshMemories();
+  }
+
+  /** 设置 › 记忆 and the 已记住 lines read the memory from here; every memory.changed reloads it. */
+  async refreshMemories(): Promise<void> {
+    if (!this.#api.listMemories) return;
+    try {
+      const memories = await this.#api.listMemories({ all: true });
+      this.state.set((v) => ({ ...v, memories }));
+    } catch {
+      // Keep the list shown.
+    }
+  }
+
+  /** A change to the memory (settings, 撤销): its result, or a problem in words in the notice. */
+  async #memory<T>(run: ((api: AgentApi) => Promise<T>) | undefined): Promise<T | undefined> {
+    if (!run) return undefined;
+    try {
+      const r = await run(this.#api);
+      await this.refreshMemories();
+      return r;
+    } catch (err) {
+      this.state.set((v) => ({ ...v, notice: friendlyError(err) }));
+      return undefined;
+    }
+  }
+
+  addMemory(text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
+    return this.#memory(this.#api.addMemory && ((api) => api.addMemory!(text)));
+  }
+
+  editMemory(id: number, text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
+    return this.#memory(this.#api.editMemory && ((api) => api.editMemory!(id, text)));
+  }
+
+  forgetMemory(id: number): Promise<MemoryCardMeta | undefined> {
+    return this.#memory(this.#api.forgetMemory && ((api) => api.forgetMemory!(id)));
+  }
+
+  clearMemories(): Promise<number | undefined> {
+    return this.#memory(this.#api.clearMemories && ((api) => api.clearMemories!()));
+  }
+
+  undoMemory(id: number): Promise<MemoryCardMeta | undefined> {
+    return this.#memory(this.#api.undoMemory && ((api) => api.undoMemory!(id)));
+  }
+
+  /** Whether the core keeps a memory the window can show and change. */
+  get hasMemory(): boolean {
+    return !!this.#api.listMemories;
   }
 
   async #refreshSessions(): Promise<void> {

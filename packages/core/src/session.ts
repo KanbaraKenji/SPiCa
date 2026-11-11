@@ -1105,6 +1105,7 @@ export class Session {
         if (body.type === 'suggest.actions') cards = { ...cards, suggestion: { title: body.title, actions: body.actions } };
         if (body.type === 'history.card') cards = { ...cards, history: body.card };
         if (body.type === 'source.card') cards = { ...cards, sources: body.card };
+        if (body.type === 'memory.changed') cards = { ...cards, memory: body.card };
         this.#emit(body);
       },
     };
@@ -1151,6 +1152,7 @@ export class Session {
     const historyCards: NonNullable<MessageMeta['historyCards']> = {};
     const sourceCards: NonNullable<MessageMeta['sourceCards']> = {};
     const toolInfo: NonNullable<MessageMeta['toolInfo']> = {};
+    const memoryCards: NonNullable<MessageMeta['memoryCards']> = {};
     const guard: Record<string, GuardNote> = {};
     const autoApproved: string[] = [];
     for (const b of assistant.content) {
@@ -1164,6 +1166,7 @@ export class Session {
       if (r?.cards?.history) historyCards[b.id] = r.cards.history;
       if (r?.cards?.sources) sourceCards[b.id] = r.cards.sources;
       toolInfo[b.id] = this.#toolInfo(b.name, b.input);
+      if (r?.cards?.memory) memoryCards[b.id] = r.cards.memory;
       content.push({
         type: 'tool_result',
         toolUseId: b.id,
@@ -1190,6 +1193,7 @@ export class Session {
       ...(Object.keys(historyCards).length > 0 ? { historyCards } : {}),
       ...(Object.keys(sourceCards).length > 0 ? { sourceCards } : {}),
       toolInfo,
+      ...(Object.keys(memoryCards).length > 0 ? { memoryCards } : {}),
       ...(Object.keys(guard).length > 0 ? { guard } : {}),
       ...(autoApproved.length > 0 ? { autoApproved } : {}),
     };

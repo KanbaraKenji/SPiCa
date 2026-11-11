@@ -96,6 +96,24 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async deleteSession(sessionId) {
       await rt.deleteSession(sessionId);
     },
+    async listMemories(opts) {
+      return rt.memory.list({ all: !!opts?.all });
+    },
+    async addMemory(text) {
+      return rt.memory.addOwn(String(text ?? ''));
+    },
+    async editMemory(id, text) {
+      return rt.memory.edit(Number(id), String(text ?? ''));
+    },
+    async forgetMemory(id) {
+      return rt.memory.forget(Number(id), 'user');
+    },
+    async clearMemories() {
+      return rt.memory.clear();
+    },
+    async undoMemory(id) {
+      return rt.memory.undo(Number(id));
+    },
     async listMail(filter) {
       return rt.store.listMail(filter ?? {});
     },

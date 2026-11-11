@@ -7,6 +7,7 @@ export { redact, redactDeep, SECRET_ENV } from './util.ts';
 export { configureNetwork, netFetch, networkStatus, proxyFor, NET_HINTS, netErrorCode, gatewayFaultCode, listenFetchable, FETCH_BLOCKED_PORTS, type NetworkConfig } from './net.ts';
 export { Session, type RunResult, type SendHandle } from './session.ts';
 export { createAgentApi } from './api.ts';
+export { MemoryBook, MEMORY_LIMITS, USER_OWNER, fromOutside, hasMemory, looksSecret, normalize, overlap } from './memory.ts';
 export {
   buildSegments,
   flattenSegments,

@@ -173,6 +173,8 @@ function backendConfig(): DesktopBackendConfig {
       // Mail sources come from mail plugins (they register themselves); here only on / off and the interval.
       mail: mailForCore(settings.get().mail),
       network: networkForCore(settings.get().network),
+      // 设置 › 记忆 › 启用记忆 (what is saved stays when it is off).
+      memory: { enabled: settings.get().memory },
       // Development limits (see docs/design/agent-core.md §10): Anthropic 100 USD total, 2 USD per call.
       budget: { perProvider: { anthropic: { globalUsd: 100, perCallUsd: 2 } }, perRunUsd: 1 },
       // Linked into the backend entry; named here as the core expects.
@@ -244,6 +246,8 @@ const backend: AgentBackend =
     : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd, demoImage: () => writeDemoChart(join(app.getPath('userData'), 'demo-media')) });
 console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own process)' : 'fake (demo data)'}`);
 const settings = new SettingsStore(app.getPath('userData'), { persist: !automated });
+// The demo backend starts with 设置 › 记忆 › 启用记忆 as saved (the core gets it in backendConfig()).
+if (backend instanceof FakeBackend) backend.setMemoryEnabled(settings.get().memory);
 if (backendKind === 'core' && makeWorkflowsDirAtStart(app.isPackaged, settings.get().workflowsDir)) mkdirSync(defaultWorkflowsDir, { recursive: true });
 const providers = new ProviderStore(
   app.getPath('userData'),
@@ -316,6 +320,12 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'setApprovalMode',
   'setSessionCwd',
   'deleteSession',
+  'listMemories',
+  'addMemory',
+  'editMemory',
+  'forgetMemory',
+  'clearMemories',
+  'undoMemory',
 ]);
 
 let mainWindow: BrowserWindow | undefined;
@@ -846,6 +856,7 @@ let lastMail = JSON.stringify(settings.get().mail);
 let lastWorkflowsDir = workflowsDir();
 let lastNetwork = JSON.stringify(settings.get().network);
 let lastLocalConnect = settings.get().localConnect;
+let lastMemory = settings.get().memory;
 /** Problems the core reported for the network settings (e.g. a certificate file it cannot read), in words. */
 let networkProblems: string[] = [];
 function networkProblem(raw: string): string {
@@ -854,6 +865,11 @@ function networkProblem(raw: string): string {
   return `网络设置错误：${raw}`;
 }
 settings.onChange((s) => {
+  if (s.memory !== lastMemory) {
+    lastMemory = s.memory;
+    if (backend instanceof ProcessBackend) void backend.apply({ memory: { enabled: s.memory } }).catch(() => undefined);
+    else if (backend instanceof FakeBackend) backend.setMemoryEnabled(s.memory);
+  }
   if (!(backend instanceof ProcessBackend)) return;
   const mail = JSON.stringify(s.mail);
   if (mail !== lastMail) {

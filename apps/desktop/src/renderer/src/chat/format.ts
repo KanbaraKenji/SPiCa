@@ -30,6 +30,9 @@ const LABELS: Record<string, string> = {
   find_history_files: '查找对话中的文件',
   // The files a task made, handed over to the user (they show as cards under the answer).
   present_files: '交付文件',
+  // The user's memory (shown as the 已记住 line in the conversation).
+  remember: '保存记忆',
+  forget: '删除记忆',
 };
 
 /** Tools that read other conversations: their results name them as ses_…#n, shown as links. */
@@ -48,6 +51,12 @@ export function toolTarget(input: unknown): string {
     if (typeof value === 'string' && value) return value === '.' ? '工作文件夹' : value.length > 60 ? `${value.slice(0, 60)}…` : value;
   }
   return '';
+}
+
+/** A moment as month/day hour:minute (a settings-change card, an item in 设置 › 记忆); '' when not a date. */
+export function timeOf(at: string): string {
+  const d = new Date(at);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 export function formatDuration(ms: number): string {

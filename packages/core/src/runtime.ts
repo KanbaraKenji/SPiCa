@@ -12,6 +12,7 @@ import { agentTools } from './tools/agent-tools.ts';
 import { MailPipeline, triageMailTool, type MailConfig } from './mail.ts';
 import { projectTools } from './tools/project-tools.ts';
 import { historyTools } from './tools/history-tools.ts';
+import { createMemoryTools, MemoryBook, memoryHook } from './memory.ts';
 import { createRunCommandTool } from './tools/command-tool.ts';
 import { createWebFetchTool, createWebSearchTool, type SearchBackend } from './tools/web-tools.ts';
 import { connectMcp, type McpServerConfig, type McpStdioClient } from './mcp/client.ts';
@@ -57,6 +58,8 @@ export interface RuntimeOptions {
    * see addRedactions().
    */
   redactions?: readonly (string | undefined)[];
+  /** The user's memory across the assistant's conversations (memory.ts). Default on. */
+  memory?: { enabled?: boolean };
   /** Defaults for new sessions. */
   /**
    * strongModel: the model for heavy work (plugins asking for a strong model get it), on the default
@@ -270,12 +273,15 @@ export class Runtime implements RuntimeInternals {
    */
   confirmSettingsChanges = false;
   readonly #viewLimiters = new Map<string, RateLimiter>();
+  /** The user's memory: list, edit, forget, restore, undo, clear, and the on / off switch. */
+  readonly memory: MemoryBook;
 
   constructor(opts: RuntimeOptions) {
     this.#opts = opts;
     this.#workflows = loadWorkflows(opts.workflowsDir, opts.workflows ?? []);
     this.mail = new MailPipeline(this, opts.mail ?? {});
     this.store = opts.store ?? new MemoryStore();
+    this.memory = new MemoryBook(this, opts.memory ?? {});
     this.addRedactions(opts.redactions ?? []);
     this.tracer = new Tracer(this.store, this.events, (text) => redact(text, [...this.#secrets]));
     this.ledger = new CostLedger(opts.prices ?? DEFAULT_PRICES, opts.budget ?? {});
@@ -289,6 +295,7 @@ export class Runtime implements RuntimeInternals {
       ...agentTools,
       ...projectTools,
       ...historyTools,
+      ...createMemoryTools(this),
       triageMailTool,
     ];
     for (const t of opts.tools ?? defaults) this.tools.register(t, 'core');
@@ -305,6 +312,8 @@ export class Runtime implements RuntimeInternals {
         return undefined;
       },
     });
+    // The assistant's conversations see what it remembers about the user.
+    this.hooks.register('core:memory', memoryHook(this));
     // Sessions inside a project see their project and stage every turn.
     this.hooks.register('core:project', {
       inject: (ctx) => {
