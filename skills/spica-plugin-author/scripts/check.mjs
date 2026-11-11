@@ -178,7 +178,7 @@ export async function check(dir, opts = {}) {
     for (const name of new Set([...text.matchAll(ENV_READS)].map((x) => x[1] ?? x[2] ?? x[3]))) {
       if (APP_SET_ENV.test(name) || inherited.has(name.toUpperCase()) || declaredEnv.has(name)) continue;
       if (SECRET_NAME.test(name)) warn(rel, `读环境变量 ${name}：装进 Spica 后读不到（只传白名单变量，带 KEY、TOKEN、SECRET 的一律不传）。凭据放 SPICA_PLUGIN_DATA 里的配置文件，或做设置页让用户填，见 references/internal-services.md`);
-      else warn(rel, `读环境变量 ${name}：装进 Spica 后读不到（只传白名单变量）。要用就写进 mcp/<id>.json 的 env，或改读 SPICA_PLUGIN_DATA 里的配置文件`);
+      else warn(rel, `读环境变量 ${name}：装进 Spica 后读不到（只传白名单变量：PATH、TEMP、用户目录、COMPUTERNAME、USERNAME 这类，全表见作者指南第 2 节）。要用就写进 mcp/<id>.json 的 env，或改读 SPICA_PLUGIN_DATA 里的配置文件`);
     }
   }
   if (files.some((f) => /(^|\/)\.env(\.|$)/.test(f))) err('.env', '.env 文件不能进插件包（放进 .spicaignore）');

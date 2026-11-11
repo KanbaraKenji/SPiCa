@@ -94,7 +94,7 @@ export function anySignal(...signals: (AbortSignal | undefined)[]): AbortSignal 
 /** Environment variable names that must never reach child processes (model keys, tokens, ...). */
 export const SECRET_ENV = /(^SPICA_|API_?KEY|SECRET|TOKEN|PASSW(OR)?D|CREDENTIAL|PRIVATE_?KEY)/i;
 
-/** What a child process inherits by default: enough to run programs and reach the network through a proxy. */
+/** What a child process inherits by default: enough to run programs and reach the network through a proxy, plus the computer and user name. */
 export const DEFAULT_CHILD_ENV: readonly string[] = [
   'PATH',
   'PATHEXT',
@@ -111,6 +111,8 @@ export const DEFAULT_CHILD_ENV: readonly string[] = [
   'APPDATA',
   'LOCALAPPDATA',
   'LANG',
+  'COMPUTERNAME',
+  'USERNAME',
   'HTTP_PROXY',
   'HTTPS_PROXY',
   'NO_PROXY',

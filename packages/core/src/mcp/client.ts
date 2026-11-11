@@ -20,8 +20,9 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   /**
    * Which host variables the server inherits: a whitelist (default: PATH,
-   * SystemRoot, TEMP/TMP, USERPROFILE, APPDATA, LOCALAPPDATA, proxy variables,
-   * ...) or 'all'. Secret-looking names (model keys, tokens) never pass.
+   * SystemRoot, TEMP/TMP, USERPROFILE, APPDATA, LOCALAPPDATA, COMPUTERNAME,
+   * USERNAME, proxy variables, ...) or 'all'. Secret-looking names (model
+   * keys, tokens) never pass.
    */
   inheritEnv?: 'all' | string[];
   cwd?: string;

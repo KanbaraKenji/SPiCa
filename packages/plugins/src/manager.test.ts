@@ -539,6 +539,10 @@ describe('failures', () => {
         });`,
     });
     dirs.push(dir);
+    // the computer and user name pass (set here: CI machines may not have them)
+    const host = { COMPUTERNAME: process.env.COMPUTERNAME, USERNAME: process.env.USERNAME };
+    process.env.COMPUTERNAME = host.COMPUTERNAME ?? 'TEST-PC';
+    process.env.USERNAME = host.USERNAME ?? 'test-user';
     process.env.PLUGIN_TEST_PLAIN = 'x';
     process.env.PLUGIN_TEST_API_KEY = 'secret';
     try {
@@ -547,13 +551,28 @@ describe('failures', () => {
       await r.pm.enable('envy');
       const names = (await callTool(r.rt, 'envy__env', {})).content.split(',');
       expect(names).toEqual(expect.arrayContaining(['OWN_SETTING', 'SPICA_PLUGIN_DATA', 'SPICA_MOCK']));
-      expect(names.some((n) => n.toUpperCase() === 'PATH')).toBe(true);
+      const upper = names.map((n) => n.toUpperCase());
+      expect(upper).toEqual(expect.arrayContaining(['PATH', 'COMPUTERNAME', 'USERNAME']));
       expect(names).not.toContain('PLUGIN_TEST_PLAIN');
       expect(names).not.toContain('PLUGIN_TEST_API_KEY');
     } finally {
       delete process.env.PLUGIN_TEST_PLAIN;
       delete process.env.PLUGIN_TEST_API_KEY;
+      for (const [k, v] of Object.entries(host)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
     }
+  });
+
+  it('the core, the plugin manager and the author kit pass the same host variables', async () => {
+    const { DEFAULT_CHILD_ENV } = await import('../../core/src/util.ts');
+    const kitFile = new URL('../../../skills/spica-plugin-author/scripts/lib/mcp.mjs', import.meta.url).href;
+    const kit = (await import(kitFile)) as { PLUGIN_INHERIT_ENV: string[] };
+    const { PLUGIN_INHERIT_ENV } = await import('./manager.ts');
+    expect([...PLUGIN_INHERIT_ENV]).toEqual([...DEFAULT_CHILD_ENV]);
+    expect(kit.PLUGIN_INHERIT_ENV).toEqual([...DEFAULT_CHILD_ENV]);
+    expect(DEFAULT_CHILD_ENV).toEqual(expect.arrayContaining(['COMPUTERNAME', 'USERNAME']));
   });
 
   it('a server that cannot start fails the enable with a clear message', async () => {

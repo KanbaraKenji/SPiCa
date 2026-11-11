@@ -17,12 +17,16 @@ export const SPICA_VERSION = '0.1.0';
 
 /**
  * Host environment variables a plugin process may inherit: enough to run
- * programs and reach the network through a proxy. Everything else (model
+ * programs and reach the network through a proxy, plus the computer and user
+ * name (not secret; scripts often branch on them). Everything else (model
  * keys included) stays with the host; the core also drops secret-looking names.
+ * Same list as the core's DEFAULT_CHILD_ENV and the author kit's
+ * PLUGIN_INHERIT_ENV (skills/spica-plugin-author/scripts/lib/mcp.mjs); a test
+ * keeps the three equal.
  */
 export const PLUGIN_INHERIT_ENV: readonly string[] = [
   'PATH', 'PATHEXT', 'SystemRoot', 'SystemDrive', 'windir', 'ComSpec', 'TEMP', 'TMP',
-  'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'HOME', 'APPDATA', 'LOCALAPPDATA', 'LANG',
+  'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'HOME', 'APPDATA', 'LOCALAPPDATA', 'LANG', 'COMPUTERNAME', 'USERNAME',
   'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
 ];
 

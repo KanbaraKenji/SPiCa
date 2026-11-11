@@ -157,4 +157,20 @@ describe('MCP server environment', () => {
       delete process.env.RANDOM_HOST_VAR;
     }
   });
+
+  it('passes the computer and user name by default (not secret; scripts branch on them)', async () => {
+    const host = { COMPUTERNAME: process.env.COMPUTERNAME, USERNAME: process.env.USERNAME };
+    process.env.COMPUTERNAME = 'TEST-PC';
+    process.env.USERNAME = 'test-user';
+    try {
+      const { childEnv } = await import('../util.ts');
+      const def = Object.fromEntries(Object.entries(childEnv()).map(([k, v]) => [k.toUpperCase(), v]));
+      expect(def).toMatchObject({ COMPUTERNAME: 'TEST-PC', USERNAME: 'test-user' });
+    } finally {
+      for (const [k, v] of Object.entries(host)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
 });
