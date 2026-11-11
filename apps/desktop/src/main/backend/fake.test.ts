@@ -233,9 +233,10 @@ describe('FakeBackend', () => {
     expect(cards).toEqual([
       ['web_search', FAKE_SEARCH_RESULTS.length],
       ['web_fetch', 1],
+      ['web_fetch', 1],
     ]);
     const stored = (await b.getMessages(chat.id)).filter((m) => m.kind === 'tool_results').flatMap((m) => Object.values((m.meta?.sourceCards ?? {}) as Record<string, unknown>));
-    expect(stored).toHaveLength(2);
+    expect(stored).toHaveLength(3);
   });
 
   it('删除 asks to confirm a long command (for screenshots of the confirmation card)', async () => {

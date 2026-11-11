@@ -831,6 +831,9 @@ export class FakeBackend implements AgentBackend {
         blocks.push(...(await this.#tool(sessionId, run, 'web_search', { query: '注塑模具 报价 行情' }, '找到 4 条结果', 500, false, { category: 'web', sources: search })));
         const page: SourceCardMeta = { tool: 'web_fetch', sources: [{ url: 'https://example.com/mold/price-guide', title: '模具报价指南：材料、结构与交期', fetchedAt: at }] };
         blocks.push(...(await this.#tool(sessionId, run, 'web_fetch', { url: 'https://example.com/mold/price-guide' }, '模具报价指南…', 500, false, { category: 'web', sources: page })));
+        // A page it read but does not link in the answer: that one shows under 来源.
+        const unlinked: SourceCardMeta = { tool: 'web_fetch', sources: [{ url: 'https://example.net/steel/index-2026', title: '2026 年模具钢价格指数', fetchedAt: at }] };
+        blocks.push(...(await this.#tool(sessionId, run, 'web_fetch', { url: 'https://example.net/steel/index-2026' }, '模具钢价格指数…', 400, false, { category: 'web', sources: unlinked })));
         this.#setStatus(sessionId, 'thinking');
         const answer =
           '查到的行情：中等复杂度的外壳模具一般在 3 万到 6 万元之间，交期 25 到 40 天（[模具报价指南](https://example.com/mold/price-guide)）。' +
