@@ -69,9 +69,15 @@ describe('which finished sub-tasks have been opened', () => {
     expect([...unseenDone(later, ['a', 'b', 'c'])]).toEqual([]);
   });
 
-  it('one that runs again, or is gone, leaves the record, so its next finish is news again', () => {
-    expect(nextDoneSeen([s('a', 'tool'), s('b', 'done')], ['a', 'b', 'gone'], null)).toEqual(['b']);
+  it('one that runs again leaves the record, so its next finish is news again', () => {
+    expect(nextDoneSeen([s('a', 'tool'), s('b', 'done')], ['a', 'b'], null)).toEqual(['b']);
     expect([...unseenDone([s('a', 'done'), s('b', 'done')], ['b'])]).toEqual(['a']);
+  });
+
+  it('a list that is short for a moment does not empty the record', () => {
+    expect(nextDoneSeen([], ['a', 'b'], null)).toBeNull();
+    expect(nextDoneSeen([s('b', 'done')], ['a', 'b'], null)).toBeNull();
+    expect([...unseenDone(list, ['a', 'b'])]).toEqual([]);
   });
 
   it('nothing to change: null, so nothing is written', () => {

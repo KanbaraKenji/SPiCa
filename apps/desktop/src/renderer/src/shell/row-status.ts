@@ -77,14 +77,14 @@ export function unseenDone(sessions: readonly SessionInfo[], seen: readonly stri
 /**
  * The record of finished sub-tasks already opened, brought up to date; null when it is as it should be.
  * - Nothing recorded yet: everything finished so far counts as seen (no row lights up for old work).
- * - One that runs again or is gone leaves the record, so its next finish is news again.
+ * - One that runs again leaves the record, so its next finish is news again. One that is not in the list
+ *   stays: the list can be short for a moment (the backend restarting), and that must not light up old work.
  * - The one open now, when finished, joins it.
  */
 export function nextDoneSeen(sessions: readonly SessionInfo[], seen: readonly string[] | null, openId: string | null): string[] | null {
-  const done = sessions.filter((s) => s.status === 'done').map((s) => s.id);
-  if (!seen) return done;
-  const isDone = new Set(done);
-  const next = seen.filter((id) => isDone.has(id));
-  if (openId && isDone.has(openId) && !next.includes(openId)) next.push(openId);
+  const status = new Map(sessions.map((s) => [s.id, s.status]));
+  if (!seen) return sessions.filter((s) => s.status === 'done').map((s) => s.id);
+  const next = seen.filter((id) => !status.has(id) || status.get(id) === 'done');
+  if (openId && status.get(openId) === 'done' && !next.includes(openId)) next.push(openId);
   return next.length === seen.length && next.every((id, i) => id === seen[i]) ? null : next;
 }
