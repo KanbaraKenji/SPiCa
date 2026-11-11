@@ -393,6 +393,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const viewKey = (v: PluginView) => `${v.plugin}/${v.id}`;
   const sidebarPages = pluginViews.filter((v) => v.placement === 'sidebar');
   const panelPages = pluginViews.filter((v) => v.placement === 'panel');
+  const previewPages = pluginViews.filter((v) => v.placement === 'preview');
   const openPluginView = view === 'plugin' ? sidebarPages.find((v) => viewKey(v) === openPlugin) : undefined;
   const panelPluginView = rightTab === 'detail' ? undefined : panelPages.find((v) => viewKey(v) === rightTab);
   const skinNow = shell.activeSkin();
@@ -787,6 +788,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               networkState={bridge.network}
               pickFiles={bridge.pickFiles}
               {...(shell.demo ? {} : { localConnect: bridge.localConnect })}
+              previewPages={previewPages}
             />
           ) : view === 'plugin' ? (
             openPluginView ? (

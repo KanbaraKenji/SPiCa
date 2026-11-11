@@ -10,6 +10,8 @@ import { InfoTip } from '../ui/InfoTip';
 import { useKeptDraft } from './drafts';
 import { Switch } from './Switch';
 import { APP_NAME } from '../../../shared/app-identity';
+import type { PluginView } from '../../../shared/plugin-view';
+import { BUILT_IN, previewerId, previewKinds, previewPagesFor } from '../../../shared/previewers';
 
 export interface WorkflowsApi {
   run(op: 'state' | 'open' | 'reload'): Promise<WorkflowsState>;
@@ -34,6 +36,51 @@ export interface GeneralProps {
   pickFiles?: (title?: string) => Promise<string[]>;
   /** Where local scripts reach Spica now (null: off). Absent: no 开发者 group. */
   localConnect?: () => Promise<LocalConnectInfo | null>;
+  /** Preview pages of the enabled plugins (placement preview), for 文件预览. */
+  previewPages?: PluginView[];
+}
+
+/** 文件预览: per kind of file a plugin page can show, the app's own preview or that page. Not shown without any. */
+function FilePreviews({ settings, onChange, previewPages = [] }: GeneralProps) {
+  const kinds = previewKinds(settings.previewers, previewPages);
+  if (!kinds.length) return null;
+  const set = (ext: string, id: string) => {
+    const next = { ...settings.previewers };
+    if (id === BUILT_IN) delete next[ext];
+    else next[ext] = id;
+    onChange({ previewers: next });
+  };
+  return (
+    <div className="settings-group">
+      <h3 className="settings-subheading">文件预览</h3>
+      <div className="preview-kinds">
+        {kinds.map((ext) => {
+          const pages = previewPagesFor(ext, previewPages);
+          const kept = settings.previewers[ext];
+          const gone = kept !== undefined && !pages.some((v) => previewerId(v) === kept);
+          const twice = (v: PluginView) => pages.filter((p) => p.title === v.title).length > 1;
+          return (
+            <label key={ext} className="preview-kind">
+              <span className="preview-kind-ext">{ext}</span>
+              <select className="input" aria-label={`${ext} 文件预览`} value={kept ?? BUILT_IN} onChange={(e) => set(ext, e.target.value)}>
+                <option value={BUILT_IN}>自带预览</option>
+                {pages.map((v) => (
+                  <option key={previewerId(v)} value={previewerId(v)}>
+                    {twice(v) ? `${v.title}（${v.pluginTitle}）` : v.title}
+                  </option>
+                ))}
+                {gone ? (
+                  <option value={kept} disabled>
+                    插件不可用
+                  </option>
+                ) : null}
+              </select>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 /** 开发者: lets scripts on this machine (e.g. a plugin's install script) reach the running Spica. */
@@ -382,6 +429,7 @@ function Workflows({ settings, onChange, workflows, pickFolder, onBackendRestart
 export function General(props: GeneralProps) {
   return (
     <section className="settings-section">
+      <FilePreviews {...props} />
       <Workflows {...props} />
       <Network {...props} />
       <UsageLog {...props} />

@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { DEFAULT_SETTINGS } from '../../../shared/settings';
+import type { PluginView } from '../../../shared/plugin-view';
 import { General, rangeStart, type GeneralProps } from './General';
 import { dropAllDrafts } from './drafts';
 
@@ -31,6 +32,39 @@ function setup(over: Partial<GeneralProps> = {}) {
   render(<General {...props} />);
   return props;
 }
+
+const page = (plugin: string, id: string, title: string, extensions: string[]): PluginView => ({ plugin, pluginTitle: plugin === 'office-preview' ? 'Office 预览' : '另一个', id, title, placement: 'preview', entry: `ui/${id}.html`, tools: [], preview: { extensions, maxBytes: 30 * 1024 * 1024 } });
+
+describe('文件预览', () => {
+  it('not there without a preview page or a kept choice', () => {
+    setup();
+    expect(screen.queryByText('文件预览')).toBeNull();
+  });
+
+  it('per kind of file: 自带预览 or the pages that can show it; choosing one keeps it, 自带预览 drops it', () => {
+    const pages = [page('office-preview', 'docx', 'Word 原样预览', ['.docx', '.docm']), page('office-preview', 'xlsx', 'Excel 原样预览', ['.xlsx'])];
+    const p = setup({ previewPages: pages, settings: { ...DEFAULT_SETTINGS, previewers: { '.xlsx': 'office-preview/xlsx' } } });
+    expect(screen.getAllByRole('combobox').map((c) => c.getAttribute('aria-label'))).toEqual(['.docm 文件预览', '.docx 文件预览', '.xlsx 文件预览']);
+    const docx = screen.getByRole('combobox', { name: '.docx 文件预览' }) as HTMLSelectElement;
+    expect([...docx.options].map((o) => o.textContent)).toEqual(['自带预览', 'Word 原样预览']);
+    expect(docx.value).toBe('');
+    fireEvent.change(docx, { target: { value: 'office-preview/docx' } });
+    expect(p.onChange).toHaveBeenCalledWith({ previewers: { '.xlsx': 'office-preview/xlsx', '.docx': 'office-preview/docx' } });
+    const xlsx = screen.getByRole('combobox', { name: '.xlsx 文件预览' }) as HTMLSelectElement;
+    expect(xlsx.value).toBe('office-preview/xlsx');
+    fireEvent.change(xlsx, { target: { value: '' } });
+    expect(p.onChange).toHaveBeenLastCalledWith({ previewers: {} });
+  });
+
+  it('a kept choice whose plugin is gone says so; two pages with one name say whose', () => {
+    const pages = [page('office-preview', 'docx', 'Word 预览', ['.docx']), page('other', 'docx', 'Word 预览', ['.docx'])];
+    setup({ previewPages: pages, settings: { ...DEFAULT_SETTINGS, previewers: { '.pptx': 'slides/pptx' } } });
+    const pptx = screen.getByRole('combobox', { name: '.pptx 文件预览' }) as HTMLSelectElement;
+    expect(pptx.value).toBe('slides/pptx');
+    expect(pptx.selectedOptions[0]?.textContent).toBe('插件不可用');
+    expect([...(screen.getByRole('combobox', { name: '.docx 文件预览' }) as HTMLSelectElement).options].map((o) => o.textContent)).toEqual(['自带预览', 'Word 预览（Office 预览）', 'Word 预览（另一个）']);
+  });
+});
 
 describe('导出使用日志', () => {
   it('exports one project for a time range and says how many records went where', async () => {

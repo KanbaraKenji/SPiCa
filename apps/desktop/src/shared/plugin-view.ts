@@ -7,12 +7,15 @@ export interface PluginView {
   pluginTitle: string;
   id: string;
   title: string;
-  placement: 'sidebar' | 'panel';
+  /** preview: shows a file in the right panel, for the kinds in `preview`, when chosen in 设置 › 常规 › 文件预览. */
+  placement: 'sidebar' | 'panel' | 'preview';
   /** Path inside the plugin, e.g. ui/index.html. */
   entry: string;
   icon?: string | null;
   tools: string[];
   irreversible?: string[];
+  /** placement preview: the file kinds it shows (lower case, with the dot) and the largest file it takes (bytes). */
+  preview?: { extensions: string[]; maxBytes: number };
 }
 
 /** What a page's tool call returns (pluginViewCall). Errors start with a code such as [CONFIRM_REQUIRED]. */

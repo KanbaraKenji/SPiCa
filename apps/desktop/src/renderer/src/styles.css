@@ -1257,6 +1257,30 @@ pre .hl-deletion {
   min-width: 0;
 }
 
+/* 设置 › 常规 › 文件预览: a kind of file, then what shows it. */
+.preview-kinds {
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.preview-kind {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.preview-kind-ext {
+  width: 56px;
+  font-family: var(--font-mono);
+}
+
+.preview-kind .input {
+  flex: 1;
+  min-width: 0;
+}
+
 .code-theme-preview {
   margin: 0;
   padding: 10px 0;
