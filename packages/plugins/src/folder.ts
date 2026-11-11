@@ -39,6 +39,8 @@ export interface ServerDef {
   timeoutMs?: number;
   /** The longest one call may run even while reporting progress (max_call_seconds, default 60 min in the core). */
   maxCallMs?: number;
+  /** At most this many tool calls in the server at once; the rest wait their turn (concurrency). */
+  concurrency?: number;
   restart: { maxRestarts: number; windowMs: number };
   /** Give the server's tools to the model. Default: true for mcp/, false for services/. */
   exposeTools: boolean;
@@ -333,6 +335,10 @@ function parseServer(
   const maxRestarts = typeof restart.max_restarts === 'number' ? restart.max_restarts : 3;
   const windowSeconds = typeof restart.window_seconds === 'number' ? restart.window_seconds : 60;
   if (maxRestarts < 0 || maxRestarts > 10) bad('「restart.max_restarts」须在 0 到 10 之间。');
+  const concurrency = raw.concurrency;
+  if (concurrency !== undefined && (typeof concurrency !== 'number' || !Number.isInteger(concurrency) || concurrency < 1)) {
+    bad('「concurrency」须为 1 或更大的整数（同时最多处理几个工具调用，多出来的排队）。');
+  }
   const maxCall = raw.max_call_seconds;
   if (maxCall !== undefined && (typeof maxCall !== 'number' || !Number.isFinite(maxCall) || maxCall <= 0)) {
     bad('「max_call_seconds」须为大于 0 的秒数（一次调用最长多久，哪怕一直在报进度）。');
@@ -348,6 +354,7 @@ function parseServer(
     ...(typeof raw.description === 'string' ? { description: raw.description } : {}),
     ...(typeof raw.timeout_seconds === 'number' ? { timeoutMs: raw.timeout_seconds * 1000 } : {}),
     ...(typeof maxCall === 'number' ? { maxCallMs: maxCall * 1000 } : {}),
+    ...(typeof concurrency === 'number' ? { concurrency } : {}),
     restart: { maxRestarts, windowMs: windowSeconds * 1000 },
     exposeTools: typeof raw.expose_tools === 'boolean' ? raw.expose_tools : kind === 'mcp',
   };

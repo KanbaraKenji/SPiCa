@@ -128,6 +128,8 @@ export async function check(dir, opts = {}) {
       else if (!existsSync(entry)) err(where, `entry 指向的 ${s.entry} 不存在`);
       else servers.push({ id: basename(e.name, '.json'), kind, runtime: s.runtime, entry, args: Array.isArray(s.args) ? s.args.map(String) : [], env: s.env ?? {}, launchName: '' });
       for (const k of Object.keys(s.env ?? {})) if (/^SPICA_/i.test(k)) err(where, `env 里不能自己设 ${k}（SPICA_ 开头的由 Spica 设）`);
+      const conc = s.concurrency;
+      if (conc !== undefined && (typeof conc !== 'number' || !Number.isInteger(conc) || conc < 1)) err(where, 'concurrency 要写 1 或更大的整数（同时最多处理几个工具调用，多出来的排队）');
       const cap = s.max_call_seconds;
       if (cap !== undefined && (typeof cap !== 'number' || !Number.isFinite(cap) || cap <= 0)) err(where, 'max_call_seconds 要写大于 0 的秒数（一次调用最长多久，哪怕一直在报进度）');
     }

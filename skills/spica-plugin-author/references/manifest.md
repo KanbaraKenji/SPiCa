@@ -66,6 +66,7 @@
 - `entry`：插件文件夹里的相对路径；不能用 `.cmd/.bat/.ps1/.vbs`（会弹黑窗口）。
 - `env` 里不能自己设 `SPICA_` 开头的变量。
 - `timeout_seconds`：多久没有结果、也没有进度就算失败（缺省 60）。`max_call_seconds`：工具一直在报进度时最多等多久（缺省 3600）。要跑很久的工具要报进度，写法见下面「要跑很久的工具」。
+- `concurrency`：同时最多处理几个工具调用（1 或更大的整数，不写就不限）。操作只有一个的东西（一个程序的窗口、一个串口）时写 `1`，多出来的调用排队，排队时间不算超时。好几份 Spica 同时开着时，跨应用的独占要插件自己用系统的锁，写法见作者指南 2e 节。
 - 插件只有一个 `mcp/` server 时，工具名是 `<插件名>__<工具>`；有多个时是 `<插件名>-<id>__<工具>`。
 
 Spica 启动 server 时给的环境变量：`SPICA_PLUGIN_DATA`（插件自己的数据文件夹，升级、回滚都保留；除了它只写用户在对话里点名的文件夹，见 `hooks-permissions.md`「写文件」）、`SPICA_PLUGIN_DIR`（安装目录，只读）、`SPICA_MOCK`（`1` = 模拟模式）、`SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION`。另外给应用的网络设置：代理（`HTTPS_PROXY` 等，加 `NODE_USE_ENV_PROXY=1`）和信任的证书（`NODE_EXTRA_CA_CERTS`、`SSL_CERT_FILE` 等），见 `internal-services.md`。其他环境变量只继承白名单（PATH、TEMP、用户目录、`COMPUTERNAME`、`USERNAME` 这类；取电脑名也可以用 `os.hostname()`），像密钥的名字一律不传，所以凭据不要从环境变量读。

@@ -675,6 +675,45 @@ describe('failures', () => {
     expect(cancelled.data).toHaveLength(1);
   }, 60_000);
 
+  it('a plugin declaring concurrency: 1 gets its calls one after another; waiting calls end when it is disabled', async () => {
+    const dir = await writePlugin({
+      'manifest.json': manifest('solo'),
+      'mcp/srv.json': { runtime: 'node', entry: 'srv.js', concurrency: 1, timeout_seconds: 2 },
+      'srv.js': `import { createInterface } from 'node:readline';
+        const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\\n');
+        let busy = 0, most = 0;
+        createInterface({ input: process.stdin }).on('line', (l) => {
+          const m = JSON.parse(l);
+          if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 's' } } });
+          if (m.method === 'tools/list') send({ id: m.id, result: { tools: [{ name: 'use_device', inputSchema: { type: 'object' } }] } });
+          if (m.method === 'tools/call') {
+            busy++; most = Math.max(most, busy);
+            setTimeout(() => { busy--; send({ id: m.id, result: { content: [{ type: 'text', text: 'most ' + most } ] } }); }, m.params.arguments.ms);
+          }
+        });`,
+    });
+    dirs.push(dir);
+    r = await rig();
+    await r.pm.install(dir);
+    await r.pm.enable('solo');
+    // three calls of 1.2 s: the last waits 2.4 s, longer than timeout_seconds
+    const results = await Promise.all([1, 2, 3].map(() => callTool(r!.rt, 'solo__use_device', { ms: 1200 })));
+    expect(results.map((x) => x.content)).toEqual(['most 1', 'most 1', 'most 1']);
+    // disabled while one runs and one waits: both end with an error, nothing hangs
+    const running = callTool(r.rt, 'solo__use_device', { ms: 3000 });
+    const waiting = callTool(r.rt, 'solo__use_device', { ms: 100 });
+    await new Promise((res) => setTimeout(res, 300));
+    await r.pm.disable('solo');
+    expect(await running).toMatchObject({ isError: true });
+    expect(await waiting).toMatchObject({ isError: true });
+  }, 60_000);
+
+  it('concurrency must be a whole number of 1 or more', async () => {
+    const dir = await writePlugin({ 'manifest.json': manifest('badconc'), 'mcp/srv.json': { runtime: 'node', entry: 'srv.js', concurrency: 0.5 }, 'srv.js': '' });
+    dirs.push(dir);
+    expect(JSON.stringify((await readPluginFolder(dir)).issues)).toContain('concurrency');
+  });
+
   it('max_call_seconds must be a positive number of seconds', async () => {
     const dir = await writePlugin({ 'manifest.json': manifest('badcap'), 'mcp/srv.json': { runtime: 'node', entry: 'srv.js', max_call_seconds: 0 }, 'srv.js': '' });
     dirs.push(dir);

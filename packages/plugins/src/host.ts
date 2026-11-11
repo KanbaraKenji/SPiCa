@@ -17,6 +17,8 @@ export interface McpLaunch {
   timeoutMs?: number;
   /** The longest one call may run even while the server reports progress. */
   maxCallMs?: number;
+  /** At most this many tool calls in the server at once; the rest wait their turn. */
+  concurrency?: number;
   /** Server stderr, for the plugin log  */
   stderrLog?: (chunk: string) => void;
   /** The process ended; `expected` is true after disconnect(). */

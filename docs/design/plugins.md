@@ -68,6 +68,7 @@
 - `env` 不能自己设 `SPICA_` 开头的变量。
 - `expose_tools`：`mcp/` 默认 true，`services/` 默认 false。
 - `timeout_seconds`：多久没有结果、也没有进度就算这次调用失败（缺省 60）。`max_call_seconds`：一直在报进度也最多等多久（缺省 3600，必须大于 0）。内核调工具时带 progressToken，收到这次调用的进度就重新计时；超时或用户停止时给 server 发 `notifications/cancelled`。插件页面直接调工具（`callPluginTool`）也一样，没有另外写死的时限；后台方法 `pluginViewCall` 可以带外壳自己定的 `callId`，页面关掉或重新加载时外壳调 `pluginViewCancel({ callId })` 停掉它，server 会收到取消。写法见作者指南 2c 节。
+- `concurrency`：这个 server 同时最多处理几个工具调用（1 或更大的整数，缺省不限），多出来的按先后排队；对话和插件页面走同一个队列；排队的时间不算进 `timeout_seconds` 和 `max_call_seconds`；排着时被停止或对话被删就离开队列，server 停用或崩溃时排着的都报错。界面上还看不出「在等」（内核有 `McpStdioClient.waiting`，要给界面得加 protocol 的事件）。跨应用的独占由插件自己用系统的锁（作者指南 2e 节）。
 
 ### 钩子模块 `hooks/*.js`
 

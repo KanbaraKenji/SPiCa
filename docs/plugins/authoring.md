@@ -179,6 +179,60 @@ export function openForUserPowerShell(program, cwd = homedir()) {
 - 带 COM 注册的真实程序没有实测（用能回应的测试程序代替）。按上表推断：程序不在插件的进程树里，就不会被「结束到一半」。
 - `check.mjs` 不查这一条：上面的推荐写法里中间进程本身就用了 `detached`，单看代码分不出对错；辅助程序 `.exe` 里怎么打开程序，在编译好的文件里看不到。交付前按这一节自己核一遍。
 
+## 2e. 同时来的调用和只有一个的东西
+
+- **同一个 server 会同时收到多个 `tools/call`**：几个对话、子任务、插件页面可能同时调你的工具，Spica 默认不排队，来一个发一个。
+- **同一个插件可能在同一台电脑上跑好几份**：例如代码版和安装版各开一个，各起一个 server，互相不知道。
+
+工具操作的是只有一个的东西（一个桌面程序的窗口、一个串口、一个只能单独打开的文件）时，两个调用同时进来就会互相打乱。分两层处理：
+
+**这一份 Spica 里：在 `mcp/<id>.json` 声明 `concurrency`。** 值是同时最多处理几个调用（1 或更大的整数，不写就不限）：
+
+```json
+{ "runtime": "node", "entry": "server/index.js", "concurrency": 1 }
+```
+
+- 多出来的调用按先后排队，前一个结束（成功、出错、被停止都算）才发下一个。对话里调和插件页面调走同一个队列。
+- 排队等的时间不算进 `timeout_seconds`，也不算进 `max_call_seconds`：轮到它、真发给 server 时才开始计。
+- 排着队时用户点了停止、对话被删，这个调用直接离开队列，server 根本收不到；插件被停用、server 崩溃时，排着的调用都结束并报错。
+- 排队时界面上还看不出「在等」，只是这一步还没完成。
+
+**跨 Spica（好几份同时开着）：插件自己用系统的锁。** Node 写的 server 可以拿一个命名管道当锁，同一个名字只有一个进程能占着，占着的进程退出（包括被强行结束）时系统自动放掉：
+
+```js
+import net from 'node:net';
+
+// 拿到锁返回一个放锁的函数；别人占着就每半秒再试，最多等 waitMs
+export async function takeLock(name, waitMs = 60_000) {
+  const path = `\\\\.\\pipe\\${name}`; // Windows 命名管道
+  const until = Date.now() + waitMs;
+  for (;;) {
+    try {
+      return await new Promise((resolve, reject) => {
+        const s = net.createServer();
+        s.once('error', reject);
+        s.listen(path, () => resolve(() => new Promise((done) => s.close(() => done()))));
+      });
+    } catch (err) {
+      if (err.code !== 'EADDRINUSE' || Date.now() > until) throw err;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+}
+
+// 用法
+const release = await takeLock('example-plugin-device');
+try {
+  /* 操作那个只有一个的东西 */
+} finally {
+  await release();
+}
+```
+
+- 锁的名字带上插件名，避免和别的插件撞名。等锁时也照常报进度（见 2c 节），否则等太久会被 `timeout_seconds` 停掉。
+- 用 `.exe` 写的辅助程序用 Windows 的命名互斥量，例如 C# 的 `new Mutex(false, @"Local\example-plugin-device")` 加 `WaitOne(超时)` / `ReleaseMutex()`；`Local\` 只在当前登录的用户里有效，同一个用户开的几份 Spica 正好都能看到。
+- macOS / Linux 上没有命名管道，同样的写法改用临时文件夹里的一个套接字文件；进程崩溃会把文件留下，拿锁失败时先试着连一下，连不上就删掉文件再拿。
+
 ## 3. 加一个技能
 
 `todo/skills/planning/SKILL.md`：

@@ -42,6 +42,12 @@ export interface McpServerConfig {
    */
   maxCallMs?: number;
   /**
+   * At most this many tool calls run in the server at once; later ones wait
+   * their turn in order. Waiting counts toward neither timeoutMs nor
+   * maxCallMs: both start when the call is sent. Default: no limit.
+   */
+  concurrency?: number;
+  /**
    * Called once when the server process ends. `expected` is true when it was
    * stopped by disconnect()/close(); otherwise it crashed or quit by itself.
    */
@@ -106,7 +112,15 @@ export class McpStdioClient {
   #exited: Promise<void> = Promise.resolve();
   /** Requests the server sent us that are still running (for notifications/cancelled). */
   readonly #serving = new Map<number | string, AbortController>();
+  /** Tool calls waiting for their turn (config.concurrency), oldest first. */
+  readonly #queue: { start: () => void; fail: (e: Error) => void }[] = [];
+  #inFlight = 0;
   serverInfo: { name?: string; version?: string } = {};
+
+  /** Tool calls waiting for their turn right now (for showing "waiting"). */
+  get waiting(): number {
+    return this.#queue.length;
+  }
 
   constructor(config: McpServerConfig) {
     this.config = config;
@@ -177,7 +191,14 @@ export class McpStdioClient {
     signal?: AbortSignal,
     onProgress?: (p: McpProgress) => void,
   ): Promise<{ content: string; isError: boolean }> {
-    const result = (await this.request('tools/call', { name, arguments: args ?? {} }, { ...(signal ? { signal } : {}), onProgress: onProgress ?? (() => {}) })) as {
+    const done = await this.#takeTurn(signal);
+    let answer: unknown;
+    try {
+      answer = await this.request('tools/call', { name, arguments: args ?? {} }, { ...(signal ? { signal } : {}), onProgress: onProgress ?? (() => {}) });
+    } finally {
+      done();
+    }
+    const result = answer as {
       content?: { type: string; text?: string; resource?: { text?: string; uri?: string }; mimeType?: string }[];
       structuredContent?: unknown;
       isError?: boolean;
@@ -189,6 +210,49 @@ export class McpStdioClient {
     });
     if (parts.length === 0 && result.structuredContent !== undefined) parts.push(JSON.stringify(result.structuredContent));
     return { content: parts.join('\n'), isError: !!result.isError };
+  }
+
+  /**
+   * Wait until this tool call may run (config.concurrency), in arrival order.
+   * Resolves with the function that gives the turn to the next one. A call
+   * stopped while waiting leaves the queue; nothing was sent, so the server
+   * is not told.
+   */
+  #takeTurn(signal?: AbortSignal): Promise<() => void> {
+    const limit = this.config.concurrency;
+    let given = false;
+    const done = (): void => {
+      if (given) return;
+      given = true;
+      this.#inFlight--;
+      this.#queue.shift()?.start();
+    };
+    if (!limit || this.#inFlight < limit || this.#closed) {
+      this.#inFlight++;
+      return Promise.resolve(done);
+    }
+    return new Promise((resolve, reject) => {
+      const aborted = () => Object.assign(new Error('aborted'), { name: 'AbortError' });
+      if (signal?.aborted) return reject(aborted());
+      const onAbort = (): void => {
+        const i = this.#queue.indexOf(entry);
+        if (i >= 0) this.#queue.splice(i, 1);
+        reject(aborted());
+      };
+      const entry = {
+        start: () => {
+          signal?.removeEventListener('abort', onAbort);
+          this.#inFlight++;
+          resolve(done);
+        },
+        fail: (e: Error) => {
+          signal?.removeEventListener('abort', onAbort);
+          reject(e);
+        },
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      this.#queue.push(entry);
+    });
   }
 
   /**
@@ -374,6 +438,7 @@ export class McpStdioClient {
     for (const [, ctl] of this.#serving) ctl.abort();
     this.#serving.clear();
     for (const p of [...this.#pending.values()]) p.reject(err); // clears its timers and forgets it
+    for (const q of this.#queue.splice(0)) q.fail(err); // calls still waiting for their turn
   }
 }
 
