@@ -160,15 +160,28 @@ export interface Attachment {
   code?: 'image.too_large' | 'image.too_many' | 'image.unreadable';
 }
 
+/** An earlier answer to the same message, replaced by 重新生成 (only to look at). */
+export interface OldAnswer {
+  blocks: Block[];
+  /** When its last message was written. */
+  at?: string;
+}
+
 export type Item =
-  | { kind: 'user'; id: string; text: string; steer: boolean; attachments?: Attachment[] }
+  /** `at`: when it was sent. */
+  | { kind: 'user'; id: string; text: string; steer: boolean; attachments?: Attachment[]; at?: string }
   /** New mail for this project (the core's English instructions to the agent are not shown). */
   | { kind: 'mail'; id: string; mailIds: string[]; flagged?: string[] }
   /** `cwd`: the working-folder note; files named before it are looked for where they went (store/relocate.ts). */
   | { kind: 'note'; id: string; text: string; child?: ChildNote; cwd?: CwdChangeMeta }
   /** A model setting a connected script changed (the card; meta.settingsChange). */
   | { kind: 'settings'; id: string; change: SettingsChangeMeta }
-  | { kind: 'response'; id: string; blocks: Block[]; interrupted: boolean };
+  /**
+   * `messageIds`: the stored assistant messages in it (the last is the one 重新生成 names); `at`: when the last
+   * was written; `versions`: the answers it replaced, oldest first (it is the newest, number versions.length + 1);
+   * `anchorId`: the message it answers, once it has been regenerated.
+   */
+  | { kind: 'response'; id: string; blocks: Block[]; interrupted: boolean; messageIds?: string[]; at?: string; versions?: OldAnswer[]; anchorId?: string };
 
 export interface RunState {
   /** ms since epoch when this run started (for the status line timer). */
@@ -257,7 +270,7 @@ function userItem(m: Message): Item {
   // could not be read is said in English there, and shown here as the attachment marked failed).
   const first = m.content[0];
   const text = list?.length ? (first?.type === 'text' ? first.text : '') : textOf(m);
-  return { kind: 'user', id: m.id, text, steer: m.kind === 'steer', ...(att ? { attachments: att } : {}) };
+  return { kind: 'user', id: m.id, text, steer: m.kind === 'steer', ...(att ? { attachments: att } : {}), ...(m.createdAt ? { at: m.createdAt } : {}) };
 }
 
 function asSuggest(callId: string, input: unknown): Block {
@@ -314,7 +327,16 @@ function findBlock<T extends Block['type']>(items: Item[], type: T, callId: stri
 }
 
 /** Builds the view from stored history plus whatever the session is still waiting on. */
-export function fromHistory(messages: readonly Message[], pending: readonly PendingItem[] = []): Transcript {
+export function fromHistory(all: readonly Message[], pending: readonly PendingItem[] = []): Transcript {
+  // Answers replaced by 重新生成: each old version is built the same way, then hung on the answer that replaced it.
+  const old = new Map<string, Map<number, Message[]>>();
+  for (const m of all) {
+    if (!m.superseded) continue;
+    const byVersion = old.get(m.superseded.of) ?? new Map<number, Message[]>();
+    byVersion.set(m.superseded.version, [...(byVersion.get(m.superseded.version) ?? []), m]);
+    old.set(m.superseded.of, byVersion);
+  }
+  const messages = old.size ? all.filter((m) => !m.superseded) : all;
   const items: Item[] = [];
   const cards: Record<string, FileCardMeta> = {};
   const history: Record<string, HistoryCardMeta> = {};
@@ -329,6 +351,8 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
     if (found && typeof found === 'object') Object.assign(history, found);
     if (m.role === 'assistant') {
       const r = lastResponse(items, m.id);
+      r.messageIds = [...(r.messageIds ?? []), m.id];
+      if (m.createdAt) r.at = m.createdAt;
       if (m.meta?.interrupted === true) r.interrupted = true;
       for (const b of m.content) {
         if (b.type === 'text') {
@@ -387,6 +411,34 @@ export function fromHistory(messages: readonly Message[], pending: readonly Pend
     }
     mark(m);
   }
+  for (const [anchor, byVersion] of old) {
+    const at = items.findIndex((i) => i.id === anchor);
+    if (at < 0) continue;
+    const versions = [...byVersion.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, msgs]): OldAnswer => {
+        // Built as if current (each still carries its mark, which would leave it out again).
+        const built = fromHistory(
+          msgs.map((m) => {
+            const { superseded, ...rest } = m;
+            void superseded;
+            return rest;
+          }),
+        );
+        Object.assign(cards, built.fileCards ?? {});
+        Object.assign(history, built.historyCards ?? {});
+        const last = msgs[msgs.length - 1];
+        return { blocks: built.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])), ...(last?.createdAt ? { at: last.createdAt } : {}) };
+      });
+    // The newest answer (maybe still empty: it is being written) is the response right after the message.
+    let cur = items[at + 1];
+    if (cur?.kind !== 'response') {
+      cur = { kind: 'response', id: `answer-${anchor}`, blocks: [], interrupted: false };
+      items.splice(at + 1, 0, cur);
+    }
+    cur.versions = versions;
+    cur.anchorId = anchor;
+  }
   const t: Transcript = { items, ...(Object.keys(cards).length ? { fileCards: cards } : {}), ...(Object.keys(history).length ? { historyCards: history } : {}), seqs };
   for (const p of pending) applyPending(t, p);
   return t;
@@ -438,6 +490,18 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       } else if (m.role === 'assistant' && m.meta?.interrupted === true) {
         lastResponse(items, respId).interrupted = true;
       }
+      return t;
+    }
+    case 'messages.superseded': {
+      const at = items.findIndex((i) => i.id === e.anchorId);
+      if (at < 0) return t;
+      const cur = items[at + 1];
+      const versions = cur?.kind === 'response' ? [...(cur.versions ?? []), { blocks: cur.blocks, ...(cur.at ? { at: cur.at } : {}) }] : [];
+      const next: Item = { kind: 'response', id: respId, blocks: [], interrupted: false, versions, anchorId: e.anchorId };
+      if (cur?.kind === 'response') items.splice(at + 1, 1, next);
+      else items.splice(at + 1, 0, next);
+      // Whatever came after the old answer (its notes) went with it; the new answer is written last.
+      items.splice(at + 2);
       return t;
     }
     case 'text.delta': {

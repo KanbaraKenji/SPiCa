@@ -140,7 +140,7 @@ export class AgentStore {
     if (this.#loading.has(id) || this.state.get().transcripts[id]) return;
     this.#loading.add(id);
     try {
-      const [messages, pending, info] = await Promise.all([this.#api.getMessages(id), this.#api.getPending(id), this.#api.getSession(id)]);
+      const [messages, pending, info] = await Promise.all([this.#api.getMessages(id, { superseded: true }), this.#api.getPending(id), this.#api.getSession(id)]);
       const t = fromHistory(messages, pending);
       if (info && isLive(info.status)) t.run = { startedAt: Date.parse(info.updatedAt) || Date.now(), status: info.status };
       const first = firstUserText(messages);
@@ -266,6 +266,17 @@ export class AgentStore {
 
   async resume(id: string): Promise<void> {
     await this.#guard(() => this.#api.resume(id));
+  }
+
+  /** 重新生成: the last answer is replaced by a new one (the old one is kept to look at). Refused: its reason as a notice. */
+  async regenerate(id: string, messageId?: string): Promise<void> {
+    try {
+      if (!this.#api.regenerate) return;
+      const r = await this.#api.regenerate(id, messageId);
+      if (!r.ok) this.state.set((v) => ({ ...v, notice: r.hint }));
+    } catch (err) {
+      this.state.set((v) => ({ ...v, notice: friendlyError(err) }));
+    }
   }
 
   async stop(id: string): Promise<void> {
@@ -478,7 +489,7 @@ export class AgentStore {
   /** After a run, the stored history is the truth; rebuild from it, keeping the finished-run info. */
   async #reload(id: string): Promise<void> {
     try {
-      const [messages, pending] = await Promise.all([this.#api.getMessages(id), this.#api.getPending(id)]);
+      const [messages, pending] = await Promise.all([this.#api.getMessages(id, { superseded: true }), this.#api.getPending(id)]);
       this.state.set((v) => {
         const prev = v.transcripts[id];
         const next = fromHistory(messages, pending);
