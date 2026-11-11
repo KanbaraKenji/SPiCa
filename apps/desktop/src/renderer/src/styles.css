@@ -16,6 +16,9 @@
   --lh-prose: 24px;
   --fs-title: 22px;
   --lh-title: 28px;
+  /* The Claude app's compact density puts body on 19px: the rows of a tool group, the right panel's lists and
+     what opens under a row (思考过程, a call's words) sit on it. */
+  --lh-body-compact: 19px;
   /* The conversation follows 外观 › 文字大小 (these are 中; 小 and 大 are set on .conversation): the text (answers,
      your messages, the input box, and the rows that stand in an answer: 思考过程, a tool group's line, Running …),
      the secondary lines (what opens under a row, notes, a confirmation's labels) and an answer's headings, which
@@ -27,6 +30,7 @@
   --chat-line: var(--lh-prose);
   --chat-small: var(--fs-body);
   --chat-small-line: var(--lh-body);
+  --chat-row-line: var(--lh-body-compact);
   --chat-h2: 18px;
   --chat-h2-line: 27px;
   --chat-h1: var(--fs-title);
@@ -793,7 +797,7 @@ button.tree-twisty:hover {
   margin: 0;
   padding: 0;
   font-size: var(--fs-body);
-  line-height: var(--lh-body);
+  line-height: var(--lh-body-compact);
 }
 
 .detail-item {
@@ -955,7 +959,7 @@ button.tree-twisty:hover {
 .turn-note {
   margin: 0;
   font-size: var(--chat-small);
-  line-height: var(--chat-small-line);
+  line-height: var(--chat-row-line);
   color: var(--spica-muted);
   overflow-wrap: anywhere;
 }
@@ -1064,6 +1068,7 @@ button.tree-twisty:hover {
   --chat-line: 22px;
   --chat-small: 13px;
   --chat-small-line: 19px;
+  --chat-row-line: 18px;
   --chat-h2: 16px;
   --chat-h2-line: 24px;
   --chat-h1: 18px;
@@ -1075,6 +1080,7 @@ button.tree-twisty:hover {
   --chat-line: 27px;
   --chat-small: 15px;
   --chat-small-line: 22px;
+  --chat-row-line: 21px;
   --chat-h2: 22px;
   --chat-h2-line: 28px;
   --chat-h1: 22px;
@@ -1600,7 +1606,7 @@ pre .hl-punctuation {
   padding-left: 14px;
   border-left: 1px solid var(--spica-border);
   font-size: var(--chat-small);
-  line-height: var(--chat-small-line);
+  line-height: var(--chat-row-line);
 }
 
 /* Web pages: under an answer as a row of chips (来源), inside a web call's line as a list. Both open in the browser. */
@@ -1711,8 +1717,8 @@ pre .hl-punctuation {
 .tool-item-head {
   width: 100%;
   font-size: var(--chat-small);
-  line-height: var(--chat-small-line);
-  min-height: 32px;
+  line-height: var(--chat-row-line);
+  min-height: calc(var(--chat-row-line) + 12px);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1810,7 +1816,7 @@ pre .hl-punctuation {
   white-space: pre-wrap;
   color: var(--spica-muted);
   font-size: var(--chat-small);
-  line-height: var(--chat-small-line);
+  line-height: var(--chat-row-line);
 }
 
 .tool-result {

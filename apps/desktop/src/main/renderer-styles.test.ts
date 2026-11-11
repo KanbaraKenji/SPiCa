@@ -178,6 +178,10 @@ describe('the type scale (the Claude app’s, comfortable density)', () => {
     expect(block('body')).toContain('font-size: var(--fs-body);\n  line-height: var(--lh-body)');
   });
 
+  it('body has the compact density’s 19px line too (rows, the right panel’s lists, what opens under a row)', () => {
+    expect(root).toContain('--lh-body-compact: 19px;');
+  });
+
   it('no size or line height off the scale: only the variables, code in a sentence (0.9em) and the two badges drawn in a fixed box', () => {
     const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1]!.replace(/\/\*[\s\S]*?\*\//g, '').trim(), body: m[2]! }));
     const offScale = rules
@@ -210,14 +214,22 @@ describe('the conversation’s sizes', () => {
     expect(block(':root')).toContain('--chat-small: var(--fs-body);\n  --chat-small-line: var(--lh-body)');
     for (const sel of ['.tool-item-head', '.fold-body', '.thinking-text', '.turn-note', '\n.confirm-args', '\n.conversation'])
       expect(block(sel), sel).toContain('font-size: var(--chat-small)');
+    for (const sel of ['\n.confirm-args', '\n.conversation']) expect(block(sel), sel).toContain('line-height: var(--chat-small-line)');
+  });
+
+  it('rows on the compact line (14 on 19): a group’s steps, what opens under a row, notes; same space above and below', () => {
+    expect(block(':root')).toContain('--chat-row-line: var(--lh-body-compact);');
+    for (const sel of ['.tool-item-head', '.fold-body', '.thinking-text', '.turn-note']) expect(block(sel), sel).toContain('line-height: var(--chat-row-line)');
+    expect(block('.tool-item-head')).toContain('min-height: calc(var(--chat-row-line) + 12px)');
+    expect(block('.detail-list')).toContain('line-height: var(--lh-body-compact)');
     // The detail panel is not the conversation; the time at the end of a row stays a caption.
     expect(block('.detail-list')).toContain('font-size: var(--fs-body)');
     expect(block('.fold-meta')).toContain('font-size: var(--fs-caption)');
   });
 
   it('文字大小 小 / 大 move the conversation’s tiers one step (the input box is in it), nothing outside it', () => {
-    expect(block(":root[data-text-size='sm'] .conversation")).toContain('--chat-text: 15px;\n  --chat-line: 22px;\n  --chat-small: 13px;\n  --chat-small-line: 19px;\n  --chat-h2: 16px;\n  --chat-h2-line: 24px;\n  --chat-h1: 18px;\n  --chat-h1-line: 27px;');
-    expect(block(":root[data-text-size='lg'] .conversation")).toContain('--chat-text: 18px;\n  --chat-line: 27px;\n  --chat-small: 15px;\n  --chat-small-line: 22px;\n  --chat-h2: 22px;\n  --chat-h2-line: 28px;\n  --chat-h1: 22px;\n  --chat-h1-line: 28px;');
+    expect(block(":root[data-text-size='sm'] .conversation")).toContain('--chat-text: 15px;\n  --chat-line: 22px;\n  --chat-small: 13px;\n  --chat-small-line: 19px;\n  --chat-row-line: 18px;\n  --chat-h2: 16px;\n  --chat-h2-line: 24px;\n  --chat-h1: 18px;\n  --chat-h1-line: 27px;');
+    expect(block(":root[data-text-size='lg'] .conversation")).toContain('--chat-text: 18px;\n  --chat-line: 27px;\n  --chat-small: 15px;\n  --chat-small-line: 22px;\n  --chat-row-line: 21px;\n  --chat-h2: 22px;\n  --chat-h2-line: 28px;\n  --chat-h1: 22px;\n  --chat-h1-line: 28px;');
     expect(css.match(/data-text-size/g)).toHaveLength(2);
   });
 
