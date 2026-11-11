@@ -52,7 +52,20 @@ function Lines({ text }: { text: string }) {
   );
 }
 
+/** What can be shown both ways in the panel: as a page or picture, and as its code. */
+function codeOf(info: PreviewInfo | null): string | null {
+  if (!info) return null;
+  if (info.kind === 'html' || info.kind === 'markdown') return info.text;
+  if (info.kind === 'image' && info.text !== undefined) return info.text;
+  return null;
+}
+
 export function FilePreview({ info, onOpenExternal, onReveal, onClose, max }: FilePreviewProps) {
+  // 代码 / 预览: per file (another file opens as its preview again).
+  const id = info ? `${info.kind}|${info.path}|${info.name}` : '';
+  const [codeFor, setCodeFor] = useState<string | null>(null);
+  const code = codeOf(info);
+  const asCode = code !== null && codeFor === id;
   return (
     <section className="preview" aria-label={info ? `预览 ${info.name}` : '预览'}>
       <header className="preview-head">
@@ -60,14 +73,20 @@ export function FilePreview({ info, onOpenExternal, onReveal, onClose, max }: Fi
         <span className="preview-name" title={info?.path ?? ''}>
           {info?.name ?? ''}
         </span>
+        {code !== null ? (
+          <button type="button" className="icon-btn" aria-pressed={asCode} onClick={() => setCodeFor(asCode ? null : id)} aria-label={asCode ? '预览' : '代码'} title={asCode ? '预览' : '代码'}>
+            <Icon name={asCode ? 'eye' : 'code'} size={15} />
+          </button>
+        ) : null}
         {max ? <MaxButton max={max} /> : null}
-        {info && info.kind !== 'missing' && onReveal ? (
+        {/* The file's own buttons: not for a page drawn from an answer (it has no file). */}
+        {info && info.kind !== 'missing' && info.path && onReveal ? (
           <button type="button" className="icon-btn" onClick={() => onReveal(info.path)} aria-label="打开所在文件夹" title="打开所在文件夹">
             <Icon name="folder" size={15} />
           </button>
         ) : null}
-        {info && info.kind !== 'missing' ? <CopyButton className="icon-btn" label="复制路径" copy={() => clipboard.write(info.path)} /> : null}
-        {info && info.kind !== 'missing' ? (
+        {info && info.kind !== 'missing' && info.path ? <CopyButton className="icon-btn" label="复制路径" copy={() => clipboard.write(info.path)} /> : null}
+        {info && info.kind !== 'missing' && info.path ? (
           <button type="button" className="icon-btn" onClick={() => onOpenExternal(info.path)} aria-label="用系统程序打开" title="用系统程序打开">
             <Icon name="external" size={15} />
           </button>
@@ -78,6 +97,8 @@ export function FilePreview({ info, onOpenExternal, onReveal, onClose, max }: Fi
       </header>
       {!info ? (
         <div className="preview-body" />
+      ) : asCode ? (
+        <Lines key={`${id}|code`} text={code} />
       ) : info.kind === 'pdf' ? (
         <iframe className="preview-frame" src={info.url} title={info.name} />
       ) : info.kind === 'image' ? (

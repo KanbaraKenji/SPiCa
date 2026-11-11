@@ -39,4 +39,13 @@ describe('file preview', () => {
     expect(await readPreview(join(dir, 'gone.txt'), files)).toMatchObject({ kind: 'missing' });
     expect(await readPreview(dir, files)).toMatchObject({ kind: 'unsupported', message: '不是文件' });
   });
+
+  it('an SVG is a picture that also brings its source (for the panel’s 代码 view); other pictures do not', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-preview-'));
+    writeFileSync(join(dir, 'a.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    writeFileSync(join(dir, 'b.png'), 'PNG');
+    const files = new PreviewFiles();
+    expect(await readPreview(join(dir, 'a.svg'), files)).toMatchObject({ kind: 'image', text: '<svg xmlns="http://www.w3.org/2000/svg"/>' });
+    expect(await readPreview(join(dir, 'b.png'), files)).not.toHaveProperty('text');
+  });
 });

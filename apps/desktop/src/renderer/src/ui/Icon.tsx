@@ -49,6 +49,8 @@ const PATHS = {
   pencil: 'M11.2 2.6l2.2 2.2-7.6 7.6-2.9.7.7-2.9z',
   // 导出: an arrow down onto a tray.
   download: 'M8 2.5v7.5 M4.8 6.8 8 10l3.2-3.2 M3 11.5v2h10v-2',
+  // 代码: angle brackets (a file's source, as against its preview).
+  code: 'M5.5 4.5 2 8l3.5 3.5 M10.5 4.5 14 8l-3.5 3.5',
   copy: 'M5.5 5.5h7.5v8H5.5z M3 10.5V2.5h7.5',
 } as const;
 

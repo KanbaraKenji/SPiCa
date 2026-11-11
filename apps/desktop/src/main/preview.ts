@@ -2,7 +2,7 @@
 // a private URL (spica-file://) for the built-in PDF viewer and images. Only
 // files the user asked to preview get a URL; nothing else is reachable.
 import { randomUUID } from 'node:crypto';
-import { open, stat } from 'node:fs/promises';
+import { open, readFile, stat } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import type { PreviewInfo } from '../shared/bridge';
 
@@ -77,7 +77,11 @@ export async function readPreview(path: string, files: PreviewFiles): Promise<Pr
     return { kind: 'missing', name, path, size: 0, message: '找不到文件，可能已被移动或删除。' };
   }
   const kind = kindOf(path);
-  if (kind === 'pdf' || kind === 'image') return { kind, name, path, size, url: files.urlFor(path) };
+  if (kind === 'pdf' || kind === 'image') {
+    // An SVG is text too: its source comes along for the panel's 代码 view.
+    const svg = kind === 'image' && extname(path).toLowerCase() === '.svg' && size <= TEXT_LIMIT ? await readFile(path, 'utf8').catch(() => undefined) : undefined;
+    return { kind, name, path, size, url: files.urlFor(path), ...(svg !== undefined ? { text: svg } : {}) };
+  }
   if (kind === 'unsupported') return { kind, name, path, size, message: '不支持预览此类文件。' };
   const handle = await open(path, 'r');
   try {

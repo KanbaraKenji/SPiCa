@@ -48,7 +48,8 @@ export interface ShellState {
 
 /** A file shown in the right panel: a URL for the PDF viewer / images, or its text (capped). */
 export type PreviewInfo =
-  | { kind: 'pdf' | 'image'; name: string; path: string; size: number; url: string }
+  /** `text`: an SVG's source, so the panel can show it as code too. */
+  | { kind: 'pdf' | 'image'; name: string; path: string; size: number; url: string; text?: string }
   | { kind: 'markdown' | 'text' | 'html'; name: string; path: string; size: number; text: string; truncated: boolean }
   | { kind: 'unsupported' | 'missing'; name: string; path: string; size: number; message: string };
 
