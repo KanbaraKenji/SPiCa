@@ -123,3 +123,12 @@ describe('settings › 插件 list texts', () => {
     expect(block('.plugins-list .plugins-none')).toContain('padding: 0 12px');
   });
 });
+
+describe('the sidebar in a short window', () => {
+  it('is the panel’s height, not its content’s: the list scrolls, the top, the plugin pages and 设置 keep their place', () => {
+    expect(block('.sidebar')).toContain('min-height: 0');
+    expect(block('.sidebar-scroll')).toContain('overflow-y: auto');
+    expect(block('.sidebar-scroll')).toContain('min-height: 0');
+    for (const kept of ['.sidebar-top', '.sidebar-bottom', '.side-plugins']) expect(block(kept)).toContain('flex: none');
+  });
+});
