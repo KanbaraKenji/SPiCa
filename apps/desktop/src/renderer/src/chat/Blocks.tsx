@@ -517,6 +517,26 @@ export interface FileCardActions {
   reveal(path: string): void;
   /** The conversation's working folder, for a path the model wrote relative to it. */
   cwd?: string | undefined;
+  /** A URL that shows a local picture: a picture file's card shows it small in place of its type badge. */
+  imageUrl?: ((path: string) => Promise<string>) | undefined;
+}
+
+/** Picture files a card shows as a small picture (only ever in an img: an SVG's scripts never run). */
+const PICTURE = /\.(png|jpe?g|gif|webp|svg)$/i;
+
+/** A picture file's own picture, small, where the card's type badge would be; the badge when it cannot be shown. */
+function CardPicture({ path, name, url }: { path: string; name: string; url: (path: string) => Promise<string> }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void url(path).then((u) => alive && setSrc(u), () => alive && setFailed(true));
+    return () => {
+      alive = false;
+    };
+  }, [path, url]);
+  if (failed || !src) return <FileBadge name={name} />;
+  return <img className="file-card-picture" src={src} alt="" onError={() => setFailed(true)} />;
 }
 
 /** Up to this many cards show at once; more (a command can report 20) fold behind 全部 N 个. */
@@ -552,7 +572,11 @@ export function FileCards({ files, onOpen, actions }: { files: FileRef[]; onOpen
         return (
           <div key={f.path} className="card file-card">
             <button type="button" className="file-card-main" onClick={() => onOpen(f.path)} title={`打开 ${full}`}>
-              <FileBadge name={f.card?.name ?? fileName(shown)} />
+              {actions?.imageUrl && PICTURE.test(f.card?.name ?? shown) ? (
+                <CardPicture path={full} name={f.card?.name ?? fileName(shown)} url={actions.imageUrl} />
+              ) : (
+                <FileBadge name={f.card?.name ?? fileName(shown)} />
+              )}
               <span className="file-card-text">
                 <span className="file-card-name">{f.card?.name ?? fileName(shown)}</span>
                 <FileCardSub f={f} />

@@ -1686,6 +1686,17 @@ pre .hl-section {
   color: var(--spica-muted);
 }
 
+/* A picture file's card: the picture itself, small, where the type badge would be. */
+.file-card-picture {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--radius-s);
+  object-fit: cover;
+  background: var(--spica-surface);
+  border: 1px solid var(--spica-border);
+}
+
 /* Lines a write added and removed (+8 −1), in the code colours' green and red. */
 .file-lines-added {
   color: var(--spica-success);

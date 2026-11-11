@@ -100,7 +100,7 @@ function MailNote({ ids, flagged = [], actions }: { ids: string[]; flagged?: str
 
 /** 打开所在文件夹 and 复制路径 on file cards, where Explorer can be reached. */
 function fileActions(actions: ConversationActions, cwd: string | undefined) {
-  return actions.revealFile ? { reveal: actions.revealFile, cwd } : undefined;
+  return actions.revealFile ? { reveal: actions.revealFile, cwd, imageUrl: actions.imageUrl } : undefined;
 }
 
 type Segment = { kind: 'tools'; blocks: Extract<Block, { type: 'tool' }>[] } | { kind: 'one'; block: Exclude<Block, { type: 'tool' }> };

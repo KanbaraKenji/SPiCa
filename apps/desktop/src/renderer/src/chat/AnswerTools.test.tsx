@@ -146,6 +146,29 @@ describe('a file card', () => {
     expect(screen.queryByRole('button', { name: /全部/ })).toBeNull();
   });
 
+  it('a picture file shows itself, small, in place of its type badge; anything else (or a picture that cannot load) keeps the badge', async () => {
+    const imageUrl = vi.fn(async (p: string) => `spica-file://f/${encodeURIComponent(p)}`);
+    await act(async () => {
+      render(
+        <FileCards
+          files={[
+            { path: 'D:\\w\\报价对比图.png', tool: 'charts__render' },
+            { path: 'D:\\w\\导出.zip', tool: 'charts__render' },
+          ]}
+          onOpen={vi.fn()}
+          actions={{ reveal: vi.fn(), imageUrl }}
+        />,
+      );
+    });
+    const pictures = document.querySelectorAll('.file-card-picture');
+    expect(pictures.length).toBe(1);
+    expect(pictures[0]!.getAttribute('src')).toBe(`spica-file://f/${encodeURIComponent('D:\\w\\报价对比图.png')}`);
+    expect(imageUrl).toHaveBeenCalledTimes(1);
+    await act(async () => fireEvent.error(pictures[0]!));
+    expect(document.querySelectorAll('.file-card-picture').length).toBe(0);
+    expect(document.querySelectorAll('.file-card-icon').length).toBe(2);
+  });
+
   it('without Explorer (no actions) it has no buttons of its own', () => {
     render(<FileCards files={[{ path: 'D:\\a.docx', tool: 'read_file' }]} onOpen={vi.fn()} />);
     expect(screen.queryByRole('button', { name: '打开所在文件夹' })).toBeNull();
