@@ -53,3 +53,7 @@ export function openForUserPowerShell(program, cwd = homedir()) {
 - 从插件自带的 `.exe` 里打开程序，也经中间进程，例如 `powershell.exe -NoProfile -Command "Start-Process -FilePath '<程序>' -WorkingDirectory '<文件夹>'"`。
 - 有界面的程序不要加 `windowsHide` / `-WindowStyle Hidden`。
 - `check.mjs` 不查这一条（推荐写法里中间进程本身就用 `detached`，单看代码分不出对错；`.exe` 里怎么开程序看不到），交付前自己核一遍。
+
+## 重的辅助进程：用到才起，空闲就退
+
+一开就占几十上百 MB、一天只用几次的辅助进程，用到时才拉起，空闲一段时间（例如 10 分钟）关掉它的 stdin 让它收尾退出，下次调用再拉起；server 本身照常开着。完整写法（`withHelper`，实测过）和注意点在作者指南第 2f 节：拉起失败返回 `isError` 和一句人话、第一次调用慢时报进度、当前文件夹设在 `SPICA_PLUGIN_DATA`。

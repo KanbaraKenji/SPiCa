@@ -112,6 +112,6 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 | `references/connect.md` | 怎么连上 Spica（桌面版开关、HTTP + 令牌 / stdio、改了名的应用），装不上时怎么办 |
 | `references/model.md` | 借用 Spica 里配好的模型：申请、调用、选模型、被拒绝时怎么说 |
 | `references/internal-services.md` | 连内部接口：地址和凭据放哪、设置页写法、证书和代理、工具怎么设计 |
-| `references/processes.md` | 插件拉起的进程：Spica 怎么结束 server，辅助进程怎么退出，替用户打开的程序怎么独立启动 |
+| `references/processes.md` | 插件拉起的进程：Spica 怎么结束 server，辅助进程怎么退出，替用户打开的程序怎么独立启动，重的辅助进程空闲就退 |
 
 更完整的说明在 Spica 仓库的 `docs/plugins/authoring.md`（作者指南）和 `docs/design/plugins.md`（设计），能跑的例子在 `plugins/example-notes`（带页面）。

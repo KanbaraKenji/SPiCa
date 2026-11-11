@@ -234,7 +234,63 @@ try {
 - 用 `.exe` 写的辅助程序用 Windows 的命名互斥量，例如 C# 的 `new Mutex(false, @"Local\example-plugin-device")` 加 `WaitOne(超时)` / `ReleaseMutex()`；`Local\` 只在当前登录的用户里有效，同一个用户开的几份 Spica 正好都能看到。
 - macOS / Linux 上没有命名管道，同样的写法改用临时文件夹里的一个套接字文件；进程崩溃会把文件留下，拿锁失败时先试着连一下，连不上就删掉文件再拿。
 
-## 3. 加一个技能
+## 2f. 重的辅助进程：用到才起，空闲就退
+
+插件启用期间 server 一直开着，它本身很小；占内存的往往是它带的辅助进程（例如打包了数据处理库的 `.exe`，一开就是几十到上百 MB）。一天只用几次的，别让它一直开着：**用到时才拉起，空闲一段时间自己退出，下次调用再拉起。** server 本身照常开着，工具列表不受影响。
+
+```js
+import { spawn } from 'node:child_process';
+import { join } from 'node:path';
+
+const IDLE_MS = 10 * 60_000; // 空闲 10 分钟就退
+const HELPER = join(process.env.SPICA_PLUGIN_DIR, 'bin', 'helper.exe');
+
+let helper; // 正在运行的辅助进程（一个 Promise）；没在运行时是 undefined
+let busy = 0; // 正在用它的调用数
+let idleTimer;
+
+function startHelper() {
+  const child = spawn(HELPER, [], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, cwd: process.env.SPICA_PLUGIN_DATA });
+  const ready = new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('exit', (code) => reject(new Error(`辅助进程启动后退出了（代码 ${code}）`)));
+    child.stdout.once('data', () => resolve(child)); // 约定：辅助进程准备好时先输出一行
+  });
+  child.once('exit', () => {
+    if (helper === ready) helper = undefined; // 退了（空闲退出或崩溃），下次调用重新拉起
+  });
+  return ready;
+}
+
+/** 用辅助进程做一件事；它没在运行就先拉起。 */
+export async function withHelper(job) {
+  clearTimeout(idleTimer);
+  busy++;
+  try {
+    const started = (helper ??= startHelper());
+    const h = await started.catch((err) => {
+      if (helper === started) helper = undefined;
+      throw err; // 这次调用报错；下次调用再试着拉起
+    });
+    return await job(h);
+  } finally {
+    busy--;
+    if (busy === 0) {
+      idleTimer = setTimeout(() => {
+        helper?.then((h) => h.stdin.end(), () => {}); // 关掉 stdin，让它收尾后自己退出
+      }, IDLE_MS);
+    }
+  }
+}
+```
+
+- 这段代码实测过：空闲期内的调用用同一个进程，两个同时来的调用共用它，空闲到点后进程退出，下一次调用拉起新的照常完成；拉起失败时这次调用报错，下一次会重新尝试。
+- **退出前收尾**：辅助进程读到 stdin 关闭就把手上的事做完、写完文件再退出，和 2d 节的辅助进程是同一条规矩。Spica 停掉 server 时，这根管道也会断，辅助进程同样会退。
+- **拉起失败要说清楚**：工具返回 `isError: true` 和一句人话，例如「[HELPER_START_FAILED] 数据处理组件没能启动，详见插件日志」，具体原因写 stderr。不要让 server 跟着崩溃。
+- **第一次调用会慢一些**：拉起要时间。拉起时间可能比 `timeout_seconds` 的一大半还长的，拉起期间也报进度（见 2c 节），或者把 `timeout_seconds` 设大一点。
+- 当前文件夹设在 `SPICA_PLUGIN_DATA`，不放在插件安装文件夹里（见 2d 节：留在安装文件夹里的进程会让重装报「仍被占用」）。
+- 退出的时间按使用习惯定：一天用几次的 10 到 30 分钟；拉起特别慢的可以更长。
+
 
 `todo/skills/planning/SKILL.md`：
 
