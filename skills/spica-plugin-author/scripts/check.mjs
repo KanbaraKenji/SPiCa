@@ -106,8 +106,10 @@ export async function check(dir, opts = {}) {
   if (perm.irreversible !== undefined && !Array.isArray(perm.irreversible)) err('manifest.json', 'permissions.irreversible 要写成工具名列表');
   const hookKinds = Array.isArray(perm.hooks) ? perm.hooks : [];
   for (const k of hookKinds) if (!HOOK_KINDS.includes(k)) err('manifest.json', `permissions.hooks 里的 ${k} 不是钩子类型（可用：${HOOK_KINDS.join('、')}）`);
-  if (m.mock?.supported === true && !existsSync(join(root, 'mock'))) warn('manifest.json', 'mock.supported 是 true，但没有 mock/ 文件夹');
-  if (m.mock?.supported !== true) warn('manifest.json', '没有支持模拟模式（mock.supported）：在家里或外网连不上服务时，插件就没法试');
+  // a plugin with no server (only pages, skills, commands) connects to nothing: mock mode does not apply
+  const hasServers = ['mcp', 'services'].some((d) => existsSync(join(root, d)));
+  if (hasServers && m.mock?.supported === true && !existsSync(join(root, 'mock'))) warn('manifest.json', 'mock.supported 是 true，但没有 mock/ 文件夹');
+  if (hasServers && m.mock?.supported !== true) warn('manifest.json', '没有支持模拟模式（mock.supported）：在家里或外网连不上服务时，插件就没法试');
 
   // ---- servers ----
   const servers = [];
@@ -181,7 +183,7 @@ export async function check(dir, opts = {}) {
       else if (!Array.isArray(ext) || ext.length === 0 || ext.some((x) => typeof x !== 'string' || !/^\.[a-z0-9]{1,10}$/.test(x))) err(where, 'preview.extensions 要写小写、带点的扩展名列表，例如 [".docx", ".docm"]');
       else if (ext.some((x) => PREVIEW_BUILT_IN.includes(x))) err(where, 'preview.extensions 不能有 .pdf 和图片：这些由 Spica 自己预览');
       if (p && p.max_mb !== undefined && (typeof p.max_mb !== 'number' || !(p.max_mb >= 1 && p.max_mb <= 100))) err(where, 'preview.max_mb 要写 1 到 100 之间的数（能处理的最大文件，单位 MB；不写是 20）');
-      if (v.permissions?.tools === undefined) warn(where, '预览页不写 permissions.tools 就不能调本插件的工具（它拿着用户的文件）；要调就把工具名列出来');
+      if (hasServers && v.permissions?.tools === undefined) warn(where, '预览页不写 permissions.tools 就不能调本插件的工具（它拿着用户的文件）；要调就把工具名列出来');
     } else if (v.preview !== undefined) err(where, 'preview 只用于 placement 为 preview 的页面');
     const entry = inside(v.entry);
     if (!entry || !/\.html?$/i.test(v.entry)) err(where, 'entry 要写插件文件夹里的 .html 相对路径');
