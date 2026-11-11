@@ -141,8 +141,11 @@ describe('sources, updates and rollback', () => {
     expect(errors).toEqual([]);
     expect(updates.map((u) => [u.name, u.installed, u.available])).toEqual([['notes', '0.1.0', '0.2.0']]);
 
-    const d = await installAvailable(r.pm, updates[0]!.entry);
+    const steps: string[] = [];
+    const d = await installAvailable(r.pm, updates[0]!.entry, { onProgress: (p) => steps.push(p.step) });
     expect(d).toMatchObject({ version: '0.2.0', previousVersion: '0.1.0', enabled: true, source: { kind: 'share' } });
+    // An update of a plugin that is on: the old version is stopped, the new one started.
+    expect(steps).toEqual(['read', 'verify', 'unpack', 'copy', 'stop', 'start']);
     // Still enabled, tools still there, data kept.
     expect(toolNames(r.rt)).toContain('notes__read_note');
     expect((await callTool(r.rt, 'notes__read_note', { title: 'keep' })).content).toContain('survives updates');

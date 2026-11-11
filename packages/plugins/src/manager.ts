@@ -427,7 +427,10 @@ export class PluginManager {
           await copy(target);
         }
       }
-      if (wasEnabled && this.#active.has(name)) await this.#disable(name);
+      if (wasEnabled && this.#active.has(name)) {
+        say({ step: 'stop' });
+        await this.#disable(name);
+      }
       const rec: InstalledRecord = {
         name,
         enabled: old?.enabled ?? false,
