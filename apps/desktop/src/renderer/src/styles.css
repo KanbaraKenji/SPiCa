@@ -1152,47 +1152,47 @@ button.tree-twisty:hover {
 }
 
 /* Code colours (chat/highlight.ts), from the skin: they follow light, dark and custom skins. */
-.md pre .hl-comment,
-.md pre .hl-quote,
-.md pre .hl-meta {
+pre .hl-comment,
+pre .hl-quote,
+pre .hl-meta {
   color: var(--spica-muted);
 }
 
-.md pre .hl-keyword,
-.md pre .hl-built_in,
-.md pre .hl-type,
-.md pre .hl-tag,
-.md pre .hl-name,
-.md pre .hl-selector-tag,
-.md pre .hl-selector-class,
-.md pre .hl-selector-id {
+pre .hl-keyword,
+pre .hl-built_in,
+pre .hl-type,
+pre .hl-tag,
+pre .hl-name,
+pre .hl-selector-tag,
+pre .hl-selector-class,
+pre .hl-selector-id {
   color: var(--spica-accent-text);
 }
 
-.md pre .hl-string,
-.md pre .hl-regexp,
-.md pre .hl-addition,
-.md pre .hl-template-tag {
+pre .hl-string,
+pre .hl-regexp,
+pre .hl-addition,
+pre .hl-template-tag {
   color: var(--spica-success);
 }
 
-.md pre .hl-number,
-.md pre .hl-literal,
-.md pre .hl-symbol,
-.md pre .hl-bullet,
-.md pre .hl-variable,
-.md pre .hl-template-variable,
-.md pre .hl-attr,
-.md pre .hl-attribute {
+pre .hl-number,
+pre .hl-literal,
+pre .hl-symbol,
+pre .hl-bullet,
+pre .hl-variable,
+pre .hl-template-variable,
+pre .hl-attr,
+pre .hl-attribute {
   color: var(--spica-warning);
 }
 
-.md pre .hl-deletion {
+pre .hl-deletion {
   color: var(--spica-danger);
 }
 
-.md pre .hl-title,
-.md pre .hl-section {
+pre .hl-title,
+pre .hl-section {
   font-weight: 600;
 }
 
@@ -1300,10 +1300,117 @@ button.tree-twisty:hover {
   border-left: 1px solid var(--spica-border);
 }
 
-.fold-list {
+/* A group of tool calls, open: one call a line in a box, thin lines between; each opens to its command and output. */
+.fold-body:has(> .tool-list) {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+
+.tool-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  border: 1px solid var(--spica-border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+}
+
+.tool-item + .tool-item {
+  border-top: 1px solid var(--spica-divider);
+}
+
+.tool-item-head {
+  width: 100%;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  text-align: left;
+  color: var(--spica-ink);
+}
+
+.tool-item-head:hover {
+  background: var(--spica-hover);
+}
+
+.tool-item-head[aria-expanded='true'] .fold-chevron {
+  transform: rotate(90deg);
+}
+
+/* A call's words: the verb quieter, the object as it is; cut at the end of the line. */
+.tool-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fold-label .tool-text {
+  flex: none;
+}
+
+.tool-verb {
+  color: var(--spica-muted);
+}
+
+.tool-item-body {
+  padding: 2px 10px 10px 32px;
+}
+
+.fold-body > .tool-detail {
+  padding-top: 2px;
+}
+
+.tool-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The command as written, in a box of its own that scrolls; $ quieter. */
+.tool-command {
+  border-radius: var(--radius-s);
+  background: var(--spica-surface);
+  border: 1px solid var(--spica-border);
+  overflow: hidden;
+}
+
+.tool-command .code-head {
+  height: 26px;
+}
+
+.tool-command pre {
+  margin: 0;
+  max-height: 200px;
+  overflow: auto;
+  padding: 0 10px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.tool-prompt {
+  color: var(--spica-muted);
+  user-select: none;
+}
+
+.tool-args {
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: var(--spica-surface);
+  border: 1px solid var(--spica-border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--spica-muted);
 }
 
 .thinking-text {

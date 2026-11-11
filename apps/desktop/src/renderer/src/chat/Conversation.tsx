@@ -6,7 +6,7 @@ import { filesOf, historyRef, isRunning, itemAtSeq, type Attachment, type Block,
 import { ImageViewer } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
-import { AnswerToolsContext, AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
+import { AnswerToolsContext, AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, ToolCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
 import { Composer, type ComposerTools } from './Composer';
 import { answerText, MessageActions } from './MessageActions';
 import { StatusLine } from './StatusLine';
@@ -346,6 +346,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
     <OpenSessionContext.Provider value={actions.openFound ?? actions.openSession}>
     <HistoryRefContext.Provider value={resolveRef}>
     <HistoryCardsContext.Provider value={transcript.historyCards}>
+    <ToolCardsContext.Provider value={transcript.fileCards}>
     <div className="conversation">
       <div className="transcript" ref={ref}>
         {items.length === 0 && !running ? (
@@ -471,6 +472,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
       <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
       {demo ? <p className="composer-note">当前为演示数据</p> : null}
     </div>
+    </ToolCardsContext.Provider>
     </HistoryCardsContext.Provider>
     </HistoryRefContext.Provider>
     </OpenSessionContext.Provider>

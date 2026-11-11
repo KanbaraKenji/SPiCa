@@ -1,5 +1,5 @@
 // Right panel: details of the open session (tool calls, files, cost).
-import type { ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
+import type { FileCardMeta, ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
 import { filesOf, type Block, type Transcript } from '../store/transcript';
 import { changesAfter } from '../store/relocate';
 import { Icon } from '../ui/Icon';
@@ -7,7 +7,8 @@ import { MaxButton, type MaxState } from '../ui/MaxButton';
 import { InfoTip } from '../ui/InfoTip';
 import { FileGlyph } from '../ui/FileIcon';
 import { activityText } from './activity';
-import { fileFolder, fileName, formatDuration, formatUsd, toolLabel, toolTarget } from '../chat/format';
+import { fileFolder, fileName, formatDuration, formatUsd } from '../chat/format';
+import { toolWords } from '../chat/tool-words';
 import { toolIcon } from '../chat/Blocks';
 import { SpicaStatusIcon } from '@spica/brand/react';
 
@@ -40,6 +41,17 @@ function clock(iso: string): string {
 }
 
 const ROLE_LABEL: Record<SessionInfo['role'], string> = { top: '对话', manager: '项目经理', worker: '子任务' };
+
+/** A call in the list: the conversation's words for it, the verb and then the object quieter. */
+function ToolListText({ t, card }: { t: Parameters<typeof toolWords>[0]; card?: FileCardMeta | undefined }) {
+  const w = toolWords(t, card);
+  return (
+    <span className="detail-item-main" title={w.full}>
+      {w.verb || w.object}
+      {w.verb ? <span className="detail-item-sub"> {w.object}</span> : null}
+    </span>
+  );
+}
 
 export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, max }: DetailPanelProps) {
   const blocks = transcript.items.flatMap((i) => (i.kind === 'response' ? i.blocks : []));
@@ -144,10 +156,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
                 // As in the conversation: how it stands in the first place, nothing after the name repeats it.
                 <li key={t.callId} className="detail-item">
                   <span className="detail-item-icon">{toolIcon(t)}</span>
-                  <span className="detail-item-main">
-                    {toolLabel(t.name)}
-                    {toolTarget(t.input) ? <span className="detail-item-sub"> {toolTarget(t.input)}</span> : null}
-                  </span>
+                  <ToolListText t={t} card={transcript.fileCards?.[t.callId]} />
                   <span className="detail-item-meta">
                     {t.state === 'pending' ? (
                       <SpicaStatusIcon name="running" size={14} title="进行中" />

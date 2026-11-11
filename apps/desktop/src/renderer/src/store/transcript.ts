@@ -46,6 +46,10 @@ export type Block =
       autoApproved?: boolean;
       /** What kind of step it is, as the core said (tool.start, or the stored toolInfo); absent in older conversations. */
       category?: ToolCategory;
+      /** The model's one line on what this step does (run_command's description). */
+      summary?: string;
+      /** A plugin tool's name for people. */
+      title?: string;
     }
   | { type: 'ask'; callId: string; question: string; options: string[]; answer?: string }
   | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause }
@@ -241,6 +245,11 @@ export function historyRef(t: Transcript, ref: number): { sessionId: string; seq
 
 export const EMPTY_TRANSCRIPT: Transcript = { items: [] };
 
+/** What tool.start says about a call beyond its name and input: its kind, the model's line on it, a plugin tool's title. */
+function aboutCall(e: { category?: ToolCategory; summary?: string; title?: string }): { category?: ToolCategory; summary?: string; title?: string } {
+  return { ...(e.category ? { category: e.category } : {}), ...(e.summary ? { summary: e.summary } : {}), ...(e.title ? { title: e.title } : {}) };
+}
+
 /** Tools that read or write a file; their `path` becomes a file card under the answer. */
 export const FILE_TOOLS = new Set(['read_file', 'write_file', 'edit_file']);
 const ASK_TOOL = 'ask_user';
@@ -396,8 +405,10 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
         if (b.type !== 'tool_result') continue;
         const tool = findBlock(items, 'tool', b.toolUseId);
         if (tool) {
-          const category = info?.[b.toolUseId]?.category;
-          if (category) tool.category = category;
+          const about = info?.[b.toolUseId];
+          if (about?.category) tool.category = about.category;
+          if (about?.summary) tool.summary = about.summary;
+          if (about?.title) tool.title = about.title;
           tool.result = resultBody(b.content);
           tool.preview = tool.result.slice(0, 160);
           tool.state = b.isError ? failedState(b.content) : 'done';
@@ -551,9 +562,9 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       if (existing) {
         existing.input = e.input;
         existing.state = 'running';
-        if (e.category) existing.category = e.category;
+        Object.assign(existing, aboutCall(e));
       } else {
-        lastResponse(items, respId).blocks.push({ type: 'tool', callId: e.callId, name: e.name, input: e.input, state: 'running', ...(e.category ? { category: e.category } : {}) });
+        lastResponse(items, respId).blocks.push({ type: 'tool', callId: e.callId, name: e.name, input: e.input, state: 'running', ...aboutCall(e) });
       }
       return t;
     }

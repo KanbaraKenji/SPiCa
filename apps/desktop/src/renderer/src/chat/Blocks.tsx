@@ -1,7 +1,7 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { HistoryCardMeta } from '@spica/protocol';
+import type { FileCardMeta, HistoryCardMeta } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, fileCardVerb, type Block, type ChildNote, type FileRef } from '../store/transcript';
@@ -12,7 +12,8 @@ import { CopyButton } from '../ui/CopyButton';
 import { fullPath, openablePathKind } from './local-path';
 import { tableRows, toCsv, toHtml, toTsv } from './table-data';
 import { blockLanguage, blockLanguageName, colourSplit, highlightCode } from './highlight';
-import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS, toolLabel, toolTarget } from './format';
+import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS } from './format';
+import { groupWords, runningGroup, runningWords, toolWords } from './tool-words';
 
 /** Opens a conversation by id, at message number `seq` when given (rows and links from earlier conversations). */
 export const OpenSessionContext = createContext<((id: string, seq?: number) => void) | null>(null);
@@ -284,12 +285,6 @@ export function ThinkingBlock({ text, live, since }: { text: string; live: boole
   );
 }
 
-function toolLine(b: ToolBlock): string {
-  const target = toolTarget(b.input);
-  const verb = toolLabel(b.name);
-  return target ? `${verb}  ${target}` : verb;
-}
-
 /**
  * The first place of a tool's line says how it stands: turning while it runs, done, failed,
  * stopped (timed out, or its plugin was off). Nothing after the name repeats it. A call not
@@ -311,66 +306,151 @@ export function toolIcon(b: ToolBlock): ReactNode {
   }
 }
 
-/** `since`: a call on its own that is what the run is doing now: said as 正在… with the run's clock at the end. */
+/** Each call's file card (write_file's says Created or Edited and the lines), by call id. */
+export const ToolCardsContext = createContext<Record<string, FileCardMeta> | undefined>(undefined);
+
+/** What a call's own line says after its words: how it ended (Failed, stopped), or how long it took. */
+function toolMeta(block: ToolBlock): ReactNode {
+  if (block.state === 'pending') return <SpicaStatusIcon name="running" size={14} title="进行中" />;
+  if (block.state === 'error') return <span className="text-danger">Failed</span>;
+  if (block.state === 'unavailable') return '已停用，未执行';
+  if (block.state === 'timeout') return '已超时';
+  if (block.state === 'running') return null;
+  if (block.durationMs !== undefined) return block.autoApproved ? `Auto · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs);
+  return block.autoApproved ? 'Auto' : null;
+}
+
+/** A call's words: the verb quieter, the object as it is; the whole path or address on hover when it was cut. */
+function ToolText({ block }: { block: ToolBlock }) {
+  const card = useContext(ToolCardsContext)?.[block.callId];
+  const w = toolWords(block, card);
+  return (
+    <span className="tool-text" title={w.full ?? (block.summary && block.name === 'run_command' ? toolArg(block, 'command') : undefined)}>
+      {w.verb ? <span className="tool-verb">{w.verb}</span> : null}
+      {w.verb ? ' ' : null}
+      <span className="tool-object">{w.object}</span>
+    </span>
+  );
+}
+
+const toolArg = (b: ToolBlock, key: string): string => {
+  const v = (b.input as Record<string, unknown> | undefined)?.[key];
+  return typeof v === 'string' ? v : '';
+};
+
+/** A call's arguments as short lines (long values cut), for steps that are not a command. */
+function argsText(input: unknown): string {
+  if (!input || typeof input !== 'object') return '';
+  return Object.entries(input as Record<string, unknown>)
+    .map(([k, v]) => {
+      const t = typeof v === 'string' ? v : JSON.stringify(v);
+      return `${k}: ${t && t.length > 300 ? `${t.slice(0, 300)}…` : t}`;
+    })
+    .join('\n');
+}
+
+/**
+ * The innermost level: a command as written (in a code box of its own that scrolls) and what it printed; other
+ * steps give their arguments and their result as plain text; the history tools their table.
+ */
+function ToolDetail({ block }: { block: ToolBlock }) {
+  const history = useContext(HistoryCardsContext)?.[block.callId];
+  if (history && HISTORY_TOOLS.has(block.name)) return <HistoryTable card={history} />;
+  const body = block.result ?? block.preview;
+  const command = block.name === 'run_command' ? toolArg(block, 'command') : '';
+  const args = command ? '' : argsText(block.input);
+  return (
+    <div className="tool-detail">
+      {command ? <CommandBox command={command} /> : args ? <pre className="tool-args">{args}</pre> : null}
+      {body ? <pre className="tool-result">{body}</pre> : !command && !args ? <p className="tool-empty">—</p> : null}
+    </div>
+  );
+}
+
+/** A command as written: $ and the command, coloured as PowerShell, in a box that scrolls on its own. */
+function CommandBox({ command }: { command: string }) {
+  const coloured = useMemo(() => highlightCode('powershell', command), [command]);
+  return (
+    <div className="tool-command">
+      <div className="code-head">
+        <span className="code-lang" />
+        <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(command)} />
+      </div>
+      <pre>
+        <code>
+          <span className="tool-prompt">$ </span>
+          {coloured ?? command}
+        </code>
+      </pre>
+    </div>
+  );
+}
+
+/** One call in a group's list: its state first, its words, how it ended; a click opens the command and its output. */
+function ToolItem({ block }: { block: ToolBlock }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={open ? 'tool-item is-open' : 'tool-item'}>
+      <button type="button" className="tool-item-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <span className="fold-icon">{toolIcon(block)}</span>
+        <ToolText block={block} />
+        {toolMeta(block) ? <span className="fold-meta">{toolMeta(block)}</span> : null}
+        <Icon name="chevronRight" size={14} className="fold-chevron" />
+      </button>
+      {open ? (
+        <div className="tool-item-body">
+          <ToolDetail block={block} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** `since`: a call on its own that is what the run is doing now: said as Running … with the run's clock at the end. */
 function ToolRow({ block, since }: { block: ToolBlock; since?: number | undefined }) {
   const [open, setOpen] = useState(false);
   const now = since !== undefined && block.state === 'running';
-  const meta = block.state === 'pending' ? (
-    <SpicaStatusIcon name="running" size={14} title="进行中" />
-  ) : block.state === 'error' ? (
-    <span className="text-danger">Failed</span>
-  ) : block.state === 'unavailable' ? (
-    '已停用，未执行'
-  ) : block.state === 'timeout' ? (
-    '已超时'
-  ) : block.state === 'running' ? null : block.durationMs !== undefined ? (
-    block.autoApproved ? `Auto · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs)
-  ) : block.autoApproved ? (
-    'Auto'
-  ) : null;
-  const body = block.result ?? block.preview;
-  const card = useContext(HistoryCardsContext)?.[block.callId];
   return (
     <Disclosure
       open={open}
       onToggle={() => setOpen((o) => !o)}
       icon={now ? LIVE_MARK : toolIcon(block)}
-      label={now ? `正在${toolLine(block)}` : toolLine(block)}
-      meta={meta}
+      label={now ? runningWords(block) : <ToolText block={block} />}
+      meta={toolMeta(block)}
       tail={now ? <RunClock since={since} /> : undefined}
     >
-      {card && HISTORY_TOOLS.has(block.name) ? <HistoryTable card={card} /> : body ? <pre className="tool-result">{body}</pre> : <p className="tool-empty">—</p>}
+      <ToolDetail block={block} />
     </Disclosure>
   );
 }
 
-/** What the group's line says while its tools run: the first running one by name, and how many when more run at once. */
+/** What the group's line says while its tools run: the first running one, and how many more run with it. */
 export function runningText(running: ToolBlock[]): string {
-  const first = running[0]!;
-  return running.length > 1 ? `正在${toolLabel(first.name)} 等 ${running.length} 个工具` : `正在${toolLine(first)}`;
+  return runningGroup(running);
 }
 
 /**
- * Consecutive tool calls fold into one line; a single call is its own line. `since`: these are
- * what the run is doing now: while some run, the line says so (the turning mark first, 正在 and
- * the tool, the run's clock at the end) in place of the status line under the answer; after, it
- * is 调用了 N 个工具 again, with how many failed.
+ * Consecutive tool calls fold into one line that says what they did (Ran 4 commands, created a file); open, it
+ * lists them one per line; a call opens to its command and output. A single call is its own line. `since`: these
+ * are what the run is doing now: while some run, the line says so (the turning mark first, Running and the
+ * step, the run's clock at the end) in place of the status line under the answer.
  */
 export function ToolGroup({ blocks, since }: { blocks: ToolBlock[]; since?: number | undefined }) {
   const [open, setOpen] = useState(false);
+  const cards = useContext(ToolCardsContext);
   if (blocks.length === 1 && blocks[0]) return <ToolRow block={blocks[0]} since={since} />;
   const running = blocks.filter((b) => b.state === 'running');
   const busy = running.length > 0 || blocks.some((b) => b.state === 'pending');
   const now = since !== undefined && running.length > 0;
   const failed = blocks.filter((b) => b.state === 'error').length;
   const total = blocks.reduce((n, b) => n + (b.durationMs ?? 0), 0);
-  const label = now ? runningText(running) : busy ? toolLine(running[0] ?? blocks.find((b) => b.state === 'pending')!) : `调用了 ${blocks.length} 个工具`;
+  const label = now ? runningText(running) : busy ? runningWords(running[0] ?? blocks.find((b) => b.state === 'pending')!) : groupWords(blocks.map((b) => ({ call: b, card: cards?.[b.callId] })));
   const meta = busy ? (now ? null : <SpicaStatusIcon name="running" size={14} title="进行中" />) : failed ? <span className="text-danger">{failed} failed</span> : total ? formatDuration(total) : null;
   return (
     <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={now ? LIVE_MARK : <Icon name="tool" size={14} />} label={label} meta={meta} tail={now ? <RunClock since={since} /> : undefined}>
-      <div className="fold-list">
+      <div className="tool-list">
         {blocks.map((b) => (
-          <ToolRow key={b.callId} block={b} />
+          <ToolItem key={b.callId} block={b} />
         ))}
       </div>
     </Disclosure>

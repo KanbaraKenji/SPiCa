@@ -68,10 +68,10 @@ describe('ToolGroup', () => {
         ]}
       />,
     );
-    const head = screen.getByRole('button', { name: /调用了 2 个工具/ });
+    const head = screen.getByRole('button', { name: /Listed a folder, read a file/ });
     expect(head.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(head);
-    expect(screen.getByRole('button', { name: /读取文件\s+需求说明\.docx/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Read 需求说明\.docx/ })).toBeTruthy();
   });
 
   it('each call’s line says how it stands in its first place (done, failed, running); nothing after the name; failed is said in English', () => {
@@ -84,23 +84,23 @@ describe('ToolGroup', () => {
         ]}
       />,
     );
-    const head = screen.getByRole('button', { name: /调用了 3 个工具/ });
+    const head = screen.getByRole('button', { name: /Listed a folder, read 2 files/ });
     // The group: still the tool icon; the count of failures in English, no icon after it.
     expect(head.textContent).toContain('1 failed');
     expect(head.querySelector('.fold-meta svg')).toBeNull();
     fireEvent.click(head);
-    const rows = [...document.querySelectorAll('.fold-list .fold-head')] as HTMLElement[];
+    const rows = [...document.querySelectorAll('.tool-list .tool-item-head')] as HTMLElement[];
     expect(rows.map((r) => r.querySelector('.fold-meta')?.textContent ?? '')).toEqual(['<1 秒', 'Failed', '已超时']);
     for (const r of rows) expect(r.querySelector('.fold-meta svg')).toBeNull();
     expect(rows.map((r) => r.querySelector('.fold-icon svg')?.getAttribute('data-status'))).toEqual(['done', 'error', 'stopped']);
   });
 
-  it('while a call runs and the run is on it, the line says so: the turning mark first, 正在 and the tool, the run’s clock at the end', () => {
+  it('while a call runs and the run is on it, the line says so: the turning mark first, Running (or Reading…) and the step, the run’s clock at the end', () => {
     const since = Date.now() - 47_000;
     const { rerender } = render(<ToolGroup blocks={[{ type: 'tool', callId: 'a', name: 'list_dir', input: { path: '.' }, state: 'running' }]} since={since} />);
     let head = screen.getByRole('button');
     expect(head.querySelector('.fold-icon .spica-mark')).toBeTruthy();
-    expect(head.querySelector('.fold-label')?.textContent).toBe('正在查看文件夹  工作文件夹');
+    expect(head.querySelector('.fold-label')?.textContent).toBe('Listing the working folder');
     expect(head.lastElementChild?.textContent).toBe('0:47');
     // Two in the group, the second running: the group's line.
     rerender(
@@ -113,7 +113,7 @@ describe('ToolGroup', () => {
       />,
     );
     head = screen.getAllByRole('button')[0]!;
-    expect(head.querySelector('.fold-label')?.textContent).toBe('正在读取文件  需求说明.docx');
+    expect(head.querySelector('.fold-label')?.textContent).toBe('Reading 需求说明.docx');
     expect(head.querySelector('.fold-icon .spica-mark')).toBeTruthy();
     expect(head.lastElementChild?.textContent).toBe('0:47');
     // Inside, the running call turns in its first place; nothing after its name.
@@ -121,7 +121,7 @@ describe('ToolGroup', () => {
     const running = screen.getAllByRole('button')[2]!;
     expect(running.querySelector('.fold-icon svg')?.getAttribute('data-status')).toBe('running');
     expect(running.querySelector('.fold-meta')).toBeNull();
-    // Done: back to 调用了 2 个工具 with the tool icon, no clock.
+    // Done: back to what the group did, with the tool icon, no clock.
     rerender(
       <ToolGroup
         blocks={[
@@ -131,7 +131,7 @@ describe('ToolGroup', () => {
       />,
     );
     head = screen.getAllByRole('button')[0]!;
-    expect(head.querySelector('.fold-label')?.textContent).toBe('调用了 2 个工具');
+    expect(head.querySelector('.fold-label')?.textContent).toBe('Listed a folder, read a file');
     expect(head.querySelector('.spica-mark')).toBeNull();
   });
 
@@ -146,7 +146,7 @@ describe('ToolGroup', () => {
         since={Date.now()}
       />,
     );
-    expect(screen.getAllByRole('button')[0]!.querySelector('.fold-label')?.textContent).toBe('正在读取文件 等 3 个工具');
+    expect(screen.getAllByRole('button')[0]!.querySelector('.fold-label')?.textContent).toBe('Reading a.docx and 2 more');
   });
 
   it('a call not started yet keeps the tool icon and the turning ring after its name', () => {
@@ -186,7 +186,7 @@ describe('the assistant looking through earlier conversations', () => {
         </HistoryCardsContext.Provider>
       </OpenSessionContext.Provider>,
     );
-    fireEvent.click(screen.getByRole('button', { name: /查找对话记录\s+报价单/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Searched conversations for “报价单”/ }));
     expect(screen.getByText('对话')).toBeTruthy();
     expect(screen.getByText('匹配内容')).toBeTruthy();
     expect(screen.queryByText(/conversations found|untrusted_data/)).toBeNull();
@@ -211,7 +211,7 @@ describe('the assistant looking through earlier conversations', () => {
         <ToolGroup blocks={[{ ...block, callId: 'h2', name: 'find_history_files' }]} />
       </HistoryCardsContext.Provider>,
     );
-    fireEvent.click(screen.getByRole('button', { name: /查找对话中的文件/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Listed files from conversations/ }));
     expect(screen.getByText('文件')).toBeTruthy();
     expect(screen.getByText('D:/报价/报价单.xlsx')).toBeTruthy();
     expect(screen.getByText('共 5 条，显示最近 1 条')).toBeTruthy();
