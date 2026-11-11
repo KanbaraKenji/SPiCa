@@ -27,6 +27,7 @@ import { needsYou, unseenByManager } from '../../shared/mail';
 import type { MailItem, SessionInfo } from '@spica/protocol';
 import { Icon } from './ui/Icon';
 import { sidebarNews } from './shell/sidebar-news';
+import { watchScrim } from './ui/dim';
 import { usePeek } from './shell/peek';
 import { joinNotes } from './ui/NewDot';
 import { SidebarHead, SidebarToggle } from './shell/SidebarToggle';
@@ -84,6 +85,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [pointers, setPointers] = useState<{ default: ModelRef | null; strong: ModelRef | null }>({ default: null, strong: null });
   // The core asks which conversation is open ('ui.activeSession') to put settings-change cards there too.
   useEffect(() => bridge.reportActiveSession(state.activeId), [bridge, state.activeId]);
+  // The caption buttons dim with the page while a scrim covers it.
+  useEffect(() => watchScrim(document, (on) => bridge.reportDimmed(on)), [bridge]);
   // A connected script changed the models (through the MCP service): look again.
   const [modelsChanged, setModelsChanged] = useState(0);
   useEffect(() => bridge.providers.onChanged(() => setModelsChanged((n) => n + 1)), [bridge]);

@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
 import { humanError } from '../shared/errors';
-import { deriveTokens, resolveSkin, schemeOf } from '../shared/skin';
+import { deriveTokens, over, resolveSkin, schemeOf } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
 import { mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
@@ -308,11 +308,14 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
 
 let mainWindow: BrowserWindow | undefined;
 
-function chromeColors(s: ShellSettings): { bg: string; chrome: string; ink: string } {
+function chromeColors(s: ShellSettings): { bg: string; chrome: string; ink: string; scrim: string } {
   const skin = resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins);
   const t = deriveTokens(skin);
-  return { bg: t['--spica-bg'] ?? skin.bg, chrome: t['--spica-chrome'] ?? skin.bg, ink: t['--spica-muted'] ?? '#888888' };
+  return { bg: t['--spica-bg'] ?? skin.bg, chrome: t['--spica-chrome'] ?? skin.bg, ink: t['--spica-muted'] ?? '#888888', scrim: t['--spica-scrim'] ?? 'rgba(0, 0, 0, 0.5)' };
 }
+
+/** A scrim covers the page (a dialog, a picture at full size): the caption buttons, drawn by Windows, dim with it. */
+let dimmed = false;
 
 /** Keeps native parts (window background, caption buttons, scrollbars) in step with the skin. */
 function syncNativeChrome(win: BrowserWindow, s: ShellSettings): void {
@@ -325,7 +328,9 @@ function syncNativeChrome(win: BrowserWindow, s: ShellSettings): void {
   const c = chromeColors(s);
   win.setBackgroundColor(c.bg);
   if (process.platform === 'win32') {
-    win.setTitleBarOverlay({ color: c.chrome, symbolColor: c.ink, height: overlayHeight(s.zoom) });
+    const dim = (color: string) => (dimmed ? over(color, c.scrim) : color);
+    win.setTitleBarOverlay({ color: dim(c.chrome), symbolColor: dim(c.ink), height: overlayHeight(s.zoom) });
+    if (!app.isPackaged && process.env.SPICA_HIDDEN === '1') console.log(`[spica] caption buttons: ${dim(c.chrome)} / ${dim(c.ink)}`);
   }
 }
 
@@ -931,6 +936,12 @@ ipcMain.handle(DesktopChannel.PickFiles, async (_e, title: unknown): Promise<str
   const opts: Electron.OpenDialogOptions = { title: typeof title === 'string' && title ? title.slice(0, 60) : '选择文件', properties: ['openFile', 'multiSelections'] };
   const r = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts);
   return r.canceled ? [] : r.filePaths.slice(0, 20);
+});
+
+ipcMain.on(DesktopChannel.Dimmed, (_e, on: unknown) => {
+  if (dimmed === (on === true)) return;
+  dimmed = on === true;
+  if (mainWindow && !mainWindow.isDestroyed()) syncNativeChrome(mainWindow, settings.get());
 });
 
 ipcMain.on(DesktopChannel.Zoom, (_e, step: unknown) => {

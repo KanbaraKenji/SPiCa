@@ -68,6 +68,7 @@ const bridge: DesktopBridge = {
   preview: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.Preview, sessionId, path) as Promise<PreviewInfo>,
   pickFiles: (title) => ipcRenderer.invoke(DesktopChannel.PickFiles, title) as Promise<string[]>,
   reportActiveSession: (id: string | null) => ipcRenderer.send(DesktopChannel.ActiveSession, id),
+  reportDimmed: (on: boolean) => ipcRenderer.send(DesktopChannel.Dimmed, on),
   pathForFile: (file) => {
     try {
       return webUtils.getPathForFile(file);

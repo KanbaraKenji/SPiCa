@@ -80,6 +80,8 @@ export type UsageLogResult = { file: string; records: number } | { error: string
 export interface DesktopBridge extends SpicaBridge {
   /** Tells the main process which conversation is open (null: none), for the core's 'ui.activeSession'. */
   reportActiveSession(id: string | null): void;
+  /** Tells the main process a scrim covers the window (true) or no longer does, so the caption buttons dim too. */
+  reportDimmed(on: boolean): void;
   /** The agent backend (fake until the core's first milestone; same interface either way). */
   agent: AgentApi;
   onAgentEvent(listener: (event: CoreEvent) => void): () => void;

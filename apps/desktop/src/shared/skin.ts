@@ -125,6 +125,17 @@ export function mix(a: string, b: string, t: number): string {
   return toHex({ r: x.r + (y.r - x.r) * t, g: x.g + (y.g - x.g) * t, b: x.b + (y.b - x.b) * t });
 }
 
+/**
+ * A see-through layer over a solid color, as the eye gets it: 'rgba(r, g, b, a)' (or a hex, which simply covers)
+ * over a hex. The caption buttons are drawn by Windows, under no scrim, so they get this color instead.
+ */
+export function over(base: string, layer: string): string {
+  const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(layer.trim());
+  if (!m) return layer.startsWith('#') ? layer : base;
+  const a = m[4] === undefined ? 1 : Number(m[4]);
+  return mix(base, toHex({ r: Number(m[1]), g: Number(m[2]), b: Number(m[3]) }), a);
+}
+
 /** WCAG relative luminance (0 black .. 1 white). */
 export function luminance(hex: string): number {
   const ch = (v: number) => {

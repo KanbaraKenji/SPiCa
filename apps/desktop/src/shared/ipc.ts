@@ -28,6 +28,8 @@ export const DesktopChannel = {
   PluginsChanged: 'spica:plugins:changed',
   ProvidersChanged: 'spica:providers:changed',
   ActiveSession: 'spica:ui:active-session',
+  /** renderer -> main: a scrim covers the window (a dialog, a picture at full size) or not; the caption buttons dim with it. */
+  Dimmed: 'spica:ui:dimmed',
   /** renderer -> main: 'in' | 'out' | 'reset' (Ctrl+wheel and zoom keys caught in the page) */
   Zoom: 'spica:zoom',
   ListProviders: 'spica:providers:list',

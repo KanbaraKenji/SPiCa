@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrast, DARK_SKIN, deriveTokens, LIGHT_SKIN, normalizeHex, resolveSkin, schemeOf } from './skin';
+import { contrast, DARK_SKIN, deriveTokens, LIGHT_SKIN, normalizeHex, over, resolveSkin, schemeOf } from './skin';
 
 describe('normalizeHex', () => {
   it('accepts short and long forms, with or without #', () => {
@@ -69,5 +69,25 @@ describe('resolveSkin', () => {
   it('finds custom skins and falls back when one was deleted', () => {
     expect(resolveSkin('custom-1', false, custom).bg).toBe('#101010');
     expect(resolveSkin('custom-9', false, custom)).toBe(LIGHT_SKIN);
+  });
+});
+
+describe('over (the caption buttons under a scrim)', () => {
+  it('a see-through layer over a color, as the eye gets it', () => {
+    expect(over('#ffffff', 'rgba(0, 0, 0, 0.5)')).toBe('#808080');
+    expect(over('#fafafa', 'rgba(15, 23, 42, 0.28)')).toBe(over('#fafafa', 'rgba(15,23,42,.28)'));
+    expect(contrast(over('#fafafa', 'rgba(15, 23, 42, 0.28)'), '#fafafa')).toBeGreaterThan(1.3);
+  });
+
+  it('both built-in skins: the buttons come out as dark as the page under their scrim', () => {
+    for (const skin of [LIGHT_SKIN, DARK_SKIN]) {
+      const t = deriveTokens(skin);
+      expect(over(t['--spica-chrome']!, t['--spica-scrim']!)).not.toBe(t['--spica-chrome']);
+    }
+  });
+
+  it('an opaque or unreadable layer', () => {
+    expect(over('#ffffff', '#123456')).toBe('#123456');
+    expect(over('#ffffff', 'oops')).toBe('#ffffff');
   });
 });
