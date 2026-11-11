@@ -11,6 +11,29 @@ export interface PluginTheme {
   vars: Record<string, string>;
 }
 
+/** What a preview page gets: its one file (no path), with its bytes. */
+export interface PreviewPayload {
+  name: string;
+  size: number;
+  modifiedAt: string;
+  extension: string;
+  bytes: ArrayBuffer;
+}
+
+/** For a frame opened as a preview (placement preview): window.spica.preview's calls, and the page's loads. */
+export interface PreviewHooks {
+  /** The file as it is now (read again each time, so the page gets its own copy). */
+  file(): Promise<PreviewPayload>;
+  ready(): void;
+  fail(text: string): void;
+  /** The page's script failed before it said it was drawn. */
+  error(text: string): void;
+  /** The page (re)loaded: it starts over. */
+  loaded(): void;
+  /** Changes when another file is shown: the page is told (event preview.file) and starts over. */
+  fileKey: string;
+}
+
 export interface PluginFrameProps {
   view: PluginView;
   theme: PluginTheme;
@@ -26,16 +49,18 @@ export interface PluginFrameProps {
   /** A file of this plugin, shown in the right panel; resolves to a problem in words, or null. */
   openFile(path: string): Promise<string | null>;
   notify(text: string, kind: 'info' | 'error'): void;
+  /** Present: the page is a preview; only then are preview calls answered, and it cannot open other files. */
+  preview?: PreviewHooks;
 }
 
 const CONFIRM = '[CONFIRM_REQUIRED]';
 
-export function PluginFrame({ view, theme, changed, call, cancel, confirm, openFile, notify }: PluginFrameProps) {
+export function PluginFrame({ view, theme, changed, call, cancel, confirm, openFile, notify, preview }: PluginFrameProps) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [ready, setReady] = useState(false);
-  const latest = useRef({ theme, call, cancel, confirm, openFile, notify });
+  const latest = useRef({ theme, call, cancel, confirm, openFile, notify, preview });
   useEffect(() => {
-    latest.current = { theme, call, cancel, confirm, openFile, notify };
+    latest.current = { theme, call, cancel, confirm, openFile, notify, preview };
   });
   // Tool calls of the page as it is now that have not come back. `page` counts the page's loads: an answer
   // for an earlier load is dropped (the new page numbers its calls from the start again).
@@ -46,7 +71,7 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
     running.current.clear();
   };
 
-  const post = (msg: object) => ref.current?.contentWindow?.postMessage({ __spica: 1, ...msg }, '*');
+  const post = (msg: object, transfer: Transferable[] = []) => ref.current?.contentWindow?.postMessage({ __spica: 1, ...msg }, '*', transfer);
 
   useEffect(() => {
     const onMessage = async (e: MessageEvent) => {
@@ -61,7 +86,7 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
         stopRunning();
       }
       const from = page.current;
-      const reply = (result: unknown) => from === page.current && post({ reply: id, result });
+      const reply = (result: unknown, transfer: Transferable[] = []) => from === page.current && post({ reply: id, result }, transfer);
       const fail = (error: string) => from === page.current && post({ reply: id, error });
       const l = latest.current;
       // One tool call, known by an id while it runs so it can be stopped.
@@ -78,6 +103,22 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
         if (c === 'ready') {
           setReady(true);
           post({ event: { type: 'theme', mode: l.theme.mode, vars: l.theme.vars } });
+          l.preview?.loaded();
+        } else if (c === 'previewFile' || c === 'previewReady' || c === 'previewFail' || c === 'previewError') {
+          if (!l.preview) {
+            fail(`不支持的调用：${c}`);
+          } else if (c === 'previewFile') {
+            const f = await l.preview.file();
+            reply(f, [f.bytes]);
+          } else if (c === 'previewReady') {
+            l.preview.ready();
+            reply(null);
+          } else if (c === 'previewFail') {
+            l.preview.fail(String(args.text ?? '').slice(0, 300));
+            reply(null);
+          } else {
+            l.preview.error(String(args.text ?? '').slice(0, 300));
+          }
         } else if (c === 'callTool') {
           const tool = String(args.tool ?? '');
           let r = await run(tool, args.args ?? {}, false);
@@ -93,6 +134,10 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
           const problem = r.isError ? pluginCallProblem(r.content) : null;
           reply(problem ? { ...r, content: problem } : r);
         } else if (c === 'openFile') {
+          if (l.preview) {
+            fail('预览页不能打开其他文件。');
+            return;
+          }
           const problem = await l.openFile(String(args.path ?? ''));
           if (problem) fail(problem);
           else reply(null);
@@ -125,6 +170,15 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
     if (ready && changed) post({ event: { type: 'plugin.changed' } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [changed]);
+  // A preview shows another file: the page that is up is told; one still loading asks for the file itself.
+  const fileKey = preview?.fileKey;
+  const shownKey = useRef(fileKey);
+  useEffect(() => {
+    if (fileKey === shownKey.current) return;
+    shownKey.current = fileKey;
+    if (ready) post({ event: { type: 'preview.file' } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileKey]);
 
   return (
     <iframe

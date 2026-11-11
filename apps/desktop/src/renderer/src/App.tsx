@@ -8,6 +8,8 @@ import { Resizer } from './shell/Resizer';
 import { ConfirmDialog } from './ui/Dialog';
 import { FilePreview, usePreview } from './shell/FilePreview';
 import { PluginPage, type PluginTheme } from './shell/PluginFrame';
+import { PluginPreview, type PreviewFallback } from './shell/PluginPreview';
+import { BUILT_IN, chosenPreviewPage, fileExtension, previewerId, previewPagesFor } from '../../shared/previewers';
 import { FONT_UI, pluginThemeVars, type PluginView } from '../../shared/plugin-view';
 import { deriveTokens, schemeOf } from '../../shared/skin';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
@@ -77,8 +79,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   /** The file shown in the right panel instead of the details, if any. */
   // A file to show in the right panel, or (inline) a page from an answer's HTML code block.
   const [preview, setPreview] = useState<{ sessionId: string | null; path: string; sheet?: number; inline?: PreviewInfo } | null>(null);
-  const loadedPreview = usePreview(bridge.preview, preview && !preview.inline ? preview : null);
-  const previewInfo = preview?.inline ?? loadedPreview;
+  const [previewWay, setPreviewWay] = useState<{ key: string; id: string } | null>(null);
+  const [previewFallback, setPreviewFallback] = useState<{ key: string; id: string; why: PreviewFallback } | null>(null);
+  const [previewAttempt, setPreviewAttempt] = useState(0);
   /** The project the user asked to delete (waiting for the confirmation). */
   const [deletingProject, setDeletingProject] = useState<null | { id: string; name: string }>(null);
   const [deletingChat, setDeletingChat] = useState<null | { id: string; name: string }>(null);
@@ -394,6 +397,24 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const sidebarPages = pluginViews.filter((v) => v.placement === 'sidebar');
   const panelPages = pluginViews.filter((v) => v.placement === 'panel');
   const previewPages = pluginViews.filter((v) => v.placement === 'preview');
+  // 预览方式 of the file shown: the app's own, or the plugin page chosen for its kind (设置 › 常规 › 文件预览), or
+  // what the user picked in the preview's head for this file; and the line saying why the app's own is shown
+  // after the page failed (per file and page; 重试 opens the page again).
+  const fileKey = preview && !preview.inline ? `${preview.sessionId ?? ''}|${preview.path}` : '';
+  const fileExt = fileKey && preview ? fileExtension(preview.path) : '';
+  const filePages = previewPagesFor(fileExt, previewPages);
+  const chosenPage = chosenPreviewPage(settings.previewers, fileExt, previewPages);
+  const wayId = previewWay && previewWay.key === fileKey ? previewWay.id : chosenPage ? previewerId(chosenPage) : BUILT_IN;
+  const wayPage = filePages.find((v) => previewerId(v) === wayId) ?? null;
+  const fellBack = previewFallback && previewFallback.key === fileKey && previewFallback.id === wayId ? previewFallback : null;
+  const pagePreview = wayPage && !fellBack ? wayPage : null;
+  const loadedPreview = usePreview(bridge.preview, preview && !preview.inline && !pagePreview ? preview : null);
+  const previewInfo = preview?.inline ?? loadedPreview;
+  const chooseWay = (id: string) => {
+    setPreviewWay({ key: fileKey, id });
+    setPreviewFallback(null);
+    setPreviewAttempt((n) => n + 1);
+  };
   const openPluginView = view === 'plugin' ? sidebarPages.find((v) => viewKey(v) === openPlugin) : undefined;
   const panelPluginView = rightTab === 'detail' ? undefined : panelPages.find((v) => viewKey(v) === rightTab);
   const skinNow = shell.activeSkin();
@@ -869,7 +890,12 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               <PluginPage key={viewKey(panelPluginView)} {...pluginProps(panelPluginView)} />
             ) : preview ? (
               <FilePreview
-                info={previewInfo}
+                // A plugin page draws the file: the head still names it (and offers its buttons).
+                info={pagePreview ? { kind: 'unsupported', name: preview.path.split(/[\\/]/).pop() ?? preview.path, path: preview.path, size: 0, message: '' } : previewInfo}
+                {...(filePages.length
+                  ? { source: { options: [{ id: BUILT_IN, label: '自带预览' }, ...filePages.map((v) => ({ id: previewerId(v), label: v.title }))], value: fellBack ? BUILT_IN : wayId, onChange: chooseWay } }
+                  : {})}
+                note={fellBack?.why.text ? { text: fellBack.why.text, ...(fellBack.why.retry ? { onRetry: () => chooseWay(wayId) } : {}) } : null}
                 onOpenExternal={(p) => {
                   if (preview.sessionId) {
                     void bridge.openFile(preview.sessionId, p).then((err) => err && agent.state.set((v) => ({ ...v, notice: err })));
@@ -879,7 +905,17 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 onSheet={(n) => setPreview((p) => (p ? { ...p, sheet: n } : p))}
                 onClose={() => setPreview(null)}
                 max={panelMax}
-              />
+              >
+                {pagePreview ? (
+                  <PluginPreview
+                    key={`${previewerId(pagePreview)}|${previewAttempt}`}
+                    {...pluginProps(pagePreview)}
+                    file={{ sessionId: preview.sessionId, path: preview.path }}
+                    loadFile={bridge.previewFile}
+                    onFallback={(why) => setPreviewFallback({ key: fileKey, id: previewerId(pagePreview), why })}
+                  />
+                ) : null}
+              </FilePreview>
             ) : (
             <DetailPanel
               session={session}

@@ -2,7 +2,7 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import { IpcChannel, type AgentApi, type AppInfo, type ContextBreakdown, type CoreEvent } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
-import type { BackendState, DesktopBridge, LocalConnectInfo, NetworkState, PreviewInfo, ProviderList, SaveCsvResult, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
+import type { BackendState, DesktopBridge, LocalConnectInfo, NetworkState, PreviewFile, PreviewInfo, ProviderList, SaveCsvResult, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import type { ModelRef, ProviderDraft, ProviderKind, TestResult } from '../shared/providers';
 import type { PluginsCommand, PluginsProgress, PluginsResult } from '../shared/plugins';
 import type { UpdateState } from '../shared/updates';
@@ -68,6 +68,7 @@ const bridge: DesktopBridge = {
     file: (plugin, path) => ipcRenderer.invoke(DesktopChannel.PluginViewFile, plugin, path) as Promise<string | null>,
   },
   preview: (sessionId, path, sheet) => ipcRenderer.invoke(DesktopChannel.Preview, sessionId, path, sheet) as Promise<PreviewInfo>,
+  previewFile: (sessionId, path, maxBytes, peek) => ipcRenderer.invoke(DesktopChannel.PreviewFile, sessionId, path, maxBytes, peek) as Promise<PreviewFile>,
   pickFiles: (title) => ipcRenderer.invoke(DesktopChannel.PickFiles, title) as Promise<string[]>,
   reportActiveSession: (id: string | null) => ipcRenderer.send(DesktopChannel.ActiveSession, id),
   reportCover: (cover) => ipcRenderer.send(DesktopChannel.Cover, cover),

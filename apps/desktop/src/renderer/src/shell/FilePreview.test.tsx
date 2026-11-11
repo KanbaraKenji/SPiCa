@@ -107,4 +107,33 @@ describe('the file’s place, from the preview head', () => {
     expect(screen.getByText('仅显示前 500 段')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '代码' })).toBeNull();
   });
+
+  it('预览方式: the app’s own or a plugin page, for this file; a plugin page fills the body; a line says why the app’s own is back, with 重试', () => {
+    const onChange = vi.fn();
+    const onRetry = vi.fn();
+    const info = { kind: 'unsupported' as const, name: '需求说明.docx', path: 'D:/需求说明.docx', size: 0, message: '' };
+    const source = { options: [{ id: '', label: '自带预览' }, { id: 'office-preview/docx', label: 'Word 原样预览' }], value: 'office-preview/docx', onChange };
+    const { rerender } = render(
+      <FilePreview info={info} onOpenExternal={vi.fn()} onClose={vi.fn()} source={source}>
+        <div data-testid="page" />
+      </FilePreview>,
+    );
+    const select = screen.getByRole('combobox', { name: '预览方式' }) as HTMLSelectElement;
+    expect([...select.options].map((o) => o.textContent)).toEqual(['自带预览', 'Word 原样预览']);
+    expect(select.value).toBe('office-preview/docx');
+    expect(screen.getByTestId('page')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '用系统程序打开' })).toBeTruthy();
+    fireEvent.change(select, { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith('');
+    rerender(<FilePreview info={{ kind: 'markdown', name: '需求说明.docx', path: 'D:/需求说明.docx', size: 9, text: '# 需求', truncated: false }} onOpenExternal={vi.fn()} onClose={vi.fn()} source={{ ...source, value: 'office-preview/docx' }} note={{ text: '「Word 原样预览」打开超时', onRetry }} />);
+    expect(screen.getByText('「Word 原样预览」打开超时')).toBeTruthy();
+    expect(screen.queryByTestId('page')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    expect(onRetry).toHaveBeenCalled();
+  });
+
+  it('no 预览方式 when only the app’s own can show the file', () => {
+    render(<FilePreview info={{ kind: 'text', name: 'a.log', path: 'D:/a.log', size: 3, text: 'one', truncated: false }} onOpenExternal={vi.fn()} onClose={vi.fn()} source={{ options: [{ id: '', label: '自带预览' }], value: '', onChange: vi.fn() }} />);
+    expect(screen.queryByRole('combobox', { name: '预览方式' })).toBeNull();
+  });
 });

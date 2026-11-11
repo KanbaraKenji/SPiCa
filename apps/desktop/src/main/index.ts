@@ -50,7 +50,7 @@ import { SettingsStore } from './settings-store';
 import { captureOnce, runShots } from './shots';
 import { flatten, icoFromPngs, inkFor, TASKBAR_FRAME_SIZES } from './icon';
 import { followTaskbarTheme, readTaskbarDark } from './taskbar-theme';
-import { PREVIEW_SCHEME, PreviewFiles, readPreview } from './preview';
+import { PREVIEW_SCHEME, PreviewFiles, readPreview, readPreviewFile } from './preview';
 import { FLOW_SCHEME, flowFile } from './flow-scheme';
 import { AttachImages } from './images';
 import { BRIDGE_JS, contentType, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
@@ -641,6 +641,14 @@ ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unkn
   const session = typeof sessionId === 'string' && sessionId ? await backend.getSession(sessionId).catch(() => undefined) : undefined;
   const full = previewPath(isAbsolute(raw) ? raw : resolvePath(session?.cwd || app.getPath('home'), raw));
   return readPreview(full, previewFiles, typeof sheet === 'number' && Number.isInteger(sheet) && sheet > 0 ? sheet : undefined);
+});
+
+ipcMain.handle(DesktopChannel.PreviewFile, async (_e, sessionId: unknown, path: unknown, maxBytes: unknown, peek: unknown) => {
+  const raw = typeof path === 'string' ? path : '';
+  if (!raw) return { ok: false, problem: 'missing' };
+  const session = typeof sessionId === 'string' && sessionId ? await backend.getSession(sessionId).catch(() => undefined) : undefined;
+  const full = previewPath(isAbsolute(raw) ? raw : resolvePath(session?.cwd || app.getPath('home'), raw));
+  return readPreviewFile(full, typeof maxBytes === 'number' ? maxBytes : 0, peek === true);
 });
 
 ipcMain.handle(DesktopChannel.LocalConnect, async (): Promise<LocalConnectInfo | null> => {

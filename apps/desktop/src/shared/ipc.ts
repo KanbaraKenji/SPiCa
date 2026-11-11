@@ -53,6 +53,8 @@ export const DesktopChannel = {
   PickFiles: 'spica:pickFiles',
   /** invoke: (sessionId, path) -> PreviewInfo */
   Preview: 'spica:preview',
+  /** invoke: (sessionId, path, maxBytes, peek) -> PreviewFile (a plugin preview page's file: its bytes, never its path) */
+  PreviewFile: 'spica:previewFile',
   /** invoke: -> NetworkState (what the core uses now, and problems with the settings) */
   Network: 'spica:network',
   /** invoke: -> LocalConnectInfo | null */

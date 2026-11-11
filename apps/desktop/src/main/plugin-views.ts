@@ -137,7 +137,27 @@ export const BRIDGE_JS = `(() => {
     },
     openFile: (path) => call('openFile', { path: String(path) }),
     notify: (text, opts) => call('notify', { text: String(text), kind: opts && opts.kind === 'error' ? 'error' : 'info' }),
+    // A preview page (placement preview): its one file, and saying when it is drawn or why it cannot be.
+    // The window answers these only for a frame it opened as a preview.
+    preview: Object.freeze({
+      file: () => call('previewFile'),
+      ready: () => {
+        drawn = true;
+        return call('previewReady');
+      },
+      fail: (text) => {
+        drawn = true;
+        return call('previewFail', { text: String(text) });
+      },
+    }),
   };
+  // Until the page says it is drawn, an error of its script means it cannot show the file.
+  let drawn = false;
+  const failed = (text) => {
+    if (!drawn) post({ call: 'previewError', id: 0, args: { text: String(text).slice(0, 300) } });
+  };
+  window.addEventListener('error', (e) => failed(e.message || 'error'));
+  window.addEventListener('unhandledrejection', (e) => failed((e.reason && e.reason.message) || e.reason || 'error'));
   Object.defineProperty(window, 'spica', { value: Object.freeze(spica), writable: false, configurable: false });
   post({ call: 'ready', id: 0 });
 })();

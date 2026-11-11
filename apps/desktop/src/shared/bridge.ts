@@ -55,6 +55,17 @@ export type PreviewInfo =
   /** An Excel sheet (`sheet`, 1-based, of `sheets`): Excel's column letters and row numbers, at most 500 rows. */
   | { kind: 'sheet'; name: string; path: string; size: number; sheets: { name: string; rows: number; cols: number }[]; sheet: number; columns: string[]; rows: { n: number; cells: string[] }[]; truncated: boolean };
 
+/**
+ * A file for a plugin preview page: what the page gets (no folder, no path), or why not. `peek`: the size only,
+ * to know before opening the page whether it takes the file.
+ */
+export type PreviewFile =
+  | { ok: true; name: string; size: number; modifiedAt: string; extension: string; bytes?: Uint8Array }
+  | { ok: false; problem: 'missing' | 'too-large' | 'unreadable'; size?: number };
+
+/** The largest file a preview page is given, whatever it says it takes (the plugin system's limit). */
+export const PREVIEW_PAGE_MAX_BYTES = 100 * 1024 * 1024;
+
 /** 设置 › 常规 › 网络: what the core uses now (proxy password hidden) and problems, in words. */
 export interface NetworkState {
   proxy: string | null;
@@ -124,6 +135,8 @@ export interface DesktopBridge extends SpicaBridge {
   /** A file of this session (relative paths are in its folder), ready for the right panel. */
   /** `sheet`: which sheet of an Excel workbook (1-based; the first when absent). */
   preview(sessionId: string | null, path: string, sheet?: number): Promise<PreviewInfo>;
+  /** The same file for a plugin preview page, refused above `maxBytes` (and above PREVIEW_PAGE_MAX_BYTES) without reading it. */
+  previewFile(sessionId: string | null, path: string, maxBytes: number, peek: boolean): Promise<PreviewFile>;
   network(): Promise<NetworkState | null>;
   /** Whether local scripts can connect now, and where; null when off (or not possible). */
   localConnect(): Promise<LocalConnectInfo | null>;

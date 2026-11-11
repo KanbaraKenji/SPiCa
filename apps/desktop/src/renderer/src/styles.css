@@ -4902,7 +4902,7 @@ button.ctx-row:hover {
 
 .preview-name {
   flex: 1;
-  min-width: 0;
+  min-width: 40px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -5029,6 +5029,29 @@ button.ctx-row:hover {
   font-size: 12px;
   color: var(--spica-muted);
   background: var(--spica-warning-soft);
+}
+
+/* Why the app's own preview is shown instead of a plugin's page, with 重试 at its end. */
+.preview-fallback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-fallback > span {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 预览方式 in the preview's head: as small as the head's buttons; in a narrow panel it gives way before the name. */
+.input.preview-source {
+  flex: 0 3 auto;
+  width: auto;
+  min-width: 56px;
+  max-width: 150px;
+  height: 26px;
+  padding: 0 6px;
+  font-size: 12px;
 }
 
 .preview-empty {

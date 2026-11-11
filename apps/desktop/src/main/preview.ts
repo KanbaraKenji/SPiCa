@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { open, readFile, stat } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
-import type { PreviewInfo } from '../shared/bridge';
+import { PREVIEW_PAGE_MAX_BYTES, type PreviewFile, type PreviewInfo } from '../shared/bridge';
 import { EXCEL, officePreview, WORD } from './office-preview';
 
 export const PREVIEW_SCHEME = 'spica-file';
@@ -95,5 +95,28 @@ export async function readPreview(path: string, files: PreviewFiles, sheet?: num
     return { kind, name, path, size, text: decodeText(buf), truncated: size > TEXT_LIMIT };
   } finally {
     await handle.close();
+  }
+}
+
+/** A file for a plugin preview page (shared/bridge.ts PreviewFile): checked for size before anything is read. */
+export async function readPreviewFile(path: string, maxBytes: number, peek: boolean): Promise<PreviewFile> {
+  let size: number;
+  let modifiedAt: string;
+  try {
+    const st = await stat(path);
+    if (!st.isFile()) return { ok: false, problem: 'missing' };
+    size = st.size;
+    modifiedAt = st.mtime.toISOString();
+  } catch {
+    return { ok: false, problem: 'missing' };
+  }
+  const cap = Math.min(Number.isFinite(maxBytes) && maxBytes > 0 ? maxBytes : 0, PREVIEW_PAGE_MAX_BYTES);
+  if (size > cap) return { ok: false, problem: 'too-large', size };
+  const file = { ok: true as const, name: basename(path), size, modifiedAt, extension: extname(path).toLowerCase() };
+  if (peek) return file;
+  try {
+    return { ...file, bytes: new Uint8Array(await readFile(path)) };
+  } catch {
+    return { ok: false, problem: 'unreadable', size };
   }
 }

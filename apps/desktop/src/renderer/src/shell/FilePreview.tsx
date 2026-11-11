@@ -2,7 +2,7 @@
 // Markdown rendered, text and code with line numbers, HTML in a sandbox
 // (no scripts, nothing from the network), images. Anything else: a sentence
 // and the system program.
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { PreviewInfo } from '../../../shared/bridge';
 import { MarkdownText } from '../chat/Blocks';
 import { Icon } from '../ui/Icon';
@@ -22,6 +22,12 @@ export interface FilePreviewProps {
   onSheet?: (n: number) => void;
   /** The preview over the whole conversation: whether it is, and the button's press. Absent: no such button. */
   max?: MaxState;
+  /** 预览方式: the app's own or a plugin's preview page, for this file only. Absent: no choice. */
+  source?: { options: { id: string; label: string }[]; value: string; onChange(id: string): void };
+  /** A line above the preview (why the app's own is shown), with 重试 when the page may manage. */
+  note?: { text: string; onRetry?: () => void } | null;
+  /** Shown instead of the app's own preview (a plugin's preview page). */
+  children?: ReactNode;
 }
 
 function sizeText(n: number): string {
@@ -116,11 +122,11 @@ function codeOf(info: PreviewInfo | null): string | null {
   return null;
 }
 
-export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, max }: FilePreviewProps) {
+export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, max, source, note, children }: FilePreviewProps) {
   // 代码 / 预览: per file (another file opens as its preview again).
   const id = info ? `${info.kind}|${info.path}|${info.name}` : '';
   const [codeFor, setCodeFor] = useState<string | null>(null);
-  const code = codeOf(info);
+  const code = children ? null : codeOf(info);
   const asCode = code !== null && codeFor === id;
   return (
     <section className="preview" aria-label={info ? `预览 ${info.name}` : '预览'}>
@@ -129,6 +135,15 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
         <span className="preview-name" title={info?.path ?? ''}>
           {info?.name ?? ''}
         </span>
+        {source && source.options.length > 1 ? (
+          <select className="input preview-source" aria-label="预览方式" title="预览方式" value={source.value} onChange={(e) => source.onChange(e.target.value)}>
+            {source.options.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        ) : null}
         {code !== null ? (
           <button type="button" className="icon-btn" aria-pressed={asCode} onClick={() => setCodeFor(asCode ? null : id)} aria-label={asCode ? '预览' : '代码'} title={asCode ? '预览' : '代码'}>
             <Icon name={asCode ? 'eye' : 'code'} size={15} />
@@ -151,7 +166,19 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
           <Icon name="close" size={14} />
         </button>
       </header>
-      {!info ? (
+      {note ? (
+        <p className="preview-note preview-fallback">
+          <span>{note.text}</span>
+          {note.onRetry ? (
+            <button type="button" className="btn btn-small" onClick={note.onRetry}>
+              重试
+            </button>
+          ) : null}
+        </p>
+      ) : null}
+      {children ? (
+        children
+      ) : !info ? (
         <div className="preview-body" />
       ) : asCode ? (
         <Lines key={`${id}|code`} text={code} />
