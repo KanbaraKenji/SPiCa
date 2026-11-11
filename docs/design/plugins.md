@@ -178,11 +178,11 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 
 | 边界 | 现在怎么做 | 以后 |
 |---|---|---|
-| 文件路径 | 清单里所有路径必须在插件文件夹内；zip 解包拒绝越界条目；插件可写的只有 `SPICA_PLUGIN_DATA` | — |
+| 文件路径 | 清单里所有路径必须在插件文件夹内；zip 解包拒绝越界条目；插件自己的数据只写 `SPICA_PLUGIN_DATA`；用户在对话里点名的文件夹也可以写（下载、导出类插件的本职）：只写那个文件夹和它下面，结果里原样回显路径，覆盖已有文件的工具标成不可逆（作者指南 2b 节）。这一条是约定，不拦 | 见「工作文件夹」一行 |
 | 钩子权限 | 只挂 `permissions.hooks` 声明过的类型；没声明的写日志、不挂 | 安装时给用户看「这个插件能改请求 / 改响应 / 拦工具」 |
 | 钩子出错 | 包一层：抛错只记日志、发 `hook.error`，这一轮照常跑 | 连续出错自动停用 |
 | 不可逆动作 | `permissions.irreversible` 里的工具一律要确认（mcp/ 和 services/ 的工具一样，不论是模型调还是页面调）；MCP 的 `destructiveHint` 内核也默认要确认 | 插件可在设置里被用户改成「自动执行」 |
-| 工作文件夹 | `permissions.workspace` 只声明、展示 | 插件包挂 `beforeTool`：参数里出现的路径不在会话工作文件夹内就拒绝，`read` 的插件写文件也拒绝 |
+| 工作文件夹 | `permissions.workspace` 只声明、展示 | 插件包挂 `beforeTool`：参数里出现的路径不在会话工作文件夹内、也不是用户在对话里点名的文件夹，就拒绝（怎么认出「用户点名」到时再定）；`read` 的插件写项目文件夹也拒绝 |
 | 网络 | 插件 server 和应用用同一套网络设置：内核起子进程时注入代理（`HTTPS_PROXY` 等 + `NODE_USE_ENV_PROXY=1`）和信任名单（`NODE_EXTRA_CA_CERTS` + `NODE_USE_SYSTEM_CA`；自带可执行文件用 `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` / `CURL_CA_BUNDLE` 的全量证书），设置里没有的就从子进程环境里删掉（内核 f8d328d）。设置真变了时内核调扩展的 `networkChanged()`，插件这边重启在运行的 server（`restartServers()`），之后的请求用新设置；有认证的代理，账号密码会随代理地址进插件进程。`permissions.network` 只声明、展示 | 按 `permissions.network` 放行 |
 | 环境变量 | 插件进程只继承白名单（`PLUGIN_INHERIT_ENV`：PATH、系统目录、TEMP、用户目录、电脑名和用户名（`COMPUTERNAME`、`USERNAME`）、代理变量等；和内核的 `DEFAULT_CHILD_ENV`、作者工具包 `lib/mcp.mjs` 里的同一张表，有测试保证三处一致），像密钥的名字（SPICA_ 开头、含 KEY / SECRET / TOKEN / PASSWORD / CREDENTIAL）内核一律不传；有测试 | — |
 | 插件页面 | 沙箱里跑，没有 Node；只能取本插件目录里的文件；只能调本插件、本视图 `permissions.tools` 里的工具；`permissions.irreversible` 里的工具先由外壳弹确认框：清单里的声明和 MCP 的 `destructiveHint` 都会要确认，mcp/ 和 services/ 的工具一样 | 页面调用记进插件日志 |

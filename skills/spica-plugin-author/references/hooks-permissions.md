@@ -30,7 +30,8 @@ export default (ctx) => ({
 ## 权限
 
 - **不可逆**：`permissions.irreversible` 列出的工具，Agent 每次调用前 Spica 都问用户；页面调用时也先弹确认框。mcp/ 和 services/ 里的工具都适用。删除、发送、提交、付款、改外部系统的都要列。
-- **工作文件夹**：`permissions.workspace` 写 `none` / `read` / `write`，告诉用户插件会不会碰项目文件夹。现在只展示，以后会拦。
+- **工作文件夹**：`permissions.workspace` 写 `none` / `read` / `write`，告诉用户插件会不会碰项目文件夹。现在只展示，以后会拦项目文件夹外的路径，用户在对话里点名的文件夹除外。
+- **写文件**：插件自己的数据只写 `SPICA_PLUGIN_DATA`。下载、导出的文件可以写进用户在对话里点名的文件夹：文件夹从工具参数传进来、不自己猜；只写那个文件夹和它下面，文件名里带 `..`、盘符的拒绝；结果里写出实际的完整路径；同名文件默认跳过，要覆盖就做成单独的工具并写进 `permissions.irreversible`。写这种文件夹不用为此声明 `workspace: write`。
 - **网络**：`permissions.network` 列会访问的主机。现在只展示。
 - **钩子**：`permissions.hooks` 见上。
 - 原则：用不到就不写，写了就是告诉用户「我会做这件事」。

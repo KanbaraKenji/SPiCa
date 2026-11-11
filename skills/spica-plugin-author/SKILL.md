@@ -48,6 +48,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 - [ ] **证书和代理没自己处理**：没有 `rejectUnauthorized: false`，没有打进包里的证书，也没自己读代理设置。这些由 Spica 代管（0.1.0-rc.2 起）。
 - [ ] **用模型的写了 `permissions.model`**：理由一句话，上限合理；没有模型能力时工具会给提示，不会崩溃。
 - [ ] **权限最小**：`permissions.workspace` 用得到才写 `read` / `write`；`permissions.hooks` 只写真用到的钩子类型；页面的 `permissions.tools` 只列页面要用的工具。
+- [ ] **只写该写的地方**：自己的数据只写 `SPICA_PLUGIN_DATA`；下载、导出的文件只写用户在对话里点名的文件夹（从参数传进来、不猜、不出这个文件夹），结果里写出完整路径，覆盖已有文件的工具写进 `permissions.irreversible`。见 `references/hooks-permissions.md`「写文件」。
 - [ ] **不可逆都标了**：会删除、发送、提交、改外部系统的工具都在 `permissions.irreversible` 里。
 - [ ] **日志不记正文**：stderr 只写工具名、错误码、耗时，不写邮件正文、文件内容、个人信息。
 - [ ] **提示是中文人话**：每个错误码都有一句告诉用户「发生了什么、该怎么办」的中文。

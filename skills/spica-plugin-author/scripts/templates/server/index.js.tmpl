@@ -3,7 +3,8 @@
 //
 // Environment set by Spica:
 //   SPICA_MOCK          "1" in mock mode: answer from mock/ instead of the real service
-//   SPICA_PLUGIN_DATA   the only folder this plugin may write to
+//   SPICA_PLUGIN_DATA   the plugin's own data folder (besides it, write only to a
+//                       folder the user named in the conversation)
 //   SPICA_PLUGIN_DIR    the installed plugin folder (read-only)
 //
 // stdout carries protocol messages only; write logs to stderr (Spica keeps

@@ -52,7 +52,7 @@
 - `env` 里不能自己设 `SPICA_` 开头的变量。
 - 插件只有一个 `mcp/` server 时，工具名是 `<插件名>__<工具>`；有多个时是 `<插件名>-<id>__<工具>`。
 
-Spica 启动 server 时给的环境变量：`SPICA_PLUGIN_DATA`（唯一能写的文件夹，升级、回滚都保留）、`SPICA_PLUGIN_DIR`（安装目录，只读）、`SPICA_MOCK`（`1` = 模拟模式）、`SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION`。另外给应用的网络设置：代理（`HTTPS_PROXY` 等，加 `NODE_USE_ENV_PROXY=1`）和信任的证书（`NODE_EXTRA_CA_CERTS`、`SSL_CERT_FILE` 等），见 `internal-services.md`。其他环境变量只继承白名单（PATH、TEMP、用户目录、`COMPUTERNAME`、`USERNAME` 这类；取电脑名也可以用 `os.hostname()`），像密钥的名字一律不传，所以凭据不要从环境变量读。
+Spica 启动 server 时给的环境变量：`SPICA_PLUGIN_DATA`（插件自己的数据文件夹，升级、回滚都保留；除了它只写用户在对话里点名的文件夹，见 `hooks-permissions.md`「写文件」）、`SPICA_PLUGIN_DIR`（安装目录，只读）、`SPICA_MOCK`（`1` = 模拟模式）、`SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION`。另外给应用的网络设置：代理（`HTTPS_PROXY` 等，加 `NODE_USE_ENV_PROXY=1`）和信任的证书（`NODE_EXTRA_CA_CERTS`、`SSL_CERT_FILE` 等），见 `internal-services.md`。其他环境变量只继承白名单（PATH、TEMP、用户目录、`COMPUTERNAME`、`USERNAME` 这类；取电脑名也可以用 `os.hostname()`），像密钥的名字一律不传，所以凭据不要从环境变量读。
 
 ## `views/<id>.json`
 
