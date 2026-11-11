@@ -153,7 +153,10 @@ describe('token counts under the box', () => {
     );
     const chip = screen.getByRole('button', { name: 'DeepSeek · deepseek-flash' });
     expect(chip.textContent).toBe('DeepSeek · deepseek-flash');
-    expect(chip.querySelector('.composer-aside')?.textContent).toBe('DeepSeek · ');
+    // Provider, separator and name are separate pieces, so the provider can be cut first and the name kept.
+    expect(chip.querySelector('.composer-model-provider')?.textContent).toBe('DeepSeek');
+    expect(chip.querySelector('.composer-model-sep')?.textContent).toBe(' · ');
+    expect(chip.querySelector('.composer-model-name')?.textContent).toBe('deepseek-flash');
   });
 });
 

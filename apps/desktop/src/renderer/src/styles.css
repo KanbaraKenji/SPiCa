@@ -1543,6 +1543,32 @@ button.tree-twisty:hover {
   color: var(--spica-muted);
 }
 
+/* The model under the box: provider · name. Short of room the provider is cut first, then the name. */
+.composer-model-text {
+  display: flex;
+}
+
+.composer-model-provider {
+  flex: 0 1000 auto;
+  min-width: 2em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.composer-model-sep {
+  flex: none;
+  white-space: pre;
+}
+
+.composer-model-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* The model when there is nothing to switch to, the working folder once fixed: the same text, not a button. */
 .composer-label {
   height: 28px;

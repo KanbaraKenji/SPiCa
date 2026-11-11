@@ -58,3 +58,15 @@ describe('sidebar tabs', () => {
     expect(rule).toContain('flex: none');
   });
 });
+
+describe('the model under the message box', () => {
+  it('short of room the provider is cut long before the name; the separator is never cut', () => {
+    expect(block('.composer-model-text')).toContain('display: flex');
+    expect(block('.composer-model-provider')).toContain('flex: 0 1000 auto');
+    expect(block('.composer-model-provider')).toContain('text-overflow: ellipsis');
+    expect(block('.composer-model-name')).toContain('flex: 0 1 auto');
+    expect(block('.composer-model-sep')).toContain('flex: none');
+    // The narrow box still swaps the words for the icon: that rule comes after these.
+    expect(css.indexOf('.composer-model-text {\n  display: flex')).toBeLessThan(css.indexOf('.composer-model-text {\n    display: none'));
+  });
+});

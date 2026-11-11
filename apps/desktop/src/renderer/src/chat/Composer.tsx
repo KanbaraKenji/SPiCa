@@ -158,15 +158,17 @@ function ModelChip({ model, pictures, buttonRef, onOpen }: { model: ModelTool; p
         <Icon name="model" size={15} />
       </span>
       <span className="composer-chip-text composer-model-text">
-        {model.provider ? <span className="composer-aside">{model.provider} · </span> : null}
-        {model.label}
-        {model.note ? <span className="composer-aside">{model.note}</span> : null}
+        {/* Short of room, the provider gives way first: the model's name stays whole as long as it can. */}
+        {model.provider ? <span className="composer-aside composer-model-provider">{model.provider}</span> : null}
+        {model.provider ? <span className="composer-aside composer-model-sep"> · </span> : null}
+        <span className="composer-model-name">{model.label}</span>
+        {model.note ? <span className="composer-aside composer-model-sep">{model.note}</span> : null}
       </span>
     </>
   );
   if (model.options.length <= 1) {
     return (
-      <span className="composer-label composer-model" title={full} data-tip-clipped=".composer-model-text">
+      <span className="composer-label composer-model" title={full}>
         {body}
       </span>
     );
