@@ -41,6 +41,15 @@ export default defineConfig({
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
     define: rendererDefine,
+    // index: the app's page. flow: the sandboxed frame that draws flowcharts (src/renderer/flow/main.ts).
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/renderer/index.html'),
+          flow: resolve(__dirname, 'src/renderer/flow.html'),
+        },
+      },
+    },
     plugins: [
       react(),
       { name: 'spica-app-title', transformIndexHtml: (html: string) => html.replace('<title>Spica</title>', `<title>${escapeHtml(app.name)}</title>`) },

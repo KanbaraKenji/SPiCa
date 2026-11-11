@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Draws flowcharts for answers, inside a sandboxed frame (scripts only: no same origin, no preload API).
+         Nothing from the network; mermaid's own styles are inline. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' spica-flow:; style-src 'self' spica-flow: 'unsafe-inline'; img-src data:; font-src data:" />
+    <title>flow</title>
+  </head>
+  <body>
+    <script type="module" src="./flow/main.ts"></script>
+  </body>
+</html>

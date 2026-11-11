@@ -1135,6 +1135,8 @@ button.tree-twisty:hover {
 }
 
 .code-lang {
+  /* Takes the free space, so the head's buttons (代码, 复制) sit together at its right end. */
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -1731,6 +1733,33 @@ pre .hl-section {
   text-overflow: ellipsis;
   font-size: 12px;
   color: var(--spica-muted);
+}
+
+/* The frame that draws flowcharts: out of sight, but laid out (mermaid measures text in it). */
+.flow-frame {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 1200px;
+  height: 800px;
+  border: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* A flowchart in an answer: the picture in the code block's box, full size on a click. */
+.flow-figure .flow-image {
+  display: block;
+  width: 100%;
+  padding: 6px 14px 14px;
+  cursor: zoom-in;
+}
+
+.flow-figure .flow-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 420px;
+  margin: 0 auto;
 }
 
 /* An HTML code block's card in an answer: as wide as the file cards under it. */

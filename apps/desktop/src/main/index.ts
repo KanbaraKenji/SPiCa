@@ -51,6 +51,7 @@ import { captureOnce, runShots } from './shots';
 import { flatten, icoFromPngs, inkFor, TASKBAR_FRAME_SIZES } from './icon';
 import { followTaskbarTheme, readTaskbarDark } from './taskbar-theme';
 import { PREVIEW_SCHEME, PreviewFiles, readPreview } from './preview';
+import { FLOW_SCHEME, flowFile } from './flow-scheme';
 import { AttachImages } from './images';
 import { BRIDGE_JS, contentType, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
 import { pluginCallId, FONT_UI, type PluginView, type PluginViewResult } from '../shared/plugin-view';
@@ -587,6 +588,7 @@ ipcMain.handle(DesktopChannel.Agent, async (_e, method: unknown, args: unknown) 
 protocol.registerSchemesAsPrivileged([
   { scheme: PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   { scheme: PLUGIN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  { scheme: FLOW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 const previewFiles = new PreviewFiles();
 
@@ -1129,6 +1131,14 @@ void app.whenReady().then(() => {
       return u.host === 'example.com' ? net.fetch(pathToFileURL(join(mockWeb, basename(u.pathname))).toString()) : new Response('', { status: 404 });
     });
   protocol.handle(PLUGIN_SCHEME, (req) => servePluginFile(req.url));
+  // The flowchart frame's files, with CORS (main/flow-scheme.ts).
+  protocol.handle(FLOW_SCHEME, async (req) => {
+    const rel = flowFile(req.url);
+    if (!rel) return new Response('', { status: 404 });
+    const res = await net.fetch(pathToFileURL(join(__dirname, '../renderer', rel)).toString());
+    const type = rel.endsWith('.html') ? 'text/html' : rel.endsWith('.css') ? 'text/css' : 'text/javascript';
+    return new Response(res.body, { status: res.status, headers: { 'content-type': type, 'access-control-allow-origin': '*' } });
+  });
   protocol.handle(PREVIEW_SCHEME, (req) => {
     const file = previewFiles.pathOf(req.url);
     return file ? net.fetch(pathToFileURL(file).toString()) : new Response('', { status: 404 });

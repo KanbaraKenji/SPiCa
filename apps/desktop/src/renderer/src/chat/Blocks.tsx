@@ -11,6 +11,7 @@ import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
 import { ImageViewer } from '../ui/ImageViewer';
 import { imageSource } from './answer-image';
+import { drawFlow, pageMode, svgUrl } from './flow-draw';
 import { fullPath, openablePathKind } from './local-path';
 import { tableRows, toCsv, toHtml, toTsv } from './table-data';
 import { blockLanguage, blockLanguageName, colourSplit, highlightCode } from './highlight';
@@ -118,7 +119,65 @@ function CodeBlock({ node, source, children }: { node?: PreNode | undefined; sou
     const closed = end !== undefined && /(?:`{3,}|~{3,})[ \t]*$/.test(source.slice(0, end));
     return <HtmlCard html={raw.replace(/\n$/, '')} closed={closed} open={tools.previewHtml} />;
   }
-  return <CodeBlockBody node={node} source={source} code={code} name={name}>{children}</CodeBlockBody>;
+  const body = (
+    <CodeBlockBody node={node} source={source} code={code} name={name}>
+      {children}
+    </CodeBlockBody>
+  );
+  if (/^mermaid$/i.test(name)) {
+    const raw = code?.children?.map((t) => (t.type === 'text' ? (t.value ?? '') : '')).join('') ?? '';
+    const end = node?.position?.end?.offset;
+    const closed = end !== undefined && /(?:`{3,}|~{3,})[ \t]*$/.test(source.slice(0, end));
+    // Drawn once written; until then, and if it cannot be drawn, the code as it is.
+    if (closed) return <FlowFigure code={raw.replace(/\n$/, '')} fallback={body} />;
+  }
+  return body;
+}
+
+/**
+ * A flowchart in an answer, drawn (flow-draw.ts) and shown as a picture, in the same box as a code block: 流程图
+ * and, at the head's right, 代码 (the chart's text; 预览 back) and 复制. A click on the chart shows it full size.
+ * While it is being drawn, and if it cannot be, the code block itself.
+ */
+function FlowFigure({ code, fallback }: { code: string; fallback: ReactNode }) {
+  const mode = pageMode();
+  const [state, setState] = useState<{ key: string; url: string | null; failed: boolean }>({ key: '', url: null, failed: false });
+  const key = `${mode}\u0000${code}`;
+  const [asCode, setAsCode] = useState(false);
+  const [big, setBig] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    drawFlow(code, mode).then(
+      (svg) => alive && setState({ key, url: svgUrl(svg), failed: false }),
+      () => alive && setState({ key, url: null, failed: true }),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [code, mode, key]);
+  const url = state.key === key ? state.url : null;
+  if (!url) return <>{fallback}</>;
+  return (
+    <div className="code-block flow-figure">
+      <div className="code-head">
+        <span className="code-lang">流程图</span>
+        <button type="button" className="icon-btn md-tool" aria-pressed={asCode} aria-label={asCode ? '预览' : '代码'} title={asCode ? '预览' : '代码'} onClick={() => setAsCode((v) => !v)}>
+          <Icon name={asCode ? 'eye' : 'code'} size={14} />
+        </button>
+        <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(code)} />
+      </div>
+      {asCode ? (
+        <pre>
+          <code>{code}</code>
+        </pre>
+      ) : (
+        <button type="button" className="flow-image" onClick={() => setBig(true)} title="流程图">
+          <img src={url} alt="流程图" />
+        </button>
+      )}
+      {big ? <ImageViewer url={url} name="流程图" onClose={() => setBig(false)} /> : null}
+    </div>
+  );
 }
 
 /** What an HTML page is called: its <title>, else its first heading, else HTML. */
