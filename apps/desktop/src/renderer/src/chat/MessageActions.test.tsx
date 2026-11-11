@@ -34,19 +34,17 @@ describe('the row under a message', () => {
     expect(screen.getByText(mailTime(at)).tagName).toBe('TIME');
   });
 
-  it('重新生成: usable on the last round when the core says so; otherwise there but grey, saying why on hover', () => {
+  it('重新生成: usable when the core says so; otherwise there but grey, saying why on hover', () => {
     const onRegenerate = vi.fn();
-    const { rerender } = render(<MessageActions text="x" regenerate={{ state: { anchorId: 'u1', ok: true }, last: true, onRegenerate }} />);
+    const { rerender } = render(<MessageActions text="x" regenerate={{ state: { anchorId: 'u1', ok: true }, onRegenerate }} />);
     fireEvent.click(screen.getByRole('button', { name: '重新生成' }));
     expect(onRegenerate).toHaveBeenCalledTimes(1);
-    rerender(<MessageActions text="x" regenerate={{ state: { anchorId: 'u1', ok: false, code: 'regenerate.wrote_files', hint: '这一轮修改过文件，无法重新生成。' }, last: true, onRegenerate }} />);
+    rerender(<MessageActions text="x" regenerate={{ state: { anchorId: 'u1', ok: false, code: 'regenerate.wrote_files', hint: '这一轮修改过文件，无法重新生成。' }, onRegenerate }} />);
     const off = screen.getByRole('button', { name: '重新生成' });
     expect(off.getAttribute('aria-disabled')).toBe('true');
     expect(off.getAttribute('title')).toBe('这一轮修改过文件，无法重新生成。');
     fireEvent.click(off);
     expect(onRegenerate).toHaveBeenCalledTimes(1);
-    rerender(<MessageActions text="x" regenerate={{ state: { anchorId: 'u1', ok: true }, last: false, onRegenerate }} />);
-    expect(screen.getByRole('button', { name: '重新生成' }).getAttribute('title')).toBe('这不是最后一轮回答，无法重新生成。');
   });
 });
 
@@ -81,6 +79,27 @@ describe('the answers 重新生成 left, in the conversation', () => {
     fireEvent.click(screen.getByRole('button', { name: '下一版' }));
     fireEvent.click(screen.getByRole('button', { name: '重新生成' }));
     expect(actions.regenerate).toHaveBeenCalledWith('a3');
+  });
+
+  it('only the last round’s answer has 重新生成; an earlier one keeps 复制 and the time, and flipping versions does not change that', () => {
+    const two: Transcript = {
+      items: [
+        { kind: 'user', id: 'u0', text: '先看资料', steer: false },
+        { kind: 'response', id: 'a0', blocks: [{ type: 'text', text: '第一轮' }], interrupted: false, messageIds: ['a0'], at: '2026-11-11T20:00:00+08:00' },
+        ...transcript(false).items,
+      ],
+    };
+    render(<Conversation session={session} transcript={two} actions={actions} />);
+    const rows = [...document.querySelectorAll('.turn-response .msg-actions')];
+    expect(rows.map((r) => [...r.querySelectorAll('button')].map((b) => b.getAttribute('aria-label')))).toEqual([
+      ['复制'],
+      ['上一版', '下一版', '复制', '重新生成'],
+    ]);
+    expect(rows[0]!.querySelector('time')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '上一版' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一版' }));
+    expect(document.querySelectorAll('.turn-response .msg-actions')[0]!.querySelector('[aria-label="重新生成"]')).toBeNull();
+    expect(screen.getByRole('button', { name: '重新生成' })).toBeTruthy();
   });
 
   it('a message sent after it: the answer flips back to the newest', () => {

@@ -208,9 +208,10 @@ function Response({
           at={view.at}
           versions={all.length > 1 ? { shown, count: all.length, onShow: (n) => setPicked(n === all.length - 1 ? null : n) } : undefined}
           regenerate={
-            regen && actions.regenerate && newest
+            // Only under the last round's answer (the one the core would replace); earlier ones keep 复制 and the time.
+            regen?.last && actions.regenerate && newest
               ? {
-                  ...regen,
+                  state: regen.state,
                   onRegenerate: () => {
                     setPicked(null);
                     actions.regenerate?.(item.messageIds?.[item.messageIds.length - 1]);
@@ -406,7 +407,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                       regenerate={
                         // A round that ended without any answer (an error before a word): 重新生成 from the message itself.
                         regen && actions.regenerate && item.id === regen.anchorId && items[i + 1]?.kind !== 'response' && !running
-                          ? { state: regen, last: true, onRegenerate: () => actions.regenerate?.() }
+                          ? { state: regen, onRegenerate: () => actions.regenerate?.() }
                           : undefined
                       }
                     />

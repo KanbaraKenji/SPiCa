@@ -1,4 +1,4 @@
-// The row under every message: copy it, 重新生成 (an answer of the last round), flip between the answers a
+// The row under every message: copy it, 重新生成 (only under the last round's answer), flip between the answers a
 // regenerate left (‹ 1 / 2 ›), and when it was written. Always there, not only on hover.
 import type { RegenerateState } from '@spica/protocol';
 import { REGENERATE_HINTS } from '@spica/protocol';
@@ -20,15 +20,13 @@ export function answerText(blocks: readonly Block[]): string {
 export { clipboard };
 
 export interface RegenerateButton {
-  /** The core's word on the last round (SessionInfo.regenerate). */
+  /** The core's word on the last round (SessionInfo.regenerate). Only the last round's answer has the button. */
   state: RegenerateState;
-  /** This answer is the last round's (the one the core would replace). */
-  last: boolean;
   onRegenerate(): void;
 }
 
 function Regenerate({ r }: { r: RegenerateButton }) {
-  const why = !r.last ? REGENERATE_HINTS['regenerate.not_last'] : r.state.ok ? null : (r.state.hint ?? (r.state.code ? REGENERATE_HINTS[r.state.code] : null));
+  const why = r.state.ok ? null : (r.state.hint ?? (r.state.code ? REGENERATE_HINTS[r.state.code] : null));
   // Not usable but said why: aria-disabled keeps the hover text (a disabled button shows none).
   return (
     <button
