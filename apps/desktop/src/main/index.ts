@@ -30,7 +30,7 @@ import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
 import { writeDemoChart } from './backend/demo-image';
 import { ProcessBackend, type BackendStatus } from './backend/process';
-import { wireQuit } from './quit';
+import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { knownContextWindow, matchWindowIn, toProviderConfig } from './backend/to-config';
 import type { WindowMatch } from '../shared/catalog';
 import { fromHostDraft, toHostConnection, toHostModelList } from './providers/host-models';
@@ -1205,13 +1205,17 @@ void app.whenReady().then(() => {
   });
 });
 
-// Plugin servers are child processes: the core closes cleanly first (running sessions become "interrupted",
-// plugin servers and what they started stop), then the app quits; still here 3 s later, it is ended (main/quit.ts).
+// Plugin servers are child processes: the windows go, the core closes cleanly (running sessions become
+// "interrupted", plugin servers and what they started stop; it is killed after 10 s), then the app quits; still
+// here 3 s later, it is ended (main/quit.ts).
 wireQuit({
   app,
   flush: () => settings.flush(),
+  hide: () => {
+    for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.hide();
+  },
   stop: () => (backend instanceof ProcessBackend ? backend.shutdown() : pluginService.dispose().then(() => backend.dispose())),
-  stopLimitMs: 6000,
+  stopLimitMs: STOP_LIMIT_MS,
   exitAfterMs: 3000,
   log: (line) => {
     if (!app.isPackaged) console.log(line);

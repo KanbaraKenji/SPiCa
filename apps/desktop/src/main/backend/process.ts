@@ -13,6 +13,7 @@ import type { DesktopBackendConfig } from '../../backend/config';
 import type { AgentBackend } from './types';
 import type { PluginView, PluginViewResult } from '../../shared/plugin-view';
 import type { LocalConnectInfo } from '../../shared/bridge';
+import { CORE_KILL_MS } from '../quit';
 
 export type BackendStatus = { state: 'starting' | 'ready' | 'recovering' } | { state: 'failed'; message: string };
 
@@ -287,14 +288,17 @@ export class ProcessBackend implements AgentBackend {
     void this.shutdown();
   }
 
-  /** Lets the core close cleanly (running sessions become "interrupted"); kills it after 5 s. */
+  /**
+   * Lets the core close cleanly (running sessions become "interrupted", plugin servers and what they started
+   * stop); kills it after CORE_KILL_MS (main/quit.ts).
+   */
   async shutdown(): Promise<void> {
     this.#stopping = true;
     const child = this.#child;
     if (!child) return;
     const exited = new Promise<void>((r) => child.once('exit', () => r()));
     child.postMessage({ type: 'shutdown' });
-    const timer = setTimeout(() => child.kill(), 5000);
+    const timer = setTimeout(() => child.kill(), CORE_KILL_MS);
     await exited;
     clearTimeout(timer);
   }

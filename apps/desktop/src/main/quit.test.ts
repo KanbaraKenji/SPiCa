@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { wireQuit, type QuitApp, type QuitEvent } from './quit';
+import { CORE_KILL_MS, STOP_LIMIT_MS, wireQuit, type QuitApp, type QuitEvent } from './quit';
 
 /** An app that records what is asked of it; emit() plays an Electron event. */
 function fakeApp() {
@@ -21,16 +21,52 @@ function fakeApp() {
   return { app, calls };
 }
 
-function setup(stop: () => Promise<unknown>) {
+function setup(stop: () => Promise<unknown>, hide: () => void = () => undefined) {
   vi.useFakeTimers();
   const { app, calls } = fakeApp();
   const lines: string[] = [];
   const flush = vi.fn();
-  wireQuit({ app, flush, stop, stopLimitMs: 6000, exitAfterMs: 3000, log: (l) => lines.push(l), warn: (l) => lines.push(`WARN ${l}`) });
-  return { app, calls, lines, flush };
+  const hidden = vi.fn(hide);
+  wireQuit({ app, flush, hide: hidden, stop, stopLimitMs: 6000, exitAfterMs: 3000, log: (l) => lines.push(l), warn: (l) => lines.push(`WARN ${l}`) });
+  return { app, calls, lines, flush, hidden };
 }
 
 describe('quitting', () => {
+  it('the windows go first: hidden before the core is asked to close, once', async () => {
+    const order: string[] = [];
+    const { app, hidden } = setup(
+      () => {
+        order.push('stop');
+        return Promise.resolve();
+      },
+      () => order.push('hide'),
+    );
+    app.emit('before-quit');
+    expect(order).toEqual(['hide', 'stop']);
+    await vi.advanceTimersByTimeAsync(0);
+    app.emit('before-quit');
+    expect(hidden).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('a window that cannot be hidden does not stop the quit', async () => {
+    const { app, calls } = setup(
+      () => Promise.resolve(),
+      () => {
+        throw new Error('destroyed');
+      },
+    );
+    expect(app.emit('before-quit')).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toEqual(['quit()']);
+    vi.useRealTimers();
+  });
+
+  it('the core gets 10 s before it is killed; the quit waits a little longer, so the core’s own guard comes first', () => {
+    expect(CORE_KILL_MS).toBe(10_000);
+    expect(STOP_LIMIT_MS).toBeGreaterThan(CORE_KILL_MS);
+  });
+
   it('holds the first quit while the core closes, then quits for real; nothing forced when the process goes', async () => {
     let done!: () => void;
     const { app, calls, flush } = setup(() => new Promise<void>((r) => (done = r)));

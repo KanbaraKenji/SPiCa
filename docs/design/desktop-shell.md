@@ -40,7 +40,7 @@
 - 合同用 `@spica/protocol`：`AgentApi` 是命令，`CoreEvent` 是事件。外壳自己的东西（设置、开文件、更新、插件页）在 `src/shared/bridge.ts` 的 `DesktopBridge`。主进程只放行 `AgentApi` 的方法名。
 - **内核在独立进程里**（`src/backend/entry.ts`，随主进程一起构建成 `out/main/backend.js`）：用内核的 `runUtilityEntry({ modules })`，把 `@spica/extract` 和外壳自己的扩展 `@spica/desktop-host` 在构建时链接进去（打包后没有 node_modules，不能按包名动态加载）。
 - `@spica/desktop-host`（`src/backend/desktop-host.ts`）是外壳的后端扩展：调 `@spica/plugins` 的 `attachBackend`（全进程一个插件管理器，MCP 服务上的插件工具照旧），再挂四个方法：`plugins`（插件页，含共享盘 / 网址来源、检查更新、更新）、`setProviders`（设置页改了模型，不重启就生效）、`createSession`（新的顶层会话用默认模型）；`probeProvider`（测试连接）是内核自带的。
-- **监护**（`src/main/backend/process.ts`）：内核进程意外退出，按 1、2、5 秒退避重启，1 分钟最多 5 次；重启期间的调用排队等候，窗口标题栏显示「后台正在恢复」；新进程 `restore()` 后界面重新拉会话，跑到一半的回答显示「（中断）」和「继续」。超过次数显示「后台反复出错，已经停下 [重试]」。正常退出发 `shutdown`，5 秒不退就强杀。
+- **监护**（`src/main/backend/process.ts`）：内核进程意外退出，按 1、2、5 秒退避重启，1 分钟最多 5 次；重启期间的调用排队等候，窗口标题栏显示「后台正在恢复」；新进程 `restore()` 后界面重新拉会话，跑到一半的回答显示「（中断）」和「继续」。超过次数显示「后台反复出错，已经停下 [重试]」。正常退出先把窗口藏起来，再发 `shutdown`，10 秒不退就强杀（装了插件时收尾要 4.5 秒左右，慢机器更久）；主进程最多等 11 秒（`main/quit.ts`）。
 - 截图和测试用假后端（`src/main/backend/fake.ts`），`SPICA_BACKEND=fake|core` 可强制。
 
 ## 3. 事件到界面的映射
