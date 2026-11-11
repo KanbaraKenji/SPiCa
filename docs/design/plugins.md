@@ -66,7 +66,7 @@
 - `entry` 必须是插件文件夹里的相对路径；绝对路径、`..`、盘符一律拒绝。`binary` 不能是 `.cmd/.bat/.ps1/.vbs`（会弹控制台）。
 - `env` 不能自己设 `SPICA_` 开头的变量。
 - `expose_tools`：`mcp/` 默认 true，`services/` 默认 false。
-- `timeout_seconds`：多久没有结果、也没有进度就算这次调用失败（缺省 60）。`max_call_seconds`：一直在报进度也最多等多久（缺省 3600，必须大于 0）。内核调工具时带 progressToken，收到这次调用的进度就重新计时；超时或用户停止时给 server 发 `notifications/cancelled`。插件页面直接调工具的那条路（`callPluginTool`）这一版另有 120 秒的硬上限，不看进度。写法见作者指南 2c 节。
+- `timeout_seconds`：多久没有结果、也没有进度就算这次调用失败（缺省 60）。`max_call_seconds`：一直在报进度也最多等多久（缺省 3600，必须大于 0）。内核调工具时带 progressToken，收到这次调用的进度就重新计时；超时或用户停止时给 server 发 `notifications/cancelled`。插件页面直接调工具（`callPluginTool`）也一样，没有另外写死的时限；后台方法 `pluginViewCall` 可以带外壳自己定的 `callId`，页面关掉或重新加载时外壳调 `pluginViewCancel({ callId })` 停掉它，server 会收到取消。写法见作者指南 2c 节。
 
 ### 钩子模块 `hooks/*.js`
 

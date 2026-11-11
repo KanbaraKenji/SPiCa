@@ -110,6 +110,8 @@ export function pluginMcpTools(pm: PluginManager): McpServiceTool[] {
 
 /** Methods on the backend port, for the desktop shell's plugin page. */
 export function pluginMethods(pm: PluginManager): Record<string, (...params: unknown[]) => unknown> {
+  // Page calls that gave a callId, so the shell can stop them when the page goes away.
+  const viewCalls = new Map<string, AbortController>();
   return {
     pluginsList: () => pm.list(),
     pluginDescribe: (name) => pm.describe(String(name)),
@@ -133,10 +135,30 @@ export function pluginMethods(pm: PluginManager): Record<string, (...params: unk
       const r = (req ?? {}) as { plugin?: unknown; path?: unknown };
       return (await pm.resolveViewFile(String(r.plugin ?? ''), String(r.path ?? ''))) ?? null;
     },
-    pluginViewCall: (req) => {
-      const r = (req ?? {}) as { plugin?: unknown; view?: unknown; tool?: unknown; args?: unknown; confirmed?: unknown };
+    // `callId` (optional, chosen by the shell) lets pluginViewCancel stop the call later.
+    pluginViewCall: async (req) => {
+      const r = (req ?? {}) as { plugin?: unknown; view?: unknown; tool?: unknown; args?: unknown; confirmed?: unknown; callId?: unknown };
       const args = r.args && typeof r.args === 'object' && !Array.isArray(r.args) ? (r.args as Record<string, unknown>) : {};
-      return pm.viewCall(String(r.plugin ?? ''), String(r.view ?? ''), String(r.tool ?? ''), args, { confirmed: r.confirmed === true });
+      const callId = typeof r.callId === 'string' && r.callId ? r.callId : undefined;
+      const ctl = callId ? new AbortController() : undefined;
+      if (callId && ctl) viewCalls.set(callId, ctl);
+      try {
+        return await pm.viewCall(String(r.plugin ?? ''), String(r.view ?? ''), String(r.tool ?? ''), args, {
+          confirmed: r.confirmed === true,
+          ...(ctl ? { signal: ctl.signal } : {}),
+        });
+      } finally {
+        if (callId && viewCalls.get(callId) === ctl) viewCalls.delete(callId);
+      }
+    },
+    // The page closed or reloaded while its call was running: stop it (the server is told to stop). False when unknown.
+    pluginViewCancel: (req) => {
+      const callId = String(((req ?? {}) as { callId?: unknown }).callId ?? '');
+      const ctl = viewCalls.get(callId);
+      if (!ctl) return false;
+      viewCalls.delete(callId);
+      ctl.abort();
+      return true;
     },
     // Plugins using the user's models: why, the limit in force and today's spend; and the user's own limit.
     pluginModelUsage: () => pm.modelUsage(),

@@ -99,7 +99,7 @@ send({ method: 'notifications/progress', params: { progressToken: token, progres
 - 超时或用户点了停止，Spica 会发 `notifications/cancelled`（`params.requestId` 是这次调用的 id）。收到就停手、释放资源，不用再回结果，回了也没人收。已经写好的文件留着，下次调用时跳过已有的，从没做完的地方接着做。
 - 用官方 SDK 时：进度用工具处理函数第二个参数里的 `extra._meta?.progressToken` 和 `extra.sendNotification(...)`，取消看 `extra.signal`。
 - `max_call_seconds` 防的是插件卡死或写坏了一直报进度；要做几个小时的活，拆成「开始 / 查进度 / 取结果」几个工具更稳，模型可以分几次调。
-- 插件页面直接调工具时，这一版 Spica 不管进度，120 秒就停，长活别放在页面按钮上直接跑。
+- 插件页面用 `window.spica.callTool` 调工具时也按同一套规矩等，没有另外的时限。
 
 ## 3. 加一个技能
 

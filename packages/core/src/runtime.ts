@@ -183,6 +183,8 @@ export class Runtime implements RuntimeInternals {
   readonly #secrets = new Set<string>();
   readonly #limiters = new Map<string, RateLimiter>();
   readonly #sessions = new Map<string, Session>();
+  /** Aborted by close(): stops tool calls made outside any run (plugin pages, the mail pipeline). */
+  readonly #shutdown = new AbortController();
   readonly #opts: RuntimeOptions;
   /** Incoming mail → triage → project managers. */
   readonly mail: MailPipeline;
@@ -748,12 +750,15 @@ export class Runtime implements RuntimeInternals {
    * hooks still apply, and irreversible tools ask the user (confirm.request,
    * cause plugin_view). Calls of one plugin share a small limiter; MCP tools
    * leave their traceable record with initiator `view:<plugin>`.
+   * No fixed time limit: an MCP tool's own timeout_seconds / max_call_seconds
+   * and its progress decide, as in a conversation. `signal` (the page went
+   * away) and close() stop the call and tell the server.
    */
   async callPluginTool(
     pluginId: string,
     toolName: string,
     args: Record<string, unknown>,
-    opts: { sessionId?: string; confirmed?: boolean } = {},
+    opts: { sessionId?: string; confirmed?: boolean; signal?: AbortSignal } = {},
   ): Promise<PluginToolResult> {
     // the full name as registered (any of the plugin's servers), or the bare name under the plugin's prefix;
     // either way it must have been registered by this plugin
@@ -811,7 +816,7 @@ export class Runtime implements RuntimeInternals {
         sessionId: session?.id ?? '',
         parentChain: session?.parentChain ?? [],
         cwd,
-        signal: AbortSignal.timeout(120_000),
+        signal: opts.signal ? AbortSignal.any([this.#shutdown.signal, opts.signal]) : this.#shutdown.signal,
         tracer: this.tracer,
         extractors: this.extractors,
         services: { runtime: this },
@@ -1129,7 +1134,8 @@ export class Runtime implements RuntimeInternals {
   /**
    * Run a registered tool directly (not through a model), e.g. the mail
    * pipeline calling a plugin's list tool. Hooks and confirmation do not
-   * apply, so use it only for read-only tools.
+   * apply, so use it only for read-only tools. No fixed time limit (the tool's
+   * own timeouts apply); close() stops it.
    */
   async invokeTool(name: string, input: Record<string, unknown>, session?: Session): Promise<{ content: string; isError: boolean }> {
     const tool = this.tools.get(name);
@@ -1139,7 +1145,7 @@ export class Runtime implements RuntimeInternals {
         sessionId: session?.id ?? 'runtime',
         parentChain: session?.parentChain ?? [],
         cwd: session?.config.cwd ?? this.#opts.cwd ?? process.cwd(),
-        signal: AbortSignal.timeout(120_000),
+        signal: this.#shutdown.signal,
         tracer: this.tracer,
         extractors: this.extractors,
         services: { runtime: this },
@@ -1305,6 +1311,7 @@ export class Runtime implements RuntimeInternals {
 
   /** Stop all runs (they become `interrupted`, resumable after restart), stop MCP servers, close the store. */
   async close(): Promise<void> {
+    this.#shutdown.abort();
     this.mail.stop();
     await Promise.all([...this.#sessions.values()].map((s) => s.shutdown()));
     await Promise.all([...this.#mcp.values()].map((m) => m.disconnect()));

@@ -1120,7 +1120,13 @@ export class PluginManager {
    * declares (default: all of the plugin's); irreversible ones need
    * `confirmed` (the shell asks the user, then calls again).
    */
-  async viewCall(plugin: string, viewId: string, tool: string, args: Record<string, unknown> = {}, opts: { confirmed?: boolean } = {}): Promise<ViewCallResult> {
+  async viewCall(
+    plugin: string,
+    viewId: string,
+    tool: string,
+    args: Record<string, unknown> = {},
+    opts: { confirmed?: boolean; signal?: AbortSignal } = {},
+  ): Promise<ViewCallResult> {
     const fail = (code: string, text: string): ViewCallResult => ({ content: `[${code}] ${text}`, isError: true });
     const a = this.#active.get(plugin);
     if (!a) return fail('PLUGIN_DISABLED', `插件「${plugin}」未启用。`);
@@ -1139,7 +1145,7 @@ export class PluginManager {
       // irreversible via our permission hook, destructiveHint, or another hook).
       let out: Awaited<ReturnType<NonNullable<PluginHost['callPluginTool']>>>;
       try {
-        out = await this.#host.callPluginTool(plugin, full, input, { confirmed: opts.confirmed === true });
+        out = await this.#host.callPluginTool(plugin, full, input, { confirmed: opts.confirmed === true, ...(opts.signal ? { signal: opts.signal } : {}) });
       } catch (err) {
         // The page always gets a result, never an exception.
         void this.#log(plugin, `page ${viewId} could not call ${tool}: ${err instanceof Error ? err.message : String(err)}`);

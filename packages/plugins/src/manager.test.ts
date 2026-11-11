@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.setConfig({ testTimeout: 30_000 });
 import { Runtime } from '@spica/core';
 import { PluginManager } from './manager.ts';
+import { pluginMethods } from './backend.ts';
 import { runtimeHost } from './host.ts';
 import { readPluginFolder } from './folder.ts';
 import { unpackPlugin } from './pack.ts';
@@ -595,6 +596,50 @@ describe('failures', () => {
     expect(ok).toMatchObject({ isError: false, content: expect.stringMatching(/^fetched \d+$/) });
     const capped = await callTool(r.rt, 'slowpoke__fetch_all', { ms: 12_000 });
     expect(capped).toMatchObject({ isError: true, content: expect.stringMatching(/did not finish tools\/call within 8 s/) });
+  }, 60_000);
+
+  it('a page call has no fixed limit of its own, and the shell can stop it by its callId', async () => {
+    // Scaled down as above: timeout_seconds 4, progress every 0.2 s.
+    const dir = await writePlugin({
+      'manifest.json': manifest('pagepoke'),
+      'mcp/srv.json': { runtime: 'node', entry: 'srv.js', timeout_seconds: 4 },
+      'srv.js': `import { createInterface } from 'node:readline';
+        const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\\n');
+        const jobs = new Map();
+        const cancelled = [];
+        createInterface({ input: process.stdin }).on('line', (l) => {
+          const m = JSON.parse(l);
+          if (m.method === 'notifications/cancelled') { cancelled.push(m.params.requestId); const j = jobs.get(m.params.requestId); if (j) { clearInterval(j.tick); clearTimeout(j.done); } return; }
+          if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 's' } } });
+          if (m.method === 'tools/list') send({ id: m.id, result: { tools: [{ name: 'fetch_all', inputSchema: { type: 'object' } }, { name: 'cancelled', inputSchema: { type: 'object' } }] } });
+          if (m.method === 'tools/call' && m.params.name === 'cancelled') return send({ id: m.id, result: { content: [{ type: 'text', text: JSON.stringify(cancelled) }] } });
+          if (m.method === 'tools/call') {
+            const token = m.params._meta?.progressToken;
+            let n = 0;
+            const tick = setInterval(() => send({ method: 'notifications/progress', params: { progressToken: token, progress: ++n } }), 200);
+            const done = setTimeout(() => { clearInterval(tick); send({ id: m.id, result: { content: [{ type: 'text', text: '{"fetched":' + n + '}' } ] } }); }, m.params.arguments.ms);
+            jobs.set(m.id, { tick, done });
+          }
+        });`,
+      'views/main.json': { title: 'Main', entry: 'ui/index.html' },
+      'ui/index.html': '<!doctype html><title>x</title>',
+    });
+    dirs.push(dir);
+    r = await rig();
+    await r.pm.install(dir);
+    await r.pm.enable('pagepoke');
+    const methods = pluginMethods(r.pm);
+    // longer than timeout_seconds, kept alive by progress
+    const ok = (await methods.pluginViewCall!({ plugin: 'pagepoke', view: 'main', tool: 'fetch_all', args: { ms: 6000 }, callId: 'page-1' })) as { isError: boolean; data?: { fetched: number } };
+    expect(ok).toMatchObject({ isError: false, data: { fetched: expect.any(Number) } });
+    expect(methods.pluginViewCancel!({ callId: 'page-1' })).toBe(false); // finished: nothing left to stop
+    // the page goes away: the shell stops the call and the server is told
+    const running = methods.pluginViewCall!({ plugin: 'pagepoke', view: 'main', tool: 'fetch_all', args: { ms: 20_000 }, callId: 'page-2' }) as Promise<{ isError: boolean }>;
+    await new Promise((res) => setTimeout(res, 500));
+    expect(methods.pluginViewCancel!({ callId: 'page-2' })).toBe(true);
+    expect(await running).toMatchObject({ isError: true });
+    const cancelled = (await r.pm.viewCall('pagepoke', 'main', 'cancelled')) as { data?: unknown[] };
+    expect(cancelled.data).toHaveLength(1);
   }, 60_000);
 
   it('max_call_seconds must be a positive number of seconds', async () => {

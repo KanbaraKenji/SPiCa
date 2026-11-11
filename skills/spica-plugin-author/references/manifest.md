@@ -67,7 +67,7 @@ send({ method: 'notifications/progress', params: { progressToken: token, progres
 - 隔 10 到 30 秒报一次；`progress` 必须越来越大。
 - 收到 `notifications/cancelled`（`params.requestId` 是这次调用的 id）就停手，不用再回结果；已写好的文件留着，下次跳过已有的接着做。
 - 用官方 SDK：`extra._meta?.progressToken`、`extra.sendNotification(...)`，取消看 `extra.signal`。
-- 一直报进度也最多等 `max_call_seconds`（缺省 3600）；更长的活拆成「开始 / 查进度 / 取结果」几个工具。插件页面直接调工具时 120 秒就停，不看进度。
+- 一直报进度也最多等 `max_call_seconds`（缺省 3600）；更长的活拆成「开始 / 查进度 / 取结果」几个工具。插件页面直接调工具也按这套规矩等。
 - `preview.mjs` 和 `check.mjs` 也按这套规矩等。
 
 ## `views/<id>.json`

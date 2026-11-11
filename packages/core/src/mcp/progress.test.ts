@@ -177,3 +177,33 @@ describe('long MCP tool calls in a conversation', () => {
     }
   });
 });
+
+describe('long MCP tool calls from a plugin page', () => {
+  let gw: FakeGateway;
+  beforeEach(async () => {
+    gw = await startGateway();
+  });
+  afterEach(async () => {
+    await gw.stop();
+  });
+
+  it('follow the server timeouts and progress, and stop when the page goes away', async () => {
+    const rt = makeRuntime(gw);
+    try {
+      const config: McpServerConfig = { name: 'long', command: process.execPath, args: ['-e', SERVER] };
+      await rt.connectMcp(config, { source: 'plugin:long' });
+      config.timeoutMs = 1500; // after connect: a cold start may be slow; the client keeps this object
+      // longer than the timeout, kept alive by progress
+      expect(await rt.callPluginTool('long', 'long', { ms: 4500, every: 250 })).toMatchObject({ isError: false, content: expect.stringMatching(/^all \d+ steps done$/) });
+      // the page goes away while the call runs
+      const ac = new AbortController();
+      const running = rt.callPluginTool('long', 'long', { ms: 20_000, every: 250 }, { signal: ac.signal });
+      setTimeout(() => ac.abort(), 500);
+      expect(await running).toMatchObject({ isError: true });
+      const seenNow = JSON.parse((await rt.callPluginTool('long', 'seen', {})).content) as { cancelled: { reason?: string }[] };
+      expect(seenNow.cancelled).toEqual([expect.objectContaining({ reason: 'user interrupted' })]);
+    } finally {
+      await rt.close();
+    }
+  });
+});
