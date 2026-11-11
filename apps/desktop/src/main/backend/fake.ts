@@ -636,19 +636,20 @@ export class FakeBackend implements AgentBackend {
     this.#emit(sessionId, { type: 'steer.applied', messageIds: ids });
   }
 
-  async #tool(sessionId: string, run: Run, name: string, input: unknown, result: string, ms: number): Promise<ContentBlock[]> {
+  /** One tool call; `fail`: it ends in an error with `result` as the error text. */
+  async #tool(sessionId: string, run: Run, name: string, input: unknown, result: string, ms: number, fail = false): Promise<ContentBlock[]> {
     const callId = this.#id('call');
     this.#emit(sessionId, { type: 'tool.call', callId, name });
     this.#emit(sessionId, { type: 'tool.start', callId, name, input });
     this.#setStatus(sessionId, 'tool', name);
     await this.#sleep(ms, run.controller.signal);
     const path = (input as { path?: unknown }).path;
-    if (name === 'read_file' && typeof path === 'string') this.#emit(sessionId, { type: 'file.card', callId, file: fakeCard(path, this.#now()) });
-    const content = `${isoAt(this.#now())}\n${result}`;
-    this.#emit(sessionId, { type: 'tool.end', callId, name, isError: false, preview: result.slice(0, 160), durationMs: ms });
+    if (name === 'read_file' && typeof path === 'string' && !fail) this.#emit(sessionId, { type: 'file.card', callId, file: fakeCard(path, this.#now()) });
+    const content = fail ? result : `${isoAt(this.#now())}\n${result}`;
+    this.#emit(sessionId, { type: 'tool.end', callId, name, isError: fail, preview: result.slice(0, 160), durationMs: ms });
     return [
       { type: 'tool_use', id: callId, name, input },
-      { type: 'tool_result', toolUseId: callId, content },
+      { type: 'tool_result', toolUseId: callId, content, ...(fail ? { isError: true } : {}) },
     ];
   }
 
@@ -702,8 +703,11 @@ export class FakeBackend implements AgentBackend {
       await this.#stream(sessionId, 'text', intro, signal);
       blocks.push({ type: 'text', text: intro });
 
+      // For screenshots of tools at work: 「慢」 makes each call take 4 s, 「失败」 makes reading the file fail.
+      const slow = /慢/.test(text);
+      const fails = /失败/.test(text);
       blocks.push(
-        ...(await this.#tool(sessionId, run, 'list_dir', { path: '.' }, '会议记录/\n报价单.xlsx\n测试报告.pdf\n需求说明.docx', 500)),
+        ...(await this.#tool(sessionId, run, 'list_dir', { path: '.' }, '会议记录/\n报价单.xlsx\n测试报告.pdf\n需求说明.docx', slow ? 4000 : 500)),
       );
       blocks.push(
         ...(await this.#tool(
@@ -711,8 +715,9 @@ export class FakeBackend implements AgentBackend {
           run,
           'read_file',
           { path: '需求说明.docx' },
-          '需求说明 v3：外壳尺寸 120×80×24 mm；续航不少于 10 小时；首批样机 20 台，月底前交付。',
-          700,
+          fails ? '[FILE_LOCKED] 文件正被其他程序占用，无法读取。' : '需求说明 v3：外壳尺寸 120×80×24 mm；续航不少于 10 小时；首批样机 20 台，月底前交付。',
+          slow ? 4000 : 700,
+          fails,
         )),
       );
       this.#commitAssistant(sessionId, blocks);
