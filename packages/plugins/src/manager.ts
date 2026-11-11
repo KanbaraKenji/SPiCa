@@ -4,7 +4,7 @@
 // Disable undoes the same steps in reverse, then withdraws anything still
 // registered under the plugin's source as a backstop. A failed enable is
 // rolled back the same way, so a plugin is either fully on or fully off.
-import { appendFile, cp, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Hooks, Tool } from '@spica/core';
@@ -183,10 +183,17 @@ async function isDir(p: string): Promise<boolean> {
 }
 
 /**
- * Run a file operation, retrying while Windows reports the folder in use
- * (a stopped server's own child processes can take a moment to exit).
+ * Folder moves the manager makes, and how long it waits for a folder in use.
+ * Tests replace rename to act out a folder another program holds.
  */
-async function whenFree<T>(op: () => Promise<T>, waitMs = 10_000): Promise<T> {
+export const fsOps = { rename, busyWaitMs: 10_000 };
+
+/**
+ * Run a file operation, retrying while Windows reports the folder in use
+ * (a stopped server's own child processes can take a moment to exit; a virus
+ * scanner may be reading a fresh copy).
+ */
+async function whenFree<T>(op: () => Promise<T>, waitMs = fsOps.busyWaitMs): Promise<T> {
   const until = Date.now() + waitMs;
   for (;;) {
     try {
@@ -299,6 +306,7 @@ export class PluginManager {
       } catch {
         // first start: empty state
       }
+      await this.#removeLeftovers();
       const enabled: string[] = [];
       const failed: { name: string; message: string }[] = [];
       for (const rec of Object.values(this.#state.plugins)) {
@@ -361,19 +369,26 @@ export class PluginManager {
         const copy = (to: string) => cp(dir, to, { recursive: true, filter: (src) => !/[\\/](node_modules|\.git)([\\/]|$)/.test(src.slice(dir.length)) });
         if (await isDir(target)) {
           const nonce = `${Date.now().toString(36)}-${++importNonce}`;
-          const staged = `${target}.new-${nonce}`;
+          const staged = `${target}~new-${nonce}`;
           await copy(staged);
           if (wasEnabled) await this.#disable(name);
-          backup = `${target}.old-${nonce}`;
+          const aside = `${target}~old-${nonce}`;
+          // Both moves wait while Windows reports a folder in use (the plugin's
+          // processes, or a virus scanner reading the fresh copy). Either step
+          // failing leaves the old files where they were and the plugin as it was.
+          let step = 'old';
           try {
-            await whenFree(() => rename(target, backup!));
+            await whenFree(() => fsOps.rename(target, aside));
+            step = 'new';
+            await whenFree(() => fsOps.rename(staged, target));
           } catch (err) {
+            if (step === 'new') await whenFree(() => fsOps.rename(aside, target)).catch(() => undefined);
             await rm(staged, { recursive: true, force: true }).catch(() => undefined);
             if (wasEnabled) await this.#enable(name).catch(() => undefined);
-            void this.#log(name, `reinstall ${version}: install folder still in use: ${(err as Error).message}`);
+            void this.#log(name, `reinstall ${version}: ${step === 'old' ? 'install folder' : 'new copy'} still in use: ${(err as Error).message}`);
             throw new PluginError(`「${name}」${version} 的安装文件夹仍被占用，未安装。请关闭插件启动的程序后重试。`);
           }
-          await rename(staged, target);
+          backup = aside;
         } else {
           await copy(target);
         }
@@ -398,11 +413,22 @@ export class PluginManager {
           // version, the files kept aside).
           if (old) {
             if (backup) {
-              await this.#disable(name).catch(() => undefined);
-              await whenFree(() => rm(target, { recursive: true, force: true }))
-                .then(() => rename(backup!, target))
-                .then(() => (backup = undefined))
-                .catch(() => undefined);
+              // Same version: move the new files out of the way, then the old ones back.
+              const failed = `${target}~bad-${Date.now().toString(36)}`;
+              const restored = await whenFree(() => fsOps.rename(target, failed))
+                .then(() => whenFree(() => fsOps.rename(backup!, target)))
+                .then(
+                  () => true,
+                  () => false,
+                );
+              if (!restored) {
+                void this.#log(name, `reinstall ${version}: new files did not start and the old ones could not be put back (kept at ${backup})`);
+                this.#state.plugins[name] = { ...old, enabled: false };
+                await this.#saveState();
+                throw new PluginError(`新版本 ${version} 启动失败，旧文件未能恢复（安装文件夹仍被占用），插件已停用。请关闭插件启动的程序后重新安装：${(err as Error).message}`);
+              }
+              backup = undefined;
+              await whenFree(() => rm(failed, { recursive: true, force: true })).catch(() => undefined);
             }
             this.#state.plugins[name] = old;
             this.#folders.set(name, await readPluginFolder(this.installDir(name, old.current), this.#msg));
@@ -441,16 +467,25 @@ export class PluginManager {
   uninstall(name: string): Promise<void> {
     return this.#serial(async () => {
       this.#require(name);
-      if (this.#active.has(name)) await this.#disable(name);
-      // Its processes may take a moment to let go of the folder (Windows).
-      try {
-        await whenFree(() => rm(join(this.#root, 'installed', name), { recursive: true, force: true }));
-      } catch (err) {
-        void this.#log(name, `uninstall: install folder still in use: ${(err as Error).message}`);
-        throw new PluginError(`「${name}」的安装文件夹仍被占用，未卸载。请关闭插件启动的程序后重试。`);
+      const wasActive = this.#active.has(name);
+      if (wasActive) await this.#disable(name);
+      // Move the folder aside first: on Windows that fails as a whole while any of
+      // its files is in use, whereas a recursive delete would remove some files
+      // and then stop. Its processes may take a moment to let go.
+      const dir = join(this.#root, 'installed', name);
+      const aside = join(this.#root, 'installed', `${name}~removing-${Date.now().toString(36)}`);
+      if (await isDir(dir)) {
+        try {
+          await whenFree(() => fsOps.rename(dir, aside));
+        } catch (err) {
+          if (wasActive) await this.#enable(name).catch(() => undefined);
+          void this.#log(name, `uninstall: install folder still in use: ${(err as Error).message}`);
+          throw new PluginError(`「${name}」的安装文件夹仍被占用，未卸载。请关闭插件启动的程序后重试。`);
+        }
       }
       delete this.#state.plugins[name];
       this.#folders.delete(name);
+      await whenFree(() => rm(aside, { recursive: true, force: true })).catch(() => undefined);
       await this.#saveState();
       this.#emit({ type: 'plugin.uninstalled', name });
     });
@@ -517,6 +552,24 @@ export class PluginManager {
         }
       }
     });
+  }
+
+  /** Folders an interrupted reinstall or uninstall left aside (~old-, ~new-, ~bad-, ~removing-). Nothing runs from them yet. */
+  async #removeLeftovers(): Promise<void> {
+    const installed = join(this.#root, 'installed');
+    // '~' never appears in a plugin name or a version, so a real folder never matches.
+    const aside = /~(old|new|bad|removing)-[a-z0-9-]+$/;
+    const drop = (p: string) => rm(p, { recursive: true, force: true }).catch(() => undefined);
+    for (const e of await readdir(installed, { withFileTypes: true }).catch(() => [])) {
+      if (!e.isDirectory()) continue;
+      if (aside.test(e.name)) {
+        await drop(join(installed, e.name));
+        continue;
+      }
+      for (const v of await readdir(join(installed, e.name), { withFileTypes: true }).catch(() => [])) {
+        if (v.isDirectory() && aside.test(v.name)) await drop(join(installed, e.name, v.name));
+      }
+    }
   }
 
   #modelLimit(name: string, m: PluginManifest): number {

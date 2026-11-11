@@ -3,10 +3,12 @@
 // process's working folder and the files it has open cannot be deleted, so
 // the plugin must be stopped, and its processes gone, before its folder is
 // replaced.
-import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { runtimeHost } from './host.ts';
+import { PluginManager, fsOps } from './manager.ts';
 import { manifest, rig, toolNames, writePlugin, type Rig } from './testing/helpers.ts';
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 30_000 });
@@ -119,6 +121,25 @@ describe("when the plugin's processes do not let go", () => {
     expect(d).toMatchObject({ enabled: true, servers: [{ status: 'running' }] });
   });
 
+  it('a helper that never exits: uninstall is refused, the plugin keeps working with all its files; once it is gone, uninstall works', async () => {
+    r = await rig();
+    await r.pm.install(await plugin('uninst-stuck', -1));
+    await r.pm.enable('uninst-stuck');
+    const data = r.pm.dataDir('uninst-stuck');
+    try {
+      await expect(r.pm.uninstall('uninst-stuck')).rejects.toThrow('「uninst-stuck」的安装文件夹仍被占用，未卸载。请关闭插件启动的程序后重试。');
+      expect(r.pm.describe('uninst-stuck')).toMatchObject({ enabled: true, servers: [{ status: 'running' }] });
+      expect(toolNames(r.rt)).toContain('uninst-stuck__ping');
+      expect((await readdir(r.pm.installDir('uninst-stuck', '1.0.0'))).sort()).toEqual(['helper.cjs', 'manifest.json', 'mcp', 'package.json', 'srv.js']);
+    } finally {
+      await killHelpers(data);
+    }
+    await new Promise((done) => setTimeout(done, 500));
+    await killHelpers(data);
+    await r.pm.uninstall('uninst-stuck');
+    expect(await readdir(join(r.pm.root, 'installed'))).toEqual([]);
+  });
+
   it('uninstall waits for a helper that exits a moment after the server', async () => {
     r = await rig();
     await r.pm.install(await plugin('uninst-helper', 1500));
@@ -139,5 +160,67 @@ describe("when the plugin's processes do not let go", () => {
     expect(toolNames(r.rt)).toContain('reinst-broken__ping');
     expect(await readFile(join(r.pm.installDir('reinst-broken', '1.0.0'), 'srv.js'), 'utf8')).toContain('tools/list');
     expect((await readdir(join(r.pm.root, 'installed', 'reinst-broken'))).sort()).toEqual(['1.0.0']);
+  });
+});
+
+describe('when another program holds a folder (acted out: a virus scanner reading the fresh copy)', () => {
+  const realRename = fsOps.rename;
+  const realWait = fsOps.busyWaitMs;
+  afterEach(() => {
+    fsOps.rename = realRename;
+    fsOps.busyWaitMs = realWait;
+  });
+  /** rename fails with EBUSY while `held` says so. */
+  const holdWhen = (held: (from: string, to: string) => boolean) => {
+    fsOps.busyWaitMs = 400;
+    fsOps.rename = async (from, to) => {
+      if (held(String(from), String(to))) throw Object.assign(new Error(`EBUSY: resource busy or locked, rename '${String(from)}'`), { code: 'EBUSY' });
+      return realRename(from, to);
+    };
+  };
+
+  it('the new copy cannot be moved in: the old files go back, the plugin runs as before, nothing is left beside it', async () => {
+    r = await rig();
+    const src = await plugin('reinst-scan', null);
+    await r.pm.install(src);
+    await r.pm.enable('reinst-scan');
+    await writeFile(join(src, 'srv.js'), `${await readFile(join(src, 'srv.js'), 'utf8')}// new code\n`);
+    holdWhen((from) => from.includes('~new-'));
+    await expect(r.pm.install(src)).rejects.toThrow('「reinst-scan」1.0.0 的安装文件夹仍被占用，未安装。请关闭插件启动的程序后重试。');
+    expect(r.pm.describe('reinst-scan')).toMatchObject({ enabled: true, version: '1.0.0', servers: [{ status: 'running' }] });
+    expect(toolNames(r.rt)).toContain('reinst-scan__ping');
+    expect(await readFile(join(r.pm.installDir('reinst-scan', '1.0.0'), 'srv.js'), 'utf8')).not.toContain('// new code');
+    expect(await readdir(join(r.pm.root, 'installed', 'reinst-scan'))).toEqual(['1.0.0']);
+    // Once the folder is free, the same install works.
+    fsOps.rename = realRename;
+    await r.pm.install(src);
+    expect(await readFile(join(r.pm.installDir('reinst-scan', '1.0.0'), 'srv.js'), 'utf8')).toContain('// new code');
+  });
+
+  it('new code that does not start and old files that cannot be put back: says so, and the plugin is left off', async () => {
+    r = await rig();
+    const src = await plugin('reinst-stuckback', null);
+    await r.pm.install(src);
+    await r.pm.enable('reinst-stuckback');
+    await writeFile(join(src, 'srv.js'), 'process.exit(3);\n');
+    holdWhen((_from, to) => to.includes('~bad-'));
+    await expect(r.pm.install(src)).rejects.toThrow(/新版本 1\.0\.0 启动失败，旧文件未能恢复（安装文件夹仍被占用），插件已停用/);
+    expect(r.pm.describe('reinst-stuckback')).toMatchObject({ enabled: false });
+    expect(JSON.parse(await readFile(join(r.pm.root, 'state.json'), 'utf8')).plugins['reinst-stuckback'].enabled).toBe(false);
+  });
+
+  it('folders an interrupted install or uninstall left aside are removed at the next start; real versions stay', async () => {
+    r = await rig();
+    await r.pm.install(await plugin('leftovers', null));
+    const base = join(r.pm.root, 'installed');
+    await mkdir(join(base, 'leftovers', '1.0.0~old-abc1-2'), { recursive: true });
+    await mkdir(join(base, 'leftovers', '1.0.0~new-abc1-3'), { recursive: true });
+    await mkdir(join(base, 'leftovers', '1.0.0-rc.old-2'), { recursive: true });
+    await mkdir(join(base, 'gone~removing-abc1'), { recursive: true });
+    const again = new PluginManager({ host: runtimeHost(r.rt), root: r.pm.root });
+    await again.load();
+    expect((await readdir(base)).sort()).toEqual(['leftovers']);
+    expect((await readdir(join(base, 'leftovers'))).sort()).toEqual(['1.0.0', '1.0.0-rc.old-2']);
+    await again.shutdown();
   });
 });
