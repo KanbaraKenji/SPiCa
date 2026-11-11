@@ -4994,6 +4994,14 @@ button.ctx-row:hover {
   max-height: 100%;
   border-radius: var(--radius-m);
   box-shadow: var(--spica-shadow);
+  /* Ctrl+wheel zooms around the pointer; dragging moves it. */
+  transform-origin: center;
+  cursor: grab;
+  user-select: none;
+}
+
+.image-viewer img:active {
+  cursor: grabbing;
 }
 
 /* What saving will do to 默认模型 / 强模型. */
