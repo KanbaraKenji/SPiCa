@@ -75,6 +75,8 @@ export interface PluginDescription {
   hooks: { module: string; kinds: HookKind[] }[];
   servers: { id: string; kind: 'mcp' | 'service'; runtime: 'node' | 'binary'; status: ServerStatus; restarts: number; tools: string[]; lastError?: string }[];
   views: { id: string; title: string; placement: ViewDef['placement']; entry: string; icon?: string; tools?: string[] }[];
+  /** The plugin's own icon (manifest.json · icon), relative to its install folder; absent: none. */
+  icon?: string;
   /** Set while the plugin is enabled and registered as a mail source. */
   mail?: { listTool: string; readTool: string };
   /** Present when the manifest asks to use the user's models (permissions.model). */
@@ -1032,6 +1034,7 @@ export class PluginManager {
         };
       }),
       views: (folder?.views ?? []).map((v) => ({ id: v.id, title: v.title, placement: v.placement, entry: v.entry, ...(v.icon ? { icon: v.icon } : {}), ...(v.tools ? { tools: v.tools } : {}) })),
+      ...(m?.icon ? { icon: m.icon } : {}),
       ...(a?.mail ? { mail: a.mail } : {}),
       ...(m?.permissions.model ? { model: this.#modelUse(name, m) } : {}),
       issues: folder?.issues ?? [],

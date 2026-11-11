@@ -52,6 +52,9 @@ export interface HookModuleDef {
 
 export const VIEW_PLACEMENTS = ['sidebar', 'panel'] as const;
 
+/** The largest plugin icon (manifest.json · icon) accepted: an SVG of a few shapes is a few KB. */
+export const ICON_MAX_BYTES = 64 * 1024;
+
 export interface ViewDef {
   /** File name without .json, e.g. "notebook". */
   id: string;
@@ -141,6 +144,20 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
   const parsed = parseManifest(await readFile(manifestPath, 'utf8'), MANIFEST_FILE, opts);
   out.issues.push(...parsed.issues);
   if (parsed.manifest) out.manifest = parsed.manifest;
+
+  // manifest.json · icon: the plugin's own icon in the list and the detail (shown as a picture only).
+  if (out.manifest?.icon !== undefined) {
+    const where = `${MANIFEST_FILE} · icon`;
+    const rel = out.manifest.icon;
+    const abs = insidePlugin(out.root, rel);
+    const size = abs ? await stat(abs).then((st) => (st.isFile() ? st.size : -1), () => -1) : -1;
+    if (!abs) issue(where, 'icon 须为插件文件夹内的相对路径，不能用 .. 或绝对路径，例如 "icon.svg"。');
+    else if (!/\.svg$/i.test(rel)) issue(where, 'icon 须指向 .svg 文件。');
+    else if (size < 0) issue(where, `icon 指向的 ${rel} 不存在。`);
+    else if (size > ICON_MAX_BYTES) issue(where, `icon 文件不能大于 ${ICON_MAX_BYTES / 1024} KB（当前 ${Math.ceil(size / 1024)} KB）。`);
+    else out.manifest.icon = relative(out.root, abs).split(sep).join('/');
+    if (out.issues.some((i) => i.where === where)) delete out.manifest.icon;
+  }
 
   // skills/<id>/SKILL.md
   for (const e of await list(join(root, 'skills'))) {

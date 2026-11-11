@@ -31,6 +31,7 @@ export {
   type HookModuleDef,
   type ViewDef,
   VIEW_PLACEMENTS,
+  ICON_MAX_BYTES,
 } from './folder.ts';
 export { runtimeHost, type PluginHost, type McpLaunch, type McpExit, type McpHandle, type RuntimeLike, type MailSourceSpec, type PluginToolCallResult } from './host.ts';
 export {

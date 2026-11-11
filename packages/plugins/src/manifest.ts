@@ -57,6 +57,8 @@ export interface PluginManifest {
   /** The plugin is a mail source: which of its MCP tools list and read messages. */
   mail?: MailDeclaration;
   homepage?: string;
+  /** The plugin's own icon: an .svg inside the plugin folder (checked in readPluginFolder). */
+  icon?: string;
 }
 
 export interface MailDeclaration {
@@ -220,6 +222,7 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
   const license = str('license', false);
   if (license === undefined) warn('license', '缺少 license，例如 "Apache-2.0"。');
   const homepage = str('homepage', false);
+  const icon = str('icon', false);
 
   let author: PluginManifest['author'] | undefined;
   if (typeof raw.author === 'string' && raw.author) author = { name: raw.author };
@@ -344,6 +347,7 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
     mock,
     ...(mail ? { mail } : {}),
     ...(homepage ? { homepage } : {}),
+    ...(icon ? { icon } : {}),
   };
   return { manifest, issues };
 }

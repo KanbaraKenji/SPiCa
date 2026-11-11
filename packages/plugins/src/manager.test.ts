@@ -373,6 +373,39 @@ describe('views (plugin pages)', () => {
     expect(text).toMatch(/views\/f\.json: 视图声明不是有效的 JSON/);
     expect(check.views).toEqual([]);
   });
+
+  it('the plugin’s own icon: an .svg in its folder, up to 64 KB; describe() gives its path', async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="5" fill="#4f7cff"/></svg>';
+    const dir = await writePlugin({ 'manifest.json': { ...manifest('iconic'), icon: './art/icon.svg' }, 'art/icon.svg': svg });
+    dirs.push(dir);
+    r = await rig();
+    await r.pm.install(dir);
+    expect(r.pm.describe('iconic').icon).toBe('art/icon.svg');
+    // None declared: none described (the shell draws the letter badge).
+    const plain = await writePlugin({ 'manifest.json': manifest('plain') });
+    dirs.push(plain);
+    await r.pm.install(plain);
+    expect(r.pm.describe('plain').icon).toBeUndefined();
+  });
+
+  it('a wrong icon is explained, and the plugin is not installed', async () => {
+    const cases: [unknown, Record<string, string>, RegExp][] = [
+      ['../outside.svg', {}, /manifest\.json · icon: icon 须为插件文件夹内的相对路径/],
+      ['icon.png', { 'icon.png': 'x' }, /manifest\.json · icon: icon 须指向 \.svg 文件/],
+      ['missing.svg', {}, /manifest\.json · icon: icon 指向的 missing\.svg 不存在/],
+      ['big.svg', { 'big.svg': `<svg xmlns="http://www.w3.org/2000/svg">${' '.repeat(64 * 1024)}</svg>` }, /manifest\.json · icon: icon 文件不能大于 64 KB（当前 65 KB）/],
+      [42, {}, /manifest\.json · icon/],
+    ];
+    r = await rig();
+    for (const [icon, files, expected] of cases) {
+      const dir = await writePlugin({ 'manifest.json': { ...manifest('badicon'), icon }, ...files });
+      dirs.push(dir);
+      const check = await r.pm.check(dir);
+      expect(check.issues.map((i) => `${i.where}: ${i.message}`).join('\n')).toMatch(expected);
+      expect(check.manifest?.icon).toBeUndefined();
+      await expect(r.pm.install(dir)).rejects.toThrow();
+    }
+  });
 });
 
 describe('irreversible tools on every kind of server', () => {
