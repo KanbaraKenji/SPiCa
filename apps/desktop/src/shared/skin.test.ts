@@ -91,3 +91,19 @@ describe('over (the caption buttons under a scrim)', () => {
     expect(over('#ffffff', 'oops')).toBe('#ffffff');
   });
 });
+
+describe('text on the accent (主按钮, 发送)', () => {
+  const on = (accent: string, bg = '#ffffff') => deriveTokens({ id: 't', name: 't', bg, accent })['--spica-on-accent'];
+  it("white wherever white reads clearly: the light skin's blue, and the darker presets", () => {
+    expect(deriveTokens(LIGHT_SKIN)['--spica-on-accent']).toBe('#ffffff');
+    for (const a of ['#2f7de1', '#7c5cff', '#e0559a', '#3aa55c']) expect([a, on(a)]).toEqual([a, '#ffffff']);
+  });
+  it("dark only where the accent is too light for white: the dark skin's blue, 39, orange, yellow", () => {
+    expect(deriveTokens(DARK_SKIN)['--spica-on-accent']).toBe('#0b0d12');
+    for (const a of ['#39c5bb', '#e8833a', '#ffd400']) expect([a, on(a)]).toEqual([a, '#0b0d12']);
+    expect(on('#62a9ff', '#191919')).toBe('#0b0d12');
+  });
+  it('either way at least 3:1', () => {
+    for (const a of ['#2f7de1', '#62a9ff', '#39c5bb', '#7c5cff', '#e0559a', '#e8833a', '#3aa55c', '#ffd400', '#1a2a6c', '#808080']) expect(contrast(on(a)!, a)).toBeGreaterThanOrEqual(3);
+  });
+});
