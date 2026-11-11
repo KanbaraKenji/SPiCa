@@ -86,11 +86,8 @@ export interface ShellSettings {
   workflowsDir: string;
   /** When the user last opened each project manager's conversation (ISO), for 「有新来信」. */
   mailSeen: Record<string, string>;
-  /**
-   * Finished sub-tasks (session ids) opened since they finished; the others show as news in the sidebar.
-   * null: nothing recorded yet; the first run takes everything already finished as seen.
-   */
-  doneSeen: string[] | null;
+  /** Sub-tasks (session ids) that finished and have not been opened since: news in the sidebar until they are. */
+  doneNews: string[];
   /** Projects pinned to the top of the sidebar (project ids, in the order they were pinned). */
   pinnedProjects: string[];
   network: NetworkPrefs;
@@ -115,7 +112,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   network: DEFAULT_NETWORK,
   localConnect: false,
   mailSeen: {},
-  doneSeen: null,
+  doneNews: [],
 };
 
 /** Local calendar date, YYYY-MM-DD. */
@@ -188,7 +185,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
       .filter((e): e is [string, string] => typeof e[1] === 'string' && !Number.isNaN(Date.parse(e[1])))
       .slice(-500),
   );
-  const doneSeen = Array.isArray(v.doneSeen) ? [...new Set(v.doneSeen.filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 200))].slice(-2000) : null;
+  const doneNews = Array.isArray(v.doneNews) ? [...new Set(v.doneNews.filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 200))].slice(-500) : [];
   const pinnedProjects = Array.isArray(v.pinnedProjects)
     ? [...new Set(v.pinnedProjects.filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 200))].slice(0, 200)
     : [];
@@ -206,7 +203,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
     useSystemCa: typeof nw.useSystemCa === 'boolean' ? nw.useSystemCa : true,
   };
   const localConnect = v.localConnect === true;
-  return { localConnect, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, mailSeen, doneSeen, pinnedProjects };
+  return { localConnect, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, mailSeen, doneNews, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

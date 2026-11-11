@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionInfo } from '@spica/protocol';
-import { nextDoneSeen, rollupText, slotsOf, topSlot, unseenDone } from './row-status';
+import { DONE_NEWS_MAX, nextDoneNews, rollupText, slotsOf, topSlot, unseenDone } from './row-status';
 
 const s = (id: string, status: SessionInfo['status']) => ({ id, status }) as SessionInfo;
 const quiet = { active: false, unseenDone: false };
@@ -53,35 +53,49 @@ describe('the one status place of a row', () => {
   });
 });
 
-describe('which finished sub-tasks have been opened', () => {
+describe('which finished sub-tasks are still news', () => {
+  const st = (...list: SessionInfo[]) => new Map(list.map((x) => [x.id, x.status]));
   const list = [s('a', 'done'), s('b', 'done'), s('c', 'thinking'), s('d', 'idle')];
 
-  it('nothing recorded yet: none is news, and everything finished so far is taken as seen', () => {
-    expect([...unseenDone(list, null)]).toEqual([]);
-    expect(nextDoneSeen(list, null, null)).toEqual(['a', 'b']);
+  it('the first time nothing is news: what is finished then is old work', () => {
+    expect(nextDoneNews(null, list, [], null)).toBeNull();
+    expect([...unseenDone(list, [])]).toEqual([]);
   });
 
-  it('one that finishes later is news until it is opened', () => {
+  it('one seen finishing is news until it is opened', () => {
     const later = [s('a', 'done'), s('b', 'done'), s('c', 'done'), s('d', 'idle')];
-    expect([...unseenDone(later, ['a', 'b'])]).toEqual(['c']);
-    expect(nextDoneSeen(later, ['a', 'b'], 'd')).toBeNull();
-    expect(nextDoneSeen(later, ['a', 'b'], 'c')).toEqual(['a', 'b', 'c']);
-    expect([...unseenDone(later, ['a', 'b', 'c'])]).toEqual([]);
+    expect(nextDoneNews(st(...list), later, [], 'd')).toEqual(['c']);
+    expect([...unseenDone(later, ['c'])]).toEqual(['c']);
+    expect(nextDoneNews(st(...later), later, ['c'], 'd')).toBeNull();
+    expect(nextDoneNews(st(...later), later, ['c'], 'c')).toEqual([]);
+  });
+
+  it('one that finishes while it is open is not news; one that was not in the list before and is finished is', () => {
+    const later = [s('a', 'done'), s('c', 'done'), s('new', 'done')];
+    expect(nextDoneNews(st(...list), later, [], 'c')).toEqual(['new']);
   });
 
   it('one that runs again leaves the record, so its next finish is news again', () => {
-    expect(nextDoneSeen([s('a', 'tool'), s('b', 'done')], ['a', 'b'], null)).toEqual(['b']);
-    expect([...unseenDone([s('a', 'done'), s('b', 'done')], ['b'])]).toEqual(['a']);
+    expect(nextDoneNews(st(s('a', 'done')), [s('a', 'tool')], ['a'], null)).toEqual([]);
+    expect(nextDoneNews(st(s('a', 'tool')), [s('a', 'done')], [], null)).toEqual(['a']);
   });
 
-  it('a list that is short for a moment does not empty the record', () => {
-    expect(nextDoneSeen([], ['a', 'b'], null)).toBeNull();
-    expect(nextDoneSeen([s('b', 'done')], ['a', 'b'], null)).toBeNull();
-    expect([...unseenDone(list, ['a', 'b'])]).toEqual([]);
+  it('a list that is short for a moment neither drops news nor makes any', () => {
+    expect(nextDoneNews(st(...list), [], ['a'], null)).toBeNull();
+    expect(nextDoneNews(st(...list), [s('b', 'done')], ['a'], null)).toBeNull();
+    // Only the still-finished ones are shown meanwhile.
+    expect([...unseenDone([s('b', 'done')], ['a'])]).toEqual([]);
   });
 
-  it('nothing to change: null, so nothing is written', () => {
-    expect(nextDoneSeen(list, ['a', 'b'], 'a')).toBeNull();
-    expect(nextDoneSeen(list, ['a', 'b'], 'c')).toBeNull();
+  it('a full record drops its oldest news; nothing already seen lights up again', () => {
+    const many = Array.from({ length: DONE_NEWS_MAX }, (_, i) => 'n' + i);
+    const all = [...many.map((id) => s(id, 'done')), s('old', 'done'), s('fresh', 'done')];
+    const before = st(...many.map((id) => s(id, 'done')), s('old', 'done'), s('fresh', 'tool'));
+    const next = nextDoneNews(before, all, many, null)!;
+    expect(next).toHaveLength(DONE_NEWS_MAX);
+    expect(next.at(-1)).toBe('fresh');
+    expect(next).not.toContain('n0');
+    // Finished and opened long ago: it is in no record and stays unlit.
+    expect(unseenDone(all, next).has('old')).toBe(false);
   });
 });

@@ -42,11 +42,12 @@ describe('opening animation', () => {
   });
 });
 
-describe('doneSeen (finished sub-tasks already opened)', () => {
-  it('is null until something is recorded; a saved list keeps its ids once each, junk dropped', () => {
-    expect(sanitizeSettings({}).doneSeen).toBeNull();
-    expect(sanitizeSettings({ doneSeen: 'x' }).doneSeen).toBeNull();
-    expect(sanitizeSettings({ doneSeen: [] }).doneSeen).toEqual([]);
-    expect(sanitizeSettings({ doneSeen: ['a', 'b', 'a', 3, '', null] }).doneSeen).toEqual(['a', 'b']);
+describe('doneNews (finished sub-tasks not opened yet)', () => {
+  it('is empty until something finishes; a saved list keeps its ids once each, junk dropped, the newest 500', () => {
+    expect(sanitizeSettings({}).doneNews).toEqual([]);
+    expect(sanitizeSettings({ doneNews: 'x' }).doneNews).toEqual([]);
+    expect(sanitizeSettings({ doneNews: ['a', 'b', 'a', 3, '', null] }).doneNews).toEqual(['a', 'b']);
+    const many = Array.from({ length: 600 }, (_, i) => 'n' + i);
+    expect(sanitizeSettings({ doneNews: many }).doneNews).toEqual(many.slice(-500));
   });
 });

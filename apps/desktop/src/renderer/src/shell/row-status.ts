@@ -67,24 +67,30 @@ export function rollupText(slots: readonly Slot[]): string {
   return joinNotes([...parts, ...slots.filter((x) => x.kind === 'news' && x.text !== DONE).map((x) => x.text)]);
 }
 
-/** Finished sub-tasks nobody has opened since they finished. `seen` null: nothing recorded yet, so none. */
-export function unseenDone(sessions: readonly SessionInfo[], seen: readonly string[] | null): Set<string> {
-  if (!seen) return new Set();
-  const known = new Set(seen);
-  return new Set(sessions.filter((s) => s.status === 'done' && !known.has(s.id)).map((s) => s.id));
+/** Finished sub-tasks nobody has opened since they finished: the recorded ones that are still finished. */
+export function unseenDone(sessions: readonly SessionInfo[], news: readonly string[]): Set<string> {
+  const listed = new Set(news);
+  return new Set(sessions.filter((s) => s.status === 'done' && listed.has(s.id)).map((s) => s.id));
 }
 
+/** The most that is kept; older ones drop off the front (they stop being news, nothing lights up again). */
+export const DONE_NEWS_MAX = 500;
+
 /**
- * The record of finished sub-tasks already opened, brought up to date; null when it is as it should be.
- * - Nothing recorded yet: everything finished so far counts as seen (no row lights up for old work).
- * - One that runs again leaves the record, so its next finish is news again. One that is not in the list
- *   stays: the list can be short for a moment (the backend restarting), and that must not light up old work.
- * - The one open now, when finished, joins it.
+ * The record of finished sub-tasks not opened yet, brought up to date; null when it is as it should be.
+ * `before`: each session's state when this last ran (null the first time: what is finished then is old work
+ * and not news). Only what is not yet opened is kept, so a record cut short can only drop news, never
+ * light old work up again.
+ * - One seen finishing (it was something else before, or was not there) joins the record.
+ * - The one open now leaves it; so does one that runs again.
+ * - One missing from the list stays: the list can be short for a moment (the backend restarting).
  */
-export function nextDoneSeen(sessions: readonly SessionInfo[], seen: readonly string[] | null, openId: string | null): string[] | null {
+export function nextDoneNews(before: ReadonlyMap<string, SessionInfo['status']> | null, sessions: readonly SessionInfo[], news: readonly string[], openId: string | null): string[] | null {
   const status = new Map(sessions.map((s) => [s.id, s.status]));
-  if (!seen) return sessions.filter((s) => s.status === 'done').map((s) => s.id);
-  const next = seen.filter((id) => !status.has(id) || status.get(id) === 'done');
-  if (openId && status.get(openId) === 'done' && !next.includes(openId)) next.push(openId);
-  return next.length === seen.length && next.every((id, i) => id === seen[i]) ? null : next;
+  const next = news.filter((id) => id !== openId && (!status.has(id) || status.get(id) === 'done'));
+  if (before) {
+    for (const s of sessions) if (s.status === 'done' && s.id !== openId && before.get(s.id) !== 'done' && !next.includes(s.id)) next.push(s.id);
+  }
+  const kept = next.slice(-DONE_NEWS_MAX);
+  return kept.length === news.length && kept.every((id, i) => id === news[i]) ? null : kept;
 }

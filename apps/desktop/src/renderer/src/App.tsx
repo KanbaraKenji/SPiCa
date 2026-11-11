@@ -1,5 +1,5 @@
 // The window: title bar, left sidebar, main pane (conversation or settings), right detail panel.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DesktopBridge } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
@@ -24,7 +24,7 @@ import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
 import { InboxView, type InboxProject } from './shell/InboxView';
 import { MailStore, useMail } from './store/mail';
 import { needsYou, unseenByManager } from '../../shared/mail';
-import { nextDoneSeen, unseenDone } from './shell/row-status';
+import { nextDoneNews, unseenDone } from './shell/row-status';
 import type { MailItem, SessionInfo } from '@spica/protocol';
 import { Icon } from './ui/Icon';
 import { sidebarNews } from './shell/sidebar-news';
@@ -279,11 +279,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     }
   }, [view, state.activeId, unseen, shell]);
   // Finished sub-tasks not opened since they finished: news on their row. Opening one records it.
-  const doneNews = useMemo(() => unseenDone(sessions, settings.doneSeen), [sessions, settings.doneSeen]);
+  const doneNews = useMemo(() => unseenDone(sessions, settings.doneNews ?? []), [sessions, settings.doneNews]);
+  const statusBefore = useRef<Map<string, SessionInfo['status']> | null>(null);
   useEffect(() => {
     if (!state.loaded) return;
-    const next = nextDoneSeen(sessions, shell.settings.doneSeen, view === 'chat' ? state.activeId : null);
-    if (next) shell.update({ doneSeen: next });
+    const next = nextDoneNews(statusBefore.current, sessions, shell.settings.doneNews ?? [], view === 'chat' ? state.activeId : null);
+    const seen = (statusBefore.current ??= new Map());
+    for (const s of sessions) seen.set(s.id, s.status);
+    if (next) shell.update({ doneNews: next });
   }, [state.loaded, sessions, view, state.activeId, shell]);
   const mailById = useMemo(() => {
     const map = new Map(mail.items.map((m) => [m.id, m]));
