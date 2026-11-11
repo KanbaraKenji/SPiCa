@@ -228,7 +228,7 @@ export function rangeStart(range: Range, now: Date = new Date()): string | undef
 function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps) {
   const [projectId, setProjectId] = useState('');
   const [range, setRange] = useState<Range>('all');
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<HTMLElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<UsageLogResult>(null);
   const project = projects.find((p) => p.id === projectId);
@@ -257,8 +257,9 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
             className="btn"
             aria-haspopup="menu"
             onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect();
-              setMenu({ x: r.left, y: r.bottom + 4 });
+              // Under the button (over it when there is no room below); the button again closes it.
+              const el = e.currentTarget;
+              setMenu((now) => (now ? null : el));
             }}
           >
             {project?.name ?? '全部项目'}
@@ -300,8 +301,9 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
       ) : null}
       {menu ? (
         <ContextMenu
-          x={menu.x}
-          y={menu.y}
+          x={0}
+          y={0}
+          anchor={menu}
           items={[{ id: '', name: '全部项目' }, ...projects].map((p) => ({ label: p.name, onSelect: () => setProjectId(p.id) }))}
           onClose={() => setMenu(null)}
         />

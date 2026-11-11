@@ -99,3 +99,20 @@ describe('信任的证书文件', () => {
     expect(JSON.stringify(vi.mocked(p.onChange).mock.calls[0])).toContain('corp-root.pem');
   });
 });
+
+describe('使用日志: where the project menu sits', () => {
+  it('near the bottom of the window the menu goes over the button instead of covering it; the button again closes it', () => {
+    setup();
+    const pick = screen.getByRole('button', { name: /全部项目/ });
+    const rect = (top: number, height: number) => ({ left: 300, top, right: 420, bottom: top + height, width: 120, height, x: 300, y: top, toJSON: () => ({}) }) as DOMRect;
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('context-menu') ? rect(0, 200) : this.classList.contains('btn') ? rect(window.innerHeight - 40, 28) : rect(0, 0);
+    });
+    fireEvent.click(pick);
+    expect(screen.getByRole('menu').style.top).toBe(`${window.innerHeight - 40 - 4 - 200}px`);
+    expect(screen.getByRole('menu').style.left).toBe('300px');
+    fireEvent.click(pick);
+    expect(screen.queryByRole('menu')).toBeNull();
+    spy.mockRestore();
+  });
+});

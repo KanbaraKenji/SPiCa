@@ -129,3 +129,20 @@ describe('InboxView', () => {
     expect((screen.getByRole('button', { name: '现在查收' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+describe('更改项目: where its menu sits', () => {
+  it('near the bottom of the window the menu goes over the button instead of covering it; the button again closes it', () => {
+    setup();
+    const move = within(screen.getByRole('article', { name: '外壳模具报价补充说明' })).getByRole('button', { name: '更改项目' });
+    const rect = (top: number, height: number) => ({ left: 300, top, right: 420, bottom: top + height, width: 120, height, x: 300, y: top, toJSON: () => ({}) }) as DOMRect;
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('context-menu') ? rect(0, 200) : this.classList.contains('btn') ? rect(window.innerHeight - 40, 28) : rect(0, 0);
+    });
+    fireEvent.click(move);
+    expect(screen.getByRole('menu').style.top).toBe(`${window.innerHeight - 40 - 4 - 200}px`);
+    expect(screen.getByRole('menu').style.left).toBe('300px');
+    fireEvent.click(move);
+    expect(screen.queryByRole('menu')).toBeNull();
+    spy.mockRestore();
+  });
+});

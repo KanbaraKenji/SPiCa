@@ -38,7 +38,7 @@ export interface InboxViewProps {
 
 type Filter = 'todo' | 'all';
 
-function MailCard({ item, props, onMoveMenu }: { item: MailItem; props: InboxViewProps; onMoveMenu(item: MailItem, x: number, y: number): void }) {
+function MailCard({ item, props, onMoveMenu }: { item: MailItem; props: InboxViewProps; onMoveMenu(item: MailItem, button: HTMLElement): void }) {
   const nameOf = (pid: string) => props.projects.find((p) => p.id === pid)?.name;
   const verdict = verdictOf(item, nameOf);
   const reason = reasonOf(item);
@@ -94,10 +94,7 @@ function MailCard({ item, props, onMoveMenu }: { item: MailItem; props: InboxVie
               type="button"
               className="btn btn-small"
               aria-haspopup="menu"
-              onClick={(e) => {
-                const r = e.currentTarget.getBoundingClientRect();
-                onMoveMenu(item, r.left, r.bottom + 4);
-              }}
+              onClick={(e) => onMoveMenu(item, e.currentTarget)}
             >
               更改项目
               <Icon name="chevronDown" size={12} />
@@ -118,7 +115,7 @@ function MailCard({ item, props, onMoveMenu }: { item: MailItem; props: InboxVie
 export function InboxView(props: InboxViewProps) {
   const { mail, prefs } = props;
   const [filter, setFilter] = useState<Filter>('todo');
-  const [menu, setMenu] = useState<{ item: MailItem; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ item: MailItem; anchor: HTMLElement } | null>(null);
   const sorted = useMemo(() => [...mail.items].sort(byReceived), [mail.items]);
   const todo = sorted.filter((m) => needsYou(m) || m.status === 'new');
   const shown = filter === 'todo' ? todo : sorted;
@@ -185,15 +182,17 @@ export function InboxView(props: InboxViewProps) {
         ) : (
           <div className="mail-list">
             {shown.map((m) => (
-              <MailCard key={m.id} item={m} props={props} onMoveMenu={(item, x, y) => setMenu({ item, x, y })} />
+              <MailCard key={m.id} item={m} props={props} onMoveMenu={(item, anchor) => setMenu((now) => (now?.anchor === anchor ? null : { item, anchor }))} />
             ))}
           </div>
         )}
       </div>
       {menu ? (
+        // Under its button (over it when there is no room below); the button again closes it.
         <ContextMenu
-          x={menu.x}
-          y={menu.y}
+          x={0}
+          y={0}
+          anchor={menu.anchor}
           items={props.projects
             .filter((p) => p.id !== menu.item.triage?.projectId)
             .map((p) => ({ label: p.name, onSelect: () => props.onMove(menu.item.id, p.id) }))}
