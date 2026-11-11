@@ -31,6 +31,10 @@ describe('the hand-over rule', () => {
     expect(win).toContain('`D:\\工作\\报价\\`');
     expect(win).toContain('`D:\\工作\\报价\\summary.xlsx`');
     expect(win).toContain('![what it shows](<D:\\工作\\报价\\chart 1.png>)');
+    // web images: https only, and only when the image is wanted (each one is fetched from its site)
+    expect(win).toContain('by its https address, but only when the user wants to see it or the image is the result itself');
+    expect(win).toContain('http addresses and network-share paths do not display');
+    expect(win).not.toContain('not web images');
     expect(win).toContain('suggest_actions');
     const mac = deliveryRule({ cwd: '/Users/me/work/', suggest: false, platform: 'darwin' });
     expect(mac).toContain('`/Users/me/work/summary.xlsx`');

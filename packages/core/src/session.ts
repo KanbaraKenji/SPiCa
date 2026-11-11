@@ -1534,7 +1534,7 @@ export function deliveryRule(opts: { cwd: string; suggest: boolean; describe?: b
   return [
     `Handing over results (your working folder is \`${folder}\`; relative paths in tools resolve against it):`,
     `- Name each file or folder you made, changed or point to by its full absolute path in inline code, e.g. \`${file}\`; end a folder with a separator, as in \`${folder}\`. The user can click these. Never give only a file name or a relative path.`,
-    `- To show an image file, embed it with its absolute path: ![what it shows](<${image}>). Only local files display, not web images.`,
+    `- To show an image file, embed it with its absolute path: ![what it shows](<${image}>). A web image can be embedded by its https address, but only when the user wants to see it or the image is the result itself, not as decoration: each one is fetched from that site. http addresses and network-share paths do not display.`,
     '- When you used web pages, cite them as links, e.g. [page title](https://example.com/page), next to what they support.',
     opts.present ? '- When a task made files, hand the ones the user needs over with present_files at the end; it does not replace the next steps.' : '',
     opts.suggest ? '- When there are useful next steps, offer them with suggest_actions rather than as questions in the text.' : '',
