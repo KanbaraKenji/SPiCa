@@ -8,6 +8,7 @@ import { InfoTip } from '../ui/InfoTip';
 import { FileGlyph } from '../ui/FileIcon';
 import { activityText } from './activity';
 import { fileFolder, fileName, formatDuration, formatUsd, toolLabel, toolTarget } from '../chat/format';
+import { toolIcon } from '../chat/Blocks';
 import { SpicaStatusIcon } from '@spica/brand/react';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
@@ -140,13 +141,27 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
           {tools.length ? (
             <ul className="detail-list">
               {tools.map((t) => (
+                // As in the conversation: how it stands in the first place, nothing after the name repeats it.
                 <li key={t.callId} className="detail-item">
-                  <span className={t.state === 'error' ? 'detail-item-main text-danger' : 'detail-item-main'}>
+                  <span className="detail-item-icon">{toolIcon(t)}</span>
+                  <span className="detail-item-main">
                     {toolLabel(t.name)}
                     {toolTarget(t.input) ? <span className="detail-item-sub"> {toolTarget(t.input)}</span> : null}
                   </span>
                   <span className="detail-item-meta">
-                    {t.state === 'running' || t.state === 'pending' ? <SpicaStatusIcon name="running" size={14} title="进行中" /> : t.durationMs !== undefined ? formatDuration(t.durationMs) : ''}
+                    {t.state === 'pending' ? (
+                      <SpicaStatusIcon name="running" size={14} title="进行中" />
+                    ) : t.state === 'error' ? (
+                      <span className="text-danger">Failed</span>
+                    ) : t.state === 'timeout' ? (
+                      '已超时'
+                    ) : t.state === 'unavailable' ? (
+                      '已停用，未执行'
+                    ) : t.state !== 'running' && t.durationMs !== undefined ? (
+                      formatDuration(t.durationMs)
+                    ) : (
+                      ''
+                    )}
                   </span>
                 </li>
               ))}

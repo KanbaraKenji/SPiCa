@@ -107,6 +107,29 @@ describe('DetailPanel', () => {
     expect(screen.queryByRole('button', { name: '最大化' })).toBeNull();
   });
 
+  it('its list of tool calls says how each stands in the first place; failed in English; nothing after the name but the time or the words', () => {
+    const transcript = {
+      items: [
+        {
+          kind: 'response' as const,
+          id: 'r',
+          interrupted: false,
+          blocks: [
+            { type: 'tool' as const, callId: 'a', name: 'list_dir', input: { path: '.' }, state: 'done' as const, durationMs: 4000 },
+            { type: 'tool' as const, callId: 'b', name: 'read_file', input: { path: 'a.docx' }, state: 'error' as const },
+            { type: 'tool' as const, callId: 'c', name: 'read_file', input: { path: 'b.docx' }, state: 'running' as const },
+            { type: 'tool' as const, callId: 'd', name: 'read_file', input: { path: 'c.docx' }, state: 'timeout' as const },
+          ],
+        },
+      ],
+    };
+    render(<DetailPanel {...props} transcript={transcript} session={session({ id: 'w', role: 'worker' })} parent={undefined} />);
+    const rows = [...document.querySelectorAll('.detail-list .detail-item')];
+    expect(rows.map((r) => r.querySelector('.detail-item-icon svg')?.getAttribute('data-status'))).toEqual(['done', 'error', 'running', 'stopped']);
+    expect(rows.map((r) => r.querySelector('.detail-item-meta')?.textContent)).toEqual(['4 秒', 'Failed', '', '已超时']);
+    expect(rows.map((r) => r.querySelector('.detail-item-main')?.className)).toEqual(Array(4).fill('detail-item-main'));
+  });
+
   it('still says what a deeper sub-task belongs to', () => {
     render(<DetailPanel {...props} session={session({ id: 'w2', role: 'worker', parentId: 'w', parentChain: ['w', 'pm'] })} parent={session({ id: 'w', role: 'worker', title: '整理报价' })} project={project} />);
     expect(screen.getByText('所属')).toBeTruthy();

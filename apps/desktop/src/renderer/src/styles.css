@@ -762,6 +762,13 @@ button.tree-twisty:hover {
   padding: 4px 0;
 }
 
+/* A tool's state in the first place of its line (done, failed, running…), as in the conversation. */
+.detail-item-icon {
+  flex: none;
+  display: inline-flex;
+  color: var(--spica-muted);
+}
+
 .detail-item-main {
   flex: 1;
   min-width: 0;

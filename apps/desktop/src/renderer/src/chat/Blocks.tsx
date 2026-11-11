@@ -148,7 +148,7 @@ function toolLine(b: ToolBlock): string {
  * stopped (timed out, or its plugin was off). Nothing after the name repeats it. A call not
  * started yet keeps the tool icon and the turning ring after its name.
  */
-function toolIcon(b: ToolBlock): ReactNode {
+export function toolIcon(b: ToolBlock): ReactNode {
   switch (b.state) {
     case 'running':
       return <SpicaStatusIcon name="running" size={14} title="进行中" />;
