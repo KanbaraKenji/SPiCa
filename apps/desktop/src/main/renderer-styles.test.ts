@@ -36,6 +36,7 @@ describe('styles', () => {
     expect(block('.tree-open')).toContain('flex: 0 1 auto');
     expect(block('.status-slot')).toContain('margin: 0 4px 0 auto');
     expect(block('.tree-open::after')).toContain('inset: 0');
+    expect(block('.tree-open:focus-visible::after')).toContain('outline: 2px solid var(--spica-accent)');
     for (const above of ['.tree-twisty', '.tree-more', '.status-slot', '.tree-pin']) expect(block(above)).toContain('z-index: 1');
   });
 });

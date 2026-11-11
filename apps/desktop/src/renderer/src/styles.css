@@ -599,6 +599,16 @@ button.tree-twisty:hover {
   border-radius: var(--radius-m);
 }
 
+/* The keyboard focus is drawn around the whole row, like the row's hover, not around the name alone. */
+.tree-open:focus-visible {
+  outline: none;
+}
+
+.tree-open:focus-visible::after {
+  outline: 2px solid var(--spica-accent);
+  outline-offset: -2px;
+}
+
 /* Status glyph in the tree: fixed 12px box so titles line up. */
 /* One status place per row, at its end: a dot (waiting for you, an error, something new) or a
    small icon (running, queued, stopped). Kept when empty. */
