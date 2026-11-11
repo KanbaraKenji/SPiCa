@@ -143,6 +143,7 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 - 任何一步失败：已经做的步骤按反序撤掉，插件保持停用，发 `plugin.error`（例：「「笔记」启用失败：钩子 hooks/bad.js 加载失败：…」）。不会出现「一半启用」。
 - 生命周期操作串行执行（启用、停用、安装、切模拟模式不会交错）。
 - 已启用的插件升级：先停旧版 → 换版本 → 启新版；新版起不来自动退回旧版并提示。
+- 同一版本再装一次（改了代码没改版本号，开发时常见）：先把新文件复制到旁边 → 停插件 → 等它的进程放开安装文件夹（Windows 上进程的工作目录和打开的文件删不掉，最多等 10 秒）→ 把旧文件挪开当备份、新文件换进来 → 启用；起不来就换回备份里的旧文件。进程一直不放手时提示「安装文件夹仍被占用」，插件按旧文件照常启用。卸载同样先停、等放手，再删文件夹，删不掉不改记录。
 - `load()`：应用启动时读 `state.json`，把上次启用的插件重新启用，失败的列出来、保持停用。`shutdown()`：关应用时全部停掉但不改「启用」标记。
 - 插件根默认由外壳决定（建议 `%APPDATA%\Spica\plugins`，用户目录，不需要管理员权限）：
   - `installed/<name>/<version>/` 每个版本一份，保留当前和上一版；
@@ -263,3 +264,4 @@ J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型�
   - 插件借用用户配好的模型（MCP 取样，内核半边 1aa892e）：清单 `permissions.model { reason, max_usd_per_day }`；manager 起 server 时传 `sampling: { pluginId, maxUsdPerDay }`（清单值和用户值取小，0 或没声明不传）；`describe().model` / `modelUsage()` / `setModelLimit()`，后端端口 `pluginModelUsage` / `pluginSetModelLimit` 给外壳的插件页显示「今天花了多少」和调上限。示例插件加了 `summarize_note`（自己写的 JSON-RPC，不用 SDK），`model.test.ts` 用假模型服务从头走一遍。示例插件的目录服务地址也从环境变量改成数据文件夹里的 `config.json`。skill：`references/model.md`。
   - 文字规范（外壳转、统筹逐句看过的 `out/copy-pass/plugins.md`）：42 句照表改；标「保留」的统一了口气（须为 / 无效 / 未知 / 未安装 / 有错误）；删掉的例子逐句核过，看不出怎么改的补回了例子或去处（description 写在哪、TypeScript 先编译、0 表示禁止使用模型、详见插件日志、views/*.json 的 permissions.tools、检查逗号和引号、author / license / reason / max_usd_per_day 的例子）。`copy.test.ts` 拦禁用词。
   - 修：`permissions.irreversible` 以前只对 mcp/ 的工具生效，services/ 里声明的工具从页面调用时不确认就执行（公司端反馈，统筹复现属实）。权限钩子改为认本插件任何 server 的工具；expose_tools 为 true 的服务工具被模型调用时也要确认；模型调隐藏的服务工具仍先 deny。按 kind 过滤、故意没改的两处：启用时先起 mcp/、钩子之后再起 services/（顺序）；邮件来源只认 mcp/ 的 server。
+  - 修：已启用的插件同版本重装时报 EBUSY（Windows 上先删了正被 server 当工作目录的安装文件夹，才去停插件）。现在按上面「同一版本再装一次」的顺序做；卸载也等进程放手再删。Windows 上 Node 写的 server 拉起的普通子进程会随它一起结束，脱离父进程（detached）启动的或自带 .exe 拉起的进程不会，`reinstall.test.ts` 用 detached 子进程覆盖了「稍后退出」和「一直不退」两种。查过、不用改的：回退和升级到新版本都不删文件夹；installZip、verifyPackage 的临时文件夹不会被进程占用；切模拟模式、网络设置变更、调模型上限只是原地重启进程。

@@ -40,7 +40,8 @@ export async function rig(rt = makeRuntime()): Promise<Rig> {
     events,
     async cleanup() {
       await pm.shutdown();
-      await rm(root, { recursive: true, force: true });
+      // Windows: a stopped server's processes can hold the folder a moment longer.
+      await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
     },
   };
 }

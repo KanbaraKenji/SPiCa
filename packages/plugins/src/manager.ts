@@ -174,6 +174,31 @@ interface Active {
 
 let importNonce = 0;
 
+async function isDir(p: string): Promise<boolean> {
+  try {
+    return (await stat(p)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Run a file operation, retrying while Windows reports the folder in use
+ * (a stopped server's own child processes can take a moment to exit).
+ */
+async function whenFree<T>(op: () => Promise<T>, waitMs = 10_000): Promise<T> {
+  const until = Date.now() + waitMs;
+  for (;;) {
+    try {
+      return await op();
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if ((code !== 'EBUSY' && code !== 'EPERM' && code !== 'ENOTEMPTY' && code !== 'EACCES') || Date.now() > until) throw err;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+}
+
 export class PluginManager {
   readonly #host: PluginHost;
   readonly #root: string;
@@ -323,14 +348,37 @@ export class PluginManager {
       }
       const { name, version } = folder.manifest;
       const target = this.installDir(name, version);
-      if (resolve(dir) !== target) {
-        await rm(target, { recursive: true, force: true });
-        await cp(dir, target, { recursive: true, filter: (src) => !/[\\/](node_modules|\.git)([\\/]|$)/.test(src.slice(dir.length)) });
-      }
       const old = this.#state.plugins[name];
       const wasEnabled = !!old?.enabled && this.#active.has(name);
       const replaced = old && old.current !== version ? old.current : undefined;
-      if (wasEnabled) await this.#disable(name);
+      // The same version again (code changed, version not bumped): its folder is in
+      // use by the running servers, and on Windows a process's working folder and
+      // open files cannot be removed. Copy beside it first, stop the plugin and wait
+      // for its processes to let go, then swap; the old files stay as a backup
+      // until the new ones start.
+      let backup: string | undefined;
+      if (resolve(dir) !== target) {
+        const copy = (to: string) => cp(dir, to, { recursive: true, filter: (src) => !/[\\/](node_modules|\.git)([\\/]|$)/.test(src.slice(dir.length)) });
+        if (await isDir(target)) {
+          const nonce = `${Date.now().toString(36)}-${++importNonce}`;
+          const staged = `${target}.new-${nonce}`;
+          await copy(staged);
+          if (wasEnabled) await this.#disable(name);
+          backup = `${target}.old-${nonce}`;
+          try {
+            await whenFree(() => rename(target, backup!));
+          } catch (err) {
+            await rm(staged, { recursive: true, force: true }).catch(() => undefined);
+            if (wasEnabled) await this.#enable(name).catch(() => undefined);
+            void this.#log(name, `reinstall ${version}: install folder still in use: ${(err as Error).message}`);
+            throw new PluginError(`「${name}」${version} 的安装文件夹仍被占用，未安装。请关闭插件启动的程序后重试。`);
+          }
+          await rename(staged, target);
+        } else {
+          await copy(target);
+        }
+      }
+      if (wasEnabled && this.#active.has(name)) await this.#disable(name);
       const rec: InstalledRecord = {
         name,
         enabled: old?.enabled ?? false,
@@ -346,8 +394,16 @@ export class PluginManager {
         try {
           await this.#enable(name);
         } catch (err) {
-          // New version does not start: go back to the old one.
+          // New version does not start: go back to the old one (for the same
+          // version, the files kept aside).
           if (old) {
+            if (backup) {
+              await this.#disable(name).catch(() => undefined);
+              await whenFree(() => rm(target, { recursive: true, force: true }))
+                .then(() => rename(backup!, target))
+                .then(() => (backup = undefined))
+                .catch(() => undefined);
+            }
             this.#state.plugins[name] = old;
             this.#folders.set(name, await readPluginFolder(this.installDir(name, old.current), this.#msg));
             await this.#enable(name).catch(() => undefined);
@@ -357,6 +413,7 @@ export class PluginManager {
         }
       }
       await this.#saveState();
+      if (backup) await whenFree(() => rm(backup!, { recursive: true, force: true })).catch(() => undefined);
       await this.#log(name, `installed ${version}${replaced ? ` (replaced ${replaced})` : ''}`);
       this.#emit({ type: 'plugin.installed', name, version, ...(replaced ? { replaced } : {}) });
       return this.#describe(name);
@@ -385,9 +442,15 @@ export class PluginManager {
     return this.#serial(async () => {
       this.#require(name);
       if (this.#active.has(name)) await this.#disable(name);
+      // Its processes may take a moment to let go of the folder (Windows).
+      try {
+        await whenFree(() => rm(join(this.#root, 'installed', name), { recursive: true, force: true }));
+      } catch (err) {
+        void this.#log(name, `uninstall: install folder still in use: ${(err as Error).message}`);
+        throw new PluginError(`「${name}」的安装文件夹仍被占用，未卸载。请关闭插件启动的程序后重试。`);
+      }
       delete this.#state.plugins[name];
       this.#folders.delete(name);
-      await rm(join(this.#root, 'installed', name), { recursive: true, force: true });
       await this.#saveState();
       this.#emit({ type: 'plugin.uninstalled', name });
     });
