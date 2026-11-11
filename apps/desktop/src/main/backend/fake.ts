@@ -16,6 +16,7 @@ import type {
   MailPollResult,
   Message,
   MessageKind,
+  SourceCardMeta,
   PendingItem,
   ProjectDetail,
   ProjectInfo,
@@ -65,6 +66,14 @@ class Aborted extends Error {}
 const READ_ONLY_TOOLS = new Set(['list_dir', 'read_file', 'glob', 'grep', 'web_fetch', 'web_search', 'ask_user', 'suggest_actions']);
 const ANSWER_KINDS = new Set<MessageKind>(['assistant', 'tool_results', 'steer']);
 
+/** What the demo's web search finds (the answer cites the second). */
+export const FAKE_SEARCH_RESULTS = [
+  { url: 'https://example.com/mold/basics', title: '注塑模具成本由哪些部分组成', snippet: '模具成本主要包括模具钢、加工工时、热流道和试模费用……', published: '2026-09-02' },
+  { url: 'https://example.org/steel-2026', title: '2026 年模具钢价格走势', snippet: '受原料影响，今年模具钢价格较去年上涨约 8%……', published: '2026-10-15' },
+  { url: 'https://example.net/forum/quote', title: null, snippet: '论坛讨论：外壳模具报价差别为什么这么大' },
+  { url: 'https://example.com/mold/lead-time', title: '模具交期怎么估', snippet: '交期取决于结构复杂度与排产……' },
+];
+
 /** A long command for the confirmation demo: what it really does is at its end. */
 export const FAKE_LONG_COMMAND =
   "Get-ChildItem 'D:\\工作\\样机评审\\报价' -Filter *.xlsx | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) } | Sort-Object LastWriteTime | Select-Object -First 50 | ForEach-Object { $_.FullName }; Remove-Item 'D:\\工作\\样机评审' -Recurse -Force";
@@ -106,7 +115,7 @@ export class FakeBackend implements AgentBackend {
   readonly #now: () => Date;
   readonly #legacyCwd: string | undefined;
   /** What a call said about itself until its result is stored (see #takeCallMeta). */
-  readonly #callInfo = new Map<string, { category?: ToolCategory; summary?: string; cards?: FileCardMeta[] }>();
+  readonly #callInfo = new Map<string, { category?: ToolCategory; summary?: string; cards?: FileCardMeta[]; sources?: SourceCardMeta }>();
   #seq = 0;
   #ids = 0;
   #listeners = new Set<Listener>();
@@ -670,20 +679,21 @@ export class FakeBackend implements AgentBackend {
 
   /** One tool call; `fail`: it ends in an error with `result` as the error text. */
   /** `made`: what the call says about itself (its kind, and the cards of files it made), as the core does. */
-  async #tool(sessionId: string, run: Run, name: string, input: unknown, result: string, ms: number, fail = false, made: { category?: ToolCategory; cards?: FileCardMeta[] } = {}): Promise<ContentBlock[]> {
+  async #tool(sessionId: string, run: Run, name: string, input: unknown, result: string, ms: number, fail = false, made: { category?: ToolCategory; cards?: FileCardMeta[]; sources?: SourceCardMeta } = {}): Promise<ContentBlock[]> {
     const callId = this.#id('call');
     this.#emit(sessionId, { type: 'tool.call', callId, name });
     // As the core does: the kind of step, and the model's line on a command (its description argument).
     const category = made.category ?? FAKE_CATEGORY[name];
     const summary = name === 'run_command' ? (input as { description?: unknown }).description : undefined;
     this.#emit(sessionId, { type: 'tool.start', callId, name, input, ...(category ? { category } : {}), ...(typeof summary === 'string' && summary ? { summary } : {}) });
-    this.#callInfo.set(callId, { ...(category ? { category } : {}), ...(typeof summary === 'string' && summary ? { summary } : {}), ...(made.cards?.length && !fail ? { cards: made.cards } : {}) });
+    this.#callInfo.set(callId, { ...(category ? { category } : {}), ...(typeof summary === 'string' && summary ? { summary } : {}), ...(made.cards?.length && !fail ? { cards: made.cards } : {}), ...(made.sources && !fail ? { sources: made.sources } : {}) });
     this.#setStatus(sessionId, 'tool', name);
     await this.#sleep(ms, run.controller.signal);
     const path = (input as { path?: unknown }).path;
     if (name === 'read_file' && typeof path === 'string' && !fail) this.#emit(sessionId, { type: 'file.card', callId, file: fakeCard(path, this.#now()) });
     const cards = made.cards ?? [];
     if (cards.length && !fail) this.#emit(sessionId, { type: 'file.card', callId, file: cards[0]!, ...(cards.length > 1 ? { files: cards } : {}) });
+    if (made.sources && !fail) this.#emit(sessionId, { type: 'source.card', callId, card: made.sources });
     const content = fail ? result : `${isoAt(this.#now())}\n${result}`;
     this.#emit(sessionId, { type: 'tool.end', callId, name, isError: fail, preview: result.slice(0, 160), durationMs: ms });
     return [
@@ -716,12 +726,14 @@ export class FakeBackend implements AgentBackend {
     const toolInfo: Record<string, { category: ToolCategory; summary?: string }> = {};
     const fileCards: Record<string, FileCardMeta> = {};
     const fileCardLists: Record<string, FileCardMeta[]> = {};
+    const sourceCards: Record<string, SourceCardMeta> = {};
     for (const r of results) {
       if (r.type !== 'tool_result') continue;
       const info = this.#callInfo.get(r.toolUseId);
       this.#callInfo.delete(r.toolUseId);
       if (!info) continue;
       if (info.category) toolInfo[r.toolUseId] = { category: info.category, ...(info.summary ? { summary: info.summary } : {}) };
+      if (info.sources) sourceCards[r.toolUseId] = info.sources;
       if (info.cards?.length) {
         fileCards[r.toolUseId] = info.cards[0]!;
         fileCardLists[r.toolUseId] = info.cards;
@@ -730,6 +742,7 @@ export class FakeBackend implements AgentBackend {
     return {
       ...(Object.keys(toolInfo).length ? { toolInfo } : {}),
       ...(Object.keys(fileCards).length ? { fileCards, fileCardLists } : {}),
+      ...(Object.keys(sourceCards).length ? { sourceCards } : {}),
     };
   }
 
@@ -790,7 +803,20 @@ export class FakeBackend implements AgentBackend {
       this.#setStatus(sessionId, 'thinking');
       await this.#sleep(300, signal);
 
-      if (/删除/.test(text)) {
+      if (/查一下/.test(text)) {
+        // Looking things up on the web: a search (four results, the answer cites one) and a page it opened.
+        const at = isoAt(this.#now());
+        const search: SourceCardMeta = { tool: 'web_search', query: '注塑模具 报价 行情', sources: FAKE_SEARCH_RESULTS.map((r) => ({ ...r, fetchedAt: at })) };
+        blocks.push(...(await this.#tool(sessionId, run, 'web_search', { query: '注塑模具 报价 行情' }, '找到 4 条结果', 500, false, { category: 'web', sources: search })));
+        const page: SourceCardMeta = { tool: 'web_fetch', sources: [{ url: 'https://example.com/mold/price-guide', title: '模具报价指南：材料、结构与交期', fetchedAt: at }] };
+        blocks.push(...(await this.#tool(sessionId, run, 'web_fetch', { url: 'https://example.com/mold/price-guide' }, '模具报价指南…', 500, false, { category: 'web', sources: page })));
+        this.#setStatus(sessionId, 'thinking');
+        const answer =
+          '查到的行情：中等复杂度的外壳模具一般在 3 万到 6 万元之间，交期 25 到 40 天（[模具报价指南](https://example.com/mold/price-guide)）。' +
+          '今年钢材涨价，报价普遍上调 5% 左右（[2026 年模具钢价格走势](https://example.org/steel-2026)）。';
+        await this.#stream(sessionId, 'text', answer, signal);
+        blocks.push({ type: 'text', text: answer });
+      } else if (/删除/.test(text)) {
         // A command that needs confirming, long enough that a cut title would hide its end (and the model's
         // description says something milder than what it does).
         const callId = this.#id('call');

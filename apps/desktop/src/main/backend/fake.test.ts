@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentApi, CoreEvent } from '@spica/protocol';
-import { FAKE_EXPORT_FILES, FAKE_LONG_COMMAND, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
+import { FAKE_EXPORT_FILES, FAKE_LONG_COMMAND, FAKE_SEARCH_RESULTS, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
 import { SEED_IDS } from './fake-seed';
 
 function collect(backend: FakeBackend) {
@@ -186,6 +186,21 @@ describe('FakeBackend', () => {
     expect(Object.values(toolInfo)).toEqual(expect.arrayContaining([{ category: 'command', summary: '导出各家报价' }, { category: 'present' }]));
     const lists = Object.assign({}, ...meta.map((m) => m.fileCardLists ?? {})) as Record<string, unknown[]>;
     expect(Object.values(lists).some((l) => l.length === FAKE_EXPORT_FILES.length)).toBe(true);
+  });
+
+  it('查一下 searches the web and opens a page, with source cards sent and stored like the core', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '查一下模具报价');
+    await until((e) => e.type === 'run.end');
+    const cards = events.filter((e): e is Extract<CoreEvent, { type: 'source.card' }> => e.type === 'source.card').map((e) => [e.card.tool, e.card.sources.length]);
+    expect(cards).toEqual([
+      ['web_search', FAKE_SEARCH_RESULTS.length],
+      ['web_fetch', 1],
+    ]);
+    const stored = (await b.getMessages(chat.id)).filter((m) => m.kind === 'tool_results').flatMap((m) => Object.values((m.meta?.sourceCards ?? {}) as Record<string, unknown>));
+    expect(stored).toHaveLength(2);
   });
 
   it('删除 asks to confirm a long command (for screenshots of the confirmation card)', async () => {
