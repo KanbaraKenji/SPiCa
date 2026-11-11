@@ -163,6 +163,8 @@ describe('regenerating the last answer', () => {
         expect(chat.regenerate()).toMatchObject({ ok: false, code });
       } else expect(state.ok).toBe(true);
     }
+    // not declared read-only does not mean it changed something: the words say "may"
+    expect(REGENERATE_HINTS['regenerate.acted']).toBe('这一轮调用过可能产生改动的工具，无法重新生成。');
     await rt.close();
   });
 

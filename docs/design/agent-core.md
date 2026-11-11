@@ -251,7 +251,7 @@
   - `regenerate.no_turn`：还没有用户消息。`regenerate.running` / `regenerate.waiting`：在跑、在等确认或回答。
   - `regenerate.not_typed`：那一轮不是用户亲手发的话开头的（回报、转来的信）。
   - `regenerate.not_last`：调用时给的消息不在最后一轮。这一版只给最后一轮；中间轮要让后面的对话作废，接口上留了 `messageId`，以后放开不用改签名。
-  - **这一轮动过手**：这一轮执行过的工具调用里有没声明只读（`Tool.readOnly`）的，就不给，因为重跑等于再做一遍。按工具调用记录的状态算：`denied`（用户拒绝）、`unavailable`（没这个工具）没执行，不算；工具已不在注册表里的按动过算。`write_file` / `edit_file` 是 `regenerate.wrote_files`，`spawn_agent` / `message_agent` 是 `regenerate.spawned`，其余是 `regenerate.acted`。内置的只读工具：read_file、list_dir、glob、grep、web_fetch、web_search、search_history、read_history、find_history_files、list_projects、open_project、project_status、list_work_objects、ask_user、suggest_actions、wait_agents；插件的 MCP 工具声明了 `readOnlyHint` 才算只读。
+  - **这一轮动过手**：这一轮执行过的工具调用里有没声明只读（`Tool.readOnly`）的，就不给，因为重跑等于再做一遍。按工具调用记录的状态算：`denied`（用户拒绝）、`unavailable`（没这个工具）没执行，不算；工具已不在注册表里的按动过算。`write_file` / `edit_file` 是 `regenerate.wrote_files`，`spawn_agent` / `message_agent` 是 `regenerate.spawned`，其余是 `regenerate.acted`（提示写「可能产生改动」：没声明只读、工具已不在，都不等于真的改过）。内置的只读工具：read_file、list_dir、glob、grep、web_fetch、web_search、search_history、read_history、find_history_files、list_projects、open_project、project_status、list_work_objects、ask_user、suggest_actions、wait_agents；插件的 MCP 工具声明了 `readOnlyHint` 才算只读。
 - **允许的边角**：上一轮出错或被停（哪怕一个字都没回）也能重新生成，等于真正的重试；一个字都没回的那一轮不算一版。这一轮里的插话跟旧版一起收进旧版。新的一版又失败时旧版不恢复，可以再点一次。
 - **跑的是什么**：照常开一次运行，用的是会话**当时**的模型、批准方式和工具表（中途换过模型就用新的），附件用当初存下的内容块。用量、可追溯记录照记，旧版花掉的不退。不调 `onUserMessage`（用户没有新写话，标题、回传都不动）。
 - **事件先后**：`messages.superseded { anchorId, messageIds, version }` → `status thinking` → `session.updated`（running） → 照常的流式和 `message` → 最后的 `status` → `session.updated` → `run.end`。返回值 `{ ok: true, anchorId, version: 新版的号 }`；不行时 `{ ok: false, code, hint }`，什么都没改。

@@ -204,7 +204,7 @@ export const REGENERATE_HINTS: Record<RegenerateCode, string> = {
   'regenerate.waiting': '对话正在等待确认或回答，无法重新生成。',
   'regenerate.wrote_files': '这一轮修改过文件，无法重新生成。',
   'regenerate.spawned': '这一轮派出过子任务，无法重新生成。',
-  'regenerate.acted': '这一轮执行过会产生改动的操作，无法重新生成。',
+  'regenerate.acted': '这一轮调用过可能产生改动的工具，无法重新生成。',
   'regenerate.not_last': '这不是最后一轮回答，无法重新生成。',
   'regenerate.not_typed': '这一轮不是由用户消息开始的，无法重新生成。',
   'regenerate.role': '项目经理、子任务和邮件分拣的对话无法重新生成。',
