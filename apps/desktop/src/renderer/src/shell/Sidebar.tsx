@@ -40,9 +40,9 @@ export interface SidebarProps {
   /** Pages plugins add to the sidebar (views with placement sidebar); they open in the main pane. */
   pluginPages?: { key: string; title: string; icon?: string; open: boolean; onOpen(): void }[];
   /**
-   * The collapsed sidebar: one column of icons. Built from the same
-   * blocks as the full sidebar, so 新对话, 收件箱, 对话, 项目, the plugins and 设置 sit at
-   * the same height in both; 项目 opens a menu of the projects.
+   * The collapsed sidebar: one column of icons. Built from the same blocks as the full
+   * sidebar (an empty space where its tabs are), so 新对话, 收件箱, the plugins and 设置 sit at
+   * the same height in both. The lists (对话, 项目) are only in the full sidebar.
    */
   compact?: boolean;
 }
@@ -329,6 +329,8 @@ export function Sidebar({
     // Only actions here; the lists (对话, 项目) come with the full sidebar, slid out by resting on this column.
     return (
       <nav className="sidebar is-rail" aria-label="对话">
+        {/* As tall as the tabs of the full sidebar, so the icons below sit where their rows do. */}
+        <div className="side-tabs-space" aria-hidden />
         <div className="sidebar-top">
           <button type="button" className="side-action" onClick={onNewChat} aria-label="新对话" title="新对话">
             <Icon name="newChat" />
@@ -364,6 +366,16 @@ export function Sidebar({
 
   return (
     <nav className="sidebar" aria-label="对话">
+      {/* 对话 and 项目 as two tabs right under the brand row, each half the width. The one not
+          shown carries a dot when something in it has news. */}
+      <div className="tabs side-tabs" role="tablist" aria-label="列表">
+        {(['chats', 'projects'] as const).map((t) => (
+          <button key={t} type="button" role="tab" aria-selected={listTab === t} className={listTab === t ? 'tab is-on' : 'tab'} onClick={() => setListTab(t)}>
+            {t === 'chats' ? '对话' : '项目'}
+            {listTab !== t && (t === 'chats' ? chatsNews : projectsNews) ? <NewDot text={t === 'chats' ? chatsNews : projectsNews} /> : null}
+          </button>
+        ))}
+      </div>
       <div className="sidebar-top">
         <button type="button" className="side-action" onClick={onNewChat}>
           <Icon name="newChat" />
@@ -380,16 +392,6 @@ export function Sidebar({
             ) : null}
           </button>
         ) : null}
-      </div>
-      {/* 对话 and 项目 as two tabs, each half the width. The one not shown carries a dot
-          when something in it has news. */}
-      <div className="tabs side-tabs" role="tablist" aria-label="列表">
-        {(['chats', 'projects'] as const).map((t) => (
-          <button key={t} type="button" role="tab" aria-selected={listTab === t} className={listTab === t ? 'tab is-on' : 'tab'} onClick={() => setListTab(t)}>
-            {t === 'chats' ? '对话' : '项目'}
-            {listTab !== t && (t === 'chats' ? chatsNews : projectsNews) ? <NewDot text={t === 'chats' ? chatsNews : projectsNews} /> : null}
-          </button>
-        ))}
       </div>
       <div className="sidebar-scroll" role="tabpanel">
         {listTab === 'chats' ? (

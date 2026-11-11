@@ -4513,10 +4513,17 @@ button.ctx-row:hover {
   color: var(--spica-warning);
 }
 
-/* 对话 / 项目 in the sidebar: two tabs filling its width, half each. */
+/* 对话 / 项目 at the top of the sidebar: two tabs filling its width, half each. The icon column
+   keeps an empty space of the same size, so nothing below moves when the sidebar opens over it. */
+.side-tabs,
+.side-tabs-space {
+  flex: none;
+  height: 36px;
+  margin: 4px 8px 2px;
+}
+
 .side-tabs {
   display: flex;
-  margin: 10px 8px 6px;
 }
 
 .side-tabs .tab {

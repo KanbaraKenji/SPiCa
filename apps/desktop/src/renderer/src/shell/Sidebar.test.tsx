@@ -264,3 +264,24 @@ describe('Sidebar', () => {
     expect(rollupStatus([s('a', 'done'), s('b', 'idle')])).toBeNull();
   });
 });
+
+describe('对话 / 项目 at the top', () => {
+  const props = { sessions: seed.sessions, activeId: SEED_IDS.chat, onOpen: vi.fn(), onNewChat: vi.fn(), onSettings: vi.fn(), settingsOpen: false, inbox: { count: 0, open: false, onOpen: vi.fn() } };
+  const before = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  it('the tabs come first in the sidebar, above 新对话 and 收件箱', () => {
+    render(<Sidebar {...props} />);
+    const nav = screen.getByRole('navigation');
+    expect(nav.firstElementChild).toBe(screen.getByRole('tablist', { name: '列表' }));
+    expect(before(screen.getByRole('tablist'), screen.getByRole('button', { name: '新对话' }))).toBe(true);
+    expect(before(screen.getByRole('button', { name: '收件箱' }), screen.getByRole('tabpanel'))).toBe(true);
+  });
+
+  it('collapsed, the column keeps an empty space where the tabs are, so the icons do not move when the sidebar opens over it', () => {
+    render(<Sidebar {...props} compact />);
+    const nav = screen.getByRole('navigation');
+    expect(nav.firstElementChild?.className).toBe('side-tabs-space');
+    expect(nav.firstElementChild?.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.queryByRole('tablist')).toBeNull();
+  });
+});

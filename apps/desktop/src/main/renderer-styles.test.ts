@@ -29,3 +29,12 @@ describe('styles', () => {
     expect(block('.tree-row:hover .tree-more,\n.tree-row:focus-within .tree-more,\n.tree-row.is-active .tree-more,\n.tree-row.is-menu-open .tree-more')).toContain('display: inline-flex');
   });
 });
+
+describe('sidebar tabs', () => {
+  it('the tabs and the space kept for them on the icon column are one rule: same height, same margins', () => {
+    const rule = block('.side-tabs,\n.side-tabs-space');
+    expect(rule).toContain('height: 36px');
+    expect(rule).toContain('margin: 4px 8px 2px');
+    expect(rule).toContain('flex: none');
+  });
+});
