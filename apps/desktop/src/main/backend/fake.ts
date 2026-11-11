@@ -76,6 +76,13 @@ export const FAKE_SEARCH_RESULTS = [
   { url: 'https://example.com/mold/lead-time', title: '模具交期怎么估', snippet: '交期取决于结构复杂度与排产……' },
 ];
 
+/** The 流程 answer: a mermaid flowchart and an HTML page. */
+export const FAKE_FLOW_ANSWER =
+  '评审流程如下：\n\n' +
+  '```mermaid\nflowchart LR\n  A[收齐报价] --> B{价格达标?}\n  B -- 是 --> C[样机评审]\n  B -- 否 --> D[重新议价]\n  D --> A\n  C --> E[下单]\n```\n\n' +
+  '通知页面的草稿：\n\n' +
+  '```html\n<!doctype html>\n<title>样机评审通知</title>\n<h2 style="font-family:sans-serif">样机评审通知</h2>\n<p style="font-family:sans-serif">时间：周四 14:00<br>地点：三楼会议室</p>\n<script>alert(1)</script>\n```';
+
 /** A long command for the confirmation demo: what it really does is at its end. */
 export const FAKE_LONG_COMMAND =
   "Get-ChildItem 'D:\\工作\\样机评审\\报价' -Filter *.xlsx | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) } | Sort-Object LastWriteTime | Select-Object -First 50 | ForEach-Object { $_.FullName }; Remove-Item 'D:\\工作\\样机评审' -Recurse -Force";
@@ -882,6 +889,10 @@ export class FakeBackend implements AgentBackend {
         const after = `好，按「${answer}」来写。`;
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
+      } else if (/流程/.test(text)) {
+        // A flowchart and a small HTML page (with a script that must never run).
+        await this.#stream(sessionId, 'text', FAKE_FLOW_ANSWER, signal);
+        blocks.push({ type: 'text', text: FAKE_FLOW_ANSWER });
       } else if (/对比图/.test(text)) {
         // Pictures in an answer: a local one (the demo's chart), one on the web, and one on a network share (never loaded).
         const local = this.#demoImage?.() ?? 'D:\\工作\\样机评审\\报价对比图.png';

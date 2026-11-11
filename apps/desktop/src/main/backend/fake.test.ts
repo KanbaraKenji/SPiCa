@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentApi, CoreEvent } from '@spica/protocol';
-import { FAKE_EXPORT_FILES, FAKE_LONG_COMMAND, FAKE_SEARCH_RESULTS, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
+import { FAKE_EXPORT_FILES, FAKE_FLOW_ANSWER, FAKE_LONG_COMMAND, FAKE_SEARCH_RESULTS, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
 import { SEED_IDS } from './fake-seed';
 
 function collect(backend: FakeBackend) {
@@ -210,6 +210,17 @@ describe('FakeBackend', () => {
     expect(text).toContain('![四家报价对比](<C:\\demo\\报价对比图.png>)');
     expect(text).toContain('](https://example.com/mold-quote.png)');
     expect(text).toContain('](<\\\\files\\proj\\old.png>)');
+  });
+
+  it('流程 answers with a flowchart and an HTML page', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '画一下评审流程');
+    await until((e) => e.type === 'run.end');
+    const text = (await b.getMessages(chat.id)).flatMap((m) => m.content).map((c) => (c.type === 'text' ? c.text : '')).join('\n');
+    expect(text).toContain(FAKE_FLOW_ANSWER);
+    expect(FAKE_FLOW_ANSWER).toMatch(/```mermaid\n[\s\S]+```\n\n[\s\S]*```html\n[\s\S]+<script>/);
   });
 
   it('查一下 searches the web and opens a page, with source cards sent and stored like the core', async () => {
