@@ -2077,6 +2077,8 @@ pre .hl-punctuation {
 .composer-wrap {
   flex: none;
   padding: 0 24px 18px;
+  /* The input box's corners; the row under it lines its last item up with where they start to turn. */
+  --composer-radius: var(--radius-l);
 }
 
 .composer {
@@ -2086,7 +2088,7 @@ pre .hl-punctuation {
   flex-direction: column;
   gap: 6px;
   padding: 7px 7px 7px 8px;
-  border-radius: 20px;
+  border-radius: var(--composer-radius);
   border: 1px solid var(--spica-input-border);
   background: var(--spica-input);
   box-shadow: var(--spica-input-shadow);
@@ -2145,13 +2147,15 @@ pre .hl-punctuation {
 }
 
 /* Under the box: the folder on the left; model, Manual / Auto and the ring on the right. */
+/* The right end: the context ring's outer edge (6px padding in its button, 1px inside its 18px box) stands
+   where the box's bottom edge starts to turn. */
 .composer-below {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   min-height: 28px;
-  margin: 4px -4px 0;
+  margin: 4px calc(var(--composer-radius) - 7px) 0 -4px;
 }
 
 .composer-below-left,

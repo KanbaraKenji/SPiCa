@@ -47,13 +47,32 @@ describe('Composer', () => {
     expect(onStop).toHaveBeenCalled();
   });
 
+  it('while running, one button: 停止 when nothing is typed, 发送 once something is (补充说明); Esc stops either way', () => {
+    const { box, onSend, onStop } = setup(true);
+    const buttons = () => [...document.querySelectorAll('.composer-right button')].map((b) => b.getAttribute('aria-label'));
+    expect(buttons()).toEqual(['停止']);
+    fireEvent.change(box, { target: { value: '只看报价' } });
+    expect(buttons()).toEqual(['发送']);
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(onStop).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    expect(onSend).toHaveBeenCalledWith('只看报价', []);
+    expect(buttons()).toEqual(['停止']);
+    // Not running: Esc does nothing here, and there is no 停止.
+    cleanup();
+    const idle = setup(false);
+    fireEvent.keyDown(idle.box, { key: 'Escape' });
+    expect(idle.onStop).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: '停止' })).toBeNull();
+  });
+
   it('one line: attach, the text and stop / send side by side in the box', () => {
     const onSend = vi.fn();
     render(<Composer running onSend={onSend} onStop={vi.fn()} sessionKey="s-row" tools={{ pickFiles: async () => [] }} />);
     const row = document.querySelector('.composer > .composer-row')!;
     expect([...row.children].map((e) => e.getAttribute('aria-label') ?? e.className)).toEqual(['composer-left', '消息', 'composer-right']);
     expect(row.querySelector('.composer-left [aria-label="添加附件"]')).toBeTruthy();
-    expect([...row.querySelectorAll('.composer-right button')].map((b) => b.getAttribute('aria-label'))).toEqual(['停止', '发送']);
+    expect([...row.querySelectorAll('.composer-right button')].map((b) => b.getAttribute('aria-label'))).toEqual(['停止']);
     expect(document.querySelector('.composer-bar')).toBeNull();
   });
 });

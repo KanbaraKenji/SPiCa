@@ -305,6 +305,12 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Esc in the box stops the run, whatever is typed (the button there is 发送 once there is something to send).
+    if (e.key === 'Escape' && running && !isComposing(e)) {
+      e.preventDefault();
+      onStop();
+      return;
+    }
     if (e.key !== 'Enter' || e.shiftKey || isComposing(e)) return;
     e.preventDefault();
     send();
@@ -313,7 +319,8 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
   // Over the button that opens it, placed by the menu from its own size; the same button again closes it.
   const openMenu = (el: HTMLElement, items: MenuItem[]) => setMenu((now) => (now?.anchor === el ? null : { items, anchor: el }));
 
-  const canSend = (text.trim().length > 0 || files.length > 0) && !blocked;
+  const hasDraft = text.trim().length > 0 || files.length > 0;
+  const canSend = hasDraft && !blocked;
   const left: ReactNode[] = [];
   if (t.pickFiles) {
     const pick = t.pickFiles;
@@ -421,14 +428,17 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
             onPaste={onPaste}
           />
           <div className="composer-right">
-            {running ? (
-              <button type="button" className="icon-btn composer-stop" onClick={onStop} aria-label="停止" title="停止">
+            {/* One button, as in the Claude app: while a run goes on and nothing is typed, 停止 stands where 发送 is;
+                typing something (补充说明) brings 发送 back, and Esc still stops. */}
+            {running && !hasDraft ? (
+              <button type="button" className="icon-btn composer-stop" onClick={onStop} aria-label="停止" title="停止（Esc）">
                 <Icon name="stop" size={14} />
               </button>
-            ) : null}
-            <button type="button" className="icon-btn composer-send" onClick={send} disabled={!canSend} aria-label="发送" title="发送（Enter）">
-              <Icon name="send" size={16} />
-            </button>
+            ) : (
+              <button type="button" className="icon-btn composer-send" onClick={send} disabled={!canSend} aria-label="发送" title="发送（Enter）">
+                <Icon name="send" size={16} />
+              </button>
+            )}
           </div>
         </div>
       </div>

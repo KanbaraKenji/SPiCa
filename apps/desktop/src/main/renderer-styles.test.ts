@@ -183,3 +183,12 @@ describe('rows in the conversation', () => {
     expect(block('.thinking-text')).toContain('font-size: 13px');
   });
 });
+
+describe('the input box', () => {
+  it('corners of 12px (as on the cards), and the row under it ends where the bottom edge starts to turn', () => {
+    expect(block('.composer-wrap')).toContain('--composer-radius: var(--radius-l)');
+    expect(block(':root')).toContain('--radius-l: 12px');
+    expect(block('.composer')).toContain('border-radius: var(--composer-radius)');
+    expect(block('.composer-below')).toContain('margin: 4px calc(var(--composer-radius) - 7px) 0 -4px');
+  });
+});
