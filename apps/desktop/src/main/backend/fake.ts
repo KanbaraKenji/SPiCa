@@ -18,12 +18,16 @@ import type {
   PendingItem,
   ProjectDetail,
   ProjectInfo,
+  RegenerateCode,
+  RegenerateResult,
+  RegenerateState,
   SendResult,
   SessionInfo,
   SessionStatus,
   SetCwdResult,
   SteerMode,
 } from '@spica/protocol';
+import { REGENERATE_HINTS } from '@spica/protocol';
 import type { AgentBackend } from './types';
 import { buildSeed, fakeCard } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
@@ -55,6 +59,10 @@ interface Run {
 
 class Aborted extends Error {}
 
+/** Tools of the script that only read (a round that used only these can be regenerated, as in the core). */
+const READ_ONLY_TOOLS = new Set(['list_dir', 'read_file', 'glob', 'grep', 'web_fetch', 'web_search', 'ask_user', 'suggest_actions']);
+const ANSWER_KINDS = new Set<MessageKind>(['assistant', 'tool_results', 'steer']);
+
 /** Splits text into small chunks the way a model stream arrives. */
 export function chunk(text: string, size = 3): string[] {
   const out: string[] = [];
@@ -72,6 +80,10 @@ export class FakeBackend implements AgentBackend {
   #listeners = new Set<Listener>();
   #sessions = new Map<string, SessionInfo>();
   #messages = new Map<string, Message[]>();
+  /** Answers a regenerate replaced (Message.superseded), per session. */
+  #superseded = new Map<string, Message[]>();
+  /** Confirmations the user declined: nothing ran. */
+  #declined = new Set<string>();
   #pending = new Map<string, PendingItem[]>();
   #runs = new Map<string, Run>();
   #globalCost = 0;
@@ -111,6 +123,7 @@ export class FakeBackend implements AgentBackend {
         });
       }
     }
+    for (const s of this.#sessions.values()) s.regenerate = this.#regenerateState(s.id);
   }
 
   // ----- events -------------------------------------------------------------
@@ -148,6 +161,58 @@ export class FakeBackend implements AgentBackend {
     s.status = status;
     s.updatedAt = isoAt(this.#now());
     this.#emit(sessionId, detail ? { type: 'status', status, detail } : { type: 'status', status });
+    this.#syncRegenerate(sessionId);
+  }
+
+  /** Like the core: session.updated whenever the regenerate button state changes. */
+  #syncRegenerate(sessionId: string): void {
+    const s = this.#sessions.get(sessionId);
+    if (!s) return;
+    const next = this.#regenerateState(sessionId);
+    if (JSON.stringify(next) === JSON.stringify(s.regenerate)) return;
+    s.regenerate = next;
+    this.#emit(sessionId, { type: 'session.updated', info: structuredClone(s) });
+  }
+
+  #nextSeq(sessionId: string): number {
+    const all = [...(this.#messages.get(sessionId) ?? []), ...(this.#superseded.get(sessionId) ?? [])];
+    return all.reduce((n, m) => Math.max(n, m.seq), 0) + 1;
+  }
+
+  #lastRound(sessionId: string): { anchor: Message | undefined; answer: Message[] } {
+    const list = this.#messages.get(sessionId) ?? [];
+    let i = list.length - 1;
+    while (i >= 0 && !(list[i]!.role === 'user' && list[i]!.kind === 'user')) i--;
+    if (i < 0) return { anchor: undefined, answer: [] };
+    return { anchor: list[i], answer: list.slice(i + 1).filter((m) => ANSWER_KINDS.has(m.kind)) };
+  }
+
+  #regenerateState(sessionId: string): RegenerateState {
+    const s = this.#sessions.get(sessionId);
+    const { anchor, answer } = this.#lastRound(sessionId);
+    const anchorId = anchor?.id ?? null;
+    const no = (code: RegenerateCode): RegenerateState => ({ anchorId, ok: false, code, hint: REGENERATE_HINTS[code] });
+    if (!s || s.role !== 'top' || s.parentId || s.projectId || (s.templateId && s.templateId !== 'top')) return no('regenerate.role');
+    if (!anchor) return no('regenerate.no_turn');
+    // the script keeps its run open while it waits; the core has ended the run by then (so: waiting first)
+    if ((this.#pending.get(sessionId) ?? []).length > 0) return no('regenerate.waiting');
+    if (this.#runs.has(sessionId)) return no('regenerate.running');
+    if ((anchor.meta?.author ?? 'user') !== 'user') return no('regenerate.not_typed');
+    let files = false;
+    let agents = false;
+    let other = false;
+    for (const m of answer) {
+      for (const b of m.content) {
+        if (b.type !== 'tool_use' || READ_ONLY_TOOLS.has(b.name) || this.#declined.has(b.id)) continue;
+        if (b.name === 'write_file' || b.name === 'edit_file') files = true;
+        else if (b.name === 'spawn_agent' || b.name === 'message_agent') agents = true;
+        else other = true;
+      }
+    }
+    if (files) return no('regenerate.wrote_files');
+    if (agents) return no('regenerate.spawned');
+    if (other) return no('regenerate.acted');
+    return { anchorId, ok: true };
   }
 
   #append(sessionId: string, role: 'user' | 'assistant', kind: MessageKind, content: ContentBlock[], meta?: Record<string, unknown>): Message {
@@ -155,7 +220,7 @@ export class FakeBackend implements AgentBackend {
     const message: Message = {
       id: this.#id('m'),
       sessionId,
-      seq: list.length + 1,
+      seq: this.#nextSeq(sessionId),
       role,
       kind,
       content,
@@ -191,9 +256,12 @@ export class FakeBackend implements AgentBackend {
       createdAt: at,
       updatedAt: at,
       canChooseCwd: role === 'top' && !parent && !req.projectId && (!req.cwd || req.cwd === this.#legacyCwd),
+      ...(req.templateId ? { templateId: req.templateId } : {}),
+      ...(req.projectId ? { projectId: req.projectId } : {}),
     };
     this.#sessions.set(info.id, info);
     this.#messages.set(info.id, []);
+    info.regenerate = this.#regenerateState(info.id);
     if (parent) this.#emit(parent.id, { type: 'child.spawned', childId: info.id, title: info.title });
     return structuredClone(info);
   }
@@ -207,8 +275,34 @@ export class FakeBackend implements AgentBackend {
     return s ? structuredClone(s) : undefined;
   }
 
-  async getMessages(sessionId: string): Promise<Message[]> {
-    return structuredClone(this.#messages.get(sessionId) ?? []);
+  async getMessages(sessionId: string, opts?: { superseded?: boolean }): Promise<Message[]> {
+    const current = this.#messages.get(sessionId) ?? [];
+    if (!opts?.superseded) return structuredClone(current);
+    return structuredClone([...current, ...(this.#superseded.get(sessionId) ?? [])].sort((a, b) => a.seq - b.seq));
+  }
+
+  /** As the core: the last round's answer becomes an old version and the same question is answered again. */
+  async regenerate(sessionId: string, messageId?: string): Promise<RegenerateResult> {
+    this.#requireSession(sessionId);
+    const refuse = (code: RegenerateCode): RegenerateResult => ({ ok: false, code, hint: REGENERATE_HINTS[code] });
+    const state = this.#regenerateState(sessionId);
+    const { anchor, answer } = this.#lastRound(sessionId);
+    if (state.code === 'regenerate.role') return refuse(state.code);
+    if (messageId !== undefined && messageId !== anchor?.id && !answer.some((m) => m.id === messageId)) return refuse('regenerate.not_last');
+    if (!state.ok || !anchor) return refuse(state.code ?? 'regenerate.no_turn');
+    const old = this.#superseded.get(sessionId) ?? [];
+    const version = old.filter((m) => m.superseded?.of === anchor.id).reduce((n, m) => Math.max(n, m.superseded!.version), 0) + 1;
+    if (answer.length > 0) {
+      const mark = { at: isoAt(this.#now()), of: anchor.id, version };
+      const gone = new Set(answer.map((m) => m.id));
+      this.#messages.set(sessionId, (this.#messages.get(sessionId) ?? []).filter((m) => !gone.has(m.id)));
+      this.#superseded.set(sessionId, [...old, ...answer.map((m) => ({ ...m, superseded: mark }))].sort((a, b) => a.seq - b.seq));
+      this.#emit(sessionId, { type: 'messages.superseded', anchorId: anchor.id, messageIds: [...gone], version });
+    }
+    const next = answer.length > 0 ? version + 1 : version;
+    const text = anchor.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+    void this.#run(sessionId, text, { version: next });
+    return { ok: true, anchorId: anchor.id, version: next };
   }
 
   async getPending(sessionId: string): Promise<PendingItem[]> {
@@ -276,6 +370,7 @@ export class FakeBackend implements AgentBackend {
   }
 
   async confirm(sessionId: string, callId: string, approved: boolean): Promise<void> {
+    if (!approved) this.#declined.add(callId);
     this.#resolvePending(sessionId, callId, approved ? 'yes' : 'no');
     this.#emit(sessionId, { type: 'confirm.resolved', callId, approved });
   }
@@ -370,6 +465,7 @@ export class FakeBackend implements AgentBackend {
       this.#emit(id, { type: 'session.deleted' });
       this.#sessions.delete(id);
       this.#messages.delete(id);
+      this.#superseded.delete(id);
       this.#pending.delete(id);
     }
     this.#projects.delete(projectId);
@@ -416,6 +512,7 @@ export class FakeBackend implements AgentBackend {
       this.#emit(id, { type: 'session.deleted' });
       this.#sessions.delete(id);
       this.#messages.delete(id);
+      this.#superseded.delete(id);
       this.#pending.delete(id);
     }
   }
@@ -530,7 +627,7 @@ export class FakeBackend implements AgentBackend {
     const list = this.#messages.get(sessionId) ?? [];
     const ids: string[] = [];
     for (const m of run.steers) {
-      m.seq = list.length + 1;
+      m.seq = this.#nextSeq(sessionId);
       list.push(m);
       ids.push(m.id);
       this.#emit(sessionId, { type: 'message', message: m });
@@ -574,7 +671,7 @@ export class FakeBackend implements AgentBackend {
     blocks.length = 0;
   }
 
-  async #run(sessionId: string, text: string, opts: { resumeWith?: string } = {}): Promise<void> {
+  async #run(sessionId: string, text: string, opts: { resumeWith?: string; version?: number } = {}): Promise<void> {
     const run: Run = { controller: new AbortController(), steers: [] };
     this.#runs.set(sessionId, run);
     const signal = run.controller.signal;
@@ -660,8 +757,13 @@ export class FakeBackend implements AgentBackend {
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
       } else {
-        const answer =
-          '看完了，要点如下：\n\n' +
+        const answer = (opts.version ?? 1) > 1
+          ? `第 ${opts.version} 版：重新看了一遍，按优先级排：\n\n` +
+            '1. **交付** 首批样机 20 台，月底前交付，是最紧的一项。\n' +
+            '2. **续航** 实测 11.5 小时，高于 10 小时的要求。\n' +
+            '3. **外壳尺寸** 120×80×24 mm，比上一版薄 2 mm。\n\n' +
+            '另外报价单里有两家供应商还没回价。'
+          : '看完了，要点如下：\n\n' +
           '1. **外壳尺寸** 定为 120×80×24 mm，和上一版相比薄了 2 mm。\n' +
           '2. **续航** 要求不少于 10 小时，测试报告里实测 11.5 小时，达标。\n' +
           '3. **交付** 首批样机 20 台，月底前交付，时间比较紧。\n\n' +

@@ -165,7 +165,66 @@ export interface Message {
   providerExtras?: Record<string, unknown>;
   /** Metadata; see MessageMeta. Relay / report notes carry ChildNoteMeta fields. */
   meta?: MessageMeta;
+  /**
+   * Set when a regenerated answer replaced this message: it belongs to the old answer `version` (1, 2, ...) to the
+   * user message `of`. The model never sees it again; getMessages returns it only with `{ superseded: true }`.
+   * Messages without it are current.
+   */
+  superseded?: SupersededMark;
 }
+
+/** Which old answer a replaced message belongs to (see Message.superseded). */
+export interface SupersededMark {
+  /** ISO 8601 with offset: when it was replaced. */
+  at: string;
+  /** Id of the user message the answer was to. */
+  of: string;
+  /** The old answer's number: 1 for the first answer, 2 for the second, ... (the current one is the highest plus 1). */
+  version: number;
+}
+
+/**
+ * Why an answer cannot be regenerated. Only the last round of the user's own conversations (role top, template top)
+ * can be; a round that wrote files, ran a tool that is not declared read-only, or started sub-agents cannot.
+ */
+export type RegenerateCode =
+  | 'regenerate.running'
+  | 'regenerate.waiting'
+  | 'regenerate.wrote_files'
+  | 'regenerate.spawned'
+  | 'regenerate.acted'
+  | 'regenerate.not_last'
+  | 'regenerate.not_typed'
+  | 'regenerate.role'
+  | 'regenerate.no_turn';
+
+/** The words the UI shows for each RegenerateCode (the core puts the same text in `hint`). */
+export const REGENERATE_HINTS: Record<RegenerateCode, string> = {
+  'regenerate.running': '对话正在运行，无法重新生成。',
+  'regenerate.waiting': '对话正在等待确认或回答，无法重新生成。',
+  'regenerate.wrote_files': '这一轮修改过文件，无法重新生成。',
+  'regenerate.spawned': '这一轮派出过子任务，无法重新生成。',
+  'regenerate.acted': '这一轮执行过会产生改动的操作，无法重新生成。',
+  'regenerate.not_last': '这不是最后一轮回答，无法重新生成。',
+  'regenerate.not_typed': '这一轮不是由用户消息开始的，无法重新生成。',
+  'regenerate.role': '项目经理、子任务和邮件分拣的对话无法重新生成。',
+  'regenerate.no_turn': '没有可以重新生成的回答。',
+};
+
+/** Whether the last round can be regenerated now (SessionInfo.regenerate). */
+export interface RegenerateState {
+  /** The user message the last round answers; null when there is none. The button goes under that round's last answer. */
+  anchorId: string | null;
+  ok: boolean;
+  code?: RegenerateCode;
+  /** REGENERATE_HINTS[code]: shown as is. */
+  hint?: string;
+}
+
+export type RegenerateResult =
+  /** Started: the old answer became `version - 1`; the new one streams in as usual. */
+  | { ok: true; anchorId: string; version: number }
+  | { ok: false; code: RegenerateCode; hint: string };
 
 /** Known metadata keys on messages. Everything a UI shows must be rebuildable from history. */
 /**
@@ -357,6 +416,11 @@ export interface SessionInfo {
    * (A running conversation is refused with `cwd.busy`: also look at `status`.)
    */
   canChooseCwd?: boolean;
+  /**
+   * Whether the last round's answer can be regenerated now, and why not. Worked out when read; `session.updated`
+   * is sent whenever it changes (a run starts or ends, a confirmation is asked or answered).
+   */
+  regenerate?: RegenerateState;
 }
 
 /** Note in the conversation: the user chose its working folder and what it had made was moved there. */
@@ -484,6 +548,8 @@ export type CoreEventBody =
   | { type: 'message'; message: Message }
   /** A plugin hook changed a message after it had been streamed. */
   | { type: 'message.replaced'; messageId: string; content: ContentBlock[] }
+  /** regenerate: these messages (the answer to `anchorId`) are now old answer `version`; a new answer follows. */
+  | { type: 'messages.superseded'; anchorId: string; messageIds: string[]; version: number }
   | { type: 'tool.start'; callId: string; name: string; input: unknown }
   /** A file was read (read_file); render a file card. Sent before the tool's `tool.end`. */
   | { type: 'file.card'; callId: string; file: FileCardMeta }
@@ -752,7 +818,8 @@ export interface AgentApi {
   createSession(req: CreateSessionRequest): Promise<SessionInfo>;
   listSessions(): Promise<SessionInfo[]>;
   getSession(sessionId: string): Promise<SessionInfo | undefined>;
-  getMessages(sessionId: string): Promise<Message[]>;
+  /** Current messages; with `superseded: true` also the replaced ones (Message.superseded), all in seq order. */
+  getMessages(sessionId: string, opts?: { superseded?: boolean }): Promise<Message[]>;
   getPending(sessionId: string): Promise<PendingItem[]>;
   /** User message. Starts a run if idle; otherwise applied at the next turn boundary. */
   /** `attachments`: files on this machine; read like read_file and sent to the model fenced as data. */
@@ -773,6 +840,13 @@ export interface AgentApi {
   setSessionCwd?(sessionId: string, folder: string): Promise<SetCwdResult>;
   /** Continue a session left `interrupted` (e.g. after a restart). */
   resume(sessionId: string): Promise<void>;
+  /**
+   * Answer the last user message again: the round's messages are marked as an old answer (messages.superseded), the
+   * model no longer sees them, and a new run starts with the session's model and approval mode as they are now.
+   * `messageId`: the answer the user clicked; refused with `regenerate.not_last` when it is not in the last round.
+   * Returns at once; refused (nothing changed) when SessionInfo.regenerate is not ok.
+   */
+  regenerate?(sessionId: string, messageId?: string): Promise<RegenerateResult>;
   confirm(sessionId: string, callId: string, approved: boolean): Promise<void>;
   abort(sessionId: string): Promise<void>;
   /** Traceable records as JSON Lines. */

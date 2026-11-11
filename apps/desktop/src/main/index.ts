@@ -294,6 +294,7 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'answer',
   'renameSession',
   'resume',
+  'regenerate',
   'confirm',
   'abort',
   'exportTraces',

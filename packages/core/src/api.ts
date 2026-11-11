@@ -20,8 +20,11 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async getSession(id) {
       return rt.session(id)?.info();
     },
-    async getMessages(id) {
-      return get(id).messages();
+    async getMessages(id, opts) {
+      return get(id).messages(opts?.superseded ? { superseded: true } : {});
+    },
+    async regenerate(id, messageId) {
+      return get(id).regenerate(messageId);
     },
     async getPending(id) {
       return get(id).pending();

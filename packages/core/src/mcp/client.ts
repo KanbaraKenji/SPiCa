@@ -457,6 +457,8 @@ export function mcpTools(client: McpStdioClient, infos: McpToolInfo[], tracer: T
       inputSchema: info.inputSchema ?? { type: 'object' },
     },
     irreversible: info.annotations?.destructiveHint === true,
+    // declared read-only: a round that called it can still be regenerated
+    ...(info.annotations?.readOnlyHint === true ? { readOnly: true } : {}),
     // whatever an MCP server returns comes from outside Spica (mail, external systems)
     untrusted: 'mcp',
     async execute(input, ctx) {

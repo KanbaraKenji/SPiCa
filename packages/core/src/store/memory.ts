@@ -1,5 +1,5 @@
 // In-memory store (tests and ephemeral runs).
-import type { MailItem, Message, ProjectInfo, ProjectLogEntry, TraceRecord, WorkObject } from '../types.ts';
+import type { MailItem, Message, ProjectInfo, ProjectLogEntry, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -102,6 +102,10 @@ export class MemoryStore implements Store {
   }
   listMessages(sessionId: string): Message[] {
     return (this.#messages.get(sessionId) ?? []).map(clone);
+  }
+  supersedeMessages(sessionId: string, ids: readonly string[], mark: SupersededMark): void {
+    const wanted = new Set(ids);
+    for (const m of this.#messages.get(sessionId) ?? []) if (wanted.has(m.id)) m.superseded = { ...mark };
   }
 
   upsertToolCall(rec: ToolCallRecord): void {

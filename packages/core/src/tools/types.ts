@@ -33,6 +33,11 @@ export interface Tool {
   /** Irreversible actions (sending mail, writing external systems) need confirmation by default. */
   irreversible?: boolean;
   /**
+   * Only reads (files, the web, history, project state): calling it changes nothing. A round that ran any tool not
+   * declared read-only cannot be regenerated, because running it again would do it twice.
+   */
+  readOnly?: boolean;
+  /**
    * `ask`: the call pauses the run until the user answers (ask_user).
    * The tool's execute() is not called; the answer becomes the result.
    */

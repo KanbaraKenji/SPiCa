@@ -1,7 +1,7 @@
 // Storage contract. The database is the source of truth for sessions,
 // messages, tool calls, pending questions, relays and traceable records.
 // Synchronous on purpose: the default backend is embedded SQLite.
-import type { AgentRole, MailItem, Message, PendingItem, ProjectInfo, ProjectLogEntry, SessionStatus, TraceRecord, WorkObject } from '../types.ts';
+import type { AgentRole, MailItem, Message, PendingItem, ProjectInfo, ProjectLogEntry, SessionStatus, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 
 export type SenderDecision = { decision: 'project'; projectId: string } | { decision: 'ignore' };
 
@@ -97,7 +97,10 @@ export interface Store {
 
   appendMessage(msg: Message): void;
   updateMessage(msg: Message): void;
+  /** Every message of the session in seq order, replaced ones (Message.superseded) included. */
   listMessages(sessionId: string): Message[];
+  /** Mark these messages of the session as old answer `mark.version` (all or none); ids of other sessions are ignored. */
+  supersedeMessages(sessionId: string, ids: readonly string[], mark: SupersededMark): void;
 
   upsertToolCall(rec: ToolCallRecord): void;
   /** All tool calls of a session, or only those issued by one assistant message. */

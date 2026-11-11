@@ -20,6 +20,9 @@ import type {
   MessageKind,
   MessageMeta,
   PendingItem,
+  RegenerateCode,
+  RegenerateResult,
+  RegenerateState,
   SessionInfo,
   SessionStatus,
   SteerMode,
@@ -33,6 +36,7 @@ import { resolve as resolvePath } from 'node:path';
 import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.ts';
 import { samePath } from './move-folder.ts';
 import { netHint } from './net.ts';
+import { REGENERATE_HINTS } from '@spica/protocol';
 
 export interface RunResult {
   reason: RunEndReason;
@@ -53,12 +57,24 @@ const MAX_PARALLEL_TOOLS = 8;
 const PARTIAL_SAVE_MS = 1000;
 const RESULT_PREVIEW = 200;
 const MAX_RESULT_CHARS = 100_000;
+/** What an answer to a user message is made of; regenerating replaces these (notes stay where they are). */
+const ANSWER_KINDS: ReadonlySet<MessageKind> = new Set<MessageKind>(['assistant', 'tool_results', 'steer']);
+/** Tools whose call means files were written or sub-agents were started (the reasons named in the hint). */
+const FILE_TOOLS = new Set(['write_file', 'edit_file']);
+const AGENT_TOOLS = new Set(['spawn_agent', 'message_agent']);
 
 export class Session {
   readonly id: string;
   readonly #rt: RuntimeInternals;
   #record: SessionRecord;
+  /** Current messages: what the model sees. */
   #messages: Message[];
+  /** Replaced answers (regenerate), kept for the UI only; in seq order. */
+  #superseded: Message[];
+  /** Last regenerate state sent with session.updated (to send it again only when it changes). */
+  #regenerateKey = '';
+  /** The run is ending (its last status is being set): it no longer counts as running for regenerate. */
+  #ending = false;
   #run: Promise<RunResult> | undefined;
   #runAbort: AbortController | undefined;
   #turnAbort: AbortController | undefined;
@@ -81,9 +97,11 @@ export class Session {
     this.#rt = rt;
     this.id = record.id;
     this.#record = record;
-    this.#messages = messages;
+    this.#messages = messages.filter((m) => !m.superseded);
+    this.#superseded = messages.filter((m) => m.superseded);
     this.#lastInputTokens = restored.lastInputTokens ?? 0;
     this.#contextTokens = restored.contextTokens ?? null;
+    this.#regenerateKey = JSON.stringify(this.regenerateState());
   }
 
   /**
@@ -142,7 +160,90 @@ export class Session {
       contextTokens: this.#contextTokens,
       contextWindow: this.#contextWindow(),
       canChooseCwd: this.#canChooseCwd(),
+      regenerate: this.regenerateState(),
     };
+  }
+
+  /** The user's own conversations (not project managers, sub-agents or mail sorting). */
+  #userThread(): boolean {
+    const r = this.#record;
+    return r.role === 'top' && r.parentId === null && (r.config.templateId === undefined || r.config.templateId === 'top');
+  }
+
+  /** The last user message and the answer to it (current messages only; notes after it are not part of the answer). */
+  #lastRound(): { anchor: Message | undefined; answer: Message[] } {
+    let i = this.#messages.length - 1;
+    while (i >= 0 && !(this.#messages[i]!.role === 'user' && this.#messages[i]!.kind === 'user')) i--;
+    if (i < 0) return { anchor: undefined, answer: [] };
+    return { anchor: this.#messages[i], answer: this.#messages.slice(i + 1).filter((m) => ANSWER_KINDS.has(m.kind)) };
+  }
+
+  /**
+   * Whether running the round again would repeat something it did: a call that ran (not declined, not refused as
+   * unavailable) of a tool not declared read-only. Tools no longer registered count as acting (not known).
+   */
+  #roundActed(answer: Message[]): RegenerateCode | undefined {
+    let files = false;
+    let agents = false;
+    let other = false;
+    for (const m of answer) {
+      if (m.role !== 'assistant') continue;
+      const calls = m.content.filter((b): b is ToolUseBlock => b.type === 'tool_use');
+      if (calls.length === 0) continue;
+      const records = new Map(this.#rt.store.listToolCalls(this.id, m.id).map((r) => [r.id, r]));
+      for (const c of calls) {
+        const status = records.get(c.id)?.status;
+        if (status === 'denied' || status === 'unavailable') continue; // nothing ran
+        if (this.#rt.tools.get(c.name)?.readOnly) continue;
+        if (FILE_TOOLS.has(c.name)) files = true;
+        else if (AGENT_TOOLS.has(c.name)) agents = true;
+        else other = true;
+      }
+    }
+    return files ? 'regenerate.wrote_files' : agents ? 'regenerate.spawned' : other ? 'regenerate.acted' : undefined;
+  }
+
+  /** Whether the last round can be regenerated now (SessionInfo.regenerate). */
+  regenerateState(): RegenerateState {
+    const { anchor, answer } = this.#lastRound();
+    const anchorId = anchor?.id ?? null;
+    const no = (code: RegenerateCode): RegenerateState => ({ anchorId, ok: false, code, hint: REGENERATE_HINTS[code] });
+    if (!this.#userThread()) return no('regenerate.role');
+    if (!anchor) return no('regenerate.no_turn');
+    if (this.#run && !this.#ending) return no('regenerate.running');
+    if (this.#hasPending()) return no('regenerate.waiting');
+    if ((anchor.meta?.author ?? 'user') !== 'user') return no('regenerate.not_typed');
+    const acted = this.#roundActed(answer);
+    if (acted) return no(acted);
+    return { anchorId, ok: true };
+  }
+
+  /**
+   * Answer the last user message again. The round's answer (assistant messages, tool results, steers) becomes an
+   * old answer: marked in the store, kept for the UI, never sent to the model again. Notes stay. Then a new run.
+   * `messageId`: the answer the user clicked (refused when it is not in the last round). Spending is not refunded.
+   */
+  regenerate(messageId?: string): RegenerateResult {
+    const refuse = (code: RegenerateCode): RegenerateResult => ({ ok: false, code, hint: REGENERATE_HINTS[code] });
+    const state = this.regenerateState();
+    const { anchor, answer } = this.#lastRound();
+    if (state.code === 'regenerate.role') return refuse(state.code);
+    if (messageId !== undefined && messageId !== anchor?.id && !answer.some((m) => m.id === messageId)) return refuse('regenerate.not_last');
+    if (!state.ok || !anchor) return refuse(state.code ?? 'regenerate.no_turn');
+    const older = this.#superseded.filter((m) => m.superseded?.of === anchor.id).map((m) => m.superseded!.version);
+    const version = Math.max(0, ...older) + 1;
+    if (answer.length > 0) {
+      const mark = { at: isoNow(), of: anchor.id, version };
+      const ids = answer.map((m) => m.id);
+      this.#rt.store.supersedeMessages(this.id, ids, mark);
+      const gone = new Set(ids);
+      this.#messages = this.#messages.filter((m) => !gone.has(m.id));
+      this.#superseded = [...this.#superseded, ...answer.map((m) => ({ ...m, superseded: mark }))].sort((a, b) => a.seq - b.seq);
+      this.#emit({ type: 'messages.superseded', anchorId: anchor.id, messageIds: ids, version });
+    }
+    void this.#startRun();
+    // an answer that had nothing in it (the run failed at once) is not counted as a version
+    return { ok: true, anchorId: anchor.id, version: answer.length > 0 ? version + 1 : version };
   }
 
   /** Still in its own folder because none was chosen, and not part of a project (see setSessionCwd). */
@@ -178,8 +279,10 @@ export class Session {
     return this.#rt.ledger.contextWindow(c.providerId, kind, c.model);
   }
 
-  messages(): Message[] {
-    return structuredClone(this.#messages);
+  /** Current messages; with `superseded` also the replaced answers, in seq order. */
+  messages(opts: { superseded?: boolean } = {}): Message[] {
+    if (!opts.superseded || this.#superseded.length === 0) return structuredClone(this.#messages);
+    return structuredClone([...this.#messages, ...this.#superseded].sort((a, b) => a.seq - b.seq));
   }
 
   pending(): PendingItem[] {
@@ -522,6 +625,7 @@ export class Session {
       this.#run = undefined;
       this.#runAbort = undefined;
       this.#turnAbort = undefined;
+      this.#ending = false;
     });
     this.#run = p;
     void p.then((r) => {
@@ -539,7 +643,9 @@ export class Session {
     let cfg: SessionConfig;
     let turn = 0;
     let lastText = '';
+    this.#ending = false;
     const end = (reason: RunEndReason, detail?: string): RunResult => {
+      this.#ending = true; // the button state goes out with the last status, before run.end
       const status: SessionStatus =
         reason === 'completed' && this.#record.role === 'worker'
           ? 'done'
@@ -1289,7 +1395,8 @@ export class Session {
   }
 
   #nextSeq(): number {
-    return (this.#messages[this.#messages.length - 1]?.seq ?? 0) + 1;
+    // replaced answers keep their numbers: a new message never reuses one
+    return Math.max(this.#messages[this.#messages.length - 1]?.seq ?? 0, this.#superseded[this.#superseded.length - 1]?.seq ?? 0) + 1;
   }
 
   #setStatus(status: SessionStatus, detail?: string): void {
@@ -1298,6 +1405,15 @@ export class Session {
     this.#rt.store.upsertSession(this.#record);
     this.#emit({ type: 'status', status, ...(detail ? { detail } : {}) });
     this.#rt.onStatus(this, status);
+    this.#syncRegenerate();
+  }
+
+  /** The regenerate button follows the state (running, waiting, the new last round): session.updated when it changes. */
+  #syncRegenerate(): void {
+    const key = JSON.stringify(this.regenerateState());
+    if (key === this.#regenerateKey) return;
+    this.#regenerateKey = key;
+    this.#emit({ type: 'session.updated', info: this.info() });
   }
 
   #emit(body: CoreEventBody): void {

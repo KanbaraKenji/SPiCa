@@ -90,6 +90,7 @@ export const createProjectTool: Tool = {
 };
 
 export const listProjectsTool: Tool = {
+  readOnly: true,
   spec: {
     name: 'list_projects',
     description: 'List all projects with folder, stage, project manager status and the latest key action; also lists available workflows.',
@@ -114,6 +115,7 @@ export const listProjectsTool: Tool = {
 };
 
 export const openProjectTool: Tool = {
+  readOnly: true,
   spec: {
     name: 'open_project',
     description: 'Show where a project stands: stage, work objects, sub-agents and recent key actions. Accepts the project id or name.',
@@ -131,6 +133,7 @@ export const openProjectTool: Tool = {
 };
 
 export const projectStatusTool: Tool = {
+  readOnly: true,
   spec: {
     name: 'project_status',
     description: 'Your project: workflow, current stage with goal and exit criteria, work objects, sub-agents, recent key actions.',
@@ -178,6 +181,7 @@ export const addWorkObjectTool: Tool = {
 };
 
 export const listWorkObjectsTool: Tool = {
+  readOnly: true,
   spec: {
     name: 'list_work_objects',
     description: 'List the work objects of your project as a tree.',

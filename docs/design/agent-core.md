@@ -16,7 +16,7 @@
 8. [工具与确认](#8-工具与确认)
 9. [不可信内容防护](#9-不可信内容防护)
 10. [会话树、角色与回传](#10-会话树角色与回传)
-11. [插话与停止](#11-插话与停止)
+11. [插话、停止与重新生成](#11-插话停止与重新生成)
 12. [花费、限流与并行](#12-花费限流与并行)
 13. [可追溯记录与使用日志导出](#13-可追溯记录与使用日志导出)
 14. [存储与恢复](#14-存储与恢复)
@@ -62,7 +62,7 @@
 
 ## 2. 数据模型
 
-- **消息**（`Message`）：`id`、`sessionId`、会话内递增的 `seq`、`role`（user / assistant）、`kind`、内容块、`createdAt`（本地时间带时区）、可选的 `providerExtras` 和 `meta`。
+- **消息**（`Message`）：`id`、`sessionId`、会话内递增的 `seq`、`role`（user / assistant）、`kind`、内容块、`createdAt`（本地时间带时区）、可选的 `providerExtras` 和 `meta`；被重新生成换掉的消息另有 `superseded`（第 11 节）。
 - **内容块**：`text`、`thinking`（带签名，只回传给产生它的 provider）、`tool_use`、`tool_result`、`opaque`（provider 私有的块，原样保存、原样回传）。格式是我们自己的，不是哪一家的线格式。
 - **kind**：`user`（任务或在这个会话里写的话）、`assistant`、`tool_results`（一轮的全部工具结果合成一条）、`steer`（运行中插进来的话）、`relay`（子会话回传的用户原话 / 决定）、`report`（子会话的回报）、`note`（其他运行时备注）。
 - **author**（`meta.author`）：`user` / `parent` / `child` / `runtime` / `plugin`。语言规则、守卫和导出都靠它区分「用户亲手打的字」和系统 / 其他 Agent 写的。
@@ -101,7 +101,7 @@
 |---|---|
 | 状态 | `status`（idle / queued / thinking / tool / awaiting_confirm / awaiting_answer / done / error / aborted / interrupted）、`queue`（排队位次，只在变化时发） |
 | 流式 | `text.delta`、`thinking.delta`、`tool.call`（模型开始写某个工具调用） |
-| 消息 | `message`（一条完整消息入库，界面以它为准）、`message.replaced`（钩子改了已流出的回答） |
+| 消息 | `message`（一条完整消息入库，界面以它为准）、`message.replaced`（钩子改了已流出的回答）、`messages.superseded`（重新生成：这些消息成了旧的第几版，第 11 节） |
 | 工具 | `tool.start`、`tool.end`（结果开头、耗时）、`file.card`、`suggest.actions` |
 | 等用户 | `confirm.request`（带 `cause` 时是守卫要求的）、`confirm.resolved`、`confirm.auto`（批准方式为 auto 时自动通过的调用）、`ask.request`、`ask.resolved` |
 | 守卫 | `guard.flagged`（外来内容里有像指令的文字） |
@@ -194,6 +194,7 @@
 - 每个工具结果的第一行是 `[fetched at 2026-11-09T15:20:42.988+08:00]`（本地时间带时区），系统提示告诉模型旧结果可能过期；内核不缓存外部数据。
 - 工具输入先按 JSON schema 粗校验（必填、基本类型），不合格直接回错误结果。子会话默认继承父会话的工具白名单。
 - **确认与提问**：同一轮里要确认的调用挂起，其余照常执行，结果先存进 `tool_calls` 表；会话转 `awaiting_confirm` / `awaiting_answer`，发 `confirm.request` / `ask.request`，本次运行结束。用户 `confirm(callId, true/false)` 或 `answer(callId, 文字)`，全部挂起项都有了结果后，这一轮所有结果按调用顺序合成一条 `tool_results`，开新的运行。拒绝的动作不执行，结果是「用户拒绝了，别重试」，记录状态 `denied`。挂起状态全在存储里，重启后照样能答。
+- **只读声明**（`Tool.readOnly`）：调用它不改任何东西。只用来判断一轮能不能重新生成（第 11 节），不影响确认。MCP 工具取 `annotations.readOnlyHint === true`。
 - **工具被停用之后**（插件停用、MCP server 断开）：每轮按当时的工具表发请求。注册表记着哪些工具是被撤掉的；会话里以前用过、现在被撤掉的，下一轮前写一条运行时备注（`kind: 'note'`，`meta.toolsUnavailable`），同一批只说一次。模型照旧调了，结果是「已不可用，什么都没执行」，记录状态 `unavailable`；重启后插件还没起来的情况不发这条备注。
 - **插件界面直接调自己的工具**（`callPluginTool(插件, 工具, 参数, { sessionId? })`）：插件的视图（iframe）不经模型、直接调这个插件注册的工具，工具名可以写完整名字（如 `outlook__list_messages`，插件有多个 server、前缀不同也行），也可以只写插件前缀后面的部分；一律按注册来源 `plugin:<名字>` 校验，别的插件的工具调不了。插件视图已经自己问过用户时传 `confirmed: true`，就不再发确认，直接执行，可追溯记录里记 `confirmedBy: 'view'`；传 `confirmed: false` 时不发确认卡，需要确认就立刻返回 `{ isError: true, needsConfirmation: true, content: 原因 }`，什么都不执行，由调用方问过用户后带 `confirmed: true` 再调；不传才发确认卡等用户；经确认卡同意的记 `confirmedBy: 'user'`。不进任何会话的历史，结果文字原样返回 `{ content, isError, declined? }`。钩子照常生效，deny 就拦下；不可逆工具和钩子要求确认的工具，先在 `sessionId`（不给就是默认顶层线程）上发 `confirm.request`，带 `cause: 'plugin_view'`，用户用 `confirm(同一会话, callId, 是否同意)` 回答。10 分钟没人答就算拒绝。这种确认不进存储，重启就没了。没给 sessionId 时只借用已有的默认顶层线程，不会新建（建会话要有模型），所以全新安装、还没配模型时插件页面也能用：钩子拿到一个合成的会话信息（id `view:<插件>`，cwd 是部署的工作文件夹），确认卡这时用空的会话 id 发出。同一个插件的调用共用一个限流器（同时 4 个、每分钟 120 个）。没有写死的时限：MCP 工具按自己的 timeout_seconds、max_call_seconds 和进度来，`opts.signal`（页面走了）或 `Runtime.close()` 停掉调用并通知 server。`invokeTool`（邮件流水线取列表）同样不再另设时限，`close()` 停掉它。MCP 工具的可追溯记录发起者写 `view:<插件>`，给了 sessionId 就挂在那个会话上。
 - **MCP 客户端**（`mcp/client.ts`，stdio）：起进程（不弹窗）→ initialize → tools/list（支持翻页）→ tools/call；**超时与进度**（按 MCP 2025-06-18 的 progress、cancellation 和 lifecycle 的 Timeouts）：tools/call 带 `_meta.progressToken`（就是请求 id），收到这次调用的 `notifications/progress` 就重新计时（`timeoutMs`，缺省 60 秒，插件写 `timeout_seconds`），但一次调用不管有没有进度最长 `maxCallMs`（缺省 60 分钟、不短于 timeoutMs，插件写 `max_call_seconds`）；token 对不上的进度不理；超时和用户中断都给 server 发 `notifications/cancelled`（initialize 除外，规范不许取消它），之后才到的回答丢掉，不会被当成别的请求的结果；**排队**：`concurrency` 限定同时发给 server 的工具调用数，多出来的按先后等，等的时间不算进两个时限，停止时离开队列（没发过，不发取消），server 断开时一起报错，`waiting` 是正在等的个数；`callTool` 的第 4 个参数可以拿到每条进度，这一版没进事件流（要加 protocol 的事件类型，界面看不到进度）；工具名 `<server>__<tool>`；标了 destructiveHint 的工具默认要确认；所有 MCP 工具的返回都按外来内容（`mcp`）处理；`unregisterSource` 只撤这个 server 自己的注册并停掉进程（先礼后兵，3 秒后强杀）；`onExit` 和 `stderrLog` 给插件做重启和日志；记 `kind: 'mcp'` 记录。
@@ -221,7 +222,7 @@
 ## 10. 会话树、角色与回传
 
 - **角色与线程**：`top`（助理）是一个角色。**不属于任何项目的每一条对话都是助理**，设定相同（`top` 模板），没有哪条特殊；界面里的「新对话」就是再开一条。`runtime.top()` / `getTopSession()` / `spica_get_top_session` 返回**最近用过的那条**助理对话（没有就新建），只给「没有自己对话的东西」找个落点（例如 `spica_run` 不带 session_id）。`manager`（项目经理）一个项目一个常驻会话，**没有父会话**（旧数据里经理挂在默认对话下，重启恢复时一次性改成没有父会话，id 不变）。`worker` 是子 Agent。每条助理对话都能用 list_projects / open_project 看所有项目，用 message_agent 给任意项目经理发话、用 wait_agents 等它；经理答完，回报回到**问它的那条对话**（message_agent 或 create_project 带简报的那条），作为 `report` 备注。**没人问的进展**（来信转给经理后的处理、它自己推进的事）写进项目动态（`manager.report`），项目的 `unread` 加一并发 `project.updated`（sessionId ''），侧栏在项目上标未读；不在任何对话里冒卡片（统筹替他定，2026-11-10）；端口方法 `markProjectRead(projectId)` 清零。list_projects 带未读数和最新回报。阶段变更、决定只记进项目动态，不再追加进某条对话。运行时事件（设置、邮件设置、项目）都发到 sessionId ''。「设置已改动」卡片写进窗口当前打开的那条对话，没有打开的就写进最近用过的那条。
-- **查以前的对话**（`tools/history-tools.ts`，只给助理）：`search_history { query, project?, limit? }` 按词搜全部对话里说过的话（项目里的也算，不含当前这条），按对话归拢、新的对话在前：每条对话一行「[n] 对话名（项目）· 时间 · 谁说的：最相关的一段」（词出现次数最多的那处，一样多取新的），下面再列至多两处「also #消息号」和其余各处的消息号；`read_history { ref, around?, count? }` 读编号那段前后（`around` 换到别的消息号）；`find_history_files { name?, ref? }` 列出对话里出现过的文件（附件、读过 / 写过 / 改过的路径），每个带它出现处的编号，再用 read_file 读。**搜哪些**：用户的对话（模板 top）、项目经理的对话（project-manager）和它们开的子代理；邮件分类的后台对话（mail-triage）和别的模板建的顶层对话不搜，find_history_files 同样。对话里只搜用户打的字、上级代理交给子代理的任务和代理的回答；运行时的笔记（换模型、设置变更等）、子代理的回报和转述（原文在子代理自己的对话里能搜到）、工具结果、运行时代发的消息（转给项目经理的邮件等）都不搜。存下的消息里外来数据的包装（附件、邮件的围栏和提醒）去掉再搜、再摘。read_history 给模型的文字仍带上这一段里的笔记、回报和工具结果，卡里只有用户和代理说的话。给模型的文字和卡里都不出现会话 id（老笔记里的「(ses_…)」去掉），只有短编号 [n]：同一处（对话 + 消息号）在同一条提问的对话里始终是同一个号，号从 1 往上记，重启后从这条对话存下的工具调用卡片里重建；别的对话有自己的一套号。老结果里的会话 id 仍可用 `session_id` 传。界面拿到的是结构化的卡（事件 `history.card`，存进 tool_results 消息的 `meta.historyCards`，按调用 id）：搜索每条对话一行，带编号、会话 id、对话名、项目、时间、最相关那处的消息号、还有几处（`more`）和各处的消息号（`seqs`，最相关的在前）、谁说的、一句摘要，`total` 按对话数；读一段每条消息一行；找文件每个文件一行（路径和来由）。整行可以点开那条对话；卡里的文字同样去敏。结果是外来数据（围栏 kind `history`，里面像指令的文字照样标记、不照做，这一轮按受外来内容影响处理），过一遍去敏；不调模型；上限 `HISTORY_LIMITS`：一次最多 20 条对话、每段 300 字、一次读 30 条、每条 1500 字、文件 40 个、整个结果 12000 字。没有标题的对话用第一句话的开头，都没有时给模型写「新对话」、卡里是 null（由界面写），和侧栏一样。助理的设定里写明：每次跟用户说起以前的对话（追问时也算），用标题和时间，标题写成指向编号的链接 `[对话名](history:3)`，界面把它按这条对话存下的 historyCards 解析成会话（和消息号）、点了打开；只用这条对话里这些工具给过的编号，编号和 id 都不当文字写出来。写了没给过的编号时界面拿不到位置，当普通文字显示。
+- **查以前的对话**（`tools/history-tools.ts`，只给助理）：`search_history { query, project?, limit? }` 按词搜全部对话里说过的话（项目里的也算，不含当前这条），按对话归拢、新的对话在前：每条对话一行「[n] 对话名（项目）· 时间 · 谁说的：最相关的一段」（词出现次数最多的那处，一样多取新的），下面再列至多两处「also #消息号」和其余各处的消息号；`read_history { ref, around?, count? }` 读编号那段前后（`around` 换到别的消息号）；`find_history_files { name?, ref? }` 列出对话里出现过的文件（附件、读过 / 写过 / 改过的路径），每个带它出现处的编号，再用 read_file 读。**搜哪些**：用户的对话（模板 top）、项目经理的对话（project-manager）和它们开的子代理；邮件分类的后台对话（mail-triage）和别的模板建的顶层对话不搜，find_history_files 同样。对话里只搜用户打的字、上级代理交给子代理的任务和代理的回答；运行时的笔记（换模型、设置变更等）、子代理的回报和转述（原文在子代理自己的对话里能搜到）、工具结果、运行时代发的消息（转给项目经理的邮件等）、被重新生成换掉的旧版都不搜。存下的消息里外来数据的包装（附件、邮件的围栏和提醒）去掉再搜、再摘。read_history 给模型的文字仍带上这一段里的笔记、回报和工具结果，卡里只有用户和代理说的话。给模型的文字和卡里都不出现会话 id（老笔记里的「(ses_…)」去掉），只有短编号 [n]：同一处（对话 + 消息号）在同一条提问的对话里始终是同一个号，号从 1 往上记，重启后从这条对话存下的工具调用卡片里重建；别的对话有自己的一套号。老结果里的会话 id 仍可用 `session_id` 传。界面拿到的是结构化的卡（事件 `history.card`，存进 tool_results 消息的 `meta.historyCards`，按调用 id）：搜索每条对话一行，带编号、会话 id、对话名、项目、时间、最相关那处的消息号、还有几处（`more`）和各处的消息号（`seqs`，最相关的在前）、谁说的、一句摘要，`total` 按对话数；读一段每条消息一行；找文件每个文件一行（路径和来由）。整行可以点开那条对话；卡里的文字同样去敏。结果是外来数据（围栏 kind `history`，里面像指令的文字照样标记、不照做，这一轮按受外来内容影响处理），过一遍去敏；不调模型；上限 `HISTORY_LIMITS`：一次最多 20 条对话、每段 300 字、一次读 30 条、每条 1500 字、文件 40 个、整个结果 12000 字。没有标题的对话用第一句话的开头，都没有时给模型写「新对话」、卡里是 null（由界面写），和侧栏一样。助理的设定里写明：每次跟用户说起以前的对话（追问时也算），用标题和时间，标题写成指向编号的链接 `[对话名](history:3)`，界面把它按这条对话存下的 historyCards 解析成会话（和消息号）、点了打开；只用这条对话里这些工具给过的编号，编号和 id 都不当文字写出来。写了没给过的编号时界面拿不到位置，当普通文字显示。
 - **没选文件夹的对话**（`RuntimeOptions.sessionFilesDir`，后台默认是数据库旁的 `sessions/`）：不属于项目、也不是子 Agent 的新对话没给文件夹时，在 `sessions/<会话 id>/files` 里工作，建对话时就建好；不在「文档」下面建任何东西。选了文件夹的、项目里的、子 Agent（跟父会话走）都照旧。
 - **之后再选工作文件夹**（`setSessionCwd(会话, 文件夹)`，`move-folder.ts`）：只有还在自己文件夹里的对话能选（`SessionInfo.canChooseCwd`：没选过、不属于项目、是用户的对话），发过消息也行，只能选一次，选定后和一开始就选的一样不能再改。选的同时把它自己文件夹里做出来的东西搬过去：每个文件保持相对工作文件夹的路径，空文件夹也带上；目标里已有同名文件时不覆盖，搬过去的改叫「名字 (1).扩展名」「(2)」…（Windows 和 macOS 上不分大小写）；跨盘时先复制（不覆盖）再删原件。全成或全不成：哪个文件搬失败，已搬的搬回去、为它建的空文件夹删掉，工作文件夹不变，结果里说是哪个文件（`cwd.move_failed`，搬不回去的列在 `notRestored`）。整个过程是同步的，中途没有别的东西能往里写。正在跑或在等用户（确认、提问）时不让选（`cwd.busy`，它下面的子代理也算）；不是绝对路径、是个文件、是它自己的文件夹或在里面、建不出来的都不行（`cwd.bad_folder`）。搬完：原来的空文件夹删掉；它和下面原来在同一个文件夹里工作的子代理改到新文件夹，每条各记一条笔记给模型（`meta.cwdChange`）：工作文件夹现在在哪、几个文件从哪搬来、哪些改了名、以前消息里的相对路径现在指向新文件夹、以旧文件夹开头的路径现在以新文件夹开头；然后发 `session.updated`。最近使用时间不变。
 - **0.1.0-rc.2 及以前的老对话**（`legacyDefaultCwd`，外壳传「文档/<应用名>」，他定：算没选过、能选一次、文件不搬）：那时没选文件夹的对话都在这个共用文件夹里工作。工作文件夹正好是它（Windows 和 macOS 上不分大小写）、不属于项目的用户对话 `canChooseCwd` 为 true；选的时候**一个文件都不搬**（分不清哪个文件是哪条对话做的），共用文件夹不动、不删，选它里面的子文件夹也行；结果的 `moved` / `renamed` 是空的，另有 `filesStayIn`（共用文件夹的完整路径），笔记的 `meta.cwdChange.filesStayIn` 同样，界面据此写「原来的文件留在 …」；给模型的笔记写明新工作文件夹、以前的文件留在共用文件夹（完整路径）、以前消息里的相对路径指的是那里、以后要写完整路径。当时自己选过别的文件夹的老对话算选过，照旧锁住。不配这一项时共用文件夹只算一个普通的选过的文件夹。
@@ -234,11 +235,27 @@
 - **回传**：用户在子会话里写的每一条，原样作为备注追加进父会话（`[From sub-agent "标题" (id)] The user wrote in that session: "原话"`，`meta` 里有来源字段）；决定变更同样追加并带 `meta.decision`；子会话一次运行正常结束，最后一段回答就是回报（`child.report`），父会话正卡在 `wait_agents` 等它时走工具结果，否则作为 `report` 备注进父会话历史。父会话正在跑时，备注排进队列，在下一轮边界写入，不会插进一对工具调用和结果中间。所有回传另写进 `relays` 表。回传只走一层，不会层层上转。
 - 子 Agent 跑完状态是 `done`；用户再进去说话，它会再跑并再回报。父会话被 `abort()` 只停它自己，子会话照常跑完并回报。
 
-## 11. 插话与停止
+## 11. 插话、停止与重新生成
 
 - `steer(text, 'next')`（运行中 `send` 也走它）：消息进队列（持久化，崩溃不丢），在下一轮开头按到达顺序写入；模型刚好答完、没有工具调用时也会为它多跑一轮。
 - `steer(text, 'interrupt')`：中止当前这一轮。已流出的半段作为 `meta.interrupted` 的助手消息保存；正在跑的工具拿到中止信号，返回「被用户打断」的错误结果，工具调用和结果始终成对；然后写入插话，继续下一轮。被中止的调用记一条 `aborted` 的记录。
 - `abort()`：整次运行停下，状态 `aborted`，会话仍可再用。等确认 / 等回答时发来的消息排队，答复后随下一次运行写入。
+
+**重新生成**（`regenerate(会话, 消息?)`，端口方法同名；MCP 服务不提供）
+
+- 做什么：把最后一轮的回答换掉，用同一句话再跑一次。换下来的旧版不删，标成「已被替换」；之后发给模型的内容里不再有它，界面、存储、模型三处一致，重启后也一样。接着聊永远接在最新一版后面，不分叉。
+- **一轮**：最后一条 `kind: user` 的消息（锚点）和它后面的 `assistant`、`tool_results`、`steer`。旧版是这一整段，一次标完（SQLite 里一个事务）。备注（换模型、选文件夹、子任务回报、工具停用）不属于哪一版，留在原位，模型照样看得到。
+- **记法**：被换掉的消息带 `superseded { at, of: 锚点 id, version }`，`version` 从 1 数起；现行的消息没有这个字段，现行版的号是旧版最大号加 1。存储接口 `supersedeMessages(会话, ids, mark)`，两种存储都实现，契约测试覆盖。`Session` 内存里分现行和旧版两份，拼上下文、守卫、上下文环、`search_history` 等历史工具都只看现行的；`seq` 按全部消息取最大值往上数，不会重号。`getMessages(会话)` 照旧只给现行的；`getMessages(会话, { superseded: true })` 连旧版一起按 `seq` 给，界面据此画「‹ 1 / 2 ›」。使用日志导出带上 `superseded`。
+- **能不能**（`SessionInfo.regenerate { anchorId, ok, code?, hint? }`，读的时候现算；变化时发 `session.updated`，跑完时在 `run.end` 之前发）。`hint` 是 protocol 的 `REGENERATE_HINTS[code]`，界面原样显示。不行的情形：
+  - `regenerate.role`：只给用户自己的对话（role 是 top、模板是 top、没有父会话）；项目经理、子任务的回报已经发出去收不回，邮件分拣是后台对话。
+  - `regenerate.no_turn`：还没有用户消息。`regenerate.running` / `regenerate.waiting`：在跑、在等确认或回答。
+  - `regenerate.not_typed`：那一轮不是用户亲手发的话开头的（回报、转来的信）。
+  - `regenerate.not_last`：调用时给的消息不在最后一轮。这一版只给最后一轮；中间轮要让后面的对话作废，接口上留了 `messageId`，以后放开不用改签名。
+  - **这一轮动过手**：这一轮执行过的工具调用里有没声明只读（`Tool.readOnly`）的，就不给，因为重跑等于再做一遍。按工具调用记录的状态算：`denied`（用户拒绝）、`unavailable`（没这个工具）没执行，不算；工具已不在注册表里的按动过算。`write_file` / `edit_file` 是 `regenerate.wrote_files`，`spawn_agent` / `message_agent` 是 `regenerate.spawned`，其余是 `regenerate.acted`。内置的只读工具：read_file、list_dir、glob、grep、web_fetch、web_search、search_history、read_history、find_history_files、list_projects、open_project、project_status、list_work_objects、ask_user、suggest_actions、wait_agents；插件的 MCP 工具声明了 `readOnlyHint` 才算只读。
+- **允许的边角**：上一轮出错或被停（哪怕一个字都没回）也能重新生成，等于真正的重试；一个字都没回的那一轮不算一版。这一轮里的插话跟旧版一起收进旧版。新的一版又失败时旧版不恢复，可以再点一次。
+- **跑的是什么**：照常开一次运行，用的是会话**当时**的模型、批准方式和工具表（中途换过模型就用新的），附件用当初存下的内容块。用量、可追溯记录照记，旧版花掉的不退。不调 `onUserMessage`（用户没有新写话，标题、回传都不动）。
+- **事件先后**：`messages.superseded { anchorId, messageIds, version }` → `status thinking` → `session.updated`（running） → 照常的流式和 `message` → 最后的 `status` → `session.updated` → `run.end`。返回值 `{ ok: true, anchorId, version: 新版的号 }`；不行时 `{ ok: false, code, hint }`，什么都没改。
+- **压缩**：内核现在没有压缩，旧回答不会进摘要。以后加压缩时，摘要盖住的轮次不给重新生成（加一个码），否则模型还会从摘要里看到旧版。
 
 ## 12. 花费、限流与并行
 
@@ -269,7 +286,7 @@
 |---|---|
 | `header` | `schema: "spica.usage-log"`、`schemaVersion: 1`、`exportedAt`、`filter {projectId, from, to}`、`counts` |
 | `session` | `id`、`parentId`、`role`、`title`、`status`、`templateId`、`projectId`、`providerId`、`model`、`locale`、`createdAt`、`updatedAt`（不导系统提示词） |
-| `message` | `id`、`sessionId`、`seq`、`role`、`kind`、`author`（user / parent / child / runtime / plugin / agent）、`createdAt`、`text`、`content`（text / thinking / tool_use / tool_result，不含签名和私有块）、`meta` |
+| `message` | `id`、`sessionId`、`seq`、`role`、`kind`、`author`（user / parent / child / runtime / plugin / agent）、`createdAt`、`text`、`content`（text / thinking / tool_use / tool_result，不含签名和私有块）、`meta`、`superseded`（被重新生成换掉的旧版：`{at, of, version}`，现行的是 null） |
 | `tool_call` | `sessionId`、`messageId`、`id`、`name`、`input`、`status`（ok / error / denied / pending / unavailable）、`result`、`startedAt`、`endedAt`、`durationMs` |
 | `trace` | TraceRecord 原样 |
 | `relay` | `id`、`parentId`、`childId`、`kind`（user_message / decision / report）、`text`、`createdAt` |
@@ -286,7 +303,7 @@
 |---|---|
 | `meta` | 库结构版本 |
 | `sessions` | 会话记录（含配置 JSON） |
-| `messages` | 消息（内容块、meta、providerExtras） |
+| `messages` | 消息（内容块、meta、providerExtras；`superseded` 列记被重新生成换掉的旧版，老库打开时加上这一列） |
 | `tool_calls` | 每个工具调用：参数、状态、结果、卡片（文件卡、建议、守卫标记）、起止时间。主键是（会话、助手消息、调用 id），因为有的网关会在不同轮次重复用 `call_0` |
 | `queued` | 排队中的插话和回传备注 |
 | `pending` | 等确认 / 等回答 |

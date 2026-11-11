@@ -153,6 +153,7 @@ export class ProcessBackend implements AgentBackend {
   confirm: AgentApi['confirm'] = (...a) => this.call('confirm', ...a);
   renameSession: AgentApi['renameSession'] = (...a) => this.call('renameSession', ...a);
   resume: AgentApi['resume'] = (...a) => this.call('resume', ...a);
+  regenerate: NonNullable<AgentApi['regenerate']> = (...a) => this.call('regenerate', ...a);
   abort: AgentApi['abort'] = (...a) => this.call('abort', ...a);
   exportTraces: AgentApi['exportTraces'] = (...a) => this.call('exportTraces', ...a);
   getTopSession: NonNullable<AgentApi['getTopSession']> = () => this.call('getTopSession');

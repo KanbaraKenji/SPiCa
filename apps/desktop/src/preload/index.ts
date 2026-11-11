@@ -31,6 +31,7 @@ const agent: AgentApi = {
   answer: call('answer'),
   renameSession: call('renameSession'),
   resume: call('resume'),
+  regenerate: call('regenerate'),
   confirm: call('confirm'),
   abort: call('abort'),
   exportTraces: call('exportTraces'),

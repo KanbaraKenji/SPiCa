@@ -10,6 +10,7 @@ function runtimeOf(ctx: ToolContext): Runtime {
 }
 
 export const askUserTool: Tool = {
+  readOnly: true,
   spec: {
     name: 'ask_user',
     description:
@@ -89,6 +90,7 @@ export const messageAgentTool: Tool = {
 };
 
 export const waitAgentsTool: Tool = {
+  readOnly: true,
   spec: {
     name: 'wait_agents',
     description:
@@ -159,6 +161,7 @@ export const recordDecisionTool: Tool = {
 };
 
 export const suggestActionsTool: Tool = {
+  readOnly: true,
   spec: {
     name: 'suggest_actions',
     description:

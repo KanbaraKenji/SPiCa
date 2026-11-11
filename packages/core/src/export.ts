@@ -144,6 +144,8 @@ function messageRecord(m: Message): Record<string, unknown> {
     text: m.content.map((b) => (b.type === 'text' ? b.text : '')).join('') || null,
     content: m.content.flatMap(block),
     meta: Object.keys(meta).length ? meta : null,
+    // replaced by a regenerated answer (old answer `version` to the user message `of`); null when current
+    superseded: m.superseded ?? null,
   };
 }
 

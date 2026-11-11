@@ -138,3 +138,73 @@ describe('both stores keep the same', () => {
     store.close();
   });
 });
+
+describe('replaced answers (regenerate)', () => {
+  const msg = (n: number, kind: Message['kind'] = 'assistant'): Message => ({
+    id: `msg_r${n}`,
+    sessionId: 'ses_1',
+    seq: n,
+    role: kind === 'user' ? 'user' : 'assistant',
+    kind,
+    content: [{ type: 'text', text: `t${n}` }],
+    createdAt: `2026-01-01T00:00:0${n}.000+08:00`,
+  });
+  const mark = { at: '2026-01-01T00:01:00.000+08:00', of: 'msg_r1', version: 1 };
+  const both = (): [string, Store][] => [
+    ['memory', new MemoryStore()],
+    ['sqlite', new SqliteStore(join(dir, 'r.db'))],
+  ];
+
+  it('marks only the given messages of that session, all together, and both stores read the same back', () => {
+    const results = both().map(([, s]) => {
+      s.upsertSession(session);
+      for (const m of [msg(1, 'user'), msg(2), msg(3, 'tool_results'), msg(4)]) s.appendMessage(m);
+      s.supersedeMessages('ses_1', ['msg_r2', 'msg_r3', 'msg_unknown'], mark);
+      s.supersedeMessages('ses_other', ['msg_r4'], mark); // another session's id: nothing happens
+      const out = s.listMessages('ses_1');
+      s.close();
+      return out;
+    });
+    expect(results[1]).toEqual(results[0]);
+    expect(results[0]!.map((m) => m.superseded ?? null)).toEqual([null, mark, mark, null]);
+  });
+
+  it('the mark survives reopening, a later version gets its own number, and updateMessage keeps it', () => {
+    const path = join(dir, 'r2.db');
+    const s = new SqliteStore(path);
+    s.upsertSession(session);
+    for (const m of [msg(1, 'user'), msg(2), msg(3)]) s.appendMessage(m);
+    s.supersedeMessages('ses_1', ['msg_r2'], mark);
+    s.supersedeMessages('ses_1', ['msg_r3'], { ...mark, version: 2 });
+    s.close();
+    const again = new SqliteStore(path);
+    const [, two, three] = again.listMessages('ses_1');
+    expect(two!.superseded).toEqual(mark);
+    expect(three!.superseded).toEqual({ ...mark, version: 2 });
+    again.updateMessage({ ...two!, content: [{ type: 'text', text: 'changed' }] });
+    expect(again.listMessages('ses_1')[1]).toMatchObject({ content: [{ type: 'text', text: 'changed' }], superseded: mark });
+    again.close();
+  });
+
+  it('a database from an earlier build gets the column: its messages are all current, and can be marked', () => {
+    const path = join(dir, 'old-messages.db');
+    const db = new DatabaseSync(path);
+    db.exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO meta VALUES ('schema_version', '1');");
+    db.exec(`CREATE TABLE messages (
+      id TEXT PRIMARY KEY, session_id TEXT NOT NULL, seq INTEGER NOT NULL, role TEXT NOT NULL, kind TEXT NOT NULL,
+      content TEXT NOT NULL, meta TEXT, provider_extras TEXT, created_at TEXT NOT NULL)`);
+    const ins = db.prepare('INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    ins.run('msg_o1', 'ses_1', 1, 'user', 'user', JSON.stringify([{ type: 'text', text: 'q' }]), null, null, 't1');
+    ins.run('msg_o2', 'ses_1', 2, 'assistant', 'assistant', JSON.stringify([{ type: 'text', text: 'a' }]), null, null, 't2');
+    db.close();
+    // read-only (the export script on a database the app has not opened yet): no column, nothing replaced
+    const ro = new SqliteStore(path, { readOnly: true });
+    expect(ro.listMessages('ses_1').map((m) => m.superseded)).toEqual([undefined, undefined]);
+    ro.close();
+    const store = new SqliteStore(path);
+    expect(store.listMessages('ses_1').map((m) => 'superseded' in m)).toEqual([false, false]);
+    store.supersedeMessages('ses_1', ['msg_o2'], { ...mark, of: 'msg_o1' });
+    expect(store.listMessages('ses_1')[1]!.superseded).toEqual({ ...mark, of: 'msg_o1' });
+    store.close();
+  });
+});

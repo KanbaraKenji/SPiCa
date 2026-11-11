@@ -40,8 +40,10 @@ describe('context use', () => {
     expect(s.info()).toMatchObject({ contextTokens: null, contextWindow: null, approvalMode: 'manual' });
     gw.enqueue({ toolCalls: [{ id: 'l', name: 'list_dir', args: {} }], usage: { input: 1000, output: 50 } }, { text: 'ok', usage: { input: 1300, output: 20 } });
     await s.send('look around').done;
-    const updates = events.flatMap((e) => (e.type === 'session.updated' && e.sessionId === s.id ? [e.info.contextTokens] : []));
-    expect(updates).toEqual([1050, 1320]); // once per model call
+    const mine = events.filter((e) => e.sessionId === s.id);
+    // once per model call, right after its usage (the others carry the regenerate button state)
+    const updates = mine.flatMap((e, i) => (e.type === 'session.updated' && mine[i - 1]?.type === 'usage' ? [e.info.contextTokens] : []));
+    expect(updates).toEqual([1050, 1320]);
     expect(s.info().contextTokens).toBe(1320);
     s.setModel('fake-openai', 'big-model');
     expect(s.info().contextWindow).toBe(200_000);

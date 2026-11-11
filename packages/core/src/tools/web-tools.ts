@@ -20,6 +20,7 @@ export interface WebFetchOptions {
 export function createWebFetchTool(opts: WebFetchOptions = {}): Tool {
   const doFetch = opts.fetchImpl ?? netFetch;
   return {
+    readOnly: true,
     untrusted: 'web',
     targetUrl: (input) => (typeof input.url === 'string' ? input.url : undefined),
     spec: {
@@ -238,6 +239,7 @@ function pick(obj: unknown, path: string): unknown {
  */
 export function createWebSearchTool(backend: SearchBackend): Tool {
   return {
+    readOnly: true,
     untrusted: 'web',
     spec: {
       name: 'web_search',

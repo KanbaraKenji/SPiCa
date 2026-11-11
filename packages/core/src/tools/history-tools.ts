@@ -25,6 +25,11 @@ import type { Runtime } from '../runtime.ts';
 import type { SessionRecord } from '../store/types.ts';
 import type { Tool, ToolContext } from './types.ts';
 
+/** A conversation's messages without the answers a regenerate replaced: the model must not see those again. */
+function currentMessages(rt: Runtime, sessionId: string): Message[] {
+  return rt.store.listMessages(sessionId).filter((m) => !m.superseded);
+}
+
 /** Caps: conversations per search, characters per piece, messages per read, characters per message, files per list. */
 export const HISTORY_LIMITS = {
   maxHits: 20,
@@ -123,7 +128,7 @@ function named(rt: Runtime, id: string): Named {
   const project = rec?.config.projectId ? rt.store.getProject(rec.config.projectId) : undefined;
   let name = rec?.title?.trim() || null;
   if (!name) {
-    const first = rt.store.listMessages(id).find((m) => m.role === 'user' && m.kind === 'user');
+    const first = currentMessages(rt, id).find((m) => m.role === 'user' && m.kind === 'user');
     const line = first?.content.map((b) => (b.type === 'text' ? b.text : '')).join('').split('\n')[0]?.trim();
     name = line ? cap(line, 40) : null;
   }
@@ -225,6 +230,7 @@ function emitCard(ctx: ToolContext, rt: Runtime, card: HistoryCardMeta): void {
 const REF_PROPERTY = { type: 'integer', description: 'The number of a result from search_history or find_history_files, like 3 for [3].' };
 
 export const searchHistoryTool: Tool = {
+  readOnly: true,
   spec: {
     name: 'search_history',
     description:
@@ -268,7 +274,7 @@ export const searchHistoryTool: Tool = {
       if (project && rec.config.projectId !== project.id) continue;
       if (!searchable(rt, rec)) continue;
       const hits: Hit[] = [];
-      for (const m of rt.store.listMessages(rec.id)) {
+      for (const m of currentMessages(rt, rec.id)) {
         const by = saidBy(m);
         if (!by) continue;
         const text = saidText(m);
@@ -324,6 +330,7 @@ export const searchHistoryTool: Tool = {
 };
 
 export const readHistoryTool: Tool = {
+  readOnly: true,
   spec: {
     name: 'read_history',
     description:
@@ -348,7 +355,7 @@ export const readHistoryTool: Tool = {
     if (!t) return { content: 'Give the number of a search_history or find_history_files result (ref).', isError: true };
     if ('error' in t) return { content: t.error, isError: true };
     const id = t.sessionId;
-    const all = rt.store.listMessages(id).filter((m) => textOf(m));
+    const all = currentMessages(rt, id).filter((m) => textOf(m));
     const count = Math.min(HISTORY_LIMITS.maxMessages, Math.max(1, Number(input.count) || 10));
     let start = Math.max(0, all.length - count);
     const around = typeof input.around === 'number' ? input.around : t.seq;
@@ -375,6 +382,7 @@ export const readHistoryTool: Tool = {
 };
 
 export const findFilesTool: Tool = {
+  readOnly: true,
   spec: {
     name: 'find_history_files',
     description:
@@ -408,7 +416,7 @@ export const findFilesTool: Tool = {
     const verbs: Record<string, How> = { read_file: 'read', write_file: 'written', edit_file: 'edited' };
     for (const rec of rt.store.listSessions()) {
       if (only ? rec.id !== only : !searchable(rt, rec)) continue;
-      const messages = rt.store.listMessages(rec.id);
+      const messages = currentMessages(rt, rec.id);
       const seqOf = new Map(messages.map((m) => [m.id, m.seq]));
       for (const m of messages) {
         for (const a of m.meta?.attachments ?? []) add(a.path, a.image ? 'attached_image' : 'attached', rec.id, m.seq, m.createdAt);

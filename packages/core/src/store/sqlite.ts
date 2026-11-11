@@ -3,7 +3,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
-import type { MailItem, Message, ProjectInfo, ProjectLogEntry, TraceRecord, WorkObject } from '../types.ts';
+import type { MailItem, Message, ProjectInfo, ProjectLogEntry, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const SCHEMA_VERSION = 1;
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS sessions_parent ON sessions(parent_id);
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY, session_id TEXT NOT NULL, seq INTEGER NOT NULL, role TEXT NOT NULL, kind TEXT NOT NULL,
-  content TEXT NOT NULL, meta TEXT, provider_extras TEXT, created_at TEXT NOT NULL
+  content TEXT NOT NULL, meta TEXT, provider_extras TEXT, created_at TEXT NOT NULL, superseded TEXT
 );
 CREATE INDEX IF NOT EXISTS messages_session ON messages(session_id, seq);
 CREATE TABLE IF NOT EXISTS tool_calls (
@@ -105,6 +105,8 @@ export class SqliteStore implements Store {
 
   /** Additive migrations for databases created by earlier builds. */
   #migrate(): void {
+    const msgCols = (this.#db.prepare('PRAGMA table_info(messages)').all() as Row[]).map((r) => String(r.name));
+    if (!msgCols.includes('superseded')) this.#db.exec('ALTER TABLE messages ADD COLUMN superseded TEXT');
     const cols = (this.#db.prepare('PRAGMA table_info(tool_calls)').all() as Row[]).map((r) => String(r.name));
     if (!cols.includes('cards')) this.#db.exec('ALTER TABLE tool_calls ADD COLUMN cards TEXT');
     const logCols = (this.#db.prepare('PRAGMA table_info(project_log)').all() as Row[]).map((r) => String(r.name));
@@ -144,20 +146,44 @@ export class SqliteStore implements Store {
   // messages -------------------------------------------------------------------
   appendMessage(m: Message): void {
     this.#q(
-      `INSERT INTO messages (id, session_id, seq, role, kind, content, meta, provider_extras, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(m.id, m.sessionId, m.seq, m.role, m.kind, json(m.content), m.meta ? json(m.meta) : null, m.providerExtras ? json(m.providerExtras) : null, m.createdAt);
-  }
-  updateMessage(m: Message): void {
-    this.#q('UPDATE messages SET content = ?, meta = ?, provider_extras = ? WHERE id = ?').run(
+      `INSERT INTO messages (id, session_id, seq, role, kind, content, meta, provider_extras, created_at, superseded)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      m.id,
+      m.sessionId,
+      m.seq,
+      m.role,
+      m.kind,
       json(m.content),
       m.meta ? json(m.meta) : null,
       m.providerExtras ? json(m.providerExtras) : null,
+      m.createdAt,
+      m.superseded ? json(m.superseded) : null,
+    );
+  }
+  updateMessage(m: Message): void {
+    this.#q('UPDATE messages SET content = ?, meta = ?, provider_extras = ?, superseded = ? WHERE id = ?').run(
+      json(m.content),
+      m.meta ? json(m.meta) : null,
+      m.providerExtras ? json(m.providerExtras) : null,
+      m.superseded ? json(m.superseded) : null,
       m.id,
     );
   }
   listMessages(sessionId: string): Message[] {
     return (this.#q('SELECT * FROM messages WHERE session_id = ? ORDER BY seq').all(sessionId) as Row[]).map(toMessage);
+  }
+  supersedeMessages(sessionId: string, ids: readonly string[], mark: SupersededMark): void {
+    const stmt = this.#q('UPDATE messages SET superseded = ? WHERE session_id = ? AND id = ?');
+    const value = json(mark);
+    this.#db.exec('BEGIN');
+    try {
+      for (const id of ids) stmt.run(value, sessionId, id);
+      this.#db.exec('COMMIT');
+    } catch (err) {
+      this.#db.exec('ROLLBACK');
+      throw err;
+    }
   }
 
   // tool calls -----------------------------------------------------------------
@@ -395,6 +421,8 @@ function toProject(r: Row): ProjectInfo {
 function toMessage(r: Row): Message {
   const meta = opt<Record<string, unknown>>(r.meta);
   const extras = opt<Record<string, unknown>>(r.provider_extras);
+  // a read-only database from an earlier build has no superseded column (undefined then)
+  const superseded = opt<SupersededMark>(r.superseded);
   return {
     id: String(r.id),
     sessionId: String(r.session_id),
@@ -405,5 +433,6 @@ function toMessage(r: Row): Message {
     createdAt: String(r.created_at),
     ...(meta ? { meta } : {}),
     ...(extras ? { providerExtras: extras } : {}),
+    ...(superseded ? { superseded } : {}),
   };
 }

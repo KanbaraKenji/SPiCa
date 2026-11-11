@@ -36,6 +36,7 @@ const API: Record<keyof AgentApi, true> = {
   setApprovalMode: true,
   setSessionCwd: true,
   resume: true,
+  regenerate: true,
   confirm: true,
   abort: true,
   exportTraces: true,
@@ -203,5 +204,51 @@ describe('FakeBackend', () => {
     expect(r.started).toBe(false);
     if (req.type === 'confirm.request') await b.confirm(chat.id, req.callId, true);
     await until((e) => e.type === 'steer.applied');
+  });
+
+  it('regenerates the last answer like the core: the old one becomes version 1, the new one streams in', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    expect((await b.getSession(chat.id))?.regenerate).toMatchObject({ ok: false, code: 'regenerate.no_turn' });
+    await b.send(chat.id, '看看资料');
+    await until((e) => e.type === 'run.end');
+    const first = await b.getMessages(chat.id);
+    const anchorId = first[0]!.id;
+    expect((await b.getSession(chat.id))?.regenerate).toEqual({ anchorId, ok: true });
+    const from = events.length;
+    expect(await b.regenerate(chat.id, first.at(-1)!.id)).toEqual({ ok: true, anchorId, version: 2 });
+    await until((e) => e.type === 'run.end' && e.seq > events[from]!.seq);
+    const types = events.slice(from).map((e) => e.type);
+    expect(types[0]).toBe('messages.superseded');
+    expect(types.at(-1)).toBe('run.end');
+    // current: the question and the new answer; with superseded: the old answer too, as version 1
+    const now = await b.getMessages(chat.id);
+    expect(now.filter((m) => m.superseded)).toEqual([]);
+    expect(JSON.stringify(now)).toContain('第 2 版');
+    const all = await b.getMessages(chat.id, { superseded: true });
+    expect(all.filter((m) => m.superseded).map((m) => m.superseded!.version)).toEqual(first.slice(1).map(() => 1));
+    expect(new Set(all.map((m) => m.seq)).size).toBe(all.length); // numbers are not reused
+    // an earlier answer is not the last round any more
+    await b.send(chat.id, '再看看');
+    await until((e) => e.type === 'run.end' && e.seq > events.at(-2)!.seq);
+    expect(await b.regenerate(chat.id, now.at(-1)!.id)).toMatchObject({ ok: false, code: 'regenerate.not_last' });
+  });
+
+  it('a round that sent mail cannot be regenerated; a declined one can; project managers cannot', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { events, until } = collect(b);
+    for (const approved of [true, false]) {
+      const chat = await b.createSession({});
+      const from = events.length;
+      await b.send(chat.id, '把通知发送给项目组');
+      const req = await until((e) => e.type === 'confirm.request' && e.sessionId === chat.id && e.seq > (events[from - 1]?.seq ?? 0));
+      if (req.type !== 'confirm.request') throw new Error('unreachable');
+      expect((await b.getSession(chat.id))?.regenerate).toMatchObject({ ok: false, code: 'regenerate.waiting' });
+      await b.confirm(chat.id, req.callId, approved);
+      await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+      expect((await b.getSession(chat.id))?.regenerate).toMatchObject(approved ? { ok: false, code: 'regenerate.acted' } : { ok: true });
+    }
+    expect((await b.getSession(SEED_IDS.pm))?.regenerate).toMatchObject({ ok: false, code: 'regenerate.role' });
   });
 });
