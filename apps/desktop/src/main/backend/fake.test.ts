@@ -57,6 +57,9 @@ const API: Record<keyof AgentApi, true> = {
   forgetMemory: true,
   clearMemories: true,
   undoMemory: true,
+  tidyMemories: true,
+  listMemoryTidies: true,
+  undoMemoryTidy: true,
 };
 
 describe('FakeBackend', () => {
@@ -108,6 +111,31 @@ describe('FakeBackend', () => {
     await b.send(chat.id, '记住：报告用 A4 竖版。');
     await until(() => runs() > n);
     expect(await b.listMemories()).toEqual([]);
+    b.dispose();
+  });
+
+  it('memory: 立即整理 merges notes that say the same and adds a standing remark not noted; the tidy or one change can be undone', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    const runs = () => events.filter((e) => e.type === 'run.end').length;
+    for (const t of ['记住：回答尽量简短，先给结论。', '记住：回答简短一点，先给结论。', '我一般晚上十一点后不看消息。']) {
+      const n = runs();
+      await b.send(chat.id, t);
+      await until(() => runs() > n);
+    }
+    expect(await b.tidyMemories()).toMatchObject({ started: true, id: 1 });
+    const run = (await until((e) => e.type === 'memory.tidy' && e.run.status === 'done')) as Extract<CoreEvent, { type: 'memory.tidy' }>;
+    expect(run.run.changes.map((c) => c.action)).toEqual(['merged', 'added']);
+    expect((await b.listMemories()).map((m) => m.text)).toEqual(['回答尽量简短，先给结论。', '我一般晚上十一点后不看消息。']);
+    expect((await b.undoMemoryTidy(1, 1))!.changes[1]!.undone).toBe(true);
+    await b.undoMemoryTidy(1);
+    expect((await b.listMemories()).map((m) => m.text)).toEqual(['回答尽量简短，先给结论。', '回答简短一点，先给结论。']);
+    // nothing new since: the next one changes nothing
+    await b.tidyMemories();
+    expect(((await until((e) => e.type === 'memory.tidy' && e.run.id === 2 && e.run.status === 'done')) as Extract<CoreEvent, { type: 'memory.tidy' }>).run.changes).toEqual([]);
+    b.setMemoryEnabled(false);
+    expect(await b.tidyMemories()).toEqual({ started: false, reason: 'off' });
     b.dispose();
   });
 

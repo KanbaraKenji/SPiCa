@@ -114,6 +114,15 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async undoMemory(id) {
       return rt.memory.undo(Number(id));
     },
+    async tidyMemories() {
+      return rt.memory.tidy('user');
+    },
+    async listMemoryTidies(limit) {
+      return rt.memory.tidies(limit ?? 5);
+    },
+    async undoMemoryTidy(id, change) {
+      return rt.memory.undoTidy(Number(id), change === undefined || change === null ? undefined : Number(change));
+    },
     async listMail(filter) {
       return rt.store.listMail(filter ?? {});
     },

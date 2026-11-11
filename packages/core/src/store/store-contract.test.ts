@@ -149,6 +149,26 @@ describe('both stores keep the same', () => {
     reopened.close();
   });
 
+  it('memory tidies and where the next one starts: numbered by the store, newest first, kept across reopening', () => {
+    const path = join(dir, 'db', 'tidy.db');
+    mkdirSync(join(dir, 'db'), { recursive: true });
+    const sql = new SqliteStore(path);
+    const each = (s: Store) => {
+      const a = s.putMemoryTidy({ id: 0, by: 'user', status: 'running', startedAt: '2026-01-01T00:00:00.000+08:00', sessions: 2, messages: 5, changes: [], refused: 0 });
+      s.putMemoryTidy({ ...a, status: 'done', until: '2026-01-01T00:00:00.000+08:00', changes: [], refused: 1, costUsd: 0.001 });
+      s.putMemoryTidy({ id: 0, by: 'auto', status: 'failed', startedAt: '2026-01-02T00:00:00.000+08:00', sessions: 0, messages: 0, changes: [], refused: 0, error: 'x' });
+      s.setMemoryCursor('user', '2026-01-01T00:00:00.000+08:00');
+      return { list: s.listMemoryTidies(), one: s.getMemoryTidy(a.id), none: s.getMemoryTidy(9), cursor: s.getMemoryCursor('user'), other: s.getMemoryCursor('other') };
+    };
+    const mem = each(new MemoryStore());
+    expect(each(sql)).toEqual(mem);
+    expect(mem.list.map((t) => [t.id, t.status])).toEqual([[2, 'failed'], [1, 'done']]);
+    sql.close();
+    const reopened = new SqliteStore(path);
+    expect([reopened.listMemoryTidies(), reopened.getMemoryCursor('user')]).toEqual([mem.list, mem.cursor]);
+    reopened.close();
+  });
+
   it('a project without an unread count reads back as 0 from both', () => {
     const { unread: _u, ...bare } = project;
     void _u;

@@ -175,6 +175,9 @@ export class ProcessBackend implements AgentBackend {
   forgetMemory: NonNullable<AgentApi['forgetMemory']> = (...a) => this.call('forgetMemory', ...a);
   clearMemories: NonNullable<AgentApi['clearMemories']> = (...a) => this.call('clearMemories', ...a);
   undoMemory: NonNullable<AgentApi['undoMemory']> = (...a) => this.call('undoMemory', ...a);
+  tidyMemories: NonNullable<AgentApi['tidyMemories']> = (...a) => this.call('tidyMemories', ...a);
+  listMemoryTidies: NonNullable<AgentApi['listMemoryTidies']> = (...a) => this.call('listMemoryTidies', ...a);
+  undoMemoryTidy: NonNullable<AgentApi['undoMemoryTidy']> = (...a) => this.call('undoMemoryTidy', ...a);
 
   onEvent(listener: (event: CoreEvent) => void): () => void {
     this.#listeners.add(listener);

@@ -98,6 +98,8 @@ export interface ShellSettings {
   localConnect: boolean;
   /** 设置 › 记忆 › 启用记忆: the assistant's conversations read and save the user's memory. On by default. */
   memory: boolean;
+  /** 设置 › 记忆 › 自动整理: tidy the memory when the app is idle. Off by default. */
+  memoryAutoTidy: boolean;
   /** 外观 › 代码: the code colours for light skins and for dark ones (shared/code-themes.ts ids). */
   codeTheme: { light: string; dark: string };
   /** 外观 › 代码 › 字号: the font size of code blocks in answers, in px (shared/code-themes.ts CODE_SIZES). */
@@ -125,6 +127,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   network: DEFAULT_NETWORK,
   localConnect: false,
   memory: true,
+  memoryAutoTidy: false,
   codeTheme: { light: SKIN_CODE_THEME, dark: SKIN_CODE_THEME },
   codeSize: DEFAULT_CODE_SIZE,
   textSize: 'md',
@@ -215,11 +218,12 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   };
   const localConnect = v.localConnect === true;
   const memory = v.memory !== false;
+  const memoryAutoTidy = v.memoryAutoTidy === true;
   const ct = (v.codeTheme && typeof v.codeTheme === 'object' ? v.codeTheme : {}) as Record<string, unknown>;
   const codeTheme = { light: codeThemeId(ct.light, 'light'), dark: codeThemeId(ct.dark, 'dark') };
   const previewers = sanitizePreviewers(v.previewers);
   const textSize: TextSize = v.textSize === 'sm' || v.textSize === 'lg' ? v.textSize : 'md';
-  return { codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
+  return { codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

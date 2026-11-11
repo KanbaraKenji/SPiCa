@@ -5940,3 +5940,17 @@ button.ctx-row:hover {
   margin-left: 8px;
   white-space: nowrap;
 }
+
+/* 设置 › 记忆 › 整理: the latest tidy and its changes. */
+.memory-tidy-last {
+  margin: 0 0 8px;
+}
+
+.memory-tidy-list {
+  gap: 4px;
+}
+
+.memory-tidy-change {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

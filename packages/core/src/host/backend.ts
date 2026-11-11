@@ -117,7 +117,7 @@ export interface BackendConfig {
   /** Spica's MCP service changing settings (spica_save_model, ...): whether each change waits for the user's confirmation. Default false (applied and shown in the conversations). */
   agentSettings?: { confirmChanges?: boolean };
   /** The user's memory across the assistant's conversations (RuntimeOptions.memory). Default on. */
-  memory?: { enabled?: boolean };
+  memory?: { enabled?: boolean; autoTidy?: boolean };
 }
 
 /** What attachBackend() of an extension module returns. */
@@ -262,7 +262,7 @@ export interface SettingsPatch {
   network?: NetworkConfig;
   agentSettings?: BackendConfig['agentSettings'];
   /** The memory switch in the settings (off: conversations neither read nor save it; what is saved stays). */
-  memory?: { enabled: boolean };
+  memory?: { enabled?: boolean; autoTidy?: boolean };
   /** A newer model catalog (from the update source); used when valid and newer than the built-in one. */
   catalog?: unknown;
 }
@@ -339,7 +339,8 @@ export function applySettings(runtime: Runtime, patch: SettingsPatch): { changed
     changed.push('catalog');
   }
   if (patch.memory) {
-    runtime.memory.setEnabled(patch.memory.enabled !== false);
+    if (patch.memory.enabled !== undefined) runtime.memory.setEnabled(patch.memory.enabled);
+    if (patch.memory.autoTidy !== undefined) runtime.memory.setAutoTidy(patch.memory.autoTidy);
     changed.push('memory');
   }
   if (patch.agentSettings?.confirmChanges !== undefined) {
@@ -445,6 +446,8 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
     }
     // off unless the user turned it on: polling sends mail content to the configured model
     if (cfg.mail?.enabled === true) runtime.mail.start();
+    // 自动整理 checks now and then (it only tidies when switched on)
+    runtime.memory.startAutoTidy();
     const mcpTools = extensions.flatMap((e) => e.mcpTools ?? []);
     let mcpHttp: McpHttpServer | undefined;
     if (cfg.mcpHttp) {

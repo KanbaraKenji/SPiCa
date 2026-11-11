@@ -1,7 +1,7 @@
 // 设置 › 记忆: the switch, what the assistant remembers (newest first), adding one, editing, deleting
 // and clearing all. Items are never deleted in the core: a deleted one is kept as forgotten.
 import { useState } from 'react';
-import type { MemoryCardMeta, MemoryItem, MemoryRefusal } from '@spica/protocol';
+import type { MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyChange, MemoryTidyRun } from '@spica/protocol';
 import { Switch } from './Switch';
 import { Icon } from '../ui/Icon';
 import { ConfirmDialog } from '../ui/Dialog';
@@ -27,6 +27,28 @@ export interface MemoryProps {
   titleOf(sessionId: string): string | undefined;
   /** Opens the conversation at the user's message the item was saved from. */
   onOpenSession(id: string, seq?: number): void;
+  /** 整理 (absent when the core does not tidy). */
+  tidy?: MemoryTidy | undefined;
+}
+
+export interface MemoryTidy {
+  /** The latest tidies, newest first; null until loaded. */
+  runs: MemoryTidyRun[] | null;
+  /** 自动整理 (a shell setting). */
+  auto: boolean;
+  onAuto(on: boolean): void;
+  /** 立即整理: a problem in words, or null when it started. */
+  run(): Promise<string | null>;
+  /** 撤销 one change (index) or the whole tidy. */
+  undo(id: number, change?: number): Promise<unknown>;
+}
+
+const CHANGE_WORD: Record<MemoryTidyChange['action'], string> = { added: '新增', rewritten: '改写', merged: '合并', forgotten: '删除' };
+
+/** A change of a tidy in words: 新增 / 改写 / 合并 / 删除 and the note, what it replaced in brackets; 已撤销 once taken back. */
+export function tidyChangeText(c: MemoryTidyChange): string {
+  const was = c.previous?.length ? `（原${c.previous.map((p) => `「${p.text}」`).join('')}）` : '';
+  return c.undone ? `已撤销：${c.item.text}` : `${CHANGE_WORD[c.action]}：${c.item.text}${was}`;
 }
 
 const REFUSED: Record<MemoryRefusal['refused'], string> = {
@@ -42,7 +64,7 @@ export function shownMemories(items: MemoryItem[] | null): MemoryItem[] {
   return (items ?? []).filter((m) => m.status === 'active').sort((a, b) => b.id - a.id);
 }
 
-export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession }: MemoryProps) {
+export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession, tidy }: MemoryProps) {
   const list = shownMemories(items);
   // One form open at a time: 'new' (添加) or the item being edited.
   const [open, setOpen] = useState<number | 'new' | null>(null);
@@ -57,7 +79,16 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession 
           </div>
           <Switch on={enabled} label="启用记忆" onChange={onEnabled} />
         </div>
+        {tidy ? (
+          <div className="setting-row">
+            <div className="setting-text">
+              <span className="setting-title">自动整理</span>
+            </div>
+            <Switch on={tidy.auto} label="自动整理" disabled={!enabled} onChange={tidy.onAuto} />
+          </div>
+        ) : null}
       </div>
+      {tidy ? <TidyGroup tidy={tidy} enabled={enabled} /> : null}
       <div className="settings-group">
         <div className="memory-head">
           <h3 className="settings-subheading">已记住</h3>
@@ -116,6 +147,56 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession 
         />
       ) : null}
     </section>
+  );
+}
+
+function TidyGroup({ tidy, enabled }: { tidy: MemoryTidy; enabled: boolean }) {
+  const [problem, setProblem] = useState<string | null>(null);
+  const last = tidy.runs?.[0];
+  const running = last?.status === 'running';
+  const open = last?.status === 'done' ? last.changes.some((c) => !c.undone) : false;
+  return (
+    <div className="settings-group">
+      <div className="memory-head">
+        <h3 className="settings-subheading">整理</h3>
+        <div className="memory-head-actions">
+          {open && last ? (
+            <button type="button" className="btn btn-small" onClick={() => void tidy.undo(last.id)}>
+              全部撤销
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="btn btn-small"
+            disabled={!enabled || running}
+            onClick={() => {
+              setProblem(null);
+              void tidy.run().then(setProblem);
+            }}
+          >
+            {running ? '整理中' : '立即整理'}
+          </button>
+        </div>
+      </div>
+      <p className="settings-hint memory-tidy-last">
+        {last && last.status !== 'running' ? `最近一次：${timeOf(last.endedAt ?? last.startedAt)} · ${last.status === 'failed' ? '整理失败' : last.changes.length ? `${last.changes.length} 条改动` : '无改动'}` : last ? '整理中' : '最近一次：—'}
+      </p>
+      {problem ? <span className="field-error" role="alert">{problem}</span> : null}
+      {last?.status === 'done' && last.changes.length ? (
+        <ul className="memory-list memory-tidy-list">
+          {last.changes.map((c, i) => (
+            <li key={`${last.id}-${i}`} className="turn-note memory-note memory-tidy-change">
+              {tidyChangeText(c)}
+              {c.undone ? null : (
+                <button type="button" className="text-btn memory-undo" onClick={() => void tidy.undo(last.id, i)}>
+                  撤销
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

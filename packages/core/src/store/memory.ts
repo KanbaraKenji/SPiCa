@@ -1,5 +1,5 @@
 // In-memory store (tests and ephemeral runs).
-import type { MailItem, MemoryItem, Message, ProjectInfo, ProjectLogEntry, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { MailItem, MemoryItem, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -29,6 +29,29 @@ export class MemoryStore implements Store {
   getMemory(id: number): MemoryItem | undefined {
     const m = this.#memories.get(id);
     return m && clone(m);
+  }
+  readonly #tidies = new Map<number, MemoryTidyRun>();
+  #tidySeq = 0;
+  readonly #cursors = new Map<string, string>();
+
+  putMemoryTidy(t: MemoryTidyRun): MemoryTidyRun {
+    const run = t.id ? clone(t) : { ...clone(t), id: ++this.#tidySeq };
+    this.#tidySeq = Math.max(this.#tidySeq, run.id);
+    this.#tidies.set(run.id, run);
+    return clone(run);
+  }
+  getMemoryTidy(id: number): MemoryTidyRun | undefined {
+    const t = this.#tidies.get(id);
+    return t && clone(t);
+  }
+  listMemoryTidies(limit = 20): MemoryTidyRun[] {
+    return [...this.#tidies.values()].sort((a, b) => b.id - a.id).slice(0, limit).map(clone);
+  }
+  getMemoryCursor(owner: string): string | undefined {
+    return this.#cursors.get(owner);
+  }
+  setMemoryCursor(owner: string, at: string): void {
+    this.#cursors.set(owner, at);
   }
   listMemories(owner: string, opts: { all?: boolean } = {}): MemoryItem[] {
     return [...this.#memories.values()]

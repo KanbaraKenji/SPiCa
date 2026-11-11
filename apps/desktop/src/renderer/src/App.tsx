@@ -353,6 +353,15 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           setFound({ sessionId: id, ...(seq !== undefined ? { seq } : {}), from: null, reached: false });
           openSession(id);
         },
+        tidy: agent.hasTidy
+          ? {
+              runs: state.tidies,
+              auto: settings.memoryAutoTidy,
+              onAuto: (on: boolean) => shell.update({ memoryAutoTidy: on }),
+              run: () => agent.tidyMemories(),
+              undo: (id: number, change?: number) => agent.undoMemoryTidy(id, change),
+            }
+          : undefined,
       }
     : undefined;
   const memoryLines = useMemo(() => ({ items: state.memories, undo: (id: number) => agent.undoMemory(id) }), [state.memories, agent]);

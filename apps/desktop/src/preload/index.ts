@@ -54,6 +54,9 @@ const agent: AgentApi = {
   forgetMemory: call('forgetMemory'),
   clearMemories: call('clearMemories'),
   undoMemory: call('undoMemory'),
+  tidyMemories: call('tidyMemories'),
+  listMemoryTidies: call('listMemoryTidies'),
+  undoMemoryTidy: call('undoMemoryTidy'),
 };
 
 const bridge: DesktopBridge = {

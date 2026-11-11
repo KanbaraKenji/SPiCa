@@ -1,7 +1,7 @@
 // Storage contract. The database is the source of truth for sessions,
 // messages, tool calls, pending questions, relays and traceable records.
 // Synchronous on purpose: the default backend is embedded SQLite.
-import type { AgentRole, MailItem, MemoryItem, Message, PendingItem, ProjectInfo, ProjectLogEntry, SessionStatus, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { AgentRole, MailItem, MemoryItem, MemoryTidyRun, Message, PendingItem, ProjectInfo, ProjectLogEntry, SessionStatus, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 
 export type SenderDecision = { decision: 'project'; projectId: string } | { decision: 'ignore' };
 
@@ -150,6 +150,14 @@ export interface Store {
   getMemory(id: number): MemoryItem | undefined;
   /** Oldest first; only the active ones unless `all`. */
   listMemories(owner: string, opts?: { all?: boolean }): MemoryItem[];
+  /** Tidies of the memory. `id` 0 means a new one (numbered by the store). */
+  putMemoryTidy(t: MemoryTidyRun): MemoryTidyRun;
+  getMemoryTidy(id: number): MemoryTidyRun | undefined;
+  /** Newest first. */
+  listMemoryTidies(limit?: number): MemoryTidyRun[];
+  /** Where the next tidy starts reading (ISO time), per owner; kept across restarts. */
+  getMemoryCursor(owner: string): string | undefined;
+  setMemoryCursor(owner: string, at: string): void;
 
   appendTrace(rec: TraceRecord): void;
   listTraces(filter?: { sessionId?: string }): TraceRecord[];

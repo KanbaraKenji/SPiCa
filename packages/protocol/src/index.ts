@@ -601,6 +601,8 @@ export type CoreEventBody =
    * deleted, restored or cleared items in the settings (no callId).
    */
   | { type: 'memory.changed'; callId?: string; card: MemoryCardMeta }
+  /** A tidy of the memory started, ended or failed (on no conversation). */
+  | { type: 'memory.tidy'; run: MemoryTidyRun }
   /** Tokens and estimated cost of one model call. */
   | { type: 'usage'; usage: Usage; costUsd: number; providerId: string; model: string }
   /** Running totals; `warning` when a total passes the warning threshold of its limit. */
@@ -727,6 +729,8 @@ export interface MemoryItem {
   status: 'active' | 'replaced' | 'forgotten';
   /** Forgotten by the undo on its "Saved: …" line (not deleted in the settings or cleared). */
   undone?: boolean;
+  /** The tidy (MemoryTidyRun.id) that made this item, or replaced or forgot it. */
+  tidyId?: number;
   /** The item this one took the place of / the item that took this one's place. */
   replaces?: number;
   replacedBy?: number;
@@ -740,6 +744,41 @@ export interface MemoryItem {
   updatedAt: string;
 }
 
+/**
+ * One tidy of the memory: outside any conversation, the default model reads the items and what the user typed in
+ * the assistant's conversations since the last tidy, and proposes changes; the runtime keeps those that pass its
+ * checks. Applied at once; the whole tidy or one change can be undone.
+ */
+export interface MemoryTidyRun {
+  id: number;
+  /** auto: started when the app was idle; user: 立即整理. */
+  by: 'auto' | 'user';
+  status: 'running' | 'done' | 'failed';
+  startedAt: string;
+  endedAt?: string;
+  /** Conversations and messages read. */
+  sessions: number;
+  messages: number;
+  /** The newest message read (the next tidy reads what came after it). */
+  until?: string;
+  changes: MemoryTidyChange[];
+  /** Changes the model proposed that the checks refused (not applied). */
+  refused: number;
+  costUsd?: number;
+  error?: string;
+}
+
+export interface MemoryTidyChange {
+  /** added: missed until now; rewritten: said differently later; merged: several items said the same; forgotten: no longer true. */
+  action: 'added' | 'rewritten' | 'merged' | 'forgotten';
+  /** The item made (added, rewritten, merged) or forgotten. */
+  item: MemoryItem;
+  /** rewritten / merged: the items it took the place of. */
+  previous?: MemoryItem[];
+  /** Taken back (撤销). */
+  undone?: boolean;
+}
+
 /** Why an item typed in the settings was not kept: nothing typed, longer than 200 characters, or it looks like a key, password or ID number. */
 export interface MemoryRefusal {
   refused: 'empty' | 'too_long' | 'secret';
@@ -747,7 +786,7 @@ export interface MemoryRefusal {
 
 /** What changed in the user's memory (event `memory.changed`, kept in `MessageMeta.memoryCards` when a tool did it). */
 export interface MemoryCardMeta {
-  action: 'saved' | 'replaced' | 'forgotten' | 'edited' | 'restored' | 'cleared' | 'undone';
+  action: 'saved' | 'replaced' | 'forgotten' | 'edited' | 'restored' | 'cleared' | 'undone' | 'tidied';
   /** The item saved, edited, forgotten or restored (absent for cleared). */
   item?: MemoryItem;
   /** replaced: the item that was taken out. */
@@ -1011,6 +1050,12 @@ export interface AgentApi {
   clearMemories?(): Promise<number>;
   /** The undo on a "Saved: …" line: a save is taken back, a replacement gives way to the old item, a forgotten item returns. */
   undoMemory?(id: number): Promise<MemoryCardMeta | undefined>;
+  /** 立即整理: starts a tidy and returns at once (memory.tidy events follow); refused while one runs, memory is off or no model is set. */
+  tidyMemories?(): Promise<{ started: true; id: number } | { started: false; reason: 'running' | 'off' | 'no_model' }>;
+  /** The latest tidies, newest first. */
+  listMemoryTidies?(limit?: number): Promise<MemoryTidyRun[]>;
+  /** 撤销 a whole tidy, or one of its changes (index in changes); what still stands is taken back. */
+  undoMemoryTidy?(id: number, change?: number): Promise<MemoryTidyRun | undefined>;
   /**
    * A plugin's view (its iframe) calls one of that plugin's own tools: no model, nothing in any session's history.
    * Irreversible tools (and tools a hook wants confirmed) ask the user first: confirm.request with cause 'plugin_view'

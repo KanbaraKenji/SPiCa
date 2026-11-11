@@ -17,6 +17,7 @@ import type {
   MemoryCardMeta,
   MemoryItem,
   MemoryRefusal,
+  MemoryTidyRun,
   Message,
   MessageKind,
   SourceCardMeta,
@@ -165,6 +166,7 @@ export class FakeBackend implements AgentBackend {
   #projects = new Map<string, ProjectInfo>();
   readonly #mail: FakeMailbox;
   readonly #memory: FakeMemory;
+  #tidying = false;
 
   constructor(options: FakeBackendOptions = {}) {
     this.#speed = options.speed ?? 1;
@@ -600,6 +602,35 @@ export class FakeBackend implements AgentBackend {
 
   async undoMemory(id: number): Promise<MemoryCardMeta | undefined> {
     return this.#memory.undo(id);
+  }
+
+  async tidyMemories(): Promise<{ started: true; id: number } | { started: false; reason: 'running' | 'off' | 'no_model' }> {
+    if (this.#tidying) return { started: false, reason: 'running' };
+    if (!this.#memory.enabled) return { started: false, reason: 'off' };
+    const id = (this.#memory.tidies(1)[0]?.id ?? 0) + 1;
+    const at = isoAt(this.#now());
+    this.#tidying = true;
+    this.#emit('', { type: 'memory.tidy', run: { id, by: 'user', status: 'running', startedAt: at, sessions: 0, messages: 0, changes: [], refused: 0 } });
+    // the core reads what the user typed in the assistant's conversations (not projects) and asks the model
+    const typed = [...this.#sessions.values()]
+      .filter((s) => s.role === 'top' && !s.projectId && !s.parentId)
+      .flatMap((s) => (this.#messages.get(s.id) ?? []).filter((m) => m.role === 'user' && m.kind === 'user').map((m) => ({ sessionId: s.id, seq: m.seq, at: m.createdAt, text: textOf(m) })));
+    setTimeout(() => {
+      this.#tidying = false;
+      const run = this.#memory.tidy(typed);
+      if ('status' in run) this.#emit('', { type: 'memory.tidy', run });
+    }, 1500 * this.#speed);
+    return { started: true, id };
+  }
+
+  async listMemoryTidies(limit?: number): Promise<MemoryTidyRun[]> {
+    return this.#memory.tidies(limit);
+  }
+
+  async undoMemoryTidy(id: number, change?: number): Promise<MemoryTidyRun | undefined> {
+    const run = this.#memory.undoTidy(id, change);
+    if (run) this.#emit('', { type: 'memory.tidy', run });
+    return run;
   }
 
   async deleteSession(sessionId: string): Promise<void> {

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import type { MemoryItem } from '@spica/protocol';
-import { Memory, MEMORY_CHARS, type MemoryProps } from './Memory';
+import type { MemoryItem, MemoryTidyRun } from '@spica/protocol';
+import { Memory, MEMORY_CHARS, type MemoryProps, type MemoryTidy } from './Memory';
 
 afterEach(cleanup);
 
@@ -111,5 +111,64 @@ describe('设置 › 记忆', () => {
     expect(screen.getByText('清除全部 4 条记忆？')).toBeTruthy();
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '全部清除' }));
     expect(p.api.clear).toHaveBeenCalled();
+  });
+});
+
+describe('设置 › 记忆 › 整理', () => {
+  const run = (over: Partial<MemoryTidyRun> = {}): MemoryTidyRun => ({
+    id: 7,
+    by: 'user',
+    status: 'done',
+    startedAt: '2026-11-12T03:10:00+08:00',
+    endedAt: '2026-11-12T03:10:20+08:00',
+    sessions: 3,
+    messages: 12,
+    refused: 1,
+    changes: [
+      { action: 'rewritten', item: item(10, { text: '数据处理主要用 Julia' }), previous: [item(1, { text: '数据处理主要用 Python' })] },
+      { action: 'merged', item: item(11, { text: '回答简短' }), previous: [item(2, { text: '喜欢简短回答' }), item(3, { text: '回答要短一点' })] },
+      { action: 'added', item: item(12, { text: '负责开单系统' }), undone: true },
+      { action: 'forgotten', item: item(4, { text: '周报每周五发' }) },
+    ],
+    ...over,
+  });
+  const tidyOf = (over: Partial<MemoryTidy> = {}): MemoryTidy => ({ runs: [run()], auto: false, onAuto: vi.fn(), run: vi.fn(async () => null), undo: vi.fn(async () => undefined), ...over });
+
+  it('自动整理 is a switch; the latest tidy says when and what it changed, each change with 撤销, and 全部撤销', () => {
+    const tidy = tidyOf();
+    setup({ tidy });
+    fireEvent.click(screen.getByRole('switch', { name: '自动整理' }));
+    expect(tidy.onAuto).toHaveBeenCalledWith(true);
+    expect(document.querySelector('.memory-tidy-last')!.textContent).toMatch(/^最近一次：.+ · 4 条改动$/);
+    expect([...document.querySelectorAll('.memory-tidy-change')].map((e) => e.textContent)).toEqual([
+      '改写：数据处理主要用 Julia（原「数据处理主要用 Python」）撤销',
+      '合并：回答简短（原「喜欢简短回答」「回答要短一点」）撤销',
+      '已撤销：负责开单系统',
+      '删除：周报每周五发撤销',
+    ]);
+    fireEvent.click(screen.getAllByRole('button', { name: '撤销' })[2]!);
+    expect(tidy.undo).toHaveBeenCalledWith(7, 3);
+    fireEvent.click(screen.getByRole('button', { name: '全部撤销' }));
+    expect(tidy.undo).toHaveBeenCalledWith(7);
+  });
+
+  it('立即整理 starts one; while it runs the button says 整理中; a refusal is said; none yet: —', async () => {
+    const tidy = tidyOf({ runs: [], run: vi.fn(async () => '还没有配置模型') });
+    setup({ tidy });
+    expect(document.querySelector('.memory-tidy-last')!.textContent).toBe('最近一次：—');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '立即整理' })));
+    expect(tidy.run).toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toBe('还没有配置模型');
+    cleanup();
+    setup({ tidy: tidyOf({ runs: [run({ status: 'running', changes: [] })] }) });
+    expect((screen.getByRole('button', { name: '整理中' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: '全部撤销' })).toBeNull();
+  });
+
+  it('memory off: neither 自动整理 nor 立即整理 can be used; a failed tidy says so', () => {
+    setup({ enabled: false, tidy: tidyOf({ runs: [run({ status: 'failed', changes: [] })] }) });
+    expect((screen.getByRole('switch', { name: '自动整理' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '立即整理' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(document.querySelector('.memory-tidy-last')!.textContent).toMatch(/· 整理失败$/);
   });
 });

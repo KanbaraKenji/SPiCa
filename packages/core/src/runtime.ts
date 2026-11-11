@@ -59,7 +59,7 @@ export interface RuntimeOptions {
    */
   redactions?: readonly (string | undefined)[];
   /** The user's memory across the assistant's conversations (memory.ts). Default on. */
-  memory?: { enabled?: boolean };
+  memory?: { enabled?: boolean; autoTidy?: boolean };
   /** Defaults for new sessions. */
   /**
    * strongModel: the model for heavy work (plugins asking for a strong model get it), on the default
@@ -1322,6 +1322,7 @@ export class Runtime implements RuntimeInternals {
   async close(): Promise<void> {
     this.#shutdown.abort();
     this.mail.stop();
+    this.memory.close();
     await Promise.all([...this.#sessions.values()].map((s) => s.shutdown()));
     await Promise.all([...this.#mcp.values()].map((m) => m.disconnect()));
     this.store.close();

@@ -22,10 +22,11 @@
 import type { Hooks } from './hooks.ts';
 import type { Runtime } from './runtime.ts';
 import type { Session } from './session.ts';
-import type { MemoryCardMeta, MemoryItem, MemoryRefusal, Message } from './types.ts';
+import type { MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyRun, Message } from './types.ts';
 import type { Tool, ToolContext, ToolEnv } from './tools/types.ts';
 import { isoNow } from './events.ts';
 import { redact } from './util.ts';
+import { apply, ask, check, collect, newConversations, parseChanges, TIDY_LIMITS, tidyPrompt, undoChange } from './memory-tidy.ts';
 
 export const MEMORY_LIMITS = {
   /** Characters in one item. */
@@ -93,10 +94,11 @@ export function overlap(text: string, quote: string): number {
   return hit / (a.length - 1);
 }
 
-const typed = (m: Message) => m.role === 'user' && (m.kind === 'user' || m.kind === 'steer') && (m.meta?.author ?? 'user') === 'user';
+/** A message the user typed themself (not a note, a tool result or another agent's words). */
+export const typed = (m: Message) => m.role === 'user' && (m.kind === 'user' || m.kind === 'steer') && (m.meta?.author ?? 'user') === 'user';
 
 /** What the user typed in a message: its text blocks without attached files' text and without fenced outside data. */
-function typedText(m: Message): string {
+export function typedText(m: Message): string {
   const attached = new Set((m.meta?.attachments ?? []).map((a) => a.block).filter((b): b is number => typeof b === 'number'));
   return m.content
     .map((b, i) => (b.type === 'text' && !attached.has(i) ? b.text.replace(/<untrusted_data\b[\s\S]*?(<\/untrusted_data>|$)/g, '') : ''))
@@ -153,6 +155,15 @@ const SENSITIVE =
   /(生病|疾病|病情|患有|确诊|抑郁|焦虑症|怀孕|服药|宗教|信仰|基督|佛教|伊斯兰|穆斯林|政治|政党|党员|选举|性取向|同性恋|性别认同|health condition|diagnos|pregnan|religio|politic|sexual orientation|gender identity)/i;
 const ASKED = /(记住|记下|记一下|别忘|remember|keep in mind|note that)/i;
 
+/** Why a note cannot be kept whoever proposes it (remember, a tidy): empty, too long, a secret, a private matter not asked for. */
+export function noteProblem(text: string, quote: string, secrets: (t: string) => string): string | undefined {
+  if (!text) return 'text is empty';
+  if (text.length > MEMORY_LIMITS.itemChars) return `longer than ${MEMORY_LIMITS.itemChars} characters`;
+  if (looksSecret(text, secrets)) return 'looks like a password, key or ID / account number';
+  if (sensitiveUnasked(text, quote)) return 'a private matter the user did not ask to remember';
+  return undefined;
+}
+
 /** Health, religion, politics and the like: only kept when the user asked in so many words. */
 export function sensitiveUnasked(text: string, quote: string): boolean {
   return SENSITIVE.test(text) && !ASKED.test(quote);
@@ -201,9 +212,121 @@ export class MemoryBook {
   readonly #rt: Runtime;
   #enabled: boolean;
 
-  constructor(rt: Runtime, opts: { enabled?: boolean } = {}) {
+  #autoTidy: boolean;
+  #tidying: { id: number; abort: AbortController } | undefined;
+  #timer: ReturnType<typeof setInterval> | undefined;
+
+  constructor(rt: Runtime, opts: { enabled?: boolean; autoTidy?: boolean } = {}) {
     this.#rt = rt;
     this.#enabled = opts.enabled ?? true;
+    this.#autoTidy = opts.autoTidy ?? false;
+  }
+
+  /** 自动整理 in the settings: tidy when the app is idle (see startAutoTidy). Off by default. */
+  get autoTidy(): boolean {
+    return this.#autoTidy;
+  }
+
+  setAutoTidy(on: boolean): void {
+    this.#autoTidy = on;
+  }
+
+  /**
+   * Tidies the memory now (memory-tidy.ts): returns at once, memory.tidy events follow (running, then done or failed).
+   * Refused while a tidy runs, when memory is off, or with no default model.
+   */
+  tidy(by: MemoryTidyRun['by'] = 'user', owner = USER_OWNER): { started: true; id: number } | { started: false; reason: 'running' | 'off' | 'no_model' } {
+    if (this.#tidying) return { started: false, reason: 'running' };
+    if (!this.#enabled) return { started: false, reason: 'off' };
+    const { providerId, model } = this.#rt.defaults;
+    if (!providerId || !model) return { started: false, reason: 'no_model' };
+    const rt = this.#rt;
+    const since = rt.store.getMemoryCursor(owner);
+    const { fed, sessions } = collect(rt, since);
+    let run = rt.store.putMemoryTidy({ id: 0, by, status: 'running', startedAt: isoNow(), sessions, messages: fed.length, changes: [], refused: 0 });
+    const abort = new AbortController();
+    this.#tidying = { id: run.id, abort };
+    const tell = () => rt.events.emit(rt.eventHost, { type: 'memory.tidy', run });
+    tell();
+    void (async () => {
+      // the caller hears of the end as an event, also when there is nothing to read
+      await Promise.resolve();
+      try {
+        let costUsd = 0;
+        let changes: MemoryTidyRun['changes'] = [];
+        let refused = 0;
+        const items = this.list({ owner });
+        if (fed.length > 0) {
+          const answer = await ask(rt, tidyPrompt(items, fed), abort.signal);
+          costUsd = answer.costUsd;
+          const proposed = parseChanges(answer.text);
+          if (!proposed) throw new Error('the model answer was not the expected JSON');
+          const checked = check(rt, proposed, fed, owner);
+          refused = checked.refused;
+          changes = apply(rt, run, checked.plans, owner);
+        }
+        const until = fed.at(-1)?.at;
+        // the next tidy reads what came after what this one read (a failed one moves nothing)
+        if (until) rt.store.setMemoryCursor(owner, until);
+        run = rt.store.putMemoryTidy({ ...run, status: 'done', endedAt: isoNow(), changes, refused, costUsd, ...(until ? { until } : {}) });
+        if (changes.length) rt.events.emit(rt.eventHost, { type: 'memory.changed', card: { action: 'tidied', count: changes.length } });
+      } catch (err) {
+        run = rt.store.putMemoryTidy({ ...run, status: 'failed', endedAt: isoNow(), error: rt.redact(err instanceof Error ? err.message : String(err)) });
+      } finally {
+        this.#tidying = undefined;
+        tell();
+      }
+    })();
+    return { started: true, id: run.id };
+  }
+
+  /** The latest tidies, newest first. */
+  tidies(limit = 5): MemoryTidyRun[] {
+    return this.#rt.store.listMemoryTidies(limit);
+  }
+
+  /** 撤销 a tidy (every change that still stands) or one of its changes. */
+  undoTidy(id: number, change?: number): MemoryTidyRun | undefined {
+    const run = this.#rt.store.getMemoryTidy(id);
+    if (!run || run.status !== 'done') return undefined;
+    const which = change === undefined ? run.changes.map((_, i) => i).reverse() : [change];
+    const changes = run.changes.map((c) => ({ ...c }));
+    let any = false;
+    for (const i of which) {
+      const c = changes[i];
+      if (c && undoChange(this.#rt, run, c)) {
+        c.undone = true;
+        any = true;
+      }
+    }
+    const saved = this.#rt.store.putMemoryTidy({ ...run, changes });
+    if (any) this.#emit({ action: 'undone' });
+    this.#rt.events.emit(this.#rt.eventHost, { type: 'memory.tidy', run: saved });
+    return saved;
+  }
+
+  /** Checks now and then whether to tidy on its own: 自动整理 on, nothing running, enough new conversations, not in the last day. */
+  startAutoTidy(): void {
+    if (this.#timer) return;
+    this.#timer = setInterval(() => this.tidyIfDue(), TIDY_LIMITS.checkMs);
+    this.#timer.unref?.();
+  }
+
+  /** The automatic check, once (startAutoTidy runs it every few minutes). */
+  tidyIfDue(owner = USER_OWNER): void {
+    if (!this.#autoTidy || !this.#enabled || this.#tidying) return;
+    if (this.#rt.sessions().some((s) => ['queued', 'thinking', 'tool'].includes(s.info().status))) return;
+    const last = this.#rt.store.listMemoryTidies(1)[0];
+    if (last && Date.now() - Date.parse(last.startedAt) < TIDY_LIMITS.everyMs) return;
+    if (newConversations(this.#rt, this.#rt.store.getMemoryCursor(owner)) < TIDY_LIMITS.newSessions) return;
+    this.tidy('auto', owner);
+  }
+
+  /** Stops the automatic check and a tidy that runs (it ends as failed; nothing of it is applied). */
+  close(): void {
+    clearInterval(this.#timer);
+    this.#timer = undefined;
+    this.#tidying?.abort.abort();
   }
 
   /** The switch in the settings: off, nothing is read into conversations and nothing new is saved (what is saved stays). */
@@ -212,6 +335,8 @@ export class MemoryBook {
   }
 
   setEnabled(on: boolean): void {
+    // what was said while it was off is not for a tidy to pick up: the next one reads from now
+    if (on && !this.#enabled) this.#rt.store.setMemoryCursor(USER_OWNER, isoNow());
     this.#enabled = on;
   }
 

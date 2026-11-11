@@ -1,7 +1,7 @@
 // Sessions and transcripts on the renderer side. Everything comes from the
 // backend through `window.spica.agent` and its event stream.
 import { useSyncExternalStore } from 'react';
-import type { AgentApi, ApprovalMode, CoreEvent, MemoryCardMeta, MemoryItem, MemoryRefusal, Message, ProjectInfo, ProjectLogEntry, SessionInfo, SetCwdResult } from '@spica/protocol';
+import type { AgentApi, ApprovalMode, CoreEvent, MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, SessionInfo, SetCwdResult } from '@spica/protocol';
 import { Store } from './external';
 import { applyEvent, EMPTY_TRANSCRIPT, fromHistory, humanError, type Transcript } from './transcript';
 
@@ -25,6 +25,8 @@ export interface AgentView {
   draft: NewChatDraft;
   /** The user's memory with replaced and forgotten items (oldest first); null until loaded or when the core has none. */
   memories: MemoryItem[] | null;
+  /** The latest tidies of the memory, newest first (the first may be running); null until loaded or when the core has none. */
+  tidies: MemoryTidyRun[] | null;
 }
 
 /** What the input box offers before a conversation exists. Empty = the core's defaults. */
@@ -87,7 +89,7 @@ export function cwdErrorText(r: Extract<SetCwdResult, { ok: false }>): string {
 }
 
 export class AgentStore {
-  readonly state = new Store<AgentView>({ sessions: [], loaded: false, activeId: null, transcripts: {}, globalCostUsd: 0, firstLines: {}, projects: [], activity: {}, topId: null, draft: { approvalMode: 'manual' }, memories: null });
+  readonly state = new Store<AgentView>({ sessions: [], loaded: false, activeId: null, transcripts: {}, globalCostUsd: 0, firstLines: {}, projects: [], activity: {}, topId: null, draft: { approvalMode: 'manual' }, memories: null, tidies: null });
   readonly #api: AgentApi;
   #loading = new Set<string>();
 
@@ -106,6 +108,7 @@ export class AgentStore {
   async init(preferredId?: string): Promise<void> {
     void this.#refreshProjects();
     void this.refreshMemories();
+    void this.#refreshTidies();
     if (this.#api.getTopSession) {
       // Projects hang under the core's top-level agent; knowing it lets the sidebar name it.
       void this.#api
@@ -479,6 +482,10 @@ export class AgentStore {
     if (e.type === 'child.spawned' || (e.type === 'status' && !this.state.get().sessions.some((s) => s.id === e.sessionId))) void this.#refreshSessions();
     if (e.type === 'run.end') void this.#reload(e.sessionId);
     if (e.type === 'memory.changed') void this.refreshMemories();
+    if (e.type === 'memory.tidy') {
+      const run = e.run;
+      this.state.set((v) => ({ ...v, tidies: [run, ...(v.tidies ?? []).filter((t) => t.id !== run.id)].sort((a, b) => b.id - a.id) }));
+    }
   }
 
   /** 设置 › 记忆 and the 已记住 lines read the memory from here; every memory.changed reloads it. */
@@ -523,6 +530,38 @@ export class AgentStore {
 
   undoMemory(id: number): Promise<MemoryCardMeta | undefined> {
     return this.#memory(this.#api.undoMemory && ((api) => api.undoMemory!(id)));
+  }
+
+  async #refreshTidies(): Promise<void> {
+    if (!this.#api.listMemoryTidies) return;
+    try {
+      const tidies = await this.#api.listMemoryTidies(5);
+      this.state.set((v) => ({ ...v, tidies }));
+    } catch {
+      // Keep what is shown.
+    }
+  }
+
+  /** 立即整理: the run's events update `tidies`; a refusal (one running, memory off, no model) comes back in words. */
+  async tidyMemories(): Promise<string | null> {
+    if (!this.#api.tidyMemories) return null;
+    try {
+      const r = await this.#api.tidyMemories();
+      if (r.started) return null;
+      return r.reason === 'no_model' ? '还没有配置模型' : r.reason === 'off' ? '记忆已关闭' : null;
+    } catch (err) {
+      return friendlyError(err);
+    }
+  }
+
+  /** 撤销 a tidy (`change` absent) or one of its changes. */
+  undoMemoryTidy(id: number, change?: number): Promise<MemoryTidyRun | undefined> {
+    return this.#memory(this.#api.undoMemoryTidy && ((api) => api.undoMemoryTidy!(id, change)));
+  }
+
+  /** Whether the core tidies the memory. */
+  get hasTidy(): boolean {
+    return !!this.#api.tidyMemories;
   }
 
   /** Whether the core keeps a memory the window can show and change. */

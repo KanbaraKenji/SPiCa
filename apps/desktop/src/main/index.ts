@@ -175,7 +175,7 @@ function backendConfig(): DesktopBackendConfig {
       mail: mailForCore(settings.get().mail),
       network: networkForCore(settings.get().network),
       // 设置 › 记忆 › 启用记忆 (what is saved stays when it is off).
-      memory: { enabled: settings.get().memory },
+      memory: { enabled: settings.get().memory, autoTidy: settings.get().memoryAutoTidy },
       // Development limits (see docs/design/agent-core.md §10): Anthropic 100 USD total, 2 USD per call.
       budget: { perProvider: { anthropic: { globalUsd: 100, perCallUsd: 2 } }, perRunUsd: 1 },
       // Linked into the backend entry; named here as the core expects.
@@ -327,6 +327,9 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'forgetMemory',
   'clearMemories',
   'undoMemory',
+  'tidyMemories',
+  'listMemoryTidies',
+  'undoMemoryTidy',
 ]);
 
 let mainWindow: BrowserWindow | undefined;
@@ -858,6 +861,7 @@ let lastWorkflowsDir = workflowsDir();
 let lastNetwork = JSON.stringify(settings.get().network);
 let lastLocalConnect = settings.get().localConnect;
 let lastMemory = settings.get().memory;
+let lastAutoTidy = settings.get().memoryAutoTidy;
 /** Problems the core reported for the network settings (e.g. a certificate file it cannot read), in words. */
 let networkProblems: string[] = [];
 function networkProblem(raw: string): string {
@@ -870,6 +874,10 @@ settings.onChange((s) => {
     lastMemory = s.memory;
     if (backend instanceof ProcessBackend) void backend.apply({ memory: { enabled: s.memory } }).catch(() => undefined);
     else if (backend instanceof FakeBackend) backend.setMemoryEnabled(s.memory);
+  }
+  if (s.memoryAutoTidy !== lastAutoTidy) {
+    lastAutoTidy = s.memoryAutoTidy;
+    if (backend instanceof ProcessBackend) void backend.apply({ memory: { autoTidy: s.memoryAutoTidy } }).catch(() => undefined);
   }
   if (!(backend instanceof ProcessBackend)) return;
   const mail = JSON.stringify(s.mail);

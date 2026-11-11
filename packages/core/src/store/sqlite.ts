@@ -3,7 +3,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
-import type { MailItem, MemoryItem, Message, ProjectInfo, ProjectLogEntry, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { MailItem, MemoryItem, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const SCHEMA_VERSION = 1;
@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS memories (
   id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, status TEXT NOT NULL, updated_at TEXT NOT NULL, data TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS memories_owner ON memories(owner, status);
+CREATE TABLE IF NOT EXISTS memory_tidies (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, started_at TEXT NOT NULL, data TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS mail_senders (
   address TEXT PRIMARY KEY, project_id TEXT, updated_at TEXT NOT NULL, decision TEXT NOT NULL DEFAULT 'project'
 );
@@ -399,6 +402,30 @@ export class SqliteStore implements Store {
   getMemory(id: number): MemoryItem | undefined {
     const row = this.#q('SELECT data FROM memories WHERE id = ?').get(id) as Row | undefined;
     return row && parse<MemoryItem>(row.data);
+  }
+  putMemoryTidy(t: MemoryTidyRun): MemoryTidyRun {
+    if (!t.id) {
+      const r = this.#q('INSERT INTO memory_tidies (started_at, data) VALUES (?, ?)').run(t.startedAt, '{}');
+      const run = { ...t, id: Number(r.lastInsertRowid) };
+      this.#q('UPDATE memory_tidies SET data = ? WHERE id = ?').run(json(run), run.id);
+      return run;
+    }
+    this.#q('INSERT INTO memory_tidies (id, started_at, data) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data').run(t.id, t.startedAt, json(t));
+    return { ...t };
+  }
+  getMemoryTidy(id: number): MemoryTidyRun | undefined {
+    const row = this.#q('SELECT data FROM memory_tidies WHERE id = ?').get(id) as Row | undefined;
+    return row && parse<MemoryTidyRun>(row.data);
+  }
+  listMemoryTidies(limit = 20): MemoryTidyRun[] {
+    return (this.#q('SELECT data FROM memory_tidies ORDER BY id DESC LIMIT ?').all(limit) as Row[]).map((r) => parse<MemoryTidyRun>(r.data));
+  }
+  getMemoryCursor(owner: string): string | undefined {
+    const row = this.#q('SELECT value FROM meta WHERE key = ?').get(`memory_cursor:${owner}`) as { value: string } | undefined;
+    return row?.value;
+  }
+  setMemoryCursor(owner: string, at: string): void {
+    this.#q('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(`memory_cursor:${owner}`, at);
   }
   listMemories(owner: string, opts: { all?: boolean } = {}): MemoryItem[] {
     const rows = (

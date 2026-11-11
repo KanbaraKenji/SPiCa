@@ -2,7 +2,7 @@
 // never deleted, a replacement and an undo can be taken back), kept in memory.
 // Also how the demo decides what a message asks it to remember, so a demo
 // conversation shows the 已记住 / 已更新 / 已忘记 line.
-import type { CoreEventBody, MemoryCardMeta, MemoryItem, MemoryRefusal } from '@spica/protocol';
+import type { CoreEventBody, MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyChange, MemoryTidyRun } from '@spica/protocol';
 
 const ITEM_CHARS = 200;
 const SECRET = /(密码|口令|密钥|验证码|password|api\s*key|secret)\s*(是|为|:|：|=|is)\s*\S|(?<!\d)(?:\d[ -]?){15,18}\d(?!\d)|\b\d{17}[\dXx]\b/i;
@@ -27,16 +27,101 @@ function overlap(a: string, b: string): number {
 /** What a demo message asks of the memory (undefined: nothing). */
 export type MemoryPlan = { action: 'save'; text: string } | { action: 'replace'; text: string; replaces: number } | { action: 'forget'; id: number };
 
+/** A message the user typed, as the demo's tidy reads it. */
+export interface TypedMessage {
+  sessionId: string;
+  seq: number;
+  at: string;
+  text: string;
+}
+
 export class FakeMemory {
   #items: MemoryItem[] = [];
   #next = 1;
-  enabled = true;
+  #runs: MemoryTidyRun[] = [];
+  #cursor: string | undefined;
+  #enabled = true;
   readonly #now: () => string;
   readonly #emit: (sessionId: string, body: CoreEventBody) => void;
 
   constructor(now: () => string, emit: (sessionId: string, body: CoreEventBody) => void) {
     this.#now = now;
     this.#emit = emit;
+  }
+
+  get enabled(): boolean {
+    return this.#enabled;
+  }
+
+  set enabled(on: boolean) {
+    if (on && !this.#enabled) this.#cursor = this.#now();
+    this.#enabled = on;
+  }
+
+  /**
+   * The demo's tidy (the core asks the default model): notes that share most of their words are merged, and a
+   * standing remark not yet noted (以后 / 习惯 / 一般 / 每周 …) is added. Applied as one group that can be undone.
+   */
+  tidy(messages: TypedMessage[]): MemoryTidyRun | { off: true } {
+    if (!this.#enabled) return { off: true };
+    const fresh = messages.filter((m) => !this.#cursor || m.at > this.#cursor).sort((a, b) => a.at.localeCompare(b.at));
+    const id = (this.#runs[0]?.id ?? 0) + 1;
+    const now = this.#now();
+    const changes: MemoryTidyChange[] = [];
+    const active = this.list();
+    const unmerged = this.#runs.flatMap((r) => r.changes).filter((c) => c.action === 'merged' && c.undone).map((c) => (c.previous ?? []).map((p) => p.id));
+    const pair = active
+      .flatMap((a, i) => active.slice(i + 1).map((b) => [a, b] as const))
+      .find(([a, b]) => overlap(a.text, b.text) >= 0.3 && !unmerged.some((u) => u.includes(a.id) && u.includes(b.id)));
+    if (pair) {
+      const [a, b] = pair;
+      const short = a.text.length <= b.text.length ? a : b;
+      const item = this.#put({ ...short, id: this.#next++, quote: `${a.quote} / ${b.quote}`, replaces: b.id, tidyId: id, createdAt: now, updatedAt: now });
+      const previous = [a, b].map((m) => this.#put({ ...m, status: 'replaced', replacedBy: item.id, tidyId: id, updatedAt: now }));
+      changes.push({ action: 'merged', item, previous });
+    }
+    for (const m of fresh) {
+      if (changes.filter((c) => c.action === 'added').length >= 3) break;
+      if (!/以后|习惯|一般|每周|总是/.test(m.text) || /记住|别记|忘掉/.test(m.text) || SECRET.test(m.text)) continue;
+      if (this.#items.some((x) => (x.sessionId === m.sessionId && x.seq === m.seq) || overlap(m.text, x.text) >= 0.5)) continue;
+      const text = m.text.replace(/^(跟你说一下|对了)[，,：:\s]*/, '').slice(0, ITEM_CHARS);
+      changes.push({ action: 'added', item: this.#put({ id: this.#next++, owner: 'user', text, quote: m.text, status: 'active', sessionId: m.sessionId, seq: m.seq, by: 'assistant', tidyId: id, createdAt: now, updatedAt: now }) });
+    }
+    const until = fresh.at(-1)?.at;
+    if (until) this.#cursor = until;
+    const run: MemoryTidyRun = { id, by: 'user', status: 'done', startedAt: now, endedAt: now, sessions: new Set(fresh.map((m) => m.sessionId)).size, messages: fresh.length, changes, refused: 0, costUsd: 0.0004, ...(until ? { until } : {}) };
+    this.#runs.unshift(run);
+    if (changes.length) this.#changed({ action: 'tidied', count: changes.length });
+    return structuredClone(run);
+  }
+
+  tidies(limit = 5): MemoryTidyRun[] {
+    return structuredClone(this.#runs.slice(0, limit));
+  }
+
+  /** 撤销 a tidy or one of its changes: only what still stands. */
+  undoTidy(id: number, change?: number): MemoryTidyRun | undefined {
+    const run = this.#runs.find((r) => r.id === id);
+    if (!run) return undefined;
+    const now = this.#now();
+    let any = false;
+    for (const i of change === undefined ? run.changes.map((_, n) => n).reverse() : [change]) {
+      const c = run.changes[i];
+      const cur = c && this.#get(c.item.id);
+      if (!c || c.undone || !cur || cur.status !== 'active') continue;
+      this.#put({ ...cur, status: 'forgotten', undone: true, by: 'user', updatedAt: now });
+      for (const p of c.previous ?? []) {
+        const old = this.#get(p.id);
+        if (!old || old.status !== 'replaced' || old.replacedBy !== cur.id) continue;
+        const { replacedBy: _r, ...rest } = old;
+        void _r;
+        this.#put({ ...rest, status: 'active', updatedAt: now });
+      }
+      c.undone = true;
+      any = true;
+    }
+    if (any) this.#changed({ action: 'undone' });
+    return structuredClone(run);
   }
 
   list(opts: { all?: boolean } = {}): MemoryItem[] {
@@ -140,7 +225,7 @@ export class FakeMemory {
 
   /** What a message in the demo asks: 「…别记了」 forgets the closest item, 「改用…」 replaces it, 「记住…」「以后…」 saves. */
   plan(message: string): MemoryPlan | undefined {
-    if (!this.enabled) return undefined;
+    if (!this.#enabled) return undefined;
     const t = message.trim();
     const closest = () =>
       this.list()
