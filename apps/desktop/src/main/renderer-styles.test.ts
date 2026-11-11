@@ -130,11 +130,13 @@ describe('settings › 插件 list texts', () => {
 });
 
 describe('the sidebar in a short window', () => {
-  it('is the panel’s height, not its content’s: the list scrolls, the top, the plugin pages and 设置 keep their place', () => {
+  it('is the panel’s height, not its content’s: the list scrolls with 新对话 and 收件箱, the plugin pages and 设置 keep their place', () => {
     expect(block('.sidebar')).toContain('min-height: 0');
     expect(block('.sidebar-scroll')).toContain('overflow-y: auto');
     expect(block('.sidebar-scroll')).toContain('min-height: 0');
-    for (const kept of ['.sidebar-top', '.sidebar-bottom', '.side-plugins']) expect(block(kept)).toContain('flex: none');
+    for (const kept of ['.sidebar-bottom', '.side-plugins']) expect(block(kept)).toContain('flex: none');
+    // 新对话 and 收件箱 sit inside the scroller, so their rows keep the same inset as before (no jump).
+    expect(block('.sidebar-scroll > .sidebar-top')).toContain('padding: 4px 0 6px');
   });
 });
 

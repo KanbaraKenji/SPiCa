@@ -462,6 +462,11 @@ a:hover {
   padding: 4px 8px 6px;
 }
 
+/* In the scrolling part the scroller's own side padding is already there. */
+.sidebar-scroll > .sidebar-top {
+  padding: 4px 0 6px;
+}
+
 .sidebar-bottom {
   flex: none;
   padding: 6px 8px 8px;

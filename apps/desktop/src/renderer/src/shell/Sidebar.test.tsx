@@ -352,6 +352,21 @@ describe('对话 / 项目 at the top', () => {
     expect(before(screen.getByRole('button', { name: '收件箱' }), screen.getByRole('tabpanel'))).toBe(true);
   });
 
+  it('新对话 and 收件箱 scroll with the list (a short window scrolls them away); the tabs, the plugin pages and 设置 stay', () => {
+    const pages = [{ key: 'p/v', title: '笔记', open: false, onOpen: vi.fn() }];
+    for (const compact of [false, true]) {
+      const { unmount } = render(<Sidebar {...props} compact={compact} pluginPages={pages} />);
+      const scroller = document.querySelector('.sidebar-scroll')!;
+      for (const name of ['新对话', /^收件箱/]) expect(scroller.contains(screen.getByRole('button', { name })), `${String(name)} compact=${compact}`).toBe(true);
+      for (const name of ['设置', '笔记']) expect(scroller.contains(screen.getByRole('button', { name })), `${name} compact=${compact}`).toBe(false);
+      if (!compact) {
+        expect(scroller.contains(screen.getByRole('tabpanel'))).toBe(true);
+        expect(scroller.contains(screen.getByRole('tablist'))).toBe(false);
+      }
+      unmount();
+    }
+  });
+
   it('collapsed, the column keeps an empty space where the tabs are, so the icons do not move when the sidebar opens over it', () => {
     render(<Sidebar {...props} compact />);
     const nav = screen.getByRole('navigation');

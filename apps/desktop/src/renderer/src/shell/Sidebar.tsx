@@ -273,6 +273,8 @@ export function Sidebar({
       <nav className="sidebar is-rail" aria-label="对话">
         {/* As tall as the tabs of the full sidebar, so the icons below sit where their rows do. */}
         <div className="side-tabs-space" aria-hidden />
+        {/* In the scrolling part, like the full sidebar's rows: a window too short for all of them scrolls them away. */}
+        <div className="sidebar-scroll">
         <div className="sidebar-top">
           <button type="button" className="side-action" onClick={onNewChat} aria-label="新对话" title="新对话">
             <Icon name="newChat" />
@@ -284,7 +286,7 @@ export function Sidebar({
             </button>
           ) : null}
         </div>
-        <div className="sidebar-scroll" />
+        </div>
         {pluginPages.length ? (
           <section className="tree-section side-plugins" aria-label="插件">
             <h2 className="tree-heading rail-sep" aria-hidden>
@@ -316,6 +318,8 @@ export function Sidebar({
           </button>
         ))}
       </div>
+      {/* 新对话 and 收件箱 scroll with the list (a short window scrolls them away); the tabs and 设置 stay. */}
+      <div className="sidebar-scroll">
       <div className="sidebar-top">
         <button type="button" className="side-action" onClick={onNewChat}>
           <Icon name="newChat" />
@@ -333,7 +337,7 @@ export function Sidebar({
           </button>
         ) : null}
       </div>
-      <div className="sidebar-scroll" role="tabpanel">
+      <div role="tabpanel">
         {listTab === 'chats' ? (
           // Every conversation outside a project, newest first; the assistant speaks in all of them.
           <section className="tree-section">
@@ -354,6 +358,7 @@ export function Sidebar({
             ) : null}
           </section>
         )}
+      </div>
       </div>
       {pluginPages.length ? (
         <section className="tree-section side-plugins" aria-label="插件">
