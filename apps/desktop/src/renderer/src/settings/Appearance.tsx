@@ -4,6 +4,7 @@ import { BUILTIN_SKINS, DARK_SKIN, deriveTokens, LIGHT_SKIN, normalizeHex, type 
 import { DEFAULT_ZOOM, stepZoom, ZOOM_STEPS, zoomLabel } from '../../../shared/zoom';
 import type { SettingsPatch, ShellSettings, SplashMode } from '../../../shared/settings';
 import { ConfirmDialog } from '../ui/Dialog';
+import { CodeThemes } from './CodeThemes';
 import { Icon } from '../ui/Icon';
 
 const SPLASH_OPTIONS: { mode: SplashMode; label: string }[] = [
@@ -196,6 +197,11 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
             </div>
           </div>
         ) : null}
+      </div>
+
+      <div className="settings-group">
+        <h3 className="settings-subheading">代码</h3>
+        <CodeThemes value={settings.codeTheme} onChange={(codeTheme) => onChange({ codeTheme })} />
       </div>
 
       <div className="settings-group">

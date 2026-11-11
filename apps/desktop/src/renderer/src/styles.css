@@ -1081,7 +1081,8 @@ button.tree-twisty:hover {
 .md pre {
   padding: 12px 14px;
   border-radius: var(--radius-m);
-  background: var(--spica-surface);
+  background: var(--code-bg, var(--spica-surface));
+  color: var(--code-fg, inherit);
   border: 1px solid var(--spica-border);
   overflow-x: auto;
 }
@@ -1120,7 +1121,8 @@ button.tree-twisty:hover {
 .md .code-block {
   margin: 0 0 10px;
   border-radius: var(--radius-m);
-  background: var(--spica-surface);
+  background: var(--code-bg, var(--spica-surface));
+  color: var(--code-fg, inherit);
   border: 1px solid var(--spica-border);
   overflow: hidden;
 }
@@ -1153,49 +1155,138 @@ button.tree-twisty:hover {
   background: none;
 }
 
-/* Code colours (chat/highlight.ts), from the skin: they follow light, dark and custom skins. */
+/* Code colours (chat/highlight.ts). A code theme (设置 › 外观 › 代码, shared/code-themes.ts) sets these variables on
+   the page; without one (跟随皮肤) they are the skin's colours, so they follow light, dark and custom skins. */
+:root {
+  --hl-comment: var(--spica-muted);
+  --hl-keyword: var(--spica-accent-text);
+  --hl-type: var(--spica-accent-text);
+  --hl-string: var(--spica-success);
+  --hl-number: var(--spica-warning);
+  --hl-variable: var(--spica-warning);
+  --hl-attr: var(--spica-warning);
+  --hl-title: inherit;
+  --hl-addition: var(--spica-success);
+  --hl-addition-bg: color-mix(in srgb, var(--spica-success) 16%, transparent);
+  --hl-deletion: var(--spica-danger);
+  --hl-deletion-bg: var(--spica-danger-soft);
+}
+
 pre .hl-comment,
 pre .hl-quote,
 pre .hl-meta {
-  color: var(--spica-muted);
+  color: var(--hl-comment);
 }
 
 pre .hl-keyword,
+pre .hl-selector-tag {
+  color: var(--hl-keyword);
+}
+
 pre .hl-built_in,
 pre .hl-type,
 pre .hl-tag,
 pre .hl-name,
-pre .hl-selector-tag,
 pre .hl-selector-class,
 pre .hl-selector-id {
-  color: var(--spica-accent-text);
+  color: var(--hl-type);
 }
 
 pre .hl-string,
 pre .hl-regexp,
-pre .hl-addition,
 pre .hl-template-tag {
-  color: var(--spica-success);
+  color: var(--hl-string);
 }
 
 pre .hl-number,
 pre .hl-literal,
 pre .hl-symbol,
-pre .hl-bullet,
-pre .hl-variable,
-pre .hl-template-variable,
-pre .hl-attr,
-pre .hl-attribute {
-  color: var(--spica-warning);
+pre .hl-bullet {
+  color: var(--hl-number);
 }
 
-pre .hl-deletion {
-  color: var(--spica-danger);
+pre .hl-variable,
+pre .hl-template-variable {
+  color: var(--hl-variable);
+}
+
+pre .hl-attr,
+pre .hl-attribute {
+  color: var(--hl-attr);
 }
 
 pre .hl-title,
 pre .hl-section {
+  color: var(--hl-title);
   font-weight: 600;
+}
+
+pre .hl-addition {
+  color: var(--hl-addition);
+  background: var(--hl-addition-bg);
+}
+
+pre .hl-deletion {
+  color: var(--hl-deletion);
+  background: var(--hl-deletion-bg);
+}
+
+/* 设置 › 外观 › 代码: a picker and a preview for light skins, the same for dark ones, side by side. */
+.code-themes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.code-theme-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.code-theme-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.code-theme-pick .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.code-theme-preview {
+  margin: 0;
+  padding: 10px 0;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--spica-border);
+  background: var(--code-bg, var(--spica-surface));
+  color: var(--code-fg, var(--spica-ink));
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+.code-theme-preview > div {
+  padding: 0 12px 0 6px;
+  white-space: pre;
+}
+
+.code-theme-preview .preview-sign {
+  display: inline-block;
+  width: 14px;
+  color: var(--hl-comment);
+}
+
+.code-theme-preview .preview-del {
+  background: var(--hl-deletion-bg);
+}
+
+.code-theme-preview .preview-add {
+  background: var(--hl-addition-bg);
 }
 
 /* A table: 复制 and 导出 CSV in a row above its right end. */
@@ -1511,7 +1602,8 @@ pre .hl-section {
 /* The command as written, in a box of its own that scrolls; $ quieter. */
 .tool-command {
   border-radius: var(--radius-s);
-  background: var(--spica-surface);
+  background: var(--code-bg, var(--spica-surface));
+  color: var(--code-fg, inherit);
   border: 1px solid var(--spica-border);
   overflow: hidden;
 }

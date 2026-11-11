@@ -1,4 +1,5 @@
 // Shell settings persisted by the main process (userData/settings.json).
+import { codeThemeId, SKIN_CODE_THEME } from './code-themes';
 import { clampZoom, DEFAULT_ZOOM } from './zoom';
 import { BUILTIN_SKINS, normalizeHex, type Skin, type SkinChoice } from './skin';
 import { parseNotices, type Notice } from './updates';
@@ -91,6 +92,8 @@ export interface ShellSettings {
   network: NetworkPrefs;
   /** 允许本机脚本连接 Spica（开发者）: MCP over HTTP on 127.0.0.1 with a token file. Off by default. */
   localConnect: boolean;
+  /** 外观 › 代码: the code colours for light skins and for dark ones (shared/code-themes.ts ids). */
+  codeTheme: { light: string; dark: string };
 }
 
 export const DEFAULT_SETTINGS: ShellSettings = {
@@ -109,6 +112,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   pinnedProjects: [],
   network: DEFAULT_NETWORK,
   localConnect: false,
+  codeTheme: { light: SKIN_CODE_THEME, dark: SKIN_CODE_THEME },
   doneNews: [],
 };
 
@@ -194,7 +198,9 @@ export function sanitizeSettings(value: unknown): ShellSettings {
     useSystemCa: typeof nw.useSystemCa === 'boolean' ? nw.useSystemCa : true,
   };
   const localConnect = v.localConnect === true;
-  return { localConnect, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
+  const ct = (v.codeTheme && typeof v.codeTheme === 'object' ? v.codeTheme : {}) as Record<string, unknown>;
+  const codeTheme = { light: codeThemeId(ct.light, 'light'), dark: codeThemeId(ct.dark, 'dark') };
+  return { codeTheme, localConnect, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {
