@@ -232,11 +232,13 @@ describe('file cards', () => {
   it('says what was read in one line', () => {
     const at = '2026-11-09T10:00:00+08:00';
     const base = { path: 'D:\\a', name: 'a', sizeBytes: 1, modifiedAt: at, extractedAt: at };
-    expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 30, read: { pages: '1-5' }, truncated: true })).toBe('PDF · 30 页 · 已读取第 1-5 页 · 未读完');
-    expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 3, read: { pages: '1-3' } })).toBe('PDF · 3 页 · 已全部读取');
-    expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: 'A', rows: 1, cols: 1 }, { name: 'B', rows: 1, cols: 1 }], read: { sheet: 'A, B' } })).toBe('Excel · 2 个表 · 已全部读取');
-    expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: '报价', rows: 3, cols: 2 }], read: { sheet: '报价', rows: '1-3' } })).toBe('Excel · 1 个表 · 已读取「报价」第 1-3 行');
+    expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 30, read: { pages: '1-5' }, truncated: true })).toBe('PDF · 30 页 · Read pages 1-5 · Partly read');
+    expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 3, read: { pages: '1-3' } })).toBe('PDF · 3 页 · Read');
+    expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: 'A', rows: 1, cols: 1 }, { name: 'B', rows: 1, cols: 1 }], read: { sheet: 'A, B' } })).toBe('Excel · 2 个表 · Read');
+    expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: '报价', rows: 3, cols: 2 }], read: { sheet: '报价', rows: '1-3' } })).toBe('Excel · 1 个表 · Read 「报价」 rows 1-3');
     expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 2, read: {}, noTextLayer: true })).toBe('PDF · 2 页 · 扫描件，无法读取文字');
+    expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 30, read: { pages: '7' } })).toBe('PDF · 30 页 · Read page 7');
+    expect(fileCardLine({ ...base, kind: 'text', read: { rows: '1-80' } })).toBe('文本 · Read rows 1-80');
   });
 
   it('keeps file details that arrive as events', () => {

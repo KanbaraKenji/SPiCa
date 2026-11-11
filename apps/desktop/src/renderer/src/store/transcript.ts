@@ -773,12 +773,13 @@ export function fileCardLine(card: FileCardMeta): string {
   const wholeFile =
     (r.pages !== undefined && card.pageCount !== undefined && (r.pages === `1-${card.pageCount}` || (card.pageCount === 1 && r.pages === '1'))) ||
     (card.sheets !== undefined && sheetsRead.length === card.sheets.length && !r.rows && !r.range);
-  if (wholeFile && !card.truncated) parts.push('已全部读取');
-  else if (r.pages) parts.push(`已读取第 ${r.pages} 页`);
-  else if (r.sheet) parts.push(`已读取「${sheetsRead.join('、')}」${r.range ?? (r.rows ? `第 ${r.rows} 行` : '')}`);
-  else if (r.range) parts.push(`已读取 ${r.range}`);
-  else if (r.rows) parts.push(`已读取第 ${r.rows} 行`);
+  // What was done with it in English, like the tool lines (Read, Read pages 1-3); what the file is stays Chinese.
+  if (wholeFile && !card.truncated) parts.push('Read');
+  else if (r.pages) parts.push(/[-,]/.test(r.pages) ? `Read pages ${r.pages}` : `Read page ${r.pages}`);
+  else if (r.sheet) parts.push(`Read ${sheetsRead.map((n) => `「${n}」`).join(', ')}${r.range ? ` ${r.range}` : r.rows ? ` rows ${r.rows}` : ''}`);
+  else if (r.range) parts.push(`Read ${r.range}`);
+  else if (r.rows) parts.push(`Read rows ${r.rows}`);
   if (card.noTextLayer) parts.push('扫描件，无法读取文字');
-  else if (card.truncated) parts.push('未读完');
+  else if (card.truncated) parts.push('Partly read');
   return parts.join(' · ');
 }

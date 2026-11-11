@@ -554,7 +554,7 @@ function FileCardSub({ f }: { f: FileRef }) {
       </span>
     );
   const shown = f.shown ?? f.path;
-  return <span className="file-card-sub">{f.card ? fileCardLine(f.card) : `${f.tool === 'read_file' ? '已读取' : f.tool === 'write_file' ? '已写入' : '已修改'}${fileFolder(shown) ? ` · ${fileFolder(shown)}` : ''}`}</span>;
+  return <span className="file-card-sub">{f.card ? fileCardLine(f.card) : `${f.tool === 'read_file' ? 'Read' : f.tool === 'write_file' ? 'Wrote' : 'Edited'}${fileFolder(shown) ? ` · ${fileFolder(shown)}` : ''}`}</span>;
 }
 
 export function FileCards({ files, onOpen, actions }: { files: FileRef[]; onOpen(path: string): void; actions?: FileCardActions | undefined }) {
