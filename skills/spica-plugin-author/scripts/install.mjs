@@ -77,7 +77,7 @@ async function connect(o, log) {
   const app = running.appName;
   throw new Error(
     `${running.reason}\n` +
-      `办法：在 ${app} 的 设置 › 常规 › 开发者 里打开「允许本机脚本连接 ${app}」后再跑一次（应用改过名就加 --app <名字>）；或者在 设置 › 插件 的搜索框里粘贴 zip 的完整路径，点列出的插件再点「安装」；` +
+      `办法：在 ${app} 的 设置 › 常规 › 开发者 里打开「允许本机脚本连接 ${app}」后再跑一次（应用改过名就加 --app <名字>）；或者在 设置 › 插件 › 市场 点「添加来源」，粘贴 zip 的完整路径点「添加」，在下面列出的插件里点它再点「安装」；` +
       '开发时也可以用 --http 或 --stdio 连自己起的服务。见 references/connect.md。',
   );
 }
