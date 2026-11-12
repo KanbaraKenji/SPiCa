@@ -58,9 +58,8 @@ describe('16 sub-agents at once', () => {
   });
 
   for (const maxConcurrent of [0, 4]) {
-    it(`a global spending limit holds for the sum of parallel calls (maxConcurrent ${maxConcurrent || 'unlimited'})`, async () => {
-      // fake-model → fallback price $5 / $20 per MTok. Each call really costs
-      // 1000·5e-6 + 100·2e-5 = $0.007; its worst case (maxTokens 512) is over $0.010.
+    it(`a global spending limit stops new calls once spent reaches it; running ones may pass it by a step each (maxConcurrent ${maxConcurrent || 'unlimited'})`, async () => {
+      // fake-model → fallback price $5 / $20 per MTok. Each call really costs 1000·5e-6 + 100·2e-5 = $0.007.
       gw.onRequest(() => ({ text: 'ok', delayMs: 30, usage: { input: 1000, output: 100 } }));
       const limit = 0.05;
       const rt = makeRuntime(gw, {
@@ -73,14 +72,16 @@ describe('16 sub-agents at once', () => {
       const results = await Promise.all(workers.map((w, i) => w.send(`job ${i}`).done));
 
       const sent = gw.requests.length;
-      expect(rt.ledger.globalUsd).toBeLessThanOrEqual(limit);
       expect(rt.ledger.globalUsd).toBeCloseTo(sent * 0.007, 6);
-      // waiting for running calls to be recorded lets more through than worst cases alone would (2)
-      expect(sent).toBeGreaterThanOrEqual(4);
-      expect(sent).toBeLessThan(16);
+      // at most one step over per call running at once
+      expect(rt.ledger.globalUsd).toBeLessThanOrEqual(limit + (maxConcurrent || 16) * 0.007 + 1e-9);
       const stopped = results.filter((r) => r.reason === 'budget');
       expect(stopped).toHaveLength(16 - sent);
-      expect(events.filter((e) => e.type === 'budget.stop')).toHaveLength(16 - sent);
+      const stops = events.flatMap((e) => (e.type === 'budget.stop' ? [e] : []));
+      expect(stops).toHaveLength(16 - sent);
+      // a stop only once the limit is reached
+      for (const s of stops) expect(s.spentUsd).toBeGreaterThanOrEqual(limit);
+      if (maxConcurrent) expect(sent).toBeLessThan(16);
       expect(rt.ledger.heldUsd).toBe(0);
       if (maxConcurrent) expect(gw.maxInFlight).toBeLessThanOrEqual(maxConcurrent);
     });

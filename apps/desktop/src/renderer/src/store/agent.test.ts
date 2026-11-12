@@ -24,7 +24,8 @@ describe('AgentStore', () => {
     const backend = new FakeBackend({ speed: 0, seed: false });
     const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
     await store.init();
-    backend.setSpendLimit('p-1', 1);
+    // the first call (about 0.85) goes; the next finds the limit reached
+    backend.setSpendLimit('p-1', 0.5);
     await store.send(null, '花费上限 整理需求');
     const id = store.state.get().activeId!;
     await vi.waitFor(() => expect(store.state.get().transcripts[id]?.errorAction).toBe('models'));

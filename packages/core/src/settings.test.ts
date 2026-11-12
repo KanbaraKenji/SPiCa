@@ -83,10 +83,11 @@ describe('runtime settings', () => {
     const events: CoreEvent[] = [];
     rt.events.on((e) => events.push(e));
 
-    // budget: a tiny per-run limit blocks, raising it lets the next run through
-    applySettings(rt, { budget: { perRunUsd: 0.000001 } });
-    expect((await rt.createSession().send('a').done).reason).toBe('budget');
-    applySettings(rt, { budget: { perRunUsd: 5 } });
+    // budget: a tiny limit blocks once something is spent, raising it lets the next run through
+    applySettings(rt, { budget: { globalUsd: 0.000001 } });
+    expect((await rt.createSession().send('a').done).reason).toBe('completed'); // nothing spent yet: it goes
+    expect((await rt.createSession().send('a2').done).reason).toBe('budget');
+    applySettings(rt, { budget: { globalUsd: 5 } });
     expect((await rt.createSession().send('b').done).reason).toBe('completed');
 
     // providers: add a second one, make it the default; the first one goes away

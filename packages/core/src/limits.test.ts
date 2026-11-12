@@ -81,7 +81,7 @@ describe('limits in the runtime', () => {
     expect(events.some((e) => e.type === 'status' && e.status === 'queued')).toBe(true);
   });
 
-  it('stops a run before a call that could cross the per-run limit, and says why', async () => {
+  it('stops a run once what it spent reaches the per-run limit, and says why', async () => {
     gw.onRequest(() => ({ toolCalls: [{ name: 'list_dir', args: {} }], usage: { input: 100_000, output: 1_000 } }));
     const rt = makeRuntime(gw, {
       // unknown model → fallback price $5 / $20 per MTok (unverified)
@@ -92,9 +92,10 @@ describe('limits in the runtime', () => {
     const r = await s.send('loop').done;
     expect(r.reason).toBe('budget');
     expect(r.detail).toMatch(/spending limit all:run reached/);
-    // Each call costs 0.52 USD. After two (1.04), the next call's input is at least the last
-    // call's 100k tokens, so its worst case (0.52) would cross 1.2: it is not sent.
-    expect(gw.requests).toHaveLength(2);
+    // Each call costs 0.52 USD. At 0 and 0.52 and 1.04 spent (under 1.2) the call is made, whatever it might
+    // cost; at 1.56 the limit is reached and the next one is not: only what is spent counts, so the run may pass
+    // the limit by one step.
+    expect(gw.requests).toHaveLength(3);
     expect(events.some((e) => e.type === 'budget.stop')).toBe(true);
     expect(s.status).toBe('idle');
   });
@@ -120,7 +121,7 @@ describe('limits in the runtime', () => {
     expect(gw.requests).toHaveLength(0);
   });
 
-  it('the stop says what the next call could have cost (why it stops before the limit is reached)', async () => {
+  it('the stop says what was spent and the limit: spent has reached it', async () => {
     gw.onRequest(() => ({ toolCalls: [{ name: 'list_dir', args: {} }], usage: { input: 100_000, output: 1_000 } }));
     const rt = makeRuntime(gw, { budget: { perRunUsd: 1.2 } });
     const events = captureEvents(rt);
@@ -128,8 +129,22 @@ describe('limits in the runtime', () => {
     const stop = events.find((e) => e.type === 'budget.stop');
     expect(stop).toMatchObject({ limitUsd: 1.2 });
     if (stop?.type !== 'budget.stop') throw new Error('no stop');
-    expect(stop.spentUsd).toBeLessThan(1.2);
-    expect(stop.spentUsd + stop.nextUsd!).toBeGreaterThan(1.2);
+    expect(stop.spentUsd).toBeGreaterThanOrEqual(1.2);
+    expect(stop.message).toMatch(/spent \$1\.5600 of \$1\.20/);
+  });
+
+  it('a limit above what is spent never stops a call however much it might cost (0.10 with 0.05 spent)', () => {
+    const l = new CostLedger({ 'openai-compatible': { m: { input: 2, output: 8 } } }, { perProvider: { p: { globalUsd: 0.1 } } });
+    const scope = { providerId: 'p', providerKind: 'openai-compatible', model: 'm', sessionId: 's', runId: 'r' };
+    l.seed([{ providerId: 'p', costUsd: 0.05 }]);
+    // the worst case of this call (384,000 tokens of output) is far over the limit: it is not counted in
+    expect(l.reserve(scope, 50_000, 384_000)).toMatchObject({ ok: true });
+    l.record(scope, { inputTokens: 10_000, outputTokens: 1_000 }); // 0.028 -> 0.078 spent
+    expect(l.precheck(scope, 50_000, 384_000)).toEqual({ ok: true });
+    l.record(scope, { inputTokens: 10_000, outputTokens: 1_000 }); // 0.106: reached
+    expect(l.precheck(scope, 1, 1)).toMatchObject({ ok: false, scope: 'p:global', limitUsd: 0.1 });
+    // and nothing waits for calls still running
+    expect(l.reserve(scope, 1, 1)).toMatchObject({ ok: false, wait: false });
   });
 
   it('no limit set: nothing stops the run', async () => {
@@ -225,7 +240,10 @@ describe('models without a price (未计价)', () => {
     const rec2 = l.record(priced, { inputTokens: 200_000, outputTokens: 0 });
     expect(rec2.unpriced).toBeUndefined();
     expect(rec2.totals.find((t) => t.scope === 'session')).toMatchObject({ spentUsd: 0.2, unpriced: true });
-    expect(l.precheck(priced, 200_000, 200_000)).toMatchObject({ ok: false, scope: 'all:run', spentUsd: 0.2, nextUsd: 0.4 });
+    // 0.2 of a 0.5 per-run limit spent: the next priced call goes, whatever it might cost
+    expect(l.precheck(priced, 200_000, 200_000)).toEqual({ ok: true });
+    l.record(priced, { inputTokens: 300_000, outputTokens: 0 });
+    expect(l.precheck(priced, 1, 1)).toMatchObject({ ok: false, scope: 'all:run', spentUsd: 0.5 });
   });
 
   it('an older record of such a model, written at the stand-in price, is marked and not added again', () => {

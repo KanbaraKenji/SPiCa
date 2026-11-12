@@ -514,7 +514,7 @@ describe('FakeBackend', () => {
 });
 
 describe('spending as the core counts it (a provider’s 花费上限, 未计价, 欠费)', () => {
-  it('no limit by default; a limit on all the provider has cost stops before a call that could pass it, over conversations; a model without a price never stops', async () => {
+  it('no limit by default; a limit on all the provider has cost stops the next call once it is reached, over conversations; a model without a price never stops', async () => {
     const b = new FakeBackend({ speed: 0, seed: false });
     const { events, until } = collect(b);
     const chat = await b.createSession({});
@@ -524,15 +524,16 @@ describe('spending as the core counts it (a provider’s 花费上限, 未计价
     const before = b.spentUsd();
     expect(before).toBeGreaterThan(1);
 
-    b.setSpendLimit('p-1', before + 1);
+    // each call costs about 0.85: the first goes (under the limit), the second finds it reached
+    b.setSpendLimit('p-1', before + 0.5);
     events.length = 0;
     const next = await b.createSession({});
     await b.send(next.id, '花费上限 再来');
     expect(await until((e) => e.type === 'run.end' && e.sessionId === next.id)).toMatchObject({ reason: 'budget' });
     const stop = events.find((e) => e.type === 'budget.stop');
-    expect(stop).toMatchObject({ scope: 'p-1:global', limitUsd: before + 1 });
+    expect(stop).toMatchObject({ scope: 'p-1:global', limitUsd: before + 0.5 });
     if (stop?.type !== 'budget.stop') throw new Error('no stop');
-    expect(stop.spentUsd + stop.nextUsd!).toBeGreaterThan(before + 1);
+    expect(stop.spentUsd).toBeGreaterThanOrEqual(before + 0.5);
 
     events.length = 0;
     b.setSpendLimit('p-1', 0.0001);

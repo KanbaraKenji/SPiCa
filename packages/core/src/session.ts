@@ -792,11 +792,10 @@ export class Session {
         return end('aborted');
       }
 
-      // Checked once a slot is free, against what is spent plus the worst case
-      // of every call still running, so parallel sessions cannot overshoot together.
+      // Checked once a slot is free, against what is already spent (not what this call or the ones still running
+      // might cost): the limit may be passed by one step per conversation running.
       let hold = this.#rt.ledger.reserve(scope, est, request.maxTokens);
-      // Over the limit only because of calls still running: wait until they are
-      // recorded at their real cost, then check again (keeping the slot).
+      // (wait is never set now: kept for a ledger that would hold back for calls still running)
       while (!hold.ok && hold.wait) {
         this.#setStatus('queued', 'waiting for running calls to settle the spending limit');
         try {

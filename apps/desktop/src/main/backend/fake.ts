@@ -914,14 +914,14 @@ export class FakeBackend implements AgentBackend {
   }
 
   /**
-   * As the core: the next call is not started when it could take what the provider has cost in all past its 花费上限
-   * (a model without a price never stops). Returns true when the run was stopped.
+   * As the core: the next call is not started once what the provider has cost in all has reached its 花费上限 (what
+   * the call might cost is not counted in; a model without a price never stops). Returns true when the run was stopped.
    */
   #stopsAtLimit(sessionId: string, run: Run, nextUsd: number): boolean {
     const limit = this.#spendLimit;
-    if (limit === null || run.unpriced || this.#spent + nextUsd <= limit.usd) return false;
+    if (limit === null || run.unpriced || this.#spent < limit.usd) return false;
     const scope = `${limit.providerId}:global`;
-    const message = `spending limit ${scope} reached: spent $${this.#spent.toFixed(4)} of $${limit.usd.toFixed(2)}, the next call could cost up to $${nextUsd.toFixed(4)}`;
+    const message = `spending limit ${scope} reached: spent $${this.#spent.toFixed(4)} of $${limit.usd.toFixed(2)}`;
     this.#emit(sessionId, { type: 'budget.stop', scope, spentUsd: this.#spent, limitUsd: limit.usd, nextUsd, message });
     this.#finish(sessionId, 'budget', message);
     return true;

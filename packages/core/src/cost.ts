@@ -300,8 +300,9 @@ export class CostLedger {
   reserve(scope: CostScope, estInputTokens: number, maxTokens: number): ReserveResult {
     // a model without a price counts nothing: no limit stops it, nothing is held
     if (!this.priced(scope)) return { ok: true, usd: 0, release: () => undefined };
-    const check = this.#check(scope, estInputTokens, maxTokens, true);
-    if (!check.ok) return { ...check, wait: this.#held.size > 0 && this.#check(scope, estInputTokens, maxTokens, false).ok };
+    const check = this.#check(scope, estInputTokens, maxTokens);
+    // only what is spent counts: calls still running never make another wait
+    if (!check.ok) return { ...check, wait: false };
     const entry = { scope, usd: this.estimate(scope, { inputTokens: estInputTokens, outputTokens: maxTokens }) };
     this.#held.add(entry);
     return { ok: true, usd: entry.usd, release: () => this.#release(entry) };
@@ -338,13 +339,17 @@ export class CostLedger {
     return sum;
   }
 
-  /** Check limits before a call, using a worst-case estimate of its cost (calls in flight count with their worst case). */
+  /** Check limits before a call: stopped once what is spent has reached one (the per-call cap still takes the call's worst case). */
   precheck(scope: CostScope, estInputTokens: number, maxTokens: number): BudgetCheck {
-    return this.#check(scope, estInputTokens, maxTokens, true);
+    return this.#check(scope, estInputTokens, maxTokens);
   }
 
-  #check(scope: CostScope, estInputTokens: number, maxTokens: number, withHeld: boolean): BudgetCheck {
-    // Policy: never start a call that could push any total past its limit (a model without a price adds nothing).
+  #check(scope: CostScope, estInputTokens: number, maxTokens: number): BudgetCheck {
+    // Policy: a call is not started once what is already spent has reached a limit (a model without a price adds
+    // nothing). What the next call might cost is not counted in, nor the calls still running: a limit can be
+    // passed by the calls that started below it (about one step per conversation running). Counting the worst
+    // case (the whole answer written out, 384,000 tokens on some models) stopped a 0.10 limit at 0.05 spent
+    // before a single request.
     if (!this.priced(scope)) return { ok: true };
     const worst = this.estimate(scope, { inputTokens: estInputTokens, outputTokens: maxTokens });
     const groups = [
@@ -354,19 +359,19 @@ export class CostLedger {
     for (const [label, limits] of groups) {
       if (!limits) continue;
       const checks: [string, number, number | undefined][] = [
-        ['global', this.#scopeTotal(label, 'global', scope, withHeld), limits.globalUsd],
-        ['session', this.#scopeTotal(label, 'session', scope, withHeld), limits.perSessionUsd],
-        ['run', this.#scopeTotal(label, 'run', scope, withHeld), limits.perRunUsd],
+        ['global', this.#recorded(label, 'global', scope), limits.globalUsd],
+        ['session', this.#recorded(label, 'session', scope), limits.perSessionUsd],
+        ['run', this.#recorded(label, 'run', scope), limits.perRunUsd],
       ];
       for (const [kind, spent, limit] of checks) {
-        if (limit !== undefined && spent + worst > limit) {
+        if (limit !== undefined && spent >= limit) {
           return {
             ok: false,
             scope: `${label}:${kind}`,
             spentUsd: spent,
             limitUsd: limit,
             nextUsd: worst,
-            message: `spending limit ${label}:${kind} reached: spent $${spent.toFixed(4)} (calls still running counted at their worst case) of $${limit.toFixed(2)}, the next call could cost up to $${worst.toFixed(4)}`,
+            message: `spending limit ${label}:${kind} reached: spent $${spent.toFixed(4)} of $${limit.toFixed(2)}`,
           };
         }
       }
@@ -443,17 +448,6 @@ export class CostLedger {
 
   providerUsd(providerId: string): number {
     return this.#byProvider.get(providerId) ?? 0;
-  }
-
-  #scopeTotal(label: string, kind: 'global' | 'session' | 'run', s: CostScope, withHeld: boolean): number {
-    let held = 0;
-    for (const h of withHeld ? this.#held : []) {
-      if (label !== 'all' && h.scope.providerId !== label) continue;
-      if (kind === 'session' && h.scope.sessionId !== s.sessionId) continue;
-      if (kind === 'run' && h.scope.runId !== s.runId) continue;
-      held += h.usd;
-    }
-    return held + this.#recorded(label, kind, s);
   }
 
   #recorded(label: string, kind: 'global' | 'session' | 'run', s: CostScope): number {
