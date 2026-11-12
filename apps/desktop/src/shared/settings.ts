@@ -135,6 +135,11 @@ export interface ShellSettings {
    * the automatic one (main/user-account.ts). Plugins get effectiveAccount() (SPICA_USER_ACCOUNT, ctx.user.account).
    */
   account: string;
+  /**
+   * 账号 › 称呼: what the new conversation's greeting calls the user (下午好，Alex); '' = from the account
+   * (defaultCallName). Only shown in the window: plugins get the account, never this.
+   */
+  callName: string;
 }
 
 /** The longest account accepted. */
@@ -145,6 +150,30 @@ export function accountValue(v: unknown): string {
   if (typeof v !== 'string') return '';
   // eslint-disable-next-line no-control-regex -- control characters are what is taken out
   return v.replace(/[\u0000-\u001f\u007f]/g, '').trim().toUpperCase().slice(0, ACCOUNT_MAX).trim();
+}
+
+/** The longest 称呼 accepted. */
+export const CALL_NAME_MAX = 32;
+
+/** A 称呼 as typed: no spaces around it, no control characters; kept as typed otherwise (a Chinese name, any case). */
+export function callNameValue(v: unknown): string {
+  if (typeof v !== 'string') return '';
+  // eslint-disable-next-line no-control-regex -- control characters are what is taken out
+  return v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, CALL_NAME_MAX).trim();
+}
+
+/**
+ * The 称呼 an account gives (he said 2026-11-12: 「如果是AAAA.XXX用AAAA，如果是AAAA XXX也用AAAA」): the part before the
+ * first dot or space, first letter in capitals and the rest small (ALEX.CHEN → Alex); the whole account without either.
+ */
+export function defaultCallName(account: string): string {
+  const head = account.trim().split(/[.\s]/)[0] ?? '';
+  return head ? head.charAt(0).toUpperCase() + head.slice(1).toLowerCase() : '';
+}
+
+/** The 称呼 in force: the one typed, else the one the account gives ('' when there is no account either). */
+export function effectiveCallName(s: Pick<ShellSettings, 'account' | 'callName'>, autoAccount: string): string {
+  return s.callName || defaultCallName(effectiveAccount(s, autoAccount));
 }
 
 /** The account plugins get: the one the user typed, else the automatic one ('' when there is neither). */
@@ -195,6 +224,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   backgroundHintShown: false,
   runLimitUsd: null,
   account: '',
+  callName: '',
 };
 
 /** Local calendar date, YYYY-MM-DD. */
@@ -291,7 +321,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { account: accountValue(v.account), runLimitUsd: runLimit(v.runLimitUsd), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
+  return { account: accountValue(v.account), callName: callNameValue(v.callName), runLimitUsd: runLimit(v.runLimitUsd), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

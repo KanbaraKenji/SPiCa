@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accountValue, applyPatch, DEFAULT_SETTINGS, effectiveAccount, localDay, sanitizeSettings, splashFor } from './settings';
+import { accountValue, applyPatch, callNameValue, DEFAULT_SETTINGS, defaultCallName, effectiveAccount, effectiveCallName, localDay, sanitizeSettings, splashFor } from './settings';
 
 describe('sanitizeSettings', () => {
   it('turns garbage into defaults', () => {
@@ -103,3 +103,23 @@ describe('账号', () => {
     expect(effectiveAccount({ account: '' }, '')).toBe('');
   });
 });
+
+describe('账号 › 称呼', () => {
+  it('from the account: the part before the first dot or space, first letter in capitals', () => {
+    expect(defaultCallName('ALEX.CHEN')).toBe('Alex');
+    expect(defaultCallName('ALEX CHEN')).toBe('Alex');
+    expect(defaultCallName('CHEN')).toBe('Chen');
+    expect(defaultCallName('陈明')).toBe('陈明');
+    expect(defaultCallName('')).toBe('');
+    expect(defaultCallName('.X')).toBe('');
+  });
+  it('the one typed wins; kept as typed (case too), trimmed', () => {
+    expect(sanitizeSettings({ callName: '  小陈 ' }).callName).toBe('小陈');
+    expect(callNameValue('alex')).toBe('alex');
+    expect(effectiveCallName({ account: '', callName: '' }, 'ALEX.CHEN')).toBe('Alex');
+    expect(effectiveCallName({ account: 'CHEN.A', callName: '' }, 'ALEX.CHEN')).toBe('Chen');
+    expect(effectiveCallName({ account: '', callName: '小陈' }, 'ALEX.CHEN')).toBe('小陈');
+    expect(effectiveCallName({ account: '', callName: '' }, '')).toBe('');
+  });
+});
+

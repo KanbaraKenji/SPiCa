@@ -12,6 +12,7 @@ import { answerText, MessageActions } from './MessageActions';
 import { answerSources } from './sources';
 import { WEB_IMAGES, webImagesFor } from './answer-image';
 import { StatusLine } from './StatusLine';
+import { ASK, welcome as welcomeWords } from './welcome';
 import { GUARD_FLAG_TEXT } from './format';
 import { SettingsChangeCard } from './SettingsChangeCard';
 import { MemoryLinesContext, MemoryNote, type MemoryLines } from './MemoryNote';
@@ -260,7 +261,9 @@ function Response({
   );
 }
 
-function EmptyState({ session, needsModel, onSetupModel }: { session: SessionInfo | undefined; needsModel: boolean; onSetupModel?: () => void }) {
+function EmptyState({ session, needsModel, onSetupModel, welcome }: { session: SessionInfo | undefined; needsModel: boolean; onSetupModel?: () => void; welcome?: ConversationProps['welcome'] }) {
+  // The time the page opened: the greeting and its line stay put while it is open.
+  const [opened] = useState(() => new Date());
   if (needsModel)
     return (
       <div className="empty-chat">
@@ -271,10 +274,19 @@ function EmptyState({ session, needsModel, onSetupModel }: { session: SessionInf
         </button>
       </div>
     );
+  if (session && session.role !== 'top')
+    return (
+      <div className="empty-chat">
+        <SpicaMark size={56} />
+        <p className="empty-chat-title">{session.title}</p>
+      </div>
+    );
+  const words = welcomeWords({ now: welcome?.now ?? opened, name: welcome?.name ?? '', waiting: welcome?.waiting ?? 0 });
   return (
     <div className="empty-chat">
       <SpicaMark size={56} />
-      <p className="empty-chat-title">{session?.role === 'top' || !session ? '有什么要我做的？' : session.title}</p>
+      <p className="empty-chat-title">{welcome ? words.title : ASK}</p>
+      {welcome ? <p className="empty-chat-line">{words.line}</p> : null}
     </div>
   );
 }
@@ -349,6 +361,12 @@ export interface ConversationProps {
   found?: { seq?: number; back?: { title: string; onBack(): void } };
   /** The user's memory, for the 已记住 lines and their 撤销. */
   memory?: MemoryLines;
+  /**
+   * The empty page of a new conversation greets the user (chat/welcome.ts): `name` is 设置 › 账号 › 称呼 ('' =
+   * no name), `waiting` how many conversations wait for an answer or a confirmation. `now`: for tests and
+   * screenshots (default: the time the page opens).
+   */
+  welcome?: { name: string; waiting: number; now?: Date };
 }
 
 export interface WaitingChild {
@@ -359,7 +377,7 @@ export interface WaitingChild {
 
 const NO_MEMORY: MemoryLines = { items: null };
 
-export function Conversation({ session, transcript, actions, demo, needsModel = false, onSetupModel, waiting = [], composerTools, found, memory = NO_MEMORY }: ConversationProps) {
+export function Conversation({ session, transcript, actions, demo, needsModel = false, onSetupModel, waiting = [], composerTools, found, memory = NO_MEMORY, welcome }: ConversationProps) {
   const running = isRunning(transcript.run?.status) || isRunning(session?.status);
   const { ref, away, toBottom, unpin } = useStickToBottom(transcript);
   const items = transcript.items;
@@ -399,7 +417,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
     <div className="conversation">
       <div className="transcript" ref={ref}>
         {items.length === 0 && !running ? (
-          <EmptyState session={session} needsModel={needsModel} {...(onSetupModel ? { onSetupModel } : {})} />
+          <EmptyState session={session} needsModel={needsModel} {...(onSetupModel ? { onSetupModel } : {})} {...(welcome ? { welcome } : {})} />
         ) : (
           <div className="transcript-column">
             {found?.back ? (

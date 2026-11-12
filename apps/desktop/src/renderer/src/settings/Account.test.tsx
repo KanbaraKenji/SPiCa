@@ -47,3 +47,31 @@ describe('账号', () => {
     expect(screen.getByText(/没有取到 Windows 用户文件夹名/)).toBeTruthy();
   });
 });
+
+describe('称呼', () => {
+  it('from the account in grey; what is typed is kept as typed; 恢复默认 goes back', () => {
+    const p = setup({ autoAccount: 'ALEX.CHEN' });
+    const box = screen.getByRole('textbox', { name: '称呼' }) as HTMLInputElement;
+    expect(box.placeholder).toBe('Alex');
+    expect(screen.getByText(/不提供给插件/)).toBeTruthy();
+    fireEvent.change(box, { target: { value: ' 小陈 ' } });
+    fireEvent.blur(box);
+    expect(p.onChange).toHaveBeenCalledWith({ callName: '小陈' });
+  });
+
+  it('a typed one says what the account gives; 恢复默认 clears it', () => {
+    const p = setup({ autoAccount: 'ALEX.CHEN', settings: { ...DEFAULT_SETTINGS, callName: '小陈' } });
+    expect(screen.getByText(/不填就用账号里的 Alex/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '恢复默认' }));
+    expect(p.onChange).toHaveBeenCalledWith({ callName: '' });
+  });
+
+  it('follows a typed account; none at all: no name', () => {
+    setup({ autoAccount: 'ALEX.CHEN', settings: { ...DEFAULT_SETTINGS, account: 'CHEN.A' } });
+    expect((screen.getByRole('textbox', { name: '称呼' }) as HTMLInputElement).placeholder).toBe('Chen');
+    cleanup();
+    setup();
+    expect((screen.getByRole('textbox', { name: '称呼' }) as HTMLInputElement).placeholder).toBe('不带称呼');
+  });
+});
+

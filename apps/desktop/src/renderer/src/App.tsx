@@ -12,7 +12,7 @@ import { PluginPreview, type PreviewFallback } from './shell/PluginPreview';
 import { BUILT_IN, chosenPreviewPage, fileExtension, previewerId, previewPagesFor } from '../../shared/previewers';
 import { FONT_UI, pluginThemeVars, type PluginView } from '../../shared/plugin-view';
 import { deriveTokens, schemeOf } from '../../shared/skin';
-import { DEFAULT_SETTINGS, effectiveAccount } from '../../shared/settings';
+import { DEFAULT_SETTINGS, effectiveAccount, effectiveCallName } from '../../shared/settings';
 import { sidebarBannerHeight, wordmarkProps } from './app-wordmark';
 import { useViewportWidth } from './shell/useViewportWidth';
 import { Sidebar } from './shell/Sidebar';
@@ -284,6 +284,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       .filter((s) => s.parentChain.includes(id) && (s.status === 'awaiting_confirm' || s.status === 'awaiting_answer'))
       .map((s) => ({ id: s.id, title: s.title ?? '子任务', status: s.status as WaitingChild['status'] }));
   }, [sessions, state.activeId]);
+  // Conversations anywhere that wait for the user (the sidebar's yellow dots): counted on the new conversation's page.
+  const waitingAnywhere = useMemo(() => sessions.filter((s) => s.status === 'awaiting_confirm' || s.status === 'awaiting_answer').length, [sessions]);
   // Projects for the inbox: the core's list, plus any project manager it did not list (demo data).
   const inboxProjects = useMemo<InboxProject[]>(() => {
     const out: InboxProject[] = state.projects.filter((p) => p.status === 'active').map((p) => ({ id: p.id, name: p.name, managerSessionId: p.managerSessionId }));
@@ -900,6 +902,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               waiting={waiting}
               composerTools={composerTools}
               memory={memoryLines}
+              welcome={{ name: effectiveCallName(settings, shell.autoAccount), waiting: waitingAnywhere }}
               {...(found && found.sessionId === state.activeId ? { found: foundView(found) } : {})}
               onSetupModel={() => openSettings('models')}
             />
