@@ -11,6 +11,7 @@
 //   never held or asked about.
 // Pure logic with the Electron parts passed in; the glue is in main/index.ts.
 import type { CloseWindow } from '../shared/settings';
+import { CLOSE_RUNNING } from '../shared/close-words';
 
 export type TrayAction = 'open' | 'quit';
 
@@ -85,15 +86,32 @@ export function closeAction(s: CloseState): 'close' | 'hide' | 'ask' {
 /** The question on ×, as the page's dialog and the fallback message box both put it. */
 export const CLOSE_QUESTION = '关闭窗口时要怎么做？';
 
+
+/** Session states in which a run is going (as the page counts them, store/transcript.ts isRunning). */
+const RUNNING = new Set(['queued', 'thinking', 'tool', 'awaiting_confirm', 'awaiting_answer']);
+
+/** Follows the core's status events: whether any conversation is running now (for CLOSE_RUNNING). */
+export function runningTracker(): { seen(e: { type: string; sessionId?: string; status?: string }): void; any(): boolean } {
+  const going = new Set<string>();
+  return {
+    seen(e) {
+      if (e.type !== 'status' || !e.sessionId) return;
+      if (e.status && RUNNING.has(e.status)) going.add(e.sessionId);
+      else going.delete(e.sessionId);
+    },
+    any: () => going.size > 0,
+  };
+}
+
 /**
  * The fallback question: a Windows message box, seen only when the page cannot show its own dialog (its process
  * is gone, or it has not loaded yet). There 取消 is a button (the box has no other way to say no); Esc and its ×
  * are 取消 too.
  */
-export function closePrompt(appName: string): { message: string; detail: string; buttons: string[]; defaultId: number; cancelId: number; checkboxLabel: string } {
+export function closePrompt(appName: string, running = false): { message: string; detail?: string; buttons: string[]; defaultId: number; cancelId: number; checkboxLabel: string } {
   return {
     message: CLOSE_QUESTION,
-    detail: `最小化到托盘后，${appName} 继续运行，可以从托盘图标打开或退出。`,
+    ...(running ? { detail: CLOSE_RUNNING } : {}),
     buttons: ['最小化到托盘', `退出 ${appName}`, '取消'],
     defaultId: 0,
     cancelId: 2,
@@ -121,7 +139,7 @@ export interface AskerOptions {
   pageReady(): boolean;
   /** The window to the front first (minimized, or behind another window, when its taskbar button was closed). */
   reveal(): void;
-  /** Tells the page to show its dialog. */
+  /** Tells the page to show its dialog (with whether a task is running). */
   send(): void;
   /** The message box, when the page cannot show its dialog. */
   fallback(): Promise<CloseAnswer>;

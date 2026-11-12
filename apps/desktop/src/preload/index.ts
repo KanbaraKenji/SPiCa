@@ -68,7 +68,7 @@ const bridge: DesktopBridge = {
   onSettingsChanged: (listener) => subscribe<ShellSettings>(DesktopChannel.SettingsChanged, listener),
   closeAsk: {
     listen: (onAsk) => {
-      const off = subscribe<void>(DesktopChannel.CloseAsk, () => onAsk());
+      const off = subscribe<{ running?: boolean } | undefined>(DesktopChannel.CloseAsk, (ask) => onAsk({ running: ask?.running === true }));
       ipcRenderer.send(DesktopChannel.CloseAskReady, true);
       return () => {
         ipcRenderer.send(DesktopChannel.CloseAskReady, false);

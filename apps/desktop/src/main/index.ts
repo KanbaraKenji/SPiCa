@@ -33,7 +33,7 @@ import { ProcessBackend, type BackendStatus } from './backend/process';
 import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { pageAlive, pageRecovery } from './page-recovery';
 import { lookAtPage, watchPage } from './page-watch';
-import { closeAnswer, closeAsker, closePrompt, onWindowClose, revealWindow, trayHint, wireTray } from './tray';
+import { closeAnswer, closeAsker, closePrompt, onWindowClose, revealWindow, runningTracker, trayHint, wireTray } from './tray';
 import { autostartSupport, followAutostart, loginItemOn, onSecondLaunch, startsOnNewChat, type LoginItems } from './autostart';
 import { knownContextWindow, matchWindowIn, toProviderConfig } from './backend/to-config';
 import type { WindowMatch } from '../shared/catalog';
@@ -606,10 +606,10 @@ function createMainWindow(): BrowserWindow {
   const asker = closeAsker({
     pageReady: () => closeAskReady && pageAlive(win) && !win.webContents.isLoading(),
     reveal: () => revealWindow(win),
-    send: () => sendToWindow(DesktopChannel.CloseAsk),
+    send: () => sendToWindow(DesktopChannel.CloseAsk, { running: running.any() }),
     fallback: () =>
       dialog
-        .showMessageBox(win, { type: 'question', title: APP_NAME, noLink: true, checkboxChecked: false, ...closePrompt(APP_NAME) })
+        .showMessageBox(win, { type: 'question', title: APP_NAME, noLink: true, checkboxChecked: false, ...closePrompt(APP_NAME, running.any()) })
         .then((r) => closeAnswer(r.response, r.checkboxChecked)),
   });
   closeAsk = asker;
@@ -724,6 +724,9 @@ function createMainWindow(): BrowserWindow {
   });
   return win;
 }
+
+/** Conversations running now (the core's status events), for the close question. */
+const running = runningTracker();
 
 /** The page listens for the close question (DesktopChannel.CloseAskReady); its answers go to the window's asker. */
 let closeAskReady = false;
@@ -1371,6 +1374,8 @@ ipcMain.handle(DesktopChannel.ListProviderModels, async (_e, draft: ProviderDraf
 });
 
 backend.onEvent((event) => sendToWindow(DesktopChannel.AgentEvent, withErrorHint(event)));
+// Whether a conversation is running, for the close question's one line (「有任务正在运行，退出会中断它。」).
+backend.onEvent((event) => running.seen(event));
 settings.onChange((s) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   syncNativeChrome(mainWindow, s);

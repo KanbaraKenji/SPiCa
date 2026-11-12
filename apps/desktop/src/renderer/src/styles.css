@@ -2798,6 +2798,26 @@ button.ctx-row:hover {
   accent-color: var(--spica-accent);
 }
 
+/* The close question (ui/CloseDialog.tsx): the title, a line only while a task runs, 记住我的选择 under it,
+   then the two buttons at the right; narrower than other dialogs (nothing is explained). */
+.close-dialog {
+  width: min(360px, 100%);
+}
+
+.close-dialog-foot {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.close-dialog-foot .dialog-check,
+.close-dialog-foot .dialog-actions {
+  margin-top: 0;
+}
+
+/* ---------- Settings ---------- */
+
 /* Settings: a panel floating in the middle of the window (settings/SettingsView.tsx), not a page: at most
    1000 x 700 (about Codex's proportions), and a tenth of the window's height clear above and below it (never
    less than 24). The sections in a column on the left, the section shown on the right scrolls by itself. The

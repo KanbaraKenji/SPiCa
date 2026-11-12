@@ -118,7 +118,8 @@ export interface DesktopBridge extends SpicaBridge {
    * question from now on and calls onAsk for each; answer() sends the choice (null: the dialog was closed).
    */
   closeAsk: {
-    listen(onAsk: () => void): () => void;
+    /** `running`: a conversation is running now (退出 stops it; the dialog says so in one line). */
+    listen(onAsk: (ask: { running: boolean }) => void): () => void;
     answer(answer: { choice: 'tray' | 'quit' | null; remember: boolean }): void;
   };
   /** One zoom step for the whole window (Ctrl+wheel, Ctrl+=/-/0). */

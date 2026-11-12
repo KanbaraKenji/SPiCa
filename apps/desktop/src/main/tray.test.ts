@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CLOSE_QUESTION, closeAction, closeAnswer, closeAsker, closePrompt, onWindowClose, parseCloseAnswer, revealWindow, trayHint, trayMenuItems, wireTray, type CloseAnswer, type CloseState, type RevealTarget, type TrayLike } from './tray';
+import { CLOSE_QUESTION, runningTracker, closeAction, closeAnswer, closeAsker, closePrompt, onWindowClose, parseCloseAnswer, revealWindow, trayHint, trayMenuItems, wireTray, type CloseAnswer, type CloseState, type RevealTarget, type TrayLike } from './tray';
+import { CLOSE_RUNNING } from '../shared/close-words';
 
 describe('the notification-area icon', () => {
   it('right-click menu: open, then quit, with the app name', () => {
@@ -87,10 +88,25 @@ describe('what the window’s close button does', () => {
     expect(p.buttons).toEqual(['最小化到托盘', '退出 Acme', '取消']);
     expect(p.checkboxLabel).toBe('记住我的选择');
     expect(p.cancelId).toBe(2);
-    expect(p.detail).toContain('Acme');
+    // nothing explained; one line only while a task runs
+    expect(p).not.toHaveProperty('detail');
+    expect(closePrompt('Acme', true).detail).toBe(CLOSE_RUNNING);
     expect(closeAnswer(0, false)).toEqual({ choice: 'tray', remember: false });
     expect(closeAnswer(1, true)).toEqual({ choice: 'quit', remember: true });
     expect(closeAnswer(2, true)).toEqual({ choice: null, remember: false });
+  });
+
+  it('knows whether a conversation is running from the core\'s status events', () => {
+    const r = runningTracker();
+    expect(r.any()).toBe(false);
+    r.seen({ type: 'status', sessionId: 'a', status: 'thinking' });
+    r.seen({ type: 'status', sessionId: 'b', status: 'awaiting_answer' });
+    r.seen({ type: 'text.delta', sessionId: 'a' });
+    expect(r.any()).toBe(true);
+    r.seen({ type: 'status', sessionId: 'a', status: 'idle' });
+    expect(r.any()).toBe(true);
+    r.seen({ type: 'status', sessionId: 'b', status: 'aborted' });
+    expect(r.any()).toBe(false);
   });
 });
 
