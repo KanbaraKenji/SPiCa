@@ -73,3 +73,31 @@ describe('the same step repeated too often', () => {
     expect(send).toHaveBeenCalledWith('继续');
   });
 });
+
+describe('the notices sit just above the input box (RunNotices)', () => {
+  it('outside the scrolling conversation, stacked: interrupted, repeated, cut answer, then the error nearest the box', () => {
+    const { container } = render(
+      <Conversation
+        session={{ ...session, status: 'interrupted' }}
+        transcript={{ items: [{ kind: 'user', id: 'u', text: '整理', steer: false }, { ...answer, truncated: true }], stopped: 'repeated', repeatCount: 8, error: '已达花费上限', errorAction: 'models' }}
+        actions={{ openModelSettings: vi.fn() } as unknown as ConversationActions}
+      />,
+    );
+    const bar = container.querySelector('.run-notices')!;
+    expect(container.querySelector('.transcript')!.contains(bar)).toBe(false);
+    expect(bar.nextElementSibling?.className).toContain('composer-wrap');
+    expect([...bar.querySelectorAll('.run-notice-text')].map((n) => n.textContent)).toEqual(['上次运行已中断', '同一步重复了 8 次，要继续吗', '回答到达长度上限，没有写完', '已达花费上限']);
+    expect(bar.querySelector('.run-notice.is-error')?.getAttribute('role')).toBe('alert');
+  });
+
+  it('none while a run is going, except the error until the run clears it', () => {
+    const { container } = render(
+      <Conversation
+        session={{ ...session, status: 'interrupted' }}
+        transcript={{ items: [{ kind: 'user', id: 'u', text: '整理', steer: false }, { ...answer, truncated: true }], stopped: 'repeated', run: { startedAt: 0, status: 'thinking' } }}
+        actions={{} as ConversationActions}
+      />,
+    );
+    expect(container.querySelector('.run-notices')).toBeNull();
+  });
+});

@@ -94,9 +94,11 @@ describe('the panels around the conversation (shell/layout.ts counts on these)',
     expect(block('.main')).toContain('background: var(--spica-bg)');
   });
 
-  it('the content column is COLUMN_WIDTH wide and moves by --centre-shift (messages, input box, queue, inbox, welcome, demo line, to-bottom)', () => {
-    expect(block('.transcript-column,\n.composer-stack,\n.inbox-column,\n.queued')).toContain('translate: var(--centre-shift, 0px) 0');
+  it('the content column is COLUMN_WIDTH wide and moves by --centre-shift (messages, input box, queue, notices, inbox, welcome, demo line, to-bottom)', () => {
+    expect(block('.transcript-column,\n.composer-stack,\n.inbox-column,\n.queued,\n.run-notices')).toContain('translate: var(--centre-shift, 0px) 0');
     for (const col of ['.transcript-column', '.composer', '.inbox-column']) expect(block(col)).toContain(`max-width: ${COLUMN_WIDTH}px`);
+    // the notices above the box are as wide as it: the column's width less the box's gutters on both sides
+    expect(css.replace(/\r\n/g, '\n')).toContain(`.run-notices {\n  flex: none;\n  max-width: ${COLUMN_WIDTH}px;\n  width: calc(100% - ${2 * COLUMN_GUTTER}px);`);
     expect(block('.composer-wrap')).toContain(`padding: 0 ${COLUMN_GUTTER}px`);
     for (const line of ['.empty-chat', '.composer-note']) expect(block(line)).toContain('calc(24px + 2 * var(--centre-shift, 0px))');
     expect(block('.to-bottom')).toContain('left: calc(50% + var(--centre-shift, 0px))');

@@ -982,7 +982,8 @@ button.tree-twisty:hover {
 .transcript-column,
 .composer-stack,
 .inbox-column,
-.queued {
+.queued,
+.run-notices {
   translate: var(--centre-shift, 0px) 0;
 }
 
@@ -1134,14 +1135,6 @@ button.tree-twisty:hover {
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
   color: var(--spica-muted);
-}
-
-.turn-error {
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: var(--radius-m);
-  background: var(--spica-danger-soft);
-  color: var(--spica-danger);
 }
 
 /* Markdown answer text */
@@ -3509,6 +3502,55 @@ button.ctx-row:hover {
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
   color: var(--spica-faint);
+}
+
+/* What stopped the last run (chat/RunNotices.tsx): just above the input box, as wide as it (the same width rules as
+   .queued and the box), in the flow so the conversation above ends where it starts. Neutral, outlined, the icon in
+   the notice's colour, a small outlined button at the right end. */
+.run-notices {
+  flex: none;
+  max-width: 760px;
+  width: calc(100% - 48px);
+  margin: 0 auto 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.run-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 5px 6px 5px 12px;
+  border: 1px solid var(--spica-border-strong);
+  border-radius: 12px;
+  background: var(--spica-surface);
+  color: var(--spica-ink);
+  font-size: var(--chat-small);
+  line-height: var(--chat-row-line);
+}
+
+.run-notice > svg {
+  flex: none;
+}
+
+.run-notice.is-error > svg {
+  color: var(--spica-danger);
+}
+
+.run-notice.is-warning > svg {
+  color: var(--spica-warning);
+}
+
+.run-notice-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.run-notice > .btn {
+  flex: none;
 }
 
 /* Messages sent during a run, waiting for the next step */

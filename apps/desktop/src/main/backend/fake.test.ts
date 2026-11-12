@@ -596,3 +596,21 @@ describe('the same call again and again (「重复」)', () => {
     expect(results.filter((x) => x.type === 'tool_result' && x.content.includes(REPEAT_REMINDER_MARK))).toHaveLength(5);
   });
 });
+
+describe('a plain error and an interrupted conversation (「超时」, 「断电」)', () => {
+  it('「超时」 ends in an error the window words as 模型接口超时; 「断电」 leaves the conversation interrupted, and resume goes on', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '超时');
+    expect(await until((e) => e.type === 'run.end' && e.sessionId === chat.id)).toMatchObject({ reason: 'error' });
+    expect(events.find((e) => e.type === 'error')).toMatchObject({ message: expect.stringMatching(/timed out/) });
+    events.length = 0;
+    await b.send(chat.id, '断电');
+    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    expect((await b.getSession(chat.id))?.status).toBe('interrupted');
+    events.length = 0;
+    await b.resume(chat.id);
+    expect(await until((e) => e.type === 'run.end' && e.sessionId === chat.id)).toMatchObject({ reason: 'completed' });
+  });
+});

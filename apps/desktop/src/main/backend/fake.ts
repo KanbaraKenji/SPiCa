@@ -1229,6 +1229,16 @@ export class FakeBackend implements AgentBackend {
         this.#emit(sessionId, { type: 'turn.end', turn });
         this.#finish(sessionId, 'repeated', 'the same call came 8 times in a row with the same result; it was not run');
         return;
+      } else if (/超时/.test(text)) {
+        // the model's interface did not answer in time: a plain error with nothing to set (模型接口超时)
+        throw new Error('request timed out after 120s');
+      } else if (/断电/.test(text)) {
+        // as if the app quit mid-run: the conversation is left interrupted (上次运行已中断, 继续 goes on)
+        this.#commitAssistant(sessionId, blocks);
+        this.#runs.delete(sessionId);
+        this.#setStatus(sessionId, 'interrupted');
+        this.#emit(sessionId, { type: 'run.end', reason: 'aborted', detail: 'the app closed while the run was going' });
+        return;
       } else if (/欠费/.test(text)) {
         // the provider's account is out of money, as an OpenAI-style API says it
         throw new Error('HTTP 402 [insufficient_balance]: Insufficient Balance');

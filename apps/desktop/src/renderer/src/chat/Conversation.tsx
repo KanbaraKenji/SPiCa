@@ -1,4 +1,5 @@
 // The main pane: the transcript of one session, streamed live, and its input box.
+import { RunNotices, type Notice } from './RunNotices';
 import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo } from '@spica/protocol';
 import { changesAfter } from '../store/relocate';
@@ -229,18 +230,6 @@ function Response({
       {live ? null : <AnswerSources sources={answerSources(blocks, sources)} />}
       {live ? null : <FileCards files={files} onOpen={actions.openFile} actions={fileActions(actions, cwd)} />}
       {item.interrupted && newest ? <p className="turn-note is-stopped">（中断）</p> : null}
-      {/* the newest answer stopped at the most the model may write at once: say it, and 继续 asks for the rest */}
-      {item.truncated && !item.interrupted && newest && !live && after === 0 ? (
-        <div className="resume-row">
-          <span className="status-with-icon">
-            <SpicaStatusIcon name="warning" size={15} />
-            回答到达长度上限，没有写完
-          </span>
-          <button type="button" className="btn" onClick={() => actions.send('继续')}>
-            继续
-          </button>
-        </div>
-      ) : null}
       {live ? null : (
         <MessageActions
           text={answerText(blocks)}
@@ -402,6 +391,18 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
     el.scrollIntoView?.({ block: 'center' });
   });
   const resolveRef = (n: number) => historyRef(transcript, n);
+  // Above the input box (RunNotices): each shown as long as it was in the conversation before.
+  const notices: Notice[] = [];
+  if (session?.status === 'interrupted' && !running) notices.push({ key: 'interrupted', tone: 'warning', text: '上次运行已中断', action: { label: '继续', onClick: actions.resume } });
+  // the same call too many times in a row: not run; 继续 is the user writing, which starts the count again
+  if (transcript.stopped === 'repeated' && !running) notices.push({ key: 'repeated', tone: 'warning', text: `同一步重复了 ${transcript.repeatCount ?? 8} 次，要继续吗`, action: { label: '继续', onClick: () => actions.send('继续') } });
+  // the last answer stopped at the most the model may write at once: 继续 asks for the rest
+  const last = items[lastIndex];
+  if (last?.kind === 'response' && last.truncated && !last.interrupted && !running) notices.push({ key: 'truncated', tone: 'warning', text: '回答到达长度上限，没有写完', action: { label: '继续', onClick: () => actions.send('继续') } });
+  if (transcript.error) {
+    const toModels = transcript.errorAction === 'models' && actions.openModelSettings;
+    notices.push({ key: 'error', tone: 'error', text: transcript.error, ...(toModels ? { action: { label: '模型设置', onClick: () => actions.openModelSettings?.(transcript.errorProvider) } } : {}) });
+  }
   const mark = (id: string): Record<string, string> => (id === foundItem ? { 'data-item': id, 'data-found': '' } : { 'data-item': id });
   const answerTools = useMemo(
     () =>
@@ -504,44 +505,10 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                 </button>
               </div>
             ))}
-            {session?.status === 'interrupted' && !running ? (
-              <div className="resume-row">
-                <span className="status-with-icon">
-                  <SpicaStatusIcon name="warning" size={15} />
-                  上次运行已中断
-                </span>
-                <button type="button" className="btn" onClick={actions.resume}>
-                  继续
-                </button>
-              </div>
-            ) : null}
             {/* a run that ended at the turn limit (scripts through the MCP service; the app sets none) */}
             {transcript.stopped === 'max_turns' && !running ? <p className="turn-note">（已达到轮数上限，还没做完）</p> : null}
-            {/* the same call too many times in a row: not run; 继续 is the user writing, which starts the count again */}
-            {transcript.stopped === 'repeated' && !running ? (
-              <div className="resume-row">
-                <span className="status-with-icon">
-                  <SpicaStatusIcon name="warning" size={15} />
-                  同一步重复了 {transcript.repeatCount ?? 8} 次，要继续吗
-                </span>
-                <button type="button" className="btn" onClick={() => actions.send('继续')}>
-                  继续
-                </button>
-              </div>
-            ) : null}
             {/* message_agent refused: the limit of messages to other agents since the user last wrote */}
             {transcript.agentLimit ? <p className="turn-note">（代理之间互发的消息已达上限，没有再发；你说一句话后重新计数）</p> : null}
-            {transcript.error ? (
-              <p className="turn-error status-with-icon" role="alert">
-                <SpicaStatusIcon name="error" size={15} />
-                <span>{transcript.error}</span>
-                {transcript.errorAction === 'models' && actions.openModelSettings ? (
-                  <button type="button" className="btn btn-small" onClick={() => actions.openModelSettings?.(transcript.errorProvider)}>
-                    模型设置
-                  </button>
-                ) : null}
-              </p>
-            ) : null}
           </div>
         )}
       </div>
@@ -564,6 +531,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
           ))}
         </div>
       ) : null}
+      <RunNotices notices={notices} />
       <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
       {demo ? <p className="composer-note">当前为演示数据</p> : null}
     </div>
