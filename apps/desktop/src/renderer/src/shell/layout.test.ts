@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  centreShift,
+  COLUMN_GUTTER,
+  COLUMN_WIDTH,
   computeLayout,
   INFO_WIDTH,
   infoFits,
@@ -195,5 +198,60 @@ describe('the sidebar toggle pressed while the sidebar is only slid out', () => 
   it('a sidebar left out on purpose (not slid out by resting) still closes on the press', () => {
     expect(toggleFrom('left', 500, closed, 'left', false)).toEqual({ open: closed, floating: null });
     expect(toggleFrom('left', 1920, all, null, false)).toEqual(toggleAction('left', 1920, all, null));
+  });
+});
+
+describe('the content column: where it rests with nothing on the right, pushed left by a right panel', () => {
+  // The column's left and right edges on screen, and the shift from the conversation's middle.
+  const column = (vw: number, open: Open, preview: number = PREVIEW_WIDTH) => {
+    const wanted = { left: SIDEBAR_WIDTH, preview };
+    const layout = computeLayout(vw, open, null, wanted);
+    const widths = panelWidths(vw, layout, wanted);
+    const left = layout.left === 'docked' ? widths.left : RAIL_WIDTH;
+    const right = vw - (layout.info === 'docked' ? widths.info : 0) - (layout.preview === 'docked' ? widths.preview - widths.cover : 0);
+    const shift = centreShift(vw, layout, widths);
+    const width = Math.min(COLUMN_WIDTH, right - left - 2 * COLUMN_GUTTER);
+    const mid = (left + right) / 2 + shift;
+    return { shift, edges: [mid - width / 2, mid + width / 2] as const, gaps: [mid - width / 2 - left, right - (mid + width / 2)] as const };
+  };
+  const o = (left: boolean, preview: boolean, info: boolean): Open => ({ left, preview, info });
+
+  it('nothing on the right: in the middle of all the room right of the sidebar', () => {
+    expect(column(1920, o(true, false, false))).toMatchObject({ shift: 0, edges: [712, 1472] });
+    expect(column(1920, o(false, false, false))).toMatchObject({ shift: 0, edges: [606, 1366] });
+  });
+
+  it('a right panel that does not reach it leaves it where it is', () => {
+    // The details (to 1620) and a 320 preview (to 1600) stop short of 1472 + 24.
+    expect(column(1920, o(true, false, true))).toMatchObject({ shift: 150, edges: [712, 1472] });
+    expect(column(1920, o(true, true, false), 320)).toMatchObject({ edges: [712, 1472] });
+  });
+
+  it('a wider one pushes it left, full width, 24 kept on the right; the room on the left goes first', () => {
+    expect(column(1920, o(true, true, false))).toMatchObject({ shift: 104, edges: [496, 1256], gaps: [232, 24] });
+    // Against the left gutter at a 848 preview: both gaps 24, still 760 wide.
+    expect(column(1920, o(true, true, false), 848)).toMatchObject({ shift: 0, gaps: [24, 24], edges: [288, 1048] });
+  });
+
+  it('then narrower, in the conversation’s middle, down to 440 and the preview over it', () => {
+    expect(column(1920, o(true, true, true))).toMatchObject({ shift: 0, gaps: [24, 24] });
+    expect(column(1920, o(true, true, false), 1200)).toMatchObject({ shift: 0, gaps: [24, 24] });
+    expect(column(1280, o(true, true, false))).toMatchObject({ shift: 0, gaps: [24, 24] });
+  });
+
+  it('as a preview is dragged wider the column never moves right, and never past the right panel', () => {
+    let last = Infinity;
+    for (let p = PREVIEW_MIN; p <= 1496; p += 7) {
+      const c = column(1920, o(true, true, false), p);
+      expect(c.edges[0] + c.edges[1]).toBeLessThanOrEqual(last + 1); // whole pixels
+      expect(c.gaps[1]).toBeGreaterThanOrEqual(COLUMN_GUTTER - 0.5);
+      last = c.edges[0] + c.edges[1];
+    }
+  });
+
+  it('not on a chat (inbox, plugin page): the right panels do not count', () => {
+    const layout = computeLayout(1920, o(true, true, true));
+    const widths = panelWidths(1920, layout, { left: SIDEBAR_WIDTH, preview: PREVIEW_WIDTH });
+    expect(centreShift(1920, layout, widths, false)).toBe(0);
   });
 });

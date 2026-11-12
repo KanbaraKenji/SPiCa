@@ -176,3 +176,26 @@ export function previewFloats(viewportWidth: number, open: Open, wanted: Wanted 
 export const COLUMN_WIDTH = 760;
 /** What the input box keeps clear on each side of the conversation (the padding round it in styles.css). */
 export const COLUMN_GUTTER = 24;
+
+/**
+ * Where the conversation's content column goes (messages, the input box; min(760, the conversation less 24 on each
+ * side) wide, as styles.css lays it out). Its place of rest is the middle of all the room right of the sidebar (or
+ * the icon column), as if nothing were docked on the right; a right panel leaves it there until its left edge, less
+ * the gutter, reaches the column, then pushes it left; once the column is against the conversation's left gutter it
+ * gets narrower (styles.css), down to the 440 under which the preview lies over the conversation.
+ * Returns how far to move the column right of the conversation's own middle (never negative), whole pixels. The
+ * conversation is taken as laid out, not as left showing under a preview lying over it. With rightPanels false
+ * (not on a chat) the right panels do not count, so the column is in the conversation's middle.
+ */
+export function centreShift(viewportWidth: number, layout: Layout, widths: Widths, rightPanels = true): number {
+  const left = layout.left === 'docked' ? widths.left : RAIL_WIDTH;
+  const right =
+    viewportWidth -
+    (rightPanels && layout.info === 'docked' ? widths.info : 0) -
+    (rightPanels && layout.preview === 'docked' ? widths.preview - widths.cover : 0);
+  const column = Math.min(COLUMN_WIDTH, right - left - 2 * COLUMN_GUTTER);
+  if (column <= 0) return 0;
+  const own = (left + right) / 2;
+  const rest = (left + viewportWidth) / 2;
+  return Math.round(clamp(rest, left + COLUMN_GUTTER + column / 2, right - COLUMN_GUTTER - column / 2) - own);
+}

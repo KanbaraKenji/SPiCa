@@ -1,9 +1,9 @@
 // The window: title bar, left sidebar, main pane (conversation, inbox or a plugin page), right panels; settings as a dialog over it.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { DesktopBridge, PreviewInfo } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
-import { computeLayout, infoFits, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
+import { centreShift, computeLayout, infoFits, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
 import { Resizer } from './shell/Resizer';
 import { ConfirmDialog } from './ui/Dialog';
 import { FilePreview, usePreview } from './shell/FilePreview';
@@ -154,6 +154,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const wantedWidths = dragging ? { ...savedWidths, [dragging.side]: dragging.width } : savedWidths;
   const layout = computeLayout(width, open, floating, wantedWidths);
   const widths = panelWidths(width, layout, wantedWidths);
+  // The content column: at rest as if nothing were docked on the right, pushed left by a right panel (styles.css:
+  // --centre-shift).
+  const shift = centreShift(width, layout, widths, view === 'chat');
   const resizer = (side: 'left' | 'preview') =>
     layout[side] === 'docked' ? (
       <Resizer
@@ -893,7 +896,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         </div>
       </header>
       <div className="body">
-        <main className="main">
+        <main className="main" style={{ '--centre-shift': `${shift}px` } as CSSProperties}>
           {view === 'plugin' ? (
             openPluginView ? (
               <PluginPage key={viewKey(openPluginView)} {...pluginProps(openPluginView)} />
