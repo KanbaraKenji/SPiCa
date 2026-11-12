@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, render } from '@testing-library/react';
 import { StatusLine, shownInAnswer } from './StatusLine';
 import type { Block, Transcript } from '../store/transcript';
 
@@ -31,6 +31,24 @@ describe('the status line under the answer', () => {
     expect(shownInAnswer(live([], 'thinking'))).toBe(false);
     const { container } = render(<StatusLine transcript={live([tool('pending')])} />);
     expect(container.querySelector('.status-line')?.textContent).toMatch(/^正在读取文件[45]s$/);
+  });
+
+  it('shown again after the answer’s last line said it: the run’s time at once, not 0s until the next tick', () => {
+    vi.useFakeTimers();
+    try {
+      const startedAt = Date.now();
+      const at = (status: string, blocks: Block[]) => ({ items: [{ kind: 'response', id: 'r', blocks }], run: { status, startedAt } }) as unknown as Transcript;
+      const { container, rerender } = render(<StatusLine transcript={at('tool', [tool('running')])} />);
+      expect(container.querySelector('.status-line')).toBeNull();
+      vi.setSystemTime(startedAt + 6400);
+      rerender(<StatusLine transcript={at('awaiting_confirm', [tool('done')])} />);
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+      expect(container.querySelector('.status-clock')?.textContent).toBe('6s');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('says what it is doing first and the clock after it, in every state (as the Running … line does)', () => {

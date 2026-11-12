@@ -70,8 +70,14 @@ export function StatusLine({ transcript }: { transcript: Transcript }) {
   const active = Boolean(phase);
   useEffect(() => {
     if (!active) return;
+    // Shown again (the answer's last line said it meanwhile): the time now, not the last one this line had
+    // (it read 0s for a second, then jumped).
+    const first = setTimeout(() => setNow(Date.now()), 0);
     const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    return () => {
+      clearTimeout(first);
+      clearInterval(t);
+    };
   }, [active]);
   // Re-render once the "done" line has been shown long enough, so it goes away.
   useEffect(() => {
