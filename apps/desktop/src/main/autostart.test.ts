@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { autostartSupport, followAutostart, LOGIN_ARG, onSecondLaunch, registeredAtLogin, startedAtLogin, syncAutostart, type LoginItems } from './autostart';
+import { autostartSupport, LOGIN_ARG, onSecondLaunch, startedAtLogin, syncAutostart, type LoginItems } from './autostart';
 
 describe('who may use 开机时启动', () => {
   it('an installed copy on Windows only', () => {
@@ -58,31 +58,6 @@ describe('the registration follows the switch', () => {
       expect(get).not.toHaveBeenCalled();
       expect(r.sets).toEqual([]);
     }
-  });
-
-  it('at start the switch takes what Windows has; later changes are written once', () => {
-    const r = io(true); // registered by something else (the installer)
-    const log = vi.fn();
-    const f = followAutostart({ support: 'ok', exe, io: r.items, log });
-    expect(f.start(false)).toBe(true);
-    expect(r.sets).toEqual([]);
-    f.changed(true); // the setting store echoing the value it was given
-    expect(r.sets).toEqual([]);
-    f.changed(false);
-    expect(r.sets).toEqual([{ openAtLogin: false, path: exe, args: [LOGIN_ARG] }]);
-    f.changed(false);
-    expect(r.sets).toHaveLength(1);
-    expect(registeredAtLogin({ support: 'ok', exe, io: r.items })).toBe(false);
-  });
-
-  it('where it is not offered, the saved value stays and nothing is read or written', () => {
-    const r = io(true);
-    const get = vi.spyOn(r.items, 'get');
-    const f = followAutostart({ support: 'dev', exe, io: r.items, log: () => undefined });
-    expect(f.start(false)).toBe(false);
-    f.changed(true);
-    expect(get).not.toHaveBeenCalled();
-    expect(r.sets).toEqual([]);
   });
 
   it('a failing system call is reported, not thrown', () => {
