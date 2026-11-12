@@ -67,14 +67,19 @@ export function formatDuration(ms: number): string {
   return `${m} 分 ${String(s % 60).padStart(2, '0')} 秒`;
 }
 
-/** Timer text for the status line: 0:07, 1:24, 1:02:03. */
+/**
+ * A run's ticking clock (the status line under the answer, the end of the Running … line): 7s, 2m 5s, 2m 0s,
+ * 1h 2m (他: 「要用Xs 和Xm Xs这样的」). Minutes always say their seconds, so the text does not lose a part as
+ * it ticks; from an hour on, no seconds.
+ */
 export function formatClock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  const ss = String(s).padStart(2, '0');
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
 }
 
 function parts(path: string): string[] {

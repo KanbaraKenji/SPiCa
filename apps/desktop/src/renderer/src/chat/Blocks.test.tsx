@@ -192,7 +192,7 @@ describe('ToolGroup', () => {
     let head = screen.getByRole('button');
     expect(head.querySelector('.fold-icon .spica-mark')).toBeTruthy();
     expect(head.querySelector('.fold-label')?.textContent).toBe('Listing the working folder');
-    expect(head.lastElementChild?.textContent).toBe('0:47');
+    expect(head.lastElementChild?.textContent).toBe('47s');
     // Two in the group, the second running: the group's line.
     rerender(
       <ToolGroup
@@ -206,7 +206,7 @@ describe('ToolGroup', () => {
     head = screen.getAllByRole('button')[0]!;
     expect(head.querySelector('.fold-label')?.textContent).toBe('Reading 需求说明.docx');
     expect(head.querySelector('.fold-icon .spica-mark')).toBeTruthy();
-    expect(head.lastElementChild?.textContent).toBe('0:47');
+    expect(head.lastElementChild?.textContent).toBe('47s');
     // Inside, the running call turns in its first place; nothing after its name.
     fireEvent.click(head);
     const running = screen.getAllByRole('button')[2]!;

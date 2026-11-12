@@ -30,7 +30,7 @@ describe('the status line under the answer', () => {
     expect(shownInAnswer(live([tool('pending')]))).toBe(false);
     expect(shownInAnswer(live([], 'thinking'))).toBe(false);
     const { container } = render(<StatusLine transcript={live([tool('pending')])} />);
-    expect(container.querySelector('.status-line')?.textContent).toMatch(/^正在读取文件0:0[45]$/);
+    expect(container.querySelector('.status-line')?.textContent).toMatch(/^正在读取文件[45]s$/);
   });
 
   it('says what it is doing first and the clock after it, in every state (as the Running … line does)', () => {
