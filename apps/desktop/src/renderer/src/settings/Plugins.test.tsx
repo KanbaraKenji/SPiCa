@@ -2,9 +2,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
-import { Plugins, pluginBadge, type PluginsApi, type SettingsPages } from './Plugins';
+import { Plugins, pluginBadge, sourceLine, type PluginsApi, type SettingsPages } from './Plugins';
 import type { PluginView as PageView } from '../../../shared/plugin-view';
-import { FakePluginService } from '../../../main/plugins/fake';
+import { DEMO_READ_AT, FakePluginService } from '../../../main/plugins/fake';
 import { dropAllDrafts } from './drafts';
 import { DEFAULT_SETTINGS } from '../../../shared/settings';
 import type { PluginsProgress, PluginsState, PluginView } from '../../../shared/plugins';
@@ -12,6 +12,21 @@ import type { PluginsProgress, PluginsState, PluginView } from '../../../shared/
 afterEach(() => {
   cleanup();
   dropAllDrafts();
+  vi.useRealTimers();
+});
+
+/** "Now" a minute after the demo sources were read (the same day there, in any time zone), so 上次读取 shows only the time on any day the tests run. Only Date is faked: the page's own timers run as usual. */
+const onDemoReadDay = () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(Date.parse(DEMO_READ_AT) + 60_000));
+};
+
+describe('上次读取', () => {
+  it('the time alone on the day it was read, the date with it after that day', () => {
+    const at = new Date(2026, 10, 12, 17, 30).toISOString();
+    expect(sourceLine({ location: 'x', kind: 'share', readAt: at, count: 2 }, new Date(2026, 10, 12, 23, 59))).toBe('上次读取 17:30 · 2 个插件');
+    expect(sourceLine({ location: 'x', kind: 'share', readAt: at, count: 2 }, new Date(2026, 10, 13, 0, 1))).toBe('上次读取 11/12 17:30 · 2 个插件');
+  });
 });
 
 function api(): PluginsApi {
@@ -169,6 +184,7 @@ describe('Plugins', () => {
   });
 
   it('市场: one part per source, the official one first (marked, no 移除), each with how it went last time, 检查更新 and 移除 on its title line, then its cards', async () => {
+    onDemoReadDay();
     render(<Plugins api={api()} tab="market" />);
     await screen.findByRole('list', { name: '插件来源' });
     const items = sourceItems();

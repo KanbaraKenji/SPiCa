@@ -96,7 +96,8 @@ const newerThan = (a: string, b: string) => {
 };
 
 /** 市场 › 插件来源 in the demo: the shared folder the two above come from, and an address that does not answer. */
-const DEMO_READ_AT = '2026-11-12T09:30:00.000Z';
+// A fixed moment, so the demo and its screenshots read the same any day (shown with its date after that day).
+export const DEMO_READ_AT = '2026-11-12T09:30:00.000Z';
 const DEMO_SOURCES: PluginSourceView[] = [
   // deploy.json's pluginSources in a company build: first, marked 官方, cannot be removed.
   { location: DEMO_OFFICIAL, kind: 'http', label: '官方插件', official: true, readAt: DEMO_READ_AT, count: 2 },
