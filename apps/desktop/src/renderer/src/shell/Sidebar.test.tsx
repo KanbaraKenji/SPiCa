@@ -375,3 +375,29 @@ describe('对话 / 项目 at the top', () => {
     expect(screen.queryByRole('tablist')).toBeNull();
   });
 });
+
+describe('插件市场', () => {
+  const props = { sessions: seed.sessions, activeId: SEED_IDS.chat, onOpen: vi.fn(), onNewChat: vi.fn(), onSettings: vi.fn(), settingsOpen: false };
+
+  it('always there under 插件, even with no plugin page; first, before the pages, and not one of them', () => {
+    const onMarket = vi.fn();
+    for (const compact of [false, true]) {
+      const { unmount } = render(<Sidebar {...props} compact={compact} onMarket={onMarket} />);
+      const part = screen.getByRole('region', { name: '插件' });
+      fireEvent.click(within(part).getByRole('button', { name: '插件市场' }));
+      unmount();
+    }
+    expect(onMarket).toHaveBeenCalledTimes(2);
+    render(<Sidebar {...props} onMarket={onMarket} pluginPages={[{ key: 'p/v', title: '笔记', open: false, onOpen: vi.fn() }]} />);
+    const rows = within(screen.getByRole('region', { name: '插件' })).getAllByRole('button');
+    expect(rows.map((b) => b.textContent)).toEqual(['插件市场', '笔记']);
+    // The quiet colour of an action (as 新项目), not a page's.
+    expect(rows[0]!.className).toContain('side-market');
+    expect(rows[0]!.getAttribute('aria-current')).toBeNull();
+  });
+
+  it('without it and without plugin pages, no 插件 part', () => {
+    render(<Sidebar {...props} />);
+    expect(screen.queryByRole('region', { name: '插件' })).toBeNull();
+  });
+});

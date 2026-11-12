@@ -2713,6 +2713,135 @@ button.ctx-row:hover {
 
 /* ---------- Settings ---------- */
 
+/* Settings: a large dialog over the window (settings/SettingsView.tsx). At most 1080 x 760 with at least 24
+   around it; the sections in a column on the left, the section shown on the right scrolls by itself. The scrim
+   is the dialogs' own, so the caption buttons dim with it (ui/dim.ts). */
+.settings-scrim {
+  padding: 24px;
+}
+
+.settings-dialog {
+  position: relative;
+  display: flex;
+  width: min(1080px, 100%);
+  height: min(760px, 100%);
+  border-radius: var(--radius-popup);
+  background: var(--spica-bg);
+  box-shadow: var(--spica-shadow);
+  overflow: hidden;
+}
+
+.settings-dialog:focus {
+  outline: none;
+}
+
+.settings-nav {
+  flex: none;
+  width: 184px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 20px 10px;
+  border-right: 1px solid var(--spica-divider);
+  background: var(--spica-chrome);
+  overflow-y: auto;
+}
+
+.settings-nav-title {
+  margin: 0 0 12px;
+  padding: 0 10px;
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: 600;
+}
+
+.settings-nav-item {
+  height: 34px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: var(--radius-m);
+  color: var(--spica-muted);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.settings-nav-item:hover {
+  background: var(--spica-hover);
+  color: var(--spica-ink);
+}
+
+.settings-nav-item.is-on {
+  background: var(--spica-active);
+  color: var(--spica-ink);
+  font-weight: 600;
+}
+
+.settings-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+}
+
+/* Too small for the dialog with room around it: it fills the window under the title bar (the caption
+   buttons stay usable), and the sections go in a row along its top. */
+@media (max-width: 720px), (max-height: 520px) {
+  .settings-scrim {
+    padding: var(--spica-titlebar-h) 0 0;
+  }
+
+  .settings-dialog {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .settings-dialog {
+    flex-direction: column;
+  }
+
+  .settings-nav {
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 52px 8px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--spica-divider);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .settings-nav-title {
+    display: none;
+  }
+
+  .settings-nav-item {
+    padding: 0 12px;
+  }
+
+  .settings-close {
+    top: 9px;
+    right: 10px;
+  }
+
+  .settings-main {
+    position: static;
+    min-height: 0;
+  }
+}
+
 .settings {
   flex: 1;
   min-height: 0;
@@ -2721,9 +2850,15 @@ button.ctx-row:hover {
 }
 
 .settings-column {
-  max-width: 720px;
+  max-width: 760px;
   margin: 0 auto;
-  padding: 28px 24px 40px;
+  padding: 28px 32px 40px;
+}
+
+@media (max-width: 720px) {
+  .settings-column {
+    padding: 20px 16px 32px;
+  }
 }
 
 .settings-section + .settings-section {
@@ -3083,15 +3218,7 @@ button.ctx-row:hover {
   z-index: 1000;
 }
 
-/* Settings tabs: the open one is a filled pill, no underline. */
-/* Back arrow, then the tabs, on one line at the top left of the settings page. */
-.settings-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 24px -6px;
-}
-
+/* Tabs: the open one is a filled pill, no underline. */
 .tabs {
   display: inline-flex;
   gap: 2px;
@@ -5798,8 +5925,9 @@ button.ctx-row:hover {
   position: relative;
 }
 
-/* Something new in the list not shown. */
-.side-new-project {
+/* Something new in the list not shown; 插件市场 (an action above the plugin pages, not one of them). */
+.side-new-project,
+.side-market {
   color: var(--spica-muted);
 }
 
@@ -5839,15 +5967,16 @@ button.ctx-row:hover {
 
 .msg-versions-text {
   padding: 0 2px;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   font-variant-numeric: tabular-nums;
 }
 
+/* One step up from a caption (他: 「时间感觉有点小」). */
 .msg-time {
   margin: 0 6px;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   color: var(--spica-faint);
   font-variant-numeric: tabular-nums;
 }

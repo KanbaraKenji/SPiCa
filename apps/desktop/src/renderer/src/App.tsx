@@ -1,4 +1,4 @@
-// The window: title bar, left sidebar, main pane (conversation or settings), right detail panel.
+// The window: title bar, left sidebar, main pane (conversation, inbox or a plugin page), right panels; settings as a dialog over it.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DesktopBridge, PreviewInfo } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
@@ -24,6 +24,7 @@ import { ConfirmTarget } from './chat/Blocks';
 import type { ComposerTools } from './chat/Composer';
 import { enabledModels, type ModelRef, type ProviderView } from '../../shared/providers';
 import { SettingsView, type SettingsTab } from './settings/SettingsView';
+import type { PluginsTab } from './settings/Plugins';
 import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
 import { InboxView, type InboxProject } from './shell/InboxView';
@@ -53,7 +54,7 @@ export interface AppProps {
   mail?: MailStore;
 }
 
-type View = 'chat' | 'settings' | 'inbox' | 'plugin';
+type View = 'chat' | 'inbox' | 'plugin';
 
 /** Role template of the core's mail sorting thread; it lives in the inbox, not the sidebar. */
 const MAIL_TRIAGE_TEMPLATE = 'mail-triage';
@@ -72,7 +73,15 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const width = useViewportWidth();
   const [floating, setFloating] = useState<Floating>(null);
   const [view, setView] = useState<View>('chat');
+  // Settings: a dialog over whatever is open; it opens again on the section (and 插件's tab) it was left at.
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
+  const [pluginsTab, setPluginsTab] = useState<PluginsTab>('installed');
+  const openSettings = useCallback((tab?: SettingsTab, plugins?: PluginsTab) => {
+    if (tab) setSettingsTab(tab);
+    if (plugins) setPluginsTab(plugins);
+    setSettingsOpen(true);
+  }, []);
   /** The new-project dialog; from a 「新事务」 mail it carries the mail and the suggested name. */
   const [newProject, setNewProject] = useState<null | { name?: string; mailId?: string }>(null);
   /** The file shown in the right panel instead of the details, if any. */
@@ -99,7 +108,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [modelsChanged, setModelsChanged] = useState(0);
   useEffect(() => bridge.providers.onChanged(() => setModelsChanged((n) => n + 1)), [bridge]);
   useEffect(() => {
-    if (view !== 'chat') return;
+    if (view !== 'chat' || settingsOpen) return;
     let alive = true;
     bridge.providers
       .list()
@@ -115,7 +124,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     return () => {
       alive = false;
     };
-  }, [bridge, view, modelsChanged]);
+  }, [bridge, view, settingsOpen, modelsChanged]);
   // 主页: the empty page before any conversation is open, and whatever Spica opens
   // by itself at start (the assistant's main conversation) until you open a
   // conversation yourself. The details panel starts closed there and opening it
@@ -182,7 +191,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [canMax, setCanMax] = useState(false);
 
   // Shortcuts: Ctrl+B sidebar, Ctrl+Alt+B details, Ctrl+Shift+\ the preview over the conversation,
-  // Esc closes a floating panel or settings.
+  // Esc closes a floating panel, the inbox or a plugin page (the settings dialog closes itself: useModal).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'b') {
@@ -245,8 +254,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     window.__spicaShots = {
       setView: (v) => {
         const tab: SettingsTab | null = v === 'settings' ? 'appearance' : v === 'models' || v === 'plugins' || v === 'about' || v === 'general' ? v : null;
+        // A settings view: the dialog open on that section, over the conversation.
         if (tab) setSettingsTab(tab);
-        setView(tab ? 'settings' : v === 'inbox' ? 'inbox' : 'chat');
+        setSettingsOpen(tab !== null);
+        setView(v === 'inbox' ? 'inbox' : 'chat');
       },
     };
     return () => {
@@ -326,6 +337,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
 
   const openSession = (id: string) => {
     setView('chat');
+    // From the settings (设置 › 记忆): the conversation is what is wanted now.
+    setSettingsOpen(false);
     if (layout.left === 'floating') setFloating(null);
     void agent.open(id);
   };
@@ -637,10 +650,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     resume: () => id && void agent.resume(id),
     regenerate: (messageId) => id && void agent.regenerate(id, messageId),
     ...(mail.supported ? { mailById, openInbox: () => setView('inbox') } : {}),
-    openModelSettings: () => {
-      setSettingsTab('models');
-      setView('settings');
-    },
+    openModelSettings: () => openSettings('models'),
     imageUrl: bridge.images.url,
     previewHtml: (title, html) => {
       setPreview({ sessionId: null, path: '', inline: { kind: 'html', name: title, path: '', size: html.length, text: html, truncated: false } });
@@ -675,7 +685,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   if (canMax !== rightCanMax) setCanMax(rightCanMax);
   if (rightMax && !rightCanMax) setRightMax(false);
   const panelMax = { on: rightMax, toggle: () => setRightMax((v) => !v) };
-  const title = view === 'settings' ? '设置' : view === 'inbox' ? '收件箱' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
+  const title = view === 'inbox' ? '收件箱' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
 
   // What can be done to a session by its name; the sidebar's rows and the name in the title bar share it.
   const rowActions: RowActions = {
@@ -707,10 +717,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         agent.newChat();
       }}
       onSettings={() => {
-        setView((v) => (v === 'settings' ? 'chat' : 'settings'));
+        setSettingsOpen((o) => !o);
         setFloating(null);
       }}
-      settingsOpen={view === 'settings'}
+      onMarket={() => {
+        openSettings('plugins', 'market');
+        setFloating(null);
+      }}
+      settingsOpen={settingsOpen}
       topId={state.topId}
       {...(rowActions.onRename ? { onRename: rowActions.onRename } : {})}
       pluginPages={sidebarPages.map((v) => ({
@@ -824,33 +838,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
 
       <div className="body">
         <main className="main">
-          {view === 'settings' ? (
-            <SettingsView
-              shell={shell}
-              providers={bridge.providers}
-              plugins={pluginsApi}
-              version={version}
-              update={update}
-              onCheckUpdate={() => void bridge.updates.run('check')}
-              onInstallUpdate={installUpdate}
-              tab={settingsTab}
-              onTab={setSettingsTab}
-              onBack={() => setView('chat')}
-              workflows={bridge.workflows}
-              pickFolder={() => bridge.pickFolder('选择工作流文件夹')}
-              onBackendRestarted={bridge.backend.onRestarted}
-              projects={inboxProjects}
-              exportUsageLog={bridge.exportUsageLog}
-              showInFolder={bridge.showInFolder}
-              mailModel={mailModelLabel}
-              networkState={bridge.network}
-              pickFiles={bridge.pickFiles}
-              {...(shell.demo ? {} : { localConnect: bridge.localConnect })}
-              previewPages={previewPages}
-              pluginPages={{ views: pluginViews.filter((v) => v.placement === 'settings'), props: pluginProps }}
-              {...(memorySettings ? { memory: memorySettings } : {})}
-            />
-          ) : view === 'plugin' ? (
+          {view === 'plugin' ? (
             openPluginView ? (
               <PluginPage key={viewKey(openPluginView)} {...pluginProps(openPluginView)} />
             ) : (
@@ -872,10 +860,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 ? { onNewProject: (m: MailItem) => setNewProject({ mailId: m.id, ...(m.triage?.suggestion ? { name: m.triage.suggestion } : {}) }) }
                 : {})}
               onOpenSession={openSession}
-              onOpenSettings={() => {
-                setSettingsTab('plugins');
-                setView('settings');
-              }}
+              onOpenSettings={() => openSettings('plugins', 'installed')}
               onDismissProblem={() => mailStore.dismissProblem()}
             />
           ) : state.loaded ? (
@@ -889,10 +874,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               composerTools={composerTools}
               memory={memoryLines}
               {...(found && found.sessionId === state.activeId ? { found: foundView(found) } : {})}
-              onSetupModel={() => {
-                setSettingsTab('models');
-                setView('settings');
-              }}
+              onSetupModel={() => openSettings('models')}
             />
           ) : (
             <div className="conversation" />
@@ -1075,6 +1057,35 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             return problem;
           }}
           onClose={() => setNewProject(null)}
+        />
+      ) : null}
+      {settingsOpen ? (
+        <SettingsView
+          shell={shell}
+          providers={bridge.providers}
+          plugins={pluginsApi}
+          version={version}
+          update={update}
+          onCheckUpdate={() => void bridge.updates.run('check')}
+          onInstallUpdate={installUpdate}
+          tab={settingsTab}
+          onTab={setSettingsTab}
+          pluginsTab={pluginsTab}
+          onPluginsTab={setPluginsTab}
+          onClose={() => setSettingsOpen(false)}
+          workflows={bridge.workflows}
+          pickFolder={() => bridge.pickFolder('选择工作流文件夹')}
+          onBackendRestarted={bridge.backend.onRestarted}
+          projects={inboxProjects}
+          exportUsageLog={bridge.exportUsageLog}
+          showInFolder={bridge.showInFolder}
+          mailModel={mailModelLabel}
+          networkState={bridge.network}
+          pickFiles={bridge.pickFiles}
+          {...(shell.demo ? {} : { localConnect: bridge.localConnect })}
+          previewPages={previewPages}
+          pluginPages={{ views: pluginViews.filter((v) => v.placement === 'settings'), props: pluginProps }}
+          {...(memorySettings ? { memory: memorySettings } : {})}
         />
       ) : null}
     </div>
