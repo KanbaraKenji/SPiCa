@@ -1034,7 +1034,9 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
   return (
     <section className={cls} aria-label="确认">
       <header className="card-head">
-        <SpicaStatusIcon name={danger ? 'warning' : 'info'} size={16} />
+        {/* Only a dangerous one has a mark (the warning); an ordinary one's ringed i said nothing its 拒绝 / 允许
+            do not (他在决策页 d26 选「只去掉普通确认卡的 i」). */}
+        {danger ? <SpicaStatusIcon name="warning" size={16} /> : null}
         <span className="card-title">{title}</span>
         {danger ? <span className="confirm-undo">无法撤销</span> : null}
         <span className="confirm-spacer" />

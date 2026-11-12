@@ -5586,7 +5586,6 @@ section.plugins-part > .plugins-part-title {
   padding: 6px 8px 6px 12px;
 }
 
-.ask-card > .card-head > svg,
 .confirm-card > .card-head > svg,
 .confirm-card > .card-head > .md-tool {
   flex: none;

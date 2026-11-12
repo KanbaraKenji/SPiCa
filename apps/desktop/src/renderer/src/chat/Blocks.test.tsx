@@ -61,6 +61,20 @@ describe('AskCard', () => {
 });
 
 describe('ConfirmCard', () => {
+  it('an ordinary one has no mark before its title, in every state; a dangerous one keeps the warning and 无法撤销', () => {
+    const mail = { type: 'confirm' as const, callId: 'c5', name: 'send_email', input: {}, reason: '发送邮件给「项目组」' };
+    for (const state of [{}, { approved: true }, { approved: false }, { cancelled: true }]) {
+      render(<ConfirmCard block={{ ...mail, ...state }} onDecide={vi.fn()} />);
+      const head = document.querySelector('.confirm-card > .card-head')!;
+      expect(head.firstElementChild?.className, JSON.stringify(state)).toBe('card-title');
+      cleanup();
+    }
+    render(<ConfirmCard block={{ type: 'confirm', callId: 'c6', name: 'run_command', input: { command: 'Remove-Item D:\\工作 -Recurse -Force' }, reason: '运行命令' }} onDecide={vi.fn()} />);
+    const head = document.querySelector('.confirm-card.is-danger > .card-head')!;
+    expect(head.firstElementChild?.getAttribute('data-status')).toBe('warning');
+    expect(head.querySelector('.confirm-undo')?.textContent).toBe('无法撤销');
+  });
+
   it('stopped while it waited: 已中断, no 拒绝 / 允许; one decision only', () => {
     const block = { type: 'confirm' as const, callId: 'c4', name: 'send_email', input: {}, reason: '发送邮件给「项目组」' };
     render(<ConfirmCard block={{ ...block, cancelled: true }} onDecide={vi.fn()} />);
