@@ -929,8 +929,18 @@ button.tree-twisty:hover {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-gutter: stable;
+  /* The scrollbar's room kept on both sides, so the column's middle is the box's middle (as the input box's). */
+  scrollbar-gutter: stable both-edges;
   user-select: text;
+}
+
+/* The content column (messages, the input box, what is queued, the inbox): COLUMN_WIDTH wide, its middle on the
+   window's middle while there is room (shell/layout.ts centreShift, set on .main as --centre-shift). */
+.transcript-column,
+.composer-stack,
+.inbox-column,
+.queued {
+  translate: var(--centre-shift, 0px) 0;
 }
 
 .transcript-column {
@@ -2272,7 +2282,8 @@ pre .hl-punctuation {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  padding: 24px;
+  /* On the content column's middle: twice the shift on one side moves the middle by the shift. */
+  padding: 24px max(24px, calc(24px - 2 * var(--centre-shift, 0px))) 24px max(24px, calc(24px + 2 * var(--centre-shift, 0px)));
   color: var(--spica-ink);
 }
 
@@ -2299,7 +2310,7 @@ pre .hl-punctuation {
 
 .to-bottom {
   position: absolute;
-  left: 50%;
+  left: calc(50% + var(--centre-shift, 0px));
   bottom: 10px;
   transform: translateX(-50%);
   width: 32px;
@@ -3438,7 +3449,8 @@ button.ctx-row:hover {
 
 .composer-note {
   margin: -10px 0 0;
-  padding: 0 24px 10px;
+  /* On the content column's middle, as .empty-chat. */
+  padding: 0 max(24px, calc(24px - 2 * var(--centre-shift, 0px))) 10px max(24px, calc(24px + 2 * var(--centre-shift, 0px)));
   text-align: center;
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
@@ -5243,7 +5255,8 @@ section.plugins-part > .plugins-part-title {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-gutter: stable;
+  /* The scrollbar's room kept on both sides, so the column's middle is the box's middle (as the input box's). */
+  scrollbar-gutter: stable both-edges;
 }
 
 .inbox-column {

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SPLASH_INK } from '../shared/skin';
-import { RAIL_WIDTH } from '../renderer/src/shell/layout';
+import { COLUMN_GUTTER, COLUMN_WIDTH, RAIL_WIDTH } from '../renderer/src/shell/layout';
 
 const css = readFileSync(join(__dirname, '../renderer/src/styles.css'), 'utf8');
 const block = (selector: string) => {
@@ -84,6 +84,14 @@ describe('the panels around the conversation (shell/layout.ts counts on these)',
   it('a right panel has the conversation’s background: only the line on its left sets it apart', () => {
     expect(block('.panel-right')).toContain('background: var(--spica-bg)');
     expect(block('.main')).toContain('background: var(--spica-bg)');
+  });
+
+  it('the content column is COLUMN_WIDTH wide and moves by --centre-shift (messages, input box, queue, inbox, welcome, demo line, to-bottom)', () => {
+    expect(block('.transcript-column,\n.composer-stack,\n.inbox-column,\n.queued')).toContain('translate: var(--centre-shift, 0px) 0');
+    for (const col of ['.transcript-column', '.composer', '.inbox-column']) expect(block(col)).toContain(`max-width: ${COLUMN_WIDTH}px`);
+    expect(block('.composer-wrap')).toContain(`padding: 0 ${COLUMN_GUTTER}px`);
+    for (const line of ['.empty-chat', '.composer-note']) expect(block(line)).toContain('calc(24px + 2 * var(--centre-shift, 0px))');
+    expect(block('.to-bottom')).toContain('left: calc(50% + var(--centre-shift, 0px))');
   });
 
   it('a line across the sidebar above its bottom row (the account)', () => {

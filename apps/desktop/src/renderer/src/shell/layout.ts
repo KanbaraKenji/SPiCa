@@ -171,3 +171,32 @@ export function toggleFrom(side: 'left' | 'info', viewportWidth: number, open: O
 export function previewFloats(viewportWidth: number, open: Open, wanted: Wanted = USUAL): boolean {
   return computeLayout(viewportWidth, { ...open, preview: true }, null, wanted).preview !== 'docked';
 }
+
+/** The widest the conversation's content column gets (messages and the input box; styles.css counts on it). */
+export const COLUMN_WIDTH = 760;
+/** What the input box keeps clear on each side of the conversation (the padding round it in styles.css). */
+export const COLUMN_GUTTER = 24;
+
+/**
+ * Where the conversation's content column goes: its middle on the window's middle while the conversation
+ * (from the sidebar, or the icon column, to the docked right panels) has room for the whole column and its
+ * gutters there; else as near as the conversation allows; with no room to spare it is centred in the
+ * conversation as before. So opening or closing a panel on either side leaves the column where it is.
+ * Returns how far to move the column right of the conversation's own middle (negative: left), whole pixels.
+ * The conversation is taken as laid out, not as left showing: under a preview lying over it, it is at its
+ * narrowest and the column already fills it, so nothing moves.
+ */
+export function centreShift(viewportWidth: number, layout: Layout, widths: Widths, rightPanels = true): number {
+  const left = layout.left === 'docked' ? widths.left : RAIL_WIDTH;
+  const right =
+    viewportWidth -
+    (rightPanels && layout.info === 'docked' ? widths.info : 0) -
+    (rightPanels && layout.preview === 'docked' ? widths.preview - widths.cover : 0);
+  const width = right - left;
+  const column = Math.min(COLUMN_WIDTH, width - 2 * COLUMN_GUTTER);
+  const own = left + width / 2;
+  if (column <= 0) return 0;
+  const lo = left + COLUMN_GUTTER + column / 2;
+  const hi = right - COLUMN_GUTTER - column / 2;
+  return Math.round(clamp(viewportWidth / 2, lo, hi) - own);
+}
