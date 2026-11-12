@@ -732,8 +732,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       }}
       settingsOpen={settingsOpen}
       account={effectiveAccount(settings, shell.autoAccount)}
-      onAccount={() => {
-        openSettings('account');
+      onAccount={(where) => {
+        openSettings(where === 'models' ? 'models' : undefined);
         setFloating(null);
       }}
       topId={state.topId}

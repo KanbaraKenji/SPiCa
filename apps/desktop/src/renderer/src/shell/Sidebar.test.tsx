@@ -379,7 +379,7 @@ describe('对话 / 项目 at the top', () => {
 describe('the account on the bottom row', () => {
   const base = { sessions: seed.sessions, activeId: SEED_IDS.chat, onOpen: vi.fn(), onNewChat: vi.fn(), settingsOpen: false };
 
-  it('its letter and the account; a click on it opens 设置 › 账号, the gear the settings', () => {
+  it('its letter and the account, then the gear, which opens the settings', () => {
     const onAccount = vi.fn();
     const onSettings = vi.fn();
     const { container } = render(<Sidebar {...base} onSettings={onSettings} account="ALEX.CHEN" onAccount={onAccount} />);
@@ -387,15 +387,57 @@ describe('the account on the bottom row', () => {
     expect(me.textContent).toBe('AALEX.CHEN');
     expect(me.getAttribute('title')).toBe('ALEX.CHEN');
     expect(me.querySelector('.side-avatar')?.textContent).toBe('A');
-    fireEvent.click(me);
-    expect(onAccount).toHaveBeenCalledTimes(1);
     const gear = screen.getByRole('button', { name: '设置' });
     expect(gear.getAttribute('title')).toBe('设置');
     fireEvent.click(gear);
     expect(onSettings).toHaveBeenCalledTimes(1);
+    expect(onAccount).not.toHaveBeenCalled();
     // one row: both in the bottom part, the account first
     const bottom = container.querySelector('.sidebar-bottom.has-account')!;
     expect([...bottom.querySelectorAll('button')]).toEqual([me, gear]);
+  });
+
+  it('a click on the account opens its menu above: the account in full, 设置 and 模型设定; a second click closes it', () => {
+    const onAccount = vi.fn();
+    render(<Sidebar {...base} onSettings={vi.fn()} account="ALEX.CHEN" onAccount={onAccount} />);
+    const me = screen.getByRole('button', { name: '账号 ALEX.CHEN' });
+    expect(me.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(me);
+    const menu = screen.getByRole('menu');
+    expect(me.getAttribute('aria-expanded')).toBe('true');
+    expect(menu.querySelector('.context-group')?.textContent).toBe('ALEX.CHEN');
+    expect(screen.getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['设置', '模型设定']);
+    expect(onAccount).not.toHaveBeenCalled();
+    fireEvent.click(me);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('each item opens the settings where it says and closes the menu', () => {
+    const onAccount = vi.fn();
+    render(<Sidebar {...base} onSettings={vi.fn()} account="ALEX.CHEN" onAccount={onAccount} />);
+    const me = screen.getByRole('button', { name: '账号 ALEX.CHEN' });
+    fireEvent.click(me);
+    fireEvent.click(screen.getByRole('menuitem', { name: '模型设定' }));
+    expect(onAccount).toHaveBeenLastCalledWith('models');
+    expect(screen.queryByRole('menu')).toBeNull();
+    fireEvent.click(me);
+    fireEvent.click(screen.getByRole('menuitem', { name: '设置' }));
+    expect(onAccount).toHaveBeenLastCalledWith('settings');
+  });
+
+  it('by keyboard: the first item has the focus, up and down move round the items, Esc closes', () => {
+    render(<Sidebar {...base} onSettings={vi.fn()} account="ALEX.CHEN" onAccount={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '账号 ALEX.CHEN' }));
+    const [settings, models] = screen.getAllByRole('menuitem');
+    expect(document.activeElement).toBe(settings);
+    fireEvent.keyDown(settings!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(models);
+    fireEvent.keyDown(models!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(settings);
+    fireEvent.keyDown(settings!, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(models);
+    fireEvent.keyDown(models!, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   it('no account: the row is 设置 alone, as it was, with no empty badge', () => {

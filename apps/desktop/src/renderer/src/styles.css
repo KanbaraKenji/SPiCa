@@ -6106,6 +6106,16 @@ section.plugins-part > .plugins-part-title {
   border-radius: 50%;
 }
 
+/* The account's menu, above the bottom row: no narrower than the row. Its holder takes no place in the row
+   (no gap after the gear); the menu itself is fixed, out of the row. */
+.account-menu {
+  display: contents;
+}
+
+.account-menu > .context-menu {
+  min-width: var(--account-menu-width);
+}
+
 /* 设置 › 账号: the same round badge, bigger, at the right end of the first row. */
 .account-avatar {
   width: 36px;
