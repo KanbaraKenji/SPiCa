@@ -82,11 +82,13 @@ const DEMO_AVAILABLE: PluginPackage[] = [
 /** 市场 › 插件来源 in the demo: the shared folder the two above come from, and an address that does not answer. */
 const DEMO_READ_AT = '2026-11-12T09:30:00.000Z';
 const DEMO_SOURCES: PluginSourceView[] = [
+  // deploy.json's pluginSources in a company build: first, marked 官方, cannot be removed.
+  { location: 'https://plugins.example.com/official/index.json', kind: 'http', label: '官方插件', official: true, readAt: DEMO_READ_AT, count: 2 },
   { location: '\\\\fileserver\\spica-plugins', kind: 'share', readAt: DEMO_READ_AT, count: 2 },
   { location: 'https://plugins.example.com/index.json', kind: 'http', readAt: DEMO_READ_AT, error: '无法连接插件源 https://plugins.example.com/index.json（HTTP 503）。' },
 ];
-/** A demo source that never answers: an address of example.com, or a place with 「连不上」 in it. */
-const unreachable = (location: string) => /example\.com|连不上/.test(location);
+/** A demo source that never answers: the example.com index at the root, or a place with 「连不上」 in it. */
+const unreachable = (location: string) => /example\.com\/index\.json|连不上/.test(location);
 
 /** The steps of a demo install from a share: read, verify, unpack, copy, start. A .zip address downloads 8 MB first. */
 function demoSteps(kind: PluginPackage['kind']): InstallStepView[] {
@@ -214,6 +216,7 @@ export class FakePluginService implements PluginService {
         return { ok: true, message: `已添加来源：${found.packages.length} 个插件。`, state: this.#state() };
       }
       case 'removeSource':
+        if (this.#sources.some((x) => x.official && x.location === cmd.location)) return { ok: false, message: '官方来源不能移除。', state: this.#state() };
         this.#sources = this.#sources.filter((x) => x.location !== cmd.location);
         this.#available = this.#available.filter((a) => !a.location.startsWith(cmd.location));
         return { ok: true, message: '已移除来源。', state: this.#state() };

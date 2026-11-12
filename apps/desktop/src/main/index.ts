@@ -25,7 +25,7 @@ import { FakePluginService } from './plugins/fake';
 import { UpdateService } from './update/service';
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import type { PluginsCommand } from '../shared/plugins';
+import { officialSources, type OfficialSource, type PluginsCommand } from '../shared/plugins';
 import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
 import { writeDemoChart } from './backend/demo-image';
@@ -197,7 +197,7 @@ function backendConfig(): DesktopBackendConfig {
       extensions: [
         {
           module: '@spica/desktop-host',
-          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), mcpInfoFile, mcpTokenFile },
+          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: automated ? [] : deployPluginSources(), mcpInfoFile, mcpTokenFile },
         },
       ],
     },
@@ -966,6 +966,16 @@ function deployModels(): unknown[] {
   }
 }
 const deployPresets = automated ? [] : deployModels();
+
+/** The official plugin sources from deploy.json ("pluginSources"; 设置 › 插件 › 市场 lists them first). */
+function deployPluginSources(): OfficialSource[] {
+  const file = app.isPackaged ? join(process.resourcesPath, 'deploy.json') : join(app.getAppPath(), 'deploy.json');
+  try {
+    return officialSources((JSON.parse(readFileSync(file, 'utf8')) as { pluginSources?: unknown }).pluginSources);
+  } catch {
+    return [];
+  }
+}
 const updates = new UpdateService({
   currentVersion: app.getVersion(),
   packaged: app.isPackaged,

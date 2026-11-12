@@ -21,7 +21,7 @@ const ID = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
  */
 export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url)), '..')) {
   const file = join(dir, 'deploy.json');
-  if (!existsSync(file)) return { file: null, updateSource: '', app: { ...DEFAULT_APP, icon: null, font: null }, models: [] };
+  if (!existsSync(file)) return { file: null, updateSource: '', pluginSources: [], app: { ...DEFAULT_APP, icon: null, font: null }, models: [] };
   let raw;
   try {
     raw = JSON.parse(readFileSync(file, 'utf8'));
@@ -66,9 +66,33 @@ export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url))
   return {
     file,
     updateSource: typeof raw.updateSource === 'string' ? raw.updateSource.trim() : '',
+    pluginSources: pluginSourcesOf(raw.pluginSources),
     app: { name, id, icon, font },
     models,
   };
+}
+
+/** A place 设置 › 插件 › 市场 can read: a drive or shared folder, or a web address (as 添加来源 takes them). */
+const PLACE = /^([a-z]:[\\/]|\\\\|\/\/|https?:\/\/)/i;
+
+/**
+ * The official plugin sources (市场, listed first, marked 官方, not removable): each a place, as a string or
+ * { "location": …, "label": … }. Wrong ones stop the packaging with a plain message.
+ */
+function pluginSourcesOf(v) {
+  if (v === undefined || v === null || v === '') return [];
+  if (!Array.isArray(v)) throw new Error('deploy.json 的 pluginSources 要写成一个列表，每一项是一个插件来源（地址，或 { "location": 地址, "label": 名字 }）。');
+  return v.map((item, i) => {
+    const at = `deploy.json 的 pluginSources 第 ${i + 1} 项`;
+    const o = typeof item === 'string' ? { location: item } : item && typeof item === 'object' ? item : null;
+    if (!o || typeof o.location !== 'string' || !o.location.trim()) throw new Error(`${at}要写地址（字符串，或 { "location": 地址 }）。`);
+    const location = o.location.trim();
+    if (!PLACE.test(location)) throw new Error(`${at}「${location}」不能用：要写共享盘或本机文件夹（\\\\server\\share、D:\\…）或 http(s) 地址。`);
+    if (/^https?:/i.test(location) && /\.zip(\?|$)/i.test(location)) throw new Error(`${at}「${location}」是单个插件包，不能当来源：网址要指向 index.json。`);
+    if (o.label !== undefined && typeof o.label !== 'string') throw new Error(`${at}的 label 要写成文字。`);
+    const label = typeof o.label === 'string' ? o.label.trim() : '';
+    return label ? { location, label } : { location };
+  });
 }
 
 /** Where, as people count: "models[0] (acme).models[2] (m)" -> 「第 1 个连接（acme）的第 3 个型号（m）」. */

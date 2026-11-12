@@ -4101,6 +4101,12 @@ button.ctx-row:hover {
   flex: none;
 }
 
+/* 官方 after an official source's name: 模型's quiet 默认 words, a little apart from the name. */
+.source-official {
+  margin-left: 8px;
+  font-weight: 400;
+}
+
 .sources-summary {
   font-size: var(--fs-footnote);
   line-height: var(--lh-footnote);

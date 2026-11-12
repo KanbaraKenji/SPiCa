@@ -40,6 +40,8 @@ import {
   type PluginsCommand,
   type PluginsProgress,
   type PluginsResult,
+  sameSource,
+  type OfficialSource,
   type PluginSourceView,
   type PluginsState,
   type PluginView,
@@ -67,6 +69,8 @@ export interface RealServiceOptions {
   root: string;
   /** Where the list of plugin sources (shared folders / index URLs) is kept. */
   sourcesFile: string;
+  /** deploy.json's pluginSources: listed first, marked 官方, not removable; one the user also added is shown once. */
+  official?: OfficialSource[];
   /** Opens a folder in Explorer; resolves to an error text or ''. */
   openFolder(path: string): Promise<string>;
   /** Electron's net.fetch, so the system proxy applies. */
@@ -280,6 +284,7 @@ export class RealPluginService implements PluginService {
           location: src.location,
           kind: src.kind,
           ...(src.label ? { label: src.label } : {}),
+          ...(this.#isOfficial(src.location) ? { official: true } : {}),
           ...(r ? { readAt: r.at } : {}),
           ...(r?.error ? { error: r.error } : {}),
           ...(r && r.count !== undefined ? { count: r.count } : {}),
@@ -302,7 +307,22 @@ export class RealPluginService implements PluginService {
     };
   }
 
+  /** Every source: the official ones first, then the user's (one the same as an official one is that one). */
   #sources(): SourceConfig[] {
+    const official = this.#official();
+    return [...official, ...this.#userSources().filter((u) => !official.some((o) => sameSource(o.location, u.location)))];
+  }
+
+  #official(): SourceConfig[] {
+    return (this.#o.official ?? []).map((o) => ({ kind: isUrl(o.location) ? 'http' : 'share', location: o.location, ...(o.label ? { label: o.label } : {}) }));
+  }
+
+  #isOfficial(location: string): boolean {
+    return (this.#o.official ?? []).some((o) => sameSource(o.location, location));
+  }
+
+  /** The sources the user added (plugin-sources.json). */
+  #userSources(): SourceConfig[] {
     try {
       const raw = JSON.parse(readFileSync(this.#o.sourcesFile, 'utf8')) as SourceConfig[];
       return Array.isArray(raw) ? raw.filter((s) => (s.kind === 'share' || s.kind === 'http') && typeof s.location === 'string') : [];
@@ -316,9 +336,8 @@ export class RealPluginService implements PluginService {
    * typed in (since 2026-11-12; before, only an install remembered it). Looking at a place does not.
    */
   #remember(src: SourceConfig): boolean {
-    const all = this.#sources();
-    if (all.some((s) => s.location === src.location)) return false;
-    this.#writeSources([...all, src]);
+    if (this.#sources().some((s) => sameSource(s.location, src.location))) return false;
+    this.#writeSources([...this.#userSources(), src]);
     return true;
   }
 
@@ -576,14 +595,17 @@ export class RealPluginService implements PluginService {
           const src: SourceConfig | undefined = [...f.items.values()].find((i) => i.source)?.source ?? (isUrl(where) ? undefined : { kind: 'share', location: where });
           if (!src) return { ok: true, info: true, message: '单个插件包的网址不能作为来源，可在下方安装。', state: this.#state() };
           const added = this.#remember(src);
-          await this.#readSources([src]);
-          const r = this.#read.get(src.location);
+          // Already listed (an official one, or typed another way): that row is the one read.
+          const listed = this.#sources().find((x) => sameSource(x.location, src.location)) ?? src;
+          await this.#readSources([listed]);
+          const r = this.#read.get(listed.location);
           if (r?.error) return { ok: false, message: r.error, state: this.#state() };
           message = `${added ? '已添加来源' : '该来源已在列表中'}：${r?.count ?? 0} 个插件。`;
           break;
         }
         case 'removeSource': {
-          const all = this.#sources();
+          if (this.#isOfficial(cmd.location)) return { ok: false, message: '官方来源不能移除。', state: this.#state() };
+          const all = this.#userSources();
           if (!all.some((x) => x.location === cmd.location)) break;
           this.#writeSources(all.filter((x) => x.location !== cmd.location));
           for (const [k, a] of [...this.#fromSources]) if (a.source.location === cmd.location) this.#fromSources.delete(k);

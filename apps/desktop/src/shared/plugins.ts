@@ -134,6 +134,38 @@ export interface PluginSourceView {
   error?: string;
   /** How many plugins it offered the last time it was read. */
   count?: number;
+  /** An official source (deploy.json's pluginSources): listed first, marked 官方, cannot be removed. */
+  official?: boolean;
+}
+
+/** An official plugin source as deploy.json gives it (scripts/deploy.mjs checks it when packaging). */
+export interface OfficialSource {
+  location: string;
+  label?: string;
+}
+
+/**
+ * deploy.json's pluginSources as the app reads it at start: the places it can use, each once; anything else
+ * is left out (the packaging already refused a wrong file; this only keeps a hand-edited one from breaking 市场).
+ */
+export function officialSources(raw: unknown): OfficialSource[] {
+  if (!Array.isArray(raw)) return [];
+  const out: OfficialSource[] = [];
+  for (const item of raw) {
+    const o = typeof item === 'string' ? { location: item } : item && typeof item === 'object' ? (item as { location?: unknown; label?: unknown }) : null;
+    const location = typeof o?.location === 'string' ? o.location.trim() : '';
+    if (!location || !isLocation(location) || (/^https?:/i.test(location) && /\.zip(\?|$)/i.test(location))) continue;
+    if (out.some((x) => sameSource(x.location, location))) continue;
+    const label = typeof o?.label === 'string' ? o.label.trim() : '';
+    out.push(label ? { location, label } : { location });
+  }
+  return out;
+}
+
+/** Two places are the same source: case, the quotes Explorer adds and a slash at the end do not count. */
+export function sameSource(a: string, b: string): boolean {
+  const key = (s: string) => unquote(s).replace(/[\\/]+$/, '').toLowerCase();
+  return key(a) === key(b);
 }
 
 export interface PluginsState {

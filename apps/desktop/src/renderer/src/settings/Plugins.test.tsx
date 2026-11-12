@@ -135,14 +135,16 @@ describe('Plugins', () => {
     expect(screen.queryByRole('navigation', { name: '插件列表' })).toBeNull();
   });
 
-  it('市场: the sources, each with how it went last time, 检查更新 and 移除; then what they offer and is not installed', async () => {
+  it('市场: the sources, the official one first (marked, no 移除), each with how it went last time, 检查更新 and 移除; then what they offer and is not installed', async () => {
     render(<Plugins api={api()} tab="market" />);
     const sources = await screen.findByRole('list', { name: '插件来源' });
     const rows = within(sources).getAllByRole('listitem');
-    expect(rows.map((r) => r.querySelector('.setting-title')?.textContent)).toEqual(['\\\\fileserver\\spica-plugins', 'https://plugins.example.com/index.json']);
-    expect(rows[0]!.textContent).toMatch(/上次读取 \d\d:\d\d · 2 个插件/);
-    expect(within(rows[1]!).getByText('连接失败').getAttribute('title')).toMatch(/HTTP 503/);
-    expect(within(rows[0]!).getAllByRole('button').map((b) => b.textContent || b.getAttribute('aria-label'))).toEqual(['检查更新', '移除来源']);
+    expect(rows.map((r) => r.querySelector('.setting-title')?.textContent)).toEqual(['官方插件官方', '\\\\fileserver\\spica-plugins', 'https://plugins.example.com/index.json']);
+    expect(within(rows[0]!).getByText('官方').className).toContain('provider-default');
+    expect(within(rows[0]!).getAllByRole('button').map((b) => b.textContent || b.getAttribute('aria-label'))).toEqual(['检查更新']);
+    expect(rows[1]!.textContent).toMatch(/上次读取 \d\d:\d\d · 2 个插件/);
+    expect(within(rows[2]!).getByText('连接失败').getAttribute('title')).toMatch(/HTTP 503/);
+    expect(within(rows[1]!).getAllByRole('button').map((b) => b.textContent || b.getAttribute('aria-label'))).toEqual(['检查更新', '移除来源']);
     expect(screen.getByRole('button', { name: '全部检查更新' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '添加来源' })).toBeTruthy();
     expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['可安装']);
@@ -214,7 +216,7 @@ describe('Plugins', () => {
     fireEvent.submit(screen.getByLabelText('插件来源的位置').closest('form')!);
     expect(await screen.findByText('找不到该文件夹或文件。')).toBeTruthy();
     expect((screen.getByLabelText('插件来源的位置') as HTMLInputElement).value).toBe('D:\\插件\\不存在');
-    expect(within(screen.getByRole('list', { name: '插件来源' })).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(screen.getByRole('list', { name: '插件来源' })).getAllByRole('listitem')).toHaveLength(4);
   });
 
   it('添加来源 › 选择文件夹: the folder picked is added at once', async () => {
@@ -234,7 +236,7 @@ describe('Plugins', () => {
     fireEvent.submit(screen.getByLabelText('插件来源的位置').closest('form')!);
     expect(await screen.findByText('单个插件包的网址不能作为来源，可在下方安装。')).toBeTruthy();
     expect(within(list()).getByRole('button', { name: /report-tool/ })).toBeTruthy();
-    expect(within(screen.getByRole('list', { name: '插件来源' })).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(screen.getByRole('list', { name: '插件来源' })).getAllByRole('listitem')).toHaveLength(3);
   });
 
   it('检查更新 of one source reads that one; 全部检查更新 reads all and says how many were not reached', async () => {
@@ -242,11 +244,11 @@ describe('Plugins', () => {
     const sent: unknown[] = [];
     render(<Plugins api={{ run: (cmd) => (sent.push(cmd), svc.run(cmd)), onChanged: () => () => {} }} tab="market" />);
     const rows = within(await screen.findByRole('list', { name: '插件来源' })).getAllByRole('listitem');
-    fireEvent.click(within(rows[0]!).getByRole('button', { name: '检查更新' }));
+    fireEvent.click(within(rows[1]!).getByRole('button', { name: '检查更新' }));
     expect(await screen.findByText('1 个插件可更新。')).toBeTruthy();
     expect(sent).toContainEqual({ op: 'checkSources', location: '\\\\fileserver\\spica-plugins' });
     fireEvent.click(screen.getByRole('button', { name: '全部检查更新' }));
-    expect(await screen.findByText('已检查 1 个插件来源：1 个插件可更新；1 个连接失败。')).toBeTruthy();
+    expect(await screen.findByText('已检查 2 个插件来源：1 个插件可更新；1 个连接失败。')).toBeTruthy();
     expect(sent).toContainEqual({ op: 'checkSources' });
   });
 
@@ -255,7 +257,8 @@ describe('Plugins', () => {
     render(<Plugins api={api()} tab="market" />);
     const fold = await screen.findByRole('button', { name: /^插件来源/ });
     expect(fold.getAttribute('aria-expanded')).toBe('false');
-    expect(fold.textContent).toBe('插件来源2 个来源 · 1 个连接失败');
+    // The official source is counted too.
+    expect(fold.textContent).toBe('插件来源3 个来源 · 1 个连接失败');
     expect(screen.queryByRole('list', { name: '插件来源' })).toBeNull();
     // What the sources offer is right there.
     expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['可安装']);
@@ -270,11 +273,11 @@ describe('Plugins', () => {
   it('移除来源 asks first; removed, what it offered leaves the list', async () => {
     render(<Plugins api={api()} tab="market" />);
     const rows = within(await screen.findByRole('list', { name: '插件来源' })).getAllByRole('listitem');
-    fireEvent.click(within(rows[0]!).getByRole('button', { name: '移除来源' }));
+    fireEvent.click(within(rows[1]!).getByRole('button', { name: '移除来源' }));
     const box = screen.getByRole('alertdialog');
     expect(within(box).getByText('移除来源「\\\\fileserver\\spica-plugins」？')).toBeTruthy();
     fireEvent.click(within(box).getByRole('button', { name: '移除' }));
-    await waitFor(() => expect(within(screen.getByRole('list', { name: '插件来源' })).getAllByRole('listitem')).toHaveLength(1));
+    await waitFor(() => expect(within(screen.getByRole('list', { name: '插件来源' })).getAllByRole('listitem')).toHaveLength(2));
     expect(screen.getByText('没有可安装的插件')).toBeTruthy();
   });
 

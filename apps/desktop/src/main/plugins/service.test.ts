@@ -305,3 +305,71 @@ describe('why an address did not answer, in words', () => {
     expect(unreachableText('无法连接插件源 http://x/index.json（The operation was aborted due to timeout）。')).toBe('连接超时。');
   });
 });
+
+describe('官方来源 (deploy.json pluginSources)', () => {
+  function rig(official: { location: string; label?: string }[] | undefined, user: { kind: 'share'; location: string }[] = []) {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-plugin-official-'));
+    dirs.push(dir);
+    const m = { ...manager, appName: 'Spica', installedVersion: () => undefined } as unknown as PluginManager;
+    const sourcesFile = join(dir, 'sources.json');
+    if (user.length) writeFileSync(sourcesFile, JSON.stringify(user));
+    const share = (name: string) => {
+      const at = join(dir, name);
+      mkdirSync(at);
+      writeFileSync(join(at, 'index.json'), JSON.stringify({ index_version: 1, plugins: [{ name: `p-${name}`, version: '1.0.0', file: 'p.zip' }] }));
+      return at;
+    };
+    const svc = (o = official) => new RealPluginService({ manager: m, root: join(dir, 'plugins'), sourcesFile, openFolder: async () => '', ...(o ? { official: o } : {}) });
+    return { dir, sourcesFile, share, svc };
+  }
+
+  it('configured: first in the list, marked official, read with the others, and not removable', async () => {
+    const r0 = rig(undefined);
+    const off = r0.share('company');
+    const mine = r0.share('mine');
+    writeFileSync(r0.sourcesFile, JSON.stringify([{ kind: 'share', location: mine }]));
+    const svc = r0.svc([{ location: off, label: '公司插件' }]);
+    const r = await svc.run({ op: 'refreshSources' });
+    expect(r.state.sources?.map((s) => [s.location, s.label, s.official, s.count])).toEqual([
+      [off, '公司插件', true, 1],
+      [mine, undefined, undefined, 1],
+    ]);
+    expect(r.state.available?.map((a) => a.name).sort()).toEqual(['p-company', 'p-mine']);
+    const no = await svc.run({ op: 'removeSource', location: off });
+    expect(no).toMatchObject({ ok: false, message: '官方来源不能移除。' });
+    expect(no.state.sources?.[0]?.official).toBe(true);
+    // 全部检查更新 reads it too.
+    expect((await svc.run({ op: 'checkSources' })).message).toBe('已是最新版本。');
+  });
+
+  it('not configured: no official row at all, nothing made up', async () => {
+    const { svc } = rig(undefined);
+    const r = await svc().run({ op: 'refreshSources' });
+    expect(r.state.sources).toEqual([]);
+  });
+
+  it('configured but not reached: its row says 连接失败; the rest of 市场 works', async () => {
+    const r0 = rig(undefined);
+    const mine = r0.share('mine');
+    writeFileSync(r0.sourcesFile, JSON.stringify([{ kind: 'share', location: mine }]));
+    const svc = r0.svc([{ location: join(r0.dir, 'gone') }]);
+    const r = await svc.run({ op: 'refreshSources' });
+    expect(r.ok).toBe(true);
+    expect(r.state.sources?.[0]).toMatchObject({ official: true, error: expect.stringMatching(/找不到共享文件夹/) });
+    expect(r.state.available?.map((a) => a.name)).toEqual(['p-mine']);
+    expect((await svc.run({ op: 'checkSources' })).message).toBe('已检查 1 个插件来源：没有可用更新；1 个连接失败。');
+  });
+
+  it('the same place the user added too: one row, the official one; adding it again says it is listed', async () => {
+    const r0 = rig(undefined);
+    const off = r0.share('company');
+    writeFileSync(r0.sourcesFile, JSON.stringify([{ kind: 'share', location: `${off.toUpperCase()}\\` }]));
+    const svc = r0.svc([{ location: off, label: '公司插件' }]);
+    const r = await svc.run({ op: 'refreshSources' });
+    expect(r.state.sources?.map((s) => [s.location, s.official])).toEqual([[off, true]]);
+    const again = await svc.run({ op: 'addSource', location: `"${off}"` });
+    expect(again).toMatchObject({ ok: true, message: '该来源已在列表中：1 个插件。' });
+    expect(again.state.sources).toHaveLength(1);
+    expect(JSON.parse(readFileSync(r0.sourcesFile, 'utf8'))).toHaveLength(1);
+  });
+});

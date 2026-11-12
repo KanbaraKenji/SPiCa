@@ -14,12 +14,14 @@ import { dirname } from 'node:path';
 import { serveMcpHttp, type McpHttpServer, type Runtime } from '@spica/core';
 import { attachBackend as attachPlugins } from '@spica/plugins';
 import { RealPluginService } from '../main/plugins/service';
-import type { PluginsCommand } from '../shared/plugins';
+import type { OfficialSource, PluginsCommand } from '../shared/plugins';
 import { APP_NAME } from '../shared/app-identity';
 
 export interface DesktopHostOptions {
   pluginRoot: string;
   pluginSourcesFile: string;
+  /** deploy.json's pluginSources: listed first in 市场, marked 官方, not removable. */
+  officialPluginSources?: OfficialSource[];
   /** Where local scripts find the HTTP MCP service ({ url, tokenFile, pid, startedAt, appName }); absent: no such service. */
   mcpInfoFile?: string;
   /** The bearer token, one line, readable by this user only. */
@@ -40,6 +42,7 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
     manager: plugins.manager,
     root: options.pluginRoot,
     sourcesFile: options.pluginSourcesFile,
+    ...(options.officialPluginSources?.length ? { official: options.officialPluginSources } : {}),
     // Opening folders is the main process's job (it handles 'openRoot' itself).
     openFolder: async () => '',
     // How far an install the page started is, on its way to the window.

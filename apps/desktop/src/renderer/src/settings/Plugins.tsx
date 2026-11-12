@@ -831,14 +831,26 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab }: PluginsProps)
             <ul className="group-list" aria-label="插件来源">
               {sources.map((s) => (
                 <li key={s.location}>
-                  <Row title={s.label ?? s.location} path={{ title: s.location }} hint={<span className={s.error ? 'source-failed' : undefined} title={s.error}>{sourceLine(s)}</span>}>
+                  <Row
+                    title={
+                      <>
+                        {s.label ?? s.location}
+                        {/* An official source (deploy.json): said in quiet words, as 默认 in 模型; it cannot be removed. */}
+                        {s.official ? <span className="provider-default source-official">官方</span> : null}
+                      </>
+                    }
+                    path={{ title: s.location }}
+                    hint={<span className={s.error ? 'source-failed' : undefined} title={s.error}>{sourceLine(s)}</span>}
+                  >
                     <button type="button" className="btn btn-small" disabled={busy} onClick={() => void check(s.location)}>
                       {checking === s.location ? <span className="spinner" aria-hidden /> : null}
                       检查更新
                     </button>
-                    <button type="button" className="btn btn-small btn-quiet-danger btn-square" disabled={busy} onClick={() => setConfirm({ kind: 'removeSource', s })} aria-label="移除来源" title="移除来源">
-                      <Icon name="trash" size={14} />
-                    </button>
+                    {s.official ? null : (
+                      <button type="button" className="btn btn-small btn-quiet-danger btn-square" disabled={busy} onClick={() => setConfirm({ kind: 'removeSource', s })} aria-label="移除来源" title="移除来源">
+                        <Icon name="trash" size={14} />
+                      </button>
+                    )}
                   </Row>
                 </li>
               ))}
