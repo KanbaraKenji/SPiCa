@@ -20,12 +20,15 @@ export class ShellStore {
   readonly legacyDefaultCwd: string | undefined;
   /** Whether 开机时启动 works in this copy (ShellState.autostart). */
   readonly autostart: AutostartSupport;
+  /** The automatic account (ShellState.autoAccount); the one in force is effectiveAccount(settings, this). */
+  readonly autoAccount: string;
 
   constructor(bridge: DesktopBridge, initial: ShellState) {
     this.#bridge = bridge;
     this.demo = initial.demo;
     this.legacyDefaultCwd = initial.legacyDefaultCwd;
     this.autostart = initial.autostart ?? 'unsupported';
+    this.autoAccount = initial.autoAccount ?? '';
     const media = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)').matches : initial.systemDark;
     this.state = new Store<ShellView>({ settings: initial.settings, systemDark: media });
     bridge.onSettingsChanged((settings) => this.#replace(settings));

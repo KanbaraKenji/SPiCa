@@ -83,7 +83,7 @@ export default (ctx) => ({
 export const priority = 100; // 可选，小的先跑
 ```
 
-- 默认导出钩子对象，或接收 `PluginContext`（name、version、pluginDir、dataDir、`mock()`、`log()`）的工厂。
+- 默认导出钩子对象，或接收 `PluginContext`（name、version、pluginDir、dataDir、`mock()`、`log()`、`user.account`）的工厂。`user.account` 是取值器（getter），用户改了账号，钩子下一次调用就读到新的。
 - 钩子类型和参数就是内核的 `Hooks`（`agent-core.md` 第 7 节），六个注入位置照用。
 - 只收 ESM `.js/.mjs`；放 `.ts` 会得到「先编译成 .js」的警告。Electron 45 自带的 Node 24.22 其实能跑 TS，但不对插件作者承诺，免得以后换运行时出问题。
 
@@ -166,7 +166,8 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 ## 5. 外部进程（MCP server）
 
 - 统一是 stdio 的 MCP server，由内核的 MCP 客户端启动和通话（`spawn` 带 `windowsHide: true`，不用 `shell`）。插件包只负责拼启动参数、管重启和日志。
-- 环境变量（宿主填）：`SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION`、`SPICA_PLUGIN_DIR`（安装目录，只读）、`SPICA_PLUGIN_DATA`（可写）、`SPICA_MOCK`（`1` / `0`）；Node 类再加 `ELECTRON_RUN_AS_NODE=1`。工作目录是插件安装目录。
+- 环境变量（宿主填）：`SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION`、`SPICA_PLUGIN_DIR`（安装目录，只读）、`SPICA_PLUGIN_DATA`（可写）、`SPICA_MOCK`（`1` / `0`）、`SPICA_USER_ACCOUNT`（用户的账号，见下）；Node 类再加 `ELECTRON_RUN_AS_NODE=1`。工作目录是插件安装目录。这些在 `baseEnv` 和清单的 `env` 之后填，同名的盖不过它们（清单的 `env` 写 `SPICA_` 开头的检查时就报错）；用户自己环境里同名的变量不在继承白名单里，也进不来。
+- **用户的账号**（2026-11-12，公司定的规则）：Windows 用户文件夹名转大写（`C:\Users\alex.chen` → `ALEX.CHEN`）。文件夹向系统要（`path.win32.basename(os.userInfo().homedir)`，Windows 上是这个进程所属用户的配置文件目录，实测不受 `USERPROFILE` 影响；`os.homedir()` 先读 `USERPROFILE`，不用），不读 `USERPROFILE` / `HOMEPATH` / `USERNAME`，不用登录名，不另起进程。桌面端主进程启动时算一次（`apps/desktop/src/main/user-account.ts`），设置 › 常规 › 账号 可以手动改（转大写、去首尾空格和控制字符，最长 64；填回自动的那个等于没填）；生效的那个随内核配置交给后端扩展（`DesktopHostOptions.userAccount` → `PluginManagerOptions.userAccount`），改了经扩展方法 `setUserAccount` 传过去：钩子下一次调用读到，在运行的 server 用 `restartServers()` 重启一遍（和网络设置变了一样）。manager 自己不取，没给就是空字符串。取不到（不是 Windows、系统没给、出错）时是空字符串，记一行日志，程序照常起。截图模式固定 `ALEX.CHEN`；开发版可以用 `SPICA_DEV_ACCOUNT` 试别的（`-` = 取不到）。
 - **Node 类：用 Electron 自带的 Node。** 启动命令是 `process.execPath`（Electron 主程序）+ `ELECTRON_RUN_AS_NODE=1`。理由：用户什么都不用装；和桌面端是同一个 Node 版本（Electron 45 = Node 24.22），作者在本机用 Node 24 开发即可；不另带一个 node.exe，安装包不变大。纯 Node 下（测试、冒烟脚本）这个变量无害，所以测试和真机走同一条路。依赖打进包里（MCPB 的做法），不在用户电脑上 `npm install`。
 - **Python 类，这一版：插件自带独立可执行文件**（PyInstaller / Nuitka 打成 `.exe`），清单写 `"runtime": "binary"`，宿主只负责启动。
 - **Python 类，以后：宿主托管解释器（只写方案，不写代码）。**
@@ -195,6 +196,7 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 | 工作文件夹 | `permissions.workspace` 只声明、展示 | 插件包挂 `beforeTool`：参数里出现的路径不在会话工作文件夹内、也不是用户在对话里点名的文件夹，就拒绝（怎么认出「用户点名」到时再定）；`read` 的插件写项目文件夹也拒绝 |
 | 网络 | 插件 server 和应用用同一套网络设置：内核起子进程时注入代理（`HTTPS_PROXY` 等 + `NODE_USE_ENV_PROXY=1`）和信任名单（`NODE_EXTRA_CA_CERTS` + `NODE_USE_SYSTEM_CA`；自带可执行文件用 `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` / `CURL_CA_BUNDLE` 的全量证书），设置里没有的就从子进程环境里删掉（内核 f8d328d）。设置真变了时内核调扩展的 `networkChanged()`，插件这边重启在运行的 server（`restartServers()`），之后的请求用新设置；有认证的代理，账号密码会随代理地址进插件进程。`permissions.network` 只声明、展示 | 按 `permissions.network` 放行 |
 | 环境变量 | 插件进程只继承白名单（`PLUGIN_INHERIT_ENV`：PATH、系统目录、TEMP、用户目录、电脑名和用户名（`COMPUTERNAME`、`USERNAME`）、代理变量等；和内核的 `DEFAULT_CHILD_ENV`、作者工具包 `lib/mcp.mjs` 里的同一张表，有测试保证三处一致），像密钥的名字（SPICA_ 开头、含 KEY / SECRET / TOKEN / PASSWORD / CREDENTIAL）内核一律不传；有测试 | — |
+| 用户账号 | 所有启用的插件都拿到 `SPICA_USER_ACCOUNT` 和 `ctx.user.account`，不用声明权限（「框架统一提供」）。它来自用户文件夹名，等于把 Windows 用户名告诉了每个插件；白名单里的 `USERNAME`、`USERPROFILE` 本来也给了，这一条不比原来多给，只是插件不用再各取各的 | — |
 | 插件页面 | 沙箱里跑，没有 Node；只能取本插件目录里的文件；只能调本插件、本视图 `permissions.tools` 里的工具；`permissions.irreversible` 里的工具先由外壳弹确认框：清单里的声明和 MCP 的 `destructiveHint` 都会要确认，mcp/ 和 services/ 的工具一样。选文件夹 / 文件（`pickFolder` / `pickFile`）：页面能拿到本机完整路径，只因为用户自己在系统对话框里选了它，所以不用在清单里声明；只给路径，读写仍走本插件的工具（钩子、确认照常）；对话框挂在主窗口上，标题前加插件名，所有插件页面同一时间只开一个（开着时再要直接回 `null`）；`defaultPath` 只认本机盘符开头的完整路径，`\\server\share` 这类网络路径忽略（不然页面能让系统去连别的电脑，绕过「不能联网」）；预览页不能用（它拿着用户的文件，不该有通往别的文件的路）。实现：`main/plugin-views.ts` 的 `createPluginPicker`、`pickDialogOptions`。打开文件夹（`openFolder`）：只在资源管理器里打开，不读、不执行；只认本机盘符开头的路径（`shared/plugin-view.ts` 的 `localDrivePath`，和 `defaultPath` 同一条），网络路径在窗口这边就拒掉；再经应用自己的「打开文件夹」通道（`spica:openFolder`），那里确认它是文件夹（是文件、不存在都报「找不到文件夹：…」，所以不会运行文件）。任何本机文件夹都能开，不限用户选过的：开一个资源管理器窗口不泄露也不改动什么，用户手填的路径也要能开；预览页不能用 | 页面调用记进插件日志 |
 | 来源可信 | HTTP 来源每个包必须有 SHA-256，不对拒装；共享盘有索引就校验 | 包签名 |
 

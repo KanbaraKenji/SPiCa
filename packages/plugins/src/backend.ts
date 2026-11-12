@@ -26,6 +26,8 @@ export interface PluginBackendOptions {
   endTree?: boolean;
   /** App name in user-facing messages (a branded build passes its own). Default 'Spica'. */
   appName?: string;
+  /** The user's account for every plugin (PluginManagerOptions.userAccount). Default ''. */
+  userAccount?: string;
 }
 
 const str = { type: 'string' } as const;
@@ -185,6 +187,8 @@ export async function attachBackend(
   warnings: string[];
   /** The host calls this after the network settings changed: plugin servers restart and pick them up. */
   networkChanged(): Promise<void>;
+  /** The user changed the account (设置 › 常规 › 账号): hooks see it at once, plugin servers restart with it. */
+  setUserAccount(account: string): Promise<void>;
   close(): Promise<void>;
 }> {
   if (!options?.root) throw new Error('plugins extension needs options.root');
@@ -194,6 +198,7 @@ export async function attachBackend(
     ...(options.appName ? { appName: options.appName } : {}),
     ...(options.nodePath ? { nodePath: options.nodePath } : {}),
     ...(options.inheritEnv ? { inheritEnv: options.inheritEnv } : {}),
+    ...(options.userAccount ? { userAccount: options.userAccount } : {}),
     endTree: options.endTree ?? true,
   });
   const loaded = await pm.load();
@@ -204,6 +209,7 @@ export async function attachBackend(
     methods: pluginMethods(pm),
     warnings: loaded.failed.map((f) => `plugin ${f.name} was not enabled: ${f.message}`),
     networkChanged: () => pm.restartServers('network settings changed'),
+    setUserAccount: (account: string) => pm.setUserAccount(account),
     close: () => pm.shutdown(),
   };
 }

@@ -29,9 +29,15 @@ export interface Rig {
 }
 
 /** `endTree`: stopping a server also ends what it started (off unless asked: each stop lists the machine's processes). */
-export async function rig(rt = makeRuntime(), opts: { endTree?: boolean } = {}): Promise<Rig> {
+export async function rig(rt = makeRuntime(), opts: { endTree?: boolean; baseEnv?: Record<string, string>; userAccount?: string } = {}): Promise<Rig> {
   const root = await mkdtemp(join(tmpdir(), 'spica-plugins-'));
-  const pm = new PluginManager({ host: runtimeHost(rt), root, ...(opts.endTree ? { endTree: true } : {}) });
+  const pm = new PluginManager({
+    host: runtimeHost(rt),
+    root,
+    ...(opts.endTree ? { endTree: true } : {}),
+    ...(opts.baseEnv ? { baseEnv: opts.baseEnv } : {}),
+    ...(opts.userAccount !== undefined ? { userAccount: opts.userAccount } : {}),
+  });
   const events: PluginEvent[] = [];
   pm.on((e) => events.push(e));
   return {

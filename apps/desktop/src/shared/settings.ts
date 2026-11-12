@@ -130,6 +130,26 @@ export interface ShellSettings {
    * call that could go past it. null = no limit (the default, he chose 2026-11-12). Models without a price count nothing.
    */
   runLimitUsd: number | null;
+  /**
+   * 常规 › 账号: the account the user typed, for when the user folder's name is not the company account; '' =
+   * the automatic one (main/user-account.ts). Plugins get effectiveAccount() (SPICA_USER_ACCOUNT, ctx.user.account).
+   */
+  account: string;
+}
+
+/** The longest account accepted. */
+export const ACCOUNT_MAX = 64;
+
+/** An account as typed: no spaces around it, no control characters, in capitals (as the automatic one). */
+export function accountValue(v: unknown): string {
+  if (typeof v !== 'string') return '';
+  // eslint-disable-next-line no-control-regex -- control characters are what is taken out
+  return v.replace(/[\u0000-\u001f\u007f]/g, '').trim().toUpperCase().slice(0, ACCOUNT_MAX).trim();
+}
+
+/** The account plugins get: the one the user typed, else the automatic one ('' when there is neither). */
+export function effectiveAccount(s: Pick<ShellSettings, 'account'>, auto: string): string {
+  return s.account || auto;
 }
 
 /** The highest 单次运行花费上限 accepted (a typo of a few zeros is refused, not kept). */
@@ -174,6 +194,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   openAtLogin: false,
   backgroundHintShown: false,
   runLimitUsd: null,
+  account: '',
 };
 
 /** Local calendar date, YYYY-MM-DD. */
@@ -270,7 +291,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { runLimitUsd: runLimit(v.runLimitUsd), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
+  return { account: accountValue(v.account), runLimitUsd: runLimit(v.runLimitUsd), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

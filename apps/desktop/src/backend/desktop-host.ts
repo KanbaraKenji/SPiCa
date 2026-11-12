@@ -26,6 +26,8 @@ export interface DesktopHostOptions {
   mcpInfoFile?: string;
   /** The bearer token, one line, readable by this user only. */
   mcpTokenFile?: string;
+  /** The user's account for every plugin, worked out by the main process (main/user-account.ts); '' when none. */
+  userAccount?: string;
 }
 
 /** Tried first, so scripts usually find the same address; any free port when it is taken. */
@@ -36,7 +38,7 @@ interface ParentPort {
 }
 
 export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
-  const plugins = await attachPlugins(rt, { root: options.pluginRoot, appName: APP_NAME });
+  const plugins = await attachPlugins(rt, { root: options.pluginRoot, appName: APP_NAME, userAccount: options.userAccount ?? '' });
   const parent = (process as unknown as { parentPort?: ParentPort }).parentPort;
   const page = new RealPluginService({
     manager: plugins.manager,
@@ -89,6 +91,11 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
         return null;
       },
       mcpHttpState: () => httpState(),
+      // 设置 › 常规 › 账号 changed: hooks read it at their next call, plugin servers restart with it.
+      setUserAccount: async (account: unknown) => {
+        await plugins.setUserAccount(typeof account === 'string' ? account : '');
+        return null;
+      },
       usageLog: async (req: { filter: { projectId?: string; from?: string; to?: string }; file: string }) => {
         const text = rt.exportUsageLog(req.filter ?? {});
         await writeFile(req.file, text ? `${text}\n` : '', 'utf8');

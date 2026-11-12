@@ -1,7 +1,7 @@
-// Settings > 常规: starting with Windows and what closing the window does, the folder workflow files are read from, the network,
+// Settings > 常规: the user's account for plugins, starting with Windows and what closing the window does, the folder workflow files are read from, the network,
 // exporting the usage log. Mail sorting is with the mail plugin (设置 › 插件).
 import { useCallback, useEffect, useState } from 'react';
-import { DEFAULT_NETWORK, type AutostartSupport, type CloseWindow, type NetworkPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
+import { ACCOUNT_MAX, accountValue, DEFAULT_NETWORK, type AutostartSupport, type CloseWindow, type NetworkPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
 import type { LocalConnectInfo, NetworkState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
@@ -41,6 +41,61 @@ export interface GeneralProps {
   previewPages?: PluginView[];
   /** Whether 开机时启动 works in this copy (an installed one); absent: shown disabled. */
   autostart?: AutostartSupport;
+  /** The account by the company rule (main/user-account.ts); '' or absent: none was found. */
+  autoAccount?: string;
+}
+
+/**
+ * 账号: what plugins get as the user's account. The box shows the automatic one in grey; what is typed replaces
+ * it, kept when the box is left or Enter is pressed (not at each key: plugin processes restart with a new one).
+ */
+function Account({ settings, onChange, autoAccount = '' }: GeneralProps) {
+  const [text, setText] = useState(settings.account);
+  // changed elsewhere (恢复自动, another window): show it
+  const [shown, setShown] = useState(settings.account);
+  if (shown !== settings.account) {
+    setShown(settings.account);
+    setText(settings.account);
+  }
+  const keep = () => {
+    const typed = accountValue(text);
+    // typing the automatic one again is the same as none typed
+    const account = typed === autoAccount ? '' : typed;
+    setText(account);
+    if (account !== settings.account) onChange({ account });
+  };
+  const hint = settings.account
+    ? autoAccount
+      ? `已手动填写，自动取到的是 ${autoAccount}。`
+      : '已手动填写。'
+    : autoAccount
+      ? '取自 Windows 用户文件夹名，提供给插件。'
+      : '没有取到 Windows 用户文件夹名，插件读到的账号为空。可以手动填写。';
+  return (
+    <Group title="账号">
+      <Row title="账号" hint={hint}>
+        <input
+          className="input account-field"
+          value={text}
+          placeholder={autoAccount || '未取到'}
+          spellCheck={false}
+          autoComplete="off"
+          maxLength={ACCOUNT_MAX}
+          aria-label="账号"
+          onChange={(e) => setText(e.target.value)}
+          onBlur={keep}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') keep();
+          }}
+        />
+        {settings.account ? (
+          <button type="button" className="btn" onClick={() => onChange({ account: '' })}>
+            恢复自动
+          </button>
+        ) : null}
+      </Row>
+    </Group>
+  );
 }
 
 /** 文件预览: per kind of file a plugin page can show, the app's own preview or that page. Not shown without any. */
@@ -440,6 +495,7 @@ function Workflows({ settings, onChange, workflows, pickFolder, onBackendRestart
 export function General(props: GeneralProps) {
   return (
     <section className="settings-section">
+      <Account {...props} />
       <Startup {...props} />
       <FilePreviews {...props} />
       <Workflows {...props} />

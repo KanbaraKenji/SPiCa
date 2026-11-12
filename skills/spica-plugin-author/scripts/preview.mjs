@@ -18,7 +18,7 @@ import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { StdioClient, pluginEnv } from './lib/mcp.mjs';
+import { STAND_IN_ACCOUNT, StdioClient, pluginEnv } from './lib/mcp.mjs';
 import { stripBom } from './lib/pack.mjs';
 
 const THEMES = {
@@ -53,7 +53,7 @@ export async function startPreview(dir, opts = {}) {
         // as in Spica: the server's own limits; progress restarts the wait
         ...(typeof s.timeout_seconds === 'number' ? { timeoutMs: s.timeout_seconds * 1000 } : {}),
         ...(typeof s.max_call_seconds === 'number' ? { maxCallMs: s.max_call_seconds * 1000 } : {}),
-        env: pluginEnv({ ...(s.env ?? {}), SPICA_MOCK: opts.real ? '0' : '1', SPICA_PLUGIN_NAME: m.name, SPICA_PLUGIN_VERSION: m.version, SPICA_PLUGIN_DIR: root, SPICA_PLUGIN_DATA: join(data, f) }),
+        env: pluginEnv({ ...(s.env ?? {}), SPICA_MOCK: opts.real ? '0' : '1', SPICA_PLUGIN_NAME: m.name, SPICA_PLUGIN_VERSION: m.version, SPICA_PLUGIN_DIR: root, SPICA_PLUGIN_DATA: join(data, f), SPICA_USER_ACCOUNT: STAND_IN_ACCOUNT }),
       });
       await client.initialize();
       for (const t of await client.listTools()) if (!tools.has(t.name)) tools.set(t.name, client);
@@ -186,6 +186,7 @@ if (isMain) {
     console.log(`预览：${p.url}（暗色加 ?theme=dark）`);
     console.log(`页面能调的工具：${p.tools.join('、')}`);
     console.log(opt('--pick') ? `选文件夹 / 选文件：直接回 ${opt('--pick')}（--pick）` : '选文件夹 / 选文件：浏览器里输入路径；自动化里弹不出来，就当用户取消（回 null）。要固定回一个路径，加 --pick <完整路径>。');
+    console.log(`用户账号（SPICA_USER_ACCOUNT）：${STAND_IN_ACCOUNT}（虚构的；装进 Spica 后是用户自己的）`);
     console.log('按 Ctrl+C 结束。');
     const stop = async () => {
       await p.close();

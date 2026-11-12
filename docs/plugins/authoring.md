@@ -79,8 +79,11 @@ Spica 启动 server 时会给这些环境变量：
 | `SPICA_PLUGIN_DIR` | 插件安装目录（只读） |
 | `SPICA_MOCK` | `1` 表示用户开了模拟模式 |
 | `SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION` | 名字和版本 |
+| `SPICA_USER_ACCOUNT` | 当前用户的账号（工号），所有插件都有、不用声明权限。取法写死：Windows 用户文件夹名转大写（`C:\Users\alex.chen` → `ALEX.CHEN`）；用户在 设置 › 常规 › 账号 里改过，就是改过的那个；取不到时是空字符串。用户改了账号，正在运行的 server 会自动重启一次 |
 | `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`、`NODE_USE_ENV_PROXY` | 应用的代理设置（设置 › 常规 › 网络），没设代理时不给 |
 | `NODE_EXTRA_CA_CERTS`、`NODE_USE_SYSTEM_CA`、`SSL_CERT_FILE`、`REQUESTS_CA_BUNDLE`、`CURL_CA_BUNDLE` | 应用信任的证书（系统证书和「信任的证书文件」），Node 的 `fetch` / `https` 直接就用上了（这一行和上一行从 0.1.0-rc.2 起才有） |
+
+**要用户的账号，一律读 `SPICA_USER_ACCOUNT`（钩子里读 `ctx.user.account`，同一个值）**，不要自己从 `USERPROFILE`、`USERNAME`、`os.homedir()`、`os.userInfo()` 或登录名取：每个插件各取一遍容易不一致，用户在设置里改的也只有 Spica 给的这个会跟着变。
 
 其他环境变量只继承白名单：PATH、TEMP、用户目录、代理变量这类，外加 `COMPUTERNAME`（电脑名）和 `USERNAME`（用户名）；名字带 KEY、TOKEN、SECRET 的一律不传。取电脑名也可以用 Node 的 `os.hostname()`，不依赖环境变量。所以服务地址和凭据不要从环境变量读，放 `SPICA_PLUGIN_DATA` 里的配置文件，由插件自己的设置页经 `services/` 里的工具保存；证书和代理不要自己处理。用户改了网络设置，正在运行的插件 server 会自动重启一次。写法见 `skills/spica-plugin-author/references/internal-services.md`。
 
@@ -399,7 +402,7 @@ export default (ctx) => ({
 });
 ```
 
-- 钩子运行在 Spica 进程里，不需要 import 任何东西，参数就是全部上下文。`ctx` 里有 `dataDir`、`mock()`、`log()`。
+- 钩子运行在 Spica 进程里，不需要 import 任何东西，参数就是全部上下文。`ctx` 里有 `dataDir`、`mock()`、`log()`，和 `user.account`（用户的账号，和 server 的 `SPICA_USER_ACCOUNT` 是同一个值）。用户在设置里改了账号，钩子下一次调用就读到新的：在钩子函数里读 `ctx.user.account`，不要在工厂函数里先存一份。
 - 可用的钩子：`inject`（在系统提示、历史、用户输入前后注入文字）、`beforeRequest`（发请求前改工具表、参数）、`afterResponse`（改模型回答）、`beforeTool`（拦截、改参数、要求确认）、`afterTool`（改工具结果）。参数细节见 `docs/design/agent-core.md` 第 7 节。
 - 钩子抛错不会让对话崩掉，只会记进日志。但它这一次就等于没生效。
 - 只收 `.js` / `.mjs`。用 TypeScript 写的先编译。
@@ -614,5 +617,6 @@ await writeIndex('\\\\server\\spica-plugins');                  // 生成 / 更�
 
 - 不要写数据文件夹（`SPICA_PLUGIN_DATA`）和用户在对话里点名的文件夹以外的地方（后者按 2b 节的规矩写）。插件安装文件夹只读。
 - 不要在 `env` 里自己设 `SPICA_` 开头的变量。
+- 不要自己取用户名当账号（见第 2 节 `SPICA_USER_ACCOUNT`）。
 - 不要弹控制台窗口，不要要求用户装运行时、要管理员权限。
 - 示例、样例数据、文档里不要出现任何真实公司或行业专属的内容。

@@ -9,7 +9,7 @@ import { DesktopChannel } from '../shared/ipc';
 import { humanError } from '../shared/errors';
 import { CAPTION_BACK, captionSymbol, deriveTokens, resolveSkin, schemeOf, type WindowCover } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
-import { budgetForCore, mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
+import { budgetForCore, effectiveAccount, mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, SaveCsvResult, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import { APP_IDENTITY } from '../shared/app-identity';
@@ -51,6 +51,7 @@ import {
 } from '@spica/core';
 import type { DesktopBackendConfig } from '../backend/config';
 import { readModelEnv } from './backend/model-env';
+import { accountAtStart } from './user-account';
 import { SettingsStore } from './settings-store';
 import { captureOnce, runShots } from './shots';
 import { flatten, icoFromPngs, inkFor, TASKBAR_FRAME_SIZES } from './icon';
@@ -140,6 +141,12 @@ function workflowsDir(): string {
   return settings.get().workflowsDir || defaultWorkflowsDir;
 }
 const pluginRoot = join(app.getPath('userData'), 'plugins');
+// The user's account (工号) for plugins, by the company's rule, worked out once here (main/user-account.ts);
+// 常规 › 账号 may replace it. The core's process gets the one in force (backendConfig) and every change.
+const autoAccount = accountAtStart({ packaged: app.isPackaged, automated, env: process.env });
+function userAccount(): string {
+  return effectiveAccount(settings.get(), autoAccount);
+}
 
 // 允许本机脚本连接 Spica: the core serves MCP over HTTP on 127.0.0.1; scripts (e.g. the plugin
 // skill's install script) read where from mcp-http.json and the token from mcp-token.
@@ -197,7 +204,7 @@ function backendConfig(): DesktopBackendConfig {
       extensions: [
         {
           module: '@spica/desktop-host',
-          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: automated ? [] : deployPluginSources(), mcpInfoFile, mcpTokenFile },
+          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: automated ? [] : deployPluginSources(), mcpInfoFile, mcpTokenFile, userAccount: userAccount() },
         },
       ],
     },
@@ -750,7 +757,7 @@ function shellState(): ShellState {
   // Only the first page of this start opens on 新对话; a page loaded again goes back where it was (reopen).
   const newChat = newChatAtStart && !again;
   newChatAtStart = false;
-  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd, autostart, ...(newChat ? { startOnNewChat: true } : {}), ...(again ? { reopen: again } : {}) };
+  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd, autostart, autoAccount, ...(newChat ? { startOnNewChat: true } : {}), ...(again ? { reopen: again } : {}) };
 }
 
 ipcMain.handle(IpcChannel.AppInfo, (): AppInfo => ({ name: APP_NAME, version: app.getVersion() }));
@@ -1065,6 +1072,7 @@ let lastLocalConnect = settings.get().localConnect;
 let lastMemory = settings.get().memory;
 let lastAutoTidy = settings.get().memoryAutoTidy;
 let lastRunLimit = settings.get().runLimitUsd;
+let lastAccount = userAccount();
 /** Problems the core reported for the network settings (e.g. a certificate file it cannot read), in words. */
 let networkProblems: string[] = [];
 function networkProblem(raw: string): string {
@@ -1097,6 +1105,12 @@ settings.onChange((s) => {
   if (s.localConnect !== lastLocalConnect) {
     lastLocalConnect = s.localConnect;
     void applyLocalConnect(s.localConnect);
+  }
+  // 常规 › 账号: hooks get it at their next call, plugin servers restart with it (as for the network settings).
+  const account = effectiveAccount(s, autoAccount);
+  if (account !== lastAccount) {
+    lastAccount = account;
+    void backend.call('setUserAccount', account).catch(() => undefined);
   }
   const net = JSON.stringify(s.network);
   if (net !== lastNetwork) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPatch, DEFAULT_SETTINGS, localDay, sanitizeSettings, splashFor } from './settings';
+import { accountValue, applyPatch, DEFAULT_SETTINGS, effectiveAccount, localDay, sanitizeSettings, splashFor } from './settings';
 
 describe('sanitizeSettings', () => {
   it('turns garbage into defaults', () => {
@@ -85,5 +85,21 @@ describe('doneNews (finished sub-tasks not opened yet)', () => {
     expect(sanitizeSettings({ doneNews: ['a', 'b', 'a', 3, '', null] }).doneNews).toEqual(['a', 'b']);
     const many = Array.from({ length: 600 }, (_, i) => 'n' + i);
     expect(sanitizeSettings({ doneNews: many }).doneNews).toEqual(many.slice(-500));
+  });
+});
+
+describe('常规 › 账号', () => {
+  it('none typed by default; what is typed is trimmed, in capitals, without control characters', () => {
+    expect(DEFAULT_SETTINGS.account).toBe('');
+    expect(sanitizeSettings({ account: '  alex.chen ' }).account).toBe('ALEX.CHEN');
+    expect(sanitizeSettings({ account: 'a\u0000b\nc' }).account).toBe('ABC');
+    expect(sanitizeSettings({ account: 42 }).account).toBe('');
+    expect(accountValue('x'.repeat(100))).toHaveLength(64);
+    expect(accountValue('陈 alex')).toBe('陈 ALEX');
+  });
+  it('plugins get the typed one, else the automatic one', () => {
+    expect(effectiveAccount({ account: '' }, 'ALEX.CHEN')).toBe('ALEX.CHEN');
+    expect(effectiveAccount({ account: 'CHEN.A' }, 'ALEX.CHEN')).toBe('CHEN.A');
+    expect(effectiveAccount({ account: '' }, '')).toBe('');
   });
 });

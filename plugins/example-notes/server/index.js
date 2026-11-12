@@ -6,6 +6,7 @@
 //   SPICA_PLUGIN_DATA  folder this plugin may write to (notes live in notes/ unless the user chose a folder)
 //   SPICA_PLUGIN_DIR   the installed plugin folder (read-only)
 //   SPICA_MOCK         "1" when global mock mode is on
+//   SPICA_USER_ACCOUNT the user's account (e.g. ALEX.CHEN): signs each entry. Read it, never work it out
 // Settings live in <SPICA_PLUGIN_DATA>/config.json (installed plugins get no
 // environment variables of their own):
 //   { "catalogUrl": "https://catalog.example.test/search" }  real catalog service (GET ?q=...)
@@ -23,6 +24,7 @@ import { createInterface } from 'node:readline';
 const dataDir = process.env.SPICA_PLUGIN_DATA || join(process.cwd(), '.data');
 const pluginDir = process.env.SPICA_PLUGIN_DIR || process.cwd();
 const mock = process.env.SPICA_MOCK === '1';
+const account = process.env.SPICA_USER_ACCOUNT || '';
 
 const tools = [
   {
@@ -134,7 +136,9 @@ async function call(name, args) {
       await mkdir(await notesDir(), { recursive: true });
       let before = '';
       if (!args.replace) before = await readFile(file, 'utf8').catch(() => '');
-      const text = before ? `${before.trimEnd()}\n\n${args.text}\n` : `${args.text}\n`;
+      // Each entry signed with the user's account (none when Spica has none).
+      const entry = account ? `${args.text}\n\n— ${account}` : args.text;
+      const text = before ? `${before.trimEnd()}\n\n${entry}\n` : `${entry}\n`;
       await writeFile(file, text);
       return { text: `${before ? 'Appended to' : 'Saved'} note "${args.title}".` };
     }

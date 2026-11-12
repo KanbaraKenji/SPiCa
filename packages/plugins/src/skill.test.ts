@@ -299,6 +299,7 @@ describe('plugin-author skill', () => {
         "export const base = process.env['EXAMPLE_BASE_URL'];",
         'export const own = process.env.OWN_SETTING;',
         'export const data = process.env.SPICA_PLUGIN_DATA;',
+        'export const account = process.env.SPICA_USER_ACCOUNT;',
         'export const proxy = process.env.HTTPS_PROXY;',
         'export const pc = process.env.COMPUTERNAME;',
         'export const user = process.env.USERNAME;',
@@ -309,7 +310,7 @@ describe('plugin-author skill', () => {
     const r = await script('check.mjs', [root, '--no-tests', '--no-pack']);
     expect(r.out).toMatch(/server\/config\.js：读环境变量 EXAMPLE_API_TOKEN：装进 Spica 后读不到（只传白名单变量，带 KEY、TOKEN、SECRET 的一律不传）/);
     expect(r.out).toMatch(/读环境变量 EXAMPLE_BASE_URL：装进 Spica 后读不到（只传白名单变量：PATH、TEMP、用户目录、COMPUTERNAME、USERNAME 这类，全表见作者指南第 2 节）。要用就写进 mcp\/<id>\.json 的 env/);
-    expect(r.out).not.toMatch(/读环境变量 (OWN_SETTING|SPICA_PLUGIN_DATA|HTTPS_PROXY|COMPUTERNAME|USERNAME)/);
+    expect(r.out).not.toMatch(/读环境变量 (OWN_SETTING|SPICA_PLUGIN_DATA|SPICA_USER_ACCOUNT|HTTPS_PROXY|COMPUTERNAME|USERNAME)/);
     expect(r.code, r.out).toBe(0);
   });
 });

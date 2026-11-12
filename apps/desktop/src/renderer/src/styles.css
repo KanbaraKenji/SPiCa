@@ -1441,7 +1441,8 @@ pre .hl-punctuation {
 
 /* 设置 › 常规 › 文件预览 and 外观 › 代码 › 字号: the picker on the right of the row. */
 .preview-kind-pick,
-.code-size-pick {
+.code-size-pick,
+.account-field {
   width: 240px;
   max-width: 100%;
 }

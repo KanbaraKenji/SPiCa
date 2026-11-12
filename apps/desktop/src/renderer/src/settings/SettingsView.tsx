@@ -109,6 +109,7 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
                     {...(localConnect ? { localConnect } : {})}
                     {...(previewPages ? { previewPages } : {})}
                     autostart={shell.autostart}
+                    autoAccount={shell.autoAccount}
                   />
                 ) : tab === 'appearance' ? (
                   <Appearance settings={settings} activeSkin={shell.activeSkin()} onChange={(p) => shell.update(p)} />
