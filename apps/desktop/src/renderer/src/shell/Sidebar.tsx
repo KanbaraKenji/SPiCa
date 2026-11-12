@@ -71,9 +71,9 @@ export type AccountMenuTo = 'settings' | 'models' | 'monitor';
  */
 export function accountMenuItems(account: string, go: (where: AccountMenuTo) => void): MenuItem[] {
   return [
-    { label: '设置', group: account, after: <Icon name="settings" size={16} className="account-menu-icon" />, onSelect: () => go('settings') },
-    { label: '模型设定', group: account, after: <Icon name="model" size={16} className="account-menu-icon" />, onSelect: () => go('models') },
-    { label: '监控台', group: account, after: <Icon name="terminal" size={16} className="account-menu-icon" />, onSelect: () => go('monitor') },
+    { label: '设置', group: account, icon: 'settings', onSelect: () => go('settings') },
+    { label: '模型设定', group: account, icon: 'model', onSelect: () => go('models') },
+    { label: '监控台', group: account, icon: 'terminal', onSelect: () => go('monitor') },
   ];
 }
 

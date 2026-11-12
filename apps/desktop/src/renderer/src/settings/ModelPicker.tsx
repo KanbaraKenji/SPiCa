@@ -51,6 +51,7 @@ export function priceText(p: CatalogPriceView): string {
 /** A context window in short: the same abbreviation as the ring and the context card (chat/tokens). */
 export { tokenText as windowText } from '../chat/tokens';
 import { tokenText as windowText } from '../chat/tokens';
+import { useEscape } from '../ui/escape';
 
 function parseWindow(v: string): number | null {
   const t = v.trim();
@@ -63,6 +64,11 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
   const [query, setQuery] = useState('');
   const [typed, setTyped] = useState('');
   const [typing, setTyping] = useState(false);
+  // A layer of Esc while typing a model's name: clears and leaves the field (the settings stay open).
+  useEscape(typing, () => {
+    setTyped('');
+    setTyping(false);
+  });
   // The 上下文上限 being edited (a known one shows as 「128k」 until clicked).
   const [editing, setEditing] = useState<string | null>(null);
   const byId = new Map<string, { model: ListedModel; price?: CatalogPriceView; vision?: boolean }>();
@@ -196,9 +202,6 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   add();
-                } else if (e.key === 'Escape') {
-                  setTyped('');
-                  setTyping(false);
                 }
               }}
             />

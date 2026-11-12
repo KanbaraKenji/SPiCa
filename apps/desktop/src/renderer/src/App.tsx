@@ -42,6 +42,7 @@ import { watchCover } from './ui/dim';
 import { usePeek } from './shell/peek';
 import { RailHead, SidebarHead, SidebarToggle } from './shell/SidebarToggle';
 import { HoverTips } from './ui/HoverTips';
+import { useEscape } from './ui/escape';
 import { SpicaBanner } from '@spica/brand/react';
 import { sameFolder } from './store/relocate';
 import { APP_NAME } from '../../shared/app-identity';
@@ -199,8 +200,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // Only while the preview is there to show (set below, once the layout is known).
   const [canMax, setCanMax] = useState(false);
 
-  // Shortcuts: Ctrl+B sidebar, Ctrl+Alt+B details, Ctrl+Shift+\ the preview over the conversation,
-  // Esc closes the settings dialog, a floating panel, the inbox or a plugin page.
+  // Shortcuts: Ctrl+B sidebar, Ctrl+Alt+B details, Ctrl+Shift+\ the preview over the conversation.
+  // Esc is ui/escape.ts's: each thing that opens over the window is a layer (see the useEscape calls below).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'b') {
@@ -210,16 +211,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         if (!canMax) return;
         e.preventDefault();
         setRightMax((v) => !v);
-      } else if (e.key === 'Escape' && !e.defaultPrevented) {
-        // The settings dialog first (it leaves Esc to this, so what is open inside it closes first).
-        if (settingsOpen) setSettingsOpen(false);
-        else if (floating) setFloating(null);
-        else if (view !== 'chat') setView('chat');
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggle, floating, view, canMax, settingsOpen]);
+  }, [toggle, canMax]);
+  // A layer of Esc: the inbox, the monitor or a plugin page in place of the conversation (back to it). The settings
+  // dialog is one through useModal; a panel slid out over the window is one below.
+  useEscape(view !== 'chat', () => setView('chat'));
 
   // Sidebar collapsed: resting the pointer on its toggle slides it out for a moment;
   // it goes away once the pointer leaves it. The icons of the column do not slide it out.
@@ -235,6 +234,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   );
   // Only a sidebar the edge opened goes away on its own.
   const peekOpen = peeking && floating === 'left';
+  // Esc puts a slid-out panel away. One slid out by resting on the toggle stays away while the pointer is still
+  // there (it would slide out again at once); leaving the toggle ends that.
+  const peekHeld = useRef(false);
+  useEscape(floating !== null, () => {
+    if (peekOpen) peekHeld.current = true;
+    peek.cancel();
+    setFloating(null);
+  });
 
   // A floating panel closes when you press anywhere else. No dark layer behind it: the
   // window stays as it was, and that press still reaches what it was meant for.
@@ -726,6 +733,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   if (canMax !== rightCanMax) setCanMax(rightCanMax);
   if (rightMax && !rightCanMax) setRightMax(false);
   const panelMax = { on: rightMax, toggle: () => setRightMax((v) => !v) };
+  // The preview over the whole conversation is a layer of Esc too (back beside it).
+  useEscape(rightMax, () => setRightMax(false));
   const title = view === 'inbox' ? '收件箱' : view === 'monitor' ? '监控台' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
 
   // What can be done to a session by its name; the sidebar's rows and the name in the title bar share it.
@@ -816,7 +825,16 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           (a press on one goes straight to its page). */}
       {layout.left !== 'docked' ? (
         <div className="panel panel-rail" onMouseDown={peek.cancel}>
-          <RailHead toggle={sidebarToggle} onRest={() => peek.openSoon(floating === 'left')} onLeave={peek.cancel} />
+          <RailHead
+            toggle={sidebarToggle}
+            onRest={() => {
+              if (!peekHeld.current) peek.openSoon(floating === 'left');
+            }}
+            onLeave={() => {
+              peekHeld.current = false;
+              peek.cancel();
+            }}
+          />
           {sidebarEl(true)}
         </div>
       ) : null}

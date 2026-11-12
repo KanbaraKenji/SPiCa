@@ -1,8 +1,9 @@
 // A small right-click menu at the pointer, or under a button that opens it (`anchor`).
-// Closes on Esc, a click elsewhere, scrolling or resizing. Positions in CSS px, so
-// page zoom keeps it in place.
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { Icon } from './Icon';
+// Closes on Esc (a layer of ui/escape.ts), a click elsewhere, scrolling or resizing. Up and Down move
+// between the items that can be picked, Enter picks. Positions in CSS px, so page zoom keeps it in place.
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { Icon, type IconName } from './Icon';
+import { useEscape } from './escape';
 
 export interface MenuItem {
   label: string;
@@ -27,6 +28,8 @@ export interface MenuItem {
   checked?: boolean;
   /** Right after the label (a mark such as 支持图片). */
   after?: ReactNode;
+  /** An icon before the label, in the label's colour. Only the items given one have it (no empty place on the others). */
+  icon?: IconName;
   onSelect(): void;
 }
 
@@ -41,6 +44,11 @@ const groupOf = (it: MenuItem | undefined) => it?.groupKey ?? it?.group;
 export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { x: number; y: number; items: MenuItem[]; onClose(): void; anchor?: HTMLElement | null; side?: 'above' | 'below' }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
+  useEscape(true, onClose);
+  // The item under the pointer (lit by hover while the focus is on the menu itself): where Up and Down start, what Enter picks.
+  const hot = useRef<HTMLButtonElement | null>(null);
+  // Moving with the keys: only the focused item is lit until the pointer moves again.
+  const [keys, setKeys] = useState(false);
 
   // Keep it inside the window.
   useLayoutEffect(() => {
@@ -69,28 +77,52 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
       const t = e.target as Node;
       if (!ref.current?.contains(t) && !anchor?.contains(t)) onClose();
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose();
-      }
-    };
     window.addEventListener('pointerdown', onDown, true);
-    window.addEventListener('keydown', onKey, true);
     window.addEventListener('resize', close);
     window.addEventListener('wheel', close, { passive: true });
     return () => {
       window.removeEventListener('pointerdown', onDown, true);
-      window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('resize', close);
       window.removeEventListener('wheel', close);
     };
   }, [onClose, anchor]);
 
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const menu = ref.current;
+    if (!menu) return;
+    const at = document.activeElement;
+    const from = at instanceof HTMLButtonElement && menu.contains(at) ? at : hot.current?.isConnected ? hot.current : null;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const all = [...menu.querySelectorAll<HTMLButtonElement>('.context-item:not([aria-disabled="true"])')];
+      if (!all.length) return;
+      const i = from ? all.indexOf(from) : -1;
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      const next = i < 0 ? (step > 0 ? all[0]! : all[all.length - 1]!) : all[(i + step + all.length) % all.length]!;
+      setKeys(true);
+      next.focus();
+    } else if (e.key === 'Enter' && from && at === menu) {
+      // The focus is on the menu (the pointer moved): Enter picks the item under the pointer, as a click would.
+      e.preventDefault();
+      from.click();
+    }
+  };
+
   return (
     // One item lit at a time: the first takes the keyboard focus on opening; once the pointer moves onto
-    // another, the focus goes to the menu itself, so only the item under the pointer is lit.
-    <div ref={ref} className="context-menu" role="menu" tabIndex={-1} style={{ left: pos.left, top: pos.top }}>
+    // another, the focus goes to the menu itself, so only the item under the pointer is lit. Up and Down
+    // take the focus back to the items, and hover stops lighting them until the pointer moves.
+    <div
+      ref={ref}
+      className={keys ? 'context-menu is-keys' : 'context-menu'}
+      role="menu"
+      tabIndex={-1}
+      style={{ left: pos.left, top: pos.top }}
+      onKeyDown={onKeyDown}
+      onPointerMove={() => {
+        if (keys) setKeys(false);
+      }}
+    >
       {items.map((it, i) => (
         <div key={`${groupOf(it) ?? ''}	${it.label}	${i}`} role="none">
           {it.group && groupOf(it) !== groupOf(items[i - 1]) ? (
@@ -107,6 +139,7 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
             // Its own note (why it cannot be picked), else the label when it is cut short.
             {...(it.title ? { title: it.title } : { title: it.label, 'data-tip-clipped': '.context-item-label' })}
             onPointerMove={(e) => {
+              hot.current = e.currentTarget;
               const focused = document.activeElement;
               if (focused !== e.currentTarget && focused instanceof HTMLElement && ref.current?.contains(focused)) ref.current.focus({ preventScroll: true });
             }}
@@ -118,17 +151,11 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
           >
             {it.detail ? (
               <span className="context-item-text">
-                <span className="context-item-label">
-                  {it.label}
-                  {it.after}
-                </span>
+                <Label item={it} />
                 <span className="context-item-detail">{it.detail}</span>
               </span>
             ) : (
-              <span className="context-item-label">
-                {it.label}
-                {it.after}
-              </span>
+              <Label item={it} />
             )}
             {it.hint ? <span className="context-item-hint">{it.hint}</span> : null}
             {it.checked ? (
@@ -140,5 +167,20 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
         </div>
       ))}
     </div>
+  );
+}
+
+function Label({ item }: { item: MenuItem }) {
+  return item.icon ? (
+    <span className="context-item-label has-icon">
+      <Icon name={item.icon} size={16} className="context-item-icon" />
+      {item.label}
+      {item.after}
+    </span>
+  ) : (
+    <span className="context-item-label">
+      {item.label}
+      {item.after}
+    </span>
   );
 }

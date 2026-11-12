@@ -1,18 +1,15 @@
 // What every modal does with the keyboard: focus starts inside (on `initial`,
 // else the first control), Tab and Shift+Tab go round inside it and never to
 // the page behind, Esc closes it, and on closing the focus goes back to what
-// opened it. `esc: false` leaves Esc to the page (the settings dialog: App closes it on Esc that nothing
-// inside handled first, so a confirm box, a menu or a field in it closes only itself).
-import { useEffect, useRef, type RefObject } from 'react';
+// opened it. Esc is one layer of ui/escape.ts: a confirm box, a menu or a field opened inside closes first.
+import { useEffect, type RefObject } from 'react';
+import { useEscape } from './escape';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function useModal(box: RefObject<HTMLElement | null>, onClose: () => void, initial?: RefObject<HTMLElement | null>, opts: { esc?: boolean } = {}): void {
-  const esc = opts.esc ?? true;
-  const close = useRef(onClose);
-  useEffect(() => {
-    close.current = onClose;
-  });
+export function useModal(box: RefObject<HTMLElement | null>, onClose: () => void, initial?: RefObject<HTMLElement | null>): void {
+  // Before the focus moves inside (the layer notes the button that opened it).
+  useEscape(true, onClose);
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const el = box.current;
@@ -20,13 +17,6 @@ export function useModal(box: RefObject<HTMLElement | null>, onClose: () => void
     const inside = () => [...el.querySelectorAll<HTMLElement>(FOCUSABLE)];
     (initial?.current ?? inside()[0] ?? el).focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (!esc) return;
-        e.preventDefault();
-        e.stopPropagation();
-        close.current();
-        return;
-      }
       if (e.key !== 'Tab') return;
       const all = inside();
       if (!all.length) {
@@ -49,5 +39,5 @@ export function useModal(box: RefObject<HTMLElement | null>, onClose: () => void
       window.removeEventListener('keydown', onKey, true);
       if (opener?.isConnected) opener.focus();
     };
-  }, [box, initial, esc]);
+  }, [box, initial]);
 }

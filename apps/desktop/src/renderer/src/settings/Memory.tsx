@@ -7,6 +7,7 @@ import { Group, Pane, Row } from './Group';
 import { Icon } from '../ui/Icon';
 import { ConfirmDialog } from '../ui/Dialog';
 import { timeOf } from '../chat/format';
+import { useEscape } from '../ui/escape';
 
 /** The most characters in one item (the core refuses longer ones). */
 export const MEMORY_CHARS = 200;
@@ -264,6 +265,8 @@ function MemoryForm({ initial, quote, onCancel, onSave }: { initial: string; quo
     });
   };
   const shown = tooLong ? REFUSED.too_long : problem;
+  // A layer of Esc: cancels the edit, and only that (the settings stay open).
+  useEscape(true, onCancel);
   return (
     <li className="setting-row memory-row is-editing">
       <div className="memory-edit">
@@ -279,10 +282,7 @@ function MemoryForm({ initial, quote, onCancel, onSave }: { initial: string; quo
             setProblem(null);
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.stopPropagation();
-              onCancel();
-            } else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               save();
             }

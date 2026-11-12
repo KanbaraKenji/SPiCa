@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import type { SessionInfo } from '@spica/protocol';
 import type { MenuItem } from '../ui/ContextMenu';
+import { useEscape } from '../ui/escape';
 
 /** The actions the app offers; an absent one is not offered anywhere. */
 export interface RowActions {
@@ -70,6 +71,8 @@ export function RenameField({ initial, onDone, className = 'input tree-rename' }
     setDone(true);
     onDone(v);
   };
+  // A layer of Esc: cancels the new name (in the settings or over a menu, only this closes).
+  useEscape(!done, () => finish(null));
   return (
     <input
       className={className}
@@ -84,10 +87,6 @@ export function RenameField({ initial, onDone, className = 'input tree-rename' }
         if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
           e.preventDefault();
           finish(value);
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          e.stopPropagation();
-          finish(null);
         }
       }}
     />

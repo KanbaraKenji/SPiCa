@@ -113,3 +113,54 @@ describe('a menu of choices', () => {
     expect(screen.queryByRole('menuitemradio')).toBeNull();
   });
 });
+
+describe('ContextMenu with the keys', () => {
+  const items = (pick: (l: string) => void) => [
+    { label: '重命名', onSelect: () => pick('重命名') },
+    { label: '置顶', disabled: true, title: '不能置顶', onSelect: () => pick('置顶') },
+    { label: '删除', danger: true, onSelect: () => pick('删除') },
+  ];
+
+  it('Up and Down move between the items that can be picked, round the ends; Enter picks', () => {
+    const pick = vi.fn();
+    const onClose = vi.fn();
+    render(<ContextMenu x={0} y={0} items={items(pick)} onClose={onClose} />);
+    const [rename, , remove] = screen.getAllByRole('menuitem');
+    expect(document.activeElement).toBe(rename);
+    fireEvent.keyDown(rename!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(remove);
+    fireEvent.keyDown(remove!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(rename);
+    fireEvent.keyDown(rename!, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(remove);
+    expect(screen.getByRole('menu').classList.contains('is-keys')).toBe(true);
+    // a focused button picks on Enter by itself (the browser turns it into a click)
+    fireEvent.click(remove!);
+    expect(pick).toHaveBeenCalledWith('删除');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('after the pointer moved, the keys start from the item under it and Enter picks that one', () => {
+    const pick = vi.fn();
+    render(<ContextMenu x={0} y={0} items={items(pick)} onClose={vi.fn()} />);
+    const menu = screen.getByRole('menu');
+    const [rename, , remove] = screen.getAllByRole('menuitem');
+    fireEvent.pointerMove(remove!);
+    expect(document.activeElement).toBe(menu);
+    fireEvent.keyDown(menu, { key: 'Enter' });
+    expect(pick).toHaveBeenCalledWith('删除');
+    fireEvent.pointerMove(remove!);
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(rename);
+  });
+
+  it('an item given an icon draws it before its words; the others keep no place for one', () => {
+    render(<ContextMenu x={0} y={0} items={[{ label: '设置', icon: 'settings', onSelect: vi.fn() }, { label: '重命名', onSelect: vi.fn() }]} onClose={vi.fn()} />);
+    const [withIcon, plain] = screen.getAllByRole('menuitem');
+    const label = withIcon!.querySelector('.context-item-label')!;
+    expect(label.firstElementChild?.classList.contains('context-item-icon')).toBe(true);
+    expect(label.textContent).toBe('设置');
+    expect(plain!.querySelector('.context-item-icon')).toBeNull();
+    expect(plain!.querySelector('.has-icon')).toBeNull();
+  });
+});

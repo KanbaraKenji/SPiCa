@@ -408,7 +408,7 @@ describe('the account on the bottom row', () => {
     expect(menu.querySelector('.context-group')?.textContent).toBe('ALEX.CHEN');
     expect(screen.getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['设置', '模型设定', '监控台']);
     // each with its settings page's icon
-    expect(screen.getAllByRole('menuitem').map((b) => b.querySelectorAll('.account-menu-icon').length)).toEqual([1, 1, 1]);
+    expect(screen.getAllByRole('menuitem').map((b) => b.querySelectorAll('.context-item-label > .context-item-icon:first-child').length)).toEqual([1, 1, 1]);
     expect(onAccount).not.toHaveBeenCalled();
     fireEvent.click(me);
     expect(screen.queryByRole('menu')).toBeNull();

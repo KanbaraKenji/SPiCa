@@ -1,17 +1,20 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render } from '@testing-library/react';
-import { useRef } from 'react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { useRef, useState, type ReactNode } from 'react';
 import { useModal } from './useModal';
+import { ConfirmDialog } from './Dialog';
+import { ContextMenu } from './ContextMenu';
 
 afterEach(cleanup);
 
-function Box({ onClose, esc }: { onClose(): void; esc?: boolean }) {
+function Box({ onClose, children }: { onClose(): void; children?: ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
-  useModal(box, onClose, undefined, esc === undefined ? {} : { esc });
+  useModal(box, onClose);
   return (
     <div ref={box}>
       <button type="button">a</button>
+      {children}
     </div>
   );
 }
@@ -28,14 +31,27 @@ describe('useModal and Esc', () => {
     expect(behind).not.toHaveBeenCalled();
   });
 
-  it('esc: false leaves Esc to the page (the settings dialog: App closes it); Tab still stays inside', () => {
+  it('a dialog or a menu opened inside it takes the first Esc; the next one closes it', () => {
     const onClose = vi.fn();
-    const behind = vi.fn((e: KeyboardEvent) => e.defaultPrevented);
-    window.addEventListener('keydown', behind);
-    render(<Box onClose={onClose} esc={false} />);
+    function Settings() {
+      const [confirm, setConfirm] = useState(true);
+      const [editing, setEditing] = useState(true);
+      return (
+        <Box onClose={onClose}>
+          {editing ? <ContextMenu x={0} y={0} items={[{ label: '重命名', onSelect: vi.fn() }]} onClose={() => setEditing(false)} /> : null}
+          {confirm ? <ConfirmDialog title="删除？" confirmLabel="删除" onConfirm={vi.fn()} onCancel={() => setConfirm(false)} /> : null}
+        </Box>
+      );
+    }
+    render(<Settings />);
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-    window.removeEventListener('keydown', behind);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.getByRole('menu')).toBeTruthy();
     expect(onClose).not.toHaveBeenCalled();
-    expect(behind).toHaveReturnedWith(false);
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

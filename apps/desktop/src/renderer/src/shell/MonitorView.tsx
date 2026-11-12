@@ -12,6 +12,7 @@ import type { SaveCsvResult } from '../../../shared/bridge';
 import { Icon } from '../ui/Icon';
 import { clipboard } from '../ui/clipboard';
 import { ContextMenu } from '../ui/ContextMenu';
+import { useEscape } from '../ui/escape';
 
 export interface MonitorApi {
   list(after: number): Promise<MonitorEntry[]>;
@@ -65,6 +66,8 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
   const [query, setQuery] = useState('');
   const [paused, setPaused] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
+  // The picked line's strip under the list is a layer of Esc (closed before the monitor itself).
+  useEscape(selected !== null, () => setSelected(null));
   const [menu, setMenu] = useState<HTMLElement | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
   const [exported, setExported] = useState<SaveCsvResult | undefined>(undefined);

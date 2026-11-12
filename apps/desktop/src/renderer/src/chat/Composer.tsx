@@ -15,6 +15,7 @@ import { SpicaStatusIcon } from '@spica/brand/react';
 import type { ContextBreakdown } from '@spica/protocol';
 import { tokenText } from './tokens';
 import { ContextCard } from './ContextCard';
+import { useEscape } from '../ui/escape';
 
 export { tokenText };
 
@@ -75,6 +76,7 @@ export function contextText(tokens: number, window: number): string {
 function ContextRing({ tokens, window, detail }: { tokens: number; window: number; detail?: () => Promise<ContextBreakdown | null> }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<ContextBreakdown | null>(null);
+  useEscape(open, () => setOpen(false));
   const wrap = useRef<HTMLSpanElement>(null);
   const load = useRef(detail);
   useEffect(() => {
@@ -97,15 +99,8 @@ function ContextRing({ tokens, window, detail }: { tokens: number; window: numbe
     const down = (e: MouseEvent) => {
       if (!wrap.current?.contains(e.target as Node)) setOpen(false);
     };
-    const key = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
     document.addEventListener('mousedown', down);
-    document.addEventListener('keydown', key);
-    return () => {
-      document.removeEventListener('mousedown', down);
-      document.removeEventListener('keydown', key);
-    };
+    return () => document.removeEventListener('mousedown', down);
   }, [open]);
   const text = contextText(tokens, window);
   const share = Math.min(1, tokens / window);
@@ -307,7 +302,8 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Esc in the box stops the run, whatever is typed (the button there is 发送 once there is something to send).
+    // Esc in the box stops the run, whatever is typed (the button there is 发送 once there is something to send);
+    // an open menu, card or panel takes the Esc first (ui/escape.ts), so it reaches the box only with none open.
     if (e.key === 'Escape' && running && !isComposing(e)) {
       e.preventDefault();
       onStop();

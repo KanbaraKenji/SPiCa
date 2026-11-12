@@ -5257,6 +5257,23 @@ section.plugins-part > .plugins-part-title {
   outline: none;
 }
 
+/* Moving with Up and Down: only the focused item is lit, not also the one under a pointer that has not moved. */
+.context-menu.is-keys .context-item:hover:not(:focus-visible) {
+  background: none;
+}
+
+/* An item's icon (MenuItem.icon, 16) before its words, as far from them as in the settings' list; the words' colour. */
+.context-item-label.has-icon {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.context-item-icon {
+  flex: none;
+  color: currentColor;
+}
+
 /* Renaming a row in place: the field is the row's own box (same width, height and corners
    as the row's highlight) and the name does not move when it turns into a field. */
 .input.tree-rename {
@@ -6248,21 +6265,6 @@ section.plugins-part > .plugins-part-title {
 
 .account-menu > .context-menu {
   min-width: var(--account-menu-width);
-}
-
-/* Its items' icons (the settings' list ones, 16) come after the words in the menu's markup: drawn before them,
-   as far from the words as in the settings' list. */
-.account-menu .context-item-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.account-menu-icon {
-  flex: none;
-  order: -1;
-  /* the words' colour, on hover too */
-  color: currentColor;
 }
 
 /* 设置 › 账号: the same round badge, bigger, at the right end of the first row (as tall as the rows under it). */

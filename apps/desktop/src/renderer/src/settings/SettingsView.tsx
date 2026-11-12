@@ -91,9 +91,9 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
   const { settings } = useShell(shell);
   const tabs = TABS.filter((t) => (t.id !== 'memory' || memory) && (t.id !== 'usage' || usage));
   const box = useRef<HTMLDivElement>(null);
-  // The keyboard starts in the dialog (no ring on a section until Tab is pressed) and stays in it. Esc is App's:
-  // it closes the settings only when nothing inside (a confirm box, a menu, a field) handled it first.
-  useModal(box, onClose, box, { esc: false });
+  // The keyboard starts in the dialog (no ring on a section until Tab is pressed) and stays in it. Esc closes it
+  // once what was opened inside (a confirm box, a menu, a field being edited) is closed (ui/escape.ts).
+  useModal(box, onClose, box);
   // 搜索设置: while it holds words, the pane lists the matching rows by section.
   const [query, setQuery] = useState('');
   const searching = query.trim() !== '';
