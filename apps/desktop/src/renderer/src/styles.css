@@ -344,6 +344,12 @@ a:hover {
   border-left: 1px solid var(--spica-divider);
 }
 
+/* The preview lying over the conversation's right part (shell/layout.ts: squeezed to 440, then covered): above
+   the conversation and what it lays out, below floating panels; its own left line is the edge. */
+.panel-preview.is-cover {
+  z-index: 7;
+}
+
 /* ---------- Buttons ---------- */
 
 .icon-btn {

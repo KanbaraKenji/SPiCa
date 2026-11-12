@@ -908,7 +908,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
 
         {/* The file preview, next to the conversation: its edge drags, its head has 最大化 and 关闭预览. */}
         {previewShown && view === 'chat' && preview ? (
-          <div className={`panel panel-right panel-preview is-${layout.preview}${rightMax ? ' is-max' : ''}`} style={rightMax ? undefined : { width: widths.preview }}>
+          <div
+            className={`panel panel-right panel-preview is-${layout.preview}${rightMax ? ' is-max' : ''}${widths.cover && layout.preview === 'docked' ? ' is-cover' : ''}`}
+            style={rightMax ? undefined : { width: widths.preview, ...(widths.cover && layout.preview === 'docked' ? { marginLeft: -widths.cover } : {}) }}
+          >
+            {/* Past 440 it lies over the conversation's right part (which keeps its 440 layout underneath): pulled left by `cover`. */}
             {rightMax ? null : resizer('preview')}
             <FilePreview
               // A plugin page draws the file: the head still names it (and offers its buttons).

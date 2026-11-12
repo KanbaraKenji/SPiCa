@@ -8,15 +8,18 @@
 //   width, it can be laid over the conversation (最大化). The plugins' panel pages stay with the details.
 // - The details (详情), at the window's right edge under its title-bar button, Ctrl+Alt+B; a fixed width.
 //
-// Two widths of the conversation:
-// - MAIN_ROOM_WIDTH (440): the sidebar and the details give way (are hidden; opening one floats it over the
-//   window) rather than leave the conversation less than this, counting the preview at its narrowest. This is the
-//   old 「窗口变窄时不挤对话」.
-// - MAIN_MIN_WIDTH (320): the floor. Only the preview takes the conversation below 440, by its own width (what the
-//   user dragged it to, or its usual width); it stops at this floor.
-// Who gives way as the window narrows: the details first (as soon as they no longer fit beside the preview at the
-// width chosen for it), then the preview shrinks to its narrowest, then the sidebar shrinks and goes, the preview
-// last. So a file always gets the width chosen for it before the details get theirs.
+// Two widths of the conversation (his words, 2026-11-12: 「主页面有两个宽度设置，在第一个宽度之前会被一直挤压，过了
+// 第一个宽度后，右侧栏遮盖主页内容直到最小尺寸」):
+// - MAIN_ROOM_WIDTH (440): the conversation is laid out (squeezed, its text wrapping again) down to this and no
+//   narrower. The sidebar and the details give way (are hidden; opening one floats it over the window) rather than
+//   squeeze it below this, counting the preview at its narrowest: the old 「窗口变窄时不挤对话」.
+// - MAIN_SHOWN_MIN (160): past 440 the preview no longer squeezes the conversation but lies over its right part
+//   (the conversation keeps its 440 layout underneath, cut off, as in his Claude screenshot), until only this much
+//   of it shows. Only the preview does this, by its own width (what the user dragged it to, or its usual width).
+// Who gives way as the window narrows: the conversation squeezes to 440, then the preview covers it down to 160
+// showing; the details go as soon as they no longer fit beside the preview at its chosen width with 160 showing;
+// then the preview shrinks to its narrowest; the sidebar goes when even its narrowest no longer leaves 440 beside
+// the preview's narrowest; the preview goes last (floats when a file is opened).
 import { PANEL_LIMITS, type PanelWidths } from '../../../shared/settings';
 
 export const SIDEBAR_WIDTH = PANEL_LIMITS.left.initial;
@@ -26,10 +29,10 @@ export const SIDEBAR_MIN = PANEL_LIMITS.left.min;
 export const INFO_WIDTH = 300;
 export const PREVIEW_WIDTH = PANEL_LIMITS.preview.initial;
 export const PREVIEW_MIN = PANEL_LIMITS.preview.min;
-/** Narrowest the conversation ever gets: only the preview takes it this far. */
-export const MAIN_MIN_WIDTH = 320;
-/** The sidebar and the details give way rather than leave the conversation narrower than this. */
+/** The conversation is laid out at least this wide; nothing squeezes it further (the preview covers it instead). */
 export const MAIN_ROOM_WIDTH = 440;
+/** While the preview lies over the conversation, at least this much of the conversation still shows. */
+export const MAIN_SHOWN_MIN = 160;
 /** The column of icons left where the sidebar was while it is not docked (styles.css .panel-rail). */
 export const RAIL_WIDTH = 52;
 /** A floating panel leaves this much of the window uncovered. */
@@ -65,12 +68,13 @@ export function computeLayout(viewportWidth: number, open: Open, floating: Float
   const leftDocked = open.left && viewportWidth - (open.preview ? PREVIEW_MIN : 0) - MAIN_ROOM_WIDTH >= SIDEBAR_MIN;
   // What is left right of the sidebar (or of the icon column that stays when it is not docked).
   const rest = viewportWidth - (leftDocked ? SIDEBAR_MIN : RAIL_WIDTH);
-  // The preview is the last to give way: it only needs its narrowest beside the conversation's floor.
-  const previewDocked = open.preview && rest >= PREVIEW_MIN + MAIN_MIN_WIDTH;
+  // The preview is the last to give way: it only needs its narrowest beside the least of the conversation showing.
+  const previewDocked = open.preview && rest >= PREVIEW_MIN + MAIN_SHOWN_MIN;
   // The details: room with the preview at its narrowest and the conversation at 440; and, beside a preview, room
-  // with the preview at the width chosen for it (the details give way before the preview gets narrower than that).
+  // with the preview at the width chosen for it and 160 of the conversation showing (the details give way before
+  // the preview gets narrower than chosen).
   const room = rest - (previewDocked ? PREVIEW_MIN : 0) - MAIN_ROOM_WIDTH;
-  const besidePreview = !previewDocked || viewportWidth - (leftDocked ? Math.max(SIDEBAR_MIN, wanted.left) : RAIL_WIDTH) - Math.max(PREVIEW_MIN, wanted.preview) - MAIN_MIN_WIDTH >= INFO_WIDTH;
+  const besidePreview = !previewDocked || viewportWidth - (leftDocked ? Math.max(SIDEBAR_MIN, wanted.left) : RAIL_WIDTH) - Math.max(PREVIEW_MIN, wanted.preview) - MAIN_SHOWN_MIN >= INFO_WIDTH;
   const infoDocked = open.info && room >= INFO_WIDTH && besidePreview;
   const mode = (docked: boolean, side: Side): PanelMode => (docked ? 'docked' : floating === side ? 'floating' : 'hidden');
   return {
@@ -112,25 +116,30 @@ export interface Widths {
   left: number;
   preview: number;
   info: number;
+  /** How much of the conversation's right part the docked preview lies over (0: none; it is then only squeezed). */
+  cover: number;
 }
 
 /**
  * How wide each panel is drawn. The details are always INFO_WIDTH. The sidebar and the preview keep the widths
- * the user chose while there is room; when the window gets narrower, the preview gives way first (down to its
- * narrowest, the conversation at MAIN_MIN_WIDTH), then the sidebar (down to its narrowest). Without a preview the
- * sidebar keeps the conversation at MAIN_ROOM_WIDTH. A floating panel keeps its width (never wider than the
- * window allows).
+ * the user chose while there is room. Beside a preview the conversation is squeezed down to MAIN_ROOM_WIDTH, then
+ * covered (`cover`) until MAIN_SHOWN_MIN of it shows; past that the preview gives way (down to its narrowest),
+ * then the sidebar (down to its narrowest). Without a preview the sidebar keeps the conversation at
+ * MAIN_ROOM_WIDTH. A floating panel keeps its width (never wider than the window allows).
  */
 export function panelWidths(viewportWidth: number, layout: Layout, wanted: Wanted): Widths {
   const info = layout.info === 'floating' ? Math.min(INFO_WIDTH, viewportWidth - FLOAT_GAP) : INFO_WIDTH;
-  const out: Widths = { left: wanted.left, preview: wanted.preview, info };
+  const out: Widths = { left: wanted.left, preview: wanted.preview, info, cover: 0 };
   const leftDocked = layout.left === 'docked';
   const fixed = (layout.info === 'docked' ? INFO_WIDTH : 0) + (leftDocked ? 0 : RAIL_WIDTH);
   if (layout.preview === 'docked') {
-    const room = viewportWidth - fixed - MAIN_MIN_WIDTH;
+    const room = viewportWidth - fixed - MAIN_SHOWN_MIN;
     const left = leftDocked ? wanted.left : 0;
     out.preview = Math.max(PREVIEW_MIN, Math.min(wanted.preview, room - left));
     if (leftDocked) out.left = Math.max(SIDEBAR_MIN, Math.min(wanted.left, room - out.preview));
+    // What the conversation would get beside it; under 440 it stays laid out at 440 and the preview covers the rest.
+    const beside = viewportWidth - fixed - (leftDocked ? out.left : 0) - out.preview;
+    out.cover = Math.max(0, MAIN_ROOM_WIDTH - beside);
   } else if (leftDocked) {
     out.left = Math.max(SIDEBAR_MIN, Math.min(wanted.left, viewportWidth - fixed - MAIN_ROOM_WIDTH));
   }
@@ -139,8 +148,8 @@ export function panelWidths(viewportWidth: number, layout: Layout, wanted: Wante
   return out;
 }
 
-/** The widest the preview can be dragged to now: the conversation stops at MAIN_MIN_WIDTH. */
+/** The widest the preview can be dragged to now: until only MAIN_SHOWN_MIN of the conversation shows. */
 export function previewMaxWidth(viewportWidth: number, layout: Layout, widths: Widths): number {
   const others = (layout.left === 'docked' ? widths.left : RAIL_WIDTH) + (layout.info === 'docked' ? INFO_WIDTH : 0);
-  return Math.max(PREVIEW_MIN, viewportWidth - others - MAIN_MIN_WIDTH);
+  return Math.max(PREVIEW_MIN, viewportWidth - others - MAIN_SHOWN_MIN);
 }

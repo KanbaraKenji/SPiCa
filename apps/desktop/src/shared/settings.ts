@@ -52,7 +52,7 @@ export interface PanelWidths {
 export const PANEL_LIMITS = {
   left: { min: 200, max: 440, initial: 264 },
   right: { min: 240, max: 600, initial: 300 },
-  // No real upper bound: the window stops it (the conversation keeps MAIN_MIN_WIDTH); this only guards the file.
+  // No real upper bound: the window stops it (MAIN_SHOWN_MIN of the conversation keeps showing, shell/layout.ts); this only guards the file.
   preview: { min: 320, max: 4000, initial: 640 },
 } as const;
 
