@@ -113,6 +113,8 @@ export interface PluginModelUse {
   userMaxUsdPerDay?: number;
   /** Spent today, USD (absent when the core cannot tell). */
   spentTodayUsd?: number;
+  /** Calls of a model without a price were made today: not in spentTodayUsd, not counted against the limit. */
+  unpricedToday?: true;
 }
 
 export type PluginEvent =
@@ -652,12 +654,19 @@ export class PluginManager {
     } catch {
       spent = undefined;
     }
+    let unpriced: boolean;
+    try {
+      unpriced = this.#host.modelUnpricedToday?.(name) === true;
+    } catch {
+      unpriced = false;
+    }
     return {
       reason: m.permissions.model?.reason ?? '',
       maxUsdPerDay: this.#modelLimit(name, m),
       declaredMaxUsdPerDay: m.permissions.model?.maxUsdPerDay ?? DEFAULT_MODEL_USD_PER_DAY,
       ...(user !== undefined ? { userMaxUsdPerDay: user } : {}),
       ...(typeof spent === 'number' && Number.isFinite(spent) ? { spentTodayUsd: spent } : {}),
+      ...(unpriced ? { unpricedToday: true as const } : {}),
     };
   }
 

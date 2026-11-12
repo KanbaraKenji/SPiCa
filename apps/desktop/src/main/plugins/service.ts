@@ -106,6 +106,7 @@ function toView(d: PluginDescription, update?: string, icon?: PluginIconView): P
             declaredMaxUsdPerDay: d.model.declaredMaxUsdPerDay,
             ...(d.model.userMaxUsdPerDay !== undefined ? { userMaxUsdPerDay: d.model.userMaxUsdPerDay } : {}),
             ...(d.model.spentTodayUsd !== undefined ? { spentTodayUsd: d.model.spentTodayUsd } : {}),
+            ...(d.model.unpricedToday ? { unpricedToday: true as const } : {}),
           },
         }
       : {}),

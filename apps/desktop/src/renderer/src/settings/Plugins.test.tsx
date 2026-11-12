@@ -365,6 +365,17 @@ describe('Plugins', () => {
     await waitFor(() => expect(screen.queryByRole('region', { name: '笔记（示例）' })).toBeNull());
   });
 
+  it('today’s spending says 未计价 for calls of a model without a price, never 0 (「+ 未计价」 beside what was counted)', async () => {
+    const unpriced = (spent: number) => apiWith((ps) => ps.map((p) => (p.model ? { ...p, model: { ...p.model, spentTodayUsd: spent, unpricedToday: true as const } } : p)));
+    render(<Plugins api={unpriced(0)} />);
+    let card = (await screen.findByRole('region', { name: '笔记（示例）' })) as HTMLElement;
+    expect(within(card).getByText(/今日 未计价$/)).toBeTruthy();
+    cleanup();
+    render(<Plugins api={unpriced(0.03)} />);
+    card = (await screen.findByRole('region', { name: '笔记（示例）' })) as HTMLElement;
+    expect(within(card).getByText(/今日 \$0\.03 \+ 未计价$/)).toBeTruthy();
+  });
+
   it('a plugin that uses models says so, with its reason, today’s spending and a limit to lower', async () => {
     render(<Plugins api={api()} />);
     const card = (await screen.findByRole('region', { name: '笔记（示例）' })) as HTMLElement;

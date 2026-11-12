@@ -36,6 +36,7 @@ import { Group, Pane, Row } from './Group';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import type { PluginView as PageView } from '../../../shared/plugin-view';
 import { PluginPage, type PluginPageProps } from '../shell/PluginFrame';
+import { spendText } from '../../../shared/spend';
 
 export interface PluginsApi {
   run(cmd: PluginsCommand): Promise<PluginsResult>;
@@ -119,7 +120,7 @@ function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy
         {off ? '使用模型 · 已禁止' : `使用模型 · 每日上限 ${usd(m.maxUsdPerDay)}`}
         {typeof used === 'number' && !off ? (
           <span className={used >= m.maxUsdPerDay ? 'plugin-model-spent is-full' : 'plugin-model-spent'}>
-            {used >= m.maxUsdPerDay ? ` · 今日 ${spentText(used)}（已达上限）` : ` · 今日 ${spentText(used)}`}
+            {used >= m.maxUsdPerDay ? ` · 今日 ${spendText(used, m.unpricedToday, spentText)}（已达上限）` : ` · 今日 ${spendText(used, m.unpricedToday, spentText)}`}
           </span>
         ) : null}
       </p>

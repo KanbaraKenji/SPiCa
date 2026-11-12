@@ -43,6 +43,8 @@ export interface PluginModelView {
   userMaxUsdPerDay?: number;
   /** Spent today; absent when it cannot be told. */
   spentTodayUsd?: number;
+  /** It used a model without a price today (not in spentTodayUsd): 今日 says 「+ 未计价」 (shared/spend.ts). */
+  unpricedToday?: true;
 }
 
 /** An SVG's text as the data: URL an <img> shows (scripts in it never run there). */
