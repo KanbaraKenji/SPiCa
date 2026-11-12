@@ -1,7 +1,6 @@
 // Settings, as a large dialog over the window (他 2026-11-12 picked 「大弹窗」): the window behind dims, the
 // sections (常规 / 外观 / 模型 / 记忆 / 插件 / 关于) are a column on the left, the section on the right scrolls by
-// itself. The close button at the top right and a press outside close it; so does Esc, through App's own Esc
-// (as before it was a dialog), so a confirm box, a menu or a field inside closes only itself.
+// itself. The close button at the top right, a press outside and Esc close it (useModal, the dialogs' own way).
 // On a small window it fills the window under the title bar.
 import { useRef } from 'react';
 import type { ShellStore } from '../store/shell';
@@ -63,9 +62,8 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
   const { settings } = useShell(shell);
   const tabs = memory ? TABS : TABS.filter((t) => t.id !== 'memory');
   const box = useRef<HTMLDivElement>(null);
-  // The keyboard starts in the dialog (no ring on a section until Tab is pressed) and stays in it. Esc is App's:
-  // it closes the settings only when nothing inside (a confirm box, a menu, a field) handled it first.
-  useModal(box, onClose, box, { esc: false });
+  // The keyboard starts in the dialog (no ring on a section until Tab is pressed) and stays in it.
+  useModal(box, onClose, box);
   return (
     <div className="scrim settings-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="settings-dialog" role="dialog" aria-modal="true" aria-label="设置" tabIndex={-1} ref={box}>

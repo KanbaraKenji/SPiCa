@@ -1,14 +1,12 @@
 // What every modal does with the keyboard: focus starts inside (on `initial`,
 // else the first control), Tab and Shift+Tab go round inside it and never to
 // the page behind, Esc closes it, and on closing the focus goes back to what
-// opened it. `esc: false` leaves Esc to the page (the settings dialog: App closes it on Esc that nothing
-// inside handled first, so a confirm box, a menu or a field in it closes only itself).
+// opened it.
 import { useEffect, useRef, type RefObject } from 'react';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function useModal(box: RefObject<HTMLElement | null>, onClose: () => void, initial?: RefObject<HTMLElement | null>, opts: { esc?: boolean } = {}): void {
-  const esc = opts.esc ?? true;
+export function useModal(box: RefObject<HTMLElement | null>, onClose: () => void, initial?: RefObject<HTMLElement | null>): void {
   const close = useRef(onClose);
   useEffect(() => {
     close.current = onClose;
@@ -21,7 +19,6 @@ export function useModal(box: RefObject<HTMLElement | null>, onClose: () => void
     (initial?.current ?? inside()[0] ?? el).focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (!esc) return;
         e.preventDefault();
         e.stopPropagation();
         close.current();
@@ -49,5 +46,5 @@ export function useModal(box: RefObject<HTMLElement | null>, onClose: () => void
       window.removeEventListener('keydown', onKey, true);
       if (opener?.isConnected) opener.focus();
     };
-  }, [box, initial, esc]);
+  }, [box, initial]);
 }
