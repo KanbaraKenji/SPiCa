@@ -339,3 +339,11 @@ describe('the input box', () => {
     }
   });
 });
+
+describe('the picture viewer', () => {
+  it('‹ N of M › sits on a fade along the bottom, as in the Claude app: no panel, border or shadow under it', () => {
+    expect(block('.image-viewer.has-nav::after')).toContain('linear-gradient(to bottom, transparent');
+    expect(block('.image-viewer.has-nav::after')).toContain('pointer-events: none');
+    for (const p of ['background', 'border', 'box-shadow']) expect(block('.image-viewer-nav'), p).not.toContain(`${p}:`);
+  });
+});

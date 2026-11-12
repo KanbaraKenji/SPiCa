@@ -6189,32 +6189,54 @@ button.ctx-row:hover {
   cursor: grabbing;
 }
 
-/* Pictures of one group: room under the picture for ‹ N of M ›, centred, in the app's own buttons and text. */
+/* Pictures of one group: ‹ N of M › over a fade along the bottom, as the Claude app has it (他: 「跟claude一样弄个
+   渐隐的底部不要卡片底多好」): no panel, border or shadow; the fade runs from clear to near black whatever the
+   skin (the light skin's scrim is light), so the white arrows and count read on both. */
 .image-viewer.has-nav {
-  padding-bottom: 64px;
+  padding-bottom: 88px;
+}
+
+.image-viewer.has-nav::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 200px;
+  background: linear-gradient(to bottom, transparent, rgb(0 0 0 / 0.6) 45%, rgb(0 0 0 / 0.9));
+  pointer-events: none;
 }
 
 .image-viewer-nav {
   position: absolute;
-  bottom: 16px;
+  z-index: 1;
+  bottom: 28px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px;
-  border-radius: var(--radius-m);
-  background: var(--spica-raised);
-  box-shadow: var(--spica-shadow);
-  color: var(--spica-ink);
+  gap: 16px;
+  color: #fff;
   cursor: default;
 }
 
+.image-viewer-nav .icon-btn {
+  width: 36px;
+  height: 36px;
+  color: #fff;
+}
+
+/* The arrow at the end of the group is darker: the shared icon button's 0.4, on white. */
+.image-viewer-nav .icon-btn:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.12);
+  color: #fff;
+}
+
 .image-viewer-count {
-  min-width: 56px;
+  min-width: 64px;
   text-align: center;
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
+  font-size: var(--fs-prose);
+  line-height: var(--lh-prose);
   font-variant-numeric: tabular-nums;
 }
 
