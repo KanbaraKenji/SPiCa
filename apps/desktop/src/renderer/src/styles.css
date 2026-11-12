@@ -6057,15 +6057,6 @@ section.plugins-part > .plugins-part-title {
 
 .side-action-text {
   min-width: 0;
-/* 设置 › 账号: the same round badge, bigger, at the right end of the first row. */
-.account-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  font-size: var(--fs-heading);
-  line-height: var(--lh-heading);
-}
-
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -6085,6 +6076,15 @@ section.plugins-part > .plugins-part-title {
 
 .side-avatar {
   border-radius: 50%;
+}
+
+/* 设置 › 账号: the same round badge, bigger, at the right end of the first row. */
+.account-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
 }
 
 .side-action.side-gear {

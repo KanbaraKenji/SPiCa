@@ -352,3 +352,41 @@ describe('the picture viewer', () => {
     for (const p of ['background', 'border', 'box-shadow']) expect(block('.image-viewer-nav'), p).not.toContain(`${p}:`);
   });
 });
+
+/**
+ * Rules opened inside another rule (not inside @media / @supports / @container / @layer / @keyframes), each
+ * with its line: a rule pasted into the middle of another leaves the second half of the outer one dead.
+ */
+function nestedRules(text: string): string[] {
+  const src = text.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' '));
+  const open: boolean[] = []; // per open block: is it an at-rule
+  const found: string[] = [];
+  let head = '';
+  let line = 1;
+  for (const ch of src) {
+    if (ch === '\n') line++;
+    if (ch === '{') {
+      const name = head.trim();
+      const atRule = name.startsWith('@');
+      if (open.length > 0 && !open[open.length - 1] && !atRule) found.push(`${line}: ${name.split('\n').pop()}`);
+      open.push(atRule);
+      head = '';
+    } else if (ch === '}') {
+      open.pop();
+      head = '';
+    } else if (ch === ';') head = '';
+    else head += ch;
+  }
+  return found;
+}
+
+describe('the style sheet holds together', () => {
+  it('no rule is opened inside another rule', () => {
+    expect(nestedRules(css)).toEqual([]);
+  });
+
+  it('the check catches a rule pasted into the middle of another, and lets @media and @keyframes through', () => {
+    expect(nestedRules('.a {\n  min-width: 0;\n.b {\n  width: 1px;\n}\n  overflow: hidden;\n}\n')).toEqual(['3: .b']);
+    expect(nestedRules('@media (max-width: 1px) {\n  .a { width: 1px; }\n}\n@keyframes k {\n  from { opacity: 0; }\n}\n')).toEqual([]);
+  });
+});
