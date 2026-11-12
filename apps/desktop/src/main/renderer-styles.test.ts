@@ -121,9 +121,26 @@ describe('the panels around the conversation (shell/layout.ts counts on these)',
 describe('sidebar tabs', () => {
   it('the tabs and the space kept for them on the icon column are one rule: same height, same margins', () => {
     const rule = block('.side-tabs,\n.side-tabs-space');
-    expect(rule).toContain('height: 36px');
+    expect(rule).toContain('height: calc(var(--tab-h) + 2 * var(--tabs-pad))');
     expect(rule).toContain('margin: 4px 8px 2px');
     expect(rule).toContain('flex: none');
+  });
+});
+
+describe('control sizes: one place (out/settings-modal/10-controls.md)', () => {
+  it('buttons, fields and icon buttons are --control-h (28, as Claude’s); a tab or segment --tab-h in its --tabs-pad tray', () => {
+    const root = block(':root');
+    expect(root).toContain('--control-h: 28px');
+    expect(root).toContain('--tab-h: 24px');
+    expect(root).toContain('--tabs-pad: 2px');
+    for (const sel of ['\n.btn', '\n.btn-small', '\n.input', '\n.icon-btn', '\n.btn-quiet-danger']) expect(block(sel)).toContain('height: var(--control-h)');
+    expect(block('\n.btn')).toContain('padding: 0 var(--control-pad-x)');
+    expect(block('\n.btn.btn-square')).toContain('width: var(--control-h)');
+    expect(block('\n.tab')).toContain('height: var(--tab-h)');
+    expect(block('\n.segment')).toContain('height: var(--tab-h)');
+    expect(block('\n.tabs')).toContain('padding: var(--tabs-pad)');
+    // The segmented row's 1px line stands in for a pixel of its tray, so it is --control-h tall too.
+    expect(block('\n.segmented')).toContain('padding: calc(var(--tabs-pad) - 1px)');
   });
 });
 
