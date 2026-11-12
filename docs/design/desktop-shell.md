@@ -117,7 +117,7 @@
 
 - **右下角图标**（`main/tray.ts`）：Spica 运行时 Windows 通知区一直有它的图标（`new Tray`，截图脚本和 `SPICA_HIDDEN` 的测试窗口不放）。图标就是任务栏那个花（`spica-taskbar-<n>.png` 按任务栏明暗上成白 / 黑，和窗口图标同一个 .ico 文件，跟着 `taskbar-theme.ts` 一起变）。悬停显示应用名；左键：窗口藏着就显示，再拿到前台，显示着就拿到前台（不做「再点一下藏起来」）；右键是系统原生菜单「打开 Spica」「退出 Spica」（名字跟着 `deploy.json`）。「退出」就是 `app.quit()`，走 `main/quit.ts` 原来的退出流程。
 - **关闭窗口后留在后台**（`keepInBackground`，默认关）：关着时 × 和以前一样（关窗口 = 退出）。开着时 × 只把窗口藏起来（`close` 里 `preventDefault` + `hide`），内核、插件、正在跑的对话照常；从右下角图标再打开，回到原来的页面（页面没有重新加载）。第一次这样藏起来时用通知区气泡说一次「Spica 仍在后台运行。点右下角的图标打开，右键图标可以退出。」（`backgroundHintShown` 记着，只说一次）。不拦的情况：已经在退出（`before-quit` 之后：右键退出、更新安装、界面出错框里的「退出」、程序自己发起的退出）、Windows 注销或关机（窗口的 `query-session-end` / `session-end`）、右下角图标没建成（藏起来就找不回来了）。
-- **开机时启动**（`openAtLogin`，默认关，`main/autostart.ts`）：只给当前用户登记（Electron `setLoginItemSettings`，写 HKCU 的 Run 项，不要管理员），登记的命令行带 `--autostart`。这样起来的那一次不弹窗口、不放开机动画，只在右下角；自己从开始菜单或桌面启动照常显示窗口。设置变了就同步一次，启动时也对一次（安装位置变了会重新登记）。只有安装版能用：开发版（`npm run dev`）登记的会是仓库里的 electron.exe，便携版每次运行都从 `%TEMP%` 里新解压的文件夹起，用户双击的那个 exe 随时可能被挪走，所以这两种开关显示为不可用，旁边写「开发版不能开机启动，只有安装版能用。」/「便携版不能开机启动，只有安装版能用。」，而且根本不读写注册表。
+- **开机时启动**（`openAtLogin`，`main/autostart.ts`）：只给当前用户登记（HKCU 的 Run 项，值名 = 应用 id，也就是 AppUserModelID，内容 `"<exe>" --autostart`；不要管理员）。安装包装完那一页默认勾着它（见第 9 节），程序里不再自己默认打开。开关显示的是 Windows 里实际登记的样子：启动时读一次（安装包写的、大小写不同的路径也认），之后拨开关才写（Electron `setLoginItemSettings`，按同一个值名写和删）。这样起来的那一次不弹窗口、不放开机动画，只在右下角；自己从开始菜单或桌面启动照常显示窗口。只有安装版能用：开发版（`npm run dev`）登记的会是仓库里的 electron.exe，便携版每次运行都从 `%TEMP%` 里新解压的文件夹起，用户双击的那个 exe 随时可能被挪走，所以这两种开关显示为不可用，旁边写「开发版不能开机启动，只有安装版能用。」/「便携版不能开机启动，只有安装版能用。」，而且根本不读写注册表。任务管理器「启动」页里被停用的，开关仍显示开（登记还在），没处理。
 - **只开一个**：`app.requestSingleInstanceLock()`（按数据文件夹算，`SPICA_USER_DATA` 不同的开发版互不影响）。已经在运行时再启动一次，第二个立即退出，已有的窗口显示出来拿到前台；由开机启动起来的第二个不拉窗口。
 - **和界面进程恢复对得上**：窗口藏着时页面进程没了，`page-recovery.ts` 照样重新加载（藏着的窗口一样能加载），再从图标打开时页面是好的、回到原来的对话。
 - 任务栏状态灯（第 12 节「不在三个里程碑里」）指的是任务栏按钮上的状态灯，和这里的右下角图标不是一回事；右下角图标不显示状态。
@@ -178,6 +178,12 @@
   - 跟着名字走的：窗口标题、任务栏 AppUserModelID（= id）、数据文件夹 `%APPDATA%\名字`、`文档\名字`、界面上的 Spica 字样（输入框提示、关于、本机脚本连接、邮件同意、模型表单、新建项目、删除项目）、`mcp-http.json` 里的 `appName`。自我介绍（内核）、插件提示（插件系统）各自接 `appName`。
   - 不跟着变的：`@spica` 包名、`window.spica`、`spica_` 工具名、`--spica-*` 变量、`SPICA_` 环境变量、插件清单里的 spica 字段、`spica-file://`、`spica-plugin://`。
   - 2026-11-10 用虚构名字「Nova Desk」走过：开发版标题、开机字标、侧栏横标、输入框、关于都换了；`npm run dist` 出 `Nova Desk-Setup-0.1.0-rc.1.exe`、`Nova Desk-Portable-…`、`Nova Desk.exe`。
+- **装完那一页的三个勾选项**（2026-11-12，`resources/installer/finish-options.nsh`，经 `electron-builder.yml` 的 `nsis.include` 加进 electron-builder 自己的完成页，「运行 Spica」下面）：「开机时启动」「创建桌面快捷方式」「创建开始菜单快捷方式」。
+  - 第一次安装：三样在安装时就做好（快捷方式是 electron-builder 建的，开机启动的 Run 项是脚本写的），所以三个框默认勾着，直接关掉这一页也照样保留；取消哪个再点「完成」，哪个就撤掉。开机启动写的和程序里开关读写的是同一项（见第 6 节）。
+  - 覆盖安装（已经装过再运行安装包）：三个框按现在的样子勾（用户删掉的快捷方式、在设置里关掉的开机启动都不勾），不勾就不加回来；勾上的才补上。electron-builder 本来就记着 `KeepShortcuts`：覆盖安装时只给还在的快捷方式改名、不重建删掉的。开机启动只在第一次安装时写。
+  - 程序里点「重启并更新」（`--updated /S`）：不显示页面，三样都不动。
+  - 卸载：electron-builder 删两种快捷方式，脚本删 Run 项和任务管理器里它的启用记录（`StartupApproved\Run`）；更新时运行旧卸载程序（带 `--updated`）不删。
+  - 全在 HKCU 和用户自己的文件夹里，不要管理员。勾选项的文字只写了中文（界面本来就只有中文）；安装包其他页照旧按系统语言。
 - **更新源**：一个共享盘文件夹或 http(s) 地址，里面放 `latest.yml` 和安装包（就是 `release/` 里那几个文件），公告也放这里（`announcements.json`）。
   - 默认是空的。公司打包时复制 `deploy.example.json` 为 `deploy.json`（已 .gitignore）填上自己的地址，就成了每台机器的默认值；用户也可以在 设置 › 关于 里改。仓库里只有示例，没有任何公司地址。
   - 为什么不用 electron-updater：它的 generic 源只认 HTTP，公司常用共享盘。这里自己读 electron-builder 生成的同一份 `latest.yml`，校验 sha512，再静默运行按用户安装的安装包（`--updated /S --force-run`），装完自动打开新版本。
