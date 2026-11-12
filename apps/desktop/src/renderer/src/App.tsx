@@ -466,6 +466,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     },
     notify: (text: string) => agent.state.set((s) => ({ ...s, notice: `${v.pluginTitle}：${text}` })),
     pick: bridge.pluginViews.pick,
+    openFolder: bridge.openFolder,
     exists: async (plugin: string, path: string) => (await bridge.pluginViews.file(plugin, path)) !== null,
   });
 

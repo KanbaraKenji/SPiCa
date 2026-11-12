@@ -4,7 +4,7 @@
 // that talks to the window by postMessage; the window checks which frame
 // (so which plugin) every call comes from. Pure parts here, glue in index.ts.
 
-import type { PluginPickRequest } from '../shared/plugin-view';
+import { localDrivePath, type PluginPickRequest } from '../shared/plugin-view';
 
 export const PLUGIN_SCHEME = 'spica-plugin';
 export { pluginThemeVars } from '../shared/plugin-view';
@@ -92,17 +92,8 @@ export interface PickDialogOptions {
   filters?: { name: string; extensions: string[] }[];
 }
 
-/**
- * Where the dialog may start: a full path on a local drive (C:\…), at most 260 characters. Not a network
- * path (\\server\share, //server): the dialog would reach for that computer before the user did anything,
- * and a page may not reach the network. Anything else is left out (the dialog starts where it likes).
- */
-export function pickStartPath(v: unknown): string | undefined {
-  if (typeof v !== 'string') return undefined;
-  const p = v.trim();
-  if (!p || p.length > 260 || [...p].some((c) => c.charCodeAt(0) < 32)) return undefined;
-  return /^[a-zA-Z]:[\\/]/.test(p) && !/^[a-zA-Z]:[\\/]{2}/.test(p) ? p : undefined;
-}
+/** Where the dialog may start: a full path on a local drive (localDrivePath); anything else is left out. */
+export const pickStartPath = localDrivePath;
 
 /** File kinds a page names (".md" or "md"): lower case, without the dot, at most 20; others left out. */
 export function pickExtensions(v: unknown): string[] {
@@ -229,6 +220,8 @@ export const BRIDGE_JS = `(() => {
     // reading or writing it is the plugin's own tools' work.
     pickFolder: (opts) => call('pickFolder', pickArgs(opts)),
     pickFile: (opts) => call('pickFile', Object.assign(pickArgs(opts), opts && Array.isArray(opts.extensions) ? { extensions: opts.extensions.map(String) } : {})),
+    // A folder on a local drive in the system's file manager (Explorer): only opened, nothing run or read.
+    openFolder: (path) => call('openFolder', { path: String(path) }),
     notify: (text, opts) => call('notify', { text: String(text), kind: opts && opts.kind === 'error' ? 'error' : 'info' }),
     // A preview page (placement preview): its one file, and saying when it is drawn or why it cannot be.
     // The window answers these only for a frame it opened as a preview.

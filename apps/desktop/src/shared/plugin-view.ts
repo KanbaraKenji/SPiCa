@@ -37,6 +37,18 @@ export interface PluginPickRequest {
   extensions?: string[];
 }
 
+/**
+ * A full path on a local drive (C:\…), at most 260 characters; undefined for anything else. Not a network path
+ * (\\server\share, //server): a page may not reach the network, and the dialog or Explorer would reach for that
+ * computer before the user did anything. Used for where a picker starts and for the folder a page opens.
+ */
+export function localDrivePath(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const p = v.trim();
+  if (!p || p.length > 260 || [...p].some((c) => c.charCodeAt(0) < 32)) return undefined;
+  return /^[a-zA-Z]:[\\/]/.test(p) && !/^[a-zA-Z]:[\\/]{2}/.test(p) ? p : undefined;
+}
+
 /** What a page's tool call returns (pluginViewCall). Errors start with a code such as [CONFIRM_REQUIRED]. */
 export interface PluginViewResult {
   content: string;

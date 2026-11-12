@@ -4,7 +4,7 @@
 // window.spica (a postMessage bridge); every call is answered for the plugin
 // whose frame sent it, never for one named in the message.
 import { useEffect, useRef, useState } from 'react';
-import { pluginCallProblem, type PluginPickRequest, type PluginView, type PluginViewResult } from '../../../shared/plugin-view';
+import { localDrivePath, pluginCallProblem, type PluginPickRequest, type PluginView, type PluginViewResult } from '../../../shared/plugin-view';
 
 export interface PluginTheme {
   mode: 'light' | 'dark';
@@ -51,18 +51,20 @@ export interface PluginFrameProps {
   notify(text: string, kind: 'info' | 'error'): void;
   /** The system's folder or file picker (window.spica.pickFolder / pickFile): the path picked, or null. Absent: the page gets an error. */
   pick?: (req: PluginPickRequest) => Promise<string | null>;
+  /** A folder on a local drive in the system's file manager (window.spica.openFolder); a problem in words, or null. Absent: the page gets an error. */
+  openFolder?: (path: string) => Promise<string | null>;
   /** Present: the page is a preview; only then are preview calls answered, and it cannot open other files. */
   preview?: PreviewHooks;
 }
 
 const CONFIRM = '[CONFIRM_REQUIRED]';
 
-export function PluginFrame({ view, theme, changed, call, cancel, confirm, openFile, notify, pick, preview }: PluginFrameProps) {
+export function PluginFrame({ view, theme, changed, call, cancel, confirm, openFile, notify, pick, openFolder, preview }: PluginFrameProps) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [ready, setReady] = useState(false);
-  const latest = useRef({ view, theme, call, cancel, confirm, openFile, notify, pick, preview });
+  const latest = useRef({ view, theme, call, cancel, confirm, openFile, notify, pick, openFolder, preview });
   useEffect(() => {
-    latest.current = { view, theme, call, cancel, confirm, openFile, notify, pick, preview };
+    latest.current = { view, theme, call, cancel, confirm, openFile, notify, pick, openFolder, preview };
   });
   // Tool calls of the page as it is now that have not come back. `page` counts the page's loads: an answer
   // for an earlier load is dropped (the new page numbers its calls from the start again).
@@ -154,6 +156,20 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
           if (typeof args.defaultPath === 'string') req.defaultPath = args.defaultPath;
           if (c === 'pickFile' && Array.isArray(args.extensions)) req.extensions = args.extensions.filter((x): x is string => typeof x === 'string');
           reply(await l.pick(req));
+        } else if (c === 'openFolder') {
+          // Only a folder on a local drive, opened in Explorer: not a network path, never a file (nothing runs).
+          if (l.preview || !l.openFolder) {
+            fail(l.preview ? '预览页不能打开文件夹。' : `不支持的调用：${c}`);
+            return;
+          }
+          const path = localDrivePath(args.path);
+          if (!path) {
+            fail('只能打开本机磁盘上的文件夹。');
+            return;
+          }
+          const problem = await l.openFolder(path);
+          if (problem) fail(problem);
+          else reply(null);
         } else if (c === 'notify') {
           l.notify(String(args.text ?? '').slice(0, 300), args.kind === 'error' ? 'error' : 'info');
           reply(null);
