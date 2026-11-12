@@ -6203,7 +6203,8 @@ button.ctx-row:hover {
   right: 0;
   bottom: 0;
   height: 200px;
-  background: linear-gradient(to bottom, transparent, rgb(0 0 0 / 0.6) 45%, rgb(0 0 0 / 0.9));
+  /* Solid from a little above the arrows down: nothing of the page shows through beside them. */
+  background: linear-gradient(to bottom, transparent, rgb(10 10 10) 58%, rgb(10 10 10));
   pointer-events: none;
 }
 
