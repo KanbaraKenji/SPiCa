@@ -53,9 +53,11 @@ describe('设置 as a dialog over the window', () => {
     expect([...nav.querySelectorAll('.settings-nav-group')].map((g) => [...g.querySelectorAll('[role=tab]')].map((t) => t.textContent))).toEqual([['账号'], ['常规', '外观'], ['模型', '插件'], ['关于']]);
     // Each with its mark before the name.
     expect(within(nav).getAllByRole('tab').every((t) => t.querySelector('svg.settings-nav-icon'))).toBe(true);
-    // The title bar says 设置; the section's name heads its content.
+    // The title bar says 设置; no line with the section's name over its content (the column shows it picked),
+    // the panel is named by its tab.
     expect(within(dialog).getByRole('heading', { level: 2 }).textContent).toBe('设置');
-    expect(within(dialog).getByRole('heading', { level: 3, name: '关于' })).toBeTruthy();
+    expect(within(dialog).queryByRole('heading', { level: 3, name: '关于' })).toBeNull();
+    expect(within(dialog).getByRole('tabpanel', { name: '关于' })).toBeTruthy();
     expect(within(nav).getByRole('tab', { name: '关于' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.queryByRole('button', { name: '返回对话' })).toBeNull();
     fireEvent.click(within(nav).getByRole('tab', { name: '外观' }));

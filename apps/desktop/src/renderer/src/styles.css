@@ -3043,7 +3043,7 @@ button.ctx-row:hover {
   flex-direction: column;
 }
 
-/* The section's name: a short bold line at the top of its content. */
+/* 搜索结果, a short bold line at the top of the results (the sections themselves have no such line). */
 .settings-page-title {
   margin: 0 0 14px;
   font-size: var(--fs-heading);
@@ -4352,7 +4352,6 @@ button.ctx-row:hover {
   display: flex;
   width: fit-content;
   max-width: 100%;
-  margin-bottom: 16px;
 }
 
 .tab-count {
@@ -4361,32 +4360,12 @@ button.ctx-row:hover {
   color: var(--spica-faint);
 }
 
-/* 市场 › 插件来源: a source that could not be read says so in the danger colour (why: on hover). */
+/* 市场 › a source that could not be read says so in the danger colour (why: on hover). */
 .source-failed {
   color: var(--spica-danger);
 }
 
-.plugin-sources {
-  margin-bottom: 16px;
-}
-
-/* 插件来源 folds (the conversation's fold look: chevron after the words); folded, the title line says how many
-   sources there are and how many could not be read. In the heading's size, flush with the other titles. */
-.plugin-sources .sources-fold {
-  height: auto;
-  min-height: 28px;
-  margin-left: -8px;
-  color: var(--spica-ink);
-  font-size: var(--fs-heading);
-  line-height: var(--lh-heading);
-  font-weight: 600;
-}
-
-.plugin-sources .sources-fold .fold-label {
-  flex: none;
-}
-
-/* 市场's list: 已安装 / 可更新 at a row's end, in the quiet words (可更新 in the accent: something to do). */
+/* 已安装 / 可更新 at a row's or a card's end, in the quiet words (可更新 in the accent: something to do). */
 .plugin-row-state {
   margin-left: auto;
   padding-left: 8px;
@@ -4406,59 +4385,37 @@ button.ctx-row:hover {
   font-weight: 400;
 }
 
-.sources-summary {
-  font-size: var(--fs-footnote);
-  line-height: var(--lh-footnote);
-  font-weight: 400;
-  color: var(--spica-muted);
-  white-space: nowrap;
-}
-
-/* Folded: the list below starts right under the title line. */
-.plugin-sources:has(.sources-fold[aria-expanded='false']) .group-head {
-  margin-bottom: 0;
-}
-
-.plugin-sources .group-actions .btn-small {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.plugin-sources .setting-control .btn-small:not(.btn-square) {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* 已安装: search, filter and check for updates along the top; list and detail below. */
+/* 插件, laid out as Claude's plugin page (his pictures, 2026-11-12): one row on top (已安装 / 市场, the search, the
+   filter, 全部检查更新, 添加来源), then a full-width list (已安装) or cards (市场); a press opens the plugin's page in
+   their place, ← back at its top left. Narrow: the search goes on a row of its own, the cards one a row. */
 .plugins-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
 .plugins-bar .plugins-search {
   flex: 1 1 160px;
   min-width: 0;
-  max-width: none;
   height: 30px;
 }
 
-.plugins-filter .segment {
+.plugins-bar .btn-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   white-space: nowrap;
 }
 
-/* Narrow: search and 检查更新 on one row, the filter on the next. */
-.plugins-page.is-narrow .plugins-filter {
-  order: 2;
+.plugins-page.is-narrow .plugins-bar .plugins-search {
+  order: 9;
   flex-basis: 100%;
 }
 
-.plugins-page.is-narrow .plugins-filter .segment {
-  flex: 1;
+.plugins-add {
+  margin-bottom: 16px;
 }
 
 .plugins-empty,
@@ -4466,81 +4423,207 @@ button.ctx-row:hover {
   margin: 8px 0;
 }
 
-/* Inside the list's box: in from its edge like the group titles. */
-.plugins-list .plugins-none {
-  padding: 0 12px;
+.sources-no-official {
+  margin: 0 0 16px;
 }
 
-.plugins-two {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-}
-
-/* Filling the page: both columns as tall as the space, each scrolls by itself. */
-.is-fill .plugins-two {
-  flex: 1;
-  min-height: 0;
-  grid-template-rows: minmax(0, 1fr);
-  align-items: stretch;
-}
-
-.is-fill .plugins-list,
-.is-fill .plugin-detail {
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.plugins-page.is-narrow .plugins-two {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.plugins-list {
-  border: 1px solid var(--spica-border-strong);
-  border-radius: var(--radius-m);
-  background: var(--spica-surface);
-  padding: 4px 0;
-}
-
-.plugins-list ul {
+/* A part of the list (已启用, 已停用, a source): its title with a count, then its rows or cards. */
+.plugins-list ul,
+.plugin-sources {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.plugins-group + .plugins-group {
-  margin-top: 4px;
+.plugins-part + .plugins-part {
+  margin-top: 20px;
 }
 
-.plugins-group-title {
+.plugins-part-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.plugins-part-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plugins-part-title {
   margin: 0;
-  padding: 6px 12px 4px;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-  font-weight: 400;
-  color: var(--spica-faint);
-}
-
-.plugin-row {
-  width: 100%;
-  height: 34px;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-  color: var(--spica-ink);
-  text-align: left;
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
+  font-weight: 600;
 }
 
-.plugin-row:hover {
+section.plugins-part > .plugins-part-title {
+  margin-bottom: 8px;
+}
+
+.plugins-part-actions {
+  flex: none;
+  display: flex;
+  gap: 8px;
+}
+
+.plugins-part-actions .btn-small:not(.btn-square) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 已安装: one plugin a row the list's width: icon, name and version over a grey line, marks, a chevron. */
+.plugin-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  text-align: left;
+  color: var(--spica-ink);
+}
+
+.plugin-item:hover {
   background: var(--spica-hover);
 }
 
-.plugin-row.is-on {
-  background: var(--spica-active);
+.plugin-items > li:first-child .plugin-item {
+  border-top-left-radius: var(--radius-l);
+  border-top-right-radius: var(--radius-l);
+}
+
+.plugin-items > li:last-child .plugin-item {
+  border-bottom-left-radius: var(--radius-l);
+  border-bottom-right-radius: var(--radius-l);
+}
+
+.plugin-item-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plugin-item-title {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.plugin-item-desc {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.plugin-item-go {
+  flex: none;
+  color: var(--spica-faint);
+}
+
+.plugin-item .plugin-row-state {
+  margin-left: 0;
+}
+
+.plugin-item.is-off .plugin-badge {
+  opacity: 0.45;
+}
+
+.plugin-item.is-off .plugin-row-name {
+  color: var(--spica-muted);
+}
+
+/* 市场: what a source offers, two cards a row (one when narrow). */
+.plugin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.plugins-page.is-narrow .plugin-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.plugin-card-item {
+  position: relative;
+  border: 1px solid var(--spica-divider);
+  border-radius: var(--radius-l);
+}
+
+.plugin-card-open {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 48px 12px 14px;
+  border-radius: inherit;
+  text-align: left;
+  color: var(--spica-ink);
+}
+
+.plugin-card-open:hover {
+  background: var(--spica-hover);
+}
+
+.plugin-card-open .plugin-row-state {
+  margin: 2px 0 0;
+  padding: 0;
+}
+
+.plugin-card-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.plugin-card-install {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+/* The page of a plugin (or a package), in the list's place: ← back, then its title line (icon, name, where it is
+   from and its version; what can be done at the right), the tabs for its own settings pages, then what it has. */
+.plugin-detail .plugin-head {
+  gap: 12px;
+}
+
+.plugin-title-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plugin-sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.plugin-head-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plugin-detail .plugin-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
 }
 
 /* A plugin's badge: its first character on its own colour (list rows and the detail's title). */
@@ -4573,7 +4656,7 @@ button.ctx-row:hover {
   display: none;
 }
 
-/* A long name is cut, never the version after it; the marks keep to the row end. */
+/* A long name is cut, never the version after it. */
 .plugin-row-name {
   flex: 0 1 auto;
   min-width: 0;
@@ -4582,29 +4665,8 @@ button.ctx-row:hover {
   text-overflow: ellipsis;
 }
 
-.plugin-row-version {
+.plugin-item-title .plugin-version {
   flex: none;
-  margin-right: auto;
-}
-
-/* The version right after the name: 4px from it (the row's and the title's gap is 8), in the list and the detail alike. */
-.plugin-row .plugin-version,
-.plugin-title .plugin-version {
-  margin-left: -4px;
-}
-
-/* Turned off: the icon fainter, the name in the secondary colour. */
-.plugin-row.is-off .plugin-badge {
-  opacity: 0.45;
-}
-
-.plugin-row.is-off .plugin-row-name {
-  color: var(--spica-muted);
-}
-
-.plugin-row-mark {
-  display: inline-flex;
-  color: var(--spica-accent-text);
 }
 
 .plugin-off {
@@ -4618,7 +4680,7 @@ button.ctx-row:hover {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin: -4px 0 8px -4px;
+  margin: 0 0 12px -4px;
 }
 
 .plugin-facts {
@@ -4732,8 +4794,15 @@ button.ctx-row:hover {
   flex: none;
 }
 
-/* A page's tab: the page fills what is left of the column and scrolls itself, the column does not. */
+/* The 插件 page scrolls as a whole in the dialog; a plugin's own settings page fills what is left of it and
+   scrolls itself. */
+.is-fill .plugins-page {
+  overflow-y: auto;
+}
+
 .is-fill .plugin-detail.is-page {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;

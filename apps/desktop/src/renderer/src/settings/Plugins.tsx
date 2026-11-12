@@ -27,6 +27,7 @@ import {
 } from '../../../shared/plugins';
 import { friendlyError } from '../store/agent';
 import { ConfirmDialog } from '../ui/Dialog';
+import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { useKeptDraft } from './drafts';
 import { Switch } from './Switch';
@@ -213,22 +214,28 @@ function Badge({ name, displayName, icon }: { name: string; displayName: string;
 
 const pkgTitle = (a: PluginPackage) => a.displayName ?? a.name;
 
-/** One row of the list: name and version, a refresh mark when there is an update, the error mark when something is wrong. */
-function PluginRow({ p, on, onPick }: { p: PluginView; on: boolean; onPick(): void }) {
+/**
+ * 已安装: one plugin a full-width row (as Claude's plugin list): its icon, its name and version, a grey line of
+ * what it does under them (cut at the end), and at the end what needs looking at (有更新, a problem), then the
+ * chevron of a row that opens a page. A press opens its page.
+ */
+function PluginRow({ p, onPick }: { p: PluginView; onPick(): void }) {
   const problems = pluginProblems(p);
   return (
     <li>
-      <button type="button" className={['plugin-row', on ? 'is-on' : '', p.enabled ? '' : 'is-off'].filter(Boolean).join(' ')} aria-current={on ? 'true' : undefined} onClick={onPick}>
+      <button type="button" className={p.enabled ? 'plugin-item' : 'plugin-item is-off'} onClick={onPick}>
         <Badge name={p.name} displayName={p.displayName} icon={p.icon} />
-        <span className="plugin-row-name">{p.displayName}</span>
-        <span className="plugin-version plugin-row-version">{p.version}</span>
-        {p.update ? (
-          <span className="plugin-row-mark" role="img" aria-label={`有更新：${p.update}`} title={`有更新：${p.update}`}>
-            <Icon name="refresh" size={12} />
+        <span className="plugin-item-text">
+          <span className="plugin-item-title">
+            <span className="plugin-row-name">{p.displayName}</span>
+            <span className="plugin-version">{p.version}</span>
           </span>
-        ) : null}
-        {problems.length ? <SpicaStatusIcon name="error" size={13} title={problems.join('；')} /> : null}
+          {p.description ? <span className="settings-hint plugin-item-desc">{p.description}</span> : null}
+        </span>
+        {p.update ? <span className="provider-default plugin-row-state is-newer">可更新</span> : null}
+        {problems.length ? <SpicaStatusIcon name="error" size={14} title={problems.join('；')} /> : null}
         {p.enabled ? null : <span className="visually-hidden">已停用</span>}
+        <Icon name="chevronRight" size={14} className="plugin-item-go" />
       </button>
     </li>
   );
@@ -239,18 +246,33 @@ export function packageState(a: PluginPackage): '' | '已安装' | '可更新' {
   return a.newer ? '可更新' : a.installed ? '已安装' : '';
 }
 
-/** A package a source offers (or found at a typed location): name and version, as a plugin's row; its state at the end. */
-function PackageRow({ a, on, onPick }: { a: PluginPackage; on: boolean; onPick(): void }) {
+/**
+ * 市场: one package a card (as Claude's Discover grid): icon, name and version, two lines of what it does, its
+ * state at the foot (已安装 / 可更新). A press opens its page; one not here (or with a newer version) has its
+ * install button at the top right, so it can be put in without opening it.
+ */
+function PackageCard({ a, busy, running, onPick, onInstall }: { a: PluginPackage; busy: boolean; running: boolean; onPick(): void; onInstall(): void }) {
   const state = packageState(a);
+  const can = !a.installed || a.newer;
   return (
-    <li>
-      <button type="button" className={on ? 'plugin-row is-on' : 'plugin-row'} aria-current={on ? 'true' : undefined} onClick={onPick}>
+    <li className="plugin-card-item">
+      <button type="button" className="plugin-card-open" onClick={onPick} aria-label={pkgTitle(a)}>
         <Badge name={a.name} displayName={pkgTitle(a)} icon={a.icon} />
-        <span className="plugin-row-name">{pkgTitle(a)}</span>
-        {a.version ? <span className="plugin-version plugin-row-version">{a.version}</span> : <span className="plugin-row-version" />}
-        {/* Quiet words, as 默认 in 模型 and 官方 by a source: not a button. */}
-        {state ? <span className={state === '可更新' ? 'provider-default plugin-row-state is-newer' : 'provider-default plugin-row-state'}>{state}</span> : null}
+        <span className="plugin-item-text">
+          <span className="plugin-item-title">
+            <span className="plugin-row-name">{pkgTitle(a)}</span>
+            {a.version ? <span className="plugin-version">{a.version}</span> : null}
+          </span>
+          {a.description ? <span className="settings-hint plugin-card-desc">{a.description}</span> : null}
+          {/* Quiet words, as 默认 in 模型 and 官方 by a source: not a button. */}
+          {state ? <span className={state === '可更新' ? 'provider-default plugin-row-state is-newer' : 'provider-default plugin-row-state'}>{state}</span> : null}
+        </span>
       </button>
+      {can ? (
+        <button type="button" className="btn btn-small btn-square plugin-card-install" disabled={busy} onClick={onInstall} aria-label={installLabel(a)} title={installLabel(a)}>
+          {running ? <span className="spinner" aria-hidden /> : <Icon name={a.newer ? 'refresh' : 'plus'} size={14} />}
+        </button>
+      ) : null}
     </li>
   );
 }
@@ -290,16 +312,27 @@ function Progress({ run }: { run: Running }) {
   );
 }
 
-/** The row of what can be done to it, at the top of the detail; while it installs, how far it is. */
-function Actions({ running, children }: { running: Running | undefined; children: React.ReactNode }) {
-  return <div className="plugin-actions">{running ? <Progress run={running} /> : children}</div>;
+/** Where it is from and which version, the grey line under a plugin's name on its page (as Claude's 「from … · 0.1.0」). */
+function subLine(location: string | undefined, version: string | undefined): string {
+  return [location, version].filter(Boolean).join(' · ');
+}
+
+/** Back to the list the page was opened from, at its top left. */
+function Back({ label, onBack }: { label: string; onBack(): void }) {
+  return (
+    <button type="button" className="text-btn plugin-back" onClick={onBack}>
+      <Icon name="back" size={14} />
+      {label}
+    </button>
+  );
 }
 
 /**
- * The plugin picked: switch beside its name, what can be done to it right below, then what it does, needs, has.
- * An enabled plugin with settings pages gets a row of tabs under that: 详情 (all of the above but the two top
- * rows) and one per page. A page loads when its tab is first picked and stays (hidden) while 详情 is shown, so
- * what was typed in it is still there; another plugin starts over at 详情 (the detail is keyed by plugin).
+ * The plugin's page (as Claude's): ← back at the top left; its icon and name with where it is from and its
+ * version under them; at the right 更新到 x, its switch and 「…」 (回退到 x, 删除). While it updates, how far it is
+ * under that. An enabled plugin with settings pages gets a row of tabs: 详情 (what it does, needs, has) and one
+ * per page. A page loads when its tab is first picked and stays (hidden) while 详情 is shown, so what was typed in
+ * it is still there; another plugin starts over at 详情 (the page is keyed by plugin).
  */
 function PluginDetail({
   p,
@@ -310,7 +343,8 @@ function PluginDetail({
   ask,
   mail,
   pages = [],
-  onBack,
+  back,
+  note,
 }: {
   p: PluginView;
   busy: boolean;
@@ -320,49 +354,75 @@ function PluginDetail({
   ask(kind: 'uninstall' | 'rollback', p: PluginView): void;
   mail?: MailSettingsProps | undefined;
   pages?: PluginPageProps[] | undefined;
-  onBack?: (() => void) | undefined;
+  back: { label: string; onBack(): void };
+  /** The result line (installed, updated, a failure), under the title line, where the progress was. */
+  note?: ReactNode;
 }) {
   const problems = pluginProblems(p);
   const [picked, setPicked] = useState('');
   const [opened, setOpened] = useState<string[]>([]);
+  const [menu, setMenu] = useState<HTMLElement | null>(null);
   // A page gone (the plugin turned off, updated without it): back on 详情.
   const tab = pages.some((g) => g.view.id === picked) ? picked : '';
   const pick = (id: string) => {
     setPicked(id);
     if (id && !opened.includes(id)) setOpened([...opened, id]);
   };
-  const cls = ['card plugin-card plugin-detail', p.enabled ? '' : 'is-off', tab ? 'is-page' : ''].filter(Boolean).join(' ');
+  const cls = ['plugin-detail', p.enabled ? '' : 'is-off', tab ? 'is-page' : ''].filter(Boolean).join(' ');
   return (
     <section className={cls} aria-label={p.displayName}>
-      {onBack ? (
-        <button type="button" className="text-btn plugin-back" onClick={onBack}>
-          <Icon name="back" size={14} />
-          插件
-        </button>
-      ) : null}
+      <Back {...back} />
       <header className="plugin-head">
         <div className="plugin-title">
           <Badge name={p.name} displayName={p.displayName} icon={p.icon} />
-          <span className="plugin-name">{p.displayName}</span>
-          <span className="plugin-version">{p.version}</span>
+          <span className="plugin-title-text">
+            <span className="plugin-name">{p.displayName}</span>
+            <span className="settings-hint plugin-sub" title={p.source?.location} data-tip-clipped="">
+              {subLine(p.source?.location, p.version)}
+            </span>
+          </span>
         </div>
-        <Switch on={p.enabled} label={p.enabled ? `停用「${p.displayName}」` : `启用「${p.displayName}」`} disabled={busy} onChange={(on) => run({ op: on ? 'enable' : 'disable', name: p.name })} />
+        <div className="plugin-head-actions">
+          {p.update && !running ? (
+            <button type="button" className="btn btn-small btn-primary" disabled={busy} onClick={update}>
+              更新到 {p.update}
+            </button>
+          ) : null}
+          <Switch on={p.enabled} label={p.enabled ? `停用「${p.displayName}」` : `启用「${p.displayName}」`} disabled={busy} onChange={(on) => run({ op: on ? 'enable' : 'disable', name: p.name })} />
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="更多操作"
+            title="更多操作"
+            aria-haspopup="menu"
+            disabled={busy}
+            onClick={(e) => {
+              const el = e.currentTarget;
+              setMenu((m) => (m ? null : el));
+            }}
+          >
+            <Icon name="more" size={16} />
+          </button>
+        </div>
       </header>
-      <Actions running={running}>
-        {p.update ? (
-          <button type="button" className="btn btn-small" disabled={busy} onClick={update}>
-            更新到 {p.update}
-          </button>
-        ) : null}
-        {p.previousVersion ? (
-          <button type="button" className="btn btn-small" disabled={busy} onClick={() => ask('rollback', p)}>
-            回退到 {p.previousVersion}
-          </button>
-        ) : null}
-        <button type="button" className="btn btn-small btn-quiet-danger btn-square" disabled={busy} onClick={() => ask('uninstall', p)} aria-label="删除" title="删除">
-          <Icon name="trash" size={14} />
-        </button>
-      </Actions>
+      {menu ? (
+        <ContextMenu
+          x={0}
+          y={0}
+          anchor={menu}
+          items={[
+            ...(p.previousVersion ? [{ label: `回退到 ${p.previousVersion}`, onSelect: () => ask('rollback', p) }] : []),
+            { label: '删除', danger: true, onSelect: () => ask('uninstall', p) },
+          ]}
+          onClose={() => setMenu(null)}
+        />
+      ) : null}
+      {running ? (
+        <div className="plugin-actions">
+          <Progress run={running} />
+        </div>
+      ) : null}
+      {note}
       {pages.length ? (
         <div className="tabs plugin-tabs" role="tablist" aria-label={`「${p.displayName}」`}>
           {[{ id: '', label: '详情' }, ...pages.map((g) => ({ id: g.view.id, label: g.view.title.trim() || '设定' }))].map((t) => (
@@ -394,14 +454,6 @@ function PluginDetail({
           <List label="进程" items={p.servers.map((s) => `${s.id}（${SERVER_STATUS[s.status] ?? s.status}）`)} />
           <dt>模拟模式</dt>
           <dd>{p.mockSupported ? '支持' : '不支持'}</dd>
-          {p.source ? (
-            <>
-              <dt>来源</dt>
-              <dd className="detail-path" title={p.source.location} data-tip-clipped="">
-                {p.source.location}
-              </dd>
-            </>
-          ) : null}
         </dl>
       </div>
       {pages
@@ -423,39 +475,44 @@ function installLabel(a: PluginPackage): string {
   return a.version ? `安装 ${a.version}` : '安装';
 }
 
-/** A package picked in the list: what it says about itself, where it is, and 安装 (with its progress) at the top. */
-function PackageDetail({ a, busy, running, install, onShow, onBack }: { a: PluginPackage; busy: boolean; running: Running | undefined; install(): void; onShow?: (() => void) | undefined; onBack?: (() => void) | undefined }) {
+/** A package's page: ← back, its name with where it is and its version, 安装 (with its progress) at the right, then what it says. */
+function PackageDetail({ a, busy, running, install, onShow, back, note }: { a: PluginPackage; busy: boolean; running: Running | undefined; install(): void; onShow?: (() => void) | undefined; back: { label: string; onBack(): void }; note?: ReactNode }) {
   // In 市场, one that is here as it is: said so, and the way to it under 已安装 (no 重新安装 offered there).
   const here = a.installed !== undefined && !a.newer && a.version === a.installed && a.source !== undefined;
   return (
-    <section className="card plugin-card plugin-detail" aria-label={pkgTitle(a)}>
-      {onBack ? (
-        <button type="button" className="text-btn plugin-back" onClick={onBack}>
-          <Icon name="back" size={14} />
-          插件
-        </button>
-      ) : null}
+    <section className="plugin-detail" aria-label={pkgTitle(a)}>
+      <Back {...back} />
       <header className="plugin-head">
         <div className="plugin-title">
           <Badge name={a.name} displayName={pkgTitle(a)} icon={a.icon} />
-          <span className="plugin-name">{pkgTitle(a)}</span>
-          {a.version ? <span className="plugin-version">{a.version}</span> : null}
+          <span className="plugin-title-text">
+            <span className="plugin-name">{pkgTitle(a)}</span>
+            <span className="settings-hint plugin-sub" title={a.location} data-tip-clipped="">
+              {subLine(a.location, a.version)}
+            </span>
+          </span>
+        </div>
+        <div className="plugin-head-actions">
+          {running ? null : here && onShow ? (
+            <>
+              <span className="provider-default plugin-here">已安装</span>
+              <button type="button" className="btn btn-small" onClick={onShow}>
+                在已安装中查看
+              </button>
+            </>
+          ) : (
+            <button type="button" className="btn btn-small btn-primary" disabled={busy} onClick={install}>
+              {installLabel(a)}
+            </button>
+          )}
         </div>
       </header>
-      <Actions running={running}>
-        {here && onShow ? (
-          <>
-            <span className="provider-default plugin-here">已安装</span>
-            <button type="button" className="btn btn-small" onClick={onShow}>
-              在已安装中查看
-            </button>
-          </>
-        ) : (
-          <button type="button" className="btn btn-small btn-primary" disabled={busy} onClick={install}>
-            {installLabel(a)}
-          </button>
-        )}
-      </Actions>
+      {running ? (
+        <div className="plugin-actions">
+          <Progress run={running} />
+        </div>
+      ) : null}
+      {note}
       {a.description ? <p className="plugin-desc">{a.description}</p> : null}
       <dl className="detail-facts plugin-facts">
         {a.installed ? (
@@ -467,10 +524,6 @@ function PackageDetail({ a, busy, running, install, onShow, onBack }: { a: Plugi
         {a.skills ? <List label="技能" items={a.skills} /> : null}
         {a.commands ? <List label="命令" items={a.commands} /> : null}
         {a.pages ? <List label="页面" items={a.pages} /> : null}
-        <dt>来源</dt>
-        <dd className="detail-path" title={a.location} data-tip-clipped="">
-          {a.location}
-        </dd>
       </dl>
     </section>
   );
@@ -500,8 +553,13 @@ export function sourceLine(s: PluginSourceView, now: Date = new Date()): string 
 
 let jobs = 0;
 
-/** From this window width up, 市场 › 插件来源 starts open; narrower, folded. */
-export const SOURCES_OPEN_FROM = 1280;
+/** 已安装's filter (a menu under its button, as 使用日志's 项目). */
+const FILTERS: [Filter, string][] = [
+  ['all', '全部'],
+  ['on', '已启用'],
+  ['update', '有更新'],
+  ['problem', '有问题'],
+];
 
 export interface PluginsProps {
   api: PluginsApi;
@@ -529,15 +587,14 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
     setOwnTab(t);
     onTab?.(t);
     setNote(null);
+    setShowDetail(false);
   };
-  // 已安装's search box: only the installed plugins.
+  // The search on the top row: the installed plugins under 已安装, what the sources offer under 市场.
   const [query, setQuery] = useKeptDraft('plugins.query', '');
   const [filter, setFilter] = useState<Filter>('all');
+  const [filterMenu, setFilterMenu] = useState<HTMLElement | null>(null);
   // 添加来源: open, and what is typed in it.
   const [adding, setAdding] = useState(false);
-  // 插件来源 folded: on a window narrower than 1280 it starts folded (the list below gets the room); its title
-  // line still says how many sources there are and how many could not be read.
-  const [sourcesOpen, setSourcesOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= SOURCES_OPEN_FROM);
   const [place, setPlace] = useKeptDraft('plugins.addSource', '');
   // What was last added: a single package on the web is listed under it to install.
   const [added, setAdded] = useState<string | null>(null);
@@ -547,16 +604,10 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
   const runningRef = useRef<Running | undefined>(undefined);
   // Which group each plugin is shown in, fixed while the page is open (turning one off does not move it).
   const [groupOf, setGroupOf] = useState<Record<string, boolean>>({});
-  // Narrow: the list and the detail take turns.
+  // The list (or the cards) and a plugin's page take turns (as Claude's); narrow, the cards go one a row.
   const root = useRef<HTMLElement>(null);
   const [narrow, setNarrow] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
-  // Turning narrow starts at the list.
-  const [wasNarrow, setWasNarrow] = useState(false);
-  if (wasNarrow !== narrow) {
-    setWasNarrow(narrow);
-    if (narrow) setShowDetail(false);
-  }
   const plugins = useMemo(() => state?.plugins ?? [], [state]);
   // 搜索设置 went to a plugin: it is the one shown under 已安装.
   const [focused, setFocused] = useState<string | undefined>(undefined);
@@ -564,6 +615,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
     setFocused(focus);
     setPicked(focus);
     setOwnTab('installed');
+    setShowDetail(true);
   }
   // Plugins that provide mail (enabled): one shows the mail settings in its detail; two or more, once above the list.
   const mailSources = mail ? plugins.filter((p) => p.mail) : [];
@@ -658,9 +710,10 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
       });
       if (r.state.plugins.some((p) => p.name === name)) {
         setPicked(name);
-        // Shown under 已安装, with the result line (已安装「…」) kept.
+        // Its page under 已安装, with the result line (已安装「…」) kept.
         setOwnTab('installed');
         onTab?.('installed');
+        setShowDetail(true);
       }
     }
   };
@@ -688,51 +741,27 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
   const q = query.trim().toLowerCase();
   const hit = (text: string) => !q || text.toLowerCase().includes(q);
   const installedTab = tab === 'installed';
-  const shown = installedTab ? plugins.filter((p) => matches(p, filter) && hit(`${p.displayName} ${p.name} ${p.description}`)) : [];
+  const shown = plugins.filter((p) => matches(p, filter) && hit(`${p.displayName} ${p.name} ${p.description}`));
   // A package of a plugin already here goes by that plugin's name and icon when it does not say its own (an index says neither).
   const known = (a: PluginPackage): PluginPackage => {
     const p = a.installed ? plugins.find((x) => x.name === a.name) : undefined;
     return p ? { ...a, displayName: a.displayName ?? p.displayName, ...(a.icon || !p.icon ? {} : { icon: p.icon }) } : a;
   };
   const sources = state?.sources ?? [];
-  const failedSources = sources.filter((s) => s.error).length;
   // 市场: what the sources offer; and a single package on the web just typed into 添加来源 (it cannot be a source).
-  const single = !installedTab && added && state?.found?.location === added && !sources.some((s) => s.location === added) ? state.found.packages.map(known) : [];
-  const offered = installedTab ? [] : (state?.available ?? []).map(known);
-  type ListGroup = { key: string; title: ReactNode; plugins?: PluginView[]; packages?: PluginPackage[] };
-  const allGroups: ListGroup[] = installedTab
-    ? [
-        { key: 'on', title: '已启用', plugins: shown.filter((p) => groupOf[p.name] ?? p.enabled) },
-        { key: 'off', title: '已停用', plugins: shown.filter((p) => !(groupOf[p.name] ?? p.enabled)) },
-      ]
-    : [
-        // 市场: by source, the official ones first (as the sources are listed), each plugin with its state.
-        ...sources.map((src) => ({
-          key: `src:${src.location}`,
-          title: (
-            <>
-              {src.label ?? src.location}
-              {src.official ? <span className="provider-default source-official">官方</span> : null}
-            </>
-          ),
-          packages: offered.filter((a) => a.source === src.location),
-        })),
-        { key: 'found', title: '找到的插件', packages: single },
-      ];
-  const groups = allGroups.filter((g) => (g.plugins ?? g.packages ?? []).length);
-  const firstKey = groups[0]?.plugins?.[0]?.name ?? (groups[0]?.packages?.[0] ? `pkg:${groups[0].packages[0].key}` : null);
-  const pickedKey = picked && (shown.some((p) => p.name === picked) || offered.some((a) => `pkg:${a.key}` === picked)) ? picked : firstKey;
-  const current = pickedKey && !pickedKey.startsWith('pkg:') ? shown.find((p) => p.name === pickedKey) : undefined;
-  const currentPkg = pickedKey?.startsWith('pkg:') ? offered.find((a) => `pkg:${a.key}` === pickedKey) : undefined;
+  const single = added && state?.found?.location === added && !sources.some((s) => s.location === added) ? state.found.packages.map(known) : [];
+  const offered = (state?.available ?? []).map(known);
+  const pkgHit = (a: PluginPackage) => hit(`${pkgTitle(a)} ${a.name} ${a.description ?? ''}`);
+  const current = !installedTab ? undefined : picked && !picked.startsWith('pkg:') ? plugins.find((p) => p.name === picked) : undefined;
+  const currentPkg = !installedTab && picked?.startsWith('pkg:') ? [...offered, ...single].find((a) => `pkg:${a.key}` === picked) : undefined;
+  // A plugin's or a package's page in place of the list (as Claude's), with ← back to the list.
+  const detailShown = showDetail && (current !== undefined || currentPkg !== undefined);
   const count = (f: Filter) => plugins.filter((p) => matches(p, f)).length;
-  const nothing = state !== null && (installedTab ? plugins.length === 0 : offered.length === 0 && single.length === 0);
-  const listView = !narrow || !showDetail;
-  const detailView = !narrow || showDetail;
   const pick = (key: string) => {
     setPicked(key);
     setShowDetail(true);
   };
-  const emptyText = q ? '没有匹配的插件' : '没有符合条件的插件';
+  const back = { label: installedTab ? '已安装' : '市场', onBack: () => setShowDetail(false) };
   const pickFolder = api.pickFolder
     ? () =>
         void api.pickFolder?.().then((dir) => {
@@ -745,6 +774,8 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
   // Its own settings page, while it is enabled (only enabled plugins' pages are listed).
   const settingsOf = (pl: PluginView): PluginPageProps[] =>
     pages ? pages.views.filter((x) => x.plugin === pl.name && x.placement === 'settings').map((v) => pages.props(v)) : [];
+  const installPkg = (a: PluginPackage) => void install(a.name, (job) => ({ op: 'installAvailable', key: a.key, job }));
+  const filterLabel = FILTERS.find(([f]) => f === filter)![1];
 
   const resultLine =
     checking !== null ? (
@@ -758,6 +789,31 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
       </p>
     ) : null;
 
+  /** 已安装: a part (已启用 / 已停用) with its count, its plugins one full-width row each. */
+  const installedPart = (title: string, list: PluginView[]) =>
+    list.length ? (
+      <section className="plugins-part" aria-label={title}>
+        <h3 className="plugins-part-title">
+          {title}
+          <span className="tab-count">{list.length}</span>
+        </h3>
+        <ul className="group-box group-list plugin-items">
+          {list.map((p) => (
+            <PluginRow key={p.name} p={p} onPick={() => pick(p.name)} />
+          ))}
+        </ul>
+      </section>
+    ) : null;
+
+  /** 市场: what one source offers, as cards. */
+  const grid = (list: PluginPackage[]) => (
+    <ul className="plugin-grid">
+      {list.map((a) => (
+        <PackageCard key={a.key} a={a} busy={busy} running={running?.name === a.name} onPick={() => pick(`pkg:${a.key}`)} onInstall={() => installPkg(a)} />
+      ))}
+    </ul>
+  );
+
   return (
     <section className={narrow ? 'settings-section plugins-page is-narrow' : 'settings-section plugins-page'} ref={root}>
       {/* 搜索设置: an installed plugin by its name or what it does (its own settings page cannot be searched). */}
@@ -766,226 +822,218 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
             .filter((pl) => search.sectionHit || searchMatches(search.query, pl.displayName, pl.name, pl.description))
             .map((pl) => <SearchHit key={pl.name} title={`已安装 › ${pl.displayName}`} hint={pl.description} onGo={() => search.jumpPlugin?.(pl.name)} />)
         : null}
-      <div className="tabs plugins-tabs" role="tablist" aria-label="插件">
-        {TABS.map(([t, label]) => (
-          <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'tab is-on' : 'tab'} onClick={() => pickTab(t)}>
-            {label}
-            {t === 'installed' && plugins.length ? <span className="tab-count">{plugins.length}</span> : null}
-          </button>
-        ))}
-      </div>
 
-      {installedTab && mail && mailSources.length > 1 ? (
-        <div className="settings-group plugin-mail-shared">
-          <MailSettings {...mail} extra={<Row title="来源" hint={mailSources.map((p) => p.displayName).join('、')} />} />
-        </div>
-      ) : null}
-
-      {installedTab && listView && plugins.length ? (
-        <div className="plugins-bar">
-          <input className="input plugins-search" value={query} placeholder="搜索已安装的插件" aria-label="搜索插件" spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
-          <div className="segmented plugins-filter" role="radiogroup" aria-label="筛选">
-            {(
-              [
-                ['all', '全部'],
-                ['on', '已启用'],
-                ['update', '有更新'],
-                ['problem', '有问题'],
-              ] as const
-            ).map(([f, label]) => (
-              <button key={f} type="button" role="radio" aria-checked={filter === f} className={filter === f ? 'segment is-on' : 'segment'} onClick={() => setFilter(f)}>
-                {label} {count(f)}
-              </button>
-            ))}
-          </div>
-          <button type="button" className="btn btn-square" disabled={busy} onClick={() => void check()} aria-label="检查更新" title="检查更新">
-            {checking !== null ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={16} />}
-          </button>
-        </div>
-      ) : null}
-
-      {!installedTab && listView ? (
-        <Group
-          title={
-            <button type="button" className="fold-head sources-fold" aria-expanded={sourcesOpen} onClick={() => setSourcesOpen(!sourcesOpen)}>
-              <span className="fold-label">插件来源</span>
-              <Icon name="chevronRight" size={14} className="fold-chevron" />
-              {sourcesOpen ? null : (
-                <span className="sources-summary">
-                  {sources.length ? `${sources.length} 个来源` : '没有来源'}
-                  {failedSources ? <span className="source-failed">{` · ${failedSources} 个连接失败`}</span> : null}
-                </span>
-              )}
-            </button>
-          }
-          className="plugin-sources"
-          folded={!sourcesOpen}
-          actions={
-            <>
-              <button type="button" className="btn btn-small" disabled={busy || !sources.length} onClick={() => void check()}>
-                {checking === '' ? <span className="spinner" aria-hidden /> : null}
-                全部检查更新
-              </button>
+      {detailShown && current ? (
+        <PluginDetail
+          key={current.name}
+          p={current}
+          busy={busy}
+          running={running?.name === current.name ? running : undefined}
+          run={(c) => void run(c)}
+          update={() => void install(current.name, (job) => ({ op: 'update', name: current.name, job }))}
+          ask={(kind, pl) => setConfirm({ kind, p: pl })}
+          mail={mailSources.length === 1 && current.mail ? mail : undefined}
+          pages={current.enabled ? settingsOf(current) : []}
+          back={back}
+          note={resultLine}
+        />
+      ) : detailShown && currentPkg ? (
+        <PackageDetail
+          a={currentPkg}
+          busy={busy}
+          running={running?.name === currentPkg.name ? running : undefined}
+          install={() => installPkg(currentPkg)}
+          onShow={() => {
+            setPicked(currentPkg.name);
+            pickTab('installed');
+          }}
+          back={back}
+          note={resultLine}
+        />
+      ) : (
+        <>
+          {/* One row on top (as Claude's): 已安装 / 市场, the search, then what acts on every source. */}
+          <div className="plugins-bar">
+            <div className="tabs plugins-tabs" role="tablist" aria-label="插件">
+              {TABS.map(([t, label]) => (
+                <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'tab is-on' : 'tab'} onClick={() => pickTab(t)}>
+                  {label}
+                  {t === 'installed' && plugins.length ? <span className="tab-count">{plugins.length}</span> : null}
+                </button>
+              ))}
+            </div>
+            <input className="input plugins-search" value={query} placeholder="搜索插件" aria-label="搜索插件" spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
+            {installedTab ? (
               <button
                 type="button"
-                className={adding && sourcesOpen ? 'btn btn-small is-on' : 'btn btn-small'}
-                onClick={() => {
-                  // Folded: open the group with the box to type in.
-                  setAdding(!adding || !sourcesOpen);
-                  setSourcesOpen(true);
+                className={filter === 'all' ? 'btn btn-small' : 'btn btn-small is-on'}
+                aria-haspopup="menu"
+                aria-label={`筛选：${filterLabel}`}
+                onClick={(e) => {
+                  const el = e.currentTarget;
+                  setFilterMenu((m) => (m ? null : el));
                 }}
-                aria-expanded={adding && sourcesOpen}
               >
-                <Icon name="plus" size={14} />
-                添加来源
+                {filterLabel}
+                <Icon name="chevronDown" size={12} />
               </button>
-            </>
-          }
-        >
-          {adding ? (
-            <Pane className="source-add">
-              <form
-                className="install-row"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void addSource(place);
-                }}
-              >
-                <input
-                  className="input"
-                  value={place}
-                  placeholder="粘贴文件夹路径、.zip 或网址"
-                  aria-label="插件来源的位置"
-                  spellCheck={false}
-                  autoFocus
-                  onChange={(e) => setPlace(e.target.value)}
-                />
-                {pickFolder ? (
-                  <button type="button" className="btn btn-square" onClick={pickFolder} aria-label="选择文件夹" title="选择文件夹">
-                    <Icon name="folder" size={16} />
-                  </button>
-                ) : null}
-                <button type="submit" className="btn btn-primary" disabled={busy || !isLocation(place)}>
-                  添加
-                </button>
-              </form>
-              <p className="settings-hint">可添加：插件文件夹、.zip、带 index.json 的文件夹或网址</p>
-            </Pane>
+            ) : null}
+            <button type="button" className="btn btn-small" disabled={busy || !sources.length} onClick={() => void check()}>
+              {checking === '' ? <span className="spinner" aria-hidden /> : null}
+              全部检查更新
+            </button>
+            <button
+              type="button"
+              className={adding ? 'btn btn-small is-on' : 'btn btn-small'}
+              aria-expanded={adding}
+              onClick={() => {
+                // What is added is listed under 市场.
+                setAdding(!adding);
+                if (!adding) pickTab('market');
+              }}
+            >
+              <Icon name="plus" size={14} />
+              添加来源
+            </button>
+          </div>
+          {filterMenu ? (
+            <ContextMenu
+              x={0}
+              y={0}
+              anchor={filterMenu}
+              items={FILTERS.map(([f, label]) => ({ label: `${label} ${count(f)}`, checked: filter === f, onSelect: () => setFilter(f) }))}
+              onClose={() => setFilterMenu(null)}
+            />
           ) : null}
-          {sources.length ? (
-            <ul className="group-list" aria-label="插件来源">
-              {sources.map((s) => (
-                <li key={s.location}>
+
+          {adding ? (
+            <div className="group-box plugins-add">
+              <Pane className="source-add">
+                <form
+                  className="install-row"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void addSource(place);
+                  }}
+                >
+                  <input className="input" value={place} placeholder="粘贴文件夹路径、.zip 或网址" aria-label="插件来源的位置" spellCheck={false} autoFocus onChange={(e) => setPlace(e.target.value)} />
+                  {pickFolder ? (
+                    <button type="button" className="btn btn-square" onClick={pickFolder} aria-label="选择文件夹" title="选择文件夹">
+                      <Icon name="folder" size={16} />
+                    </button>
+                  ) : null}
+                  <button type="submit" className="btn btn-primary" disabled={busy || !isLocation(place)}>
+                    添加
+                  </button>
+                </form>
+                <p className="settings-hint">可添加：插件文件夹、.zip、带 index.json 的文件夹或网址</p>
+              </Pane>
+            </div>
+          ) : null}
+
+          {resultLine}
+
+          {installedTab ? (
+            <>
+              {mail && mailSources.length > 1 ? (
+                <div className="settings-group plugin-mail-shared">
+                  <MailSettings {...mail} extra={<Row title="来源" hint={mailSources.map((p) => p.displayName).join('、')} />} />
+                </div>
+              ) : null}
+              <nav className="plugins-list" aria-label="插件列表">
+                {state !== null && plugins.length === 0 ? (
+                  <p className="settings-hint plugins-empty">未安装插件</p>
+                ) : shown.length === 0 && state !== null ? (
+                  <p className="settings-hint plugins-empty">{q ? '没有匹配的插件' : '没有符合条件的插件'}</p>
+                ) : (
+                  <>
+                    {installedPart(
+                      '已启用',
+                      shown.filter((p) => groupOf[p.name] ?? p.enabled),
+                    )}
+                    {installedPart(
+                      '已停用',
+                      shown.filter((p) => !(groupOf[p.name] ?? p.enabled)),
+                    )}
+                  </>
+                )}
+              </nav>
+              {state ? (
+                <Group className="plugins-foot">
                   <Row
                     title={
                       <>
-                        {s.label ?? s.location}
-                        {/* An official source (deploy.json): said in quiet words, as 默认 in 模型; it cannot be removed. */}
-                        {s.official ? <span className="provider-default source-official">官方</span> : null}
+                        模拟模式
+                        <InfoTip text={MOCK_TIP} label="模拟模式" />
+                        {state.mock ? <span className="mock-tag">模拟数据</span> : null}
                       </>
                     }
-                    path={{ title: s.location }}
-                    hint={<span className={s.error ? 'source-failed' : undefined} title={s.error}>{sourceLine(s)}</span>}
                   >
-                    <button type="button" className="btn btn-small" disabled={busy} onClick={() => void check(s.location)}>
-                      {checking === s.location ? <span className="spinner" aria-hidden /> : null}
-                      检查更新
-                    </button>
-                    {s.official ? null : (
-                      <button type="button" className="btn btn-small btn-quiet-danger btn-square" disabled={busy} onClick={() => setConfirm({ kind: 'removeSource', s })} aria-label="移除来源" title="移除来源">
-                        <Icon name="trash" size={14} />
-                      </button>
-                    )}
+                    <Switch on={state.mock} label="模拟模式" disabled={busy} onChange={(on) => void run({ op: 'mock', on })} />
                   </Row>
-                </li>
-              ))}
-            </ul>
-          ) : adding ? null : (
-            <Pane>
-              <p className="settings-hint">没有插件来源</p>
-            </Pane>
-          )}
-          {/* No official source in this build: said, with where it is set, so an empty list does not look broken. */}
-          {sources.some((x) => x.official) ? null : (
-            <Pane className="sources-no-official">
-              <p className="settings-hint">没有配置官方来源。官方来源在打包时写进 deploy.json 的 pluginSources。</p>
-            </Pane>
-          )}
-        </Group>
-      ) : null}
-
-      {resultLine}
-
-      {nothing ? (
-        <p className="settings-hint plugins-empty">{installedTab ? '未安装插件' : '来源里没有插件'}</p>
-      ) : (
-        <div className="plugins-two">
-          {listView ? (
+                  <Row title="插件目录" hint={state.root} path={{ hint: state.root }}>
+                    <button type="button" className="btn btn-square" onClick={() => void run({ op: 'openRoot' })} aria-label="打开文件夹" title="打开文件夹">
+                      <Icon name="folder" size={16} />
+                    </button>
+                  </Row>
+                </Group>
+              ) : null}
+            </>
+          ) : (
             <nav className="plugins-list" aria-label="插件列表">
-              {groups.length ? (
-                groups.map((g) => (
-                  <div key={g.key} className="plugins-group">
-                    <h3 className="plugins-group-title">{g.title}</h3>
-                    <ul>
-                      {g.plugins?.map((p) => <PluginRow key={p.name} p={p} on={!narrow && current?.name === p.name} onPick={() => pick(p.name)} />)}
-                      {g.packages?.map((a) => <PackageRow key={a.key} a={a} on={!narrow && currentPkg?.key === a.key} onPick={() => pick(`pkg:${a.key}`)} />)}
-                    </ul>
-                  </div>
-                ))
-              ) : (
-                <p className="settings-hint plugins-none">{emptyText}</p>
-              )}
+              {/* No official source in this build: said, with where it is set, so an empty list does not look broken. */}
+              {state !== null && !sources.some((x) => x.official) ? <p className="settings-hint sources-no-official">没有配置官方来源。官方来源在打包时写进 deploy.json 的 pluginSources。</p> : null}
+              {state !== null && sources.length === 0 && single.length === 0 ? <p className="settings-hint plugins-empty">没有插件来源</p> : null}
+              {/* By source (the official ones first, as they are listed): its name, how it went, 检查更新 and 移除 on its
+                  title line, then what it offers as cards. */}
+              <ul className="plugin-sources" aria-label="插件来源">
+                {sources.map((s) => {
+                  const list = offered.filter((a) => a.source === s.location);
+                  const matching = list.filter(pkgHit);
+                  if (q && matching.length === 0) return null;
+                  return (
+                    <li key={s.location} className="plugins-part">
+                      <div className="plugins-part-head">
+                        <div className="plugins-part-text">
+                          <h3 className="plugins-part-title" title={s.location}>
+                            <span className="path-text">{s.label ?? s.location}</span>
+                            {/* An official source (deploy.json): said in quiet words, as 默认 in 模型; it cannot be removed. */}
+                            {s.official ? <span className="provider-default source-official">官方</span> : null}
+                            {list.length ? <span className="tab-count">{list.length}</span> : null}
+                          </h3>
+                          <span className={s.error ? 'settings-hint source-failed' : 'settings-hint'} title={s.error}>
+                            {sourceLine(s)}
+                          </span>
+                        </div>
+                        <div className="plugins-part-actions">
+                          <button type="button" className="btn btn-small" disabled={busy} onClick={() => void check(s.location)}>
+                            {checking === s.location ? <span className="spinner" aria-hidden /> : null}
+                            检查更新
+                          </button>
+                          {s.official ? null : (
+                            <button type="button" className="btn btn-small btn-quiet-danger btn-square" disabled={busy} onClick={() => setConfirm({ kind: 'removeSource', s })} aria-label="移除来源" title="移除来源">
+                              <Icon name="trash" size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {matching.length ? grid(matching) : s.error ? null : <p className="settings-hint plugins-none">这个来源里没有插件</p>}
+                    </li>
+                  );
+                })}
+                {single.filter(pkgHit).length ? (
+                  <li className="plugins-part">
+                    <div className="plugins-part-head">
+                      <h3 className="plugins-part-title">找到的插件</h3>
+                    </div>
+                    {grid(single.filter(pkgHit))}
+                  </li>
+                ) : null}
+              </ul>
             </nav>
-          ) : null}
-          {detailView && current ? (
-            <PluginDetail
-              key={current.name}
-              p={current}
-              busy={busy}
-              running={running?.name === current.name ? running : undefined}
-              run={(c) => void run(c)}
-              update={() => void install(current.name, (job) => ({ op: 'update', name: current.name, job }))}
-              ask={(kind, pl) => setConfirm({ kind, p: pl })}
-              mail={mailSources.length === 1 && current.mail ? mail : undefined}
-              pages={current.enabled ? settingsOf(current) : []}
-              onBack={narrow ? () => setShowDetail(false) : undefined}
-            />
-          ) : detailView && currentPkg ? (
-            <PackageDetail
-              a={currentPkg}
-              busy={busy}
-              running={running?.name === currentPkg.name ? running : undefined}
-              install={() => void install(currentPkg.name, (job) => ({ op: 'installAvailable', key: currentPkg.key, job }))}
-              onShow={() => {
-                setPicked(currentPkg.name);
-                pickTab('installed');
-              }}
-              onBack={narrow ? () => setShowDetail(false) : undefined}
-            />
-          ) : null}
-        </div>
+          )}
+        </>
       )}
-
-      {state && installedTab && listView ? (
-        <Group className="plugins-foot">
-          <Row
-            title={
-              <>
-                模拟模式
-                <InfoTip text={MOCK_TIP} label="模拟模式" />
-                {state.mock ? <span className="mock-tag">模拟数据</span> : null}
-              </>
-            }
-          >
-            <Switch on={state.mock} label="模拟模式" disabled={busy} onChange={(on) => void run({ op: 'mock', on })} />
-          </Row>
-          <Row title="插件目录" hint={state.root} path={{ hint: state.root }}>
-            <button type="button" className="btn btn-square" onClick={() => void run({ op: 'openRoot' })} aria-label="打开文件夹" title="打开文件夹">
-              <Icon name="folder" size={16} />
-            </button>
-          </Row>
-        </Group>
-      ) : null}
 
       {confirm ? (
         <ConfirmDialog
@@ -1003,7 +1051,11 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
             const c = confirm;
             setConfirm(null);
             if (c.kind === 'removeSource') void run({ op: 'removeSource', location: c.s.location });
-            else void run({ op: c.kind, name: c.p.name });
+            else {
+              // Deleted: its page is gone, back to the list.
+              if (c.kind === 'uninstall') setShowDetail(false);
+              void run({ op: c.kind, name: c.p.name });
+            }
           }}
           onCancel={() => setConfirm(null)}
         />

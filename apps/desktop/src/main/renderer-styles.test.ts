@@ -126,25 +126,28 @@ describe('settings: one group, one box (settings/Group.tsx)', () => {
 });
 
 describe('settings › 插件 fills the window', () => {
-  it('the page is the window tall (a floor past which it scrolls again); list and detail stretch and scroll on their own', () => {
+  it('the page is the window tall (a floor past which it scrolls again) and scrolls as a whole; a plugin’s own settings page fills the rest and scrolls itself', () => {
     const page = block('.settings-column.is-fill');
     expect(page).toContain('height: 100%');
     expect(page).toMatch(/min-height: \d+px/);
-    expect(block('.is-fill .plugins-two')).toContain('align-items: stretch');
-    expect(block('.is-fill .plugins-two')).toContain('flex: 1');
-    expect(block('.is-fill .plugins-list,\n.is-fill .plugin-detail')).toContain('overflow-y: auto');
+    expect(block('\n.is-fill .plugins-page')).toContain('overflow-y: auto');
+    expect(block('.is-fill .plugin-detail.is-page')).toContain('flex: 1');
+    expect(block('.is-fill .plugin-detail.is-page')).toContain('min-height: 0');
   });
 });
 
 describe('settings › 插件 list rows', () => {
-  it('a long name is cut before the version is (the version never shrinks)', () => {
-    expect(block('.plugin-row-name')).toContain('flex: 0 1 auto');
-    expect(block('.plugin-row-name')).toContain('text-overflow: ellipsis');
-    expect(block('.plugin-row-version')).toContain('flex: none');
-    // Right after the name: the 8px gap of the row and of the detail's title, less 4.
-    expect(block('.plugin-row')).toContain('gap: 8px');
-    expect(block('.plugin-title')).toContain('gap: 8px');
-    expect(block('.plugin-row .plugin-version,\n.plugin-title .plugin-version')).toContain('margin-left: -4px');
+  it('a long name is cut before the version is (the version never shrinks); the line under it is cut at its end, a card’s after two lines', () => {
+    expect(block('\n.plugin-row-name')).toContain('flex: 0 1 auto');
+    expect(block('\n.plugin-row-name')).toContain('text-overflow: ellipsis');
+    expect(block('.plugin-item-title .plugin-version')).toContain('flex: none');
+    expect(block('.plugin-item-desc')).toContain('text-overflow: ellipsis');
+    expect(block('.plugin-card-desc')).toContain('-webkit-line-clamp: 2');
+  });
+
+  it('市场: two cards a row, one when narrow', () => {
+    expect(block('.plugin-grid')).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
+    expect(block('.plugins-page.is-narrow .plugin-grid')).toContain('grid-template-columns: minmax(0, 1fr)');
   });
 });
 
@@ -172,13 +175,6 @@ describe('renaming in place', () => {
 describe('sidebar status place', () => {
   it('stopped has the error’s red dot', () => {
     expect(block('.status-slot.is-error .slot-dot,\n.status-slot.is-stopped .slot-dot')).toContain('background: var(--spica-danger)');
-  });
-});
-
-describe('settings › 插件 list texts', () => {
-  it('a line in the list (nothing found, sources not reached) keeps the group titles’ inset from the box edge', () => {
-    expect(block('.plugins-group-title')).toContain('padding: 6px 12px 4px');
-    expect(block('.plugins-list .plugins-none')).toContain('padding: 0 12px');
   });
 });
 

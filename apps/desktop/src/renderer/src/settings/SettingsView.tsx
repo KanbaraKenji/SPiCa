@@ -232,8 +232,8 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
             // 插件: the list and the detail fill the dialog's height (each scrolls on its own).
             <div className="settings" key={tab}>
               <div className={tab === 'plugins' ? 'settings-column is-fill' : 'settings-column'}>
-                {/* The section's name, a short bold line at the top of its content (as Claude's). */}
-                <h3 className="settings-page-title">{labelOf(tab)}</h3>
+                {/* No line with the section's name on top: the column already shows it picked (he crossed it out,
+                    2026-11-12; Claude's has none). The panel is still named by its tab for screen readers. */}
                 <div role="tabpanel" className="settings-panel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} ref={panel}>
                   {sectionFor(tab)}
                 </div>
