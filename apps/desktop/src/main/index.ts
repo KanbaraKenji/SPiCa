@@ -32,6 +32,8 @@ import { writeDemoChart } from './backend/demo-image';
 import { ProcessBackend, type BackendStatus } from './backend/process';
 import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { pageAlive, pageRecovery } from './page-recovery';
+import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor } from './app-dialog';
+import { openDialogWindow } from './app-dialog-window';
 import { lookAtPage, watchPage } from './page-watch';
 import { closeAnswer, closeAsker, closePrompt, onWindowClose, revealWindow, runningTracker, trayHint, wireTray } from './tray';
 import { autostartSupport, followAutostart, loginItemOn, onSecondLaunch, startsOnNewChat, type LoginItems } from './autostart';
@@ -687,10 +689,17 @@ function createMainWindow(): BrowserWindow {
       reopen ??= { sessionId: activeSessionId };
       win.webContents.reload();
     },
-    ask: () =>
-      dialog
-        .showMessageBox(win, { type: 'error', title: APP_NAME, message: '界面出错', buttons: ['重新加载', `退出 ${APP_NAME}`], defaultId: 0, cancelId: 1, noLink: true })
-        .then((r) => r.response === 0),
+    // In the small dialog window (main/app-dialog-window.ts, its own page process); the message box only when that fails.
+    ask: () => {
+      const s = settings.get();
+      const spec = crashDialog(APP_NAME, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins)));
+      const box = messageBoxFor(spec, { type: 'error', appName: APP_NAME, cancel: 0 });
+      return askDialog({
+        open: () => openDialogWindow(win, spec, s.zoom),
+        fallback: () => dialog.showMessageBox(win, box.options).then((r) => box.answer(r.response, r.checkboxChecked)),
+        warn: (line) => console.warn(line),
+      }).then(crashAnswer);
+    },
     quit: () => app.quit(),
     warn: (line) => console.warn(line),
   });

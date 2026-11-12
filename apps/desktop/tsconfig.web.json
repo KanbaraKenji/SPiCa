@@ -15,6 +15,7 @@
   "include": [
     "src/renderer/src",
     "src/renderer/flow",
+    "src/renderer/dialog",
     "src/preload/bridge.d.ts",
     "src/shared"
   ]

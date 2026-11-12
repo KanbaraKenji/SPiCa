@@ -37,7 +37,11 @@ export default defineConfig({
       },
     },
   },
-  preload: { define },
+  preload: {
+    define,
+    // index: the app page's bridge. dialog: the small dialog window's (src/preload/dialog.ts, main/app-dialog-window.ts).
+    build: { rollupOptions: { input: { index: resolve(__dirname, 'src/preload/index.ts'), dialog: resolve(__dirname, 'src/preload/dialog.ts') } } },
+  },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
     define: rendererDefine,
@@ -49,6 +53,8 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/renderer/index.html'),
           flow: resolve(__dirname, 'src/renderer/flow.html'),
+          // dialog: the small dialog window's own page, for when the app's page cannot show one (main/app-dialog-window.ts).
+          dialog: resolve(__dirname, 'src/renderer/dialog.html'),
         },
       },
     },

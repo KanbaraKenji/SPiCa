@@ -4,8 +4,9 @@
 // "Render frame was disposed before WebFrameMain could be accessed" (2029 times in one run).
 //
 // Now: one line in the log (reason, exit code), and the page is loaded again (a new renderer), back on the
-// conversation that was open. The third loss within a minute is not retried by itself: a Windows message box
-// (drawn without the page, so it shows even when the page cannot) offers 重新加载 / 退出 Spica.
+// conversation that was open. The third loss within a minute is not retried by itself: a small dialog window with
+// its own page process (main/app-dialog-window.ts, so it shows even when the page cannot; the Windows message box
+// when that fails) offers 重新加载 / 退出 Spica.
 // Messages for the window are sent only while its page is there (pageAlive).
 
 /** Losses counted together: within this long of each other. */
@@ -35,7 +36,7 @@ export interface RecoveryOptions {
   quitting(): boolean;
   /** Loads the page again (a new renderer). */
   reload(): void;
-  /** Shows the message box; resolves true for 重新加载, false for 退出 Spica. */
+  /** Asks (main/app-dialog.ts); resolves true for 重新加载, false for 退出 Spica. */
   ask(): Promise<boolean>;
   quit(): void;
   warn(line: string): void;
