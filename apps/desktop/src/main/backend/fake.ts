@@ -128,6 +128,17 @@ export const FAKE_SUMMARY_ANSWER =
 /** The BOM answer: files deep in a temporary folder, written as full paths (inline code, and once as plain text). */
 const FAKE_BOM_DIR = 'C:\\Users\\Demo\\AppData\\Local\\Temp\\claude\\6b0adec76d142027\\97c9b4d3-10ad-4f09-864f-b53a275d8ee4\\scratchpad\\concurrent\\A';
 export const FAKE_BOM_FILES = [`${FAKE_BOM_DIR}\\280040440007.pdf`, `${FAKE_BOM_DIR}\\280040440007_BOM.xlsx`];
+/** 「批量」: a command that leaves fourteen files (two handed over), for the list that stands in for cards. */
+const FAKE_BATCH_DIR = 'D:\\工作\\样机评审\\规格书';
+export const FAKE_BATCH_FILES = [
+  ...['MV-SPSS26010', 'MV-SPSS26011', 'MV-SPSS26012', 'MV-SPSS26013', 'MV-SPSS26014', 'MV-SPSS26015', 'MV-SPSS26016', 'MV-SPSS26017', 'MV-SPSS26018', 'MV-SPSS26019'].map((n) => `${FAKE_BATCH_DIR}\\${n}_规格书.pdf`),
+  `${FAKE_BATCH_DIR}\\规格书汇总.xlsx`,
+  `${FAKE_BATCH_DIR}\\下载记录.csv`,
+  `${FAKE_BATCH_DIR}\\外形尺寸对比.png`,
+  `${FAKE_BATCH_DIR}\\说明.txt`,
+];
+export const FAKE_BATCH_ANSWER = '十份规格书都下载好了，汇总表里按料号列了每份的版本和日期。';
+
 export const FAKE_BOM_ANSWER =
   '图纸和物料清单都整理好了：\n\n' +
   `- 图纸：\`${FAKE_BOM_FILES[0]}\`\n` +
@@ -1122,6 +1133,19 @@ export class FakeBackend implements AgentBackend {
         this.#setStatus(sessionId, 'thinking');
         await this.#stream(sessionId, 'text', FAKE_BOM_ANSWER, signal);
         blocks.push({ type: 'text', text: FAKE_BOM_ANSWER });
+      } else if (/批量/.test(text)) {
+        const at = isoAt(this.#now());
+        const card = (path: string): FileCardMeta => {
+          const name = path.split('\\').pop() ?? path;
+          const kind = name.endsWith('.pdf') ? 'pdf' : name.endsWith('.xlsx') ? 'xlsx' : name.endsWith('.csv') ? 'csv' : name.endsWith('.txt') ? 'text' : 'other';
+          return { path, name, kind, sizeBytes: 2048, modifiedAt: at, extractedAt: at, read: {}, origin: 'created', ...(kind === 'pdf' ? { pageCount: 4 } : {}), ...(kind === 'xlsx' ? { sheets: [{ name: '汇总', rows: 11, cols: 4 }, { name: '明细', rows: 40, cols: 6 }] } : {}) };
+        };
+        const cards = FAKE_BATCH_FILES.map(card);
+        blocks.push(...(await this.#tool(sessionId, run, 'run_command', { command: 'python 批量下载规格书.py', description: '批量下载规格书' }, `下载 ${cards.length} 个文件`, 600, false, { category: 'command', cards })));
+        blocks.push(...(await this.#tool(sessionId, run, 'present_files', { paths: FAKE_BATCH_FILES.slice(10, 12) }, '已交付 2 个文件', 200, false, { category: 'present', cards: cards.slice(10, 12) })));
+        this.#setStatus(sessionId, 'thinking');
+        await this.#stream(sessionId, 'text', FAKE_BATCH_ANSWER, signal);
+        blocks.push({ type: 'text', text: FAKE_BATCH_ANSWER });
       } else if (/汇总/.test(text)) {
         // For screenshots of what an answer can hold: a file it wrote, paths, a table and a code block.
         const at = isoAt(this.#now());

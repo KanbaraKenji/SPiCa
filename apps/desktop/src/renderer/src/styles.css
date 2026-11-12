@@ -2130,6 +2130,91 @@ pre .hl-punctuation {
   align-self: flex-start;
 }
 
+/* Many files under an answer: one a line, in columns (icon, name, what it is, what was done, the two buttons),
+   no lines or heads; the rows' columns line up across the list (subgrid). A narrow answer drops what it is
+   first, then what was done. */
+.file-list {
+  container: file-list / inline-size;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) max-content max-content max-content;
+  justify-content: start;
+  font-size: var(--chat-small);
+  line-height: var(--chat-row-line);
+}
+
+.file-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  border-radius: var(--radius-s);
+}
+
+.file-row:has(.file-row-main:hover) {
+  background: var(--spica-hover);
+}
+
+.file-row-main {
+  grid-column: 1 / 4;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  min-width: 0;
+  padding: 4px 0 4px 6px;
+  text-align: left;
+  color: var(--spica-ink);
+}
+
+/* The type's icon and the name share the first column; the name is cut first when there is no room. */
+.file-row-name {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-row-name > svg {
+  flex: none;
+}
+
+.file-row-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--spica-accent);
+}
+
+.file-row-kind,
+.file-row-did {
+  padding-left: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--spica-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.file-row > .file-card-tools {
+  padding-left: 8px;
+}
+
+@container file-list (max-width: 520px) {
+  .file-row-kind {
+    display: none;
+  }
+}
+
+@container file-list (max-width: 380px) {
+  .file-row-did {
+    display: none;
+  }
+}
+
 /* Cards under an answer are one width, so a row of them lines up (a command can leave many); a long line
    under the name is cut short. */
 .turn-response .file-card {

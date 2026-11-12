@@ -886,10 +886,17 @@ const KIND_LABEL: Record<FileCardMeta['kind'], string> = { pdf: 'PDF', docx: 'Wo
 
 /** One line under the file name: what kind, how big, what was read, and anything to watch out for. */
 export function fileCardLine(card: FileCardMeta): string {
-  const parts: string[] = [KIND_LABEL[card.kind] ?? card.kind];
-  if (card.pageCount) parts.push(`${card.pageCount} 页`);
-  if (card.sheets?.length) parts.push(`${card.sheets.length} 个表`);
-  if (card.slideCount) parts.push(`${card.slideCount} 页幻灯片`);
+  const { kind, read } = fileCardParts(card);
+  return read ? `${kind} · ${read}` : kind;
+}
+
+/** The two halves of fileCardLine: what the file is (PDF · 4 页) and what was read of it (Read pages 1-3). */
+export function fileCardParts(card: FileCardMeta): { kind: string; read: string } {
+  const kind: string[] = [KIND_LABEL[card.kind] ?? card.kind];
+  if (card.pageCount) kind.push(`${card.pageCount} 页`);
+  if (card.sheets?.length) kind.push(`${card.sheets.length} 个表`);
+  if (card.slideCount) kind.push(`${card.slideCount} 页幻灯片`);
+  const parts: string[] = [];
   const r = card.read;
   const sheetsRead = r.sheet ? r.sheet.split(/,\s*/).filter(Boolean) : [];
   const wholeFile =
@@ -903,5 +910,5 @@ export function fileCardLine(card: FileCardMeta): string {
   else if (r.rows) parts.push(`Read rows ${r.rows}`);
   if (card.noTextLayer) parts.push('扫描件，无法读取文字');
   else if (card.truncated) parts.push('Partly read');
-  return parts.join(' · ');
+  return { kind: kind.join(' · '), read: parts.join(' · ') };
 }

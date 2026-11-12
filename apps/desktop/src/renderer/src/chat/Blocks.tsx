@@ -4,9 +4,9 @@ import { createContext, Fragment, memo, useContext, useEffect, useMemo, useRef, 
 import type { FileCardMeta, HistoryCardMeta, SourceCardMeta, SourceRow } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { fileCardLine, fileCardVerb, type Block, type ChildNote, type FileRef } from '../store/transcript';
+import { fileCardLine, fileCardParts, fileCardVerb, type Block, type ChildNote, type FileRef } from '../store/transcript';
 import { Icon } from '../ui/Icon';
-import { FileBadge } from '../ui/FileIcon';
+import { FileBadge, FileGlyph } from '../ui/FileIcon';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
 import { ImageViewer } from '../ui/ImageViewer';
@@ -783,8 +783,81 @@ function CardPicture({ path, name, url }: { path: string; name: string; url: (pa
   return <img className="file-card-picture" src={src} alt="" onError={() => setFailed(true)} />;
 }
 
-/** Up to this many cards show at once; more (a command can report 20) fold behind 全部 N 个. */
-export const FILE_CARDS_SHOWN = 6;
+/**
+ * Up to this many files show as cards; more show as a list, one a line (他: 「我怕下载10份20份全部都做成卡片堆满屏幕。
+ * 那种情况其实是用列表或者表格+超链接最合适」). A plugin's tool may be called any number of times in a round.
+ */
+export const FILE_CARDS_MAX = 4;
+/** A list longer than this shows its first FILE_LIST_SHOWN lines, the rest behind 全部 N 个. */
+export const FILE_LIST_FOLD = 10;
+export const FILE_LIST_SHOWN = 8;
+
+/** What the round did with a file (Created +8 −1), else what was read of it (Read pages 1-3), else the call's verb. */
+function FileDid({ f, className }: { f: FileRef; className: string }) {
+  const verb = fileCardVerb(f);
+  if (verb)
+    return (
+      <span className={className}>
+        {verb}
+        {f.lines?.added ? <span className="file-lines-added"> +{f.lines.added}</span> : null}
+        {f.lines?.removed ? <span className="file-lines-removed"> −{f.lines.removed}</span> : null}
+      </span>
+    );
+  const read = f.card ? fileCardParts(f.card).read : '';
+  return <span className={className}>{read || (f.tool === 'read_file' ? 'Read' : f.tool === 'write_file' ? 'Wrote' : 'Edited')}</span>;
+}
+
+/** 打开所在文件夹 and 复制路径, as on a card. */
+function FileTools({ full, actions }: { full: string; actions: FileCardActions }) {
+  return (
+    <span className="file-card-tools">
+      <button type="button" className="icon-btn md-tool" aria-label="打开所在文件夹" title="打开所在文件夹" onClick={() => actions.reveal(full)}>
+        <Icon name="folder" size={14} />
+      </button>
+      <CopyButton className="icon-btn md-tool" label="复制路径" copy={() => clipboard.write(full)} />
+    </span>
+  );
+}
+
+/**
+ * Many files: a list in columns, no lines or heads: the type's icon and the name (opens it, as a card does),
+ * what it is (Excel · 3 个表), what the round did with it, and 打开所在文件夹 / 复制路径. A narrow answer drops
+ * what it is first, then what was done. Pictures show their icon only.
+ */
+function FileList({ files, onOpen, actions }: { files: FileRef[]; onOpen(path: string): void; actions?: FileCardActions | undefined }) {
+  const [all, setAll] = useState(false);
+  const fold = files.length > FILE_LIST_FOLD;
+  const shownFiles = fold && !all ? files.slice(0, FILE_LIST_SHOWN) : files;
+  return (
+    <>
+      <ul className="file-list" aria-label={`${files.length} 个文件`}>
+        {shownFiles.map((f) => {
+          const shown = f.shown ?? f.path;
+          const name = f.card?.name ?? fileName(shown);
+          const full = fullPath(f.path, actions?.cwd);
+          return (
+            <li key={f.path} className="file-row">
+              <button type="button" className="file-row-main" onClick={() => onOpen(f.path)} title={`打开 ${full}`}>
+                <span className="file-row-name">
+                  <FileGlyph name={name} />
+                  <span className="file-row-text">{name}</span>
+                </span>
+                <span className="file-row-kind">{f.card ? fileCardParts(f.card).kind : fileFolder(shown)}</span>
+                <FileDid f={f} className="file-row-did" />
+              </button>
+              {actions ? <FileTools full={full} actions={actions} /> : <span />}
+            </li>
+          );
+        })}
+      </ul>
+      {fold ? (
+        <button type="button" className="btn file-cards-more" aria-expanded={all} onClick={() => setAll((v) => !v)}>
+          {all ? '收起' : `全部 ${files.length} 个`}
+        </button>
+      ) : null}
+    </>
+  );
+}
 
 /** The second line of a card: what the round did with the file (Created +8 −1), or what was read. */
 function FileCardSub({ f }: { f: FileRef }) {
@@ -802,15 +875,11 @@ function FileCardSub({ f }: { f: FileRef }) {
 }
 
 export function FileCards({ files, onOpen, actions }: { files: FileRef[]; onOpen(path: string): void; actions?: FileCardActions | undefined }) {
-  const [all, setAll] = useState(false);
   if (files.length === 0) return null;
-  // Folded only when it saves at least two cards' room, so 全部 N 个 never stands in for a single card.
-  const fold = files.length > FILE_CARDS_SHOWN + 1;
-  const shownFiles = fold && !all ? files.slice(0, FILE_CARDS_SHOWN) : files;
+  if (files.length > FILE_CARDS_MAX) return <FileList files={files} onOpen={onOpen} actions={actions} />;
   return (
-    <>
     <div className="file-cards">
-      {shownFiles.map((f) => {
+      {files.map((f) => {
         const shown = f.shown ?? f.path;
         const full = fullPath(f.path, actions?.cwd);
         return (
@@ -826,24 +895,11 @@ export function FileCards({ files, onOpen, actions }: { files: FileRef[]; onOpen
                 <FileCardSub f={f} />
               </span>
             </button>
-            {actions ? (
-              <span className="file-card-tools">
-                <button type="button" className="icon-btn md-tool" aria-label="打开所在文件夹" title="打开所在文件夹" onClick={() => actions.reveal(full)}>
-                  <Icon name="folder" size={14} />
-                </button>
-                <CopyButton className="icon-btn md-tool" label="复制路径" copy={() => clipboard.write(full)} />
-              </span>
-            ) : null}
+            {actions ? <FileTools full={full} actions={actions} /> : null}
           </div>
         );
       })}
     </div>
-    {fold ? (
-      <button type="button" className="btn file-cards-more" aria-expanded={all} onClick={() => setAll((v) => !v)}>
-        {all ? '收起' : `全部 ${files.length} 个`}
-      </button>
-    ) : null}
-    </>
   );
 }
 

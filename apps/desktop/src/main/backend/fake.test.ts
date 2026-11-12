@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentApi, CoreEvent } from '@spica/protocol';
-import { FAKE_BOM_ANSWER, FAKE_BOM_FILES, FAKE_EXPORT_FILES, FAKE_FLOW_ANSWER, FAKE_LONG_COMMAND, FAKE_MINUTES_ANSWER, FAKE_SEARCH_RESULTS, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
+import { FAKE_BATCH_FILES, FAKE_BOM_ANSWER, FAKE_BOM_FILES, FAKE_EXPORT_FILES, FAKE_FLOW_ANSWER, FAKE_LONG_COMMAND, FAKE_MINUTES_ANSWER, FAKE_SEARCH_RESULTS, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
 import { SEED_IDS } from './fake-seed';
 
 function collect(backend: FakeBackend) {
@@ -246,6 +246,19 @@ describe('FakeBackend', () => {
     expect(FAKE_MINUTES_ANSWER).toMatch(/^## /);
     expect(FAKE_MINUTES_ANSWER).toContain('\n### ');
     expect(FAKE_MINUTES_ANSWER).toContain('```text');
+  });
+
+  it('批量 leaves fourteen files from one command and hands over two of them (the list in place of cards)', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '批量下载这十份规格书');
+    await until((e) => e.type === 'run.end');
+    const cards = events.filter((e): e is Extract<CoreEvent, { type: 'file.card' }> => e.type === 'file.card');
+    const paths = new Set(cards.flatMap((e) => (e.files ?? [e.file]).map((f) => f.path)));
+    expect(FAKE_BATCH_FILES).toHaveLength(14);
+    // (With the file every demo answer reads first.)
+    expect([...paths]).toEqual(expect.arrayContaining(FAKE_BATCH_FILES));
   });
 
   it('BOM hands over two files and answers with their long full paths (for screenshots)', async () => {

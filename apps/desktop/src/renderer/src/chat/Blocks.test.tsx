@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import type { HistoryCardMeta } from '@spica/protocol';
 import { OpenSessionContext, HistoryCardsContext, HistoryRefContext, MarkdownText, AskCard, ConfirmCard, FileCards, RoundDoneContext, SuggestCard, ToolGroup } from './Blocks';
 
@@ -355,5 +355,53 @@ describe('tool times once the round is over', () => {
     expect(metas()).toEqual([]);
     fireEvent.click(screen.getByRole('button', { name: /Listed a folder, read 2 files/ }));
     expect(metas()).toEqual(['已超时', 'Auto']);
+  });
+});
+
+describe('files under an answer: cards when few, a list when many', () => {
+  const at = '2026-11-12T10:00:00+08:00';
+  const file = (i: number, ext = 'pdf') => {
+    const path = `D:\\规格书\\料号${String(i).padStart(2, '0')}.${ext}`;
+    const name = path.split('\\').pop()!;
+    return { path, tool: 'run_command', category: 'command' as const, card: { path, name, kind: (ext === 'pdf' ? 'pdf' : 'other') as 'pdf' | 'other', sizeBytes: 1, modifiedAt: at, extractedAt: at, read: {}, origin: 'created' as const, ...(ext === 'pdf' ? { pageCount: 4 } : {}) } };
+  };
+  const files = (n: number) => Array.from({ length: n }, (_, i) => file(i + 1, i === 2 ? 'png' : 'pdf'));
+  const actions = { reveal: vi.fn(), imageUrl: async () => 'blob:x' };
+
+  it('up to 4: cards, as before', () => {
+    render(<FileCards files={files(4)} onOpen={vi.fn()} actions={actions} />);
+    expect(document.querySelectorAll('.file-card')).toHaveLength(4);
+    expect(document.querySelector('.file-list')).toBeNull();
+  });
+
+  it('5 or more: one a line (icon and name, what it is, what was done, the two buttons); a click opens it as a card does', () => {
+    const onOpen = vi.fn();
+    render(<FileCards files={files(5)} onOpen={onOpen} actions={actions} />);
+    expect(document.querySelector('.file-card')).toBeNull();
+    const rows = [...document.querySelectorAll('.file-list .file-row')];
+    expect(rows).toHaveLength(5);
+    expect(rows[0]!.querySelector('.file-row-text')?.textContent).toBe('料号01.pdf');
+    expect(rows[0]!.querySelector('.file-row-kind')?.textContent).toBe('PDF · 4 页');
+    expect(rows[0]!.querySelector('.file-row-did')?.textContent).toBe('Created while the command ran');
+    // A picture shows its icon only, no small picture.
+    expect(rows[2]!.querySelector('img')).toBeNull();
+    expect(rows[2]!.querySelector('svg')).toBeTruthy();
+    fireEvent.click(rows[1]!.querySelector('.file-row-main')!);
+    expect(onOpen).toHaveBeenCalledWith('D:\\规格书\\料号02.pdf');
+    fireEvent.click(within(rows[1] as HTMLElement).getByRole('button', { name: '打开所在文件夹' }));
+    expect(actions.reveal).toHaveBeenCalledWith('D:\\规格书\\料号02.pdf');
+  });
+
+  it('more than 10: the first 8, then 全部 N 个 and 收起', () => {
+    render(<FileCards files={files(14)} onOpen={vi.fn()} actions={actions} />);
+    expect(document.querySelectorAll('.file-row')).toHaveLength(8);
+    fireEvent.click(screen.getByRole('button', { name: '全部 14 个' }));
+    expect(document.querySelectorAll('.file-row')).toHaveLength(14);
+    fireEvent.click(screen.getByRole('button', { name: '收起' }));
+    expect(document.querySelectorAll('.file-row')).toHaveLength(8);
+    cleanup();
+    render(<FileCards files={files(10)} onOpen={vi.fn()} actions={actions} />);
+    expect(document.querySelectorAll('.file-row')).toHaveLength(10);
+    expect(screen.queryByRole('button', { name: /全部/ })).toBeNull();
   });
 });
