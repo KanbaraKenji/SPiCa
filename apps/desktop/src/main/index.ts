@@ -2,7 +2,7 @@
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, safeStorage, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, safeStorage, screen, shell, Tray } from 'electron';
 import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
@@ -34,6 +34,7 @@ import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { pageAlive, pageRecovery } from './page-recovery';
 import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor } from './app-dialog';
 import { openDialogWindow } from './app-dialog-window';
+import { watchFit } from './window-fit';
 import { lookAtPage, watchPage } from './page-watch';
 import { closeAsker, closeDialogSpec, closeFromDialog, closePrompt, dialogFromBox, onWindowClose, revealWindow, runningTracker, trayHint, wireTray } from './tray';
 import { autostartSupport, followAutostart, loginItemOn, onSecondLaunch, startsOnNewChat, type LoginItems } from './autostart';
@@ -728,6 +729,30 @@ function createMainWindow(): BrowserWindow {
   });
   win.once('ready-to-show', () => watch.step('ready-to-show'));
   win.on('show', () => watch.step('shown'));
+  // Whether the window fits the area above the taskbar (main/window-fit.ts): a line at the first showing, and a line
+  // whenever it is past that area after maximizing, restoring, a resize while maximized or a display change. Log only.
+  const fit = watchFit(
+    () => (win.isDestroyed() ? null : { bounds: win.getBounds(), display: screen.getDisplayMatching(win.getBounds()), maximized: win.isMaximized(), fullScreen: win.isFullScreen() }),
+    (line) => console.log(line),
+  );
+  win.once('show', () => fit('first show'));
+  win.on('maximize', () => fit('maximize'));
+  win.on('unmaximize', () => fit('restore'));
+  win.on('enter-full-screen', () => fit('full screen'));
+  win.on('resize', () => {
+    if (win.isMaximized()) fit('resize while maximized');
+  });
+  const displayChanged = () => fit('display changed');
+  const displayAdded = () => fit('display added');
+  const displayRemoved = () => fit('display removed');
+  screen.on('display-metrics-changed', displayChanged);
+  screen.on('display-added', displayAdded);
+  screen.on('display-removed', displayRemoved);
+  win.on('closed', () => {
+    screen.off('display-metrics-changed', displayChanged);
+    screen.off('display-added', displayAdded);
+    screen.off('display-removed', displayRemoved);
+  });
 
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (!app.isPackaged && devUrl) void win.loadURL(devUrl);
