@@ -31,6 +31,7 @@ import { FakeBackend } from './backend/fake';
 import { writeDemoChart } from './backend/demo-image';
 import { ProcessBackend, type BackendStatus } from './backend/process';
 import { STOP_LIMIT_MS, wireQuit } from './quit';
+import { pageAlive, pageRecovery } from './page-recovery';
 import { knownContextWindow, matchWindowIn, toProviderConfig } from './backend/to-config';
 import type { WindowMatch } from '../shared/catalog';
 import { fromHostDraft, toHostConnection, toHostModelList } from './providers/host-models';
@@ -191,8 +192,9 @@ function backendConfig(): DesktopBackendConfig {
   };
 }
 
+/** Every message for the window goes through here: sent only while its page is there (main/page-recovery.ts). */
 function sendToWindow(channel: string, ...args: unknown[]): void {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, ...args);
+  if (pageAlive(mainWindow)) mainWindow.webContents.send(channel, ...args);
 }
 
 let activeSessionId: string | null = null;
@@ -559,6 +561,24 @@ function createMainWindow(): BrowserWindow {
   win.webContents.on('will-navigate', (e, url) => {
     if (url !== win.webContents.getURL()) e.preventDefault();
   });
+  // The page process gone (killed, crashed, out of memory): load it again, back on the open conversation;
+  // the third time within a minute, ask first (main/page-recovery.ts).
+  const onPageGone = pageRecovery({
+    quitting: () => appQuitting,
+    reload: () => {
+      if (win.isDestroyed()) return;
+      // Kept until the new page has read it (a page lost again before that keeps the same conversation).
+      reopen ??= { sessionId: activeSessionId };
+      win.webContents.reload();
+    },
+    ask: () =>
+      dialog
+        .showMessageBox(win, { type: 'error', title: APP_NAME, message: '界面出错', buttons: ['重新加载', `退出 ${APP_NAME}`], defaultId: 0, cancelId: 1, noLink: true })
+        .then((r) => r.response === 0),
+    quit: () => app.quit(),
+    warn: (line) => console.warn(line),
+  });
+  win.webContents.on('render-process-gone', (_e, details) => onPageGone(details));
 
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (!app.isPackaged && devUrl) void win.loadURL(devUrl);
@@ -574,8 +594,24 @@ function createMainWindow(): BrowserWindow {
   return win;
 }
 
+/** Set when the window's page was lost and is loading again: the conversation that was open (read once). */
+let reopen: { sessionId: string | null } | null = null;
+let appQuitting = false;
+app.on('before-quit', () => {
+  appQuitting = true;
+});
+// The GPU process going is told too: repeated losses of it took the page with them (main/page-recovery.ts).
+app.on('child-process-gone', (_e, d) => {
+  if (d.type === 'GPU') console.warn(`[spica] GPU process gone (${d.reason}, exit code ${d.exitCode})`);
+});
+
 function shellState(): ShellState {
-  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd };
+  const again = reopen;
+  if (again) {
+    reopen = null;
+    activeSessionId = again.sessionId;
+  }
+  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd, ...(again ? { reopen: again } : {}) };
 }
 
 ipcMain.handle(IpcChannel.AppInfo, (): AppInfo => ({ name: APP_NAME, version: app.getVersion() }));
@@ -792,9 +828,7 @@ const updates = new UpdateService({
     app.quit();
   },
 });
-updates.onChange((s) => {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DesktopChannel.UpdateChanged, s);
-});
+updates.onChange((s) => sendToWindow(DesktopChannel.UpdateChanged, s));
 ipcMain.handle(DesktopChannel.Update, async (_e, op: unknown) => {
   if (op === 'check') return updates.check();
   if (op === 'install') updates.install();
@@ -1142,19 +1176,17 @@ ipcMain.handle(DesktopChannel.ListProviderModels, async (_e, draft: ProviderDraf
   return { ok: true, models: p.models.map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), contextWindow: m.contextWindow, inCatalog: true, chat: true })) };
 });
 
-backend.onEvent((event) => {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DesktopChannel.AgentEvent, withErrorHint(event));
-});
+backend.onEvent((event) => sendToWindow(DesktopChannel.AgentEvent, withErrorHint(event)));
 settings.onChange((s) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   syncNativeChrome(mainWindow, s);
-  mainWindow.webContents.send(DesktopChannel.SettingsChanged, s);
+  sendToWindow(DesktopChannel.SettingsChanged, s);
 });
 nativeTheme.on('updated', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   taskbarTheme?.onUpdated();
   syncNativeChrome(mainWindow, settings.get());
-  mainWindow.webContents.send(DesktopChannel.SettingsChanged, settings.get());
+  sendToWindow(DesktopChannel.SettingsChanged, settings.get());
 });
 
 void app.whenReady().then(() => {

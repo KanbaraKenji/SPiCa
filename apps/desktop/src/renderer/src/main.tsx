@@ -20,10 +20,11 @@ async function start(el: HTMLElement): Promise<void> {
   const shell = new ShellStore(bridge, state);
   // The full opening animation plays once a day by default; later launches only flash the mark.
   const today = localDay();
-  const splash = state.automated ? 'none' : splashFor(state.settings, today);
+  // Loading again after the page was lost (main/page-recovery.ts): straight back to the conversation, no animation.
+  const splash = state.automated || state.reopen ? 'none' : splashFor(state.settings, today);
   if (splash === 'full') shell.update({ splashShownOn: today });
   const agent = new AgentStore(bridge);
-  const ready = agent.init();
+  const ready = agent.init(state.reopen?.sessionId ?? undefined);
   const version = await bridge.getAppInfo().then((i) => i.version).catch(() => '');
   createRoot(el).render(
     <StrictMode>

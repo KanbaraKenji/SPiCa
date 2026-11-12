@@ -41,6 +41,7 @@
 - **内核在独立进程里**（`src/backend/entry.ts`，随主进程一起构建成 `out/main/backend.js`）：用内核的 `runUtilityEntry({ modules })`，把 `@spica/extract` 和外壳自己的扩展 `@spica/desktop-host` 在构建时链接进去（打包后没有 node_modules，不能按包名动态加载）。
 - `@spica/desktop-host`（`src/backend/desktop-host.ts`）是外壳的后端扩展：调 `@spica/plugins` 的 `attachBackend`（全进程一个插件管理器，MCP 服务上的插件工具照旧），再挂四个方法：`plugins`（插件页，含共享盘 / 网址来源、检查更新、更新）、`setProviders`（设置页改了模型，不重启就生效）、`createSession`（新的顶层会话用默认模型）；`probeProvider`（测试连接）是内核自带的。
 - **监护**（`src/main/backend/process.ts`）：内核进程意外退出，按 1、2、5 秒退避重启，1 分钟最多 5 次；重启期间的调用排队等候，窗口标题栏显示「后台正在恢复」；新进程 `restore()` 后界面重新拉会话，跑到一半的回答显示「（中断）」和「继续」。超过次数显示「后台反复出错，已经停下 [重试]」。正常退出先把窗口藏起来，再发 `shutdown`，10 秒不退就强杀（装了插件时收尾要 4.5 秒左右，慢机器更久）；主进程最多等 11 秒（`main/quit.ts`）。
+- **界面进程没了**（`src/main/page-recovery.ts`，2026-11-12）：renderer 被结束、崩溃或内存不足退出时，主进程记一行（原因、退出码），立刻重新加载页面，回到原来打开的对话（主进程记着当前对话，新页面从 `getShellState().reopen` 读一次，不放开机动画）；一分钟内第三次不再自动重试，弹 Windows 自己的消息框「界面出错」[重新加载] [退出 Spica]（页面画不出来时它也能显示）。发给窗口的消息都走 `sendToWindow`，页面不在就不发，不再刷「Render frame was disposed」。GPU 进程没了也记一行；改用软件渲染还没做。
 - 截图和测试用假后端（`src/main/backend/fake.ts`），`SPICA_BACKEND=fake|core` 可强制。
 
 ## 3. 事件到界面的映射

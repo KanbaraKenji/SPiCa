@@ -44,6 +44,8 @@ export interface ShellState {
   automated: boolean;
   /** The folder conversations shared up to 0.1.0-rc.2 (文档\<name>): one still in it keeps its files there when it chooses a folder. */
   legacyDefaultCwd?: string;
+  /** The page is loading again after its process was lost: open this conversation (null: the start page), no opening animation. */
+  reopen?: { sessionId: string | null };
 }
 
 /** A file shown in the right panel: a URL for the PDF viewer / images, or its text (capped). */
