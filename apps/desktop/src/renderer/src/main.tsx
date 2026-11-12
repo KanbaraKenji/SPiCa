@@ -4,6 +4,7 @@ import { App } from './App';
 import { Root } from './shell/Root';
 import { installZoomInput } from './shell/zoomInput';
 import { localDay, splashFor } from '../../shared/settings';
+import { enabledModels } from '../../shared/providers';
 import { AgentStore } from './store/agent';
 import { ShellStore } from './store/shell';
 import { CloseAsk } from './ui/CloseDialog';
@@ -25,8 +26,12 @@ async function start(el: HTMLElement): Promise<void> {
   const splash = state.automated || state.reopen ? 'none' : splashFor(state.settings, today);
   if (splash === 'full') shell.update({ splashShownOn: today });
   const agent = new AgentStore(bridge);
+  // No model set up yet (a first start): the store does not ask the core for its top conversation, which it could
+  // not make without one. Not known (the list could not be read): as before.
+  const providers = await bridge.providers.list().catch(() => null);
+  const hasModel = providers === null || providers.items.some((p) => enabledModels(p.models).length > 0);
   // A start that opens on 新对话 (main/autostart.ts startsOnNewChat): the empty window once the list is in.
-  const ready = agent.init(state.reopen?.sessionId ?? undefined).then(() => {
+  const ready = agent.init(state.reopen?.sessionId ?? undefined, { hasModel }).then(() => {
     if (state.startOnNewChat) agent.newChat();
   });
   const version = await bridge.getAppInfo().then((i) => i.version).catch(() => '');

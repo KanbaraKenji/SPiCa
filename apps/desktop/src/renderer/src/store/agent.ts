@@ -105,11 +105,16 @@ export class AgentStore {
     this.#defaultModel = ref;
   }
 
-  async init(preferredId?: string): Promise<void> {
+  /**
+   * `hasModel: false`: no model is set up (no provider with a model in use). The core's top conversation is then not
+   * asked for: it would be made with no model and refused (logged as an error at every start); it is asked for again
+   * when a first message needs it (#emptyTop).
+   */
+  async init(preferredId?: string, opts: { hasModel?: boolean } = {}): Promise<void> {
     void this.#refreshProjects();
     void this.refreshMemories();
     void this.#refreshTidies();
-    if (this.#api.getTopSession) {
+    if (this.#api.getTopSession && opts.hasModel !== false) {
       // Projects hang under the core's top-level agent; knowing it lets the sidebar name it.
       void this.#api
         .getTopSession()

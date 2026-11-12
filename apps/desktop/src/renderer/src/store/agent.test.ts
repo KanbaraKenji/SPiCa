@@ -198,3 +198,14 @@ describe('deleting a conversation and choosing its working folder', () => {
     expect(r('cwd.move_failed', { file: 'C:\\data\\a.txt', notRestored: ['C:\\data\\b.txt'] })).toBe('移动「a.txt」失败，已放回原处，工作文件夹未更改；1 个文件未能放回：b.txt。');
   });
 });
+
+describe('starting with no model set up', () => {
+  it('does not ask the core for its top conversation (it could not make one and would log an error); with a model it does', async () => {
+    const backend = new FakeBackend({ speed: 0, seed: false });
+    const getTopSession = vi.spyOn(backend, 'getTopSession');
+    await new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) }).init(undefined, { hasModel: false });
+    expect(getTopSession).not.toHaveBeenCalled();
+    await new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) }).init();
+    expect(getTopSession).toHaveBeenCalledTimes(1);
+  });
+});
