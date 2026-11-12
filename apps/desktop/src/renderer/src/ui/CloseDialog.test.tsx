@@ -9,7 +9,7 @@ describe('the close question', () => {
   it('the title, 记住我的选择 and two choices, nothing explained, no 取消; 最小化到托盘 is the main one and has the focus', () => {
     const { container } = render(<CloseDialog onAnswer={() => undefined} />);
     expect(screen.getByRole('dialog', { name: '关闭窗口时要怎么做？' })).toBeTruthy();
-    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['退出 Spica', '最小化到托盘']);
+    expect(screen.getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['退出 Spica', '最小化到托盘', '关闭']);
     expect(screen.queryByRole('button', { name: '取消' })).toBeNull();
     expect(container.querySelector('.dialog-detail')).toBeNull();
     const tray = screen.getByRole('button', { name: '最小化到托盘' });
@@ -35,6 +35,19 @@ describe('the close question', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '记住我的选择' }));
     fireEvent.click(screen.getByRole('button', { name: '退出 Spica' }));
     expect(again).toHaveBeenCalledWith({ choice: 'quit', remember: true });
+  });
+
+  it('the × at the top right: no choice, nothing kept even when ticked; Tab reaches it after the two choices', () => {
+    const onAnswer = vi.fn();
+    render(<CloseDialog onAnswer={onAnswer} />);
+    const x = screen.getByRole('button', { name: '关闭' });
+    expect(x.className).toContain('icon-btn');
+    const tray = screen.getByRole('button', { name: '最小化到托盘' });
+    expect(tray.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: '记住我的选择' }));
+    fireEvent.click(x);
+    fireEvent.click(tray);
+    expect(onAnswer.mock.calls).toEqual([[{ choice: null, remember: false }]]);
   });
 
   it('Esc or a click outside: no choice (nothing kept even when ticked)', () => {

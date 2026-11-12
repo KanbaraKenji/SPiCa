@@ -2882,7 +2882,19 @@ button.ctx-row:hover {
 /* The close question (ui/CloseDialog.tsx): the title, a line only while a task runs, 记住我的选择 under it,
    then the two buttons at the right; narrower than other dialogs (nothing is explained). */
 .close-dialog {
+  position: relative;
   width: min(360px, 100%);
+}
+
+/* Its × at the top right, centred on the title's line (the title keeps clear of it). */
+.close-dialog .dialog-title {
+  padding-right: 32px;
+}
+
+.close-dialog-x {
+  position: absolute;
+  top: 15px;
+  right: 15px;
 }
 
 .close-dialog-foot {
