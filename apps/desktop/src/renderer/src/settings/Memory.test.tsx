@@ -48,6 +48,14 @@ describe('设置 › 记忆', () => {
     expect(within(row4 as HTMLElement).queryByRole('button', { name: '周三下午的安排' })).toBeNull();
   });
 
+  it("each note is a settings row; its 编辑 / 删除 are the settings' shared square buttons (删除 the quiet red)", () => {
+    setup();
+    const row = document.querySelector('.memory-row')!;
+    expect(row.classList.contains('setting-row')).toBe(true);
+    expect(within(row as HTMLElement).getByRole('button', { name: '编辑' }).className).toBe('btn btn-small btn-square');
+    expect(within(row as HTMLElement).getByRole('button', { name: '删除' }).className).toBe('btn btn-small btn-quiet-danger btn-square');
+  });
+
   it('the switch is the setting; off, the list stays', () => {
     const p = setup({ enabled: false });
     fireEvent.click(screen.getByRole('switch', { name: '启用记忆' }));
@@ -147,6 +155,9 @@ describe('设置 › 记忆 › 整理', () => {
       '已撤销：负责开单系统',
       '删除：周报每周五发撤销',
     ]);
+    // a change is a settings row with 撤销 as the shared small button at its end
+    expect([...document.querySelectorAll('.memory-tidy-change')].every((e) => e.classList.contains('setting-row'))).toBe(true);
+    expect(screen.getAllByRole('button', { name: '撤销' }).every((b) => b.className === 'btn btn-small memory-undo')).toBe(true);
     fireEvent.click(screen.getAllByRole('button', { name: '撤销' })[2]!);
     expect(tidy.undo).toHaveBeenCalledWith(7, 3);
     fireEvent.click(screen.getByRole('button', { name: '全部撤销' }));
