@@ -83,10 +83,10 @@ describe('what the window’s close button does', () => {
     }
   });
 
-  it('the question: two choices and 取消, 记住我的选择 unticked, named after the app', () => {
+  it('the question: two choices and 取消, 不再提醒 unticked, named after the app', () => {
     const p = closePrompt('Acme');
     expect(p.buttons).toEqual(['最小化到托盘', '退出 Acme', '取消']);
-    expect(p.checkboxLabel).toBe('记住我的选择');
+    expect(p.checkboxLabel).toBe('不再提醒');
     expect(p.cancelId).toBe(2);
     // nothing explained; one line only while a task runs
     expect(p).not.toHaveProperty('detail');
@@ -98,7 +98,7 @@ describe('what the window’s close button does', () => {
 
   it('when the page cannot ask: the small window asks the same (the line only while a task runs); the message box answers the same way', () => {
     const look = { scheme: 'dark' as const, tokens: {} };
-    expect(closeDialogSpec('Acme', false, look)).toEqual({ title: CLOSE_QUESTION, detail: [], buttons: [{ label: '退出 Acme' }, { label: '最小化到托盘', primary: true }], check: '记住我的选择', ...look });
+    expect(closeDialogSpec('Acme', false, look)).toEqual({ title: CLOSE_QUESTION, detail: [], buttons: [{ label: '退出 Acme' }, { label: '最小化到托盘', primary: true }], check: '不再提醒', ...look });
     expect(closeDialogSpec('Acme', true, look).detail).toEqual([CLOSE_RUNNING]);
     expect(closeFromDialog({ button: 1, checked: true })).toEqual({ choice: 'tray', remember: true });
     expect(closeFromDialog({ button: 0, checked: false })).toEqual({ choice: 'quit', remember: false });

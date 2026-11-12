@@ -2850,7 +2850,7 @@ button.ctx-row:hover {
   gap: 8px;
 }
 
-/* A checkbox in a dialog (关闭窗口时 › 记住我的选择), under the text and above the buttons;
+/* A checkbox or a radio button in a dialog (关闭窗口时: the two choices and 不再提醒), under the text;
    the box as in the model list (.model-row-name). */
 .dialog-check {
   margin-top: 16px;
@@ -2869,8 +2869,8 @@ button.ctx-row:hover {
   accent-color: var(--spica-accent);
 }
 
-/* The close question (ui/CloseDialog.tsx): the title, a line only while a task runs, 记住我的选择 under it,
-   then the two buttons at the right; narrower than other dialogs (nothing is explained). */
+/* The close question (ui/CloseDialog.tsx): the title, a line only while a task runs, the two choices one under the
+   other, then one row: 不再提醒 at the left, 确定 at the right; narrower than other dialogs (nothing is explained). */
 .close-dialog {
   position: relative;
   width: min(360px, 100%);
@@ -2887,15 +2887,23 @@ button.ctx-row:hover {
   right: 15px;
 }
 
-.close-dialog-foot {
+.close-dialog-choices {
   margin-top: 16px;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+}
+
+.close-dialog-foot {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 16px;
 }
 
-.close-dialog-foot .dialog-check,
-.close-dialog-foot .dialog-actions {
+.close-dialog-choices .dialog-check,
+.close-dialog-foot .dialog-check {
   margin-top: 0;
 }
 
