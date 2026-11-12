@@ -101,6 +101,10 @@ export interface PluginPackage {
   pages?: string[];
   /** The version of the same plugin installed now, when there is one. */
   installed?: string;
+  /** This version is newer than the one installed (市场: 可更新, 「更新到 x」). */
+  newer?: boolean;
+  /** 市场: the source it is offered by (its location as in `sources`). */
+  source?: string;
 }
 
 /**
@@ -144,7 +148,12 @@ export interface PluginSourceView {
 export interface OfficialSource {
   location: string;
   label?: string;
+  /** Folders in it that are not offered (the repository's plugins/ in a development run: the templates). */
+  exclude?: string[];
 }
+
+/** Plugin folders in the repository's plugins/ kept as templates, not shipped (scripts/release/pack-plugins.mjs has the same list). */
+export const NOT_SHIPPED_PLUGINS = ['example-eval'];
 
 /**
  * deploy.json's pluginSources as the app reads it at start: the places it can use, each once; anything else
@@ -176,7 +185,7 @@ export interface PluginsState {
   mock: boolean;
   /** Where plugins live on this computer. */
   root: string;
-  /** 未安装: the newest of each plugin the remembered sources offer and that is not installed. */
+  /** 市场: what each source offers, the newest of each plugin there, installed or not (`installed`, `newer`). */
   available?: PluginPackage[];
   /** Sources that could not be read the last time they were listed. */
   sourceErrors?: string[];

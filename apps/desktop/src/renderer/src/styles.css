@@ -4349,6 +4349,20 @@ button.ctx-row:hover {
   flex: none;
 }
 
+/* 市场's list: 已安装 / 可更新 at a row's end, in the quiet words (可更新 in the accent: something to do). */
+.plugin-row-state {
+  margin-left: auto;
+  padding-left: 8px;
+}
+
+.plugin-row-state.is-newer {
+  color: var(--spica-accent-text);
+}
+
+.plugin-here {
+  align-self: center;
+}
+
 /* 官方 after an official source's name: 模型's quiet 默认 words, a little apart from the name. */
 .source-official {
   margin-left: 8px;
@@ -6296,9 +6310,8 @@ button.ctx-row:hover {
   position: relative;
 }
 
-/* Something new in the list not shown; 插件市场 (an action above the plugin pages, not one of them). */
-.side-new-project,
-.side-market {
+/* Something new in the list not shown. */
+.side-new-project {
   color: var(--spica-muted);
 }
 

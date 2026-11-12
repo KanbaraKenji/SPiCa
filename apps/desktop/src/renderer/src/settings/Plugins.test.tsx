@@ -147,8 +147,10 @@ describe('Plugins', () => {
     expect(within(rows[1]!).getAllByRole('button').map((b) => b.textContent || b.getAttribute('aria-label'))).toEqual(['检查更新', '移除来源']);
     expect(screen.getByRole('button', { name: '全部检查更新' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '添加来源' })).toBeTruthy();
-    expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['可安装']);
-    expect(within(list()).getAllByRole('button').map((b) => b.textContent)).toEqual(['周周报助手1.2.0', '术术语表0.3.0']);
+    // By source, the official one first; every plugin of it with its state: 已安装, 可更新, or nothing (not installed).
+    expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['官方插件官方', '\\\\fileserver\\spica-plugins']);
+    const state = (name: string) => within(list()).getByRole('button', { name: new RegExp(name) }).querySelector('.plugin-row-state')?.textContent ?? '';
+    expect(['笔记', '来信摘要', '周报助手', '术语表'].map(state)).toEqual(['已安装', '可更新', '', '']);
     // The installed plugins and their search are under 已安装.
     expect(screen.queryByLabelText('搜索插件')).toBeNull();
     expect(screen.queryByRole('switch', { name: '模拟模式' })).toBeNull();
@@ -261,7 +263,7 @@ describe('Plugins', () => {
     expect(fold.textContent).toBe('插件来源3 个来源 · 1 个连接失败');
     expect(screen.queryByRole('list', { name: '插件来源' })).toBeNull();
     // What the sources offer is right there.
-    expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['可安装']);
+    expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['官方插件官方', '\\\\fileserver\\spica-plugins']);
     fireEvent.click(fold);
     expect(screen.getByRole('list', { name: '插件来源' })).toBeTruthy();
     fireEvent.click(fold);
@@ -278,7 +280,41 @@ describe('Plugins', () => {
     expect(within(box).getByText('移除来源「\\\\fileserver\\spica-plugins」？')).toBeTruthy();
     fireEvent.click(within(box).getByRole('button', { name: '移除' }));
     await waitFor(() => expect(within(screen.getByRole('list', { name: '插件来源' })).getAllByRole('listitem')).toHaveLength(2));
-    expect(screen.getByText('没有可安装的插件')).toBeTruthy();
+    // Its plugins went with it; the official source's stay.
+    expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['官方插件官方']);
+  });
+
+  it('市场: one installed as it is says so and goes to 已安装; one with a newer version offers 更新到', async () => {
+    // The tab kept by the caller, as the settings dialog keeps it.
+    function Kept() {
+      const [tab, setTab] = useState<'installed' | 'market'>('market');
+      return <Plugins api={api()} tab={tab} onTab={setTab} />;
+    }
+    render(<Kept />);
+    await screen.findByRole('list', { name: '插件来源' });
+    pick('来信摘要');
+    const newer = (await screen.findByRole('region', { name: '来信摘要（示例）' })) as HTMLElement;
+    expect(within(newer).getByRole('button', { name: '更新到 1.1.0' })).toBeTruthy();
+    pick('笔记');
+    const here = (await screen.findByRole('region', { name: '笔记（示例）' })) as HTMLElement;
+    expect(here.querySelector('.plugin-actions .plugin-here')?.textContent).toBe('已安装');
+    expect(within(here).queryByRole('button', { name: /^(重新)?安装/ })).toBeNull();
+    fireEvent.click(within(here).getByRole('button', { name: '在已安装中查看' }));
+    expect(screen.getByRole('tab', { name: /^已安装/ }).getAttribute('aria-selected')).toBe('true');
+    expect(within(screen.getByRole('region', { name: '笔记（示例）' })).getByRole('switch', { name: '停用「笔记（示例）」' })).toBeTruthy();
+  });
+
+  it('市场 without an official source says so and where it is set', async () => {
+    const svc = new FakePluginService('D:/Spica/plugins');
+    const none: PluginsApi = {
+      run: async (cmd) => {
+        const r = await svc.run(cmd);
+        return { ...r, state: { ...r.state, sources: (r.state.sources ?? []).filter((x) => !x.official) } };
+      },
+      onChanged: () => () => {},
+    };
+    render(<Plugins api={none} tab="market" />);
+    expect(await screen.findByText('没有配置官方来源。官方来源在打包时写进 deploy.json 的 pluginSources。')).toBeTruthy();
   });
 
   it('the plugin picked: 更新到, 回退到 and 删除 are on the row right under its name', async () => {

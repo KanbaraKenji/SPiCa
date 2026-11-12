@@ -255,10 +255,13 @@ export class RealPluginService implements PluginService {
 
   #state(): PluginsState {
     const m = this.#o.manager;
-    // 未安装: plugins not installed at all, the newest each source offers.
-    const available = [...newest([...this.#fromSources.values()], SPICA_VERSION).values()]
-      .filter((a) => !m.installedVersion(a.name))
-      .map((a) => this.#indexPackage(`source:${a.source.location}:${a.name}@${a.version}`, a));
+    // 市场: each source's own list, the newest of each plugin it offers, installed or not.
+    const available = this.#sources().flatMap((src) =>
+      [...newest([...this.#fromSources.values()].filter((a) => a.source.location === src.location), SPICA_VERSION).values()].map((a) => ({
+        ...this.#indexPackage(`source:${a.source.location}:${a.name}@${a.version}`, a),
+        source: src.location,
+      })),
+    );
     const installed = (name: string) => m.installedVersion(name);
     const found = this.#found
       ? {
@@ -305,6 +308,7 @@ export class RealPluginService implements PluginService {
       location: a.location,
       kind: a.source.kind,
       ...(installed ? { installed } : {}),
+      ...(installed && compareVersions(a.version, installed) > 0 ? { newer: true } : {}),
     };
   }
 
@@ -365,7 +369,10 @@ export class RealPluginService implements PluginService {
         return [{ name: m.name, version: m.version, file: `${basename(where)}/`, ...(m.spica ? { spica: m.spica } : {}), ...(m.description ? { description: m.description } : {}), source: src, location: where, form: 'folder' }];
       }
     }
-    return listSource(src, this.#sourceOpts());
+    // An official folder may leave some out (the repository's templates in a development run).
+    const leave = (this.#o.official ?? []).find((o) => sameSource(o.location, src.location))?.exclude ?? [];
+    const offered = await listSource(src, this.#sourceOpts());
+    return leave.length ? offered.filter((a) => !leave.includes(basename(a.location.replace(/[\\/]+$/, '')))) : offered;
   }
 
   /** Read these sources again: what they offer replaces what they offered before; one that cannot be read is noted. */

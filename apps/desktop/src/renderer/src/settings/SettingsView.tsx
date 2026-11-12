@@ -53,7 +53,7 @@ export interface SettingsViewProps {
   onInstallUpdate(): void;
   tab: SettingsTab;
   onTab(tab: SettingsTab): void;
-  /** 插件's own tabs (已安装 / 市场), kept by the caller: the sidebar's 插件市场 opens 市场. */
+  /** 插件's own tabs (已安装 / 市场), kept by the caller: the dialog opens again on the one left. */
   pluginsTab?: PluginsTab;
   onPluginsTab?: (tab: PluginsTab) => void;
   /** Closes the dialog (the close button, a press outside, Esc). */

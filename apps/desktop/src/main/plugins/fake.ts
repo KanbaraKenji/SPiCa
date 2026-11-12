@@ -73,18 +73,34 @@ function morePlugins(): PluginView[] {
   });
 }
 
-/** 未安装 in the demo: two made-up plugins a shared folder offers. */
+const DEMO_OFFICIAL = 'https://plugins.example.com/official/index.json';
+const DEMO_SHARE = '\\\\fileserver\\spica-plugins';
+
+/**
+ * 市场 in the demo, by source: the official one offers the two plugins installed here (笔记 as it is, 来信摘要 a
+ * newer version: 可更新), the shared folder two that are not installed. 已安装 / 可更新 are worked out in #state.
+ */
 const DEMO_AVAILABLE: PluginPackage[] = [
-  { key: 'source:weekly-report@1.2.0', name: 'weekly-report', displayName: '周报助手', version: '1.2.0', description: '按模板整理本周进展。', location: '\\\\fileserver\\spica-plugins\\weekly-report-1.2.0.zip', kind: 'share' },
-  { key: 'source:glossary@0.3.0', name: 'glossary', displayName: '术语表', version: '0.3.0', description: '统一文档里的术语写法。', location: '\\\\fileserver\\spica-plugins\\glossary-0.3.0.zip', kind: 'share' },
+  { key: 'source:official:notes@0.2.0', name: 'notes', displayName: '笔记（示例）', version: '0.2.0', description: '在本地笔记本里记笔记，并从一个虚构的样例目录里查东西。', location: 'https://plugins.example.com/official/notes-0.2.0.zip', kind: 'http', source: DEMO_OFFICIAL },
+  { key: 'source:official:mail-digest@1.1.0', name: 'mail-digest', displayName: '来信摘要（示例）', version: '1.1.0', description: '把收件箱里的新邮件整理成摘要，按项目归类。', location: 'https://plugins.example.com/official/mail-digest-1.1.0.zip', kind: 'http', source: DEMO_OFFICIAL },
+  { key: 'source:weekly-report@1.2.0', name: 'weekly-report', displayName: '周报助手', version: '1.2.0', description: '按模板整理本周进展。', location: '\\\\fileserver\\spica-plugins\\weekly-report-1.2.0.zip', kind: 'share', source: DEMO_SHARE },
+  { key: 'source:glossary@0.3.0', name: 'glossary', displayName: '术语表', version: '0.3.0', description: '统一文档里的术语写法。', location: '\\\\fileserver\\spica-plugins\\glossary-0.3.0.zip', kind: 'share', source: DEMO_SHARE },
 ];
+
+/** a newer than b (plain x.y.z, as the demo's versions are). */
+const newerThan = (a: string, b: string) => {
+  const x = a.split('.').map(Number);
+  const y = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  return false;
+};
 
 /** 市场 › 插件来源 in the demo: the shared folder the two above come from, and an address that does not answer. */
 const DEMO_READ_AT = '2026-11-12T09:30:00.000Z';
 const DEMO_SOURCES: PluginSourceView[] = [
   // deploy.json's pluginSources in a company build: first, marked 官方, cannot be removed.
-  { location: 'https://plugins.example.com/official/index.json', kind: 'http', label: '官方插件', official: true, readAt: DEMO_READ_AT, count: 2 },
-  { location: '\\\\fileserver\\spica-plugins', kind: 'share', readAt: DEMO_READ_AT, count: 2 },
+  { location: DEMO_OFFICIAL, kind: 'http', label: '官方插件', official: true, readAt: DEMO_READ_AT, count: 2 },
+  { location: DEMO_SHARE, kind: 'share', readAt: DEMO_READ_AT, count: 2 },
   { location: 'https://plugins.example.com/index.json', kind: 'http', readAt: DEMO_READ_AT, error: '无法连接插件源 https://plugins.example.com/index.json（HTTP 503）。' },
 ];
 /** A demo source that never answers: the example.com index at the root, or a place with 「连不上」 in it. */
@@ -134,10 +150,19 @@ export class FakePluginService implements PluginService {
       plugins: structuredClone(this.#plugins),
       mock: this.#mock,
       root: this.#root,
-      ...(this.#available.length ? { available: structuredClone(this.#available) } : {}),
+      ...(this.#available.length ? { available: this.#available.map((a) => this.#withInstalled(a)) } : {}),
       sources: structuredClone(this.#sources),
       ...(this.#found ? { found: structuredClone(this.#found) } : {}),
     };
+  }
+
+  /** A package with the version installed here, and whether it is newer than that one. */
+  #withInstalled(a: PluginPackage): PluginPackage {
+    const { installed: _was, newer: _n, ...rest } = structuredClone(a);
+    void _was;
+    void _n;
+    const v = this.#plugins.find((x) => x.name === a.name)?.version;
+    return v ? { ...rest, installed: v, ...(newerThan(a.version ?? '', v) ? { newer: true } : {}) } : rest;
   }
 
   /** Read demo sources again: now is when; an unreachable one keeps its error. */
@@ -178,7 +203,6 @@ export class FakePluginService implements PluginService {
     }
     this.#plugins = this.#plugins.filter((x) => x.name !== pkg.name);
     this.#plugins.push({ ...asOtherDemo(structuredClone(EXAMPLE)), name: pkg.name, displayName: pkg.displayName ?? pkg.name, description: pkg.description ?? '', version: pkg.version ?? '1.0.0', previousVersion: undefined, source: { kind: pkg.kind, location: pkg.location }, tools: ['search'], skills: [], commands: [], servers: [{ id: pkg.name, status: 'running', tools: ['search'] }] } as PluginView);
-    this.#available = this.#available.filter((a) => a.key !== pkg.key);
   }
 
   async run(cmd: PluginsCommand): Promise<PluginsResult> {
@@ -212,13 +236,13 @@ export class FakePluginService implements PluginService {
         if (/^https?:.*\.zip$/i.test(found.location)) return { ok: true, info: true, message: '单个插件包的网址不能作为来源，可在下方安装。', state: this.#state() };
         if (this.#sources.some((x) => x.location === found.location)) return { ok: true, message: '该来源已在列表中。', state: this.#state() };
         this.#sources.push({ location: found.location, kind: /^https?:/i.test(found.location) ? 'http' : 'share', readAt: new Date().toISOString(), count: found.packages.length });
-        this.#available.push(...found.packages.filter((a) => !a.installed).map((a) => ({ ...a, key: `source:${a.location}` })));
+        this.#available.push(...found.packages.map((a) => ({ ...a, key: `source:${a.location}`, source: found.location })));
         return { ok: true, message: `已添加来源：${found.packages.length} 个插件。`, state: this.#state() };
       }
       case 'removeSource':
         if (this.#sources.some((x) => x.official && x.location === cmd.location)) return { ok: false, message: '官方来源不能移除。', state: this.#state() };
         this.#sources = this.#sources.filter((x) => x.location !== cmd.location);
-        this.#available = this.#available.filter((a) => !a.location.startsWith(cmd.location));
+        this.#available = this.#available.filter((a) => a.source !== cmd.location);
         return { ok: true, message: '已移除来源。', state: this.#state() };
       case 'checkUpdates':
       case 'checkSources': {

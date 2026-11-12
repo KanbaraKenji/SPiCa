@@ -19,8 +19,6 @@ export interface SidebarProps {
   /** Absent when the backend cannot create projects. */
   onNewProject?: () => void;
   onSettings(): void;
-  /** 插件市场: the settings open at 插件 › 市场; always there, at the top of the 插件 part. */
-  onMarket?: () => void;
   settingsOpen: boolean;
   /**
    * The assistant's default thread (getTopSession). Not singled out any more (the assistant is
@@ -202,7 +200,6 @@ export function Sidebar({
   onNewChat,
   onNewProject,
   onSettings,
-  onMarket,
   settingsOpen,
   onRename,
   inbox,
@@ -305,16 +302,11 @@ export function Sidebar({
           ) : null}
         </div>
         </div>
-        {pluginPages.length || onMarket ? (
+        {pluginPages.length ? (
           <section className="tree-section side-plugins" aria-label="插件">
             <h2 className="tree-heading rail-sep" aria-hidden>
               插件
             </h2>
-            {onMarket ? (
-              <button type="button" className="side-action side-market" onClick={onMarket} aria-label="插件市场" title="插件市场">
-                <Icon name="download" />
-              </button>
-            ) : null}
             {pluginPages.map((p) => (
               <button key={p.key} type="button" className={p.open ? 'side-action is-active' : 'side-action'} onClick={p.onOpen} aria-current={p.open ? 'page' : undefined} aria-label={p.title} title={p.title}>
                 {p.icon ? <img className="side-plugin-icon" src={p.icon} alt="" /> : <Icon name="plugin" />}
@@ -383,16 +375,9 @@ export function Sidebar({
         )}
       </div>
       </div>
-      {pluginPages.length || onMarket ? (
+      {pluginPages.length ? (
         <section className="tree-section side-plugins" aria-label="插件">
           <h2 className="tree-heading">插件</h2>
-          {/* An action, not a page: first, in the quiet colour of 新项目, with the download mark (pages have their own icon). */}
-          {onMarket ? (
-            <button type="button" className="side-action side-market" onClick={onMarket}>
-              <Icon name="download" />
-              <span className="side-action-text">插件市场</span>
-            </button>
-          ) : null}
           {pluginPages.map((p) => (
             <button key={p.key} type="button" className={p.open ? 'side-action is-active' : 'side-action'} onClick={p.onOpen} aria-current={p.open ? 'page' : undefined} title={p.title} data-tip-clipped=".side-action-text">
               {p.icon ? <img className="side-plugin-icon" src={p.icon} alt="" /> : <Icon name="plugin" />}

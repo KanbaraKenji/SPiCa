@@ -728,10 +728,6 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         setSettingsOpen((o) => !o);
         setFloating(null);
       }}
-      onMarket={() => {
-        openSettings('plugins', 'market');
-        setFloating(null);
-      }}
       settingsOpen={settingsOpen}
       account={effectiveAccount(settings, shell.autoAccount)}
       onAccount={() => {

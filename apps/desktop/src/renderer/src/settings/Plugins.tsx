@@ -7,7 +7,7 @@
 // A plugin turned on or off stays where it is in the list while the page is
 // open; it moves to its group the next time the page opens (the counts are only
 // in the filter, as things are now). Mock mode and the plugin folder are at the bottom.
-import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   isLocation,
   spentText,
@@ -234,14 +234,22 @@ function PluginRow({ p, on, onPick }: { p: PluginView; on: boolean; onPick(): vo
   );
 }
 
-/** A package not installed (or found at a typed location): name and version, as a plugin's row. */
+/** 市场: 已安装 (this version is the one here), 可更新 (a newer one than here), nothing when it is not installed. */
+export function packageState(a: PluginPackage): '' | '已安装' | '可更新' {
+  return a.newer ? '可更新' : a.installed ? '已安装' : '';
+}
+
+/** A package a source offers (or found at a typed location): name and version, as a plugin's row; its state at the end. */
 function PackageRow({ a, on, onPick }: { a: PluginPackage; on: boolean; onPick(): void }) {
+  const state = packageState(a);
   return (
     <li>
       <button type="button" className={on ? 'plugin-row is-on' : 'plugin-row'} aria-current={on ? 'true' : undefined} onClick={onPick}>
         <Badge name={a.name} displayName={pkgTitle(a)} icon={a.icon} />
         <span className="plugin-row-name">{pkgTitle(a)}</span>
         {a.version ? <span className="plugin-version plugin-row-version">{a.version}</span> : <span className="plugin-row-version" />}
+        {/* Quiet words, as 默认 in 模型 and 官方 by a source: not a button. */}
+        {state ? <span className={state === '可更新' ? 'provider-default plugin-row-state is-newer' : 'provider-default plugin-row-state'}>{state}</span> : null}
       </button>
     </li>
   );
@@ -407,15 +415,18 @@ function PluginDetail({
   );
 }
 
-/** What 安装 says for a package: install, install again (the same version), or install that version over the one there. */
+/** What 安装 says for a package: install, 更新到 a newer one, install again (the same version), or install that (older) version. */
 function installLabel(a: PluginPackage): string {
   if (!a.installed) return '安装';
+  if (a.newer && a.version) return `更新到 ${a.version}`;
   if (a.version === a.installed) return '重新安装';
   return a.version ? `安装 ${a.version}` : '安装';
 }
 
 /** A package picked in the list: what it says about itself, where it is, and 安装 (with its progress) at the top. */
-function PackageDetail({ a, busy, running, install, onBack }: { a: PluginPackage; busy: boolean; running: Running | undefined; install(): void; onBack?: (() => void) | undefined }) {
+function PackageDetail({ a, busy, running, install, onShow, onBack }: { a: PluginPackage; busy: boolean; running: Running | undefined; install(): void; onShow?: (() => void) | undefined; onBack?: (() => void) | undefined }) {
+  // In 市场, one that is here as it is: said so, and the way to it under 已安装 (no 重新安装 offered there).
+  const here = a.installed !== undefined && !a.newer && a.version === a.installed && a.source !== undefined;
   return (
     <section className="card plugin-card plugin-detail" aria-label={pkgTitle(a)}>
       {onBack ? (
@@ -432,9 +443,18 @@ function PackageDetail({ a, busy, running, install, onBack }: { a: PluginPackage
         </div>
       </header>
       <Actions running={running}>
-        <button type="button" className="btn btn-small btn-primary" disabled={busy} onClick={install}>
-          {installLabel(a)}
-        </button>
+        {here && onShow ? (
+          <>
+            <span className="provider-default plugin-here">已安装</span>
+            <button type="button" className="btn btn-small" onClick={onShow}>
+              在已安装中查看
+            </button>
+          </>
+        ) : (
+          <button type="button" className="btn btn-small btn-primary" disabled={busy} onClick={install}>
+            {installLabel(a)}
+          </button>
+        )}
       </Actions>
       {a.description ? <p className="plugin-desc">{a.description}</p> : null}
       <dl className="detail-facts plugin-facts">
@@ -487,7 +507,7 @@ export interface PluginsProps {
   api: PluginsApi;
   mail?: MailSettingsProps;
   pages?: SettingsPages | undefined;
-  /** Which tab is open, when the caller keeps it (the sidebar's 插件市场 opens 市场); else the page keeps it. */
+  /** Which tab is open, when the caller keeps it (the settings remember it); else the page keeps it. */
   tab?: PluginsTab;
   onTab?: (tab: PluginsTab) => void;
   /** A plugin to show (搜索设置 went to it): picked under 已安装. */
@@ -678,21 +698,34 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
   const failedSources = sources.filter((s) => s.error).length;
   // 市场: what the sources offer; and a single package on the web just typed into 添加来源 (it cannot be a source).
   const single = !installedTab && added && state?.found?.location === added && !sources.some((s) => s.location === added) ? state.found.packages.map(known) : [];
-  const offered = installedTab ? [] : [...(state?.available ?? []).map(known), ...single];
-  type ListGroup = { key: string; title: string; plugins?: PluginView[]; packages?: PluginPackage[] };
+  const offered = installedTab ? [] : (state?.available ?? []).map(known);
+  type ListGroup = { key: string; title: ReactNode; plugins?: PluginView[]; packages?: PluginPackage[] };
   const allGroups: ListGroup[] = installedTab
     ? [
         { key: 'on', title: '已启用', plugins: shown.filter((p) => groupOf[p.name] ?? p.enabled) },
         { key: 'off', title: '已停用', plugins: shown.filter((p) => !(groupOf[p.name] ?? p.enabled)) },
       ]
-    : [{ key: 'new', title: '可安装', packages: offered }];
+    : [
+        // 市场: by source, the official ones first (as the sources are listed), each plugin with its state.
+        ...sources.map((src) => ({
+          key: `src:${src.location}`,
+          title: (
+            <>
+              {src.label ?? src.location}
+              {src.official ? <span className="provider-default source-official">官方</span> : null}
+            </>
+          ),
+          packages: offered.filter((a) => a.source === src.location),
+        })),
+        { key: 'found', title: '找到的插件', packages: single },
+      ];
   const groups = allGroups.filter((g) => (g.plugins ?? g.packages ?? []).length);
   const firstKey = groups[0]?.plugins?.[0]?.name ?? (groups[0]?.packages?.[0] ? `pkg:${groups[0].packages[0].key}` : null);
   const pickedKey = picked && (shown.some((p) => p.name === picked) || offered.some((a) => `pkg:${a.key}` === picked)) ? picked : firstKey;
   const current = pickedKey && !pickedKey.startsWith('pkg:') ? shown.find((p) => p.name === pickedKey) : undefined;
   const currentPkg = pickedKey?.startsWith('pkg:') ? offered.find((a) => `pkg:${a.key}` === pickedKey) : undefined;
   const count = (f: Filter) => plugins.filter((p) => matches(p, f)).length;
-  const nothing = state !== null && (installedTab ? plugins.length === 0 : offered.length === 0);
+  const nothing = state !== null && (installedTab ? plugins.length === 0 : offered.length === 0 && single.length === 0);
   const listView = !narrow || !showDetail;
   const detailView = !narrow || showDetail;
   const pick = (key: string) => {
@@ -872,13 +905,19 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
               <p className="settings-hint">没有插件来源</p>
             </Pane>
           )}
+          {/* No official source in this build: said, with where it is set, so an empty list does not look broken. */}
+          {sources.some((x) => x.official) ? null : (
+            <Pane className="sources-no-official">
+              <p className="settings-hint">没有配置官方来源。官方来源在打包时写进 deploy.json 的 pluginSources。</p>
+            </Pane>
+          )}
         </Group>
       ) : null}
 
       {resultLine}
 
       {nothing ? (
-        <p className="settings-hint plugins-empty">{installedTab ? '未安装插件' : '没有可安装的插件'}</p>
+        <p className="settings-hint plugins-empty">{installedTab ? '未安装插件' : '来源里没有插件'}</p>
       ) : (
         <div className="plugins-two">
           {listView ? (
@@ -917,6 +956,10 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
               busy={busy}
               running={running?.name === currentPkg.name ? running : undefined}
               install={() => void install(currentPkg.name, (job) => ({ op: 'installAvailable', key: currentPkg.key, job }))}
+              onShow={() => {
+                setPicked(currentPkg.name);
+                pickTab('installed');
+              }}
               onBack={narrow ? () => setShowDetail(false) : undefined}
             />
           ) : null}

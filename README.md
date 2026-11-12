@@ -62,15 +62,15 @@ Each release also carries the official plugins as zips, each with a `.sha256` fi
 `index.json` that lists them all.
 
 - **All at once (checksums checked):** open **Settings › Plugins › Market** (设置 › 插件 ›
-  市场; **Plugin market** (插件市场) in the left sidebar goes straight there), press
-  **Add source** (添加来源), paste the release's `index.json` address and press **Add** (添加):
+  市场), press **Add source** (添加来源), paste the release's `index.json` address and press
+  **Add** (添加):
 
   ```
   https://github.com/KanbaraKenji/SPiCa/releases/download/<tag>/index.json
   ```
 
-  The plugins in that release are listed below the sources; pick one and press **Install**
-  (安装). Spica checks each package's SHA-256 before installing. The exact address is also in
+  The plugins in that release are listed under the source, each marked installed (已安装),
+  update available (可更新) or not; pick one and press **Install** (安装). Spica checks each package's SHA-256 before installing. The exact address is also in
   the release notes. The source stays in the list, so **Check for updates** (检查更新) next to
   it looks for newer versions later.
 - **One zip:** download for example `outlook-<version>.zip`, then under **Add source** paste

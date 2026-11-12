@@ -114,7 +114,7 @@ jobs:
             echo
             echo "## Official plugins"
             echo
-            echo "In Spica, open Settings › Plugins › Market (设置 › 插件 › 市场; or Plugin market in the left sidebar), press Add source (添加来源) and paste this address:"
+            echo "In Spica, open Settings › Plugins › Market (设置 › 插件 › 市场), press Add source (添加来源) and paste this address:"
             echo
             echo "    https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/index.json"
             echo

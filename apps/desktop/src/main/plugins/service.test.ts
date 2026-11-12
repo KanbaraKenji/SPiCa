@@ -274,7 +274,11 @@ describe('市场 › 插件来源: added, listed, checked one by one, removed', 
     ]);
     const all = await svc.run({ op: 'checkSources' });
     expect(all.state.sources?.every((s) => s.readAt && s.count === 1)).toBe(true);
-    expect(all.state.available?.map((x) => x.name)).toEqual(['other']);
+    // 市场 lists every plugin of each source with its state: demo is here in an older version (可更新).
+    expect(all.state.available?.map((x) => [x.source, x.name, x.installed, x.newer])).toEqual([
+      [a, 'demo', '1.0.0', true],
+      [b, 'other', undefined, undefined],
+    ]);
   });
 
   it('a source not reached says so on its own line; checking only it is a failure', async () => {
