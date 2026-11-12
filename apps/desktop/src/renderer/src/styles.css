@@ -1919,13 +1919,6 @@ pre .hl-punctuation {
   gap: 10px;
 }
 
-/* A question card's ringed question mark: the confirmation card's set and colour (its ringed i), whatever
-   state the card is in (他: 「卡片前面那个？有点突兀」). */
-.card-head > .card-head-icon.spica-status-icon {
-  flex: none;
-  color: var(--spica-accent);
-}
-
 .card-title {
   font-weight: 500;
   min-width: 0;

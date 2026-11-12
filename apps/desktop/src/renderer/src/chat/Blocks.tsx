@@ -920,10 +920,10 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
   };
   return (
     <section className={closed ? 'card ask-card is-done' : 'card ask-card'} aria-label="提问">
-      {/* One row as on a confirmation card: the ringed question mark, the question, and once closed the answer
-          (or 已中断) at its right end; the options and the box below, in a part of their own. */}
+      {/* One row as on a confirmation card: the question (no mark before it: 他问「为什么要有问号」, it says
+          nothing the question and its options do not), and once closed the answer (or 已中断) at its right end;
+          the options and the box below, in a part of their own. */}
       <header className="card-head">
-        <SpicaStatusIcon name="question" size={16} className="card-head-icon" />
         <span className="card-title">{block.question}</span>
         <span className="confirm-spacer" />
         {closed ? (
