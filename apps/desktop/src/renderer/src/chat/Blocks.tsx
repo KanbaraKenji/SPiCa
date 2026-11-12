@@ -920,17 +920,21 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
   };
   return (
     <section className={closed ? 'card ask-card is-done' : 'card ask-card'} aria-label="提问">
+      {/* One row as on a confirmation card: the ringed question mark, the question, and once closed the answer
+          (or 已中断) at its right end; the options and the box below, in a part of their own. */}
       <header className="card-head">
-        <Icon name="question" size={16} className="card-head-icon" />
+        <SpicaStatusIcon name="question" size={16} className="card-head-icon" />
         <span className="card-title">{block.question}</span>
+        <span className="confirm-spacer" />
+        {closed ? (
+          <p className="card-answer">
+            <SpicaStatusIcon name={answered ? 'done' : 'stopped'} size={15} />
+            <span>{answered ? block.answer : CARD_STOPPED}</span>
+          </p>
+        ) : null}
       </header>
-      {closed ? (
-        <p className="card-answer">
-          <SpicaStatusIcon name={answered ? 'done' : 'stopped'} size={15} />
-          <span>{answered ? block.answer : CARD_STOPPED}</span>
-        </p>
-      ) : (
-        <>
+      {closed ? null : (
+        <div className="ask-body">
           {block.options.length ? (
             <div className="ask-options">
               {block.options.map((o) => (
@@ -959,7 +963,7 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
               回答
             </button>
           </form>
-        </>
+        </div>
       )}
     </section>
   );

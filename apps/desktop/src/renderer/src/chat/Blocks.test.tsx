@@ -42,6 +42,16 @@ describe('AskCard', () => {
     expect((screen.getByRole('textbox', { name: '回答' }) as HTMLInputElement).disabled).toBe(true);
   });
 
+  it('its mark is the ringed question mark of the confirmation card’s set; answered, the answer stands at the row’s end', () => {
+    const { rerender } = render(<AskCard block={block} onAnswer={vi.fn()} />);
+    const head = document.querySelector('.ask-card > .card-head')!;
+    expect(head.querySelector('svg.spica-status-icon')?.getAttribute('data-status')).toBe('question');
+    expect(document.querySelector('.ask-card > .ask-body .ask-options')).toBeTruthy();
+    rerender(<AskCard block={{ ...block, answer: '只写结论' }} onAnswer={vi.fn()} />);
+    expect(head.querySelector('.card-answer')?.textContent).toBe('只写结论');
+    expect(document.querySelector('.ask-body')).toBeNull();
+  });
+
   it('shows the answer instead of controls once answered', () => {
     render(<AskCard block={{ ...block, answer: '只写结论' }} onAnswer={vi.fn()} />);
     expect(screen.queryByRole('button', { name: '回答' })).toBeNull();

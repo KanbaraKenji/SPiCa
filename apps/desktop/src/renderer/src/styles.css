@@ -1919,9 +1919,10 @@ pre .hl-punctuation {
   gap: 10px;
 }
 
-.card-head-icon {
+/* A question card's ringed question mark: the confirmation card's set and colour (its ringed i), whatever
+   state the card is in (他: 「卡片前面那个？有点突兀」). */
+.card-head > .card-head-icon.spica-status-icon {
   flex: none;
-  margin-top: 3px;
   color: var(--spica-accent);
 }
 
@@ -1962,12 +1963,14 @@ pre .hl-punctuation {
   background: var(--spica-surface);
 }
 
-.card.is-done .card-head-icon {
-  color: var(--spica-muted);
+/* Under a question card's row: the options, then the box for an answer of one's own. */
+.ask-body {
+  border-top: 1px solid var(--spica-border);
+  padding: 10px 12px 12px;
 }
 
 .ask-options {
-  margin: 12px 0 0 26px;
+  margin: 0 0 10px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -1982,7 +1985,7 @@ pre .hl-punctuation {
 }
 
 .ask-free {
-  margin: 10px 0 0 26px;
+  margin: 0;
   display: flex;
   gap: 8px;
 }
@@ -5464,11 +5467,15 @@ button.ctx-row:hover {
 
 /* A confirmation: the card is what would run. A slim row (what it will do, 无法撤销, copy, 拒绝 / 允许), a thin line,
    then the command in full or the call's arguments, from edge to edge. */
+/* A question card and a confirmation card: one row (the ringed mark, the words, what is decided or the
+   buttons at the right end), then what belongs to it below. */
+.ask-card,
 .confirm-card {
   padding: 0;
   overflow: hidden;
 }
 
+.ask-card > .card-head,
 .confirm-card > .card-head {
   align-items: center;
   gap: 8px;
@@ -5476,6 +5483,7 @@ button.ctx-row:hover {
   padding: 6px 8px 6px 12px;
 }
 
+.ask-card > .card-head > svg,
 .confirm-card > .card-head > svg,
 .confirm-card > .card-head > .md-tool {
   flex: none;
@@ -5497,9 +5505,18 @@ button.ctx-row:hover {
   margin: 0;
 }
 
+.ask-card > .card-head .card-answer,
 .confirm-card > .card-head .card-answer {
   flex: none;
   margin: 0 4px 0 0;
+}
+
+/* An answer of one's own may be long: it gives way (and wraps) before the question does. */
+.ask-card > .card-head .card-answer {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 50%;
+  overflow-wrap: anywhere;
 }
 
 .confirm-card:not(.is-done).is-danger {
