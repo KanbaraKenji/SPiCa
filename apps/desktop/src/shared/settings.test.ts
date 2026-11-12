@@ -43,11 +43,18 @@ describe('opening animation', () => {
 });
 
 describe('background and sign-in switches', () => {
-  it('are off until turned on; only a real true counts', () => {
-    expect(sanitizeSettings({})).toMatchObject({ keepInBackground: false, openAtLogin: false, backgroundHintShown: false });
-    expect(sanitizeSettings({ keepInBackground: 'yes', openAtLogin: 1, backgroundHintShown: null })).toMatchObject({ keepInBackground: false, openAtLogin: false, backgroundHintShown: false });
-    expect(sanitizeSettings({ keepInBackground: true, openAtLogin: true, backgroundHintShown: true })).toMatchObject({ keepInBackground: true, openAtLogin: true, backgroundHintShown: true });
-    expect(applyPatch(DEFAULT_SETTINGS, { keepInBackground: true }).openAtLogin).toBe(false);
+  it('关闭窗口时 asks by default; 开机时启动 is off until turned on; only a real true counts', () => {
+    expect(sanitizeSettings({})).toMatchObject({ closeWindow: 'ask', openAtLogin: false, backgroundHintShown: false });
+    expect(sanitizeSettings({ closeWindow: 'hide', openAtLogin: 1, backgroundHintShown: null })).toMatchObject({ closeWindow: 'ask', openAtLogin: false, backgroundHintShown: false });
+    expect(sanitizeSettings({ closeWindow: 'quit', openAtLogin: true, backgroundHintShown: true })).toMatchObject({ closeWindow: 'quit', openAtLogin: true, backgroundHintShown: true });
+    expect(applyPatch(DEFAULT_SETTINGS, { closeWindow: 'tray' }).openAtLogin).toBe(false);
+  });
+
+  it('the earlier switch 关闭窗口后留在后台: on means minimize to the tray, off means ask; it is not kept', () => {
+    expect(sanitizeSettings({ keepInBackground: true }).closeWindow).toBe('tray');
+    expect(sanitizeSettings({ keepInBackground: false }).closeWindow).toBe('ask');
+    expect(sanitizeSettings({ keepInBackground: true, closeWindow: 'quit' }).closeWindow).toBe('quit');
+    expect('keepInBackground' in sanitizeSettings({ keepInBackground: true })).toBe(false);
   });
 });
 

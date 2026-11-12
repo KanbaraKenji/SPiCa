@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { backgroundHint, closeAction, onWindowClose, revealWindow, showAtStart, trayMenuItems, wireTray, type CloseState, type RevealTarget, type TrayLike } from './tray';
+import { closeAction, closeAnswer, closePrompt, onWindowClose, revealWindow, trayHint, trayMenuItems, wireTray, type CloseAnswer, type CloseState, type RevealTarget, type TrayLike } from './tray';
 
 describe('the notification-area icon', () => {
   it('right-click menu: open, then quit, with the app name', () => {
@@ -66,51 +66,127 @@ describe('bringing the window back', () => {
   });
 });
 
-const base: CloseState = { keepInBackground: true, quitting: false, sessionEnding: false, trayReady: true };
+const base: CloseState = { closeWindow: 'ask', quitting: false, sessionEnding: false, trayReady: true };
 
-describe('the close button of the window', () => {
-  it('with 关闭窗口后留在后台 off, closes as before (the app quits)', () => {
-    expect(closeAction({ ...base, keepInBackground: false })).toBe('close');
+describe('what the window’s close button does', () => {
+  it('关闭窗口时: 每次询问 asks, 最小化到托盘 hides, 退出 closes (the app quits as before)', () => {
+    expect(closeAction(base)).toBe('ask');
+    expect(closeAction({ ...base, closeWindow: 'tray' })).toBe('hide');
+    expect(closeAction({ ...base, closeWindow: 'quit' })).toBe('close');
   });
-  it('with it on, hides', () => {
-    expect(closeAction(base)).toBe('hide');
-  });
-  it('a real quit, Windows signing out, or no icon to come back by: closes', () => {
-    expect(closeAction({ ...base, quitting: true })).toBe('close');
-    expect(closeAction({ ...base, sessionEnding: true })).toBe('close');
-    expect(closeAction({ ...base, trayReady: false })).toBe('close');
-  });
-
-  it('hiding holds the close; the notification is said once', () => {
-    let shown = false;
-    const hide = vi.fn();
-    const showHint = vi.fn(() => {
-      shown = true;
-    });
-    let state = base;
-    const handler = onWindowClose({ state: () => state, hide, hintShown: () => shown, showHint });
-    const e1 = { preventDefault: vi.fn() };
-    handler(e1);
-    handler({ preventDefault: vi.fn() });
-    expect(e1.preventDefault).toHaveBeenCalled();
-    expect(hide).toHaveBeenCalledTimes(2);
-    expect(showHint).toHaveBeenCalledTimes(1);
-    state = { ...base, quitting: true };
-    const e3 = { preventDefault: vi.fn() };
-    handler(e3);
-    expect(e3.preventDefault).not.toHaveBeenCalled();
-    expect(hide).toHaveBeenCalledTimes(2);
+  it('a real quit, Windows signing out, or no tray icon to come back by: closes without asking', () => {
+    for (const closeWindow of ['ask', 'tray'] as const) {
+      expect(closeAction({ ...base, closeWindow, quitting: true })).toBe('close');
+      expect(closeAction({ ...base, closeWindow, sessionEnding: true })).toBe('close');
+      expect(closeAction({ ...base, closeWindow, trayReady: false })).toBe('close');
+    }
   });
 
-  it('the notification names the app and where it went', () => {
-    expect(backgroundHint('Spica')).toEqual({ title: 'Spica', content: 'Spica 仍在后台运行。点右下角的图标打开，右键图标可以退出。' });
+  it('the question: two choices and 取消, 记住我的选择 unticked, named after the app', () => {
+    const p = closePrompt('Acme');
+    expect(p.buttons).toEqual(['最小化到托盘', '退出 Acme', '取消']);
+    expect(p.checkboxLabel).toBe('记住我的选择');
+    expect(p.cancelId).toBe(2);
+    expect(p.detail).toContain('Acme');
+    expect(closeAnswer(0, false)).toEqual({ choice: 'tray', remember: false });
+    expect(closeAnswer(1, true)).toEqual({ choice: 'quit', remember: true });
+    expect(closeAnswer(2, true)).toEqual({ choice: null, remember: false });
   });
 });
 
-describe('the window at start', () => {
-  it('shows, except for a start by Windows at sign-in (unless there is no icon)', () => {
-    expect(showAtStart({ atLogin: false, trayReady: true })).toBe(true);
-    expect(showAtStart({ atLogin: true, trayReady: true })).toBe(false);
-    expect(showAtStart({ atLogin: true, trayReady: false })).toBe(true);
+function closer(state: () => CloseState) {
+  let shown = false;
+  let answer: (a: CloseAnswer) => void = () => undefined;
+  const o = {
+    state,
+    hide: vi.fn(),
+    quit: vi.fn(),
+    ask: vi.fn(() => new Promise<CloseAnswer>((r) => (answer = r))),
+    remember: vi.fn(),
+    hintShown: () => shown,
+    showHint: vi.fn(() => {
+      shown = true;
+    }),
+  };
+  const handler = onWindowClose(o);
+  const close = () => {
+    const e = { preventDefault: vi.fn() };
+    handler(e);
+    return e.preventDefault.mock.calls.length > 0;
+  };
+  return { o, close, answer: async (a: CloseAnswer) => {
+    answer(a);
+    await new Promise((r) => setTimeout(r, 0));
+  } };
+}
+
+describe('closing the window', () => {
+  it('每次询问 → 最小化到托盘, not remembered: hidden, the notification once, asked again next time', async () => {
+    const c = closer(() => base);
+    expect(c.close()).toBe(true);
+    await c.answer({ choice: 'tray', remember: false });
+    expect(c.o.hide).toHaveBeenCalledTimes(1);
+    expect(c.o.remember).not.toHaveBeenCalled();
+    expect(c.o.showHint).toHaveBeenCalledTimes(1);
+    c.close();
+    expect(c.o.ask).toHaveBeenCalledTimes(2);
+    await c.answer({ choice: 'tray', remember: false });
+    expect(c.o.showHint).toHaveBeenCalledTimes(1);
+  });
+
+  it('remembered choices become the setting', async () => {
+    const c = closer(() => base);
+    c.close();
+    await c.answer({ choice: 'tray', remember: true });
+    expect(c.o.remember).toHaveBeenCalledWith('tray');
+    c.close();
+    await c.answer({ choice: 'quit', remember: true });
+    expect(c.o.remember).toHaveBeenLastCalledWith('quit');
+    expect(c.o.quit).toHaveBeenCalledTimes(1);
+  });
+
+  it('取消 or closing the box: the window stays, nothing kept', async () => {
+    const c = closer(() => base);
+    c.close();
+    await c.answer({ choice: null, remember: false });
+    expect(c.o.hide).not.toHaveBeenCalled();
+    expect(c.o.quit).not.toHaveBeenCalled();
+    expect(c.o.remember).not.toHaveBeenCalled();
+  });
+
+  it('× again while the question is open does not ask twice', async () => {
+    const c = closer(() => base);
+    expect(c.close()).toBe(true);
+    expect(c.close()).toBe(true);
+    expect(c.o.ask).toHaveBeenCalledTimes(1);
+    await c.answer({ choice: null, remember: false });
+    c.close();
+    expect(c.o.ask).toHaveBeenCalledTimes(2);
+  });
+
+  it('quitting while the question is open: the answer does nothing more', async () => {
+    let state = base;
+    const c = closer(() => state);
+    c.close();
+    state = { ...base, quitting: true };
+    await c.answer({ choice: 'tray', remember: true });
+    expect(c.o.hide).not.toHaveBeenCalled();
+    expect(c.o.remember).not.toHaveBeenCalled();
+  });
+
+  it('最小化到托盘 set: hidden without asking; 退出 set or quitting: closes', () => {
+    let state: CloseState = { ...base, closeWindow: 'tray' };
+    const c = closer(() => state);
+    expect(c.close()).toBe(true);
+    expect(c.o.ask).not.toHaveBeenCalled();
+    expect(c.o.hide).toHaveBeenCalledTimes(1);
+    state = { ...base, closeWindow: 'quit' };
+    expect(c.close()).toBe(false);
+    state = { ...base, quitting: true };
+    expect(c.close()).toBe(false);
+  });
+
+  it('the notification names the app and the tray', () => {
+    expect(trayHint('Spica')).toEqual({ title: 'Spica', content: 'Spica 已最小化到托盘，仍在运行。点托盘图标打开，右键图标可以退出。' });
   });
 });

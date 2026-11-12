@@ -1,6 +1,7 @@
 // 设置 › 常规 › 开机时启动: Windows starts Spica when the user signs in, for this user only (the Run key under
 // HKCU, which needs no administrator rights; Electron's setLoginItemSettings writes it). The run started that way
-// carries LOGIN_ARG: it opens no window and plays no opening animation, it waits in the notification area.
+// carries LOGIN_ARG (the installer writes the same entry); it opens its window like any start (he chose
+// 「弹出窗口」, 2026-11-12). The argument only keeps such a start from pulling up a copy that already runs.
 //
 // Only an installed copy registers itself. A development run (npm run dev) would register electron.exe of the
 // repository, and a portable copy runs from a folder unpacked anew under %TEMP% each time (the exe the user

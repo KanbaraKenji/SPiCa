@@ -1,7 +1,7 @@
-// Settings > 常规: starting with Windows and staying in the background, the folder workflow files are read from, the network,
+// Settings > 常规: starting with Windows and what closing the window does, the folder workflow files are read from, the network,
 // exporting the usage log. Mail sorting is with the mail plugin (设置 › 插件).
 import { useCallback, useEffect, useState } from 'react';
-import { DEFAULT_NETWORK, type AutostartSupport, type NetworkPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
+import { DEFAULT_NETWORK, type AutostartSupport, type CloseWindow, type NetworkPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
 import type { LocalConnectInfo, NetworkState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
@@ -92,25 +92,37 @@ const AUTOSTART_UNAVAILABLE: Record<Exclude<AutostartSupport, 'ok'>, string> = {
   unsupported: '只有 Windows 安装版能用。',
 };
 
-/** 启动与后台: starting with Windows, and the window's × leaving the app in the notification area. */
+/** 关闭窗口时: the choices, in the order of the question the × asks (main/tray.ts). */
+const CLOSE_WINDOW: [CloseWindow, string][] = [
+  ['ask', '每次询问'],
+  ['tray', '最小化到托盘'],
+  ['quit', `退出 ${APP_NAME}`],
+];
+
+/** 启动与托盘: starting with Windows, and what the window's × does. */
 function Startup({ settings, onChange, autostart = 'unsupported' }: GeneralProps) {
   const usable = autostart === 'ok';
   return (
     <div className="settings-group">
-      <h3 className="settings-subheading">启动与后台</h3>
+      <h3 className="settings-subheading">启动与托盘</h3>
       <div className="setting-row">
         <div className="setting-text">
           <span className="setting-title">开机时启动</span>
-          <span className="settings-hint">{autostart === 'ok' ? '登录 Windows 后自动启动，不弹出窗口，留在右下角。' : AUTOSTART_UNAVAILABLE[autostart]}</span>
+          <span className="settings-hint">{autostart === 'ok' ? '登录 Windows 后自动启动。' : AUTOSTART_UNAVAILABLE[autostart]}</span>
         </div>
         <Switch on={usable && settings.openAtLogin} label="开机时启动" disabled={!usable} onChange={(v) => onChange({ openAtLogin: v })} />
       </div>
       <div className="setting-row">
         <div className="setting-text">
-          <span className="setting-title">关闭窗口后留在后台</span>
-          <span className="settings-hint">点窗口的 × 后，{APP_NAME} 留在右下角继续运行；要退出，右键右下角的图标。</span>
+          <span className="setting-title">关闭窗口时</span>
         </div>
-        <Switch on={settings.keepInBackground} label="关闭窗口后留在后台" onChange={(v) => onChange({ keepInBackground: v })} />
+        <div className="segmented" role="radiogroup" aria-label="关闭窗口时">
+          {CLOSE_WINDOW.map(([value, label]) => (
+            <button key={value} type="button" role="radio" aria-checked={settings.closeWindow === value} className={settings.closeWindow === value ? 'segment is-on' : 'segment'} onClick={() => onChange({ closeWindow: value })}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

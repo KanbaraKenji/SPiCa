@@ -20,9 +20,8 @@ async function start(el: HTMLElement): Promise<void> {
   const shell = new ShellStore(bridge, state);
   // The full opening animation plays once a day by default; later launches only flash the mark.
   const today = localDay();
-  // Loading again after the page was lost (main/page-recovery.ts): straight back to the conversation, no animation;
-  // nor for a start by Windows at sign-in (the window waits in the notification area).
-  const splash = state.automated || state.reopen || state.startedHidden ? 'none' : splashFor(state.settings, today);
+  // Loading again after the page was lost (main/page-recovery.ts): straight back to the conversation, no animation.
+  const splash = state.automated || state.reopen ? 'none' : splashFor(state.settings, today);
   if (splash === 'full') shell.update({ splashShownOn: today });
   const agent = new AgentStore(bridge);
   const ready = agent.init(state.reopen?.sessionId ?? undefined);

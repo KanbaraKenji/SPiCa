@@ -33,8 +33,8 @@ import { ProcessBackend, type BackendStatus } from './backend/process';
 import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { pageAlive, pageRecovery } from './page-recovery';
 import { lookAtPage, watchPage } from './page-watch';
-import { backgroundHint, onWindowClose, revealWindow, showAtStart, wireTray } from './tray';
-import { autostartSupport, followAutostart, loginItemOn, onSecondLaunch, startedAtLogin, type LoginItems } from './autostart';
+import { closeAnswer, closePrompt, onWindowClose, revealWindow, trayHint, wireTray } from './tray';
+import { autostartSupport, followAutostart, loginItemOn, onSecondLaunch, type LoginItems } from './autostart';
 import { knownContextWindow, matchWindowIn, toProviderConfig } from './backend/to-config';
 import type { WindowMatch } from '../shared/catalog';
 import { fromHostDraft, toHostConnection, toHostModelList } from './providers/host-models';
@@ -398,7 +398,7 @@ function taskbarIcoFile(dark: boolean): string | undefined {
   return file;
 }
 
-/** The notification-area icon: the same flower as the taskbar button (white on a dark taskbar, black on a light one). */
+/** The tray icon: the same flower as the taskbar button (white on a dark taskbar, black on a light one). */
 function trayImage(dark: boolean): Electron.NativeImage | string {
   try {
     const file = process.platform === 'win32' ? taskbarIcoFile(dark) : undefined;
@@ -410,7 +410,7 @@ function trayImage(dark: boolean): Electron.NativeImage | string {
 }
 
 /**
- * The icon in the notification area (main/tray.ts): click or 打开 brings the window up, 退出 quits through
+ * The tray icon (main/tray.ts): click or 打开 brings the window up, 退出 quits through
  * main/quit.ts. Not for screenshots or a SPICA_HIDDEN test window.
  */
 let tray: Tray | null = null;
@@ -425,12 +425,8 @@ function createTray(): void {
   }
 }
 
-/** A run Windows started at sign-in: the first window waits in the notification area (until opened or started again). */
-let startHidden = startedAtLogin(process.argv);
-
-/** From the notification-area icon or a second start: the window shown and in front. Not while quitting. */
+/** From the tray icon or a second start: the window shown and in front. Not while quitting. */
 function showMainWindow(): void {
-  startHidden = false;
   if (appQuitting) return;
   if (!mainWindow || mainWindow.isDestroyed()) {
     if (!app.isReady()) return;
@@ -580,13 +576,9 @@ function createMainWindow(): BrowserWindow {
     },
   });
 
-  // A start by Windows at sign-in shows no window: it waits in the notification area (main/tray.ts).
-  if (!automated && !hidden)
-    win.once('ready-to-show', () => {
-      if (showAtStart({ atLogin: startHidden, trayReady: tray !== null })) win.show();
-    });
-  // 关闭窗口后留在后台: the × only hides the window, unless the app is quitting, Windows is signing out or
-  // shutting down, or there is no notification-area icon to come back by (main/tray.ts).
+  if (!automated && !hidden) win.once('ready-to-show', () => win.show());
+  // 关闭窗口时 (main/tray.ts): the × asks 最小化到托盘 / 退出 (default), hides the window in the tray, or closes it;
+  // it just closes while the app quits, when Windows signs out or shuts down, or without a tray icon.
   let sessionEnding = false;
   win.on('query-session-end', () => {
     sessionEnding = true;
@@ -597,11 +589,18 @@ function createMainWindow(): BrowserWindow {
   win.on(
     'close',
     onWindowClose({
-      state: () => ({ keepInBackground: settings.get().keepInBackground, quitting: appQuitting, sessionEnding, trayReady: tray !== null }),
+      state: () => ({ closeWindow: settings.get().closeWindow, quitting: appQuitting, sessionEnding, trayReady: tray !== null }),
       hide: () => win.hide(),
+      quit: () => app.quit(),
+      // A Windows message box, like 界面出错: it shows even when the page cannot, and Esc / its × are 取消.
+      ask: () =>
+        dialog
+          .showMessageBox(win, { type: 'question', title: APP_NAME, noLink: true, checkboxChecked: false, ...closePrompt(APP_NAME) })
+          .then((r) => closeAnswer(r.response, r.checkboxChecked)),
+      remember: (closeWindow) => settings.update({ closeWindow }),
       hintShown: () => settings.get().backgroundHintShown,
       showHint: () => {
-        tray?.displayBalloon(backgroundHint(APP_NAME));
+        tray?.displayBalloon(trayHint(APP_NAME));
         settings.update({ backgroundHintShown: true });
       },
     }),
@@ -716,9 +715,7 @@ function shellState(): ShellState {
     reopen = null;
     activeSessionId = again.sessionId;
   }
-  // A start by Windows at sign-in whose window was not opened yet: no opening animation.
-  const quiet = startHidden && !mainWindow?.isVisible();
-  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd, autostart, ...(quiet ? { startedHidden: true } : {}), ...(again ? { reopen: again } : {}) };
+  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd, autostart, ...(again ? { reopen: again } : {}) };
 }
 
 ipcMain.handle(IpcChannel.AppInfo, (): AppInfo => ({ name: APP_NAME, version: app.getVersion() }));

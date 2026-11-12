@@ -48,8 +48,6 @@ export interface ShellState {
   reopen?: { sessionId: string | null };
   /** Whether 开机时启动 works in this copy (main/autostart.ts); absent from an older main process: shown disabled. */
   autostart?: AutostartSupport;
-  /** Windows started the app at sign-in and its window was not opened yet: no opening animation. */
-  startedHidden?: boolean;
 }
 
 /** A file shown in the right panel: a URL for the PDF viewer / images, or its text (capped). */
