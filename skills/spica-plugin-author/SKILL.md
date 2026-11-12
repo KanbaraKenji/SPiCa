@@ -62,14 +62,15 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 
 ## 带界面的插件
 
-`--with-ui` 生成 `views/main.json` 和 `ui/`（`index.html`、`app.js`、`style.css`、`icon.svg`）。页面放在哪由 `placement` 定，两种：
+`--with-ui` 生成 `views/main.json` 和 `ui/`（`index.html`、`app.js`、`style.css`、`icon.svg`）。页面放在哪由 `placement` 定，三种：
 
 | `placement` | 在哪 | 适合 |
 |---|---|---|
 | `sidebar`（默认） | 侧栏里一个入口，点开占主区域 | 完整的功能页：列表、表格、编辑 |
 | `panel` | 对话旁边的右栏，一个标签 | 边聊边用的小工具：速记、状态、快捷操作；按 320px 宽设计 |
+| `settings` | 设置 › 插件 › 这个插件的详情里，不进侧栏；一个插件最多一个 | 插件自己的设置：服务地址、令牌、保存到哪个文件夹（页面里可以 `window.spica.pickFolder()` 弹系统的选文件夹框） |
 
-生成面板：`scaffold.mjs <名字> --with-ui --placement panel`。一个插件可以有多个页面（`views/` 里每个 `.json` 一个），例子：`plugins/example-notes` 的 Notebook（sidebar）和 Quick note（panel）。
+生成面板：`scaffold.mjs <名字> --with-ui --placement panel`（设置页：`--placement settings`）。一个插件可以有多个页面（`views/` 里每个 `.json` 一个），例子：`plugins/example-notes` 的 Notebook（sidebar）、Quick note（panel）和设置（settings）。
 
 页面跑在 Spica 的沙箱里：
 

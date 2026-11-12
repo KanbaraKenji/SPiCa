@@ -406,7 +406,7 @@ export default (ctx) => ({
 
 ## 5b. 加一个页面（可选）
 
-插件可以带自己的界面，Spica 把它放进侧栏（`sidebar`）或对话旁边的面板（`panel`）。声明 `todo/views/board.json`：
+插件可以带自己的界面，Spica 把它放进侧栏（`sidebar`）、对话旁边的面板（`panel`），或 设置 › 插件 里这个插件的详情（`settings`，见下面「设置页」）。声明 `todo/views/board.json`：
 
 ```json
 {
@@ -432,12 +432,46 @@ if (r.isError) showError(r.content); else render(r.data ?? r.content);
 | `theme` | `{ mode: 'light' \| 'dark' }` |
 | `openFile(路径)` | 在 Spica 右栏预览文件（只限本插件目录里的，或这次会话里见过的） |
 | `notify(文字, { kind })` | 弹一条提示，`kind` 是 `info` 或 `error` |
+| `pickFolder({ title?, defaultPath? })` | 弹系统的选文件夹框 → 用户选的完整路径，取消时 `null` |
+| `pickFile({ title?, defaultPath?, extensions? })` | 弹系统的选文件框（选一个）→ 完整路径或 `null`；`extensions` 如 `[".md", ".txt"]`，不写 = 任何文件 |
 
 - 颜色用 Spica 注入的 CSS 变量：`--spica-bg`、`--spica-surface`、`--spica-fg`、`--spica-muted`、`--spica-border`、`--spica-accent`、`--spica-danger`、`--spica-font`、`--spica-radius`。换明暗时它们会自动变，不用自己判断。
 - 沙箱限制：页面里没有 Node，不能 `require`、不能读写文件；只能加载本插件目录里的文件（不能用 CDN，脚本和样式都放进插件）；只能调本插件的工具，写了 `permissions.tools` 就只能调列出的那几个。
 - `permissions.irreversible` 里的工具（services/ 里的也算），页面调用时 Spica 会先弹确认框；用户拒绝时 `isError` 为真，`content` 以 `[CONFIRM_REQUIRED]` 开头。
 - 页面能调常驻进程（`services/`）的工具：这类工具不给模型、只给自己的页面用，适合做界面专用的接口。
 - `sidebar` 是侧栏里一个入口、点开占主区域，适合完整的功能页；`panel` 是对话旁边右栏的一个标签，适合边聊边用的小工具（按 320px 宽设计）。一个插件可以有多个页面。
+
+### 设置页（`placement: "settings"`）
+
+插件要用户填的东西（服务地址、令牌、保存到哪个文件夹）放在自己的设置页里：显示在 设置 › 插件 › 这个插件的详情里，工具列表上面，`title` 是它上面的小标题；侧栏不多出入口，插件停用时不显示。
+
+```json
+{
+  "title": "设置",
+  "entry": "ui/settings.html",
+  "placement": "settings",
+  "permissions": { "tools": ["get_settings", "save_settings"] }
+}
+```
+
+- 一个插件最多一个设置页。规则和别的页面一样：沙箱、只能调本插件的工具、`permissions.tools` 生效。
+- 高度跟着内容走：页面多高，Spica 就把它显示多高，滚动的是详情，不是页面。别把 `html, body` 设成 `height: 100%`，也别做占满高度的布局。
+- 设置页里 `--spica-bg` 是详情卡片的底色，页面和卡片连成一片。
+- 读写设置的工具放进 `services/`（只给自己的页面用，模型看不到，「保存令牌」不会被 Agent 误调），存进 `SPICA_PLUGIN_DATA/config.json`；给模型用的 server 每次调用时读同一个文件。写法见 skill 的 `references/internal-services.md`。
+
+要用户选文件夹时：
+
+```js
+const dir = await window.spica.pickFolder({ title: '选择笔记文件夹', defaultPath: box.value || undefined });
+if (dir === null) return;   // 用户取消：什么都不改
+box.value = dir;            // 填回页面；用户点「保存」时经自己的工具存
+```
+
+- 只给路径，读写还是插件自己的工具（钩子、确认照常生效）。不用在清单里声明：页面能拿到本机的完整路径，只因为用户自己在系统对话框里选了它。
+- 对话框挂在 Spica 窗口上，标题前加插件名（「Notes (example) · 选择笔记文件夹」）。同一时间只开一个，对话框开着时再要一个，直接得到 `null`。
+- `defaultPath` 只认本机盘符开头的完整路径（`D:\…`），网络路径（`\\server\share`）和别的写法会被忽略，对话框从它自己的位置开始。
+- sidebar、panel 的页面也能用；预览页不能（它拿着用户的文件）。
+- 完整例子：`plugins/example-notes` 的 `views/settings.json`、`services/settings.json`、`server/settings.js`、`ui/settings.html`。
 
 ### 预览页（`placement: "preview"`）
 
@@ -469,7 +503,7 @@ window.spica.onEvent((e) => { if (e.type === 'preview.file') location.reload(); 
 - 15 秒内没调 `ready()`，或者页面出错、崩溃，Spica 也改用自带的预览。
 - 拿不到别的文件，写不回去，照样不能联网；库文件放进插件，别从网上加载。
 - 完整例子：`plugins/office-preview`（Word、Excel 原样预览，两个预览页，库在 `ui/vendor/`，来源和校验值在 `THIRD-PARTY.md`）。
-- 完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）、`views/quick-note.json`（panel），页面在 `ui/`。
+- 完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）、`views/quick-note.json`（panel）、`views/settings.json`（settings），页面在 `ui/`。
 
 ## 6. 模拟模式
 

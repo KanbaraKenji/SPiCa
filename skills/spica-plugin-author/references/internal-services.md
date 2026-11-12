@@ -13,11 +13,11 @@
 | 服务地址、账号、令牌、个人偏好 | `SPICA_PLUGIN_DATA` 里的 `config.json`（每个用户本机一份，升级插件不会丢，也不进插件包） | 用户在插件**自己的设置页**里填 |
 | 不敏感、所有人都一样的固定值 | `mcp/<id>.json` 的 `env`（会进插件包） | 你，写死在包里 |
 
-Spica 没有统一的「设置 › 插件」表单。插件需要设置时，就在它自己的页面里放一个设置区（或单独一个页面），页面通过 `services/` 里的工具读写 `config.json`：
+Spica 不替插件生成设置表单，插件自己写设置页：一个 `placement` 为 `settings` 的页面，显示在 设置 › 插件 › 这个插件的详情里（侧栏不多出入口），页面通过 `services/` 里的工具读写 `config.json`。要用户选文件夹时，页面里调 `window.spica.pickFolder()`，见 `ui.md`「设置页」：
 
 ```
 services/settings.json   { "runtime": "node", "entry": "server/settings.js" }
-views/settings.json      { "title": "Settings", "entry": "ui/settings.html", "placement": "sidebar",
+views/settings.json      { "title": "设置", "entry": "ui/settings.html", "placement": "settings",
                            "permissions": { "tools": ["get_settings", "save_settings"] } }
 ```
 
@@ -49,7 +49,7 @@ export async function saveSettings({ baseUrl, token }) {
 
 给模型用的 server（`mcp/`）每次调工具时读同一个 `config.json`。还没填就返回 `[NOT_CONFIGURED] 还没填服务地址，打开插件的设置页填一下。`，不要崩溃。日志和错误文字里不写令牌。
 
-页面的写法（`window.spica.callTool`、主题变量）见 `references/ui.md`；能跑的页面例子在 `plugins/example-notes`（Notebook 和 Quick note）。
+页面的写法（`window.spica.callTool`、主题变量）见 `references/ui.md`；能跑的页面例子在 `plugins/example-notes`（Notebook、Quick note 和设置页：`views/settings.json`、`services/settings.json`、`server/settings.js`、`ui/settings.*`）。
 
 ## 二、证书和代理：Spica 代管，你不用写
 

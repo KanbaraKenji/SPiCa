@@ -1,6 +1,6 @@
 # 带界面的插件
 
-详见 Spica 仓库 `docs/plugins/authoring.md` 第 5b 节、`docs/design/plugins.md` 第 2 节「视图」。完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）和 `views/quick-note.json`（panel），页面在 `ui/`；脚手架 `--with-ui [--placement panel]` 生成的模板。
+详见 Spica 仓库 `docs/plugins/authoring.md` 第 5b 节、`docs/design/plugins.md` 第 2 节「视图」。完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）、`views/quick-note.json`（panel）和 `views/settings.json`（settings），页面在 `ui/`；脚手架 `--with-ui [--placement panel|settings]` 生成的模板。
 
 ## 声明 `views/<id>.json`
 
@@ -8,7 +8,7 @@
 |---|---|---|
 | `title` | 是 | 侧栏 / 面板上的名字 |
 | `entry` | 是 | 插件目录里的 `.html` 相对路径 |
-| `placement` | 否 | `sidebar`（默认）：侧栏里一个入口，点开占主区域，适合完整的功能页；`panel`：对话旁边右栏的一个标签，适合边聊边用的小工具，按 320px 宽设计；`preview`：给某几种文件当预览，见下面「预览页」 |
+| `placement` | 否 | `sidebar`（默认）：侧栏里一个入口，点开占主区域，适合完整的功能页；`panel`：对话旁边右栏的一个标签，适合边聊边用的小工具，按 320px 宽设计；`preview`：给某几种文件当预览，见下面「预览页」；`settings`：插件自己的设置页，见下面「设置页」 |
 | `icon` | 否 | 插件目录里的 `.svg` |
 | `permissions.tools` | 否 | 页面能调的工具（原名）；不写 = 本插件全部工具（预览页不写 = 一个都不能调） |
 | `preview` | placement 为 preview 时必填 | `{ "extensions": [".docx", ".docm"], "max_mb": 30 }`：能预览的扩展名（小写、带点；不能有 .pdf 和图片，这些 Spica 自己预览）；能处理的最大文件，1 到 100，不写是 20 |
@@ -24,6 +24,8 @@
 | `theme` | `{ mode: 'light' \| 'dark' }` |
 | `openFile(路径)` | 在 Spica 右栏预览文件（只限本插件目录里的，或这次会话里见过的） |
 | `notify(文字, { kind })` | 弹一条提示，`kind`：`info` / `error` |
+| `pickFolder({ title?, defaultPath? })` | 弹系统的选文件夹框 → `Promise<完整路径 \| null>`，`null` 是用户取消了 |
+| `pickFile({ title?, defaultPath?, extensions? })` | 弹系统的选文件框（选一个）→ `Promise<完整路径 \| null>`；`extensions` 如 `[".md", ".txt"]`，不写 = 任何文件 |
 
 页面在 Spica 外面打开时没有 `window.spica`，模板会显示一句「要在 Spica 里打开」。
 
@@ -46,6 +48,32 @@
 ## 只给页面用的工具
 
 放进 `services/<id>.json` 的 server：工具不给模型，只给自己的页面调。适合做界面专用的查询、统计。
+
+## 设置页（placement: settings）
+
+插件要用户填的东西（服务地址、令牌、导出到哪个文件夹）放在这里：页面显示在 设置 › 插件 › 这个插件的详情里，工具列表上面，标题是 `title`；侧栏不多出入口。插件停用时不显示。
+
+```json
+{ "title": "设置", "entry": "ui/settings.html", "placement": "settings", "permissions": { "tools": ["get_settings", "save_settings"] } }
+```
+
+- 一个插件最多一个设置页。规则和别的页面一样：沙箱、只能调本插件的工具、`permissions.tools` 生效。
+- 高度跟着内容走：页面多高，Spica 就把它显示多高，滚动的是详情，不是页面。所以别把 `html, body` 设成 `height: 100%`，也别做占满高度的布局。
+- 背景：设置页里 `--spica-bg` 是详情卡片的底色，页面和卡片连成一片。
+- 读写设置的工具放进 `services/`（只给页面用，模型看不到），存进 `SPICA_PLUGIN_DATA/config.json`，见 `internal-services.md`。
+
+选文件夹：
+
+```js
+const dir = await window.spica.pickFolder({ title: '选择导出文件夹', defaultPath: box.value || undefined });
+if (dir === null) return;          // 用户取消：什么都不改
+box.value = dir;                   // 填回页面，用户点「保存」时经自己的工具存
+```
+
+- 只给路径。读写还是插件自己的工具（钩子和确认照常生效）。
+- 对话框挂在 Spica 窗口上，标题前面加插件名（「Notes (example) · 选择导出文件夹」）；同一时间只开一个，第二个请求直接得到 `null`。
+- `defaultPath` 只认本机盘符开头的完整路径（`D:\…`），网络路径（`\\server\share`）会被忽略。
+- 不用在清单里声明；预览页不能用（它拿着用户的文件）。sidebar、panel 的页面也能用。
 
 ## 预览页（placement: preview）
 
