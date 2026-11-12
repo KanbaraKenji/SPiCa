@@ -12,6 +12,7 @@
 // Pure logic with the Electron parts passed in; the glue is in main/index.ts.
 import type { CloseWindow } from '../shared/settings';
 import { CLOSE_RUNNING } from '../shared/close-words';
+import type { DialogAnswer, DialogSpec } from '../shared/app-dialog';
 
 export type TrayAction = 'open' | 'quit';
 
@@ -104,9 +105,8 @@ export function runningTracker(): { seen(e: { type: string; sessionId?: string; 
 }
 
 /**
- * The fallback question: a Windows message box, seen only when the page cannot show its own dialog (its process
- * is gone, or it has not loaded yet). There 取消 is a button (the box has no other way to say no); Esc and its ×
- * are 取消 too.
+ * The last fallback: a Windows message box, seen only when neither the page nor the small dialog window can ask.
+ * There 取消 is a button (the box has no other way to say no); Esc and its × are 取消 too.
  */
 export function closePrompt(appName: string, running = false): { message: string; detail?: string; buttons: string[]; defaultId: number; cancelId: number; checkboxLabel: string } {
   return {
@@ -120,6 +120,32 @@ export function closePrompt(appName: string, running = false): { message: string
 }
 
 export type CloseAnswer = { choice: 'tray' | 'quit' | null; remember: boolean };
+
+/**
+ * The question in the small dialog window (main/app-dialog-window.ts), when the page cannot show its own: the same
+ * as the page's (ui/CloseDialog.tsx): the title, the line only while a task runs, 记住我的选择, then
+ * [退出] [最小化到托盘] (the main one). Its answer: closeFromDialog.
+ */
+export function closeDialogSpec(appName: string, running: boolean, look: Pick<DialogSpec, 'scheme' | 'tokens'>): DialogSpec {
+  return {
+    title: CLOSE_QUESTION,
+    detail: running ? [CLOSE_RUNNING] : [],
+    buttons: [{ label: `退出 ${appName}` }, { label: '最小化到托盘', primary: true }],
+    check: '记住我的选择',
+    ...look,
+  };
+}
+
+/** closeDialogSpec's answer: button 0 退出, 1 最小化到托盘; closed without a button is no choice. */
+export function closeFromDialog(a: DialogAnswer): CloseAnswer {
+  const choice = a.button === 1 ? 'tray' : a.button === 0 ? 'quit' : null;
+  return { choice, remember: choice !== null && a.checked };
+}
+
+/** The message box's answer (closePrompt) in the dialog window's terms, so both go through closeFromDialog. */
+export function dialogFromBox(response: number, checked: boolean): DialogAnswer {
+  return { button: response === 0 ? 1 : response === 1 ? 0 : null, checked };
+}
 
 /** The message box's answer: which button (取消 and closing the box are no choice), and the box ticked. */
 export function closeAnswer(response: number, checkboxChecked: boolean): CloseAnswer {

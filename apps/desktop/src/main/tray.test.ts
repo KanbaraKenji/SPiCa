@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CLOSE_QUESTION, runningTracker, closeAction, closeAnswer, closeAsker, closePrompt, onWindowClose, parseCloseAnswer, revealWindow, trayHint, trayMenuItems, wireTray, type CloseAnswer, type CloseState, type RevealTarget, type TrayLike } from './tray';
+import { CLOSE_QUESTION, closeDialogSpec, closeFromDialog, dialogFromBox, runningTracker, closeAction, closeAnswer, closeAsker, closePrompt, onWindowClose, parseCloseAnswer, revealWindow, trayHint, trayMenuItems, wireTray, type CloseAnswer, type CloseState, type RevealTarget, type TrayLike } from './tray';
 import { CLOSE_RUNNING } from '../shared/close-words';
 
 describe('the notification-area icon', () => {
@@ -94,6 +94,19 @@ describe('what the window’s close button does', () => {
     expect(closeAnswer(0, false)).toEqual({ choice: 'tray', remember: false });
     expect(closeAnswer(1, true)).toEqual({ choice: 'quit', remember: true });
     expect(closeAnswer(2, true)).toEqual({ choice: null, remember: false });
+  });
+
+  it('when the page cannot ask: the small window asks the same (the line only while a task runs); the message box answers the same way', () => {
+    const look = { scheme: 'dark' as const, tokens: {} };
+    expect(closeDialogSpec('Acme', false, look)).toEqual({ title: CLOSE_QUESTION, detail: [], buttons: [{ label: '退出 Acme' }, { label: '最小化到托盘', primary: true }], check: '记住我的选择', ...look });
+    expect(closeDialogSpec('Acme', true, look).detail).toEqual([CLOSE_RUNNING]);
+    expect(closeFromDialog({ button: 1, checked: true })).toEqual({ choice: 'tray', remember: true });
+    expect(closeFromDialog({ button: 0, checked: false })).toEqual({ choice: 'quit', remember: false });
+    expect(closeFromDialog({ button: null, checked: true })).toEqual({ choice: null, remember: false });
+    // the box: 最小化到托盘, 退出, 取消
+    expect(closeFromDialog(dialogFromBox(0, true))).toEqual({ choice: 'tray', remember: true });
+    expect(closeFromDialog(dialogFromBox(1, false))).toEqual({ choice: 'quit', remember: false });
+    expect(closeFromDialog(dialogFromBox(2, true))).toEqual({ choice: null, remember: false });
   });
 
   it('knows whether a conversation is running from the core\'s status events', () => {

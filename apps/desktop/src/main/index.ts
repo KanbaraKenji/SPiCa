@@ -35,7 +35,7 @@ import { pageAlive, pageRecovery } from './page-recovery';
 import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor } from './app-dialog';
 import { openDialogWindow } from './app-dialog-window';
 import { lookAtPage, watchPage } from './page-watch';
-import { closeAnswer, closeAsker, closePrompt, onWindowClose, revealWindow, runningTracker, trayHint, wireTray } from './tray';
+import { closeAsker, closeDialogSpec, closeFromDialog, closePrompt, dialogFromBox, onWindowClose, revealWindow, runningTracker, trayHint, wireTray } from './tray';
 import { autostartSupport, followAutostart, loginItemOn, onSecondLaunch, startsOnNewChat, type LoginItems } from './autostart';
 import { knownContextWindow, matchWindowIn, toProviderConfig } from './backend/to-config';
 import type { WindowMatch } from '../shared/catalog';
@@ -603,16 +603,25 @@ function createMainWindow(): BrowserWindow {
   win.on('session-end', () => {
     sessionEnding = true;
   });
-  // The question is the page's own dialog (closeAsker; the window first comes to the front). Only when the page
-  // cannot show it (its process is gone, or it has not loaded yet) is it asked with a Windows message box.
+  // The question is the page's own dialog (closeAsker; the window first comes to the front). When the page cannot
+  // show it (its process is gone, or it has not loaded yet), the small dialog window asks the same; only when that
+  // fails too, a Windows message box.
   const asker = closeAsker({
     pageReady: () => closeAskReady && pageAlive(win) && !win.webContents.isLoading(),
     reveal: () => revealWindow(win),
     send: () => sendToWindow(DesktopChannel.CloseAsk, { running: running.any() }),
-    fallback: () =>
-      dialog
-        .showMessageBox(win, { type: 'question', title: APP_NAME, noLink: true, checkboxChecked: false, ...closePrompt(APP_NAME, running.any()) })
-        .then((r) => closeAnswer(r.response, r.checkboxChecked)),
+    fallback: () => {
+      const s = settings.get();
+      const busy = running.any();
+      return askDialog({
+        open: () => openDialogWindow(win, closeDialogSpec(APP_NAME, busy, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins))), s.zoom),
+        fallback: () =>
+          dialog
+            .showMessageBox(win, { type: 'question', title: APP_NAME, noLink: true, checkboxChecked: false, ...closePrompt(APP_NAME, busy) })
+            .then((r) => dialogFromBox(r.response, r.checkboxChecked)),
+        warn: (line) => console.warn(line),
+      }).then(closeFromDialog);
+    },
   });
   closeAsk = asker;
   // A page that goes or loads again stops listening; a question it had open is asked over with the message box.
