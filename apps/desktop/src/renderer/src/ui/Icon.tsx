@@ -54,6 +54,12 @@ const PATHS = {
   // A link to a web page (before link text in answers).
   link: 'M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2.3-2.3a2.6 2.6 0 0 0-3.7-3.7l-.9.9 M9.2 6.8a2.6 2.6 0 0 0-3.7 0L3.2 9.1a2.6 2.6 0 0 0 3.7 3.7l.9-.9',
   copy: 'M5.5 5.5h7.5v8H5.5z M3 10.5V2.5h7.5',
+  // 搜索设置: a lens.
+  search: 'M7 2.8a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4z M10.1 10.1l3.4 3.4',
+  // 设置 › 账号: a head and shoulders.
+  account: 'M8 2.6a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2z M3 13.6c.6-2.4 2.6-3.8 5-3.8s4.4 1.4 5 3.8',
+  // 设置 › 外观: a painter's palette.
+  palette: 'M8 2.2a5.8 5.8 0 0 0 0 11.6c.9 0 1.3-.6 1.1-1.3-.3-1 .3-1.8 1.3-1.8h1.3a2.2 2.2 0 0 0 2.1-2.4A6 6 0 0 0 8 2.2z M5.2 7.4v.1 M7.4 5v.1 M10.4 5.8v.1',
 } as const;
 
 export type IconName = keyof typeof PATHS;

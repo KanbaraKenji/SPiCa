@@ -2906,21 +2906,25 @@ button.ctx-row:hover {
 
 /* ---------- Settings ---------- */
 
-/* Settings: a panel floating in the middle of the window (settings/SettingsView.tsx), not a page: at most
-   1000 x 700 (about Codex's proportions), and a tenth of the window's height clear above and below it (never
-   less than 24). The sections in a column on the left, the section shown on the right scrolls by itself. The
-   scrim is the dialogs' own, so the caption buttons dim with it (ui/dim.ts). */
+/* Settings: a panel floating in the middle of the window (settings/SettingsView.tsx), laid out as Claude's
+   settings (his picture, 2026-11-12): a title bar across the top (设置, ×, a line under it); under it the
+   sections' column on the deeper of the window's two greys and the content on the lighter one
+   (--spica-settings-nav / --spica-settings-pane, skin.ts: in the dark skin #191919 / #1f1f1f, his two values).
+   At most 1000 x 700, a tenth of the window's height clear above and below (never under 24). The scrim is the
+   dialogs' own, so the caption buttons dim with it (ui/dim.ts). */
 .settings-scrim {
   padding: max(24px, 10vh) max(24px, 5vw);
 }
 
 .settings-dialog {
+  --settings-pad: 28px;
   position: relative;
   display: flex;
+  flex-direction: column;
   width: min(1000px, 100%);
   height: min(700px, 100%);
   border-radius: var(--radius-popup);
-  background: var(--spica-bg);
+  background: var(--spica-settings-pane);
   box-shadow: var(--spica-shadow);
   overflow: hidden;
 }
@@ -2929,33 +2933,70 @@ button.ctx-row:hover {
   outline: none;
 }
 
+.settings-titlebar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 10px 20px;
+  border-bottom: 1px solid var(--spica-divider);
+}
+
+.settings-title {
+  margin: 0;
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
+  font-weight: 600;
+}
+
+.settings-close {
+  flex: none;
+}
+
+.settings-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
 .settings-nav {
   flex: none;
-  width: 184px;
+  width: 200px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 20px 10px;
+  padding: 12px 10px;
   border-right: 1px solid var(--spica-divider);
-  background: var(--spica-chrome);
+  background: var(--spica-settings-nav);
   overflow-y: auto;
 }
 
-/* 搜索设置 at the top of the column (Codex has it there), then the sections in groups under small grey names. */
+/* 搜索设置: a lens in the box, as Claude's. */
 .settings-search {
   flex: none;
+  position: relative;
   margin-bottom: 10px;
+}
+
+.settings-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--spica-faint);
+  pointer-events: none;
 }
 
 .settings-search .input {
   width: 100%;
-  height: 30px;
+  height: 32px;
+  padding-left: 30px;
 }
 
+/* The groups split by a short line, no names. */
 .settings-nav-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
 }
 
 .settings-nav-group {
@@ -2964,11 +3005,10 @@ button.ctx-row:hover {
   gap: 2px;
 }
 
-.settings-nav-label {
-  padding: 0 10px 4px;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-  color: var(--spica-faint);
+.settings-nav-group + .settings-nav-group {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--spica-divider);
 }
 
 .settings-nav-item {
@@ -2976,22 +3016,30 @@ button.ctx-row:hover {
   flex: none;
   display: flex;
   align-items: center;
+  gap: 10px;
   padding: 0 10px;
   border-radius: var(--radius-m);
-  color: var(--spica-muted);
+  color: var(--spica-ink);
   text-align: left;
   white-space: nowrap;
 }
 
+.settings-nav-icon {
+  flex: none;
+  color: var(--spica-muted);
+}
+
 .settings-nav-item:hover {
   background: var(--spica-hover);
-  color: var(--spica-ink);
 }
 
 .settings-nav-item.is-on {
   background: var(--spica-active);
-  color: var(--spica-ink);
   font-weight: 600;
+}
+
+.settings-nav-item.is-on .settings-nav-icon {
+  color: var(--spica-ink);
 }
 
 .settings-main {
@@ -3002,26 +3050,12 @@ button.ctx-row:hover {
   flex-direction: column;
 }
 
-/* The pane's top: the section's name, in line with the content's left edge, and the close button. */
-.settings-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 18px 14px 6px var(--settings-pad);
-}
-
+/* The section's name: a short bold line at the top of its content. */
 .settings-page-title {
-  margin: 0;
-  min-width: 0;
-  font-size: var(--fs-title);
-  line-height: var(--lh-title);
+  margin: 0 0 14px;
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
   font-weight: 600;
-}
-
-.settings-close {
-  flex: none;
 }
 
 /* Too small for the dialog with room around it: it fills the window under the title bar (the caption
@@ -3040,6 +3074,10 @@ button.ctx-row:hover {
 
 @media (max-width: 720px) {
   .settings-dialog {
+    --settings-pad: 16px;
+  }
+
+  .settings-body {
     flex-direction: column;
   }
 
@@ -3065,12 +3103,19 @@ button.ctx-row:hover {
     gap: 2px;
   }
 
-  .settings-nav-label {
-    display: none;
+  .settings-nav-group + .settings-nav-group {
+    margin: 0 0 0 4px;
+    padding: 0 0 0 4px;
+    border-top: 0;
+    border-left: 1px solid var(--spica-divider);
   }
 
   .settings-nav-item {
-    padding: 0 12px;
+    padding: 0 10px;
+  }
+
+  .settings-nav-icon {
+    display: none;
   }
 
   .settings-main {
@@ -3083,24 +3128,20 @@ button.ctx-row:hover {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-gutter: stable;
 }
 
-/* The content sits right in the pane: from the same left edge as the section's name, no page margins, the
-   groups as wide as the pane up to a limit (then they stay at the left, not centred). */
-.settings-dialog {
-  --settings-pad: 36px;
-}
-
+/* The content sits right in the pane, from its top left corner (no page margins, not centred), the groups as
+   wide as the pane up to a limit. */
 .settings-column {
   max-width: calc(720px + 2 * var(--settings-pad));
-  padding: 10px var(--settings-pad) 36px;
+  padding: 20px var(--settings-pad) 32px;
 }
 
-@media (max-width: 720px) {
-  .settings-dialog {
-    --settings-pad: 16px;
-  }
+/* In the dialog the groups' boxes are light on the pane: no fill of their own, a thin line round them (he
+   picked 「一组一个框」; the flat rows of Claude's are a choice on the decision page). */
+.settings-dialog .group-box {
+  background: transparent;
+  border-color: var(--spica-divider);
 }
 
 .settings-section + .settings-section {

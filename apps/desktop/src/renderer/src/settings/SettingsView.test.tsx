@@ -49,11 +49,13 @@ describe('设置 as a dialog over the window', () => {
     expect(dialog.getAttribute('aria-modal')).toBe('true');
     const nav = within(dialog).getByRole('tablist', { name: '分区' });
     expect(nav.getAttribute('aria-orientation')).toBe('vertical');
-    // In groups, the ones used most first; no memory kept by the core: no 记忆.
-    expect([...nav.querySelectorAll('.settings-nav-label')].map((l) => l.textContent)).toEqual(['应用', '扩展', '个人']);
-    expect(within(nav).getAllByRole('tab').map((t) => t.textContent)).toEqual(['常规', '模型', '插件', '账号', '外观', '关于']);
-    // The section's name on top of the pane.
-    expect(within(dialog).getByRole('heading', { level: 2 }).textContent).toBe('关于');
+    // In groups split by a line, no group names (as Claude's); no memory kept by the core: no 记忆.
+    expect([...nav.querySelectorAll('.settings-nav-group')].map((g) => [...g.querySelectorAll('[role=tab]')].map((t) => t.textContent))).toEqual([['账号'], ['常规', '外观'], ['模型', '插件'], ['关于']]);
+    // Each with its mark before the name.
+    expect(within(nav).getAllByRole('tab').every((t) => t.querySelector('svg.settings-nav-icon'))).toBe(true);
+    // The title bar says 设置; the section's name heads its content.
+    expect(within(dialog).getByRole('heading', { level: 2 }).textContent).toBe('设置');
+    expect(within(dialog).getByRole('heading', { level: 3, name: '关于' })).toBeTruthy();
     expect(within(nav).getByRole('tab', { name: '关于' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.queryByRole('button', { name: '返回对话' })).toBeNull();
     fireEvent.click(within(nav).getByRole('tab', { name: '外观' }));
@@ -83,7 +85,7 @@ describe('搜索设置', () => {
     const p = show({ tab: 'about' });
     const box = screen.getByLabelText('搜索设置');
     fireEvent.change(box, { target: { value: '更新源' } });
-    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('搜索结果');
+    expect(screen.getByRole('heading', { level: 3, name: '搜索结果' })).toBeTruthy();
     const about = screen.getByRole('region', { name: '关于' });
     const hit = within(about).getByRole('button', { name: /更新源/ });
     expect(hit.textContent).toBe('更新与公告 › 更新源');

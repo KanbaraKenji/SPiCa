@@ -12,7 +12,7 @@ import { Plugins, type PluginsApi, type PluginsTab, type SettingsPages } from '.
 import { About } from './About';
 import { Account } from './Account';
 import { General, type GeneralProps, type WorkflowsApi } from './General';
-import { Icon } from '../ui/Icon';
+import { Icon, type IconName } from '../ui/Icon';
 import { useModal } from '../ui/useModal';
 import { Memory, type MemoryProps } from './Memory';
 import { matches, SettingsSearchContext } from './Group';
@@ -31,15 +31,22 @@ const TABS: { id: SettingsTab; label: string }[] = [
 ];
 
 /**
- * The sections in the left column, in groups (as Codex groups its own): the ones used most first. 应用: how
- * Spica works and the models it uses; 扩展: plugins; 个人: you and how it looks to you; then 关于 on its own.
+ * The sections in the left column, in groups split by a short line, no group names (as Claude's settings, the
+ * picture he sent 2026-11-12): you (账号); how Spica works for you (常规, 外观, 记忆); what it works with (模型,
+ * 插件); then 关于 on its own.
  */
-const NAV_GROUPS: { label: string; items: SettingsTab[] }[] = [
-  { label: '应用', items: ['general', 'models'] },
-  { label: '扩展', items: ['plugins'] },
-  { label: '个人', items: ['account', 'appearance', 'memory'] },
-  { label: '', items: ['about'] },
-];
+const NAV_GROUPS: SettingsTab[][] = [['account'], ['general', 'appearance', 'memory'], ['models', 'plugins'], ['about']];
+
+/** Each section's mark before its name (Claude's column has one). */
+const NAV_ICON: Record<SettingsTab, IconName> = {
+  account: 'account',
+  general: 'settings',
+  appearance: 'palette',
+  memory: 'thinking',
+  models: 'model',
+  plugins: 'plugin',
+  about: 'info',
+};
 
 const labelOf = (id: SettingsTab) => TABS.find((t) => t.id === id)?.label ?? '';
 
@@ -159,17 +166,27 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
 
   return (
     <div className="scrim settings-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="settings-dialog" role="dialog" aria-modal="true" aria-label="设置" tabIndex={-1} ref={box}>
-        <nav className="settings-nav" aria-label="设置">
+      <div className="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabIndex={-1} ref={box}>
+        {/* A title bar across the dialog: 设置 and the close button, a line under it. */}
+        <header className="settings-titlebar">
+          <h2 className="settings-title" id="settings-title">
+            设置
+          </h2>
+          <button type="button" className="icon-btn settings-close" aria-label="关闭设置" title="关闭（Esc）" onClick={onClose}>
+            <Icon name="close" size={16} />
+          </button>
+        </header>
+        <div className="settings-body">
+        <nav className="settings-nav" aria-label="分区">
           <div className="settings-search">
+            <Icon name="search" size={14} className="settings-search-icon" />
             <input className="input" type="search" value={query} placeholder="搜索设置" aria-label="搜索设置" spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
           </div>
           <div className="settings-nav-list" role="tablist" aria-label="分区" aria-orientation="vertical">
-            {NAV_GROUPS.map((g) => {
-              const items = g.items.filter((id) => tabs.some((t) => t.id === id));
+            {NAV_GROUPS.map((g, i) => {
+              const items = g.filter((id) => tabs.some((t) => t.id === id));
               return items.length ? (
-                <div key={g.label || 'end'} className="settings-nav-group" role="presentation">
-                  {g.label ? <div className="settings-nav-label">{g.label}</div> : null}
+                <div key={i} className="settings-nav-group" role="presentation">
                   {items.map((id) => (
                     <button
                       key={id}
@@ -184,6 +201,7 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
                         onTab(id);
                       }}
                     >
+                      <Icon name={NAV_ICON[id]} size={16} className="settings-nav-icon" />
                       {labelOf(id)}
                     </button>
                   ))}
@@ -193,16 +211,10 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
           </div>
         </nav>
         <div className="settings-main">
-          {/* The section's name on top of its pane (as both apps have it), the close button at its end. */}
-          <header className="settings-head">
-            <h2 className="settings-page-title">{searching ? '搜索结果' : labelOf(tab)}</h2>
-            <button type="button" className="icon-btn settings-close" aria-label="关闭设置" title="关闭（Esc）" onClick={onClose}>
-              <Icon name="close" size={16} />
-            </button>
-          </header>
           {searching ? (
             <div className="settings">
               <div className="settings-column search-results">
+                <h3 className="settings-page-title">搜索结果</h3>
                 {/* Every section, out of sight: its rows that match put themselves into its list above it. */}
                 {tabs.map((t) => (
                   <SearchSection key={t.id} label={t.label} query={query} onGo={(title) => go(t.id, title)} onPlugin={goPlugin}>
@@ -216,12 +228,15 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
             // 插件: the list and the detail fill the dialog's height (each scrolls on its own).
             <div className="settings" key={tab}>
               <div className={tab === 'plugins' ? 'settings-column is-fill' : 'settings-column'}>
+                {/* The section's name, a short bold line at the top of its content (as Claude's). */}
+                <h3 className="settings-page-title">{labelOf(tab)}</h3>
                 <div role="tabpanel" className="settings-panel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} ref={panel}>
                   {sectionFor(tab)}
                 </div>
               </div>
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>
