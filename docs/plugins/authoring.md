@@ -430,7 +430,7 @@ if (r.isError) showError(r.content); else render(r.data ?? r.content);
 | `callTool(工具, 参数)` | → `{ content, data?, isError }`；结果是 JSON 时 `data` 是解析好的对象 |
 | `onEvent(fn)` | 收 `{ type: 'theme' }`（换了明暗）、`{ type: 'plugin.changed' }`；返回取消函数 |
 | `theme` | `{ mode: 'light' \| 'dark' }` |
-| `openFile(路径)` | 在 Spica 右栏预览文件（只限本插件目录里的，或这次会话里见过的） |
+| `openFile(路径)` | 在 Spica 的预览栏打开文件（只限本插件目录里的，或这次会话里见过的） |
 | `notify(文字, { kind })` | 弹一条提示，`kind` 是 `info` 或 `error` |
 | `pickFolder({ title?, defaultPath? })` | 弹系统的选文件夹框 → 用户选的完整路径，取消时 `null` |
 | `pickFile({ title?, defaultPath?, extensions? })` | 弹系统的选文件框（选一个）→ 完整路径或 `null`；`extensions` 如 `[".md", ".txt"]`，不写 = 任何文件 |
@@ -440,7 +440,7 @@ if (r.isError) showError(r.content); else render(r.data ?? r.content);
 - 沙箱限制：页面里没有 Node，不能 `require`、不能读写文件；只能加载本插件目录里的文件（不能用 CDN，脚本和样式都放进插件）；只能调本插件的工具，写了 `permissions.tools` 就只能调列出的那几个。
 - `permissions.irreversible` 里的工具（services/ 里的也算），页面调用时 Spica 会先弹确认框；用户拒绝时 `isError` 为真，`content` 以 `[CONFIRM_REQUIRED]` 开头。
 - 页面能调常驻进程（`services/`）的工具：这类工具不给模型、只给自己的页面用，适合做界面专用的接口。
-- `sidebar` 是侧栏里一个入口、点开占主区域，适合完整的功能页；`panel` 是对话旁边右栏的一个标签，适合边聊边用的小工具（按 320px 宽设计）。一个插件可以有多个页面。
+- `sidebar` 是侧栏里一个入口、点开占主区域，适合完整的功能页；`panel` 是窗口最右「详情」那一栏顶上的一个标签（「详情 / 你的页面」），适合边聊边用的小工具：这一栏固定 300px 宽，不能拖宽，也不能盖住对话，按 300px 宽设计。一个插件可以有多个页面。
 
 ### 设置页（`placement: "settings"`）
 
@@ -495,7 +495,7 @@ box.oninput = () => (open.disabled = !box.value.trim());   // 框里空着时「
 
 ### 预览页（`placement: "preview"`）
 
-给某几种文件做「预览」（例如更像原样的 Word、Excel）：用户在 设置 里选了用它预览这种文件后，右侧栏打开这种文件时显示这个页面，Spica 把**这一个文件**交给它。没选的时候用 Spica 自带的预览。
+给某几种文件做「预览」（例如更像原样的 Word、Excel）：用户在 设置 里选了用它预览这种文件后，对话右边的预览栏打开这种文件时显示这个页面（可以拖宽、可以盖住对话），Spica 把**这一个文件**交给它。没选的时候用 Spica 自带的预览。
 
 ```json
 {

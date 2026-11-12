@@ -8,7 +8,7 @@
 |---|---|---|
 | `title` | 是 | 侧栏 / 面板上的名字 |
 | `entry` | 是 | 插件目录里的 `.html` 相对路径 |
-| `placement` | 否 | `sidebar`（默认）：侧栏里一个入口，点开占主区域，适合完整的功能页；`panel`：对话旁边右栏的一个标签，适合边聊边用的小工具，按 320px 宽设计；`preview`：给某几种文件当预览，见下面「预览页」；`settings`：插件自己的设置页，见下面「设置页」 |
+| `placement` | 否 | `sidebar`（默认）：侧栏里一个入口，点开占主区域，适合完整的功能页；`panel`：窗口最右「详情」那一栏顶上的一个标签，适合边聊边用的小工具，这一栏固定 300px 宽（不能拖宽、不能盖住对话），按 300px 宽设计；`preview`：给某几种文件当预览，见下面「预览页」；`settings`：插件自己的设置页，见下面「设置页」 |
 | `icon` | 否 | 插件目录里的 `.svg` |
 | `permissions.tools` | 否 | 页面能调的工具（原名）；不写 = 本插件全部工具（预览页不写 = 一个都不能调） |
 | `preview` | placement 为 preview 时必填 | `{ "extensions": [".docx", ".docm"], "max_mb": 30 }`：能预览的扩展名（小写、带点；不能有 .pdf 和图片，这些 Spica 自己预览）；能处理的最大文件，1 到 100，不写是 20 |
@@ -22,7 +22,7 @@
 | `callTool(工具, 参数)` | → `Promise<{ content, data?, isError }>`；结果是 JSON 时 `data` 是解析好的对象；失败时 `content` 以错误码开头（见 `errors.md`） |
 | `onEvent(fn)` | 收 `{ type: 'theme' }`、`{ type: 'plugin.changed' }`；返回取消函数 |
 | `theme` | `{ mode: 'light' \| 'dark' }` |
-| `openFile(路径)` | 在 Spica 右栏预览文件（只限本插件目录里的，或这次会话里见过的） |
+| `openFile(路径)` | 在 Spica 的预览栏打开文件（只限本插件目录里的，或这次会话里见过的） |
 | `notify(文字, { kind })` | 弹一条提示，`kind`：`info` / `error` |
 | `pickFolder({ title?, defaultPath? })` | 弹系统的选文件夹框 → `Promise<完整路径 \| null>`，`null` 是用户取消了 |
 | `pickFile({ title?, defaultPath?, extensions? })` | 弹系统的选文件框（选一个）→ `Promise<完整路径 \| null>`；`extensions` 如 `[".md", ".txt"]`，不写 = 任何文件 |
@@ -95,7 +95,7 @@ box.oninput = () => (open.disabled = !box.value.trim());   // 框里空着时「
 
 ## 预览页（placement: preview）
 
-给某几种文件当「预览」：用户在 设置 里选了用它预览这种文件后，右侧栏打开这种文件时就显示这个页面，Spica 把**这一个文件**交给它。
+给某几种文件当「预览」：用户在 设置 里选了用它预览这种文件后，对话右边的预览栏打开这种文件时就显示这个页面（可以拖宽、可以盖住对话），Spica 把**这一个文件**交给它。
 
 ```json
 { "title": "Word 原样预览", "entry": "ui/docx.html", "placement": "preview", "preview": { "extensions": [".docx", ".docm"], "max_mb": 30 } }

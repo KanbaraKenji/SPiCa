@@ -103,12 +103,12 @@ export const priority = 100; // 可选，小的先跑
 |---|---|---|
 | `title` | 是 | 侧栏 / 面板上显示的名字 |
 | `entry` | 是 | 插件目录里的 `.html`，相对路径，不许 `..`、绝对路径，文件要存在 |
-| `placement` | 否 | `sidebar`（默认，侧栏里一个入口）/ `panel`（对话旁边的面板）/ `preview`（给 `preview.extensions` 里的文件当预览，在右侧栏打开）/ `settings`（插件自己的设置页，在 设置 › 插件 › 这个插件详情的一个页签里，不进侧栏；可以有几个，各一个页签） |
+| `placement` | 否 | `sidebar`（默认，侧栏里一个入口）/ `panel`（窗口最右「详情」那一栏顶上的一个标签，和详情同宽 300px，不能拖宽、不能盖住对话）/ `preview`（给 `preview.extensions` 里的文件当预览，在对话右边的预览栏打开）/ `settings`（插件自己的设置页，在 设置 › 插件 › 这个插件详情的一个页签里，不进侧栏；可以有几个，各一个页签） |
 | `icon` | 否 | 插件目录里的 `.svg` |
 | `permissions.tools` | 否 | 页面能调的本插件工具（server 里的原名，不带前缀）；不写 = 本插件全部工具，常驻进程的工具也算；预览页不写 = 一个都不给（它拿着用户的文件） |
 | `preview` | placement 为 preview 时必填 | `extensions`：小写、带点的扩展名，不能有 .pdf 和图片（应用自己预览）；`max_mb`：能处理的最大文件，1 到 100，缺省 20。`views()` 里给 `preview: { extensions, maxBytes }` |
 
-**预览页**：右侧栏打开一个文件时，外壳按用户的设置（外壳自己的 `settings.json` 里 `previewers`：扩展名 → `插件/页面`，没写的用自带预览）决定用不用插件页。外壳主进程读这个文件（超过 `maxBytes` 不读），经桥把文件名、大小、修改时间、扩展名和字节交给页面，不给路径；页面读不了别的文件、写不回去、不能联网。页面慢（15 秒）、出错、插件没装时退回自带预览。桥接口 `spica.preview.file() / ready() / fail()` 和设置的界面归外壳。
+**预览页**：预览栏打开一个文件时，外壳按用户的设置（外壳自己的 `settings.json` 里 `previewers`：扩展名 → `插件/页面`，没写的用自带预览）决定用不用插件页。外壳主进程读这个文件（超过 `maxBytes` 不读），经桥把文件名、大小、修改时间、扩展名和字节交给页面，不给路径；页面读不了别的文件、写不回去、不能联网。页面慢（15 秒）、出错、插件没装时退回自带预览。桥接口 `spica.preview.file() / ready() / fail()` 和设置的界面归外壳。
 
 **设置页**（2026-11-12，team2）：插件自己写的页面，外壳放在 设置 › 插件 › 这个插件的详情里：名字和操作那两行下面一行页签，「详情」之后每个设置页一个（页签文字是 `title`），点到时整块换成这个页面、占满剩下的高度、页面自己滚；只在插件启用时有页签；第一次点到才加载，切回「详情」时页面留着（只在内存里），换别的插件再回来从「详情」开始；页面里 `--spica-bg` 和 `--spica-surface` 对调（底是卡片色，按钮、输入框是窗口色）。规则和别的页面完全一样（沙箱、只能调本插件的工具、`permissions.tools` 生效、不写就是本插件全部工具）。读写设置的工具建议放 `services/`（模型看不到），示例插件 `views/settings.json` + `services/settings.json` 就是这么做的。它和第 11 节「故意没做的插件设置表单」不是一回事：那个是 MCPB 的 `user_config`——清单里声明字段，由宿主统一画表单、统一存值、启动时注入给 server；设置页是插件自己画、自己经工具存（`SPICA_PLUGIN_DATA/config.json`），宿主只给一块地方和桥。
 
@@ -116,7 +116,7 @@ export const priority = 100; // 可选，小的先跑
 
 **外壳怎么渲染**（和桌面外壳对好的约定，2026-11-10）：
 - 页面跑在沙箱里：没有 Node；自定义协议 `spica-plugin://<插件>/<路径>`，每次取文件都问 `pluginViewFile`，只给本插件目录里的文件；CSP `default-src spica-plugin:`，样式另放 `'unsafe-inline'`。
-- 外壳注入 `window.spica`：`callTool(工具原名, 参数)` → `{ content, data?, isError }`；`onEvent(fn)`（`{type:'theme'}`、`{type:'plugin.changed'}`），返回取消函数；`theme` → `{ mode: 'light' | 'dark' }`；`openFile(路径)`（只限本插件目录里的文件或这次会话见过的文件，在右栏预览）；`notify(文字, { kind? })`；`pickFolder({ title?, defaultPath? })`、`pickFile({ title?, defaultPath?, extensions? })` → 用户在系统对话框里选的完整路径，取消时 `null`；`openFolder(路径)` 在资源管理器里打开一个本机文件夹（边界见第 7 节「插件页面」）。
+- 外壳注入 `window.spica`：`callTool(工具原名, 参数)` → `{ content, data?, isError }`；`onEvent(fn)`（`{type:'theme'}`、`{type:'plugin.changed'}`），返回取消函数；`theme` → `{ mode: 'light' | 'dark' }`；`openFile(路径)`（只限本插件目录里的文件或这次会话见过的文件，在预览栏打开）；`notify(文字, { kind? })`；`pickFolder({ title?, defaultPath? })`、`pickFile({ title?, defaultPath?, extensions? })` → 用户在系统对话框里选的完整路径，取消时 `null`；`openFolder(路径)` 在资源管理器里打开一个本机文件夹（边界见第 7 节「插件页面」）。
 - 主题：外壳往页面根元素注入 9 个 CSS 变量 `--spica-bg`、`--spica-surface`、`--spica-fg`、`--spica-muted`、`--spica-border`、`--spica-accent`、`--spica-danger`、`--spica-font`、`--spica-radius`，换明暗或皮肤时重新注入并发 `theme` 事件。
 - 调工具：外壳把 `callTool` 转给后端 `pluginViewCall`。插件包检查插件已启用、视图存在、工具是本插件的且在 `permissions.tools` 里；然后交给内核 `runtime.callPluginTool(插件, 完整工具名, 参数, { confirmed })`：不走模型，但**钩子照常生效**（例如 Outlook 插件把附件限制在项目文件夹里的 `beforeTool`），调用留痕（发起方 `view:<插件>`）。需要确认时（`permissions.irreversible` 经插件包的权限钩子返回 confirm、MCP 的 `destructiveHint`、或别的钩子要求确认），没带 `confirmed: true` 的调用什么都不执行，返回 `[CONFIRM_REQUIRED] 原因`；外壳弹 Spica 自己的确认框（「<插件名> 要执行 <工具>，确认吗？」），同意后带 `confirmed: true` 再调。钩子拒绝时返回钩子自己的错误码（如 `[PATH_NOT_ALLOWED]`），没有码时是 `[BLOCKED]`。常驻进程的工具对模型隐藏，但本插件的页面可以调（权限钩子认得 `view:<插件>` 发起的调用）。没有 `callPluginTool` 的旧内核退回 `invokeTool`（不走钩子）。
 - 失败结果的 `content` 以错误码开头：`PLUGIN_DISABLED`、`VIEW_NOT_FOUND`、`TOOL_NOT_FOUND`、`TOOL_NOT_ALLOWED`、`CONFIRM_REQUIRED`、`BLOCKED`（钩子拒绝且没给码）、`UNSUPPORTED`；工具自己报的错原样返回。
