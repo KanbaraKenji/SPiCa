@@ -7251,5 +7251,6 @@ section.plugins-part > .plugins-part-title {
   font-family: var(--font-mono);
   font-size: var(--code-size);
   white-space: pre-wrap;
-  word-break: break-all;
+  /* by words; only what has no place to break (a path, an address, JSON) is broken inside */
+  overflow-wrap: anywhere;
 }

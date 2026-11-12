@@ -8,6 +8,7 @@ import { IpcChannel, type AgentApi, type AppInfo, type UsageSummary } from '@spi
 import { usageQuery } from '../shared/usage';
 import { MonitorHub, monitorSecretsFrom, scrub } from './monitor';
 import { seedDemoMonitor } from './backend/fake-monitor';
+import { DEMO_PROVIDER_NAMES } from './backend/fake-usage';
 import type { MonitorEntry } from '../shared/monitor';
 import { DesktopChannel } from '../shared/ipc';
 import { humanError } from '../shared/errors';
@@ -247,14 +248,19 @@ ipcMain.on(DesktopChannel.ActiveSession, (_e, id: unknown) => {
 const monitor = new MonitorHub({
   secrets: monitorSecrets,
   // the names the user gave the connections (a stop at 花费上限 comes from the core already named, see providerBudget)
-  providerName: (id) => {
-    try {
-      return providerList().items.find((p) => p.id === id)?.name;
-    } catch {
-      return undefined; // too early: the stores are not read yet
-    }
-  },
+  providerName: (id) => providerNamesNow()[id],
 });
+/** The connections' names by id (设置 › 模型), and the demo's providers' when the demo runs. */
+function providerNamesNow(): Record<string, string> {
+  let saved: Record<string, string> = {};
+  try {
+    saved = Object.fromEntries(providerList().items.map((p) => [p.id, p.name]));
+  } catch {
+    // too early: the stores are not read yet
+  }
+  // the demo's records are made up: their providers keep the demo's names even where a development connection shares an id
+  return backendKind === 'fake' ? { ...saved, ...DEMO_PROVIDER_NAMES } : saved;
+}
 // Worked out again at most every two seconds (not for every line), so a changed key is covered right away.
 let secretsCache: { at: number; values: string[] } | null = null;
 function monitorSecrets(): string[] {
@@ -972,7 +978,9 @@ ipcMain.handle(DesktopChannel.MonitorExport, async (_e, text: unknown): Promise<
 ipcMain.handle(DesktopChannel.UsageSummary, async (_e, query: unknown): Promise<UsageSummary | null> => {
   const q = usageQuery(query);
   if (!q) return null;
-  if (backend instanceof ProcessBackend || backend instanceof FakeBackend) return backend.usageSummary(q).catch(() => null);
+  if (!(backend instanceof ProcessBackend || backend instanceof FakeBackend)) return null;
+  const s = await backend.usageSummary(q).catch(() => null);
+  return s ? { ...s, providerNames: providerNamesNow() } : null;
   return null;
 });
 

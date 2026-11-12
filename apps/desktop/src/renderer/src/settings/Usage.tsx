@@ -52,7 +52,8 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
   if (searching) return search && (search.sectionHit || matches(search.query, '用量', 'Token', '429', '请求数', '花费')) ? <SearchHit title="用量" onGo={() => search.jump('')} /> : null;
   const view = summary ? usageView(summary, SERIES_COUNT) : null;
   const bucket = summary?.query.bucket ?? 'day';
-  const provider = (id: string) => names[id] ?? id;
+  // the main process's names first (the connections', and the demo's for its made-up records)
+  const provider = (id: string) => summary?.providerNames?.[id] ?? names[id] ?? id;
 
   return (
     <>
@@ -170,9 +171,10 @@ interface Hover {
   x: number;
 }
 
-/** Which columns get a label under them: about one per 56px, always the first. */
-function labelEvery(count: number, width: number, bucket: UsageQuery['bucket']): number {
-  const room = Math.max(1, Math.floor(width / (bucket === 'hour' ? 44 : 40)));
+/** Which columns get a label under them: about one per 56px of chart, always the first. */
+function labelEvery(count: number, width: number): number {
+  // one label per 56px or so (a date like 10/29 is about 32px at 12px): never crowded, at any zoom
+  const room = Math.max(1, Math.floor(width / 56));
   return Math.max(1, Math.ceil(count / room));
 }
 
@@ -189,7 +191,7 @@ function StackChart({ view, metric, bucket, provider }: { view: UsageView; metri
   const top = ticks[ticks.length - 1]!;
   const slot = plotW / Math.max(1, cols.length);
   const barW = Math.max(2, Math.min(28, slot - 4));
-  const every = labelEvery(cols.length, plotW, bucket);
+  const every = labelEvery(cols.length, plotW);
   return (
     <div className="usage-chart" ref={ref} onMouseLeave={() => setHover(null)}>
       <svg width={width} height={height} role="img" aria-label={metric === 'requests' ? '请求数' : 'Token 用量'}>
@@ -329,7 +331,7 @@ function LimitChart({ view, bucket }: { view: UsageView; bucket: UsageQuery['buc
   const top = ticks[ticks.length - 1]!;
   const slot = plotW / Math.max(1, cols.length);
   const barW = Math.max(2, Math.min(28, slot - 4));
-  const every = labelEvery(cols.length, plotW, bucket);
+  const every = labelEvery(cols.length, plotW);
   return (
     <div className="usage-chart" ref={ref} onMouseLeave={() => setHover(null)}>
       <svg width={width} height={height} role="img" aria-label="429 次数">

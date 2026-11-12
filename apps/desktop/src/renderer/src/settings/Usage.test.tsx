@@ -103,6 +103,16 @@ describe('设置 › 用量', () => {
     expect([...document.querySelectorAll('.usage-nodata-label')].map((t) => t.textContent)).toContain('无记录');
   });
 
+  it('names the providers as the main process does (the made-up demo ones too)', async () => {
+    const summary = vi.fn(async (q: UsageQuery): Promise<UsageSummary> => ({ ...summarizeRequests(RECORDS, q, '2026-11-12T02:00:00Z'), providerNames: { anthropic: 'Anthropic Claude', gateway: '公司网关' } }));
+    render(<Usage api={{ summary, providerNames: async () => ({ anthropic: '开发用模型（Anthropic）' }) }} now={now} />);
+    await screen.findByText('按模型');
+    const rows = [...document.querySelectorAll('.usage-table tbody tr')].map((r) => r.textContent ?? '');
+    expect(rows.some((r) => r.includes('Anthropic Claude'))).toBe(true);
+    expect(rows.some((r) => r.includes('公司网关'))).toBe(true);
+    expect(rows.some((r) => r.includes('开发用模型'))).toBe(false);
+  });
+
   it('cannot reach the core: one line', async () => {
     render(<Usage api={{ summary: async () => null }} now={now} />);
     expect(await screen.findByText('无法读取用量')).toBeTruthy();

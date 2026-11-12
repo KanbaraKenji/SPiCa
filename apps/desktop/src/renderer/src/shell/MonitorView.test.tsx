@@ -85,6 +85,15 @@ describe('监控台', () => {
     expect(write.mock.calls.at(-1)![0]).toContain('最后一句');
   });
 
+  it('picking a line stops following the end (继续 brings it back), so the line stays where it was', async () => {
+    setup([e(1), e(2), e(3)]);
+    await screen.findByText('line 1');
+    expect(screen.getByRole('button', { name: '暂停滚动' })).toBeTruthy();
+    fireEvent.click(screen.getByText('line 1'));
+    expect(screen.getByRole('button', { name: '继续' })).toBeTruthy();
+    expect(document.querySelector('.monitor-row.is-selected')?.textContent).toContain('line 1');
+  });
+
   it('暂停滚动 stops following and counts what came; 继续 goes on', async () => {
     const { push } = setup([e(1)]);
     await screen.findByText('line 1');

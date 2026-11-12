@@ -617,6 +617,21 @@ describe('a plain error and an interrupted conversation (「超时」, 「断电
 });
 
 describe('the demo request log (设置 › 用量, the monitor)', () => {
+  it('its providers have names people read; the request lines of the monitor use them', async () => {
+    const { DEMO_PROVIDER_NAMES, DEMO_MODELS } = await import('./fake-usage');
+    for (const m of DEMO_MODELS) expect(DEMO_PROVIDER_NAMES[m.providerId]).toBeTruthy();
+    const { MonitorHub } = await import('../monitor');
+    const { seedDemoMonitor } = await import('./fake-monitor');
+    const hub = new MonitorHub({ secrets: () => [] });
+    const at = new Date('2026-11-13T12:00:00Z');
+    const b = new FakeBackend({ speed: 0, now: () => at });
+    seedDemoMonitor(hub, await b.recentRequests(60), at);
+    b.dispose();
+    const req = hub.list().filter((x) => x.source === 'request').map((x) => x.text);
+    expect(req.length).toBeGreaterThan(10);
+    expect(req.every((t) => /^(DeepSeek|Anthropic Claude|公司网关)\//.test(t))).toBe(true);
+  });
+
   const now = new Date('2026-11-13T12:00:00Z');
 
   it('has two weeks over several providers and models, with 429 answers and other failures', async () => {

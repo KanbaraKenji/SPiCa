@@ -4,6 +4,7 @@
 import type { RequestRecord } from '@spica/protocol';
 import type { MonitorHub } from '../monitor';
 import { requestText } from '../monitor';
+import { DEMO_PROVIDER_NAMES } from './fake-usage';
 
 export function seedDemoMonitor(hub: MonitorHub, requests: RequestRecord[], now: Date): void {
   const t0 = now.getTime() - 40 * 60_000;
@@ -34,7 +35,7 @@ export function seedDemoMonitor(hub: MonitorHub, requests: RequestRecord[], now:
   const recent = requests.slice(-60);
   recent.forEach((r, i) => {
     const when = at((i / recent.length) * 39);
-    entries.push({ at: when, add: () => hub.add('request', r.status === 'ok' || r.status === 'aborted' ? 'info' : r.httpStatus === 429 || r.retried ? 'warn' : 'error', requestText(r), r.sessionId ?? undefined, when) });
+    entries.push({ at: when, add: () => hub.add('request', r.status === 'ok' || r.status === 'aborted' ? 'info' : r.httpStatus === 429 || r.retried ? 'warn' : 'error', requestText(r, (id) => DEMO_PROVIDER_NAMES[id] ?? id), r.sessionId ?? undefined, when) });
   });
   entries.sort((a, b) => a.at.getTime() - b.at.getTime()).forEach((e) => e.add());
 }

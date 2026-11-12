@@ -27,6 +27,17 @@ interface DemoModel {
   price: [number, number] | null;
 }
 
+/**
+ * The demo's providers as people call them (the catalog's names; 'fake' is the provider the demo's own
+ * conversations run on). The demo's records use these ids; nothing like them is saved in 设置 › 模型.
+ */
+export const DEMO_PROVIDER_NAMES: Readonly<Record<string, string>> = {
+  deepseek: 'DeepSeek',
+  anthropic: 'Anthropic Claude',
+  gateway: '公司网关',
+  fake: 'DeepSeek',
+};
+
 export const DEMO_MODELS: readonly DemoModel[] = [
   { providerId: 'deepseek', model: 'deepseek-chat', daily: 46, price: [0.27, 1.1] },
   { providerId: 'deepseek', model: 'deepseek-reasoner', daily: 12, price: [0.55, 2.19] },

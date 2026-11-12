@@ -195,6 +195,20 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
   }, [api, selected]);
   const selText = sel ? (whole?.seq === sel.seq ? whole.text : sel.text) : '';
 
+  // the picked line stays in sight when the strip under the list opens and the list gets shorter
+  useLayoutEffect(() => {
+    const el = list.current;
+    if (!el || selected === null) return;
+    const i = shown.findIndex((x) => x.seq === selected);
+    if (i < 0) return;
+    const top = i * ROW_H;
+    if (top < el.scrollTop) el.scrollTop = top;
+    else if (top + ROW_H > el.scrollTop + el.clientHeight) el.scrollTop = top + ROW_H - el.clientHeight;
+    setScroll({ top: el.scrollTop, height: el.clientHeight || 480 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, whole]);
+
+
   return (
     <div className="monitor">
       <div className="monitor-bar">
@@ -256,7 +270,11 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
                 key={e.seq}
                 className={['monitor-row', `is-${e.level}`, selected === e.seq ? 'is-selected' : ''].filter(Boolean).join(' ')}
                 style={{ top: (first + i) * ROW_H }}
-                onClick={() => setSelected((s) => (s === e.seq ? null : e.seq))}
+                onClick={() => {
+                  // a line looked at stops the list following the end (as scrolling up does: 继续 brings it back)
+                  if (selected !== e.seq) pause();
+                  setSelected((s) => (s === e.seq ? null : e.seq));
+                }}
               >
                 <span className="monitor-time">{clockOf(e.at)}</span>
                 <span className="monitor-source">{MONITOR_SOURCES.find(([s]) => s === e.source)?.[1]}</span>

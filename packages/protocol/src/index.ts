@@ -1036,6 +1036,8 @@ export interface UsageSummary {
   rows: UsageRow[];
   /** The 429 answers in the range, newest first (at most 200). */
   rateLimited: RequestRecord[];
+  /** Names for the provider ids in it, when the one asking knows them (the desktop app: its connections' names). */
+  providerNames?: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------
