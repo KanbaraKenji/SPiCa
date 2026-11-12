@@ -573,3 +573,20 @@ describe('messaging a sub-agent past 代理互发消息上限 (「互发」)', (
     expect(events.filter((e) => e.type === 'tool.end' && e.name === 'message_agent' && e.isError)).toEqual([]);
   });
 });
+
+describe('重置 after the model’s 花费上限 stopped a run (resume)', () => {
+  it('goes on from where it stopped as a new run; without a stop, resume does nothing', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.resume(chat.id);
+    expect(events.some((e) => e.type === 'run.end' && e.sessionId === chat.id)).toBe(false);
+    b.setRunLimit(1);
+    await b.send(chat.id, '花费上限 再来');
+    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    expect(events.find((e) => e.type === 'budget.stop')).toMatchObject({ scope: 'model:run' });
+    events.length = 0;
+    await b.resume(chat.id);
+    expect(await until((e) => e.type === 'run.end' && e.sessionId === chat.id)).toMatchObject({ reason: 'completed' });
+  });
+});

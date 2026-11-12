@@ -22,6 +22,16 @@ describe('toProviderConfig', () => {
     expect(toProviderConfig({ ...saved, models }).maxOutputs).toEqual({ 'relay-a': 16_384 });
     expect(toProviderConfig({ ...saved, models: [models[1]!] })).not.toHaveProperty('maxOutputs');
   });
+
+  it('sends each model’s 花费上限 (models in use only); none set: no runLimits', () => {
+    const models = [
+      { id: 'a', contextWindow: 128_000, contextFrom: 'user' as const, runLimitUsd: 2 },
+      { id: 'b', contextWindow: 64_000, contextFrom: 'user' as const },
+      { id: 'c', contextWindow: 64_000, contextFrom: 'user' as const, runLimitUsd: 5, enabled: false },
+    ];
+    expect(toProviderConfig({ ...saved, models }).runLimits).toEqual({ a: 2 });
+    expect(toProviderConfig({ ...saved, models: [models[1]!] })).not.toHaveProperty('runLimits');
+  });
 });
 
 describe('knownContextWindow', () => {

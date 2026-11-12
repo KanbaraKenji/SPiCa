@@ -6,6 +6,7 @@
 //
 // File versions: 1 (until 2026-11-10) held one model per entry (model,
 // strongModel, contextWindow, secret, defaultId); it is read and rewritten as 2.
+import { runLimit } from '../../shared/settings';
 import { keyMaskParts, keyMaskText } from '@spica/protocol';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -85,7 +86,8 @@ function sanitizeModels(v: unknown): ConnectionModel[] {
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const maxOutput = num(r.maxOutput);
-    out.push({ id, contextWindow: num(r.contextWindow), contextFrom: FROM.includes(r.contextFrom as ContextFrom) ? (r.contextFrom as ContextFrom) : 'user', ...(maxOutput ? { maxOutput } : {}), ...(r.enabled === false ? { enabled: false } : {}) });
+    const limit = runLimit(r.runLimitUsd);
+    out.push({ id, contextWindow: num(r.contextWindow), contextFrom: FROM.includes(r.contextFrom as ContextFrom) ? (r.contextFrom as ContextFrom) : 'user', ...(maxOutput ? { maxOutput } : {}), ...(r.enabled === false ? { enabled: false } : {}), ...(limit !== null ? { runLimitUsd: limit } : {}) });
   }
   return out;
 }
@@ -266,6 +268,25 @@ export class ProviderStore {
     this.#repoint();
     this.#write();
     return this.#view(saved);
+  }
+
+  /**
+   * The 单次运行花费上限 that was one value for every model before it moved to each model: every model in use that
+   * has none of its own gets it (once, when the app starts; the settings then forget the old value). Returns whether
+   * anything changed.
+   */
+  adoptRunLimit(usd: number): boolean {
+    let changed = false;
+    this.#data.items = this.#data.items.map((p) => ({
+      ...p,
+      models: p.models.map((m) => {
+        if (m.enabled === false || m.runLimitUsd !== undefined) return m;
+        changed = true;
+        return { ...m, runLimitUsd: usd };
+      }),
+    }));
+    if (changed) this.#write();
+    return changed;
   }
 
   remove(id: string): void {

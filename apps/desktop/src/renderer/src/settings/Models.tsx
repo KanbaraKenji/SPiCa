@@ -34,7 +34,7 @@ import { InfoTip } from '../ui/InfoTip';
 import { PasteConfig } from './PasteConfig';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Group, Row } from './Group';
-import { AGENT_MESSAGES_MAX, RUN_LIMIT_MAX_USD } from '../../../shared/settings';
+import { AGENT_MESSAGES_MAX } from '../../../shared/settings';
 
 export interface ProvidersApi {
   list(): Promise<ProviderList>;
@@ -137,72 +137,17 @@ function parseNum(v: string): number | null {
   return Number.isFinite(n) ? n : Number.NaN;
 }
 
-/** 单次运行花费上限 as the page edits it (设置 › 模型; kept in the shell settings, runLimitUsd). */
+/** A limit as the page edits it (设置 › 模型 › 上限; kept in the shell settings). */
 export interface RunLimitProps {
-  /** USD; null: no limit. */
+  /** null: no limit. */
   value: number | null;
-  onChange(usd: number | null): void;
-}
-
-/**
- * 单次运行花费上限: empty is 不限 (the grey word in the box, as 同时请求 / 每分钟请求 say it); an amount is kept as
- * soon as it is a valid one, so it applies at once. What is typed stays while it is not valid, with the reason.
- */
-export function RunLimitRow({ value, onChange }: RunLimitProps) {
-  const [text, setText] = useState(value === null ? '' : String(value));
-  const [touched, setTouched] = useState(false);
-  // changed elsewhere (another window, a script): show it unless the field holds something not yet valid
-  const shown = useRef(value);
-  useEffect(() => {
-    if (value === shown.current) return;
-    shown.current = value;
-    setText(value === null ? '' : String(value));
-  }, [value]);
-  const t = text.trim();
-  const n = Number(t);
-  const problem = t === '' ? null : !Number.isFinite(n) || n <= 0 ? '须为大于 0 的金额' : n > RUN_LIMIT_MAX_USD ? `不能高于 US$${RUN_LIMIT_MAX_USD.toLocaleString('en-US')}` : null;
-  const change = (v: string) => {
-    setText(v);
-    const x = v.trim();
-    const usd = x === '' ? null : Number(x);
-    if (usd !== null && (!Number.isFinite(usd) || usd <= 0 || usd > RUN_LIMIT_MAX_USD)) return;
-    const kept = usd === null ? null : Math.max(0.01, Math.round(usd * 100) / 100);
-    shown.current = kept;
-    if (kept !== value) onChange(kept);
-  };
-  return (
-    <Row
-      title="单次运行花费上限"
-      hint={
-        touched && problem ? (
-          <span className="field-error">{problem}</span>
-        ) : (
-          '一次运行是从发出一条消息到这一轮做完。花费可能超过上限时就停下，再发一条消息就是新的一次。留空为不限；没有价格的模型不计入。'
-        )
-      }
-    >
-      <label className="run-limit">
-        <span aria-hidden="true">US$</span>
-        <input
-          className={touched && problem ? 'input is-invalid' : 'input'}
-          inputMode="decimal"
-          value={text}
-          placeholder="不限"
-          spellCheck={false}
-          autoComplete="off"
-          aria-label="单次运行花费上限（美元）"
-          aria-invalid={touched && problem ? true : undefined}
-          onChange={(e) => change(e.target.value)}
-          onBlur={() => setTouched(true)}
-        />
-      </label>
-    </Row>
-  );
+  onChange(value: number | null): void;
 }
 
 /**
  * 代理互发消息上限: how many messages a conversation may send to other agents after the user last wrote (default 10);
- * empty is 不限. Written like 单次运行花费上限 (the same box, a word after it instead of before).
+ * empty is 不限; a whole number is kept as soon as it is one, so it applies at once. What is typed stays while it is
+ * not valid, with the reason.
  */
 export function AgentMessagesRow({ value, onChange }: RunLimitProps) {
   const [text, setText] = useState(value === null ? '' : String(value));
@@ -254,7 +199,7 @@ export function AgentMessagesRow({ value, onChange }: RunLimitProps) {
   );
 }
 
-export function Models({ api, runLimit, agentMessages }: { api: ProvidersApi; runLimit?: RunLimitProps; agentMessages?: RunLimitProps }) {
+export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessages?: RunLimitProps }) {
   const [list, setList] = useState<ProviderList | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalogView | null>(null);
   const [selected, setSelectedState] = useState<string | 'new' | null>(() => keptDraft<string>(SELECTED) ?? null);
@@ -461,6 +406,17 @@ export function Models({ api, runLimit, agentMessages }: { api: ProvidersApi; ru
   const setWindow = (id: string, value: number | null) =>
     set({ models: (draft.models ?? []).map((x) => (x.id === id ? { ...x, contextWindow: value, contextFrom: 'user' } : x)) });
 
+  const setRunLimit = (id: string, usd: number | undefined) =>
+    set({
+      models: (draft.models ?? []).map((x) => {
+        if (x.id !== id) return x;
+        const next = { ...x };
+        if (usd === undefined) delete next.runLimitUsd;
+        else next.runLimitUsd = usd;
+        return next;
+      }),
+    });
+
   const addTyped = (id: string) => {
     if ((draft.models ?? []).some((x) => x.id === id && x.enabled !== false)) return;
     toggle({ id }, true);
@@ -666,10 +622,10 @@ export function Models({ api, runLimit, agentMessages }: { api: ProvidersApi; ru
         </Group>
       ) : null}
 
-      {runLimit || agentMessages ? (
+      {/* 单次运行花费上限 is on each model (the model list of its provider) */}
+      {agentMessages ? (
         <Group title="上限">
-          {runLimit ? <RunLimitRow {...runLimit} /> : null}
-          {agentMessages ? <AgentMessagesRow {...agentMessages} /> : null}
+          <AgentMessagesRow {...agentMessages} />
         </Group>
       ) : null}
 
@@ -822,6 +778,7 @@ export function Models({ api, runLimit, agentMessages }: { api: ProvidersApi; ru
                     onToggle={toggle}
                     onRemove={(id) => set({ models: (draft.models ?? []).filter((x) => x.id !== id) })}
                     onWindow={setWindow}
+                    onRunLimit={setRunLimit}
                     onAdd={addTyped}
                     onFetch={api.listModels ? () => void fetchRun(fetchModels) : undefined}
                     fetching={fetching}

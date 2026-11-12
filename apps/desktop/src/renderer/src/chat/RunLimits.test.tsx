@@ -51,3 +51,18 @@ describe('messages to other agents past the limit', () => {
     expect(screen.getByText('（代理之间互发的消息已达上限，没有再发；你说一句话后重新计数）')).toBeTruthy();
   });
 });
+
+describe('a run stopped at its spending limit', () => {
+  it('重置 goes on (resume), 修改上限 opens 设置 › 模型; another limit has only 修改上限', () => {
+    const resume = vi.fn();
+    const openModelSettings = vi.fn();
+    const actions = { resume, openModelSettings } as unknown as ConversationActions;
+    const { rerender } = render(<Conversation session={session} transcript={{ items: [{ kind: 'user', id: 'u', text: '整理', steer: false }, answer], error: '已达单次运行花费上限', errorAction: 'run-limit' }} actions={actions} />);
+    fireEvent.click(screen.getByRole('button', { name: '重置' }));
+    expect(resume).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '修改上限' }));
+    expect(openModelSettings).toHaveBeenCalled();
+    rerender(<Conversation session={session} transcript={{ items: [{ kind: 'user', id: 'u', text: '整理', steer: false }, answer], error: '已达花费上限', errorAction: 'models' }} actions={actions} />);
+    expect(screen.queryByRole('button', { name: '重置' })).toBeNull();
+  });
+});

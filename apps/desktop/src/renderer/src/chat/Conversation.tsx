@@ -522,7 +522,13 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
               <p className="turn-error status-with-icon" role="alert">
                 <SpicaStatusIcon name="error" size={15} />
                 <span>{transcript.error}</span>
-                {transcript.errorAction === 'models' && actions.openModelSettings ? (
+                {/* a run's limit: 重置 goes on from where it stopped as a new run, its spending counted from 0 */}
+                {transcript.errorAction === 'run-limit' ? (
+                  <button type="button" className="btn btn-small" title="这次运行已花的从 0 算起，从停下的地方接着做" onClick={actions.resume}>
+                    重置
+                  </button>
+                ) : null}
+                {transcript.errorAction && actions.openModelSettings ? (
                   <button type="button" className="btn btn-small" onClick={actions.openModelSettings}>
                     修改上限
                   </button>

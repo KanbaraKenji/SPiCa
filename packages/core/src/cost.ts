@@ -110,6 +110,8 @@ export class CostLedger {
   readonly #windows = new Map<string, Record<string, number>>();
   /** providerId -> model -> most output tokens, from the settings (what the provider's model list said). */
   readonly #outputs = new Map<string, Record<string, number>>();
+  /** providerId -> model -> most one run may spend while calling that model (USD), from the settings. */
+  readonly #runLimits = new Map<string, Record<string, number>>();
   /** providerId -> the catalog provider it was set up from (ProviderConfig.catalogId). */
   readonly #catalogIds = new Map<string, string>();
 
@@ -236,6 +238,29 @@ export class CostLedger {
     if (Object.keys(ok).length) this.#windows.set(providerId, ok);
     else this.#windows.delete(providerId);
     return bad;
+  }
+
+  /**
+   * Spending limits per model for one run (model -> USD), replacing what was set for this provider; an empty map
+   * clears them. A call of such a model does not start when what the run has spent (all its calls, calls in flight
+   * at their worst case) plus this call's worst case would pass it; a model without a price is never stopped.
+   * Entries that are not a positive finite number are left out and named in the result.
+   */
+  setRunLimits(providerId: string, limits: Record<string, number>): string[] {
+    const ok: Record<string, number> = {};
+    const bad: string[] = [];
+    for (const [model, usd] of Object.entries(limits)) {
+      if (typeof usd === 'number' && Number.isFinite(usd) && usd > 0) ok[model] = usd;
+      else bad.push(model);
+    }
+    if (Object.keys(ok).length) this.#runLimits.set(providerId, ok);
+    else this.#runLimits.delete(providerId);
+    return bad;
+  }
+
+  /** The run limit set for this model (setRunLimits), if any. */
+  modelRunLimit(scope: Pick<CostScope, 'providerId' | 'model'>): number | undefined {
+    return this.#runLimits.get(scope.providerId)?.[scope.model];
   }
 
   estimate(scope: Pick<CostScope, 'providerId' | 'providerKind' | 'model'>, usage: Usage): number {
@@ -371,6 +396,21 @@ export class CostLedger {
         }
       }
     }
+    // the limit set for the model about to be called, against all the run has spent
+    const modelLimit = this.modelRunLimit(scope);
+    if (modelLimit !== undefined) {
+      const spent = this.#scopeTotal('all', 'run', scope, withHeld);
+      if (spent + worst > modelLimit) {
+        return {
+          ok: false,
+          scope: 'model:run',
+          spentUsd: spent,
+          limitUsd: modelLimit,
+          nextUsd: worst,
+          message: `spending limit for ${scope.model} reached: this run spent $${spent.toFixed(4)} (calls still running counted at their worst case) of $${modelLimit.toFixed(2)}, the next call could cost up to $${worst.toFixed(4)}`,
+        };
+      }
+    }
     for (const [label, limits] of groups) {
       const lim = limits?.perCallUsd;
       if (lim !== undefined && worst > lim) {
@@ -407,12 +447,15 @@ export class CostLedger {
     const w = (spent: number, limit?: number) => limit !== undefined && spent >= limit * warnAt;
     const b = this.#budget;
     const mark = (on: boolean) => (on ? { unpriced: true as const } : {});
+    // the run's limit: the lower of the budget's and the one set for this model
+    const modelLimit = this.modelRunLimit(scope);
+    const runLimit = b.perRunUsd === undefined ? modelLimit : modelLimit === undefined ? b.perRunUsd : Math.min(b.perRunUsd, modelLimit);
     return {
       costUsd: cost,
       ...mark(unpriced),
       totals: [
         { scope: 'call', spentUsd: cost, ...(b.perCallUsd !== undefined ? { limitUsd: b.perCallUsd } : {}), warning: w(cost, b.perCallUsd), ...mark(unpriced) },
-        { scope: 'run', spentUsd: this.#byRun.get(scope.runId) ?? 0, ...(b.perRunUsd !== undefined ? { limitUsd: b.perRunUsd } : {}), warning: w(this.#byRun.get(scope.runId) ?? 0, b.perRunUsd), ...mark(this.#unpricedRuns.has(scope.runId)) },
+        { scope: 'run', spentUsd: this.#byRun.get(scope.runId) ?? 0, ...(runLimit !== undefined ? { limitUsd: runLimit } : {}), warning: w(this.#byRun.get(scope.runId) ?? 0, runLimit), ...mark(this.#unpricedRuns.has(scope.runId)) },
         { scope: 'session', spentUsd: this.#bySession.get(scope.sessionId) ?? 0, ...(b.perSessionUsd !== undefined ? { limitUsd: b.perSessionUsd } : {}), warning: w(this.#bySession.get(scope.sessionId) ?? 0, b.perSessionUsd), ...mark(this.#unpricedSessions.has(scope.sessionId)) },
         { scope: 'global', spentUsd: this.#global, ...(b.globalUsd !== undefined ? { limitUsd: b.globalUsd } : {}), warning: w(this.#global, b.globalUsd), ...mark(this.#unpricedAny) },
       ],

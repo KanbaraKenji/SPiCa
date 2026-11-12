@@ -16,10 +16,16 @@ function outputsOf(p: ConfigSource): Record<string, number> {
   return Object.fromEntries((p.models ?? []).filter((m) => m.maxOutput).map((m) => [m.id, m.maxOutput as number]));
 }
 
+/** Model name -> 花费上限 for one run, for models in use that have one. */
+function runLimitsOf(p: ConfigSource): Record<string, number> {
+  return Object.fromEntries((p.models ?? []).filter((m) => m.enabled !== false && m.runLimitUsd !== undefined && Number.isFinite(m.runLimitUsd)).map((m) => [m.id, m.runLimitUsd as number]));
+}
+
 /** A settings-page connection as the core's backend expects it. */
 export function toProviderConfig(p: ConfigSource): ProviderConfig {
   const windows = windowsOf(p);
   const outputs = outputsOf(p);
+  const runLimits = runLimitsOf(p);
   const limits = {
     ...(p.maxConcurrent ? { maxConcurrent: p.maxConcurrent } : {}),
     ...(p.requestsPerMinute ? { requestsPerMinute: p.requestsPerMinute } : {}),
@@ -30,6 +36,7 @@ export function toProviderConfig(p: ConfigSource): ProviderConfig {
     // Every ticked model's window; the core falls back to what it knows for any other name.
     ...(Object.keys(windows).length ? { contextWindows: windows } : {}),
     ...(Object.keys(outputs).length ? { maxOutputs: outputs } : {}),
+    ...(Object.keys(runLimits).length ? { runLimits } : {}),
     ...(p.catalogId ? { catalogId: p.catalogId } : {}),
   };
   switch (p.kind) {

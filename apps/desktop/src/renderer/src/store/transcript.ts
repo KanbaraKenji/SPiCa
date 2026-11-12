@@ -213,8 +213,11 @@ export interface Transcript {
   run?: RunState;
   lastRun?: FinishedRun;
   error?: string;
-  /** Where the error is put right: 'models' = 设置 › 模型 (a spending limit stopped the run); a button beside it opens it. */
-  errorAction?: 'models';
+  /**
+   * Where the error is put right: 'models' = 设置 › 模型 (a spending limit stopped the run; a button beside it opens
+   * it); 'run-limit' = a run's limit stopped it: also 重置, which goes on from there as a new run (its count from 0).
+   */
+  errorAction?: 'models' | 'run-limit';
   /**
    * The last run stopped at a limit with the work not done (not an error): 'max_turns' (the turn limit; the desktop
    * app sets none since 2026-11-12, a script through the MCP service may). Shown as a note after the answer.
@@ -811,7 +814,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     }
     case 'budget.stop': {
       t.error = budgetStopWords(e);
-      t.errorAction = 'models';
+      t.errorAction = e.scope.endsWith(':run') ? 'run-limit' : 'models';
       return t;
     }
     default:
@@ -827,7 +830,7 @@ export function budgetStopWords(e: { scope: string; spentUsd: number; limitUsd: 
   const run = e.scope.endsWith(':run');
   const name = run ? '单次运行花费上限' : '花费上限';
   const why = e.nextUsd !== undefined ? `下一步最多可能花 ${formatMoney(e.nextUsd)}，会超出上限，所以没有开始` : '下一步可能超出上限，所以没有开始';
-  const after = run ? '可在 设置 › 模型 修改上限，或再发一条消息重新开始一次运行。' : '可在 设置 › 模型 修改上限。';
+  const after = run ? '按「重置」接着做，或在 设置 › 模型 修改上限。' : '可在 设置 › 模型 修改上限。';
   return `已达${name}，已停止（已花费 ${formatMoney(e.spentUsd)}，上限 ${formatMoney(e.limitUsd)}）：${why}。${after}`;
 }
 

@@ -1,6 +1,7 @@
 // Model provider settings as the settings page sees them. Secrets (API key,
 // client secret) only travel renderer -> main when the user types a new one;
 // main never sends them back, only `hasSecret`.
+import { RUN_LIMIT_MAX_USD } from './settings';
 
 export type ProviderKind = 'openai' | 'anthropic' | 'wso2';
 
@@ -66,6 +67,16 @@ export interface ConnectionModel {
    * offered anywhere, no 上下文上限 needed. Absent: in use.
    */
   enabled?: boolean;
+  /**
+   * 花费上限 for one run while this model is used (USD, cents at most; the core's ProviderConfig.runLimits). Absent: no
+   * limit. NaN only while the form holds something that is not an amount (saving says why).
+   */
+  runLimitUsd?: number;
+}
+
+/** A model's 花费上限 that can be saved: absent, or a positive amount up to RUN_LIMIT_MAX_USD. */
+export function runLimitOk(usd: number | undefined): boolean {
+  return usd === undefined || (Number.isFinite(usd) && usd > 0 && usd <= RUN_LIMIT_MAX_USD);
 }
 
 /** In use (checked in the connection's list). */
@@ -225,6 +236,8 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: {
   if (!opts.forTest && list) {
     const missing = list.find((m) => m.contextWindow === null || !Number.isInteger(m.contextWindow) || m.contextWindow < 1);
     if (missing) e.contextWindow = `请填写「${missing.id}」的上下文上限`;
+    const badLimit = list.find((m) => !runLimitOk(m.runLimitUsd));
+    if (badLimit && !e.model) e.model = `「${badLimit.id}」的花费上限须为大于 0、不高于 US$${RUN_LIMIT_MAX_USD.toLocaleString('en-US')} 的金额，或留空`;
   } else if (!opts.forTest) {
     if (d.contextWindow === null) e.contextWindow = '请填写上下文上限';
     else if (!Number.isInteger(d.contextWindow) || d.contextWindow < 1) e.contextWindow = '上下文上限须为正整数';

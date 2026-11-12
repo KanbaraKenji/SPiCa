@@ -126,8 +126,9 @@ export interface ShellSettings {
   /** The one notification about being minimized to the tray was shown. */
   backgroundHintShown: boolean;
   /**
-   * 模型 › 单次运行花费上限, in USD: one run (from sending a message until that round is done) stops before a
-   * call that could go past it. null = no limit (the default, he chose 2026-11-12). Models without a price count nothing.
+   * The old 模型 › 单次运行花费上限 (one value for every model, USD; null = none). The limit now belongs to each model
+   * (ConnectionModel.runLimitUsd): at start a value here is given to every model in use without one of its own
+   * (ProviderStore.adoptRunLimit) and this goes back to null. Only read for that.
    */
   runLimitUsd: number | null;
   /**
@@ -358,6 +359,3 @@ export function agentMessages(v: unknown): number | null {
   return v;
 }
 
-export function budgetForCore(runLimitUsd: number | null): { perRunUsd?: number } {
-  return runLimitUsd === null ? {} : { perRunUsd: runLimitUsd };
-}

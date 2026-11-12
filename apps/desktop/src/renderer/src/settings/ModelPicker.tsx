@@ -1,10 +1,12 @@
 // The models of one connection: the catalog's list for the provider, what
 // 获取模型列表 returned, and any typed in. In use (已启用) on top, one row each
-// with its 上下文上限; the rest (未启用) folded into a line of small buttons
+// with its 上下文上限 and its 花费上限 (one run with this model stops before it
+// could pass it); the rest (未启用) folded into a line of small buttons
 // that turn one on, with 获取模型列表 and 手动输入模型 at its end.
 import { useState } from 'react';
 import type { CatalogModelView, CatalogPriceView } from '../../../shared/catalog';
-import type { ConnectionModel } from '../../../shared/providers';
+import { runLimitOk, type ConnectionModel } from '../../../shared/providers';
+import { RUN_LIMIT_MAX_USD } from '../../../shared/settings';
 import { Icon } from '../ui/Icon';
 import { InfoTip } from '../ui/InfoTip';
 import { SpicaStatusIcon } from '@spica/brand/react';
@@ -31,6 +33,8 @@ export interface ModelPickerProps {
   /** Takes a model out of the list (fetched or typed ones; the catalog's always come back). */
   onRemove?: (id: string) => void;
   onWindow(id: string, value: number | null): void;
+  /** 花费上限 for one run with this model (USD; undefined: none; NaN: typed, not an amount). */
+  onRunLimit?: (id: string, usd: number | undefined) => void;
   onAdd(id: string): void;
   onFetch?: (() => void) | undefined;
   fetching: boolean;
@@ -52,6 +56,16 @@ export function priceText(p: CatalogPriceView): string {
 export { tokenText as windowText } from '../chat/tokens';
 import { tokenText as windowText } from '../chat/tokens';
 
+/** A 花费上限 as typed: empty is none; an amount in range, to the cent; anything else NaN (saving says why). */
+function parseRunLimit(v: string): number | undefined {
+  const t = v.trim();
+  if (!t) return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) && n > 0 && n <= RUN_LIMIT_MAX_USD ? Math.max(0.01, Math.round(n * 100) / 100) : Number.NaN;
+}
+
+const RUN_LIMIT_TITLE = '单次运行花费上限：用这个模型时，一次运行（从发出一条消息到做完）花费可能超过它就停下。留空为不限；没有价格的模型不计花费。';
+
 function parseWindow(v: string): number | null {
   const t = v.trim();
   if (!t) return null;
@@ -59,12 +73,14 @@ function parseWindow(v: string): number | null {
   return Number.isFinite(n) ? n : Number.NaN;
 }
 
-export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle, onRemove, onWindow, onAdd, onFetch, fetching, fetchError, fetchNote, error }: ModelPickerProps) {
+export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle, onRemove, onWindow, onRunLimit, onAdd, onFetch, fetching, fetchError, fetchNote, error }: ModelPickerProps) {
   const [query, setQuery] = useState('');
   const [typed, setTyped] = useState('');
   const [typing, setTyping] = useState(false);
   // The 上下文上限 being edited (a known one shows as 「128k」 until clicked).
   const [editing, setEditing] = useState<string | null>(null);
+  // The 花费上限 being edited, with what is typed (a set one shows as 「花费上限 US$2」 until clicked).
+  const [limitEdit, setLimitEdit] = useState<{ id: string; text: string } | null>(null);
   const byId = new Map<string, { model: ListedModel; price?: CatalogPriceView; vision?: boolean }>();
   for (const m of catalog) byId.set(m.id, { model: { id: m.id, ...(m.label ? { label: m.label } : {}), contextWindow: m.contextWindow }, ...(m.price ? { price: m.price } : {}), ...(m.vision !== undefined ? { vision: m.vision } : {}) });
   for (const m of fetched ?? []) if (!byId.has(m.id)) byId.set(m.id, { model: m });
@@ -143,6 +159,44 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
                   {windowText(on.contextWindow!)}
                 </button>
               )}
+              {onRunLimit ? (
+                limitEdit?.id === model.id || !runLimitOk(on.runLimitUsd) ? (
+                  <label className="run-limit model-row-limit" title={RUN_LIMIT_TITLE}>
+                    <span aria-hidden="true">US$</span>
+                    <input
+                      className={runLimitOk(on.runLimitUsd) ? 'input' : 'input is-invalid'}
+                      inputMode="decimal"
+                      value={limitEdit?.id === model.id ? limitEdit.text : ''}
+                      placeholder="不限"
+                      spellCheck={false}
+                      autoComplete="off"
+                      aria-label={`${model.id} 花费上限（美元）`}
+                      aria-invalid={runLimitOk(on.runLimitUsd) ? undefined : true}
+                      autoFocus={limitEdit?.id === model.id}
+                      onChange={(e) => {
+                        setLimitEdit({ id: model.id, text: e.target.value });
+                        onRunLimit(model.id, parseRunLimit(e.target.value));
+                      }}
+                      onBlur={() => {
+                        if (runLimitOk(on.runLimitUsd)) setLimitEdit(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && runLimitOk(on.runLimitUsd)) setLimitEdit(null);
+                      }}
+                    />
+                  </label>
+                ) : (
+                  <button
+                    type="button"
+                    className="model-row-size is-limit"
+                    aria-label={`${model.id} 花费上限`}
+                    title={RUN_LIMIT_TITLE}
+                    onClick={() => setLimitEdit({ id: model.id, text: on.runLimitUsd === undefined ? '' : String(on.runLimitUsd) })}
+                  >
+                    {on.runLimitUsd === undefined ? '花费不限' : `花费上限 US$${on.runLimitUsd}`}
+                  </button>
+                )
+              ) : null}
               {removable(model.id) ? (
                 <button type="button" className="icon-btn model-row-remove" onClick={() => onRemove!(model.id)} aria-label={`删除 ${model.id}`} title="删除">
                   <Icon name="trash" size={14} />

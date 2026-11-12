@@ -145,6 +145,25 @@ describe('ProviderStore', () => {
     expect(again.find((m) => m.id === 'b')).not.toHaveProperty('maxOutput');
   });
 
+  it('keeps a model’s 花费上限 across a reload (to the cent; a bad one is none); a draft with one not an amount is refused', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
+    new ProviderStore(dir, box).save({ ...draft, models: [{ id: 'a', contextWindow: 1000, contextFrom: 'user', runLimitUsd: 2.5 }, { id: 'b', contextWindow: 1000, contextFrom: 'user' }] });
+    const again = new ProviderStore(dir, box).resolved()[0]!.models;
+    expect(again.find((m) => m.id === 'a')?.runLimitUsd).toBe(2.5);
+    expect(again.find((m) => m.id === 'b')).not.toHaveProperty('runLimitUsd');
+    expect(() => new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box).save({ ...draft, models: [{ id: 'a', contextWindow: 1000, contextFrom: 'user', runLimitUsd: Number.NaN }] })).toThrow(/「a」的花费上限须为大于 0/);
+  });
+
+  it('the old 单次运行花费上限 (one value) goes to every model in use without its own, once', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
+    const store = new ProviderStore(dir, box);
+    store.save({ ...draft, models: [{ id: 'a', contextWindow: 1000, contextFrom: 'user', runLimitUsd: 9 }, { id: 'b', contextWindow: 1000, contextFrom: 'user' }, { id: 'c', contextWindow: 1000, contextFrom: 'user', enabled: false }] });
+    expect(store.adoptRunLimit(3)).toBe(true);
+    const models = new ProviderStore(dir, box).resolved()[0]!.models;
+    expect(Object.fromEntries(models.map((m) => [m.id, m.runLimitUsd]))).toEqual({ a: 9, b: 3 });
+    expect(store.adoptRunLimit(4)).toBe(false); // nothing left without one
+  });
+
   it('an unchecked model stays in the list (no 上下文上限 needed), is not offered, and the pointers leave it', () => {
     const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
     const store = new ProviderStore(dir, box);

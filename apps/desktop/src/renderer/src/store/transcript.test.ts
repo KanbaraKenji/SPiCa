@@ -534,11 +534,16 @@ describe('a question or confirmation stopped while it waits', () => {
 });
 
 describe('a spending limit stops the run', () => {
-  it('says why it stopped before the limit was reached, and where to change it (a button opens 设置 › 模型)', () => {
+  it('says why it stopped before the limit was reached; a run limit offers 重置 and 修改上限', () => {
     const at = '2026-11-12T10:00:00Z';
     const t = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'all:run', spentUsd: 0.75, limitUsd: 1, nextUsd: 0.4, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
-    expect(t.error).toBe('已达单次运行花费上限，已停止（已花费 US$0.75，上限 US$1.00）：下一步最多可能花 US$0.40，会超出上限，所以没有开始。可在 设置 › 模型 修改上限，或再发一条消息重新开始一次运行。');
-    expect(t.errorAction).toBe('models');
+    expect(t.error).toBe('已达单次运行花费上限，已停止（已花费 US$0.75，上限 US$1.00）：下一步最多可能花 US$0.40，会超出上限，所以没有开始。按「重置」接着做，或在 设置 › 模型 修改上限。');
+    expect(t.errorAction).toBe('run-limit');
+    const model = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'model:run', spentUsd: 0.75, limitUsd: 1, nextUsd: 0.4, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
+    expect(model.errorAction).toBe('run-limit');
+    // a limit that is not a run's (a script's global one): only 修改上限
+    const global = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'all:global', spentUsd: 0.75, limitUsd: 1, nextUsd: 0.4, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
+    expect(global.errorAction).toBe('models');
     const next = applyEvent(t, { type: 'status', status: 'thinking', seq: 2, at, sessionId: 's', parentChain: [] } as CoreEvent);
     expect(next.error).toBeUndefined();
     expect(next.errorAction).toBeUndefined();

@@ -9,7 +9,7 @@ import { DesktopChannel } from '../shared/ipc';
 import { humanError } from '../shared/errors';
 import { CAPTION_BACK, captionSymbol, deriveTokens, resolveSkin, schemeOf, type WindowCover } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
-import { budgetForCore, effectiveAccount, mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
+import { effectiveAccount, mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, SaveCsvResult, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import { APP_IDENTITY } from '../shared/app-identity';
@@ -207,8 +207,7 @@ function backendConfig(): DesktopBackendConfig {
       network: networkForCore(settings.get().network),
       // 设置 › 记忆 › 启用记忆 (what is saved stays when it is off).
       memory: { enabled: settings.get().memory, autoTidy: settings.get().memoryAutoTidy },
-      // 设置 › 模型 › 单次运行花费上限 (none by default); no other limit (shared/settings.ts budgetForCore).
-      budget: budgetForCore(settings.get().runLimitUsd),
+      // No spending limit for all models: each model's 花费上限 goes with its provider (ProviderConfig.runLimits).
       // Linked into the backend entry; named here as the core expects.
       extractorModules: ['@spica/extract'],
       extensions: [
@@ -279,10 +278,9 @@ const backend: AgentBackend =
     : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd, demoImage: () => writeDemoChart(join(app.getPath('userData'), 'demo-media')) });
 console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own process)' : 'fake (demo data)'}`);
 const settings = new SettingsStore(app.getPath('userData'), { persist: !automated });
-// The demo backend starts with 设置 › 记忆 › 启用记忆 and 模型 › 单次运行花费上限 as saved (the core gets them in backendConfig()).
+// The demo backend starts with 设置 › 记忆 › 启用记忆 and 模型 › 代理互发消息上限 as saved (the core gets them in backendConfig()).
 if (backend instanceof FakeBackend) {
   backend.setMemoryEnabled(settings.get().memory);
-  backend.setRunLimit(settings.get().runLimitUsd);
   backend.setAgentMessages(settings.get().agentMessageLimit);
 }
 if (backendKind === 'core' && makeWorkflowsDirAtStart(app.isPackaged, settings.get().workflowsDir)) mkdirSync(defaultWorkflowsDir, { recursive: true });
@@ -295,6 +293,21 @@ const providers = new ProviderStore(
   },
   () => envProviders().map((p) => ({ id: p.id, models: p.models.map((m) => m.id) })),
 );
+// 单次运行花费上限 was one value for every model: it moves to each model in use without one of its own, once.
+{
+  const old = settings.get().runLimitUsd;
+  if (old !== null) {
+    providers.adoptRunLimit(old);
+    settings.update({ runLimitUsd: null });
+  }
+}
+/** The 花费上限 of the model new conversations use (the demo backend has that one model). */
+function defaultModelRunLimit(): number | null {
+  const ref = providers.defaultRef();
+  const m = ref ? providers.list().find((p) => p.id === ref.connectionId)?.models.find((x) => x.id === ref.model) : undefined;
+  return m?.runLimitUsd ?? null;
+}
+if (backend instanceof FakeBackend) backend.setRunLimit(defaultModelRunLimit());
 // Screenshots and tests never touch the network; a normal run really calls the model.
 const testConnection =
   backend instanceof ProcessBackend ? createRealTester((config, model) => backend.probe(config, model)) : createFakeTester({ delayMs: automated ? 0 : 700 });
@@ -323,6 +336,8 @@ function providerList(): ProviderList {
 
 /** Hands saved providers to the backend; remembers which ones it could not use. */
 function applyProviders(): void {
+  // the demo backend has one model: the default one's 花费上限
+  if (backend instanceof FakeBackend) backend.setRunLimit(defaultModelRunLimit());
   if (!backend.configure) return;
   const problems = backend.configure(providers.resolved((catalogId) => needsKeyFor(catalogCache, catalogId)), providers.defaultId());
   providerProblems = Object.fromEntries(problems.map((p) => [p.id, p.reason]));
@@ -1133,7 +1148,6 @@ let lastNetwork = JSON.stringify(settings.get().network);
 let lastLocalConnect = settings.get().localConnect;
 let lastMemory = settings.get().memory;
 let lastAutoTidy = settings.get().memoryAutoTidy;
-let lastRunLimit = settings.get().runLimitUsd;
 let lastAgentMessages = settings.get().agentMessageLimit;
 let lastAccount = userAccount();
 /** Problems the core reported for the network settings (e.g. a certificate file it cannot read), in words. */
@@ -1152,12 +1166,6 @@ settings.onChange((s) => {
   if (s.memoryAutoTidy !== lastAutoTidy) {
     lastAutoTidy = s.memoryAutoTidy;
     if (backend instanceof ProcessBackend) void backend.apply({ memory: { autoTidy: s.memoryAutoTidy } }).catch(() => undefined);
-  }
-  if (s.runLimitUsd !== lastRunLimit) {
-    // 单次运行花费上限: the running core takes it at once (a run already going checks it at its next call)
-    lastRunLimit = s.runLimitUsd;
-    if (backend instanceof ProcessBackend) void backend.apply({ budget: budgetForCore(s.runLimitUsd) }).catch(() => undefined);
-    else if (backend instanceof FakeBackend) backend.setRunLimit(s.runLimitUsd);
   }
   if (s.agentMessageLimit !== lastAgentMessages) {
     // 代理互发消息上限: read by message_agent at each call, so it applies at once

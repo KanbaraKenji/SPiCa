@@ -52,9 +52,14 @@ export interface ProviderConfig {
   contextWindows?: Record<string, number>;
   /** Most output tokens per model name, when the provider's own model list says it (wins over the catalog). */
   maxOutputs?: Record<string, number>;
+  /**
+   * Spending limit for one run per model name, in USD (CostLedger.setRunLimits): a run calling that model stops
+   * before a call that could take what the run has spent past it. Absent: no such limit (the budget's still apply).
+   */
+  runLimits?: Record<string, number>;
 }
 
-/** Hand the providers' context windows to the ledger; providers not listed lose theirs. Returns warnings. */
+/** Hand the providers' context windows and run limits to the ledger; providers not listed lose theirs. Returns warnings. */
 function applyContextWindows(runtime: Runtime, providers: ProviderConfig[], previous: Iterable<string>): string[] {
   const warnings: string[] = [];
   const before = new Map(runtime.sessions().map((s) => [s, s.info().contextWindow]));
@@ -63,9 +68,12 @@ function applyContextWindows(runtime: Runtime, providers: ProviderConfig[], prev
     if (keep.has(id)) continue;
     runtime.ledger.setContextWindows(id, {});
     runtime.ledger.setMaxOutputs(id, {});
+    runtime.ledger.setRunLimits(id, {});
   }
   for (const p of providers) {
     runtime.ledger.setMaxOutputs(p.id, p.maxOutputs ?? {});
+    const badLimits = runtime.ledger.setRunLimits(p.id, p.runLimits ?? {});
+    if (badLimits.length) warnings.push(`provider ${p.id}: run limit ignored for ${badLimits.join(', ')} (needs a positive number of USD)`);
     const bad = runtime.ledger.setContextWindows(p.id, p.contextWindows ?? {});
     if (bad.length) warnings.push(`provider ${p.id}: context window ignored for ${bad.join(', ')} (needs a positive whole number of tokens)`);
   }
