@@ -1,6 +1,8 @@
 // Plugin pages (views/<id>.json) as the shell sees them, and the theme
 // variables a page gets (names fixed with the plugin system).
 
+import { UI_FONT_FAMILY } from './ui-font';
+
 /** One page of an enabled plugin (pluginViews()). */
 export interface PluginView {
   plugin: string;
@@ -56,7 +58,8 @@ export interface PluginViewResult {
   isError: boolean;
 }
 
-export const FONT_UI = "'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif";
+/** The interface font (shared/ui-font.ts): a page's --spica-font, its faces injected with the theme (main/plugin-views.ts). */
+export const FONT_UI = UI_FONT_FAMILY;
 
 /** The variables a plugin page can use (fixed with the plugin system). */
 export function pluginThemeVars(tokens: Record<string, string>, fontUi: string): Record<string, string> {

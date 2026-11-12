@@ -1,6 +1,16 @@
 /* Spica desktop shell styles.
    Every color is a --spica-* token written by theme.ts from the active skin
    (shared/skin.ts). The values below are only first-paint fallbacks. */
+
+/* The interface font with its ascent and descent set so that what is centred by its line box (a button's words, a
+   row's, a tab's, Chinese, capitals and digits alike) sits on the middle line, not ~1px low: why and the numbers in
+   shared/ui-font.ts. These lines are UI_FONT_FACES word for word (renderer-styles.test.ts checks). */
+@font-face { font-family: 'Spica UI'; src: local('Segoe UI Variable Text'); font-weight: 100 900; ascent-override: 101.5%; descent-override: 31.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Light'); font-weight: 300; ascent-override: 101.5%; descent-override: 31.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI'); font-weight: 400; ascent-override: 101.5%; descent-override: 31.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Semibold'); font-weight: 600; ascent-override: 101.5%; descent-override: 31.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Bold'); font-weight: 700; ascent-override: 101.5%; descent-override: 31.5%; }
+
 :root {
   color-scheme: light dark;
   /* The type scale, the Claude app's (comfortable density): every size in the app is one of these, with its line. */
@@ -54,7 +64,7 @@
   --control-h: 28px;
   --control-pad-x: 12px;
   --tab-h: 28px;
-  --font-ui: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-ui: 'Spica UI', 'Spica UI Static', 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
   --font-mono: 'Cascadia Mono', Consolas, 'Microsoft YaHei UI', monospace;
 }
 
@@ -472,14 +482,6 @@ a:hover {
 .link-btn {
   color: var(--spica-accent-text);
   text-align: left;
-}
-
-/* Words beside an icon (设置's column, ← 已安装, + 添加来源): their box cut to the capitals' top and the
-   baseline, so centring puts the Chinese glyphs (which sit low in a line's box) on the icon's middle line, not
-   0.5-1.75px below it. Where text-box is not known the words stay as they were. Not on words that are cut off
-   with an ellipsis: the box would clip the glyphs' tops. */
-.icon-text {
-  text-box: trim-both cap alphabetic;
 }
 
 /* A way back (← 已安装 on a plugin's page, ← 返回「…」 over a conversation opened from history), as Claude's
@@ -1644,19 +1646,6 @@ pre .hl-punctuation {
 .fold-icon {
   flex: none;
   display: inline-flex;
-}
-
-/* Words beside an icon in a row: the box trimmed to the capitals' top and the baseline, so centring it puts
-   the letters, not the line's empty space, on the icons' middle (the letters sat a pixel or two low). Cut at
-   the end of the line only (clip, not hidden: hidden would also cut the descenders below the trimmed box). */
-.fold-label,
-.fold-meta,
-.tool-text,
-.msg-time,
-.msg-versions-text,
-.status-text,
-.status-clock {
-  text-box: trim-both cap alphabetic;
 }
 
 .fold-label {
@@ -6225,10 +6214,6 @@ section.plugins-part > .plugins-part-title {
   order: -1;
   /* the words' colour, on hover too */
   color: currentColor;
-  /* Chinese glyphs draw low in their line box, so with the boxes centred the icon looked ~1.5px high. Until the
-     menu takes an icon before the words (the words in their own box, trimmed with text-box: trim-both cap
-     alphabetic and centred), the icon is moved down by this much of the font size. */
-  translate: 0 0.1em;
 }
 
 /* 设置 › 账号: the same round badge, bigger, at the right end of the first row (as tall as the rows under it). */

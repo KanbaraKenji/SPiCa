@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SPLASH_INK } from '../shared/skin';
+import { UI_FONT_FACES, UI_FONT_FAMILY } from '../shared/ui-font';
+import { FONT_UI } from '../shared/plugin-view';
+import { themeCss } from './plugin-views';
 import { COLUMN_GUTTER, COLUMN_WIDTH, RAIL_WIDTH } from '../renderer/src/shell/layout';
 
 const css = readFileSync(join(__dirname, '../renderer/src/styles.css'), 'utf8');
@@ -150,11 +153,31 @@ describe('an icon beside words has the words colour (sidebar rows, the settings 
   });
 });
 
-describe('words beside an icon on its middle line (out/settings-modal/12-align-*)', () => {
-  it('their box is cut to the capitals and the baseline, so centring lines the Chinese glyphs up with the icon; nothing that clips', () => {
-    const rule = block('\n.icon-text');
-    expect(rule).toContain('text-box: trim-both cap alphabetic');
-    expect(rule).not.toMatch(/overflow|text-overflow/);
+describe('words on the middle line of what they sit in: one fix, in the font (shared/ui-font.ts, out/settings-modal/13-centre-audit.md)', () => {
+  const dialogCss = readFileSync(join(__dirname, '../renderer/dialog/dialog.css'), 'utf8');
+
+  it('the interface font has its ascent and descent set so that ascent − descent is the capitals’ height, the same total as before', () => {
+    expect(UI_FONT_FACES).toContain("font-family: 'Spica UI'; src: local('Segoe UI Variable Text')");
+    for (const w of ["local('Segoe UI Light'); font-weight: 300", "local('Segoe UI'); font-weight: 400", "local('Segoe UI Semibold'); font-weight: 600", "local('Segoe UI Bold'); font-weight: 700"])
+      expect(UI_FONT_FACES).toContain(w);
+    const faces = UI_FONT_FACES.split('\n');
+    expect(faces).toHaveLength(5);
+    for (const f of faces) expect(f).toContain('ascent-override: 101.5%; descent-override: 31.5%;');
+    expect(UI_FONT_FAMILY.startsWith("'Spica UI', 'Spica UI Static', 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI'")).toBe(true);
+  });
+
+  it('the window, the small dialog window and plugin pages all use it, word for word', () => {
+    for (const sheet of [css, dialogCss]) for (const f of UI_FONT_FACES.split('\n')) expect(sheet).toContain(f);
+    expect(css).toContain(`--font-ui: ${UI_FONT_FAMILY};`);
+    expect(dialogCss).toContain(`font-family: ${UI_FONT_FAMILY};`);
+    expect(FONT_UI).toBe(UI_FONT_FAMILY);
+    expect(themeCss({ '--spica-font': FONT_UI }, 'dark').startsWith(UI_FONT_FACES)).toBe(true);
+  });
+
+  it('no small fixed nudges up or down to make up for where glyphs sit (that is the font’s job now): none of them, and no text-box trims either', () => {
+    const nudge = /translateY\(\s*-?(?:[0-3](?:\.\d+)?px|0?\.[0-2]\d*em)\s*\)|translate:\s*0\s+-?(?:[0-3](?:\.\d+)?px|0?\.[0-2]\d*em)/;
+    expect(css).not.toMatch(nudge);
+    expect(css).not.toMatch(/text-box(?:-trim|-edge)?:/);
   });
 });
 
@@ -380,9 +403,8 @@ describe('the conversation’s sizes', () => {
     expect(block('.fold-meta')).toContain('font-size: var(--fs-caption)');
   });
 
-  it('a row’s words are trimmed to the capitals and the baseline, so they centre on the icons; cut at the end only', () => {
-    expect(block('.fold-label,\n.fold-meta,\n.tool-text,\n.msg-time,\n.msg-versions-text,\n.status-text,\n.status-clock')).toContain('text-box: trim-both cap alphabetic');
-    // hidden would cut the descenders below the trimmed box.
+  it('a row’s words centre on the icons by the font (no trim of their own); cut at the end only', () => {
+    // Cut sideways only, so nothing above or below the words' box is cut.
     for (const sel of ['.fold-label', '\n.tool-text']) expect(block(sel), sel).toContain('overflow: clip visible');
     expect(block('.fold-meta')).toContain('display: block');
   });
