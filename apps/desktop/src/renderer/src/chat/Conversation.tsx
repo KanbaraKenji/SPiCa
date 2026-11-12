@@ -476,6 +476,8 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                 </button>
               </div>
             ) : null}
+            {/* a run that ended at the turn limit (scripts through the MCP service; the app sets none) */}
+            {transcript.stopped === 'max_turns' && !running ? <p className="turn-note">（已达到轮数上限，还没做完）</p> : null}
             {transcript.error ? (
               <p className="turn-error status-with-icon" role="alert">
                 <SpicaStatusIcon name="error" size={15} />

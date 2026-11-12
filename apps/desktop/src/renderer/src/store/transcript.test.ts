@@ -544,3 +544,13 @@ describe('a spending limit stops the run', () => {
     expect(next.errorAction).toBeUndefined();
   });
 });
+
+describe('a run stopped at the turn limit', () => {
+  it('says so after the answer (it looked done before); the next run clears it', () => {
+    const base = { seq: 1, at: '2026-11-12T10:00:00Z', sessionId: 's', parentChain: [] };
+    const t = applyEvent({ items: [] }, { ...base, type: 'run.end', reason: 'max_turns', detail: 'stopped after 30 turns' } as CoreEvent);
+    expect(t.stopped).toBe('max_turns');
+    expect(applyEvent(t, { ...base, type: 'status', status: 'thinking' } as CoreEvent).stopped).toBeUndefined();
+    expect(applyEvent({ items: [] }, { ...base, type: 'run.end', reason: 'completed' } as CoreEvent).stopped).toBeUndefined();
+  });
+});

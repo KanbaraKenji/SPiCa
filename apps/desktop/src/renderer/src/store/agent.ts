@@ -602,6 +602,7 @@ export class AgentStore {
         if (prev?.lastRun) next.lastRun = prev.lastRun;
         if (prev?.error) next.error = prev.error;
         if (prev?.errorAction) next.errorAction = prev.errorAction;
+        if (prev?.stopped) next.stopped = prev.stopped;
         if (prev?.run) next.run = prev.run;
         // file.card details only arrive as events; keep them across the reload.
         if (prev?.fileCards) next.fileCards = { ...prev.fileCards, ...(next.fileCards ?? {}) };

@@ -180,7 +180,9 @@ function backendConfig(): DesktopBackendConfig {
         providerId: current?.providerId ?? '',
         model: current?.model ?? '',
         maxTokens: 4096,
-        maxTurns: 30,
+        // No turn limit (he chose 「去掉轮数上限」, 2026-11-12): a run goes on until it is done; what stops it is 停止
+        // or 单次运行花费上限. 0 = none in the core, for sub-agents too.
+        maxTurns: 0,
         // The model for heavy work: plugins that ask for a strong model get it (it may be on another connection).
         ...(strong ? { strongModel: strong.model, ...(strong.connectionId !== current?.providerId ? { strongProviderId: strong.connectionId } : {}) } : {}),
       },

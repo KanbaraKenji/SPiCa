@@ -675,7 +675,8 @@ export class Session {
       this.#interrupt = false;
       this.#applyQueue();
       cfg = this.#record.config;
-      if (turn >= cfg.maxTurns) return end('max_turns', `stopped after ${cfg.maxTurns} turns`);
+      const turnLimit = this.#rt.turnLimit(cfg); // 0: no limit (the desktop app)
+      if (turnLimit > 0 && turn >= turnLimit) return end('max_turns', `stopped after ${turnLimit} turns`);
       turn++;
       this.#emit({ type: 'turn.start', turn });
       const turnAbort = new AbortController();

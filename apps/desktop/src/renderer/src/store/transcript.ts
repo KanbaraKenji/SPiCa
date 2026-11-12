@@ -214,6 +214,11 @@ export interface Transcript {
   error?: string;
   /** Where the error is put right: 'models' = 设置 › 模型 (a spending limit stopped the run); a button beside it opens it. */
   errorAction?: 'models';
+  /**
+   * The last run stopped at a limit with the work not done (not an error): 'max_turns' (the turn limit; the desktop
+   * app sets none since 2026-11-12, a script through the MCP service may). Shown as a note after the answer.
+   */
+  stopped?: 'max_turns';
   /** The words of the last error the core marked retryable (a network error, 5xx, 429...): shown only if the run then ends in an error. */
   lastFailure?: string;
   /** Messages sent while a run was going, not yet taken in by the agent. */
@@ -735,6 +740,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         t.run = { startedAt, status: e.status, ...(e.detail ? { detail: e.detail } : {}) };
         delete t.error;
         delete t.errorAction;
+        delete t.stopped;
         delete t.lastFailure;
       } else if (t.run) {
         t.lastRun = { endedAt: now, durationMs: now - t.run.startedAt, reason: e.status };
@@ -776,6 +782,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         if (words) t.error = words;
       }
       delete t.lastFailure;
+      if (e.reason === 'max_turns') t.stopped = 'max_turns';
       return t;
     }
     case 'budget.stop': {

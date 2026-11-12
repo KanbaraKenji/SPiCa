@@ -25,7 +25,15 @@ export interface SessionConfig {
   cwd: string;
   /** Tool allow-list; undefined = all registered tools. */
   tools?: string[];
+  /**
+   * The turn limit when the session was made. It applies only when the creator asked for it (`asked` has
+   * 'maxTurns'); otherwise each run takes the runtime's default as it is then (RuntimeOptions.defaults.maxTurns).
+   * Records written before 2026-11-12 never have `asked`: they follow the default too (nothing asked for a limit
+   * of its own then, except tests).
+   */
   maxTurns: number;
+  /** Limits the creator asked for itself (CreateSessionRequest), kept as given; the others follow the runtime. */
+  asked?: ('maxTurns' | 'maxTokens')[];
   /** Interface language (BCP 47), used until the user writes. */
   locale?: string;
   temperature?: number;

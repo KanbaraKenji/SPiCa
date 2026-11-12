@@ -66,6 +66,10 @@ export interface RuntimeOptions {
    * strongModel: the model for heavy work (plugins asking for a strong model get it), on the default
    * provider or on strongProviderId when it is on another connection.
    */
+  /**
+   * maxTurns: turns one run may take; 0 = no limit (the desktop app, he chose 2026-11-12); absent = 50. It applies
+   * to every session without a limit of its own, sub-agents included, at each run (a change applies at once).
+   */
   defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; system?: string; strongModel?: string; strongProviderId?: string };
   store?: Store;
   /** Rate limits per provider id (deployment configuration). */
@@ -134,6 +138,8 @@ export interface RuntimeInternals {
   imagesAllowed(providerId: string, model: string): boolean | undefined;
   /** The provider refused images for this model: later requests to it leave the images out. */
   markNoImages(providerId: string, model: string): void;
+  /** Turns a run of this session may take now; 0 = no limit (see SessionConfig.maxTurns). */
+  turnLimit(config: SessionConfig): number;
   readonly hooks: HookRegistry;
   readonly tools: ToolRegistry;
   readonly store: Store;
@@ -168,6 +174,9 @@ function safeFolderName(name: string): string {
     .trim();
   return cleaned || 'project';
 }
+
+/** Turns one run may take when the deployment gives no default (RuntimeOptions.defaults.maxTurns). */
+export const DEFAULT_MAX_TURNS = 50;
 
 export const DEFAULT_SYSTEM_PROMPT =
   'You are an agent in {{app}}, a desktop workbench. Use the available tools to inspect files and gather facts ' +
@@ -253,6 +262,11 @@ export class Runtime implements RuntimeInternals {
 
   markNoImages(providerId: string, model: string): void {
     this.#noImages.add(`${providerId}|${model}`);
+  }
+
+  turnLimit(config: SessionConfig): number {
+    const n = config.asked?.includes('maxTurns') ? config.maxTurns : (this.#opts.defaults.maxTurns ?? DEFAULT_MAX_TURNS);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
   }
 
   /** See RuntimeOptions.appName. */
@@ -447,7 +461,8 @@ export class Runtime implements RuntimeInternals {
       model: req.model ?? tpl?.model ?? (req.providerId || tpl?.providerId ? undefined : parent?.config.model) ?? d.model,
       maxTokens: req.maxTokens ?? d.maxTokens,
       cwd: req.cwd ?? parent?.config.cwd ?? ownFolder ?? this.#opts.cwd ?? process.cwd(),
-      maxTurns: req.maxTurns ?? d.maxTurns ?? 50,
+      maxTurns: req.maxTurns ?? d.maxTurns ?? DEFAULT_MAX_TURNS,
+      ...(req.maxTurns !== undefined ? { asked: ['maxTurns' as const] } : {}),
       locale: req.locale ?? parent?.config.locale ?? this.#opts.locale ?? 'zh-CN',
       serverWebSearch: false,
       // A sub-agent gets its parent's tool allow-list unless told otherwise.
