@@ -5,11 +5,11 @@
 /* The interface font with its ascent and descent set so that what is centred by its line box (a button's words, a
    row's, a tab's, Chinese, capitals and digits alike) sits on the middle line, not ~1px low: why and the numbers in
    shared/ui-font.ts. These lines are UI_FONT_FACES word for word (renderer-styles.test.ts checks). */
-@font-face { font-family: 'Spica UI'; src: local('Segoe UI Variable Text'); font-weight: 100 900; ascent-override: 101.5%; descent-override: 31.5%; }
-@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Light'); font-weight: 300; ascent-override: 101.5%; descent-override: 31.5%; }
-@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI'); font-weight: 400; ascent-override: 101.5%; descent-override: 31.5%; }
-@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Semibold'); font-weight: 600; ascent-override: 101.5%; descent-override: 31.5%; }
-@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Bold'); font-weight: 700; ascent-override: 101.5%; descent-override: 31.5%; }
+@font-face { font-family: 'Spica UI'; src: local('Segoe UI Variable Text'); font-weight: 100 900; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Light'); font-weight: 300; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI'); font-weight: 400; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Semibold'); font-weight: 600; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Bold'); font-weight: 700; ascent-override: 105.5%; descent-override: 27.5%; }
 
 :root {
   color-scheme: light dark;
@@ -2234,7 +2234,7 @@ pre .hl-punctuation {
 }
 
 .suggest-title {
-  padding: 6px 10px 4px;
+  padding: 5px 10px;
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
   color: var(--spica-muted);
@@ -3676,6 +3676,9 @@ button.ctx-row:hover {
   /* Never break a label into a column of single characters (small window, 150%). */
   white-space: nowrap;
   padding: 0 12px;
+  /* The open one's line along the bottom, and the same width clear along the top, so the words sit on the
+     middle line of the tab and not 1px above it. */
+  border-top: 2px solid transparent;
   border-bottom: 2px solid transparent;
   color: var(--spica-muted);
 }

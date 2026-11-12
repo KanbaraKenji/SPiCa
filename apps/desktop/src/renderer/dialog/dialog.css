@@ -3,11 +3,11 @@
    by main.ts from what main passes in. The window is the dialog box: its corners and shadow are the window's own. */
 
 /* styles.css @font-face (shared/ui-font.ts UI_FONT_FACES, word for word: renderer-styles.test.ts checks) */
-@font-face { font-family: 'Spica UI'; src: local('Segoe UI Variable Text'); font-weight: 100 900; ascent-override: 101.5%; descent-override: 31.5%; }
-@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Light'); font-weight: 300; ascent-override: 101.5%; descent-override: 31.5%; }
-@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI'); font-weight: 400; ascent-override: 101.5%; descent-override: 31.5%; }
-@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Semibold'); font-weight: 600; ascent-override: 101.5%; descent-override: 31.5%; }
-@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Bold'); font-weight: 700; ascent-override: 101.5%; descent-override: 31.5%; }
+@font-face { font-family: 'Spica UI'; src: local('Segoe UI Variable Text'); font-weight: 100 900; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Light'); font-weight: 300; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI'); font-weight: 400; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Semibold'); font-weight: 600; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Bold'); font-weight: 700; ascent-override: 105.5%; descent-override: 27.5%; }
 
 /* styles.css * */
 * {

@@ -158,13 +158,13 @@ describe('an icon beside words has the words colour (sidebar rows, the settings 
 describe('words on the middle line of what they sit in: one fix, in the font (shared/ui-font.ts, out/settings-modal/13-centre-audit.md)', () => {
   const dialogCss = readFileSync(join(__dirname, '../renderer/dialog/dialog.css'), 'utf8');
 
-  it('the interface font has its ascent and descent set so that ascent − descent is the capitals’ height, the same total as before', () => {
+  it('the interface font has its ascent and descent moved towards each other (the measured 105.5 / 27.5), the same total as before', () => {
     expect(UI_FONT_FACES).toContain("font-family: 'Spica UI'; src: local('Segoe UI Variable Text')");
     for (const w of ["local('Segoe UI Light'); font-weight: 300", "local('Segoe UI'); font-weight: 400", "local('Segoe UI Semibold'); font-weight: 600", "local('Segoe UI Bold'); font-weight: 700"])
       expect(UI_FONT_FACES).toContain(w);
     const faces = UI_FONT_FACES.split('\n');
     expect(faces).toHaveLength(5);
-    for (const f of faces) expect(f).toContain('ascent-override: 101.5%; descent-override: 31.5%;');
+    for (const f of faces) expect(f).toContain('ascent-override: 105.5%; descent-override: 27.5%;');
     expect(UI_FONT_FAMILY.startsWith("'Spica UI', 'Spica UI Static', 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI'")).toBe(true);
   });
 
