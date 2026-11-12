@@ -86,6 +86,8 @@ class Aborted extends Error {}
 
 /** Tools of the script that only read (a round that used only these can be regenerated, as in the core). */
 const READ_ONLY_TOOLS = new Set(['list_dir', 'read_file', 'glob', 'grep', 'web_fetch', 'web_search', 'ask_user', 'suggest_actions']);
+/** remember / forget: taken back when their answer is regenerated, so they do not keep it from being regenerated (as in the core). */
+const MEMORY_TOOLS = new Set(['remember', 'forget']);
 const ANSWER_KINDS = new Set<MessageKind>(['assistant', 'tool_results', 'steer']);
 
 /** What the demo's web search finds (the answer cites the second). */
@@ -337,7 +339,7 @@ export class FakeBackend implements AgentBackend {
     let other = false;
     for (const m of answer) {
       for (const b of m.content) {
-        if (b.type !== 'tool_use' || READ_ONLY_TOOLS.has(b.name) || this.#declined.has(b.id)) continue;
+        if (b.type !== 'tool_use' || READ_ONLY_TOOLS.has(b.name) || MEMORY_TOOLS.has(b.name) || this.#declined.has(b.id)) continue;
         if (b.name === 'write_file' || b.name === 'edit_file') files = true;
         else if (b.name === 'spawn_agent' || b.name === 'message_agent') agents = true;
         else other = true;
@@ -427,6 +429,10 @@ export class FakeBackend implements AgentBackend {
     const old = this.#superseded.get(sessionId) ?? [];
     const version = old.filter((m) => m.superseded?.of === anchor.id).reduce((n, m) => Math.max(n, m.superseded!.version), 0) + 1;
     if (answer.length > 0) {
+      // what the old answer did to the memory is taken back first (as in the core)
+      const kept = Object.assign({}, ...answer.map((m) => m.meta?.memoryCards ?? {})) as Record<string, MemoryCardMeta>;
+      const cards = answer.flatMap((m) => m.content.flatMap((b) => (b.type === 'tool_use' && kept[b.id] ? [kept[b.id]!] : [])));
+      this.#memory.revert(cards);
       const mark = { at: isoAt(this.#now()), of: anchor.id, version };
       const gone = new Set(answer.map((m) => m.id));
       this.#messages.set(sessionId, (this.#messages.get(sessionId) ?? []).filter((m) => !gone.has(m.id)));
@@ -676,7 +682,7 @@ export class FakeBackend implements AgentBackend {
   }
 
   async forgetMemory(id: number): Promise<MemoryCardMeta | undefined> {
-    return this.#memory.forget(id, 'user');
+    return this.#memory.delete(id);
   }
 
   async clearMemories(): Promise<number> {

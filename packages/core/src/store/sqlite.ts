@@ -423,7 +423,19 @@ export class SqliteStore implements Store {
       throw err;
     }
   }
+  /** Memory rows are written with secure_delete: what an edit or a delete frees is overwritten with zeros, not left in the file. */
+  #secure<T>(fn: () => T): T {
+    this.#db.exec('PRAGMA secure_delete = ON');
+    try {
+      return fn();
+    } finally {
+      this.#db.exec('PRAGMA secure_delete = OFF');
+    }
+  }
   putMemory(m: MemoryItem): MemoryItem {
+    return this.#secure(() => this.#putMemory(m));
+  }
+  #putMemory(m: MemoryItem): MemoryItem {
     if (!m.id) {
       const r = this.#q('INSERT INTO memories (owner, status, updated_at, data) VALUES (?, ?, ?, ?)').run(m.owner, m.status, m.updatedAt, '{}');
       const item = { ...m, id: Number(r.lastInsertRowid) };
@@ -463,6 +475,44 @@ export class SqliteStore implements Store {
   }
   setMemoryCursor(owner: string, at: string): void {
     this.#q('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(`memory_cursor:${owner}`, at);
+  }
+  deleteMemories(owner: string, ids: number[]): void {
+    if (ids.length === 0) return;
+    const key = `memory_deleted:${owner}`;
+    // the pages that held the rows are overwritten with zeros, and the write-ahead log is emptied after
+    this.#secure(() => {
+      this.#db.exec('BEGIN');
+      try {
+        const sources = new Set(this.deletedMemorySources(owner));
+        for (const id of ids) {
+          const row = this.#q('SELECT data FROM memories WHERE id = ? AND owner = ?').get(id, owner) as Row | undefined;
+          if (!row) continue;
+          const m = parse<MemoryItem>(row.data);
+          if (m.sessionId && m.seq !== undefined) sources.add(`${m.sessionId}#${m.seq}`);
+          this.#q('DELETE FROM memories WHERE id = ?').run(id);
+        }
+        this.#q('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify([...sources]));
+        this.#db.exec('COMMIT');
+      } catch (err) {
+        this.#db.exec('ROLLBACK');
+        throw err;
+      }
+    });
+    try {
+      this.#db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+    } catch {
+      // another connection reads the file (a read-only viewer): the log is emptied on a later checkpoint
+    }
+  }
+  deletedMemorySources(owner: string): string[] {
+    const row = this.#q('SELECT value FROM meta WHERE key = ?').get(`memory_deleted:${owner}`) as { value: string } | undefined;
+    if (!row) return [];
+    try {
+      const list: unknown = JSON.parse(row.value);
+      return Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : [];
+    } catch {
+      return [];
+    }
   }
   listMemories(owner: string, opts: { all?: boolean } = {}): MemoryItem[] {
     const rows = (

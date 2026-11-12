@@ -149,6 +149,38 @@ describe('both stores keep the same', () => {
     reopened.close();
   });
 
+  it('memory items deleted for good: gone, numbers not reused, the messages they came from kept per owner', () => {
+    const item: MemoryItem = {
+      id: 0,
+      owner: 'user',
+      text: '喜欢简短回答',
+      quote: '回答尽量短',
+      status: 'active',
+      by: 'assistant',
+      createdAt: '2026-01-01T00:00:09.000+08:00',
+      updatedAt: '2026-01-01T00:00:09.000+08:00',
+    };
+    const path = join(dir, 'db2', 'spica.db');
+    mkdirSync(join(dir, 'db2'), { recursive: true });
+    const stores = [new MemoryStore(), new SqliteStore(path)];
+    const each = (s: Store) => {
+      const a = s.putMemory({ ...item, sessionId: 'ses_1', seq: 3 });
+      const b = s.putMemory({ ...item, text: '在上海' });
+      const c = s.putMemory({ ...item, text: '别人的', owner: 'other', sessionId: 'ses_2', seq: 1 });
+      s.deleteMemories('user', [a.id, b.id, c.id, 99]);
+      s.deleteMemories('user', []);
+      return { all: s.listMemories('user', { all: true }), other: s.listMemories('other').map((m) => m.id), gone: s.getMemory(a.id), sources: s.deletedMemorySources('user'), none: s.deletedMemorySources('other') };
+    };
+    const [mem, sql] = stores.map(each);
+    expect(sql).toEqual(mem);
+    expect(mem).toEqual({ all: [], other: [3], gone: undefined, sources: ['ses_1#3'], none: [] });
+    (stores[1] as SqliteStore).close();
+    const reopened = new SqliteStore(path);
+    expect(reopened.deletedMemorySources('user')).toEqual(['ses_1#3']);
+    expect(reopened.putMemory(item).id).toBe(4);
+    reopened.close();
+  });
+
   it('memory tidies and where the next one starts: numbered by the store, newest first, kept across reopening', () => {
     const path = join(dir, 'db', 'tidy.db');
     mkdirSync(join(dir, 'db'), { recursive: true });

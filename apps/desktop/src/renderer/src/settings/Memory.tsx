@@ -1,5 +1,5 @@
 // 设置 › 记忆: the switch, what the assistant remembers (newest first), adding one, editing, deleting
-// and clearing all. Items are never deleted in the core: a deleted one is kept as forgotten.
+// and clearing all. Deleting and clearing are for good (the core drops the items and their older versions).
 import { useState } from 'react';
 import type { MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyChange, MemoryTidyRun } from '@spica/protocol';
 import { Switch } from './Switch';

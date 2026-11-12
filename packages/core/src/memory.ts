@@ -17,8 +17,10 @@
 // conversation, newest first up to a count and a length; the rest stay stored
 // and the prompt says how many were left out.
 //
-// Items are never deleted outright: replaced and forgotten ones keep their
-// status, so every change (also clearing all) can be undone.
+// Replaced and forgotten items keep their status, so the undo on a conversation's
+// line and a tidy's undo can take a change back. Deleting in the settings (one
+// item, or clearing all) is for good: the rows go, with the older versions an
+// item replaced.
 import type { Hooks } from './hooks.ts';
 import type { Runtime } from './runtime.ts';
 import type { Session } from './session.ts';
@@ -493,13 +495,52 @@ export class MemoryBook {
     return card;
   }
 
-  /** Settings: forget everything (kept as forgotten, so it can still be restored one by one). */
+  /**
+   * Settings 删除: the item goes for good, with the older versions it took the place of (replaced by it, or by a tidy
+   * that merged them into it). Forgotten and undone items stay: they back the undo on conversation lines.
+   */
+  delete(id: number, owner = USER_OWNER): MemoryCardMeta | undefined {
+    const it = this.get(id);
+    if (!it || it.owner !== owner || it.status !== 'active') return undefined;
+    this.#rt.store.deleteMemories(owner, this.#lineage(it, this.list({ owner, all: true })));
+    const card: MemoryCardMeta = { action: 'deleted', item: it };
+    this.#emit(card);
+    return card;
+  }
+
+  /** Settings 全部清除: every active item goes for good, as with delete. How many. */
   clear(owner = USER_OWNER): number {
-    const now = isoNow();
-    const items = this.list({ owner });
-    for (const it of items) this.#save({ ...it, status: 'forgotten', by: 'user', updatedAt: now });
+    const all = this.list({ owner, all: true });
+    const items = all.filter((m) => m.status === 'active');
+    this.#rt.store.deleteMemories(owner, items.flatMap((m) => this.#lineage(m, all)));
     this.#emit({ action: 'cleared', count: items.length });
     return items.length;
+  }
+
+  /** An item and the replaced items behind it (each replacedBy one in the chain). */
+  #lineage(it: MemoryItem, all: MemoryItem[]): number[] {
+    const ids = [it.id];
+    for (let i = 0; i < ids.length; i++) {
+      for (const m of all) if (m.status === 'replaced' && m.replacedBy === ids[i] && !ids.includes(m.id)) ids.push(m.id);
+    }
+    return ids;
+  }
+
+  /**
+   * Regenerate: takes back what a replaced answer's remember / forget calls did (its cards, in the order they were
+   * made), newest first. Only a change nothing touched since is taken back (the item as the card left it): one the
+   * user undid, edited or deleted, or a later call changed, stays as it is. How many were taken back.
+   */
+  revert(cards: readonly MemoryCardMeta[]): number {
+    let n = 0;
+    for (const card of [...cards].reverse()) {
+      const made = card.item;
+      if (!made || !['saved', 'replaced', 'forgotten'].includes(card.action)) continue;
+      const cur = this.get(made.id);
+      if (!cur || cur.updatedAt !== made.updatedAt || cur.status !== made.status) continue;
+      if (this.undo(made.id)) n++;
+    }
+    return n;
   }
 }
 

@@ -18,6 +18,7 @@ import type {
   GuardNote,
   Message,
   MessageKind,
+  MemoryCardMeta,
   MessageMeta,
   PendingItem,
   RegenerateCode,
@@ -64,6 +65,8 @@ const ANSWER_KINDS: ReadonlySet<MessageKind> = new Set<MessageKind>(['assistant'
 /** Tools whose call means files were written or sub-agents were started (the reasons named in the hint). */
 const FILE_TOOLS = new Set(['write_file', 'edit_file']);
 const AGENT_TOOLS = new Set(['spawn_agent', 'message_agent']);
+/** The memory tools: what they did is taken back when their answer is regenerated, so they do not count as acting. */
+const MEMORY_TOOLS = new Set(['remember', 'forget']);
 
 export class Session {
   readonly id: string;
@@ -200,12 +203,27 @@ export class Session {
         const status = records.get(c.id)?.status;
         if (status === 'denied' || status === 'unavailable') continue; // nothing ran
         if (this.#rt.tools.get(c.name)?.readOnly) continue;
+        if (MEMORY_TOOLS.has(c.name) && this.#rt.tools.get(c.name)) continue;
         if (FILE_TOOLS.has(c.name)) files = true;
         else if (AGENT_TOOLS.has(c.name)) agents = true;
         else other = true;
       }
     }
     return files ? 'regenerate.wrote_files' : agents ? 'regenerate.spawned' : other ? 'regenerate.acted' : undefined;
+  }
+
+  /** What the remember / forget calls of these messages changed, in the order they were made (from the call records). */
+  #memoryCards(answer: Message[]): MemoryCardMeta[] {
+    const cards: MemoryCardMeta[] = [];
+    for (const m of answer) {
+      if (m.role !== 'assistant') continue;
+      const records = new Map(this.#rt.store.listToolCalls(this.id, m.id).map((r) => [r.id, r]));
+      for (const b of m.content) {
+        const card = b.type === 'tool_use' ? records.get(b.id)?.cards?.memory : undefined;
+        if (card) cards.push(card);
+      }
+    }
+    return cards;
   }
 
   /** Whether the last round can be regenerated now (SessionInfo.regenerate). */
@@ -240,6 +258,8 @@ export class Session {
     const older = this.#superseded.filter((m) => m.superseded?.of === anchor.id).map((m) => m.superseded!.version);
     const version = Math.max(0, ...older) + 1;
     if (answer.length > 0) {
+      // the old answer's remember / forget calls are taken back before the new one runs (and sees the memory)
+      this.#rt.revertMemory(this.#memoryCards(answer));
       const mark = { at: isoNow(), of: anchor.id, version };
       const ids = answer.map((m) => m.id);
       this.#rt.store.supersedeMessages(this.id, ids, mark);

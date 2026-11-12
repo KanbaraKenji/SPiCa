@@ -2,7 +2,7 @@
 // user's own words, never secrets, read into every new assistant conversation,
 // replaced / forgotten / undone without losing anything, kept out of projects
 // and background threads.
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgentApi } from './api.ts';
@@ -186,7 +186,7 @@ describe('a turn that read outside content', () => {
 });
 
 describe('changing', () => {
-  it('replaces, forgets, undoes and clears without losing anything, and it all survives a restart', async () => {
+  it('replaces, forgets and undoes without losing anything; clearing deletes for good; it all survives a restart', async () => {
     const path = join(dir, 'db', 'spica.db');
     const rt = makeRuntime(gw, { cwd: dir, store: new SqliteStore(path) });
     gw.enqueue(
@@ -222,17 +222,51 @@ describe('changing', () => {
     expect(rt.memory.edit(3, '长'.repeat(MEMORY_LIMITS.itemChars + 1))).toEqual({ refused: 'too_long' });
     expect(rt.memory.edit(3, '  ')).toEqual({ refused: 'empty' });
     expect(rt.memory.get(3)!.text).toBe('用户在上海工作');
+    // 全部清除 deletes the active items for good (2 and 3); 1, forgotten by the user, stays
     expect(rt.memory.clear()).toBe(2);
     expect(rt.memory.list()).toEqual([]);
-    expect(rt.memory.list({ all: true }).map((m) => m.status)).toEqual(['forgotten', 'forgotten', 'forgotten']);
-    rt.memory.restore(3);
+    expect(rt.memory.list({ all: true }).map((m) => [m.id, m.status])).toEqual([[1, 'forgotten']]);
+    expect(rt.memory.restore(3)).toBeUndefined();
+    expect(rt.memory.undo(2)).toBeUndefined();
     await rt.close();
+    // nothing of the deleted item is left in the file or its log (it was added and edited in the settings, so no conversation holds it)
+    const bytes = Buffer.concat([readFileSync(path), ...(existsSync(`${path}-wal`) ? [readFileSync(`${path}-wal`)] : [])]);
+    for (const t of ['用户在上海工作', '用户在上海']) expect(bytes.includes(Buffer.from(t))).toBe(false);
 
     const again = makeRuntime(gw, { cwd: dir, store: new SqliteStore(path) });
     again.restore();
-    expect(again.memory.list().map((m) => [m.id, m.text])).toEqual([[3, '用户在上海工作']]);
-    // numbers are never reused
+    expect(again.memory.list()).toEqual([]);
+    // numbers are never reused, also after a delete
     expect(again.memory.add({ text: '用户养猫', quote: '我养猫', by: 'user' }).item!.id).toBe(4);
+  });
+
+  it('deleting in the settings takes the older versions with it; the conversation lines lose their undo, other forgotten items keep theirs', async () => {
+    const rt = makeRuntime(gw, { cwd: dir });
+    gw.enqueue(
+      remember({ text: '用户喜欢用 Excel 做报表', quote: '我习惯用 Excel 做报表' }),
+      { text: '好' },
+      remember({ text: '用户改用 Power BI 做报表', quote: '以后改用 Power BI 了', replaces: 1 }, 'm2'),
+      { text: '好' },
+      remember({ text: '用户在上海', quote: '我在上海' }, 'm3'),
+      { text: '好' },
+      forget({ id: 3, quote: '上海那条别记了' }),
+      { text: '好' },
+    );
+    const s = rt.createSession();
+    await s.send('我习惯用 Excel 做报表').done;
+    await s.send('报表以后改用 Power BI 了').done;
+    await s.send('我在上海').done;
+    await s.send('上海那条别记了').done;
+    const from = [1, 2].map((id) => `${s.id}#${rt.memory.get(id)!.seq}`);
+    expect(rt.memory.delete(1)).toBeUndefined(); // only an active item is deleted
+    expect(rt.memory.delete(2)).toMatchObject({ action: 'deleted', item: { id: 2 } });
+    expect(rt.memory.get(1)).toBeUndefined();
+    expect(rt.memory.get(2)).toBeUndefined();
+    expect(rt.memory.undo(2)).toBeUndefined();
+    // the forgotten one was not deleted: its line can still bring it back
+    expect(rt.memory.undo(3)).toMatchObject({ action: 'restored', item: { id: 3, status: 'active' } });
+    // what is left of them: the messages they came from (no text), so a tidy does not note them again
+    expect(rt.store.deletedMemorySources('user').sort()).toEqual(from.sort());
   });
 
   it('the user adds an item in the settings: kept as they wrote it, secrets refused, shown in the next conversation', async () => {
@@ -315,10 +349,13 @@ describe('where memory is', () => {
     expect(await api.editMemory!(1, '周报每周五下午四点前发')).toMatchObject({ action: 'edited' });
     expect(await api.editMemory!(9, 'x')).toBeUndefined();
     await api.addMemory!('数据处理主要用 Julia');
-    expect(await api.forgetMemory!(1)).toMatchObject({ action: 'forgotten', item: { id: 1 } });
-    expect(await api.undoMemory!(1)).toMatchObject({ action: 'restored' });
+    // 删除 is for good: nothing to undo or list afterwards
+    expect(await api.forgetMemory!(1)).toMatchObject({ action: 'deleted', item: { id: 1 } });
+    expect(await api.undoMemory!(1)).toBeUndefined();
+    expect(await api.forgetMemory!(1)).toBeUndefined();
+    await api.addMemory!('回答先给结论');
     expect(await api.clearMemories!()).toBe(2);
-    expect((await api.listMemories!({ all: true })).map((m) => m.status)).toEqual(['forgotten', 'forgotten']);
+    expect(await api.listMemories!({ all: true })).toEqual([]);
     expect(events.filter((e) => e.type === 'memory.changed').every((e) => e.sessionId === '')).toBe(true);
   });
 

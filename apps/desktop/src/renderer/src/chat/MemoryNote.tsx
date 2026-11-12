@@ -17,7 +17,8 @@ export function MemoryNote({ card }: { card: MemoryCardMeta }) {
   const { items, undo } = useContext(MemoryLinesContext);
   const [busy, setBusy] = useState(false);
   const id = card.item?.id;
-  const line = memoryLine(card, items?.find((m) => m.id === id));
+  // loaded and not there: deleted for good in the settings
+  const line = memoryLine(card, items ? (items.find((m) => m.id === id) ?? null) : undefined);
   if (!line || id === undefined) return null;
   return (
     <p className="turn-note memory-note">

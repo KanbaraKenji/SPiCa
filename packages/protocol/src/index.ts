@@ -733,7 +733,7 @@ export interface HistoryCardMeta {
 /**
  * One thing the assistant remembers about the user across conversations: a
  * short sentence, with the user's own words it rests on. Kept when replaced or
- * forgotten (status), so a change can be undone.
+ * forgotten (status), so a change can be undone; deleted in the settings, it is gone.
  */
 export interface MemoryItem {
   /** The short number the model and the window use ([n]); never reused. */
@@ -744,7 +744,7 @@ export interface MemoryItem {
   /** The user's words the item rests on, as typed in the conversation (redacted). */
   quote: string;
   status: 'active' | 'replaced' | 'forgotten';
-  /** Forgotten by the undo on its "Saved: …" line (not deleted in the settings or cleared). */
+  /** Forgotten by the undo on its "Saved: …" line (or by a tidy's undo, or a regenerate). */
   undone?: boolean;
   /** The tidy (MemoryTidyRun.id) that made this item, or replaced or forgot it. */
   tidyId?: number;
@@ -803,12 +803,12 @@ export interface MemoryRefusal {
 
 /** What changed in the user's memory (event `memory.changed`, kept in `MessageMeta.memoryCards` when a tool did it). */
 export interface MemoryCardMeta {
-  action: 'saved' | 'replaced' | 'forgotten' | 'edited' | 'restored' | 'cleared' | 'undone' | 'tidied';
-  /** The item saved, edited, forgotten or restored (absent for cleared). */
+  action: 'saved' | 'replaced' | 'forgotten' | 'edited' | 'restored' | 'deleted' | 'cleared' | 'undone' | 'tidied';
+  /** The item saved, edited, forgotten, restored or deleted (absent for cleared). */
   item?: MemoryItem;
   /** replaced: the item that was taken out. */
   previous?: MemoryItem;
-  /** cleared: how many items were forgotten. */
+  /** cleared: how many items were deleted. */
   count?: number;
 }
 
@@ -1143,9 +1143,9 @@ export interface AgentApi {
   addMemory?(text: string): Promise<MemoryCardMeta | MemoryRefusal>;
   /** Change the sentence of an active item; undefined when it is gone. */
   editMemory?(id: number, text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
-  /** Delete an item (kept as forgotten). */
+  /** Delete an item for good, with the older versions it replaced; undefined when it is not active. */
   forgetMemory?(id: number): Promise<MemoryCardMeta | undefined>;
-  /** Delete every active item (kept as forgotten); how many. */
+  /** Delete every active item for good (as forgetMemory); how many. */
   clearMemories?(): Promise<number>;
   /** The undo on a "Saved: …" line: a save is taken back, a replacement gives way to the old item, a forgotten item returns. */
   undoMemory?(id: number): Promise<MemoryCardMeta | undefined>;
