@@ -1,6 +1,6 @@
 // Preload: the only bridge between the sandboxed renderer and the main process.
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
-import { IpcChannel, type AgentApi, type AppInfo, type ContextBreakdown, type CoreEvent } from '@spica/protocol';
+import { IpcChannel, type AgentApi, type AppInfo, type ContextBreakdown, type CoreEvent, type UsageQuery, type UsageSummary } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
 import type { BackendState, DesktopBridge, LocalConnectInfo, NetworkState, PreviewFile, PreviewInfo, ProviderList, SaveCsvResult, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import type { ModelRef, ProviderDraft, ProviderKind, TestResult } from '../shared/providers';
@@ -103,6 +103,7 @@ const bridge: DesktopBridge = {
   openFile: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.OpenFile, sessionId, path) as Promise<string | null>,
   markProjectRead: (projectId) => ipcRenderer.invoke(DesktopChannel.ProjectRead, projectId) as Promise<void>,
   contextBreakdown: (sessionId) => ipcRenderer.invoke(DesktopChannel.ContextBreakdown, sessionId) as Promise<ContextBreakdown | null>,
+  usageSummary: (query: UsageQuery) => ipcRenderer.invoke(DesktopChannel.UsageSummary, query) as Promise<UsageSummary | null>,
   images: {
     fromPaste: (data) => ipcRenderer.invoke(DesktopChannel.Images, 'fromPaste', data) as Promise<{ path: string; url: string } | null>,
     prepare: (path) => ipcRenderer.invoke(DesktopChannel.Images, 'prepare', path) as Promise<{ path: string; url: string } | null>,

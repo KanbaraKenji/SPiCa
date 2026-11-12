@@ -1,6 +1,6 @@
 // The typed bridge the renderer sees as `window.spica`. Everything the UI can
 // do goes through here; there is no other way to reach the backend.
-import type { AgentApi, ContextBreakdown, CoreEvent, SpicaBridge } from '@spica/protocol';
+import type { AgentApi, ContextBreakdown, CoreEvent, SpicaBridge, UsageQuery, UsageSummary } from '@spica/protocol';
 import type { WindowCover } from './skin';
 import type { AutostartSupport, SettingsPatch, ShellSettings } from './settings';
 import type { ModelRef, ProviderDraft, ProviderKind, ProviderView, TestResult } from './providers';
@@ -147,6 +147,8 @@ export interface DesktopBridge extends SpicaBridge {
     /** Whether a model takes pictures: false no, null not known (it is tried). */
     accepted(providerId: string, model: string): Promise<boolean | null>;
   };
+  /** 设置 › 用量: the request log summed up; null when the core cannot be reached. */
+  usageSummary(query: UsageQuery): Promise<UsageSummary | null>;
   /** Asks where to save, then writes the usage log (JSON Lines; keys and addresses removed by the core). */
   exportUsageLog(req: UsageLogRequest): Promise<UsageLogResult>;
   /** A file of this session (relative paths are in its folder), ready for the right panel. */

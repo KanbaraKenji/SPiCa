@@ -830,7 +830,7 @@ export class Session {
         providerId: provider.id,
         model: request.model,
       });
-      const callInfo: CallInfo = { attempts: 0 };
+      const callInfo: CallInfo = trace.watch({ attempts: 0 });
       let response: ModelResponse | undefined;
       let partialText = '';
       // The answer so far is saved about once a second (meta.partial), so a
@@ -911,6 +911,7 @@ export class Session {
           error: message,
           attempts: callInfo.attempts,
           ...(err instanceof ProviderError && err.status ? { httpStatus: err.status } : {}),
+          ...(err instanceof ProviderError && err.code ? { errorCode: err.code } : {}),
         });
         // the model refused the images: leave them out from now on, and say so plainly
         const noImages = sentImages.length > 0 && refusesImages(err);

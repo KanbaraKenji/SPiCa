@@ -9,6 +9,7 @@ import { RateLimiter } from './limiter.ts';
 import type { HostModelList } from './settings-tools.ts';
 import type { Runtime } from './runtime.ts';
 import type { Message } from './types.ts';
+import { ProviderError } from './providers/types.ts';
 import { estimateTokens, newId } from './util.ts';
 
 /** What a plugin may do with the user's models (set by the plugin manager from the manifest and the user's settings). */
@@ -177,7 +178,7 @@ export class PluginSampler {
       model: choice.model,
     });
     const provLease = await this.#rt.limiter(choice.providerId).acquire({ signal });
-    const info = { attempts: 0 };
+    const info = trace.watch({ attempts: 0 });
     try {
       let response: import('./providers/types.ts').ModelResponse | undefined;
       for await (const ev of provider.stream({ model: choice.model, system, messages, tools: [], maxTokens, ...(typeof p.temperature === 'number' ? { temperature: p.temperature } : {}) }, { signal, info })) {
@@ -208,7 +209,7 @@ export class PluginSampler {
     } catch (err) {
       held.release();
       const message = this.#rt.redact(err instanceof Error ? err.message : String(err));
-      trace.finish({ status: signal.aborted ? 'aborted' : 'error', attempts: info.attempts, error: message });
+      trace.finish({ status: signal.aborted ? 'aborted' : 'error', attempts: info.attempts, error: message, ...(err instanceof ProviderError && err.code ? { errorCode: err.code } : {}) });
       throw err instanceof SamplingError ? err : new SamplingError('failed', message);
     } finally {
       provLease.release();

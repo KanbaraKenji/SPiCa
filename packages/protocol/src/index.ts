@@ -626,6 +626,8 @@ export type CoreEventBody =
   | { type: 'budget.stop'; scope: string; spentUsd: number; limitUsd: number; nextUsd?: number; message: string }
   /** A traceable external request finished. */
   | { type: 'trace'; record: TraceRecord }
+  /** One HTTP request to a model finished (every attempt, retried ones included). Sent on the call's session, or '' for none. */
+  | { type: 'request'; record: RequestRecord }
   | { type: 'steer.queued'; messageId: string; mode: SteerMode }
   | { type: 'steer.applied'; messageIds: string[] }
   | { type: 'child.spawned'; childId: string; title: string | null }
@@ -956,6 +958,82 @@ export interface TraceRecord {
   confirmedBy?: 'user' | 'view' | 'none';
   /** kind 'settings': names of the fields that changed (never their values). */
   changes?: string[];
+  /** Stable code of the failure when there is one (NET_HINTS: gateway.rate_limited, net.timeout, ...). */
+  errorCode?: string;
+}
+
+/**
+ * One HTTP request to a model endpoint: every attempt of a call is its own record (a 429 retried and then
+ * answered is two records). Kept in the core's database, capped (oldest dropped). Never holds headers, bodies,
+ * keys or full URLs.
+ */
+export interface RequestRecord {
+  id: string;
+  /** The model call it belongs to (TraceRecord.id). */
+  traceId: string;
+  startedAt: string;
+  /** Until the response ended (the whole stream for the attempt that answered). */
+  durationMs: number;
+  sessionId: string | null;
+  /** Who started the call: "model" (a conversation), "runtime:memory-tidy", "plugin:<id>", "probe". */
+  initiator: string;
+  providerId?: string;
+  model?: string;
+  /** 1 for the first attempt of the call, 2 for the first retry, ... */
+  attempt: number;
+  /** Another attempt followed this one. */
+  retried?: true;
+  status: 'ok' | 'error' | 'aborted';
+  httpStatus?: number;
+  /** Stable code of the failure (gateway.rate_limited, gateway.server, net.timeout, gateway.stream_idle, ...). */
+  errorCode?: string;
+  /** Short and with secrets removed. */
+  error?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  costUsd?: number;
+  unpriced?: true;
+}
+
+/** The request log summed up for the usage page: one row per time bucket, provider and model. */
+export interface UsageRow {
+  /** Start of the bucket (ISO, UTC). */
+  bucket: string;
+  providerId: string;
+  model: string;
+  requests: number;
+  ok: number;
+  /** Failed or stopped, 429 included. */
+  failed: number;
+  /** HTTP 429 answers. */
+  rateLimited: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  costUsd: number;
+  /** Requests of a model without a known price were made in it (not in costUsd). */
+  unpriced?: true;
+}
+
+export interface UsageQuery {
+  /** Inclusive range, ISO 8601. */
+  from: string;
+  to: string;
+  bucket: 'hour' | 'day';
+  /** Minutes east of UTC that day buckets start at (the window's time zone; 480 for UTC+8). */
+  tzOffsetMinutes?: number;
+}
+
+export interface UsageSummary {
+  /** When the request log starts (its oldest record), null when it is empty: no data before it. */
+  since: string | null;
+  query: UsageQuery;
+  rows: UsageRow[];
+  /** The 429 answers in the range, newest first (at most 200). */
+  rateLimited: RequestRecord[];
 }
 
 // ---------------------------------------------------------------------------

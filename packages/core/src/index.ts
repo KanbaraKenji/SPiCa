@@ -37,7 +37,8 @@ export {
   type ModelPrice,
   type PriceTable,
 } from './cost.ts';
-export { Tracer, type TraceHandle, type TraceStart } from './trace.ts';
+export { Tracer, REQUEST_LOG_MAX, type TraceHandle, type TraceStart } from './trace.ts';
+export { summarizeRequests, bucketStart, isRateLimited } from './usage.ts';
 export { MemoryStore } from './store/memory.ts';
 export type { PendingRecord, RelayRecord, SessionConfig, SessionRecord, Store, ToolCallRecord } from './store/types.ts';
 export { ToolRegistry, validateInput, type FileExtractor, type Tool, type ToolContext, type ToolEnv, type ToolOutput } from './tools/types.ts';

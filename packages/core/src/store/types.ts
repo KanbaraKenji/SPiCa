@@ -1,7 +1,7 @@
 // Storage contract. The database is the source of truth for sessions,
 // messages, tool calls, pending questions, relays and traceable records.
 // Synchronous on purpose: the default backend is embedded SQLite.
-import type { AgentRole, MailItem, MemoryItem, MemoryTidyRun, Message, PendingItem, ProjectInfo, ProjectLogEntry, SessionStatus, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { AgentRole, MailItem, MemoryItem, MemoryTidyRun, Message, PendingItem, ProjectInfo, ProjectLogEntry, RequestRecord, SessionStatus, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 
 export type SenderDecision = { decision: 'project'; projectId: string } | { decision: 'ignore' };
 
@@ -171,5 +171,24 @@ export interface Store {
   appendTrace(rec: TraceRecord): void;
   listTraces(filter?: { sessionId?: string }): TraceRecord[];
 
+  /** The request log: one record per HTTP attempt to a model (see RequestRecord). */
+  appendRequest(rec: RequestRecord): void;
+  /** Oldest first, by start time; `newest`: the last `limit` records (still oldest first). */
+  listRequests(filter?: RequestFilter): RequestRecord[];
+  /** Start time of the oldest record kept, or null when there is none. */
+  firstRequestAt(): string | null;
+  /** Keep only the newest `keep` records. */
+  pruneRequests(keep: number): void;
+
   close(): void;
+}
+
+export interface RequestFilter {
+  /** Inclusive range, ms since the epoch. */
+  fromMs?: number;
+  toMs?: number;
+  sessionId?: string;
+  limit?: number;
+  /** With `limit`: the newest ones instead of the oldest. */
+  newest?: boolean;
 }

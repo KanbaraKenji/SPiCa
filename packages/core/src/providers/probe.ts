@@ -3,7 +3,7 @@ import type { Tracer } from '../trace.ts';
 import type { ProbeResult } from '../types.ts';
 import { isAbortError, redact } from '../util.ts';
 import { netErrorCode, netHint } from '../net.ts';
-import { ProviderError, type Provider } from './types.ts';
+import { ProviderError, type CallInfo, type Provider } from './types.ts';
 
 export interface ProbeOptions {
   model: string;
@@ -31,7 +31,7 @@ export async function probeProvider(provider: Provider, opts: ProbeOptions): Pro
     model: opts.model,
   });
   const signal = AbortSignal.any([AbortSignal.timeout(opts.timeoutMs ?? 20_000), ...(opts.signal ? [opts.signal] : [])]);
-  const info = { attempts: 0 };
+  const info: CallInfo = trace ? trace.watch({ attempts: 0 }) : { attempts: 0 };
   let stage: 'token' | 'model' = 'model';
   try {
     if (provider.checkAuth) {
@@ -80,7 +80,7 @@ export async function probeProvider(provider: Provider, opts: ProbeOptions): Pro
                   : /token request rejected/.test(message)
                     ? 'auth'
                     : 'network';
-    trace?.finish({ status: errorCode === 'aborted' ? 'aborted' : 'error', error: message, attempts: info.attempts, ...(status ? { httpStatus: status } : {}) });
+    trace?.finish({ status: errorCode === 'aborted' ? 'aborted' : 'error', error: message, attempts: info.attempts, ...(status ? { httpStatus: status } : {}), ...(err instanceof ProviderError && err.code ? { errorCode: err.code } : {}) });
     const code = timedOut ? 'net.timeout' : err instanceof ProviderError && err.code ? err.code : isAbortError(err) ? undefined : netErrorCode(err);
     const hint = netHint(code, provider.kind);
     return {

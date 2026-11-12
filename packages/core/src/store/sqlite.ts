@@ -3,8 +3,8 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
-import type { MailItem, MemoryItem, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
-import type { PendingRecord, RelayRecord, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
+import type { MailItem, MemoryItem, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, RequestRecord, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { PendingRecord, RelayRecord, RequestFilter, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const SCHEMA_VERSION = 1;
 
@@ -43,6 +43,10 @@ CREATE TABLE IF NOT EXISTS traces (
   data TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS traces_session ON traces(session_id, seq);
+CREATE TABLE IF NOT EXISTS requests (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT, at_ms INTEGER NOT NULL, session_id TEXT, data TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS requests_at ON requests(at_ms);
 CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, folder TEXT NOT NULL, manager_session_id TEXT NOT NULL,
   workflow_id TEXT, stage TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
@@ -265,6 +269,39 @@ export class SqliteStore implements Store {
   appendTrace(t: TraceRecord): void {
     this.#q('INSERT INTO traces (id, seq, session_id, started_at, kind, data) VALUES (?, ?, ?, ?, ?, ?)').run(t.id, ++this.#traceSeq, t.sessionId, t.startedAt, t.kind, json(t));
   }
+  // request log ----------------------------------------------------------------
+  appendRequest(r: RequestRecord): void {
+    const at = Date.parse(r.startedAt);
+    this.#q('INSERT INTO requests (at_ms, session_id, data) VALUES (?, ?, ?)').run(Number.isNaN(at) ? 0 : at, r.sessionId, json(r));
+  }
+  listRequests(filter: RequestFilter = {}): RequestRecord[] {
+    const where: string[] = [];
+    const args: (string | number)[] = [];
+    if (filter.fromMs !== undefined) {
+      where.push('at_ms >= ?');
+      args.push(filter.fromMs);
+    }
+    if (filter.toMs !== undefined) {
+      where.push('at_ms <= ?');
+      args.push(filter.toMs);
+    }
+    if (filter.sessionId) {
+      where.push('session_id = ?');
+      args.push(filter.sessionId);
+    }
+    const w = where.length ? ` WHERE ${where.join(' AND ')}` : '';
+    const lim = filter.limit !== undefined ? ` LIMIT ${Math.max(0, Math.floor(filter.limit))}` : '';
+    const sql = filter.newest && lim ? `SELECT data FROM (SELECT data, at_ms, seq FROM requests${w} ORDER BY at_ms DESC, seq DESC${lim}) ORDER BY at_ms, seq` : `SELECT data FROM requests${w} ORDER BY at_ms, seq${lim}`;
+    return (this.#db.prepare(sql).all(...args) as Row[]).map((r) => parse<RequestRecord>(r.data));
+  }
+  firstRequestAt(): string | null {
+    const row = this.#q('SELECT data FROM requests ORDER BY at_ms, seq LIMIT 1').get() as Row | undefined;
+    return row ? parse<RequestRecord>(row.data).startedAt : null;
+  }
+  pruneRequests(keep: number): void {
+    this.#q('DELETE FROM requests WHERE seq IN (SELECT seq FROM requests ORDER BY at_ms DESC, seq DESC LIMIT -1 OFFSET ?)').run(Math.max(0, Math.floor(keep)));
+  }
+
   listTraces(filter?: { sessionId?: string }): TraceRecord[] {
     const rows = filter?.sessionId
       ? (this.#q('SELECT data FROM traces WHERE session_id = ? ORDER BY seq').all(filter.sessionId) as Row[])

@@ -54,6 +54,8 @@ export const DesktopChannel = {
   ProviderSpend: 'spica:providers:spend',
   /** invoke(id): 清零 */
   ResetProviderSpend: 'spica:providers:reset-spend',
+  /** invoke: UsageQuery -> UsageSummary | null (设置 › 用量; null while the core is not up) */
+  UsageSummary: 'spica:usage:summary',
   Images: 'spica:images',
   ProjectRead: 'spica:projects:read',
   ContextBreakdown: 'spica:context:breakdown',

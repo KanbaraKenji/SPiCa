@@ -27,13 +27,18 @@ import type {
   RegenerateCode,
   RegenerateResult,
   RegenerateState,
+  RequestRecord,
   SendResult,
   SessionInfo,
   SessionStatus,
   SetCwdResult,
   SteerMode,
   ToolCategory,
+  UsageQuery,
+  UsageSummary,
 } from '@spica/protocol';
+import { summarizeRequests } from '@spica/core/src/usage.ts';
+import { fakeRequests } from './fake-usage';
 import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import type { AgentBackend } from './types';
 import { buildSeed, fakeCard } from './fake-seed';
@@ -203,6 +208,8 @@ export class FakeBackend implements AgentBackend {
   #spendLimit: { providerId: string; usd: number } | null = null;
   /** What the demo's priced calls have cost in all. */
   #spent = 0;
+  /** The request log (the usage page, the monitor): two weeks of demo records, then the calls made here. */
+  #requests: RequestRecord[] = [];
   /** 设置 › 模型 › 代理互发消息上限 (null: none), as the core gets it. */
   #agentMessages: number | null = 10;
   #projects = new Map<string, ProjectInfo>();
@@ -227,6 +234,7 @@ export class FakeBackend implements AgentBackend {
       () => [...this.#projects.values()],
     );
     if (options.seed ?? true) {
+      this.#requests = fakeRequests(this.#now());
       const seed = buildSeed(this.#now());
       for (const s of seed.sessions) this.#sessions.set(s.id, { ...s, canChooseCwd: s.role === 'top' && !s.parentId && (!s.cwd || s.cwd === this.#legacyCwd) });
       for (const [id, list] of Object.entries(seed.messages)) this.#messages.set(id, list);
@@ -632,6 +640,23 @@ export class FakeBackend implements AgentBackend {
     return this.#spent;
   }
 
+  /** The usage page (the core's usageSummary). */
+  async usageSummary(query: UsageQuery): Promise<UsageSummary> {
+    return summarizeRequests(this.#requests, query, this.#requests[0]?.startedAt ?? null);
+  }
+
+  /** The newest request records (the core's recentRequests). */
+  async recentRequests(limit = 500): Promise<RequestRecord[]> {
+    return structuredClone(this.#requests.slice(-Math.max(0, limit)));
+  }
+
+  /** One request of a demo call, kept and sent as the core does. */
+  #request(sessionId: string, rec: Omit<RequestRecord, 'id' | 'traceId' | 'startedAt' | 'sessionId' | 'initiator' | 'attempt'> & { attempt?: number }): void {
+    const record: RequestRecord = { id: `rq_${++this.#ids}`, traceId: `tr_${this.#ids}`, startedAt: isoAt(this.#now()), sessionId, initiator: 'model', attempt: 1, ...rec };
+    this.#requests.push(record);
+    this.#emit(sessionId, { type: 'request', record: structuredClone(record) });
+  }
+
   /** 代理互发消息上限 changed in the settings (as the core's configure({ defaults: { agentMessages } })). */
   setAgentMessages(n: number | null): void {
     this.#agentMessages = n;
@@ -909,6 +934,7 @@ export class FakeBackend implements AgentBackend {
       // a company gateway model without a price: nothing is counted, it is marked (as the core)
       if (s) s.unpriced = true;
       this.#globalUnpriced = true;
+      this.#request(sessionId, { providerId: 'fake', model: 'gateway-model', durationMs: 1800, status: 'ok', httpStatus: 200, inputTokens, outputTokens, unpriced: true });
       this.#emit(sessionId, { type: 'usage', usage: { inputTokens, outputTokens }, costUsd: 0, providerId: 'fake', model: 'gateway-model', unpriced: true });
       this.#emit(sessionId, { type: 'cost', scope: 'session', spentUsd: s?.costUsd ?? 0, warning: false, unpriced: true });
       this.#emit(sessionId, { type: 'cost', scope: 'global', spentUsd: this.#globalCost, warning: false, unpriced: true });
@@ -920,6 +946,7 @@ export class FakeBackend implements AgentBackend {
     this.#spent += costUsd;
     if (s) s.costUsd += costUsd;
     this.#globalCost += costUsd;
+    this.#request(sessionId, { providerId: 'fake', model: 'deepseek-flash', durationMs: 1800, status: 'ok', httpStatus: 200, inputTokens, outputTokens, costUsd });
     this.#emit(sessionId, { type: 'usage', usage: { inputTokens, outputTokens }, costUsd, providerId: 'fake', model: 'deepseek-flash' });
     this.#emit(sessionId, { type: 'cost', scope: 'session', spentUsd: s?.costUsd ?? costUsd, warning: false, ...(s?.unpriced ? { unpriced: true as const } : {}) });
     this.#emit(sessionId, { type: 'cost', scope: 'global', spentUsd: this.#globalCost, warning: false, ...(this.#globalUnpriced ? { unpriced: true as const } : {}) });

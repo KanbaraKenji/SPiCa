@@ -1,6 +1,6 @@
 // In-memory store (tests and ephemeral runs).
-import type { MailItem, MemoryItem, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
-import type { PendingRecord, RelayRecord, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
+import type { MailItem, MemoryItem, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, RequestRecord, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { PendingRecord, RelayRecord, RequestFilter, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -12,6 +12,7 @@ export class MemoryStore implements Store {
   readonly #pending = new Map<string, PendingRecord>();
   readonly #relays: RelayRecord[] = [];
   readonly #traces: TraceRecord[] = [];
+  #requests: RequestRecord[] = [];
   readonly #projects = new Map<string, ProjectInfo>();
   readonly #projectLog: ProjectLogEntry[] = [];
   readonly #objects = new Map<string, WorkObject>();
@@ -193,6 +194,30 @@ export class MemoryStore implements Store {
   }
   listTraces(filter?: { sessionId?: string }): TraceRecord[] {
     return this.#traces.filter((t) => !filter?.sessionId || t.sessionId === filter.sessionId).map(clone);
+  }
+
+  appendRequest(rec: RequestRecord): void {
+    this.#requests.push(clone(rec));
+  }
+  listRequests(filter: RequestFilter = {}): RequestRecord[] {
+    const from = filter.fromMs ?? -Infinity;
+    const to = filter.toMs ?? Infinity;
+    const all = this.#requests
+      .filter((r) => {
+        const t = Date.parse(r.startedAt);
+        return t >= from && t <= to && (!filter.sessionId || r.sessionId === filter.sessionId);
+      })
+      .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
+    const cut = filter.limit === undefined ? all : filter.newest ? all.slice(-filter.limit) : all.slice(0, filter.limit);
+    return cut.map(clone);
+  }
+  firstRequestAt(): string | null {
+    let first: RequestRecord | undefined;
+    for (const r of this.#requests) if (!first || Date.parse(r.startedAt) < Date.parse(first.startedAt)) first = r;
+    return first?.startedAt ?? null;
+  }
+  pruneRequests(keep: number): void {
+    if (this.#requests.length > keep) this.#requests = [...this.#requests].sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt)).slice(this.#requests.length - keep);
   }
 
   close(): void {}

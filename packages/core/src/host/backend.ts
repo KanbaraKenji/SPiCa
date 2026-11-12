@@ -9,7 +9,8 @@ import { AnthropicProvider } from '../providers/anthropic.ts';
 import { OpenAICompatibleProvider } from '../providers/openai.ts';
 import { probeProvider } from '../providers/probe.ts';
 import { netHint } from '../net.ts';
-import type { ProbeResult } from '../types.ts';
+import type { ProbeResult, UsageQuery } from '../types.ts';
+import { summarizeRequests } from '../usage.ts';
 import type { Provider } from '../providers/types.ts';
 import { Wso2Provider } from '../providers/wso2.ts';
 import { endsInVersion, joinUrl } from '../providers/http.ts';
@@ -489,6 +490,15 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
         mailSettings: () => ({ ...runtime.mail.settings, running: runtime.mail.running, sources: runtime.mail.activeSources.map((s) => s.id) }),
         /** Test connection with a provider config from the settings form. */
         probeProvider: (config: unknown, model: unknown) => probeConfig(config as ProviderConfig, String(model), { tracer: runtime.tracer }),
+        /** The usage page: the request log summed up per time bucket, provider and model, and the 429 answers (see UsageQuery). */
+        usageSummary: (query: unknown) => {
+          const q = (query ?? {}) as UsageQuery;
+          const range = { fromMs: Date.parse(String(q.from)), toMs: Date.parse(String(q.to)) };
+          if (Number.isNaN(range.fromMs) || Number.isNaN(range.toMs)) throw new Error('from / to must be ISO 8601 dates');
+          return summarizeRequests(runtime.store.listRequests(range), q, runtime.store.firstRequestAt());
+        },
+        /** The newest request records, oldest first (the monitor fills its list with them when it opens). */
+        recentRequests: (limit: unknown) => runtime.store.listRequests({ limit: Math.min(5000, Math.max(0, Number(limit) || 500)), newest: true }),
         /** What each provider has cost so far (USD; every conversation, back from the stored records; models without a price add nothing). */
         providerSpend: (ids: unknown) => Object.fromEntries((Array.isArray(ids) ? ids : []).map((id) => [String(id), runtime.ledger.providerUsd(String(id))])),
         /** Context window the core knows for a model (to pre-fill the settings form), or null. kind: ProviderConfig kind. */

@@ -1,7 +1,8 @@
 // HTTP layer shared by all providers: retry with backoff, timeouts,
 // cancellation and one credential refresh after a 401.
-import { ProviderError, type AuthSource, type CallInfo } from './types.ts';
+import { ProviderError, type AttemptReport, type AuthSource, type CallInfo } from './types.ts';
 import { abortError, redact, sleep } from '../util.ts';
+import { isoNow } from '../events.ts';
 import { htmlTitle, httpErrorCode, looksLikeHtml, netErrorCode, netFetch } from '../net.ts';
 
 export interface RetryPolicy {
@@ -39,9 +40,16 @@ export async function postWithRetry(opts: PostOptions): Promise<Response> {
   const doFetch = opts.fetchImpl ?? netFetch;
   let refreshed = false;
   let lastError: ProviderError | undefined;
+  // every request sent is reported on its own (the refresh retry below does not count against the budget, but it is a request)
+  let sent = 0;
   for (let attempt = 1; attempt <= opts.retry.maxAttempts; attempt++) {
     if (opts.signal.aborted) throw abortError(opts.signal);
     if (opts.info) opts.info.attempts = attempt;
+    sent++;
+    const startedAt = isoNow();
+    const t0 = performance.now();
+    const report = (r: Omit<AttemptReport, 'attempt' | 'startedAt' | 'durationMs'>) =>
+      opts.info?.onAttempt?.({ attempt: sent, startedAt, durationMs: Math.round(performance.now() - t0), ...r });
     // Soft stop: the caller's signal (user interrupt / stop) never aborts the
     // connection. Before headers we stop waiting and cancel the body when it
     // arrives; after headers the stream reader cancels the body. Only the
@@ -81,14 +89,21 @@ export async function postWithRetry(opts: PostOptions): Promise<Response> {
       res = await Promise.race([fetching, stopped]);
     } catch (err) {
       if (onStop) opts.signal.removeEventListener('abort', onStop);
-      if (opts.signal.aborted) throw abortError(opts.signal);
+      if (opts.signal.aborted) {
+        report({ status: 'aborted', retried: false });
+        throw abortError(opts.signal);
+      }
       clearTimeout(timer);
-      if (err instanceof ProviderError && !err.retryable) throw err; // e.g. rejected credentials
+      if (err instanceof ProviderError && !err.retryable) {
+        report({ status: 'error', ...(err.status ? { httpStatus: err.status } : {}), ...(err.code ? { code: err.code } : {}), error: err.message, retried: false });
+        throw err; // e.g. rejected credentials
+      }
       const reason = err instanceof Error ? `${err.name}: ${err.message}${causeText(err)}` : 'network error';
       const code = err instanceof ProviderError && err.code ? err.code : netErrorCode(err);
       // a certificate or proxy refusal will not fix itself by retrying
       const retryable = !(code.startsWith('tls.') || code === 'proxy.auth' || code === 'proxy.refused');
       lastError = new ProviderError(redact(`request failed [${code}] (${reason})`, opts.secrets), { retryable, code });
+      report({ status: 'error', code, error: lastError.message, retried: retryable && attempt < opts.retry.maxAttempts });
       if (!retryable) throw lastError;
       if (attempt < opts.retry.maxAttempts) {
         const delay = backoff(opts.retry, attempt);
@@ -101,7 +116,10 @@ export async function postWithRetry(opts: PostOptions): Promise<Response> {
     clearTimeout(timer);
     if (onStop) opts.signal.removeEventListener('abort', onStop);
     if (opts.info) opts.info.httpStatus = res.status;
-    if (res.ok) return res;
+    if (res.ok) {
+      if (opts.info) opts.info.answering = { attempt: sent, startedAt, t0 };
+      return res;
+    }
 
     const text = await safeText(res);
     let code = httpErrorCode(res.status, res.headers.get('content-type'), text);
@@ -111,6 +129,7 @@ export async function postWithRetry(opts: PostOptions): Promise<Response> {
     if (rejected && opts.auth?.refresh && !refreshed) {
       refreshed = true;
       if (await opts.auth.refresh(opts.signal)) {
+        report({ status: 'error', httpStatus: res.status, code, error: redact(`HTTP ${res.status} [${code}]`, opts.secrets), retried: true });
         attempt--; // the refresh retry does not count against the retry budget
         continue;
       }
@@ -131,6 +150,7 @@ export async function postWithRetry(opts: PostOptions): Promise<Response> {
       retryable,
       code,
     });
+    report({ status: 'error', httpStatus: res.status, code, error: lastError.message, retried: retryable && attempt < opts.retry.maxAttempts });
     if (!retryable || attempt >= opts.retry.maxAttempts) throw lastError;
     const delay = retryAfterMs(res) ?? backoff(opts.retry, attempt);
     opts.onRetry?.({ attempt, delayMs: delay, reason: `HTTP ${res.status}` });

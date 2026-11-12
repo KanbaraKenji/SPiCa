@@ -6,7 +6,7 @@
 import { MessageChannelMain, utilityProcess, type UtilityProcess } from 'electron';
 import { connectBackend, electronPort, type BackendClient, type HostMethods, type ListModelsResult, type ModelCatalog, type ProviderConfig, type SettingsPatch } from '@spica/core';
 export { toProviderConfig } from './to-config';
-import type { AgentApi, ContextBreakdown, CoreEvent, ProbeResult } from '@spica/protocol';
+import type { AgentApi, ContextBreakdown, CoreEvent, ProbeResult, RequestRecord, UsageQuery, UsageSummary } from '@spica/protocol';
 import type { PluginsCommand, PluginsProgress, PluginsResult } from '../../shared/plugins';
 import type { WindowMatch } from '../../shared/catalog';
 import type { DesktopBackendConfig } from '../../backend/config';
@@ -204,6 +204,16 @@ export class ProcessBackend implements AgentBackend {
 
   probe(config: ProviderConfig, model: string): Promise<ProbeResult> {
     return this.call<ProbeResult>('probeProvider', config, model);
+  }
+
+  /** The usage page: the request log summed up (the core's records). */
+  usageSummary(query: UsageQuery): Promise<UsageSummary> {
+    return this.call<UsageSummary>('usageSummary', query);
+  }
+
+  /** The newest request records, oldest first. */
+  recentRequests(limit: number): Promise<RequestRecord[]> {
+    return this.call<RequestRecord[]>('recentRequests', limit);
   }
 
   /** Context window the core knows for a model (to pre-fill the settings form), or null. */

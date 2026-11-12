@@ -40,6 +40,27 @@ export interface CallInfo {
   /** Attempts made (1 = no retry). */
   attempts: number;
   httpStatus?: number;
+  /**
+   * Each HTTP attempt that ended without an answer to read (an error status, a network error, stopped before the
+   * headers): one call per attempt, as soon as it ends. Set by Tracer's watch().
+   */
+  onAttempt?: (a: AttemptReport) => void;
+  /** The attempt whose answer is being read (set when its headers arrive ok): it is reported when the call ends. */
+  answering?: { attempt: number; startedAt: string; t0: number };
+}
+
+/** One HTTP attempt that ended without an answer to read. */
+export interface AttemptReport {
+  /** 1-based, counted per request sent (a credential refresh retry counts too). */
+  attempt: number;
+  startedAt: string;
+  durationMs: number;
+  status: 'error' | 'aborted';
+  httpStatus?: number;
+  code?: string;
+  error?: string;
+  /** Another attempt follows. */
+  retried: boolean;
 }
 
 export interface ProviderCallContext {

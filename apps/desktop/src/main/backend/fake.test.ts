@@ -614,3 +614,31 @@ describe('a plain error and an interrupted conversation (「超时」, 「断电
     expect(await until((e) => e.type === 'run.end' && e.sessionId === chat.id)).toMatchObject({ reason: 'completed' });
   });
 });
+
+describe('the demo request log (设置 › 用量, the monitor)', () => {
+  const now = new Date('2026-11-13T12:00:00Z');
+
+  it('has two weeks over several providers and models, with 429 answers and other failures', async () => {
+    const b = new FakeBackend({ speed: 0, now: () => now });
+    const s = await b.usageSummary({ from: '2026-10-01T00:00:00Z', to: now.toISOString(), bucket: 'day', tzOffsetMinutes: 480 });
+    expect(new Set(s.rows.map((r) => r.providerId)).size).toBeGreaterThanOrEqual(3);
+    expect(new Set(s.rows.map((r) => r.model)).size).toBeGreaterThanOrEqual(5);
+    expect(new Set(s.rows.map((r) => r.bucket)).size).toBeGreaterThanOrEqual(12);
+    expect(s.rateLimited.length).toBeGreaterThan(5);
+    expect(s.rows.some((r) => r.failed > r.rateLimited)).toBe(true);
+    expect(s.rows.some((r) => r.unpriced)).toBe(true);
+    expect(s.since).not.toBeNull();
+    b.dispose();
+  });
+
+  it('a demo call adds a request record and sends it', async () => {
+    const b = new FakeBackend({ speed: 0, now: () => now, seed: false });
+    const { until } = collect(b);
+    const info = await b.createSession({});
+    await b.send(info.id, 'hi');
+    const e = await until((x) => x.type === 'request');
+    expect(e.type === 'request' && e.record).toMatchObject({ sessionId: info.id, status: 'ok', providerId: 'fake', attempt: 1 });
+    expect((await b.recentRequests(10)).length).toBeGreaterThan(0);
+    b.dispose();
+  });
+});

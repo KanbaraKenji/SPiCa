@@ -19,6 +19,7 @@
 import type { Runtime } from './runtime.ts';
 import type { MemoryItem, MemoryTidyChange, MemoryTidyRun } from './types.ts';
 import type { SessionRecord } from './store/types.ts';
+import { ProviderError } from './providers/types.ts';
 import { isoNow } from './events.ts';
 import { fromOutside, hasMemory, MEMORY_LIMITS, normalize, noteProblem, outsideText, overlap, typed, typedText, USER_OWNER } from './memory.ts';
 import { isAbortError } from './util.ts';
@@ -345,7 +346,7 @@ export async function ask(rt: Runtime, content: string, signal: AbortSignal): Pr
   const hold = rt.ledger.reserve(scope, Math.ceil((content.length + 2000) / 1.5), TIDY_LIMITS.maxTokens);
   if (!hold.ok) throw new Error(hold.message);
   const trace = rt.tracer.start({ kind: 'model', sessionId: null, parentChain: [], initiator: 'runtime:memory-tidy', target: provider.traceTarget, providerId, model });
-  const info = { attempts: 0 };
+  const info = trace.watch({ attempts: 0 });
   let text = '';
   try {
     let response: { usage: import('./types.ts').Usage; model: string } | undefined;
@@ -371,7 +372,7 @@ export async function ask(rt: Runtime, content: string, signal: AbortSignal): Pr
     return { text, costUsd: cost.costUsd };
   } catch (err) {
     hold.release();
-    trace.finish({ status: signal.aborted || isAbortError(err) ? 'aborted' : 'error', attempts: info.attempts, error: err instanceof Error ? err.message : String(err) });
+    trace.finish({ status: signal.aborted || isAbortError(err) ? 'aborted' : 'error', attempts: info.attempts, error: err instanceof Error ? err.message : String(err), ...(err instanceof ProviderError && err.code ? { errorCode: err.code } : {}) });
     throw err;
   }
 }

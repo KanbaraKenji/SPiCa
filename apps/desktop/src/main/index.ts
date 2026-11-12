@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, safeStorage, screen, shell, Tray } from 'electron';
 import { pathToFileURL } from 'node:url';
-import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
+import { IpcChannel, type AgentApi, type AppInfo, type UsageSummary } from '@spica/protocol';
+import { usageQuery } from '../shared/usage';
 import { DesktopChannel } from '../shared/ipc';
 import { humanError } from '../shared/errors';
 import { CAPTION_BACK, captionSymbol, deriveTokens, resolveSkin, schemeOf, type WindowCover } from '../shared/skin';
@@ -886,6 +887,14 @@ ipcMain.handle(DesktopChannel.ProjectRead, async (_e, projectId: unknown) => {
 ipcMain.handle(DesktopChannel.ContextBreakdown, async (_e, sessionId: unknown) => {
   if (typeof sessionId !== 'string') return null;
   if (backend instanceof ProcessBackend || backend instanceof FakeBackend) return backend.contextBreakdown(sessionId).catch(() => null);
+  return null;
+});
+
+// 设置 › 用量: the request log summed up, by the real core or the demo's records (the same function).
+ipcMain.handle(DesktopChannel.UsageSummary, async (_e, query: unknown): Promise<UsageSummary | null> => {
+  const q = usageQuery(query);
+  if (!q) return null;
+  if (backend instanceof ProcessBackend || backend instanceof FakeBackend) return backend.usageSummary(q).catch(() => null);
   return null;
 });
 
