@@ -425,18 +425,12 @@ describe('the account on the bottom row', () => {
     expect(onAccount).toHaveBeenLastCalledWith('settings');
   });
 
-  it('by keyboard: the first item has the focus, up and down move round the items, Esc closes', () => {
+  it('by keyboard: the first item has the focus (the others by Tab, as in every menu), Esc closes', () => {
     render(<Sidebar {...base} onSettings={vi.fn()} account="ALEX.CHEN" onAccount={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: '账号 ALEX.CHEN' }));
-    const [settings, models] = screen.getAllByRole('menuitem');
+    const [settings] = screen.getAllByRole('menuitem');
     expect(document.activeElement).toBe(settings);
-    fireEvent.keyDown(settings!, { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(models);
-    fireEvent.keyDown(models!, { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(settings);
-    fireEvent.keyDown(settings!, { key: 'ArrowUp' });
-    expect(document.activeElement).toBe(models);
-    fireEvent.keyDown(models!, { key: 'Escape' });
+    fireEvent.keyDown(settings!, { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull();
   });
 

@@ -1,7 +1,7 @@
 // Left sidebar: conversations with the assistant, then each project, each with
 // the sub-agents it started (at any depth). Every row opens that session's
 // conversation; the arrow after its name only expands or collapses.
-import { useMemo, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { ContextMenu, type MenuItem } from '../ui/ContextMenu';
 import type { SessionInfo } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
@@ -69,17 +69,6 @@ export function accountMenuItems(account: string, go: (where: AccountMenuTo) => 
     { label: '设置', group: account, onSelect: () => go('settings') },
     { label: '模型设定', group: account, onSelect: () => go('models') },
   ];
-}
-
-/** Up and down move between the menu's items, round at the ends (the menu itself has no arrow keys). */
-function arrowsInMenu(e: KeyboardEvent<HTMLElement>) {
-  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-  const items = [...e.currentTarget.querySelectorAll<HTMLButtonElement>('.context-item:not([aria-disabled="true"])')];
-  if (!items.length) return;
-  e.preventDefault();
-  const at = items.indexOf(document.activeElement as HTMLButtonElement);
-  const next = e.key === 'ArrowDown' ? (at + 1) % items.length : at <= 0 ? items.length - 1 : at - 1;
-  items[next]!.focus();
 }
 
 /** The gear on the account row with the word 设置 after it (the other layout he may pick); false: the gear alone. */
@@ -459,7 +448,7 @@ export function Sidebar({
               {SETTINGS_WORD ? <span>设置</span> : null}
             </button>
             {meMenu && onAccount ? (
-              <div className="account-menu" style={{ '--account-menu-width': `${meMenu.width}px` } as CSSProperties} onKeyDown={arrowsInMenu}>
+              <div className="account-menu" style={{ '--account-menu-width': `${meMenu.width}px` } as CSSProperties}>
                 <ContextMenu x={0} y={0} side="above" anchor={meMenu.anchor} items={accountMenuItems(account, onAccount)} onClose={() => setMeMenu(null)} />
               </div>
             ) : null}
