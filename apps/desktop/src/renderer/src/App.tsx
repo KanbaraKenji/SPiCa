@@ -191,7 +191,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [canMax, setCanMax] = useState(false);
 
   // Shortcuts: Ctrl+B sidebar, Ctrl+Alt+B details, Ctrl+Shift+\ the preview over the conversation,
-  // Esc closes a floating panel, the inbox or a plugin page (the settings dialog closes itself: useModal).
+  // Esc closes the settings dialog, a floating panel, the inbox or a plugin page.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'b') {
@@ -202,13 +202,15 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         e.preventDefault();
         setRightMax((v) => !v);
       } else if (e.key === 'Escape' && !e.defaultPrevented) {
-        if (floating) setFloating(null);
+        // The settings dialog first (it leaves Esc to this, so what is open inside it closes first).
+        if (settingsOpen) setSettingsOpen(false);
+        else if (floating) setFloating(null);
         else if (view !== 'chat') setView('chat');
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggle, floating, view, canMax]);
+  }, [toggle, floating, view, canMax, settingsOpen]);
 
   // Sidebar collapsed: resting the pointer on its toggle slides it out for a moment;
   // it goes away once the pointer leaves it. The icons of the column do not slide it out.
