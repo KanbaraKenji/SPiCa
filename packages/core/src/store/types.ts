@@ -21,6 +21,7 @@ export interface SessionConfig {
   system: string;
   providerId: string;
   model: string;
+  /** The output limit when made; it applies only when the creator asked for it (`asked` has 'maxTokens'), else Runtime.outputLimit. */
   maxTokens: number;
   cwd: string;
   /** Tool allow-list; undefined = all registered tools. */

@@ -46,6 +46,17 @@ const ctx = (rt: Runtime) => ({ sessionId: '', parentChain: [], cwd: '.', signal
 const ask = (params: Record<string, unknown>) => ({ params: { messages: [{ role: 'user', content: { type: 'text', text: 'Summarize: the meeting moved to Friday.' } }], maxTokens: 100, ...params } });
 
 describe('plugins using the user models (MCP sampling)', () => {
+  it('with outputByModel (the desktop app): the chosen model’s own most output, never more than the plugin asks for', async () => {
+    const rt = runtime({ defaults: { providerId: 'fake-openai', model: 'deepseek-flash', maxTokens: 512, outputByModel: true } });
+    const p = await plugin(rt, { pluginId: 'notes' });
+    const sentMax = () => Number(gw.requests.at(-1)!.body.max_tokens ?? gw.requests.at(-1)!.body.max_completion_tokens);
+    await p.call('ask', ask({ maxTokens: 10_000_000 }));
+    expect(sentMax()).toBe(384_000); // the catalog's deepseek-flash
+    await p.call('ask', ask({ maxTokens: 300 }));
+    expect(sentMax()).toBe(300);
+    await p.close();
+  });
+
   it('only a granted server is offered sampling; it gets a plain answer, no tools, nothing of any conversation, within the default model limits', async () => {
     const rt = runtime();
     const notGranted = await plugin(rt);

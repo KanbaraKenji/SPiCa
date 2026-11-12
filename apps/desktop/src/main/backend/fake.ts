@@ -1144,6 +1144,14 @@ export class FakeBackend implements AgentBackend {
         this.#setStatus(sessionId, 'thinking');
         await this.#stream(sessionId, 'text', FAKE_SUMMARY_ANSWER, signal);
         blocks.push({ type: 'text', text: FAKE_SUMMARY_ANSWER });
+      } else if (/写长一点/.test(text)) {
+        // An answer that stopped at the most the model may write at once (stopReason max_tokens, as the core stores it).
+        const cut = '好的，写详细一点：\n\n1. **外壳尺寸** 定为 120×80×24 mm，比上一版薄 2 mm，主要是电池仓改了排布，' +
+          '散热片从两片改成一片，结构件供应商已经确认能做。\n2. **续航** 要求不少于 10 小时，测试报告里在 25°C、亮度 50% 的条件下';
+        await this.#stream(sessionId, 'text', cut, signal);
+        blocks.push({ type: 'text', text: cut });
+        this.#append(sessionId, 'assistant', 'assistant', [...blocks], { stopReason: 'max_tokens' });
+        blocks.length = 0;
       } else {
         const answer = (opts.version ?? 1) > 1
           ? `第 ${opts.version} 版：重新看了一遍，按优先级排：\n\n` +

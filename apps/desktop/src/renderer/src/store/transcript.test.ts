@@ -554,3 +554,22 @@ describe('a run stopped at the turn limit', () => {
     expect(applyEvent({ items: [] }, { ...base, type: 'run.end', reason: 'completed' } as CoreEvent).stopped).toBeUndefined();
   });
 });
+
+describe('an answer cut at the most the model may write', () => {
+  it('is marked from the stored stop reason, live and when read again', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const chat = await b.createSession({});
+    let live: Transcript = { items: [] };
+    b.onEvent((e) => {
+      if (e.sessionId === chat.id) live = applyEvent(live, e);
+    });
+    await b.send(chat.id, '写长一点');
+    await new Promise((r) => setTimeout(r, 20));
+    const last = (t: Transcript) => t.items.filter((i) => i.kind === 'response').at(-1) as { truncated?: boolean } | undefined;
+    expect(last(live)?.truncated).toBe(true);
+    expect(last(fromHistory(await b.getMessages(chat.id)))?.truncated).toBe(true);
+    await b.send(chat.id, '继续');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(last(fromHistory(await b.getMessages(chat.id)))?.truncated).toBe(false);
+  });
+});

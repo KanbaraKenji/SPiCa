@@ -69,8 +69,11 @@ export interface RuntimeOptions {
   /**
    * maxTurns: turns one run may take; 0 = no limit (the desktop app, he chose 2026-11-12); absent = 50. It applies
    * to every session without a limit of its own, sub-agents included, at each run (a change applies at once).
+   * maxTokens: the most output tokens one call asks for. outputByModel: each model asks for its own most instead
+   * (the provider's model list, then the catalog's maxOutput; maxTokens only for a model neither knows), taken at
+   * each call, so another model, a sub-agent on another model or a plugin borrowing one gets its own number.
    */
-  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; system?: string; strongModel?: string; strongProviderId?: string };
+  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; outputByModel?: boolean; system?: string; strongModel?: string; strongProviderId?: string };
   store?: Store;
   /** Rate limits per provider id (deployment configuration). */
   limits?: Record<string, LimiterConfig>;
@@ -140,6 +143,8 @@ export interface RuntimeInternals {
   markNoImages(providerId: string, model: string): void;
   /** Turns a run of this session may take now; 0 = no limit (see SessionConfig.maxTurns). */
   turnLimit(config: SessionConfig): number;
+  /** Most output tokens a call of this session to this model asks for (see RuntimeOptions.defaults.outputByModel). */
+  outputLimit(config: SessionConfig, providerId: string, providerKind: string, model: string): number;
   readonly hooks: HookRegistry;
   readonly tools: ToolRegistry;
   readonly store: Store;
@@ -262,6 +267,12 @@ export class Runtime implements RuntimeInternals {
 
   markNoImages(providerId: string, model: string): void {
     this.#noImages.add(`${providerId}|${model}`);
+  }
+
+  outputLimit(config: SessionConfig | undefined, providerId: string, providerKind: string, model: string): number {
+    if (config?.asked?.includes('maxTokens')) return config.maxTokens;
+    const d = this.#opts.defaults;
+    return (d.outputByModel ? this.ledger.maxOutput(providerId, providerKind, model) : null) ?? d.maxTokens;
   }
 
   turnLimit(config: SessionConfig): number {
@@ -462,7 +473,9 @@ export class Runtime implements RuntimeInternals {
       maxTokens: req.maxTokens ?? d.maxTokens,
       cwd: req.cwd ?? parent?.config.cwd ?? ownFolder ?? this.#opts.cwd ?? process.cwd(),
       maxTurns: req.maxTurns ?? d.maxTurns ?? DEFAULT_MAX_TURNS,
-      ...(req.maxTurns !== undefined ? { asked: ['maxTurns' as const] } : {}),
+      ...(req.maxTurns !== undefined || req.maxTokens !== undefined
+        ? { asked: [...(req.maxTurns !== undefined ? ['maxTurns' as const] : []), ...(req.maxTokens !== undefined ? ['maxTokens' as const] : [])] }
+        : {}),
       locale: req.locale ?? parent?.config.locale ?? this.#opts.locale ?? 'zh-CN',
       serverWebSearch: false,
       // A sub-agent gets its parent's tool allow-list unless told otherwise.

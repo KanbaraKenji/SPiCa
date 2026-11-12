@@ -272,6 +272,17 @@ export class Session {
     return this.info();
   }
 
+  /** Most output tokens the next call asks for (the model's own when the runtime says so; Runtime.outputLimit). */
+  #outputLimit(c: SessionConfig, model = c.model): number {
+    let kind = '';
+    try {
+      kind = this.#rt.provider(c.providerId).kind;
+    } catch {
+      // provider removed in the settings
+    }
+    return this.#rt.outputLimit(c, c.providerId, kind, model);
+  }
+
   #contextWindow(): number | null {
     const c = this.#record.config;
     let kind = '';
@@ -582,7 +593,7 @@ export class Session {
       if (child) child.tokens += diff;
     }
     const window = this.#contextWindow();
-    const outputReserve = cfg.maxTokens;
+    const outputReserve = this.#outputLimit(cfg);
     return { window, total, measured, parts, outputReserve, free: window === null ? null : Math.max(0, window - total - outputReserve) };
   }
 
@@ -705,7 +716,7 @@ export class Session {
         params: {
           providerId: cfg.providerId,
           model: cfg.model,
-          maxTokens: cfg.maxTokens,
+          maxTokens: this.#outputLimit(cfg),
           ...(cfg.temperature !== undefined ? { temperature: cfg.temperature } : {}),
           ...(cfg.serverWebSearch ? { serverWebSearch: true } : {}),
         },
@@ -755,6 +766,10 @@ export class Session {
           sentImages.reduce((n, b) => n + imageTokens(provider.kind, b.width, b.height), 0),
         this.#lastInputTokens,
       );
+      // The answer must fit beside the input: a long conversation asks for less than the model's most output, never
+      // a total past its context window (the call would fail). Done before the spending check, which counts it.
+      const window = this.#rt.ledger.contextWindow(provider.id, provider.kind, request.model);
+      if (window && est + request.maxTokens > window) request.maxTokens = Math.max(1, window - est);
       // 3. Rate limiter shared by all sessions on this endpoint.
       let lease;
       try {

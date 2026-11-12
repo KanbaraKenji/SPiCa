@@ -251,7 +251,8 @@ export function pricesFromCatalog(c: ModelCatalog): PriceTable {
     const kindRows: Record<string, ModelPrice> = (table[p.kind] ??= {});
     for (const m of p.models) {
       const fallback = (kindRows['*'] ?? { input: 10, output: 50, unverified: true, unpriced: true }) as ModelPrice;
-      const row: ModelPrice = m.price ? { ...usd(m.price, c.fx.usdPerCny), contextWindow: m.contextWindow } : { ...fallback, contextWindow: m.contextWindow };
+      const out = m.maxOutput ? { maxOutput: m.maxOutput } : {};
+      const row: ModelPrice = m.price ? { ...usd(m.price, c.fx.usdPerCny), contextWindow: m.contextWindow, ...out } : { ...fallback, contextWindow: m.contextWindow, ...out };
       rows[m.id] = row;
       if (!kindRows[m.id]) kindRows[m.id] = row;
     }

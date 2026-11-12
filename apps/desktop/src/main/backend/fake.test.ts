@@ -518,3 +518,15 @@ describe('spending as the core counts it (单次运行花费上限, 未计价)',
     expect(events.find((e) => e.type === 'cost' && e.scope === 'global')).toMatchObject({ unpriced: true });
   });
 });
+
+describe('an answer cut at the most the model may write (「写长一点」)', () => {
+  it('is stored with stopReason max_tokens, as the core stores it', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const { until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '写长一点');
+    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    const last = (await b.getMessages(chat.id)).filter((m) => m.role === 'assistant').at(-1)!;
+    expect(last.meta).toMatchObject({ stopReason: 'max_tokens' });
+  });
+});

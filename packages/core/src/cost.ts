@@ -20,6 +20,8 @@ export interface ModelPrice {
   unpriced?: boolean;
   /** Context window in tokens (only from an exact model entry; never guessed from a `*` row). */
   contextWindow?: number;
+  /** Most output tokens one call may ask for (the catalog's maxOutput; only from an exact model entry). */
+  maxOutput?: number;
   /** Higher rates when the prompt is longer than `above` input tokens. */
   longContext?: { above: number; input: number; output: number; cacheRead?: number; cacheWrite?: number };
 }
@@ -106,6 +108,8 @@ export class CostLedger {
   #onRelease: (() => void)[] = [];
   /** providerId -> model -> context window, from the settings. */
   readonly #windows = new Map<string, Record<string, number>>();
+  /** providerId -> model -> most output tokens, from the settings (what the provider's model list said). */
+  readonly #outputs = new Map<string, Record<string, number>>();
   /** providerId -> the catalog provider it was set up from (ProviderConfig.catalogId). */
   readonly #catalogIds = new Map<string, string>();
 
@@ -139,6 +143,28 @@ export class CostLedger {
       if (w) return w;
     }
     return null;
+  }
+
+  /**
+   * The most output tokens one call to a model may ask for: what the settings give for this provider and model
+   * first (the provider's own model list), then the price table's exact entry (the catalog), else null. Never
+   * guessed from a `*` row or a similar name: a number the provider does not accept fails the call.
+   */
+  maxOutput(providerId: string, providerKind: string, model: string): number | null {
+    const set = this.#outputs.get(providerId)?.[model];
+    if (set) return set;
+    for (const t of this.#tables(providerId, providerKind)) {
+      const n = t?.[model]?.maxOutput;
+      if (n) return n;
+    }
+    return null;
+  }
+
+  /** Most output tokens per model set for one provider (replaces the previous map; entries not a positive whole number are left out). */
+  setMaxOutputs(providerId: string, outputs: Record<string, number>): void {
+    const ok = Object.fromEntries(Object.entries(outputs).filter(([, n]) => Number.isInteger(n) && n > 0));
+    if (Object.keys(ok).length) this.#outputs.set(providerId, ok);
+    else this.#outputs.delete(providerId);
   }
 
   /**

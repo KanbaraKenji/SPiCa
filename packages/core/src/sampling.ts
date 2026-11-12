@@ -141,10 +141,11 @@ export class PluginSampler {
         createdAt: '',
       };
     });
-    const d = this.#rt.defaults;
-    const maxTokens = Math.max(1, Math.min(Number.isFinite(p.maxTokens) ? Math.floor(p.maxTokens) : d.maxTokens, d.maxTokens));
     const choice = await this.#choose(p);
     const provider = this.#rt.provider(choice.providerId);
+    // the chosen model's own most output (as for conversations, Runtime.outputLimit), never more than the plugin asks for
+    const most = this.#rt.outputLimit(undefined, provider.id, provider.kind, choice.model);
+    const maxTokens = Math.max(1, Math.min(Number.isFinite(p.maxTokens) ? Math.floor(p.maxTokens) : most, most));
     const system = typeof p.systemPrompt === 'string' ? p.systemPrompt : '';
 
     // the plugin's own limits first, then the user's budget (held at the worst case while it runs)

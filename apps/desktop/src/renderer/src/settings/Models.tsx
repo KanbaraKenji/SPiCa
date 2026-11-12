@@ -393,11 +393,13 @@ export function Models({ api, runLimit }: { api: ProvidersApi; runLimit?: RunLim
       return;
     }
     const fromCatalog = provider?.models.find((x) => x.id === m.id);
+    // the most output the provider's list gave (the catalog's own the core knows): each answer may be that long
+    const out = !fromCatalog && m.maxOutput ? { maxOutput: m.maxOutput } : {};
     const entry: ConnectionModel = fromCatalog
       ? { id: m.id, contextWindow: fromCatalog.contextWindow, contextFrom: 'catalog' }
       : m.contextWindow
-        ? { id: m.id, contextWindow: m.contextWindow, contextFrom: 'provider' }
-        : { id: m.id, contextWindow: null, contextFrom: 'user' };
+        ? { id: m.id, contextWindow: m.contextWindow, contextFrom: 'provider', ...out }
+        : { id: m.id, contextWindow: null, contextFrom: 'user', ...out };
     set({ models: [...models.filter((x) => x.id !== m.id), entry] });
     if (entry.contextWindow === null) matchLater(m.id);
   };
@@ -420,7 +422,7 @@ export function Models({ api, runLimit }: { api: ProvidersApi; runLimit?: RunLim
     try {
       const r = await api.listModels(draft);
       if (r.ok) {
-        const got = r.models.filter((m) => m.chat).map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}) }));
+        const got = r.models.filter((m) => m.chat).map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}), ...(m.maxOutput ? { maxOutput: m.maxOutput } : {}) }));
         setFetched(got);
         const added = got.filter((m) => !known.has(m.id)).length;
         setFetchNote(`已获取 ${got.length} 个模型，${added ? `新增 ${added} 个` : '没有新增'}`);

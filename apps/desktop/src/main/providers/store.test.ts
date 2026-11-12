@@ -137,6 +137,14 @@ describe('ProviderStore', () => {
     expect(store.resolved()[0]?.models.map((m) => m.id)).toEqual(['flash']);
   });
 
+  it('keeps the most output a provider listed for a model, across a reload', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
+    new ProviderStore(dir, box).save({ ...draft, models: [{ id: 'relay-a', contextWindow: 128_000, contextFrom: 'provider', maxOutput: 16_384 }, { id: 'b', contextWindow: 1000, contextFrom: 'user' }] });
+    const again = new ProviderStore(dir, box).resolved()[0]!.models;
+    expect(again.find((m) => m.id === 'relay-a')?.maxOutput).toBe(16_384);
+    expect(again.find((m) => m.id === 'b')).not.toHaveProperty('maxOutput');
+  });
+
   it('an unchecked model stays in the list (no 上下文上限 needed), is not offered, and the pointers leave it', () => {
     const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
     const store = new ProviderStore(dir, box);

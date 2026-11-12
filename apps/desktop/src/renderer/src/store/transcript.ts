@@ -191,7 +191,7 @@ export type Item =
    * was written; `versions`: the answers it replaced, oldest first (it is the newest, number versions.length + 1);
    * `anchorId`: the message it answers, once it has been regenerated.
    */
-  | { kind: 'response'; id: string; blocks: Block[]; interrupted: boolean; messageIds?: string[]; at?: string; versions?: OldAnswer[]; anchorId?: string };
+  | { kind: 'response'; id: string; blocks: Block[]; interrupted: boolean; messageIds?: string[]; at?: string; versions?: OldAnswer[]; anchorId?: string; truncated?: boolean };
 
 export interface RunState {
   /** ms since epoch when this run started (for the status line timer). */
@@ -454,6 +454,8 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
       r.messageIds = [...(r.messageIds ?? []), m.id];
       if (m.createdAt) r.at = m.createdAt;
       if (m.meta?.interrupted === true) r.interrupted = true;
+      // the answer's last part stopped at the most output the model may give: not finished (a note and 继续)
+      if (m.kind === 'assistant') r.truncated = m.meta?.stopReason === 'max_tokens';
       for (const b of m.content) {
         if (b.type === 'text') {
           const prev = r.blocks[r.blocks.length - 1];
@@ -614,6 +616,8 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         if (note) items.push(note);
       } else if (m.role === 'assistant' && m.meta?.interrupted === true) {
         lastResponse(items, respId).interrupted = true;
+      } else if (m.role === 'assistant' && m.kind === 'assistant') {
+        lastResponse(items, respId).truncated = m.meta?.stopReason === 'max_tokens';
       } else if (m.kind === 'tool_results') {
         // Stopping while a question or confirmation waits: the core writes its result as cancelled.
         for (const b of m.content) if (b.type === 'tool_result') settleCard(items, b.toolUseId, b.content, b.isError);

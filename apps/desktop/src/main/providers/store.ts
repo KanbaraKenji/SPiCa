@@ -84,7 +84,8 @@ function sanitizeModels(v: unknown): ConnectionModel[] {
     const id = str(r.id).trim();
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    out.push({ id, contextWindow: num(r.contextWindow), contextFrom: FROM.includes(r.contextFrom as ContextFrom) ? (r.contextFrom as ContextFrom) : 'user', ...(r.enabled === false ? { enabled: false } : {}) });
+    const maxOutput = num(r.maxOutput);
+    out.push({ id, contextWindow: num(r.contextWindow), contextFrom: FROM.includes(r.contextFrom as ContextFrom) ? (r.contextFrom as ContextFrom) : 'user', ...(maxOutput ? { maxOutput } : {}), ...(r.enabled === false ? { enabled: false } : {}) });
   }
   return out;
 }

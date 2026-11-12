@@ -179,7 +179,10 @@ function backendConfig(): DesktopBackendConfig {
       defaults: {
         providerId: current?.providerId ?? '',
         model: current?.model ?? '',
+        // How long one answer may be: each model's own most output (the provider's model list, then the catalog),
+        // 4096 for a model neither knows (he chose 「跟着模型走」, 2026-11-12).
         maxTokens: 4096,
+        outputByModel: true,
         // No turn limit (he chose 「去掉轮数上限」, 2026-11-12): a run goes on until it is done; what stops it is 停止
         // or 单次运行花费上限. 0 = none in the core, for sub-agents too.
         maxTurns: 0,

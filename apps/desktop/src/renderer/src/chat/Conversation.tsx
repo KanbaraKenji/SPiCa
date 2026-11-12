@@ -223,6 +223,18 @@ function Response({
       {live ? null : <AnswerSources sources={answerSources(blocks, sources)} />}
       {live ? null : <FileCards files={files} onOpen={actions.openFile} actions={fileActions(actions, cwd)} />}
       {item.interrupted && newest ? <p className="turn-note">（中断）</p> : null}
+      {/* the newest answer stopped at the most the model may write at once: say it, and 继续 asks for the rest */}
+      {item.truncated && !item.interrupted && newest && !live && after === 0 ? (
+        <div className="resume-row">
+          <span className="status-with-icon">
+            <SpicaStatusIcon name="warning" size={15} />
+            回答到达长度上限，没有写完
+          </span>
+          <button type="button" className="btn" onClick={() => actions.send('继续')}>
+            继续
+          </button>
+        </div>
+      ) : null}
       {live ? null : (
         <MessageActions
           text={answerText(blocks)}
