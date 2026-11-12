@@ -139,6 +139,14 @@ export const FAKE_BATCH_FILES = [
 ];
 export const FAKE_BATCH_ANSWER = '十份规格书都下载好了，汇总表里按料号列了每份的版本和日期。';
 
+/** 「照片」: an answer with three pictures (the demo chart and two drawn here), for going through them full size. */
+export const FAKE_PHOTO_DATA = [
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPAAAACgCAIAAAC9uXYyAAABxklEQVR42u3aMREAIAwEwThCIWJRAhJokiKwzNVfMFsmxlzSM4UvENAS0BLQEtACWgJaAloCWgJaQEtAS0BLQEtAC2gJaAloCWgJaAEtAS0BLQEtAS2gJaAloCWgJaAFtAS0BLQEtAS0gJaAloCWgBbQEtAS0BLQEtACWgJaAloCWmoKet9eyoidlB2ggQYaaICABtoO0EDbARpooIEGGmigAQIaaDtAA20HaKCBBrpGPKzfogfaDtBA2wEaaKCBBghooEEEGmg7QANtB2iggQYaIKCBtgM00HaAdpwEK9BAAw00QEADbQdooO0ADTTQQAMNNNAgAg20HaCBtgM00EADDTTQjpMggx5oO0ADbQdooO0ADTTQQAMENNB2gAbaDtBA2wEaIKCBBghooO0A7TjJjuMkoIEGGiCggQYRaKDtAA20HaCBBhpogIAGGkSggbYDNNBAAw000I6TIIMeaDtAA20HaKDtAC0BLQEtoCWgJaAloCWgBbQEtAS0BLQEtICWgJaAloCWgBbQEtAS0BLQEtACWgJaAloCWkBLQEtAS0BLQAtoCWgJaAloCWgBLQEtAS0BLQEtoCWgJaAloCWgBbTUqAMXbfNAA6Jd3AAAAABJRU5ErkJggg==',
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPAAAACgCAIAAAC9uXYyAAABxklEQVR42u3aMREAIAwEwajALmIQChJokiKwzNVfMFsmxprSM4UvENAS0BLQEtACWgJaAloCWgJaQEtAS0BLQEtAC2gJaAloCWgJaAEtAS0BLQEtAS2gJaAloCWgJaAFtAS0BLQEtAS0gJaAloCWgBbQEtAS0BLQEtACWgJaAloCWmoKet9eyoidlB2ggQYaaICABtoO0EDbARpooIEGGmigAQIaaDtAA20HaKCBBrpGPKzfogfaDtBA2wEaaKCBBghooEEEGmg7QANtB2iggQYaIKCBtgM00HaAdpwEK9BAAw00QEADbQdooO0ADTTQQAMNNNAgAg20HaCBtgM00EADDTTQjpMggx5oO0ADbQdooO0ADTTQQAMENNB2gAbaDtBA2wEaIKCBBghooO0A7TjJjuMkoIEGGiCggQYRaKDtAA20HaCBBhpogIAGGkSggbYDNNBAAw000I6TIIMeaDtAA20HaKDtAC0BLQEtoCWgJaAloCWgBbQEtAS0BLQEtICWgJaAloCWgBbQEtAS0BLQEtACWgJaAloCWkBLQEtAS0BLQAtoCWgJaAloCWgBLQEtAS0BLQEtoCWgJaAloCWgBbTUqAMNV/klhV3ffAAAAABJRU5ErkJggg==',
+];
+export const fakePhotoAnswer = (chart: string) =>
+  '样机的三张图：\n\n' + `![报价对比](<${chart}>)\n\n` + `![样机正面](${FAKE_PHOTO_DATA[0]})\n\n` + `![样机侧面](${FAKE_PHOTO_DATA[1]})`;
+
 export const FAKE_BOM_ANSWER =
   '图纸和物料清单都整理好了：\n\n' +
   `- 图纸：\`${FAKE_BOM_FILES[0]}\`\n` +
@@ -1127,6 +1135,10 @@ export class FakeBackend implements AgentBackend {
           '![模具报价参考](https://example.com/mold-quote.png)\n\n' +
           '共享盘里的旧图不显示：\n\n' +
           '![旧版报价图](<\\\\files\\proj\\old.png>)';
+        await this.#stream(sessionId, 'text', answer, signal);
+        blocks.push({ type: 'text', text: answer });
+      } else if (/照片/.test(text)) {
+        const answer = fakePhotoAnswer(this.#demoImage?.() ?? 'D:\\工作\\样机评审\\报价对比图.png');
         await this.#stream(sessionId, 'text', answer, signal);
         blocks.push({ type: 'text', text: answer });
       } else if (/纪要/.test(text)) {

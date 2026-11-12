@@ -6189,6 +6189,35 @@ button.ctx-row:hover {
   cursor: grabbing;
 }
 
+/* Pictures of one group: room under the picture for ‹ N of M ›, centred, in the app's own buttons and text. */
+.image-viewer.has-nav {
+  padding-bottom: 64px;
+}
+
+.image-viewer-nav {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  border-radius: var(--radius-m);
+  background: var(--spica-raised);
+  box-shadow: var(--spica-shadow);
+  color: var(--spica-ink);
+  cursor: default;
+}
+
+.image-viewer-count {
+  min-width: 56px;
+  text-align: center;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-variant-numeric: tabular-nums;
+}
+
 /* What saving will do to 默认模型 / 强模型. */
 .provider-pointer-note {
   margin: 0;

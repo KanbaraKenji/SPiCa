@@ -3,7 +3,7 @@ import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useS
 import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo } from '@spica/protocol';
 import { changesAfter } from '../store/relocate';
 import { filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
-import { ImageViewer } from '../ui/ImageViewer';
+import { ImageGroup, ImageViewer, useImageGroup, type Picture } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
 import { AnswerSources, AnswerToolsContext, AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, RoundDoneContext, SourceCardsContext, ToolCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
@@ -53,10 +53,12 @@ const IMAGE_CODE_TEXT: Record<NonNullable<Attachment['code']>, string> = {
   'image.unreadable': '无法读取图片，未发送',
 };
 
-/** A sent picture under the message: a thumbnail, full size on a click. */
+/** A sent picture under the message: a thumbnail, full size on a click (with the message's other pictures). */
 function SentPicture({ a, url }: { a: Attachment; url?: (path: string) => Promise<string> }) {
   const [src, setSrc] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState<{ pictures: Picture[]; index: number } | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const group = useImageGroup(button, src, a.name);
   const path = a.image?.path ?? '';
   useEffect(() => {
     let alive = true;
@@ -67,10 +69,10 @@ function SentPicture({ a, url }: { a: Attachment; url?: (path: string) => Promis
   }, [path, url]);
   return (
     <>
-      <button type="button" className="turn-picture" onClick={() => src && setOpen(true)} aria-label={`查看 ${a.name}`} title={a.name}>
+      <button type="button" className="turn-picture" ref={button} onClick={() => src && setOpen(group())} aria-label={`查看 ${a.name}`} title={a.name}>
         {src ? <img src={src} alt="" /> : null}
       </button>
-      {open && src ? <ImageViewer url={src} name={a.name} onClose={() => setOpen(false)} /> : null}
+      {open ? <ImageViewer pictures={open.pictures} start={open.index} onClose={() => setOpen(null)} /> : null}
     </>
   );
 }
@@ -182,6 +184,8 @@ function Response({
   return (
     <AnswerToolsContext.Provider value={answerTools}>
     <RoundDoneContext.Provider value={!live}>
+    {/* One answer's pictures are one group in the viewer. */}
+    <ImageGroup>
     <div className="turn-response" {...at}>
       {segs.map((s, i) => {
         if (s.kind === 'memory') {
@@ -256,6 +260,7 @@ function Response({
         />
       )}
     </div>
+    </ImageGroup>
     </RoundDoneContext.Provider>
     </AnswerToolsContext.Provider>
   );
@@ -434,11 +439,14 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                     </div>
                     {item.attachments?.some((a) => a.image) ? (
                       <div className="turn-pictures">
-                        {item.attachments
-                          .filter((a) => a.image)
-                          .map((a) => (
-                            <SentPicture key={a.image!.path} a={a} {...(actions.imageUrl ? { url: actions.imageUrl } : {})} />
-                          ))}
+                        {/* One message's pictures are one group in the viewer. */}
+                        <ImageGroup>
+                          {item.attachments
+                            .filter((a) => a.image)
+                            .map((a) => (
+                              <SentPicture key={a.image!.path} a={a} {...(actions.imageUrl ? { url: actions.imageUrl } : {})} />
+                            ))}
+                        </ImageGroup>
                       </div>
                     ) : null}
                     {item.attachments?.some((a) => a.code) ? (

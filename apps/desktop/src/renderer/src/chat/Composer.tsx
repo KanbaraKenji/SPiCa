@@ -214,7 +214,8 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
   const [files, setFiles] = useState<string[]>(() => attached.get(sessionKey) ?? []);
   const [prevKey, setPrevKey] = useState(sessionKey);
   const [menu, setMenu] = useState<{ items: MenuItem[]; anchor: HTMLElement } | null>(null);
-  const [viewing, setViewing] = useState<{ url: string; name: string } | null>(null);
+  // A picture opened full size: the box's pictures are one group, this one first.
+  const [viewing, setViewing] = useState<number | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   const modelBtn = useRef<HTMLButtonElement>(null);
 
@@ -261,6 +262,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
 
   const t = tools ?? {};
   const pictures = files.filter((p) => thumbs.has(p));
+  const shownPictures = pictures.map((p) => ({ url: thumbs.get(p)!, name: baseName(p) }));
   const blocked = pictures.length > 0 && t.images?.accepted === false;
   const send = () => {
     const value = text.trim();
@@ -391,7 +393,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
           <div className="composer-thumbs">
             {pictures.map((p) => (
               <span key={p} className="composer-thumb">
-                <button type="button" className="composer-thumb-open" onClick={() => setViewing({ url: thumbs.get(p)!, name: baseName(p) })} aria-label={`查看 ${baseName(p)}`} title={baseName(p)}>
+                <button type="button" className="composer-thumb-open" onClick={() => setViewing(shownPictures.findIndex((x) => x.url === thumbs.get(p)))} aria-label={`查看 ${baseName(p)}`} title={baseName(p)}>
                   <img src={thumbs.get(p)} alt="" />
                 </button>
                 <button type="button" className="composer-thumb-remove" aria-label={`移除 ${baseName(p)}`} title="移除" onClick={() => removeAttached(p)}>
@@ -470,7 +472,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
       ) : null}
       </div>
       {menu ? <ContextMenu x={0} y={0} items={menu.items} anchor={menu.anchor} side="above" onClose={() => setMenu(null)} /> : null}
-      {viewing ? <ImageViewer url={viewing.url} name={viewing.name} onClose={() => setViewing(null)} /> : null}
+      {viewing !== null && shownPictures.length ? <ImageViewer pictures={shownPictures} start={viewing} onClose={() => setViewing(null)} /> : null}
     </div>
   );
 }

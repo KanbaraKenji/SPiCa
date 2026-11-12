@@ -9,7 +9,7 @@ import { Icon } from '../ui/Icon';
 import { FileBadge, FileGlyph } from '../ui/FileIcon';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
-import { ImageViewer } from '../ui/ImageViewer';
+import { ImageViewer, useImageGroup, type Picture } from '../ui/ImageViewer';
 import { imageSource } from './answer-image';
 import { drawFlow, pageMode, svgUrl } from './flow-draw';
 import { commandFacts, dangerSpans } from './command-plain';
@@ -184,7 +184,7 @@ function FlowFigure({ code, fallback }: { code: string; fallback: ReactNode }) {
           <img src={url} alt="流程图" />
         </button>
       )}
-      {big ? <ImageViewer url={url} name="流程图" onClose={() => setBig(false)} /> : null}
+      {big ? <ImageViewer pictures={[{ url, name: '流程图' }]} onClose={() => setBig(false)} /> : null}
     </div>
   );
 }
@@ -381,7 +381,11 @@ function MdImage({ src, alt }: { src?: string | undefined; alt?: string | undefi
   const source = imageSource(src, tools?.cwd);
   const [url, setUrl] = useState<string | null>(source.kind === 'data' || (source.kind === 'web' && tools?.webImages === 'auto') ? source.url : null);
   const [failed, setFailed] = useState(false);
-  const [big, setBig] = useState(false);
+  // Opened full size: with the other pictures of this answer (ImageGroup in Conversation), this one first.
+  const [big, setBig] = useState<{ pictures: Picture[]; index: number } | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const caption = alt || '图片';
+  const group = useImageGroup(button, url, caption);
   const localPath = source.kind === 'local' ? source.path : '';
   const toUrl = tools?.imageUrl;
   useEffect(() => {
@@ -391,7 +395,6 @@ function MdImage({ src, alt }: { src?: string | undefined; alt?: string | undefi
       alive = false;
     };
   }, [localPath, toUrl]);
-  const caption = alt || '图片';
   if (failed || source.kind === 'blocked' || (source.kind === 'web' && !tools?.webImages) || (source.kind === 'local' && !toUrl))
     return <span className="md-image-caption">{caption}</span>;
   if (!url && source.kind === 'web')
@@ -405,10 +408,10 @@ function MdImage({ src, alt }: { src?: string | undefined; alt?: string | undefi
   if (!url) return <span className="md-image-wait" />;
   return (
     <>
-      <button type="button" className="md-image" onClick={() => setBig(true)} title={caption}>
+      <button type="button" className="md-image" ref={button} onClick={() => setBig(group())} title={caption}>
         <img src={url} alt={caption} onError={() => setFailed(true)} />
       </button>
-      {big ? <ImageViewer url={url} name={caption} onClose={() => setBig(false)} /> : null}
+      {big ? <ImageViewer pictures={big.pictures} start={big.index} onClose={() => setBig(null)} /> : null}
     </>
   );
 }

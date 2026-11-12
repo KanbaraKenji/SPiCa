@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentApi, CoreEvent } from '@spica/protocol';
-import { FAKE_BATCH_FILES, FAKE_BOM_ANSWER, FAKE_BOM_FILES, FAKE_EXPORT_FILES, FAKE_FLOW_ANSWER, FAKE_LONG_COMMAND, FAKE_MINUTES_ANSWER, FAKE_SEARCH_RESULTS, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
+import { FAKE_BATCH_FILES, FAKE_PHOTO_DATA, fakePhotoAnswer, FAKE_BOM_ANSWER, FAKE_BOM_FILES, FAKE_EXPORT_FILES, FAKE_FLOW_ANSWER, FAKE_LONG_COMMAND, FAKE_MINUTES_ANSWER, FAKE_SEARCH_RESULTS, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
 import { SEED_IDS } from './fake-seed';
 
 function collect(backend: FakeBackend) {
@@ -246,6 +246,18 @@ describe('FakeBackend', () => {
     expect(FAKE_MINUTES_ANSWER).toMatch(/^## /);
     expect(FAKE_MINUTES_ANSWER).toContain('\n### ');
     expect(FAKE_MINUTES_ANSWER).toContain('```text');
+  });
+
+  it('照片 answers with three pictures (the demo chart and two drawn ones), for going through them full size', async () => {
+    const b = new FakeBackend({ speed: 0, demoImage: () => 'D:\\demo\\chart.png' });
+    const { until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '看几张样机照片');
+    await until((e) => e.type === 'run.end');
+    const text = (await b.getMessages(chat.id)).flatMap((m) => m.content).filter((c) => c.type === 'text').map((c) => (c as { text: string }).text).join('\n');
+    expect(text).toContain(fakePhotoAnswer('D:\\demo\\chart.png'));
+    expect(text.match(/!\[/g)).toHaveLength(3);
+    for (const d of FAKE_PHOTO_DATA) expect(d).toMatch(/^data:image\/png;base64,/);
   });
 
   it('批量 leaves fourteen files from one command and hands over two of them (the list in place of cards)', async () => {
