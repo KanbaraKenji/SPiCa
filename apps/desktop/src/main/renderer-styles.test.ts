@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SPLASH_INK } from '../shared/skin';
+import { RAIL_WIDTH } from '../renderer/src/shell/layout';
 
 const css = readFileSync(join(__dirname, '../renderer/src/styles.css'), 'utf8');
 const block = (selector: string) => {
@@ -48,6 +49,18 @@ describe('styles', () => {
     expect(block('.tree-open::after')).toContain('inset: 0');
     expect(block('.tree-open:focus-visible::after')).toContain('outline: 2px solid var(--spica-accent)');
     for (const above of ['.tree-twisty', '.tree-more', '.status-slot', '.tree-pin']) expect(block(above)).toContain('z-index: 1');
+  });
+});
+
+describe('the panels around the conversation (shell/layout.ts counts on these)', () => {
+  it('the column of icons left when the sidebar is not docked is RAIL_WIDTH wide', () => {
+    expect(block('.panel-rail')).toContain(`width: ${RAIL_WIDTH}px`);
+  });
+
+  it('each docked right panel (preview, details) draws the line on its left; laid over the conversation it has none', () => {
+    expect(block('.panel-right.is-docked')).toContain('border-left: 1px solid var(--spica-divider)');
+    expect(block('.panel.panel-right.is-max')).toContain('border-left: 0');
+    expect(css).not.toContain("data-right='docked'");
   });
 });
 

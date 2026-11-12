@@ -14,6 +14,13 @@ describe('sanitizeSettings', () => {
     expect(s.customSkins).toEqual([{ id: 'custom-1', name: 'ok', bg: '#ffffff', accent: '#123456' }]);
     expect(s.skin).toBe('system');
   });
+  it('a settings file from before the preview had its own panel: the preview gets the usual width, the old right width stays as it was', () => {
+    const s = sanitizeSettings({ panels: { left: true, right: false }, panelWidths: { left: 300, right: 560 } });
+    expect(s.panels).toEqual({ left: true, right: false });
+    expect(s.panelWidths).toEqual({ left: 300, right: 560, preview: 640 });
+    expect(sanitizeSettings({ panelWidths: { left: 300, right: 560, preview: 99999 } }).panelWidths.preview).toBe(4000);
+    expect(sanitizeSettings({ panelWidths: { preview: 10 } }).panelWidths.preview).toBe(320);
+  });
   it('snaps zoom to a step', () => {
     expect(sanitizeSettings({ zoom: 1.3 }).zoom).toBe(1.25);
     expect(sanitizeSettings({ zoom: 9 }).zoom).toBe(2);

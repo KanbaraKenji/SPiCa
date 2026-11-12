@@ -22,15 +22,28 @@ describe('Resizer', () => {
     expect(onCommit).toHaveBeenCalledWith(PANEL_LIMITS.left.max);
   });
 
-  it('the right panel grows to the left; keys and double-click work too', () => {
+  it('the preview grows to the left; keys and double-click work too', () => {
     const onCommit = vi.fn();
-    render(<Resizer side="right" width={300} onPreview={vi.fn()} onCommit={onCommit} />);
-    const edge = screen.getByRole('separator', { name: '调整详情栏宽度' });
+    render(<Resizer side="preview" width={640} onPreview={vi.fn()} onCommit={onCommit} />);
+    const edge = screen.getByRole('separator', { name: '调整预览宽度' });
     fireEvent.keyDown(edge, { key: 'ArrowLeft' });
-    expect(onCommit).toHaveBeenLastCalledWith(316);
+    expect(onCommit).toHaveBeenLastCalledWith(656);
     fireEvent.keyDown(edge, { key: 'ArrowRight' });
-    expect(onCommit).toHaveBeenLastCalledWith(284);
+    expect(onCommit).toHaveBeenLastCalledWith(624);
     fireEvent.doubleClick(edge);
-    expect(onCommit).toHaveBeenLastCalledWith(PANEL_LIMITS.right.initial);
+    expect(onCommit).toHaveBeenLastCalledWith(PANEL_LIMITS.preview.initial);
+  });
+
+  it('the preview stops where the window says (the conversation at its narrowest), also on a double-click', () => {
+    const onCommit = vi.fn();
+    render(<Resizer side="preview" width={500} max={520} onPreview={vi.fn()} onCommit={onCommit} />);
+    const edge = screen.getByRole('separator', { name: '调整预览宽度' });
+    expect(edge.getAttribute('aria-valuemax')).toBe('520');
+    edge.setPointerCapture = () => {};
+    fireEvent.pointerDown(edge, { button: 0, clientX: 800, pointerId: 1 });
+    fireEvent.pointerUp(edge, { clientX: 100, pointerId: 1 });
+    expect(onCommit).toHaveBeenLastCalledWith(520);
+    fireEvent.doubleClick(edge);
+    expect(onCommit).toHaveBeenLastCalledWith(520);
   });
 });

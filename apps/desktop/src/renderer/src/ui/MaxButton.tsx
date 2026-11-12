@@ -1,6 +1,6 @@
-// The button that lays the right panel over the whole conversation (Ctrl+Shift+\), and back.
-// It sits at the right end of whatever heads the panel: the file preview's head, the details'
-// head, or the tab row when the panel has plugin pages. Never in the window's title bar.
+// The button that lays the file preview over the whole conversation (Ctrl+Shift+\), and back.
+// It sits in the preview's own head. The details panel has none (a fixed width), and it is never in
+// the window's title bar.
 import { Icon } from './Icon';
 
 export interface MaxState {

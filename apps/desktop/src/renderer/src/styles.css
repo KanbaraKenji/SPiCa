@@ -313,7 +313,7 @@ a:hover {
   right: 0;
 }
 
-/* 最大化: the right panel over the whole conversation (which stays underneath, scroll kept). */
+/* 最大化: the file preview over the whole conversation (which stays underneath, scroll kept). */
 .panel.panel-right.is-max {
   position: absolute;
   inset: 0;
@@ -337,10 +337,11 @@ a:hover {
 }
 
 /* Frame lines: one straight line under the title bar from the sidebar's
-   edge to the window's right edge (over the main pane and the detail panel),
-   and straight full-height lines between the panes. Square corners. */
-.app[data-right='docked'] .main {
-  border-right: 1px solid var(--spica-divider);
+   edge to the window's right edge (over the main pane and the right panels),
+   and straight full-height lines between the panes. Square corners. Each docked
+   right panel (the preview, the details) draws the line on its left. */
+.panel-right.is-docked {
+  border-left: 1px solid var(--spica-divider);
 }
 
 /* ---------- Buttons ---------- */
@@ -5454,8 +5455,7 @@ button.ctx-row:hover {
   text-overflow: ellipsis;
 }
 
-/* Tabs on top of the right panel when plugins add pages there. */
-/* The tab row of a right panel with plugin pages: the tabs, and 最大化 at its end. */
+/* The tab row on top of the details panel when plugins add pages there (详情 / Quick note). */
 .right-head {
   flex: none;
   display: flex;
@@ -5467,10 +5467,6 @@ button.ctx-row:hover {
 .right-head .right-tabs {
   min-width: 0;
   overflow-x: auto;
-}
-
-.right-head > .icon-btn {
-  margin-left: auto;
 }
 
 .panel-right {

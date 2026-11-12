@@ -1,9 +1,9 @@
-// Right panel: details of the open session (tool calls, files, cost).
+// The details panel (详情, at the window's right edge): the open session's tool calls, files, cost. A fixed width:
+// no edge to drag, no 最大化 (the file preview beside it has both).
 import type { FileCardMeta, ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
 import { filesOf, MEMORY_TOOLS, type Block, type Transcript } from '../store/transcript';
 import { changesAfter } from '../store/relocate';
 import { Icon } from '../ui/Icon';
-import { MaxButton, type MaxState } from '../ui/MaxButton';
 import { InfoTip } from '../ui/InfoTip';
 import { FileGlyph } from '../ui/FileIcon';
 import { activityText } from './activity';
@@ -28,8 +28,6 @@ export interface DetailPanelProps {
   project?: ProjectInfo | undefined;
   activity?: ProjectLogEntry[];
   onClose?: () => void;
-  /** The panel over the whole conversation: the button at the right end of this head. Absent: no such button (a tab row above has it). */
-  max?: MaxState | undefined;
   /** A tab above already says 详情: leave out the heading (the close button stays). */
   hideHeading?: boolean;
 }
@@ -53,7 +51,7 @@ function ToolListText({ t, card }: { t: Parameters<typeof toolWords>[0]; card?: 
   );
 }
 
-export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, max }: DetailPanelProps) {
+export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false }: DetailPanelProps) {
   const blocks = transcript.items.flatMap((i) => (i.kind === 'response' ? i.blocks : []));
   // remember / forget are the 已记住 line in the conversation; listed here they would say it twice.
   const tools = blocks.filter((b): b is ToolBlock => b.type === 'tool' && !MEMORY_TOOLS.has(b.name));
@@ -64,10 +62,9 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
   ];
   return (
     <aside className="detail" aria-label="详情">
-      {hideHeading && !onClose && !max ? null : (
+      {hideHeading && !onClose ? null : (
       <header className="detail-head">
         {hideHeading ? <span /> : <span className="detail-heading">详情</span>}
-        {max ? <MaxButton max={max} /> : null}
         {onClose ? (
           <button type="button" className="icon-btn" onClick={onClose} aria-label="关闭详情" title="关闭详情">
             <Icon name="close" size={14} />

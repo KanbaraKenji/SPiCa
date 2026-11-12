@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DesktopBridge, PreviewInfo } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
-import { computeLayout, panelWidths, toggleFrom, type Floating } from './shell/layout';
+import { computeLayout, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
 import { Resizer } from './shell/Resizer';
 import { ConfirmDialog } from './ui/Dialog';
 import { FilePreview, usePreview } from './shell/FilePreview';
@@ -32,7 +32,6 @@ import { needsYou } from '../../shared/mail';
 import { nextDoneNews, unseenDone } from './shell/row-status';
 import type { MailItem, SessionInfo } from '@spica/protocol';
 import { Icon } from './ui/Icon';
-import { MaxButton } from './ui/MaxButton';
 import { sidebarNews } from './shell/sidebar-news';
 import { watchCover } from './ui/dim';
 import { usePeek } from './shell/peek';
@@ -119,8 +118,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   }, [bridge, view, modelsChanged]);
   // 主页: the empty page before any conversation is open, and whatever Spica opens
   // by itself at start (the assistant's main conversation) until you open a
-  // conversation yourself. The right panel starts closed there and opening it
-  // lasts only this visit; conversations keep the saved choice.
+  // conversation yourself. The details panel starts closed there and opening it
+  // lasts only this visit; conversations keep the saved choice. (The file preview
+  // has no such rule: it is open while a file is shown, anywhere.)
   // Not before the list has loaded, so start-up does not jump.
   // The conversation open when the list loaded; once another one is open (picked,
   // or a new one started) that is over for this run.
@@ -130,39 +130,42 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const atHome = view === 'chat' && state.loaded && (!state.activeId || (launch !== null && !launch.over && state.activeId === launch.id));
   const [homeRight, setHomeRight] = useState(false);
   if (!atHome && homeRight) setHomeRight(false);
-  const panelPrefs = atHome ? { ...settings.panels, right: homeRight } : settings.panels;
-  const layout = computeLayout(width, panelPrefs, floating);
+  // Three panels around the conversation (shell/layout.ts): the sidebar, the file preview (open while a file is
+  // shown) and the details (详情, the saved switch panels.right).
+  const previewOpen = preview !== null;
+  const open: Open = { left: settings.panels.left, info: atHome ? homeRight : settings.panels.right, preview: previewOpen };
   // Panel widths: what the user dragged them to (live while dragging), giving way when the window narrows.
-  const [dragging, setDragging] = useState<{ side: 'left' | 'right'; width: number } | null>(null);
-  // A main process older than this setting (dev build not restarted yet) does not send it.
-  const savedWidths0 = settings.panelWidths ?? DEFAULT_SETTINGS.panelWidths;
-  // A preview needs room: the right panel is at least 520 wide while it shows one (if the window allows).
-  const savedWidths = preview ? { ...savedWidths0, right: Math.max(savedWidths0.right, 520) } : savedWidths0;
+  const [dragging, setDragging] = useState<{ side: 'left' | 'preview'; width: number } | null>(null);
+  // A main process older than these settings (dev build not restarted yet) does not send them.
+  const savedWidths = { ...DEFAULT_SETTINGS.panelWidths, ...settings.panelWidths };
+  // Whether the details fit depends on the preview's chosen width (saved: the details do not jump in mid-drag).
+  const layout = computeLayout(width, open, floating, savedWidths);
   const widths = panelWidths(width, layout, dragging ? { ...savedWidths, [dragging.side]: dragging.width } : savedWidths);
-  const resizer = (side: 'left' | 'right') =>
+  const resizer = (side: 'left' | 'preview') =>
     layout[side] === 'docked' ? (
       <Resizer
         side={side}
         width={widths[side]}
+        {...(side === 'preview' ? { max: previewMaxWidth(width, layout, widths) } : {})}
         onPreview={(w) => setDragging(w === null ? null : { side, width: w })}
-        onCommit={(w) => shell.update({ panelWidths: { ...savedWidths0, [side]: w } })}
+        onCommit={(w) => shell.update({ panelWidths: { ...savedWidths, [side]: w } })}
       />
     ) : null;
 
   // The sidebar slid out from the left edge (see below).
   const [peeking, setPeeking] = useState(false);
   const toggle = useCallback(
-    (side: 'left' | 'right') => {
+    (side: 'left' | 'info') => {
       const saved = shell.settings.panels;
-      const prefs = atHome ? { ...saved, right: homeRight } : saved;
-      const next = toggleFrom(side, window.innerWidth, prefs, floating, peeking);
-      if (atHome && side === 'right') setHomeRight(next.prefs.right);
-      else if (next.prefs !== prefs) shell.update({ panels: atHome ? { ...next.prefs, right: saved.right } : next.prefs });
+      const now: Open = { left: saved.left, info: atHome ? homeRight : saved.right, preview: previewOpen };
+      const next = toggleFrom(side, window.innerWidth, now, floating, peeking, { ...DEFAULT_SETTINGS.panelWidths, ...shell.settings.panelWidths });
+      if (atHome && side === 'info') setHomeRight(next.open.info);
+      else if (next.open !== now) shell.update({ panels: { left: next.open.left, right: atHome ? saved.right : next.open.info } });
       setFloating(next.floating);
       // Opened or closed on purpose: no longer a peek from the edge.
       setPeeking(false);
     },
-    [floating, shell, atHome, homeRight, peeking],
+    [floating, shell, atHome, homeRight, peeking, previewOpen],
   );
 
   // The open conversation's name being edited in the title bar (its session id), and its menu there.
@@ -173,18 +176,18 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     setTitleMenu({ x: e.clientX, y: e.clientY });
   };
 
-  // The right panel over the whole conversation (an expand button, Ctrl+Shift+\); for this visit only.
+  // The file preview over the whole conversation (an expand button, Ctrl+Shift+\); for this visit only.
   const [rightMax, setRightMax] = useState(false);
-  // Only while the right panel is there to show (set below, once the layout is known).
+  // Only while the preview is there to show (set below, once the layout is known).
   const [canMax, setCanMax] = useState(false);
 
-  // Shortcuts: Ctrl+B sidebar, Ctrl+Alt+B details, Ctrl+Shift+\ right panel over the conversation,
+  // Shortcuts: Ctrl+B sidebar, Ctrl+Alt+B details, Ctrl+Shift+\ the preview over the conversation,
   // Esc closes a floating panel or settings.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'b') {
         e.preventDefault();
-        toggle(e.altKey ? 'right' : 'left');
+        toggle(e.altKey ? 'info' : 'left');
       } else if (e.ctrlKey && e.shiftKey && !e.altKey && e.code === 'Backslash') {
         if (!canMax) return;
         e.preventDefault();
@@ -311,14 +314,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   }, [agent, project]);
   const totalCost = useMemo(() => state.sessions.reduce((n, s) => n + s.costUsd, 0), [state.sessions]);
 
-  /** Opens the right panel for something to show there (on 主页 only for this visit). */
-  const showRight = (home: boolean) => {
-    const prefs = home ? { ...settings.panels, right: homeRight } : settings.panels;
-    if (computeLayout(width, prefs, floating).right !== 'hidden') return;
-    const wanted = { ...prefs, right: true };
-    if (computeLayout(width, wanted).right !== 'docked') setFloating('right');
-    else if (home) setHomeRight(true);
-    else shell.update({ panels: wanted });
+  /** A file to show (set just before): the preview beside the conversation when it fits, else over the window. */
+  const showPreview = () => {
+    if (previewFloats(width, open)) setFloating('preview');
+    else if (floating === 'preview') setFloating(null);
+  };
+  const closePreview = () => {
+    setPreview(null);
+    if (floating === 'preview') setFloating(null);
   };
 
   const openSession = (id: string) => {
@@ -365,10 +368,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       }
     : undefined;
   const memoryLines = useMemo(() => ({ items: state.memories, undo: (id: number) => agent.undoMemory(id) }), [state.memories, agent]);
-  // Files open in the right panel (read-only preview); 用系统程序打开 there hands them to Windows.
+  // Files open in the preview panel (read-only); 用系统程序打开 there hands them to Windows.
   const previewFile = (path: string) => {
     setPreview({ sessionId: state.activeId, path });
-    showRight(atHome);
+    showPreview();
   };
   /** A line in the notice bar (null: nothing to say). */
   const showNotice = (text: string | null) => {
@@ -461,7 +464,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       if (!abs) return '仅能打开插件自身文件夹中的文件。';
       setPreview({ sessionId: null, path: abs });
       setView('chat');
-      showRight(!state.activeId);
+      showPreview();
       return null;
     },
     notify: (text: string) => agent.state.set((s) => ({ ...s, notice: `${v.pluginTitle}：${text}` })),
@@ -641,7 +644,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     imageUrl: bridge.images.url,
     previewHtml: (title, html) => {
       setPreview({ sessionId: null, path: '', inline: { kind: 'html', name: title, path: '', size: html.length, text: html, truncated: false } });
-      showRight(atHome);
+      showPreview();
     },
   };
 
@@ -664,9 +667,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   };
 
   const leftShown = layout.left !== 'hidden';
-  const rightShown = layout.right !== 'hidden';
-  // Maximized only while the panel is there to show; closing it or leaving the conversation ends that.
-  const rightCanMax = rightShown && view === 'chat';
+  const infoShown = layout.info !== 'hidden';
+  const previewShown = layout.preview !== 'hidden';
+  // Maximized only while the preview is there to show; closing it or leaving the conversation ends that.
+  const rightCanMax = previewShown && view === 'chat';
   if (canMax !== rightCanMax) setCanMax(rightCanMax);
   if (rightMax && !rightCanMax) setRightMax(false);
   const panelMax = { on: rightMax, toggle: () => setRightMax((v) => !v) };
@@ -744,7 +748,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // with the brand and its own toggle at the top; the title bar covers only the
   // main pane and the detail panel.
   return (
-    <div className="app" data-left={layout.left} data-right={view === 'chat' ? layout.right : 'hidden'}>
+    <div className="app" data-left={layout.left} data-preview={view === 'chat' ? layout.preview : 'hidden'} data-info={view === 'chat' ? layout.info : 'hidden'}>
       <HoverTips />
       {/* Sidebar closed: a column of icons stays. Resting on the toggle at its top opens the full
           sidebar over it for a moment, every row where its icon was; the icons themselves do not
@@ -810,7 +814,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         />
         <div className="titlebar-right">
           {view === 'chat' ? (
-            <button type="button" data-panel-toggle className={rightShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('right')} aria-label={rightShown ? '收起详情' : '展开详情'} aria-pressed={rightShown} title="详情（Ctrl+Alt+B）">
+            <button type="button" data-panel-toggle className={infoShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('info')} aria-label={infoShown ? '收起详情' : '展开详情'} aria-pressed={infoShown} title="详情（Ctrl+Alt+B）">
               <Icon name="detail" />
             </button>
           ) : null}
@@ -902,10 +906,44 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           ) : null}
         </main>
 
-        {rightShown && view === 'chat' ? (
-          <div className={`panel panel-right is-${layout.right}${rightMax ? ' is-max' : ''}`} style={rightMax ? undefined : { width: widths.right }}>
-            {rightMax ? null : resizer('right')}
-            {panelPages.length && !preview ? (
+        {/* The file preview, next to the conversation: its edge drags, its head has 最大化 and 关闭预览. */}
+        {previewShown && view === 'chat' && preview ? (
+          <div className={`panel panel-right panel-preview is-${layout.preview}${rightMax ? ' is-max' : ''}`} style={rightMax ? undefined : { width: widths.preview }}>
+            {rightMax ? null : resizer('preview')}
+            <FilePreview
+              // A plugin page draws the file: the head still names it (and offers its buttons).
+              info={pagePreview ? { kind: 'unsupported', name: preview.path.split(/[\\/]/).pop() ?? preview.path, path: preview.path, size: 0, message: '' } : previewInfo}
+              {...(filePages.length
+                ? { source: { options: [{ id: BUILT_IN, label: '自带预览' }, ...filePages.map((v) => ({ id: previewerId(v), label: v.title }))], value: fellBack ? BUILT_IN : wayId, onChange: chooseWay } }
+                : {})}
+              note={fellBack?.why.text ? { text: fellBack.why.text, ...(fellBack.why.retry ? { onRetry: () => chooseWay(wayId) } : {}) } : null}
+              onOpenExternal={(p) => {
+                if (preview.sessionId) {
+                  void bridge.openFile(preview.sessionId, p).then((err) => err && agent.state.set((v) => ({ ...v, notice: err })));
+                }
+              }}
+              onReveal={(p) => void bridge.showInFolder(p).then(showNotice, (err: unknown) => showNotice(friendlyError(err)))}
+              onSheet={(n) => setPreview((p) => (p ? { ...p, sheet: n } : p))}
+              onClose={closePreview}
+              max={panelMax}
+            >
+              {pagePreview ? (
+                <PluginPreview
+                  key={`${previewerId(pagePreview)}|${previewAttempt}`}
+                  {...pluginProps(pagePreview)}
+                  file={{ sessionId: preview.sessionId, path: preview.path }}
+                  loadFile={bridge.previewFile}
+                  onFallback={(why) => setPreviewFallback({ key: fileKey, id: previewerId(pagePreview), why })}
+                />
+              ) : null}
+            </FilePreview>
+          </div>
+        ) : null}
+
+        {/* The details, at the window's edge under their title-bar button: a fixed width, no edge to drag, no 最大化. */}
+        {infoShown && view === 'chat' ? (
+          <div className={`panel panel-right panel-info is-${layout.info}`} style={{ width: widths.info }}>
+            {panelPages.length ? (
               <div className="right-head">
               <div className="tabs right-tabs" role="tablist" aria-label="右栏">
                 <button type="button" role="tab" aria-selected={!panelPluginView} className={!panelPluginView ? 'tab is-on' : 'tab'} onClick={() => setRightTab('detail')}>
@@ -917,40 +955,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                   </button>
                 ))}
               </div>
-              {/* The panel over the conversation: at the end of the tab row (the preview and the details have their own heads). */}
-              <MaxButton max={panelMax} />
               </div>
             ) : null}
-            {panelPluginView && !preview ? (
+            {panelPluginView ? (
               <PluginPage key={viewKey(panelPluginView)} {...pluginProps(panelPluginView)} />
-            ) : preview ? (
-              <FilePreview
-                // A plugin page draws the file: the head still names it (and offers its buttons).
-                info={pagePreview ? { kind: 'unsupported', name: preview.path.split(/[\\/]/).pop() ?? preview.path, path: preview.path, size: 0, message: '' } : previewInfo}
-                {...(filePages.length
-                  ? { source: { options: [{ id: BUILT_IN, label: '自带预览' }, ...filePages.map((v) => ({ id: previewerId(v), label: v.title }))], value: fellBack ? BUILT_IN : wayId, onChange: chooseWay } }
-                  : {})}
-                note={fellBack?.why.text ? { text: fellBack.why.text, ...(fellBack.why.retry ? { onRetry: () => chooseWay(wayId) } : {}) } : null}
-                onOpenExternal={(p) => {
-                  if (preview.sessionId) {
-                    void bridge.openFile(preview.sessionId, p).then((err) => err && agent.state.set((v) => ({ ...v, notice: err })));
-                  }
-                }}
-                onReveal={(p) => void bridge.showInFolder(p).then(showNotice, (err: unknown) => showNotice(friendlyError(err)))}
-                onSheet={(n) => setPreview((p) => (p ? { ...p, sheet: n } : p))}
-                onClose={() => setPreview(null)}
-                max={panelMax}
-              >
-                {pagePreview ? (
-                  <PluginPreview
-                    key={`${previewerId(pagePreview)}|${previewAttempt}`}
-                    {...pluginProps(pagePreview)}
-                    file={{ sessionId: preview.sessionId, path: preview.path }}
-                    loadFile={bridge.previewFile}
-                    onFallback={(why) => setPreviewFallback({ key: fileKey, id: previewerId(pagePreview), why })}
-                  />
-                ) : null}
-              </FilePreview>
             ) : (
             <DetailPanel
               session={session}
@@ -962,9 +970,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               onOpenSession={openSession}
               project={project}
               activity={project ? (state.activity[project.id] ?? []) : []}
-              onClose={layout.right === 'floating' ? () => setFloating(null) : undefined}
+              onClose={layout.info === 'floating' ? () => setFloating(null) : undefined}
               hideHeading={panelPages.length > 0}
-              max={panelPages.length ? undefined : panelMax}
             />
             )}
           </div>

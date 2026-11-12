@@ -8,7 +8,10 @@ import { parseNotices, type Notice } from './updates';
 export interface PanelPrefs {
   /** Left sidebar (projects and sessions) is open. */
   left: boolean;
-  /** Right detail panel is open. */
+  /**
+   * The details panel (详情, the title bar's button, Ctrl+Alt+B) is open. Named `right` from when it was the only
+   * right panel; the file preview beside it is not saved (it is open while a file is shown).
+   */
   right: boolean;
 }
 
@@ -37,15 +40,23 @@ export function networkForCore(n: NetworkPrefs): { proxy?: { url: string; noProx
 /** Widths the user dragged the side panels to (CSS px). */
 export interface PanelWidths {
   left: number;
+  /**
+   * What the single right panel was dragged to before the preview got its own panel (2026-11-12). The details
+   * panel is a fixed width now and nothing reads this; kept so an older build reading the same file finds it.
+   */
   right: number;
+  /** The file preview's panel; how wide it may really be also depends on the window (`shell/layout.ts`). */
+  preview: number;
 }
 
 export const PANEL_LIMITS = {
   left: { min: 200, max: 440, initial: 264 },
   right: { min: 240, max: 600, initial: 300 },
+  // No real upper bound: the window stops it (the conversation keeps MAIN_MIN_WIDTH); this only guards the file.
+  preview: { min: 320, max: 4000, initial: 640 },
 } as const;
 
-export function clampPanelWidth(side: 'left' | 'right', width: number): number {
+export function clampPanelWidth(side: keyof typeof PANEL_LIMITS, width: number): number {
   const l = PANEL_LIMITS[side];
   return Number.isFinite(width) ? Math.round(Math.min(l.max, Math.max(l.min, width))) : l.initial;
 }
@@ -127,7 +138,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   customSkins: [],
   zoom: DEFAULT_ZOOM,
   panels: { left: true, right: true },
-  panelWidths: { left: PANEL_LIMITS.left.initial, right: PANEL_LIMITS.right.initial },
+  panelWidths: { left: PANEL_LIMITS.left.initial, right: PANEL_LIMITS.right.initial, preview: PANEL_LIMITS.preview.initial },
   splash: 'daily',
   splashShownOn: null,
   updateSource: '',
@@ -222,6 +233,8 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const panelWidths: PanelWidths = {
     left: clampPanelWidth('left', typeof w.left === 'number' ? w.left : PANEL_LIMITS.left.initial),
     right: clampPanelWidth('right', typeof w.right === 'number' ? w.right : PANEL_LIMITS.right.initial),
+    // Not saved before the preview had its own panel: the usual width, not the old right panel's.
+    preview: clampPanelWidth('preview', typeof w.preview === 'number' ? w.preview : PANEL_LIMITS.preview.initial),
   };
   const nw = v.network && typeof v.network === 'object' ? (v.network as Record<string, unknown>) : {};
   const text = (x: unknown, max: number) => (typeof x === 'string' ? x.trim().slice(0, max) : '');
