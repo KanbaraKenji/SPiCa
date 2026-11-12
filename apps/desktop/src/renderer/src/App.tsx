@@ -12,7 +12,7 @@ import { PluginPreview, type PreviewFallback } from './shell/PluginPreview';
 import { BUILT_IN, chosenPreviewPage, fileExtension, previewerId, previewPagesFor } from '../../shared/previewers';
 import { FONT_UI, pluginThemeVars, type PluginView } from '../../shared/plugin-view';
 import { deriveTokens, schemeOf } from '../../shared/skin';
-import { DEFAULT_SETTINGS } from '../../shared/settings';
+import { DEFAULT_SETTINGS, effectiveAccount } from '../../shared/settings';
 import { sidebarBannerHeight, wordmarkProps } from './app-wordmark';
 import { useViewportWidth } from './shell/useViewportWidth';
 import { Sidebar } from './shell/Sidebar';
@@ -731,6 +731,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         setFloating(null);
       }}
       settingsOpen={settingsOpen}
+      account={effectiveAccount(settings, shell.autoAccount)}
+      onAccount={() => {
+        openSettings('account');
+        setFloating(null);
+      }}
       topId={state.topId}
       {...(rowActions.onRename ? { onRename: rowActions.onRename } : {})}
       pluginPages={sidebarPages.map((v) => ({

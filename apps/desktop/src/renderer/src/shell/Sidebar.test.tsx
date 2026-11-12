@@ -401,3 +401,40 @@ describe('插件市场', () => {
     expect(screen.queryByRole('region', { name: '插件' })).toBeNull();
   });
 });
+
+describe('the account on the bottom row', () => {
+  const base = { sessions: seed.sessions, activeId: SEED_IDS.chat, onOpen: vi.fn(), onNewChat: vi.fn(), settingsOpen: false };
+
+  it('its letter and the account; a click on it opens 设置 › 账号, the gear the settings', () => {
+    const onAccount = vi.fn();
+    const onSettings = vi.fn();
+    const { container } = render(<Sidebar {...base} onSettings={onSettings} account="ALEX.CHEN" onAccount={onAccount} />);
+    const me = screen.getByRole('button', { name: '账号 ALEX.CHEN' });
+    expect(me.textContent).toBe('AALEX.CHEN');
+    expect(me.getAttribute('title')).toBe('ALEX.CHEN');
+    expect(me.querySelector('.side-avatar')?.textContent).toBe('A');
+    fireEvent.click(me);
+    expect(onAccount).toHaveBeenCalledTimes(1);
+    const gear = screen.getByRole('button', { name: '设置' });
+    expect(gear.getAttribute('title')).toBe('设置');
+    fireEvent.click(gear);
+    expect(onSettings).toHaveBeenCalledTimes(1);
+    // one row: both in the bottom part, the account first
+    const bottom = container.querySelector('.sidebar-bottom.has-account')!;
+    expect([...bottom.querySelectorAll('button')]).toEqual([me, gear]);
+  });
+
+  it('no account: the row is 设置 alone, as it was, with no empty badge', () => {
+    const { container } = render(<Sidebar {...base} onSettings={vi.fn()} account="" />);
+    expect(screen.queryByRole('button', { name: /^账号/ })).toBeNull();
+    expect(screen.getByRole('button', { name: '设置' }).textContent).toBe('设置');
+    expect(container.querySelector('.side-avatar')).toBeNull();
+  });
+
+  it('the column of icons keeps only the gear', () => {
+    const { container } = render(<Sidebar {...base} onSettings={vi.fn()} account="ALEX.CHEN" compact />);
+    expect(screen.queryByRole('button', { name: /^账号/ })).toBeNull();
+    expect(screen.getByRole('button', { name: '设置' })).toBeTruthy();
+    expect(container.querySelector('.side-avatar')).toBeNull();
+  });
+});

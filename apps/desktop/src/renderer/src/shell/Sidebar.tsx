@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { ContextMenu } from '../ui/ContextMenu';
 import type { SessionInfo } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
+import { letterBadge } from '../ui/badge';
 import { StatusSlot } from '../ui/StatusMark';
 import { isRunning } from '../store/transcript';
 import { rollupText, slotsOf, topSlot } from './row-status';
@@ -48,7 +49,18 @@ export interface SidebarProps {
    * the same height in both. The lists (对话, 项目) are only in the full sidebar.
    */
   compact?: boolean;
+  /**
+   * The user's account (设置 › 账号): on the bottom row, its letter and the account, the gear for 设置 at the
+   * right end. Empty or absent: the row is 设置 alone, as it was. Only the full sidebar shows it (the column of
+   * icons keeps only the gear: the account is there when the sidebar slides out).
+   */
+  account?: string;
+  /** A click on the account: 设置 › 账号. Absent: the settings as they last were. */
+  onAccount?: () => void;
 }
+
+/** The gear on the account row with the word 设置 after it (the other layout he may pick); false: the gear alone. */
+const SETTINGS_WORD = false;
 
 const NONE: ReadonlySet<string> = new Set();
 
@@ -202,7 +214,10 @@ export function Sidebar({
   onDeleteChat,
   pluginPages = [],
   compact = false,
+  account = '',
+  onAccount,
 }: SidebarProps) {
+  const me = account ? letterBadge(account, account) : null;
   const pinOrder = useMemo(() => new Map(pinned.map((id, i) => [id, i])), [pinned]);
   const { chats, projects, childrenOf } = useMemo(() => {
     const chats = sessions.filter((s) => s.role === 'top' && !s.parentId).sort(byRecent);
@@ -395,11 +410,34 @@ export function Sidebar({
           onClose={() => setMenu(null)}
         />
       ) : null}
-      <div className="sidebar-bottom">
-        <button type="button" className={settingsOpen ? 'side-action is-active' : 'side-action'} onClick={onSettings} aria-current={settingsOpen ? 'page' : undefined}>
-          <Icon name="settings" />
-          <span>设置</span>
-        </button>
+      <div className={account ? 'sidebar-bottom has-account' : 'sidebar-bottom'}>
+        {account ? (
+          <>
+            {/* The account (its letter, as a plugin without an icon has) opens 设置 › 账号; the gear the settings as before. */}
+            <button type="button" className="side-action side-me" onClick={onAccount ?? onSettings} aria-label={`账号 ${account}`} title={account} data-tip-clipped=".side-action-text">
+              <span className="plugin-badge side-avatar" style={{ background: me!.colour }} aria-hidden>
+                {me!.letter}
+              </span>
+              <span className="side-action-text">{account}</span>
+            </button>
+            <button
+              type="button"
+              className={['side-action', 'side-gear', SETTINGS_WORD ? 'has-word' : '', settingsOpen ? 'is-active' : ''].filter(Boolean).join(' ')}
+              onClick={onSettings}
+              aria-current={settingsOpen ? 'page' : undefined}
+              aria-label="设置"
+              title="设置"
+            >
+              <Icon name="settings" />
+              {SETTINGS_WORD ? <span>设置</span> : null}
+            </button>
+          </>
+        ) : (
+          <button type="button" className={settingsOpen ? 'side-action is-active' : 'side-action'} onClick={onSettings} aria-current={settingsOpen ? 'page' : undefined}>
+            <Icon name="settings" />
+            <span>设置</span>
+          </button>
+        )}
       </div>
     </nav>
   );
