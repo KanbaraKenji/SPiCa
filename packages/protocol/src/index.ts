@@ -199,6 +199,12 @@ export type RegenerateCode =
   | 'regenerate.no_turn';
 
 /** The words the UI shows for each RegenerateCode (the core puts the same text in `hint`). */
+/**
+ * What message_agent's result says (after the fetch-time line) when it was not sent because the conversation reached its limit of messages to
+ * other agents since the user last wrote (RuntimeOptions.defaults.agentMessages). The window finds it by this.
+ */
+export const AGENT_MESSAGES_LIMIT_MARK = 'Not sent: message limit reached.';
+
 export const REGENERATE_HINTS: Record<RegenerateCode, string> = {
   'regenerate.running': '对话正在运行，无法重新生成。',
   'regenerate.waiting': '对话正在等待确认或回答，无法重新生成。',

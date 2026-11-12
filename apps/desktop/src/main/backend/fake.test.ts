@@ -543,3 +543,21 @@ describe('an answer cut at the most the model may write (「写长一点」)', (
     expect(last.meta).toMatchObject({ stopReason: 'max_tokens' });
   });
 });
+
+describe('messaging a sub-agent past 代理互发消息上限 (「互发」)', () => {
+  it('the call past the limit is refused as the core refuses it; no limit: none refused', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const { events, until } = collect(b);
+    b.setAgentMessages(2);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '互发');
+    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    const ends = events.filter((e) => e.type === 'tool.end' && e.name === 'message_agent');
+    expect(ends.map((e) => e.type === 'tool.end' && e.isError)).toEqual([false, false, true]);
+    b.setAgentMessages(null);
+    events.length = 0;
+    await b.send(chat.id, '互发');
+    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    expect(events.filter((e) => e.type === 'tool.end' && e.name === 'message_agent' && e.isError)).toEqual([]);
+  });
+});

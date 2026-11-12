@@ -188,6 +188,8 @@ function backendConfig(): DesktopBackendConfig {
         // No turn limit (he chose 「去掉轮数上限」, 2026-11-12): a run goes on until it is done; what stops it is 停止
         // or 单次运行花费上限. 0 = none in the core, for sub-agents too.
         maxTurns: 0,
+        // 设置 › 模型 › 代理互发消息上限 (10 by default; null = none, which is 0 for the core).
+        agentMessages: settings.get().agentMessageLimit ?? 0,
         // The model for heavy work: plugins that ask for a strong model get it (it may be on another connection).
         ...(strong ? { strongModel: strong.model, ...(strong.connectionId !== current?.providerId ? { strongProviderId: strong.connectionId } : {}) } : {}),
       },
@@ -280,6 +282,7 @@ const settings = new SettingsStore(app.getPath('userData'), { persist: !automate
 if (backend instanceof FakeBackend) {
   backend.setMemoryEnabled(settings.get().memory);
   backend.setRunLimit(settings.get().runLimitUsd);
+  backend.setAgentMessages(settings.get().agentMessageLimit);
 }
 if (backendKind === 'core' && makeWorkflowsDirAtStart(app.isPackaged, settings.get().workflowsDir)) mkdirSync(defaultWorkflowsDir, { recursive: true });
 const providers = new ProviderStore(
@@ -1106,6 +1109,7 @@ let lastLocalConnect = settings.get().localConnect;
 let lastMemory = settings.get().memory;
 let lastAutoTidy = settings.get().memoryAutoTidy;
 let lastRunLimit = settings.get().runLimitUsd;
+let lastAgentMessages = settings.get().agentMessageLimit;
 let lastAccount = userAccount();
 /** Problems the core reported for the network settings (e.g. a certificate file it cannot read), in words. */
 let networkProblems: string[] = [];
@@ -1129,6 +1133,12 @@ settings.onChange((s) => {
     lastRunLimit = s.runLimitUsd;
     if (backend instanceof ProcessBackend) void backend.apply({ budget: budgetForCore(s.runLimitUsd) }).catch(() => undefined);
     else if (backend instanceof FakeBackend) backend.setRunLimit(s.runLimitUsd);
+  }
+  if (s.agentMessageLimit !== lastAgentMessages) {
+    // 代理互发消息上限: read by message_agent at each call, so it applies at once
+    lastAgentMessages = s.agentMessageLimit;
+    if (backend instanceof ProcessBackend) void backend.apply({ defaults: { agentMessages: s.agentMessageLimit ?? 0 } }).catch(() => undefined);
+    else if (backend instanceof FakeBackend) backend.setAgentMessages(s.agentMessageLimit);
   }
   if (!(backend instanceof ProcessBackend)) return;
   const mail = JSON.stringify(s.mail);

@@ -141,7 +141,11 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
     ) : id === 'appearance' ? (
       <Appearance settings={settings} activeSkin={shell.activeSkin()} onChange={(p) => shell.update(p)} />
     ) : id === 'models' ? (
-      <Models api={providers} runLimit={{ value: settings.runLimitUsd, onChange: (runLimitUsd) => shell.update({ runLimitUsd }) }} />
+      <Models
+        api={providers}
+        runLimit={{ value: settings.runLimitUsd, onChange: (runLimitUsd) => shell.update({ runLimitUsd }) }}
+        agentMessages={{ value: settings.agentMessageLimit, onChange: (agentMessageLimit) => shell.update({ agentMessageLimit }) }}
+      />
     ) : id === 'memory' && memory ? (
       <Memory {...memory} enabled={settings.memory} onEnabled={(on) => shell.update({ memory: on })} />
     ) : id === 'plugins' ? (

@@ -34,7 +34,7 @@ import { InfoTip } from '../ui/InfoTip';
 import { PasteConfig } from './PasteConfig';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Group, Row } from './Group';
-import { RUN_LIMIT_MAX_USD } from '../../../shared/settings';
+import { AGENT_MESSAGES_MAX, RUN_LIMIT_MAX_USD } from '../../../shared/settings';
 
 export interface ProvidersApi {
   list(): Promise<ProviderList>;
@@ -200,7 +200,61 @@ export function RunLimitRow({ value, onChange }: RunLimitProps) {
   );
 }
 
-export function Models({ api, runLimit }: { api: ProvidersApi; runLimit?: RunLimitProps }) {
+/**
+ * 代理互发消息上限: how many messages a conversation may send to other agents after the user last wrote (default 10);
+ * empty is 不限. Written like 单次运行花费上限 (the same box, a word after it instead of before).
+ */
+export function AgentMessagesRow({ value, onChange }: RunLimitProps) {
+  const [text, setText] = useState(value === null ? '' : String(value));
+  const [touched, setTouched] = useState(false);
+  const shown = useRef(value);
+  useEffect(() => {
+    if (value === shown.current) return;
+    shown.current = value;
+    setText(value === null ? '' : String(value));
+  }, [value]);
+  const valid = (t: string) => /^\d+$/.test(t) && Number(t) >= 1 && Number(t) <= AGENT_MESSAGES_MAX;
+  const t = text.trim();
+  const problem = t === '' || valid(t) ? null : `须为 1 到 ${AGENT_MESSAGES_MAX} 的整数`;
+  const change = (v: string) => {
+    setText(v);
+    const x = v.trim();
+    if (x !== '' && !valid(x)) return;
+    const kept = x === '' ? null : Number(x);
+    shown.current = kept;
+    if (kept !== value) onChange(kept);
+  };
+  return (
+    <Row
+      title="代理互发消息上限"
+      hint={
+        touched && problem ? (
+          <span className="field-error">{problem}</span>
+        ) : (
+          '你说一句话之后，一个对话最多给别的代理发这么多条消息；到了就停下，等你说下一句再重新计数。留空为不限。'
+        )
+      }
+    >
+      <label className="run-limit">
+        <input
+          className={touched && problem ? 'input is-invalid' : 'input'}
+          inputMode="numeric"
+          value={text}
+          placeholder="不限"
+          spellCheck={false}
+          autoComplete="off"
+          aria-label="代理互发消息上限（条）"
+          aria-invalid={touched && problem ? true : undefined}
+          onChange={(e) => change(e.target.value)}
+          onBlur={() => setTouched(true)}
+        />
+        <span aria-hidden="true">条</span>
+      </label>
+    </Row>
+  );
+}
+
+export function Models({ api, runLimit, agentMessages }: { api: ProvidersApi; runLimit?: RunLimitProps; agentMessages?: RunLimitProps }) {
   const [list, setList] = useState<ProviderList | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalogView | null>(null);
   const [selected, setSelectedState] = useState<string | 'new' | null>(() => keptDraft<string>(SELECTED) ?? null);
@@ -612,9 +666,10 @@ export function Models({ api, runLimit }: { api: ProvidersApi; runLimit?: RunLim
         </Group>
       ) : null}
 
-      {runLimit ? (
-        <Group title="花费">
-          <RunLimitRow {...runLimit} />
+      {runLimit || agentMessages ? (
+        <Group title="上限">
+          {runLimit ? <RunLimitRow {...runLimit} /> : null}
+          {agentMessages ? <AgentMessagesRow {...agentMessages} /> : null}
         </Group>
       ) : null}
 

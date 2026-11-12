@@ -573,3 +573,23 @@ describe('an answer cut at the most the model may write', () => {
     expect(last(fromHistory(await b.getMessages(chat.id)))?.truncated).toBe(false);
   });
 });
+
+describe('messages to other agents past the limit', () => {
+  it('a refused message_agent is noted, live and when read again; the user writing clears it', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    b.setAgentMessages(1);
+    const chat = await b.createSession({});
+    let live: Transcript = { items: [] };
+    b.onEvent((e) => {
+      if (e.sessionId === chat.id) live = applyEvent(live, e);
+    });
+    await b.send(chat.id, '互发');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(live.agentLimit).toBe(true);
+    expect(fromHistory(await b.getMessages(chat.id)).agentLimit).toBe(true);
+    await b.send(chat.id, '好的，继续');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(live.agentLimit).toBeUndefined();
+    expect(fromHistory(await b.getMessages(chat.id)).agentLimit).toBeUndefined();
+  });
+});

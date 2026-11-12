@@ -131,6 +131,12 @@ export interface ShellSettings {
    */
   runLimitUsd: number | null;
   /**
+   * 模型 › 代理互发消息上限: how many messages one conversation may send to other agents since the user last wrote
+   * in it; then it stops and waits for the user (he wanted Claude desktop's guard, 2026-11-12). null = no limit.
+   * Default AGENT_MESSAGES_DEFAULT.
+   */
+  agentMessageLimit: number | null;
+  /**
    * 账号: the account the user typed, for when the user folder's name is not the company account; '' =
    * the automatic one (main/user-account.ts). Plugins get effectiveAccount() (SPICA_USER_ACCOUNT, ctx.user.account).
    */
@@ -223,6 +229,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   openAtLogin: false,
   backgroundHintShown: false,
   runLimitUsd: null,
+  agentMessageLimit: 10,
   account: '',
   callName: '',
 };
@@ -321,7 +328,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { account: accountValue(v.account), callName: callNameValue(v.callName), runLimitUsd: runLimit(v.runLimitUsd), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
+  return { account: accountValue(v.account), callName: callNameValue(v.callName), runLimitUsd: runLimit(v.runLimitUsd), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {
@@ -338,6 +345,19 @@ export function mailForCore(mail: MailPrefs): { enabled: boolean; intervalMinute
  * limits: the development ones written into the code (Anthropic 100 USD in all, 2 USD a call, 1 USD a run) were
  * taken out (2026-11-12): nothing in the settings showed them, and the run stopped without a way to change it.
  */
+/** 代理互发消息上限 when nothing was saved: 10, as Claude desktop's guard. */
+export const AGENT_MESSAGES_DEFAULT = 10;
+
+/** The highest 代理互发消息上限 accepted. */
+export const AGENT_MESSAGES_MAX = 1000;
+
+/** A saved 代理互发消息上限: a whole number 1..AGENT_MESSAGES_MAX, null (no limit, chosen), else the default. */
+export function agentMessages(v: unknown): number | null {
+  if (v === null) return null;
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > AGENT_MESSAGES_MAX) return AGENT_MESSAGES_DEFAULT;
+  return v;
+}
+
 export function budgetForCore(runLimitUsd: number | null): { perRunUsd?: number } {
   return runLimitUsd === null ? {} : { perRunUsd: runLimitUsd };
 }

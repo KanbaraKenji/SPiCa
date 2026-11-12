@@ -508,6 +508,8 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
             ) : null}
             {/* a run that ended at the turn limit (scripts through the MCP service; the app sets none) */}
             {transcript.stopped === 'max_turns' && !running ? <p className="turn-note">（已达到轮数上限，还没做完）</p> : null}
+            {/* message_agent refused: the limit of messages to other agents since the user last wrote */}
+            {transcript.agentLimit ? <p className="turn-note">（代理之间互发的消息已达上限，没有再发；你说一句话后重新计数）</p> : null}
             {transcript.error ? (
               <p className="turn-error status-with-icon" role="alert">
                 <SpicaStatusIcon name="error" size={15} />

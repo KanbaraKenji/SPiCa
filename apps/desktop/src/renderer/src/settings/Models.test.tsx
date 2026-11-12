@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { Models, RunLimitRow, type ProvidersApi } from './Models';
+import { AgentMessagesRow, Models, RunLimitRow, type ProvidersApi } from './Models';
 import type { ProviderList } from '../../../shared/bridge';
 import type { ModelCatalogView } from '../../../shared/catalog';
 import { keyMaskParts, keyMaskText } from '@spica/protocol';
@@ -469,5 +469,32 @@ describe('单次运行花费上限', () => {
   it('is on the page when the settings give it', async () => {
     render(<Models api={fakeApi()} runLimit={{ value: 1, onChange: () => undefined }} />);
     expect((screen.getByRole('textbox', { name: '单次运行花费上限（美元）' }) as HTMLInputElement).value).toBe('1');
+  });
+});
+
+describe('代理互发消息上限', () => {
+  it('shows the number (10 by default), applies a valid one at once, empty is 不限; not a whole number stays and says why', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<AgentMessagesRow value={10} onChange={onChange} />);
+    const box = screen.getByRole('textbox', { name: '代理互发消息上限（条）' }) as HTMLInputElement;
+    expect(box.value).toBe('10');
+    expect(box.placeholder).toBe('不限');
+    expect(screen.getByText(/你说一句话之后，一个对话最多给别的代理发这么多条消息/)).toBeTruthy();
+    fireEvent.change(box, { target: { value: '5' } });
+    expect(onChange).toHaveBeenLastCalledWith(5);
+    rerender(<AgentMessagesRow value={5} onChange={onChange} />);
+    fireEvent.change(box, { target: { value: '' } });
+    expect(onChange).toHaveBeenLastCalledWith(null);
+    onChange.mockClear();
+    fireEvent.change(box, { target: { value: '2.5' } });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.blur(box);
+    expect(screen.getByText('须为 1 到 1000 的整数')).toBeTruthy();
+  });
+
+  it('sits with 单次运行花费上限 in one group', () => {
+    render(<Models api={fakeApi()} runLimit={{ value: null, onChange: () => undefined }} agentMessages={{ value: 10, onChange: () => undefined }} />);
+    expect(screen.getByRole('heading', { name: '上限' })).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: '代理互发消息上限（条）' })).toBeTruthy();
   });
 });

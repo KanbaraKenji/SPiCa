@@ -44,3 +44,10 @@ describe('an answer cut at the most the model may write at once', () => {
     expect(screen.queryByText(/长度上限/)).toBeNull();
   });
 });
+
+describe('messages to other agents past the limit', () => {
+  it('says the message was not sent and that the count starts over when the user writes', () => {
+    render(<Conversation session={session} transcript={{ items: [{ kind: 'user', id: 'u', text: '互发', steer: false }, answer], agentLimit: true }} actions={{} as ConversationActions} />);
+    expect(screen.getByText('（代理之间互发的消息已达上限，没有再发；你说一句话后重新计数）')).toBeTruthy();
+  });
+});

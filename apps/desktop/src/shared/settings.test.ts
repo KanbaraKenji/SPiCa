@@ -49,6 +49,17 @@ describe('opening animation', () => {
   });
 });
 
+describe('代理互发消息上限', () => {
+  it('10 when nothing was saved; a whole number 1..1000 is kept; null (cleared) is no limit; anything else is 10', () => {
+    expect(DEFAULT_SETTINGS.agentMessageLimit).toBe(10);
+    expect(sanitizeSettings({}).agentMessageLimit).toBe(10);
+    expect(sanitizeSettings({ agentMessageLimit: 3 }).agentMessageLimit).toBe(3);
+    expect(sanitizeSettings({ agentMessageLimit: null }).agentMessageLimit).toBeNull();
+    for (const bad of [0, -1, 2.5, 1001, '5', Number.NaN]) expect(sanitizeSettings({ agentMessageLimit: bad }).agentMessageLimit).toBe(10);
+    expect(applyPatch(DEFAULT_SETTINGS, { agentMessageLimit: null }).agentMessageLimit).toBeNull();
+  });
+});
+
 describe('单次运行花费上限', () => {
   it('no limit by default; a positive amount is kept to the cent; anything else is no limit', () => {
     expect(DEFAULT_SETTINGS.runLimitUsd).toBeNull();

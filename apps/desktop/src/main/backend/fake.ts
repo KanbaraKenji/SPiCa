@@ -34,7 +34,7 @@ import type {
   SteerMode,
   ToolCategory,
 } from '@spica/protocol';
-import { REGENERATE_HINTS } from '@spica/protocol';
+import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS } from '@spica/protocol';
 import type { AgentBackend } from './types';
 import { buildSeed, fakeCard } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
@@ -193,6 +193,8 @@ export class FakeBackend implements AgentBackend {
   #globalUnpriced = false;
   /** 设置 › 模型 › 单次运行花费上限 (null: none), as the core gets it. */
   #runLimit: number | null = null;
+  /** 设置 › 模型 › 代理互发消息上限 (null: none), as the core gets it. */
+  #agentMessages: number | null = 10;
   #projects = new Map<string, ProjectInfo>();
   readonly #mail: FakeMailbox;
   readonly #memory: FakeMemory;
@@ -613,6 +615,11 @@ export class FakeBackend implements AgentBackend {
   /** 单次运行花费上限 changed in the settings (as the core's configure({ budget })). */
   setRunLimit(usd: number | null): void {
     this.#runLimit = usd;
+  }
+
+  /** 代理互发消息上限 changed in the settings (as the core's configure({ defaults: { agentMessages } })). */
+  setAgentMessages(n: number | null): void {
+    this.#agentMessages = n;
   }
 
   async listMemories(opts?: { all?: boolean }): Promise<MemoryItem[]> {
@@ -1168,6 +1175,21 @@ export class FakeBackend implements AgentBackend {
         this.#setStatus(sessionId, 'thinking');
         await this.#stream(sessionId, 'text', FAKE_SUMMARY_ANSWER, signal);
         blocks.push({ type: 'text', text: FAKE_SUMMARY_ANSWER });
+      } else if (/互发/.test(text)) {
+        // Messaging a sub-agent again and again: past 代理互发消息上限 the core refuses (AGENT_MESSAGES_LIMIT_MARK).
+        const limit = this.#agentMessages;
+        const tries = limit === null ? 3 : limit + 1;
+        for (let i = 1; i <= tries; i++) {
+          const refused = limit !== null && i > limit;
+          const result = refused
+            ? `${AGENT_MESSAGES_LIMIT_MARK} This conversation has sent ${limit} messages to other agents since the user last wrote here (the limit is ${limit}).`
+            : '已发送；子Agent A 开始处理。';
+          blocks.push(...(await this.#tool(sessionId, run, 'message_agent', { id: 'ses-sub-a', text: `第 ${i} 次：再核对一遍报价` }, result, 150, refused)));
+        }
+        this.#setStatus(sessionId, 'thinking');
+        const reply = limit === null ? '已经让子Agent A 再核对了三遍报价。' : `已经给子Agent A 发了 ${limit} 条消息，到了上限，先停在这里，等你说下一句。`;
+        await this.#stream(sessionId, 'text', reply, signal);
+        blocks.push({ type: 'text', text: reply });
       } else if (/写长一点/.test(text)) {
         // An answer that stopped at the most the model may write at once (stopReason max_tokens, as the core stores it).
         const cut = '好的，写详细一点：\n\n1. **外壳尺寸** 定为 120×80×24 mm，比上一版薄 2 mm，主要是电池仓改了排布，' +

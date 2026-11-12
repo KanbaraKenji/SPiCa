@@ -3,6 +3,7 @@
 import { relocate, shownPath } from './relocate';
 import type { CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { humanError } from '../../../shared/errors';
+import { AGENT_MESSAGES_LIMIT_MARK } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
 
 export { humanError } from '../../../shared/errors';
@@ -219,6 +220,11 @@ export interface Transcript {
    * app sets none since 2026-11-12, a script through the MCP service may). Shown as a note after the answer.
    */
   stopped?: 'max_turns';
+  /**
+   * message_agent was refused since the user last wrote: this conversation reached its limit of messages to other
+   * agents (设置 › 模型 › 代理互发消息上限). A note says so until the user writes again (the count starts over).
+   */
+  agentLimit?: boolean;
   /** The words of the last error the core marked retryable (a network error, 5xx, 429...): shown only if the run then ends in an error. */
   lastFailure?: string;
   /** Messages sent while a run was going, not yet taken in by the agent. */
@@ -564,11 +570,22 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
     ...(Object.keys(memory).length ? { memoryCards: memory } : {}),
     seqs,
   };
+  if (refusedSinceUserWrote(messages)) t.agentLimit = true;
   for (const p of pending) applyPending(t, p);
   // A question or confirmation with no result that the core no longer waits on was dropped (stopped before the
   // core wrote its result): nothing to answer.
   cancelOpenCards(t.items, new Set(pending.map((p) => p.callId)));
   return t;
+}
+
+/** A message_agent refused for the limit after the last message the user typed (AGENT_MESSAGES_LIMIT_MARK). */
+function refusedSinceUserWrote(messages: readonly Message[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!;
+    if (m.role === 'user' && (m.kind === 'user' || m.kind === 'steer') && (m.meta?.author ?? 'user') === 'user') return false;
+    if (m.content.some((b) => b.type === 'tool_result' && b.isError === true && b.content.includes(AGENT_MESSAGES_LIMIT_MARK))) return true;
+  }
+  return false;
 }
 
 function applyPending(t: Transcript, p: PendingItem): void {
@@ -611,6 +628,8 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       } else if (m.role === 'user' && (m.kind === 'user' || m.kind === 'steer')) {
         if (!items.some((i) => i.id === m.id)) items.push(userItem(m));
         if (t.queued?.some((q) => q.id === m.id)) t.queued = t.queued.filter((q) => q.id !== m.id);
+        // the user wrote: the count of messages to other agents starts over
+        if ((m.meta?.author ?? 'user') === 'user') delete t.agentLimit;
       } else if (m.role === 'user' && (m.kind === 'relay' || m.kind === 'report' || m.kind === 'note')) {
         const note = items.some((i) => i.id === m.id) ? undefined : noteItem(m);
         if (note) items.push(note);
@@ -697,6 +716,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         tool.preview = e.preview;
         tool.durationMs = e.durationMs;
       }
+      if (e.name === 'message_agent' && e.isError && e.preview.includes(AGENT_MESSAGES_LIMIT_MARK)) t.agentLimit = true;
       return t;
     }
     case 'confirm.request': {

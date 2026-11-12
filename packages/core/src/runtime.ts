@@ -72,8 +72,10 @@ export interface RuntimeOptions {
    * maxTokens: the most output tokens one call asks for. outputByModel: each model asks for its own most instead
    * (the provider's model list, then the catalog's maxOutput; maxTokens only for a model neither knows), taken at
    * each call, so another model, a sub-agent on another model or a plugin borrowing one gets its own number.
+   * agentMessages: how many messages one conversation may send to other agents (message_agent) since the user last
+   * wrote in it; then message_agent refuses until the user writes again. 0 or absent = no limit. Read at each call.
    */
-  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; outputByModel?: boolean; system?: string; strongModel?: string; strongProviderId?: string };
+  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; outputByModel?: boolean; agentMessages?: number; system?: string; strongModel?: string; strongProviderId?: string };
   store?: Store;
   /** Rate limits per provider id (deployment configuration). */
   limits?: Record<string, LimiterConfig>;
