@@ -6194,7 +6194,12 @@ section.plugins-part > .plugins-part-title {
 .account-menu-icon {
   flex: none;
   order: -1;
-  color: var(--spica-muted);
+  /* the words' colour, on hover too */
+  color: currentColor;
+  /* Chinese glyphs draw low in their line box, so with the boxes centred the icon looked ~1.5px high. Until the
+     menu takes an icon before the words (the words in their own box, trimmed with text-box: trim-both cap
+     alphabetic and centred), the icon is moved down by this much of the font size. */
+  translate: 0 0.1em;
 }
 
 /* 设置 › 账号: the same round badge, bigger, at the right end of the first row (as tall as the rows under it). */
