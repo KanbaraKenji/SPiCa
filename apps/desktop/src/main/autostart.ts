@@ -25,11 +25,13 @@ export function startedAtLogin(argv: readonly string[]): boolean {
 }
 
 /**
- * Which starts open on 新对话 instead of the main conversation (the page's usual start, store/agent.ts init):
- * 'login' only a start by Windows at sign-in (he asked for it, 2026-11-12), 'every' every start. A page loaded
- * again after its process was lost is not a start (ShellState.reopen) and goes back where it was.
+ * Which starts open on 新对话 instead of the first conversation of the list (the page's own start,
+ * store/agent.ts init): 'every' start from fully closed (he, 2026-11-12: 「只要SPica完全关闭再启动(播放了开机动画，
+ * 简短版也算)，就是进入新对话页」), or 'login' only a start by Windows at sign-in. Not a start, back where it was:
+ * a page loaded again after its process was lost (ShellState.reopen), the window brought back from the tray, a
+ * second start bringing the running window up.
  */
-export const NEW_CHAT_AT_START: 'login' | 'every' = 'login';
+export const NEW_CHAT_AT_START: 'login' | 'every' = 'every';
 
 export function startsOnNewChat(argv: readonly string[], rule: 'login' | 'every' = NEW_CHAT_AT_START): boolean {
   return rule === 'every' || startedAtLogin(argv);

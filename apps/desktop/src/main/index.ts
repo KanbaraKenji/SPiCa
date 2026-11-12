@@ -718,8 +718,11 @@ ipcMain.on(DesktopChannel.CloseAskReady, (_e, on: unknown) => {
 });
 ipcMain.on(DesktopChannel.CloseAnswer, (_e, answer: unknown) => closeAsk?.answer(answer));
 
-/** This start opens on 新对话 (main/autostart.ts startsOnNewChat): told to the first page only. */
-let newChatAtStart = startsOnNewChat(process.argv);
+/**
+ * This start opens on 新对话 (main/autostart.ts startsOnNewChat): told to the first page only. Screenshots
+ * (SPICA_SHOTS / SPICA_CAPTURE) keep opening the first conversation, as their pictures show.
+ */
+let newChatAtStart = !automated && startsOnNewChat(process.argv);
 
 /** Set when the window's page was lost and is loading again: the conversation that was open (read once). */
 let reopen: { sessionId: string | null } | null = null;

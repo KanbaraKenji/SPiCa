@@ -17,10 +17,11 @@ describe('a run Windows started at sign-in', () => {
     expect(startedAtLogin(['C:\\Spica\\Spica.exe', '--autostart-later'])).toBe(false);
   });
 
-  it('opens on 新对话: a start by Windows at sign-in; every start when the rule says so', () => {
+  it('opens on 新对话: every start (his rule), or only a start by Windows at sign-in', () => {
+    expect(startsOnNewChat(['Spica.exe'])).toBe(true);
     expect(startsOnNewChat(['Spica.exe', LOGIN_ARG])).toBe(true);
-    expect(startsOnNewChat(['Spica.exe'])).toBe(false);
-    expect(startsOnNewChat(['Spica.exe'], 'every')).toBe(true);
+    expect(startsOnNewChat(['Spica.exe'], 'login')).toBe(false);
+    expect(startsOnNewChat(['Spica.exe', LOGIN_ARG], 'login')).toBe(true);
   });
 
   it('a second start shows the running window, unless Windows started it', () => {
