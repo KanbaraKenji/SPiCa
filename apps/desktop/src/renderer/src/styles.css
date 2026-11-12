@@ -145,7 +145,7 @@ a:hover {
   background: var(--spica-chrome);
 }
 
-/* Main pane + detail panel, under the title bar. */
+/* The title bar, then under it the conversation and the right panels. */
 .column {
   flex: 1;
   min-width: 0;
@@ -191,21 +191,9 @@ a:hover {
   -webkit-app-region: no-drag;
 }
 
-/* A panel is docked right of the conversation: the title bar is not at the window's edge. */
-.titlebar.is-inner {
-  padding-right: 8px;
-}
-
-/* The conversation's column: its title bar, then the conversation (the right panels stand beside it, full height). */
-.main-col {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-/* The head of a right panel (the details, their tab row, the preview): in the window's top row, as high as the
-   title bar, the same line under it, the same insets; buttons are .icon-btn as in the title bar. */
+/* The first row of a right panel (the details' heading or their tab row, the preview's file name and buttons):
+   under the title bar, inside its own panel, on the panel's background with no line of its own; as high as the
+   title bar, the same insets, buttons are .icon-btn as in the title bar. */
 .panel-head {
   height: var(--spica-titlebar-h);
   flex: none;
@@ -214,19 +202,6 @@ a:hover {
   gap: 2px;
   min-width: 0;
   padding: 0 8px 0 16px;
-  background: var(--spica-chrome);
-  border-bottom: 1px solid var(--spica-divider);
-  -webkit-app-region: drag;
-}
-
-.panel-head button,
-.panel-head select {
-  -webkit-app-region: no-drag;
-}
-
-/* The right panel at the window's edge: room for the system buttons, as the title bar keeps it. */
-.panel-right.is-edge .panel-head {
-  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px);
 }
 
 .titlebar-left,
@@ -334,6 +309,8 @@ a:hover {
 
 .panel-right {
   width: 300px;
+  /* The conversation's background: only the line on its left sets a right panel apart. */
+  background: var(--spica-bg);
 }
 
 .panel.is-floating {
@@ -554,9 +531,11 @@ a:hover {
   padding: 4px 0 6px;
 }
 
+/* The bottom row (the account and the gear, or 设置): a line across the sidebar above it. */
 .sidebar-bottom {
   flex: none;
   padding: 6px 8px 8px;
+  border-top: 1px solid var(--spica-divider);
 }
 
 .side-action {

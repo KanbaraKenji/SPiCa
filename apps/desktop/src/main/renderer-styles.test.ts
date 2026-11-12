@@ -63,22 +63,31 @@ describe('the panels around the conversation (shell/layout.ts counts on these)',
     expect(css).not.toContain("data-right='docked'");
   });
 
-  it('the top row is one row: the right panels’ heads are as high as the title bar, with the same line under them and the same left inset', () => {
+  it('one title bar across the conversation and the right panels; each right panel’s head is its own first row under it', () => {
+    const bar = block('.titlebar');
+    expect(bar).toContain('height: var(--spica-titlebar-h)');
+    expect(bar).toContain('padding-left: 16px');
+    expect(bar).toContain('border-bottom: 1px solid var(--spica-divider)');
+    expect(bar).toContain('env(titlebar-area-width');
+    expect(bar).toContain('-webkit-app-region: drag');
     const head = block('.panel-head');
     expect(head).toContain('height: var(--spica-titlebar-h)');
-    expect(head).toContain('border-bottom: 1px solid var(--spica-divider)');
-    expect(head).toContain('background: var(--spica-chrome)');
     expect(head).toContain('padding: 0 8px 0 16px');
-    expect(block('.titlebar')).toContain('padding-left: 16px');
-    expect(block('.titlebar')).toContain('border-bottom: 1px solid var(--spica-divider)');
-    // The preview's and the details' heads have no box of their own any more (it was 44 high, another line colour).
+    // Not part of the window's top row any more: no line, colour, drag area or system-button room of its own.
+    for (const gone of ['border-bottom', 'background', 'app-region', 'titlebar-area']) expect(head).not.toContain(gone);
+    expect(css).not.toContain('.titlebar.is-inner');
+    expect(css).not.toContain('.is-edge .panel-head');
     expect(block('.preview-head')).not.toContain('height');
     expect(css).not.toContain('.detail-head {');
   });
 
-  it('the panel at the window’s edge keeps room for the system buttons, as the title bar does; the title bar beside a panel does not', () => {
-    expect(block('.panel-right.is-edge .panel-head')).toContain('env(titlebar-area-width');
-    expect(block('.titlebar.is-inner')).toContain('padding-right: 8px');
+  it('a right panel has the conversation’s background: only the line on its left sets it apart', () => {
+    expect(block('.panel-right')).toContain('background: var(--spica-bg)');
+    expect(block('.main')).toContain('background: var(--spica-bg)');
+  });
+
+  it('a line across the sidebar above its bottom row (the account)', () => {
+    expect(block('.sidebar-bottom')).toContain('border-top: 1px solid var(--spica-divider)');
   });
 
   it('a button that cannot be pressed now is greyed but still says why on hover (aria-disabled, as .btn)', () => {

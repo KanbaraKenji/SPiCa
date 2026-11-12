@@ -147,9 +147,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [dragging, setDragging] = useState<{ side: 'left' | 'preview'; width: number } | null>(null);
   // A main process older than these settings (dev build not restarted yet) does not send them.
   const savedWidths = { ...DEFAULT_SETTINGS.panelWidths, ...settings.panelWidths };
-  // Whether the details fit depends on the preview's chosen width (saved: the details do not jump in mid-drag).
-  const layout = computeLayout(width, open, floating, savedWidths);
-  const widths = panelWidths(width, layout, dragging ? { ...savedWidths, [dragging.side]: dragging.width } : savedWidths);
+  // While an edge is dragged, everything follows the pointer: the conversation squeezed, the details gone, the
+  // preview over the conversation, exactly as it will stay when the button is let go (nothing jumps then).
+  const wantedWidths = dragging ? { ...savedWidths, [dragging.side]: dragging.width } : savedWidths;
+  const layout = computeLayout(width, open, floating, wantedWidths);
+  const widths = panelWidths(width, layout, wantedWidths);
   const resizer = (side: 'left' | 'preview') =>
     layout[side] === 'docked' ? (
       <Resizer
@@ -684,7 +686,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const infoShown = layout.info === 'docked';
   // No room for the details (beside the conversation at 440 and the preview): they are not shown at all, and their
   // button cannot be pressed; its hover says why. Their switch is kept: they come back when there is room.
-  const infoRoom = infoFits(width, open, savedWidths);
+  const infoRoom = infoFits(width, open, wantedWidths);
   const infoTip = infoRoom ? '详情（Ctrl+Alt+B）' : previewShown ? '放不下详情：把预览拖窄或关掉，或把窗口拉宽' : '窗口太窄，放不下详情';
   // Maximized only while the preview is there to show; closing it or leaving the conversation ends that.
   const rightCanMax = previewShown && view === 'chat';
@@ -767,8 +769,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   );
 
   // Frame (like Claude Desktop): the sidebar runs the full height of the window
-  // with the brand and its own toggle at the top; the title bar covers only the
-  // main pane and the detail panel.
+  // with the brand and its own toggle at the top; the title bar runs over the
+  // conversation and both right panels.
   return (
     <div className="app" data-left={layout.left} data-preview={view === 'chat' ? layout.preview : 'hidden'} data-info={view === 'chat' ? layout.info : 'hidden'}>
       <HoverTips />
@@ -794,16 +796,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       ) : null}
 
       <div className="column">
-      {/* The conversation's column (its title bar on top), then the details and the preview, each the full height
-          with its own head in the same top row (他: 「参考claude保证排版工整」). */}
-      <div className="body">
-      <div className="main-col">
-      {/* Not at the window's edge (a panel docked right of it): no room kept for the system buttons. Under a preview
-          that lies over the conversation, its name and the details button stay in the part that shows. */}
-      <header
-        className={view === 'chat' && (infoShown || layout.preview === 'docked') ? 'titlebar is-inner' : 'titlebar'}
-        {...(view === 'chat' && layout.preview === 'docked' && widths.cover && !rightMax ? { style: { paddingRight: widths.cover + 8 } } : {})}
-      >
+      {/* One title bar across the conversation, the details and the preview (the window's drag area, with the
+          system buttons at its end); under it the conversation, then each right panel with its own head as its
+          first row. */}
+      <header className="titlebar">
         <div className="titlebar-title">
           {view === 'chat' && parent ? (
             <>
@@ -860,6 +856,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           ) : null}
         </div>
       </header>
+      <div className="body">
         <main className="main">
           {view === 'plugin' ? (
             openPluginView ? (
@@ -912,13 +909,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             </div>
           ) : null}
         </main>
-      </div>
 
         {/* The details, between the conversation and the preview: a fixed width, no edge to drag, no 最大化; never
             covered or floated (no room: not shown). */}
         {layout.info !== 'hidden' && view === 'chat' ? (
-          // Shown over the preview from under it: raised in their own place (nothing beside them moves), not floated to the edge.
-          <div className={`panel panel-right panel-info is-docked${layout.preview === 'docked' ? '' : ' is-edge'}`} style={{ width: widths.info }}>
+          <div className="panel panel-right panel-info is-docked" style={{ width: widths.info }}>
             {panelPages.length ? (
               <div className="right-head panel-head">
               <div className="tabs right-tabs" role="tablist" aria-label="右栏">
@@ -956,7 +951,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         {/* The file preview, against the window's right edge: its left edge drags, its head has 最大化 and 关闭预览. */}
         {previewShown && view === 'chat' && preview ? (
           <div
-            className={`panel panel-right panel-preview is-edge is-${layout.preview}${rightMax ? ' is-max' : ''}${widths.cover && layout.preview === 'docked' ? ' is-cover' : ''}`}
+            className={`panel panel-right panel-preview is-${layout.preview}${rightMax ? ' is-max' : ''}${widths.cover && layout.preview === 'docked' ? ' is-cover' : ''}`}
             style={rightMax ? undefined : { width: widths.preview, ...(widths.cover && layout.preview === 'docked' ? { marginLeft: -widths.cover } : {}) }}
           >
             {/* Wider than what is beside it allows, it lies over the details, then over the conversation's right part (kept at its 440 layout): pulled left by `cover`. */}
