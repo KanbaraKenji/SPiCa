@@ -588,7 +588,14 @@ a:hover {
   background: var(--spica-hover);
 }
 
+/* An icon beside words (新对话, 收件箱, 新项目, a plugin page, 设置) has the words' colour, whatever it is.
+   Icons standing alone stay grey: the gear at the bottom right and the folded sidebar's column. */
 .side-action svg {
+  color: currentColor;
+}
+
+.side-action.side-gear:not(.has-word) svg,
+.sidebar.is-rail .side-action svg {
   color: var(--spica-muted);
 }
 
@@ -3063,9 +3070,10 @@ button.ctx-row:hover {
   white-space: nowrap;
 }
 
+/* The words' colour, on hover and when chosen too. */
 .settings-nav-icon {
   flex: none;
-  color: var(--spica-muted);
+  color: currentColor;
 }
 
 .settings-nav-item:hover {
@@ -3075,10 +3083,6 @@ button.ctx-row:hover {
 .settings-nav-item.is-on {
   background: var(--spica-active);
   font-weight: 600;
-}
-
-.settings-nav-item.is-on .settings-nav-icon {
-  color: var(--spica-ink);
 }
 
 .settings-main {

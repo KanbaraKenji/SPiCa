@@ -141,6 +141,15 @@ describe('control sizes: one place (out/settings-modal/10-controls.md)', () => {
   });
 });
 
+describe('an icon beside words has the words colour (sidebar rows, the settings column)', () => {
+  it('taken from the words, so hover, chosen and off follow; the icons standing alone stay grey', () => {
+    expect(block('\n.side-action svg')).toContain('color: currentColor');
+    expect(block('\n.settings-nav-icon')).toContain('color: currentColor');
+    expect(css).not.toContain('.settings-nav-item.is-on .settings-nav-icon');
+    expect(block('.side-action.side-gear:not(.has-word) svg,\n.sidebar.is-rail .side-action svg')).toContain('color: var(--spica-muted)');
+  });
+});
+
 describe('words beside an icon on its middle line (out/settings-modal/12-align-*)', () => {
   it('their box is cut to the capitals and the baseline, so centring lines the Chinese glyphs up with the icon; nothing that clips', () => {
     const rule = block('\n.icon-text');
