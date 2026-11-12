@@ -1001,7 +1001,7 @@ const deployPresets = automated ? [] : deployModels();
  */
 function deployPluginSources(): OfficialSource[] {
   const file = app.isPackaged ? join(process.resourcesPath, 'deploy.json') : join(app.getAppPath(), 'deploy.json');
-  let configured: OfficialSource[] = [];
+  let configured: OfficialSource[];
   try {
     configured = officialSources((JSON.parse(readFileSync(file, 'utf8')) as { pluginSources?: unknown }).pluginSources);
   } catch {
