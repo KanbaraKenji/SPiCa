@@ -357,12 +357,12 @@ export function Sidebar({
       <div className="sidebar-top">
         <button type="button" className="side-action" onClick={onNewChat}>
           <Icon name="newChat" />
-          <span>新对话</span>
+          <span className="icon-text">新对话</span>
         </button>
         {inbox ? (
           <button type="button" className={inbox.open ? 'side-action is-active' : 'side-action'} onClick={inbox.onOpen} aria-current={inbox.open ? 'page' : undefined}>
             <Icon name="inbox" />
-            <span>收件箱</span>
+            <span className="icon-text">收件箱</span>
             {inbox.count ? (
               <span className="side-count" aria-label={`${inbox.count} 封待确认`} title={`${inbox.count} 封待确认`}>
                 {inbox.count}
@@ -387,7 +387,7 @@ export function Sidebar({
             {onNewProject ? (
               <button type="button" className="side-action side-new-project" onClick={onNewProject}>
                 <Icon name="plus" />
-                <span>新项目</span>
+                <span className="icon-text">新项目</span>
               </button>
             ) : null}
           </section>
@@ -448,7 +448,7 @@ export function Sidebar({
               title="设置"
             >
               <Icon name="settings" />
-              {SETTINGS_WORD ? <span>设置</span> : null}
+              {SETTINGS_WORD ? <span className="icon-text">设置</span> : null}
             </button>
             {meMenu && onAccount ? (
               <div className="account-menu" style={{ '--account-menu-width': `${meMenu.width}px` } as CSSProperties}>
@@ -459,7 +459,7 @@ export function Sidebar({
         ) : (
           <button type="button" className={settingsOpen ? 'side-action is-active' : 'side-action'} onClick={onSettings} aria-current={settingsOpen ? 'page' : undefined}>
             <Icon name="settings" />
-            <span>设置</span>
+            <span className="icon-text">设置</span>
           </button>
         )}
       </div>

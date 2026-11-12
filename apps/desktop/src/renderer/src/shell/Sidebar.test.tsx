@@ -376,6 +376,27 @@ describe('对话 / 项目 at the top', () => {
   });
 });
 
+describe('words beside an icon on its middle line (.icon-text)', () => {
+  const base = { sessions: seed.sessions, activeId: SEED_IDS.chat, onOpen: vi.fn(), onNewChat: vi.fn(), settingsOpen: false };
+
+  it('新对话, 收件箱, 新项目 and the lone 设置 row have it; the words cut off with an ellipsis (plugins, the account) do not', () => {
+    const { container } = render(
+      <Sidebar
+        {...base}
+        onSettings={vi.fn()}
+        inbox={{ count: 2, open: false, onOpen: vi.fn() }}
+        onNewProject={vi.fn()}
+        pluginPages={[{ key: 'p', title: 'Quick note', open: false, onOpen: vi.fn() }]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: '项目' }));
+    expect([...container.querySelectorAll('.icon-text')].map((e) => e.textContent)).toEqual(['新对话', '收件箱', '新项目', '设置']);
+    cleanup();
+    const again = render(<Sidebar {...base} onSettings={vi.fn()} account="ALEX.CHEN" pluginPages={[{ key: 'p', title: 'Quick note', open: false, onOpen: vi.fn() }]} />);
+    expect(again.container.querySelector('.side-me .icon-text, .side-plugins .icon-text')).toBeNull();
+  });
+});
+
 describe('the account on the bottom row', () => {
   const base = { sessions: seed.sessions, activeId: SEED_IDS.chat, onOpen: vi.fn(), onNewChat: vi.fn(), settingsOpen: false };
 
