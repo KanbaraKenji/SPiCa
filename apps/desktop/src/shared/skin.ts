@@ -172,6 +172,12 @@ export type Tokens = Record<`--spica-${string}`, string>;
  */
 export const ON_ACCENT_WHITE_MIN = 2.4;
 
+/** Chart series colors, in this order (blue, orange, aqua, yellow, magenta, green). */
+const SERIES_LIGHT = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300'];
+const SERIES_DARK = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300'];
+/** How many chart series there are; more models fold into one more (其他, drawn in the faint ink). */
+export const SERIES_COUNT = SERIES_LIGHT.length;
+
 export function deriveTokens(skin: Skin): Tokens {
   const bg = skin.bg;
   const scheme = schemeOf(bg);
@@ -214,6 +220,9 @@ export function deriveTokens(skin: Skin): Tokens {
     '--spica-warning': warning,
     '--spica-warning-soft': mix(bg, warning, dark ? 0.18 : 0.12),
     '--spica-success': success,
+    // Chart series (设置 › 用量, one per model in a fixed order): a validated categorical palette, stepped for
+    // each scheme; red is left out (it is the danger color, which the 429 bars use).
+    ...Object.fromEntries((dark ? SERIES_DARK : SERIES_LIGHT).map((c, i) => [`--spica-series-${i + 1}`, c])),
     '--spica-scrim': dark ? 'rgba(0, 0, 0, 0.5)' : 'rgba(15, 23, 42, 0.28)',
     '--spica-shadow': dark
       ? '0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06)'

@@ -30,6 +30,7 @@ import type { PluginsTab } from './settings/Plugins';
 import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
 import { InboxView, type InboxProject } from './shell/InboxView';
+import type { UsageApi } from './settings/Usage';
 import { MailStore, useMail } from './store/mail';
 import { needsYou } from '../../shared/mail';
 import { nextDoneNews, unseenDone } from './shell/row-status';
@@ -262,7 +263,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   useEffect(() => {
     window.__spicaShots = {
       setView: (v) => {
-        const tab: SettingsTab | null = v === 'settings' ? 'appearance' : v === 'models' || v === 'plugins' || v === 'about' || v === 'general' ? v : null;
+        const tab: SettingsTab | null = v === 'settings' ? 'appearance' : v === 'models' || v === 'usage' || v === 'plugins' || v === 'about' || v === 'general' ? v : null;
         // A settings view: the dialog open on that section, over the conversation.
         if (tab) setSettingsTab(tab);
         setSettingsOpen(tab !== null);
@@ -427,6 +428,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [rightTab, setRightTab] = useState<string>('detail');
   const [pluginAsk, setPluginAsk] = useState<{ title: string; tool: string; args: unknown; resolve(ok: boolean): void } | null>(null);
   // 设置 › 插件: the plugin commands, and the system folder picker for 插件位置.
+  // 设置 › 用量: the core's request log summed up, the saved connections' names beside it.
+  const usageApi = useMemo<UsageApi>(
+    () => ({
+      summary: (q) => bridge.usageSummary(q),
+      providerNames: async () => Object.fromEntries((await bridge.providers.list()).items.map((p) => [p.id, p.name])),
+    }),
+    [bridge],
+  );
   const pluginsApi = useMemo(() => ({ ...bridge.plugins, pickFolder: () => bridge.pickFolder('选择插件文件夹') }), [bridge]);
   // 收件箱 shows only while a plugin that provides mail is on.
   const [mailSource, setMailSource] = useState(false);
@@ -1146,6 +1155,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           previewPages={previewPages}
           pluginPages={{ views: pluginViews.filter((v) => v.placement === 'settings'), props: pluginProps }}
           {...(memorySettings ? { memory: memorySettings } : {})}
+          usage={usageApi}
         />
       ) : null}
     </div>

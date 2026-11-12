@@ -6791,3 +6791,216 @@ section.plugins-part > .plugins-part-title {
   font-size: var(--fs-body);
   line-height: var(--lh-body);
 }
+
+/* 设置 › 用量 (settings/Usage.tsx): the range on top, five totals, the chart by model, the 429 bars and list, the
+   table by model. Chart marks take the series tokens (--spica-series-*); the 429 marks the danger color. */
+.usage-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+
+.usage-since {
+  color: var(--spica-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.usage-empty {
+  margin: 0 0 16px;
+}
+
+.usage-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.usage-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--spica-border);
+  border-radius: var(--radius-l);
+  background: var(--spica-surface);
+}
+
+.usage-tile-label,
+.usage-tile-sub {
+  color: var(--spica-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.usage-tile-sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.usage-tile-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.usage-tile.is-limited {
+  border-color: var(--spica-danger);
+}
+
+.usage-tile.is-limited .usage-tile-value,
+.usage-table .is-limited {
+  color: var(--spica-danger);
+}
+
+.usage-chart-pane {
+  gap: 8px;
+}
+
+.usage-chart {
+  position: relative;
+  min-width: 0;
+}
+
+.usage-chart svg {
+  display: block;
+  overflow: visible;
+}
+
+.usage-grid {
+  stroke: var(--spica-divider);
+  stroke-width: 1;
+}
+
+.usage-baseline {
+  stroke: var(--spica-border-strong);
+  stroke-width: 1;
+}
+
+.usage-axis {
+  fill: var(--spica-muted);
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-nodata {
+  fill: var(--spica-hover);
+}
+
+.usage-limit-bar {
+  fill: var(--spica-danger);
+}
+
+.usage-tip {
+  position: absolute;
+  top: 0;
+  z-index: 2;
+  min-width: 160px;
+  max-width: 260px;
+  padding: 8px 10px;
+  border-radius: var(--radius-m);
+  background: var(--spica-menu);
+  box-shadow: var(--spica-shadow);
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
+  pointer-events: none;
+}
+
+.usage-tip-title {
+  margin-bottom: 4px;
+  color: var(--spica-muted);
+}
+
+.usage-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.usage-tip-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-tip-provider {
+  color: var(--spica-muted);
+}
+
+.usage-tip-row.is-limited {
+  color: var(--spica-danger);
+}
+
+.usage-swatch {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 2px;
+}
+
+.usage-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--spica-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.usage-legend li {
+  display: inline-flex;
+  align-items: center;
+}
+
+.usage-table-pane {
+  overflow-x: auto;
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
+}
+
+.usage-table th {
+  color: var(--spica-muted);
+  font-weight: normal;
+  text-align: left;
+  padding: 0 8px 6px 0;
+  white-space: nowrap;
+}
+
+.usage-table td {
+  padding: 4px 8px 4px 0;
+  font-weight: normal;
+  white-space: nowrap;
+}
+
+.usage-table .is-num {
+  text-align: right;
+}
+
+.usage-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-more {
+  align-self: flex-start;
+}

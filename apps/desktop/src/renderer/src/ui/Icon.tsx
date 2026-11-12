@@ -64,6 +64,8 @@ const PATHS = {
   // 设置 › 账号: a head and shoulders.
   account: 'M8 2.6a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2z M3 13.6c.6-2.4 2.6-3.8 5-3.8s4.4 1.4 5 3.8',
   // 设置 › 外观: a painter's palette.
+  // 用量: bars over a baseline.
+  chart: 'M2.5 13.5h11 M4.5 11V8 M8 11V4 M11.5 11V6.5',
   palette: 'M8 2.2a5.8 5.8 0 0 0 0 11.6c.9 0 1.3-.6 1.1-1.3-.3-1 .3-1.8 1.3-1.8h1.3a2.2 2.2 0 0 0 2.1-2.4A6 6 0 0 0 8 2.2z M5.2 7.4v.1 M7.4 5v.1 M10.4 5.8v.1',
 } as const;
 

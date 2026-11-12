@@ -15,16 +15,18 @@ import { General, type GeneralProps, type WorkflowsApi } from './General';
 import { Icon, type IconName } from '../ui/Icon';
 import { useModal } from '../ui/useModal';
 import { Memory, type MemoryProps } from './Memory';
+import { Usage, type UsageApi } from './Usage';
 import { matches, SettingsSearchContext } from './Group';
 import type { UpdateState } from '../../../shared/updates';
 
-export type SettingsTab = 'general' | 'account' | 'appearance' | 'models' | 'memory' | 'plugins' | 'about';
+export type SettingsTab = 'general' | 'account' | 'appearance' | 'models' | 'usage' | 'memory' | 'plugins' | 'about';
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'general', label: '常规' },
   { id: 'account', label: '账号' },
   { id: 'appearance', label: '外观' },
   { id: 'models', label: '模型' },
+  { id: 'usage', label: '用量' },
   { id: 'memory', label: '记忆' },
   { id: 'plugins', label: '插件' },
   { id: 'about', label: '关于' },
@@ -35,7 +37,7 @@ const TABS: { id: SettingsTab; label: string }[] = [
  * picture he sent 2026-11-12): you (账号); how Spica works for you (常规, 外观, 记忆); what it works with (模型,
  * 插件); then 关于 on its own.
  */
-const NAV_GROUPS: SettingsTab[][] = [['account'], ['general', 'appearance', 'memory'], ['models', 'plugins'], ['about']];
+const NAV_GROUPS: SettingsTab[][] = [['account'], ['general', 'appearance', 'memory'], ['models', 'usage', 'plugins'], ['about']];
 
 /** Each section's mark before its name (Claude's column has one). */
 const NAV_ICON: Record<SettingsTab, IconName> = {
@@ -44,6 +46,7 @@ const NAV_ICON: Record<SettingsTab, IconName> = {
   appearance: 'palette',
   memory: 'thinking',
   models: 'model',
+  usage: 'chart',
   plugins: 'plugin',
   about: 'info',
 };
@@ -80,11 +83,13 @@ export interface SettingsViewProps {
   pluginPages?: SettingsPages;
   /** 记忆 (absent when the core keeps none: no section). The switch is a shell setting. */
   memory?: Omit<MemoryProps, 'enabled' | 'onEnabled'>;
+  /** 用量 (absent: no section). */
+  usage?: UsageApi;
 }
 
-export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, pluginsTab, onPluginsTab, onClose, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, pluginPages, memory }: SettingsViewProps) {
+export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, pluginsTab, onPluginsTab, onClose, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, pluginPages, memory, usage }: SettingsViewProps) {
   const { settings } = useShell(shell);
-  const tabs = memory ? TABS : TABS.filter((t) => t.id !== 'memory');
+  const tabs = TABS.filter((t) => (t.id !== 'memory' || memory) && (t.id !== 'usage' || usage));
   const box = useRef<HTMLDivElement>(null);
   // The keyboard starts in the dialog (no ring on a section until Tab is pressed) and stays in it. Esc is App's:
   // it closes the settings only when nothing inside (a confirm box, a menu, a field) handled it first.
@@ -145,6 +150,8 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
         api={providers}
         agentMessages={{ value: settings.agentMessageLimit, onChange: (agentMessageLimit) => shell.update({ agentMessageLimit }) }}
       />
+    ) : id === 'usage' && usage ? (
+      <Usage api={usage} />
     ) : id === 'memory' && memory ? (
       <Memory {...memory} enabled={settings.memory} onEnabled={(on) => shell.update({ memory: on })} />
     ) : id === 'plugins' ? (
