@@ -227,7 +227,7 @@ function Response({
       })}
       {live ? null : <AnswerSources sources={answerSources(blocks, sources)} />}
       {live ? null : <FileCards files={files} onOpen={actions.openFile} actions={fileActions(actions, cwd)} />}
-      {item.interrupted && newest ? <p className="turn-note">（中断）</p> : null}
+      {item.interrupted && newest ? <p className="turn-note is-stopped">（中断）</p> : null}
       {/* the newest answer stopped at the most the model may write at once: say it, and 继续 asks for the rest */}
       {item.truncated && !item.interrupted && newest && !live && after === 0 ? (
         <div className="resume-row">

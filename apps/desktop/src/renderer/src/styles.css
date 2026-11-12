@@ -5625,6 +5625,13 @@ section.plugins-part > .plugins-part-title {
   overflow-wrap: anywhere;
 }
 
+/* Stopped while it waited (已中断), and the answer's （中断）: red, the colour of 无法撤销, the mark too. */
+.card-answer.is-stopped,
+.card-answer.is-stopped .spica-status-icon,
+.turn-note.is-stopped {
+  color: var(--spica-danger);
+}
+
 .confirm-card:not(.is-done).is-danger {
   border-color: var(--spica-danger);
 }

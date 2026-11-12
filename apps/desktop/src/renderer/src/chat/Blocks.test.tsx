@@ -30,6 +30,8 @@ describe('AskCard', () => {
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.queryByRole('textbox')).toBeNull();
     expect(document.querySelector('.ask-card.is-done .card-answer')?.textContent).toBe('已中断');
+    // red (the colour of 无法撤销), its mark too: marked is-stopped; an answer is not
+    expect(document.querySelector('.ask-card .card-answer')?.classList.contains('is-stopped')).toBe(true);
   });
 
   it('takes one answer: after a click the options and the box are off until the card closes', () => {
@@ -50,6 +52,7 @@ describe('AskCard', () => {
     expect(document.querySelector('.ask-card > .ask-body .ask-options')).toBeTruthy();
     rerender(<AskCard block={{ ...block, answer: '只写结论' }} onAnswer={vi.fn()} />);
     expect(head.querySelector('.card-answer')?.textContent).toBe('只写结论');
+    expect(head.querySelector('.card-answer')?.classList.contains('is-stopped')).toBe(false);
     expect(document.querySelector('.ask-body')).toBeNull();
   });
 
@@ -80,6 +83,14 @@ describe('ConfirmCard', () => {
     render(<ConfirmCard block={{ ...block, cancelled: true }} onDecide={vi.fn()} />);
     expect(screen.queryByRole('button', { name: '允许' })).toBeNull();
     expect(document.querySelector('.confirm-card.is-done .card-answer')?.textContent).toBe('已中断');
+    expect(document.querySelector('.confirm-card .card-answer')?.classList.contains('is-stopped')).toBe(true);
+    cleanup();
+    // 已允许 and the user's own 已拒绝 stay grey
+    for (const approved of [true, false]) {
+      render(<ConfirmCard block={{ ...block, approved }} onDecide={vi.fn()} />);
+      expect(document.querySelector('.confirm-card .card-answer')?.classList.contains('is-stopped'), String(approved)).toBe(false);
+      cleanup();
+    }
     cleanup();
     const onDecide = vi.fn();
     render(<ConfirmCard block={block} onDecide={onDecide} />);

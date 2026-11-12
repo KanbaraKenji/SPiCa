@@ -930,7 +930,7 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
         <span className="card-title">{block.question}</span>
         <span className="confirm-spacer" />
         {closed ? (
-          <p className="card-answer">
+          <p className={answered ? 'card-answer' : 'card-answer is-stopped'}>
             <SpicaStatusIcon name={answered ? 'done' : 'stopped'} size={15} />
             <span>{answered ? block.answer : CARD_STOPPED}</span>
           </p>
@@ -972,7 +972,8 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
   );
 }
 
-/** What a question or confirmation says when the run was stopped while it waited (the answer says （中断）). */
+/** What a question or confirmation says when the run was stopped while it waited; red, as the answer's own
+ * （中断） is. The user's own 已拒绝 stays grey. */
 const CARD_STOPPED = '已中断';
 
 /** Names for the arguments people see when asked to confirm (what is not here shows by its own name). */
@@ -1042,7 +1043,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         <span className="confirm-spacer" />
         {command !== null ? <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(command)} /> : null}
         {decided ? (
-          <p className="card-answer">
+          <p className={block.cancelled === true && block.approved === undefined ? 'card-answer is-stopped' : 'card-answer'}>
             <SpicaStatusIcon name={block.approved ? 'done' : 'stopped'} size={15} />
             <span>{block.approved ? '已允许' : block.approved === false ? '已拒绝' : CARD_STOPPED}</span>
           </p>

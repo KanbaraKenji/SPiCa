@@ -20,6 +20,11 @@ describe('styles', () => {
     expect(block('.turn-note')).toContain('overflow-wrap: anywhere');
   });
 
+  it('stopped while it waited is red: 已中断 on a card (its mark too) and the answer’s （中断）, the colour of 无法撤销', () => {
+    const rule = block('.card-answer.is-stopped,\n.card-answer.is-stopped .spica-status-icon,\n.turn-note.is-stopped');
+    expect(rule).toContain('color: var(--spica-danger)');
+  });
+
   it('nothing is underlined (links and text buttons are told by colour and the pointer, not a line)', () => {
     expect(css).not.toMatch(/text-decoration(-line)?:\s*underline/);
     expect(css).not.toMatch(/text-underline/);
