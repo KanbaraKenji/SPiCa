@@ -520,6 +520,29 @@ describe('a question or confirmation stopped while it waits', () => {
     ]);
   });
 
+  it('reopened later: a confirmation stopped while it waited is the confirmation again, 已中断, not a failed step; a declined or failed call stays a step', () => {
+    const at = '2026-11-12T00:00:00Z';
+    const call = (id: string, seq: number): Message => ({ id: `a${id}`, sessionId: 's', seq, role: 'assistant', kind: 'assistant', createdAt: at, content: [{ type: 'tool_use', id, name: 'send_email', input: { to: '项目组', subject: '纪要' } }] });
+    const result = (id: string, seq: number, content: string): Message => ({ id: `r${id}`, sessionId: 's', seq, role: 'user', kind: 'tool_results', createdAt: at, content: [{ type: 'tool_result', toolUseId: id, content, isError: true }] });
+    const history: Message[] = [
+      call('m1', 1),
+      result('m1', 2, `[fetched at ${at}]\nCancelled: aborted by user.`),
+      call('m2', 3),
+      result('m2', 4, 'The user declined this action. Do not retry it unless the user asks.'),
+      call('m3', 5),
+      result('m3', 6, 'SMTP error: connection refused'),
+    ];
+    const t = fromHistory(history);
+    const response = t.items.find((i) => i.kind === 'response');
+    expect(response?.kind === 'response' && response.interrupted).toBe(true);
+    const blocks = response?.kind === 'response' ? response.blocks : [];
+    expect(blocks[0]).toEqual({ type: 'confirm', callId: 'm1', name: 'send_email', input: { to: '项目组', subject: '纪要' }, reason: '', cancelled: true });
+    expect(blocks.slice(1).map((b) => [b.type, (b as { callId: string }).callId, (b as { state?: string }).state])).toEqual([
+      ['tool', 'm2', 'error'],
+      ['tool', 'm3', 'error'],
+    ]);
+  });
+
   it('asked again under the same id: open again', () => {
     let t = applyEvent(asked(), ev(3, { type: 'status', status: 'aborted' }));
     t = applyEvent(t, ev(4, { type: 'ask.request', callId: 'q1', question: '确认这次申请的四项？', options: ['是'] }));
@@ -533,15 +556,29 @@ describe('a question or confirmation stopped while it waits', () => {
   });
 });
 
-describe('a spending limit stops the run', () => {
-  it('says why it stopped before the limit was reached, and where to change it (a button opens 设置 › 模型)', () => {
+describe('a spending limit stops the run, or the provider’s account is out of money', () => {
+  it('one short line and the 模型设置 button, at the provider whose 花费上限 it was; gone when the next run starts', () => {
     const at = '2026-11-12T10:00:00Z';
-    const t = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'all:run', spentUsd: 0.75, limitUsd: 1, nextUsd: 0.4, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
-    expect(t.error).toBe('已达单次运行花费上限，已停止（已花费 US$0.75，上限 US$1.00）：下一步最多可能花 US$0.40，会超出上限，所以没有开始。可在 设置 › 模型 修改上限，或再发一条消息重新开始一次运行。');
-    expect(t.errorAction).toBe('models');
+    const t = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'p-1:global', spentUsd: 0.75, limitUsd: 1, nextUsd: 0.4, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
+    expect(t).toMatchObject({ error: '已达花费上限', errorAction: 'models', errorProvider: 'p-1' });
+    // a script's limit for everything: no provider to open
+    const all = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'all:run', spentUsd: 0.75, limitUsd: 1, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
+    expect(all).toMatchObject({ error: '已达花费上限', errorAction: 'models' });
+    expect(all.errorProvider).toBeUndefined();
     const next = applyEvent(t, { type: 'status', status: 'thinking', seq: 2, at, sessionId: 's', parentChain: [] } as CoreEvent);
     expect(next.error).toBeUndefined();
     expect(next.errorAction).toBeUndefined();
+    expect(next.errorProvider).toBeUndefined();
+  });
+
+  it('out of money (402, insufficient balance, 余额不足): 「API 余额不足」 with the same button', () => {
+    const at = '2026-11-12T10:00:00Z';
+    for (const message of ['HTTP 402 [insufficient_balance]: Insufficient Balance', 'HTTP 429 [insufficient_quota]: You exceeded your current quota', 'HTTP 400 [x]: 账户余额不足']) {
+      const t = applyEvent({ items: [] }, { type: 'error', message, seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
+      expect(t).toMatchObject({ error: 'API 余额不足', errorAction: 'models' });
+    }
+    const other = applyEvent({ items: [] }, { type: 'error', message: 'HTTP 401 [x]: invalid api key', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
+    expect(other.errorAction).toBeUndefined();
   });
 });
 
@@ -591,5 +628,27 @@ describe('messages to other agents past the limit', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(live.agentLimit).toBeUndefined();
     expect(fromHistory(await b.getMessages(chat.id)).agentLimit).toBeUndefined();
+  });
+});
+
+describe('the same call too many times in a row (repeated)', () => {
+  it('a note with how many, live and when read again, gone once the user writes; the reminder for the model is not shown', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const chat = await b.createSession({});
+    let live: Transcript = { items: [] };
+    b.onEvent((e) => {
+      if (e.sessionId === chat.id) live = applyEvent(live, e);
+    });
+    await b.send(chat.id, '重复');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(live).toMatchObject({ stopped: 'repeated', repeatCount: 8 });
+    const again = fromHistory(await b.getMessages(chat.id));
+    expect(again).toMatchObject({ stopped: 'repeated', repeatCount: 8 });
+    const tools = again.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])).filter((x) => x.type === 'tool');
+    expect(tools.some((x) => x.type === 'tool' && (x.result ?? '').includes('Note: repeated call'))).toBe(false);
+    await b.send(chat.id, '继续');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(live.stopped).toBeUndefined();
+    expect(fromHistory(await b.getMessages(chat.id)).stopped).toBeUndefined();
   });
 });

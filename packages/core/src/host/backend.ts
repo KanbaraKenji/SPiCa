@@ -82,7 +82,7 @@ export interface BackendConfig {
   dbPath: string;
   providers: ProviderConfig[];
   /** strongModel: the model for heavy work (plugins that ask for a strong model get it), on the default provider or on strongProviderId. */
-  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; outputByModel?: boolean; agentMessages?: number; strongModel?: string; strongProviderId?: string };
+  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; outputByModel?: boolean; agentMessages?: number; repeatRemind?: number; repeatStop?: number; strongModel?: string; strongProviderId?: string };
   cwd?: string;
   /**
    * The folder every conversation without a chosen one shared up to 0.1.0-rc.2 (the desktop app: Documents/<app>).
@@ -489,6 +489,8 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
         mailSettings: () => ({ ...runtime.mail.settings, running: runtime.mail.running, sources: runtime.mail.activeSources.map((s) => s.id) }),
         /** Test connection with a provider config from the settings form. */
         probeProvider: (config: unknown, model: unknown) => probeConfig(config as ProviderConfig, String(model), { tracer: runtime.tracer }),
+        /** What each provider has cost so far (USD; every conversation, back from the stored records; models without a price add nothing). */
+        providerSpend: (ids: unknown) => Object.fromEntries((Array.isArray(ids) ? ids : []).map((id) => [String(id), runtime.ledger.providerUsd(String(id))])),
         /** Context window the core knows for a model (to pre-fill the settings form), or null. kind: ProviderConfig kind. */
         knownContextWindow: (kind: unknown, model: unknown, catalogId?: unknown) =>
           runtime.ledger.knownContextWindow(String(kind), String(model), typeof catalogId === 'string' ? catalogId : undefined),

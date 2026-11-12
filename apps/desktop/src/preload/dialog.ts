@@ -5,5 +5,5 @@ import { DialogChannel } from '../shared/app-dialog';
 
 contextBridge.exposeInMainWorld('spicaDialog', {
   ready: (height: number) => ipcRenderer.send(DialogChannel.Ready, height),
-  answer: (button: number, checked: boolean) => ipcRenderer.send(DialogChannel.Answer, button, checked),
+  answer: (button: number, checked: boolean, choice: number | null) => ipcRenderer.send(DialogChannel.Answer, button, checked, choice),
 });

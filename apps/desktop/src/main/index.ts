@@ -2,14 +2,14 @@
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, safeStorage, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, safeStorage, screen, shell, Tray } from 'electron';
 import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
 import { humanError } from '../shared/errors';
 import { CAPTION_BACK, captionSymbol, deriveTokens, resolveSkin, schemeOf, type WindowCover } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
-import { budgetForCore, effectiveAccount, mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
+import { effectiveAccount, mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, SaveCsvResult, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import { APP_IDENTITY } from '../shared/app-identity';
@@ -34,6 +34,7 @@ import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { pageAlive, pageRecovery } from './page-recovery';
 import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor } from './app-dialog';
 import { openDialogWindow } from './app-dialog-window';
+import { watchFit } from './window-fit';
 import { lookAtPage, watchPage } from './page-watch';
 import { closeAsker, closeDialogSpec, closeFromDialog, closePrompt, dialogFromBox, onWindowClose, revealWindow, runningTracker, trayHint, wireTray } from './tray';
 import { autostartSupport, followAutostart, loginItemOn, onSecondLaunch, startsOnNewChat, type LoginItems } from './autostart';
@@ -45,6 +46,7 @@ import {
   BUILTIN_CATALOG,
   DEFAULT_PRICES,
   effectiveCatalog,
+  type BudgetConfig,
   type CatalogPreset,
   type HostConnectionDraft,
   type ListModelsResult,
@@ -62,7 +64,8 @@ import { PREVIEW_SCHEME, PreviewFiles, readPreview, readPreviewFile } from './pr
 import { FLOW_SCHEME, flowFile } from './flow-scheme';
 import { AttachImages } from './images';
 import { BRIDGE_JS, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
-import { pluginCallId, FONT_UI, type PluginView, type PluginViewResult } from '../shared/plugin-view';
+import { pluginCallId, type PluginView, type PluginViewResult } from '../shared/plugin-view';
+import { uiFontFamily } from '../shared/ui-font';
 import { readFile } from 'node:fs/promises';
 
 // Spica, or the name a company's deploy.json gave it when packaging.
@@ -190,6 +193,10 @@ function backendConfig(): DesktopBackendConfig {
         maxTurns: 0,
         // 设置 › 模型 › 代理互发消息上限 (10 by default; null = none, which is 0 for the core).
         agentMessages: settings.get().agentMessageLimit ?? 0,
+        // The same call (tool, input, result) in a row: the 3rd gets a note for the model, the 8th is not run and
+        // the run stops until the user says 继续 (no setting for it yet).
+        repeatRemind: 3,
+        repeatStop: 8,
         // The model for heavy work: plugins that ask for a strong model get it (it may be on another connection).
         ...(strong ? { strongModel: strong.model, ...(strong.connectionId !== current?.providerId ? { strongProviderId: strong.connectionId } : {}) } : {}),
       },
@@ -206,8 +213,8 @@ function backendConfig(): DesktopBackendConfig {
       network: networkForCore(settings.get().network),
       // 设置 › 记忆 › 启用记忆 (what is saved stays when it is off).
       memory: { enabled: settings.get().memory, autoTidy: settings.get().memoryAutoTidy },
-      // 设置 › 模型 › 单次运行花费上限 (none by default); no other limit (shared/settings.ts budgetForCore).
-      budget: budgetForCore(settings.get().runLimitUsd),
+      // Each provider's 花费上限 (none by default): what it may cost in all; no other limit.
+      budget: providerBudget(),
       // Linked into the backend entry; named here as the core expects.
       extractorModules: ['@spica/extract'],
       extensions: [
@@ -278,10 +285,9 @@ const backend: AgentBackend =
     : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd, demoImage: () => writeDemoChart(join(app.getPath('userData'), 'demo-media')) });
 console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own process)' : 'fake (demo data)'}`);
 const settings = new SettingsStore(app.getPath('userData'), { persist: !automated });
-// The demo backend starts with 设置 › 记忆 › 启用记忆 and 模型 › 单次运行花费上限 as saved (the core gets them in backendConfig()).
+// The demo backend starts with 设置 › 记忆 › 启用记忆 and 模型 › 代理互发消息上限 as saved (the core gets them in backendConfig()).
 if (backend instanceof FakeBackend) {
   backend.setMemoryEnabled(settings.get().memory);
-  backend.setRunLimit(settings.get().runLimitUsd);
   backend.setAgentMessages(settings.get().agentMessageLimit);
 }
 if (backendKind === 'core' && makeWorkflowsDirAtStart(app.isPackaged, settings.get().workflowsDir)) mkdirSync(defaultWorkflowsDir, { recursive: true });
@@ -294,6 +300,36 @@ const providers = new ProviderStore(
   },
   () => envProviders().map((p) => ({ id: p.id, models: p.models.map((m) => m.id) })),
 );
+
+/**
+ * Each saved provider's 花费上限 as the core takes it: what it may cost in all. After 清零 the core still counts
+ * from the first call, so the limit is moved up by what it had cost then (ProviderStore.spendBase).
+ */
+function providerBudget(): BudgetConfig {
+  const perProvider: Record<string, { globalUsd: number }> = {};
+  for (const p of providers.list()) if (p.spendLimitUsd) perProvider[p.id] = { globalUsd: p.spendLimitUsd + providers.spendBase(p.id) };
+  return Object.keys(perProvider).length ? { perProvider } : {};
+}
+
+/** What each saved provider has cost in all (the core's records; the demo's own count). */
+async function providerTotals(): Promise<Record<string, number>> {
+  const ids = providers.list().map((p) => p.id);
+  if (backend instanceof ProcessBackend) return backend.providerSpend(ids).catch(() => ({}));
+  if (backend instanceof FakeBackend) {
+    const b = backend;
+    return Object.fromEntries(ids.map((id) => [id, b.spentUsd()]));
+  }
+  return {};
+}
+
+/** The demo backend has one provider: the default one's 花费上限. */
+function applyDemoSpendLimit(): void {
+  if (!(backend instanceof FakeBackend)) return;
+  const id = providers.defaultRef()?.connectionId ?? null;
+  const p = id ? providers.list().find((x) => x.id === id) : undefined;
+  backend.setSpendLimit(id, p?.spendLimitUsd ? p.spendLimitUsd + providers.spendBase(p.id) : null);
+}
+applyDemoSpendLimit();
 // Screenshots and tests never touch the network; a normal run really calls the model.
 const testConnection =
   backend instanceof ProcessBackend ? createRealTester((config, model) => backend.probe(config, model)) : createFakeTester({ delayMs: automated ? 0 : 700 });
@@ -322,6 +358,7 @@ function providerList(): ProviderList {
 
 /** Hands saved providers to the backend; remembers which ones it could not use. */
 function applyProviders(): void {
+  applyDemoSpendLimit();
   if (!backend.configure) return;
   const problems = backend.configure(providers.resolved((catalogId) => needsKeyFor(catalogCache, catalogId)), providers.defaultId());
   providerProblems = Object.fromEntries(problems.map((p) => [p.id, p.reason]));
@@ -617,7 +654,7 @@ function createMainWindow(): BrowserWindow {
       const s = settings.get();
       const busy = running.any();
       return askDialog({
-        open: () => openDialogWindow(win, closeDialogSpec(APP_NAME, busy, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins))), s.zoom),
+        open: () => openDialogWindow(win, closeDialogSpec(APP_NAME, busy, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins), uiFontFamily(s.uiFont, app.getLocale()))), s.zoom),
         fallback: () =>
           dialog
             .showMessageBox(win, { type: 'question', title: APP_NAME, noLink: true, checkboxChecked: false, ...closePrompt(APP_NAME, busy) })
@@ -704,7 +741,7 @@ function createMainWindow(): BrowserWindow {
     // In the small dialog window (main/app-dialog-window.ts, its own page process); the message box only when that fails.
     ask: () => {
       const s = settings.get();
-      const spec = crashDialog(APP_NAME, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins)));
+      const spec = crashDialog(APP_NAME, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins), uiFontFamily(s.uiFont, app.getLocale())));
       const box = messageBoxFor(spec, { type: 'error', appName: APP_NAME, cancel: 0 });
       return askDialog({
         open: () => openDialogWindow(win, spec, s.zoom),
@@ -728,6 +765,30 @@ function createMainWindow(): BrowserWindow {
   });
   win.once('ready-to-show', () => watch.step('ready-to-show'));
   win.on('show', () => watch.step('shown'));
+  // Whether the window fits the area above the taskbar (main/window-fit.ts): a line at the first showing, and a line
+  // whenever it is past that area after maximizing, restoring, a resize while maximized or a display change. Log only.
+  const fit = watchFit(
+    () => (win.isDestroyed() ? null : { bounds: win.getBounds(), display: screen.getDisplayMatching(win.getBounds()), maximized: win.isMaximized(), fullScreen: win.isFullScreen() }),
+    (line) => console.log(line),
+  );
+  win.once('show', () => fit('first show'));
+  win.on('maximize', () => fit('maximize'));
+  win.on('unmaximize', () => fit('restore'));
+  win.on('enter-full-screen', () => fit('full screen'));
+  win.on('resize', () => {
+    if (win.isMaximized()) fit('resize while maximized');
+  });
+  const displayChanged = () => fit('display changed');
+  const displayAdded = () => fit('display added');
+  const displayRemoved = () => fit('display removed');
+  screen.on('display-metrics-changed', displayChanged);
+  screen.on('display-added', displayAdded);
+  screen.on('display-removed', displayRemoved);
+  win.on('closed', () => {
+    screen.off('display-metrics-changed', displayChanged);
+    screen.off('display-added', displayAdded);
+    screen.off('display-removed', displayRemoved);
+  });
 
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (!app.isPackaged && devUrl) void win.loadURL(devUrl);
@@ -950,7 +1011,7 @@ function pluginTheme(): { css: string } {
   const s = settings.get();
   const skin = resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins);
   const mode = schemeOf(skin.bg);
-  return { css: themeCss(pluginThemeVars(deriveTokens(skin), FONT_UI), mode) };
+  return { css: themeCss(pluginThemeVars(deriveTokens(skin), uiFontFamily(s.uiFont, app.getLocale())), mode) };
 }
 
 async function servePluginFile(url: string): Promise<Response> {
@@ -1108,7 +1169,6 @@ let lastNetwork = JSON.stringify(settings.get().network);
 let lastLocalConnect = settings.get().localConnect;
 let lastMemory = settings.get().memory;
 let lastAutoTidy = settings.get().memoryAutoTidy;
-let lastRunLimit = settings.get().runLimitUsd;
 let lastAgentMessages = settings.get().agentMessageLimit;
 let lastAccount = userAccount();
 /** Problems the core reported for the network settings (e.g. a certificate file it cannot read), in words. */
@@ -1127,12 +1187,6 @@ settings.onChange((s) => {
   if (s.memoryAutoTidy !== lastAutoTidy) {
     lastAutoTidy = s.memoryAutoTidy;
     if (backend instanceof ProcessBackend) void backend.apply({ memory: { autoTidy: s.memoryAutoTidy } }).catch(() => undefined);
-  }
-  if (s.runLimitUsd !== lastRunLimit) {
-    // 单次运行花费上限: the running core takes it at once (a run already going checks it at its next call)
-    lastRunLimit = s.runLimitUsd;
-    if (backend instanceof ProcessBackend) void backend.apply({ budget: budgetForCore(s.runLimitUsd) }).catch(() => undefined);
-    else if (backend instanceof FakeBackend) backend.setRunLimit(s.runLimitUsd);
   }
   if (s.agentMessageLimit !== lastAgentMessages) {
     // 代理互发消息上限: read by message_agent at each call, so it applies at once
@@ -1390,6 +1444,17 @@ ipcMain.handle(DesktopChannel.KnownContextWindow, async (_e, kind: ProviderKind,
   return fromCatalog ?? knownContextWindow(DEFAULT_PRICES, coreKind(kind), name);
 });
 ipcMain.handle(DesktopChannel.ModelCatalog, () => modelCatalog());
+// 已花: what each saved provider has cost since its last 清零
+ipcMain.handle(DesktopChannel.ProviderSpend, async (): Promise<Record<string, number>> => {
+  const totals = await providerTotals();
+  return Object.fromEntries(providers.list().map((p) => [p.id, Math.max(0, (totals[p.id] ?? 0) - providers.spendBase(p.id))]));
+});
+// 清零: 已花 counts from now; the limit the core gets moves with it
+ipcMain.handle(DesktopChannel.ResetProviderSpend, async (_e, id: string): Promise<void> => {
+  const totals = await providerTotals();
+  providers.resetSpend(String(id), totals[String(id)] ?? 0);
+  applyProviders();
+});
 ipcMain.handle(DesktopChannel.MatchContextWindow, async (_e, kind: ProviderKind, model: string, catalogId?: string | null): Promise<WindowMatch | null> => {
   const name = String(model ?? '').trim();
   if (!name) return null;

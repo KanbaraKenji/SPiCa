@@ -3,7 +3,10 @@ import type { SVGProps } from 'react';
 
 const PATHS = {
   sidebar: 'M2.5 3.5h11v9h-11z M6 3.5v9',
+  // The panel on the right (the title bar's button for the file preview).
   detail: 'M2.5 3.5h11v9h-11z M10 3.5v9',
+  // 详情: a list (bullets and lines), unlike the panel shapes beside it.
+  details: 'M6 4.5h7.5 M6 8h7.5 M6 11.5h7.5 M2.8 4.5v.1 M2.8 8v.1 M2.8 11.5v.1',
   plus: 'M8 3v10 M3 8h10',
   // A gear (the old one read as a sun).
   settings:
@@ -33,6 +36,8 @@ const PATHS = {
   minus: 'M3.5 8h9',
   question: 'M6 6.2a2 2 0 1 1 2.7 1.9c-.5.2-.7.6-.7 1.1v.6 M8 11.6v.2',
   arrowRight: 'M3 8h10 M9 4l4 4-4 4',
+  // ← before a way back (‹ 已安装, 返回「…」).
+  arrowLeft: 'M13 8H3 M7 4L3 8l4 4',
   dot: 'M8 7.2a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6z',
   // 支持图片: an eye (a model that takes pictures).
   eye: 'M1.5 8s2.4-4.5 6.5-4.5 6.5 4.5 6.5 4.5-2.4 4.5-6.5 4.5S1.5 8 1.5 8z M8 6.2a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6z',

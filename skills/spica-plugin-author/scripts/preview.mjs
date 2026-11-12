@@ -21,9 +21,10 @@ import { fileURLToPath } from 'node:url';
 import { STAND_IN_ACCOUNT, StdioClient, pluginEnv } from './lib/mcp.mjs';
 import { stripBom } from './lib/pack.mjs';
 
-const THEMES = {
-  light: { bg: '#ffffff', surface: '#f4f4f5', fg: '#18181b', muted: '#71717a', border: '#e4e4e7', accent: '#4f46e5', danger: '#dc2626' },
-  dark: { bg: '#17171b', surface: '#26262c', fg: '#ececf1', muted: '#9d9da8', border: '#36363f', accent: '#8b93f8', danger: '#f87171' },
+// Spica's two built-in skins (浅色 / 深色), the variables a page gets in Spica; radius, height and font below.
+export const THEMES = {
+  light: { bg: '#ffffff', surface: '#fafafa', fg: '#191919', muted: '#666666', border: '#fbfbfb', accent: '#2f7de1', danger: '#dc2626', control: '#f2f2f2', 'control-hover': '#e5e5e5', input: '#ffffff', 'border-strong': '#cecece', placeholder: '#878787', 'on-accent': '#ffffff', 'accent-text': '#2f7de1', 'accent-soft': '#e6effb' },
+  dark: { bg: '#191919', surface: '#222222', fg: '#efefef', muted: '#9c9c9c', border: '#222222', accent: '#62a9ff', danger: '#f87171', control: '#3b3b3b', 'control-hover': '#454545', input: '#303030', 'border-strong': '#474747', placeholder: '#878787', 'on-accent': '#ffffff', 'accent-text': '#62a9ff', 'accent-soft': '#283647' },
 };
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.woff2': 'font/woff2' };
 
@@ -69,7 +70,8 @@ export async function startPreview(dir, opts = {}) {
   const root = document.documentElement;
   for (const [k, v] of Object.entries(vars)) root.style.setProperty('--spica-' + k, v);
   root.style.setProperty('--spica-font', 'system-ui, "Segoe UI", sans-serif');
-  root.style.setProperty('--spica-radius', '6px');
+  root.style.setProperty('--spica-radius', '8px');
+  root.style.setProperty('--spica-control-h', '28px');
   root.dataset.theme = '${mode}';
   const listeners = new Set();
   const picked = ${JSON.stringify(opts.pick || null).replace(/</g, '\\u003c')};

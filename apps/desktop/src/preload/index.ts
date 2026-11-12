@@ -142,6 +142,8 @@ const bridge: DesktopBridge = {
     catalog: () => ipcRenderer.invoke(DesktopChannel.ModelCatalog) as Promise<ModelCatalogView | null>,
     listModels: (draft: ProviderDraft) => ipcRenderer.invoke(DesktopChannel.ListProviderModels, draft) as Promise<ListModelsView>,
     matchWindow: (kind: ProviderKind, model: string, catalogId?: string | null) => ipcRenderer.invoke(DesktopChannel.MatchContextWindow, kind, model, catalogId ?? null) as Promise<WindowMatch | null>,
+    spend: () => ipcRenderer.invoke(DesktopChannel.ProviderSpend) as Promise<Record<string, number>>,
+    resetSpend: (id: string) => ipcRenderer.invoke(DesktopChannel.ResetProviderSpend, id) as Promise<void>,
     onChanged: (listener: () => void) => subscribe<void>(DesktopChannel.ProvidersChanged, () => listener()),
   },
 };

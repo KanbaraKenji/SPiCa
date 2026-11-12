@@ -2,6 +2,13 @@
    it (renderer/src/styles.css), with the variables written out as numbers; the colors are the skin's, set on :root
    by main.ts from what main passes in. The window is the dialog box: its corners and shadow are the window's own. */
 
+/* styles.css @font-face (shared/ui-font.ts UI_FONT_FACES, word for word: renderer-styles.test.ts checks) */
+@font-face { font-family: 'Spica UI'; src: local('Segoe UI Variable Text'); font-weight: 100 900; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Light'); font-weight: 300; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI'); font-weight: 400; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Semibold'); font-weight: 600; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Bold'); font-weight: 700; ascent-override: 105.5%; descent-override: 27.5%; }
+
 /* styles.css * */
 * {
   box-sizing: border-box;
@@ -15,7 +22,7 @@ body {
   background: var(--spica-raised);
   color: var(--spica-ink);
   /* --font-ui */
-  font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
+  font-family: var(--font-ui, 'Spica UI', 'Spica UI Static', 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif);
   /* --fs-body / --lh-body */
   font-size: 14px;
   line-height: 20px;
@@ -76,10 +83,10 @@ body {
   gap: 8px;
 }
 
-/* styles.css button / .btn (--radius-m 8px) */
+/* styles.css button / .btn (--control-h 28px, --control-pad-x 12px, --radius-m 8px) */
 .btn {
-  height: 32px;
-  padding: 0 14px;
+  height: 28px;
+  padding: 0 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -106,4 +113,71 @@ body {
 .btn-primary:hover {
   background: var(--spica-accent);
   filter: brightness(1.08);
+}
+
+/* styles.css .close-dialog / .close-dialog .dialog-title: the box holds the × (the title keeps clear of it) */
+.dialog.has-x {
+  position: relative;
+}
+
+.dialog.has-x .dialog-title {
+  padding-right: 32px;
+}
+
+/* styles.css .close-dialog-choices (with .close-dialog-choices .dialog-check: no margin of its own) */
+.dialog-choices {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dialog-choices .dialog-check {
+  margin-top: 0;
+}
+
+/* styles.css .close-dialog-foot (with .close-dialog-foot .dialog-check): the checkbox left, the buttons right */
+.dialog-foot {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dialog-foot .dialog-check,
+.dialog-foot .dialog-actions {
+  margin-top: 0;
+}
+
+/* styles.css .icon-btn (--control-h 28px square, --radius-s 6px) and its hover / active */
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--spica-muted);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--spica-hover);
+  color: var(--spica-ink);
+}
+
+.icon-btn:active {
+  background: var(--spica-active);
+}
+
+/* styles.css .close-dialog-x */
+.dialog-x {
+  position: absolute;
+  top: 15px;
+  right: 15px;
 }

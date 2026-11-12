@@ -83,10 +83,10 @@ describe('what the window’s close button does', () => {
     }
   });
 
-  it('the question: two choices and 取消, 记住我的选择 unticked, named after the app', () => {
+  it('the question: two choices and 取消, 不再提醒 unticked, named after the app', () => {
     const p = closePrompt('Acme');
     expect(p.buttons).toEqual(['最小化到托盘', '退出 Acme', '取消']);
-    expect(p.checkboxLabel).toBe('记住我的选择');
+    expect(p.checkboxLabel).toBe('不再提醒');
     expect(p.cancelId).toBe(2);
     // nothing explained; one line only while a task runs
     expect(p).not.toHaveProperty('detail');
@@ -98,11 +98,24 @@ describe('what the window’s close button does', () => {
 
   it('when the page cannot ask: the small window asks the same (the line only while a task runs); the message box answers the same way', () => {
     const look = { scheme: 'dark' as const, tokens: {} };
-    expect(closeDialogSpec('Acme', false, look)).toEqual({ title: CLOSE_QUESTION, detail: [], buttons: [{ label: '退出 Acme' }, { label: '最小化到托盘', primary: true }], check: '记住我的选择', ...look });
+    expect(closeDialogSpec('Acme', false, look)).toEqual({
+      title: CLOSE_QUESTION,
+      detail: [],
+      choices: { options: ['最小化到托盘', '退出 Acme'], selected: 0 },
+      buttons: [{ label: '确定', primary: true }],
+      check: '不再提醒',
+      checkInFoot: true,
+      closeButton: true,
+      width: 360,
+      ...look,
+    });
     expect(closeDialogSpec('Acme', true, look).detail).toEqual([CLOSE_RUNNING]);
-    expect(closeFromDialog({ button: 1, checked: true })).toEqual({ choice: 'tray', remember: true });
-    expect(closeFromDialog({ button: 0, checked: false })).toEqual({ choice: 'quit', remember: false });
-    expect(closeFromDialog({ button: null, checked: true })).toEqual({ choice: null, remember: false });
+    // 确定 with 最小化到托盘 / 退出 selected, 不再提醒 ticked or not
+    expect(closeFromDialog({ button: 0, checked: false, choice: 0 })).toEqual({ choice: 'tray', remember: false });
+    expect(closeFromDialog({ button: 0, checked: false, choice: 1 })).toEqual({ choice: 'quit', remember: false });
+    expect(closeFromDialog({ button: 0, checked: true, choice: 1 })).toEqual({ choice: 'quit', remember: true });
+    // the × or the window closed: no choice, a ticked 不再提醒 not kept
+    expect(closeFromDialog({ button: null, checked: true, choice: 0 })).toEqual({ choice: null, remember: false });
     // the box: 最小化到托盘, 退出, 取消
     expect(closeFromDialog(dialogFromBox(0, true))).toEqual({ choice: 'tray', remember: true });
     expect(closeFromDialog(dialogFromBox(1, false))).toEqual({ choice: 'quit', remember: false });

@@ -78,7 +78,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 - **只能加载本插件目录里的文件**：不能用 CDN，库文件也放进插件。
 - **只能调本插件的工具**，写了 `permissions.tools` 就只能调列出的那几个；不可逆工具会先弹 Spica 的确认框。
 - 用 Spica 注入的 `window.spica`：`callTool(工具原名, 参数)` → `{ content, data?, isError }`，`onEvent`，`theme`，`openFile`，`notify`，`pickFolder` / `pickFile`（系统的选择框），`openFolder`（资源管理器里打开本机文件夹）。
-- 颜色只用 `--spica-*` CSS 变量，明暗自动适配。只给页面用、不给模型用的工具，放 `services/`。
+- 颜色只用 `--spica-*` CSS 变量，明暗自动适配；按钮、输入框用 `--spica-control`、`--spica-input`、`--spica-on-accent`、`--spica-control-h` 这几个，和 Spica 自己的一样（见 `references/ui.md` 主题）。只给页面用、不给模型用的工具，放 `services/`。
 
 开发时不开 Spica 也能看页面：`node <skill>/scripts/preview.mjs <插件文件夹>`，在浏览器打开它打印的地址（暗色加 `?theme=dark`）。规则和 Spica 一样，背后是插件自己的 server（模拟模式）。页面要选文件夹 / 文件时加 `--pick <完整路径>`，选择框直接回这个路径；不加时，在自动化里等于用户取消（回 `null`）。详见 `references/ui.md`。
 

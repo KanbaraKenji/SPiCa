@@ -1,6 +1,16 @@
 /* Spica desktop shell styles.
    Every color is a --spica-* token written by theme.ts from the active skin
    (shared/skin.ts). The values below are only first-paint fallbacks. */
+
+/* The interface font with its ascent and descent set so that what is centred by its line box (a button's words, a
+   row's, a tab's, Chinese, capitals and digits alike) sits on the middle line, not ~1px low: why and the numbers in
+   shared/ui-font.ts. These lines are UI_FONT_FACES word for word (renderer-styles.test.ts checks). */
+@font-face { font-family: 'Spica UI'; src: local('Segoe UI Variable Text'); font-weight: 100 900; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Light'); font-weight: 300; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI'); font-weight: 400; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Semibold'); font-weight: 600; ascent-override: 105.5%; descent-override: 27.5%; }
+@font-face { font-family: 'Spica UI Static'; src: local('Segoe UI Bold'); font-weight: 700; ascent-override: 105.5%; descent-override: 27.5%; }
+
 :root {
   color-scheme: light dark;
   /* The type scale, the Claude app's (comfortable density): every size in the app is one of these, with its line. */
@@ -48,7 +58,13 @@
   --radius-l: 12px;
   /* Menus and dialogs (the reference's 14px). */
   --radius-popup: 14px;
-  --font-ui: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
+  /* How tall the controls are, everywhere (measured on Claude's, out/settings-modal/10-controls.md): a button, a
+     field, an icon button and a segment --control-h; a tab --tab-h, its line under it included. Bigger or smaller:
+     change these. */
+  --control-h: 28px;
+  --control-pad-x: 12px;
+  --tab-h: 28px;
+  --font-ui: 'Spica UI', 'Spica UI Static', 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
   --font-mono: 'Cascadia Mono', Consolas, 'Microsoft YaHei UI', monospace;
 }
 
@@ -145,7 +161,7 @@ a:hover {
   background: var(--spica-chrome);
 }
 
-/* Main pane + detail panel, under the title bar. */
+/* The title bar, then under it the conversation and the right panels. */
 .column {
   flex: 1;
   min-width: 0;
@@ -191,22 +207,9 @@ a:hover {
   -webkit-app-region: no-drag;
 }
 
-/* A panel is docked right of the conversation: the title bar is not at the window's edge. */
-.titlebar.is-inner {
-  padding-right: 8px;
-}
-
-/* The conversation's column: its title bar, then the conversation (the right panels stand beside it, full height). */
-.main-col {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-/* The head of a right panel (the details, their tab row, the preview): in the window's top row, as high as the
-   title bar, the same line under it, the same insets; buttons are .icon-btn as in the title bar. */
+/* The first row of a right panel (the details' heading or their tab row, the preview's file name and buttons):
+   under the title bar, inside its own panel, on the panel's background with no line of its own; as high as the
+   title bar, the same insets, buttons are .icon-btn as in the title bar. */
 .panel-head {
   height: var(--spica-titlebar-h);
   flex: none;
@@ -215,19 +218,6 @@ a:hover {
   gap: 2px;
   min-width: 0;
   padding: 0 8px 0 16px;
-  background: var(--spica-chrome);
-  border-bottom: 1px solid var(--spica-divider);
-  -webkit-app-region: drag;
-}
-
-.panel-head button,
-.panel-head select {
-  -webkit-app-region: no-drag;
-}
-
-/* The right panel at the window's edge: room for the system buttons, as the title bar keeps it. */
-.panel-right.is-edge .panel-head {
-  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px);
 }
 
 .titlebar-left,
@@ -335,6 +325,8 @@ a:hover {
 
 .panel-right {
   width: 300px;
+  /* The conversation's background: only the line on its left sets a right panel apart. */
+  background: var(--spica-bg);
 }
 
 .panel.is-floating {
@@ -396,8 +388,8 @@ a:hover {
 /* ---------- Buttons ---------- */
 
 .icon-btn {
-  width: 30px;
-  height: 30px;
+  width: var(--control-h);
+  height: var(--control-h);
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -429,8 +421,8 @@ a:hover {
 }
 
 .btn {
-  height: 32px;
-  padding: 0 14px;
+  height: var(--control-h);
+  padding: 0 var(--control-pad-x);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -477,7 +469,7 @@ a:hover {
 }
 
 .btn-quiet-danger {
-  height: 30px;
+  height: var(--control-h);
   padding: 0 10px;
   display: inline-flex;
   align-items: center;
@@ -495,12 +487,32 @@ a:hover {
   text-align: left;
 }
 
+/* A way back (← 已安装 on a plugin's page, ← 返回「…」 over a conversation opened from history), as Claude's
+   「← Your plugins」: an arrow and the words in the text colour, on a line of its own; a block of colour on hover,
+   reaching a little left of the arrow so the arrow lines up with what is under it. */
+.back-link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  height: var(--control-h);
+  margin-left: -8px;
+  padding: 0 10px 0 8px;
+  border-radius: var(--radius-m);
+  color: var(--spica-ink);
+}
+
+.back-link:hover {
+  background: var(--spica-hover);
+}
+
 .link-btn:hover {
   color: var(--spica-accent);
 }
 
 .input {
-  height: 32px;
+  height: var(--control-h);
   min-width: 0;
   padding: 0 10px;
   border-radius: var(--radius-m);
@@ -558,9 +570,11 @@ a:hover {
   padding: 4px 0 6px;
 }
 
+/* The bottom row (the account and the gear, or 设置): a line across the sidebar above it. */
 .sidebar-bottom {
   flex: none;
   padding: 6px 8px 8px;
+  border-top: 1px solid var(--spica-divider);
 }
 
 .side-action {
@@ -579,7 +593,14 @@ a:hover {
   background: var(--spica-hover);
 }
 
+/* An icon beside words (新对话, 收件箱, 新项目, a plugin page, 设置) has the words' colour, whatever it is.
+   Icons standing alone stay grey: the gear at the bottom right and the folded sidebar's column. */
 .side-action svg {
+  color: currentColor;
+}
+
+.side-action.side-gear:not(.has-word) svg,
+.sidebar.is-rail .side-action svg {
   color: var(--spica-muted);
 }
 
@@ -954,8 +975,20 @@ button.tree-twisty:hover {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-gutter: stable;
+  /* The scrollbar's room kept on both sides, so the column's middle is the box's middle (as the input box's). */
+  scrollbar-gutter: stable both-edges;
   user-select: text;
+}
+
+/* The content column (messages, the input box, what is queued, the notices, the inbox): COLUMN_WIDTH wide at most,
+   where it rests with nothing docked on the right, pushed left by a right panel (shell/layout.ts centreShift, set on
+   .main as --centre-shift). */
+.transcript-column,
+.composer-stack,
+.inbox-column,
+.queued,
+.run-notices {
+  translate: var(--centre-shift, 0px) 0;
 }
 
 .transcript-column {
@@ -1106,14 +1139,6 @@ button.tree-twisty:hover {
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
   color: var(--spica-muted);
-}
-
-.turn-error {
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: var(--radius-m);
-  background: var(--spica-danger-soft);
-  color: var(--spica-danger);
 }
 
 /* Markdown answer text */
@@ -1443,7 +1468,7 @@ pre .hl-punctuation {
   min-width: 0;
 }
 
-/* 设置 › 常规 › 文件预览, 外观 › 代码 › 字号 and 账号 › 账号: the control on the right of the row. */
+/* 设置 › 常规 › 文件预览, 外观 › 代码 › 字号 and 账号 › 账号 / 昵称: the control on the right of the row. */
 .preview-kind-pick,
 .code-size-pick,
 .account-field {
@@ -1618,19 +1643,6 @@ pre .hl-punctuation {
 .fold-icon {
   flex: none;
   display: inline-flex;
-}
-
-/* Words beside an icon in a row: the box trimmed to the capitals' top and the baseline, so centring it puts
-   the letters, not the line's empty space, on the icons' middle (the letters sat a pixel or two low). Cut at
-   the end of the line only (clip, not hidden: hidden would also cut the descenders below the trimmed box). */
-.fold-label,
-.fold-meta,
-.tool-text,
-.msg-time,
-.msg-versions-text,
-.status-text,
-.status-clock {
-  text-box: trim-both cap alphabetic;
 }
 
 .fold-label {
@@ -1975,10 +1987,10 @@ pre .hl-punctuation {
 
 .ask-option {
   height: auto;
-  min-height: 32px;
+  min-height: var(--control-h);
   white-space: normal;
   text-align: left;
-  padding: 5px 12px;
+  padding: 4px var(--control-pad-x);
 }
 
 .ask-free {
@@ -2226,7 +2238,7 @@ pre .hl-punctuation {
 }
 
 .suggest-title {
-  padding: 6px 10px 4px;
+  padding: 5px 10px;
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
   color: var(--spica-muted);
@@ -2297,7 +2309,8 @@ pre .hl-punctuation {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  padding: 24px;
+  /* On the content column's middle: twice the shift on one side moves the middle by the shift. */
+  padding: 24px max(24px, calc(24px - 2 * var(--centre-shift, 0px))) 24px max(24px, calc(24px + 2 * var(--centre-shift, 0px)));
   color: var(--spica-ink);
 }
 
@@ -2324,7 +2337,7 @@ pre .hl-punctuation {
 
 .to-bottom {
   position: absolute;
-  left: 50%;
+  left: calc(50% + var(--centre-shift, 0px));
   bottom: 10px;
   transform: translateX(-50%);
   width: 32px;
@@ -2864,7 +2877,7 @@ button.ctx-row:hover {
   gap: 8px;
 }
 
-/* A checkbox in a dialog (关闭窗口时 › 记住我的选择), under the text and above the buttons;
+/* A checkbox or a radio button in a dialog (关闭窗口时: the two choices and 不再提醒), under the text;
    the box as in the model list (.model-row-name). */
 .dialog-check {
   margin-top: 16px;
@@ -2883,43 +2896,64 @@ button.ctx-row:hover {
   accent-color: var(--spica-accent);
 }
 
-/* The close question (ui/CloseDialog.tsx): the title, a line only while a task runs, 记住我的选择 under it,
-   then the two buttons at the right; narrower than other dialogs (nothing is explained). */
+/* The close question (ui/CloseDialog.tsx): the title, a line only while a task runs, the two choices one under the
+   other, then one row: 不再提醒 at the left, 确定 at the right; narrower than other dialogs (nothing is explained). */
 .close-dialog {
+  position: relative;
   width: min(360px, 100%);
 }
 
-.close-dialog-foot {
+/* Its × at the top right, centred on the title's line (the title keeps clear of it). */
+.close-dialog .dialog-title {
+  padding-right: 32px;
+}
+
+.close-dialog-x {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+}
+
+.close-dialog-choices {
   margin-top: 16px;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+}
+
+.close-dialog-foot {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 16px;
 }
 
-.close-dialog-foot .dialog-check,
-.close-dialog-foot .dialog-actions {
+.close-dialog-choices .dialog-check,
+.close-dialog-foot .dialog-check {
   margin-top: 0;
 }
 
 /* ---------- Settings ---------- */
 
 /* Settings: a panel floating in the middle of the window (settings/SettingsView.tsx), laid out as Claude's
-   settings (his picture, 2026-11-12): a title bar across the top (设置, ×, a line under it); under it the
-   sections' column on the deeper of the window's two greys and the content on the lighter one
-   (--spica-settings-nav / --spica-settings-pane, skin.ts: in the dark skin #191919 / #1f1f1f, his two values).
-   At most 1000 x 700, a tenth of the window's height clear above and below (never under 24). The scrim is the
-   dialogs' own, so the caption buttons dim with it (ui/dim.ts). */
+   settings: a title bar across the top (设置, ×, a line under it); under it the sections' column on the deeper
+   of the window's two greys and the content on the lighter one (--spica-settings-nav / --spica-settings-pane,
+   skin.ts: in the dark skin #191919 / #1f1f1f). Sized as Claude's (measured on its screenshots,
+   out/settings-modal/9-measure.md): at most 1024 x 800, 16 clear of the window's edges, so on most windows it
+   is the window's height less 32. The scrim is the dialogs' own, so the caption buttons dim with it
+   (ui/dim.ts). */
 .settings-scrim {
-  padding: max(24px, 10vh) max(24px, 5vw);
+  padding: 16px;
 }
 
 .settings-dialog {
-  --settings-pad: 28px;
+  --settings-pad: 20px;
   position: relative;
   display: flex;
   flex-direction: column;
-  width: min(1000px, 100%);
-  height: min(700px, 100%);
+  width: min(1024px, 100%);
+  height: min(800px, 100%);
   border-radius: var(--radius-popup);
   background: var(--spica-settings-pane);
   box-shadow: var(--spica-shadow);
@@ -2936,14 +2970,15 @@ button.ctx-row:hover {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 12px 10px 20px;
+  height: 48px;
+  padding: 0 8px 0 16px;
   border-bottom: 1px solid var(--spica-divider);
 }
 
 .settings-title {
   margin: 0;
-  font-size: var(--fs-heading);
-  line-height: var(--lh-heading);
+  font-size: var(--fs-prose);
+  line-height: var(--lh-prose);
   font-weight: 600;
 }
 
@@ -2959,10 +2994,10 @@ button.ctx-row:hover {
 
 .settings-nav {
   flex: none;
-  width: 200px;
+  width: 208px;
   display: flex;
   flex-direction: column;
-  padding: 12px 10px;
+  padding: 12px 14px;
   border-right: 1px solid var(--spica-divider);
   background: var(--spica-settings-nav);
   overflow-y: auto;
@@ -2986,7 +3021,7 @@ button.ctx-row:hover {
 
 .settings-search .input {
   width: 100%;
-  height: 32px;
+  height: var(--control-h);
   padding-left: 30px;
 }
 
@@ -2999,7 +3034,7 @@ button.ctx-row:hover {
 .settings-nav-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .settings-nav-group + .settings-nav-group {
@@ -3009,7 +3044,7 @@ button.ctx-row:hover {
 }
 
 .settings-nav-item {
-  height: 34px;
+  height: 32px;
   flex: none;
   display: flex;
   align-items: center;
@@ -3021,9 +3056,10 @@ button.ctx-row:hover {
   white-space: nowrap;
 }
 
+/* The words' colour, on hover and when chosen too. */
 .settings-nav-icon {
   flex: none;
-  color: var(--spica-muted);
+  color: currentColor;
 }
 
 .settings-nav-item:hover {
@@ -3033,10 +3069,6 @@ button.ctx-row:hover {
 .settings-nav-item.is-on {
   background: var(--spica-active);
   font-weight: 600;
-}
-
-.settings-nav-item.is-on .settings-nav-icon {
-  color: var(--spica-ink);
 }
 
 .settings-main {
@@ -3128,9 +3160,8 @@ button.ctx-row:hover {
 }
 
 /* The content sits right in the pane, from its top left corner (no page margins, not centred), the groups as
-   wide as the pane up to a limit. */
+   wide as the pane (as Claude's; the dialog is at most 1024 wide, so they never get very long). */
 .settings-column {
-  max-width: calc(720px + 2 * var(--settings-pad));
   padding: 20px var(--settings-pad) 32px;
 }
 
@@ -3139,6 +3170,24 @@ button.ctx-row:hover {
 .settings-dialog .group-box {
   background: transparent;
   border-color: var(--spica-divider);
+}
+
+/* A row in the dialog as tall as Claude's (12 above and below, its grey line 4 under its name), and the grey
+   line under a name (a setting's, an installed plugin's, a card's) the name's size, as Claude's. */
+.settings-dialog .setting-row {
+  min-height: 56px;
+  padding: 12px 16px;
+}
+
+.settings-dialog .setting-text {
+  gap: 4px;
+}
+
+.settings-dialog .setting-text > .settings-hint,
+.settings-dialog .plugin-item-desc,
+.settings-dialog .plugin-card-desc {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .settings-section + .settings-section {
@@ -3451,11 +3500,61 @@ button.ctx-row:hover {
 
 .composer-note {
   margin: -10px 0 0;
-  padding: 0 24px 10px;
+  /* On the content column's middle, as .empty-chat. */
+  padding: 0 max(24px, calc(24px - 2 * var(--centre-shift, 0px))) 10px max(24px, calc(24px + 2 * var(--centre-shift, 0px)));
   text-align: center;
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
   color: var(--spica-faint);
+}
+
+/* What stopped the last run (chat/RunNotices.tsx): just above the input box, as wide as it (the same width rules as
+   .queued and the box), in the flow so the conversation above ends where it starts. Neutral, outlined, the icon in
+   the notice's colour, a small outlined button at the right end. */
+.run-notices {
+  flex: none;
+  max-width: 760px;
+  width: calc(100% - 48px);
+  margin: 0 auto 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.run-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 5px 6px 5px 12px;
+  border: 1px solid var(--spica-border-strong);
+  border-radius: 12px;
+  background: var(--spica-surface);
+  color: var(--spica-ink);
+  font-size: var(--chat-small);
+  line-height: var(--chat-row-line);
+}
+
+.run-notice > svg {
+  flex: none;
+}
+
+.run-notice.is-error > svg {
+  color: var(--spica-danger);
+}
+
+.run-notice.is-warning > svg {
+  color: var(--spica-warning);
+}
+
+.run-notice-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.run-notice > .btn {
+  flex: none;
 }
 
 /* Messages sent during a run, waiting for the next step */
@@ -3559,21 +3658,32 @@ button.ctx-row:hover {
   z-index: 1000;
 }
 
-/* Tabs: the open one is a filled pill, no underline. */
+/* Tabs that change what the page shows (已安装 / 市场, 详情 / 设定, the right panel's, 收件箱's, a workbook's
+   sheets), as Claude's plugin page (out/ref/tabs-1-claude-underline.png): a row of words with no box round it or
+   under them, a thin line under the whole row (drawn inside its bottom edge, so a row that scrolls sideways keeps
+   it); the open one in the ink colour with a line of its own along its bottom edge (the tab's border, over the
+   row's line; not a text underline). Where the row sits in a bar with
+   buttons beside it (插件's top row, the right panel's head) it has no line of its own. */
 .tabs {
-  display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: var(--radius-m);
-  background: var(--spica-hover);
+  display: flex;
+  gap: 4px;
+  box-shadow: inset 0 -1px 0 var(--spica-divider);
+}
+
+.tabs.plugins-tabs,
+.right-head .tabs {
+  box-shadow: none;
 }
 
 .tab {
-  height: 30px;
+  height: var(--tab-h);
   /* Never break a label into a column of single characters (small window, 150%). */
   white-space: nowrap;
-  padding: 0 clamp(8px, 3vw, 16px);
-  border-radius: var(--radius-s);
+  padding: 0 12px;
+  /* The open one's line along the bottom, and the same width clear along the top, so the words sit on the
+     middle line of the tab and not 1px above it. */
+  border-top: 2px solid transparent;
+  border-bottom: 2px solid transparent;
   color: var(--spica-muted);
 }
 
@@ -3582,10 +3692,8 @@ button.ctx-row:hover {
 }
 
 .tab.is-on {
-  background: var(--spica-raised);
+  border-bottom-color: var(--spica-ink);
   color: var(--spica-ink);
-  font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 /* Settings > models */
@@ -3605,6 +3713,19 @@ button.ctx-row:hover {
 
 .run-limit .input {
   width: 120px;
+}
+
+/* A provider's 花费上限 (its form): 「US$」 and the box, then 已花 and 清零 on the same line. */
+.spend-limit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.spend-spent {
+  color: var(--spica-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 服务商: one row each in the group's box, 添加服务商 last; the open one is filled. */
@@ -3676,7 +3797,7 @@ button.ctx-row:hover {
 }
 
 .btn-small {
-  height: 28px;
+  height: var(--control-h);
   padding: 0 10px;
   font-size: var(--fs-body);
   line-height: var(--lh-body);
@@ -3684,13 +3805,13 @@ button.ctx-row:hover {
 
 /* A button that is just an icon (its name on hover), as tall as the buttons and fields beside it. */
 .btn.btn-square {
-  width: 32px;
+  width: var(--control-h);
   padding: 0;
   flex: none;
 }
 
 .btn.btn-small.btn-square {
-  width: 28px;
+  width: var(--control-h);
 }
 
 /* A square button whose panel is open (安装插件 with its location field showing). */
@@ -3810,7 +3931,7 @@ button.ctx-row:hover {
 
 .field .model-picker > .model-picker-search {
   max-width: none;
-  height: 28px;
+  height: var(--control-h);
 }
 
 .model-picker-sect {
@@ -3943,6 +4064,7 @@ button.ctx-row:hover {
   line-height: var(--lh-body);
 }
 
+
 .model-row-warn {
   display: inline-flex;
   align-items: center;
@@ -3968,7 +4090,7 @@ button.ctx-row:hover {
 
 .model-pill,
 .model-pill-on {
-  height: 28px;
+  height: var(--control-h);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -4033,7 +4155,7 @@ button.ctx-row:hover {
 
 .field .model-pill-add > .input {
   width: 200px;
-  height: 28px;
+  height: var(--control-h);
 }
 
 @media (max-width: 640px) {
@@ -4133,33 +4255,40 @@ button.ctx-row:hover {
   max-width: 120px;
 }
 
-.segmented {
+/* One value of a few (关闭窗口时, 文字大小), and 对话 / 项目 across the sidebar: as Claude's Normal / Thinking /
+   Verbose (out/ref/tabs-4-claude-segmented-ok.png): the choices on one faint fill, the chosen one a block that
+   fills it to its edges (no gap between the fill and the block, the same corners), so it reads as one layer. */
+.segmented,
+.tabs.side-tabs {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 2px;
-  padding: 2px;
+  gap: 0;
   border-radius: var(--radius-m);
-  border: 1px solid var(--spica-border-strong);
-  background: var(--spica-raised);
+  background: var(--spica-hover);
+  box-shadow: none;
   justify-self: start;
 }
 
-.segment {
-  height: 28px;
+.segment,
+.side-tabs .tab {
+  height: var(--control-h);
   white-space: nowrap;
-  padding: 0 12px;
-  border-radius: var(--radius-s);
+  padding: 0 var(--control-pad-x);
+  border: 1px solid transparent;
+  border-radius: var(--radius-m);
   color: var(--spica-muted);
 }
 
-.segment:hover {
+.segment:hover,
+.side-tabs .tab:hover {
   color: var(--spica-ink);
 }
 
-.segment.is-on {
-  background: var(--spica-accent-soft);
+.segment.is-on,
+.side-tabs .tab.is-on {
+  border-color: var(--spica-border-strong);
+  background: var(--spica-raised);
   color: var(--spica-ink);
-  font-weight: 500;
 }
 
 .provider-actions {
@@ -4403,7 +4532,7 @@ button.ctx-row:hover {
 .plugins-bar .plugins-search {
   flex: 1 1 160px;
   min-width: 0;
-  height: 30px;
+  height: var(--control-h);
 }
 
 .plugins-bar .btn-small {
@@ -4681,10 +4810,7 @@ section.plugins-part > .plugins-part-title {
 }
 
 .plugin-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin: 0 0 12px -4px;
+  margin-bottom: 12px;
 }
 
 .plugin-facts {
@@ -4788,8 +4914,6 @@ section.plugins-part > .plugins-part-title {
    On a narrow window the row scrolls sideways rather than pushing the name row. */
 .plugin-tabs {
   display: flex;
-  width: fit-content;
-  max-width: 100%;
   margin-top: 10px;
   overflow-x: auto;
 }
@@ -5256,7 +5380,8 @@ section.plugins-part > .plugins-part-title {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-gutter: stable;
+  /* The scrollbar's room kept on both sides, so the column's middle is the box's middle (as the input box's). */
+  scrollbar-gutter: stable both-edges;
 }
 
 .inbox-column {
@@ -5541,6 +5666,23 @@ section.plugins-part > .plugins-part-title {
   white-space: nowrap;
 }
 
+/* A path in a settings row that is itself the way to it (工作流, 插件目录, an exported file): as a path in an
+   answer (.md-path), the link colour and a soft block under the pointer, never underlined; reaching a little
+   left of the text so the text stays in line with the rows above and below. */
+.path-link {
+  align-self: flex-start;
+  max-width: calc(100% + 8px);
+  margin-left: -4px;
+  padding: 0 4px;
+  border-radius: var(--radius-s);
+  text-align: left;
+  color: var(--spica-accent-text);
+}
+
+.path-link:hover {
+  background: var(--spica-accent-soft);
+}
+
 .workflow-problems {
   margin: 0;
   padding: 0;
@@ -5623,6 +5765,13 @@ section.plugins-part > .plugins-part-title {
   min-width: 0;
   max-width: 50%;
   overflow-wrap: anywhere;
+}
+
+/* Stopped while it waited (已中断), and the answer's （中断）: red, the colour of 无法撤销, the mark too. */
+.card-answer.is-stopped,
+.card-answer.is-stopped .spica-status-icon,
+.turn-note.is-stopped {
+  color: var(--spica-danger);
 }
 
 .confirm-card:not(.is-done).is-danger {
@@ -6091,6 +6240,40 @@ section.plugins-part > .plugins-part-title {
   border-radius: 50%;
 }
 
+/* The account's menu, above the bottom row: no narrower than the row. Its holder takes no place in the row
+   (no gap after the gear); the menu itself is fixed, out of the row. */
+.account-menu {
+  display: contents;
+}
+
+.account-menu > .context-menu {
+  min-width: var(--account-menu-width);
+}
+
+/* Its items' icons (the settings' list ones, 16) come after the words in the menu's markup: drawn before them,
+   as far from the words as in the settings' list. */
+.account-menu .context-item-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.account-menu-icon {
+  flex: none;
+  order: -1;
+  /* the words' colour, on hover too */
+  color: currentColor;
+}
+
+/* 设置 › 账号: the same round badge, bigger, at the right end of the first row (as tall as the rows under it). */
+.account-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
+}
+
 .side-action.side-gear {
   width: 34px;
   flex: none;
@@ -6416,32 +6599,11 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* Opened from a history row or link: the way back, above the conversation. */
-.history-back {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  padding: 5px 12px 5px 8px;
-  border: 1px solid var(--spica-border-strong);
-  border-radius: 999px;
-  background: var(--spica-surface);
-  color: var(--spica-ink);
-  font: inherit;
-  font-size: var(--fs-footnote);
-  line-height: var(--lh-footnote);
-  cursor: pointer;
-}
-
 .history-back span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.history-back:hover {
-  background: var(--spica-hover);
 }
 
 /* The message it was opened at. */
@@ -6472,11 +6634,11 @@ section.plugins-part > .plugins-part-title {
 .side-tabs,
 .side-tabs-space {
   flex: none;
-  height: 36px;
+  height: var(--tab-h);
   margin: 4px 8px 2px;
 }
 
-.side-tabs {
+.tabs.side-tabs {
   display: flex;
 }
 
@@ -6506,8 +6668,8 @@ section.plugins-part > .plugins-part-title {
 }
 
 .icon-btn.msg-action {
-  width: 28px;
-  height: 28px;
+  width: var(--control-h);
+  height: var(--control-h);
 }
 
 .icon-btn.msg-action[aria-disabled='true'] {

@@ -58,14 +58,16 @@ export interface SettingsPages {
 
 /**
  * A plugin's settings page, under its tab in the detail: it fills what is left of the column and scrolls
- * itself. The page's two backgrounds are swapped: its own (--spica-bg) is the card's, and what it sets apart
- * (buttons, boxes on --spica-surface) gets the window's, so it still stands out on the card.
+ * itself. Its own background (--spica-bg) is the settings pane's, so the page and the pane are one; what it
+ * sets apart on --spica-surface gets the window's, so it still stands out. (The skin is painted on :root
+ * before the page renders; without it, the card's grey.)
  */
 function settingsTheme(page: PluginPageProps): PluginPageProps['theme'] {
   const vars = page.theme.vars;
   const bg = vars['--spica-bg'] ?? '';
   const surface = vars['--spica-surface'] ?? bg;
-  return { ...page.theme, vars: { ...vars, '--spica-bg': surface, '--spica-surface': bg } };
+  const pane = typeof document === 'undefined' ? '' : document.documentElement.style.getPropertyValue('--spica-settings-pane').trim();
+  return { ...page.theme, vars: { ...vars, '--spica-bg': pane || surface, '--spica-surface': bg } };
 }
 
 const SERVER_STATUS: Record<string, string> = {
@@ -320,8 +322,8 @@ function subLine(location: string | undefined, version: string | undefined): str
 /** Back to the list the page was opened from, at its top left. */
 function Back({ label, onBack }: { label: string; onBack(): void }) {
   return (
-    <button type="button" className="text-btn plugin-back" onClick={onBack}>
-      <Icon name="back" size={14} />
+    <button type="button" className="back-link plugin-back" onClick={onBack}>
+      <Icon name="arrowLeft" size={16} />
       {label}
     </button>
   );
@@ -971,11 +973,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
                   >
                     <Switch on={state.mock} label="模拟模式" disabled={busy} onChange={(on) => void run({ op: 'mock', on })} />
                   </Row>
-                  <Row title="插件目录" hint={state.root} path={{ hint: state.root }}>
-                    <button type="button" className="btn btn-square" onClick={() => void run({ op: 'openRoot' })} aria-label="打开文件夹" title="打开文件夹">
-                      <Icon name="folder" size={16} />
-                    </button>
-                  </Row>
+                  <Row title="插件目录" hint={state.root} path={{ hint: state.root, open: () => void run({ op: 'openRoot' }) }} />
                 </Group>
               ) : null}
             </>

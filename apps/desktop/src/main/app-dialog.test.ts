@@ -4,7 +4,7 @@ import { parseDialogSpec, type DialogAnswer } from '../shared/app-dialog';
 import { DARK_SKIN, LIGHT_SKIN } from '../shared/skin';
 
 function fakeWindow() {
-  const cb: { ready?: (h: number) => void; answer?: (b: number, c: boolean) => void; failed?: (w: string) => void; closed?: () => void } = {};
+  const cb: { ready?: (h: number) => void; answer?: (b: number | null, c: boolean, k: number | null) => void; failed?: (w: string) => void; closed?: () => void } = {};
   const calls: string[] = [];
   const w: DialogWindow = {
     onReady: (f) => (cb.ready = f),
@@ -27,8 +27,8 @@ describe('the dialog window', () => {
     const f = fakeWindow();
     const p = runDialog(f.w, 5000, f.timer);
     f.cb.ready!(180);
-    f.cb.answer!(1, true);
-    await expect(p).resolves.toEqual({ button: 1, checked: true });
+    f.cb.answer!(1, true, null);
+    await expect(p).resolves.toEqual({ button: 1, checked: true, choice: null });
     expect(f.calls).toEqual(['show 180', 'close']);
   });
 
@@ -37,7 +37,7 @@ describe('the dialog window', () => {
     const p = runDialog(f.w, 5000, f.timer);
     f.cb.ready!(180);
     f.cb.closed!();
-    await expect(p).resolves.toEqual({ button: null, checked: false });
+    await expect(p).resolves.toEqual({ button: null, checked: false, choice: null });
   });
 
   it('fails when its page goes, its page does not load, or it is not drawn in time', async () => {
@@ -62,11 +62,11 @@ describe('the dialog window', () => {
 });
 
 describe('asking: the small window, else the message box', () => {
-  const answer: DialogAnswer = { button: 1, checked: false };
+  const answer: DialogAnswer = { button: 1, checked: false, choice: null };
 
   it('answers from the small window without the message box', async () => {
     const seen: string[] = [];
-    const a = await askDialog({ open: () => Promise.resolve(answer), fallback: () => (seen.push('box'), Promise.resolve({ button: 0, checked: false })), warn: (l) => seen.push(l) });
+    const a = await askDialog({ open: () => Promise.resolve(answer), fallback: () => (seen.push('box'), Promise.resolve({ button: 0, checked: false, choice: null })), warn: (l) => seen.push(l) });
     expect(a).toEqual(answer);
     expect(seen).toEqual([]);
   });
@@ -88,10 +88,10 @@ describe('界面出错', () => {
   it('has 重新加载 as the main button, last as in the page dialogs', () => {
     expect(spec.title).toBe('界面出错');
     expect(spec.buttons).toEqual([{ label: '退出 Spica' }, { label: '重新加载', primary: true }]);
-    expect(crashAnswer({ button: 1, checked: false })).toBe(true);
-    expect(crashAnswer({ button: 0, checked: false })).toBe(false);
+    expect(crashAnswer({ button: 1, checked: false, choice: null })).toBe(true);
+    expect(crashAnswer({ button: 0, checked: false, choice: null })).toBe(false);
     // Closed without a choice: 退出, as the message box's cancel was.
-    expect(crashAnswer({ button: null, checked: false })).toBe(false);
+    expect(crashAnswer({ button: null, checked: false, choice: null })).toBe(false);
   });
 
   it('as a message box: 重新加载 first and default, closing it is 退出', () => {
@@ -111,6 +111,17 @@ describe('the spec handed to the page', () => {
   it('reads back what main sent, with an optional checkbox', () => {
     const spec = { ...crashDialog('Spica', dialogLook(LIGHT_SKIN)), check: '记住我的选择' };
     expect(parseDialogSpec(JSON.stringify(spec))).toEqual(spec);
+  });
+
+  it('carries the radio choices, the ×, the checkbox beside the buttons and the width; a bad selection is the first', () => {
+    const spec = { ...crashDialog('Spica', dialogLook(DARK_SKIN)), choices: { options: ['a', 'b'], selected: 1 }, closeButton: true, check: 'x', checkInFoot: true, width: 360 };
+    expect(parseDialogSpec(JSON.stringify(spec))).toEqual(spec);
+    expect(parseDialogSpec(JSON.stringify({ ...spec, choices: { options: ['a', 'b'], selected: 5 } }))?.choices).toEqual({ options: ['a', 'b'], selected: 0 });
+  });
+
+  it('without them, 界面出错 has none of them', () => {
+    const spec = parseDialogSpec(JSON.stringify(crashDialog('Spica', dialogLook(DARK_SKIN))))!;
+    expect([spec.choices, spec.closeButton, spec.checkInFoot, spec.width]).toEqual([undefined, undefined, undefined, undefined]);
   });
 
   it('refuses anything without a title or buttons', () => {

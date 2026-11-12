@@ -74,8 +74,10 @@ export interface RuntimeOptions {
    * each call, so another model, a sub-agent on another model or a plugin borrowing one gets its own number.
    * agentMessages: how many messages one conversation may send to other agents (message_agent) since the user last
    * wrote in it; then message_agent refuses until the user writes again. 0 or absent = no limit. Read at each call.
+   * repeatRemind / repeatStop: the same call (tool, input, result) in a row: the n-th gets a note for the model, the
+   * n-th is not run and the run stops ('repeated'); 0 or absent = off (repeat-guard.ts). Read at each turn.
    */
-  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; outputByModel?: boolean; agentMessages?: number; system?: string; strongModel?: string; strongProviderId?: string };
+  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; outputByModel?: boolean; agentMessages?: number; repeatRemind?: number; repeatStop?: number; system?: string; strongModel?: string; strongProviderId?: string };
   store?: Store;
   /** Rate limits per provider id (deployment configuration). */
   limits?: Record<string, LimiterConfig>;
@@ -145,6 +147,8 @@ export interface RuntimeInternals {
   markNoImages(providerId: string, model: string): void;
   /** Turns a run of this session may take now; 0 = no limit (see SessionConfig.maxTurns). */
   turnLimit(config: SessionConfig): number;
+  /** The repeated-call note and stop (defaults.repeatRemind / repeatStop), read at each turn. */
+  repeatDefaults(): { repeatRemind?: number; repeatStop?: number };
   /** Most output tokens a call of this session to this model asks for (see RuntimeOptions.defaults.outputByModel). */
   outputLimit(config: SessionConfig, providerId: string, providerKind: string, model: string): number;
   readonly hooks: HookRegistry;
@@ -275,6 +279,11 @@ export class Runtime implements RuntimeInternals {
     if (config?.asked?.includes('maxTokens')) return config.maxTokens;
     const d = this.#opts.defaults;
     return (d.outputByModel ? this.ledger.maxOutput(providerId, providerKind, model) : null) ?? d.maxTokens;
+  }
+
+  repeatDefaults(): { repeatRemind?: number; repeatStop?: number } {
+    const d = this.#opts.defaults;
+    return { ...(d.repeatRemind !== undefined ? { repeatRemind: d.repeatRemind } : {}), ...(d.repeatStop !== undefined ? { repeatStop: d.repeatStop } : {}) };
   }
 
   turnLimit(config: SessionConfig): number {

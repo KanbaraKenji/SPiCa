@@ -24,6 +24,8 @@
 | **定** 回答里带扩展名的文件路径缩成能点的文件名；文件夹路径照原文写全。一个回答下 4 个以内的文件是卡片，再多改成列表 | `chat/**` | 对应测试 |
 | **定** 一页里上一层已经写了的名字，下一层不再重复一行（设置各页顶上不再写分区名） | `settings/**` | 人工 |
 | **定** 已发布的叫法不改：默认模型、强模型、上下文上限 | 设置 › 模型 | 人工 |
+| **定** 设置里让人填的那个名字叫「昵称」 | 设置 › 账号 | 人工 |
+| **定** 新对话空页的欢迎语只在原来那句前加问候，不另加别的行 | 新对话空页 | 该组件的测试 |
 
 ## 2. 颜色
 
@@ -37,6 +39,7 @@
 | **定** 能点的路径用链接色，悬停换底色 | `--spica-accent-text`、`--spica-accent-soft` | `settings/Group` 的测试 |
 | **定** 右侧的详情栏、预览栏和对话区同一个底色，之间只有一条竖线 | `shell/**` | `renderer-styles.test.ts`「a right panel has the conversation’s background…」 |
 | **定** 设置弹窗右边内容区比左边一列浅一级（深色皮肤下 `#1f1f1f` 对 `#191919`） | `.settings-nav`、`.settings-body` | 人工 |
+| **定** 设置弹窗的两块底色就是主窗口的那两个灰（侧栏的和对话区的），左边一列用深的那个，不另调一个颜色 | `shared/skin.ts` 的 `--spica-settings-nav`、`--spica-settings-pane` | `shared/skin` 的测试 |
 | **定** 分段选择里选中的那块是中性色，不用强调色（做的会话照参考图定的，交付时点明过原来是强调色，他看过通过） | `styles.css` | `renderer-styles.test.ts`「a segmented row…」 |
 | 例外：看大图底部的渐变两种皮肤都是近黑，颜色写死（浅色皮肤上白字要看得清） | `styles.css` | `renderer-styles.test.ts`「‹ N of M › sits on a fade…」 |
 
@@ -58,12 +61,13 @@
 
 | 规则 | 落在哪 | 谁在拦 |
 |---|---|---|
-| **定** 文字在它所在的框里上下居中；图标和旁边的字在同一条中线上 | 界面字体的度量：`shared/ui-font.ts`（`Spica UI`） | `renderer-styles.test.ts`「the interface font has its ascent and descent…」 |
+| **定** 界面字体：默认是英文和数字用 Segoe UI、中文用微软雅黑；外观 › 界面字体 可改成「跟随系统」（`system-ui`，简体中文 Windows 上是微软雅黑，英文也由它画）。管整个界面的字，包括小窗口和插件页；代码字体不跟着变 | `shared/ui-font.ts` 的 `uiFontFamily`；页面上是 `--font-ui`（`theme.ts` 的 `applyUiFont`），小窗口经 `dialogLook`，插件页经 `pluginThemeVars` | `shared/ui-font.test.ts`、`settings/Appearance.test.tsx`「界面字体…」 |
+| **定** 文字在它所在的框里上下居中；图标和旁边的字在同一条中线上 | 界面字体的度量：`shared/ui-font.ts`（默认的 `Spica UI` 修正过；跟随系统时中日韩的系统字体不修正，是 Segoe UI 时用同一套修正） | `renderer-styles.test.ts`「the interface font has its ascent and descent…」 |
 | **定** 不给文字或图标做手工的上下补偿（小幅 `translate`、`text-box` 裁边） | `styles.css` | 同文件「no small fixed nudges…」 |
-| **定** 对话内容那一列对准整个窗口的中线，放不下时才让开 | `shell/layout.ts` 的 `centreShift` | 同文件「the content column…」 |
+| **定** 对话内容那一列（最宽 760）平时放在侧栏右边到窗口右边这整块的中间，当右侧栏不存在；右侧栏没碰到它就不动，碰到了（留 24）就顶着它往左走，宽度不变；贴到对话区左边（留 24）后才变窄，到 440 之后由预览盖住 | `shell/layout.ts` 的 `centreShift`，结果是 `.main` 上的 `--centre-shift` | `layout.test.ts`「the content column…」、`renderer-styles.test.ts`「the content column…」 |
 | **定** 输入框下面那一行两端和输入框圆角结束的位置对齐（文件夹在左，上下文环在右） | `chat/Composer.tsx` 的样式 | 同文件「corners of 12px…」 |
 
-度量值是在 125% 缩放的屏幕上量着选的；200% 下有二十来处偏 0.5 到 0.75px，属于已知。本机找不到 Segoe UI（可变版和静态版都没有）时，退回不修正的样子。
+度量值是在 125% 缩放的屏幕上量着选的；200% 下有二十来处偏 0.5 到 0.75px，属于已知。本机找不到 Segoe UI（可变版和静态版都没有）时，退回不修正的样子。两种界面字体在 125% 下各量了同样 75 处：默认超过 ±0.5px 的 11 处，跟随系统（微软雅黑）8 处，多数正好差一个物理像素（`out/settings-modal/13-centre-audit.md`）。换别的界面字体要按同样的办法重量，入口只有 `shared/ui-font.ts`。
 
 ## 5. 控件的样子
 
@@ -78,12 +82,17 @@
 | **定** 账号菜单每一项前面有图标；别的菜单暂定照旧 | `shell/Sidebar.tsx` | 该组件的测试 |
 | **定** 设置行里的文件夹路径本身可以点开；右边的按钮只管修改 | `settings/Group.tsx` 的 `Row`（`path.open`） | 该组件的测试 |
 | **定** 浮在内容上的切换条不要卡片底、边框、阴影，用渐隐 | 看大图 | 见第 2 节例外 |
+| **定** 看大图时可以直接切上一张、下一张（‹ N of M ›，方向键也行），不用关掉再点 | 看大图 | 对应测试 |
+| **定** 弹窗右上角有 ×（设置弹窗、询问框） | `settings/**`、`ui/CloseDialog.tsx` | 人工 |
+| **定** 侧栏左下角设置的入口只有齿轮，旁边不写「设置」 | `shell/Sidebar.tsx` | 人工 |
 
 ## 6. 提示和状态
 
 | 规则 | 落在哪 | 谁在拦 |
 |---|---|---|
 | **定** 一次运行的提示（出错、花费上限、余额不足、回答没写完、已中断、重复）是输入框正上方的一条，和输入框同宽 | `chat/RunNotices.tsx` | `chat/RunLimits.test.tsx`、`renderer-styles.test.ts` |
+| **定** 这一条是中性底加描边，右端一个普通的小按钮；不做整条的色块，也不单为它画一种按钮 | `.run-notice` | `renderer-styles.test.ts` |
+| **定** 花费上限：每个服务商一个总数，空着就是不限（默认）；不按模型、不按单次运行分 | 设置 › 模型 › 服务商 | 对应测试 |
 | **定** 不闪、不跳：悬停、切换、刷新时不多出一行把别的东西挤走 | 各处 | `renderer-styles.test.ts`「更多 stands in the status place…」等 |
 | **定** 拖动时实时变成最终的样子，不等松手 | `shell/layout.ts` | `shell` 的测试 |
 | **定** 能先显示的先显示，新数据在后台补 | 各处 | 人工 |
@@ -95,8 +104,12 @@
 |---|---|---|
 | **定** 标题栏是一整条，横贯对话和右侧栏；各栏自己的标题在它下面第一行 | `App.tsx`、`shell/**` | `renderer-styles.test.ts`「one title bar across…」 |
 | **定** 从左到右：侧栏、对话、详情、预览。详情和预览各有一个标题栏按钮。空间不够时先挤对话，再让预览盖住，详情放不下直接收起 | `shell/layout.ts` | `shell` 的测试 |
+| **定** 对话有两个宽度：排版最窄 440，被预览盖住时至少露出 160。任何时候保不住，预览最先收起 | `shell/layout.ts` 的 `MAIN_ROOM_WIDTH`、`MAIN_SHOWN_MIN` | `shell` 的测试 |
+| **定** 详情栏放不下时直接不显示，不盖在别的上面、不浮出；它的按钮变灰，悬停说原因；有地方了自己回来 | `shell/layout.ts` | `shell` 的测试 |
+| **定** 插件的面板页是详情栏顶上的页签，宽度同详情栏，不能拖、不能最大化 | `shell/**` | 人工 |
+| **定** 启动时弹出窗口，停在新对话（开机自启那次也一样，不只待在托盘） | `main/` | 对应测试 |
 | **定** 设置是大弹窗，一组一个框，框里用细线分行；插件市场只在这个弹窗里 | `settings/**` | `renderer-styles.test.ts`「the rows in a box…」 |
-| **定** 对话再长，输入框也留在窗口里 | `.main-col`、`.main` 的 `min-height: 0` | 同文件的断言 |
+| **定** 对话再长，输入框也留在窗口里 | `.body`、`.main` 的 `min-height: 0` | 同文件的断言 |
 
 ## 8. 改界面时的做法
 
@@ -110,7 +123,7 @@
 
 ## 9. 另外两套样式：插件页和小窗口
 
-插件页是隔离的页面，用不了应用的组件。一致性靠宿主注入同一批变量：`shared/plugin-view.ts` 的 `pluginThemeVars`（颜色取自 `deriveTokens`，另有 `--spica-control-h` 和界面字体）。`main/plugin-views.test.ts` 锁住每个注入值等于应用自己的值。
+插件页是隔离的页面，用不了应用的组件。一致性靠宿主注入同一批变量：`shared/plugin-view.ts` 的 `pluginThemeVars`（颜色取自 `deriveTokens`，另有 `--spica-control-h` 和界面字体：跟外观 › 界面字体走）。`main/plugin-views.test.ts` 锁住每个注入值等于应用自己的值。
 
 页面坏了时弹的小窗口有自己的样式 `renderer/dialog/dialog.css`：按钮的高度和左右边距、界面字体那一段都是照 `styles.css` 抄的，`renderer-styles.test.ts` 核对字体那段三处逐字一致。
 
@@ -126,7 +139,7 @@
 - 点 × 的询问框：默认选中「最小化到托盘」，回车等于「确定」，右上角 × 等于不选。
 - 花费上限旁的「已花 US$x」和「清零」；以前按模型、全局填的值不迁移。
 - 等批准时被停掉的确认卡，重建后仍是卡片（右端红色「已中断」），不显示成 Failed；详情栏「工具调用」不列这一步。
-- 内容列对窗口中线：预览盖住对话时按对话区本身算。
+- 内容列被右侧栏顶着走时，预览盖住对话的那段按对话区本身（440 的排版）算，不按露出来的部分。
 - 账号菜单最上面一行是不可点的账号全名；点齿轮直接开设置，点账号才出菜单。
 - 示例设定页选过文件夹后有「恢复默认」；导出日志后的文件路径点了是在资源管理器里定位。
 - 回答下的文件 5 个以上改列表，超过 10 行先显示 8 行。
@@ -136,8 +149,7 @@
 ## 11. 还没做的
 
 - 多语言：简体中文、繁体中文、英语。现在界面文字是写死的中文。
-- 外观里的「界面字体」设置。
 - 菜单（`ui/ContextMenu.tsx`）还没有：上下方向键、放在文字前的图标参数（账号菜单现在是借 `after` 加一条样式排到前面）。
 - 「Esc 先收最上面一层」的共用处理；预览的快捷键等它做完一起加。
 - 菜单的组标题（`.context-group`）上 6 下 2 的内边距让那行字偏下约 2px，改菜单时一起看。
-- 以后加「界面字体」设置时，度量值要按所选字体重新量，入口是 `shared/ui-font.ts`。
+- 界面字体只有「默认」和「跟随系统」两项；日文、韩文系统的字体这台没装，跟随系统时那两种没修正、也没量过。

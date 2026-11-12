@@ -51,3 +51,53 @@ describe('messages to other agents past the limit', () => {
     expect(screen.getByText('（代理之间互发的消息已达上限，没有再发；你说一句话后重新计数）')).toBeTruthy();
   });
 });
+
+describe('a stop at a 花费上限, or the API out of money', () => {
+  it('one line and 模型设置, which opens 设置 › 模型 at the provider the stop named', () => {
+    const openModelSettings = vi.fn();
+    const actions = { openModelSettings } as unknown as ConversationActions;
+    render(<Conversation session={session} transcript={{ items: [{ kind: 'user', id: 'u', text: '整理', steer: false }, answer], error: '已达花费上限', errorAction: 'models', errorProvider: 'p-1' }} actions={actions} />);
+    expect(screen.getByText('已达花费上限')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '重置' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '模型设置' }));
+    expect(openModelSettings).toHaveBeenCalledWith('p-1');
+  });
+});
+
+describe('the same step repeated too often', () => {
+  it('asks whether to go on; 继续 is a message (which starts the count again)', () => {
+    const send = vi.fn();
+    render(<Conversation session={session} transcript={{ items: [{ kind: 'user', id: 'u', text: '整理', steer: false }, answer], stopped: 'repeated', repeatCount: 8 }} actions={{ send } as unknown as ConversationActions} />);
+    expect(screen.getByText('同一步重复了 8 次，要继续吗')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '继续' }));
+    expect(send).toHaveBeenCalledWith('继续');
+  });
+});
+
+describe('the notices sit just above the input box (RunNotices)', () => {
+  it('outside the scrolling conversation, stacked: interrupted, repeated, cut answer, then the error nearest the box', () => {
+    const { container } = render(
+      <Conversation
+        session={{ ...session, status: 'interrupted' }}
+        transcript={{ items: [{ kind: 'user', id: 'u', text: '整理', steer: false }, { ...answer, truncated: true }], stopped: 'repeated', repeatCount: 8, error: '已达花费上限', errorAction: 'models' }}
+        actions={{ openModelSettings: vi.fn() } as unknown as ConversationActions}
+      />,
+    );
+    const bar = container.querySelector('.run-notices')!;
+    expect(container.querySelector('.transcript')!.contains(bar)).toBe(false);
+    expect(bar.nextElementSibling?.className).toContain('composer-wrap');
+    expect([...bar.querySelectorAll('.run-notice-text')].map((n) => n.textContent)).toEqual(['上次运行已中断', '同一步重复了 8 次，要继续吗', '回答到达长度上限，没有写完', '已达花费上限']);
+    expect(bar.querySelector('.run-notice.is-error')?.getAttribute('role')).toBe('alert');
+  });
+
+  it('none while a run is going, except the error until the run clears it', () => {
+    const { container } = render(
+      <Conversation
+        session={{ ...session, status: 'interrupted' }}
+        transcript={{ items: [{ kind: 'user', id: 'u', text: '整理', steer: false }, { ...answer, truncated: true }], stopped: 'repeated', run: { startedAt: 0, status: 'thinking' } }}
+        actions={{} as ConversationActions}
+      />,
+    );
+    expect(container.querySelector('.run-notices')).toBeNull();
+  });
+});

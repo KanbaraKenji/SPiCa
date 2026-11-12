@@ -357,11 +357,7 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
         </Pane>
       ) : null}
       {result && 'file' in result ? (
-        <Row className="usage-result" title={result.records ? `已导出 ${result.records.toLocaleString('zh-CN')} 条记录` : '该时间段没有记录。'} hint={result.file} path={{ hint: result.file }}>
-          <button type="button" className="btn btn-square" onClick={() => showInFolder(result.file)} aria-label="在文件夹中显示" title="在文件夹中显示">
-            <Icon name="folder" size={16} />
-          </button>
-        </Row>
+        <Row className="usage-result" title={result.records ? `已导出 ${result.records.toLocaleString('zh-CN')} 条记录` : '该时间段没有记录。'} hint={result.file} path={{ hint: result.file, open: () => showInFolder(result.file), openLabel: '在文件夹中显示' }} />
       ) : null}
     </Group>
       {menu ? (
@@ -401,12 +397,9 @@ function Workflows({ settings, onChange, workflows, pickFolder, onBackendRestart
     <Group title="工作流">
       <Row
         title={state?.dir || '—'}
-        path={{ title: state?.dir ?? '' }}
+        path={{ title: state?.dir ?? '', open: () => void refresh('open') }}
         hint={state === null ? '' : state.names.length ? `已读取 ${state.names.length} 个：${state.names.join('、')}` : '文件夹中没有工作流文件（.json）。'}
       >
-          <button type="button" className="btn btn-square" onClick={() => void refresh('open')} aria-label="打开文件夹" title="打开文件夹">
-            <Icon name="folder" size={16} />
-          </button>
           <button type="button" className="btn btn-square" onClick={() => void choose()} aria-label="更改" title="更改">
             <Icon name="pencil" size={16} />
           </button>

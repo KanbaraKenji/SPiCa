@@ -145,6 +145,21 @@ describe('ProviderStore', () => {
     expect(again.find((m) => m.id === 'b')).not.toHaveProperty('maxOutput');
   });
 
+  it('a provider’s 花费上限 is kept to the cent (none when not an amount); 清零 keeps where 已花 starts, across a save and a reload', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
+    const store = new ProviderStore(dir, box);
+    const saved = store.save({ ...draft, spendLimitUsd: 2.005 });
+    expect(saved.spendLimitUsd).toBe(2.01);
+    expect(store.spendBase(saved.id)).toBe(0);
+    store.resetSpend(saved.id, 1.5);
+    store.save({ ...draft, id: saved.id, spendLimitUsd: null });
+    const again = new ProviderStore(dir, box);
+    expect(again.spendBase(saved.id)).toBe(1.5);
+    expect(again.list()[0]!.spendLimitUsd).toBeNull();
+    expect(again.list()[0]).not.toHaveProperty('spendBaseUsd');
+    expect(() => new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box).save({ ...draft, spendLimitUsd: Number.NaN })).toThrow(/须为大于 0/);
+  });
+
   it('an unchecked model stays in the list (no 上下文上限 needed), is not offered, and the pointers leave it', () => {
     const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
     const store = new ProviderStore(dir, box);

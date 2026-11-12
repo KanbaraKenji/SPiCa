@@ -143,7 +143,6 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
     ) : id === 'models' ? (
       <Models
         api={providers}
-        runLimit={{ value: settings.runLimitUsd, onChange: (runLimitUsd) => shell.update({ runLimitUsd }) }}
         agentMessages={{ value: settings.agentMessageLimit, onChange: (agentMessageLimit) => shell.update({ agentMessageLimit }) }}
       />
     ) : id === 'memory' && memory ? (

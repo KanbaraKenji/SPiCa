@@ -34,7 +34,7 @@ import type {
   SteerMode,
   ToolCategory,
 } from '@spica/protocol';
-import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS } from '@spica/protocol';
+import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import type { AgentBackend } from './types';
 import { buildSeed, fakeCard } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
@@ -199,8 +199,10 @@ export class FakeBackend implements AgentBackend {
   #globalCost = 0;
   /** Calls of a model without a price were made (in any conversation). */
   #globalUnpriced = false;
-  /** 设置 › 模型 › 单次运行花费上限 (null: none), as the core gets it. */
-  #runLimit: number | null = null;
+  /** 设置 › 模型 › a provider's 花费上限 (USD in all; null: none), as the core gets it; the demo has one provider. */
+  #spendLimit: { providerId: string; usd: number } | null = null;
+  /** What the demo's priced calls have cost in all. */
+  #spent = 0;
   /** 设置 › 模型 › 代理互发消息上限 (null: none), as the core gets it. */
   #agentMessages: number | null = 10;
   #projects = new Map<string, ProjectInfo>();
@@ -620,9 +622,14 @@ export class FakeBackend implements AgentBackend {
     this.#memory.enabled = on;
   }
 
-  /** 单次运行花费上限 changed in the settings (as the core's configure({ budget })). */
-  setRunLimit(usd: number | null): void {
-    this.#runLimit = usd;
+  /** A provider's 花费上限 changed in the settings (as the core's budget.perProvider[id].globalUsd). */
+  setSpendLimit(providerId: string | null, usd: number | null): void {
+    this.#spendLimit = providerId && usd !== null ? { providerId, usd } : null;
+  }
+
+  /** What the demo has cost in all (the core's providerSpend). */
+  spentUsd(): number {
+    return this.#spent;
   }
 
   /** 代理互发消息上限 changed in the settings (as the core's configure({ defaults: { agentMessages } })). */
@@ -882,14 +889,15 @@ export class FakeBackend implements AgentBackend {
   }
 
   /**
-   * As the core: the next call is not started when it could take the run past 单次运行花费上限 (a model without a
-   * price never stops). Returns true when the run was stopped.
+   * As the core: the next call is not started when it could take what the provider has cost in all past its 花费上限
+   * (a model without a price never stops). Returns true when the run was stopped.
    */
   #stopsAtLimit(sessionId: string, run: Run, nextUsd: number): boolean {
-    const limit = this.#runLimit;
-    if (limit === null || run.unpriced || run.spent + nextUsd <= limit) return false;
-    const message = `spending limit all:run reached (the next call was not started): spent $${run.spent.toFixed(4)} of $${limit.toFixed(2)}, the next call could cost up to $${nextUsd.toFixed(4)}`;
-    this.#emit(sessionId, { type: 'budget.stop', scope: 'all:run', spentUsd: run.spent, limitUsd: limit, nextUsd, message });
+    const limit = this.#spendLimit;
+    if (limit === null || run.unpriced || this.#spent + nextUsd <= limit.usd) return false;
+    const scope = `${limit.providerId}:global`;
+    const message = `spending limit ${scope} reached: spent $${this.#spent.toFixed(4)} of $${limit.usd.toFixed(2)}, the next call could cost up to $${nextUsd.toFixed(4)}`;
+    this.#emit(sessionId, { type: 'budget.stop', scope, spentUsd: this.#spent, limitUsd: limit.usd, nextUsd, message });
     this.#finish(sessionId, 'budget', message);
     return true;
   }
@@ -909,6 +917,7 @@ export class FakeBackend implements AgentBackend {
     }
     const costUsd = this.#callUsd(run, inputTokens, outputTokens);
     if (run) run.spent += costUsd;
+    this.#spent += costUsd;
     if (s) s.costUsd += costUsd;
     this.#globalCost += costUsd;
     this.#emit(sessionId, { type: 'usage', usage: { inputTokens, outputTokens }, costUsd, providerId: 'fake', model: 'deepseek-flash' });
@@ -1202,6 +1211,37 @@ export class FakeBackend implements AgentBackend {
         const reply = limit === null ? '已经让子Agent A 再核对了三遍报价。' : `已经给子Agent A 发了 ${limit} 条消息，到了上限，先停在这里，等你说下一句。`;
         await this.#stream(sessionId, 'text', reply, signal);
         blocks.push({ type: 'text', text: reply });
+      } else if (/重复/.test(text)) {
+        // The same call again and again, as the core counts it (repeat-guard.ts): the 3rd to 7th results carry a note
+        // for the model (not shown), the 8th is not run and the run stops ('repeated').
+        for (let i = 1; i <= 8; i++) {
+          const input = { path: '.' };
+          if (i === 8) {
+            blocks.push(...(await this.#tool(sessionId, run, 'list_dir', input, `${REPEAT_STOP_MARK} This would have been the 8th same list_dir call in a row with the same result, so it was not run and the run stopped. The user decides whether to go on.`, 50, true)));
+            break;
+          }
+          const got = await this.#tool(sessionId, run, 'list_dir', input, '需求说明.docx\n报价单.xlsx', 120);
+          const result = got[1];
+          if (i >= 3 && result?.type === 'tool_result') result.content += `\n\n${REPEAT_REMINDER_MARK} You have now made this same list_dir call ${i} times in a row and got the same result each time.`;
+          blocks.push(...got);
+        }
+        this.#commitAssistant(sessionId, blocks);
+        this.#emit(sessionId, { type: 'turn.end', turn });
+        this.#finish(sessionId, 'repeated', 'the same call came 8 times in a row with the same result; it was not run');
+        return;
+      } else if (/超时/.test(text)) {
+        // the model's interface did not answer in time: a plain error with nothing to set (模型接口超时)
+        throw new Error('request timed out after 120s');
+      } else if (/断电/.test(text)) {
+        // as if the app quit mid-run: the conversation is left interrupted (上次运行已中断, 继续 goes on)
+        this.#commitAssistant(sessionId, blocks);
+        this.#runs.delete(sessionId);
+        this.#setStatus(sessionId, 'interrupted');
+        this.#emit(sessionId, { type: 'run.end', reason: 'aborted', detail: 'the app closed while the run was going' });
+        return;
+      } else if (/欠费/.test(text)) {
+        // the provider's account is out of money, as an OpenAI-style API says it
+        throw new Error('HTTP 402 [insufficient_balance]: Insufficient Balance');
       } else if (/写长一点/.test(text)) {
         // An answer that stopped at the most the model may write at once (stopReason max_tokens, as the core stores it).
         const cut = '好的，写详细一点：\n\n1. **外壳尺寸** 定为 120×80×24 mm，比上一版薄 2 mm，主要是电池仓改了排布，' +
@@ -1263,11 +1303,11 @@ export class FakeBackend implements AgentBackend {
     this.#pending.set(sessionId, [...(this.#pending.get(sessionId) ?? []), item]);
   }
 
-  #finish(sessionId: string, reason: 'completed' | 'aborted' | 'error' | 'budget', detail?: string): void {
+  #finish(sessionId: string, reason: 'completed' | 'aborted' | 'error' | 'budget' | 'repeated', detail?: string): void {
     this.#runs.delete(sessionId);
     const s = this.#sessions.get(sessionId);
     const status: SessionStatus =
-      reason === 'completed' || reason === 'budget' ? (s?.role === 'worker' ? 'done' : 'idle') : reason === 'aborted' ? 'aborted' : 'error';
+      reason === 'completed' || reason === 'budget' || reason === 'repeated' ? (s?.role === 'worker' ? 'done' : 'idle') : reason === 'aborted' ? 'aborted' : 'error';
     this.#setStatus(sessionId, status);
     this.#emit(sessionId, detail ? { type: 'run.end', reason, detail } : { type: 'run.end', reason });
   }

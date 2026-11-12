@@ -251,6 +251,9 @@ describe('runtime settings', () => {
       await client.call('configure', { providers: [{ id: 'gw', kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1` }] });
       expect(s.info().contextWindow).toBeNull();
 
+      // what each provider has cost so far (none yet here; an unknown id is 0)
+      expect(await client.call('providerSpend', ['gw', 'nobody'])).toEqual({ gw: 0, nobody: 0 });
+
       // what the core knows, to pre-fill the form (also the same model behind another kind of endpoint)
       expect(await client.call('knownContextWindow', 'anthropic', 'claude-haiku-5-5')).toBe(1_000_000);
       expect(await client.call('knownContextWindow', 'wso2', 'claude-sonnet-5-5')).toBe(1_000_000);

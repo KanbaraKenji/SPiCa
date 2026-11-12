@@ -60,16 +60,9 @@ describe('代理互发消息上限', () => {
   });
 });
 
-describe('单次运行花费上限', () => {
-  it('no limit by default; a positive amount is kept to the cent; anything else is no limit', () => {
-    expect(DEFAULT_SETTINGS.runLimitUsd).toBeNull();
-    expect(sanitizeSettings({}).runLimitUsd).toBeNull();
-    expect(sanitizeSettings({ runLimitUsd: 1.5 }).runLimitUsd).toBe(1.5);
-    expect(sanitizeSettings({ runLimitUsd: 0.123 }).runLimitUsd).toBe(0.12);
-    expect(sanitizeSettings({ runLimitUsd: 0.001 }).runLimitUsd).toBe(0.01);
-    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, '2', null, 10_001]) expect(sanitizeSettings({ runLimitUsd: bad }).runLimitUsd).toBeNull();
-    expect(applyPatch(DEFAULT_SETTINGS, { runLimitUsd: 3 }).runLimitUsd).toBe(3);
-    expect(applyPatch({ ...DEFAULT_SETTINGS, runLimitUsd: 3 }, { runLimitUsd: null }).runLimitUsd).toBeNull();
+describe('the old 单次运行花费上限 (one value for every run)', () => {
+  it('is gone: a value saved by an older version is dropped (the limit is on each provider now)', () => {
+    expect(sanitizeSettings({ runLimitUsd: 3 })).not.toHaveProperty('runLimitUsd');
   });
 });
 

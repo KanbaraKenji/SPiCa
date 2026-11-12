@@ -2,8 +2,8 @@
 // stream into what the conversation view draws. Pure functions, no React.
 import { relocate, shownPath } from './relocate';
 import type { CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
-import { humanError } from '../../../shared/errors';
-import { AGENT_MESSAGES_LIMIT_MARK } from '@spica/protocol';
+import { BALANCE_WORDS, humanError } from '../../../shared/errors';
+import { AGENT_MESSAGES_LIMIT_MARK, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
 
 export { humanError } from '../../../shared/errors';
@@ -16,8 +16,9 @@ export interface SuggestAction {
 /**
  * unavailable: the tool was turned off (its plugin stopped); the core ran nothing.
  * timeout: waiting for sub-tasks gave up while they keep working (not a failure).
+ * repeated: the same call came too many times in a row; the core did not run it (REPEAT_STOP_MARK).
  */
-export type ToolState = 'pending' | 'running' | 'done' | 'error' | 'unavailable' | 'timeout';
+export type ToolState = 'pending' | 'running' | 'done' | 'error' | 'unavailable' | 'timeout' | 'repeated';
 
 /** The core's answer to a call of a tool that was turned off (nothing was run). */
 const UNAVAILABLE = /Tool "[^"]+" is no longer available/;
@@ -25,6 +26,7 @@ const UNAVAILABLE = /Tool "[^"]+" is no longer available/;
 const WAIT_TIMEOUT = /Stopped waiting \(timeout\)/;
 function failedState(text: string | undefined): ToolState {
   if (text && UNAVAILABLE.test(text)) return 'unavailable';
+  if (text?.includes(REPEAT_STOP_MARK)) return 'repeated';
   if (text && WAIT_TIMEOUT.test(text)) return 'timeout';
   return 'error';
 }
@@ -213,13 +215,20 @@ export interface Transcript {
   run?: RunState;
   lastRun?: FinishedRun;
   error?: string;
-  /** Where the error is put right: 'models' = 设置 › 模型 (a spending limit stopped the run); a button beside it opens it. */
+  /**
+   * Where the error is put right: 'models' = 设置 › 模型 (a provider's 花费上限 was reached, or its account is out of
+   * money); a button beside it opens it, at `errorProvider` when the stop said which.
+   */
   errorAction?: 'models';
+  /** The provider whose 花费上限 stopped the run (from the budget.stop scope). */
+  errorProvider?: string;
   /**
    * The last run stopped at a limit with the work not done (not an error): 'max_turns' (the turn limit; the desktop
    * app sets none since 2026-11-12, a script through the MCP service may). Shown as a note after the answer.
    */
-  stopped?: 'max_turns';
+  stopped?: 'max_turns' | 'repeated';
+  /** stopped 'repeated': how many times in a row the same call came (the 8th was not run). */
+  repeatCount?: number;
   /**
    * message_agent was refused since the user last wrote: this conversation reached its limit of messages to other
    * agents (设置 › 模型 › 代理互发消息上限). A note says so until the user writes again (the count starts over).
@@ -350,8 +359,11 @@ function asAsk(callId: string, input: unknown): Block {
 
 /** Strips the fetch-time first line the core puts on every tool result. */
 export function resultBody(raw: string): string {
+  // The note the core adds for the model after a repeated call's result is not for the window.
+  const note = raw.indexOf(REPEAT_REMINDER_MARK);
+  const own = note >= 0 ? raw.slice(0, note).trimEnd() : raw;
   // Outside content arrives fenced for the model (<untrusted_data …> … </untrusted_data>): shown without the fence.
-  const content = raw.replace(/^<untrusted_data\b[^>]*>\n?/, '').replace(/\n?<\/untrusted_data>\s*$/, '');
+  const content = own.replace(/^<untrusted_data\b[^>]*>\n?/, '').replace(/\n?<\/untrusted_data>\s*$/, '');
   const nl = content.indexOf('\n');
   const first = nl < 0 ? content : content.slice(0, nl);
   // The core writes "[fetched at <ISO>]"; older/fake results use a bare ISO line.
@@ -399,9 +411,24 @@ function settleCard(items: Item[], callId: string, content: string, isError: boo
     } else ask.answer = askAnswer(content);
   }
   const confirm = findBlock(items, 'confirm', callId);
-  if (confirm && confirm.approved === undefined && isError && /^Cancelled\b/.test(resultBody(content))) {
+  if (confirm && confirm.approved === undefined && isError && STOPPED_WAITING.test(resultBody(content))) {
     confirm.cancelled = true;
     markInterrupted(items, callId);
+  }
+}
+
+/** What the core writes as the result of a question or confirmation dropped because the run was stopped. */
+const STOPPED_WAITING = /^Cancelled\b/;
+
+/** `old` swapped for `next` where it stands. Mutates `items`. */
+function replaceBlock(items: Item[], old: Block, next: Block): void {
+  for (const it of items) {
+    if (it.kind !== 'response') continue;
+    const at = it.blocks.indexOf(old);
+    if (at >= 0) {
+      it.blocks[at] = next;
+      return;
+    }
   }
 }
 
@@ -502,6 +529,14 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
       for (const b of m.content) {
         if (b.type !== 'tool_result') continue;
         const tool = findBlock(items, 'tool', b.toolUseId);
+        if (tool && b.isError && STOPPED_WAITING.test(resultBody(b.content))) {
+          // A call that waited for 允许 when the run was stopped (the core writes "Cancelled: …" for nothing else):
+          // it never ran. Back as the confirmation it was, 已中断, not a failed step. The model's own wording of
+          // the step is not in the history: the title is the app's reading of the call.
+          replaceBlock(items, tool, { type: 'confirm', callId: tool.callId, name: tool.name, input: tool.input, reason: '', cancelled: true });
+          markInterrupted(items, b.toolUseId);
+          continue;
+        }
         if (tool) {
           const about = info?.[b.toolUseId];
           if (about?.category) tool.category = about.category;
@@ -571,11 +606,32 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
     seqs,
   };
   if (refusedSinceUserWrote(messages)) t.agentLimit = true;
+  const repeated = repeatStopSinceUserWrote(messages);
+  if (repeated !== undefined) {
+    t.stopped = 'repeated';
+    t.repeatCount = repeated;
+  }
   for (const p of pending) applyPending(t, p);
   // A question or confirmation with no result that the core no longer waits on was dropped (stopped before the
   // core wrote its result): nothing to answer.
   cancelOpenCards(t.items, new Set(pending.map((p) => p.callId)));
   return t;
+}
+
+/** How many times in a row, from the core's words (「came 8 times」, 「the 8th same」); 8 when they say none. */
+function repeatCountIn(words: string): number {
+  const m = /came (\d+) times|the (\d+)(?:st|nd|rd|th) same/.exec(words);
+  return m ? Number(m[1] ?? m[2]) : 8;
+}
+
+/** A call not run for being the same call too often, after the last message the user typed: how many in a row. */
+function repeatStopSinceUserWrote(messages: readonly Message[]): number | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!;
+    if (m.role === 'user' && (m.kind === 'user' || m.kind === 'steer') && (m.meta?.author ?? 'user') === 'user') return undefined;
+    for (const b of m.content) if (b.type === 'tool_result' && b.isError === true && b.content.includes(REPEAT_STOP_MARK)) return repeatCountIn(b.content);
+  }
+  return undefined;
 }
 
 /** A message_agent refused for the limit after the last message the user typed (AGENT_MESSAGES_LIMIT_MARK). */
@@ -764,6 +820,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         t.run = { startedAt, status: e.status, ...(e.detail ? { detail: e.detail } : {}) };
         delete t.error;
         delete t.errorAction;
+        delete t.errorProvider;
         delete t.stopped;
         delete t.lastFailure;
       } else if (t.run) {
@@ -797,21 +854,28 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       // the core's retries and its final error both carry it. Such an error is shown when the run ends
       // in an error (run.end); a retry that then succeeds leaves nothing behind.
       if (e.retryable) t.lastFailure = words;
-      else t.error = words;
+      else showError(t, words);
       return t;
     }
     case 'run.end': {
       if (e.reason === 'error' && !t.error) {
         const words = t.lastFailure ?? (e.detail ? humanError(e.detail) : undefined);
-        if (words) t.error = words;
+        if (words) showError(t, words);
       }
       delete t.lastFailure;
       if (e.reason === 'max_turns') t.stopped = 'max_turns';
+      if (e.reason === 'repeated') {
+        t.stopped = 'repeated';
+        t.repeatCount = repeatCountIn(e.detail ?? '');
+      }
       return t;
     }
     case 'budget.stop': {
-      t.error = budgetStopWords(e);
+      t.error = budgetStopWords();
       t.errorAction = 'models';
+      // 「<providerId>:global」: that provider's 花费上限 (other scopes come from scripts' limits)
+      const provider = e.scope.slice(0, e.scope.lastIndexOf(':'));
+      if (provider && provider !== 'all') t.errorProvider = provider;
       return t;
     }
     default:
@@ -819,20 +883,15 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
   }
 }
 
-/**
- * A spending limit stopped the run. The limit is checked before each call against its worst case, so the run can
- * stop with less spent than the limit: say that the next step was not started because it could have gone past it.
- */
-export function budgetStopWords(e: { scope: string; spentUsd: number; limitUsd: number; nextUsd?: number }): string {
-  const run = e.scope.endsWith(':run');
-  const name = run ? '单次运行花费上限' : '花费上限';
-  const why = e.nextUsd !== undefined ? `下一步最多可能花 ${formatMoney(e.nextUsd)}，会超出上限，所以没有开始` : '下一步可能超出上限，所以没有开始';
-  const after = run ? '可在 设置 › 模型 修改上限，或再发一条消息重新开始一次运行。' : '可在 设置 › 模型 修改上限。';
-  return `已达${name}，已停止（已花费 ${formatMoney(e.spentUsd)}，上限 ${formatMoney(e.limitUsd)}）：${why}。${after}`;
+/** A spending limit stopped the run: one short line (the amounts are in 设置 › 模型), a button opens it. */
+export function budgetStopWords(): string {
+  return '已达花费上限';
 }
 
-function formatMoney(usd: number): string {
-  return 'US$' + usd.toFixed(2);
+/** An error as the conversation shows it; the provider's account out of money also gets the button to 设置 › 模型. */
+function showError(t: Transcript, words: string): void {
+  t.error = words;
+  if (words === BALANCE_WORDS) t.errorAction = 'models';
 }
 
 export interface FileRef {

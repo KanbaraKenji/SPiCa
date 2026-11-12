@@ -20,16 +20,16 @@ describe('conversation names', () => {
 });
 
 describe('AgentStore', () => {
-  it('a spending limit stop keeps its words and its 修改上限 action after the conversation is read again; 未计价 reaches the list', async () => {
+  it('a stop at a provider’s 花费上限 keeps its words, its 模型设置 button and the provider after the conversation is read again; 未计价 reaches the list', async () => {
     const backend = new FakeBackend({ speed: 0, seed: false });
     const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
     await store.init();
-    backend.setRunLimit(1);
+    backend.setSpendLimit('p-1', 1);
     await store.send(null, '花费上限 整理需求');
     const id = store.state.get().activeId!;
     await vi.waitFor(() => expect(store.state.get().transcripts[id]?.errorAction).toBe('models'));
     await new Promise((r) => setTimeout(r, 50)); // the reload after the run ended
-    expect(store.state.get().transcripts[id]).toMatchObject({ errorAction: 'models', error: expect.stringMatching(/^已达单次运行花费上限/) });
+    expect(store.state.get().transcripts[id]).toMatchObject({ errorAction: 'models', errorProvider: 'p-1', error: '已达花费上限' });
     await store.send(null, '未计价 公司网关');
     const gw = store.state.get().activeId!;
     await vi.waitFor(() => expect(store.state.get().sessions.find((s) => s.id === gw)?.unpriced).toBe(true));
@@ -196,5 +196,16 @@ describe('deleting a conversation and choosing its working folder', () => {
     expect(r('cwd.bad_folder')).toBe('无法使用该文件夹，请选择其他文件夹。');
     expect(r('cwd.move_failed', { file: 'C:/data/ses_1/报价.xlsx' })).toBe('移动「报价.xlsx」失败，已放回原处，工作文件夹未更改。');
     expect(r('cwd.move_failed', { file: 'C:\\data\\a.txt', notRestored: ['C:\\data\\b.txt'] })).toBe('移动「a.txt」失败，已放回原处，工作文件夹未更改；1 个文件未能放回：b.txt。');
+  });
+});
+
+describe('starting with no model set up', () => {
+  it('does not ask the core for its top conversation (it could not make one and would log an error); with a model it does', async () => {
+    const backend = new FakeBackend({ speed: 0, seed: false });
+    const getTopSession = vi.spyOn(backend, 'getTopSession');
+    await new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) }).init(undefined, { hasModel: false });
+    expect(getTopSession).not.toHaveBeenCalled();
+    await new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) }).init();
+    expect(getTopSession).toHaveBeenCalledTimes(1);
   });
 });

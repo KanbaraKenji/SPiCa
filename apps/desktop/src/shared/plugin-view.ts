@@ -1,6 +1,8 @@
 // Plugin pages (views/<id>.json) as the shell sees them, and the theme
 // variables a page gets (names fixed with the plugin system).
 
+import { UI_FONT_FAMILY } from './ui-font';
+
 /** One page of an enabled plugin (pluginViews()). */
 export interface PluginView {
   plugin: string;
@@ -56,7 +58,8 @@ export interface PluginViewResult {
   isError: boolean;
 }
 
-export const FONT_UI = "'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif";
+/** The interface font (shared/ui-font.ts): a page's --spica-font, its faces injected with the theme (main/plugin-views.ts). */
+export const FONT_UI = UI_FONT_FAMILY;
 
 /** The variables a plugin page can use (fixed with the plugin system). */
 export function pluginThemeVars(tokens: Record<string, string>, fontUi: string): Record<string, string> {
@@ -71,6 +74,19 @@ export function pluginThemeVars(tokens: Record<string, string>, fontUi: string):
     '--spica-danger': t('--spica-danger', '#dc2626'),
     '--spica-font': fontUi,
     '--spica-radius': '8px',
+    // The controls as Spica's own (.btn, .input in styles.css), so a page's buttons and fields match the
+    // window's: a button's fill and its hover, a field's fill, their edge, a field's grey hint, the text on a
+    // main (accent) button, and how tall they are.
+    '--spica-control': t('--spica-control', '#f2f2f2'),
+    '--spica-control-hover': t('--spica-control-hover', '#e5e5e5'),
+    '--spica-input': t('--spica-input', '#ffffff'),
+    '--spica-border-strong': t('--spica-border-strong', '#cecece'),
+    '--spica-placeholder': t('--spica-placeholder', '#878787'),
+    '--spica-on-accent': t('--spica-on-accent', '#ffffff'),
+    '--spica-control-h': '28px',
+    // A link (a path the page can open) as in Spica's answers, and the soft block under it on hover.
+    '--spica-accent-text': t('--spica-accent-text', '#2f7de1'),
+    '--spica-accent-soft': t('--spica-accent-soft', '#e6effb'),
   };
 }
 

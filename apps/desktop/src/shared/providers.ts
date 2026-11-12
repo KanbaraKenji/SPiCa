@@ -1,6 +1,7 @@
 // Model provider settings as the settings page sees them. Secrets (API key,
 // client secret) only travel renderer -> main when the user types a new one;
 // main never sends them back, only `hasSecret`.
+import { RUN_LIMIT_MAX_USD } from './settings';
 
 export type ProviderKind = 'openai' | 'anthropic' | 'wso2';
 
@@ -47,6 +48,11 @@ export interface ProviderFields {
   contextWindow: number | null;
   /** The catalog provider or company preset it was set up from (null: 中转站 / 公司网关, or older files). */
   catalogId: string | null;
+  /**
+   * 花费上限 (USD): what this provider may cost in all (every conversation, kept across restarts, since its 已花 was
+   * last set to 0); a call that could pass it is not made. null: no limit. Absent in older files (no limit).
+   */
+  spendLimitUsd?: number | null;
 }
 
 /** Where a model's context window came from. */
@@ -164,6 +170,7 @@ export function emptyDraft(kind: ProviderKind = 'openai'): ProviderDraft {
     requestsPerMinute: null,
     contextWindow: null,
     catalogId: null,
+    spendLimitUsd: null,
   };
 }
 
@@ -229,6 +236,8 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: {
     if (d.contextWindow === null) e.contextWindow = '请填写上下文上限';
     else if (!Number.isInteger(d.contextWindow) || d.contextWindow < 1) e.contextWindow = '上下文上限须为正整数';
   }
+  const limit = d.spendLimitUsd;
+  if (limit !== null && limit !== undefined && !(Number.isFinite(limit) && limit > 0 && limit <= RUN_LIMIT_MAX_USD)) e.spendLimitUsd = `须为大于 0、不高于 US$${RUN_LIMIT_MAX_USD.toLocaleString('en-US')} 的金额，或留空`;
   for (const k of ['maxConcurrent', 'requestsPerMinute'] as const) {
     const v = d[k];
     if (v !== null && (!Number.isInteger(v) || v < 1)) e[k] = '须为正整数或留空';

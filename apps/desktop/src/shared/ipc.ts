@@ -50,6 +50,10 @@ export const DesktopChannel = {
   ModelCatalog: 'spica:providers:catalog',
   ListProviderModels: 'spica:providers:list-models',
   MatchContextWindow: 'spica:providers:match-window',
+  /** invoke -> Record<connection id, USD>: 已花 since the last 清零 */
+  ProviderSpend: 'spica:providers:spend',
+  /** invoke(id): 清零 */
+  ResetProviderSpend: 'spica:providers:reset-spend',
   Images: 'spica:images',
   ProjectRead: 'spica:projects:read',
   ContextBreakdown: 'spica:context:breakdown',

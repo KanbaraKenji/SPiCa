@@ -38,6 +38,7 @@ import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.
 import { samePath } from './move-folder.ts';
 import { netHint } from './net.ts';
 import { REGENERATE_HINTS } from '@spica/protocol';
+import { comparableResult, repeatLimits, repeatReminder, repeatsBefore, repeatStopResult } from './repeat-guard.ts';
 
 export interface RunResult {
   reason: RunEndReason;
@@ -76,6 +77,8 @@ export class Session {
   #regenerateKey = '';
   /** The run is ending (its last status is being set): it no longer counts as running for regenerate. */
   #ending = false;
+  /** A call of this turn was not run for being the same call too many times in a row (how many): the run stops. */
+  #repeatStopped: number | undefined;
   #run: Promise<RunResult> | undefined;
   #runAbort: AbortController | undefined;
   #turnAbort: AbortController | undefined;
@@ -667,7 +670,7 @@ export class Session {
           ? 'done'
           : reason === 'completed' || reason === 'max_turns'
           ? 'idle'
-          : reason === 'budget'
+          : reason === 'budget' || reason === 'repeated'
             ? 'idle'
             : reason === 'aborted'
               ? this.#shutdown
@@ -982,8 +985,15 @@ export class Session {
       const paused = await this.#runTools(assistant, calls, signal, hctx);
       this.#emit({ type: 'turn.end', turn });
       if (paused) {
+        this.#repeatStopped = undefined;
         const kinds = this.#rt.store.listPending(this.id).map((p) => p.item.kind);
         return end(kinds.includes('confirm') ? 'awaiting_confirm' : 'awaiting_answer');
+      }
+      if (this.#repeatStopped !== undefined) {
+        // the same call too many times in a row (repeat-guard.ts): the user decides whether to go on
+        const n = this.#repeatStopped;
+        this.#repeatStopped = undefined;
+        return end('repeated', `the same call came ${n} times in a row with the same result; it was not run`);
       }
       if (runAbort.signal.aborted) return end('aborted', String(runAbort.signal.reason?.message ?? 'aborted'));
     }
@@ -1002,6 +1012,9 @@ export class Session {
     const visible = new Set(this.#rt.tools.list(env, cfg.tools).map((t) => t.spec.name));
     const guard = this.#guardState();
     const pending: PendingRecord[] = [];
+    // the same call again and again (repeat-guard.ts): counted from this conversation's messages
+    const limits = repeatLimits(this.#rt.repeatDefaults());
+    const history = limits.remind || limits.stop ? this.messages() : [];
 
     const work = calls.map((call) => async () => {
       const tool = visible.has(call.name) ? this.#rt.tools.get(call.name) : undefined;
@@ -1031,6 +1044,12 @@ export class Session {
       const invalid = validateInput(tool.spec.inputSchema, call.input);
       if (invalid) {
         finish(`Invalid input for ${call.name}: ${invalid}.`, true, 'error');
+        return;
+      }
+      const repeats = limits.remind || limits.stop ? repeatsBefore(history, assistant.id, call.name, call.input) : { count: 0 };
+      if (limits.stop && repeats.count + 1 >= limits.stop) {
+        finish(repeatStopResult(call.name, repeats.count + 1), true, 'denied');
+        this.#repeatStopped = repeats.count + 1;
         return;
       }
       const draft: ToolCallDraft = { callId: call.id, name: call.name, input: call.input, irreversible: !!tool.irreversible };
@@ -1074,7 +1093,12 @@ export class Session {
       this.#rt.store.upsertToolCall({ ...rec, input });
       if (autoApproved) this.#emit({ type: 'confirm.auto', callId: call.id, name: call.name, input });
       const res = await this.#execute(tool, { ...draft, input }, signal, hctx);
-      finish(res.content, res.isError, res.isError ? 'error' : 'ok', autoApproved ? { ...res.cards, autoApproved: true } : res.cards);
+      // the same call with the same result again: a note for the model after the result (not shown in the window)
+      const again = limits.remind > 0 && repeats.count + 1 >= limits.remind && comparableResult(res.content) === repeats.result;
+      const content = again ? `${res.content}
+
+${repeatReminder(call.name, repeats.count + 1)}` : res.content;
+      finish(content, res.isError, res.isError ? 'error' : 'ok', autoApproved ? { ...res.cards, autoApproved: true } : res.cards);
     });
     await runLimited(work, MAX_PARALLEL_TOOLS);
 

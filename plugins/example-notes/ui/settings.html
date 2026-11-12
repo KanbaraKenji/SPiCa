@@ -8,21 +8,20 @@
 </head>
 <body class="settings">
   <form id="form" class="fields">
-    <label class="field" for="folder">笔记文件夹</label>
-    <div class="field-row">
-      <input id="folder" type="text" spellcheck="false" autocomplete="off">
-      <!-- Icon buttons as in Spica's own 设置 › 常规 › 工作流: folder = open it, pencil = change it. -->
-      <button type="button" class="icon" id="open" aria-label="打开文件夹" title="打开文件夹" disabled>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h4l1.2 1.5h5.8v6.5h-11z"/></svg>
-      </button>
+    <span class="field" id="folder-name">笔记文件夹</span>
+    <div class="field-row path-row" role="group" aria-labelledby="folder-name">
+      <!-- The folder's path is the way to it (opens in Explorer); the pencil chooses another, as in Spica's own
+           设置 › 常规 › 工作流; 恢复默认 only while one was chosen. -->
+      <button type="button" class="path-link" id="open" disabled>—</button>
       <button type="button" class="icon" id="pick" aria-label="选择文件夹" title="选择文件夹">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.2 2.6l2.2 2.2-7.6 7.6-2.9.7.7-2.9z"/></svg>
       </button>
+      <button type="button" id="reset" hidden>恢复默认</button>
     </div>
     <label class="field" for="catalog">目录服务地址</label>
     <input id="catalog" type="text" spellcheck="false" autocomplete="off" placeholder="https://catalog.example.test/search">
     <div class="actions">
-      <button type="submit" class="primary" id="save" disabled>保存</button>
+      <button type="submit" id="save" disabled>保存</button>
       <span id="status" class="muted" role="status"></span>
     </div>
   </form>

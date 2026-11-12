@@ -99,6 +99,18 @@ describe('limits in the runtime', () => {
     expect(s.status).toBe('idle');
   });
 
+  it('a total limit for one provider: counted over runs and conversations, the call that could pass it is not made', async () => {
+    gw.onRequest(() => ({ text: 'ok', usage: { input: 100_000, output: 1_000 } }));
+    const rt = makeRuntime(gw, { budget: { perProvider: { 'fake-openai': { globalUsd: 1 } } } });
+    const events = captureEvents(rt);
+    // each call costs 0.52 USD at the fallback price: after two (1.04, past the limit) the third is not made
+    expect((await rt.createSession({ maxTokens: 1000 }).send('a').done).reason).not.toBe('budget');
+    expect((await rt.createSession({ maxTokens: 1000 }).send('b').done).reason).not.toBe('budget');
+    expect((await rt.createSession({ maxTokens: 1000 }).send('c').done).reason).toBe('budget');
+    expect(events.find((e) => e.type === 'budget.stop')).toMatchObject({ scope: 'fake-openai:global', limitUsd: 1 });
+    expect(rt.ledger.providerUsd('fake-openai')).toBeCloseTo(1.04);
+  });
+
   it('refuses a single call whose worst case exceeds the per-call limit of its provider', async () => {
     const rt = makeRuntime(gw, { budget: { perProvider: { 'fake-openai': { perCallUsd: 0.01 } } } });
     const s = rt.createSession({ maxTokens: 100_000 }); // up to $2 of output

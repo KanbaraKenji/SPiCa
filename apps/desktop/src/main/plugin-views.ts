@@ -5,15 +5,17 @@
 // (so which plugin) every call comes from. Pure parts here, glue in index.ts.
 
 import { localDrivePath, type PluginPickRequest } from '../shared/plugin-view';
+import { UI_FONT_FACES } from '../shared/ui-font';
 
 export const PLUGIN_SCHEME = 'spica-plugin';
 export { pluginThemeVars } from '../shared/plugin-view';
 
+/** The page's theme: the interface font's faces (so --spica-font sits on the middle line as in the window, shared/ui-font.ts), then the variables. */
 export function themeCss(vars: Record<string, string>, mode: 'light' | 'dark'): string {
   const body = Object.entries(vars)
     .map(([k, v]) => `  ${k}: ${v};`)
     .join('\n');
-  return `:root {\n${body}\n  color-scheme: ${mode};\n}\nhtml, body { background: var(--spica-bg); color: var(--spica-fg); font-family: var(--spica-font); }\n`;
+  return `${UI_FONT_FACES}\n:root {\n${body}\n  color-scheme: ${mode};\n}\nhtml, body { background: var(--spica-bg); color: var(--spica-fg); font-family: var(--spica-font); }\n`;
 }
 
 /** A page may load only its own plugin's files; no network, no other plugins. */

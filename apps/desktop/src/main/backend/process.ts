@@ -188,13 +188,18 @@ export class ProcessBackend implements AgentBackend {
   /** The settings page changed models: send the whole current list and the default (from config()). */
   configure(): { id: string; reason: string }[] {
     const cfg = this.#o.config();
-    void this.apply({ providers: cfg.core.providers, defaults: cfg.core.defaults }).catch(() => undefined);
+    void this.apply({ providers: cfg.core.providers, defaults: cfg.core.defaults, budget: cfg.core.budget ?? {} }).catch(() => undefined);
     return [];
   }
 
   /** Changes settings in the running core (its configure: models, mail, workflow folder...). */
   apply(patch: SettingsPatch): Promise<{ changed: string[]; warnings: string[] }> {
     return this.call('configure', patch);
+  }
+
+  /** What each provider has cost in all (USD, from the core's records). */
+  async providerSpend(ids: string[]): Promise<Record<string, number>> {
+    return (await this.call<Record<string, number> | undefined>('providerSpend', ids)) ?? {};
   }
 
   probe(config: ProviderConfig, model: string): Promise<ProbeResult> {

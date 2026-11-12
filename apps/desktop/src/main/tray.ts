@@ -5,13 +5,13 @@
 //   (main/quit.ts), the same as any other quit.
 // - Hovering shows the app's name.
 // - The window's ×, by 设置 › 常规 › 关闭窗口时: 每次询问 (default) asks 最小化到托盘 / 退出 in the page's own
-//   dialog with 「记住我的选择」 (unticked; ticked, the choice becomes the setting); closing the dialog is no choice; 最小化到托盘 hides the window, the core,
+//   dialog with 「不再提醒」 (unticked; ticked, the choice becomes the setting); closing the dialog is no choice; 最小化到托盘 hides the window, the core,
 //   the plugins and running conversations go on, and the first time a notification says where Spica went;
 //   退出 quits. A real quit (退出 Spica, an update, Windows signing out or shutting down, the app's own quit) is
 //   never held or asked about.
 // Pure logic with the Electron parts passed in; the glue is in main/index.ts.
 import type { CloseWindow } from '../shared/settings';
-import { CLOSE_RUNNING } from '../shared/close-words';
+import { CLOSE_QUESTION, CLOSE_REMEMBER, CLOSE_RUNNING } from '../shared/close-words';
 import type { DialogAnswer, DialogSpec } from '../shared/app-dialog';
 
 export type TrayAction = 'open' | 'quit';
@@ -84,8 +84,8 @@ export function closeAction(s: CloseState): 'close' | 'hide' | 'ask' {
   return s.closeWindow === 'quit' ? 'close' : 'ask';
 }
 
-/** The question on ×, as the page's dialog and the fallback message box both put it. */
-export const CLOSE_QUESTION = '关闭窗口时要怎么做？';
+/** The question on ×, as the page's dialog and the fallback message box both put it (shared/close-words.ts). */
+export { CLOSE_QUESTION };
 
 
 /** Session states in which a run is going (as the page counts them, store/transcript.ts isRunning). */
@@ -115,7 +115,7 @@ export function closePrompt(appName: string, running = false): { message: string
     buttons: ['最小化到托盘', `退出 ${appName}`, '取消'],
     defaultId: 0,
     cancelId: 2,
-    checkboxLabel: '记住我的选择',
+    checkboxLabel: CLOSE_REMEMBER,
   };
 }
 
@@ -123,28 +123,33 @@ export type CloseAnswer = { choice: 'tray' | 'quit' | null; remember: boolean };
 
 /**
  * The question in the small dialog window (main/app-dialog-window.ts), when the page cannot show its own: the same
- * as the page's (ui/CloseDialog.tsx): the title, the line only while a task runs, 记住我的选择, then
- * [退出] [最小化到托盘] (the main one). Its answer: closeFromDialog.
+ * as the page's (ui/CloseDialog.tsx): the title, the line only while a task runs, the two choices as radio buttons
+ * (最小化到托盘 selected at first), 不再提醒 at the left and 确定 at the right, the × at the top right, 360 wide.
+ * Its answer: closeFromDialog.
  */
 export function closeDialogSpec(appName: string, running: boolean, look: Pick<DialogSpec, 'scheme' | 'tokens'>): DialogSpec {
   return {
     title: CLOSE_QUESTION,
     detail: running ? [CLOSE_RUNNING] : [],
-    buttons: [{ label: `退出 ${appName}` }, { label: '最小化到托盘', primary: true }],
-    check: '记住我的选择',
+    choices: { options: ['最小化到托盘', `退出 ${appName}`], selected: 0 },
+    buttons: [{ label: '确定', primary: true }],
+    check: CLOSE_REMEMBER,
+    checkInFoot: true,
+    closeButton: true,
+    width: 360,
     ...look,
   };
 }
 
-/** closeDialogSpec's answer: button 0 退出, 1 最小化到托盘; closed without a button is no choice. */
+/** closeDialogSpec's answer, as the page's: 确定 with the choice selected (0 托盘, 1 退出); the × or closing it is no choice. */
 export function closeFromDialog(a: DialogAnswer): CloseAnswer {
-  const choice = a.button === 1 ? 'tray' : a.button === 0 ? 'quit' : null;
+  const choice = a.button === 0 ? (a.choice === 0 ? 'tray' : a.choice === 1 ? 'quit' : null) : null;
   return { choice, remember: choice !== null && a.checked };
 }
 
 /** The message box's answer (closePrompt) in the dialog window's terms, so both go through closeFromDialog. */
 export function dialogFromBox(response: number, checked: boolean): DialogAnswer {
-  return { button: response === 0 ? 1 : response === 1 ? 0 : null, checked };
+  return response === 0 || response === 1 ? { button: 0, checked, choice: response } : { button: null, checked, choice: null };
 }
 
 /** The message box's answer: which button (取消 and closing the box are no choice), and the box ticked. */
@@ -214,7 +219,7 @@ export interface CloseOptions {
   state(): CloseState;
   hide(): void;
   quit(): void;
-  /** Asks 最小化到托盘 / 退出 with 记住我的选择 (closeAsker). */
+  /** Asks 最小化到托盘 / 退出 with 不再提醒 (closeAsker). */
   ask(): Promise<CloseAnswer>;
   /** Keeps the choice as 关闭窗口时. */
   remember(choice: 'tray' | 'quit'): void;

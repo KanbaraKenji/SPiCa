@@ -526,6 +526,7 @@ export function toolIcon(b: ToolBlock): ReactNode {
       return <SpicaStatusIcon name="error" size={14} />;
     case 'unavailable':
     case 'timeout':
+    case 'repeated':
       return <SpicaStatusIcon name="stopped" size={14} />;
     default:
       return <Icon name="tool" size={14} />;
@@ -591,6 +592,7 @@ function toolMeta(block: ToolBlock, done = false): ReactNode {
   if (block.state === 'pending') return <SpicaStatusIcon name="running" size={14} title="进行中" />;
   if (block.state === 'error') return <span className="text-danger">Failed</span>;
   if (block.state === 'unavailable') return '已停用，未执行';
+  if (block.state === 'repeated') return '重复，未执行';
   if (block.state === 'timeout') return '已超时';
   if (block.state === 'running') return null;
   if (block.durationMs !== undefined && !done) return block.autoApproved ? `Auto · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs);
@@ -930,7 +932,7 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
         <span className="card-title">{block.question}</span>
         <span className="confirm-spacer" />
         {closed ? (
-          <p className="card-answer">
+          <p className={answered ? 'card-answer' : 'card-answer is-stopped'}>
             <SpicaStatusIcon name={answered ? 'done' : 'stopped'} size={15} />
             <span>{answered ? block.answer : CARD_STOPPED}</span>
           </p>
@@ -972,7 +974,8 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
   );
 }
 
-/** What a question or confirmation says when the run was stopped while it waited (the answer says （中断）). */
+/** What a question or confirmation says when the run was stopped while it waited; red, as the answer's own
+ * （中断） is. The user's own 已拒绝 stays grey. */
 const CARD_STOPPED = '已中断';
 
 /** Names for the arguments people see when asked to confirm (what is not here shows by its own name). */
@@ -1042,7 +1045,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         <span className="confirm-spacer" />
         {command !== null ? <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(command)} /> : null}
         {decided ? (
-          <p className="card-answer">
+          <p className={block.cancelled === true && block.approved === undefined ? 'card-answer is-stopped' : 'card-answer'}>
             <SpicaStatusIcon name={block.approved ? 'done' : 'stopped'} size={15} />
             <span>{block.approved ? '已允许' : block.approved === false ? '已拒绝' : CARD_STOPPED}</span>
           </p>

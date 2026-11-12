@@ -12,7 +12,8 @@ export const DIALOG_SHOW_MS = 5_000;
 export interface DialogWindow {
   /** The page has drawn the dialog; its height in CSS pixels. */
   onReady(cb: (height: number) => void): void;
-  onAnswer(cb: (button: number, checked: boolean) => void): void;
+  /** The button (null for the × at the top right), the checkbox, the choice (null without choices). */
+  onAnswer(cb: (button: number | null, checked: boolean, choice: number | null) => void): void;
   /** Its page failed to load or its page process went. */
   onFailed(cb: (why: string) => void): void;
   /** The window closed (Alt+F4, or by us). */
@@ -48,15 +49,15 @@ export function runDialog(w: DialogWindow, showMs = DIALOG_SHOW_MS, timer: (fn: 
       shown = true;
       w.show(height);
     });
-    w.onAnswer((button, checked) =>
+    w.onAnswer((button, checked, choice) =>
       finish(() => {
-        resolve({ button, checked });
+        resolve({ button, checked, choice });
         w.close();
       }),
     );
     w.onFailed((why) => fail(why));
     w.onClosed(() => {
-      if (shown) finish(() => resolve({ button: null, checked: false }));
+      if (shown) finish(() => resolve({ button: null, checked: false, choice: null }));
       else fail('closed before it was shown');
     });
   });
@@ -80,9 +81,9 @@ export async function askDialog(o: AskOptions): Promise<DialogAnswer> {
   }
 }
 
-/** The skin's scheme and colors for a dialog. */
-export function dialogLook(skin: Skin): Pick<DialogSpec, 'scheme' | 'tokens'> {
-  return { scheme: schemeOf(skin.bg), tokens: dialogTokens(deriveTokens(skin)) };
+/** The skin's scheme and colors for a dialog, and the interface font (外观 › 界面字体's stack, shared/ui-font.ts). */
+export function dialogLook(skin: Skin, font?: string): Pick<DialogSpec, 'scheme' | 'tokens' | 'font'> {
+  return { scheme: schemeOf(skin.bg), tokens: dialogTokens(deriveTokens(skin)), ...(font ? { font } : {}) };
 }
 
 /** 界面出错: the third loss of the page within a minute (main/page-recovery.ts). Button 1 (重新加载) is the main one. */
@@ -119,6 +120,6 @@ export function messageBoxFor(
       noLink: true,
       ...(spec.check ? { checkboxLabel: spec.check, checkboxChecked: false } : {}),
     },
-    answer: (response, checked) => ({ button: order[response] ?? null, checked: Boolean(spec.check) && checked }),
+    answer: (response, checked) => ({ button: order[response] ?? null, checked: Boolean(spec.check) && checked, choice: null }),
   };
 }

@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SPLASH_INK } from '../shared/skin';
-import { RAIL_WIDTH } from '../renderer/src/shell/layout';
+import { UI_FONT_FACES, UI_FONT_FAMILY } from '../shared/ui-font';
+import { FONT_UI } from '../shared/plugin-view';
+import { themeCss } from './plugin-views';
+import { COLUMN_GUTTER, COLUMN_WIDTH, RAIL_WIDTH } from '../renderer/src/shell/layout';
 
 const css = readFileSync(join(__dirname, '../renderer/src/styles.css'), 'utf8');
 const block = (selector: string) => {
@@ -16,13 +19,18 @@ describe('styles', () => {
     expect(block('.rail-head,\n.sidebar-head.is-over-rail')).toContain('justify-content: flex-start');
   });
 
-  it('a long conversation scrolls inside its column: the column and the conversation may be shorter than their content', () => {
-    expect(block('.main-col')).toContain('min-height: 0');
+  it('a long conversation scrolls inside its row: the row under the title bar and the conversation may be shorter than their content', () => {
+    expect(block('.body')).toContain('min-height: 0');
     expect(block('.main')).toContain('min-height: 0');
   });
 
   it('a note line in the conversation breaks a long path instead of running past the window', () => {
     expect(block('.turn-note')).toContain('overflow-wrap: anywhere');
+  });
+
+  it('stopped while it waited is red: 已中断 on a card (its mark too) and the answer’s （中断）, the colour of 无法撤销', () => {
+    const rule = block('.card-answer.is-stopped,\n.card-answer.is-stopped .spica-status-icon,\n.turn-note.is-stopped');
+    expect(rule).toContain('color: var(--spica-danger)');
   });
 
   it('nothing is underlined (links and text buttons are told by colour and the pointer, not a line)', () => {
@@ -68,22 +76,41 @@ describe('the panels around the conversation (shell/layout.ts counts on these)',
     expect(css).not.toContain("data-right='docked'");
   });
 
-  it('the top row is one row: the right panels’ heads are as high as the title bar, with the same line under them and the same left inset', () => {
+  it('one title bar across the conversation and the right panels; each right panel’s head is its own first row under it', () => {
+    const bar = block('.titlebar');
+    expect(bar).toContain('height: var(--spica-titlebar-h)');
+    expect(bar).toContain('padding-left: 16px');
+    expect(bar).toContain('border-bottom: 1px solid var(--spica-divider)');
+    expect(bar).toContain('env(titlebar-area-width');
+    expect(bar).toContain('-webkit-app-region: drag');
     const head = block('.panel-head');
     expect(head).toContain('height: var(--spica-titlebar-h)');
-    expect(head).toContain('border-bottom: 1px solid var(--spica-divider)');
-    expect(head).toContain('background: var(--spica-chrome)');
     expect(head).toContain('padding: 0 8px 0 16px');
-    expect(block('.titlebar')).toContain('padding-left: 16px');
-    expect(block('.titlebar')).toContain('border-bottom: 1px solid var(--spica-divider)');
-    // The preview's and the details' heads have no box of their own any more (it was 44 high, another line colour).
+    // Not part of the window's top row any more: no line, colour, drag area or system-button room of its own.
+    for (const gone of ['border-bottom', 'background', 'app-region', 'titlebar-area']) expect(head).not.toContain(gone);
+    expect(css).not.toContain('.titlebar.is-inner');
+    expect(css).not.toContain('.is-edge .panel-head');
     expect(block('.preview-head')).not.toContain('height');
     expect(css).not.toContain('.detail-head {');
   });
 
-  it('the panel at the window’s edge keeps room for the system buttons, as the title bar does; the title bar beside a panel does not', () => {
-    expect(block('.panel-right.is-edge .panel-head')).toContain('env(titlebar-area-width');
-    expect(block('.titlebar.is-inner')).toContain('padding-right: 8px');
+  it('a right panel has the conversation’s background: only the line on its left sets it apart', () => {
+    expect(block('.panel-right')).toContain('background: var(--spica-bg)');
+    expect(block('.main')).toContain('background: var(--spica-bg)');
+  });
+
+  it('the content column is COLUMN_WIDTH wide and moves by --centre-shift (messages, input box, queue, notices, inbox, welcome, demo line, to-bottom)', () => {
+    expect(block('.transcript-column,\n.composer-stack,\n.inbox-column,\n.queued,\n.run-notices')).toContain('translate: var(--centre-shift, 0px) 0');
+    for (const col of ['.transcript-column', '.composer', '.inbox-column']) expect(block(col)).toContain(`max-width: ${COLUMN_WIDTH}px`);
+    // the notices above the box are as wide as it: the column's width less the box's gutters on both sides
+    expect(css.replace(/\r\n/g, '\n')).toContain(`.run-notices {\n  flex: none;\n  max-width: ${COLUMN_WIDTH}px;\n  width: calc(100% - ${2 * COLUMN_GUTTER}px);`);
+    expect(block('.composer-wrap')).toContain(`padding: 0 ${COLUMN_GUTTER}px`);
+    for (const line of ['.empty-chat', '.composer-note']) expect(block(line)).toContain('calc(24px + 2 * var(--centre-shift, 0px))');
+    expect(block('.to-bottom')).toContain('left: calc(50% + var(--centre-shift, 0px))');
+  });
+
+  it('a line across the sidebar above its bottom row (the account)', () => {
+    expect(block('.sidebar-bottom')).toContain('border-top: 1px solid var(--spica-divider)');
   });
 
   it('a button that cannot be pressed now is greyed but still says why on hover (aria-disabled, as .btn)', () => {
@@ -104,9 +131,93 @@ describe('the panels around the conversation (shell/layout.ts counts on these)',
 describe('sidebar tabs', () => {
   it('the tabs and the space kept for them on the icon column are one rule: same height, same margins', () => {
     const rule = block('.side-tabs,\n.side-tabs-space');
-    expect(rule).toContain('height: 36px');
+    expect(rule).toContain('height: var(--tab-h)');
     expect(rule).toContain('margin: 4px 8px 2px');
     expect(rule).toContain('flex: none');
+  });
+});
+
+describe('control sizes: one place (out/settings-modal/10-controls.md)', () => {
+  it('buttons, fields, icon buttons and segments are --control-h (28, as Claude’s); a tab --tab-h', () => {
+    const root = block(':root');
+    expect(root).toContain('--control-h: 28px');
+    expect(root).toContain('--tab-h: 28px');
+    expect(root).not.toContain('--tabs-pad');
+    for (const sel of ['\n.btn', '\n.btn-small', '\n.input', '\n.icon-btn', '\n.btn-quiet-danger', '\n.segment,\n.side-tabs .tab', '\n.back-link'])
+      expect(block(sel)).toContain('height: var(--control-h)');
+    expect(block('\n.btn')).toContain('padding: 0 var(--control-pad-x)');
+    expect(block('\n.btn.btn-square')).toContain('width: var(--control-h)');
+    expect(block('\n.tab')).toContain('height: var(--tab-h)');
+  });
+});
+
+describe('an icon beside words has the words colour (sidebar rows, the settings column)', () => {
+  it('taken from the words, so hover, chosen and off follow; the icons standing alone stay grey', () => {
+    expect(block('\n.side-action svg')).toContain('color: currentColor');
+    expect(block('\n.settings-nav-icon')).toContain('color: currentColor');
+    expect(css).not.toContain('.settings-nav-item.is-on .settings-nav-icon');
+    expect(block('.side-action.side-gear:not(.has-word) svg,\n.sidebar.is-rail .side-action svg')).toContain('color: var(--spica-muted)');
+  });
+});
+
+describe('words on the middle line of what they sit in: one fix, in the font (shared/ui-font.ts, out/settings-modal/13-centre-audit.md)', () => {
+  const dialogCss = readFileSync(join(__dirname, '../renderer/dialog/dialog.css'), 'utf8');
+
+  it('the interface font has its ascent and descent moved towards each other (the measured 105.5 / 27.5), the same total as before', () => {
+    expect(UI_FONT_FACES).toContain("font-family: 'Spica UI'; src: local('Segoe UI Variable Text')");
+    for (const w of ["local('Segoe UI Light'); font-weight: 300", "local('Segoe UI'); font-weight: 400", "local('Segoe UI Semibold'); font-weight: 600", "local('Segoe UI Bold'); font-weight: 700"])
+      expect(UI_FONT_FACES).toContain(w);
+    const faces = UI_FONT_FACES.split('\n');
+    expect(faces).toHaveLength(5);
+    for (const f of faces) expect(f).toContain('ascent-override: 105.5%; descent-override: 27.5%;');
+    expect(UI_FONT_FAMILY.startsWith("'Spica UI', 'Spica UI Static', 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI'")).toBe(true);
+  });
+
+  it('the window, the small dialog window and plugin pages all use it, word for word', () => {
+    for (const sheet of [css, dialogCss]) for (const f of UI_FONT_FACES.split('\n')) expect(sheet).toContain(f);
+    expect(css).toContain(`--font-ui: ${UI_FONT_FAMILY};`);
+    // the small dialog window: 外观 › 界面字体's stack when main passes one (shared/app-dialog.ts font), the default otherwise
+    expect(dialogCss).toContain(`font-family: var(--font-ui, ${UI_FONT_FAMILY});`);
+    expect(FONT_UI).toBe(UI_FONT_FAMILY);
+    expect(themeCss({ '--spica-font': FONT_UI }, 'dark').startsWith(UI_FONT_FACES)).toBe(true);
+  });
+
+  it('no small fixed nudges up or down to make up for where glyphs sit (that is the font’s job now): none of them, and no text-box trims either', () => {
+    const nudge = /translateY\(\s*-?(?:[0-3](?:\.\d+)?px|0?\.[0-2]\d*em)\s*\)|translate:\s*0\s+-?(?:[0-3](?:\.\d+)?px|0?\.[0-2]\d*em)/;
+    expect(css).not.toMatch(nudge);
+    expect(css).not.toMatch(/text-box(?:-trim|-edge)?:/);
+  });
+});
+
+describe('tabs and segments: never a box in a box (out/ref/tabs-1, tabs-4; not tabs-3)', () => {
+  it('a tab row is words over a thin line; the open tab has its own line along its bottom edge, not a text underline nor a pill', () => {
+    const row = block('\n.tabs');
+    expect(row).toContain('box-shadow: inset 0 -1px 0 var(--spica-divider)');
+    expect(row).not.toMatch(/background|border-radius|padding/);
+    expect(block('\n.tab')).toContain('border-bottom: 2px solid transparent');
+    const on = block('\n.tab.is-on');
+    expect(on).toContain('border-bottom-color: var(--spica-ink)');
+    expect(on).not.toMatch(/background|text-decoration|box-shadow/);
+    // In a bar with buttons beside it the row has no line of its own.
+    expect(block('.tabs.plugins-tabs,\n.right-head .tabs')).toContain('box-shadow: none');
+  });
+
+  it('a segmented row (and 对话 / 项目) is one fill with no space inside it; the chosen block fills it to its edges, the same corners', () => {
+    const row = block('\n.segmented,\n.tabs.side-tabs');
+    expect(row).toContain('background: var(--spica-hover)');
+    expect(row).toContain('border-radius: var(--radius-m)');
+    expect(row).toContain('gap: 0');
+    expect(row).not.toMatch(/padding|border:/);
+    expect(block('\n.segment,\n.side-tabs .tab')).toContain('border-radius: var(--radius-m)');
+    const on = block('\n.segment.is-on,\n.side-tabs .tab.is-on');
+    expect(on).toContain('background: var(--spica-raised)');
+    expect(on).toContain('border-color: var(--spica-border-strong)');
+  });
+
+  it('a way back is an arrow and words in the text colour, a block of colour on hover (as Claude’s 「← Your plugins」)', () => {
+    expect(block('\n.back-link')).toContain('color: var(--spica-ink)');
+    expect(block('\n.back-link:hover')).toContain('background: var(--spica-hover)');
+    expect(block('\n.back-link')).not.toMatch(/border:|text-decoration/);
   });
 });
 
@@ -130,6 +241,25 @@ describe('settings: one group, one box (settings/Group.tsx)', () => {
   });
 });
 
+describe('settings: sized as Claude’s (out/settings-modal/9-measure.md)', () => {
+  it('the dialog is at most 1024 x 800, 16 clear of the window; a 48 title line, a 208 column of sections', () => {
+    expect(block('\n.settings-scrim')).toContain('padding: 16px');
+    expect(block('\n.settings-dialog')).toContain('width: min(1024px, 100%)');
+    expect(block('\n.settings-dialog')).toContain('height: min(800px, 100%)');
+    expect(block('\n.settings-titlebar')).toContain('height: 48px');
+    expect(block('\n.settings-nav')).toContain('width: 208px');
+    expect(block('\n.settings-nav-item')).toContain('height: 32px');
+  });
+
+  it('a row’s grey line is its name’s size, 4 under it, the row 12 above and below', () => {
+    expect(block('\n.settings-dialog .setting-row')).toContain('padding: 12px 16px');
+    expect(block('\n.settings-dialog .setting-text')).toContain('gap: 4px');
+    expect(block('.settings-dialog .setting-text > .settings-hint,\n.settings-dialog .plugin-item-desc,\n.settings-dialog .plugin-card-desc')).toContain(
+      'font-size: var(--fs-body)',
+    );
+  });
+});
+
 describe('settings › 插件 fills the window', () => {
   it('the page is the window tall (a floor past which it scrolls again) and scrolls as a whole; a plugin’s own settings page fills the rest and scrolls itself', () => {
     const page = block('.settings-column.is-fill');
@@ -147,7 +277,7 @@ describe('settings › 插件 list rows', () => {
     expect(block('\n.plugin-row-name')).toContain('text-overflow: ellipsis');
     expect(block('.plugin-item-title .plugin-version')).toContain('flex: none');
     expect(block('.plugin-item-desc')).toContain('text-overflow: ellipsis');
-    expect(block('.plugin-card-desc')).toContain('-webkit-line-clamp: 2');
+    expect(block('\n.plugin-card-desc')).toContain('-webkit-line-clamp: 2');
   });
 
   it('市场: two cards a row, one when narrow', () => {
@@ -281,9 +411,8 @@ describe('the conversation’s sizes', () => {
     expect(block('.fold-meta')).toContain('font-size: var(--fs-caption)');
   });
 
-  it('a row’s words are trimmed to the capitals and the baseline, so they centre on the icons; cut at the end only', () => {
-    expect(block('.fold-label,\n.fold-meta,\n.tool-text,\n.msg-time,\n.msg-versions-text,\n.status-text,\n.status-clock')).toContain('text-box: trim-both cap alphabetic');
-    // hidden would cut the descenders below the trimmed box.
+  it('a row’s words centre on the icons by the font (no trim of their own); cut at the end only', () => {
+    // Cut sideways only, so nothing above or below the words' box is cut.
     for (const sel of ['.fold-label', '\n.tool-text']) expect(block(sel), sel).toContain('overflow: clip visible');
     expect(block('.fold-meta')).toContain('display: block');
   });
@@ -346,5 +475,43 @@ describe('the picture viewer', () => {
     expect(block('.image-viewer.has-nav::after')).toContain('linear-gradient(to bottom, transparent');
     expect(block('.image-viewer.has-nav::after')).toContain('pointer-events: none');
     for (const p of ['background', 'border', 'box-shadow']) expect(block('.image-viewer-nav'), p).not.toContain(`${p}:`);
+  });
+});
+
+/**
+ * Rules opened inside another rule (not inside @media / @supports / @container / @layer / @keyframes), each
+ * with its line: a rule pasted into the middle of another leaves the second half of the outer one dead.
+ */
+function nestedRules(text: string): string[] {
+  const src = text.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' '));
+  const open: boolean[] = []; // per open block: is it an at-rule
+  const found: string[] = [];
+  let head = '';
+  let line = 1;
+  for (const ch of src) {
+    if (ch === '\n') line++;
+    if (ch === '{') {
+      const name = head.trim();
+      const atRule = name.startsWith('@');
+      if (open.length > 0 && !open[open.length - 1] && !atRule) found.push(`${line}: ${name.split('\n').pop()}`);
+      open.push(atRule);
+      head = '';
+    } else if (ch === '}') {
+      open.pop();
+      head = '';
+    } else if (ch === ';') head = '';
+    else head += ch;
+  }
+  return found;
+}
+
+describe('the style sheet holds together', () => {
+  it('no rule is opened inside another rule', () => {
+    expect(nestedRules(css)).toEqual([]);
+  });
+
+  it('the check catches a rule pasted into the middle of another, and lets @media and @keyframes through', () => {
+    expect(nestedRules('.a {\n  min-width: 0;\n.b {\n  width: 1px;\n}\n  overflow: hidden;\n}\n')).toEqual(['3: .b']);
+    expect(nestedRules('@media (max-width: 1px) {\n  .a { width: 1px; }\n}\n@keyframes k {\n  from { opacity: 0; }\n}\n')).toEqual([]);
   });
 });

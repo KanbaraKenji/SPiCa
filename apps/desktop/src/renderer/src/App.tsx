@@ -1,16 +1,17 @@
 // The window: title bar, left sidebar, main pane (conversation, inbox or a plugin page), right panels; settings as a dialog over it.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { DesktopBridge, PreviewInfo } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
-import { computeLayout, infoFits, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
+import { centreShift, computeLayout, infoFits, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
 import { Resizer } from './shell/Resizer';
 import { ConfirmDialog } from './ui/Dialog';
 import { FilePreview, usePreview } from './shell/FilePreview';
 import { PluginPage, type PluginTheme } from './shell/PluginFrame';
 import { PluginPreview, type PreviewFallback } from './shell/PluginPreview';
 import { BUILT_IN, chosenPreviewPage, fileExtension, previewerId, previewPagesFor } from '../../shared/previewers';
-import { FONT_UI, pluginThemeVars, type PluginView } from '../../shared/plugin-view';
+import { pluginThemeVars, type PluginView } from '../../shared/plugin-view';
+import { uiFontFor } from './theme';
 import { deriveTokens, schemeOf } from '../../shared/skin';
 import { DEFAULT_SETTINGS, effectiveAccount, effectiveCallName } from '../../shared/settings';
 import { sidebarBannerHeight, wordmarkProps } from './app-wordmark';
@@ -24,6 +25,7 @@ import { ConfirmTarget } from './chat/Blocks';
 import type { ComposerTools } from './chat/Composer';
 import { enabledModels, type ModelRef, type ProviderView } from '../../shared/providers';
 import { SettingsView, type SettingsTab } from './settings/SettingsView';
+import { openProviderNext } from './settings/Models';
 import type { PluginsTab } from './settings/Plugins';
 import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
@@ -147,9 +149,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [dragging, setDragging] = useState<{ side: 'left' | 'preview'; width: number } | null>(null);
   // A main process older than these settings (dev build not restarted yet) does not send them.
   const savedWidths = { ...DEFAULT_SETTINGS.panelWidths, ...settings.panelWidths };
-  // Whether the details fit depends on the preview's chosen width (saved: the details do not jump in mid-drag).
-  const layout = computeLayout(width, open, floating, savedWidths);
-  const widths = panelWidths(width, layout, dragging ? { ...savedWidths, [dragging.side]: dragging.width } : savedWidths);
+  // While an edge is dragged, everything follows the pointer: the conversation squeezed, the details gone, the
+  // preview over the conversation, exactly as it will stay when the button is let go (nothing jumps then).
+  const wantedWidths = dragging ? { ...savedWidths, [dragging.side]: dragging.width } : savedWidths;
+  const layout = computeLayout(width, open, floating, wantedWidths);
+  const widths = panelWidths(width, layout, wantedWidths);
+  // The content column: at rest as if nothing were docked on the right, pushed left by a right panel (styles.css:
+  // --centre-shift).
+  const shift = centreShift(width, layout, widths, view === 'chat');
   const resizer = (side: 'left' | 'preview') =>
     layout[side] === 'docked' ? (
       <Resizer
@@ -333,9 +340,20 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     if (previewFloats(width, open, savedWidths)) setFloating('preview');
     else if (floating === 'preview') setFloating(null);
   };
+  // The file last closed in the preview: the title bar's preview button opens it again.
+  const [lastPreview, setLastPreview] = useState<typeof preview>(null);
   const closePreview = () => {
+    if (preview) setLastPreview(preview);
     setPreview(null);
     if (floating === 'preview') setFloating(null);
+  };
+  /** The title bar's preview button: closes the preview, or opens again the file last shown there. */
+  const togglePreview = () => {
+    if (preview) closePreview();
+    else if (lastPreview) {
+      setPreview(lastPreview);
+      showPreview();
+    }
   };
 
   const openSession = (id: string) => {
@@ -467,7 +485,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const openPluginView = view === 'plugin' ? sidebarPages.find((v) => viewKey(v) === openPlugin) : undefined;
   const panelPluginView = rightTab === 'detail' ? undefined : panelPages.find((v) => viewKey(v) === rightTab);
   const skinNow = shell.activeSkin();
-  const pluginTheme: PluginTheme = { mode: schemeOf(skinNow.bg), vars: pluginThemeVars(deriveTokens(skinNow), FONT_UI) };
+  const pluginTheme: PluginTheme = { mode: schemeOf(skinNow.bg), vars: pluginThemeVars(deriveTokens(skinNow), uiFontFor(settings.uiFont)) };
   const pluginProps = (v: PluginView) => ({
     view: v,
     theme: pluginTheme,
@@ -653,7 +671,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     resume: () => id && void agent.resume(id),
     regenerate: (messageId) => id && void agent.regenerate(id, messageId),
     ...(mail.supported ? { mailById, openInbox: () => setView('inbox') } : {}),
-    openModelSettings: () => openSettings('models'),
+    // at the provider a stop named (a card's button passes its click event: no provider)
+    openModelSettings: (providerId?: unknown) => {
+      if (typeof providerId === 'string' && providerId) openProviderNext(providerId);
+      openSettings('models');
+    },
     imageUrl: bridge.images.url,
     previewHtml: (title, html) => {
       setPreview({ sessionId: null, path: '', inline: { kind: 'html', name: title, path: '', size: html.length, text: html, truncated: false } });
@@ -684,8 +706,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const infoShown = layout.info === 'docked';
   // No room for the details (beside the conversation at 440 and the preview): they are not shown at all, and their
   // button cannot be pressed; its hover says why. Their switch is kept: they come back when there is room.
-  const infoRoom = infoFits(width, open, savedWidths);
-  const infoTip = infoRoom ? '详情（Ctrl+Alt+B）' : previewShown ? '放不下详情：把预览拖窄或关掉，或把窗口拉宽' : '窗口太窄，放不下详情';
+  const infoRoom = infoFits(width, open, wantedWidths);
+  const lastName = lastPreview ? (lastPreview.inline?.name ?? lastPreview.path.split(/[\\/]/).pop() ?? lastPreview.path) : '';
+  const previewTip = preview ? '预览' : lastPreview ? `预览：${lastName}` : '没有打开的预览：点对话里的文件打开';
+  // A preview floating over a narrow window takes no room: there the window is what is too narrow.
+  const infoTip = infoRoom ? '详情（Ctrl+Alt+B）' : layout.preview === 'docked' ? '放不下详情：把预览拖窄或关掉，或把窗口拉宽' : '窗口太窄，放不下详情';
   // Maximized only while the preview is there to show; closing it or leaving the conversation ends that.
   const rightCanMax = previewShown && view === 'chat';
   if (canMax !== rightCanMax) setCanMax(rightCanMax);
@@ -728,8 +753,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       }}
       settingsOpen={settingsOpen}
       account={effectiveAccount(settings, shell.autoAccount)}
-      onAccount={() => {
-        openSettings('account');
+      onAccount={(where) => {
+        openSettings(where === 'models' ? 'models' : undefined);
         setFloating(null);
       }}
       topId={state.topId}
@@ -767,8 +792,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   );
 
   // Frame (like Claude Desktop): the sidebar runs the full height of the window
-  // with the brand and its own toggle at the top; the title bar covers only the
-  // main pane and the detail panel.
+  // with the brand and its own toggle at the top; the title bar runs over the
+  // conversation and both right panels.
   return (
     <div className="app" data-left={layout.left} data-preview={view === 'chat' ? layout.preview : 'hidden'} data-info={view === 'chat' ? layout.info : 'hidden'}>
       <HoverTips />
@@ -794,16 +819,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       ) : null}
 
       <div className="column">
-      {/* The conversation's column (its title bar on top), then the details and the preview, each the full height
-          with its own head in the same top row (他: 「参考claude保证排版工整」). */}
-      <div className="body">
-      <div className="main-col">
-      {/* Not at the window's edge (a panel docked right of it): no room kept for the system buttons. Under a preview
-          that lies over the conversation, its name and the details button stay in the part that shows. */}
-      <header
-        className={view === 'chat' && (infoShown || layout.preview === 'docked') ? 'titlebar is-inner' : 'titlebar'}
-        {...(view === 'chat' && layout.preview === 'docked' && widths.cover && !rightMax ? { style: { paddingRight: widths.cover + 8 } } : {})}
-      >
+      {/* One title bar across the conversation, the details and the preview (the window's drag area, with the
+          system buttons at its end); under it the conversation, then each right panel with its own head as its
+          first row. */}
+      <header className="titlebar">
         <div className="titlebar-title">
           {view === 'chat' && parent ? (
             <>
@@ -845,22 +864,39 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         />
         <div className="titlebar-right">
           {view === 'chat' ? (
-            <button
-              type="button"
-              data-panel-toggle
-              className={infoShown ? 'icon-btn is-on' : 'icon-btn'}
-              onClick={() => toggle('info')}
-              aria-label={infoShown ? '收起详情' : '展开详情'}
-              aria-pressed={infoShown}
-              {...(infoRoom ? {} : { 'aria-disabled': true })}
-              title={infoTip}
-            >
-              <Icon name="detail" />
-            </button>
+            <>
+              {/* 详情 and the preview each have their own button, as Claude's title bar: the details' list, then the
+                  panel on the right (the preview, at the window's right edge). */}
+              <button
+                type="button"
+                data-panel-toggle
+                className={infoShown ? 'icon-btn is-on' : 'icon-btn'}
+                onClick={() => toggle('info')}
+                aria-label={infoShown ? '收起详情' : '展开详情'}
+                aria-pressed={infoShown}
+                {...(infoRoom ? {} : { 'aria-disabled': true })}
+                title={infoTip}
+              >
+                <Icon name="details" />
+              </button>
+              <button
+                type="button"
+                data-panel-toggle
+                className={preview ? 'icon-btn is-on' : 'icon-btn'}
+                onClick={togglePreview}
+                aria-label={preview ? '收起预览' : '展开预览'}
+                aria-pressed={preview !== null}
+                {...(preview || lastPreview ? {} : { 'aria-disabled': true })}
+                title={previewTip}
+              >
+                <Icon name="detail" />
+              </button>
+            </>
           ) : null}
         </div>
       </header>
-        <main className="main">
+      <div className="body">
+        <main className="main" style={{ '--centre-shift': `${shift}px` } as CSSProperties}>
           {view === 'plugin' ? (
             openPluginView ? (
               <PluginPage key={viewKey(openPluginView)} {...pluginProps(openPluginView)} />
@@ -912,13 +948,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             </div>
           ) : null}
         </main>
-      </div>
 
         {/* The details, between the conversation and the preview: a fixed width, no edge to drag, no 最大化; never
             covered or floated (no room: not shown). */}
         {layout.info !== 'hidden' && view === 'chat' ? (
-          // Shown over the preview from under it: raised in their own place (nothing beside them moves), not floated to the edge.
-          <div className={`panel panel-right panel-info is-docked${layout.preview === 'docked' ? '' : ' is-edge'}`} style={{ width: widths.info }}>
+          <div className="panel panel-right panel-info is-docked" style={{ width: widths.info }}>
             {panelPages.length ? (
               <div className="right-head panel-head">
               <div className="tabs right-tabs" role="tablist" aria-label="右栏">
@@ -956,7 +990,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         {/* The file preview, against the window's right edge: its left edge drags, its head has 最大化 and 关闭预览. */}
         {previewShown && view === 'chat' && preview ? (
           <div
-            className={`panel panel-right panel-preview is-edge is-${layout.preview}${rightMax ? ' is-max' : ''}${widths.cover && layout.preview === 'docked' ? ' is-cover' : ''}`}
+            className={`panel panel-right panel-preview is-${layout.preview}${rightMax ? ' is-max' : ''}${widths.cover && layout.preview === 'docked' ? ' is-cover' : ''}`}
             style={rightMax ? undefined : { width: widths.preview, ...(widths.cover && layout.preview === 'docked' ? { marginLeft: -widths.cover } : {}) }}
           >
             {/* Wider than what is beside it allows, it lies over the details, then over the conversation's right part (kept at its 440 layout): pulled left by `cover`. */}
