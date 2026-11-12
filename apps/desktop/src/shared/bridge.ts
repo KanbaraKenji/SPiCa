@@ -2,7 +2,7 @@
 // do goes through here; there is no other way to reach the backend.
 import type { AgentApi, ContextBreakdown, CoreEvent, SpicaBridge } from '@spica/protocol';
 import type { WindowCover } from './skin';
-import type { SettingsPatch, ShellSettings } from './settings';
+import type { AutostartSupport, SettingsPatch, ShellSettings } from './settings';
 import type { ModelRef, ProviderDraft, ProviderKind, ProviderView, TestResult } from './providers';
 import type { ListModelsView, ModelCatalogView, WindowMatch } from './catalog';
 import type { PluginsCommand, PluginsProgress, PluginsResult } from './plugins';
@@ -46,6 +46,10 @@ export interface ShellState {
   legacyDefaultCwd?: string;
   /** The page is loading again after its process was lost: open this conversation (null: the start page), no opening animation. */
   reopen?: { sessionId: string | null };
+  /** Whether 开机时启动 works in this copy (main/autostart.ts); absent from an older main process: shown disabled. */
+  autostart?: AutostartSupport;
+  /** Windows started the app at sign-in and its window was not opened yet: no opening animation. */
+  startedHidden?: boolean;
 }
 
 /** A file shown in the right panel: a URL for the PDF viewer / images, or its text (capped). */

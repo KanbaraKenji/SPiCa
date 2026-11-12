@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { autostartSupport, followAutostart, LOGIN_ARG, onSecondLaunch, registeredAtLogin, startedAtLogin, syncAutostart, type LoginItems } from './autostart';
+import { autostartSupport, followAutostart, LOGIN_ARG, loginItemOn, onSecondLaunch, registeredAtLogin, startedAtLogin, syncAutostart, type LoginItems } from './autostart';
 
 describe('who may use 开机时启动', () => {
   it('an installed copy on Windows only', () => {
@@ -23,6 +23,18 @@ describe('a run Windows started at sign-in', () => {
     expect(reveal).toHaveBeenCalledTimes(1);
     onSecondLaunch(['Spica.exe', LOGIN_ARG], reveal);
     expect(reveal).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('what counts as registered', () => {
+  it('the exact command line, or the entry under the app id with the sign-in argument (as the installer writes it)', () => {
+    expect(loginItemOn({ openAtLogin: true }, 'dev.spica.desktop')).toBe(true);
+    expect(loginItemOn({ openAtLogin: false, launchItems: [{ name: 'dev.spica.desktop', args: [LOGIN_ARG], scope: 'user' }] }, 'dev.spica.desktop')).toBe(true);
+    expect(loginItemOn({ openAtLogin: false, launchItems: [{ name: 'Dev.Spica.Desktop', args: [LOGIN_ARG] }] }, 'dev.spica.desktop')).toBe(true);
+    expect(loginItemOn({ openAtLogin: false, launchItems: [{ name: 'dev.spica.desktop', args: [] }] }, 'dev.spica.desktop')).toBe(false);
+    expect(loginItemOn({ openAtLogin: false, launchItems: [{ name: 'other.app', args: [LOGIN_ARG] }] }, 'dev.spica.desktop')).toBe(false);
+    expect(loginItemOn({ openAtLogin: false, launchItems: [{ name: 'dev.spica.desktop', args: [LOGIN_ARG], scope: 'machine' }] }, 'dev.spica.desktop')).toBe(false);
+    expect(loginItemOn({ openAtLogin: false }, 'dev.spica.desktop')).toBe(false);
   });
 });
 

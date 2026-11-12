@@ -38,7 +38,17 @@ export interface LoginItems {
   set(item: { openAtLogin: boolean; path: string; args: string[] }): void;
 }
 
-type Sync = { support: AutostartSupport; exe: string; io: LoginItems };
+/**
+ * Reads Electron's getLoginItemSettings answer: on when its exact command line is registered (openAtLogin), or when
+ * a Run entry under the app's own name starts some exe with LOGIN_ARG (the installer writes it; a path written with
+ * other capitals still counts). setLoginItemSettings writes and removes the entry by that same name.
+ */
+export function loginItemOn(s: { openAtLogin: boolean; launchItems?: { name: string; args: string[]; scope?: string }[] }, name: string): boolean {
+  if (s.openAtLogin) return true;
+  return (s.launchItems ?? []).some((i) => i.name.toLowerCase() === name.toLowerCase() && (i.scope ?? 'user') === 'user' && i.args.includes(LOGIN_ARG));
+}
+
+type Sync ={ support: AutostartSupport; exe: string; io: LoginItems };
 
 /**
  * What Windows has registered now: the truth for the switch (something else may have changed it, such as the

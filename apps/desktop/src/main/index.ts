@@ -2,7 +2,7 @@
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, safeStorage, shell, Tray } from 'electron';
 import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
@@ -32,6 +32,8 @@ import { writeDemoChart } from './backend/demo-image';
 import { ProcessBackend, type BackendStatus } from './backend/process';
 import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { pageAlive, pageRecovery } from './page-recovery';
+import { backgroundHint, onWindowClose, revealWindow, showAtStart, wireTray } from './tray';
+import { autostartSupport, followAutostart, loginItemOn, onSecondLaunch, startedAtLogin, type LoginItems } from './autostart';
 import { knownContextWindow, matchWindowIn, toProviderConfig } from './backend/to-config';
 import type { WindowMatch } from '../shared/catalog';
 import { fromHostDraft, toHostConnection, toHostModelList } from './providers/host-models';
@@ -98,11 +100,21 @@ app.setName(APP_NAME);
 // window matches its shortcuts; a renamed build has its own.
 const APP_USER_MODEL_ID = app.isPackaged ? APP_IDENTITY.id : `${APP_IDENTITY.id}.dev`;
 if (process.platform === 'win32') app.setAppUserModelId(APP_USER_MODEL_ID);
+// 设置 › 常规 › 开机时启动 (main/autostart.ts): an installed copy only; a development run or a portable copy never
+// reads or writes the registration. The entry is named after the app id, as the installer writes it.
+const autostart = autostartSupport({ platform: process.platform, packaged: app.isPackaged, portable: Boolean(process.env.PORTABLE_EXECUTABLE_DIR) });
+const loginItems: LoginItems = {
+  get: (q) => ({ openAtLogin: loginItemOn(app.getLoginItemSettings(q), APP_USER_MODEL_ID) }),
+  set: (item) => app.setLoginItemSettings({ ...item, name: APP_USER_MODEL_ID }),
+};
 // Screenshots must not read or change the user's own settings.
 //   SPICA_USER_DATA=<dir>    use another settings folder (manual checks without touching your own);
 //                            in a development run 文档 moves into it too (<dir>\Documents)
 if (process.env.SPICA_USER_DATA) app.setPath('userData', process.env.SPICA_USER_DATA);
 else if (automated) app.setPath('userData', mkdtempSync(join(tmpdir(), 'spica-shots-')));
+// One copy per data folder (another SPICA_USER_DATA is another copy): started again, it hands over to the running
+// one, which brings its window up (second-instance below), and leaves before touching anything.
+if (!app.requestSingleInstanceLock()) process.exit(0);
 // A development run on another settings folder keeps out of your 文档 too (see documentsFolder).
 const devDocuments = documentsFolder(process.env, app.isPackaged, automated, app.getPath('userData'));
 if (devDocuments) app.setPath('documents', devDocuments);
@@ -374,6 +386,59 @@ function windowIcon(dark: boolean): Electron.NativeImage | undefined {
   return nativeImage.createFromBitmap(Buffer.from(flatten(base.toBitmap(), inkFor(dark))), base.getSize());
 }
 
+/** The taskbar .ico for this colour, written under userData\icons (named by its content); undefined without the masks. */
+function taskbarIcoFile(dark: boolean): string | undefined {
+  const ico = taskbarIco(dark);
+  if (!ico) return undefined;
+  const dir = join(app.getPath('userData'), 'icons');
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, iconFileName(ico));
+  if (!existsSync(file)) writeFileSync(file, ico);
+  return file;
+}
+
+/** The notification-area icon: the same flower as the taskbar button (white on a dark taskbar, black on a light one). */
+function trayImage(dark: boolean): Electron.NativeImage | string {
+  try {
+    const file = process.platform === 'win32' ? taskbarIcoFile(dark) : undefined;
+    if (file) return file;
+  } catch {
+    // Fall back to the window's own icon.
+  }
+  return windowIcon(dark) ?? nativeImage.createEmpty();
+}
+
+/**
+ * The icon in the notification area (main/tray.ts): click or 打开 brings the window up, 退出 quits through
+ * main/quit.ts. Not for screenshots or a SPICA_HIDDEN test window.
+ */
+let tray: Tray | null = null;
+function createTray(): void {
+  if (automated || hidden || tray) return;
+  try {
+    const t = new Tray(trayImage(nativeTheme.shouldUseDarkColorsForSystemIntegratedUI));
+    wireTray({ tray: t, appName: APP_NAME, buildMenu: (items) => Menu.buildFromTemplate(items), open: () => showMainWindow(), quit: () => app.quit() });
+    tray = t;
+  } catch (err) {
+    console.warn('[spica] tray:', err instanceof Error ? err.message : err);
+  }
+}
+
+/** A run Windows started at sign-in: the first window waits in the notification area (until opened or started again). */
+let startHidden = startedAtLogin(process.argv);
+
+/** From the notification-area icon or a second start: the window shown and in front. Not while quitting. */
+function showMainWindow(): void {
+  startHidden = false;
+  if (appQuitting) return;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (!app.isReady()) return;
+    mainWindow = createMainWindow();
+    syncNativeChrome(mainWindow, settings.get());
+  }
+  revealWindow(mainWindow);
+}
+
 /**
  * Puts the icon on the window and on its taskbar button. An installed Spica's
  * button shows its shortcut's icon (main/taskbar-icon.ts), so the shortcuts
@@ -388,16 +453,12 @@ function applyWindowIcon(win: BrowserWindow, dark: boolean): void {
     return;
   }
   try {
-    const ico = taskbarIco(dark);
-    if (!ico) {
+    const file = taskbarIcoFile(dark);
+    if (!file) {
       const icon = windowIcon(dark);
       if (icon) win.setIcon(icon);
       return;
     }
-    const dir = join(app.getPath('userData'), 'icons');
-    mkdirSync(dir, { recursive: true });
-    const file = join(dir, iconFileName(ico));
-    if (!existsSync(file)) writeFileSync(file, ico);
     // The same .ico on the window: title bar and Alt+Tab take their own size from it too.
     const fromFile = nativeImage.createFromPath(file);
     if (!fromFile.isEmpty()) win.setIcon(fromFile);
@@ -518,7 +579,32 @@ function createMainWindow(): BrowserWindow {
     },
   });
 
-  if (!automated && !hidden) win.once('ready-to-show', () => win.show());
+  // A start by Windows at sign-in shows no window: it waits in the notification area (main/tray.ts).
+  if (!automated && !hidden)
+    win.once('ready-to-show', () => {
+      if (showAtStart({ atLogin: startHidden, trayReady: tray !== null })) win.show();
+    });
+  // 关闭窗口后留在后台: the × only hides the window, unless the app is quitting, Windows is signing out or
+  // shutting down, or there is no notification-area icon to come back by (main/tray.ts).
+  let sessionEnding = false;
+  win.on('query-session-end', () => {
+    sessionEnding = true;
+  });
+  win.on('session-end', () => {
+    sessionEnding = true;
+  });
+  win.on(
+    'close',
+    onWindowClose({
+      state: () => ({ keepInBackground: settings.get().keepInBackground, quitting: appQuitting, sessionEnding, trayReady: tray !== null }),
+      hide: () => win.hide(),
+      hintShown: () => settings.get().backgroundHintShown,
+      showHint: () => {
+        tray?.displayBalloon(backgroundHint(APP_NAME));
+        settings.update({ backgroundHintShown: true });
+      },
+    }),
+  );
   // SPICA_HIDDEN: shown (so it keeps drawing frames for screenshots) but nowhere anyone can see or click it:
   // off screen, fully transparent, not in the taskbar, never focused, mouse passing through.
   if (hidden)
@@ -587,7 +673,10 @@ function createMainWindow(): BrowserWindow {
   taskbarTheme = followTaskbarTheme({
     readTaskbarDark,
     nativeDark: () => nativeTheme.shouldUseDarkColorsForSystemIntegratedUI,
-    apply: (dark) => applyWindowIcon(win, dark),
+    apply: (dark) => {
+      applyWindowIcon(win, dark);
+      tray?.setImage(trayImage(dark));
+    },
     setTimer: (fn, ms) => setTimeout(fn, ms),
     clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
   });
@@ -599,6 +688,9 @@ let reopen: { sessionId: string | null } | null = null;
 let appQuitting = false;
 app.on('before-quit', () => {
   appQuitting = true;
+  // The icon goes with the window: nothing to click while the core closes.
+  tray?.destroy();
+  tray = null;
 });
 // The GPU process going is told too: repeated losses of it took the page with them (main/page-recovery.ts).
 app.on('child-process-gone', (_e, d) => {
@@ -611,7 +703,9 @@ function shellState(): ShellState {
     reopen = null;
     activeSessionId = again.sessionId;
   }
-  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd, ...(again ? { reopen: again } : {}) };
+  // A start by Windows at sign-in whose window was not opened yet: no opening animation.
+  const quiet = startHidden && !mainWindow?.isVisible();
+  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd, autostart, ...(quiet ? { startedHidden: true } : {}), ...(again ? { reopen: again } : {}) };
 }
 
 ipcMain.handle(IpcChannel.AppInfo, (): AppInfo => ({ name: APP_NAME, version: app.getVersion() }));
@@ -1233,6 +1327,12 @@ void app.whenReady().then(() => {
     const file = previewFiles.pathOf(req.url);
     return file ? net.fetch(pathToFileURL(file).toString()) : new Response('', { status: 404 });
   });
+  // The switch shows what Windows has registered (the installer may have); a change of it is written.
+  const signIn = followAutostart({ support: autostart, exe: process.execPath, io: loginItems, log: (line) => console.log(line) });
+  const registered = signIn.start(settings.get().openAtLogin);
+  if (registered !== settings.get().openAtLogin) settings.update({ openAtLogin: registered });
+  settings.onChange((s) => signIn.changed(s.openAtLogin));
+  createTray();
   if (backend instanceof ProcessBackend) void backend.start();
   else applyProviders();
   void pluginService.start().catch(() => {
@@ -1273,6 +1373,9 @@ wireQuit({
   },
   warn: (line) => console.warn(line),
 });
+
+// Started again while running (Start menu, desktop): this copy's window comes up instead (main/autostart.ts).
+app.on('second-instance', (_e, argv) => onSecondLaunch(argv, showMainWindow));
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
