@@ -320,8 +320,8 @@ function subLine(location: string | undefined, version: string | undefined): str
 /** Back to the list the page was opened from, at its top left. */
 function Back({ label, onBack }: { label: string; onBack(): void }) {
   return (
-    <button type="button" className="text-btn plugin-back" onClick={onBack}>
-      <Icon name="back" size={14} />
+    <button type="button" className="back-link plugin-back" onClick={onBack}>
+      <Icon name="arrowLeft" size={16} />
       {label}
     </button>
   );

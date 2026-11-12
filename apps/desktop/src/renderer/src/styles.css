@@ -49,12 +49,11 @@
   /* Menus and dialogs (the reference's 14px). */
   --radius-popup: 14px;
   /* How tall the controls are, everywhere (measured on Claude's, out/settings-modal/10-controls.md): a button, a
-     field and an icon button --control-h; a tab or a segment --tab-h inside its tray's --tabs-pad (so a row of tabs
-     or segments is --control-h too). Bigger or smaller: change these. */
+     field, an icon button and a segment --control-h; a tab --tab-h, its line under it included. Bigger or smaller:
+     change these. */
   --control-h: 28px;
   --control-pad-x: 12px;
-  --tab-h: 24px;
-  --tabs-pad: 2px;
+  --tab-h: 28px;
   --font-ui: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
   --font-mono: 'Cascadia Mono', Consolas, 'Microsoft YaHei UI', monospace;
 }
@@ -473,6 +472,26 @@ a:hover {
 .link-btn {
   color: var(--spica-accent-text);
   text-align: left;
+}
+
+/* A way back (← 已安装 on a plugin's page, ← 返回「…」 over a conversation opened from history), as Claude's
+   「← Your plugins」: an arrow and the words in the text colour, on a line of its own; a block of colour on hover,
+   reaching a little left of the arrow so the arrow lines up with what is under it. */
+.back-link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  height: var(--control-h);
+  margin-left: -8px;
+  padding: 0 10px 0 8px;
+  border-radius: var(--radius-m);
+  color: var(--spica-ink);
+}
+
+.back-link:hover {
+  background: var(--spica-hover);
 }
 
 .link-btn:hover {
@@ -3592,21 +3611,29 @@ button.ctx-row:hover {
   z-index: 1000;
 }
 
-/* Tabs: the open one is a filled pill, no underline. */
+/* Tabs that change what the page shows (已安装 / 市场, 详情 / 设定, the right panel's, 收件箱's, a workbook's
+   sheets), as Claude's plugin page (out/ref/tabs-1-claude-underline.png): a row of words with no box round it or
+   under them, a thin line under the whole row (drawn inside its bottom edge, so a row that scrolls sideways keeps
+   it); the open one in the ink colour with a line of its own along its bottom edge (the tab's border, over the
+   row's line; not a text underline). Where the row sits in a bar with
+   buttons beside it (插件's top row, the right panel's head) it has no line of its own. */
 .tabs {
-  display: inline-flex;
-  gap: 2px;
-  padding: var(--tabs-pad);
-  border-radius: var(--radius-m);
-  background: var(--spica-hover);
+  display: flex;
+  gap: 4px;
+  box-shadow: inset 0 -1px 0 var(--spica-divider);
+}
+
+.tabs.plugins-tabs,
+.right-head .tabs {
+  box-shadow: none;
 }
 
 .tab {
   height: var(--tab-h);
   /* Never break a label into a column of single characters (small window, 150%). */
   white-space: nowrap;
-  padding: 0 clamp(8px, 3vw, 16px);
-  border-radius: var(--radius-s);
+  padding: 0 12px;
+  border-bottom: 2px solid transparent;
   color: var(--spica-muted);
 }
 
@@ -3615,10 +3642,8 @@ button.ctx-row:hover {
 }
 
 .tab.is-on {
-  background: var(--spica-raised);
+  border-bottom-color: var(--spica-ink);
   color: var(--spica-ink);
-  font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 /* Settings > models */
@@ -4188,34 +4213,40 @@ button.ctx-row:hover {
   max-width: 120px;
 }
 
-.segmented {
+/* One value of a few (关闭窗口时, 文字大小), and 对话 / 项目 across the sidebar: as Claude's Normal / Thinking /
+   Verbose (out/ref/tabs-4-claude-segmented-ok.png): the choices on one faint fill, the chosen one a block that
+   fills it to its edges (no gap between the fill and the block, the same corners), so it reads as one layer. */
+.segmented,
+.tabs.side-tabs {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 2px;
-  /* Its line takes the place of a pixel of the tray, so a row of segments is --control-h like the tabs. */
-  padding: calc(var(--tabs-pad) - 1px);
+  gap: 0;
   border-radius: var(--radius-m);
-  border: 1px solid var(--spica-border-strong);
-  background: var(--spica-raised);
+  background: var(--spica-hover);
+  box-shadow: none;
   justify-self: start;
 }
 
-.segment {
-  height: var(--tab-h);
+.segment,
+.side-tabs .tab {
+  height: var(--control-h);
   white-space: nowrap;
-  padding: 0 12px;
-  border-radius: var(--radius-s);
+  padding: 0 var(--control-pad-x);
+  border: 1px solid transparent;
+  border-radius: var(--radius-m);
   color: var(--spica-muted);
 }
 
-.segment:hover {
+.segment:hover,
+.side-tabs .tab:hover {
   color: var(--spica-ink);
 }
 
-.segment.is-on {
-  background: var(--spica-accent-soft);
+.segment.is-on,
+.side-tabs .tab.is-on {
+  border-color: var(--spica-border-strong);
+  background: var(--spica-raised);
   color: var(--spica-ink);
-  font-weight: 500;
 }
 
 .provider-actions {
@@ -4737,10 +4768,7 @@ section.plugins-part > .plugins-part-title {
 }
 
 .plugin-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin: 0 0 12px -4px;
+  margin-bottom: 12px;
 }
 
 .plugin-facts {
@@ -4844,8 +4872,6 @@ section.plugins-part > .plugins-part-title {
    On a narrow window the row scrolls sideways rather than pushing the name row. */
 .plugin-tabs {
   display: flex;
-  width: fit-content;
-  max-width: 100%;
   margin-top: 10px;
   overflow-x: auto;
 }
@@ -6513,32 +6539,11 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* Opened from a history row or link: the way back, above the conversation. */
-.history-back {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  padding: 5px 12px 5px 8px;
-  border: 1px solid var(--spica-border-strong);
-  border-radius: 999px;
-  background: var(--spica-surface);
-  color: var(--spica-ink);
-  font: inherit;
-  font-size: var(--fs-footnote);
-  line-height: var(--lh-footnote);
-  cursor: pointer;
-}
-
 .history-back span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.history-back:hover {
-  background: var(--spica-hover);
 }
 
 /* The message it was opened at. */
@@ -6569,11 +6574,11 @@ section.plugins-part > .plugins-part-title {
 .side-tabs,
 .side-tabs-space {
   flex: none;
-  height: calc(var(--tab-h) + 2 * var(--tabs-pad));
+  height: var(--tab-h);
   margin: 4px 8px 2px;
 }
 
-.side-tabs {
+.tabs.side-tabs {
   display: flex;
 }
 

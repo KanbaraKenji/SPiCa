@@ -36,6 +36,8 @@ const PATHS = {
   minus: 'M3.5 8h9',
   question: 'M6 6.2a2 2 0 1 1 2.7 1.9c-.5.2-.7.6-.7 1.1v.6 M8 11.6v.2',
   arrowRight: 'M3 8h10 M9 4l4 4-4 4',
+  // ← before a way back (‹ 已安装, 返回「…」).
+  arrowLeft: 'M13 8H3 M7 4L3 8l4 4',
   dot: 'M8 7.2a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6z',
   // 支持图片: an eye (a model that takes pictures).
   eye: 'M1.5 8s2.4-4.5 6.5-4.5 6.5 4.5 6.5 4.5-2.4 4.5-6.5 4.5S1.5 8 1.5 8z M8 6.2a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6z',

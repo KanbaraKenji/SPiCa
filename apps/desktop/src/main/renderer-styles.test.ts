@@ -121,26 +121,55 @@ describe('the panels around the conversation (shell/layout.ts counts on these)',
 describe('sidebar tabs', () => {
   it('the tabs and the space kept for them on the icon column are one rule: same height, same margins', () => {
     const rule = block('.side-tabs,\n.side-tabs-space');
-    expect(rule).toContain('height: calc(var(--tab-h) + 2 * var(--tabs-pad))');
+    expect(rule).toContain('height: var(--tab-h)');
     expect(rule).toContain('margin: 4px 8px 2px');
     expect(rule).toContain('flex: none');
   });
 });
 
 describe('control sizes: one place (out/settings-modal/10-controls.md)', () => {
-  it('buttons, fields and icon buttons are --control-h (28, as Claude’s); a tab or segment --tab-h in its --tabs-pad tray', () => {
+  it('buttons, fields, icon buttons and segments are --control-h (28, as Claude’s); a tab --tab-h', () => {
     const root = block(':root');
     expect(root).toContain('--control-h: 28px');
-    expect(root).toContain('--tab-h: 24px');
-    expect(root).toContain('--tabs-pad: 2px');
-    for (const sel of ['\n.btn', '\n.btn-small', '\n.input', '\n.icon-btn', '\n.btn-quiet-danger']) expect(block(sel)).toContain('height: var(--control-h)');
+    expect(root).toContain('--tab-h: 28px');
+    expect(root).not.toContain('--tabs-pad');
+    for (const sel of ['\n.btn', '\n.btn-small', '\n.input', '\n.icon-btn', '\n.btn-quiet-danger', '\n.segment,\n.side-tabs .tab', '\n.back-link'])
+      expect(block(sel)).toContain('height: var(--control-h)');
     expect(block('\n.btn')).toContain('padding: 0 var(--control-pad-x)');
     expect(block('\n.btn.btn-square')).toContain('width: var(--control-h)');
     expect(block('\n.tab')).toContain('height: var(--tab-h)');
-    expect(block('\n.segment')).toContain('height: var(--tab-h)');
-    expect(block('\n.tabs')).toContain('padding: var(--tabs-pad)');
-    // The segmented row's 1px line stands in for a pixel of its tray, so it is --control-h tall too.
-    expect(block('\n.segmented')).toContain('padding: calc(var(--tabs-pad) - 1px)');
+  });
+});
+
+describe('tabs and segments: never a box in a box (out/ref/tabs-1, tabs-4; not tabs-3)', () => {
+  it('a tab row is words over a thin line; the open tab has its own line along its bottom edge, not a text underline nor a pill', () => {
+    const row = block('\n.tabs');
+    expect(row).toContain('box-shadow: inset 0 -1px 0 var(--spica-divider)');
+    expect(row).not.toMatch(/background|border-radius|padding/);
+    expect(block('\n.tab')).toContain('border-bottom: 2px solid transparent');
+    const on = block('\n.tab.is-on');
+    expect(on).toContain('border-bottom-color: var(--spica-ink)');
+    expect(on).not.toMatch(/background|text-decoration|box-shadow/);
+    // In a bar with buttons beside it the row has no line of its own.
+    expect(block('.tabs.plugins-tabs,\n.right-head .tabs')).toContain('box-shadow: none');
+  });
+
+  it('a segmented row (and 对话 / 项目) is one fill with no space inside it; the chosen block fills it to its edges, the same corners', () => {
+    const row = block('\n.segmented,\n.tabs.side-tabs');
+    expect(row).toContain('background: var(--spica-hover)');
+    expect(row).toContain('border-radius: var(--radius-m)');
+    expect(row).toContain('gap: 0');
+    expect(row).not.toMatch(/padding|border:/);
+    expect(block('\n.segment,\n.side-tabs .tab')).toContain('border-radius: var(--radius-m)');
+    const on = block('\n.segment.is-on,\n.side-tabs .tab.is-on');
+    expect(on).toContain('background: var(--spica-raised)');
+    expect(on).toContain('border-color: var(--spica-border-strong)');
+  });
+
+  it('a way back is an arrow and words in the text colour, a block of colour on hover (as Claude’s 「← Your plugins」)', () => {
+    expect(block('\n.back-link')).toContain('color: var(--spica-ink)');
+    expect(block('\n.back-link:hover')).toContain('background: var(--spica-hover)');
+    expect(block('\n.back-link')).not.toMatch(/border:|text-decoration/);
   });
 });
 

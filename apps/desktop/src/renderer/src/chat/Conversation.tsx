@@ -424,8 +424,8 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
         ) : (
           <div className="transcript-column">
             {found?.back ? (
-              <button type="button" className="history-back" onClick={found.back.onBack}>
-                <Icon name="back" size={14} />
+              <button type="button" className="back-link history-back" onClick={found.back.onBack}>
+                <Icon name="arrowLeft" size={16} />
                 <span>返回「{found.back.title}」</span>
               </button>
             ) : null}
