@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { closeAction, closeAnswer, closePrompt, onWindowClose, revealWindow, trayHint, trayMenuItems, wireTray, type CloseAnswer, type CloseState, type RevealTarget, type TrayLike } from './tray';
+import { CLOSE_QUESTION, closeAction, closeAnswer, closeAsker, closePrompt, onWindowClose, parseCloseAnswer, revealWindow, trayHint, trayMenuItems, wireTray, type CloseAnswer, type CloseState, type RevealTarget, type TrayLike } from './tray';
 
 describe('the notification-area icon', () => {
   it('right-click menu: open, then quit, with the app name', () => {
@@ -188,5 +188,58 @@ describe('closing the window', () => {
 
   it('the notification names the app and the tray', () => {
     expect(trayHint('Spica')).toEqual({ title: 'Spica', content: 'Spica 已最小化到托盘，仍在运行。点托盘图标打开，右键图标可以退出。' });
+  });
+});
+
+describe('asking through the page', () => {
+  function asker(ready = true) {
+    const calls: string[] = [];
+    const a = closeAsker({
+      pageReady: () => ready,
+      reveal: () => calls.push('reveal'),
+      send: () => calls.push('send'),
+      fallback: async () => {
+        calls.push('fallback');
+        return { choice: 'quit', remember: false };
+      },
+    });
+    return { a, calls };
+  }
+
+  it('the window comes to the front, then the page is asked; its answer is the answer', async () => {
+    const { a, calls } = asker();
+    const p = a.ask();
+    expect(calls).toEqual(['reveal', 'send']);
+    a.answer({ choice: 'tray', remember: true });
+    await expect(p).resolves.toEqual({ choice: 'tray', remember: true });
+  });
+
+  it('closing the dialog, or junk: no choice', async () => {
+    const { a } = asker();
+    const p1 = a.ask();
+    a.answer({ choice: null });
+    await expect(p1).resolves.toEqual({ choice: null, remember: false });
+    a.pageGone(); // nothing asked: nothing to do
+    expect(parseCloseAnswer({ choice: 'hide', remember: true })).toEqual({ choice: null, remember: false });
+    expect(parseCloseAnswer('quit')).toEqual({ choice: null, remember: false });
+  });
+
+  it('a page that goes before answering: asked over with the message box', async () => {
+    const { a, calls } = asker();
+    const p = a.ask();
+    a.pageGone();
+    await expect(p).resolves.toEqual({ choice: 'quit', remember: false });
+    expect(calls).toEqual(['reveal', 'send', 'fallback']);
+    a.answer({ choice: 'tray', remember: false }); // a late answer is dropped
+  });
+
+  it('a page not ready: the message box instead, the page is not asked', async () => {
+    const { a, calls } = asker(false);
+    await expect(a.ask()).resolves.toEqual({ choice: 'quit', remember: false });
+    expect(calls).toEqual(['fallback']);
+  });
+
+  it('the page and the fallback box put the same question', () => {
+    expect(closePrompt('Spica').message).toBe(CLOSE_QUESTION);
   });
 });

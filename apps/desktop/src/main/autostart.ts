@@ -25,6 +25,17 @@ export function startedAtLogin(argv: readonly string[]): boolean {
 }
 
 /**
+ * Which starts open on 新对话 instead of the main conversation (the page's usual start, store/agent.ts init):
+ * 'login' only a start by Windows at sign-in (he asked for it, 2026-11-12), 'every' every start. A page loaded
+ * again after its process was lost is not a start (ShellState.reopen) and goes back where it was.
+ */
+export const NEW_CHAT_AT_START: 'login' | 'every' = 'login';
+
+export function startsOnNewChat(argv: readonly string[], rule: 'login' | 'every' = NEW_CHAT_AT_START): boolean {
+  return rule === 'every' || startedAtLogin(argv);
+}
+
+/**
  * Spica started again while it runs (Start menu, desktop shortcut): no second copy; the running one's window is
  * brought to the front. A start by Windows at sign-in does not pull it up.
  */

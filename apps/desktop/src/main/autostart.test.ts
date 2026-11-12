@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { autostartSupport, followAutostart, LOGIN_ARG, loginItemOn, onSecondLaunch, registeredAtLogin, startedAtLogin, syncAutostart, type LoginItems } from './autostart';
+import { autostartSupport, followAutostart, LOGIN_ARG, loginItemOn, onSecondLaunch, registeredAtLogin, startedAtLogin, startsOnNewChat, syncAutostart, type LoginItems } from './autostart';
 
 describe('who may use 开机时启动', () => {
   it('an installed copy on Windows only', () => {
@@ -15,6 +15,12 @@ describe('a run Windows started at sign-in', () => {
     expect(startedAtLogin(['C:\\Spica\\Spica.exe', LOGIN_ARG])).toBe(true);
     expect(startedAtLogin(['C:\\Spica\\Spica.exe'])).toBe(false);
     expect(startedAtLogin(['C:\\Spica\\Spica.exe', '--autostart-later'])).toBe(false);
+  });
+
+  it('opens on 新对话: a start by Windows at sign-in; every start when the rule says so', () => {
+    expect(startsOnNewChat(['Spica.exe', LOGIN_ARG])).toBe(true);
+    expect(startsOnNewChat(['Spica.exe'])).toBe(false);
+    expect(startsOnNewChat(['Spica.exe'], 'every')).toBe(true);
   });
 
   it('a second start shows the running window, unless Windows started it', () => {

@@ -66,6 +66,17 @@ const bridge: DesktopBridge = {
   getShellState: () => ipcRenderer.invoke(DesktopChannel.GetShellState) as Promise<ShellState>,
   updateSettings: (patch: SettingsPatch) => ipcRenderer.invoke(DesktopChannel.UpdateSettings, patch) as Promise<ShellSettings>,
   onSettingsChanged: (listener) => subscribe<ShellSettings>(DesktopChannel.SettingsChanged, listener),
+  closeAsk: {
+    listen: (onAsk) => {
+      const off = subscribe<void>(DesktopChannel.CloseAsk, () => onAsk());
+      ipcRenderer.send(DesktopChannel.CloseAskReady, true);
+      return () => {
+        ipcRenderer.send(DesktopChannel.CloseAskReady, false);
+        off();
+      };
+    },
+    answer: (answer) => ipcRenderer.send(DesktopChannel.CloseAnswer, answer),
+  },
   zoom: (step) => ipcRenderer.send(DesktopChannel.Zoom, step),
   pickFolder: (title) => ipcRenderer.invoke(DesktopChannel.PickFolder, title) as Promise<string | null>,
   network: () => ipcRenderer.invoke(DesktopChannel.Network) as Promise<NetworkState | null>,

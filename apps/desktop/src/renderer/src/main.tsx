@@ -6,6 +6,7 @@ import { installZoomInput } from './shell/zoomInput';
 import { localDay, splashFor } from '../../shared/settings';
 import { AgentStore } from './store/agent';
 import { ShellStore } from './store/shell';
+import { CloseAsk } from './ui/CloseDialog';
 import '@spica/brand/styles.css';
 import './styles.css';
 
@@ -24,12 +25,16 @@ async function start(el: HTMLElement): Promise<void> {
   const splash = state.automated || state.reopen ? 'none' : splashFor(state.settings, today);
   if (splash === 'full') shell.update({ splashShownOn: today });
   const agent = new AgentStore(bridge);
-  const ready = agent.init(state.reopen?.sessionId ?? undefined);
+  // A start that opens on 新对话 (main/autostart.ts startsOnNewChat): the empty window once the list is in.
+  const ready = agent.init(state.reopen?.sessionId ?? undefined).then(() => {
+    if (state.startOnNewChat) agent.newChat();
+  });
   const version = await bridge.getAppInfo().then((i) => i.version).catch(() => '');
   createRoot(el).render(
     <StrictMode>
       <Root splash={splash} ready={ready} version={version}>
         <App bridge={bridge} shell={shell} agent={agent} version={version} />
+        <CloseAsk bridge={bridge} />
       </Root>
     </StrictMode>,
   );

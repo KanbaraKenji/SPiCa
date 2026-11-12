@@ -4,8 +4,8 @@
 // - Right click: 打开 Spica / 退出 Spica (the name follows deploy.json). 退出 goes through the app's own quit
 //   (main/quit.ts), the same as any other quit.
 // - Hovering shows the app's name.
-// - The window's ×, by 设置 › 常规 › 关闭窗口时: 每次询问 (default) asks 最小化到托盘 / 退出 / 取消 with
-//   「记住我的选择」 (unticked; ticked, the choice becomes the setting); 最小化到托盘 hides the window, the core,
+// - The window's ×, by 设置 › 常规 › 关闭窗口时: 每次询问 (default) asks 最小化到托盘 / 退出 in the page's own
+//   dialog with 「记住我的选择」 (unticked; ticked, the choice becomes the setting); closing the dialog is no choice; 最小化到托盘 hides the window, the core,
 //   the plugins and running conversations go on, and the first time a notification says where Spica went;
 //   退出 quits. A real quit (退出 Spica, an update, Windows signing out or shutting down, the app's own quit) is
 //   never held or asked about.
@@ -82,10 +82,17 @@ export function closeAction(s: CloseState): 'close' | 'hide' | 'ask' {
   return s.closeWindow === 'quit' ? 'close' : 'ask';
 }
 
-/** The question on ×: a Windows message box (it shows even without the page; Esc and its × are 取消). */
+/** The question on ×, as the page's dialog and the fallback message box both put it. */
+export const CLOSE_QUESTION = '关闭窗口时要怎么做？';
+
+/**
+ * The fallback question: a Windows message box, seen only when the page cannot show its own dialog (its process
+ * is gone, or it has not loaded yet). There 取消 is a button (the box has no other way to say no); Esc and its ×
+ * are 取消 too.
+ */
 export function closePrompt(appName: string): { message: string; detail: string; buttons: string[]; defaultId: number; cancelId: number; checkboxLabel: string } {
   return {
-    message: '关闭窗口时要怎么做？',
+    message: CLOSE_QUESTION,
     detail: `最小化到托盘后，${appName} 继续运行，可以从托盘图标打开或退出。`,
     buttons: ['最小化到托盘', `退出 ${appName}`, '取消'],
     defaultId: 0,
@@ -102,6 +109,58 @@ export function closeAnswer(response: number, checkboxChecked: boolean): CloseAn
   return { choice, remember: choice !== null && checkboxChecked };
 }
 
+/** What the page sent back (anything else: no choice). */
+export function parseCloseAnswer(value: unknown): CloseAnswer {
+  const v = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  const choice = v.choice === 'tray' || v.choice === 'quit' ? v.choice : null;
+  return { choice, remember: choice !== null && v.remember === true };
+}
+
+export interface AskerOptions {
+  /** The page has loaded and listens for the question. */
+  pageReady(): boolean;
+  /** The window to the front first (minimized, or behind another window, when its taskbar button was closed). */
+  reveal(): void;
+  /** Tells the page to show its dialog. */
+  send(): void;
+  /** The message box, when the page cannot show its dialog. */
+  fallback(): Promise<CloseAnswer>;
+}
+
+/**
+ * Asks through the page's own dialog: the window comes to the front, the page shows the dialog and answers with
+ * answer(). A page that goes or loads again before answering (pageGone()) is asked over with the message box.
+ */
+export function closeAsker(o: AskerOptions): { ask(): Promise<CloseAnswer>; answer(value: unknown): void; pageGone(): void } {
+  let pending: ((a: CloseAnswer) => void) | null = null;
+  const settle = (a: CloseAnswer) => {
+    const r = pending;
+    pending = null;
+    r?.(a);
+  };
+  return {
+    ask() {
+      if (!o.pageReady()) return o.fallback();
+      o.reveal();
+      return new Promise<CloseAnswer>((resolve) => {
+        settle({ choice: null, remember: false });
+        pending = resolve;
+        o.send();
+      });
+    },
+    answer: (value) => settle(parseCloseAnswer(value)),
+    pageGone: () => {
+      const r = pending;
+      pending = null;
+      if (r)
+        void o
+          .fallback()
+          .catch((): CloseAnswer => ({ choice: null, remember: false }))
+          .then(r);
+    },
+  };
+}
+
 /** Said once, the first time the window is minimized to the tray. */
 export function trayHint(appName: string): { title: string; content: string } {
   return { title: appName, content: `${appName} 已最小化到托盘，仍在运行。点托盘图标打开，右键图标可以退出。` };
@@ -111,7 +170,7 @@ export interface CloseOptions {
   state(): CloseState;
   hide(): void;
   quit(): void;
-  /** Asks 最小化到托盘 / 退出 / 取消 with 记住我的选择. */
+  /** Asks 最小化到托盘 / 退出 with 记住我的选择 (closeAsker). */
   ask(): Promise<CloseAnswer>;
   /** Keeps the choice as 关闭窗口时. */
   remember(choice: 'tray' | 'quit'): void;

@@ -2695,6 +2695,25 @@ button.ctx-row:hover {
   gap: 8px;
 }
 
+/* A checkbox in a dialog (关闭窗口时 › 记住我的选择), under the text and above the buttons;
+   the box as in the model list (.model-row-name). */
+.dialog-check {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  cursor: pointer;
+}
+
+.dialog-check > input {
+  flex: none;
+  margin: 0;
+  accent-color: var(--spica-accent);
+}
+
 /* ---------- Settings ---------- */
 
 .settings {

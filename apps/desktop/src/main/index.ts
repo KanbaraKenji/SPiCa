@@ -33,8 +33,8 @@ import { ProcessBackend, type BackendStatus } from './backend/process';
 import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { pageAlive, pageRecovery } from './page-recovery';
 import { lookAtPage, watchPage } from './page-watch';
-import { closeAnswer, closePrompt, onWindowClose, revealWindow, trayHint, wireTray } from './tray';
-import { autostartSupport, followAutostart, loginItemOn, onSecondLaunch, type LoginItems } from './autostart';
+import { closeAnswer, closeAsker, closePrompt, onWindowClose, revealWindow, trayHint, wireTray } from './tray';
+import { autostartSupport, followAutostart, loginItemOn, onSecondLaunch, startsOnNewChat, type LoginItems } from './autostart';
 import { knownContextWindow, matchWindowIn, toProviderConfig } from './backend/to-config';
 import type { WindowMatch } from '../shared/catalog';
 import { fromHostDraft, toHostConnection, toHostModelList } from './providers/host-models';
@@ -586,17 +586,32 @@ function createMainWindow(): BrowserWindow {
   win.on('session-end', () => {
     sessionEnding = true;
   });
+  // The question is the page's own dialog (closeAsker; the window first comes to the front). Only when the page
+  // cannot show it (its process is gone, or it has not loaded yet) is it asked with a Windows message box.
+  const asker = closeAsker({
+    pageReady: () => closeAskReady && pageAlive(win) && !win.webContents.isLoading(),
+    reveal: () => revealWindow(win),
+    send: () => sendToWindow(DesktopChannel.CloseAsk),
+    fallback: () =>
+      dialog
+        .showMessageBox(win, { type: 'question', title: APP_NAME, noLink: true, checkboxChecked: false, ...closePrompt(APP_NAME) })
+        .then((r) => closeAnswer(r.response, r.checkboxChecked)),
+  });
+  closeAsk = asker;
+  // A page that goes or loads again stops listening; a question it had open is asked over with the message box.
+  const pageLeft = () => {
+    closeAskReady = false;
+    asker.pageGone();
+  };
+  win.webContents.on('did-start-loading', pageLeft);
+  win.webContents.on('render-process-gone', pageLeft);
   win.on(
     'close',
     onWindowClose({
       state: () => ({ closeWindow: settings.get().closeWindow, quitting: appQuitting, sessionEnding, trayReady: tray !== null }),
       hide: () => win.hide(),
       quit: () => app.quit(),
-      // A Windows message box, like 界面出错: it shows even when the page cannot, and Esc / its × are 取消.
-      ask: () =>
-        dialog
-          .showMessageBox(win, { type: 'question', title: APP_NAME, noLink: true, checkboxChecked: false, ...closePrompt(APP_NAME) })
-          .then((r) => closeAnswer(r.response, r.checkboxChecked)),
+      ask: () => asker.ask(),
       remember: (closeWindow) => settings.update({ closeWindow }),
       hintShown: () => settings.get().backgroundHintShown,
       showHint: () => {
@@ -695,6 +710,17 @@ function createMainWindow(): BrowserWindow {
   return win;
 }
 
+/** The page listens for the close question (DesktopChannel.CloseAskReady); its answers go to the window's asker. */
+let closeAskReady = false;
+let closeAsk: { answer(value: unknown): void } | null = null;
+ipcMain.on(DesktopChannel.CloseAskReady, (_e, on: unknown) => {
+  closeAskReady = on === true;
+});
+ipcMain.on(DesktopChannel.CloseAnswer, (_e, answer: unknown) => closeAsk?.answer(answer));
+
+/** This start opens on 新对话 (main/autostart.ts startsOnNewChat): told to the first page only. */
+let newChatAtStart = startsOnNewChat(process.argv);
+
 /** Set when the window's page was lost and is loading again: the conversation that was open (read once). */
 let reopen: { sessionId: string | null } | null = null;
 let appQuitting = false;
@@ -715,7 +741,10 @@ function shellState(): ShellState {
     reopen = null;
     activeSessionId = again.sessionId;
   }
-  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd, autostart, ...(again ? { reopen: again } : {}) };
+  // Only the first page of this start opens on 新对话; a page loaded again goes back where it was (reopen).
+  const newChat = newChatAtStart && !again;
+  newChatAtStart = false;
+  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd, autostart, ...(newChat ? { startOnNewChat: true } : {}), ...(again ? { reopen: again } : {}) };
 }
 
 ipcMain.handle(IpcChannel.AppInfo, (): AppInfo => ({ name: APP_NAME, version: app.getVersion() }));

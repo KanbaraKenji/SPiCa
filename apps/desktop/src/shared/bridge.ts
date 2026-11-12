@@ -48,6 +48,8 @@ export interface ShellState {
   reopen?: { sessionId: string | null };
   /** Whether 开机时启动 works in this copy (main/autostart.ts); absent from an older main process: shown disabled. */
   autostart?: AutostartSupport;
+  /** This start opens on 新对话, not the main conversation (main/autostart.ts startsOnNewChat). */
+  startOnNewChat?: boolean;
 }
 
 /** A file shown in the right panel: a URL for the PDF viewer / images, or its text (capped). */
@@ -109,6 +111,14 @@ export interface DesktopBridge extends SpicaBridge {
   getShellState(): Promise<ShellState>;
   updateSettings(patch: SettingsPatch): Promise<ShellSettings>;
   onSettingsChanged(listener: (settings: ShellSettings) => void): () => void;
+  /**
+   * The window's × asks (设置 › 常规 › 关闭窗口时 = 每次询问): listen() tells the main process the page shows the
+   * question from now on and calls onAsk for each; answer() sends the choice (null: the dialog was closed).
+   */
+  closeAsk: {
+    listen(onAsk: () => void): () => void;
+    answer(answer: { choice: 'tray' | 'quit' | null; remember: boolean }): void;
+  };
   /** One zoom step for the whole window (Ctrl+wheel, Ctrl+=/-/0). */
   zoom(step: 'in' | 'out' | 'reset'): void;
   /** Opens a file a session referenced (relative to its working folder). Resolves to an error text, or null on success. */
