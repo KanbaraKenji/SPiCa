@@ -267,6 +267,16 @@ function CodeBlockBody({ node, source, code, name, children }: { node?: PreNode 
  * in its hover note, and copying a selection over it copies the full path. Other inline code is code; a path
  * from plain text that nothing here opens stays plain text.
  */
+/**
+ * Whether a path in an answer shows as its name: only a file whose name has an extension. A folder shows whole
+ * (他: 「文件夹不要省略，比如你说的XXX文件都在“A\”里，看着好怪」), and so does a path that may be either (its
+ * last part has no extension). Folders are told by how the path is written (a separator at the end), not by
+ * asking the disk.
+ */
+function shortLabel(path: string, kind: 'file' | 'folder'): boolean {
+  return kind === 'file' && /\.[A-Za-z0-9]*[A-Za-z][A-Za-z0-9]*$/.test(path.slice(path.search(/[^\\/]*$/)));
+}
+
 function InlineCode({ className, plain, children }: { className?: string | undefined; plain?: boolean; children?: ReactNode }) {
   const inBlock = useContext(InBlockContext);
   const tools = useContext(AnswerToolsContext);
@@ -293,7 +303,7 @@ function InlineCode({ className, plain, children }: { className?: string | undef
         }
       }}
     >
-      {pathLabel(text, paths)}
+      {shortLabel(text, kind) ? pathLabel(text, paths) : text}
     </code>
   );
 }

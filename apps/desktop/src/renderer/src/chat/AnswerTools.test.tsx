@@ -54,12 +54,22 @@ describe('paths in an answer', () => {
     expect(tools.openFile).toHaveBeenCalledTimes(1);
   });
 
+  it('a path whose last part has no extension (a file or a folder, cannot tell) shows whole; it still opens as before', () => {
+    const tools = answer('资料在 `D:\\工作\\样机评审` 和 `D:\\工作\\Makefile` 里。')!;
+    const a = screen.getByRole('link', { name: 'D:\\工作\\样机评审' });
+    expect(a.textContent).toBe('D:\\工作\\样机评审');
+    expect(screen.getByRole('link', { name: 'D:\\工作\\Makefile' }).textContent).toBe('D:\\工作\\Makefile');
+    fireEvent.click(a);
+    expect(tools.openFile).toHaveBeenCalledWith('D:\\工作\\样机评审');
+  });
+
   it('shows only the name; the full path is in its hover note and in what a selection copies', () => {
     answer(SUMMARY);
     const file = screen.getByRole('link', { name: 'D:\\工作\\样机评审\\报价汇总.xlsx' });
     expect(file.textContent).toBe('报价汇总.xlsx');
     expect(file.getAttribute('title')).toBe('预览 D:\\工作\\样机评审\\报价汇总.xlsx');
-    expect(screen.getByRole('link', { name: 'D:\\工作\\样机评审\\报价\\' }).textContent).toBe('报价\\');
+    // A folder shows whole (他: 「文件夹不要省略」).
+    expect(screen.getByRole('link', { name: 'D:\\工作\\样机评审\\报价\\' }).textContent).toBe('D:\\工作\\样机评审\\报价\\');
     const md = file.closest('.md')!;
     const range = document.createRange();
     range.selectNodeContents(md.querySelector('p')!);
