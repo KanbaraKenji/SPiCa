@@ -9,6 +9,7 @@ import { useGuard } from '../ui/guard';
 import { InfoTip } from '../ui/InfoTip';
 import { useKeptDraft } from './drafts';
 import { Switch } from './Switch';
+import { Group, Pane, Row } from './Group';
 import { APP_NAME } from '../../../shared/app-identity';
 import type { PluginView } from '../../../shared/plugin-view';
 import { BUILT_IN, previewerId, previewKinds, previewPagesFor } from '../../../shared/previewers';
@@ -53,18 +54,15 @@ function FilePreviews({ settings, onChange, previewPages = [] }: GeneralProps) {
     onChange({ previewers: next });
   };
   return (
-    <div className="settings-group">
-      <h3 className="settings-subheading">文件预览</h3>
-      <div className="preview-kinds">
+    <Group title="文件预览">
         {kinds.map((ext) => {
           const pages = previewPagesFor(ext, previewPages);
           const kept = settings.previewers[ext];
           const gone = kept !== undefined && !pages.some((v) => previewerId(v) === kept);
           const twice = (v: PluginView) => pages.filter((p) => p.title === v.title).length > 1;
           return (
-            <label key={ext} className="preview-kind">
-              <span className="preview-kind-ext">{ext}</span>
-              <select className="input" aria-label={`${ext} 文件预览`} value={kept ?? BUILT_IN} onChange={(e) => set(ext, e.target.value)}>
+            <Row key={ext} title={<span className="preview-kind-ext">{ext}</span>}>
+              <select className="input preview-kind-pick" aria-label={`${ext} 文件预览`} value={kept ?? BUILT_IN} onChange={(e) => set(ext, e.target.value)}>
                 <option value={BUILT_IN}>自带预览</option>
                 {pages.map((v) => (
                   <option key={previewerId(v)} value={previewerId(v)}>
@@ -77,11 +75,10 @@ function FilePreviews({ settings, onChange, previewPages = [] }: GeneralProps) {
                   </option>
                 ) : null}
               </select>
-            </label>
+            </Row>
           );
         })}
-      </div>
-    </div>
+    </Group>
   );
 }
 
@@ -103,19 +100,11 @@ const CLOSE_WINDOW: [CloseWindow, string][] = [
 function Startup({ settings, onChange, autostart = 'unsupported' }: GeneralProps) {
   const usable = autostart === 'ok';
   return (
-    <div className="settings-group">
-      <h3 className="settings-subheading">启动与托盘</h3>
-      <div className="setting-row">
-        <div className="setting-text">
-          <span className="setting-title">开机时启动</span>
-          <span className="settings-hint">{autostart === 'ok' ? '登录 Windows 后自动启动。' : AUTOSTART_UNAVAILABLE[autostart]}</span>
-        </div>
+    <Group title="启动与托盘">
+      <Row title="开机时启动" hint={autostart === 'ok' ? '登录 Windows 后自动启动。' : AUTOSTART_UNAVAILABLE[autostart]}>
         <Switch on={usable && settings.openAtLogin} label="开机时启动" disabled={!usable} onChange={(v) => onChange({ openAtLogin: v })} />
-      </div>
-      <div className="setting-row">
-        <div className="setting-text">
-          <span className="setting-title">关闭窗口时</span>
-        </div>
+      </Row>
+      <Row title="关闭窗口时">
         <div className="segmented" role="radiogroup" aria-label="关闭窗口时">
           {CLOSE_WINDOW.map(([value, label]) => (
             <button key={value} type="button" role="radio" aria-checked={settings.closeWindow === value} className={settings.closeWindow === value ? 'segment is-on' : 'segment'} onClick={() => onChange({ closeWindow: value })}>
@@ -123,8 +112,8 @@ function Startup({ settings, onChange, autostart = 'unsupported' }: GeneralProps
             </button>
           ))}
         </div>
-      </div>
-    </div>
+      </Row>
+    </Group>
   );
 }
 
@@ -148,27 +137,18 @@ function Developer({ settings, onChange, localConnect }: GeneralProps) {
   }, [localConnect, on]);
   const shown = on ? info : null;
   return (
-    <div className="settings-group">
-      <h3 className="settings-subheading">开发者</h3>
-      <div className="setting-row">
-        <div className="setting-text">
-          <span className="setting-title">允许本机脚本连接 {APP_NAME}</span>
-          <span className="settings-hint">开启后，本机脚本可连接 {APP_NAME} 并修改模型设置。</span>
-        </div>
+    <Group title="开发者">
+      <Row title={`允许本机脚本连接 ${APP_NAME}`} hint={`开启后，本机脚本可连接 ${APP_NAME} 并修改模型设置。`}>
         <Switch on={on} label={`允许本机脚本连接 ${APP_NAME}`} onChange={(v) => onChange({ localConnect: v })} />
-      </div>
+      </Row>
       {on ? (
-        <div className="setting-row">
-          <div className="setting-text">
-            <span className="setting-title path-text">{shown ? shown.url : '正在打开…'}</span>
-            {shown?.tokenFile ? (
-              <span className="settings-hint path-text" title={shown.tokenFile} data-tip-clipped="">
-                令牌文件 {shown.tokenFile}
-              </span>
-            ) : null}
-          </div>
+        <Row
+          title={shown ? shown.url : '正在打开…'}
+          hint={shown?.tokenFile ? `令牌文件 ${shown.tokenFile}` : undefined}
+          path={{ title: shown?.url ?? '', ...(shown?.tokenFile ? { hint: shown.tokenFile } : {}) }}
+        >
           {shown ? (
-            <div className="row-buttons">
+            <>
               <button
                 type="button"
                 className="btn btn-square"
@@ -186,11 +166,11 @@ function Developer({ settings, onChange, localConnect }: GeneralProps) {
               >
                 <Icon name={copied ? 'check' : 'copy'} size={16} />
               </button>
-            </div>
+            </>
           ) : null}
-        </div>
+        </Row>
       ) : null}
-    </div>
+    </Group>
   );
 }
 
@@ -219,8 +199,27 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
     };
   }, [networkState, key]);
   return (
-    <div className="settings-group">
-      <h3 className="settings-subheading">网络</h3>
+    <Group
+      title="网络"
+      after={
+        <>
+          {state ? (
+            <p className="settings-hint group-note">
+              当前：{state.proxy ? `代理：${state.proxy}` : '直连'}
+              {state.noProxy.length ? ` · ${state.noProxy.length} 个例外地址` : ''}
+              {state.caFile ? ' · 已添加证书文件' : ''}
+              {state.useSystemCa ? ' · 使用 Windows 证书' : ''}
+            </p>
+          ) : null}
+          {state?.problems.map((p) => (
+            <p key={p} className="provider-result is-bad group-note">
+              {p}
+            </p>
+          ))}
+        </>
+      }
+    >
+      <Row title="代理" stack>
       <div className="net-grid">
         <label className="form-field">
           <span className="field-label">
@@ -245,14 +244,8 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
         </button>
         {changed ? <span className="provider-unsaved">未保存</span> : null}
       </div>
-      <div className="setting-row net-ca">
-        <div className="setting-text">
-          <span className="setting-title">信任的证书文件</span>
-          <span className="settings-hint path-text" title={saved.caFile} data-tip-clipped="">
-            {saved.caFile || '无'}
-          </span>
-        </div>
-        <div className="row-buttons">
+      </Row>
+      <Row title="信任的证书文件" hint={saved.caFile || '无'} path={{ hint: saved.caFile }}>
           {pickFiles ? (
             <button
               type="button"
@@ -273,28 +266,11 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
               <Icon name="close" size={14} />
             </button>
           ) : null}
-        </div>
-      </div>
-      <div className="setting-row">
-        <div className="setting-text">
-          <span className="setting-title">使用 Windows 证书存储</span>
-        </div>
+      </Row>
+      <Row title="使用 Windows 证书存储">
         <Switch on={saved.useSystemCa} label="使用 Windows 证书存储" onChange={(useSystemCa) => save({ useSystemCa })} />
-      </div>
-      {state ? (
-        <p className="settings-hint net-now">
-          当前：{state.proxy ? `代理：${state.proxy}` : '直连'}
-          {state.noProxy.length ? ` · ${state.noProxy.length} 个例外地址` : ''}
-          {state.caFile ? ' · 已添加证书文件' : ''}
-          {state.useSystemCa ? ' · 使用 Windows 证书' : ''}
-        </p>
-      ) : null}
-      {state?.problems.map((p) => (
-        <p key={p} className="provider-result is-bad plugin-note">
-          {p}
-        </p>
-      ))}
-    </div>
+      </Row>
+    </Group>
   );
 }
 
@@ -339,11 +315,18 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
     }
   };
   return (
-    <div className="settings-group">
-      <h3 className="settings-subheading">使用日志</h3>
+    <>
+    <Group
+      title="使用日志"
+      actions={
+        <button type="button" className="btn btn-small" disabled={busy} onClick={() => void run()}>
+          {busy ? <span className="spinner" aria-hidden /> : null}
+          导出…
+        </button>
+      }
+    >
       {projects.length ? (
-        <div className="interval-row">
-          <span className="field-label">项目</span>
+        <Row title="项目">
           <button
             type="button"
             className="btn"
@@ -357,10 +340,9 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
             {project?.name ?? '全部项目'}
             <Icon name="chevronDown" size={12} />
           </button>
-        </div>
+        </Row>
       ) : null}
-      <div className="interval-row">
-        <span className="field-label">时间</span>
+      <Row title="时间">
         <div className="segmented" role="radiogroup" aria-label="时间">
           {RANGES.map(([r, label]) => (
             <button key={r} type="button" role="radio" aria-checked={range === r} className={range === r ? 'segment is-on' : 'segment'} onClick={() => setRange(r)}>
@@ -368,29 +350,20 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
             </button>
           ))}
         </div>
-      </div>
-      <div className="rule-actions">
-        <button type="button" className="btn" disabled={busy} onClick={() => void run()}>
-          {busy ? <span className="spinner" aria-hidden /> : null}
-          导出…
-        </button>
-      </div>
-      {result && 'error' in result ? <p className="provider-result is-bad plugin-note">{result.error}</p> : null}
-      {result && 'file' in result ? (
-        <div className="setting-row usage-result">
-          <div className="setting-text">
-            <span className="setting-title">{result.records ? `已导出 ${result.records.toLocaleString('zh-CN')} 条记录` : '该时间段没有记录。'}</span>
-            <span className="settings-hint path-text" title={result.file} data-tip-clipped="">
-              {result.file}
-            </span>
-          </div>
-          <div className="row-buttons">
-            <button type="button" className="btn btn-square" onClick={() => showInFolder(result.file)} aria-label="在文件夹中显示" title="在文件夹中显示">
-              <Icon name="folder" size={16} />
-            </button>
-          </div>
-        </div>
+      </Row>
+      {result && 'error' in result ? (
+        <Pane>
+          <p className="provider-result is-bad">{result.error}</p>
+        </Pane>
       ) : null}
+      {result && 'file' in result ? (
+        <Row className="usage-result" title={result.records ? `已导出 ${result.records.toLocaleString('zh-CN')} 条记录` : '该时间段没有记录。'} hint={result.file} path={{ hint: result.file }}>
+          <button type="button" className="btn btn-square" onClick={() => showInFolder(result.file)} aria-label="在文件夹中显示" title="在文件夹中显示">
+            <Icon name="folder" size={16} />
+          </button>
+        </Row>
+      ) : null}
+    </Group>
       {menu ? (
         <ContextMenu
           x={0}
@@ -400,7 +373,7 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
           onClose={() => setMenu(null)}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -425,22 +398,12 @@ function Workflows({ settings, onChange, workflows, pickFolder, onBackendRestart
     if (dir && dir !== settings.workflowsDir) onChange({ workflowsDir: dir });
   };
   return (
-    <div className="settings-group">
-      <h3 className="settings-subheading">工作流</h3>
-      <div className="setting-row">
-        <div className="setting-text">
-          <span className="setting-title path-text" title={state?.dir ?? ''}>
-            {state?.dir || '—'}
-          </span>
-          <span className="settings-hint">
-            {state === null
-              ? ''
-              : state.names.length
-                ? `已读取 ${state.names.length} 个：${state.names.join('、')}`
-                : '文件夹中没有工作流文件（.json）。'}
-          </span>
-        </div>
-        <div className="row-buttons">
+    <Group title="工作流">
+      <Row
+        title={state?.dir || '—'}
+        path={{ title: state?.dir ?? '' }}
+        hint={state === null ? '' : state.names.length ? `已读取 ${state.names.length} 个：${state.names.join('、')}` : '文件夹中没有工作流文件（.json）。'}
+      >
           <button type="button" className="btn btn-square" onClick={() => void refresh('open')} aria-label="打开文件夹" title="打开文件夹">
             <Icon name="folder" size={16} />
           </button>
@@ -455,19 +418,22 @@ function Workflows({ settings, onChange, workflows, pickFolder, onBackendRestart
               恢复默认
             </button>
           ) : null}
-        </div>
-      </div>
-      {state?.problems.length ? (
-        <ul className="workflow-problems">
-          {state.problems.map((p) => (
-            <li key={p} className="provider-result is-bad">
-              {p}
-            </li>
-          ))}
-        </ul>
+      </Row>
+      {state?.problems.length || state?.message ? (
+        <Pane>
+          {state.problems.length ? (
+            <ul className="workflow-problems">
+              {state.problems.map((p) => (
+                <li key={p} className="provider-result is-bad">
+                  {p}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {state.message ? <p className="provider-result is-bad">{state.message}</p> : null}
+        </Pane>
       ) : null}
-      {state?.message ? <p className="provider-result is-bad plugin-note">{state.message}</p> : null}
-    </div>
+    </Group>
   );
 }
 

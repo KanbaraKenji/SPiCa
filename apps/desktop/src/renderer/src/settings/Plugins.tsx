@@ -33,6 +33,7 @@ import { useKeptDraft } from './drafts';
 import { Switch } from './Switch';
 import { InfoTip } from '../ui/InfoTip';
 import { MailSettings, type MailSettingsProps } from './MailSettings';
+import { Group, Row } from './Group';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import type { PluginView as PageView } from '../../../shared/plugin-view';
 import { PluginPage, type PluginPageProps } from '../shell/PluginFrame';
@@ -718,14 +719,8 @@ export function Plugins({ api, mail, pages }: { api: PluginsApi; mail?: MailSett
   return (
     <section className={narrow ? 'settings-section plugins-page is-narrow' : 'settings-section plugins-page'} ref={root}>
       {mail && mailSources.length > 1 ? (
-        <div className="settings-group">
-          <div className="card plugin-mail-shared">
-            <MailSettings {...mail} />
-            <p className="plugin-mail-sources">
-              <span className="field-label">来源</span>
-              {mailSources.map((p) => p.displayName).join('、')}
-            </p>
-          </div>
+        <div className="settings-group plugin-mail-shared">
+          <MailSettings {...mail} extra={<Row title="来源" hint={mailSources.map((p) => p.displayName).join('、')} />} />
         </div>
       ) : null}
 
@@ -856,27 +851,24 @@ export function Plugins({ api, mail, pages }: { api: PluginsApi; mail?: MailSett
       )}
 
       {state && listView ? (
-        <div className="settings-group plugins-foot">
-          <div className="setting-row">
-            <div className="setting-text">
-              <span className="setting-title">
+        <Group className="plugins-foot">
+          <Row
+            title={
+              <>
                 模拟模式
                 <InfoTip text={MOCK_TIP} label="模拟模式" />
                 {state.mock ? <span className="mock-tag">模拟数据</span> : null}
-              </span>
-            </div>
+              </>
+            }
+          >
             <Switch on={state.mock} label="模拟模式" disabled={busy} onChange={(on) => void run({ op: 'mock', on })} />
-          </div>
-          <p className="plugin-root">
-            <span className="settings-hint">插件目录</span>
-            <span className="detail-path" title={state.root} data-tip-clipped="">
-              {state.root}
-            </span>
-            <button type="button" className="icon-btn" onClick={() => void run({ op: 'openRoot' })} aria-label="打开文件夹" title="打开文件夹">
+          </Row>
+          <Row title="插件目录" hint={state.root} path={{ hint: state.root }}>
+            <button type="button" className="btn btn-square" onClick={() => void run({ op: 'openRoot' })} aria-label="打开文件夹" title="打开文件夹">
               <Icon name="folder" size={16} />
             </button>
-          </p>
-        </div>
+          </Row>
+        </Group>
       ) : null}
 
       {confirm ? (

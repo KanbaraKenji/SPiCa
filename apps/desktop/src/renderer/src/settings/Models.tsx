@@ -33,6 +33,7 @@ import { useGuard } from '../ui/guard';
 import { InfoTip } from '../ui/InfoTip';
 import { PasteConfig } from './PasteConfig';
 import { SpicaStatusIcon } from '@spica/brand/react';
+import { Group, Row } from './Group';
 
 export interface ProvidersApi {
   list(): Promise<ProviderList>;
@@ -530,25 +531,24 @@ export function Models({ api }: { api: ProvidersApi }) {
   return (
     <section className="settings-section">
       {list && groups.length ? (
-        <div className="model-pointers">
-          <label className="model-pointer">
-            <span className="field-label">默认模型</span>
-            <select className="input" value={refKey(list.default ?? null)} onChange={(e) => void run(() => point('default', e.target.value))} aria-label="默认模型">
+        <Group className="model-pointers">
+          <Row title="默认模型">
+            <select className="input model-pointer" value={refKey(list.default ?? null)} onChange={(e) => void run(() => point('default', e.target.value))} aria-label="默认模型">
               {pointerOptions}
             </select>
-          </label>
-          <label className="model-pointer">
-            <span className="field-label">强模型</span>
-            <select className="input" value={refKey(list.strong ?? null)} onChange={(e) => void run(() => point('strong', e.target.value))} aria-label="强模型">
+          </Row>
+          <Row title="强模型">
+            <select className="input model-pointer" value={refKey(list.strong ?? null)} onChange={(e) => void run(() => point('strong', e.target.value))} aria-label="强模型">
               <option value="">无</option>
               {pointerOptions}
             </select>
-          </label>
-        </div>
+          </Row>
+        </Group>
       ) : null}
 
-      <div className="provider-list" role="list">
-        {list && items.length === 0 ? <p className="settings-hint">未配置模型</p> : null}
+      <Group title="服务商">
+      <div className="provider-list group-list" role="list">
+        {list && items.length === 0 ? <p className="settings-hint provider-none">未配置模型</p> : null}
         {items.map((p) => (
           <div key={p.id} role="listitem" className={selected === p.id ? 'provider-row is-on' : 'provider-row'}>
             <button type="button" className="provider-open" onClick={() => open(p)} aria-current={selected === p.id ? 'true' : undefined}>
@@ -580,6 +580,7 @@ export function Models({ api }: { api: ProvidersApi }) {
           {keptDraft(draftKey('new')) ? <span className="provider-unsaved">未保存</span> : null}
         </button>
       </div>
+      </Group>
 
       {current?.readOnly ? <p className="settings-hint provider-readonly">此项来自开发配置文件，无法修改。</p> : null}
 

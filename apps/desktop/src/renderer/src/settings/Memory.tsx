@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyChange, MemoryTidyRun } from '@spica/protocol';
 import { Switch } from './Switch';
+import { Group, Pane, Row } from './Group';
 import { Icon } from '../ui/Icon';
 import { ConfirmDialog } from '../ui/Dialog';
 import { timeOf } from '../chat/format';
@@ -72,27 +73,21 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession,
   const [clearing, setClearing] = useState(false);
   return (
     <section className="settings-section memory-page">
-      <div className="settings-group">
-        <div className="setting-row">
-          <div className="setting-text">
-            <span className="setting-title">启用记忆</span>
-          </div>
+      <Group>
+        <Row title="启用记忆">
           <Switch on={enabled} label="启用记忆" onChange={onEnabled} />
-        </div>
+        </Row>
         {tidy ? (
-          <div className="setting-row">
-            <div className="setting-text">
-              <span className="setting-title">自动整理</span>
-            </div>
+          <Row title="自动整理">
             <Switch on={tidy.auto} label="自动整理" disabled={!enabled} onChange={tidy.onAuto} />
-          </div>
+          </Row>
         ) : null}
-      </div>
+      </Group>
       {tidy ? <TidyGroup tidy={tidy} enabled={enabled} items={items} /> : null}
-      <div className="settings-group">
-        <div className="memory-head">
-          <h3 className="settings-subheading">已记住</h3>
-          <div className="memory-head-actions">
+      <Group
+        title="已记住"
+        actions={
+          <>
             <button type="button" className="btn btn-small" disabled={open === 'new'} onClick={() => setOpen('new')}>
               <Icon name="plus" size={14} />
               添加
@@ -102,12 +97,15 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession,
                 全部清除
               </button>
             ) : null}
-          </div>
-        </div>
+          </>
+        }
+      >
         {list.length === 0 && open !== 'new' ? (
-          <p className="settings-hint memory-empty">暂无记忆</p>
+          <Pane>
+            <p className="settings-hint memory-empty">暂无记忆</p>
+          </Pane>
         ) : (
-          <ul className="memory-list">
+          <ul className="memory-list group-list">
             {open === 'new' ? <MemoryForm key="new" initial="" onCancel={() => setOpen(null)} onSave={(text) => api.add(text)} /> : null}
             {list.map((m) =>
               open === m.id ? (
@@ -118,7 +116,7 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession,
             )}
           </ul>
         )}
-      </div>
+      </Group>
       {deleting ? (
         <ConfirmDialog
           title="删除这条记忆？"
@@ -171,10 +169,10 @@ function TidyGroup({ tidy, enabled, items }: { tidy: MemoryTidy; enabled: boolea
   const shown = tidy.runs?.find((r) => r.status === 'done' && r.changes.length > 0);
   const open = shown ? shown.changes.some((c) => changeStands(c, shown, items)) : false;
   return (
-    <div className="settings-group">
-      <div className="memory-head">
-        <h3 className="settings-subheading">整理</h3>
-        <div className="memory-head-actions">
+    <Group
+      title="整理"
+      actions={
+        <>
           {open && shown ? (
             <button type="button" className="btn btn-small" onClick={() => void tidy.undo(shown.id)}>
               全部撤销
@@ -191,15 +189,18 @@ function TidyGroup({ tidy, enabled, items }: { tidy: MemoryTidy; enabled: boolea
           >
             {running ? '整理中' : '立即整理'}
           </button>
-        </div>
-      </div>
+        </>
+      }
+    >
+      <Pane>
       <p className="settings-hint memory-tidy-last">
         {last && last.status !== 'running' ? `最近一次：${timeOf(last.endedAt ?? last.startedAt)} · ${summary(last)}` : last ? '整理中' : '最近一次：—'}
       </p>
       {problem ? <span className="field-error" role="alert">{problem}</span> : null}
       {shown && shown !== last ? <p className="settings-hint memory-tidy-last">{`${timeOf(shown.endedAt ?? shown.startedAt)} · ${summary(shown)}`}</p> : null}
+      </Pane>
       {shown ? (
-        <ul className="memory-list memory-tidy-list">
+        <ul className="memory-list memory-tidy-list group-list">
           {shown.changes.map((c, i) => (
             <li key={`${shown.id}-${i}`} className="turn-note memory-note memory-tidy-change">
               {tidyChangeText(c)}
@@ -212,7 +213,7 @@ function TidyGroup({ tidy, enabled, items }: { tidy: MemoryTidy; enabled: boolea
           ))}
         </ul>
       ) : null}
-    </div>
+    </Group>
   );
 }
 

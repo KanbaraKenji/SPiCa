@@ -4,6 +4,7 @@ import { BUILTIN_SKINS, DARK_SKIN, deriveTokens, LIGHT_SKIN, normalizeHex, type 
 import { DEFAULT_ZOOM, stepZoom, ZOOM_STEPS, zoomLabel } from '../../../shared/zoom';
 import type { SettingsPatch, ShellSettings, SplashMode, TextSize } from '../../../shared/settings';
 import { ConfirmDialog } from '../ui/Dialog';
+import { Group, Pane, Row } from './Group';
 import { CodeThemes } from './CodeThemes';
 import { Icon } from '../ui/Icon';
 
@@ -163,9 +164,8 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
   const zoomIndex = ZOOM_STEPS.indexOf(settings.zoom as (typeof ZOOM_STEPS)[number]);
   return (
     <section className="settings-section">
-
-      <div className="settings-group">
-        <h3 className="settings-subheading">皮肤</h3>
+      <Group title="皮肤">
+        <Pane>
         <div className="skin-grid" role="radiogroup" aria-label="皮肤">
           {tiles.map((t) => (
             <button
@@ -187,8 +187,10 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
             <span className="skin-name">新建皮肤</span>
           </button>
         </div>
+        </Pane>
 
         {editing ? (
+          <Pane>
           <div className="skin-editor">
             <div className="field">
               <span className="field-label">名称</span>
@@ -202,11 +204,12 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
               </button>
             </div>
           </div>
+          </Pane>
         ) : null}
-      </div>
+      </Group>
 
-      <div className="settings-group">
-        <h3 className="settings-subheading">文字大小</h3>
+      <Group title="显示">
+        <Row title="文字大小">
         <div className="segmented" role="radiogroup" aria-label="文字大小">
           {TEXT_SIZES.map((o) => (
             <button
@@ -221,15 +224,8 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
             </button>
           ))}
         </div>
-      </div>
-
-      <div className="settings-group">
-        <h3 className="settings-subheading">代码</h3>
-        <CodeThemes value={settings.codeTheme} onChange={(codeTheme) => onChange({ codeTheme })} size={settings.codeSize} onSize={(codeSize) => onChange({ codeSize })} />
-      </div>
-
-      <div className="settings-group">
-        <h3 className="settings-subheading">缩放</h3>
+        </Row>
+        <Row title="缩放">
         <div className="zoom-row">
           <div className="stepper" role="group" aria-label="缩放">
             <button type="button" className="icon-btn" onClick={() => onChange({ zoom: stepZoom(settings.zoom, 'out') })} disabled={zoomIndex <= 0} aria-label="缩小" title="缩小">
@@ -246,10 +242,8 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
             恢复 100%
           </button>
         </div>
-      </div>
-
-      <div className="settings-group">
-        <h3 className="settings-subheading">开机动画</h3>
+        </Row>
+        <Row title="开机动画">
         <div className="segmented" role="radiogroup" aria-label="开机动画">
           {SPLASH_OPTIONS.map((o) => (
             <button
@@ -264,7 +258,12 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
             </button>
           ))}
         </div>
-      </div>
+        </Row>
+      </Group>
+
+      <Group title="代码">
+        <CodeThemes value={settings.codeTheme} onChange={(codeTheme) => onChange({ codeTheme })} size={settings.codeSize} onSize={(codeSize) => onChange({ codeSize })} />
+      </Group>
 
       {deleting ? <ConfirmDialog title={`删除皮肤「${deleting.name}」？`} confirmLabel="删除" danger onConfirm={() => remove(deleting)} onCancel={() => setDeleting(null)} /> : null}
     </section>

@@ -2,18 +2,21 @@
 // that provides the mail: inside its card, or once above 已安装 when two or
 // more plugins provide mail. The values are the shell's settings (sent to the
 // core), the same whichever plugin shows them.
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { MAIL_INTERVALS, type MailPrefs } from '../../../shared/settings';
 import { ConfirmDialog } from '../ui/Dialog';
 import { useKeptDraft } from './drafts';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Switch } from './Switch';
+import { Row } from './Group';
 
 export interface MailSettingsProps {
   prefs: MailPrefs;
   onChange(patch: Partial<MailPrefs>): void;
   /** The model mail goes to for sorting, in words (e.g. 「DeepSeek · deepseek-chat」); empty when none is set. */
   model?: string;
+  /** A last row in the same box (来源, when shown once for several plugins). */
+  extra?: ReactNode;
 }
 
 const lines = (text: string) =>
@@ -35,8 +38,7 @@ function IgnoreRules({ prefs, onSave, saved, onEdit }: { prefs: MailPrefs; onSav
     onEdit();
   };
   return (
-    <div className="mail-rules">
-      <span className="field-label">忽略规则</span>
+    <Row title="忽略规则" stack className="mail-rules">
       <div className="rule-grid">
         <label className="form-field">
           <span className="field-label">发件人包含</span>
@@ -68,22 +70,21 @@ function IgnoreRules({ prefs, onSave, saved, onEdit }: { prefs: MailPrefs; onSav
           保存
         </button>
       </div>
-    </div>
+    </Row>
   );
 }
 
-export function MailSettings({ prefs, onChange, model = '' }: MailSettingsProps) {
+export function MailSettings({ prefs, onChange, model = '', extra }: MailSettingsProps) {
   const [asking, setAsking] = useState(false);
   // 已保存 after 保存, like the model form, until the rules are edited again.
   const [rulesSaved, setRulesSaved] = useState(false);
   return (
-    <div className="mail-settings">
-      <div className="mail-row">
-        <span className="mail-title">邮件分类</span>
+    <>
+    <div className="group-box mail-settings">
+      <Row title="邮件分类">
         <Switch on={prefs.enabled} label="邮件分类" onChange={(enabled) => (enabled ? setAsking(true) : onChange({ enabled: false }))} />
-      </div>
-      <div className="interval-row">
-        <span className="field-label">检查间隔</span>
+      </Row>
+      <Row title="检查间隔">
         <div className="segmented" role="radiogroup" aria-label="检查间隔">
           {MAIL_INTERVALS.map((m) => (
             <button
@@ -99,7 +100,7 @@ export function MailSettings({ prefs, onChange, model = '' }: MailSettingsProps)
             </button>
           ))}
         </div>
-      </div>
+      </Row>
       <IgnoreRules
         key={JSON.stringify(prefs.ignore)}
         prefs={prefs}
@@ -110,6 +111,8 @@ export function MailSettings({ prefs, onChange, model = '' }: MailSettingsProps)
           setRulesSaved(true);
         }}
       />
+      {extra}
+    </div>
       {asking ? (
         <ConfirmDialog
           title="开启邮件分类？"
@@ -122,6 +125,6 @@ export function MailSettings({ prefs, onChange, model = '' }: MailSettingsProps)
           }}
         />
       ) : null}
-    </div>
+    </>
   );
 }

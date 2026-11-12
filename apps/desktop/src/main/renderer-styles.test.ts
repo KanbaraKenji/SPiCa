@@ -85,6 +85,14 @@ describe('the model under the message box', () => {
   });
 });
 
+describe('settings: one group, one box (settings/Group.tsx)', () => {
+  it('the rows in a box are split by a thin line, and a row draws no card of its own', () => {
+    expect(block('.group-box > * + *,\n.group-list > * + *')).toContain('border-top: 1px solid var(--spica-divider)');
+    expect(block('.group-box')).toContain('border-radius: var(--radius-l)');
+    expect(block('\n.setting-row')).not.toMatch(/border|background/);
+  });
+});
+
 describe('settings › 插件 fills the window', () => {
   it('the page is the window tall (a floor past which it scrolls again); list and detail stretch and scroll on their own', () => {
     const page = block('.settings-column.is-fill');

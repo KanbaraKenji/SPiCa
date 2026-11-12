@@ -1385,24 +1385,11 @@ pre .hl-punctuation {
   min-width: 0;
 }
 
+/* 设置 › 常规 › 文件预览 and 外观 › 代码 › 字号: the picker on the right of the row. */
+.preview-kind-pick,
 .code-size-pick {
-  max-width: 160px;
-  margin-bottom: 12px;
-}
-
-/* 设置 › 常规 › 文件预览: a kind of file, then what shows it. */
-.preview-kinds {
-  display: grid;
-  gap: 8px;
-  max-width: 420px;
-}
-
-.preview-kind {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
+  width: 240px;
+  max-width: 100%;
 }
 
 .preview-kind-ext {
@@ -1410,10 +1397,6 @@ pre .hl-punctuation {
   font-family: var(--font-mono);
 }
 
-.preview-kind .input {
-  flex: 1;
-  min-width: 0;
-}
 
 .code-theme-preview {
   margin: 0;
@@ -2865,11 +2848,6 @@ button.ctx-row:hover {
 }
 
 .skin-editor {
-  margin-top: 16px;
-  padding: 16px;
-  border-radius: var(--radius-l);
-  border: 1px solid var(--spica-border);
-  background: var(--spica-surface);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -3131,37 +3109,31 @@ button.ctx-row:hover {
 
 /* Settings > models */
 /* 默认模型 / 强模型: at the top of 设置 › 模型, set in this one place. */
-.model-pointers {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
 .model-pointer {
-  display: grid;
-  grid-template-columns: 116px minmax(0, 420px);
-  align-items: center;
-  gap: 12px;
+  width: 320px;
+  max-width: 100%;
 }
 
+/* 服务商: one row each in the group's box, 添加服务商 last; the open one is filled. */
 .provider-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
 }
 
 .provider-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 4px 12px 4px 4px;
-  border-radius: var(--radius-l);
-  border: 1px solid var(--spica-border);
-  background: var(--spica-surface);
+  padding: 4px 16px 4px 6px;
 }
 
-.provider-row.is-on {
-  border-color: var(--spica-accent);
+.provider-row.is-on .provider-open {
+  background: var(--spica-active);
+}
+
+.provider-none {
+  margin: 0;
+  padding: 12px 16px;
 }
 
 .provider-open {
@@ -3234,13 +3206,13 @@ button.ctx-row:hover {
 }
 
 .provider-add {
-  align-self: flex-start;
-  height: 34px;
+  align-self: stretch;
+  height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 0 12px;
-  border-radius: var(--radius-m);
+  padding: 0 16px;
+  border-radius: 0 0 var(--radius-l) var(--radius-l);
   color: var(--spica-accent-text);
 }
 
@@ -3762,18 +3734,78 @@ button.ctx-row:hover {
   transform: translateX(16px);
 }
 
-.setting-row {
+/* Settings: one group = a title line, one rounded box, rows split by thin lines (settings/Group.tsx).
+   Every settings page uses these; nothing else in settings draws its own card. */
+.group-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 12px 16px;
+  gap: 12px;
+  min-height: 28px;
+  margin-bottom: 8px;
+}
+
+.group-head .settings-subheading {
+  margin: 0;
+}
+
+.group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.group-actions .btn-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.group-box {
   border-radius: var(--radius-l);
   border: 1px solid var(--spica-border);
   background: var(--spica-surface);
 }
 
+.group-box > * + *,
+.group-list > * + * {
+  border-top: 1px solid var(--spica-divider);
+}
+
+.group-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.group-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  min-width: 0;
+}
+
+.group-pane > p,
+.group-pane > ul {
+  margin: 0;
+}
+
+/* Name and grey line on the left, the control on the right; a control too wide drops under
+   the name instead of squeezing it (three segments, a field with buttons, a narrow window). */
+.setting-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-height: 52px;
+  padding: 10px 16px;
+}
+
 .setting-text {
+  flex: 1 1 14em;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -3784,6 +3816,30 @@ button.ctx-row:hover {
   font-weight: 500;
 }
 
+.setting-control {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
+
+/* A field you type into: under the name, full width. */
+.setting-row.is-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.setting-row.is-stack .setting-text {
+  flex: none;
+}
+
+.setting-row.is-stack .setting-control {
+  display: block;
+  width: 100%;
+}
+
 /* Settings > plugins */
 .install-row {
   display: flex;
@@ -3792,7 +3848,6 @@ button.ctx-row:hover {
 
 .install-row .input {
   flex: 1;
-  max-width: 520px;
 }
 
 .plugin-note {
@@ -4084,57 +4139,18 @@ button.ctx-row:hover {
 }
 
 /* Mail sorting in the card of the plugin that provides mail (or once above 已安装). */
+/* Mail sorting: a group box in the card of the plugin that provides mail, or its own group above
+   the list when two or more plugins provide mail (with a 来源 row). */
 .plugin-mail {
   margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--spica-border-strong);
 }
 
 .plugin-mail-shared {
-  padding: 14px 16px;
-}
-
-.mail-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.mail-settings .interval-row {
-  margin-top: 0;
-}
-
-.mail-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.mail-title {
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-  font-weight: 600;
-}
-
-.mail-rules {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  margin-bottom: 20px;
 }
 
 .mail-rules .rule-actions {
   justify-content: flex-end;
-  margin-top: 4px;
-}
-
-.plugin-mail-sources {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 12px 0 0;
-  font-size: var(--fs-footnote);
-  line-height: var(--lh-footnote);
 }
 
 /* 详情 and the plugin's own settings pages (views with placement settings) as tabs under its two top rows.
@@ -4266,26 +4282,6 @@ button.ctx-row:hover {
   height: 100%;
   background: var(--spica-accent);
   transition: width 0.25s ease-out;
-}
-
-.plugin-root {
-  margin: 14px 0 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-size: var(--fs-footnote);
-  line-height: var(--lh-footnote);
-}
-
-.plugin-root > .settings-hint,
-.plugin-root > .link-btn {
-  flex: none;
-  white-space: nowrap;
-}
-
-.plugin-root .detail-path {
-  min-width: 0;
 }
 
 /* Detail panel: folder with an open button, project activity */
@@ -4608,9 +4604,6 @@ button.ctx-row:hover {
   margin: 8px 0 0;
 }
 
-.about-install {
-  margin-top: 10px;
-}
 
 /* ---------- Inbox (收件箱) ---------- */
 
@@ -4879,14 +4872,6 @@ button.ctx-row:hover {
 }
 
 /* Settings > 常规 */
-.interval-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin-top: 12px;
-}
-
 .rule-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -4912,22 +4897,6 @@ button.ctx-row:hover {
   margin-top: 10px;
 }
 
-.row-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-/* A row with several buttons (工作流, 使用日志 result): when narrow the buttons go
-   under the text instead of squeezing it to nothing or widening the page. */
-.setting-row:has(.row-buttons) {
-  flex-wrap: wrap;
-}
-
-.setting-row:has(.row-buttons) .setting-text {
-  flex: 1 1 14em;
-}
-
 .path-text {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4935,7 +4904,7 @@ button.ctx-row:hover {
 }
 
 .workflow-problems {
-  margin: 8px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
@@ -5475,21 +5444,13 @@ button.ctx-row:hover {
 
 .net-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
-  margin-top: 8px;
 }
 
-.net-ca {
-  margin-top: 12px;
-}
-
-.net-now {
-  margin-top: 8px;
-}
-
-.settings-group .setting-row + .setting-row {
-  margin-top: 8px;
+/* A status line or problem under a group's box. */
+.group-note {
+  margin: 8px 0 0;
 }
 
 /* Pictures in the input box (pasted, dropped, picked): thumbnails, removable, full size on a click. */
@@ -5904,29 +5865,6 @@ button.ctx-row:hover {
 }
 
 /* 设置 › 记忆 and the 已记住 line in the conversation. */
-.memory-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.memory-head .settings-subheading {
-  margin: 0;
-}
-
-.memory-head-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.memory-head-actions .btn-small {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .memory-list {
   list-style: none;
   margin: 0;
@@ -5940,9 +5878,6 @@ button.ctx-row:hover {
   align-items: flex-start;
 }
 
-.memory-list .memory-row + .memory-row {
-  margin-top: 0;
-}
 
 .memory-text,
 .memory-quote {
@@ -5997,11 +5932,15 @@ button.ctx-row:hover {
 
 /* 设置 › 记忆 › 整理: the latest tidy and its changes. */
 .memory-tidy-last {
-  margin: 0 0 8px;
+  margin: 0;
 }
 
-.memory-tidy-list {
-  gap: 4px;
+.memory-list.group-list {
+  gap: 0;
+}
+
+.memory-tidy-list > li {
+  padding: 10px 16px;
 }
 
 .memory-tidy-change {
