@@ -147,6 +147,25 @@ describe('settings: one group, one box (settings/Group.tsx)', () => {
   });
 });
 
+describe('settings: sized as Claude’s (out/settings-modal/9-measure.md)', () => {
+  it('the dialog is at most 1024 x 800, 16 clear of the window; a 48 title line, a 208 column of sections', () => {
+    expect(block('\n.settings-scrim')).toContain('padding: 16px');
+    expect(block('\n.settings-dialog')).toContain('width: min(1024px, 100%)');
+    expect(block('\n.settings-dialog')).toContain('height: min(800px, 100%)');
+    expect(block('\n.settings-titlebar')).toContain('height: 48px');
+    expect(block('\n.settings-nav')).toContain('width: 208px');
+    expect(block('\n.settings-nav-item')).toContain('height: 32px');
+  });
+
+  it('a row’s grey line is its name’s size, 4 under it, the row 12 above and below', () => {
+    expect(block('\n.settings-dialog .setting-row')).toContain('padding: 12px 16px');
+    expect(block('\n.settings-dialog .setting-text')).toContain('gap: 4px');
+    expect(block('.settings-dialog .setting-text > .settings-hint,\n.settings-dialog .plugin-item-desc,\n.settings-dialog .plugin-card-desc')).toContain(
+      'font-size: var(--fs-body)',
+    );
+  });
+});
+
 describe('settings › 插件 fills the window', () => {
   it('the page is the window tall (a floor past which it scrolls again) and scrolls as a whole; a plugin’s own settings page fills the rest and scrolls itself', () => {
     const page = block('.settings-column.is-fill');
@@ -164,7 +183,7 @@ describe('settings › 插件 list rows', () => {
     expect(block('\n.plugin-row-name')).toContain('text-overflow: ellipsis');
     expect(block('.plugin-item-title .plugin-version')).toContain('flex: none');
     expect(block('.plugin-item-desc')).toContain('text-overflow: ellipsis');
-    expect(block('.plugin-card-desc')).toContain('-webkit-line-clamp: 2');
+    expect(block('\n.plugin-card-desc')).toContain('-webkit-line-clamp: 2');
   });
 
   it('市场: two cards a row, one when narrow', () => {

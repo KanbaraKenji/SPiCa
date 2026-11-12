@@ -2910,22 +2910,23 @@ button.ctx-row:hover {
 /* ---------- Settings ---------- */
 
 /* Settings: a panel floating in the middle of the window (settings/SettingsView.tsx), laid out as Claude's
-   settings (his picture, 2026-11-12): a title bar across the top (设置, ×, a line under it); under it the
-   sections' column on the deeper of the window's two greys and the content on the lighter one
-   (--spica-settings-nav / --spica-settings-pane, skin.ts: in the dark skin #191919 / #1f1f1f, his two values).
-   At most 1000 x 700, a tenth of the window's height clear above and below (never under 24). The scrim is the
-   dialogs' own, so the caption buttons dim with it (ui/dim.ts). */
+   settings: a title bar across the top (设置, ×, a line under it); under it the sections' column on the deeper
+   of the window's two greys and the content on the lighter one (--spica-settings-nav / --spica-settings-pane,
+   skin.ts: in the dark skin #191919 / #1f1f1f). Sized as Claude's (measured on its screenshots,
+   out/settings-modal/9-measure.md): at most 1024 x 800, 16 clear of the window's edges, so on most windows it
+   is the window's height less 32. The scrim is the dialogs' own, so the caption buttons dim with it
+   (ui/dim.ts). */
 .settings-scrim {
-  padding: max(24px, 10vh) max(24px, 5vw);
+  padding: 16px;
 }
 
 .settings-dialog {
-  --settings-pad: 28px;
+  --settings-pad: 20px;
   position: relative;
   display: flex;
   flex-direction: column;
-  width: min(1000px, 100%);
-  height: min(700px, 100%);
+  width: min(1024px, 100%);
+  height: min(800px, 100%);
   border-radius: var(--radius-popup);
   background: var(--spica-settings-pane);
   box-shadow: var(--spica-shadow);
@@ -2942,14 +2943,15 @@ button.ctx-row:hover {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 12px 10px 20px;
+  height: 48px;
+  padding: 0 8px 0 16px;
   border-bottom: 1px solid var(--spica-divider);
 }
 
 .settings-title {
   margin: 0;
-  font-size: var(--fs-heading);
-  line-height: var(--lh-heading);
+  font-size: var(--fs-prose);
+  line-height: var(--lh-prose);
   font-weight: 600;
 }
 
@@ -2965,10 +2967,10 @@ button.ctx-row:hover {
 
 .settings-nav {
   flex: none;
-  width: 200px;
+  width: 208px;
   display: flex;
   flex-direction: column;
-  padding: 12px 10px;
+  padding: 12px 14px;
   border-right: 1px solid var(--spica-divider);
   background: var(--spica-settings-nav);
   overflow-y: auto;
@@ -3005,7 +3007,7 @@ button.ctx-row:hover {
 .settings-nav-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .settings-nav-group + .settings-nav-group {
@@ -3015,7 +3017,7 @@ button.ctx-row:hover {
 }
 
 .settings-nav-item {
-  height: 34px;
+  height: 32px;
   flex: none;
   display: flex;
   align-items: center;
@@ -3134,9 +3136,8 @@ button.ctx-row:hover {
 }
 
 /* The content sits right in the pane, from its top left corner (no page margins, not centred), the groups as
-   wide as the pane up to a limit. */
+   wide as the pane (as Claude's; the dialog is at most 1024 wide, so they never get very long). */
 .settings-column {
-  max-width: calc(720px + 2 * var(--settings-pad));
   padding: 20px var(--settings-pad) 32px;
 }
 
@@ -3145,6 +3146,24 @@ button.ctx-row:hover {
 .settings-dialog .group-box {
   background: transparent;
   border-color: var(--spica-divider);
+}
+
+/* A row in the dialog as tall as Claude's (12 above and below, its grey line 4 under its name), and the grey
+   line under a name (a setting's, an installed plugin's, a card's) the name's size, as Claude's. */
+.settings-dialog .setting-row {
+  min-height: 56px;
+  padding: 12px 16px;
+}
+
+.settings-dialog .setting-text {
+  gap: 4px;
+}
+
+.settings-dialog .setting-text > .settings-hint,
+.settings-dialog .plugin-item-desc,
+.settings-dialog .plugin-card-desc {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .settings-section + .settings-section {
