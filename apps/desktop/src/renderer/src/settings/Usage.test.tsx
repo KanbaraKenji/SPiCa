@@ -72,7 +72,9 @@ describe('设置 › 用量', () => {
     const tile = (label: string) => [...document.querySelectorAll('.usage-tile')].find((t) => t.querySelector('.usage-tile-label')?.textContent === label);
     expect(tile('429')?.classList.contains('is-limited')).toBe(true);
     expect(tile('429')?.querySelector('.usage-tile-value')?.textContent).toBe('1');
-    expect(tile('花费')?.textContent).toContain('+ 未计价');
+    // how many requests had no price, under the cost; the reason on hover
+    expect(tile('花费')?.querySelector('.usage-tile-sub')?.textContent).toBe('未计价请求 1');
+    expect(tile('花费')?.querySelector('.usage-tile-sub')?.getAttribute('title')).toBe('没有价格的模型，不计入花费');
     const rows = [...document.querySelectorAll('.usage-table tbody tr')].map((r) => r.textContent);
     expect(rows.some((r) => r?.includes('已重试') && r.includes('DeepSeek'))).toBe(true);
     expect(rows.filter((r) => r?.includes('claude-sonnet-4-5'))).toHaveLength(1);
@@ -96,6 +98,8 @@ describe('设置 › 用量', () => {
     });
     expect(document.querySelector('.usage-since')?.textContent).toContain('起有记录');
     expect(document.querySelectorAll('.usage-nodata').length).toBeGreaterThan(0);
+    // the word is on the grey run itself, not only on hover
+    expect([...document.querySelectorAll('.usage-nodata-label')].map((t) => t.textContent)).toContain('无记录');
   });
 
   it('cannot reach the core: one line', async () => {

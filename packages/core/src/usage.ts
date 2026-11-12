@@ -53,8 +53,10 @@ export function summarizeRequests(records: readonly RequestRecord[], query: Usag
     row.outputTokens += r.outputTokens ?? 0;
     row.cacheReadTokens += r.cacheReadTokens ?? 0;
     row.cacheWriteTokens += r.cacheWriteTokens ?? 0;
-    if (r.unpriced) row.unpriced = true;
-    else row.costUsd += r.costUsd ?? 0;
+    if (r.unpriced) {
+      row.unpriced = true;
+      row.unpricedRequests = (row.unpricedRequests ?? 0) + 1;
+    } else row.costUsd += r.costUsd ?? 0;
   }
   const sorted = [...rows.values()].sort((a, b) => (a.bucket < b.bucket ? -1 : a.bucket > b.bucket ? 1 : a.providerId.localeCompare(b.providerId) || a.model.localeCompare(b.model)));
   limited.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));

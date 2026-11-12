@@ -6815,7 +6815,8 @@ section.plugins-part > .plugins-part-title {
 
 .usage-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  /* a box too narrow for its number moves to the next line instead of cutting it */
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 8px;
   margin-bottom: 24px;
 }
@@ -6896,6 +6897,12 @@ section.plugins-part > .plugins-part-title {
   fill: var(--spica-hover);
 }
 
+.usage-nodata-label {
+  fill: var(--spica-muted);
+  font-size: var(--fs-caption);
+  pointer-events: none;
+}
+
 .usage-limit-bar {
   fill: var(--spica-danger);
 }
@@ -6935,7 +6942,11 @@ section.plugins-part > .plugins-part-title {
 }
 
 .usage-tip-provider {
+  max-width: 96px;
+  overflow: hidden;
   color: var(--spica-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .usage-tip-row.is-limited {

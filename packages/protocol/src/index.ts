@@ -1016,6 +1016,8 @@ export interface UsageRow {
   costUsd: number;
   /** Requests of a model without a known price were made in it (not in costUsd). */
   unpriced?: true;
+  /** How many of them (0 when none). */
+  unpricedRequests?: number;
 }
 
 export interface UsageQuery {

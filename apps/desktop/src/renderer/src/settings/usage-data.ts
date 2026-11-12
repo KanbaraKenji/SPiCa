@@ -40,6 +40,8 @@ export interface UsageSeries {
   cacheWriteTokens: number;
   costUsd: number;
   unpriced: boolean;
+  /** Requests of a model without a price (not in costUsd). */
+  unpricedRequests: number;
 }
 
 export interface UsageColumn {
@@ -56,7 +58,7 @@ export interface UsageColumn {
 export interface UsageView {
   columns: UsageColumn[];
   series: UsageSeries[];
-  totals: { requests: number; failed: number; rateLimited: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costUsd: number; unpriced: boolean };
+  totals: { requests: number; failed: number; rateLimited: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costUsd: number; unpriced: boolean; unpricedRequests: number };
   /** When the log starts, when that is inside the range (ms); null when the whole range has data. */
   since: number | null;
   /** The log is empty. */
@@ -82,7 +84,7 @@ export function usageView(s: UsageSummary, maxSeries: number): UsageView {
   const shown = new Set(keys.slice(0, keys.length > maxSeries ? maxSeries - 1 : maxSeries));
   const seriesKey = (k: string) => (shown.has(k) ? k : OTHER_KEY);
   const series = new Map<string, UsageSeries>();
-  const blank = (key: string, providerId: string, model: string, color: string): UsageSeries => ({ key, providerId, model, color, requests: 0, ok: 0, failed: 0, rateLimited: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, unpriced: false });
+  const blank = (key: string, providerId: string, model: string, color: string): UsageSeries => ({ key, providerId, model, color, requests: 0, ok: 0, failed: 0, rateLimited: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, unpriced: false, unpricedRequests: 0 });
   [...shown].forEach((k, i) => {
     const [providerId = '', model = ''] = k.split('\u0000');
     series.set(k, blank(k, providerId, model, `var(--spica-series-${i + 1})`));
@@ -98,7 +100,7 @@ export function usageView(s: UsageSummary, maxSeries: number): UsageView {
     columns.push(col);
     byStart.set(start, col);
   }
-  const totals = { requests: 0, failed: 0, rateLimited: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, unpriced: false };
+  const totals = { requests: 0, failed: 0, rateLimited: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, unpriced: false, unpricedRequests: 0 };
   for (const r of s.rows) {
     const k = seriesKey(keyOf(r));
     const se = series.get(k)!;
@@ -112,6 +114,8 @@ export function usageView(s: UsageSummary, maxSeries: number): UsageView {
     se.cacheWriteTokens += r.cacheWriteTokens;
     se.costUsd += r.costUsd;
     if (r.unpriced) se.unpriced = true;
+    se.unpricedRequests += r.unpricedRequests ?? 0;
+    totals.unpricedRequests += r.unpricedRequests ?? 0;
     totals.requests += r.requests;
     totals.failed += r.failed;
     totals.rateLimited += r.rateLimited;

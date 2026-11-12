@@ -125,8 +125,8 @@ function Tiles({ view }: { view: UsageView }) {
     ['Token', shortCount(t.inputTokens + t.outputTokens)],
     ['429', shortCount(t.rateLimited)],
     ['失败', shortCount(t.failed)],
-    // a model without a price adds nothing: said under the number, not instead of it
-    ['花费', t.unpriced && !t.costUsd ? '未计价' : usd(t.costUsd), t.unpriced && t.costUsd ? '+ 未计价' : undefined],
+    // a model without a price adds nothing: how many requests that is, under the number (the reason on hover)
+    ['花费', usd(t.costUsd), t.unpricedRequests ? `未计价请求 ${shortCount(t.unpricedRequests)}` : undefined],
   ];
   return (
     <div className="usage-tiles">
@@ -134,7 +134,11 @@ function Tiles({ view }: { view: UsageView }) {
         <div key={label} className={label === '429' && t.rateLimited > 0 ? 'usage-tile is-limited' : 'usage-tile'}>
           <span className="usage-tile-label">{label}</span>
           <span className="usage-tile-value">{value}</span>
-          {sub ? <span className="usage-tile-sub">{sub}</span> : null}
+          {sub ? (
+            <span className="usage-tile-sub" title={label === '花费' ? '没有价格的模型，不计入花费' : undefined}>
+              {sub}
+            </span>
+          ) : null}
         </div>
       ))}
     </div>
@@ -224,10 +228,33 @@ function StackChart({ view, metric, bucket, provider }: { view: UsageView; metri
             </g>
           );
         })}
+        <NoDataLabels cols={cols} slot={slot} plotH={plotH} />
         <line className="usage-baseline" x1={AXIS_W} x2={width} y1={plotH} y2={plotH} />
       </svg>
       {hover ? <ChartTip hover={hover} width={width} view={view} metric={metric} bucket={bucket} provider={provider} /> : null}
     </div>
+  );
+}
+
+/** 无记录 written on each run of columns before the log starts, when the run is wide enough for the word. */
+function NoDataLabels({ cols, slot, plotH }: { cols: UsageColumn[]; slot: number; plotH: number }) {
+  const runs: [number, number][] = [];
+  cols.forEach((c, i) => {
+    if (!c.noData) return;
+    const last = runs[runs.length - 1];
+    if (last && last[1] === i) last[1] = i + 1;
+    else runs.push([i, i + 1]);
+  });
+  return (
+    <>
+      {runs
+        .filter(([a, b]) => (b - a) * slot >= 56)
+        .map(([a, b]) => (
+          <text key={a} className="usage-nodata-label" x={AXIS_W + ((a + b) / 2) * slot} y={plotH / 2} dy="0.32em" textAnchor="middle">
+            无记录
+          </text>
+        ))}
+    </>
   );
 }
 
@@ -325,6 +352,7 @@ function LimitChart({ view, bucket }: { view: UsageView; bucket: UsageQuery['buc
             </g>
           );
         })}
+        <NoDataLabels cols={cols} slot={slot} plotH={plotH} />
         <line className="usage-baseline" x1={AXIS_W} x2={width} y1={plotH} y2={plotH} />
       </svg>
       {hover ? (
@@ -410,7 +438,9 @@ function ModelTable({ series, provider }: { series: UsageSeries[]; provider: (id
               <td className="is-num usage-num">{shortCount(s.outputTokens)}</td>
               <td className="is-num usage-num">{s.cacheReadTokens ? shortCount(s.cacheReadTokens) : '—'}</td>
               <td className="is-num usage-num">{s.cacheWriteTokens ? shortCount(s.cacheWriteTokens) : '—'}</td>
-              <td className="is-num usage-num">{s.unpriced ? (s.costUsd ? `${usd(s.costUsd)} + 未计价` : '未计价') : usd(s.costUsd)}</td>
+              <td className="is-num usage-num" title={s.unpriced ? `未计价请求 ${s.unpricedRequests}：没有价格的模型，不计入花费` : undefined}>
+                {s.unpriced && !s.costUsd ? '未计价' : usd(s.costUsd)}
+              </td>
             </tr>
           ))}
         </tbody>
