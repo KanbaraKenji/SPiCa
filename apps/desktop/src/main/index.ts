@@ -55,7 +55,7 @@ import { followTaskbarTheme, readTaskbarDark } from './taskbar-theme';
 import { PREVIEW_SCHEME, PreviewFiles, readPreview, readPreviewFile } from './preview';
 import { FLOW_SCHEME, flowFile } from './flow-scheme';
 import { AttachImages } from './images';
-import { BRIDGE_JS, contentType, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
+import { BRIDGE_JS, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
 import { pluginCallId, FONT_UI, type PluginView, type PluginViewResult } from '../shared/plugin-view';
 import { readFile } from 'node:fs/promises';
 
@@ -746,6 +746,25 @@ ipcMain.on(DesktopChannel.PluginViewCancel, (_e, callId: unknown) => {
   const id = viewCallId(callId).callId;
   if (!id || !(backend instanceof ProcessBackend)) return;
   void backend.pluginViewCancel({ callId: id }).catch(() => undefined);
+});
+// A plugin page's pickFolder / pickFile: the system's dialog over the window, one at a time for all pages
+// (SPICA_PICK_FOLDER / SPICA_PICK_FILES answer it in development, as for the app's own pickers).
+const pluginPick = createPluginPicker(
+  (opts) => (mainWindow && !mainWindow.isDestroyed() ? dialog.showOpenDialog(mainWindow, opts) : dialog.showOpenDialog(opts)),
+  (kind) => (kind === 'file' ? (pickedFiles(process.env, app.isPackaged)?.[0] ?? null) : pickedFolder(process.env, app.isPackaged)),
+);
+ipcMain.handle(DesktopChannel.PluginPick, async (_e, raw: unknown): Promise<string | null> => {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const text = (v: unknown) => (typeof v === 'string' ? v : undefined);
+  const title = text(r.title);
+  const defaultPath = text(r.defaultPath);
+  return pluginPick({
+    kind: r.kind === 'file' ? 'file' : 'folder',
+    plugin: text(r.plugin) ?? '',
+    ...(title !== undefined ? { title } : {}),
+    ...(defaultPath !== undefined ? { defaultPath } : {}),
+    ...(Array.isArray(r.extensions) ? { extensions: r.extensions.filter((x): x is string => typeof x === 'string') } : {}),
+  });
 });
 ipcMain.handle(DesktopChannel.PluginViewFile, async (_e, plugin: unknown, path: unknown): Promise<string | null> => {
   if (!(backend instanceof ProcessBackend)) return null;

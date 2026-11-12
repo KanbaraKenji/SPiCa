@@ -66,6 +66,8 @@ export const DesktopChannel = {
   PluginViewCancel: 'spica:pluginViewCancel',
   /** invoke: (plugin, path) -> absolute path inside the plugin, or null */
   PluginViewFile: 'spica:pluginViewFile',
+  /** invoke: PluginPickRequest -> the full path picked, or null (a plugin page's pickFolder / pickFile) */
+  PluginPick: 'spica:pluginPick',
   /** invoke: UsageLogRequest -> UsageLogResult (asks where to save first) */
   UsageLog: 'spica:usageLog',
   /** invoke: absolute path -> null, or what to show (a file or folder selected in Explorer) */

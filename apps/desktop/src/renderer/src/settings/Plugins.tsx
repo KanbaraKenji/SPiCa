@@ -57,8 +57,12 @@ export interface SettingsPages {
  * detail scrolls, not the page). Its background is the card's, so it sits in the card as the rest does.
  */
 function SettingsPage({ page }: { page: PluginPageProps }) {
+  // The page's two backgrounds swapped: its own (--spica-bg) is the card's, and what it sets apart (buttons,
+  // boxes on --spica-surface) gets the window's, so it still stands out on the card.
   const vars = page.theme.vars;
-  const theme = { ...page.theme, vars: { ...vars, '--spica-bg': vars['--spica-surface'] ?? vars['--spica-bg'] ?? '' } };
+  const bg = vars['--spica-bg'] ?? '';
+  const surface = vars['--spica-surface'] ?? bg;
+  const theme = { ...page.theme, vars: { ...vars, '--spica-bg': surface, '--spica-surface': bg } };
   return (
     <div className="plugin-settings-page">
       <h3 className="plugin-settings-title">{page.view.title}</h3>

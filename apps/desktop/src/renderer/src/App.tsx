@@ -465,6 +465,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       return null;
     },
     notify: (text: string) => agent.state.set((s) => ({ ...s, notice: `${v.pluginTitle}：${text}` })),
+    pick: bridge.pluginViews.pick,
     exists: async (plugin: string, path: string) => (await bridge.pluginViews.file(plugin, path)) !== null,
   });
 
@@ -840,6 +841,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               pickFiles={bridge.pickFiles}
               {...(shell.demo ? {} : { localConnect: bridge.localConnect })}
               previewPages={previewPages}
+              pluginPages={{ views: pluginViews.filter((v) => v.placement === 'settings'), props: pluginProps }}
               {...(memorySettings ? { memory: memorySettings } : {})}
             />
           ) : view === 'plugin' ? (

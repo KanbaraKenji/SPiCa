@@ -7,7 +7,7 @@ import type { ModelRef, ProviderDraft, ProviderKind, ProviderView, TestResult } 
 import type { ListModelsView, ModelCatalogView, WindowMatch } from './catalog';
 import type { PluginsCommand, PluginsProgress, PluginsResult } from './plugins';
 import type { UpdateState } from './updates';
-import type { PluginView, PluginViewResult } from './plugin-view';
+import type { PluginPickRequest, PluginView, PluginViewResult } from './plugin-view';
 
 /** Saved model providers plus, per id, why one cannot be used right now. */
 export interface ProviderList {
@@ -151,6 +151,8 @@ export interface DesktopBridge extends SpicaBridge {
     cancel(callId: string): void;
     /** A file inside the plugin's folder, as an absolute path; null when it is not one. */
     file(plugin: string, path: string): Promise<string | null>;
+    /** The system's folder or file picker for a page (window.spica.pickFolder / pickFile): the full path, or null when cancelled. */
+    pick(req: PluginPickRequest): Promise<string | null>;
   };
   /** Shows a file (or folder) selected in Explorer. An absolute path; resolves to what to show when it is not there. */
   showInFolder(path: string): Promise<string | null>;

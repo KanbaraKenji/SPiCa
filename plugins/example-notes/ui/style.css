@@ -61,3 +61,4 @@ body.settings { padding: 2px; }
 .field-row input { flex: 1; min-width: 0; }
 .fields .actions { margin-top: 6px; }
 .settings .muted { padding: 0; }
+.fields input { background: var(--surface); }
