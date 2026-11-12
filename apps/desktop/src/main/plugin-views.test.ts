@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runInNewContext } from 'node:vm';
+import { createContext, runInContext, runInNewContext } from 'node:vm';
 import { BRIDGE_JS, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, pickDialogOptions, pickStartPath, pluginThemeVars, themeCss, type PickDialogOptions } from './plugin-views';
 import { pluginCallId, pluginCallProblem } from '../shared/plugin-view';
 
@@ -79,6 +79,16 @@ describe('the id of a page call (it names the call so it can be stopped)', () =>
     expect(pluginCallId('3f2a9c1e-8b7d-4e21-9a55-0c1d2e3f4a5b')).toBe('3f2a9c1e-8b7d-4e21-9a55-0c1d2e3f4a5b');
     expect(pluginCallId('call_1')).toBe('call_1');
     for (const bad of [undefined, null, 7, {}, '', 'a b', 'a/b', '../x', 'x'.repeat(65)]) expect(pluginCallId(bad)).toBeUndefined();
+  });
+});
+
+describe('a page’s own script after the bridge', () => {
+  it('may declare its own top-level spica (const spica = window.spica), as the examples and the template do', () => {
+    // The page's window is the global of its scripts, as in a browser.
+    const ctx = createContext({ document: { documentElement: { dataset: {}, style: {} } }, console });
+    runInContext('var window = this; window.parent = { postMessage() {} }; window.addEventListener = function () {};', ctx);
+    runInContext(BRIDGE_JS, ctx);
+    expect(runInContext("const spica = window.spica; typeof spica.callTool + ' ' + typeof spica.pickFolder", ctx)).toBe('function function');
   });
 });
 

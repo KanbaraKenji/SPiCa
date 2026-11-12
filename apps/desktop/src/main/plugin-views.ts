@@ -253,7 +253,10 @@ export const BRIDGE_JS = `(() => {
   };
   window.addEventListener('error', (e) => failed(e.message || 'error'));
   window.addEventListener('unhandledrejection', (e) => failed((e.reason && e.reason.message) || e.reason || 'error'));
-  Object.defineProperty(window, 'spica', { value: Object.freeze(spica), writable: false, configurable: false });
+  // Configurable: a page's own top-level "const spica = window.spica" (the examples', the template's) is then
+  // allowed; on a property that cannot be configured the browser refuses the whole script ("Identifier
+  // 'spica' has already been declared"). The page can only change its own copy, never what Spica answers.
+  Object.defineProperty(window, 'spica', { value: Object.freeze(spica), writable: false, configurable: true });
   post({ call: 'ready', id: 0 });
   // How tall the page's content is (the bottom of the last thing in it), for a window that fits the frame to
   // its page (a settings page in 设置 › 插件); said again when it changes.
