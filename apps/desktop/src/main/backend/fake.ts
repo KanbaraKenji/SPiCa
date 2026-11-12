@@ -932,8 +932,10 @@ export class FakeBackend implements AgentBackend {
       await this.#stream(sessionId, 'text', intro, signal);
       blocks.push({ type: 'text', text: intro });
 
-      // For screenshots of tools at work: 「慢」 makes each call take 4 s, 「失败」 makes reading the file fail.
+      // For screenshots of tools at work: 「慢」 makes each call take 4 s, 「失败」 makes reading the file fail,
+      // 「卡住」 keeps reading the file running for an hour (the Running … line and its clock, until 停止).
       const slow = /慢/.test(text);
+      const stuck = /卡住/.test(text);
       const fails = /失败/.test(text);
       blocks.push(
         ...(await this.#tool(sessionId, run, 'list_dir', { path: '.' }, '会议记录/\n报价单.xlsx\n测试报告.pdf\n需求说明.docx', slow ? 4000 : 500)),
@@ -945,7 +947,7 @@ export class FakeBackend implements AgentBackend {
           'read_file',
           { path: '需求说明.docx' },
           fails ? '[FILE_LOCKED] 文件正被其他程序占用，无法读取。' : '需求说明 v3：外壳尺寸 120×80×24 mm；续航不少于 10 小时；首批样机 20 台，月底前交付。',
-          slow ? 4000 : 700,
+          stuck ? 3_600_000 : slow ? 4000 : 700,
           fails,
         )),
       );

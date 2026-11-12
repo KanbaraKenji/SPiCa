@@ -384,6 +384,19 @@ describe('FakeBackend', () => {
     expect(JSON.stringify(last?.content)).toContain('只写结论');
   });
 
+  it('「卡住」 keeps reading the file running (the Running … line) until 停止', async () => {
+    const b = new FakeBackend({ speed: 1 });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '看看资料，卡住也没关系');
+    await until((e) => e.type === 'tool.start' && e.name === 'read_file');
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(events.some((e) => e.type === 'tool.end' && e.name === 'read_file')).toBe(false);
+    await b.abort(chat.id);
+    expect(await until((e) => e.type === 'run.end')).toMatchObject({ reason: 'aborted' });
+    b.dispose();
+  });
+
   it('stops on abort and keeps what was already said', async () => {
     const b = new FakeBackend({ speed: 1 });
     const { until } = collect(b);
