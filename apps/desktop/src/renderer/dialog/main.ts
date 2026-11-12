@@ -18,6 +18,7 @@ if (bridge && spec) {
   root.dataset.scheme = spec.scheme;
   root.style.colorScheme = spec.scheme;
   for (const [name, value] of Object.entries(spec.tokens)) if (value) root.style.setProperty(name, value);
+  if (spec.font) root.style.setProperty('--font-ui', spec.font);
   document.title = spec.title;
 
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string) => {

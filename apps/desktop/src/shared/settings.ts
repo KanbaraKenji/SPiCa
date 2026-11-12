@@ -1,5 +1,6 @@
 // Shell settings persisted by the main process (userData/settings.json).
 import { codeSize, codeThemeId, DEFAULT_CODE_SIZE, SKIN_CODE_THEME } from './code-themes';
+import type { UiFontMode } from './ui-font';
 import { sanitizePreviewers } from './previewers';
 import { clampZoom, DEFAULT_ZOOM } from './zoom';
 import { BUILTIN_SKINS, normalizeHex, type Skin, type SkinChoice } from './skin';
@@ -117,6 +118,8 @@ export interface ShellSettings {
   codeSize: number;
   /** 外观 › 文字大小: the conversation's text (not the sidebar's or the settings'). */
   textSize: TextSize;
+  /** 外观 › 界面字体: 默认 (Segoe UI, Chinese in YaHei UI) or 跟随系统 (system-ui); all the interface's words, not code (shared/ui-font.ts). */
+  uiFont: UiFontMode;
   /** 常规 › 文件预览: the plugin preview page chosen per kind of file ({ ".docx": "<plugin>/<page id>" }); none: the app's own. */
   previewers: Record<string, string>;
   /** 常规 › 关闭窗口时: what the window's × does: ask each time (default), minimize to the tray, or quit. */
@@ -218,6 +221,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   codeTheme: { light: SKIN_CODE_THEME, dark: SKIN_CODE_THEME },
   codeSize: DEFAULT_CODE_SIZE,
   textSize: 'md',
+  uiFont: 'default',
   previewers: {},
   doneNews: [],
   closeWindow: 'ask',
@@ -318,11 +322,12 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const codeTheme = { light: codeThemeId(ct.light, 'light'), dark: codeThemeId(ct.dark, 'dark') };
   const previewers = sanitizePreviewers(v.previewers);
   const textSize: TextSize = v.textSize === 'sm' || v.textSize === 'lg' ? v.textSize : 'md';
+  const uiFont: UiFontMode = v.uiFont === 'system' ? 'system' : 'default';
   // Before 关闭窗口时 there was a switch 关闭窗口后留在后台 (keepInBackground): on = minimize to the tray, off = ask.
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
+  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

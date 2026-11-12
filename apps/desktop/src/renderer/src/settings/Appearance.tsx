@@ -3,6 +3,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import { BUILTIN_SKINS, DARK_SKIN, deriveTokens, LIGHT_SKIN, normalizeHex, type Skin, type SkinChoice } from '../../../shared/skin';
 import { DEFAULT_ZOOM, stepZoom, ZOOM_STEPS, zoomLabel } from '../../../shared/zoom';
 import type { SettingsPatch, ShellSettings, SplashMode, TextSize } from '../../../shared/settings';
+import type { UiFontMode } from '../../../shared/ui-font';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Group, Pane, Row } from './Group';
 import { CodeThemes } from './CodeThemes';
@@ -12,6 +13,12 @@ const TEXT_SIZES: { size: TextSize; label: string }[] = [
   { size: 'sm', label: '小' },
   { size: 'md', label: '中' },
   { size: 'lg', label: '大' },
+];
+
+/** 界面字体: all the interface's words (not code); shared/ui-font.ts. */
+const UI_FONTS: { mode: UiFontMode; label: string }[] = [
+  { mode: 'default', label: '默认' },
+  { mode: 'system', label: '跟随系统' },
 ];
 
 const SPLASH_OPTIONS: { mode: SplashMode; label: string }[] = [
@@ -209,6 +216,22 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
       </Group>
 
       <Group title="显示">
+        <Row title="界面字体">
+        <div className="segmented" role="radiogroup" aria-label="界面字体">
+          {UI_FONTS.map((o) => (
+            <button
+              key={o.mode}
+              type="button"
+              role="radio"
+              aria-checked={settings.uiFont === o.mode}
+              className={settings.uiFont === o.mode ? 'segment is-on' : 'segment'}
+              onClick={() => onChange({ uiFont: o.mode })}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        </Row>
         <Row title="文字大小">
         <div className="segmented" role="radiogroup" aria-label="文字大小">
           {TEXT_SIZES.map((o) => (

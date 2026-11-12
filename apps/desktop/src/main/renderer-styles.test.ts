@@ -176,7 +176,8 @@ describe('words on the middle line of what they sit in: one fix, in the font (sh
   it('the window, the small dialog window and plugin pages all use it, word for word', () => {
     for (const sheet of [css, dialogCss]) for (const f of UI_FONT_FACES.split('\n')) expect(sheet).toContain(f);
     expect(css).toContain(`--font-ui: ${UI_FONT_FAMILY};`);
-    expect(dialogCss).toContain(`font-family: ${UI_FONT_FAMILY};`);
+    // the small dialog window: 外观 › 界面字体's stack when main passes one (shared/app-dialog.ts font), the default otherwise
+    expect(dialogCss).toContain(`font-family: var(--font-ui, ${UI_FONT_FAMILY});`);
     expect(FONT_UI).toBe(UI_FONT_FAMILY);
     expect(themeCss({ '--spica-font': FONT_UI }, 'dark').startsWith(UI_FONT_FACES)).toBe(true);
   });

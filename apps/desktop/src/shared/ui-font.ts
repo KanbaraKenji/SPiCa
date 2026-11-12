@@ -33,3 +33,22 @@ export const UI_FONT_FACES = [
 
 export const UI_FONT_FAMILY =
   "'Spica UI', 'Spica UI Static', 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif";
+
+/** 外观 › 界面字体: 默认 (Segoe UI with YaHei UI for Chinese, corrected as above) or 跟随系统 (the system's own interface font). */
+export type UiFontMode = 'default' | 'system';
+
+/**
+ * 跟随系统 is what Chromium calls system-ui: Windows' interface font for the display language. Where that is a
+ * Chinese, Japanese or Korean font it draws the English too, and needs no correction of its own: Microsoft YaHei UI
+ * (simplified Chinese, measured here) sits best untouched, its line box being nearly even (1.02 above, 0.25 below,
+ * capitals 0.76), and JhengHei UI (traditional) has the same numbers. Elsewhere it is Segoe UI, which takes the
+ * corrected faces above. Japanese and Korean are not measured (not on this machine): plain system-ui, as before.
+ */
+export const SYSTEM_FONT_PLAIN = 'system-ui, sans-serif';
+export const SYSTEM_FONT_SEGOE = "'Spica UI', 'Spica UI Static', system-ui, sans-serif";
+
+/** The interface font's stack for a mode and the display language (navigator.language, app.getLocale()). */
+export function uiFontFamily(mode: UiFontMode, lang: string): string {
+  if (mode !== 'system') return UI_FONT_FAMILY;
+  return /^(zh|ja|ko)\b/i.test(lang) ? SYSTEM_FONT_PLAIN : SYSTEM_FONT_SEGOE;
+}

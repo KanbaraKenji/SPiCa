@@ -64,7 +64,8 @@ import { PREVIEW_SCHEME, PreviewFiles, readPreview, readPreviewFile } from './pr
 import { FLOW_SCHEME, flowFile } from './flow-scheme';
 import { AttachImages } from './images';
 import { BRIDGE_JS, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
-import { pluginCallId, FONT_UI, type PluginView, type PluginViewResult } from '../shared/plugin-view';
+import { pluginCallId, type PluginView, type PluginViewResult } from '../shared/plugin-view';
+import { uiFontFamily } from '../shared/ui-font';
 import { readFile } from 'node:fs/promises';
 
 // Spica, or the name a company's deploy.json gave it when packaging.
@@ -653,7 +654,7 @@ function createMainWindow(): BrowserWindow {
       const s = settings.get();
       const busy = running.any();
       return askDialog({
-        open: () => openDialogWindow(win, closeDialogSpec(APP_NAME, busy, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins))), s.zoom),
+        open: () => openDialogWindow(win, closeDialogSpec(APP_NAME, busy, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins), uiFontFamily(s.uiFont, app.getLocale()))), s.zoom),
         fallback: () =>
           dialog
             .showMessageBox(win, { type: 'question', title: APP_NAME, noLink: true, checkboxChecked: false, ...closePrompt(APP_NAME, busy) })
@@ -740,7 +741,7 @@ function createMainWindow(): BrowserWindow {
     // In the small dialog window (main/app-dialog-window.ts, its own page process); the message box only when that fails.
     ask: () => {
       const s = settings.get();
-      const spec = crashDialog(APP_NAME, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins)));
+      const spec = crashDialog(APP_NAME, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins), uiFontFamily(s.uiFont, app.getLocale())));
       const box = messageBoxFor(spec, { type: 'error', appName: APP_NAME, cancel: 0 });
       return askDialog({
         open: () => openDialogWindow(win, spec, s.zoom),
@@ -1010,7 +1011,7 @@ function pluginTheme(): { css: string } {
   const s = settings.get();
   const skin = resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins);
   const mode = schemeOf(skin.bg);
-  return { css: themeCss(pluginThemeVars(deriveTokens(skin), FONT_UI), mode) };
+  return { css: themeCss(pluginThemeVars(deriveTokens(skin), uiFontFamily(s.uiFont, app.getLocale())), mode) };
 }
 
 async function servePluginFile(url: string): Promise<Response> {

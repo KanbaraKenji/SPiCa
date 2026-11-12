@@ -4,6 +4,11 @@
 // ui/CloseDialog.tsx): the colors come from the skin, worked out in main and passed in with the text.
 // Shared by main, the dialog's preload (preload/dialog.ts) and its page (renderer/dialog/main.ts).
 
+import { SYSTEM_FONT_PLAIN, SYSTEM_FONT_SEGOE, UI_FONT_FAMILY } from './ui-font';
+
+/** The interface font stacks a dialog may be given (shared/ui-font.ts); anything else is dropped. */
+const UI_FONT_STACKS = [UI_FONT_FAMILY, SYSTEM_FONT_PLAIN, SYSTEM_FONT_SEGOE];
+
 export const DialogChannel = {
   /** Page → main: drawn, with its height in CSS pixels; main sizes the window to it and shows it. */
   Ready: 'spica-dialog:ready',
@@ -50,6 +55,8 @@ export interface DialogSpec {
   /** dark or light: the native parts (checkbox, focus ring) follow it. */
   scheme: 'dark' | 'light';
   tokens: Partial<Record<(typeof DIALOG_TOKENS)[number], string>>;
+  /** 外观 › 界面字体's stack (shared/ui-font.ts); only one of those, nothing else is taken. */
+  font?: string;
 }
 
 /**
@@ -88,6 +95,7 @@ export function parseDialogSpec(raw: string | null): DialogSpec | null {
       ...(typeof v.width === 'number' && v.width >= 200 && v.width <= 800 ? { width: v.width } : {}),
       scheme: v.scheme === 'light' ? 'light' : 'dark',
       tokens: v.tokens && typeof v.tokens === 'object' ? v.tokens : {},
+      ...(typeof v.font === 'string' && UI_FONT_STACKS.includes(v.font) ? { font: v.font } : {}),
     };
   } catch {
     return null;

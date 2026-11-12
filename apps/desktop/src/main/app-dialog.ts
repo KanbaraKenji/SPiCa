@@ -81,9 +81,9 @@ export async function askDialog(o: AskOptions): Promise<DialogAnswer> {
   }
 }
 
-/** The skin's scheme and colors for a dialog. */
-export function dialogLook(skin: Skin): Pick<DialogSpec, 'scheme' | 'tokens'> {
-  return { scheme: schemeOf(skin.bg), tokens: dialogTokens(deriveTokens(skin)) };
+/** The skin's scheme and colors for a dialog, and the interface font (外观 › 界面字体's stack, shared/ui-font.ts). */
+export function dialogLook(skin: Skin, font?: string): Pick<DialogSpec, 'scheme' | 'tokens' | 'font'> {
+  return { scheme: schemeOf(skin.bg), tokens: dialogTokens(deriveTokens(skin)), ...(font ? { font } : {}) };
 }
 
 /** 界面出错: the third loss of the page within a minute (main/page-recovery.ts). Button 1 (重新加载) is the main one. */

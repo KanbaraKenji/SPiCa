@@ -10,7 +10,8 @@ import { FilePreview, usePreview } from './shell/FilePreview';
 import { PluginPage, type PluginTheme } from './shell/PluginFrame';
 import { PluginPreview, type PreviewFallback } from './shell/PluginPreview';
 import { BUILT_IN, chosenPreviewPage, fileExtension, previewerId, previewPagesFor } from '../../shared/previewers';
-import { FONT_UI, pluginThemeVars, type PluginView } from '../../shared/plugin-view';
+import { pluginThemeVars, type PluginView } from '../../shared/plugin-view';
+import { uiFontFor } from './theme';
 import { deriveTokens, schemeOf } from '../../shared/skin';
 import { DEFAULT_SETTINGS, effectiveAccount, effectiveCallName } from '../../shared/settings';
 import { sidebarBannerHeight, wordmarkProps } from './app-wordmark';
@@ -483,7 +484,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const openPluginView = view === 'plugin' ? sidebarPages.find((v) => viewKey(v) === openPlugin) : undefined;
   const panelPluginView = rightTab === 'detail' ? undefined : panelPages.find((v) => viewKey(v) === rightTab);
   const skinNow = shell.activeSkin();
-  const pluginTheme: PluginTheme = { mode: schemeOf(skinNow.bg), vars: pluginThemeVars(deriveTokens(skinNow), FONT_UI) };
+  const pluginTheme: PluginTheme = { mode: schemeOf(skinNow.bg), vars: pluginThemeVars(deriveTokens(skinNow), uiFontFor(settings.uiFont)) };
   const pluginProps = (v: PluginView) => ({
     view: v,
     theme: pluginTheme,

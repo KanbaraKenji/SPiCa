@@ -61,12 +61,13 @@
 
 | 规则 | 落在哪 | 谁在拦 |
 |---|---|---|
-| **定** 文字在它所在的框里上下居中；图标和旁边的字在同一条中线上 | 界面字体的度量：`shared/ui-font.ts`（`Spica UI`） | `renderer-styles.test.ts`「the interface font has its ascent and descent…」 |
+| **定** 界面字体：默认是英文和数字用 Segoe UI、中文用微软雅黑；外观 › 界面字体 可改成「跟随系统」（`system-ui`，简体中文 Windows 上是微软雅黑，英文也由它画）。管整个界面的字，包括小窗口和插件页；代码字体不跟着变 | `shared/ui-font.ts` 的 `uiFontFamily`；页面上是 `--font-ui`（`theme.ts` 的 `applyUiFont`），小窗口经 `dialogLook`，插件页经 `pluginThemeVars` | `shared/ui-font.test.ts`、`settings/Appearance.test.tsx`「界面字体…」 |
+| **定** 文字在它所在的框里上下居中；图标和旁边的字在同一条中线上 | 界面字体的度量：`shared/ui-font.ts`（默认的 `Spica UI` 修正过；跟随系统时中日韩的系统字体不修正，是 Segoe UI 时用同一套修正） | `renderer-styles.test.ts`「the interface font has its ascent and descent…」 |
 | **定** 不给文字或图标做手工的上下补偿（小幅 `translate`、`text-box` 裁边） | `styles.css` | 同文件「no small fixed nudges…」 |
 | **定** 对话内容那一列对准整个窗口的中线，放不下时才让开 | `shell/layout.ts` 的 `centreShift` | 同文件「the content column…」 |
 | **定** 输入框下面那一行两端和输入框圆角结束的位置对齐（文件夹在左，上下文环在右） | `chat/Composer.tsx` 的样式 | 同文件「corners of 12px…」 |
 
-度量值是在 125% 缩放的屏幕上量着选的；200% 下有二十来处偏 0.5 到 0.75px，属于已知。本机找不到 Segoe UI（可变版和静态版都没有）时，退回不修正的样子。
+度量值是在 125% 缩放的屏幕上量着选的；200% 下有二十来处偏 0.5 到 0.75px，属于已知。本机找不到 Segoe UI（可变版和静态版都没有）时，退回不修正的样子。两种界面字体在 125% 下各量了同样 75 处：默认超过 ±0.5px 的 11 处，跟随系统（微软雅黑）8 处，多数正好差一个物理像素（`out/settings-modal/13-centre-audit.md`）。换别的界面字体要按同样的办法重量，入口只有 `shared/ui-font.ts`。
 
 ## 5. 控件的样子
 
@@ -122,7 +123,7 @@
 
 ## 9. 另外两套样式：插件页和小窗口
 
-插件页是隔离的页面，用不了应用的组件。一致性靠宿主注入同一批变量：`shared/plugin-view.ts` 的 `pluginThemeVars`（颜色取自 `deriveTokens`，另有 `--spica-control-h` 和界面字体）。`main/plugin-views.test.ts` 锁住每个注入值等于应用自己的值。
+插件页是隔离的页面，用不了应用的组件。一致性靠宿主注入同一批变量：`shared/plugin-view.ts` 的 `pluginThemeVars`（颜色取自 `deriveTokens`，另有 `--spica-control-h` 和界面字体：跟外观 › 界面字体走）。`main/plugin-views.test.ts` 锁住每个注入值等于应用自己的值。
 
 页面坏了时弹的小窗口有自己的样式 `renderer/dialog/dialog.css`：按钮的高度和左右边距、界面字体那一段都是照 `styles.css` 抄的，`renderer-styles.test.ts` 核对字体那段三处逐字一致。
 
@@ -148,8 +149,7 @@
 ## 11. 还没做的
 
 - 多语言：简体中文、繁体中文、英语。现在界面文字是写死的中文。
-- 外观里的「界面字体」设置。
 - 菜单（`ui/ContextMenu.tsx`）还没有：上下方向键、放在文字前的图标参数（账号菜单现在是借 `after` 加一条样式排到前面）。
 - 「Esc 先收最上面一层」的共用处理；预览的快捷键等它做完一起加。
 - 菜单的组标题（`.context-group`）上 6 下 2 的内边距让那行字偏下约 2px，改菜单时一起看。
-- 以后加「界面字体」设置时，度量值要按所选字体重新量，入口是 `shared/ui-font.ts`。
+- 界面字体只有「默认」和「跟随系统」两项；日文、韩文系统的字体这台没装，跟随系统时那两种没修正、也没量过。

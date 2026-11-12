@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useState } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Appearance } from './Appearance';
 import { applyPatch, DEFAULT_SETTINGS, sanitizeSettings, type ShellSettings } from '../../../shared/settings';
-import { applyTextSize } from '../theme';
+import { applyTextSize, applyUiFont } from '../theme';
 import { resolveSkin } from '../../../shared/skin';
 
 afterEach(cleanup);
@@ -86,6 +86,26 @@ describe('Appearance', () => {
     const root = document.createElement('div');
     applyTextSize('lg', root);
     expect(root.dataset.textSize).toBe('lg');
+  });
+
+  it('界面字体: 默认 / 跟随系统, 默认 by default; kept, and set on the page as --font-ui (默认 is the style sheet’s own)', () => {
+    render(<Harness />);
+    const group = screen.getByRole('radiogroup', { name: '界面字体' });
+    expect([...group.querySelectorAll('[role="radio"]')].map((b) => [b.textContent, b.getAttribute('aria-checked')])).toEqual([
+      ['默认', 'true'],
+      ['跟随系统', 'false'],
+    ]);
+    // (the skins have a 跟随系统 of their own)
+    fireEvent.click(within(group).getByRole('radio', { name: '跟随系统' }));
+    expect(latest.uiFont).toBe('system');
+    expect(sanitizeSettings({ uiFont: 'system' }).uiFont).toBe('system');
+    expect(sanitizeSettings({ uiFont: 'comic' }).uiFont).toBe('default');
+    expect(sanitizeSettings({}).uiFont).toBe('default');
+    const root = document.createElement('div');
+    applyUiFont('system', root);
+    expect(root.style.getPropertyValue('--font-ui')).toContain('system-ui');
+    applyUiFont('default', root);
+    expect(root.style.getPropertyValue('--font-ui')).toBe('');
   });
 
   it('zooms in steps and resets', () => {
