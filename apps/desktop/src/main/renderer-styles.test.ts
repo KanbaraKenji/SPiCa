@@ -281,10 +281,19 @@ describe('the conversation’s sizes', () => {
   });
 
   it('a row’s words are trimmed to the capitals and the baseline, so they centre on the icons; cut at the end only', () => {
-    expect(block('.fold-label,\n.fold-meta,\n.tool-text,\n.msg-time,\n.msg-versions-text')).toContain('text-box: trim-both cap alphabetic');
+    expect(block('.fold-label,\n.fold-meta,\n.tool-text,\n.msg-time,\n.msg-versions-text,\n.status-text,\n.status-clock')).toContain('text-box: trim-both cap alphabetic');
     // hidden would cut the descenders below the trimmed box.
     for (const sel of ['.fold-label', '\n.tool-text']) expect(block(sel), sel).toContain('overflow: clip visible');
     expect(block('.fold-meta')).toContain('display: block');
+  });
+
+  it('a run’s clock is one rule, after the words, in the status line and the Running … line; the words give way, not the clock', () => {
+    // Its own rule (the one after its comment), not the list of a row's words it is also in.
+    expect(block('alike. */\n.status-clock')).toContain('flex: none;\n  color: var(--spica-faint);\n  font-size: var(--fs-caption);\n  line-height: var(--lh-caption)');
+    expect(block('\n.status-text')).toContain('text-overflow: ellipsis');
+    expect(block('\n.status-text')).toContain('min-width: 0');
+    expect(block('.status-line')).toContain('gap: 8px');
+    expect(block('.fold-head')).toContain('gap: 8px');
   });
 
   it('the turning mark of the row the run is on: 18 in its 14 place, in the text’s colour, not the row’s quieter one', () => {

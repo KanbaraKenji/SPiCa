@@ -1622,7 +1622,9 @@ pre .hl-punctuation {
 .fold-meta,
 .tool-text,
 .msg-time,
-.msg-versions-text {
+.msg-versions-text,
+.status-text,
+.status-clock {
   text-box: trim-both cap alphabetic;
 }
 
@@ -2183,9 +2185,22 @@ pre .hl-punctuation {
   line-height: var(--lh-footnote);
 }
 
+/* What the status line says: cut at the end when the window is narrow, so the clock after it stays. */
+.status-text {
+  min-width: 0;
+  overflow: clip visible;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* A run's clock, after the words: in the status line and at the end of the Running … line (inside its
+   .fold-meta) alike. */
 .status-clock {
-  font-variant-numeric: tabular-nums;
+  flex: none;
   color: var(--spica-faint);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-variant-numeric: tabular-nums;
 }
 
 .empty-chat {

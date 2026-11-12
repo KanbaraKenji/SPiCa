@@ -30,6 +30,18 @@ describe('the status line under the answer', () => {
     expect(shownInAnswer(live([tool('pending')]))).toBe(false);
     expect(shownInAnswer(live([], 'thinking'))).toBe(false);
     const { container } = render(<StatusLine transcript={live([tool('pending')])} />);
-    expect(container.querySelector('.status-line')?.textContent).toMatch(/^0:0[45]正在读取文件$/);
+    expect(container.querySelector('.status-line')?.textContent).toMatch(/^正在读取文件0:0[45]$/);
+  });
+
+  it('says what it is doing first and the clock after it, in every state (as the Running … line does)', () => {
+    const waiting = (status: string, extra: Record<string, unknown> = {}) =>
+      ({ items: [{ kind: 'response', id: 'r', blocks: [{ type: 'text', text: '好' }] }], run: { status, startedAt: Date.now() - 7000, ...extra } }) as unknown as Transcript;
+    for (const [status, text] of [['awaiting_confirm', '等待确认'], ['awaiting_answer', '等待回答'], ['queued', '排队中'], ['thinking', '正在回复']] as const) {
+      const { container } = render(<StatusLine transcript={waiting(status)} />);
+      const parts = [...container.querySelector('.status-line')!.children].map((c) => c.getAttribute('class')?.split(' ')[0]);
+      expect(parts, status).toEqual(['spica-mark', 'status-text', 'status-clock']);
+      expect(container.querySelector('.status-text')?.textContent, status).toBe(text);
+      cleanup();
+    }
   });
 });

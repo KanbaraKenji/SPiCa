@@ -1,5 +1,5 @@
 // The line under the latest answer while the agent works: mark animation +
-// elapsed time for this run + what it is doing. After a run it shows
+// what it is doing + elapsed time for this run. After a run it shows
 // "已完成 · 用时" briefly, then goes away.
 import { useEffect, useState } from 'react';
 import { MEMORY_TOOLS, type Transcript } from '../store/transcript';
@@ -85,8 +85,9 @@ export function StatusLine({ transcript }: { transcript: Transcript }) {
     return (
       <div className="status-line" role="status" aria-live="polite">
         <SpicaMark size={18} state={phase.mark} />
-        <span className="status-clock">{formatClock(now - transcript.run.startedAt)}</span>
+        {/* What it is doing, then the clock: the order of the Running … line in the answer. */}
         <span className="status-text">{phase.text}</span>
+        <span className="status-clock">{formatClock(now - transcript.run.startedAt)}</span>
       </div>
     );
   }
