@@ -456,7 +456,7 @@ if (r.isError) showError(r.content); else render(r.data ?? r.content);
 
 - 一个插件最多一个设置页。规则和别的页面一样：沙箱、只能调本插件的工具、`permissions.tools` 生效。
 - 高度跟着内容走：页面多高，Spica 就把它显示多高，滚动的是详情，不是页面。别把 `html, body` 设成 `height: 100%`，也别做占满高度的布局。
-- 设置页里 `--spica-bg` 是详情卡片的底色，页面和卡片连成一片。
+- 设置页里 `--spica-bg` 是详情卡片的底色（页面和卡片连成一片），`--spica-surface` 是窗口的底色：按钮、输入框用 `--spica-surface`，在卡片上照样看得出来。
 - 读写设置的工具放进 `services/`（只给自己的页面用，模型看不到，「保存令牌」不会被 Agent 误调），存进 `SPICA_PLUGIN_DATA/config.json`；给模型用的 server 每次调用时读同一个文件。写法见 skill 的 `references/internal-services.md`。
 
 要用户选文件夹时：
