@@ -2798,20 +2798,19 @@ button.ctx-row:hover {
   accent-color: var(--spica-accent);
 }
 
-/* ---------- Settings ---------- */
-
-/* Settings: a large dialog over the window (settings/SettingsView.tsx). At most 1080 x 760 with at least 24
-   around it; the sections in a column on the left, the section shown on the right scrolls by itself. The scrim
-   is the dialogs' own, so the caption buttons dim with it (ui/dim.ts). */
+/* Settings: a panel floating in the middle of the window (settings/SettingsView.tsx), not a page: at most
+   1000 x 700 (about Codex's proportions), and a tenth of the window's height clear above and below it (never
+   less than 24). The sections in a column on the left, the section shown on the right scrolls by itself. The
+   scrim is the dialogs' own, so the caption buttons dim with it (ui/dim.ts). */
 .settings-scrim {
-  padding: 24px;
+  padding: max(24px, 10vh) max(24px, 5vw);
 }
 
 .settings-dialog {
   position: relative;
   display: flex;
-  width: min(1080px, 100%);
-  height: min(760px, 100%);
+  width: min(1000px, 100%);
+  height: min(700px, 100%);
   border-radius: var(--radius-popup);
   background: var(--spica-bg);
   box-shadow: var(--spica-shadow);
@@ -2873,11 +2872,26 @@ button.ctx-row:hover {
   flex-direction: column;
 }
 
+/* The pane's top: the section's name, in line with the content's left edge, and the close button. */
+.settings-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 14px 6px var(--settings-pad);
+}
+
+.settings-page-title {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: 600;
+}
+
 .settings-close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 1;
+  flex: none;
 }
 
 /* Too small for the dialog with room around it: it fills the window under the title bar (the caption
@@ -2903,7 +2917,7 @@ button.ctx-row:hover {
     width: auto;
     flex-direction: row;
     align-items: center;
-    padding: 8px 52px 8px 10px;
+    padding: 8px 10px;
     border-right: 0;
     border-bottom: 1px solid var(--spica-divider);
     overflow-x: auto;
@@ -2916,11 +2930,6 @@ button.ctx-row:hover {
 
   .settings-nav-item {
     padding: 0 12px;
-  }
-
-  .settings-close {
-    top: 9px;
-    right: 10px;
   }
 
   .settings-main {
@@ -2936,15 +2945,20 @@ button.ctx-row:hover {
   scrollbar-gutter: stable;
 }
 
+/* The content sits right in the pane: from the same left edge as the section's name, no page margins, the
+   groups as wide as the pane up to a limit (then they stay at the left, not centred). */
+.settings-dialog {
+  --settings-pad: 36px;
+}
+
 .settings-column {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 28px 32px 40px;
+  max-width: calc(720px + 2 * var(--settings-pad));
+  padding: 10px var(--settings-pad) 36px;
 }
 
 @media (max-width: 720px) {
-  .settings-column {
-    padding: 20px 16px 32px;
+  .settings-dialog {
+    --settings-pad: 16px;
   }
 }
 
@@ -2957,7 +2971,7 @@ button.ctx-row:hover {
    lot) scrolls the whole page again, past this height. */
 .settings-column.is-fill {
   height: 100%;
-  min-height: 520px;
+  min-height: 400px;
   display: flex;
   flex-direction: column;
 }

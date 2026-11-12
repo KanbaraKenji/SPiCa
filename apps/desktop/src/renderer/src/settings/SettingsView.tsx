@@ -89,9 +89,13 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
           ))}
         </nav>
         <div className="settings-main">
-          <button type="button" className="icon-btn settings-close" aria-label="关闭设置" title="关闭（Esc）" onClick={onClose}>
-            <Icon name="close" size={16} />
-          </button>
+          {/* The section's name on top of its pane (as both apps have it), the close button at its end. */}
+          <header className="settings-head">
+            <h2 className="settings-page-title">{tabs.find((t) => t.id === tab)?.label}</h2>
+            <button type="button" className="icon-btn settings-close" aria-label="关闭设置" title="关闭（Esc）" onClick={onClose}>
+              <Icon name="close" size={16} />
+            </button>
+          </header>
           {/* 插件: the list and the detail fill the dialog's height (each scrolls on its own). */}
           <div className="settings" key={tab}>
             <div className={tab === 'plugins' ? 'settings-column is-fill' : 'settings-column'}>
