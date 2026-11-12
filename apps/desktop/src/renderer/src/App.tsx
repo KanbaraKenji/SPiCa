@@ -194,7 +194,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // Only while the preview is there to show (set below, once the layout is known).
   const [canMax, setCanMax] = useState(false);
 
-  // Shortcuts: Ctrl+B sidebar, Ctrl+Alt+B details, Ctrl+Shift+\ the preview over the conversation,
+  // Shortcuts: Ctrl+B sidebar, Ctrl+Alt+B details, Ctrl+Alt+P the preview, Ctrl+Shift+\ the preview over the conversation,
   // Esc closes the settings dialog, a floating panel, the inbox or a plugin page.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -337,10 +337,31 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     if (previewFloats(width, open, savedWidths)) setFloating('preview');
     else if (floating === 'preview') setFloating(null);
   };
+  // The file last closed in the preview: the title bar's preview button opens it again.
+  const [lastPreview, setLastPreview] = useState<typeof preview>(null);
   const closePreview = () => {
+    if (preview) setLastPreview(preview);
     setPreview(null);
     if (floating === 'preview') setFloating(null);
   };
+  /** The title bar's preview button (Ctrl+Alt+P): closes the preview, or opens again the file last shown there. */
+  const togglePreview = () => {
+    if (preview) closePreview();
+    else if (lastPreview) {
+      setPreview(lastPreview);
+      showPreview();
+    }
+  };
+  // Ctrl+Alt+P: the same as the title bar's preview button.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || !e.altKey || e.shiftKey || e.code !== 'KeyP') return;
+      e.preventDefault();
+      togglePreview();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   const openSession = (id: string) => {
     setView('chat');
@@ -689,7 +710,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // No room for the details (beside the conversation at 440 and the preview): they are not shown at all, and their
   // button cannot be pressed; its hover says why. Their switch is kept: they come back when there is room.
   const infoRoom = infoFits(width, open, wantedWidths);
-  const infoTip = infoRoom ? '详情（Ctrl+Alt+B）' : previewShown ? '放不下详情：把预览拖窄或关掉，或把窗口拉宽' : '窗口太窄，放不下详情';
+  const lastName = lastPreview ? (lastPreview.inline?.name ?? lastPreview.path.split(/[\\/]/).pop() ?? lastPreview.path) : '';
+  const previewTip = preview ? '预览（Ctrl+Alt+P）' : lastPreview ? `预览：${lastName}（Ctrl+Alt+P）` : '没有打开的预览：点对话里的文件打开';
+  // A preview floating over a narrow window takes no room: there the window is what is too narrow.
+  const infoTip = infoRoom ? '详情（Ctrl+Alt+B）' : layout.preview === 'docked' ? '放不下详情：把预览拖窄或关掉，或把窗口拉宽' : '窗口太窄，放不下详情';
   // Maximized only while the preview is there to show; closing it or leaving the conversation ends that.
   const rightCanMax = previewShown && view === 'chat';
   if (canMax !== rightCanMax) setCanMax(rightCanMax);
@@ -843,18 +867,34 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         />
         <div className="titlebar-right">
           {view === 'chat' ? (
-            <button
-              type="button"
-              data-panel-toggle
-              className={infoShown ? 'icon-btn is-on' : 'icon-btn'}
-              onClick={() => toggle('info')}
-              aria-label={infoShown ? '收起详情' : '展开详情'}
-              aria-pressed={infoShown}
-              {...(infoRoom ? {} : { 'aria-disabled': true })}
-              title={infoTip}
-            >
-              <Icon name="detail" />
-            </button>
+            <>
+              {/* 详情 and the preview each have their own button, as Claude's title bar: the details' list, then the
+                  panel on the right (the preview, at the window's right edge). */}
+              <button
+                type="button"
+                data-panel-toggle
+                className={infoShown ? 'icon-btn is-on' : 'icon-btn'}
+                onClick={() => toggle('info')}
+                aria-label={infoShown ? '收起详情' : '展开详情'}
+                aria-pressed={infoShown}
+                {...(infoRoom ? {} : { 'aria-disabled': true })}
+                title={infoTip}
+              >
+                <Icon name="details" />
+              </button>
+              <button
+                type="button"
+                data-panel-toggle
+                className={preview ? 'icon-btn is-on' : 'icon-btn'}
+                onClick={togglePreview}
+                aria-label={preview ? '收起预览' : '展开预览'}
+                aria-pressed={preview !== null}
+                {...(preview || lastPreview ? {} : { 'aria-disabled': true })}
+                title={previewTip}
+              >
+                <Icon name="detail" />
+              </button>
+            </>
           ) : null}
         </div>
       </header>

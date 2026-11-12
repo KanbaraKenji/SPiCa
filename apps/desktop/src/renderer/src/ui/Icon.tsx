@@ -3,7 +3,10 @@ import type { SVGProps } from 'react';
 
 const PATHS = {
   sidebar: 'M2.5 3.5h11v9h-11z M6 3.5v9',
+  // The panel on the right (the title bar's button for the file preview).
   detail: 'M2.5 3.5h11v9h-11z M10 3.5v9',
+  // 详情: a list (bullets and lines), unlike the panel shapes beside it.
+  details: 'M6 4.5h7.5 M6 8h7.5 M6 11.5h7.5 M2.8 4.5v.1 M2.8 8v.1 M2.8 11.5v.1',
   plus: 'M8 3v10 M3 8h10',
   // A gear (the old one read as a sun).
   settings:
