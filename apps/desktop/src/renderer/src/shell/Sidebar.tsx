@@ -63,11 +63,14 @@ export interface SidebarProps {
 /** Where an item of the account's menu opens the settings. */
 export type AccountMenuTo = 'settings' | 'models';
 
-/** The account's menu: the account in full on top (not an item: where a long one is read whole), then the items. */
+/**
+ * The account's menu: the account in full on top (not an item: where a long one is read whole), then the items,
+ * each with the icon its settings page has in the settings' list (given as `after`, drawn before the words).
+ */
 export function accountMenuItems(account: string, go: (where: AccountMenuTo) => void): MenuItem[] {
   return [
-    { label: '设置', group: account, onSelect: () => go('settings') },
-    { label: '模型设定', group: account, onSelect: () => go('models') },
+    { label: '设置', group: account, after: <Icon name="settings" size={16} className="account-menu-icon" />, onSelect: () => go('settings') },
+    { label: '模型设定', group: account, after: <Icon name="model" size={16} className="account-menu-icon" />, onSelect: () => go('models') },
   ];
 }
 

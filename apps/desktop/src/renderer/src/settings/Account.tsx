@@ -1,6 +1,7 @@
 // Settings > 账号, laid out like Claude's Profile: one box, the avatar row first, then a row per field with
 // the name on the left and the box on the right (all boxes the same width, so they line up).
-//   头像  the round letter badge the sidebar's bottom row shows (ui/badge), and on the left the account itself.
+//   头像  the account on the left, and the round letter badge the sidebar's bottom row shows (ui/badge); a row
+//        as tall as the two under it.
 //   账号  what plugins get as the user's account (SPICA_USER_ACCOUNT, ctx.user.account). The automatic one is
 //        worked out in the main process (main/user-account.ts); what is typed here replaces it.
 //   昵称  what the new conversation's greeting calls the user (下午好，Alex). From the account unless typed;
@@ -76,7 +77,6 @@ export function Account({ settings, onChange, autoAccount = '' }: AccountProps) 
           <div className="setting-row">
             <div className="setting-text">
               <span className="setting-title">{account || '未取到账号'}</span>
-              <span className="settings-hint">插件读到的账号</span>
             </div>
             {me ? (
               <span className="plugin-badge account-avatar" style={{ background: me.colour }} aria-hidden>

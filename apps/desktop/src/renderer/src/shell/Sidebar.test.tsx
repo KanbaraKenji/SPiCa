@@ -407,6 +407,8 @@ describe('the account on the bottom row', () => {
     expect(me.getAttribute('aria-expanded')).toBe('true');
     expect(menu.querySelector('.context-group')?.textContent).toBe('ALEX.CHEN');
     expect(screen.getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['设置', '模型设定']);
+    // each with its settings page's icon
+    expect(screen.getAllByRole('menuitem').map((b) => b.querySelectorAll('.account-menu-icon').length)).toEqual([1, 1]);
     expect(onAccount).not.toHaveBeenCalled();
     fireEvent.click(me);
     expect(screen.queryByRole('menu')).toBeNull();

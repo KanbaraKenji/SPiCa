@@ -6165,10 +6165,24 @@ section.plugins-part > .plugins-part-title {
   min-width: var(--account-menu-width);
 }
 
-/* 设置 › 账号: the same round badge, bigger, at the right end of the first row. */
+/* Its items' icons (the settings' list ones, 16) come after the words in the menu's markup: drawn before them,
+   as far from the words as in the settings' list. */
+.account-menu .context-item-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.account-menu-icon {
+  flex: none;
+  order: -1;
+  color: var(--spica-muted);
+}
+
+/* 设置 › 账号: the same round badge, bigger, at the right end of the first row (as tall as the rows under it). */
 .account-avatar {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   font-size: var(--fs-heading);
   line-height: var(--lh-heading);

@@ -21,6 +21,8 @@ describe('账号', () => {
     // the avatar row: the account, its letter on the sidebar's colour
     expect(screen.getAllByText('ALEX.CHEN').length).toBe(1);
     expect(screen.getByText('A').classList.contains('account-avatar')).toBe(true);
+    // the account alone on the left: no grey line
+    expect(document.querySelector('.setting-row .settings-hint')).toBeNull();
     expect(screen.queryByRole('button', { name: '恢复自动' })).toBeNull();
     fireEvent.change(box, { target: { value: ' chen.a ' } });
     // not at each key: plugin processes restart with a new account
