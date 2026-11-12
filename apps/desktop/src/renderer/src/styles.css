@@ -4044,6 +4044,35 @@ button.ctx-row:hover {
   margin-bottom: 16px;
 }
 
+/* 插件来源 folds (the conversation's fold look: chevron after the words); folded, the title line says how many
+   sources there are and how many could not be read. In the heading's size, flush with the other titles. */
+.plugin-sources .sources-fold {
+  height: auto;
+  min-height: 28px;
+  margin-left: -8px;
+  color: var(--spica-ink);
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
+  font-weight: 600;
+}
+
+.plugin-sources .sources-fold .fold-label {
+  flex: none;
+}
+
+.sources-summary {
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
+  font-weight: 400;
+  color: var(--spica-muted);
+  white-space: nowrap;
+}
+
+/* Folded: the list below starts right under the title line. */
+.plugin-sources:has(.sources-fold[aria-expanded='false']) .group-head {
+  margin-bottom: 0;
+}
+
 .plugin-sources .group-actions .btn-small {
   display: inline-flex;
   align-items: center;

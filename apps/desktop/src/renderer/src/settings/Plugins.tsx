@@ -484,6 +484,9 @@ export function sourceLine(s: PluginSourceView, now: Date = new Date()): string 
 
 let jobs = 0;
 
+/** From this window width up, 市场 › 插件来源 starts open; narrower, folded. */
+export const SOURCES_OPEN_FROM = 1280;
+
 export interface PluginsProps {
   api: PluginsApi;
   mail?: MailSettingsProps;
@@ -513,6 +516,9 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab }: PluginsProps)
   const [filter, setFilter] = useState<Filter>('all');
   // 添加来源: open, and what is typed in it.
   const [adding, setAdding] = useState(false);
+  // 插件来源 folded: on a window narrower than 1280 it starts folded (the list below gets the room); its title
+  // line still says how many sources there are and how many could not be read.
+  const [sourcesOpen, setSourcesOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= SOURCES_OPEN_FROM);
   const [place, setPlace] = useKeptDraft('plugins.addSource', '');
   // What was last added: a single package on the web is listed under it to install.
   const [added, setAdded] = useState<string | null>(null);
@@ -663,6 +669,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab }: PluginsProps)
     return p ? { ...a, displayName: a.displayName ?? p.displayName, ...(a.icon || !p.icon ? {} : { icon: p.icon }) } : a;
   };
   const sources = state?.sources ?? [];
+  const failedSources = sources.filter((s) => s.error).length;
   // 市场: what the sources offer; and a single package on the web just typed into 添加来源 (it cannot be a source).
   const single = !installedTab && added && state?.found?.location === added && !sources.some((s) => s.location === added) ? state.found.packages.map(known) : [];
   const offered = installedTab ? [] : [...(state?.available ?? []).map(known), ...single];
@@ -754,15 +761,36 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab }: PluginsProps)
 
       {!installedTab && listView ? (
         <Group
-          title="插件来源"
+          title={
+            <button type="button" className="fold-head sources-fold" aria-expanded={sourcesOpen} onClick={() => setSourcesOpen(!sourcesOpen)}>
+              <span className="fold-label">插件来源</span>
+              <Icon name="chevronRight" size={14} className="fold-chevron" />
+              {sourcesOpen ? null : (
+                <span className="sources-summary">
+                  {sources.length ? `${sources.length} 个来源` : '没有来源'}
+                  {failedSources ? <span className="source-failed">{` · ${failedSources} 个连接失败`}</span> : null}
+                </span>
+              )}
+            </button>
+          }
           className="plugin-sources"
+          folded={!sourcesOpen}
           actions={
             <>
               <button type="button" className="btn btn-small" disabled={busy || !sources.length} onClick={() => void check()}>
                 {checking === '' ? <span className="spinner" aria-hidden /> : null}
                 全部检查更新
               </button>
-              <button type="button" className={adding ? 'btn btn-small is-on' : 'btn btn-small'} onClick={() => setAdding(!adding)} aria-expanded={adding}>
+              <button
+                type="button"
+                className={adding && sourcesOpen ? 'btn btn-small is-on' : 'btn btn-small'}
+                onClick={() => {
+                  // Folded: open the group with the box to type in.
+                  setAdding(!adding || !sourcesOpen);
+                  setSourcesOpen(true);
+                }}
+                aria-expanded={adding && sourcesOpen}
+              >
                 <Icon name="plus" size={14} />
                 添加来源
               </button>

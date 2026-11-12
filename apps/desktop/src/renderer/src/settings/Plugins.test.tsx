@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { Plugins, pluginBadge, type PluginsApi, type SettingsPages } from './Plugins';
@@ -8,6 +8,10 @@ import { FakePluginService } from '../../../main/plugins/fake';
 import { dropAllDrafts } from './drafts';
 import { DEFAULT_SETTINGS } from '../../../shared/settings';
 import type { PluginsProgress, PluginsState, PluginView } from '../../../shared/plugins';
+
+/** The window's width (jsdom's own is 1024): 市场 › 插件来源 starts open from 1280. */
+const windowWidth = (w: number) => Object.defineProperty(window, 'innerWidth', { value: w, configurable: true, writable: true });
+beforeEach(() => windowWidth(1280));
 
 afterEach(() => {
   cleanup();
@@ -244,6 +248,23 @@ describe('Plugins', () => {
     fireEvent.click(screen.getByRole('button', { name: '全部检查更新' }));
     expect(await screen.findByText('已检查 1 个插件来源：1 个插件可更新；1 个连接失败。')).toBeTruthy();
     expect(sent).toContainEqual({ op: 'checkSources' });
+  });
+
+  it('插件来源 on a window under 1280 starts folded: its title line says how many and how many failed; 添加来源 opens it with the box', async () => {
+    windowWidth(1000);
+    render(<Plugins api={api()} tab="market" />);
+    const fold = await screen.findByRole('button', { name: /^插件来源/ });
+    expect(fold.getAttribute('aria-expanded')).toBe('false');
+    expect(fold.textContent).toBe('插件来源2 个来源 · 1 个连接失败');
+    expect(screen.queryByRole('list', { name: '插件来源' })).toBeNull();
+    // What the sources offer is right there.
+    expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['可安装']);
+    fireEvent.click(fold);
+    expect(screen.getByRole('list', { name: '插件来源' })).toBeTruthy();
+    fireEvent.click(fold);
+    fireEvent.click(screen.getByRole('button', { name: '添加来源' }));
+    expect(screen.getByLabelText('插件来源的位置')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^插件来源/ }).getAttribute('aria-expanded')).toBe('true');
   });
 
   it('移除来源 asks first; removed, what it offered leaves the list', async () => {

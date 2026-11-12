@@ -21,10 +21,12 @@ export interface GroupProps {
   /** Under the box: a status line or a problem that belongs to the whole group. */
   after?: ReactNode;
   className?: string;
+  /** Folded: only the title line shows (its title is then the fold button, see 市场 › 插件来源). */
+  folded?: boolean;
   children: ReactNode;
 }
 
-export function Group({ title, actions, after, className, children }: GroupProps) {
+export function Group({ title, actions, after, className, folded, children }: GroupProps) {
   return (
     <div className={className ? `settings-group ${className}` : 'settings-group'}>
       {title || actions ? (
@@ -33,8 +35,8 @@ export function Group({ title, actions, after, className, children }: GroupProps
           {actions ? <div className="group-actions">{actions}</div> : null}
         </div>
       ) : null}
-      <div className="group-box">{children}</div>
-      {after}
+      {folded ? null : <div className="group-box">{children}</div>}
+      {folded ? null : after}
     </div>
   );
 }
