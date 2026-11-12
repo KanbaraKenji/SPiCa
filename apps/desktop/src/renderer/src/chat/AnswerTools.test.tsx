@@ -94,6 +94,31 @@ describe('paths in an answer', () => {
     expect(screen.getAllByRole('link').map((l) => l.textContent)).toEqual(['报价.xlsx', '报价.xlsx']);
   });
 
+  it('a full path in plain text is the same link: its name, the full path on hover, opens the same', () => {
+    const tools = answer('图纸在 D:\\样机\\第一版\\报价.xlsx 里，另一版是 `D:\\样机\\第二版\\报价.xlsx`。')!;
+    const plain = screen.getByRole('link', { name: 'D:\\样机\\第一版\\报价.xlsx' });
+    expect(plain.tagName).toBe('CODE');
+    expect(plain.className).toBe('md-path');
+    expect(plain.textContent).toBe('第一版\\报价.xlsx');
+    expect(plain.getAttribute('title')).toBe('预览 D:\\样机\\第一版\\报价.xlsx');
+    expect(screen.getByRole('link', { name: 'D:\\样机\\第二版\\报价.xlsx' }).textContent).toBe('第二版\\报价.xlsx');
+    fireEvent.click(plain);
+    expect(tools.openFile).toHaveBeenCalledWith('D:\\样机\\第一版\\报价.xlsx');
+    expect(plain.closest('p')!.textContent).toBe('图纸在 第一版\\报价.xlsx 里，另一版是 第二版\\报价.xlsx。');
+  });
+
+  it('a path in plain text stays plain text where nothing opens it, in a link and in a code block', () => {
+    answer('在 D:\\a\\b.txt 里', null);
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(document.querySelector('code')).toBeNull();
+    expect(document.querySelector('p')!.textContent).toBe('在 D:\\a\\b.txt 里');
+    cleanup();
+    answer('[D:\\a\\b.txt](https://example.com/b) 和\n\n```\nD:\\a\\c.txt\n```');
+    expect(screen.getByRole('link').textContent).toBe('D:\\a\\b.txt');
+    expect(document.querySelector('pre')!.textContent).toContain('D:\\a\\c.txt');
+    expect(document.querySelector('.md-path')).toBeNull();
+  });
+
   it('other inline code stays plain code', () => {
     answer(SUMMARY);
     const code = screen.getByText('单价', { selector: 'code' });

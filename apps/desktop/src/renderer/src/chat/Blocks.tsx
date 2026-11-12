@@ -13,7 +13,7 @@ import { ImageViewer } from '../ui/ImageViewer';
 import { imageSource } from './answer-image';
 import { drawFlow, pageMode, svgUrl } from './flow-draw';
 import { commandFacts, dangerSpans } from './command-plain';
-import { fullPath, inlineCodeSpans, localPathKind, openablePathKind, pathLabel } from './local-path';
+import { fullPath, openablePathKind, pathLabel, remarkLocalPaths } from './local-path';
 import { tableRows, toCsv, toHtml, toTsv } from './table-data';
 import { blockLanguage, blockLanguageName, colourSplit, highlightCode } from './highlight';
 import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS } from './format';
@@ -257,17 +257,19 @@ function CodeBlockBody({ node, source, code, name, children }: { node?: PreNode 
 }
 
 /**
- * Inline code: a full local path in it opens (a file in the right panel, a folder in Explorer) and shows only its
- * name (pathLabel); the full path is in its hover note, and copying a selection over it copies the full path.
- * Anything else is code.
+ * Inline code, and a full local path written in plain text (`plain`, see remarkLocalPaths). A full local path
+ * opens (a file in the right panel, a folder in Explorer) and shows only its name (pathLabel); the full path is
+ * in its hover note, and copying a selection over it copies the full path. Other inline code is code; a path
+ * from plain text that nothing here opens stays plain text.
  */
-function InlineCode({ className, children }: { className?: string | undefined; children?: ReactNode }) {
+function InlineCode({ className, plain, children }: { className?: string | undefined; plain?: boolean; children?: ReactNode }) {
   const inBlock = useContext(InBlockContext);
   const tools = useContext(AnswerToolsContext);
   const paths = useContext(AnswerPathsContext);
   const text = typeof children === 'string' ? children : null;
   const kind = !inBlock && tools && text !== null ? openablePathKind(text, tools.cwd) : null;
-  if (!kind || !tools || text === null) return <code className={className}>{children}</code>;
+  // A path from plain text that does not open here stays plain text.
+  if (!kind || !tools || text === null) return plain ? <>{children}</> : <code className={className}>{children}</code>;
   const open = () => (kind === 'folder' ? tools.openFolder(text) : tools.openFile(text));
   // A link role on the code itself (not a button around it), so a long name still wraps with the line.
   return (
@@ -397,12 +399,14 @@ function MdImage({ src, alt }: { src?: string | undefined; alt?: string | undefi
 }
 
 export const MarkdownText = memo(function MarkdownText({ text }: { text: string }) {
-  const paths = useMemo(() => [...new Set(inlineCodeSpans(text).filter((s) => localPathKind(s)))], [text]);
+  // Every path of the answer, filled in as Markdown reads it (before any part of it is drawn).
+  const paths = useMemo<string[]>(() => [], []);
+  const plugins = useMemo(() => [remarkGfm, remarkLocalPaths(paths)], [paths]);
   return (
     <div className="md" onCopy={copyFullPaths}>
       <AnswerPathsContext.Provider value={paths}>
         <Markdown
-          remarkPlugins={[remarkGfm]}
+          remarkPlugins={plugins}
           // history:n (a place in an earlier conversation) is kept; other addresses as react-markdown allows them.
           // A picture's address is kept as written (local paths too): MdImage decides what may load.
           urlTransform={(url, key, node) => (url.startsWith('history:') || (key === 'src' && node.tagName === 'img') ? url : defaultUrlTransform(url))}
@@ -421,7 +425,11 @@ export const MarkdownText = memo(function MarkdownText({ text }: { text: string 
                 {children}
               </CodeBlock>
             ),
-            code: ({ className, children }) => <InlineCode className={className}>{children}</InlineCode>,
+            code: ({ node, className, children }) => (
+              <InlineCode className={className} plain={Boolean(node?.properties?.dataPlain)}>
+                {children}
+              </InlineCode>
+            ),
             table: ({ children }) => <MdTable>{children}</MdTable>,
             img: ({ src, alt }) => <MdImage src={typeof src === 'string' ? src : undefined} alt={alt} />,
           }}

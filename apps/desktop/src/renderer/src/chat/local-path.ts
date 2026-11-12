@@ -41,15 +41,93 @@ export function pathLabel(path: string, others: readonly string[] = []): string 
   return folder ? `${shown}${sep}` : shown;
 }
 
-/** The inline code spans of an answer outside its code blocks (backticks of any length, as Markdown reads them). */
-export function inlineCodeSpans(text: string): string[] {
-  const outside = text.replace(/^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:\n {0,3}\1[`~]*[ \t]*(?=\n|$)|$)/gm, '');
-  const spans: string[] = [];
-  for (const m of outside.matchAll(/(?<!`)(`+)(?!`)([\s\S]+?)(?<!`)\1(?!`)/g)) {
-    const body = m[2]!.replace(/\n/g, ' ');
-    spans.push(/^ .*[^ ].* $/.test(body) ? body.slice(1, -1) : body);
+// Where a path written in plain text ends: whitespace, what Windows forbids in a path, and punctuation (Chinese
+// and ASCII; brackets too, though a file name may hold them: such a path is then left as it is).
+const PLAIN_STOP = /[\s<>"|?*:，。；：、！？（）【】「」『』《》“”‘’,;!?()[\]{}]/;
+// A path is not taken from inside a word, a web address or another path.
+const PLAIN_BEFORE = /[A-Za-z0-9_\-.\\/:%@&=+~$#]/;
+// A file's last part: a name, then an extension with a letter in it; after it only nothing, or a non-ASCII
+// character (在 D:\a\报价.xlsx里 ends at .xlsx).
+const PLAIN_FILE = /^(.+\.[A-Za-z0-9]*[A-Za-z][A-Za-z0-9]*)(?![A-Za-z0-9])(.*)$/;
+
+/**
+ * Full local paths written in plain text, where they start and end. Cautious: a path is taken only when its end
+ * is certain, so one that is left out stays text and none is cut wrong. It starts with a drive (C:\ or C:/) or
+ * \\server\share, not right after a letter, digit or a web address's characters; it ends at a space, a quote or
+ * punctuation, a full stop after it not included, and must end as a folder (a separator) or a file with an
+ * extension. Left as text: a name with a space (D:\My Files\a.txt) or a bracket in it, a last part with no
+ * extension, ASCII straight after the extension (a.txt_old), and a path followed by a space and more path.
+ */
+export function findPlainPaths(text: string): { start: number; end: number; path: string }[] {
+  const found: { start: number; end: number; path: string }[] = [];
+  const head = /[A-Za-z]:[\\/]|\\\\(?=[^\\/\s])/g;
+  for (let m = head.exec(text); m; m = head.exec(text)) {
+    const start = m.index;
+    let end = start + m[0].length;
+    while (end < text.length && !PLAIN_STOP.test(text[end]!)) end++;
+    head.lastIndex = end;
+    if (start > 0 && PLAIN_BEFORE.test(text[start - 1]!)) continue;
+    while (end > start && text[end - 1] === '.') end--;
+    let path = text.slice(start, end);
+    if (!/[\\/]$/.test(path)) {
+      const last = path.slice(path.search(/[^\\/]*$/));
+      const file = PLAIN_FILE.exec(last);
+      if (!file) continue;
+      const rest = file[2]!;
+      if (rest && rest.charCodeAt(0) <= 0x7f) continue;
+      path = path.slice(0, path.length - rest.length);
+      end = start + path.length;
+    }
+    // D:\a.b c\d.txt: the space may be part of the path.
+    const next = /^ (\S+)/.exec(text.slice(end))?.[1];
+    if (next && /[\\/]/.test(next) && !/^(?:[A-Za-z]:[\\/]|\\\\)/.test(next)) continue;
+    if (!localPathKind(path)) continue;
+    found.push({ start, end, path });
+    head.lastIndex = end;
   }
-  return spans;
+  return found;
+}
+
+/** The parts of a Markdown syntax node walked here. */
+interface MdNode {
+  type: string;
+  value?: string;
+  children?: MdNode[];
+  data?: { hProperties?: Record<string, unknown> };
+}
+
+/**
+ * A step after Markdown is read: a full local path in plain text becomes inline code marked `data-plain` (shown
+ * like a path in inline code, and as plain text where nothing opens it). `found` gets every path of the answer,
+ * written either way, for pathLabel. Text in links and code blocks is left alone.
+ */
+export function remarkLocalPaths(found: string[]) {
+  const walk = (node: MdNode) => {
+    if (!node.children || node.type === 'link' || node.type === 'linkReference') return;
+    node.children = node.children.flatMap((c): MdNode[] => {
+      if (c.type === 'inlineCode' && c.value && localPathKind(c.value)) found.push(c.value);
+      if (c.type !== 'text' || !c.value) {
+        walk(c);
+        return [c];
+      }
+      const hits = findPlainPaths(c.value);
+      if (!hits.length) return [c];
+      const parts: MdNode[] = [];
+      let at = 0;
+      for (const h of hits) {
+        if (h.start > at) parts.push({ type: 'text', value: c.value.slice(at, h.start) });
+        parts.push({ type: 'inlineCode', value: h.path, data: { hProperties: { dataPlain: true } } });
+        found.push(h.path);
+        at = h.end;
+      }
+      if (at < c.value.length) parts.push({ type: 'text', value: c.value.slice(at) });
+      return parts;
+    });
+  };
+  return () => (tree: MdNode) => {
+    found.length = 0;
+    walk(tree);
+  };
 }
 
 /** Whether `path` is `folder` or inside it (`..` resolved first; letters' case ignored, as on Windows). */
