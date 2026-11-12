@@ -190,6 +190,23 @@ describe('regenerating the last answer', () => {
     expect(rt.memory.get(cat.id)).toMatchObject({ status: 'forgotten', undone: true });
     expect(rt.memory.get(coffee.id)).toMatchObject({ status: 'active', text: '每天喝咖啡' });
 
+    // one answer that saved a note and then changed it: both are taken back, nothing of it stays
+    gw.enqueue(
+      { toolCalls: [{ id: 'm6', name: 'remember', args: { text: '住在杭州', quote: '我住在杭州' } }] },
+      { toolCalls: [{ id: 'm7', name: 'remember', args: { text: '住在杭州西湖区', quote: '西湖区', replaces: 7 } }] },
+      { toolCalls: [{ id: 'm8', name: 'remember', args: { text: '爱喝茶', quote: '我爱喝茶' } }] },
+      { toolCalls: [{ id: 'f2', name: 'forget', args: { id: 9, quote: '我爱喝茶' } }] },
+      { text: '好' },
+    );
+    await chat.send('我住在杭州，西湖区；我爱喝茶').done;
+    expect(rt.memory.get(7)).toMatchObject({ text: '住在杭州', status: 'replaced' });
+    expect(rt.memory.get(9)).toMatchObject({ text: '爱喝茶', status: 'forgotten' });
+    gw.enqueue({ text: '再说一遍' });
+    expect(chat.regenerate()).toMatchObject({ ok: true });
+    await until(() => chat.status === 'idle' && !chat.running);
+    await chat.idle();
+    for (const id of [7, 8, 9]) expect(rt.memory.get(id)).toMatchObject({ status: 'forgotten', undone: true });
+
     // with another tool that may have changed something, the round still cannot be regenerated
     rt.tools.register(tool('poke'), 'p');
     gw.enqueue({ toolCalls: [{ id: 'm5', name: 'remember', args: { text: '在北京', quote: '我在北京' } }, { id: 'p1', name: 'poke', args: {} }] }, { text: '好' });

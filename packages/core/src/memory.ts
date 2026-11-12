@@ -533,12 +533,18 @@ export class MemoryBook {
    */
   revert(cards: readonly MemoryCardMeta[]): number {
     let n = 0;
+    // items this revert itself changed (a note the same answer saved and then changed): their time moved, not by anyone else
+    const mine = new Set<number>();
     for (const card of [...cards].reverse()) {
       const made = card.item;
       if (!made || !['saved', 'replaced', 'forgotten'].includes(card.action)) continue;
       const cur = this.get(made.id);
-      if (!cur || cur.updatedAt !== made.updatedAt || cur.status !== made.status) continue;
-      if (this.undo(made.id)) n++;
+      if (!cur || cur.status !== made.status || (cur.updatedAt !== made.updatedAt && !mine.has(made.id))) continue;
+      const done = this.undo(made.id);
+      if (!done) continue;
+      n++;
+      mine.add(made.id);
+      if (done.previous) mine.add(done.previous.id);
     }
     return n;
   }

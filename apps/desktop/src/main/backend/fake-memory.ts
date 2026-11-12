@@ -221,11 +221,15 @@ export class FakeMemory {
 
   /** Regenerate: takes back what the old answer's cards did, newest first, where nothing touched the item since. */
   revert(cards: MemoryCardMeta[]): void {
+    const mine = new Set<number>(); // changed by this revert (a note the answer saved, then changed)
     for (const card of [...cards].reverse()) {
       const made = card.item;
       const cur = made && this.#get(made.id);
       if (!made || !cur || !['saved', 'replaced', 'forgotten'].includes(card.action)) continue;
-      if (cur.updatedAt === made.updatedAt && cur.status === made.status) this.undo(made.id);
+      if (cur.status !== made.status || (cur.updatedAt !== made.updatedAt && !mine.has(made.id))) continue;
+      const done = this.undo(made.id);
+      if (done?.item) mine.add(done.item.id);
+      if (done?.previous) mine.add(done.previous.id);
     }
   }
 
