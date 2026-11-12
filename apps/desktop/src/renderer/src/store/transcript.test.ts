@@ -3,7 +3,7 @@ import type { CoreEvent, HistoryCardMeta, Message } from '@spica/protocol';
 import { FakeBackend } from '../../../main/backend/fake';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
 import { changesAfter } from './relocate';
-import { applyEvent, askAnswer, cwdNoteText, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, type Transcript } from './transcript';
+import { applyEvent, askAnswer, cancelCard, cwdNoteText, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, type Transcript } from './transcript';
 
 describe('fromHistory', () => {
   const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
@@ -460,5 +460,75 @@ describe('the working folder chosen later', () => {
     expect(filesOf(answers[0]!.blocks, {}, moves.get(answers[0]!.id))).toEqual([{ path: 'D:\\资料\\报价\\报价 (1).md', shown: '报价 (1).md', tool: 'write_file' }]);
     // Written after the folder was chosen: 报价.md in the new folder is that one.
     expect(filesOf(answers[1]!.blocks, {}, moves.get(answers[1]!.id)).map((f) => f.path)).toEqual(['报价.md']);
+  });
+});
+
+describe('a question or confirmation stopped while it waits', () => {
+  const ev = (seq: number, body: Record<string, unknown>) => ({ sessionId: 's', parentChain: [], seq, at: '', ...body }) as unknown as CoreEvent;
+  const asked = (): Transcript => {
+    let t: Transcript = { items: [] };
+    t = applyEvent(t, ev(1, { type: 'ask.request', callId: 'q1', question: '确认这次申请的四项？', options: ['是', '不是'] }));
+    t = applyEvent(t, ev(2, { type: 'confirm.request', callId: 'm1', name: 'send_email', input: {}, reason: '发送邮件' }));
+    return t;
+  };
+  const cards = (t: Transcript) => t.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])).filter((b) => b.type === 'ask' || b.type === 'confirm');
+
+  it('the core’s way: status aborted and a cancelled result, no ask.resolved: both cards are cancelled, the answer interrupted', () => {
+    let t = asked();
+    t = applyEvent(t, ev(3, { type: 'status', status: 'aborted' }));
+    t = applyEvent(t, ev(4, { type: 'message', message: { id: 'r', sessionId: 's', seq: 3, role: 'user', kind: 'tool_results', createdAt: '', content: [
+      { type: 'tool_result', toolUseId: 'q1', content: '[fetched at 2026-11-12T00:00:00Z]\nCancelled: aborted by user.', isError: true },
+      { type: 'tool_result', toolUseId: 'm1', content: '[fetched at 2026-11-12T00:00:00Z]\nCancelled: aborted by user.', isError: true },
+    ] } }));
+    expect(cards(t).map((b) => [b.callId, (b as { cancelled?: boolean }).cancelled])).toEqual([['q1', true], ['m1', true]]);
+    expect((cards(t)[0] as { answer?: string }).answer).toBeUndefined();
+    expect(t.items.at(-1)).toMatchObject({ kind: 'response', interrupted: true });
+  });
+
+  it('the cancelled result alone (no status first) does the same', () => {
+    const t = applyEvent(asked(), ev(3, { type: 'message', message: { id: 'r', sessionId: 's', seq: 3, role: 'user', kind: 'tool_results', createdAt: '', content: [{ type: 'tool_result', toolUseId: 'q1', content: 'Cancelled: aborted by user.', isError: true }] } }));
+    expect(cards(t)[0]).toMatchObject({ callId: 'q1', cancelled: true });
+  });
+
+  it('answered or decided cards stay as they are when the run is stopped later', () => {
+    let t = asked();
+    t = applyEvent(t, ev(3, { type: 'ask.resolved', callId: 'q1', answer: '是' }));
+    t = applyEvent(t, ev(4, { type: 'confirm.resolved', callId: 'm1', approved: false }));
+    t = applyEvent(t, ev(5, { type: 'status', status: 'aborted' }));
+    expect(cards(t)).toMatchObject([{ answer: '是' }, { approved: false }]);
+    expect(cards(t).some((b) => (b as { cancelled?: boolean }).cancelled)).toBe(false);
+  });
+
+  it('reopened later: a stopped question is cancelled (not an answer that reads Cancelled …); one still waited on stays open', () => {
+    const at = '2026-11-12T00:00:00Z';
+    const ask = (id: string, seq: number): Message => ({ id: `a${id}`, sessionId: 's', seq, role: 'assistant', kind: 'assistant', createdAt: at, content: [{ type: 'tool_use', id, name: 'ask_user', input: { question: '哪一种？', options: ['A'] } }] });
+    const history: Message[] = [
+      ask('q1', 1),
+      { id: 'r1', sessionId: 's', seq: 2, role: 'user', kind: 'tool_results', createdAt: at, content: [{ type: 'tool_result', toolUseId: 'q1', content: 'Cancelled: aborted by user.', isError: true }] },
+      ask('q2', 3),
+      { id: 'r2', sessionId: 's', seq: 4, role: 'user', kind: 'tool_results', createdAt: at, content: [{ type: 'tool_result', toolUseId: 'q2', content: 'User answered: A' }] },
+      ask('q3', 5),
+      ask('q4', 6),
+    ];
+    const t = fromHistory(history, [{ kind: 'ask', callId: 'q4', question: '哪一种？', options: ['A'], createdAt: at }]);
+    expect(cards(t).map((b) => [b.callId, (b as { answer?: string }).answer ?? null, (b as { cancelled?: boolean }).cancelled ?? false])).toEqual([
+      ['q1', null, true],
+      ['q2', 'A', false],
+      // No result and no longer waited on (stopped before its result was written): nothing to answer.
+      ['q3', null, true],
+      ['q4', null, false],
+    ]);
+  });
+
+  it('asked again under the same id: open again', () => {
+    let t = applyEvent(asked(), ev(3, { type: 'status', status: 'aborted' }));
+    t = applyEvent(t, ev(4, { type: 'ask.request', callId: 'q1', question: '确认这次申请的四项？', options: ['是'] }));
+    expect((cards(t)[0] as { cancelled?: boolean }).cancelled).toBeUndefined();
+  });
+
+  it('cancelCard: the card the core no longer knows', () => {
+    const t = cancelCard(asked(), 'q1');
+    expect(cards(t)[0]).toMatchObject({ callId: 'q1', cancelled: true });
+    expect((cards(t)[1] as { cancelled?: boolean }).cancelled).toBeUndefined();
   });
 });

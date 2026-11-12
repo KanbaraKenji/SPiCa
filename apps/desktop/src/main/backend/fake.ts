@@ -459,13 +459,13 @@ export class FakeBackend implements AgentBackend {
   }
 
   async answer(sessionId: string, callId: string, answer: string): Promise<void> {
-    this.#resolvePending(sessionId, callId, answer);
+    this.#resolvePending(sessionId, callId, answer, 'ask');
     this.#emit(sessionId, { type: 'ask.resolved', callId, answer });
   }
 
   async confirm(sessionId: string, callId: string, approved: boolean): Promise<void> {
+    this.#resolvePending(sessionId, callId, approved ? 'yes' : 'no', 'confirm');
     if (!approved) this.#declined.add(callId);
-    this.#resolvePending(sessionId, callId, approved ? 'yes' : 'no');
     this.#emit(sessionId, { type: 'confirm.resolved', callId, approved });
   }
 
@@ -722,8 +722,10 @@ export class FakeBackend implements AgentBackend {
     return s;
   }
 
-  #resolvePending(sessionId: string, callId: string, value: string): void {
+  /** As the core: a card it no longer waits on (stopped, answered already) is refused with the core's words. */
+  #resolvePending(sessionId: string, callId: string, value: string, kind: PendingItem['kind']): void {
     const list = this.#pending.get(sessionId) ?? [];
+    if (!list.some((p) => p.callId === callId && p.kind === kind)) throw new Error(`no pending ${kind} with id ${callId}`);
     this.#pending.set(
       sessionId,
       list.filter((p) => p.callId !== callId),
@@ -887,6 +889,9 @@ export class FakeBackend implements AgentBackend {
     this.#runs.set(sessionId, run);
     const signal = run.controller.signal;
     const blocks: ContentBlock[] = [];
+    // The card the run waits on (a confirmation or a question): stopped while it waits, it is kept with a cancelled
+    // result, as the core does.
+    let waiting: { id: string; name: string; input: unknown } | undefined;
     let turn = 0;
     try {
       this.#setStatus(sessionId, 'thinking');
@@ -999,7 +1004,9 @@ export class FakeBackend implements AgentBackend {
         this.#addPending(sessionId, { kind: 'confirm', callId, toolName: 'run_command', input, reason: '运行命令', createdAt: isoAt(this.#now()) });
         this.#emit(sessionId, { type: 'confirm.request', callId, name: 'run_command', input, reason: '运行命令' });
         this.#setStatus(sessionId, 'awaiting_confirm', 'run_command');
+        waiting = { id: callId, name: 'run_command', input };
         const ok = (await this.#waitFor(run, callId)) === 'yes';
+        waiting = undefined;
         this.#emit(sessionId, { type: 'tool.end', callId, name: 'run_command', isError: !ok, preview: ok ? '已删除' : '用户拒绝了这条命令', durationMs: 300 });
         blocks.push({ type: 'tool_use', id: callId, name: 'run_command', input }, { type: 'tool_result', toolUseId: callId, content: ok ? '已删除' : '用户拒绝了这条命令', isError: !ok });
         this.#setStatus(sessionId, 'thinking');
@@ -1017,7 +1024,9 @@ export class FakeBackend implements AgentBackend {
         this.#addPending(sessionId, { kind: 'confirm', callId, toolName: 'send_email', input, reason: '发送邮件给「项目组」', createdAt: isoAt(this.#now()) });
         this.#emit(sessionId, { type: 'confirm.request', callId, name: 'send_email', input, reason: '发送邮件给「项目组」' });
         this.#setStatus(sessionId, 'awaiting_confirm', 'send_email');
+        waiting = { id: callId, name: 'send_email', input };
         const decision = await this.#waitFor(run, callId);
+        waiting = undefined;
         const ok = decision === 'yes';
         this.#emit(sessionId, { type: 'tool.end', callId, name: 'send_email', isError: !ok, preview: ok ? '已发送' : '用户取消了发送', durationMs: 300 });
         blocks.push({ type: 'tool_use', id: callId, name: 'send_email', input }, { type: 'tool_result', toolUseId: callId, content: ok ? '已发送' : '用户取消了发送', isError: !ok });
@@ -1032,7 +1041,9 @@ export class FakeBackend implements AgentBackend {
         this.#addPending(sessionId, { kind: 'ask', callId, question, options, createdAt: isoAt(this.#now()) });
         this.#emit(sessionId, { type: 'ask.request', callId, question, options });
         this.#setStatus(sessionId, 'awaiting_answer');
+        waiting = { id: callId, name: 'ask_user', input: { question, options } };
         const answer = await this.#waitFor(run, callId);
+        waiting = undefined;
         blocks.push({ type: 'tool_use', id: callId, name: 'ask_user', input: { question, options } }, { type: 'tool_result', toolUseId: callId, content: answer });
         this.#setStatus(sessionId, 'thinking');
         const after = `好，按「${answer}」来写。`;
@@ -1120,10 +1131,12 @@ export class FakeBackend implements AgentBackend {
     } catch (err) {
       if (err instanceof Aborted || signal.aborted) {
         // Keep what was already streamed, marked as interrupted.
+        if (waiting) blocks.push({ type: 'tool_use', id: waiting.id, name: waiting.name, input: waiting.input });
         if (blocks.length) {
           const own = blocks.filter((b) => b.type !== 'tool_result');
           if (own.length) this.#append(sessionId, 'assistant', 'assistant', own, { interrupted: true });
         }
+        if (waiting) this.#append(sessionId, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: waiting.id, content: 'Cancelled: aborted by user.', isError: true }], { author: 'runtime' });
         this.#pending.set(sessionId, []);
         this.#finish(sessionId, 'aborted');
       } else {

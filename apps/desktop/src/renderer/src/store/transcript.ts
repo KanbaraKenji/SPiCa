@@ -53,8 +53,10 @@ export type Block =
       /** A plugin tool's name for people. */
       title?: string;
     }
-  | { type: 'ask'; callId: string; question: string; options: string[]; answer?: string }
-  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause }
+  /** `cancelled`: the question was dropped unanswered (the run was stopped): nothing to answer any more. */
+  | { type: 'ask'; callId: string; question: string; options: string[]; answer?: string; cancelled?: boolean }
+  /** `cancelled`: dropped undecided (the run was stopped): nothing to decide any more. */
+  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean }
   | { type: 'suggest'; callId: string; title: string; actions: SuggestAction[] };
 
 /** A note from a sub-agent (its report, what the user said there, or a decision made there). */
@@ -356,6 +358,55 @@ function lastResponse(items: Item[], id: string): Extract<Item, { kind: 'respons
   return created;
 }
 
+/**
+ * Questions and confirmations still open in `items` that the core no longer waits on (the run was stopped while
+ * they waited): marked cancelled, and their answer marked interrupted like an answer stopped while it ran.
+ * `keep`: call ids the core still waits on. Mutates `items`.
+ */
+function cancelOpenCards(items: Item[], keep: ReadonlySet<string> = new Set()): void {
+  for (const it of items) {
+    if (it.kind !== 'response') continue;
+    for (const b of it.blocks) {
+      if (keep.has((b as { callId?: string }).callId ?? '')) continue;
+      if ((b.type === 'ask' && b.answer === undefined && !b.cancelled) || (b.type === 'confirm' && b.approved === undefined && !b.cancelled)) {
+        b.cancelled = true;
+        it.interrupted = true;
+      }
+    }
+  }
+}
+
+/** A tool result for a question or a confirmation: an answer, or (an error: the core cancelled it) cancelled. */
+function settleCard(items: Item[], callId: string, content: string, isError: boolean | undefined): void {
+  const ask = findBlock(items, 'ask', callId);
+  if (ask && ask.answer === undefined) {
+    if (isError) {
+      ask.cancelled = true;
+      markInterrupted(items, callId);
+    } else ask.answer = askAnswer(content);
+  }
+  const confirm = findBlock(items, 'confirm', callId);
+  if (confirm && confirm.approved === undefined && isError && /^Cancelled\b/.test(resultBody(content))) {
+    confirm.cancelled = true;
+    markInterrupted(items, callId);
+  }
+}
+
+function markInterrupted(items: Item[], callId: string): void {
+  const it = items.find((i) => i.kind === 'response' && i.blocks.some((b) => (b as { callId?: string }).callId === callId));
+  if (it?.kind === 'response') it.interrupted = true;
+}
+
+/** The card `callId` marked cancelled (the core said it no longer waits on it). */
+export function cancelCard(prev: Transcript, callId: string): Transcript {
+  const t = clone(prev);
+  for (const type of ['ask', 'confirm'] as const) {
+    const b = findBlock(t.items, type, callId);
+    if (b) b.cancelled = true;
+  }
+  return t;
+}
+
 function findBlock<T extends Block['type']>(items: Item[], type: T, callId: string): Extract<Block, { type: T }> | undefined {
   for (let i = items.length - 1; i >= 0; i--) {
     const it = items[i];
@@ -450,8 +501,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
           if (m.meta?.autoApproved?.includes(b.toolUseId)) tool.autoApproved = true;
           continue;
         }
-        const ask = findBlock(items, 'ask', b.toolUseId);
-        if (ask) ask.answer = askAnswer(b.content);
+        settleCard(items, b.toolUseId, b.content, b.isError);
       }
       mark(m);
       continue;
@@ -506,6 +556,9 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
     seqs,
   };
   for (const p of pending) applyPending(t, p);
+  // A question or confirmation with no result that the core no longer waits on was dropped (stopped before the
+  // core wrote its result): nothing to answer.
+  cancelOpenCards(t.items, new Set(pending.map((p) => p.callId)));
   return t;
 }
 
@@ -554,6 +607,9 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         if (note) items.push(note);
       } else if (m.role === 'assistant' && m.meta?.interrupted === true) {
         lastResponse(items, respId).interrupted = true;
+      } else if (m.kind === 'tool_results') {
+        // Stopping while a question or confirmation waits: the core writes its result as cancelled.
+        for (const b of m.content) if (b.type === 'tool_result') settleCard(items, b.toolUseId, b.content, b.isError);
       }
       return t;
     }
@@ -660,6 +716,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       if (existing) {
         existing.question = e.question;
         existing.options = e.options ?? [];
+        delete existing.cancelled;
       } else {
         lastResponse(items, respId).blocks.push({ type: 'ask', callId: e.callId, question: e.question, options: e.options ?? [] });
       }
@@ -680,6 +737,8 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         t.lastRun = { endedAt: now, durationMs: now - t.run.startedAt, reason: e.status };
         delete t.run;
       }
+      // Stopped: whatever it was still asking is dropped.
+      if (e.status === 'aborted') cancelOpenCards(items);
       return t;
     }
     case 'queue': {

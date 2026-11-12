@@ -397,6 +397,24 @@ describe('FakeBackend', () => {
     b.dispose();
   });
 
+  it('stopped while a question waits, as the core: the question kept with a cancelled result; answering it is refused', async () => {
+    const b = new FakeBackend({ speed: 1 });
+    const { until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '帮我问问纪要怎么写');
+    const ask = await until((e) => e.type === 'ask.request');
+    const callId = (ask as { callId: string }).callId;
+    await b.abort(chat.id);
+    await until((e) => e.type === 'run.end');
+    const messages = await b.getMessages(chat.id);
+    expect(messages.some((m) => m.content.some((c) => c.type === 'tool_use' && c.id === callId && c.name === 'ask_user'))).toBe(true);
+    expect(messages.at(-1)).toMatchObject({ kind: 'tool_results', content: [{ type: 'tool_result', toolUseId: callId, isError: true, content: 'Cancelled: aborted by user.' }] });
+    expect(await b.getPending(chat.id)).toEqual([]);
+    await expect(b.answer(chat.id, callId, '只写结论')).rejects.toThrow(`no pending ask with id ${callId}`);
+    await expect(b.confirm(chat.id, callId, true)).rejects.toThrow(`no pending confirm with id ${callId}`);
+    b.dispose();
+  });
+
   it('stops on abort and keeps what was already said', async () => {
     const b = new FakeBackend({ speed: 1 });
     const { until } = collect(b);

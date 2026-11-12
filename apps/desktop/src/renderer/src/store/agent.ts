@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from 'react';
 import type { AgentApi, ApprovalMode, CoreEvent, MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, SessionInfo, SetCwdResult } from '@spica/protocol';
 import { Store } from './external';
-import { applyEvent, EMPTY_TRANSCRIPT, fromHistory, humanError, type Transcript } from './transcript';
+import { applyEvent, cancelCard, EMPTY_TRANSCRIPT, fromHistory, humanError, type Transcript } from './transcript';
 
 export interface AgentView {
   sessions: SessionInfo[];
@@ -290,11 +290,25 @@ export class AgentStore {
   }
 
   async answer(id: string, callId: string, answer: string): Promise<void> {
-    await this.#guard(() => this.#api.answer(id, callId, answer));
+    await this.#card(id, callId, () => this.#api.answer(id, callId, answer));
   }
 
   async confirm(id: string, callId: string, approved: boolean): Promise<void> {
-    await this.#guard(() => this.#api.confirm(id, callId, approved));
+    await this.#card(id, callId, () => this.#api.confirm(id, callId, approved));
+  }
+
+  /** Answering a card the core no longer waits on (no pending ask / confirm): the card is marked cancelled, no notice. */
+  async #card(id: string, callId: string, fn: () => Promise<unknown>): Promise<void> {
+    try {
+      await fn();
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      if (/no pending (ask|confirm) with id/.test(raw)) {
+        this.state.set((v) => (v.transcripts[id] ? { ...v, transcripts: { ...v.transcripts, [id]: cancelCard(v.transcripts[id]!, callId) } } : v));
+        return;
+      }
+      this.state.set((v) => ({ ...v, notice: friendlyError(err) }));
+    }
   }
 
   /** Creates a project (the core attaches its manager) and opens the manager's conversation. Resolves to a problem in words, or null. */

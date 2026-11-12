@@ -173,4 +173,21 @@ describe('ask_user', () => {
     expect(toolMsg.content).toMatch(/^\[fetched at .+\]\nUser answered: EU$/);
     expect(() => s.answer('q1', 'again')).toThrow(/no pending/);
   });
+
+  it('stopped while it waits: the result says cancelled (an error), the status aborted, and the question is gone', async () => {
+    // The window marks the card from these two (there is no ask.resolved for a cancelled question).
+    gw.enqueue({ toolCalls: [{ id: 'q1', name: 'ask_user', args: { question: 'Which region?', options: ['EU', 'US'] } }] });
+    const rt = makeRuntime(gw, { tools: [askUserTool] });
+    const events = captureEvents(rt);
+    const s = rt.createSession();
+    expect((await s.send('set it up').done).reason).toBe('awaiting_answer');
+    s.abort();
+    const after = events.slice(events.findIndex((e) => e.type === 'ask.request') + 1);
+    expect(after.some((e) => e.type === 'status' && e.status === 'aborted')).toBe(true);
+    const results = after.find((e) => e.type === 'message' && e.message.kind === 'tool_results');
+    expect(results?.type === 'message' && results.message.content).toMatchObject([{ type: 'tool_result', toolUseId: 'q1', isError: true }]);
+    expect(results?.type === 'message' && results.message.content[0]?.type === 'tool_result' && results.message.content[0].content).toMatch(/\nCancelled: aborted by user\.$/);
+    expect(after.some((e) => e.type === 'ask.resolved')).toBe(false);
+    expect(() => s.answer('q1', 'EU')).toThrow('no pending ask with id q1');
+  });
 });

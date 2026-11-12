@@ -24,6 +24,24 @@ describe('AskCard', () => {
     expect(onAnswer).toHaveBeenCalledWith('写简短一点');
   });
 
+  it('stopped while it waited: 已中断 where the answer goes, nothing to click', () => {
+    const onAnswer = vi.fn();
+    render(<AskCard block={{ ...block, cancelled: true }} onAnswer={onAnswer} />);
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(document.querySelector('.ask-card.is-done .card-answer')?.textContent).toBe('已中断');
+  });
+
+  it('takes one answer: after a click the options and the box are off until the card closes', () => {
+    const onAnswer = vi.fn();
+    render(<AskCard block={block} onAnswer={onAnswer} />);
+    fireEvent.click(screen.getByRole('button', { name: '只写结论' }));
+    fireEvent.click(screen.getByRole('button', { name: '按议题逐条写' }));
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole('button', { name: '按议题逐条写' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('textbox', { name: '回答' }) as HTMLInputElement).disabled).toBe(true);
+  });
+
   it('shows the answer instead of controls once answered', () => {
     render(<AskCard block={{ ...block, answer: '只写结论' }} onAnswer={vi.fn()} />);
     expect(screen.queryByRole('button', { name: '回答' })).toBeNull();
@@ -32,6 +50,19 @@ describe('AskCard', () => {
 });
 
 describe('ConfirmCard', () => {
+  it('stopped while it waited: 已中断, no 拒绝 / 允许; one decision only', () => {
+    const block = { type: 'confirm' as const, callId: 'c4', name: 'send_email', input: {}, reason: '发送邮件给「项目组」' };
+    render(<ConfirmCard block={{ ...block, cancelled: true }} onDecide={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: '允许' })).toBeNull();
+    expect(document.querySelector('.confirm-card.is-done .card-answer')?.textContent).toBe('已中断');
+    cleanup();
+    const onDecide = vi.fn();
+    render(<ConfirmCard block={block} onDecide={onDecide} />);
+    fireEvent.click(screen.getByRole('button', { name: '允许' }));
+    fireEvent.click(screen.getByRole('button', { name: '拒绝' }));
+    expect(onDecide).toHaveBeenCalledTimes(1);
+  });
+
   it('says only what is being confirmed and reports the decision', () => {
     const onDecide = vi.fn();
     render(<ConfirmCard block={{ type: 'confirm', callId: 'c2', name: 'send_email', input: {}, reason: '发送邮件给「项目组」' }} onDecide={onDecide} />);

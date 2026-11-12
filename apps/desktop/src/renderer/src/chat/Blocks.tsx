@@ -829,30 +829,38 @@ export function FileCards({ files, onOpen, actions }: { files: FileRef[]; onOpen
   );
 }
 
+/**
+ * A question card. Answered, it shows the answer; dropped unanswered (the run was stopped), 已中断 in the same
+ * place. Once an answer is sent it takes no second one (a second would be refused: the question is gone).
+ */
 export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'ask' }>; onAnswer(answer: string): void }) {
   const [draft, setDraft] = useState('');
+  const [sent, setSent] = useState(false);
   const answered = block.answer !== undefined;
+  const closed = answered || block.cancelled === true;
   const submit = (value: string) => {
     const v = value.trim();
-    if (v) onAnswer(v);
+    if (!v || sent) return;
+    setSent(true);
+    onAnswer(v);
   };
   return (
-    <section className={answered ? 'card ask-card is-done' : 'card ask-card'} aria-label="提问">
+    <section className={closed ? 'card ask-card is-done' : 'card ask-card'} aria-label="提问">
       <header className="card-head">
         <Icon name="question" size={16} className="card-head-icon" />
         <span className="card-title">{block.question}</span>
       </header>
-      {answered ? (
+      {closed ? (
         <p className="card-answer">
-          <SpicaStatusIcon name="done" size={15} />
-          <span>{block.answer}</span>
+          <SpicaStatusIcon name={answered ? 'done' : 'stopped'} size={15} />
+          <span>{answered ? block.answer : CARD_STOPPED}</span>
         </p>
       ) : (
         <>
           {block.options.length ? (
             <div className="ask-options">
               {block.options.map((o) => (
-                <button key={o} type="button" className="btn ask-option" onClick={() => submit(o)}>
+                <button key={o} type="button" className="btn ask-option" disabled={sent} onClick={() => submit(o)}>
                   {o}
                 </button>
               ))}
@@ -871,8 +879,9 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
               placeholder={block.options.length ? '或输入回答' : '输入回答'}
               onChange={(e) => setDraft(e.target.value)}
               aria-label="回答"
+              disabled={sent}
             />
-            <button type="submit" className="btn btn-primary" disabled={!draft.trim()}>
+            <button type="submit" className="btn btn-primary" disabled={sent || !draft.trim()}>
               回答
             </button>
           </form>
@@ -881,6 +890,9 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
     </section>
   );
 }
+
+/** What a question or confirmation says when the run was stopped while it waited (the answer says （中断）). */
+const CARD_STOPPED = '已中断';
 
 /** Names for the arguments people see when asked to confirm (what is not here shows by its own name). */
 const ARG_LABEL: Record<string, string> = {
@@ -925,7 +937,13 @@ export function ConfirmTarget({ name, input, bare }: { name: string; input: unkn
  * For a command, the title is the app's own reading of it (运行命令 when it cannot tell), not the model's words.
  */
 export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type: 'confirm' }>; onDecide(approved: boolean): void }) {
-  const decided = block.approved !== undefined;
+  const [sent, setSent] = useState(false);
+  const decided = block.approved !== undefined || block.cancelled === true;
+  const decide = (approved: boolean) => {
+    if (sent) return;
+    setSent(true);
+    onDecide(approved);
+  };
   const input = block.input && typeof block.input === 'object' ? (block.input as Record<string, unknown>) : {};
   const command = block.name === 'run_command' && typeof input.command === 'string' ? input.command : null;
   const facts = command !== null ? commandFacts(command) : [];
@@ -943,14 +961,14 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         {decided ? (
           <p className="card-answer">
             <SpicaStatusIcon name={block.approved ? 'done' : 'stopped'} size={15} />
-            <span>{block.approved ? '已允许' : '已拒绝'}</span>
+            <span>{block.approved ? '已允许' : block.approved === false ? '已拒绝' : CARD_STOPPED}</span>
           </p>
         ) : (
           <div className="card-actions">
-            <button type="button" className="btn" onClick={() => onDecide(false)}>
+            <button type="button" className="btn" disabled={sent} onClick={() => decide(false)}>
               拒绝
             </button>
-            <button type="button" className="btn btn-primary" onClick={() => onDecide(true)}>
+            <button type="button" className="btn btn-primary" disabled={sent} onClick={() => decide(true)}>
               允许
             </button>
           </div>

@@ -20,6 +20,33 @@ describe('conversation names', () => {
 });
 
 describe('AgentStore', () => {
+  it('a question stopped while it waited: the card is cancelled, and answering it anyway sends nothing that shows an error', async () => {
+    const backend = new FakeBackend({ speed: 0, seed: false });
+    const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
+    await store.init();
+    await store.send(null, '帮我问问纪要怎么写');
+    const id = store.state.get().activeId!;
+    const askOf = () => store.state.get().transcripts[id]?.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])).find((b) => b.type === 'ask') as { callId: string; cancelled?: boolean } | undefined;
+    await vi.waitFor(() => expect(askOf()).toBeTruthy());
+    const callId = askOf()!.callId;
+    await store.stop(id);
+    await vi.waitFor(() => expect(askOf()?.cancelled).toBe(true));
+    await store.answer(id, callId, '只写结论');
+    expect(store.state.get().notice).toBeUndefined();
+    expect(askOf()?.cancelled).toBe(true);
+  });
+
+  it('a card the core no longer knows (no pending ask): marked cancelled, no notice with the core’s English', async () => {
+    const backend = new FakeBackend({ speed: 0, seed: false });
+    const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
+    await store.init();
+    const id = store.state.get().activeId ?? (await backend.createSession({})).id;
+    store.state.set((v) => ({ ...v, transcripts: { ...v.transcripts, [id]: { items: [{ kind: 'response', id: 'r', interrupted: false, blocks: [{ type: 'ask', callId: 'gone', question: '？', options: ['A'] }] }] } } }));
+    await store.answer(id, 'gone', 'A');
+    expect(store.state.get().notice).toBeUndefined();
+    expect(store.state.get().transcripts[id]?.items[0]).toMatchObject({ blocks: [{ callId: 'gone', cancelled: true }] });
+  });
+
   it('keeps every file card of a call across the reload after a run (they only arrive as events)', async () => {
     const backend = new FakeBackend({ speed: 0, seed: false });
     // Stored history without the lists (as when the event came but the stored meta has only the first card).
