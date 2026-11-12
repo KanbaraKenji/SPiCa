@@ -13,6 +13,7 @@ Spica 的设计文档用中文，README、代码注释和提交信息用英文�
 |---|---|
 | [agent-core.md](design/agent-core.md) | Agent 内核：主循环、上下文怎么组装、钩子、内置工具、三层团队与回传、插话、花费与可追溯记录、后端进程与本程序的 MCP 服务、邮件流水线 |
 | [desktop-shell.md](design/desktop-shell.md) | 桌面外壳：三栏布局、进程与 IPC、事件到界面的映射、皮肤和缩放、收件箱、打包更新与公告、截图脚本 |
+| [ui-rules.md](design/ui-rules.md) | 界面规范：文字、颜色、大小和字号、对齐、控件的样子，每条落在哪个变量或组件、哪条测试在拦；改界面之前先读 |
 | [file-extract.md](design/file-extract.md) | 文件读取：PDF、Word、Excel、PowerPoint、CSV 怎么转成模型能读的文字，分块规则和文件卡片 |
 | [plugins.md](design/plugins.md) | 插件系统：插件文件夹格式、扩展点、启用停用全撤销、MCP server 进程、模拟模式、分发与更新 |
 | [outlook-mail.md](design/outlook-mail.md) | 官方 Outlook 邮件插件：工具表、错误码、怎么调本机经典版 Outlook、模拟模式、安全边界 |

@@ -362,6 +362,9 @@ a:hover {
 .main {
   flex: 1;
   min-width: 0;
+  /* In the column, it must be able to be shorter than its content: the conversation scrolls inside it and the
+     input box stays in the window. */
+  min-height: 0;
   position: relative;
   display: flex;
   flex-direction: column;

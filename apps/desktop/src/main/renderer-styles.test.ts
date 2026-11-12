@@ -19,6 +19,11 @@ describe('styles', () => {
     expect(block('.rail-head,\n.sidebar-head.is-over-rail')).toContain('justify-content: flex-start');
   });
 
+  it('a long conversation scrolls inside its row: the row under the title bar and the conversation may be shorter than their content', () => {
+    expect(block('.body')).toContain('min-height: 0');
+    expect(block('.main')).toContain('min-height: 0');
+  });
+
   it('a note line in the conversation breaks a long path instead of running past the window', () => {
     expect(block('.turn-note')).toContain('overflow-wrap: anywhere');
   });
