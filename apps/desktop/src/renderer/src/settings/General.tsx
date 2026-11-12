@@ -1,7 +1,7 @@
-// Settings > 常规: the folder workflow files are read from, the network,
+// Settings > 常规: starting with Windows and staying in the background, the folder workflow files are read from, the network,
 // exporting the usage log. Mail sorting is with the mail plugin (设置 › 插件).
 import { useCallback, useEffect, useState } from 'react';
-import { DEFAULT_NETWORK, type NetworkPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
+import { DEFAULT_NETWORK, type AutostartSupport, type NetworkPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
 import type { LocalConnectInfo, NetworkState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
@@ -38,6 +38,8 @@ export interface GeneralProps {
   localConnect?: () => Promise<LocalConnectInfo | null>;
   /** Preview pages of the enabled plugins (placement preview), for 文件预览. */
   previewPages?: PluginView[];
+  /** Whether 开机时启动 works in this copy (an installed one); absent: shown disabled. */
+  autostart?: AutostartSupport;
 }
 
 /** 文件预览: per kind of file a plugin page can show, the app's own preview or that page. Not shown without any. */
@@ -78,6 +80,37 @@ function FilePreviews({ settings, onChange, previewPages = [] }: GeneralProps) {
             </label>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/** Why 开机时启动 cannot be turned on in this copy (main/autostart.ts). */
+const AUTOSTART_UNAVAILABLE: Record<Exclude<AutostartSupport, 'ok'>, string> = {
+  dev: '开发版不能开机启动，只有安装版能用。',
+  portable: '便携版不能开机启动，只有安装版能用。',
+  unsupported: '只有 Windows 安装版能用。',
+};
+
+/** 启动与后台: starting with Windows, and the window's × leaving the app in the notification area. */
+function Startup({ settings, onChange, autostart = 'unsupported' }: GeneralProps) {
+  const usable = autostart === 'ok';
+  return (
+    <div className="settings-group">
+      <h3 className="settings-subheading">启动与后台</h3>
+      <div className="setting-row">
+        <div className="setting-text">
+          <span className="setting-title">开机时启动</span>
+          <span className="settings-hint">{autostart === 'ok' ? '登录 Windows 后自动启动，不弹出窗口，留在右下角。' : AUTOSTART_UNAVAILABLE[autostart]}</span>
+        </div>
+        <Switch on={usable && settings.openAtLogin} label="开机时启动" disabled={!usable} onChange={(v) => onChange({ openAtLogin: v })} />
+      </div>
+      <div className="setting-row">
+        <div className="setting-text">
+          <span className="setting-title">关闭窗口后留在后台</span>
+          <span className="settings-hint">点窗口的 × 后，{APP_NAME} 留在右下角继续运行；要退出，右键右下角的图标。</span>
+        </div>
+        <Switch on={settings.keepInBackground} label="关闭窗口后留在后台" onChange={(v) => onChange({ keepInBackground: v })} />
       </div>
     </div>
   );
@@ -429,6 +462,7 @@ function Workflows({ settings, onChange, workflows, pickFolder, onBackendRestart
 export function General(props: GeneralProps) {
   return (
     <section className="settings-section">
+      <Startup {...props} />
       <FilePreviews {...props} />
       <Workflows {...props} />
       <Network {...props} />

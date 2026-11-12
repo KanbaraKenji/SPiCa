@@ -153,3 +153,30 @@ describe('使用日志: where the project menu sits', () => {
     spy.mockRestore();
   });
 });
+
+describe('启动与后台', () => {
+  it('both switches are off by default; 关闭窗口后留在后台 turns on', () => {
+    const p = setup({ autostart: 'ok' });
+    const login = screen.getByRole('switch', { name: '开机时启动' });
+    const keep = screen.getByRole('switch', { name: '关闭窗口后留在后台' });
+    expect(login.getAttribute('aria-checked')).toBe('false');
+    expect(keep.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(keep);
+    expect(p.onChange).toHaveBeenCalledWith({ keepInBackground: true });
+    fireEvent.click(login);
+    expect(p.onChange).toHaveBeenLastCalledWith({ openAtLogin: true });
+    expect(screen.getByText('登录 Windows 后自动启动，不弹出窗口，留在右下角。')).toBeTruthy();
+  });
+
+  it('a development run or a portable copy shows 开机时启动 disabled, saying only the installed one can', () => {
+    setup({ autostart: 'dev', settings: { ...DEFAULT_SETTINGS, openAtLogin: true } });
+    const login = screen.getByRole('switch', { name: '开机时启动' }) as HTMLButtonElement;
+    expect(login.disabled).toBe(true);
+    expect(login.getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByText('开发版不能开机启动，只有安装版能用。')).toBeTruthy();
+    cleanup();
+    setup({ autostart: 'portable' });
+    expect(screen.getByText('便携版不能开机启动，只有安装版能用。')).toBeTruthy();
+    expect((screen.getByRole('switch', { name: '关闭窗口后留在后台' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});

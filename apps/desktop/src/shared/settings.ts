@@ -108,7 +108,16 @@ export interface ShellSettings {
   textSize: TextSize;
   /** 常规 › 文件预览: the plugin preview page chosen per kind of file ({ ".docx": "<plugin>/<page id>" }); none: the app's own. */
   previewers: Record<string, string>;
+  /** 常规 › 关闭窗口后留在后台: the window's × only hides the window; 退出 is in the notification-area icon's menu. Off by default. */
+  keepInBackground: boolean;
+  /** 常规 › 开机时启动: Windows starts the app at sign-in, for this user (installed copies only). Off by default. */
+  openAtLogin: boolean;
+  /** The one notification about going to the background was shown. */
+  backgroundHintShown: boolean;
 }
+
+/** Whether 开机时启动 can be used in this copy: an installed one; not a development run, a portable copy or another system. */
+export type AutostartSupport = 'ok' | 'dev' | 'portable' | 'unsupported';
 
 export const DEFAULT_SETTINGS: ShellSettings = {
   skin: 'system',
@@ -133,6 +142,9 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   textSize: 'md',
   previewers: {},
   doneNews: [],
+  keepInBackground: false,
+  openAtLogin: false,
+  backgroundHintShown: false,
 };
 
 /** Local calendar date, YYYY-MM-DD. */
@@ -223,7 +235,10 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const codeTheme = { light: codeThemeId(ct.light, 'light'), dark: codeThemeId(ct.dark, 'dark') };
   const previewers = sanitizePreviewers(v.previewers);
   const textSize: TextSize = v.textSize === 'sm' || v.textSize === 'lg' ? v.textSize : 'md';
-  return { codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
+  const keepInBackground = v.keepInBackground === true;
+  const openAtLogin = v.openAtLogin === true;
+  const backgroundHintShown = v.backgroundHintShown === true;
+  return { keepInBackground, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

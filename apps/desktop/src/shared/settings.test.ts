@@ -42,6 +42,15 @@ describe('opening animation', () => {
   });
 });
 
+describe('background and sign-in switches', () => {
+  it('are off until turned on; only a real true counts', () => {
+    expect(sanitizeSettings({})).toMatchObject({ keepInBackground: false, openAtLogin: false, backgroundHintShown: false });
+    expect(sanitizeSettings({ keepInBackground: 'yes', openAtLogin: 1, backgroundHintShown: null })).toMatchObject({ keepInBackground: false, openAtLogin: false, backgroundHintShown: false });
+    expect(sanitizeSettings({ keepInBackground: true, openAtLogin: true, backgroundHintShown: true })).toMatchObject({ keepInBackground: true, openAtLogin: true, backgroundHintShown: true });
+    expect(applyPatch(DEFAULT_SETTINGS, { keepInBackground: true }).openAtLogin).toBe(false);
+  });
+});
+
 describe('doneNews (finished sub-tasks not opened yet)', () => {
   it('is empty until something finishes; a saved list keeps its ids once each, junk dropped, the newest 500', () => {
     expect(sanitizeSettings({}).doneNews).toEqual([]);
