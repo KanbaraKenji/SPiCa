@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { createContext, runInContext, runInNewContext } from 'node:vm';
 import { BRIDGE_JS, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, pickDialogOptions, pickStartPath, pluginThemeVars, themeCss, type PickDialogOptions } from './plugin-views';
 import { pluginCallId, pluginCallProblem } from '../shared/plugin-view';
-import { DARK_SKIN, deriveTokens } from '../shared/skin';
+import { DARK_SKIN, LIGHT_SKIN, deriveTokens, type Skin } from '../shared/skin';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 describe('plugin pages', () => {
   it('reads plugin and path from the URL; never leaves the plugin', () => {
@@ -54,11 +57,48 @@ describe('plugin pages', () => {
       ].sort(),
     );
     expect(vars['--spica-fg']).toBe('#ecebe5');
+    expect(themeCss(vars, 'dark')).toContain('color-scheme: dark');
+    expect(contentType('ui/app.js')).toMatch(/javascript/);
     // The controls take the skin's own (the dark skin: Spica's buttons, fields and main-button text).
     const dark = pluginThemeVars(deriveTokens(DARK_SKIN), 'Segoe UI');
     expect([dark['--spica-control'], dark['--spica-input'], dark['--spica-border-strong'], dark['--spica-on-accent'], dark['--spica-control-h']]).toEqual(['#3b3b3b', '#303030', '#474747', '#ffffff', '28px']);
-    expect(themeCss(vars, 'dark')).toContain('color-scheme: dark');
-    expect(contentType('ui/app.js')).toMatch(/javascript/);
+  });
+
+  // One source for the window and its plugin pages: every colour a page gets is the skin's own token, as
+  // deriveTokens works it out (the text on a main button included), never a second copy worked out here.
+  it("gives pages exactly the window's colours, for any skin", () => {
+    const paleAccent: Skin = { id: 'pale', name: 'pale', bg: '#1b1d22', accent: '#a8e6ff' };
+    const sameAs: Record<string, string> = { '--spica-fg': '--spica-ink' };
+    for (const skin of [LIGHT_SKIN, DARK_SKIN, paleAccent]) {
+      const tokens = deriveTokens(skin);
+      const vars = pluginThemeVars(tokens, 'Segoe UI');
+      for (const [name, value] of Object.entries(vars)) {
+        if (['--spica-font', '--spica-radius', '--spica-control-h'].includes(name)) continue;
+        expect([skin.id, name, value]).toEqual([skin.id, name, (tokens as Record<string, string>)[sameAs[name] ?? name]]);
+      }
+    }
+    // A pale accent turns the text on a main button dark, in the window and in the page alike.
+    expect(pluginThemeVars(deriveTokens(paleAccent), 'x')['--spica-on-accent']).toBe('#0b0d12');
+  });
+
+  it("gives pages the window's control height and corner, from the window's own style sheet", () => {
+    const css = readFileSync(join(__dirname, '../renderer/src/styles.css'), 'utf8');
+    const rootVar = (n: string) => new RegExp(`^\\s*${n}:\\s*([^;]+);`, 'm').exec(css)?.[1]?.trim();
+    const vars = pluginThemeVars(deriveTokens(DARK_SKIN), 'x');
+    expect(vars['--spica-control-h']).toBe(rootVar('--control-h'));
+    expect(vars['--spica-radius']).toBe(rootVar('--radius-m'));
+  });
+
+  // The plugin author's preview tool runs without Spica, so it carries the two built-in skins' values itself:
+  // they must stay the ones Spica gives a page.
+  it("the preview tool's stand-in colours are Spica's built-in light and dark", async () => {
+    const file = pathToFileURL(join(__dirname, '../../../../skills/spica-plugin-author/scripts/preview.mjs')).href;
+    const preview = (await import(/* @vite-ignore */ file)) as { THEMES: Record<'light' | 'dark', Record<string, string>> };
+    for (const [mode, skin] of [['light', LIGHT_SKIN], ['dark', DARK_SKIN]] as const) {
+      const vars = pluginThemeVars(deriveTokens(skin), 'x');
+      const colours = Object.fromEntries(Object.entries(vars).filter(([k]) => !['--spica-font', '--spica-radius', '--spica-control-h'].includes(k)));
+      expect(Object.fromEntries(Object.entries(preview.THEMES[mode]).map(([k, v]) => [`--spica-${k}`, v]))).toEqual(colours);
+    }
   });
 
   it('says plugin call failures in words', () => {
