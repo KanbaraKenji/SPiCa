@@ -82,7 +82,7 @@ export interface BackendConfig {
   dbPath: string;
   providers: ProviderConfig[];
   /** strongModel: the model for heavy work (plugins that ask for a strong model get it), on the default provider or on strongProviderId. */
-  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; outputByModel?: boolean; agentMessages?: number; strongModel?: string; strongProviderId?: string };
+  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; outputByModel?: boolean; agentMessages?: number; repeatRemind?: number; repeatStop?: number; strongModel?: string; strongProviderId?: string };
   cwd?: string;
   /**
    * The folder every conversation without a chosen one shared up to 0.1.0-rc.2 (the desktop app: Documents/<app>).

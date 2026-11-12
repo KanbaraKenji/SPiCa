@@ -63,3 +63,13 @@ describe('a stop at a 花费上限, or the API out of money', () => {
     expect(openModelSettings).toHaveBeenCalledWith('p-1');
   });
 });
+
+describe('the same step repeated too often', () => {
+  it('asks whether to go on; 继续 is a message (which starts the count again)', () => {
+    const send = vi.fn();
+    render(<Conversation session={session} transcript={{ items: [{ kind: 'user', id: 'u', text: '整理', steer: false }, answer], stopped: 'repeated', repeatCount: 8 }} actions={{ send } as unknown as ConversationActions} />);
+    expect(screen.getByText('同一步重复了 8 次，要继续吗')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '继续' }));
+    expect(send).toHaveBeenCalledWith('继续');
+  });
+});

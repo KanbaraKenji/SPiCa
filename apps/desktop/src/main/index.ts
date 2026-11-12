@@ -192,6 +192,10 @@ function backendConfig(): DesktopBackendConfig {
         maxTurns: 0,
         // 设置 › 模型 › 代理互发消息上限 (10 by default; null = none, which is 0 for the core).
         agentMessages: settings.get().agentMessageLimit ?? 0,
+        // The same call (tool, input, result) in a row: the 3rd gets a note for the model, the 8th is not run and
+        // the run stops until the user says 继续 (no setting for it yet).
+        repeatRemind: 3,
+        repeatStop: 8,
         // The model for heavy work: plugins that ask for a strong model get it (it may be on another connection).
         ...(strong ? { strongModel: strong.model, ...(strong.connectionId !== current?.providerId ? { strongProviderId: strong.connectionId } : {}) } : {}),
       },

@@ -205,6 +205,11 @@ export type RegenerateCode =
  */
 export const AGENT_MESSAGES_LIMIT_MARK = 'Not sent: message limit reached.';
 
+/** Starts the note added for the model after the result of the same call repeated (not shown to the user). */
+export const REPEAT_REMINDER_MARK = 'Note: repeated call.';
+/** Starts the result of a call not run because it was the same call too many times in a row (run.end 'repeated'). */
+export const REPEAT_STOP_MARK = 'Not run: repeated call.';
+
 export const REGENERATE_HINTS: Record<RegenerateCode, string> = {
   'regenerate.running': '对话正在运行，无法重新生成。',
   'regenerate.waiting': '对话正在等待确认或回答，无法重新生成。',
@@ -542,6 +547,8 @@ export type RunEndReason =
   | 'completed'
   | 'max_turns'
   | 'budget'
+  /** The same call (tool, input, result) came too many times in a row: not run, the user decides (repeatStop). */
+  | 'repeated'
   | 'aborted'
   | 'error'
   | 'awaiting_confirm'

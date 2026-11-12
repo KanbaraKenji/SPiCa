@@ -517,6 +517,18 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
             ) : null}
             {/* a run that ended at the turn limit (scripts through the MCP service; the app sets none) */}
             {transcript.stopped === 'max_turns' && !running ? <p className="turn-note">（已达到轮数上限，还没做完）</p> : null}
+            {/* the same call too many times in a row: not run; 继续 is the user writing, which starts the count again */}
+            {transcript.stopped === 'repeated' && !running ? (
+              <div className="resume-row">
+                <span className="status-with-icon">
+                  <SpicaStatusIcon name="warning" size={15} />
+                  同一步重复了 {transcript.repeatCount ?? 8} 次，要继续吗
+                </span>
+                <button type="button" className="btn" onClick={() => actions.send('继续')}>
+                  继续
+                </button>
+              </div>
+            ) : null}
             {/* message_agent refused: the limit of messages to other agents since the user last wrote */}
             {transcript.agentLimit ? <p className="turn-note">（代理之间互发的消息已达上限，没有再发；你说一句话后重新计数）</p> : null}
             {transcript.error ? (

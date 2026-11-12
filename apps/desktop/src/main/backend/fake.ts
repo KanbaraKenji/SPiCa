@@ -34,7 +34,7 @@ import type {
   SteerMode,
   ToolCategory,
 } from '@spica/protocol';
-import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS } from '@spica/protocol';
+import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import type { AgentBackend } from './types';
 import { buildSeed, fakeCard } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
@@ -1211,6 +1211,24 @@ export class FakeBackend implements AgentBackend {
         const reply = limit === null ? '已经让子Agent A 再核对了三遍报价。' : `已经给子Agent A 发了 ${limit} 条消息，到了上限，先停在这里，等你说下一句。`;
         await this.#stream(sessionId, 'text', reply, signal);
         blocks.push({ type: 'text', text: reply });
+      } else if (/重复/.test(text)) {
+        // The same call again and again, as the core counts it (repeat-guard.ts): the 3rd to 7th results carry a note
+        // for the model (not shown), the 8th is not run and the run stops ('repeated').
+        for (let i = 1; i <= 8; i++) {
+          const input = { path: '.' };
+          if (i === 8) {
+            blocks.push(...(await this.#tool(sessionId, run, 'list_dir', input, `${REPEAT_STOP_MARK} This would have been the 8th same list_dir call in a row with the same result, so it was not run and the run stopped. The user decides whether to go on.`, 50, true)));
+            break;
+          }
+          const got = await this.#tool(sessionId, run, 'list_dir', input, '需求说明.docx\n报价单.xlsx', 120);
+          const result = got[1];
+          if (i >= 3 && result?.type === 'tool_result') result.content += `\n\n${REPEAT_REMINDER_MARK} You have now made this same list_dir call ${i} times in a row and got the same result each time.`;
+          blocks.push(...got);
+        }
+        this.#commitAssistant(sessionId, blocks);
+        this.#emit(sessionId, { type: 'turn.end', turn });
+        this.#finish(sessionId, 'repeated', 'the same call came 8 times in a row with the same result; it was not run');
+        return;
       } else if (/欠费/.test(text)) {
         // the provider's account is out of money, as an OpenAI-style API says it
         throw new Error('HTTP 402 [insufficient_balance]: Insufficient Balance');
@@ -1275,11 +1293,11 @@ export class FakeBackend implements AgentBackend {
     this.#pending.set(sessionId, [...(this.#pending.get(sessionId) ?? []), item]);
   }
 
-  #finish(sessionId: string, reason: 'completed' | 'aborted' | 'error' | 'budget', detail?: string): void {
+  #finish(sessionId: string, reason: 'completed' | 'aborted' | 'error' | 'budget' | 'repeated', detail?: string): void {
     this.#runs.delete(sessionId);
     const s = this.#sessions.get(sessionId);
     const status: SessionStatus =
-      reason === 'completed' || reason === 'budget' ? (s?.role === 'worker' ? 'done' : 'idle') : reason === 'aborted' ? 'aborted' : 'error';
+      reason === 'completed' || reason === 'budget' || reason === 'repeated' ? (s?.role === 'worker' ? 'done' : 'idle') : reason === 'aborted' ? 'aborted' : 'error';
     this.#setStatus(sessionId, status);
     this.#emit(sessionId, detail ? { type: 'run.end', reason, detail } : { type: 'run.end', reason });
   }

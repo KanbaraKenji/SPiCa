@@ -630,3 +630,25 @@ describe('messages to other agents past the limit', () => {
     expect(fromHistory(await b.getMessages(chat.id)).agentLimit).toBeUndefined();
   });
 });
+
+describe('the same call too many times in a row (repeated)', () => {
+  it('a note with how many, live and when read again, gone once the user writes; the reminder for the model is not shown', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const chat = await b.createSession({});
+    let live: Transcript = { items: [] };
+    b.onEvent((e) => {
+      if (e.sessionId === chat.id) live = applyEvent(live, e);
+    });
+    await b.send(chat.id, '重复');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(live).toMatchObject({ stopped: 'repeated', repeatCount: 8 });
+    const again = fromHistory(await b.getMessages(chat.id));
+    expect(again).toMatchObject({ stopped: 'repeated', repeatCount: 8 });
+    const tools = again.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])).filter((x) => x.type === 'tool');
+    expect(tools.some((x) => x.type === 'tool' && (x.result ?? '').includes('Note: repeated call'))).toBe(false);
+    await b.send(chat.id, '继续');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(live.stopped).toBeUndefined();
+    expect(fromHistory(await b.getMessages(chat.id)).stopped).toBeUndefined();
+  });
+});

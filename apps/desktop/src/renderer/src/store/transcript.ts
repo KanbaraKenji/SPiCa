@@ -3,7 +3,7 @@
 import { relocate, shownPath } from './relocate';
 import type { CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { BALANCE_WORDS, humanError } from '../../../shared/errors';
-import { AGENT_MESSAGES_LIMIT_MARK } from '@spica/protocol';
+import { AGENT_MESSAGES_LIMIT_MARK, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
 
 export { humanError } from '../../../shared/errors';
@@ -16,8 +16,9 @@ export interface SuggestAction {
 /**
  * unavailable: the tool was turned off (its plugin stopped); the core ran nothing.
  * timeout: waiting for sub-tasks gave up while they keep working (not a failure).
+ * repeated: the same call came too many times in a row; the core did not run it (REPEAT_STOP_MARK).
  */
-export type ToolState = 'pending' | 'running' | 'done' | 'error' | 'unavailable' | 'timeout';
+export type ToolState = 'pending' | 'running' | 'done' | 'error' | 'unavailable' | 'timeout' | 'repeated';
 
 /** The core's answer to a call of a tool that was turned off (nothing was run). */
 const UNAVAILABLE = /Tool "[^"]+" is no longer available/;
@@ -25,6 +26,7 @@ const UNAVAILABLE = /Tool "[^"]+" is no longer available/;
 const WAIT_TIMEOUT = /Stopped waiting \(timeout\)/;
 function failedState(text: string | undefined): ToolState {
   if (text && UNAVAILABLE.test(text)) return 'unavailable';
+  if (text?.includes(REPEAT_STOP_MARK)) return 'repeated';
   if (text && WAIT_TIMEOUT.test(text)) return 'timeout';
   return 'error';
 }
@@ -224,7 +226,9 @@ export interface Transcript {
    * The last run stopped at a limit with the work not done (not an error): 'max_turns' (the turn limit; the desktop
    * app sets none since 2026-11-12, a script through the MCP service may). Shown as a note after the answer.
    */
-  stopped?: 'max_turns';
+  stopped?: 'max_turns' | 'repeated';
+  /** stopped 'repeated': how many times in a row the same call came (the 8th was not run). */
+  repeatCount?: number;
   /**
    * message_agent was refused since the user last wrote: this conversation reached its limit of messages to other
    * agents (设置 › 模型 › 代理互发消息上限). A note says so until the user writes again (the count starts over).
@@ -355,8 +359,11 @@ function asAsk(callId: string, input: unknown): Block {
 
 /** Strips the fetch-time first line the core puts on every tool result. */
 export function resultBody(raw: string): string {
+  // The note the core adds for the model after a repeated call's result is not for the window.
+  const note = raw.indexOf(REPEAT_REMINDER_MARK);
+  const own = note >= 0 ? raw.slice(0, note).trimEnd() : raw;
   // Outside content arrives fenced for the model (<untrusted_data …> … </untrusted_data>): shown without the fence.
-  const content = raw.replace(/^<untrusted_data\b[^>]*>\n?/, '').replace(/\n?<\/untrusted_data>\s*$/, '');
+  const content = own.replace(/^<untrusted_data\b[^>]*>\n?/, '').replace(/\n?<\/untrusted_data>\s*$/, '');
   const nl = content.indexOf('\n');
   const first = nl < 0 ? content : content.slice(0, nl);
   // The core writes "[fetched at <ISO>]"; older/fake results use a bare ISO line.
@@ -599,11 +606,32 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
     seqs,
   };
   if (refusedSinceUserWrote(messages)) t.agentLimit = true;
+  const repeated = repeatStopSinceUserWrote(messages);
+  if (repeated !== undefined) {
+    t.stopped = 'repeated';
+    t.repeatCount = repeated;
+  }
   for (const p of pending) applyPending(t, p);
   // A question or confirmation with no result that the core no longer waits on was dropped (stopped before the
   // core wrote its result): nothing to answer.
   cancelOpenCards(t.items, new Set(pending.map((p) => p.callId)));
   return t;
+}
+
+/** How many times in a row, from the core's words (「came 8 times」, 「the 8th same」); 8 when they say none. */
+function repeatCountIn(words: string): number {
+  const m = /came (\d+) times|the (\d+)(?:st|nd|rd|th) same/.exec(words);
+  return m ? Number(m[1] ?? m[2]) : 8;
+}
+
+/** A call not run for being the same call too often, after the last message the user typed: how many in a row. */
+function repeatStopSinceUserWrote(messages: readonly Message[]): number | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!;
+    if (m.role === 'user' && (m.kind === 'user' || m.kind === 'steer') && (m.meta?.author ?? 'user') === 'user') return undefined;
+    for (const b of m.content) if (b.type === 'tool_result' && b.isError === true && b.content.includes(REPEAT_STOP_MARK)) return repeatCountIn(b.content);
+  }
+  return undefined;
 }
 
 /** A message_agent refused for the limit after the last message the user typed (AGENT_MESSAGES_LIMIT_MARK). */
@@ -836,6 +864,10 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       }
       delete t.lastFailure;
       if (e.reason === 'max_turns') t.stopped = 'max_turns';
+      if (e.reason === 'repeated') {
+        t.stopped = 'repeated';
+        t.repeatCount = repeatCountIn(e.detail ?? '');
+      }
       return t;
     }
     case 'budget.stop': {

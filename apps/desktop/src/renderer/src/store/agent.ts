@@ -604,6 +604,7 @@ export class AgentStore {
         if (prev?.errorAction) next.errorAction = prev.errorAction;
         if (prev?.errorProvider) next.errorProvider = prev.errorProvider;
         if (prev?.stopped) next.stopped = prev.stopped;
+        if (prev?.repeatCount) next.repeatCount = prev.repeatCount;
         if (prev?.agentLimit) next.agentLimit = true;
         if (prev?.run) next.run = prev.run;
         // file.card details only arrive as events; keep them across the reload.

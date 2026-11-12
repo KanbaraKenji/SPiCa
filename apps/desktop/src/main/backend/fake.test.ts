@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentApi, CoreEvent } from '@spica/protocol';
+import { REPEAT_REMINDER_MARK, type AgentApi, type CoreEvent } from '@spica/protocol';
 import { FAKE_BATCH_FILES, FAKE_PHOTO_DATA, fakePhotoAnswer, FAKE_BOM_ANSWER, FAKE_BOM_FILES, FAKE_EXPORT_FILES, FAKE_FLOW_ANSWER, FAKE_LONG_COMMAND, FAKE_MINUTES_ANSWER, FAKE_SEARCH_RESULTS, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
 import { SEED_IDS } from './fake-seed';
 
@@ -579,5 +579,20 @@ describe('messaging a sub-agent past 代理互发消息上限 (「互发」)', (
     await b.send(chat.id, '互发');
     await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
     expect(events.filter((e) => e.type === 'tool.end' && e.name === 'message_agent' && e.isError)).toEqual([]);
+  });
+});
+
+describe('the same call again and again (「重复」)', () => {
+  it('stops as the core stops: 7 calls run, the 8th not, run.end repeated; the reminder is only in what the model reads', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '重复');
+    expect(await until((e) => e.type === 'run.end' && e.sessionId === chat.id)).toMatchObject({ reason: 'repeated' });
+    const ends = events.filter((e) => e.type === 'tool.end').slice(-8); // after the steps every demo run starts with
+    expect(ends.map((e) => e.type === 'tool.end' && e.isError)).toEqual([false, false, false, false, false, false, false, true]);
+    expect(ends.every((e) => e.type === 'tool.end' && !e.preview.includes(REPEAT_REMINDER_MARK))).toBe(true);
+    const results = (await b.getMessages(chat.id)).flatMap((m) => m.content).filter((x) => x.type === 'tool_result');
+    expect(results.filter((x) => x.type === 'tool_result' && x.content.includes(REPEAT_REMINDER_MARK))).toHaveLength(5);
   });
 });

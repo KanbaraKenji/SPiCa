@@ -167,6 +167,8 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
                       '已超时'
                     ) : t.state === 'unavailable' ? (
                       '已停用，未执行'
+                    ) : t.state === 'repeated' ? (
+                      '重复，未执行'
                     ) : t.state !== 'running' && t.durationMs !== undefined ? (
                       formatDuration(t.durationMs)
                     ) : (
