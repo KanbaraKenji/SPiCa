@@ -4,7 +4,7 @@
 // starts are marked, not drawn as zero.
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RequestRecord, UsageSummary, UsageQuery } from '@spica/protocol';
-import { Group, SettingsSearchContext } from './Group';
+import { Group, matches, SearchHit, SettingsSearchContext } from './Group';
 import { bucketLabel, dayLabel, niceTicks, queryFor, RANGES, shortCount, timeLabel, usageView, usd, type UsageColumn, type UsageRange, type UsageSeries, type UsageView } from './usage-data';
 import { SERIES_COUNT } from '../../../shared/skin';
 
@@ -48,7 +48,8 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
     void api.providerNames().then(setNames, () => undefined);
   }, [api, searching]);
 
-  if (searching) return null;
+  // 搜索设置: the section has no rows; its name and what it shows find it
+  if (searching) return search && (search.sectionHit || matches(search.query, '用量', 'Token', '429', '请求数', '花费')) ? <SearchHit title="用量" onGo={() => search.jump('')} /> : null;
   const view = summary ? usageView(summary, SERIES_COUNT) : null;
   const bucket = summary?.query.bucket ?? 'day';
   const provider = (id: string) => names[id] ?? id;

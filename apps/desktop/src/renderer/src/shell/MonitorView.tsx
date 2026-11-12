@@ -75,6 +75,14 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
     pausedRef.current = paused;
   }, [paused]);
 
+  // while paused, new lines wait here: added to the list they would push the oldest out and move what is in sight
+  const held = useRef<MonitorEntry[]>([]);
+  const append = useCallback((fresh: MonitorEntry[]) => {
+    setEntries((now) => {
+      const next = now.concat(fresh);
+      return next.length > KEEP ? next.slice(next.length - KEEP) : next;
+    });
+  }, []);
   useEffect(() => {
     let live = true;
     let last = 0;
@@ -82,11 +90,10 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
       const fresh = more.filter((e) => e.seq > last);
       if (!fresh.length) return;
       last = fresh[fresh.length - 1]!.seq;
-      setEntries((now) => {
-        const next = now.concat(fresh);
-        return next.length > KEEP ? next.slice(next.length - KEEP) : next;
-      });
-      if (pausedRef.current) setUnseen((n) => n + fresh.length);
+      if (pausedRef.current) {
+        held.current = held.current.concat(fresh).slice(-KEEP);
+        setUnseen((n) => n + fresh.length);
+      } else append(fresh);
     };
     // listen first, then read what is kept: nothing falls in between (the seq drops what came twice)
     const off = api.watch((batch) => live && take(batch));
@@ -95,7 +102,7 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
       live = false;
       off();
     };
-  }, [api]);
+  }, [api, append]);
 
   const shown = useMemo(() => filterEntries(entries, sources, level, query), [entries, sources, level, query]);
 
@@ -124,12 +131,20 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
     setScroll({ top: el.scrollTop, height: el.clientHeight || 480 });
     // scrolled up by hand: stop following, as 暂停滚动 does; back at the end: follow again
     const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < ROW_H;
-    if (!atEnd && !pausedRef.current) setPaused(true);
+    if (!atEnd && !pausedRef.current) pause();
   };
 
   const resume = () => {
+    pausedRef.current = false;
     setPaused(false);
     setUnseen(0);
+    const waiting = held.current;
+    held.current = [];
+    if (waiting.length) append(waiting);
+  };
+  const pause = () => {
+    pausedRef.current = true;
+    setPaused(true);
   };
 
   const toggleSource = (s: MonitorSource) =>
@@ -193,7 +208,7 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
           <input className="input" type="search" value={query} placeholder="搜索" aria-label="搜索" spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <span className="monitor-count">{`${shown.length.toLocaleString('en-US')} 条`}</span>
-        <button type="button" className="btn btn-small" onClick={paused ? resume : () => setPaused(true)}>
+        <button type="button" className="btn btn-small" onClick={paused ? resume : pause}>
           {paused ? (unseen ? `继续（${unseen} 条新）` : '继续') : '暂停滚动'}
         </button>
         <button type="button" className="btn btn-small" onClick={() => void doExport()} disabled={!shown.length}>

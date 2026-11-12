@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CoreEvent, RequestRecord } from '@spica/protocol';
-import { MonitorHub, requestText, scrub } from './monitor';
+import { MonitorHub, monitorSecretsFrom, requestText, scrub } from './monitor';
 import { monitorLine } from '../shared/monitor';
 
 const KEY = 'sk-live-0123456789abcdef';
@@ -84,5 +84,31 @@ describe('monitor: lines', () => {
     const h = hub();
     h.event(ev({ type: 'tool.end', callId: 'c', name: 'web_fetch', isError: false, preview: '<img src=x onerror=alert(1)> **bold** [a](javascript:alert(1))', durationMs: 3 }));
     expect(h.list()[0]!.text).toContain('<img src=x onerror=alert(1)> **bold** [a](javascript:alert(1))');
+  });
+});
+
+describe('monitor: the values to remove', () => {
+  const providers = [{ apiKey: 'sk-live-0123456789abcdef', headers: { 'x-company-token': 'abcdefghijkl' }, oauth: { clientSecret: 'consumer-secret-123', clientId: 'consumer-id-456' } }, { apiKey: '' }];
+
+  it('keys, header values and client secrets; the proxy password plain and as written', () => {
+    const v = monitorSecretsFrom(providers, 'http://alice:p%40ss%25word@proxy.example.com:8080');
+    expect(v).toEqual(expect.arrayContaining(['sk-live-0123456789abcdef', 'abcdefghijkl', 'consumer-secret-123', 'consumer-id-456', 'p@ss%word', 'p%40ss%25word']));
+  });
+
+  it('a proxy that does not parse costs only its own password, never the keys', () => {
+    for (const proxy of ['http://bob:50%off@proxy.example.com', 'proxy example.com:8080', 'http://[bad', 'carol:hunter2!@proxy.example.com']) {
+      const v = monitorSecretsFrom(providers, proxy);
+      expect(v).toEqual(expect.arrayContaining(['sk-live-0123456789abcdef', 'consumer-secret-123']));
+    }
+    expect(monitorSecretsFrom(providers, 'http://bob:50%off@proxy.example.com')).toContain('50%off');
+    const h = new MonitorHub({ secrets: () => monitorSecretsFrom(providers, 'http://[bad') });
+    h.add('plugin', 'info', 'token header x-company-token=abcdefghijkl and consumer-secret-123');
+    expect(h.list()[0]!.text).not.toMatch(/abcdefghijkl|consumer-secret-123/);
+  });
+
+  it('lines carry the local time with its offset (as the page shows it)', () => {
+    const h = new MonitorHub({ secrets: () => [] });
+    const e = h.add('core', 'info', 'x')!;
+    expect(e.at).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}[+-]\d\d:\d\d$/);
   });
 });

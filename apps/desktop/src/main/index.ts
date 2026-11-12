@@ -6,7 +6,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, ne
 import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo, type UsageSummary } from '@spica/protocol';
 import { usageQuery } from '../shared/usage';
-import { MonitorHub, scrub } from './monitor';
+import { MonitorHub, monitorSecretsFrom, scrub } from './monitor';
 import { seedDemoMonitor } from './backend/fake-monitor';
 import type { MonitorEntry } from '../shared/monitor';
 import { DesktopChannel } from '../shared/ipc';
@@ -245,22 +245,25 @@ ipcMain.on(DesktopChannel.ActiveSession, (_e, id: unknown) => {
 // 监控台 (main/monitor.ts): kept from the start, whether the page is open or not. The values to remove are read at
 // every line: the saved keys and secrets (as the core gets them) and the proxy's password.
 const monitor = new MonitorHub({ secrets: monitorSecrets });
+// Worked out again at most every two seconds (not for every line), so a changed key is covered right away.
+let secretsCache: { at: number; values: string[] } | null = null;
 function monitorSecrets(): string[] {
+  if (secretsCache && Date.now() - secretsCache.at < 2000) return secretsCache.values;
+  let providersNow: ProviderConfig[] = [];
+  let proxy = '';
   try {
-    const out: string[] = [];
-    for (const c of backendConfig().core.providers) {
-      out.push(...[c.apiKey, c.oauth?.clientSecret, c.oauth?.clientId, ...Object.values(c.headers ?? {})].filter((v): v is string => typeof v === 'string' && v.length >= 6));
-    }
-    const proxy = settings.get().network.proxy.trim();
-    if (proxy) {
-      const pass = decodeURIComponent(new URL(/^[a-z]+:\/\//i.test(proxy) ? proxy : `http://${proxy}`).password);
-      if (pass) out.push(pass);
-    }
-    return out;
+    providersNow = backendConfig().core.providers;
   } catch {
-    // too early (the settings are not read yet) or a proxy that does not parse: the patterns still apply
-    return [];
+    // too early: the stores are not read yet (the patterns still apply)
   }
+  try {
+    proxy = settings.get().network.proxy;
+  } catch {
+    // too early
+  }
+  const values = monitorSecretsFrom(providersNow, proxy);
+  secretsCache = { at: Date.now(), values };
+  return values;
 }
 
 let backendStatus: BackendStatus = { state: backendKind === 'core' ? 'starting' : 'ready' };

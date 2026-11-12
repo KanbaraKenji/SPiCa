@@ -18,7 +18,7 @@ function setup(entries: MonitorEntry[]) {
       push = l;
       return off;
     }),
-    export: vi.fn(async () => ({ file: 'C:/Users/me/Documents/spica-monitor.log' })),
+    export: vi.fn(async () => ({ file: 'D:/logs/spica-monitor.log' })),
   };
   const view = render(<MonitorView api={api} showInFolder={vi.fn()} />);
   return { api, off, push: (b: MonitorEntry[]) => act(() => push(b)), view };
@@ -69,8 +69,11 @@ describe('监控台', () => {
     fireEvent.click(screen.getByRole('button', { name: '暂停滚动' }));
     push([e(2), e(3)]);
     expect(screen.getByRole('button', { name: '继续（2 条新）' })).toBeTruthy();
+    // what came waits until 继续: the list in sight does not move
+    expect(texts()).toEqual(['line 1']);
     fireEvent.click(screen.getByRole('button', { name: '继续（2 条新）' }));
     expect(screen.getByRole('button', { name: '暂停滚动' })).toBeTruthy();
+    expect(texts()).toEqual(['line 1', 'line 2', 'line 3']);
   });
 
   it('copies one line, exports what is shown', async () => {
@@ -85,7 +88,7 @@ describe('监控台', () => {
       fireEvent.click(screen.getByRole('button', { name: '导出…' }));
     });
     expect(vi.mocked(api.export).mock.calls[0]![0]).toBe('2026-11-13T02:05:09.123Z\t请求\t警告\tdeepseek/deepseek-chat #1 429\n');
-    expect(screen.getByText('C:/Users/me/Documents/spica-monitor.log')).toBeTruthy();
+    expect(screen.getByText('D:/logs/spica-monitor.log')).toBeTruthy();
   });
 
   it('draws only the rows in sight', async () => {

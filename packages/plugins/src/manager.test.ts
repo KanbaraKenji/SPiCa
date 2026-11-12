@@ -623,7 +623,8 @@ describe('failures', () => {
         });`,
     });
     dirs.push(dir);
-    r = await rig();
+    const logged: [string, string][] = [];
+    r = await rig(undefined, { onLog: (plugin, line) => logged.push([plugin, line]) });
     await r.pm.install(dir);
     await r.pm.enable('crashy');
     await until(() => r!.pm.describe('crashy').servers[0]!.status === 'failed', 10_000);
@@ -632,6 +633,9 @@ describe('failures', () => {
     expect(toolNames(r.rt)).toEqual([]);
     expect(r.events).toContainEqual(expect.objectContaining({ type: 'plugin.error', name: 'crashy', message: expect.stringContaining('已停止重启') }));
     expect(await readFile(r.pm.logFile('crashy'), 'utf8')).toContain('out of cheese');
+    // every log line also goes to onLog as it is written (the desktop app's 监控台): the server's stderr included
+    expect(logged.some(([p, l]) => p === 'crashy' && l.includes('out of cheese'))).toBe(true);
+    expect(logged.some(([p, l]) => p === 'crashy' && l.startsWith('installed'))).toBe(true);
   });
 
   it('plugin processes get only whitelisted host variables, never secrets', async () => {

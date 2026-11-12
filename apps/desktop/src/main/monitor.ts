@@ -22,6 +22,45 @@ export function scrub(text: string, secrets: readonly string[]): string {
   return redact(text, secrets).replace(HEADER_SECRET, (_m, name: string, sep: string) => `${name}${sep}[redacted]`);
 }
 
+/**
+ * The values to remove, from the providers the core gets (keys, client secrets and ids, header values) and the
+ * proxy address in the settings (its password). A proxy that does not parse costs only its own password.
+ */
+export function monitorSecretsFrom(
+  providers: readonly { apiKey?: string; headers?: Record<string, string>; oauth?: { clientSecret?: string; clientId?: string } }[],
+  proxy: string,
+): string[] {
+  const out: string[] = [];
+  for (const c of providers) {
+    for (const v of [c.apiKey, c.oauth?.clientSecret, c.oauth?.clientId, ...Object.values(c.headers ?? {})]) if (typeof v === 'string' && v.length >= 6) out.push(v);
+  }
+  const p = proxy.trim();
+  if (p) {
+    try {
+      const raw = new URL(/^[a-z]+:\/\//i.test(p) ? p : `http://${p}`).password;
+      let pass = raw;
+      try {
+        pass = decodeURIComponent(raw);
+      } catch {
+        // a % that is not an escape: the password as written
+      }
+      if (pass) out.push(pass, raw);
+    } catch {
+      // not an address: whatever sits between ':' and '@' is taken for the password
+      const m = /:\/\/[^:/@\s]*:([^@\s]+)@/.exec(p) ?? /^[^:/@\s]*:([^@\s]+)@/.exec(p);
+      if (m?.[1]) out.push(m[1]);
+    }
+  }
+  return [...new Set(out)];
+}
+
+/** ISO 8601 in local time with its offset (2026-11-13T02:15:40.825+08:00): the time the page shows, in copies and exports too. */
+export function localIso(d: Date): string {
+  const p = (n: number, w = 2) => String(Math.abs(n)).padStart(w, '0');
+  const off = -d.getTimezoneOffset();
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}${off >= 0 ? '+' : '-'}${p(Math.trunc(off / 60))}:${p(off % 60)}`;
+}
+
 export interface MonitorHubOptions {
   /** Values to remove wherever they appear (keys, client secrets, the proxy password); read at every line. */
   secrets: () => readonly string[];
@@ -46,7 +85,7 @@ export class MonitorHub {
     if (!clean) return null;
     const e: MonitorEntry = {
       seq: ++this.#seq,
-      at: (at ?? this.#o.now?.() ?? new Date()).toISOString(),
+      at: localIso(at ?? this.#o.now?.() ?? new Date()),
       source,
       level,
       text: clean.length > MAX_TEXT ? `${clean.slice(0, MAX_TEXT)} …[${clean.length - MAX_TEXT} chars cut]` : clean,

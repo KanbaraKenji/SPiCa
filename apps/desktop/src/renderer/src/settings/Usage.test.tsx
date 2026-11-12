@@ -103,3 +103,23 @@ describe('设置 › 用量', () => {
     expect(await screen.findByText('无法读取用量')).toBeTruthy();
   });
 });
+
+describe('搜索设置 finds 用量', () => {
+  it('by its name or what it shows', async () => {
+    const { SettingsSearchContext } = await import('./Group');
+    const results = document.createElement('div');
+    document.body.appendChild(results);
+    const jump = vi.fn();
+    const summary = vi.fn();
+    render(
+      <SettingsSearchContext.Provider value={{ query: '429', results, sectionHit: false, jump }}>
+        <Usage api={{ summary }} />
+      </SettingsSearchContext.Provider>,
+    );
+    expect(results.textContent).toBe('用量');
+    expect(summary).not.toHaveBeenCalled();
+    fireEvent.click(results.querySelector('button')!);
+    expect(jump).toHaveBeenCalled();
+    results.remove();
+  });
+});
