@@ -6,6 +6,9 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, ne
 import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo, type UsageSummary } from '@spica/protocol';
 import { usageQuery } from '../shared/usage';
+import { MonitorHub, scrub } from './monitor';
+import { seedDemoMonitor } from './backend/fake-monitor';
+import type { MonitorEntry } from '../shared/monitor';
 import { DesktopChannel } from '../shared/ipc';
 import { humanError } from '../shared/errors';
 import { CAPTION_BACK, captionSymbol, deriveTokens, resolveSkin, schemeOf, type WindowCover } from '../shared/skin';
@@ -239,6 +242,27 @@ ipcMain.on(DesktopChannel.ActiveSession, (_e, id: unknown) => {
   activeSessionId = typeof id === 'string' && id ? id : null;
 });
 
+// 监控台 (main/monitor.ts): kept from the start, whether the page is open or not. The values to remove are read at
+// every line: the saved keys and secrets (as the core gets them) and the proxy's password.
+const monitor = new MonitorHub({ secrets: monitorSecrets });
+function monitorSecrets(): string[] {
+  try {
+    const out: string[] = [];
+    for (const c of backendConfig().core.providers) {
+      out.push(...[c.apiKey, c.oauth?.clientSecret, c.oauth?.clientId, ...Object.values(c.headers ?? {})].filter((v): v is string => typeof v === 'string' && v.length >= 6));
+    }
+    const proxy = settings.get().network.proxy.trim();
+    if (proxy) {
+      const pass = decodeURIComponent(new URL(/^[a-z]+:\/\//i.test(proxy) ? proxy : `http://${proxy}`).password);
+      if (pass) out.push(pass);
+    }
+    return out;
+  } catch {
+    // too early (the settings are not read yet) or a proxy that does not parse: the patterns still apply
+    return [];
+  }
+}
+
 let backendStatus: BackendStatus = { state: backendKind === 'core' ? 'starting' : 'ready' };
 const backend: AgentBackend =
   backendKind === 'core'
@@ -255,6 +279,7 @@ const backend: AgentBackend =
         onRestarted: () => sendToWindow(DesktopChannel.BackendRestarted),
         onPluginsChanged: () => sendToWindow(DesktopChannel.PluginsChanged),
         onPluginsProgress: (p) => sendToWindow(DesktopChannel.PluginsProgress, p),
+        monitor,
         hostMethods: {
           // The core's model-settings tools (a connected script asked). Same store and
           // checks as the settings page; plain-language errors go back to the agent.
@@ -890,6 +915,44 @@ ipcMain.handle(DesktopChannel.ContextBreakdown, async (_e, sessionId: unknown) =
   return null;
 });
 
+// 监控台: the lines kept, and new ones in batches while the page is open (at most five a second).
+let monitorWatching = false;
+let monitorBatch: MonitorEntry[] = [];
+let monitorTimer: ReturnType<typeof setTimeout> | undefined;
+monitor.onAdd((e) => {
+  if (!monitorWatching) return;
+  monitorBatch.push(e);
+  monitorTimer ??= setTimeout(() => {
+    monitorTimer = undefined;
+    const batch = monitorBatch;
+    monitorBatch = [];
+    if (monitorWatching && batch.length) sendToWindow(DesktopChannel.MonitorEntries, batch);
+  }, 200);
+});
+ipcMain.handle(DesktopChannel.MonitorList, (_e, after: unknown) => monitor.list(typeof after === 'number' && after > 0 ? after : 0));
+ipcMain.on(DesktopChannel.MonitorWatch, (_e, on: unknown) => {
+  monitorWatching = on === true;
+  if (!monitorWatching) monitorBatch = [];
+});
+ipcMain.handle(DesktopChannel.MonitorExport, async (_e, text: unknown): Promise<SaveCsvResult> => {
+  if (typeof text !== 'string' || text.length > 50_000_000) return { error: '无法导出日志。' };
+  const d = new Date();
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
+  const opts: Electron.SaveDialogOptions = { title: '导出日志', defaultPath: join(app.getPath('documents'), `spica-monitor-${stamp}.log`), filters: [{ name: '日志', extensions: ['log', 'txt'] }] };
+  // SPICA_SAVE_TO=<folder> (development only): skip the dialog, so scripts never leave one open.
+  const saveTo = app.isPackaged ? '' : (process.env.SPICA_SAVE_TO ?? '');
+  const pick = saveTo ? { canceled: false, filePath: join(saveTo, basename(opts.defaultPath ?? 'spica-monitor.log')) } : mainWindow ? await dialog.showSaveDialog(mainWindow, opts) : await dialog.showSaveDialog(opts);
+  if (pick.canceled || !pick.filePath) return null;
+  try {
+    // the page's lines came from the monitor (secrets removed there); scrubbed once more on the way out
+    writeFileSync(pick.filePath, scrub(text, monitorSecrets()), 'utf8');
+    return { file: pick.filePath };
+  } catch (err) {
+    return { error: `无法写入文件：${err instanceof Error ? err.message : String(err)}` };
+  }
+});
+
 // 设置 › 用量: the request log summed up, by the real core or the demo's records (the same function).
 ipcMain.handle(DesktopChannel.UsageSummary, async (_e, query: unknown): Promise<UsageSummary | null> => {
   const q = usageQuery(query);
@@ -1484,6 +1547,12 @@ ipcMain.handle(DesktopChannel.ListProviderModels, async (_e, draft: ProviderDraf
 });
 
 backend.onEvent((event) => sendToWindow(DesktopChannel.AgentEvent, withErrorHint(event)));
+backend.onEvent((event) => monitor.event(event));
+// The demo: a morning of made-up lines, so the page has something to show without the core.
+if (backend instanceof FakeBackend) {
+  const b = backend;
+  void b.recentRequests(500).then((r) => seedDemoMonitor(monitor, r, new Date()));
+}
 // Whether a conversation is running, for the close question's one line (「有任务正在运行，退出会中断它。」).
 backend.onEvent((event) => running.seen(event));
 settings.onChange((s) => {

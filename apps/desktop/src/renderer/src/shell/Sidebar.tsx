@@ -58,10 +58,12 @@ export interface SidebarProps {
    * (设置 › 模型), each opening the settings there. Absent: the account opens the settings as the gear does.
    */
   onAccount?: (where: AccountMenuTo) => void;
+  /** A page other than a conversation fills the main area (监控台, a plugin's page): no row is the current one. */
+  elsewhere?: boolean;
 }
 
 /** Where an item of the account's menu opens the settings. */
-export type AccountMenuTo = 'settings' | 'models';
+export type AccountMenuTo = 'settings' | 'models' | 'monitor';
 
 /**
  * The account's menu: the account in full on top (not an item: where a long one is read whole), then the items,
@@ -71,6 +73,7 @@ export function accountMenuItems(account: string, go: (where: AccountMenuTo) => 
   return [
     { label: '设置', group: account, after: <Icon name="settings" size={16} className="account-menu-icon" />, onSelect: () => go('settings') },
     { label: '模型设定', group: account, after: <Icon name="model" size={16} className="account-menu-icon" />, onSelect: () => go('models') },
+    { label: '监控台', group: account, after: <Icon name="terminal" size={16} className="account-menu-icon" />, onSelect: () => go('monitor') },
   ];
 }
 
@@ -230,6 +233,7 @@ export function Sidebar({
   compact = false,
   account = '',
   onAccount,
+  elsewhere = false,
 }: SidebarProps) {
   const me = account ? letterBadge(account, account) : null;
   /** The account's menu: the button it opens above, and how wide the bottom row is drawn (the menu is no narrower). */
@@ -260,7 +264,7 @@ export function Sidebar({
     childrenOf,
     activeId,
     // Another view (settings, inbox) is open: no row is the current one.
-    settingsOpen: settingsOpen || Boolean(inbox?.open),
+    settingsOpen: settingsOpen || Boolean(inbox?.open) || Boolean(elsewhere),
     unseenDone: unseenDone ?? NONE,
     expanded,
     setExpanded: (id, open) => setExpandedState((e) => ({ ...e, [id]: open })),

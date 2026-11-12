@@ -7,6 +7,7 @@ import type { ModelRef, ProviderDraft, ProviderKind, ProviderView, TestResult } 
 import type { ListModelsView, ModelCatalogView, WindowMatch } from './catalog';
 import type { PluginsCommand, PluginsProgress, PluginsResult } from './plugins';
 import type { UpdateState } from './updates';
+import type { MonitorEntry } from './monitor';
 import type { PluginPickRequest, PluginView, PluginViewResult } from './plugin-view';
 
 /** Saved model providers plus, per id, why one cannot be used right now. */
@@ -175,6 +176,15 @@ export interface DesktopBridge extends SpicaBridge {
   showInFolder(path: string): Promise<string | null>;
   /** Opens a folder in Explorer. An absolute path; resolves to what to show when it is not a folder that is there. */
   openFolder(path: string): Promise<string | null>;
+  /** 监控台: the back end's lines (kept in the main process, secrets removed there). */
+  monitor: {
+    /** The lines kept, oldest first; those after `after` (a seq) when given. */
+    list(after: number): Promise<MonitorEntry[]>;
+    /** New lines in batches while the page listens; the returned function stops it. */
+    watch(listener: (entries: MonitorEntry[]) => void): () => void;
+    /** Asks where to save, then writes the text as a .log file. */
+    export(text: string): Promise<SaveCsvResult>;
+  };
   /** Saves a table as CSV where the user picks (`name`: the suggested file name). */
   saveCsv(name: string, text: string): Promise<SaveCsvResult>;
   backend: {

@@ -177,6 +177,8 @@ export interface PluginManagerOptions {
    * (the desktop app: apps/desktop/src/main/user-account.ts); the manager never looks it up itself. Default ''.
    */
   userAccount?: string;
+  /** Every line written to a plugin's log (its servers' stderr, installs, starts), as it is written. */
+  onLog?: (plugin: string, line: string) => void;
 }
 
 /** Thrown with a message meant for the user. */
@@ -267,8 +269,11 @@ export class PluginManager {
   /** Serialises lifecycle operations so enable/disable/install never interleave. */
   #queue: Promise<unknown> = Promise.resolve();
 
+  readonly #onLog: ((plugin: string, line: string) => void) | undefined;
+
   constructor(opts: PluginManagerOptions) {
     this.#host = opts.host;
+    this.#onLog = opts.onLog;
     this.#root = resolve(opts.root);
     this.#spica = opts.spicaVersion ?? SPICA_VERSION;
     this.#app = appNameOf(opts);
@@ -346,6 +351,11 @@ export class PluginManager {
   }
 
   async #log(name: string, line: string): Promise<void> {
+    try {
+      this.#onLog?.(name, line);
+    } catch {
+      // a listener must never break the plugin
+    }
     try {
       await mkdir(join(this.#root, 'logs'), { recursive: true });
       await appendFile(this.logFile(name), `${new Date().toISOString()} ${line}\n`);

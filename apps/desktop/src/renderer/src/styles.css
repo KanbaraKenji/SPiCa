@@ -7004,3 +7004,185 @@ section.plugins-part > .plugins-part-title {
 .usage-more {
   align-self: flex-start;
 }
+
+/* 监控台 (shell/MonitorView.tsx): a bar of filters, then the lines (only those in sight are drawn, fixed height,
+   one line each, cut at the end; the whole line in the strip under the list when one is picked). Plain text only. */
+.monitor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 16px 16px;
+  gap: 8px;
+}
+
+.monitor-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.monitor-sources {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.monitor-search {
+  position: relative;
+  flex: 1 1 160px;
+  min-width: 120px;
+  max-width: 320px;
+}
+
+.monitor-search .input {
+  width: 100%;
+  height: var(--control-h);
+  padding-left: 30px;
+}
+
+/* as 搜索设置's */
+.monitor-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--spica-faint);
+  pointer-events: none;
+}
+
+.monitor-count {
+  margin-left: auto;
+  color: var(--spica-muted);
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.monitor-note {
+  margin: 0;
+  color: var(--spica-muted);
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
+}
+
+.monitor-note.is-bad {
+  color: var(--spica-danger);
+}
+
+.monitor-list {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--spica-border);
+  border-radius: var(--radius-m);
+  background: var(--spica-surface);
+  font-family: var(--font-mono);
+  font-size: var(--code-size);
+}
+
+.monitor-rows {
+  position: relative;
+  min-width: 100%;
+}
+
+.monitor-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 24px;
+  padding: 0 4px 0 10px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.monitor-row:hover {
+  background: var(--spica-hover);
+}
+
+.monitor-row.is-selected {
+  background: var(--spica-active);
+}
+
+.monitor-time,
+.monitor-source,
+.monitor-level {
+  flex: none;
+  color: var(--spica-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.monitor-source,
+.monitor-level {
+  width: 2.5em;
+  font-family: var(--font-ui);
+}
+
+.monitor-row.is-warn .monitor-level {
+  color: var(--spica-warning);
+}
+
+.monitor-row.is-error .monitor-level,
+.monitor-row.is-error .monitor-text {
+  color: var(--spica-danger);
+}
+
+.monitor-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.monitor-copy {
+  flex: none;
+  visibility: hidden;
+}
+
+.monitor-row:hover .monitor-copy,
+.monitor-copy:focus-visible {
+  visibility: visible;
+}
+
+.monitor-empty {
+  margin: 0;
+  padding: 16px;
+  color: var(--spica-muted);
+  font-family: var(--font-ui);
+}
+
+.monitor-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40%;
+  padding: 8px 10px;
+  border: 1px solid var(--spica-border);
+  border-radius: var(--radius-m);
+  background: var(--spica-surface);
+}
+
+.monitor-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.monitor-detail-head .btn {
+  margin-left: auto;
+}
+
+.monitor-detail-text {
+  margin: 0;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--code-size);
+  white-space: pre-wrap;
+  word-break: break-all;
+}

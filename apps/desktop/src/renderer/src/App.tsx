@@ -31,6 +31,7 @@ import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
 import { InboxView, type InboxProject } from './shell/InboxView';
 import type { UsageApi } from './settings/Usage';
+import { MonitorView } from './shell/MonitorView';
 import { MailStore, useMail } from './store/mail';
 import { needsYou } from '../../shared/mail';
 import { nextDoneNews, unseenDone } from './shell/row-status';
@@ -57,7 +58,7 @@ export interface AppProps {
   mail?: MailStore;
 }
 
-type View = 'chat' | 'inbox' | 'plugin';
+type View = 'chat' | 'inbox' | 'plugin' | 'monitor';
 
 /** Role template of the core's mail sorting thread; it lives in the inbox, not the sidebar. */
 const MAIL_TRIAGE_TEMPLATE = 'mail-triage';
@@ -267,7 +268,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         // A settings view: the dialog open on that section, over the conversation.
         if (tab) setSettingsTab(tab);
         setSettingsOpen(tab !== null);
-        setView(v === 'inbox' ? 'inbox' : 'chat');
+        setView(v === 'inbox' ? 'inbox' : v === 'monitor' ? 'monitor' : 'chat');
       },
     };
     return () => {
@@ -725,7 +726,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   if (canMax !== rightCanMax) setCanMax(rightCanMax);
   if (rightMax && !rightCanMax) setRightMax(false);
   const panelMax = { on: rightMax, toggle: () => setRightMax((v) => !v) };
-  const title = view === 'inbox' ? '收件箱' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
+  const title = view === 'inbox' ? '收件箱' : view === 'monitor' ? '监控台' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
 
   // What can be done to a session by its name; the sidebar's rows and the name in the title bar share it.
   const rowActions: RowActions = {
@@ -761,9 +762,13 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         setFloating(null);
       }}
       settingsOpen={settingsOpen}
+      elsewhere={view === 'monitor' || view === 'plugin'}
       account={effectiveAccount(settings, shell.autoAccount)}
       onAccount={(where) => {
-        openSettings(where === 'models' ? 'models' : undefined);
+        if (where === 'monitor') {
+          setSettingsOpen(false);
+          setView('monitor');
+        } else openSettings(where === 'models' ? 'models' : undefined);
         setFloating(null);
       }}
       topId={state.topId}
@@ -914,6 +919,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 <p>插件页面不可用（插件已停用或已卸载）。</p>
               </div>
             )
+          ) : view === 'monitor' ? (
+            <MonitorView api={bridge.monitor} showInFolder={(p) => void bridge.showInFolder(p)} />
           ) : view === 'inbox' ? (
             <InboxView
               mail={mail}

@@ -175,7 +175,7 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
   - 为什么不现在做：要随应用带 `uv.exe`、管下载和镜像、处理公司网络「能下不能传」的代理；首版 J6 用 Node 就能验，自带 exe 已覆盖「接没有 API 的系统」这类插件。
   - 为什么选 uv 而不是 pip + 自己管：uv 是单个可执行文件、不需要先有 Python、支持锁文件和离线缓存，装依赖快；许可证 MIT / Apache-2.0。
 - **崩溃重启**：进程意外退出（内核 `onExit` 的 `expected=false`）→ 先撤掉它的工具 → 退避（250 ms、500 ms、1 s…）后重启；同一个时间窗（默认 60 秒）里超过上限（默认 3 次，清单可改，0–10）就停止重启，状态 `failed`，发 `plugin.error`：「「笔记」进程 notes 在 60 秒内崩溃了 4 次，已停止重启。详情见插件日志。」重新启用即可再试。
-- **日志**：server 的 stderr 逐段写进 `logs/<name>.log`，不显示在界面上；`describe()` 的 `lastError` 给界面一句话。
+- **日志**：server 的 stderr 逐段写进 `logs/<name>.log`；`describe()` 的 `lastError` 给界面一句话。写进日志的每一行同时交给 `PluginManagerOptions.onLog`（桌面版经内核进程送到主进程，进「监控台」的「插件」来源，凭据在那里抹掉）。
 - **打包**：`packPlugin(文件夹, 输出目录)` 产出 `<name>-<version>.zip`（固定时间戳，同样的文件得到同样的校验和），附 SHA-256。`verifyPackage(zip, 校验和?)` 解到临时目录校验；`unpackPlugin` 拒绝 `..`、绝对路径、盘符的条目，也接受 Windows「发送到 → 压缩文件夹」那种外面多套一层目录的 zip。zip 读写只用 `node:zlib`，不加依赖。插件根目录可放 `.spicaignore`（同 MCPB 的 `.mcpbignore`，取 .gitignore 的常用子集：`*`、`**`、`?`，末尾 `/` 只配文件夹，带 `/` 的从插件根算，不支持 `!`），列出不进包的开发文件（测试、脚本等）；`manifest.json` 永远进包。打完先在临时目录装一遍，装不上就不写出，免得忽略规则把要用的文件排除掉。
 
 ## 6. 模拟模式

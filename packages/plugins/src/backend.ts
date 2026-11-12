@@ -28,6 +28,8 @@ export interface PluginBackendOptions {
   appName?: string;
   /** The user's account for every plugin (PluginManagerOptions.userAccount). Default ''. */
   userAccount?: string;
+  /** Every line of the plugins' logs as it is written (PluginManagerOptions.onLog). */
+  onLog?: (plugin: string, line: string) => void;
 }
 
 const str = { type: 'string' } as const;
@@ -199,6 +201,7 @@ export async function attachBackend(
     ...(options.nodePath ? { nodePath: options.nodePath } : {}),
     ...(options.inheritEnv ? { inheritEnv: options.inheritEnv } : {}),
     ...(options.userAccount ? { userAccount: options.userAccount } : {}),
+    ...(options.onLog ? { onLog: options.onLog } : {}),
     endTree: options.endTree ?? true,
   });
   const loaded = await pm.load();

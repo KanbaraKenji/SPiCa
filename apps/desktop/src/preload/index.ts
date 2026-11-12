@@ -1,6 +1,7 @@
 // Preload: the only bridge between the sandboxed renderer and the main process.
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import { IpcChannel, type AgentApi, type AppInfo, type ContextBreakdown, type CoreEvent, type UsageQuery, type UsageSummary } from '@spica/protocol';
+import type { MonitorEntry } from '../shared/monitor';
 import { DesktopChannel } from '../shared/ipc';
 import type { BackendState, DesktopBridge, LocalConnectInfo, NetworkState, PreviewFile, PreviewInfo, ProviderList, SaveCsvResult, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import type { ModelRef, ProviderDraft, ProviderKind, TestResult } from '../shared/providers';
@@ -132,6 +133,18 @@ const bridge: DesktopBridge = {
   showInFolder: (path) => ipcRenderer.invoke(DesktopChannel.ShowInFolder, path) as Promise<string | null>,
   openFolder: (path) => ipcRenderer.invoke(DesktopChannel.OpenFolder, path) as Promise<string | null>,
   saveCsv: (name, text) => ipcRenderer.invoke(DesktopChannel.SaveCsv, name, text) as Promise<SaveCsvResult>,
+  monitor: {
+    list: (after: number) => ipcRenderer.invoke(DesktopChannel.MonitorList, after) as Promise<MonitorEntry[]>,
+    watch: (listener: (entries: MonitorEntry[]) => void) => {
+      ipcRenderer.send(DesktopChannel.MonitorWatch, true);
+      const off = subscribe<MonitorEntry[]>(DesktopChannel.MonitorEntries, listener);
+      return () => {
+        off();
+        ipcRenderer.send(DesktopChannel.MonitorWatch, false);
+      };
+    },
+    export: (text: string) => ipcRenderer.invoke(DesktopChannel.MonitorExport, text) as Promise<SaveCsvResult>,
+  },
   providers: {
     list: () => ipcRenderer.invoke(DesktopChannel.ListProviders) as Promise<ProviderList>,
     save: (draft: ProviderDraft) => ipcRenderer.invoke(DesktopChannel.SaveProvider, draft) as Promise<ProviderList>,

@@ -56,6 +56,14 @@ export const DesktopChannel = {
   ResetProviderSpend: 'spica:providers:reset-spend',
   /** invoke: UsageQuery -> UsageSummary | null (设置 › 用量; null while the core is not up) */
   UsageSummary: 'spica:usage:summary',
+  /** invoke: after (seq) -> MonitorEntry[] (监控台: the lines kept, newer than `after`) */
+  MonitorList: 'spica:monitor:list',
+  /** renderer -> main: true / false (the monitor is open: send new lines) */
+  MonitorWatch: 'spica:monitor:watch',
+  /** main -> renderer: MonitorEntry[] (new lines, in batches) */
+  MonitorEntries: 'spica:monitor:entries',
+  /** invoke: text -> SaveCsvResult (asks where to save a .log first) */
+  MonitorExport: 'spica:monitor:export',
   Images: 'spica:images',
   ProjectRead: 'spica:projects:read',
   ContextBreakdown: 'spica:context:breakdown',

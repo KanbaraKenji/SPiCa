@@ -38,8 +38,14 @@ interface ParentPort {
 }
 
 export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
-  const plugins = await attachPlugins(rt, { root: options.pluginRoot, appName: APP_NAME, userAccount: options.userAccount ?? '' });
   const parent = (process as unknown as { parentPort?: ParentPort }).parentPort;
+  // every plugin log line also goes to the main process, for the monitor (it removes secrets before keeping it)
+  const plugins = await attachPlugins(rt, {
+    root: options.pluginRoot,
+    appName: APP_NAME,
+    userAccount: options.userAccount ?? '',
+    onLog: (plugin, line) => parent?.postMessage({ type: 'log', source: 'plugin', plugin, line }),
+  });
   const page = new RealPluginService({
     manager: plugins.manager,
     root: options.pluginRoot,

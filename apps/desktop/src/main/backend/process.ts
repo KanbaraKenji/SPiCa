@@ -14,6 +14,7 @@ import type { AgentBackend } from './types';
 import type { PluginView, PluginViewResult } from '../../shared/plugin-view';
 import type { LocalConnectInfo } from '../../shared/bridge';
 import { CORE_KILL_MS } from '../quit';
+import type { MonitorHub } from '../monitor';
 
 export type BackendStatus = { state: 'starting' | 'ready' | 'recovering' } | { state: 'failed'; message: string };
 
@@ -35,6 +36,8 @@ export interface ProcessBackendOptions {
   onPluginsProgress?(p: PluginsProgress): void;
   /** Methods the core may call on this process (model settings for its MCP tools). */
   hostMethods?: HostMethods;
+  /** 监控台: the core's output, its starts, exits and restarts, the plugins' log lines. */
+  monitor?: MonitorHub;
 }
 
 export class ProcessBackend implements AgentBackend {
@@ -69,8 +72,16 @@ export class ProcessBackend implements AgentBackend {
     this.#o.onStatus({ state: this.#started ? 'recovering' : 'starting' });
     const child = utilityProcess.fork(this.#o.entry, [], { serviceName: 'spica-backend', stdio: 'pipe' });
     this.#child = child;
-    child.stdout?.on('data', (d: Buffer) => process.stdout.write(`[backend] ${d}`));
-    child.stderr?.on('data', (d: Buffer) => process.stderr.write(`[backend] ${d}`));
+    const mon = this.#o.monitor;
+    mon?.add('process', 'info', `core ${this.#started ? 'restarting' : 'starting'}${child.pid ? ` (pid ${child.pid})` : ''}`);
+    child.stdout?.on('data', (d: Buffer) => {
+      process.stdout.write(`[backend] ${d}`);
+      mon?.output('core-out', 'core', 'info', d.toString('utf8'));
+    });
+    child.stderr?.on('data', (d: Buffer) => {
+      process.stderr.write(`[backend] ${d}`);
+      mon?.output('core-err', 'core', 'warn', d.toString('utf8'));
+    });
     const { port1, port2 } = new MessageChannelMain();
     const client = connectBackend(electronPort(port1), this.#o.hostMethods ? { hostMethods: this.#o.hostMethods } : {});
     client.onEvent((e) => {
@@ -78,8 +89,14 @@ export class ProcessBackend implements AgentBackend {
     });
     const wasStarted = this.#started;
     const done = new Promise<void>((resolve) => {
-      child.on('message', (m: { type?: string; message?: string; progress?: PluginsProgress }) => {
+      child.on('message', (m: { type?: string; message?: string; progress?: PluginsProgress; warnings?: unknown; plugin?: string; line?: string }) => {
+        if (m?.type === 'log') {
+          mon?.add('plugin', /\b(error|fatal|failed|exception)\b/i.test(String(m.line)) ? 'error' : 'info', `[${String(m.plugin ?? '')}] ${String(m.line ?? '')}`);
+          return;
+        }
         if (m?.type === 'started') {
+          mon?.add('process', 'info', 'core ready');
+          for (const w of Array.isArray(m.warnings) ? m.warnings : []) mon?.add('core', 'warn', String(w));
           this.#client = client;
           this.#started = true;
           this.#resolveReady(client);
@@ -87,6 +104,7 @@ export class ProcessBackend implements AgentBackend {
           if (wasStarted) this.#o.onRestarted();
           resolve();
         } else if (m?.type === 'failed') {
+          mon?.add('process', 'error', `core failed to start: ${m.message ?? ''}`);
           this.#o.onStatus({ state: 'failed', message: `后台启动失败：${m.message ?? ''}` });
           resolve();
         } else if (m?.type === 'plugins.changed') {
@@ -96,7 +114,11 @@ export class ProcessBackend implements AgentBackend {
         }
       });
     });
-    child.once('exit', () => this.#exited(child, client));
+    child.once('exit', (code: number) => {
+      mon?.flush();
+      mon?.add('process', this.#stopping ? 'info' : 'error', `core exited (code ${code})${this.#stopping ? '' : ': unexpected'}`);
+      this.#exited(child, client);
+    });
     child.postMessage({ type: 'start', config: this.#o.config().core }, [port2]);
     return done;
   }
@@ -111,12 +133,14 @@ export class ProcessBackend implements AgentBackend {
     const now = Date.now();
     this.#restarts = this.#restarts.filter((t) => now - t < 60_000);
     if (this.#restarts.length >= MAX_RESTARTS_PER_MINUTE) {
+      this.#o.monitor?.add('process', 'error', `core stopped: ${MAX_RESTARTS_PER_MINUTE} restarts within a minute`);
       this.#rejectReady(new Error('后台多次出错，已停止。'));
       this.#o.onStatus({ state: 'failed', message: '后台多次出错，已停止。' });
       return;
     }
     const delay = BACKOFF_MS[Math.min(this.#restarts.length, BACKOFF_MS.length - 1)] ?? 5000;
     this.#restarts.push(now);
+    this.#o.monitor?.add('process', 'warn', `core restarts in ${delay / 1000}s`);
     this.#o.onStatus({ state: 'recovering' });
     setTimeout(() => {
       if (!this.#stopping) void this.start();
