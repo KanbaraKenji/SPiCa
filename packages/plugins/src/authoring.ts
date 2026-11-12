@@ -34,7 +34,7 @@ export interface PluginContext {
  * The user, the same for every plugin (no permission needed). `account`: the
  * company account, the Windows user folder's name in capitals
  * (C:\Users\alex.chen → ALEX.CHEN) unless the user typed another one in
- * 设置 › 常规 › 账号; empty when it could not be found. Server processes get
+ * 设置 › 账号; empty when it could not be found. Server processes get
  * the same value as SPICA_USER_ACCOUNT.
  */
 export interface PluginUser {

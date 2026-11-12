@@ -187,7 +187,7 @@ export async function attachBackend(
   warnings: string[];
   /** The host calls this after the network settings changed: plugin servers restart and pick them up. */
   networkChanged(): Promise<void>;
-  /** The user changed the account (设置 › 常规 › 账号): hooks see it at once, plugin servers restart with it. */
+  /** The user changed the account (设置 › 账号): hooks see it at once, plugin servers restart with it. */
   setUserAccount(account: string): Promise<void>;
   close(): Promise<void>;
 }> {

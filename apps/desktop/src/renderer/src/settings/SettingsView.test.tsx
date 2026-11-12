@@ -46,7 +46,7 @@ describe('设置 as a dialog over the window', () => {
     const nav = within(dialog).getByRole('tablist', { name: '设置' });
     expect(nav.getAttribute('aria-orientation')).toBe('vertical');
     // No memory kept by the core: no 记忆.
-    expect(within(nav).getAllByRole('tab').map((t) => t.textContent)).toEqual(['常规', '外观', '模型', '插件', '关于']);
+    expect(within(nav).getAllByRole('tab').map((t) => t.textContent)).toEqual(['常规', '账号', '外观', '模型', '插件', '关于']);
     expect(within(nav).getByRole('tab', { name: '关于' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.queryByRole('button', { name: '返回对话' })).toBeNull();
     fireEvent.click(within(nav).getByRole('tab', { name: '外观' }));

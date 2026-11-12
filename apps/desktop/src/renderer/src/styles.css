@@ -1439,7 +1439,7 @@ pre .hl-punctuation {
   min-width: 0;
 }
 
-/* 设置 › 常规 › 文件预览 and 外观 › 代码 › 字号: the picker on the right of the row. */
+/* 设置 › 常规 › 文件预览, 外观 › 代码 › 字号 and 账号 › 账号: the control on the right of the row. */
 .preview-kind-pick,
 .code-size-pick,
 .account-field {

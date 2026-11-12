@@ -131,7 +131,7 @@ export interface ShellSettings {
    */
   runLimitUsd: number | null;
   /**
-   * 常规 › 账号: the account the user typed, for when the user folder's name is not the company account; '' =
+   * 账号: the account the user typed, for when the user folder's name is not the company account; '' =
    * the automatic one (main/user-account.ts). Plugins get effectiveAccount() (SPICA_USER_ACCOUNT, ctx.user.account).
    */
   account: string;

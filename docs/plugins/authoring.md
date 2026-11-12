@@ -79,7 +79,7 @@ Spica 启动 server 时会给这些环境变量：
 | `SPICA_PLUGIN_DIR` | 插件安装目录（只读） |
 | `SPICA_MOCK` | `1` 表示用户开了模拟模式 |
 | `SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION` | 名字和版本 |
-| `SPICA_USER_ACCOUNT` | 当前用户的账号（工号），所有插件都有、不用声明权限。取法写死：Windows 用户文件夹名转大写（`C:\Users\alex.chen` → `ALEX.CHEN`）；用户在 设置 › 常规 › 账号 里改过，就是改过的那个；取不到时是空字符串。用户改了账号，正在运行的 server 会自动重启一次 |
+| `SPICA_USER_ACCOUNT` | 当前用户的账号（工号），所有插件都有、不用声明权限。取法写死：Windows 用户文件夹名转大写（`C:\Users\alex.chen` → `ALEX.CHEN`）；用户在 设置 › 账号 里改过，就是改过的那个；取不到时是空字符串。用户改了账号，正在运行的 server 会自动重启一次 |
 | `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`、`NODE_USE_ENV_PROXY` | 应用的代理设置（设置 › 常规 › 网络），没设代理时不给 |
 | `NODE_EXTRA_CA_CERTS`、`NODE_USE_SYSTEM_CA`、`SSL_CERT_FILE`、`REQUESTS_CA_BUNDLE`、`CURL_CA_BUNDLE` | 应用信任的证书（系统证书和「信任的证书文件」），Node 的 `fetch` / `https` 直接就用上了（这一行和上一行从 0.1.0-rc.2 起才有） |
 

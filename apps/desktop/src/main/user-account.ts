@@ -1,7 +1,7 @@
 // The user's account (工号) for plugins: worked out once here, at start, and
 // handed to the core's process (BackendConfig extension options), which gives
 // it to every plugin as SPICA_USER_ACCOUNT and ctx.user.account. The settings
-// (常规 › 账号) may replace it; shared/settings.ts effectiveAccount.
+// (账号) may replace it; shared/settings.ts effectiveAccount.
 //
 // The company's rule (2026-11-12): the name of the Windows user folder, in
 // capitals: C:\Users\alex.chen → ALEX.CHEN. The folder is asked of the system

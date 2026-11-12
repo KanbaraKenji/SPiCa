@@ -142,7 +142,7 @@ function workflowsDir(): string {
 }
 const pluginRoot = join(app.getPath('userData'), 'plugins');
 // The user's account (工号) for plugins, by the company's rule, worked out once here (main/user-account.ts);
-// 常规 › 账号 may replace it. The core's process gets the one in force (backendConfig) and every change.
+// 账号 may replace it. The core's process gets the one in force (backendConfig) and every change.
 const autoAccount = accountAtStart({ packaged: app.isPackaged, automated, env: process.env });
 function userAccount(): string {
   return effectiveAccount(settings.get(), autoAccount);
@@ -1106,7 +1106,7 @@ settings.onChange((s) => {
     lastLocalConnect = s.localConnect;
     void applyLocalConnect(s.localConnect);
   }
-  // 常规 › 账号: hooks get it at their next call, plugin servers restart with it (as for the network settings).
+  // 账号: hooks get it at their next call, plugin servers restart with it (as for the network settings).
   const account = effectiveAccount(s, autoAccount);
   if (account !== lastAccount) {
     lastAccount = account;

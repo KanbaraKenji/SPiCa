@@ -88,7 +88,7 @@ describe('doneNews (finished sub-tasks not opened yet)', () => {
   });
 });
 
-describe('常规 › 账号', () => {
+describe('账号', () => {
   it('none typed by default; what is typed is trimmed, in capitals, without control characters', () => {
     expect(DEFAULT_SETTINGS.account).toBe('');
     expect(sanitizeSettings({ account: '  alex.chen ' }).account).toBe('ALEX.CHEN');

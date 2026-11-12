@@ -1,5 +1,5 @@
 // Settings, as a large dialog over the window (他 2026-11-12 picked 「大弹窗」): the window behind dims, the
-// sections (常规 / 外观 / 模型 / 记忆 / 插件 / 关于) are a column on the left, the section on the right scrolls by
+// sections (常规 / 账号 / 外观 / 模型 / 记忆 / 插件 / 关于) are a column on the left, the section on the right scrolls by
 // itself. The close button at the top right and a press outside close it; so does Esc, through App's own Esc
 // (as before it was a dialog), so a confirm box, a menu or a field inside closes only itself.
 // On a small window it fills the window under the title bar.
@@ -10,16 +10,18 @@ import { Appearance } from './Appearance';
 import { Models, type ProvidersApi } from './Models';
 import { Plugins, type PluginsApi, type PluginsTab, type SettingsPages } from './Plugins';
 import { About } from './About';
+import { Account } from './Account';
 import { General, type GeneralProps, type WorkflowsApi } from './General';
 import { Icon } from '../ui/Icon';
 import { useModal } from '../ui/useModal';
 import { Memory, type MemoryProps } from './Memory';
 import type { UpdateState } from '../../../shared/updates';
 
-export type SettingsTab = 'general' | 'appearance' | 'models' | 'memory' | 'plugins' | 'about';
+export type SettingsTab = 'general' | 'account' | 'appearance' | 'models' | 'memory' | 'plugins' | 'about';
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'general', label: '常规' },
+  { id: 'account', label: '账号' },
   { id: 'appearance', label: '外观' },
   { id: 'models', label: '模型' },
   { id: 'memory', label: '记忆' },
@@ -109,8 +111,9 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
                     {...(localConnect ? { localConnect } : {})}
                     {...(previewPages ? { previewPages } : {})}
                     autostart={shell.autostart}
-                    autoAccount={shell.autoAccount}
                   />
+                ) : tab === 'account' ? (
+                  <Account settings={settings} onChange={(p) => shell.update(p)} autoAccount={shell.autoAccount} />
                 ) : tab === 'appearance' ? (
                   <Appearance settings={settings} activeSkin={shell.activeSkin()} onChange={(p) => shell.update(p)} />
                 ) : tab === 'models' ? (

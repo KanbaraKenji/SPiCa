@@ -91,7 +91,7 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
         return null;
       },
       mcpHttpState: () => httpState(),
-      // 设置 › 常规 › 账号 changed: hooks read it at their next call, plugin servers restart with it.
+      // 设置 › 账号 changed: hooks read it at their next call, plugin servers restart with it.
       setUserAccount: async (account: unknown) => {
         await plugins.setUserAccount(typeof account === 'string' ? account : '');
         return null;
