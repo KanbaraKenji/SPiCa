@@ -520,6 +520,29 @@ describe('a question or confirmation stopped while it waits', () => {
     ]);
   });
 
+  it('reopened later: a confirmation stopped while it waited is the confirmation again, 已中断, not a failed step; a declined or failed call stays a step', () => {
+    const at = '2026-11-12T00:00:00Z';
+    const call = (id: string, seq: number): Message => ({ id: `a${id}`, sessionId: 's', seq, role: 'assistant', kind: 'assistant', createdAt: at, content: [{ type: 'tool_use', id, name: 'send_email', input: { to: '项目组', subject: '纪要' } }] });
+    const result = (id: string, seq: number, content: string): Message => ({ id: `r${id}`, sessionId: 's', seq, role: 'user', kind: 'tool_results', createdAt: at, content: [{ type: 'tool_result', toolUseId: id, content, isError: true }] });
+    const history: Message[] = [
+      call('m1', 1),
+      result('m1', 2, `[fetched at ${at}]\nCancelled: aborted by user.`),
+      call('m2', 3),
+      result('m2', 4, 'The user declined this action. Do not retry it unless the user asks.'),
+      call('m3', 5),
+      result('m3', 6, 'SMTP error: connection refused'),
+    ];
+    const t = fromHistory(history);
+    const response = t.items.find((i) => i.kind === 'response');
+    expect(response?.kind === 'response' && response.interrupted).toBe(true);
+    const blocks = response?.kind === 'response' ? response.blocks : [];
+    expect(blocks[0]).toEqual({ type: 'confirm', callId: 'm1', name: 'send_email', input: { to: '项目组', subject: '纪要' }, reason: '', cancelled: true });
+    expect(blocks.slice(1).map((b) => [b.type, (b as { callId: string }).callId, (b as { state?: string }).state])).toEqual([
+      ['tool', 'm2', 'error'],
+      ['tool', 'm3', 'error'],
+    ]);
+  });
+
   it('asked again under the same id: open again', () => {
     let t = applyEvent(asked(), ev(3, { type: 'status', status: 'aborted' }));
     t = applyEvent(t, ev(4, { type: 'ask.request', callId: 'q1', question: '确认这次申请的四项？', options: ['是'] }));

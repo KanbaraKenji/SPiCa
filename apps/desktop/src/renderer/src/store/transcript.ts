@@ -402,9 +402,24 @@ function settleCard(items: Item[], callId: string, content: string, isError: boo
     } else ask.answer = askAnswer(content);
   }
   const confirm = findBlock(items, 'confirm', callId);
-  if (confirm && confirm.approved === undefined && isError && /^Cancelled\b/.test(resultBody(content))) {
+  if (confirm && confirm.approved === undefined && isError && STOPPED_WAITING.test(resultBody(content))) {
     confirm.cancelled = true;
     markInterrupted(items, callId);
+  }
+}
+
+/** What the core writes as the result of a question or confirmation dropped because the run was stopped. */
+const STOPPED_WAITING = /^Cancelled\b/;
+
+/** `old` swapped for `next` where it stands. Mutates `items`. */
+function replaceBlock(items: Item[], old: Block, next: Block): void {
+  for (const it of items) {
+    if (it.kind !== 'response') continue;
+    const at = it.blocks.indexOf(old);
+    if (at >= 0) {
+      it.blocks[at] = next;
+      return;
+    }
   }
 }
 
@@ -505,6 +520,14 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
       for (const b of m.content) {
         if (b.type !== 'tool_result') continue;
         const tool = findBlock(items, 'tool', b.toolUseId);
+        if (tool && b.isError && STOPPED_WAITING.test(resultBody(b.content))) {
+          // A call that waited for 允许 when the run was stopped (the core writes "Cancelled: …" for nothing else):
+          // it never ran. Back as the confirmation it was, 已中断, not a failed step. The model's own wording of
+          // the step is not in the history: the title is the app's reading of the call.
+          replaceBlock(items, tool, { type: 'confirm', callId: tool.callId, name: tool.name, input: tool.input, reason: '', cancelled: true });
+          markInterrupted(items, b.toolUseId);
+          continue;
+        }
         if (tool) {
           const about = info?.[b.toolUseId];
           if (about?.category) tool.category = about.category;
