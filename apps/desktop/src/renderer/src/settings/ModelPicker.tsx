@@ -67,7 +67,12 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
   const [editing, setEditing] = useState<string | null>(null);
   const byId = new Map<string, { model: ListedModel; price?: CatalogPriceView; vision?: boolean }>();
   for (const m of catalog) byId.set(m.id, { model: { id: m.id, ...(m.label ? { label: m.label } : {}), contextWindow: m.contextWindow }, ...(m.price ? { price: m.price } : {}), ...(m.vision !== undefined ? { vision: m.vision } : {}) });
-  for (const m of fetched ?? []) if (!byId.has(m.id)) byId.set(m.id, { model: m });
+  // fetched: a model the catalog has too keeps the catalog's row, with the most output the provider's list gives
+  for (const m of fetched ?? []) {
+    const known = byId.get(m.id);
+    if (!known) byId.set(m.id, { model: m });
+    else if (m.maxOutput) known.model = { ...known.model, maxOutput: m.maxOutput };
+  }
   for (const m of selected) if (!byId.has(m.id)) byId.set(m.id, { model: { id: m.id } });
   const all = [...byId.values()];
   const q = query.trim().toLowerCase();

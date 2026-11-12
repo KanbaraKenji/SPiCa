@@ -159,7 +159,7 @@ describe('get the models from the provider', () => {
     expect(r.models).toHaveLength(603);
     expect(r.models.slice(0, 2)).toEqual([
       { id: 'deepseek-flash', contextWindow: 1_048_576, maxOutput: 384_000, inCatalog: true, chat: true }, // no window in the answer: the short list's
-      { id: 'deepseek-v4-pro', contextWindow: 999_999, inCatalog: true, chat: true }, // the provider's own figure wins
+      { id: 'deepseek-v4-pro', contextWindow: 999_999, maxOutput: 384_000, inCatalog: true, chat: true }, // the provider's own figure wins
     ]);
     expect(r.models.find((m) => m.id === 'text-embedding-x')).toEqual({ id: 'text-embedding-x', inCatalog: false, chat: false }); // no window known at all
     expect(r.models.find((m) => m.id === 'vendor/model-599')).toMatchObject({ contextWindow: 32_599, chat: true });

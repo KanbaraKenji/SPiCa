@@ -42,6 +42,8 @@ export const BUILTIN_CATALOG: ModelCatalog = {
         {
           id: 'deepseek-v4-pro',
           contextWindow: 1_048_576,
+          // as deepseek-flash (384K; the provider's model list says 393,216 for both)
+          maxOutput: 384_000,
           role: 'strong',
           price: { input: 9, output: 27, cacheRead: 0.3, currency: 'CNY' },
           source: 'https://api-docs.deepseek.com/zh-cn/quick_start/pricing',

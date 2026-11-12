@@ -410,10 +410,11 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
       return;
     }
     const fromCatalog = provider?.models.find((x) => x.id === m.id);
-    // the most output the provider's list gave (the catalog's own the core knows): each answer may be that long
-    const out = !fromCatalog && m.maxOutput ? { maxOutput: m.maxOutput } : {};
+    // the most output the provider's list gave: each answer may be that long (it wins over the catalog's; with
+    // neither, the core uses its default)
+    const out = m.maxOutput ? { maxOutput: m.maxOutput } : {};
     const entry: ConnectionModel = fromCatalog
-      ? { id: m.id, contextWindow: fromCatalog.contextWindow, contextFrom: 'catalog' }
+      ? { id: m.id, contextWindow: fromCatalog.contextWindow, contextFrom: 'catalog', ...out }
       : m.contextWindow
         ? { id: m.id, contextWindow: m.contextWindow, contextFrom: 'provider', ...out }
         : { id: m.id, contextWindow: null, contextFrom: 'user', ...out };
@@ -441,6 +442,10 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
       if (r.ok) {
         const got = r.models.filter((m) => m.chat).map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}), ...(m.maxOutput ? { maxOutput: m.maxOutput } : {}) }));
         setFetched(got);
+        // models already in the connection take the most output the list gives now (saved with 保存)
+        const outOf = new Map(got.filter((m) => m.maxOutput).map((m) => [m.id, m.maxOutput as number]));
+        const models = draft.models ?? [];
+        if (models.some((x) => outOf.has(x.id) && x.maxOutput !== outOf.get(x.id))) set({ models: models.map((x) => (outOf.has(x.id) ? { ...x, maxOutput: outOf.get(x.id) } : x)) });
         const added = got.filter((m) => !known.has(m.id)).length;
         setFetchNote(`已获取 ${got.length} 个模型，${added ? `新增 ${added} 个` : '没有新增'}`);
       } else setFetchError(r.hint || '获取模型列表失败，请从列表选择或手动输入模型。');

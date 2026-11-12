@@ -227,6 +227,32 @@ describe('Models', () => {
     expect(screen.queryByText(/已获取/)).toBeNull();
   });
 
+  it('获取模型列表: the most output the list gives is kept for catalog models too, and updates those already ticked', async () => {
+    const api = fakeApi();
+    api.listModels = vi.fn(async () => ({
+      ok: true as const,
+      models: [
+        { id: 'deepseek-flash', inCatalog: true, chat: true, maxOutput: 393_216 },
+        { id: 'deepseek-v4-pro', inCatalog: true, chat: true, maxOutput: 393_216 },
+        { id: 'deepseek-chat', inCatalog: false, chat: true },
+      ],
+    }));
+    await openNew(api);
+    choose('deepseek');
+    type('API Key', 'sk-abcdefghijklmnopqrstu1234');
+    // deepseek-flash is ticked already (the preset's default); the list's number reaches it on fetching
+    fireEvent.click(screen.getByRole('button', { name: '获取模型列表' }));
+    await screen.findByRole('status');
+    // a catalog model ticked from the list keeps the list's number
+    fireEvent.click(screen.getByRole('button', { name: '启用 deepseek-v4-pro' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await screen.findByText('已保存');
+    const models = vi.mocked(api.save).mock.calls[0]![0].models!;
+    expect(models.find((m) => m.id === 'deepseek-flash')).toMatchObject({ contextFrom: 'catalog', maxOutput: 393_216 });
+    expect(models.find((m) => m.id === 'deepseek-v4-pro')).toMatchObject({ contextFrom: 'catalog', maxOutput: 393_216 });
+    expect(models.find((m) => m.id === 'deepseek-chat')).toBeUndefined();
+  });
+
   it('tests, saves, and then keeps the key hidden', async () => {
     const api = await openNew();
     choose('deepseek');
