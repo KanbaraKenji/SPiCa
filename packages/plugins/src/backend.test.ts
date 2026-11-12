@@ -66,6 +66,7 @@ describe('plugin tools on the MCP service', () => {
     expect(await m.pluginViews!()).toMatchObject([
       { plugin: 'notes', id: 'notebook', entry: 'ui/index.html', placement: 'sidebar' },
       { plugin: 'notes', id: 'quick-note', entry: 'ui/quick-note.html', placement: 'panel' },
+      { plugin: 'notes', id: 'settings', entry: 'ui/settings.html', placement: 'settings' },
     ]);
     expect(await m.pluginViewFile!({ plugin: 'notes', path: 'ui/index.html' })).toMatch(/[\\/]ui[\\/]index\.html$/);
     expect(await m.pluginViewFile!({ plugin: 'notes', path: '../state.json' })).toBeNull();

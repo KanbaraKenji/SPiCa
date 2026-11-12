@@ -174,7 +174,7 @@ export async function check(dir, opts = {}) {
       continue;
     }
     if (typeof v.title !== 'string' || !v.title.trim()) err(where, '缺少 title');
-    if (v.placement !== undefined && !['sidebar', 'panel', 'preview'].includes(v.placement)) err(where, 'placement 只能是 sidebar、panel 或 preview');
+    if (v.placement !== undefined && !['sidebar', 'panel', 'preview', 'settings'].includes(v.placement)) err(where, 'placement 只能是 sidebar、panel、preview 或 settings');
     if (v.placement === 'preview') {
       // a page that shows one file in the right panel (same rules as Spica's plugin manager)
       const p = v.preview;
@@ -191,12 +191,14 @@ export async function check(dir, opts = {}) {
     if (v.icon !== undefined && (!inside(v.icon) || !/\.svg$/i.test(v.icon) || !existsSync(inside(v.icon)))) err(where, 'icon 要指向插件文件夹里存在的 .svg');
     const tools = v.permissions?.tools;
     if (tools !== undefined && (!Array.isArray(tools) || tools.some((t) => typeof t !== 'string' || t.includes('__')))) err(where, 'permissions.tools 写本插件工具的原名列表（不带前缀）');
-    views.push({ where, tools: Array.isArray(tools) ? tools : undefined });
+    views.push({ where, tools: Array.isArray(tools) ? tools : undefined, placement: v.placement });
     if (entry && existsSync(entry)) {
       const html = await readFile(entry, 'utf8');
       if (/<(script|link)[^>]+(src|href)=["']https?:/i.test(html)) err(where, '页面不能从网上加载脚本或样式（沙箱只放本插件的文件），请把文件放进插件');
     }
   }
+  const settingsPages = views.filter((v) => v.placement === 'settings');
+  if (settingsPages.length > 1) err(settingsPages[1].where, `一个插件只能有一个 placement 为 settings 的页面（已有 ${settingsPages[0].where}）`);
   if (m.mail && servers.filter((s) => s.kind === 'mcp').length === 0) err('manifest.json', '声明了 mail，但插件里没有 MCP server');
 
   // ---- secrets, and environment variables that will not be there ----

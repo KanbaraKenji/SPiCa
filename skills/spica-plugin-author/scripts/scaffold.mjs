@@ -6,10 +6,11 @@
 //   node scaffold.mjs <name> [--dir <parent folder>] [--display "Title"]
 //                     [--description "..."] [--author "..."]
 //                     [--with skill,command,hook,ui] [--with-ui]
-//                     [--placement sidebar|panel] [--force]
+//                     [--placement sidebar|panel|settings] [--force]
 //
 // The page (ui) goes in the sidebar by default; --placement panel puts it in
-// a panel beside the conversation instead.
+// a panel beside the conversation instead, --placement settings in the
+// plugin's own detail under 设置 › 插件 (a settings page, no sidebar entry).
 //
 // <name>: lowercase letters, digits and "-", 2–24 characters; it becomes the
 // tool prefix (<name>__list_items) and should not change later.
@@ -61,7 +62,7 @@ export async function scaffold(opts) {
   const withs = new Set(opts.with ?? []);
   const hooks = withs.has('hook') ? '"inject"' : '';
   const placement = opts.placement ?? 'sidebar';
-  if (!['sidebar', 'panel'].includes(placement)) throw new Error('--placement 只能是 sidebar（侧栏）或 panel（对话旁边的面板）。');
+  if (!['sidebar', 'panel', 'settings'].includes(placement)) throw new Error('--placement 只能是 sidebar（侧栏）、panel（对话旁边的面板）或 settings（设置 › 插件 里这个插件的设置页）。');
   if (opts.placement && !withs.has('ui')) withs.add('ui');
   // Inside JSON files the values are escaped as JSON strings; elsewhere they go in as typed.
   const fill = (text, json) => {

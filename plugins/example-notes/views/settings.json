@@ -1,0 +1,6 @@
+{
+  "title": "设置",
+  "entry": "ui/settings.html",
+  "placement": "settings",
+  "permissions": { "tools": ["get_settings", "save_settings"] }
+}

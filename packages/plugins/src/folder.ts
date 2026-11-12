@@ -52,7 +52,7 @@ export interface HookModuleDef {
   file: string;
 }
 
-export const VIEW_PLACEMENTS = ['sidebar', 'panel', 'preview'] as const;
+export const VIEW_PLACEMENTS = ['sidebar', 'panel', 'preview', 'settings'] as const;
 
 /** What a preview page may take: at most this big (the app's own limit), 20 MB when it does not say. */
 export const PREVIEW_MAX_MB = 100;
@@ -68,8 +68,9 @@ export interface ViewDef {
   id: string;
   title: string;
   /**
-   * Where the shell shows it: a sidebar entry of its own, a panel beside the conversation, or (preview)
-   * in the right panel for a file of the kinds in `preview`, when the user chose it in the settings.
+   * Where the shell shows it: a sidebar entry of its own, a panel beside the conversation, (preview)
+   * in the right panel for a file of the kinds in `preview`, when the user chose it in the settings, or
+   * (settings) in the plugin's own detail in 设置 › 插件 (at most one such page per plugin).
    */
   placement: (typeof VIEW_PLACEMENTS)[number];
   /** HTML entry, relative to the plugin folder (forward slashes). */
@@ -303,6 +304,10 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
       out.views.push({ id, title: (v.title as string).trim(), placement: placement as ViewDef['placement'], entry, ...(icon ? { icon } : {}), ...(tools ? { tools } : {}), ...(preview ? { preview } : {}) });
     }
   }
+
+  // The plugin's detail in 设置 › 插件 has room for one page of its own.
+  const settingsPages = out.views.filter((v) => v.placement === 'settings');
+  if (settingsPages.length > 1) issue(`views/${settingsPages[1]!.id}.json`, `一个插件只能有一个 placement 为 settings 的视图（已有 views/${settingsPages[0]!.id}.json）。`);
 
   // A mail declaration must point at one MCP server.
   const mail = out.manifest?.mail;
