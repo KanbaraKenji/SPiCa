@@ -265,12 +265,19 @@ function barPath(x: number, y: number, w: number, h: number, r: number): string 
   return `M${x},${y + h}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + w - rr}Q${x + w},${y} ${x + w},${y + rr}V${y + h}Z`;
 }
 
+/**
+ * Where a hover card goes: beside the column, on the side with more room (a column in the right half gets it on
+ * its left), never past the chart's edge; as wide as its words, up to the chart's width.
+ */
+export function tipSide(x: number, width: number): { left: number } | { right: number } {
+  return x > width / 2 ? { right: Math.max(0, width - x + 10) } : { left: Math.max(0, x + 10) };
+}
+
 function ChartTip({ hover, width, view, metric, bucket, provider }: { hover: Hover; width: number; view: UsageView; metric: Metric; bucket: UsageQuery['bucket']; provider: (id: string) => string }) {
   const c = hover.col;
   const rows = view.series.map((s) => ({ s, v: (metric === 'requests' ? c.requests[s.key] : c.tokens[s.key]) ?? 0 })).filter((r) => r.v > 0);
-  const left = Math.min(Math.max(0, hover.x - 100), Math.max(0, width - 220));
   return (
-    <div className="usage-tip" style={{ left }} role="tooltip">
+    <div className="usage-tip" style={tipSide(hover.x, width)} role="tooltip">
       <div className="usage-tip-title">{bucket === 'hour' ? `${dayLabel(c.start)} ${bucketLabel(c.start, bucket)}` : dayLabel(c.start)}</div>
       {c.noData ? (
         <div className="usage-tip-row">无记录</div>
@@ -356,7 +363,7 @@ function LimitChart({ view, bucket }: { view: UsageView; bucket: UsageQuery['buc
         <line className="usage-baseline" x1={AXIS_W} x2={width} y1={plotH} y2={plotH} />
       </svg>
       {hover ? (
-        <div className="usage-tip" style={{ left: Math.min(Math.max(0, hover.x - 80), Math.max(0, width - 180)) }} role="tooltip">
+        <div className="usage-tip" style={tipSide(hover.x, width)} role="tooltip">
           <div className="usage-tip-title">{bucket === 'hour' ? `${dayLabel(hover.col.start)} ${bucketLabel(hover.col.start, bucket)}` : dayLabel(hover.col.start)}</div>
           <div className="usage-tip-row">{hover.col.noData ? '无记录' : `429：${hover.col.rateLimited}`}</div>
         </div>
@@ -385,11 +392,11 @@ function LimitList({ records, total, provider }: { records: RequestRecord[]; tot
         <tbody>
           {shown.map((r) => (
             <tr key={r.id}>
-              <td className="usage-num">{timeLabel(r.startedAt)}</td>
-              <td>{r.model ?? '—'}</td>
-              <td>{r.providerId ? provider(r.providerId) : '—'}</td>
-              <td className="is-num usage-num">{r.attempt}</td>
-              <td>{r.retried ? '已重试' : '未重试'}</td>
+              <td data-label="时间" className="usage-num">{timeLabel(r.startedAt)}</td>
+              <td data-label="模型">{r.model ?? '—'}</td>
+              <td data-label="服务商">{r.providerId ? provider(r.providerId) : '—'}</td>
+              <td data-label="第几次" className="is-num usage-num">{r.attempt}</td>
+              <td data-label="重试">{r.retried ? '已重试' : '未重试'}</td>
             </tr>
           ))}
         </tbody>
@@ -426,19 +433,19 @@ function ModelTable({ series, provider }: { series: UsageSeries[]; provider: (id
         <tbody>
           {sorted.map((s) => (
             <tr key={s.key}>
-              <td>
+              <td data-label="模型">
                 <span className="usage-swatch" style={{ background: s.color }} />
                 {s.model}
               </td>
-              <td>{s.providerId ? provider(s.providerId) : '—'}</td>
-              <td className="is-num usage-num">{s.requests.toLocaleString('en-US')}</td>
-              <td className={s.rateLimited ? 'is-num usage-num is-limited' : 'is-num usage-num'}>{s.rateLimited}</td>
-              <td className="is-num usage-num">{s.failed}</td>
-              <td className="is-num usage-num">{shortCount(s.inputTokens)}</td>
-              <td className="is-num usage-num">{shortCount(s.outputTokens)}</td>
-              <td className="is-num usage-num">{s.cacheReadTokens ? shortCount(s.cacheReadTokens) : '—'}</td>
-              <td className="is-num usage-num">{s.cacheWriteTokens ? shortCount(s.cacheWriteTokens) : '—'}</td>
-              <td className="is-num usage-num" title={s.unpriced ? `未计价请求 ${s.unpricedRequests}：没有价格的模型，不计入花费` : undefined}>
+              <td data-label="服务商">{s.providerId ? provider(s.providerId) : '—'}</td>
+              <td data-label="请求" className="is-num usage-num">{s.requests.toLocaleString('en-US')}</td>
+              <td data-label="429" className={s.rateLimited ? 'is-num usage-num is-limited' : 'is-num usage-num'}>{s.rateLimited}</td>
+              <td data-label="失败" className="is-num usage-num">{s.failed}</td>
+              <td data-label="输入" className="is-num usage-num">{shortCount(s.inputTokens)}</td>
+              <td data-label="输出" className="is-num usage-num">{shortCount(s.outputTokens)}</td>
+              <td data-label="缓存读" className="is-num usage-num">{s.cacheReadTokens ? shortCount(s.cacheReadTokens) : '—'}</td>
+              <td data-label="缓存写" className="is-num usage-num">{s.cacheWriteTokens ? shortCount(s.cacheWriteTokens) : '—'}</td>
+              <td data-label="花费" className="is-num usage-num" title={s.unpriced ? `未计价请求 ${s.unpricedRequests}：没有价格的模型，不计入花费` : undefined}>
                 {s.unpriced && !s.costUsd ? '未计价' : usd(s.costUsd)}
               </td>
             </tr>

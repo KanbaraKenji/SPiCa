@@ -199,7 +199,7 @@ describe('summarizeRequests', () => {
     );
     expect(s.since).toBe('2026-11-01T00:00:00Z');
     expect(s.rows).toEqual([
-      expect.objectContaining({ bucket: '2026-11-13T00:00:00.000Z', model: 'deepseek-chat', requests: 3, ok: 1, failed: 2, rateLimited: 1, inputTokens: 100, cacheReadTokens: 50, costUsd: 0.5 }),
+      expect.objectContaining({ bucket: '2026-11-13T00:00:00.000Z', model: 'deepseek-chat', requests: 3, ok: 1, failed: 1, rateLimited: 1, inputTokens: 100, cacheReadTokens: 50, costUsd: 0.5 }),
       expect.objectContaining({ model: 'other', requests: 1, unpriced: true, costUsd: 0, inputTokens: 7 }),
     ]);
     // a gateway's 503 throttle is not a 429

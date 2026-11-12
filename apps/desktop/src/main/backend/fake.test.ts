@@ -626,7 +626,8 @@ describe('the demo request log (设置 › 用量, the monitor)', () => {
     expect(new Set(s.rows.map((r) => r.model)).size).toBeGreaterThanOrEqual(5);
     expect(new Set(s.rows.map((r) => r.bucket)).size).toBeGreaterThanOrEqual(12);
     expect(s.rateLimited.length).toBeGreaterThan(5);
-    expect(s.rows.some((r) => r.failed > r.rateLimited)).toBe(true);
+    // failures besides the 429 answers (503, timeouts)
+    expect(s.rows.some((r) => r.failed > 0)).toBe(true);
     expect(s.rows.some((r) => r.unpriced)).toBe(true);
     expect(s.since).not.toBeNull();
     b.dispose();

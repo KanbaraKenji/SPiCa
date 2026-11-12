@@ -35,7 +35,8 @@ describe('usage-data', () => {
     expect(v.columns.map((c) => c.noData)).toEqual([true, true, false, false]);
     expect(v.since).toBe(Date.parse('2026-11-12T02:00:00Z'));
     expect(v.columns[2]!.rateLimited).toBe(1);
-    expect(v.totals).toMatchObject({ requests: 4, rateLimited: 1, failed: 1, unpriced: true });
+    // the 429 is in rateLimited only: 失败 is the other failures
+    expect(v.totals).toMatchObject({ requests: 4, rateLimited: 1, failed: 0, unpriced: true });
     expect(v.totals.costUsd).toBeCloseTo(0.21);
   });
 
@@ -105,6 +106,26 @@ describe('设置 › 用量', () => {
   it('cannot reach the core: one line', async () => {
     render(<Usage api={{ summary: async () => null }} now={now} />);
     expect(await screen.findByText('无法读取用量')).toBeTruthy();
+  });
+});
+
+describe('the hover card', () => {
+  it('opens toward the side with room: a column on the right gets it on its left, never past the edge', async () => {
+    const { tipSide } = await import('./Usage');
+    expect(tipSide(100, 640)).toEqual({ left: 110 });
+    expect(tipSide(620, 640)).toEqual({ right: 30 });
+    expect(tipSide(640, 640)).toEqual({ right: 10 });
+  });
+});
+
+describe('the tables on a narrow pane', () => {
+  it('every cell carries its column name (a narrow pane lists name and value)', async () => {
+    const summary = vi.fn(async (q: UsageQuery): Promise<UsageSummary> => summarizeRequests(RECORDS, q, '2026-11-12T02:00:00Z'));
+    render(<Usage api={{ summary }} now={() => new Date('2026-11-13T12:00:00Z')} />);
+    await screen.findByText('按模型');
+    const cells = [...document.querySelectorAll('.usage-table tbody td')];
+    expect(cells.length).toBeGreaterThan(0);
+    expect(cells.every((c) => c.getAttribute('data-label'))).toBe(true);
   });
 });
 

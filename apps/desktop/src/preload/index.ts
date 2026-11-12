@@ -135,6 +135,7 @@ const bridge: DesktopBridge = {
   saveCsv: (name, text) => ipcRenderer.invoke(DesktopChannel.SaveCsv, name, text) as Promise<SaveCsvResult>,
   monitor: {
     list: (after: number) => ipcRenderer.invoke(DesktopChannel.MonitorList, after) as Promise<MonitorEntry[]>,
+    full: (seq: number) => ipcRenderer.invoke(DesktopChannel.MonitorFull, seq) as Promise<string | null>,
     watch: (listener: (entries: MonitorEntry[]) => void) => {
       ipcRenderer.send(DesktopChannel.MonitorWatch, true);
       const off = subscribe<MonitorEntry[]>(DesktopChannel.MonitorEntries, listener);

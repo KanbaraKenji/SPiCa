@@ -6911,8 +6911,11 @@ section.plugins-part > .plugins-part-title {
   position: absolute;
   top: 0;
   z-index: 2;
+  /* as wide as the names need, never past the chart (it opens toward the side with room, settings/Usage.tsx tipSide) */
+  width: max-content;
   min-width: 160px;
-  max-width: 260px;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 8px 10px;
   border-radius: var(--radius-m);
   background: var(--spica-menu);
@@ -6936,16 +6939,16 @@ section.plugins-part > .plugins-part-title {
 .usage-tip-name {
   flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .usage-tip-provider {
-  max-width: 96px;
-  overflow: hidden;
   color: var(--spica-muted);
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+
+.usage-tip-row .usage-num {
+  margin-left: 12px;
   white-space: nowrap;
 }
 
@@ -6980,7 +6983,60 @@ section.plugins-part > .plugins-part-title {
 }
 
 .usage-table-pane {
+  container-type: inline-size;
   overflow-x: auto;
+}
+
+/* Too narrow for the columns (a small window): each row becomes a block of 「name value」 pairs, nothing cut. */
+@container (max-width: 560px) {
+  .usage-table thead {
+    display: none;
+  }
+
+  .usage-table,
+  .usage-table tbody,
+  .usage-table tr {
+    display: block;
+  }
+
+  .usage-table tr {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 2px 12px;
+    padding: 6px 0;
+  }
+
+  .usage-table tr + tr {
+    border-top: 1px solid var(--spica-divider);
+  }
+
+  .usage-table td {
+    display: flex;
+    align-items: center;
+    gap: 0 8px;
+    padding: 0;
+    white-space: normal;
+  }
+
+  .usage-table td::before {
+    flex: none;
+    margin-right: auto;
+    content: attr(data-label);
+    color: var(--spica-muted);
+  }
+
+  /* names take a line of their own (a long model or connection name never runs into the next pair) */
+  .usage-table td[data-label='模型'],
+  .usage-table td[data-label='服务商'],
+  .usage-table td[data-label='时间'] {
+    grid-column: 1 / -1;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+
+  .usage-table .is-num {
+    text-align: right;
+  }
 }
 
 .usage-table {
@@ -7042,8 +7098,8 @@ section.plugins-part > .plugins-part-title {
 
 .monitor-search {
   position: relative;
-  flex: 1 1 160px;
-  min-width: 120px;
+  flex: 1 1 96px;
+  min-width: 80px;
   max-width: 320px;
 }
 

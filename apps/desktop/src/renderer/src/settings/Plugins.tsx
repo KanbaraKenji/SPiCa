@@ -138,7 +138,7 @@ function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy
             type="number"
             min={0}
             max={m.declaredMaxUsdPerDay}
-            step={0.01}
+            step="any"
             value={limit}
             aria-label={`「${p.displayName}」每日上限（美元）`}
             onChange={(e) => setLimit(e.target.value)}

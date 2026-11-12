@@ -180,6 +180,8 @@ export interface DesktopBridge extends SpicaBridge {
   monitor: {
     /** The lines kept, oldest first; those after `after` (a seq) when given. */
     list(after: number): Promise<MonitorEntry[]>;
+    /** A line's whole text (a tool's full input or result, cut only past 100,000 characters, marked); null: gone. */
+    full(seq: number): Promise<string | null>;
     /** New lines in batches while the page listens; the returned function stops it. */
     watch(listener: (entries: MonitorEntry[]) => void): () => void;
     /** Asks where to save, then writes the text as a .log file. */

@@ -682,6 +682,9 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
       {editing ? (
         <form
           className="provider-editor"
+          // the form says what is wrong itself (red words under the field): never the browser's own bubble, which
+          // also kept 保存 from saving a 花费上限 like 0.015 (step 0.01)
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
             void run(save);
@@ -811,7 +814,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                         className={errors.spendLimitUsd ? 'input is-invalid' : 'input'}
                         type="number"
                         min="0"
-                        step="0.01"
+                        step="any"
                         value={numText(draft.spendLimitUsd ?? null)}
                         placeholder="不限"
                         autoComplete="off"

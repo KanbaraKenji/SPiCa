@@ -1005,7 +1005,7 @@ export interface UsageRow {
   model: string;
   requests: number;
   ok: number;
-  /** Failed or stopped, 429 included. */
+  /** Failed or stopped, 429 answers not included (they are in rateLimited). */
   failed: number;
   /** HTTP 429 answers. */
   rateLimited: number;

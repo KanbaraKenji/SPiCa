@@ -467,6 +467,23 @@ describe('a name already in use', () => {
 });
 
 describe('花费上限 of a provider', () => {
+  it('takes any amount, 0.015 too: the form checks it itself, the browser never stops 保存', async () => {
+    const api = fakeApi([saved({ name: 'DeepSeek 测试' })]);
+    render(<Models api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: /DeepSeek 测试/ }));
+    const box = screen.getByLabelText('花费上限（美元）') as HTMLInputElement;
+    expect(box.getAttribute('step')).toBe('any');
+    expect(box.closest('form')?.noValidate).toBe(true);
+    fireEvent.change(box, { target: { value: '0.015' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ spendLimitUsd: 0.015 })));
+    // a wrong amount: the page's own red words, not the browser's bubble
+    fireEvent.change(box, { target: { value: '-1' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect((await screen.findByText(/须为大于 0/)).className).toContain('field-error');
+  });
+
+
   it('is not under 上限 (only 代理互发消息上限 is)', () => {
     render(<Models api={fakeApi()} agentMessages={{ value: 10, onChange: () => undefined }} />);
     expect(screen.queryByRole('textbox', { name: '单次运行花费上限（美元）' })).toBeNull();

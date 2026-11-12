@@ -87,6 +87,49 @@ describe('monitor: lines', () => {
   });
 });
 
+describe('monitor: names and numbers as the settings show them', () => {
+  const named = () =>
+    new MonitorHub({ secrets: () => [], providerName: (id) => (id === 'p-33537b51' ? 'DeepSeek 测试' : undefined), spendBase: (id) => (id === 'p-33537b51' ? 0.0549 : 0) });
+
+  it('a request line names the connection, not its id', () => {
+    const h = named();
+    h.event(ev({ type: 'request', record: req({ providerId: 'p-33537b51', model: 'deepseek-flash' }) }));
+    expect(h.list()[0]!.text.startsWith('DeepSeek 测试/deepseek-flash #1 200')).toBe(true);
+  });
+
+  it('a stop at 花费上限: what was spent and the limit less what was spent before 清零, not rounded', () => {
+    const h = named();
+    h.event(ev({ type: 'budget.stop', scope: 'p-33537b51:global', spentUsd: 0.0849, limitUsd: 0.0849, nextUsd: 0.4, message: 'spending limit p-33537b51:global reached' }));
+    expect(h.list()[0]!.text).toBe('spending limit reached: DeepSeek 测试 spent US$0.03 of US$0.03');
+    h.event(ev({ type: 'budget.stop', scope: 'p-33537b51:global', spentUsd: 0.0699, limitUsd: 0.0699, nextUsd: 0.4, message: '' }));
+    expect(h.list()[1]!.text).toBe('spending limit reached: DeepSeek 测试 spent US$0.015 of US$0.015');
+  });
+});
+
+describe('monitor: the whole of a line', () => {
+  it('a tool result cut in the event says so with …; opened, it is whole (from the message that follows)', () => {
+    const h = hub();
+    const long = `第 1 行\n${'很长的结果。'.repeat(100)}最后一句`;
+    h.event(ev({ type: 'tool.end', callId: 'c1', name: 'read_file', isError: false, preview: long.slice(0, 200), durationMs: 4 }));
+    const line = h.list()[0]!;
+    expect(line.text.endsWith('…')).toBe(true);
+    h.event(ev({ type: 'message', message: { id: 'm', sessionId: 's1', seq: 2, role: 'user', kind: 'tool_results', createdAt: '', content: [{ type: 'tool_result', toolUseId: 'c1', content: long }] } }));
+    const full = h.full(line.seq)!;
+    expect(full).toContain('最后一句');
+    expect(full.startsWith('read_file ok 4ms →')).toBe(true);
+  });
+
+  it('a tool call\'s whole input; a line with nothing more is itself; secrets removed from the whole too', () => {
+    const h = hub();
+    h.event(ev({ type: 'tool.start', callId: 'c2', name: 'run_command', input: { command: `curl -H "Authorization: Bearer ${KEY}" ${'x'.repeat(500)}` } }));
+    const full = h.full(h.list()[0]!.seq)!;
+    expect(full.length).toBeGreaterThan(500);
+    expect(full).not.toContain(KEY);
+    h.add('core', 'info', 'plain line');
+    expect(h.full(h.list()[1]!.seq)).toBe('plain line');
+  });
+});
+
 describe('monitor: the values to remove', () => {
   const providers = [{ apiKey: 'sk-live-0123456789abcdef', headers: { 'x-company-token': 'abcdefghijkl' }, oauth: { clientSecret: 'consumer-secret-123', clientId: 'consumer-id-456' } }, { apiKey: '' }];
 

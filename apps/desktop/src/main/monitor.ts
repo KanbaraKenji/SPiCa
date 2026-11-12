@@ -13,6 +13,15 @@ import type { MonitorEntry, MonitorLevel, MonitorSource } from '../shared/monito
 export const MONITOR_CAP = 5000;
 /** A line longer than this is cut (a tool's whole output, a stack dump in one line). */
 const MAX_TEXT = 4000;
+/** The whole of a line (a tool's full result or input), kept beside it for the page to open: cut past this, marked. */
+const MAX_FULL = 100_000;
+/** Lines whose whole text is kept (the newest ones; older ones keep their line only). */
+const FULL_KEEP = 300;
+
+/** `text` cut at `max` characters, saying how many more there were. */
+function cutMarked(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)} …[${text.length - max} chars cut]` : text;
+}
 
 /** Header-shaped credentials the core's patterns leave: `Authorization: <scheme> <value>`, `x-api-key: …`, cookies. */
 const HEADER_SECRET = /\b((?:proxy-)?authorization|x-api-key|api-key|cookie|set-cookie)(["']?\s*[:=]\s*["']?)([^\r\n"',}]+)/gi;
@@ -66,6 +75,13 @@ export interface MonitorHubOptions {
   secrets: () => readonly string[];
   cap?: number;
   now?: () => Date;
+  /** A connection's name as the user gave it (设置 › 模型), for its id; undefined: the id is shown. */
+  providerName?: (id: string) => string | undefined;
+  /**
+   * What a connection had cost at its last 清零 (the core counts from the first call; 设置 shows 已花 and 上限 less
+   * this), so a stop at the limit reads the same numbers as the settings.
+   */
+  spendBase?: (id: string) => number;
 }
 
 export class MonitorHub {
@@ -75,6 +91,10 @@ export class MonitorHub {
   readonly #listeners = new Set<(e: MonitorEntry) => void>();
   /** The rest of a chunk of output that did not end in a line break yet, per stream. */
   readonly #partial = new Map<string, string>();
+  /** Whole texts of lines shown cut (by seq), newest last. */
+  readonly #full = new Map<number, string>();
+  /** A tool call's 结束 line, until its whole result comes with the conversation's next message. */
+  readonly #toolEnds = new Map<string, number>();
 
   constructor(o: MonitorHubOptions) {
     this.#o = o;
@@ -88,7 +108,7 @@ export class MonitorHub {
       at: localIso(at ?? this.#o.now?.() ?? new Date()),
       source,
       level,
-      text: clean.length > MAX_TEXT ? `${clean.slice(0, MAX_TEXT)} …[${clean.length - MAX_TEXT} chars cut]` : clean,
+      text: cutMarked(clean, MAX_TEXT),
       ...(sessionId ? { sessionId } : {}),
     };
     this.#entries.push(e);
@@ -123,19 +143,36 @@ export class MonitorHub {
     const sid = e.sessionId || undefined;
     switch (e.type) {
       case 'request':
-        this.add('request', requestLevel(e.record), requestText(e.record), sid);
+        this.add('request', requestLevel(e.record), requestText(e.record, this.#name), sid);
         break;
-      case 'tool.start':
-        this.add('tool', 'info', `${e.name} ← ${short(e.summary ?? json(e.input), 300)}`, sid);
+      case 'tool.start': {
+        const input = json(e.input);
+        const line = this.add('tool', 'info', `${e.name} ← ${short(e.summary ?? input, 300)}`, sid);
+        if (line) this.#keepFull(line.seq, `${e.name} ← ${e.summary ? `${e.summary}\n` : ''}${input}`);
         break;
-      case 'tool.end':
-        this.add('tool', e.isError ? 'error' : 'info', `${e.name} ${e.isError ? 'failed' : 'ok'} ${e.durationMs}ms → ${short(e.preview, 300)}`, sid);
+      }
+      case 'tool.end': {
+        // the event has the result's first part only: cut, said with …; the whole comes with the next message
+        const preview = e.preview.length >= 200 ? `${e.preview}…` : e.preview;
+        const line = this.add('tool', e.isError ? 'error' : 'info', `${e.name} ${e.isError ? 'failed' : 'ok'} ${e.durationMs}ms → ${short(preview, 300)}`, sid);
+        if (line) this.#toolEnds.set(e.callId, line.seq);
+        break;
+      }
+      case 'message':
+        for (const b of e.message.content) {
+          if (b.type !== 'tool_result') continue;
+          const seq = this.#toolEnds.get(b.toolUseId);
+          if (seq === undefined) continue;
+          this.#toolEnds.delete(b.toolUseId);
+          const head = this.#entries.find((x) => x.seq === seq)?.text.split(' → ')[0] ?? '';
+          this.#keepFull(seq, `${head} →\n${b.content}`);
+        }
         break;
       case 'error':
         this.add('core', e.retryable ? 'warn' : 'error', `${e.code ? `[${e.code}] ` : ''}${e.message}`, sid);
         break;
       case 'budget.stop':
-        this.add('core', 'warn', e.message, sid);
+        this.add('core', 'warn', this.#budgetText(e.scope, e.spentUsd, e.limitUsd), sid);
         break;
       case 'run.end':
         this.add('core', e.reason === 'error' ? 'error' : 'info', `run ended: ${e.reason}${e.detail ? ` (${short(e.detail, 300)})` : ''}`, sid);
@@ -147,6 +184,28 @@ export class MonitorHub {
       default:
         break;
     }
+  }
+
+  readonly #name = (id: string): string => this.#o.providerName?.(id) || id;
+
+  /** 「spending limit reached: DeepSeek 测试 spent US$0.03 of US$0.03」: the numbers 设置 › 模型 shows (after 清零). */
+  #budgetText(scope: string, spent: number, limit: number): string {
+    const [who = '', kind = ''] = scope.split(':');
+    const base = who !== 'all' ? (this.#o.spendBase?.(who) ?? 0) : 0;
+    const money = (n: number) => 'US$' + String(Number(Math.max(0, n).toFixed(4)));
+    const whose = who === 'all' ? (kind === 'global' ? 'all providers' : 'this ' + kind) : this.#name(who) + (kind === 'global' ? '' : ' (' + kind + ')');
+    return 'spending limit reached: ' + whose + ' spent ' + money(spent - base) + ' of ' + money(limit - base);
+  }
+
+  #keepFull(seq: number, text: string): void {
+    this.#full.set(seq, cutMarked(scrub(text, this.#o.secrets()), MAX_FULL));
+    while (this.#full.size > FULL_KEEP) this.#full.delete(this.#full.keys().next().value as number);
+    while (this.#toolEnds.size > FULL_KEEP) this.#toolEnds.delete(this.#toolEnds.keys().next().value as string);
+  }
+
+  /** The whole of a line: its full text when one is kept (a tool's input or result), else the line itself. */
+  full(seq: number): string | null {
+    return this.#full.get(seq) ?? this.#entries.find((x) => x.seq === seq)?.text ?? null;
   }
 
   /** The lines kept, oldest first; with `after`, only the newer ones. */
@@ -176,8 +235,8 @@ function requestLevel(r: RequestRecord): MonitorLevel {
 }
 
 /** deepseek/deepseek-chat #2 429 gateway.rate_limited 312ms · retried */
-export function requestText(r: RequestRecord): string {
-  const parts = [`${r.providerId ?? '?'}/${r.model ?? '?'}`, `#${r.attempt}`, r.status === 'ok' ? String(r.httpStatus ?? 'ok') : r.status === 'aborted' ? 'aborted' : String(r.httpStatus ?? 'error')];
+export function requestText(r: RequestRecord, name: (id: string) => string = (id) => id): string {
+  const parts = [`${r.providerId ? name(r.providerId) : '?'}/${r.model ?? '?'}`, `#${r.attempt}`, r.status === 'ok' ? String(r.httpStatus ?? 'ok') : r.status === 'aborted' ? 'aborted' : String(r.httpStatus ?? 'error')];
   if (r.errorCode) parts.push(r.errorCode);
   parts.push(`${r.durationMs}ms`);
   if (r.inputTokens !== undefined || r.outputTokens !== undefined) parts.push(`in ${r.inputTokens ?? 0} · out ${r.outputTokens ?? 0}${r.cacheReadTokens ? ` · cache ${r.cacheReadTokens}` : ''}`);

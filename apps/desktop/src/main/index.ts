@@ -244,7 +244,24 @@ ipcMain.on(DesktopChannel.ActiveSession, (_e, id: unknown) => {
 
 // 监控台 (main/monitor.ts): kept from the start, whether the page is open or not. The values to remove are read at
 // every line: the saved keys and secrets (as the core gets them) and the proxy's password.
-const monitor = new MonitorHub({ secrets: monitorSecrets });
+const monitor = new MonitorHub({
+  secrets: monitorSecrets,
+  // the names the user gave the connections, and what they had cost at 清零 (as 设置 › 模型 shows them)
+  providerName: (id) => {
+    try {
+      return providerList().items.find((p) => p.id === id)?.name;
+    } catch {
+      return undefined; // too early: the stores are not read yet
+    }
+  },
+  spendBase: (id) => {
+    try {
+      return providers.spendBase(id);
+    } catch {
+      return 0;
+    }
+  },
+});
 // Worked out again at most every two seconds (not for every line), so a changed key is covered right away.
 let secretsCache: { at: number; values: string[] } | null = null;
 function monitorSecrets(): string[] {
@@ -933,6 +950,7 @@ monitor.onAdd((e) => {
   }, 200);
 });
 ipcMain.handle(DesktopChannel.MonitorList, (_e, after: unknown) => monitor.list(typeof after === 'number' && after > 0 ? after : 0));
+ipcMain.handle(DesktopChannel.MonitorFull, (_e, seq: unknown) => (typeof seq === 'number' ? monitor.full(seq) : null));
 ipcMain.on(DesktopChannel.MonitorWatch, (_e, on: unknown) => {
   monitorWatching = on === true;
   if (!monitorWatching) monitorBatch = [];

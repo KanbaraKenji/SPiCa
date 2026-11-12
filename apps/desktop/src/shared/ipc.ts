@@ -62,6 +62,8 @@ export const DesktopChannel = {
   MonitorWatch: 'spica:monitor:watch',
   /** main -> renderer: MonitorEntry[] (new lines, in batches) */
   MonitorEntries: 'spica:monitor:entries',
+  /** invoke: seq -> string | null (a line's whole text: a tool's full input or result) */
+  MonitorFull: 'spica:monitor:full',
   /** invoke: text -> SaveCsvResult (asks where to save a .log first) */
   MonitorExport: 'spica:monitor:export',
   Images: 'spica:images',

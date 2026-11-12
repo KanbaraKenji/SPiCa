@@ -15,6 +15,8 @@ import { ContextMenu } from '../ui/ContextMenu';
 
 export interface MonitorApi {
   list(after: number): Promise<MonitorEntry[]>;
+  /** A line's whole text (absent: the line is all there is). */
+  full?(seq: number): Promise<string | null>;
   watch(listener: (entries: MonitorEntry[]) => void): () => void;
   export(text: string): Promise<SaveCsvResult>;
 }
@@ -117,7 +119,11 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
   useLayoutEffect(() => {
     const el = list.current;
     if (!el) return;
-    const measure = () => setScroll({ top: el.scrollTop, height: el.clientHeight || 480 });
+    const measure = () => {
+      // a smaller window: still at the end unless paused
+      if (!pausedRef.current) el.scrollTop = el.scrollHeight;
+      setScroll({ top: el.scrollTop, height: el.clientHeight || 480 });
+    };
     measure();
     if (typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(measure);
@@ -174,6 +180,20 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
   const last = Math.min(shown.length, Math.ceil((scroll.top + scroll.height) / ROW_H) + OVERSCAN);
   const rows = shown.slice(first, last);
   const sel = selected === null ? undefined : shown.find((e) => e.seq === selected);
+  // the picked line in full: asked for when picked (the list holds lines, the whole of a tool's result is kept apart)
+  const [whole, setWhole] = useState<{ seq: number; text: string } | null>(null);
+  useEffect(() => {
+    if (selected === null || !api.full) return;
+    let live = true;
+    void api.full(selected).then(
+      (t) => live && t !== null && setWhole({ seq: selected, text: t }),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [api, selected]);
+  const selText = sel ? (whole?.seq === sel.seq ? whole.text : sel.text) : '';
 
   return (
     <div className="monitor">
@@ -276,14 +296,14 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
             <span className="monitor-time">{`${sel.at.slice(0, 10)} ${clockOf(sel.at)}`}</span>
             <span className="monitor-source">{MONITOR_SOURCES.find(([s]) => s === sel.source)?.[1]}</span>
             <span className="monitor-level">{MONITOR_LEVELS.find(([l]) => l === sel.level)?.[1]}</span>
-            <button type="button" className="btn btn-small" onClick={() => copy(sel)}>
+            <button type="button" className="btn btn-small" onClick={() => copy({ ...sel, text: selText })}>
               {copied === sel.seq ? '已复制' : '复制'}
             </button>
             <button type="button" className="icon-btn" aria-label="关闭" title="关闭" onClick={() => setSelected(null)}>
               <Icon name="close" size={14} />
             </button>
           </div>
-          <pre className="monitor-detail-text">{sel.text}</pre>
+          <pre className="monitor-detail-text">{selText}</pre>
         </div>
       ) : null}
     </div>

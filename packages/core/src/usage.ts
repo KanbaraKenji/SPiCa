@@ -43,8 +43,9 @@ export function summarizeRequests(records: readonly RequestRecord[], query: Usag
       rows.set(key, row);
     }
     row.requests++;
+    // a 429 counts as a 429 only (most are retried and answered); 失败 is every other failed or stopped request
     if (r.status === 'ok') row.ok++;
-    else row.failed++;
+    else if (!isRateLimited(r)) row.failed++;
     if (isRateLimited(r)) {
       row.rateLimited++;
       limited.push(r);

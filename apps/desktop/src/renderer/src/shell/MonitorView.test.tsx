@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { MonitorEntry } from '../../../shared/monitor';
 import { clipboard } from '../ui/clipboard';
 import { filterEntries, MonitorView, sourcesLabel, type MonitorApi } from './MonitorView';
@@ -61,6 +61,28 @@ describe('监控台', () => {
     fireEvent.click(document.querySelector('.monitor-row')!);
     expect(document.querySelector('.monitor-detail-text')!.textContent).toBe(evil);
     expect(document.querySelector('.monitor-detail img')).toBeNull();
+  });
+
+  it('a picked line shows its whole text (asked for), and 复制 copies all of it', async () => {
+    const write = vi.spyOn(clipboard, 'write').mockResolvedValue();
+    let push: (b: MonitorEntry[]) => void = () => undefined;
+    const api: MonitorApi = {
+      list: vi.fn(async () => [e(1, { source: 'tool', text: 'read_file ok 4ms → 开头…' })]),
+      full: vi.fn(async () => 'read_file ok 4ms →\n开头一直到最后一句'),
+      watch: vi.fn((l) => {
+        push = l;
+        return () => undefined;
+      }),
+      export: vi.fn(async () => null),
+    };
+    void push;
+    render(<MonitorView api={api} />);
+    fireEvent.click(await screen.findByText('read_file ok 4ms → 开头…'));
+    await waitFor(() => expect(document.querySelector('.monitor-detail-text')!.textContent).toContain('最后一句'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '复制' }));
+    });
+    expect(write.mock.calls.at(-1)![0]).toContain('最后一句');
   });
 
   it('暂停滚动 stops following and counts what came; 继续 goes on', async () => {
