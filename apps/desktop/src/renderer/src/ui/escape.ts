@@ -11,6 +11,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 interface Layer {
+  /** Below every other layer whenever it opened (a page in place of the conversation: what is over it goes first). */
+  under: boolean;
   /** Layers that open in one go (one update of the page) share it; a later one is above. */
   batch: number;
   /** Among those, the one rendered first (the outer one) is below. */
@@ -45,6 +47,7 @@ function openingBatch(): number {
 }
 
 function above(a: Layer, b: Layer): boolean {
+  if (a.under !== b.under) return b.under;
   return a.batch !== b.batch ? a.batch > b.batch : a.born > b.born;
 }
 
@@ -80,8 +83,12 @@ function listen(): void {
   window.addEventListener('keydown', notePrior, true);
 }
 
-/** While `open`, this layer is above every layer opened before it; Esc then calls `onClose` (one layer a press). */
-export function useEscape(open: boolean, onClose: () => void): void {
+/**
+ * While `open`, this layer is above every layer opened before it; Esc then calls `onClose` (one layer a press).
+ * `under`: below all the others however late it opened (the inbox, the monitor or a plugin page in the main area).
+ */
+export function useEscape(open: boolean, onClose: () => void, opts: { under?: boolean } = {}): void {
+  const under = opts.under ?? false;
   const close = useRef(onClose);
   useEffect(() => {
     close.current = onClose;
@@ -92,6 +99,7 @@ export function useEscape(open: boolean, onClose: () => void): void {
     if (!open) return;
     const recent = Date.now() - prior.at <= OPENED_BY_MS;
     const layer: Layer = {
+      under,
       batch: openingBatch(),
       born,
       close: () => close.current(),
@@ -105,7 +113,7 @@ export function useEscape(open: boolean, onClose: () => void): void {
       const at = stack.indexOf(layer);
       if (at >= 0) stack.splice(at, 1);
     };
-  }, [open, born]);
+  }, [open, born, under]);
 }
 
 // From the start, so the press that opens the first layer is seen too.

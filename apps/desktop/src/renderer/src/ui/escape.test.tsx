@@ -130,3 +130,34 @@ function Toggle({ name, open, onClose }: { name: string; open: boolean; onClose:
   useEscape(open, onClose);
   return open ? <div>{name}</div> : null;
 }
+
+describe('a layer marked under', () => {
+  it('stays below a layer opened before it', async () => {
+    function Page() {
+      const [panel, setPanel] = useState(true);
+      const [page, setPage] = useState(false);
+      return (
+        <>
+          <Toggle name="panel" open={panel} onClose={() => setPanel(false)} />
+          <Under open={page} onClose={() => setPage(false)} />
+          <button type="button" onClick={() => setPage(true)}>
+            inbox
+          </button>
+        </>
+      );
+    }
+    render(<Page />);
+    await new Promise((r) => setTimeout(r, 0));
+    fireEvent.click(screen.getByRole('button', { name: 'inbox' }));
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.queryByText('panel')).toBeNull();
+    expect(screen.getByText('page')).toBeTruthy();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.queryByText('page')).toBeNull();
+  });
+});
+
+function Under({ open, onClose }: { open: boolean; onClose: () => void }) {
+  useEscape(open, onClose, { under: true });
+  return open ? <div>page</div> : null;
+}

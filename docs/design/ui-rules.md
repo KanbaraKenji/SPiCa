@@ -82,7 +82,7 @@
 | **定** 账号菜单每一项前面有图标；别的菜单暂定照旧 | `shell/Sidebar.tsx`（菜单项的 `icon` 参数） | 该组件的测试 |
 | **定** 按 Esc 一次只收最上面一层（后开的先收）；一层都没有时 Esc 才往下走（输入框里运行中是停止）。会浮出来的东西都登记到同一处，不各自接 Esc | `ui/escape.ts` 的 `useEscape`；`useModal`、`ContextMenu` 已接 | `ui/escape.test.tsx`、`ui/useModal.test.tsx` |
 | **暂定** Esc 收掉一层后，焦点回到打开它之前所在的地方（焦点会落空或落在打开它的按钮上时） | `ui/escape.ts` | `ui/escape.test.tsx` |
-| **暂定** 停靠的侧栏、详情、预览不算一层；预览「最大化」、滑出盖在窗口上的面板、收件箱 / 监控台 / 插件页占着主区域时算一层 | `App.tsx` | 人工（隐藏窗口走查） |
+| **暂定** 停靠的侧栏、详情、预览不算一层；预览「最大化」、滑出盖在窗口上的面板、收件箱 / 监控台 / 插件页占着主区域时算一层（占主区域的永远在最下面） | `App.tsx` | 人工（隐藏窗口走查）；`under` 见 `ui/escape.test.tsx` |
 | **暂定** 菜单：上下方向键在能选的项之间走，到头绕回，跳过不能选的；回车选中；指针动过后从指针下那一项起。方向键走的时候只亮焦点那一项 | `ui/ContextMenu.tsx`、`.context-menu.is-keys` | `ui/ContextMenu.test.tsx` |
 | **暂定** 菜单项的图标用 `icon` 参数，放在文字前，16 大，和文字同色，隔 10；没给图标的项不留空位 | `ui/ContextMenu.tsx`、`.context-item-icon` | `ui/ContextMenu.test.tsx` |
 | **定** 设置行里的文件夹路径本身可以点开；右边的按钮只管修改 | `settings/Group.tsx` 的 `Row`（`path.open`） | 该组件的测试 |

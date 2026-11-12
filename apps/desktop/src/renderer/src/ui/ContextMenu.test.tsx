@@ -154,6 +154,18 @@ describe('ContextMenu with the keys', () => {
     expect(document.activeElement).toBe(rename);
   });
 
+  it('with the pointer moved off the items, Enter picks nothing (nothing is lit)', () => {
+    const pick = vi.fn();
+    render(<ContextMenu x={0} y={0} items={items(pick)} onClose={vi.fn()} />);
+    const menu = screen.getByRole('menu');
+    const remove = screen.getAllByRole('menuitem')[2]!;
+    fireEvent.pointerMove(remove);
+    fireEvent.pointerLeave(remove);
+    expect(document.activeElement).toBe(menu);
+    fireEvent.keyDown(menu, { key: 'Enter' });
+    expect(pick).not.toHaveBeenCalled();
+  });
+
   it('an item given an icon draws it before its words; the others keep no place for one', () => {
     render(<ContextMenu x={0} y={0} items={[{ label: '设置', icon: 'settings', onSelect: vi.fn() }, { label: '重命名', onSelect: vi.fn() }]} onClose={vi.fn()} />);
     const [withIcon, plain] = screen.getAllByRole('menuitem');

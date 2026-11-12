@@ -138,6 +138,10 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
             aria-disabled={it.disabled || undefined}
             // Its own note (why it cannot be picked), else the label when it is cut short.
             {...(it.title ? { title: it.title } : { title: it.label, 'data-tip-clipped': '.context-item-label' })}
+            onPointerLeave={(e) => {
+              // Nothing is lit once the pointer is off the item: Enter then picks nothing.
+              if (hot.current === e.currentTarget) hot.current = null;
+            }}
             onPointerMove={(e) => {
               hot.current = e.currentTarget;
               const focused = document.activeElement;

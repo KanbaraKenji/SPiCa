@@ -216,9 +216,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [toggle, canMax]);
-  // A layer of Esc: the inbox, the monitor or a plugin page in place of the conversation (back to it). The settings
-  // dialog is one through useModal; a panel slid out over the window is one below.
-  useEscape(view !== 'chat', () => setView('chat'));
+  // A layer of Esc: the inbox, the monitor or a plugin page in place of the conversation (back to it), under all the
+  // others (a panel slid out over it goes first). The settings dialog is one through useModal; a slid-out panel below.
+  useEscape(view !== 'chat', () => setView('chat'), { under: true });
 
   // Sidebar collapsed: resting the pointer on its toggle slides it out for a moment;
   // it goes away once the pointer leaves it. The icons of the column do not slide it out.
@@ -238,9 +238,17 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // there (it would slide out again at once); leaving the toggle ends that.
   const peekHeld = useRef(false);
   useEscape(floating !== null, () => {
-    if (peekOpen) peekHeld.current = true;
     peek.cancel();
     setFloating(null);
+    if (!peekOpen) return;
+    peekHeld.current = true;
+    // The pointer may have been anywhere on the panel: the first move that is not on the toggle ends the hold.
+    const moved = (e: PointerEvent) => {
+      if (e.target instanceof Element && e.target.closest('.rail-toggle')) return;
+      peekHeld.current = false;
+      window.removeEventListener('pointermove', moved, true);
+    };
+    window.addEventListener('pointermove', moved, true);
   });
 
   // A floating panel closes when you press anywhere else. No dark layer behind it: the
