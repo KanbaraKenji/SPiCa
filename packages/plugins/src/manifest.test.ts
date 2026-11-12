@@ -68,7 +68,10 @@ describe('plugin folder', () => {
     expect(f.manifest?.name).toBe('notes');
     expect(f.skills.map((s) => s.id)).toEqual(['note-taking']);
     expect(f.commands.map((c) => c.id)).toEqual(['note']);
-    expect(f.servers).toMatchObject([{ id: 'notes', kind: 'mcp', runtime: 'node', exposeTools: true }]);
+    expect(f.servers).toMatchObject([
+      { id: 'notes', kind: 'mcp', runtime: 'node', exposeTools: true },
+      { id: 'settings', kind: 'service', runtime: 'node', exposeTools: false },
+    ]);
     expect(f.hooks.map((h) => h.id)).toEqual(['notes-hint.js']);
   });
 

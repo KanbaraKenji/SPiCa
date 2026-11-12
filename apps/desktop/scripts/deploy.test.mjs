@@ -77,4 +77,17 @@ describe('deploy.json', () => {
     expect(message).toContain('第 2 个连接（gw）：wso2 要写 tokenUrl');
     expect(message).toContain('第 2 个连接（gw）的第 1 个型号（m）：contextWindow 要写正整数');
   });
+
+  it('pluginSources: none means none; a place or { location, label }; a wrong one stops the packaging', () => {
+    expect(readDeploy(dirWith({})).pluginSources).toEqual([]);
+    expect(readDeploy(dirWith(undefined)).pluginSources).toEqual([]);
+    expect(readDeploy(dirWith({ pluginSources: ['https://plugins.example.com/index.json', { location: ' \\\\server\\plugins ', label: ' 团队插件 ' }] })).pluginSources).toEqual([
+      { location: 'https://plugins.example.com/index.json' },
+      { location: '\\\\server\\plugins', label: '团队插件' },
+    ]);
+    expect(() => readDeploy(dirWith({ pluginSources: 'https://plugins.example.com/index.json' }))).toThrow(/要写成一个列表/);
+    expect(() => readDeploy(dirWith({ pluginSources: ['plugins'] }))).toThrow(/第 1 项「plugins」不能用/);
+    expect(() => readDeploy(dirWith({ pluginSources: [{ label: 'x' }] }))).toThrow(/第 1 项要写地址/);
+    expect(() => readDeploy(dirWith({ pluginSources: ['https://plugins.example.com/a-1.0.0.zip'] }))).toThrow(/单个插件包/);
+  });
 });

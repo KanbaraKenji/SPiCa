@@ -64,6 +64,8 @@ export interface PluginHost {
   callPluginTool?(plugin: string, tool: string, args: Record<string, unknown>, opts: { confirmed?: boolean; signal?: AbortSignal }): Promise<PluginToolCallResult>;
   /** USD a plugin spent today on the user's models (MCP sampling). Absent on cores without sampling. */
   modelSpentToday?(plugin: string): number;
+  /** The plugin used a model without a price today (not in modelSpentToday; shown 「未计价」). */
+  modelUnpricedToday?(plugin: string): boolean;
 }
 
 /** Mirrors @spica/core's PluginToolResult. */
@@ -96,7 +98,7 @@ export interface RuntimeLike {
   mail?: { addSource(src: MailSourceSpec): () => void };
   invokeTool?(name: string, input: Record<string, unknown>): Promise<{ content: string; isError: boolean }>;
   callPluginTool?(plugin: string, tool: string, args: Record<string, unknown>, opts?: { confirmed?: boolean; signal?: AbortSignal }): Promise<PluginToolCallResult>;
-  sampler?: { spentToday(pluginId: string): number };
+  sampler?: { spentToday(pluginId: string): number; unpricedToday?(pluginId: string): boolean };
 }
 
 export function runtimeHost(rt: RuntimeLike): PluginHost {
@@ -119,5 +121,6 @@ export function runtimeHost(rt: RuntimeLike): PluginHost {
       ? { callPluginTool: (plugin: string, tool: string, args: Record<string, unknown>, opts: { confirmed?: boolean; signal?: AbortSignal }) => rt.callPluginTool!(plugin, tool, args, opts) }
       : {}),
     ...(rt.sampler ? { modelSpentToday: (plugin: string) => rt.sampler!.spentToday(plugin) } : {}),
+    ...(rt.sampler?.unpricedToday ? { modelUnpricedToday: (plugin: string) => rt.sampler!.unpricedToday!(plugin) } : {}),
   };
 }

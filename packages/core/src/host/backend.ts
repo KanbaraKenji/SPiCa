@@ -50,6 +50,8 @@ export interface ProviderConfig {
    * its info is asked for, so a change applies without restarting.
    */
   contextWindows?: Record<string, number>;
+  /** Most output tokens per model name, when the provider's own model list says it (wins over the catalog). */
+  maxOutputs?: Record<string, number>;
 }
 
 /** Hand the providers' context windows to the ledger; providers not listed lose theirs. Returns warnings. */
@@ -57,8 +59,13 @@ function applyContextWindows(runtime: Runtime, providers: ProviderConfig[], prev
   const warnings: string[] = [];
   const before = new Map(runtime.sessions().map((s) => [s, s.info().contextWindow]));
   const keep = new Set(providers.map((p) => p.id));
-  for (const id of previous) if (!keep.has(id)) runtime.ledger.setContextWindows(id, {});
+  for (const id of previous) {
+    if (keep.has(id)) continue;
+    runtime.ledger.setContextWindows(id, {});
+    runtime.ledger.setMaxOutputs(id, {});
+  }
   for (const p of providers) {
+    runtime.ledger.setMaxOutputs(p.id, p.maxOutputs ?? {});
     const bad = runtime.ledger.setContextWindows(p.id, p.contextWindows ?? {});
     if (bad.length) warnings.push(`provider ${p.id}: context window ignored for ${bad.join(', ')} (needs a positive whole number of tokens)`);
   }
@@ -75,7 +82,7 @@ export interface BackendConfig {
   dbPath: string;
   providers: ProviderConfig[];
   /** strongModel: the model for heavy work (plugins that ask for a strong model get it), on the default provider or on strongProviderId. */
-  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; strongModel?: string; strongProviderId?: string };
+  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; outputByModel?: boolean; agentMessages?: number; strongModel?: string; strongProviderId?: string };
   cwd?: string;
   /**
    * The folder every conversation without a chosen one shared up to 0.1.0-rc.2 (the desktop app: Documents/<app>).

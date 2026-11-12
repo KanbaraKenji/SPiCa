@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SPLASH_INK } from '../shared/skin';
+import { RAIL_WIDTH } from '../renderer/src/shell/layout';
 
 const css = readFileSync(join(__dirname, '../renderer/src/styles.css'), 'utf8');
 const block = (selector: string) => {
@@ -51,6 +52,50 @@ describe('styles', () => {
   });
 });
 
+describe('the panels around the conversation (shell/layout.ts counts on these)', () => {
+  it('the column of icons left when the sidebar is not docked is RAIL_WIDTH wide', () => {
+    expect(block('.panel-rail')).toContain(`width: ${RAIL_WIDTH}px`);
+  });
+
+  it('each docked right panel (preview, details) draws the line on its left; laid over the conversation it has none', () => {
+    expect(block('.panel-right.is-docked')).toContain('border-left: 1px solid var(--spica-divider)');
+    expect(block('.panel.panel-right.is-max')).toContain('border-left: 0');
+    expect(css).not.toContain("data-right='docked'");
+  });
+
+  it('the top row is one row: the right panels’ heads are as high as the title bar, with the same line under them and the same left inset', () => {
+    const head = block('.panel-head');
+    expect(head).toContain('height: var(--spica-titlebar-h)');
+    expect(head).toContain('border-bottom: 1px solid var(--spica-divider)');
+    expect(head).toContain('background: var(--spica-chrome)');
+    expect(head).toContain('padding: 0 8px 0 16px');
+    expect(block('.titlebar')).toContain('padding-left: 16px');
+    expect(block('.titlebar')).toContain('border-bottom: 1px solid var(--spica-divider)');
+    // The preview's and the details' heads have no box of their own any more (it was 44 high, another line colour).
+    expect(block('.preview-head')).not.toContain('height');
+    expect(css).not.toContain('.detail-head {');
+  });
+
+  it('the panel at the window’s edge keeps room for the system buttons, as the title bar does; the title bar beside a panel does not', () => {
+    expect(block('.panel-right.is-edge .panel-head')).toContain('env(titlebar-area-width');
+    expect(block('.titlebar.is-inner')).toContain('padding-right: 8px');
+  });
+
+  it('a button that cannot be pressed now is greyed but still says why on hover (aria-disabled, as .btn)', () => {
+    expect(block(".icon-btn:disabled,\n.icon-btn[aria-disabled='true']")).toContain('opacity: 0.4');
+    expect(css).toContain(".icon-btn:hover:not(:disabled):not([aria-disabled='true'])");
+  });
+
+  it('in the details: one line between groups; amounts and folders stand right; a file’s folder is cut before its name', () => {
+    expect(block('.detail-section + .detail-section')).toContain('border-top: 1px solid var(--spica-divider)');
+    expect(block('.detail-facts dd.num')).toContain('text-align: right');
+    expect(block('.detail-file .detail-item-sub')).toContain('text-align: right');
+    expect(block('.detail-file .detail-item-sub')).toContain('flex: 1 1 0');
+    expect(block('.detail-file-name')).toContain('flex: 0 1 auto');
+    expect(block('.detail-file')).toContain('width: calc(100% + 12px)');
+  });
+});
+
 describe('sidebar tabs', () => {
   it('the tabs and the space kept for them on the icon column are one rule: same height, same margins', () => {
     const rule = block('.side-tabs,\n.side-tabs-space');
@@ -72,26 +117,37 @@ describe('the model under the message box', () => {
   });
 });
 
+describe('settings: one group, one box (settings/Group.tsx)', () => {
+  it('the rows in a box are split by a thin line, and a row draws no card of its own', () => {
+    expect(block('.group-box > * + *,\n.group-list > * + *')).toContain('border-top: 1px solid var(--spica-divider)');
+    expect(block('\n.group-box')).toContain('border-radius: var(--radius-l)');
+    expect(block('\n.setting-row')).not.toMatch(/border|background/);
+  });
+});
+
 describe('settings › 插件 fills the window', () => {
-  it('the page is the window tall (a floor past which it scrolls again); list and detail stretch and scroll on their own', () => {
+  it('the page is the window tall (a floor past which it scrolls again) and scrolls as a whole; a plugin’s own settings page fills the rest and scrolls itself', () => {
     const page = block('.settings-column.is-fill');
     expect(page).toContain('height: 100%');
     expect(page).toMatch(/min-height: \d+px/);
-    expect(block('.is-fill .plugins-two')).toContain('align-items: stretch');
-    expect(block('.is-fill .plugins-two')).toContain('flex: 1');
-    expect(block('.is-fill .plugins-list,\n.is-fill .plugin-detail')).toContain('overflow-y: auto');
+    expect(block('\n.is-fill .plugins-page')).toContain('overflow-y: auto');
+    expect(block('.is-fill .plugin-detail.is-page')).toContain('flex: 1');
+    expect(block('.is-fill .plugin-detail.is-page')).toContain('min-height: 0');
   });
 });
 
 describe('settings › 插件 list rows', () => {
-  it('a long name is cut before the version is (the version never shrinks)', () => {
-    expect(block('.plugin-row-name')).toContain('flex: 0 1 auto');
-    expect(block('.plugin-row-name')).toContain('text-overflow: ellipsis');
-    expect(block('.plugin-row-version')).toContain('flex: none');
-    // Right after the name: the 8px gap of the row and of the detail's title, less 4.
-    expect(block('.plugin-row')).toContain('gap: 8px');
-    expect(block('.plugin-title')).toContain('gap: 8px');
-    expect(block('.plugin-row .plugin-version,\n.plugin-title .plugin-version')).toContain('margin-left: -4px');
+  it('a long name is cut before the version is (the version never shrinks); the line under it is cut at its end, a card’s after two lines', () => {
+    expect(block('\n.plugin-row-name')).toContain('flex: 0 1 auto');
+    expect(block('\n.plugin-row-name')).toContain('text-overflow: ellipsis');
+    expect(block('.plugin-item-title .plugin-version')).toContain('flex: none');
+    expect(block('.plugin-item-desc')).toContain('text-overflow: ellipsis');
+    expect(block('.plugin-card-desc')).toContain('-webkit-line-clamp: 2');
+  });
+
+  it('市场: two cards a row, one when narrow', () => {
+    expect(block('.plugin-grid')).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
+    expect(block('.plugins-page.is-narrow .plugin-grid')).toContain('grid-template-columns: minmax(0, 1fr)');
   });
 });
 
@@ -119,13 +175,6 @@ describe('renaming in place', () => {
 describe('sidebar status place', () => {
   it('stopped has the error’s red dot', () => {
     expect(block('.status-slot.is-error .slot-dot,\n.status-slot.is-stopped .slot-dot')).toContain('background: var(--spica-danger)');
-  });
-});
-
-describe('settings › 插件 list texts', () => {
-  it('a line in the list (nothing found, sources not reached) keeps the group titles’ inset from the box edge', () => {
-    expect(block('.plugins-group-title')).toContain('padding: 6px 12px 4px');
-    expect(block('.plugins-list .plugins-none')).toContain('padding: 0 12px');
   });
 });
 
@@ -227,6 +276,36 @@ describe('the conversation’s sizes', () => {
     expect(block('.fold-meta')).toContain('font-size: var(--fs-caption)');
   });
 
+  it('a row’s words are trimmed to the capitals and the baseline, so they centre on the icons; cut at the end only', () => {
+    expect(block('.fold-label,\n.fold-meta,\n.tool-text,\n.msg-time,\n.msg-versions-text,\n.status-text,\n.status-clock')).toContain('text-box: trim-both cap alphabetic');
+    // hidden would cut the descenders below the trimmed box.
+    for (const sel of ['.fold-label', '\n.tool-text']) expect(block(sel), sel).toContain('overflow: clip visible');
+    expect(block('.fold-meta')).toContain('display: block');
+  });
+
+  it('a run’s clock is one rule, after the words, in the status line and the Running … line; the words give way, not the clock', () => {
+    // Its own rule (the one after its comment), not the list of a row's words it is also in.
+    expect(block('alike. */\n.status-clock')).toContain('flex: none;\n  color: var(--spica-faint);\n  font-size: var(--fs-caption);\n  line-height: var(--lh-caption)');
+    expect(block('\n.status-text')).toContain('text-overflow: ellipsis');
+    expect(block('\n.status-text')).toContain('min-width: 0');
+    expect(block('.status-line')).toContain('gap: 8px');
+    expect(block('.fold-head')).toContain('gap: 8px');
+  });
+
+  it('the turning mark of the row the run is on: 18 in its 14 place, in the text’s colour, not the row’s quieter one', () => {
+    expect(block('.fold-icon > .fold-mark')).toContain('margin: -2px');
+    expect(block('.fold-icon > .fold-mark')).toContain('color: var(--spica-ink)');
+  });
+
+  it('the time under a message and its version count are footnotes (13 on 17), one step up from a caption', () => {
+    expect(block('.msg-time')).toContain('font-size: var(--fs-footnote);\n  line-height: var(--lh-footnote)');
+    // How long ago (59 minutes ago) stays on one line and is never squeezed by the icons beside it.
+    expect(block('.msg-time')).toContain('flex: none');
+    expect(block('.msg-time')).toContain('white-space: nowrap');
+    // Its own rule, not the one that lists it with the other words of a row.
+    expect(css).toMatch(/\n\.msg-versions-text \{\n {2}padding: 0 2px;\n {2}font-size: var\(--fs-footnote\);\n {2}line-height: var\(--lh-footnote\);/);
+  });
+
   it('文字大小 小 / 大 move the conversation’s tiers one step (the input box is in it), nothing outside it', () => {
     expect(block(":root[data-text-size='sm'] .conversation")).toContain('--chat-text: 15px;\n  --chat-line: 22px;\n  --chat-small: 13px;\n  --chat-small-line: 19px;\n  --chat-row-line: 18px;\n  --chat-h2: 16px;\n  --chat-h2-line: 24px;\n  --chat-h1: 18px;\n  --chat-h1-line: 27px;');
     expect(block(":root[data-text-size='lg'] .conversation")).toContain('--chat-text: 18px;\n  --chat-line: 27px;\n  --chat-small: 15px;\n  --chat-small-line: 22px;\n  --chat-row-line: 21px;\n  --chat-h2: 22px;\n  --chat-h2-line: 28px;\n  --chat-h1: 22px;\n  --chat-h1-line: 28px;');
@@ -247,5 +326,20 @@ describe('the input box', () => {
     expect(block(':root')).toContain('--radius-l: 12px');
     expect(block('.composer')).toContain('border-radius: var(--composer-radius)');
     expect(block('.composer-below')).toContain('margin: 4px calc(var(--composer-radius) - 7px) 0 calc(var(--composer-radius) - 8px)');
+  });
+
+  it('the row under it in the footnote size (13 on 17): the folder, the model, Manual / Auto', () => {
+    for (const sel of ['\n.composer-chip', '\n.composer-label']) {
+      expect(block(sel), sel).toContain('font-size: var(--fs-footnote)');
+      expect(block(sel), sel).toContain('line-height: var(--lh-footnote)');
+    }
+  });
+});
+
+describe('the picture viewer', () => {
+  it('‹ N of M › sits on a fade along the bottom, as in the Claude app: no panel, border or shadow under it', () => {
+    expect(block('.image-viewer.has-nav::after')).toContain('linear-gradient(to bottom, transparent');
+    expect(block('.image-viewer.has-nav::after')).toContain('pointer-events: none');
+    for (const p of ['background', 'border', 'box-shadow']) expect(block('.image-viewer-nav'), p).not.toContain(`${p}:`);
   });
 });

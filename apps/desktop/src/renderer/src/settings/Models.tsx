@@ -33,6 +33,8 @@ import { useGuard } from '../ui/guard';
 import { InfoTip } from '../ui/InfoTip';
 import { PasteConfig } from './PasteConfig';
 import { SpicaStatusIcon } from '@spica/brand/react';
+import { Group, Row } from './Group';
+import { AGENT_MESSAGES_MAX, RUN_LIMIT_MAX_USD } from '../../../shared/settings';
 
 export interface ProvidersApi {
   list(): Promise<ProviderList>;
@@ -135,7 +137,124 @@ function parseNum(v: string): number | null {
   return Number.isFinite(n) ? n : Number.NaN;
 }
 
-export function Models({ api }: { api: ProvidersApi }) {
+/** 单次运行花费上限 as the page edits it (设置 › 模型; kept in the shell settings, runLimitUsd). */
+export interface RunLimitProps {
+  /** USD; null: no limit. */
+  value: number | null;
+  onChange(usd: number | null): void;
+}
+
+/**
+ * 单次运行花费上限: empty is 不限 (the grey word in the box, as 同时请求 / 每分钟请求 say it); an amount is kept as
+ * soon as it is a valid one, so it applies at once. What is typed stays while it is not valid, with the reason.
+ */
+export function RunLimitRow({ value, onChange }: RunLimitProps) {
+  const [text, setText] = useState(value === null ? '' : String(value));
+  const [touched, setTouched] = useState(false);
+  // changed elsewhere (another window, a script): show it unless the field holds something not yet valid
+  const shown = useRef(value);
+  useEffect(() => {
+    if (value === shown.current) return;
+    shown.current = value;
+    setText(value === null ? '' : String(value));
+  }, [value]);
+  const t = text.trim();
+  const n = Number(t);
+  const problem = t === '' ? null : !Number.isFinite(n) || n <= 0 ? '须为大于 0 的金额' : n > RUN_LIMIT_MAX_USD ? `不能高于 US$${RUN_LIMIT_MAX_USD.toLocaleString('en-US')}` : null;
+  const change = (v: string) => {
+    setText(v);
+    const x = v.trim();
+    const usd = x === '' ? null : Number(x);
+    if (usd !== null && (!Number.isFinite(usd) || usd <= 0 || usd > RUN_LIMIT_MAX_USD)) return;
+    const kept = usd === null ? null : Math.max(0.01, Math.round(usd * 100) / 100);
+    shown.current = kept;
+    if (kept !== value) onChange(kept);
+  };
+  return (
+    <Row
+      title="单次运行花费上限"
+      hint={
+        touched && problem ? (
+          <span className="field-error">{problem}</span>
+        ) : (
+          '一次运行是从发出一条消息到这一轮做完。花费可能超过上限时就停下，再发一条消息就是新的一次。留空为不限；没有价格的模型不计入。'
+        )
+      }
+    >
+      <label className="run-limit">
+        <span aria-hidden="true">US$</span>
+        <input
+          className={touched && problem ? 'input is-invalid' : 'input'}
+          inputMode="decimal"
+          value={text}
+          placeholder="不限"
+          spellCheck={false}
+          autoComplete="off"
+          aria-label="单次运行花费上限（美元）"
+          aria-invalid={touched && problem ? true : undefined}
+          onChange={(e) => change(e.target.value)}
+          onBlur={() => setTouched(true)}
+        />
+      </label>
+    </Row>
+  );
+}
+
+/**
+ * 代理互发消息上限: how many messages a conversation may send to other agents after the user last wrote (default 10);
+ * empty is 不限. Written like 单次运行花费上限 (the same box, a word after it instead of before).
+ */
+export function AgentMessagesRow({ value, onChange }: RunLimitProps) {
+  const [text, setText] = useState(value === null ? '' : String(value));
+  const [touched, setTouched] = useState(false);
+  const shown = useRef(value);
+  useEffect(() => {
+    if (value === shown.current) return;
+    shown.current = value;
+    setText(value === null ? '' : String(value));
+  }, [value]);
+  const valid = (t: string) => /^\d+$/.test(t) && Number(t) >= 1 && Number(t) <= AGENT_MESSAGES_MAX;
+  const t = text.trim();
+  const problem = t === '' || valid(t) ? null : `须为 1 到 ${AGENT_MESSAGES_MAX} 的整数`;
+  const change = (v: string) => {
+    setText(v);
+    const x = v.trim();
+    if (x !== '' && !valid(x)) return;
+    const kept = x === '' ? null : Number(x);
+    shown.current = kept;
+    if (kept !== value) onChange(kept);
+  };
+  return (
+    <Row
+      title="代理互发消息上限"
+      hint={
+        touched && problem ? (
+          <span className="field-error">{problem}</span>
+        ) : (
+          '你说一句话之后，一个对话最多给别的代理发这么多条消息；到了就停下，等你说下一句再重新计数。留空为不限。'
+        )
+      }
+    >
+      <label className="run-limit">
+        <input
+          className={touched && problem ? 'input is-invalid' : 'input'}
+          inputMode="numeric"
+          value={text}
+          placeholder="不限"
+          spellCheck={false}
+          autoComplete="off"
+          aria-label="代理互发消息上限（条）"
+          aria-invalid={touched && problem ? true : undefined}
+          onChange={(e) => change(e.target.value)}
+          onBlur={() => setTouched(true)}
+        />
+        <span aria-hidden="true">条</span>
+      </label>
+    </Row>
+  );
+}
+
+export function Models({ api, runLimit, agentMessages }: { api: ProvidersApi; runLimit?: RunLimitProps; agentMessages?: RunLimitProps }) {
   const [list, setList] = useState<ProviderList | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalogView | null>(null);
   const [selected, setSelectedState] = useState<string | 'new' | null>(() => keptDraft<string>(SELECTED) ?? null);
@@ -328,11 +447,13 @@ export function Models({ api }: { api: ProvidersApi }) {
       return;
     }
     const fromCatalog = provider?.models.find((x) => x.id === m.id);
+    // the most output the provider's list gave (the catalog's own the core knows): each answer may be that long
+    const out = !fromCatalog && m.maxOutput ? { maxOutput: m.maxOutput } : {};
     const entry: ConnectionModel = fromCatalog
       ? { id: m.id, contextWindow: fromCatalog.contextWindow, contextFrom: 'catalog' }
       : m.contextWindow
-        ? { id: m.id, contextWindow: m.contextWindow, contextFrom: 'provider' }
-        : { id: m.id, contextWindow: null, contextFrom: 'user' };
+        ? { id: m.id, contextWindow: m.contextWindow, contextFrom: 'provider', ...out }
+        : { id: m.id, contextWindow: null, contextFrom: 'user', ...out };
     set({ models: [...models.filter((x) => x.id !== m.id), entry] });
     if (entry.contextWindow === null) matchLater(m.id);
   };
@@ -355,7 +476,7 @@ export function Models({ api }: { api: ProvidersApi }) {
     try {
       const r = await api.listModels(draft);
       if (r.ok) {
-        const got = r.models.filter((m) => m.chat).map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}) }));
+        const got = r.models.filter((m) => m.chat).map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}), ...(m.maxOutput ? { maxOutput: m.maxOutput } : {}) }));
         setFetched(got);
         const added = got.filter((m) => !known.has(m.id)).length;
         setFetchNote(`已获取 ${got.length} 个模型，${added ? `新增 ${added} 个` : '没有新增'}`);
@@ -530,25 +651,31 @@ export function Models({ api }: { api: ProvidersApi }) {
   return (
     <section className="settings-section">
       {list && groups.length ? (
-        <div className="model-pointers">
-          <label className="model-pointer">
-            <span className="field-label">默认模型</span>
-            <select className="input" value={refKey(list.default ?? null)} onChange={(e) => void run(() => point('default', e.target.value))} aria-label="默认模型">
+        <Group className="model-pointers">
+          <Row title="默认模型">
+            <select className="input model-pointer" value={refKey(list.default ?? null)} onChange={(e) => void run(() => point('default', e.target.value))} aria-label="默认模型">
               {pointerOptions}
             </select>
-          </label>
-          <label className="model-pointer">
-            <span className="field-label">强模型</span>
-            <select className="input" value={refKey(list.strong ?? null)} onChange={(e) => void run(() => point('strong', e.target.value))} aria-label="强模型">
+          </Row>
+          <Row title="强模型">
+            <select className="input model-pointer" value={refKey(list.strong ?? null)} onChange={(e) => void run(() => point('strong', e.target.value))} aria-label="强模型">
               <option value="">无</option>
               {pointerOptions}
             </select>
-          </label>
-        </div>
+          </Row>
+        </Group>
       ) : null}
 
-      <div className="provider-list" role="list">
-        {list && items.length === 0 ? <p className="settings-hint">未配置模型</p> : null}
+      {runLimit || agentMessages ? (
+        <Group title="上限">
+          {runLimit ? <RunLimitRow {...runLimit} /> : null}
+          {agentMessages ? <AgentMessagesRow {...agentMessages} /> : null}
+        </Group>
+      ) : null}
+
+      <Group title="服务商">
+      <div className="provider-list group-list" role="list">
+        {list && items.length === 0 ? <p className="settings-hint provider-none">未配置模型</p> : null}
         {items.map((p) => (
           <div key={p.id} role="listitem" className={selected === p.id ? 'provider-row is-on' : 'provider-row'}>
             <button type="button" className="provider-open" onClick={() => open(p)} aria-current={selected === p.id ? 'true' : undefined}>
@@ -580,6 +707,7 @@ export function Models({ api }: { api: ProvidersApi }) {
           {keptDraft(draftKey('new')) ? <span className="provider-unsaved">未保存</span> : null}
         </button>
       </div>
+      </Group>
 
       {current?.readOnly ? <p className="settings-hint provider-readonly">此项来自开发配置文件，无法修改。</p> : null}
 

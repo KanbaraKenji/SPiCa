@@ -1,0 +1,6 @@
+{
+  "runtime": "node",
+  "entry": "server/settings.js",
+  "description": "Reads and saves the plugin's settings (config.json) for its settings page; not offered to the model.",
+  "timeout_seconds": 10
+}

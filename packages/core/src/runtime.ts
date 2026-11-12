@@ -39,6 +39,7 @@ import type {
   ProjectLogEntry,
   SessionStatus,
   SetCwdResult,
+  TraceRecord,
   WorkflowDef,
   WorkObject,
 } from './types.ts';
@@ -65,7 +66,16 @@ export interface RuntimeOptions {
    * strongModel: the model for heavy work (plugins asking for a strong model get it), on the default
    * provider or on strongProviderId when it is on another connection.
    */
-  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; system?: string; strongModel?: string; strongProviderId?: string };
+  /**
+   * maxTurns: turns one run may take; 0 = no limit (the desktop app, he chose 2026-11-12); absent = 50. It applies
+   * to every session without a limit of its own, sub-agents included, at each run (a change applies at once).
+   * maxTokens: the most output tokens one call asks for. outputByModel: each model asks for its own most instead
+   * (the provider's model list, then the catalog's maxOutput; maxTokens only for a model neither knows), taken at
+   * each call, so another model, a sub-agent on another model or a plugin borrowing one gets its own number.
+   * agentMessages: how many messages one conversation may send to other agents (message_agent) since the user last
+   * wrote in it; then message_agent refuses until the user writes again. 0 or absent = no limit. Read at each call.
+   */
+  defaults: { providerId: string; model: string; maxTokens: number; maxTurns?: number; outputByModel?: boolean; agentMessages?: number; system?: string; strongModel?: string; strongProviderId?: string };
   store?: Store;
   /** Rate limits per provider id (deployment configuration). */
   limits?: Record<string, LimiterConfig>;
@@ -133,6 +143,10 @@ export interface RuntimeInternals {
   imagesAllowed(providerId: string, model: string): boolean | undefined;
   /** The provider refused images for this model: later requests to it leave the images out. */
   markNoImages(providerId: string, model: string): void;
+  /** Turns a run of this session may take now; 0 = no limit (see SessionConfig.maxTurns). */
+  turnLimit(config: SessionConfig): number;
+  /** Most output tokens a call of this session to this model asks for (see RuntimeOptions.defaults.outputByModel). */
+  outputLimit(config: SessionConfig, providerId: string, providerKind: string, model: string): number;
   readonly hooks: HookRegistry;
   readonly tools: ToolRegistry;
   readonly store: Store;
@@ -167,6 +181,9 @@ function safeFolderName(name: string): string {
     .trim();
   return cleaned || 'project';
 }
+
+/** Turns one run may take when the deployment gives no default (RuntimeOptions.defaults.maxTurns). */
+export const DEFAULT_MAX_TURNS = 50;
 
 export const DEFAULT_SYSTEM_PROMPT =
   'You are an agent in {{app}}, a desktop workbench. Use the available tools to inspect files and gather facts ' +
@@ -252,6 +269,17 @@ export class Runtime implements RuntimeInternals {
 
   markNoImages(providerId: string, model: string): void {
     this.#noImages.add(`${providerId}|${model}`);
+  }
+
+  outputLimit(config: SessionConfig | undefined, providerId: string, providerKind: string, model: string): number {
+    if (config?.asked?.includes('maxTokens')) return config.maxTokens;
+    const d = this.#opts.defaults;
+    return (d.outputByModel ? this.ledger.maxOutput(providerId, providerKind, model) : null) ?? d.maxTokens;
+  }
+
+  turnLimit(config: SessionConfig): number {
+    const n = config.asked?.includes('maxTurns') ? config.maxTurns : (this.#opts.defaults.maxTurns ?? DEFAULT_MAX_TURNS);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
   }
 
   /** See RuntimeOptions.appName. */
@@ -396,6 +424,18 @@ export class Runtime implements RuntimeInternals {
     if (backend) this.#removeSearch = this.tools.register(createWebSearchTool(backend), 'core');
   }
 
+  /**
+   * A model call of a model without a known price: marked so (`unpriced`), or an older record of such a model
+   * written at the stand-in price before those calls stopped counting (told by its provider and model, while that
+   * provider is still set up; one that is gone stays as it was written).
+   */
+  unpricedTrace(t: Pick<TraceRecord, 'kind' | 'providerId' | 'model' | 'unpriced'>): boolean {
+    if (t.unpriced) return true;
+    if (t.kind !== 'model' || !t.providerId || !t.model) return false;
+    const p = this.#providers.get(t.providerId);
+    return p !== undefined && !this.ledger.priced({ providerId: p.id, providerKind: p.kind, model: t.model });
+  }
+
   provider(id: string): Provider {
     const p = this.#providers.get(id);
     if (!p) throw new Error(`unknown provider: ${id}`);
@@ -434,7 +474,10 @@ export class Runtime implements RuntimeInternals {
       model: req.model ?? tpl?.model ?? (req.providerId || tpl?.providerId ? undefined : parent?.config.model) ?? d.model,
       maxTokens: req.maxTokens ?? d.maxTokens,
       cwd: req.cwd ?? parent?.config.cwd ?? ownFolder ?? this.#opts.cwd ?? process.cwd(),
-      maxTurns: req.maxTurns ?? d.maxTurns ?? 50,
+      maxTurns: req.maxTurns ?? d.maxTurns ?? DEFAULT_MAX_TURNS,
+      ...(req.maxTurns !== undefined || req.maxTokens !== undefined
+        ? { asked: [...(req.maxTurns !== undefined ? ['maxTurns' as const] : []), ...(req.maxTokens !== undefined ? ['maxTokens' as const] : [])] }
+        : {}),
       locale: req.locale ?? parent?.config.locale ?? this.#opts.locale ?? 'zh-CN',
       serverWebSearch: false,
       // A sub-agent gets its parent's tool allow-list unless told otherwise.
@@ -1229,7 +1272,7 @@ export class Runtime implements RuntimeInternals {
   }
 
   exportUsageLog(filter: UsageLogFilter = {}): string {
-    return exportUsageLog(this.store, filter, { secrets: [...this.#secrets] });
+    return exportUsageLog(this.store, filter, { secrets: [...this.#secrets], unpriced: (t) => this.unpricedTrace(t) });
   }
 
   exportTraces(filter?: { sessionId?: string }): string {
@@ -1286,8 +1329,8 @@ export class Runtime implements RuntimeInternals {
     }
     this.ledger.seed(
       traces
-        .filter((t) => t.costUsd)
-        .map((t) => ({ providerId: t.providerId ?? 'unknown', ...(t.sessionId ? { sessionId: t.sessionId } : {}), costUsd: t.costUsd ?? 0 })),
+        .filter((t) => t.costUsd || t.unpriced)
+        .map((t) => ({ providerId: t.providerId ?? 'unknown', ...(t.sessionId ? { sessionId: t.sessionId } : {}), costUsd: t.costUsd ?? 0, ...(this.unpricedTrace(t) ? { unpriced: true } : {}) })),
     );
     for (const s of this.#sessions.values()) {
       this.events.emit({ sessionId: s.id, parentChain: s.parentChain }, { type: 'status', status: s.status });

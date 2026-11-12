@@ -153,6 +153,7 @@ export class Session {
       model: r.config.model,
       cwd: r.config.cwd,
       costUsd: this.#rt.ledger.sessionUsd(r.id),
+      ...(this.#rt.ledger.hasUnpriced(r.id) ? { unpriced: true as const } : {}),
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       ...(r.config.templateId ? { templateId: r.config.templateId } : {}),
@@ -269,6 +270,17 @@ export class Session {
     this.#rt.store.upsertSession(this.#record);
     this.#emit({ type: 'session.updated', info: this.info() });
     return this.info();
+  }
+
+  /** Most output tokens the next call asks for (the model's own when the runtime says so; Runtime.outputLimit). */
+  #outputLimit(c: SessionConfig, model = c.model): number {
+    let kind = '';
+    try {
+      kind = this.#rt.provider(c.providerId).kind;
+    } catch {
+      // provider removed in the settings
+    }
+    return this.#rt.outputLimit(c, c.providerId, kind, model);
   }
 
   #contextWindow(): number | null {
@@ -581,7 +593,7 @@ export class Session {
       if (child) child.tokens += diff;
     }
     const window = this.#contextWindow();
-    const outputReserve = cfg.maxTokens;
+    const outputReserve = this.#outputLimit(cfg);
     return { window, total, measured, parts, outputReserve, free: window === null ? null : Math.max(0, window - total - outputReserve) };
   }
 
@@ -674,7 +686,8 @@ export class Session {
       this.#interrupt = false;
       this.#applyQueue();
       cfg = this.#record.config;
-      if (turn >= cfg.maxTurns) return end('max_turns', `stopped after ${cfg.maxTurns} turns`);
+      const turnLimit = this.#rt.turnLimit(cfg); // 0: no limit (the desktop app)
+      if (turnLimit > 0 && turn >= turnLimit) return end('max_turns', `stopped after ${turnLimit} turns`);
       turn++;
       this.#emit({ type: 'turn.start', turn });
       const turnAbort = new AbortController();
@@ -703,7 +716,7 @@ export class Session {
         params: {
           providerId: cfg.providerId,
           model: cfg.model,
-          maxTokens: cfg.maxTokens,
+          maxTokens: this.#outputLimit(cfg),
           ...(cfg.temperature !== undefined ? { temperature: cfg.temperature } : {}),
           ...(cfg.serverWebSearch ? { serverWebSearch: true } : {}),
         },
@@ -753,6 +766,10 @@ export class Session {
           sentImages.reduce((n, b) => n + imageTokens(provider.kind, b.width, b.height), 0),
         this.#lastInputTokens,
       );
+      // The answer must fit beside the input: a long conversation asks for less than the model's most output, never
+      // a total past its context window (the call would fail). Done before the spending check, which counts it.
+      const window = this.#rt.ledger.contextWindow(provider.id, provider.kind, request.model);
+      if (window && est + request.maxTokens > window) request.maxTokens = Math.max(1, window - est);
       // 3. Rate limiter shared by all sessions on this endpoint.
       let lease;
       try {
@@ -795,7 +812,7 @@ export class Session {
       if (!hold.ok && hold.wait) continue; // interrupted while waiting: next turn with the steer
       if (!hold.ok) {
         lease.release();
-        this.#emit({ type: 'budget.stop', scope: hold.scope, spentUsd: hold.spentUsd, limitUsd: hold.limitUsd, message: hold.message });
+        this.#emit({ type: 'budget.stop', scope: hold.scope, spentUsd: hold.spentUsd, limitUsd: hold.limitUsd, nextUsd: hold.nextUsd, message: hold.message });
         return end('budget', hold.message);
       }
 
@@ -921,16 +938,16 @@ export class Session {
         outputTokens: response.usage.outputTokens,
         ...(response.usage.cacheReadTokens !== undefined ? { cacheReadTokens: response.usage.cacheReadTokens } : {}),
         ...(response.usage.cacheWriteTokens !== undefined ? { cacheWriteTokens: response.usage.cacheWriteTokens } : {}),
-        costUsd: cost.costUsd,
+        ...(cost.unpriced ? { unpriced: true as const } : { costUsd: cost.costUsd }),
         attempts: callInfo.attempts,
         ...(callInfo.httpStatus ? { httpStatus: callInfo.httpStatus } : {}),
       });
-      this.#emit({ type: 'usage', usage: response.usage, costUsd: cost.costUsd, providerId: provider.id, model: response.model });
+      this.#emit({ type: 'usage', usage: response.usage, costUsd: cost.costUsd, providerId: provider.id, model: response.model, ...(cost.unpriced ? { unpriced: true as const } : {}) });
       this.#contextTokens = this.#lastInputTokens + u.outputTokens;
       this.#emit({ type: 'session.updated', info: this.info() });
       for (const t of cost.totals) {
         if (t.scope === 'call') continue;
-        this.#emit({ type: 'cost', scope: t.scope, spentUsd: t.spentUsd, ...(t.limitUsd !== undefined ? { limitUsd: t.limitUsd } : {}), warning: t.warning });
+        this.#emit({ type: 'cost', scope: t.scope, spentUsd: t.spentUsd, ...(t.limitUsd !== undefined ? { limitUsd: t.limitUsd } : {}), warning: t.warning, ...(t.unpriced ? { unpriced: true as const } : {}) });
       }
 
       // 6. Plugins may rewrite the complete response.

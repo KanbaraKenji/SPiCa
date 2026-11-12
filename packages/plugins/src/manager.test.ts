@@ -25,6 +25,8 @@ afterEach(async () => {
 });
 
 const NOTES_TOOLS = ['notes__list_notes', 'notes__read_note', 'notes__write_note', 'notes__delete_note', 'notes__summarize_note', 'notes__search_catalog'];
+/** The example's settings service (services/settings.json): registered, but kept from the model; only its settings page calls them. */
+const NOTES_SETTINGS_TOOLS = ['notes-settings__get_settings', 'notes-settings__save_settings'];
 
 describe('enable and disable', () => {
   it('J6: installed plugin tools appear, work, and disappear completely on disable', async () => {
@@ -35,9 +37,13 @@ describe('enable and disable', () => {
     expect(toolNames(rt)).toEqual([]);
 
     const d = await pm.enable('notes');
-    expect(toolNames(rt).sort()).toEqual(['notes__skill', ...NOTES_TOOLS].sort());
+    // All registered with the core (the plugin's hook keeps the settings service's from the model); describe() lists the model's.
+    expect(toolNames(rt).sort()).toEqual(['notes__skill', ...NOTES_TOOLS, ...NOTES_SETTINGS_TOOLS].sort());
     expect(d.tools.sort()).toEqual(['notes__skill', ...NOTES_TOOLS].sort());
-    expect(d.servers).toMatchObject([{ id: 'notes', status: 'running' }]);
+    expect(d.servers).toMatchObject([
+      { id: 'notes', status: 'running' },
+      { id: 'settings', status: 'running' },
+    ]);
 
     expect(await callTool(rt, 'notes__write_note', { title: 'plans', text: 'ship J6' })).toMatchObject({ content: expect.stringContaining('Saved') });
     expect((await callTool(rt, 'notes__read_note', { title: 'plans' })).content).toContain('ship J6');
@@ -53,7 +59,7 @@ describe('enable and disable', () => {
     expect(toolNames(rt)).toEqual([]);
     expect(rt.hooks.sources).toEqual([]);
     expect(await rt.hooks.injections(hookCtx)).toEqual([]);
-    expect(pm.describe('notes')).toMatchObject({ enabled: false, tools: [], servers: [{ status: 'stopped' }] });
+    expect(pm.describe('notes')).toMatchObject({ enabled: false, tools: [], servers: [{ status: 'stopped' }, { status: 'stopped' }] });
     expect(r.events.map((e) => e.type)).toEqual(expect.arrayContaining(['plugin.installed', 'plugin.enabled', 'plugin.disabled']));
   });
 
@@ -69,7 +75,10 @@ describe('enable and disable', () => {
       skills: [{ id: 'note-taking', name: 'Note taking' }],
       commands: [{ id: 'note', argumentHint: '<what to note>' }],
       hooks: [{ module: 'notes-hint.js', kinds: ['inject'] }],
-      servers: [{ id: 'notes', kind: 'mcp', runtime: 'node', status: 'running', restarts: 0 }],
+      servers: [
+        { id: 'notes', kind: 'mcp', runtime: 'node', status: 'running', restarts: 0 },
+        { id: 'settings', kind: 'service', runtime: 'node', status: 'running', restarts: 0 },
+      ],
     });
     expect(r.pm.commands()).toEqual([{ name: 'notes:note', plugin: 'notes', description: 'Save something to the notebook', argumentHint: '<what to note>' }]);
     expect(r.pm.expandCommand('/notes:note', 'buy milk')).toBe('Save this to my notebook, following the note-taking skill: buy milk');
@@ -185,6 +194,7 @@ describe('views (plugin pages)', () => {
     expect(pm.describe('notes').views).toEqual([
       { id: 'notebook', title: 'Notebook', placement: 'sidebar', entry: 'ui/index.html', icon: 'ui/icon.svg', tools: ['list_notes', 'read_note', 'write_note', 'delete_note'] },
       { id: 'quick-note', title: 'Quick note', placement: 'panel', entry: 'ui/quick-note.html', icon: 'ui/icon.svg', tools: ['read_note', 'write_note'] },
+      { id: 'settings', title: '设定', placement: 'settings', entry: 'ui/settings.html', tools: ['get_settings', 'save_settings'] },
     ]);
     expect(pm.views()).toEqual([]);
     expect(await pm.resolveViewFile('notes', 'ui/index.html')).toBeUndefined();
@@ -213,6 +223,16 @@ describe('views (plugin pages)', () => {
         tools: ['read_note', 'write_note'],
         irreversible: [],
       },
+      {
+        plugin: 'notes',
+        pluginTitle: 'Notes (example)',
+        id: 'settings',
+        title: '设定',
+        placement: 'settings',
+        entry: 'ui/settings.html',
+        tools: ['get_settings', 'save_settings'],
+        irreversible: [],
+      },
     ]);
     const root = join(pm.installDir('notes', '0.1.0'));
     expect(await pm.resolveViewFile('notes', 'ui/app.js')).toBe(join(root, 'ui', 'app.js'));
@@ -225,6 +245,24 @@ describe('views (plugin pages)', () => {
     await pm.disable('notes');
     expect(pm.views()).toEqual([]);
     expect(await pm.resolveViewFile('notes', 'ui/app.js')).toBeUndefined();
+  });
+
+  it('the example settings page saves a notes folder through its service; the notes tools then use it', async () => {
+    r = await rig();
+    const { pm } = r;
+    await pm.install(EXAMPLE_PLUGIN);
+    await pm.enable('notes');
+    const chosen = await mkdtemp(join(tmpdir(), 'spica-notes-folder-'));
+    dirs.push(chosen);
+    const before = await pm.viewCall('notes', 'settings', 'get_settings');
+    expect(before).toMatchObject({ isError: false, data: { notesFolder: '', catalogUrl: '', defaultFolder: join(pm.dataDir('notes'), 'notes') } });
+    expect((await pm.viewCall('notes', 'settings', 'save_settings', { notesFolder: 'relative/x' })).content).toMatch(/full path/);
+    expect(await pm.viewCall('notes', 'settings', 'save_settings', { notesFolder: chosen, catalogUrl: '' })).toMatchObject({ isError: false, data: { notesFolder: chosen } });
+    expect(await pm.viewCall('notes', 'notebook', 'write_note', { title: 'there', text: 'in the chosen folder' })).toMatchObject({ isError: false });
+    expect(await readFile(join(chosen, 'there.md'), 'utf8')).toContain('in the chosen folder');
+    // The settings tools are the page's own: not the model's, not the other pages'.
+    expect((await pm.viewCall('notes', 'notebook', 'save_settings', { notesFolder: '' })).content).toMatch(/^\[TOOL_NOT_ALLOWED\]/);
+    expect((await pm.viewCall('notes', 'settings', 'write_note', { title: 'x', text: 'y' })).content).toMatch(/^\[TOOL_NOT_ALLOWED\]/);
   });
 
   it('a page calls only its own declared tools; irreversible ones need confirmation', async () => {
@@ -372,6 +410,23 @@ describe('views (plugin pages)', () => {
     expect(text).toMatch(/views\/e\.json: icon 须指向 \.svg 文件/);
     expect(text).toMatch(/views\/f\.json: 视图声明不是有效的 JSON/);
     expect(check.views).toEqual([]);
+  });
+
+  it('settings pages (placement settings): listed like the others, all their tools unless they list them', async () => {
+    const dir = await writePlugin({
+      'manifest.json': manifest('setty'),
+      'views/prefs.json': { title: 'Prefs', entry: 'ui/p.html', placement: 'settings', permissions: { tools: ['get_settings'] } },
+      'views/more.json': { title: 'More', entry: 'ui/p.html', placement: 'settings' },
+      'ui/p.html': '<!doctype html>',
+    });
+    dirs.push(dir);
+    r = await rig();
+    const ok = await r.pm.check(dir);
+    expect(ok.issues).toEqual([]);
+    expect(ok.views).toEqual([
+      { id: 'more', title: 'More', placement: 'settings', entry: 'ui/p.html' },
+      { id: 'prefs', title: 'Prefs', placement: 'settings', entry: 'ui/p.html', tools: ['get_settings'] },
+    ]);
   });
 
   it('the plugin’s own icon: an .svg in its folder, up to 64 KB; describe() gives its path', async () => {

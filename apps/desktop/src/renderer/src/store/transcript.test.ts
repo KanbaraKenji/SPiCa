@@ -3,7 +3,7 @@ import type { CoreEvent, HistoryCardMeta, Message } from '@spica/protocol';
 import { FakeBackend } from '../../../main/backend/fake';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
 import { changesAfter } from './relocate';
-import { applyEvent, askAnswer, cwdNoteText, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, type Transcript } from './transcript';
+import { applyEvent, askAnswer, cancelCard, cwdNoteText, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, type Transcript } from './transcript';
 
 describe('fromHistory', () => {
   const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
@@ -460,5 +460,136 @@ describe('the working folder chosen later', () => {
     expect(filesOf(answers[0]!.blocks, {}, moves.get(answers[0]!.id))).toEqual([{ path: 'D:\\资料\\报价\\报价 (1).md', shown: '报价 (1).md', tool: 'write_file' }]);
     // Written after the folder was chosen: 报价.md in the new folder is that one.
     expect(filesOf(answers[1]!.blocks, {}, moves.get(answers[1]!.id)).map((f) => f.path)).toEqual(['报价.md']);
+  });
+});
+
+describe('a question or confirmation stopped while it waits', () => {
+  const ev = (seq: number, body: Record<string, unknown>) => ({ sessionId: 's', parentChain: [], seq, at: '', ...body }) as unknown as CoreEvent;
+  const asked = (): Transcript => {
+    let t: Transcript = { items: [] };
+    t = applyEvent(t, ev(1, { type: 'ask.request', callId: 'q1', question: '确认这次申请的四项？', options: ['是', '不是'] }));
+    t = applyEvent(t, ev(2, { type: 'confirm.request', callId: 'm1', name: 'send_email', input: {}, reason: '发送邮件' }));
+    return t;
+  };
+  const cards = (t: Transcript) => t.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])).filter((b) => b.type === 'ask' || b.type === 'confirm');
+
+  it('the core’s way: status aborted and a cancelled result, no ask.resolved: both cards are cancelled, the answer interrupted', () => {
+    let t = asked();
+    t = applyEvent(t, ev(3, { type: 'status', status: 'aborted' }));
+    t = applyEvent(t, ev(4, { type: 'message', message: { id: 'r', sessionId: 's', seq: 3, role: 'user', kind: 'tool_results', createdAt: '', content: [
+      { type: 'tool_result', toolUseId: 'q1', content: '[fetched at 2026-11-12T00:00:00Z]\nCancelled: aborted by user.', isError: true },
+      { type: 'tool_result', toolUseId: 'm1', content: '[fetched at 2026-11-12T00:00:00Z]\nCancelled: aborted by user.', isError: true },
+    ] } }));
+    expect(cards(t).map((b) => [b.callId, (b as { cancelled?: boolean }).cancelled])).toEqual([['q1', true], ['m1', true]]);
+    expect((cards(t)[0] as { answer?: string }).answer).toBeUndefined();
+    expect(t.items.at(-1)).toMatchObject({ kind: 'response', interrupted: true });
+  });
+
+  it('the cancelled result alone (no status first) does the same', () => {
+    const t = applyEvent(asked(), ev(3, { type: 'message', message: { id: 'r', sessionId: 's', seq: 3, role: 'user', kind: 'tool_results', createdAt: '', content: [{ type: 'tool_result', toolUseId: 'q1', content: 'Cancelled: aborted by user.', isError: true }] } }));
+    expect(cards(t)[0]).toMatchObject({ callId: 'q1', cancelled: true });
+  });
+
+  it('answered or decided cards stay as they are when the run is stopped later', () => {
+    let t = asked();
+    t = applyEvent(t, ev(3, { type: 'ask.resolved', callId: 'q1', answer: '是' }));
+    t = applyEvent(t, ev(4, { type: 'confirm.resolved', callId: 'm1', approved: false }));
+    t = applyEvent(t, ev(5, { type: 'status', status: 'aborted' }));
+    expect(cards(t)).toMatchObject([{ answer: '是' }, { approved: false }]);
+    expect(cards(t).some((b) => (b as { cancelled?: boolean }).cancelled)).toBe(false);
+  });
+
+  it('reopened later: a stopped question is cancelled (not an answer that reads Cancelled …); one still waited on stays open', () => {
+    const at = '2026-11-12T00:00:00Z';
+    const ask = (id: string, seq: number): Message => ({ id: `a${id}`, sessionId: 's', seq, role: 'assistant', kind: 'assistant', createdAt: at, content: [{ type: 'tool_use', id, name: 'ask_user', input: { question: '哪一种？', options: ['A'] } }] });
+    const history: Message[] = [
+      ask('q1', 1),
+      { id: 'r1', sessionId: 's', seq: 2, role: 'user', kind: 'tool_results', createdAt: at, content: [{ type: 'tool_result', toolUseId: 'q1', content: 'Cancelled: aborted by user.', isError: true }] },
+      ask('q2', 3),
+      { id: 'r2', sessionId: 's', seq: 4, role: 'user', kind: 'tool_results', createdAt: at, content: [{ type: 'tool_result', toolUseId: 'q2', content: 'User answered: A' }] },
+      ask('q3', 5),
+      ask('q4', 6),
+    ];
+    const t = fromHistory(history, [{ kind: 'ask', callId: 'q4', question: '哪一种？', options: ['A'], createdAt: at }]);
+    expect(cards(t).map((b) => [b.callId, (b as { answer?: string }).answer ?? null, (b as { cancelled?: boolean }).cancelled ?? false])).toEqual([
+      ['q1', null, true],
+      ['q2', 'A', false],
+      // No result and no longer waited on (stopped before its result was written): nothing to answer.
+      ['q3', null, true],
+      ['q4', null, false],
+    ]);
+  });
+
+  it('asked again under the same id: open again', () => {
+    let t = applyEvent(asked(), ev(3, { type: 'status', status: 'aborted' }));
+    t = applyEvent(t, ev(4, { type: 'ask.request', callId: 'q1', question: '确认这次申请的四项？', options: ['是'] }));
+    expect((cards(t)[0] as { cancelled?: boolean }).cancelled).toBeUndefined();
+  });
+
+  it('cancelCard: the card the core no longer knows', () => {
+    const t = cancelCard(asked(), 'q1');
+    expect(cards(t)[0]).toMatchObject({ callId: 'q1', cancelled: true });
+    expect((cards(t)[1] as { cancelled?: boolean }).cancelled).toBeUndefined();
+  });
+});
+
+describe('a spending limit stops the run', () => {
+  it('says why it stopped before the limit was reached, and where to change it (a button opens 设置 › 模型)', () => {
+    const at = '2026-11-12T10:00:00Z';
+    const t = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'all:run', spentUsd: 0.75, limitUsd: 1, nextUsd: 0.4, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
+    expect(t.error).toBe('已达单次运行花费上限，已停止（已花费 US$0.75，上限 US$1.00）：下一步最多可能花 US$0.40，会超出上限，所以没有开始。可在 设置 › 模型 修改上限，或再发一条消息重新开始一次运行。');
+    expect(t.errorAction).toBe('models');
+    const next = applyEvent(t, { type: 'status', status: 'thinking', seq: 2, at, sessionId: 's', parentChain: [] } as CoreEvent);
+    expect(next.error).toBeUndefined();
+    expect(next.errorAction).toBeUndefined();
+  });
+});
+
+describe('a run stopped at the turn limit', () => {
+  it('says so after the answer (it looked done before); the next run clears it', () => {
+    const base = { seq: 1, at: '2026-11-12T10:00:00Z', sessionId: 's', parentChain: [] };
+    const t = applyEvent({ items: [] }, { ...base, type: 'run.end', reason: 'max_turns', detail: 'stopped after 30 turns' } as CoreEvent);
+    expect(t.stopped).toBe('max_turns');
+    expect(applyEvent(t, { ...base, type: 'status', status: 'thinking' } as CoreEvent).stopped).toBeUndefined();
+    expect(applyEvent({ items: [] }, { ...base, type: 'run.end', reason: 'completed' } as CoreEvent).stopped).toBeUndefined();
+  });
+});
+
+describe('an answer cut at the most the model may write', () => {
+  it('is marked from the stored stop reason, live and when read again', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const chat = await b.createSession({});
+    let live: Transcript = { items: [] };
+    b.onEvent((e) => {
+      if (e.sessionId === chat.id) live = applyEvent(live, e);
+    });
+    await b.send(chat.id, '写长一点');
+    await new Promise((r) => setTimeout(r, 20));
+    const last = (t: Transcript) => t.items.filter((i) => i.kind === 'response').at(-1) as { truncated?: boolean } | undefined;
+    expect(last(live)?.truncated).toBe(true);
+    expect(last(fromHistory(await b.getMessages(chat.id)))?.truncated).toBe(true);
+    await b.send(chat.id, '继续');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(last(fromHistory(await b.getMessages(chat.id)))?.truncated).toBe(false);
+  });
+});
+
+describe('messages to other agents past the limit', () => {
+  it('a refused message_agent is noted, live and when read again; the user writing clears it', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    b.setAgentMessages(1);
+    const chat = await b.createSession({});
+    let live: Transcript = { items: [] };
+    b.onEvent((e) => {
+      if (e.sessionId === chat.id) live = applyEvent(live, e);
+    });
+    await b.send(chat.id, '互发');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(live.agentLimit).toBe(true);
+    expect(fromHistory(await b.getMessages(chat.id)).agentLimit).toBe(true);
+    await b.send(chat.id, '好的，继续');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(live.agentLimit).toBeUndefined();
+    expect(fromHistory(await b.getMessages(chat.id)).agentLimit).toBeUndefined();
   });
 });

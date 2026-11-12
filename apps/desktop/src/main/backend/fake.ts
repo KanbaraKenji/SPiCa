@@ -34,7 +34,7 @@ import type {
   SteerMode,
   ToolCategory,
 } from '@spica/protocol';
-import { REGENERATE_HINTS } from '@spica/protocol';
+import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS } from '@spica/protocol';
 import type { AgentBackend } from './types';
 import { buildSeed, fakeCard } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
@@ -70,6 +70,10 @@ interface Run {
   controller: AbortController;
   steers: Message[];
   waiter?: Waiter;
+  /** Counted against 单次运行花费上限 (USD); `unpriced`: the run's model has no price (「未计价」 in the message); `dear`: each call costs about 0.85 USD (「花费上限」 in the message). */
+  spent: number;
+  unpriced?: boolean;
+  dear?: boolean;
 }
 
 class Aborted extends Error {}
@@ -121,6 +125,36 @@ export const FAKE_SUMMARY_ANSWER =
   '```\n\n' +
   '远航塑胶和恒信五金还没回价，`单价` 列先留空。';
 
+/** The BOM answer: files deep in a temporary folder, written as full paths (inline code, and once as plain text). */
+const FAKE_BOM_DIR = 'C:\\Users\\Demo\\AppData\\Local\\Temp\\claude\\6b0adec76d142027\\97c9b4d3-10ad-4f09-864f-b53a275d8ee4\\scratchpad\\concurrent\\A';
+export const FAKE_BOM_FILES = [`${FAKE_BOM_DIR}\\280040440007.pdf`, `${FAKE_BOM_DIR}\\280040440007_BOM.xlsx`];
+/** 「批量」: a command that leaves fourteen files (two handed over), for the list that stands in for cards. */
+const FAKE_BATCH_DIR = 'D:\\工作\\样机评审\\规格书';
+export const FAKE_BATCH_FILES = [
+  ...['MV-SPSS26010', 'MV-SPSS26011', 'MV-SPSS26012', 'MV-SPSS26013', 'MV-SPSS26014', 'MV-SPSS26015', 'MV-SPSS26016', 'MV-SPSS26017', 'MV-SPSS26018', 'MV-SPSS26019'].map((n) => `${FAKE_BATCH_DIR}\\${n}_规格书.pdf`),
+  `${FAKE_BATCH_DIR}\\规格书汇总.xlsx`,
+  `${FAKE_BATCH_DIR}\\下载记录.csv`,
+  `${FAKE_BATCH_DIR}\\外形尺寸对比.png`,
+  `${FAKE_BATCH_DIR}\\说明.txt`,
+];
+export const FAKE_BATCH_ANSWER = '十份规格书都下载好了，汇总表里按料号列了每份的版本和日期。';
+
+/** 「照片」: an answer with three pictures (the demo chart and two drawn here), for going through them full size. */
+export const FAKE_PHOTO_DATA = [
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPAAAACgCAIAAAC9uXYyAAABxklEQVR42u3aMREAIAwEwThCIWJRAhJokiKwzNVfMFsmxlzSM4UvENAS0BLQEtACWgJaAloCWgJaQEtAS0BLQEtAC2gJaAloCWgJaAEtAS0BLQEtAS2gJaAloCWgJaAFtAS0BLQEtAS0gJaAloCWgBbQEtAS0BLQEtACWgJaAloCWmoKet9eyoidlB2ggQYaaICABtoO0EDbARpooIEGGmigAQIaaDtAA20HaKCBBrpGPKzfogfaDtBA2wEaaKCBBghooEEEGmg7QANtB2iggQYaIKCBtgM00HaAdpwEK9BAAw00QEADbQdooO0ADTTQQAMNNNAgAg20HaCBtgM00EADDTTQjpMggx5oO0ADbQdooO0ADTTQQAMENNB2gAbaDtBA2wEaIKCBBghooO0A7TjJjuMkoIEGGiCggQYRaKDtAA20HaCBBhpogIAGGkSggbYDNNBAAw000I6TIIMeaDtAA20HaKDtAC0BLQEtoCWgJaAloCWgBbQEtAS0BLQEtICWgJaAloCWgBbQEtAS0BLQEtACWgJaAloCWkBLQEtAS0BLQAtoCWgJaAloCWgBLQEtAS0BLQEtoCWgJaAloCWgBbTUqAMXbfNAA6Jd3AAAAABJRU5ErkJggg==',
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPAAAACgCAIAAAC9uXYyAAABxklEQVR42u3aMREAIAwEwajALmIQChJokiKwzNVfMFsmxprSM4UvENAS0BLQEtACWgJaAloCWgJaQEtAS0BLQEtAC2gJaAloCWgJaAEtAS0BLQEtAS2gJaAloCWgJaAFtAS0BLQEtAS0gJaAloCWgBbQEtAS0BLQEtACWgJaAloCWmoKet9eyoidlB2ggQYaaICABtoO0EDbARpooIEGGmigAQIaaDtAA20HaKCBBrpGPKzfogfaDtBA2wEaaKCBBghooEEEGmg7QANtB2iggQYaIKCBtgM00HaAdpwEK9BAAw00QEADbQdooO0ADTTQQAMNNNAgAg20HaCBtgM00EADDTTQjpMggx5oO0ADbQdooO0ADTTQQAMENNB2gAbaDtBA2wEaIKCBBghooO0A7TjJjuMkoIEGGiCggQYRaKDtAA20HaCBBhpogIAGGkSggbYDNNBAAw000I6TIIMeaDtAA20HaKDtAC0BLQEtoCWgJaAloCWgBbQEtAS0BLQEtICWgJaAloCWgBbQEtAS0BLQEtACWgJaAloCWkBLQEtAS0BLQAtoCWgJaAloCWgBLQEtAS0BLQEtoCWgJaAloCWgBbTUqAMNV/klhV3ffAAAAABJRU5ErkJggg==',
+];
+export const fakePhotoAnswer = (chart: string) =>
+  '样机的三张图：\n\n' + `![报价对比](<${chart}>)\n\n` + `![样机正面](${FAKE_PHOTO_DATA[0]})\n\n` + `![样机侧面](${FAKE_PHOTO_DATA[1]})`;
+
+export const FAKE_BOM_ANSWER =
+  '图纸和物料清单都整理好了：\n\n' +
+  `- 图纸：\`${FAKE_BOM_FILES[0]}\`\n` +
+  `- 物料清单：\`${FAKE_BOM_FILES[1]}\`\n\n` +
+  `都在 \`${FAKE_BOM_DIR}\\\` 里。\n\n` +
+  '两版报价同名，放在不同文件夹：`D:\\工作\\样机评审\\第一版\\报价.xlsx` 和 `D:\\工作\\样机评审\\第二版\\报价.xlsx`。\n\n' +
+  `不用代码格式写的路径：${FAKE_BOM_FILES[0]}`;
+
 /** The 纪要 answer, for screenshots of the conversation's text: headings, a list, inline code and a code block. */
 export const FAKE_MINUTES_ANSWER =
   '## 样机评审纪要\n\n' +
@@ -163,6 +197,12 @@ export class FakeBackend implements AgentBackend {
   #pending = new Map<string, PendingItem[]>();
   #runs = new Map<string, Run>();
   #globalCost = 0;
+  /** Calls of a model without a price were made (in any conversation). */
+  #globalUnpriced = false;
+  /** 设置 › 模型 › 单次运行花费上限 (null: none), as the core gets it. */
+  #runLimit: number | null = null;
+  /** 设置 › 模型 › 代理互发消息上限 (null: none), as the core gets it. */
+  #agentMessages: number | null = 10;
   #projects = new Map<string, ProjectInfo>();
   readonly #mail: FakeMailbox;
   readonly #memory: FakeMemory;
@@ -448,13 +488,13 @@ export class FakeBackend implements AgentBackend {
   }
 
   async answer(sessionId: string, callId: string, answer: string): Promise<void> {
-    this.#resolvePending(sessionId, callId, answer);
+    this.#resolvePending(sessionId, callId, answer, 'ask');
     this.#emit(sessionId, { type: 'ask.resolved', callId, answer });
   }
 
   async confirm(sessionId: string, callId: string, approved: boolean): Promise<void> {
+    this.#resolvePending(sessionId, callId, approved ? 'yes' : 'no', 'confirm');
     if (!approved) this.#declined.add(callId);
-    this.#resolvePending(sessionId, callId, approved ? 'yes' : 'no');
     this.#emit(sessionId, { type: 'confirm.resolved', callId, approved });
   }
 
@@ -578,6 +618,16 @@ export class FakeBackend implements AgentBackend {
   /** Like the core: the conversation and its sub-agents go, a project manager only with its project. */
   setMemoryEnabled(on: boolean): void {
     this.#memory.enabled = on;
+  }
+
+  /** 单次运行花费上限 changed in the settings (as the core's configure({ budget })). */
+  setRunLimit(usd: number | null): void {
+    this.#runLimit = usd;
+  }
+
+  /** 代理互发消息上限 changed in the settings (as the core's configure({ defaults: { agentMessages } })). */
+  setAgentMessages(n: number | null): void {
+    this.#agentMessages = n;
   }
 
   async listMemories(opts?: { all?: boolean }): Promise<MemoryItem[]> {
@@ -711,8 +761,10 @@ export class FakeBackend implements AgentBackend {
     return s;
   }
 
-  #resolvePending(sessionId: string, callId: string, value: string): void {
+  /** As the core: a card it no longer waits on (stopped, answered already) is refused with the core's words. */
+  #resolvePending(sessionId: string, callId: string, value: string, kind: PendingItem['kind']): void {
     const list = this.#pending.get(sessionId) ?? [];
+    if (!list.some((p) => p.callId === callId && p.kind === kind)) throw new Error(`no pending ${kind} with id ${callId}`);
     this.#pending.set(
       sessionId,
       list.filter((p) => p.callId !== callId),
@@ -824,14 +876,44 @@ export class FakeBackend implements AgentBackend {
     ];
   }
 
+  /** What one call of the run costs (USD): the demo price, or about 0.85 USD when the message asked for 「花费上限」. */
+  #callUsd(run: Run | undefined, inputTokens: number, outputTokens: number): number {
+    return ((inputTokens * 0.27 + outputTokens * 1.1) / 1_000_000) * (run?.dear ? 1000 : 1);
+  }
+
+  /**
+   * As the core: the next call is not started when it could take the run past 单次运行花费上限 (a model without a
+   * price never stops). Returns true when the run was stopped.
+   */
+  #stopsAtLimit(sessionId: string, run: Run, nextUsd: number): boolean {
+    const limit = this.#runLimit;
+    if (limit === null || run.unpriced || run.spent + nextUsd <= limit) return false;
+    const message = `spending limit all:run reached (the next call was not started): spent $${run.spent.toFixed(4)} of $${limit.toFixed(2)}, the next call could cost up to $${nextUsd.toFixed(4)}`;
+    this.#emit(sessionId, { type: 'budget.stop', scope: 'all:run', spentUsd: run.spent, limitUsd: limit, nextUsd, message });
+    this.#finish(sessionId, 'budget', message);
+    return true;
+  }
+
   #charge(sessionId: string, inputTokens: number, outputTokens: number): void {
-    const costUsd = (inputTokens * 0.27 + outputTokens * 1.1) / 1_000_000;
+    const run = this.#runs.get(sessionId);
     const s = this.#sessions.get(sessionId);
+    if (run?.unpriced) {
+      // a company gateway model without a price: nothing is counted, it is marked (as the core)
+      if (s) s.unpriced = true;
+      this.#globalUnpriced = true;
+      this.#emit(sessionId, { type: 'usage', usage: { inputTokens, outputTokens }, costUsd: 0, providerId: 'fake', model: 'gateway-model', unpriced: true });
+      this.#emit(sessionId, { type: 'cost', scope: 'session', spentUsd: s?.costUsd ?? 0, warning: false, unpriced: true });
+      this.#emit(sessionId, { type: 'cost', scope: 'global', spentUsd: this.#globalCost, warning: false, unpriced: true });
+      if (s) this.#emit(sessionId, { type: 'session.updated', info: structuredClone(s) });
+      return;
+    }
+    const costUsd = this.#callUsd(run, inputTokens, outputTokens);
+    if (run) run.spent += costUsd;
     if (s) s.costUsd += costUsd;
     this.#globalCost += costUsd;
     this.#emit(sessionId, { type: 'usage', usage: { inputTokens, outputTokens }, costUsd, providerId: 'fake', model: 'deepseek-flash' });
-    this.#emit(sessionId, { type: 'cost', scope: 'session', spentUsd: s?.costUsd ?? costUsd, warning: false });
-    this.#emit(sessionId, { type: 'cost', scope: 'global', spentUsd: this.#globalCost, limitUsd: 100, warning: false });
+    this.#emit(sessionId, { type: 'cost', scope: 'session', spentUsd: s?.costUsd ?? costUsd, warning: false, ...(s?.unpriced ? { unpriced: true as const } : {}) });
+    this.#emit(sessionId, { type: 'cost', scope: 'global', spentUsd: this.#globalCost, warning: false, ...(this.#globalUnpriced ? { unpriced: true as const } : {}) });
   }
 
   /** Commits one assistant message made of the blocks streamed so far. */
@@ -872,10 +954,14 @@ export class FakeBackend implements AgentBackend {
   }
 
   async #run(sessionId: string, text: string, opts: { resumeWith?: string; version?: number } = {}): Promise<void> {
-    const run: Run = { controller: new AbortController(), steers: [] };
+    // 「未计价」: the run uses a model without a price; 「花费上限」: its calls are dear (to reach 单次运行花费上限)
+    const run: Run = { controller: new AbortController(), steers: [], spent: 0, ...(/未计价/.test(text) ? { unpriced: true } : {}), ...(/花费上限/.test(text) ? { dear: true } : {}) };
     this.#runs.set(sessionId, run);
     const signal = run.controller.signal;
     const blocks: ContentBlock[] = [];
+    // The card the run waits on (a confirmation or a question): stopped while it waits, it is kept with a cancelled
+    // result, as the core does.
+    let waiting: { id: string; name: string; input: unknown } | undefined;
     let turn = 0;
     try {
       this.#setStatus(sessionId, 'thinking');
@@ -921,8 +1007,10 @@ export class FakeBackend implements AgentBackend {
       await this.#stream(sessionId, 'text', intro, signal);
       blocks.push({ type: 'text', text: intro });
 
-      // For screenshots of tools at work: 「慢」 makes each call take 4 s, 「失败」 makes reading the file fail.
+      // For screenshots of tools at work: 「慢」 makes each call take 4 s, 「失败」 makes reading the file fail,
+      // 「卡住」 keeps reading the file running for an hour (the Running … line and its clock, until 停止).
       const slow = /慢/.test(text);
+      const stuck = /卡住/.test(text);
       const fails = /失败/.test(text);
       blocks.push(
         ...(await this.#tool(sessionId, run, 'list_dir', { path: '.' }, '会议记录/\n报价单.xlsx\n测试报告.pdf\n需求说明.docx', slow ? 4000 : 500)),
@@ -934,7 +1022,7 @@ export class FakeBackend implements AgentBackend {
           'read_file',
           { path: '需求说明.docx' },
           fails ? '[FILE_LOCKED] 文件正被其他程序占用，无法读取。' : '需求说明 v3：外壳尺寸 120×80×24 mm；续航不少于 10 小时；首批样机 20 台，月底前交付。',
-          slow ? 4000 : 700,
+          stuck ? 3_600_000 : slow ? 4000 : 700,
           fails,
         )),
       );
@@ -942,6 +1030,8 @@ export class FakeBackend implements AgentBackend {
       this.#charge(sessionId, 2400, 180);
       this.#emit(sessionId, { type: 'turn.end', turn });
       this.#applySteers(sessionId, run);
+      // the next call's worst case (its input at least this call's, all of maxTokens out), as the core counts it
+      if (this.#stopsAtLimit(sessionId, run, this.#callUsd(run, 3100, 4096))) return;
 
       this.#emit(sessionId, { type: 'turn.start', turn: ++turn });
       this.#setStatus(sessionId, 'thinking');
@@ -986,7 +1076,9 @@ export class FakeBackend implements AgentBackend {
         this.#addPending(sessionId, { kind: 'confirm', callId, toolName: 'run_command', input, reason: '运行命令', createdAt: isoAt(this.#now()) });
         this.#emit(sessionId, { type: 'confirm.request', callId, name: 'run_command', input, reason: '运行命令' });
         this.#setStatus(sessionId, 'awaiting_confirm', 'run_command');
+        waiting = { id: callId, name: 'run_command', input };
         const ok = (await this.#waitFor(run, callId)) === 'yes';
+        waiting = undefined;
         this.#emit(sessionId, { type: 'tool.end', callId, name: 'run_command', isError: !ok, preview: ok ? '已删除' : '用户拒绝了这条命令', durationMs: 300 });
         blocks.push({ type: 'tool_use', id: callId, name: 'run_command', input }, { type: 'tool_result', toolUseId: callId, content: ok ? '已删除' : '用户拒绝了这条命令', isError: !ok });
         this.#setStatus(sessionId, 'thinking');
@@ -1004,7 +1096,9 @@ export class FakeBackend implements AgentBackend {
         this.#addPending(sessionId, { kind: 'confirm', callId, toolName: 'send_email', input, reason: '发送邮件给「项目组」', createdAt: isoAt(this.#now()) });
         this.#emit(sessionId, { type: 'confirm.request', callId, name: 'send_email', input, reason: '发送邮件给「项目组」' });
         this.#setStatus(sessionId, 'awaiting_confirm', 'send_email');
+        waiting = { id: callId, name: 'send_email', input };
         const decision = await this.#waitFor(run, callId);
+        waiting = undefined;
         const ok = decision === 'yes';
         this.#emit(sessionId, { type: 'tool.end', callId, name: 'send_email', isError: !ok, preview: ok ? '已发送' : '用户取消了发送', durationMs: 300 });
         blocks.push({ type: 'tool_use', id: callId, name: 'send_email', input }, { type: 'tool_result', toolUseId: callId, content: ok ? '已发送' : '用户取消了发送', isError: !ok });
@@ -1019,7 +1113,9 @@ export class FakeBackend implements AgentBackend {
         this.#addPending(sessionId, { kind: 'ask', callId, question, options, createdAt: isoAt(this.#now()) });
         this.#emit(sessionId, { type: 'ask.request', callId, question, options });
         this.#setStatus(sessionId, 'awaiting_answer');
+        waiting = { id: callId, name: 'ask_user', input: { question, options } };
         const answer = await this.#waitFor(run, callId);
+        waiting = undefined;
         blocks.push({ type: 'tool_use', id: callId, name: 'ask_user', input: { question, options } }, { type: 'tool_result', toolUseId: callId, content: answer });
         this.#setStatus(sessionId, 'thinking');
         const after = `好，按「${answer}」来写。`;
@@ -1041,9 +1137,34 @@ export class FakeBackend implements AgentBackend {
           '![旧版报价图](<\\\\files\\proj\\old.png>)';
         await this.#stream(sessionId, 'text', answer, signal);
         blocks.push({ type: 'text', text: answer });
+      } else if (/照片/.test(text)) {
+        const answer = fakePhotoAnswer(this.#demoImage?.() ?? 'D:\\工作\\样机评审\\报价对比图.png');
+        await this.#stream(sessionId, 'text', answer, signal);
+        blocks.push({ type: 'text', text: answer });
       } else if (/纪要/.test(text)) {
         await this.#stream(sessionId, 'text', FAKE_MINUTES_ANSWER, signal);
         blocks.push({ type: 'text', text: FAKE_MINUTES_ANSWER });
+      } else if (/BOM/i.test(text)) {
+        // Long full paths in an answer, with the cards of the same two files under it.
+        const at = isoAt(this.#now());
+        const cards = FAKE_BOM_FILES.map((path): FileCardMeta => ({ path, name: path.split('\\').pop() ?? path, kind: path.endsWith('.xlsx') ? 'xlsx' : 'other', sizeBytes: 2048, modifiedAt: at, extractedAt: at, read: {}, origin: 'created' }));
+        blocks.push(...(await this.#tool(sessionId, run, 'present_files', { paths: FAKE_BOM_FILES }, '已交付 2 个文件', 200, false, { category: 'present', cards })));
+        this.#setStatus(sessionId, 'thinking');
+        await this.#stream(sessionId, 'text', FAKE_BOM_ANSWER, signal);
+        blocks.push({ type: 'text', text: FAKE_BOM_ANSWER });
+      } else if (/批量/.test(text)) {
+        const at = isoAt(this.#now());
+        const card = (path: string): FileCardMeta => {
+          const name = path.split('\\').pop() ?? path;
+          const kind = name.endsWith('.pdf') ? 'pdf' : name.endsWith('.xlsx') ? 'xlsx' : name.endsWith('.csv') ? 'csv' : name.endsWith('.txt') ? 'text' : 'other';
+          return { path, name, kind, sizeBytes: 2048, modifiedAt: at, extractedAt: at, read: {}, origin: 'created', ...(kind === 'pdf' ? { pageCount: 4 } : {}), ...(kind === 'xlsx' ? { sheets: [{ name: '汇总', rows: 11, cols: 4 }, { name: '明细', rows: 40, cols: 6 }] } : {}) };
+        };
+        const cards = FAKE_BATCH_FILES.map(card);
+        blocks.push(...(await this.#tool(sessionId, run, 'run_command', { command: 'python 批量下载规格书.py', description: '批量下载规格书' }, `下载 ${cards.length} 个文件`, 600, false, { category: 'command', cards })));
+        blocks.push(...(await this.#tool(sessionId, run, 'present_files', { paths: FAKE_BATCH_FILES.slice(10, 12) }, '已交付 2 个文件', 200, false, { category: 'present', cards: cards.slice(10, 12) })));
+        this.#setStatus(sessionId, 'thinking');
+        await this.#stream(sessionId, 'text', FAKE_BATCH_ANSWER, signal);
+        blocks.push({ type: 'text', text: FAKE_BATCH_ANSWER });
       } else if (/汇总/.test(text)) {
         // For screenshots of what an answer can hold: a file it wrote, paths, a table and a code block.
         const at = isoAt(this.#now());
@@ -1066,6 +1187,29 @@ export class FakeBackend implements AgentBackend {
         this.#setStatus(sessionId, 'thinking');
         await this.#stream(sessionId, 'text', FAKE_SUMMARY_ANSWER, signal);
         blocks.push({ type: 'text', text: FAKE_SUMMARY_ANSWER });
+      } else if (/互发/.test(text)) {
+        // Messaging a sub-agent again and again: past 代理互发消息上限 the core refuses (AGENT_MESSAGES_LIMIT_MARK).
+        const limit = this.#agentMessages;
+        const tries = limit === null ? 3 : limit + 1;
+        for (let i = 1; i <= tries; i++) {
+          const refused = limit !== null && i > limit;
+          const result = refused
+            ? `${AGENT_MESSAGES_LIMIT_MARK} This conversation has sent ${limit} messages to other agents since the user last wrote here (the limit is ${limit}).`
+            : '已发送；子Agent A 开始处理。';
+          blocks.push(...(await this.#tool(sessionId, run, 'message_agent', { id: 'ses-sub-a', text: `第 ${i} 次：再核对一遍报价` }, result, 150, refused)));
+        }
+        this.#setStatus(sessionId, 'thinking');
+        const reply = limit === null ? '已经让子Agent A 再核对了三遍报价。' : `已经给子Agent A 发了 ${limit} 条消息，到了上限，先停在这里，等你说下一句。`;
+        await this.#stream(sessionId, 'text', reply, signal);
+        blocks.push({ type: 'text', text: reply });
+      } else if (/写长一点/.test(text)) {
+        // An answer that stopped at the most the model may write at once (stopReason max_tokens, as the core stores it).
+        const cut = '好的，写详细一点：\n\n1. **外壳尺寸** 定为 120×80×24 mm，比上一版薄 2 mm，主要是电池仓改了排布，' +
+          '散热片从两片改成一片，结构件供应商已经确认能做。\n2. **续航** 要求不少于 10 小时，测试报告里在 25°C、亮度 50% 的条件下';
+        await this.#stream(sessionId, 'text', cut, signal);
+        blocks.push({ type: 'text', text: cut });
+        this.#append(sessionId, 'assistant', 'assistant', [...blocks], { stopReason: 'max_tokens' });
+        blocks.length = 0;
       } else {
         const answer = (opts.version ?? 1) > 1
           ? `第 ${opts.version} 版：重新看了一遍，按优先级排：\n\n` +
@@ -1099,10 +1243,12 @@ export class FakeBackend implements AgentBackend {
     } catch (err) {
       if (err instanceof Aborted || signal.aborted) {
         // Keep what was already streamed, marked as interrupted.
+        if (waiting) blocks.push({ type: 'tool_use', id: waiting.id, name: waiting.name, input: waiting.input });
         if (blocks.length) {
           const own = blocks.filter((b) => b.type !== 'tool_result');
           if (own.length) this.#append(sessionId, 'assistant', 'assistant', own, { interrupted: true });
         }
+        if (waiting) this.#append(sessionId, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: waiting.id, content: 'Cancelled: aborted by user.', isError: true }], { author: 'runtime' });
         this.#pending.set(sessionId, []);
         this.#finish(sessionId, 'aborted');
       } else {
@@ -1117,11 +1263,11 @@ export class FakeBackend implements AgentBackend {
     this.#pending.set(sessionId, [...(this.#pending.get(sessionId) ?? []), item]);
   }
 
-  #finish(sessionId: string, reason: 'completed' | 'aborted' | 'error', detail?: string): void {
+  #finish(sessionId: string, reason: 'completed' | 'aborted' | 'error' | 'budget', detail?: string): void {
     this.#runs.delete(sessionId);
     const s = this.#sessions.get(sessionId);
     const status: SessionStatus =
-      reason === 'completed' ? (s?.role === 'worker' ? 'done' : 'idle') : reason === 'aborted' ? 'aborted' : 'error';
+      reason === 'completed' || reason === 'budget' ? (s?.role === 'worker' ? 'done' : 'idle') : reason === 'aborted' ? 'aborted' : 'error';
     this.#setStatus(sessionId, status);
     this.#emit(sessionId, detail ? { type: 'run.end', reason, detail } : { type: 'run.end', reason });
   }

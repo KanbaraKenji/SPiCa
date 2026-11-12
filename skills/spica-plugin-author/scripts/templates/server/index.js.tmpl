@@ -6,6 +6,8 @@
 //   SPICA_PLUGIN_DATA   the plugin's own data folder (besides it, write only to a
 //                       folder the user named in the conversation)
 //   SPICA_PLUGIN_DIR    the installed plugin folder (read-only)
+//   SPICA_USER_ACCOUNT  the user's account (C:\Users\alex.chen → ALEX.CHEN, or what
+//                       the user set in Spica); '' when none. Read it, never work it out
 //
 // stdout carries protocol messages only; write logs to stderr (Spica keeps
 // them in the plugin log). Never log message bodies or personal data.

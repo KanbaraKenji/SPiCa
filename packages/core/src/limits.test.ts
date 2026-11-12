@@ -1,6 +1,6 @@
 // Shared rate limiting (queue positions) and spending limits.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CostLedger } from './cost.ts';
+import { CostLedger, DEFAULT_PRICES } from './cost.ts';
 import { RateLimiter } from './limiter.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { captureEvents, makeRuntime, startGateway } from './testing/helpers.ts';
@@ -108,6 +108,62 @@ describe('limits in the runtime', () => {
     expect(gw.requests).toHaveLength(0);
   });
 
+  it('the stop says what the next call could have cost (why it stops before the limit is reached)', async () => {
+    gw.onRequest(() => ({ toolCalls: [{ name: 'list_dir', args: {} }], usage: { input: 100_000, output: 1_000 } }));
+    const rt = makeRuntime(gw, { budget: { perRunUsd: 1.2 } });
+    const events = captureEvents(rt);
+    await rt.createSession({ maxTokens: 1000 }).send('loop').done;
+    const stop = events.find((e) => e.type === 'budget.stop');
+    expect(stop).toMatchObject({ limitUsd: 1.2 });
+    if (stop?.type !== 'budget.stop') throw new Error('no stop');
+    expect(stop.spentUsd).toBeLessThan(1.2);
+    expect(stop.spentUsd + stop.nextUsd!).toBeGreaterThan(1.2);
+  });
+
+  it('no limit set: nothing stops the run', async () => {
+    let n = 0;
+    gw.onRequest(() => (++n < 4 ? { toolCalls: [{ name: 'list_dir', args: {} }], usage: { input: 100_000, output: 1_000 } } : { text: 'done' }));
+    const rt = makeRuntime(gw);
+    const r = await rt.createSession({ maxTokens: 1000 }).send('loop').done;
+    expect(r.reason).not.toBe('budget');
+    expect(rt.ledger.globalUsd).toBeGreaterThan(1.5);
+  });
+
+  it('a model without a price: not counted, never stopped by a limit, marked 未计价 in events, records and totals', async () => {
+    let n = 0;
+    gw.onRequest(() => (++n < 3 ? { toolCalls: [{ name: 'list_dir', args: {} }], usage: { input: 100_000, output: 1_000 } } : { text: 'done' }));
+    const rt = makeRuntime(gw, { prices: DEFAULT_PRICES, budget: { perRunUsd: 0.01, perCallUsd: 0.01, globalUsd: 0.01 } });
+    const events = captureEvents(rt);
+    const s = rt.createSession({ maxTokens: 1000 });
+    const r = await s.send('loop').done;
+    expect(r.reason).not.toBe('budget');
+    expect(gw.requests).toHaveLength(3);
+    expect(events.some((e) => e.type === 'budget.stop')).toBe(false);
+    const usage = events.filter((e) => e.type === 'usage');
+    expect(usage.length).toBe(3);
+    expect(usage.every((e) => e.type === 'usage' && e.unpriced === true && e.costUsd === 0)).toBe(true);
+    expect(events.find((e) => e.type === 'cost' && e.scope === 'session')).toMatchObject({ spentUsd: 0, unpriced: true });
+    expect(s.info()).toMatchObject({ costUsd: 0, unpriced: true });
+    expect(rt.ledger.hasUnpriced()).toBe(true);
+    const traces = rt.store.listTraces({ sessionId: s.id }).filter((t) => t.kind === 'model');
+    expect(traces.every((t) => t.unpriced === true && t.costUsd === undefined)).toBe(true);
+  });
+
+  it('after a restart: older records of a model without a price (written at the stand-in price) count nothing, and the usage log says 未计价', async () => {
+    const rt = makeRuntime(gw, { prices: DEFAULT_PRICES });
+    const old = { kind: 'model' as const, startedAt: new Date().toISOString(), durationMs: 1, sessionId: null, parentChain: [], initiator: 'model', target: 'x', status: 'ok' as const };
+    rt.store.appendTrace({ ...old, id: 'tr-old', providerId: 'fake-openai', model: 'fake-model', costUsd: 0.75 });
+    rt.store.appendTrace({ ...old, id: 'tr-gone', providerId: 'removed-provider', model: 'fake-model', costUsd: 0.25 });
+    rt.restore();
+    expect(rt.ledger.hasUnpriced()).toBe(true);
+    // a provider no longer set up cannot be told: its record stays as it was written
+    expect(rt.ledger.globalUsd).toBeCloseTo(0.25);
+    const lines = rt.exportUsageLog().split(/\n/).map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(lines.find((l) => l.id === 'tr-old')).toMatchObject({ type: 'trace', unpriced: true });
+    expect(lines.find((l) => l.id === 'tr-old')!.costUsd).toBeUndefined();
+    expect(lines.find((l) => l.id === 'tr-gone')).toMatchObject({ costUsd: 0.25 });
+  });
+
   it('warns when a total passes the warning threshold', async () => {
     gw.onRequest(() => ({ text: 'ok', usage: { input: 10_000, output: 0 } }));
     const rt = makeRuntime(gw, { budget: { globalUsd: 0.06, warnAt: 0.5 } });
@@ -129,6 +185,48 @@ describe('CostLedger', () => {
     expect(ledger.estimate({ providerId: 'x', providerKind: 'anthropic', model: 'm' }, { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 1_000_000 })).toBeCloseTo(1.1);
     // OpenAI style: prompt_tokens includes cached tokens
     expect(ledger.estimate({ providerId: 'x', providerKind: 'openai-compatible', model: 'm' }, { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 400_000 })).toBeCloseTo(0.64);
+  });
+});
+
+describe('models without a price (未计价)', () => {
+  const priced = { providerId: 'p', providerKind: 'openai-compatible', model: 'known', sessionId: 's1', runId: 'r1' };
+  const unpriced = { ...priced, model: 'mystery' };
+  const ledger = () => new CostLedger({ 'openai-compatible': { known: { input: 1, output: 1 }, '*': { input: 5, output: 20, unverified: true, unpriced: true } } }, { perRunUsd: 0.5 });
+
+  it('a stand-in row is not a price; a price not checked yet (unverified only) is one', () => {
+    const l = new CostLedger({ x: { checked: { input: 1, output: 1 }, unchecked: { input: 1, output: 1, unverified: true } } });
+    expect(l.priced({ providerId: 'x', providerKind: 'k', model: 'checked' })).toBe(true);
+    expect(l.priced({ providerId: 'x', providerKind: 'k', model: 'unchecked' })).toBe(true);
+    expect(l.priced({ providerId: 'x', providerKind: 'k', model: 'nothing' })).toBe(false); // FALLBACK_PRICE
+    expect(new CostLedger().priced({ providerId: 'x', providerKind: 'openai-compatible', model: 'nobody-knows-this' })).toBe(false);
+  });
+
+  it('counts nothing and is never stopped; priced calls in the same run and session still are', () => {
+    const l = ledger();
+    const hold = l.reserve(unpriced, 1_000_000, 1_000_000);
+    expect(hold).toMatchObject({ ok: true, usd: 0 });
+    const rec = l.record(unpriced, { inputTokens: 1_000_000, outputTokens: 1_000_000 });
+    expect(rec).toMatchObject({ costUsd: 0, unpriced: true });
+    expect(rec.totals.find((t) => t.scope === 'run')).toMatchObject({ spentUsd: 0, unpriced: true });
+    expect(l.precheck(unpriced, 1_000_000, 1_000_000)).toEqual({ ok: true });
+    // mixed: the priced part has a number, the totals say calls without a price are left out
+    const rec2 = l.record(priced, { inputTokens: 200_000, outputTokens: 0 });
+    expect(rec2.unpriced).toBeUndefined();
+    expect(rec2.totals.find((t) => t.scope === 'session')).toMatchObject({ spentUsd: 0.2, unpriced: true });
+    expect(l.precheck(priced, 200_000, 200_000)).toMatchObject({ ok: false, scope: 'all:run', spentUsd: 0.2, nextUsd: 0.4 });
+  });
+
+  it('an older record of such a model, written at the stand-in price, is marked and not added again', () => {
+    const l = ledger();
+    l.seed([
+      { providerId: 'p', sessionId: 's1', costUsd: 0.75, unpriced: true },
+      { providerId: 'p', sessionId: 's2', costUsd: 0.1 },
+    ]);
+    expect(l.globalUsd).toBeCloseTo(0.1);
+    expect(l.sessionUsd('s1')).toBe(0);
+    expect(l.hasUnpriced('s1')).toBe(true);
+    expect(l.hasUnpriced('s2')).toBe(false);
+    expect(l.hasUnpriced()).toBe(true);
   });
 });
 

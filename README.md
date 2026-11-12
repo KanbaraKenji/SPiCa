@@ -61,18 +61,22 @@ The interface is in Chinese for now; menu names are given in both languages belo
 Each release also carries the official plugins as zips, each with a `.sha256` file, and an
 `index.json` that lists them all.
 
-- **All at once (checksums checked):** open **Settings › Plugins** (设置 › 插件), paste the
-  release's `index.json` address into the install box and press **Install** (安装):
+- **All at once (checksums checked):** open **Settings › Plugins › Market** (设置 › 插件 ›
+  市场), press **Add source** (添加来源), paste the release's `index.json` address and press
+  **Add** (添加):
 
   ```
   https://github.com/KanbaraKenji/SPiCa/releases/download/<tag>/index.json
   ```
 
-  Spica lists the plugins in that release; press **Install** next to the ones you want.
-  It checks each package's SHA-256 before installing. The exact address is also in the
-  release notes.
-- **One zip:** download for example `outlook-<version>.zip`, then paste the zip's full
-  path into the same install box. To check the download first:
+  The plugins in that release are listed under the source, each marked installed (已安装),
+  update available (可更新) or not; pick one and press **Install** (安装). Spica checks each package's SHA-256 before installing. The exact address is also in
+  the release notes. The source stays in the list, so **Check for updates** (检查更新) next to
+  it looks for newer versions later.
+- **One zip:** download for example `outlook-<version>.zip`, then under **Add source** paste
+  the zip's full path (or pick its folder with the folder button) and press **Add**; the
+  plugin is listed below to install. A zip's web address works too: it is not kept as a
+  source, but the plugin is listed below to install. To check a download first:
   `certutil -hashfile outlook-<version>.zip SHA256` and compare with the `.sha256` file.
 
 | Plugin | What it does |

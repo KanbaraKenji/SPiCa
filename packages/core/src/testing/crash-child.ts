@@ -6,11 +6,13 @@
 import { OpenAICompatibleProvider } from '../providers/openai.ts';
 import { Runtime } from '../runtime.ts';
 import { SqliteStore } from '../store/sqlite.ts';
+import { TEST_PRICES } from './helpers.ts';
 
 const [dbPath, baseUrl, cwd, mode = 'tool'] = process.argv.slice(2) as [string, string, string, string?];
 const rt = new Runtime({
   providers: [new OpenAICompatibleProvider({ id: 'fake-openai', baseUrl: `${baseUrl}/v1`, apiKey: 'test-key-123456' })],
   defaults: { providerId: 'fake-openai', model: 'fake-model', maxTokens: 256 },
+  prices: TEST_PRICES, // a price, so the restored totals are a number (helpers.ts)
   store: new SqliteStore(dbPath),
   cwd,
   tools: [

@@ -3,15 +3,16 @@ import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useS
 import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo } from '@spica/protocol';
 import { changesAfter } from '../store/relocate';
 import { filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
-import { ImageViewer } from '../ui/ImageViewer';
+import { ImageGroup, ImageViewer, useImageGroup, type Picture } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
-import { AnswerSources, AnswerToolsContext, AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, SourceCardsContext, ToolCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
+import { AnswerSources, AnswerToolsContext, AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, RoundDoneContext, SourceCardsContext, ToolCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
 import { Composer, type ComposerTools } from './Composer';
 import { answerText, MessageActions } from './MessageActions';
 import { answerSources } from './sources';
 import { WEB_IMAGES, webImagesFor } from './answer-image';
 import { StatusLine } from './StatusLine';
+import { ASK, greeting } from './welcome';
 import { GUARD_FLAG_TEXT } from './format';
 import { SettingsChangeCard } from './SettingsChangeCard';
 import { MemoryLinesContext, MemoryNote, type MemoryLines } from './MemoryNote';
@@ -52,10 +53,12 @@ const IMAGE_CODE_TEXT: Record<NonNullable<Attachment['code']>, string> = {
   'image.unreadable': '无法读取图片，未发送',
 };
 
-/** A sent picture under the message: a thumbnail, full size on a click. */
+/** A sent picture under the message: a thumbnail, full size on a click (with the message's other pictures). */
 function SentPicture({ a, url }: { a: Attachment; url?: (path: string) => Promise<string> }) {
   const [src, setSrc] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState<{ pictures: Picture[]; index: number } | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const group = useImageGroup(button, src, a.name);
   const path = a.image?.path ?? '';
   useEffect(() => {
     let alive = true;
@@ -66,10 +69,10 @@ function SentPicture({ a, url }: { a: Attachment; url?: (path: string) => Promis
   }, [path, url]);
   return (
     <>
-      <button type="button" className="turn-picture" onClick={() => src && setOpen(true)} aria-label={`查看 ${a.name}`} title={a.name}>
+      <button type="button" className="turn-picture" ref={button} onClick={() => src && setOpen(group())} aria-label={`查看 ${a.name}`} title={a.name}>
         {src ? <img src={src} alt="" /> : null}
       </button>
-      {open && src ? <ImageViewer url={src} name={a.name} onClose={() => setOpen(false)} /> : null}
+      {open ? <ImageViewer pictures={open.pictures} start={open.index} onClose={() => setOpen(null)} /> : null}
     </>
   );
 }
@@ -180,6 +183,9 @@ function Response({
   const answerTools = tools ? { ...tools, webImages } : null;
   return (
     <AnswerToolsContext.Provider value={answerTools}>
+    <RoundDoneContext.Provider value={!live}>
+    {/* One answer's pictures are one group in the viewer. */}
+    <ImageGroup>
     <div className="turn-response" {...at}>
       {segs.map((s, i) => {
         if (s.kind === 'memory') {
@@ -222,6 +228,18 @@ function Response({
       {live ? null : <AnswerSources sources={answerSources(blocks, sources)} />}
       {live ? null : <FileCards files={files} onOpen={actions.openFile} actions={fileActions(actions, cwd)} />}
       {item.interrupted && newest ? <p className="turn-note">（中断）</p> : null}
+      {/* the newest answer stopped at the most the model may write at once: say it, and 继续 asks for the rest */}
+      {item.truncated && !item.interrupted && newest && !live && after === 0 ? (
+        <div className="resume-row">
+          <span className="status-with-icon">
+            <SpicaStatusIcon name="warning" size={15} />
+            回答到达长度上限，没有写完
+          </span>
+          <button type="button" className="btn" onClick={() => actions.send('继续')}>
+            继续
+          </button>
+        </div>
+      ) : null}
       {live ? null : (
         <MessageActions
           text={answerText(blocks)}
@@ -242,11 +260,15 @@ function Response({
         />
       )}
     </div>
+    </ImageGroup>
+    </RoundDoneContext.Provider>
     </AnswerToolsContext.Provider>
   );
 }
 
-function EmptyState({ session, needsModel, onSetupModel }: { session: SessionInfo | undefined; needsModel: boolean; onSetupModel?: () => void }) {
+function EmptyState({ session, needsModel, onSetupModel, welcome }: { session: SessionInfo | undefined; needsModel: boolean; onSetupModel?: () => void; welcome?: ConversationProps['welcome'] }) {
+  // The time the page opened: the greeting and its line stay put while it is open.
+  const [opened] = useState(() => new Date());
   if (needsModel)
     return (
       <div className="empty-chat">
@@ -257,10 +279,18 @@ function EmptyState({ session, needsModel, onSetupModel }: { session: SessionInf
         </button>
       </div>
     );
+  if (session && session.role !== 'top')
+    return (
+      <div className="empty-chat">
+        <SpicaMark size={56} />
+        <p className="empty-chat-title">{session.title}</p>
+      </div>
+    );
   return (
     <div className="empty-chat">
       <SpicaMark size={56} />
-      <p className="empty-chat-title">{session?.role === 'top' || !session ? '有什么要我做的？' : session.title}</p>
+      <p className="empty-chat-title">{welcome ? greeting(welcome.now ?? opened, welcome.name) : ASK}</p>
+      {welcome ? <p className="empty-chat-line">{ASK}</p> : null}
     </div>
   );
 }
@@ -335,6 +365,11 @@ export interface ConversationProps {
   found?: { seq?: number; back?: { title: string; onBack(): void } };
   /** The user's memory, for the 已记住 lines and their 撤销. */
   memory?: MemoryLines;
+  /**
+   * The empty page of a new conversation greets the user (chat/welcome.ts): `name` is 设置 › 账号 › 昵称 ('' = no
+   * name). `now`: for tests (default: the time the page opens).
+   */
+  welcome?: { name: string; now?: Date };
 }
 
 export interface WaitingChild {
@@ -345,7 +380,7 @@ export interface WaitingChild {
 
 const NO_MEMORY: MemoryLines = { items: null };
 
-export function Conversation({ session, transcript, actions, demo, needsModel = false, onSetupModel, waiting = [], composerTools, found, memory = NO_MEMORY }: ConversationProps) {
+export function Conversation({ session, transcript, actions, demo, needsModel = false, onSetupModel, waiting = [], composerTools, found, memory = NO_MEMORY, welcome }: ConversationProps) {
   const running = isRunning(transcript.run?.status) || isRunning(session?.status);
   const { ref, away, toBottom, unpin } = useStickToBottom(transcript);
   const items = transcript.items;
@@ -385,7 +420,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
     <div className="conversation">
       <div className="transcript" ref={ref}>
         {items.length === 0 && !running ? (
-          <EmptyState session={session} needsModel={needsModel} {...(onSetupModel ? { onSetupModel } : {})} />
+          <EmptyState session={session} needsModel={needsModel} {...(onSetupModel ? { onSetupModel } : {})} {...(welcome ? { welcome } : {})} />
         ) : (
           <div className="transcript-column">
             {found?.back ? (
@@ -404,11 +439,14 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                     </div>
                     {item.attachments?.some((a) => a.image) ? (
                       <div className="turn-pictures">
-                        {item.attachments
-                          .filter((a) => a.image)
-                          .map((a) => (
-                            <SentPicture key={a.image!.path} a={a} {...(actions.imageUrl ? { url: actions.imageUrl } : {})} />
-                          ))}
+                        {/* One message's pictures are one group in the viewer. */}
+                        <ImageGroup>
+                          {item.attachments
+                            .filter((a) => a.image)
+                            .map((a) => (
+                              <SentPicture key={a.image!.path} a={a} {...(actions.imageUrl ? { url: actions.imageUrl } : {})} />
+                            ))}
+                        </ImageGroup>
                       </div>
                     ) : null}
                     {item.attachments?.some((a) => a.code) ? (
@@ -476,10 +514,19 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                 </button>
               </div>
             ) : null}
+            {/* a run that ended at the turn limit (scripts through the MCP service; the app sets none) */}
+            {transcript.stopped === 'max_turns' && !running ? <p className="turn-note">（已达到轮数上限，还没做完）</p> : null}
+            {/* message_agent refused: the limit of messages to other agents since the user last wrote */}
+            {transcript.agentLimit ? <p className="turn-note">（代理之间互发的消息已达上限，没有再发；你说一句话后重新计数）</p> : null}
             {transcript.error ? (
               <p className="turn-error status-with-icon" role="alert">
                 <SpicaStatusIcon name="error" size={15} />
-                {transcript.error}
+                <span>{transcript.error}</span>
+                {transcript.errorAction === 'models' && actions.openModelSettings ? (
+                  <button type="button" className="btn btn-small" onClick={actions.openModelSettings}>
+                    修改上限
+                  </button>
+                ) : null}
               </p>
             ) : null}
           </div>

@@ -83,7 +83,7 @@ export default (ctx) => ({
 export const priority = 100; // 可选，小的先跑
 ```
 
-- 默认导出钩子对象，或接收 `PluginContext`（name、version、pluginDir、dataDir、`mock()`、`log()`）的工厂。
+- 默认导出钩子对象，或接收 `PluginContext`（name、version、pluginDir、dataDir、`mock()`、`log()`、`user.account`）的工厂。`user.account` 是取值器（getter），用户改了账号，钩子下一次调用就读到新的。
 - 钩子类型和参数就是内核的 `Hooks`（`agent-core.md` 第 7 节），六个注入位置照用。
 - 只收 ESM `.js/.mjs`；放 `.ts` 会得到「先编译成 .js」的警告。Electron 45 自带的 Node 24.22 其实能跑 TS，但不对插件作者承诺，免得以后换运行时出问题。
 
@@ -103,18 +103,20 @@ export const priority = 100; // 可选，小的先跑
 |---|---|---|
 | `title` | 是 | 侧栏 / 面板上显示的名字 |
 | `entry` | 是 | 插件目录里的 `.html`，相对路径，不许 `..`、绝对路径，文件要存在 |
-| `placement` | 否 | `sidebar`（默认，侧栏里一个入口）/ `panel`（对话旁边的面板）/ `preview`（给 `preview.extensions` 里的文件当预览，在右侧栏打开） |
+| `placement` | 否 | `sidebar`（默认，侧栏里一个入口）/ `panel`（窗口最右「详情」那一栏顶上的一个标签，和详情同宽 300px，不能拖宽、不能盖住对话）/ `preview`（给 `preview.extensions` 里的文件当预览，在对话右边的预览栏打开）/ `settings`（插件自己的设置页，在 设置 › 插件 › 这个插件详情的一个页签里，不进侧栏；可以有几个，各一个页签） |
 | `icon` | 否 | 插件目录里的 `.svg` |
 | `permissions.tools` | 否 | 页面能调的本插件工具（server 里的原名，不带前缀）；不写 = 本插件全部工具，常驻进程的工具也算；预览页不写 = 一个都不给（它拿着用户的文件） |
 | `preview` | placement 为 preview 时必填 | `extensions`：小写、带点的扩展名，不能有 .pdf 和图片（应用自己预览）；`max_mb`：能处理的最大文件，1 到 100，缺省 20。`views()` 里给 `preview: { extensions, maxBytes }` |
 
-**预览页**：右侧栏打开一个文件时，外壳按用户的设置（外壳自己的 `settings.json` 里 `previewers`：扩展名 → `插件/页面`，没写的用自带预览）决定用不用插件页。外壳主进程读这个文件（超过 `maxBytes` 不读），经桥把文件名、大小、修改时间、扩展名和字节交给页面，不给路径；页面读不了别的文件、写不回去、不能联网。页面慢（15 秒）、出错、插件没装时退回自带预览。桥接口 `spica.preview.file() / ready() / fail()` 和设置的界面归外壳。
+**预览页**：预览栏打开一个文件时，外壳按用户的设置（外壳自己的 `settings.json` 里 `previewers`：扩展名 → `插件/页面`，没写的用自带预览）决定用不用插件页。外壳主进程读这个文件（超过 `maxBytes` 不读），经桥把文件名、大小、修改时间、扩展名和字节交给页面，不给路径；页面读不了别的文件、写不回去、不能联网。页面慢（15 秒）、出错、插件没装时退回自带预览。桥接口 `spica.preview.file() / ready() / fail()` 和设置的界面归外壳。
+
+**设置页**（2026-11-12，team2）：插件自己写的页面，外壳放在 设置 › 插件 › 这个插件的详情里：名字和操作那两行下面一行页签，「详情」之后每个设置页一个（页签文字是 `title`），点到时整块换成这个页面、占满剩下的高度、页面自己滚；只在插件启用时有页签；第一次点到才加载，切回「详情」时页面留着（只在内存里），换别的插件再回来从「详情」开始；页面里 `--spica-bg` 和 `--spica-surface` 对调（底是卡片色，按钮、输入框是窗口色）。规则和别的页面完全一样（沙箱、只能调本插件的工具、`permissions.tools` 生效、不写就是本插件全部工具）。读写设置的工具建议放 `services/`（模型看不到），示例插件 `views/settings.json` + `services/settings.json` 就是这么做的。它和第 11 节「故意没做的插件设置表单」不是一回事：那个是 MCPB 的 `user_config`——清单里声明字段，由宿主统一画表单、统一存值、启动时注入给 server；设置页是插件自己画、自己经工具存（`SPICA_PLUGIN_DATA/config.json`），宿主只给一块地方和桥。
 
 视图文件名（不含 `.json`）就是视图 id：小写字母、数字、`-`。
 
 **外壳怎么渲染**（和桌面外壳对好的约定，2026-11-10）：
 - 页面跑在沙箱里：没有 Node；自定义协议 `spica-plugin://<插件>/<路径>`，每次取文件都问 `pluginViewFile`，只给本插件目录里的文件；CSP `default-src spica-plugin:`，样式另放 `'unsafe-inline'`。
-- 外壳注入 `window.spica`：`callTool(工具原名, 参数)` → `{ content, data?, isError }`；`onEvent(fn)`（`{type:'theme'}`、`{type:'plugin.changed'}`），返回取消函数；`theme` → `{ mode: 'light' | 'dark' }`；`openFile(路径)`（只限本插件目录里的文件或这次会话见过的文件，在右栏预览）；`notify(文字, { kind? })`。
+- 外壳注入 `window.spica`：`callTool(工具原名, 参数)` → `{ content, data?, isError }`；`onEvent(fn)`（`{type:'theme'}`、`{type:'plugin.changed'}`），返回取消函数；`theme` → `{ mode: 'light' | 'dark' }`；`openFile(路径)`（只限本插件目录里的文件或这次会话见过的文件，在预览栏打开）；`notify(文字, { kind? })`；`pickFolder({ title?, defaultPath? })`、`pickFile({ title?, defaultPath?, extensions? })` → 用户在系统对话框里选的完整路径，取消时 `null`；`openFolder(路径)` 在资源管理器里打开一个本机文件夹（边界见第 7 节「插件页面」）。
 - 主题：外壳往页面根元素注入 9 个 CSS 变量 `--spica-bg`、`--spica-surface`、`--spica-fg`、`--spica-muted`、`--spica-border`、`--spica-accent`、`--spica-danger`、`--spica-font`、`--spica-radius`，换明暗或皮肤时重新注入并发 `theme` 事件。
 - 调工具：外壳把 `callTool` 转给后端 `pluginViewCall`。插件包检查插件已启用、视图存在、工具是本插件的且在 `permissions.tools` 里；然后交给内核 `runtime.callPluginTool(插件, 完整工具名, 参数, { confirmed })`：不走模型，但**钩子照常生效**（例如 Outlook 插件把附件限制在项目文件夹里的 `beforeTool`），调用留痕（发起方 `view:<插件>`）。需要确认时（`permissions.irreversible` 经插件包的权限钩子返回 confirm、MCP 的 `destructiveHint`、或别的钩子要求确认），没带 `confirmed: true` 的调用什么都不执行，返回 `[CONFIRM_REQUIRED] 原因`；外壳弹 Spica 自己的确认框（「<插件名> 要执行 <工具>，确认吗？」），同意后带 `confirmed: true` 再调。钩子拒绝时返回钩子自己的错误码（如 `[PATH_NOT_ALLOWED]`），没有码时是 `[BLOCKED]`。常驻进程的工具对模型隐藏，但本插件的页面可以调（权限钩子认得 `view:<插件>` 发起的调用）。没有 `callPluginTool` 的旧内核退回 `invokeTool`（不走钩子）。
 - 失败结果的 `content` 以错误码开头：`PLUGIN_DISABLED`、`VIEW_NOT_FOUND`、`TOOL_NOT_FOUND`、`TOOL_NOT_ALLOWED`、`CONFIRM_REQUIRED`、`BLOCKED`（钩子拒绝且没给码）、`UNSUPPORTED`；工具自己报的错原样返回。
@@ -164,7 +166,8 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 ## 5. 外部进程（MCP server）
 
 - 统一是 stdio 的 MCP server，由内核的 MCP 客户端启动和通话（`spawn` 带 `windowsHide: true`，不用 `shell`）。插件包只负责拼启动参数、管重启和日志。
-- 环境变量（宿主填）：`SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION`、`SPICA_PLUGIN_DIR`（安装目录，只读）、`SPICA_PLUGIN_DATA`（可写）、`SPICA_MOCK`（`1` / `0`）；Node 类再加 `ELECTRON_RUN_AS_NODE=1`。工作目录是插件安装目录。
+- 环境变量（宿主填）：`SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION`、`SPICA_PLUGIN_DIR`（安装目录，只读）、`SPICA_PLUGIN_DATA`（可写）、`SPICA_MOCK`（`1` / `0`）、`SPICA_USER_ACCOUNT`（用户的账号，见下）；Node 类再加 `ELECTRON_RUN_AS_NODE=1`。工作目录是插件安装目录。这些在 `baseEnv` 和清单的 `env` 之后填，同名的盖不过它们（清单的 `env` 写 `SPICA_` 开头的检查时就报错）；用户自己环境里同名的变量不在继承白名单里，也进不来。
+- **用户的账号**（2026-11-12，公司定的规则）：Windows 用户文件夹名转大写（`C:\Users\alex.chen` → `ALEX.CHEN`）。文件夹向系统要（`path.win32.basename(os.userInfo().homedir)`，Windows 上是这个进程所属用户的配置文件目录，实测不受 `USERPROFILE` 影响；`os.homedir()` 先读 `USERPROFILE`，不用），不读 `USERPROFILE` / `HOMEPATH` / `USERNAME`，不用登录名，不另起进程。桌面端主进程启动时算一次（`apps/desktop/src/main/user-account.ts`），设置 › 账号 可以手动改（转大写、去首尾空格和控制字符，最长 64；填回自动的那个等于没填）；生效的那个随内核配置交给后端扩展（`DesktopHostOptions.userAccount` → `PluginManagerOptions.userAccount`），改了经扩展方法 `setUserAccount` 传过去：钩子下一次调用读到，在运行的 server 用 `restartServers()` 重启一遍（和网络设置变了一样）。manager 自己不取，没给就是空字符串。取不到（不是 Windows、系统没给、出错）时是空字符串，记一行日志，程序照常起。截图模式固定 `ALEX.CHEN`；开发版可以用 `SPICA_DEV_ACCOUNT` 试别的（`-` = 取不到）。
 - **Node 类：用 Electron 自带的 Node。** 启动命令是 `process.execPath`（Electron 主程序）+ `ELECTRON_RUN_AS_NODE=1`。理由：用户什么都不用装；和桌面端是同一个 Node 版本（Electron 45 = Node 24.22），作者在本机用 Node 24 开发即可；不另带一个 node.exe，安装包不变大。纯 Node 下（测试、冒烟脚本）这个变量无害，所以测试和真机走同一条路。依赖打进包里（MCPB 的做法），不在用户电脑上 `npm install`。
 - **Python 类，这一版：插件自带独立可执行文件**（PyInstaller / Nuitka 打成 `.exe`），清单写 `"runtime": "binary"`，宿主只负责启动。
 - **Python 类，以后：宿主托管解释器（只写方案，不写代码）。**
@@ -193,7 +196,8 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 | 工作文件夹 | `permissions.workspace` 只声明、展示 | 插件包挂 `beforeTool`：参数里出现的路径不在会话工作文件夹内、也不是用户在对话里点名的文件夹，就拒绝（怎么认出「用户点名」到时再定）；`read` 的插件写项目文件夹也拒绝 |
 | 网络 | 插件 server 和应用用同一套网络设置：内核起子进程时注入代理（`HTTPS_PROXY` 等 + `NODE_USE_ENV_PROXY=1`）和信任名单（`NODE_EXTRA_CA_CERTS` + `NODE_USE_SYSTEM_CA`；自带可执行文件用 `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` / `CURL_CA_BUNDLE` 的全量证书），设置里没有的就从子进程环境里删掉（内核 f8d328d）。设置真变了时内核调扩展的 `networkChanged()`，插件这边重启在运行的 server（`restartServers()`），之后的请求用新设置；有认证的代理，账号密码会随代理地址进插件进程。`permissions.network` 只声明、展示 | 按 `permissions.network` 放行 |
 | 环境变量 | 插件进程只继承白名单（`PLUGIN_INHERIT_ENV`：PATH、系统目录、TEMP、用户目录、电脑名和用户名（`COMPUTERNAME`、`USERNAME`）、代理变量等；和内核的 `DEFAULT_CHILD_ENV`、作者工具包 `lib/mcp.mjs` 里的同一张表，有测试保证三处一致），像密钥的名字（SPICA_ 开头、含 KEY / SECRET / TOKEN / PASSWORD / CREDENTIAL）内核一律不传；有测试 | — |
-| 插件页面 | 沙箱里跑，没有 Node；只能取本插件目录里的文件；只能调本插件、本视图 `permissions.tools` 里的工具；`permissions.irreversible` 里的工具先由外壳弹确认框：清单里的声明和 MCP 的 `destructiveHint` 都会要确认，mcp/ 和 services/ 的工具一样 | 页面调用记进插件日志 |
+| 用户账号 | 所有启用的插件都拿到 `SPICA_USER_ACCOUNT` 和 `ctx.user.account`，不用声明权限（「框架统一提供」）。它来自用户文件夹名，等于把 Windows 用户名告诉了每个插件；白名单里的 `USERNAME`、`USERPROFILE` 本来也给了，这一条不比原来多给，只是插件不用再各取各的 | — |
+| 插件页面 | 沙箱里跑，没有 Node；只能取本插件目录里的文件；只能调本插件、本视图 `permissions.tools` 里的工具；`permissions.irreversible` 里的工具先由外壳弹确认框：清单里的声明和 MCP 的 `destructiveHint` 都会要确认，mcp/ 和 services/ 的工具一样。选文件夹 / 文件（`pickFolder` / `pickFile`）：页面能拿到本机完整路径，只因为用户自己在系统对话框里选了它，所以不用在清单里声明；只给路径，读写仍走本插件的工具（钩子、确认照常）；对话框挂在主窗口上，标题前加插件名，所有插件页面同一时间只开一个（开着时再要直接回 `null`）；`defaultPath` 只认本机盘符开头的完整路径，`\\server\share` 这类网络路径忽略（不然页面能让系统去连别的电脑，绕过「不能联网」）；预览页不能用（它拿着用户的文件，不该有通往别的文件的路）。实现：`main/plugin-views.ts` 的 `createPluginPicker`、`pickDialogOptions`。打开文件夹（`openFolder`）：只在资源管理器里打开，不读、不执行；只认本机盘符开头的路径（`shared/plugin-view.ts` 的 `localDrivePath`，和 `defaultPath` 同一条），网络路径在窗口这边就拒掉；再经应用自己的「打开文件夹」通道（`spica:openFolder`），那里确认它是文件夹（是文件、不存在都报「找不到文件夹：…」，所以不会运行文件）。任何本机文件夹都能开，不限用户选过的：开一个资源管理器窗口不泄露也不改动什么，用户手填的路径也要能开；预览页不能用 | 页面调用记进插件日志 |
 | 来源可信 | HTTP 来源每个包必须有 SHA-256，不对拒装；共享盘有索引就校验 | 包签名 |
 
 ## 8. 分发与更新
@@ -209,6 +213,7 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
   - **共享盘**：`{ kind: 'share', location: '\\\\server\\plugins' }`。有 `index.json` 就按它；没有就扫：带 `manifest.json` 的子文件夹、`*.zip` 都算。`file` 以 `/` 结尾表示文件夹。
   - **HTTP**：`{ kind: 'http', location: 'https://…/index.json' }`。`file` 相对索引地址解析；必须有 `sha256`。桌面端传 Electron 的 `net.fetch`，走系统代理。
   - 发布者用 `writeIndex(文件夹)` 给一堆 zip 生成索引。
+- 外壳记住的来源（`<userData>\plugin-sources.json`，2026-11-12 起「添加来源」一加就记住）还可以是单个插件文件夹或本机 .zip：外壳的 `RealPluginService` 读它自己（`readPluginFolder` / `verifyPackage`），不经 `listSource`；检查更新也按外壳读到的算（不再调 `checkUpdates`）。官方来源来自打包时的 `deploy.json`（`pluginSources`，见 desktop-shell.md 第 9 节）：排最前、标「官方」、不能移除，和用户加的同一个地址只算一个。
 - 版本比较按 semver（预发布版低于正式版）；同一插件多个版本取兼容范围内最新的。
 - `checkUpdates(manager, 来源列表)` → 可更新列表；读不了的来源单独列出（「找不到共享文件夹 …，检查盘有没有连上」），不影响别的来源。
 - `installAvailable(manager, 条目)`：下载 → 校验和 → 解包到临时目录 → `install()`。已启用的插件更新后继续启用，数据保留。
@@ -249,7 +254,7 @@ J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型�
 
 ## 11. 故意没做的
 
-- 插件设置表单（MCPB 的 `user_config`）、包签名、工作文件夹 / 网络的强制拦截、宿主托管 Python：见上文「以后」。
+- 插件设置表单（MCPB 的 `user_config`：清单里声明字段、宿主统一画表单和存值）、包签名、工作文件夹 / 网络的强制拦截、宿主托管 Python：见上文「以后」。插件**自己写的**设置页（`placement: "settings"`）已经有了，见第 2 节「视图」；两者的区别也写在那里。
 - 外壳的插件页、模拟模式标记、来源设置：归桌面外壳，本包只给接口和事件。
 - 官方 Outlook 插件：另开话题。
 

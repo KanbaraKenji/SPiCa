@@ -20,7 +20,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PLUGIN_INHERIT_ENV, StdioClient, pluginEnv } from './lib/mcp.mjs';
+import { PLUGIN_INHERIT_ENV, STAND_IN_ACCOUNT, StdioClient, pluginEnv } from './lib/mcp.mjs';
 import { packageFiles, sha256, stripBom, writeZip } from './lib/pack.mjs';
 
 const NAME = /^[a-z][a-z0-9-]{1,23}$/;
@@ -174,7 +174,7 @@ export async function check(dir, opts = {}) {
       continue;
     }
     if (typeof v.title !== 'string' || !v.title.trim()) err(where, '缺少 title');
-    if (v.placement !== undefined && !['sidebar', 'panel', 'preview'].includes(v.placement)) err(where, 'placement 只能是 sidebar、panel 或 preview');
+    if (v.placement !== undefined && !['sidebar', 'panel', 'preview', 'settings'].includes(v.placement)) err(where, 'placement 只能是 sidebar、panel、preview 或 settings');
     if (v.placement === 'preview') {
       // a page that shows one file in the right panel (same rules as Spica's plugin manager)
       const p = v.preview;
@@ -225,7 +225,7 @@ export async function check(dir, opts = {}) {
           command: s.runtime === 'node' ? process.execPath : s.entry,
           args: s.runtime === 'node' ? [s.entry, ...s.args] : s.args,
           cwd: root,
-          env: pluginEnv({ ...s.env, SPICA_MOCK: '1', SPICA_PLUGIN_NAME: m.name, SPICA_PLUGIN_VERSION: m.version, SPICA_PLUGIN_DIR: root, SPICA_PLUGIN_DATA: join(data, s.id) }),
+          env: pluginEnv({ ...s.env, SPICA_MOCK: '1', SPICA_PLUGIN_NAME: m.name, SPICA_PLUGIN_VERSION: m.version, SPICA_PLUGIN_DIR: root, SPICA_PLUGIN_DATA: join(data, s.id), SPICA_USER_ACCOUNT: STAND_IN_ACCOUNT }),
           timeoutMs: 15_000,
         });
         try {

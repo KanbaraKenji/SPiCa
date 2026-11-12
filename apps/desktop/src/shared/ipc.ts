@@ -32,6 +32,12 @@ export const DesktopChannel = {
   ActiveSession: 'spica:ui:active-session',
   /** renderer -> main: what covers the window ('splash' | 'scrim' | null); the caption symbols follow it. */
   Cover: 'spica:ui:cover',
+  /** renderer -> main: the page listens for the close question (main/tray.ts closeAsker) */
+  CloseAskReady: 'spica:close:ready',
+  /** main -> renderer: the window's × with 关闭窗口时 = 每次询问: show the question */
+  CloseAsk: 'spica:close:ask',
+  /** renderer -> main: { choice: 'tray' | 'quit' | null, remember } */
+  CloseAnswer: 'spica:close:answer',
   /** renderer -> main: 'in' | 'out' | 'reset' (Ctrl+wheel and zoom keys caught in the page) */
   Zoom: 'spica:zoom',
   ListProviders: 'spica:providers:list',
@@ -66,6 +72,8 @@ export const DesktopChannel = {
   PluginViewCancel: 'spica:pluginViewCancel',
   /** invoke: (plugin, path) -> absolute path inside the plugin, or null */
   PluginViewFile: 'spica:pluginViewFile',
+  /** invoke: PluginPickRequest -> the full path picked, or null (a plugin page's pickFolder / pickFile) */
+  PluginPick: 'spica:pluginPick',
   /** invoke: UsageLogRequest -> UsageLogResult (asks where to save first) */
   UsageLog: 'spica:usageLog',
   /** invoke: absolute path -> null, or what to show (a file or folder selected in Explorer) */

@@ -10,6 +10,7 @@ import {
 } from "../../../shared/code-themes";
 import { DARK_SKIN, deriveTokens, LIGHT_SKIN } from "../../../shared/skin";
 import { highlightCode } from "../chat/highlight";
+import { Pane, Row } from "./Group";
 
 const SAMPLE: { text: string; change?: "-" | "+" }[] = [
   { text: "function total(items) {" },
@@ -95,10 +96,9 @@ export interface CodeThemesProps {
 export function CodeThemes({ value, onChange, size, onSize }: CodeThemesProps) {
   return (
     <>
-      <label className="code-theme-pick code-size-pick">
-        <span>字号</span>
+      <Row title="字号">
         <select
-          className="input"
+          className="input code-size-pick"
           value={size}
           onChange={(e) => onSize(Number(e.target.value))}
           aria-label="代码字号"
@@ -109,7 +109,8 @@ export function CodeThemes({ value, onChange, size, onSize }: CodeThemesProps) {
             </option>
           ))}
         </select>
-      </label>
+      </Row>
+      <Pane>
       <div className="code-themes">
         {(["light", "dark"] as const).map((scheme) => (
           <div key={scheme} className="code-theme-row">
@@ -136,6 +137,7 @@ export function CodeThemes({ value, onChange, size, onSize }: CodeThemesProps) {
           </div>
         ))}
       </div>
+      </Pane>
     </>
   );
 }

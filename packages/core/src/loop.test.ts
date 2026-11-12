@@ -123,6 +123,33 @@ describe('agent loop', () => {
     expect(gw.requests).toHaveLength(2);
   });
 
+  it('no turn limit (defaults.maxTurns 0, as the desktop app): forty tool turns in a row, then the answer', async () => {
+    let n = 0;
+    gw.onRequest(() => (++n <= 40 ? { toolCalls: [{ name: 'list_dir', args: {} }] } : { text: 'done' }));
+    const rt = makeRuntime(gw, { cwd: dir, defaults: { providerId: 'fake-openai', model: 'fake-model', maxTokens: 512, maxTurns: 0 } });
+    const s = rt.createSession();
+    const r = await s.send('keep going').done;
+    expect(r.reason).toBe('completed');
+    expect(gw.requests).toHaveLength(41);
+  }, 30_000);
+
+  it('a session follows the default as it is at each run (sub-agents too); one that asked for a limit keeps it', async () => {
+    gw.onRequest(() => ({ toolCalls: [{ name: 'list_dir', args: {} }] }));
+    const rt = makeRuntime(gw, { cwd: dir, defaults: { providerId: 'fake-openai', model: 'fake-model', maxTokens: 512, maxTurns: 3 } });
+    const top = rt.createSession();
+    const sub = rt.createSession({ parentId: top.id });
+    const own = rt.createSession({ maxTurns: 2 });
+    expect(rt.turnLimit(top.config)).toBe(3);
+    expect(rt.turnLimit(sub.config)).toBe(3);
+    rt.setDefaults({ maxTurns: 0 });
+    expect(rt.turnLimit(top.config)).toBe(0);
+    expect(rt.turnLimit(sub.config)).toBe(0);
+    expect(rt.turnLimit(own.config)).toBe(2);
+    // a record written before `asked` existed carries the default of its time: it follows the default now
+    expect(rt.turnLimit({ ...top.config, maxTurns: 30, asked: undefined })).toBe(0);
+    expect((await own.send('loop').done).reason).toBe('max_turns');
+  });
+
   it('surfaces provider errors as an error run end with a trace', async () => {
     gw.enqueue({ status: 400, errorBody: '{"error":{"message":"bad model"}}' });
     const rt = makeRuntime(gw, { cwd: dir });

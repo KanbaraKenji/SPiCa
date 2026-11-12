@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AnthropicProvider } from '../providers/anthropic.ts';
 import { OpenAICompatibleProvider } from '../providers/openai.ts';
+import { DEFAULT_PRICES, type PriceTable } from '../cost.ts';
 import { Runtime, type RuntimeOptions } from '../runtime.ts';
 import type { CoreEvent } from '../types.ts';
 import { FakeGateway, type FakeGatewayOptions } from './fake-gateway.ts';
@@ -23,6 +24,14 @@ export function anthropicProvider(gw: FakeGateway, id = 'fake-anthropic'): Anthr
 }
 
 /**
+ * The default prices, except that a model of an OpenAI-compatible endpoint the table does not know (the fake
+ * gateway's) has a price of 5 / 20 USD per million tokens, so the spending limits can be tested with it. Without
+ * this it would have no price and count against no limit (ModelPrice.unpriced); pass `prices: DEFAULT_PRICES`
+ * to test that.
+ */
+export const TEST_PRICES: PriceTable = { ...DEFAULT_PRICES, 'openai-compatible': { ...DEFAULT_PRICES['openai-compatible'], '*': { input: 5, output: 20 } } };
+
+/**
  * A runtime talking to the fake gateway. It is closed when the gateway stops
  * (before the gateway cuts its connections), so no test leaves sessions running
  * into the next one; closing it in the test as well is fine (close runs once).
@@ -31,6 +40,7 @@ export function makeRuntime(gw: FakeGateway, opts: Partial<RuntimeOptions> = {})
   const rt = new Runtime({
     providers: opts.providers ?? [openaiProvider(gw)],
     defaults: opts.defaults ?? { providerId: 'fake-openai', model: 'fake-model', maxTokens: 512 },
+    ...(opts.catalogPresets ? {} : { prices: TEST_PRICES }), // presets bring their own table (from the catalog)
     ...opts,
     // what a deployment registers from its provider configuration (startBackend does this)
     redactions: ['test-key-123456', `${gw.baseUrl}/v1`, ...(opts.redactions ?? [])],

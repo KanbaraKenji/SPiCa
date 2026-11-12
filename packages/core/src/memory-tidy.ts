@@ -364,9 +364,9 @@ export async function ask(rt: Runtime, content: string, signal: AbortSignal): Pr
     }
     if (!response) throw new Error('the model gave no answer');
     const cost = rt.ledger.record(scope, response.usage);
-    trace.finish({ status: 'ok', attempts: info.attempts, inputTokens: response.usage.inputTokens, outputTokens: response.usage.outputTokens, costUsd: cost.costUsd, model: response.model });
+    trace.finish({ status: 'ok', attempts: info.attempts, inputTokens: response.usage.inputTokens, outputTokens: response.usage.outputTokens, ...(cost.unpriced ? { unpriced: true as const } : { costUsd: cost.costUsd }), model: response.model });
     for (const t of cost.totals) {
-      if (t.scope === 'global') rt.events.emit(rt.eventHost, { type: 'cost', scope: 'global', spentUsd: t.spentUsd, ...(t.limitUsd !== undefined ? { limitUsd: t.limitUsd } : {}), warning: t.warning });
+      if (t.scope === 'global') rt.events.emit(rt.eventHost, { type: 'cost', scope: 'global', spentUsd: t.spentUsd, ...(t.limitUsd !== undefined ? { limitUsd: t.limitUsd } : {}), warning: t.warning, ...(t.unpriced ? { unpriced: true as const } : {}) });
     }
     return { text, costUsd: cost.costUsd };
   } catch (err) {

@@ -1,6 +1,6 @@
 // A plugin service with a fixed example, for screenshots, tests and
 // SPICA_BACKEND=fake. No Node imports, so renderer tests can use it.
-import { svgDataUrl, unquote, type InstallStepView, type PluginPackage, type PluginsCommand, type PluginsFound, type PluginsProgress, type PluginsResult, type PluginsState, type PluginView } from '../../shared/plugins';
+import { svgDataUrl, unquote, type InstallStepView, type PluginPackage, type PluginSourceView, type PluginsCommand, type PluginsFound, type PluginsProgress, type PluginsResult, type PluginsState, type PluginView } from '../../shared/plugins';
 import type { PluginService } from './types';
 
 /** plugins/example-notes/icon-light.svg and icon-dark.svg: the demo's example has its own icon, the others the letter badge. */
@@ -73,11 +73,38 @@ function morePlugins(): PluginView[] {
   });
 }
 
-/** 未安装 in the demo: two made-up plugins a shared folder offers. */
+const DEMO_OFFICIAL = 'https://plugins.example.com/official/index.json';
+const DEMO_SHARE = '\\\\fileserver\\spica-plugins';
+
+/**
+ * 市场 in the demo, by source: the official one offers the two plugins installed here (笔记 as it is, 来信摘要 a
+ * newer version: 可更新), the shared folder two that are not installed. 已安装 / 可更新 are worked out in #state.
+ */
 const DEMO_AVAILABLE: PluginPackage[] = [
-  { key: 'source:weekly-report@1.2.0', name: 'weekly-report', displayName: '周报助手', version: '1.2.0', description: '按模板整理本周进展。', location: '\\\\fileserver\\spica-plugins\\weekly-report-1.2.0.zip', kind: 'share' },
-  { key: 'source:glossary@0.3.0', name: 'glossary', displayName: '术语表', version: '0.3.0', description: '统一文档里的术语写法。', location: '\\\\fileserver\\spica-plugins\\glossary-0.3.0.zip', kind: 'share' },
+  { key: 'source:official:notes@0.2.0', name: 'notes', displayName: '笔记（示例）', version: '0.2.0', description: '在本地笔记本里记笔记，并从一个虚构的样例目录里查东西。', location: 'https://plugins.example.com/official/notes-0.2.0.zip', kind: 'http', source: DEMO_OFFICIAL },
+  { key: 'source:official:mail-digest@1.1.0', name: 'mail-digest', displayName: '来信摘要（示例）', version: '1.1.0', description: '把收件箱里的新邮件整理成摘要，按项目归类。', location: 'https://plugins.example.com/official/mail-digest-1.1.0.zip', kind: 'http', source: DEMO_OFFICIAL },
+  { key: 'source:weekly-report@1.2.0', name: 'weekly-report', displayName: '周报助手', version: '1.2.0', description: '按模板整理本周进展。', location: '\\\\fileserver\\spica-plugins\\weekly-report-1.2.0.zip', kind: 'share', source: DEMO_SHARE },
+  { key: 'source:glossary@0.3.0', name: 'glossary', displayName: '术语表', version: '0.3.0', description: '统一文档里的术语写法。', location: '\\\\fileserver\\spica-plugins\\glossary-0.3.0.zip', kind: 'share', source: DEMO_SHARE },
 ];
+
+/** a newer than b (plain x.y.z, as the demo's versions are). */
+const newerThan = (a: string, b: string) => {
+  const x = a.split('.').map(Number);
+  const y = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  return false;
+};
+
+/** 市场 › 插件来源 in the demo: the shared folder the two above come from, and an address that does not answer. */
+const DEMO_READ_AT = '2026-11-12T09:30:00.000Z';
+const DEMO_SOURCES: PluginSourceView[] = [
+  // deploy.json's pluginSources in a company build: first, marked 官方, cannot be removed.
+  { location: DEMO_OFFICIAL, kind: 'http', label: '官方插件', official: true, readAt: DEMO_READ_AT, count: 2 },
+  { location: DEMO_SHARE, kind: 'share', readAt: DEMO_READ_AT, count: 2 },
+  { location: 'https://plugins.example.com/index.json', kind: 'http', readAt: DEMO_READ_AT, error: '无法连接插件源 https://plugins.example.com/index.json（HTTP 503）。' },
+];
+/** A demo source that never answers: the example.com index at the root, or a place with 「连不上」 in it. */
+const unreachable = (location: string) => /example\.com\/index\.json|连不上/.test(location);
 
 /** The steps of a demo install from a share: read, verify, unpack, copy, start. A .zip address downloads 8 MB first. */
 function demoSteps(kind: PluginPackage['kind']): InstallStepView[] {
@@ -102,6 +129,7 @@ export class FakePluginService implements PluginService {
   readonly #opts: FakePluginOptions;
   #available: PluginPackage[] = structuredClone(DEMO_AVAILABLE);
   #found: PluginsFound | undefined;
+  #sources: PluginSourceView[] = structuredClone(DEMO_SOURCES);
 
   constructor(root: string, opts: FakePluginOptions = {}) {
     this.#root = root;
@@ -122,9 +150,35 @@ export class FakePluginService implements PluginService {
       plugins: structuredClone(this.#plugins),
       mock: this.#mock,
       root: this.#root,
-      ...(this.#available.length ? { available: structuredClone(this.#available) } : {}),
+      ...(this.#available.length ? { available: this.#available.map((a) => this.#withInstalled(a)) } : {}),
+      sources: structuredClone(this.#sources),
       ...(this.#found ? { found: structuredClone(this.#found) } : {}),
     };
+  }
+
+  /** A package with the version installed here, and whether it is newer than that one. */
+  #withInstalled(a: PluginPackage): PluginPackage {
+    const { installed: _was, newer: _n, ...rest } = structuredClone(a);
+    void _was;
+    void _n;
+    const v = this.#plugins.find((x) => x.name === a.name)?.version;
+    return v ? { ...rest, installed: v, ...(newerThan(a.version ?? '', v) ? { newer: true } : {}) } : rest;
+  }
+
+  /** Read demo sources again: now is when; an unreachable one keeps its error. */
+  #readSources(locations: string[]): number {
+    const at = new Date().toISOString();
+    let failed = 0;
+    for (const s of this.#sources) {
+      if (!locations.includes(s.location)) continue;
+      s.readAt = at;
+      if (unreachable(s.location)) {
+        s.error = `无法连接插件源 ${s.location}（HTTP 503）。`;
+        delete s.count;
+        failed++;
+      } else delete s.error;
+    }
+    return failed;
   }
 
   /** A demo lookup: a .zip or folder path is one package named after it; 「不存在」「打不开」「连不上」「没有插件」 in it act out each way of finding nothing. */
@@ -138,7 +192,8 @@ export class FakePluginService implements PluginService {
     const name = base.replace(/\.zip$/i, '').replace(/-\d+\.\d+\.\d+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-') || 'plugin';
     const kind: PluginPackage['kind'] = /^https?:/i.test(where) ? 'http' : /\.zip$/i.test(where) ? 'zip' : 'folder';
     const installed = this.#plugins.find((p) => p.name === name)?.version;
-    return { location: where, packages: [{ key: `found:${where}`, name, version: '1.0.0', description: '演示用的插件包。', location: where, kind, skills: [], commands: [], pages: [], ...(installed ? { installed } : {}) }] };
+    const title = base.replace(/\.zip$/i, '').replace(/-\d+\.\d+\.\d+$/, '');
+    return { location: where, packages: [{ key: `found:${where}`, name, ...(title !== name ? { displayName: title } : {}), version: '1.0.0', description: '演示用的插件包。', location: where, kind, skills: [], commands: [], pages: [], ...(installed ? { installed } : {}) }] };
   }
 
   async #install(pkg: PluginPackage, job: string | undefined): Promise<void> {
@@ -148,7 +203,6 @@ export class FakePluginService implements PluginService {
     }
     this.#plugins = this.#plugins.filter((x) => x.name !== pkg.name);
     this.#plugins.push({ ...asOtherDemo(structuredClone(EXAMPLE)), name: pkg.name, displayName: pkg.displayName ?? pkg.name, description: pkg.description ?? '', version: pkg.version ?? '1.0.0', previousVersion: undefined, source: { kind: pkg.kind, location: pkg.location }, tools: ['search'], skills: [], commands: [], servers: [{ id: pkg.name, status: 'running', tools: ['search'] }] } as PluginView);
-    this.#available = this.#available.filter((a) => a.key !== pkg.key);
   }
 
   async run(cmd: PluginsCommand): Promise<PluginsResult> {
@@ -175,6 +229,32 @@ export class FakePluginService implements PluginService {
       case 'find':
         this.#found = this.#find(cmd.location);
         break;
+      case 'addSource': {
+        const found = this.#find(cmd.location);
+        this.#found = found;
+        if (found.error) return { ok: false, message: found.error, state: this.#state() };
+        if (/^https?:.*\.zip$/i.test(found.location)) return { ok: true, info: true, message: '单个插件包的网址不能作为来源，可在下方安装。', state: this.#state() };
+        if (this.#sources.some((x) => x.location === found.location)) return { ok: true, message: '该来源已在列表中。', state: this.#state() };
+        this.#sources.push({ location: found.location, kind: /^https?:/i.test(found.location) ? 'http' : 'share', readAt: new Date().toISOString(), count: found.packages.length });
+        this.#available.push(...found.packages.map((a) => ({ ...a, key: `source:${a.location}`, source: found.location })));
+        return { ok: true, message: `已添加来源：${found.packages.length} 个插件。`, state: this.#state() };
+      }
+      case 'removeSource':
+        if (this.#sources.some((x) => x.official && x.location === cmd.location)) return { ok: false, message: '官方来源不能移除。', state: this.#state() };
+        this.#sources = this.#sources.filter((x) => x.location !== cmd.location);
+        this.#available = this.#available.filter((a) => a.source !== cmd.location);
+        return { ok: true, message: '已移除来源。', state: this.#state() };
+      case 'checkUpdates':
+      case 'checkSources': {
+        const list = this.#sources.filter((x) => cmd.op === 'checkUpdates' || cmd.location === undefined || x.location === cmd.location).map((x) => x.location);
+        if (!list.length) return { ok: true, info: true, message: '没有插件来源，无法检查更新。', state: this.#state() };
+        const failed = this.#readSources(list);
+        const n = this.#plugins.filter((x) => x.update).length;
+        const found = n ? `${n} 个插件可更新` : '没有可用更新';
+        if (failed === list.length) return { ok: false, message: `${failed} 个插件来源连接失败，无法检查更新。`, state: this.#state() };
+        if (failed) return { ok: true, info: true, message: `已检查 ${list.length - failed} 个插件来源：${found}；${failed} 个连接失败。`, state: this.#state() };
+        return { ok: true, message: n ? `${found}。` : '已是最新版本。', state: this.#state() };
+      }
       case 'installAvailable': {
         const pkg = [...this.#available, ...(this.#found?.packages ?? [])].find((a) => a.key === cmd.key);
         if (!pkg) return { ok: false, message: '该项已不存在，请重新查找。', state: this.#state() };

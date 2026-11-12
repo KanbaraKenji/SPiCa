@@ -23,7 +23,7 @@ export default (ctx) => ({
 | `afterTool` | 改工具结果 |
 
 - 用到哪几类就写进 `permissions.hooks`，没写的不生效。
-- `ctx` 有 `name`、`version`、`dataDir`、`mock()`、`log()`。钩子在 Spica 进程里跑，别做耗时的事。
+- `ctx` 有 `name`、`version`、`dataDir`、`mock()`、`log()`、`user.account`（用户的账号，和 server 的 `SPICA_USER_ACCOUNT` 同一个值；用户改了下一次调用就是新的，所以在钩子函数里读，别在工厂里存一份）。钩子在 Spica 进程里跑，别做耗时的事。
 - 钩子抛错只记日志，这一轮当它没生效，不会让对话崩掉。
 - 只收 `.js` / `.mjs`。
 

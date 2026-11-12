@@ -113,3 +113,83 @@ describe('a plugin page’s tool calls can be stopped', () => {
     expect(u.open).toHaveLength(1);
   });
 });
+
+describe('a page asks for the system’s pickers (window.spica.pickFolder / pickFile)', () => {
+  it('the path picked goes back to the page, null when cancelled; the plugin’s name goes with the ask', async () => {
+    const answers: (string | null)[] = ['D:/Notes', null, 'D:/a.md'];
+    const pick = vi.fn(async () => answers.shift() ?? null);
+    const t = setup({ pick });
+    await t.say('ready', 0);
+    await t.say('pickFolder', 1, { title: '选择笔记文件夹', defaultPath: 'D:/Old', other: 1 });
+    await t.say('pickFolder', 2, {});
+    await t.say('pickFile', 3, { extensions: ['.md', 4] });
+    await act(async () => {
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+    expect(pick.mock.calls).toEqual([
+      [{ kind: 'folder', plugin: 'Notes', title: '选择笔记文件夹', defaultPath: 'D:/Old' }],
+      [{ kind: 'folder', plugin: 'Notes' }],
+      [{ kind: 'file', plugin: 'Notes', extensions: ['.md'] }],
+    ]);
+    expect(t.replies()).toEqual([
+      { __spica: 1, reply: 1, result: 'D:/Notes' },
+      { __spica: 1, reply: 2, result: null },
+      { __spica: 1, reply: 3, result: 'D:/a.md' },
+    ]);
+  });
+
+  it('a preview page may not pick; a window that offers no picker says so', async () => {
+    const pick = vi.fn(async () => 'D:/x');
+    const preview = { fileKey: 'a', file: vi.fn(), ready: vi.fn(), fail: vi.fn(), error: vi.fn(), loaded: vi.fn() };
+    const p = setup({ pick, preview });
+    await p.say('ready', 0);
+    await p.say('pickFolder', 1);
+    expect(p.replies()).toEqual([{ __spica: 1, reply: 1, error: '预览页不能选择文件或文件夹。' }]);
+    expect(pick).not.toHaveBeenCalled();
+    cleanup();
+    const none = setup();
+    await none.say('ready', 0);
+    await none.say('pickFile', 1);
+    expect(none.replies()).toEqual([{ __spica: 1, reply: 1, error: '不支持的调用：pickFile' }]);
+  });
+});
+
+describe('a page opens a folder in Explorer (window.spica.openFolder)', () => {
+  it('a folder on a local drive goes to the window; its problem goes back to the page', async () => {
+    const openFolder = vi.fn(async (p: string) => (p === 'D:\\gone' ? '找不到文件夹：D:\\gone' : null));
+    const t = setup({ openFolder });
+    await t.say('ready', 0);
+    await t.say('openFolder', 1, { path: ' D:\\Notes ' });
+    await t.say('openFolder', 2, { path: 'D:\\gone' });
+    await act(async () => {
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+    expect(openFolder.mock.calls).toEqual([['D:\\Notes'], ['D:\\gone']]);
+    expect(t.replies()).toEqual([
+      { __spica: 1, reply: 1, result: null },
+      { __spica: 1, reply: 2, error: '找不到文件夹：D:\\gone' },
+    ]);
+  });
+
+  it('never a network path or a relative one; not for a preview page; a window that offers none says so', async () => {
+    const openFolder = vi.fn(async () => null);
+    const t = setup({ openFolder });
+    await t.say('ready', 0);
+    let id = 0;
+    for (const path of ['\\\\server\\share', '//server/share', 'C:\\\\server', 'notes', '', 'D:\\a\u0007']) await t.say('openFolder', ++id, { path });
+    expect(openFolder).not.toHaveBeenCalled();
+    expect(t.replies().map((r) => r.error)).toEqual(Array(6).fill('只能打开本机磁盘上的文件夹。'));
+    cleanup();
+    const preview = { fileKey: 'a', file: vi.fn(), ready: vi.fn(), fail: vi.fn(), error: vi.fn(), loaded: vi.fn() };
+    const p = setup({ openFolder, preview });
+    await p.say('ready', 0);
+    await p.say('openFolder', 1, { path: 'D:\\Notes' });
+    expect(p.replies()).toEqual([{ __spica: 1, reply: 1, error: '预览页不能打开文件夹。' }]);
+    cleanup();
+    const none = setup();
+    await none.say('ready', 0);
+    await none.say('openFolder', 1, { path: 'D:\\Notes' });
+    expect(none.replies()).toEqual([{ __spica: 1, reply: 1, error: '不支持的调用：openFolder' }]);
+    expect(openFolder).not.toHaveBeenCalled();
+  });
+});

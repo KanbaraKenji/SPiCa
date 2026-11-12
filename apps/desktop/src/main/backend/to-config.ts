@@ -11,9 +11,15 @@ function windowsOf(p: ConfigSource): Record<string, number> {
   return Object.fromEntries(list.filter((m) => m.contextWindow).map((m) => [m.id, m.contextWindow as number]));
 }
 
+/** Model name -> most output tokens, for ticked models whose provider listed it (the core knows the catalog's). */
+function outputsOf(p: ConfigSource): Record<string, number> {
+  return Object.fromEntries((p.models ?? []).filter((m) => m.maxOutput).map((m) => [m.id, m.maxOutput as number]));
+}
+
 /** A settings-page connection as the core's backend expects it. */
 export function toProviderConfig(p: ConfigSource): ProviderConfig {
   const windows = windowsOf(p);
+  const outputs = outputsOf(p);
   const limits = {
     ...(p.maxConcurrent ? { maxConcurrent: p.maxConcurrent } : {}),
     ...(p.requestsPerMinute ? { requestsPerMinute: p.requestsPerMinute } : {}),
@@ -23,6 +29,7 @@ export function toProviderConfig(p: ConfigSource): ProviderConfig {
     ...(Object.keys(limits).length ? { limits } : {}),
     // Every ticked model's window; the core falls back to what it knows for any other name.
     ...(Object.keys(windows).length ? { contextWindows: windows } : {}),
+    ...(Object.keys(outputs).length ? { maxOutputs: outputs } : {}),
     ...(p.catalogId ? { catalogId: p.catalogId } : {}),
   };
   switch (p.kind) {

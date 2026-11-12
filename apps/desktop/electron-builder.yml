@@ -49,6 +49,9 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Spica
+  # The last page's boxes 开机时启动 / 创建桌面快捷方式 / 创建开始菜单快捷方式 (ticked on a first install),
+  # and removing the sign-in entry on uninstall. See the file.
+  include: resources/installer/finish-options.nsh
   artifactName: Spica-Setup-${version}.${ext}
   deleteAppDataOnUninstall: false
 portable:

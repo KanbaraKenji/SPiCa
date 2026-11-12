@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentApi, CoreEvent } from '@spica/protocol';
-import { FAKE_EXPORT_FILES, FAKE_FLOW_ANSWER, FAKE_LONG_COMMAND, FAKE_MINUTES_ANSWER, FAKE_SEARCH_RESULTS, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
+import { FAKE_BATCH_FILES, FAKE_PHOTO_DATA, fakePhotoAnswer, FAKE_BOM_ANSWER, FAKE_BOM_FILES, FAKE_EXPORT_FILES, FAKE_FLOW_ANSWER, FAKE_LONG_COMMAND, FAKE_MINUTES_ANSWER, FAKE_SEARCH_RESULTS, FAKE_SUMMARY_ANSWER, FAKE_SUMMARY_FILE, FakeBackend } from './fake';
 import { SEED_IDS } from './fake-seed';
 
 function collect(backend: FakeBackend) {
@@ -248,6 +248,49 @@ describe('FakeBackend', () => {
     expect(FAKE_MINUTES_ANSWER).toContain('```text');
   });
 
+  it('照片 answers with three pictures (the demo chart and two drawn ones), for going through them full size', async () => {
+    const b = new FakeBackend({ speed: 0, demoImage: () => 'D:\\demo\\chart.png' });
+    const { until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '看几张样机照片');
+    await until((e) => e.type === 'run.end');
+    const text = (await b.getMessages(chat.id)).flatMap((m) => m.content).filter((c) => c.type === 'text').map((c) => (c as { text: string }).text).join('\n');
+    expect(text).toContain(fakePhotoAnswer('D:\\demo\\chart.png'));
+    expect(text.match(/!\[/g)).toHaveLength(3);
+    for (const d of FAKE_PHOTO_DATA) expect(d).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it('批量 leaves fourteen files from one command and hands over two of them (the list in place of cards)', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '批量下载这十份规格书');
+    await until((e) => e.type === 'run.end');
+    const cards = events.filter((e): e is Extract<CoreEvent, { type: 'file.card' }> => e.type === 'file.card');
+    const paths = new Set(cards.flatMap((e) => (e.files ?? [e.file]).map((f) => f.path)));
+    expect(FAKE_BATCH_FILES).toHaveLength(14);
+    // (With the file every demo answer reads first.)
+    expect([...paths]).toEqual(expect.arrayContaining(FAKE_BATCH_FILES));
+  });
+
+  it('BOM hands over two files and answers with their long full paths (for screenshots)', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '把图纸和 BOM 整理一下');
+    await until((e) => e.type === 'run.end');
+    const cards = events.filter((e): e is Extract<CoreEvent, { type: 'file.card' }> => e.type === 'file.card');
+    expect(cards.flatMap((e) => (e.files ?? [e.file]).map((f) => f.path))).toEqual(expect.arrayContaining(FAKE_BOM_FILES));
+    const text = (await b.getMessages(chat.id))
+      .flatMap((m) => m.content)
+      .filter((c) => c.type === 'text')
+      .map((c) => (c as { text: string }).text)
+      .join('\n');
+    expect(text).toContain(FAKE_BOM_ANSWER);
+    for (const f of FAKE_BOM_FILES) expect(FAKE_BOM_ANSWER).toContain(`\`${f}\``);
+    expect(FAKE_BOM_ANSWER).toMatch(/`[A-Z]:\\[^`]+\\`/);
+  });
+
   it('汇总 writes a file and answers with paths, a table and a code block (for screenshots)', async () => {
     const b = new FakeBackend({ speed: 0 });
     const { events, until } = collect(b);
@@ -366,6 +409,37 @@ describe('FakeBackend', () => {
     expect(JSON.stringify(last?.content)).toContain('只写结论');
   });
 
+  it('「卡住」 keeps reading the file running (the Running … line) until 停止', async () => {
+    const b = new FakeBackend({ speed: 1 });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '看看资料，卡住也没关系');
+    await until((e) => e.type === 'tool.start' && e.name === 'read_file');
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(events.some((e) => e.type === 'tool.end' && e.name === 'read_file')).toBe(false);
+    await b.abort(chat.id);
+    expect(await until((e) => e.type === 'run.end')).toMatchObject({ reason: 'aborted' });
+    b.dispose();
+  });
+
+  it('stopped while a question waits, as the core: the question kept with a cancelled result; answering it is refused', async () => {
+    const b = new FakeBackend({ speed: 1 });
+    const { until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '帮我问问纪要怎么写');
+    const ask = await until((e) => e.type === 'ask.request');
+    const callId = (ask as { callId: string }).callId;
+    await b.abort(chat.id);
+    await until((e) => e.type === 'run.end');
+    const messages = await b.getMessages(chat.id);
+    expect(messages.some((m) => m.content.some((c) => c.type === 'tool_use' && c.id === callId && c.name === 'ask_user'))).toBe(true);
+    expect(messages.at(-1)).toMatchObject({ kind: 'tool_results', content: [{ type: 'tool_result', toolUseId: callId, isError: true, content: 'Cancelled: aborted by user.' }] });
+    expect(await b.getPending(chat.id)).toEqual([]);
+    await expect(b.answer(chat.id, callId, '只写结论')).rejects.toThrow(`no pending ask with id ${callId}`);
+    await expect(b.confirm(chat.id, callId, true)).rejects.toThrow(`no pending confirm with id ${callId}`);
+    b.dispose();
+  });
+
   it('stops on abort and keeps what was already said', async () => {
     const b = new FakeBackend({ speed: 1 });
     const { until } = collect(b);
@@ -436,5 +510,66 @@ describe('FakeBackend', () => {
       expect((await b.getSession(chat.id))?.regenerate).toMatchObject(approved ? { ok: false, code: 'regenerate.acted' } : { ok: true });
     }
     expect((await b.getSession(SEED_IDS.pm))?.regenerate).toMatchObject({ ok: false, code: 'regenerate.role' });
+  });
+});
+
+describe('spending as the core counts it (单次运行花费上限, 未计价)', () => {
+  it('no limit by default; a limit stops before a call that could pass it; a model without a price never stops and is marked', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '花费上限 试一下');
+    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    expect(events.some((e) => e.type === 'budget.stop')).toBe(false);
+
+    b.setRunLimit(1);
+    events.length = 0;
+    await b.send(chat.id, '花费上限 再来');
+    const end = await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    expect(end).toMatchObject({ reason: 'budget' });
+    const stop = events.find((e) => e.type === 'budget.stop');
+    expect(stop).toMatchObject({ limitUsd: 1 });
+    if (stop?.type !== 'budget.stop') throw new Error('no stop');
+    expect(stop.spentUsd).toBeLessThan(1);
+    expect(stop.spentUsd + stop.nextUsd!).toBeGreaterThan(1);
+
+    events.length = 0;
+    b.setRunLimit(0.0001);
+    const gw = await b.createSession({});
+    await b.send(gw.id, '未计价 公司网关');
+    expect(await until((e) => e.type === 'run.end' && e.sessionId === gw.id)).toMatchObject({ reason: 'completed' });
+    expect(events.filter((e) => e.type === 'usage').every((e) => e.type === 'usage' && e.unpriced === true && e.costUsd === 0)).toBe(true);
+    expect((await b.getSession(gw.id))).toMatchObject({ costUsd: 0, unpriced: true });
+    expect(events.find((e) => e.type === 'cost' && e.scope === 'global')).toMatchObject({ unpriced: true });
+  });
+});
+
+describe('an answer cut at the most the model may write (「写长一点」)', () => {
+  it('is stored with stopReason max_tokens, as the core stores it', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const { until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '写长一点');
+    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    const last = (await b.getMessages(chat.id)).filter((m) => m.role === 'assistant').at(-1)!;
+    expect(last.meta).toMatchObject({ stopReason: 'max_tokens' });
+  });
+});
+
+describe('messaging a sub-agent past 代理互发消息上限 (「互发」)', () => {
+  it('the call past the limit is refused as the core refuses it; no limit: none refused', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const { events, until } = collect(b);
+    b.setAgentMessages(2);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '互发');
+    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    const ends = events.filter((e) => e.type === 'tool.end' && e.name === 'message_agent');
+    expect(ends.map((e) => e.type === 'tool.end' && e.isError)).toEqual([false, false, true]);
+    b.setAgentMessages(null);
+    events.length = 0;
+    await b.send(chat.id, '互发');
+    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    expect(events.filter((e) => e.type === 'tool.end' && e.name === 'message_agent' && e.isError)).toEqual([]);
   });
 });

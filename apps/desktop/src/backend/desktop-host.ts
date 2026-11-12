@@ -14,16 +14,20 @@ import { dirname } from 'node:path';
 import { serveMcpHttp, type McpHttpServer, type Runtime } from '@spica/core';
 import { attachBackend as attachPlugins } from '@spica/plugins';
 import { RealPluginService } from '../main/plugins/service';
-import type { PluginsCommand } from '../shared/plugins';
+import type { OfficialSource, PluginsCommand } from '../shared/plugins';
 import { APP_NAME } from '../shared/app-identity';
 
 export interface DesktopHostOptions {
   pluginRoot: string;
   pluginSourcesFile: string;
+  /** deploy.json's pluginSources: listed first in 市场, marked 官方, not removable. */
+  officialPluginSources?: OfficialSource[];
   /** Where local scripts find the HTTP MCP service ({ url, tokenFile, pid, startedAt, appName }); absent: no such service. */
   mcpInfoFile?: string;
   /** The bearer token, one line, readable by this user only. */
   mcpTokenFile?: string;
+  /** The user's account for every plugin, worked out by the main process (main/user-account.ts); '' when none. */
+  userAccount?: string;
 }
 
 /** Tried first, so scripts usually find the same address; any free port when it is taken. */
@@ -34,12 +38,13 @@ interface ParentPort {
 }
 
 export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
-  const plugins = await attachPlugins(rt, { root: options.pluginRoot, appName: APP_NAME });
+  const plugins = await attachPlugins(rt, { root: options.pluginRoot, appName: APP_NAME, userAccount: options.userAccount ?? '' });
   const parent = (process as unknown as { parentPort?: ParentPort }).parentPort;
   const page = new RealPluginService({
     manager: plugins.manager,
     root: options.pluginRoot,
     sourcesFile: options.pluginSourcesFile,
+    ...(options.officialPluginSources?.length ? { official: options.officialPluginSources } : {}),
     // Opening folders is the main process's job (it handles 'openRoot' itself).
     openFolder: async () => '',
     // How far an install the page started is, on its way to the window.
@@ -86,6 +91,11 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
         return null;
       },
       mcpHttpState: () => httpState(),
+      // 设置 › 账号 changed: hooks read it at their next call, plugin servers restart with it.
+      setUserAccount: async (account: unknown) => {
+        await plugins.setUserAccount(typeof account === 'string' ? account : '');
+        return null;
+      },
       usageLog: async (req: { filter: { projectId?: string; from?: string; to?: string }; file: string }) => {
         const text = rt.exportUsageLog(req.filter ?? {});
         await writeFile(req.file, text ? `${text}\n` : '', 'utf8');

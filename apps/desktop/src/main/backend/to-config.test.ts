@@ -13,6 +13,15 @@ describe('toProviderConfig', () => {
   it('sends none when the entry has none (older settings)', () => {
     expect(toProviderConfig({ ...saved, contextWindow: null })).not.toHaveProperty('contextWindows');
   });
+
+  it('sends the most output a provider listed for a ticked model (the catalog’s own the core knows)', () => {
+    const models = [
+      { id: 'relay-a', contextWindow: 128_000, contextFrom: 'provider' as const, maxOutput: 16_384 },
+      { id: 'relay-b', contextWindow: 64_000, contextFrom: 'user' as const },
+    ];
+    expect(toProviderConfig({ ...saved, models }).maxOutputs).toEqual({ 'relay-a': 16_384 });
+    expect(toProviderConfig({ ...saved, models: [models[1]!] })).not.toHaveProperty('maxOutputs');
+  });
 });
 
 describe('knownContextWindow', () => {

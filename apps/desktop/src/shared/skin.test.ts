@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CAPTION_BACK, captionSymbol, contrast, DARK_SKIN, deriveTokens, LIGHT_SKIN, normalizeHex, ON_ACCENT_WHITE_MIN, over, resolveSkin, schemeOf } from './skin';
+import { CAPTION_BACK, captionSymbol, contrast, DARK_SKIN, deriveTokens, LIGHT_SKIN, luminance, normalizeHex, ON_ACCENT_WHITE_MIN, over, resolveSkin, schemeOf } from './skin';
 
 describe('normalizeHex', () => {
   it('accepts short and long forms, with or without #', () => {
@@ -122,4 +122,16 @@ describe('the caption buttons Windows draws', () => {
     }
   });
 
+});
+
+describe('the settings dialog’s two greys (his Claude picture, 2026-11-12)', () => {
+  it('the sections’ column the deeper of the main pane and the chrome, the content the lighter, in any skin', () => {
+    const dark = deriveTokens(DARK_SKIN);
+    expect([dark['--spica-settings-nav'], dark['--spica-settings-pane']]).toEqual(['#191919', '#1f1f1f']);
+    const light = deriveTokens(LIGHT_SKIN);
+    expect([light['--spica-settings-nav'], light['--spica-settings-pane']]).toEqual(['#fafafa', '#ffffff']);
+    // A skin of the user's own (its chrome derived darker than its main pane): still the deeper one on the left.
+    const own = deriveTokens({ id: 'own', name: '我的', bg: '#203040', accent: '#62a9ff' });
+    expect(luminance(own['--spica-settings-nav']!)).toBeLessThan(luminance(own['--spica-settings-pane']!));
+  });
 });

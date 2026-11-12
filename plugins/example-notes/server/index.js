@@ -3,24 +3,28 @@
 // no node_modules. Real plugins may use the official MCP SDK instead.
 //
 // Environment set by Spica:
-//   SPICA_PLUGIN_DATA  folder this plugin may write to (notes live in notes/)
+//   SPICA_PLUGIN_DATA  folder this plugin may write to (notes live in notes/ unless the user chose a folder)
 //   SPICA_PLUGIN_DIR   the installed plugin folder (read-only)
 //   SPICA_MOCK         "1" when global mock mode is on
+//   SPICA_USER_ACCOUNT the user's account (e.g. ALEX.CHEN): signs each entry. Read it, never work it out
 // Settings live in <SPICA_PLUGIN_DATA>/config.json (installed plugins get no
 // environment variables of their own):
 //   { "catalogUrl": "https://catalog.example.test/search" }  real catalog service (GET ?q=...)
+//   { "notesFolder": "D:\\Notes" }  where the notes are kept (chosen on the settings page)
+// The settings page (views/settings.json) saves this file through the plugin's
+// settings service (server/settings.js); it is read again on every call.
 //
 // summarize_note uses the model the user has set up in Spica (MCP sampling,
 // manifest permissions.model): the plugin needs no key, and Spica counts the
 // cost against the plugin's daily limit.
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { createInterface } from 'node:readline';
 
 const dataDir = process.env.SPICA_PLUGIN_DATA || join(process.cwd(), '.data');
 const pluginDir = process.env.SPICA_PLUGIN_DIR || process.cwd();
-const notesDir = join(dataDir, 'notes');
 const mock = process.env.SPICA_MOCK === '1';
+const account = process.env.SPICA_USER_ACCOUNT || '';
 
 const tools = [
   {
@@ -63,22 +67,31 @@ const tools = [
   },
 ];
 
+const readConfig = () => readFile(join(dataDir, 'config.json'), 'utf8').then(JSON.parse, () => ({}));
+
+/** The folder the user chose on the settings page, else notes/ in the plugin's data folder. */
+async function notesDir() {
+  const f = (await readConfig()).notesFolder;
+  return typeof f === 'string' && isAbsolute(f) ? f : join(dataDir, 'notes');
+}
+
 /** Note titles become file names: keep them plain. */
-function noteFile(title) {
+async function noteFile(title) {
   const t = String(title ?? '').trim();
   if (!t || t.length > 80 || !/^[\p{L}\p{N} _.,()-]+$/u.test(t) || t.startsWith('.')) {
     throw new Error('A note title may use letters, digits, spaces and _ . , ( ) - (up to 80 characters).');
   }
-  return join(notesDir, `${t}.md`);
+  return join(await notesDir(), `${t}.md`);
 }
 
 async function listNotes() {
-  await mkdir(notesDir, { recursive: true });
-  const files = (await readdir(notesDir)).filter((f) => f.endsWith('.md')).sort();
+  const dir = await notesDir();
+  await mkdir(dir, { recursive: true });
+  const files = (await readdir(dir)).filter((f) => f.endsWith('.md')).sort();
   if (files.length === 0) return 'The notebook is empty.';
   const lines = [];
   for (const f of files) {
-    const text = await readFile(join(notesDir, f), 'utf8');
+    const text = await readFile(join(dir, f), 'utf8');
     lines.push(`- ${f.slice(0, -3)} (${text.length} characters)`);
   }
   return lines.join('\n');
@@ -94,7 +107,7 @@ async function searchCatalog(query) {
       : `No sample entries match "${query}".`;
     return { text: `[sample data — mock mode]\n${body}` };
   }
-  const base = await readFile(join(dataDir, 'config.json'), 'utf8').then((t) => JSON.parse(t).catalogUrl, () => undefined);
+  const base = (await readConfig()).catalogUrl;
   if (!base) {
     return {
       text: 'The catalog service is not configured on this computer (catalogUrl in config.json). Turn on mock mode in Spica to use the sample data.',
@@ -112,23 +125,25 @@ async function call(name, args) {
       return { text: await listNotes() };
     case 'read_note': {
       try {
-        return { text: await readFile(noteFile(args.title), 'utf8') };
+        return { text: await readFile(await noteFile(args.title), 'utf8') };
       } catch (err) {
         if (err.code === 'ENOENT') return { text: `No note titled "${args.title}".`, isError: true };
         throw err;
       }
     }
     case 'write_note': {
-      const file = noteFile(args.title);
-      await mkdir(notesDir, { recursive: true });
+      const file = await noteFile(args.title);
+      await mkdir(await notesDir(), { recursive: true });
       let before = '';
       if (!args.replace) before = await readFile(file, 'utf8').catch(() => '');
-      const text = before ? `${before.trimEnd()}\n\n${args.text}\n` : `${args.text}\n`;
+      // Each entry signed with the user's account (none when Spica has none).
+      const entry = account ? `${args.text}\n\n— ${account}` : args.text;
+      const text = before ? `${before.trimEnd()}\n\n${entry}\n` : `${entry}\n`;
       await writeFile(file, text);
       return { text: `${before ? 'Appended to' : 'Saved'} note "${args.title}".` };
     }
     case 'delete_note': {
-      const file = noteFile(args.title);
+      const file = await noteFile(args.title);
       try {
         await readFile(file);
       } catch {
@@ -172,7 +187,7 @@ const REFUSALS = {
 async function summarizeNote(title) {
   let text;
   try {
-    text = await readFile(noteFile(title), 'utf8');
+    text = await readFile(await noteFile(title), 'utf8');
   } catch (err) {
     if (err.code === 'ENOENT') return { text: `No note titled "${title}".`, isError: true };
     throw err;

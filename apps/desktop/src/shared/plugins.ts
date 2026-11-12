@@ -43,6 +43,8 @@ export interface PluginModelView {
   userMaxUsdPerDay?: number;
   /** Spent today; absent when it cannot be told. */
   spentTodayUsd?: number;
+  /** It used a model without a price today (not in spentTodayUsd): 今日 says 「+ 未计价」 (shared/spend.ts). */
+  unpricedToday?: true;
 }
 
 /** An SVG's text as the data: URL an <img> shows (scripts in it never run there). */
@@ -99,6 +101,10 @@ export interface PluginPackage {
   pages?: string[];
   /** The version of the same plugin installed now, when there is one. */
   installed?: string;
+  /** This version is newer than the one installed (市场: 可更新, 「更新到 x」). */
+  newer?: boolean;
+  /** 市场: the source it is offered by (its location as in `sources`). */
+  source?: string;
 }
 
 /**
@@ -118,16 +124,73 @@ export interface PluginsFound {
   reason?: NotFoundReason;
 }
 
+/**
+ * A place plugins are offered from, as 设置 › 插件 › 市场 lists it: a shared or local folder (with index.json, or
+ * plugin folders and .zip files in it), a single plugin folder or .zip, or the web address of an index.json.
+ * Remembered as soon as it is added (also when something is installed from a place typed in).
+ */
+export interface PluginSourceView {
+  location: string;
+  kind: 'share' | 'http';
+  /** Its own name, when it has one. */
+  label?: string;
+  /** When it was last read (ISO time); absent: not read since Spica started. */
+  readAt?: string;
+  /** It could not be read the last time, in words. */
+  error?: string;
+  /** How many plugins it offered the last time it was read. */
+  count?: number;
+  /** An official source (deploy.json's pluginSources): listed first, marked 官方, cannot be removed. */
+  official?: boolean;
+}
+
+/** An official plugin source as deploy.json gives it (scripts/deploy.mjs checks it when packaging). */
+export interface OfficialSource {
+  location: string;
+  label?: string;
+  /** Folders in it that are not offered (the repository's plugins/ in a development run: the templates). */
+  exclude?: string[];
+}
+
+/** Plugin folders in the repository's plugins/ kept as templates, not shipped (scripts/release/pack-plugins.mjs has the same list). */
+export const NOT_SHIPPED_PLUGINS = ['example-eval'];
+
+/**
+ * deploy.json's pluginSources as the app reads it at start: the places it can use, each once; anything else
+ * is left out (the packaging already refused a wrong file; this only keeps a hand-edited one from breaking 市场).
+ */
+export function officialSources(raw: unknown): OfficialSource[] {
+  if (!Array.isArray(raw)) return [];
+  const out: OfficialSource[] = [];
+  for (const item of raw) {
+    const o = typeof item === 'string' ? { location: item } : item && typeof item === 'object' ? (item as { location?: unknown; label?: unknown }) : null;
+    const location = typeof o?.location === 'string' ? o.location.trim() : '';
+    if (!location || !isLocation(location) || (/^https?:/i.test(location) && /\.zip(\?|$)/i.test(location))) continue;
+    if (out.some((x) => sameSource(x.location, location))) continue;
+    const label = typeof o?.label === 'string' ? o.label.trim() : '';
+    out.push(label ? { location, label } : { location });
+  }
+  return out;
+}
+
+/** Two places are the same source: case, the quotes Explorer adds and a slash at the end do not count. */
+export function sameSource(a: string, b: string): boolean {
+  const key = (s: string) => unquote(s).replace(/[\\/]+$/, '').toLowerCase();
+  return key(a) === key(b);
+}
+
 export interface PluginsState {
   plugins: PluginView[];
   /** Mock mode: plugins answer from bundled sample data instead of real systems. */
   mock: boolean;
   /** Where plugins live on this computer. */
   root: string;
-  /** 未安装: the newest of each plugin the remembered sources offer and that is not installed. */
+  /** 市场: what each source offers, the newest of each plugin there, installed or not (`installed`, `newer`). */
   available?: PluginPackage[];
   /** Sources that could not be read the last time they were listed. */
   sourceErrors?: string[];
+  /** The remembered sources, in the order they were added. */
+  sources?: PluginSourceView[];
   /** The latest lookup of a typed location. */
   found?: PluginsFound;
 }
@@ -194,6 +257,12 @@ export type PluginsCommand =
   | { op: 'find'; location: string }
   /** List the remembered sources again (未安装). */
   | { op: 'refreshSources' }
+  /** Remember a place as a source (what `find` accepts, except a single package on the web) and read it. */
+  | { op: 'addSource'; location: string }
+  /** Forget a remembered source; what it offered leaves the list (installed plugins stay). */
+  | { op: 'removeSource'; location: string }
+  /** 检查更新 of one source (or of all): read it again, then check the installed plugins against every source. */
+  | { op: 'checkSources'; location?: string }
   /** One package from `available` or `found`; `job` names it for the progress messages. */
   | { op: 'installAvailable'; key: string; job?: string }
   | { op: 'checkUpdates' }

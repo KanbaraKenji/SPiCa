@@ -26,6 +26,19 @@ export interface PluginContext {
   mock(): boolean;
   /** Append a line to the plugin log. */
   log(message: string): void;
+  /** Who uses Spica on this computer. Read live: the user can change it in the settings while the plugin is on. */
+  user: PluginUser;
+}
+
+/**
+ * The user, the same for every plugin (no permission needed). `account`: the
+ * company account, the Windows user folder's name in capitals
+ * (C:\Users\alex.chen → ALEX.CHEN) unless the user typed another one in
+ * 设置 › 账号; empty when it could not be found. Server processes get
+ * the same value as SPICA_USER_ACCOUNT.
+ */
+export interface PluginUser {
+  readonly account: string;
 }
 
 /**

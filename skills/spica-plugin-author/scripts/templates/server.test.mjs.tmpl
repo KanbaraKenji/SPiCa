@@ -28,7 +28,7 @@ const text = (r) => r.content.map((c) => c.text).join('\n');
 before(async () => {
   dataDir = await mkdtemp(join(tmpdir(), '__NAME__-test-'));
   child = spawn(process.execPath, [join(pluginDir, 'server', 'index.js')], {
-    env: { ...process.env, SPICA_MOCK: '1', SPICA_PLUGIN_DATA: dataDir, SPICA_PLUGIN_DIR: pluginDir },
+    env: { ...process.env, SPICA_MOCK: '1', SPICA_PLUGIN_DATA: dataDir, SPICA_PLUGIN_DIR: pluginDir, SPICA_USER_ACCOUNT: 'ALEX.CHEN' },
     stdio: ['pipe', 'pipe', 'inherit'],
     windowsHide: true,
   });

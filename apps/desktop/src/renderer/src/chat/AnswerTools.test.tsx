@@ -48,10 +48,85 @@ describe('paths in an answer', () => {
     fireEvent.click(screen.getByRole('link', { name: 'D:\\工作\\样机评审\\报价汇总.xlsx' }));
     expect(tools.openFile).toHaveBeenCalledWith('D:\\工作\\样机评审\\报价汇总.xlsx');
     const folder = screen.getByRole('link', { name: 'D:\\工作\\样机评审\\报价\\' });
-    expect(folder.getAttribute('title')).toBe('打开文件夹');
+    expect(folder.getAttribute('title')).toBe('打开文件夹 D:\\工作\\样机评审\\报价\\');
     fireEvent.keyDown(folder, { key: 'Enter' });
     expect(tools.openFolder).toHaveBeenCalledWith('D:\\工作\\样机评审\\报价\\');
     expect(tools.openFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('a path whose last part has no extension (a file or a folder, cannot tell) shows whole; it still opens as before', () => {
+    const tools = answer('资料在 `D:\\工作\\样机评审` 和 `D:\\工作\\Makefile` 里。')!;
+    const a = screen.getByRole('link', { name: 'D:\\工作\\样机评审' });
+    expect(a.textContent).toBe('D:\\工作\\样机评审');
+    expect(screen.getByRole('link', { name: 'D:\\工作\\Makefile' }).textContent).toBe('D:\\工作\\Makefile');
+    fireEvent.click(a);
+    expect(tools.openFile).toHaveBeenCalledWith('D:\\工作\\样机评审');
+  });
+
+  it('shows only the name; the full path is in its hover note and in what a selection copies', () => {
+    answer(SUMMARY);
+    const file = screen.getByRole('link', { name: 'D:\\工作\\样机评审\\报价汇总.xlsx' });
+    expect(file.textContent).toBe('报价汇总.xlsx');
+    expect(file.getAttribute('title')).toBe('预览 D:\\工作\\样机评审\\报价汇总.xlsx');
+    // A folder shows whole (他: 「文件夹不要省略」).
+    expect(screen.getByRole('link', { name: 'D:\\工作\\样机评审\\报价\\' }).textContent).toBe('D:\\工作\\样机评审\\报价\\');
+    const md = file.closest('.md')!;
+    const range = document.createRange();
+    range.selectNodeContents(md.querySelector('p')!);
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(range);
+    const data = new Map<string, string>();
+    const copied = fireEvent.copy(md, { clipboardData: { setData: (k: string, v: string) => data.set(k, v) } });
+    expect(copied).toBe(false);
+    expect(data.get('text/plain')).toContain('已汇总到 D:\\工作\\样机评审\\报价汇总.xlsx，原始报价在 D:\\工作\\样机评审\\报价\\。');
+    getSelection()!.removeAllRanges();
+  });
+
+  it('a selection without a path copies as the page does', () => {
+    answer(SUMMARY);
+    const md = document.querySelector('.md')!;
+    const range = document.createRange();
+    range.selectNodeContents(screen.getByText('单价', { selector: 'code' }));
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(range);
+    expect(fireEvent.copy(md, { clipboardData: { setData: vi.fn() } })).toBe(true);
+    getSelection()!.removeAllRanges();
+  });
+
+  it('two files of one name in different folders show the folder above (and a third level when that is the same too)', () => {
+    answer('`D:\\样机\\第一版\\报价.xlsx` 和 `D:\\样机\\第二版\\报价.xlsx`，另有 `E:\\备份\\第一版\\报价.xlsx` 和 `D:\\样机\\说明.docx`');
+    const names = screen.getAllByRole('link').map((l) => l.textContent);
+    expect(names).toEqual(['样机\\第一版\\报价.xlsx', '第二版\\报价.xlsx', '备份\\第一版\\报价.xlsx', '说明.docx']);
+  });
+
+  it('the same path written twice is one file: both show just its name', () => {
+    answer('`D:\\a\\报价.xlsx`，再看 `D:\\a\\报价.xlsx`');
+    expect(screen.getAllByRole('link').map((l) => l.textContent)).toEqual(['报价.xlsx', '报价.xlsx']);
+  });
+
+  it('a full path in plain text is the same link: its name, the full path on hover, opens the same', () => {
+    const tools = answer('图纸在 D:\\样机\\第一版\\报价.xlsx 里，另一版是 `D:\\样机\\第二版\\报价.xlsx`。')!;
+    const plain = screen.getByRole('link', { name: 'D:\\样机\\第一版\\报价.xlsx' });
+    expect(plain.tagName).toBe('CODE');
+    expect(plain.className).toBe('md-path');
+    expect(plain.textContent).toBe('第一版\\报价.xlsx');
+    expect(plain.getAttribute('title')).toBe('预览 D:\\样机\\第一版\\报价.xlsx');
+    expect(screen.getByRole('link', { name: 'D:\\样机\\第二版\\报价.xlsx' }).textContent).toBe('第二版\\报价.xlsx');
+    fireEvent.click(plain);
+    expect(tools.openFile).toHaveBeenCalledWith('D:\\样机\\第一版\\报价.xlsx');
+    expect(plain.closest('p')!.textContent).toBe('图纸在 第一版\\报价.xlsx 里，另一版是 第二版\\报价.xlsx。');
+  });
+
+  it('a path in plain text stays plain text where nothing opens it, in a link and in a code block', () => {
+    answer('在 D:\\a\\b.txt 里', null);
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(document.querySelector('code')).toBeNull();
+    expect(document.querySelector('p')!.textContent).toBe('在 D:\\a\\b.txt 里');
+    cleanup();
+    answer('[D:\\a\\b.txt](https://example.com/b) 和\n\n```\nD:\\a\\c.txt\n```');
+    expect(screen.getByRole('link').textContent).toBe('D:\\a\\b.txt');
+    expect(document.querySelector('pre')!.textContent).toContain('D:\\a\\c.txt');
+    expect(document.querySelector('.md-path')).toBeNull();
   });
 
   it('other inline code stays plain code', () => {
@@ -131,19 +206,15 @@ describe('a file card', () => {
     expect(sub.querySelector('.file-lines-removed')?.textContent).toBe(' −1');
   });
 
-  it('many cards (a command can report 20): six, then 全部 N 个; 收起 folds them again', () => {
+  it('many files (a command can report 20) are a list, not cards: the first 8, then 全部 N 个; 收起 folds them again', () => {
     const many = Array.from({ length: 20 }, (_, i) => ({ path: `D:\\w\\out-${i}.csv`, tool: 'run_command' }));
     render(<FileCards files={many} onOpen={vi.fn()} />);
-    expect(document.querySelectorAll('.file-card').length).toBe(6);
+    expect(document.querySelectorAll('.file-card').length).toBe(0);
+    expect(document.querySelectorAll('.file-row').length).toBe(8);
     fireEvent.click(screen.getByRole('button', { name: '全部 20 个' }));
-    expect(document.querySelectorAll('.file-card').length).toBe(20);
+    expect(document.querySelectorAll('.file-row').length).toBe(20);
     fireEvent.click(screen.getByRole('button', { name: '收起' }));
-    expect(document.querySelectorAll('.file-card').length).toBe(6);
-    cleanup();
-    // Seven fit as they are: folding would save only one card's room.
-    render(<FileCards files={many.slice(0, 7)} onOpen={vi.fn()} />);
-    expect(document.querySelectorAll('.file-card').length).toBe(7);
-    expect(screen.queryByRole('button', { name: /全部/ })).toBeNull();
+    expect(document.querySelectorAll('.file-row').length).toBe(8);
   });
 
   it('a picture file shows itself, small, in place of its type badge; anything else (or a picture that cannot load) keeps the badge', async () => {

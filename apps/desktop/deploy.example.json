@@ -2,6 +2,8 @@
   "//": "Copy to deploy.json before packaging (npm run dist). deploy.json is not under version control; empty values mean Spica as published. See docs/design/desktop-shell.md section 9.",
   "// updateSource": "Default update and announcement source for every install: a shared folder (\\\\server\\share\\spica) or an http(s) address. Empty: none.",
   "updateSource": "",
+  "// pluginSources": "Official plugin sources: listed first under Settings > Plugins > 市场, marked 官方, cannot be removed there. Each a shared or local folder (with index.json, or plugin folders and .zip files in it) or the address of an index.json; a string, or { \"location\": …, \"label\": \"a name to show\" }. Example: [{ \"location\": \"\\\\server\\share\\spica-plugins\", \"label\": \"Team plugins\" }, \"https://plugins.example.com/index.json\"]. Empty: none.",
+  "pluginSources": [],
   "// app": "Your own name for the app. Example: { \"name\": \"Nova Desk\", \"id\": \"com.example.nova\", \"icon\": \"branding/nova.ico\", \"font\": \"branding/NovaSans-Bold.ttf\" }. name becomes the window title, the installer and shortcut names, %APPDATA%\\<name> and Documents\\<name>; no < > : \" / \\ | ? * in it. A new name needs a new id (dotted, like com.example.app) so it does not mix with Spica. icon (.ico) and font (.ttf/.otf, for the wordmark; the built-in one has Latin letters only) are optional, paths relative to this file. Leave all empty to stay Spica.",
   "app": {
     "name": "",

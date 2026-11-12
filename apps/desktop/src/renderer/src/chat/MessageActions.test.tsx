@@ -4,7 +4,6 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { SessionInfo } from '@spica/protocol';
 import { answerText, clipboard, MessageActions } from './MessageActions';
 import { Conversation, type ConversationActions } from './Conversation';
-import { mailTime } from '../../../shared/mail';
 import type { Transcript } from '../store/transcript';
 
 afterEach(() => {
@@ -28,10 +27,14 @@ describe('the row under a message', () => {
     expect(screen.getByRole('button', { name: '已复制' }).getAttribute('title')).toBe('已复制');
   });
 
-  it('the time in the inbox’s own format', () => {
-    const at = '2026-11-11T16:35:00+08:00';
+  it('the time as how long ago (just now, 9 minutes ago), the full moment on hover', () => {
+    const at = new Date(Date.now() - 9 * 60_000 - 5000).toISOString();
     render(<MessageActions text="x" at={at} />);
-    expect(screen.getByText(mailTime(at)).tagName).toBe('TIME');
+    const time = screen.getByText('9 minutes ago');
+    expect(time.tagName).toBe('TIME');
+    const d = new Date(at);
+    expect(time.getAttribute('title')).toBe(`${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+    expect(time.getAttribute('dateTime')).toBe(at);
   });
 
   it('重新生成: usable when the core says so; otherwise there but grey, saying why on hover', () => {

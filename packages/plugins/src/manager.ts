@@ -113,6 +113,8 @@ export interface PluginModelUse {
   userMaxUsdPerDay?: number;
   /** Spent today, USD (absent when the core cannot tell). */
   spentTodayUsd?: number;
+  /** Calls of a model without a price were made today: not in spentTodayUsd, not counted against the limit. */
+  unpricedToday?: true;
 }
 
 export type PluginEvent =
@@ -170,6 +172,11 @@ export interface PluginManagerOptions {
   inheritEnv?: readonly string[];
   /** App name in user-facing messages (a branded build passes its own). Default 'Spica'. */
   appName?: string;
+  /**
+   * The user's account for every plugin (SPICA_USER_ACCOUNT, ctx.user.account). The host works it out once
+   * (the desktop app: apps/desktop/src/main/user-account.ts); the manager never looks it up itself. Default ''.
+   */
+  userAccount?: string;
 }
 
 /** Thrown with a message meant for the user. */
@@ -252,6 +259,7 @@ export class PluginManager {
   readonly #baseEnv: Record<string, string>;
   readonly #inheritEnv: string[];
   readonly #endTree: boolean;
+  #account: string;
   #state: StateFile = { version: 1, mock: false, plugins: {} };
   readonly #folders = new Map<string, PluginFolder>();
   readonly #active = new Map<string, Active>();
@@ -268,6 +276,22 @@ export class PluginManager {
     this.#baseEnv = opts.baseEnv ?? {};
     this.#inheritEnv = [...(opts.inheritEnv ?? PLUGIN_INHERIT_ENV)];
     this.#endTree = opts.endTree ?? false;
+    this.#account = opts.userAccount ?? '';
+  }
+
+  /** The user's account plugins get (SPICA_USER_ACCOUNT, ctx.user.account). */
+  get userAccount(): string {
+    return this.#account;
+  }
+
+  /**
+   * The user changed the account in the settings. Hooks read it live and see it at their next call; server
+   * processes read their environment at start, so the running ones restart (as for the network settings).
+   */
+  async setUserAccount(account: string): Promise<void> {
+    if (account === this.#account) return;
+    this.#account = account;
+    await this.restartServers('user account changed');
   }
 
   get root(): string {
@@ -652,12 +676,19 @@ export class PluginManager {
     } catch {
       spent = undefined;
     }
+    let unpriced: boolean;
+    try {
+      unpriced = this.#host.modelUnpricedToday?.(name) === true;
+    } catch {
+      unpriced = false;
+    }
     return {
       reason: m.permissions.model?.reason ?? '',
       maxUsdPerDay: this.#modelLimit(name, m),
       declaredMaxUsdPerDay: m.permissions.model?.maxUsdPerDay ?? DEFAULT_MODEL_USD_PER_DAY,
       ...(user !== undefined ? { userMaxUsdPerDay: user } : {}),
       ...(typeof spent === 'number' && Number.isFinite(spent) ? { spentTodayUsd: spent } : {}),
+      ...(unpriced ? { unpricedToday: true as const } : {}),
     };
   }
 
@@ -917,6 +948,7 @@ export class PluginManager {
 
   #context(a: Active): PluginContext {
     const name = a.manifest.name;
+    const account = () => this.#account;
     return {
       name,
       version: a.manifest.version,
@@ -924,6 +956,8 @@ export class PluginManager {
       dataDir: this.dataDir(name),
       mock: () => this.#state.mock,
       log: (m) => void this.#log(name, `[plugin] ${m}`),
+      // A getter, so a hook made before the user changed the account reads the new one.
+      user: Object.freeze({ get account() { return account(); } }),
     };
   }
 
@@ -940,6 +974,8 @@ export class PluginManager {
       SPICA_PLUGIN_DIR: a.folder.root,
       SPICA_PLUGIN_DATA: this.dataDir(name),
       SPICA_MOCK: this.#state.mock ? '1' : '0',
+      // Set after baseEnv and the manifest's env: neither can put another account here.
+      SPICA_USER_ACCOUNT: this.#account,
     };
     const node = def.runtime === 'node';
     if (node) env.ELECTRON_RUN_AS_NODE = '1';

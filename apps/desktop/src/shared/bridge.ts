@@ -2,12 +2,12 @@
 // do goes through here; there is no other way to reach the backend.
 import type { AgentApi, ContextBreakdown, CoreEvent, SpicaBridge } from '@spica/protocol';
 import type { WindowCover } from './skin';
-import type { SettingsPatch, ShellSettings } from './settings';
+import type { AutostartSupport, SettingsPatch, ShellSettings } from './settings';
 import type { ModelRef, ProviderDraft, ProviderKind, ProviderView, TestResult } from './providers';
 import type { ListModelsView, ModelCatalogView, WindowMatch } from './catalog';
 import type { PluginsCommand, PluginsProgress, PluginsResult } from './plugins';
 import type { UpdateState } from './updates';
-import type { PluginView, PluginViewResult } from './plugin-view';
+import type { PluginPickRequest, PluginView, PluginViewResult } from './plugin-view';
 
 /** Saved model providers plus, per id, why one cannot be used right now. */
 export interface ProviderList {
@@ -44,6 +44,14 @@ export interface ShellState {
   automated: boolean;
   /** The folder conversations shared up to 0.1.0-rc.2 (文档\<name>): one still in it keeps its files there when it chooses a folder. */
   legacyDefaultCwd?: string;
+  /** The page is loading again after its process was lost: open this conversation (null: the start page), no opening animation. */
+  reopen?: { sessionId: string | null };
+  /** Whether 开机时启动 works in this copy (main/autostart.ts); absent from an older main process: shown disabled. */
+  autostart?: AutostartSupport;
+  /** This start opens on 新对话, not the main conversation (main/autostart.ts startsOnNewChat). */
+  startOnNewChat?: boolean;
+  /** The account by the company rule, worked out at start (main/user-account.ts); '' when none. 账号 may replace it. */
+  autoAccount?: string;
 }
 
 /** A file shown in the right panel: a URL for the PDF viewer / images, or its text (capped). */
@@ -105,6 +113,15 @@ export interface DesktopBridge extends SpicaBridge {
   getShellState(): Promise<ShellState>;
   updateSettings(patch: SettingsPatch): Promise<ShellSettings>;
   onSettingsChanged(listener: (settings: ShellSettings) => void): () => void;
+  /**
+   * The window's × asks (设置 › 常规 › 关闭窗口时 = 每次询问): listen() tells the main process the page shows the
+   * question from now on and calls onAsk for each; answer() sends the choice (null: the dialog was closed).
+   */
+  closeAsk: {
+    /** `running`: a conversation is running now (退出 stops it; the dialog says so in one line). */
+    listen(onAsk: (ask: { running: boolean }) => void): () => void;
+    answer(answer: { choice: 'tray' | 'quit' | null; remember: boolean }): void;
+  };
   /** One zoom step for the whole window (Ctrl+wheel, Ctrl+=/-/0). */
   zoom(step: 'in' | 'out' | 'reset'): void;
   /** Opens a file a session referenced (relative to its working folder). Resolves to an error text, or null on success. */
@@ -149,6 +166,8 @@ export interface DesktopBridge extends SpicaBridge {
     cancel(callId: string): void;
     /** A file inside the plugin's folder, as an absolute path; null when it is not one. */
     file(plugin: string, path: string): Promise<string | null>;
+    /** The system's folder or file picker for a page (window.spica.pickFolder / pickFile): the full path, or null when cancelled. */
+    pick(req: PluginPickRequest): Promise<string | null>;
   };
   /** Shows a file (or folder) selected in Explorer. An absolute path; resolves to what to show when it is not there. */
   showInFolder(path: string): Promise<string | null>;

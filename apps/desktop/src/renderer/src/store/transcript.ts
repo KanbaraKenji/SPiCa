@@ -3,6 +3,7 @@
 import { relocate, shownPath } from './relocate';
 import type { CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { humanError } from '../../../shared/errors';
+import { AGENT_MESSAGES_LIMIT_MARK } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
 
 export { humanError } from '../../../shared/errors';
@@ -53,8 +54,10 @@ export type Block =
       /** A plugin tool's name for people. */
       title?: string;
     }
-  | { type: 'ask'; callId: string; question: string; options: string[]; answer?: string }
-  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause }
+  /** `cancelled`: the question was dropped unanswered (the run was stopped): nothing to answer any more. */
+  | { type: 'ask'; callId: string; question: string; options: string[]; answer?: string; cancelled?: boolean }
+  /** `cancelled`: dropped undecided (the run was stopped): nothing to decide any more. */
+  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean }
   | { type: 'suggest'; callId: string; title: string; actions: SuggestAction[] };
 
 /** A note from a sub-agent (its report, what the user said there, or a decision made there). */
@@ -189,7 +192,7 @@ export type Item =
    * was written; `versions`: the answers it replaced, oldest first (it is the newest, number versions.length + 1);
    * `anchorId`: the message it answers, once it has been regenerated.
    */
-  | { kind: 'response'; id: string; blocks: Block[]; interrupted: boolean; messageIds?: string[]; at?: string; versions?: OldAnswer[]; anchorId?: string };
+  | { kind: 'response'; id: string; blocks: Block[]; interrupted: boolean; messageIds?: string[]; at?: string; versions?: OldAnswer[]; anchorId?: string; truncated?: boolean };
 
 export interface RunState {
   /** ms since epoch when this run started (for the status line timer). */
@@ -210,6 +213,18 @@ export interface Transcript {
   run?: RunState;
   lastRun?: FinishedRun;
   error?: string;
+  /** Where the error is put right: 'models' = 设置 › 模型 (a spending limit stopped the run); a button beside it opens it. */
+  errorAction?: 'models';
+  /**
+   * The last run stopped at a limit with the work not done (not an error): 'max_turns' (the turn limit; the desktop
+   * app sets none since 2026-11-12, a script through the MCP service may). Shown as a note after the answer.
+   */
+  stopped?: 'max_turns';
+  /**
+   * message_agent was refused since the user last wrote: this conversation reached its limit of messages to other
+   * agents (设置 › 模型 › 代理互发消息上限). A note says so until the user writes again (the count starts over).
+   */
+  agentLimit?: boolean;
   /** The words of the last error the core marked retryable (a network error, 5xx, 429...): shown only if the run then ends in an error. */
   lastFailure?: string;
   /** Messages sent while a run was going, not yet taken in by the agent. */
@@ -356,6 +371,55 @@ function lastResponse(items: Item[], id: string): Extract<Item, { kind: 'respons
   return created;
 }
 
+/**
+ * Questions and confirmations still open in `items` that the core no longer waits on (the run was stopped while
+ * they waited): marked cancelled, and their answer marked interrupted like an answer stopped while it ran.
+ * `keep`: call ids the core still waits on. Mutates `items`.
+ */
+function cancelOpenCards(items: Item[], keep: ReadonlySet<string> = new Set()): void {
+  for (const it of items) {
+    if (it.kind !== 'response') continue;
+    for (const b of it.blocks) {
+      if (keep.has((b as { callId?: string }).callId ?? '')) continue;
+      if ((b.type === 'ask' && b.answer === undefined && !b.cancelled) || (b.type === 'confirm' && b.approved === undefined && !b.cancelled)) {
+        b.cancelled = true;
+        it.interrupted = true;
+      }
+    }
+  }
+}
+
+/** A tool result for a question or a confirmation: an answer, or (an error: the core cancelled it) cancelled. */
+function settleCard(items: Item[], callId: string, content: string, isError: boolean | undefined): void {
+  const ask = findBlock(items, 'ask', callId);
+  if (ask && ask.answer === undefined) {
+    if (isError) {
+      ask.cancelled = true;
+      markInterrupted(items, callId);
+    } else ask.answer = askAnswer(content);
+  }
+  const confirm = findBlock(items, 'confirm', callId);
+  if (confirm && confirm.approved === undefined && isError && /^Cancelled\b/.test(resultBody(content))) {
+    confirm.cancelled = true;
+    markInterrupted(items, callId);
+  }
+}
+
+function markInterrupted(items: Item[], callId: string): void {
+  const it = items.find((i) => i.kind === 'response' && i.blocks.some((b) => (b as { callId?: string }).callId === callId));
+  if (it?.kind === 'response') it.interrupted = true;
+}
+
+/** The card `callId` marked cancelled (the core said it no longer waits on it). */
+export function cancelCard(prev: Transcript, callId: string): Transcript {
+  const t = clone(prev);
+  for (const type of ['ask', 'confirm'] as const) {
+    const b = findBlock(t.items, type, callId);
+    if (b) b.cancelled = true;
+  }
+  return t;
+}
+
 function findBlock<T extends Block['type']>(items: Item[], type: T, callId: string): Extract<Block, { type: T }> | undefined {
   for (let i = items.length - 1; i >= 0; i--) {
     const it = items[i];
@@ -396,6 +460,8 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
       r.messageIds = [...(r.messageIds ?? []), m.id];
       if (m.createdAt) r.at = m.createdAt;
       if (m.meta?.interrupted === true) r.interrupted = true;
+      // the answer's last part stopped at the most output the model may give: not finished (a note and 继续)
+      if (m.kind === 'assistant') r.truncated = m.meta?.stopReason === 'max_tokens';
       for (const b of m.content) {
         if (b.type === 'text') {
           const prev = r.blocks[r.blocks.length - 1];
@@ -450,8 +516,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
           if (m.meta?.autoApproved?.includes(b.toolUseId)) tool.autoApproved = true;
           continue;
         }
-        const ask = findBlock(items, 'ask', b.toolUseId);
-        if (ask) ask.answer = askAnswer(b.content);
+        settleCard(items, b.toolUseId, b.content, b.isError);
       }
       mark(m);
       continue;
@@ -505,8 +570,22 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
     ...(Object.keys(memory).length ? { memoryCards: memory } : {}),
     seqs,
   };
+  if (refusedSinceUserWrote(messages)) t.agentLimit = true;
   for (const p of pending) applyPending(t, p);
+  // A question or confirmation with no result that the core no longer waits on was dropped (stopped before the
+  // core wrote its result): nothing to answer.
+  cancelOpenCards(t.items, new Set(pending.map((p) => p.callId)));
   return t;
+}
+
+/** A message_agent refused for the limit after the last message the user typed (AGENT_MESSAGES_LIMIT_MARK). */
+function refusedSinceUserWrote(messages: readonly Message[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!;
+    if (m.role === 'user' && (m.kind === 'user' || m.kind === 'steer') && (m.meta?.author ?? 'user') === 'user') return false;
+    if (m.content.some((b) => b.type === 'tool_result' && b.isError === true && b.content.includes(AGENT_MESSAGES_LIMIT_MARK))) return true;
+  }
+  return false;
 }
 
 function applyPending(t: Transcript, p: PendingItem): void {
@@ -549,11 +628,18 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       } else if (m.role === 'user' && (m.kind === 'user' || m.kind === 'steer')) {
         if (!items.some((i) => i.id === m.id)) items.push(userItem(m));
         if (t.queued?.some((q) => q.id === m.id)) t.queued = t.queued.filter((q) => q.id !== m.id);
+        // the user wrote: the count of messages to other agents starts over
+        if ((m.meta?.author ?? 'user') === 'user') delete t.agentLimit;
       } else if (m.role === 'user' && (m.kind === 'relay' || m.kind === 'report' || m.kind === 'note')) {
         const note = items.some((i) => i.id === m.id) ? undefined : noteItem(m);
         if (note) items.push(note);
       } else if (m.role === 'assistant' && m.meta?.interrupted === true) {
         lastResponse(items, respId).interrupted = true;
+      } else if (m.role === 'assistant' && m.kind === 'assistant') {
+        lastResponse(items, respId).truncated = m.meta?.stopReason === 'max_tokens';
+      } else if (m.kind === 'tool_results') {
+        // Stopping while a question or confirmation waits: the core writes its result as cancelled.
+        for (const b of m.content) if (b.type === 'tool_result') settleCard(items, b.toolUseId, b.content, b.isError);
       }
       return t;
     }
@@ -630,6 +716,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         tool.preview = e.preview;
         tool.durationMs = e.durationMs;
       }
+      if (e.name === 'message_agent' && e.isError && e.preview.includes(AGENT_MESSAGES_LIMIT_MARK)) t.agentLimit = true;
       return t;
     }
     case 'confirm.request': {
@@ -660,6 +747,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       if (existing) {
         existing.question = e.question;
         existing.options = e.options ?? [];
+        delete existing.cancelled;
       } else {
         lastResponse(items, respId).blocks.push({ type: 'ask', callId: e.callId, question: e.question, options: e.options ?? [] });
       }
@@ -675,11 +763,15 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         const startedAt = t.run?.startedAt ?? now;
         t.run = { startedAt, status: e.status, ...(e.detail ? { detail: e.detail } : {}) };
         delete t.error;
+        delete t.errorAction;
+        delete t.stopped;
         delete t.lastFailure;
       } else if (t.run) {
         t.lastRun = { endedAt: now, durationMs: now - t.run.startedAt, reason: e.status };
         delete t.run;
       }
+      // Stopped: whatever it was still asking is dropped.
+      if (e.status === 'aborted') cancelOpenCards(items);
       return t;
     }
     case 'queue': {
@@ -714,15 +806,29 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         if (words) t.error = words;
       }
       delete t.lastFailure;
+      if (e.reason === 'max_turns') t.stopped = 'max_turns';
       return t;
     }
     case 'budget.stop': {
-      t.error = `已达花费上限，已停止（已花费 ${formatMoney(e.spentUsd)}，上限 ${formatMoney(e.limitUsd)}）。`;
+      t.error = budgetStopWords(e);
+      t.errorAction = 'models';
       return t;
     }
     default:
       return t;
   }
+}
+
+/**
+ * A spending limit stopped the run. The limit is checked before each call against its worst case, so the run can
+ * stop with less spent than the limit: say that the next step was not started because it could have gone past it.
+ */
+export function budgetStopWords(e: { scope: string; spentUsd: number; limitUsd: number; nextUsd?: number }): string {
+  const run = e.scope.endsWith(':run');
+  const name = run ? '单次运行花费上限' : '花费上限';
+  const why = e.nextUsd !== undefined ? `下一步最多可能花 ${formatMoney(e.nextUsd)}，会超出上限，所以没有开始` : '下一步可能超出上限，所以没有开始';
+  const after = run ? '可在 设置 › 模型 修改上限，或再发一条消息重新开始一次运行。' : '可在 设置 › 模型 修改上限。';
+  return `已达${name}，已停止（已花费 ${formatMoney(e.spentUsd)}，上限 ${formatMoney(e.limitUsd)}）：${why}。${after}`;
 }
 
 function formatMoney(usd: number): string {
@@ -800,10 +906,17 @@ const KIND_LABEL: Record<FileCardMeta['kind'], string> = { pdf: 'PDF', docx: 'Wo
 
 /** One line under the file name: what kind, how big, what was read, and anything to watch out for. */
 export function fileCardLine(card: FileCardMeta): string {
-  const parts: string[] = [KIND_LABEL[card.kind] ?? card.kind];
-  if (card.pageCount) parts.push(`${card.pageCount} 页`);
-  if (card.sheets?.length) parts.push(`${card.sheets.length} 个表`);
-  if (card.slideCount) parts.push(`${card.slideCount} 页幻灯片`);
+  const { kind, read } = fileCardParts(card);
+  return read ? `${kind} · ${read}` : kind;
+}
+
+/** The two halves of fileCardLine: what the file is (PDF · 4 页) and what was read of it (Read pages 1-3). */
+export function fileCardParts(card: FileCardMeta): { kind: string; read: string } {
+  const kind: string[] = [KIND_LABEL[card.kind] ?? card.kind];
+  if (card.pageCount) kind.push(`${card.pageCount} 页`);
+  if (card.sheets?.length) kind.push(`${card.sheets.length} 个表`);
+  if (card.slideCount) kind.push(`${card.slideCount} 页幻灯片`);
+  const parts: string[] = [];
   const r = card.read;
   const sheetsRead = r.sheet ? r.sheet.split(/,\s*/).filter(Boolean) : [];
   const wholeFile =
@@ -817,5 +930,5 @@ export function fileCardLine(card: FileCardMeta): string {
   else if (r.rows) parts.push(`Read rows ${r.rows}`);
   if (card.noTextLayer) parts.push('扫描件，无法读取文字');
   else if (card.truncated) parts.push('Partly read');
-  return parts.join(' · ');
+  return { kind: kind.join(' · '), read: parts.join(' · ') };
 }

@@ -79,8 +79,11 @@ Spica 启动 server 时会给这些环境变量：
 | `SPICA_PLUGIN_DIR` | 插件安装目录（只读） |
 | `SPICA_MOCK` | `1` 表示用户开了模拟模式 |
 | `SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION` | 名字和版本 |
+| `SPICA_USER_ACCOUNT` | 当前用户的账号（工号），所有插件都有、不用声明权限。取法写死：Windows 用户文件夹名转大写（`C:\Users\alex.chen` → `ALEX.CHEN`）；用户在 设置 › 账号 里改过，就是改过的那个；取不到时是空字符串。用户改了账号，正在运行的 server 会自动重启一次 |
 | `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`、`NODE_USE_ENV_PROXY` | 应用的代理设置（设置 › 常规 › 网络），没设代理时不给 |
 | `NODE_EXTRA_CA_CERTS`、`NODE_USE_SYSTEM_CA`、`SSL_CERT_FILE`、`REQUESTS_CA_BUNDLE`、`CURL_CA_BUNDLE` | 应用信任的证书（系统证书和「信任的证书文件」），Node 的 `fetch` / `https` 直接就用上了（这一行和上一行从 0.1.0-rc.2 起才有） |
+
+**要用户的账号，一律读 `SPICA_USER_ACCOUNT`（钩子里读 `ctx.user.account`，同一个值）**，不要自己从 `USERPROFILE`、`USERNAME`、`os.homedir()`、`os.userInfo()` 或登录名取：每个插件各取一遍容易不一致，用户在设置里改的也只有 Spica 给的这个会跟着变。
 
 其他环境变量只继承白名单：PATH、TEMP、用户目录、代理变量这类，外加 `COMPUTERNAME`（电脑名）和 `USERNAME`（用户名）；名字带 KEY、TOKEN、SECRET 的一律不传。取电脑名也可以用 Node 的 `os.hostname()`，不依赖环境变量。所以服务地址和凭据不要从环境变量读，放 `SPICA_PLUGIN_DATA` 里的配置文件，由插件自己的设置页经 `services/` 里的工具保存；证书和代理不要自己处理。用户改了网络设置，正在运行的插件 server 会自动重启一次。写法见 `skills/spica-plugin-author/references/internal-services.md`。
 
@@ -399,14 +402,14 @@ export default (ctx) => ({
 });
 ```
 
-- 钩子运行在 Spica 进程里，不需要 import 任何东西，参数就是全部上下文。`ctx` 里有 `dataDir`、`mock()`、`log()`。
+- 钩子运行在 Spica 进程里，不需要 import 任何东西，参数就是全部上下文。`ctx` 里有 `dataDir`、`mock()`、`log()`，和 `user.account`（用户的账号，和 server 的 `SPICA_USER_ACCOUNT` 是同一个值）。用户在设置里改了账号，钩子下一次调用就读到新的：在钩子函数里读 `ctx.user.account`，不要在工厂函数里先存一份。
 - 可用的钩子：`inject`（在系统提示、历史、用户输入前后注入文字）、`beforeRequest`（发请求前改工具表、参数）、`afterResponse`（改模型回答）、`beforeTool`（拦截、改参数、要求确认）、`afterTool`（改工具结果）。参数细节见 `docs/design/agent-core.md` 第 7 节。
 - 钩子抛错不会让对话崩掉，只会记进日志。但它这一次就等于没生效。
 - 只收 `.js` / `.mjs`。用 TypeScript 写的先编译。
 
 ## 5b. 加一个页面（可选）
 
-插件可以带自己的界面，Spica 把它放进侧栏（`sidebar`）或对话旁边的面板（`panel`）。声明 `todo/views/board.json`：
+插件可以带自己的界面，Spica 把它放进侧栏（`sidebar`）、对话旁边的面板（`panel`），或 设置 › 插件 里这个插件的详情（`settings`，见下面「设置页」）。声明 `todo/views/board.json`：
 
 ```json
 {
@@ -430,18 +433,72 @@ if (r.isError) showError(r.content); else render(r.data ?? r.content);
 | `callTool(工具, 参数)` | → `{ content, data?, isError }`；结果是 JSON 时 `data` 是解析好的对象 |
 | `onEvent(fn)` | 收 `{ type: 'theme' }`（换了明暗）、`{ type: 'plugin.changed' }`；返回取消函数 |
 | `theme` | `{ mode: 'light' \| 'dark' }` |
-| `openFile(路径)` | 在 Spica 右栏预览文件（只限本插件目录里的，或这次会话里见过的） |
+| `openFile(路径)` | 在 Spica 的预览栏打开文件（只限本插件目录里的，或这次会话里见过的） |
 | `notify(文字, { kind })` | 弹一条提示，`kind` 是 `info` 或 `error` |
+| `pickFolder({ title?, defaultPath? })` | 弹系统的选文件夹框 → 用户选的完整路径，取消时 `null` |
+| `pickFile({ title?, defaultPath?, extensions? })` | 弹系统的选文件框（选一个）→ 完整路径或 `null`；`extensions` 如 `[".md", ".txt"]`，不写 = 任何文件 |
+| `openFolder(路径)` | 在系统的资源管理器里打开一个文件夹 → 打不开时报错（文字说原因，如「找不到文件夹：…」）。只认本机盘符开头的完整路径，网络路径、文件都不行 |
 
 - 颜色用 Spica 注入的 CSS 变量：`--spica-bg`、`--spica-surface`、`--spica-fg`、`--spica-muted`、`--spica-border`、`--spica-accent`、`--spica-danger`、`--spica-font`、`--spica-radius`。换明暗时它们会自动变，不用自己判断。
 - 沙箱限制：页面里没有 Node，不能 `require`、不能读写文件；只能加载本插件目录里的文件（不能用 CDN，脚本和样式都放进插件）；只能调本插件的工具，写了 `permissions.tools` 就只能调列出的那几个。
 - `permissions.irreversible` 里的工具（services/ 里的也算），页面调用时 Spica 会先弹确认框；用户拒绝时 `isError` 为真，`content` 以 `[CONFIRM_REQUIRED]` 开头。
 - 页面能调常驻进程（`services/`）的工具：这类工具不给模型、只给自己的页面用，适合做界面专用的接口。
-- `sidebar` 是侧栏里一个入口、点开占主区域，适合完整的功能页；`panel` 是对话旁边右栏的一个标签，适合边聊边用的小工具（按 320px 宽设计）。一个插件可以有多个页面。
+- `sidebar` 是侧栏里一个入口、点开占主区域，适合完整的功能页；`panel` 是窗口最右「详情」那一栏顶上的一个标签（「详情 / 你的页面」），适合边聊边用的小工具：这一栏固定 300px 宽，不能拖宽，也不能盖住对话，按 300px 宽设计。一个插件可以有多个页面。
+
+### 设置页（`placement: "settings"`）
+
+插件要用户填的东西（服务地址、令牌、保存到哪个文件夹）放在自己的设置页里：显示在 设置 › 插件 › 这个插件的详情里：名字和「更新 / 删除」那两行下面多一行页签，第一个是「详情」，后面每个设置页一个，页签文字是 `title`。点它，下面整块换成这个页面，占满右栏剩下的高度；侧栏不多出入口，插件停用时不显示。页面第一次点到它的页签才加载，切回「详情」再回来，填了一半的东西还在。
+
+```json
+{
+  "title": "设定",
+  "entry": "ui/settings.html",
+  "placement": "settings",
+  "permissions": { "tools": ["get_settings", "save_settings"] }
+}
+```
+
+- 可以有几个设置页，各占一个页签。规则和别的页面一样：沙箱、只能调本插件的工具、`permissions.tools` 生效。
+- 页面自己滚：内容比右栏高时，页面里出滚动条，外面的右栏不滚。
+- 设置页里 `--spica-bg` 是详情卡片的底色（页面和卡片连成一片），`--spica-surface` 是窗口的底色：按钮、输入框用 `--spica-surface`，在卡片上照样看得出来。
+- 读写设置的工具放进 `services/`（只给自己的页面用，模型看不到，「保存令牌」不会被 Agent 误调），存进 `SPICA_PLUGIN_DATA/config.json`；给模型用的 server 每次调用时读同一个文件。写法见 skill 的 `references/internal-services.md`。
+
+要用户选文件夹时，照 Spica 自己 设置 › 常规 › 工作流 那一行：输入框后面两个方形图标按钮，文件夹图标是「打开文件夹」，铅笔是「选择文件夹」（更改），名字放进 `title` 悬停显示：
+
+```html
+<div class="field-row">
+  <input id="folder" type="text">
+  <button type="button" class="icon" id="open" title="打开文件夹" aria-label="打开文件夹" disabled>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h4l1.2 1.5h5.8v6.5h-11z"/></svg>
+  </button>
+  <button type="button" class="icon" id="pick" title="选择文件夹" aria-label="选择文件夹">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.2 2.6l2.2 2.2-7.6 7.6-2.9.7.7-2.9z"/></svg>
+  </button>
+</div>
+```
+
+```js
+pick.onclick = async () => {
+  const dir = await window.spica.pickFolder({ title: '选择笔记文件夹', defaultPath: box.value || undefined });
+  if (dir === null) return;   // 用户取消：什么都不改
+  box.value = dir;            // 填回页面；用户点「保存」时经自己的工具存
+};
+open.onclick = () => window.spica.openFolder(box.value).catch((err) => showError(err.message));
+box.oninput = () => (open.disabled = !box.value.trim());   // 框里空着时「打开」不能点
+```
+
+图标按钮的样式（`button.icon`：32px 见方、和旁边输入框一样高，图标 16px、线宽 1.4、用文字颜色）在 `plugins/example-notes/ui/style.css`，可以照抄。
+
+- 只给路径，读写还是插件自己的工具（钩子、确认照常生效）。不用在清单里声明：页面能拿到本机的完整路径，只因为用户自己在系统对话框里选了它。
+- 对话框挂在 Spica 窗口上，标题前加插件名（「Notes (example) · 选择笔记文件夹」）。同一时间只开一个，对话框开着时再要一个，直接得到 `null`。
+- `defaultPath` 只认本机盘符开头的完整路径（`D:\…`），网络路径（`\\server\share`）和别的写法会被忽略，对话框从它自己的位置开始。
+- sidebar、panel 的页面也能用；预览页不能（它拿着用户的文件）。
+- `openFolder` 只是在资源管理器里打开，不读、不执行任何东西：只认本机盘符开头的文件夹，网络路径（`\\server\share`）直接报错，给的是文件或文件夹不存在时报「找不到文件夹：…」。预览页不能用。
+- 完整例子：`plugins/example-notes` 的 `views/settings.json`、`services/settings.json`、`server/settings.js`、`ui/settings.html`。
 
 ### 预览页（`placement: "preview"`）
 
-给某几种文件做「预览」（例如更像原样的 Word、Excel）：用户在 设置 里选了用它预览这种文件后，右侧栏打开这种文件时显示这个页面，Spica 把**这一个文件**交给它。没选的时候用 Spica 自带的预览。
+给某几种文件做「预览」（例如更像原样的 Word、Excel）：用户在 设置 里选了用它预览这种文件后，对话右边的预览栏打开这种文件时显示这个页面（可以拖宽、可以盖住对话），Spica 把**这一个文件**交给它。没选的时候用 Spica 自带的预览。
 
 ```json
 {
@@ -469,7 +526,7 @@ window.spica.onEvent((e) => { if (e.type === 'preview.file') location.reload(); 
 - 15 秒内没调 `ready()`，或者页面出错、崩溃，Spica 也改用自带的预览。
 - 拿不到别的文件，写不回去，照样不能联网；库文件放进插件，别从网上加载。
 - 完整例子：`plugins/office-preview`（Word、Excel 原样预览，两个预览页，库在 `ui/vendor/`，来源和校验值在 `THIRD-PARTY.md`）。
-- 完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）、`views/quick-note.json`（panel），页面在 `ui/`。
+- 完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）、`views/quick-note.json`（panel）、`views/settings.json`（settings），页面在 `ui/`。
 
 ## 6. 模拟模式
 
@@ -560,5 +617,6 @@ await writeIndex('\\\\server\\spica-plugins');                  // 生成 / 更�
 
 - 不要写数据文件夹（`SPICA_PLUGIN_DATA`）和用户在对话里点名的文件夹以外的地方（后者按 2b 节的规矩写）。插件安装文件夹只读。
 - 不要在 `env` 里自己设 `SPICA_` 开头的变量。
+- 不要自己取用户名当账号（见第 2 节 `SPICA_USER_ACCOUNT`）。
 - 不要弹控制台窗口，不要要求用户装运行时、要管理员权限。
 - 示例、样例数据、文档里不要出现任何真实公司或行业专属的内容。

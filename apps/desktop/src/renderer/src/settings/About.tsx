@@ -5,6 +5,7 @@ import type { UpdateState } from '../../../shared/updates';
 import { APP_NAME } from '../../../shared/app-identity';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
+import { Group, Pane, Row } from './Group';
 
 export interface AboutProps {
   version: string;
@@ -28,19 +29,18 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
   };
   return (
     <section className="settings-section">
-      <div className="settings-group">
-        <div className="setting-row">
-          <div className="setting-text">
-            <span className="setting-title">
-              {APP_NAME} {version}
-            </span>
-            {update?.portable ? <span className="settings-hint">便携版</span> : null}
-          </div>
-        </div>
-      </div>
+      <Group>
+        <Row title={`${APP_NAME} ${version}`} hint={update?.portable ? '便携版' : undefined}>
+          {update?.status === 'ready' ? (
+            <button type="button" className="btn btn-primary" onClick={onInstall}>
+              重启并更新
+            </button>
+          ) : null}
+        </Row>
+      </Group>
 
-      <div className="settings-group">
-        <h3 className="settings-subheading">更新与公告</h3>
+      <Group title="更新与公告">
+        <Row title="更新源" stack>
         <form
           className="install-row"
           onSubmit={(e) => {
@@ -70,22 +70,22 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
             {busy ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={16} />}
           </button>
         </form>
+        </Row>
         {update?.status === 'checking' ? (
-          <p className="provider-result plugin-note" role="status">
-            正在检查更新…
-          </p>
+          <Pane>
+            <p className="provider-result" role="status">
+              正在检查更新…
+            </p>
+          </Pane>
         ) : update?.message && !noSource ? (
-          <p className={update.status === 'error' ? 'provider-result is-bad plugin-note' : 'provider-result plugin-note'} role="status">
-            {update.status === 'latest' || update.status === 'ready' ? <SpicaStatusIcon name="done" size={15} /> : update.status === 'error' ? <SpicaStatusIcon name="error" size={15} /> : null}
-            {update.message}
-          </p>
+          <Pane>
+            <p className={update.status === 'error' ? 'provider-result is-bad' : 'provider-result'} role="status">
+              {update.status === 'latest' || update.status === 'ready' ? <SpicaStatusIcon name="done" size={15} /> : update.status === 'error' ? <SpicaStatusIcon name="error" size={15} /> : null}
+              {update.message}
+            </p>
+          </Pane>
         ) : null}
-        {update?.status === 'ready' ? (
-          <button type="button" className="btn btn-primary about-install" onClick={onInstall}>
-            重启并更新
-          </button>
-        ) : null}
-      </div>
+      </Group>
     </section>
   );
 }

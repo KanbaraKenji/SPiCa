@@ -3,10 +3,10 @@
 // fixed example for screenshots and tests.
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import {
-  checkUpdates,
+  compareVersions,
   downloadPackage,
   hasErrors,
   ICON_MAX_BYTES,
@@ -16,8 +16,10 @@ import {
   listSource,
   MANIFEST_FILE,
   newest,
+  readPluginFolder,
   SPICA_VERSION,
   unpackPlugin,
+  verifyPackage,
   type Available,
   type FetchLike,
   type InstallStep,
@@ -38,6 +40,9 @@ import {
   type PluginsCommand,
   type PluginsProgress,
   type PluginsResult,
+  sameSource,
+  type OfficialSource,
+  type PluginSourceView,
   type PluginsState,
   type PluginView,
 } from '../../shared/plugins';
@@ -64,6 +69,8 @@ export interface RealServiceOptions {
   root: string;
   /** Where the list of plugin sources (shared folders / index URLs) is kept. */
   sourcesFile: string;
+  /** deploy.json's pluginSources: listed first, marked 官方, not removable; one the user also added is shown once. */
+  official?: OfficialSource[];
   /** Opens a folder in Explorer; resolves to an error text or ''. */
   openFolder(path: string): Promise<string>;
   /** Electron's net.fetch, so the system proxy applies. */
@@ -99,6 +106,7 @@ function toView(d: PluginDescription, update?: string, icon?: PluginIconView): P
             declaredMaxUsdPerDay: d.model.declaredMaxUsdPerDay,
             ...(d.model.userMaxUsdPerDay !== undefined ? { userMaxUsdPerDay: d.model.userMaxUsdPerDay } : {}),
             ...(d.model.spentTodayUsd !== undefined ? { spentTodayUsd: d.model.spentTodayUsd } : {}),
+            ...(d.model.unpricedToday ? { unpricedToday: true as const } : {}),
           },
         }
       : {}),
@@ -187,6 +195,8 @@ export class RealPluginService implements PluginService {
   /** 未安装: what the remembered sources offer, by key. */
   #fromSources = new Map<string, Available>();
   #sourceErrors: string[] = [];
+  /** How each source went the last time it was read, by location. */
+  #read = new Map<string, { at: string; error?: string; count?: number }>();
   /** The latest lookup of a typed location. */
   #found: { location: string; items: Map<string, Found>; error?: string; reason?: NotFoundReason } | undefined;
   #updates = new Map<string, UpdateInfo>();
@@ -245,10 +255,13 @@ export class RealPluginService implements PluginService {
 
   #state(): PluginsState {
     const m = this.#o.manager;
-    // 未安装: plugins not installed at all, the newest each source offers.
-    const available = [...newest([...this.#fromSources.values()], SPICA_VERSION).values()]
-      .filter((a) => !m.installedVersion(a.name))
-      .map((a) => this.#indexPackage(`source:${a.source.location}:${a.name}@${a.version}`, a));
+    // 市场: each source's own list, the newest of each plugin it offers, installed or not.
+    const available = this.#sources().flatMap((src) =>
+      [...newest([...this.#fromSources.values()].filter((a) => a.source.location === src.location), SPICA_VERSION).values()].map((a) => ({
+        ...this.#indexPackage(`source:${a.source.location}:${a.name}@${a.version}`, a),
+        source: src.location,
+      })),
+    );
     const installed = (name: string) => m.installedVersion(name);
     const found = this.#found
       ? {
@@ -269,6 +282,18 @@ export class RealPluginService implements PluginService {
       root: this.#o.root,
       ...(available.length ? { available } : {}),
       ...(this.#sourceErrors.length ? { sourceErrors: this.#sourceErrors } : {}),
+      sources: this.#sources().map((src): PluginSourceView => {
+        const r = this.#read.get(src.location);
+        return {
+          location: src.location,
+          kind: src.kind,
+          ...(src.label ? { label: src.label } : {}),
+          ...(this.#isOfficial(src.location) ? { official: true } : {}),
+          ...(r ? { readAt: r.at } : {}),
+          ...(r?.error ? { error: r.error } : {}),
+          ...(r && r.count !== undefined ? { count: r.count } : {}),
+        };
+      }),
       ...(found ? { found } : {}),
     };
   }
@@ -283,10 +308,26 @@ export class RealPluginService implements PluginService {
       location: a.location,
       kind: a.source.kind,
       ...(installed ? { installed } : {}),
+      ...(installed && compareVersions(a.version, installed) > 0 ? { newer: true } : {}),
     };
   }
 
+  /** Every source: the official ones first, then the user's (one the same as an official one is that one). */
   #sources(): SourceConfig[] {
+    const official = this.#official();
+    return [...official, ...this.#userSources().filter((u) => !official.some((o) => sameSource(o.location, u.location)))];
+  }
+
+  #official(): SourceConfig[] {
+    return (this.#o.official ?? []).map((o) => ({ kind: isUrl(o.location) ? 'http' : 'share', location: o.location, ...(o.label ? { label: o.label } : {}) }));
+  }
+
+  #isOfficial(location: string): boolean {
+    return (this.#o.official ?? []).some((o) => sameSource(o.location, location));
+  }
+
+  /** The sources the user added (plugin-sources.json). */
+  #userSources(): SourceConfig[] {
     try {
       const raw = JSON.parse(readFileSync(this.#o.sourcesFile, 'utf8')) as SourceConfig[];
       return Array.isArray(raw) ? raw.filter((s) => (s.kind === 'share' || s.kind === 'http') && typeof s.location === 'string') : [];
@@ -295,12 +336,88 @@ export class RealPluginService implements PluginService {
     }
   }
 
-  /** A source is remembered once something was installed from it (looking at it is not enough). */
-  #remember(src: SourceConfig): void {
-    const all = this.#sources();
-    if (all.some((s) => s.kind === src.kind && s.location === src.location)) return;
+  /**
+   * A source is remembered as soon as it is added (市场 › 添加来源), and when something is installed from a place
+   * typed in (since 2026-11-12; before, only an install remembered it). Looking at a place does not.
+   */
+  #remember(src: SourceConfig): boolean {
+    if (this.#sources().some((s) => sameSource(s.location, src.location))) return false;
+    this.#writeSources([...this.#userSources(), src]);
+    return true;
+  }
+
+  #writeSources(all: SourceConfig[]): void {
     mkdirSync(join(this.#o.sourcesFile, '..'), { recursive: true });
-    writeFileSync(this.#o.sourcesFile, JSON.stringify([...all, src], null, 2), 'utf8');
+    writeFileSync(this.#o.sourcesFile, JSON.stringify(all, null, 2), 'utf8');
+  }
+
+  /** What one source offers: an index or a folder of packages (the plugin system's listSource), or a single package. */
+  async #listOne(src: SourceConfig): Promise<Available[]> {
+    if (src.kind === 'share') {
+      const where = resolve(src.location);
+      const info = await stat(where).catch(() => undefined);
+      if (info?.isFile() && /\.zip$/i.test(where)) {
+        const v = await verifyPackage(await readFile(where));
+        const m = v.folder.manifest;
+        if (!m || !v.ok) throw new Error(`插件包有错误：${v.folder.issues.find((i) => i.severity === 'error')?.message ?? ''}`);
+        return [{ name: m.name, version: m.version, file: basename(where), sha256: v.sha256, ...(m.spica ? { spica: m.spica } : {}), ...(m.description ? { description: m.description } : {}), source: src, location: where, form: 'zip' }];
+      }
+      if (info?.isDirectory() && (await stat(join(where, MANIFEST_FILE)).then(() => true, () => false))) {
+        const f = await readPluginFolder(where);
+        const m = f.manifest;
+        if (!m || hasErrors(f.issues)) throw new Error(`插件有错误：${f.issues.find((i) => i.severity === 'error')?.message ?? ''}`);
+        return [{ name: m.name, version: m.version, file: `${basename(where)}/`, ...(m.spica ? { spica: m.spica } : {}), ...(m.description ? { description: m.description } : {}), source: src, location: where, form: 'folder' }];
+      }
+    }
+    // An official folder may leave some out (the repository's templates in a development run).
+    const leave = (this.#o.official ?? []).find((o) => sameSource(o.location, src.location))?.exclude ?? [];
+    const offered = await listSource(src, this.#sourceOpts());
+    return leave.length ? offered.filter((a) => !leave.includes(basename(a.location.replace(/[\\/]+$/, '')))) : offered;
+  }
+
+  /** Read these sources again: what they offer replaces what they offered before; one that cannot be read is noted. */
+  async #readSources(list: SourceConfig[]): Promise<void> {
+    await this.#queue(async () => {
+      for (const src of list) {
+        const at = new Date().toISOString();
+        for (const [k, a] of [...this.#fromSources]) if (a.source.location === src.location) this.#fromSources.delete(k);
+        try {
+          const offered = await this.#listOne(src);
+          for (const a of offered) this.#fromSources.set(`${src.location}:${a.name}@${a.version}`, a);
+          this.#read.set(src.location, { at, count: offered.length });
+        } catch (err) {
+          this.#read.set(src.location, { at, error: pluginErrorText(err) });
+        }
+      }
+      const kept = new Set(this.#sources().map((x) => x.location));
+      this.#sourceErrors = [...this.#read].filter(([loc, r]) => r.error && kept.has(loc)).map(([loc]) => loc);
+    });
+  }
+
+  /** Installed plugins with a newer compatible version among what the sources offered when last read. */
+  #findUpdates(): number {
+    const m = this.#o.manager;
+    const next = new Map<string, UpdateInfo>();
+    for (const [name, entry] of newest([...this.#fromSources.values()], SPICA_VERSION)) {
+      const installed = m.installedVersion(name);
+      if (installed && compareVersions(entry.version, installed) > 0) next.set(name, { name, installed, available: entry.version, entry });
+    }
+    this.#updates = next;
+    return next.size;
+  }
+
+  /** 检查更新 (of one source, or of all): read them, then check the installed plugins; the result in words. */
+  async #check(list: SourceConfig[]): Promise<PluginsResult> {
+    // Nothing to check against: a notice, not a result.
+    if (list.length === 0) return { ok: true, info: true, message: '没有插件来源，无法检查更新。', state: this.#state() };
+    await this.#readSources(list);
+    const failed = list.filter((x) => this.#read.get(x.location)?.error).length;
+    const n = this.#findUpdates();
+    const found = n ? `${n} 个插件可更新` : '没有可用更新';
+    if (failed === list.length) return { ok: false, message: `${failed} 个插件来源连接失败，无法检查更新。`, state: this.#state() };
+    // Some sources not reached: what the reached ones say, and how many failed; not "up to date".
+    if (failed) return { ok: true, info: true, message: `已检查 ${list.length - failed} 个插件来源：${found}；${failed} 个连接失败。`, state: this.#state() };
+    return { ok: true, message: n ? `${found}。` : '已是最新版本。', state: this.#state() };
   }
 
   #sourceOpts() {
@@ -316,19 +433,7 @@ export class RealPluginService implements PluginService {
 
   /** 未安装: list every remembered source again; one that cannot be read is noted, not fatal. */
   async #refreshSources(): Promise<void> {
-    await this.#queue(async () => {
-      const next = new Map<string, Available>();
-      const errors: string[] = [];
-      for (const src of this.#sources()) {
-        try {
-          for (const a of await listSource(src, this.#sourceOpts())) next.set(`${src.location}:${a.name}@${a.version}`, a);
-        } catch {
-          errors.push(src.location);
-        }
-      }
-      this.#fromSources = next;
-      this.#sourceErrors = errors;
-    });
+    await this.#readSources(this.#sources());
   }
 
   /** What is at a typed location, as packages to install; installs nothing. */
@@ -432,11 +537,17 @@ export class RealPluginService implements PluginService {
       items.set(key, { pkg: fromFolder(folder, key, kind, where, installed(folder.manifest.name)), install: (say) => manager.install(where, { kind, location: where }, { onProgress: say }) });
       return;
     }
+    const src: SourceConfig = { kind: 'share', location: where };
     if (await has(INDEX_FILE)) {
-      const src: SourceConfig = { kind: 'share', location: where };
       fromIndex(src, await listSource(src, this.#sourceOpts()).catch((err: unknown) => {
         throw new Refusal(pluginErrorText(err), 'unreadable');
       }));
+      return;
+    }
+    // No index: the plugin folders and .zip files in it are offered (as a source lists them).
+    const scanned = await listSource(src, this.#sourceOpts()).catch(() => [] as Available[]);
+    if (scanned.length) {
+      fromIndex(src, scanned);
       return;
     }
     throw new Refusal('该文件夹中没有插件（缺少 manifest.json 或 index.json）。', 'empty');
@@ -482,6 +593,38 @@ export class RealPluginService implements PluginService {
         case 'refreshSources':
           await this.#refreshSources();
           break;
+        case 'addSource': {
+          const where = unquote(cmd.location);
+          await this.#find(where);
+          const f = this.#found;
+          if (!f || f.location !== where) return { ok: false, message: '请重试。', state: this.#state() };
+          if (f.error) return { ok: false, message: f.error, state: this.#state() };
+          // An index or a folder of packages is the source itself; so is a plugin folder or a .zip on a drive.
+          const src: SourceConfig | undefined = [...f.items.values()].find((i) => i.source)?.source ?? (isUrl(where) ? undefined : { kind: 'share', location: where });
+          if (!src) return { ok: true, info: true, message: '单个插件包的网址不能作为来源，可在下方安装。', state: this.#state() };
+          const added = this.#remember(src);
+          // Already listed (an official one, or typed another way): that row is the one read.
+          const listed = this.#sources().find((x) => sameSource(x.location, src.location)) ?? src;
+          await this.#readSources([listed]);
+          const r = this.#read.get(listed.location);
+          if (r?.error) return { ok: false, message: r.error, state: this.#state() };
+          message = `${added ? '已添加来源' : '该来源已在列表中'}：${r?.count ?? 0} 个插件。`;
+          break;
+        }
+        case 'removeSource': {
+          if (this.#isOfficial(cmd.location)) return { ok: false, message: '官方来源不能移除。', state: this.#state() };
+          const all = this.#userSources();
+          if (!all.some((x) => x.location === cmd.location)) break;
+          this.#writeSources(all.filter((x) => x.location !== cmd.location));
+          for (const [k, a] of [...this.#fromSources]) if (a.source.location === cmd.location) this.#fromSources.delete(k);
+          this.#read.delete(cmd.location);
+          this.#sourceErrors = this.#sourceErrors.filter((x) => x !== cmd.location);
+          this.#findUpdates();
+          message = '已移除来源。';
+          break;
+        }
+        case 'checkSources':
+          return await this.#check(cmd.location === undefined ? this.#sources() : this.#sources().filter((x) => x.location === cmd.location));
         case 'enable': {
           await manager.enable(cmd.name);
           const d = manager.describe(cmd.name);
@@ -530,19 +673,9 @@ export class RealPluginService implements PluginService {
           message = withModelNotice(`已安装「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
           break;
         }
-        case 'checkUpdates': {
-          const sources = this.#sources();
-          // Nothing to check against: a notice, not a result.
-          if (sources.length === 0) return { ok: true, info: true, message: '没有插件来源，无法检查更新。', state: this.#state() };
-          const { updates, errors } = await checkUpdates(manager, sources, this.#sourceOpts());
-          this.#updates = new Map(updates.map((u) => [u.name, u]));
-          const found = updates.length ? `${updates.length} 个插件可更新` : '没有可用更新';
-          if (errors.length === sources.length) return { ok: false, message: `${errors.length} 个插件来源连接失败，无法检查更新。`, state: this.#state() };
-          // Some sources not reached: what the reached ones say, and how many failed; not "up to date".
-          if (errors.length) return { ok: true, info: true, message: `已检查 ${sources.length - errors.length} 个插件来源：${found}；${errors.length} 个连接失败。`, state: this.#state() };
-          message = updates.length ? `${found}。` : '已是最新版本。';
-          break;
-        }
+        case 'checkUpdates':
+          // The same as 检查更新 of all sources under 市场: every source is read again.
+          return await this.#check(this.#sources());
         case 'update': {
           const u = this.#updates.get(cmd.name);
           if (!u) return { ok: false, message: '请先检查更新。', state: this.#state() };

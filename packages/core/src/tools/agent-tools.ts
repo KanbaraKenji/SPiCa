@@ -2,6 +2,8 @@
 // wait_agents, record_decision.
 import type { Runtime } from '../runtime.ts';
 import type { Tool, ToolContext } from './types.ts';
+import type { Message } from '../types.ts';
+import { AGENT_MESSAGES_LIMIT_MARK } from '@spica/protocol';
 
 function runtimeOf(ctx: ToolContext): Runtime {
   const rt = ctx.services.runtime as Runtime | undefined;
@@ -80,6 +82,22 @@ export const messageAgentTool: Tool = {
   },
   async execute(input, ctx) {
     const rt = runtimeOf(ctx);
+    // Agents messaging each other with nobody watching: at most N messages per conversation since the user last
+    // wrote in it (he wanted Claude desktop's guard in Spica, 2026-11-12). Only message_agent counts: starting a
+    // sub-agent is not a back-and-forth, and reports and relays are the answers the messages caused.
+    const limit = agentMessageLimit(rt);
+    if (limit > 0) {
+      const sent = sentSinceUserWrote(rt.session(ctx.sessionId)?.messages() ?? [], ctx.callId);
+      if (sent >= limit) {
+        return {
+          content:
+            `${AGENT_MESSAGES_LIMIT_MARK} This conversation has sent ${sent} messages to other agents since the user last ` +
+            `wrote here (the limit is ${limit}), which looks like agents messaging each other with nobody watching. ` +
+            'Do not try again: tell the user where things stand; the count starts over when the user writes.',
+          isError: true,
+        };
+      }
+    }
     const child = rt.session(String(input.id));
     if (!child || !rt.canDirect(ctx.sessionId, child.id)) {
       return { content: `No sub-agent with id ${String(input.id)} belongs to you.`, isError: true };
@@ -91,6 +109,27 @@ export const messageAgentTool: Tool = {
     return { content: h.started ? `Sent; ${name} started working on it.` : `Queued for ${name}; it will see it at its next step.` };
   },
 };
+
+/** RuntimeOptions.defaults.agentMessages as a whole number; 0 = no limit. */
+function agentMessageLimit(rt: Runtime): number {
+  const n = rt.defaults.agentMessages;
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+/**
+ * message_agent calls this conversation made since the user last typed in it (a message or a steer written by the
+ * user, not one from a parent or the runtime), this call left out.
+ */
+export function sentSinceUserWrote(messages: readonly Message[], callId: string): number {
+  let n = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!;
+    if (m.role === 'user' && (m.kind === 'user' || m.kind === 'steer') && (m.meta?.author ?? 'user') === 'user') break;
+    if (m.role !== 'assistant') continue;
+    for (const b of m.content) if (b.type === 'tool_use' && b.name === 'message_agent' && b.id !== callId) n++;
+  }
+  return n;
+}
 
 export const waitAgentsTool: Tool = {
   category: 'agent',

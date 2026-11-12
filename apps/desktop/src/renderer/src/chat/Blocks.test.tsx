@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import type { HistoryCardMeta } from '@spica/protocol';
-import { OpenSessionContext, HistoryCardsContext, HistoryRefContext, MarkdownText, AskCard, ConfirmCard, FileCards, SuggestCard, ToolGroup } from './Blocks';
+import { OpenSessionContext, HistoryCardsContext, HistoryRefContext, MarkdownText, AskCard, ConfirmCard, FileCards, RoundDoneContext, SuggestCard, ToolGroup } from './Blocks';
 
 afterEach(cleanup);
 
@@ -24,6 +24,35 @@ describe('AskCard', () => {
     expect(onAnswer).toHaveBeenCalledWith('写简短一点');
   });
 
+  it('stopped while it waited: 已中断 where the answer goes, nothing to click', () => {
+    const onAnswer = vi.fn();
+    render(<AskCard block={{ ...block, cancelled: true }} onAnswer={onAnswer} />);
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(document.querySelector('.ask-card.is-done .card-answer')?.textContent).toBe('已中断');
+  });
+
+  it('takes one answer: after a click the options and the box are off until the card closes', () => {
+    const onAnswer = vi.fn();
+    render(<AskCard block={block} onAnswer={onAnswer} />);
+    fireEvent.click(screen.getByRole('button', { name: '只写结论' }));
+    fireEvent.click(screen.getByRole('button', { name: '按议题逐条写' }));
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole('button', { name: '按议题逐条写' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('textbox', { name: '回答' }) as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it('no mark before the question (it says nothing the question does not); answered, the answer stands at the row’s end', () => {
+    const { rerender } = render(<AskCard block={block} onAnswer={vi.fn()} />);
+    const head = document.querySelector('.ask-card > .card-head')!;
+    expect(head.firstElementChild?.className).toBe('card-title');
+    expect(head.querySelector('svg')).toBeNull();
+    expect(document.querySelector('.ask-card > .ask-body .ask-options')).toBeTruthy();
+    rerender(<AskCard block={{ ...block, answer: '只写结论' }} onAnswer={vi.fn()} />);
+    expect(head.querySelector('.card-answer')?.textContent).toBe('只写结论');
+    expect(document.querySelector('.ask-body')).toBeNull();
+  });
+
   it('shows the answer instead of controls once answered', () => {
     render(<AskCard block={{ ...block, answer: '只写结论' }} onAnswer={vi.fn()} />);
     expect(screen.queryByRole('button', { name: '回答' })).toBeNull();
@@ -32,6 +61,33 @@ describe('AskCard', () => {
 });
 
 describe('ConfirmCard', () => {
+  it('an ordinary one has no mark before its title, in every state; a dangerous one keeps the warning and 无法撤销', () => {
+    const mail = { type: 'confirm' as const, callId: 'c5', name: 'send_email', input: {}, reason: '发送邮件给「项目组」' };
+    for (const state of [{}, { approved: true }, { approved: false }, { cancelled: true }]) {
+      render(<ConfirmCard block={{ ...mail, ...state }} onDecide={vi.fn()} />);
+      const head = document.querySelector('.confirm-card > .card-head')!;
+      expect(head.firstElementChild?.className, JSON.stringify(state)).toBe('card-title');
+      cleanup();
+    }
+    render(<ConfirmCard block={{ type: 'confirm', callId: 'c6', name: 'run_command', input: { command: 'Remove-Item D:\\工作 -Recurse -Force' }, reason: '运行命令' }} onDecide={vi.fn()} />);
+    const head = document.querySelector('.confirm-card.is-danger > .card-head')!;
+    expect(head.firstElementChild?.getAttribute('data-status')).toBe('warning');
+    expect(head.querySelector('.confirm-undo')?.textContent).toBe('无法撤销');
+  });
+
+  it('stopped while it waited: 已中断, no 拒绝 / 允许; one decision only', () => {
+    const block = { type: 'confirm' as const, callId: 'c4', name: 'send_email', input: {}, reason: '发送邮件给「项目组」' };
+    render(<ConfirmCard block={{ ...block, cancelled: true }} onDecide={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: '允许' })).toBeNull();
+    expect(document.querySelector('.confirm-card.is-done .card-answer')?.textContent).toBe('已中断');
+    cleanup();
+    const onDecide = vi.fn();
+    render(<ConfirmCard block={block} onDecide={onDecide} />);
+    fireEvent.click(screen.getByRole('button', { name: '允许' }));
+    fireEvent.click(screen.getByRole('button', { name: '拒绝' }));
+    expect(onDecide).toHaveBeenCalledTimes(1);
+  });
+
   it('says only what is being confirmed and reports the decision', () => {
     const onDecide = vi.fn();
     render(<ConfirmCard block={{ type: 'confirm', callId: 'c2', name: 'send_email', input: {}, reason: '发送邮件给「项目组」' }} onDecide={onDecide} />);
@@ -150,7 +206,7 @@ describe('ToolGroup', () => {
     expect(head.querySelector('.fold-meta svg')).toBeNull();
     fireEvent.click(head);
     const rows = [...document.querySelectorAll('.tool-list .tool-item-head')] as HTMLElement[];
-    expect(rows.map((r) => r.querySelector('.fold-meta')?.textContent ?? '')).toEqual(['<1 秒', 'Failed', '已超时']);
+    expect(rows.map((r) => r.querySelector('.fold-meta')?.textContent ?? '')).toEqual(['<1s', 'Failed', '已超时']);
     for (const r of rows) expect(r.querySelector('.fold-meta svg')).toBeNull();
     expect(rows.map((r) => r.querySelector('.fold-icon svg')?.getAttribute('data-status'))).toEqual(['done', 'error', 'stopped']);
   });
@@ -161,7 +217,7 @@ describe('ToolGroup', () => {
     let head = screen.getByRole('button');
     expect(head.querySelector('.fold-icon .spica-mark')).toBeTruthy();
     expect(head.querySelector('.fold-label')?.textContent).toBe('Listing the working folder');
-    expect(head.lastElementChild?.textContent).toBe('0:47');
+    expect(head.lastElementChild?.textContent).toBe('47s');
     // Two in the group, the second running: the group's line.
     rerender(
       <ToolGroup
@@ -175,7 +231,7 @@ describe('ToolGroup', () => {
     head = screen.getAllByRole('button')[0]!;
     expect(head.querySelector('.fold-label')?.textContent).toBe('Reading 需求说明.docx');
     expect(head.querySelector('.fold-icon .spica-mark')).toBeTruthy();
-    expect(head.lastElementChild?.textContent).toBe('0:47');
+    expect(head.lastElementChild?.textContent).toBe('47s');
     // Inside, the running call turns in its first place; nothing after its name.
     fireEvent.click(head);
     const running = screen.getAllByRole('button')[2]!;
@@ -296,5 +352,81 @@ describe('the assistant looking through earlier conversations', () => {
     expect(screen.getByRole('link', { name: '文档' }).getAttribute('href')).toBe('https://example.com/a');
     // Only digits after history:.
     expect(screen.queryByRole('button', { name: '第一' })).toBeNull();
+  });
+});
+
+describe('tool times once the round is over', () => {
+  const blocks = [
+    { type: 'tool' as const, callId: 'a', name: 'list_dir', input: { path: '.' }, state: 'done' as const, durationMs: 4200 },
+    { type: 'tool' as const, callId: 'b', name: 'read_file', input: { path: 'a.docx' }, state: 'timeout' as const },
+    { type: 'tool' as const, callId: 'c', name: 'read_file', input: { path: 'b.docx' }, state: 'done' as const, durationMs: 800, autoApproved: true },
+  ];
+  const metas = () => [...document.querySelectorAll('.fold-meta')].map((m) => m.textContent);
+
+  it('while the round goes on: each finished step and the group keep their time', () => {
+    render(<ToolGroup blocks={blocks} />);
+    expect(metas()).toEqual(['5s']);
+    fireEvent.click(screen.getByRole('button', { name: /Listed a folder/ }));
+    expect(metas()).toEqual(['5s', '4s', '已超时', 'Auto · <1s']);
+  });
+
+  it('the round over: no time after the group, its steps, or a call alone; what is not a time stays', () => {
+    render(
+      <RoundDoneContext.Provider value={true}>
+        <ToolGroup blocks={blocks} />
+        <ToolGroup blocks={[blocks[0]!]} />
+      </RoundDoneContext.Provider>,
+    );
+    expect(metas()).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: /Listed a folder, read 2 files/ }));
+    expect(metas()).toEqual(['已超时', 'Auto']);
+  });
+});
+
+describe('files under an answer: cards when few, a list when many', () => {
+  const at = '2026-11-12T10:00:00+08:00';
+  const file = (i: number, ext = 'pdf') => {
+    const path = `D:\\规格书\\料号${String(i).padStart(2, '0')}.${ext}`;
+    const name = path.split('\\').pop()!;
+    return { path, tool: 'run_command', category: 'command' as const, card: { path, name, kind: (ext === 'pdf' ? 'pdf' : 'other') as 'pdf' | 'other', sizeBytes: 1, modifiedAt: at, extractedAt: at, read: {}, origin: 'created' as const, ...(ext === 'pdf' ? { pageCount: 4 } : {}) } };
+  };
+  const files = (n: number) => Array.from({ length: n }, (_, i) => file(i + 1, i === 2 ? 'png' : 'pdf'));
+  const actions = { reveal: vi.fn(), imageUrl: async () => 'blob:x' };
+
+  it('up to 4: cards, as before', () => {
+    render(<FileCards files={files(4)} onOpen={vi.fn()} actions={actions} />);
+    expect(document.querySelectorAll('.file-card')).toHaveLength(4);
+    expect(document.querySelector('.file-list')).toBeNull();
+  });
+
+  it('5 or more: one a line (icon and name, what it is, what was done, the two buttons); a click opens it as a card does', () => {
+    const onOpen = vi.fn();
+    render(<FileCards files={files(5)} onOpen={onOpen} actions={actions} />);
+    expect(document.querySelector('.file-card')).toBeNull();
+    const rows = [...document.querySelectorAll('.file-list .file-row')];
+    expect(rows).toHaveLength(5);
+    expect(rows[0]!.querySelector('.file-row-text')?.textContent).toBe('料号01.pdf');
+    expect(rows[0]!.querySelector('.file-row-kind')?.textContent).toBe('PDF · 4 页');
+    expect(rows[0]!.querySelector('.file-row-did')?.textContent).toBe('Created while the command ran');
+    // A picture shows its icon only, no small picture.
+    expect(rows[2]!.querySelector('img')).toBeNull();
+    expect(rows[2]!.querySelector('svg')).toBeTruthy();
+    fireEvent.click(rows[1]!.querySelector('.file-row-main')!);
+    expect(onOpen).toHaveBeenCalledWith('D:\\规格书\\料号02.pdf');
+    fireEvent.click(within(rows[1] as HTMLElement).getByRole('button', { name: '打开所在文件夹' }));
+    expect(actions.reveal).toHaveBeenCalledWith('D:\\规格书\\料号02.pdf');
+  });
+
+  it('more than 10: the first 8, then 全部 N 个 and 收起', () => {
+    render(<FileCards files={files(14)} onOpen={vi.fn()} actions={actions} />);
+    expect(document.querySelectorAll('.file-row')).toHaveLength(8);
+    fireEvent.click(screen.getByRole('button', { name: '全部 14 个' }));
+    expect(document.querySelectorAll('.file-row')).toHaveLength(14);
+    fireEvent.click(screen.getByRole('button', { name: '收起' }));
+    expect(document.querySelectorAll('.file-row')).toHaveLength(8);
+    cleanup();
+    render(<FileCards files={files(10)} onOpen={vi.fn()} actions={actions} />);
+    expect(document.querySelectorAll('.file-row')).toHaveLength(10);
+    expect(screen.queryByRole('button', { name: /全部/ })).toBeNull();
   });
 });

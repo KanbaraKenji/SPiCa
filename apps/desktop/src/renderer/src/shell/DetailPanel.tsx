@@ -1,13 +1,14 @@
-// Right panel: details of the open session (tool calls, files, cost).
+// The details panel (详情, at the window's right edge): the open session's tool calls, files, cost. A fixed width:
+// no edge to drag, no 最大化 (the file preview beside it has both).
 import type { FileCardMeta, ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
 import { filesOf, MEMORY_TOOLS, type Block, type Transcript } from '../store/transcript';
 import { changesAfter } from '../store/relocate';
 import { Icon } from '../ui/Icon';
-import { MaxButton, type MaxState } from '../ui/MaxButton';
 import { InfoTip } from '../ui/InfoTip';
 import { FileGlyph } from '../ui/FileIcon';
 import { activityText } from './activity';
 import { fileFolder, fileName, formatDuration, formatUsd } from '../chat/format';
+import { spendText } from '../../../shared/spend';
 import { toolWords } from '../chat/tool-words';
 import { toolIcon } from '../chat/Blocks';
 import { SpicaStatusIcon } from '@spica/brand/react';
@@ -19,6 +20,8 @@ export interface DetailPanelProps {
   parent: SessionInfo | undefined;
   transcript: Transcript;
   globalCostUsd: number;
+  /** Some conversation used a model without a price (not in globalCostUsd): shown 「+ 未计价」. */
+  globalUnpriced?: boolean;
   /** Opens a folder (or a file) with Windows. */
   onOpenFile(path: string): void;
   /** Shows a file in the right panel; absent: files open with Windows. */
@@ -28,8 +31,6 @@ export interface DetailPanelProps {
   project?: ProjectInfo | undefined;
   activity?: ProjectLogEntry[];
   onClose?: () => void;
-  /** The panel over the whole conversation: the button at the right end of this head. Absent: no such button (a tab row above has it). */
-  max?: MaxState | undefined;
   /** A tab above already says 详情: leave out the heading (the close button stays). */
   hideHeading?: boolean;
 }
@@ -53,7 +54,7 @@ function ToolListText({ t, card }: { t: Parameters<typeof toolWords>[0]; card?: 
   );
 }
 
-export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, max }: DetailPanelProps) {
+export function DetailPanel({ session, parent, transcript, globalCostUsd, globalUnpriced, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false }: DetailPanelProps) {
   const blocks = transcript.items.flatMap((i) => (i.kind === 'response' ? i.blocks : []));
   // remember / forget are the 已记住 line in the conversation; listed here they would say it twice.
   const tools = blocks.filter((b): b is ToolBlock => b.type === 'tool' && !MEMORY_TOOLS.has(b.name));
@@ -64,10 +65,9 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
   ];
   return (
     <aside className="detail" aria-label="详情">
-      {hideHeading && !onClose && !max ? null : (
-      <header className="detail-head">
+      {hideHeading && !onClose ? null : (
+      <header className="detail-head panel-head">
         {hideHeading ? <span /> : <span className="detail-heading">详情</span>}
-        {max ? <MaxButton max={max} /> : null}
         {onClose ? (
           <button type="button" className="icon-btn" onClick={onClose} aria-label="关闭详情" title="关闭详情">
             <Icon name="close" size={14} />
@@ -206,9 +206,9 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
           <h3 className="detail-title">花费</h3>
           <dl className="detail-facts">
             <dt>本对话</dt>
-            <dd className="num">{session ? formatUsd(session.costUsd) : '—'}</dd>
+            <dd className="num">{session ? spendText(session.costUsd, session.unpriced, formatUsd) : '—'}</dd>
             <dt>全部对话</dt>
-            <dd className="num">{formatUsd(globalCostUsd)}</dd>
+            <dd className="num">{spendText(globalCostUsd, globalUnpriced, formatUsd)}</dd>
           </dl>
         </section>
       </div>

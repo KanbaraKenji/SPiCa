@@ -1,0 +1,109 @@
+/* The small dialog window's own styles (renderer/dialog.html). Each rule copies the main page's rule named beside
+   it (renderer/src/styles.css), with the variables written out as numbers; the colors are the skin's, set on :root
+   by main.ts from what main passes in. The window is the dialog box: its corners and shadow are the window's own. */
+
+/* styles.css * */
+* {
+  box-sizing: border-box;
+}
+
+/* styles.css html, body / body */
+html,
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--spica-raised);
+  color: var(--spica-ink);
+  /* --font-ui */
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
+  /* --fs-body / --lh-body */
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+/* styles.css :focus-visible */
+:focus-visible {
+  outline: 2px solid var(--spica-accent);
+  outline-offset: 1px;
+}
+
+/* styles.css .dialog (width 400, padding 20; radius and shadow are the window's) */
+.dialog {
+  width: 100%;
+  padding: 20px;
+}
+
+/* styles.css .dialog-title (--fs-heading / --lh-heading) */
+.dialog-title {
+  margin: 0;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* styles.css .dialog-detail */
+.dialog-detail {
+  margin: 8px 0 0;
+  color: var(--spica-muted);
+  overflow-wrap: anywhere;
+}
+
+/* styles.css .dialog-check / .dialog-check > input */
+.dialog-check {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  cursor: pointer;
+}
+
+.dialog-check > input {
+  flex: none;
+  margin: 0;
+  accent-color: var(--spica-accent);
+}
+
+/* styles.css .dialog-actions */
+.dialog-actions {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* styles.css button / .btn (--radius-m 8px) */
+.btn {
+  height: 32px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--spica-border-strong);
+  background: var(--spica-control);
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: var(--spica-control-hover);
+}
+
+/* styles.css .btn-primary */
+.btn-primary {
+  background: var(--spica-accent);
+  border-color: var(--spica-accent);
+  color: var(--spica-on-accent);
+}
+
+.btn-primary:hover {
+  background: var(--spica-accent);
+  filter: brightness(1.08);
+}

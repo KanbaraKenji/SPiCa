@@ -153,3 +153,37 @@ describe('使用日志: where the project menu sits', () => {
     spy.mockRestore();
   });
 });
+
+describe('启动与托盘', () => {
+  it('开机时启动 is off by default and turns on; 关闭窗口时 starts at 每次询问 and can be changed back', () => {
+    const p = setup({ autostart: 'ok' });
+    const login = screen.getByRole('switch', { name: '开机时启动' });
+    expect(login.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(login);
+    expect(p.onChange).toHaveBeenLastCalledWith({ openAtLogin: true });
+    expect(screen.getByText('登录 Windows 后自动启动。')).toBeTruthy();
+    const group = screen.getByRole('radiogroup', { name: '关闭窗口时' });
+    const radios = within(group).getAllByRole('radio');
+    expect(radios.map((r) => r.textContent)).toEqual(['每次询问', '最小化到托盘', '退出 Spica']);
+    expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false']);
+    fireEvent.click(radios[1]!);
+    expect(p.onChange).toHaveBeenLastCalledWith({ closeWindow: 'tray' });
+    cleanup();
+    const q = setup({ autostart: 'ok', settings: { ...DEFAULT_SETTINGS, closeWindow: 'quit' } });
+    const again = within(screen.getByRole('radiogroup', { name: '关闭窗口时' })).getAllByRole('radio');
+    expect(again[2]!.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(again[0]!);
+    expect(q.onChange).toHaveBeenLastCalledWith({ closeWindow: 'ask' });
+  });
+
+  it('a development run or a portable copy shows 开机时启动 disabled, saying only the installed one can', () => {
+    setup({ autostart: 'dev', settings: { ...DEFAULT_SETTINGS, openAtLogin: true } });
+    const login = screen.getByRole('switch', { name: '开机时启动' }) as HTMLButtonElement;
+    expect(login.disabled).toBe(true);
+    expect(login.getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByText('开发版不能开机启动，只有安装版能用。')).toBeTruthy();
+    cleanup();
+    setup({ autostart: 'portable' });
+    expect(screen.getByText('便携版不能开机启动，只有安装版能用。')).toBeTruthy();
+  });
+});

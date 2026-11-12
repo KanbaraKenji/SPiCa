@@ -1,7 +1,7 @@
 // Usage log export: everything that happened, as JSON Lines, filtered by
 // project and time range. Raw material for evaluation and, later, for the
 // members' memory. Field reference: docs/design/agent-core.md §13.
-import type { ContentBlock, Message, UsageLogFilter } from './types.ts';
+import type { ContentBlock, Message, TraceRecord, UsageLogFilter } from './types.ts';
 import type { SessionRecord, Store } from './store/types.ts';
 import { isoNow } from './events.ts';
 import { homedir, tmpdir } from 'node:os';
@@ -26,6 +26,11 @@ export interface UsageLogOptions {
    * carry user names. Default true; `home` / `temp` override the folders.
    */
   hidePaths?: boolean | { home?: string; temp?: string };
+  /**
+   * Which model calls are of a model without a known price: written with `unpriced: true` and no costUsd (an
+   * older record carries the stand-in price, which is not what it cost).
+   */
+  unpriced?: (t: TraceRecord) => boolean;
 }
 
 export function exportUsageLog(store: Store, filter: UsageLogFilter = {}, opts: UsageLogOptions = {}): string {
@@ -66,6 +71,12 @@ export function usageLogLines(store: Store, filter: UsageLogFilter = {}, opts: U
   sessions = sessions.filter((s) => Date.parse(s.createdAt) <= to && Date.parse(s.updatedAt) >= from);
 
   const out: Record<string, unknown>[] = [];
+  const trace = (t: TraceRecord): Record<string, unknown> => {
+    if (!opts.unpriced?.(t)) return { type: 'trace', ...t };
+    const rest: Record<string, unknown> = { ...t };
+    delete rest.costUsd; // the stand-in price, not what it cost
+    return { type: 'trace', ...rest, unpriced: true };
+  };
   for (const s of sessions) {
     out.push({
       type: 'session',
@@ -99,12 +110,12 @@ export function usageLogLines(store: Store, filter: UsageLogFilter = {}, opts: U
         durationMs: c.endedAt ? Math.max(0, Date.parse(c.endedAt) - Date.parse(c.startedAt)) : null,
       });
     }
-    for (const t of store.listTraces({ sessionId: s.id })) if (inRange(t.startedAt)) out.push({ type: 'trace', ...t });
+    for (const t of store.listTraces({ sessionId: s.id })) if (inRange(t.startedAt)) out.push(trace(t));
     for (const r of store.listRelays(s.id)) if (inRange(r.createdAt)) out.push({ type: 'relay', ...r });
   }
   if (!filter.projectId) {
     // requests that belong to no session (token requests, mail polling)
-    for (const t of store.listTraces()) if (t.sessionId === null && inRange(t.startedAt)) out.push({ type: 'trace', ...t });
+    for (const t of store.listTraces()) if (t.sessionId === null && inRange(t.startedAt)) out.push(trace(t));
   }
 
   const projects = project ? [project] : store.listProjects();

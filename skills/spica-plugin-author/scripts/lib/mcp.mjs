@@ -17,6 +17,9 @@ export const PLUGIN_INHERIT_ENV = [
   'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
 ];
 
+/** What the kit's servers get as the user's account (SPICA_USER_ACCOUNT) in place of a real one: a made-up name. */
+export const STAND_IN_ACCOUNT = 'ALEX.CHEN';
+
 /** process.env reduced to the whitelist, plus `extra`. */
 export function pluginEnv(extra = {}) {
   const env = {};

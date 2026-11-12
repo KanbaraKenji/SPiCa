@@ -34,7 +34,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
    它会检查清单、在模拟模式下启动 server 列出工具、查密钥、跑测试，最后打出 `dist/<名字>-<版本>.zip` 和 `.sha256`。有 ✗ 就改，直到显示「可以装了」。
 7. **装进 Spica**（详见 `references/connect.md`）：
    - Spica 开着，而且在 设置 › 常规 › 开发者 打开了「允许本机脚本连接 Spica」：直接跑 `node <skill>/scripts/install.mjs dist/<名字>-<版本>.zip`，脚本自己找到它。
-   - 开关没开：请用户在 **设置 › 插件** 顶上的搜索框里粘贴 zip 的完整路径，左边列出这个插件后点它，再点右边的「安装」；第 8、9 步改成让用户在对话里试、再关掉开关看工具消失。
+   - 开关没开：请用户在 **设置 › 插件 › 市场** 点「添加来源」，粘贴 zip 的完整路径点「添加」，下面列出这个插件后点它，再点右边的「安装」；第 8、9 步改成让用户在对话里试、再关掉开关看工具消失。
    - 开发时连自己起的服务：加 `--http <地址> --token-file <令牌文件>`，或 `--stdio <backend.json> --spica <Spica 源码文件夹>`。
    装完会列出新增的工具（`<插件名>__<工具>`）和页面。
 8. **让 Agent 真调一次**：加 `--run "一句会用到这个工具的话"`，脚本经 `spica_run` 发出去，打印 Agent 调了哪些工具和回答。没调到你的工具，就回去改 `description`。
@@ -62,24 +62,25 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 
 ## 带界面的插件
 
-`--with-ui` 生成 `views/main.json` 和 `ui/`（`index.html`、`app.js`、`style.css`、`icon.svg`）。页面放在哪由 `placement` 定，两种：
+`--with-ui` 生成 `views/main.json` 和 `ui/`（`index.html`、`app.js`、`style.css`、`icon.svg`）。页面放在哪由 `placement` 定，三种：
 
 | `placement` | 在哪 | 适合 |
 |---|---|---|
 | `sidebar`（默认） | 侧栏里一个入口，点开占主区域 | 完整的功能页：列表、表格、编辑 |
 | `panel` | 对话旁边的右栏，一个标签 | 边聊边用的小工具：速记、状态、快捷操作；按 320px 宽设计 |
+| `settings` | 设置 › 插件 › 这个插件详情的一个页签（「详情」后面），不进侧栏 | 插件自己的设置：服务地址、令牌、保存到哪个文件夹（页面里可以 `window.spica.pickFolder()` 弹系统的选文件夹框） |
 
-生成面板：`scaffold.mjs <名字> --with-ui --placement panel`。一个插件可以有多个页面（`views/` 里每个 `.json` 一个），例子：`plugins/example-notes` 的 Notebook（sidebar）和 Quick note（panel）。
+生成面板：`scaffold.mjs <名字> --with-ui --placement panel`（设置页：`--placement settings`）。一个插件可以有多个页面（`views/` 里每个 `.json` 一个），例子：`plugins/example-notes` 的 Notebook（sidebar）、Quick note（panel）和设定（settings）。
 
 页面跑在 Spica 的沙箱里：
 
 - **没有 Node**：不能 `require`、不能读写文件。要读写数据，就在 server 里加工具，页面去调它。
 - **只能加载本插件目录里的文件**：不能用 CDN，库文件也放进插件。
 - **只能调本插件的工具**，写了 `permissions.tools` 就只能调列出的那几个；不可逆工具会先弹 Spica 的确认框。
-- 用 Spica 注入的 `window.spica`：`callTool(工具原名, 参数)` → `{ content, data?, isError }`，`onEvent`，`theme`，`openFile`，`notify`。
+- 用 Spica 注入的 `window.spica`：`callTool(工具原名, 参数)` → `{ content, data?, isError }`，`onEvent`，`theme`，`openFile`，`notify`，`pickFolder` / `pickFile`（系统的选择框），`openFolder`（资源管理器里打开本机文件夹）。
 - 颜色只用 `--spica-*` CSS 变量，明暗自动适配。只给页面用、不给模型用的工具，放 `services/`。
 
-开发时不开 Spica 也能看页面：`node <skill>/scripts/preview.mjs <插件文件夹>`，在浏览器打开它打印的地址（暗色加 `?theme=dark`）。规则和 Spica 一样，背后是插件自己的 server（模拟模式）。详见 `references/ui.md`。
+开发时不开 Spica 也能看页面：`node <skill>/scripts/preview.mjs <插件文件夹>`，在浏览器打开它打印的地址（暗色加 `?theme=dark`）。规则和 Spica 一样，背后是插件自己的 server（模拟模式）。页面要选文件夹 / 文件时加 `--pick <完整路径>`，选择框直接回这个路径；不加时，在自动化里等于用户取消（回 `null`）。详见 `references/ui.md`。
 
 ## 用 Spica 里配好的模型
 

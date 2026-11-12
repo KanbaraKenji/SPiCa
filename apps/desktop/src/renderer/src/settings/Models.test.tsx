@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { Models, type ProvidersApi } from './Models';
+import { AgentMessagesRow, Models, RunLimitRow, type ProvidersApi } from './Models';
 import type { ProviderList } from '../../../shared/bridge';
 import type { ModelCatalogView } from '../../../shared/catalog';
 import { keyMaskParts, keyMaskText } from '@spica/protocol';
@@ -437,5 +437,64 @@ describe('a name already in use', () => {
     type('名称', '新网关');
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(screen.queryByText('名称已存在')).toBeNull());
+  });
+});
+
+describe('单次运行花费上限', () => {
+  it('empty says 不限 (the default); a valid amount applies at once; empty again is no limit', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<RunLimitRow value={null} onChange={onChange} />);
+    const box = screen.getByRole('textbox', { name: '单次运行花费上限（美元）' }) as HTMLInputElement;
+    expect(box.value).toBe('');
+    expect(box.placeholder).toBe('不限');
+    expect(screen.getByText(/一次运行是从发出一条消息到这一轮做完/)).toBeTruthy();
+    fireEvent.change(box, { target: { value: '2.5' } });
+    expect(onChange).toHaveBeenLastCalledWith(2.5);
+    rerender(<RunLimitRow value={2.5} onChange={onChange} />);
+    fireEvent.change(box, { target: { value: '' } });
+    expect(onChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it('what is not an amount is kept in the box, not saved, and says why once you leave it', () => {
+    const onChange = vi.fn();
+    render(<RunLimitRow value={null} onChange={onChange} />);
+    const box = screen.getByRole('textbox', { name: '单次运行花费上限（美元）' });
+    fireEvent.change(box, { target: { value: '0' } });
+    fireEvent.change(box, { target: { value: 'abc' } });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.blur(box);
+    expect(screen.getByText('须为大于 0 的金额')).toBeTruthy();
+  });
+
+  it('is on the page when the settings give it', async () => {
+    render(<Models api={fakeApi()} runLimit={{ value: 1, onChange: () => undefined }} />);
+    expect((screen.getByRole('textbox', { name: '单次运行花费上限（美元）' }) as HTMLInputElement).value).toBe('1');
+  });
+});
+
+describe('代理互发消息上限', () => {
+  it('shows the number (10 by default), applies a valid one at once, empty is 不限; not a whole number stays and says why', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<AgentMessagesRow value={10} onChange={onChange} />);
+    const box = screen.getByRole('textbox', { name: '代理互发消息上限（条）' }) as HTMLInputElement;
+    expect(box.value).toBe('10');
+    expect(box.placeholder).toBe('不限');
+    expect(screen.getByText(/你说一句话之后，一个对话最多给别的代理发这么多条消息/)).toBeTruthy();
+    fireEvent.change(box, { target: { value: '5' } });
+    expect(onChange).toHaveBeenLastCalledWith(5);
+    rerender(<AgentMessagesRow value={5} onChange={onChange} />);
+    fireEvent.change(box, { target: { value: '' } });
+    expect(onChange).toHaveBeenLastCalledWith(null);
+    onChange.mockClear();
+    fireEvent.change(box, { target: { value: '2.5' } });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.blur(box);
+    expect(screen.getByText('须为 1 到 1000 的整数')).toBeTruthy();
+  });
+
+  it('sits with 单次运行花费上限 in one group', () => {
+    render(<Models api={fakeApi()} runLimit={{ value: null, onChange: () => undefined }} agentMessages={{ value: 10, onChange: () => undefined }} />);
+    expect(screen.getByRole('heading', { name: '上限' })).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: '代理互发消息上限（条）' })).toBeTruthy();
   });
 });

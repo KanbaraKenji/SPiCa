@@ -52,7 +52,7 @@ export interface HookModuleDef {
   file: string;
 }
 
-export const VIEW_PLACEMENTS = ['sidebar', 'panel', 'preview'] as const;
+export const VIEW_PLACEMENTS = ['sidebar', 'panel', 'preview', 'settings'] as const;
 
 /** What a preview page may take: at most this big (the app's own limit), 20 MB when it does not say. */
 export const PREVIEW_MAX_MB = 100;
@@ -68,8 +68,9 @@ export interface ViewDef {
   id: string;
   title: string;
   /**
-   * Where the shell shows it: a sidebar entry of its own, a panel beside the conversation, or (preview)
-   * in the right panel for a file of the kinds in `preview`, when the user chose it in the settings.
+   * Where the shell shows it: a sidebar entry of its own, a panel beside the conversation, (preview)
+   * in the right panel for a file of the kinds in `preview`, when the user chose it in the settings, or
+   * (settings) under a tab of its own in the plugin's detail in 设置 › 插件.
    */
   placement: (typeof VIEW_PLACEMENTS)[number];
   /** HTML entry, relative to the plugin folder (forward slashes). */

@@ -2,14 +2,14 @@
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, safeStorage, shell, Tray } from 'electron';
 import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo } from '@spica/protocol';
 import { DesktopChannel } from '../shared/ipc';
 import { humanError } from '../shared/errors';
 import { CAPTION_BACK, captionSymbol, deriveTokens, resolveSkin, schemeOf, type WindowCover } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
-import { mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
+import { budgetForCore, effectiveAccount, mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, SaveCsvResult, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import { APP_IDENTITY } from '../shared/app-identity';
@@ -25,12 +25,18 @@ import { FakePluginService } from './plugins/fake';
 import { UpdateService } from './update/service';
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import type { PluginsCommand } from '../shared/plugins';
+import { NOT_SHIPPED_PLUGINS, officialSources, type OfficialSource, type PluginsCommand } from '../shared/plugins';
 import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
 import { writeDemoChart } from './backend/demo-image';
 import { ProcessBackend, type BackendStatus } from './backend/process';
 import { STOP_LIMIT_MS, wireQuit } from './quit';
+import { pageAlive, pageRecovery } from './page-recovery';
+import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor } from './app-dialog';
+import { openDialogWindow } from './app-dialog-window';
+import { lookAtPage, watchPage } from './page-watch';
+import { closeAsker, closeDialogSpec, closeFromDialog, closePrompt, dialogFromBox, onWindowClose, revealWindow, runningTracker, trayHint, wireTray } from './tray';
+import { autostartSupport, followAutostart, loginItemOn, onSecondLaunch, startsOnNewChat, type LoginItems } from './autostart';
 import { knownContextWindow, matchWindowIn, toProviderConfig } from './backend/to-config';
 import type { WindowMatch } from '../shared/catalog';
 import { fromHostDraft, toHostConnection, toHostModelList } from './providers/host-models';
@@ -47,6 +53,7 @@ import {
 } from '@spica/core';
 import type { DesktopBackendConfig } from '../backend/config';
 import { readModelEnv } from './backend/model-env';
+import { accountAtStart } from './user-account';
 import { SettingsStore } from './settings-store';
 import { captureOnce, runShots } from './shots';
 import { flatten, icoFromPngs, inkFor, TASKBAR_FRAME_SIZES } from './icon';
@@ -54,7 +61,7 @@ import { followTaskbarTheme, readTaskbarDark } from './taskbar-theme';
 import { PREVIEW_SCHEME, PreviewFiles, readPreview, readPreviewFile } from './preview';
 import { FLOW_SCHEME, flowFile } from './flow-scheme';
 import { AttachImages } from './images';
-import { BRIDGE_JS, contentType, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
+import { BRIDGE_JS, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
 import { pluginCallId, FONT_UI, type PluginView, type PluginViewResult } from '../shared/plugin-view';
 import { readFile } from 'node:fs/promises';
 
@@ -97,11 +104,21 @@ app.setName(APP_NAME);
 // window matches its shortcuts; a renamed build has its own.
 const APP_USER_MODEL_ID = app.isPackaged ? APP_IDENTITY.id : `${APP_IDENTITY.id}.dev`;
 if (process.platform === 'win32') app.setAppUserModelId(APP_USER_MODEL_ID);
+// 设置 › 常规 › 开机时启动 (main/autostart.ts): an installed copy only; a development run or a portable copy never
+// reads or writes the registration. The entry is named after the app id, as the installer writes it.
+const autostart = autostartSupport({ platform: process.platform, packaged: app.isPackaged, portable: Boolean(process.env.PORTABLE_EXECUTABLE_DIR) });
+const loginItems: LoginItems = {
+  get: (q) => ({ openAtLogin: loginItemOn(app.getLoginItemSettings(q), APP_USER_MODEL_ID) }),
+  set: (item) => app.setLoginItemSettings({ ...item, name: APP_USER_MODEL_ID }),
+};
 // Screenshots must not read or change the user's own settings.
 //   SPICA_USER_DATA=<dir>    use another settings folder (manual checks without touching your own);
 //                            in a development run 文档 moves into it too (<dir>\Documents)
 if (process.env.SPICA_USER_DATA) app.setPath('userData', process.env.SPICA_USER_DATA);
 else if (automated) app.setPath('userData', mkdtempSync(join(tmpdir(), 'spica-shots-')));
+// One copy per data folder (another SPICA_USER_DATA is another copy): started again, it hands over to the running
+// one, which brings its window up (second-instance below), and leaves before touching anything.
+if (!app.requestSingleInstanceLock()) process.exit(0);
 // A development run on another settings folder keeps out of your 文档 too (see documentsFolder).
 const devDocuments = documentsFolder(process.env, app.isPackaged, automated, app.getPath('userData'));
 if (devDocuments) app.setPath('documents', devDocuments);
@@ -126,6 +143,12 @@ function workflowsDir(): string {
   return settings.get().workflowsDir || defaultWorkflowsDir;
 }
 const pluginRoot = join(app.getPath('userData'), 'plugins');
+// The user's account (工号) for plugins, by the company's rule, worked out once here (main/user-account.ts);
+// 账号 may replace it. The core's process gets the one in force (backendConfig) and every change.
+const autoAccount = accountAtStart({ packaged: app.isPackaged, automated, env: process.env });
+function userAccount(): string {
+  return effectiveAccount(settings.get(), autoAccount);
+}
 
 // 允许本机脚本连接 Spica: the core serves MCP over HTTP on 127.0.0.1; scripts (e.g. the plugin
 // skill's install script) read where from mcp-http.json and the token from mcp-token.
@@ -158,8 +181,15 @@ function backendConfig(): DesktopBackendConfig {
       defaults: {
         providerId: current?.providerId ?? '',
         model: current?.model ?? '',
+        // How long one answer may be: each model's own most output (the provider's model list, then the catalog),
+        // 4096 for a model neither knows (he chose 「跟着模型走」, 2026-11-12).
         maxTokens: 4096,
-        maxTurns: 30,
+        outputByModel: true,
+        // No turn limit (he chose 「去掉轮数上限」, 2026-11-12): a run goes on until it is done; what stops it is 停止
+        // or 单次运行花费上限. 0 = none in the core, for sub-agents too.
+        maxTurns: 0,
+        // 设置 › 模型 › 代理互发消息上限 (10 by default; null = none, which is 0 for the core).
+        agentMessages: settings.get().agentMessageLimit ?? 0,
         // The model for heavy work: plugins that ask for a strong model get it (it may be on another connection).
         ...(strong ? { strongModel: strong.model, ...(strong.connectionId !== current?.providerId ? { strongProviderId: strong.connectionId } : {}) } : {}),
       },
@@ -176,14 +206,14 @@ function backendConfig(): DesktopBackendConfig {
       network: networkForCore(settings.get().network),
       // 设置 › 记忆 › 启用记忆 (what is saved stays when it is off).
       memory: { enabled: settings.get().memory, autoTidy: settings.get().memoryAutoTidy },
-      // Development limits (see docs/design/agent-core.md §10): Anthropic 100 USD total, 2 USD per call.
-      budget: { perProvider: { anthropic: { globalUsd: 100, perCallUsd: 2 } }, perRunUsd: 1 },
+      // 设置 › 模型 › 单次运行花费上限 (none by default); no other limit (shared/settings.ts budgetForCore).
+      budget: budgetForCore(settings.get().runLimitUsd),
       // Linked into the backend entry; named here as the core expects.
       extractorModules: ['@spica/extract'],
       extensions: [
         {
           module: '@spica/desktop-host',
-          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), mcpInfoFile, mcpTokenFile },
+          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: automated ? [] : deployPluginSources(), mcpInfoFile, mcpTokenFile, userAccount: userAccount() },
         },
       ],
     },
@@ -191,8 +221,9 @@ function backendConfig(): DesktopBackendConfig {
   };
 }
 
+/** Every message for the window goes through here: sent only while its page is there (main/page-recovery.ts). */
 function sendToWindow(channel: string, ...args: unknown[]): void {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, ...args);
+  if (pageAlive(mainWindow)) mainWindow.webContents.send(channel, ...args);
 }
 
 let activeSessionId: string | null = null;
@@ -247,8 +278,12 @@ const backend: AgentBackend =
     : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd, demoImage: () => writeDemoChart(join(app.getPath('userData'), 'demo-media')) });
 console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own process)' : 'fake (demo data)'}`);
 const settings = new SettingsStore(app.getPath('userData'), { persist: !automated });
-// The demo backend starts with 设置 › 记忆 › 启用记忆 as saved (the core gets it in backendConfig()).
-if (backend instanceof FakeBackend) backend.setMemoryEnabled(settings.get().memory);
+// The demo backend starts with 设置 › 记忆 › 启用记忆 and 模型 › 单次运行花费上限 as saved (the core gets them in backendConfig()).
+if (backend instanceof FakeBackend) {
+  backend.setMemoryEnabled(settings.get().memory);
+  backend.setRunLimit(settings.get().runLimitUsd);
+  backend.setAgentMessages(settings.get().agentMessageLimit);
+}
 if (backendKind === 'core' && makeWorkflowsDirAtStart(app.isPackaged, settings.get().workflowsDir)) mkdirSync(defaultWorkflowsDir, { recursive: true });
 const providers = new ProviderStore(
   app.getPath('userData'),
@@ -372,6 +407,55 @@ function windowIcon(dark: boolean): Electron.NativeImage | undefined {
   return nativeImage.createFromBitmap(Buffer.from(flatten(base.toBitmap(), inkFor(dark))), base.getSize());
 }
 
+/** The taskbar .ico for this colour, written under userData\icons (named by its content); undefined without the masks. */
+function taskbarIcoFile(dark: boolean): string | undefined {
+  const ico = taskbarIco(dark);
+  if (!ico) return undefined;
+  const dir = join(app.getPath('userData'), 'icons');
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, iconFileName(ico));
+  if (!existsSync(file)) writeFileSync(file, ico);
+  return file;
+}
+
+/** The tray icon: the same flower as the taskbar button (white on a dark taskbar, black on a light one). */
+function trayImage(dark: boolean): Electron.NativeImage | string {
+  try {
+    const file = process.platform === 'win32' ? taskbarIcoFile(dark) : undefined;
+    if (file) return file;
+  } catch {
+    // Fall back to the window's own icon.
+  }
+  return windowIcon(dark) ?? nativeImage.createEmpty();
+}
+
+/**
+ * The tray icon (main/tray.ts): click or 打开 brings the window up, 退出 quits through
+ * main/quit.ts. Not for screenshots or a SPICA_HIDDEN test window.
+ */
+let tray: Tray | null = null;
+function createTray(): void {
+  if (automated || hidden || tray) return;
+  try {
+    const t = new Tray(trayImage(nativeTheme.shouldUseDarkColorsForSystemIntegratedUI));
+    wireTray({ tray: t, appName: APP_NAME, buildMenu: (items) => Menu.buildFromTemplate(items), open: () => showMainWindow(), quit: () => app.quit() });
+    tray = t;
+  } catch (err) {
+    console.warn('[spica] tray:', err instanceof Error ? err.message : err);
+  }
+}
+
+/** From the tray icon or a second start: the window shown and in front. Not while quitting. */
+function showMainWindow(): void {
+  if (appQuitting) return;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (!app.isReady()) return;
+    mainWindow = createMainWindow();
+    syncNativeChrome(mainWindow, settings.get());
+  }
+  revealWindow(mainWindow);
+}
+
 /**
  * Puts the icon on the window and on its taskbar button. An installed Spica's
  * button shows its shortcut's icon (main/taskbar-icon.ts), so the shortcuts
@@ -386,16 +470,12 @@ function applyWindowIcon(win: BrowserWindow, dark: boolean): void {
     return;
   }
   try {
-    const ico = taskbarIco(dark);
-    if (!ico) {
+    const file = taskbarIcoFile(dark);
+    if (!file) {
       const icon = windowIcon(dark);
       if (icon) win.setIcon(icon);
       return;
     }
-    const dir = join(app.getPath('userData'), 'icons');
-    mkdirSync(dir, { recursive: true });
-    const file = join(dir, iconFileName(ico));
-    if (!existsSync(file)) writeFileSync(file, ico);
     // The same .ico on the window: title bar and Alt+Tab take their own size from it too.
     const fromFile = nativeImage.createFromPath(file);
     if (!fromFile.isEmpty()) win.setIcon(fromFile);
@@ -517,6 +597,58 @@ function createMainWindow(): BrowserWindow {
   });
 
   if (!automated && !hidden) win.once('ready-to-show', () => win.show());
+  // 关闭窗口时 (main/tray.ts): the × asks 最小化到托盘 / 退出 (default), hides the window in the tray, or closes it;
+  // it just closes while the app quits, when Windows signs out or shuts down, or without a tray icon.
+  let sessionEnding = false;
+  win.on('query-session-end', () => {
+    sessionEnding = true;
+  });
+  win.on('session-end', () => {
+    sessionEnding = true;
+  });
+  // The question is the page's own dialog (closeAsker; the window first comes to the front). When the page cannot
+  // show it (its process is gone, or it has not loaded yet), the small dialog window asks the same; only when that
+  // fails too, a Windows message box.
+  const asker = closeAsker({
+    pageReady: () => closeAskReady && pageAlive(win) && !win.webContents.isLoading(),
+    reveal: () => revealWindow(win),
+    send: () => sendToWindow(DesktopChannel.CloseAsk, { running: running.any() }),
+    fallback: () => {
+      const s = settings.get();
+      const busy = running.any();
+      return askDialog({
+        open: () => openDialogWindow(win, closeDialogSpec(APP_NAME, busy, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins))), s.zoom),
+        fallback: () =>
+          dialog
+            .showMessageBox(win, { type: 'question', title: APP_NAME, noLink: true, checkboxChecked: false, ...closePrompt(APP_NAME, busy) })
+            .then((r) => dialogFromBox(r.response, r.checkboxChecked)),
+        warn: (line) => console.warn(line),
+      }).then(closeFromDialog);
+    },
+  });
+  closeAsk = asker;
+  // A page that goes or loads again stops listening; a question it had open is asked over with the message box.
+  const pageLeft = () => {
+    closeAskReady = false;
+    asker.pageGone();
+  };
+  win.webContents.on('did-start-loading', pageLeft);
+  win.webContents.on('render-process-gone', pageLeft);
+  win.on(
+    'close',
+    onWindowClose({
+      state: () => ({ closeWindow: settings.get().closeWindow, quitting: appQuitting, sessionEnding, trayReady: tray !== null }),
+      hide: () => win.hide(),
+      quit: () => app.quit(),
+      ask: () => asker.ask(),
+      remember: (closeWindow) => settings.update({ closeWindow }),
+      hintShown: () => settings.get().backgroundHintShown,
+      showHint: () => {
+        tray?.displayBalloon(trayHint(APP_NAME));
+        settings.update({ backgroundHintShown: true });
+      },
+    }),
+  );
   // SPICA_HIDDEN: shown (so it keeps drawing frames for screenshots) but nowhere anyone can see or click it:
   // off screen, fully transparent, not in the taskbar, never focused, mouse passing through.
   if (hidden)
@@ -559,6 +691,43 @@ function createMainWindow(): BrowserWindow {
   win.webContents.on('will-navigate', (e, url) => {
     if (url !== win.webContents.getURL()) e.preventDefault();
   });
+  // The page process gone (killed, crashed, out of memory): load it again, back on the open conversation;
+  // the third time within a minute, ask first (main/page-recovery.ts).
+  const onPageGone = pageRecovery({
+    quitting: () => appQuitting,
+    reload: () => {
+      if (win.isDestroyed()) return;
+      // Kept until the new page has read it (a page lost again before that keeps the same conversation).
+      reopen ??= { sessionId: activeSessionId };
+      win.webContents.reload();
+    },
+    // In the small dialog window (main/app-dialog-window.ts, its own page process); the message box only when that fails.
+    ask: () => {
+      const s = settings.get();
+      const spec = crashDialog(APP_NAME, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins)));
+      const box = messageBoxFor(spec, { type: 'error', appName: APP_NAME, cancel: 0 });
+      return askDialog({
+        open: () => openDialogWindow(win, spec, s.zoom),
+        fallback: () => dialog.showMessageBox(win, box.options).then((r) => box.answer(r.response, r.checkboxChecked)),
+        warn: (line) => console.warn(line),
+      }).then(crashAnswer);
+    },
+    quit: () => app.quit(),
+    warn: (line) => console.warn(line),
+  });
+  win.webContents.on('render-process-gone', (_e, details) => onPageGone(details));
+  // Each load of the page is told in the log: one line, or a warning with the steps seen (main/page-watch.ts).
+  const watch = watchPage({ look: () => lookAtPage(win.webContents), visible: () => !win.isDestroyed() && win.isVisible() && !win.isMinimized(), log: (l) => console.log(l), warn: (l) => console.warn(l) });
+  // The window's own page only: plugin pages and previews load in frames inside it.
+  win.webContents.on('did-start-navigation', (e) => {
+    if (e.isMainFrame && !e.isSameDocument) watch.step('load-start');
+  });
+  win.webContents.on('did-finish-load', () => watch.step('finish'));
+  win.webContents.on('did-fail-load', (_e, code, desc, _url, mainFrame) => {
+    if (mainFrame && code !== -3) watch.step('fail', `${code} ${desc}`);
+  });
+  win.once('ready-to-show', () => watch.step('ready-to-show'));
+  win.on('show', () => watch.step('shown'));
 
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (!app.isPackaged && devUrl) void win.loadURL(devUrl);
@@ -567,15 +736,57 @@ function createMainWindow(): BrowserWindow {
   taskbarTheme = followTaskbarTheme({
     readTaskbarDark,
     nativeDark: () => nativeTheme.shouldUseDarkColorsForSystemIntegratedUI,
-    apply: (dark) => applyWindowIcon(win, dark),
+    apply: (dark) => {
+      applyWindowIcon(win, dark);
+      tray?.setImage(trayImage(dark));
+    },
     setTimer: (fn, ms) => setTimeout(fn, ms),
     clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
   });
   return win;
 }
 
+/** Conversations running now (the core's status events), for the close question. */
+const running = runningTracker();
+
+/** The page listens for the close question (DesktopChannel.CloseAskReady); its answers go to the window's asker. */
+let closeAskReady = false;
+let closeAsk: { answer(value: unknown): void } | null = null;
+ipcMain.on(DesktopChannel.CloseAskReady, (_e, on: unknown) => {
+  closeAskReady = on === true;
+});
+ipcMain.on(DesktopChannel.CloseAnswer, (_e, answer: unknown) => closeAsk?.answer(answer));
+
+/**
+ * This start opens on 新对话 (main/autostart.ts startsOnNewChat): told to the first page only. Screenshots
+ * (SPICA_SHOTS / SPICA_CAPTURE) keep opening the first conversation, as their pictures show.
+ */
+let newChatAtStart = !automated && startsOnNewChat(process.argv);
+
+/** Set when the window's page was lost and is loading again: the conversation that was open (read once). */
+let reopen: { sessionId: string | null } | null = null;
+let appQuitting = false;
+app.on('before-quit', () => {
+  appQuitting = true;
+  // The icon goes with the window: nothing to click while the core closes.
+  tray?.destroy();
+  tray = null;
+});
+// The GPU process going is told too: repeated losses of it took the page with them (main/page-recovery.ts).
+app.on('child-process-gone', (_e, d) => {
+  if (d.type === 'GPU') console.warn(`[spica] GPU process gone (${d.reason}, exit code ${d.exitCode})`);
+});
+
 function shellState(): ShellState {
-  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd };
+  const again = reopen;
+  if (again) {
+    reopen = null;
+    activeSessionId = again.sessionId;
+  }
+  // Only the first page of this start opens on 新对话; a page loaded again goes back where it was (reopen).
+  const newChat = newChatAtStart && !again;
+  newChatAtStart = false;
+  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd, autostart, autoAccount, ...(newChat ? { startOnNewChat: true } : {}), ...(again ? { reopen: again } : {}) };
 }
 
 ipcMain.handle(IpcChannel.AppInfo, (): AppInfo => ({ name: APP_NAME, version: app.getVersion() }));
@@ -711,6 +922,25 @@ ipcMain.on(DesktopChannel.PluginViewCancel, (_e, callId: unknown) => {
   if (!id || !(backend instanceof ProcessBackend)) return;
   void backend.pluginViewCancel({ callId: id }).catch(() => undefined);
 });
+// A plugin page's pickFolder / pickFile: the system's dialog over the window, one at a time for all pages
+// (SPICA_PICK_FOLDER / SPICA_PICK_FILES answer it in development, as for the app's own pickers).
+const pluginPick = createPluginPicker(
+  (opts) => (mainWindow && !mainWindow.isDestroyed() ? dialog.showOpenDialog(mainWindow, opts) : dialog.showOpenDialog(opts)),
+  (kind) => (kind === 'file' ? (pickedFiles(process.env, app.isPackaged)?.[0] ?? null) : pickedFolder(process.env, app.isPackaged)),
+);
+ipcMain.handle(DesktopChannel.PluginPick, async (_e, raw: unknown): Promise<string | null> => {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const text = (v: unknown) => (typeof v === 'string' ? v : undefined);
+  const title = text(r.title);
+  const defaultPath = text(r.defaultPath);
+  return pluginPick({
+    kind: r.kind === 'file' ? 'file' : 'folder',
+    plugin: text(r.plugin) ?? '',
+    ...(title !== undefined ? { title } : {}),
+    ...(defaultPath !== undefined ? { defaultPath } : {}),
+    ...(Array.isArray(r.extensions) ? { extensions: r.extensions.filter((x): x is string => typeof x === 'string') } : {}),
+  });
+});
 ipcMain.handle(DesktopChannel.PluginViewFile, async (_e, plugin: unknown, path: unknown): Promise<string | null> => {
   if (!(backend instanceof ProcessBackend)) return null;
   return backend.pluginViewFile({ plugin: str(plugin), path: str(path) }).catch(() => null);
@@ -775,6 +1005,24 @@ function deployModels(): unknown[] {
   }
 }
 const deployPresets = automated ? [] : deployModels();
+
+/**
+ * The official plugin sources from deploy.json ("pluginSources"; 设置 › 插件 › 市场 lists them first). A development
+ * run (npm run dev) without any uses the repository's plugins/ folder, the official plugins a release packs,
+ * without the templates (the coordinator's call, 2026-11-12); an installed build only ever uses deploy.json.
+ */
+function deployPluginSources(): OfficialSource[] {
+  const file = app.isPackaged ? join(process.resourcesPath, 'deploy.json') : join(app.getAppPath(), 'deploy.json');
+  let configured: OfficialSource[];
+  try {
+    configured = officialSources((JSON.parse(readFileSync(file, 'utf8')) as { pluginSources?: unknown }).pluginSources);
+  } catch {
+    configured = [];
+  }
+  if (configured.length || app.isPackaged) return configured;
+  const repoPlugins = resolvePath(app.getAppPath(), '..', '..', 'plugins');
+  return existsSync(repoPlugins) ? [{ location: repoPlugins, label: '官方插件（开发版：仓库的 plugins 文件夹）', exclude: NOT_SHIPPED_PLUGINS }] : [];
+}
 const updates = new UpdateService({
   currentVersion: app.getVersion(),
   packaged: app.isPackaged,
@@ -792,9 +1040,7 @@ const updates = new UpdateService({
     app.quit();
   },
 });
-updates.onChange((s) => {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DesktopChannel.UpdateChanged, s);
-});
+updates.onChange((s) => sendToWindow(DesktopChannel.UpdateChanged, s));
 ipcMain.handle(DesktopChannel.Update, async (_e, op: unknown) => {
   if (op === 'check') return updates.check();
   if (op === 'install') updates.install();
@@ -862,6 +1108,9 @@ let lastNetwork = JSON.stringify(settings.get().network);
 let lastLocalConnect = settings.get().localConnect;
 let lastMemory = settings.get().memory;
 let lastAutoTidy = settings.get().memoryAutoTidy;
+let lastRunLimit = settings.get().runLimitUsd;
+let lastAgentMessages = settings.get().agentMessageLimit;
+let lastAccount = userAccount();
 /** Problems the core reported for the network settings (e.g. a certificate file it cannot read), in words. */
 let networkProblems: string[] = [];
 function networkProblem(raw: string): string {
@@ -879,6 +1128,18 @@ settings.onChange((s) => {
     lastAutoTidy = s.memoryAutoTidy;
     if (backend instanceof ProcessBackend) void backend.apply({ memory: { autoTidy: s.memoryAutoTidy } }).catch(() => undefined);
   }
+  if (s.runLimitUsd !== lastRunLimit) {
+    // 单次运行花费上限: the running core takes it at once (a run already going checks it at its next call)
+    lastRunLimit = s.runLimitUsd;
+    if (backend instanceof ProcessBackend) void backend.apply({ budget: budgetForCore(s.runLimitUsd) }).catch(() => undefined);
+    else if (backend instanceof FakeBackend) backend.setRunLimit(s.runLimitUsd);
+  }
+  if (s.agentMessageLimit !== lastAgentMessages) {
+    // 代理互发消息上限: read by message_agent at each call, so it applies at once
+    lastAgentMessages = s.agentMessageLimit;
+    if (backend instanceof ProcessBackend) void backend.apply({ defaults: { agentMessages: s.agentMessageLimit ?? 0 } }).catch(() => undefined);
+    else if (backend instanceof FakeBackend) backend.setAgentMessages(s.agentMessageLimit);
+  }
   if (!(backend instanceof ProcessBackend)) return;
   const mail = JSON.stringify(s.mail);
   if (mail !== lastMail) {
@@ -888,6 +1149,12 @@ settings.onChange((s) => {
   if (s.localConnect !== lastLocalConnect) {
     lastLocalConnect = s.localConnect;
     void applyLocalConnect(s.localConnect);
+  }
+  // 账号: hooks get it at their next call, plugin servers restart with it (as for the network settings).
+  const account = effectiveAccount(s, autoAccount);
+  if (account !== lastAccount) {
+    lastAccount = account;
+    void backend.call('setUserAccount', account).catch(() => undefined);
   }
   const net = JSON.stringify(s.network);
   if (net !== lastNetwork) {
@@ -1142,19 +1409,19 @@ ipcMain.handle(DesktopChannel.ListProviderModels, async (_e, draft: ProviderDraf
   return { ok: true, models: p.models.map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), contextWindow: m.contextWindow, inCatalog: true, chat: true })) };
 });
 
-backend.onEvent((event) => {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DesktopChannel.AgentEvent, withErrorHint(event));
-});
+backend.onEvent((event) => sendToWindow(DesktopChannel.AgentEvent, withErrorHint(event)));
+// Whether a conversation is running, for the close question's one line (「有任务正在运行，退出会中断它。」).
+backend.onEvent((event) => running.seen(event));
 settings.onChange((s) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   syncNativeChrome(mainWindow, s);
-  mainWindow.webContents.send(DesktopChannel.SettingsChanged, s);
+  sendToWindow(DesktopChannel.SettingsChanged, s);
 });
 nativeTheme.on('updated', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   taskbarTheme?.onUpdated();
   syncNativeChrome(mainWindow, settings.get());
-  mainWindow.webContents.send(DesktopChannel.SettingsChanged, settings.get());
+  sendToWindow(DesktopChannel.SettingsChanged, settings.get());
 });
 
 void app.whenReady().then(() => {
@@ -1182,6 +1449,12 @@ void app.whenReady().then(() => {
     const file = previewFiles.pathOf(req.url);
     return file ? net.fetch(pathToFileURL(file).toString()) : new Response('', { status: 404 });
   });
+  // The switch shows what Windows has registered (the installer may have); a change of it is written.
+  const signIn = followAutostart({ support: autostart, exe: process.execPath, io: loginItems, log: (line) => console.log(line) });
+  const registered = signIn.start(settings.get().openAtLogin);
+  if (registered !== settings.get().openAtLogin) settings.update({ openAtLogin: registered });
+  settings.onChange((s) => signIn.changed(s.openAtLogin));
+  createTray();
   if (backend instanceof ProcessBackend) void backend.start();
   else applyProviders();
   void pluginService.start().catch(() => {
@@ -1222,6 +1495,9 @@ wireQuit({
   },
   warn: (line) => console.warn(line),
 });
+
+// Started again while running (Start menu, desktop): this copy's window comes up instead (main/autostart.ts).
+app.on('second-instance', (_e, argv) => onSecondLaunch(argv, showMainWindow));
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

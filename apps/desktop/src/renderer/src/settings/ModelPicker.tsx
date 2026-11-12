@@ -14,6 +14,8 @@ export interface ListedModel {
   id: string;
   label?: string;
   contextWindow?: number;
+  /** Most output tokens, when the provider's model list says it (kept with the model, used for each answer). */
+  maxOutput?: number;
 }
 
 export interface ModelPickerProps {

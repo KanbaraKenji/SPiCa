@@ -26,6 +26,7 @@ export type TraceFinish = Partial<
     | 'cacheWriteTokens'
     | 'bytes'
     | 'costUsd'
+    | 'unpriced'
     | 'httpStatus'
     | 'attempts'
     | 'error'

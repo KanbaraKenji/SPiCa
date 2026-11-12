@@ -56,6 +56,8 @@ describe('plugins using the user\'s models', () => {
     const use = pm.describe('notes').model!;
     expect(use).toMatchObject({ reason: 'Summarize a note when you ask (summarize_note).', maxUsdPerDay: 0.1, declaredMaxUsdPerDay: 0.1 });
     expect(typeof use.spentTodayUsd).toBe('number');
+    // the fake gateway's model has no price: nothing is counted, the page is told (「今日 未计价」)
+    expect(use).toMatchObject({ spentTodayUsd: 0, unpricedToday: true });
     const methods = pluginMethods(pm);
     expect(await methods.pluginModelUsage!()).toEqual([expect.objectContaining({ plugin: 'notes', displayName: 'Notes (example)', enabled: true, maxUsdPerDay: 0.1 })]);
 

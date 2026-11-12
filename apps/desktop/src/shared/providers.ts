@@ -59,6 +59,8 @@ export interface ConnectionModel {
   /** Required for use; null only in older settings until it is filled in. */
   contextWindow: number | null;
   contextFrom: ContextFrom;
+  /** Most output tokens per call, when the provider's model list said it (the catalog's own are known to the core). */
+  maxOutput?: number;
   /**
    * false: kept in this connection's list but not in use (unticking is not deleting) — not
    * offered anywhere, no 上下文上限 needed. Absent: in use.

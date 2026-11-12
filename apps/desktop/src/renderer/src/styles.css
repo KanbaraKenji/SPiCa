@@ -177,7 +177,8 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-left: 14px;
+  /* The same inset as the right panels' heads (.panel-head). */
+  padding-left: 16px;
   /* Leave room for the native caption buttons (Window Controls Overlay). */
   padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px);
   background: var(--spica-chrome);
@@ -188,6 +189,44 @@ a:hover {
 
 .titlebar button {
   -webkit-app-region: no-drag;
+}
+
+/* A panel is docked right of the conversation: the title bar is not at the window's edge. */
+.titlebar.is-inner {
+  padding-right: 8px;
+}
+
+/* The conversation's column: its title bar, then the conversation (the right panels stand beside it, full height). */
+.main-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The head of a right panel (the details, their tab row, the preview): in the window's top row, as high as the
+   title bar, the same line under it, the same insets; buttons are .icon-btn as in the title bar. */
+.panel-head {
+  height: var(--spica-titlebar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 8px 0 16px;
+  background: var(--spica-chrome);
+  border-bottom: 1px solid var(--spica-divider);
+  -webkit-app-region: drag;
+}
+
+.panel-head button,
+.panel-head select {
+  -webkit-app-region: no-drag;
+}
+
+/* The right panel at the window's edge: room for the system buttons, as the title bar keeps it. */
+.panel-right.is-edge .panel-head {
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px);
 }
 
 .titlebar-left,
@@ -313,7 +352,7 @@ a:hover {
   right: 0;
 }
 
-/* 最大化: the right panel over the whole conversation (which stays underneath, scroll kept). */
+/* 最大化: the file preview over the whole conversation (which stays underneath, scroll kept). */
 .panel.panel-right.is-max {
   position: absolute;
   inset: 0;
@@ -337,10 +376,17 @@ a:hover {
 }
 
 /* Frame lines: one straight line under the title bar from the sidebar's
-   edge to the window's right edge (over the main pane and the detail panel),
-   and straight full-height lines between the panes. Square corners. */
-.app[data-right='docked'] .main {
-  border-right: 1px solid var(--spica-divider);
+   edge to the window's right edge (over the main pane and the right panels),
+   and straight full-height lines between the panes. Square corners. Each docked
+   right panel (the preview, the details) draws the line on its left. */
+.panel-right.is-docked {
+  border-left: 1px solid var(--spica-divider);
+}
+
+/* The preview lying over the conversation's right part (shell/layout.ts: squeezed to 440, then covered): above
+   the conversation and what it lays out, below floating panels; its own left line is the edge. */
+.panel-preview.is-cover {
+  z-index: 7;
 }
 
 /* ---------- Buttons ---------- */
@@ -356,7 +402,7 @@ a:hover {
   color: var(--spica-muted);
 }
 
-.icon-btn:hover:not(:disabled) {
+.icon-btn:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--spica-hover);
   color: var(--spica-ink);
 }
@@ -365,8 +411,13 @@ a:hover {
   background: var(--spica-active);
 }
 
-.icon-btn:disabled {
+.icon-btn:disabled,
+.icon-btn[aria-disabled='true'] {
   opacity: 0.4;
+}
+
+.icon-btn[aria-disabled='true'] {
+  cursor: default;
 }
 
 .icon-btn.is-on {
@@ -723,14 +774,6 @@ button.tree-twisty:hover {
   flex-direction: column;
 }
 
-.detail-head {
-  height: 40px;
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 0 8px 0 16px;
-}
 
 /* The heading (or the space kept for it) takes the row; the buttons sit together at its end. */
 .detail-head > span:first-child {
@@ -745,11 +788,13 @@ button.tree-twisty:hover {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 16px 16px;
+  padding: 12px 16px 16px;
 }
 
 .detail-section + .detail-section {
-  margin-top: 18px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--spica-divider);
 }
 
 .detail-title {
@@ -783,6 +828,12 @@ button.tree-twisty:hover {
 .detail-facts dd {
   margin: 0;
   min-width: 0;
+}
+
+/* Amounts stand right, in a column. */
+.detail-facts dd.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .detail-path {
@@ -835,11 +886,12 @@ button.tree-twisty:hover {
 }
 
 .detail-file {
-  width: 100%;
+  /* Its hover reaches 6px past the column on both sides; its contents keep to the column (the right edge too). */
+  width: calc(100% + 12px);
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 6px;
+  padding: 4px 6px;
   margin: 0 -6px;
   border-radius: var(--radius-s);
   text-align: left;
@@ -855,16 +907,19 @@ button.tree-twisty:hover {
   color: var(--spica-muted);
 }
 
+/* The name first; the folder after it stands right and is cut first (the name only once the folder is gone). */
 .detail-file-name {
-  flex: none;
-  max-width: 60%;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .detail-file .detail-item-sub {
+  flex: 1 1 0;
   min-width: 0;
+  text-align: right;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1384,24 +1439,12 @@ pre .hl-punctuation {
   min-width: 0;
 }
 
-.code-size-pick {
-  max-width: 160px;
-  margin-bottom: 12px;
-}
-
-/* 设置 › 常规 › 文件预览: a kind of file, then what shows it. */
-.preview-kinds {
-  display: grid;
-  gap: 8px;
-  max-width: 420px;
-}
-
-.preview-kind {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
+/* 设置 › 常规 › 文件预览, 外观 › 代码 › 字号 and 账号 › 账号: the control on the right of the row. */
+.preview-kind-pick,
+.code-size-pick,
+.account-field {
+  width: 240px;
+  max-width: 100%;
 }
 
 .preview-kind-ext {
@@ -1409,10 +1452,6 @@ pre .hl-punctuation {
   font-family: var(--font-mono);
 }
 
-.preview-kind .input {
-  flex: 1;
-  min-width: 0;
-}
 
 .code-theme-preview {
   margin: 0;
@@ -1472,8 +1511,12 @@ pre .hl-punctuation {
   height: 26px;
 }
 
-/* A full local path in inline code: opens on a click (no underline: the hand and the hover name say so). */
+/* A full local path in inline code: opens on a click (no underline: the hand and the hover name say so). It shows
+   only the name, kept on one line: moved down whole when it does not fit, broken only when longer than the line. */
 .md code.md-path {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   color: var(--spica-accent-text);
   cursor: pointer;
 }
@@ -1573,9 +1616,22 @@ pre .hl-punctuation {
   display: inline-flex;
 }
 
+/* Words beside an icon in a row: the box trimmed to the capitals' top and the baseline, so centring it puts
+   the letters, not the line's empty space, on the icons' middle (the letters sat a pixel or two low). Cut at
+   the end of the line only (clip, not hidden: hidden would also cut the descenders below the trimmed box). */
+.fold-label,
+.fold-meta,
+.tool-text,
+.msg-time,
+.msg-versions-text,
+.status-text,
+.status-clock {
+  text-box: trim-both cap alphabetic;
+}
+
 .fold-label {
   min-width: 0;
-  overflow: hidden;
+  overflow: clip visible;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -1586,8 +1642,19 @@ pre .hl-punctuation {
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
   font-variant-numeric: tabular-nums;
-  display: inline-flex;
-  align-items: center;
+  display: block;
+}
+
+.fold-meta > svg {
+  display: block;
+}
+
+/* The turning mark while the run is on this row: the size and colour it had as the status line's mark (18,
+   the text's colour, not the row's quieter one); its 14px place in the row stays, so the words do not move
+   when the run ends. */
+.fold-icon > .fold-mark {
+  margin: -2px;
+  color: var(--spica-ink);
 }
 
 .fold-chevron {
@@ -1739,7 +1806,7 @@ pre .hl-punctuation {
 .tool-text {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
+  overflow: clip visible;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -1852,12 +1919,6 @@ pre .hl-punctuation {
   gap: 10px;
 }
 
-.card-head-icon {
-  flex: none;
-  margin-top: 3px;
-  color: var(--spica-accent);
-}
-
 .card-title {
   font-weight: 500;
   min-width: 0;
@@ -1895,12 +1956,14 @@ pre .hl-punctuation {
   background: var(--spica-surface);
 }
 
-.card.is-done .card-head-icon {
-  color: var(--spica-muted);
+/* Under a question card's row: the options, then the box for an answer of one's own. */
+.ask-body {
+  border-top: 1px solid var(--spica-border);
+  padding: 10px 12px 12px;
 }
 
 .ask-options {
-  margin: 12px 0 0 26px;
+  margin: 0 0 10px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -1915,7 +1978,7 @@ pre .hl-punctuation {
 }
 
 .ask-free {
-  margin: 10px 0 0 26px;
+  margin: 0;
   display: flex;
   gap: 8px;
 }
@@ -2063,6 +2126,91 @@ pre .hl-punctuation {
   align-self: flex-start;
 }
 
+/* Many files under an answer: one a line, in columns (icon, name, what it is, what was done, the two buttons),
+   no lines or heads; the rows' columns line up across the list (subgrid). A narrow answer drops what it is
+   first, then what was done. */
+.file-list {
+  container: file-list / inline-size;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) max-content max-content max-content;
+  justify-content: start;
+  font-size: var(--chat-small);
+  line-height: var(--chat-row-line);
+}
+
+.file-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  border-radius: var(--radius-s);
+}
+
+.file-row:has(.file-row-main:hover) {
+  background: var(--spica-hover);
+}
+
+.file-row-main {
+  grid-column: 1 / 4;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  min-width: 0;
+  padding: 4px 0 4px 6px;
+  text-align: left;
+  color: var(--spica-ink);
+}
+
+/* The type's icon and the name share the first column; the name is cut first when there is no room. */
+.file-row-name {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-row-name > svg {
+  flex: none;
+}
+
+.file-row-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--spica-accent);
+}
+
+.file-row-kind,
+.file-row-did {
+  padding-left: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--spica-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.file-row > .file-card-tools {
+  padding-left: 8px;
+}
+
+@container file-list (max-width: 520px) {
+  .file-row-kind {
+    display: none;
+  }
+}
+
+@container file-list (max-width: 380px) {
+  .file-row-did {
+    display: none;
+  }
+}
+
 /* Cards under an answer are one width, so a row of them lines up (a command can leave many); a long line
    under the name is cut short. */
 .turn-response .file-card {
@@ -2119,9 +2267,22 @@ pre .hl-punctuation {
   line-height: var(--lh-footnote);
 }
 
+/* What the status line says: cut at the end when the window is narrow, so the clock after it stays. */
+.status-text {
+  min-width: 0;
+  overflow: clip visible;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* A run's clock, after the words: in the status line and at the end of the Running … line (inside its
+   .fold-meta) alike. */
 .status-clock {
-  font-variant-numeric: tabular-nums;
+  flex: none;
   color: var(--spica-faint);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-variant-numeric: tabular-nums;
 }
 
 .empty-chat {
@@ -2141,6 +2302,13 @@ pre .hl-punctuation {
   font-size: var(--fs-title);
   line-height: var(--lh-title);
   font-weight: 500;
+  text-align: center;
+}
+
+/* Under the greeting of a new conversation (chat/welcome.ts): the question the page always asked. */
+.empty-chat-line {
+  margin: -6px 0 0;
+  color: var(--spica-muted);
   text-align: center;
 }
 
@@ -2244,7 +2412,8 @@ pre .hl-punctuation {
   flex: none;
 }
 
-/* Under the box: the folder on the left; model, Manual / Auto and the ring on the right. */
+/* Under the box: the folder on the left; model, Manual / Auto and the ring on the right; in the footnote size,
+   one step under the conversation's secondary lines (他: 「用紧凑的那个小一点的字号」). */
 /* Both ends stand where the box's bottom edge starts to turn: on the left the first chip's content (8px padding
    in the chip), on the right the context ring's outer edge (6px padding in its button, 1px inside its 18px box). */
 .composer-below {
@@ -2289,8 +2458,8 @@ pre .hl-punctuation {
   padding: 0 8px;
   border-radius: var(--radius-m);
   color: var(--spica-ink);
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
 }
 
 .composer-chip:hover {
@@ -2354,8 +2523,8 @@ pre .hl-punctuation {
   align-items: center;
   gap: 4px;
   padding: 0 8px;
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   color: var(--spica-ink);
 }
 
@@ -2691,19 +2860,281 @@ button.ctx-row:hover {
   gap: 8px;
 }
 
+/* A checkbox in a dialog (关闭窗口时 › 记住我的选择), under the text and above the buttons;
+   the box as in the model list (.model-row-name). */
+.dialog-check {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  cursor: pointer;
+}
+
+.dialog-check > input {
+  flex: none;
+  margin: 0;
+  accent-color: var(--spica-accent);
+}
+
+/* The close question (ui/CloseDialog.tsx): the title, a line only while a task runs, 记住我的选择 under it,
+   then the two buttons at the right; narrower than other dialogs (nothing is explained). */
+.close-dialog {
+  width: min(360px, 100%);
+}
+
+.close-dialog-foot {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.close-dialog-foot .dialog-check,
+.close-dialog-foot .dialog-actions {
+  margin-top: 0;
+}
+
 /* ---------- Settings ---------- */
+
+/* Settings: a panel floating in the middle of the window (settings/SettingsView.tsx), laid out as Claude's
+   settings (his picture, 2026-11-12): a title bar across the top (设置, ×, a line under it); under it the
+   sections' column on the deeper of the window's two greys and the content on the lighter one
+   (--spica-settings-nav / --spica-settings-pane, skin.ts: in the dark skin #191919 / #1f1f1f, his two values).
+   At most 1000 x 700, a tenth of the window's height clear above and below (never under 24). The scrim is the
+   dialogs' own, so the caption buttons dim with it (ui/dim.ts). */
+.settings-scrim {
+  padding: max(24px, 10vh) max(24px, 5vw);
+}
+
+.settings-dialog {
+  --settings-pad: 28px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(1000px, 100%);
+  height: min(700px, 100%);
+  border-radius: var(--radius-popup);
+  background: var(--spica-settings-pane);
+  box-shadow: var(--spica-shadow);
+  overflow: hidden;
+}
+
+.settings-dialog:focus {
+  outline: none;
+}
+
+.settings-titlebar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 10px 20px;
+  border-bottom: 1px solid var(--spica-divider);
+}
+
+.settings-title {
+  margin: 0;
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
+  font-weight: 600;
+}
+
+.settings-close {
+  flex: none;
+}
+
+.settings-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.settings-nav {
+  flex: none;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 10px;
+  border-right: 1px solid var(--spica-divider);
+  background: var(--spica-settings-nav);
+  overflow-y: auto;
+}
+
+/* 搜索设置: a lens in the box, as Claude's. */
+.settings-search {
+  flex: none;
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.settings-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--spica-faint);
+  pointer-events: none;
+}
+
+.settings-search .input {
+  width: 100%;
+  height: 32px;
+  padding-left: 30px;
+}
+
+/* The groups split by a short line, no names. */
+.settings-nav-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav-group + .settings-nav-group {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--spica-divider);
+}
+
+.settings-nav-item {
+  height: 34px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border-radius: var(--radius-m);
+  color: var(--spica-ink);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.settings-nav-icon {
+  flex: none;
+  color: var(--spica-muted);
+}
+
+.settings-nav-item:hover {
+  background: var(--spica-hover);
+}
+
+.settings-nav-item.is-on {
+  background: var(--spica-active);
+  font-weight: 600;
+}
+
+.settings-nav-item.is-on .settings-nav-icon {
+  color: var(--spica-ink);
+}
+
+.settings-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 搜索结果, a short bold line at the top of the results (the sections themselves have no such line). */
+.settings-page-title {
+  margin: 0 0 14px;
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
+  font-weight: 600;
+}
+
+/* Too small for the dialog with room around it: it fills the window under the title bar (the caption
+   buttons stay usable), and the sections go in a row along its top. */
+@media (max-width: 720px), (max-height: 520px) {
+  .settings-scrim {
+    padding: var(--spica-titlebar-h) 0 0;
+  }
+
+  .settings-dialog {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .settings-dialog {
+    --settings-pad: 16px;
+  }
+
+  .settings-body {
+    flex-direction: column;
+  }
+
+  .settings-nav {
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--spica-divider);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .settings-search {
+    flex: 0 0 140px;
+    margin: 0 6px 0 0;
+  }
+
+  .settings-nav-list,
+  .settings-nav-group {
+    flex-direction: row;
+    gap: 2px;
+  }
+
+  .settings-nav-group + .settings-nav-group {
+    margin: 0 0 0 4px;
+    padding: 0 0 0 4px;
+    border-top: 0;
+    border-left: 1px solid var(--spica-divider);
+  }
+
+  .settings-nav-item {
+    padding: 0 10px;
+  }
+
+  .settings-nav-icon {
+    display: none;
+  }
+
+  .settings-main {
+    position: static;
+    min-height: 0;
+  }
+}
 
 .settings {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-gutter: stable;
 }
 
+/* The content sits right in the pane, from its top left corner (no page margins, not centred), the groups as
+   wide as the pane up to a limit. */
 .settings-column {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 28px 24px 40px;
+  max-width: calc(720px + 2 * var(--settings-pad));
+  padding: 20px var(--settings-pad) 32px;
+}
+
+/* In the dialog the groups' boxes are light on the pane: no fill of their own, a thin line round them (he
+   picked 「一组一个框」; the flat rows of Claude's are a choice on the decision page). */
+.settings-dialog .group-box {
+  background: transparent;
+  border-color: var(--spica-divider);
 }
 
 .settings-section + .settings-section {
@@ -2713,9 +3144,70 @@ button.ctx-row:hover {
 /* 插件: the page is exactly the window's height, so the list and the detail can fill
    what is left and scroll on their own. A window too short for that (or zoomed in a
    lot) scrolls the whole page again, past this height. */
+/* 搜索设置's results: by section, each result a row that goes to the setting; a section with none is left out. */
+.search-section + .search-section {
+  margin-top: 20px;
+}
+
+.search-section:not(:has(.search-hit)) {
+  display: none;
+}
+
+.search-hits {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-l);
+  border: 1px solid var(--spica-border);
+  background: var(--spica-surface);
+}
+
+.search-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 16px;
+  text-align: left;
+}
+
+.search-hit + .search-hit {
+  border-top: 1px solid var(--spica-divider);
+}
+
+.search-hit:hover {
+  background: var(--spica-hover);
+}
+
+.search-hit-title {
+  font-weight: 500;
+}
+
+.search-empty {
+  display: none;
+  margin: 8px 0 0;
+}
+
+.search-results:not(:has(.search-hit)) .search-empty {
+  display: block;
+}
+
+/* The row a result went to: marked until the next press anywhere. */
+.setting-row.is-found {
+  background: var(--spica-active);
+}
+
+.group-box > .setting-row.is-found:first-child {
+  border-top-left-radius: var(--radius-l);
+  border-top-right-radius: var(--radius-l);
+}
+
+.group-box > .setting-row.is-found:last-child {
+  border-bottom-left-radius: var(--radius-l);
+  border-bottom-right-radius: var(--radius-l);
+}
+
 .settings-column.is-fill {
   height: 100%;
-  min-height: 520px;
+  min-height: 400px;
   display: flex;
   flex-direction: column;
 }
@@ -2841,11 +3333,6 @@ button.ctx-row:hover {
 }
 
 .skin-editor {
-  margin-top: 16px;
-  padding: 16px;
-  border-radius: var(--radius-l);
-  border: 1px solid var(--spica-border);
-  background: var(--spica-surface);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -3068,15 +3555,7 @@ button.ctx-row:hover {
   z-index: 1000;
 }
 
-/* Settings tabs: the open one is a filled pill, no underline. */
-/* Back arrow, then the tabs, on one line at the top left of the settings page. */
-.settings-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 24px -6px;
-}
-
+/* Tabs: the open one is a filled pill, no underline. */
 .tabs {
   display: inline-flex;
   gap: 2px;
@@ -3107,37 +3586,43 @@ button.ctx-row:hover {
 
 /* Settings > models */
 /* 默认模型 / 强模型: at the top of 设置 › 模型, set in this one place. */
-.model-pointers {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
 .model-pointer {
-  display: grid;
-  grid-template-columns: 116px minmax(0, 420px);
-  align-items: center;
-  gap: 12px;
+  width: 320px;
+  max-width: 100%;
 }
 
+/* 单次运行花费上限: US$ and a short box (empty = 不限). */
+.run-limit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--spica-muted);
+}
+
+.run-limit .input {
+  width: 120px;
+}
+
+/* 服务商: one row each in the group's box, 添加服务商 last; the open one is filled. */
 .provider-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
 }
 
 .provider-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 4px 12px 4px 4px;
-  border-radius: var(--radius-l);
-  border: 1px solid var(--spica-border);
-  background: var(--spica-surface);
+  padding: 4px 16px 4px 6px;
 }
 
-.provider-row.is-on {
-  border-color: var(--spica-accent);
+.provider-row.is-on .provider-open {
+  background: var(--spica-active);
+}
+
+.provider-none {
+  margin: 0;
+  padding: 12px 16px;
 }
 
 .provider-open {
@@ -3210,13 +3695,13 @@ button.ctx-row:hover {
 }
 
 .provider-add {
-  align-self: flex-start;
-  height: 34px;
+  align-self: stretch;
+  height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 0 12px;
-  border-radius: var(--radius-m);
+  padding: 0 16px;
+  border-radius: 0 0 var(--radius-l) var(--radius-l);
   color: var(--spica-accent-text);
 }
 
@@ -3738,18 +4223,78 @@ button.ctx-row:hover {
   transform: translateX(16px);
 }
 
-.setting-row {
+/* Settings: one group = a title line, one rounded box, rows split by thin lines (settings/Group.tsx).
+   Every settings page uses these; nothing else in settings draws its own card. */
+.group-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 12px 16px;
+  gap: 12px;
+  min-height: 28px;
+  margin-bottom: 8px;
+}
+
+.group-head .settings-subheading {
+  margin: 0;
+}
+
+.group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.group-actions .btn-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.group-box {
   border-radius: var(--radius-l);
   border: 1px solid var(--spica-border);
   background: var(--spica-surface);
 }
 
+.group-box > * + *,
+.group-list > * + * {
+  border-top: 1px solid var(--spica-divider);
+}
+
+.group-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.group-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  min-width: 0;
+}
+
+.group-pane > p,
+.group-pane > ul {
+  margin: 0;
+}
+
+/* Name and grey line on the left, the control on the right; a control too wide drops under
+   the name instead of squeezing it (three segments, a field with buttons, a narrow window). */
+.setting-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-height: 52px;
+  padding: 10px 16px;
+}
+
 .setting-text {
+  flex: 1 1 14em;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -3760,6 +4305,30 @@ button.ctx-row:hover {
   font-weight: 500;
 }
 
+.setting-control {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
+
+/* A field you type into: under the name, full width. */
+.setting-row.is-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.setting-row.is-stack .setting-text {
+  flex: none;
+}
+
+.setting-row.is-stack .setting-control {
+  display: block;
+  width: 100%;
+}
+
 /* Settings > plugins */
 .install-row {
   display: flex;
@@ -3768,7 +4337,6 @@ button.ctx-row:hover {
 
 .install-row .input {
   flex: 1;
-  max-width: 520px;
 }
 
 .plugin-note {
@@ -3779,42 +4347,75 @@ button.ctx-row:hover {
   padding: 12px 16px;
 }
 
-/* 插件 page: search, filter, check for updates, install along the top; list and detail below. */
+/* 插件 page: 已安装 / 市场 on top (the settings' tab look). */
+.plugins-tabs {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.tab-count {
+  margin-left: 6px;
+  font-weight: 400;
+  color: var(--spica-faint);
+}
+
+/* 市场 › a source that could not be read says so in the danger colour (why: on hover). */
+.source-failed {
+  color: var(--spica-danger);
+}
+
+/* 已安装 / 可更新 at a row's or a card's end, in the quiet words (可更新 in the accent: something to do). */
+.plugin-row-state {
+  margin-left: auto;
+  padding-left: 8px;
+}
+
+.plugin-row-state.is-newer {
+  color: var(--spica-accent-text);
+}
+
+.plugin-here {
+  align-self: center;
+}
+
+/* 官方 after an official source's name: 模型's quiet 默认 words, a little apart from the name. */
+.source-official {
+  margin-left: 8px;
+  font-weight: 400;
+}
+
+/* 插件, laid out as Claude's plugin page (his pictures, 2026-11-12): one row on top (已安装 / 市场, the search, the
+   filter, 全部检查更新, 添加来源), then a full-width list (已安装) or cards (市场); a press opens the plugin's page in
+   their place, ← back at its top left. Narrow: the search goes on a row of its own, the cards one a row. */
 .plugins-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
 .plugins-bar .plugins-search {
   flex: 1 1 160px;
   min-width: 0;
-  max-width: none;
   height: 30px;
 }
 
-/* The one box (search, or a location to look at) and the folder picker that fills it. */
-.plugins-find {
-  flex: 1 1 220px;
-  min-width: 0;
-  display: flex;
-  gap: 8px;
-}
-
-.plugins-filter .segment {
+.plugins-bar .btn-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   white-space: nowrap;
 }
 
-/* Narrow: search and the two icons on one row, the filter on the next. */
-.plugins-page.is-narrow .plugins-filter {
-  order: 2;
+.plugins-page.is-narrow .plugins-bar .plugins-search {
+  order: 9;
   flex-basis: 100%;
 }
 
-.plugins-page.is-narrow .plugins-filter .segment {
-  flex: 1;
+.plugins-add {
+  margin-bottom: 16px;
 }
 
 .plugins-empty,
@@ -3822,81 +4423,207 @@ button.ctx-row:hover {
   margin: 8px 0;
 }
 
-/* Inside the list's box: in from its edge like the group titles. */
-.plugins-list .plugins-none {
-  padding: 0 12px;
+.sources-no-official {
+  margin: 0 0 16px;
 }
 
-.plugins-two {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-}
-
-/* Filling the page: both columns as tall as the space, each scrolls by itself. */
-.is-fill .plugins-two {
-  flex: 1;
-  min-height: 0;
-  grid-template-rows: minmax(0, 1fr);
-  align-items: stretch;
-}
-
-.is-fill .plugins-list,
-.is-fill .plugin-detail {
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.plugins-page.is-narrow .plugins-two {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.plugins-list {
-  border: 1px solid var(--spica-border-strong);
-  border-radius: var(--radius-m);
-  background: var(--spica-surface);
-  padding: 4px 0;
-}
-
-.plugins-list ul {
+/* A part of the list (已启用, 已停用, a source): its title with a count, then its rows or cards. */
+.plugins-list ul,
+.plugin-sources {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.plugins-group + .plugins-group {
-  margin-top: 4px;
+.plugins-part + .plugins-part {
+  margin-top: 20px;
 }
 
-.plugins-group-title {
+.plugins-part-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.plugins-part-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plugins-part-title {
   margin: 0;
-  padding: 6px 12px 4px;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-  font-weight: 400;
-  color: var(--spica-faint);
-}
-
-.plugin-row {
-  width: 100%;
-  height: 34px;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-  color: var(--spica-ink);
-  text-align: left;
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
+  font-weight: 600;
 }
 
-.plugin-row:hover {
+section.plugins-part > .plugins-part-title {
+  margin-bottom: 8px;
+}
+
+.plugins-part-actions {
+  flex: none;
+  display: flex;
+  gap: 8px;
+}
+
+.plugins-part-actions .btn-small:not(.btn-square) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 已安装: one plugin a row the list's width: icon, name and version over a grey line, marks, a chevron. */
+.plugin-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  text-align: left;
+  color: var(--spica-ink);
+}
+
+.plugin-item:hover {
   background: var(--spica-hover);
 }
 
-.plugin-row.is-on {
-  background: var(--spica-active);
+.plugin-items > li:first-child .plugin-item {
+  border-top-left-radius: var(--radius-l);
+  border-top-right-radius: var(--radius-l);
+}
+
+.plugin-items > li:last-child .plugin-item {
+  border-bottom-left-radius: var(--radius-l);
+  border-bottom-right-radius: var(--radius-l);
+}
+
+.plugin-item-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plugin-item-title {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.plugin-item-desc {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.plugin-item-go {
+  flex: none;
+  color: var(--spica-faint);
+}
+
+.plugin-item .plugin-row-state {
+  margin-left: 0;
+}
+
+.plugin-item.is-off .plugin-badge {
+  opacity: 0.45;
+}
+
+.plugin-item.is-off .plugin-row-name {
+  color: var(--spica-muted);
+}
+
+/* 市场: what a source offers, two cards a row (one when narrow). */
+.plugin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.plugins-page.is-narrow .plugin-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.plugin-card-item {
+  position: relative;
+  border: 1px solid var(--spica-divider);
+  border-radius: var(--radius-l);
+}
+
+.plugin-card-open {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 48px 12px 14px;
+  border-radius: inherit;
+  text-align: left;
+  color: var(--spica-ink);
+}
+
+.plugin-card-open:hover {
+  background: var(--spica-hover);
+}
+
+.plugin-card-open .plugin-row-state {
+  margin: 2px 0 0;
+  padding: 0;
+}
+
+.plugin-card-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.plugin-card-install {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+/* The page of a plugin (or a package), in the list's place: ← back, then its title line (icon, name, where it is
+   from and its version; what can be done at the right), the tabs for its own settings pages, then what it has. */
+.plugin-detail .plugin-head {
+  gap: 12px;
+}
+
+.plugin-title-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plugin-sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.plugin-head-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plugin-detail .plugin-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
 }
 
 /* A plugin's badge: its first character on its own colour (list rows and the detail's title). */
@@ -3929,7 +4656,7 @@ button.ctx-row:hover {
   display: none;
 }
 
-/* A long name is cut, never the version after it; the marks keep to the row end. */
+/* A long name is cut, never the version after it. */
 .plugin-row-name {
   flex: 0 1 auto;
   min-width: 0;
@@ -3938,29 +4665,8 @@ button.ctx-row:hover {
   text-overflow: ellipsis;
 }
 
-.plugin-row-version {
+.plugin-item-title .plugin-version {
   flex: none;
-  margin-right: auto;
-}
-
-/* The version right after the name: 4px from it (the row's and the title's gap is 8), in the list and the detail alike. */
-.plugin-row .plugin-version,
-.plugin-title .plugin-version {
-  margin-left: -4px;
-}
-
-/* Turned off: the icon fainter, the name in the secondary colour. */
-.plugin-row.is-off .plugin-badge {
-  opacity: 0.45;
-}
-
-.plugin-row.is-off .plugin-row-name {
-  color: var(--spica-muted);
-}
-
-.plugin-row-mark {
-  display: inline-flex;
-  color: var(--spica-accent-text);
 }
 
 .plugin-off {
@@ -3974,7 +4680,7 @@ button.ctx-row:hover {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin: -4px 0 8px -4px;
+  margin: 0 0 12px -4px;
 }
 
 .plugin-facts {
@@ -4060,57 +4766,54 @@ button.ctx-row:hover {
 }
 
 /* Mail sorting in the card of the plugin that provides mail (or once above 已安装). */
+/* Mail sorting: a group box in the card of the plugin that provides mail, or its own group above
+   the list when two or more plugins provide mail (with a 来源 row). */
 .plugin-mail {
   margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--spica-border-strong);
 }
 
 .plugin-mail-shared {
-  padding: 14px 16px;
-}
-
-.mail-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.mail-settings .interval-row {
-  margin-top: 0;
-}
-
-.mail-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.mail-title {
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-  font-weight: 600;
-}
-
-.mail-rules {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  margin-bottom: 20px;
 }
 
 .mail-rules .rule-actions {
   justify-content: flex-end;
-  margin-top: 4px;
 }
 
-.plugin-mail-sources {
+/* 详情 and the plugin's own settings pages (views with placement settings) as tabs under its two top rows.
+   On a narrow window the row scrolls sideways rather than pushing the name row. */
+.plugin-tabs {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 12px 0 0;
-  font-size: var(--fs-footnote);
-  line-height: var(--lh-footnote);
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 10px;
+  overflow-x: auto;
+}
+
+.plugin-tabs .tab {
+  flex: none;
+}
+
+/* The 插件 page scrolls as a whole in the dialog; a plugin's own settings page fills what is left of it and
+   scrolls itself. */
+.is-fill .plugins-page {
+  overflow-y: auto;
+}
+
+.is-fill .plugin-detail.is-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.plugin-tab-page:not([hidden]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 12px;
 }
 
 .plugin-model {
@@ -4215,26 +4918,6 @@ button.ctx-row:hover {
   transition: width 0.25s ease-out;
 }
 
-.plugin-root {
-  margin: 14px 0 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-size: var(--fs-footnote);
-  line-height: var(--lh-footnote);
-}
-
-.plugin-root > .settings-hint,
-.plugin-root > .link-btn {
-  flex: none;
-  white-space: nowrap;
-}
-
-.plugin-root .detail-path {
-  min-width: 0;
-}
-
 /* Detail panel: folder with an open button, project activity */
 .detail-folder {
   display: flex;
@@ -4254,7 +4937,7 @@ button.ctx-row:hover {
 .activity-item {
   display: flex;
   gap: 8px;
-  padding: 3px 0;
+  padding: 4px 0;
   min-width: 0;
 }
 
@@ -4555,9 +5238,6 @@ button.ctx-row:hover {
   margin: 8px 0 0;
 }
 
-.about-install {
-  margin-top: 10px;
-}
 
 /* ---------- Inbox (收件箱) ---------- */
 
@@ -4826,14 +5506,6 @@ button.ctx-row:hover {
 }
 
 /* Settings > 常规 */
-.interval-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin-top: 12px;
-}
-
 .rule-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -4859,22 +5531,6 @@ button.ctx-row:hover {
   margin-top: 10px;
 }
 
-.row-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-/* A row with several buttons (工作流, 使用日志 result): when narrow the buttons go
-   under the text instead of squeezing it to nothing or widening the page. */
-.setting-row:has(.row-buttons) {
-  flex-wrap: wrap;
-}
-
-.setting-row:has(.row-buttons) .setting-text {
-  flex: 1 1 14em;
-}
-
 .path-text {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4882,7 +5538,7 @@ button.ctx-row:hover {
 }
 
 .workflow-problems {
-  margin: 8px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
@@ -4914,11 +5570,15 @@ button.ctx-row:hover {
 
 /* A confirmation: the card is what would run. A slim row (what it will do, 无法撤销, copy, 拒绝 / 允许), a thin line,
    then the command in full or the call's arguments, from edge to edge. */
+/* A question card and a confirmation card: one row (the ringed mark, the words, what is decided or the
+   buttons at the right end), then what belongs to it below. */
+.ask-card,
 .confirm-card {
   padding: 0;
   overflow: hidden;
 }
 
+.ask-card > .card-head,
 .confirm-card > .card-head {
   align-items: center;
   gap: 8px;
@@ -4947,9 +5607,18 @@ button.ctx-row:hover {
   margin: 0;
 }
 
+.ask-card > .card-head .card-answer,
 .confirm-card > .card-head .card-answer {
   flex: none;
   margin: 0 4px 0 0;
+}
+
+/* An answer of one's own may be long: it gives way (and wraps) before the question does. */
+.ask-card > .card-head .card-answer {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 50%;
+  overflow-wrap: anywhere;
 }
 
 .confirm-card:not(.is-done).is-danger {
@@ -5179,19 +5848,19 @@ button.ctx-row:hover {
 }
 
 .preview-head {
-  flex: none;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px 0 14px;
-  border-bottom: 1px solid var(--spica-border);
   color: var(--spica-muted);
+}
+
+/* The file's icon and name keep the gap they had; the buttons sit 2 apart as in the title bar. */
+.preview-head > svg:first-child {
+  flex: none;
+  margin-right: 6px;
 }
 
 .preview-name {
   flex: 1;
   min-width: 40px;
+  margin-right: 6px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -5402,23 +6071,42 @@ button.ctx-row:hover {
   text-overflow: ellipsis;
 }
 
-/* Tabs on top of the right panel when plugins add pages there. */
-/* The tab row of a right panel with plugin pages: the tabs, and 最大化 at its end. */
-.right-head {
-  flex: none;
+/* The bottom row with the user's account: the account (its letter in a round badge, the account cut at the end)
+   and the gear for 设置 at the right end; as tall as the 设置 row it replaces. */
+.sidebar-bottom.has-account {
   display: flex;
-  align-items: center;
+  gap: 4px;
+}
+
+.side-action.side-me {
+  flex: 1;
+  min-width: 0;
+}
+
+.side-avatar {
+  border-radius: 50%;
+}
+
+.side-action.side-gear {
+  width: 34px;
+  flex: none;
+  justify-content: center;
+  padding: 0;
+}
+
+.side-action.side-gear.has-word {
+  width: auto;
+  padding: 0 10px;
+}
+
+/* The tab row on top of the details panel when plugins add pages there (详情 / Quick note). */
+.right-head {
   gap: 8px;
-  margin: 8px 8px 0 10px;
 }
 
 .right-head .right-tabs {
   min-width: 0;
   overflow-x: auto;
-}
-
-.right-head > .icon-btn {
-  margin-left: auto;
 }
 
 .panel-right {
@@ -5427,21 +6115,13 @@ button.ctx-row:hover {
 
 .net-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
-  margin-top: 8px;
 }
 
-.net-ca {
-  margin-top: 12px;
-}
-
-.net-now {
-  margin-top: 8px;
-}
-
-.settings-group .setting-row + .setting-row {
-  margin-top: 8px;
+/* A status line or problem under a group's box. */
+.group-note {
+  margin: 8px 0 0;
 }
 
 /* Pictures in the input box (pasted, dropped, picked): thumbnails, removable, full size on a click. */
@@ -5575,6 +6255,58 @@ button.ctx-row:hover {
 
 .image-viewer img:active {
   cursor: grabbing;
+}
+
+/* Pictures of one group: ‹ N of M › over a fade along the bottom, as the Claude app has it (他: 「跟claude一样弄个
+   渐隐的底部不要卡片底多好」): no panel, border or shadow; the fade runs from clear to near black whatever the
+   skin (the light skin's scrim is light), so the white arrows and count read on both. */
+.image-viewer.has-nav {
+  padding-bottom: 88px;
+}
+
+.image-viewer.has-nav::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 200px;
+  /* Solid from a little above the arrows down: nothing of the page shows through beside them. */
+  background: linear-gradient(to bottom, transparent, rgb(10 10 10) 58%, rgb(10 10 10));
+  pointer-events: none;
+}
+
+.image-viewer-nav {
+  position: absolute;
+  z-index: 1;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: #fff;
+  cursor: default;
+}
+
+.image-viewer-nav .icon-btn {
+  width: 36px;
+  height: 36px;
+  color: #fff;
+}
+
+/* The arrow at the end of the group is darker: the shared icon button's 0.4, on white. */
+.image-viewer-nav .icon-btn:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.12);
+  color: #fff;
+}
+
+.image-viewer-count {
+  min-width: 64px;
+  text-align: center;
+  font-size: var(--fs-prose);
+  line-height: var(--lh-prose);
+  font-variant-numeric: tabular-nums;
 }
 
 /* What saving will do to 默认模型 / 强模型. */
@@ -5754,58 +6486,6 @@ button.ctx-row:hover {
   color: var(--spica-muted);
 }
 
-/* A typed location with nothing to install: in place of the list and the detail, across both. */
-.plugins-notfound {
-  grid-column: 1 / -1;
-  align-self: stretch;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 32px 24px;
-  text-align: center;
-}
-
-.plugins-notfound-title {
-  margin: 4px 0 0;
-  font-size: var(--fs-heading);
-  line-height: var(--lh-heading);
-  font-weight: 600;
-}
-
-.plugins-notfound-where {
-  margin: 0;
-  max-width: 100%;
-  font-size: var(--fs-footnote);
-  line-height: var(--lh-footnote);
-  color: var(--spica-ink);
-  overflow-wrap: anywhere;
-}
-
-.plugins-notfound-detail {
-  margin: 0;
-  max-width: 100%;
-  font-size: var(--fs-footnote);
-  line-height: var(--lh-footnote);
-  color: var(--spica-muted);
-  overflow-wrap: anywhere;
-}
-
-.plugins-notfound-actions {
-  margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-}
-
-.plugins-notfound-actions .btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
 /* The row under every message: ‹ 1 / 2 ›, 复制, 重新生成, the time; always there, not only on hover. */
 .msg-actions {
   display: flex;
@@ -5842,43 +6522,24 @@ button.ctx-row:hover {
 
 .msg-versions-text {
   padding: 0 2px;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   font-variant-numeric: tabular-nums;
 }
 
+/* One step up from a caption (他: 「时间感觉有点小」). */
 .msg-time {
+  flex: none;
   margin: 0 6px;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   color: var(--spica-faint);
   font-variant-numeric: tabular-nums;
+  /* How long ago (59 minutes ago) is longer than a clock time was: on one line, never squeezed. */
+  white-space: nowrap;
 }
 
 /* 设置 › 记忆 and the 已记住 line in the conversation. */
-.memory-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.memory-head .settings-subheading {
-  margin: 0;
-}
-
-.memory-head-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.memory-head-actions .btn-small {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .memory-list {
   list-style: none;
   margin: 0;
@@ -5892,9 +6553,6 @@ button.ctx-row:hover {
   align-items: flex-start;
 }
 
-.memory-list .memory-row + .memory-row {
-  margin-top: 0;
-}
 
 .memory-text,
 .memory-quote {
@@ -5949,11 +6607,15 @@ button.ctx-row:hover {
 
 /* 设置 › 记忆 › 整理: the latest tidy and its changes. */
 .memory-tidy-last {
-  margin: 0 0 8px;
+  margin: 0;
 }
 
-.memory-tidy-list {
-  gap: 4px;
+.memory-list.group-list {
+  gap: 0;
+}
+
+.memory-tidy-list > li {
+  padding: 10px 16px;
 }
 
 .memory-tidy-change {

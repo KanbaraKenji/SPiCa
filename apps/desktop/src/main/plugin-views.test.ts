@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { runInNewContext } from 'node:vm';
-import { BRIDGE_JS, contentType, injectIntoPage, pageCsp, parsePluginUrl, pluginThemeVars, themeCss } from './plugin-views';
+import { createContext, runInContext, runInNewContext } from 'node:vm';
+import { BRIDGE_JS, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, pickDialogOptions, pickStartPath, pluginThemeVars, themeCss, type PickDialogOptions } from './plugin-views';
 import { pluginCallId, pluginCallProblem } from '../shared/plugin-view';
 
 describe('plugin pages', () => {
@@ -79,5 +79,88 @@ describe('the id of a page call (it names the call so it can be stopped)', () =>
     expect(pluginCallId('3f2a9c1e-8b7d-4e21-9a55-0c1d2e3f4a5b')).toBe('3f2a9c1e-8b7d-4e21-9a55-0c1d2e3f4a5b');
     expect(pluginCallId('call_1')).toBe('call_1');
     for (const bad of [undefined, null, 7, {}, '', 'a b', 'a/b', '../x', 'x'.repeat(65)]) expect(pluginCallId(bad)).toBeUndefined();
+  });
+});
+
+describe('a page’s own script after the bridge', () => {
+  it('may declare its own top-level spica (const spica = window.spica), as the examples and the template do', () => {
+    // The page's window is the global of its scripts, as in a browser.
+    const ctx = createContext({ document: { documentElement: { dataset: {}, style: {} } }, console });
+    runInContext('var window = this; window.parent = { postMessage() {} }; window.addEventListener = function () {};', ctx);
+    runInContext(BRIDGE_JS, ctx);
+    expect(runInContext("const spica = window.spica; typeof spica.callTool + ' ' + typeof spica.pickFolder", ctx)).toBe('function function');
+  });
+});
+
+describe('the system’s pickers for a page (window.spica.pickFolder / pickFile)', () => {
+  const shown: PickDialogOptions[] = [];
+  /** A stand-in dialog: answers what `answer` says, after `wait` resolves when given. */
+  const dialog =
+    (answer: { canceled: boolean; filePaths: string[] }, wait?: Promise<void>) =>
+    async (opts: PickDialogOptions) => {
+      shown.push(opts);
+      await wait;
+      return answer;
+    };
+
+  it('picked: the full path; cancelled: null', async () => {
+    shown.length = 0;
+    const picked = createPluginPicker(dialog({ canceled: false, filePaths: ['D:\\Notes'] }));
+    expect(await picked({ kind: 'folder', plugin: 'Notes (example)', title: '选择笔记文件夹', defaultPath: 'D:\\Old' })).toBe('D:\\Notes');
+    expect(shown[0]).toEqual({ title: 'Notes (example) · 选择笔记文件夹', defaultPath: 'D:\\Old', properties: ['openDirectory', 'createDirectory'] });
+    const cancelled = createPluginPicker(dialog({ canceled: true, filePaths: [] }));
+    expect(await cancelled({ kind: 'folder', plugin: 'Notes (example)' })).toBeNull();
+    const broken = createPluginPicker(async () => {
+      throw new Error('no window');
+    });
+    expect(await broken({ kind: 'file', plugin: 'x' })).toBeNull();
+  });
+
+  it('one dialog at a time: a second ask while one is open is answered null; after it closes, asking works again', async () => {
+    shown.length = 0;
+    let close!: () => void;
+    const pick = createPluginPicker(dialog({ canceled: false, filePaths: ['C:\\A'] }, new Promise<void>((r) => (close = r))));
+    const first = pick({ kind: 'folder', plugin: 'p' });
+    expect(await pick({ kind: 'file', plugin: 'q' })).toBeNull();
+    close();
+    expect(await first).toBe('C:\\A');
+    expect(await pick({ kind: 'folder', plugin: 'p' })).toBe('C:\\A');
+    expect(shown).toHaveLength(2);
+  });
+
+  it('a file: one file, of the kinds the page names; the development answer skips the dialog', async () => {
+    expect(pickDialogOptions({ kind: 'file', plugin: 'Docs', extensions: ['.MD', 'txt', '.md', 'a b', '', 7 as unknown as string] })).toEqual({
+      title: 'Docs · 选择文件',
+      properties: ['openFile'],
+      filters: [{ name: '.md .txt', extensions: ['md', 'txt'] }],
+    });
+    expect(pickDialogOptions({ kind: 'folder', plugin: '', extensions: ['.md'] })).toEqual({ title: '选择文件夹', properties: ['openDirectory', 'createDirectory'] });
+    shown.length = 0;
+    const dev = createPluginPicker(dialog({ canceled: true, filePaths: [] }), (kind) => (kind === 'file' ? 'E:\\x.md' : null));
+    expect(await dev({ kind: 'file', plugin: 'p' })).toBe('E:\\x.md');
+    expect(shown).toEqual([]);
+  });
+
+  it('starts only on a local drive: network and odd paths are left out', () => {
+    for (const ok of ['C:\\Users\\me', 'd:/data', 'E:\\']) expect(pickStartPath(ok)).toBe(ok);
+    for (const bad of ['\\\\server\\share', '//server/share', '\\\\?\\C:\\x', 'C:\\\\server', 'relative\\x', 'C:', 'C:\\a\nb', 'C:\\' + 'x'.repeat(300), 7, undefined]) {
+      expect(pickStartPath(bad)).toBeUndefined();
+    }
+    expect(pickDialogOptions({ kind: 'folder', plugin: 'p', defaultPath: '\\\\attacker\\share' })).not.toHaveProperty('defaultPath');
+  });
+
+  it('the page’s bridge sends only the title, start and kinds', () => {
+    const posted: { call?: string; args?: unknown }[] = [];
+    const win: Record<string, unknown> = { parent: { postMessage: (m: object) => posted.push(m) }, addEventListener: () => undefined };
+    runInNewContext(BRIDGE_JS, { window: win, document: { documentElement: { dataset: {}, style: {} } }, console });
+    const spica = win.spica as { pickFolder(o?: unknown): Promise<unknown>; pickFile(o?: unknown): Promise<unknown> };
+    void spica.pickFolder({ title: 'T', defaultPath: 'C:\\x', other: 1 });
+    void spica.pickFile({ extensions: ['.md', 3] });
+    void spica.pickFolder();
+    expect(posted.filter((m) => m.call?.startsWith('pick')).map((m) => [m.call, m.args])).toEqual([
+      ['pickFolder', { title: 'T', defaultPath: 'C:\\x' }],
+      ['pickFile', { extensions: ['.md', '3'] }],
+      ['pickFolder', {}],
+    ]);
   });
 });

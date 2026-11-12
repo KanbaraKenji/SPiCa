@@ -114,11 +114,11 @@ jobs:
             echo
             echo "## Official plugins"
             echo
-            echo "In Spica, open Settings › Plugins (设置 › 插件) and paste this address into the install box:"
+            echo "In Spica, open Settings › Plugins › Market (设置 › 插件 › 市场), press Add source (添加来源) and paste this address:"
             echo
             echo "    https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/index.json"
             echo
-            echo "Spica lists the plugins below and checks each one's SHA-256 before installing. You can also download a \`.zip\` and paste its path instead."
+            echo "Spica lists the plugins below the sources and checks each one's SHA-256 before installing. You can also download a \`.zip\` and add its path the same way."
             echo
           } > "$notes"
           gh release create "$GITHUB_REF_NAME" \

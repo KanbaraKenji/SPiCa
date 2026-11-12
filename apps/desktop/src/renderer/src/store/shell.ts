@@ -1,7 +1,7 @@
 // Shell settings on the renderer side: optimistic local value, persisted by main.
 import { useSyncExternalStore } from 'react';
 import type { DesktopBridge, ShellState } from '../../../shared/bridge';
-import { applyPatch, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
+import { applyPatch, type AutostartSupport, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
 import { resolveSkin, schemeOf, type Skin } from '../../../shared/skin';
 import { Store } from './external';
 import { applyCodeSize, applyCodeTheme, applySkin, applyTextSize } from '../theme';
@@ -18,11 +18,17 @@ export class ShellStore {
   readonly demo: boolean;
   /** The folder conversations shared up to 0.1.0-rc.2 (ShellState.legacyDefaultCwd). */
   readonly legacyDefaultCwd: string | undefined;
+  /** Whether 开机时启动 works in this copy (ShellState.autostart). */
+  readonly autostart: AutostartSupport;
+  /** The automatic account (ShellState.autoAccount); the one in force is effectiveAccount(settings, this). */
+  readonly autoAccount: string;
 
   constructor(bridge: DesktopBridge, initial: ShellState) {
     this.#bridge = bridge;
     this.demo = initial.demo;
     this.legacyDefaultCwd = initial.legacyDefaultCwd;
+    this.autostart = initial.autostart ?? 'unsupported';
+    this.autoAccount = initial.autoAccount ?? '';
     const media = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)').matches : initial.systemDark;
     this.state = new Store<ShellView>({ settings: initial.settings, systemDark: media });
     bridge.onSettingsChanged((settings) => this.#replace(settings));

@@ -66,6 +66,17 @@ const bridge: DesktopBridge = {
   getShellState: () => ipcRenderer.invoke(DesktopChannel.GetShellState) as Promise<ShellState>,
   updateSettings: (patch: SettingsPatch) => ipcRenderer.invoke(DesktopChannel.UpdateSettings, patch) as Promise<ShellSettings>,
   onSettingsChanged: (listener) => subscribe<ShellSettings>(DesktopChannel.SettingsChanged, listener),
+  closeAsk: {
+    listen: (onAsk) => {
+      const off = subscribe<{ running?: boolean } | undefined>(DesktopChannel.CloseAsk, (ask) => onAsk({ running: ask?.running === true }));
+      ipcRenderer.send(DesktopChannel.CloseAskReady, true);
+      return () => {
+        ipcRenderer.send(DesktopChannel.CloseAskReady, false);
+        off();
+      };
+    },
+    answer: (answer) => ipcRenderer.send(DesktopChannel.CloseAnswer, answer),
+  },
   zoom: (step) => ipcRenderer.send(DesktopChannel.Zoom, step),
   pickFolder: (title) => ipcRenderer.invoke(DesktopChannel.PickFolder, title) as Promise<string | null>,
   network: () => ipcRenderer.invoke(DesktopChannel.Network) as Promise<NetworkState | null>,
@@ -75,6 +86,7 @@ const bridge: DesktopBridge = {
     call: (plugin, view, tool, args, confirmed, callId) => ipcRenderer.invoke(DesktopChannel.PluginViewCall, plugin, view, tool, args, confirmed, callId) as Promise<PluginViewResult>,
     cancel: (callId) => ipcRenderer.send(DesktopChannel.PluginViewCancel, callId),
     file: (plugin, path) => ipcRenderer.invoke(DesktopChannel.PluginViewFile, plugin, path) as Promise<string | null>,
+    pick: (req) => ipcRenderer.invoke(DesktopChannel.PluginPick, req) as Promise<string | null>,
   },
   preview: (sessionId, path, sheet) => ipcRenderer.invoke(DesktopChannel.Preview, sessionId, path, sheet) as Promise<PreviewInfo>,
   previewFile: (sessionId, path, maxBytes, peek) => ipcRenderer.invoke(DesktopChannel.PreviewFile, sessionId, path, maxBytes, peek) as Promise<PreviewFile>,
