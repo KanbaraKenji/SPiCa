@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DesktopBridge, PreviewInfo } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
-import { computeLayout, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
+import { computeLayout, infoInSight, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
 import { Resizer } from './shell/Resizer';
 import { ConfirmDialog } from './ui/Dialog';
 import { FilePreview, usePreview } from './shell/FilePreview';
@@ -223,7 +223,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     const onDown = (e: MouseEvent) => {
       const el = e.target instanceof Element ? e.target : null;
       // Its own toggle button flips it itself.
-      if (el?.closest('.panel.is-floating, [data-panel-toggle]')) return;
+      if (el?.closest('.panel.is-floating, .panel.is-raised, [data-panel-toggle]')) return;
       setFloating(null);
     };
     window.addEventListener('mousedown', onDown, true);
@@ -316,7 +316,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
 
   /** A file to show (set just before): the preview beside the conversation when it fits, else over the window. */
   const showPreview = () => {
-    if (previewFloats(width, open)) setFloating('preview');
+    if (previewFloats(width, open, savedWidths)) setFloating('preview');
     else if (floating === 'preview') setFloating(null);
   };
   const closePreview = () => {
@@ -667,7 +667,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   };
 
   const leftShown = layout.left !== 'hidden';
-  const infoShown = layout.info !== 'hidden';
+  // The button is lit while the details are in sight (not while the preview lies over them).
+  const infoShown = infoInSight(layout, widths);
   const previewShown = layout.preview !== 'hidden';
   // Maximized only while the preview is there to show; closing it or leaving the conversation ends that.
   const rightCanMax = previewShown && view === 'chat';
@@ -906,47 +907,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           ) : null}
         </main>
 
-        {/* The file preview, next to the conversation: its edge drags, its head has 最大化 and 关闭预览. */}
-        {previewShown && view === 'chat' && preview ? (
-          <div
-            className={`panel panel-right panel-preview is-${layout.preview}${rightMax ? ' is-max' : ''}${widths.cover && layout.preview === 'docked' ? ' is-cover' : ''}`}
-            style={rightMax ? undefined : { width: widths.preview, ...(widths.cover && layout.preview === 'docked' ? { marginLeft: -widths.cover } : {}) }}
-          >
-            {/* Past 440 it lies over the conversation's right part (which keeps its 440 layout underneath): pulled left by `cover`. */}
-            {rightMax ? null : resizer('preview')}
-            <FilePreview
-              // A plugin page draws the file: the head still names it (and offers its buttons).
-              info={pagePreview ? { kind: 'unsupported', name: preview.path.split(/[\\/]/).pop() ?? preview.path, path: preview.path, size: 0, message: '' } : previewInfo}
-              {...(filePages.length
-                ? { source: { options: [{ id: BUILT_IN, label: '自带预览' }, ...filePages.map((v) => ({ id: previewerId(v), label: v.title }))], value: fellBack ? BUILT_IN : wayId, onChange: chooseWay } }
-                : {})}
-              note={fellBack?.why.text ? { text: fellBack.why.text, ...(fellBack.why.retry ? { onRetry: () => chooseWay(wayId) } : {}) } : null}
-              onOpenExternal={(p) => {
-                if (preview.sessionId) {
-                  void bridge.openFile(preview.sessionId, p).then((err) => err && agent.state.set((v) => ({ ...v, notice: err })));
-                }
-              }}
-              onReveal={(p) => void bridge.showInFolder(p).then(showNotice, (err: unknown) => showNotice(friendlyError(err)))}
-              onSheet={(n) => setPreview((p) => (p ? { ...p, sheet: n } : p))}
-              onClose={closePreview}
-              max={panelMax}
-            >
-              {pagePreview ? (
-                <PluginPreview
-                  key={`${previewerId(pagePreview)}|${previewAttempt}`}
-                  {...pluginProps(pagePreview)}
-                  file={{ sessionId: preview.sessionId, path: preview.path }}
-                  loadFile={bridge.previewFile}
-                  onFallback={(why) => setPreviewFallback({ key: fileKey, id: previewerId(pagePreview), why })}
-                />
-              ) : null}
-            </FilePreview>
-          </div>
-        ) : null}
-
-        {/* The details, at the window's edge under their title-bar button: a fixed width, no edge to drag, no 最大化. */}
-        {infoShown && view === 'chat' ? (
-          <div className={`panel panel-right panel-info is-${layout.info}`} style={{ width: widths.info }}>
+        {/* The details, between the conversation and the preview: a fixed width, no edge to drag, no 最大化. Under the preview, their button shows them over it (floating). */}
+        {layout.info !== 'hidden' && view === 'chat' ? (
+          // Shown over the preview from under it: raised in their own place (nothing beside them moves), not floated to the edge.
+          <div className={`panel panel-right panel-info ${layout.info === 'floating' && layout.infoPlace ? 'is-docked is-raised' : `is-${layout.info}`}`} style={{ width: widths.info }}>
             {panelPages.length ? (
               <div className="right-head">
               <div className="tabs right-tabs" role="tablist" aria-label="右栏">
@@ -978,6 +942,44 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               hideHeading={panelPages.length > 0}
             />
             )}
+          </div>
+        ) : null}
+
+        {/* The file preview, against the window's right edge: its left edge drags, its head has 最大化 and 关闭预览. */}
+        {previewShown && view === 'chat' && preview ? (
+          <div
+            className={`panel panel-right panel-preview is-${layout.preview}${rightMax ? ' is-max' : ''}${widths.cover && layout.preview === 'docked' ? ' is-cover' : ''}`}
+            style={rightMax ? undefined : { width: widths.preview, ...(widths.cover && layout.preview === 'docked' ? { marginLeft: -widths.cover } : {}) }}
+          >
+            {/* Wider than what is beside it allows, it lies over the details, then over the conversation's right part (kept at its 440 layout): pulled left by `cover`. */}
+            {rightMax ? null : resizer('preview')}
+            <FilePreview
+              // A plugin page draws the file: the head still names it (and offers its buttons).
+              info={pagePreview ? { kind: 'unsupported', name: preview.path.split(/[\\/]/).pop() ?? preview.path, path: preview.path, size: 0, message: '' } : previewInfo}
+              {...(filePages.length
+                ? { source: { options: [{ id: BUILT_IN, label: '自带预览' }, ...filePages.map((v) => ({ id: previewerId(v), label: v.title }))], value: fellBack ? BUILT_IN : wayId, onChange: chooseWay } }
+                : {})}
+              note={fellBack?.why.text ? { text: fellBack.why.text, ...(fellBack.why.retry ? { onRetry: () => chooseWay(wayId) } : {}) } : null}
+              onOpenExternal={(p) => {
+                if (preview.sessionId) {
+                  void bridge.openFile(preview.sessionId, p).then((err) => err && agent.state.set((v) => ({ ...v, notice: err })));
+                }
+              }}
+              onReveal={(p) => void bridge.showInFolder(p).then(showNotice, (err: unknown) => showNotice(friendlyError(err)))}
+              onSheet={(n) => setPreview((p) => (p ? { ...p, sheet: n } : p))}
+              onClose={closePreview}
+              max={panelMax}
+            >
+              {pagePreview ? (
+                <PluginPreview
+                  key={`${previewerId(pagePreview)}|${previewAttempt}`}
+                  {...pluginProps(pagePreview)}
+                  file={{ sessionId: preview.sessionId, path: preview.path }}
+                  loadFile={bridge.previewFile}
+                  onFallback={(why) => setPreviewFallback({ key: fileKey, id: previewerId(pagePreview), why })}
+                />
+              ) : null}
+            </FilePreview>
           </div>
         ) : null}
 

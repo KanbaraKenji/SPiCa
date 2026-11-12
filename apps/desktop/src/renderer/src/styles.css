@@ -350,6 +350,13 @@ a:hover {
   z-index: 7;
 }
 
+/* The details shown over the preview from under it, in their own place (their button, while the preview covers
+   them): above the preview, with the floating panels' shadow. Esc or a press elsewhere puts them back under. */
+.panel-info.is-raised {
+  z-index: 8;
+  box-shadow: var(--spica-shadow);
+}
+
 /* ---------- Buttons ---------- */
 
 .icon-btn {
