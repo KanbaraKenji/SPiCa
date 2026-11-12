@@ -140,7 +140,7 @@ describe('设置 › 记忆 › 整理', () => {
     setup({ tidy, items: [item(10), item(11), item(4, { status: 'forgotten', tidyId: 7 })] });
     fireEvent.click(screen.getByRole('switch', { name: '自动整理' }));
     expect(tidy.onAuto).toHaveBeenCalledWith(true);
-    expect(document.querySelector('.memory-tidy-last')!.textContent).toMatch(/^最近一次：.+ · 4 条改动$/);
+    expect(document.querySelector('.memory-tidy-last')!.textContent).toMatch(/^最近一次.+ · 4 条改动$/);
     expect([...document.querySelectorAll('.memory-tidy-change')].map((e) => e.textContent)).toEqual([
       '改写：数据处理主要用 Julia（原「数据处理主要用 Python」）撤销',
       '合并：回答简短（原「喜欢简短回答」「回答要短一点」）撤销',
@@ -156,7 +156,7 @@ describe('设置 › 记忆 › 整理', () => {
   it('立即整理 starts one; while it runs the button says 整理中; a refusal is said; none yet: —', async () => {
     const tidy = tidyOf({ runs: [], run: vi.fn(async () => '还没有配置模型') });
     setup({ tidy });
-    expect(document.querySelector('.memory-tidy-last')!.textContent).toBe('最近一次：—');
+    expect(document.querySelector('.memory-tidy-last')!.textContent).toBe('最近一次—');
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '立即整理' })));
     expect(tidy.run).toHaveBeenCalled();
     expect(screen.getByRole('alert').textContent).toBe('还没有配置模型');
@@ -181,7 +181,8 @@ describe('设置 › 记忆 › 整理: what can still be undone', () => {
   it('a later tidy with nothing to change does not hide the changes of the one before', () => {
     const tidy: MemoryTidy = { runs: [done(9, []), done(8, [change('added', 20)])], auto: false, onAuto: vi.fn(), run: vi.fn(async () => null), undo: vi.fn(async () => undefined) };
     setup({ items: [item(20)], tidy });
-    expect([...document.querySelectorAll('.memory-tidy-last')].map((e) => e.textContent!.replace(/\d+\/\d+ \d+:\d+/, 'T'))).toEqual(['最近一次：T · 无改动', 'T · 1 条改动']);
+    expect(document.querySelector('.memory-tidy-last .settings-hint')!.textContent!.replace(/\d+\/\d+ \d+:\d+/g, 'T')).toBe('T · 无改动T · 1 条改动');
+    expect(document.querySelector('.memory-tidy-shown')!.textContent!.replace(/\d+\/\d+ \d+:\d+/, 'T')).toBe('T · 1 条改动');
     fireEvent.click(screen.getByRole('button', { name: '撤销' }));
     expect(tidy.undo).toHaveBeenCalledWith(8, 0);
   });
