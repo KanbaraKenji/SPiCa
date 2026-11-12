@@ -1,6 +1,6 @@
 /* global window, document */
-// Settings page (placement "settings"): shown in Spica under 设置 › 插件 › Notes,
-// below the plugin's details. 选择… opens the system's folder picker
+// Settings page (placement "settings"): in Spica under 设置 › 插件 › Notes, the
+// 设定 tab next to 详情. 选择… opens the system's folder picker
 // (window.spica.pickFolder); the path goes into the box, and 保存 saves it
 // through the plugin's settings service (get_settings / save_settings,
 // views/settings.json). Cancelling the picker changes nothing.

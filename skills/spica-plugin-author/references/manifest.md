@@ -99,4 +99,4 @@ send({ method: 'notifications/progress', params: { progressToken: token, progres
 { "title": "Board", "entry": "ui/index.html", "placement": "sidebar", "icon": "ui/icon.svg", "permissions": { "tools": ["list_items"] } }
 ```
 
-`placement` 还可以是 `panel`（对话旁边的面板）、`preview`（给某几种文件当预览，要写 `preview: { extensions, max_mb }`）、`settings`（设置 › 插件 里这个插件的设置页，一个插件最多一个）。见 `ui.md`。
+`placement` 还可以是 `panel`（对话旁边的面板）、`preview`（给某几种文件当预览，要写 `preview: { extensions, max_mb }`）、`settings`（设置 › 插件 里这个插件详情的一个页签）。见 `ui.md`。

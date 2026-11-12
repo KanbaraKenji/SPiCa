@@ -68,7 +68,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 |---|---|---|
 | `sidebar`（默认） | 侧栏里一个入口，点开占主区域 | 完整的功能页：列表、表格、编辑 |
 | `panel` | 对话旁边的右栏，一个标签 | 边聊边用的小工具：速记、状态、快捷操作；按 320px 宽设计 |
-| `settings` | 设置 › 插件 › 这个插件的详情里，不进侧栏；一个插件最多一个 | 插件自己的设置：服务地址、令牌、保存到哪个文件夹（页面里可以 `window.spica.pickFolder()` 弹系统的选文件夹框） |
+| `settings` | 设置 › 插件 › 这个插件详情的一个页签（「详情」后面），不进侧栏 | 插件自己的设置：服务地址、令牌、保存到哪个文件夹（页面里可以 `window.spica.pickFolder()` 弹系统的选文件夹框） |
 
 生成面板：`scaffold.mjs <名字> --with-ui --placement panel`（设置页：`--placement settings`）。一个插件可以有多个页面（`views/` 里每个 `.json` 一个），例子：`plugins/example-notes` 的 Notebook（sidebar）、Quick note（panel）和设置（settings）。
 

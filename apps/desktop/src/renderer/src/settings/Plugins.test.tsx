@@ -384,20 +384,48 @@ describe('a plugin’s own settings page (a view with placement settings)', () =
     }),
   });
 
-  it('sits in that plugin’s detail, under its title, fitted to the page; other plugins and other placements have none', async () => {
-    render(<Plugins api={api()} pages={pages([page('notes', 'settings', 'settings'), page('notes', 'board', 'sidebar'), page('digest', 'panel', 'panel')])} />);
+  it('an enabled plugin with settings pages: a row of tabs, 详情 first; a page loads on its tab, fills the rest and is kept while 详情 is shown', async () => {
+    render(<Plugins api={api()} pages={pages([page('notes', 'settings', 'settings'), page('notes', 'board', 'sidebar'), page('mail-digest', 'panel', 'panel')])} />);
     const detail = (await screen.findByRole('region', { name: '笔记（示例）' })) as HTMLElement;
-    const block = detail.querySelector('.plugin-settings-page') as HTMLElement;
-    expect(within(block).getByRole('heading', { name: '设置' })).toBeTruthy();
-    const frame = (await waitFor(() => block.querySelector('iframe'))) as HTMLIFrameElement;
+    const tabs = within(detail).getByRole('tablist');
+    expect(within(tabs).getAllByRole('tab').map((t) => [t.textContent, t.getAttribute('aria-selected')])).toEqual([
+      ['详情', 'true'],
+      ['设置', 'false'],
+    ]);
+    // Not loaded until its tab is picked; 详情 shows what it always showed.
+    expect(detail.querySelector('iframe')).toBeNull();
+    expect(within(detail).getByText('工具')).toBeTruthy();
+    fireEvent.click(within(tabs).getByRole('tab', { name: '设置' }));
+    await waitFor(() => expect(detail.querySelector('iframe')).not.toBeNull());
+    const frame = detail.querySelector('iframe') as HTMLIFrameElement;
     expect(frame.getAttribute('src')).toBe('spica-plugin://notes/ui/settings.html');
-    expect(frame.className).toBe('plugin-frame is-fit');
-    expect(detail.querySelectorAll('iframe')).toHaveLength(1);
-    // Before the facts (工具, 技能…), after what it does.
-    expect(block.compareDocumentPosition(detail.querySelector('.plugin-facts')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(detail.classList.contains('is-page')).toBe(true);
+    expect((detail.querySelector('.plugin-detail-body') as HTMLElement).hidden).toBe(true);
+    // The name row and the row of what can be done stay.
+    expect(within(detail).getByRole('switch', { name: '停用「笔记（示例）」' })).toBeTruthy();
+    // Back on 详情 the page stays, hidden (what was typed in it is still there); again on its tab, the same frame.
+    fireEvent.click(within(tabs).getByRole('tab', { name: '详情' }));
+    expect((detail.querySelector('.plugin-tab-page') as HTMLElement).hidden).toBe(true);
+    expect(detail.classList.contains('is-page')).toBe(false);
+    fireEvent.click(within(tabs).getByRole('tab', { name: '设置' }));
+    expect(detail.querySelector('iframe')).toBe(frame);
+    // Another plugin (no settings page): no tabs. Back again: 详情 first, nothing loaded.
     pick('来信摘要');
     const other = (await screen.findByRole('region', { name: '来信摘要（示例）' })) as HTMLElement;
-    expect(other.querySelector('.plugin-settings-page')).toBeNull();
+    expect(within(other).queryByRole('tablist')).toBeNull();
+    pick('笔记');
+    const again = (await screen.findByRole('region', { name: '笔记（示例）' })) as HTMLElement;
+    expect(within(again).getByRole('tab', { name: '详情' }).getAttribute('aria-selected')).toBe('true');
+    expect(again.querySelector('iframe')).toBeNull();
+  });
+
+  it('a plugin turned off has no tabs', async () => {
+    const off = apiWith((ps) => ps.map((x) => (x.name === 'notes' ? { ...x, enabled: false } : x)));
+    render(<Plugins api={off} pages={pages([page('notes', 'settings', 'settings')])} />);
+    await screen.findByRole('navigation', { name: '插件列表' });
+    await waitFor(() => pick('笔记'));
+    const detail = (await screen.findByRole('region', { name: '笔记（示例）' })) as HTMLElement;
+    expect(within(detail).queryByRole('tablist')).toBeNull();
   });
 });
 

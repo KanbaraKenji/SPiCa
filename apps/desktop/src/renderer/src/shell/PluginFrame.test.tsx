@@ -153,25 +153,3 @@ describe('a page asks for the system’s pickers (window.spica.pickFolder / pick
     expect(none.replies()).toEqual([{ __spica: 1, reply: 1, error: '不支持的调用：pickFile' }]);
   });
 });
-
-describe('a fitted frame (a settings page) is as tall as its page says', () => {
-  it('takes the height the page says; a frame that is not fitted ignores it', async () => {
-    const fitted = setup({ fit: true, view: { ...view, id: 'fit-a' } });
-    const frame = () => document.querySelector('iframe') as HTMLIFrameElement;
-    expect(frame().style.height).toBe('0px');
-    await fitted.say('ready', 0);
-    await fitted.say('size', 0, { height: 212.4 });
-    expect(frame().style.height).toBe('213px');
-    await fitted.say('size', 0, { height: 99999 });
-    expect(frame().style.height).toBe('4000px');
-    expect(fitted.replies()).toEqual([]);
-    cleanup();
-    // Open again: at its last height at once.
-    setup({ fit: true, view: { ...view, id: 'fit-a' } });
-    expect(frame().style.height).toBe('4000px');
-    cleanup();
-    const plain = setup();
-    await plain.say('size', 0, { height: 300 });
-    expect(frame().style.height).toBe('');
-  });
-});

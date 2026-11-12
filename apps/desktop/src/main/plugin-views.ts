@@ -258,40 +258,5 @@ export const BRIDGE_JS = `(() => {
   // 'spica' has already been declared"). The page can only change its own copy, never what Spica answers.
   Object.defineProperty(window, 'spica', { value: Object.freeze(spica), writable: false, configurable: true });
   post({ call: 'ready', id: 0 });
-  // How tall the page's content is (the bottom of the last thing in it), for a window that fits the frame to
-  // its page (a settings page in 设置 › 插件); said again when it changes.
-  let told = -1;
-  const tell = () => {
-    const b = document.body;
-    if (!b) return;
-    let bottom = 0;
-    for (const el of b.children) {
-      if (el.tagName === 'SCRIPT') continue;
-      const r = el.getBoundingClientRect();
-      if (r.width || r.height) bottom = Math.max(bottom, r.bottom + window.scrollY);
-    }
-    const cs = getComputedStyle(b);
-    const h = Math.ceil(bottom + (parseFloat(cs.paddingBottom) || 0) + (parseFloat(cs.marginBottom) || 0));
-    if (h !== told) {
-      told = h;
-      post({ call: 'size', id: 0, args: { height: h } });
-    }
-  };
-  if (typeof ResizeObserver === 'function') {
-    const ro = new ResizeObserver(tell);
-    const watch = () => {
-      ro.disconnect();
-      if (!document.body) return;
-      ro.observe(document.body);
-      for (const el of document.body.children) ro.observe(el);
-      tell();
-    };
-    const start = () => {
-      watch();
-      new MutationObserver(watch).observe(document.body, { childList: true });
-    };
-    if (document.body) start();
-    else document.addEventListener('DOMContentLoaded', start);
-  }
 })();
 `;

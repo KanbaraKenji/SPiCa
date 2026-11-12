@@ -4117,23 +4117,33 @@ button.ctx-row:hover {
   line-height: var(--lh-footnote);
 }
 
-/* A plugin's own settings page (a view with placement settings) in its card: as tall as the page says. */
-.plugin-settings-page {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--spica-border-strong);
+/* 详情 and the plugin's own settings pages (views with placement settings) as tabs under its two top rows.
+   On a narrow window the row scrolls sideways rather than pushing the name row. */
+.plugin-tabs {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 10px;
+  overflow-x: auto;
 }
 
-.plugin-settings-title {
-  margin: 0 0 8px;
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-  font-weight: 600;
-}
-
-.plugin-settings-page .plugin-page,
-.plugin-frame.is-fit {
+.plugin-tabs .tab {
   flex: none;
+}
+
+/* A page's tab: the page fills what is left of the column and scrolls itself, the column does not. */
+.is-fill .plugin-detail.is-page {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.plugin-tab-page:not([hidden]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 12px;
 }
 
 .plugin-model {

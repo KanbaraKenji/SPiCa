@@ -2,7 +2,7 @@
 // what the remembered sources offer) and the one picked on the right: its switch
 // beside the name, a row of what can be done to it (安装 / 更新到 / 回退到 /
 // 删除, and while it installs, how far it is), then its model budget, mail
-// sorting, its own settings page (a view with placement settings) and what it has. One box at the top searches, or, given a folder,
+// sorting and what it has, and its own settings pages (views with placement settings) under tabs. One box at the top searches, or, given a folder,
 // .zip, shared folder or web address, lists what is there to install.
 // A plugin turned on or off stays where it is in the list while the page is
 // open; it moves to its group the next time the page opens (the counts are only
@@ -53,22 +53,15 @@ export interface SettingsPages {
 }
 
 /**
- * A plugin's settings page in its detail: under a line with the page's title, as tall as the page is (the
- * detail scrolls, not the page). Its background is the card's, so it sits in the card as the rest does.
+ * A plugin's settings page, under its tab in the detail: it fills what is left of the column and scrolls
+ * itself. The page's two backgrounds are swapped: its own (--spica-bg) is the card's, and what it sets apart
+ * (buttons, boxes on --spica-surface) gets the window's, so it still stands out on the card.
  */
-function SettingsPage({ page }: { page: PluginPageProps }) {
-  // The page's two backgrounds swapped: its own (--spica-bg) is the card's, and what it sets apart (buttons,
-  // boxes on --spica-surface) gets the window's, so it still stands out on the card.
+function settingsTheme(page: PluginPageProps): PluginPageProps['theme'] {
   const vars = page.theme.vars;
   const bg = vars['--spica-bg'] ?? '';
   const surface = vars['--spica-surface'] ?? bg;
-  const theme = { ...page.theme, vars: { ...vars, '--spica-bg': surface, '--spica-surface': bg } };
-  return (
-    <div className="plugin-settings-page">
-      <h3 className="plugin-settings-title">{page.view.title}</h3>
-      <PluginPage {...page} theme={theme} fit />
-    </div>
-  );
+  return { ...page.theme, vars: { ...vars, '--spica-bg': surface, '--spica-surface': bg } };
 }
 
 const SERVER_STATUS: Record<string, string> = {
@@ -298,7 +291,12 @@ function Actions({ running, children }: { running: Running | undefined; children
   return <div className="plugin-actions">{running ? <Progress run={running} /> : children}</div>;
 }
 
-/** The plugin picked: switch beside its name, what can be done to it right below, then what it does, needs, has. */
+/**
+ * The plugin picked: switch beside its name, what can be done to it right below, then what it does, needs, has.
+ * An enabled plugin with settings pages gets a row of tabs under that: 详情 (all of the above but the two top
+ * rows) and one per page. A page loads when its tab is first picked and stays (hidden) while 详情 is shown, so
+ * what was typed in it is still there; another plugin starts over at 详情 (the detail is keyed by plugin).
+ */
 function PluginDetail({
   p,
   busy,
@@ -307,7 +305,7 @@ function PluginDetail({
   update,
   ask,
   mail,
-  settings,
+  pages = [],
   onBack,
 }: {
   p: PluginView;
@@ -317,12 +315,21 @@ function PluginDetail({
   update(): void;
   ask(kind: 'uninstall' | 'rollback', p: PluginView): void;
   mail?: MailSettingsProps | undefined;
-  settings?: PluginPageProps | undefined;
+  pages?: PluginPageProps[] | undefined;
   onBack?: (() => void) | undefined;
 }) {
   const problems = pluginProblems(p);
+  const [picked, setPicked] = useState('');
+  const [opened, setOpened] = useState<string[]>([]);
+  // A page gone (the plugin turned off, updated without it): back on 详情.
+  const tab = pages.some((g) => g.view.id === picked) ? picked : '';
+  const pick = (id: string) => {
+    setPicked(id);
+    if (id && !opened.includes(id)) setOpened([...opened, id]);
+  };
+  const cls = ['card plugin-card plugin-detail', p.enabled ? '' : 'is-off', tab ? 'is-page' : ''].filter(Boolean).join(' ');
   return (
-    <section className={p.enabled ? 'card plugin-card plugin-detail' : 'card plugin-card plugin-detail is-off'} aria-label={p.displayName}>
+    <section className={cls} aria-label={p.displayName}>
       {onBack ? (
         <button type="button" className="text-btn plugin-back" onClick={onBack}>
           <Icon name="back" size={14} />
@@ -352,37 +359,54 @@ function PluginDetail({
           <Icon name="trash" size={14} />
         </button>
       </Actions>
-      {p.description ? <p className="plugin-desc">{p.description}</p> : null}
-      {p.enabled ? null : <p className="plugin-off">已停用</p>}
-      {problems.length ? (
-        <p className="plugin-problem status-with-icon">
-          <SpicaStatusIcon name="error" size={14} />
-          {problems.join('；')}
-        </p>
-      ) : null}
-      {mail ? (
-        <div className="plugin-mail">
-          <MailSettings {...mail} />
+      {pages.length ? (
+        <div className="tabs plugin-tabs" role="tablist" aria-label={`「${p.displayName}」`}>
+          {[{ id: '', label: '详情' }, ...pages.map((g) => ({ id: g.view.id, label: g.view.title.trim() || '设定' }))].map((t) => (
+            <button key={t.id || '-'} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'tab is-on' : 'tab'} onClick={() => pick(t.id)}>
+              {t.label}
+            </button>
+          ))}
         </div>
       ) : null}
-      {p.model ? <ModelUse p={p} m={p.model} busy={busy} run={run} /> : null}
-      {settings ? <SettingsPage key={`${settings.view.plugin}/${settings.view.id}`} page={settings} /> : null}
-      <dl className="detail-facts plugin-facts">
-        <List label="工具" items={p.tools} />
-        <List label="技能" items={p.skills.map((s) => s.name)} />
-        <List label="命令" items={p.commands.map((c) => `/${c.id}`)} />
-        <List label="进程" items={p.servers.map((s) => `${s.id}（${SERVER_STATUS[s.status] ?? s.status}）`)} />
-        <dt>模拟模式</dt>
-        <dd>{p.mockSupported ? '支持' : '不支持'}</dd>
-        {p.source ? (
-          <>
-            <dt>来源</dt>
-            <dd className="detail-path" title={p.source.location} data-tip-clipped="">
-              {p.source.location}
-            </dd>
-          </>
+      <div className="plugin-detail-body" hidden={tab !== ''}>
+        {p.description ? <p className="plugin-desc">{p.description}</p> : null}
+        {p.enabled ? null : <p className="plugin-off">已停用</p>}
+        {problems.length ? (
+          <p className="plugin-problem status-with-icon">
+            <SpicaStatusIcon name="error" size={14} />
+            {problems.join('；')}
+          </p>
         ) : null}
-      </dl>
+        {mail ? (
+          <div className="plugin-mail">
+            <MailSettings {...mail} />
+          </div>
+        ) : null}
+        {p.model ? <ModelUse p={p} m={p.model} busy={busy} run={run} /> : null}
+        <dl className="detail-facts plugin-facts">
+          <List label="工具" items={p.tools} />
+          <List label="技能" items={p.skills.map((s) => s.name)} />
+          <List label="命令" items={p.commands.map((c) => `/${c.id}`)} />
+          <List label="进程" items={p.servers.map((s) => `${s.id}（${SERVER_STATUS[s.status] ?? s.status}）`)} />
+          <dt>模拟模式</dt>
+          <dd>{p.mockSupported ? '支持' : '不支持'}</dd>
+          {p.source ? (
+            <>
+              <dt>来源</dt>
+              <dd className="detail-path" title={p.source.location} data-tip-clipped="">
+                {p.source.location}
+              </dd>
+            </>
+          ) : null}
+        </dl>
+      </div>
+      {pages
+        .filter((g) => opened.includes(g.view.id))
+        .map((g) => (
+          <div key={g.view.id} className="plugin-tab-page" hidden={tab !== g.view.id}>
+            <PluginPage {...g} theme={settingsTheme(g)} />
+          </div>
+        ))}
     </section>
   );
 }
@@ -688,10 +712,8 @@ export function Plugins({ api, mail, pages }: { api: PluginsApi; mail?: MailSett
         })
     : undefined;
   // Its own settings page, while it is enabled (only enabled plugins' pages are listed).
-  const settingsOf = (pl: PluginView): PluginPageProps | undefined => {
-    const v = pages?.views.find((x) => x.plugin === pl.name && x.placement === 'settings');
-    return v && pages ? pages.props(v) : undefined;
-  };
+  const settingsOf = (pl: PluginView): PluginPageProps[] =>
+    pages ? pages.views.filter((x) => x.plugin === pl.name && x.placement === 'settings').map((v) => pages.props(v)) : [];
 
   return (
     <section className={narrow ? 'settings-section plugins-page is-narrow' : 'settings-section plugins-page'} ref={root}>
@@ -810,6 +832,7 @@ export function Plugins({ api, mail, pages }: { api: PluginsApi; mail?: MailSett
           ) : null}
           {detailView && current ? (
             <PluginDetail
+              key={current.name}
               p={current}
               busy={busy}
               running={running?.name === current.name ? running : undefined}
@@ -817,7 +840,7 @@ export function Plugins({ api, mail, pages }: { api: PluginsApi; mail?: MailSett
               update={() => void install(current.name, (job) => ({ op: 'update', name: current.name, job }))}
               ask={(kind, pl) => setConfirm({ kind, p: pl })}
               mail={mailSources.length === 1 && current.mail ? mail : undefined}
-              settings={settingsOf(current)}
+              pages={current.enabled ? settingsOf(current) : []}
               onBack={narrow ? () => setShowDetail(false) : undefined}
             />
           ) : detailView && currentPkg ? (

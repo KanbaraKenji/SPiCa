@@ -194,7 +194,7 @@ describe('views (plugin pages)', () => {
     expect(pm.describe('notes').views).toEqual([
       { id: 'notebook', title: 'Notebook', placement: 'sidebar', entry: 'ui/index.html', icon: 'ui/icon.svg', tools: ['list_notes', 'read_note', 'write_note', 'delete_note'] },
       { id: 'quick-note', title: 'Quick note', placement: 'panel', entry: 'ui/quick-note.html', icon: 'ui/icon.svg', tools: ['read_note', 'write_note'] },
-      { id: 'settings', title: '设置', placement: 'settings', entry: 'ui/settings.html', tools: ['get_settings', 'save_settings'] },
+      { id: 'settings', title: '设定', placement: 'settings', entry: 'ui/settings.html', tools: ['get_settings', 'save_settings'] },
     ]);
     expect(pm.views()).toEqual([]);
     expect(await pm.resolveViewFile('notes', 'ui/index.html')).toBeUndefined();
@@ -227,7 +227,7 @@ describe('views (plugin pages)', () => {
         plugin: 'notes',
         pluginTitle: 'Notes (example)',
         id: 'settings',
-        title: '设置',
+        title: '设定',
         placement: 'settings',
         entry: 'ui/settings.html',
         tools: ['get_settings', 'save_settings'],
@@ -412,27 +412,21 @@ describe('views (plugin pages)', () => {
     expect(check.views).toEqual([]);
   });
 
-  it('a settings page (placement settings): one per plugin, all its tools unless it lists them', async () => {
+  it('settings pages (placement settings): listed like the others, all their tools unless they list them', async () => {
     const dir = await writePlugin({
       'manifest.json': manifest('setty'),
       'views/prefs.json': { title: 'Prefs', entry: 'ui/p.html', placement: 'settings', permissions: { tools: ['get_settings'] } },
+      'views/more.json': { title: 'More', entry: 'ui/p.html', placement: 'settings' },
       'ui/p.html': '<!doctype html>',
     });
     dirs.push(dir);
     r = await rig();
     const ok = await r.pm.check(dir);
     expect(ok.issues).toEqual([]);
-    expect(ok.views).toEqual([{ id: 'prefs', title: 'Prefs', placement: 'settings', entry: 'ui/p.html', tools: ['get_settings'] }]);
-
-    const two = await writePlugin({
-      'manifest.json': manifest('settytwo'),
-      'views/a.json': { title: 'A', entry: 'ui/p.html', placement: 'settings' },
-      'views/b.json': { title: 'B', entry: 'ui/p.html', placement: 'settings' },
-      'ui/p.html': '<!doctype html>',
-    });
-    dirs.push(two);
-    const bad = await r.pm.check(two);
-    expect(bad.issues.map((i) => `${i.where}: ${i.message}`)).toEqual(['views/b.json: 一个插件只能有一个 placement 为 settings 的视图（已有 views/a.json）。']);
+    expect(ok.views).toEqual([
+      { id: 'more', title: 'More', placement: 'settings', entry: 'ui/p.html' },
+      { id: 'prefs', title: 'Prefs', placement: 'settings', entry: 'ui/p.html', tools: ['get_settings'] },
+    ]);
   });
 
   it('the plugin’s own icon: an .svg in its folder, up to 64 KB; describe() gives its path', async () => {

@@ -33,15 +33,31 @@ export function onSecondLaunch(argv: readonly string[], reveal: () => void): voi
 
 /** The part of Electron's app that reads and writes the registration (app.getLoginItemSettings / setLoginItemSettings). */
 export interface LoginItems {
+  /** Whether this exe with these arguments is registered now. */
   get(query: { path: string; args: string[] }): { openAtLogin: boolean };
   set(item: { openAtLogin: boolean; path: string; args: string[] }): void;
 }
 
+type Sync = { support: AutostartSupport; exe: string; io: LoginItems };
+
 /**
- * Makes the registration match the setting. Does nothing where autostart is not offered (a development run or a
+ * What Windows has registered now: the truth for the switch (something else may have changed it, such as the
+ * installer). Null where autostart is not offered (nothing is read) or the registry cannot be read.
+ */
+export function registeredAtLogin(o: Sync): boolean | null {
+  if (o.support !== 'ok') return null;
+  try {
+    return o.io.get({ path: o.exe, args: [LOGIN_ARG] }).openAtLogin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Makes the registration match the switch. Does nothing where autostart is not offered (a development run or a
  * portable copy never writes to the registry). Returns what was done, for the log.
  */
-export function syncAutostart(o: { support: AutostartSupport; want: boolean; exe: string; io: LoginItems }): 'skipped' | 'unchanged' | 'registered' | 'removed' | 'failed' {
+export function syncAutostart(o: Sync & { want: boolean }): 'skipped' | 'unchanged' | 'registered' | 'removed' | 'failed' {
   if (o.support !== 'ok') return 'skipped';
   const item = { path: o.exe, args: [LOGIN_ARG] };
   try {
@@ -52,4 +68,24 @@ export function syncAutostart(o: { support: AutostartSupport; want: boolean; exe
   } catch {
     return 'failed';
   }
+}
+
+/**
+ * The switch and the registration kept together: at start the switch takes what Windows has (read()), and a
+ * change of the switch afterwards is written (changed()). Returns the value the setting should hold at start.
+ */
+export function followAutostart(o: Sync & { log(line: string): void }): { start(saved: boolean): boolean; changed(want: boolean): void } {
+  let known: boolean | null = null;
+  return {
+    start(saved) {
+      known = registeredAtLogin(o);
+      return known ?? saved;
+    },
+    changed(want) {
+      if (o.support !== 'ok' || want === known) return;
+      const r = syncAutostart({ ...o, want });
+      o.log(`[spica] autostart: ${r}`);
+      if (r === 'registered' || r === 'removed' || r === 'unchanged') known = want;
+    },
+  };
 }
