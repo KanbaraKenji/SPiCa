@@ -123,29 +123,33 @@ export type CloseAnswer = { choice: 'tray' | 'quit' | null; remember: boolean };
 
 /**
  * The question in the small dialog window (main/app-dialog-window.ts), when the page cannot show its own: the same
- * as the page's (ui/CloseDialog.tsx) as far as the window can draw it: the title, the line only while a task runs,
- * 不再提醒, then [退出] [最小化到托盘] (the main one). The window has buttons, not radio buttons, so the two choices
- * are buttons here where the page has radio buttons and 确定. Its answer: closeFromDialog.
+ * as the page's (ui/CloseDialog.tsx): the title, the line only while a task runs, the two choices as radio buttons
+ * (最小化到托盘 selected at first), 不再提醒 at the left and 确定 at the right, the × at the top right, 360 wide.
+ * Its answer: closeFromDialog.
  */
 export function closeDialogSpec(appName: string, running: boolean, look: Pick<DialogSpec, 'scheme' | 'tokens'>): DialogSpec {
   return {
     title: CLOSE_QUESTION,
     detail: running ? [CLOSE_RUNNING] : [],
-    buttons: [{ label: `退出 ${appName}` }, { label: '最小化到托盘', primary: true }],
+    choices: { options: ['最小化到托盘', `退出 ${appName}`], selected: 0 },
+    buttons: [{ label: '确定', primary: true }],
     check: CLOSE_REMEMBER,
+    checkInFoot: true,
+    closeButton: true,
+    width: 360,
     ...look,
   };
 }
 
-/** closeDialogSpec's answer: button 0 退出, 1 最小化到托盘; closed without a button is no choice. */
+/** closeDialogSpec's answer, as the page's: 确定 with the choice selected (0 托盘, 1 退出); the × or closing it is no choice. */
 export function closeFromDialog(a: DialogAnswer): CloseAnswer {
-  const choice = a.button === 1 ? 'tray' : a.button === 0 ? 'quit' : null;
+  const choice = a.button === 0 ? (a.choice === 0 ? 'tray' : a.choice === 1 ? 'quit' : null) : null;
   return { choice, remember: choice !== null && a.checked };
 }
 
 /** The message box's answer (closePrompt) in the dialog window's terms, so both go through closeFromDialog. */
 export function dialogFromBox(response: number, checked: boolean): DialogAnswer {
-  return { button: response === 0 ? 1 : response === 1 ? 0 : null, checked };
+  return response === 0 || response === 1 ? { button: 0, checked, choice: response } : { button: null, checked, choice: null };
 }
 
 /** The message box's answer: which button (取消 and closing the box are no choice), and the box ticked. */

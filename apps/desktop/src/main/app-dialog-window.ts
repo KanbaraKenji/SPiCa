@@ -7,11 +7,12 @@ import { join } from 'node:path';
 import { DialogChannel, type DialogAnswer, type DialogSpec } from '../shared/app-dialog';
 import { runDialog, type DialogWindow } from './app-dialog';
 
-/** The page dialog's width (styles.css .dialog: min(400px, 100%)), in CSS pixels. */
+/** The page dialog's width (styles.css .dialog: min(400px, 100%)), in CSS pixels, when the spec gives none. */
 const WIDTH = 400;
 
 /** Opens the dialog over parent and resolves with the answer; rejects when the window cannot be shown (app-dialog.ts runDialog). */
 export function openDialogWindow(parent: BrowserWindow, spec: DialogSpec, zoom: number, showMs?: number): Promise<DialogAnswer> {
+  const width = spec.width ?? WIDTH;
   const win = new BrowserWindow({
     parent,
     modal: true,
@@ -22,7 +23,7 @@ export function openDialogWindow(parent: BrowserWindow, spec: DialogSpec, zoom: 
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
-    width: Math.round(WIDTH * zoom),
+    width: Math.round(width * zoom),
     height: Math.round(160 * zoom),
     backgroundColor: spec.tokens['--spica-raised'] ?? (spec.scheme === 'dark' ? '#303030' : '#ffffff'),
     title: spec.title,
@@ -39,7 +40,10 @@ export function openDialogWindow(parent: BrowserWindow, spec: DialogSpec, zoom: 
   const wc = win.webContents;
   const handle: DialogWindow = {
     onReady: (cb) => wc.ipc.on(DialogChannel.Ready, (_e, h: unknown) => cb(typeof h === 'number' && h > 0 ? h : 160)),
-    onAnswer: (cb) => wc.ipc.on(DialogChannel.Answer, (_e, b: unknown, c: unknown) => cb(typeof b === 'number' ? b : -1, c === true)),
+    onAnswer: (cb) =>
+      wc.ipc.on(DialogChannel.Answer, (_e, b: unknown, c: unknown, k: unknown) =>
+        cb(typeof b === 'number' && b >= 0 && b < spec.buttons.length ? b : null, c === true, spec.choices && typeof k === 'number' && k >= 0 && k < spec.choices.options.length ? k : null),
+      ),
     onFailed: (cb) => {
       wc.on('did-fail-load', (_e, code, desc, _url, mainFrame) => {
         if (mainFrame && code !== -3) cb(`page failed to load (${code} ${desc})`);
@@ -49,7 +53,7 @@ export function openDialogWindow(parent: BrowserWindow, spec: DialogSpec, zoom: 
     onClosed: (cb) => win.on('closed', cb),
     show: (height) => {
       if (win.isDestroyed()) return;
-      const w = Math.round(WIDTH * zoom);
+      const w = Math.round(width * zoom);
       const h = Math.round(height * zoom);
       // Centred on the main window, kept on the screen it is on.
       const p = parent.isDestroyed() ? null : parent.getBounds();

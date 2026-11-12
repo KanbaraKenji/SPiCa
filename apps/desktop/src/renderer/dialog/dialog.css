@@ -107,3 +107,70 @@ body {
   background: var(--spica-accent);
   filter: brightness(1.08);
 }
+
+/* styles.css .close-dialog / .close-dialog .dialog-title: the box holds the × (the title keeps clear of it) */
+.dialog.has-x {
+  position: relative;
+}
+
+.dialog.has-x .dialog-title {
+  padding-right: 32px;
+}
+
+/* styles.css .close-dialog-choices (with .close-dialog-choices .dialog-check: no margin of its own) */
+.dialog-choices {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dialog-choices .dialog-check {
+  margin-top: 0;
+}
+
+/* styles.css .close-dialog-foot (with .close-dialog-foot .dialog-check): the checkbox left, the buttons right */
+.dialog-foot {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dialog-foot .dialog-check,
+.dialog-foot .dialog-actions {
+  margin-top: 0;
+}
+
+/* styles.css .icon-btn (--radius-s 6px) and its hover / active */
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--spica-muted);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--spica-hover);
+  color: var(--spica-ink);
+}
+
+.icon-btn:active {
+  background: var(--spica-active);
+}
+
+/* styles.css .close-dialog-x */
+.dialog-x {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+}
