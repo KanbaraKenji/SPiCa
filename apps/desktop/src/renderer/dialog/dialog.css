@@ -76,10 +76,10 @@ body {
   gap: 8px;
 }
 
-/* styles.css button / .btn (--radius-m 8px) */
+/* styles.css button / .btn (--control-h 28px, --control-pad-x 12px, --radius-m 8px) */
 .btn {
-  height: 32px;
-  padding: 0 14px;
+  height: 28px;
+  padding: 0 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -143,10 +143,10 @@ body {
   margin-top: 0;
 }
 
-/* styles.css .icon-btn (--radius-s 6px) and its hover / active */
+/* styles.css .icon-btn (--control-h 28px square, --radius-s 6px) and its hover / active */
 .icon-btn {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   flex: none;
   display: inline-flex;
