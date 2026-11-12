@@ -32,6 +32,7 @@ import { writeDemoChart } from './backend/demo-image';
 import { ProcessBackend, type BackendStatus } from './backend/process';
 import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { pageAlive, pageRecovery } from './page-recovery';
+import { lookAtPage, watchPage } from './page-watch';
 import { backgroundHint, onWindowClose, revealWindow, showAtStart, wireTray } from './tray';
 import { autostartSupport, followAutostart, loginItemOn, onSecondLaunch, startedAtLogin, type LoginItems } from './autostart';
 import { knownContextWindow, matchWindowIn, toProviderConfig } from './backend/to-config';
@@ -665,6 +666,18 @@ function createMainWindow(): BrowserWindow {
     warn: (line) => console.warn(line),
   });
   win.webContents.on('render-process-gone', (_e, details) => onPageGone(details));
+  // Each load of the page is told in the log: one line, or a warning with the steps seen (main/page-watch.ts).
+  const watch = watchPage({ look: () => lookAtPage(win.webContents), visible: () => !win.isDestroyed() && win.isVisible() && !win.isMinimized(), log: (l) => console.log(l), warn: (l) => console.warn(l) });
+  // The window's own page only: plugin pages and previews load in frames inside it.
+  win.webContents.on('did-start-navigation', (e) => {
+    if (e.isMainFrame && !e.isSameDocument) watch.step('load-start');
+  });
+  win.webContents.on('did-finish-load', () => watch.step('finish'));
+  win.webContents.on('did-fail-load', (_e, code, desc, _url, mainFrame) => {
+    if (mainFrame && code !== -3) watch.step('fail', `${code} ${desc}`);
+  });
+  win.once('ready-to-show', () => watch.step('ready-to-show'));
+  win.on('show', () => watch.step('shown'));
 
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (!app.isPackaged && devUrl) void win.loadURL(devUrl);
