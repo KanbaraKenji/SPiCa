@@ -18,6 +18,9 @@
   --placeholder: var(--spica-placeholder, #878787);
   --on-accent: var(--spica-on-accent, #ffffff);
   --control-h: var(--spica-control-h, 28px);
+  /* A link (a path you can open) as in Spica's answers, and the soft block under it on hover. */
+  --link: var(--spica-accent-text, #2f7de1);
+  --link-soft: var(--spica-accent-soft, #e6effb);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
@@ -30,6 +33,8 @@
     --control-hover: var(--spica-control-hover, #454545);
     --input: var(--spica-input, #303030);
     --edge: var(--spica-border-strong, #474747);
+    --link: var(--spica-accent-text, #62a9ff);
+    --link-soft: var(--spica-accent-soft, #283647);
   }
 }
 * { box-sizing: border-box; }
@@ -74,11 +79,18 @@ body.panel { height: auto; padding: 10px; display: flex; flex-direction: column;
 .inbox { margin: 0; white-space: pre-wrap; word-break: break-word; font: inherit; background: var(--surface); border-radius: var(--radius); padding: 8px; }
 
 /* Settings page (placement "settings": a tab of the plugin's detail in 设置 › 插件). */
-body.settings { padding: 2px; }
+body.settings { padding: 2px 2px 2px 4px; }
 .fields { display: flex; flex-direction: column; gap: 6px; max-width: 520px; }
 /* A field's name as a setting's name in Spica (text colour, 14px, a little bold), not the grey of a hint. */
 .fields .field { font-size: 14px; line-height: 20px; font-weight: 500; color: var(--fg); margin-top: 6px; }
 .field-row { display: flex; gap: 8px; }
 .field-row input { flex: 1; min-width: 0; }
 .fields .actions { margin-top: 6px; }
+/* A path that is the way to it: the link colour, no underline, a soft block under the pointer; one line, cut at the
+   end (the whole path on hover, in title). The pencil at the row's right end; nothing set: — in grey, not a link. */
+.path-row { align-items: center; }
+button.path-link { flex: 0 1 auto; min-width: 0; margin-left: -4px; padding: 0 4px; border: 0; background: none; color: var(--link); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+button.path-link:hover:not(:disabled) { background: var(--link-soft); }
+button.path-link:disabled { color: var(--muted); opacity: 1; }
+.path-row button.icon { margin-left: auto; }
 .settings .muted { padding: 0; }

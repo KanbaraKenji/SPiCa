@@ -1,31 +1,42 @@
 /* global window, document */
 // Settings page (placement "settings"): in Spica under 设置 › 插件 › Notes, the
-// 设定 tab next to 详情. Beside the folder box, two icon buttons: the folder
-// opens what the box says in Explorer (window.spica.openFolder; only with
-// something in the box), the pencil opens the system's folder picker
-// (window.spica.pickFolder) and puts the path into the box. 保存 saves it
-// through the plugin's settings service (get_settings / save_settings,
-// views/settings.json). Cancelling the picker changes nothing.
+// 设定 tab next to 详情. The notes folder is shown as its path, and the path is
+// the way to it: pressed (or Enter on it), it opens in Explorer
+// (window.spica.openFolder). The one in use is shown: the chosen one, else the
+// plugin's default; none at all, —. The pencil opens the system's folder
+// picker (window.spica.pickFolder); 恢复默认 (only while one was chosen) goes
+// back to the default. 保存 saves through the plugin's settings service
+// (get_settings / save_settings, views/settings.json). Cancelling the picker
+// changes nothing.
 const spica = window.spica;
 const $ = (id) => document.getElementById(id);
 let saved = { notesFolder: '', catalogUrl: '' };
+let folder = ''; // chosen, not yet saved maybe; '' = the default
+let defaultFolder = '';
 
 function setStatus(text, isError = false) {
   $('status').textContent = text;
   $('status').style.color = isError ? 'var(--danger)' : '';
 }
 
-const current = () => ({ notesFolder: $('folder').value.trim(), catalogUrl: $('catalog').value.trim() });
+const current = () => ({ notesFolder: folder, catalogUrl: $('catalog').value.trim() });
 const changed = () => {
   const c = current();
   $('save').disabled = c.notesFolder === saved.notesFolder && c.catalogUrl === saved.catalogUrl;
-  $('open').disabled = !c.notesFolder;
+  const inUse = folder || defaultFolder;
+  const open = $('open');
+  open.textContent = inUse || '—';
+  open.disabled = !inUse;
+  open.title = inUse ? `打开文件夹：${inUse}` : '';
+  if (inUse) open.setAttribute('aria-label', `打开文件夹：${inUse}`);
+  else open.removeAttribute('aria-label');
+  $('reset').hidden = !folder;
 };
 
 function show(s) {
   saved = { notesFolder: s.notesFolder ?? '', catalogUrl: s.catalogUrl ?? '' };
-  $('folder').value = saved.notesFolder;
-  $('folder').placeholder = s.defaultFolder ?? '';
+  folder = saved.notesFolder;
+  defaultFolder = s.defaultFolder ?? '';
   $('catalog').value = saved.catalogUrl;
   changed();
 }
@@ -37,23 +48,27 @@ async function load() {
 }
 
 $('pick').onclick = async () => {
-  const dir = await spica.pickFolder({ title: '选择笔记文件夹', defaultPath: $('folder').value.trim() || undefined });
+  const dir = await spica.pickFolder({ title: '选择笔记文件夹', defaultPath: folder || defaultFolder || undefined });
   if (dir === null) return; // cancelled: nothing changes
-  $('folder').value = dir;
+  folder = dir;
   setStatus('');
   changed();
 };
 
 $('open').onclick = async () => {
   try {
-    await spica.openFolder($('folder').value.trim());
+    await spica.openFolder(folder || defaultFolder);
     setStatus('');
   } catch (err) {
     setStatus(err.message, true); // e.g. 找不到文件夹：… (not created yet, or typed wrong)
   }
 };
 
-$('folder').oninput = changed;
+$('reset').onclick = () => {
+  folder = '';
+  setStatus('');
+  changed();
+};
 $('catalog').oninput = changed;
 
 $('form').onsubmit = async (e) => {

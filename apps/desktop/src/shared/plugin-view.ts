@@ -81,6 +81,9 @@ export function pluginThemeVars(tokens: Record<string, string>, fontUi: string):
     '--spica-placeholder': t('--spica-placeholder', '#878787'),
     '--spica-on-accent': t('--spica-on-accent', '#ffffff'),
     '--spica-control-h': '28px',
+    // A link (a path the page can open) as in Spica's answers, and the soft block under it on hover.
+    '--spica-accent-text': t('--spica-accent-text', '#2f7de1'),
+    '--spica-accent-soft': t('--spica-accent-soft', '#e6effb'),
   };
 }
 

@@ -973,11 +973,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
                   >
                     <Switch on={state.mock} label="模拟模式" disabled={busy} onChange={(on) => void run({ op: 'mock', on })} />
                   </Row>
-                  <Row title="插件目录" hint={state.root} path={{ hint: state.root }}>
-                    <button type="button" className="btn btn-square" onClick={() => void run({ op: 'openRoot' })} aria-label="打开文件夹" title="打开文件夹">
-                      <Icon name="folder" size={16} />
-                    </button>
-                  </Row>
+                  <Row title="插件目录" hint={state.root} path={{ hint: state.root, open: () => void run({ op: 'openRoot' }) }} />
                 </Group>
               ) : null}
             </>

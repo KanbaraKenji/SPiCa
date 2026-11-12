@@ -5628,6 +5628,23 @@ section.plugins-part > .plugins-part-title {
   white-space: nowrap;
 }
 
+/* A path in a settings row that is itself the way to it (工作流, 插件目录, an exported file): as a path in an
+   answer (.md-path), the link colour and a soft block under the pointer, never underlined; reaching a little
+   left of the text so the text stays in line with the rows above and below. */
+.path-link {
+  align-self: flex-start;
+  max-width: calc(100% + 8px);
+  margin-left: -4px;
+  padding: 0 4px;
+  border-radius: var(--radius-s);
+  text-align: left;
+  color: var(--spica-accent-text);
+}
+
+.path-link:hover {
+  background: var(--spica-accent-soft);
+}
+
 .workflow-problems {
   margin: 0;
   padding: 0;

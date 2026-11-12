@@ -101,9 +101,30 @@ export interface RowProps {
   children?: ReactNode;
   /** The control under the name, full width (fields you type into). */
   stack?: boolean;
-  /** The name / grey line is a path: one line, cut at the end, whole on hover. */
-  path?: { title?: string; hint?: string };
+  /**
+   * The name / grey line is a path: one line, cut at the end, whole on hover. With `open`, that path is itself
+   * the way to it (a folder opens, a file is shown in its folder): pressed, or Enter on it; in the colour of a
+   * path in an answer, no underline; `openLabel` (打开文件夹 / 在文件夹中显示) and the whole path on hover.
+   */
+  path?: { title?: string; hint?: string; open?: () => void; openLabel?: string };
   className?: string;
+}
+
+/** A path in a row: plain text, or with `open` the way to it. */
+function PathText({ className, text, children, open, openLabel }: { className: string; text: string; children: ReactNode; open?: () => void; openLabel?: string }) {
+  if (!open || !text) {
+    return (
+      <span className={`${className} path-text`} title={text} data-tip-clipped="">
+        {children}
+      </span>
+    );
+  }
+  const label = `${openLabel ?? '打开文件夹'}：${text}`;
+  return (
+    <button type="button" className={`${className} path-text path-link`} title={label} aria-label={label} onClick={open}>
+      {children}
+    </button>
+  );
 }
 
 export function Row({ title, hint, children, stack, path, className }: RowProps) {
@@ -120,16 +141,16 @@ export function Row({ title, hint, children, stack, path, className }: RowProps)
     <div className={cls} data-setting={textOf(title)}>
       <div className="setting-text">
         {path?.title !== undefined ? (
-          <span className="setting-title path-text" title={path.title} data-tip-clipped="">
+          <PathText className="setting-title" text={path.title} open={path.open} openLabel={path.openLabel}>
             {title}
-          </span>
+          </PathText>
         ) : (
           <span className="setting-title">{title}</span>
         )}
         {hint === undefined || hint === null || hint === '' ? null : path?.hint !== undefined ? (
-          <span className="settings-hint path-text" title={path.hint} data-tip-clipped="">
+          <PathText className="settings-hint" text={path.hint} open={path.title === undefined ? path.open : undefined} openLabel={path.openLabel}>
             {hint}
-          </span>
+          </PathText>
         ) : (
           <span className="settings-hint">{hint}</span>
         )}

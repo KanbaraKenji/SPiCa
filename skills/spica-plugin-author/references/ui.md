@@ -46,6 +46,7 @@
 | `--spica-placeholder` | 输入框里的灰色提示字 |
 | `--spica-on-accent` | 主按钮（底色 `--spica-accent`）上的字 |
 | `--spica-control-h` | 按钮、输入框、图标按钮的高度（现在 28px） |
+| `--spica-accent-text` / `--spica-accent-soft` | 链接（能点开的路径）的字色 / 悬停底色，和回答里的路径链接一样 |
 
 标签和输入框里的字用 `--spica-fg`；灰字 `--spica-muted` 只给说明和状态。不要写死颜色。
 
@@ -74,28 +75,31 @@
 - 背景：设置页里 `--spica-bg` 是设置窗口右边那一栏的底色（页面和它连成一片）；按钮用 `--spica-control`、输入框用 `--spica-input`。
 - 读写设置的工具放进 `services/`（只给页面用，模型看不到），存进 `SPICA_PLUGIN_DATA/config.json`，见 `internal-services.md`。
 
-选文件夹：输入框后面两个方形图标按钮，图标和 Spica 自己 设置 › 常规 › 工作流 那一行的一样：紧挨输入框的铅笔 =「选择文件夹」，后面的文件夹图标 =「打开文件夹」，名字写进 `title`（悬停显示）。图标用内嵌 SVG，样式 `button.icon` 照抄 `plugins/example-notes/ui/style.css`。
+选文件夹：照 Spica 自己 设置 › 常规 › 工作流 那一行，路径本身就是打开它的链接（点它或回车，在资源管理器里打开），右边一个铅笔图标按钮「选择文件夹」。路径用 `--spica-accent-text`、不加下划线、悬停底色 `--spica-accent-soft`，一行放不下就截断，`title` 写「打开文件夹：完整路径」；没有路径时显示灰色「—」，不能点。样式 `button.path-link`、`button.icon` 照抄 `plugins/example-notes/ui/style.css`。
 
 ```html
-<div class="field-row">
-  <input id="folder" type="text">
+<div class="field-row path-row">
+  <button type="button" class="path-link" id="open" disabled>—</button>
   <button type="button" class="icon" id="pick" title="选择文件夹" aria-label="选择文件夹">
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.2 2.6l2.2 2.2-7.6 7.6-2.9.7.7-2.9z"/></svg>
-  </button>
-  <button type="button" class="icon" id="open" title="打开文件夹" aria-label="打开文件夹" disabled>
-    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h4l1.2 1.5h5.8v6.5h-11z"/></svg>
   </button>
 </div>
 ```
 
 ```js
-pick.onclick = async () => {
-  const dir = await window.spica.pickFolder({ title: '选择导出文件夹', defaultPath: box.value || undefined });
-  if (dir === null) return;        // 用户取消：什么都不改
-  box.value = dir;                 // 填回页面，用户点「保存」时经自己的工具存
+let folder = '';                   // 选了的文件夹；保存时经自己的工具存
+const showFolder = () => {
+  open.textContent = folder || '—';  // 没有就显示「—」，不能点
+  open.disabled = !folder;
+  open.title = folder ? `打开文件夹：${folder}` : '';
 };
-open.onclick = () => window.spica.openFolder(box.value).catch((err) => showError(err.message));
-box.oninput = () => (open.disabled = !box.value.trim());   // 框里空着时「打开」不能点
+pick.onclick = async () => {
+  const dir = await window.spica.pickFolder({ title: '选择导出文件夹', defaultPath: folder || undefined });
+  if (dir === null) return;   // 用户取消：什么都不改
+  folder = dir;
+  showFolder();
+};
+open.onclick = () => window.spica.openFolder(folder).catch((err) => showError(err.message));
 ```
 
 - 只给路径。读写还是插件自己的工具（钩子和确认照常生效）。

@@ -54,6 +54,8 @@ describe('plugin pages', () => {
         '--spica-placeholder',
         '--spica-on-accent',
         '--spica-control-h',
+        '--spica-accent-text',
+        '--spica-accent-soft',
       ].sort(),
     );
     expect(vars['--spica-fg']).toBe('#ecebe5');

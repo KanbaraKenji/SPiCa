@@ -23,8 +23,8 @@ import { stripBom } from './lib/pack.mjs';
 
 // Spica's two built-in skins (浅色 / 深色), the variables a page gets in Spica; radius, height and font below.
 export const THEMES = {
-  light: { bg: '#ffffff', surface: '#fafafa', fg: '#191919', muted: '#666666', border: '#fbfbfb', accent: '#2f7de1', danger: '#dc2626', control: '#f2f2f2', 'control-hover': '#e5e5e5', input: '#ffffff', 'border-strong': '#cecece', placeholder: '#878787', 'on-accent': '#ffffff' },
-  dark: { bg: '#191919', surface: '#222222', fg: '#efefef', muted: '#9c9c9c', border: '#222222', accent: '#62a9ff', danger: '#f87171', control: '#3b3b3b', 'control-hover': '#454545', input: '#303030', 'border-strong': '#474747', placeholder: '#878787', 'on-accent': '#ffffff' },
+  light: { bg: '#ffffff', surface: '#fafafa', fg: '#191919', muted: '#666666', border: '#fbfbfb', accent: '#2f7de1', danger: '#dc2626', control: '#f2f2f2', 'control-hover': '#e5e5e5', input: '#ffffff', 'border-strong': '#cecece', placeholder: '#878787', 'on-accent': '#ffffff', 'accent-text': '#2f7de1', 'accent-soft': '#e6effb' },
+  dark: { bg: '#191919', surface: '#222222', fg: '#efefef', muted: '#9c9c9c', border: '#222222', accent: '#62a9ff', danger: '#f87171', control: '#3b3b3b', 'control-hover': '#454545', input: '#303030', 'border-strong': '#474747', placeholder: '#878787', 'on-accent': '#ffffff', 'accent-text': '#62a9ff', 'accent-soft': '#283647' },
 };
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.woff2': 'font/woff2' };
 

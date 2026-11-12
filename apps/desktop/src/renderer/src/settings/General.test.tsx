@@ -78,7 +78,9 @@ describe('导出使用日志', () => {
     fireEvent.click(screen.getByRole('button', { name: '导出…' }));
     expect(p.exportUsageLog).toHaveBeenCalledWith({ projectId: 'p-budget', from: rangeStart('week', now) });
     expect(await screen.findByText('已导出 1,234 条记录')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '在文件夹中显示' }));
+    // The file's path is the way to it (no separate button): shown in its folder.
+    expect(screen.queryByRole('button', { name: '在文件夹中显示' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^在文件夹中显示：.*使用日志-20261109\.jsonl$/ }));
     expect(p.showInFolder).toHaveBeenCalledWith('C:\\Users\\me\\Documents\\Spica\\使用日志-20261109.jsonl');
   });
 
@@ -185,5 +187,18 @@ describe('启动与托盘', () => {
     cleanup();
     setup({ autostart: 'portable' });
     expect(screen.getByText('便携版不能开机启动，只有安装版能用。')).toBeTruthy();
+  });
+});
+
+describe('工作流', () => {
+  it('the path of the folder opens it (no folder button); the pencil changes it, the arrow reads it again', async () => {
+    const p = setup();
+    const link = await screen.findByRole('button', { name: '打开文件夹：C:\\Spica\\workflows' });
+    expect(link.textContent).toBe('C:\\Spica\\workflows');
+    expect(screen.queryByRole('button', { name: '打开文件夹' })).toBeNull();
+    fireEvent.click(link);
+    expect(p.workflows.run).toHaveBeenCalledWith('open');
+    expect(screen.getByRole('button', { name: '更改' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重新读取' })).toBeTruthy();
   });
 });

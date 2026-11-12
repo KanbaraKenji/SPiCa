@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Group, Pane, Row } from './Group';
 
 afterEach(cleanup);
@@ -56,4 +56,25 @@ describe('settings › one group, one box', () => {
     expect(hint.getAttribute('title')).toBe('D:\\工作\\plugins');
     expect(container.querySelector('.setting-title')?.classList.contains('path-text')).toBe(false);
   });
+
+  it('a path that is the way to it: a button with the path, its action and the whole path on hover; without one, text', () => {
+    const open = vi.fn();
+    const dir = 'D:\\Spica\\plugins';
+    render(
+      <Group>
+        <Row title="插件目录" hint={dir} path={{ hint: dir, open }} />
+        <Row title="证书" hint={'D:\\ca.pem'} path={{ hint: 'D:\\ca.pem' }} />
+        <Row title="导出" hint="—" path={{ hint: '', open }} />
+      </Group>,
+    );
+    const link = screen.getByRole('button', { name: `打开文件夹：${dir}` });
+    expect(link.className).toContain('path-link');
+    expect(link.textContent).toBe(dir);
+    expect(link.getAttribute('title')).toBe(`打开文件夹：${dir}`);
+    fireEvent.click(link);
+    expect(open).toHaveBeenCalledTimes(1);
+    // Only the one with a way and a path is a button.
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+  });
 });
+
