@@ -232,7 +232,7 @@ export function deriveTokens(skin: Skin): Tokens {
     '--spica-menu-hover': derived['--spica-hover']!,
   };
   const all: Tokens = { ...derived, ...layers, ...(skin.fixed as Tokens | undefined) };
-  // The settings dialog (他 2026-11-12, from Claude's): its sections' column is the deeper of the window's two
+  // The settings dialog: its sections' column is the deeper of the window's two
   // greys (main pane, chrome), its content the lighter one, whichever way round a skin has them.
   const bgTone = all['--spica-bg']!;
   const chromeTone = all['--spica-chrome']!;

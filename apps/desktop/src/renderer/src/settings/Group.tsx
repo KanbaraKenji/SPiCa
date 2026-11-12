@@ -1,4 +1,4 @@
-// The one way every settings page lays out its items (他 2026-11-12 picked 「一组一个框」):
+// The one way every settings page lays out its items:
 // a group title (with the group's own buttons at its right end), one rounded box, rows in it
 // split by thin lines. A row: the name and a grey line under it on the left, the control on
 // the right. Styles: .settings-group / .group-head / .group-box / .setting-row in styles.css.

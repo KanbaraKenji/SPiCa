@@ -1,4 +1,4 @@
-// Settings, as a dialog over the window (他 2026-11-12 picked 「大弹窗」): the window behind dims; on the left
+// Settings, as a dialog over the window: the window behind dims; on the left
 // 搜索设置 and the sections in groups (应用 / 扩展 / 个人, then 关于), on the right the section's name and the
 // section itself, which scrolls by itself. While 搜索设置 holds words the right side lists the rows that match. The close button at the top right and a press outside close it; so does Esc, through App's own Esc
 // (as before it was a dialog), so a confirm box, a menu or a field inside closes only itself.
