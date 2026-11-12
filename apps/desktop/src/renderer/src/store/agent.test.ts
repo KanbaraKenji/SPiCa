@@ -20,19 +20,16 @@ describe('conversation names', () => {
 });
 
 describe('AgentStore', () => {
-  it('a spending limit stop keeps its words and its 重置 / 修改上限 after the conversation is read again; 重置 goes on; 未计价 reaches the list', async () => {
+  it('a stop at a provider’s 花费上限 keeps its words, its 模型设置 button and the provider after the conversation is read again; 未计价 reaches the list', async () => {
     const backend = new FakeBackend({ speed: 0, seed: false });
     const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
     await store.init();
-    backend.setRunLimit(1);
+    backend.setSpendLimit('p-1', 1);
     await store.send(null, '花费上限 整理需求');
     const id = store.state.get().activeId!;
-    await vi.waitFor(() => expect(store.state.get().transcripts[id]?.errorAction).toBe('run-limit'));
+    await vi.waitFor(() => expect(store.state.get().transcripts[id]?.errorAction).toBe('models'));
     await new Promise((r) => setTimeout(r, 50)); // the reload after the run ended
-    expect(store.state.get().transcripts[id]).toMatchObject({ errorAction: 'run-limit', error: expect.stringMatching(/^已达单次运行花费上限/) });
-    // 重置: a new run from where it stopped, the note goes
-    await store.resume(id);
-    await vi.waitFor(() => expect(store.state.get().transcripts[id]?.error).toBeUndefined());
+    expect(store.state.get().transcripts[id]).toMatchObject({ errorAction: 'models', errorProvider: 'p-1', error: '已达花费上限' });
     await store.send(null, '未计价 公司网关');
     const gw = store.state.get().activeId!;
     await vi.waitFor(() => expect(store.state.get().sessions.find((s) => s.id === gw)?.unpriced).toBe(true));

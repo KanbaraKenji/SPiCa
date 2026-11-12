@@ -126,12 +126,6 @@ export interface ShellSettings {
   /** The one notification about being minimized to the tray was shown. */
   backgroundHintShown: boolean;
   /**
-   * The old 模型 › 单次运行花费上限 (one value for every model, USD; null = none). The limit now belongs to each model
-   * (ConnectionModel.runLimitUsd): at start a value here is given to every model in use without one of its own
-   * (ProviderStore.adoptRunLimit) and this goes back to null. Only read for that.
-   */
-  runLimitUsd: number | null;
-  /**
    * 模型 › 代理互发消息上限: how many messages one conversation may send to other agents since the user last wrote
    * in it; then it stops and waits for the user (he wanted Claude desktop's guard, 2026-11-12). null = no limit.
    * Default AGENT_MESSAGES_DEFAULT.
@@ -191,7 +185,7 @@ export function effectiveAccount(s: Pick<ShellSettings, 'account'>, auto: string
 /** The highest 单次运行花费上限 accepted (a typo of a few zeros is refused, not kept). */
 export const RUN_LIMIT_MAX_USD = 10_000;
 
-/** A 单次运行花费上限 as typed: a positive amount up to RUN_LIMIT_MAX_USD, cents at most; anything else is no limit. */
+/** A 花费上限 as saved: a positive amount up to RUN_LIMIT_MAX_USD, cents at most; anything else is no limit. */
 export function runLimit(v: unknown): number | null {
   if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0 || v > RUN_LIMIT_MAX_USD) return null;
   return Math.max(0.01, Math.round(v * 100) / 100);
@@ -229,7 +223,6 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   closeWindow: 'ask',
   openAtLogin: false,
   backgroundHintShown: false,
-  runLimitUsd: null,
   agentMessageLimit: 10,
   account: '',
   callName: '',
@@ -329,7 +322,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { account: accountValue(v.account), callName: callNameValue(v.callName), runLimitUsd: runLimit(v.runLimitUsd), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
+  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

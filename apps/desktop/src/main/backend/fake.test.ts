@@ -513,34 +513,42 @@ describe('FakeBackend', () => {
   });
 });
 
-describe('spending as the core counts it (单次运行花费上限, 未计价)', () => {
-  it('no limit by default; a limit stops before a call that could pass it; a model without a price never stops and is marked', async () => {
+describe('spending as the core counts it (a provider’s 花费上限, 未计价, 欠费)', () => {
+  it('no limit by default; a limit on all the provider has cost stops before a call that could pass it, over conversations; a model without a price never stops', async () => {
     const b = new FakeBackend({ speed: 0, seed: false });
     const { events, until } = collect(b);
     const chat = await b.createSession({});
     await b.send(chat.id, '花费上限 试一下');
     await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
     expect(events.some((e) => e.type === 'budget.stop')).toBe(false);
+    const before = b.spentUsd();
+    expect(before).toBeGreaterThan(1);
 
-    b.setRunLimit(1);
+    b.setSpendLimit('p-1', before + 1);
     events.length = 0;
-    await b.send(chat.id, '花费上限 再来');
-    const end = await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
-    expect(end).toMatchObject({ reason: 'budget' });
+    const next = await b.createSession({});
+    await b.send(next.id, '花费上限 再来');
+    expect(await until((e) => e.type === 'run.end' && e.sessionId === next.id)).toMatchObject({ reason: 'budget' });
     const stop = events.find((e) => e.type === 'budget.stop');
-    expect(stop).toMatchObject({ limitUsd: 1 });
+    expect(stop).toMatchObject({ scope: 'p-1:global', limitUsd: before + 1 });
     if (stop?.type !== 'budget.stop') throw new Error('no stop');
-    expect(stop.spentUsd).toBeLessThan(1);
-    expect(stop.spentUsd + stop.nextUsd!).toBeGreaterThan(1);
+    expect(stop.spentUsd + stop.nextUsd!).toBeGreaterThan(before + 1);
 
     events.length = 0;
-    b.setRunLimit(0.0001);
+    b.setSpendLimit('p-1', 0.0001);
     const gw = await b.createSession({});
     await b.send(gw.id, '未计价 公司网关');
     expect(await until((e) => e.type === 'run.end' && e.sessionId === gw.id)).toMatchObject({ reason: 'completed' });
     expect(events.filter((e) => e.type === 'usage').every((e) => e.type === 'usage' && e.unpriced === true && e.costUsd === 0)).toBe(true);
-    expect((await b.getSession(gw.id))).toMatchObject({ costUsd: 0, unpriced: true });
-    expect(events.find((e) => e.type === 'cost' && e.scope === 'global')).toMatchObject({ unpriced: true });
+  });
+
+  it('「欠费」: the provider says the account is out of money (HTTP 402)', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '欠费');
+    expect(await until((e) => e.type === 'run.end' && e.sessionId === chat.id)).toMatchObject({ reason: 'error' });
+    expect(events.find((e) => e.type === 'error')).toMatchObject({ message: expect.stringMatching(/^HTTP 402/) });
   });
 });
 
@@ -571,22 +579,5 @@ describe('messaging a sub-agent past 代理互发消息上限 (「互发」)', (
     await b.send(chat.id, '互发');
     await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
     expect(events.filter((e) => e.type === 'tool.end' && e.name === 'message_agent' && e.isError)).toEqual([]);
-  });
-});
-
-describe('重置 after the model’s 花费上限 stopped a run (resume)', () => {
-  it('goes on from where it stopped as a new run; without a stop, resume does nothing', async () => {
-    const b = new FakeBackend({ speed: 0, seed: false });
-    const { events, until } = collect(b);
-    const chat = await b.createSession({});
-    await b.resume(chat.id);
-    expect(events.some((e) => e.type === 'run.end' && e.sessionId === chat.id)).toBe(false);
-    b.setRunLimit(1);
-    await b.send(chat.id, '花费上限 再来');
-    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
-    expect(events.find((e) => e.type === 'budget.stop')).toMatchObject({ scope: 'model:run' });
-    events.length = 0;
-    await b.resume(chat.id);
-    expect(await until((e) => e.type === 'run.end' && e.sessionId === chat.id)).toMatchObject({ reason: 'completed' });
   });
 });

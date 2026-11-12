@@ -251,11 +251,8 @@ describe('runtime settings', () => {
       await client.call('configure', { providers: [{ id: 'gw', kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1` }] });
       expect(s.info().contextWindow).toBeNull();
 
-      // run limits per model come the same way: set, wrong ones named, left out = none
-      await client.call('configure', { providers: [{ id: 'gw', kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1`, runLimits: { m: 1.5 } }] });
-      expect(b.runtime.ledger.modelRunLimit({ providerId: 'gw', model: 'm' })).toBe(1.5);
-      await client.call('configure', { providers: [{ id: 'gw', kind: 'openai-compatible', baseUrl: `${gw.baseUrl}/v1` }] });
-      expect(b.runtime.ledger.modelRunLimit({ providerId: 'gw', model: 'm' })).toBeUndefined();
+      // what each provider has cost so far (none yet here; an unknown id is 0)
+      expect(await client.call('providerSpend', ['gw', 'nobody'])).toEqual({ gw: 0, nobody: 0 });
 
       // what the core knows, to pre-fill the form (also the same model behind another kind of endpoint)
       expect(await client.call('knownContextWindow', 'anthropic', 'claude-haiku-5-5')).toBe(1_000_000);

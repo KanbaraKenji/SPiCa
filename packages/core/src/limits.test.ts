@@ -99,6 +99,18 @@ describe('limits in the runtime', () => {
     expect(s.status).toBe('idle');
   });
 
+  it('a total limit for one provider: counted over runs and conversations, the call that could pass it is not made', async () => {
+    gw.onRequest(() => ({ text: 'ok', usage: { input: 100_000, output: 1_000 } }));
+    const rt = makeRuntime(gw, { budget: { perProvider: { 'fake-openai': { globalUsd: 1 } } } });
+    const events = captureEvents(rt);
+    // each call costs 0.52 USD at the fallback price: after two (1.04, past the limit) the third is not made
+    expect((await rt.createSession({ maxTokens: 1000 }).send('a').done).reason).not.toBe('budget');
+    expect((await rt.createSession({ maxTokens: 1000 }).send('b').done).reason).not.toBe('budget');
+    expect((await rt.createSession({ maxTokens: 1000 }).send('c').done).reason).toBe('budget');
+    expect(events.find((e) => e.type === 'budget.stop')).toMatchObject({ scope: 'fake-openai:global', limitUsd: 1 });
+    expect(rt.ledger.providerUsd('fake-openai')).toBeCloseTo(1.04);
+  });
+
   it('refuses a single call whose worst case exceeds the per-call limit of its provider', async () => {
     const rt = makeRuntime(gw, { budget: { perProvider: { 'fake-openai': { perCallUsd: 0.01 } } } });
     const s = rt.createSession({ maxTokens: 100_000 }); // up to $2 of output
@@ -238,70 +250,5 @@ describe('price lookup', () => {
     const defaults = new CostLedger();
     // exact model under the kind wins over a '*' row under the id
     expect(defaults.price('anthropic-prod', 'anthropic', 'claude-haiku-5-5')).toMatchObject({ input: 0.1 });
-  });
-});
-
-describe('a spending limit per model for one run (ProviderConfig.runLimits)', () => {
-  const scope = { providerId: 'p', providerKind: 'openai-compatible', model: 'known', sessionId: 's1', runId: 'r1' };
-  const other = { ...scope, model: 'other' };
-  const ledger = () => new CostLedger({ 'openai-compatible': { known: { input: 1, output: 1 }, other: { input: 1, output: 1 }, '*': { input: 5, output: 20, unverified: true, unpriced: true } } });
-
-  it('a call of that model does not start past it (all the run spent counts); another model and another run are not held by it', () => {
-    const l = ledger();
-    expect(l.setRunLimits('p', { known: 0.5, bad: -1, nan: Number.NaN })).toEqual(['bad', 'nan']);
-    expect(l.modelRunLimit(scope)).toBe(0.5);
-    l.record(other, { inputTokens: 300_000, outputTokens: 0 }); // 0.3 spent by the other model, same run
-    expect(l.precheck(scope, 150_000, 150_000)).toMatchObject({ ok: false, scope: 'model:run', spentUsd: 0.3, limitUsd: 0.5, nextUsd: 0.3 });
-    expect(l.precheck(scope, 100_000, 0)).toEqual({ ok: true });
-    expect(l.precheck(other, 1_000_000, 1_000_000)).toEqual({ ok: true }); // no limit set for it
-    expect(l.precheck({ ...scope, runId: 'r2' }, 200_000, 200_000)).toEqual({ ok: true }); // a new run starts at 0
-  });
-
-  it('the run total in a record carries the lower of the budget and the model limit; cleared with an empty map', () => {
-    const l = new CostLedger({ 'openai-compatible': { known: { input: 1, output: 1 } } }, { perRunUsd: 2 });
-    l.setRunLimits('p', { known: 0.5 });
-    expect(l.record(scope, { inputTokens: 450_000, outputTokens: 0 }).totals.find((t) => t.scope === 'run')).toMatchObject({ limitUsd: 0.5, warning: true });
-    l.setRunLimits('p', {});
-    expect(l.modelRunLimit(scope)).toBeUndefined();
-    expect(l.record(scope, { inputTokens: 1, outputTokens: 0 }).totals.find((t) => t.scope === 'run')).toMatchObject({ limitUsd: 2 });
-  });
-
-  it('a model without a price is never stopped by it', () => {
-    const l = ledger();
-    l.setRunLimits('p', { mystery: 0.01 });
-    expect(l.precheck({ ...scope, model: 'mystery' }, 1_000_000, 1_000_000)).toEqual({ ok: true });
-  });
-});
-
-describe('a run stopped by its model limit, then continued (重置)', () => {
-  let gw: FakeGateway;
-  beforeEach(async () => {
-    gw = await startGateway();
-  });
-  afterEach(async () => {
-    await gw.stop();
-  });
-
-  it('stops before the call that could pass it; resume() is a new run, its count starts at 0 and it goes on', async () => {
-    gw.onRequest(() => ({ toolCalls: [{ name: 'list_dir', args: {} }], usage: { input: 100_000, output: 1_000 } }));
-    const rt = makeRuntime(gw);
-    rt.ledger.setRunLimits('fake-openai', { 'fake-model': 1.2 });
-    rt.ledger.setPrices({ 'fake-openai': { 'fake-model': { input: 5, output: 20 } } }); // a real price: a stand-in is never stopped
-    const events = captureEvents(rt);
-    const s = rt.createSession({ maxTokens: 1000 });
-    const r = await s.send('loop').done;
-    expect(r.reason).toBe('budget');
-    expect(r.detail).toMatch(/spending limit for fake-model reached/);
-    expect(gw.requests).toHaveLength(2);
-    const stop = events.find((e) => e.type === 'budget.stop');
-    expect(stop).toMatchObject({ scope: 'model:run', limitUsd: 1.2 });
-    const spentBefore = rt.ledger.sessionUsd(s.id);
-    // continue where it stopped: no new user message, two more calls before the same limit stops it again
-    const again = await s.resume()!;
-    expect(again.reason).toBe('budget');
-    expect(gw.requests).toHaveLength(4);
-    expect(s.messages().filter((m) => m.kind === 'user' && m.role === 'user')).toHaveLength(1);
-    // what the conversation spent is not cleared
-    expect(rt.ledger.sessionUsd(s.id)).toBeGreaterThan(spentBefore);
   });
 });

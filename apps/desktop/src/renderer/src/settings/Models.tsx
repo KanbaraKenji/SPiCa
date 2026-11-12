@@ -50,6 +50,10 @@ export interface ProvidersApi {
   listModels?(draft: ProviderDraft): Promise<ListModelsView>;
   /** A model name matched to the catalog, for its 上下文上限. */
   matchWindow?(kind: ProviderKind, model: string, catalogId?: string | null): Promise<WindowMatch | null>;
+  /** 已花 of each saved provider since its last 清零 (USD). */
+  spend?(): Promise<Record<string, number>>;
+  /** 清零 one provider's 已花. */
+  resetSpend?(id: string): Promise<void>;
   /** The models changed elsewhere (a connected script); the list is read again. */
   onChanged?(listener: () => void): () => void;
 }
@@ -120,6 +124,11 @@ function Field({ label, value, onChange, error, placeholder, type = 'text', hint
 
 // Which connection was open and what was typed into each one, kept while you look elsewhere.
 const SELECTED = 'models.selected';
+
+/** The next time 设置 › 模型 opens, it opens this connection (a stop at its 花费上限 points to it). */
+export function openProviderNext(id: string): void {
+  keepDraft(SELECTED, id, null);
+}
 const draftKey = (id: string | 'new') => `models.draft:${id}`;
 
 /** A pointer as one <select> value (connection id and model, which ids never contain a tab). */
@@ -201,6 +210,14 @@ export function AgentMessagesRow({ value, onChange }: RunLimitProps) {
 
 export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessages?: RunLimitProps }) {
   const [list, setList] = useState<ProviderList | null>(null);
+  // 已花 of each saved provider (since its last 清零)
+  const [spent, setSpent] = useState<Record<string, number>>({});
+  const loadSpent = () => {
+    void api
+      .spend?.()
+      .then(setSpent)
+      .catch(() => undefined);
+  };
   const [catalog, setCatalog] = useState<ModelCatalogView | null>(null);
   const [selected, setSelectedState] = useState<string | 'new' | null>(() => keptDraft<string>(SELECTED) ?? null);
   const [draft, setDraft] = useState<ProviderDraft>(() => {
@@ -247,6 +264,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
         })
         .catch((e: unknown) => alive && setResult({ ok: false, message: friendlyError(e) }));
     void load();
+    loadSpent();
     void api
       .catalog?.()
       .then((c) => alive && setCatalog(c))
@@ -405,17 +423,6 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
 
   const setWindow = (id: string, value: number | null) =>
     set({ models: (draft.models ?? []).map((x) => (x.id === id ? { ...x, contextWindow: value, contextFrom: 'user' } : x)) });
-
-  const setRunLimit = (id: string, usd: number | undefined) =>
-    set({
-      models: (draft.models ?? []).map((x) => {
-        if (x.id !== id) return x;
-        const next = { ...x };
-        if (usd === undefined) delete next.runLimitUsd;
-        else next.runLimitUsd = usd;
-        return next;
-      }),
-    });
 
   const addTyped = (id: string) => {
     if ((draft.models ?? []).some((x) => x.id === id && x.enabled !== false)) return;
@@ -622,7 +629,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
         </Group>
       ) : null}
 
-      {/* 单次运行花费上限 is on each model (the model list of its provider) */}
+      {/* 花费上限 is on each provider (its form below) */}
       {agentMessages ? (
         <Group title="上限">
           <AgentMessagesRow {...agentMessages} />
@@ -778,7 +785,6 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                     onToggle={toggle}
                     onRemove={(id) => set({ models: (draft.models ?? []).filter((x) => x.id !== id) })}
                     onWindow={setWindow}
-                    onRunLimit={setRunLimit}
                     onAdd={addTyped}
                     onFetch={api.listModels ? () => void fetchRun(fetchModels) : undefined}
                     fetching={fetching}
@@ -786,6 +792,37 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                     fetchNote={fetchNote}
                     error={errors.model ?? errors.contextWindow}
                   />
+                </span>
+              </div>
+
+              {/* 花费上限: what this provider may cost in all; 已花 and 清零 beside it once it is saved */}
+              <div className="field field-stack">
+                <span className="field-label">花费上限</span>
+                <span className="field-control">
+                  <span className="spend-limit">
+                    <label className="run-limit">
+                      <span aria-hidden="true">US$</span>
+                      <input
+                        className={errors.spendLimitUsd ? 'input is-invalid' : 'input'}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={numText(draft.spendLimitUsd ?? null)}
+                        placeholder="不限"
+                        autoComplete="off"
+                        aria-label="花费上限（美元）"
+                        aria-invalid={errors.spendLimitUsd ? true : undefined}
+                        onChange={(e) => set({ spendLimitUsd: parseNum(e.target.value) })}
+                      />
+                    </label>
+                    {current ? <span className="spend-spent">已花 US${(spent[current.id] ?? 0).toFixed(2)}</span> : null}
+                    {current && api.resetSpend && (spent[current.id] ?? 0) > 0 ? (
+                      <button type="button" className="btn btn-small" title="已花从 0 重新算" onClick={() => void api.resetSpend!(current.id).then(loadSpent, () => undefined)}>
+                        清零
+                      </button>
+                    ) : null}
+                  </span>
+                  {errors.spendLimitUsd ? <span className="field-error">{errors.spendLimitUsd}</span> : null}
                 </span>
               </div>
 

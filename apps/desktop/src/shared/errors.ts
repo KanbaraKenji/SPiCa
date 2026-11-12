@@ -1,14 +1,18 @@
 // Backend and network errors in words a non-developer can act on. Used by
 // the main process (connection test) and the renderer (chat, toasts).
 
+/** The provider's account is out of money (402, insufficient balance, quota, arrears): one short line. */
+export const BALANCE_WORDS = 'API 余额不足';
+
 /** Turns a raw backend error into a sentence the user can act on. */
 export function humanError(raw: string): string {
   const m = raw.toLowerCase();
   if (/\b401\b|unauthori[sz]ed|invalid api key|authentication/.test(m)) return '模型密钥无效或已失效，请检查模型设置。';
   if (/\b403\b|forbidden/.test(m)) return '模型账号无权限，请检查模型设置。';
   if (/\b404\b|model_not_found|does not exist/.test(m)) return '找不到模型，请检查模型名称。';
+  // before 429: some providers answer an empty account with 429 (insufficient_quota)
+  if (/\b402\b|payment required|insufficient|balance|quota|credit|arrear|余额不足|欠费/.test(m)) return BALANCE_WORDS;
   if (/\b429\b|rate limit|too many requests/.test(m)) return '模型接口限流，请稍后重试。';
-  if (/insufficient|balance|quota|credit/.test(m)) return '模型账号余额不足。';
   if (/\b5\d\d\b|overloaded|bad gateway|service unavailable/.test(m)) return '模型服务错误，请稍后重试。';
   if (/timeout|timed out|etimedout/.test(m)) return '模型接口超时，请稍后重试。';
   if (/fetch failed|econnrefused|enotfound|network|socket/.test(m)) return '无法连接模型接口，请检查网络或「接口地址」。';

@@ -39,7 +39,8 @@ export interface ConversationActions {
   mailById?: (id: string) => MailItem | undefined;
   openInbox?: () => void;
   /** 设置 › 模型 (from a settings-change card). */
-  openModelSettings?: () => void;
+  /** Opens 设置 › 模型 (at that provider when given). */
+  openModelSettings?: (providerId?: string) => void;
   /** A URL to show a sent picture. */
   imageUrl?: (path: string) => Promise<string>;
   /** 重新生成 the last answer (`messageId`: the answer it was clicked under). */
@@ -522,15 +523,9 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
               <p className="turn-error status-with-icon" role="alert">
                 <SpicaStatusIcon name="error" size={15} />
                 <span>{transcript.error}</span>
-                {/* a run's limit: 重置 goes on from where it stopped as a new run, its spending counted from 0 */}
-                {transcript.errorAction === 'run-limit' ? (
-                  <button type="button" className="btn btn-small" title="这次运行已花的从 0 算起，从停下的地方接着做" onClick={actions.resume}>
-                    重置
-                  </button>
-                ) : null}
-                {transcript.errorAction && actions.openModelSettings ? (
-                  <button type="button" className="btn btn-small" onClick={actions.openModelSettings}>
-                    修改上限
+                {transcript.errorAction === 'models' && actions.openModelSettings ? (
+                  <button type="button" className="btn btn-small" onClick={() => actions.openModelSettings?.(transcript.errorProvider)}>
+                    模型设置
                   </button>
                 ) : null}
               </p>

@@ -3665,6 +3665,19 @@ button.ctx-row:hover {
   width: 120px;
 }
 
+/* A provider's 花费上限 (its form): 「US$」 and the box, then 已花 and 清零 on the same line. */
+.spend-limit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.spend-spent {
+  color: var(--spica-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* 服务商: one row each in the group's box, 添加服务商 last; the open one is filled. */
 .provider-list {
   display: flex;
@@ -4001,27 +4014,6 @@ button.ctx-row:hover {
   line-height: var(--lh-body);
 }
 
-/* A model's 花费上限 while it is edited (ModelPicker): 「US$」 and a short box, as tall as the 上下文上限 box. */
-.model-row-limit {
-  flex: none;
-  gap: 4px;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-}
-
-.field .model-row-limit > .input {
-  width: 80px;
-  height: 26px;
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-}
-
-/* Not being edited: one width for 「花费不限」 and 「花费上限 US$…」, so the rows' 上下文上限 line up. */
-.model-row-size.is-limit {
-  min-width: 112px;
-  justify-content: flex-end;
-  text-align: right;
-}
 
 .model-row-warn {
   display: inline-flex;

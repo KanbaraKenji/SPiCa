@@ -556,20 +556,29 @@ describe('a question or confirmation stopped while it waits', () => {
   });
 });
 
-describe('a spending limit stops the run', () => {
-  it('says why it stopped before the limit was reached; a run limit offers 重置 and 修改上限', () => {
+describe('a spending limit stops the run, or the provider’s account is out of money', () => {
+  it('one short line and the 模型设置 button, at the provider whose 花费上限 it was; gone when the next run starts', () => {
     const at = '2026-11-12T10:00:00Z';
-    const t = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'all:run', spentUsd: 0.75, limitUsd: 1, nextUsd: 0.4, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
-    expect(t.error).toBe('已达单次运行花费上限，已停止（已花费 US$0.75，上限 US$1.00）：下一步最多可能花 US$0.40，会超出上限，所以没有开始。按「重置」接着做，或在 设置 › 模型 修改上限。');
-    expect(t.errorAction).toBe('run-limit');
-    const model = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'model:run', spentUsd: 0.75, limitUsd: 1, nextUsd: 0.4, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
-    expect(model.errorAction).toBe('run-limit');
-    // a limit that is not a run's (a script's global one): only 修改上限
-    const global = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'all:global', spentUsd: 0.75, limitUsd: 1, nextUsd: 0.4, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
-    expect(global.errorAction).toBe('models');
+    const t = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'p-1:global', spentUsd: 0.75, limitUsd: 1, nextUsd: 0.4, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
+    expect(t).toMatchObject({ error: '已达花费上限', errorAction: 'models', errorProvider: 'p-1' });
+    // a script's limit for everything: no provider to open
+    const all = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'all:run', spentUsd: 0.75, limitUsd: 1, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
+    expect(all).toMatchObject({ error: '已达花费上限', errorAction: 'models' });
+    expect(all.errorProvider).toBeUndefined();
     const next = applyEvent(t, { type: 'status', status: 'thinking', seq: 2, at, sessionId: 's', parentChain: [] } as CoreEvent);
     expect(next.error).toBeUndefined();
     expect(next.errorAction).toBeUndefined();
+    expect(next.errorProvider).toBeUndefined();
+  });
+
+  it('out of money (402, insufficient balance, 余额不足): 「API 余额不足」 with the same button', () => {
+    const at = '2026-11-12T10:00:00Z';
+    for (const message of ['HTTP 402 [insufficient_balance]: Insufficient Balance', 'HTTP 429 [insufficient_quota]: You exceeded your current quota', 'HTTP 400 [x]: 账户余额不足']) {
+      const t = applyEvent({ items: [] }, { type: 'error', message, seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
+      expect(t).toMatchObject({ error: 'API 余额不足', errorAction: 'models' });
+    }
+    const other = applyEvent({ items: [] }, { type: 'error', message: 'HTTP 401 [x]: invalid api key', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
+    expect(other.errorAction).toBeUndefined();
   });
 });
 

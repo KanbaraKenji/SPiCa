@@ -199,10 +199,10 @@ export class FakeBackend implements AgentBackend {
   #globalCost = 0;
   /** Calls of a model without a price were made (in any conversation). */
   #globalUnpriced = false;
-  /** The 花费上限 of the model the demo runs (设置 › 模型, on the model; null: none), as the core gets it. */
-  #runLimit: number | null = null;
-  /** Conversations whose last run a spending limit stopped: 重置 (resume) goes on from there. */
-  readonly #budgetStopped = new Set<string>();
+  /** 设置 › 模型 › a provider's 花费上限 (USD in all; null: none), as the core gets it; the demo has one provider. */
+  #spendLimit: { providerId: string; usd: number } | null = null;
+  /** What the demo's priced calls have cost in all. */
+  #spent = 0;
   /** 设置 › 模型 › 代理互发消息上限 (null: none), as the core gets it. */
   #agentMessages: number | null = 10;
   #projects = new Map<string, ProjectInfo>();
@@ -485,8 +485,7 @@ export class FakeBackend implements AgentBackend {
 
   async resume(sessionId: string): Promise<void> {
     const s = this.#requireSession(sessionId);
-    // 重置 after a spending limit stopped the run is the same: a new run from where it stopped
-    if ((s.status !== 'interrupted' && !this.#budgetStopped.has(sessionId)) || this.#runs.has(sessionId)) return;
+    if (s.status !== 'interrupted' || this.#runs.has(sessionId)) return;
     void this.#run(sessionId, '', { resumeWith: '继续上次的' });
   }
 
@@ -623,9 +622,14 @@ export class FakeBackend implements AgentBackend {
     this.#memory.enabled = on;
   }
 
-  /** The default model's 花费上限 changed in the settings (as the core's ProviderConfig.runLimits). */
-  setRunLimit(usd: number | null): void {
-    this.#runLimit = usd;
+  /** A provider's 花费上限 changed in the settings (as the core's budget.perProvider[id].globalUsd). */
+  setSpendLimit(providerId: string | null, usd: number | null): void {
+    this.#spendLimit = providerId && usd !== null ? { providerId, usd } : null;
+  }
+
+  /** What the demo has cost in all (the core's providerSpend). */
+  spentUsd(): number {
+    return this.#spent;
   }
 
   /** 代理互发消息上限 changed in the settings (as the core's configure({ defaults: { agentMessages } })). */
@@ -885,16 +889,16 @@ export class FakeBackend implements AgentBackend {
   }
 
   /**
-   * As the core: the next call is not started when it could take the run past 单次运行花费上限 (a model without a
-   * price never stops). Returns true when the run was stopped.
+   * As the core: the next call is not started when it could take what the provider has cost in all past its 花费上限
+   * (a model without a price never stops). Returns true when the run was stopped.
    */
   #stopsAtLimit(sessionId: string, run: Run, nextUsd: number): boolean {
-    const limit = this.#runLimit;
-    if (limit === null || run.unpriced || run.spent + nextUsd <= limit) return false;
-    const message = `spending limit for deepseek-flash reached (the next call was not started): this run spent $${run.spent.toFixed(4)} of $${limit.toFixed(2)}, the next call could cost up to $${nextUsd.toFixed(4)}`;
-    this.#emit(sessionId, { type: 'budget.stop', scope: 'model:run', spentUsd: run.spent, limitUsd: limit, nextUsd, message });
+    const limit = this.#spendLimit;
+    if (limit === null || run.unpriced || this.#spent + nextUsd <= limit.usd) return false;
+    const scope = `${limit.providerId}:global`;
+    const message = `spending limit ${scope} reached: spent $${this.#spent.toFixed(4)} of $${limit.usd.toFixed(2)}, the next call could cost up to $${nextUsd.toFixed(4)}`;
+    this.#emit(sessionId, { type: 'budget.stop', scope, spentUsd: this.#spent, limitUsd: limit.usd, nextUsd, message });
     this.#finish(sessionId, 'budget', message);
-    this.#budgetStopped.add(sessionId);
     return true;
   }
 
@@ -913,6 +917,7 @@ export class FakeBackend implements AgentBackend {
     }
     const costUsd = this.#callUsd(run, inputTokens, outputTokens);
     if (run) run.spent += costUsd;
+    this.#spent += costUsd;
     if (s) s.costUsd += costUsd;
     this.#globalCost += costUsd;
     this.#emit(sessionId, { type: 'usage', usage: { inputTokens, outputTokens }, costUsd, providerId: 'fake', model: 'deepseek-flash' });
@@ -961,7 +966,6 @@ export class FakeBackend implements AgentBackend {
     // 「未计价」: the run uses a model without a price; 「花费上限」: its calls are dear (to reach 单次运行花费上限)
     const run: Run = { controller: new AbortController(), steers: [], spent: 0, ...(/未计价/.test(text) ? { unpriced: true } : {}), ...(/花费上限/.test(text) ? { dear: true } : {}) };
     this.#runs.set(sessionId, run);
-    this.#budgetStopped.delete(sessionId);
     const signal = run.controller.signal;
     const blocks: ContentBlock[] = [];
     // The card the run waits on (a confirmation or a question): stopped while it waits, it is kept with a cancelled
@@ -1207,6 +1211,9 @@ export class FakeBackend implements AgentBackend {
         const reply = limit === null ? '已经让子Agent A 再核对了三遍报价。' : `已经给子Agent A 发了 ${limit} 条消息，到了上限，先停在这里，等你说下一句。`;
         await this.#stream(sessionId, 'text', reply, signal);
         blocks.push({ type: 'text', text: reply });
+      } else if (/欠费/.test(text)) {
+        // the provider's account is out of money, as an OpenAI-style API says it
+        throw new Error('HTTP 402 [insufficient_balance]: Insufficient Balance');
       } else if (/写长一点/.test(text)) {
         // An answer that stopped at the most the model may write at once (stopReason max_tokens, as the core stores it).
         const cut = '好的，写详细一点：\n\n1. **外壳尺寸** 定为 120×80×24 mm，比上一版薄 2 mm，主要是电池仓改了排布，' +

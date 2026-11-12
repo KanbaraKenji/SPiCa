@@ -602,6 +602,7 @@ export class AgentStore {
         if (prev?.lastRun) next.lastRun = prev.lastRun;
         if (prev?.error) next.error = prev.error;
         if (prev?.errorAction) next.errorAction = prev.errorAction;
+        if (prev?.errorProvider) next.errorProvider = prev.errorProvider;
         if (prev?.stopped) next.stopped = prev.stopped;
         if (prev?.agentLimit) next.agentLimit = true;
         if (prev?.run) next.run = prev.run;

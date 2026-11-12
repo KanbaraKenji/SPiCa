@@ -24,6 +24,7 @@ import { ConfirmTarget } from './chat/Blocks';
 import type { ComposerTools } from './chat/Composer';
 import { enabledModels, type ModelRef, type ProviderView } from '../../shared/providers';
 import { SettingsView, type SettingsTab } from './settings/SettingsView';
+import { openProviderNext } from './settings/Models';
 import type { PluginsTab } from './settings/Plugins';
 import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
@@ -668,7 +669,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     resume: () => id && void agent.resume(id),
     regenerate: (messageId) => id && void agent.regenerate(id, messageId),
     ...(mail.supported ? { mailById, openInbox: () => setView('inbox') } : {}),
-    openModelSettings: () => openSettings('models'),
+    // at the provider a stop named (a card's button passes its click event: no provider)
+    openModelSettings: (providerId?: unknown) => {
+      if (typeof providerId === 'string' && providerId) openProviderNext(providerId);
+      openSettings('models');
+    },
     imageUrl: bridge.images.url,
     previewHtml: (title, html) => {
       setPreview({ sessionId: null, path: '', inline: { kind: 'html', name: title, path: '', size: html.length, text: html, truncated: false } });

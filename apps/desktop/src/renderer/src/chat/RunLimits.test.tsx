@@ -52,17 +52,14 @@ describe('messages to other agents past the limit', () => {
   });
 });
 
-describe('a run stopped at its spending limit', () => {
-  it('重置 goes on (resume), 修改上限 opens 设置 › 模型; another limit has only 修改上限', () => {
-    const resume = vi.fn();
+describe('a stop at a 花费上限, or the API out of money', () => {
+  it('one line and 模型设置, which opens 设置 › 模型 at the provider the stop named', () => {
     const openModelSettings = vi.fn();
-    const actions = { resume, openModelSettings } as unknown as ConversationActions;
-    const { rerender } = render(<Conversation session={session} transcript={{ items: [{ kind: 'user', id: 'u', text: '整理', steer: false }, answer], error: '已达单次运行花费上限', errorAction: 'run-limit' }} actions={actions} />);
-    fireEvent.click(screen.getByRole('button', { name: '重置' }));
-    expect(resume).toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '修改上限' }));
-    expect(openModelSettings).toHaveBeenCalled();
-    rerender(<Conversation session={session} transcript={{ items: [{ kind: 'user', id: 'u', text: '整理', steer: false }, answer], error: '已达花费上限', errorAction: 'models' }} actions={actions} />);
+    const actions = { openModelSettings } as unknown as ConversationActions;
+    render(<Conversation session={session} transcript={{ items: [{ kind: 'user', id: 'u', text: '整理', steer: false }, answer], error: '已达花费上限', errorAction: 'models', errorProvider: 'p-1' }} actions={actions} />);
+    expect(screen.getByText('已达花费上限')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '重置' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '模型设置' }));
+    expect(openModelSettings).toHaveBeenCalledWith('p-1');
   });
 });

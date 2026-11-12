@@ -211,6 +211,10 @@ export interface DesktopBridge extends SpicaBridge {
     listModels(draft: ProviderDraft): Promise<ListModelsView>;
     /** A model name matched to the catalog (for its 上下文上限), or null. */
     matchWindow(kind: ProviderKind, model: string, catalogId?: string | null): Promise<WindowMatch | null>;
+    /** 已花 of each saved provider (USD, since its last 清零). */
+    spend(): Promise<Record<string, number>>;
+    /** 清零 one provider's 已花. */
+    resetSpend(id: string): Promise<void>;
     /** The models changed somewhere else (a connected script through the MCP service). */
     onChanged(listener: () => void): () => void;
   };

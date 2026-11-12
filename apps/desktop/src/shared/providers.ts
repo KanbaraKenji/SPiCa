@@ -48,6 +48,11 @@ export interface ProviderFields {
   contextWindow: number | null;
   /** The catalog provider or company preset it was set up from (null: 中转站 / 公司网关, or older files). */
   catalogId: string | null;
+  /**
+   * 花费上限 (USD): what this provider may cost in all (every conversation, kept across restarts, since its 已花 was
+   * last set to 0); a call that could pass it is not made. null: no limit. Absent in older files (no limit).
+   */
+  spendLimitUsd?: number | null;
 }
 
 /** Where a model's context window came from. */
@@ -67,16 +72,6 @@ export interface ConnectionModel {
    * offered anywhere, no 上下文上限 needed. Absent: in use.
    */
   enabled?: boolean;
-  /**
-   * 花费上限 for one run while this model is used (USD, cents at most; the core's ProviderConfig.runLimits). Absent: no
-   * limit. NaN only while the form holds something that is not an amount (saving says why).
-   */
-  runLimitUsd?: number;
-}
-
-/** A model's 花费上限 that can be saved: absent, or a positive amount up to RUN_LIMIT_MAX_USD. */
-export function runLimitOk(usd: number | undefined): boolean {
-  return usd === undefined || (Number.isFinite(usd) && usd > 0 && usd <= RUN_LIMIT_MAX_USD);
 }
 
 /** In use (checked in the connection's list). */
@@ -175,6 +170,7 @@ export function emptyDraft(kind: ProviderKind = 'openai'): ProviderDraft {
     requestsPerMinute: null,
     contextWindow: null,
     catalogId: null,
+    spendLimitUsd: null,
   };
 }
 
@@ -236,12 +232,12 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: {
   if (!opts.forTest && list) {
     const missing = list.find((m) => m.contextWindow === null || !Number.isInteger(m.contextWindow) || m.contextWindow < 1);
     if (missing) e.contextWindow = `请填写「${missing.id}」的上下文上限`;
-    const badLimit = list.find((m) => !runLimitOk(m.runLimitUsd));
-    if (badLimit && !e.model) e.model = `「${badLimit.id}」的花费上限须为大于 0、不高于 US$${RUN_LIMIT_MAX_USD.toLocaleString('en-US')} 的金额，或留空`;
   } else if (!opts.forTest) {
     if (d.contextWindow === null) e.contextWindow = '请填写上下文上限';
     else if (!Number.isInteger(d.contextWindow) || d.contextWindow < 1) e.contextWindow = '上下文上限须为正整数';
   }
+  const limit = d.spendLimitUsd;
+  if (limit !== null && limit !== undefined && !(Number.isFinite(limit) && limit > 0 && limit <= RUN_LIMIT_MAX_USD)) e.spendLimitUsd = `须为大于 0、不高于 US$${RUN_LIMIT_MAX_USD.toLocaleString('en-US')} 的金额，或留空`;
   for (const k of ['maxConcurrent', 'requestsPerMinute'] as const) {
     const v = d[k];
     if (v !== null && (!Number.isInteger(v) || v < 1)) e[k] = '须为正整数或留空';

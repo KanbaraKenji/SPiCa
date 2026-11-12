@@ -440,8 +440,8 @@ describe('a name already in use', () => {
   });
 });
 
-describe('单次运行花费上限 is on each model, not here', () => {
-  it('the 上限 group has only 代理互发消息上限', () => {
+describe('花费上限 of a provider', () => {
+  it('is not under 上限 (only 代理互发消息上限 is)', () => {
     render(<Models api={fakeApi()} agentMessages={{ value: 10, onChange: () => undefined }} />);
     expect(screen.queryByRole('textbox', { name: '单次运行花费上限（美元）' })).toBeNull();
   });

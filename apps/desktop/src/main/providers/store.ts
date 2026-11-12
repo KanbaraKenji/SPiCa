@@ -52,6 +52,9 @@ interface SavedConnection {
   maxConcurrent: number | null;
   requestsPerMinute: number | null;
   catalogId: string | null;
+  spendLimitUsd: number | null;
+  /** What the provider had cost in all when 清零 was pressed: 已花 counts from here. Absent: never. */
+  spendBaseUsd?: number;
   models: ConnectionModel[];
   keys: SavedKey[];
 }
@@ -86,8 +89,7 @@ function sanitizeModels(v: unknown): ConnectionModel[] {
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const maxOutput = num(r.maxOutput);
-    const limit = runLimit(r.runLimitUsd);
-    out.push({ id, contextWindow: num(r.contextWindow), contextFrom: FROM.includes(r.contextFrom as ContextFrom) ? (r.contextFrom as ContextFrom) : 'user', ...(maxOutput ? { maxOutput } : {}), ...(r.enabled === false ? { enabled: false } : {}), ...(limit !== null ? { runLimitUsd: limit } : {}) });
+    out.push({ id, contextWindow: num(r.contextWindow), contextFrom: FROM.includes(r.contextFrom as ContextFrom) ? (r.contextFrom as ContextFrom) : 'user', ...(maxOutput ? { maxOutput } : {}), ...(r.enabled === false ? { enabled: false } : {}) });
   }
   return out;
 }
@@ -112,7 +114,13 @@ function baseFields(v: Record<string, unknown>) {
     maxConcurrent: num(v.maxConcurrent),
     requestsPerMinute: num(v.requestsPerMinute),
     catalogId: str(v.catalogId).trim() || null,
+    spendLimitUsd: runLimit(v.spendLimitUsd),
   };
+}
+
+/** A saved 清零 point, when there is one. */
+function spendBase(v: unknown): { spendBaseUsd?: number } {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? { spendBaseUsd: v } : {};
 }
 
 export class ProviderStore {
@@ -139,6 +147,7 @@ export class ProviderStore {
         items: list.map((x) => ({
           ...baseFields(x),
           id: x.id as string,
+          ...spendBase(x.spendBaseUsd),
           models: sanitizeModels(x.models),
           // Saved before the first characters were kept: worked out once from the key.
           keys: Array.isArray(x.keys) ? (x.keys as SavedKey[]).filter((k) => k && typeof k.sealed === 'string').map((k) => (typeof k.head === 'string' ? { sealed: k.sealed, tail: str(k.tail), head: k.head } : { sealed: k.sealed, ...this.#partsOfSealed(k.sealed, x.id as string) })) : [],
@@ -261,6 +270,7 @@ export class ProviderStore {
     const saved: SavedConnection = {
       ...baseFields(draft as unknown as Record<string, unknown>),
       id: existing?.id ?? `p-${randomUUID().slice(0, 8)}`,
+      ...spendBase(existing?.spendBaseUsd),
       models: modelsOfDraft(draft, existing?.models),
       keys,
     };
@@ -270,23 +280,19 @@ export class ProviderStore {
     return this.#view(saved);
   }
 
-  /**
-   * The 单次运行花费上限 that was one value for every model before it moved to each model: every model in use that
-   * has none of its own gets it (once, when the app starts; the settings then forget the old value). Returns whether
-   * anything changed.
-   */
-  adoptRunLimit(usd: number): boolean {
-    let changed = false;
-    this.#data.items = this.#data.items.map((p) => ({
-      ...p,
-      models: p.models.map((m) => {
-        if (m.enabled === false || m.runLimitUsd !== undefined) return m;
-        changed = true;
-        return { ...m, runLimitUsd: usd };
-      }),
-    }));
-    if (changed) this.#write();
-    return changed;
+  /** What the provider had cost in all at its last 清零 (0 when never): 已花 is the total less this. */
+  spendBase(id: string): number {
+    return this.#data.items.find((p) => p.id === id)?.spendBaseUsd ?? 0;
+  }
+
+  /** 清零: 已花 counts from `totalUsd`, what the provider has cost in all so far. */
+  resetSpend(id: string, totalUsd: number): void {
+    const p = this.#data.items.find((x) => x.id === id);
+    if (!p) return;
+    const next: SavedConnection = { ...p, ...spendBase(totalUsd) };
+    if (!(totalUsd > 0)) delete next.spendBaseUsd;
+    this.#data.items = this.#data.items.map((x) => (x.id === id ? next : x));
+    this.#write();
   }
 
   remove(id: string): void {
@@ -375,7 +381,8 @@ export class ProviderStore {
   }
 
   #view(p: SavedConnection): ProviderView {
-    const { keys, ...fields } = p;
+    const { keys, spendBaseUsd: _base, ...fields } = p;
+    void _base;
     return {
       ...fields,
       ...legacyModelFields(p.models),

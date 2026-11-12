@@ -46,6 +46,7 @@ import {
   BUILTIN_CATALOG,
   DEFAULT_PRICES,
   effectiveCatalog,
+  type BudgetConfig,
   type CatalogPreset,
   type HostConnectionDraft,
   type ListModelsResult,
@@ -207,7 +208,8 @@ function backendConfig(): DesktopBackendConfig {
       network: networkForCore(settings.get().network),
       // 设置 › 记忆 › 启用记忆 (what is saved stays when it is off).
       memory: { enabled: settings.get().memory, autoTidy: settings.get().memoryAutoTidy },
-      // No spending limit for all models: each model's 花费上限 goes with its provider (ProviderConfig.runLimits).
+      // Each provider's 花费上限 (none by default): what it may cost in all; no other limit.
+      budget: providerBudget(),
       // Linked into the backend entry; named here as the core expects.
       extractorModules: ['@spica/extract'],
       extensions: [
@@ -293,21 +295,36 @@ const providers = new ProviderStore(
   },
   () => envProviders().map((p) => ({ id: p.id, models: p.models.map((m) => m.id) })),
 );
-// 单次运行花费上限 was one value for every model: it moves to each model in use without one of its own, once.
-{
-  const old = settings.get().runLimitUsd;
-  if (old !== null) {
-    providers.adoptRunLimit(old);
-    settings.update({ runLimitUsd: null });
+
+/**
+ * Each saved provider's 花费上限 as the core takes it: what it may cost in all. After 清零 the core still counts
+ * from the first call, so the limit is moved up by what it had cost then (ProviderStore.spendBase).
+ */
+function providerBudget(): BudgetConfig {
+  const perProvider: Record<string, { globalUsd: number }> = {};
+  for (const p of providers.list()) if (p.spendLimitUsd) perProvider[p.id] = { globalUsd: p.spendLimitUsd + providers.spendBase(p.id) };
+  return Object.keys(perProvider).length ? { perProvider } : {};
+}
+
+/** What each saved provider has cost in all (the core's records; the demo's own count). */
+async function providerTotals(): Promise<Record<string, number>> {
+  const ids = providers.list().map((p) => p.id);
+  if (backend instanceof ProcessBackend) return backend.providerSpend(ids).catch(() => ({}));
+  if (backend instanceof FakeBackend) {
+    const b = backend;
+    return Object.fromEntries(ids.map((id) => [id, b.spentUsd()]));
   }
+  return {};
 }
-/** The 花费上限 of the model new conversations use (the demo backend has that one model). */
-function defaultModelRunLimit(): number | null {
-  const ref = providers.defaultRef();
-  const m = ref ? providers.list().find((p) => p.id === ref.connectionId)?.models.find((x) => x.id === ref.model) : undefined;
-  return m?.runLimitUsd ?? null;
+
+/** The demo backend has one provider: the default one's 花费上限. */
+function applyDemoSpendLimit(): void {
+  if (!(backend instanceof FakeBackend)) return;
+  const id = providers.defaultRef()?.connectionId ?? null;
+  const p = id ? providers.list().find((x) => x.id === id) : undefined;
+  backend.setSpendLimit(id, p?.spendLimitUsd ? p.spendLimitUsd + providers.spendBase(p.id) : null);
 }
-if (backend instanceof FakeBackend) backend.setRunLimit(defaultModelRunLimit());
+applyDemoSpendLimit();
 // Screenshots and tests never touch the network; a normal run really calls the model.
 const testConnection =
   backend instanceof ProcessBackend ? createRealTester((config, model) => backend.probe(config, model)) : createFakeTester({ delayMs: automated ? 0 : 700 });
@@ -336,8 +353,7 @@ function providerList(): ProviderList {
 
 /** Hands saved providers to the backend; remembers which ones it could not use. */
 function applyProviders(): void {
-  // the demo backend has one model: the default one's 花费上限
-  if (backend instanceof FakeBackend) backend.setRunLimit(defaultModelRunLimit());
+  applyDemoSpendLimit();
   if (!backend.configure) return;
   const problems = backend.configure(providers.resolved((catalogId) => needsKeyFor(catalogCache, catalogId)), providers.defaultId());
   providerProblems = Object.fromEntries(problems.map((p) => [p.id, p.reason]));
@@ -1423,6 +1439,17 @@ ipcMain.handle(DesktopChannel.KnownContextWindow, async (_e, kind: ProviderKind,
   return fromCatalog ?? knownContextWindow(DEFAULT_PRICES, coreKind(kind), name);
 });
 ipcMain.handle(DesktopChannel.ModelCatalog, () => modelCatalog());
+// 已花: what each saved provider has cost since its last 清零
+ipcMain.handle(DesktopChannel.ProviderSpend, async (): Promise<Record<string, number>> => {
+  const totals = await providerTotals();
+  return Object.fromEntries(providers.list().map((p) => [p.id, Math.max(0, (totals[p.id] ?? 0) - providers.spendBase(p.id))]));
+});
+// 清零: 已花 counts from now; the limit the core gets moves with it
+ipcMain.handle(DesktopChannel.ResetProviderSpend, async (_e, id: string): Promise<void> => {
+  const totals = await providerTotals();
+  providers.resetSpend(String(id), totals[String(id)] ?? 0);
+  applyProviders();
+});
 ipcMain.handle(DesktopChannel.MatchContextWindow, async (_e, kind: ProviderKind, model: string, catalogId?: string | null): Promise<WindowMatch | null> => {
   const name = String(model ?? '').trim();
   if (!name) return null;
