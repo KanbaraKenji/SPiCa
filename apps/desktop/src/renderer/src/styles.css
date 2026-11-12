@@ -474,6 +474,14 @@ a:hover {
   text-align: left;
 }
 
+/* Words beside an icon (设置's column, ← 已安装, + 添加来源): their box cut to the capitals' top and the
+   baseline, so centring puts the Chinese glyphs (which sit low in a line's box) on the icon's middle line, not
+   0.5-1.75px below it. Where text-box is not known the words stay as they were. Not on words that are cut off
+   with an ellipsis: the box would clip the glyphs' tops. */
+.icon-text {
+  text-box: trim-both cap alphabetic;
+}
+
 /* A way back (← 已安装 on a plugin's page, ← 返回「…」 over a conversation opened from history), as Claude's
    「← Your plugins」: an arrow and the words in the text colour, on a line of its own; a block of colour on hover,
    reaching a little left of the arrow so the arrow lines up with what is under it. */

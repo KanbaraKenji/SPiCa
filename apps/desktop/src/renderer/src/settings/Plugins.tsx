@@ -324,7 +324,7 @@ function Back({ label, onBack }: { label: string; onBack(): void }) {
   return (
     <button type="button" className="back-link plugin-back" onClick={onBack}>
       <Icon name="arrowLeft" size={16} />
-      {label}
+      <span className="icon-text">{label}</span>
     </button>
   );
 }
@@ -876,7 +876,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
                   setFilterMenu((m) => (m ? null : el));
                 }}
               >
-                {filterLabel}
+                <span className="icon-text">{filterLabel}</span>
                 <Icon name="chevronDown" size={12} />
               </button>
             ) : null}
@@ -895,7 +895,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
               }}
             >
               <Icon name="plus" size={14} />
-              添加来源
+              <span className="icon-text">添加来源</span>
             </button>
           </div>
           {filterMenu ? (

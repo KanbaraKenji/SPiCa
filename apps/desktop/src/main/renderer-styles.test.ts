@@ -141,6 +141,14 @@ describe('control sizes: one place (out/settings-modal/10-controls.md)', () => {
   });
 });
 
+describe('words beside an icon on its middle line (out/settings-modal/12-align-*)', () => {
+  it('their box is cut to the capitals and the baseline, so centring lines the Chinese glyphs up with the icon; nothing that clips', () => {
+    const rule = block('\n.icon-text');
+    expect(rule).toContain('text-box: trim-both cap alphabetic');
+    expect(rule).not.toMatch(/overflow|text-overflow/);
+  });
+});
+
 describe('tabs and segments: never a box in a box (out/ref/tabs-1, tabs-4; not tabs-3)', () => {
   it('a tab row is words over a thin line; the open tab has its own line along its bottom edge, not a text underline nor a pill', () => {
     const row = block('\n.tabs');

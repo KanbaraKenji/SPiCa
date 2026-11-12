@@ -205,7 +205,7 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
                       }}
                     >
                       <Icon name={NAV_ICON[id]} size={16} className="settings-nav-icon" />
-                      {labelOf(id)}
+                      <span className="icon-text">{labelOf(id)}</span>
                     </button>
                   ))}
                 </div>
