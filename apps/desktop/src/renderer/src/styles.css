@@ -1472,8 +1472,12 @@ pre .hl-punctuation {
   height: 26px;
 }
 
-/* A full local path in inline code: opens on a click (no underline: the hand and the hover name say so). */
+/* A full local path in inline code: opens on a click (no underline: the hand and the hover name say so). It shows
+   only the name, kept on one line: moved down whole when it does not fit, broken only when longer than the line. */
 .md code.md-path {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   color: var(--spica-accent-text);
   cursor: pointer;
 }

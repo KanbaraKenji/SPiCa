@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fullPath, insideFolder, localPathKind, openablePathKind } from './local-path';
+import { fullPath, inlineCodeSpans, insideFolder, localPathKind, openablePathKind, pathLabel } from './local-path';
 
 describe('paths in an answer that open', () => {
   it('inline code that is exactly an absolute path: a file, or a folder when it ends with a separator', () => {
@@ -67,5 +67,46 @@ describe('a path made absolute', () => {
   it('leaves a relative one as it is without a folder', () => {
     expect(fullPath('a.txt')).toBe('a.txt');
     expect(fullPath('a.txt', '')).toBe('a.txt');
+  });
+});
+
+describe('what a path in an answer shows', () => {
+  it('a file: its name; a folder: its name and the separator after it', () => {
+    expect(pathLabel('C:\\Users\\Demo\\AppData\\Local\\Temp\\claude\\6b0a\\scratchpad\\concurrent\\A\\280040440007.pdf')).toBe('280040440007.pdf');
+    expect(pathLabel('D:\\工作\\样机评审\\报价\\')).toBe('报价\\');
+    expect(pathLabel('D:/工作/报价/')).toBe('报价/');
+    expect(pathLabel('\\\\files\\proj\\报价.xlsx')).toBe('报价.xlsx');
+  });
+
+  it('a drive or a share on its own shows whole', () => {
+    expect(pathLabel('D:\\')).toBe('D:\\');
+    expect(pathLabel('\\\\files\\proj')).toBe('\\\\files\\proj');
+    expect(pathLabel('\\\\files\\proj\\')).toBe('\\\\files\\proj\\');
+  });
+
+  it('the same name in another folder: the folders above until they differ (letters case ignored)', () => {
+    const all = ['D:\\样机\\第一版\\报价.xlsx', 'D:\\样机\\第二版\\报价.xlsx', 'D:\\样机\\说明.docx'];
+    expect(all.map((p) => pathLabel(p, all))).toEqual(['第一版\\报价.xlsx', '第二版\\报价.xlsx', '说明.docx']);
+    expect(pathLabel('D:\\a\\Report.pdf', ['D:\\b\\report.PDF'])).toBe('a\\Report.pdf');
+    expect(pathLabel('D:\\样机\\第一版\\', ['E:\\样机\\第二版\\第一版\\'])).toBe('样机\\第一版\\');
+  });
+
+  it('paths that differ only in the drive show whole', () => {
+    expect(pathLabel('C:\\a\\x.txt', ['D:\\a\\x.txt'])).toBe('C:\\a\\x.txt');
+  });
+
+  it('the same path written twice, or once with a separator at the end, is one place', () => {
+    expect(pathLabel('D:\\a\\b.txt', ['D:\\a\\b.txt', 'D:\\A\\B.TXT'])).toBe('b.txt');
+  });
+});
+
+describe('the inline code of an answer', () => {
+  it('finds spans of any number of backticks, not the code in code blocks', () => {
+    const text = '看 `D:\\a.txt` 和 ``D:\\b`c.txt``\n\n```\n`D:\\in-block.txt`\n```\n\n~~~\n`D:\\tilde.txt`\n~~~\n\n还有 ` D:\\c.txt `';
+    expect(inlineCodeSpans(text)).toEqual(['D:\\a.txt', 'D:\\b`c.txt', 'D:\\c.txt']);
+  });
+
+  it('a code block still being written hides the rest of the answer', () => {
+    expect(inlineCodeSpans('`D:\\a.txt`\n\n```\n`D:\\b.txt`')).toEqual(['D:\\a.txt']);
   });
 });

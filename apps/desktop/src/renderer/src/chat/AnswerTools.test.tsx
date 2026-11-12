@@ -48,10 +48,50 @@ describe('paths in an answer', () => {
     fireEvent.click(screen.getByRole('link', { name: 'D:\\工作\\样机评审\\报价汇总.xlsx' }));
     expect(tools.openFile).toHaveBeenCalledWith('D:\\工作\\样机评审\\报价汇总.xlsx');
     const folder = screen.getByRole('link', { name: 'D:\\工作\\样机评审\\报价\\' });
-    expect(folder.getAttribute('title')).toBe('打开文件夹');
+    expect(folder.getAttribute('title')).toBe('打开文件夹 D:\\工作\\样机评审\\报价\\');
     fireEvent.keyDown(folder, { key: 'Enter' });
     expect(tools.openFolder).toHaveBeenCalledWith('D:\\工作\\样机评审\\报价\\');
     expect(tools.openFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows only the name; the full path is in its hover note and in what a selection copies', () => {
+    answer(SUMMARY);
+    const file = screen.getByRole('link', { name: 'D:\\工作\\样机评审\\报价汇总.xlsx' });
+    expect(file.textContent).toBe('报价汇总.xlsx');
+    expect(file.getAttribute('title')).toBe('预览 D:\\工作\\样机评审\\报价汇总.xlsx');
+    expect(screen.getByRole('link', { name: 'D:\\工作\\样机评审\\报价\\' }).textContent).toBe('报价\\');
+    const md = file.closest('.md')!;
+    const range = document.createRange();
+    range.selectNodeContents(md.querySelector('p')!);
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(range);
+    const data = new Map<string, string>();
+    const copied = fireEvent.copy(md, { clipboardData: { setData: (k: string, v: string) => data.set(k, v) } });
+    expect(copied).toBe(false);
+    expect(data.get('text/plain')).toContain('已汇总到 D:\\工作\\样机评审\\报价汇总.xlsx，原始报价在 D:\\工作\\样机评审\\报价\\。');
+    getSelection()!.removeAllRanges();
+  });
+
+  it('a selection without a path copies as the page does', () => {
+    answer(SUMMARY);
+    const md = document.querySelector('.md')!;
+    const range = document.createRange();
+    range.selectNodeContents(screen.getByText('单价', { selector: 'code' }));
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(range);
+    expect(fireEvent.copy(md, { clipboardData: { setData: vi.fn() } })).toBe(true);
+    getSelection()!.removeAllRanges();
+  });
+
+  it('two files of one name in different folders show the folder above (and a third level when that is the same too)', () => {
+    answer('`D:\\样机\\第一版\\报价.xlsx` 和 `D:\\样机\\第二版\\报价.xlsx`，另有 `E:\\备份\\第一版\\报价.xlsx` 和 `D:\\样机\\说明.docx`');
+    const names = screen.getAllByRole('link').map((l) => l.textContent);
+    expect(names).toEqual(['样机\\第一版\\报价.xlsx', '第二版\\报价.xlsx', '备份\\第一版\\报价.xlsx', '说明.docx']);
+  });
+
+  it('the same path written twice is one file: both show just its name', () => {
+    answer('`D:\\a\\报价.xlsx`，再看 `D:\\a\\报价.xlsx`');
+    expect(screen.getAllByRole('link').map((l) => l.textContent)).toEqual(['报价.xlsx', '报价.xlsx']);
   });
 
   it('other inline code stays plain code', () => {

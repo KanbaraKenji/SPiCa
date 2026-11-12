@@ -1,6 +1,6 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
-import { createContext, Fragment, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, Fragment, memo, useContext, useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
 import type { FileCardMeta, HistoryCardMeta, SourceCardMeta, SourceRow } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -13,7 +13,7 @@ import { ImageViewer } from '../ui/ImageViewer';
 import { imageSource } from './answer-image';
 import { drawFlow, pageMode, svgUrl } from './flow-draw';
 import { commandFacts, dangerSpans } from './command-plain';
-import { fullPath, openablePathKind } from './local-path';
+import { fullPath, inlineCodeSpans, localPathKind, openablePathKind, pathLabel } from './local-path';
 import { tableRows, toCsv, toHtml, toTsv } from './table-data';
 import { blockLanguage, blockLanguageName, colourSplit, highlightCode } from './highlight';
 import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS } from './format';
@@ -94,6 +94,9 @@ export interface AnswerTools {
   webImages?: 'auto' | 'click' | undefined;
 }
 export const AnswerToolsContext = createContext<AnswerTools | null>(null);
+
+/** Every full local path written in inline code in this answer: a path shows its name, enough of it to tell it from the others. */
+const AnswerPathsContext = createContext<readonly string[]>([]);
 
 /** Set inside a code block, so its code is not taken for inline code. */
 const InBlockContext = createContext(false);
@@ -253,21 +256,28 @@ function CodeBlockBody({ node, source, code, name, children }: { node?: PreNode 
   );
 }
 
-/** Inline code: a full local path in it opens (a file in the right panel, a folder in Explorer); anything else is code. */
+/**
+ * Inline code: a full local path in it opens (a file in the right panel, a folder in Explorer) and shows only its
+ * name (pathLabel); the full path is in its hover note, and copying a selection over it copies the full path.
+ * Anything else is code.
+ */
 function InlineCode({ className, children }: { className?: string | undefined; children?: ReactNode }) {
   const inBlock = useContext(InBlockContext);
   const tools = useContext(AnswerToolsContext);
+  const paths = useContext(AnswerPathsContext);
   const text = typeof children === 'string' ? children : null;
   const kind = !inBlock && tools && text !== null ? openablePathKind(text, tools.cwd) : null;
   if (!kind || !tools || text === null) return <code className={className}>{children}</code>;
   const open = () => (kind === 'folder' ? tools.openFolder(text) : tools.openFile(text));
-  // A link role on the code itself (not a button around it), so a long path still wraps with the line.
+  // A link role on the code itself (not a button around it), so a long name still wraps with the line.
   return (
     <code
       className="md-path"
       role="link"
       tabIndex={0}
-      title={kind === 'folder' ? '打开文件夹' : '预览'}
+      data-path={text}
+      aria-label={text}
+      title={`${kind === 'folder' ? '打开文件夹' : '预览'} ${text}`}
       onClick={open}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -276,9 +286,30 @@ function InlineCode({ className, children }: { className?: string | undefined; c
         }
       }}
     >
-      {text}
+      {pathLabel(text, paths)}
     </code>
   );
+}
+
+/** Copying a selection that covers a path's name: the full path goes on the clipboard in its place. */
+function copyFullPaths(e: ClipboardEvent<HTMLDivElement>) {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+  const range = sel.getRangeAt(0);
+  if (![...e.currentTarget.querySelectorAll('code.md-path[data-path]')].some((el) => range.intersectsNode(el))) return;
+  // Laid out off screen, so its text keeps the line breaks the page shows.
+  const box = document.createElement('div');
+  box.className = 'md';
+  box.style.cssText = 'position:fixed;left:-99999px;top:0';
+  box.appendChild(range.cloneContents());
+  for (const el of box.querySelectorAll<HTMLElement>('code.md-path[data-path]')) el.textContent = el.dataset.path ?? el.textContent;
+  document.body.appendChild(box);
+  const plain = box.innerText || (box.textContent ?? '');
+  const html = box.innerHTML;
+  box.remove();
+  e.clipboardData.setData('text/plain', plain);
+  e.clipboardData.setData('text/html', html);
+  e.preventDefault();
 }
 
 /** A table: 复制 (pastes into Excel as cells) and 导出 CSV above its right end. */
@@ -366,35 +397,38 @@ function MdImage({ src, alt }: { src?: string | undefined; alt?: string | undefi
 }
 
 export const MarkdownText = memo(function MarkdownText({ text }: { text: string }) {
+  const paths = useMemo(() => [...new Set(inlineCodeSpans(text).filter((s) => localPathKind(s)))], [text]);
   return (
-    <div className="md">
-      <Markdown
-        remarkPlugins={[remarkGfm]}
-        // history:n (a place in an earlier conversation) is kept; other addresses as react-markdown allows them.
-        // A picture's address is kept as written (local paths too): MdImage decides what may load.
-        urlTransform={(url, key, node) => (url.startsWith('history:') || (key === 'src' && node.tagName === 'img') ? url : defaultUrlTransform(url))}
-        components={{
-          a: ({ href, children }) =>
-            href?.startsWith('history:') ? (
-              <HistoryLink href={href}>{children}</HistoryLink>
-            ) : (
-              <a href={href} target="_blank" rel="noreferrer" title={href}>
-                {/^https?:/i.test(href ?? '') ? <Icon name="link" size={12} className="md-link-icon" /> : null}
+    <div className="md" onCopy={copyFullPaths}>
+      <AnswerPathsContext.Provider value={paths}>
+        <Markdown
+          remarkPlugins={[remarkGfm]}
+          // history:n (a place in an earlier conversation) is kept; other addresses as react-markdown allows them.
+          // A picture's address is kept as written (local paths too): MdImage decides what may load.
+          urlTransform={(url, key, node) => (url.startsWith('history:') || (key === 'src' && node.tagName === 'img') ? url : defaultUrlTransform(url))}
+          components={{
+            a: ({ href, children }) =>
+              href?.startsWith('history:') ? (
+                <HistoryLink href={href}>{children}</HistoryLink>
+              ) : (
+                <a href={href} target="_blank" rel="noreferrer" title={href}>
+                  {/^https?:/i.test(href ?? '') ? <Icon name="link" size={12} className="md-link-icon" /> : null}
+                  {children}
+                </a>
+              ),
+            pre: ({ node, children }) => (
+              <CodeBlock node={node as PreNode | undefined} source={text}>
                 {children}
-              </a>
+              </CodeBlock>
             ),
-          pre: ({ node, children }) => (
-            <CodeBlock node={node as PreNode | undefined} source={text}>
-              {children}
-            </CodeBlock>
-          ),
-          code: ({ className, children }) => <InlineCode className={className}>{children}</InlineCode>,
-          table: ({ children }) => <MdTable>{children}</MdTable>,
-          img: ({ src, alt }) => <MdImage src={typeof src === 'string' ? src : undefined} alt={alt} />,
-        }}
-      >
-        {text}
-      </Markdown>
+            code: ({ className, children }) => <InlineCode className={className}>{children}</InlineCode>,
+            table: ({ children }) => <MdTable>{children}</MdTable>,
+            img: ({ src, alt }) => <MdImage src={typeof src === 'string' ? src : undefined} alt={alt} />,
+          }}
+        >
+          {text}
+        </Markdown>
+      </AnswerPathsContext.Provider>
     </div>
   );
 });
