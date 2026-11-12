@@ -121,6 +121,17 @@ export const FAKE_SUMMARY_ANSWER =
   '```\n\n' +
   '远航塑胶和恒信五金还没回价，`单价` 列先留空。';
 
+/** The BOM answer: files deep in a temporary folder, written as full paths (inline code, and once as plain text). */
+const FAKE_BOM_DIR = 'C:\\Users\\Demo\\AppData\\Local\\Temp\\claude\\6b0adec76d142027\\97c9b4d3-10ad-4f09-864f-b53a275d8ee4\\scratchpad\\concurrent\\A';
+export const FAKE_BOM_FILES = [`${FAKE_BOM_DIR}\\280040440007.pdf`, `${FAKE_BOM_DIR}\\280040440007_BOM.xlsx`];
+export const FAKE_BOM_ANSWER =
+  '图纸和物料清单都整理好了：\n\n' +
+  `- 图纸：\`${FAKE_BOM_FILES[0]}\`\n` +
+  `- 物料清单：\`${FAKE_BOM_FILES[1]}\`\n\n` +
+  `都在 \`${FAKE_BOM_DIR}\\\` 里。\n\n` +
+  '两版报价同名，放在不同文件夹：`D:\\工作\\样机评审\\第一版\\报价.xlsx` 和 `D:\\工作\\样机评审\\第二版\\报价.xlsx`。\n\n' +
+  `不用代码格式写的路径：${FAKE_BOM_FILES[0]}`;
+
 /** The 纪要 answer, for screenshots of the conversation's text: headings, a list, inline code and a code block. */
 export const FAKE_MINUTES_ANSWER =
   '## 样机评审纪要\n\n' +
@@ -1044,6 +1055,14 @@ export class FakeBackend implements AgentBackend {
       } else if (/纪要/.test(text)) {
         await this.#stream(sessionId, 'text', FAKE_MINUTES_ANSWER, signal);
         blocks.push({ type: 'text', text: FAKE_MINUTES_ANSWER });
+      } else if (/BOM/i.test(text)) {
+        // Long full paths in an answer, with the cards of the same two files under it.
+        const at = isoAt(this.#now());
+        const cards = FAKE_BOM_FILES.map((path): FileCardMeta => ({ path, name: path.split('\\').pop() ?? path, kind: path.endsWith('.xlsx') ? 'xlsx' : 'other', sizeBytes: 2048, modifiedAt: at, extractedAt: at, read: {}, origin: 'created' }));
+        blocks.push(...(await this.#tool(sessionId, run, 'present_files', { paths: FAKE_BOM_FILES }, '已交付 2 个文件', 200, false, { category: 'present', cards })));
+        this.#setStatus(sessionId, 'thinking');
+        await this.#stream(sessionId, 'text', FAKE_BOM_ANSWER, signal);
+        blocks.push({ type: 'text', text: FAKE_BOM_ANSWER });
       } else if (/汇总/.test(text)) {
         // For screenshots of what an answer can hold: a file it wrote, paths, a table and a code block.
         const at = isoAt(this.#now());
