@@ -130,7 +130,7 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
   const asCode = code !== null && codeFor === id;
   return (
     <section className="preview" aria-label={info ? `预览 ${info.name}` : '预览'}>
-      <header className="preview-head">
+      <header className="preview-head panel-head">
         <FileGlyph name={info?.name ?? ''} />
         <span className="preview-name" title={info?.path ?? ''}>
           {info?.name ?? ''}

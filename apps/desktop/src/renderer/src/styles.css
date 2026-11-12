@@ -177,7 +177,8 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-left: 14px;
+  /* The same inset as the right panels' heads (.panel-head). */
+  padding-left: 16px;
   /* Leave room for the native caption buttons (Window Controls Overlay). */
   padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px);
   background: var(--spica-chrome);
@@ -188,6 +189,44 @@ a:hover {
 
 .titlebar button {
   -webkit-app-region: no-drag;
+}
+
+/* A panel is docked right of the conversation: the title bar is not at the window's edge. */
+.titlebar.is-inner {
+  padding-right: 8px;
+}
+
+/* The conversation's column: its title bar, then the conversation (the right panels stand beside it, full height). */
+.main-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The head of a right panel (the details, their tab row, the preview): in the window's top row, as high as the
+   title bar, the same line under it, the same insets; buttons are .icon-btn as in the title bar. */
+.panel-head {
+  height: var(--spica-titlebar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 8px 0 16px;
+  background: var(--spica-chrome);
+  border-bottom: 1px solid var(--spica-divider);
+  -webkit-app-region: drag;
+}
+
+.panel-head button,
+.panel-head select {
+  -webkit-app-region: no-drag;
+}
+
+/* The right panel at the window's edge: room for the system buttons, as the title bar keeps it. */
+.panel-right.is-edge .panel-head {
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px);
 }
 
 .titlebar-left,
@@ -350,13 +389,6 @@ a:hover {
   z-index: 7;
 }
 
-/* The details shown over the preview from under it, in their own place (their button, while the preview covers
-   them): above the preview, with the floating panels' shadow. Esc or a press elsewhere puts them back under. */
-.panel-info.is-raised {
-  z-index: 8;
-  box-shadow: var(--spica-shadow);
-}
-
 /* ---------- Buttons ---------- */
 
 .icon-btn {
@@ -370,7 +402,7 @@ a:hover {
   color: var(--spica-muted);
 }
 
-.icon-btn:hover:not(:disabled) {
+.icon-btn:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--spica-hover);
   color: var(--spica-ink);
 }
@@ -379,8 +411,13 @@ a:hover {
   background: var(--spica-active);
 }
 
-.icon-btn:disabled {
+.icon-btn:disabled,
+.icon-btn[aria-disabled='true'] {
   opacity: 0.4;
+}
+
+.icon-btn[aria-disabled='true'] {
+  cursor: default;
 }
 
 .icon-btn.is-on {
@@ -737,14 +774,6 @@ button.tree-twisty:hover {
   flex-direction: column;
 }
 
-.detail-head {
-  height: 40px;
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 0 8px 0 16px;
-}
 
 /* The heading (or the space kept for it) takes the row; the buttons sit together at its end. */
 .detail-head > span:first-child {
@@ -759,11 +788,13 @@ button.tree-twisty:hover {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 16px 16px;
+  padding: 12px 16px 16px;
 }
 
 .detail-section + .detail-section {
-  margin-top: 18px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--spica-divider);
 }
 
 .detail-title {
@@ -797,6 +828,12 @@ button.tree-twisty:hover {
 .detail-facts dd {
   margin: 0;
   min-width: 0;
+}
+
+/* Amounts stand right, in a column. */
+.detail-facts dd.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .detail-path {
@@ -849,11 +886,12 @@ button.tree-twisty:hover {
 }
 
 .detail-file {
-  width: 100%;
+  /* Its hover reaches 6px past the column on both sides; its contents keep to the column (the right edge too). */
+  width: calc(100% + 12px);
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 6px;
+  padding: 4px 6px;
   margin: 0 -6px;
   border-radius: var(--radius-s);
   text-align: left;
@@ -869,16 +907,19 @@ button.tree-twisty:hover {
   color: var(--spica-muted);
 }
 
+/* The name first; the folder after it stands right and is cut first (the name only once the folder is gone). */
 .detail-file-name {
-  flex: none;
-  max-width: 60%;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .detail-file .detail-item-sub {
+  flex: 1 1 0;
   min-width: 0;
+  text-align: right;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -4522,7 +4563,7 @@ button.ctx-row:hover {
 .activity-item {
   display: flex;
   gap: 8px;
-  padding: 3px 0;
+  padding: 4px 0;
   min-width: 0;
 }
 
@@ -5420,19 +5461,19 @@ button.ctx-row:hover {
 }
 
 .preview-head {
-  flex: none;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px 0 14px;
-  border-bottom: 1px solid var(--spica-border);
   color: var(--spica-muted);
+}
+
+/* The file's icon and name keep the gap they had; the buttons sit 2 apart as in the title bar. */
+.preview-head > svg:first-child {
+  flex: none;
+  margin-right: 6px;
 }
 
 .preview-name {
   flex: 1;
   min-width: 40px;
+  margin-right: 6px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -5645,11 +5686,7 @@ button.ctx-row:hover {
 
 /* The tab row on top of the details panel when plugins add pages there (详情 / Quick note). */
 .right-head {
-  flex: none;
-  display: flex;
-  align-items: center;
   gap: 8px;
-  margin: 8px 8px 0 10px;
 }
 
 .right-head .right-tabs {

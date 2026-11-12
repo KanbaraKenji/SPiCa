@@ -9,23 +9,26 @@
 // - The file preview, always against the window's right edge: open while a file is shown (no saved switch); the
 //   user drags its width; it can be laid over the whole conversation (最大化).
 //
-// The sidebar and the details are placed as if there were no preview: they give way (are hidden; opening one
-// floats it over the window) rather than squeeze the conversation below MAIN_ROOM_WIDTH (440), the details first.
-// That is the old 「窗口变窄时不挤对话」.
+// Two widths of the conversation: MAIN_ROOM_WIDTH (440), the narrowest it is laid out, and MAIN_SHOWN_MIN (160),
+// the least of it that shows while the preview lies over its right part (his words: 「主页面有两个宽度设置，在第一个
+// 宽度之前会被一直挤压，过了第一个宽度后，右侧栏遮盖主页内容直到最小尺寸」).
 //
-// The preview then takes its width from the right edge (his words: 「一直固定在最右侧，所以信息栏被遮盖」, 「主页面有两个
-// 宽度设置，在第一个宽度之前会被一直挤压，过了第一个宽度后，右侧栏遮盖主页内容直到最小尺寸」, 「任何位置修改宽度不满足
-// 主页第"0"宽度时，预览最先被隐藏」). Going left, as it gets wider or the window narrower:
+// The details are particular (his words: 「详情栏比较特殊，不满足时直接消失而不是遮盖」): they are there only while
+// the conversation keeps 440 beside them and the preview at its width; otherwise they are not shown at all (not
+// covered, not floated over the window) and come back by themselves when there is room. Their switch is kept; their
+// button cannot be pressed meanwhile and says why.
+//
+// As the window narrows (or a panel is dragged wider), in order:
 //   1. the conversation is squeezed (its text wraps again) down to 440;
-//   2. the preview lies over the details (still open, under it; their button shows them over the preview);
-//   3. the preview lies over the conversation's right part (kept at its 440 layout, cut off) until MAIN_SHOWN_MIN
-//      (160) of it shows; dragging stops there;
-//   4. the window narrower still: the preview gets narrower, down to PREVIEW_MIN (320);
-//   5. then the preview is the first to go (hidden; a file opened then floats it; it comes back when there is room);
-//   6. then the sidebar shrinks and goes, as without a preview.
-// The details never come before the conversation's 440: a conversation squeezed to 440 is what makes the preview
-// lie over them; if they came first, a conversation that takes all the room left would keep them under the preview
-// at any width, and the four would never stand side by side.
+//   2. the details go;
+//   3. the conversation is squeezed to 440 again, then the preview lies over its right part (kept at its 440
+//      layout, cut off) until 160 of it shows; dragging the preview stops there;
+//   4. the preview gets narrower, down to PREVIEW_MIN (320);
+//   5. the preview goes (his words: 「任何位置修改宽度不满足主页第"0"宽度时，预览最先被隐藏」; a file opened then floats
+//      it; it comes back when there is room);
+//   6. the sidebar shrinks, then goes (pressing its toggle floats it, as before).
+// The details go only once the conversation is at 440, not before: the conversation takes whatever room is left, so
+// any earlier point would be a width picked out of nothing.
 import { PANEL_LIMITS, type PanelWidths } from '../../../shared/settings';
 
 export const SIDEBAR_WIDTH = PANEL_LIMITS.left.initial;
@@ -45,18 +48,14 @@ const FLOAT_GAP = 48;
 
 export type PanelMode = 'docked' | 'hidden' | 'floating';
 
-export type Side = 'left' | 'preview' | 'info';
+/** The panels that float over the window when they do not fit (the details never do). */
+export type Side = 'left' | 'preview';
 
 export interface Layout {
   left: PanelMode;
   preview: PanelMode;
-  /** 'floating' also while they have their place but the preview lies over it, and their button showed them. */
+  /** Never 'floating': there, or not at all. */
   info: PanelMode;
-  /**
-   * The details keep their place beside the conversation: docked, or shown over the preview from under it (the
-   * place stays, empty, so nothing beside it moves while they are over the preview).
-   */
-  infoPlace: boolean;
 }
 
 /** What is open: the saved switches (sidebar, details) and whether a file is shown. */
@@ -66,7 +65,7 @@ export interface Open {
   preview: boolean;
 }
 
-/** The panel shown over the window (not fitting beside the conversation, or the details over the preview), if any. */
+/** The panel shown over the window because it did not fit beside the conversation, if any. */
 export type Floating = Side | null;
 
 /** The widths the user chose (dragged to) for the two panels that have an edge. */
@@ -78,97 +77,84 @@ export interface Widths {
   left: number;
   preview: number;
   info: number;
-  /**
-   * How far the docked preview reaches left over what is beside it: the details first, then the conversation's
-   * right part (0: it lies over nothing; the conversation is only squeezed).
-   */
+  /** How far the docked preview lies over the conversation's right part (0: it only squeezes it). */
   cover: number;
-  /** How much of the docked details still shows beside the preview (INFO_WIDTH: all of them). */
-  infoShown: number;
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
-/**
- * The sidebar's width when docked: what was chosen, giving way only to keep the conversation at 440 (never for the
- * preview, nor for the details: they give way first).
- */
+/** The sidebar's width when docked: what was chosen, giving way only to keep the conversation at 440. */
 function sidebarWidth(viewportWidth: number, wanted: number): number {
   return clamp(wanted, SIDEBAR_MIN, viewportWidth - MAIN_ROOM_WIDTH);
 }
 
-/** The preview against the right edge, in the room right of the sidebar: its width and what it lies over. */
-function previewPlace(room: number, infoInPlace: boolean, wanted: number): { preview: number; cover: number; infoShown: number } {
-  const preview = clamp(wanted, PREVIEW_MIN, room - MAIN_SHOWN_MIN);
-  const free = room - preview;
-  const info = infoInPlace ? INFO_WIDTH : 0;
-  return { preview, cover: Math.max(0, MAIN_ROOM_WIDTH + info - free), infoShown: infoInPlace ? clamp(free - MAIN_ROOM_WIDTH, 0, INFO_WIDTH) : 0 };
+/** The docked preview in the room right of the sidebar: as chosen, at most what leaves 160 of the conversation. */
+function previewWidth(room: number, wanted: number): number {
+  return clamp(wanted, PREVIEW_MIN, room - MAIN_SHOWN_MIN);
 }
 
 export function computeLayout(viewportWidth: number, open: Open, floating: Floating = null, wanted: Wanted = USUAL): Layout {
-  // The sidebar and the details, as if there were no preview; the details give way first.
   const leftDocked = open.left && viewportWidth - MAIN_ROOM_WIDTH >= SIDEBAR_MIN;
   const room = viewportWidth - (leftDocked ? sidebarWidth(viewportWidth, wanted.left) : RAIL_WIDTH);
-  const infoFits = open.info && room - MAIN_ROOM_WIDTH >= INFO_WIDTH;
   // The preview: at its narrowest with the least of the conversation showing, or it is the first to go.
   const previewDocked = open.preview && room >= PREVIEW_MIN + MAIN_SHOWN_MIN;
-  const covered = previewDocked && infoFits && previewPlace(room, true, wanted.preview).infoShown < INFO_WIDTH;
+  const preview = previewDocked ? previewWidth(room, wanted.preview) : 0;
+  // The details: only beside the conversation at 440 and the preview at its width; else not there at all.
+  const infoDocked = open.info && room - preview - MAIN_ROOM_WIDTH >= INFO_WIDTH;
   const mode = (docked: boolean, side: Side): PanelMode => (docked ? 'docked' : floating === side ? 'floating' : 'hidden');
   return {
     left: mode(leftDocked, 'left'),
     // Closed (no file shown) is closed, whatever was floating.
     preview: open.preview ? mode(previewDocked, 'preview') : 'hidden',
-    // Under the preview, their button shows them over it (floating) until a press elsewhere, Esc or the button again.
-    info: covered && floating === 'info' ? 'floating' : mode(infoFits, 'info'),
-    infoPlace: infoFits,
+    info: infoDocked ? 'docked' : 'hidden',
   };
 }
 
+/** Whether the details have room now (their button can be pressed): as if they were switched on. */
+export function infoFits(viewportWidth: number, open: Open, wanted: Wanted = USUAL): boolean {
+  return computeLayout(viewportWidth, { ...open, info: true }, null, wanted).info === 'docked';
+}
+
 /**
- * How wide each panel is drawn, and how far the preview reaches over what is beside it. The details are always
+ * How wide each panel is drawn, and how far the preview lies over the conversation. The details are always
  * INFO_WIDTH. A floating panel keeps its width (never wider than the window allows).
  */
 export function panelWidths(viewportWidth: number, layout: Layout, wanted: Wanted): Widths {
-  const out: Widths = { left: wanted.left, preview: wanted.preview, info: INFO_WIDTH, cover: 0, infoShown: 0 };
+  const out: Widths = { left: wanted.left, preview: wanted.preview, info: INFO_WIDTH, cover: 0 };
   const leftDocked = layout.left === 'docked';
   if (leftDocked) out.left = sidebarWidth(viewportWidth, wanted.left);
   if (layout.left === 'floating') out.left = Math.max(SIDEBAR_MIN, Math.min(wanted.left, viewportWidth - FLOAT_GAP));
-  const infoInPlace = layout.infoPlace;
-  if (layout.info === 'docked') out.infoShown = INFO_WIDTH;
-  if (layout.info === 'floating') out.info = Math.min(INFO_WIDTH, viewportWidth - FLOAT_GAP);
   if (layout.preview === 'docked') {
-    const placed = previewPlace(viewportWidth - (leftDocked ? out.left : RAIL_WIDTH), infoInPlace, wanted.preview);
-    out.preview = placed.preview;
-    out.cover = placed.cover;
-    if (layout.info === 'docked') out.infoShown = placed.infoShown;
+    const room = viewportWidth - (leftDocked ? out.left : RAIL_WIDTH);
+    out.preview = previewWidth(room, wanted.preview);
+    // What the conversation would get beside it; under 440 it stays laid out at 440 and the preview covers the rest.
+    out.cover = Math.max(0, MAIN_ROOM_WIDTH - (room - out.preview - (layout.info === 'docked' ? INFO_WIDTH : 0)));
   }
   if (layout.preview === 'floating') out.preview = Math.min(wanted.preview, viewportWidth - FLOAT_GAP);
   return out;
 }
 
-/** The widest the preview can be dragged to now: over the details and the conversation until 160 of it shows. */
+/** The widest the preview can be dragged to now: until 160 of the conversation shows (the details go on the way). */
 export function previewMaxWidth(viewportWidth: number, layout: Layout, widths: Widths): number {
   return Math.max(PREVIEW_MIN, viewportWidth - (layout.left === 'docked' ? widths.left : RAIL_WIDTH) - MAIN_SHOWN_MIN);
 }
 
 /**
- * What a toggle button should do: flip the saved switch, or float/unfloat a panel that does not show. The details
- * under the preview (any part of them) count as not showing: the press shows them over it, it does not close them.
+ * What a toggle button should do. The sidebar: flip its saved switch, or float/unfloat it when it does not fit.
+ * The details: flip their switch while they have room; without room nothing (they are never floated or forced in).
  */
 export function toggleAction(side: 'left' | 'info', viewportWidth: number, open: Open, floating: Floating, wanted: Wanted = USUAL): { open: Open; floating: Floating } {
-  const layout = computeLayout(viewportWidth, open, floating, wanted);
-  const now = layout[side];
-  if (now === 'floating') return { open, floating: null };
-  if (now === 'docked') {
-    if (side === 'info' && panelWidths(viewportWidth, layout, wanted).infoShown < INFO_WIDTH) return { open, floating: 'info' };
-    return { open: { ...open, [side]: false }, floating: null };
+  if (side === 'info') {
+    if (!infoFits(viewportWidth, open, wanted)) return { open, floating };
+    return { open: { ...open, info: !open.info }, floating };
   }
-  // Hidden: switched on, docked and in sight if it fits so; under the preview, shown over it; else floated.
-  const on = { ...open, [side]: true };
-  const then = computeLayout(viewportWidth, on, null, wanted);
-  if (then[side] !== 'docked') return { open, floating: side };
-  if (side === 'info' && panelWidths(viewportWidth, then, wanted).infoShown < INFO_WIDTH) return { open: on, floating: 'info' };
-  return { open: on, floating: null };
+  const now = computeLayout(viewportWidth, open, floating, wanted).left;
+  if (now === 'docked') return { open: { ...open, left: false }, floating: null };
+  if (now === 'floating') return { open, floating: null };
+  // Hidden: dock it if it would fit once switched on, otherwise float it.
+  const on = { ...open, left: true };
+  if (computeLayout(viewportWidth, on, null, wanted).left === 'docked') return { open: on, floating: null };
+  return { open, floating: 'left' };
 }
 
 /**
@@ -184,9 +170,4 @@ export function toggleFrom(side: 'left' | 'info', viewportWidth: number, open: O
 /** Opening a file: the preview docked when it fits, else over the window. */
 export function previewFloats(viewportWidth: number, open: Open, wanted: Wanted = USUAL): boolean {
   return computeLayout(viewportWidth, { ...open, preview: true }, null, wanted).preview !== 'docked';
-}
-
-/** The details' button is lit while they are in sight: in their place and not under the preview, or shown over it. */
-export function infoInSight(layout: Layout, widths: Widths): boolean {
-  return layout.info === 'floating' || (layout.info === 'docked' && widths.infoShown >= INFO_WIDTH);
 }

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DesktopBridge, PreviewInfo } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
-import { computeLayout, infoInSight, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
+import { computeLayout, infoFits, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
 import { Resizer } from './shell/Resizer';
 import { ConfirmDialog } from './ui/Dialog';
 import { FilePreview, usePreview } from './shell/FilePreview';
@@ -234,7 +234,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     const onDown = (e: MouseEvent) => {
       const el = e.target instanceof Element ? e.target : null;
       // Its own toggle button flips it itself.
-      if (el?.closest('.panel.is-floating, .panel.is-raised, [data-panel-toggle]')) return;
+      if (el?.closest('.panel.is-floating, [data-panel-toggle]')) return;
       setFloating(null);
     };
     window.addEventListener('mousedown', onDown, true);
@@ -679,9 +679,12 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   };
 
   const leftShown = layout.left !== 'hidden';
-  // The button is lit while the details are in sight (not while the preview lies over them).
-  const infoShown = infoInSight(layout, widths);
   const previewShown = layout.preview !== 'hidden';
+  const infoShown = layout.info === 'docked';
+  // No room for the details (beside the conversation at 440 and the preview): they are not shown at all, and their
+  // button cannot be pressed; its hover says why. Their switch is kept: they come back when there is room.
+  const infoRoom = infoFits(width, open, savedWidths);
+  const infoTip = infoRoom ? '详情（Ctrl+Alt+B）' : previewShown ? '放不下详情：把预览拖窄或关掉，或把窗口拉宽' : '窗口太窄，放不下详情';
   // Maximized only while the preview is there to show; closing it or leaving the conversation ends that.
   const rightCanMax = previewShown && view === 'chat';
   if (canMax !== rightCanMax) setCanMax(rightCanMax);
@@ -789,7 +792,16 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       ) : null}
 
       <div className="column">
-      <header className="titlebar">
+      {/* The conversation's column (its title bar on top), then the details and the preview, each the full height
+          with its own head in the same top row (他: 「参考claude保证排版工整」). */}
+      <div className="body">
+      <div className="main-col">
+      {/* Not at the window's edge (a panel docked right of it): no room kept for the system buttons. Under a preview
+          that lies over the conversation, its name and the details button stay in the part that shows. */}
+      <header
+        className={view === 'chat' && (infoShown || layout.preview === 'docked') ? 'titlebar is-inner' : 'titlebar'}
+        {...(view === 'chat' && layout.preview === 'docked' && widths.cover && !rightMax ? { style: { paddingRight: widths.cover + 8 } } : {})}
+      >
         <div className="titlebar-title">
           {view === 'chat' && parent ? (
             <>
@@ -831,14 +843,21 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         />
         <div className="titlebar-right">
           {view === 'chat' ? (
-            <button type="button" data-panel-toggle className={infoShown ? 'icon-btn is-on' : 'icon-btn'} onClick={() => toggle('info')} aria-label={infoShown ? '收起详情' : '展开详情'} aria-pressed={infoShown} title="详情（Ctrl+Alt+B）">
+            <button
+              type="button"
+              data-panel-toggle
+              className={infoShown ? 'icon-btn is-on' : 'icon-btn'}
+              onClick={() => toggle('info')}
+              aria-label={infoShown ? '收起详情' : '展开详情'}
+              aria-pressed={infoShown}
+              {...(infoRoom ? {} : { 'aria-disabled': true })}
+              title={infoTip}
+            >
               <Icon name="detail" />
             </button>
           ) : null}
         </div>
       </header>
-
-      <div className="body">
         <main className="main">
           {view === 'plugin' ? (
             openPluginView ? (
@@ -890,13 +909,15 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             </div>
           ) : null}
         </main>
+      </div>
 
-        {/* The details, between the conversation and the preview: a fixed width, no edge to drag, no 最大化. Under the preview, their button shows them over it (floating). */}
+        {/* The details, between the conversation and the preview: a fixed width, no edge to drag, no 最大化; never
+            covered or floated (no room: not shown). */}
         {layout.info !== 'hidden' && view === 'chat' ? (
           // Shown over the preview from under it: raised in their own place (nothing beside them moves), not floated to the edge.
-          <div className={`panel panel-right panel-info ${layout.info === 'floating' && layout.infoPlace ? 'is-docked is-raised' : `is-${layout.info}`}`} style={{ width: widths.info }}>
+          <div className={`panel panel-right panel-info is-docked${layout.preview === 'docked' ? '' : ' is-edge'}`} style={{ width: widths.info }}>
             {panelPages.length ? (
-              <div className="right-head">
+              <div className="right-head panel-head">
               <div className="tabs right-tabs" role="tablist" aria-label="右栏">
                 <button type="button" role="tab" aria-selected={!panelPluginView} className={!panelPluginView ? 'tab is-on' : 'tab'} onClick={() => setRightTab('detail')}>
                   详情
@@ -922,7 +943,6 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               onOpenSession={openSession}
               project={project}
               activity={project ? (state.activity[project.id] ?? []) : []}
-              onClose={layout.info === 'floating' ? () => setFloating(null) : undefined}
               hideHeading={panelPages.length > 0}
             />
             )}
@@ -932,7 +952,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         {/* The file preview, against the window's right edge: its left edge drags, its head has 最大化 and 关闭预览. */}
         {previewShown && view === 'chat' && preview ? (
           <div
-            className={`panel panel-right panel-preview is-${layout.preview}${rightMax ? ' is-max' : ''}${widths.cover && layout.preview === 'docked' ? ' is-cover' : ''}`}
+            className={`panel panel-right panel-preview is-edge is-${layout.preview}${rightMax ? ' is-max' : ''}${widths.cover && layout.preview === 'docked' ? ' is-cover' : ''}`}
             style={rightMax ? undefined : { width: widths.preview, ...(widths.cover && layout.preview === 'docked' ? { marginLeft: -widths.cover } : {}) }}
           >
             {/* Wider than what is beside it allows, it lies over the details, then over the conversation's right part (kept at its 440 layout): pulled left by `cover`. */}

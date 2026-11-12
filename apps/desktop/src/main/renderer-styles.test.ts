@@ -62,6 +62,38 @@ describe('the panels around the conversation (shell/layout.ts counts on these)',
     expect(block('.panel.panel-right.is-max')).toContain('border-left: 0');
     expect(css).not.toContain("data-right='docked'");
   });
+
+  it('the top row is one row: the right panels’ heads are as high as the title bar, with the same line under them and the same left inset', () => {
+    const head = block('.panel-head');
+    expect(head).toContain('height: var(--spica-titlebar-h)');
+    expect(head).toContain('border-bottom: 1px solid var(--spica-divider)');
+    expect(head).toContain('background: var(--spica-chrome)');
+    expect(head).toContain('padding: 0 8px 0 16px');
+    expect(block('.titlebar')).toContain('padding-left: 16px');
+    expect(block('.titlebar')).toContain('border-bottom: 1px solid var(--spica-divider)');
+    // The preview's and the details' heads have no box of their own any more (it was 44 high, another line colour).
+    expect(block('.preview-head')).not.toContain('height');
+    expect(css).not.toContain('.detail-head {');
+  });
+
+  it('the panel at the window’s edge keeps room for the system buttons, as the title bar does; the title bar beside a panel does not', () => {
+    expect(block('.panel-right.is-edge .panel-head')).toContain('env(titlebar-area-width');
+    expect(block('.titlebar.is-inner')).toContain('padding-right: 8px');
+  });
+
+  it('a button that cannot be pressed now is greyed but still says why on hover (aria-disabled, as .btn)', () => {
+    expect(block(".icon-btn:disabled,\n.icon-btn[aria-disabled='true']")).toContain('opacity: 0.4');
+    expect(css).toContain(".icon-btn:hover:not(:disabled):not([aria-disabled='true'])");
+  });
+
+  it('in the details: one line between groups; amounts and folders stand right; a file’s folder is cut before its name', () => {
+    expect(block('.detail-section + .detail-section')).toContain('border-top: 1px solid var(--spica-divider)');
+    expect(block('.detail-facts dd.num')).toContain('text-align: right');
+    expect(block('.detail-file .detail-item-sub')).toContain('text-align: right');
+    expect(block('.detail-file .detail-item-sub')).toContain('flex: 1 1 0');
+    expect(block('.detail-file-name')).toContain('flex: 0 1 auto');
+    expect(block('.detail-file')).toContain('width: calc(100% + 12px)');
+  });
 });
 
 describe('sidebar tabs', () => {

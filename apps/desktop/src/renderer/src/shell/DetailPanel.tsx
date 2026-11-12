@@ -63,7 +63,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
   return (
     <aside className="detail" aria-label="详情">
       {hideHeading && !onClose ? null : (
-      <header className="detail-head">
+      <header className="detail-head panel-head">
         {hideHeading ? <span /> : <span className="detail-heading">详情</span>}
         {onClose ? (
           <button type="button" className="icon-btn" onClick={onClose} aria-label="关闭详情" title="关闭详情">
