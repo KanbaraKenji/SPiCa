@@ -246,19 +246,12 @@ ipcMain.on(DesktopChannel.ActiveSession, (_e, id: unknown) => {
 // every line: the saved keys and secrets (as the core gets them) and the proxy's password.
 const monitor = new MonitorHub({
   secrets: monitorSecrets,
-  // the names the user gave the connections, and what they had cost at 清零 (as 设置 › 模型 shows them)
+  // the names the user gave the connections (a stop at 花费上限 comes from the core already named, see providerBudget)
   providerName: (id) => {
     try {
       return providerList().items.find((p) => p.id === id)?.name;
     } catch {
       return undefined; // too early: the stores are not read yet
-    }
-  },
-  spendBase: (id) => {
-    try {
-      return providers.spendBase(id);
-    } catch {
-      return 0;
     }
   },
 });
@@ -348,12 +341,13 @@ const providers = new ProviderStore(
 );
 
 /**
- * Each saved provider's 花费上限 as the core takes it: what it may cost in all. After 清零 the core still counts
- * from the first call, so the limit is moved up by what it had cost then (ProviderStore.spendBase).
+ * Each saved provider's 花费上限 as the core takes it: what it may cost since its last 清零 (the core still counts from
+ * the first call and leaves out `sinceUsd`, what it had cost then: ProviderStore.spendBase), and its name for the
+ * stop's one sentence, so the stop, the monitor and the settings read the same numbers.
  */
 function providerBudget(): BudgetConfig {
-  const perProvider: Record<string, { globalUsd: number }> = {};
-  for (const p of providers.list()) if (p.spendLimitUsd) perProvider[p.id] = { globalUsd: p.spendLimitUsd + providers.spendBase(p.id) };
+  const perProvider: Record<string, { globalUsd: number; sinceUsd: number; label: string }> = {};
+  for (const p of providers.list()) if (p.spendLimitUsd) perProvider[p.id] = { globalUsd: p.spendLimitUsd, sinceUsd: providers.spendBase(p.id), label: p.name };
   return Object.keys(perProvider).length ? { perProvider } : {};
 }
 
@@ -373,7 +367,7 @@ function applyDemoSpendLimit(): void {
   if (!(backend instanceof FakeBackend)) return;
   const id = providers.defaultRef()?.connectionId ?? null;
   const p = id ? providers.list().find((x) => x.id === id) : undefined;
-  backend.setSpendLimit(id, p?.spendLimitUsd ? p.spendLimitUsd + providers.spendBase(p.id) : null);
+  backend.setSpendLimit(id, p?.spendLimitUsd ?? null, p ? providers.spendBase(p.id) : 0, p?.name);
 }
 applyDemoSpendLimit();
 // Screenshots and tests never touch the network; a normal run really calls the model.

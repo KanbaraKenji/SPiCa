@@ -58,9 +58,9 @@ export interface PluginIconView {
   dark: string;
 }
 
-/** 「$0.20」: US dollars, two decimals (cents matter at these limits). */
+/** 「$0.20」, 「$0.015」: US dollars, at least two decimals, up to four (a limit shows as it was set). */
 export function usd(n: number): string {
-  return `$${n.toFixed(2)}`;
+  return `$${n.toFixed(4).replace(/0{1,2}$/, '')}`;
 }
 
 /**
@@ -68,7 +68,8 @@ export function usd(n: number): string {
  * decimals would show as $0.00 (seen on 2026-11-10: $0.0002667 read 「$0.00」).
  */
 export function spentText(n: number): string {
-  if (n > 0 && n < 0.01) return '< $0.01';
+  // as precise as a limit can be set (four decimals), so 今日 and 每日上限 compare at sight
+  if (n > 0 && n < 0.0001) return '< $0.0001';
   return usd(n);
 }
 

@@ -188,10 +188,26 @@ export function effectiveAccount(s: Pick<ShellSettings, 'account'>, auto: string
 /** The highest 单次运行花费上限 accepted (a typo of a few zeros is refused, not kept). */
 export const RUN_LIMIT_MAX_USD = 10_000;
 
-/** A 花费上限 as saved: a positive amount up to RUN_LIMIT_MAX_USD, cents at most; anything else is no limit. */
+/** Most decimals a 花费上限 may have (US$0.0001): kept as typed up to that, more is refused on the page. */
+export const MONEY_DECIMALS = 4;
+
+/** Whether an amount has no more than MONEY_DECIMALS decimals (0.015 yes, 0.00001 no). */
+export function moneyPrecise(v: number): boolean {
+  return Math.abs(v * 10 ** MONEY_DECIMALS - Math.round(v * 10 ** MONEY_DECIMALS)) < 1e-6;
+}
+
+/**
+ * A 花费上限 as saved: a positive amount up to RUN_LIMIT_MAX_USD, as typed (four decimals at most: the page refuses
+ * more; an older or edited file is cut to four, never rounded to cents); anything else is no limit.
+ */
 export function runLimit(v: unknown): number | null {
   if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0 || v > RUN_LIMIT_MAX_USD) return null;
-  return Math.max(0.01, Math.round(v * 100) / 100);
+  return Math.max(10 ** -MONEY_DECIMALS, Math.round(v * 10 ** MONEY_DECIMALS) / 10 ** MONEY_DECIMALS);
+}
+
+/** An amount as the settings write it beside a limit: US$, up to four decimals, at least two (US$0.02, US$0.0203). */
+export function moneyText(n: number): string {
+  return 'US$' + Math.max(0, n).toFixed(MONEY_DECIMALS).replace(/0{1,2}$/, '');
 }
 
 /** 关闭窗口时: 每次询问 / 最小化到托盘 / 退出. */

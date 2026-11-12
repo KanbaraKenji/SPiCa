@@ -1,7 +1,7 @@
 // Model provider settings as the settings page sees them. Secrets (API key,
 // client secret) only travel renderer -> main when the user types a new one;
 // main never sends them back, only `hasSecret`.
-import { RUN_LIMIT_MAX_USD } from './settings';
+import { moneyPrecise, RUN_LIMIT_MAX_USD } from './settings';
 
 export type ProviderKind = 'openai' | 'anthropic' | 'wso2';
 
@@ -238,6 +238,7 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: {
   }
   const limit = d.spendLimitUsd;
   if (limit !== null && limit !== undefined && !(Number.isFinite(limit) && limit > 0 && limit <= RUN_LIMIT_MAX_USD)) e.spendLimitUsd = `须为大于 0、不高于 US$${RUN_LIMIT_MAX_USD.toLocaleString('en-US')} 的金额，或留空`;
+  else if (limit !== null && limit !== undefined && !moneyPrecise(limit)) e.spendLimitUsd = '最多四位小数';
   for (const k of ['maxConcurrent', 'requestsPerMinute'] as const) {
     const v = d[k];
     if (v !== null && (!Number.isInteger(v) || v < 1)) e[k] = '须为正整数或留空';

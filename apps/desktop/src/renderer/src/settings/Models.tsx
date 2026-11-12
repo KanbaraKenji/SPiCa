@@ -34,7 +34,7 @@ import { InfoTip } from '../ui/InfoTip';
 import { PasteConfig } from './PasteConfig';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Group, Row } from './Group';
-import { AGENT_MESSAGES_MAX } from '../../../shared/settings';
+import { AGENT_MESSAGES_MAX, moneyText } from '../../../shared/settings';
 
 export interface ProvidersApi {
   list(): Promise<ProviderList>;
@@ -823,7 +823,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                         onChange={(e) => set({ spendLimitUsd: parseNum(e.target.value) })}
                       />
                     </label>
-                    {current ? <span className="spend-spent">已花 US${(spent[current.id] ?? 0).toFixed(2)}</span> : null}
+                    {current ? <span className="spend-spent">已花 {moneyText(spent[current.id] ?? 0)}</span> : null}
                     {current && api.resetSpend && (spent[current.id] ?? 0) > 0 ? (
                       <button type="button" className="btn btn-small" title="已花从 0 重新算" onClick={() => void api.resetSpend!(current.id).then(loadSpent, () => undefined)}>
                         清零

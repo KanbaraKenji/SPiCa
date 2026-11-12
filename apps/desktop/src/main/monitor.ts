@@ -77,11 +77,6 @@ export interface MonitorHubOptions {
   now?: () => Date;
   /** A connection's name as the user gave it (设置 › 模型), for its id; undefined: the id is shown. */
   providerName?: (id: string) => string | undefined;
-  /**
-   * What a connection had cost at its last 清零 (the core counts from the first call; 设置 shows 已花 and 上限 less
-   * this), so a stop at the limit reads the same numbers as the settings.
-   */
-  spendBase?: (id: string) => number;
 }
 
 export class MonitorHub {
@@ -172,7 +167,9 @@ export class MonitorHub {
         this.add('core', e.retryable ? 'warn' : 'error', `${e.code ? `[${e.code}] ` : ''}${e.message}`, sid);
         break;
       case 'budget.stop':
-        this.add('core', 'warn', this.#budgetText(e.scope, e.spentUsd, e.limitUsd), sid);
+        // the core's one sentence (the connection's name, spent since 清零, the limit as set): the same in the line
+        // for the end of the run, the conversation's record and the usage log
+        this.add('core', 'warn', e.message, sid);
         break;
       case 'run.end':
         this.add('core', e.reason === 'error' ? 'error' : 'info', `run ended: ${e.reason}${e.detail ? ` (${short(e.detail, 300)})` : ''}`, sid);
@@ -187,15 +184,6 @@ export class MonitorHub {
   }
 
   readonly #name = (id: string): string => this.#o.providerName?.(id) || id;
-
-  /** 「spending limit reached: DeepSeek 测试 spent US$0.03 of US$0.03」: the numbers 设置 › 模型 shows (after 清零). */
-  #budgetText(scope: string, spent: number, limit: number): string {
-    const [who = '', kind = ''] = scope.split(':');
-    const base = who !== 'all' ? (this.#o.spendBase?.(who) ?? 0) : 0;
-    const money = (n: number) => 'US$' + String(Number(Math.max(0, n).toFixed(4)));
-    const whose = who === 'all' ? (kind === 'global' ? 'all providers' : 'this ' + kind) : this.#name(who) + (kind === 'global' ? '' : ' (' + kind + ')');
-    return 'spending limit reached: ' + whose + ' spent ' + money(spent - base) + ' of ' + money(limit - base);
-  }
 
   #keepFull(seq: number, text: string): void {
     this.#full.set(seq, cutMarked(scrub(text, this.#o.secrets()), MAX_FULL));

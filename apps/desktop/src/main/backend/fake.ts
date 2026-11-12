@@ -38,6 +38,7 @@ import type {
   UsageSummary,
 } from '@spica/protocol';
 import { summarizeRequests } from '@spica/core/src/usage.ts';
+import { usdText } from '@spica/core/src/money.ts';
 import { fakeRequests } from './fake-usage';
 import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import type { AgentBackend } from './types';
@@ -205,7 +206,7 @@ export class FakeBackend implements AgentBackend {
   /** Calls of a model without a price were made (in any conversation). */
   #globalUnpriced = false;
   /** 设置 › 模型 › a provider's 花费上限 (USD in all; null: none), as the core gets it; the demo has one provider. */
-  #spendLimit: { providerId: string; usd: number } | null = null;
+  #spendLimit: { providerId: string; usd: number; sinceUsd: number; name?: string } | null = null;
   /** What the demo's priced calls have cost in all. */
   #spent = 0;
   /** The request log (the usage page, the monitor): two weeks of demo records, then the calls made here. */
@@ -631,8 +632,8 @@ export class FakeBackend implements AgentBackend {
   }
 
   /** A provider's 花费上限 changed in the settings (as the core's budget.perProvider[id].globalUsd). */
-  setSpendLimit(providerId: string | null, usd: number | null): void {
-    this.#spendLimit = providerId && usd !== null ? { providerId, usd } : null;
+  setSpendLimit(providerId: string | null, usd: number | null, sinceUsd = 0, name?: string): void {
+    this.#spendLimit = providerId && usd !== null ? { providerId, usd, sinceUsd, ...(name ? { name } : {}) } : null;
   }
 
   /** What the demo has cost in all (the core's providerSpend). */
@@ -919,10 +920,13 @@ export class FakeBackend implements AgentBackend {
    */
   #stopsAtLimit(sessionId: string, run: Run, nextUsd: number): boolean {
     const limit = this.#spendLimit;
-    if (limit === null || run.unpriced || this.#spent < limit.usd) return false;
+    if (limit === null || run.unpriced) return false;
+    // since the last 清零, as the settings show 已花
+    const spent = Math.max(0, this.#spent - limit.sinceUsd);
+    if (spent < limit.usd) return false;
     const scope = `${limit.providerId}:global`;
-    const message = `spending limit ${scope} reached: spent $${this.#spent.toFixed(4)} of $${limit.usd.toFixed(2)}`;
-    this.#emit(sessionId, { type: 'budget.stop', scope, spentUsd: this.#spent, limitUsd: limit.usd, nextUsd, message });
+    const message = `spending limit reached: ${limit.name ?? limit.providerId} spent ${usdText(spent)} of ${usdText(limit.usd)}`;
+    this.#emit(sessionId, { type: 'budget.stop', scope, spentUsd: spent, limitUsd: limit.usd, nextUsd, message });
     this.#finish(sessionId, 'budget', message);
     return true;
   }

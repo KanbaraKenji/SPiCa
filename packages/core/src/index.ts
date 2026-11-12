@@ -37,6 +37,7 @@ export {
   type ModelPrice,
   type PriceTable,
 } from './cost.ts';
+export { usdText } from './money.ts';
 export { Tracer, REQUEST_LOG_MAX, type TraceHandle, type TraceStart } from './trace.ts';
 export { summarizeRequests, bucketStart, isRateLimited } from './usage.ts';
 export { MemoryStore } from './store/memory.ts';

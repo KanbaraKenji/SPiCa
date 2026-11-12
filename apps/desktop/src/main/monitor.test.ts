@@ -89,7 +89,7 @@ describe('monitor: lines', () => {
 
 describe('monitor: names and numbers as the settings show them', () => {
   const named = () =>
-    new MonitorHub({ secrets: () => [], providerName: (id) => (id === 'p-33537b51' ? 'DeepSeek 测试' : undefined), spendBase: (id) => (id === 'p-33537b51' ? 0.0549 : 0) });
+    new MonitorHub({ secrets: () => [], providerName: (id) => (id === 'p-33537b51' ? 'DeepSeek 测试' : undefined) });
 
   it('a request line names the connection, not its id', () => {
     const h = named();
@@ -97,12 +97,12 @@ describe('monitor: names and numbers as the settings show them', () => {
     expect(h.list()[0]!.text.startsWith('DeepSeek 测试/deepseek-flash #1 200')).toBe(true);
   });
 
-  it('a stop at 花费上限: what was spent and the limit less what was spent before 清零, not rounded', () => {
+  it('a stop at 花费上限 and the end of that run read the same sentence (the core\'s, named, counted from 清零)', () => {
     const h = named();
-    h.event(ev({ type: 'budget.stop', scope: 'p-33537b51:global', spentUsd: 0.0849, limitUsd: 0.0849, nextUsd: 0.4, message: 'spending limit p-33537b51:global reached' }));
-    expect(h.list()[0]!.text).toBe('spending limit reached: DeepSeek 测试 spent US$0.03 of US$0.03');
-    h.event(ev({ type: 'budget.stop', scope: 'p-33537b51:global', spentUsd: 0.0699, limitUsd: 0.0699, nextUsd: 0.4, message: '' }));
-    expect(h.list()[1]!.text).toBe('spending limit reached: DeepSeek 测试 spent US$0.015 of US$0.015');
+    const sentence = 'spending limit reached: DeepSeek 测试 spent US$0.0203 of US$0.02';
+    h.event(ev({ type: 'budget.stop', scope: 'p-33537b51:global', spentUsd: 0.0203, limitUsd: 0.02, nextUsd: 0.4, message: sentence }));
+    h.event(ev({ type: 'run.end', reason: 'budget', detail: sentence }));
+    expect(h.list().map((e) => e.text)).toEqual([sentence, `run ended: budget (${sentence})`]);
   });
 });
 

@@ -25,6 +25,7 @@ import {
   type PluginsState,
   type PluginView,
 } from '../../../shared/plugins';
+import { moneyPrecise } from '../../../shared/settings';
 import { friendlyError } from '../store/agent';
 import { ConfirmDialog } from '../ui/Dialog';
 import { ContextMenu } from '../ui/ContextMenu';
@@ -116,7 +117,14 @@ function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy
     setLimit(String(m.maxUsdPerDay));
   }
   const value = Number(limit);
-  const problem = limit.trim() === '' || !Number.isFinite(value) || value < 0 ? '须为 0 或正数' : value > m.declaredMaxUsdPerDay ? `不能高于 ${usd(m.declaredMaxUsdPerDay)}` : null;
+  const problem =
+    limit.trim() === '' || !Number.isFinite(value) || value < 0
+      ? '须为 0 或正数'
+      : value > m.declaredMaxUsdPerDay
+        ? `不能高于 ${usd(m.declaredMaxUsdPerDay)}`
+        : !moneyPrecise(value)
+          ? '最多四位小数'
+          : null;
   const off = m.maxUsdPerDay <= 0;
   const used = m.spentTodayUsd;
   return (

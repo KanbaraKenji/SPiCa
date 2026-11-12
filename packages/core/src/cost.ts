@@ -4,6 +4,7 @@ import { BUILTIN_CATALOG } from './catalog/builtin.ts';
 import { pricesFromCatalog } from './catalog/catalog.ts';
 import type { Usage } from './types.ts';
 import { abortError } from './util.ts';
+import { usdText } from './money.ts';
 
 export interface ModelPrice {
   input: number;
@@ -46,6 +47,13 @@ export interface Limits {
   perRunUsd?: number;
   /** Worst-case cost of a single model call (input estimate + maxTokens of output). */
   perCallUsd?: number;
+  /**
+   * What was spent before the count started again (a 清零 in the settings): left out of the total `globalUsd` is
+   * compared with, and out of what a stop says. Only for the total (globalUsd).
+   */
+  sinceUsd?: number;
+  /** Who the limits are for, as people call it (a connection's name): said in a stop instead of the id. */
+  label?: string;
 }
 
 export interface BudgetConfig extends Limits {
@@ -359,19 +367,23 @@ export class CostLedger {
     for (const [label, limits] of groups) {
       if (!limits) continue;
       const checks: [string, number, number | undefined][] = [
-        ['global', this.#recorded(label, 'global', scope), limits.globalUsd],
+        ['global', Math.max(0, this.#recorded(label, 'global', scope) - (limits.sinceUsd ?? 0)), limits.globalUsd],
         ['session', this.#recorded(label, 'session', scope), limits.perSessionUsd],
         ['run', this.#recorded(label, 'run', scope), limits.perRunUsd],
       ];
       for (const [kind, spent, limit] of checks) {
         if (limit !== undefined && spent >= limit) {
+          // one sentence for everywhere it shows (the stop, the end of the run, the monitor, the usage log): who,
+          // what was spent since the count started, the limit as it was set
+          const who = limits.label || (label === 'all' ? (kind === 'global' ? 'all providers' : `this ${kind}`) : label);
+          const whose = label !== 'all' && kind !== 'global' ? `${who} (this ${kind})` : who;
           return {
             ok: false,
             scope: `${label}:${kind}`,
             spentUsd: spent,
             limitUsd: limit,
             nextUsd: worst,
-            message: `spending limit ${label}:${kind} reached: spent $${spent.toFixed(4)} of $${limit.toFixed(2)}`,
+            message: `spending limit reached: ${whose} spent ${usdText(spent)} of ${usdText(limit)}`,
           };
         }
       }
@@ -385,7 +397,7 @@ export class CostLedger {
           spentUsd: 0,
           limitUsd: lim,
           nextUsd: worst,
-          message: `single call could cost up to $${worst.toFixed(4)}, above the per-call limit $${lim.toFixed(2)} (${label}); lower maxTokens or shorten the context`,
+          message: `single call could cost up to ${usdText(worst)}, above the per-call limit ${usdText(lim)} (${limits?.label || label}); lower maxTokens or shorten the context`,
         };
       }
     }

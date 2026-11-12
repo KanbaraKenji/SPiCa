@@ -10,6 +10,7 @@ import type { HostModelList } from './settings-tools.ts';
 import type { Runtime } from './runtime.ts';
 import type { Message } from './types.ts';
 import { ProviderError } from './providers/types.ts';
+import { usdText } from './money.ts';
 import { estimateTokens, newId } from './util.ts';
 
 /** What a plugin may do with the user's models (set by the plugin manager from the manifest and the user's settings). */
@@ -161,7 +162,7 @@ export class PluginSampler {
     const today = this.#today(grant.pluginId);
     if (today.usd + worst > cap) {
       lease.release();
-      throw new SamplingError('budget', `this plugin's model budget for today is used up ($${today.usd.toFixed(4)} of $${cap.toFixed(2)}; the next call could cost up to $${worst.toFixed(4)})`);
+      throw new SamplingError('budget', `this plugin's model budget for today is used up (${usdText(today.usd)} of ${usdText(cap)}; the next call could cost up to ${usdText(worst)})`);
     }
     const held = this.#rt.ledger.reserve(scope, estIn, maxTokens);
     if (!held.ok) {

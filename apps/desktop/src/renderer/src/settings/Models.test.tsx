@@ -481,6 +481,11 @@ describe('花费上限 of a provider', () => {
     fireEvent.change(box, { target: { value: '-1' } });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     expect((await screen.findByText(/须为大于 0/)).className).toContain('field-error');
+    // kept as typed up to four decimals; more is said, not rounded
+    fireEvent.change(box, { target: { value: '0.00015' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect((await screen.findByText('最多四位小数')).className).toContain('field-error');
+    expect(vi.mocked(api.save).mock.calls.every((c) => c[0].spendLimitUsd !== 0.00015)).toBe(true);
   });
 
 

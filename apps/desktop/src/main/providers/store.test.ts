@@ -145,11 +145,16 @@ describe('ProviderStore', () => {
     expect(again.find((m) => m.id === 'b')).not.toHaveProperty('maxOutput');
   });
 
-  it('a provider’s 花费上限 is kept to the cent (none when not an amount); 清零 keeps where 已花 starts, across a save and a reload', () => {
+  it('a provider’s 花费上限 is kept as typed, four decimals at most (none when not an amount); 清零 keeps where 已花 starts, across a save and a reload', () => {
     const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
     const store = new ProviderStore(dir, box);
-    const saved = store.save({ ...draft, spendLimitUsd: 2.005 });
-    expect(saved.spendLimitUsd).toBe(2.01);
+    const first = store.save({ ...draft, spendLimitUsd: 0.015 });
+    expect(first.spendLimitUsd).toBe(0.015);
+    expect(store.save({ ...draft, id: first.id, spendLimitUsd: 0.012 }).spendLimitUsd).toBe(0.012);
+    // more than four decimals is refused (the form says so in red)
+    expect(() => store.save({ ...draft, id: first.id, spendLimitUsd: 0.00015 })).toThrow(/最多四位小数/);
+    const saved = store.save({ ...draft, id: first.id, spendLimitUsd: 2.005 });
+    expect(saved.spendLimitUsd).toBe(2.005);
     expect(store.spendBase(saved.id)).toBe(0);
     store.resetSpend(saved.id, 1.5);
     store.save({ ...draft, id: saved.id, spendLimitUsd: null });

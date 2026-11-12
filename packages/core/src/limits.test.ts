@@ -91,7 +91,7 @@ describe('limits in the runtime', () => {
     const s = rt.createSession({ maxTokens: 1000 });
     const r = await s.send('loop').done;
     expect(r.reason).toBe('budget');
-    expect(r.detail).toMatch(/spending limit all:run reached/);
+    expect(r.detail).toMatch(/^spending limit reached: this run spent US\$1\.56 of US\$1\.20$/);
     // Each call costs 0.52 USD. At 0 and 0.52 and 1.04 spent (under 1.2) the call is made, whatever it might
     // cost; at 1.56 the limit is reached and the next one is not: only what is spent counts, so the run may pass
     // the limit by one step.
@@ -130,7 +130,20 @@ describe('limits in the runtime', () => {
     expect(stop).toMatchObject({ limitUsd: 1.2 });
     if (stop?.type !== 'budget.stop') throw new Error('no stop');
     expect(stop.spentUsd).toBeGreaterThanOrEqual(1.2);
-    expect(stop.message).toMatch(/spent \$1\.5600 of \$1\.20/);
+    expect(stop.message).toBe('spending limit reached: this run spent US$1.56 of US$1.20');
+  });
+
+  it('a total counted from a 清零 (sinceUsd) and named (label): one sentence, the numbers as set and as shown', () => {
+    const l = new CostLedger({ 'openai-compatible': { m: { input: 1, output: 1 } } }, { perProvider: { 'p-33537b51': { globalUsd: 0.03, sinceUsd: 0.0549, label: 'DeepSeek 测试' } } });
+    const scope = { providerId: 'p-33537b51', providerKind: 'openai-compatible', model: 'm', sessionId: 's', runId: 'r' };
+    l.seed([{ providerId: 'p-33537b51', costUsd: 0.0549 }]); // spent before 清零
+    expect(l.precheck(scope, 1, 1)).toEqual({ ok: true });
+    l.record(scope, { inputTokens: 30_000, outputTokens: 0 }); // 0.03 since 清零
+    expect(l.precheck(scope, 1, 1)).toMatchObject({ ok: false, scope: 'p-33537b51:global', message: 'spending limit reached: DeepSeek 测试 spent US$0.03 of US$0.03' });
+    l.record(scope, { inputTokens: 300, outputTokens: 0 });
+    // four decimals, not rounded to cents; a limit like 0.015 reads as set
+    l.setBudget({ perProvider: { 'p-33537b51': { globalUsd: 0.015, sinceUsd: 0.0549, label: 'DeepSeek 测试' } } });
+    expect(l.precheck(scope, 1, 1)).toMatchObject({ spentUsd: expect.closeTo(0.0303, 6), limitUsd: 0.015, message: 'spending limit reached: DeepSeek 测试 spent US$0.0303 of US$0.015' });
   });
 
   it('a limit above what is spent never stops a call however much it might cost (0.10 with 0.05 spent)', () => {
