@@ -2309,7 +2309,7 @@ pre .hl-punctuation {
   text-align: center;
 }
 
-/* Under the greeting of a new conversation (chat/welcome.ts): the question, a line for the day, or today's date. */
+/* Under the greeting of a new conversation (chat/welcome.ts): the question the page always asked. */
 .empty-chat-line {
   margin: -6px 0 0;
   color: var(--spica-muted);

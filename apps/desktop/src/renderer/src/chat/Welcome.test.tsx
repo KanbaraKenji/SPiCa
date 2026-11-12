@@ -12,19 +12,19 @@ const thursdayAfternoon = new Date(2026, 10, 12, 15, 0);
 
 describe('the empty page of a new conversation', () => {
   it('greets the user by the name in the settings, the question under it', () => {
-    render(<Conversation session={undefined} transcript={empty} actions={actions} welcome={{ name: 'Alex', waiting: 0, now: thursdayAfternoon }} />);
+    render(<Conversation session={undefined} transcript={empty} actions={actions} welcome={{ name: 'Alex', now: thursdayAfternoon }} />);
     expect(screen.getByText('下午好，Alex')).toBeTruthy();
     expect(screen.getByText(ASK)).toBeTruthy();
   });
 
   it('no name: the greeting alone, no comma left hanging', () => {
-    render(<Conversation session={undefined} transcript={empty} actions={actions} welcome={{ name: '', waiting: 0, now: thursdayAfternoon }} />);
+    render(<Conversation session={undefined} transcript={empty} actions={actions} welcome={{ name: '', now: thursdayAfternoon }} />);
     expect(screen.getByText('下午好')).toBeTruthy();
     expect(screen.queryByText(/，$/)).toBeNull();
   });
 
   it('no model yet: 未配置模型 and its button, as before, and no greeting', () => {
-    render(<Conversation session={undefined} transcript={empty} actions={actions} needsModel welcome={{ name: 'Alex', waiting: 0, now: thursdayAfternoon }} />);
+    render(<Conversation session={undefined} transcript={empty} actions={actions} needsModel welcome={{ name: 'Alex', now: thursdayAfternoon }} />);
     expect(screen.getByText('未配置模型')).toBeTruthy();
     expect(screen.getByRole('button', { name: '设置模型' })).toBeTruthy();
     expect(screen.queryByText(/下午好/)).toBeNull();

@@ -12,7 +12,7 @@ import { answerText, MessageActions } from './MessageActions';
 import { answerSources } from './sources';
 import { WEB_IMAGES, webImagesFor } from './answer-image';
 import { StatusLine } from './StatusLine';
-import { ASK, welcome as welcomeWords } from './welcome';
+import { ASK, greeting } from './welcome';
 import { GUARD_FLAG_TEXT } from './format';
 import { SettingsChangeCard } from './SettingsChangeCard';
 import { MemoryLinesContext, MemoryNote, type MemoryLines } from './MemoryNote';
@@ -281,12 +281,11 @@ function EmptyState({ session, needsModel, onSetupModel, welcome }: { session: S
         <p className="empty-chat-title">{session.title}</p>
       </div>
     );
-  const words = welcomeWords({ now: welcome?.now ?? opened, name: welcome?.name ?? '', waiting: welcome?.waiting ?? 0 });
   return (
     <div className="empty-chat">
       <SpicaMark size={56} />
-      <p className="empty-chat-title">{welcome ? words.title : ASK}</p>
-      {welcome ? <p className="empty-chat-line">{words.line}</p> : null}
+      <p className="empty-chat-title">{welcome ? greeting(welcome.now ?? opened, welcome.name) : ASK}</p>
+      {welcome ? <p className="empty-chat-line">{ASK}</p> : null}
     </div>
   );
 }
@@ -362,11 +361,10 @@ export interface ConversationProps {
   /** The user's memory, for the 已记住 lines and their 撤销. */
   memory?: MemoryLines;
   /**
-   * The empty page of a new conversation greets the user (chat/welcome.ts): `name` is 设置 › 账号 › 昵称 ('' =
-   * no name), `waiting` how many conversations wait for an answer or a confirmation. `now`: for tests and
-   * screenshots (default: the time the page opens).
+   * The empty page of a new conversation greets the user (chat/welcome.ts): `name` is 设置 › 账号 › 昵称 ('' = no
+   * name). `now`: for tests (default: the time the page opens).
    */
-  welcome?: { name: string; waiting: number; now?: Date };
+  welcome?: { name: string; now?: Date };
 }
 
 export interface WaitingChild {
