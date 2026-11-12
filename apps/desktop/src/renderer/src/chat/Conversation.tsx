@@ -362,7 +362,7 @@ export interface ConversationProps {
   /** The user's memory, for the 已记住 lines and their 撤销. */
   memory?: MemoryLines;
   /**
-   * The empty page of a new conversation greets the user (chat/welcome.ts): `name` is 设置 › 账号 › 称呼 ('' =
+   * The empty page of a new conversation greets the user (chat/welcome.ts): `name` is 设置 › 账号 › 昵称 ('' =
    * no name), `waiting` how many conversations wait for an answer or a confirmation. `now`: for tests and
    * screenshots (default: the time the page opens).
    */

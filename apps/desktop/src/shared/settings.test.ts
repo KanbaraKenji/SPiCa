@@ -104,7 +104,7 @@ describe('账号', () => {
   });
 });
 
-describe('账号 › 称呼', () => {
+describe('账号 › 昵称', () => {
   it('from the account: the part before the first dot or space, first letter in capitals', () => {
     expect(defaultCallName('ALEX.CHEN')).toBe('Alex');
     expect(defaultCallName('ALEX CHEN')).toBe('Alex');

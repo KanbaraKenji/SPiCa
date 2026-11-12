@@ -1,5 +1,5 @@
 // The words on the empty page of a new conversation: a greeting for the time of day with the name the user
-// goes by (设置 › 账号 › 称呼), and a line under it. Three ways to fill that line, for him to pick (2026-11-12):
+// goes by (设置 › 账号 › 昵称), and a line under it. Three ways to fill that line, for him to pick (2026-11-12):
 //   a  the plain one: the question the page always asked
 //   b  a line for the time of day and the day of the week (LINES below)
 //   c  today's date, and how many conversations wait for the user to answer or confirm

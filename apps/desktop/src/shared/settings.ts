@@ -136,7 +136,7 @@ export interface ShellSettings {
    */
   account: string;
   /**
-   * 账号 › 称呼: what the new conversation's greeting calls the user (下午好，Alex); '' = from the account
+   * 账号 › 昵称: what the new conversation's greeting calls the user (下午好，Alex); '' = from the account
    * (defaultCallName). Only shown in the window: plugins get the account, never this.
    */
   callName: string;
@@ -152,10 +152,10 @@ export function accountValue(v: unknown): string {
   return v.replace(/[\u0000-\u001f\u007f]/g, '').trim().toUpperCase().slice(0, ACCOUNT_MAX).trim();
 }
 
-/** The longest 称呼 accepted. */
+/** The longest 昵称 accepted. */
 export const CALL_NAME_MAX = 32;
 
-/** A 称呼 as typed: no spaces around it, no control characters; kept as typed otherwise (a Chinese name, any case). */
+/** A 昵称 as typed: no spaces around it, no control characters; kept as typed otherwise (a Chinese name, any case). */
 export function callNameValue(v: unknown): string {
   if (typeof v !== 'string') return '';
   // eslint-disable-next-line no-control-regex -- control characters are what is taken out
@@ -163,7 +163,7 @@ export function callNameValue(v: unknown): string {
 }
 
 /**
- * The 称呼 an account gives (he said 2026-11-12: 「如果是AAAA.XXX用AAAA，如果是AAAA XXX也用AAAA」): the part before the
+ * The 昵称 an account gives (he said 2026-11-12: 「如果是AAAA.XXX用AAAA，如果是AAAA XXX也用AAAA」): the part before the
  * first dot or space, first letter in capitals and the rest small (ALEX.CHEN → Alex); the whole account without either.
  */
 export function defaultCallName(account: string): string {
@@ -171,7 +171,7 @@ export function defaultCallName(account: string): string {
   return head ? head.charAt(0).toUpperCase() + head.slice(1).toLowerCase() : '';
 }
 
-/** The 称呼 in force: the one typed, else the one the account gives ('' when there is no account either). */
+/** The 昵称 in force: the one typed, else the one the account gives ('' when there is no account either). */
 export function effectiveCallName(s: Pick<ShellSettings, 'account' | 'callName'>, autoAccount: string): string {
   return s.callName || defaultCallName(effectiveAccount(s, autoAccount));
 }

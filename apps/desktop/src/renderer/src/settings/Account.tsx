@@ -1,7 +1,7 @@
 // Settings > 账号 (he agreed to a section of its own, 2026-11-12):
 //   账号  what plugins get as the user's account (SPICA_USER_ACCOUNT, ctx.user.account). The automatic one is
 //        worked out in the main process (main/user-account.ts); what is typed here replaces it.
-//   称呼  what the new conversation's greeting calls the user (下午好，Alex). From the account unless typed;
+//   昵称  what the new conversation's greeting calls the user (下午好，Alex). From the account unless typed;
 //        only shown in the window, never given to plugins.
 import { useState } from 'react';
 import { ACCOUNT_MAX, accountValue, CALL_NAME_MAX, callNameValue, defaultCallName, effectiveAccount, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
@@ -73,7 +73,7 @@ export function Account({ settings, onChange, autoAccount = '' }: AccountProps) 
       : '新对话页问候你时用。'
     : fromAccount
       ? '新对话页问候你时用，取自账号。只在界面上显示，不提供给插件。'
-      : '新对话页问候你时用。没有账号时不带称呼。';
+      : '新对话页问候你时用。没有账号时问候不带昵称。';
   return (
     <section className="settings-section">
       <Group>
@@ -89,11 +89,11 @@ export function Account({ settings, onChange, autoAccount = '' }: AccountProps) 
           onSave={(account) => onChange({ account })}
         />
         <TypedRow
-          title="称呼"
+          title="昵称"
           hint={nameHint}
           saved={settings.callName}
           fallback={fromAccount}
-          empty="不带称呼"
+          empty="不带昵称"
           max={CALL_NAME_MAX}
           clean={callNameValue}
           back="恢复默认"

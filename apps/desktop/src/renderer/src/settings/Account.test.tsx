@@ -48,10 +48,10 @@ describe('账号', () => {
   });
 });
 
-describe('称呼', () => {
+describe('昵称', () => {
   it('from the account in grey; what is typed is kept as typed; 恢复默认 goes back', () => {
     const p = setup({ autoAccount: 'ALEX.CHEN' });
-    const box = screen.getByRole('textbox', { name: '称呼' }) as HTMLInputElement;
+    const box = screen.getByRole('textbox', { name: '昵称' }) as HTMLInputElement;
     expect(box.placeholder).toBe('Alex');
     expect(screen.getByText(/不提供给插件/)).toBeTruthy();
     fireEvent.change(box, { target: { value: ' 小陈 ' } });
@@ -68,10 +68,10 @@ describe('称呼', () => {
 
   it('follows a typed account; none at all: no name', () => {
     setup({ autoAccount: 'ALEX.CHEN', settings: { ...DEFAULT_SETTINGS, account: 'CHEN.A' } });
-    expect((screen.getByRole('textbox', { name: '称呼' }) as HTMLInputElement).placeholder).toBe('Chen');
+    expect((screen.getByRole('textbox', { name: '昵称' }) as HTMLInputElement).placeholder).toBe('Chen');
     cleanup();
     setup();
-    expect((screen.getByRole('textbox', { name: '称呼' }) as HTMLInputElement).placeholder).toBe('不带称呼');
+    expect((screen.getByRole('textbox', { name: '昵称' }) as HTMLInputElement).placeholder).toBe('不带昵称');
   });
 });
 
