@@ -980,16 +980,6 @@ button.tree-twisty:hover {
   user-select: text;
 }
 
-/* The content column (messages, the input box, what is queued, the inbox): COLUMN_WIDTH wide, its middle on the
-   window's middle while there is room (shell/layout.ts centreShift, set on .main as --centre-shift). */
-.transcript-column,
-.composer-stack,
-.inbox-column,
-.queued,
-.run-notices {
-  translate: var(--centre-shift, 0px) 0;
-}
-
 .transcript-column {
   max-width: 760px;
   margin: 0 auto;
@@ -2308,8 +2298,7 @@ pre .hl-punctuation {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  /* On the content column's middle: twice the shift on one side moves the middle by the shift. */
-  padding: 24px max(24px, calc(24px - 2 * var(--centre-shift, 0px))) 24px max(24px, calc(24px + 2 * var(--centre-shift, 0px)));
+  padding: 24px;
   color: var(--spica-ink);
 }
 
@@ -2336,7 +2325,7 @@ pre .hl-punctuation {
 
 .to-bottom {
   position: absolute;
-  left: calc(50% + var(--centre-shift, 0px));
+  left: 50%;
   bottom: 10px;
   transform: translateX(-50%);
   width: 32px;
@@ -3499,8 +3488,7 @@ button.ctx-row:hover {
 
 .composer-note {
   margin: -10px 0 0;
-  /* On the content column's middle, as .empty-chat. */
-  padding: 0 max(24px, calc(24px - 2 * var(--centre-shift, 0px))) 10px max(24px, calc(24px + 2 * var(--centre-shift, 0px)));
+  padding: 0 24px 10px;
   text-align: center;
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);

@@ -64,7 +64,7 @@
 | **定** 界面字体：默认是英文和数字用 Segoe UI、中文用微软雅黑；外观 › 界面字体 可改成「跟随系统」（`system-ui`，简体中文 Windows 上是微软雅黑，英文也由它画）。管整个界面的字，包括小窗口和插件页；代码字体不跟着变 | `shared/ui-font.ts` 的 `uiFontFamily`；页面上是 `--font-ui`（`theme.ts` 的 `applyUiFont`），小窗口经 `dialogLook`，插件页经 `pluginThemeVars` | `shared/ui-font.test.ts`、`settings/Appearance.test.tsx`「界面字体…」 |
 | **定** 文字在它所在的框里上下居中；图标和旁边的字在同一条中线上 | 界面字体的度量：`shared/ui-font.ts`（默认的 `Spica UI` 修正过；跟随系统时中日韩的系统字体不修正，是 Segoe UI 时用同一套修正） | `renderer-styles.test.ts`「the interface font has its ascent and descent…」 |
 | **定** 不给文字或图标做手工的上下补偿（小幅 `translate`、`text-box` 裁边） | `styles.css` | 同文件「no small fixed nudges…」 |
-| **定** 对话内容那一列对准整个窗口的中线，放不下时才让开 | `shell/layout.ts` 的 `centreShift` | 同文件「the content column…」 |
+| **定** 对话内容那一列在对话区（侧栏右边到右侧栏左边）里居中，最宽 760；右侧栏变宽时先吃掉两边的空白，吃完再变窄，到 440 之后由预览盖住 | `styles.css` 里各处的 `max-width` + `margin: 0 auto`（宽度数在 `shell/layout.ts` 的 `COLUMN_WIDTH`） | 同文件「the content column…」 |
 | **定** 输入框下面那一行两端和输入框圆角结束的位置对齐（文件夹在左，上下文环在右） | `chat/Composer.tsx` 的样式 | 同文件「corners of 12px…」 |
 
 度量值是在 125% 缩放的屏幕上量着选的；200% 下有二十来处偏 0.5 到 0.75px，属于已知。本机找不到 Segoe UI（可变版和静态版都没有）时，退回不修正的样子。两种界面字体在 125% 下各量了同样 75 处：默认超过 ±0.5px 的 11 处，跟随系统（微软雅黑）8 处，多数正好差一个物理像素（`out/settings-modal/13-centre-audit.md`）。换别的界面字体要按同样的办法重量，入口只有 `shared/ui-font.ts`。
@@ -139,7 +139,6 @@
 - 点 × 的询问框：默认选中「最小化到托盘」，回车等于「确定」，右上角 × 等于不选。
 - 花费上限旁的「已花 US$x」和「清零」；以前按模型、全局填的值不迁移。
 - 等批准时被停掉的确认卡，重建后仍是卡片（右端红色「已中断」），不显示成 Failed；详情栏「工具调用」不列这一步。
-- 内容列对窗口中线：预览盖住对话时按对话区本身算。
 - 账号菜单最上面一行是不可点的账号全名；点齿轮直接开设置，点账号才出菜单。
 - 示例设定页选过文件夹后有「恢复默认」；导出日志后的文件路径点了是在资源管理器里定位。
 - 回答下的文件 5 个以上改列表，超过 10 行先显示 8 行。

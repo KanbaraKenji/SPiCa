@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  centreShift,
-  COLUMN_WIDTH,
   computeLayout,
   INFO_WIDTH,
   infoFits,
@@ -197,46 +195,5 @@ describe('the sidebar toggle pressed while the sidebar is only slid out', () => 
   it('a sidebar left out on purpose (not slid out by resting) still closes on the press', () => {
     expect(toggleFrom('left', 500, closed, 'left', false)).toEqual({ open: closed, floating: null });
     expect(toggleFrom('left', 1920, all, null, false)).toEqual(toggleAction('left', 1920, all, null));
-  });
-});
-
-describe('the content column: its middle on the window’s middle while there is room', () => {
-  // Where the column's middle lands, as an offset from the window's middle (0: on it).
-  const offset = (vw: number, open: Open) => {
-    const layout = computeLayout(vw, open);
-    const widths = panelWidths(vw, layout, { left: 264, preview: PREVIEW_WIDTH });
-    const left = layout.left === 'docked' ? widths.left : 52;
-    const right = vw - (layout.info === 'docked' ? widths.info : 0) - (layout.preview === 'docked' ? widths.preview - widths.cover : 0);
-    return { shift: centreShift(vw, layout, widths), off: left + (right - left) / 2 + centreShift(vw, layout, widths) - vw / 2 };
-  };
-  const o = (left: boolean, info: boolean, preview = false): Open => ({ left, info, preview });
-
-  it('at 1920 with room on both sides it sits on the window’s middle, whatever is open beside it', () => {
-    expect(offset(1920, o(true, false))).toEqual({ shift: -132, off: 0 });
-    expect(offset(1920, o(true, true))).toEqual({ shift: 18, off: 0 });
-    expect(offset(1920, o(false, false))).toEqual({ shift: -26, off: 0 });
-    expect(offset(1920, o(false, true)).off).toBe(0);
-  });
-
-  it('too little room on one side: as near as the conversation allows, keeping the usual 24 at that side', () => {
-    // Sidebar and details: on the middle down to 1408 (the details' side runs out first), then pushed left.
-    expect(offset(1408, o(true, true)).off).toBe(0);
-    expect(offset(1380, o(true, true)).off).toBe(-14);
-    // Sidebar only at 1280: the sidebar's side runs out; the column keeps 24 from the sidebar.
-    const at = offset(1280, o(true, false));
-    expect(at.off).toBe(28);
-    expect(264 + 24 + COLUMN_WIDTH / 2 - 640).toBe(28);
-  });
-
-  it('no room to spare (the conversation under 808): centred in the conversation as before, nothing moved', () => {
-    expect(offset(1920, o(true, true, true)).shift).toBe(0);
-    expect(offset(1280, o(true, true)).shift).toBe(0);
-    expect(offset(1100, o(true, false, true)).shift).toBe(0);
-  });
-
-  it('not on a chat (inbox, plugin page): the right panels do not count', () => {
-    const layout = computeLayout(1920, o(true, true, true));
-    const widths = panelWidths(1920, layout, { left: 264, preview: PREVIEW_WIDTH });
-    expect(centreShift(1920, layout, widths, false)).toBe(-132);
   });
 });
