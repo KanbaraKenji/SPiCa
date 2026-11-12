@@ -27,7 +27,7 @@ export function uiFontFor(mode: UiFontMode, lang: string = typeof navigator === 
   if (!ctx) return family;
   const width = (font: string) => {
     ctx.font = `100px ${font}`;
-    return ctx.measureText('Settings 0123 HOSHI').width;
+    return ctx.measureText('Settings 0123 SPICA').width;
   };
   const sys = width('system-ui');
   return [width("'Segoe UI Variable Text'"), width("'Segoe UI'")].some((w) => Math.abs(w - sys) < 0.5) ? family : SYSTEM_FONT_PLAIN;
