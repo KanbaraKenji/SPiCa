@@ -1,7 +1,9 @@
 /* global window, document */
 // Settings page (placement "settings"): in Spica under 设置 › 插件 › Notes, the
-// 设定 tab next to 详情. 选择… opens the system's folder picker
-// (window.spica.pickFolder); the path goes into the box, and 保存 saves it
+// 设定 tab next to 详情. Beside the folder box, two icon buttons: the folder
+// opens what the box says in Explorer (window.spica.openFolder; only with
+// something in the box), the pencil opens the system's folder picker
+// (window.spica.pickFolder) and puts the path into the box. 保存 saves it
 // through the plugin's settings service (get_settings / save_settings,
 // views/settings.json). Cancelling the picker changes nothing.
 const spica = window.spica;
@@ -17,6 +19,7 @@ const current = () => ({ notesFolder: $('folder').value.trim(), catalogUrl: $('c
 const changed = () => {
   const c = current();
   $('save').disabled = c.notesFolder === saved.notesFolder && c.catalogUrl === saved.catalogUrl;
+  $('open').disabled = !c.notesFolder;
 };
 
 function show(s) {
@@ -39,6 +42,15 @@ $('pick').onclick = async () => {
   $('folder').value = dir;
   setStatus('');
   changed();
+};
+
+$('open').onclick = async () => {
+  try {
+    await spica.openFolder($('folder').value.trim());
+    setStatus('');
+  } catch (err) {
+    setStatus(err.message, true); // e.g. 找不到文件夹：… (not created yet, or typed wrong)
+  }
 };
 
 $('folder').oninput = changed;

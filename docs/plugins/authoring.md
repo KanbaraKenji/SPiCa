@@ -434,6 +434,7 @@ if (r.isError) showError(r.content); else render(r.data ?? r.content);
 | `notify(文字, { kind })` | 弹一条提示，`kind` 是 `info` 或 `error` |
 | `pickFolder({ title?, defaultPath? })` | 弹系统的选文件夹框 → 用户选的完整路径，取消时 `null` |
 | `pickFile({ title?, defaultPath?, extensions? })` | 弹系统的选文件框（选一个）→ 完整路径或 `null`；`extensions` 如 `[".md", ".txt"]`，不写 = 任何文件 |
+| `openFolder(路径)` | 在系统的资源管理器里打开一个文件夹 → 打不开时报错（文字说原因，如「找不到文件夹：…」）。只认本机盘符开头的完整路径，网络路径、文件都不行 |
 
 - 颜色用 Spica 注入的 CSS 变量：`--spica-bg`、`--spica-surface`、`--spica-fg`、`--spica-muted`、`--spica-border`、`--spica-accent`、`--spica-danger`、`--spica-font`、`--spica-radius`。换明暗时它们会自动变，不用自己判断。
 - 沙箱限制：页面里没有 Node，不能 `require`、不能读写文件；只能加载本插件目录里的文件（不能用 CDN，脚本和样式都放进插件）；只能调本插件的工具，写了 `permissions.tools` 就只能调列出的那几个。
@@ -447,7 +448,7 @@ if (r.isError) showError(r.content); else render(r.data ?? r.content);
 
 ```json
 {
-  "title": "设置",
+  "title": "设定",
   "entry": "ui/settings.html",
   "placement": "settings",
   "permissions": { "tools": ["get_settings", "save_settings"] }
@@ -459,18 +460,37 @@ if (r.isError) showError(r.content); else render(r.data ?? r.content);
 - 设置页里 `--spica-bg` 是详情卡片的底色（页面和卡片连成一片），`--spica-surface` 是窗口的底色：按钮、输入框用 `--spica-surface`，在卡片上照样看得出来。
 - 读写设置的工具放进 `services/`（只给自己的页面用，模型看不到，「保存令牌」不会被 Agent 误调），存进 `SPICA_PLUGIN_DATA/config.json`；给模型用的 server 每次调用时读同一个文件。写法见 skill 的 `references/internal-services.md`。
 
-要用户选文件夹时：
+要用户选文件夹时，照 Spica 自己 设置 › 常规 › 工作流 那一行：输入框后面两个方形图标按钮，文件夹图标是「打开文件夹」，铅笔是「选择文件夹」（更改），名字放进 `title` 悬停显示：
+
+```html
+<div class="field-row">
+  <input id="folder" type="text">
+  <button type="button" class="icon" id="open" title="打开文件夹" aria-label="打开文件夹" disabled>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h4l1.2 1.5h5.8v6.5h-11z"/></svg>
+  </button>
+  <button type="button" class="icon" id="pick" title="选择文件夹" aria-label="选择文件夹">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.2 2.6l2.2 2.2-7.6 7.6-2.9.7.7-2.9z"/></svg>
+  </button>
+</div>
+```
 
 ```js
-const dir = await window.spica.pickFolder({ title: '选择笔记文件夹', defaultPath: box.value || undefined });
-if (dir === null) return;   // 用户取消：什么都不改
-box.value = dir;            // 填回页面；用户点「保存」时经自己的工具存
+pick.onclick = async () => {
+  const dir = await window.spica.pickFolder({ title: '选择笔记文件夹', defaultPath: box.value || undefined });
+  if (dir === null) return;   // 用户取消：什么都不改
+  box.value = dir;            // 填回页面；用户点「保存」时经自己的工具存
+};
+open.onclick = () => window.spica.openFolder(box.value).catch((err) => showError(err.message));
+box.oninput = () => (open.disabled = !box.value.trim());   // 框里空着时「打开」不能点
 ```
+
+图标按钮的样式（`button.icon`：32px 见方、和旁边输入框一样高，图标 16px、线宽 1.4、用文字颜色）在 `plugins/example-notes/ui/style.css`，可以照抄。
 
 - 只给路径，读写还是插件自己的工具（钩子、确认照常生效）。不用在清单里声明：页面能拿到本机的完整路径，只因为用户自己在系统对话框里选了它。
 - 对话框挂在 Spica 窗口上，标题前加插件名（「Notes (example) · 选择笔记文件夹」）。同一时间只开一个，对话框开着时再要一个，直接得到 `null`。
 - `defaultPath` 只认本机盘符开头的完整路径（`D:\…`），网络路径（`\\server\share`）和别的写法会被忽略，对话框从它自己的位置开始。
 - sidebar、panel 的页面也能用；预览页不能（它拿着用户的文件）。
+- `openFolder` 只是在资源管理器里打开，不读、不执行任何东西：只认本机盘符开头的文件夹，网络路径（`\\server\share`）直接报错，给的是文件或文件夹不存在时报「找不到文件夹：…」。预览页不能用。
 - 完整例子：`plugins/example-notes` 的 `views/settings.json`、`services/settings.json`、`server/settings.js`、`ui/settings.html`。
 
 ### 预览页（`placement: "preview"`）

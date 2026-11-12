@@ -26,6 +26,7 @@
 | `notify(文字, { kind })` | 弹一条提示，`kind`：`info` / `error` |
 | `pickFolder({ title?, defaultPath? })` | 弹系统的选文件夹框 → `Promise<完整路径 \| null>`，`null` 是用户取消了 |
 | `pickFile({ title?, defaultPath?, extensions? })` | 弹系统的选文件框（选一个）→ `Promise<完整路径 \| null>`；`extensions` 如 `[".md", ".txt"]`，不写 = 任何文件 |
+| `openFolder(路径)` | 在系统的资源管理器里打开文件夹 → `Promise<null>`，打不开时 reject（`err.message` 说原因）；只认本机盘符开头的文件夹 |
 
 页面在 Spica 外面打开时没有 `window.spica`，模板会显示一句「要在 Spica 里打开」。
 
@@ -54,7 +55,7 @@
 插件要用户填的东西（服务地址、令牌、导出到哪个文件夹）放在这里：页面显示在 设置 › 插件 › 这个插件的详情里：名字和「更新 / 删除」那两行下面多一行页签，第一个是「详情」，后面每个设置页一个，页签文字是 `title`。点它，下面整块换成这个页面，占满右栏剩下的高度；侧栏不多出入口。插件停用时不显示。第一次点到页签才加载，切回「详情」再回来，填了一半的东西还在。
 
 ```json
-{ "title": "设置", "entry": "ui/settings.html", "placement": "settings", "permissions": { "tools": ["get_settings", "save_settings"] } }
+{ "title": "设定", "entry": "ui/settings.html", "placement": "settings", "permissions": { "tools": ["get_settings", "save_settings"] } }
 ```
 
 - 可以有几个设置页，各占一个页签。规则和别的页面一样：沙箱、只能调本插件的工具、`permissions.tools` 生效。
@@ -62,18 +63,35 @@
 - 背景：设置页里 `--spica-bg` 是详情卡片的底色（页面和卡片连成一片），`--spica-surface` 是窗口的底色；按钮、输入框用 `--spica-surface`。
 - 读写设置的工具放进 `services/`（只给页面用，模型看不到），存进 `SPICA_PLUGIN_DATA/config.json`，见 `internal-services.md`。
 
-选文件夹：
+选文件夹：输入框后面两个方形图标按钮，和 Spica 自己 设置 › 常规 › 工作流 那一行一样：文件夹图标 =「打开文件夹」，铅笔 =「选择文件夹」，名字写进 `title`（悬停显示）。图标用内嵌 SVG，样式 `button.icon` 照抄 `plugins/example-notes/ui/style.css`。
+
+```html
+<div class="field-row">
+  <input id="folder" type="text">
+  <button type="button" class="icon" id="open" title="打开文件夹" aria-label="打开文件夹" disabled>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h4l1.2 1.5h5.8v6.5h-11z"/></svg>
+  </button>
+  <button type="button" class="icon" id="pick" title="选择文件夹" aria-label="选择文件夹">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.2 2.6l2.2 2.2-7.6 7.6-2.9.7.7-2.9z"/></svg>
+  </button>
+</div>
+```
 
 ```js
-const dir = await window.spica.pickFolder({ title: '选择导出文件夹', defaultPath: box.value || undefined });
-if (dir === null) return;          // 用户取消：什么都不改
-box.value = dir;                   // 填回页面，用户点「保存」时经自己的工具存
+pick.onclick = async () => {
+  const dir = await window.spica.pickFolder({ title: '选择导出文件夹', defaultPath: box.value || undefined });
+  if (dir === null) return;        // 用户取消：什么都不改
+  box.value = dir;                 // 填回页面，用户点「保存」时经自己的工具存
+};
+open.onclick = () => window.spica.openFolder(box.value).catch((err) => showError(err.message));
+box.oninput = () => (open.disabled = !box.value.trim());   // 框里空着时「打开」不能点
 ```
 
 - 只给路径。读写还是插件自己的工具（钩子和确认照常生效）。
 - 对话框挂在 Spica 窗口上，标题前面加插件名（「Notes (example) · 选择导出文件夹」）；同一时间只开一个，第二个请求直接得到 `null`。
 - `defaultPath` 只认本机盘符开头的完整路径（`D:\…`），网络路径（`\\server\share`）会被忽略。
 - 不用在清单里声明；预览页不能用（它拿着用户的文件）。sidebar、panel 的页面也能用。
+- `openFolder` 只在资源管理器里打开，不读、不执行：网络路径直接报错；是文件或不存在时报「找不到文件夹：…」。
 
 ## 预览页（placement: preview）
 

@@ -79,6 +79,10 @@ export async function startPreview(dir, opts = {}) {
     },
     onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     openFile(path) { console.log('[preview] openFile', path); },
+    // No system dialog or Explorer here: the picker asks in the browser, openFolder only logs.
+    async pickFolder(o) { const v = window.prompt((o && o.title) || '选择文件夹（预览：输入完整路径）', (o && o.defaultPath) || ''); return v ? v : null; },
+    async pickFile(o) { const v = window.prompt((o && o.title) || '选择文件（预览：输入完整路径）', (o && o.defaultPath) || ''); return v ? v : null; },
+    async openFolder(path) { console.log('[preview] openFolder', path); return null; },
     notify(text, o) { console.log('[preview] notify', o && o.kind || 'info', text); },
   };
 })();
