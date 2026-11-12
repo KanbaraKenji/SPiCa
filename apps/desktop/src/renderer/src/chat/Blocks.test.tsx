@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { HistoryCardMeta } from '@spica/protocol';
-import { OpenSessionContext, HistoryCardsContext, HistoryRefContext, MarkdownText, AskCard, ConfirmCard, FileCards, SuggestCard, ToolGroup } from './Blocks';
+import { OpenSessionContext, HistoryCardsContext, HistoryRefContext, MarkdownText, AskCard, ConfirmCard, FileCards, RoundDoneContext, SuggestCard, ToolGroup } from './Blocks';
 
 afterEach(cleanup);
 
@@ -181,7 +181,7 @@ describe('ToolGroup', () => {
     expect(head.querySelector('.fold-meta svg')).toBeNull();
     fireEvent.click(head);
     const rows = [...document.querySelectorAll('.tool-list .tool-item-head')] as HTMLElement[];
-    expect(rows.map((r) => r.querySelector('.fold-meta')?.textContent ?? '')).toEqual(['<1 秒', 'Failed', '已超时']);
+    expect(rows.map((r) => r.querySelector('.fold-meta')?.textContent ?? '')).toEqual(['<1s', 'Failed', '已超时']);
     for (const r of rows) expect(r.querySelector('.fold-meta svg')).toBeNull();
     expect(rows.map((r) => r.querySelector('.fold-icon svg')?.getAttribute('data-status'))).toEqual(['done', 'error', 'stopped']);
   });
@@ -327,5 +327,33 @@ describe('the assistant looking through earlier conversations', () => {
     expect(screen.getByRole('link', { name: '文档' }).getAttribute('href')).toBe('https://example.com/a');
     // Only digits after history:.
     expect(screen.queryByRole('button', { name: '第一' })).toBeNull();
+  });
+});
+
+describe('tool times once the round is over', () => {
+  const blocks = [
+    { type: 'tool' as const, callId: 'a', name: 'list_dir', input: { path: '.' }, state: 'done' as const, durationMs: 4200 },
+    { type: 'tool' as const, callId: 'b', name: 'read_file', input: { path: 'a.docx' }, state: 'timeout' as const },
+    { type: 'tool' as const, callId: 'c', name: 'read_file', input: { path: 'b.docx' }, state: 'done' as const, durationMs: 800, autoApproved: true },
+  ];
+  const metas = () => [...document.querySelectorAll('.fold-meta')].map((m) => m.textContent);
+
+  it('while the round goes on: each finished step and the group keep their time', () => {
+    render(<ToolGroup blocks={blocks} />);
+    expect(metas()).toEqual(['5s']);
+    fireEvent.click(screen.getByRole('button', { name: /Listed a folder/ }));
+    expect(metas()).toEqual(['5s', '4s', '已超时', 'Auto · <1s']);
+  });
+
+  it('the round over: no time after the group, its steps, or a call alone; what is not a time stays', () => {
+    render(
+      <RoundDoneContext.Provider value={true}>
+        <ToolGroup blocks={blocks} />
+        <ToolGroup blocks={[blocks[0]!]} />
+      </RoundDoneContext.Provider>,
+    );
+    expect(metas()).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: /Listed a folder, read 2 files/ }));
+    expect(metas()).toEqual(['已超时', 'Auto']);
   });
 });

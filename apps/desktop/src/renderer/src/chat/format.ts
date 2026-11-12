@@ -59,12 +59,42 @@ export function timeOf(at: string): string {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+/**
+ * How long something took, once it is over: written as the ticking clock is (formatClock: 7s, 2m 5s, 1h 2m),
+ * under a second <1s (他选「也改，全部统一」).
+ */
 export function formatDuration(ms: number): string {
-  if (ms < 1000) return '<1 秒';
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s} 秒`;
-  const m = Math.floor(s / 60);
-  return `${m} 分 ${String(s % 60).padStart(2, '0')} 秒`;
+  return ms < 1000 ? '<1s' : formatClock(ms);
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * When a message was written, from now (他: 「just now(刚刚)、9 minutes ago、5 hours ago」): just now under a
+ * minute (and for a moment ahead of the clock), N minute(s) ago, N hour(s) ago under a day, yesterday and N days
+ * ago by the calendar, after a week the date (Nov 5; with the year when it is not this year). '' when not a date.
+ */
+export function relativeTime(at: string, now: number): string {
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return '';
+  const diff = now - d.getTime();
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'} ago`;
+  if (diff < 60_000) return 'just now';
+  if (diff < 3_600_000) return plural(Math.floor(diff / 60_000), 'minute');
+  if (diff < 86_400_000) return plural(Math.floor(diff / 3_600_000), 'hour');
+  const today = new Date(now);
+  const days = Math.round((new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) / 86_400_000);
+  if (days <= 1) return 'yesterday';
+  if (days < 7) return `${days} days ago`;
+  const date = `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  return d.getFullYear() === today.getFullYear() ? date : `${date}, ${d.getFullYear()}`;
+}
+
+/** The full moment, for the hover over a relative time: 2026年11月12日 14:38. '' when not a date. */
+export function fullTime(at: string): string {
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 /**

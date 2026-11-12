@@ -37,6 +37,8 @@ import { SpicaStatusIcon } from '@spica/brand/react';
 import type { PluginView as PageView } from '../../../shared/plugin-view';
 import { PluginPage, type PluginPageProps } from '../shell/PluginFrame';
 import { spendText } from '../../../shared/spend';
+import { letterBadge } from '../ui/badge';
+import { formatClock } from '../chat/format';
 
 export interface PluginsApi {
   run(cmd: PluginsCommand): Promise<PluginsResult>;
@@ -183,15 +185,9 @@ function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy
   );
 }
 
-/** Badge colours: mid tones that carry white text on a light or a dark skin. */
-const BADGE_COLOURS = ['#4f7cff', '#16a37f', '#c2410c', '#7c3aed', '#0e7490', '#b45309', '#be185d', '#4d7c0f', '#1d4ed8', '#9333ea', '#0f766e', '#a16207'];
-
-/** A plugin's badge: the first character of its name (a letter in upper case) on a colour its id always gets. */
+/** A plugin's badge: the first character of its name (a letter in upper case) on a colour its id always gets (ui/badge.ts). */
 export function pluginBadge(p: { name: string; displayName: string }): { letter: string; colour: string } {
-  const first = [...(p.displayName.trim() || p.name)][0] ?? '?';
-  let h = 0;
-  for (const ch of p.name) h = (h * 31 + ch.codePointAt(0)!) >>> 0;
-  return { letter: /[a-z]/i.test(first) ? first.toUpperCase() : first, colour: BADGE_COLOURS[h % BADGE_COLOURS.length]! };
+  return letterBadge(p.displayName.trim() || p.name, p.name);
 }
 
 /**
@@ -260,7 +256,7 @@ interface Running {
   step?: InstallStepView;
 }
 
-/** How far the install is: the step in words, the seconds so far; a bar while the download size is known. */
+/** How far the install is: the step in words, the time so far (7s, 1m 4s, as every clock); a bar while the download size is known. */
 function Progress({ run }: { run: Running }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -268,7 +264,6 @@ function Progress({ run }: { run: Running }) {
     return () => clearInterval(t);
   }, []);
   const s = run.step;
-  const seconds = Math.max(0, Math.floor((now - run.startedAt) / 1000));
   const held = s?.step === 'replace' && s.busyMs !== undefined;
   const share = s?.step === 'download' && s.total ? Math.min(1, s.received / s.total) : null;
   return (
@@ -276,7 +271,7 @@ function Progress({ run }: { run: Running }) {
       <span className="plugin-progress-line">
         <SpicaStatusIcon name="running" size={14} />
         <span className="plugin-progress-text">{s ? stepText(s) : '正在安装'}</span>
-        <span className="plugin-progress-time">{seconds} 秒</span>
+        <span className="plugin-progress-time">{formatClock(now - run.startedAt)}</span>
       </span>
       {share !== null ? (
         <span className="plugin-progress-bar" aria-hidden>

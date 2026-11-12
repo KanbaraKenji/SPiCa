@@ -5,7 +5,8 @@ import { REGENERATE_HINTS } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
-import { mailTime } from '../../../shared/mail';
+import { fullTime, relativeTime } from './format';
+import { useMinuteNow } from './now';
 import type { Block } from '../store/transcript';
 
 /** What 复制 copies of an answer: its text as written (Markdown), the parts in order. */
@@ -57,7 +58,9 @@ export interface MessageActionsProps {
 }
 
 export function MessageActions({ text, at, regenerate, versions, mine = false }: MessageActionsProps) {
-  const time = at ? mailTime(at) : '';
+  const now = useMinuteNow();
+  // How long ago (just now, 9 minutes ago), the full moment on hover.
+  const time = at ? relativeTime(at, now) : '';
   return (
     <div className={mine ? 'msg-actions is-mine' : 'msg-actions'} role="group" aria-label={mine ? '这条消息' : '这条回答'}>
       {versions && versions.count > 1 ? (
@@ -83,7 +86,7 @@ export function MessageActions({ text, at, regenerate, versions, mine = false }:
       {text ? <CopyButton copy={() => clipboard.write(text)} /> : null}
       {regenerate ? <Regenerate r={regenerate} /> : null}
       {time ? (
-        <time className="msg-time" dateTime={at}>
+        <time className="msg-time" dateTime={at} title={at ? fullTime(at) : undefined}>
           {time}
         </time>
       ) : null}

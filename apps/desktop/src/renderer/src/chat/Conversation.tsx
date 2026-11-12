@@ -6,7 +6,7 @@ import { filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, type Attachmen
 import { ImageViewer } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
-import { AnswerSources, AnswerToolsContext, AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, SourceCardsContext, ToolCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
+import { AnswerSources, AnswerToolsContext, AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, RoundDoneContext, SourceCardsContext, ToolCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
 import { Composer, type ComposerTools } from './Composer';
 import { answerText, MessageActions } from './MessageActions';
 import { answerSources } from './sources';
@@ -180,6 +180,7 @@ function Response({
   const answerTools = tools ? { ...tools, webImages } : null;
   return (
     <AnswerToolsContext.Provider value={answerTools}>
+    <RoundDoneContext.Provider value={!live}>
     <div className="turn-response" {...at}>
       {segs.map((s, i) => {
         if (s.kind === 'memory') {
@@ -242,6 +243,7 @@ function Response({
         />
       )}
     </div>
+    </RoundDoneContext.Provider>
     </AnswerToolsContext.Provider>
   );
 }

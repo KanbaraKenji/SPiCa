@@ -121,7 +121,7 @@ describe('DetailPanel', () => {
     render(<DetailPanel {...props} transcript={transcript} session={session({ id: 'w', role: 'worker' })} parent={undefined} />);
     const rows = [...document.querySelectorAll('.detail-list .detail-item')];
     expect(rows.map((r) => r.querySelector('.detail-item-icon svg')?.getAttribute('data-status'))).toEqual(['done', 'error', 'running', 'stopped']);
-    expect(rows.map((r) => r.querySelector('.detail-item-meta')?.textContent)).toEqual(['4 秒', 'Failed', '', '已超时']);
+    expect(rows.map((r) => r.querySelector('.detail-item-meta')?.textContent)).toEqual(['4s', 'Failed', '', '已超时']);
     expect(rows.map((r) => r.querySelector('.detail-item-main')?.className)).toEqual(Array(4).fill('detail-item-main'));
   });
 

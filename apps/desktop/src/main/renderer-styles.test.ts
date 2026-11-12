@@ -303,6 +303,9 @@ describe('the conversation’s sizes', () => {
 
   it('the time under a message and its version count are footnotes (13 on 17), one step up from a caption', () => {
     expect(block('.msg-time')).toContain('font-size: var(--fs-footnote);\n  line-height: var(--lh-footnote)');
+    // How long ago (59 minutes ago) stays on one line and is never squeezed by the icons beside it.
+    expect(block('.msg-time')).toContain('flex: none');
+    expect(block('.msg-time')).toContain('white-space: nowrap');
     // Its own rule, not the one that lists it with the other words of a row.
     expect(css).toMatch(/\n\.msg-versions-text \{\n {2}padding: 0 2px;\n {2}font-size: var\(--fs-footnote\);\n {2}line-height: var\(--lh-footnote\);/);
   });

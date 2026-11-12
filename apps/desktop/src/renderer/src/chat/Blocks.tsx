@@ -26,6 +26,11 @@ export const OpenSessionContext = createContext<((id: string, seq?: number) => v
 export const HistoryRefContext = createContext<((ref: number) => { sessionId: string; seq?: number } | undefined) | null>(null);
 /** What the history tools found in this conversation, by call id. */
 export const HistoryCardsContext = createContext<Record<string, HistoryCardMeta> | undefined>(undefined);
+/**
+ * The round these tool lines are in is over (他: 「已经完成的轮次工具调用后面不写时间」): no time after a call, a
+ * group or a step. While the round goes on each finished step keeps its time, to see which one is slow.
+ */
+export const RoundDoneContext = createContext(false);
 
 const HISTORY_COLUMN: Record<HistoryCardMeta['tool'], string> = { search_history: '匹配内容', read_history: '内容', find_history_files: '文件' };
 
@@ -569,13 +574,13 @@ export function AnswerSources({ sources }: { sources: SourceRow[] }) {
 export const ToolCardsContext = createContext<Record<string, FileCardMeta> | undefined>(undefined);
 
 /** What a call's own line says after its words: how it ended (Failed, stopped), or how long it took. */
-function toolMeta(block: ToolBlock): ReactNode {
+function toolMeta(block: ToolBlock, done = false): ReactNode {
   if (block.state === 'pending') return <SpicaStatusIcon name="running" size={14} title="进行中" />;
   if (block.state === 'error') return <span className="text-danger">Failed</span>;
   if (block.state === 'unavailable') return '已停用，未执行';
   if (block.state === 'timeout') return '已超时';
   if (block.state === 'running') return null;
-  if (block.durationMs !== undefined) return block.autoApproved ? `Auto · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs);
+  if (block.durationMs !== undefined && !done) return block.autoApproved ? `Auto · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs);
   return block.autoApproved ? 'Auto' : null;
 }
 
@@ -669,12 +674,13 @@ function CommandBox({ command, marks, bare }: { command: string; marks?: [number
 /** One call in a group's list: its state first, its words, how it ended; a click opens the command and its output. */
 function ToolItem({ block }: { block: ToolBlock }) {
   const [open, setOpen] = useState(false);
+  const meta = toolMeta(block, useContext(RoundDoneContext));
   return (
     <div className={open ? 'tool-item is-open' : 'tool-item'}>
       <button type="button" className="tool-item-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <span className="fold-icon">{toolIcon(block)}</span>
         {block.state === 'running' || block.state === 'pending' ? <span className="tool-text">{runningWords(block)}</span> : <ToolText block={block} />}
-        {toolMeta(block) ? <span className="fold-meta">{toolMeta(block)}</span> : null}
+        {meta ? <span className="fold-meta">{meta}</span> : null}
         <Icon name="chevronRight" size={14} className="fold-chevron" />
       </button>
       {open ? (
@@ -689,6 +695,7 @@ function ToolItem({ block }: { block: ToolBlock }) {
 /** `since`: a call on its own that is what the run is doing now: said as Running … with the run's clock at the end. */
 function ToolRow({ block, since }: { block: ToolBlock; since?: number | undefined }) {
   const [open, setOpen] = useState(false);
+  const done = useContext(RoundDoneContext);
   const now = since !== undefined && block.state === 'running';
   return (
     <Disclosure
@@ -696,7 +703,7 @@ function ToolRow({ block, since }: { block: ToolBlock; since?: number | undefine
       onToggle={() => setOpen((o) => !o)}
       icon={now ? LIVE_MARK : toolIcon(block)}
       label={now || block.state === 'running' || block.state === 'pending' ? runningWords(block) : <ToolText block={block} />}
-      meta={toolMeta(block)}
+      meta={toolMeta(block, done)}
       tail={now ? <RunClock since={since} /> : undefined}
     >
       <ToolDetail block={block} />
@@ -718,6 +725,7 @@ export function runningText(running: ToolBlock[]): string {
 export function ToolGroup({ blocks, since }: { blocks: ToolBlock[]; since?: number | undefined }) {
   const [open, setOpen] = useState(false);
   const cards = useContext(ToolCardsContext);
+  const done = useContext(RoundDoneContext);
   if (blocks.length === 1 && blocks[0]) return <ToolRow block={blocks[0]} since={since} />;
   const running = blocks.filter((b) => b.state === 'running');
   const busy = running.length > 0 || blocks.some((b) => b.state === 'pending');
@@ -725,7 +733,7 @@ export function ToolGroup({ blocks, since }: { blocks: ToolBlock[]; since?: numb
   const failed = blocks.filter((b) => b.state === 'error').length;
   const total = blocks.reduce((n, b) => n + (b.durationMs ?? 0), 0);
   const label = now ? runningText(running) : busy ? runningWords(running[0] ?? blocks.find((b) => b.state === 'pending')!) : groupWords(blocks.map((b) => ({ call: b, card: cards?.[b.callId] })));
-  const meta = busy ? (now ? null : <SpicaStatusIcon name="running" size={14} title="进行中" />) : failed ? <span className="text-danger">{failed} failed</span> : total ? formatDuration(total) : null;
+  const meta = busy ? (now ? null : <SpicaStatusIcon name="running" size={14} title="进行中" />) : failed ? <span className="text-danger">{failed} failed</span> : total && !done ? formatDuration(total) : null;
   return (
     <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={now ? LIVE_MARK : <Icon name="tool" size={14} />} label={label} meta={meta} tail={now ? <RunClock since={since} /> : undefined}>
       <div className="tool-list">

@@ -184,7 +184,7 @@ describe('Plugins', () => {
     expect(detail.querySelector('.plugin-head')?.nextElementSibling).toBe(actions);
     expect(within(detail).getByText('\\\\fileserver\\spica-plugins\\weekly-report-1.2.0.zip')).toBeTruthy();
     fireEvent.click(within(actions).getByRole('button', { name: '安装' }));
-    await waitFor(() => expect(within(detail).getByRole('status').textContent).toMatch(/^正在下载 3\.0 MB \/ 8\.0 MB\d+ 秒$/));
+    await waitFor(() => expect(within(detail).getByRole('status').textContent).toMatch(/^正在下载 3\.0 MB \/ 8\.0 MB\d+s$/));
     expect((detail.querySelector('.plugin-progress-bar > span') as HTMLElement).style.width).toBe('38%');
     release();
     // Now the installed plugin's own detail under 已安装: its switch beside the name, on.

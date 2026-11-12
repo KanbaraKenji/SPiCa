@@ -5718,6 +5718,34 @@ button.ctx-row:hover {
   text-overflow: ellipsis;
 }
 
+/* The bottom row with the user's account: the account (its letter in a round badge, the account cut at the end)
+   and the gear for 设置 at the right end; as tall as the 设置 row it replaces. */
+.sidebar-bottom.has-account {
+  display: flex;
+  gap: 4px;
+}
+
+.side-action.side-me {
+  flex: 1;
+  min-width: 0;
+}
+
+.side-avatar {
+  border-radius: 50%;
+}
+
+.side-action.side-gear {
+  width: 34px;
+  flex: none;
+  justify-content: center;
+  padding: 0;
+}
+
+.side-action.side-gear.has-word {
+  width: auto;
+  padding: 0 10px;
+}
+
 /* The tab row on top of the details panel when plugins add pages there (详情 / Quick note). */
 .right-head {
   gap: 8px;
@@ -6097,11 +6125,14 @@ button.ctx-row:hover {
 
 /* One step up from a caption (他: 「时间感觉有点小」). */
 .msg-time {
+  flex: none;
   margin: 0 6px;
   font-size: var(--fs-footnote);
   line-height: var(--lh-footnote);
   color: var(--spica-faint);
   font-variant-numeric: tabular-nums;
+  /* How long ago (59 minutes ago) is longer than a clock time was: on one line, never squeezed. */
+  white-space: nowrap;
 }
 
 /* 设置 › 记忆 and the 已记住 line in the conversation. */
