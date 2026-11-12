@@ -13,12 +13,14 @@ function setup(over: Partial<AccountProps> = {}) {
 }
 
 describe('账号', () => {
-  it('the automatic account shows in grey; what is typed is kept on leaving the box, in capitals; the automatic one again is none', () => {
+  it('the avatar row shows the account; the automatic one shows in grey in the box; what is typed is kept on leaving the box, in capitals; the automatic one again is none', () => {
     const p = setup({ autoAccount: 'ALEX.CHEN' });
     const box = screen.getByRole('textbox', { name: '账号' }) as HTMLInputElement;
     expect(box.value).toBe('');
     expect(box.placeholder).toBe('ALEX.CHEN');
-    expect(screen.getByText(/取自 Windows 用户文件夹名/)).toBeTruthy();
+    // the avatar row: the account, its letter on the sidebar's colour
+    expect(screen.getAllByText('ALEX.CHEN').length).toBe(1);
+    expect(screen.getByText('A').classList.contains('account-avatar')).toBe(true);
     expect(screen.queryByRole('button', { name: '恢复自动' })).toBeNull();
     fireEvent.change(box, { target: { value: ' chen.a ' } });
     // not at each key: plugin processes restart with a new account
@@ -33,18 +35,20 @@ describe('账号', () => {
     expect(box.value).toBe('');
   });
 
-  it('a typed account says what the automatic one is, and 恢复自动 goes back to it', () => {
+  it('a typed account shows in the avatar row; the button tip says what comes back, and 恢复自动 goes back to it', () => {
     const p = setup({ autoAccount: 'ALEX.CHEN', settings: { ...DEFAULT_SETTINGS, account: 'CHEN.A' } });
     expect((screen.getByRole('textbox', { name: '账号' }) as HTMLInputElement).value).toBe('CHEN.A');
-    expect(screen.getByText(/自动取到的是 ALEX\.CHEN/)).toBeTruthy();
+    expect(screen.getByText('CHEN.A')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '恢复自动' }).title).toBe('恢复为 ALEX.CHEN');
     fireEvent.click(screen.getByRole('button', { name: '恢复自动' }));
     expect(p.onChange).toHaveBeenCalledWith({ account: '' });
   });
 
-  it('none found: says so, and can be typed', () => {
+  it('none found: says so, no avatar, and can be typed', () => {
     setup();
     expect((screen.getByRole('textbox', { name: '账号' }) as HTMLInputElement).placeholder).toBe('未取到');
-    expect(screen.getByText(/没有取到 Windows 用户文件夹名/)).toBeTruthy();
+    expect(screen.getByText('未取到账号')).toBeTruthy();
+    expect(document.querySelector('.account-avatar')).toBeNull();
   });
 });
 
@@ -53,15 +57,14 @@ describe('昵称', () => {
     const p = setup({ autoAccount: 'ALEX.CHEN' });
     const box = screen.getByRole('textbox', { name: '昵称' }) as HTMLInputElement;
     expect(box.placeholder).toBe('Alex');
-    expect(screen.getByText(/不提供给插件/)).toBeTruthy();
     fireEvent.change(box, { target: { value: ' 小陈 ' } });
     fireEvent.blur(box);
     expect(p.onChange).toHaveBeenCalledWith({ callName: '小陈' });
   });
 
-  it('a typed one says what the account gives; 恢复默认 clears it', () => {
+  it('a typed one: 恢复默认 (its tip says what comes back) clears it', () => {
     const p = setup({ autoAccount: 'ALEX.CHEN', settings: { ...DEFAULT_SETTINGS, callName: '小陈' } });
-    expect(screen.getByText(/不填就用账号里的 Alex/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '恢复默认' }).title).toBe('恢复为 Alex');
     fireEvent.click(screen.getByRole('button', { name: '恢复默认' }));
     expect(p.onChange).toHaveBeenCalledWith({ callName: '' });
   });

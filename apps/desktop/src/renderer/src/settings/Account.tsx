@@ -1,11 +1,15 @@
-// Settings > 账号 (he agreed to a section of its own, 2026-11-12):
+// Settings > 账号, laid out like Claude's Profile: one box, the avatar row first, then a row per field with
+// the name on the left and the box on the right (all boxes the same width, so they line up).
+//   头像  the round letter badge the sidebar's bottom row shows (ui/badge), and on the left the account itself.
 //   账号  what plugins get as the user's account (SPICA_USER_ACCOUNT, ctx.user.account). The automatic one is
 //        worked out in the main process (main/user-account.ts); what is typed here replaces it.
 //   昵称  what the new conversation's greeting calls the user (下午好，Alex). From the account unless typed;
 //        only shown in the window, never given to plugins.
-import { useState } from 'react';
+// Labels only: what is used when nothing is typed shows in grey in the box; 恢复… sits beside the box.
+import { useContext, useState } from 'react';
 import { ACCOUNT_MAX, accountValue, CALL_NAME_MAX, callNameValue, defaultCallName, effectiveAccount, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
-import { Group, Row } from './Group';
+import { letterBadge } from '../ui/badge';
+import { Group, Row, SettingsSearchContext } from './Group';
 
 export interface AccountProps {
   settings: ShellSettings;
@@ -17,9 +21,10 @@ export interface AccountProps {
 /**
  * A row with a box: the value used when nothing is typed shows in grey; what is typed is kept when the box is
  * left or Enter is pressed (not at each key: a new account restarts plugin processes). Typing the grey value
- * again is the same as typing nothing. `back` (恢复…) clears what was typed.
+ * again is the same as typing nothing. `back` (恢复…, before the box so the boxes line up) clears what was typed;
+ * its tip says what comes back.
  */
-function TypedRow(p: { title: string; hint: string; saved: string; fallback: string; empty: string; max: number; clean(v: string): string; back: string; onSave(v: string): void }) {
+function TypedRow(p: { title: string; saved: string; fallback: string; empty: string; max: number; clean(v: string): string; back: string; onSave(v: string): void }) {
   const [text, setText] = useState(p.saved);
   // changed elsewhere (the 恢复 button, another window): show it
   const [shown, setShown] = useState(p.saved);
@@ -34,7 +39,12 @@ function TypedRow(p: { title: string; hint: string; saved: string; fallback: str
     if (v !== p.saved) p.onSave(v);
   };
   return (
-    <Row title={p.title} hint={p.hint}>
+    <Row title={p.title}>
+      {p.saved ? (
+        <button type="button" className="btn" title={p.fallback ? `恢复为 ${p.fallback}` : undefined} onClick={() => p.onSave('')}>
+          {p.back}
+        </button>
+      ) : null}
       <input
         className="input account-field"
         value={text}
@@ -49,37 +59,34 @@ function TypedRow(p: { title: string; hint: string; saved: string; fallback: str
           if (e.key === 'Enter') keep();
         }}
       />
-      {p.saved ? (
-        <button type="button" className="btn" onClick={() => p.onSave('')}>
-          {p.back}
-        </button>
-      ) : null}
     </Row>
   );
 }
 
 export function Account({ settings, onChange, autoAccount = '' }: AccountProps) {
-  const fromAccount = defaultCallName(effectiveAccount(settings, autoAccount));
-  const accountHint = settings.account
-    ? autoAccount
-      ? `已手动填写，自动取到的是 ${autoAccount}。`
-      : '已手动填写。'
-    : autoAccount
-      ? '取自 Windows 用户文件夹名，提供给插件。'
-      : '没有取到 Windows 用户文件夹名，插件读到的账号为空。可以手动填写。';
-  const nameHint = settings.callName
-    ? fromAccount
-      ? `新对话页问候你时用。不填就用账号里的 ${fromAccount}。`
-      : '新对话页问候你时用。'
-    : fromAccount
-      ? '新对话页问候你时用，取自账号。只在界面上显示，不提供给插件。'
-      : '新对话页问候你时用。没有账号时问候不带昵称。';
+  const account = effectiveAccount(settings, autoAccount);
+  const fromAccount = defaultCallName(account);
+  const me = account ? letterBadge(account, account) : null;
+  const searching = !!useContext(SettingsSearchContext)?.query;
   return (
     <section className="settings-section">
       <Group>
+        {searching ? null : (
+          // laid out as a row, but not a setting: 搜索设置 does not list it
+          <div className="setting-row">
+            <div className="setting-text">
+              <span className="setting-title">{account || '未取到账号'}</span>
+              <span className="settings-hint">插件读到的账号</span>
+            </div>
+            {me ? (
+              <span className="plugin-badge account-avatar" style={{ background: me.colour }} aria-hidden>
+                {me.letter}
+              </span>
+            ) : null}
+          </div>
+        )}
         <TypedRow
           title="账号"
-          hint={accountHint}
           saved={settings.account}
           fallback={autoAccount}
           empty="未取到"
@@ -90,7 +97,6 @@ export function Account({ settings, onChange, autoAccount = '' }: AccountProps) 
         />
         <TypedRow
           title="昵称"
-          hint={nameHint}
           saved={settings.callName}
           fallback={fromAccount}
           empty="不带昵称"
