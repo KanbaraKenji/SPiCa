@@ -4,7 +4,7 @@
 // window.spica (a postMessage bridge); every call is answered for the plugin
 // whose frame sent it, never for one named in the message.
 import { useEffect, useRef, useState } from 'react';
-import { pluginCallProblem, type PluginView, type PluginViewResult } from '../../../shared/plugin-view';
+import { pluginCallProblem, type PluginPickRequest, type PluginView, type PluginViewResult } from '../../../shared/plugin-view';
 
 export interface PluginTheme {
   mode: 'light' | 'dark';
@@ -49,18 +49,28 @@ export interface PluginFrameProps {
   /** A file of this plugin, shown in the right panel; resolves to a problem in words, or null. */
   openFile(path: string): Promise<string | null>;
   notify(text: string, kind: 'info' | 'error'): void;
+  /** The system's folder or file picker (window.spica.pickFolder / pickFile): the path picked, or null. Absent: the page gets an error. */
+  pick?: (req: PluginPickRequest) => Promise<string | null>;
+  /** The frame is as tall as its page says it is (a settings page in 设置 › 插件), not as tall as its place. */
+  fit?: boolean;
   /** Present: the page is a preview; only then are preview calls answered, and it cannot open other files. */
   preview?: PreviewHooks;
 }
 
 const CONFIRM = '[CONFIRM_REQUIRED]';
 
-export function PluginFrame({ view, theme, changed, call, cancel, confirm, openFile, notify, preview }: PluginFrameProps) {
+/** How tall each fitted page was last (plugin/view): shown at that height again at once when it opens again. */
+const fitHeights = new Map<string, number>();
+const FIT_MAX = 4000;
+
+export function PluginFrame({ view, theme, changed, call, cancel, confirm, openFile, notify, pick, fit, preview }: PluginFrameProps) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [ready, setReady] = useState(false);
-  const latest = useRef({ theme, call, cancel, confirm, openFile, notify, preview });
+  const fitKey = `${view.plugin}/${view.id}`;
+  const [height, setHeight] = useState<number | undefined>(() => (fit ? fitHeights.get(fitKey) : undefined));
+  const latest = useRef({ view, theme, call, cancel, confirm, openFile, notify, pick, fit, preview, fitKey });
   useEffect(() => {
-    latest.current = { theme, call, cancel, confirm, openFile, notify, preview };
+    latest.current = { view, theme, call, cancel, confirm, openFile, notify, pick, fit, preview, fitKey };
   });
   // Tool calls of the page as it is now that have not come back. `page` counts the page's loads: an answer
   // for an earlier load is dropped (the new page numbers its calls from the start again).
@@ -141,6 +151,25 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
           const problem = await l.openFile(String(args.path ?? ''));
           if (problem) fail(problem);
           else reply(null);
+        } else if (c === 'pickFolder' || c === 'pickFile') {
+          // A preview page holds the user's file and nothing else; others get the path the user picks.
+          if (l.preview || !l.pick) {
+            fail(l.preview ? '预览页不能选择文件或文件夹。' : `不支持的调用：${c}`);
+            return;
+          }
+          const req: PluginPickRequest = { kind: c === 'pickFile' ? 'file' : 'folder', plugin: l.view.pluginTitle };
+          if (typeof args.title === 'string') req.title = args.title;
+          if (typeof args.defaultPath === 'string') req.defaultPath = args.defaultPath;
+          if (c === 'pickFile' && Array.isArray(args.extensions)) req.extensions = args.extensions.filter((x): x is string => typeof x === 'string');
+          reply(await l.pick(req));
+        } else if (c === 'size') {
+          // Said by every page's bridge; only a fitted frame takes it (no answer: the bridge does not wait).
+          const h = Number(args.height);
+          if (l.fit && Number.isFinite(h) && h >= 0) {
+            const px = Math.min(FIT_MAX, Math.ceil(h));
+            fitHeights.set(l.fitKey, px);
+            setHeight(px);
+          }
         } else if (c === 'notify') {
           l.notify(String(args.text ?? '').slice(0, 300), args.kind === 'error' ? 'error' : 'info');
           reply(null);
@@ -184,7 +213,8 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
     <iframe
       ref={ref}
       key={`${view.plugin}/${view.id}`}
-      className="plugin-frame"
+      className={fit ? 'plugin-frame is-fit' : 'plugin-frame'}
+      style={fit ? { height: height ?? 0 } : undefined}
       title={`${view.pluginTitle} · ${view.title}`}
       src={`spica-plugin://${view.plugin}/${view.entry.replace(/^\/+/, '')}`}
       // Scripts and forms only: no same-origin (so no access to Spica), no popups, no top navigation.
@@ -194,7 +224,9 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
 }
 
 /** The page, or a sentence when its entry file cannot be loaded (plugin turned off, file missing). */
-export function PluginPage(props: PluginFrameProps & { exists(plugin: string, path: string): Promise<boolean> }) {
+export type PluginPageProps = PluginFrameProps & { exists(plugin: string, path: string): Promise<boolean> };
+
+export function PluginPage(props: PluginPageProps) {
   const { view, exists } = props;
   const key = `${view.plugin}/${view.entry}`;
   const [state, setState] = useState<{ key: string; ok: boolean } | null>(null);

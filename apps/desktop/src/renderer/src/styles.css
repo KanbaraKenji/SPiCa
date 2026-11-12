@@ -4117,6 +4117,25 @@ button.ctx-row:hover {
   line-height: var(--lh-footnote);
 }
 
+/* A plugin's own settings page (a view with placement settings) in its card: as tall as the page says. */
+.plugin-settings-page {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--spica-border-strong);
+}
+
+.plugin-settings-title {
+  margin: 0 0 8px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: 600;
+}
+
+.plugin-settings-page .plugin-page,
+.plugin-frame.is-fit {
+  flex: none;
+}
+
 .plugin-model {
   margin-top: 10px;
   padding: 10px 12px;

@@ -2,7 +2,7 @@
 // what the remembered sources offer) and the one picked on the right: its switch
 // beside the name, a row of what can be done to it (安装 / 更新到 / 回退到 /
 // 删除, and while it installs, how far it is), then its model budget, mail
-// sorting and what it has. One box at the top searches, or, given a folder,
+// sorting, its own settings page (a view with placement settings) and what it has. One box at the top searches, or, given a folder,
 // .zip, shared folder or web address, lists what is there to install.
 // A plugin turned on or off stays where it is in the list while the page is
 // open; it moves to its group the next time the page opens (the counts are only
@@ -34,6 +34,8 @@ import { Switch } from './Switch';
 import { InfoTip } from '../ui/InfoTip';
 import { MailSettings, type MailSettingsProps } from './MailSettings';
 import { SpicaStatusIcon } from '@spica/brand/react';
+import type { PluginView as PageView } from '../../../shared/plugin-view';
+import { PluginPage, type PluginPageProps } from '../shell/PluginFrame';
 
 export interface PluginsApi {
   run(cmd: PluginsCommand): Promise<PluginsResult>;
@@ -42,6 +44,27 @@ export interface PluginsApi {
   onProgress?: (listener: (p: PluginsProgress) => void) => () => void;
   /** The system's folder picker: the folder goes into the box and is looked at. */
   pickFolder?: () => Promise<string | null>;
+}
+
+/** The plugins' own settings pages (views with placement settings, of enabled plugins) and how to show one. */
+export interface SettingsPages {
+  views: PageView[];
+  props(v: PageView): PluginPageProps;
+}
+
+/**
+ * A plugin's settings page in its detail: under a line with the page's title, as tall as the page is (the
+ * detail scrolls, not the page). Its background is the card's, so it sits in the card as the rest does.
+ */
+function SettingsPage({ page }: { page: PluginPageProps }) {
+  const vars = page.theme.vars;
+  const theme = { ...page.theme, vars: { ...vars, '--spica-bg': vars['--spica-surface'] ?? vars['--spica-bg'] ?? '' } };
+  return (
+    <div className="plugin-settings-page">
+      <h3 className="plugin-settings-title">{page.view.title}</h3>
+      <PluginPage {...page} theme={theme} fit />
+    </div>
+  );
 }
 
 const SERVER_STATUS: Record<string, string> = {
@@ -280,6 +303,7 @@ function PluginDetail({
   update,
   ask,
   mail,
+  settings,
   onBack,
 }: {
   p: PluginView;
@@ -289,6 +313,7 @@ function PluginDetail({
   update(): void;
   ask(kind: 'uninstall' | 'rollback', p: PluginView): void;
   mail?: MailSettingsProps | undefined;
+  settings?: PluginPageProps | undefined;
   onBack?: (() => void) | undefined;
 }) {
   const problems = pluginProblems(p);
@@ -337,6 +362,7 @@ function PluginDetail({
         </div>
       ) : null}
       {p.model ? <ModelUse p={p} m={p.model} busy={busy} run={run} /> : null}
+      {settings ? <SettingsPage key={`${settings.view.plugin}/${settings.view.id}`} page={settings} /> : null}
       <dl className="detail-facts plugin-facts">
         <List label="工具" items={p.tools} />
         <List label="技能" items={p.skills.map((s) => s.name)} />
@@ -460,7 +486,7 @@ export const LOOK_AFTER_MS = 500;
 
 let jobs = 0;
 
-export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsProps }) {
+export function Plugins({ api, mail, pages }: { api: PluginsApi; mail?: MailSettingsProps; pages?: SettingsPages | undefined }) {
   const [state, setState] = useState<PluginsState | null>(null);
   const [busy, setBusy] = useState(false);
   // 'info': a notice (no sources to check), shown plain like 正在检查更新….
@@ -657,6 +683,11 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
           }
         })
     : undefined;
+  // Its own settings page, while it is enabled (only enabled plugins' pages are listed).
+  const settingsOf = (pl: PluginView): PluginPageProps | undefined => {
+    const v = pages?.views.find((x) => x.plugin === pl.name && x.placement === 'settings');
+    return v && pages ? pages.props(v) : undefined;
+  };
 
   return (
     <section className={narrow ? 'settings-section plugins-page is-narrow' : 'settings-section plugins-page'} ref={root}>
@@ -782,6 +813,7 @@ export function Plugins({ api, mail }: { api: PluginsApi; mail?: MailSettingsPro
               update={() => void install(current.name, (job) => ({ op: 'update', name: current.name, job }))}
               ask={(kind, pl) => setConfirm({ kind, p: pl })}
               mail={mailSources.length === 1 && current.mail ? mail : undefined}
+              settings={settingsOf(current)}
               onBack={narrow ? () => setShowDetail(false) : undefined}
             />
           ) : detailView && currentPkg ? (

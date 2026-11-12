@@ -2,7 +2,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
-import { Plugins, pluginBadge, type PluginsApi } from './Plugins';
+import { Plugins, pluginBadge, type PluginsApi, type SettingsPages } from './Plugins';
+import type { PluginView as PageView } from '../../../shared/plugin-view';
 import { FakePluginService } from '../../../main/plugins/fake';
 import { dropAllDrafts } from './drafts';
 import { DEFAULT_SETTINGS } from '../../../shared/settings';
@@ -362,6 +363,41 @@ describe('daily limit typed but not saved', () => {
     fireEvent.click(within(screen.getByRole('region', { name: '笔记（示例）' })).getByRole('button', { name: '保存' }));
     await waitFor(() => expect(screen.getByText(/使用模型 · 每日上限 \$0\.05/)).toBeTruthy());
     expect(screen.queryByText('未保存')).toBeNull();
+  });
+});
+
+describe('a plugin’s own settings page (a view with placement settings)', () => {
+  const page = (plugin: string, id: string, placement: PageView['placement']): PageView => ({ plugin, pluginTitle: plugin, id, title: '设置', placement, entry: `ui/${id}.html`, tools: [] });
+  const pages = (views: PageView[]): SettingsPages => ({
+    views,
+    props: (v) => ({
+      view: v,
+      theme: { mode: 'light', vars: { '--spica-bg': '#fff', '--spica-surface': '#f6f6f6' } },
+      changed: 0,
+      call: vi.fn(),
+      cancel: vi.fn(),
+      confirm: vi.fn(async () => true),
+      openFile: vi.fn(async () => null),
+      notify: vi.fn(),
+      pick: vi.fn(async () => null),
+      exists: async () => true,
+    }),
+  });
+
+  it('sits in that plugin’s detail, under its title, fitted to the page; other plugins and other placements have none', async () => {
+    render(<Plugins api={api()} pages={pages([page('notes', 'settings', 'settings'), page('notes', 'board', 'sidebar'), page('digest', 'panel', 'panel')])} />);
+    const detail = (await screen.findByRole('region', { name: '笔记（示例）' })) as HTMLElement;
+    const block = detail.querySelector('.plugin-settings-page') as HTMLElement;
+    expect(within(block).getByRole('heading', { name: '设置' })).toBeTruthy();
+    const frame = (await waitFor(() => block.querySelector('iframe'))) as HTMLIFrameElement;
+    expect(frame.getAttribute('src')).toBe('spica-plugin://notes/ui/settings.html');
+    expect(frame.className).toBe('plugin-frame is-fit');
+    expect(detail.querySelectorAll('iframe')).toHaveLength(1);
+    // Before the facts (工具, 技能…), after what it does.
+    expect(block.compareDocumentPosition(detail.querySelector('.plugin-facts')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    pick('来信摘要');
+    const other = (await screen.findByRole('region', { name: '来信摘要（示例）' })) as HTMLElement;
+    expect(other.querySelector('.plugin-settings-page')).toBeNull();
   });
 });
 

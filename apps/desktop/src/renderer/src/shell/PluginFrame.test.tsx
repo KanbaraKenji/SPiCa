@@ -113,3 +113,65 @@ describe('a plugin page’s tool calls can be stopped', () => {
     expect(u.open).toHaveLength(1);
   });
 });
+
+describe('a page asks for the system’s pickers (window.spica.pickFolder / pickFile)', () => {
+  it('the path picked goes back to the page, null when cancelled; the plugin’s name goes with the ask', async () => {
+    const answers: (string | null)[] = ['D:/Notes', null, 'D:/a.md'];
+    const pick = vi.fn(async () => answers.shift() ?? null);
+    const t = setup({ pick });
+    await t.say('ready', 0);
+    await t.say('pickFolder', 1, { title: '选择笔记文件夹', defaultPath: 'D:/Old', other: 1 });
+    await t.say('pickFolder', 2, {});
+    await t.say('pickFile', 3, { extensions: ['.md', 4] });
+    await act(async () => {
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+    expect(pick.mock.calls).toEqual([
+      [{ kind: 'folder', plugin: 'Notes', title: '选择笔记文件夹', defaultPath: 'D:/Old' }],
+      [{ kind: 'folder', plugin: 'Notes' }],
+      [{ kind: 'file', plugin: 'Notes', extensions: ['.md'] }],
+    ]);
+    expect(t.replies()).toEqual([
+      { __spica: 1, reply: 1, result: 'D:/Notes' },
+      { __spica: 1, reply: 2, result: null },
+      { __spica: 1, reply: 3, result: 'D:/a.md' },
+    ]);
+  });
+
+  it('a preview page may not pick; a window that offers no picker says so', async () => {
+    const pick = vi.fn(async () => 'D:/x');
+    const preview = { fileKey: 'a', file: vi.fn(), ready: vi.fn(), fail: vi.fn(), error: vi.fn(), loaded: vi.fn() };
+    const p = setup({ pick, preview });
+    await p.say('ready', 0);
+    await p.say('pickFolder', 1);
+    expect(p.replies()).toEqual([{ __spica: 1, reply: 1, error: '预览页不能选择文件或文件夹。' }]);
+    expect(pick).not.toHaveBeenCalled();
+    cleanup();
+    const none = setup();
+    await none.say('ready', 0);
+    await none.say('pickFile', 1);
+    expect(none.replies()).toEqual([{ __spica: 1, reply: 1, error: '不支持的调用：pickFile' }]);
+  });
+});
+
+describe('a fitted frame (a settings page) is as tall as its page says', () => {
+  it('takes the height the page says; a frame that is not fitted ignores it', async () => {
+    const fitted = setup({ fit: true, view: { ...view, id: 'fit-a' } });
+    const frame = () => document.querySelector('iframe') as HTMLIFrameElement;
+    expect(frame().style.height).toBe('0px');
+    await fitted.say('ready', 0);
+    await fitted.say('size', 0, { height: 212.4 });
+    expect(frame().style.height).toBe('213px');
+    await fitted.say('size', 0, { height: 99999 });
+    expect(frame().style.height).toBe('4000px');
+    expect(fitted.replies()).toEqual([]);
+    cleanup();
+    // Open again: at its last height at once.
+    setup({ fit: true, view: { ...view, id: 'fit-a' } });
+    expect(frame().style.height).toBe('4000px');
+    cleanup();
+    const plain = setup();
+    await plain.say('size', 0, { height: 300 });
+    expect(frame().style.height).toBe('');
+  });
+});

@@ -3,7 +3,7 @@ import type { ShellStore } from '../store/shell';
 import { useShell } from '../store/shell';
 import { Appearance } from './Appearance';
 import { Models, type ProvidersApi } from './Models';
-import { Plugins, type PluginsApi } from './Plugins';
+import { Plugins, type PluginsApi, type SettingsPages } from './Plugins';
 import { About } from './About';
 import { General, type GeneralProps, type WorkflowsApi } from './General';
 import { Icon } from '../ui/Icon';
@@ -44,11 +44,13 @@ export interface SettingsViewProps {
   pickFiles?: GeneralProps['pickFiles'];
   localConnect?: GeneralProps['localConnect'];
   previewPages?: GeneralProps['previewPages'];
+  /** The plugins' own settings pages, shown in their detail under 插件. */
+  pluginPages?: SettingsPages;
   /** 记忆 (absent when the core keeps none: no tab). The switch is a shell setting. */
   memory?: Omit<MemoryProps, 'enabled' | 'onEnabled'>;
 }
 
-export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, onBack, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, memory }: SettingsViewProps) {
+export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, onBack, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, pluginPages, memory }: SettingsViewProps) {
   const { settings } = useShell(shell);
   const tabs = memory ? TABS : TABS.filter((t) => t.id !== 'memory');
   return (
@@ -100,7 +102,7 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
           ) : tab === 'memory' && memory ? (
             <Memory {...memory} enabled={settings.memory} onEnabled={(on) => shell.update({ memory: on })} />
           ) : tab === 'plugins' ? (
-            <Plugins api={plugins} mail={{ prefs: settings.mail, onChange: (patch) => shell.update({ mail: { ...settings.mail, ...patch } }), ...(mailModel ? { model: mailModel } : {}) }} />
+            <Plugins api={plugins} pages={pluginPages} mail={{ prefs: settings.mail, onChange: (patch) => shell.update({ mail: { ...settings.mail, ...patch } }), ...(mailModel ? { model: mailModel } : {}) }} />
           ) : (
             <About
               version={version}
