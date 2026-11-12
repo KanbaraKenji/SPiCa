@@ -2853,12 +2853,34 @@ button.ctx-row:hover {
   overflow-y: auto;
 }
 
-.settings-nav-title {
-  margin: 0 0 12px;
-  padding: 0 10px;
-  font-size: var(--fs-title);
-  line-height: var(--lh-title);
-  font-weight: 600;
+/* 搜索设置 at the top of the column (Codex has it there), then the sections in groups under small grey names. */
+.settings-search {
+  flex: none;
+  margin-bottom: 10px;
+}
+
+.settings-search .input {
+  width: 100%;
+  height: 30px;
+}
+
+.settings-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav-label {
+  padding: 0 10px 4px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--spica-faint);
 }
 
 .settings-nav-item {
@@ -2944,7 +2966,18 @@ button.ctx-row:hover {
     overflow-y: hidden;
   }
 
-  .settings-nav-title {
+  .settings-search {
+    flex: 0 0 140px;
+    margin: 0 6px 0 0;
+  }
+
+  .settings-nav-list,
+  .settings-nav-group {
+    flex-direction: row;
+    gap: 2px;
+  }
+
+  .settings-nav-label {
     display: none;
   }
 
@@ -2989,6 +3022,67 @@ button.ctx-row:hover {
 /* 插件: the page is exactly the window's height, so the list and the detail can fill
    what is left and scroll on their own. A window too short for that (or zoomed in a
    lot) scrolls the whole page again, past this height. */
+/* 搜索设置's results: by section, each result a row that goes to the setting; a section with none is left out. */
+.search-section + .search-section {
+  margin-top: 20px;
+}
+
+.search-section:not(:has(.search-hit)) {
+  display: none;
+}
+
+.search-hits {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-l);
+  border: 1px solid var(--spica-border);
+  background: var(--spica-surface);
+}
+
+.search-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 16px;
+  text-align: left;
+}
+
+.search-hit + .search-hit {
+  border-top: 1px solid var(--spica-divider);
+}
+
+.search-hit:hover {
+  background: var(--spica-hover);
+}
+
+.search-hit-title {
+  font-weight: 500;
+}
+
+.search-empty {
+  display: none;
+  margin: 8px 0 0;
+}
+
+.search-results:not(:has(.search-hit)) .search-empty {
+  display: block;
+}
+
+/* The row a result went to: marked until the next press anywhere. */
+.setting-row.is-found {
+  background: var(--spica-active);
+}
+
+.group-box > .setting-row.is-found:first-child {
+  border-top-left-radius: var(--radius-l);
+  border-top-right-radius: var(--radius-l);
+}
+
+.group-box > .setting-row.is-found:last-child {
+  border-bottom-left-radius: var(--radius-l);
+  border-bottom-right-radius: var(--radius-l);
+}
+
 .settings-column.is-fill {
   height: 100%;
   min-height: 400px;

@@ -7,7 +7,7 @@
 // A plugin turned on or off stays where it is in the list while the page is
 // open; it moves to its group the next time the page opens (the counts are only
 // in the filter, as things are now). Mock mode and the plugin folder are at the bottom.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   isLocation,
   spentText,
@@ -32,7 +32,7 @@ import { useKeptDraft } from './drafts';
 import { Switch } from './Switch';
 import { InfoTip } from '../ui/InfoTip';
 import { MailSettings, type MailSettingsProps } from './MailSettings';
-import { Group, Pane, Row } from './Group';
+import { Group, matches as searchMatches, Pane, Row, SearchHit, SettingsSearchContext } from './Group';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import type { PluginView as PageView } from '../../../shared/plugin-view';
 import { PluginPage, type PluginPageProps } from '../shell/PluginFrame';
@@ -490,9 +490,11 @@ export interface PluginsProps {
   /** Which tab is open, when the caller keeps it (the sidebar's 插件市场 opens 市场); else the page keeps it. */
   tab?: PluginsTab;
   onTab?: (tab: PluginsTab) => void;
+  /** A plugin to show (搜索设置 went to it): picked under 已安装. */
+  focus?: string;
 }
 
-export function Plugins({ api, mail, pages, tab: tabProp, onTab }: PluginsProps) {
+export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: PluginsProps) {
   const [state, setState] = useState<PluginsState | null>(null);
   const [busy, setBusy] = useState(false);
   // 'info': a notice (no sources to check), shown plain like 正在检查更新….
@@ -501,6 +503,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab }: PluginsProps)
   const [checking, setChecking] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ kind: 'uninstall' | 'rollback'; p: PluginView } | { kind: 'removeSource'; s: PluginSourceView } | null>(null);
   const [ownTab, setOwnTab] = useKeptDraft('plugins.tab', 'installed');
+  const search = useContext(SettingsSearchContext);
   const tab: PluginsTab = tabProp ?? (ownTab === 'market' ? 'market' : 'installed');
   const pickTab = (t: PluginsTab) => {
     setOwnTab(t);
@@ -535,6 +538,13 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab }: PluginsProps)
     if (narrow) setShowDetail(false);
   }
   const plugins = useMemo(() => state?.plugins ?? [], [state]);
+  // 搜索设置 went to a plugin: it is the one shown under 已安装.
+  const [focused, setFocused] = useState<string | undefined>(undefined);
+  if (focus && focus !== focused) {
+    setFocused(focus);
+    setPicked(focus);
+    setOwnTab('installed');
+  }
   // Plugins that provide mail (enabled): one shows the mail settings in its detail; two or more, once above the list.
   const mailSources = mail ? plugins.filter((p) => p.mail) : [];
 
@@ -717,6 +727,12 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab }: PluginsProps)
 
   return (
     <section className={narrow ? 'settings-section plugins-page is-narrow' : 'settings-section plugins-page'} ref={root}>
+      {/* 搜索设置: an installed plugin by its name or what it does (its own settings page cannot be searched). */}
+      {search?.query
+        ? plugins
+            .filter((pl) => search.sectionHit || searchMatches(search.query, pl.displayName, pl.name, pl.description))
+            .map((pl) => <SearchHit key={pl.name} title={`已安装 › ${pl.displayName}`} hint={pl.description} onGo={() => search.jumpPlugin?.(pl.name)} />)
+        : null}
       <div className="tabs plugins-tabs" role="tablist" aria-label="插件">
         {TABS.map(([t, label]) => (
           <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'tab is-on' : 'tab'} onClick={() => pickTab(t)}>

@@ -6,6 +6,9 @@ import { ShellStore } from '../store/shell';
 import { DEFAULT_SETTINGS } from '../../../shared/settings';
 import type { DesktopBridge } from '../../../shared/bridge';
 import { dropAllDrafts } from './drafts';
+import { FakePluginService } from '../../../main/plugins/fake';
+
+const fakePlugins = new FakePluginService('D:/Spica/plugins');
 
 afterEach(() => {
   cleanup();
@@ -17,8 +20,9 @@ function show(over: Partial<SettingsViewProps> = {}) {
   const shell = new ShellStore(bridge, { settings: DEFAULT_SETTINGS, demo: false, systemDark: false } as never);
   const props: SettingsViewProps = {
     shell,
-    providers: {} as never,
-    plugins: {} as never,
+    // Searching renders every section, so each needs what it reads when it opens.
+    providers: { list: async () => ({ items: [], problems: {} }) } as never,
+    plugins: { run: (cmd) => fakePlugins.run(cmd), onChanged: () => () => {} },
     version: '0.1.0',
     update: null,
     onCheckUpdate: vi.fn(),
@@ -43,10 +47,13 @@ describe('设置 as a dialog over the window', () => {
     const p = show();
     const dialog = screen.getByRole('dialog', { name: '设置' });
     expect(dialog.getAttribute('aria-modal')).toBe('true');
-    const nav = within(dialog).getByRole('tablist', { name: '设置' });
+    const nav = within(dialog).getByRole('tablist', { name: '分区' });
     expect(nav.getAttribute('aria-orientation')).toBe('vertical');
-    // No memory kept by the core: no 记忆.
-    expect(within(nav).getAllByRole('tab').map((t) => t.textContent)).toEqual(['常规', '账号', '外观', '模型', '插件', '关于']);
+    // In groups, the ones used most first; no memory kept by the core: no 记忆.
+    expect([...nav.querySelectorAll('.settings-nav-label')].map((l) => l.textContent)).toEqual(['应用', '扩展', '个人']);
+    expect(within(nav).getAllByRole('tab').map((t) => t.textContent)).toEqual(['常规', '模型', '插件', '账号', '外观', '关于']);
+    // The section's name on top of the pane.
+    expect(within(dialog).getByRole('heading', { level: 2 }).textContent).toBe('关于');
     expect(within(nav).getByRole('tab', { name: '关于' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.queryByRole('button', { name: '返回对话' })).toBeNull();
     fireEvent.click(within(nav).getByRole('tab', { name: '外观' }));
@@ -70,4 +77,31 @@ describe('设置 as a dialog over the window', () => {
     show();
     expect(document.activeElement).toBe(screen.getByRole('dialog', { name: '设置' }));
   });
+
+describe('搜索设置', () => {
+  it('lists the rows that match by section; one goes to its section and marks it; nothing found says so', async () => {
+    const p = show({ tab: 'about' });
+    const box = screen.getByLabelText('搜索设置');
+    fireEvent.change(box, { target: { value: '更新源' } });
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('搜索结果');
+    const about = screen.getByRole('region', { name: '关于' });
+    const hit = within(about).getByRole('button', { name: /更新源/ });
+    expect(hit.textContent).toBe('更新与公告 › 更新源');
+    // No section is picked while searching.
+    expect(screen.getAllByRole('tab').every((t) => t.getAttribute('aria-selected') === 'false')).toBe(true);
+    fireEvent.click(hit);
+    expect(p.onTab).toHaveBeenCalledWith('about');
+    expect((box as HTMLInputElement).value).toBe('');
+    fireEvent.change(box, { target: { value: '没有这一项' } });
+    expect(screen.getByText('没有找到相关设置')).toBeTruthy();
+    expect(document.querySelectorAll('.search-hit')).toHaveLength(0);
+  });
+
+  it('a section’s name finds all of it', () => {
+    show({ tab: 'about' });
+    fireEvent.change(screen.getByLabelText('搜索设置'), { target: { value: '账号' } });
+    const account = screen.getByRole('region', { name: '账号' });
+    expect(within(account).getAllByRole('button').map((b) => b.querySelector('.search-hit-title')?.textContent)).toEqual(['账号', '昵称']);
+  });
+});
 });
