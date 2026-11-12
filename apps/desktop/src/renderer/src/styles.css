@@ -3864,7 +3864,42 @@ button.ctx-row:hover {
   padding: 12px 16px;
 }
 
-/* 插件 page: search, filter, check for updates, install along the top; list and detail below. */
+/* 插件 page: 已安装 / 市场 on top (the settings' tab look). */
+.plugins-tabs {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: 16px;
+}
+
+.tab-count {
+  margin-left: 6px;
+  font-weight: 400;
+  color: var(--spica-faint);
+}
+
+/* 市场 › 插件来源: a source that could not be read says so in the danger colour (why: on hover). */
+.source-failed {
+  color: var(--spica-danger);
+}
+
+.plugin-sources {
+  margin-bottom: 16px;
+}
+
+.plugin-sources .group-actions .btn-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.plugin-sources .setting-control .btn-small:not(.btn-square) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 已安装: search, filter and check for updates along the top; list and detail below. */
 .plugins-bar {
   display: flex;
   align-items: center;
@@ -3880,19 +3915,11 @@ button.ctx-row:hover {
   height: 30px;
 }
 
-/* The one box (search, or a location to look at) and the folder picker that fills it. */
-.plugins-find {
-  flex: 1 1 220px;
-  min-width: 0;
-  display: flex;
-  gap: 8px;
-}
-
 .plugins-filter .segment {
   white-space: nowrap;
 }
 
-/* Narrow: search and the two icons on one row, the filter on the next. */
+/* Narrow: search and 检查更新 on one row, the filter on the next. */
 .plugins-page.is-narrow .plugins-filter {
   order: 2;
   flex-basis: 100%;
@@ -5767,58 +5794,6 @@ button.ctx-row:hover {
 /* Something new in the list not shown. */
 .side-new-project {
   color: var(--spica-muted);
-}
-
-/* A typed location with nothing to install: in place of the list and the detail, across both. */
-.plugins-notfound {
-  grid-column: 1 / -1;
-  align-self: stretch;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 32px 24px;
-  text-align: center;
-}
-
-.plugins-notfound-title {
-  margin: 4px 0 0;
-  font-size: var(--fs-heading);
-  line-height: var(--lh-heading);
-  font-weight: 600;
-}
-
-.plugins-notfound-where {
-  margin: 0;
-  max-width: 100%;
-  font-size: var(--fs-footnote);
-  line-height: var(--lh-footnote);
-  color: var(--spica-ink);
-  overflow-wrap: anywhere;
-}
-
-.plugins-notfound-detail {
-  margin: 0;
-  max-width: 100%;
-  font-size: var(--fs-footnote);
-  line-height: var(--lh-footnote);
-  color: var(--spica-muted);
-  overflow-wrap: anywhere;
-}
-
-.plugins-notfound-actions {
-  margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-}
-
-.plugins-notfound-actions .btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 /* The row under every message: ‹ 1 / 2 ›, 复制, 重新生成, the time; always there, not only on hover. */

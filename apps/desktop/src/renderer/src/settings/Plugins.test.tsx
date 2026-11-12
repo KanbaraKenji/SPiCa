@@ -104,47 +104,51 @@ describe('Plugins', () => {
     expect(within(screen.getByRole('region', { name: '笔记（示例）' })).getByText('manifest.json 缺少 version')).toBeTruthy();
   });
 
-  it('检查更新 and 选择文件夹 are the same square buttons as 检查更新 in 关于; there is no separate install box', async () => {
+  it('已安装: 检查更新 is the same square button as 检查更新 in 关于; the box searches the installed plugins only', async () => {
     render(<Plugins api={{ ...api(), pickFolder: async () => null }} />);
     await screen.findByRole('navigation', { name: '插件列表' });
+    expect(screen.getByRole('tab', { name: /^已安装/ }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('button', { name: '检查更新' }).className).toContain('btn-square');
-    expect(screen.getByRole('button', { name: '选择文件夹' }).className).toContain('btn-square');
-    expect(screen.queryByRole('button', { name: '安装插件' })).toBeNull();
-    expect(screen.queryByLabelText('插件位置')).toBeNull();
-    expect((screen.getByLabelText('搜索插件') as HTMLInputElement).placeholder).toBe('搜索插件，或输入路径、网址');
+    // Adding plugins is under 市场 now: no folder picker, no place typed here.
+    expect(screen.queryByRole('button', { name: '选择文件夹' })).toBeNull();
+    const box = screen.getByLabelText('搜索插件') as HTMLInputElement;
+    expect(box.placeholder).toBe('搜索已安装的插件');
+    fireEvent.change(box, { target: { value: 'D:\\插件\\note-box-1.0.0.zip' } });
+    expect(await screen.findByText('没有匹配的插件')).toBeTruthy();
   });
 
-  it('nothing installed and nothing offered: the box on top, 未安装插件 below it', async () => {
+  it('nothing installed: 未安装插件 under the tabs, no list', async () => {
     const empty: PluginsApi = {
       run: async (cmd) => {
         const r = await api().run(cmd);
-        const { available: _a, ...st } = r.state;
-        void _a;
-        return { ...r, state: { ...st, plugins: [] } };
+        return { ...r, state: { ...r.state, plugins: [] } };
       },
       onChanged: () => () => {},
     };
     render(<Plugins api={empty} />);
     const none = await screen.findByText('未安装插件');
-    const box = screen.getByLabelText('搜索插件');
-    expect(box.compareDocumentPosition(none) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('tablist', { name: '插件' }).compareDocumentPosition(none) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole('navigation', { name: '插件列表' })).toBeNull();
   });
 
-  it('未安装: what the sources offer is listed after the installed ones; the search finds both', async () => {
-    render(<Plugins api={api()} />);
-    await screen.findByRole('region', { name: '笔记（示例）' });
-    expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['已启用', '未安装']);
-    expect(groupOf('周报助手')).toBe('未安装');
-    fireEvent.change(screen.getByLabelText('搜索插件'), { target: { value: '周报' } });
-    expect(within(list()).getAllByRole('button').map((b) => b.textContent)).toEqual(['周周报助手1.2.0']);
-    fireEvent.change(screen.getByLabelText('搜索插件'), { target: { value: '' } });
-    // Another filter than 全部 is about installed plugins only.
-    fireEvent.click(screen.getByRole('radio', { name: /^已启用/ }));
-    expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['已启用']);
+  it('市场: the sources, each with how it went last time, 检查更新 and 移除; then what they offer and is not installed', async () => {
+    render(<Plugins api={api()} tab="market" />);
+    const sources = await screen.findByRole('list', { name: '插件来源' });
+    const rows = within(sources).getAllByRole('listitem');
+    expect(rows.map((r) => r.querySelector('.setting-title')?.textContent)).toEqual(['\\\\fileserver\\spica-plugins', 'https://plugins.example.com/index.json']);
+    expect(rows[0]!.textContent).toMatch(/上次读取 \d\d:\d\d · 2 个插件/);
+    expect(within(rows[1]!).getByText('连接失败').getAttribute('title')).toMatch(/HTTP 503/);
+    expect(within(rows[0]!).getAllByRole('button').map((b) => b.textContent || b.getAttribute('aria-label'))).toEqual(['检查更新', '移除来源']);
+    expect(screen.getByRole('button', { name: '全部检查更新' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '添加来源' })).toBeTruthy();
+    expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['可安装']);
+    expect(within(list()).getAllByRole('button').map((b) => b.textContent)).toEqual(['周周报助手1.2.0', '术术语表0.3.0']);
+    // The installed plugins and their search are under 已安装.
+    expect(screen.queryByLabelText('搜索插件')).toBeNull();
+    expect(screen.queryByRole('switch', { name: '模拟模式' })).toBeNull();
   });
 
-  it('a package picked: its detail has 安装 on a row of its own under the name; installing says each step and how long, then it is installed, on and shown', async () => {
+  it('a package picked: its detail has 安装 on a row of its own under the name; installing says each step and how long, then it is installed, on and shown under 已安装', async () => {
     const svc = new FakePluginService('C:\\Users\\me\\AppData\\Roaming\\Spica\\plugins');
     const listeners = new Set<(p: PluginsProgress) => void>();
     let release!: () => void;
@@ -166,6 +170,7 @@ describe('Plugins', () => {
     };
     render(<Plugins api={a} />);
     await screen.findByRole('region', { name: '笔记（示例）' });
+    fireEvent.click(screen.getByRole('tab', { name: '市场' }));
     pick('周报助手');
     const detail = (await screen.findByRole('region', { name: '周报助手' })) as HTMLElement;
     const actions = detail.querySelector('.plugin-actions') as HTMLElement;
@@ -176,73 +181,80 @@ describe('Plugins', () => {
     await waitFor(() => expect(within(detail).getByRole('status').textContent).toMatch(/^正在下载 3\.0 MB \/ 8\.0 MB\d+ 秒$/));
     expect((detail.querySelector('.plugin-progress-bar > span') as HTMLElement).style.width).toBe('38%');
     release();
-    // Now the installed plugin's own detail: its switch beside the name, on.
+    // Now the installed plugin's own detail under 已安装: its switch beside the name, on.
     await waitFor(() => expect(within(screen.getByRole('region', { name: '周报助手' })).getByRole('switch', { name: '停用「周报助手」' })).toBeTruthy());
+    expect(screen.getByRole('tab', { name: /^已安装/ }).getAttribute('aria-selected')).toBe('true');
     expect(groupOf('周报助手')).toBe('已启用');
     expect(screen.getByText('已安装「周报助手」1.2.0。')).toBeTruthy();
   });
 
-  it('a path typed in the box is looked at (after a pause, on Enter, or when pasted); what is there is listed to install', async () => {
-    render(<Plugins api={api()} />);
-    await screen.findByRole('region', { name: '笔记（示例）' });
-    const box = screen.getByLabelText('搜索插件');
-    fireEvent.change(box, { target: { value: '"D:\\插件\\note-box-1.0.0.zip"' } });
+  it('添加来源: a place typed (in quotes, as Explorer copies it) is added and read, and what it offers is listed; a place with nothing is not added and says why', async () => {
+    render(<Plugins api={api()} tab="market" />);
+    await screen.findByRole('list', { name: '插件来源' });
+    fireEvent.click(screen.getByRole('button', { name: '添加来源' }));
+    const box = screen.getByLabelText('插件来源的位置') as HTMLInputElement;
+    const add = screen.getByRole('button', { name: '添加' }) as HTMLButtonElement;
+    // Not a place yet: nothing to add.
+    fireEvent.change(box, { target: { value: '周报' } });
+    expect(add.disabled).toBe(true);
+    fireEvent.change(box, { target: { value: '"D:\\插件\\note-box"' } });
     fireEvent.submit(box.closest('form')!);
-    await waitFor(() => expect(within(list()).getAllByRole('heading').map((h) => h.textContent)).toEqual(['未安装']));
+    expect(await screen.findByText('已添加来源：1 个插件。')).toBeTruthy();
+    // Added: the box closes, the source is a row, what it offers is in the list.
+    expect(screen.queryByLabelText('插件来源的位置')).toBeNull();
+    expect(within(screen.getByRole('list', { name: '插件来源' })).getByText('D:\\插件\\note-box')).toBeTruthy();
     expect(within(list()).getByRole('button', { name: /note-box/ })).toBeTruthy();
-    const detail = (await screen.findByRole('region', { name: 'note-box' })) as HTMLElement;
-    expect(within(detail).getByRole('button', { name: '安装' })).toBeTruthy();
-    // Installed: the box is empty again and the plugin just installed is the one shown, in 已启用.
-    fireEvent.click(within(detail).getByRole('button', { name: '安装' }));
-    await waitFor(() => expect((box as HTMLInputElement).value).toBe(''));
-    expect(within(await screen.findByRole('region', { name: 'note-box' })).getByRole('switch', { name: '停用「note-box」' })).toBeTruthy();
-    expect(groupOf('note-box')).toBe('已启用');
-    // The result line of that install goes once another place is looked at; not there: said where the list would be.
-    expect(screen.getByText('已安装「note-box」1.0.0。')).toBeTruthy();
-    fireEvent.change(box, { target: { value: 'D:\\插件\\不存在' } });
-    fireEvent.submit(box.closest('form')!);
-    expect(await screen.findByRole('status', { name: '找不到该位置' })).toBeTruthy();
-    expect(screen.queryByText('已安装「note-box」1.0.0。')).toBeNull();
+    // Nothing there: not added, the box stays open with what was typed, the reason in the result line.
+    fireEvent.click(screen.getByRole('button', { name: '添加来源' }));
+    fireEvent.change(screen.getByLabelText('插件来源的位置'), { target: { value: 'D:\\插件\\不存在' } });
+    fireEvent.submit(screen.getByLabelText('插件来源的位置').closest('form')!);
+    expect(await screen.findByText('找不到该文件夹或文件。')).toBeTruthy();
+    expect((screen.getByLabelText('插件来源的位置') as HTMLInputElement).value).toBe('D:\\插件\\不存在');
+    expect(within(screen.getByRole('list', { name: '插件来源' })).getAllByRole('listitem')).toHaveLength(3);
   });
 
-  it('nothing to install at a typed location: what was looked at, which way it failed, and what to do next', async () => {
-    const pickFolder = vi.fn(async () => null);
-    render(<Plugins api={{ ...api(), pickFolder }} />);
-    await screen.findByRole('region', { name: '笔记（示例）' });
-    const box = screen.getByLabelText('搜索插件') as HTMLInputElement;
-    const lookAt = async (where: string, title: string) => {
-      fireEvent.change(box, { target: { value: where } });
-      fireEvent.submit(box.closest('form')!);
-      return (await screen.findByRole('status', { name: title })) as HTMLElement;
-    };
-    const buttons = (card: HTMLElement) => within(card).getAllByRole('button').map((b) => b.textContent);
-    let card = await lookAt('D:\\插件\\不存在', '找不到该位置');
-    expect(within(card).getByText('D:\\插件\\不存在')).toBeTruthy();
-    expect(buttons(card)).toEqual(['选择文件夹', '清除']);
-    // No list, no detail: the card is in their place.
-    expect(screen.queryByRole('navigation', { name: '插件列表' })).toBeNull();
-    card = await lookAt('D:\\插件\\打不开.zip', '无法打开');
-    expect(within(card).getByText('压缩包里没有 manifest.json，不是 Spica 插件包。')).toBeTruthy();
-    expect(buttons(card)).toEqual(['选择文件夹', '重试', '清除']);
-    card = await lookAt('https://example.com/连不上/index.json', '无法连接');
-    expect(buttons(card)).toEqual(['选择文件夹', '重试', '清除']);
-    card = await lookAt('D:\\插件\\没有插件', '没有找到插件');
-    expect(within(card).getByText('可安装：插件文件夹、.zip、带 index.json 的文件夹或网址')).toBeTruthy();
-    fireEvent.click(within(card).getByRole('button', { name: '选择文件夹' }));
-    expect(pickFolder).toHaveBeenCalledTimes(1);
-    // 清除: back to the list.
-    fireEvent.click(within(card).getByRole('button', { name: '清除' }));
-    expect(box.value).toBe('');
-    expect(await screen.findByRole('navigation', { name: '插件列表' })).toBeTruthy();
-  });
-
-  it('选择文件夹 puts the folder in the box and looks at it', async () => {
+  it('添加来源 › 选择文件夹: the folder picked is added at once', async () => {
     const pickFolder = vi.fn(async () => 'D:/插件/outlook-mail');
-    render(<Plugins api={{ ...api(), pickFolder }} />);
-    fireEvent.click(await screen.findByRole('button', { name: '选择文件夹' }));
-    await waitFor(() => expect((screen.getByLabelText('搜索插件') as HTMLInputElement).value).toBe('D:/插件/outlook-mail'));
-    expect(await within(list()).findByRole('button', { name: /outlook-mail/ })).toBeTruthy();
+    render(<Plugins api={{ ...api(), pickFolder }} tab="market" />);
+    fireEvent.click(await screen.findByRole('button', { name: '添加来源' }));
+    fireEvent.click(screen.getByRole('button', { name: '选择文件夹' }));
+    expect(await within(screen.getByRole('list', { name: '插件来源' })).findByText('D:/插件/outlook-mail')).toBeTruthy();
+    expect(within(list()).getByRole('button', { name: /outlook-mail/ })).toBeTruthy();
     expect(pickFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it('a single package on the web cannot be a source: said so, and it is listed to install', async () => {
+    render(<Plugins api={api()} tab="market" />);
+    fireEvent.click(await screen.findByRole('button', { name: '添加来源' }));
+    fireEvent.change(screen.getByLabelText('插件来源的位置'), { target: { value: 'https://plugins.example.com/files/report-tool-2.0.0.zip' } });
+    fireEvent.submit(screen.getByLabelText('插件来源的位置').closest('form')!);
+    expect(await screen.findByText('单个插件包的网址不能作为来源，可在下方安装。')).toBeTruthy();
+    expect(within(list()).getByRole('button', { name: /report-tool/ })).toBeTruthy();
+    expect(within(screen.getByRole('list', { name: '插件来源' })).getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('检查更新 of one source reads that one; 全部检查更新 reads all and says how many were not reached', async () => {
+    const svc = new FakePluginService('C:\\Users\\me\\AppData\\Roaming\\Spica\\plugins');
+    const sent: unknown[] = [];
+    render(<Plugins api={{ run: (cmd) => (sent.push(cmd), svc.run(cmd)), onChanged: () => () => {} }} tab="market" />);
+    const rows = within(await screen.findByRole('list', { name: '插件来源' })).getAllByRole('listitem');
+    fireEvent.click(within(rows[0]!).getByRole('button', { name: '检查更新' }));
+    expect(await screen.findByText('1 个插件可更新。')).toBeTruthy();
+    expect(sent).toContainEqual({ op: 'checkSources', location: '\\\\fileserver\\spica-plugins' });
+    fireEvent.click(screen.getByRole('button', { name: '全部检查更新' }));
+    expect(await screen.findByText('已检查 1 个插件来源：1 个插件可更新；1 个连接失败。')).toBeTruthy();
+    expect(sent).toContainEqual({ op: 'checkSources' });
+  });
+
+  it('移除来源 asks first; removed, what it offered leaves the list', async () => {
+    render(<Plugins api={api()} tab="market" />);
+    const rows = within(await screen.findByRole('list', { name: '插件来源' })).getAllByRole('listitem');
+    fireEvent.click(within(rows[0]!).getByRole('button', { name: '移除来源' }));
+    const box = screen.getByRole('alertdialog');
+    expect(within(box).getByText('移除来源「\\\\fileserver\\spica-plugins」？')).toBeTruthy();
+    fireEvent.click(within(box).getByRole('button', { name: '移除' }));
+    await waitFor(() => expect(within(screen.getByRole('list', { name: '插件来源' })).getAllByRole('listitem')).toHaveLength(1));
+    expect(screen.getByText('没有可安装的插件')).toBeTruthy();
   });
 
   it('the plugin picked: 更新到, 回退到 and 删除 are on the row right under its name', async () => {
@@ -261,7 +273,7 @@ describe('Plugins', () => {
     const slow: PluginsApi = {
       ...base,
       run: async (cmd) => {
-        if (cmd.op === 'checkUpdates') await new Promise<void>((r) => (finish = r));
+        if (cmd.op === 'checkSources') await new Promise<void>((r) => (finish = r));
         return base.run(cmd);
       },
     };
@@ -280,7 +292,7 @@ describe('Plugins', () => {
       ...base,
       run: async (cmd) => {
         const r = await base.run(cmd);
-        return cmd.op === 'checkUpdates' ? { ...r, ...reply } : r;
+        return cmd.op === 'checkSources' ? { state: r.state, ...reply } : r;
       },
     };
     render(<Plugins api={answering} />);

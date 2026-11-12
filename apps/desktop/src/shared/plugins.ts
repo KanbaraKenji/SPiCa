@@ -118,6 +118,24 @@ export interface PluginsFound {
   reason?: NotFoundReason;
 }
 
+/**
+ * A place plugins are offered from, as 设置 › 插件 › 市场 lists it: a shared or local folder (with index.json, or
+ * plugin folders and .zip files in it), a single plugin folder or .zip, or the web address of an index.json.
+ * Remembered as soon as it is added (also when something is installed from a place typed in).
+ */
+export interface PluginSourceView {
+  location: string;
+  kind: 'share' | 'http';
+  /** Its own name, when it has one. */
+  label?: string;
+  /** When it was last read (ISO time); absent: not read since Spica started. */
+  readAt?: string;
+  /** It could not be read the last time, in words. */
+  error?: string;
+  /** How many plugins it offered the last time it was read. */
+  count?: number;
+}
+
 export interface PluginsState {
   plugins: PluginView[];
   /** Mock mode: plugins answer from bundled sample data instead of real systems. */
@@ -128,6 +146,8 @@ export interface PluginsState {
   available?: PluginPackage[];
   /** Sources that could not be read the last time they were listed. */
   sourceErrors?: string[];
+  /** The remembered sources, in the order they were added. */
+  sources?: PluginSourceView[];
   /** The latest lookup of a typed location. */
   found?: PluginsFound;
 }
@@ -194,6 +214,12 @@ export type PluginsCommand =
   | { op: 'find'; location: string }
   /** List the remembered sources again (未安装). */
   | { op: 'refreshSources' }
+  /** Remember a place as a source (what `find` accepts, except a single package on the web) and read it. */
+  | { op: 'addSource'; location: string }
+  /** Forget a remembered source; what it offered leaves the list (installed plugins stay). */
+  | { op: 'removeSource'; location: string }
+  /** 检查更新 of one source (or of all): read it again, then check the installed plugins against every source. */
+  | { op: 'checkSources'; location?: string }
   /** One package from `available` or `found`; `job` names it for the progress messages. */
   | { op: 'installAvailable'; key: string; job?: string }
   | { op: 'checkUpdates' }

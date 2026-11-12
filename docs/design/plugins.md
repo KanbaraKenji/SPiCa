@@ -211,6 +211,7 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
   - **共享盘**：`{ kind: 'share', location: '\\\\server\\plugins' }`。有 `index.json` 就按它；没有就扫：带 `manifest.json` 的子文件夹、`*.zip` 都算。`file` 以 `/` 结尾表示文件夹。
   - **HTTP**：`{ kind: 'http', location: 'https://…/index.json' }`。`file` 相对索引地址解析；必须有 `sha256`。桌面端传 Electron 的 `net.fetch`，走系统代理。
   - 发布者用 `writeIndex(文件夹)` 给一堆 zip 生成索引。
+- 外壳记住的来源（`<userData>\plugin-sources.json`，2026-11-12 起「添加来源」一加就记住）还可以是单个插件文件夹或本机 .zip：外壳的 `RealPluginService` 读它自己（`readPluginFolder` / `verifyPackage`），不经 `listSource`；检查更新也按外壳读到的算（不再调 `checkUpdates`）。没有预置的官方来源。
 - 版本比较按 semver（预发布版低于正式版）；同一插件多个版本取兼容范围内最新的。
 - `checkUpdates(manager, 来源列表)` → 可更新列表；读不了的来源单独列出（「找不到共享文件夹 …，检查盘有没有连上」），不影响别的来源。
 - `installAvailable(manager, 条目)`：下载 → 校验和 → 解包到临时目录 → `install()`。已启用的插件更新后继续启用，数据保留。

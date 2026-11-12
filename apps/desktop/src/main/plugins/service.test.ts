@@ -215,6 +215,89 @@ describe('the one box: looking at a typed location, installing what is there', (
   });
 });
 
+describe('市场 › 插件来源: added, listed, checked one by one, removed', () => {
+  function rig() {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-plugin-sources-'));
+    dirs.push(dir);
+    const installed = new Map<string, string>([['demo', '1.0.0']]);
+    const m = { ...manager, appName: 'Spica', installedVersion: (n: string) => installed.get(n) } as unknown as PluginManager;
+    const sourcesFile = join(dir, 'sources.json');
+    const svc = new RealPluginService({ manager: m, root: join(dir, 'plugins'), sourcesFile, openFolder: async () => '' });
+    const share = (name: string, plugins: { name: string; version: string; file: string }[]) => {
+      const at = join(dir, name);
+      mkdirSync(at);
+      writeFileSync(join(at, 'index.json'), JSON.stringify({ index_version: 1, plugins }));
+      return at;
+    };
+    return { dir, svc, sourcesFile, share };
+  }
+
+  it('added: remembered at once (before, only an install remembered a source), read, and what it offers is listed', async () => {
+    const { svc, sourcesFile, share } = rig();
+    const team = share('team', [{ name: 'other', version: '0.3.0', file: 'other-0.3.0.zip' }]);
+    const r = await svc.run({ op: 'addSource', location: `"${team}"` });
+    expect(r).toMatchObject({ ok: true, message: '已添加来源：1 个插件。' });
+    expect(JSON.parse(readFileSync(sourcesFile, 'utf8'))).toEqual([{ kind: 'share', location: team }]);
+    expect(r.state.sources).toEqual([{ location: team, kind: 'share', readAt: expect.any(String), count: 1 }]);
+    expect(r.state.available?.map((a) => a.name)).toEqual(['other']);
+    // Added again: still once.
+    expect((await svc.run({ op: 'addSource', location: team })).message).toBe('该来源已在列表中：1 个插件。');
+    expect(JSON.parse(readFileSync(sourcesFile, 'utf8'))).toHaveLength(1);
+  });
+
+  it('a place with nothing to offer is not added; the reason is said', async () => {
+    const { svc, dir, sourcesFile } = rig();
+    const r = await svc.run({ op: 'addSource', location: join(dir, 'nowhere') });
+    expect(r).toMatchObject({ ok: false, message: '找不到该文件夹或文件。' });
+    expect(existsSync(sourcesFile)).toBe(false);
+    expect(r.state.sources).toEqual([]);
+  });
+
+  it('a folder of plugin packages without index.json is a source too (as the plugin system lists it)', async () => {
+    const { svc, dir } = rig();
+    mkdirSync(join(dir, 'mine'));
+    writeFileSync(join(dir, 'mine', 'readme.txt'), 'x');
+    // Nothing usable in it yet: not added.
+    expect((await svc.run({ op: 'addSource', location: join(dir, 'mine') })).ok).toBe(false);
+  });
+
+  it('检查更新 of one source reads only that one; of all, every one; an installed plugin with a newer version gets 更新到', async () => {
+    const { svc, dir, share } = rig();
+    const a = share('a', [{ name: 'demo', version: '1.1.0', file: 'demo-1.1.0.zip' }]);
+    const b = share('b', [{ name: 'other', version: '0.3.0', file: 'other-0.3.0.zip' }]);
+    writeFileSync(join(dir, 'sources.json'), JSON.stringify([{ kind: 'share', location: a }, { kind: 'share', location: b }]));
+    const one = await svc.run({ op: 'checkSources', location: a });
+    expect(one).toMatchObject({ ok: true, message: '1 个插件可更新。' });
+    expect(one.state.sources?.map((s) => [s.location, Boolean(s.readAt)])).toEqual([
+      [a, true],
+      [b, false],
+    ]);
+    const all = await svc.run({ op: 'checkSources' });
+    expect(all.state.sources?.every((s) => s.readAt && s.count === 1)).toBe(true);
+    expect(all.state.available?.map((x) => x.name)).toEqual(['other']);
+  });
+
+  it('a source not reached says so on its own line; checking only it is a failure', async () => {
+    const { svc, dir } = rig();
+    const gone = join(dir, 'gone');
+    writeFileSync(join(dir, 'sources.json'), JSON.stringify([{ kind: 'share', location: gone }]));
+    const r = await svc.run({ op: 'checkSources', location: gone });
+    expect(r).toMatchObject({ ok: false, message: '1 个插件来源连接失败，无法检查更新。' });
+    expect(r.state.sources?.[0]?.error).toMatch(/找不到共享文件夹/);
+  });
+
+  it('removed: forgotten, and what it offered leaves the list', async () => {
+    const { svc, sourcesFile, share } = rig();
+    const team = share('team', [{ name: 'other', version: '0.3.0', file: 'other-0.3.0.zip' }]);
+    await svc.run({ op: 'addSource', location: team });
+    const r = await svc.run({ op: 'removeSource', location: team });
+    expect(r).toMatchObject({ ok: true, message: '已移除来源。' });
+    expect(JSON.parse(readFileSync(sourcesFile, 'utf8'))).toEqual([]);
+    expect(r.state.sources).toEqual([]);
+    expect(r.state.available).toBeUndefined();
+  });
+});
+
 describe('why an address did not answer, in words', () => {
   it('no answer, an HTTP status, a timeout', () => {
     expect(unreachableText('无法连接插件源 http://x/index.json（fetch failed）。')).toBe('服务器没有响应。');
