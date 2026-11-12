@@ -9,7 +9,7 @@ import { DesktopChannel } from '../shared/ipc';
 import { humanError } from '../shared/errors';
 import { CAPTION_BACK, captionSymbol, deriveTokens, resolveSkin, schemeOf, type WindowCover } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
-import { mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
+import { budgetForCore, mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, SaveCsvResult, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import { APP_IDENTITY } from '../shared/app-identity';
@@ -190,8 +190,8 @@ function backendConfig(): DesktopBackendConfig {
       network: networkForCore(settings.get().network),
       // 设置 › 记忆 › 启用记忆 (what is saved stays when it is off).
       memory: { enabled: settings.get().memory, autoTidy: settings.get().memoryAutoTidy },
-      // Development limits (see docs/design/agent-core.md §10): Anthropic 100 USD total, 2 USD per call.
-      budget: { perProvider: { anthropic: { globalUsd: 100, perCallUsd: 2 } }, perRunUsd: 1 },
+      // 设置 › 模型 › 单次运行花费上限 (none by default); no other limit (shared/settings.ts budgetForCore).
+      budget: budgetForCore(settings.get().runLimitUsd),
       // Linked into the backend entry; named here as the core expects.
       extractorModules: ['@spica/extract'],
       extensions: [
@@ -262,8 +262,11 @@ const backend: AgentBackend =
     : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd, demoImage: () => writeDemoChart(join(app.getPath('userData'), 'demo-media')) });
 console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own process)' : 'fake (demo data)'}`);
 const settings = new SettingsStore(app.getPath('userData'), { persist: !automated });
-// The demo backend starts with 设置 › 记忆 › 启用记忆 as saved (the core gets it in backendConfig()).
-if (backend instanceof FakeBackend) backend.setMemoryEnabled(settings.get().memory);
+// The demo backend starts with 设置 › 记忆 › 启用记忆 and 模型 › 单次运行花费上限 as saved (the core gets them in backendConfig()).
+if (backend instanceof FakeBackend) {
+  backend.setMemoryEnabled(settings.get().memory);
+  backend.setRunLimit(settings.get().runLimitUsd);
+}
 if (backendKind === 'core' && makeWorkflowsDirAtStart(app.isPackaged, settings.get().workflowsDir)) mkdirSync(defaultWorkflowsDir, { recursive: true });
 const providers = new ProviderStore(
   app.getPath('userData'),
@@ -1061,6 +1064,7 @@ let lastNetwork = JSON.stringify(settings.get().network);
 let lastLocalConnect = settings.get().localConnect;
 let lastMemory = settings.get().memory;
 let lastAutoTidy = settings.get().memoryAutoTidy;
+let lastRunLimit = settings.get().runLimitUsd;
 /** Problems the core reported for the network settings (e.g. a certificate file it cannot read), in words. */
 let networkProblems: string[] = [];
 function networkProblem(raw: string): string {
@@ -1077,6 +1081,12 @@ settings.onChange((s) => {
   if (s.memoryAutoTidy !== lastAutoTidy) {
     lastAutoTidy = s.memoryAutoTidy;
     if (backend instanceof ProcessBackend) void backend.apply({ memory: { autoTidy: s.memoryAutoTidy } }).catch(() => undefined);
+  }
+  if (s.runLimitUsd !== lastRunLimit) {
+    // 单次运行花费上限: the running core takes it at once (a run already going checks it at its next call)
+    lastRunLimit = s.runLimitUsd;
+    if (backend instanceof ProcessBackend) void backend.apply({ budget: budgetForCore(s.runLimitUsd) }).catch(() => undefined);
+    else if (backend instanceof FakeBackend) backend.setRunLimit(s.runLimitUsd);
   }
   if (!(backend instanceof ProcessBackend)) return;
   const mail = JSON.stringify(s.mail);

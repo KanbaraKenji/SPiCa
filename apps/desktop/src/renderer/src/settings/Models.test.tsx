@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { Models, type ProvidersApi } from './Models';
+import { Models, RunLimitRow, type ProvidersApi } from './Models';
 import type { ProviderList } from '../../../shared/bridge';
 import type { ModelCatalogView } from '../../../shared/catalog';
 import { keyMaskParts, keyMaskText } from '@spica/protocol';
@@ -437,5 +437,37 @@ describe('a name already in use', () => {
     type('名称', '新网关');
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(screen.queryByText('名称已存在')).toBeNull());
+  });
+});
+
+describe('单次运行花费上限', () => {
+  it('empty says 不限 (the default); a valid amount applies at once; empty again is no limit', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<RunLimitRow value={null} onChange={onChange} />);
+    const box = screen.getByRole('textbox', { name: '单次运行花费上限（美元）' }) as HTMLInputElement;
+    expect(box.value).toBe('');
+    expect(box.placeholder).toBe('不限');
+    expect(screen.getByText(/一次运行是从发出一条消息到这一轮做完/)).toBeTruthy();
+    fireEvent.change(box, { target: { value: '2.5' } });
+    expect(onChange).toHaveBeenLastCalledWith(2.5);
+    rerender(<RunLimitRow value={2.5} onChange={onChange} />);
+    fireEvent.change(box, { target: { value: '' } });
+    expect(onChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it('what is not an amount is kept in the box, not saved, and says why once you leave it', () => {
+    const onChange = vi.fn();
+    render(<RunLimitRow value={null} onChange={onChange} />);
+    const box = screen.getByRole('textbox', { name: '单次运行花费上限（美元）' });
+    fireEvent.change(box, { target: { value: '0' } });
+    fireEvent.change(box, { target: { value: 'abc' } });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.blur(box);
+    expect(screen.getByText('须为大于 0 的金额')).toBeTruthy();
+  });
+
+  it('is on the page when the settings give it', async () => {
+    render(<Models api={fakeApi()} runLimit={{ value: 1, onChange: () => undefined }} />);
+    expect((screen.getByRole('textbox', { name: '单次运行花费上限（美元）' }) as HTMLInputElement).value).toBe('1');
   });
 });

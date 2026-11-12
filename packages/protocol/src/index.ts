@@ -404,6 +404,8 @@ export interface SessionInfo {
   /** Working folder for file tools. */
   cwd: string;
   costUsd: number;
+  /** Calls of a model without a known price were made in this session (not in costUsd; shown 「未计价」). */
+  unpriced?: true;
   createdAt: string;
   updatedAt: string;
   /** Role template the session was created from (e.g. 'top', 'project-manager'). */
@@ -603,12 +605,12 @@ export type CoreEventBody =
   | { type: 'memory.changed'; callId?: string; card: MemoryCardMeta }
   /** A tidy of the memory started, ended or failed (on no conversation). */
   | { type: 'memory.tidy'; run: MemoryTidyRun }
-  /** Tokens and estimated cost of one model call. */
-  | { type: 'usage'; usage: Usage; costUsd: number; providerId: string; model: string }
-  /** Running totals; `warning` when a total passes the warning threshold of its limit. */
-  | { type: 'cost'; scope: CostScopeName; spentUsd: number; limitUsd?: number; warning: boolean }
-  /** A spending limit stopped the run. */
-  | { type: 'budget.stop'; scope: string; spentUsd: number; limitUsd: number; message: string }
+  /** Tokens and estimated cost of one model call. `unpriced`: the model has no known price; costUsd is then 0 and means nothing (shown 「未计价」), it counts against no limit. */
+  | { type: 'usage'; usage: Usage; costUsd: number; providerId: string; model: string; unpriced?: true }
+  /** Running totals; `warning` when a total passes the warning threshold of its limit. `unpriced`: calls without a known price were made in this total and are not in spentUsd. */
+  | { type: 'cost'; scope: CostScopeName; spentUsd: number; limitUsd?: number; warning: boolean; unpriced?: true }
+  /** A spending limit stopped the run: the next call (up to nextUsd at worst) was not started. */
+  | { type: 'budget.stop'; scope: string; spentUsd: number; limitUsd: number; nextUsd?: number; message: string }
   /** A traceable external request finished. */
   | { type: 'trace'; record: TraceRecord }
   | { type: 'steer.queued'; messageId: string; mode: SteerMode }
@@ -930,6 +932,8 @@ export interface TraceRecord {
   cacheWriteTokens?: number;
   bytes?: number;
   costUsd?: number;
+  /** A model call of a model without a known price: costUsd is left out (shown 「未计价」). */
+  unpriced?: true;
   status: 'ok' | 'error' | 'aborted';
   httpStatus?: number;
   attempts?: number;

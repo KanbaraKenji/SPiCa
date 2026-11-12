@@ -447,7 +447,7 @@ export class AgentStore {
           if (s.id !== e.sessionId) return s;
           if (e.type === 'status') return { ...s, status: e.status, updatedAt: e.at };
           if (e.type === 'session.renamed') return { ...s, title: e.title };
-          return e.scope === 'session' ? { ...s, costUsd: e.spentUsd } : s;
+          return e.scope === 'session' ? { ...s, costUsd: e.spentUsd, ...(e.unpriced ? { unpriced: true as const } : {}) } : s;
         });
         if (e.type === 'cost' && e.scope === 'global') globalCostUsd = e.spentUsd;
       }
@@ -601,6 +601,7 @@ export class AgentStore {
         const next = fromHistory(messages, pending);
         if (prev?.lastRun) next.lastRun = prev.lastRun;
         if (prev?.error) next.error = prev.error;
+        if (prev?.errorAction) next.errorAction = prev.errorAction;
         if (prev?.run) next.run = prev.run;
         // file.card details only arrive as events; keep them across the reload.
         if (prev?.fileCards) next.fileCards = { ...prev.fileCards, ...(next.fileCards ?? {}) };

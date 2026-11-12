@@ -113,7 +113,7 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
                 ) : tab === 'appearance' ? (
                   <Appearance settings={settings} activeSkin={shell.activeSkin()} onChange={(p) => shell.update(p)} />
                 ) : tab === 'models' ? (
-                  <Models api={providers} />
+                  <Models api={providers} runLimit={{ value: settings.runLimitUsd, onChange: (runLimitUsd) => shell.update({ runLimitUsd }) }} />
                 ) : tab === 'memory' && memory ? (
                   <Memory {...memory} enabled={settings.memory} onEnabled={(on) => shell.update({ memory: on })} />
                 ) : tab === 'plugins' ? (

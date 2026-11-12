@@ -70,6 +70,10 @@ interface Run {
   controller: AbortController;
   steers: Message[];
   waiter?: Waiter;
+  /** Counted against 单次运行花费上限 (USD); `unpriced`: the run's model has no price (「未计价」 in the message); `dear`: each call costs about 0.85 USD (「花费上限」 in the message). */
+  spent: number;
+  unpriced?: boolean;
+  dear?: boolean;
 }
 
 class Aborted extends Error {}
@@ -174,6 +178,10 @@ export class FakeBackend implements AgentBackend {
   #pending = new Map<string, PendingItem[]>();
   #runs = new Map<string, Run>();
   #globalCost = 0;
+  /** Calls of a model without a price were made (in any conversation). */
+  #globalUnpriced = false;
+  /** 设置 › 模型 › 单次运行花费上限 (null: none), as the core gets it. */
+  #runLimit: number | null = null;
   #projects = new Map<string, ProjectInfo>();
   readonly #mail: FakeMailbox;
   readonly #memory: FakeMemory;
@@ -591,6 +599,11 @@ export class FakeBackend implements AgentBackend {
     this.#memory.enabled = on;
   }
 
+  /** 单次运行花费上限 changed in the settings (as the core's configure({ budget })). */
+  setRunLimit(usd: number | null): void {
+    this.#runLimit = usd;
+  }
+
   async listMemories(opts?: { all?: boolean }): Promise<MemoryItem[]> {
     return this.#memory.list(opts);
   }
@@ -837,14 +850,44 @@ export class FakeBackend implements AgentBackend {
     ];
   }
 
+  /** What one call of the run costs (USD): the demo price, or about 0.85 USD when the message asked for 「花费上限」. */
+  #callUsd(run: Run | undefined, inputTokens: number, outputTokens: number): number {
+    return ((inputTokens * 0.27 + outputTokens * 1.1) / 1_000_000) * (run?.dear ? 1000 : 1);
+  }
+
+  /**
+   * As the core: the next call is not started when it could take the run past 单次运行花费上限 (a model without a
+   * price never stops). Returns true when the run was stopped.
+   */
+  #stopsAtLimit(sessionId: string, run: Run, nextUsd: number): boolean {
+    const limit = this.#runLimit;
+    if (limit === null || run.unpriced || run.spent + nextUsd <= limit) return false;
+    const message = `spending limit all:run reached (the next call was not started): spent $${run.spent.toFixed(4)} of $${limit.toFixed(2)}, the next call could cost up to $${nextUsd.toFixed(4)}`;
+    this.#emit(sessionId, { type: 'budget.stop', scope: 'all:run', spentUsd: run.spent, limitUsd: limit, nextUsd, message });
+    this.#finish(sessionId, 'budget', message);
+    return true;
+  }
+
   #charge(sessionId: string, inputTokens: number, outputTokens: number): void {
-    const costUsd = (inputTokens * 0.27 + outputTokens * 1.1) / 1_000_000;
+    const run = this.#runs.get(sessionId);
     const s = this.#sessions.get(sessionId);
+    if (run?.unpriced) {
+      // a company gateway model without a price: nothing is counted, it is marked (as the core)
+      if (s) s.unpriced = true;
+      this.#globalUnpriced = true;
+      this.#emit(sessionId, { type: 'usage', usage: { inputTokens, outputTokens }, costUsd: 0, providerId: 'fake', model: 'gateway-model', unpriced: true });
+      this.#emit(sessionId, { type: 'cost', scope: 'session', spentUsd: s?.costUsd ?? 0, warning: false, unpriced: true });
+      this.#emit(sessionId, { type: 'cost', scope: 'global', spentUsd: this.#globalCost, warning: false, unpriced: true });
+      if (s) this.#emit(sessionId, { type: 'session.updated', info: structuredClone(s) });
+      return;
+    }
+    const costUsd = this.#callUsd(run, inputTokens, outputTokens);
+    if (run) run.spent += costUsd;
     if (s) s.costUsd += costUsd;
     this.#globalCost += costUsd;
     this.#emit(sessionId, { type: 'usage', usage: { inputTokens, outputTokens }, costUsd, providerId: 'fake', model: 'deepseek-flash' });
-    this.#emit(sessionId, { type: 'cost', scope: 'session', spentUsd: s?.costUsd ?? costUsd, warning: false });
-    this.#emit(sessionId, { type: 'cost', scope: 'global', spentUsd: this.#globalCost, limitUsd: 100, warning: false });
+    this.#emit(sessionId, { type: 'cost', scope: 'session', spentUsd: s?.costUsd ?? costUsd, warning: false, ...(s?.unpriced ? { unpriced: true as const } : {}) });
+    this.#emit(sessionId, { type: 'cost', scope: 'global', spentUsd: this.#globalCost, warning: false, ...(this.#globalUnpriced ? { unpriced: true as const } : {}) });
   }
 
   /** Commits one assistant message made of the blocks streamed so far. */
@@ -885,7 +928,8 @@ export class FakeBackend implements AgentBackend {
   }
 
   async #run(sessionId: string, text: string, opts: { resumeWith?: string; version?: number } = {}): Promise<void> {
-    const run: Run = { controller: new AbortController(), steers: [] };
+    // 「未计价」: the run uses a model without a price; 「花费上限」: its calls are dear (to reach 单次运行花费上限)
+    const run: Run = { controller: new AbortController(), steers: [], spent: 0, ...(/未计价/.test(text) ? { unpriced: true } : {}), ...(/花费上限/.test(text) ? { dear: true } : {}) };
     this.#runs.set(sessionId, run);
     const signal = run.controller.signal;
     const blocks: ContentBlock[] = [];
@@ -960,6 +1004,8 @@ export class FakeBackend implements AgentBackend {
       this.#charge(sessionId, 2400, 180);
       this.#emit(sessionId, { type: 'turn.end', turn });
       this.#applySteers(sessionId, run);
+      // the next call's worst case (its input at least this call's, all of maxTokens out), as the core counts it
+      if (this.#stopsAtLimit(sessionId, run, this.#callUsd(run, 3100, 4096))) return;
 
       this.#emit(sessionId, { type: 'turn.start', turn: ++turn });
       this.#setStatus(sessionId, 'thinking');
@@ -1151,11 +1197,11 @@ export class FakeBackend implements AgentBackend {
     this.#pending.set(sessionId, [...(this.#pending.get(sessionId) ?? []), item]);
   }
 
-  #finish(sessionId: string, reason: 'completed' | 'aborted' | 'error', detail?: string): void {
+  #finish(sessionId: string, reason: 'completed' | 'aborted' | 'error' | 'budget', detail?: string): void {
     this.#runs.delete(sessionId);
     const s = this.#sessions.get(sessionId);
     const status: SessionStatus =
-      reason === 'completed' ? (s?.role === 'worker' ? 'done' : 'idle') : reason === 'aborted' ? 'aborted' : 'error';
+      reason === 'completed' || reason === 'budget' ? (s?.role === 'worker' ? 'done' : 'idle') : reason === 'aborted' ? 'aborted' : 'error';
     this.#setStatus(sessionId, status);
     this.#emit(sessionId, detail ? { type: 'run.end', reason, detail } : { type: 'run.end', reason });
   }

@@ -85,12 +85,17 @@ describe('Wso2Provider', () => {
     expect(gw.tokenRequests).toHaveLength(1);
   });
 
-  it('is priced like an OpenAI-compatible endpoint via the fallback, never as free', async () => {
+  it('a gateway model without a price is 未计价: no made-up cost, no limit stops it, and it is marked', async () => {
     gw.onRequest(() => ({ text: 'ok', usage: { input: 1000, output: 100 } }));
-    const rt = rtFor(wso2());
+    const rt = makeRuntime(gw, { providers: [wso2()], defaults: { providerId: 'gateway', model: 'gw-model', maxTokens: 64 }, budget: { perRunUsd: 0.000001, perCallUsd: 0.000001 } });
     const s = rt.createSession();
-    await s.send('x').done;
-    expect(rt.ledger.sessionUsd(s.id)).toBeGreaterThan(0);
+    const r = await s.send('x').done;
+    expect(r.reason).not.toBe('budget');
+    expect(rt.ledger.sessionUsd(s.id)).toBe(0);
+    expect(s.info()).toMatchObject({ costUsd: 0, unpriced: true });
+    const trace = rt.store.listTraces({ sessionId: s.id }).find((t) => t.kind === 'model')!;
+    expect(trace).toMatchObject({ unpriced: true });
+    expect(trace.costUsd).toBeUndefined();
   });
 });
 

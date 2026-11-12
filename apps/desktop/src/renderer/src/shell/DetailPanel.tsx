@@ -8,6 +8,7 @@ import { InfoTip } from '../ui/InfoTip';
 import { FileGlyph } from '../ui/FileIcon';
 import { activityText } from './activity';
 import { fileFolder, fileName, formatDuration, formatUsd } from '../chat/format';
+import { spendText } from '../../../shared/spend';
 import { toolWords } from '../chat/tool-words';
 import { toolIcon } from '../chat/Blocks';
 import { SpicaStatusIcon } from '@spica/brand/react';
@@ -19,6 +20,8 @@ export interface DetailPanelProps {
   parent: SessionInfo | undefined;
   transcript: Transcript;
   globalCostUsd: number;
+  /** Some conversation used a model without a price (not in globalCostUsd): shown 「+ 未计价」. */
+  globalUnpriced?: boolean;
   /** Opens a folder (or a file) with Windows. */
   onOpenFile(path: string): void;
   /** Shows a file in the right panel; absent: files open with Windows. */
@@ -51,7 +54,7 @@ function ToolListText({ t, card }: { t: Parameters<typeof toolWords>[0]; card?: 
   );
 }
 
-export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false }: DetailPanelProps) {
+export function DetailPanel({ session, parent, transcript, globalCostUsd, globalUnpriced, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false }: DetailPanelProps) {
   const blocks = transcript.items.flatMap((i) => (i.kind === 'response' ? i.blocks : []));
   // remember / forget are the 已记住 line in the conversation; listed here they would say it twice.
   const tools = blocks.filter((b): b is ToolBlock => b.type === 'tool' && !MEMORY_TOOLS.has(b.name));
@@ -203,9 +206,9 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, onOpen
           <h3 className="detail-title">花费</h3>
           <dl className="detail-facts">
             <dt>本对话</dt>
-            <dd className="num">{session ? formatUsd(session.costUsd) : '—'}</dd>
+            <dd className="num">{session ? spendText(session.costUsd, session.unpriced, formatUsd) : '—'}</dd>
             <dt>全部对话</dt>
-            <dd className="num">{formatUsd(globalCostUsd)}</dd>
+            <dd className="num">{spendText(globalCostUsd, globalUnpriced, formatUsd)}</dd>
           </dl>
         </section>
       </div>

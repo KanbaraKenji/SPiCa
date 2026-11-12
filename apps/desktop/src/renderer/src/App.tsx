@@ -326,6 +326,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     if (project) void agent.loadProject(project.id);
   }, [agent, project]);
   const totalCost = useMemo(() => state.sessions.reduce((n, s) => n + s.costUsd, 0), [state.sessions]);
+  const anyUnpriced = useMemo(() => state.sessions.some((s) => s.unpriced), [state.sessions]);
 
   /** A file to show (set just before): the preview beside the conversation when it fits, else over the window. */
   const showPreview = () => {
@@ -938,6 +939,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               parent={parent}
               transcript={transcript}
               globalCostUsd={totalCost}
+              globalUnpriced={anyUnpriced}
               onOpenFile={openFile}
               onPreviewFile={previewFile}
               onOpenSession={openSession}

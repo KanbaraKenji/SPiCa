@@ -125,6 +125,20 @@ export interface ShellSettings {
   openAtLogin: boolean;
   /** The one notification about being minimized to the tray was shown. */
   backgroundHintShown: boolean;
+  /**
+   * 模型 › 单次运行花费上限, in USD: one run (from sending a message until that round is done) stops before a
+   * call that could go past it. null = no limit (the default, he chose 2026-11-12). Models without a price count nothing.
+   */
+  runLimitUsd: number | null;
+}
+
+/** The highest 单次运行花费上限 accepted (a typo of a few zeros is refused, not kept). */
+export const RUN_LIMIT_MAX_USD = 10_000;
+
+/** A 单次运行花费上限 as typed: a positive amount up to RUN_LIMIT_MAX_USD, cents at most; anything else is no limit. */
+export function runLimit(v: unknown): number | null {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0 || v > RUN_LIMIT_MAX_USD) return null;
+  return Math.max(0.01, Math.round(v * 100) / 100);
 }
 
 /** 关闭窗口时: 每次询问 / 最小化到托盘 / 退出. */
@@ -159,6 +173,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   closeWindow: 'ask',
   openAtLogin: false,
   backgroundHintShown: false,
+  runLimitUsd: null,
 };
 
 /** Local calendar date, YYYY-MM-DD. */
@@ -255,7 +270,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
+  return { runLimitUsd: runLimit(v.runLimitUsd), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {
@@ -265,4 +280,13 @@ export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellS
 /** What the core gets from the mail settings (the agreement stays with the shell). */
 export function mailForCore(mail: MailPrefs): { enabled: boolean; intervalMinutes: number; ignore: MailPrefs['ignore'] } {
   return { enabled: mail.enabled && mail.consentedAt !== null, intervalMinutes: mail.intervalMinutes, ignore: mail.ignore };
+}
+
+/**
+ * The core's spending limits from the settings: only 单次运行花费上限 (none when it is null). There are no other
+ * limits: the development ones written into the code (Anthropic 100 USD in all, 2 USD a call, 1 USD a run) were
+ * taken out (2026-11-12): nothing in the settings showed them, and the run stopped without a way to change it.
+ */
+export function budgetForCore(runLimitUsd: number | null): { perRunUsd?: number } {
+  return runLimitUsd === null ? {} : { perRunUsd: runLimitUsd };
 }

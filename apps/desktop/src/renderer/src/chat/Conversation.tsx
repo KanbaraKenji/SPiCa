@@ -479,7 +479,12 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
             {transcript.error ? (
               <p className="turn-error status-with-icon" role="alert">
                 <SpicaStatusIcon name="error" size={15} />
-                {transcript.error}
+                <span>{transcript.error}</span>
+                {transcript.errorAction === 'models' && actions.openModelSettings ? (
+                  <button type="button" className="btn btn-small" onClick={actions.openModelSettings}>
+                    修改上限
+                  </button>
+                ) : null}
               </p>
             ) : null}
           </div>

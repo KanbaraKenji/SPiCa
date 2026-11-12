@@ -50,8 +50,8 @@ const STRONG = 0.7;
 export class PluginSampler {
   readonly #rt: Runtime;
   readonly #limiters = new Map<string, RateLimiter>();
-  /** pluginId → { day, usd } spent today (seeded from the traceable records after a restart). */
-  readonly #spent = new Map<string, { day: string; usd: number }>();
+  /** pluginId → { day, usd } spent today (seeded from the traceable records after a restart); `unpriced`: calls of a model without a price were made too (not in usd). */
+  readonly #spent = new Map<string, { day: string; usd: number; unpriced?: boolean }>();
 
   constructor(rt: Runtime) {
     this.#rt = rt;
@@ -62,15 +62,20 @@ export class PluginSampler {
     return this.#today(pluginId).usd;
   }
 
-  #today(pluginId: string): { day: string; usd: number } {
+  /** Whether the plugin used a model without a price today (shown 「未计价」 beside what it spent). */
+  unpricedToday(pluginId: string): boolean {
+    return this.#today(pluginId).unpriced === true;
+  }
+
+  #today(pluginId: string): { day: string; usd: number; unpriced?: boolean } {
     const day = isoNow().slice(0, 10);
     let s = this.#spent.get(pluginId);
     if (!s || s.day !== day) {
-      const usd = this.#rt.store
-        .listTraces()
-        .filter((t) => t.kind === 'model' && t.initiator === `plugin:${pluginId}` && t.startedAt.slice(0, 10) === day)
-        .reduce((sum, t) => sum + (t.costUsd ?? 0), 0);
-      s = { day, usd };
+      const calls = this.#rt.store.listTraces().filter((t) => t.kind === 'model' && t.initiator === `plugin:${pluginId}` && t.startedAt.slice(0, 10) === day);
+      // an older record of a model without a price carries the stand-in price: not counted (Runtime.unpricedTrace)
+      const unpriced = calls.filter((t) => this.#rt.unpricedTrace(t));
+      const usd = calls.filter((t) => !unpriced.includes(t)).reduce((sum, t) => sum + (t.costUsd ?? 0), 0);
+      s = { day, usd, ...(unpriced.length ? { unpriced: true } : {}) };
       this.#spent.set(pluginId, s);
     }
     return s;
@@ -148,7 +153,8 @@ export class PluginSampler {
     const callId = newId('smp');
     const scope = { providerId: choice.providerId, providerKind: provider.kind, model: choice.model, sessionId: `plugin:${grant.pluginId}`, runId: callId };
     const estIn = estimateTokens(system + JSON.stringify(messages));
-    const worst = this.#rt.ledger.estimate(scope, { inputTokens: estIn, outputTokens: maxTokens });
+    // a model without a price counts nothing here either (its stand-in price would use up the day at once)
+    const worst = this.#rt.ledger.worstCase(scope, estIn, maxTokens);
     const cap = grant.maxUsdPerDay ?? DEFAULT_DAILY_USD;
     const today = this.#today(grant.pluginId);
     if (today.usd + worst > cap) {
@@ -177,14 +183,16 @@ export class PluginSampler {
         if (ev.type === 'response') response = ev.response;
       }
       if (!response) throw new Error('the model sent no answer');
-      const cost = this.#rt.ledger.record(scope, response.usage).costUsd;
+      const recorded = this.#rt.ledger.record(scope, response.usage);
+      const cost = recorded.costUsd;
       today.usd += cost;
+      if (recorded.unpriced) today.unpriced = true;
       trace.finish({
         status: 'ok',
         attempts: info.attempts,
         inputTokens: response.usage.inputTokens,
         outputTokens: response.usage.outputTokens,
-        costUsd: cost,
+        ...(recorded.unpriced ? { unpriced: true as const } : { costUsd: cost }),
         model: response.model || choice.model,
       });
       const text = response.content.map((b) => (b.type === 'text' ? b.text : '')).join('');

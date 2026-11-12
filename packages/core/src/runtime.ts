@@ -39,6 +39,7 @@ import type {
   ProjectLogEntry,
   SessionStatus,
   SetCwdResult,
+  TraceRecord,
   WorkflowDef,
   WorkObject,
 } from './types.ts';
@@ -394,6 +395,18 @@ export class Runtime implements RuntimeInternals {
     this.#removeSearch?.();
     this.#removeSearch = undefined;
     if (backend) this.#removeSearch = this.tools.register(createWebSearchTool(backend), 'core');
+  }
+
+  /**
+   * A model call of a model without a known price: marked so (`unpriced`), or an older record of such a model
+   * written at the stand-in price before those calls stopped counting (told by its provider and model, while that
+   * provider is still set up; one that is gone stays as it was written).
+   */
+  unpricedTrace(t: Pick<TraceRecord, 'kind' | 'providerId' | 'model' | 'unpriced'>): boolean {
+    if (t.unpriced) return true;
+    if (t.kind !== 'model' || !t.providerId || !t.model) return false;
+    const p = this.#providers.get(t.providerId);
+    return p !== undefined && !this.ledger.priced({ providerId: p.id, providerKind: p.kind, model: t.model });
   }
 
   provider(id: string): Provider {
@@ -1229,7 +1242,7 @@ export class Runtime implements RuntimeInternals {
   }
 
   exportUsageLog(filter: UsageLogFilter = {}): string {
-    return exportUsageLog(this.store, filter, { secrets: [...this.#secrets] });
+    return exportUsageLog(this.store, filter, { secrets: [...this.#secrets], unpriced: (t) => this.unpricedTrace(t) });
   }
 
   exportTraces(filter?: { sessionId?: string }): string {
@@ -1286,8 +1299,8 @@ export class Runtime implements RuntimeInternals {
     }
     this.ledger.seed(
       traces
-        .filter((t) => t.costUsd)
-        .map((t) => ({ providerId: t.providerId ?? 'unknown', ...(t.sessionId ? { sessionId: t.sessionId } : {}), costUsd: t.costUsd ?? 0 })),
+        .filter((t) => t.costUsd || t.unpriced)
+        .map((t) => ({ providerId: t.providerId ?? 'unknown', ...(t.sessionId ? { sessionId: t.sessionId } : {}), costUsd: t.costUsd ?? 0, ...(this.unpricedTrace(t) ? { unpriced: true } : {}) })),
     );
     for (const s of this.#sessions.values()) {
       this.events.emit({ sessionId: s.id, parentChain: s.parentChain }, { type: 'status', status: s.status });

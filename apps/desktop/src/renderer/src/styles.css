@@ -3333,6 +3333,18 @@ button.ctx-row:hover {
   max-width: 100%;
 }
 
+/* 单次运行花费上限: US$ and a short box (empty = 不限). */
+.run-limit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--spica-muted);
+}
+
+.run-limit .input {
+  width: 120px;
+}
+
 /* 服务商: one row each in the group's box, 添加服务商 last; the open one is filled. */
 .provider-list {
   display: flex;

@@ -212,6 +212,8 @@ export interface Transcript {
   run?: RunState;
   lastRun?: FinishedRun;
   error?: string;
+  /** Where the error is put right: 'models' = 设置 › 模型 (a spending limit stopped the run); a button beside it opens it. */
+  errorAction?: 'models';
   /** The words of the last error the core marked retryable (a network error, 5xx, 429...): shown only if the run then ends in an error. */
   lastFailure?: string;
   /** Messages sent while a run was going, not yet taken in by the agent. */
@@ -732,6 +734,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         const startedAt = t.run?.startedAt ?? now;
         t.run = { startedAt, status: e.status, ...(e.detail ? { detail: e.detail } : {}) };
         delete t.error;
+        delete t.errorAction;
         delete t.lastFailure;
       } else if (t.run) {
         t.lastRun = { endedAt: now, durationMs: now - t.run.startedAt, reason: e.status };
@@ -776,12 +779,25 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       return t;
     }
     case 'budget.stop': {
-      t.error = `已达花费上限，已停止（已花费 ${formatMoney(e.spentUsd)}，上限 ${formatMoney(e.limitUsd)}）。`;
+      t.error = budgetStopWords(e);
+      t.errorAction = 'models';
       return t;
     }
     default:
       return t;
   }
+}
+
+/**
+ * A spending limit stopped the run. The limit is checked before each call against its worst case, so the run can
+ * stop with less spent than the limit: say that the next step was not started because it could have gone past it.
+ */
+export function budgetStopWords(e: { scope: string; spentUsd: number; limitUsd: number; nextUsd?: number }): string {
+  const run = e.scope.endsWith(':run');
+  const name = run ? '单次运行花费上限' : '花费上限';
+  const why = e.nextUsd !== undefined ? `下一步最多可能花 ${formatMoney(e.nextUsd)}，会超出上限，所以没有开始` : '下一步可能超出上限，所以没有开始';
+  const after = run ? '可在 设置 › 模型 修改上限，或再发一条消息重新开始一次运行。' : '可在 设置 › 模型 修改上限。';
+  return `已达${name}，已停止（已花费 ${formatMoney(e.spentUsd)}，上限 ${formatMoney(e.limitUsd)}）：${why}。${after}`;
 }
 
 function formatMoney(usd: number): string {

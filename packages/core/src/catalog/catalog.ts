@@ -234,8 +234,8 @@ function usd(p: CatalogPrice, fx: number): ModelPrice {
 
 /** Deliberately high prices for models without a catalog price (never shown as a model's price). */
 export const FALLBACK_ROWS: PriceTable = {
-  anthropic: { '*': { input: 10, output: 50, unverified: true } }, // unknown Claude model: assume the top tier
-  'openai-compatible': { '*': { input: 5, output: 20, unverified: true } },
+  anthropic: { '*': { input: 10, output: 50, unverified: true, unpriced: true } }, // unknown Claude model: assume the top tier
+  'openai-compatible': { '*': { input: 5, output: 20, unverified: true, unpriced: true } },
 };
 
 /**
@@ -250,7 +250,7 @@ export function pricesFromCatalog(c: ModelCatalog): PriceTable {
     const rows: Record<string, ModelPrice> = (table[p.id] ??= {});
     const kindRows: Record<string, ModelPrice> = (table[p.kind] ??= {});
     for (const m of p.models) {
-      const fallback = (kindRows['*'] ?? { input: 10, output: 50, unverified: true }) as ModelPrice;
+      const fallback = (kindRows['*'] ?? { input: 10, output: 50, unverified: true, unpriced: true }) as ModelPrice;
       const row: ModelPrice = m.price ? { ...usd(m.price, c.fx.usdPerCny), contextWindow: m.contextWindow } : { ...fallback, contextWindow: m.contextWindow };
       rows[m.id] = row;
       if (!kindRows[m.id]) kindRows[m.id] = row;

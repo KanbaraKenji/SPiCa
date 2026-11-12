@@ -20,6 +20,21 @@ describe('conversation names', () => {
 });
 
 describe('AgentStore', () => {
+  it('a spending limit stop keeps its words and its 修改上限 action after the conversation is read again; 未计价 reaches the list', async () => {
+    const backend = new FakeBackend({ speed: 0, seed: false });
+    const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
+    await store.init();
+    backend.setRunLimit(1);
+    await store.send(null, '花费上限 整理需求');
+    const id = store.state.get().activeId!;
+    await vi.waitFor(() => expect(store.state.get().transcripts[id]?.errorAction).toBe('models'));
+    await new Promise((r) => setTimeout(r, 50)); // the reload after the run ended
+    expect(store.state.get().transcripts[id]).toMatchObject({ errorAction: 'models', error: expect.stringMatching(/^已达单次运行花费上限/) });
+    await store.send(null, '未计价 公司网关');
+    const gw = store.state.get().activeId!;
+    await vi.waitFor(() => expect(store.state.get().sessions.find((s) => s.id === gw)?.unpriced).toBe(true));
+  });
+
   it('a question stopped while it waited: the card is cancelled, and answering it anyway sends nothing that shows an error', async () => {
     const backend = new FakeBackend({ speed: 0, seed: false });
     const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });

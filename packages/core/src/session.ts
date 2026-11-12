@@ -153,6 +153,7 @@ export class Session {
       model: r.config.model,
       cwd: r.config.cwd,
       costUsd: this.#rt.ledger.sessionUsd(r.id),
+      ...(this.#rt.ledger.hasUnpriced(r.id) ? { unpriced: true as const } : {}),
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       ...(r.config.templateId ? { templateId: r.config.templateId } : {}),
@@ -795,7 +796,7 @@ export class Session {
       if (!hold.ok && hold.wait) continue; // interrupted while waiting: next turn with the steer
       if (!hold.ok) {
         lease.release();
-        this.#emit({ type: 'budget.stop', scope: hold.scope, spentUsd: hold.spentUsd, limitUsd: hold.limitUsd, message: hold.message });
+        this.#emit({ type: 'budget.stop', scope: hold.scope, spentUsd: hold.spentUsd, limitUsd: hold.limitUsd, nextUsd: hold.nextUsd, message: hold.message });
         return end('budget', hold.message);
       }
 
@@ -921,16 +922,16 @@ export class Session {
         outputTokens: response.usage.outputTokens,
         ...(response.usage.cacheReadTokens !== undefined ? { cacheReadTokens: response.usage.cacheReadTokens } : {}),
         ...(response.usage.cacheWriteTokens !== undefined ? { cacheWriteTokens: response.usage.cacheWriteTokens } : {}),
-        costUsd: cost.costUsd,
+        ...(cost.unpriced ? { unpriced: true as const } : { costUsd: cost.costUsd }),
         attempts: callInfo.attempts,
         ...(callInfo.httpStatus ? { httpStatus: callInfo.httpStatus } : {}),
       });
-      this.#emit({ type: 'usage', usage: response.usage, costUsd: cost.costUsd, providerId: provider.id, model: response.model });
+      this.#emit({ type: 'usage', usage: response.usage, costUsd: cost.costUsd, providerId: provider.id, model: response.model, ...(cost.unpriced ? { unpriced: true as const } : {}) });
       this.#contextTokens = this.#lastInputTokens + u.outputTokens;
       this.#emit({ type: 'session.updated', info: this.info() });
       for (const t of cost.totals) {
         if (t.scope === 'call') continue;
-        this.#emit({ type: 'cost', scope: t.scope, spentUsd: t.spentUsd, ...(t.limitUsd !== undefined ? { limitUsd: t.limitUsd } : {}), warning: t.warning });
+        this.#emit({ type: 'cost', scope: t.scope, spentUsd: t.spentUsd, ...(t.limitUsd !== undefined ? { limitUsd: t.limitUsd } : {}), warning: t.warning, ...(t.unpriced ? { unpriced: true as const } : {}) });
       }
 
       // 6. Plugins may rewrite the complete response.

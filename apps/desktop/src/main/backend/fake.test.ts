@@ -487,3 +487,34 @@ describe('FakeBackend', () => {
     expect((await b.getSession(SEED_IDS.pm))?.regenerate).toMatchObject({ ok: false, code: 'regenerate.role' });
   });
 });
+
+describe('spending as the core counts it (单次运行花费上限, 未计价)', () => {
+  it('no limit by default; a limit stops before a call that could pass it; a model without a price never stops and is marked', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '花费上限 试一下');
+    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    expect(events.some((e) => e.type === 'budget.stop')).toBe(false);
+
+    b.setRunLimit(1);
+    events.length = 0;
+    await b.send(chat.id, '花费上限 再来');
+    const end = await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    expect(end).toMatchObject({ reason: 'budget' });
+    const stop = events.find((e) => e.type === 'budget.stop');
+    expect(stop).toMatchObject({ limitUsd: 1 });
+    if (stop?.type !== 'budget.stop') throw new Error('no stop');
+    expect(stop.spentUsd).toBeLessThan(1);
+    expect(stop.spentUsd + stop.nextUsd!).toBeGreaterThan(1);
+
+    events.length = 0;
+    b.setRunLimit(0.0001);
+    const gw = await b.createSession({});
+    await b.send(gw.id, '未计价 公司网关');
+    expect(await until((e) => e.type === 'run.end' && e.sessionId === gw.id)).toMatchObject({ reason: 'completed' });
+    expect(events.filter((e) => e.type === 'usage').every((e) => e.type === 'usage' && e.unpriced === true && e.costUsd === 0)).toBe(true);
+    expect((await b.getSession(gw.id))).toMatchObject({ costUsd: 0, unpriced: true });
+    expect(events.find((e) => e.type === 'cost' && e.scope === 'global')).toMatchObject({ unpriced: true });
+  });
+});
