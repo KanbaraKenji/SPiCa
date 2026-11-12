@@ -5,7 +5,13 @@
 // (own tools only, only the view's permissions.tools, irreversible tools ask
 // first). Colours follow ?theme=light|dark. For development only.
 //
-//   node preview.mjs <plugin folder> [--view <id>] [--port 4700] [--real]
+//   node preview.mjs <plugin folder> [--view <id>] [--port 4700] [--real] [--pick <path>]
+//
+// --pick <path>: window.spica.pickFolder / pickFile answer this path at once,
+// as if the user picked it (for scripted runs: no dialog). Without it they ask
+// with the browser's prompt; where there is none (automation), or it is
+// dismissed, they answer null: the user cancelled. Each call logs a line in
+// the page's console: [preview] pickFolder {"title":…} -> <path or null>.
 import { createServer } from 'node:http';
 import { existsSync, statSync } from 'node:fs';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
@@ -66,6 +72,22 @@ export async function startPreview(dir, opts = {}) {
   root.style.setProperty('--spica-radius', '6px');
   root.dataset.theme = '${mode}';
   const listeners = new Set();
+  const picked = ${JSON.stringify(opts.pick || null).replace(/</g, '\\u003c')};
+  const pick = async (name, o, ask) => {
+    const args = {};
+    for (const k of ['title', 'defaultPath', 'extensions']) if (o && o[k] !== undefined) args[k] = o[k];
+    let v = picked;
+    if (v === null) {
+      try {
+        v = typeof window.prompt === 'function' ? window.prompt(args.title || ask, args.defaultPath || '') : null;
+      } catch {
+        v = null;
+      }
+      if (!v) v = null;
+    }
+    console.log('[preview] ' + name + ' ' + JSON.stringify(args) + ' -> ' + (v === null ? 'null' : v));
+    return v;
+  };
   const post = (body) => fetch('/__spica/call', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.json());
   window.spica = {
     theme: { mode: '${mode}' },
@@ -79,9 +101,9 @@ export async function startPreview(dir, opts = {}) {
     },
     onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     openFile(path) { console.log('[preview] openFile', path); },
-    // No system dialog or Explorer here: the picker asks in the browser, openFolder only logs.
-    async pickFolder(o) { const v = window.prompt((o && o.title) || '选择文件夹（预览：输入完整路径）', (o && o.defaultPath) || ''); return v ? v : null; },
-    async pickFile(o) { const v = window.prompt((o && o.title) || '选择文件（预览：输入完整路径）', (o && o.defaultPath) || ''); return v ? v : null; },
+    // No system dialog or Explorer here: the pickers answer --pick, else ask in the browser; openFolder only logs.
+    pickFolder: (o) => pick('pickFolder', o, '选择文件夹（预览：输入完整路径）'),
+    pickFile: (o) => pick('pickFile', o, '选择文件（预览：输入完整路径）'),
     async openFolder(path) { console.log('[preview] openFolder', path); return null; },
     notify(text, o) { console.log('[preview] notify', o && o.kind || 'info', text); },
   };
@@ -154,15 +176,16 @@ const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(imp
 if (isMain) {
   const args = process.argv.slice(2);
   const opt = (n) => (args.includes(n) ? args[args.indexOf(n) + 1] : undefined);
-  const dir = args.find((a, i) => !a.startsWith('--') && !['--view', '--port'].includes(args[i - 1]));
+  const dir = args.find((a, i) => !a.startsWith('--') && !['--view', '--port', '--pick'].includes(args[i - 1]));
   if (!dir) {
-    console.log('用法：node preview.mjs <插件文件夹> [--view 视图id] [--port 4700] [--real]');
+    console.log('用法：node preview.mjs <插件文件夹> [--view 视图id] [--port 4700] [--real] [--pick 完整路径]');
     process.exit(2);
   }
   try {
-    const p = await startPreview(dir, { view: opt('--view'), port: opt('--port') ? Number(opt('--port')) : undefined, real: args.includes('--real') });
+    const p = await startPreview(dir, { view: opt('--view'), port: opt('--port') ? Number(opt('--port')) : undefined, real: args.includes('--real'), pick: opt('--pick') });
     console.log(`预览：${p.url}（暗色加 ?theme=dark）`);
     console.log(`页面能调的工具：${p.tools.join('、')}`);
+    console.log(opt('--pick') ? `选文件夹 / 选文件：直接回 ${opt('--pick')}（--pick）` : '选文件夹 / 选文件：浏览器里输入路径；自动化里弹不出来，就当用户取消（回 null）。要固定回一个路径，加 --pick <完整路径>。');
     console.log('按 Ctrl+C 结束。');
     const stop = async () => {
       await p.close();

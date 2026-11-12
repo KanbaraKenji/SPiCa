@@ -7,9 +7,10 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FakeGateway } from '../../core/src/testing/fake-gateway.ts';
 import { installZip } from './sources.ts';
@@ -67,6 +68,20 @@ async function backendConfig(dir: string, gw: FakeGateway): Promise<string> {
     }),
   );
   return file;
+}
+
+type StartPreview = (dir: string, opts?: { view?: string; port?: number; pick?: string }) => Promise<{ url: string; tools: string[]; close(): Promise<void> }>;
+type Picker = (opts?: object) => Promise<string | null>;
+
+/** The stand-in window.spica the preview puts into a page, run without a browser (so without prompt, as under automation). */
+function standIn(html: string): { spica: { pickFolder: Picker; pickFile: Picker }; logs: string[] } {
+  const code = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1];
+  expect(code).toBeTruthy();
+  const logs: string[] = [];
+  const window: Record<string, unknown> = {};
+  const documentElement = { style: { setProperty: () => {} }, dataset: {} };
+  runInNewContext(code!, { window, document: { documentElement }, console: { log: (...a: unknown[]) => logs.push(a.join(' ')) } });
+  return { spica: window.spica as { pickFolder: Picker; pickFile: Picker }, logs };
 }
 
 async function scaffoldAndPack(name: string, extra: string[] = []): Promise<string> {
@@ -190,6 +205,34 @@ describe('plugin-author skill', () => {
     expect(listed).toMatchObject({ isError: false, data: { total: 3 } });
     expect((await r.pm.viewCall('panel-demo', 'main', 'get_item', { id: 'item-001' })).content).toMatch(/^\[TOOL_NOT_ALLOWED\]/);
     expect((await r.pm.viewCall('panel-demo', 'main', 'remove_item', { id: 'item-001' })).content).toMatch(/^\[CONFIRM_REQUIRED\]/);
+  });
+
+  it('a settings page (--placement settings) passes check and opens in the preview; its pickers answer --pick, or null (cancelled)', async () => {
+    const zip = await scaffoldAndPack('prefs', ['--placement', 'settings']);
+    const folder = dirname(dirname(zip));
+    expect(JSON.parse(await readFile(join(folder, 'views', 'main.json'), 'utf8'))).toMatchObject({ placement: 'settings' });
+    const { startPreview } = (await import(pathToFileURL(join(SKILL, 'preview.mjs')).href)) as { startPreview: StartPreview };
+
+    const picking = await startPreview(folder, { port: 0, pick: 'D:\\Notes</script>' });
+    cleanups.push(() => picking.close());
+    const page = await fetch(picking.url);
+    expect(page.status).toBe(200);
+    const a = standIn(await page.text());
+    expect(await a.spica.pickFolder({ title: '选择笔记文件夹', defaultPath: 'C:\\Old' })).toBe('D:\\Notes</script>');
+    expect(await a.spica.pickFile({ extensions: ['.md'] })).toBe('D:\\Notes</script>');
+    expect(a.logs).toEqual([
+      '[preview] pickFolder {"title":"选择笔记文件夹","defaultPath":"C:\\\\Old"} -> D:\\Notes</script>',
+      '[preview] pickFile {"extensions":[".md"]} -> D:\\Notes</script>',
+    ]);
+    const call = await fetch(new URL('/__spica/call', picking.url), { method: 'POST', body: JSON.stringify({ tool: 'list_items', args: {} }) });
+    expect(await call.json()).toMatchObject({ isError: false, data: { total: 3 } });
+
+    // No --pick and no prompt (a browser driven by a script): the user cancelled.
+    const plain = await startPreview(folder, { port: 0 });
+    cleanups.push(() => plain.close());
+    const b = standIn(await (await fetch(plain.url)).text());
+    expect(await b.spica.pickFolder({ title: '选择笔记文件夹' })).toBeNull();
+    expect(b.logs).toEqual(['[preview] pickFolder {"title":"选择笔记文件夹"} -> null']);
   });
 
   it('check explains what to fix and does not pack', async () => {

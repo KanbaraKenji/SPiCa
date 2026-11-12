@@ -109,7 +109,11 @@ box.oninput = () => (open.disabled = !box.value.trim());   // 框里空着时「
 ## 预览
 
 ```
-node <skill>/scripts/preview.mjs <插件文件夹> [--view <id>] [--port 4700] [--real]
+node <skill>/scripts/preview.mjs <插件文件夹> [--view <id>] [--port 4700] [--real] [--pick <完整路径>]
 ```
 
 在浏览器打开它打印的地址（暗色加 `?theme=dark`）。它在模拟模式下启动插件自己的 server，按 Spica 的规则放行工具调用，不可逆工具用浏览器的确认框代替。`--real` 关掉模拟模式。
+
+- 选文件夹 / 选文件（`pickFolder` / `pickFile`）：带 `--pick D:\Notes` 时直接回这个路径，当作用户选了它，什么都不弹，脚本自动点页面时用这个。不带时用浏览器的输入框问你；自动化里输入框弹不出来，或者被关掉，就回 `null`，也就是「用户取消」。所以测取消，不带 `--pick` 再点一次就行。
+- 每次调用在页面的控制台打一行：`[preview] pickFolder {"title":"选择笔记文件夹"} -> D:\Notes`（取消时是 `-> null`）。
+- `openFolder` 只在控制台打一行，不开资源管理器。
