@@ -469,8 +469,12 @@ function RunClock({ since }: { since: number }) {
   return <span className="status-clock">{formatClock(now - since)}</span>;
 }
 
-/** The turning mark at the front of the line that says what the run is doing now. */
-const LIVE_MARK = <SpicaMark size={14} state="tool" className="fold-mark" />;
+/**
+ * The turning mark at the front of the line that says what the run is doing now: 18, as it was when it stood in
+ * the status line under the answer (the row keeps its 14px place for it, styles.css .fold-mark).
+ */
+const LIVE_MARK_SIZE = 18;
+const LIVE_MARK = <SpicaMark size={LIVE_MARK_SIZE} state="tool" className="fold-mark" />;
 
 /** `since`: this is what the run is doing right now (the run's start, for the clock at the end). */
 export function ThinkingBlock({ text, live, since }: { text: string; live: boolean; since?: number | undefined }) {
@@ -480,7 +484,7 @@ export function ThinkingBlock({ text, live, since }: { text: string; live: boole
     <Disclosure
       open={open}
       onToggle={() => setOpen((o) => !o)}
-      icon={now ? <SpicaMark size={14} state="think" className="fold-mark" /> : <Icon name="thinking" size={14} />}
+      icon={now ? <SpicaMark size={LIVE_MARK_SIZE} state="think" className="fold-mark" /> : <Icon name="thinking" size={14} />}
       label={live ? '正在思考' : '思考过程'}
       tail={now ? <RunClock since={since} /> : undefined}
     >

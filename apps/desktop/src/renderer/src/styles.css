@@ -1574,9 +1574,20 @@ pre .hl-punctuation {
   display: inline-flex;
 }
 
+/* Words beside an icon in a row: the box trimmed to the capitals' top and the baseline, so centring it puts
+   the letters, not the line's empty space, on the icons' middle (the letters sat a pixel or two low). Cut at
+   the end of the line only (clip, not hidden: hidden would also cut the descenders below the trimmed box). */
+.fold-label,
+.fold-meta,
+.tool-text,
+.msg-time,
+.msg-versions-text {
+  text-box: trim-both cap alphabetic;
+}
+
 .fold-label {
   min-width: 0;
-  overflow: hidden;
+  overflow: clip visible;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -1587,8 +1598,19 @@ pre .hl-punctuation {
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
   font-variant-numeric: tabular-nums;
-  display: inline-flex;
-  align-items: center;
+  display: block;
+}
+
+.fold-meta > svg {
+  display: block;
+}
+
+/* The turning mark while the run is on this row: the size and colour it had as the status line's mark (18,
+   the text's colour, not the row's quieter one); its 14px place in the row stays, so the words do not move
+   when the run ends. */
+.fold-icon > .fold-mark {
+  margin: -2px;
+  color: var(--spica-ink);
 }
 
 .fold-chevron {
@@ -1740,7 +1762,7 @@ pre .hl-punctuation {
 .tool-text {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
+  overflow: clip visible;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -2245,7 +2267,8 @@ pre .hl-punctuation {
   flex: none;
 }
 
-/* Under the box: the folder on the left; model, Manual / Auto and the ring on the right. */
+/* Under the box: the folder on the left; model, Manual / Auto and the ring on the right; in the footnote size,
+   one step under the conversation's secondary lines (他: 「用紧凑的那个小一点的字号」). */
 /* Both ends stand where the box's bottom edge starts to turn: on the left the first chip's content (8px padding
    in the chip), on the right the context ring's outer edge (6px padding in its button, 1px inside its 18px box). */
 .composer-below {
@@ -2290,8 +2313,8 @@ pre .hl-punctuation {
   padding: 0 8px;
   border-radius: var(--radius-m);
   color: var(--spica-ink);
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
 }
 
 .composer-chip:hover {
@@ -2355,8 +2378,8 @@ pre .hl-punctuation {
   align-items: center;
   gap: 4px;
   padding: 0 8px;
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
   color: var(--spica-ink);
 }
 

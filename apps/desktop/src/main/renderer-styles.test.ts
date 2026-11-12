@@ -248,6 +248,24 @@ describe('the conversation’s sizes', () => {
     expect(block('.fold-meta')).toContain('font-size: var(--fs-caption)');
   });
 
+  it('a row’s words are trimmed to the capitals and the baseline, so they centre on the icons; cut at the end only', () => {
+    expect(block('.fold-label,\n.fold-meta,\n.tool-text,\n.msg-time,\n.msg-versions-text')).toContain('text-box: trim-both cap alphabetic');
+    // hidden would cut the descenders below the trimmed box.
+    for (const sel of ['.fold-label', '\n.tool-text']) expect(block(sel), sel).toContain('overflow: clip visible');
+    expect(block('.fold-meta')).toContain('display: block');
+  });
+
+  it('the turning mark of the row the run is on: 18 in its 14 place, in the text’s colour, not the row’s quieter one', () => {
+    expect(block('.fold-icon > .fold-mark')).toContain('margin: -2px');
+    expect(block('.fold-icon > .fold-mark')).toContain('color: var(--spica-ink)');
+  });
+
+  it('the time under a message and its version count are footnotes (13 on 17), one step up from a caption', () => {
+    expect(block('.msg-time')).toContain('font-size: var(--fs-footnote);\n  line-height: var(--lh-footnote)');
+    // Its own rule, not the one that lists it with the other words of a row.
+    expect(css).toMatch(/\n\.msg-versions-text \{\n {2}padding: 0 2px;\n {2}font-size: var\(--fs-footnote\);\n {2}line-height: var\(--lh-footnote\);/);
+  });
+
   it('文字大小 小 / 大 move the conversation’s tiers one step (the input box is in it), nothing outside it', () => {
     expect(block(":root[data-text-size='sm'] .conversation")).toContain('--chat-text: 15px;\n  --chat-line: 22px;\n  --chat-small: 13px;\n  --chat-small-line: 19px;\n  --chat-row-line: 18px;\n  --chat-h2: 16px;\n  --chat-h2-line: 24px;\n  --chat-h1: 18px;\n  --chat-h1-line: 27px;');
     expect(block(":root[data-text-size='lg'] .conversation")).toContain('--chat-text: 18px;\n  --chat-line: 27px;\n  --chat-small: 15px;\n  --chat-small-line: 22px;\n  --chat-row-line: 21px;\n  --chat-h2: 22px;\n  --chat-h2-line: 28px;\n  --chat-h1: 22px;\n  --chat-h1-line: 28px;');
@@ -268,5 +286,12 @@ describe('the input box', () => {
     expect(block(':root')).toContain('--radius-l: 12px');
     expect(block('.composer')).toContain('border-radius: var(--composer-radius)');
     expect(block('.composer-below')).toContain('margin: 4px calc(var(--composer-radius) - 7px) 0 calc(var(--composer-radius) - 8px)');
+  });
+
+  it('the row under it in the footnote size (13 on 17): the folder, the model, Manual / Auto', () => {
+    for (const sel of ['\n.composer-chip', '\n.composer-label']) {
+      expect(block(sel), sel).toContain('font-size: var(--fs-footnote)');
+      expect(block(sel), sel).toContain('line-height: var(--lh-footnote)');
+    }
   });
 });
