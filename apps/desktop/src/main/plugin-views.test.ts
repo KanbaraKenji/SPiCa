@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createContext, runInContext, runInNewContext } from 'node:vm';
 import { BRIDGE_JS, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, pickDialogOptions, pickStartPath, pluginThemeVars, themeCss, type PickDialogOptions } from './plugin-views';
 import { pluginCallId, pluginCallProblem } from '../shared/plugin-view';
+import { DARK_SKIN, deriveTokens } from '../shared/skin';
 
 describe('plugin pages', () => {
   it('reads plugin and path from the URL; never leaves the plugin', () => {
@@ -32,8 +33,30 @@ describe('plugin pages', () => {
 
   it('gives pages the agreed theme variables', () => {
     const vars = pluginThemeVars({ '--spica-bg': '#262624', '--spica-ink': '#ecebe5' }, 'Segoe UI');
-    expect(Object.keys(vars).sort()).toEqual(['--spica-accent', '--spica-bg', '--spica-border', '--spica-danger', '--spica-fg', '--spica-font', '--spica-muted', '--spica-radius', '--spica-surface'].sort());
+    expect(Object.keys(vars).sort()).toEqual(
+      [
+        '--spica-accent',
+        '--spica-bg',
+        '--spica-border',
+        '--spica-danger',
+        '--spica-fg',
+        '--spica-font',
+        '--spica-muted',
+        '--spica-radius',
+        '--spica-surface',
+        '--spica-control',
+        '--spica-control-hover',
+        '--spica-input',
+        '--spica-border-strong',
+        '--spica-placeholder',
+        '--spica-on-accent',
+        '--spica-control-h',
+      ].sort(),
+    );
     expect(vars['--spica-fg']).toBe('#ecebe5');
+    // The controls take the skin's own (the dark skin: Spica's buttons, fields and main-button text).
+    const dark = pluginThemeVars(deriveTokens(DARK_SKIN), 'Segoe UI');
+    expect([dark['--spica-control'], dark['--spica-input'], dark['--spica-border-strong'], dark['--spica-on-accent'], dark['--spica-control-h']]).toEqual(['#3b3b3b', '#303030', '#474747', '#ffffff', '28px']);
     expect(themeCss(vars, 'dark')).toContain('color-scheme: dark');
     expect(contentType('ui/app.js')).toMatch(/javascript/);
   });

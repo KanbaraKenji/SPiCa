@@ -71,6 +71,16 @@ export function pluginThemeVars(tokens: Record<string, string>, fontUi: string):
     '--spica-danger': t('--spica-danger', '#dc2626'),
     '--spica-font': fontUi,
     '--spica-radius': '8px',
+    // The controls as Spica's own (.btn, .input in styles.css), so a page's buttons and fields match the
+    // window's: a button's fill and its hover, a field's fill, their edge, a field's grey hint, the text on a
+    // main (accent) button, and how tall they are.
+    '--spica-control': t('--spica-control', '#f2f2f2'),
+    '--spica-control-hover': t('--spica-control-hover', '#e5e5e5'),
+    '--spica-input': t('--spica-input', '#ffffff'),
+    '--spica-border-strong': t('--spica-border-strong', '#cecece'),
+    '--spica-placeholder': t('--spica-placeholder', '#878787'),
+    '--spica-on-accent': t('--spica-on-accent', '#ffffff'),
+    '--spica-control-h': '28px',
   };
 }
 

@@ -10,6 +10,14 @@
   --accent: var(--spica-accent, #2563eb);
   --danger: var(--spica-danger, #dc2626);
   --radius: var(--spica-radius, 6px);
+  /* Buttons and fields as Spica's own: fill, hover, field fill, edge, grey hint, text on the main button, height. */
+  --control: var(--spica-control, #f2f2f2);
+  --control-hover: var(--spica-control-hover, #e5e5e5);
+  --input: var(--spica-input, #ffffff);
+  --edge: var(--spica-border-strong, #cecece);
+  --placeholder: var(--spica-placeholder, #878787);
+  --on-accent: var(--spica-on-accent, #ffffff);
+  --control-h: var(--spica-control-h, 28px);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
@@ -18,6 +26,10 @@
     --fg: var(--spica-fg, #f4f4f5);
     --muted: var(--spica-muted, #a1a1aa);
     --border: var(--spica-border, #3f3f46);
+    --control: var(--spica-control, #3b3b3b);
+    --control-hover: var(--spica-control-hover, #454545);
+    --input: var(--spica-input, #303030);
+    --edge: var(--spica-border-strong, #474747);
   }
 }
 * { box-sizing: border-box; }
@@ -26,10 +38,15 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--spica-font,
 .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .add { display: flex; gap: 8px; flex: 1; min-width: 200px; }
 .add input { flex: 1; min-width: 0; }
-input, select, button { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 8px; }
-button { background: var(--surface); cursor: pointer; padding: 4px 12px; }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+input, select, button { font: inherit; color: inherit; background: var(--input); border: 1px solid var(--edge); border-radius: var(--radius); height: var(--control-h); padding: 0 10px; }
+input::placeholder { color: var(--placeholder); }
+input:focus, select:focus { outline: none; border-color: var(--accent); }
+button { background: var(--control); cursor: pointer; padding: 0 12px; }
+button:hover:not(:disabled) { background: var(--control-hover); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
 button.danger { color: var(--danger); }
+button:disabled { opacity: .45; cursor: default; }
 .status { min-height: 1.5em; margin: 6px 0; color: var(--muted); }
 .status.error { color: var(--danger); }
 .items { list-style: none; margin: 0; padding: 0; }

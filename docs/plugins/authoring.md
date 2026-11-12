@@ -440,6 +440,7 @@ if (r.isError) showError(r.content); else render(r.data ?? r.content);
 | `openFolder(路径)` | 在系统的资源管理器里打开一个文件夹 → 打不开时报错（文字说原因，如「找不到文件夹：…」）。只认本机盘符开头的完整路径，网络路径、文件都不行 |
 
 - 颜色用 Spica 注入的 CSS 变量：`--spica-bg`、`--spica-surface`、`--spica-fg`、`--spica-muted`、`--spica-border`、`--spica-accent`、`--spica-danger`、`--spica-font`、`--spica-radius`。换明暗时它们会自动变，不用自己判断。
+- 按钮和输入框照 Spica 自己的做，另有 7 个变量：`--spica-control`（按钮底色）、`--spica-control-hover`（按钮悬停）、`--spica-input`（输入框底色）、`--spica-border-strong`（按钮和输入框的边）、`--spica-placeholder`（输入框里的灰色提示字）、`--spica-on-accent`（主按钮上的字）、`--spica-control-h`（按钮、输入框、图标按钮的高度，现在是 28px）。标签、输入框里的字用 `--spica-fg`，灰字 `--spica-muted` 只给说明和状态。不要自己写死颜色。
 - 沙箱限制：页面里没有 Node，不能 `require`、不能读写文件；只能加载本插件目录里的文件（不能用 CDN，脚本和样式都放进插件）；只能调本插件的工具，写了 `permissions.tools` 就只能调列出的那几个。
 - `permissions.irreversible` 里的工具（services/ 里的也算），页面调用时 Spica 会先弹确认框；用户拒绝时 `isError` 为真，`content` 以 `[CONFIRM_REQUIRED]` 开头。
 - 页面能调常驻进程（`services/`）的工具：这类工具不给模型、只给自己的页面用，适合做界面专用的接口。
@@ -460,19 +461,19 @@ if (r.isError) showError(r.content); else render(r.data ?? r.content);
 
 - 可以有几个设置页，各占一个页签。规则和别的页面一样：沙箱、只能调本插件的工具、`permissions.tools` 生效。
 - 页面自己滚：内容比右栏高时，页面里出滚动条，外面的右栏不滚。
-- 设置页里 `--spica-bg` 是详情卡片的底色（页面和卡片连成一片），`--spica-surface` 是窗口的底色：按钮、输入框用 `--spica-surface`，在卡片上照样看得出来。
+- 设置页里 `--spica-bg` 是设置窗口右边那一栏的底色（页面和它连成一片）。按钮用 `--spica-control`、输入框用 `--spica-input`，和 Spica 自己的一样。
 - 读写设置的工具放进 `services/`（只给自己的页面用，模型看不到，「保存令牌」不会被 Agent 误调），存进 `SPICA_PLUGIN_DATA/config.json`；给模型用的 server 每次调用时读同一个文件。写法见 skill 的 `references/internal-services.md`。
 
-要用户选文件夹时，照 Spica 自己 设置 › 常规 › 工作流 那一行：输入框后面两个方形图标按钮，文件夹图标是「打开文件夹」，铅笔是「选择文件夹」（更改），名字放进 `title` 悬停显示：
+要用户选文件夹时，用 Spica 自己 设置 › 常规 › 工作流 那一行的图标：输入框后面两个方形图标按钮，紧挨输入框的是铅笔「选择文件夹」（更改），后面是文件夹图标「打开文件夹」，名字放进 `title` 悬停显示：
 
 ```html
 <div class="field-row">
   <input id="folder" type="text">
-  <button type="button" class="icon" id="open" title="打开文件夹" aria-label="打开文件夹" disabled>
-    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h4l1.2 1.5h5.8v6.5h-11z"/></svg>
-  </button>
   <button type="button" class="icon" id="pick" title="选择文件夹" aria-label="选择文件夹">
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.2 2.6l2.2 2.2-7.6 7.6-2.9.7.7-2.9z"/></svg>
+  </button>
+  <button type="button" class="icon" id="open" title="打开文件夹" aria-label="打开文件夹" disabled>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h4l1.2 1.5h5.8v6.5h-11z"/></svg>
   </button>
 </div>
 ```
@@ -487,7 +488,7 @@ open.onclick = () => window.spica.openFolder(box.value).catch((err) => showError
 box.oninput = () => (open.disabled = !box.value.trim());   // 框里空着时「打开」不能点
 ```
 
-图标按钮的样式（`button.icon`：32px 见方、和旁边输入框一样高，图标 16px、线宽 1.4、用文字颜色）在 `plugins/example-notes/ui/style.css`，可以照抄。
+图标按钮的样式（`button.icon`：`--spica-control-h` 见方、和旁边输入框一样高，底色 `--spica-control`，图标 16px、线宽 1.4、用文字颜色）在 `plugins/example-notes/ui/style.css`，可以照抄。
 
 - 只给路径，读写还是插件自己的工具（钩子、确认照常生效）。不用在清单里声明：页面能拿到本机的完整路径，只因为用户自己在系统对话框里选了它。
 - 对话框挂在 Spica 窗口上，标题前加插件名（「Notes (example) · 选择笔记文件夹」）。同一时间只开一个，对话框开着时再要一个，直接得到 `null`。

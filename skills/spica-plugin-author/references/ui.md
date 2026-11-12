@@ -32,11 +32,22 @@
 
 ## 主题
 
-只用这 9 个变量，换明暗或皮肤时 Spica 会重新注入：
+只用这些变量，换明暗或皮肤时 Spica 会重新注入：
 
 `--spica-bg`、`--spica-surface`、`--spica-fg`、`--spica-muted`、`--spica-border`、`--spica-accent`、`--spica-danger`、`--spica-font`、`--spica-radius`
 
-主按钮的文字用 `var(--spica-bg)`，在亮色、暗色下都看得清。
+按钮和输入框照 Spica 自己的做：
+
+| 变量 | 用在 |
+|---|---|
+| `--spica-control` / `--spica-control-hover` | 按钮底色 / 悬停 |
+| `--spica-input` | 输入框底色 |
+| `--spica-border-strong` | 按钮和输入框的边 |
+| `--spica-placeholder` | 输入框里的灰色提示字 |
+| `--spica-on-accent` | 主按钮（底色 `--spica-accent`）上的字 |
+| `--spica-control-h` | 按钮、输入框、图标按钮的高度（现在 28px） |
+
+标签和输入框里的字用 `--spica-fg`；灰字 `--spica-muted` 只给说明和状态。不要写死颜色。
 
 ## 沙箱
 
@@ -60,19 +71,19 @@
 
 - 可以有几个设置页，各占一个页签。规则和别的页面一样：沙箱、只能调本插件的工具、`permissions.tools` 生效。
 - 页面自己滚：内容比右栏高时，页面里出滚动条，外面的右栏不滚。
-- 背景：设置页里 `--spica-bg` 是详情卡片的底色（页面和卡片连成一片），`--spica-surface` 是窗口的底色；按钮、输入框用 `--spica-surface`。
+- 背景：设置页里 `--spica-bg` 是设置窗口右边那一栏的底色（页面和它连成一片）；按钮用 `--spica-control`、输入框用 `--spica-input`。
 - 读写设置的工具放进 `services/`（只给页面用，模型看不到），存进 `SPICA_PLUGIN_DATA/config.json`，见 `internal-services.md`。
 
-选文件夹：输入框后面两个方形图标按钮，和 Spica 自己 设置 › 常规 › 工作流 那一行一样：文件夹图标 =「打开文件夹」，铅笔 =「选择文件夹」，名字写进 `title`（悬停显示）。图标用内嵌 SVG，样式 `button.icon` 照抄 `plugins/example-notes/ui/style.css`。
+选文件夹：输入框后面两个方形图标按钮，图标和 Spica 自己 设置 › 常规 › 工作流 那一行的一样：紧挨输入框的铅笔 =「选择文件夹」，后面的文件夹图标 =「打开文件夹」，名字写进 `title`（悬停显示）。图标用内嵌 SVG，样式 `button.icon` 照抄 `plugins/example-notes/ui/style.css`。
 
 ```html
 <div class="field-row">
   <input id="folder" type="text">
-  <button type="button" class="icon" id="open" title="打开文件夹" aria-label="打开文件夹" disabled>
-    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h4l1.2 1.5h5.8v6.5h-11z"/></svg>
-  </button>
   <button type="button" class="icon" id="pick" title="选择文件夹" aria-label="选择文件夹">
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.2 2.6l2.2 2.2-7.6 7.6-2.9.7.7-2.9z"/></svg>
+  </button>
+  <button type="button" class="icon" id="open" title="打开文件夹" aria-label="打开文件夹" disabled>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h4l1.2 1.5h5.8v6.5h-11z"/></svg>
   </button>
 </div>
 ```
