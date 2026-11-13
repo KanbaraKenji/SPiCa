@@ -71,10 +71,13 @@ describe('enable and disable', () => {
     expect(d).toMatchObject({
       displayName: 'Notes (example)',
       mockSupported: true,
-      permissions: { irreversible: ['delete_note'], hooks: ['inject'], workspace: 'none' },
+      permissions: { irreversible: ['delete_note'], hooks: ['inject', 'beforeTool'], workspace: 'none' },
       skills: [{ id: 'note-taking', name: 'Note taking' }],
       commands: [{ id: 'note', argumentHint: '<what to note>' }],
-      hooks: [{ module: 'notes-hint.js', kinds: ['inject'] }],
+      hooks: [
+        { module: 'notes-hint.js', kinds: ['inject'] },
+        { module: 'replace-confirm.js', kinds: ['beforeTool'] },
+      ],
       servers: [
         { id: 'notes', kind: 'mcp', runtime: 'node', status: 'running', restarts: 0 },
         { id: 'settings', kind: 'service', runtime: 'node', status: 'running', restarts: 0 },
@@ -84,14 +87,33 @@ describe('enable and disable', () => {
     expect(r.pm.expandCommand('/notes:note', 'buy milk')).toBe('Save this to my notebook, following the note-taking skill: buy milk');
   });
 
-  it('tools declared irreversible need confirmation', async () => {
+  it('tools declared irreversible need confirmation, marked irreversible (the card says 无法撤销; the reason names the tool)', async () => {
     r = await rig();
     await r.pm.install(EXAMPLE_PLUGIN);
     await r.pm.enable('notes');
     const del = await r.rt.hooks.beforeTool({ callId: 'c', name: 'notes__delete_note', input: { title: 'x' }, irreversible: false }, hookCtx);
-    expect(del.decision).toMatchObject({ action: 'confirm' });
+    expect(del.decision).toEqual({ action: 'confirm', reason: '「Notes (example)」：delete_note', irreversible: true });
     const write = await r.rt.hooks.beforeTool({ callId: 'c', name: 'notes__write_note', input: {}, irreversible: false }, hookCtx);
     expect(write.decision).toEqual({ action: 'allow' });
+  });
+
+  it("the example's own hook: overwriting a note asks first, marked irreversible; appending asks nothing", async () => {
+    r = await rig();
+    await r.pm.install(EXAMPLE_PLUGIN);
+    await r.pm.enable('notes');
+    const replace = await r.rt.hooks.beforeTool({ callId: 'c', name: 'notes__write_note', input: { title: '周会', text: 'x', replace: true }, irreversible: false }, hookCtx);
+    expect(replace.decision).toEqual({ action: 'confirm', reason: '覆盖笔记「周会」', irreversible: true });
+    const append = await r.rt.hooks.beforeTool({ callId: 'c', name: 'notes__write_note', input: { title: '周会', text: 'x' }, irreversible: false }, hookCtx);
+    expect(append.decision).toEqual({ action: 'allow' });
+  });
+
+  it("a plugin's own confirmation of a declared tool keeps its reason and the mark", async () => {
+    r = await rig();
+    await r.pm.install(EXAMPLE_PLUGIN);
+    await r.pm.enable('notes');
+    r.rt.hooks.register('own', { beforeTool: (call) => (call.name === 'notes__delete_note' ? { action: 'confirm', reason: '删除笔记「x」' } : undefined) });
+    const del = await r.rt.hooks.beforeTool({ callId: 'c', name: 'notes__delete_note', input: { title: 'x' }, irreversible: false }, hookCtx);
+    expect(del.decision).toEqual({ action: 'confirm', reason: '删除笔记「x」', irreversible: true });
   });
 
   it('mock mode switches the server to sample data and back', async () => {

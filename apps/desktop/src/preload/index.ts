@@ -79,6 +79,7 @@ const bridge: DesktopBridge = {
     answer: (answer) => ipcRenderer.send(DesktopChannel.CloseAnswer, answer),
   },
   zoom: (step) => ipcRenderer.send(DesktopChannel.Zoom, step),
+  edit: (command) => ipcRenderer.send(DesktopChannel.Edit, command),
   pickFolder: (title) => ipcRenderer.invoke(DesktopChannel.PickFolder, title) as Promise<string | null>,
   network: () => ipcRenderer.invoke(DesktopChannel.Network) as Promise<NetworkState | null>,
   localConnect: () => ipcRenderer.invoke(DesktopChannel.LocalConnect) as Promise<LocalConnectInfo | null>,

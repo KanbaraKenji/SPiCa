@@ -103,6 +103,36 @@ describe('confirmation', () => {
     expect(s.pending()[0]).toMatchObject({ kind: 'confirm', reason: 'reads customer data' });
   });
 
+  it('a hook marks its confirmation irreversible: the pending card and the event carry it; the default and an unmarked one do not', async () => {
+    gw.enqueue({ toolCalls: [{ id: 'l1', name: 'lookup', args: {} }] });
+    const rt = makeRuntime(gw, { tools: [lookupTool] });
+    const events = captureEvents(rt);
+    rt.hooks.register('erp', { beforeTool: () => ({ action: 'confirm', reason: '申请料号', irreversible: true }) });
+    const s = rt.createSession();
+    expect((await s.send('apply').done).reason).toBe('awaiting_confirm');
+    expect(s.pending()[0]).toMatchObject({ kind: 'confirm', reason: '申请料号', irreversible: true });
+    expect(events.find((e) => e.type === 'confirm.request')).toMatchObject({ irreversible: true });
+
+    gw.enqueue({ toolCalls: [{ id: 'm1', name: 'send_mail', args: { to: 'a@example.com' } }] });
+    const plain = makeRuntime(gw, { tools: [sendMailTool([])] });
+    const plainEvents = captureEvents(plain);
+    const p = plain.createSession();
+    expect((await p.send('mail').done).reason).toBe('awaiting_confirm');
+    expect(p.pending()[0]).not.toHaveProperty('irreversible');
+    expect(plainEvents.find((e) => e.type === 'confirm.request')).not.toHaveProperty('irreversible');
+  });
+
+  it('the mark only makes the card stand out: approval mode auto still asks for a marked confirmation', async () => {
+    gw.enqueue({ toolCalls: [{ id: 'm1', name: 'send_mail', args: { to: 'a@example.com' } }] });
+    const sent: string[] = [];
+    const rt = makeRuntime(gw, { tools: [sendMailTool(sent)] });
+    rt.hooks.register('erp', { beforeTool: () => ({ action: 'confirm', irreversible: true }) });
+    const s = rt.createSession({ approvalMode: 'auto' });
+    expect((await s.send('mail').done).reason).toBe('awaiting_confirm');
+    expect(sent).toEqual([]);
+    expect(s.pending()[0]).toMatchObject({ irreversible: true });
+  });
+
   it('a message sent while waiting is applied after the answer, abort cancels the wait', async () => {
     const sent: string[] = [];
     gw.enqueue({ toolCalls: [{ id: 'm1', name: 'send_mail', args: { to: 'd@example.com' } }] }, { text: 'ok' });

@@ -9,8 +9,7 @@ import { Group, matches, SearchHit, SettingsSearchContext } from './Group';
 import { bucketLabel, dayLabel, modelChoices, niceTicks, onlyModel, queryFor, RANGES, shortCount, timeLabel, TOKEN_KINDS, usageCsvName, usageCsvRows, usageView, usd, type UsageColumn, type UsageRange, type UsageSeries, type UsageView } from './usage-data';
 import { toCsv } from '../chat/table-data';
 import { SERIES_COUNT } from '../../../shared/skin';
-import { ContextMenu } from '../ui/ContextMenu';
-import { Icon } from '../ui/Icon';
+import { Select } from '../ui/Select';
 
 export interface UsageApi {
   summary(query: UsageQuery): Promise<UsageSummary | null>;
@@ -28,6 +27,9 @@ export interface UsageProps {
   now?: () => Date;
 }
 
+/** The picker's value for 全部模型 (a model's key always holds its provider and a NUL between them). */
+const ALL = '';
+
 /** The color of the requests line (the 429 line is the danger color). */
 const REQUESTS_COLOR = 'var(--spica-series-1)';
 
@@ -36,7 +38,6 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
   const [range, setRange] = useState<UsageRange>('7d');
   // one model (its key: provider and name), or null for all
   const [model, setModel] = useState<string | null>(null);
-  const [menu, setMenu] = useState<HTMLElement | null>(null);
   const [summary, setSummary] = useState<UsageSummary | null | undefined>(undefined);
   const [names, setNames] = useState<Record<string, string>>({});
   const [exported, setExported] = useState<SaveCsvResult | undefined>(undefined);
@@ -90,20 +91,13 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            className="btn btn-small usage-model"
-            aria-haspopup="menu"
-            aria-label="模型"
-            onClick={(e) => {
-              // under the button; the button again closes it
-              const el = e.currentTarget;
-              setMenu((now) => (now ? null : el));
-            }}
-          >
-            <span className="usage-model-name">{picked ? modelLabel(picked) : '全部模型'}</span>
-            <Icon name="chevronDown" size={12} />
-          </button>
+          <Select
+            className="usage-model"
+            label="模型"
+            value={model ?? ALL}
+            options={[{ value: ALL, label: '全部模型' }, ...choices.map((c) => ({ value: c.key, label: modelLabel(c) }))]}
+            onChange={(v) => setModel(v === ALL ? null : v)}
+          />
         </div>
         <div className="usage-bar-end">
           <span className="usage-since">
@@ -129,15 +123,6 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
             exported.file
           )}
         </p>
-      ) : null}
-      {menu ? (
-        <ContextMenu
-          x={0}
-          y={0}
-          anchor={menu}
-          items={[{ key: null as string | null, label: '全部模型' }, ...choices.map((c) => ({ key: c.key as string | null, label: modelLabel(c) }))].map((c) => ({ label: c.label, checked: c.key === model, onSelect: () => setModel(c.key) }))}
-          onClose={() => setMenu(null)}
-        />
       ) : null}
       {summary === null ? <p className="settings-hint usage-empty">无法读取用量</p> : null}
       {view ? (

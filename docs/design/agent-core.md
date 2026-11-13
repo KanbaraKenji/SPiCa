@@ -179,10 +179,10 @@
 | `inject` | 会话信息、运行 id、第几轮 | 返回注入物（位置、优先级、来源） |
 | `beforeRequest` | 段、工具表、模型参数（provider、模型、maxTokens、temperature、托管搜索开关、请求体附加字段） | 改、增、删 |
 | `afterResponse` | 完整响应（文本、思考、工具调用、用量） | 改；改了发 `message.replaced` |
-| `beforeTool` | 调用 id、工具名、参数、是否不可逆 | `allow`（可改参数）/ `deny`（附理由）/ `confirm`（要用户确认）/ `auto`（不可逆工具免确认） |
+| `beforeTool` | 调用 id、工具名、参数、是否不可逆 | `allow`（可改参数）/ `deny`（附理由）/ `confirm`（要用户确认；带 `irreversible: true` 时确认卡显示「无法撤销」）/ `auto`（不可逆工具免确认） |
 | `afterTool` | 调用和结果 | 改结果文本和是否出错 |
 
-- `beforeTool` 合并：任一 deny 就拦；否则任一 confirm 就要确认；不可逆工具默认要确认（`byDefault: true`），除非有来源给 `auto`。会话的批准方式为 auto 时，只放行这种默认确认（第 2 节）。守卫的强制确认在这之后，`auto` 和批准方式都盖不过它（第 9 节）。
+- `beforeTool` 合并：任一 deny 就拦；否则任一 confirm 就要确认（理由取最后一个要求确认的钩子的；任一要求确认的钩子带了 `irreversible`，合并结果就带，挂起项 `PendingItem.irreversible` 和 `confirm.request.irreversible` 照传，插件页面经 `callPluginTool` 发的卡也一样；这个标记只让卡片显示「无法撤销」，批准方式 auto 也不放行这种确认）；不可逆工具默认要确认（`byDefault: true`），除非有来源给 `auto`。会话的批准方式为 auto 时，只放行这种默认确认（第 2 节）。守卫的强制确认在这之后，`auto` 和批准方式都盖不过它（第 9 节）。
 - 「收到响应后改」不牺牲逐字流出：文本照常流给界面，响应完整后交钩子，改过就发 `message.replaced`。
 - 内核自带钩子：`core:guard` 拒绝只做 sleep 的命令（Start-Sleep、sleep、timeout……），提示改用 `wait_agents`；`core:project` 见第 4 节。插件系统列出钩子来源时会过滤掉 `core:*`。
 

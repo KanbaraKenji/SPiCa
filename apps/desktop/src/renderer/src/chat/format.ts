@@ -133,7 +133,8 @@ export function formatUsd(usd: number): string {
 
 /** What a confirmation is about, in the user's words: the backend's reason when it is already plain Chinese, else verb + target. */
 export function confirmTitle(name: string, input: unknown, reason: string): string {
-  if (/[一-鿿]/.test(reason)) return reason;
+  // A reason in Chinese, or one that starts with a plugin's name in 「」 (a plugin's declared irreversible tool).
+  if (/[一-鿿]/.test(reason) || reason.startsWith('「')) return reason;
   const target = toolTarget(input);
   return target ? `${toolLabel(name)}：${target}` : toolLabel(name);
 }

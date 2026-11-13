@@ -24,12 +24,13 @@ export default (ctx) => ({
 
 - 用到哪几类就写进 `permissions.hooks`，没写的不生效。
 - `ctx` 有 `name`、`version`、`dataDir`、`mock()`、`log()`、`user.account`（用户的账号，和 server 的 `SPICA_USER_ACCOUNT` 同一个值；用户改了下一次调用就是新的，所以在钩子函数里读，别在工厂里存一份）。钩子在 Spica 进程里跑，别做耗时的事。
+- `beforeTool` 要求确认：`{ action: 'confirm', reason: '覆盖笔记「周会」', irreversible: true }`。`reason` 是卡片标题（中文，写清做什么、对谁）；撤不回来的加 `irreversible: true`，卡片右上角显示「无法撤销」和警告图标。标记只让卡片醒目，不改变要不要确认。每次都不可逆的工具写进 `permissions.irreversible` 就行（卡片自动带标签）；要看参数才知道的（只有 `replace: true` 才覆盖）用钩子加标记。例子：`plugins/example-notes/hooks/replace-confirm.js`。
 - 钩子抛错只记日志，这一轮当它没生效，不会让对话崩掉。
 - 只收 `.js` / `.mjs`。
 
 ## 权限
 
-- **不可逆**：`permissions.irreversible` 列出的工具，Agent 每次调用前 Spica 都问用户；页面调用时也先弹确认框。mcp/ 和 services/ 里的工具都适用。删除、发送、提交、付款、改外部系统的都要列。
+- **不可逆**：`permissions.irreversible` 列出的工具，Agent 每次调用前 Spica 都问用户，确认卡右上角显示「无法撤销」；页面调用时也先弹确认框。mcp/ 和 services/ 里的工具都适用。删除、发送、提交、付款、改外部系统的都要列。
 - **工作文件夹**：`permissions.workspace` 写 `none` / `read` / `write`，告诉用户插件会不会碰项目文件夹。现在只展示，以后会拦项目文件夹外的路径，用户在对话里点名的文件夹除外。
 - **写文件**：插件自己的数据只写 `SPICA_PLUGIN_DATA`。下载、导出的文件可以写进用户在对话里点名的文件夹：文件夹从工具参数传进来、不自己猜；只写那个文件夹和它下面，文件名里带 `..`、盘符的拒绝；结果里写出实际的完整路径；同名文件默认跳过，要覆盖就做成单独的工具并写进 `permissions.irreversible`。写这种文件夹不用为此声明 `workspace: write`。每个写出的文件在结果里附一项 `{ type: 'resource_link', uri: pathToFileURL(完整路径).href, name: 文件名 }`，Spica 会在对话里给它出文件卡，模型看到「文件：完整路径」。
 - **网络**：`permissions.network` 列会访问的主机。现在只展示。

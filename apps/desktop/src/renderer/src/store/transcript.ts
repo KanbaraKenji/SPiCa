@@ -59,7 +59,8 @@ export type Block =
   /** `cancelled`: the question was dropped unanswered (the run was stopped): nothing to answer any more. */
   | { type: 'ask'; callId: string; question: string; options: string[]; answer?: string; cancelled?: boolean }
   /** `cancelled`: dropped undecided (the run was stopped): nothing to decide any more. */
-  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean }
+  /** `irreversible`: what it allows cannot be undone (a plugin said so): the card shows 无法撤销. */
+  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean }
   | { type: 'suggest'; callId: string; title: string; actions: SuggestAction[] };
 
 /** A note from a sub-agent (its report, what the user said there, or a decision made there). */
@@ -657,7 +658,7 @@ function applyPending(t: Transcript, p: PendingItem): void {
     }
   } else {
     if (!findBlock(t.items, 'confirm', p.callId)) {
-      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}) });
+      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}), ...(p.irreversible ? { irreversible: true } : {}) });
     }
   }
 }
@@ -694,7 +695,13 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       } else if (m.role === 'assistant' && m.meta?.interrupted === true) {
         lastResponse(items, respId).interrupted = true;
       } else if (m.role === 'assistant' && m.kind === 'assistant') {
-        lastResponse(items, respId).truncated = m.meta?.stopReason === 'max_tokens';
+        const r = lastResponse(items, respId);
+        r.truncated = m.meta?.stopReason === 'max_tokens';
+        // A call announced while the model wrote (tool.call) that its finished message does not carry was never
+        // made: cut off at the length limit, or streamed again under another id. Its placeholder would turn for
+        // the rest of the run.
+        const made = new Set(m.content.flatMap((c) => (c.type === 'tool_use' ? [c.id] : [])));
+        r.blocks = r.blocks.filter((x) => !(x.type === 'tool' && x.state === 'pending' && !made.has(x.callId)));
       } else if (m.kind === 'tool_results') {
         // Stopping while a question or confirmation waits: the core writes its result as cancelled.
         for (const b of m.content) if (b.type === 'tool_result') settleCard(items, b.toolUseId, b.content, b.isError);
@@ -779,7 +786,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     }
     case 'confirm.request': {
       if (!findBlock(items, 'confirm', e.callId)) {
-        lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}) });
+        lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}), ...(e.irreversible ? { irreversible: true } : {}) });
       }
       return t;
     }

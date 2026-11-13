@@ -112,22 +112,41 @@ function fileActions(actions: ConversationActions, cwd: string | undefined) {
   return actions.revealFile ? { reveal: actions.revealFile, cwd, imageUrl: actions.imageUrl } : undefined;
 }
 
+type ToolStep = Extract<Block, { type: 'tool' }>;
+type ThinkStep = Extract<Block, { type: 'thinking' }>;
+
 type Segment =
-  | { kind: 'tools'; blocks: Extract<Block, { type: 'tool' }>[] }
-  | { kind: 'memory'; block: Extract<Block, { type: 'tool' }> }
+  | { kind: 'tools'; blocks: ToolStep[]; steps: (ToolStep | ThinkStep)[] }
+  | { kind: 'memory'; block: ToolStep }
   | { kind: 'one'; block: Exclude<Block, { type: 'tool' }> };
 
-function segments(blocks: Block[]): Segment[] {
+/**
+ * Calls and the thinking between them fold into one group (a model that thinks before every call would otherwise
+ * leave 思考过程 and a call, 思考过程 and a call… line by line). Words of the answer, a card or a memory line end a
+ * group. Thinking with no call beside it stays its own 思考过程 line. `live`: the answer is being written: thinking
+ * still at its very end stays out of the group, its own line saying 正在思考, until the next call comes.
+ */
+function segments(blocks: Block[], live = false): Segment[] {
   const out: Segment[] = [];
-  for (const b of blocks) {
+  let run: (ToolStep | ThinkStep)[] = [];
+  const flush = () => {
+    const tools = run.filter((b): b is ToolStep => b.type === 'tool');
+    if (tools.length) out.push({ kind: 'tools', blocks: tools, steps: run });
+    else for (const b of run) out.push({ kind: 'one', block: b as ThinkStep });
+    run = [];
+  };
+  blocks.forEach((b, i) => {
+    const thinkingNow = live && b.type === 'thinking' && i === blocks.length - 1;
     // remember / forget: their own line (the 已记住 line), not a step in a group.
-    if (b.type === 'tool' && MEMORY_TOOLS.has(b.name)) out.push({ kind: 'memory', block: b });
-    else if (b.type === 'tool') {
-      const last = out[out.length - 1];
-      if (last?.kind === 'tools') last.blocks.push(b);
-      else out.push({ kind: 'tools', blocks: [b] });
-    } else out.push({ kind: 'one', block: b });
-  }
+    if (b.type === 'tool' && !MEMORY_TOOLS.has(b.name)) run.push(b);
+    else if (b.type === 'thinking' && !thinkingNow) run.push(b);
+    else {
+      flush();
+      if (b.type === 'tool') out.push({ kind: 'memory', block: b });
+      else out.push({ kind: 'one', block: b });
+    }
+  });
+  flush();
   return out;
 }
 
@@ -178,7 +197,7 @@ function Response({
   const newest = shown === all.length - 1;
   const view = all[shown]!;
   const blocks = view.blocks;
-  const segs = segments(blocks);
+  const segs = segments(blocks, live);
   const files = filesOf(blocks, cards, moved, lists);
   const tools = useContext(AnswerToolsContext);
   const webImages = webImagesFor(blocks, live);
@@ -200,7 +219,7 @@ function Response({
           const kinds = [...new Set(s.blocks.map((b) => b.flagged).filter((k): k is NonNullable<typeof k> => Boolean(k)))];
           return (
             <Fragment key={s.blocks[0]?.callId ?? i}>
-              <ToolGroup blocks={s.blocks} since={live && i === segs.length - 1 ? since : undefined} />
+              <ToolGroup blocks={s.blocks} steps={s.steps} since={live && i === segs.length - 1 ? since : undefined} />
               {kinds.map((k) => (
                 <p key={k} className="turn-note guard-note status-with-icon">
                   <SpicaStatusIcon name="info" size={14} />
@@ -290,9 +309,12 @@ function useStickToBottom(dep: unknown) {
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const [away, setAway] = useState(false);
+  const sizes = useRef<ResizeObserver | undefined>(undefined);
   useLayoutEffect(() => {
     const el = ref.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
+    // What is in the box now (the messages or the empty page, and the input area under them): watched for size.
+    if (el) for (const c of el.children) sizes.current?.observe(c);
   }, [dep]);
   useEffect(() => {
     const el = ref.current;
@@ -300,7 +322,9 @@ function useStickToBottom(dep: unknown) {
     // Only the user's own scrolling may unpin; layout changes (resize, zoom,
     // re-wrapping) also fire scroll events and must not.
     let userUntil = 0;
-    const markUser = () => {
+    const markUser = (e: Event) => {
+      // Typing or clicking in the input area (it is inside the box) is not scrolling; the wheel over it is.
+      if (e.type !== 'wheel' && e.target instanceof Element && e.target.closest('.transcript-foot')) return;
       userUntil = performance.now() + 800;
     };
     const onScroll = () => {
@@ -313,16 +337,26 @@ function useStickToBottom(dep: unknown) {
     const userEvents = ['wheel', 'pointerdown', 'keydown', 'touchmove'] as const;
     for (const t of userEvents) el.addEventListener(t, markUser, { passive: true });
     el.addEventListener('scroll', onScroll, { passive: true });
-    // Resizing the window or zooming re-wraps text; stay at the bottom if we were there.
+    // Resizing the window or zooming re-wraps text, and the input box grows with its lines; stay at the bottom if
+    // we were there.
+    // The input area covers the bottom of the box: what gets the focus (Tab) or is scrolled to is brought above it.
+    const keepClear = () => {
+      const foot = el.querySelector<HTMLElement>(':scope > .transcript-foot');
+      el.style.scrollPaddingBottom = foot ? `${foot.offsetHeight}px` : '';
+    };
+    keepClear();
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
+      keepClear();
       if (stick.current) el.scrollTop = el.scrollHeight;
     }) : undefined;
+    sizes.current = ro;
     ro?.observe(el);
-    if (el.firstElementChild) ro?.observe(el.firstElementChild);
+    for (const c of el.children) ro?.observe(c);
     return () => {
       el.removeEventListener('scroll', onScroll);
       for (const t of userEvents) el.removeEventListener(t, markUser);
       ro?.disconnect();
+      sizes.current = undefined;
     };
   }, []);
   const toBottom = () => {
@@ -511,29 +545,33 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
             {transcript.agentLimit ? <p className="turn-note">（代理之间互发的消息已达上限，没有再发；你说一句话后重新计数）</p> : null}
           </div>
         )}
-      </div>
-      {/* Pinned to the top of the input area, so it sits just above the input box
-          whatever its height (several lines, queued messages, zoom). */}
-      <div className="to-bottom-anchor">
-        {away ? (
-          <button type="button" className="to-bottom" onClick={toBottom} aria-label="回到最新" title="回到最新">
-            <Icon name="chevronDown" size={16} />
-          </button>
-        ) : null}
-      </div>
-      {transcript.queued?.length ? (
-        <div className="queued" aria-live="polite">
-          {transcript.queued.map((q) => (
-            <p key={q.id} className="queued-item">
-              <span className="queued-tag">下一步生效</span>
-              <span className="queued-text">{q.text}</span>
-            </p>
-          ))}
+        {/* The input area stays at the bottom of the scrolling box, over what scrolls under it: the scrollbar runs
+            down beside it to the window's bottom edge, and at the end the last line sits just above it. */}
+        <div className="transcript-foot">
+          {/* Pinned to the top of the input area, so it sits just above the input box
+              whatever its height (several lines, queued messages, zoom). */}
+          <div className="to-bottom-anchor">
+            {away ? (
+              <button type="button" className="to-bottom" onClick={toBottom} aria-label="回到最新" title="回到最新">
+                <Icon name="chevronDown" size={16} />
+              </button>
+            ) : null}
+          </div>
+          {transcript.queued?.length ? (
+            <div className="queued" aria-live="polite">
+              {transcript.queued.map((q) => (
+                <p key={q.id} className="queued-item">
+                  <span className="queued-tag">下一步生效</span>
+                  <span className="queued-text">{q.text}</span>
+                </p>
+              ))}
+            </div>
+          ) : null}
+          <RunNotices notices={notices} />
+          <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
+          {demo ? <p className="composer-note">当前为演示数据</p> : null}
         </div>
-      ) : null}
-      <RunNotices notices={notices} />
-      <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
-      {demo ? <p className="composer-note">当前为演示数据</p> : null}
+      </div>
     </div>
     </SourceCardsContext.Provider>
     </ToolCardsContext.Provider>

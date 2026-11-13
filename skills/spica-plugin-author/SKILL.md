@@ -53,7 +53,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 - [ ] **只写该写的地方**：自己的数据只写 `SPICA_PLUGIN_DATA`；下载、导出的文件只写用户在对话里点名的文件夹（从参数传进来、不猜、不出这个文件夹），结果里写出完整路径，覆盖已有文件的工具写进 `permissions.irreversible`。见 `references/hooks-permissions.md`「写文件」。
 - [ ] **拉起的进程收得干净**：server 和辅助进程在 stdin 关闭时自己退出，辅助进程不用 `detached`；替用户打开、之后用户还要用的程序交给 Windows 打开（`explorer.exe <程序>`，要带参数或指定当前文件夹时才用 WMI 的 `Win32_Process.Create`，用前在目标电脑上核过作业对象那条），不由插件自己或自写的中间进程启动（那样拿不到用户完整的环境变量）。见 `references/processes.md`。
 - [ ] **只读的标了**：只查、只读、什么都不改的工具，在工具定义里写 `annotations: { readOnlyHint: true }`（MCP 规范的写法，不写就当 false）。没声明的，Spica 当成会有改动，调过它的那一轮回答不能「重新生成」。
-- [ ] **不可逆都标了**：会删除、发送、提交、改外部系统的工具都在 `permissions.irreversible` 里。
+- [ ] **不可逆都标了**：会删除、发送、提交、改外部系统的工具都在 `permissions.irreversible` 里。钩子按参数要求确认、而这一步撤不回来的，返回值带 `irreversible: true`（卡片显示「无法撤销」），不要把「无法撤销」写进 `reason`。
 - [ ] **日志不记正文**：stderr 只写工具名、错误码、耗时，不写邮件正文、文件内容、个人信息。
 - [ ] **提示是中文人话**：每个错误码都有一句告诉用户「发生了什么、该怎么办」的中文。
 - [ ] **模拟模式能跑通**，`node --test` 全过，`check.mjs` 显示「可以装了」。

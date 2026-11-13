@@ -72,7 +72,7 @@ describe('plugin folder', () => {
       { id: 'notes', kind: 'mcp', runtime: 'node', exposeTools: true },
       { id: 'settings', kind: 'service', runtime: 'node', exposeTools: false },
     ]);
-    expect(f.hooks.map((h) => h.id)).toEqual(['notes-hint.js']);
+    expect(f.hooks.map((h) => h.id)).toEqual(['notes-hint.js', 'replace-confirm.js']);
   });
 
   it('keeps paths inside the plugin and refuses console scripts', async () => {

@@ -78,6 +78,24 @@ describe('ConfirmCard', () => {
     expect(head.querySelector('.confirm-undo')?.textContent).toBe('无法撤销');
   });
 
+  it('a plugin step marked irreversible: the warning and 无法撤销, its reason as the title; unmarked, neither', () => {
+    const step = { type: 'confirm' as const, callId: 'c7', name: 'notes__write_note', input: { title: '周会' }, reason: '覆盖笔记「周会」' };
+    render(<ConfirmCard block={{ ...step, irreversible: true }} onDecide={vi.fn()} />);
+    const head = document.querySelector('.confirm-card.is-danger > .card-head')!;
+    expect(head.firstElementChild?.getAttribute('data-status')).toBe('warning');
+    expect(head.querySelector('.card-title')?.textContent).toBe('覆盖笔记「周会」');
+    expect(head.querySelector('.confirm-undo')?.textContent).toBe('无法撤销');
+    cleanup();
+    // a declared irreversible tool: the reason names the plugin and the tool
+    render(<ConfirmCard block={{ ...step, name: 'notes__delete_note', reason: '「Notes (example)」：delete_note', irreversible: true }} onDecide={vi.fn()} />);
+    expect(document.querySelector('.card-title')?.textContent).toBe('「Notes (example)」：delete_note');
+    expect(document.querySelector('.confirm-undo')).toBeTruthy();
+    cleanup();
+    render(<ConfirmCard block={step} onDecide={vi.fn()} />);
+    expect(document.querySelector('.confirm-card.is-danger')).toBeNull();
+    expect(document.querySelector('.confirm-undo')).toBeNull();
+  });
+
   it('stopped while it waited: 已中断, no 拒绝 / 允许; one decision only', () => {
     const block = { type: 'confirm' as const, callId: 'c4', name: 'send_email', input: {}, reason: '发送邮件给「项目组」' };
     render(<ConfirmCard block={{ ...block, cancelled: true }} onDecide={vi.fn()} />);

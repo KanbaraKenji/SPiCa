@@ -125,6 +125,8 @@ export interface DesktopBridge extends SpicaBridge {
   };
   /** One zoom step for the whole window (Ctrl+wheel, Ctrl+=/-/0). */
   zoom(step: 'in' | 'out' | 'reset'): void;
+  /** The window's own editing command on what is selected or focused (the right-click menu on words). */
+  edit(command: 'cut' | 'copy' | 'paste' | 'selectAll'): void;
   /** Opens a file a session referenced (relative to its working folder). Resolves to an error text, or null on success. */
   openFile(sessionId: string, path: string): Promise<string | null>;
   /** Windows' own folder picker, with `title` on it. Resolves to the chosen path, or null when cancelled. */

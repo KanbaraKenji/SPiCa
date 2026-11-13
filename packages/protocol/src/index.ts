@@ -525,8 +525,12 @@ export interface PluginToolResult {
   needsConfirmation?: boolean;
 }
 
+/**
+ * `irreversible` on a confirmation: what it allows cannot be undone (a plugin hook said so, or the plugin declared
+ * the tool in permissions.irreversible); the card shows 无法撤销 and the warning mark.
+ */
 export type PendingItem =
-  | { kind: 'confirm'; callId: string; toolName: string; input: unknown; reason: string; cause?: GuardCause; createdAt: string }
+  | { kind: 'confirm'; callId: string; toolName: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; createdAt: string }
   | { kind: 'ask'; callId: string; question: string; options?: string[]; createdAt: string };
 
 // ---------------------------------------------------------------------------
@@ -589,7 +593,8 @@ export type CoreEventBody =
       preview: string;
       durationMs: number;
     }
-  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause }
+  /** `irreversible`: as on a pending confirmation (the card shows 无法撤销). */
+  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean }
   /** Outside content (mail, web page, file, plugin tool) contained text that looks like instructions. */
   | { type: 'guard.flagged'; note: GuardNote; callId?: string }
   /** An irreversible call ran without asking because the session's approval mode is auto. */

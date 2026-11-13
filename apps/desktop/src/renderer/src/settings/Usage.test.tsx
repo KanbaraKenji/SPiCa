@@ -163,7 +163,7 @@ describe('one model or all', () => {
   const now = () => new Date('2026-11-13T12:00:00Z');
   async function pick(label: string) {
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '模型' }));
+      fireEvent.click(screen.getByRole('combobox', { name: '模型' }));
     });
     await act(async () => {
       fireEvent.click(screen.getByRole('menuitemradio', { name: label }));
@@ -174,9 +174,9 @@ describe('one model or all', () => {
     const summary = vi.fn(async (q: UsageQuery): Promise<UsageSummary> => summarizeRequests(RECORDS, q, '2026-11-12T02:00:00Z'));
     render(<Usage api={{ summary, providerNames: async () => ({ deepseek: 'DeepSeek' }) }} now={now} />);
     await screen.findByRole('img', { name: 'Token 用量' });
-    expect(screen.getByRole('button', { name: '模型' }).textContent).toBe('全部模型');
+    expect(screen.getByRole('combobox', { name: '模型' }).textContent).toBe('全部模型');
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '模型' }));
+      fireEvent.click(screen.getByRole('combobox', { name: '模型' }));
     });
     expect(screen.getAllByRole('menuitemradio').map((m) => m.textContent)).toEqual(['全部模型', 'claude-sonnet-4-5 · anthropic', 'deepseek-chat · DeepSeek', 'gateway-model · gateway']);
     await act(async () => {
@@ -197,7 +197,7 @@ describe('one model or all', () => {
     render(<Usage api={{ summary }} now={now} />);
     await screen.findByRole('img', { name: 'Token 用量' });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '模型' }));
+      fireEvent.click(screen.getByRole('combobox', { name: '模型' }));
     });
     await act(async () => {
       fireEvent.click(screen.getByRole('menuitemradio', { name: 'deepseek-chat · deepseek' }));
@@ -205,7 +205,7 @@ describe('one model or all', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('radio', { name: '今天' }));
     });
-    expect(screen.getByRole('button', { name: '模型' }).textContent).toBe('deepseek-chat · deepseek');
+    expect(screen.getByRole('combobox', { name: '模型' }).textContent).toBe('deepseek-chat · deepseek');
   });
 });
 
