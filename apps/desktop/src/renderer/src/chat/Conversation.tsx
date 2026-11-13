@@ -290,9 +290,12 @@ function useStickToBottom(dep: unknown) {
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const [away, setAway] = useState(false);
+  const sizes = useRef<ResizeObserver | undefined>(undefined);
   useLayoutEffect(() => {
     const el = ref.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
+    // What is in the box now (the messages or the empty page, and the input area under them): watched for size.
+    if (el) for (const c of el.children) sizes.current?.observe(c);
   }, [dep]);
   useEffect(() => {
     const el = ref.current;
@@ -300,7 +303,9 @@ function useStickToBottom(dep: unknown) {
     // Only the user's own scrolling may unpin; layout changes (resize, zoom,
     // re-wrapping) also fire scroll events and must not.
     let userUntil = 0;
-    const markUser = () => {
+    const markUser = (e: Event) => {
+      // Typing or clicking in the input area (it is inside the box) is not scrolling; the wheel over it is.
+      if (e.type !== 'wheel' && e.target instanceof Element && e.target.closest('.transcript-foot')) return;
       userUntil = performance.now() + 800;
     };
     const onScroll = () => {
@@ -313,16 +318,19 @@ function useStickToBottom(dep: unknown) {
     const userEvents = ['wheel', 'pointerdown', 'keydown', 'touchmove'] as const;
     for (const t of userEvents) el.addEventListener(t, markUser, { passive: true });
     el.addEventListener('scroll', onScroll, { passive: true });
-    // Resizing the window or zooming re-wraps text; stay at the bottom if we were there.
+    // Resizing the window or zooming re-wraps text, and the input box grows with its lines; stay at the bottom if
+    // we were there.
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
       if (stick.current) el.scrollTop = el.scrollHeight;
     }) : undefined;
+    sizes.current = ro;
     ro?.observe(el);
-    if (el.firstElementChild) ro?.observe(el.firstElementChild);
+    for (const c of el.children) ro?.observe(c);
     return () => {
       el.removeEventListener('scroll', onScroll);
       for (const t of userEvents) el.removeEventListener(t, markUser);
       ro?.disconnect();
+      sizes.current = undefined;
     };
   }, []);
   const toBottom = () => {
@@ -511,29 +519,33 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
             {transcript.agentLimit ? <p className="turn-note">（代理之间互发的消息已达上限，没有再发；你说一句话后重新计数）</p> : null}
           </div>
         )}
-      </div>
-      {/* Pinned to the top of the input area, so it sits just above the input box
-          whatever its height (several lines, queued messages, zoom). */}
-      <div className="to-bottom-anchor">
-        {away ? (
-          <button type="button" className="to-bottom" onClick={toBottom} aria-label="回到最新" title="回到最新">
-            <Icon name="chevronDown" size={16} />
-          </button>
-        ) : null}
-      </div>
-      {transcript.queued?.length ? (
-        <div className="queued" aria-live="polite">
-          {transcript.queued.map((q) => (
-            <p key={q.id} className="queued-item">
-              <span className="queued-tag">下一步生效</span>
-              <span className="queued-text">{q.text}</span>
-            </p>
-          ))}
+        {/* The input area stays at the bottom of the scrolling box, over what scrolls under it: the scrollbar runs
+            down beside it to the window's bottom edge, and at the end the last line sits just above it. */}
+        <div className="transcript-foot">
+          {/* Pinned to the top of the input area, so it sits just above the input box
+              whatever its height (several lines, queued messages, zoom). */}
+          <div className="to-bottom-anchor">
+            {away ? (
+              <button type="button" className="to-bottom" onClick={toBottom} aria-label="回到最新" title="回到最新">
+                <Icon name="chevronDown" size={16} />
+              </button>
+            ) : null}
+          </div>
+          {transcript.queued?.length ? (
+            <div className="queued" aria-live="polite">
+              {transcript.queued.map((q) => (
+                <p key={q.id} className="queued-item">
+                  <span className="queued-tag">下一步生效</span>
+                  <span className="queued-text">{q.text}</span>
+                </p>
+              ))}
+            </div>
+          ) : null}
+          <RunNotices notices={notices} />
+          <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
+          {demo ? <p className="composer-note">当前为演示数据</p> : null}
         </div>
-      ) : null}
-      <RunNotices notices={notices} />
-      <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
-      {demo ? <p className="composer-note">当前为演示数据</p> : null}
+      </div>
     </div>
     </SourceCardsContext.Provider>
     </ToolCardsContext.Provider>

@@ -75,7 +75,7 @@ describe('the same step repeated too often', () => {
 });
 
 describe('the notices sit just above the input box (RunNotices)', () => {
-  it('outside the scrolling conversation, stacked: interrupted, repeated, cut answer, then the error nearest the box', () => {
+  it('in the input area at the foot of the scrolling box (not among the messages), stacked: interrupted, repeated, cut answer, then the error nearest the box', () => {
     const { container } = render(
       <Conversation
         session={{ ...session, status: 'interrupted' }}
@@ -84,7 +84,9 @@ describe('the notices sit just above the input box (RunNotices)', () => {
       />,
     );
     const bar = container.querySelector('.run-notices')!;
-    expect(container.querySelector('.transcript')!.contains(bar)).toBe(false);
+    expect(container.querySelector('.transcript-column')!.contains(bar)).toBe(false);
+    expect(bar.parentElement?.className).toBe('transcript-foot');
+    expect(container.querySelector('.transcript')!.lastElementChild).toBe(bar.parentElement);
     expect(bar.nextElementSibling?.className).toContain('composer-wrap');
     expect([...bar.querySelectorAll('.run-notice-text')].map((n) => n.textContent)).toEqual(['上次运行已中断', '同一步重复了 8 次，要继续吗', '回答到达长度上限，没有写完', '已达花费上限']);
     expect(bar.querySelector('.run-notice.is-error')?.getAttribute('role')).toBe('alert');

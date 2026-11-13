@@ -24,6 +24,15 @@ describe('styles', () => {
     expect(block('.main')).toContain('min-height: 0');
   });
 
+  it('the scrollbar runs to the window’s bottom edge: the input area sits at the foot of the scrolling box, over what scrolls under it, as wide as before', () => {
+    for (const p of ['overflow-y: auto', 'display: flex', 'flex-direction: column']) expect(block('.transcript'), p).toContain(p);
+    for (const p of ['position: sticky', 'bottom: 0', 'flex: none', 'background: var(--spica-bg)']) expect(block('.transcript-foot'), p).toContain(p);
+    // The box keeps the scrollbar's 10 on both sides, so the input area's own 24 is 14 in here.
+    expect(block('::-webkit-scrollbar')).toContain('width: 10px');
+    expect(block('.transcript-foot > .composer-wrap')).toContain('padding-left: 14px;\n  padding-right: 14px');
+    expect(block('.composer-wrap')).toContain('padding: 0 24px 18px');
+  });
+
   it('a note line in the conversation breaks a long path instead of running past the window', () => {
     expect(block('.turn-note')).toContain('overflow-wrap: anywhere');
   });
