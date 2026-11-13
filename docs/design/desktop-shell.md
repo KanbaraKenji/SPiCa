@@ -249,12 +249,14 @@
   - 跟着名字走的：窗口标题、任务栏 AppUserModelID（= id）、数据文件夹 `%APPDATA%\名字`、`文档\名字`、界面上的 Spica 字样（输入框提示、关于、本机脚本连接、邮件同意、模型表单、新建项目、删除项目）、`mcp-http.json` 里的 `appName`。自我介绍（内核）、插件提示（插件系统）各自接 `appName`。
   - 不跟着变的：`@spica` 包名、`window.spica`、`spica_` 工具名、`--spica-*` 变量、`SPICA_` 环境变量、插件清单里的 spica 字段、`spica-file://`、`spica-plugin://`。
   - 2026-11-10 用虚构名字「Nova Desk」走过：开发版标题、开机字标、侧栏横标、输入框、关于都换了；`npm run dist` 出 `Nova Desk-Setup-0.1.0-rc.1.exe`、`Nova Desk-Portable-…`、`Nova Desk.exe`。
-- **装完那一页的三个勾选项**（2026-11-12，`resources/installer/finish-options.nsh`，经 `electron-builder.yml` 的 `nsis.include` 加进 electron-builder 自己的完成页，「运行 Spica」下面）：「开机时启动」「创建桌面快捷方式」「创建开始菜单快捷方式」。
-  - 第一次安装：三样在安装时就做好（快捷方式是 electron-builder 建的，开机启动的 Run 项是脚本写的），所以三个框默认勾着，直接关掉这一页也照样保留；取消哪个再点「完成」，哪个就撤掉。开机启动写的和程序里开关读写的是同一项（见第 6 节）。
-  - 覆盖安装（已经装过再运行安装包）：三个框按现在的样子勾（用户删掉的快捷方式、在设置里关掉的开机启动都不勾），不勾就不加回来；勾上的才补上。electron-builder 本来就记着 `KeepShortcuts`：覆盖安装时只给还在的快捷方式改名、不重建删掉的。开机启动只在第一次安装时写。
-  - 程序里点「重启并更新」（`--updated /S`）：不显示页面，三样都不动。
+- **装完那一页和快捷方式**（`resources/installer/finish-options.nsh`，经 `electron-builder.yml` 的 `nsis.include` 加进 electron-builder 自己的完成页，「运行 Spica」下面）：只有一个框「开机时启动」。开始菜单和桌面快捷方式不做成框，安装时直接建（和 rc.2 一样，electron-builder 的 `createStartMenuShortcut` / `createDesktopShortcut`）。rc.3 曾经是三个框，不勾就删掉快捷方式，有人因此开始菜单里没了入口、搜不到程序，所以去掉了。
+  - 第一次安装：两个快捷方式和开机启动的 Run 项都在安装时建好，「开机时启动」默认勾着，直接关掉这一页也照样保留；取消再点「完成」就撤掉。开机启动写的和程序里开关读写的是同一项（见第 6 节）。
+  - 覆盖安装（已经装过再运行安装包）：electron-builder 记着 `KeepShortcuts`，还在的快捷方式照旧，用户自己删掉的不再建回来；「开机时启动」按现在的样子勾，开机启动只在第一次安装时写。
+  - 例外一次：这一版的安装包第一次盖在旧版本上时，开始菜单或桌面快捷方式不在就补建一次（给 rc.3 最后一页没勾、入口被删的人），然后在安装记录里记 `ShortcutsRestored`，以后照上一条。这个值在安装开始时读（盖装时旧版本的卸载会先删掉安装记录）。
+  - 程序里点「重启并更新」（`--updated /S`）：不显示页面，什么都不动。
   - 卸载：electron-builder 删两种快捷方式，脚本删 Run 项和任务管理器里它的启用记录（`StartupApproved\Run`）；更新时运行旧卸载程序（带 `--updated`）不删。
-  - 全在 HKCU 和用户自己的文件夹里，不要管理员。勾选项的文字只写了中文（界面本来就只有中文）；安装包其他页照旧按系统语言。
+  - 全在 HKCU 和用户自己的文件夹里，不要管理员。框的文字只写了中文（界面本来就只有中文）；安装包其他页照旧按系统语言。
+  - 固定到任务栏：安装程序不做（Windows 不给普通安装包替用户固定的正式办法，见进度文件里的核实），由用户自己固定。
 - **更新源**：一个共享盘文件夹或 http(s) 地址，里面放 `latest.yml` 和安装包（就是 `release/` 里那几个文件），公告也放这里（`announcements.json`）。
   - 默认是空的。公司打包时复制 `deploy.example.json` 为 `deploy.json`（已 .gitignore）填上自己的地址，就成了每台机器的默认值；用户也可以在 设置 › 关于 里改。仓库里只有示例，没有任何公司地址。
 - **官方插件来源**（`deploy.json` 的 `pluginSources`，2026-11-12）：一个列表，每项是一个地址（字符串），或 `{ "location": 地址, "label": "给人看的名字" }`；地址的写法和 市场 ›「添加来源」一样：共享盘或本机文件夹（有 index.json，或里面放着插件文件夹和 .zip）、`index.json` 的 http(s) 地址；单个 .zip 的网址不行。`npm run dist` 时 `scripts/deploy.mjs` 逐项检查，不对就停下说第几项错在哪；程序启动时主进程再读一遍（`shared/plugins.ts` 的 `officialSources`，只留能用的、去重），经后台扩展的 options（`officialPluginSources`）交给插件页的后台。不写或写空列表：没有官方来源。公司版和公开版各配各的。公开版想把每次发版的官方插件做成官方来源，打包前在 `deploy.json` 写 `"pluginSources": [{ "location": "https://github.com/KanbaraKenji/SPiCa/releases/latest/download/index.json", "label": "Spica 官方插件" }]` 就行（README「Install the official plugins」讲了每个 release 带的 `index.json`；`latest/download` 永远指向最新那一版），这次没做进发版流程。
