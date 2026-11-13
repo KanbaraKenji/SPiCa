@@ -1031,7 +1031,8 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
   const input = block.input && typeof block.input === 'object' ? (block.input as Record<string, unknown>) : {};
   const command = block.name === 'run_command' && typeof input.command === 'string' ? input.command : null;
   const facts = command !== null ? commandFacts(command) : [];
-  const danger = facts.some((f) => f.danger);
+  // 无法撤销 and the warning: a dangerous command, or a step a plugin marked irreversible (its hook, or its manifest).
+  const danger = facts.some((f) => f.danger) || block.irreversible === true;
   const title = command === null ? confirmTitle(block.name, block.input, block.reason) : facts.length ? facts.map((f) => f.text).join('；') : '运行命令';
   const cls = ['card', 'confirm-card', danger ? 'is-danger' : '', decided ? 'is-done' : ''].filter(Boolean).join(' ');
   return (

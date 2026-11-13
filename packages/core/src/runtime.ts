@@ -873,7 +873,7 @@ export class Runtime implements RuntimeInternals {
       } else if (opts.confirmed === false) {
         return { content: reason, isError: true, needsConfirmation: true }; // the caller asks and comes back with confirmed: true
       } else {
-        const ok = await this.#askView(host, callId, name, input, reason);
+        const ok = await this.#askView(host, callId, name, input, reason, decision.action === 'confirm' && decision.irreversible === true);
         if (!ok) return { content: 'The user declined this action.', isError: true, declined: true };
         confirmedBy = 'user';
       }
@@ -909,8 +909,8 @@ export class Runtime implements RuntimeInternals {
     return true;
   }
 
-  #askView(host: Session | undefined, callId: string, name: string, input: unknown, reason: string): Promise<boolean> {
-    return this.askOutsideSession({ callId, name, input, reason, cause: 'plugin_view', ...(host ? { host } : {}) }).answer;
+  #askView(host: Session | undefined, callId: string, name: string, input: unknown, reason: string, irreversible: boolean): Promise<boolean> {
+    return this.askOutsideSession({ callId, name, input, reason, cause: 'plugin_view', ...(irreversible ? { irreversible } : {}), ...(host ? { host } : {}) }).answer;
   }
 
   /**
@@ -924,6 +924,8 @@ export class Runtime implements RuntimeInternals {
     input: unknown;
     reason: string;
     cause: GuardCause;
+    /** What it allows cannot be undone: the card shows 无法撤销. */
+    irreversible?: boolean;
     callId?: string;
     host?: Session;
     userOnly?: boolean;
@@ -942,7 +944,7 @@ export class Runtime implements RuntimeInternals {
         resolve(approved);
       };
       this.#viewConfirms.set(callId, finish);
-      this.events.emit(where, { type: 'confirm.request', callId, name: card.name, input: card.input, reason: card.reason, cause: card.cause });
+      this.events.emit(where, { type: 'confirm.request', callId, name: card.name, input: card.input, reason: card.reason, cause: card.cause, ...(card.irreversible ? { irreversible: true } : {}) });
     });
     return { callId, answer };
   }

@@ -34,8 +34,12 @@ export interface ToolCallDraft {
 export type ToolDecision =
   | { action: 'allow'; input?: unknown }
   | { action: 'deny'; reason: string }
-  /** `byDefault`: set by the registry for irreversible tools nobody waived (an approval mode may pass it). */
-  | { action: 'confirm'; reason?: string; input?: unknown; byDefault?: boolean }
+  /**
+   * `byDefault`: set by the registry for irreversible tools nobody waived (an approval mode may pass it).
+   * `irreversible`: what the user is asked to allow cannot be undone; the card says so (无法撤销 and the warning
+   * mark). It only makes the card more prominent: it never turns a confirmation into none.
+   */
+  | { action: 'confirm'; reason?: string; input?: unknown; byDefault?: boolean; irreversible?: boolean }
   /** Skip confirmation even for irreversible tools. */
   | { action: 'auto'; input?: unknown };
 
@@ -114,18 +118,24 @@ export class HookRegistry {
 
   /**
    * Combine decisions: any deny wins; otherwise any confirm; `auto` from any
-   * hook waives the default confirmation of irreversible tools.
+   * hook waives the default confirmation of irreversible tools. The reason is
+   * the last confirming hook's; the card is marked irreversible when any
+   * confirming hook marked it (a plugin's own reason does not drop the mark its
+   * declared irreversible tools get).
    */
   async beforeTool(call: ToolCallDraft, ctx: HookContext): Promise<{ decision: ToolDecision; input: unknown }> {
     let input = call.input;
-    let confirm: { reason?: string } | undefined;
+    let confirm: { reason?: string; irreversible?: true } | undefined;
     let auto = false;
     for (const e of this.#entries) {
       const d = await e.hooks.beforeTool?.({ ...call, input }, ctx);
       if (!d) continue;
       if (d.action === 'deny') return { decision: d, input };
       if ('input' in d && d.input !== undefined) input = d.input;
-      if (d.action === 'confirm') confirm = { ...(d.reason ? { reason: d.reason } : {}) };
+      if (d.action === 'confirm') {
+        const marked = d.irreversible === true || confirm?.irreversible === true;
+        confirm = { ...(d.reason ? { reason: d.reason } : {}), ...(marked ? { irreversible: true as const } : {}) };
+      }
       if (d.action === 'auto') auto = true;
     }
     if (confirm) return { decision: { action: 'confirm', ...confirm }, input };

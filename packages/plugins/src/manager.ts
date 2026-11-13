@@ -868,7 +868,8 @@ export class PluginManager {
             const run = a.servers.find((r) => call.name.startsWith(`${r.launchName}__`));
             if (!run) return;
             const bare = call.name.slice(run.launchName.length + 2);
-            if (irreversible.includes(bare)) return { action: 'confirm', reason: `「${a.manifest.displayName}」：此操作不可撤销` };
+            // Marked irreversible: the card says 无法撤销 itself, so the reason names the plugin and the tool.
+            if (irreversible.includes(bare)) return { action: 'confirm', reason: `「${a.manifest.displayName}」：${bare}`, irreversible: true };
             return;
           },
         },
@@ -1251,8 +1252,10 @@ export class PluginManager {
         return fail('CALL_FAILED', `工具 ${tool} 调用失败，详见插件日志。`);
       }
       if (out.needsConfirmation || out.declined) {
-        // Our permission hook gives a Chinese reason; the core's default is English.
-        const why = /[一-鿿]/.test(out.content) ? out.content : `「${a.manifest.displayName}」：此操作不可撤销`;
+        // Another hook's Chinese reason; else (our permission hook's reason only names the tool, the core's
+        // default is English) that it cannot be undone.
+        const ours = out.content === `「${a.manifest.displayName}」：${tool}`;
+        const why = !ours && /[一-鿿]/.test(out.content) ? out.content : `「${a.manifest.displayName}」：此操作不可撤销`;
         return fail('CONFIRM_REQUIRED', `${why}，需要确认。`);
       }
       if (out.isError && out.content.startsWith('Blocked: ')) {

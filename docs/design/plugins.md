@@ -131,7 +131,7 @@ export const priority = 100; // 可选，小的先跑
 | 命令 | 不进内核。`PluginManager.commands()` 列出 `/<插件>:<命令>`，`expandCommand()` 展开成要发的话，由外壳发 | — |
 | 代码钩子 | `runtime.hooks.register(source, hooks, { priority })` | `plugin:<name>` |
 | 常驻进程 | 同 MCP，但插件包再挂一个 `beforeRequest` 把它的工具从工具表里拿掉、`beforeTool` 拒绝调用 | `plugin:<name>` |
-| 不可逆声明 | 插件包挂一个 `beforeTool`（优先级 10），对声明过的工具返回 `confirm`（本插件任何 server 的工具，mcp/ 和 services/ 都算；模型调隐藏的服务工具先返回 `deny`） | `plugin:<name>` |
+| 不可逆声明 | 插件包挂一个 `beforeTool`（优先级 10），对声明过的工具返回 `confirm` 并带 `irreversible: true`，理由是「「插件显示名」：工具名」（卡片右上角已有「无法撤销」，标题不再重复）。本插件任何 server 的工具，mcp/ 和 services/ 都算；模型调隐藏的服务工具先返回 `deny`。插件自己的钩子再对同一个工具要求确认时，理由用它的，标记保留 | `plugin:<name>` |
 | 视图 | 不进内核。`views()` 列出已启用插件的页面，外壳渲染；页面调工具走 `viewCall()` → 内核 `callPluginTool`（钩子生效、留痕） | — |
 
 server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes__write_note`），有多个时叫 `<插件>-<id>`；常驻进程一律 `<插件>-<id>`。
@@ -192,7 +192,7 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 | 文件路径 | 清单里所有路径必须在插件文件夹内；zip 解包拒绝越界条目；插件自己的数据只写 `SPICA_PLUGIN_DATA`；用户在对话里点名的文件夹也可以写（下载、导出类插件的本职）：只写那个文件夹和它下面，结果里原样回显路径，覆盖已有文件的工具标成不可逆（作者指南 2b 节）。这一条是约定，不拦 | 见「工作文件夹」一行 |
 | 钩子权限 | 只挂 `permissions.hooks` 声明过的类型；没声明的写日志、不挂 | 安装时给用户看「这个插件能改请求 / 改响应 / 拦工具」 |
 | 钩子出错 | 包一层：抛错只记日志、发 `hook.error`，这一轮照常跑 | 连续出错自动停用 |
-| 不可逆动作 | `permissions.irreversible` 里的工具一律要确认（mcp/ 和 services/ 的工具一样，不论是模型调还是页面调）；MCP 的 `destructiveHint` 内核也默认要确认 | 插件可在设置里被用户改成「自动执行」 |
+| 不可逆动作 | `permissions.irreversible` 里的工具一律要确认（mcp/ 和 services/ 的工具一样，不论是模型调还是页面调），确认卡显示「无法撤销」；钩子的 confirm 带 `irreversible: true` 时也显示。MCP 的 `destructiveHint` 内核也默认要确认，但卡片不带这个标签（和内核自己的不可逆工具一样：运行命令只在判定危险时显示） | 插件可在设置里被用户改成「自动执行」 |
 | 工作文件夹 | `permissions.workspace` 只声明、展示 | 插件包挂 `beforeTool`：参数里出现的路径不在会话工作文件夹内、也不是用户在对话里点名的文件夹，就拒绝（怎么认出「用户点名」到时再定）；`read` 的插件写项目文件夹也拒绝 |
 | 网络 | 插件 server 和应用用同一套网络设置：内核起子进程时注入代理（`HTTPS_PROXY` 等 + `NODE_USE_ENV_PROXY=1`）和信任名单（`NODE_EXTRA_CA_CERTS` + `NODE_USE_SYSTEM_CA`；自带可执行文件用 `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` / `CURL_CA_BUNDLE` 的全量证书），设置里没有的就从子进程环境里删掉（内核 f8d328d）。设置真变了时内核调扩展的 `networkChanged()`，插件这边重启在运行的 server（`restartServers()`），之后的请求用新设置；有认证的代理，账号密码会随代理地址进插件进程。`permissions.network` 只声明、展示 | 按 `permissions.network` 放行 |
 | 环境变量 | 插件进程只继承白名单（`PLUGIN_INHERIT_ENV`：PATH、系统目录、TEMP、用户目录、电脑名和用户名（`COMPUTERNAME`、`USERNAME`）、代理变量等；和内核的 `DEFAULT_CHILD_ENV`、作者工具包 `lib/mcp.mjs` 里的同一张表，有测试保证三处一致），像密钥的名字（SPICA_ 开头、含 KEY / SECRET / TOKEN / PASSWORD / CREDENTIAL）内核一律不传；有测试 | — |
@@ -278,3 +278,4 @@ J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型�
   - 文字规范（外壳转、统筹逐句看过的 `out/copy-pass/plugins.md`）：42 句照表改；标「保留」的统一了口气（须为 / 无效 / 未知 / 未安装 / 有错误）；删掉的例子逐句核过，看不出怎么改的补回了例子或去处（description 写在哪、TypeScript 先编译、0 表示禁止使用模型、详见插件日志、views/*.json 的 permissions.tools、检查逗号和引号、author / license / reason / max_usd_per_day 的例子）。`copy.test.ts` 拦禁用词。
   - 修：`permissions.irreversible` 以前只对 mcp/ 的工具生效，services/ 里声明的工具从页面调用时不确认就执行（公司端反馈，统筹复现属实）。权限钩子改为认本插件任何 server 的工具；expose_tools 为 true 的服务工具被模型调用时也要确认；模型调隐藏的服务工具仍先 deny。按 kind 过滤、故意没改的两处：启用时先起 mcp/、钩子之后再起 services/（顺序）；邮件来源只认 mcp/ 的 server。
   - 修：已启用的插件同版本重装时报 EBUSY（Windows 上先删了正被 server 当工作目录的安装文件夹，才去停插件）。现在按上面「同一版本再装一次」的顺序做；卸载也等进程放手再删。Windows 上 Node 写的 server 拉起的普通子进程会随它一起结束，脱离父进程（detached）启动的或自带 .exe 拉起的进程不会，`reinstall.test.ts` 用 detached 子进程覆盖了「稍后退出」和「一直不退」两种。（统筹读码补的三处，同一天：新文件夹换进来那一步也等占用并能退回；卸载改成先改名挪开；同版本起不来时先挪开新文件再放回旧文件。测试里另用替换 `fsOps.rename` 的办法演「杀毒软件占着新复制的文件」。）查过、不用改的：回退和升级到新版本都不删文件夹；installZip、verifyPackage 的临时文件夹不会被进程占用；切模拟模式、网络设置变更、调模型上限只是原地重启进程。
+  - 加：确认卡的「无法撤销」以前只给判定危险的命令，插件钩子弹的卡和 `permissions.irreversible` 里的工具都没有（公司端反馈，查证属实：卡片只看命令判断的 danger，钩子的 confirm 也没有字段表示不可逆）。现在钩子的 confirm 可以带 `irreversible: true`，声明过的工具由权限钩子自动带上；内核把它放进挂起项和 `confirm.request`，卡片显示「无法撤销」和警告图标。只让卡片醒目，不改变要不要确认；其他确认卡不变。示例插件加了 `hooks/replace-confirm.js`（`write_note` 带 `replace: true` 时要确认并带标记）。
