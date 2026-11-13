@@ -145,11 +145,12 @@ describe('ConfirmCard', () => {
     const head = card.querySelector('.card-head')!;
     expect(head.querySelector('.card-title')?.textContent).toBe('删除 D:\\工作\\样机评审（含其中所有内容）');
     expect(head.querySelector('.confirm-undo')?.textContent).toBe('无法撤销');
-    // Copy, 拒绝 and 允许 are in the same row as what is being confirmed.
-    expect(head.querySelector('.md-tool')).toBeTruthy();
+    // 拒绝 and 允许 are in the same row as what is being confirmed; copy is in the command's box, at its top right
+    // (in the title row it read as copying the title).
+    expect(head.querySelector('.md-tool')).toBeNull();
     expect([...head.querySelectorAll('.card-actions button')].map((b) => b.textContent)).toEqual(['拒绝', '允许']);
     expect([...card.querySelectorAll('.cmd-danger')].map((m) => m.textContent)).toEqual(['Remove-Item', '-Recurse', '-Force']);
-    expect(card.querySelector('.tool-command.is-bare .code-head')).toBeNull();
+    expect(card.querySelector('.tool-command.is-bare > .code-head > .md-tool')?.getAttribute('aria-label')).toBe('复制');
     expect(screen.queryByText(/整理旧的报价文件/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '拒绝' }));
     expect(onDecide).toHaveBeenCalledWith(false);

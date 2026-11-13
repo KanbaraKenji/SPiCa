@@ -5960,8 +5960,7 @@ section.plugins-part > .plugins-part-title {
   padding: 6px 8px 6px 12px;
 }
 
-.confirm-card > .card-head > svg,
-.confirm-card > .card-head > .md-tool {
+.confirm-card > .card-head > svg {
   flex: none;
 }
 
@@ -6021,7 +6020,7 @@ section.plugins-part > .plugins-part-title {
 }
 
 .tool-command.is-bare pre {
-  padding: 8px 12px;
+  padding: 0 12px 8px;
 }
 
 /* A dangerous word in a command to be confirmed (Remove-Item, -Recurse, -Force, an overwriting >). */

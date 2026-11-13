@@ -24,8 +24,8 @@ const text = (v: unknown): string => (typeof v === 'string' ? v : '');
 
 /**
  * A command as written: $ and the command, coloured as PowerShell, in a box of its own; long ones wrap. `marks`
- * (where the dangerous words are): those words on a red ground in place of the colours. `bare`: no box and no
- * head of its own (the card it is in is the box and has the copy button).
+ * (where the dangerous words are): those words on a red ground in place of the colours. Copy is at the box's top
+ * right, wherever it is (a step opened, a card to confirm). `bare`: no edge of its own (the card it is in is the box).
  */
 export function CommandBox({ command, marks, bare }: { command: string; marks?: [number, number][] | undefined; bare?: boolean }) {
   const red = marks && marks.length ? marks : null;
@@ -44,12 +44,10 @@ export function CommandBox({ command, marks, bare }: { command: string; marks?: 
   }
   return (
     <div className={bare ? 'tool-command is-bare' : 'tool-command'}>
-      {bare ? null : (
-        <div className="code-head">
-          <span className="code-lang" />
-          <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(command)} />
-        </div>
-      )}
+      <div className="code-head">
+        <span className="code-lang" />
+        <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(command)} />
+      </div>
       <pre>
         <code>
           <span className="tool-prompt">$ </span>

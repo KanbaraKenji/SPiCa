@@ -996,7 +996,7 @@ export function ConfirmTarget({ name, input, bare }: { name: string; input: unkn
 
 /**
  * A confirmation: the card is what would run. One slim row (what it will do, 无法撤销 when it cannot be taken
- * back, copy for a command, 拒绝 / 允许 or what was decided), then the command in full or the call's arguments.
+ * back, 拒绝 / 允许 or what was decided), then the command in full (copy at its top right) or the call's arguments.
  * For a command, the title is the app's own reading of it (运行命令 when it cannot tell), not the model's words.
  */
 export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type: 'confirm' }>; onDecide(approved: boolean): void }) {
@@ -1023,7 +1023,6 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         <span className="card-title">{title}</span>
         {danger ? <span className="confirm-undo">无法撤销</span> : null}
         <span className="confirm-spacer" />
-        {command !== null ? <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(command)} /> : null}
         {decided ? (
           <p className={block.cancelled === true && block.approved === undefined ? 'card-answer is-stopped' : 'card-answer'}>
             <SpicaStatusIcon name={block.approved ? 'done' : 'stopped'} size={15} />
