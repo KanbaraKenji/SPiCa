@@ -6921,7 +6921,8 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* 设置 › 记忆 and the 已记住 line in the conversation. The page is made of the settings' own rows
-   (settings/Group.tsx): a note, or a change of a tidy, is a row; its buttons are the shared ones. */
+   (settings/Group.tsx). A note is one line (as Claude's memory list): the sentence cut to the line, the time,
+   a pencil and a bin without a box; the line opens the note's page (as a plugin's row opens its page). */
 .memory-list {
   list-style: none;
   margin: 0;
@@ -6934,43 +6935,211 @@ section.plugins-part > .plugins-part-title {
   overflow-wrap: anywhere;
 }
 
-/* a change of a tidy: its words where a row's name is, 撤销 where its control is */
-.memory-tidy-change > .memory-text {
-  flex: 1 1 14em;
-  min-width: 0;
+/* 已记住: a box per category under its name (as Claude's You / Topics), the groups a little apart */
+.memory-known {
+  display: flex;
+  flex-direction: column;
 }
 
-.memory-quote {
-  overflow-wrap: anywhere;
-  /* the grey line under a row's name is as large as the name (§3) */
+.memory-section + .memory-section {
+  margin-top: 16px;
+}
+
+.memory-cat {
+  margin: 0 0 6px;
   font-size: var(--fs-body);
   line-height: var(--lh-body);
+  font-weight: 600;
+  color: var(--spica-muted);
 }
 
-.memory-meta {
+/* 类别 in the box adding or editing a note: its name, then the five as one segmented row */
+.memory-pick {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 6px;
+  align-items: center;
+  gap: 8px 12px;
 }
 
-.memory-from {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
+.memory-pick-label {
+  color: var(--spica-muted);
+}
+
+/* one line, whatever the length: the words give way, never the time or the buttons */
+.memory-row,
+.memory-tidy-change {
+  flex-wrap: nowrap;
+}
+
+.memory-row:has(.memory-open:hover) {
+  background: var(--spica-hover);
+}
+
+.memory-list > li:first-child {
+  border-top-left-radius: var(--radius-l);
+  border-top-right-radius: var(--radius-l);
+}
+
+.memory-list > li:last-child {
+  border-bottom-left-radius: var(--radius-l);
+  border-bottom-right-radius: var(--radius-l);
+}
+
+/* the whole line opens the note (as a plugin's row): the button carries the row's height and its left padding
+   (the dialog's rows: 12 above and below), the icons keep the right one */
+.memory-list > .memory-row {
+  padding: 0;
+}
+
+.memory-open {
+  flex: 1 1 auto;
+  align-self: stretch;
   min-width: 0;
-  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0 12px 16px;
+  text-align: left;
+  color: var(--spica-ink);
+}
+
+.memory-row > .memory-actions {
+  padding-right: 16px;
+}
+
+.memory-open > .memory-text,
+.memory-tidy-change > .memory-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* an entry's line, as Claude's list: the name in a column of its own, the summary in grey, both cut to the line */
+.memory-name {
+  flex: 0 0 30%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.memory-summary {
+  color: var(--spica-muted);
+}
+
+.memory-time {
+  flex: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .memory-actions {
   flex: none;
   display: flex;
+  gap: 4px;
+}
+
+/* A note's page, in the list's place (as a plugin's page): ← 记忆, the whole sentence with 编辑 and 删除 at the
+   right, then each fact as a grey name over its value (as Claude's 「Last updated」). */
+.memory-back {
+  margin-bottom: 12px;
+}
+
+.memory-detail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.memory-detail-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.memory-detail-actions {
+  flex: none;
+  display: flex;
   gap: 8px;
 }
 
+.memory-facts {
+  margin: 24px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.memory-fact dt {
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
+  color: var(--spica-muted);
+}
+
+.memory-fact dd {
+  margin: 4px 0 0;
+}
+
+.memory-quote {
+  overflow-wrap: anywhere;
+}
+
+/* 详情 on an entry's page: its name with 添加 at the right, then a bulleted list (as Claude's Details); a detail
+   opens its own page */
+.memory-fact-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* the name above is grey; the button is not */
+.memory-fact-head > .btn {
+  color: var(--spica-ink);
+}
+
+.memory-details {
+  margin: 0;
+  padding-left: 20px;
+  list-style: disc;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.memory-detail-line {
+  margin-left: 0;
+  padding: 0;
+  text-align: left;
+  color: var(--spica-ink);
+  overflow-wrap: anywhere;
+}
+
+/* the boxes making or editing an entry: each with its name above (名字, 摘要, 类别, 详情) */
+.memory-edit.memory-entry-form {
+  gap: 12px;
+}
+
+.memory-entry-form > .memory-pick {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.memory-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .memory-edit {
-  flex: 1;
-  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;

@@ -736,9 +736,40 @@ export interface HistoryCardMeta {
 }
 
 /**
- * One thing the assistant remembers about the user across conversations: a
- * short sentence, with the user's own words it rests on. Kept when replaced or
- * forgotten (status), so a change can be undone; deleted in the settings, it is gone.
+ * What a memory entry is about (as Claude's memory page groups them): you = who the user is and how they want the
+ * assistant to work and answer; areas = the parts of their work and life they look after (a role's duties, standing
+ * rules there); topics = subjects and interests they follow; people = people they mention and how to deal with them;
+ * projects = a particular project and its standing facts.
+ */
+export type MemoryCategory = 'you' | 'areas' | 'topics' | 'people' | 'projects';
+export const MEMORY_CATEGORIES: readonly MemoryCategory[] = ['you', 'areas', 'topics', 'people', 'projects'];
+
+/**
+ * A named entry of the user's memory (as on Claude's memory page): a name, a one-line summary and a category; its
+ * details are MemoryItems (entryId). The system prompt carries entries' names and summaries only; the model reads an
+ * entry's details with recall. An entry with no active detail is not shown (an undo can bring its details back).
+ */
+export interface MemoryEntry {
+  /** Its own numbering (not the items' [n]); never reused. */
+  id: number;
+  owner: string;
+  /** Short, unique within the owner's memory (compared without spaces, punctuation and case). */
+  name: string;
+  summary: string;
+  category?: MemoryCategory;
+  /** Who made the last change: the assistant (remember, a tidy) or the user (settings). */
+  by: 'assistant' | 'user';
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** An entry's name, summary and category as they were (to put back on undo), with its time then. */
+export type MemoryEntryState = Pick<MemoryEntry, 'name' | 'summary' | 'category' | 'updatedAt'>;
+
+/**
+ * One detail of the user's memory: a short sentence, with the user's own words it rests on, in an entry (entryId) or
+ * not yet (saved before there were entries, or without one: a tidy puts it in one). Kept when replaced or forgotten
+ * (status), so a change can be undone; deleted in the settings, it is gone.
  */
 export interface MemoryItem {
   /** The short number the model and the window use ([n]); never reused. */
@@ -746,6 +777,13 @@ export interface MemoryItem {
   /** Whose memory it is. Only 'user' (the user themself) for now. */
   owner: string;
   text: string;
+  /** The entry it is a detail of; absent until it is in one. */
+  entryId?: number;
+  /**
+   * Saving it made its entry (no `before`) or changed the entry's name, summary or category (`before`): what to put
+   * back when it is undone, if the entry is still as this left it (its updatedAt is `at`).
+   */
+  entryChange?: { at: string; before?: MemoryEntryState };
   /** The user's words the item rests on, as typed in the conversation (redacted). */
   quote: string;
   status: 'active' | 'replaced' | 'forgotten';
@@ -786,6 +824,13 @@ export interface MemoryTidyRun {
   changes: MemoryTidyChange[];
   /** Changes the model proposed that the checks refused (not applied). */
   refused: number;
+  /**
+   * Items not in an entry that this tidy put in one, existing or new (not changes: the items stay as they were; undoing
+   * the whole tidy takes them out again).
+   */
+  grouped?: { item: number; entry: number }[];
+  /** The entries this tidy made (no `before`) or whose summary it rewrote, as it left them (`at`) and as they were. */
+  entries?: { entry: number; at: string; before?: MemoryEntryState }[];
   costUsd?: number;
   error?: string;
 }
@@ -795,22 +840,38 @@ export interface MemoryTidyChange {
   action: 'added' | 'rewritten' | 'merged' | 'forgotten';
   /** The item made (added, rewritten, merged) or forgotten. */
   item: MemoryItem;
+  /** The name of the entry the item is in (as it was then). */
+  entry?: string;
   /** rewritten / merged: the items it took the place of. */
   previous?: MemoryItem[];
   /** Taken back (撤销). */
   undone?: boolean;
 }
 
-/** Why an item typed in the settings was not kept: nothing typed, longer than 200 characters, or it looks like a key, password or ID number. */
+/**
+ * Why what was typed in the settings was not kept: nothing typed, too long, it looks like a key, password or ID
+ * number, or (an entry's name) another entry has it.
+ */
 export interface MemoryRefusal {
-  refused: 'empty' | 'too_long' | 'secret';
+  refused: 'empty' | 'too_long' | 'secret' | 'name_taken';
+  /** Which field: the entry's name or summary; absent for the detail's sentence. */
+  field?: 'name' | 'summary';
+}
+
+/** An entry as typed in the settings (a new one, or a change to one). */
+export interface MemoryEntryInput {
+  name: string;
+  summary: string;
+  category?: MemoryCategory;
 }
 
 /** What changed in the user's memory (event `memory.changed`, kept in `MessageMeta.memoryCards` when a tool did it). */
 export interface MemoryCardMeta {
-  action: 'saved' | 'replaced' | 'forgotten' | 'edited' | 'restored' | 'deleted' | 'cleared' | 'undone' | 'tidied';
-  /** The item saved, edited, forgotten, restored or deleted (absent for cleared). */
+  action: 'saved' | 'replaced' | 'forgotten' | 'edited' | 'restored' | 'deleted' | 'cleared' | 'undone' | 'tidied' | 'entry_edited' | 'entry_deleted';
+  /** The item saved, edited, forgotten, restored or deleted (absent for cleared and the entry actions). */
   item?: MemoryItem;
+  /** The entry the item is in, as this left it; entry_edited / entry_deleted: that entry. */
+  entry?: MemoryEntry;
   /** replaced: the item that was taken out. */
   previous?: MemoryItem;
   /** cleared: how many items were deleted. */
@@ -1158,15 +1219,24 @@ export interface AgentApi {
    */
   deleteSession?(sessionId: string): Promise<void>;
   // The user's memory (the assistant's conversations; see docs/design/memory.md). Every change sends memory.changed.
-  /** Active items oldest first; with `all` also the replaced and forgotten ones (to tell an undone "Saved: …" line). */
+  /** Active items (details) oldest first; with `all` also the replaced and forgotten ones (to tell an undone "Saved: …" line). */
   listMemories?(opts?: { all?: boolean }): Promise<MemoryItem[]>;
-  /** The user adds an item in the settings (no quote; secrets refused). */
-  addMemory?(text: string): Promise<MemoryCardMeta | MemoryRefusal>;
-  /** Change the sentence of an active item; undefined when it is gone. */
+  /** The entries that have an active detail, oldest first. */
+  listMemoryEntries?(): Promise<MemoryEntry[]>;
+  /**
+   * The user adds a detail in the settings (no quote; secrets refused): to the entry `entry` (its id), or to a new
+   * entry (name, summary, category; the name must not be taken).
+   */
+  addMemory?(text: string, entry?: number | MemoryEntryInput): Promise<MemoryCardMeta | MemoryRefusal>;
+  /** Change the sentence of an active detail; undefined when it is gone. */
   editMemory?(id: number, text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
-  /** Delete an item for good, with the older versions it replaced; undefined when it is not active. */
+  /** Change an entry's name, summary and category; undefined when it is gone. */
+  editMemoryEntry?(id: number, entry: MemoryEntryInput): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
+  /** Delete a detail for good, with the older versions it replaced (and its entry when no detail is left); undefined when it is not active. */
   forgetMemory?(id: number): Promise<MemoryCardMeta | undefined>;
-  /** Delete every active item for good (as forgetMemory); how many. */
+  /** Delete an entry for good, with all its details; undefined when it is gone. */
+  deleteMemoryEntry?(id: number): Promise<MemoryCardMeta | undefined>;
+  /** Delete every entry and active detail for good (as forgetMemory); how many details. */
   clearMemories?(): Promise<number>;
   /** The undo on a "Saved: …" line: a save is taken back, a replacement gives way to the old item, a forgotten item returns. */
   undoMemory?(id: number): Promise<MemoryCardMeta | undefined>;

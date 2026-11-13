@@ -55,6 +55,9 @@ const API: Record<keyof AgentApi, true> = {
   addMemory: true,
   editMemory: true,
   forgetMemory: true,
+  listMemoryEntries: true,
+  editMemoryEntry: true,
+  deleteMemoryEntry: true,
   clearMemories: true,
   undoMemory: true,
   tidyMemories: true,
@@ -71,7 +74,7 @@ describe('FakeBackend', () => {
   });
 
   it('memory: a demo message saves with its line, a change replaces, 别记了 forgets, undo takes each back; not in projects or when off', async () => {
-    const b = new FakeBackend({ speed: 0 });
+    const b = new FakeBackend({ speed: 0, demoMemories: false });
     const { events, until } = collect(b);
     const chat = await b.createSession({});
     await b.send(chat.id, '记住：回答尽量简短，先给结论再说理由。');
@@ -117,8 +120,37 @@ describe('FakeBackend', () => {
     b.dispose();
   });
 
-  it('memory: regenerating an answer that saved a note takes the note back first; the round can be regenerated', async () => {
+  it('memory: the demo has entries in every category, one with three details, two notes in no entry; a tidy puts those in one', async () => {
     const b = new FakeBackend({ speed: 0 });
+    const { until } = collect(b);
+    const entries = await b.listMemoryEntries();
+    expect(new Set(entries.map((e) => e.category))).toEqual(new Set(['you', 'areas', 'topics', 'people', 'projects']));
+    const notes = await b.listMemories();
+    expect(Math.max(...entries.map((e) => notes.filter((m) => m.entryId === e.id).length))).toBe(3);
+    const old = notes.filter((m) => m.entryId === undefined);
+    expect(old).toHaveLength(2);
+    await b.tidyMemories();
+    const run = (await until((e) => e.type === 'memory.tidy' && e.run.status === 'done')) as Extract<CoreEvent, { type: 'memory.tidy' }>;
+    expect(run.run.grouped).toHaveLength(2);
+    const after = await b.listMemories();
+    expect(after.every((m) => m.entryId !== undefined)).toBe(true);
+    // not a change: the date stays
+    expect(old.map((m) => after.find((x) => x.id === m.id)!.updatedAt)).toEqual(old.map((m) => m.updatedAt));
+    // the whole tidy's undo: in no entry again
+    await b.undoMemoryTidy(run.run.id);
+    expect((await b.listMemories()).filter((m) => m.entryId === undefined)).toHaveLength(2);
+    // the settings: a new entry, a detail to it, the entry changed, then deleted with its details
+    const made = (await b.addMemory('样品寄出前拍照', { name: '样品', summary: '寄出前拍照', category: 'areas' })) as { entry: { id: number } };
+    expect(await b.addMemory('x', { name: '样品', summary: 'y' })).toEqual({ refused: 'name_taken', field: 'name' });
+    await b.addMemory('样品单号写进周报', made.entry.id);
+    expect(await b.editMemoryEntry(made.entry.id, { name: '样品', summary: '寄出前拍照，单号写进周报', category: 'areas' })).toMatchObject({ action: 'entry_edited', entry: { summary: '寄出前拍照，单号写进周报' } });
+    expect(await b.deleteMemoryEntry(made.entry.id)).toMatchObject({ action: 'entry_deleted' });
+    expect((await b.listMemories()).some((m) => m.text.startsWith('样品'))).toBe(false);
+    b.dispose();
+  });
+
+  it('memory: regenerating an answer that saved a note takes the note back first; the round can be regenerated', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
     const { events, until } = collect(b);
     const chat = await b.createSession({});
     await b.send(chat.id, '记住：报告用 A4 竖版。');

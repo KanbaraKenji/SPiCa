@@ -35,7 +35,7 @@ import { MonitorView } from './shell/MonitorView';
 import { MailStore, useMail } from './store/mail';
 import { needsYou } from '../../shared/mail';
 import { nextDoneNews, unseenDone } from './shell/row-status';
-import type { MailItem, SessionInfo } from '@spica/protocol';
+import type { MailItem, MemoryEntryInput, SessionInfo } from '@spica/protocol';
 import { Icon } from './ui/Icon';
 import { sidebarNews } from './shell/sidebar-news';
 import { watchCover } from './ui/dim';
@@ -393,10 +393,13 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const memorySettings = agent.hasMemory
     ? {
         items: state.memories,
+        entries: state.memoryEntries,
         api: {
-          add: (text: string) => agent.addMemory(text),
+          add: (text: string, entry: number | MemoryEntryInput) => agent.addMemory(text, entry),
           edit: (id: number, text: string) => agent.editMemory(id, text),
+          editEntry: (id: number, entry: MemoryEntryInput) => agent.editMemoryEntry(id, entry),
           forget: (id: number) => agent.forgetMemory(id),
+          deleteEntry: (id: number) => agent.deleteMemoryEntry(id),
           clear: () => agent.clearMemories(),
         },
         titleOf: (id: string) => {
