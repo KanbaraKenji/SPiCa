@@ -19,8 +19,8 @@ export type ToolBlock = Extract<Block, { type: 'tool' }>;
 export const FILES_SHOWN = 5;
 
 /**
- * A call still going (its ring in 进行中): only while the conversation's run goes on; a call left running by a run
- * that was stopped (or a reopened conversation) is finished (工具调用 X, 已中断).
+ * A call still going (its ring under 工具调用): only while the conversation's run goes on; a call left running by a
+ * run that was stopped (or a reopened conversation) is over (已中断 in the list beside).
  */
 export const isRunning = (t: ToolBlock, live: boolean) => live && (t.state === 'running' || t.state === 'pending');
 
@@ -47,7 +47,7 @@ export interface DetailPanelProps {
   onClose?: () => void;
   /** A tab above already says 详情: leave out the heading (the close button stays). */
   hideHeading?: boolean;
-  /** 工具调用 X at the bottom: the finished calls, shown where the preview goes. */
+  /** 工具调用's heading: every call, shown where the preview goes. */
   history?: { open: boolean; toggle(): void };
 }
 
@@ -77,7 +77,6 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
   const tools = detailTools(transcript);
   const live = Boolean(transcript.run);
   const running = tools.filter((t) => isRunning(t, live));
-  const finished = tools.length - running.length;
   const [filesOpen, setFilesOpen] = useState(true);
   const [allFiles, setAllFiles] = useState(false);
   // another conversation: its files open again, the first five
@@ -176,10 +175,25 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
           </section>
         ) : null}
 
-        {/* Only the calls running now, each with its ring; a finished one (done or failed) goes to 工具调用 X below. */}
-        {running.length ? (
+        {/* 工具调用: one group (his words: the running ones and the rest are the same thing). Its heading is a row
+            that opens every call beside, where the preview goes (how many in all, ›); under it only the calls running
+            now, each with its ring. */}
+        {tools.length ? (
           <section className="detail-section">
-            <h3 className="detail-title">进行中</h3>
+            <h3 className="detail-title">
+              {history ? (
+                <button type="button" className={history.open ? 'detail-fold detail-calls is-on' : 'detail-fold detail-calls'} aria-expanded={history.open} onClick={history.toggle}>
+                  工具调用
+                  <span className="detail-count">{tools.length}</span>
+                  <Icon name="chevronRight" size={12} className="detail-calls-chevron" />
+                </button>
+              ) : (
+                <>
+                  工具调用<span className="detail-count">{tools.length}</span>
+                </>
+              )}
+            </h3>
+            {running.length ? (
             <ul className="detail-list">
               {running.map((t) => (
                 <li key={t.callId} className="detail-item">
@@ -190,6 +204,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
                 </li>
               ))}
             </ul>
+            ) : null}
           </section>
         ) : null}
 
@@ -237,14 +252,6 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
           </dl>
         </section>
       </div>
-      ) : null}
-      {/* At the bottom, outside the scrolling part: the finished calls, opened beside (where the preview goes). */}
-      {session && history && finished ? (
-        <button type="button" className={history.open ? 'detail-history is-on' : 'detail-history'} aria-expanded={history.open} onClick={history.toggle}>
-          <span className="detail-history-label">工具调用</span>
-          <span className="detail-count">{finished}</span>
-          <Icon name="chevronRight" size={14} className="detail-history-chevron" />
-        </button>
       ) : null}
     </aside>
   );

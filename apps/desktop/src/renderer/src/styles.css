@@ -1016,41 +1016,22 @@ button.tree-twisty:hover {
   color: var(--spica-ink);
 }
 
-/* 工具调用 X: the details' last row, outside the scrolling part; opens the finished calls beside. */
-.detail-history {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 8px 8px;
-  padding: 6px 8px;
-  border: 0;
-  border-top: 1px solid var(--spica-divider);
-  border-radius: 0;
-  background: none;
+/* 工具调用's heading opens every call beside: the words as the other headings, the count, › at the end. */
+.detail-calls:hover,
+.detail-calls.is-on {
   color: var(--spica-ink);
-  font-size: var(--fs-body);
-  line-height: var(--lh-body-compact);
-  text-align: left;
 }
 
-.detail-history:hover,
-.detail-history.is-on {
-  background: var(--spica-hover);
-  border-radius: var(--radius-s);
+.detail-calls .detail-count {
+  margin-left: 0;
 }
 
-.detail-history .detail-count {
-  color: var(--spica-faint);
-}
-
-.detail-history-chevron {
+.detail-calls-chevron {
   margin-left: auto;
-  color: var(--spica-muted);
 }
 
-/* The finished calls where the preview goes (shell/ToolHistory.tsx): a row each, as in the details; a click opens
-   its input and result under it, plain text. */
+/* Every call where the preview goes (shell/ToolHistory.tsx): a row each, as in the details; a click opens it under
+   the row as the conversation's tool rows do (chat/CallDetail.tsx). */
 .tool-history {
   flex: 1;
   min-width: 0;
@@ -1100,26 +1081,6 @@ button.tree-twisty:hover {
   flex-direction: column;
   gap: 4px;
   margin: 4px 8px 10px 30px;
-}
-
-.tool-history-label {
-  color: var(--spica-faint);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-}
-
-.tool-history-text {
-  margin: 0 0 6px;
-  max-height: 240px;
-  overflow: auto;
-  padding: 6px 8px;
-  border: 1px solid var(--spica-border);
-  border-radius: var(--radius-m);
-  background: var(--spica-surface);
-  font-family: var(--font-mono);
-  font-size: var(--code-size);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .detail-empty {

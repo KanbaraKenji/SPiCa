@@ -121,7 +121,7 @@
 | **定** 对话有两个宽度：排版最窄 440，被预览盖住时至少露出 160。任何时候保不住，预览最先收起 | `shell/layout.ts` 的 `MAIN_ROOM_WIDTH`、`MAIN_SHOWN_MIN` | `shell` 的测试 |
 | **定** 详情栏放不下时直接不显示，不盖在别的上面、不浮出；它的按钮变灰，悬停说原因；有地方了自己回来 | `shell/layout.ts` | `shell` 的测试 |
 | **定** 插件的面板页是详情栏顶上的页签，宽度同详情栏，不能拖、不能最大化 | `shell/**` | 人工 |
-| **定** 详情栏不因调用多而变长：只列正在跑的调用（进度环）；结束的收进最底部一行「工具调用 X」，点开在预览那一栏里看历史；「文件」先列 5 条加「显示更多」，标题能收起、收起时写数量（他定的，照 Claude 的 Outputs） | `shell/DetailPanel.tsx`、`shell/ToolHistory.tsx` | `shell/ToolHistory.test.tsx`、`chat/Conversation.test.tsx` |
+| **定** 详情栏不因调用多而变长：「工具调用」一组：标题是能点的「工具调用 N ›」，下面只列正在跑的调用（进度环），不钉在底下；点标题在预览那一栏里看全部调用，展开一条和对话里同一个写法（CallDetail）；「文件」先列 5 条加「显示更多」，标题能收起、收起时写数量（他定的，照 Claude 的 Outputs） | `shell/DetailPanel.tsx`、`shell/ToolHistory.tsx` | `shell/ToolHistory.test.tsx`、`chat/Conversation.test.tsx` |
 | **暂定** 历史和文件预览共用预览那一栏：历史盖在文件上，关掉回到文件；点文件换成文件；标题栏预览按钮整个收起。文件行只有图标和名字，路径在悬停提示 | 同上、`App.tsx` | 同上 |
 | **定** 启动时弹出窗口，停在新对话（开机自启那次也一样，不只待在托盘） | `main/` | 对应测试 |
 | **定** 设置是大弹窗，一组一个框，框里用细线分行；插件市场只在这个弹窗里 | `settings/**` | `renderer-styles.test.ts`「the rows in a box…」 |

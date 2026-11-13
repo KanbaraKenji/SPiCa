@@ -102,7 +102,7 @@ describe('DetailPanel', () => {
     expect(screen.queryByRole('button', { name: '最大化' })).toBeNull();
   });
 
-  it('lists only the calls running now (each with its ring); the finished ones are 工具调用 N at the bottom', () => {
+  it('工具调用 is one group: its heading (how many in all, opens them beside), under it only the calls running now with their ring', () => {
     const transcript = {
       items: [
         {
@@ -125,7 +125,9 @@ describe('DetailPanel', () => {
     expect(rows.map((r) => r.querySelector('.detail-item-icon svg')?.getAttribute('data-status'))).toEqual(['running']);
     expect(rows[0]!.textContent).toContain('b.docx');
     const more = screen.getByRole('button', { name: /工具调用/ });
-    expect(more.textContent).toBe('工具调用3');
+    expect(more.textContent).toBe('工具调用4');
+    // in the group's heading, not a row of its own at the bottom
+    expect(more.closest('.detail-section')?.querySelector('.detail-item')).toBeTruthy();
     fireEvent.click(more);
     expect(toggle).toHaveBeenCalled();
   });

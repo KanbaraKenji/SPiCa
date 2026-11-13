@@ -60,13 +60,14 @@ describe('详情 › 文件, as Claude’s Outputs', () => {
     const blocks = (t.items[0] as { blocks: { state: string }[] }).blocks;
     blocks[2]!.state = 'done';
     render(<DetailPanel {...props} transcript={t} history={{ open: false, toggle: vi.fn() }} />);
-    expect(screen.queryByText('进行中')).toBeNull();
+    // the heading alone: no ring rows under it
+    expect(document.querySelector('.detail-item')).toBeNull();
     expect(screen.getByRole('button', { name: /工具调用/ }).textContent).toBe('工具调用5');
   });
 });
 
-describe('工具调用 (the finished calls, where the preview goes)', () => {
-  it('lists every finished call in order with how it ended; a click opens its input and result as plain text; Esc closes it', () => {
+describe('工具调用 (every call, where the preview goes)', () => {
+  it('lists every call in order: how each ended, the running one with its ring; a click opens it as the conversation does; Esc closes it', () => {
     const onClose = vi.fn();
     render(<ToolHistory transcript={transcriptWith(1)} onClose={onClose} />);
     const rows = [...document.querySelectorAll('.tool-history-row')];
@@ -76,14 +77,17 @@ describe('工具调用 (the finished calls, where the preview goes)', () => {
     expect(rows[2]!.querySelector('.detail-item-meta .text-danger')?.textContent).toBe('已中断');
     expect(document.querySelector('.tool-history-head')?.textContent).toContain('5');
     cleanup();
-    // while the run goes on, the running one is not here (it is in 进行中)
+    // while the run goes on, the running one is here too, with its ring and nothing after its words
     render(<ToolHistory transcript={{ ...transcriptWith(1), run: { startedAt: 0, status: 'running' } } as never} onClose={onClose} />);
-    expect(document.querySelectorAll('.tool-history-row')).toHaveLength(4);
     const live = [...document.querySelectorAll('.tool-history-row')];
+    expect(live).toHaveLength(5);
+    expect(live[2]!.querySelector('.detail-item-icon svg')?.getAttribute('data-status')).toBe('running');
+    expect(live[2]!.querySelector('.detail-item-meta')?.textContent).toBe('');
     fireEvent.click(live[1]!);
-    const texts = [...document.querySelectorAll('.tool-history-text')].map((p) => p.textContent);
-    expect(texts[0]).toContain('"command": "python 校对.py"');
-    expect(texts[1]).toBe('[EXIT 1] 缺少第 3 列');
+    // as the conversation's tool rows: the command in its box, then what came out
+    const body = document.querySelector('.tool-history-body')!;
+    expect(body.querySelector('.tool-command')?.textContent).toContain('python 校对.py');
+    expect(body.textContent).toContain('缺少第 3 列');
     fireEvent.keyDown(document.body, { key: 'Escape' });
     expect(document.querySelector('.tool-history-body')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '关闭工具调用' }));
@@ -95,7 +99,9 @@ describe('工具调用 (the finished calls, where the preview goes)', () => {
     (t.items[0] as { blocks: { result?: string }[] }).blocks[0]!.result = ['[fetched at 2026-11-13T10:00:00Z]', '第1节.md'].join('\n');
     render(<ToolHistory transcript={t} onClose={vi.fn()} />);
     fireEvent.click(document.querySelector('.tool-history-row')!);
-    expect(document.querySelectorAll('.tool-history-text')[1]!.textContent).toBe('第1节.md');
+    const body = document.querySelector('.tool-history-body')!.textContent ?? '';
+    expect(body).toContain('第1节.md');
+    expect(body).not.toContain('fetched at');
   });
 
   it('a result that looks like markup stays text', () => {
@@ -104,6 +110,6 @@ describe('工具调用 (the finished calls, where the preview goes)', () => {
     render(<ToolHistory transcript={t} onClose={vi.fn()} />);
     fireEvent.click(document.querySelector('.tool-history-row')!);
     expect(document.querySelector('.tool-history-body img')).toBeNull();
-    expect(document.querySelectorAll('.tool-history-text')[1]!.textContent).toBe('<img src=x onerror=alert(1)> **粗体**');
+    expect(document.querySelector('.tool-history-body')!.textContent).toContain('<img src=x onerror=alert(1)> **粗体**');
   });
 });

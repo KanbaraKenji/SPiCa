@@ -1,9 +1,10 @@
-// 工具调用 X (the details' last row) opened where the preview goes: every finished call of the open conversation in
-// order, with how it ended (as in the conversation's tool rows), its time, and a click to see its input and result.
-// Input and result are plain text (React text nodes), as the monitor shows a line in full; the result as the
-// conversation's tool rows show it (resultBody: without what only the model reads).
+// 工具调用 (the details' group heading) opened where the preview goes: every call of the open conversation in order,
+// the ones running with their ring, the others with how they ended and their time; a click opens one as the
+// conversation's tool rows do (chat/CallDetail.tsx: the command in its box, the change in red and green, the output),
+// plain text only.
 import { useState } from 'react';
-import { resultBody, type Transcript } from '../store/transcript';
+import type { Transcript } from '../store/transcript';
+import { CallDetail } from '../chat/CallDetail';
 import { toolIcon } from '../chat/Blocks';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { formatDuration } from '../chat/format';
@@ -26,19 +27,9 @@ function endOf(t: ToolBlock): React.ReactNode {
   return t.durationMs !== undefined ? formatDuration(t.durationMs) : '';
 }
 
-/** A call's input as text: a string as it is, anything else as indented JSON. */
-export function inputText(input: unknown): string {
-  if (typeof input === 'string') return input;
-  try {
-    return JSON.stringify(input, null, 2) ?? '';
-  } catch {
-    return String(input);
-  }
-}
-
 export function ToolHistory({ transcript, onClose }: ToolHistoryProps) {
   const live = Boolean(transcript.run);
-  const done = detailTools(transcript).filter((t) => !isRunning(t, live));
+  const done = detailTools(transcript);
   const [open, setOpen] = useState<string | null>(null);
   // a call opened is a layer of Esc (closed before anything under it)
   useEscape(open !== null, () => setOpen(null));
@@ -57,16 +48,15 @@ export function ToolHistory({ transcript, onClose }: ToolHistoryProps) {
           return (
             <li key={t.callId} className={isOpen ? 'tool-history-item is-open' : 'tool-history-item'}>
               <button type="button" className="tool-history-row" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : t.callId)}>
-                <span className="detail-item-icon">{t.state === 'running' || t.state === 'pending' ? <SpicaStatusIcon name="stopped" size={14} /> : toolIcon(t)}</span>
-                <ToolListText t={t} card={transcript.fileCards?.[t.callId]} />
-                <span className="detail-item-meta">{endOf(t)}</span>
+                <span className="detail-item-icon">
+                  {isRunning(t, live) ? <SpicaStatusIcon name="running" size={14} title="进行中" /> : t.state === 'running' || t.state === 'pending' ? <SpicaStatusIcon name="stopped" size={14} /> : toolIcon(t)}
+                </span>
+                <ToolListText t={t} card={transcript.fileCards?.[t.callId]} running={isRunning(t, live)} />
+                <span className="detail-item-meta">{isRunning(t, live) ? '' : endOf(t)}</span>
               </button>
               {isOpen ? (
                 <div className="tool-history-body">
-                  <span className="tool-history-label">输入</span>
-                  <pre className="tool-history-text">{inputText(t.input)}</pre>
-                  <span className="tool-history-label">结果</span>
-                  <pre className="tool-history-text">{t.result !== undefined ? resultBody(t.result) : (t.preview ?? '—')}</pre>
+                  <CallDetail block={t} card={transcript.fileCards?.[t.callId]} />
                 </div>
               ) : null}
             </li>
