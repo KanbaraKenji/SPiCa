@@ -32,10 +32,9 @@
 //
 // The 监控台 is a fourth panel, between the details and the preview, only while it
 // is switched on (nine clicks on the version in 设置 › 关于). It behaves as the details do: a fixed width, there or not
-// at all. Where both do not fit it is the details that go: the monitor is opened on purpose to watch something, the
-// details are open by default. So as the window narrows: the conversation to 440, the details go, then the monitor
-// goes (the narrower details may then fit again), then the preview covers the conversation as before. With it
-// closed every result is as without it.
+// at all. Where both do not fit it is the details that go. (App.tsx goes further, as Claude's Files: while the monitor
+// or the preview is open it passes the details as closed, and their button shows them as a small card over the
+// conversation instead.) With the monitor closed every result is as without it.
 import { PANEL_LIMITS, type PanelWidths } from '../../../shared/settings';
 
 export const SIDEBAR_WIDTH = PANEL_LIMITS.left.initial;

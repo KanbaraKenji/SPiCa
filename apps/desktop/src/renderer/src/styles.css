@@ -7496,6 +7496,29 @@ section.plugins-part > .plugins-part-title {
   flex: 1;
 }
 
+/* The details as a small card over the conversation's top right (App.tsx .info-float): while the monitor or the
+   preview is open the details give way; their button shows them here, as Claude's details over its chat. */
+.info-float {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 20;
+  width: 300px;
+  max-width: calc(100% - 16px);
+  max-height: min(560px, calc(100% - 16px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--spica-border);
+  border-radius: var(--radius-popup);
+  background: var(--spica-menu);
+  box-shadow: var(--spica-shadow);
+}
+
+.info-float .detail {
+  min-height: 0;
+}
+
 /* 设置 › 关于: the version takes the clicks that switch the 监控台 on and off, and looks like plain words (no hand,
    no hover); quick clicks do not select it. */
 .about-version {

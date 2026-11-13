@@ -33,6 +33,7 @@ import { InboxView, type InboxProject } from './shell/InboxView';
 import type { UsageApi } from './settings/Usage';
 import { MonitorView } from './shell/MonitorView';
 import { ToolHistory } from './shell/ToolHistory';
+import { MaxButton } from './ui/MaxButton';
 import { MailStore, useMail } from './store/mail';
 import { needsYou } from '../../shared/mail';
 import { nextDoneNews, unseenDone } from './shell/row-status';
@@ -152,7 +153,12 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [history, setHistory] = useState(false);
   const previewOpen = preview !== null || history;
   const monitorOpen = settings.monitor ? Boolean(settings.panels.monitor) : undefined;
-  const open: Open = { left: settings.panels.left, info: atHome ? homeRight : settings.panels.right, preview: previewOpen, ...(monitorOpen === undefined ? {} : { monitor: monitorOpen }) };
+  // As Claude's Files: while the monitor or the preview is open the details give way at once (not docked); their
+  // button then shows them as a small card over the conversation's top right (infoFloat). Their saved switch stays:
+  // closed the monitor and the preview, the details are back beside the conversation.
+  const infoBlocked = previewOpen || Boolean(monitorOpen);
+  const [infoFloat, setInfoFloat] = useState(false);
+  const open: Open = { left: settings.panels.left, info: !infoBlocked && (atHome ? homeRight : settings.panels.right), preview: previewOpen, ...(monitorOpen === undefined ? {} : { monitor: monitorOpen }) };
   // Panel widths: what the user dragged them to (live while dragging), giving way when the window narrows.
   const [dragging, setDragging] = useState<{ side: 'left' | 'preview'; width: number } | null>(null);
   // A main process older than these settings (dev build not restarted yet) does not send them.
@@ -182,6 +188,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     (side: 'left' | 'info') => {
       const saved = shell.settings.panels;
       const monitor = shell.settings.monitor ? Boolean(saved.monitor) : undefined;
+      // the details given way to the monitor or the preview: their button shows or hides the small card
+      if (side === 'info' && (previewOpen || monitor)) {
+        setInfoFloat((v) => !v);
+        return;
+      }
       const now: Open = { left: saved.left, info: atHome ? homeRight : saved.right, preview: previewOpen, ...(monitor === undefined ? {} : { monitor }) };
       const next = toggleFrom(side, window.innerWidth, now, floating, peeking, { ...DEFAULT_SETTINGS.panelWidths, ...shell.settings.panelWidths });
       if (atHome && side === 'info') setHomeRight(next.open.info);
@@ -743,20 +754,17 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
 
   const leftShown = layout.left !== 'hidden';
   const previewShown = layout.preview !== 'hidden';
-  const infoShown = layout.info === 'docked';
-  // No room for the details (beside the conversation at 440 and the preview): they are not shown at all, and their
-  // button cannot be pressed; its hover says why. Their switch is kept: they come back when there is room.
-  const infoRoom = infoFits(width, open, wantedWidths);
+  // the small card only while the details give way, on a conversation
+  if (infoFloat && (!infoBlocked || view !== 'chat')) setInfoFloat(false);
+  const infoShown = layout.info === 'docked' || infoFloat;
+  // No room for the details (beside the conversation at 440): they are not shown at all, and their button cannot be
+  // pressed; its hover says why. Their switch is kept: they come back when there is room. Given way to the monitor or
+  // the preview, the button shows the small card instead.
+  const infoRoom = infoBlocked || infoFits(width, open, wantedWidths);
   const lastName = lastPreview ? (lastPreview.inline?.name ?? lastPreview.path.split(/[\\/]/).pop() ?? lastPreview.path) : '';
   const previewTip = preview ? '预览' : lastPreview ? `预览：${lastName}` : '没有打开的预览：点对话里的文件打开';
   // A preview floating over a narrow window takes no room: there the window is what is too narrow.
-  const infoTip = infoRoom
-    ? '详情（Ctrl+Alt+B）'
-    : layout.monitor === 'docked'
-      ? '放不下详情：收起监控台，或把窗口拉宽'
-      : layout.preview === 'docked'
-        ? '放不下详情：把预览拖窄或关掉，或把窗口拉宽'
-        : '窗口太窄，放不下详情';
+  const infoTip = infoRoom ? '详情（Ctrl+Alt+B）' : '窗口太窄，放不下详情';
   // The 监控台 (switched on in 设置 › 关于): as the details, no room means not shown and a button that says why.
   const monitorShown = layout.monitor === 'docked';
   const monitorRoom = monitorOpen === undefined ? false : monitorFits(width, open, wantedWidths);
@@ -765,6 +773,22 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     if (!monitorRoom) return;
     shell.update({ panels: { ...settings.panels, monitor: !settings.panels.monitor } });
   };
+  // The monitor over the whole conversation (its head's 最大化), as the preview's; a layer of Esc.
+  const [monitorMax, setMonitorMax] = useState(false);
+  if (monitorMax && (!monitorShown || view !== 'chat')) setMonitorMax(false);
+  useEscape(monitorMax, () => setMonitorMax(false));
+  // The details' small card is a layer of Esc too; a press outside it (not on its button) closes it.
+  useEscape(infoFloat, () => setInfoFloat(false));
+  useEffect(() => {
+    if (!infoFloat) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (t?.closest?.('.info-float, [data-panel-toggle], .context-menu')) return;
+      setInfoFloat(false);
+    };
+    window.addEventListener('mousedown', onDown, true);
+    return () => window.removeEventListener('mousedown', onDown, true);
+  }, [infoFloat]);
   // Maximized only while the preview is there to show; closing it or leaving the conversation ends that.
   const rightCanMax = previewShown && view === 'chat' && !history;
   /**
@@ -786,6 +810,44 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // The preview over the whole conversation is a layer of Esc too (back beside it).
   useEscape(rightMax, () => setRightMax(false));
   const title = view === 'inbox' ? '收件箱' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
+
+  // The details' content: docked beside the conversation, or in the small card over it (infoFloat).
+  const detailsBody = (
+    <>
+      {panelPages.length ? (
+        <div className="right-head panel-head">
+        <div className="tabs right-tabs" role="tablist" aria-label="右栏">
+          <button type="button" role="tab" aria-selected={!panelPluginView} className={!panelPluginView ? 'tab is-on' : 'tab'} onClick={() => setRightTab('detail')}>
+            详情
+          </button>
+          {panelPages.map((v) => (
+            <button key={viewKey(v)} type="button" role="tab" aria-selected={rightTab === viewKey(v)} className={rightTab === viewKey(v) ? 'tab is-on' : 'tab'} onClick={() => setRightTab(viewKey(v))} title={v.pluginTitle}>
+              {v.title}
+            </button>
+          ))}
+        </div>
+        </div>
+      ) : null}
+      {panelPluginView ? (
+        <PluginPage key={viewKey(panelPluginView)} {...pluginProps(panelPluginView)} />
+      ) : (
+      <DetailPanel
+        history={{ open: history, toggle: toggleHistory }}
+        session={session}
+        parent={parent}
+        transcript={transcript}
+        globalCostUsd={totalCost}
+        globalUnpriced={anyUnpriced}
+        onOpenFile={openFile}
+        onPreviewFile={previewFile}
+        onOpenSession={openSession}
+        project={project}
+        activity={project ? (state.activity[project.id] ?? []) : []}
+        hideHeading={panelPages.length > 0}
+      />
+      )}
+    </>
+  );
 
   // What can be done to a session by its name; the sidebar's rows and the name in the title bar share it.
   const rowActions: RowActions = {
@@ -1032,6 +1094,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           ) : (
             <div className="conversation" />
           )}
+          {infoFloat && view === 'chat' ? (
+            <div className="info-float" role="dialog" aria-label="详情">
+              {detailsBody}
+            </div>
+          ) : null}
           {state.notice ? (
             <div className="toast" role="alert">
               <span>{state.notice}</span>
@@ -1042,51 +1109,25 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           ) : null}
         </main>
 
-        {/* The details, between the conversation and the preview: a fixed width, no edge to drag, no 最大化; never
-            covered or floated (no room: not shown). */}
+        {/* The details, between the conversation and the preview: a fixed width, no edge to drag, no 最大化 (no room:
+            not shown; given way to the monitor or the preview: the small card over the conversation, in <main>). */}
         {layout.info !== 'hidden' && view === 'chat' ? (
           <div className="panel panel-right panel-info is-docked" style={{ width: widths.info }}>
-            {panelPages.length ? (
-              <div className="right-head panel-head">
-              <div className="tabs right-tabs" role="tablist" aria-label="右栏">
-                <button type="button" role="tab" aria-selected={!panelPluginView} className={!panelPluginView ? 'tab is-on' : 'tab'} onClick={() => setRightTab('detail')}>
-                  详情
-                </button>
-                {panelPages.map((v) => (
-                  <button key={viewKey(v)} type="button" role="tab" aria-selected={rightTab === viewKey(v)} className={rightTab === viewKey(v) ? 'tab is-on' : 'tab'} onClick={() => setRightTab(viewKey(v))} title={v.pluginTitle}>
-                    {v.title}
-                  </button>
-                ))}
-              </div>
-              </div>
-            ) : null}
-            {panelPluginView ? (
-              <PluginPage key={viewKey(panelPluginView)} {...pluginProps(panelPluginView)} />
-            ) : (
-            <DetailPanel
-              history={{ open: history, toggle: toggleHistory }}
-              session={session}
-              parent={parent}
-              transcript={transcript}
-              globalCostUsd={totalCost}
-              globalUnpriced={anyUnpriced}
-              onOpenFile={openFile}
-              onPreviewFile={previewFile}
-              onOpenSession={openSession}
-              project={project}
-              activity={project ? (state.activity[project.id] ?? []) : []}
-              hideHeading={panelPages.length > 0}
-            />
-            )}
+            {detailsBody}
           </div>
         ) : null}
 
         {/* The 监控台, between the details and the preview: a fixed width, no edge to drag; never covered or floated
             (no room: not shown). Closed, it stops reading the log (MonitorView's watch ends with it). */}
         {monitorShown && view === 'chat' ? (
-          <div className="panel panel-right panel-monitor is-docked" style={{ width: widths.monitor }}>
+          <div className={`panel panel-right panel-monitor is-docked${monitorMax ? ' is-max' : ''}`} style={monitorMax ? undefined : { width: widths.monitor }}>
+            {/* as the preview's head (and Claude's Files): 最大化 and 关闭 at its end */}
             <header className="panel-head monitor-head">
               <span className="detail-heading">监控台</span>
+              <MaxButton max={{ on: monitorMax, toggle: () => setMonitorMax((v) => !v) }} hint="" />
+              <button type="button" className="icon-btn" onClick={() => { setMonitorMax(false); shell.update({ panels: { ...settings.panels, monitor: false } }); }} aria-label="关闭监控台" title="关闭监控台">
+                <Icon name="close" size={14} />
+              </button>
             </header>
             <MonitorView api={bridge.monitor} showInFolder={(p) => void bridge.showInFolder(p)} />
           </div>
