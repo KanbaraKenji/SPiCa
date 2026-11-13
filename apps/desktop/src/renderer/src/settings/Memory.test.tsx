@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import type { MemoryItem, MemoryTidyRun } from '@spica/protocol';
+import type { MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyRun } from '@spica/protocol';
+import { fullTime, timeOf } from '../chat/format';
 import { Memory, MEMORY_CHARS, type MemoryProps, type MemoryTidy } from './Memory';
 
 afterEach(cleanup);
@@ -34,26 +35,132 @@ function setup(over: Partial<MemoryProps> = {}) {
   return props;
 }
 
+const AT = '2026-11-11T07:59:00+08:00';
 const rows = () => [...document.querySelectorAll('.memory-row .memory-text')].map((e) => e.textContent);
+const rowOf = (text: string) => [...document.querySelectorAll<HTMLElement>('.memory-row')].find((r) => r.querySelector('.memory-text')!.textContent === text)!;
+const openRow = (text: string) => fireEvent.click(rowOf(text).querySelector('.memory-open')!);
+const page = () => document.querySelector<HTMLElement>('.memory-detail');
+const facts = () => [...document.querySelectorAll('.memory-fact')].map((f) => `${f.querySelector('dt')!.textContent}=${f.querySelector('dd')!.textContent}`);
+const esc = () => act(() => void fireEvent.keyDown(window, { key: 'Escape' }));
 
 describe('设置 › 记忆', () => {
-  it('lists the active items newest first; the conversation it came from opens at the message; none when it is gone or added here', () => {
-    const p = setup();
+  it('a note is one line: the sentence (whole on hover), the time, 编辑 and 删除 as icons without a box; no conversation in the line', () => {
+    setup();
     expect(rows()).toEqual(['第 5 条', '第 4 条', '第 3 条', '第 1 条']);
-    const links = screen.getAllByRole('button', { name: '周三下午的安排' });
-    expect(links).toHaveLength(2);
-    fireEvent.click(links[0]!);
-    expect(p.onOpenSession).toHaveBeenCalledWith('ses_a', 3);
-    const row4 = document.querySelectorAll('.memory-row')[1]!;
-    expect(within(row4 as HTMLElement).queryByRole('button', { name: '周三下午的安排' })).toBeNull();
+    const row = rowOf('第 3 条');
+    expect(row.classList.contains('setting-row')).toBe(true);
+    expect(row.querySelector('.memory-open')!.getAttribute('title')).toBe('第 3 条');
+    expect(row.querySelector('.memory-time')!.textContent).toBe(timeOf(AT));
+    expect(within(row).getByRole('button', { name: '编辑' }).className).toBe('icon-btn');
+    expect(within(row).getByRole('button', { name: '删除' }).className).toBe('icon-btn');
+    expect(screen.queryByRole('button', { name: '周三下午的安排' })).toBeNull();
   });
 
-  it("each note is a settings row; its 编辑 / 删除 are the settings' shared square buttons (删除 the quiet red)", () => {
+  it("a line opens the note's page: ← 记忆, the whole sentence with 编辑 / 删除, when it changed, the conversation and the user's words", () => {
+    const p = setup();
+    openRow('第 3 条');
+    expect(document.querySelector('.memory-page')).toBeNull();
+    const at = page()!;
+    expect(at.querySelector('.memory-back')!.textContent).toBe('记忆');
+    expect(at.querySelector('.memory-detail-text')!.textContent).toBe('第 3 条');
+    expect(within(at).getByRole('button', { name: '编辑' })).toBeTruthy();
+    expect(within(at).getByRole('button', { name: '删除' })).toBeTruthy();
+    expect(facts()).toEqual([`最后修改=${fullTime(AT)}`, '出处=周三下午的安排', '原话=原话 3']);
+    fireEvent.click(screen.getByRole('button', { name: '周三下午的安排' }));
+    expect(p.onOpenSession).toHaveBeenCalledWith('ses_a', 3);
+  });
+
+  it('the page says no conversation when it was deleted, and neither for a note added here', () => {
     setup();
-    const row = document.querySelector('.memory-row')!;
-    expect(row.classList.contains('setting-row')).toBe(true);
-    expect(within(row as HTMLElement).getByRole('button', { name: '编辑' }).className).toBe('btn btn-small btn-square');
-    expect(within(row as HTMLElement).getByRole('button', { name: '删除' }).className).toBe('btn btn-small btn-quiet-danger btn-square');
+    openRow('第 4 条');
+    expect(facts()).toEqual([`最后修改=${fullTime(AT)}`, '原话=原话 4']);
+    fireEvent.click(page()!.querySelector('.memory-back')!);
+    openRow('第 5 条');
+    expect(facts()).toEqual([`最后修改=${fullTime(AT)}`]);
+  });
+
+  it('← 记忆 goes back to the list, its line focused', () => {
+    setup();
+    openRow('第 3 条');
+    fireEvent.click(page()!.querySelector('.memory-back')!);
+    expect(page()).toBeNull();
+    expect(document.activeElement).toBe(rowOf('第 3 条').querySelector('.memory-open'));
+  });
+
+  it("the pencil opens the page editing; a refusal stays with its reason; saved, the page shows the new words; Esc cancels the edit, not the page", async () => {
+    const edit = vi.fn(async (): Promise<MemoryCardMeta | MemoryRefusal> => ({ refused: 'secret' }));
+    setup({ api: { add: vi.fn(), edit, forget: vi.fn(), clear: vi.fn() } });
+    fireEvent.click(within(rowOf('第 3 条')).getByRole('button', { name: '编辑' }));
+    const box = screen.getByRole('textbox', { name: '记忆内容' }) as HTMLTextAreaElement;
+    expect(box.value).toBe('第 3 条');
+    // the facts stay under the box (the user's words while rewording)
+    expect(facts()).toContain('原话=原话 3');
+    fireEvent.change(box, { target: { value: '邮箱密码是 hunter2' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '保存' })));
+    expect(edit).toHaveBeenCalledWith(3, '邮箱密码是 hunter2');
+    expect(screen.getByRole('alert').textContent).toBe('疑似密码、密钥或证件号码，未保存');
+    await esc();
+    expect(screen.queryByRole('textbox', { name: '记忆内容' })).toBeNull();
+    expect(page()!.querySelector('.memory-detail-text')!.textContent).toBe('第 3 条');
+  });
+
+  it('saved on its page: the page shows the note again, not the box', async () => {
+    const edit = vi.fn(async () => ({ action: 'edited' as const, item: item(3, { text: '新的' }) }));
+    setup({ api: { add: vi.fn(), edit, forget: vi.fn(), clear: vi.fn() } });
+    openRow('第 3 条');
+    fireEvent.click(within(page()!).getByRole('button', { name: '编辑' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '记忆内容' }), { target: { value: '新的' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '保存' })));
+    expect(screen.queryByRole('textbox', { name: '记忆内容' })).toBeNull();
+    expect(page()).toBeTruthy();
+  });
+
+  it('添加 opens the same kind of page with an empty box; too long cannot be saved; saved or Esc, back to the list', async () => {
+    const add = vi.fn(async () => ({ action: 'saved' as const, item: item(6) }));
+    setup({ api: { add, edit: vi.fn(), forget: vi.fn(), clear: vi.fn() } });
+    fireEvent.click(screen.getByRole('button', { name: '添加' }));
+    expect(page()!.querySelector('.memory-back')!.textContent).toBe('记忆');
+    const box = screen.getByRole('textbox', { name: '记忆内容' }) as HTMLTextAreaElement;
+    expect(box.value).toBe('');
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(box, { target: { value: '长'.repeat(MEMORY_CHARS + 1) } });
+    expect(screen.getByRole('alert').textContent).toBe(`超过 ${MEMORY_CHARS} 字，未保存`);
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(box, { target: { value: '周报每周五下午发' } });
+    await act(async () => fireEvent.keyDown(box, { key: 'Enter' }));
+    expect(add).toHaveBeenCalledWith('周报每周五下午发');
+    expect(page()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '添加' }));
+    await esc();
+    expect(page()).toBeNull();
+    expect(rows()).toHaveLength(4);
+  });
+
+  it('删除 asks first, from the list or from the page (then back to the list); 全部清除 asks first', () => {
+    const p = setup();
+    fireEvent.click(within(rowOf('第 4 条')).getByRole('button', { name: '删除' }));
+    expect(screen.getByText('删除这条记忆？')).toBeTruthy();
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '删除' }));
+    expect(p.api.forget).toHaveBeenCalledWith(4);
+    openRow('第 3 条');
+    fireEvent.click(within(page()!).getByRole('button', { name: '删除' }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '删除' }));
+    expect(p.api.forget).toHaveBeenCalledWith(3);
+    expect(page()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '全部清除' }));
+    expect(screen.getByText('清除全部 4 条记忆？')).toBeTruthy();
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '全部清除' }));
+    expect(p.api.clear).toHaveBeenCalled();
+  });
+
+  it('a note gone while its page is open (a tidy merged it, a conversation forgot it): the list', () => {
+    const props = setup();
+    cleanup();
+    const { rerender } = render(<Memory {...props} />);
+    openRow('第 3 条');
+    rerender(<Memory {...props} items={[item(1), item(3, { status: 'forgotten' })]} />);
+    expect(page()).toBeNull();
+    expect(rows()).toEqual(['第 1 条']);
   });
 
   it('the switch is the setting; off, the list stays', () => {
@@ -68,57 +175,6 @@ describe('设置 › 记忆', () => {
     expect(screen.getByText('暂无记忆')).toBeTruthy();
     expect(screen.getByRole('button', { name: '添加' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '全部清除' })).toBeNull();
-  });
-
-  it('编辑 shows the user\'s words only for an item saved in a conversation', () => {
-    setup();
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[2]!);
-    expect(screen.getByText('原话：「原话 3」')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '取消' }));
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]!);
-    expect(screen.queryByText(/原话：/)).toBeNull();
-  });
-
-  it('编辑 saves the new words; a refusal stays in the form with its reason', async () => {
-    const edit = vi.fn(async () => ({ refused: 'secret' as const }));
-    setup({ api: { add: vi.fn(), edit, forget: vi.fn(), clear: vi.fn() } });
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[2]!);
-    const box = screen.getByRole('textbox', { name: '记忆内容' });
-    fireEvent.change(box, { target: { value: '邮箱密码是 hunter2' } });
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '保存' })));
-    expect(edit).toHaveBeenCalledWith(3, '邮箱密码是 hunter2');
-    expect(screen.getByRole('alert').textContent).toBe('疑似密码、密钥或证件号码，未保存');
-    fireEvent.change(box, { target: { value: '周三下午在实验室' } });
-    expect(screen.queryByRole('alert')).toBeNull();
-  });
-
-  it('添加 opens an empty form on top; too long says so and cannot be saved; saved, the form closes', async () => {
-    const add = vi.fn(async () => ({ action: 'saved' as const, item: item(6) }));
-    setup({ api: { add, edit: vi.fn(), forget: vi.fn(), clear: vi.fn() } });
-    fireEvent.click(screen.getByRole('button', { name: '添加' }));
-    const box = screen.getByRole('textbox', { name: '记忆内容' }) as HTMLTextAreaElement;
-    expect(box.value).toBe('');
-    expect(document.querySelector('.memory-list')!.firstElementChild!.contains(box)).toBe(true);
-    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(box, { target: { value: '长'.repeat(MEMORY_CHARS + 1) } });
-    expect(screen.getByRole('alert').textContent).toBe(`超过 ${MEMORY_CHARS} 字，未保存`);
-    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(box, { target: { value: '周报每周五下午发' } });
-    await act(async () => fireEvent.keyDown(box, { key: 'Enter' }));
-    expect(add).toHaveBeenCalledWith('周报每周五下午发');
-    expect(screen.queryByRole('textbox', { name: '记忆内容' })).toBeNull();
-  });
-
-  it('删除 and 全部清除 ask first', () => {
-    const p = setup();
-    fireEvent.click(screen.getAllByRole('button', { name: '删除' })[1]!);
-    expect(screen.getByText('删除这条记忆？')).toBeTruthy();
-    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '删除' }));
-    expect(p.api.forget).toHaveBeenCalledWith(4);
-    fireEvent.click(screen.getByRole('button', { name: '全部清除' }));
-    expect(screen.getByText('清除全部 4 条记忆？')).toBeTruthy();
-    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '全部清除' }));
-    expect(p.api.clear).toHaveBeenCalled();
   });
 });
 

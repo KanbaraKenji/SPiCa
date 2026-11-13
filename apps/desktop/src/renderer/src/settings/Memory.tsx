@@ -1,12 +1,16 @@
-// 设置 › 记忆: the switch, what the assistant remembers (newest first), adding one, editing, deleting
-// and clearing all. Deleting and clearing are for good (the core drops the items and their older versions).
-import { useState } from 'react';
+// 设置 › 记忆: the switch, 整理, and what the assistant remembers (newest first), one line each (as Claude's
+// memory list): the sentence cut to the line, when it last changed, a pencil and a bin at the right end without a
+// box. A line (or the pencil) opens the note's own page in the list's place (as a plugin's page): ← 记忆 at the
+// top left, the whole sentence with 编辑 and 删除, when it last changed, the conversation it was saved in and the
+// user's words. 添加 opens the same kind of page with an empty box. Deleting and clearing are for good (the core
+// drops the items and their older versions).
+import { useEffect, useRef, useState } from 'react';
 import type { MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyChange, MemoryTidyRun } from '@spica/protocol';
 import { Switch } from './Switch';
 import { Group, Pane, Row } from './Group';
 import { Icon } from '../ui/Icon';
 import { ConfirmDialog } from '../ui/Dialog';
-import { timeOf } from '../chat/format';
+import { fullTime, timeOf } from '../chat/format';
 import { useEscape } from '../ui/escape';
 
 /** The most characters in one item (the core refuses longer ones). */
@@ -66,12 +70,85 @@ export function shownMemories(items: MemoryItem[] | null): MemoryItem[] {
   return (items ?? []).filter((m) => m.status === 'active').sort((a, b) => b.id - a.id);
 }
 
+
+/** What the page shows: the list, one note's page (editing it or not), or the page that adds one. */
+type View = { page: 'list' } | { page: 'item'; id: number; editing: boolean } | { page: 'new' };
+
 export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession, tidy }: MemoryProps) {
   const list = shownMemories(items);
-  // One form open at a time: 'new' (添加) or the item being edited.
-  const [open, setOpen] = useState<number | 'new' | null>(null);
+  const [view, setView] = useState<View>({ page: 'list' });
   const [deleting, setDeleting] = useState<MemoryItem | null>(null);
   const [clearing, setClearing] = useState(false);
+  // Back on the list: the line of the note just left is brought into sight and focused.
+  const [returnTo, setReturnTo] = useState<number | null>(null);
+  const top = useRef<HTMLElement>(null);
+  // A note gone while its page is open (deleted, merged by a tidy, forgotten in a conversation): the list.
+  const item = view.page === 'item' ? list.find((m) => m.id === view.id) : undefined;
+  const page = view.page === 'item' && !item ? 'list' : view.page;
+  const toList = (from?: number) => {
+    setReturnTo(from ?? null);
+    setView({ page: 'list' });
+  };
+  const open = (id: number, editing = false) => setView({ page: 'item', id, editing });
+  // A page opens at its top (the list may have been scrolled down to the note).
+  useEffect(() => {
+    if (page !== 'list') top.current?.scrollIntoView?.({ block: 'start' });
+  }, [page]);
+  const dialogs = (
+    <>
+      {deleting ? (
+        <ConfirmDialog
+          title="删除这条记忆？"
+          detail={deleting.text}
+          confirmLabel="删除"
+          danger
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => {
+            void api.forget(deleting.id);
+            if (view.page === 'item' && view.id === deleting.id) toList();
+            setDeleting(null);
+          }}
+        />
+      ) : null}
+      {clearing ? (
+        <ConfirmDialog
+          title={`清除全部 ${list.length} 条记忆？`}
+          confirmLabel="全部清除"
+          danger
+          onCancel={() => setClearing(false)}
+          onConfirm={() => {
+            void api.clear();
+            setClearing(false);
+          }}
+        />
+      ) : null}
+    </>
+  );
+  if (view.page === 'item' && item) {
+    return (
+      <section ref={top} className="settings-section memory-detail" aria-label="记忆">
+        <Back onBack={() => toList(item.id)} />
+        <MemoryDetail
+          item={item}
+          editing={view.editing}
+          title={item.sessionId ? titleOf(item.sessionId) : undefined}
+          onOpenSession={onOpenSession}
+          onEdit={(on) => open(item.id, on)}
+          onSave={(text) => api.edit(item.id, text)}
+          onDelete={() => setDeleting(item)}
+        />
+        {dialogs}
+      </section>
+    );
+  }
+  if (page === 'new') {
+    return (
+      <section ref={top} className="settings-section memory-detail" aria-label="添加记忆">
+        <Back onBack={() => toList()} />
+        <MemoryForm initial="" onCancel={() => toList()} onSave={(text) => api.add(text)} />
+      </section>
+    );
+  }
   return (
     <section className="settings-section memory-page">
       <Group>
@@ -89,7 +166,7 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession,
         title="已记住"
         actions={
           <>
-            <button type="button" className="btn btn-small" disabled={open === 'new'} onClick={() => setOpen('new')}>
+            <button type="button" className="btn btn-small" onClick={() => setView({ page: 'new' })}>
               <Icon name="plus" size={14} />
               添加
             </button>
@@ -101,51 +178,38 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession,
           </>
         }
       >
-        {list.length === 0 && open !== 'new' ? (
+        {list.length === 0 ? (
           <Pane>
             <p className="settings-hint memory-empty">暂无记忆</p>
           </Pane>
         ) : (
           <ul className="memory-list group-list">
-            {open === 'new' ? <MemoryForm key="new" initial="" onCancel={() => setOpen(null)} onSave={(text) => api.add(text)} /> : null}
-            {list.map((m) =>
-              open === m.id ? (
-                <MemoryForm key={m.id} initial={m.text} quote={m.sessionId ? m.quote : undefined} onCancel={() => setOpen(null)} onSave={(text) => api.edit(m.id, text)} />
-              ) : (
-                <MemoryRow key={m.id} item={m} title={m.sessionId ? titleOf(m.sessionId) : undefined} onOpenSession={onOpenSession} onEdit={() => setOpen(m.id)} onDelete={() => setDeleting(m)} />
-              ),
-            )}
+            {list.map((m) => (
+              <MemoryRow
+                key={m.id}
+                item={m}
+                focus={returnTo === m.id}
+                onFocused={() => setReturnTo(null)}
+                onOpen={() => open(m.id)}
+                onEdit={() => open(m.id, true)}
+                onDelete={() => setDeleting(m)}
+              />
+            ))}
           </ul>
         )}
       </Group>
-      {deleting ? (
-        <ConfirmDialog
-          title="删除这条记忆？"
-          detail={deleting.text}
-          confirmLabel="删除"
-          danger
-          onCancel={() => setDeleting(null)}
-          onConfirm={() => {
-            void api.forget(deleting.id);
-            if (open === deleting.id) setOpen(null);
-            setDeleting(null);
-          }}
-        />
-      ) : null}
-      {clearing ? (
-        <ConfirmDialog
-          title={`清除全部 ${list.length} 条记忆？`}
-          confirmLabel="全部清除"
-          danger
-          onCancel={() => setClearing(false)}
-          onConfirm={() => {
-            void api.clear();
-            if (open !== 'new') setOpen(null);
-            setClearing(false);
-          }}
-        />
-      ) : null}
+      {dialogs}
     </section>
+  );
+}
+
+/** ← 记忆 at the top left of a note's page (as ← 已安装 on a plugin's page). */
+function Back({ onBack }: { onBack(): void }) {
+  return (
+    <button type="button" className="back-link memory-back" onClick={onBack}>
+      <Icon name="arrowLeft" size={16} />
+      记忆
+    </button>
   );
 }
 
@@ -209,7 +273,9 @@ function TidyGroup({ tidy, enabled, items }: { tidy: MemoryTidy; enabled: boolea
         <ul className="memory-list memory-tidy-list group-list">
           {shown.changes.map((c, i) => (
             <li key={`${shown.id}-${i}`} className="setting-row memory-tidy-change">
-              <span className="memory-text">{tidyChangeText(c)}</span>
+              <span className="memory-text" title={tidyChangeText(c)} data-tip-clipped="">
+                {tidyChangeText(c)}
+              </span>
               {changeStands(c, shown, items) ? (
                 <button type="button" className="btn btn-small memory-undo" onClick={() => void tidy.undo(shown.id, i)}>
                   撤销
@@ -223,38 +289,97 @@ function TidyGroup({ tidy, enabled, items }: { tidy: MemoryTidy; enabled: boolea
   );
 }
 
-function MemoryRow({ item, title, onOpenSession, onEdit, onDelete }: { item: MemoryItem; title: string | undefined; onOpenSession(id: string, seq?: number): void; onEdit(): void; onDelete(): void }) {
+/** A note in the list: one line (the sentence cut to it, whole on hover; the time), a pencil and a bin without a box. */
+function MemoryRow({ item, focus, onFocused, onOpen, onEdit, onDelete }: { item: MemoryItem; focus: boolean; onFocused(): void; onOpen(): void; onEdit(): void; onDelete(): void }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!focus) return;
+    ref.current?.focus({ preventScroll: true });
+    ref.current?.scrollIntoView?.({ block: 'nearest' });
+    onFocused();
+  }, [focus, onFocused]);
   return (
     <li className="setting-row memory-row">
-      <div className="setting-text">
+      <button ref={ref} type="button" className="memory-open" title={item.text} data-tip-clipped=".memory-text" onClick={onOpen}>
         <span className="memory-text">{item.text}</span>
-        <span className="settings-hint memory-meta">
-          {timeOf(item.updatedAt)}
-          {item.sessionId && title !== undefined ? (
-            <span className="memory-from">
-              <span className="memory-sep">·</span>
-              <button type="button" className="text-btn history-link" title="打开对话" onClick={() => onOpenSession(item.sessionId!, item.seq)}>
-                {title}
-              </button>
-            </span>
-          ) : null}
-        </span>
-      </div>
-      {/* square icon buttons as elsewhere in the settings (删除 as 模型 › 服务商 and 插件来源: the quiet red) */}
+        <span className="settings-hint memory-time">{timeOf(item.updatedAt)}</span>
+      </button>
       <div className="memory-actions">
-        <button type="button" className="btn btn-small btn-square" aria-label="编辑" title="编辑" onClick={onEdit}>
-          <Icon name="pencil" size={14} />
+        <button type="button" className="icon-btn" aria-label="编辑" title="编辑" onClick={onEdit}>
+          <Icon name="pencil" size={16} />
         </button>
-        <button type="button" className="btn btn-small btn-quiet-danger btn-square" aria-label="删除" title="删除" onClick={onDelete}>
-          <Icon name="trash" size={14} />
+        <button type="button" className="icon-btn" aria-label="删除" title="删除" onClick={onDelete}>
+          <Icon name="trash" size={16} />
         </button>
       </div>
     </li>
   );
 }
 
-/** Adding (initial '') or editing an item in place; `quote`: the user's words it was saved from (not for one added here). */
-function MemoryForm({ initial, quote, onCancel, onSave }: { initial: string; quote?: string | undefined; onCancel(): void; onSave(text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined> }) {
+/** A note's page: the whole sentence with 编辑 and 删除 at the right (or the box editing it), then the facts. */
+function MemoryDetail({
+  item,
+  editing,
+  title,
+  onOpenSession,
+  onEdit,
+  onSave,
+  onDelete,
+}: {
+  item: MemoryItem;
+  editing: boolean;
+  /** The conversation it was saved in, by name; undefined when there is none (added here, or deleted). */
+  title: string | undefined;
+  onOpenSession(id: string, seq?: number): void;
+  onEdit(on: boolean): void;
+  onSave(text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
+  onDelete(): void;
+}) {
+  return (
+    <>
+      {editing ? (
+        <MemoryForm initial={item.text} onCancel={() => onEdit(false)} onSave={onSave} />
+      ) : (
+        <header className="memory-detail-head">
+          <h3 className="memory-detail-text">{item.text}</h3>
+          <div className="memory-detail-actions">
+            <button type="button" className="btn btn-small" onClick={() => onEdit(true)}>
+              编辑
+            </button>
+            <button type="button" className="btn btn-small btn-quiet-danger" onClick={onDelete}>
+              删除
+            </button>
+          </div>
+        </header>
+      )}
+      <dl className="memory-facts">
+        <div className="memory-fact">
+          <dt>最后修改</dt>
+          <dd>{fullTime(item.updatedAt)}</dd>
+        </div>
+        {item.sessionId && title !== undefined ? (
+          <div className="memory-fact">
+            <dt>出处</dt>
+            <dd>
+              <button type="button" className="text-btn history-link" title="打开对话" onClick={() => onOpenSession(item.sessionId!, item.seq)}>
+                {title}
+              </button>
+            </dd>
+          </div>
+        ) : null}
+        {item.sessionId && item.quote ? (
+          <div className="memory-fact">
+            <dt>原话</dt>
+            <dd className="memory-quote">{item.quote}</dd>
+          </div>
+        ) : null}
+      </dl>
+    </>
+  );
+}
+
+/** The box adding (initial '') or editing a note, with 取消 and 保存 under it. Esc cancels it (a layer). */
+function MemoryForm({ initial, onCancel, onSave }: { initial: string; onCancel(): void; onSave(text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined> }) {
   const [text, setText] = useState(initial);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -271,40 +396,37 @@ function MemoryForm({ initial, quote, onCancel, onSave }: { initial: string; quo
     });
   };
   const shown = tooLong ? REFUSED.too_long : problem;
-  // A layer of Esc: cancels the edit, and only that (the settings stay open).
+  // A layer of Esc: cancels the edit (or the adding), and only that (the settings stay open).
   useEscape(true, onCancel);
   return (
-    <li className="setting-row memory-row is-editing">
-      <div className="memory-edit">
-        <textarea
-          className="input textarea memory-input"
-          aria-label="记忆内容"
-          rows={2}
-          value={text}
-          autoFocus
-          spellCheck={false}
-          onChange={(e) => {
-            setText(e.target.value);
-            setProblem(null);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              save();
-            }
-          }}
-        />
-        {shown ? <span className="field-error" role="alert">{shown}</span> : null}
-        {quote ? <span className="settings-hint memory-quote">原话：「{quote}」</span> : null}
-        <div className="memory-edit-actions">
-          <button type="button" className="btn btn-small" onClick={onCancel}>
-            取消
-          </button>
-          <button type="button" className="btn btn-small btn-primary" disabled={!value || tooLong || value === initial || busy} onClick={save}>
-            保存
-          </button>
-        </div>
+    <div className="memory-edit">
+      <textarea
+        className="input textarea memory-input"
+        aria-label="记忆内容"
+        rows={3}
+        value={text}
+        autoFocus
+        spellCheck={false}
+        onChange={(e) => {
+          setText(e.target.value);
+          setProblem(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            save();
+          }
+        }}
+      />
+      {shown ? <span className="field-error" role="alert">{shown}</span> : null}
+      <div className="memory-edit-actions">
+        <button type="button" className="btn btn-small" onClick={onCancel}>
+          取消
+        </button>
+        <button type="button" className="btn btn-small btn-primary" disabled={!value || tooLong || value === initial || busy} onClick={save}>
+          保存
+        </button>
       </div>
-    </li>
+    </div>
   );
 }
