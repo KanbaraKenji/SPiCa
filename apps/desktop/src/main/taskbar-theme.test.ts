@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { followTaskbarTheme, parseSystemUsesLightTheme, readTaskbarDark, regExePath, THEME_SETTLE_MS } from './taskbar-theme';
+import { followTaskbarTheme, parseSystemUsesLightTheme, readTaskbarDark, regExePath, THEME_SETTLE_MS, VISIBLE_POLL_MS } from './taskbar-theme';
 
 // A stand-in for Electron's nativeTheme value and the registry value, which the tests move independently.
 function world(start: { native: boolean; system: boolean | null }) {
@@ -92,6 +92,51 @@ describe('taskbar icon colour', () => {
     w.state.native = false;
     await w.settle();
     expect(w.applied).toEqual([true, false]);
+  });
+
+  it('no event comes (a light or dark skin, or only the taskbar switched): while the window is seen, the icon still follows', async () => {
+    const w = world({ native: true, system: true });
+    await w.settle();
+    w.follower.setVisible(true);
+    // Windows switches to a light taskbar; nativeTheme never says so and 'updated' never comes.
+    w.state.system = false;
+    await vi.advanceTimersByTimeAsync(VISIBLE_POLL_MS + 10);
+    expect(w.applied).toEqual([true, false]);
+    w.state.system = true;
+    await vi.advanceTimersByTimeAsync(VISIBLE_POLL_MS + 10);
+    expect(w.applied).toEqual([true, false, true]);
+  });
+
+  it('hidden in the tray or minimised: nothing is read; shown again or focused, it is checked once at once', async () => {
+    let reads = 0;
+    const state = { system: true };
+    const applied: boolean[] = [];
+    const f = followTaskbarTheme({
+      readTaskbarDark: async () => {
+        reads++;
+        return state.system;
+      },
+      nativeDark: () => true,
+      apply: (d) => applied.push(d),
+      setTimer: (fn, ms) => setTimeout(fn, ms),
+      clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+    });
+    await vi.advanceTimersByTimeAsync(THEME_SETTLE_MS + 10);
+    expect(reads).toBe(1); // startup
+    f.setVisible(true);
+    f.setVisible(true); // shown twice: still one timer
+    await vi.advanceTimersByTimeAsync(VISIBLE_POLL_MS + 10);
+    expect(reads).toBe(2);
+    f.setVisible(false);
+    state.system = false;
+    await vi.advanceTimersByTimeAsync(10 * VISIBLE_POLL_MS);
+    expect(reads).toBe(2);
+    expect(applied).toEqual([true]);
+    f.recheck(); // shown again / focus
+    f.setVisible(true);
+    await vi.advanceTimersByTimeAsync(THEME_SETTLE_MS + 10);
+    expect(reads).toBe(3);
+    expect(applied).toEqual([true, false]);
   });
 
   it('runs reg.exe from the system folder by its full path; without SystemRoot it does not run anything', async () => {

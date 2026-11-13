@@ -65,7 +65,7 @@ import { accountAtStart } from './user-account';
 import { SettingsStore } from './settings-store';
 import { captureOnce, runShots } from './shots';
 import { flatten, icoFromPngs, inkFor, TASKBAR_FRAME_SIZES } from './icon';
-import { followTaskbarTheme, readTaskbarDark } from './taskbar-theme';
+import { followTaskbarTheme, readTaskbarDark, type TaskbarFollower } from './taskbar-theme';
 import { PREVIEW_SCHEME, PreviewFiles, readPreview, readPreviewFile } from './preview';
 import { FLOW_SCHEME, flowFile } from './flow-scheme';
 import { AttachImages } from './images';
@@ -595,7 +595,7 @@ function taskbarIco(dark: boolean): Uint8Array | undefined {
 }
 
 let buttonRefresh: ReturnType<typeof setTimeout> | undefined;
-let taskbarTheme: { onUpdated(): void } | undefined;
+let taskbarTheme: TaskbarFollower | undefined;
 
 /**
  * Only an installed (or portable) build touches shortcuts, and not while it runs
@@ -840,8 +840,9 @@ function createMainWindow(): BrowserWindow {
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (!app.isPackaged && devUrl) void win.loadURL(devUrl);
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
-  // The icon follows the taskbar's colour (main/taskbar-theme.ts): now, and after each system switch.
-  taskbarTheme = followTaskbarTheme({
+  // The icon follows the taskbar's colour (main/taskbar-theme.ts): now, after each 'updated', when the window gets the
+  // focus or is shown again, and every so often while it can be seen ('updated' does not come for every switch).
+  const follower = followTaskbarTheme({
     readTaskbarDark,
     nativeDark: () => nativeTheme.shouldUseDarkColorsForSystemIntegratedUI,
     apply: (dark) => {
@@ -851,6 +852,18 @@ function createMainWindow(): BrowserWindow {
     setTimer: (fn, ms) => setTimeout(fn, ms),
     clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
   });
+  taskbarTheme = follower;
+  const seen = () => !win.isDestroyed() && win.isVisible() && !win.isMinimized();
+  const shownAgain = () => {
+    follower.recheck();
+    follower.setVisible(seen());
+  };
+  win.on('focus', () => follower.recheck());
+  win.on('show', shownAgain);
+  win.on('restore', shownAgain);
+  win.on('hide', () => follower.setVisible(false));
+  win.on('minimize', () => follower.setVisible(false));
+  win.on('closed', () => follower.setVisible(false));
   return win;
 }
 
