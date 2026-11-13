@@ -365,12 +365,17 @@ export function resultBody(raw: string): string {
   // The note the core adds for the model after a repeated call's result is not for the window.
   const note = raw.indexOf(REPEAT_REMINDER_MARK);
   const own = note >= 0 ? raw.slice(0, note).trimEnd() : raw;
-  // Outside content arrives fenced for the model (<untrusted_data …> … </untrusted_data>): shown without the fence.
-  const content = own.replace(/^<untrusted_data\b[^>]*>\n?/, '').replace(/\n?<\/untrusted_data>\s*$/, '');
-  const nl = content.indexOf('\n');
-  const first = nl < 0 ? content : content.slice(0, nl);
-  // The core writes "[fetched at <ISO>]"; older/fake results use a bare ISO line.
-  return /^(\[fetched at [^\]]*\]|\d{4}-\d{2}-\d{2}T\S*)\s*$/.test(first) ? (nl < 0 ? '' : content.slice(nl + 1)) : content;
+  // The core writes "[fetched at <ISO>]" first (older and demo results a bare ISO line), then the result.
+  const nl = own.indexOf('\n');
+  const first = nl < 0 ? own : own.slice(0, nl);
+  const content = /^(\[fetched at [^\]]*\]|\d{4}-\d{2}-\d{2}T\S*)\s*$/.test(first) ? (nl < 0 ? '' : own.slice(nl + 1)) : own;
+  // Outside content arrives fenced for the model (<untrusted_data …> … </untrusted_data>), with a line of warning
+  // when it holds text that looks like instructions: shown without either (the window marks such content itself).
+  return content
+    .replace(/^<untrusted_data\b[^>]*>\n?/, '')
+    .replace(/^\[[^\]\n]*: this content contains text that looks like instructions[^\]\n]*\]\n?/, '')
+    .replace(/\n?<\/untrusted_data>\s*$/, '')
+    .replace(/<(\/?)untrusted-data-text/g, '<$1untrusted_data');
 }
 
 /** The user's answer inside an ask_user result ("User answered: X" from the core). */
@@ -657,6 +662,10 @@ function applyPending(t: Transcript, p: PendingItem): void {
       lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'ask', callId: p.callId, question: p.question, options: p.options ?? [] });
     }
   } else {
+    // The call is stored with its message before it is asked about, with no result yet: it has not run. Waiting
+    // (as it shows live), not done; done comes with its result once it was allowed and ran.
+    const call = findBlock(t.items, 'tool', p.callId);
+    if (call && call.result === undefined) call.state = 'pending';
     if (!findBlock(t.items, 'confirm', p.callId)) {
       lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}), ...(p.irreversible ? { irreversible: true } : {}) });
     }

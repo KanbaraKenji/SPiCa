@@ -477,7 +477,7 @@ describe('the conversation’s sizes', () => {
   it('everything in the code font that shows code follows 外观 › 代码 › 字号, on lines in proportion to 13 on 19', () => {
     expect(block(':root')).toContain('--code-size: 13px');
     expect(block(':root')).toContain('--code-line: calc(var(--code-size) * 19 / 13)');
-    for (const sel of ['.md pre code', '.tool-command pre', '.tool-args', '.tool-result', '.confirm-args dd', '.preview-code', '.code-theme-preview'])
+    for (const sel of ['.md pre code', '.tool-command pre', '.tool-args', '.tool-output', '.file-change', '.confirm-args dd', '.preview-code', '.code-theme-preview'])
       expect(block(sel), sel).toContain('font-size: var(--code-size);\n  line-height: var(--code-line)');
   });
 });

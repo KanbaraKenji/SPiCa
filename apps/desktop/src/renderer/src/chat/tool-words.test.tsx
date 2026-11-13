@@ -112,11 +112,14 @@ describe('the innermost level', () => {
     fireEvent.click(screen.getByRole('button', { name: /Ran 列出报价表/ }));
     expect(document.querySelector('.tool-command pre')?.textContent).toBe('$ Get-ChildItem *.xlsx');
     expect(document.querySelector('.tool-command .hl-built_in, .tool-command [class^="hl-"]')).toBeTruthy();
-    expect(document.querySelector('.tool-result')?.textContent).toBe('报价.xlsx');
+    expect(document.querySelector('.tool-output')?.textContent).toBe('报价.xlsx');
     expect(screen.getAllByRole('button', { name: '复制' }).length).toBe(1);
     // A step that is not a command: its arguments and its result as plain text, no code box.
     fireEvent.click(screen.getByRole('button', { name: /Started 「整理报价」/ }));
     expect(document.querySelectorAll('.tool-command').length).toBe(1);
-    expect(document.querySelector('.tool-args')?.textContent).toBe('title: 整理报价\ntask: 把四家报价整理成表');
+    expect([...document.querySelectorAll('.tool-args .tool-arg')].map((r) => [r.querySelector('.tool-arg-key')?.textContent, r.querySelector('.tool-arg-value')?.textContent])).toEqual([
+      ['title', '整理报价'],
+      ['task', '把四家报价整理成表'],
+    ]);
   });
 });

@@ -19,6 +19,7 @@ import { blockLanguage, blockLanguageName, colourSplit, highlightCode } from './
 import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS } from './format';
 import { groupWords, runningGroup, runningWords, toolWords } from './tool-words';
 import { hostOf } from './sources';
+import { CallDetail, CommandBox } from './CallDetail';
 
 /** Opens a conversation by id, at message number `seq` when given (rows and links from earlier conversations). */
 export const OpenSessionContext = createContext<((id: string, seq?: number) => void) | null>(null);
@@ -607,7 +608,15 @@ function ToolText({ block }: { block: ToolBlock }) {
     <span className="tool-text" title={w.full ?? (block.summary && block.name === 'run_command' ? toolArg(block, 'command') : undefined)}>
       {w.verb ? <span className="tool-verb">{w.verb}</span> : null}
       {w.verb ? ' ' : null}
-      <span className="tool-object">{w.object}</span>
+      {w.file ? (
+        <span className="tool-object">
+          {w.file.name}
+          {w.file.added ? <span className="file-lines-added"> +{w.file.added}</span> : null}
+          {w.file.removed ? <span className="file-lines-removed"> −{w.file.removed}</span> : null}
+        </span>
+      ) : (
+        <span className="tool-object">{w.object}</span>
+      )}
     </span>
   );
 }
@@ -617,73 +626,17 @@ const toolArg = (b: ToolBlock, key: string): string => {
   return typeof v === 'string' ? v : '';
 };
 
-/** A call's arguments as short lines (long values cut), for steps that are not a command. */
-function argsText(input: unknown): string {
-  if (!input || typeof input !== 'object') return '';
-  return Object.entries(input as Record<string, unknown>)
-    .map(([k, v]) => {
-      const t = typeof v === 'string' ? v : JSON.stringify(v);
-      return `${k}: ${t && t.length > 300 ? `${t.slice(0, 300)}…` : t}`;
-    })
-    .join('\n');
-}
-
 /**
- * The innermost level: a command as written (in a code box of its own that scrolls) and what it printed; other
- * steps give their arguments and their result as plain text; the history tools their table.
+ * The innermost level: the history tools their table, web calls their pages; every other call what it did, how it
+ * ended when it failed and what came out (chat/CallDetail.tsx).
  */
 function ToolDetail({ block }: { block: ToolBlock }) {
   const history = useContext(HistoryCardsContext)?.[block.callId];
   const sources = useContext(SourceCardsContext)?.[block.callId];
+  const card = useContext(ToolCardsContext)?.[block.callId];
   if (history && HISTORY_TOOLS.has(block.name)) return <HistoryTable card={history} />;
   if (sources) return <SourceList card={sources} />;
-  const body = block.result ?? block.preview;
-  const command = block.name === 'run_command' ? toolArg(block, 'command') : '';
-  const args = command ? '' : argsText(block.input);
-  return (
-    <div className="tool-detail">
-      {command ? <CommandBox command={command} /> : args ? <pre className="tool-args">{args}</pre> : null}
-      {body ? <pre className="tool-result">{body}</pre> : !command && !args ? <p className="tool-empty">—</p> : null}
-    </div>
-  );
-}
-
-/**
- * A command as written: $ and the command, coloured as PowerShell, in a box that scrolls on its own. `marks`
- * (where the dangerous words are): those words on a red ground in place of the colours. `bare`: no box and no
- * head of its own (the card it is in is the box and has the copy button).
- */
-function CommandBox({ command, marks, bare }: { command: string; marks?: [number, number][] | undefined; bare?: boolean }) {
-  const red = marks && marks.length ? marks : null;
-  const coloured = useMemo(() => (red ? null : highlightCode('powershell', command)), [command, red]);
-  let body: ReactNode = coloured ?? command;
-  if (red) {
-    const parts: ReactNode[] = [];
-    let at = 0;
-    red.forEach(([a, b], i) => {
-      if (a < at) return;
-      parts.push(command.slice(at, a), <mark key={i} className="cmd-danger">{command.slice(a, b)}</mark>);
-      at = b;
-    });
-    parts.push(command.slice(at));
-    body = parts;
-  }
-  return (
-    <div className={bare ? 'tool-command is-bare' : 'tool-command'}>
-      {bare ? null : (
-        <div className="code-head">
-          <span className="code-lang" />
-          <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(command)} />
-        </div>
-      )}
-      <pre>
-        <code>
-          <span className="tool-prompt">$ </span>
-          {body}
-        </code>
-      </pre>
-    </div>
-  );
+  return <CallDetail block={block} card={card} />;
 }
 
 /** One call in a group's list: its state first, its words, how it ended; a click opens the command and its output. */
