@@ -707,6 +707,32 @@ function ToolItem({ block }: { block: ToolBlock }) {
   );
 }
 
+/** A stretch of thinking among a group's calls: a line of its own in the list, opening to the thoughts. */
+function ThinkingItem({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={open ? 'tool-item is-open' : 'tool-item'}>
+      <button type="button" className="tool-item-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <span className="fold-icon">
+          <Icon name="thinking" size={14} />
+        </span>
+        <span className="tool-text">
+          <span className="tool-verb">思考过程</span>
+        </span>
+        <Icon name="chevronRight" size={14} className="fold-chevron" />
+      </button>
+      {open ? (
+        <div className="tool-item-body">
+          <p className="thinking-text">{text}</p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** A step in a group: a call, or the thinking the model did between calls. */
+export type GroupStep = ToolBlock | { type: 'thinking'; text: string };
+
 /** `since`: a call on its own that is what the run is doing now: said as Running … with the run's clock at the end. */
 function ToolRow({ block, since }: { block: ToolBlock; since?: number | undefined }) {
   const [open, setOpen] = useState(false);
@@ -733,15 +759,17 @@ export function runningText(running: ToolBlock[]): string {
 
 /**
  * Consecutive tool calls fold into one line that says what they did (Ran 4 commands, created a file); open, it
- * lists them one per line; a call opens to its command and output. A single call is its own line. `since`: these
+ * lists them one per line; a call opens to its command and output. A single call is its own line. `steps`: the
+ * calls with the thinking between them, in order (the line counts the calls only; open, the thinking has lines of
+ * its own among them); a single call with thinking is a group too. `since`: these
  * are what the run is doing now: while some run, the line says so (the turning mark first, Running and the
  * step, the run's clock at the end) in place of the status line under the answer.
  */
-export function ToolGroup({ blocks, since }: { blocks: ToolBlock[]; since?: number | undefined }) {
+export function ToolGroup({ blocks, steps = blocks, since }: { blocks: ToolBlock[]; steps?: GroupStep[]; since?: number | undefined }) {
   const [open, setOpen] = useState(false);
   const cards = useContext(ToolCardsContext);
   const done = useContext(RoundDoneContext);
-  if (blocks.length === 1 && blocks[0]) return <ToolRow block={blocks[0]} since={since} />;
+  if (blocks.length === 1 && blocks[0] && steps.length === 1) return <ToolRow block={blocks[0]} since={since} />;
   const running = blocks.filter((b) => b.state === 'running');
   const busy = running.length > 0 || blocks.some((b) => b.state === 'pending');
   const now = since !== undefined && running.length > 0;
@@ -752,9 +780,7 @@ export function ToolGroup({ blocks, since }: { blocks: ToolBlock[]; since?: numb
   return (
     <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={now ? LIVE_MARK : <Icon name="tool" size={14} />} label={label} meta={meta} tail={now ? <RunClock since={since} /> : undefined}>
       <div className="tool-list">
-        {blocks.map((b) => (
-          <ToolItem key={b.callId} block={b} />
-        ))}
+        {steps.map((b, i) => (b.type === 'thinking' ? <ThinkingItem key={`thinking-${i}`} text={b.text} /> : <ToolItem key={b.callId} block={b} />))}
       </div>
     </Disclosure>
   );

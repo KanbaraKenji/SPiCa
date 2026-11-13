@@ -112,22 +112,41 @@ function fileActions(actions: ConversationActions, cwd: string | undefined) {
   return actions.revealFile ? { reveal: actions.revealFile, cwd, imageUrl: actions.imageUrl } : undefined;
 }
 
+type ToolStep = Extract<Block, { type: 'tool' }>;
+type ThinkStep = Extract<Block, { type: 'thinking' }>;
+
 type Segment =
-  | { kind: 'tools'; blocks: Extract<Block, { type: 'tool' }>[] }
-  | { kind: 'memory'; block: Extract<Block, { type: 'tool' }> }
+  | { kind: 'tools'; blocks: ToolStep[]; steps: (ToolStep | ThinkStep)[] }
+  | { kind: 'memory'; block: ToolStep }
   | { kind: 'one'; block: Exclude<Block, { type: 'tool' }> };
 
-function segments(blocks: Block[]): Segment[] {
+/**
+ * Calls and the thinking between them fold into one group (a model that thinks before every call would otherwise
+ * leave 思考过程 and a call, 思考过程 and a call… line by line). Words of the answer, a card or a memory line end a
+ * group. Thinking with no call beside it stays its own 思考过程 line. `live`: the answer is being written: thinking
+ * still at its very end stays out of the group, its own line saying 正在思考, until the next call comes.
+ */
+function segments(blocks: Block[], live = false): Segment[] {
   const out: Segment[] = [];
-  for (const b of blocks) {
+  let run: (ToolStep | ThinkStep)[] = [];
+  const flush = () => {
+    const tools = run.filter((b): b is ToolStep => b.type === 'tool');
+    if (tools.length) out.push({ kind: 'tools', blocks: tools, steps: run });
+    else for (const b of run) out.push({ kind: 'one', block: b as ThinkStep });
+    run = [];
+  };
+  blocks.forEach((b, i) => {
+    const thinkingNow = live && b.type === 'thinking' && i === blocks.length - 1;
     // remember / forget: their own line (the 已记住 line), not a step in a group.
-    if (b.type === 'tool' && MEMORY_TOOLS.has(b.name)) out.push({ kind: 'memory', block: b });
-    else if (b.type === 'tool') {
-      const last = out[out.length - 1];
-      if (last?.kind === 'tools') last.blocks.push(b);
-      else out.push({ kind: 'tools', blocks: [b] });
-    } else out.push({ kind: 'one', block: b });
-  }
+    if (b.type === 'tool' && !MEMORY_TOOLS.has(b.name)) run.push(b);
+    else if (b.type === 'thinking' && !thinkingNow) run.push(b);
+    else {
+      flush();
+      if (b.type === 'tool') out.push({ kind: 'memory', block: b });
+      else out.push({ kind: 'one', block: b });
+    }
+  });
+  flush();
   return out;
 }
 
@@ -178,7 +197,7 @@ function Response({
   const newest = shown === all.length - 1;
   const view = all[shown]!;
   const blocks = view.blocks;
-  const segs = segments(blocks);
+  const segs = segments(blocks, live);
   const files = filesOf(blocks, cards, moved, lists);
   const tools = useContext(AnswerToolsContext);
   const webImages = webImagesFor(blocks, live);
@@ -200,7 +219,7 @@ function Response({
           const kinds = [...new Set(s.blocks.map((b) => b.flagged).filter((k): k is NonNullable<typeof k> => Boolean(k)))];
           return (
             <Fragment key={s.blocks[0]?.callId ?? i}>
-              <ToolGroup blocks={s.blocks} since={live && i === segs.length - 1 ? since : undefined} />
+              <ToolGroup blocks={s.blocks} steps={s.steps} since={live && i === segs.length - 1 ? since : undefined} />
               {kinds.map((k) => (
                 <p key={k} className="turn-note guard-note status-with-icon">
                   <SpicaStatusIcon name="info" size={14} />

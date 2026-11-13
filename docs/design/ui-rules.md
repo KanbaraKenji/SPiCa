@@ -91,6 +91,7 @@
 | **定** 看大图时可以直接切上一张、下一张（‹ N of M ›，方向键也行），不用关掉再点 | 看大图 | 对应测试 |
 | **定** 弹窗右上角有 ×（设置弹窗、询问框） | `settings/**`、`ui/CloseDialog.tsx` | 人工 |
 | **定** 侧栏左下角设置的入口只有齿轮，旁边不写「设置」 | `shell/Sidebar.tsx` | 人工 |
+| **暂定** 回答里夹在工具调用之间的思考并进工具组：概述只数调用，点开按先后列出思考和调用；只有思考的一轮单独一行「思考过程」；正在写的思考在组下面单独一行，下一次调用来了才并进去 | `chat/Conversation.tsx` 的 `segments`、`chat/Blocks.tsx` 的 `ToolGroup` | `chat/ThinkingGroup.test.tsx` |
 
 ## 6. 提示和状态
 
