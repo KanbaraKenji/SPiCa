@@ -1933,9 +1933,12 @@ pre .hl-punctuation {
   height: 26px;
 }
 
+/* Every box of a call opened (the command, the arguments, the change, what came out): at most 20 lines high, then
+   it scrolls inside, its scroll bar on the right (the app's own); at either end the wheel goes on to the
+   conversation. The 20 lines are the code font's, plus the box's own padding and edges. */
 .tool-command pre {
   margin: 0;
-  max-height: 200px;
+  max-height: calc(var(--code-line) * 20 + 8px);
   overflow: auto;
   padding: 0 10px 8px;
   font-family: var(--font-mono);
@@ -1960,7 +1963,7 @@ pre .hl-punctuation {
    went in is boxed, what came out is not). Short values after their key; long text and lists under it, laid out. */
 .tool-args {
   margin: 0;
-  max-height: 240px;
+  max-height: calc(var(--code-line) * 20 + 18px);
   overflow: auto;
   padding: 8px 10px;
   border-radius: var(--radius-s);
@@ -2018,8 +2021,7 @@ pre .hl-punctuation {
 }
 
 /* What came out: as printed, in the code font, with no box of its own (the input above has one); JSON coloured
-   as code. Long output shows its start and 显示更多. */
-.tool-output-wrap,
+   as code. Past 20 lines it scrolls inside. */
 .file-change-wrap {
   display: flex;
   flex-direction: column;
@@ -2031,6 +2033,8 @@ pre .hl-punctuation {
 .tool-output {
   align-self: stretch;
   margin: 0;
+  max-height: calc(var(--code-line) * 20);
+  overflow-y: auto;
   padding: 0 2px;
   font-family: var(--font-mono);
   font-size: var(--code-size);
@@ -2054,7 +2058,7 @@ pre .hl-punctuation {
 .file-change {
   align-self: stretch;
   margin: 0;
-  max-height: 480px;
+  max-height: calc(var(--code-line) * 20 + 10px);
   overflow: auto;
   padding: 4px 0;
   border-radius: var(--radius-s);

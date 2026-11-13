@@ -1,10 +1,11 @@
 // What a tool call shows opened, as in the Claude app: what was done (the command in its box, or the arguments laid
 // out; a file written or edited as a change with green and red lines), how it ended when it failed (one red line:
-// Exit code 2, HTTP 404 …, 已拒绝), and what came out (as printed, no box; JSON indented and coloured). Only what
-// people see: the model's copy keeps its fence and notes (resultBody in store/transcript.ts takes them off).
+// Exit code 2, HTTP 404 …, 已拒绝), and what came out (as printed, no box; JSON indented and coloured). Any of these
+// longer than 20 lines is 20 lines high and scrolls inside (styles.css --detail-lines). Only what people see: the
+// model's copy keeps its fence and notes (resultBody in store/transcript.ts takes them off).
 // Plain text only: nothing in a result is rendered as HTML or Markdown.
-import { useMemo, useState, type ReactNode } from 'react';
-import type { FileCardMeta } from '@spica/protocol';
+import { useMemo, type ReactNode } from 'react';
+import type { FileCardMeta, FileChangeMeta } from '@spica/protocol';
 import { highlightCode } from './highlight';
 import { resultBody, type Block } from '../store/transcript';
 import { clipboard } from '../ui/clipboard';
@@ -12,10 +13,8 @@ import { CopyButton } from '../ui/CopyButton';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
 
-/** Output longer than this many lines shows its start, then 显示更多. */
-export const OUTPUT_LINES = 30;
-/** A change of more lines than this shows its start, then 显示更多 (a file of thousands of lines stays quick). */
-export const CHANGE_LINES = 400;
+/** At most this many lines of a change or an output are drawn (a file of thousands of lines stays quick); ⋯ after. */
+export const DRAWN_LINES = 2000;
 /** Past this many old × new lines the change is not matched line by line: the old lines out, the new ones in. */
 const MATCH_MAX = 4_000_000;
 
@@ -103,33 +102,14 @@ export function jsonLaidOut(t: string): string | null {
   }
 }
 
-/** Long text: its first `n` lines, then 显示更多 for the rest (and 收起). */
-function useFold(lines: number, n: number) {
-  const [all, setAll] = useState(false);
-  const cut = lines > n && !all;
-  const button =
-    lines > n ? (
-      <button type="button" className="btn btn-small tool-more" onClick={() => setAll((v) => !v)}>
-        {all ? '收起' : '显示更多'}
-      </button>
-    ) : null;
-  return { cut, button };
-}
-
 /** What came out: as printed, in the code font, no box; JSON indented and coloured. */
 export function CallOutput({ text: out }: { text: string }) {
   const json = useMemo(() => jsonLaidOut(out), [out]);
   const shown = json ?? out;
   const lines = shown.split('\n');
-  const { cut, button } = useFold(lines.length, OUTPUT_LINES);
-  const visible = cut ? lines.slice(0, OUTPUT_LINES).join('\n') : shown;
+  const visible = lines.length > DRAWN_LINES ? `${lines.slice(0, DRAWN_LINES).join('\n')}\n⋯` : shown;
   const coloured = useMemo(() => (json ? highlightCode('json', visible) : null), [json, visible]);
-  return (
-    <div className="tool-output-wrap">
-      <pre className={json ? 'tool-output is-json' : 'tool-output'}>{coloured ?? visible}</pre>
-      {button}
-    </div>
-  );
+  return <pre className={json ? 'tool-output is-json' : 'tool-output'}>{coloured ?? visible}</pre>;
 }
 
 /** Fits after its key: a number, a yes or no, a short line, or a short list or object written on one line. */
@@ -175,9 +155,10 @@ const LANGUAGES: Record<string, string> = {
 export const languageOf = (path: string): string | null => LANGUAGES[path.split('.').pop()?.toLowerCase() ?? ''] ?? null;
 
 export interface ChangeLine {
-  kind: 'same' | 'in' | 'out';
+  /** `gap`: lines left out between two places that changed (or past the last one drawn): ⋯. */
+  kind: 'same' | 'in' | 'out' | 'gap';
   text: string;
-  /** Line number in the file, when it is known (a whole file written). */
+  /** Line number in the file, when it is known: the old file's for a removed line, the new file's for the others. */
   n?: number;
   /** The part of the line that changed (paired with a line on the other side): [start, end). */
   changed?: [number, number];
@@ -205,8 +186,33 @@ export function lineChange(before: string, after: string): ChangeLine[] {
     } else if (i < a.length && (j >= b.length || lcs[i + 1]![j]! >= lcs[i]![j + 1]!)) out.push({ kind: 'out', text: a[i++]! });
     else out.push({ kind: 'in', text: b[j++]! });
   }
-  // Each run of removed lines followed by added ones: the k-th of each paired, the part between their common
-  // start and end marked as changed.
+  return markChanged(out);
+}
+
+/** The core's hunks (FileCardMeta.change) as lines, numbered in one column as in the Claude app; ⋯ where lines are left out. */
+export function hunkLines(change: FileChangeMeta): ChangeLine[] {
+  const out: ChangeLine[] = [];
+  change.hunks.forEach((h, k) => {
+    if (k > 0) out.push({ kind: 'gap', text: '' });
+    let o = h.oldStart;
+    let n = h.newStart;
+    for (const l of h.lines) {
+      const t = l.slice(1);
+      if (l[0] === '-') out.push({ kind: 'out', text: t, n: o++ });
+      else if (l[0] === '+') out.push({ kind: 'in', text: t, n: n++ });
+      else {
+        out.push({ kind: 'same', text: t, n: n++ });
+        o++;
+      }
+    }
+  });
+  if (change.truncated) out.push({ kind: 'gap', text: '' });
+  return markChanged(out);
+}
+
+/** Each run of removed lines followed by added ones: the k-th of each paired, the part that differs marked. */
+function markChanged(out: ChangeLine[]): ChangeLine[] {
+  // The part between their common start and end is what changed.
   for (let k = 0; k < out.length; ) {
     if (out[k]!.kind !== 'out') {
       k++;
@@ -238,15 +244,18 @@ export function lineChange(before: string, after: string): ChangeLine[] {
 /** The lines of a write or an edit, or null when the call is neither (or says nothing to draw). */
 export function callChange(block: ToolBlock, card?: FileCardMeta): { path: string; lines: ChangeLine[]; numbered: boolean } | null {
   const path = card?.path ?? text(arg(block, 'path'));
+  // Where the file changed, as the core worked it out (line numbers, three unchanged lines around each change).
+  if ((block.name === 'write_file' || block.name === 'edit_file') && card?.change?.hunks.length) return { path, numbered: true, lines: hunkLines(card.change) };
   if (block.name === 'write_file') {
     const content = text(arg(block, 'content'));
     if (!content && arg(block, 'content') === undefined) return null;
-    // Created: every line is new. Written over a file whose old content the window was not given: the lines as
-    // they are now, not coloured.
+    // Created: every line is new. Written over a file without the change (a conversation from before, a file over
+    // 2 MB): the lines as they are now, not coloured.
     const created = card?.origin === 'created' || /^Created\b/.test(resultBody(block.result ?? block.preview ?? ''));
     return { path, numbered: true, lines: content.split('\n').map((t, i) => ({ kind: created ? 'in' : 'same', text: t, n: i + 1 })) };
   }
   if (block.name === 'edit_file') {
+    // No change from the core (a conversation from before): the two strings against each other, − and +.
     const oldS = text(arg(block, 'old_string'));
     const newS = text(arg(block, 'new_string'));
     if (!oldS && !newS) return null;
@@ -273,8 +282,7 @@ function LineText({ line, language }: { line: ChangeLine; language: string | nul
 /** A write or an edit as a change: the file's path, then its lines, green in and red out, numbered when known. */
 export function FileChange({ path, lines, numbered }: { path: string; lines: ChangeLine[]; numbered: boolean }) {
   const language = languageOf(path);
-  const { cut, button } = useFold(lines.length, CHANGE_LINES);
-  const shown = cut ? lines.slice(0, CHANGE_LINES) : lines;
+  const shown: ChangeLine[] = lines.length > DRAWN_LINES ? [...lines.slice(0, DRAWN_LINES), { kind: 'gap', text: '' }] : lines;
   return (
     <div className="file-change-wrap">
       {path ? <p className="file-change-path">{path}</p> : null}
@@ -282,14 +290,11 @@ export function FileChange({ path, lines, numbered }: { path: string; lines: Cha
       <pre className="file-change" aria-label={path}>
         {shown.map((l, i) => (
           <span key={i} className={`change-line is-${l.kind}`}>
-            <span className="change-gutter">{numbered ? l.n : l.kind === 'in' ? '+' : l.kind === 'out' ? '−' : ''}</span>
-            <span className="change-text">
-              <LineText line={l} language={language} />
-            </span>
+            <span className="change-gutter">{l.kind === 'gap' ? '⋯' : numbered ? l.n : l.kind === 'in' ? '+' : l.kind === 'out' ? '−' : ''}</span>
+            <span className="change-text">{l.kind === 'gap' ? null : <LineText line={l} language={language} />}</span>
           </span>
         ))}
       </pre>
-      {button}
     </div>
   );
 }

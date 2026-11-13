@@ -481,6 +481,14 @@ describe('the conversation’s sizes', () => {
       expect(block(sel), sel).toContain('font-size: var(--code-size);\n  line-height: var(--code-line)');
   });
 
+  it('every box of a call opened is at most 20 lines high and scrolls inside (no 显示更多)', () => {
+    expect(block('.tool-command pre')).toContain('max-height: calc(var(--code-line) * 20 + 8px);\n  overflow: auto;');
+    expect(block('.tool-args')).toContain('max-height: calc(var(--code-line) * 20 + 18px);\n  overflow: auto;');
+    expect(block('.file-change')).toContain('max-height: calc(var(--code-line) * 20 + 10px);\n  overflow: auto;');
+    expect(block('.tool-output')).toContain('max-height: calc(var(--code-line) * 20);\n  overflow-y: auto;');
+    expect(css).not.toContain('overscroll-behavior');
+  });
+
   it('a long command wraps in every command box (a step opened, a card to confirm): its end is never off to the side', () => {
     expect(block('.tool-command pre')).toContain('white-space: pre-wrap;\n  overflow-wrap: anywhere;');
     expect(block('.tool-command code')).toContain('font: inherit');

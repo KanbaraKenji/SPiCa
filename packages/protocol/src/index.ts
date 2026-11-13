@@ -860,6 +860,11 @@ export interface FileCardMeta {
    * order ignored). Absent when not counted (other calls, files over 2 MB, not text).
    */
   lines?: { added: number; removed: number };
+  /**
+   * write_file over an existing file, edit_file: where the file changed, for the window only (never in what the model
+   * reads). Absent when not worked out (a new file, a file over 2 MB or not text, conversations from before).
+   */
+  change?: FileChangeMeta;
   sizeBytes: number;
   /** ISO 8601 with offset. */
   modifiedAt: string;
@@ -874,6 +879,17 @@ export interface FileCardMeta {
   noTextLayer?: boolean;
   /** Detected text encoding (e.g. UTF-8, GBK). */
   encoding?: string;
+}
+
+/**
+ * A change to a file as unified-diff hunks: each hunk starts at line `oldStart` of the old file and `newStart` of the
+ * new one; each line is ' ' (unchanged), '-' (removed) or '+' (added) followed by its text. Three unchanged lines
+ * around each change; changes that close together share a hunk.
+ */
+export interface FileChangeMeta {
+  hunks: { oldStart: number; newStart: number; lines: string[] }[];
+  /** More changed lines than the limit (2000 in all): the hunks after it are left out. */
+  truncated?: boolean;
 }
 
 /** Result of a "test connection" probe (one minimal request outside any session). */
