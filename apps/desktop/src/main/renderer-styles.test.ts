@@ -421,7 +421,7 @@ describe('the conversation’s sizes', () => {
 
   it('what a row says after its words (Failed, 已超时, the time, the clock) is the row’s size: a smaller one sits on another baseline', () => {
     // A 12 beside a 16, each centred in its own box, sits 1.5px higher at 100% and reads as off the middle.
-    for (const sel of ['.fold-meta', '.detail-item-meta', 'follows. */\n.status-clock'])
+    for (const sel of ['.fold-meta', '.detail-item-meta', 'follows. */\n.status-clock', '.confirm-undo'])
       for (const prop of ['font-size', 'line-height', 'font:']) expect(block(sel), `${sel} ${prop}`).not.toContain(prop);
     for (const sel of ['.fold-meta', '.detail-item-meta', 'follows. */\n.status-clock']) expect(block(sel), sel).toContain('color: var(--spica-faint)');
   });

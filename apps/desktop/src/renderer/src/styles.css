@@ -5807,10 +5807,9 @@ section.plugins-part > .plugins-part-title {
   flex: none;
 }
 
+/* After the title, as Failed after a tool's name: the title's size, told by its red. */
 .confirm-undo {
   flex: none;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
   color: var(--spica-danger);
 }
 
