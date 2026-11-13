@@ -36,7 +36,7 @@
 
 - `name` 只能用小写字母、数字和 `-`，2–24 个字符。它会成为工具名的前缀（`todo__add`），定了以后别改。
 - `version` 用三段数字。每次发新版都要加，Spica 靠它判断有没有更新。
-- 会删数据、发东西、写外部系统的工具，写进 `permissions.irreversible`，Spica 每次调用前都会先问用户。mcp/ 和 services/ 里的工具都适用。
+- 会删数据、发东西、写外部系统的工具，写进 `permissions.irreversible`，Spica 每次调用前都会先问用户，确认卡右上角显示「无法撤销」。mcp/ 和 services/ 里的工具都适用。
 - 用到哪几类钩子，写进 `permissions.hooks`；没写的钩子不会生效。
 
 ### 插件图标（可选）
@@ -404,6 +404,7 @@ export default (ctx) => ({
 
 - 钩子运行在 Spica 进程里，不需要 import 任何东西，参数就是全部上下文。`ctx` 里有 `dataDir`、`mock()`、`log()`，和 `user.account`（用户的账号，和 server 的 `SPICA_USER_ACCOUNT` 是同一个值）。用户在设置里改了账号，钩子下一次调用就读到新的：在钩子函数里读 `ctx.user.account`，不要在工厂函数里先存一份。
 - 可用的钩子：`inject`（在系统提示、历史、用户输入前后注入文字）、`beforeRequest`（发请求前改工具表、参数）、`afterResponse`（改模型回答）、`beforeTool`（拦截、改参数、要求确认）、`afterTool`（改工具结果）。参数细节见 `docs/design/agent-core.md` 第 7 节。
+- `beforeTool` 要求确认时返回 `{ action: 'confirm', reason: '覆盖笔记「周会」', irreversible: true }`：`reason` 是卡片标题（写中文，说清要做的事和对象）；做完撤不回来的，加 `irreversible: true`，卡片右上角显示「无法撤销」和警告图标。这个标记只让卡片更醒目，不改变要不要确认。工具本身每次都不可逆的，直接写进 `permissions.irreversible`，卡片自动带这个标签，不用再写钩子；`irreversible: true` 用在要看参数才知道的情况（例如只有 `replace: true` 时才会覆盖）。例子见 `plugins/example-notes/hooks/replace-confirm.js`。
 - 钩子抛错不会让对话崩掉，只会记进日志。但它这一次就等于没生效。
 - 只收 `.js` / `.mjs`。用 TypeScript 写的先编译。
 

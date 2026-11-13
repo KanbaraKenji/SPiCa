@@ -473,6 +473,14 @@ describe('a question or confirmation stopped while it waits', () => {
   };
   const cards = (t: Transcript) => t.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])).filter((b) => b.type === 'ask' || b.type === 'confirm');
 
+  it('a confirmation marked irreversible keeps the mark, live and when the conversation is opened again', () => {
+    const live = applyEvent({ items: [] }, ev(1, { type: 'confirm.request', callId: 'p1', name: 'notes__write_note', input: { title: '周会' }, reason: '覆盖笔记「周会」', irreversible: true }));
+    expect(cards(live)[0]).toMatchObject({ type: 'confirm', irreversible: true });
+    expect(cards(asked())[1]).not.toHaveProperty('irreversible');
+    const again = fromHistory([], [{ kind: 'confirm', callId: 'p1', toolName: 'notes__write_note', input: { title: '周会' }, reason: '覆盖笔记「周会」', irreversible: true, createdAt: '' }]);
+    expect(cards(again)[0]).toMatchObject({ type: 'confirm', irreversible: true });
+  });
+
   it('the core’s way: status aborted and a cancelled result, no ask.resolved: both cards are cancelled, the answer interrupted', () => {
     let t = asked();
     t = applyEvent(t, ev(3, { type: 'status', status: 'aborted' }));

@@ -22,7 +22,8 @@
       "delete_note"
     ],
     "hooks": [
-      "inject"
+      "inject",
+      "beforeTool"
     ],
     "model": {
       "reason": "Summarize a note when you ask (summarize_note).",
