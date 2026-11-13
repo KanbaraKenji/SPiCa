@@ -480,6 +480,12 @@ describe('the conversation’s sizes', () => {
     for (const sel of ['.md pre code', '.tool-command pre', '.tool-args', '.tool-output', '.file-change', '.confirm-args dd', '.preview-code', '.code-theme-preview'])
       expect(block(sel), sel).toContain('font-size: var(--code-size);\n  line-height: var(--code-line)');
   });
+
+  it('a long command wraps in every command box (a step opened, a card to confirm): its end is never off to the side', () => {
+    expect(block('.tool-command pre')).toContain('white-space: pre-wrap;\n  overflow-wrap: anywhere;');
+    expect(block('.tool-command code')).toContain('font: inherit');
+    expect(block('.tool-command code')).not.toContain('white-space');
+  });
 });
 
 describe('the input box', () => {

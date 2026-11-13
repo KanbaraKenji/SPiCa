@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { TextMenu } from './TextMenu';
 
 afterEach(() => {
@@ -61,76 +61,17 @@ describe('right click on words selected in the conversation', () => {
   });
 });
 
-describe('right click in a text box (the input box, a field in 设置)', () => {
-  it('剪切 / 复制 / 粘贴 / 全选; the box gets its focus and selection back before the command runs', () => {
+describe('right click in a text box (the input box, a field in 设置, a number box)', () => {
+  it('left to Windows’ own menu (main/edit-menu.ts): the app draws none and does not take the event, words selected or not', () => {
     const edit = vi.fn();
-    const host = page('<textarea>下周一前把报价单发给供应商</textarea><button id="away">x</button>');
+    const host = page('<p id="a">外壳尺寸</p><textarea>下周一前把报价单发给供应商</textarea><input id="n" type="number" value="30"><input id="s" type="search" value="字号">');
     render(<TextMenu edit={edit} />);
-    const box = host.querySelector('textarea')!;
-    box.focus();
-    box.setSelectionRange(5, 8);
-    rightClick(box);
-    expect(labels()).toEqual(['剪切', '复制', '粘贴', '全选']);
-    (host.querySelector('#away') as HTMLElement).focus();
-    box.setSelectionRange(0, 0);
-    fireEvent.click(screen.getByRole('menuitem', { name: '剪切' }));
-    expect(document.activeElement).toBe(box);
-    expect([box.selectionStart, box.selectionEnd]).toEqual([5, 8]);
-    expect(edit).toHaveBeenLastCalledWith('cut');
-    rightClick(box);
-    fireEvent.click(screen.getByRole('menuitem', { name: '粘贴' }));
-    expect(edit).toHaveBeenLastCalledWith('paste');
-  });
-
-  it('greyed: 剪切 and 复制 with nothing selected, 全选 in an empty box, 剪切 and 粘贴 in a read-only one, 剪切 and 复制 in a password', () => {
-    const host = page('<textarea id="t">报价单</textarea><input id="e" value=""><input id="r" readonly value="C:\\Users\\me"><input id="p" type="password" value="abc">');
-    render(<TextMenu edit={vi.fn()} />);
-    const t = host.querySelector<HTMLTextAreaElement>('#t')!;
-    t.setSelectionRange(2, 2);
-    rightClick(t);
-    expect(labels()).toEqual(['剪切（灰）', '复制（灰）', '粘贴', '全选']);
-    rightClick(host.querySelector('#e')!);
-    expect(labels()).toEqual(['剪切（灰）', '复制（灰）', '粘贴', '全选（灰）']);
-    const r = host.querySelector<HTMLInputElement>('#r')!;
-    r.setSelectionRange(0, 3);
-    rightClick(r);
-    expect(labels()).toEqual(['剪切（灰）', '复制', '粘贴（灰）', '全选']);
-    const p = host.querySelector<HTMLInputElement>('#p')!;
-    p.setSelectionRange(0, 3);
-    rightClick(p);
-    expect(labels()).toEqual(['剪切（灰）', '复制（灰）', '粘贴', '全选']);
-  });
-
-  it('a number box (同时请求, 每分钟请求) tells no selection: 剪切 and 复制 while it has words, and the command still runs', () => {
-    const edit = vi.fn();
-    const host = page('<input id="n" type="number" value="30"><input id="z" type="number" value="">');
-    render(<TextMenu edit={edit} />);
-    const n = host.querySelector<HTMLInputElement>('#n')!;
-    expect(n.selectionStart).toBeNull();
-    rightClick(n);
-    expect(labels()).toEqual(['剪切', '复制', '粘贴', '全选']);
-    fireEvent.click(screen.getByRole('menuitem', { name: '复制' }));
-    expect(edit).toHaveBeenLastCalledWith('copy');
-    expect(document.activeElement).toBe(n);
-    rightClick(host.querySelector('#z')!);
-    expect(labels()).toEqual(['剪切（灰）', '复制（灰）', '粘贴', '全选（灰）']);
-  });
-
-  it('the menu’s keys: Down skips the greyed items, Esc closes it and nothing runs', () => {
-    const edit = vi.fn();
-    const host = page('<textarea>报价单</textarea>');
-    render(<TextMenu edit={edit} />);
-    const box = host.querySelector('textarea')!;
-    box.setSelectionRange(1, 1);
-    rightClick(box);
-    const menu = screen.getByRole('menu');
-    act(() => menu.focus());
-    fireEvent.keyDown(menu, { key: 'ArrowDown' });
-    expect(document.activeElement?.textContent).toBe('粘贴');
-    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
-    expect(document.activeElement?.textContent).toBe('全选');
-    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-    expect(screen.queryByRole('menu')).toBeNull();
+    selectWords(host.querySelector('#a')!);
+    for (const box of host.querySelectorAll('textarea, input')) {
+      if (box instanceof HTMLTextAreaElement) box.setSelectionRange(5, 8);
+      expect(rightClick(box)).toBe(true);
+      expect(screen.queryByRole('menu')).toBeNull();
+    }
     expect(edit).not.toHaveBeenCalled();
   });
 });

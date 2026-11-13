@@ -1,24 +1,16 @@
-// Right click on words: in a field (the input box, any text box) 剪切 / 复制 / 粘贴 / 全选; on words selected
-// anywhere else (an answer, your message, a step's output, a code block) 复制. The window's own editing commands
-// do the work (bridge.edit, main runs webContents.cut / copy / paste / selectAll), so it is the same as Ctrl+X /
-// C / V / A: the copy handlers of the page run (an answer's full paths), a picture pastes into the input box, and
-// Ctrl+Z undoes it. Elsewhere (no selection, a row with a menu of its own) nothing is added.
+// Right click on words selected anywhere in the page that is not a text box (an answer, your message, a step's
+// output, a code block): 复制. The window's own copy does the work (bridge.edit, main runs webContents.copy), so it is
+// the same as Ctrl+C: the copy handlers of the page run (an answer's full paths). In a text box (the input box, a
+// field in 设置) the right click is left to main, which shows Windows' own menu (main/edit-menu.ts). Elsewhere (no
+// selection, a row with a menu of its own) nothing is added.
 import { useEffect, useState } from 'react';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 
 export type EditCommand = 'cut' | 'copy' | 'paste' | 'selectAll';
 
-type Field = HTMLTextAreaElement | HTMLInputElement;
-
-/** Input types that hold words one can select (not a checkbox, a colour, a range…). */
-const TEXT_INPUTS = new Set(['text', 'search', 'url', 'tel', 'email', 'password', 'number', '']);
-
-function fieldOf(target: EventTarget | null): Field | null {
-  if (!(target instanceof Element)) return null;
-  const el = target.closest('textarea, input');
-  if (el instanceof HTMLTextAreaElement) return el;
-  if (el instanceof HTMLInputElement && TEXT_INPUTS.has(el.type)) return el;
-  return null;
+/** A text box, where Windows' own menu is shown instead (main/edit-menu.ts). */
+function inField(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('textarea, input, [contenteditable=""], [contenteditable="true"]') !== null;
 }
 
 interface Open {
@@ -29,29 +21,9 @@ interface Open {
   items: MenuItem[];
 }
 
-/** What the right click found, and how to put it back before the command runs (the menu took the focus). */
+/** What the right click found: 复制 for words selected outside a text box, and how to put them back (the menu took the focus). */
 function menuFor(e: MouseEvent, edit: (c: EditCommand) => void): MenuItem[] | null {
-  const field = fieldOf(e.target);
-  if (field) {
-    if (field.disabled) return null;
-    // A number or email box tells no selection (null) and refuses to be given one: what is selected there is not
-    // known, so 剪切 and 复制 stay on while it has words, and focusing it again brings its own selection back.
-    const ranged = field.selectionStart !== null;
-    const start = field.selectionStart ?? 0;
-    const end = field.selectionEnd ?? 0;
-    const selected = field.type !== 'password' && (ranged ? end > start : field.value !== '');
-    const run = (c: EditCommand) => () => {
-      field.focus({ preventScroll: true });
-      if (ranged) field.setSelectionRange(start, end);
-      edit(c);
-    };
-    return [
-      { label: '剪切', disabled: !selected || field.readOnly, onSelect: run('cut') },
-      { label: '复制', disabled: !selected, onSelect: run('copy') },
-      { label: '粘贴', disabled: field.readOnly, onSelect: run('paste') },
-      { label: '全选', disabled: field.value === '', onSelect: run('selectAll') },
-    ];
-  }
+  if (inField(e.target)) return null;
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || !sel.rangeCount || !sel.toString().trim()) return null;
   const ranges = Array.from({ length: sel.rangeCount }, (_, i) => sel.getRangeAt(i).cloneRange());

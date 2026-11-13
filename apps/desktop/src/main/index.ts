@@ -39,6 +39,7 @@ import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { pageAlive, pageRecovery } from './page-recovery';
 import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor } from './app-dialog';
 import { openDialogWindow } from './app-dialog-window';
+import { editMenu, type EditAction } from './edit-menu';
 import { watchFit } from './window-fit';
 import { lookAtPage, watchPage } from './page-watch';
 import { closeAsker, closeDialogSpec, closeFromDialog, closePrompt, dialogFromBox, onWindowClose, revealWindow, runningTracker, trayHint, wireTray } from './tray';
@@ -1470,8 +1471,8 @@ ipcMain.on(DesktopChannel.Cover, (_e, what: unknown) => {
   if (mainWindow && !mainWindow.isDestroyed()) syncNativeChrome(mainWindow, settings.get());
 });
 
-// The right-click menu on words (renderer ui/TextMenu.tsx): the same commands as Ctrl+X / C / V / A, on the page
-// that asked.
+// The right-click 复制 on words selected in the page (renderer ui/TextMenu.tsx): the same command as Ctrl+C, on the
+// page that asked.
 const EDIT_COMMANDS = new Set(['cut', 'copy', 'paste', 'selectAll'] as const);
 ipcMain.on(DesktopChannel.Edit, (e, command: unknown) => {
   if (typeof command !== 'string' || !EDIT_COMMANDS.has(command as never)) return;
@@ -1480,6 +1481,32 @@ ipcMain.on(DesktopChannel.Edit, (e, command: unknown) => {
   else if (command === 'copy') page.copy();
   else if (command === 'paste') page.paste();
   else page.selectAll();
+});
+
+// Right click in a text box, in any window: Windows' own menu (main/edit-menu.ts). A hidden test window never pops
+// a menu onto the screen: the last one is kept on globalThis.__spicaEditMenu for the test script to read.
+app.on('web-contents-created', (_e, contents) => {
+  contents.on('context-menu', (_ev, params) => {
+    const entries = editMenu(params);
+    if (!entries) return;
+    if (hidden) {
+      (globalThis as { __spicaEditMenu?: unknown }).__spicaEditMenu = entries;
+      return;
+    }
+    const run: Record<EditAction, () => void> = {
+      undo: () => contents.undo(),
+      cut: () => contents.cut(),
+      copy: () => contents.copy(),
+      paste: () => contents.paste(),
+      delete: () => contents.delete(),
+      selectAll: () => contents.selectAll(),
+    };
+    const menu = Menu.buildFromTemplate(
+      entries.map((e) => (e === 'separator' ? { type: 'separator' as const } : { label: e.label, enabled: e.enabled, click: run[e.action] })),
+    );
+    const win = BrowserWindow.fromWebContents(contents);
+    menu.popup(win ? { window: win } : {});
+  });
 });
 
 ipcMain.on(DesktopChannel.Zoom, (_e, step: unknown) => {
