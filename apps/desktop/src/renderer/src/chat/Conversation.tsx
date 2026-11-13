@@ -320,7 +320,14 @@ function useStickToBottom(dep: unknown) {
     el.addEventListener('scroll', onScroll, { passive: true });
     // Resizing the window or zooming re-wraps text, and the input box grows with its lines; stay at the bottom if
     // we were there.
+    // The input area covers the bottom of the box: what gets the focus (Tab) or is scrolled to is brought above it.
+    const keepClear = () => {
+      const foot = el.querySelector<HTMLElement>(':scope > .transcript-foot');
+      el.style.scrollPaddingBottom = foot ? `${foot.offsetHeight}px` : '';
+    };
+    keepClear();
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
+      keepClear();
       if (stick.current) el.scrollTop = el.scrollHeight;
     }) : undefined;
     sizes.current = ro;
