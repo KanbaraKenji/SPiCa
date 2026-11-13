@@ -652,3 +652,18 @@ describe('the same call too many times in a row (repeated)', () => {
     expect(fromHistory(await b.getMessages(chat.id)).stopped).toBeUndefined();
   });
 });
+
+describe('a call announced but never made', () => {
+  it('its turning placeholder goes when the turn’s finished message comes without it (cut off, or streamed again under another id)', () => {
+    const ev = (body: object, seq: number) => ({ ...body, seq, at: '', sessionId: 's', parentChain: [] }) as unknown as CoreEvent;
+    const msg = (content: unknown[], seq: number, stopReason = 'tool_use') =>
+      ev({ type: 'message', message: { id: `m${seq}`, seq, sessionId: 's', role: 'assistant', kind: 'assistant', createdAt: '', content, meta: { stopReason } } }, seq);
+    let t: Transcript = { items: [] };
+    t = applyEvent(t, ev({ type: 'tool.call', callId: 'lost', name: 'write_file' }, 1));
+    t = applyEvent(t, msg([{ type: 'text', text: '开始做' }], 2, 'max_tokens'));
+    t = applyEvent(t, ev({ type: 'tool.call', callId: 'kept', name: 'write_file' }, 3));
+    t = applyEvent(t, msg([{ type: 'tool_use', id: 'kept', name: 'write_file', input: {} }], 4));
+    const r = t.items[0];
+    expect(r?.kind === 'response' ? r.blocks.map((b) => (b.type === 'tool' ? `${b.callId}:${b.state}` : b.type)) : []).toEqual(['kept:pending']);
+  });
+});

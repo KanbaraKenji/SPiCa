@@ -694,7 +694,13 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       } else if (m.role === 'assistant' && m.meta?.interrupted === true) {
         lastResponse(items, respId).interrupted = true;
       } else if (m.role === 'assistant' && m.kind === 'assistant') {
-        lastResponse(items, respId).truncated = m.meta?.stopReason === 'max_tokens';
+        const r = lastResponse(items, respId);
+        r.truncated = m.meta?.stopReason === 'max_tokens';
+        // A call announced while the model wrote (tool.call) that its finished message does not carry was never
+        // made: cut off at the length limit, or streamed again under another id. Its placeholder would turn for
+        // the rest of the run.
+        const made = new Set(m.content.flatMap((c) => (c.type === 'tool_use' ? [c.id] : [])));
+        r.blocks = r.blocks.filter((x) => !(x.type === 'tool' && x.state === 'pending' && !made.has(x.callId)));
       } else if (m.kind === 'tool_results') {
         // Stopping while a question or confirmation waits: the core writes its result as cancelled.
         for (const b of m.content) if (b.type === 'tool_result') settleCard(items, b.toolUseId, b.content, b.isError);
