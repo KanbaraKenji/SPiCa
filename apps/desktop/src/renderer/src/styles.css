@@ -1990,16 +1990,13 @@ pre .hl-punctuation {
   gap: 8px;
 }
 
+/* A card waiting on the user and one already answered have the same neutral edge; only a dangerous step's is
+   red (.is-danger). Waiting: the raised ground and its buttons; answered: the surface's ground and the answer. */
 .ask-card,
 .confirm-card {
   padding: 14px 16px;
   border-color: var(--spica-border-strong);
   background: var(--spica-raised);
-}
-
-.ask-card:not(.is-done),
-.confirm-card:not(.is-done) {
-  border-color: color-mix(in srgb, var(--spica-accent) 45%, var(--spica-border));
 }
 
 .card.is-done {

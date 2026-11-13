@@ -33,6 +33,12 @@ describe('styles', () => {
     expect(block('.composer-wrap')).toContain('padding: 0 24px 18px');
   });
 
+  it('a card waiting on the user has the neutral edge of the others; only a dangerous step’s is coloured (red)', () => {
+    expect(block('.ask-card,\n.confirm-card')).toContain('border-color: var(--spica-border-strong)');
+    expect(css).not.toMatch(/\.(ask|confirm)-card:not\(\.is-done\)(,|\s*\{)[^}]*border-color/);
+    expect(block('.confirm-card:not(.is-done).is-danger')).toContain('border-color: var(--spica-danger)');
+  });
+
   it('a note line in the conversation breaks a long path instead of running past the window', () => {
     expect(block('.turn-note')).toContain('overflow-wrap: anywhere');
   });
