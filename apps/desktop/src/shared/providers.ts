@@ -49,10 +49,31 @@ export interface ProviderFields {
   /** The catalog provider or company preset it was set up from (null: 中转站 / 公司网关, or older files). */
   catalogId: string | null;
   /**
-   * 花费上限 (USD): what this provider may cost in all (every conversation, kept across restarts, since its 已花 was
-   * last set to 0); a call that could pass it is not made. null: no limit. Absent in older files (no limit).
+   * 花费上限 (USD): what this provider may cost in one period (every conversation, test, memory tidy and plugin call
+   * on it); once spent, the next call is not made until the period starts again. null: no limit (the default).
    */
   spendLimitUsd?: number | null;
+  /** How long the period is, in days: 7, 30, or any 1..SPEND_PERIOD_MAX_DAYS (自定义). Absent: 30. */
+  spendPeriodDays?: number;
+}
+
+/** What a provider with a 花费上限 spent in its current period (priced calls), and its requests without a price there. */
+export interface ProviderSpendView {
+  spentUsd: number;
+  unpricedRequests: number;
+  /** The current period (ms). */
+  startMs: number;
+  endMs: number;
+}
+
+/** The periods offered for a 花费上限 (days); anything else is 自定义. */
+export const SPEND_PERIODS = [7, 30] as const;
+export const SPEND_PERIOD_DEFAULT = 30;
+export const SPEND_PERIOD_MAX_DAYS = 365;
+
+/** A saved period: a whole number of days 1..365, else the default. */
+export function spendPeriodDays(v: unknown): number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= SPEND_PERIOD_MAX_DAYS ? v : SPEND_PERIOD_DEFAULT;
 }
 
 /** Where a model's context window came from. */
@@ -171,6 +192,7 @@ export function emptyDraft(kind: ProviderKind = 'openai'): ProviderDraft {
     contextWindow: null,
     catalogId: null,
     spendLimitUsd: null,
+    spendPeriodDays: SPEND_PERIOD_DEFAULT,
   };
 }
 
@@ -239,6 +261,8 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: {
   const limit = d.spendLimitUsd;
   if (limit !== null && limit !== undefined && !(Number.isFinite(limit) && limit > 0 && limit <= RUN_LIMIT_MAX_USD)) e.spendLimitUsd = `须为大于 0、不高于 US$${RUN_LIMIT_MAX_USD.toLocaleString('en-US')} 的金额，或留空`;
   else if (limit !== null && limit !== undefined && !moneyPrecise(limit)) e.spendLimitUsd = '最多四位小数';
+  const days = d.spendPeriodDays;
+  if (days !== undefined && !(Number.isInteger(days) && days >= 1 && days <= SPEND_PERIOD_MAX_DAYS)) e.spendPeriodDays = `天数须为 1 到 ${SPEND_PERIOD_MAX_DAYS} 的整数`;
   for (const k of ['maxConcurrent', 'requestsPerMinute'] as const) {
     const v = d[k];
     if (v !== null && (!Number.isInteger(v) || v < 1)) e[k] = '须为正整数或留空';

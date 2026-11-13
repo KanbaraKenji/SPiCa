@@ -24,13 +24,13 @@ describe('AgentStore', () => {
     const backend = new FakeBackend({ speed: 0, seed: false });
     const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
     await store.init();
-    // the first call (about 0.85) goes; the next finds the limit reached
-    backend.setSpendLimit('p-1', 0.5);
+    // the first call (about 0.85) goes; the next finds the limit for the period reached
+    backend.setSpendLimit('p-1', { usd: 0.5, days: 7, fromMs: Date.now() - 1000 });
     await store.send(null, '花费上限 整理需求');
     const id = store.state.get().activeId!;
     await vi.waitFor(() => expect(store.state.get().transcripts[id]?.errorAction).toBe('models'));
     await new Promise((r) => setTimeout(r, 50)); // the reload after the run ended
-    expect(store.state.get().transcripts[id]).toMatchObject({ errorAction: 'models', errorProvider: 'p-1', error: '已达花费上限' });
+    expect(store.state.get().transcripts[id]).toMatchObject({ errorAction: 'models', errorProvider: 'p-1', error: expect.stringMatching(/^已达 7 天花费上限，\d+\/\d+ \d\d:\d\d 恢复$/) });
     await store.send(null, '未计价 公司网关');
     const gw = store.state.get().activeId!;
     await vi.waitFor(() => expect(store.state.get().sessions.find((s) => s.id === gw)?.unpriced).toBe(true));

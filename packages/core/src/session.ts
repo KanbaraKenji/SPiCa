@@ -834,7 +834,7 @@ export class Session {
       if (!hold.ok && hold.wait) continue; // interrupted while waiting: next turn with the steer
       if (!hold.ok) {
         lease.release();
-        this.#emit({ type: 'budget.stop', scope: hold.scope, spentUsd: hold.spentUsd, limitUsd: hold.limitUsd, nextUsd: hold.nextUsd, message: hold.message });
+        this.#emit({ type: 'budget.stop', scope: hold.scope, spentUsd: hold.spentUsd, limitUsd: hold.limitUsd, nextUsd: hold.nextUsd, message: hold.message, ...(hold.periodDays !== undefined && hold.resetAt ? { periodDays: hold.periodDays, resetAt: hold.resetAt } : {}) });
         return end('budget', hold.message);
       }
 

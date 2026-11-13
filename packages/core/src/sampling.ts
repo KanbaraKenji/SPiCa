@@ -1,8 +1,9 @@
 // Plugins use the models the user has set up (MCP sampling, server → client
 // "sampling/createMessage"): a plugin needs no key of its own, the cost goes to
 // the user's budget. Only plugins whose manifest asks for it get it (the plugin
-// manager passes McpServerConfig.sampling); each has a daily limit and a small
-// rate limit. A sampling call has no tools and no conversation: the model can
+// manager passes McpServerConfig.sampling); there is no dollar limit per plugin
+// (a plugin limits its own calls), only a small rate limit and the user's own
+// spending limits. A sampling call has no tools and no conversation: the model can
 // only answer text, and the answer goes to that plugin alone.
 import { isoNow } from './events.ts';
 import { RateLimiter } from './limiter.ts';
@@ -10,14 +11,11 @@ import type { HostModelList } from './settings-tools.ts';
 import type { Runtime } from './runtime.ts';
 import type { Message } from './types.ts';
 import { ProviderError } from './providers/types.ts';
-import { usdText } from './money.ts';
 import { estimateTokens, newId } from './util.ts';
 
-/** What a plugin may do with the user's models (set by the plugin manager from the manifest and the user's settings). */
+/** A plugin allowed to use the user's models (set by the plugin manager from the manifest and the user's settings). */
 export interface SamplingGrant {
   pluginId: string;
-  /** Spending limit per day for this plugin, in USD. Default 0.5. */
-  maxUsdPerDay?: number;
 }
 
 /** A refusal the plugin can tell apart: JSON-RPC error with data.code. */
@@ -46,7 +44,6 @@ interface CreateMessageParams {
   _meta?: { spica?: { requireModel?: boolean } };
 }
 
-const DEFAULT_DAILY_USD = 0.5;
 const STRONG = 0.7;
 
 export class PluginSampler {
@@ -150,20 +147,13 @@ export class PluginSampler {
     const maxTokens = Math.max(1, Math.min(Number.isFinite(p.maxTokens) ? Math.floor(p.maxTokens) : most, most));
     const system = typeof p.systemPrompt === 'string' ? p.systemPrompt : '';
 
-    // the plugin's own limits first, then the user's budget (held at the worst case while it runs)
+    // the plugin's rate limit first, then the user's own spending limits (held at the worst case while it runs)
     const lim = this.#limiter(grant.pluginId);
     const lease = await lim.acquire({ signal });
     const callId = newId('smp');
     const scope = { providerId: choice.providerId, providerKind: provider.kind, model: choice.model, sessionId: `plugin:${grant.pluginId}`, runId: callId };
     const estIn = estimateTokens(system + JSON.stringify(messages));
-    // a model without a price counts nothing here either (its stand-in price would use up the day at once)
-    const worst = this.#rt.ledger.worstCase(scope, estIn, maxTokens);
-    const cap = grant.maxUsdPerDay ?? DEFAULT_DAILY_USD;
     const today = this.#today(grant.pluginId);
-    if (today.usd + worst > cap) {
-      lease.release();
-      throw new SamplingError('budget', `this plugin's model budget for today is used up (${usdText(today.usd)} of ${usdText(cap)}; the next call could cost up to ${usdText(worst)})`);
-    }
     const held = this.#rt.ledger.reserve(scope, estIn, maxTokens);
     if (!held.ok) {
       lease.release();

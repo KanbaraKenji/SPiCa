@@ -27,7 +27,7 @@ const EXAMPLE: PluginView = {
   tools: ['add_note', 'list_notes', 'delete_note', 'catalog_lookup'],
   servers: [{ id: 'notes-server', status: 'running', tools: ['add_note', 'list_notes', 'delete_note', 'catalog_lookup'] }],
   issues: [],
-  model: { reason: '把一篇长笔记缩成几句话时，要用模型。', maxUsdPerDay: 0.2, declaredMaxUsdPerDay: 0.2, spentTodayUsd: 0.03 },
+  model: { reason: '把一篇长笔记缩成几句话时，要用模型。', allowed: true },
   icon: EXAMPLE_ICON,
 };
 
@@ -262,17 +262,8 @@ export class FakePluginService implements PluginService {
         await this.#install(pkg, cmd.job);
         return { ok: true, message: `已安装「${pkg.displayName ?? pkg.name}」${pkg.version ?? ''}。`, state: this.#state() };
       }
-      case 'modelLimit':
-        if (p?.model) {
-          const v = cmd.maxUsdPerDay;
-          if (v === null) {
-            delete p.model.userMaxUsdPerDay;
-            p.model.maxUsdPerDay = p.model.declaredMaxUsdPerDay;
-          } else {
-            p.model.userMaxUsdPerDay = v;
-            p.model.maxUsdPerDay = Math.min(v, p.model.declaredMaxUsdPerDay);
-          }
-        }
+      case 'modelAllowed':
+        if (p?.model) p.model.allowed = cmd.allowed;
         break;
       default:
         break;

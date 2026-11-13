@@ -31,20 +31,12 @@ export interface PluginView {
   icon?: PluginIconView;
 }
 
-/** A plugin's use of the user's models: why, the daily limit in USD, today's spending. */
+/** A plugin's use of the user's models: why, and whether the user lets it (no dollar limit). */
 export interface PluginModelView {
   /** The plugin's own sentence on why it wants to. */
   reason: string;
-  /** The limit in force (the lower of the plugin's and the user's). */
-  maxUsdPerDay: number;
-  /** What the plugin itself asks for; the user may go lower, not higher. */
-  declaredMaxUsdPerDay: number;
-  /** The user's own limit, when set (0: not allowed at all). */
-  userMaxUsdPerDay?: number;
-  /** Spent today; absent when it cannot be told. */
-  spentTodayUsd?: number;
-  /** It used a model without a price today (not in spentTodayUsd): 今日 says 「+ 未计价」 (shared/spend.ts). */
-  unpricedToday?: true;
+  /** The user lets it use the models (default yes). */
+  allowed: boolean;
 }
 
 /** An SVG's text as the data: URL an <img> shows (scripts in it never run there). */
@@ -58,25 +50,10 @@ export interface PluginIconView {
   dark: string;
 }
 
-/** 「$0.20」, 「$0.015」: US dollars, at least two decimals, up to four (a limit shows as it was set). */
-export function usd(n: number): string {
-  return `$${n.toFixed(4).replace(/0{1,2}$/, '')}`;
-}
-
-/**
- * Money already spent: one summarize call costs a fraction of a cent, which two
- * decimals would show as $0.00 (seen on 2026-11-10: $0.0002667 read 「$0.00」).
- */
-export function spentText(n: number): string {
-  // as precise as a limit can be set (four decimals), so 今日 and 每日上限 compare at sight
-  if (n > 0 && n < 0.0001) return '< $0.0001';
-  return usd(n);
-}
-
 /** What to tell someone installing or turning on a plugin that uses models. */
 export function modelUseNotice(m: PluginModelView): string {
-  if (m.maxUsdPerDay <= 0) return '使用模型 · 已禁止';
-  return `使用模型 · 每日上限 ${usd(m.maxUsdPerDay)} · 用途：${m.reason}`;
+  if (!m.allowed) return '使用模型 · 已禁止';
+  return `使用模型 · 用途：${m.reason}`;
 }
 
 /**
@@ -267,8 +244,8 @@ export type PluginsCommand =
   /** One package from `available` or `found`; `job` names it for the progress messages. */
   | { op: 'installAvailable'; key: string; job?: string }
   | { op: 'checkUpdates' }
-  /** The daily limit for a plugin's model use: a number (0 = not at all), null = back to the plugin's own. */
-  | { op: 'modelLimit'; name: string; maxUsdPerDay: number | null }
+  /** Let a plugin use the user's models, or forbid it. */
+  | { op: 'modelAllowed'; name: string; allowed: boolean }
   | { op: 'openRoot' };
 
 export interface PluginsResult {

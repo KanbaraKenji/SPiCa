@@ -561,6 +561,9 @@ describe('a spending limit stops the run, or the provider’s account is out of 
     const at = '2026-11-12T10:00:00Z';
     const t = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'p-1:global', spentUsd: 0.75, limitUsd: 1, nextUsd: 0.4, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
     expect(t).toMatchObject({ error: '已达花费上限', errorAction: 'models', errorProvider: 'p-1' });
+    // a limit for a period says which and when calls go again
+    const period = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'p-1:global', spentUsd: 0.75, limitUsd: 0.7, message: 'x', periodDays: 7, resetAt: new Date(2026, 10, 20, 14, 5).toISOString(), seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
+    expect(period).toMatchObject({ error: '已达 7 天花费上限，11/20 14:05 恢复', errorAction: 'models', errorProvider: 'p-1' });
     // a script's limit for everything: no provider to open
     const all = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'all:run', spentUsd: 0.75, limitUsd: 1, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
     expect(all).toMatchObject({ error: '已达花费上限', errorAction: 'models' });

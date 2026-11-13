@@ -25,8 +25,7 @@
       "inject"
     ],
     "model": {
-      "reason": "Summarize a note when you ask (summarize_note).",
-      "max_usd_per_day": 0.1
+      "reason": "Summarize a note when you ask (summarize_note)."
     }
   },
   "mock": {

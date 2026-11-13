@@ -5,6 +5,9 @@ import { pricesFromCatalog } from './catalog/catalog.ts';
 import type { Usage } from './types.ts';
 import { abortError } from './util.ts';
 import { usdText } from './money.ts';
+import { periodBounds, type SpendPeriod } from './period.ts';
+
+export { periodBounds, type SpendPeriod } from './period.ts';
 
 export interface ModelPrice {
   input: number;
@@ -52,8 +55,21 @@ export interface Limits {
    * compared with, and out of what a stop says. Only for the total (globalUsd).
    */
   sinceUsd?: number;
+  /**
+   * The total (globalUsd) is for a period: fixed periods of `days` days from `fromMs`, each starting again from 0. What
+   * a provider spent in the current one is added up from the request log (`setSpendSource`), not kept apart. Only on a
+   * provider's limits (perProvider), and only once a spend source is set.
+   */
+  period?: SpendPeriod;
   /** Who the limits are for, as people call it (a connection's name): said in a stop instead of the id. */
   label?: string;
+}
+
+/** A moment as a stop's sentence writes it: local 2026-11-20 14:05. */
+function localMinute(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 export interface BudgetConfig extends Limits {
@@ -73,7 +89,18 @@ export interface CostScope {
 
 export type BudgetCheck =
   | { ok: true }
-  | { ok: false; scope: string; spentUsd: number; limitUsd: number; /** The worst case of the call not started. */ nextUsd: number; message: string };
+  | {
+      ok: false;
+      scope: string;
+      spentUsd: number;
+      limitUsd: number;
+      /** The worst case of the call not started. */
+      nextUsd: number;
+      message: string;
+      /** A limit for a period: how long the period is and when the next one starts (ISO). */
+      periodDays?: number;
+      resetAt?: string;
+    };
 
 /** Worst-case cost held for a call that has passed the check and not been recorded yet. */
 export interface Reservation {
@@ -121,9 +148,27 @@ export class CostLedger {
   /** providerId -> the catalog provider it was set up from (ProviderConfig.catalogId). */
   readonly #catalogIds = new Map<string, string>();
 
-  constructor(prices: PriceTable = DEFAULT_PRICES, budget: BudgetConfig = {}) {
+  /** What a provider spent from a moment on (USD, priced calls only): the request log. */
+  #spentSince: ((providerId: string, fromMs: number) => number) | null = null;
+  readonly #now: () => number;
+
+  constructor(prices: PriceTable = DEFAULT_PRICES, budget: BudgetConfig = {}, now: () => number = Date.now) {
     this.#prices = prices;
     this.#budget = budget;
+    this.#now = now;
+  }
+
+  /** Where a provider's spending in a period comes from (the runtime gives its request log). */
+  setSpendSource(f: ((providerId: string, fromMs: number) => number) | null): void {
+    this.#spentSince = f;
+  }
+
+  /** A provider's limit for a period, when it has one: the current period and what was spent in it so far. */
+  periodSpend(providerId: string): { startMs: number; endMs: number; spentUsd: number } | null {
+    const p = this.#budget.perProvider?.[providerId]?.period;
+    if (!p || !this.#spentSince) return null;
+    const b = periodBounds(p, this.#now());
+    return { ...b, spentUsd: this.#spentSince(providerId, b.startMs) };
   }
 
   /**
@@ -366,8 +411,11 @@ export class CostLedger {
     ] as const;
     for (const [label, limits] of groups) {
       if (!limits) continue;
+      // a provider's total for a period: what it spent since the current period started (the request log)
+      const period = label !== 'all' ? this.periodSpend(label) : null;
+      const total = period ? period.spentUsd : Math.max(0, this.#recorded(label, 'global', scope) - (limits.sinceUsd ?? 0));
       const checks: [string, number, number | undefined][] = [
-        ['global', Math.max(0, this.#recorded(label, 'global', scope) - (limits.sinceUsd ?? 0)), limits.globalUsd],
+        ['global', total, limits.globalUsd],
         ['session', this.#recorded(label, 'session', scope), limits.perSessionUsd],
         ['run', this.#recorded(label, 'run', scope), limits.perRunUsd],
       ];
@@ -377,13 +425,15 @@ export class CostLedger {
           // what was spent since the count started, the limit as it was set
           const who = limits.label || (label === 'all' ? (kind === 'global' ? 'all providers' : `this ${kind}`) : label);
           const whose = label !== 'all' && kind !== 'global' ? `${who} (this ${kind})` : who;
+          const inPeriod = kind === 'global' && period && limits.period ? limits.period : null;
           return {
             ok: false,
             scope: `${label}:${kind}`,
             spentUsd: spent,
             limitUsd: limit,
             nextUsd: worst,
-            message: `spending limit reached: ${whose} spent ${usdText(spent)} of ${usdText(limit)}`,
+            message: `spending limit reached: ${whose} spent ${usdText(spent)} of ${usdText(limit)}${inPeriod && period ? ` in ${inPeriod.days} days (again from ${localMinute(period.endMs)})` : ''}`,
+            ...(inPeriod && period ? { periodDays: inPeriod.days, resetAt: new Date(period.endMs).toISOString() } : {}),
           };
         }
       }

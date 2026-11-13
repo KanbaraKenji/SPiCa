@@ -1,7 +1,7 @@
 // Settings > 插件, two tabs. 已安装: the plugins as a list on the left (已启用 / 已停用; the box on top searches
 // them, the filter narrows them, 检查更新 checks every source) and the one picked on the right: its switch
 // beside the name, a row of what can be done to it (更新到 / 回退到 / 删除, and while it updates, how far it
-// is), then its model budget, mail sorting and what it has, and its own settings pages (views with placement
+// is), then whether it may use the models, mail sorting and what it has, and its own settings pages (views with placement
 // settings) under tabs. 市场: the plugin sources (检查更新 for each and for all, 添加来源 for a folder, .zip or
 // web address, 移除), then what they offer and is not installed, each with 安装.
 // A plugin turned on or off stays where it is in the list while the page is
@@ -10,10 +10,8 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   isLocation,
-  spentText,
   stepText,
   unquote,
-  usd,
   type InstallStepView,
   type PluginIconView,
   type PluginModelView,
@@ -25,7 +23,6 @@ import {
   type PluginsState,
   type PluginView,
 } from '../../../shared/plugins';
-import { moneyPrecise } from '../../../shared/settings';
 import { friendlyError } from '../store/agent';
 import { ConfirmDialog } from '../ui/Dialog';
 import { ContextMenu } from '../ui/ContextMenu';
@@ -38,7 +35,6 @@ import { Group, matches as searchMatches, Pane, Row, SearchHit, SettingsSearchCo
 import { SpicaStatusIcon } from '@spica/brand/react';
 import type { PluginView as PageView } from '../../../shared/plugin-view';
 import { PluginPage, type PluginPageProps } from '../shell/PluginFrame';
-import { spendText } from '../../../shared/spend';
 import { letterBadge } from '../ui/badge';
 import { formatClock } from '../chat/format';
 
@@ -102,96 +98,13 @@ function List({ label, items }: { label: string; items: string[] }) {
   );
 }
 
-/**
- * A plugin that uses the user's models: what that means for their budget, the
- * plugin's own reason, today's spending, and a daily limit they can lower (not
- * raise above the plugin's own) or set to nothing.
- */
+/** A plugin that asks to use the user's models: allowed or not (no dollar limit), and the plugin's own reason. */
 function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy: boolean; run(cmd: PluginsCommand): void }) {
-  // Typed but not saved: kept like the provider form (leave the page and come back, it is still there).
-  const [limit, setLimit, limitDone] = useKeptDraft(`plugins.limit.${p.name}`, String(m.maxUsdPerDay));
-  // Saved elsewhere (保存, 禁止使用模型, 恢复默认): the field shows the new value.
-  const [prev, setPrev] = useState(m.maxUsdPerDay);
-  if (prev !== m.maxUsdPerDay) {
-    setPrev(m.maxUsdPerDay);
-    setLimit(String(m.maxUsdPerDay));
-  }
-  const value = Number(limit);
-  const problem =
-    limit.trim() === '' || !Number.isFinite(value) || value < 0
-      ? '须为 0 或正数'
-      : value > m.declaredMaxUsdPerDay
-        ? `不能高于 ${usd(m.declaredMaxUsdPerDay)}`
-        : !moneyPrecise(value)
-          ? '最多四位小数'
-          : null;
-  const off = m.maxUsdPerDay <= 0;
-  const used = m.spentTodayUsd;
   return (
-    <div className="plugin-model">
-      <p className="plugin-model-line">
-        {off ? '使用模型 · 已禁止' : `使用模型 · 每日上限 ${usd(m.maxUsdPerDay)}`}
-        {typeof used === 'number' && !off ? (
-          <span className={used >= m.maxUsdPerDay ? 'plugin-model-spent is-full' : 'plugin-model-spent'}>
-            {used >= m.maxUsdPerDay ? ` · 今日 ${spendText(used, m.unpricedToday, spentText)}（已达上限）` : ` · 今日 ${spendText(used, m.unpricedToday, spentText)}`}
-          </span>
-        ) : null}
-      </p>
-      <p className="plugin-model-reason">用途：{m.reason}</p>
-      <div className="plugin-model-limit">
-        <label className="plugin-model-input">
-          <span>每日上限 $</span>
-          <input
-            className={problem ? 'input is-invalid' : 'input'}
-            type="number"
-            min={0}
-            max={m.declaredMaxUsdPerDay}
-            step="any"
-            value={limit}
-            aria-label={`「${p.displayName}」每日上限（美元）`}
-            onChange={(e) => setLimit(e.target.value)}
-          />
-        </label>
-        <button
-          type="button"
-          className="btn btn-small"
-          disabled={busy || problem !== null || value === m.maxUsdPerDay}
-          onClick={() => {
-            run({ op: 'modelLimit', name: p.name, maxUsdPerDay: value });
-            limitDone();
-          }}
-        >
-          保存
-        </button>
-        {value !== m.maxUsdPerDay && limit.trim() !== '' ? <span className="provider-unsaved">未保存</span> : null}
-        {off ? null : (
-          <button
-            type="button"
-            className="btn btn-small"
-            disabled={busy}
-            onClick={() => {
-              run({ op: 'modelLimit', name: p.name, maxUsdPerDay: 0 });
-              limitDone();
-            }}
-          >
-            禁止使用模型
-          </button>
-        )}
-        {m.userMaxUsdPerDay !== undefined ? (
-          <button
-            type="button"
-            className="btn btn-small"
-            disabled={busy}
-            onClick={() => {
-              run({ op: 'modelLimit', name: p.name, maxUsdPerDay: null });
-              limitDone();
-            }}
-          >
-            恢复默认（{usd(m.declaredMaxUsdPerDay)}）
-          </button>
-        ) : null}
-        {problem ? <span className="field-error">{problem}</span> : null}
-      </div>
+    <div className="group-box plugin-model">
+      <Row title="使用模型" hint={`用途：${m.reason}`}>
+        <Switch on={m.allowed} label="使用模型" disabled={busy} onChange={(allowed) => run({ op: 'modelAllowed', name: p.name, allowed })} />
+      </Row>
     </div>
   );
 }

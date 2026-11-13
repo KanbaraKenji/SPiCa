@@ -48,7 +48,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 - [ ] **没有密钥**：插件包里没有 API key、令牌、密码、私钥、`.env`（`check.mjs` 会查常见格式，但它不是全部）。需要凭据时，从 `SPICA_PLUGIN_DATA` 里的配置文件读，由插件自己的设置页通过 `services/` 里的工具保存，见 `references/internal-services.md`。**不要从环境变量读**：装进 Spica 后只传白名单变量，名字带 KEY、TOKEN、SECRET 的一律不传，`check.mjs` 看到会提醒。
 - [ ] **没有写死公司专属的东西**：服务地址、部门名、项目代号不写进代码，放 `SPICA_PLUGIN_DATA` 里的配置文件；示例和模拟数据全是虚构的。
 - [ ] **证书和代理没自己处理**：没有 `rejectUnauthorized: false`，没有打进包里的证书，也没自己读代理设置。这些由 Spica 代管（0.1.0-rc.2 起）。
-- [ ] **用模型的写了 `permissions.model`**：理由一句话，上限合理；没有模型能力时工具会给提示，不会崩溃。
+- [ ] **用模型的写了 `permissions.model`**：理由一句话；没有模型能力时工具会给提示，不会崩溃。
 - [ ] **权限最小**：`permissions.workspace` 用得到才写 `read` / `write`；`permissions.hooks` 只写真用到的钩子类型；页面的 `permissions.tools` 只列页面要用的工具。
 - [ ] **只写该写的地方**：自己的数据只写 `SPICA_PLUGIN_DATA`；下载、导出的文件只写用户在对话里点名的文件夹（从参数传进来、不猜、不出这个文件夹），结果里写出完整路径，覆盖已有文件的工具写进 `permissions.irreversible`。见 `references/hooks-permissions.md`「写文件」。
 - [ ] **拉起的进程收得干净**：server 和辅助进程在 stdin 关闭时自己退出，辅助进程不用 `detached`；替用户打开、之后用户还要用的程序交给 Windows 打开（`explorer.exe <程序>`，要带参数或指定当前文件夹时才用 WMI 的 `Win32_Process.Create`，用前在目标电脑上核过作业对象那条），不由插件自己或自写的中间进程启动（那样拿不到用户完整的环境变量）。见 `references/processes.md`。
@@ -86,9 +86,9 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 
 插件要让模型写摘要、分类、改写时，不要自带 API key，借用户在 Spica 里配好的模型（MCP 的取样，sampling），详见 `references/model.md`：
 
-- 清单写 `permissions.model: { "reason": "一句为什么", "max_usd_per_day": 0.2 }`。安装和启用时会把理由给用户看，每天的上限缺省 0.5 美元，用户可以在插件页调低。
+- 清单写 `permissions.model: { "reason": "一句为什么" }`。安装和启用时会把理由给用户看；没有每日花费上限（要限制调用次数插件自己管），用户可以在插件页允许或禁止。旧清单里的 `max_usd_per_day` 能装，但不再起作用。
 - 用官方 SDK 时调 `server.createMessage({ messages, maxTokens, systemPrompt })`；不用 SDK 的写法见 `plugins/example-notes` 的 `summarize_note`。
-- 先看 `initialize` 里有没有 `capabilities.sampling`，没有就给一句提示：可能没申请、用户把上限调成 0，或者 Spica 太旧（rc.2 之后的版本才有）。
+- 先看 `initialize` 里有没有 `capabilities.sampling`，没有就给一句提示：可能没申请、用户禁止了，或者 Spica 太旧（rc.2 之后的版本才有）。
 - 被拒绝时是 `-32000` 错误，`data.code` 说明原因（`no_model`、`budget` 等），要转成一句人话。
 - 页面脚本不能直接用，要用就调自己 server 的工具。
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { AgentMessagesRow, Models, type ProvidersApi } from './Models';
+import { AgentMessagesRow, Models, spendLine, type ProvidersApi } from './Models';
 import type { ProviderList } from '../../../shared/bridge';
 import type { ModelCatalogView } from '../../../shared/catalog';
 import { keyMaskParts, keyMaskText } from '@spica/protocol';
@@ -488,6 +488,30 @@ describe('花费上限 of a provider', () => {
     expect(vi.mocked(api.save).mock.calls.every((c) => c[0].spendLimitUsd !== 0.00015)).toBe(true);
   });
 
+
+  it('has a period: 7 天, 30 天 (the default) or 自定义 with a number of days, saved with the amount', async () => {
+    const api = fakeApi([saved({ name: 'DeepSeek 测试' })]);
+    render(<Models api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: /DeepSeek 测试/ }));
+    const period = screen.getByLabelText('周期') as HTMLSelectElement;
+    expect([...period.options].map((o) => o.text)).toEqual(['7 天', '30 天', '自定义']);
+    expect(period.value).toBe('30');
+    expect(screen.queryByLabelText('周期天数')).toBeNull();
+    fireEvent.change(screen.getByLabelText('花费上限（美元）'), { target: { value: '5' } });
+    fireEvent.change(period, { target: { value: 'custom' } });
+    fireEvent.change(screen.getByLabelText('周期天数'), { target: { value: '14' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ spendLimitUsd: 5, spendPeriodDays: 14 })));
+    fireEvent.change(screen.getByLabelText('周期天数'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect((await screen.findByText(/天数须为/)).className).toContain('field-error');
+  });
+
+  it('本周期已花 says what was spent, when the period ends, and requests without a price', () => {
+    const endMs = new Date(2026, 10, 20, 14, 5).getTime();
+    expect(spendLine({ spentUsd: 0.0203, unpricedRequests: 0, startMs: 0, endMs })).toBe('本周期已花 US$0.0203 · 11/20 14:05 结束');
+    expect(spendLine({ spentUsd: 1.5, unpricedRequests: 3, startMs: 0, endMs })).toBe('本周期已花 US$1.50 · 11/20 14:05 结束 · 未计价请求 3');
+  });
 
   it('is not under 上限 (only 代理互发消息上限 is)', () => {
     render(<Models api={fakeApi()} agentMessages={{ value: 10, onChange: () => undefined }} />);

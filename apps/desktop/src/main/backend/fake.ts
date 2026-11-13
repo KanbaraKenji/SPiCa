@@ -39,6 +39,7 @@ import type {
 } from '@spica/protocol';
 import { summarizeRequests } from '@spica/core/src/usage.ts';
 import { usdText } from '@spica/core/src/money.ts';
+import { periodBounds } from '@spica/core/src/period.ts';
 import { fakeRequests } from './fake-usage';
 import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import type { AgentBackend } from './types';
@@ -207,10 +208,8 @@ export class FakeBackend implements AgentBackend {
   #globalCost = 0;
   /** Calls of a model without a price were made (in any conversation). */
   #globalUnpriced = false;
-  /** 设置 › 模型 › a provider's 花费上限 (USD in all; null: none), as the core gets it; the demo has one provider. */
-  #spendLimit: { providerId: string; usd: number; sinceUsd: number; name?: string } | null = null;
-  /** What the demo's priced calls have cost in all. */
-  #spent = 0;
+  /** 设置 › 模型 › a provider's 花费上限 for a period (null: none), as the core gets it; the demo has one provider. */
+  #spendLimit: { providerId: string; usd: number; days: number; fromMs: number; name?: string } | null = null;
   /** The request log (the usage page, the monitor): two weeks of demo records, then the calls made here. */
   #requests: RequestRecord[] = [];
   /** 设置 › 模型 › 代理互发消息上限 (null: none), as the core gets it. */
@@ -637,14 +636,16 @@ export class FakeBackend implements AgentBackend {
     this.#memory.enabled = on;
   }
 
-  /** A provider's 花费上限 changed in the settings (as the core's budget.perProvider[id].globalUsd). */
-  setSpendLimit(providerId: string | null, usd: number | null, sinceUsd = 0, name?: string): void {
-    this.#spendLimit = providerId && usd !== null ? { providerId, usd, sinceUsd, ...(name ? { name } : {}) } : null;
+  /** A provider's 花费上限 changed in the settings (as the core's budget.perProvider[id]: globalUsd and period). */
+  setSpendLimit(providerId: string | null, limit: { usd: number; days: number; fromMs: number } | null, name?: string): void {
+    this.#spendLimit = providerId && limit ? { providerId, ...limit, ...(name ? { name } : {}) } : null;
   }
 
-  /** What the demo has cost in all (the core's providerSpend). */
-  spentUsd(): number {
-    return this.#spent;
+  /** What the demo's own calls (priced) cost from a moment on: its request log, as the core counts a period. */
+  spentSince(fromMs: number): number {
+    let sum = 0;
+    for (const r of this.#requests) if (r.providerId === 'fake' && !r.unpriced && Date.parse(r.startedAt) >= fromMs) sum += r.costUsd ?? 0;
+    return sum;
   }
 
   /** The usage page (the core's usageSummary). */
@@ -927,12 +928,16 @@ export class FakeBackend implements AgentBackend {
   #stopsAtLimit(sessionId: string, run: Run, nextUsd: number): boolean {
     const limit = this.#spendLimit;
     if (limit === null || run.unpriced) return false;
-    // since the last 清零, as the settings show 已花
-    const spent = Math.max(0, this.#spent - limit.sinceUsd);
+    // in the current period, as the settings show 本周期已花
+    const { startMs, endMs } = periodBounds({ days: limit.days, fromMs: limit.fromMs }, this.#now().getTime());
+    const spent = this.spentSince(startMs);
     if (spent < limit.usd) return false;
     const scope = `${limit.providerId}:global`;
-    const message = `spending limit reached: ${limit.name ?? limit.providerId} spent ${usdText(spent)} of ${usdText(limit.usd)}`;
-    this.#emit(sessionId, { type: 'budget.stop', scope, spentUsd: spent, limitUsd: limit.usd, nextUsd, message });
+    const d = new Date(endMs);
+    const p2 = (n: number) => String(n).padStart(2, '0');
+    const again = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    const message = `spending limit reached: ${limit.name ?? limit.providerId} spent ${usdText(spent)} of ${usdText(limit.usd)} in ${limit.days} days (again from ${again})`;
+    this.#emit(sessionId, { type: 'budget.stop', scope, spentUsd: spent, limitUsd: limit.usd, nextUsd, message, periodDays: limit.days, resetAt: d.toISOString() });
     this.#finish(sessionId, 'budget', message);
     return true;
   }
@@ -953,7 +958,6 @@ export class FakeBackend implements AgentBackend {
     }
     const costUsd = this.#callUsd(run, inputTokens, outputTokens);
     if (run) run.spent += costUsd;
-    this.#spent += costUsd;
     if (s) s.costUsd += costUsd;
     this.#globalCost += costUsd;
     this.#request(sessionId, { providerId: 'fake', model: 'deepseek-flash', durationMs: 1800, status: 'ok', httpStatus: 200, inputTokens, outputTokens, costUsd });

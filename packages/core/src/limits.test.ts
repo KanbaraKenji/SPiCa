@@ -1,6 +1,6 @@
 // Shared rate limiting (queue positions) and spending limits.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CostLedger, DEFAULT_PRICES } from './cost.ts';
+import { CostLedger, DEFAULT_PRICES, periodBounds } from './cost.ts';
 import { RateLimiter } from './limiter.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { captureEvents, makeRuntime, startGateway } from './testing/helpers.ts';
@@ -144,6 +144,30 @@ describe('limits in the runtime', () => {
     // four decimals, not rounded to cents; a limit like 0.015 reads as set
     l.setBudget({ perProvider: { 'p-33537b51': { globalUsd: 0.015, sinceUsd: 0.0549, label: 'DeepSeek 测试' } } });
     expect(l.precheck(scope, 1, 1)).toMatchObject({ spentUsd: expect.closeTo(0.0303, 6), limitUsd: 0.015, message: 'spending limit reached: DeepSeek 测试 spent US$0.0303 of US$0.015' });
+  });
+
+  it('a limit for a period counts what the provider spent since the current period started (the request log), and says when it starts again', () => {
+    const DAY = 86_400_000;
+    const from = Date.parse('2026-11-01T00:00:00Z');
+    let now = from + 9 * DAY; // the second 7-day period: 11-08 to 11-15
+    const spends: { at: number; usd: number }[] = [
+      { at: from + DAY, usd: 5 }, // first period: not counted
+      { at: from + 8 * DAY, usd: 0.02 },
+    ];
+    const l = new CostLedger({ 'openai-compatible': { m: { input: 1, output: 1 } } }, { perProvider: { p: { globalUsd: 0.03, period: { days: 7, fromMs: from }, label: 'DeepSeek' } } }, () => now);
+    l.setSpendSource((id, since) => (id === 'p' ? spends.filter((x) => x.at >= since).reduce((a, x) => a + x.usd, 0) : 0));
+    const scope = { providerId: 'p', providerKind: 'openai-compatible', model: 'm', sessionId: 's', runId: 'r' };
+    expect(periodBounds({ days: 7, fromMs: from }, now)).toEqual({ startMs: from + 7 * DAY, endMs: from + 14 * DAY });
+    expect(l.periodSpend('p')).toMatchObject({ spentUsd: 0.02 });
+    expect(l.precheck(scope, 1, 1)).toEqual({ ok: true });
+    spends.push({ at: from + 9 * DAY, usd: 0.015 });
+    const stop = l.precheck(scope, 1, 1);
+    expect(stop).toMatchObject({ ok: false, scope: 'p:global', limitUsd: 0.03, periodDays: 7, resetAt: new Date(from + 14 * DAY).toISOString() });
+    if (stop.ok) throw new Error('not stopped');
+    expect(stop.message).toMatch(/^spending limit reached: DeepSeek spent US\$0\.035 of US\$0\.03 in 7 days \(again from 2026-11-1[45] \d\d:\d\d\)$/);
+    // the next period starts from 0
+    now = from + 14 * DAY + 1;
+    expect(l.precheck(scope, 1, 1)).toEqual({ ok: true });
   });
 
   it('a limit above what is spent never stops a call however much it might cost (0.10 with 0.05 spent)', () => {

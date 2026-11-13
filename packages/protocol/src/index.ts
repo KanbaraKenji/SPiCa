@@ -623,7 +623,7 @@ export type CoreEventBody =
   /** Running totals; `warning` when a total passes the warning threshold of its limit. `unpriced`: calls without a known price were made in this total and are not in spentUsd. */
   | { type: 'cost'; scope: CostScopeName; spentUsd: number; limitUsd?: number; warning: boolean; unpriced?: true }
   /** A spending limit stopped the run: the next call (up to nextUsd at worst) was not started. */
-  | { type: 'budget.stop'; scope: string; spentUsd: number; limitUsd: number; nextUsd?: number; message: string }
+  | { type: 'budget.stop'; scope: string; spentUsd: number; limitUsd: number; nextUsd?: number; message: string; /** A provider's limit for a period: its length, and when the next one starts (ISO). */ periodDays?: number; resetAt?: string }
   /** A traceable external request finished. */
   | { type: 'trace'; record: TraceRecord }
   /** One HTTP request to a model finished (every attempt, retried ones included). Sent on the call's session, or '' for none. */

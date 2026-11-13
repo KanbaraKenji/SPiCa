@@ -32,14 +32,12 @@ export interface PluginPermissions {
   /** Hook kinds the plugin's hook modules may register. Anything else is refused. */
   hooks: HookKind[];
   /**
-   * Use the models the user has set up (MCP sampling). Shown at install and
-   * enable; the plugin needs no key of its own and spends at most maxUsdPerDay.
+   * Use the models the user has set up (MCP sampling). The reason is shown at
+   * install and enable; the plugin needs no key of its own and has no dollar
+   * limit (it limits its own calls if it wants). The user can forbid it.
    */
-  model?: { reason: string; maxUsdPerDay: number };
+  model?: { reason: string };
 }
-
-/** Daily limit for a plugin using the user's models when the manifest gives none (same as the core's default). */
-export const DEFAULT_MODEL_USD_PER_DAY = 0.5;
 
 export interface PluginManifest {
   manifestVersion: number;
@@ -278,22 +276,14 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
     permissions.hooks = hooks.filter((h): h is HookKind => (HOOK_KINDS as readonly string[]).includes(h));
     const model = p.model;
     if (model !== undefined) {
-      if (!isObj(model)) err('permissions.model', '「permissions.model」须为对象，例如 { "reason": "给笔记写摘要", "max_usd_per_day": 0.2 }。');
+      if (!isObj(model)) err('permissions.model', '「permissions.model」须为对象，例如 { "reason": "给笔记写摘要" }。');
       else {
         const reason = typeof model.reason === 'string' ? model.reason.trim() : '';
         if (!reason) err('permissions.model.reason', '缺少 permissions.model.reason，例如 "给笔记写摘要"。');
         else if (reason.length > 200) err('permissions.model.reason', 'reason 不能超过 200 字。');
-        let max = DEFAULT_MODEL_USD_PER_DAY;
-        const m = model.max_usd_per_day;
-        if (m !== undefined) {
-          if (typeof m !== 'number' || !Number.isFinite(m) || m <= 0) err('permissions.model.max_usd_per_day', 'max_usd_per_day 须为大于 0 的数（美元），例如 0.2。');
-          else {
-            max = m;
-            if (m > 5) warn('permissions.model.max_usd_per_day', `每日上限 ${m} 美元偏高，请确认。`);
-          }
-        }
+        // max_usd_per_day: an older daily limit, read and ignored (there is no limit any more)
         for (const k of Object.keys(model)) if (k !== 'reason' && k !== 'max_usd_per_day') warn(`permissions.model.${k}`, `未知字段「${k}」，已忽略。`);
-        if (reason && reason.length <= 200) permissions.model = { reason, maxUsdPerDay: max };
+        if (reason && reason.length <= 200) permissions.model = { reason };
       }
     }
     const ws = p.workspace;

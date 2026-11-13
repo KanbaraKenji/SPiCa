@@ -565,12 +565,12 @@ if (process.env.SPICA_MOCK === '1') {
 插件要让模型写摘要、分类、改写时，不用自带 key，借用户在 Spica 里配好的模型（MCP 的取样，sampling），需要 Spica 0.1.0-rc.2 之后发布的版本：
 
 ```json
-"permissions": { "model": { "reason": "给笔记写摘要", "max_usd_per_day": 0.2 } }
+"permissions": { "model": { "reason": "给笔记写摘要" } }
 ```
 
-- `reason` 必填，安装和启用时给用户看；每天的上限缺省 0.5 美元，用户可以在插件页调低（调成 0 就是不让用）。每个插件同时最多 2 个请求、每分钟最多 30 个，用户的总预算也照样管着。
+- `reason` 必填，安装和启用时给用户看。插件没有每日花费上限；要限制调用次数，插件自己管。用户可以在插件页允许或禁止它使用模型。每个插件同时最多 2 个请求、每分钟最多 30 个，用户自己设的花费上限也照样管着。旧清单里的 `max_usd_per_day` 照常能装，这个值不再起作用，可以删掉。
 - 用官方 SDK 时调 `server.createMessage({ messages, maxTokens, systemPrompt?, modelPreferences? })`；不用 SDK 的写法见示例插件的 `summarize_note`（`plugins/example-notes/server/index.js`）。只能传文字，不能带工具，看不到用户的对话。
-- 先看 `initialize` 里的 `capabilities.sampling`：没有就是没申请、上限是 0，或者 Spica 太旧，给用户一句提示。
+- 先看 `initialize` 里的 `capabilities.sampling`：没有就是没申请、用户禁止了，或者 Spica 太旧，给用户一句提示。
 - 选模型：什么都不写用默认模型；要强模型把 `intelligencePriority` 设到 0.7 以上，或在 `hints` 里写 `{ name: 'strong' }`；点名用 `hints: [{ name: 'example-large-model' }]`，没配就退回默认模型，结果里带 `_meta.spica.fallback`，`model` 是实际用的那个；必须用点名的模型就加 `_meta: { spica: { requireModel: true } }`，没配就被拒（`model_not_configured`）。
 - 被拒绝时是 JSON-RPC 错误 `-32000`，`data.code` 是 `invalid`、`no_model`、`model_not_configured`、`budget`、`rate_limited`、`failed` 之一，要转成一句告诉用户怎么办的话。
 - 页面脚本不能直接用，要用就调自己 server 的工具。

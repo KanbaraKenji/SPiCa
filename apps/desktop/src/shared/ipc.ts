@@ -50,10 +50,8 @@ export const DesktopChannel = {
   ModelCatalog: 'spica:providers:catalog',
   ListProviderModels: 'spica:providers:list-models',
   MatchContextWindow: 'spica:providers:match-window',
-  /** invoke -> Record<connection id, USD>: 已花 since the last 清零 */
+  /** invoke -> Record<connection id, ProviderSpendView>: 本周期已花 of each provider with a 花费上限 */
   ProviderSpend: 'spica:providers:spend',
-  /** invoke(id): 清零 */
-  ResetProviderSpend: 'spica:providers:reset-spend',
   /** invoke: UsageQuery -> UsageSummary | null (设置 › 用量; null while the core is not up) */
   UsageSummary: 'spica:usage:summary',
   /** invoke: after (seq) -> MonitorEntry[] (监控台: the lines kept, newer than `after`) */

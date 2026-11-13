@@ -33,7 +33,6 @@ import {
   modelUseNotice,
   svgDataUrl,
   unquote,
-  usd,
   type PluginIconView,
   type NotFoundReason,
   type PluginPackage,
@@ -100,14 +99,7 @@ function toView(d: PluginDescription, update?: string, icon?: PluginIconView): P
     ...(d.mail ? { mail: true } : {}),
     ...(d.model
       ? {
-          model: {
-            reason: d.model.reason,
-            maxUsdPerDay: d.model.maxUsdPerDay,
-            declaredMaxUsdPerDay: d.model.declaredMaxUsdPerDay,
-            ...(d.model.userMaxUsdPerDay !== undefined ? { userMaxUsdPerDay: d.model.userMaxUsdPerDay } : {}),
-            ...(d.model.spentTodayUsd !== undefined ? { spentTodayUsd: d.model.spentTodayUsd } : {}),
-            ...(d.model.unpricedToday ? { unpricedToday: true as const } : {}),
-          },
+          model: { reason: d.model.reason, allowed: d.model.allowed },
         }
       : {}),
   };
@@ -631,15 +623,10 @@ export class RealPluginService implements PluginService {
           if (d.model) message = withModelNotice('已启用。', d);
           break;
         }
-        case 'modelLimit': {
-          const d = manager.describe(cmd.name);
-          const v = cmd.maxUsdPerDay;
-          if (v !== null && (!Number.isFinite(v) || v < 0)) return { ok: false, message: '每日上限须为 0 或正数（美元）。', state: this.#state() };
-          if (v !== null && d.model && v > d.model.declaredMaxUsdPerDay) {
-            return { ok: false, message: `每日上限不能高于插件声明的 ${usd(d.model.declaredMaxUsdPerDay)}。`, state: this.#state() };
-          }
-          await manager.setModelLimit(cmd.name, v);
-          message = v === null ? '已恢复为插件声明的上限。' : v === 0 ? '已禁止使用模型。' : `每日上限：${usd(v)}。`;
+        case 'modelAllowed': {
+          if (typeof cmd.allowed !== 'boolean') return { ok: false, message: 'allowed 须为 true 或 false。', state: this.#state() };
+          await manager.setModelAllowed(cmd.name, cmd.allowed);
+          message = cmd.allowed ? '已允许使用模型。' : '已禁止使用模型。';
           break;
         }
         case 'disable':

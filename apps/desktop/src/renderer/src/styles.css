@@ -3712,7 +3712,8 @@ button.ctx-row:hover {
   width: 120px;
 }
 
-/* A provider's 花费上限 (its form): 「US$」 and the box, then 已花 and 清零 on the same line. */
+/* A provider's 花费上限 (its form): 「US$」 and the box, the period (7 天 / 30 天 / 自定义, then the days) on the same
+   line; 本周期已花 under it. */
 .spend-limit {
   display: flex;
   flex-wrap: wrap;
@@ -3720,7 +3721,18 @@ button.ctx-row:hover {
   gap: 12px;
 }
 
+.field .field-control .spend-limit .spend-period {
+  flex: none;
+  width: 96px;
+}
+
+.field .field-control .spend-limit .run-limit .input[aria-label='周期天数'] {
+  width: 72px;
+}
+
 .spend-spent {
+  display: block;
+  margin-top: 4px;
   color: var(--spica-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -4942,44 +4954,7 @@ section.plugins-part > .plugins-part-title {
 }
 
 .plugin-model {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: var(--radius-m);
-  background: var(--spica-hover);
-  font-size: var(--fs-footnote);
-  line-height: var(--lh-footnote);
-}
-
-.plugin-model-line,
-.plugin-model-reason {
-  margin: 0;
-}
-
-.plugin-model-reason {
-  margin-top: 4px;
-  color: var(--spica-muted);
-}
-
-.plugin-model-spent.is-full {
-  color: var(--spica-danger);
-}
-
-.plugin-model-limit {
-  margin-top: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.plugin-model-input {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.plugin-model-input .input {
-  width: 84px;
+  margin-top: 12px;
 }
 
 /* What can be done to the plugin, right under its name; while it installs, how far it is, in the

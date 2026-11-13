@@ -1,5 +1,5 @@
 // Plugins use the user's models through MCP sampling: only when granted, no
-// tools, no conversation, within a daily limit, recorded without the text.
+// tools, no conversation, no dollar limit of their own, recorded without the text.
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Runtime } from './runtime.ts';
@@ -30,7 +30,7 @@ function runtime(opts: Parameters<typeof makeRuntime>[1] = {}) {
 }
 
 /** Connect the fake server as the "notes" plugin's server; its `ask` tool makes it send sampling/createMessage. */
-async function plugin(rt: Runtime, grant?: { pluginId: string; maxUsdPerDay?: number }) {
+async function plugin(rt: Runtime, grant?: { pluginId: string }) {
   const h = await rt.connectMcp(
     { name: 'notes', command: process.execPath, args: [script], env: { FAKE_MCP_SAMPLING: '1' }, ...(grant ? { sampling: grant } : {}) },
     { source: 'plugin:notes' },
@@ -116,23 +116,15 @@ describe('plugins using the user models (MCP sampling)', () => {
     }
   });
 
-  it('refusals the plugin can tell apart: daily limit, tools, non-text, no model at all; the day total survives a restart', async () => {
+  it('refusals the plugin can tell apart: tools, non-text, no model at all; the day total survives a restart', async () => {
     const store = new MemoryStore();
     const rt = runtime({ store });
-    const c = await plugin(rt, { pluginId: 'notes', maxUsdPerDay: 0.05 });
+    const c = await plugin(rt, { pluginId: 'notes' });
     expect(await c.call('ask', ask({}))).toHaveProperty('result');
     const spent = rt.sampler.spentToday('notes');
-    const n = gw.requests.length;
     expect(await c.call('ask', ask({ tools: [{ name: 'x' }] }))).toMatchObject({ error: { data: { code: 'invalid' } } });
     expect(await c.call('ask', { params: { messages: [{ role: 'user', content: { type: 'image', data: 'x', mimeType: 'image/png' } }], maxTokens: 10 } })).toMatchObject({ error: { data: { code: 'invalid' } } });
     await c.close();
-
-    const tight = await plugin(rt, { pluginId: 'notes', maxUsdPerDay: spent });
-    const over = await tight.call('ask', ask({}));
-    expect(over).toMatchObject({ error: { data: { code: 'budget' } } });
-    expect(String((over.error as { message: string }).message)).toMatch(/budget for today is used up/);
-    expect(gw.requests.length).toBe(n); // nothing was sent
-    await tight.close();
 
     const after = runtime({ store });
     expect(after.sampler.spentToday('notes')).toBeCloseTo(spent);
@@ -141,5 +133,19 @@ describe('plugins using the user models (MCP sampling)', () => {
     const c2 = await plugin(none, { pluginId: 'notes' });
     expect(await c2.call('ask', ask({}))).toMatchObject({ error: { data: { code: 'no_model' } } });
     await c2.close();
+  });
+
+  it('no dollar limit per plugin: past what the old daily limit (0.5 USD) allowed, the next call still goes', async () => {
+    // fake-model is priced (5 / 20 USD per million tokens): each answer costs 0.65 USD
+    gw.onRequest(() => ({ text: 'a long answer', usage: { input: 50_000, output: 20_000 } }));
+    const rt = runtime();
+    const c = await plugin(rt, { pluginId: 'notes' });
+    expect(await c.call('ask', ask({}))).toHaveProperty('result');
+    expect(rt.sampler.spentToday('notes')).toBeGreaterThan(0.5);
+    const n = gw.requests.length;
+    expect(await c.call('ask', ask({}))).toMatchObject({ result: { content: { text: 'a long answer' } } });
+    expect(gw.requests.length).toBe(n + 1);
+    expect(rt.sampler.spentToday('notes')).toBeGreaterThan(1);
+    await c.close();
   });
 });

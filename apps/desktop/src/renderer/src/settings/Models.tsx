@@ -22,6 +22,9 @@ import {
   type ProviderKind,
   type ProviderView,
   type TestResult,
+  SPEND_PERIOD_DEFAULT,
+  SPEND_PERIODS,
+  type ProviderSpendView,
 } from '../../../shared/providers';
 import type { PasteResult } from '../../../shared/paste-config';
 import { friendlyError } from '../store/agent';
@@ -50,10 +53,8 @@ export interface ProvidersApi {
   listModels?(draft: ProviderDraft): Promise<ListModelsView>;
   /** A model name matched to the catalog, for its 上下文上限. */
   matchWindow?(kind: ProviderKind, model: string, catalogId?: string | null): Promise<WindowMatch | null>;
-  /** 已花 of each saved provider since its last 清零 (USD). */
-  spend?(): Promise<Record<string, number>>;
-  /** 清零 one provider's 已花. */
-  resetSpend?(id: string): Promise<void>;
+  /** 本周期已花 of each saved provider with a 花费上限. */
+  spend?(): Promise<Record<string, ProviderSpendView>>;
   /** The models changed elsewhere (a connected script); the list is read again. */
   onChanged?(listener: () => void): () => void;
 }
@@ -68,6 +69,15 @@ const GROUPS: { group: CatalogProviderView['group']; label: string }[] = [
 /** The two choices that are not in the catalog. */
 const WSO2 = '#wso2';
 const RELAY = '#relay';
+
+/** 本周期已花 under a 花费上限: what was spent, when the period ends, and requests without a price (not counted). */
+export function spendLine(v: ProviderSpendView): string {
+  const d = new Date(v.endMs);
+  const p = (n: number) => String(n).padStart(2, '0');
+  const parts = [`本周期已花 ${moneyText(v.spentUsd)}`, `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())} 结束`];
+  if (v.unpricedRequests) parts.push(`未计价请求 ${v.unpricedRequests}`);
+  return parts.join(' · ');
+}
 
 function draftFrom(p: ProviderView): ProviderDraft {
   const { hasSecret: _h, isDefault: _d, readOnly: _r, keyMask: _t, ...fields } = p;
@@ -210,8 +220,8 @@ export function AgentMessagesRow({ value, onChange }: RunLimitProps) {
 
 export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessages?: RunLimitProps }) {
   const [list, setList] = useState<ProviderList | null>(null);
-  // 已花 of each saved provider (since its last 清零)
-  const [spent, setSpent] = useState<Record<string, number>>({});
+  // 本周期已花 of each saved provider with a 花费上限
+  const [spent, setSpent] = useState<Record<string, ProviderSpendView>>({});
   const loadSpent = () => {
     void api
       .spend?.()
@@ -225,6 +235,14 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
     return (sel ? keptDraft<ProviderDraft>(draftKey(sel)) : undefined) ?? emptyDraft();
   });
   const [advanced, setAdvanced] = useState(false);
+  // 自定义 picked for the 花费上限's period (a number of days that is not 7 or 30 shows it too)
+  const [customPeriod, setCustomPeriod] = useState(false);
+  const shownPeriod = draft.spendPeriodDays;
+  const [periodOf, setPeriodOf] = useState<string | 'new' | null>(null);
+  if (periodOf !== selected) {
+    setPeriodOf(selected);
+    setCustomPeriod(shownPeriod !== undefined && !(SPEND_PERIODS as readonly number[]).includes(shownPeriod));
+  }
   const [errors, setErrors] = useState<FieldErrors>({});
   const [result, setResult] = useState<TestResult | null>(null);
   const [busy, setBusy] = useState<'test' | 'save' | null>(null);
@@ -526,6 +544,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
         latest.current = { draft: draftFrom(saved), selected: saved.id };
       }
       setResult({ ok: true, message: '已保存' });
+      loadSpent();
     } catch (e) {
       setResult({ ok: false, message: friendlyError(e) });
     } finally {
@@ -803,7 +822,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                 </span>
               </div>
 
-              {/* 花费上限: what this provider may cost in all; 已花 and 清零 beside it once it is saved */}
+              {/* 花费上限: what this provider may cost in a period (7 天 / 30 天 / 自定义); 本周期已花 under it once saved */}
               <div className="field field-stack">
                 <span className="field-label">花费上限</span>
                 <span className="field-control">
@@ -823,14 +842,40 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                         onChange={(e) => set({ spendLimitUsd: parseNum(e.target.value) })}
                       />
                     </label>
-                    {current ? <span className="spend-spent">已花 {moneyText(spent[current.id] ?? 0)}</span> : null}
-                    {current && api.resetSpend && (spent[current.id] ?? 0) > 0 ? (
-                      <button type="button" className="btn btn-small" title="已花从 0 重新算" onClick={() => void api.resetSpend!(current.id).then(loadSpent, () => undefined)}>
-                        清零
-                      </button>
+                    <select
+                      className="input spend-period"
+                      aria-label="周期"
+                      value={customPeriod ? 'custom' : String(draft.spendPeriodDays ?? SPEND_PERIOD_DEFAULT)}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setCustomPeriod(v === 'custom');
+                        if (v !== 'custom') set({ spendPeriodDays: Number(v) });
+                      }}
+                    >
+                      {SPEND_PERIODS.map((d) => (
+                        <option key={d} value={String(d)}>{`${d} 天`}</option>
+                      ))}
+                      <option value="custom">自定义</option>
+                    </select>
+                    {customPeriod ? (
+                      <label className="run-limit">
+                        <input
+                          className={errors.spendPeriodDays ? 'input is-invalid' : 'input'}
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={draft.spendPeriodDays ?? ''}
+                          autoComplete="off"
+                          aria-label="周期天数"
+                          aria-invalid={errors.spendPeriodDays ? true : undefined}
+                          onChange={(e) => set({ spendPeriodDays: e.target.value === '' ? Number.NaN : Number(e.target.value) })}
+                        />
+                        <span aria-hidden="true">天</span>
+                      </label>
                     ) : null}
                   </span>
-                  {errors.spendLimitUsd ? <span className="field-error">{errors.spendLimitUsd}</span> : null}
+                  {current && spent[current.id] ? <span className="spend-spent">{spendLine(spent[current.id]!)}</span> : null}
+                  {errors.spendLimitUsd || errors.spendPeriodDays ? <span className="field-error">{errors.spendLimitUsd ?? errors.spendPeriodDays}</span> : null}
                 </span>
               </div>
 
