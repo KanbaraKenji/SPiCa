@@ -94,7 +94,7 @@ describe('tidying the memory', () => {
     expect(rt.memory.tidy('user')).toEqual({ started: false, reason: 'running' });
     const run = await done(rt);
     // the model saw the notes and only what the user typed
-    expect(prompt).toContain('[1] 数据处理主要用 Python');
+    expect(prompt).toContain('[1] (no category) 数据处理主要用 Python');
     expect(prompt).toContain('我负责开单系统');
     expect(prompt).not.toContain('好');
     expect(run).toMatchObject({ status: 'done', by: 'user', refused: 4, sessions: 2 });
@@ -110,7 +110,8 @@ describe('tidying the memory', () => {
     expect(rt.store.listTraces().some((t) => t.sessionId === null && t.initiator === 'runtime:memory-tidy' && t.status === 'ok')).toBe(true);
     expect(rt.memory.tidies()[0]).toMatchObject({ id: run.id, status: 'done' });
 
-    // the next tidy reads only what is new: nothing, so no model call
+    // the next tidy reads only what is new: nothing (and every note has a category), so no model call
+    for (const m of rt.memory.list()) rt.store.putMemory({ ...m, category: m.category ?? 'you' });
     const calls = gw.requests.length;
     rt.memory.tidy('user');
     expect(await done(rt)).toMatchObject({ status: 'done', messages: 0, changes: [] });
@@ -270,5 +271,68 @@ describe('details and answers', () => {
     gw.onRequest(() => ({ text: '{"changes":[]}' }));
     expect(rt.memory.tidy('user')).toMatchObject({ started: true });
     expect(await done(rt)).toMatchObject({ status: 'done' });
+  });
+});
+
+describe('categories', () => {
+  it('a tidy gives notes without a category one (not a change: no undo, the date stays), also with nothing new to read', async () => {
+    const rt = makeRuntime(gw, { cwd: dir });
+    const old = rt.memory.add({ text: '一般周三下午不开会', quote: '一般周三下午不开会', by: 'user' }).item!;
+    const other = rt.memory.add({ text: '王经理是直属上司', quote: '王经理是直属上司', by: 'user' }).item!;
+    const kept = rt.memory.add({ text: '关注模具交期', quote: '关注模具交期', category: 'topics', by: 'user' }).item!;
+    let prompt = '';
+    gw.onRequest((req) => {
+      if (!isTidy(req.body)) return { text: '好' };
+      prompt = userText(req.body);
+      return {
+        text: JSON.stringify({
+          changes: [
+            { action: 'categorized', id: old.id, category: 'you' },
+            { action: 'categorized', id: other.id, category: 'nonsense' },
+            { action: 'categorized', id: kept.id, category: 'people' },
+          ],
+        }),
+      };
+    });
+    rt.memory.tidy('user');
+    const run = await done(rt);
+    // nothing typed since: the model was still asked, for the categories
+    expect(prompt).toContain(`[${old.id}] (no category) 一般周三下午不开会`);
+    expect(prompt).toContain(`[${kept.id}] (topics) 关注模具交期`);
+    expect(prompt).toContain('(nothing new)');
+    expect(run).toMatchObject({ status: 'done', changes: [], categorized: 1, refused: 2 });
+    expect(rt.memory.get(old.id)).toMatchObject({ category: 'you', updatedAt: old.updatedAt, status: 'active' });
+    expect(rt.memory.get(other.id)!.category).toBeUndefined(); // an unknown category is refused
+    expect(rt.memory.get(kept.id)!.category).toBe('topics'); // one it has is not changed here
+  });
+
+  it("a tidy's new notes carry the category it gives; a rewrite without one keeps the old note's", async () => {
+    const rt = makeRuntime(gw, { cwd: dir });
+    const a = rt.createSession();
+    await a.send('我负责报价。').done;
+    await pause();
+    const note = rt.memory.add({ text: '负责样品', quote: '负责样品', category: 'you', by: 'user' }).item!;
+    await pause();
+    const b = rt.createSession();
+    await b.send('我现在负责样品和报价两块。').done;
+    await b.send('王经理是直属上司。').done;
+    gw.onRequest((req) => {
+      if (!isTidy(req.body)) return { text: '好' };
+      const p = userText(req.body);
+      return {
+        text: JSON.stringify({
+          changes: [
+            { action: 'rewritten', id: note.id, text: '负责样品和报价两块', ref: refOf(p, '两块'), quote: '负责样品和报价两块' },
+            { action: 'added', text: '王经理是直属上司', category: 'people', ref: refOf(p, '王经理'), quote: '王经理是直属上司' },
+          ],
+        }),
+      };
+    });
+    rt.memory.tidy('user');
+    const run = await done(rt);
+    expect(run.changes.map((c) => [c.action, c.item.text, c.item.category])).toEqual([
+      ['rewritten', '负责样品和报价两块', 'you'],
+      ['added', '王经理是直属上司', 'people'],
+    ]);
   });
 });

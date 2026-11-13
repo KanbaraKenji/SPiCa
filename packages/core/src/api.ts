@@ -2,6 +2,7 @@
 // The desktop main process and the MCP server expose this object; events
 // come from runtime.events.
 import type { Runtime } from './runtime.ts';
+import { categoryOf } from './memory.ts';
 import type { AgentApi, CreateSessionRequest, SteerMode } from './types.ts';
 
 export function createAgentApi(rt: Runtime): AgentApi {
@@ -99,11 +100,12 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async listMemories(opts) {
       return rt.memory.list({ all: !!opts?.all });
     },
-    async addMemory(text) {
-      return rt.memory.addOwn(String(text ?? ''));
+    async addMemory(text, category) {
+      const c = categoryOf(category);
+      return rt.memory.addOwn(String(text ?? ''), undefined, c);
     },
-    async editMemory(id, text) {
-      return rt.memory.edit(Number(id), String(text ?? ''));
+    async editMemory(id, text, category) {
+      return rt.memory.edit(Number(id), String(text ?? ''), categoryOf(category));
     },
     async forgetMemory(id) {
       return rt.memory.delete(Number(id));

@@ -97,7 +97,7 @@ describe('设置 › 记忆', () => {
     expect(facts()).toContain('原话=原话 3');
     fireEvent.change(box, { target: { value: '邮箱密码是 hunter2' } });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '保存' })));
-    expect(edit).toHaveBeenCalledWith(3, '邮箱密码是 hunter2');
+    expect(edit).toHaveBeenCalledWith(3, '邮箱密码是 hunter2', undefined);
     expect(screen.getByRole('alert').textContent).toBe('疑似密码、密钥或证件号码，未保存');
     await esc();
     expect(screen.queryByRole('textbox', { name: '记忆内容' })).toBeNull();
@@ -128,7 +128,7 @@ describe('设置 › 记忆', () => {
     expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(box, { target: { value: '周报每周五下午发' } });
     await act(async () => fireEvent.keyDown(box, { key: 'Enter' }));
-    expect(add).toHaveBeenCalledWith('周报每周五下午发');
+    expect(add).toHaveBeenCalledWith('周报每周五下午发', undefined);
     expect(page()).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '添加' }));
     await esc();
@@ -161,6 +161,58 @@ describe('设置 › 记忆', () => {
     rerender(<Memory {...props} items={[item(1), item(3, { status: 'forgotten' })]} />);
     expect(page()).toBeNull();
     expect(rows()).toEqual(['第 1 条']);
+  });
+
+  it('grouped by category under its name, in the order 你 领域 主题 人物 项目; an empty one not shown; those without one last, without a name', () => {
+    setup({
+      items: [
+        item(1, { category: 'people', text: '王经理是直属上司' }),
+        item(2, { text: '一般周三下午不开会' }),
+        item(3, { category: 'you', text: '回答先给结论' }),
+        item(4, { category: 'people', text: '报销找李老师' }),
+        item(5, { category: 'areas', text: '报价写含税价' }),
+      ],
+    });
+    const sections = [...document.querySelectorAll('.memory-known .memory-section')];
+    expect(sections.map((sec) => [sec.querySelector('.memory-cat')?.textContent ?? null, [...sec.querySelectorAll('.memory-text')].map((t) => t.textContent)])).toEqual([
+      ['你', ['回答先给结论']],
+      ['领域', ['报价写含税价']],
+      ['人物', ['报销找李老师', '王经理是直属上司']],
+      [null, ['一般周三下午不开会']],
+    ]);
+    // each its own box
+    expect(sections.every((sec) => sec.querySelectorAll('.group-box').length === 1)).toBe(true);
+  });
+
+  it("a note's page says its category (none for one from before there were categories); editing picks or changes it", async () => {
+    const edit = vi.fn(async () => ({ action: 'edited' as const, item: item(1) }));
+    setup({ items: [item(1, { category: 'people', text: '王经理是直属上司' }), item(2, { text: '一般周三下午不开会' })], api: { add: vi.fn(), edit, forget: vi.fn(), clear: vi.fn() } });
+    openRow('王经理是直属上司');
+    expect(facts()[0]).toBe('类别=人物');
+    fireEvent.click(within(page()!).getByRole('button', { name: '编辑' }));
+    const pick = screen.getByRole('radiogroup', { name: '类别' });
+    expect(within(pick).getAllByRole('radio').map((r) => r.textContent)).toEqual(['你', '领域', '主题', '人物', '项目']);
+    expect(within(pick).getByRole('radio', { checked: true }).textContent).toBe('人物');
+    // the words the same, only the category: 保存 can be pressed
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(within(pick).getByRole('radio', { name: '项目' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '保存' })));
+    expect(edit).toHaveBeenCalledWith(1, '王经理是直属上司', 'projects');
+    fireEvent.click(page()!.querySelector('.memory-back')!);
+    openRow('一般周三下午不开会');
+    expect(facts().some((f) => f.startsWith('类别='))).toBe(false);
+    fireEvent.click(within(page()!).getByRole('button', { name: '编辑' }));
+    expect(within(screen.getByRole('radiogroup', { name: '类别' })).queryByRole('radio', { checked: true })).toBeNull();
+  });
+
+  it('添加 can pick a category, or leave it', async () => {
+    const add = vi.fn(async () => ({ action: 'saved' as const, item: item(6) }));
+    setup({ api: { add, edit: vi.fn(), forget: vi.fn(), clear: vi.fn() } });
+    fireEvent.click(screen.getByRole('button', { name: '添加' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '记忆内容' }), { target: { value: '关注模具交期' } });
+    fireEvent.click(screen.getByRole('radio', { name: '主题' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '保存' })));
+    expect(add).toHaveBeenCalledWith('关注模具交期', 'topics');
   });
 
   it('the switch is the setting; off, the list stays', () => {

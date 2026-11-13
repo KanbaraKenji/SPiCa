@@ -6774,6 +6774,36 @@ section.plugins-part > .plugins-part-title {
   overflow-wrap: anywhere;
 }
 
+/* 已记住: a box per category under its name (as Claude's You / Topics), the groups a little apart */
+.memory-known {
+  display: flex;
+  flex-direction: column;
+}
+
+.memory-section + .memory-section {
+  margin-top: 16px;
+}
+
+.memory-cat {
+  margin: 0 0 6px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: 600;
+  color: var(--spica-muted);
+}
+
+/* 类别 in the box adding or editing a note: its name, then the five as one segmented row */
+.memory-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.memory-pick-label {
+  color: var(--spica-muted);
+}
+
 /* one line, whatever the length: the words give way, never the time or the buttons */
 .memory-row,
 .memory-tidy-change {

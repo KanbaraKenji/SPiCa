@@ -1,11 +1,13 @@
-// 设置 › 记忆: the switch, 整理, and what the assistant remembers (newest first), one line each (as Claude's
-// memory list): the sentence cut to the line, when it last changed, a pencil and a bin at the right end without a
-// box. A line (or the pencil) opens the note's own page in the list's place (as a plugin's page): ← 记忆 at the
+// 设置 › 记忆: the switch, 整理, and what the assistant remembers, grouped by category as Claude's memory page
+// (你, 领域, 主题, 人物, 项目, each under its name, an empty one not shown; notes from before there were categories
+// last, without a name, until a tidy gives them one), newest first in a group, one line each: the sentence cut to
+// the line, when it last changed, a pencil and a bin at the right end without a box. A line (or the pencil) opens the note's own page in the list's place (as a plugin's page): ← 记忆 at the
 // top left, the whole sentence with 编辑 and 删除, when it last changed, the conversation it was saved in and the
 // user's words. 添加 opens the same kind of page with an empty box. Deleting and clearing are for good (the core
 // drops the items and their older versions).
 import { useEffect, useRef, useState } from 'react';
-import type { MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyChange, MemoryTidyRun } from '@spica/protocol';
+import type { MemoryCardMeta, MemoryCategory, MemoryItem, MemoryRefusal, MemoryTidyChange, MemoryTidyRun } from '@spica/protocol';
+import { MEMORY_CATEGORIES } from '@spica/protocol';
 import { Switch } from './Switch';
 import { Group, Pane, Row } from './Group';
 import { Icon } from '../ui/Icon';
@@ -13,12 +15,15 @@ import { ConfirmDialog } from '../ui/Dialog';
 import { fullTime, timeOf } from '../chat/format';
 import { useEscape } from '../ui/escape';
 
+/** A category's name on the page (its group's title, the page's 类别). */
+export const CATEGORY_LABEL: Record<MemoryCategory, string> = { you: '你', areas: '领域', topics: '主题', people: '人物', projects: '项目' };
+
 /** The most characters in one item (the core refuses longer ones). */
 export const MEMORY_CHARS = 200;
 
 export interface MemoryApi {
-  add(text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
-  edit(id: number, text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
+  add(text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
+  edit(id: number, text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
   forget(id: number): Promise<unknown>;
   clear(): Promise<unknown>;
 }
@@ -68,6 +73,12 @@ const refusal = (r: MemoryCardMeta | MemoryRefusal | undefined): string | null =
 /** The active items, the newest saved first. */
 export function shownMemories(items: MemoryItem[] | null): MemoryItem[] {
   return (items ?? []).filter((m) => m.status === 'active').sort((a, b) => b.id - a.id);
+}
+
+/** The groups of the list in order (你, 领域, 主题, 人物, 项目, then those without a category), the empty ones left out. */
+export function memoryGroups(list: MemoryItem[]): { category: MemoryCategory | null; items: MemoryItem[] }[] {
+  const groups = [...MEMORY_CATEGORIES, null].map((category) => ({ category, items: list.filter((m) => (m.category ?? null) === category) }));
+  return groups.filter((g) => g.items.length > 0);
 }
 
 
@@ -134,7 +145,7 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession,
           title={item.sessionId ? titleOf(item.sessionId) : undefined}
           onOpenSession={onOpenSession}
           onEdit={(on) => open(item.id, on)}
-          onSave={(text) => api.edit(item.id, text)}
+          onSave={(text, category) => api.edit(item.id, text, category)}
           onDelete={() => setDeleting(item)}
         />
         {dialogs}
@@ -145,7 +156,7 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession,
     return (
       <section ref={top} className="settings-section memory-detail" aria-label="添加记忆">
         <Back onBack={() => toList()} />
-        <MemoryForm initial="" onCancel={() => toList()} onSave={(text) => api.add(text)} />
+        <MemoryForm initial="" onCancel={() => toList()} onSave={(text, category) => api.add(text, category)} />
       </section>
     );
   }
@@ -162,10 +173,11 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession,
         ) : null}
       </Group>
       {tidy ? <TidyGroup tidy={tidy} enabled={enabled} items={items} /> : null}
-      <Group
-        title="已记住"
-        actions={
-          <>
+      {/* 已记住 as a settings group (its title and buttons), a box per category under the category's name */}
+      <div className="settings-group memory-known">
+        <div className="group-head">
+          <h3 className="settings-subheading">已记住</h3>
+          <div className="group-actions">
             <button type="button" className="btn btn-small" onClick={() => setView({ page: 'new' })}>
               <Icon name="plus" size={14} />
               添加
@@ -175,29 +187,37 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession,
                 全部清除
               </button>
             ) : null}
-          </>
-        }
-      >
+          </div>
+        </div>
         {list.length === 0 ? (
-          <Pane>
-            <p className="settings-hint memory-empty">暂无记忆</p>
-          </Pane>
+          <div className="group-box">
+            <Pane>
+              <p className="settings-hint memory-empty">暂无记忆</p>
+            </Pane>
+          </div>
         ) : (
-          <ul className="memory-list group-list">
-            {list.map((m) => (
-              <MemoryRow
-                key={m.id}
-                item={m}
-                focus={returnTo === m.id}
-                onFocused={() => setReturnTo(null)}
-                onOpen={() => open(m.id)}
-                onEdit={() => open(m.id, true)}
-                onDelete={() => setDeleting(m)}
-              />
-            ))}
-          </ul>
+          memoryGroups(list).map((g) => (
+            <section key={g.category ?? 'none'} className="memory-section" {...(g.category ? { 'aria-label': CATEGORY_LABEL[g.category] } : {})}>
+              {g.category ? <h4 className="memory-cat">{CATEGORY_LABEL[g.category]}</h4> : null}
+              <div className="group-box">
+                <ul className="memory-list group-list">
+                  {g.items.map((m) => (
+                    <MemoryRow
+                      key={m.id}
+                      item={m}
+                      focus={returnTo === m.id}
+                      onFocused={() => setReturnTo(null)}
+                      onOpen={() => open(m.id)}
+                      onEdit={() => open(m.id, true)}
+                      onDelete={() => setDeleting(m)}
+                    />
+                  ))}
+                </ul>
+              </div>
+            </section>
+          ))
         )}
-      </Group>
+      </div>
       {dialogs}
     </section>
   );
@@ -332,13 +352,13 @@ function MemoryDetail({
   title: string | undefined;
   onOpenSession(id: string, seq?: number): void;
   onEdit(on: boolean): void;
-  onSave(text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
+  onSave(text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
   onDelete(): void;
 }) {
   return (
     <>
       {editing ? (
-        <MemoryForm initial={item.text} onCancel={() => onEdit(false)} onSave={onSave} />
+        <MemoryForm initial={item.text} initialCategory={item.category} onCancel={() => onEdit(false)} onSave={onSave} />
       ) : (
         <header className="memory-detail-head">
           <h3 className="memory-detail-text">{item.text}</h3>
@@ -353,6 +373,12 @@ function MemoryDetail({
         </header>
       )}
       <dl className="memory-facts">
+        {item.category && !editing ? (
+          <div className="memory-fact">
+            <dt>类别</dt>
+            <dd>{CATEGORY_LABEL[item.category]}</dd>
+          </div>
+        ) : null}
         <div className="memory-fact">
           <dt>最后修改</dt>
           <dd>{fullTime(item.updatedAt)}</dd>
@@ -378,17 +404,32 @@ function MemoryDetail({
   );
 }
 
-/** The box adding (initial '') or editing a note, with 取消 and 保存 under it. Esc cancels it (a layer). */
-function MemoryForm({ initial, onCancel, onSave }: { initial: string; onCancel(): void; onSave(text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined> }) {
+/**
+ * The box adding (initial '') or editing a note, its 类别 under it (one of five; none picked yet for a new note or
+ * one from before there were categories), then 取消 and 保存. Esc cancels it (a layer).
+ */
+function MemoryForm({
+  initial,
+  initialCategory,
+  onCancel,
+  onSave,
+}: {
+  initial: string;
+  initialCategory?: MemoryCategory | undefined;
+  onCancel(): void;
+  onSave(text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
+}) {
   const [text, setText] = useState(initial);
+  const [category, setCategory] = useState<MemoryCategory | undefined>(initialCategory);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const value = text.trim();
   const tooLong = value.length > MEMORY_CHARS;
+  const unchanged = value === initial && category === initialCategory;
   const save = () => {
-    if (!value || tooLong || value === initial || busy) return;
+    if (!value || tooLong || unchanged || busy) return;
     setBusy(true);
-    void onSave(value).then((r) => {
+    void onSave(value, category).then((r) => {
       setBusy(false);
       const no = refusal(r);
       if (no) setProblem(no);
@@ -419,11 +460,21 @@ function MemoryForm({ initial, onCancel, onSave }: { initial: string; onCancel()
         }}
       />
       {shown ? <span className="field-error" role="alert">{shown}</span> : null}
+      <div className="memory-pick">
+        <span className="memory-pick-label">类别</span>
+        <div className="segmented" role="radiogroup" aria-label="类别">
+          {MEMORY_CATEGORIES.map((c) => (
+            <button key={c} type="button" role="radio" aria-checked={category === c} className={category === c ? 'segment is-on' : 'segment'} onClick={() => setCategory(c)}>
+              {CATEGORY_LABEL[c]}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="memory-edit-actions">
         <button type="button" className="btn btn-small" onClick={onCancel}>
           取消
         </button>
-        <button type="button" className="btn btn-small btn-primary" disabled={!value || tooLong || value === initial || busy} onClick={save}>
+        <button type="button" className="btn btn-small btn-primary" disabled={!value || tooLong || unchanged || busy} onClick={save}>
           保存
         </button>
       </div>

@@ -15,6 +15,7 @@ import type {
   MailItem,
   MailPollResult,
   MemoryCardMeta,
+  MemoryCategory,
   MemoryItem,
   MemoryRefusal,
   MemoryTidyRun,
@@ -45,7 +46,7 @@ import type { AgentBackend } from './types';
 import { buildSeed, fakeCard } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
 import { isoAt } from './time';
-import { FakeMemory, type MemoryPlan } from './fake-memory';
+import { DEMO_MEMORIES, FakeMemory, guessCategory, type MemoryPlan } from './fake-memory';
 
 /** What the user typed in a message (its text blocks). */
 function textOf(m: Message | undefined): string {
@@ -57,6 +58,8 @@ export interface FakeBackendOptions {
   speed?: number;
   /** Start with the demo projects and history. Default true. */
   seed?: boolean;
+  /** The demo's own memory notes (default: with the seed). */
+  demoMemories?: boolean;
   /** Clock, for deterministic screenshots and tests. */
   now?: () => Date;
   /** Like the core's: the folder all conversations shared up to 0.1.0-rc.2; ones there choose a folder once, their files stay. */
@@ -228,6 +231,7 @@ export class FakeBackend implements AgentBackend {
     this.#memory = new FakeMemory(
       () => isoAt(this.#now()),
       (sid, body) => this.#emit(sid, body),
+      (options.demoMemories ?? options.seed ?? true) ? DEMO_MEMORIES : [],
     );
     this.#mail = new FakeMailbox(
       this.#now,
@@ -673,12 +677,12 @@ export class FakeBackend implements AgentBackend {
     return this.#memory.list(opts);
   }
 
-  async addMemory(text: string): Promise<MemoryCardMeta | MemoryRefusal> {
-    return this.#memory.addOwn(text);
+  async addMemory(text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal> {
+    return this.#memory.addOwn(text, category);
   }
 
-  async editMemory(id: number, text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
-    return this.#memory.edit(id, text);
+  async editMemory(id: number, text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
+    return this.#memory.edit(id, text, category);
   }
 
   async forgetMemory(id: number): Promise<MemoryCardMeta | undefined> {
@@ -898,13 +902,14 @@ export class FakeBackend implements AgentBackend {
     const userSeq = [...(this.#messages.get(sessionId) ?? [])].reverse().find((m) => m.role === 'user' && m.kind === 'user')?.seq;
     const quote = textOf(this.#messages.get(sessionId)?.find((m) => m.seq === userSeq));
     const name = plan.action === 'forget' ? 'forget' : 'remember';
-    const input = plan.action === 'forget' ? { id: plan.id, quote } : { text: plan.text, quote, ...(plan.action === 'replace' ? { replaces: plan.replaces } : {}) };
+    const category = plan.action === 'forget' ? undefined : guessCategory(plan.text);
+    const input = plan.action === 'forget' ? { id: plan.id, quote } : { text: plan.text, quote, category, ...(plan.action === 'replace' ? { replaces: plan.replaces } : {}) };
     this.#emit(sessionId, { type: 'tool.call', callId, name });
     this.#emit(sessionId, { type: 'tool.start', callId, name, input, category: 'other' });
     const card =
       plan.action === 'forget'
         ? this.#memory.forget(plan.id, 'assistant', true)
-        : this.#memory.add({ text: plan.text, quote, by: 'assistant', sessionId, ...(userSeq !== undefined ? { seq: userSeq } : {}), ...(plan.action === 'replace' ? { replaces: plan.replaces } : {}) });
+        : this.#memory.add({ text: plan.text, quote, by: 'assistant', ...(category ? { category } : {}), sessionId, ...(userSeq !== undefined ? { seq: userSeq } : {}), ...(plan.action === 'replace' ? { replaces: plan.replaces } : {}) });
     if (card) this.#emit(sessionId, { type: 'memory.changed', callId, card });
     this.#callInfo.set(callId, { category: 'other', ...(card ? { memory: card } : {}) });
     const result = card?.item ? (card.action === 'forgotten' ? `Forgot [${card.item.id}].` : `Saved as [${card.item.id}].`) : 'Nothing changed.';

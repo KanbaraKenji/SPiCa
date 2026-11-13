@@ -24,11 +24,12 @@
 import type { Hooks } from './hooks.ts';
 import type { Runtime } from './runtime.ts';
 import type { Session } from './session.ts';
-import type { MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyRun, Message } from './types.ts';
+import type { MemoryCardMeta, MemoryCategory, MemoryItem, MemoryRefusal, MemoryTidyRun, Message } from './types.ts';
+import { MEMORY_CATEGORIES } from '@spica/protocol';
 import type { Tool, ToolContext, ToolEnv } from './tools/types.ts';
 import { isoNow } from './events.ts';
 import { redact } from './util.ts';
-import { apply, ask, check, collect, newConversations, parseChanges, TIDY_LIMITS, tidyPrompt, undoChange } from './memory-tidy.ts';
+import { apply, applyCategories, ask, check, collect, newConversations, parseChanges, TIDY_LIMITS, tidyPrompt, undoChange } from './memory-tidy.ts';
 
 export const MEMORY_LIMITS = {
   /** Characters in one item. */
@@ -52,6 +53,20 @@ export const MEMORY_LIMITS = {
 
 /** The owner of the memory a conversation reads and writes. Only the user themself for now. */
 export const USER_OWNER = 'user';
+
+/** What each category holds, for the model (remember and the tidy). */
+export const CATEGORY_HINTS: Record<MemoryCategory, string> = {
+  you: 'who the user is and how they want you to work and answer (role, habits, preferences)',
+  areas: 'the parts of their work or life they look after, and the standing rules there (a duty, how a kind of document is written)',
+  topics: 'subjects and interests they follow (a hobby, a field they read about)',
+  people: 'people they mention: who someone is, how to deal with them',
+  projects: 'a particular project and its standing facts (its name, goal, people, dates that hold)',
+};
+
+/** The category given, when it is one. */
+export function categoryOf(v: unknown): MemoryCategory | undefined {
+  return (MEMORY_CATEGORIES as readonly unknown[]).includes(v) ? (v as MemoryCategory) : undefined;
+}
 
 /** Conversations with the user's memory: the assistant's threads (not projects, not mail sorting, not sub-agents). */
 export function hasMemory(env: { role?: string; templateId?: string; projectId?: string }): boolean {
@@ -261,8 +276,10 @@ export class MemoryBook {
         let costUsd = 0;
         let changes: MemoryTidyRun['changes'] = [];
         let refused = 0;
+        let categorized = 0;
         const items = this.list({ owner });
-        if (fed.length > 0) {
+        // also with nothing new to read while notes saved before there were categories still have none
+        if (fed.length > 0 || items.some((m) => !m.category)) {
           const answer = await ask(rt, tidyPrompt(items, fed), abort.signal);
           costUsd = answer.costUsd;
           const proposed = parseChanges(answer.text);
@@ -270,12 +287,13 @@ export class MemoryBook {
           const checked = check(rt, proposed, fed, owner);
           refused = checked.refused;
           changes = apply(rt, run, checked.plans, owner);
+          categorized = applyCategories(rt, checked.categorize);
         }
         const until = fed.at(-1)?.at;
         // the next tidy reads what came after what this one read (a failed one moves nothing)
         if (until) rt.store.setMemoryCursor(owner, until);
-        run = rt.store.putMemoryTidy({ ...run, status: 'done', endedAt: isoNow(), changes, refused, costUsd, ...(until ? { until } : {}) });
-        if (changes.length) rt.events.emit(rt.eventHost, { type: 'memory.changed', card: { action: 'tidied', count: changes.length } });
+        run = rt.store.putMemoryTidy({ ...run, status: 'done', endedAt: isoNow(), changes, refused, costUsd, ...(categorized ? { categorized } : {}), ...(until ? { until } : {}) });
+        if (changes.length || categorized) rt.events.emit(rt.eventHost, { type: 'memory.changed', card: { action: 'tidied', count: changes.length } });
       } catch (err) {
         const failed: MemoryTidyRun = { ...run, status: 'failed', endedAt: isoNow(), error: rt.redact(err instanceof Error ? err.message : String(err)) };
         try {
@@ -396,16 +414,19 @@ export class MemoryBook {
 
   /** remember: a new item, or one that takes the place of `replaces`. */
   add(
-    o: { text: string; quote: string; replaces?: number; sessionId?: string; seq?: number; by: 'assistant' | 'user'; owner?: string },
+    o: { text: string; quote: string; category?: MemoryCategory; replaces?: number; sessionId?: string; seq?: number; by: 'assistant' | 'user'; owner?: string },
     ctx?: ToolContext,
   ): MemoryCardMeta {
     const now = isoNow();
     const owner = o.owner ?? USER_OWNER;
     const prev = o.replaces !== undefined ? this.get(o.replaces) : undefined;
+    // a replacement keeps the old item's category unless it says another
+    const category = o.category ?? prev?.category;
     const item = this.#save({
       id: 0,
       owner,
       text: o.text.trim(),
+      ...(category ? { category } : {}),
       quote: this.#rt.redact(o.quote.trim()),
       status: 'active',
       ...(prev ? { replaces: prev.id } : {}),
@@ -424,12 +445,12 @@ export class MemoryBook {
     return card;
   }
 
-  /** Settings: the user adds an item themself (no quote to check; secrets are still refused). */
-  addOwn(text: string, owner = USER_OWNER): MemoryCardMeta | MemoryRefusal {
+  /** Settings: the user adds an item themself (no quote to check; secrets are still refused), in a category or none. */
+  addOwn(text: string, owner = USER_OWNER, category?: MemoryCategory): MemoryCardMeta | MemoryRefusal {
     const t = text.trim();
     const no = this.#refusal(t);
     if (no) return no;
-    return this.add({ text: t, quote: t, by: 'user', owner });
+    return this.add({ text: t, quote: t, by: 'user', owner, ...(category ? { category } : {}) });
   }
 
   /** Why a sentence typed in the settings cannot be kept (the same rules for adding and editing). */
@@ -448,14 +469,14 @@ export class MemoryBook {
     return card;
   }
 
-  /** Settings: change the sentence of an active item (refused like a new one: empty, too long, a secret). */
-  edit(id: number, text: string): MemoryCardMeta | MemoryRefusal | undefined {
+  /** Settings: change the sentence (and the category, when given) of an active item (refused like a new one: empty, too long, a secret). */
+  edit(id: number, text: string, category?: MemoryCategory): MemoryCardMeta | MemoryRefusal | undefined {
     const it = this.get(id);
     if (!it || it.status !== 'active') return undefined;
     const t = text.trim();
     const no = this.#refusal(t);
     if (no) return no;
-    const card: MemoryCardMeta = { action: 'edited', item: this.#save({ ...it, text: t, by: 'user', updatedAt: isoNow() }) };
+    const card: MemoryCardMeta = { action: 'edited', item: this.#save({ ...it, text: t, ...(category ? { category } : {}), by: 'user', updatedAt: isoNow() }) };
     this.#emit(card);
     return card;
   }
@@ -569,6 +590,7 @@ export function createMemoryTools(rt: Runtime): Tool[] {
         "similar private matters only when the user asks you to. Write one note in the user's language, without a subject (喜欢简短回答，先给结论 / " +
         'Prefers short answers; not 用户喜欢… / The user prefers…), saying only what the user said, without your own additions, at most 200 characters. ' +
         "When the user changes their mind about something you remember, pass that item's number as `replaces` instead of adding a second one. " +
+        `Give each note a category: ${MEMORY_CATEGORIES.map((c) => `${c} = ${CATEGORY_HINTS[c]}`).join('; ')}. ` +
         'The user sees each save and can undo it.',
       inputSchema: {
         type: 'object',
@@ -576,6 +598,7 @@ export function createMemoryTools(rt: Runtime): Tool[] {
           text: { type: 'string', description: 'The sentence to remember.' },
           quote: { type: 'string', description: 'The user\'s own words this rests on, copied exactly from a message they typed (a part of it is fine).' },
           replaces: { type: 'integer', description: 'Number of the item this one takes the place of, like 3 for [3].' },
+          category: { type: 'string', enum: [...MEMORY_CATEGORIES], description: 'What the note is about (see above).' },
         },
         required: ['text', 'quote'],
       },
@@ -602,7 +625,9 @@ export function createMemoryTools(rt: Runtime): Tool[] {
       }
       const same = rt.memory.list({ owner }).find((m) => normalize(m.text) === normalize(text));
       if (same && same.id !== replaces) return { content: `Already in your memory as [${same.id}]; nothing changed.` };
-      const card = rt.memory.add({ text, quote, ...(replaces !== undefined ? { replaces } : {}), sessionId: s.id, seq: q.seq, by: 'assistant', owner }, ctx);
+      // a missing or unknown category is not a reason to lose the note: it waits for a tidy to get one
+      const category = categoryOf(input.category);
+      const card = rt.memory.add({ text, quote, ...(category ? { category } : {}), ...(replaces !== undefined ? { replaces } : {}), sessionId: s.id, seq: q.seq, by: 'assistant', owner }, ctx);
       return { content: card.previous ? `Saved as [${card.item!.id}], in place of [${card.previous.id}].` : `Saved as [${card.item!.id}].` };
     },
   };

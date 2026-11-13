@@ -3,7 +3,34 @@
 // good, with the older versions), kept in memory.
 // Also how the demo decides what a message asks it to remember, so a demo
 // conversation shows the 已记住 / 已更新 / 已忘记 line.
-import type { CoreEventBody, MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyChange, MemoryTidyRun } from '@spica/protocol';
+import type { CoreEventBody, MemoryCardMeta, MemoryCategory, MemoryItem, MemoryRefusal, MemoryTidyChange, MemoryTidyRun } from '@spica/protocol';
+
+/**
+ * The demo's guess at a note's category (the core asks the model): people named with a title, a project's words,
+ * how the user wants answers, the duties of their work; anything else is a topic.
+ */
+export function guessCategory(text: string): MemoryCategory {
+  if (/[一-龥](经理|总监|主管|老师|老板)|同事/.test(text)) return 'people';
+  if (/项目|样机|评审|立项|上线/.test(text)) return 'projects';
+  if (/回答|结论|习惯|喜欢|称呼|我是|我负责|一般/.test(text)) return 'you';
+  if (/报价|周报|报销|合同|客户|发票|邮件/.test(text)) return 'areas';
+  return 'topics';
+}
+
+/** The demo's notes (the 演示 data): every category, one with three, and two from before there were categories. */
+export const DEMO_MEMORIES: { text: string; category?: MemoryCategory; daysAgo: number }[] = [
+  { text: '回答先给结论，再说细节', category: 'you', daysAgo: 12 },
+  { text: '在工程部负责样品和报价', category: 'you', daysAgo: 30 },
+  { text: '报价单金额一律写含税价', category: 'areas', daysAgo: 9 },
+  { text: '周报每周一上午发', category: 'areas', daysAgo: 4 },
+  { text: '客户名称写全称，不用简称', category: 'areas', daysAgo: 20 },
+  { text: '关注注塑模具的材料和交期', category: 'topics', daysAgo: 15 },
+  { text: '王经理是直属上司，周报发给他', category: 'people', daysAgo: 4 },
+  { text: '出差报销找李老师审批', category: 'people', daysAgo: 25 },
+  { text: '外壳样机项目：月底前交第二版样机', category: 'projects', daysAgo: 6 },
+  { text: '写给客户的邮件开头不用客套话', daysAgo: 60 },
+  { text: '一般周三下午不开会', daysAgo: 45 },
+];
 
 const ITEM_CHARS = 200;
 const SECRET = /(密码|口令|密钥|验证码|password|api\s*key|secret)\s*(是|为|:|：|=|is)\s*\S|(?<!\d)(?:\d[ -]?){15,18}\d(?!\d)|\b\d{17}[\dXx]\b/i;
@@ -47,9 +74,14 @@ export class FakeMemory {
   readonly #now: () => string;
   readonly #emit: (sessionId: string, body: CoreEventBody) => void;
 
-  constructor(now: () => string, emit: (sessionId: string, body: CoreEventBody) => void) {
+  constructor(now: () => string, emit: (sessionId: string, body: CoreEventBody) => void, seed: readonly (typeof DEMO_MEMORIES)[number][] = []) {
     this.#now = now;
     this.#emit = emit;
+    const today = Date.parse(now());
+    for (const s of seed) {
+      const at = new Date(today - s.daysAgo * 86_400_000).toISOString();
+      this.#put({ id: this.#next++, owner: 'user', text: s.text, quote: s.text, status: 'active', ...(s.category ? { category: s.category } : {}), by: 'user', createdAt: at, updatedAt: at });
+    }
   }
 
   get enabled(): boolean {
@@ -88,13 +120,20 @@ export class FakeMemory {
       if (!/以后|习惯|一般|每周|总是/.test(m.text) || /记住|别记|忘掉/.test(m.text) || SECRET.test(m.text)) continue;
       if (this.#deletedFrom.has(`${m.sessionId}#${m.seq}`) || this.#items.some((x) => (x.sessionId === m.sessionId && x.seq === m.seq) || overlap(m.text, x.text) >= 0.5)) continue;
       const text = m.text.replace(/^(跟你说一下|对了)[，,：:\s]*/, '').replace(/^我/, '').slice(0, ITEM_CHARS);
-      changes.push({ action: 'added', item: this.#put({ id: this.#next++, owner: 'user', text, quote: m.text, status: 'active', sessionId: m.sessionId, seq: m.seq, by: 'assistant', tidyId: id, createdAt: now, updatedAt: now }) });
+      changes.push({ action: 'added', item: this.#put({ id: this.#next++, owner: 'user', text, category: guessCategory(text), quote: m.text, status: 'active', sessionId: m.sessionId, seq: m.seq, by: 'assistant', tidyId: id, createdAt: now, updatedAt: now }) });
+    }
+    // notes from before there were categories get one (not a change: nothing to undo, the date stays)
+    let categorized = 0;
+    for (const m of this.list()) {
+      if (m.category) continue;
+      this.#put({ ...m, category: guessCategory(m.text) });
+      categorized++;
     }
     const until = fresh.at(-1)?.at;
     if (until) this.#cursor = until;
-    const run: MemoryTidyRun = { id, by: 'user', status: 'done', startedAt: now, endedAt: now, sessions: new Set(fresh.map((m) => m.sessionId)).size, messages: fresh.length, changes, refused: 0, costUsd: 0.0004, ...(until ? { until } : {}) };
+    const run: MemoryTidyRun = { id, by: 'user', status: 'done', startedAt: now, endedAt: now, sessions: new Set(fresh.map((m) => m.sessionId)).size, messages: fresh.length, changes, refused: 0, costUsd: 0.0004, ...(categorized ? { categorized } : {}), ...(until ? { until } : {}) };
     this.#runs.unshift(run);
-    if (changes.length) this.#changed({ action: 'tidied', count: changes.length });
+    if (changes.length || categorized) this.#changed({ action: 'tidied', count: changes.length });
     return structuredClone(run);
   }
 
@@ -156,13 +195,15 @@ export class FakeMemory {
   }
 
   /** remember (from a conversation: `callId`) or an item the user adds in the settings. */
-  add(o: { text: string; quote: string; by: 'assistant' | 'user'; replaces?: number; sessionId?: string; seq?: number }): MemoryCardMeta {
+  add(o: { text: string; quote: string; by: 'assistant' | 'user'; category?: MemoryCategory; replaces?: number; sessionId?: string; seq?: number }): MemoryCardMeta {
     const now = this.#now();
     const prev = o.replaces !== undefined ? this.#get(o.replaces) : undefined;
+    const category = o.category ?? prev?.category;
     const item = this.#put({
       id: this.#next++,
       owner: 'user',
       text: o.text,
+      ...(category ? { category } : {}),
       quote: o.quote,
       status: 'active',
       ...(prev ? { replaces: prev.id } : {}),
@@ -176,16 +217,16 @@ export class FakeMemory {
     return { action: 'replaced', item, previous: this.#put({ ...prev, status: 'replaced', replacedBy: item.id, updatedAt: now }) };
   }
 
-  addOwn(text: string): MemoryCardMeta | MemoryRefusal {
+  addOwn(text: string, category?: MemoryCategory): MemoryCardMeta | MemoryRefusal {
     const t = text.trim();
-    return this.#refusal(t) ?? this.#changed(this.add({ text: t, quote: t, by: 'user' }));
+    return this.#refusal(t) ?? this.#changed(this.add({ text: t, quote: t, by: 'user', ...(category ? { category } : {}) }));
   }
 
-  edit(id: number, text: string): MemoryCardMeta | MemoryRefusal | undefined {
+  edit(id: number, text: string, category?: MemoryCategory): MemoryCardMeta | MemoryRefusal | undefined {
     const it = this.#get(id);
     if (!it || it.status !== 'active') return undefined;
     const t = text.trim();
-    return this.#refusal(t) ?? this.#changed({ action: 'edited', item: this.#put({ ...it, text: t, by: 'user', updatedAt: this.#now() }) });
+    return this.#refusal(t) ?? this.#changed({ action: 'edited', item: this.#put({ ...it, text: t, ...(category ? { category } : {}), by: 'user', updatedAt: this.#now() }) });
   }
 
   /** `quiet`: the conversation sends the card itself (with its call id). */

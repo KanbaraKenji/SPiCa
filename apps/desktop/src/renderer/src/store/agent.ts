@@ -1,7 +1,7 @@
 // Sessions and transcripts on the renderer side. Everything comes from the
 // backend through `window.spica.agent` and its event stream.
 import { useSyncExternalStore } from 'react';
-import type { AgentApi, ApprovalMode, CoreEvent, MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, SessionInfo, SetCwdResult } from '@spica/protocol';
+import type { AgentApi, ApprovalMode, CoreEvent, MemoryCardMeta, MemoryCategory, MemoryItem, MemoryRefusal, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, SessionInfo, SetCwdResult } from '@spica/protocol';
 import { Store } from './external';
 import { applyEvent, cancelCard, EMPTY_TRANSCRIPT, fromHistory, humanError, type Transcript } from './transcript';
 
@@ -531,12 +531,12 @@ export class AgentStore {
     }
   }
 
-  addMemory(text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
-    return this.#memory(this.#api.addMemory && ((api) => api.addMemory!(text)));
+  addMemory(text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
+    return this.#memory(this.#api.addMemory && ((api) => api.addMemory!(text, category)));
   }
 
-  editMemory(id: number, text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
-    return this.#memory(this.#api.editMemory && ((api) => api.editMemory!(id, text)));
+  editMemory(id: number, text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
+    return this.#memory(this.#api.editMemory && ((api) => api.editMemory!(id, text, category)));
   }
 
   forgetMemory(id: number): Promise<MemoryCardMeta | undefined> {

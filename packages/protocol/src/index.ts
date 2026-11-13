@@ -740,12 +740,23 @@ export interface HistoryCardMeta {
  * short sentence, with the user's own words it rests on. Kept when replaced or
  * forgotten (status), so a change can be undone; deleted in the settings, it is gone.
  */
+/**
+ * What a memory item is about (as Claude's memory page groups them): you = who the user is and how they want the
+ * assistant to work and answer; areas = the parts of their work and life they look after (a role's duties, standing
+ * rules there); topics = subjects and interests they follow; people = people they mention and how to deal with them;
+ * projects = a particular project and its standing facts.
+ */
+export type MemoryCategory = 'you' | 'areas' | 'topics' | 'people' | 'projects';
+export const MEMORY_CATEGORIES: readonly MemoryCategory[] = ['you', 'areas', 'topics', 'people', 'projects'];
+
 export interface MemoryItem {
   /** The short number the model and the window use ([n]); never reused. */
   id: number;
   /** Whose memory it is. Only 'user' (the user themself) for now. */
   owner: string;
   text: string;
+  /** What it is about; absent on items saved before there were categories, until a tidy gives them one. */
+  category?: MemoryCategory;
   /** The user's words the item rests on, as typed in the conversation (redacted). */
   quote: string;
   status: 'active' | 'replaced' | 'forgotten';
@@ -786,6 +797,8 @@ export interface MemoryTidyRun {
   changes: MemoryTidyChange[];
   /** Changes the model proposed that the checks refused (not applied). */
   refused: number;
+  /** Items without a category that this tidy gave one (not changes: nothing to undo; the user can change it). */
+  categorized?: number;
   costUsd?: number;
   error?: string;
 }
@@ -1144,10 +1157,10 @@ export interface AgentApi {
   // The user's memory (the assistant's conversations; see docs/design/memory.md). Every change sends memory.changed.
   /** Active items oldest first; with `all` also the replaced and forgotten ones (to tell an undone "Saved: …" line). */
   listMemories?(opts?: { all?: boolean }): Promise<MemoryItem[]>;
-  /** The user adds an item in the settings (no quote; secrets refused). */
-  addMemory?(text: string): Promise<MemoryCardMeta | MemoryRefusal>;
-  /** Change the sentence of an active item; undefined when it is gone. */
-  editMemory?(id: number, text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
+  /** The user adds an item in the settings (no quote; secrets refused), in a category or none. */
+  addMemory?(text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal>;
+  /** Change the sentence (and with `category`, the category) of an active item; undefined when it is gone. */
+  editMemory?(id: number, text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
   /** Delete an item for good, with the older versions it replaced; undefined when it is not active. */
   forgetMemory?(id: number): Promise<MemoryCardMeta | undefined>;
   /** Delete every active item for good (as forgetMemory); how many. */
