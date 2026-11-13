@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { DEFAULT_NETWORK, type AutostartSupport, type CloseWindow, type NetworkPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
 import type { LocalConnectInfo, NetworkState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
 import { ContextMenu } from '../ui/ContextMenu';
+import { Select } from '../ui/Select';
 import { Icon } from '../ui/Icon';
 import { useGuard } from '../ui/guard';
 import { InfoTip } from '../ui/InfoTip';
@@ -62,19 +63,17 @@ function FilePreviews({ settings, onChange, previewPages = [] }: GeneralProps) {
           const twice = (v: PluginView) => pages.filter((p) => p.title === v.title).length > 1;
           return (
             <Row key={ext} title={<span className="preview-kind-ext">{ext}</span>}>
-              <select className="input preview-kind-pick" aria-label={`${ext} 文件预览`} value={kept ?? BUILT_IN} onChange={(e) => set(ext, e.target.value)}>
-                <option value={BUILT_IN}>自带预览</option>
-                {pages.map((v) => (
-                  <option key={previewerId(v)} value={previewerId(v)}>
-                    {twice(v) ? `${v.title}（${v.pluginTitle}）` : v.title}
-                  </option>
-                ))}
-                {gone ? (
-                  <option value={kept} disabled>
-                    插件不可用
-                  </option>
-                ) : null}
-              </select>
+              <Select
+                className="preview-kind-pick"
+                label={`${ext} 文件预览`}
+                value={kept ?? BUILT_IN}
+                onChange={(v) => set(ext, v)}
+                options={[
+                  { value: BUILT_IN, label: '自带预览' },
+                  ...pages.map((v) => ({ value: previewerId(v), label: twice(v) ? `${v.title}（${v.pluginTitle}）` : v.title })),
+                  ...(gone ? [{ value: kept, label: '插件不可用', disabled: true }] : []),
+                ]}
+              />
             </Row>
           );
         })}

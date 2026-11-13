@@ -675,3 +675,16 @@ describe('a call announced but never made', () => {
     expect(r?.kind === 'response' ? r.blocks.map((b) => (b.type === 'tool' ? `${b.callId}:${b.state}` : b.type)) : []).toEqual(['kept:pending']);
   });
 });
+
+describe('a call waiting for 允许, rebuilt from what is stored', () => {
+  it('is waiting (as live), not done: the core stores the call before asking, with no result yet', () => {
+    const asst: Message = { id: 'a', seq: 1, sessionId: 's', role: 'assistant', kind: 'assistant', createdAt: '', content: [{ type: 'tool_use', id: 'c1', name: 'run_command', input: { command: 'Remove-Item x' } }] };
+    const pending = [{ kind: 'confirm' as const, callId: 'c1', toolName: 'run_command', input: { command: 'Remove-Item x' }, reason: '运行命令', createdAt: '' }];
+    const r = fromHistory([asst], pending).items[0];
+    const blocks = r?.kind === 'response' ? r.blocks : [];
+    expect(blocks.map((b) => (b.type === 'tool' ? `tool:${b.state}` : b.type))).toEqual(['tool:pending', 'confirm']);
+    // once it ran, its result says how it went
+    const done = fromHistory([asst, { id: 'r', seq: 2, sessionId: 's', role: 'user', kind: 'tool_results', createdAt: '', content: [{ type: 'tool_result', toolUseId: 'c1', content: '[fetched at x]\nexit code 0, 1 s\n' }] }]).items[0];
+    expect(done?.kind === 'response' && done.blocks[0]?.type === 'tool' ? done.blocks[0].state : '').toBe('done');
+  });
+});

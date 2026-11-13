@@ -1012,7 +1012,8 @@ export class FakeBackend implements AgentBackend {
     const blocks: ContentBlock[] = [];
     // The card the run waits on (a confirmation or a question): stopped while it waits, it is kept with a cancelled
     // result, as the core does.
-    let waiting: { id: string; name: string; input: unknown } | undefined;
+    // `stored`: its call is already in the history (with its message), as the core stores it before asking.
+    let waiting: { id: string; name: string; input: unknown; stored?: boolean } | undefined;
     let turn = 0;
     try {
       this.#setStatus(sessionId, 'thinking');
@@ -1043,6 +1044,70 @@ export class FakeBackend implements AgentBackend {
         blocks.push({ type: 'text', text: reply });
         this.#commitAssistant(sessionId, blocks);
         this.#charge(sessionId, 1800, 60);
+        this.#emit(sessionId, { type: 'turn.end', turn });
+        this.#finish(sessionId, 'completed');
+        return;
+      }
+
+      // 「工具详情」: one of each kind of call, a line of the answer between them so each is a row of its own (for
+      // pictures of what a call shows opened): a command that works, one that fails with its exit code, a plugin
+      // tool answering JSON (fenced, as the core hands outside content to the model) and one failing, a long read,
+      // a file written, edited in one place and in several. Names and data are made up.
+      if (/工具详情/.test(text)) {
+        const at = isoAt(this.#now());
+        const card = (path: string, origin: 'created' | 'modified', added: number, removed: number): FileCardMeta => ({
+          path: `D:\\工作\\样机评审\\${path}`, name: path.split('\\').pop() ?? path, kind: 'text', sizeBytes: 612, modifiedAt: at, extractedAt: at, read: {}, origin, lines: { added, removed },
+        });
+        const say = async (words: string) => {
+          await this.#stream(sessionId, 'text', words, signal);
+          blocks.push({ type: 'text', text: words });
+        };
+        const fenced = (source: string, body: string) => `<untrusted_data kind="mcp" source="${source}">\n${body}\n</untrusted_data>`;
+        const SCRIPT = [
+          'import csv',
+          'from pathlib import Path',
+          '',
+          'TOTAL = 0',
+          '',
+          '',
+          'def read_quotes(folder: Path) -> list[dict]:',
+          '    """Every quote in the folder, one dict a row."""',
+          '    rows = []',
+          '    for f in sorted(folder.glob("*.csv")):',
+          '        with f.open(encoding="utf-8") as fh:',
+          '            rows.extend(csv.DictReader(fh))',
+          '    return rows',
+          '',
+          '',
+          'if __name__ == "__main__":',
+          '    quotes = read_quotes(Path("报价"))',
+          '    print(len(quotes), "quotes")',
+        ].join('\n');
+        await say('先统计报价单。');
+        blocks.push(...(await this.#tool(sessionId, run, 'run_command', { command: "Get-ChildItem -Path '.\\报价' -Filter *.csv | Measure-Object | Select-Object Count", description: '统计报价单数量' }, 'exit code 0, 0.4 s\n\nCount\n-----\n    7', 400)));
+        await say('再检查格式。');
+        blocks.push(...(await this.#tool(sessionId, run, 'run_command', { command: 'python .\\tools\\check_quotes.py --strict .\\报价', description: '检查报价单格式' }, 'exit code 2, 1.3 s\nTraceback (most recent call last):\n  File "tools\\check_quotes.py", line 41, in <module>\n    check(row)\n  File "tools\\check_quotes.py", line 18, in check\n    raise ValueError(f"第 {row.line} 行缺少单价")\nValueError: 第 3 行缺少单价', 600, true)));
+        await say('查一下两个零件的规格。');
+        const specs = { env: 'test', items: [{ id: 'DEMO-1001', summary: { name: '外壳上盖', size_mm: [120, 80, 24], material: 'PC+ABS', approved: true, revisions: 3 } }, { id: 'DEMO-1002', summary: { name: '电池仓', size_mm: [96, 52, 18], material: 'PA66', approved: false, revisions: 1, note: null } }], total: 2 };
+        blocks.push(...(await this.#tool(sessionId, run, 'demo-specs__get_spec', { part_ids: ['DEMO-1001', 'DEMO-1002'], detail: true }, fenced('demo-specs__get_spec', JSON.stringify(specs)), 500, false, { category: 'plugin' })));
+        await say('第三个零件查不到。');
+        blocks.push(...(await this.#tool(sessionId, run, 'demo-specs__get_spec', { part_ids: ['DEMO-9999'] }, 'Tool failed: HTTP 404 Not Found: part DEMO-9999 does not exist', 400, true, { category: 'plugin' })));
+        await say('读一下评审纪要。');
+        const minutes = Array.from({ length: 60 }, (_, i) => (i % 6 === 0 ? `## 议题 ${i / 6 + 1}` : `- 第 ${i + 1} 条：外壳样机第 ${(i % 3) + 1} 轮评审意见，跟进人 ALEX.CHEN。`)).join('\n');
+        blocks.push(...(await this.#tool(sessionId, run, 'read_file', { path: '评审纪要.md' }, `评审纪要.md (lines 1-60 of 60)\n${minutes}`, 400)));
+        await say('写一个汇总脚本。');
+        blocks.push(...(await this.#tool(sessionId, run, 'write_file', { path: 'tools\\summary.py', content: SCRIPT }, 'Created tools\\summary.py (612 bytes).', 300, false, { category: 'write', cards: [card('tools\\summary.py', 'created', 18, 0)] })));
+        await say('改一处。');
+        blocks.push(...(await this.#tool(sessionId, run, 'edit_file', { path: 'tools\\summary.py', old_string: 'TOTAL = 0', new_string: 'TOTAL = 0.0' }, 'Edited tools\\summary.py: 1 replacement(s).', 300, false, { category: 'write', cards: [card('tools\\summary.py', 'modified', 1, 1)] })));
+        await say('再改几处。');
+        blocks.push(...(await this.#tool(sessionId, run, 'edit_file', {
+          path: 'tools\\summary.py',
+          old_string: 'if __name__ == "__main__":\n    quotes = read_quotes(Path("报价"))\n    print(len(quotes), "quotes")',
+          new_string: 'if __name__ == "__main__":\n    folder = Path("报价")\n    quotes = read_quotes(folder)\n    total = sum(float(q["单价"]) for q in quotes)\n    print(len(quotes), "quotes, total", round(total, 2))',
+        }, 'Edited tools\\summary.py: 1 replacement(s).', 300, false, { category: 'write', cards: [card('tools\\summary.py', 'modified', 3, 2)] })));
+        await say('都做完了。');
+        this.#commitAssistant(sessionId, blocks);
+        this.#charge(sessionId, 4200, 300);
         this.#emit(sessionId, { type: 'turn.end', turn });
         this.#finish(sessionId, 'completed');
         return;
@@ -1179,16 +1244,18 @@ export class FakeBackend implements AgentBackend {
         const lead = '要清理旧报价，这条命令需要你确认。';
         await this.#stream(sessionId, 'text', lead, signal);
         blocks.push({ type: 'text', text: lead });
+        // As the core does: the call is stored with its message and asked about; it starts only once allowed.
         this.#emit(sessionId, { type: 'tool.call', callId, name: 'run_command' });
-        this.#emit(sessionId, { type: 'tool.start', callId, name: 'run_command', input, category: 'command', summary: input.description });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name: 'run_command', input }]);
         this.#addPending(sessionId, { kind: 'confirm', callId, toolName: 'run_command', input, reason: '运行命令', createdAt: isoAt(this.#now()) });
         this.#emit(sessionId, { type: 'confirm.request', callId, name: 'run_command', input, reason: '运行命令' });
         this.#setStatus(sessionId, 'awaiting_confirm', 'run_command');
-        waiting = { id: callId, name: 'run_command', input };
+        waiting = { id: callId, name: 'run_command', input, stored: true };
         const ok = (await this.#waitFor(run, callId)) === 'yes';
         waiting = undefined;
+        if (ok) this.#emit(sessionId, { type: 'tool.start', callId, name: 'run_command', input, category: 'command', summary: input.description });
         this.#emit(sessionId, { type: 'tool.end', callId, name: 'run_command', isError: !ok, preview: ok ? '已删除' : '用户拒绝了这条命令', durationMs: 300 });
-        blocks.push({ type: 'tool_use', id: callId, name: 'run_command', input }, { type: 'tool_result', toolUseId: callId, content: ok ? '已删除' : '用户拒绝了这条命令', isError: !ok });
+        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: ok ? '已删除' : '用户拒绝了这条命令', isError: !ok }]);
         this.#setStatus(sessionId, 'thinking');
         const after = ok ? '\n\n旧报价已清理。' : '\n\n好的，没有运行。';
         await this.#stream(sessionId, 'text', after, signal);
@@ -1200,16 +1267,17 @@ export class FakeBackend implements AgentBackend {
         await this.#stream(sessionId, 'text', lead, signal);
         blocks.push({ type: 'text', text: lead });
         this.#emit(sessionId, { type: 'tool.call', callId, name: 'send_email' });
-        this.#emit(sessionId, { type: 'tool.start', callId, name: 'send_email', input });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name: 'send_email', input }]);
         this.#addPending(sessionId, { kind: 'confirm', callId, toolName: 'send_email', input, reason: '发送邮件给「项目组」', createdAt: isoAt(this.#now()) });
         this.#emit(sessionId, { type: 'confirm.request', callId, name: 'send_email', input, reason: '发送邮件给「项目组」' });
         this.#setStatus(sessionId, 'awaiting_confirm', 'send_email');
-        waiting = { id: callId, name: 'send_email', input };
+        waiting = { id: callId, name: 'send_email', input, stored: true };
         const decision = await this.#waitFor(run, callId);
         waiting = undefined;
         const ok = decision === 'yes';
+        if (ok) this.#emit(sessionId, { type: 'tool.start', callId, name: 'send_email', input });
         this.#emit(sessionId, { type: 'tool.end', callId, name: 'send_email', isError: !ok, preview: ok ? '已发送' : '用户取消了发送', durationMs: 300 });
-        blocks.push({ type: 'tool_use', id: callId, name: 'send_email', input }, { type: 'tool_result', toolUseId: callId, content: ok ? '已发送' : '用户取消了发送', isError: !ok });
+        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: ok ? '已发送' : '用户取消了发送', isError: !ok }]);
         this.#setStatus(sessionId, 'thinking');
         const after = ok ? '\n\n邮件已经发出。' : '\n\n好的，这封邮件没有发。';
         await this.#stream(sessionId, 'text', after, signal);
@@ -1382,7 +1450,7 @@ export class FakeBackend implements AgentBackend {
     } catch (err) {
       if (err instanceof Aborted || signal.aborted) {
         // Keep what was already streamed, marked as interrupted.
-        if (waiting) blocks.push({ type: 'tool_use', id: waiting.id, name: waiting.name, input: waiting.input });
+        if (waiting && !waiting.stored) blocks.push({ type: 'tool_use', id: waiting.id, name: waiting.name, input: waiting.input });
         if (blocks.length) {
           const own = blocks.filter((b) => b.type !== 'tool_result');
           if (own.length) this.#append(sessionId, 'assistant', 'assistant', own, { interrupted: true });

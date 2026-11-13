@@ -7,6 +7,7 @@ import type { ModelCatalogView } from '../../../shared/catalog';
 import { keyMaskParts, keyMaskText } from '@spica/protocol';
 import { emptyDraft, type ProviderDraft, type ProviderView } from '../../../shared/providers';
 import { dropAllDrafts } from './drafts';
+import { groupLabels, optionLabels, pickValue, valueOf } from '../ui/select-testing';
 
 afterEach(() => {
   cleanup();
@@ -76,21 +77,22 @@ const saved = (over: Partial<ProviderView> = {}): ProviderView => ({
 // A label's text also holds the hint or error under the field, so match the start of it.
 const byLabel = (label: string | RegExp) => screen.getByLabelText(typeof label === 'string' ? new RegExp(`^${label}`) : label);
 const type = (label: string | RegExp, value: string) => fireEvent.change(byLabel(label), { target: { value } });
-const choose = (value: string) => fireEvent.change(screen.getByLabelText('服务商'), { target: { value } });
+const choose = (value: string) => pickValue(screen.getByLabelText('服务商'), value);
 
 async function openNew(api = fakeApi()) {
   render(<Models api={api} />);
   fireEvent.click(await screen.findByRole('button', { name: /添加服务商/ }));
-  await waitFor(() => expect(screen.getByLabelText('服务商').querySelectorAll('optgroup').length).toBeGreaterThan(1));
+  await waitFor(() => expect(groupLabels(screen.getByLabelText('服务商')).length).toBeGreaterThan(1));
   return api;
 }
 
 describe('Models', () => {
   it('a new connection starts from 服务商; the groups and the two others are listed', async () => {
     await openNew();
-    const select = screen.getByLabelText('服务商') as HTMLSelectElement;
-    expect([...select.querySelectorAll('optgroup')].map((g) => g.label)).toEqual(['国内', '本机', '其他']);
-    expect([...select.querySelectorAll('optgroup[label="其他"] option')].map((o) => o.textContent)).toEqual(['公司网关（WSO2）', '中转站']);
+    const select = screen.getByLabelText('服务商');
+    expect(groupLabels(select)).toEqual(['国内', '本机', '其他']);
+    expect(optionLabels(select).slice(-2)).toEqual(['公司网关（WSO2）', '中转站']);
+    expect(select.querySelector('.select-value')?.textContent).toBe('选择服务商');
     expect(screen.queryByLabelText(/^名称/)).toBeNull();
   });
 
@@ -393,7 +395,7 @@ describe('Models', () => {
       },
     });
     fireEvent.click(screen.getByRole('button', { name: '识别并填入' }));
-    expect((screen.getByLabelText('服务商') as HTMLSelectElement).value).toBe('#wso2');
+    expect(valueOf(screen.getByLabelText('服务商'))).toBe('#wso2');
     expect((byLabel('网关地址') as HTMLInputElement).value).toBe('https://gw.example.com/llm/v1');
     expect((byLabel('取 token 地址') as HTMLInputElement).value).toBe('https://gw.example.com/oauth2/token');
     expect((byLabel('Consumer Key') as HTMLInputElement).value).toBe('ck-1');
@@ -413,13 +415,13 @@ describe('Models', () => {
     api.list = vi.fn(async () => list);
     api.setPointer = vi.fn(async () => list);
     render(<Models api={api} />);
-    const def = (await screen.findByLabelText('默认模型')) as HTMLSelectElement;
-    expect([...def.querySelectorAll('optgroup')].map((g) => g.label)).toEqual(['DeepSeek · sk-a****3f9a', 'DeepSeek 2 · sk-b****81c2']);
+    const def = (await screen.findByLabelText('默认模型'));
+    expect(groupLabels(def)).toEqual(['DeepSeek · sk-a****3f9a', 'DeepSeek 2 · sk-b****81c2']);
     // Closed, it still says which connection: two can carry the same model.
-    expect(def.selectedOptions[0]?.textContent).toBe('DeepSeek · deepseek-flash');
-    const strong = screen.getByLabelText('强模型') as HTMLSelectElement;
-    expect(strong.selectedOptions[0]?.textContent).toBe('无');
-    fireEvent.change(strong, { target: { value: 'p-1\tdeepseek-v4-pro' } });
+    expect(def.querySelector('.select-value')?.textContent).toBe('DeepSeek · deepseek-flash');
+    const strong = screen.getByLabelText('强模型');
+    expect(strong.querySelector('.select-value')?.textContent).toBe('无');
+    pickValue(strong, 'p-1\tdeepseek-v4-pro');
     await waitFor(() => expect(api.setPointer).toHaveBeenCalledWith('strong', { connectionId: 'p-1', model: 'deepseek-v4-pro' }));
   });
 });
@@ -442,9 +444,9 @@ describe('two connections with one name', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const name = '开发用模型（.env.local）';
     render(<Models api={fakeApi([saved({ id: 'openai', name, readOnly: true }), saved({ id: 'anthropic', kind: 'anthropic', name, readOnly: true, isDefault: false, model: 'n', models: [{ id: 'n', contextWindow: 200_000, contextFrom: 'user' }] })])} />);
-    const pick = (await screen.findByLabelText('默认模型')) as HTMLSelectElement;
-    expect([...pick.querySelectorAll('optgroup')].map((g) => g.label)).toEqual([name, name]);
-    expect([...pick.querySelectorAll('option')].map((o) => o.textContent)).toEqual([`${name} · m`, `${name} · n`]);
+    const pick = (await screen.findByLabelText('默认模型'));
+    expect(groupLabels(pick)).toEqual([name, name]);
+    expect(optionLabels(pick)).toEqual([`${name} · m`, `${name} · n`]);
     expect(errors.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('same key'))).toEqual([]);
     errors.mockRestore();
   });

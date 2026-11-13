@@ -1,5 +1,5 @@
 // Layout rules that a quick look at the screen would catch, kept by a test so they do not slip back.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SPLASH_INK } from '../shared/skin';
@@ -31,6 +31,19 @@ describe('styles', () => {
     expect(block('::-webkit-scrollbar')).toContain('width: 10px');
     expect(block('.transcript-foot > .composer-wrap')).toContain('padding-left: 14px;\n  padding-right: 14px');
     expect(block('.composer-wrap')).toContain('padding: 0 24px 18px');
+  });
+
+  it('a drop-down (ui/Select.tsx): words and arrow --control-pad-x in from each side; its list is the menu, scrolling when long', () => {
+    expect(block('.input.select-box')).toContain('padding: 0 var(--control-pad-x)');
+    // the chevron is drawn 3.5 in from the sides of its 14 box (Icon chevronDown: M4 6l4 4 4-4 on 16)
+    expect(block('.select-arrow')).toContain('margin-right: -3.5px');
+    expect(block('.context-menu')).toContain('overflow-y: auto');
+  });
+
+  it('a card waiting on the user has the neutral edge of the others; only a dangerous step’s is coloured (red)', () => {
+    expect(block('.ask-card,\n.confirm-card')).toContain('border-color: var(--spica-border-strong)');
+    expect(css).not.toMatch(/\.(ask|confirm)-card:not\(\.is-done\)(,|\s*\{)[^}]*border-color/);
+    expect(block('.confirm-card:not(.is-done).is-danger')).toContain('border-color: var(--spica-danger)');
   });
 
   it('a note line in the conversation breaks a long path instead of running past the window', () => {
@@ -464,7 +477,7 @@ describe('the conversation’s sizes', () => {
   it('everything in the code font that shows code follows 外观 › 代码 › 字号, on lines in proportion to 13 on 19', () => {
     expect(block(':root')).toContain('--code-size: 13px');
     expect(block(':root')).toContain('--code-line: calc(var(--code-size) * 19 / 13)');
-    for (const sel of ['.md pre code', '.tool-command pre', '.tool-args', '.tool-result', '.confirm-args dd', '.preview-code', '.code-theme-preview'])
+    for (const sel of ['.md pre code', '.tool-command pre', '.tool-args', '.tool-output', '.file-change', '.confirm-args dd', '.preview-code', '.code-theme-preview'])
       expect(block(sel), sel).toContain('font-size: var(--code-size);\n  line-height: var(--code-line)');
   });
 });
@@ -528,5 +541,21 @@ describe('the style sheet holds together', () => {
   it('the check catches a rule pasted into the middle of another, and lets @media and @keyframes through', () => {
     expect(nestedRules('.a {\n  min-width: 0;\n.b {\n  width: 1px;\n}\n  overflow: hidden;\n}\n')).toEqual(['3: .b']);
     expect(nestedRules('@media (max-width: 1px) {\n  .a { width: 1px; }\n}\n@keyframes k {\n  from { opacity: 0; }\n}\n')).toEqual([]);
+  });
+});
+
+describe('no browser drop-downs (ui/Select.tsx is the one)', () => {
+  it('nothing in the windows uses the browser’s own select element: its arrow and its open list do not follow the skin', () => {
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const n of readdirSync(dir)) {
+        const p = join(dir, n);
+        if (statSync(p).isDirectory()) walk(p);
+        else if (/\.(tsx?|html)$/.test(n) && !/\.test\./.test(n)) files.push(p);
+      }
+    };
+    walk(join(__dirname, '../renderer'));
+    expect(files.length).toBeGreaterThan(50);
+    expect(files.filter((f) => /<(select|option|optgroup)[\s>]/.test(readFileSync(f, 'utf8')))).toEqual([]);
   });
 });

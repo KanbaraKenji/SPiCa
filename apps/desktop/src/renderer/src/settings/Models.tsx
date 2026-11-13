@@ -31,6 +31,7 @@ import { dropDraft, keepDraft, keptDraft } from './drafts';
 import { ModelPicker, type ListedModel } from './ModelPicker';
 import { useGuard } from '../ui/guard';
 import { InfoTip } from '../ui/InfoTip';
+import { Select, type SelectOption } from '../ui/Select';
 import { PasteConfig } from './PasteConfig';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Group, Row } from './Group';
@@ -131,7 +132,7 @@ export function openProviderNext(id: string): void {
 }
 const draftKey = (id: string | 'new') => `models.draft:${id}`;
 
-/** A pointer as one <select> value (connection id and model, which ids never contain a tab). */
+/** A pointer as one drop-down value (connection id and model, which ids never contain a tab). */
 const refKey = (r: ModelRef | null) => (r ? `${r.connectionId}\t${r.model}` : '');
 const parseRefKey = (k: string): ModelRef | null => {
   const i = k.indexOf('\t');
@@ -577,15 +578,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
     if (strong?.connectionId === current.id && !on.includes(strong.model)) notes.push(`强模型将改为「${on[0] ? `${draft.name || current.name} · ${on[0]}` : '无'}」`);
     return notes.length ? `保存后，${notes.join('，')}。` : '';
   })();
-  const pointerOptions = groups.map((g) => (
-    <optgroup key={g.id} label={g.label}>
-      {g.options.map((o) => (
-        <option key={o.key} value={o.key}>
-          {o.model}
-        </option>
-      ))}
-    </optgroup>
-  ));
+  const pointerOptions: SelectOption[] = groups.flatMap((g) => g.options.map((o) => ({ value: o.key, label: o.model, group: g.label, groupKey: g.id })));
   const point = async (which: 'default' | 'strong', key: string) => {
     if (!api.setPointer) return;
     try {
@@ -621,15 +614,10 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
       {list && groups.length ? (
         <Group className="model-pointers">
           <Row title="默认模型">
-            <select className="input model-pointer" value={refKey(list.default ?? null)} onChange={(e) => void run(() => point('default', e.target.value))} aria-label="默认模型">
-              {pointerOptions}
-            </select>
+            <Select className="model-pointer" value={refKey(list.default ?? null)} onChange={(v) => void run(() => point('default', v))} label="默认模型" options={pointerOptions} />
           </Row>
           <Row title="强模型">
-            <select className="input model-pointer" value={refKey(list.strong ?? null)} onChange={(e) => void run(() => point('strong', e.target.value))} aria-label="强模型">
-              <option value="">无</option>
-              {pointerOptions}
-            </select>
+            <Select className="model-pointer" value={refKey(list.strong ?? null)} onChange={(v) => void run(() => point('strong', v))} label="强模型" options={[{ value: '', label: '无' }, ...pointerOptions]} />
           </Row>
         </Group>
       ) : null}
@@ -693,29 +681,17 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
           <div className="field field-stack">
             <span className="field-label">服务商</span>
             <span className="field-control provider-choice">
-              <select className="input" value={choice} aria-label="服务商" onChange={(e) => pick(e.target.value)}>
-                {choice === '' ? (
-                  <option value="" disabled>
-                    选择服务商
-                  </option>
-                ) : null}
-                {GROUPS.map((g) => {
-                  const ps = providers.filter((p) => p.group === g.group);
-                  return ps.length ? (
-                    <optgroup key={g.group} label={g.label}>
-                      {ps.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null;
-                })}
-                <optgroup label="其他">
-                  <option value={WSO2}>公司网关（WSO2）</option>
-                  <option value={RELAY}>中转站</option>
-                </optgroup>
-              </select>
+              <Select
+                value={choice}
+                label="服务商"
+                placeholder="选择服务商"
+                onChange={pick}
+                options={[
+                  ...GROUPS.flatMap((g) => providers.filter((p) => p.group === g.group).map((p) => ({ value: p.id, label: p.name, group: g.label }))),
+                  { value: WSO2, label: '公司网关（WSO2）', group: '其他' },
+                  { value: RELAY, label: '中转站', group: '其他' },
+                ]}
+              />
               <PasteConfig key={selected ?? ''} kind={draft.kind} onApply={applyPaste} />
             </span>
           </div>
