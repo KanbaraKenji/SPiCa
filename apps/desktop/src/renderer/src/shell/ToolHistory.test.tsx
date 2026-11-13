@@ -70,10 +70,17 @@ describe('工具调用 (the finished calls, where the preview goes)', () => {
     const onClose = vi.fn();
     render(<ToolHistory transcript={transcriptWith(1)} onClose={onClose} />);
     const rows = [...document.querySelectorAll('.tool-history-row')];
-    expect(rows.map((r) => r.querySelector('.detail-item-icon svg')?.getAttribute('data-status'))).toEqual(['done', 'error', 'stopped', 'done']);
-    expect(rows.map((r) => r.querySelector('.detail-item-meta')?.textContent)).toEqual(['4s', 'Failed', '已超时', '<1s']);
-    expect(document.querySelector('.tool-history-head')?.textContent).toContain('4');
-    fireEvent.click(rows[1]!);
+    // no run going on: the call left running by a stopped run is finished too, 已中断 (red)
+    expect(rows.map((r) => r.querySelector('.detail-item-icon svg')?.getAttribute('data-status'))).toEqual(['done', 'error', 'stopped', 'stopped', 'done']);
+    expect(rows.map((r) => r.querySelector('.detail-item-meta')?.textContent)).toEqual(['4s', 'Failed', '已中断', '已超时', '<1s']);
+    expect(rows[2]!.querySelector('.detail-item-meta .text-danger')?.textContent).toBe('已中断');
+    expect(document.querySelector('.tool-history-head')?.textContent).toContain('5');
+    cleanup();
+    // while the run goes on, the running one is not here (it is in 进行中)
+    render(<ToolHistory transcript={{ ...transcriptWith(1), run: { startedAt: 0, status: 'running' } } as never} onClose={onClose} />);
+    expect(document.querySelectorAll('.tool-history-row')).toHaveLength(4);
+    const live = [...document.querySelectorAll('.tool-history-row')];
+    fireEvent.click(live[1]!);
     const texts = [...document.querySelectorAll('.tool-history-text')].map((p) => p.textContent);
     expect(texts[0]).toContain('"command": "python 校对.py"');
     expect(texts[1]).toBe('[EXIT 1] 缺少第 3 列');
@@ -81,6 +88,14 @@ describe('工具调用 (the finished calls, where the preview goes)', () => {
     expect(document.querySelector('.tool-history-body')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '关闭工具调用' }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('the result as the conversation shows it: the note only for the model and the fetch line are left out', () => {
+    const t = transcriptWith(0);
+    (t.items[0] as { blocks: { result?: string }[] }).blocks[0]!.result = ['[fetched at 2026-11-13T10:00:00Z]', '第1节.md'].join('\n');
+    render(<ToolHistory transcript={t} onClose={vi.fn()} />);
+    fireEvent.click(document.querySelector('.tool-history-row')!);
+    expect(document.querySelectorAll('.tool-history-text')[1]!.textContent).toBe('第1节.md');
   });
 
   it('a result that looks like markup stays text', () => {

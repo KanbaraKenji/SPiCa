@@ -119,7 +119,8 @@ describe('DetailPanel', () => {
       ],
     };
     const toggle = vi.fn();
-    render(<DetailPanel {...props} transcript={transcript} session={session({ id: 'w', role: 'worker' })} parent={undefined} history={{ open: false, toggle }} />);
+    // a run going on: the call still running is in 进行中
+    render(<DetailPanel {...props} transcript={{ ...transcript, run: { startedAt: 0, status: 'running' } } as never} session={session({ id: 'w', role: 'worker' })} parent={undefined} history={{ open: false, toggle }} />);
     const rows = [...document.querySelectorAll('.detail-list .detail-item')];
     expect(rows.map((r) => r.querySelector('.detail-item-icon svg')?.getAttribute('data-status'))).toEqual(['running']);
     expect(rows[0]!.textContent).toContain('b.docx');

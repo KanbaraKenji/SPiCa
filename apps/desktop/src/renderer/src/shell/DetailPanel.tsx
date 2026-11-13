@@ -18,8 +18,11 @@ export type ToolBlock = Extract<Block, { type: 'tool' }>;
 /** Files listed before 显示更多. */
 export const FILES_SHOWN = 5;
 
-/** A call still going (its ring in 进行中); the others are finished (工具调用 X). */
-export const isRunning = (t: ToolBlock) => t.state === 'running' || t.state === 'pending';
+/**
+ * A call still going (its ring in 进行中): only while the conversation's run goes on; a call left running by a run
+ * that was stopped (or a reopened conversation) is finished (工具调用 X, 已中断).
+ */
+export const isRunning = (t: ToolBlock, live: boolean) => live && (t.state === 'running' || t.state === 'pending');
 
 /** The calls the details count: remember / forget are the 已记住 line in the conversation (listed here they would say it twice). */
 export function detailTools(transcript: Transcript): ToolBlock[] {
@@ -72,7 +75,8 @@ export function ToolListText({ t, card, running = false }: { t: Parameters<typeo
 
 export function DetailPanel({ session, parent, transcript, globalCostUsd, globalUnpriced, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, history }: DetailPanelProps) {
   const tools = detailTools(transcript);
-  const running = tools.filter(isRunning);
+  const live = Boolean(transcript.run);
+  const running = tools.filter((t) => isRunning(t, live));
   const finished = tools.length - running.length;
   const [filesOpen, setFilesOpen] = useState(true);
   const [allFiles, setAllFiles] = useState(false);
