@@ -14,6 +14,8 @@ export interface PanelPrefs {
    * right panel; the file preview beside it is not saved (it is open while a file is shown).
    */
   right: boolean;
+  /** The 监控台 panel is open (only while it is switched on, `ShellSettings.monitor`); absent: closed. */
+  monitor?: boolean;
 }
 
 /** 设置 › 常规 › 网络. Empty proxy = whatever the environment says (HTTPS_PROXY...). */
@@ -105,6 +107,8 @@ export interface ShellSettings {
   doneNews: string[];
   /** Projects pinned to the top of the sidebar (project ids, in the order they were pinned). */
   pinnedProjects: string[];
+  /** The 监控台 is switched on (its title bar button shows): nine clicks on the version in 设置 › 关于, nine again off. */
+  monitor: boolean;
   network: NetworkPrefs;
   /** 允许本机脚本连接 Spica（开发者）: MCP over HTTP on 127.0.0.1 with a token file. Off by default. */
   localConnect: boolean;
@@ -230,6 +234,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   mail: { enabled: false, consentedAt: null, intervalMinutes: 5, ignore: { from: [], subject: [] } },
   workflowsDir: '',
   pinnedProjects: [],
+  monitor: false,
   network: DEFAULT_NETWORK,
   localConnect: false,
   memory: true,
@@ -286,6 +291,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const panels = {
     left: typeof p.left === 'boolean' ? p.left : true,
     right: typeof p.right === 'boolean' ? p.right : true,
+    ...(p.monitor === true ? { monitor: true } : {}),
   };
   const splash: SplashMode = v.splash === 'always' || v.splash === 'never' ? v.splash : 'daily';
   const splashShownOn = typeof v.splashShownOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.splashShownOn) ? v.splashShownOn : null;
@@ -343,7 +349,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects };
+  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

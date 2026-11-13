@@ -171,6 +171,11 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
         onSource={(updateSource) => shell.update({ updateSource })}
         onCheck={onCheckUpdate}
         onInstall={onInstallUpdate}
+        monitor={{
+          on: settings.monitor,
+          // on: the panel opens with it (closed again when switched off)
+          onToggle: () => shell.update({ monitor: !settings.monitor, panels: { ...settings.panels, monitor: !settings.monitor } }),
+        }}
       />
     ) : null;
 

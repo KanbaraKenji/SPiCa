@@ -58,12 +58,12 @@ export interface SidebarProps {
    * (设置 › 模型), each opening the settings there. Absent: the account opens the settings as the gear does.
    */
   onAccount?: (where: AccountMenuTo) => void;
-  /** A page other than a conversation fills the main area (监控台, a plugin's page): no row is the current one. */
+  /** A page other than a conversation fills the main area (a plugin's page): no row is the current one. */
   elsewhere?: boolean;
 }
 
 /** Where an item of the account's menu opens the settings. */
-export type AccountMenuTo = 'settings' | 'models' | 'monitor';
+export type AccountMenuTo = 'settings' | 'models';
 
 /**
  * The account's menu: the account in full on top (not an item: where a long one is read whole), then the items,
@@ -73,7 +73,6 @@ export function accountMenuItems(account: string, go: (where: AccountMenuTo) => 
   return [
     { label: '设置', group: account, icon: 'settings', onSelect: () => go('settings') },
     { label: '模型设定', group: account, icon: 'model', onSelect: () => go('models') },
-    { label: '监控台', group: account, icon: 'terminal', onSelect: () => go('monitor') },
   ];
 }
 

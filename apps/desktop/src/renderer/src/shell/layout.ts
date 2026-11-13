@@ -29,12 +29,21 @@
 //   6. the sidebar shrinks, then goes (pressing its toggle floats it, as before).
 // The details go only once the conversation is at 440, not before: the conversation takes whatever room is left, so
 // any earlier point would be a width picked out of nothing.
+//
+// The 监控台 (2026-11-13, his words: 「右侧栏」) is a fourth panel, between the details and the preview, only while it
+// is switched on (nine clicks on the version in 设置 › 关于). It behaves as the details do: a fixed width, there or not
+// at all. Where both do not fit it is the details that go: the monitor is opened on purpose to watch something, the
+// details are open by default. So as the window narrows: the conversation to 440, the details go, then the monitor
+// goes (the narrower details may then fit again), then the preview covers the conversation as before. With it
+// closed every result is as without it.
 import { PANEL_LIMITS, type PanelWidths } from '../../../shared/settings';
 
 export const SIDEBAR_WIDTH = PANEL_LIMITS.left.initial;
 export const SIDEBAR_MIN = PANEL_LIMITS.left.min;
 /** The details panel: always this wide (it cannot be dragged). */
 export const INFO_WIDTH = 300;
+/** The 监控台 panel: always this wide (a log line needs more room than the details). */
+export const MONITOR_WIDTH = 380;
 export const PREVIEW_WIDTH = PANEL_LIMITS.preview.initial;
 export const PREVIEW_MIN = PANEL_LIMITS.preview.min;
 /** The conversation is laid out at least this wide; nothing squeezes it further (the preview covers it instead). */
@@ -56,13 +65,17 @@ export interface Layout {
   preview: PanelMode;
   /** Never 'floating': there, or not at all. */
   info: PanelMode;
+  /** The 监控台: as the details (present only when `Open.monitor` was given). */
+  monitor?: PanelMode;
 }
 
-/** What is open: the saved switches (sidebar, details) and whether a file is shown. */
+/** What is open: the saved switches (sidebar, details, 监控台) and whether a file is shown. */
 export interface Open {
   left: boolean;
   info: boolean;
   preview: boolean;
+  /** Absent: the monitor is not switched on at all (the layout is as before it existed). */
+  monitor?: boolean;
 }
 
 /** The panel shown over the window because it did not fit beside the conversation, if any. */
@@ -77,6 +90,8 @@ export interface Widths {
   left: number;
   preview: number;
   info: number;
+  /** The 监控台's width when docked (absent otherwise). */
+  monitor?: number;
   /** How far the docked preview lies over the conversation's right part (0: it only squeezes it). */
   cover: number;
 }
@@ -99,14 +114,17 @@ export function computeLayout(viewportWidth: number, open: Open, floating: Float
   // The preview: at its narrowest with the least of the conversation showing, or it is the first to go.
   const previewDocked = open.preview && room >= PREVIEW_MIN + MAIN_SHOWN_MIN;
   const preview = previewDocked ? previewWidth(room, wanted.preview) : 0;
-  // The details: only beside the conversation at 440 and the preview at its width; else not there at all.
-  const infoDocked = open.info && room - preview - MAIN_ROOM_WIDTH >= INFO_WIDTH;
+  // The monitor, then the details: only beside the conversation at 440 and the preview at its width (the details
+  // also beside the monitor); else not there at all.
+  const monitorDocked = Boolean(open.monitor) && room - preview - MAIN_ROOM_WIDTH >= MONITOR_WIDTH;
+  const infoDocked = open.info && room - preview - (monitorDocked ? MONITOR_WIDTH : 0) - MAIN_ROOM_WIDTH >= INFO_WIDTH;
   const mode = (docked: boolean, side: Side): PanelMode => (docked ? 'docked' : floating === side ? 'floating' : 'hidden');
   return {
     left: mode(leftDocked, 'left'),
     // Closed (no file shown) is closed, whatever was floating.
     preview: open.preview ? mode(previewDocked, 'preview') : 'hidden',
     info: infoDocked ? 'docked' : 'hidden',
+    ...(open.monitor === undefined ? {} : { monitor: monitorDocked ? ('docked' as const) : ('hidden' as const) }),
   };
 }
 
@@ -115,12 +133,22 @@ export function infoFits(viewportWidth: number, open: Open, wanted: Wanted = USU
   return computeLayout(viewportWidth, { ...open, info: true }, null, wanted).info === 'docked';
 }
 
+/** Whether the 监控台 has room now (its button can be pressed): as if it were open. */
+export function monitorFits(viewportWidth: number, open: Open, wanted: Wanted = USUAL): boolean {
+  return computeLayout(viewportWidth, { ...open, monitor: true }, null, wanted).monitor === 'docked';
+}
+
+/** What the right panels beside the conversation take (the details and the 监控台 when docked). */
+function besideWidth(layout: Layout): number {
+  return (layout.info === 'docked' ? INFO_WIDTH : 0) + (layout.monitor === 'docked' ? MONITOR_WIDTH : 0);
+}
+
 /**
  * How wide each panel is drawn, and how far the preview lies over the conversation. The details are always
  * INFO_WIDTH. A floating panel keeps its width (never wider than the window allows).
  */
 export function panelWidths(viewportWidth: number, layout: Layout, wanted: Wanted): Widths {
-  const out: Widths = { left: wanted.left, preview: wanted.preview, info: INFO_WIDTH, cover: 0 };
+  const out: Widths = { left: wanted.left, preview: wanted.preview, info: INFO_WIDTH, cover: 0, ...(layout.monitor === 'docked' ? { monitor: MONITOR_WIDTH } : {}) };
   const leftDocked = layout.left === 'docked';
   if (leftDocked) out.left = sidebarWidth(viewportWidth, wanted.left);
   if (layout.left === 'floating') out.left = Math.max(SIDEBAR_MIN, Math.min(wanted.left, viewportWidth - FLOAT_GAP));
@@ -128,7 +156,7 @@ export function panelWidths(viewportWidth: number, layout: Layout, wanted: Wante
     const room = viewportWidth - (leftDocked ? out.left : RAIL_WIDTH);
     out.preview = previewWidth(room, wanted.preview);
     // What the conversation would get beside it; under 440 it stays laid out at 440 and the preview covers the rest.
-    out.cover = Math.max(0, MAIN_ROOM_WIDTH - (room - out.preview - (layout.info === 'docked' ? INFO_WIDTH : 0)));
+    out.cover = Math.max(0, MAIN_ROOM_WIDTH - (room - out.preview - besideWidth(layout)));
   }
   if (layout.preview === 'floating') out.preview = Math.min(wanted.preview, viewportWidth - FLOAT_GAP);
   return out;
@@ -192,6 +220,7 @@ export function centreShift(viewportWidth: number, layout: Layout, widths: Width
   const right =
     viewportWidth -
     (rightPanels && layout.info === 'docked' ? widths.info : 0) -
+    (rightPanels && layout.monitor === 'docked' ? (widths.monitor ?? MONITOR_WIDTH) : 0) -
     (rightPanels && layout.preview === 'docked' ? widths.preview - widths.cover : 0);
   const column = Math.min(COLUMN_WIDTH, right - left - 2 * COLUMN_GUTTER);
   if (column <= 0) return 0;

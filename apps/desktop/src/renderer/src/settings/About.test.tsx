@@ -45,3 +45,46 @@ describe('关于 › 检查更新', () => {
     expect(screen.getByRole('status').textContent).toBe('无法连接更新源：timeout');
   });
 });
+
+describe('关于 › the version switches the 监控台', () => {
+  const setup = (on: boolean) => {
+    const onToggle = vi.fn();
+    render(<About version="0.1.0" update={null} ownSource="" onSource={vi.fn()} onCheck={vi.fn()} onInstall={vi.fn()} monitor={{ on, onToggle }} />);
+    return { onToggle, version: screen.getByText('Spica 0.1.0') };
+  };
+
+  it('nine quick clicks switch it on, and say so; the version is plain words (not a button)', () => {
+    const { onToggle, version } = setup(false);
+    expect(version.closest('button')).toBeNull();
+    expect(version.getAttribute('title')).toBeNull();
+    for (let i = 0; i < 8; i++) fireEvent.click(version);
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(screen.queryByRole('status')).toBeNull();
+    fireEvent.click(version);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('status').textContent).toBe('监控台已开启');
+  });
+
+  it('switched on, nine more switch it off', () => {
+    const { onToggle, version } = setup(true);
+    for (let i = 0; i < 9; i++) fireEvent.click(version);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('status').textContent).toBe('监控台已关闭');
+  });
+
+  it('a pause starts the count again', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-11-13T10:00:00Z'));
+      const { onToggle, version } = setup(false);
+      for (let i = 0; i < 5; i++) fireEvent.click(version);
+      vi.setSystemTime(new Date('2026-11-13T10:00:02Z'));
+      for (let i = 0; i < 8; i++) fireEvent.click(version);
+      expect(onToggle).not.toHaveBeenCalled();
+      fireEvent.click(version);
+      expect(onToggle).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

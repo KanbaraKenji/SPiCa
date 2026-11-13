@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import type { DesktopBridge, PreviewInfo } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
-import { centreShift, computeLayout, infoFits, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
+import { centreShift, computeLayout, infoFits, monitorFits, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
 import { Resizer } from './shell/Resizer';
 import { ConfirmDialog } from './ui/Dialog';
 import { FilePreview, usePreview } from './shell/FilePreview';
@@ -59,7 +59,7 @@ export interface AppProps {
   mail?: MailStore;
 }
 
-type View = 'chat' | 'inbox' | 'plugin' | 'monitor';
+type View = 'chat' | 'inbox' | 'plugin';
 
 /** Role template of the core's mail sorting thread; it lives in the inbox, not the sidebar. */
 const MAIL_TRIAGE_TEMPLATE = 'mail-triage';
@@ -144,10 +144,12 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const atHome = view === 'chat' && state.loaded && (!state.activeId || (launch !== null && !launch.over && state.activeId === launch.id));
   const [homeRight, setHomeRight] = useState(false);
   if (!atHome && homeRight) setHomeRight(false);
-  // Three panels around the conversation (shell/layout.ts): the sidebar, the file preview (open while a file is
-  // shown) and the details (详情, the saved switch panels.right).
+  // The panels around the conversation (shell/layout.ts): the sidebar, the file preview (open while a file is
+  // shown), the details (详情, the saved switch panels.right) and, once switched on in 设置 › 关于, the 监控台
+  // (panels.monitor).
   const previewOpen = preview !== null;
-  const open: Open = { left: settings.panels.left, info: atHome ? homeRight : settings.panels.right, preview: previewOpen };
+  const monitorOpen = settings.monitor ? Boolean(settings.panels.monitor) : undefined;
+  const open: Open = { left: settings.panels.left, info: atHome ? homeRight : settings.panels.right, preview: previewOpen, ...(monitorOpen === undefined ? {} : { monitor: monitorOpen }) };
   // Panel widths: what the user dragged them to (live while dragging), giving way when the window narrows.
   const [dragging, setDragging] = useState<{ side: 'left' | 'preview'; width: number } | null>(null);
   // A main process older than these settings (dev build not restarted yet) does not send them.
@@ -176,10 +178,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const toggle = useCallback(
     (side: 'left' | 'info') => {
       const saved = shell.settings.panels;
-      const now: Open = { left: saved.left, info: atHome ? homeRight : saved.right, preview: previewOpen };
+      const monitor = shell.settings.monitor ? Boolean(saved.monitor) : undefined;
+      const now: Open = { left: saved.left, info: atHome ? homeRight : saved.right, preview: previewOpen, ...(monitor === undefined ? {} : { monitor }) };
       const next = toggleFrom(side, window.innerWidth, now, floating, peeking, { ...DEFAULT_SETTINGS.panelWidths, ...shell.settings.panelWidths });
       if (atHome && side === 'info') setHomeRight(next.open.info);
-      else if (next.open !== now) shell.update({ panels: { left: next.open.left, right: atHome ? saved.right : next.open.info } });
+      else if (next.open !== now) shell.update({ panels: { ...saved, left: next.open.left, right: atHome ? saved.right : next.open.info } });
       setFloating(next.floating);
       // Opened or closed on purpose: no longer a peek from the edge.
       setPeeking(false);
@@ -216,7 +219,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [toggle, canMax]);
-  // A layer of Esc: the inbox, the monitor or a plugin page in place of the conversation (back to it), under all the
+  // A layer of Esc: the inbox or a plugin page in place of the conversation (back to it), under all the
   // others (a panel slid out over it goes first). The settings dialog is one through useModal; a slid-out panel below.
   useEscape(view !== 'chat', () => setView('chat'), { under: true });
 
@@ -283,7 +286,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         // A settings view: the dialog open on that section, over the conversation.
         if (tab) setSettingsTab(tab);
         setSettingsOpen(tab !== null);
-        setView(v === 'inbox' ? 'inbox' : v === 'monitor' ? 'monitor' : 'chat');
+        setView(v === 'inbox' ? 'inbox' : 'chat');
       },
     };
     return () => {
@@ -737,7 +740,21 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const lastName = lastPreview ? (lastPreview.inline?.name ?? lastPreview.path.split(/[\\/]/).pop() ?? lastPreview.path) : '';
   const previewTip = preview ? '预览' : lastPreview ? `预览：${lastName}` : '没有打开的预览：点对话里的文件打开';
   // A preview floating over a narrow window takes no room: there the window is what is too narrow.
-  const infoTip = infoRoom ? '详情（Ctrl+Alt+B）' : layout.preview === 'docked' ? '放不下详情：把预览拖窄或关掉，或把窗口拉宽' : '窗口太窄，放不下详情';
+  const infoTip = infoRoom
+    ? '详情（Ctrl+Alt+B）'
+    : layout.monitor === 'docked'
+      ? '放不下详情：收起监控台，或把窗口拉宽'
+      : layout.preview === 'docked'
+        ? '放不下详情：把预览拖窄或关掉，或把窗口拉宽'
+        : '窗口太窄，放不下详情';
+  // The 监控台 (switched on in 设置 › 关于): as the details, no room means not shown and a button that says why.
+  const monitorShown = layout.monitor === 'docked';
+  const monitorRoom = monitorOpen === undefined ? false : monitorFits(width, open, wantedWidths);
+  const monitorTip = monitorRoom ? '监控台' : layout.preview === 'docked' ? '放不下监控台：把预览拖窄或关掉，或把窗口拉宽' : '窗口太窄，放不下监控台';
+  const toggleMonitor = () => {
+    if (!monitorRoom) return;
+    shell.update({ panels: { ...settings.panels, monitor: !settings.panels.monitor } });
+  };
   // Maximized only while the preview is there to show; closing it or leaving the conversation ends that.
   const rightCanMax = previewShown && view === 'chat';
   if (canMax !== rightCanMax) setCanMax(rightCanMax);
@@ -745,7 +762,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const panelMax = { on: rightMax, toggle: () => setRightMax((v) => !v) };
   // The preview over the whole conversation is a layer of Esc too (back beside it).
   useEscape(rightMax, () => setRightMax(false));
-  const title = view === 'inbox' ? '收件箱' : view === 'monitor' ? '监控台' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
+  const title = view === 'inbox' ? '收件箱' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
 
   // What can be done to a session by its name; the sidebar's rows and the name in the title bar share it.
   const rowActions: RowActions = {
@@ -781,13 +798,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         setFloating(null);
       }}
       settingsOpen={settingsOpen}
-      elsewhere={view === 'monitor' || view === 'plugin'}
+      elsewhere={view === 'plugin'}
       account={effectiveAccount(settings, shell.autoAccount)}
       onAccount={(where) => {
-        if (where === 'monitor') {
-          setSettingsOpen(false);
-          setView('monitor');
-        } else openSettings(where === 'models' ? 'models' : undefined);
+        openSettings(where === 'models' ? 'models' : undefined);
         setFloating(null);
       }}
       topId={state.topId}
@@ -921,6 +935,20 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               >
                 <Icon name="details" />
               </button>
+              {settings.monitor ? (
+                <button
+                  type="button"
+                  data-panel-toggle
+                  className={monitorShown ? 'icon-btn is-on' : 'icon-btn'}
+                  onClick={toggleMonitor}
+                  aria-label={monitorShown ? '收起监控台' : '展开监控台'}
+                  aria-pressed={monitorShown}
+                  {...(monitorRoom ? {} : { 'aria-disabled': true })}
+                  title={monitorTip}
+                >
+                  <Icon name="terminal" />
+                </button>
+              ) : null}
               <button
                 type="button"
                 data-panel-toggle
@@ -947,8 +975,6 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 <p>插件页面不可用（插件已停用或已卸载）。</p>
               </div>
             )
-          ) : view === 'monitor' ? (
-            <MonitorView api={bridge.monitor} showInFolder={(p) => void bridge.showInFolder(p)} />
           ) : view === 'inbox' ? (
             <InboxView
               mail={mail}
@@ -1028,6 +1054,17 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               hideHeading={panelPages.length > 0}
             />
             )}
+          </div>
+        ) : null}
+
+        {/* The 监控台, between the details and the preview: a fixed width, no edge to drag; never covered or floated
+            (no room: not shown). Closed, it stops reading the log (MonitorView's watch ends with it). */}
+        {monitorShown && view === 'chat' ? (
+          <div className="panel panel-right panel-monitor is-docked" style={{ width: widths.monitor }}>
+            <header className="panel-head monitor-head">
+              <span className="detail-heading">监控台</span>
+            </header>
+            <MonitorView api={bridge.monitor} showInFolder={(p) => void bridge.showInFolder(p)} />
           </div>
         ) : null}
 

@@ -8,6 +8,8 @@ import {
   infoFits,
   MAIN_ROOM_WIDTH,
   MAIN_SHOWN_MIN,
+  MONITOR_WIDTH,
+  monitorFits,
   panelWidths,
   PREVIEW_MIN,
   PREVIEW_WIDTH,
@@ -253,5 +255,54 @@ describe('the content column: where it rests with nothing on the right, pushed l
     const layout = computeLayout(1920, o(true, true, true));
     const widths = panelWidths(1920, layout, { left: SIDEBAR_WIDTH, preview: PREVIEW_WIDTH });
     expect(centreShift(1920, layout, widths, false)).toBe(0);
+  });
+});
+
+describe('the 监控台 (a right panel between the details and the preview, once switched on)', () => {
+  const withMonitor = (o: Open, monitor: boolean): Open => ({ ...o, monitor });
+
+  it('switched off (absent), every result is as without it', () => {
+    for (const w of [600, 900, 1280, 1600, 2400]) {
+      const base = computeLayout(w, all);
+      expect(base.monitor).toBeUndefined();
+      expect(computeLayout(w, withMonitor(all, false))).toEqual({ ...base, monitor: h });
+    }
+  });
+
+  it('fixed width; where both do not fit the details go first, then the monitor, before the preview covers', () => {
+    expect(MONITOR_WIDTH).toBe(380);
+    const both = { left: true, preview: false, info: true, monitor: true };
+    // room for the conversation, the monitor and the details
+    expect(computeLayout(SIDEBAR_WIDTH + MAIN_ROOM_WIDTH + MONITOR_WIDTH + INFO_WIDTH, both)).toEqual({ left: d, preview: h, info: d, monitor: d });
+    // 1280: the monitor stays, the details go
+    expect(computeLayout(1280, both)).toEqual({ left: d, preview: h, info: h, monitor: d });
+    // 1920 at 175% (1097 CSS px): the monitor still fits beside the conversation
+    expect(computeLayout(1097, both).monitor).toBe(d);
+    // narrower: the monitor goes too, and the details (narrower) have their room back
+    expect(computeLayout(SIDEBAR_WIDTH + MAIN_ROOM_WIDTH + MONITOR_WIDTH - 1, both)).toEqual({ left: d, preview: h, info: d, monitor: h });
+    expect(computeLayout(SIDEBAR_WIDTH + MAIN_ROOM_WIDTH + INFO_WIDTH - 1, both)).toEqual({ left: d, preview: h, info: h, monitor: h });
+  });
+
+  it('the preview keeps its width first; the monitor only beside it and the conversation at 440', () => {
+    const o = { left: true, preview: true, info: false, monitor: true };
+    expect(computeLayout(1280, o)).toEqual({ left: d, preview: d, info: h, monitor: h });
+    expect(monitorFits(1280, o)).toBe(false);
+    const wide = SIDEBAR_WIDTH + MAIN_ROOM_WIDTH + MONITOR_WIDTH + PREVIEW_WIDTH;
+    expect(computeLayout(wide, o)).toEqual({ left: d, preview: d, info: h, monitor: d });
+    const w = panelWidths(wide, computeLayout(wide, o), wanted);
+    expect(w.monitor).toBe(MONITOR_WIDTH);
+    expect(w.cover).toBe(0);
+    // one less: the preview lies over the conversation by... nothing, the monitor goes instead
+    expect(computeLayout(wide - 1, o).monitor).toBe(h);
+  });
+
+  it('pushes the content column left as the details do', () => {
+    const o = { left: true, preview: false, info: false, monitor: true };
+    const l = computeLayout(1600, o);
+    // the column (760) against the monitor less the gutter: 1600 - 380 - 24 - 380 = 816 for its middle, the
+    // conversation's own middle is (264 + 1220) / 2 = 742
+    expect(centreShift(1600, l, panelWidths(1600, l, wanted))).toBe(74);
+    const off = computeLayout(1600, { ...o, monitor: false });
+    expect(centreShift(1600, off, panelWidths(1600, off, wanted))).toBe(0);
   });
 });
