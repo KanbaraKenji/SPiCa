@@ -11,6 +11,7 @@ import {
 import { DARK_SKIN, deriveTokens, LIGHT_SKIN } from "../../../shared/skin";
 import { highlightCode } from "../chat/highlight";
 import { Pane, Row } from "./Group";
+import { Select } from "../ui/Select";
 
 const SAMPLE: { text: string; change?: "-" | "+" }[] = [
   { text: "function total(items) {" },
@@ -97,18 +98,13 @@ export function CodeThemes({ value, onChange, size, onSize }: CodeThemesProps) {
   return (
     <>
       <Row title="字号">
-        <select
-          className="input code-size-pick"
-          value={size}
-          onChange={(e) => onSize(Number(e.target.value))}
-          aria-label="代码字号"
-        >
-          {CODE_SIZES.map((px) => (
-            <option key={px} value={px}>
-              {px}px
-            </option>
-          ))}
-        </select>
+        <Select
+          className="code-size-pick"
+          value={String(size)}
+          onChange={(v) => onSize(Number(v))}
+          label="代码字号"
+          options={CODE_SIZES.map((px) => ({ value: String(px), label: `${px}px` }))}
+        />
       </Row>
       <Pane>
       <div className="code-themes">
@@ -116,22 +112,12 @@ export function CodeThemes({ value, onChange, size, onSize }: CodeThemesProps) {
           <div key={scheme} className="code-theme-row">
             <label className="code-theme-pick">
               <span>{scheme === "light" ? "浅色" : "深色"}</span>
-              <select
-                className="input"
+              <Select
                 value={value[scheme]}
-                onChange={(e) =>
-                  onChange({ ...value, [scheme]: e.target.value })
-                }
-                aria-label={
-                  scheme === "light" ? "浅色代码配色" : "深色代码配色"
-                }
-              >
-                {codeThemesFor(scheme).map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {codeThemeName(t, scheme)}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => onChange({ ...value, [scheme]: v })}
+                label={scheme === "light" ? "浅色代码配色" : "深色代码配色"}
+                options={codeThemesFor(scheme).map((t) => ({ value: t.id, label: codeThemeName(t, scheme) }))}
+              />
             </label>
             <CodeThemePreview id={value[scheme]} scheme={scheme} />
           </div>

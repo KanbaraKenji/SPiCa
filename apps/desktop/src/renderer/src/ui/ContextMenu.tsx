@@ -30,6 +30,8 @@ export interface MenuItem {
   after?: ReactNode;
   /** An icon before the label, in the label's colour. Only the items given one have it (no empty place on the others). */
   icon?: IconName;
+  /** What it stands for (a drop-down's option), on the item as data-value. */
+  value?: string;
   onSelect(): void;
 }
 
@@ -41,7 +43,27 @@ const groupOf = (it: MenuItem | undefined) => it?.groupKey ?? it?.group;
  * `side: 'above'`: over the button first (the row under the message box), under it only when
  * there is no room above. Either way 4px from the button, measured from the menu as drawn.
  */
-export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { x: number; y: number; items: MenuItem[]; onClose(): void; anchor?: HTMLElement | null; side?: 'above' | 'below' }) {
+export function ContextMenu({
+  x,
+  y,
+  items,
+  onClose,
+  anchor,
+  side = 'below',
+  minWidth,
+  focusChecked = false,
+}: {
+  x: number;
+  y: number;
+  items: MenuItem[];
+  onClose(): void;
+  anchor?: HTMLElement | null;
+  side?: 'above' | 'below';
+  /** At least this wide (a drop-down's list: as wide as its box). */
+  minWidth?: number | undefined;
+  /** Opening, the focus goes to the ticked item (scrolled into view), not the first. */
+  focusChecked?: boolean;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
   useEscape(true, onClose);
@@ -68,8 +90,10 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
       top = side === 'above' ? (fitsAbove || !fitsBelow ? above : below) : fitsBelow ? below : above;
     }
     setPos({ left: Math.max(4, Math.min(left, window.innerWidth - r.width - 4)), top: Math.max(4, Math.min(top, window.innerHeight - r.height - 4)) });
-    el.querySelector<HTMLButtonElement>('button:not([aria-disabled="true"])')?.focus();
-  }, [x, y, anchor, side]);
+    const first = (focusChecked && el.querySelector<HTMLButtonElement>('button[aria-checked="true"]:not([aria-disabled="true"])')) || el.querySelector<HTMLButtonElement>('button:not([aria-disabled="true"])');
+    first?.focus({ preventScroll: true });
+    first?.scrollIntoView?.({ block: 'nearest' });
+  }, [x, y, anchor, side, focusChecked]);
 
   useEffect(() => {
     const close = () => onClose();
@@ -79,11 +103,15 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
     };
     window.addEventListener('pointerdown', onDown, true);
     window.addEventListener('resize', close);
-    window.addEventListener('wheel', close, { passive: true });
+    // The wheel elsewhere closes it; inside, it scrolls a long list.
+    const onWheel = (e: WheelEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    window.addEventListener('wheel', onWheel, { passive: true });
     return () => {
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('resize', close);
-      window.removeEventListener('wheel', close);
+      window.removeEventListener('wheel', onWheel);
     };
   }, [onClose, anchor]);
 
@@ -117,7 +145,7 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
       className={keys ? 'context-menu is-keys' : 'context-menu'}
       role="menu"
       tabIndex={-1}
-      style={{ left: pos.left, top: pos.top }}
+      style={{ left: pos.left, top: pos.top, ...(minWidth ? { minWidth } : {}) }}
       onKeyDown={onKeyDown}
       onPointerMove={() => {
         if (keys) setKeys(false);
@@ -136,6 +164,7 @@ export function ContextMenu({ x, y, items, onClose, anchor, side = 'below' }: { 
             aria-checked={it.checked}
             className={it.danger ? 'context-item is-danger' : 'context-item'}
             aria-disabled={it.disabled || undefined}
+            {...(it.value !== undefined ? { 'data-value': it.value } : {})}
             // Its own note (why it cannot be picked), else the label when it is cut short.
             {...(it.title ? { title: it.title } : { title: it.label, 'data-tip-clipped': '.context-item-label' })}
             onPointerLeave={(e) => {

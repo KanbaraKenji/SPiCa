@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS } from '../../../shared/settings';
 import type { PluginView } from '../../../shared/plugin-view';
 import { General, rangeStart, type GeneralProps } from './General';
 import { dropAllDrafts } from './drafts';
+import { optionLabels, pickValue, valueOf } from '../ui/select-testing';
 
 afterEach(() => {
   cleanup();
@@ -45,24 +46,24 @@ describe('文件预览', () => {
     const pages = [page('office-preview', 'docx', 'Word 原样预览', ['.docx', '.docm']), page('office-preview', 'xlsx', 'Excel 原样预览', ['.xlsx'])];
     const p = setup({ previewPages: pages, settings: { ...DEFAULT_SETTINGS, previewers: { '.xlsx': 'office-preview/xlsx' } } });
     expect(screen.getAllByRole('combobox').map((c) => c.getAttribute('aria-label'))).toEqual(['.docm 文件预览', '.docx 文件预览', '.xlsx 文件预览']);
-    const docx = screen.getByRole('combobox', { name: '.docx 文件预览' }) as HTMLSelectElement;
-    expect([...docx.options].map((o) => o.textContent)).toEqual(['自带预览', 'Word 原样预览']);
-    expect(docx.value).toBe('');
-    fireEvent.change(docx, { target: { value: 'office-preview/docx' } });
+    const docx = screen.getByRole('combobox', { name: '.docx 文件预览' });
+    expect(optionLabels(docx)).toEqual(['自带预览', 'Word 原样预览']);
+    expect(valueOf(docx)).toBe('');
+    pickValue(docx, 'office-preview/docx');
     expect(p.onChange).toHaveBeenCalledWith({ previewers: { '.xlsx': 'office-preview/xlsx', '.docx': 'office-preview/docx' } });
-    const xlsx = screen.getByRole('combobox', { name: '.xlsx 文件预览' }) as HTMLSelectElement;
-    expect(xlsx.value).toBe('office-preview/xlsx');
-    fireEvent.change(xlsx, { target: { value: '' } });
+    const xlsx = screen.getByRole('combobox', { name: '.xlsx 文件预览' });
+    expect(valueOf(xlsx)).toBe('office-preview/xlsx');
+    pickValue(xlsx, '');
     expect(p.onChange).toHaveBeenLastCalledWith({ previewers: {} });
   });
 
   it('a kept choice whose plugin is gone says so; two pages with one name say whose', () => {
     const pages = [page('office-preview', 'docx', 'Word 预览', ['.docx']), page('other', 'docx', 'Word 预览', ['.docx'])];
     setup({ previewPages: pages, settings: { ...DEFAULT_SETTINGS, previewers: { '.pptx': 'slides/pptx' } } });
-    const pptx = screen.getByRole('combobox', { name: '.pptx 文件预览' }) as HTMLSelectElement;
-    expect(pptx.value).toBe('slides/pptx');
-    expect(pptx.selectedOptions[0]?.textContent).toBe('插件不可用');
-    expect([...(screen.getByRole('combobox', { name: '.docx 文件预览' }) as HTMLSelectElement).options].map((o) => o.textContent)).toEqual(['自带预览', 'Word 预览（Office 预览）', 'Word 预览（另一个）']);
+    const pptx = screen.getByRole('combobox', { name: '.pptx 文件预览' });
+    expect(valueOf(pptx)).toBe('slides/pptx');
+    expect(pptx.querySelector('.select-value')?.textContent).toBe('插件不可用');
+    expect(optionLabels(screen.getByRole('combobox', { name: '.docx 文件预览' }))).toEqual(['自带预览', 'Word 预览（Office 预览）', 'Word 预览（另一个）']);
   });
 });
 

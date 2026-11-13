@@ -91,6 +91,7 @@
 | **定** 看大图时可以直接切上一张、下一张（‹ N of M ›，方向键也行），不用关掉再点 | 看大图 | 对应测试 |
 | **定** 弹窗右上角有 ×（设置弹窗、询问框） | `settings/**`、`ui/CloseDialog.tsx` | 人工 |
 | **定** 侧栏左下角设置的入口只有齿轮，旁边不写「设置」 | `shell/Sidebar.tsx` | 人工 |
+| **定** 不用浏览器自带的下拉框，只用 `ui/Select.tsx`：自带的箭头由浏览器画、贴着右边，展开的列表由系统画（方角、系统蓝色高亮、字号外框不跟皮肤），样式表管不到。框和输入框一样高、一样的边；箭头笔画离右边和第一个字离左边一样（都是 `--control-pad-x` 加边框）；展开的列表就是应用的菜单（`ui/ContextMenu.tsx`），和框左右对齐、一样宽，放不下往上开，选中的一项打勾，可分组、长了滚动；键盘上下、回车、Esc 先收列表 | `ui/Select.tsx`、`styles.css` 的 `.input.select-box` | `ui/Select.test.tsx`；`renderer-styles.test.ts`「a drop-down…」和「no browser drop-downs」（窗口源码里不许出现 select 元素） |
 | **定** 对话里等你点的卡（普通确认卡、提问卡）外框用中性色，和别的卡一样；只有带「无法撤销」的危险确认卡是红框。等你点的和点过的靠底色（等你点的是浮起的底色，点过的是表面色）和卡上的按钮 / 答案分开 | `styles.css` 的 `.ask-card, .confirm-card` | `renderer-styles.test.ts`「a card waiting on the user…」 |
 | **暂定** 回答里夹在工具调用之间的思考并进工具组：概述只数调用，点开按先后列出思考和调用；只有思考的一轮单独一行「思考过程」；正在写的思考在组下面单独一行，下一次调用来了才并进去 | `chat/Conversation.tsx` 的 `segments`、`chat/Blocks.tsx` 的 `ToolGroup` | `chat/ThinkingGroup.test.tsx` |
 

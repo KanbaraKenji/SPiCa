@@ -10,6 +10,7 @@ import { FileGlyph } from '../ui/FileIcon';
 import { MaxButton, type MaxState } from '../ui/MaxButton';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
+import { Select } from '../ui/Select';
 
 export interface FilePreviewProps {
   /** null while loading. */
@@ -136,13 +137,7 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
           {info?.name ?? ''}
         </span>
         {source && source.options.length > 1 ? (
-          <select className="input preview-source" aria-label="预览方式" title="预览方式" value={source.value} onChange={(e) => source.onChange(e.target.value)}>
-            {source.options.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <Select className="preview-source" label="预览方式" title="预览方式" value={source.value} onChange={source.onChange} options={source.options.map((o) => ({ value: o.id, label: o.label }))} />
         ) : null}
         {code !== null ? (
           <button type="button" className="icon-btn" aria-pressed={asCode} onClick={() => setCodeFor(asCode ? null : id)} aria-label={asCode ? '预览' : '代码'} title={asCode ? '预览' : '代码'}>

@@ -526,6 +526,42 @@ a:hover {
   color: var(--spica-placeholder);
 }
 
+/* A drop-down (ui/Select.tsx): the words on the left, the arrow as far from the right edge as they are from the
+   left, both --control-pad-x in from the border. */
+.input.select-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--control-pad-x);
+  text-align: left;
+  color: var(--spica-ink);
+  user-select: none;
+}
+
+.select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.select-value.is-placeholder {
+  color: var(--spica-placeholder);
+}
+
+.select-arrow {
+  flex: none;
+  /* The chevron is drawn 3.5 in from the sides of its 14 box: pulled out by that much, its tip is as far from the
+     right edge as the first letter is from the left. */
+  margin-right: -3.5px;
+  color: var(--spica-muted);
+}
+
+.input.select-box[aria-expanded='true'] {
+  border-color: var(--spica-accent);
+}
+
 .input:focus {
   border-color: var(--spica-accent);
   box-shadow: 0 0 0 3px var(--spica-accent-soft);
@@ -5198,6 +5234,9 @@ section.plugins-part > .plugins-part-title {
   min-width: 140px;
   width: max-content;
   max-width: calc(100vw - 8px);
+  /* A long list (a drop-down's) scrolls inside it rather than running past the window. */
+  max-height: calc(100vh - 8px);
+  overflow-y: auto;
   padding: 4px;
   border-radius: var(--radius-popup);
   background: var(--spica-menu);

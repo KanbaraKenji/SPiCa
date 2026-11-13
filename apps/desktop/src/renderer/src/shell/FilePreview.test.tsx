@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { FilePreview } from './FilePreview';
 import { clipboard } from '../ui/clipboard';
+import { optionLabels, pickValue, valueOf } from '../ui/select-testing';
 
 afterEach(() => {
   cleanup();
@@ -118,12 +119,12 @@ describe('the file’s place, from the preview head', () => {
         <div data-testid="page" />
       </FilePreview>,
     );
-    const select = screen.getByRole('combobox', { name: '预览方式' }) as HTMLSelectElement;
-    expect([...select.options].map((o) => o.textContent)).toEqual(['自带预览', 'Word 原样预览']);
-    expect(select.value).toBe('office-preview/docx');
+    const select = screen.getByRole('combobox', { name: '预览方式' });
+    expect(optionLabels(select)).toEqual(['自带预览', 'Word 原样预览']);
+    expect(valueOf(select)).toBe('office-preview/docx');
     expect(screen.getByTestId('page')).toBeTruthy();
     expect(screen.getByRole('button', { name: '用系统程序打开' })).toBeTruthy();
-    fireEvent.change(select, { target: { value: '' } });
+    pickValue(select, '');
     expect(onChange).toHaveBeenCalledWith('');
     rerender(<FilePreview info={{ kind: 'markdown', name: '需求说明.docx', path: 'D:/需求说明.docx', size: 9, text: '# 需求', truncated: false }} onOpenExternal={vi.fn()} onClose={vi.fn()} source={{ ...source, value: 'office-preview/docx' }} note={{ text: '「Word 原样预览」打开超时', onRetry }} />);
     expect(screen.getByText('「Word 原样预览」打开超时')).toBeTruthy();
