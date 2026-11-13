@@ -112,6 +112,24 @@ describe('limits in the runtime', () => {
     expect(rt.ledger.providerUsd('fake-openai')).toBeCloseTo(1.04);
   });
 
+  it('a provider limit for a period: the runtime counts its request log since the period started; earlier spending does not count', async () => {
+    gw.onRequest(() => ({ text: 'ok', usage: { input: 100_000, output: 1_000 } }));
+    const rt = makeRuntime(gw);
+    const events = captureEvents(rt);
+    // spent before the period: not counted
+    expect((await rt.createSession({ maxTokens: 1000 }).send('before').done).reason).not.toBe('budget');
+    rt.ledger.setBudget({ perProvider: { 'fake-openai': { globalUsd: 1, period: { days: 7, fromMs: Date.now() + 1 }, label: 'Gateway' } } });
+    await new Promise((r) => setTimeout(r, 5));
+    // each call costs 0.52 USD: two go (0, 0.52), the third finds 1.04 in this period
+    expect((await rt.createSession({ maxTokens: 1000 }).send('a').done).reason).not.toBe('budget');
+    expect((await rt.createSession({ maxTokens: 1000 }).send('b').done).reason).not.toBe('budget');
+    const third = await rt.createSession({ maxTokens: 1000 }).send('c').done;
+    expect(third.reason).toBe('budget');
+    expect(third.detail).toMatch(/^spending limit reached: Gateway spent US\$1\.04 of US\$1\.00 in 7 days \(again from \d{4}-\d\d-\d\d \d\d:\d\d\)$/);
+    expect(events.find((e) => e.type === 'budget.stop')).toMatchObject({ scope: 'fake-openai:global', periodDays: 7 });
+    expect(rt.ledger.periodSpend('fake-openai')?.spentUsd).toBeCloseTo(1.04);
+  });
+
   it('refuses a single call whose worst case exceeds the per-call limit of its provider', async () => {
     const rt = makeRuntime(gw, { budget: { perProvider: { 'fake-openai': { perCallUsd: 0.01 } } } });
     const s = rt.createSession({ maxTokens: 100_000 }); // up to $2 of output
