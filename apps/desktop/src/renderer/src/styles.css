@@ -3721,8 +3721,9 @@ button.ctx-row:hover {
   gap: 12px;
 }
 
-.field .field-control .spend-limit .spend-period {
+.spend-limit .spend-period {
   flex: none;
+  justify-content: space-between;
   width: 96px;
 }
 

@@ -34,6 +34,7 @@ import { dropDraft, keepDraft, keptDraft } from './drafts';
 import { ModelPicker, type ListedModel } from './ModelPicker';
 import { useGuard } from '../ui/guard';
 import { InfoTip } from '../ui/InfoTip';
+import { ContextMenu } from '../ui/ContextMenu';
 import { PasteConfig } from './PasteConfig';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Group, Row } from './Group';
@@ -237,6 +238,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
   const [advanced, setAdvanced] = useState(false);
   // 自定义 picked for the 花费上限's period (a number of days that is not 7 or 30 shows it too)
   const [customPeriod, setCustomPeriod] = useState(false);
+  const [periodMenu, setPeriodMenu] = useState<HTMLElement | null>(null);
   const shownPeriod = draft.spendPeriodDays;
   const [periodOf, setPeriodOf] = useState<string | 'new' | null>(null);
   if (periodOf !== selected) {
@@ -842,21 +844,39 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                         onChange={(e) => set({ spendLimitUsd: parseNum(e.target.value) })}
                       />
                     </label>
-                    <select
-                      className="input spend-period"
+                    <button
+                      type="button"
+                      className="btn spend-period"
+                      aria-haspopup="menu"
                       aria-label="周期"
-                      value={customPeriod ? 'custom' : String(draft.spendPeriodDays ?? SPEND_PERIOD_DEFAULT)}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setCustomPeriod(v === 'custom');
-                        if (v !== 'custom') set({ spendPeriodDays: Number(v) });
+                      onClick={(e) => {
+                        // under the button; the button again closes it
+                        const el = e.currentTarget;
+                        setPeriodMenu((now) => (now ? null : el));
                       }}
                     >
-                      {SPEND_PERIODS.map((d) => (
-                        <option key={d} value={String(d)}>{`${d} 天`}</option>
-                      ))}
-                      <option value="custom">自定义</option>
-                    </select>
+                      <span className="spend-period-name">{customPeriod ? '自定义' : `${draft.spendPeriodDays ?? SPEND_PERIOD_DEFAULT} 天`}</span>
+                      <Icon name="chevronDown" size={12} />
+                    </button>
+                    {periodMenu ? (
+                      <ContextMenu
+                        x={0}
+                        y={0}
+                        anchor={periodMenu}
+                        items={[
+                          ...SPEND_PERIODS.map((d) => ({
+                            label: `${d} 天`,
+                            checked: !customPeriod && (draft.spendPeriodDays ?? SPEND_PERIOD_DEFAULT) === d,
+                            onSelect: () => {
+                              setCustomPeriod(false);
+                              set({ spendPeriodDays: d });
+                            },
+                          })),
+                          { label: '自定义', checked: customPeriod, onSelect: () => setCustomPeriod(true) },
+                        ]}
+                        onClose={() => setPeriodMenu(null)}
+                      />
+                    ) : null}
                     {customPeriod ? (
                       <label className="run-limit">
                         <input

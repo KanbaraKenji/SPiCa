@@ -493,12 +493,17 @@ describe('花费上限 of a provider', () => {
     const api = fakeApi([saved({ name: 'DeepSeek 测试' })]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /DeepSeek 测试/ }));
-    const period = screen.getByLabelText('周期') as HTMLSelectElement;
-    expect([...period.options].map((o) => o.text)).toEqual(['7 天', '30 天', '自定义']);
-    expect(period.value).toBe('30');
+    // the project's own dropdown (a button and its menu), not the system's
+    const period = screen.getByRole('button', { name: '周期' });
+    expect(period.textContent).toBe('30 天');
+    fireEvent.click(period);
+    expect(screen.getAllByRole('menuitemradio').map((m) => m.textContent)).toEqual(['7 天', '30 天', '自定义']);
     expect(screen.queryByLabelText('周期天数')).toBeNull();
+    fireEvent.click(screen.getByRole('menuitemradio', { name: '7 天' }));
+    expect(period.textContent).toBe('7 天');
     fireEvent.change(screen.getByLabelText('花费上限（美元）'), { target: { value: '5' } });
-    fireEvent.change(period, { target: { value: 'custom' } });
+    fireEvent.click(period);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: '自定义' }));
     fireEvent.change(screen.getByLabelText('周期天数'), { target: { value: '14' } });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ spendLimitUsd: 5, spendPeriodDays: 14 })));
