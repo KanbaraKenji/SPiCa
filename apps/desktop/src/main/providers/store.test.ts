@@ -168,7 +168,10 @@ describe('ProviderStore', () => {
     const again = new ProviderStore(dir, box);
     expect(again.list()[0]!.spendLimitUsd).toBeNull();
     expect(again.spendLimit(first.id)).toBeNull();
-    expect(() => new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box).save({ ...draft, spendLimitUsd: Number.NaN })).toThrow(/须为大于 0/);
+    expect(() => new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box).save({ ...draft, spendLimitUsd: Number.NaN })).toThrow(/须为 0 到/);
+    // 0 is no limit (the form's default)
+    const zero = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box).save({ ...draft, spendLimitUsd: 0 });
+    expect(zero.spendLimitUsd).toBeNull();
   });
 
   it('a limit saved before it had a period (a total with a 清零 point) reads as 30 days from when it is read, and is written so at once', () => {

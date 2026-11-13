@@ -482,7 +482,7 @@ describe('花费上限 of a provider', () => {
     // a wrong amount: the page's own red words, not the browser's bubble
     fireEvent.change(box, { target: { value: '-1' } });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    expect((await screen.findByText(/须为大于 0/)).className).toContain('field-error');
+    expect((await screen.findByText(/须为 0 到/)).className).toContain('field-error');
     // kept as typed up to four decimals; more is said, not rounded
     fireEvent.change(box, { target: { value: '0.00015' } });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
@@ -498,6 +498,12 @@ describe('花费上限 of a provider', () => {
     // the project's own dropdown (a button and its menu), not the system's
     const period = screen.getByRole('combobox', { name: '周期' });
     expect(period.textContent).toBe('30 天');
+    // 0, the default, is no limit: the period does nothing (greyed), the line under it says 不限
+    expect((screen.getByLabelText('花费上限（美元）') as HTMLInputElement).value).toBe('0');
+    expect((period as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('不限')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('花费上限（美元）'), { target: { value: '5' } });
+    expect((period as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(period);
     expect(screen.getAllByRole('menuitemradio').map((m) => m.textContent)).toEqual(['7 天', '30 天', '自定义']);
     expect(screen.queryByLabelText('周期天数')).toBeNull();
