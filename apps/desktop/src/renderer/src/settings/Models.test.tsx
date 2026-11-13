@@ -498,12 +498,6 @@ describe('花费上限 of a provider', () => {
     // the project's own dropdown (a button and its menu), not the system's
     const period = screen.getByRole('combobox', { name: '周期' });
     expect(period.textContent).toBe('30 天');
-    // 0, the default, is no limit: the period does nothing (greyed), the line under it says 不限
-    expect((screen.getByLabelText('花费上限（美元）') as HTMLInputElement).value).toBe('0');
-    expect((period as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText('不限')).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('花费上限（美元）'), { target: { value: '5' } });
-    expect((period as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(period);
     expect(screen.getAllByRole('menuitemradio').map((m) => m.textContent)).toEqual(['7 天', '30 天', '自定义']);
     expect(screen.queryByLabelText('周期天数')).toBeNull();

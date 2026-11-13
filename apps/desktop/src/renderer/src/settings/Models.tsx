@@ -238,13 +238,6 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
   const [advanced, setAdvanced] = useState(false);
   // 自定义 picked for the 花费上限's period (a number of days that is not 7 or 30 shows it too)
   const [customPeriod, setCustomPeriod] = useState(false);
-  // the amount as typed (0 when none is set: no limit); a limit is set only above 0
-  const limitSet = Boolean(draft.spendLimitUsd && draft.spendLimitUsd > 0);
-  const [limitText, setLimitText] = useState(() => String(draft.spendLimitUsd ?? 0));
-  // the draft changed under it (another provider opened, its list read, saved): show the amount it holds
-  const typed = Number(limitText.trim() === '' ? 0 : limitText);
-  const held = draft.spendLimitUsd ?? 0;
-  if (Number.isFinite(typed) && Number.isFinite(held) && typed !== held) setLimitText(String(held));
   const shownPeriod = draft.spendPeriodDays;
   const [periodOf, setPeriodOf] = useState<string | 'new' | null>(null);
   if (periodOf !== selected) {
@@ -805,8 +798,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                 </span>
               </div>
 
-              {/* 花费上限: what this provider may cost in a period (7 天 / 30 天 / 自定义); 0 (the default) is no limit;
-                  本周期已花 under it once saved */}
+              {/* 花费上限: what this provider may cost in a period (7 天 / 30 天 / 自定义); 本周期已花 under it once saved */}
               <div className="field field-stack">
                 <span className="field-label">花费上限</span>
                 <span className="field-control">
@@ -818,21 +810,16 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                         type="number"
                         min="0"
                         step="any"
-                        value={limitText}
+                        value={numText(draft.spendLimitUsd ?? null)}
+                        placeholder="不限"
                         autoComplete="off"
                         aria-label="花费上限（美元）"
                         aria-invalid={errors.spendLimitUsd ? true : undefined}
-                        // 0 is no limit (the default): what most providers have
-                        onChange={(e) => {
-                          setLimitText(e.target.value);
-                          set({ spendLimitUsd: e.target.value.trim() === '' ? 0 : Number(e.target.value) });
-                        }}
+                        onChange={(e) => set({ spendLimitUsd: parseNum(e.target.value) })}
                       />
                     </label>
                     <Select
                       className="spend-period"
-                      // no limit: the period does nothing (kept as it is, greyed)
-                      disabled={!limitSet}
                       label="周期"
                       value={customPeriod ? 'custom' : String(draft.spendPeriodDays ?? SPEND_PERIOD_DEFAULT)}
                       options={[...SPEND_PERIODS.map((d) => ({ value: String(d), label: `${d} 天` })), { value: 'custom', label: '自定义' }]}
@@ -841,7 +828,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                         if (v !== 'custom') set({ spendPeriodDays: Number(v) });
                       }}
                     />
-                    {customPeriod && limitSet ? (
+                    {customPeriod ? (
                       <label className="run-limit">
                         <input
                           className={errors.spendPeriodDays ? 'input is-invalid' : 'input'}
@@ -858,7 +845,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                       </label>
                     ) : null}
                   </span>
-                  {!limitSet ? <span className="spend-spent">不限</span> : current && spent[current.id] ? <span className="spend-spent">{spendLine(spent[current.id]!)}</span> : null}
+                  {current && spent[current.id] ? <span className="spend-spent">{spendLine(spent[current.id]!)}</span> : null}
                   {errors.spendLimitUsd || errors.spendPeriodDays ? <span className="field-error">{errors.spendLimitUsd ?? errors.spendPeriodDays}</span> : null}
                 </span>
               </div>

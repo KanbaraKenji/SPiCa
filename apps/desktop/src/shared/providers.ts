@@ -191,7 +191,7 @@ export function emptyDraft(kind: ProviderKind = 'openai'): ProviderDraft {
     requestsPerMinute: null,
     contextWindow: null,
     catalogId: null,
-    spendLimitUsd: 0,
+    spendLimitUsd: null,
     spendPeriodDays: SPEND_PERIOD_DEFAULT,
   };
 }
@@ -259,8 +259,7 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: {
     else if (!Number.isInteger(d.contextWindow) || d.contextWindow < 1) e.contextWindow = '上下文上限须为正整数';
   }
   const limit = d.spendLimitUsd;
-  // 0 (or nothing) is no limit
-  if (limit !== null && limit !== undefined && !(Number.isFinite(limit) && limit >= 0 && limit <= RUN_LIMIT_MAX_USD)) e.spendLimitUsd = `须为 0 到 US$${RUN_LIMIT_MAX_USD.toLocaleString('en-US')} 的金额，0 为不限`;
+  if (limit !== null && limit !== undefined && !(Number.isFinite(limit) && limit >= 0 && limit <= RUN_LIMIT_MAX_USD)) e.spendLimitUsd = `须为 0 到 US$${RUN_LIMIT_MAX_USD.toLocaleString('en-US')} 的金额，空着或 0 为不限`;
   else if (limit !== null && limit !== undefined && !moneyPrecise(limit)) e.spendLimitUsd = '最多四位小数';
   const days = d.spendPeriodDays;
   if (days !== undefined && !(Number.isInteger(days) && days >= 1 && days <= SPEND_PERIOD_MAX_DAYS)) e.spendPeriodDays = `天数须为 1 到 ${SPEND_PERIOD_MAX_DAYS} 的整数`;

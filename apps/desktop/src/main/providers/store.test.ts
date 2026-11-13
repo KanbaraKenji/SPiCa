@@ -169,7 +169,7 @@ describe('ProviderStore', () => {
     expect(again.list()[0]!.spendLimitUsd).toBeNull();
     expect(again.spendLimit(first.id)).toBeNull();
     expect(() => new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box).save({ ...draft, spendLimitUsd: Number.NaN })).toThrow(/须为 0 到/);
-    // 0 is no limit (the form's default)
+    // 0 is no limit too (as empty)
     const zero = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box).save({ ...draft, spendLimitUsd: 0 });
     expect(zero.spendLimitUsd).toBeNull();
   });
