@@ -902,11 +902,10 @@ button.tree-twisty:hover {
   color: var(--spica-muted);
 }
 
+/* As .fold-meta: the row's size, quieter only by its colour. */
 .detail-item-meta {
   flex: none;
   color: var(--spica-faint);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1652,11 +1651,11 @@ pre .hl-punctuation {
   text-overflow: ellipsis;
 }
 
+/* What a row says after its words (Failed, 已超时, how long it took): the row's size and line, quieter only by its
+   colour. A smaller size beside the words sits on a different baseline and reads as off the middle. */
 .fold-meta {
   flex: none;
   color: var(--spica-faint);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
   font-variant-numeric: tabular-nums;
   display: block;
 }
@@ -2292,12 +2291,10 @@ pre .hl-punctuation {
 }
 
 /* A run's clock, after the words: in the status line and at the end of the Running … line (inside its
-   .fold-meta) alike. */
+   .fold-meta) alike; the size of the words it follows. */
 .status-clock {
   flex: none;
   color: var(--spica-faint);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
   font-variant-numeric: tabular-nums;
 }
 

@@ -406,9 +406,15 @@ describe('the conversation’s sizes', () => {
     for (const sel of ['.tool-item-head', '.fold-body', '.thinking-text', '.turn-note']) expect(block(sel), sel).toContain('line-height: var(--chat-row-line)');
     expect(block('.tool-item-head')).toContain('min-height: calc(var(--chat-row-line) + 12px)');
     expect(block('.detail-list')).toContain('line-height: var(--lh-body-compact)');
-    // The detail panel is not the conversation; the time at the end of a row stays a caption.
+    // The detail panel is not the conversation (文字大小 does not move it).
     expect(block('.detail-list')).toContain('font-size: var(--fs-body)');
-    expect(block('.fold-meta')).toContain('font-size: var(--fs-caption)');
+  });
+
+  it('what a row says after its words (Failed, 已超时, the time, the clock) is the row’s size: a smaller one sits on another baseline', () => {
+    // A 12 beside a 16, each centred in its own box, sits 1.5px higher at 100% and reads as off the middle.
+    for (const sel of ['.fold-meta', '.detail-item-meta', 'follows. */\n.status-clock'])
+      for (const prop of ['font-size', 'line-height', 'font:']) expect(block(sel), `${sel} ${prop}`).not.toContain(prop);
+    for (const sel of ['.fold-meta', '.detail-item-meta', 'follows. */\n.status-clock']) expect(block(sel), sel).toContain('color: var(--spica-faint)');
   });
 
   it('a row’s words centre on the icons by the font (no trim of their own); cut at the end only', () => {
@@ -419,7 +425,7 @@ describe('the conversation’s sizes', () => {
 
   it('a run’s clock is one rule, after the words, in the status line and the Running … line; the words give way, not the clock', () => {
     // Its own rule (the one after its comment), not the list of a row's words it is also in.
-    expect(block('alike. */\n.status-clock')).toContain('flex: none;\n  color: var(--spica-faint);\n  font-size: var(--fs-caption);\n  line-height: var(--lh-caption)');
+    expect(block('follows. */\n.status-clock')).toContain('flex: none;\n  color: var(--spica-faint);\n  font-variant-numeric: tabular-nums;');
     expect(block('\n.status-text')).toContain('text-overflow: ellipsis');
     expect(block('\n.status-text')).toContain('min-width: 0');
     expect(block('.status-line')).toContain('gap: 8px');
