@@ -1920,8 +1920,17 @@ pre .hl-punctuation {
   min-width: 0;
 }
 
-/* The command as written, in a box of its own that scrolls; $ quieter. */
-.tool-command {
+/* The command as written, as in the Claude app (chat/CallDetail.tsx CommandBox): the shell's name over the box in
+   small grey words, then the box; $ quieter. */
+.tool-command-label {
+  margin: 0 0 6px;
+  font-size: var(--chat-small);
+  line-height: var(--chat-small-line);
+  color: var(--spica-muted);
+}
+
+.tool-command-box {
+  position: relative;
   border-radius: var(--radius-s);
   background: var(--code-bg, var(--spica-surface));
   color: var(--code-fg, inherit);
@@ -1929,8 +1938,18 @@ pre .hl-punctuation {
   overflow: hidden;
 }
 
-.tool-command .code-head {
-  height: 26px;
+/* Copy floats at the top right, on the first line's row (a 26px button centred on a code line), over the room the
+   box keeps on the right; shown while the pointer is over the box or the key focus is on it. */
+.tool-command-copy {
+  position: absolute;
+  top: calc(8px + (var(--code-line) - 26px) / 2);
+  right: 6px;
+  opacity: 0;
+}
+
+.tool-command-box:hover .tool-command-copy,
+.tool-command-copy:focus-visible {
+  opacity: 1;
 }
 
 /* Every box of a call opened (the command, the arguments, the change, what came out): at most 20 lines high, then
@@ -1938,9 +1957,11 @@ pre .hl-punctuation {
    conversation. The 20 lines are the code font's, plus the box's own padding and edges. */
 .tool-command pre {
   margin: 0;
-  max-height: calc(var(--code-line) * 20 + 8px);
+  max-height: calc(var(--code-line) * 20 + 16px);
   overflow: auto;
-  padding: 0 10px 8px;
+  /* Room on the right for copy; on the left the wrapped lines start where the command does, after the $ (2ch). */
+  padding: 8px 36px 8px calc(10px + 2ch);
+  text-indent: -2ch;
   font-family: var(--font-mono);
   font-size: var(--code-size);
   line-height: var(--code-line);
@@ -6018,13 +6039,23 @@ section.plugins-part > .plugins-part-title {
   padding: 8px 12px;
 }
 
+/* On a card the card is the box: the label is the first line of the code area, in line with the command. */
 .tool-command.is-bare {
+  background: var(--code-bg, var(--spica-surface));
+}
+
+.tool-command.is-bare .tool-command-label {
+  margin: 0;
+  padding: 8px 12px 0;
+}
+
+.tool-command.is-bare .tool-command-box {
   border: 0;
   border-radius: 0;
 }
 
 .tool-command.is-bare pre {
-  padding: 0 12px 8px;
+  padding-left: calc(12px + 2ch);
 }
 
 /* A dangerous word in a command to be confirmed (Remove-Item, -Recurse, -Force, an overwriting >). */

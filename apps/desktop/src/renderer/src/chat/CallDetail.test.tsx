@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
-import { CallDetail, callEnd, DRAWN_LINES, hunkLines, jsonLaidOut, layJson, lineChange } from './CallDetail';
+import { CallDetail, callEnd, DRAWN_LINES, hunkLines, jsonLaidOut, layJson, lineChange, SHELL_LABEL } from './CallDetail';
 import { resultBody, type Block } from '../store/transcript';
 
 afterEach(cleanup);
@@ -61,6 +61,10 @@ describe('a call opened', () => {
   it('a command that failed: the command boxed with $, Exit code in a red line of its own, the output unboxed', () => {
     render(<CallDetail block={call({ state: 'error', input: { command: 'python check.py' }, result: '[fetched at 2026-11-13T08:00:00Z]\nexit code 2, 1.3 s\nValueError: 第 3 行缺少单价' })} />);
     expect(document.querySelector('.tool-command pre')?.textContent).toBe('$ python check.py');
+    // The shell named over the box; copy inside the box, no line of its own above the command.
+    expect(document.querySelector('.tool-command-label')?.textContent).toBe(SHELL_LABEL);
+    expect(document.querySelector('.tool-command-box > .tool-command-copy')?.getAttribute('aria-label')).toBe('复制');
+    expect(document.querySelector('.tool-command .code-head')).toBeNull();
     expect(document.querySelector('.tool-status')?.textContent).toBe('Exit code 2');
     expect(document.querySelector('.tool-output')?.textContent).toBe('ValueError: 第 3 行缺少单价');
     expect(document.querySelector('.tool-output')?.closest('.tool-command, .tool-args')).toBeNull();

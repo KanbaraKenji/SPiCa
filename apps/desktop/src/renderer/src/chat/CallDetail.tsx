@@ -22,9 +22,17 @@ const arg = (b: ToolBlock, key: string): unknown => (b.input as Record<string, u
 const text = (v: unknown): string => (typeof v === 'string' ? v : '');
 
 /**
- * A command as written: $ and the command, coloured as PowerShell, in a box of its own; long ones wrap. `marks`
- * (where the dangerous words are): those words on a red ground in place of the colours. Copy is at the box's top
- * right, wherever it is (a step opened, a card to confirm). `bare`: no edge of its own (the card it is in is the box).
+ * What runs the command, named over its box as in the Claude app: the core runs Windows PowerShell on Windows
+ * (packages/core tools/command-tool.ts); elsewhere a POSIX shell, which is not always Bash, so just Command.
+ */
+export const SHELL_LABEL = typeof navigator !== 'undefined' && /Windows/.test(navigator.userAgent) ? 'PowerShell' : 'Command';
+
+/**
+ * A command as written, as in the Claude app: a small label naming the shell, then the box: $ and the command,
+ * coloured as PowerShell; long ones wrap, the wrapped lines in line with the command after the $. Copy floats at
+ * the box's top right, on the first line's row, shown while the pointer is over the box (or the key focus is on it);
+ * it takes no line of its own. `marks` (where the dangerous words are): those words on a red ground in place of the
+ * colours. `bare`: no edge of its own (the card it is in is the box).
  */
 export function CommandBox({ command, marks, bare }: { command: string; marks?: [number, number][] | undefined; bare?: boolean }) {
   const red = marks && marks.length ? marks : null;
@@ -43,16 +51,16 @@ export function CommandBox({ command, marks, bare }: { command: string; marks?: 
   }
   return (
     <div className={bare ? 'tool-command is-bare' : 'tool-command'}>
-      <div className="code-head">
-        <span className="code-lang" />
-        <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(command)} />
+      <p className="tool-command-label">{SHELL_LABEL}</p>
+      <div className="tool-command-box">
+        <pre>
+          <code>
+            <span className="tool-prompt">$ </span>
+            {body}
+          </code>
+        </pre>
+        <CopyButton className="icon-btn md-tool tool-command-copy" copy={() => clipboard.write(command)} />
       </div>
-      <pre>
-        <code>
-          <span className="tool-prompt">$ </span>
-          {body}
-        </code>
-      </pre>
     </div>
   );
 }
