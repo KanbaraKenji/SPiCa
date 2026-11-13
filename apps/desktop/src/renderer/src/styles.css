@@ -7097,6 +7097,11 @@ section.plugins-part > .plugins-part-title {
   gap: 8px;
 }
 
+/* the name above is grey; the button is not */
+.memory-fact-head > .btn {
+  color: var(--spica-ink);
+}
+
 .memory-details {
   margin: 0;
   padding-left: 20px;
@@ -7114,9 +7119,15 @@ section.plugins-part > .plugins-part-title {
   overflow-wrap: anywhere;
 }
 
-/* the boxes making or editing an entry: each with its name above (名字, 摘要, 详情) */
-.memory-entry-form {
+/* the boxes making or editing an entry: each with its name above (名字, 摘要, 类别, 详情) */
+.memory-edit.memory-entry-form {
   gap: 12px;
+}
+
+.memory-entry-form > .memory-pick {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
 }
 
 .memory-field {
