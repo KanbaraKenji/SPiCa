@@ -1,7 +1,8 @@
 // Real-model check of memory entries (a name, a summary, a category; the
 // notes are its details): the user says six things across new conversations,
 // three of which belong to one entry; then a new conversation asks something
-// only an entry's details answer (does the model call recall?); then two old
+// only an entry's details answer (does the model call recall?); then one detail
+// is forgotten (does the summary lose it too?); then two old
 // notes in no entry are tidied into entries. Prints every remember / recall
 // call with the runtime's reply, the entries and details after each step, and
 // the cost.
@@ -85,6 +86,10 @@ for (const t of [
 show('after six things');
 
 await say('我要发一份报价单给客户，金额怎么写、发之前要做什么？');
+
+// forgetting a detail the summary names: the summary should lose it too
+await say('报价单抄送王经理那条不用了，别记了。');
+show('after forgetting one');
 
 // two notes saved before there were entries
 rt.memory.addOwn('一般周三下午不开会');
