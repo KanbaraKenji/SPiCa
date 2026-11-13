@@ -30,7 +30,7 @@
 // The details go only once the conversation is at 440, not before: the conversation takes whatever room is left, so
 // any earlier point would be a width picked out of nothing.
 //
-// The 监控台 (2026-11-13, his words: 「右侧栏」) is a fourth panel, between the details and the preview, only while it
+// The 监控台 is a fourth panel, between the details and the preview, only while it
 // is switched on (nine clicks on the version in 设置 › 关于). It behaves as the details do: a fixed width, there or not
 // at all. Where both do not fit it is the details that go: the monitor is opened on purpose to watch something, the
 // details are open by default. So as the window narrows: the conversation to 440, the details go, then the monitor
