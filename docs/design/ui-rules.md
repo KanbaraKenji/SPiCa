@@ -64,6 +64,7 @@
 | **定** 界面字体：默认是英文和数字用 Segoe UI、中文用微软雅黑；外观 › 界面字体 可改成「跟随系统」（`system-ui`，简体中文 Windows 上是微软雅黑，英文也由它画）。管整个界面的字，包括小窗口和插件页；代码字体不跟着变 | `shared/ui-font.ts` 的 `uiFontFamily`；页面上是 `--font-ui`（`theme.ts` 的 `applyUiFont`），小窗口经 `dialogLook`，插件页经 `pluginThemeVars` | `shared/ui-font.test.ts`、`settings/Appearance.test.tsx`「界面字体…」 |
 | **定** 文字在它所在的框里上下居中；图标和旁边的字在同一条中线上 | 界面字体的度量：`shared/ui-font.ts`（默认的 `Spica UI` 修正过；跟随系统时中日韩的系统字体不修正，是 Segoe UI 时用同一套修正） | `renderer-styles.test.ts`「the interface font has its ascent and descent…」 |
 | **定** 不给文字或图标做手工的上下补偿（小幅 `translate`、`text-box` 裁边） | `styles.css` | 同文件「no small fixed nudges…」 |
+| **定** 跟在名字或标题后面的状态字（Failed、已超时、无法撤销…）、用时、计时，和名字同一档，只靠颜色区分。小一档的字各自在框里居中，底线会比旁边的字高 1.5px（225% 下 3 个像素），看着就是没居中。靠右的次要信息（详情栏文件行的文件夹、侧栏「收件箱」后的数字）不在这条里 | `.fold-meta`、`.detail-item-meta`、`.status-clock`、`.confirm-undo` 不自带字号和行高 | 同文件「what a row says after its words…」 |
 | **定** 对话内容那一列（最宽 760）平时放在侧栏右边到窗口右边这整块的中间，当右侧栏不存在；右侧栏没碰到它就不动，碰到了（留 24）就顶着它往左走，宽度不变；贴到对话区左边（留 24）后才变窄，到 440 之后由预览盖住 | `shell/layout.ts` 的 `centreShift`，结果是 `.main` 上的 `--centre-shift` | `layout.test.ts`「the content column…」、`renderer-styles.test.ts`「the content column…」 |
 | **定** 输入框下面那一行两端和输入框圆角结束的位置对齐（文件夹在左，上下文环在右） | `chat/Composer.tsx` 的样式 | 同文件「corners of 12px…」 |
 
@@ -90,6 +91,7 @@
 | **定** 看大图时可以直接切上一张、下一张（‹ N of M ›，方向键也行），不用关掉再点 | 看大图 | 对应测试 |
 | **定** 弹窗右上角有 ×（设置弹窗、询问框） | `settings/**`、`ui/CloseDialog.tsx` | 人工 |
 | **定** 侧栏左下角设置的入口只有齿轮，旁边不写「设置」 | `shell/Sidebar.tsx` | 人工 |
+| **暂定** 回答里夹在工具调用之间的思考并进工具组：概述只数调用，点开按先后列出思考和调用；只有思考的一轮单独一行「思考过程」；正在写的思考在组下面单独一行，下一次调用来了才并进去 | `chat/Conversation.tsx` 的 `segments`、`chat/Blocks.tsx` 的 `ToolGroup` | `chat/ThinkingGroup.test.tsx` |
 
 ## 6. 提示和状态
 

@@ -40,6 +40,8 @@ export const DesktopChannel = {
   CloseAnswer: 'spica:close:answer',
   /** renderer -> main: 'in' | 'out' | 'reset' (Ctrl+wheel and zoom keys caught in the page) */
   Zoom: 'spica:zoom',
+  /** renderer -> main: 'cut' | 'copy' | 'paste' | 'selectAll' on the page, as the keys do (ui/TextMenu.tsx) */
+  Edit: 'spica:edit',
   ListProviders: 'spica:providers:list',
   SaveProvider: 'spica:providers:save',
   DeleteProvider: 'spica:providers:delete',

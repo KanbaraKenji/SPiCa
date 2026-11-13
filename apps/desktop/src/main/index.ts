@@ -1470,6 +1470,18 @@ ipcMain.on(DesktopChannel.Cover, (_e, what: unknown) => {
   if (mainWindow && !mainWindow.isDestroyed()) syncNativeChrome(mainWindow, settings.get());
 });
 
+// The right-click menu on words (renderer ui/TextMenu.tsx): the same commands as Ctrl+X / C / V / A, on the page
+// that asked.
+const EDIT_COMMANDS = new Set(['cut', 'copy', 'paste', 'selectAll'] as const);
+ipcMain.on(DesktopChannel.Edit, (e, command: unknown) => {
+  if (typeof command !== 'string' || !EDIT_COMMANDS.has(command as never)) return;
+  const page = e.sender;
+  if (command === 'cut') page.cut();
+  else if (command === 'copy') page.copy();
+  else if (command === 'paste') page.paste();
+  else page.selectAll();
+});
+
 ipcMain.on(DesktopChannel.Zoom, (_e, step: unknown) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (step === 'reset') applyZoom(mainWindow, DEFAULT_ZOOM);

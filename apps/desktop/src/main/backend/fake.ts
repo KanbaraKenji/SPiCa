@@ -1043,6 +1043,63 @@ export class FakeBackend implements AgentBackend {
         return;
       }
 
+      // 「边想边做」: thinking before every call, as models that think between steps do (each call a turn of its own).
+      // The first turn starts writing a file and is cut off at the length limit: its call was announced but never
+      // made (the core streamed tool.call; the finished message has no such call). 「卡住」 keeps the last call
+      // running. 「只想一想」: a round with thinking and an answer, no call.
+      if (/边想边做|只想一想/.test(text)) {
+        const think = async (words: string) => {
+          await this.#sleep(200, signal);
+          await this.#stream(sessionId, 'thinking', words, signal);
+          blocks.push({ type: 'thinking', text: words });
+        };
+        if (/只想一想/.test(text)) {
+          await think('只是问个想法，不用看文件：先说结论，再给一句理由。');
+          const reply = '可以先做样机评审，再定报价：评审的结论会影响要不要改结构件。';
+          await this.#stream(sessionId, 'text', reply, signal);
+          blocks.push({ type: 'text', text: reply });
+          this.#commitAssistant(sessionId, blocks);
+          this.#charge(sessionId, 1200, 90);
+          this.#emit(sessionId, { type: 'turn.end', turn });
+          this.#finish(sessionId, 'completed');
+          return;
+        }
+        await think('要先看看文件夹里有什么，再读需求，最后跑一下统计。');
+        const lead = '开始做，先整理资料。';
+        await this.#stream(sessionId, 'text', lead, signal);
+        blocks.push({ type: 'text', text: lead });
+        this.#emit(sessionId, { type: 'tool.call', callId: this.#id('call'), name: 'write_file' });
+        await this.#sleep(300, signal);
+        this.#append(sessionId, 'assistant', 'assistant', [...blocks], { stopReason: 'max_tokens' });
+        blocks.length = 0;
+        this.#emit(sessionId, { type: 'turn.end', turn });
+        const steps: [string, string, unknown, string][] = [
+          ['刚才那段写长了，先换个做法：列一下文件夹。', 'list_dir', { path: '.' }, '会议记录/\n报价单.xlsx\n测试报告.pdf\n需求说明.docx'],
+          ['有需求说明，读一下。', 'read_file', { path: '需求说明.docx' }, '需求说明 v3：外壳尺寸 120×80×24 mm；续航不少于 10 小时；首批样机 20 台。'],
+          ['再数一下报价单里有几家回了价。', 'run_command', { command: "Import-Csv '报价单.csv' | Measure-Object", description: '统计报价单行数' }, 'Count : 4'],
+        ];
+        for (const [i, [words, name, input, result]] of steps.entries()) {
+          this.#emit(sessionId, { type: 'turn.start', turn: ++turn });
+          this.#setStatus(sessionId, 'thinking');
+          await think(words);
+          const last = i === steps.length - 1;
+          blocks.push(...(await this.#tool(sessionId, run, name, input, result, last && /卡住/.test(text) ? 3_600_000 : 500)));
+          this.#commitAssistant(sessionId, blocks);
+          this.#emit(sessionId, { type: 'turn.end', turn });
+        }
+        this.#emit(sessionId, { type: 'turn.start', turn: ++turn });
+        this.#setStatus(sessionId, 'thinking');
+        await think('都齐了，写结论。');
+        const done = '资料都看过了：需求说明是第 3 版，报价单里 4 家已回价。';
+        await this.#stream(sessionId, 'text', done, signal);
+        blocks.push({ type: 'text', text: done });
+        this.#commitAssistant(sessionId, blocks);
+        this.#charge(sessionId, 4200, 300);
+        this.#emit(sessionId, { type: 'turn.end', turn });
+        this.#finish(sessionId, 'completed');
+        return;
+      }
+
       const thinking = `用户说「${text.slice(0, 40)}」。先看一眼工作文件夹里有什么，再决定怎么回答。`;
       await this.#sleep(400, signal);
       await this.#stream(sessionId, 'thinking', thinking, signal);

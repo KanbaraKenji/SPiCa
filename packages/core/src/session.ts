@@ -1104,6 +1104,7 @@ export class Session {
           input,
           reason: cause ? GUARD_REASON[cause] : ((decision.action === 'confirm' ? decision.reason : undefined) ?? 'needs confirmation'),
           ...(cause ? { cause } : {}),
+          ...(decision.action === 'confirm' && decision.irreversible ? { irreversible: true } : {}),
           createdAt: isoNow(),
         };
         this.#rt.store.upsertToolCall({ ...rec, input, status: 'pending' });
@@ -1128,7 +1129,15 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
         if (p.item.kind === 'ask') {
           this.#emit({ type: 'ask.request', callId: p.callId, question: p.item.question, ...(p.item.options ? { options: p.item.options } : {}) });
         } else {
-          this.#emit({ type: 'confirm.request', callId: p.callId, name: p.item.toolName, input: p.item.input, reason: p.item.reason, ...(p.item.cause ? { cause: p.item.cause } : {}) });
+          this.#emit({
+            type: 'confirm.request',
+            callId: p.callId,
+            name: p.item.toolName,
+            input: p.item.input,
+            reason: p.item.reason,
+            ...(p.item.cause ? { cause: p.item.cause } : {}),
+            ...(p.item.irreversible ? { irreversible: true } : {}),
+          });
         }
       }
       return true;

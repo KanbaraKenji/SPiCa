@@ -902,11 +902,10 @@ button.tree-twisty:hover {
   color: var(--spica-muted);
 }
 
+/* As .fold-meta: the row's size, quieter only by its colour. */
 .detail-item-meta {
   flex: none;
   color: var(--spica-faint);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
   font-variant-numeric: tabular-nums;
 }
 
@@ -978,6 +977,38 @@ button.tree-twisty:hover {
   /* The scrollbar's room kept on both sides, so the column's middle is the box's middle (as the input box's). */
   scrollbar-gutter: stable both-edges;
   user-select: text;
+  /* The messages (or the empty page) fill what the input area under them leaves; it is the last thing in here. */
+  display: flex;
+  flex-direction: column;
+}
+
+/* The input area (to-bottom, queued, notices, the input box, the demo line) at the bottom of the scrolling box, over
+   what scrolls under it, so the scrollbar runs down beside it to the bottom edge rather than stopping above the box.
+   Its ground hides what passes under it; a short fade above it so lines are not cut hard at its top. */
+.transcript-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--spica-bg);
+  user-select: none;
+}
+
+.transcript-foot::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 16px;
+  background: linear-gradient(transparent, var(--spica-bg));
+  pointer-events: none;
+}
+
+.transcript-foot textarea {
+  user-select: text;
 }
 
 /* The content column (messages, the input box, what is queued, the notices, the inbox): COLUMN_WIDTH wide at most,
@@ -991,7 +1022,10 @@ button.tree-twisty:hover {
   translate: var(--centre-shift, 0px) 0;
 }
 
+/* In the scrolling box (a column): it fills what the input area at its foot leaves. */
 .transcript-column {
+  flex: 1 0 auto;
+  width: 100%;
   max-width: 760px;
   margin: 0 auto;
   padding: 28px 24px 24px;
@@ -1652,11 +1686,11 @@ pre .hl-punctuation {
   text-overflow: ellipsis;
 }
 
+/* What a row says after its words (Failed, 已超时, how long it took): the row's size and line, quieter only by its
+   colour. A smaller size beside the words sits on a different baseline and reads as off the middle. */
 .fold-meta {
   flex: none;
   color: var(--spica-faint);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
   font-variant-numeric: tabular-nums;
   display: block;
 }
@@ -2292,17 +2326,15 @@ pre .hl-punctuation {
 }
 
 /* A run's clock, after the words: in the status line and at the end of the Running … line (inside its
-   .fold-meta) alike. */
+   .fold-meta) alike; the size of the words it follows. */
 .status-clock {
   flex: none;
   color: var(--spica-faint);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
   font-variant-numeric: tabular-nums;
 }
 
 .empty-chat {
-  height: 100%;
+  flex: 1 0 auto;
   min-height: 200px;
   display: flex;
   flex-direction: column;
@@ -2362,6 +2394,18 @@ pre .hl-punctuation {
   padding: 0 24px 18px;
   /* The input box's corners; the row under it lines its last item up with where they start to turn. */
   --composer-radius: var(--radius-l);
+}
+
+/* In here the box already keeps the scrollbar's room (10) on both sides: 10 less of their own, so the input box,
+   what is queued and the notices are as wide and where they were. */
+.transcript-foot > .composer-wrap {
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.transcript-foot > .queued,
+.transcript-foot > .run-notices {
+  width: calc(100% - 28px);
 }
 
 .composer {
@@ -5163,6 +5207,15 @@ section.plugins-part > .plugins-part-title {
   box-shadow: var(--spica-shadow);
 }
 
+/* The right-click menu on words (ui/TextMenu.tsx) is mounted beside the app, not inside a dialog: its own layer
+   above the dialogs (1000), so a field in 设置 gets it on top. No size, nothing to press of its own. */
+.text-menu-layer {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1100;
+}
+
 .context-item {
   width: 100%;
   min-height: 28px;
@@ -5754,10 +5807,9 @@ section.plugins-part > .plugins-part-title {
   flex: none;
 }
 
+/* After the title, as Failed after a tool's name: the title's size, told by its red. */
 .confirm-undo {
   flex: none;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
   color: var(--spica-danger);
 }
 

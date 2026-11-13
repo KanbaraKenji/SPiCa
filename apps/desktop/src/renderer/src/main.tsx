@@ -8,6 +8,7 @@ import { enabledModels } from '../../shared/providers';
 import { AgentStore } from './store/agent';
 import { ShellStore } from './store/shell';
 import { CloseAsk } from './ui/CloseDialog';
+import { TextMenu, type EditCommand } from './ui/TextMenu';
 import '@spica/brand/styles.css';
 import './styles.css';
 
@@ -19,6 +20,7 @@ async function start(el: HTMLElement): Promise<void> {
   const bridge = window.spica;
   const state = await bridge.getShellState();
   installZoomInput((step) => bridge.zoom(step));
+  const edit = (command: EditCommand) => bridge.edit(command);
   const shell = new ShellStore(bridge, state);
   // The full opening animation plays once a day by default; later launches only flash the mark.
   const today = localDay();
@@ -40,6 +42,7 @@ async function start(el: HTMLElement): Promise<void> {
       <Root splash={splash} ready={ready} version={version}>
         <App bridge={bridge} shell={shell} agent={agent} version={version} />
         <CloseAsk bridge={bridge} />
+        <TextMenu edit={edit} />
       </Root>
     </StrictMode>,
   );
