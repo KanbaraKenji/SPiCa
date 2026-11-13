@@ -283,7 +283,7 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
           </Row>
         ) : null}
       </Group>
-      {tidy ? <TidyGroup tidy={tidy} enabled={enabled} items={items} /> : null}
+      {tidy ? <TidyGroup tidy={tidy} enabled={enabled} items={items} entries={entries} /> : null}
       {/* 已记住 as a settings group (its title and buttons), a box per category under the category's name */}
       <div className="settings-group memory-known">
         <div className="group-head">
@@ -371,15 +371,30 @@ export function changeStands(c: MemoryTidyChange, run: MemoryTidyRun, items: Mem
   return c.action === 'forgotten' ? now?.status === 'forgotten' && !now.undone && now.tidyId === run.id : now?.status === 'active';
 }
 
-const summary = (r: MemoryTidyRun) => (r.status === 'failed' ? '整理失败' : r.changes.length ? `${r.changes.length} 条改动` : '无改动');
+/** What a tidy did in words: its changes, and the notes it put into entries. */
+const summary = (r: MemoryTidyRun) => {
+  if (r.status === 'failed') return '整理失败';
+  const parts = [...(r.changes.length ? [`${r.changes.length} 条改动`] : []), ...(r.grouped?.length ? [`归入 ${r.grouped.length} 条`] : [])];
+  return parts.length ? parts.join('，') : '无改动';
+};
 
-function TidyGroup({ tidy, enabled, items }: { tidy: MemoryTidy; enabled: boolean; items: MemoryItem[] | null }) {
+/** The notes a tidy put into entries that are still there: the note and the entry's name (one gone since is left out). */
+export function groupedNow(run: MemoryTidyRun, items: MemoryItem[] | null, entries: MemoryEntry[] | null): { text: string; name: string }[] {
+  return (run.grouped ?? []).flatMap((g) => {
+    const it = items?.find((m) => m.id === g.item && m.status === 'active' && m.entryId === g.entry);
+    const e = entries?.find((x) => x.id === g.entry);
+    return it && e ? [{ text: it.text, name: e.name }] : [];
+  });
+}
+
+function TidyGroup({ tidy, enabled, items, entries }: { tidy: MemoryTidy; enabled: boolean; items: MemoryItem[] | null; entries: MemoryEntry[] | null }) {
   const [problem, setProblem] = useState<string | null>(null);
   const last = tidy.runs?.[0];
   const running = last?.status === 'running';
   // the changes shown are the latest tidy's that changed something (a later one with nothing to change does not hide them)
-  const shown = tidy.runs?.find((r) => r.status === 'done' && r.changes.length > 0);
-  const open = shown ? shown.changes.some((c) => changeStands(c, shown, items)) : false;
+  const shown = tidy.runs?.find((r) => r.status === 'done' && (r.changes.length > 0 || (r.grouped?.length ?? 0) > 0));
+  const grouped = shown ? groupedNow(shown, items, entries) : [];
+  const open = shown ? shown.changes.some((c) => changeStands(c, shown, items)) || grouped.length > 0 : false;
   return (
     <Group
       title="整理"
@@ -428,6 +443,13 @@ function TidyGroup({ tidy, enabled, items }: { tidy: MemoryTidy; enabled: boolea
                   撤销
                 </button>
               ) : null}
+            </li>
+          ))}
+          {grouped.map((g, i) => (
+            <li key={`${shown.id}-g${i}`} className="setting-row memory-tidy-change">
+              <span className="memory-text" title={`归入「${g.name}」：${g.text}`} data-tip-clipped="">
+                {`归入「${g.name}」：${g.text}`}
+              </span>
             </li>
           ))}
         </ul>

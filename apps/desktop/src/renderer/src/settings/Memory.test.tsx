@@ -342,6 +342,15 @@ describe('设置 › 记忆 › 整理', () => {
     expect(screen.queryByRole('button', { name: '全部撤销' })).toBeNull();
   });
 
+  it('a tidy that only put old notes into entries: 归入 N 条, each note with its entry, and 全部撤销 takes it back', () => {
+    const t = tidyOf({ runs: [run({ changes: [], grouped: [{ item: 2, entry: 1 }, { item: 3, entry: 9 }] })] });
+    setup({ tidy: t, entries: [entry(1, { name: '作息', category: 'you' })], items: [item(2, { entryId: 1, text: '一般周三下午不开会' }), item(3, { text: '已经不在条目里' })] });
+    expect(document.querySelector('.memory-tidy-last')!.textContent).toContain('归入 2 条');
+    expect([...document.querySelectorAll('.memory-tidy-change .memory-text')].map((x) => x.textContent)).toEqual(['归入「作息」：一般周三下午不开会']);
+    fireEvent.click(screen.getByRole('button', { name: '全部撤销' }));
+    expect(t.undo).toHaveBeenCalledWith(7);
+  });
+
   it('memory off: neither 自动整理 nor 立即整理 can be used; a failed tidy says so', () => {
     setup({ enabled: false, tidy: tidyOf({ runs: [run({ status: 'failed', changes: [] })] }) });
     expect((screen.getByRole('switch', { name: '自动整理' }) as HTMLButtonElement).disabled).toBe(true);
