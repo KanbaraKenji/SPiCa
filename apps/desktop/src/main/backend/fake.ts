@@ -1043,6 +1043,70 @@ export class FakeBackend implements AgentBackend {
         return;
       }
 
+      // 「工具详情」: one of each kind of call, a line of the answer between them so each is a row of its own (for
+      // pictures of what a call shows opened): a command that works, one that fails with its exit code, a plugin
+      // tool answering JSON (fenced, as the core hands outside content to the model) and one failing, a long read,
+      // a file written, edited in one place and in several. Names and data are made up.
+      if (/工具详情/.test(text)) {
+        const at = isoAt(this.#now());
+        const card = (path: string, origin: 'created' | 'modified', added: number, removed: number): FileCardMeta => ({
+          path: `D:\\工作\\样机评审\\${path}`, name: path.split('\\').pop() ?? path, kind: 'text', sizeBytes: 612, modifiedAt: at, extractedAt: at, read: {}, origin, lines: { added, removed },
+        });
+        const say = async (words: string) => {
+          await this.#stream(sessionId, 'text', words, signal);
+          blocks.push({ type: 'text', text: words });
+        };
+        const fenced = (source: string, body: string) => `<untrusted_data kind="mcp" source="${source}">\n${body}\n</untrusted_data>`;
+        const SCRIPT = [
+          'import csv',
+          'from pathlib import Path',
+          '',
+          'TOTAL = 0',
+          '',
+          '',
+          'def read_quotes(folder: Path) -> list[dict]:',
+          '    """Every quote in the folder, one dict a row."""',
+          '    rows = []',
+          '    for f in sorted(folder.glob("*.csv")):',
+          '        with f.open(encoding="utf-8") as fh:',
+          '            rows.extend(csv.DictReader(fh))',
+          '    return rows',
+          '',
+          '',
+          'if __name__ == "__main__":',
+          '    quotes = read_quotes(Path("报价"))',
+          '    print(len(quotes), "quotes")',
+        ].join('\n');
+        await say('先统计报价单。');
+        blocks.push(...(await this.#tool(sessionId, run, 'run_command', { command: "Get-ChildItem -Path '.\\报价' -Filter *.csv | Measure-Object | Select-Object Count", description: '统计报价单数量' }, 'exit code 0, 0.4 s\n\nCount\n-----\n    7', 400)));
+        await say('再检查格式。');
+        blocks.push(...(await this.#tool(sessionId, run, 'run_command', { command: 'python .\\tools\\check_quotes.py --strict .\\报价', description: '检查报价单格式' }, 'exit code 2, 1.3 s\nTraceback (most recent call last):\n  File "tools\\check_quotes.py", line 41, in <module>\n    check(row)\n  File "tools\\check_quotes.py", line 18, in check\n    raise ValueError(f"第 {row.line} 行缺少单价")\nValueError: 第 3 行缺少单价', 600, true)));
+        await say('查一下两个零件的规格。');
+        const specs = { env: 'test', items: [{ id: 'DEMO-1001', summary: { name: '外壳上盖', size_mm: [120, 80, 24], material: 'PC+ABS', approved: true, revisions: 3 } }, { id: 'DEMO-1002', summary: { name: '电池仓', size_mm: [96, 52, 18], material: 'PA66', approved: false, revisions: 1, note: null } }], total: 2 };
+        blocks.push(...(await this.#tool(sessionId, run, 'demo-specs__get_spec', { part_ids: ['DEMO-1001', 'DEMO-1002'], detail: true }, fenced('demo-specs__get_spec', JSON.stringify(specs)), 500, false, { category: 'plugin' })));
+        await say('第三个零件查不到。');
+        blocks.push(...(await this.#tool(sessionId, run, 'demo-specs__get_spec', { part_ids: ['DEMO-9999'] }, 'Tool failed: HTTP 404 Not Found: part DEMO-9999 does not exist', 400, true, { category: 'plugin' })));
+        await say('读一下评审纪要。');
+        const minutes = Array.from({ length: 60 }, (_, i) => (i % 6 === 0 ? `## 议题 ${i / 6 + 1}` : `- 第 ${i + 1} 条：外壳样机第 ${(i % 3) + 1} 轮评审意见，跟进人 ALEX.CHEN。`)).join('\n');
+        blocks.push(...(await this.#tool(sessionId, run, 'read_file', { path: '评审纪要.md' }, `评审纪要.md (lines 1-60 of 60)\n${minutes}`, 400)));
+        await say('写一个汇总脚本。');
+        blocks.push(...(await this.#tool(sessionId, run, 'write_file', { path: 'tools\\summary.py', content: SCRIPT }, 'Created tools\\summary.py (612 bytes).', 300, false, { category: 'write', cards: [card('tools\\summary.py', 'created', 18, 0)] })));
+        await say('改一处。');
+        blocks.push(...(await this.#tool(sessionId, run, 'edit_file', { path: 'tools\\summary.py', old_string: 'TOTAL = 0', new_string: 'TOTAL = 0.0' }, 'Edited tools\\summary.py: 1 replacement(s).', 300, false, { category: 'write', cards: [card('tools\\summary.py', 'modified', 1, 1)] })));
+        await say('再改几处。');
+        blocks.push(...(await this.#tool(sessionId, run, 'edit_file', {
+          path: 'tools\\summary.py',
+          old_string: 'if __name__ == "__main__":\n    quotes = read_quotes(Path("报价"))\n    print(len(quotes), "quotes")',
+          new_string: 'if __name__ == "__main__":\n    folder = Path("报价")\n    quotes = read_quotes(folder)\n    total = sum(float(q["单价"]) for q in quotes)\n    print(len(quotes), "quotes, total", round(total, 2))',
+        }, 'Edited tools\\summary.py: 1 replacement(s).', 300, false, { category: 'write', cards: [card('tools\\summary.py', 'modified', 3, 2)] })));
+        await say('都做完了。');
+        this.#commitAssistant(sessionId, blocks);
+        this.#charge(sessionId, 4200, 300);
+        this.#emit(sessionId, { type: 'turn.end', turn });
+        this.#finish(sessionId, 'completed');
+        return;
+      }
+
       // 「边想边做」: thinking before every call, as models that think between steps do (each call a turn of its own).
       // The first turn starts writing a file and is cut off at the length limit: its call was announced but never
       // made (the core streamed tool.call; the finished message has no such call). 「卡住」 keeps the last call

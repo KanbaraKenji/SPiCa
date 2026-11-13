@@ -20,6 +20,8 @@ export interface ToolWords {
   verb: string;
   object: string;
   full?: string;
+  /** A write or an edit: the file's name and the lines it added and removed (the object is the two together). */
+  file?: { name: string; added: number; removed: number };
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
@@ -86,7 +88,7 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       const name = card?.name ?? (arg(c, 'path') ? baseName(arg(c, 'path')) : 'a file');
       const lines = card?.lines ? `${card.lines.added ? ` +${card.lines.added}` : ''}${card.lines.removed ? ` −${card.lines.removed}` : ''}` : '';
       const verb = card?.origin === 'created' ? 'Created' : card?.origin === 'modified' || n === 'edit_file' ? 'Edited' : 'Wrote';
-      return { verb, object: `${name}${lines}`, full: card?.path ?? arg(c, 'path') };
+      return { verb, object: `${name}${lines}`, full: card?.path ?? arg(c, 'path'), ...(card?.lines ? { file: { name, added: card.lines.added, removed: card.lines.removed } } : {}) };
     }
     case 'web_fetch': {
       const url = arg(c, 'url');

@@ -1941,6 +1941,14 @@ pre .hl-punctuation {
   font-family: var(--font-mono);
   font-size: var(--code-size);
   line-height: var(--code-line);
+  /* A long command wraps (as in the Claude app) rather than scrolling sideways. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The code element would take the browser's own monospace: the command is in the code font like everything else. */
+.tool-command code {
+  font: inherit;
 }
 
 .tool-prompt {
@@ -1948,20 +1956,51 @@ pre .hl-punctuation {
   user-select: none;
 }
 
+/* What a call that is not a command was given (chat/CallDetail.tsx CallArgs): in a box, as the command is (what
+   went in is boxed, what came out is not). Short values after their key; long text and lists under it, laid out. */
 .tool-args {
   margin: 0;
-  max-height: 160px;
+  max-height: 240px;
   overflow: auto;
   padding: 8px 10px;
   border-radius: var(--radius-s);
-  background: var(--spica-surface);
+  background: var(--code-bg, var(--spica-surface));
+  color: var(--code-fg, inherit);
   border: 1px solid var(--spica-border);
   font-family: var(--font-mono);
   font-size: var(--code-size);
   line-height: var(--code-line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tool-arg {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.tool-arg.is-block {
+  flex-direction: column;
+  gap: 0;
+}
+
+.tool-arg-key {
+  flex: none;
+  color: var(--spica-muted);
+}
+
+.tool-arg-value,
+.tool-arg-block {
+  min-width: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  color: var(--spica-muted);
+}
+
+.tool-arg-block {
+  margin: 0 0 0 12px;
+  font: inherit;
 }
 
 .thinking-text {
@@ -1972,19 +2011,102 @@ pre .hl-punctuation {
   line-height: var(--chat-row-line);
 }
 
-.tool-result {
+/* How a failed call ended (Exit code 2, HTTP 404 …, 已拒绝): one line of its own in red, the row's size. */
+.tool-status {
+  margin: 2px 0 0;
+  color: var(--spica-danger);
+}
+
+/* What came out: as printed, in the code font, with no box of its own (the input above has one); JSON coloured
+   as code. Long output shows its start and 显示更多. */
+.tool-output-wrap,
+.file-change-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tool-output {
+  align-self: stretch;
   margin: 0;
-  max-height: 240px;
-  overflow: auto;
-  padding: 8px 10px;
-  border-radius: var(--radius-s);
-  background: var(--spica-surface);
-  border: 1px solid var(--spica-border);
+  padding: 0 2px;
   font-family: var(--font-mono);
   font-size: var(--code-size);
   line-height: var(--code-line);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.tool-output.is-json {
+  color: var(--code-fg, inherit);
+}
+
+/* A file written or edited, as a change (chat/CallDetail.tsx FileChange): the path, then the lines in a box,
+   numbered (or + and − when only the edited part is known), green in, red out, the words that changed deeper.
+   Both from the skin's own success and danger colours, so light and dark alike. */
+.file-change-path {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.file-change {
+  align-self: stretch;
+  margin: 0;
+  max-height: 480px;
+  overflow: auto;
+  padding: 4px 0;
+  border-radius: var(--radius-s);
+  background: var(--code-bg, var(--spica-surface));
+  color: var(--code-fg, inherit);
+  border: 1px solid var(--spica-border);
+  font-family: var(--font-mono);
+  font-size: var(--code-size);
+  line-height: var(--code-line);
+}
+
+.change-line {
+  display: flex;
+  min-width: 0;
+  border-left: 3px solid transparent;
+}
+
+.change-line.is-in {
+  background: color-mix(in srgb, var(--spica-success) 16%, transparent);
+  border-left-color: var(--spica-success);
+}
+
+.change-line.is-out {
+  background: color-mix(in srgb, var(--spica-danger) 14%, transparent);
+  border-left-color: var(--spica-danger);
+}
+
+.change-gutter {
+  flex: none;
+  width: 4.5ch;
+  padding-right: 1.5ch;
+  text-align: right;
+  color: var(--spica-faint);
+  user-select: none;
+}
+
+.change-text {
+  flex: 1;
+  min-width: 0;
+  padding-right: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.change-line.is-in .change-word {
+  background: color-mix(in srgb, var(--spica-success) 34%, transparent);
+  border-radius: 2px;
+}
+
+.change-line.is-out .change-word {
+  background: color-mix(in srgb, var(--spica-danger) 34%, transparent);
+  border-radius: 2px;
 }
 
 .tool-empty {
