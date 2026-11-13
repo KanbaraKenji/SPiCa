@@ -495,7 +495,14 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
           const q = (query ?? {}) as UsageQuery;
           const range = { fromMs: Date.parse(String(q.from)), toMs: Date.parse(String(q.to)) };
           if (Number.isNaN(range.fromMs) || Number.isNaN(range.toMs)) throw new Error('from / to must be ISO 8601 dates');
-          return summarizeRequests(runtime.store.listRequests(range), q, runtime.store.firstRequestAt());
+          const kindOf = (id: string) => {
+            try {
+              return runtime.provider(id).kind;
+            } catch {
+              return undefined; // a removed connection: counted the OpenAI way
+            }
+          };
+          return summarizeRequests(runtime.store.listRequests(range), q, runtime.store.firstRequestAt(), kindOf);
         },
         /** The newest request records, oldest first (the monitor fills its list with them when it opens). */
         recentRequests: (limit: unknown) => runtime.store.listRequests({ limit: Math.min(5000, Math.max(0, Number(limit) || 500)), newest: true }),

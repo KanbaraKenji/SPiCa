@@ -1013,6 +1013,13 @@ export interface UsageRow {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /**
+   * Prompt tokens not served from the cache, of the requests whose provider reported cache numbers (Anthropic's
+   * input_tokens; an OpenAI-style prompt_tokens less its cached part).
+   */
+  cacheMissTokens?: number;
+  /** Prompt tokens of the requests whose provider reported no cache numbers at all (hit or miss unknown). */
+  unreportedInputTokens?: number;
   costUsd: number;
   /** Requests of a model without a known price were made in it (not in costUsd). */
   unpriced?: true;
@@ -1034,7 +1041,7 @@ export interface UsageSummary {
   since: string | null;
   query: UsageQuery;
   rows: UsageRow[];
-  /** The 429 answers in the range, newest first (at most 200). */
+  /** The 429 answers in the range, newest first (at most 200 of each model). */
   rateLimited: RequestRecord[];
   /** Names for the provider ids in it, when the one asking knows them (the desktop app: its connections' names). */
   providerNames?: Record<string, string>;

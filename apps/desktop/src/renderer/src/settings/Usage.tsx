@@ -1,17 +1,25 @@
-// 设置 › 用量: token use and requests by model over a time range, from the core's request log
-// (one record per HTTP request, see packages/core/src/usage.ts). 429 answers have their own
-// tile, their own bars under the chart, a column in the table and a list. Days before the log
-// starts are marked, not drawn as zero.
+// 设置 › 用量: requests and token use over a time range, for all models or one, from the core's request log
+// (one record per HTTP request, see packages/core/src/usage.ts). Requests and 429 answers share one chart
+// (two lines over their areas); tokens are bars by kind; the 429 answers are listed one by one; a table by
+// model; the range's numbers export as CSV. Days before the log starts are marked, not drawn as zero.
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RequestRecord, UsageSummary, UsageQuery } from '@spica/protocol';
+import type { SaveCsvResult } from '../../../shared/bridge';
 import { Group, matches, SearchHit, SettingsSearchContext } from './Group';
-import { bucketLabel, dayLabel, niceTicks, queryFor, RANGES, shortCount, timeLabel, usageView, usd, type UsageColumn, type UsageRange, type UsageSeries, type UsageView } from './usage-data';
+import { bucketLabel, dayLabel, modelChoices, niceTicks, onlyModel, queryFor, RANGES, shortCount, timeLabel, TOKEN_KINDS, usageCsvName, usageCsvRows, usageView, usd, type UsageColumn, type UsageRange, type UsageSeries, type UsageView } from './usage-data';
+import { toCsv } from '../chat/table-data';
 import { SERIES_COUNT } from '../../../shared/skin';
+import { ContextMenu } from '../ui/ContextMenu';
+import { Icon } from '../ui/Icon';
 
 export interface UsageApi {
   summary(query: UsageQuery): Promise<UsageSummary | null>;
   /** Saved connections' names by id (a demo or removed connection shows its id). */
   providerNames?(): Promise<Record<string, string>>;
+  /** Save a CSV file (the save dialog; null when cancelled). */
+  saveCsv?(name: string, text: string): Promise<SaveCsvResult>;
+  /** Shows a saved file in Explorer. */
+  showInFolder?(path: string): void;
 }
 
 export interface UsageProps {
@@ -20,14 +28,18 @@ export interface UsageProps {
   now?: () => Date;
 }
 
-type Metric = 'requests' | 'tokens';
+/** The color of the requests line (the 429 line is the danger color). */
+const REQUESTS_COLOR = 'var(--spica-series-1)';
 
 export function Usage({ api, now = () => new Date() }: UsageProps) {
   const search = useContext(SettingsSearchContext);
   const [range, setRange] = useState<UsageRange>('7d');
-  const [metric, setMetric] = useState<Metric>('tokens');
+  // one model (its key: provider and name), or null for all
+  const [model, setModel] = useState<string | null>(null);
+  const [menu, setMenu] = useState<HTMLElement | null>(null);
   const [summary, setSummary] = useState<UsageSummary | null | undefined>(undefined);
   const [names, setNames] = useState<Record<string, string>>({});
+  const [exported, setExported] = useState<SaveCsvResult | undefined>(undefined);
   const searching = Boolean(search?.query);
 
   useEffect(() => {
@@ -49,58 +61,118 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
   }, [api, searching]);
 
   // 搜索设置: the section has no rows; its name and what it shows find it
-  if (searching) return search && (search.sectionHit || matches(search.query, '用量', 'Token', '429', '请求数', '花费')) ? <SearchHit title="用量" onGo={() => search.jump('')} /> : null;
-  const view = summary ? usageView(summary, SERIES_COUNT) : null;
-  const bucket = summary?.query.bucket ?? 'day';
+  if (searching) return search && (search.sectionHit || matches(search.query, '用量', 'Token', '429', '请求数', '花费', 'CSV')) ? <SearchHit title="用量" onGo={() => search.jump('')} /> : null;
   // the main process's names first (the connections', and the demo's for its made-up records)
   const provider = (id: string) => summary?.providerNames?.[id] ?? names[id] ?? id;
+  const choices = summary ? modelChoices(summary) : [];
+  // a model picked in another range stays picked (and listed) when this range has none of it
+  const picked = model ? (choices.find((c) => c.key === model) ?? { key: model, providerId: model.split('\u0000')[0] ?? '', model: model.split('\u0000')[1] ?? '' }) : null;
+  if (picked && !choices.some((c) => c.key === picked.key)) choices.push(picked);
+  const modelLabel = (c: { providerId: string; model: string }) => (c.providerId ? `${c.model} · ${provider(c.providerId)}` : c.model);
+  const shown = summary ? onlyModel(summary, model) : null;
+  const view = shown ? usageView(shown, SERIES_COUNT) : null;
+  const bucket = summary?.query.bucket ?? 'day';
+
+  const exportCsv = async () => {
+    if (!shown || !api.saveCsv) return;
+    const r = await api.saveCsv(usageCsvName(shown, picked?.model ?? null), toCsv(usageCsvRows(shown, provider))).catch(() => ({ error: '无法导出 CSV。' }));
+    setExported(r ?? undefined);
+  };
 
   return (
     <>
       <div className="usage-bar">
-        <div className="segmented" role="radiogroup" aria-label="时间">
-          {RANGES.map(([r, label]) => (
-            <button key={r} type="button" role="radio" aria-checked={range === r} className={range === r ? 'segment is-on' : 'segment'} onClick={() => setRange(r)}>
-              {label}
-            </button>
-          ))}
+        <div className="usage-bar-picks">
+          <div className="segmented" role="radiogroup" aria-label="时间">
+            {RANGES.map(([r, label]) => (
+              <button key={r} type="button" role="radio" aria-checked={range === r} className={range === r ? 'segment is-on' : 'segment'} onClick={() => setRange(r)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="btn btn-small usage-model"
+            aria-haspopup="menu"
+            aria-label="模型"
+            onClick={(e) => {
+              // under the button; the button again closes it
+              const el = e.currentTarget;
+              setMenu((now) => (now ? null : el));
+            }}
+          >
+            <span className="usage-model-name">{picked ? modelLabel(picked) : '全部模型'}</span>
+            <Icon name="chevronDown" size={12} />
+          </button>
         </div>
-        <span className="usage-since">
-          {view?.since ? `${dayLabel(view.since)} 起有记录 · ` : ''}
-          {tzLabel(now())}
-        </span>
+        <div className="usage-bar-end">
+          <span className="usage-since">
+            {view?.since ? `${dayLabel(view.since)} 起有记录 · ` : ''}
+            {tzLabel(now())}
+          </span>
+          {api.saveCsv ? (
+            <button type="button" className="btn btn-small" disabled={!shown?.rows.length} onClick={() => void exportCsv()}>
+              导出 CSV
+            </button>
+          ) : null}
+        </div>
       </div>
+      {exported && 'error' in exported ? <p className="settings-hint usage-note is-bad">{exported.error}</p> : null}
+      {exported && 'file' in exported ? (
+        <p className="settings-hint usage-note">
+          已导出：
+          {api.showInFolder ? (
+            <button type="button" className="path-text path-link" title={`在文件夹中显示：${exported.file}`} onClick={() => api.showInFolder!(exported.file)}>
+              {exported.file}
+            </button>
+          ) : (
+            exported.file
+          )}
+        </p>
+      ) : null}
+      {menu ? (
+        <ContextMenu
+          x={0}
+          y={0}
+          anchor={menu}
+          items={[{ key: null as string | null, label: '全部模型' }, ...choices.map((c) => ({ key: c.key as string | null, label: modelLabel(c) }))].map((c) => ({ label: c.label, checked: c.key === model, onSelect: () => setModel(c.key) }))}
+          onClose={() => setMenu(null)}
+        />
+      ) : null}
       {summary === null ? <p className="settings-hint usage-empty">无法读取用量</p> : null}
       {view ? (
         <>
           <Tiles view={view} />
-          <Group
-            title="按模型"
-            actions={
-              <div className="segmented" role="radiogroup" aria-label="显示">
-                {(
-                  [
-                    ['tokens', 'Token'],
-                    ['requests', '请求'],
-                  ] as const
-                ).map(([m, label]) => (
-                  <button key={m} type="button" role="radio" aria-checked={metric === m} className={metric === m ? 'segment is-on' : 'segment'} onClick={() => setMetric(m)}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            }
-          >
+          <Group title="请求">
             <div className="group-pane usage-chart-pane">
-              <StackChart view={view} metric={metric} bucket={bucket} provider={provider} />
-              <Legend series={view.series} />
+              <RequestChart view={view} bucket={bucket} provider={provider} byModel={!model} />
+              <ul className="usage-legend">
+                <li>
+                  <span className="usage-swatch" style={{ background: REQUESTS_COLOR }} />
+                  请求
+                </li>
+                <li>
+                  <span className="usage-swatch is-limited" />
+                  429
+                </li>
+              </ul>
+            </div>
+          </Group>
+          <Group title="Token">
+            <div className="group-pane usage-chart-pane">
+              <TokenChart view={view} bucket={bucket} provider={provider} byModel={!model} />
+              <ul className="usage-legend">
+                {TOKEN_KINDS.filter((k) => view.totals.kinds[k.kind] > 0).map((k) => (
+                  <li key={k.kind}>
+                    <span className="usage-swatch" style={{ background: k.color }} />
+                    {k.label}
+                  </li>
+                ))}
+              </ul>
             </div>
           </Group>
           <Group title="429">
-            <div className="group-pane usage-chart-pane">
-              <LimitChart view={view} bucket={bucket} />
-            </div>
-            <LimitList records={summary!.rateLimited} total={view.totals.rateLimited} provider={provider} />
+            <LimitList records={shown!.rateLimited} total={view.totals.rateLimited} provider={provider} />
           </Group>
           <Group title="模型">
             <ModelTable series={view.series} provider={provider} />
@@ -119,27 +191,22 @@ export function tzLabel(d: Date): string {
   return `UTC${off < 0 ? '-' : '+'}${h}${m ? `:${String(m).padStart(2, '0')}` : ''}`;
 }
 
+/** The totals: a name and a number each. Requests without a price say so on the cost's hover. */
 function Tiles({ view }: { view: UsageView }) {
   const t = view.totals;
-  const tiles: [string, string, (string | undefined)?][] = [
+  const tiles: [string, string, string?][] = [
     ['请求', shortCount(t.requests)],
-    ['Token', shortCount(t.inputTokens + t.outputTokens)],
+    ['Token', shortCount(t.tokens)],
     ['429', shortCount(t.rateLimited)],
     ['失败', shortCount(t.failed)],
-    // a model without a price adds nothing: how many requests that is, under the number (the reason on hover)
-    ['花费', usd(t.costUsd), t.unpricedRequests ? `未计价请求 ${shortCount(t.unpricedRequests)}` : undefined],
+    ['花费', usd(t.costUsd), t.unpricedRequests ? `未计价请求 ${t.unpricedRequests.toLocaleString('en-US')}：没有价格的模型，不计入花费` : undefined],
   ];
   return (
     <div className="usage-tiles">
-      {tiles.map(([label, value, sub]) => (
-        <div key={label} className={label === '429' && t.rateLimited > 0 ? 'usage-tile is-limited' : 'usage-tile'}>
+      {tiles.map(([label, value, tip]) => (
+        <div key={label} className={label === '429' && t.rateLimited > 0 ? 'usage-tile is-limited' : 'usage-tile'} title={tip}>
           <span className="usage-tile-label">{label}</span>
           <span className="usage-tile-value">{value}</span>
-          {sub ? (
-            <span className="usage-tile-sub" title={label === '花费' ? '没有价格的模型，不计入花费' : undefined}>
-              {sub}
-            </span>
-          ) : null}
         </div>
       ))}
     </div>
@@ -165,6 +232,7 @@ function useWidth(): [React.RefObject<HTMLDivElement | null>, number] {
 
 const AXIS_W = 44;
 const LABEL_H = 18;
+const CHART_H = 180;
 
 interface Hover {
   col: UsageColumn;
@@ -178,63 +246,208 @@ function labelEvery(count: number, width: number): number {
   return Math.max(1, Math.ceil(count / room));
 }
 
-function StackChart({ view, metric, bucket, provider }: { view: UsageView; metric: Metric; bucket: UsageQuery['bucket']; provider: (id: string) => string }) {
-  const [ref, width] = useWidth();
-  const [hover, setHover] = useState<Hover | null>(null);
-  const height = 180;
+/** What both charts share: the frame (grid, axis numbers, dates, no-data marks, a hit target per column). */
+function ChartFrame({ cols, width, max, bucket, label, onHover, children }: { cols: UsageColumn[]; width: number; max: number; bucket: UsageQuery['bucket']; label: string; onHover(h: Hover): void; children(scale: { slot: number; plotH: number; y(v: number): number }): React.ReactNode }) {
   const plotW = Math.max(40, width - AXIS_W);
-  const plotH = height - LABEL_H;
-  const cols = view.columns;
-  const value = (c: UsageColumn, k: string) => (metric === 'requests' ? c.requests[k] : c.tokens[k]) ?? 0;
-  const max = Math.max(0, ...cols.map((c) => view.series.reduce((a, s) => a + value(c, s.key), 0)));
+  const plotH = CHART_H - LABEL_H;
   const ticks = niceTicks(max);
   const top = ticks[ticks.length - 1]!;
   const slot = plotW / Math.max(1, cols.length);
-  const barW = Math.max(2, Math.min(28, slot - 4));
   const every = labelEvery(cols.length, plotW);
+  const y = (v: number) => plotH - (v / top) * (plotH - 6);
+  return (
+    <svg width={width} height={CHART_H} role="img" aria-label={label}>
+      {ticks.map((t) => (
+        <g key={t}>
+          <line className="usage-grid" x1={AXIS_W} x2={width} y1={y(t)} y2={y(t)} />
+          <text className="usage-axis" x={AXIS_W - 6} y={y(t)} dy="0.32em" textAnchor="end">
+            {shortCount(t)}
+          </text>
+        </g>
+      ))}
+      {cols.map((c, i) => (c.noData ? <rect key={c.start} className="usage-nodata" x={AXIS_W + i * slot} y={0} width={slot} height={plotH} /> : null))}
+      {children({ slot, plotH, y })}
+      <NoDataLabels cols={cols} slot={slot} plotH={plotH} />
+      <line className="usage-baseline" x1={AXIS_W} x2={width} y1={plotH} y2={plotH} />
+      {cols.map((c, i) => (
+        <g key={c.start}>
+          {i % every === 0 ? (
+            <text className="usage-axis" x={AXIS_W + i * slot + slot / 2} y={CHART_H - 4} textAnchor="middle">
+              {bucketLabel(c.start, bucket)}
+            </text>
+          ) : null}
+          {/* the hit target is the whole column, on top of the marks */}
+          <rect x={AXIS_W + i * slot} y={0} width={slot} height={plotH} fill="transparent" onMouseEnter={() => onHover({ col: c, x: AXIS_W + i * slot + slot / 2 })} />
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+/** Lines through the columns' centers, broken where there is no data; each with its area down to the baseline. */
+function runsOf(cols: UsageColumn[]): number[][] {
+  const runs: number[][] = [];
+  cols.forEach((c, i) => {
+    if (c.noData) return;
+    const last = runs[runs.length - 1];
+    if (last && last[last.length - 1] === i - 1) last.push(i);
+    else runs.push([i]);
+  });
+  return runs;
+}
+
+/** Requests and 429 answers per bucket: two lines on one scale, each over its own faint area. */
+function RequestChart({ view, bucket, provider, byModel }: { view: UsageView; bucket: UsageQuery['bucket']; provider: (id: string) => string; byModel: boolean }) {
+  const [ref, width] = useWidth();
+  const [hover, setHover] = useState<Hover | null>(null);
+  const cols = view.columns;
+  const max = Math.max(0, ...cols.map((c) => c.requestCount));
+  const runs = runsOf(cols);
   return (
     <div className="usage-chart" ref={ref} onMouseLeave={() => setHover(null)}>
-      <svg width={width} height={height} role="img" aria-label={metric === 'requests' ? '请求数' : 'Token 用量'}>
-        {ticks.map((t) => {
-          const y = plotH - (t / top) * (plotH - 6);
+      <ChartFrame cols={cols} width={width} max={max} bucket={bucket} label="请求数" onHover={setHover}>
+        {({ slot, plotH, y }) => {
+          const x = (i: number) => AXIS_W + i * slot + slot / 2;
+          const line = (run: number[], v: (c: UsageColumn) => number) => run.map((i, j) => `${j ? 'L' : 'M'}${x(i)},${y(v(cols[i]!))}`).join('');
+          const area = (run: number[], v: (c: UsageColumn) => number) => `${line(run, v)}L${x(run[run.length - 1]!)},${plotH}L${x(run[0]!)},${plotH}Z`;
+          const series = [
+            { cls: 'is-requests', v: (c: UsageColumn) => c.requestCount },
+            { cls: 'is-limited', v: (c: UsageColumn) => c.rateLimited },
+          ];
+          const hi = hover ? cols.indexOf(hover.col) : -1;
           return (
-            <g key={t}>
-              <line className="usage-grid" x1={AXIS_W} x2={width} y1={y} y2={y} />
-              <text className="usage-axis" x={AXIS_W - 6} y={y} dy="0.32em" textAnchor="end">
-                {shortCount(t)}
-              </text>
-            </g>
-          );
-        })}
-        {cols.map((c, i) => {
-          const x = AXIS_W + i * slot + (slot - barW) / 2;
-          let y = plotH;
-          const segs = view.series.map((s) => ({ s, v: value(c, s.key) })).filter((p) => p.v > 0);
-          return (
-            <g key={c.start} onMouseEnter={() => setHover({ col: c, x: AXIS_W + i * slot + slot / 2 })}>
-              {c.noData ? <rect className="usage-nodata" x={AXIS_W + i * slot} y={0} width={slot} height={plotH} /> : null}
-              {/* the hit target is the whole column, wider and taller than the bar */}
-              <rect x={AXIS_W + i * slot} y={0} width={slot} height={plotH} fill="transparent" />
-              {segs.map(({ s, v }, j) => {
-                const h = (v / top) * (plotH - 6);
-                y -= h;
-                const last = j === segs.length - 1;
-                // a 2px gap between segments; the top segment's end is rounded
-                return <path key={s.key} d={barPath(x, y, barW, Math.max(0, h - (j > 0 ? 2 : 0)), last ? Math.min(4, barW / 2) : 0)} style={{ fill: s.color }} />;
-              })}
-              {i % every === 0 ? (
-                <text className="usage-axis" x={AXIS_W + i * slot + slot / 2} y={height - 4} textAnchor="middle">
-                  {bucketLabel(c.start, bucket)}
-                </text>
+            <>
+              {series.map((s) =>
+                runs.map((run) => (
+                  <g key={`${s.cls}${run[0]}`} className={`usage-line ${s.cls}`}>
+                    <path className="usage-line-area" d={area(run, s.v)} />
+                    {run.length > 1 ? <path className="usage-line-stroke" d={line(run, s.v)} /> : <circle className="usage-line-dot" cx={x(run[0]!)} cy={y(s.v(cols[run[0]!]!))} r={2.5} />}
+                  </g>
+                )),
+              )}
+              {hi >= 0 && !cols[hi]!.noData ? (
+                <g className="usage-hover-mark">
+                  <line className="usage-hover-line" x1={x(hi)} x2={x(hi)} y1={0} y2={plotH} />
+                  {series.map((s) => (
+                    <circle key={s.cls} className={`usage-line-dot ${s.cls}`} cx={x(hi)} cy={y(s.v(cols[hi]!))} r={4} />
+                  ))}
+                </g>
               ) : null}
-            </g>
+            </>
           );
-        })}
-        <NoDataLabels cols={cols} slot={slot} plotH={plotH} />
-        <line className="usage-baseline" x1={AXIS_W} x2={width} y1={plotH} y2={plotH} />
-      </svg>
-      {hover ? <ChartTip hover={hover} width={width} view={view} metric={metric} bucket={bucket} provider={provider} /> : null}
+        }}
+      </ChartFrame>
+      {hover ? (
+        <div className="usage-tip" style={tipSide(hover.x, width)} role="tooltip">
+          <div className="usage-tip-title">{tipTitle(hover.col, bucket)}</div>
+          {hover.col.noData ? (
+            <div className="usage-tip-row">无记录</div>
+          ) : (
+            <>
+              <div className="usage-tip-row">
+                <span className="usage-swatch" style={{ background: REQUESTS_COLOR }} />
+                <span className="usage-tip-name">请求</span>
+                <span className="usage-num">{hover.col.requestCount.toLocaleString('en-US')}</span>
+              </div>
+              <div className="usage-tip-row is-limited">
+                <span className="usage-swatch is-limited" />
+                <span className="usage-tip-name">429</span>
+                <span className="usage-num">{hover.col.rateLimited.toLocaleString('en-US')}</span>
+              </div>
+              {byModel ? <ModelRows view={view} col={hover.col} provider={provider} value={(c, k) => c.requests[k] ?? 0} limited /> : null}
+            </>
+          )}
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+/** Tokens per bucket: one bar stacked by kind (cache hits, cache writes, misses, input without cache numbers, output). */
+function TokenChart({ view, bucket, provider, byModel }: { view: UsageView; bucket: UsageQuery['bucket']; provider: (id: string) => string; byModel: boolean }) {
+  const [ref, width] = useWidth();
+  const [hover, setHover] = useState<Hover | null>(null);
+  const cols = view.columns;
+  const total = (c: UsageColumn) => TOKEN_KINDS.reduce((a, k) => a + c.kinds[k.kind], 0);
+  const max = Math.max(0, ...cols.map(total));
+  return (
+    <div className="usage-chart" ref={ref} onMouseLeave={() => setHover(null)}>
+      <ChartFrame cols={cols} width={width} max={max} bucket={bucket} label="Token 用量" onHover={setHover}>
+        {({ slot, plotH, y }) => {
+          const barW = Math.max(2, Math.min(28, slot - 4));
+          return cols.map((c, i) => {
+            const x = AXIS_W + i * slot + (slot - barW) / 2;
+            let top = plotH;
+            const segs = TOKEN_KINDS.map((k) => ({ k, v: c.kinds[k.kind] })).filter((p) => p.v > 0);
+            return (
+              <g key={c.start} className={hover?.col === c ? 'usage-bar-col is-hover' : 'usage-bar-col'}>
+                {segs.map(({ k, v }, j) => {
+                  const h = plotH - y(v);
+                  top -= h;
+                  const last = j === segs.length - 1;
+                  // a 2px gap between segments; the top segment's end is rounded
+                  return <path key={k.kind} d={barPath(x, top, barW, Math.max(0, h - (j > 0 ? 2 : 0)), last ? Math.min(4, barW / 2) : 0)} style={{ fill: k.color }} />;
+                })}
+              </g>
+            );
+          });
+        }}
+      </ChartFrame>
+      {hover ? (
+        <div className="usage-tip" style={tipSide(hover.x, width)} role="tooltip">
+          <div className="usage-tip-title">
+            <span className="usage-tip-name">{tipTitle(hover.col, bucket)}</span>
+            {hover.col.noData ? null : <span className="usage-num">{total(hover.col).toLocaleString('en-US')}</span>}
+          </div>
+          {hover.col.noData ? (
+            <div className="usage-tip-row">无记录</div>
+          ) : (
+            <>
+              {TOKEN_KINDS.filter((k) => hover.col.kinds[k.kind] > 0).map((k) => (
+                <div key={k.kind} className="usage-tip-row">
+                  <span className="usage-swatch" style={{ background: k.color }} />
+                  <span className="usage-tip-name">{k.label}</span>
+                  <span className="usage-num">{hover.col.kinds[k.kind].toLocaleString('en-US')}</span>
+                </div>
+              ))}
+              {byModel ? <ModelRows view={view} col={hover.col} provider={provider} value={(c, k) => c.tokens[k] ?? 0} /> : null}
+            </>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function tipTitle(c: UsageColumn, bucket: UsageQuery['bucket']): string {
+  return bucket === 'hour' ? `${dayLabel(c.start)} ${bucketLabel(c.start, bucket)}` : dayLabel(c.start);
+}
+
+/**
+ * The hover card's lines per model under 按模型 (only when there is more than one): the value, its 429 answers in red
+ * after it. No color mark: the charts' colors are requests / 429 and the kinds of token, not models.
+ */
+function ModelRows({ view, col, provider, value, limited }: { view: UsageView; col: UsageColumn; provider: (id: string) => string; value(c: UsageColumn, key: string): number; limited?: boolean }) {
+  const rows = view.series.map((s) => ({ s, v: value(col, s.key), l: col.limited[s.key] ?? 0 })).filter((r) => r.v > 0);
+  if (rows.length < 2) return null;
+  return (
+    <>
+      <div className="usage-tip-head">按模型</div>
+      {rows.map(({ s, v, l }) => (
+        <div key={s.key} className="usage-tip-row">
+          <span className="usage-tip-name">{s.model}</span>
+          <span className="usage-tip-provider">{s.providerId ? provider(s.providerId) : ''}</span>
+          <span className="usage-num">
+            {v.toLocaleString('en-US')}
+            {limited && l ? (
+              <>
+                (<span className="usage-limited-num">{l.toLocaleString('en-US')}</span>)
+              </>
+            ) : null}
+          </span>
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -275,109 +488,10 @@ export function tipSide(x: number, width: number): { left: number } | { right: n
   return x > width / 2 ? { right: Math.max(0, width - x + 10) } : { left: Math.max(0, x + 10) };
 }
 
-function ChartTip({ hover, width, view, metric, bucket, provider }: { hover: Hover; width: number; view: UsageView; metric: Metric; bucket: UsageQuery['bucket']; provider: (id: string) => string }) {
-  const c = hover.col;
-  const rows = view.series.map((s) => ({ s, v: (metric === 'requests' ? c.requests[s.key] : c.tokens[s.key]) ?? 0 })).filter((r) => r.v > 0);
-  return (
-    <div className="usage-tip" style={tipSide(hover.x, width)} role="tooltip">
-      <div className="usage-tip-title">{bucket === 'hour' ? `${dayLabel(c.start)} ${bucketLabel(c.start, bucket)}` : dayLabel(c.start)}</div>
-      {c.noData ? (
-        <div className="usage-tip-row">无记录</div>
-      ) : rows.length ? (
-        rows.map(({ s, v }) => (
-          <div key={s.key} className="usage-tip-row">
-            <span className="usage-swatch" style={{ background: s.color }} />
-            <span className="usage-tip-name">{s.key.startsWith('\u0000') ? s.model : `${s.model}`}</span>
-            <span className="usage-tip-provider">{s.providerId ? provider(s.providerId) : ''}</span>
-            <span className="usage-num">{v.toLocaleString('en-US')}</span>
-          </div>
-        ))
-      ) : (
-        <div className="usage-tip-row">0</div>
-      )}
-      {c.rateLimited ? (
-        <div className="usage-tip-row is-limited">
-          <span className="usage-tip-name">429</span>
-          <span className="usage-num">{c.rateLimited}</span>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function Legend({ series }: { series: UsageSeries[] }) {
-  if (!series.length) return null;
-  return (
-    <ul className="usage-legend">
-      {series.map((s) => (
-        <li key={s.key}>
-          <span className="usage-swatch" style={{ background: s.color }} />
-          {s.model}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function LimitChart({ view, bucket }: { view: UsageView; bucket: UsageQuery['bucket'] }) {
-  const [ref, width] = useWidth();
-  const [hover, setHover] = useState<Hover | null>(null);
-  const height = 84;
-  const plotW = Math.max(40, width - AXIS_W);
-  const plotH = height - LABEL_H;
-  const cols = view.columns;
-  const max = Math.max(0, ...cols.map((c) => c.rateLimited));
-  const ticks = niceTicks(max, 2);
-  const top = ticks[ticks.length - 1]!;
-  const slot = plotW / Math.max(1, cols.length);
-  const barW = Math.max(2, Math.min(28, slot - 4));
-  const every = labelEvery(cols.length, plotW);
-  return (
-    <div className="usage-chart" ref={ref} onMouseLeave={() => setHover(null)}>
-      <svg width={width} height={height} role="img" aria-label="429 次数">
-        {ticks.map((t) => {
-          const y = plotH - (t / top) * (plotH - 6);
-          return (
-            <g key={t}>
-              <line className="usage-grid" x1={AXIS_W} x2={width} y1={y} y2={y} />
-              <text className="usage-axis" x={AXIS_W - 6} y={y} dy="0.32em" textAnchor="end">
-                {t}
-              </text>
-            </g>
-          );
-        })}
-        {cols.map((c, i) => {
-          const h = (c.rateLimited / top) * (plotH - 6);
-          return (
-            <g key={c.start} onMouseEnter={() => setHover({ col: c, x: AXIS_W + i * slot + slot / 2 })}>
-              {c.noData ? <rect className="usage-nodata" x={AXIS_W + i * slot} y={0} width={slot} height={plotH} /> : null}
-              <rect x={AXIS_W + i * slot} y={0} width={slot} height={plotH} fill="transparent" />
-              {h > 0 ? <path className="usage-limit-bar" d={barPath(AXIS_W + i * slot + (slot - barW) / 2, plotH - h, barW, h, Math.min(4, barW / 2))} /> : null}
-              {i % every === 0 ? (
-                <text className="usage-axis" x={AXIS_W + i * slot + slot / 2} y={height - 4} textAnchor="middle">
-                  {bucketLabel(c.start, bucket)}
-                </text>
-              ) : null}
-            </g>
-          );
-        })}
-        <NoDataLabels cols={cols} slot={slot} plotH={plotH} />
-        <line className="usage-baseline" x1={AXIS_W} x2={width} y1={plotH} y2={plotH} />
-      </svg>
-      {hover ? (
-        <div className="usage-tip" style={tipSide(hover.x, width)} role="tooltip">
-          <div className="usage-tip-title">{bucket === 'hour' ? `${dayLabel(hover.col.start)} ${bucketLabel(hover.col.start, bucket)}` : dayLabel(hover.col.start)}</div>
-          <div className="usage-tip-row">{hover.col.noData ? '无记录' : `429：${hover.col.rateLimited}`}</div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 /** The 429 answers one by one, newest first: the first 8, then all on 全部. */
 function LimitList({ records, total, provider }: { records: RequestRecord[]; total: number; provider: (id: string) => string }) {
   const [all, setAll] = useState(false);
-  if (!records.length) return null;
+  if (!records.length) return <p className="group-pane settings-hint">无记录</p>;
   const shown = all ? records : records.slice(0, 8);
   return (
     <div className="group-pane usage-table-pane">
@@ -435,10 +549,7 @@ function ModelTable({ series, provider }: { series: UsageSeries[]; provider: (id
         <tbody>
           {sorted.map((s) => (
             <tr key={s.key}>
-              <td data-label="模型">
-                <span className="usage-swatch" style={{ background: s.color }} />
-                {s.model}
-              </td>
+              <td data-label="模型">{s.model}</td>
               <td data-label="服务商">{s.providerId ? provider(s.providerId) : '—'}</td>
               <td data-label="请求" className="is-num usage-num">{s.requests.toLocaleString('en-US')}</td>
               <td data-label="429" className={s.rateLimited ? 'is-num usage-num is-limited' : 'is-num usage-num'}>{s.rateLimited}</td>
@@ -457,3 +568,4 @@ function ModelTable({ series, provider }: { series: UsageSeries[]; provider: (id
     </div>
   );
 }
+

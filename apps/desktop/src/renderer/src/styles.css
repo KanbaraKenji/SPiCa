@@ -6779,8 +6779,9 @@ section.plugins-part > .plugins-part-title {
   display: block;
 }
 
-/* 设置 › 用量 (settings/Usage.tsx): the range on top, five totals, the chart by model, the 429 bars and list, the
-   table by model. Chart marks take the series tokens (--spica-series-*); the 429 marks the danger color. */
+/* 设置 › 用量 (settings/Usage.tsx): the range and the model on top, five totals, requests and 429 as two lines, the
+   tokens by kind, the 429 list, the table by model. Chart marks take the series tokens (--spica-series-*); the 429
+   marks the danger color. */
 .usage-bar {
   display: flex;
   flex-wrap: wrap;
@@ -6788,6 +6789,34 @@ section.plugins-part > .plugins-part-title {
   justify-content: space-between;
   gap: 8px 16px;
   margin-bottom: 16px;
+}
+
+.usage-bar-picks,
+.usage-bar-end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.usage-model {
+  max-width: 280px;
+}
+
+.usage-model-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-note {
+  margin: -8px 0 16px;
+}
+
+.usage-note.is-bad {
+  color: var(--spica-danger);
 }
 
 .usage-since {
@@ -6819,17 +6848,10 @@ section.plugins-part > .plugins-part-title {
   background: var(--spica-surface);
 }
 
-.usage-tile-label,
-.usage-tile-sub {
+.usage-tile-label {
   color: var(--spica-muted);
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
-}
-
-.usage-tile-sub {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .usage-tile-value {
@@ -6890,8 +6912,46 @@ section.plugins-part > .plugins-part-title {
   pointer-events: none;
 }
 
-.usage-limit-bar {
-  fill: var(--spica-danger);
+/* the requests chart: a line over a faint area per series (requests in the first series color, 429 red) */
+.usage-line {
+  --usage-line: var(--spica-series-1);
+}
+
+.usage-line.is-limited,
+.usage-line-dot.is-limited {
+  --usage-line: var(--spica-danger);
+}
+
+.usage-line-area {
+  fill: var(--usage-line);
+  fill-opacity: 0.12;
+}
+
+.usage-line-stroke {
+  fill: none;
+  stroke: var(--usage-line);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.usage-line-dot {
+  --usage-line: var(--spica-series-1);
+  fill: var(--usage-line);
+  stroke: var(--spica-surface);
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.usage-hover-line {
+  stroke: var(--spica-muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  pointer-events: none;
+}
+
+.usage-bar-col.is-hover {
+  opacity: 0.85;
 }
 
 .usage-tip {
@@ -6913,8 +6973,19 @@ section.plugins-part > .plugins-part-title {
 }
 
 .usage-tip-title {
+  display: flex;
+  gap: 12px;
   margin-bottom: 4px;
   color: var(--spica-muted);
+}
+
+.usage-tip-head {
+  margin-top: 6px;
+  color: var(--spica-muted);
+}
+
+.usage-limited-num {
+  color: var(--spica-danger);
 }
 
 .usage-tip-row {
@@ -6950,6 +7021,10 @@ section.plugins-part > .plugins-part-title {
   height: 8px;
   margin-right: 6px;
   border-radius: 2px;
+}
+
+.usage-swatch.is-limited {
+  background: var(--spica-danger);
 }
 
 .usage-legend {

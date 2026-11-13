@@ -205,4 +205,33 @@ describe('summarizeRequests', () => {
     // a gateway's 503 throttle is not a 429
     expect(s.rateLimited.map((x) => x.httpStatus)).toEqual([429]);
   });
+
+  it('keeps the newest 429 answers of each model, so a quiet model is not crowded out by a busy one', () => {
+    const busy = Array.from({ length: 250 }, (_, i) => r(new Date(Date.parse('2026-11-13T10:00:00Z') + i * 1000).toISOString(), { status: 'error', httpStatus: 429 }));
+    const quiet = r('2026-11-13T01:00:00Z', { providerId: 'a', model: 'claude', status: 'error', httpStatus: 429 });
+    const s = summarizeRequests([...busy, quiet], { from: '2026-11-13T00:00:00Z', to: '2026-11-14T00:00:00Z', bucket: 'day', tzOffsetMinutes: 0 }, null);
+    expect(s.rateLimited.filter((x) => x.model === 'deepseek-chat')).toHaveLength(200);
+    expect(s.rateLimited.filter((x) => x.model === 'claude')).toHaveLength(1);
+  });
+
+  it('splits the prompt into cache hits, misses and what came without cache numbers, by the provider’s kind', () => {
+    const q = { from: '2026-11-13T00:00:00Z', to: '2026-11-14T00:00:00Z', bucket: 'day', tzOffsetMinutes: 0 } as const;
+    const s = summarizeRequests(
+      [
+        // OpenAI-style: prompt_tokens includes the cached part
+        r('2026-11-13T01:00:00Z', { inputTokens: 100, cacheReadTokens: 30 }),
+        // no cache numbers at all
+        r('2026-11-13T02:00:00Z', { inputTokens: 40 }),
+        // Anthropic: input_tokens is the uncached part already
+        r('2026-11-13T03:00:00Z', { providerId: 'a', model: 'claude', inputTokens: 10, cacheReadTokens: 500, cacheWriteTokens: 20 }),
+      ],
+      q,
+      null,
+      (id) => (id === 'a' ? 'anthropic' : 'openai'),
+    );
+    expect(s.rows).toEqual([
+      expect.objectContaining({ providerId: 'a', cacheMissTokens: 10, unreportedInputTokens: 0, cacheReadTokens: 500, cacheWriteTokens: 20 }),
+      expect.objectContaining({ model: 'deepseek-chat', cacheMissTokens: 70, unreportedInputTokens: 40, cacheReadTokens: 30 }),
+    ]);
+  });
 });

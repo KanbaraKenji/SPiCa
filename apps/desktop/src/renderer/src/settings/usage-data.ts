@@ -1,5 +1,6 @@
 // 设置 › 用量: the time ranges, and the core's summary turned into what the page draws
-// (one column per bucket, one series per model, the 429 answers apart). No React here.
+// (one column per bucket, one series per model, the 429 answers apart, the tokens by kind), the model
+// picker's choices and the CSV. No React here.
 import type { UsageQuery, UsageRow, UsageSummary } from '@spica/protocol';
 
 export type UsageRange = 'today' | '7d' | '30d' | '90d';
@@ -44,6 +45,34 @@ export interface UsageSeries {
   unpricedRequests: number;
 }
 
+/** The kinds of token the Token chart stacks, bottom up: its legend's words and colors. */
+export type TokenKind = 'cacheRead' | 'cacheWrite' | 'cacheMiss' | 'unreported' | 'output';
+export const TOKEN_KINDS: readonly { kind: TokenKind; label: string; color: string }[] = [
+  { kind: 'cacheRead', label: '缓存命中', color: 'var(--spica-series-1)' },
+  { kind: 'cacheWrite', label: '缓存写入', color: 'var(--spica-series-4)' },
+  { kind: 'cacheMiss', label: '缓存未命中', color: 'var(--spica-series-2)' },
+  // the provider gave no cache numbers: hit or miss unknown, so not a series color
+  { kind: 'unreported', label: '输入（未报告缓存）', color: 'var(--spica-faint)' },
+  { kind: 'output', label: '输出', color: 'var(--spica-series-3)' },
+];
+
+export type TokenKinds = Record<TokenKind, number>;
+const noKinds = (): TokenKinds => ({ cacheRead: 0, cacheWrite: 0, cacheMiss: 0, unreported: 0, output: 0 });
+
+/** A row's tokens by kind (a row from a core without the split: its whole input is unreported). */
+export function rowKinds(r: UsageRow): TokenKinds {
+  const split = r.cacheMissTokens !== undefined || r.unreportedInputTokens !== undefined;
+  return {
+    cacheRead: r.cacheReadTokens,
+    cacheWrite: r.cacheWriteTokens,
+    cacheMiss: split ? (r.cacheMissTokens ?? 0) : 0,
+    unreported: split ? (r.unreportedInputTokens ?? 0) : r.inputTokens,
+    output: r.outputTokens,
+  };
+}
+
+export const kindsTotal = (k: TokenKinds) => k.cacheRead + k.cacheWrite + k.cacheMiss + k.unreported + k.output;
+
 export interface UsageColumn {
   /** Start of the bucket (ms). */
   start: number;
@@ -51,14 +80,19 @@ export interface UsageColumn {
   noData: boolean;
   /** Per series key. */
   requests: Record<string, number>;
+  /** All the tokens (every kind) per series key. */
   tokens: Record<string, number>;
+  /** 429 answers per series key. */
+  limited: Record<string, number>;
+  requestCount: number;
   rateLimited: number;
+  kinds: TokenKinds;
 }
 
 export interface UsageView {
   columns: UsageColumn[];
   series: UsageSeries[];
-  totals: { requests: number; failed: number; rateLimited: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costUsd: number; unpriced: boolean; unpricedRequests: number };
+  totals: { requests: number; failed: number; rateLimited: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costUsd: number; unpriced: boolean; unpricedRequests: number; tokens: number; kinds: TokenKinds };
   /** When the log starts, when that is inside the range (ms); null when the whole range has data. */
   since: number | null;
   /** The log is empty. */
@@ -66,7 +100,22 @@ export interface UsageView {
 }
 
 export const OTHER_KEY = '\u0000other';
-const keyOf = (r: Pick<UsageRow, 'providerId' | 'model'>) => `${r.providerId}\u0000${r.model}`;
+/** A model's key: its provider and name (the picker's value). */
+export const keyOf = (r: Pick<UsageRow, 'providerId' | 'model'>) => `${r.providerId}\u0000${r.model}`;
+
+/** The models with records in the summary, for the picker: by name, then provider. */
+export function modelChoices(s: UsageSummary): { key: string; providerId: string; model: string }[] {
+  const seen = new Map<string, { key: string; providerId: string; model: string }>();
+  for (const r of s.rows) seen.set(keyOf(r), { key: keyOf(r), providerId: r.providerId, model: r.model });
+  return [...seen.values()].sort((a, b) => a.model.localeCompare(b.model) || a.providerId.localeCompare(b.providerId));
+}
+
+/** The summary with only one model's rows and 429 answers (null: all of them). */
+export function onlyModel(s: UsageSummary, key: string | null): UsageSummary {
+  // all models: the newest 200 of them together (the core keeps up to 200 of each)
+  if (!key) return { ...s, rateLimited: s.rateLimited.slice().sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt)).slice(0, 200) };
+  return { ...s, rows: s.rows.filter((r) => keyOf(r) === key), rateLimited: s.rateLimited.filter((r) => keyOf({ providerId: r.providerId ?? '', model: r.model ?? '' }) === key) };
+}
 
 /**
  * Columns for every bucket of the range (also the empty ones and those before the log starts), and one series
@@ -96,12 +145,14 @@ export function usageView(s: UsageSummary, maxSeries: number): UsageView {
   for (let t = first; t <= to; t += step) {
     // a day bucket may be 23 or 25 hours at a clock change: snap to the local midnight after it
     const start = s.query.bucket === 'day' ? Math.round((t + off) / DAY) * DAY - off : t;
-    const col: UsageColumn = { start, noData: since === null || start + step <= since, requests: {}, tokens: {}, rateLimited: 0 };
+    const col: UsageColumn = { start, noData: since === null || start + step <= since, requests: {}, tokens: {}, limited: {}, requestCount: 0, rateLimited: 0, kinds: noKinds() };
     columns.push(col);
     byStart.set(start, col);
   }
-  const totals = { requests: 0, failed: 0, rateLimited: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, unpriced: false, unpricedRequests: 0 };
+  const totals = { requests: 0, failed: 0, rateLimited: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, unpriced: false, unpricedRequests: 0, tokens: 0, kinds: noKinds() };
   for (const r of s.rows) {
+    const kinds = rowKinds(r);
+    const all = kindsTotal(kinds);
     const k = seriesKey(keyOf(r));
     const se = series.get(k)!;
     se.requests += r.requests;
@@ -125,12 +176,17 @@ export function usageView(s: UsageSummary, maxSeries: number): UsageView {
     totals.cacheWriteTokens += r.cacheWriteTokens;
     totals.costUsd += r.costUsd;
     if (r.unpriced) totals.unpriced = true;
+    totals.tokens += all;
+    for (const t of TOKEN_KINDS) totals.kinds[t.kind] += kinds[t.kind];
     const col = byStart.get(Date.parse(r.bucket));
     if (!col) continue;
     col.noData = false;
     col.requests[k] = (col.requests[k] ?? 0) + r.requests;
-    col.tokens[k] = (col.tokens[k] ?? 0) + r.inputTokens + r.outputTokens;
+    col.tokens[k] = (col.tokens[k] ?? 0) + all;
+    col.limited[k] = (col.limited[k] ?? 0) + r.rateLimited;
+    col.requestCount += r.requests;
     col.rateLimited += r.rateLimited;
+    for (const t of TOKEN_KINDS) col.kinds[t.kind] += kinds[t.kind];
   }
   return { columns, series: [...series.values()], totals, since: since !== null && since > from ? since : null, empty: since === null };
 }
@@ -182,4 +238,32 @@ export function niceTicks(max: number, count = 4): number[] {
   const out: number[] = [];
   for (let v = 0; v <= top + step / 2; v += step) out.push(Math.round(v * 1e6) / 1e6);
   return out;
+}
+
+/** The CSV's columns (the header row). */
+export const CSV_HEAD = ['时间', '服务商', '模型', '请求', '429', '失败', '输入', '输出', '缓存读', '缓存写', '花费（美元）'] as const;
+
+/**
+ * The summary as CSV rows, one per time bucket and model (header first): the bucket's start in local time
+ * (2026-11-13, or 2026-11-13 14:00 by the hour), the counts as plain numbers, the cost blank when the model
+ * has no price.
+ */
+export function usageCsvRows(s: UsageSummary, provider: (id: string) => string): string[][] {
+  const time = (iso: string) => {
+    const ms = Date.parse(iso);
+    const d = new Date(ms);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return s.query.bucket === 'hour' ? `${dayLabel(ms)} ${pad(d.getHours())}:00` : dayLabel(ms);
+  };
+  const cost = (r: UsageRow) => (r.unpriced && !r.costUsd ? '' : String(Math.round(r.costUsd * 1e6) / 1e6));
+  return [
+    [...CSV_HEAD],
+    ...s.rows.map((r) => [time(r.bucket), r.providerId ? provider(r.providerId) : '', r.model, r.requests, r.rateLimited, r.failed, r.inputTokens, r.outputTokens, r.cacheReadTokens, r.cacheWriteTokens].map(String).concat(cost(r))),
+  ];
+}
+
+/** The file's name: 用量-20261107-20261113.csv, with the model when one is picked. */
+export function usageCsvName(s: UsageSummary, model: string | null): string {
+  const day = (iso: string) => dayLabel(Date.parse(iso)).replaceAll('-', '');
+  return `用量-${day(s.query.from)}-${day(s.query.to)}${model ? `-${model}` : ''}.csv`;
 }
