@@ -80,6 +80,9 @@ export function fileChange(before: string, after: string): FileChangeMeta | unde
       body.push(op + (op === '+' ? b[nj]! : a[oi]!));
     }
     if (total + body.length > CHANGE_MAX_LINES) {
+      // The hunk that crosses the limit is cut there (a large rewrite still shows its start); the rest are left out.
+      const room = CHANGE_MAX_LINES - total;
+      if (room > 0) hunks.push({ oldStart: at[from]!.i + 1, newStart: at[from]!.j + 1, lines: body.slice(0, room) });
       truncated = true;
       break;
     }

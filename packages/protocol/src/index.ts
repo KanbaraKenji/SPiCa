@@ -888,7 +888,7 @@ export interface FileCardMeta {
  */
 export interface FileChangeMeta {
   hunks: { oldStart: number; newStart: number; lines: string[] }[];
-  /** More changed lines than the limit (2000 in all): the hunks after it are left out. */
+  /** More lines than the limit (2000 in all): the hunk that crosses it is cut there, the ones after are left out. */
   truncated?: boolean;
 }
 

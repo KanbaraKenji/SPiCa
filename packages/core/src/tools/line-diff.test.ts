@@ -43,11 +43,13 @@ describe('fileChange (the window’s view of a write or an edit)', () => {
     expect(fileChange('', 'x\ny')).toEqual({ hunks: [{ oldStart: 1, newStart: 1, lines: ['+x', '+y'] }] });
   });
 
-  it('more changed lines than the limit: the hunks after it are left out', () => {
+  it('more changed lines than the limit: the hunk that crosses it is cut there, the ones after are left out', () => {
     const many = numbered(CHANGE_MAX_LINES + 500);
     const c = fileChange('', many.join('\n'))!;
     expect(c.truncated).toBe(true);
-    expect(c.hunks).toHaveLength(0);
+    expect(c.hunks).toHaveLength(1);
+    expect(c.hunks[0]!.lines).toHaveLength(CHANGE_MAX_LINES);
+    expect(c.hunks[0]!.lines.at(-1)).toBe(`+l${CHANGE_MAX_LINES}`);
     const every10 = numbered(30000).map((l, i) => (i % 10 === 0 ? `${l}!` : l));
     const d = fileChange(numbered(30000).join('\n'), every10.join('\n'))!;
     expect(d.truncated).toBe(true);
