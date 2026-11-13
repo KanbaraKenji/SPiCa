@@ -562,6 +562,12 @@ a:hover {
   border-color: var(--spica-accent);
 }
 
+/* a drop-down that does nothing now (a spending limit's period while the amount is 0): greyed as a button is */
+.input.select-box:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .input:focus {
   border-color: var(--spica-accent);
   box-shadow: 0 0 0 3px var(--spica-accent-soft);
