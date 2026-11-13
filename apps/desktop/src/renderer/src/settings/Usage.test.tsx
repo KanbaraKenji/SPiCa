@@ -198,10 +198,12 @@ describe('one model or all', () => {
       rec('2026-11-12T04:00:00Z', { initiator: 'runtime:memory-tidy', inputTokens: 500, outputTokens: 50 }),
       rec('2026-11-12T05:00:00Z', { initiator: 'plugin:example-notes', httpStatus: 429, status: 'error', errorCode: 'gateway.rate_limited', inputTokens: 0, outputTokens: 0 }),
       rec('2026-11-12T05:01:00Z', { initiator: 'view:example-notes' }),
+      rec('2026-11-12T05:30:00Z', { initiator: 'plugin:gone' }),
       rec('2026-11-12T06:00:00Z', { providerId: 'anthropic', model: 'claude-sonnet-4-5' }),
     ];
     const summary = vi.fn(async (q: UsageQuery): Promise<UsageSummary> => summarizeRequests(recs, q, '2026-11-12T02:00:00Z'));
-    render(<Usage api={{ summary, providerNames: async () => ({ deepseek: 'DeepSeek' }) }} now={now} />);
+    // a plugin by the name its page shows; one no longer installed by its id
+    render(<Usage api={{ summary, providerNames: async () => ({ deepseek: 'DeepSeek' }), pluginNames: async () => ({ 'example-notes': '笔记（示例）' }) }} now={now} />);
     await screen.findByRole('img', { name: 'Token 用量' });
     await pick('deepseek-chat · DeepSeek');
     await act(async () => {
@@ -213,14 +215,14 @@ describe('one model or all', () => {
     expect(tip.querySelector('.usage-tip-head')?.textContent).toBe('按功能模块');
     const lines = [...tip.querySelectorAll('.usage-tip-row')].map((r) => r.textContent);
     // the other model's request is not in it; a plugin's borrowing and its view are one module
-    expect(lines).toEqual(['请求4', '4291', '对话1', '记忆整理1', '插件 example-notes2(1)']);
+    expect(lines).toEqual(['请求5', '4291', '对话1', '记忆整理1', '插件 笔记（示例）2(1)', '插件 gone1']);
     // tokens: by module too
     await act(async () => {
       fireEvent.click(screen.getByRole('radio', { name: 'Token' }));
     });
     fireEvent.mouseEnter([...screen.getByRole('img', { name: 'Token 用量' }).querySelectorAll('rect[fill="transparent"]')][5]!);
     const rows = [...document.querySelector('.usage-tip')!.querySelectorAll('.usage-tip-row')].map((r) => r.textContent);
-    expect(rows.slice(-3)).toEqual(['对话1,100', '记忆整理550', '插件 example-notes1,100']);
+    expect(rows.slice(-4)).toEqual(['对话1,100', '记忆整理550', '插件 笔记（示例）1,100', '插件 gone1,100']);
   });
 
   it('a model picked stays picked in a range without it', async () => {

@@ -208,12 +208,15 @@ export function moduleKey(initiator: string): string {
   return initiator;
 }
 
-/** The module's name on the hover card. */
-export function moduleLabel(key: string): string {
+/**
+ * The module's name on the hover card. A plugin by the name its page shows (`pluginName`); its id only when that is
+ * not known (uninstalled since).
+ */
+export function moduleLabel(key: string, pluginName: (id: string) => string | undefined = () => undefined): string {
   if (key === 'model') return '对话';
   if (key === 'runtime:memory-tidy') return '记忆整理';
   if (key === 'runtime:probe') return '测试连接';
-  if (key.startsWith('plugin:')) return `插件 ${key.slice(7)}`;
+  if (key.startsWith('plugin:')) return `插件 ${pluginName(key.slice(7)) || key.slice(7)}`;
   return key || '其他';
 }
 

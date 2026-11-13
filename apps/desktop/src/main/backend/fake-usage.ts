@@ -118,5 +118,5 @@ export function fakeRequests(now: Date, days = 14): RequestRecord[] {
 
 /** Who started a made-up request: mostly conversations, some memory tidying, a plugin borrowing the model, a test. */
 function demoInitiator(r: number): string {
-  return r < 0.8 ? 'model' : r < 0.9 ? 'runtime:memory-tidy' : r < 0.98 ? 'plugin:example-notes' : 'runtime:probe';
+  return r < 0.8 ? 'model' : r < 0.9 ? 'runtime:memory-tidy' : r < 0.98 ? 'plugin:notes' : 'runtime:probe';
 }

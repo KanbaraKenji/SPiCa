@@ -475,6 +475,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     () => ({
       summary: (q) => bridge.usageSummary(q),
       providerNames: async () => Object.fromEntries((await bridge.providers.list()).items.map((p) => [p.id, p.name])),
+      pluginNames: async () => Object.fromEntries((await bridge.plugins.run({ op: 'state' })).state.plugins.map((p) => [p.name, p.displayName.trim() || p.name])),
       saveCsv: (name, text) => bridge.saveCsv(name, text),
       showInFolder: (path) => void bridge.showInFolder(path),
     }),

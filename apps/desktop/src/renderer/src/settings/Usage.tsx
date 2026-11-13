@@ -15,6 +15,8 @@ export interface UsageApi {
   summary(query: UsageQuery): Promise<UsageSummary | null>;
   /** Saved connections' names by id (a demo or removed connection shows its id). */
   providerNames?(): Promise<Record<string, string>>;
+  /** Installed plugins' names as their page shows them, by id (for the modules on the hover card). */
+  pluginNames?(): Promise<Record<string, string>>;
   /** Save a CSV file (the save dialog; null when cancelled). */
   saveCsv?(name: string, text: string): Promise<SaveCsvResult>;
   /** Shows a saved file in Explorer. */
@@ -42,6 +44,7 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
   const [metric, setMetric] = useState<'tokens' | 'requests'>('tokens');
   const [summary, setSummary] = useState<UsageSummary | null | undefined>(undefined);
   const [names, setNames] = useState<Record<string, string>>({});
+  const [plugins, setPlugins] = useState<Record<string, string>>({});
   const [exported, setExported] = useState<SaveCsvResult | undefined>(undefined);
   const searching = Boolean(search?.query);
 
@@ -61,6 +64,10 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
   useEffect(() => {
     if (searching || !api.providerNames) return;
     void api.providerNames().then(setNames, () => undefined);
+  }, [api, searching]);
+  useEffect(() => {
+    if (searching || !api.pluginNames) return;
+    void api.pluginNames().then(setPlugins, () => undefined);
   }, [api, searching]);
 
   // 搜索设置: the section has no rows; its name and what it shows find it
@@ -150,7 +157,7 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
             <div className="group-pane usage-chart-pane">
               {metric === 'tokens' ? (
                 <>
-                  <TokenChart view={view} bucket={bucket} provider={provider} byModel={!model} />
+                  <TokenChart view={view} bucket={bucket} provider={provider} byModel={!model} pluginName={(id) => plugins[id]} />
                   <ul className="usage-legend">
                     {TOKEN_KINDS.filter((k) => view.totals.kinds[k.kind] > 0).map((k) => (
                       <li key={k.kind}>
@@ -162,7 +169,7 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
                 </>
               ) : (
                 <>
-                  <RequestChart view={view} bucket={bucket} provider={provider} byModel={!model} />
+                  <RequestChart view={view} bucket={bucket} provider={provider} byModel={!model} pluginName={(id) => plugins[id]} />
                   <ul className="usage-legend">
                     <li>
                       <span className="usage-swatch" style={{ background: REQUESTS_COLOR }} />
@@ -344,8 +351,17 @@ function runsOf(cols: UsageColumn[]): number[][] {
   return runs;
 }
 
+interface ChartProps {
+  view: UsageView;
+  bucket: UsageQuery['bucket'];
+  provider: (id: string) => string;
+  /** 全部模型: the hover card by model; one model picked: by function module. */
+  byModel: boolean;
+  pluginName: (id: string) => string | undefined;
+}
+
 /** Requests and 429 answers per bucket: two smooth lines on one scale, each over its own faint area. */
-function RequestChart({ view, bucket, provider, byModel }: { view: UsageView; bucket: UsageQuery['bucket']; provider: (id: string) => string; byModel: boolean }) {
+function RequestChart({ view, bucket, provider, byModel, pluginName }: ChartProps) {
   const [ref, width] = useWidth();
   const [hover, setHover] = useState<Hover | null>(null);
   const cols = view.columns;
@@ -397,7 +413,7 @@ function RequestChart({ view, bucket, provider, byModel }: { view: UsageView; bu
             <div className="usage-tip-grid">
               <TipRow mark={REQUESTS_COLOR} name="请求" value={hover.col.requestCount} />
               <TipRow mark="danger" name="429" value={hover.col.rateLimited} limitedRow />
-              {byModel ? <ModelRows view={view} col={hover.col} provider={provider} value={(c, k) => c.requests[k] ?? 0} limited /> : <ModuleRows col={hover.col} value={(m) => m.requests} limited />}
+              {byModel ? <ModelRows view={view} col={hover.col} provider={provider} value={(c, k) => c.requests[k] ?? 0} limited /> : <ModuleRows col={hover.col} value={(m) => m.requests} pluginName={pluginName} limited />}
             </div>
           )}
         </div>
@@ -407,7 +423,7 @@ function RequestChart({ view, bucket, provider, byModel }: { view: UsageView; bu
 }
 
 /** Tokens per bucket: one bar stacked by kind (cache hits, cache writes, misses, input without cache numbers, output). */
-function TokenChart({ view, bucket, provider, byModel }: { view: UsageView; bucket: UsageQuery['bucket']; provider: (id: string) => string; byModel: boolean }) {
+function TokenChart({ view, bucket, provider, byModel, pluginName }: ChartProps) {
   const [ref, width] = useWidth();
   const [hover, setHover] = useState<Hover | null>(null);
   const cols = view.columns;
@@ -449,7 +465,7 @@ function TokenChart({ view, bucket, provider, byModel }: { view: UsageView; buck
               {TOKEN_KINDS.filter((k) => hover.col.kinds[k.kind] > 0).map((k) => (
                 <TipRow key={k.kind} mark={k.color} name={k.label} value={hover.col.kinds[k.kind]} />
               ))}
-              {byModel ? <ModelRows view={view} col={hover.col} provider={provider} value={(c, k) => c.tokens[k] ?? 0} /> : <ModuleRows col={hover.col} value={(m) => m.tokens} />}
+              {byModel ? <ModelRows view={view} col={hover.col} provider={provider} value={(c, k) => c.tokens[k] ?? 0} /> : <ModuleRows col={hover.col} value={(m) => m.tokens} pluginName={pluginName} />}
             </div>
           )}
         </div>
@@ -483,7 +499,7 @@ function ModelRows({ view, col, provider, value, limited }: { view: UsageView; c
  * One model picked: the hover card's lines per function module under 按功能模块 (对话, 记忆整理, 插件 …), the value
  * and its 429 answers in red after it; the names at the card's left edge as the models' are.
  */
-function ModuleRows({ col, value, limited }: { col: UsageColumn; value(m: UsageColumn['modules'][string]): number; limited?: boolean }) {
+function ModuleRows({ col, value, pluginName, limited }: { col: UsageColumn; value(m: UsageColumn['modules'][string]): number; pluginName: (id: string) => string | undefined; limited?: boolean }) {
   const rows = Object.entries(col.modules)
     .map(([key, m]) => ({ key, v: value(m), l: m.rateLimited }))
     .filter((r) => r.v > 0)
@@ -493,7 +509,7 @@ function ModuleRows({ col, value, limited }: { col: UsageColumn; value(m: UsageC
     <>
       <div className="usage-tip-head">按功能模块</div>
       {rows.map(({ key, v, l }) => (
-        <TipRow key={key} name={moduleLabel(key)} value={v} {...(limited && l ? { limited: l } : {})} />
+        <TipRow key={key} name={moduleLabel(key, pluginName)} value={v} {...(limited && l ? { limited: l } : {})} />
       ))}
     </>
   );
