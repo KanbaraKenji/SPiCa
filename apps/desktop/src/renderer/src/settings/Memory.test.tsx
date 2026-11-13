@@ -351,6 +351,15 @@ describe('设置 › 记忆 › 整理', () => {
     expect(t.undo).toHaveBeenCalledWith(7);
   });
 
+  it('a tidy that only rewrote a summary: 更新摘要 N 个, the entry and its summary, and 全部撤销; changed since: not listed', () => {
+    const t = tidyOf({ runs: [run({ changes: [], entries: [{ entry: 1, at: 'T1', before: { name: '报价单', summary: '旧的', updatedAt: 'T0' } }, { entry: 2, at: 'T1', before: { name: '周报', summary: '旧', updatedAt: 'T0' } }, { entry: 3, at: 'T1' }] })] });
+    setup({ tidy: t, entries: [entry(1, { name: '报价单', summary: '含税价，抄送王经理', updatedAt: 'T1' }), entry(2, { name: '周报', updatedAt: 'T2' })], items: [item(1, { entryId: 1 }), item(2, { entryId: 2 })] });
+    expect(document.querySelector('.memory-tidy-last')!.textContent).toContain('更新摘要 2 个');
+    expect([...document.querySelectorAll('.memory-tidy-change .memory-text')].map((x) => x.textContent)).toEqual(['更新摘要「报价单」：含税价，抄送王经理']);
+    fireEvent.click(screen.getByRole('button', { name: '全部撤销' }));
+    expect(t.undo).toHaveBeenCalledWith(7);
+  });
+
   it('memory off: neither 自动整理 nor 立即整理 can be used; a failed tidy says so', () => {
     setup({ enabled: false, tidy: tidyOf({ runs: [run({ status: 'failed', changes: [] })] }) });
     expect((screen.getByRole('switch', { name: '自动整理' }) as HTMLButtonElement).disabled).toBe(true);

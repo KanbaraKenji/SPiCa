@@ -670,10 +670,26 @@ export class MemoryBook {
     return undefined;
   }
 
-  forget(id: number, by: 'assistant' | 'user', ctx?: ToolContext): MemoryCardMeta | undefined {
+  /**
+   * Takes a detail out (status forgotten). With `summary`, its entry's summary changes too (what is left of it), kept on
+   * the item as it was so the undo puts it back; without, an older entry change on the item is dropped (its undo then
+   * leaves the entry alone).
+   */
+  forget(id: number, by: 'assistant' | 'user', ctx?: ToolContext, summary?: string): MemoryCardMeta | undefined {
     const it = this.get(id);
     if (!it || it.status !== 'active') return undefined;
-    const card: MemoryCardMeta = { action: 'forgotten', item: this.#save({ ...it, status: 'forgotten', by, updatedAt: isoNow() }) };
+    const now = isoNow();
+    const cur = it.entryId !== undefined ? this.entry(it.entryId) : undefined;
+    const { entryChange: _old, ...rest } = it;
+    void _old;
+    let entry = cur;
+    let change: MemoryItem['entryChange'];
+    if (cur && summary?.trim() && summary.trim() !== cur.summary) {
+      entry = this.#rt.store.putMemoryEntry({ ...cur, summary: summary.trim(), by, updatedAt: now });
+      change = { at: now, before: stateOf(cur) };
+    }
+    const item = this.#save({ ...rest, ...(change ? { entryChange: change } : {}), status: 'forgotten', by, updatedAt: now });
+    const card: MemoryCardMeta = { action: 'forgotten', item, ...(entry ? { entry } : {}) };
     this.#emit(card, ctx);
     return card;
   }
@@ -697,7 +713,9 @@ export class MemoryBook {
     const { replacedBy: _gone, undone: _undone, ...rest } = it;
     void _gone;
     void _undone;
-    const card: MemoryCardMeta = { action: 'restored', item: this.#save({ ...rest, status: 'active', by: 'user', updatedAt: isoNow() }) };
+    // a forget that changed the entry's summary: back as it was (when nobody changed the entry since)
+    const entry = it.status === 'forgotten' && !it.undone ? this.#putBack(it) : undefined;
+    const card: MemoryCardMeta = { action: 'restored', item: this.#save({ ...rest, status: 'active', by: 'user', updatedAt: isoNow() }), ...(entry ? { entry } : {}) };
     this.#emit(card);
     return card;
   }
@@ -919,12 +937,14 @@ export function createMemoryTools(rt: Runtime): Tool[] {
     spec: {
       name: 'forget',
       description:
-        'Take an item out of your memory of the user, when the user says it is wrong or no longer true, or asks you not to keep it ("别记了", "忘掉…", "forget …"). ' +
-        'To correct an item, use remember with `replaces` instead. The user sees it and can undo it.',
+        'Take a detail out of your memory of the user, when the user says it is wrong or no longer true, or asks you not to keep it ("别记了", "忘掉…", "forget …"). ' +
+        "When the entry's summary says what goes, give the summary that is left as `summary` (the summary is what later conversations read). " +
+        'To correct a detail, use remember with `replaces` instead. The user sees it and can undo it.',
       inputSchema: {
         type: 'object',
         properties: {
-          id: { type: 'integer', description: 'Number of the item, like 3 for [3].' },
+          id: { type: 'integer', description: 'Number of the detail, like 3 for [3].' },
+          summary: { type: 'string', description: `The entry's summary without what goes (at most ${MEMORY_LIMITS.summaryChars} characters), when it says it.` },
           quote: { type: 'string', description: 'The user\'s own words asking for it, copied exactly from a message they typed.' },
         },
         required: ['id', 'quote'],
@@ -938,7 +958,16 @@ export function createMemoryTools(rt: Runtime): Tool[] {
       if (!q.ok) return { content: `Nothing changed: ${q.reason}.`, isError: true };
       const it = rt.memory.get(Number(input.id));
       if (!it || it.owner !== ownerOf(s)) return { content: `Nothing changed: there is no item [${String(input.id)}] in your memory.`, isError: true };
-      const card = rt.memory.forget(it.id, 'assistant', ctx);
+      // a new summary: what is left of the entry, under the same rules as remember's
+      const summary = typeof input.summary === 'string' && input.summary.trim() ? input.summary.trim() : undefined;
+      const entry = it.entryId !== undefined ? rt.memory.entry(it.entryId) : undefined;
+      if (summary && entry) {
+        const problem = entryProblem({ name: entry.name, summary }, String(input.quote ?? ''), (t) => rt.redact(t));
+        if (problem) return { content: `Nothing changed: ${problem}.`, isError: true };
+        const known = rt.memory.details(entry.id, ownerOf(s)).map((m) => `${m.text}|${m.quote}`).join('|') + `|${entry.name}|${entry.summary}`;
+        if (entryFromOutside(s, summary, known)) return { content: "Nothing changed: part of the summary comes from outside content, not from the user's words or the entry. Leave that part out.", isError: true };
+      }
+      const card = rt.memory.forget(it.id, 'assistant', ctx, entry ? summary : undefined);
       if (!card) return { content: `Nothing changed: [${it.id}] is not in your memory any more.` };
       return { content: `Forgot [${it.id}].` };
     },

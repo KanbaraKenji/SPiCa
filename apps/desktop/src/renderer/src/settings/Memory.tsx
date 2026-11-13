@@ -374,7 +374,8 @@ export function changeStands(c: MemoryTidyChange, run: MemoryTidyRun, items: Mem
 /** What a tidy did in words: its changes, and the notes it put into entries. */
 const summary = (r: MemoryTidyRun) => {
   if (r.status === 'failed') return '整理失败';
-  const parts = [...(r.changes.length ? [`${r.changes.length} 条改动`] : []), ...(r.grouped?.length ? [`归入 ${r.grouped.length} 条`] : [])];
+  const summaries = (r.entries ?? []).filter((e) => e.before).length;
+  const parts = [...(r.changes.length ? [`${r.changes.length} 条改动`] : []), ...(r.grouped?.length ? [`归入 ${r.grouped.length} 条`] : []), ...(summaries ? [`更新摘要 ${summaries} 个`] : [])];
   return parts.length ? parts.join('，') : '无改动';
 };
 
@@ -387,14 +388,23 @@ export function groupedNow(run: MemoryTidyRun, items: MemoryItem[] | null, entri
   });
 }
 
+/** The entries whose summary a tidy rewrote, as it left them (one changed since is left out). */
+export function summarizedNow(run: MemoryTidyRun, entries: MemoryEntry[] | null): { name: string; summary: string }[] {
+  return (run.entries ?? []).flatMap((t) => {
+    const e = t.before ? entries?.find((x) => x.id === t.entry && x.updatedAt === t.at) : undefined;
+    return e ? [{ name: e.name, summary: e.summary }] : [];
+  });
+}
+
 function TidyGroup({ tidy, enabled, items, entries }: { tidy: MemoryTidy; enabled: boolean; items: MemoryItem[] | null; entries: MemoryEntry[] | null }) {
   const [problem, setProblem] = useState<string | null>(null);
   const last = tidy.runs?.[0];
   const running = last?.status === 'running';
   // the changes shown are the latest tidy's that changed something (a later one with nothing to change does not hide them)
-  const shown = tidy.runs?.find((r) => r.status === 'done' && (r.changes.length > 0 || (r.grouped?.length ?? 0) > 0));
+  const shown = tidy.runs?.find((r) => r.status === 'done' && (r.changes.length > 0 || (r.grouped?.length ?? 0) > 0 || (r.entries ?? []).some((e) => e.before)));
   const grouped = shown ? groupedNow(shown, items, entries) : [];
-  const open = shown ? shown.changes.some((c) => changeStands(c, shown, items)) || grouped.length > 0 : false;
+  const summarized = shown ? summarizedNow(shown, entries) : [];
+  const open = shown ? shown.changes.some((c) => changeStands(c, shown, items)) || grouped.length > 0 || summarized.length > 0 : false;
   return (
     <Group
       title="整理"
@@ -443,6 +453,13 @@ function TidyGroup({ tidy, enabled, items, entries }: { tidy: MemoryTidy; enable
                   撤销
                 </button>
               ) : null}
+            </li>
+          ))}
+          {summarized.map((g, i) => (
+            <li key={`${shown.id}-s${i}`} className="setting-row memory-tidy-change">
+              <span className="memory-text" title={`更新摘要「${g.name}」：${g.summary}`} data-tip-clipped="">
+                {`更新摘要「${g.name}」：${g.summary}`}
+              </span>
             </li>
           ))}
           {grouped.map((g, i) => (

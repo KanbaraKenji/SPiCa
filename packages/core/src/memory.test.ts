@@ -453,6 +453,25 @@ describe('entries', () => {
     expect(rt.memory.entries().map((e) => e.name)).toEqual(['回答习惯']);
   });
 
+  it("forget can give the entry the summary that is left (what the prompt reads); its undo puts the summary back", async () => {
+    const rt = makeRuntime(gw, { cwd: dir });
+    const made = rt.memory.addOwn('报价单金额一律写含税价', { name: '报价单', summary: '金额写含税价；发出前抄送王经理', category: 'areas' }) as { entry: { id: number } };
+    rt.memory.addOwn('报价单发出前要抄送王经理', made.entry.id);
+    gw.enqueue(forget({ id: 2, quote: '抄送那条别记了', summary: '金额写含税价' }), { text: '好' });
+    const s = rt.createSession();
+    await s.send('抄送那条别记了').done;
+    expect(lastResult(rt, s.id)).toContain('Forgot [2].');
+    expect(rt.memory.promptBlock()).toContain('- 报价单 (areas): 金额写含税价 — 1 detail');
+    expect(rt.memory.promptBlock()).not.toContain('抄送');
+    rt.memory.undo(2);
+    expect(rt.memory.entry(made.entry.id)!.summary).toBe('金额写含税价；发出前抄送王经理');
+    // a summary that looks like a secret is refused, and nothing is forgotten
+    gw.enqueue(forget({ id: 2, quote: '抄送那条别记了', summary: '密码是 hunter2' }), { text: '好' });
+    await s.send('抄送那条别记了').done;
+    expect(lastResult(rt, s.id)).toMatch(/Nothing changed: .*password/);
+    expect(rt.memory.get(2)!.status).toBe('active');
+  });
+
   it('the settings: add to a new entry or one there is, change an entry, delete a detail or a whole entry', async () => {
     const rt = makeRuntime(gw, { cwd: dir });
     const api = createAgentApi(rt);
