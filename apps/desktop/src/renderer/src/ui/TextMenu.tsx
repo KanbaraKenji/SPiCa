@@ -34,12 +34,15 @@ function menuFor(e: MouseEvent, edit: (c: EditCommand) => void): MenuItem[] | nu
   const field = fieldOf(e.target);
   if (field) {
     if (field.disabled) return null;
+    // A number or email box tells no selection (null) and refuses to be given one: what is selected there is not
+    // known, so 剪切 and 复制 stay on while it has words, and focusing it again brings its own selection back.
+    const ranged = field.selectionStart !== null;
     const start = field.selectionStart ?? 0;
     const end = field.selectionEnd ?? 0;
-    const selected = end > start && field.type !== 'password';
+    const selected = field.type !== 'password' && (ranged ? end > start : field.value !== '');
     const run = (c: EditCommand) => () => {
       field.focus({ preventScroll: true });
-      field.setSelectionRange(start, end);
+      if (ranged) field.setSelectionRange(start, end);
       edit(c);
     };
     return [

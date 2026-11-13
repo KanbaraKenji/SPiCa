@@ -101,6 +101,21 @@ describe('right click in a text box (the input box, a field in 设置)', () => {
     expect(labels()).toEqual(['剪切（灰）', '复制（灰）', '粘贴', '全选']);
   });
 
+  it('a number box (同时请求, 每分钟请求) tells no selection: 剪切 and 复制 while it has words, and the command still runs', () => {
+    const edit = vi.fn();
+    const host = page('<input id="n" type="number" value="30"><input id="z" type="number" value="">');
+    render(<TextMenu edit={edit} />);
+    const n = host.querySelector<HTMLInputElement>('#n')!;
+    expect(n.selectionStart).toBeNull();
+    rightClick(n);
+    expect(labels()).toEqual(['剪切', '复制', '粘贴', '全选']);
+    fireEvent.click(screen.getByRole('menuitem', { name: '复制' }));
+    expect(edit).toHaveBeenLastCalledWith('copy');
+    expect(document.activeElement).toBe(n);
+    rightClick(host.querySelector('#z')!);
+    expect(labels()).toEqual(['剪切（灰）', '复制（灰）', '粘贴', '全选（灰）']);
+  });
+
   it('the menu’s keys: Down skips the greyed items, Esc closes it and nothing runs', () => {
     const edit = vi.fn();
     const host = page('<textarea>报价单</textarea>');
