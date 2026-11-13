@@ -245,7 +245,8 @@ function useWidth(): [React.RefObject<HTMLDivElement | null>, number] {
 
 const AXIS_W = 44;
 const LABEL_H = 18;
-const CHART_H = 180;
+// taller than it was (his old design's chart is about a third taller)
+const CHART_H = 240;
 
 interface Hover {
   col: UsageColumn;
@@ -406,6 +407,7 @@ function RequestChart({ view, bucket, provider, byModel, pluginName }: ChartProp
         <div className="usage-tip" style={tipSide(hover.x, width)} role="tooltip">
           <div className="usage-tip-title">
             <span>{tipTitle(hover.col, bucket)}</span>
+            {hover.col.noData ? null : <span className="usage-num">{hover.col.requestCount.toLocaleString('en-US')}</span>}
           </div>
           {hover.col.noData ? (
             <div className="usage-tip-empty">无记录</div>
@@ -485,11 +487,13 @@ function tipTitle(c: UsageColumn, bucket: UsageQuery['bucket']): string {
 function ModelRows({ view, col, provider, value, limited }: { view: UsageView; col: UsageColumn; provider: (id: string) => string; value(c: UsageColumn, key: string): number; limited?: boolean }) {
   const rows = view.series.map((s) => ({ s, v: value(col, s.key), l: col.limited[s.key] ?? 0 })).filter((r) => r.v > 0);
   if (rows.length < 2) return null;
+  // no provider column: a model name two providers have says its provider after it
+  const twice = new Set(rows.map((r) => r.s.model).filter((m, i, all) => all.indexOf(m) !== i));
   return (
     <>
       <div className="usage-tip-head">按模型</div>
       {rows.map(({ s, v, l }) => (
-        <TipRow key={s.key} name={s.model} provider={s.providerId ? provider(s.providerId) : ''} value={v} {...(limited && l ? { limited: l } : {})} />
+        <TipRow key={s.key} name={s.model} {...(twice.has(s.model) && s.providerId ? { provider: provider(s.providerId) } : {})} value={v} {...(limited && l ? { limited: l } : {})} />
       ))}
     </>
   );
@@ -516,25 +520,22 @@ function ModuleRows({ col, value, pluginName, limited }: { col: UsageColumn; val
 }
 
 /**
- * One line of a hover card, in the card's columns: a colour mark, the name, the provider (quieter), the number
- * (right), and a model's 429 answers in red in their own column ((22)), so every number stands in one column.
- * A line without a mark (the models', the modules') starts at the card's left edge: its name takes the mark's
- * column too; without a provider it takes that column as well.
+ * One line of a hover card, as his old design: a round mark and the name on the left, the number bold and flush right;
+ * a model's 429 answers in red just before its number ((22)), so every number ends at the card's right edge. The
+ * chart's series have their colour; the models and modules a quiet mark, so every name starts in one place.
  */
 function TipRow({ mark, name, provider, value, limited, limitedRow }: { mark?: string; name: string; provider?: string; value: number; limited?: number; limitedRow?: boolean }) {
   return (
     <div className={limitedRow ? 'usage-tip-row is-limited' : 'usage-tip-row'}>
-      {mark ? (
-        <span className="usage-tip-mark">
-          <span className={mark === 'danger' ? 'usage-swatch is-limited' : 'usage-swatch'} style={mark === 'danger' ? undefined : { background: mark }} />
-        </span>
-      ) : null}
-      <span className={provider === undefined ? 'usage-tip-name is-wide' : 'usage-tip-name'} style={{ gridColumn: `span ${1 + (mark ? 0 : 1) + (provider === undefined ? 1 : 0)}` }}>
-        {name}
+      <span className="usage-tip-mark">
+        <span className={mark === 'danger' ? 'usage-swatch is-limited' : mark ? 'usage-swatch' : 'usage-swatch is-plain'} style={mark && mark !== 'danger' ? { background: mark } : undefined} />
       </span>
-      {provider === undefined ? null : <span className="usage-tip-provider">{provider}</span>}
-      <span className="usage-num">{value.toLocaleString('en-US')}</span>
+      <span className="usage-tip-name">
+        {name}
+        {provider ? <span className="usage-tip-provider"> · {provider}</span> : null}
+      </span>
       <span className="usage-limited-num">{limited ? `(${limited.toLocaleString('en-US')})` : ''}</span>
+      <span className="usage-num">{value.toLocaleString('en-US')}</span>
     </div>
   );
 }

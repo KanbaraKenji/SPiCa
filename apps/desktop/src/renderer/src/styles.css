@@ -7355,7 +7355,7 @@ section.plugins-part > .plugins-part-title {
 
 .usage-axis {
   fill: var(--spica-muted);
-  font-size: var(--fs-caption);
+  font-size: var(--fs-footnote);
   font-variant-numeric: tabular-nums;
 }
 
@@ -7415,39 +7415,51 @@ section.plugins-part > .plugins-part-title {
   position: absolute;
   top: 0;
   z-index: 2;
-  /* as wide as the names need, never past the chart (it opens toward the side with room, settings/Usage.tsx tipSide) */
+  /* as wide as the names need, never past the chart (it opens toward the side with room, settings/Usage.tsx tipSide);
+     sized after his old design: about 275 wide, 12 inside, lines 22 apart, the numbers bold and flush right */
   width: max-content;
-  min-width: 160px;
+  min-width: 260px;
   max-width: 100%;
   box-sizing: border-box;
-  padding: 8px 10px;
-  border-radius: var(--radius-m);
+  padding: 10px 12px 12px;
+  border: 1px solid var(--spica-border);
+  border-radius: var(--radius-l);
   background: var(--spica-menu);
   box-shadow: var(--spica-shadow);
-  font-size: var(--fs-footnote);
-  line-height: var(--lh-footnote);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   pointer-events: none;
 }
 
+/* the date on the left, the column's total on the right, both bold; a line under them */
 .usage-tip-title {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 4px;
-  color: var(--spica-muted);
+  gap: 24px;
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--spica-divider);
+  color: var(--spica-ink);
+  font-size: var(--fs-heading);
+  font-weight: 600;
+}
+
+.usage-tip-title .usage-num {
+  font-variant-numeric: tabular-nums;
 }
 
 .usage-tip-empty {
   color: var(--spica-muted);
 }
 
-/* The card's lines in columns: mark, name, provider, number (right), a model's 429 (red, right). Every line is a
-   row of the grid (display: contents), so names, providers and numbers each line up. */
+/* The card's lines in columns: a round mark, the name, a model's 429 answers (red), the number flush right. Every
+   line is a row of the grid (display: contents), so the numbers each line up at the card's right edge. */
 .usage-tip-grid {
   display: grid;
-  /* the mark's column stays as wide as the mark: the names that take it too do not widen it */
-  grid-template-columns: 8px auto auto auto auto;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
   align-items: center;
+  /* lines 22 apart, as his old design (the body line and 2 between) */
+  row-gap: 2px;
   column-gap: 8px;
 }
 
@@ -7461,35 +7473,45 @@ section.plugins-part > .plugins-part-title {
 
 .usage-tip-mark .usage-swatch {
   margin-right: 0;
+  border-radius: 50%;
 }
 
+/* lines that are not a series of the chart (the models', the modules'): a quiet mark, so every name starts in one place */
+.usage-tip-mark .usage-swatch.is-plain {
+  background: var(--spica-faint);
+}
+
+/* names quieter than the numbers (his old design: grey names, white bold numbers) */
 .usage-tip-name {
-  white-space: nowrap;
-}
-
-/* a line without a mark or a provider: its name takes those columns too (the span is set on it, settings/Usage.tsx
-   TipRow), so the models' and the modules' names start at the card's left edge */
-.usage-tip-provider {
+  padding-right: 16px;
   color: var(--spica-muted);
   white-space: nowrap;
 }
 
+/* the provider only after a model name two providers have */
+.usage-tip-provider {
+  color: var(--spica-faint);
+}
+
 .usage-tip-grid .usage-num {
-  padding-left: 12px;
+  color: var(--spica-ink);
+  font-weight: 600;
   text-align: right;
   white-space: nowrap;
 }
 
-.usage-tip-row.is-limited > * {
+.usage-tip-row.is-limited > *,
+.usage-tip-row.is-limited .usage-num {
   color: var(--spica-danger);
 }
 
 .usage-tip-head {
   grid-column: 1 / -1;
-  margin-top: 6px;
+  margin-top: 4px;
   color: var(--spica-muted);
 }
 
+/* a model's or a module's 429 answers: red, just before its number (the numbers stay flush right) */
 .usage-limited-num {
   color: var(--spica-danger);
   text-align: right;

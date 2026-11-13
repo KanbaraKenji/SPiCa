@@ -44,6 +44,8 @@ export const DEMO_MODELS: readonly DemoModel[] = [
   { providerId: 'anthropic', model: 'claude-sonnet-4-5', daily: 18, price: [3, 15] },
   { providerId: 'anthropic', model: 'claude-haiku-4-5', daily: 9, price: [1, 5] },
   { providerId: 'gateway', model: 'gateway-model', daily: 7, price: null },
+  // the same model name through another provider (the hover card tells them apart)
+  { providerId: 'gateway', model: 'deepseek-chat', daily: 5, price: null },
 ];
 
 /** Days with a burst of 429 answers (days before `now`) and the model that got them. */

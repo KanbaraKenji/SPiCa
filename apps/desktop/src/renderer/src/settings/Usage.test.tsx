@@ -215,7 +215,7 @@ describe('one model or all', () => {
     expect(tip.querySelector('.usage-tip-head')?.textContent).toBe('按功能模块');
     const lines = [...tip.querySelectorAll('.usage-tip-row')].map((r) => r.textContent);
     // the other model's request is not in it; a plugin's borrowing and its view are one module
-    expect(lines).toEqual(['请求5', '4291', '对话1', '记忆整理1', '插件 笔记（示例）2(1)', '插件 gone1']);
+    expect(lines).toEqual(['请求5', '4291', '对话1', '记忆整理1', '插件 笔记（示例）(1)2', '插件 gone1']);
     // tokens: by module too
     await act(async () => {
       fireEvent.click(screen.getByRole('radio', { name: 'Token' }));
@@ -267,20 +267,34 @@ describe('the requests chart', () => {
     // 7 days ending the 13th: the 12th is the sixth column
     fireEvent.mouseEnter(cols[5]!);
     const tip = document.querySelector('.usage-tip')!;
+    // the date on the left, the column's requests on the right (as his old design)
+    expect(tip.querySelector('.usage-tip-title')?.textContent).toBe('2026-11-123');
     const lines = [...tip.querySelectorAll('.usage-tip-row')].map((r) => r.textContent);
     expect(lines.slice(0, 2)).toEqual(['请求3', '4291']);
     expect(tip.querySelector('.usage-tip-head')?.textContent).toBe('按模型');
-    expect(lines).toContain('deepseek-chatdeepseek2(1)');
-    // the model's 429 answers in their own column
-    expect([...tip.querySelectorAll('.usage-limited-num')].map((n) => n.textContent).filter(Boolean)).toEqual(['(1)']);
-    // the models' lines have no mark: the name starts at the card's left edge (it takes the mark's column), as 按模型
+    // no provider column; the model's 429 answers in red just before its number, which ends the line
+    expect(lines).toContain('deepseek-chat(1)2');
     const model = [...tip.querySelectorAll('.usage-tip-row')].find((r) => r.textContent?.startsWith('deepseek-chat'))!;
-    expect(model.querySelector('.usage-tip-mark')).toBeNull();
-    expect((model.querySelector('.usage-tip-name') as HTMLElement).style.gridColumn).toBe('span 2');
-    // the totals keep their mark; with no provider the name takes that column too
-    const total = [...tip.querySelectorAll('.usage-tip-row')][0]!;
-    expect(total.querySelector('.usage-tip-mark')).toBeTruthy();
-    expect((total.querySelector('.usage-tip-name') as HTMLElement).style.gridColumn).toBe('span 2');
+    expect([...model.children].map((c) => c.className)).toEqual(['usage-tip-mark', 'usage-tip-name', 'usage-limited-num', 'usage-num']);
+    expect(model.querySelector('.usage-tip-provider')).toBeNull();
+    // every line has its mark, so every name starts in one place: the chart's series coloured, the models quiet
+    expect(model.querySelector('.usage-swatch.is-plain')).toBeTruthy();
+    expect([...tip.querySelectorAll('.usage-tip-row')][0]!.querySelector('.usage-swatch.is-plain')).toBeNull();
+  });
+
+  it('a model name two providers have says its provider after it (no provider column)', async () => {
+    const summary = vi.fn(async (q: UsageQuery): Promise<UsageSummary> =>
+      summarizeRequests([...RECORDS, rec('2026-11-12T05:00:00Z', { providerId: 'gateway', model: 'deepseek-chat' })], q, '2026-11-12T02:00:00Z'),
+    );
+    render(<Usage api={{ summary, providerNames: async () => ({ deepseek: 'DeepSeek', gateway: '公司网关' }) }} now={() => new Date('2026-11-13T12:00:00Z')} />);
+    await screen.findByRole('img', { name: 'Token 用量' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: '请求' }));
+    });
+    fireEvent.mouseEnter([...screen.getByRole('img', { name: '请求数' }).querySelectorAll('rect[fill="transparent"]')][5]!);
+    const names = [...document.querySelectorAll('.usage-tip .usage-tip-name')].map((n) => n.textContent);
+    expect(names).toContain('deepseek-chat · DeepSeek');
+    expect(names).toContain('deepseek-chat · 公司网关');
   });
 
   it('the token bars are by kind, and the hover card says each kind', async () => {
