@@ -1,5 +1,6 @@
-// The demo backend's memory: the same rules as the core's MemoryBook (items are
-// never deleted, a replacement and an undo can be taken back), kept in memory.
+// The demo backend's memory: the same rules as the core's MemoryBook (a
+// replacement and an undo can be taken back; deleting in the settings is for
+// good, with the older versions), kept in memory.
 // Also how the demo decides what a message asks it to remember, so a demo
 // conversation shows the 已记住 / 已更新 / 已忘记 line.
 import type { CoreEventBody, MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyChange, MemoryTidyRun } from '@spica/protocol';
@@ -39,6 +40,8 @@ export class FakeMemory {
   #items: MemoryItem[] = [];
   #next = 1;
   #runs: MemoryTidyRun[] = [];
+  /** The messages ("sessionId#seq") of items deleted for good: a tidy does not note them again. */
+  readonly #deletedFrom = new Set<string>();
   #cursor: string | undefined;
   #enabled = true;
   readonly #now: () => string;
@@ -83,7 +86,7 @@ export class FakeMemory {
     for (const m of fresh) {
       if (changes.filter((c) => c.action === 'added').length >= 3) break;
       if (!/以后|习惯|一般|每周|总是/.test(m.text) || /记住|别记|忘掉/.test(m.text) || SECRET.test(m.text)) continue;
-      if (this.#items.some((x) => (x.sessionId === m.sessionId && x.seq === m.seq) || overlap(m.text, x.text) >= 0.5)) continue;
+      if (this.#deletedFrom.has(`${m.sessionId}#${m.seq}`) || this.#items.some((x) => (x.sessionId === m.sessionId && x.seq === m.seq) || overlap(m.text, x.text) >= 0.5)) continue;
       const text = m.text.replace(/^(跟你说一下|对了)[，,：:\s]*/, '').replace(/^我/, '').slice(0, ITEM_CHARS);
       changes.push({ action: 'added', item: this.#put({ id: this.#next++, owner: 'user', text, quote: m.text, status: 'active', sessionId: m.sessionId, seq: m.seq, by: 'assistant', tidyId: id, createdAt: now, updatedAt: now }) });
     }
@@ -193,12 +196,41 @@ export class FakeMemory {
     return quiet ? card : this.#changed(card);
   }
 
+  /** Settings 删除: the item goes for good, with the replaced items behind it. */
+  delete(id: number): MemoryCardMeta | undefined {
+    const it = this.#get(id);
+    if (!it || it.status !== 'active') return undefined;
+    this.#drop(it.id);
+    return this.#changed({ action: 'deleted', item: structuredClone(it) });
+  }
+
+  /** Settings 全部清除: every active item goes for good, as with delete. */
   clear(): number {
-    const now = this.#now();
     const active = this.#items.filter((m) => m.status === 'active');
-    for (const m of active) this.#put({ ...m, status: 'forgotten', by: 'user', updatedAt: now });
+    for (const m of active) this.#drop(m.id);
     this.#changed({ action: 'cleared', count: active.length });
     return active.length;
+  }
+
+  #drop(id: number): void {
+    const ids = [id];
+    for (let i = 0; i < ids.length; i++) for (const m of this.#items) if (m.status === 'replaced' && m.replacedBy === ids[i] && !ids.includes(m.id)) ids.push(m.id);
+    for (const m of this.#items) if (ids.includes(m.id) && m.sessionId && m.seq !== undefined) this.#deletedFrom.add(`${m.sessionId}#${m.seq}`);
+    this.#items = this.#items.filter((m) => !ids.includes(m.id));
+  }
+
+  /** Regenerate: takes back what the old answer's cards did, newest first, where nothing touched the item since. */
+  revert(cards: MemoryCardMeta[]): void {
+    const mine = new Set<number>(); // changed by this revert (a note the answer saved, then changed)
+    for (const card of [...cards].reverse()) {
+      const made = card.item;
+      const cur = made && this.#get(made.id);
+      if (!made || !cur || !['saved', 'replaced', 'forgotten'].includes(card.action)) continue;
+      if (cur.status !== made.status || (cur.updatedAt !== made.updatedAt && !mine.has(made.id))) continue;
+      const done = this.undo(made.id);
+      if (done?.item) mine.add(done.item.id);
+      if (done?.previous) mine.add(done.previous.id);
+    }
   }
 
   undo(id: number): MemoryCardMeta | undefined {

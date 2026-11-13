@@ -9,13 +9,14 @@
 // - a rewrite or a forget rests on a message newer than the note;
 // - the same rules as remember (length, secrets, private matters), and in a
 //   turn that read outside content the same two limits;
-// - nothing deleted, undone or replaced comes back as an addition;
+// - nothing deleted, undone or replaced comes back as an addition (a note
+//   deleted for good in the settings leaves only the message it came from);
 // - a rewrite or merge keeps the old notes' details (people named with a
 //   title, numbers) unless the user's newer words change them;
 // - a merge is made of the merged notes' words and is shorter than them, and
 //   notes whose merge the user undid are not merged again.
 // A tidy is one group of changes: the whole group or one change can be undone.
-// Nothing is deleted outright (replaced and forgotten keep their status).
+// A tidy deletes nothing outright (replaced and forgotten keep their status).
 import type { Runtime } from './runtime.ts';
 import type { MemoryItem, MemoryTidyChange, MemoryTidyRun } from './types.ts';
 import type { SessionRecord } from './store/types.ts';
@@ -189,6 +190,7 @@ export function check(rt: Runtime, proposed: Record<string, unknown>[], fed: Fed
   const all = rt.store.listMemories(owner, { all: true });
   const active = new Map(all.filter((m) => m.status === 'active').map((m) => [m.id, m]));
   const gone = all.filter((m) => m.status !== 'active');
+  const deleted = new Set(rt.store.deletedMemorySources(owner));
   const byRef = new Map(fed.map((f) => [f.ref, f]));
   const touched = new Set<number>();
   const plans: Plan[] = [];
@@ -222,6 +224,7 @@ export function check(rt: Runtime, proposed: Record<string, unknown>[], fed: Fed
       const known =
         // said already, or deleted, undone or replaced before: not added back
         all.some((m) => m.sessionId === src?.from.sessionId && m.seq === src?.from.seq) ||
+        (src !== undefined && deleted.has(`${src.from.sessionId}#${src.from.seq}`)) ||
         [...active.values()].some((m) => overlap(text, m.text) >= 0.8) ||
         gone.some((m) => overlap(text, m.text) >= 0.6);
       if (!src || problem || known || adds >= TIDY_LIMITS.adds) {

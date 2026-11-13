@@ -1,5 +1,5 @@
 // 设置 › 记忆: the switch, what the assistant remembers (newest first), adding one, editing, deleting
-// and clearing all. Items are never deleted in the core: a deleted one is kept as forgotten.
+// and clearing all. Deleting and clearing are for good (the core drops the items and their older versions).
 import { useState } from 'react';
 import type { MemoryCardMeta, MemoryItem, MemoryRefusal, MemoryTidyChange, MemoryTidyRun } from '@spica/protocol';
 import { Switch } from './Switch';
@@ -172,6 +172,7 @@ function TidyGroup({ tidy, enabled, items }: { tidy: MemoryTidy; enabled: boolea
   return (
     <Group
       title="整理"
+      after={problem ? <p className="provider-result is-bad group-note" role="alert">{problem}</p> : null}
       actions={
         <>
           {open && shown ? (
@@ -193,20 +194,24 @@ function TidyGroup({ tidy, enabled, items }: { tidy: MemoryTidy; enabled: boolea
         </>
       }
     >
-      <Pane>
-      <p className="settings-hint memory-tidy-last">
-        {last && last.status !== 'running' ? `最近一次：${timeOf(last.endedAt ?? last.startedAt)} · ${summary(last)}` : last ? '整理中' : '最近一次：—'}
-      </p>
-      {problem ? <span className="field-error" role="alert">{problem}</span> : null}
-      {shown && shown !== last ? <p className="settings-hint memory-tidy-last">{`${timeOf(shown.endedAt ?? shown.startedAt)} · ${summary(shown)}`}</p> : null}
-      </Pane>
+      {/* the latest tidy as a row of the box: its name, when and what it changed in grey (as every row's grey line) */}
+      <Row
+        title="最近一次"
+        className="memory-tidy-last"
+        hint={
+          <>
+            {last && last.status !== 'running' ? `${timeOf(last.endedAt ?? last.startedAt)} · ${summary(last)}` : last ? '整理中' : '—'}
+            {shown && shown !== last ? <span className="memory-tidy-shown">{`${timeOf(shown.endedAt ?? shown.startedAt)} · ${summary(shown)}`}</span> : null}
+          </>
+        }
+      />
       {shown ? (
         <ul className="memory-list memory-tidy-list group-list">
           {shown.changes.map((c, i) => (
-            <li key={`${shown.id}-${i}`} className="turn-note memory-note memory-tidy-change">
-              {tidyChangeText(c)}
+            <li key={`${shown.id}-${i}`} className="setting-row memory-tidy-change">
+              <span className="memory-text">{tidyChangeText(c)}</span>
               {changeStands(c, shown, items) ? (
-                <button type="button" className="text-btn memory-undo" onClick={() => void tidy.undo(shown.id, i)}>
+                <button type="button" className="btn btn-small memory-undo" onClick={() => void tidy.undo(shown.id, i)}>
                   撤销
                 </button>
               ) : null}
@@ -235,12 +240,13 @@ function MemoryRow({ item, title, onOpenSession, onEdit, onDelete }: { item: Mem
           ) : null}
         </span>
       </div>
+      {/* square icon buttons as elsewhere in the settings (删除 as 模型 › 服务商 and 插件来源: the quiet red) */}
       <div className="memory-actions">
-        <button type="button" className="icon-btn" aria-label="编辑" title="编辑" onClick={onEdit}>
-          <Icon name="pencil" size={15} />
+        <button type="button" className="btn btn-small btn-square" aria-label="编辑" title="编辑" onClick={onEdit}>
+          <Icon name="pencil" size={14} />
         </button>
-        <button type="button" className="icon-btn" aria-label="删除" title="删除" onClick={onDelete}>
-          <Icon name="trash" size={15} />
+        <button type="button" className="btn btn-small btn-quiet-danger btn-square" aria-label="删除" title="删除" onClick={onDelete}>
+          <Icon name="trash" size={14} />
         </button>
       </div>
     </li>

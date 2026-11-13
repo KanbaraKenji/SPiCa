@@ -54,6 +54,20 @@ export class MemoryStore implements Store {
   setMemoryCursor(owner: string, at: string): void {
     this.#cursors.set(owner, at);
   }
+  readonly #deletedSources = new Map<string, Set<string>>();
+  deleteMemories(owner: string, ids: number[]): void {
+    const sources = this.#deletedSources.get(owner) ?? new Set<string>();
+    for (const id of ids) {
+      const m = this.#memories.get(id);
+      if (!m || m.owner !== owner) continue;
+      if (m.sessionId && m.seq !== undefined) sources.add(`${m.sessionId}#${m.seq}`);
+      this.#memories.delete(id);
+    }
+    this.#deletedSources.set(owner, sources);
+  }
+  deletedMemorySources(owner: string): string[] {
+    return [...(this.#deletedSources.get(owner) ?? [])];
+  }
   listMemories(owner: string, opts: { all?: boolean } = {}): MemoryItem[] {
     return [...this.#memories.values()]
       .filter((m) => m.owner === owner && (opts.all || m.status === 'active'))

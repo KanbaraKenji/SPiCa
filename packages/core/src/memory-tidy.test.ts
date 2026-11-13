@@ -57,7 +57,7 @@ async function setup(rt: Rt) {
   rt.memory.add({ text: '回答要短一点', quote: '回答要短一点', by: 'user' });
   rt.memory.add({ text: '周报每周五发', quote: '周报每周五发', by: 'user' });
   const blue = rt.memory.add({ text: '喜欢蓝色', quote: '我喜欢蓝色', sessionId: a.id, seq: seqOf('蓝色'), by: 'assistant' });
-  rt.memory.forget(blue.item!.id, 'user'); // deleted in the settings: not to come back
+  rt.memory.forget(blue.item!.id, 'user'); // forgotten (the line in the conversation): not to come back
   await pause();
   const b = rt.createSession();
   for (const t of ['数据处理现在改用 Julia 了。', '周报不用发了，那条别记了。', '我负责开单系统。', '记住我喜欢蓝色。', '我的密码是 hunter2']) await b.send(t).done;
@@ -159,6 +159,21 @@ describe('tidying the memory', () => {
     await rt.createSession().send('还有一件事').done;
     rt.memory.tidy('user');
     expect(await done(rt)).toMatchObject({ changes: [], refused: 1 });
+  });
+
+  it('a note deleted in the settings is not noted again from the message it came from', async () => {
+    const rt = makeRuntime(gw, { cwd: dir });
+    gw.onRequest((req) => {
+      if (!isTidy(req.body)) return { text: '好' };
+      const ref = refOf(userText(req.body), '主要用 Python');
+      return { text: JSON.stringify({ changes: [{ action: 'added', text: '数据处理主要用 Python', ref, quote: '我数据处理主要用 Python' }] }) };
+    });
+    await setup(rt);
+    const python = rt.memory.list().find((m) => m.text.includes('Python'))!;
+    expect(rt.memory.delete(python.id)).toMatchObject({ action: 'deleted' });
+    rt.memory.tidy('user');
+    expect(await done(rt)).toMatchObject({ status: 'done', changes: [], refused: 1 });
+    expect(rt.memory.list().some((m) => m.text.includes('Python'))).toBe(false);
   });
 
   it('a failed tidy changes nothing and the next one reads the same messages again', async () => {

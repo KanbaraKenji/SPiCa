@@ -141,6 +141,80 @@ describe('regenerating the last answer', () => {
     await rt.close();
   });
 
+  it('what the old answer did to the memory is taken back before the new answer runs; changes touched since stay', async () => {
+    const rt = makeRuntime(gw, { cwd: dir });
+    rt.memory.add({ text: '周报每周五发', quote: 'x', by: 'user' }); // [1]
+    rt.memory.add({ text: '喜欢蓝色', quote: 'x', by: 'user' }); // [2]
+    const chat = rt.createSession();
+    gw.enqueue(
+      {
+        toolCalls: [
+          { id: 'm1', name: 'remember', args: { text: '在上海', quote: '我在上海' } },
+          { id: 'm2', name: 'remember', args: { text: '周报每周一发', quote: '周报改到周一', replaces: 1 } },
+          { id: 'f1', name: 'forget', args: { id: 2, quote: '蓝色那条别记了' } },
+        ],
+      },
+      { text: '好' },
+    );
+    await chat.send('我在上海；周报改到周一；蓝色那条别记了').done;
+    expect(rt.memory.list().map((m) => m.text)).toEqual(['在上海', '周报每周一发']);
+    // remember and forget alone do not keep the round from being regenerated
+    expect(chat.info().regenerate).toMatchObject({ ok: true });
+
+    gw.enqueue({ text: '新的回答' });
+    expect(chat.regenerate()).toMatchObject({ ok: true });
+    await until(() => chat.status === 'idle' && !chat.running);
+    await chat.idle();
+    expect(rt.memory.list().map((m) => m.text)).toEqual(['周报每周五发', '喜欢蓝色']);
+    expect(rt.memory.get(3)).toMatchObject({ status: 'forgotten', undone: true });
+    expect(rt.memory.get(4)).toMatchObject({ status: 'forgotten', undone: true });
+    // the new answer's request already had the memory as it was before the old answer
+    const system = JSON.stringify(gw.requests.at(-1)!.body.messages);
+    expect(system).toContain('周报每周五发');
+    expect(system).not.toContain('[3] 在上海');
+
+    // a save the user undid or edited since is left as it is
+    gw.enqueue(
+      { toolCalls: [{ id: 'm3', name: 'remember', args: { text: '养猫', quote: '我养猫' } }, { id: 'm4', name: 'remember', args: { text: '喝咖啡', quote: '我喝咖啡' } }] },
+      { text: '好' },
+    );
+    await chat.send('我养猫，我喝咖啡').done;
+    const cat = rt.memory.list().find((m) => m.text === '养猫')!;
+    const coffee = rt.memory.list().find((m) => m.text === '喝咖啡')!;
+    rt.memory.undo(cat.id);
+    rt.memory.edit(coffee.id, '每天喝咖啡');
+    gw.enqueue({ text: '再来' });
+    expect(chat.regenerate()).toMatchObject({ ok: true });
+    await until(() => chat.status === 'idle' && !chat.running);
+    await chat.idle();
+    expect(rt.memory.get(cat.id)).toMatchObject({ status: 'forgotten', undone: true });
+    expect(rt.memory.get(coffee.id)).toMatchObject({ status: 'active', text: '每天喝咖啡' });
+
+    // one answer that saved a note and then changed it: both are taken back, nothing of it stays
+    gw.enqueue(
+      { toolCalls: [{ id: 'm6', name: 'remember', args: { text: '住在杭州', quote: '我住在杭州' } }] },
+      { toolCalls: [{ id: 'm7', name: 'remember', args: { text: '住在杭州西湖区', quote: '西湖区', replaces: 7 } }] },
+      { toolCalls: [{ id: 'm8', name: 'remember', args: { text: '爱喝茶', quote: '我爱喝茶' } }] },
+      { toolCalls: [{ id: 'f2', name: 'forget', args: { id: 9, quote: '我爱喝茶' } }] },
+      { text: '好' },
+    );
+    await chat.send('我住在杭州，西湖区；我爱喝茶').done;
+    expect(rt.memory.get(7)).toMatchObject({ text: '住在杭州', status: 'replaced' });
+    expect(rt.memory.get(9)).toMatchObject({ text: '爱喝茶', status: 'forgotten' });
+    gw.enqueue({ text: '再说一遍' });
+    expect(chat.regenerate()).toMatchObject({ ok: true });
+    await until(() => chat.status === 'idle' && !chat.running);
+    await chat.idle();
+    for (const id of [7, 8, 9]) expect(rt.memory.get(id)).toMatchObject({ status: 'forgotten', undone: true });
+
+    // with another tool that may have changed something, the round still cannot be regenerated
+    rt.tools.register(tool('poke'), 'p');
+    gw.enqueue({ toolCalls: [{ id: 'm5', name: 'remember', args: { text: '在北京', quote: '我在北京' } }, { id: 'p1', name: 'poke', args: {} }] }, { text: '好' });
+    await chat.send('我在北京').done;
+    expect(chat.info().regenerate).toMatchObject({ ok: false, code: 'regenerate.acted' });
+    await rt.close();
+  });
+
   it('a round that wrote files, ran a tool not declared read-only or started sub-agents cannot be regenerated', async () => {
     const rt = makeRuntime(gw, { cwd: dir });
     rt.tools.register(tool('lookup', { readOnly: true }), 'p');

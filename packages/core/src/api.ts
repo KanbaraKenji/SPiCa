@@ -106,7 +106,7 @@ export function createAgentApi(rt: Runtime): AgentApi {
       return rt.memory.edit(Number(id), String(text ?? ''));
     },
     async forgetMemory(id) {
-      return rt.memory.forget(Number(id), 'user');
+      return rt.memory.delete(Number(id));
     },
     async clearMemories() {
       return rt.memory.clear();

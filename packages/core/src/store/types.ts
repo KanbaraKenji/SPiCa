@@ -159,6 +159,13 @@ export interface Store {
   getMemory(id: number): MemoryItem | undefined;
   /** Oldest first; only the active ones unless `all`. */
   listMemories(owner: string, opts?: { all?: boolean }): MemoryItem[];
+  /**
+   * Deletes items for good (设置 › 记忆: 删除, 全部清除): the rows go and nothing of their text stays in the file. The
+   * messages they were saved from (sessionId#seq, no text) are kept per owner, so a tidy does not note them again.
+   */
+  deleteMemories(owner: string, ids: number[]): void;
+  /** The messages ("sessionId#seq") of items deleted for good. */
+  deletedMemorySources(owner: string): string[];
   /** Tidies of the memory. `id` 0 means a new one (numbered by the store). */
   putMemoryTidy(t: MemoryTidyRun): MemoryTidyRun;
   getMemoryTidy(id: number): MemoryTidyRun | undefined;

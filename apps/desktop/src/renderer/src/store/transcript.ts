@@ -290,15 +290,17 @@ export const MEMORY_TOOLS = new Set(['remember', 'forget']);
 
 /**
  * The 已记住 / 已更新 / 已忘记 line of a remember or forget call, as the item is now (`now`: the item in the
- * memory, with replaced and forgotten ones; undefined while not known). 撤销 only while the change still
- * stands; 已撤销 once it was undone; a change later deleted or replaced in the settings keeps its words only.
+ * memory, with replaced and forgotten ones; null once deleted for good; undefined while not known). 撤销 only
+ * while the change still stands; 已撤销 once it was undone; a change later deleted or replaced in the settings
+ * keeps its words only.
  */
-export function memoryLine(card: MemoryCardMeta, now: MemoryItem | undefined): { text: string; undo: boolean } | undefined {
+export function memoryLine(card: MemoryCardMeta, now: MemoryItem | null | undefined): { text: string; undo: boolean } | undefined {
   const item = card.item;
   if (!item) return undefined;
   const undone = card.action === 'forgotten' ? now?.status === 'active' : now?.undone === true;
   if (undone) return { text: `已撤销：${item.text}`, undo: false };
-  const stands = !now || (card.action === 'forgotten' ? now.status === 'forgotten' : now.status === 'active');
+  // null: deleted for good in the settings (the words stay, nothing to undo); undefined: the memory is not loaded yet
+  const stands = now === undefined || (now !== null && (card.action === 'forgotten' ? now.status === 'forgotten' : now.status === 'active'));
   if (card.action === 'replaced') return { text: `已更新：${item.text}${card.previous ? `（替换「${card.previous.text}」）` : ''}`, undo: stands };
   if (card.action === 'forgotten') return { text: `已忘记：${item.text}`, undo: stands };
   if (card.action === 'saved') return { text: `已记住：${item.text}`, undo: stands };

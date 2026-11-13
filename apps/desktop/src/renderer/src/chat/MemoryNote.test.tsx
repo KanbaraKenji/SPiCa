@@ -27,6 +27,11 @@ describe('the 已记住 line', () => {
     expect(memoryLine(forgotten, item(4, 'x'))).toEqual({ text: '已撤销：报告一律 A4 竖版', undo: false });
     expect(memoryLine(saved, item(1, 'x', { status: 'forgotten', by: 'user' }))).toEqual({ text: '已记住：回答简短，先给结论', undo: false });
     expect(memoryLine(replaced, item(3, 'x', { status: 'replaced', replacedBy: 5 }))).toMatchObject({ undo: false });
+    // deleted for good: the item is no longer in the memory at all
+    expect(memoryLine(saved, null)).toEqual({ text: '已记住：回答简短，先给结论', undo: false });
+    expect(memoryLine(forgotten, null)).toEqual({ text: '已忘记：报告一律 A4 竖版', undo: false });
+    // not loaded yet: shown as standing
+    expect(memoryLine(saved, undefined)).toMatchObject({ undo: true });
   });
 
   it('comes from the event while the answer runs and from the stored results when opened again', () => {

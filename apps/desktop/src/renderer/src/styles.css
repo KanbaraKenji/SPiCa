@@ -6707,24 +6707,30 @@ section.plugins-part > .plugins-part-title {
   white-space: nowrap;
 }
 
-/* 设置 › 记忆 and the 已记住 line in the conversation. */
+/* 设置 › 记忆 and the 已记住 line in the conversation. The page is made of the settings' own rows
+   (settings/Group.tsx): a note, or a change of a tidy, is a row; its buttons are the shared ones. */
 .memory-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
-.memory-row {
-  align-items: flex-start;
+.memory-text {
+  overflow-wrap: anywhere;
 }
 
+/* a change of a tidy: its words where a row's name is, 撤销 where its control is */
+.memory-tidy-change > .memory-text {
+  flex: 1 1 14em;
+  min-width: 0;
+}
 
-.memory-text,
 .memory-quote {
   overflow-wrap: anywhere;
+  /* the grey line under a row's name is as large as the name (§3) */
+  font-size: var(--fs-body);
   line-height: var(--lh-body);
 }
 
@@ -6746,8 +6752,7 @@ section.plugins-part > .plugins-part-title {
 .memory-actions {
   flex: none;
   display: flex;
-  gap: 2px;
-  margin: -4px -8px -4px 0;
+  gap: 8px;
 }
 
 .memory-edit {
@@ -6769,29 +6774,12 @@ section.plugins-part > .plugins-part-title {
 }
 
 .memory-note .memory-undo {
-  margin-left: 8px;
   white-space: nowrap;
 }
 
-/* 设置 › 记忆 › 整理: the latest tidy and its changes. */
-.memory-tidy-last {
-  margin: 0;
-}
-
-.memory-list.group-list {
-  gap: 0;
-}
-
-.memory-tidy-list > li {
-  padding: 10px 16px;
-}
-
-.memory-tidy-change {
-  margin: 0;
-  overflow-wrap: anywhere;
-  /* the settings' scale, not the conversation's 文字大小 */
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
+/* 设置 › 记忆 › 整理: a change the latest tidy made, before the one that changed something. */
+.memory-tidy-shown {
+  display: block;
 }
 
 /* 设置 › 用量 (settings/Usage.tsx): the range on top, five totals, the chart by model, the 429 bars and list, the

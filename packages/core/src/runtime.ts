@@ -24,6 +24,7 @@ import { PluginSampler } from './sampling.ts';
 import { BUILTIN_CATALOG } from './catalog/builtin.ts';
 import { catalogProblems, catalogProvider, effectiveCatalog, presetProblems, pricesFromCatalog, type CatalogPreset, type ModelCatalog } from './catalog/catalog.ts';
 import type {
+  MemoryCardMeta,
   AgentRole,
   ChildNoteMeta,
   CreateProjectRequest,
@@ -168,6 +169,8 @@ export interface RuntimeInternals {
   hasChildren(sessionId: string): boolean;
   session(id: string): Session | undefined;
   recordDecision(sessionId: string, decision: string, by: 'user' | 'agent'): void;
+  /** Regenerate: takes back what the replaced answer's remember / forget calls did (MemoryBook.revert). */
+  revertMemory(cards: readonly MemoryCardMeta[]): void;
 }
 
 /** How a session is named in text written for the model. */
@@ -691,6 +694,10 @@ export class Runtime implements RuntimeInternals {
       ...this.#noteMeta(s, 'decision', decision),
       by,
     });
+  }
+
+  revertMemory(cards: readonly MemoryCardMeta[]): void {
+    this.memory.revert(cards);
   }
 
   // ---------------------------------------------------------------------------

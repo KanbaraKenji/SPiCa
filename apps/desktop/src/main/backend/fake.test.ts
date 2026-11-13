@@ -95,11 +95,14 @@ describe('FakeBackend', () => {
     expect(await b.addMemory('邮箱密码是 hunter2')).toEqual({ refused: 'secret' });
     expect(await b.addMemory('周报每周五下午发')).toMatchObject({ action: 'saved', item: { by: 'user' } });
     expect(await b.editMemory(1, '   ')).toEqual({ refused: 'empty' });
-    expect(await b.forgetMemory(1)).toMatchObject({ action: 'forgotten', item: { status: 'forgotten' } });
-    expect((await b.listMemories({ all: true })).find((m) => m.id === 1)?.undone).toBeUndefined();
+    // 删除 in the settings is for good: gone from the list (also with all), nothing to undo
+    expect(await b.forgetMemory(1)).toMatchObject({ action: 'deleted', item: { id: 1 } });
+    expect((await b.listMemories({ all: true })).find((m) => m.id === 1)).toBeUndefined();
+    expect(await b.undoMemory(1)).toBeUndefined();
     const before = (await b.listMemories()).length;
     expect(await b.clearMemories()).toBe(before);
     expect(await b.listMemories()).toEqual([]);
+    expect((await b.listMemories({ all: true })).every((m) => m.status !== 'active')).toBe(true);
 
     // a project's manager, and memory switched off: no line
     const runs = () => events.filter((e) => e.type === 'run.end').length;
@@ -111,6 +114,24 @@ describe('FakeBackend', () => {
     await b.send(chat.id, '记住：报告用 A4 竖版。');
     await until(() => runs() > n);
     expect(await b.listMemories()).toEqual([]);
+    b.dispose();
+  });
+
+  it('memory: regenerating an answer that saved a note takes the note back first; the round can be regenerated', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '记住：报告用 A4 竖版。');
+    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    expect((await b.listMemories()).map((m) => m.text)).toEqual(['报告用 A4 竖版。']);
+    const state = (await b.getSession(chat.id))!.regenerate!;
+    expect(state.ok).toBe(true);
+    expect((await b.regenerate(chat.id)).ok).toBe(true);
+    // the old answer's note is undone before the new run saves its own (a new number)
+    const undone = events.find((e) => e.type === 'memory.changed' && e.card.action === 'undone');
+    expect(undone).toMatchObject({ sessionId: '', card: { item: { id: 1, undone: true } } });
+    await until(() => events.filter((x) => x.type === 'run.end' && x.sessionId === chat.id).length >= 2);
+    expect((await b.listMemories()).map((m) => m.id)).toEqual([2]);
     b.dispose();
   });
 
