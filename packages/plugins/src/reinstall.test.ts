@@ -17,14 +17,25 @@ vi.setConfig({ testTimeout: 60_000, hookTimeout: 30_000 });
 
 let r: Rig | undefined;
 const dirs: string[] = [];
+/** A test started a helper through a launcher that may still be on its way (it failed before waiting for it). */
+let launchPending = false;
 afterEach(async () => {
   if (r) {
     await r.pm.shutdown();
-    // Helpers that never exit by themselves were left running on purpose.
-    for (const name of await readdir(join(r.root, 'data')).catch(() => [] as string[])) await killHelpers(join(r.root, 'data', name));
+    // Helpers that never exit by themselves were left running on purpose. One whose launcher was still on its way
+    // when the test stopped turns up a moment later: wait for it too, so none is left running after the run.
+    const killAll = async () => {
+      for (const name of await readdir(join(r!.root, 'data')).catch(() => [] as string[])) await killHelpers(join(r!.root, 'data', name));
+    };
+    await killAll();
+    if (launchPending) {
+      await new Promise((done) => setTimeout(done, LATE_HELPER_MS));
+      await killAll();
+    }
     await r.cleanup();
   }
   r = undefined;
+  launchPending = false;
   for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
 });
 
@@ -95,17 +106,53 @@ describe('reinstalling the running version', () => {
   }
 });
 
-/** Stop helpers left running on purpose (they never exit by themselves). */
-async function killHelpers(dataDir: string): Promise<void> {
-  for (const f of await readdir(dataDir).catch(() => [] as string[])) {
+/** How long a helper may take to start (its launcher is a process of its own; a full parallel run is slow). */
+const HELPER_START_MS = 20_000;
+/** How long the end of a test waits for a helper whose launcher was still on its way. */
+const LATE_HELPER_MS = 3_000;
+
+const helperPids = async (dataDir: string): Promise<number[]> =>
+  (await readdir(dataDir).catch(() => [] as string[])).flatMap((f) => {
     const m = /^helper-(\d+)-\d+\.pid$/.exec(f);
-    if (!m) continue;
+    return m ? [Number(m[1])] : [];
+  });
+
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Waits until a helper not in `known` has started (it writes its pid file first thing) and returns its pid.
+ * The tests below need it running before they reinstall or uninstall: without it nothing holds the folder, and
+ * the step that should be refused goes through. Under a full parallel run the launcher can take seconds.
+ */
+async function waitForHelper(dataDir: string, known: ReadonlySet<number> = new Set()): Promise<number> {
+  const until = Date.now() + HELPER_START_MS;
+  for (;;) {
+    const fresh = (await helperPids(dataDir)).find((pid) => !known.has(pid) && alive(pid));
+    if (fresh !== undefined) return fresh;
+    if (Date.now() > until) throw new Error(`the plugin's helper did not start within ${HELPER_START_MS / 1000} s (no new helper-*.pid in ${dataDir})`);
+    await new Promise((done) => setTimeout(done, 100));
+  }
+}
+
+/** Stop helpers left running on purpose (they never exit by themselves), and wait until they are gone. */
+async function killHelpers(dataDir: string): Promise<void> {
+  const pids = await helperPids(dataDir);
+  for (const pid of pids) {
     try {
-      process.kill(Number(m[1]));
+      process.kill(pid);
     } catch {
       // already gone
     }
   }
+  const until = Date.now() + 5_000;
+  while (pids.some(alive) && Date.now() < until) await new Promise((done) => setTimeout(done, 50));
 }
 
 describe("when the plugin's processes do not let go", () => {
@@ -120,7 +167,7 @@ describe("when the plugin's processes do not let go", () => {
     let lists = 0;
     useProcessLister((ms) => (lists++, quick(ms)));
     try {
-      await new Promise((done) => setTimeout(done, 500)); // the helper is running
+      await waitForHelper(data); // the helper is running
       const d = await r.pm.install(src);
       expect(d).toMatchObject({ enabled: true, servers: [{ status: 'running' }] });
       expect(lists).toBeGreaterThan(0); // the stop used it
@@ -132,10 +179,12 @@ describe("when the plugin's processes do not let go", () => {
 
   it("a helper outside the plugin's process tree that never exits: the reinstall is refused plainly and the plugin keeps working; once it is gone, the reinstall works", async () => {
     r = await rig();
+    launchPending = true;
     const src = await plugin('reinst-stuck', -1, true);
     await r.pm.install(src);
     await r.pm.enable('reinst-stuck');
     const data = r.pm.dataDir('reinst-stuck');
+    const first = await waitForHelper(data);
     try {
       await expect(r.pm.install(src)).rejects.toThrow('「reinst-stuck」1.0.0 的安装文件夹仍被占用，未安装。请关闭插件启动的程序后重试。');
       expect(r.pm.describe('reinst-stuck')).toMatchObject({ enabled: true, servers: [{ status: 'running' }] });
@@ -146,17 +195,22 @@ describe("when the plugin's processes do not let go", () => {
       await killHelpers(data);
     }
     // The plugin was started again on its old files, with a new helper: once that one is gone too, the reinstall works.
-    await new Promise((done) => setTimeout(done, 500));
+    const second = await waitForHelper(data, new Set([first]));
     await killHelpers(data);
     const d = await r.pm.install(src);
     expect(d).toMatchObject({ enabled: true, servers: [{ status: 'running' }] });
+    // The new version starts its own helper: known before the test ends, so the end of the test stops it.
+    await waitForHelper(data, new Set([first, second]));
+    launchPending = false;
   });
 
   it("a helper outside the plugin's process tree that never exits: uninstall is refused, the plugin keeps working with all its files; once it is gone, uninstall works", async () => {
     r = await rig();
+    launchPending = true;
     await r.pm.install(await plugin('uninst-stuck', -1, true));
     await r.pm.enable('uninst-stuck');
     const data = r.pm.dataDir('uninst-stuck');
+    const first = await waitForHelper(data);
     try {
       await expect(r.pm.uninstall('uninst-stuck')).rejects.toThrow('「uninst-stuck」的安装文件夹仍被占用，未卸载。请关闭插件启动的程序后重试。');
       expect(r.pm.describe('uninst-stuck')).toMatchObject({ enabled: true, servers: [{ status: 'running' }] });
@@ -165,10 +219,12 @@ describe("when the plugin's processes do not let go", () => {
     } finally {
       await killHelpers(data);
     }
-    await new Promise((done) => setTimeout(done, 500));
+    // Started again on its files, with a new helper: once that one is gone too, uninstall works.
+    await waitForHelper(data, new Set([first]));
     await killHelpers(data);
     await r.pm.uninstall('uninst-stuck');
     expect(await readdir(join(r.pm.root, 'installed'))).toEqual([]);
+    launchPending = false;
   });
 
   it('uninstall waits for a helper that exits a moment after the server', async () => {

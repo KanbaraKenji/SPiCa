@@ -125,6 +125,8 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       return { verb: 'Saved', object: 'a memory' };
     case 'forget':
       return { verb: 'Deleted', object: 'a memory' };
+    case 'recall':
+      return { verb: 'Recalled', object: arg(c, 'entry') ? named(arg(c, 'entry')) : 'a memory' };
     case 'present_files': {
       const paths = (c.input as { paths?: unknown } | undefined)?.paths;
       const k = Array.isArray(paths) ? paths.length : 0;
@@ -184,6 +186,9 @@ export function runningWords(c: ToolCall): string {
     Added: 'Adding',
     Checked: 'Checking',
     Sorted: 'Sorting',
+    Saved: 'Saving',
+    Deleted: 'Deleting',
+    Recalled: 'Recalling',
   };
   if (c.name === 'run_command' && !c.summary && w.object === 'a command') return 'Running a command';
   return `${w.verb ? (ing[w.verb] ?? w.verb) : 'Running'} ${w.object}`;
@@ -243,6 +248,12 @@ function phrase(c: ToolCall, card?: FileCardMeta): { key: string; say(n: number)
       return { key: 'updated-project', say: () => 'updated a project' };
     case 'triage_mail':
       return { key: 'mail', say: () => 'sorted mail' };
+    case 'remember':
+      return { key: 'memory-saved', say: (n) => `saved ${many('a memory', n, 'memories')}` };
+    case 'forget':
+      return { key: 'memory-deleted', say: (n) => `deleted ${many('a memory', n, 'memories')}` };
+    case 'recall':
+      return { key: 'memory-recalled', say: (n) => `recalled ${many('a memory', n, 'memories')}` };
     default:
       break;
   }

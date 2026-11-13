@@ -63,6 +63,15 @@ describe('a call’s line', () => {
     expect(groupWords([{ call: call('set_stage', { stage: 'a' }) }, { call: call('add_work_object', { name: 'b' }) }, { call: call('list_projects') }])).toBe('Updated a project, checked projects');
   });
 
+  it('memory: saved, deleted, recalled (the entry it read by name), alone and in a group, and while it runs', () => {
+    expect(toolLineText(call('recall', { entry: '报价习惯' }))).toBe('Recalled 「报价习惯」');
+    expect(toolLineText(call('recall'))).toBe('Recalled a memory');
+    expect(toolLineText(call('remember', { text: 'x' }))).toBe('Saved a memory');
+    expect(runningWords(call('recall', { entry: '报价习惯' }))).toBe('Recalling 「报价习惯」');
+    expect(runningWords(call('remember'))).toBe('Saving a memory');
+    expect(groupWords([{ call: call('recall', { entry: 'a' }) }, { call: call('recall', { entry: 'b' }) }, { call: call('remember') }, { call: call('read_file', { path: 'a' }) }])).toBe('Recalled 2 memories, saved a memory, read a file');
+  });
+
   it('while it runs', () => {
     expect(runningWords(call('run_command', { command: 'Get-ChildItem' }))).toBe('Running Get-ChildItem');
     expect(runningWords(call('read_file', { path: 'a.docx' }))).toBe('Reading a.docx');

@@ -482,11 +482,18 @@ describe('the conversation’s sizes', () => {
   });
 
   it('every box of a call opened is at most 20 lines high and scrolls inside (no 显示更多)', () => {
-    expect(block('.tool-command pre')).toContain('max-height: calc(var(--code-line) * 20 + 8px);\n  overflow: auto;');
+    expect(block('.tool-command pre')).toContain('max-height: calc(var(--code-line) * 20 + 16px);\n  overflow: auto;');
     expect(block('.tool-args')).toContain('max-height: calc(var(--code-line) * 20 + 18px);\n  overflow: auto;');
     expect(block('.file-change')).toContain('max-height: calc(var(--code-line) * 20 + 10px);\n  overflow: auto;');
     expect(block('.tool-output')).toContain('max-height: calc(var(--code-line) * 20);\n  overflow-y: auto;');
     expect(css).not.toContain('overscroll-behavior');
+  });
+
+  it('a command box takes no line for copy: it floats at the top right on the first line’s row, shown on hover or key focus', () => {
+    expect(block('.tool-command-copy')).toContain('position: absolute;\n  top: calc(8px + (var(--code-line) - 26px) / 2);\n  right: 6px;\n  opacity: 0;');
+    expect(css).toContain('.tool-command-box:hover .tool-command-copy,\n.tool-command-copy:focus-visible {\n  opacity: 1;\n}');
+    expect(block('.tool-command pre')).toContain('padding: 8px 36px 8px calc(10px + 2ch);\n  text-indent: -2ch;');
+    expect(css).not.toContain('.tool-command .code-head');
   });
 
   it('a long command wraps in every command box (a step opened, a card to confirm): its end is never off to the side', () => {

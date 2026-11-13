@@ -150,7 +150,7 @@ describe('ConfirmCard', () => {
     expect(head.querySelector('.md-tool')).toBeNull();
     expect([...head.querySelectorAll('.card-actions button')].map((b) => b.textContent)).toEqual(['拒绝', '允许']);
     expect([...card.querySelectorAll('.cmd-danger')].map((m) => m.textContent)).toEqual(['Remove-Item', '-Recurse', '-Force']);
-    expect(card.querySelector('.tool-command.is-bare > .code-head > .md-tool')?.getAttribute('aria-label')).toBe('复制');
+    expect(card.querySelector('.tool-command.is-bare .tool-command-box > .tool-command-copy')?.getAttribute('aria-label')).toBe('复制');
     expect(screen.queryByText(/整理旧的报价文件/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '拒绝' }));
     expect(onDecide).toHaveBeenCalledWith(false);

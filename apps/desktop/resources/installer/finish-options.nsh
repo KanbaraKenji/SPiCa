@@ -1,12 +1,20 @@
-; The installer's last page (included by electron-builder: electron-builder.yml nsis.include).
-; Under 「运行 <name>」 three boxes: 开机时启动, 创建桌面快捷方式, 创建开始菜单快捷方式.
+; The installer's last page and shortcuts (included by electron-builder: electron-builder.yml nsis.include).
 ;
-; - A first install does all three (electron-builder makes both shortcuts; the sign-in entry is written here),
-;   so the boxes start ticked and leaving the page any way keeps them. Unticking one and pressing 完成 undoes it.
-; - Installing again over an installed copy: each box starts as things are now (a shortcut the user deleted, or
-;   autostart turned off in 设置, stays off unless ticked here). electron-builder keeps deleted shortcuts deleted
-;   on its own (KeepShortcuts); the sign-in entry is only written on a first install.
-; - An update (the app runs the installer with --updated /S) shows no page and changes none of the three.
+; Shortcuts: the Start menu and desktop shortcuts are always made, with no box for them (as before rc.3);
+; electron-builder makes them (createStartMenuShortcut / createDesktopShortcut). Installing again over an
+; installed copy, electron-builder keeps them as they are (KeepShortcuts): one the user deleted stays deleted.
+; Once, on the first install of this installer over an older one, a missing Start menu or desktop shortcut is
+; made again: rc.3's last page had boxes for them, and leaving one unticked deleted the shortcut, so people
+; were left with no Start menu entry (and the app could not be found by searching). The registry value
+; ShortcutsRestored marks that this was done; it is read in customInit, because installing over a copy runs
+; its uninstaller, which deletes the install key, before the files are copied.
+;
+; The last page: under 「运行 <name>」 one box, 开机时启动.
+; - A first install turns it on (the sign-in entry is written here), so the box starts ticked; leaving the page
+;   any way keeps it. Unticking it and pressing 完成 undoes it.
+; - Installing again over an installed copy: the box starts as things are now (autostart turned off in 设置
+;   stays off unless ticked here); the sign-in entry is only written on a first install.
+; - An update (the app runs the installer with --updated /S) shows no page and changes none of this.
 ; - Uninstalling removes the sign-in entry (electron-builder removes the shortcuts); an update's run of the old
 ;   uninstaller (--updated) keeps it.
 ;
@@ -21,37 +29,42 @@
   !include nsDialogs.nsh
 
   Var spicaHadInstall
+  Var spicaRestored
   Var spicaApplied
   Var spicaAutostartBox
-  Var spicaDesktopBox
-  Var spicaMenuBox
 
   !macro customInit
-    ; An installed copy already here (this user): then the boxes show how things are, nothing is added.
+    ; An installed copy already here (this user): then the box shows how things are, nothing is added.
     ReadRegStr $spicaHadInstall HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
+    ReadRegStr $spicaRestored HKCU "${INSTALL_REGISTRY_KEY}" ShortcutsRestored
   !macroend
 
   !macro customInstall
     ${ifNot} ${isUpdated}
-    ${andIf} $spicaHadInstall == ""
-      WriteRegStr HKCU "${SPICA_RUN_KEY}" "${APP_ID}" '"$appExe" --autostart'
+      ${if} $spicaHadInstall == ""
+        WriteRegStr HKCU "${SPICA_RUN_KEY}" "${APP_ID}" '"$appExe" --autostart'
+      ${endIf}
+      ; Over an older copy, once: shortcuts that copy's last page may have deleted come back.
+      ${if} $spicaRestored == ""
+        ${ifNot} ${FileExists} "$newStartMenuLink"
+          CreateShortCut "$newStartMenuLink" "$appExe" "" "$appExe" 0 "" "" "${APP_DESCRIPTION}"
+          ClearErrors
+          WinShell::SetLnkAUMI "$newStartMenuLink" "${APP_ID}"
+          StrCpy $launchLink "$newStartMenuLink"
+        ${endIf}
+        ${ifNot} ${FileExists} "$newDesktopLink"
+          CreateShortCut "$newDesktopLink" "$appExe" "" "$appExe" 0 "" "" "${APP_DESCRIPTION}"
+          ClearErrors
+          WinShell::SetLnkAUMI "$newDesktopLink" "${APP_ID}"
+        ${endIf}
+        System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
+      ${endIf}
     ${endIf}
-  !macroend
-
-  ; A box under the one before: the same left edge, width and height, one and a half rows down.
-  !macro spicaBox VAR TEXT ON
-    IntOp $3 $3 + $6
-    IntOp $3 $3 + $7
-    ${NSD_CreateCheckbox} $2 $3 $4 $5 "${TEXT}"
-    Pop ${VAR}
-    SetCtlColors ${VAR} "${MUI_TEXTCOLOR}" "${MUI_BGCOLOR}"
-    ${if} ${ON} == 1
-      ${NSD_Check} ${VAR}
-    ${endIf}
+    WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" ShortcutsRestored "true"
   !macroend
 
   !macro customFinishPage
-    ; electron-builder's own finish page (assistedInstaller.nsh), with the three boxes added.
+    ; electron-builder's own finish page (assistedInstaller.nsh), with the 开机时启动 box added.
     Function StartApp
       Call spicaFinishApply
       ${if} ${isUpdated}
@@ -78,30 +91,20 @@
       System::Free $1
       IntOp $4 $4 - $2
       IntOp $5 $5 - $3
-      StrCpy $6 $5
-      IntOp $7 $5 / 2
-
-      StrCpy $0 0
+      ; One and a half rows down, the same left edge, width and height.
+      IntOp $3 $3 + $5
+      IntOp $6 $5 / 2
+      IntOp $3 $3 + $6
+      ${NSD_CreateCheckbox} $2 $3 $4 $5 "开机时启动"
+      Pop $spicaAutostartBox
+      SetCtlColors $spicaAutostartBox "${MUI_TEXTCOLOR}" "${MUI_BGCOLOR}"
       ReadRegStr $1 HKCU "${SPICA_RUN_KEY}" "${APP_ID}"
       ${if} $1 != ""
-        StrCpy $0 1
+        ${NSD_Check} $spicaAutostartBox
       ${endIf}
-      !insertmacro spicaBox $spicaAutostartBox "开机时启动" $0
-
-      StrCpy $0 0
-      ${if} ${FileExists} "$newDesktopLink"
-        StrCpy $0 1
-      ${endIf}
-      !insertmacro spicaBox $spicaDesktopBox "创建桌面快捷方式" $0
-
-      StrCpy $0 0
-      ${if} ${FileExists} "$newStartMenuLink"
-        StrCpy $0 1
-      ${endIf}
-      !insertmacro spicaBox $spicaMenuBox "创建开始菜单快捷方式" $0
     FunctionEnd
 
-    ; 完成: what the boxes say. Runs before the app starts, so it reads its sign-in entry as left here.
+    ; 完成: what the box says. Runs before the app starts, so it reads its sign-in entry as left here.
     Function spicaFinishApply
       ${if} $spicaApplied == "1"
         Return
@@ -114,36 +117,6 @@
       ${else}
         DeleteRegValue HKCU "${SPICA_RUN_KEY}" "${APP_ID}"
       ${endIf}
-
-      ${NSD_GetState} $spicaDesktopBox $0
-      ${if} $0 == ${BST_CHECKED}
-        ${ifNot} ${FileExists} "$newDesktopLink"
-          CreateShortCut "$newDesktopLink" "$appExe" "" "$appExe" 0 "" "" "${APP_DESCRIPTION}"
-          ClearErrors
-          WinShell::SetLnkAUMI "$newDesktopLink" "${APP_ID}"
-        ${endIf}
-      ${else}
-        WinShell::UninstShortcut "$newDesktopLink"
-        Delete "$newDesktopLink"
-      ${endIf}
-
-      ${NSD_GetState} $spicaMenuBox $0
-      ${if} $0 == ${BST_CHECKED}
-        ${ifNot} ${FileExists} "$newStartMenuLink"
-          CreateShortCut "$newStartMenuLink" "$appExe" "" "$appExe" 0 "" "" "${APP_DESCRIPTION}"
-          ClearErrors
-          WinShell::SetLnkAUMI "$newStartMenuLink" "${APP_ID}"
-        ${endIf}
-      ${else}
-        WinShell::UninstShortcut "$newStartMenuLink"
-        Delete "$newStartMenuLink"
-      ${endIf}
-      ; 运行 starts the app through the Start menu shortcut when there is one.
-      ${ifNot} ${FileExists} "$launchLink"
-        StrCpy $launchLink "$appExe"
-      ${endIf}
-
-      System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
     FunctionEnd
   !macroend
 !endif
