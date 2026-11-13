@@ -1,12 +1,14 @@
-// 设置 › 记忆: the switch, 整理, and what the assistant remembers, grouped by category as Claude's memory page
-// (你, 领域, 主题, 人物, 项目, each under its name, an empty one not shown; notes from before there were categories
-// last, without a name, until a tidy gives them one), newest first in a group, one line each: the sentence cut to
-// the line, when it last changed, a pencil and a bin at the right end without a box. A line (or the pencil) opens the note's own page in the list's place (as a plugin's page): ← 记忆 at the
-// top left, the whole sentence with 编辑 and 删除, when it last changed, the conversation it was saved in and the
-// user's words. 添加 opens the same kind of page with an empty box. Deleting and clearing are for good (the core
-// drops the items and their older versions).
+// 设置 › 记忆: the switch, 整理, and what the assistant remembers, as Claude's memory page. The memory is kept in
+// entries (a name, a summary, a category; its details are the notes). 已记住 groups the entries by category (你, 领域,
+// 主题, 人物, 项目, each under its name, an empty one not shown; notes in no entry yet, from before there were
+// entries, last without a name until a tidy puts them in one), newest first, one line each: the name, the summary in
+// grey cut to the line, when it last changed, a pencil and a bin without a box. A line opens the entry's page in the
+// list's place (as a plugin's page): ← 记忆, the name with 编辑 and 删除, 类别, 最后修改, 摘要 and 详情 (a bulleted
+// list). A detail opens its own page: ← the entry's name, the sentence with 编辑 and 删除, when it last changed,
+// the conversation it was saved in and the user's words. 添加 makes an entry with its first detail; 添加 under
+// 详情 adds a detail. Deleting and clearing are for good (the core drops the notes and their older versions).
 import { useEffect, useRef, useState } from 'react';
-import type { MemoryCardMeta, MemoryCategory, MemoryItem, MemoryRefusal, MemoryTidyChange, MemoryTidyRun } from '@spica/protocol';
+import type { MemoryCardMeta, MemoryCategory, MemoryEntry, MemoryEntryInput, MemoryItem, MemoryRefusal, MemoryTidyChange, MemoryTidyRun } from '@spica/protocol';
 import { MEMORY_CATEGORIES } from '@spica/protocol';
 import { Switch } from './Switch';
 import { Group, Pane, Row } from './Group';
@@ -15,22 +17,29 @@ import { ConfirmDialog } from '../ui/Dialog';
 import { fullTime, timeOf } from '../chat/format';
 import { useEscape } from '../ui/escape';
 
-/** A category's name on the page (its group's title, the page's 类别). */
+/** A category's name on the page (its group's title, the entry's 类别). */
 export const CATEGORY_LABEL: Record<MemoryCategory, string> = { you: '你', areas: '领域', topics: '主题', people: '人物', projects: '项目' };
 
-/** The most characters in one item (the core refuses longer ones). */
+/** The most characters in one detail, an entry's name and its summary (the core refuses longer ones). */
 export const MEMORY_CHARS = 200;
+export const NAME_CHARS = 30;
+export const SUMMARY_CHARS = 120;
 
 export interface MemoryApi {
-  add(text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
-  edit(id: number, text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
+  /** A detail: to the entry (its id), or to a new entry. */
+  add(text: string, entry: number | MemoryEntryInput): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
+  edit(id: number, text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
+  editEntry(id: number, entry: MemoryEntryInput): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
   forget(id: number): Promise<unknown>;
+  deleteEntry(id: number): Promise<unknown>;
   clear(): Promise<unknown>;
 }
 
 export interface MemoryProps {
   /** Every item (replaced and forgotten too); null until loaded. */
   items: MemoryItem[] | null;
+  /** The entries with an active detail; null until loaded. */
+  entries: MemoryEntry[] | null;
   enabled: boolean;
   onEnabled(on: boolean): void;
   api: MemoryApi;
@@ -66,64 +75,136 @@ const REFUSED: Record<MemoryRefusal['refused'], string> = {
   empty: '内容为空，未保存',
   too_long: `超过 ${MEMORY_CHARS} 字，未保存`,
   secret: '疑似密码、密钥或证件号码，未保存',
+  name_taken: '名字已被使用，未保存',
 };
 
-const refusal = (r: MemoryCardMeta | MemoryRefusal | undefined): string | null => (r && 'refused' in r ? REFUSED[r.refused] : null);
+const FIELD_REFUSED: Record<'name' | 'summary', Record<MemoryRefusal['refused'], string>> = {
+  name: { empty: '名字为空，未保存', too_long: `名字超过 ${NAME_CHARS} 字，未保存`, secret: '名字疑似密码、密钥或证件号码，未保存', name_taken: '名字已被使用，未保存' },
+  summary: { empty: '摘要为空，未保存', too_long: `摘要超过 ${SUMMARY_CHARS} 字，未保存`, secret: '摘要疑似密码、密钥或证件号码，未保存', name_taken: '名字已被使用，未保存' },
+};
+
+const refusal = (r: MemoryCardMeta | MemoryRefusal | undefined): string | null => (r && 'refused' in r ? (r.field ? FIELD_REFUSED[r.field][r.refused] : REFUSED[r.refused]) : null);
 
 /** The active items, the newest saved first. */
 export function shownMemories(items: MemoryItem[] | null): MemoryItem[] {
   return (items ?? []).filter((m) => m.status === 'active').sort((a, b) => b.id - a.id);
 }
 
-/** The groups of the list in order (你, 领域, 主题, 人物, 项目, then those without a category), the empty ones left out. */
-export function memoryGroups(list: MemoryItem[]): { category: MemoryCategory | null; items: MemoryItem[] }[] {
-  const groups = [...MEMORY_CATEGORIES, null].map((category) => ({ category, items: list.filter((m) => (m.category ?? null) === category) }));
-  return groups.filter((g) => g.items.length > 0);
+/** An entry with its active details (oldest first) and when it or one of them last changed. */
+export interface EntryView {
+  entry: MemoryEntry;
+  details: MemoryItem[];
+  at: string;
 }
 
+/** A line of 已记住: an entry, or a note in no entry. */
+export type MemoryLine = { kind: 'entry'; view: EntryView } | { kind: 'note'; item: MemoryItem };
 
-/** What the page shows: the list, one note's page (editing it or not), or the page that adds one. */
-type View = { page: 'list' } | { page: 'item'; id: number; editing: boolean } | { page: 'new' };
+/** The entries with their details, and the notes in no entry (none named, or the entry gone). */
+export function memoryViews(items: MemoryItem[] | null, entries: MemoryEntry[] | null): { views: EntryView[]; loose: MemoryItem[] } {
+  const active = shownMemories(items);
+  const views = (entries ?? [])
+    .map((entry) => {
+      const details = active.filter((m) => m.entryId === entry.id).sort((a, b) => a.id - b.id);
+      const at = details.reduce((t, m) => (m.updatedAt > t ? m.updatedAt : t), entry.updatedAt);
+      return { entry, details, at };
+    })
+    .filter((v) => v.details.length > 0);
+  const known = new Set(views.map((v) => v.entry.id));
+  return { views, loose: active.filter((m) => m.entryId === undefined || !known.has(m.entryId)) };
+}
 
-export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession, tidy }: MemoryProps) {
-  const list = shownMemories(items);
+/**
+ * The groups of 已记住 in order (你, 领域, 主题, 人物, 项目, then entries without a category and the notes in no entry,
+ * without a name), the empty ones left out; newest first in a group.
+ */
+export function memoryGroups(views: EntryView[], loose: MemoryItem[]): { category: MemoryCategory | null; lines: MemoryLine[] }[] {
+  const newest = (a: EntryView, b: EntryView) => b.at.localeCompare(a.at);
+  const groups = MEMORY_CATEGORIES.map((category) => ({
+    category: category as MemoryCategory | null,
+    lines: views
+      .filter((v) => v.entry.category === category)
+      .sort(newest)
+      .map((view): MemoryLine => ({ kind: 'entry', view })),
+  }));
+  groups.push({
+    category: null,
+    lines: [...views.filter((v) => !v.entry.category).sort(newest).map((view): MemoryLine => ({ kind: 'entry', view })), ...loose.map((item): MemoryLine => ({ kind: 'note', item }))],
+  });
+  return groups.filter((g) => g.lines.length > 0);
+}
+
+/**
+ * What the page shows: the list, an entry's page (editing it or not), a detail's page (editing it or not), the page
+ * making an entry, or the one adding a detail to an entry.
+ */
+type View =
+  | { page: 'list' }
+  | { page: 'entry'; id: number; editing: boolean }
+  | { page: 'item'; id: number; editing: boolean }
+  | { page: 'new' }
+  | { page: 'add'; entry: number };
+
+/** What the delete dialog is about. */
+type Deleting = { kind: 'item'; item: MemoryItem } | { kind: 'entry'; view: EntryView };
+
+export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpenSession, tidy }: MemoryProps) {
+  const { views, loose } = memoryViews(items, entries);
+  const count = views.length + loose.length;
   const [view, setView] = useState<View>({ page: 'list' });
-  const [deleting, setDeleting] = useState<MemoryItem | null>(null);
+  const [deleting, setDeleting] = useState<Deleting | null>(null);
   const [clearing, setClearing] = useState(false);
-  // Back on the list: the line of the note just left is brought into sight and focused.
-  const [returnTo, setReturnTo] = useState<number | null>(null);
+  // Back on the list (or the entry's page): the line just left is brought into sight and focused.
+  const [returnTo, setReturnTo] = useState<string | null>(null);
   const top = useRef<HTMLElement>(null);
-  // A note gone while its page is open (deleted, merged by a tidy, forgotten in a conversation): the list.
-  const item = view.page === 'item' ? list.find((m) => m.id === view.id) : undefined;
-  const page = view.page === 'item' && !item ? 'list' : view.page;
-  const toList = (from?: number) => {
+  // What a page shows, gone while it is open (deleted, merged by a tidy, forgotten in a conversation): the list.
+  const entryView = view.page === 'entry' || view.page === 'add' ? views.find((v) => v.entry.id === (view.page === 'entry' ? view.id : view.entry)) : undefined;
+  const item = view.page === 'item' ? shownMemories(items).find((m) => m.id === view.id) : undefined;
+  const home = item?.entryId !== undefined ? views.find((v) => v.entry.id === item.entryId) : undefined;
+  const page = (view.page === 'entry' || view.page === 'add') && !entryView ? 'list' : view.page === 'item' && !item ? 'list' : view.page;
+  const toList = (from?: string) => {
     setReturnTo(from ?? null);
     setView({ page: 'list' });
   };
-  const open = (id: number, editing = false) => setView({ page: 'item', id, editing });
-  // A page opens at its top (the list may have been scrolled down to the note).
+  const openEntry = (id: number, editing = false, from?: string) => {
+    setReturnTo(from ?? null);
+    setView({ page: 'entry', id, editing });
+  };
+  const openItem = (id: number, editing = false) => setView({ page: 'item', id, editing });
+  // A page opens at its top (the list may have been scrolled down to the line).
   useEffect(() => {
     if (page !== 'list') top.current?.scrollIntoView?.({ block: 'start' });
-  }, [page]);
+  }, [page, view]);
   const dialogs = (
     <>
       {deleting ? (
         <ConfirmDialog
-          title="删除这条记忆？"
-          detail={deleting.text}
+          title={deleting.kind === 'entry' ? `删除「${deleting.view.entry.name}」？` : '删除这条记忆？'}
+          detail={deleting.kind === 'entry' ? `${deleting.view.details.length} 条详情` : deleting.item.text}
           confirmLabel="删除"
           danger
           onCancel={() => setDeleting(null)}
           onConfirm={() => {
-            void api.forget(deleting.id);
-            if (view.page === 'item' && view.id === deleting.id) toList();
+            if (deleting.kind === 'entry') {
+              void api.deleteEntry(deleting.view.entry.id);
+              toList();
+            } else {
+              const it = deleting.item;
+              void api.forget(it.id);
+              // the detail's page goes back to its entry (the list when it was the last one)
+              if (view.page === 'item' && view.id === it.id) {
+                const v = it.entryId !== undefined ? views.find((x) => x.entry.id === it.entryId) : undefined;
+                if (v && v.details.length > 1) openEntry(v.entry.id);
+                else toList();
+              }
+            }
             setDeleting(null);
           }}
         />
       ) : null}
       {clearing ? (
         <ConfirmDialog
-          title={`清除全部 ${list.length} 条记忆？`}
+          title={`清除全部 ${count} 条记忆？`}
           confirmLabel="全部清除"
           danger
           onCancel={() => setClearing(false)}
@@ -135,28 +216,58 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession,
       ) : null}
     </>
   );
-  if (view.page === 'item' && item) {
+  if (page === 'item' && item) {
+    const back = home ? () => openEntry(home.entry.id, false, `item-${item.id}`) : () => toList(`note-${item.id}`);
     return (
       <section ref={top} className="settings-section memory-detail" aria-label="记忆">
-        <Back onBack={() => toList(item.id)} />
+        <Back label={home ? home.entry.name : '记忆'} onBack={back} />
         <MemoryDetail
           item={item}
-          editing={view.editing}
+          editing={view.page === 'item' && view.editing}
           title={item.sessionId ? titleOf(item.sessionId) : undefined}
           onOpenSession={onOpenSession}
-          onEdit={(on) => open(item.id, on)}
-          onSave={(text, category) => api.edit(item.id, text, category)}
-          onDelete={() => setDeleting(item)}
+          onEdit={(on) => openItem(item.id, on)}
+          onSave={(text) => api.edit(item.id, text)}
+          onDelete={() => setDeleting({ kind: 'item', item })}
         />
         {dialogs}
+      </section>
+    );
+  }
+  if (page === 'entry' && entryView && view.page === 'entry') {
+    const e = entryView.entry;
+    return (
+      <section ref={top} className="settings-section memory-detail" aria-label={e.name}>
+        <Back label="记忆" onBack={() => toList(`entry-${e.id}`)} />
+        <EntryDetail
+          view={entryView}
+          editing={view.editing}
+          focus={returnTo}
+          onFocused={() => setReturnTo(null)}
+          onEdit={(on) => openEntry(e.id, on)}
+          onSave={(input) => api.editEntry(e.id, input)}
+          onDelete={() => setDeleting({ kind: 'entry', view: entryView })}
+          onOpenItem={(id) => openItem(id)}
+          onAdd={() => setView({ page: 'add', entry: e.id })}
+        />
+        {dialogs}
+      </section>
+    );
+  }
+  if (page === 'add' && entryView) {
+    const e = entryView.entry;
+    return (
+      <section ref={top} className="settings-section memory-detail" aria-label="添加详情">
+        <Back label={e.name} onBack={() => openEntry(e.id)} />
+        <DetailForm initial="" onCancel={() => openEntry(e.id)} onSave={(text) => api.add(text, e.id)} />
       </section>
     );
   }
   if (page === 'new') {
     return (
       <section ref={top} className="settings-section memory-detail" aria-label="添加记忆">
-        <Back onBack={() => toList()} />
-        <MemoryForm initial="" onCancel={() => toList()} onSave={(text, category) => api.add(text, category)} />
+        <Back label="记忆" onBack={() => toList()} />
+        <EntryForm onCancel={() => toList()} onSave={(input, text) => api.add(text ?? '', input)} />
       </section>
     );
   }
@@ -182,36 +293,52 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession,
               <Icon name="plus" size={14} />
               添加
             </button>
-            {list.length ? (
+            {count ? (
               <button type="button" className="btn btn-small btn-quiet-danger" onClick={() => setClearing(true)}>
                 全部清除
               </button>
             ) : null}
           </div>
         </div>
-        {list.length === 0 ? (
+        {count === 0 ? (
           <div className="group-box">
             <Pane>
               <p className="settings-hint memory-empty">暂无记忆</p>
             </Pane>
           </div>
         ) : (
-          memoryGroups(list).map((g) => (
+          memoryGroups(views, loose).map((g) => (
             <section key={g.category ?? 'none'} className="memory-section" {...(g.category ? { 'aria-label': CATEGORY_LABEL[g.category] } : {})}>
               {g.category ? <h4 className="memory-cat">{CATEGORY_LABEL[g.category]}</h4> : null}
               <div className="group-box">
                 <ul className="memory-list group-list">
-                  {g.items.map((m) => (
-                    <MemoryRow
-                      key={m.id}
-                      item={m}
-                      focus={returnTo === m.id}
-                      onFocused={() => setReturnTo(null)}
-                      onOpen={() => open(m.id)}
-                      onEdit={() => open(m.id, true)}
-                      onDelete={() => setDeleting(m)}
-                    />
-                  ))}
+                  {g.lines.map((line) => {
+                    const key = line.kind === 'entry' ? `entry-${line.view.entry.id}` : `note-${line.item.id}`;
+                    return line.kind === 'entry' ? (
+                      <MemoryRow
+                        key={key}
+                        name={line.view.entry.name}
+                        text={line.view.entry.summary}
+                        at={line.view.at}
+                        focus={returnTo === key}
+                        onFocused={() => setReturnTo(null)}
+                        onOpen={() => openEntry(line.view.entry.id)}
+                        onEdit={() => openEntry(line.view.entry.id, true)}
+                        onDelete={() => setDeleting({ kind: 'entry', view: line.view })}
+                      />
+                    ) : (
+                      <MemoryRow
+                        key={key}
+                        text={line.item.text}
+                        at={line.item.updatedAt}
+                        focus={returnTo === key}
+                        onFocused={() => setReturnTo(null)}
+                        onOpen={() => openItem(line.item.id)}
+                        onEdit={() => openItem(line.item.id, true)}
+                        onDelete={() => setDeleting({ kind: 'item', item: line.item })}
+                      />
+                    );
+                  })}
                 </ul>
               </div>
             </section>
@@ -223,12 +350,12 @@ export function Memory({ items, enabled, onEnabled, api, titleOf, onOpenSession,
   );
 }
 
-/** ← 记忆 at the top left of a note's page (as ← 已安装 on a plugin's page). */
-function Back({ onBack }: { onBack(): void }) {
+/** ← 记忆 (or ← the entry's name) at the top left of a page (as ← 已安装 on a plugin's page). */
+function Back({ label, onBack }: { label: string; onBack(): void }) {
   return (
     <button type="button" className="back-link memory-back" onClick={onBack}>
       <Icon name="arrowLeft" size={16} />
-      记忆
+      {label}
     </button>
   );
 }
@@ -309,8 +436,29 @@ function TidyGroup({ tidy, enabled, items }: { tidy: MemoryTidy; enabled: boolea
   );
 }
 
-/** A note in the list: one line (the sentence cut to it, whole on hover; the time), a pencil and a bin without a box. */
-function MemoryRow({ item, focus, onFocused, onOpen, onEdit, onDelete }: { item: MemoryItem; focus: boolean; onFocused(): void; onOpen(): void; onEdit(): void; onDelete(): void }) {
+/**
+ * A line of 已记住: an entry (its name, then its summary in grey) or a note in no entry (the sentence), cut to the
+ * line and whole on hover; the time; a pencil and a bin without a box.
+ */
+function MemoryRow({
+  name,
+  text,
+  at,
+  focus,
+  onFocused,
+  onOpen,
+  onEdit,
+  onDelete,
+}: {
+  name?: string;
+  text: string;
+  at: string;
+  focus: boolean;
+  onFocused(): void;
+  onOpen(): void;
+  onEdit(): void;
+  onDelete(): void;
+}) {
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!focus) return;
@@ -318,11 +466,13 @@ function MemoryRow({ item, focus, onFocused, onOpen, onEdit, onDelete }: { item:
     ref.current?.scrollIntoView?.({ block: 'nearest' });
     onFocused();
   }, [focus, onFocused]);
+  const whole = name ? `${name}：${text}` : text;
   return (
     <li className="setting-row memory-row">
-      <button ref={ref} type="button" className="memory-open" title={item.text} data-tip-clipped=".memory-text" onClick={onOpen}>
-        <span className="memory-text">{item.text}</span>
-        <span className="settings-hint memory-time">{timeOf(item.updatedAt)}</span>
+      <button ref={ref} type="button" className="memory-open" title={whole} data-tip-clipped=".memory-text" onClick={onOpen}>
+        {name ? <span className="memory-name">{name}</span> : null}
+        <span className={name ? 'memory-text memory-summary' : 'memory-text'}>{text}</span>
+        <span className="settings-hint memory-time">{timeOf(at)}</span>
       </button>
       <div className="memory-actions">
         <button type="button" className="icon-btn" aria-label="编辑" title="编辑" onClick={onEdit}>
@@ -336,7 +486,104 @@ function MemoryRow({ item, focus, onFocused, onOpen, onEdit, onDelete }: { item:
   );
 }
 
-/** A note's page: the whole sentence with 编辑 and 删除 at the right (or the box editing it), then the facts. */
+/** An entry's page: the name with 编辑 and 删除 at the right (or the boxes editing it), then 类别, 最后修改, 摘要 and 详情. */
+function EntryDetail({
+  view,
+  editing,
+  focus,
+  onFocused,
+  onEdit,
+  onSave,
+  onDelete,
+  onOpenItem,
+  onAdd,
+}: {
+  view: EntryView;
+  editing: boolean;
+  /** The detail line to focus (coming back from its page). */
+  focus: string | null;
+  onFocused(): void;
+  onEdit(on: boolean): void;
+  onSave(input: MemoryEntryInput): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
+  onDelete(): void;
+  onOpenItem(id: number): void;
+  onAdd(): void;
+}) {
+  const e = view.entry;
+  return (
+    <>
+      {editing ? (
+        <EntryForm initial={e} onCancel={() => onEdit(false)} onSave={(input) => onSave(input)} />
+      ) : (
+        <header className="memory-detail-head">
+          <h3 className="memory-detail-text">{e.name}</h3>
+          <div className="memory-detail-actions">
+            <button type="button" className="btn btn-small" onClick={() => onEdit(true)}>
+              编辑
+            </button>
+            <button type="button" className="btn btn-small btn-quiet-danger" onClick={onDelete}>
+              删除
+            </button>
+          </div>
+        </header>
+      )}
+      <dl className="memory-facts">
+        {e.category && !editing ? (
+          <div className="memory-fact">
+            <dt>类别</dt>
+            <dd>{CATEGORY_LABEL[e.category]}</dd>
+          </div>
+        ) : null}
+        <div className="memory-fact">
+          <dt>最后修改</dt>
+          <dd>{fullTime(view.at)}</dd>
+        </div>
+        {!editing ? (
+          <div className="memory-fact">
+            <dt>摘要</dt>
+            <dd className="memory-quote">{e.summary}</dd>
+          </div>
+        ) : null}
+        <div className="memory-fact">
+          <dt className="memory-fact-head">
+            详情
+            <button type="button" className="btn btn-small" onClick={onAdd}>
+              <Icon name="plus" size={14} />
+              添加
+            </button>
+          </dt>
+          <dd>
+            <ul className="memory-details">
+              {view.details.map((m) => (
+                <DetailLine key={m.id} item={m} focus={focus === `item-${m.id}`} onFocused={onFocused} onOpen={() => onOpenItem(m.id)} />
+              ))}
+            </ul>
+          </dd>
+        </div>
+      </dl>
+    </>
+  );
+}
+
+/** A detail on its entry's page: a bullet, the whole sentence; it opens the detail's page. */
+function DetailLine({ item, focus, onFocused, onOpen }: { item: MemoryItem; focus: boolean; onFocused(): void; onOpen(): void }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!focus) return;
+    ref.current?.focus({ preventScroll: true });
+    ref.current?.scrollIntoView?.({ block: 'nearest' });
+    onFocused();
+  }, [focus, onFocused]);
+  return (
+    <li>
+      <button ref={ref} type="button" className="text-btn memory-detail-line" onClick={onOpen}>
+        {item.text}
+      </button>
+    </li>
+  );
+}
+
+/** A detail's page: the whole sentence with 编辑 and 删除 at the right (or the box editing it), then the facts. */
 function MemoryDetail({
   item,
   editing,
@@ -352,13 +599,13 @@ function MemoryDetail({
   title: string | undefined;
   onOpenSession(id: string, seq?: number): void;
   onEdit(on: boolean): void;
-  onSave(text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
+  onSave(text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
   onDelete(): void;
 }) {
   return (
     <>
       {editing ? (
-        <MemoryForm initial={item.text} initialCategory={item.category} onCancel={() => onEdit(false)} onSave={onSave} />
+        <DetailForm initial={item.text} onCancel={() => onEdit(false)} onSave={onSave} />
       ) : (
         <header className="memory-detail-head">
           <h3 className="memory-detail-text">{item.text}</h3>
@@ -373,12 +620,6 @@ function MemoryDetail({
         </header>
       )}
       <dl className="memory-facts">
-        {item.category && !editing ? (
-          <div className="memory-fact">
-            <dt>类别</dt>
-            <dd>{CATEGORY_LABEL[item.category]}</dd>
-          </div>
-        ) : null}
         <div className="memory-fact">
           <dt>最后修改</dt>
           <dd>{fullTime(item.updatedAt)}</dd>
@@ -404,46 +645,41 @@ function MemoryDetail({
   );
 }
 
-/**
- * The box adding (initial '') or editing a note, its 类别 under it (one of five; none picked yet for a new note or
- * one from before there were categories), then 取消 and 保存. Esc cancels it (a layer).
- */
-function MemoryForm({
-  initial,
-  initialCategory,
-  onCancel,
-  onSave,
-}: {
-  initial: string;
-  initialCategory?: MemoryCategory | undefined;
-  onCancel(): void;
-  onSave(text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
-}) {
-  const [text, setText] = useState(initial);
-  const [category, setCategory] = useState<MemoryCategory | undefined>(initialCategory);
+/** Saving a form: the result, or the problem in words. */
+function useSave(onDone: () => void) {
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const value = text.trim();
-  const tooLong = value.length > MEMORY_CHARS;
-  const unchanged = value === initial && category === initialCategory;
-  const save = () => {
-    if (!value || tooLong || unchanged || busy) return;
+  const run = (go: () => Promise<MemoryCardMeta | MemoryRefusal | undefined>) => {
+    if (busy) return;
     setBusy(true);
-    void onSave(value, category).then((r) => {
+    void go().then((r) => {
       setBusy(false);
       const no = refusal(r);
       if (no) setProblem(no);
-      else if (r) onCancel();
+      else if (r) onDone();
     });
   };
-  const shown = tooLong ? REFUSED.too_long : problem;
+  return { problem, setProblem, busy, run };
+}
+
+/** The box adding (initial '') or editing a detail, then 取消 and 保存. Esc cancels it (a layer). */
+function DetailForm({ initial, onCancel, onSave }: { initial: string; onCancel(): void; onSave(text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined> }) {
+  const [text, setText] = useState(initial);
+  const { problem, setProblem, busy, run } = useSave(onCancel);
+  const value = text.trim();
+  const tooLong = value.length > MEMORY_CHARS;
+  const ok = !!value && !tooLong && value !== initial && !busy;
+  const save = () => {
+    if (ok) run(() => onSave(value));
+  };
   // A layer of Esc: cancels the edit (or the adding), and only that (the settings stay open).
   useEscape(true, onCancel);
+  const shown = tooLong ? REFUSED.too_long : problem;
   return (
     <div className="memory-edit">
       <textarea
         className="input textarea memory-input"
-        aria-label="记忆内容"
+        aria-label="详情"
         rows={3}
         value={text}
         autoFocus
@@ -460,6 +696,58 @@ function MemoryForm({
         }}
       />
       {shown ? <span className="field-error" role="alert">{shown}</span> : null}
+      <FormActions ok={ok} onCancel={onCancel} onSave={save} />
+    </div>
+  );
+}
+
+/**
+ * The boxes making an entry (名字, 摘要, 类别 and its first 详情) or editing one (名字, 摘要, 类别), then 取消 and 保存.
+ * Esc cancels it (a layer).
+ */
+function EntryForm({
+  initial,
+  onCancel,
+  onSave,
+}: {
+  initial?: MemoryEntry;
+  onCancel(): void;
+  onSave(input: MemoryEntryInput, text?: string): Promise<MemoryCardMeta | MemoryRefusal | undefined>;
+}) {
+  const [name, setName] = useState(initial?.name ?? '');
+  const [summary, setSummary] = useState(initial?.summary ?? '');
+  const [category, setCategory] = useState<MemoryCategory | undefined>(initial?.category);
+  const [text, setText] = useState('');
+  const { problem, setProblem, busy, run } = useSave(onCancel);
+  const v = { name: name.trim(), summary: summary.trim(), text: text.trim() };
+  const tooLong = v.name.length > NAME_CHARS ? FIELD_REFUSED.name.too_long : v.summary.length > SUMMARY_CHARS ? FIELD_REFUSED.summary.too_long : v.text.length > MEMORY_CHARS ? REFUSED.too_long : null;
+  const unchanged = !!initial && v.name === initial.name && v.summary === initial.summary && category === initial.category;
+  const ok = !!v.name && !!v.summary && (!!initial || !!v.text) && !tooLong && !unchanged && !busy;
+  const save = () => {
+    if (ok) run(() => onSave({ name: v.name, summary: v.summary, ...(category ? { category } : {}) }, initial ? undefined : v.text));
+  };
+  useEscape(true, onCancel);
+  const shown = tooLong ?? problem;
+  const edit = (set: (s: string) => void) => (e: { target: { value: string } }) => {
+    set(e.target.value);
+    setProblem(null);
+  };
+  const enter = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      save();
+    }
+  };
+  return (
+    <div className="memory-edit memory-entry-form">
+      <label className="memory-field">
+        <span className="memory-pick-label">名字</span>
+        <input className="input" aria-label="名字" value={name} autoFocus spellCheck={false} onChange={edit(setName)} onKeyDown={enter} />
+      </label>
+      <label className="memory-field">
+        <span className="memory-pick-label">摘要</span>
+        <input className="input" aria-label="摘要" value={summary} spellCheck={false} onChange={edit(setSummary)} onKeyDown={enter} />
+      </label>
       <div className="memory-pick">
         <span className="memory-pick-label">类别</span>
         <div className="segmented" role="radiogroup" aria-label="类别">
@@ -470,14 +758,27 @@ function MemoryForm({
           ))}
         </div>
       </div>
-      <div className="memory-edit-actions">
-        <button type="button" className="btn btn-small" onClick={onCancel}>
-          取消
-        </button>
-        <button type="button" className="btn btn-small btn-primary" disabled={!value || tooLong || unchanged || busy} onClick={save}>
-          保存
-        </button>
-      </div>
+      {initial ? null : (
+        <label className="memory-field">
+          <span className="memory-pick-label">详情</span>
+          <textarea className="input textarea memory-input" aria-label="详情" rows={3} value={text} spellCheck={false} onChange={edit(setText)} onKeyDown={enter} />
+        </label>
+      )}
+      {shown ? <span className="field-error" role="alert">{shown}</span> : null}
+      <FormActions ok={ok} onCancel={onCancel} onSave={save} />
+    </div>
+  );
+}
+
+function FormActions({ ok, onCancel, onSave }: { ok: boolean; onCancel(): void; onSave(): void }) {
+  return (
+    <div className="memory-edit-actions">
+      <button type="button" className="btn btn-small" onClick={onCancel}>
+        取消
+      </button>
+      <button type="button" className="btn btn-small btn-primary" disabled={!ok} onClick={onSave}>
+        保存
+      </button>
     </div>
   );
 }

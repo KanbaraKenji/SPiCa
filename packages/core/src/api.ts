@@ -3,7 +3,15 @@
 // come from runtime.events.
 import type { Runtime } from './runtime.ts';
 import { categoryOf } from './memory.ts';
-import type { AgentApi, CreateSessionRequest, SteerMode } from './types.ts';
+import type { AgentApi, CreateSessionRequest, MemoryEntryInput, SteerMode } from './types.ts';
+
+/** An entry typed in the settings, as it came over IPC (anything else: none). */
+function entryInput(v: unknown): MemoryEntryInput | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const o = v as Record<string, unknown>;
+  const category = categoryOf(o.category);
+  return { name: String(o.name ?? ''), summary: String(o.summary ?? ''), ...(category ? { category } : {}) };
+}
 
 export function createAgentApi(rt: Runtime): AgentApi {
   const get = (id: string) => {
@@ -100,12 +108,20 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async listMemories(opts) {
       return rt.memory.list({ all: !!opts?.all });
     },
-    async addMemory(text, category) {
-      const c = categoryOf(category);
-      return rt.memory.addOwn(String(text ?? ''), undefined, c);
+    async listMemoryEntries() {
+      return rt.memory.entries();
     },
-    async editMemory(id, text, category) {
-      return rt.memory.edit(Number(id), String(text ?? ''), categoryOf(category));
+    async addMemory(text, entry) {
+      return rt.memory.addOwn(String(text ?? ''), typeof entry === 'number' ? entry : entryInput(entry));
+    },
+    async editMemory(id, text) {
+      return rt.memory.edit(Number(id), String(text ?? ''));
+    },
+    async editMemoryEntry(id, entry) {
+      return rt.memory.editEntry(Number(id), entryInput(entry) ?? { name: '', summary: '' });
+    },
+    async deleteMemoryEntry(id) {
+      return rt.memory.deleteEntry(Number(id));
     },
     async forgetMemory(id) {
       return rt.memory.delete(Number(id));

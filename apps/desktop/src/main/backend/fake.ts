@@ -15,7 +15,8 @@ import type {
   MailItem,
   MailPollResult,
   MemoryCardMeta,
-  MemoryCategory,
+  MemoryEntry,
+  MemoryEntryInput,
   MemoryItem,
   MemoryRefusal,
   MemoryTidyRun,
@@ -46,7 +47,7 @@ import type { AgentBackend } from './types';
 import { buildSeed, fakeCard } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
 import { isoAt } from './time';
-import { DEMO_MEMORIES, FakeMemory, guessCategory, type MemoryPlan } from './fake-memory';
+import { DEMO_MEMORIES, FakeMemory, guessEntry, type MemoryPlan } from './fake-memory';
 
 /** What the user typed in a message (its text blocks). */
 function textOf(m: Message | undefined): string {
@@ -677,12 +678,24 @@ export class FakeBackend implements AgentBackend {
     return this.#memory.list(opts);
   }
 
-  async addMemory(text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal> {
-    return this.#memory.addOwn(text, category);
+  async listMemoryEntries(): Promise<MemoryEntry[]> {
+    return this.#memory.entries();
   }
 
-  async editMemory(id: number, text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
-    return this.#memory.edit(id, text, category);
+  async addMemory(text: string, entry?: number | MemoryEntryInput): Promise<MemoryCardMeta | MemoryRefusal> {
+    return this.#memory.addOwn(text, entry);
+  }
+
+  async editMemory(id: number, text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
+    return this.#memory.edit(id, text);
+  }
+
+  async editMemoryEntry(id: number, entry: MemoryEntryInput): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
+    return this.#memory.editEntry(id, entry);
+  }
+
+  async deleteMemoryEntry(id: number): Promise<MemoryCardMeta | undefined> {
+    return this.#memory.deleteEntry(id);
   }
 
   async forgetMemory(id: number): Promise<MemoryCardMeta | undefined> {
@@ -902,14 +915,14 @@ export class FakeBackend implements AgentBackend {
     const userSeq = [...(this.#messages.get(sessionId) ?? [])].reverse().find((m) => m.role === 'user' && m.kind === 'user')?.seq;
     const quote = textOf(this.#messages.get(sessionId)?.find((m) => m.seq === userSeq));
     const name = plan.action === 'forget' ? 'forget' : 'remember';
-    const category = plan.action === 'forget' ? undefined : guessCategory(plan.text);
-    const input = plan.action === 'forget' ? { id: plan.id, quote } : { text: plan.text, quote, category, ...(plan.action === 'replace' ? { replaces: plan.replaces } : {}) };
+    const entry = plan.action === 'save' ? guessEntry(plan.text) : undefined;
+    const input = plan.action === 'forget' ? { id: plan.id, quote } : { text: plan.text, quote, ...(entry ? { entry: entry.name, summary: entry.summary, category: entry.category } : {}), ...(plan.action === 'replace' ? { replaces: plan.replaces } : {}) };
     this.#emit(sessionId, { type: 'tool.call', callId, name });
     this.#emit(sessionId, { type: 'tool.start', callId, name, input, category: 'other' });
     const card =
       plan.action === 'forget'
         ? this.#memory.forget(plan.id, 'assistant', true)
-        : this.#memory.add({ text: plan.text, quote, by: 'assistant', ...(category ? { category } : {}), sessionId, ...(userSeq !== undefined ? { seq: userSeq } : {}), ...(plan.action === 'replace' ? { replaces: plan.replaces } : {}) });
+        : this.#memory.add({ text: plan.text, quote, by: 'assistant', ...(entry ? { entry } : {}), sessionId, ...(userSeq !== undefined ? { seq: userSeq } : {}), ...(plan.action === 'replace' ? { replaces: plan.replaces } : {}) });
     if (card) this.#emit(sessionId, { type: 'memory.changed', callId, card });
     this.#callInfo.set(callId, { category: 'other', ...(card ? { memory: card } : {}) });
     const result = card?.item ? (card.action === 'forgotten' ? `Forgot [${card.item.id}].` : `Saved as [${card.item.id}].`) : 'Nothing changed.';

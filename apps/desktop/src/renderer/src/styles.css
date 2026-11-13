@@ -7013,6 +7013,19 @@ section.plugins-part > .plugins-part-title {
   text-overflow: ellipsis;
 }
 
+/* an entry's line, as Claude's list: the name in a column of its own, the summary in grey, both cut to the line */
+.memory-name {
+  flex: 0 0 30%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.memory-summary {
+  color: var(--spica-muted);
+}
+
 .memory-time {
   flex: none;
   white-space: nowrap;
@@ -7073,6 +7086,43 @@ section.plugins-part > .plugins-part-title {
 
 .memory-quote {
   overflow-wrap: anywhere;
+}
+
+/* 详情 on an entry's page: its name with 添加 at the right, then a bulleted list (as Claude's Details); a detail
+   opens its own page */
+.memory-fact-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.memory-details {
+  margin: 0;
+  padding-left: 20px;
+  list-style: disc;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.memory-detail-line {
+  margin-left: 0;
+  padding: 0;
+  text-align: left;
+  color: var(--spica-ink);
+  overflow-wrap: anywhere;
+}
+
+/* the boxes making or editing an entry: each with its name above (名字, 摘要, 详情) */
+.memory-entry-form {
+  gap: 12px;
+}
+
+.memory-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .memory-edit {

@@ -55,6 +55,9 @@ const API: Record<keyof AgentApi, true> = {
   addMemory: true,
   editMemory: true,
   forgetMemory: true,
+  listMemoryEntries: true,
+  editMemoryEntry: true,
+  deleteMemoryEntry: true,
   clearMemories: true,
   undoMemory: true,
   tidyMemories: true,
@@ -117,25 +120,32 @@ describe('FakeBackend', () => {
     b.dispose();
   });
 
-  it('memory: the demo has notes in every category, two from before there were categories; a tidy gives those one', async () => {
+  it('memory: the demo has entries in every category, one with three details, two notes in no entry; a tidy puts those in one', async () => {
     const b = new FakeBackend({ speed: 0 });
     const { until } = collect(b);
+    const entries = await b.listMemoryEntries();
+    expect(new Set(entries.map((e) => e.category))).toEqual(new Set(['you', 'areas', 'topics', 'people', 'projects']));
     const notes = await b.listMemories();
-    expect(new Set(notes.map((m) => m.category))).toEqual(new Set(['you', 'areas', 'topics', 'people', 'projects', undefined]));
-    expect(notes.filter((m) => m.category === 'areas').length).toBeGreaterThanOrEqual(2);
-    const old = notes.filter((m) => !m.category);
+    expect(Math.max(...entries.map((e) => notes.filter((m) => m.entryId === e.id).length))).toBe(3);
+    const old = notes.filter((m) => m.entryId === undefined);
     expect(old).toHaveLength(2);
     await b.tidyMemories();
     const run = (await until((e) => e.type === 'memory.tidy' && e.run.status === 'done')) as Extract<CoreEvent, { type: 'memory.tidy' }>;
-    expect(run.run.categorized).toBe(2);
+    expect(run.run.grouped).toHaveLength(2);
     const after = await b.listMemories();
-    expect(after.every((m) => m.category)).toBe(true);
+    expect(after.every((m) => m.entryId !== undefined)).toBe(true);
     // not a change: the date stays
     expect(old.map((m) => after.find((x) => x.id === m.id)!.updatedAt)).toEqual(old.map((m) => m.updatedAt));
-    // the settings add in a category, and change it
-    const added = (await b.addMemory('周报每周一上午发', 'areas')) as { item: { id: number; category?: string } };
-    expect(added.item.category).toBe('areas');
-    expect(await b.editMemory(added.item.id, '周报每周一上午发', 'projects')).toMatchObject({ item: { category: 'projects' } });
+    // the whole tidy's undo: in no entry again
+    await b.undoMemoryTidy(run.run.id);
+    expect((await b.listMemories()).filter((m) => m.entryId === undefined)).toHaveLength(2);
+    // the settings: a new entry, a detail to it, the entry changed, then deleted with its details
+    const made = (await b.addMemory('样品寄出前拍照', { name: '样品', summary: '寄出前拍照', category: 'areas' })) as { entry: { id: number } };
+    expect(await b.addMemory('x', { name: '样品', summary: 'y' })).toEqual({ refused: 'name_taken', field: 'name' });
+    await b.addMemory('样品单号写进周报', made.entry.id);
+    expect(await b.editMemoryEntry(made.entry.id, { name: '样品', summary: '寄出前拍照，单号写进周报', category: 'areas' })).toMatchObject({ action: 'entry_edited', entry: { summary: '寄出前拍照，单号写进周报' } });
+    expect(await b.deleteMemoryEntry(made.entry.id)).toMatchObject({ action: 'entry_deleted' });
+    expect((await b.listMemories()).some((m) => m.text.startsWith('样品'))).toBe(false);
     b.dispose();
   });
 

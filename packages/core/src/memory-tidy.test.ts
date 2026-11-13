@@ -94,7 +94,8 @@ describe('tidying the memory', () => {
     expect(rt.memory.tidy('user')).toEqual({ started: false, reason: 'running' });
     const run = await done(rt);
     // the model saw the notes and only what the user typed
-    expect(prompt).toContain('[1] (no category) 数据处理主要用 Python');
+    expect(prompt).toContain('Notes in no entry:');
+    expect(prompt).toMatch(/\[1\] 数据处理主要用 Python \(/);
     expect(prompt).toContain('我负责开单系统');
     expect(prompt).not.toContain('好');
     expect(run).toMatchObject({ status: 'done', by: 'user', refused: 4, sessions: 2 });
@@ -110,8 +111,9 @@ describe('tidying the memory', () => {
     expect(rt.store.listTraces().some((t) => t.sessionId === null && t.initiator === 'runtime:memory-tidy' && t.status === 'ok')).toBe(true);
     expect(rt.memory.tidies()[0]).toMatchObject({ id: run.id, status: 'done' });
 
-    // the next tidy reads only what is new: nothing (and every note has a category), so no model call
-    for (const m of rt.memory.list()) rt.store.putMemory({ ...m, category: m.category ?? 'you' });
+    // the next tidy reads only what is new: nothing (and every note is in an entry), so no model call
+    const home = rt.store.putMemoryEntry({ id: 0, owner: 'user', name: '工作', summary: '工作上的事', by: 'user', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' });
+    for (const m of rt.memory.list()) rt.store.putMemory({ ...m, entryId: home.id });
     const calls = gw.requests.length;
     rt.memory.tidy('user');
     expect(await done(rt)).toMatchObject({ status: 'done', messages: 0, changes: [] });
@@ -274,12 +276,18 @@ describe('details and answers', () => {
   });
 });
 
-describe('categories', () => {
-  it('a tidy gives notes without a category one (not a change: no undo, the date stays), also with nothing new to read', async () => {
+describe('entries', () => {
+  const entry = (rt: Rt, name: string, summary: string, category?: 'you' | 'people' | 'areas') =>
+    rt.store.putMemoryEntry({ id: 0, owner: 'user', name, summary, ...(category ? { category } : {}), by: 'user', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' });
+
+  it('a tidy puts notes in no entry into entries and rewrites summaries (not changes), also with nothing new to read; undoing the whole tidy takes it back', async () => {
     const rt = makeRuntime(gw, { cwd: dir });
-    const old = rt.memory.add({ text: '一般周三下午不开会', quote: '一般周三下午不开会', by: 'user' }).item!;
-    const other = rt.memory.add({ text: '王经理是直属上司', quote: '王经理是直属上司', by: 'user' }).item!;
-    const kept = rt.memory.add({ text: '关注模具交期', quote: '关注模具交期', category: 'topics', by: 'user' }).item!;
+    const boss = entry(rt, '王经理', '直属上司', 'people');
+    const inBoss = rt.memory.add({ text: '王经理是直属上司', quote: '王经理是直属上司', entry: { id: boss.id }, by: 'user' }).item!;
+    const meeting = rt.memory.add({ text: '一般周三下午不开会', quote: '一般周三下午不开会', by: 'user' }).item!;
+    const lunch = rt.memory.add({ text: '中午十二点吃饭', quote: '中午十二点吃饭', by: 'user' }).item!;
+    const report = rt.memory.add({ text: '周报发给王经理', quote: '周报发给王经理', by: 'user' }).item!;
+    const odd = rt.memory.add({ text: '喜欢蓝色', quote: '喜欢蓝色', by: 'user' }).item!;
     let prompt = '';
     gw.onRequest((req) => {
       if (!isTidy(req.body)) return { text: '好' };
@@ -287,35 +295,55 @@ describe('categories', () => {
       return {
         text: JSON.stringify({
           changes: [
-            { action: 'categorized', id: old.id, category: 'you' },
-            { action: 'categorized', id: other.id, category: 'nonsense' },
-            { action: 'categorized', id: kept.id, category: 'people' },
+            { action: 'grouped', ids: [meeting.id, lunch.id], entry: '作息', summary: '周三下午不开会，十二点吃饭', category: 'you' },
+            { action: 'grouped', ids: [report.id], entry: '王经理' },
+            { action: 'grouped', ids: [odd.id], entry: '颜色' }, // a new entry without a summary
+            { action: 'grouped', ids: [inBoss.id], entry: '作息' }, // already in an entry
+            { action: 'summarized', entry: '王经理', summary: '直属上司，周报发给他' },
+            { action: 'summarized', entry: '没有这个', summary: 'x' },
           ],
         }),
       };
     });
     rt.memory.tidy('user');
     const run = await done(rt);
-    // nothing typed since: the model was still asked, for the categories
-    expect(prompt).toContain(`[${old.id}] (no category) 一般周三下午不开会`);
-    expect(prompt).toContain(`[${kept.id}] (topics) 关注模具交期`);
+    // nothing typed since: the model was still asked, to put the notes in entries
+    expect(prompt).toContain('## 王经理 (people): 直属上司');
+    expect(prompt).toContain(`[${inBoss.id}] 王经理是直属上司`);
     expect(prompt).toContain('(nothing new)');
-    expect(run).toMatchObject({ status: 'done', changes: [], categorized: 1, refused: 2 });
-    expect(rt.memory.get(old.id)).toMatchObject({ category: 'you', updatedAt: old.updatedAt, status: 'active' });
-    expect(rt.memory.get(other.id)!.category).toBeUndefined(); // an unknown category is refused
-    expect(rt.memory.get(kept.id)!.category).toBe('topics'); // one it has is not changed here
+    expect(run).toMatchObject({ status: 'done', changes: [], refused: 3 });
+    const rest = rt.memory.entries().find((e) => e.name === '作息')!;
+    expect(rest).toMatchObject({ summary: '周三下午不开会，十二点吃饭', category: 'you', by: 'assistant' });
+    expect(run.grouped).toEqual([
+      { item: meeting.id, entry: rest.id },
+      { item: lunch.id, entry: rest.id },
+      { item: report.id, entry: boss.id },
+    ]);
+    expect(rt.memory.get(meeting.id)).toMatchObject({ entryId: rest.id, updatedAt: meeting.updatedAt });
+    expect(rt.memory.get(odd.id)!.entryId).toBeUndefined();
+    expect(rt.memory.entry(boss.id)!.summary).toBe('直属上司，周报发给他');
+
+    // the whole tidy's undo: in no entry again, the summary as it was
+    rt.memory.undoTidy(run.id);
+    expect(rt.memory.get(meeting.id)!.entryId).toBeUndefined();
+    expect(rt.memory.get(report.id)!.entryId).toBeUndefined();
+    expect(rt.memory.entry(boss.id)).toMatchObject({ summary: '直属上司', updatedAt: boss.updatedAt });
+    expect(rt.memory.entries().map((e) => e.name)).toEqual(['王经理']);
   });
 
-  it("a tidy's new notes carry the category it gives; a rewrite without one keeps the old note's", async () => {
+  it("a tidy's added notes go into the entry it names (a new one made once); a rewrite stays in its entry; a merge across entries is refused", async () => {
     const rt = makeRuntime(gw, { cwd: dir });
+    const work = entry(rt, '职责', '负责样品', 'areas');
     const a = rt.createSession();
     await a.send('我负责报价。').done;
     await pause();
-    const note = rt.memory.add({ text: '负责样品', quote: '负责样品', category: 'you', by: 'user' }).item!;
+    const note = rt.memory.add({ text: '负责样品', quote: '负责样品', entry: { id: work.id }, by: 'user' }).item!;
+    const other = rt.memory.add({ text: '负责样品的寄送', quote: '负责样品的寄送', by: 'user' }).item!;
+    const third = rt.memory.add({ text: '负责样品寄送', quote: '负责样品寄送', entry: { id: work.id }, by: 'user' }).item!;
     await pause();
     const b = rt.createSession();
     await b.send('我现在负责样品和报价两块。').done;
-    await b.send('王经理是直属上司。').done;
+    await b.send('王经理是直属上司，周报发给他。').done;
     gw.onRequest((req) => {
       if (!isTidy(req.body)) return { text: '好' };
       const p = userText(req.body);
@@ -323,16 +351,23 @@ describe('categories', () => {
         text: JSON.stringify({
           changes: [
             { action: 'rewritten', id: note.id, text: '负责样品和报价两块', ref: refOf(p, '两块'), quote: '负责样品和报价两块' },
-            { action: 'added', text: '王经理是直属上司', category: 'people', ref: refOf(p, '王经理'), quote: '王经理是直属上司' },
+            { action: 'added', text: '王经理是直属上司', entry: '王经理', summary: '直属上司', category: 'people', ref: refOf(p, '王经理'), quote: '王经理是直属上司' },
+            { action: 'added', text: '周报发给王经理', entry: '王经理', ref: refOf(p, '王经理'), quote: '周报发给他' },
+            { action: 'merged', ids: [other.id, third.id], text: '负责寄样品' },
           ],
         }),
       };
     });
     rt.memory.tidy('user');
     const run = await done(rt);
-    expect(run.changes.map((c) => [c.action, c.item.text, c.item.category])).toEqual([
-      ['rewritten', '负责样品和报价两块', 'you'],
-      ['added', '王经理是直属上司', 'people'],
+    const boss = rt.memory.entries().find((e) => e.name === '王经理')!;
+    expect(run.changes.map((c) => [c.action, c.item.text, c.item.entryId, c.entry])).toEqual([
+      ['rewritten', '负责样品和报价两块', work.id, '职责'],
+      ['added', '王经理是直属上司', boss.id, '王经理'],
+      ['added', '周报发给王经理', boss.id, '王经理'],
     ]);
+    expect(run.refused).toBe(1);
+    expect(boss).toMatchObject({ summary: '直属上司', category: 'people' });
+    expect(rt.memory.entries({ all: true }).filter((e) => e.name === '王经理')).toHaveLength(1);
   });
 });

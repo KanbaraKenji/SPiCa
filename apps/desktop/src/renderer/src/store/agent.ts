@@ -1,7 +1,7 @@
 // Sessions and transcripts on the renderer side. Everything comes from the
 // backend through `window.spica.agent` and its event stream.
 import { useSyncExternalStore } from 'react';
-import type { AgentApi, ApprovalMode, CoreEvent, MemoryCardMeta, MemoryCategory, MemoryItem, MemoryRefusal, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, SessionInfo, SetCwdResult } from '@spica/protocol';
+import type { AgentApi, ApprovalMode, CoreEvent, MemoryCardMeta, MemoryEntry, MemoryEntryInput, MemoryItem, MemoryRefusal, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, SessionInfo, SetCwdResult } from '@spica/protocol';
 import { Store } from './external';
 import { applyEvent, cancelCard, EMPTY_TRANSCRIPT, fromHistory, humanError, type Transcript } from './transcript';
 
@@ -25,6 +25,8 @@ export interface AgentView {
   draft: NewChatDraft;
   /** The user's memory with replaced and forgotten items (oldest first); null until loaded or when the core has none. */
   memories: MemoryItem[] | null;
+  /** The memory's entries that have an active detail; null until loaded. */
+  memoryEntries: MemoryEntry[] | null;
   /** The latest tidies of the memory, newest first (the first may be running); null until loaded or when the core has none. */
   tidies: MemoryTidyRun[] | null;
 }
@@ -89,7 +91,7 @@ export function cwdErrorText(r: Extract<SetCwdResult, { ok: false }>): string {
 }
 
 export class AgentStore {
-  readonly state = new Store<AgentView>({ sessions: [], loaded: false, activeId: null, transcripts: {}, globalCostUsd: 0, firstLines: {}, projects: [], activity: {}, topId: null, draft: { approvalMode: 'manual' }, memories: null, tidies: null });
+  readonly state = new Store<AgentView>({ sessions: [], loaded: false, activeId: null, transcripts: {}, globalCostUsd: 0, firstLines: {}, projects: [], activity: {}, topId: null, draft: { approvalMode: 'manual' }, memories: null, memoryEntries: null, tidies: null });
   readonly #api: AgentApi;
   #loading = new Set<string>();
 
@@ -511,8 +513,8 @@ export class AgentStore {
   async refreshMemories(): Promise<void> {
     if (!this.#api.listMemories) return;
     try {
-      const memories = await this.#api.listMemories({ all: true });
-      this.state.set((v) => ({ ...v, memories }));
+      const [memories, memoryEntries] = await Promise.all([this.#api.listMemories({ all: true }), this.#api.listMemoryEntries?.() ?? Promise.resolve([])]);
+      this.state.set((v) => ({ ...v, memories, memoryEntries }));
     } catch {
       // Keep the list shown.
     }
@@ -531,12 +533,20 @@ export class AgentStore {
     }
   }
 
-  addMemory(text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
-    return this.#memory(this.#api.addMemory && ((api) => api.addMemory!(text, category)));
+  addMemory(text: string, entry?: number | MemoryEntryInput): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
+    return this.#memory(this.#api.addMemory && ((api) => api.addMemory!(text, entry)));
   }
 
-  editMemory(id: number, text: string, category?: MemoryCategory): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
-    return this.#memory(this.#api.editMemory && ((api) => api.editMemory!(id, text, category)));
+  editMemory(id: number, text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
+    return this.#memory(this.#api.editMemory && ((api) => api.editMemory!(id, text)));
+  }
+
+  editMemoryEntry(id: number, entry: MemoryEntryInput): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
+    return this.#memory(this.#api.editMemoryEntry && ((api) => api.editMemoryEntry!(id, entry)));
+  }
+
+  deleteMemoryEntry(id: number): Promise<MemoryCardMeta | undefined> {
+    return this.#memory(this.#api.deleteMemoryEntry && ((api) => api.deleteMemoryEntry!(id)));
   }
 
   forgetMemory(id: number): Promise<MemoryCardMeta | undefined> {
