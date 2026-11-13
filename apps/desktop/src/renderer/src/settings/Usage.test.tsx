@@ -216,7 +216,16 @@ describe('the requests chart', () => {
     );
     render(<Usage api={{ summary }} now={() => new Date('2026-11-13T12:00:00Z')} />);
     await screen.findByRole('img', { name: 'Token 用量' });
+    // Token first; the tabs at the chart's right end switch it to requests (as before)
+    expect(screen.queryByRole('img', { name: '请求数' })).toBeNull();
+    expect(screen.getByRole('radio', { name: 'Token' }).getAttribute('aria-checked')).toBe('true');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: '请求' }));
+    });
+    expect(screen.queryByRole('img', { name: 'Token 用量' })).toBeNull();
     const chart = screen.getByRole('img', { name: '请求数' });
+    // smooth curves, not straight segments
+    expect(chart.querySelector('.usage-line.is-requests .usage-line-stroke')?.getAttribute('d')).toMatch(/C/);
     expect(chart.querySelectorAll('.usage-line.is-requests').length).toBeGreaterThan(0);
     expect(chart.querySelectorAll('.usage-line.is-limited').length).toBeGreaterThan(0);
     // no separate 429 chart any more
@@ -229,7 +238,10 @@ describe('the requests chart', () => {
     expect(lines.slice(0, 2)).toEqual(['请求3', '4291']);
     expect(tip.querySelector('.usage-tip-head')?.textContent).toBe('按模型');
     expect(lines).toContain('deepseek-chatdeepseek2(1)');
-    expect(tip.querySelector('.usage-limited-num')?.textContent).toBe('1');
+    // the model's 429 answers in their own column
+    expect([...tip.querySelectorAll('.usage-limited-num')].map((n) => n.textContent).filter(Boolean)).toEqual(['(1)']);
+    // every line has the same five cells (the card's columns), the lines without a provider spanning two
+    expect([...tip.querySelectorAll('.usage-tip-row')].every((r) => r.children.length === 5 || r.querySelector('.usage-tip-name.is-wide'))).toBe(true);
   });
 
   it('the token bars are by kind, and the hover card says each kind', async () => {
@@ -274,5 +286,16 @@ describe('导出 CSV', () => {
     expect(text.split('\r\n').filter(Boolean)).toHaveLength(4);
     fireEvent.click(screen.getByRole('button', { name: 'C:\\Users\\me\\Documents\\用量.csv' }));
     expect(showInFolder).toHaveBeenCalledWith('C:\\Users\\me\\Documents\\用量.csv');
+  });
+});
+
+describe('smoothPath', () => {
+  it('goes through every point and never past its neighbours (no curve under 0 between two zeros)', async () => {
+    const { smoothPath } = await import('./Usage');
+    const d = smoothPath([[0, 100], [10, 100], [20, 0], [30, 100]]);
+    expect(d.startsWith('M0,100C')).toBe(true);
+    expect(d.endsWith(' 30,100')).toBe(true);
+    // flat between the first two points: the control points stay on the line
+    expect(d).toMatch(/^M0,100C[\d.]+,100 [\d.]+,100 10,100/);
   });
 });

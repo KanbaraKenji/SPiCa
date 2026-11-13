@@ -38,6 +38,8 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
   const [range, setRange] = useState<UsageRange>('7d');
   // one model (its key: provider and name), or null for all
   const [model, setModel] = useState<string | null>(null);
+  // the chart: tokens by kind, or requests and 429 answers (the tabs at its group's right end; Token first)
+  const [metric, setMetric] = useState<'tokens' | 'requests'>('tokens');
   const [summary, setSummary] = useState<UsageSummary | null | undefined>(undefined);
   const [names, setNames] = useState<Record<string, string>>({});
   const [exported, setExported] = useState<SaveCsvResult | undefined>(undefined);
@@ -128,32 +130,51 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
       {view ? (
         <>
           <Tiles view={view} />
-          <Group title="请求">
-            <div className="group-pane usage-chart-pane">
-              <RequestChart view={view} bucket={bucket} provider={provider} byModel={!model} />
-              <ul className="usage-legend">
-                <li>
-                  <span className="usage-swatch" style={{ background: REQUESTS_COLOR }} />
-                  请求
-                </li>
-                <li>
-                  <span className="usage-swatch is-limited" />
-                  429
-                </li>
-              </ul>
-            </div>
-          </Group>
-          <Group title="Token">
-            <div className="group-pane usage-chart-pane">
-              <TokenChart view={view} bucket={bucket} provider={provider} byModel={!model} />
-              <ul className="usage-legend">
-                {TOKEN_KINDS.filter((k) => view.totals.kinds[k.kind] > 0).map((k) => (
-                  <li key={k.kind}>
-                    <span className="usage-swatch" style={{ background: k.color }} />
-                    {k.label}
-                  </li>
+          <Group
+            title={metric === 'tokens' ? 'Token' : '请求'}
+            actions={
+              <div className="segmented" role="radiogroup" aria-label="显示">
+                {(
+                  [
+                    ['tokens', 'Token'],
+                    ['requests', '请求'],
+                  ] as const
+                ).map(([m, label]) => (
+                  <button key={m} type="button" role="radio" aria-checked={metric === m} className={metric === m ? 'segment is-on' : 'segment'} onClick={() => setMetric(m)}>
+                    {label}
+                  </button>
                 ))}
-              </ul>
+              </div>
+            }
+          >
+            <div className="group-pane usage-chart-pane">
+              {metric === 'tokens' ? (
+                <>
+                  <TokenChart view={view} bucket={bucket} provider={provider} byModel={!model} />
+                  <ul className="usage-legend">
+                    {TOKEN_KINDS.filter((k) => view.totals.kinds[k.kind] > 0).map((k) => (
+                      <li key={k.kind}>
+                        <span className="usage-swatch" style={{ background: k.color }} />
+                        {k.label}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <>
+                  <RequestChart view={view} bucket={bucket} provider={provider} byModel={!model} />
+                  <ul className="usage-legend">
+                    <li>
+                      <span className="usage-swatch" style={{ background: REQUESTS_COLOR }} />
+                      请求
+                    </li>
+                    <li>
+                      <span className="usage-swatch is-limited" />
+                      429
+                    </li>
+                  </ul>
+                </>
+              )}
             </div>
           </Group>
           <Group title="429">
@@ -269,6 +290,48 @@ function ChartFrame({ cols, width, max, bucket, label, onHover, children }: { co
   );
 }
 
+/**
+ * A smooth line through points (monotone cubic, Fritsch–Carlson): it never swings past its neighbours, so a count is
+ * never drawn under 0 or over the peak between two columns. One point: a move only.
+ */
+export function smoothPath(pts: readonly [number, number][]): string {
+  const n = pts.length;
+  if (!n) return '';
+  if (n === 1) return `M${pts[0]![0]},${pts[0]![1]}`;
+  const dx: number[] = [];
+  const m: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx.push(pts[i + 1]![0] - pts[i]![0]);
+    m.push((pts[i + 1]![1] - pts[i]![1]) / dx[i]!);
+  }
+  const t: number[] = [m[0]!];
+  for (let i = 1; i < n - 1; i++) t.push(m[i - 1]! * m[i]! <= 0 ? 0 : (m[i - 1]! + m[i]!) / 2);
+  t.push(m[n - 2]!);
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) {
+      t[i] = 0;
+      t[i + 1] = 0;
+      continue;
+    }
+    const a = t[i]! / m[i]!;
+    const b = t[i + 1]! / m[i]!;
+    const h = a * a + b * b;
+    if (h > 9) {
+      const k = 3 / Math.sqrt(h);
+      t[i] = k * a * m[i]!;
+      t[i + 1] = k * b * m[i]!;
+    }
+  }
+  let d = `M${pts[0]![0]},${pts[0]![1]}`;
+  for (let i = 0; i < n - 1; i++) {
+    const [x0, y0] = pts[i]!;
+    const [x1, y1] = pts[i + 1]!;
+    const h = dx[i]! / 3;
+    d += `C${x0 + h},${y0 + t[i]! * h} ${x1 - h},${y1 - t[i + 1]! * h} ${x1},${y1}`;
+  }
+  return d;
+}
+
 /** Lines through the columns' centers, broken where there is no data; each with its area down to the baseline. */
 function runsOf(cols: UsageColumn[]): number[][] {
   const runs: number[][] = [];
@@ -281,7 +344,7 @@ function runsOf(cols: UsageColumn[]): number[][] {
   return runs;
 }
 
-/** Requests and 429 answers per bucket: two lines on one scale, each over its own faint area. */
+/** Requests and 429 answers per bucket: two smooth lines on one scale, each over its own faint area. */
 function RequestChart({ view, bucket, provider, byModel }: { view: UsageView; bucket: UsageQuery['bucket']; provider: (id: string) => string; byModel: boolean }) {
   const [ref, width] = useWidth();
   const [hover, setHover] = useState<Hover | null>(null);
@@ -293,7 +356,8 @@ function RequestChart({ view, bucket, provider, byModel }: { view: UsageView; bu
       <ChartFrame cols={cols} width={width} max={max} bucket={bucket} label="请求数" onHover={setHover}>
         {({ slot, plotH, y }) => {
           const x = (i: number) => AXIS_W + i * slot + slot / 2;
-          const line = (run: number[], v: (c: UsageColumn) => number) => run.map((i, j) => `${j ? 'L' : 'M'}${x(i)},${y(v(cols[i]!))}`).join('');
+          // a smooth curve through the columns (his reference: curves, not straight segments)
+          const line = (run: number[], v: (c: UsageColumn) => number) => smoothPath(run.map((i) => [x(i), y(v(cols[i]!))] as [number, number]));
           const area = (run: number[], v: (c: UsageColumn) => number) => `${line(run, v)}L${x(run[run.length - 1]!)},${plotH}L${x(run[0]!)},${plotH}Z`;
           const series = [
             { cls: 'is-requests', v: (c: UsageColumn) => c.requestCount },
@@ -324,23 +388,17 @@ function RequestChart({ view, bucket, provider, byModel }: { view: UsageView; bu
       </ChartFrame>
       {hover ? (
         <div className="usage-tip" style={tipSide(hover.x, width)} role="tooltip">
-          <div className="usage-tip-title">{tipTitle(hover.col, bucket)}</div>
+          <div className="usage-tip-title">
+            <span>{tipTitle(hover.col, bucket)}</span>
+          </div>
           {hover.col.noData ? (
-            <div className="usage-tip-row">无记录</div>
+            <div className="usage-tip-empty">无记录</div>
           ) : (
-            <>
-              <div className="usage-tip-row">
-                <span className="usage-swatch" style={{ background: REQUESTS_COLOR }} />
-                <span className="usage-tip-name">请求</span>
-                <span className="usage-num">{hover.col.requestCount.toLocaleString('en-US')}</span>
-              </div>
-              <div className="usage-tip-row is-limited">
-                <span className="usage-swatch is-limited" />
-                <span className="usage-tip-name">429</span>
-                <span className="usage-num">{hover.col.rateLimited.toLocaleString('en-US')}</span>
-              </div>
+            <div className="usage-tip-grid">
+              <TipRow mark={REQUESTS_COLOR} name="请求" value={hover.col.requestCount} />
+              <TipRow mark="danger" name="429" value={hover.col.rateLimited} limitedRow />
               {byModel ? <ModelRows view={view} col={hover.col} provider={provider} value={(c, k) => c.requests[k] ?? 0} limited /> : null}
-            </>
+            </div>
           )}
         </div>
       ) : null}
@@ -381,22 +439,18 @@ function TokenChart({ view, bucket, provider, byModel }: { view: UsageView; buck
       {hover ? (
         <div className="usage-tip" style={tipSide(hover.x, width)} role="tooltip">
           <div className="usage-tip-title">
-            <span className="usage-tip-name">{tipTitle(hover.col, bucket)}</span>
+            <span>{tipTitle(hover.col, bucket)}</span>
             {hover.col.noData ? null : <span className="usage-num">{total(hover.col).toLocaleString('en-US')}</span>}
           </div>
           {hover.col.noData ? (
-            <div className="usage-tip-row">无记录</div>
+            <div className="usage-tip-empty">无记录</div>
           ) : (
-            <>
+            <div className="usage-tip-grid">
               {TOKEN_KINDS.filter((k) => hover.col.kinds[k.kind] > 0).map((k) => (
-                <div key={k.kind} className="usage-tip-row">
-                  <span className="usage-swatch" style={{ background: k.color }} />
-                  <span className="usage-tip-name">{k.label}</span>
-                  <span className="usage-num">{hover.col.kinds[k.kind].toLocaleString('en-US')}</span>
-                </div>
+                <TipRow key={k.kind} mark={k.color} name={k.label} value={hover.col.kinds[k.kind]} />
               ))}
               {byModel ? <ModelRows view={view} col={hover.col} provider={provider} value={(c, k) => c.tokens[k] ?? 0} /> : null}
-            </>
+            </div>
           )}
         </div>
       ) : null}
@@ -419,20 +473,25 @@ function ModelRows({ view, col, provider, value, limited }: { view: UsageView; c
     <>
       <div className="usage-tip-head">按模型</div>
       {rows.map(({ s, v, l }) => (
-        <div key={s.key} className="usage-tip-row">
-          <span className="usage-tip-name">{s.model}</span>
-          <span className="usage-tip-provider">{s.providerId ? provider(s.providerId) : ''}</span>
-          <span className="usage-num">
-            {v.toLocaleString('en-US')}
-            {limited && l ? (
-              <>
-                (<span className="usage-limited-num">{l.toLocaleString('en-US')}</span>)
-              </>
-            ) : null}
-          </span>
-        </div>
+        <TipRow key={s.key} name={s.model} provider={s.providerId ? provider(s.providerId) : ''} value={v} {...(limited && l ? { limited: l } : {})} />
       ))}
     </>
+  );
+}
+
+/**
+ * One line of a hover card, in the card's columns: a colour mark, the name, the provider (quieter), the number
+ * (right), and a model's 429 answers in red in their own column ((22)), so every number stands in one column.
+ */
+function TipRow({ mark, name, provider, value, limited, limitedRow }: { mark?: string; name: string; provider?: string; value: number; limited?: number; limitedRow?: boolean }) {
+  return (
+    <div className={limitedRow ? 'usage-tip-row is-limited' : 'usage-tip-row'}>
+      <span className="usage-tip-mark">{mark ? <span className={mark === 'danger' ? 'usage-swatch is-limited' : 'usage-swatch'} style={mark === 'danger' ? undefined : { background: mark }} /> : null}</span>
+      <span className={provider === undefined ? 'usage-tip-name is-wide' : 'usage-tip-name'}>{name}</span>
+      {provider === undefined ? null : <span className="usage-tip-provider">{provider}</span>}
+      <span className="usage-num">{value.toLocaleString('en-US')}</span>
+      <span className="usage-limited-num">{limited ? `(${limited.toLocaleString('en-US')})` : ''}</span>
+    </div>
   );
 }
 

@@ -7292,44 +7292,71 @@ section.plugins-part > .plugins-part-title {
 
 .usage-tip-title {
   display: flex;
+  justify-content: space-between;
   gap: 12px;
   margin-bottom: 4px;
   color: var(--spica-muted);
 }
 
+.usage-tip-empty {
+  color: var(--spica-muted);
+}
+
+/* The card's lines in columns: mark, name, provider, number (right), a model's 429 (red, right). Every line is a
+   row of the grid (display: contents), so names, providers and numbers each line up. */
+.usage-tip-grid {
+  display: grid;
+  grid-template-columns: auto auto auto auto auto;
+  align-items: center;
+  column-gap: 8px;
+}
+
+.usage-tip-row {
+  display: contents;
+}
+
+.usage-tip-mark {
+  display: inline-flex;
+}
+
+.usage-tip-mark .usage-swatch {
+  margin-right: 0;
+}
+
+.usage-tip-name {
+  white-space: nowrap;
+}
+
+/* a line without a provider: the name takes the provider's column too */
+.usage-tip-name.is-wide {
+  grid-column: span 2;
+}
+
+.usage-tip-provider {
+  color: var(--spica-muted);
+  white-space: nowrap;
+}
+
+.usage-tip-grid .usage-num {
+  padding-left: 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.usage-tip-row.is-limited > * {
+  color: var(--spica-danger);
+}
+
 .usage-tip-head {
+  grid-column: 1 / -1;
   margin-top: 6px;
   color: var(--spica-muted);
 }
 
 .usage-limited-num {
   color: var(--spica-danger);
-}
-
-.usage-tip-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.usage-tip-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.usage-tip-provider {
-  color: var(--spica-muted);
-  overflow-wrap: anywhere;
-}
-
-.usage-tip-row .usage-num {
-  margin-left: 12px;
+  text-align: right;
   white-space: nowrap;
-}
-
-.usage-tip-row.is-limited {
-  color: var(--spica-danger);
 }
 
 .usage-swatch {
