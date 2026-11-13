@@ -931,7 +931,7 @@ button.tree-twisty:hover {
   color: var(--spica-muted);
 }
 
-/* The name first; the folder after it stands right and is cut first (the name only once the folder is gone). */
+/* The name alone (its folder is in the hover, as Claude's Outputs). */
 .detail-file-name {
   flex: 0 1 auto;
   min-width: 0;
@@ -940,15 +940,150 @@ button.tree-twisty:hover {
   text-overflow: ellipsis;
 }
 
-.detail-file .detail-item-sub {
-  flex: 1 1 0;
+/* 文件's heading folds the list (Claude's Outputs ⌄ / ›): the words as the other headings, the count at the end while
+   folded. */
+.detail-fold {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.detail-fold .detail-count {
+  margin-left: auto;
+}
+
+.detail-fold-chevron {
+  transition: transform 0.15s;
+}
+
+.detail-fold[aria-expanded='false'] .detail-fold-chevron {
+  transform: rotate(-90deg);
+}
+
+/* 显示更多 / 收起 under the first files: quiet words, as Claude's Show more. */
+.detail-more {
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--spica-faint);
+  font: inherit;
+}
+
+.detail-more:hover {
+  color: var(--spica-ink);
+}
+
+/* 工具调用 X: the details' last row, outside the scrolling part; opens the finished calls beside. */
+.detail-history {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-top: 1px solid var(--spica-divider);
+  border-radius: 0;
+  background: none;
+  color: var(--spica-ink);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body-compact);
+  text-align: left;
+}
+
+.detail-history:hover,
+.detail-history.is-on {
+  background: var(--spica-hover);
+  border-radius: var(--radius-s);
+}
+
+.detail-history .detail-count {
+  color: var(--spica-faint);
+}
+
+.detail-history-chevron {
+  margin-left: auto;
+  color: var(--spica-muted);
+}
+
+/* The finished calls where the preview goes (shell/ToolHistory.tsx): a row each, as in the details; a click opens
+   its input and result under it, plain text. */
+.tool-history {
+  flex: 1;
   min-width: 0;
-  text-align: right;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  display: flex;
+  flex-direction: column;
+}
+
+.tool-history-head .detail-count {
+  flex: 1;
+  margin-left: 6px;
+  color: var(--spica-faint);
+}
+
+.tool-history-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 8px 16px;
+  list-style: none;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body-compact);
+}
+
+.tool-history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.tool-history-row:hover,
+.tool-history-item.is-open .tool-history-row {
+  background: var(--spica-hover);
+}
+
+.tool-history-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 8px 10px 30px;
+}
+
+.tool-history-label {
+  color: var(--spica-faint);
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
+}
+
+.tool-history-text {
+  margin: 0 0 6px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 6px 8px;
+  border: 1px solid var(--spica-border);
+  border-radius: var(--radius-m);
+  background: var(--spica-surface);
+  font-family: var(--font-mono);
+  font-size: var(--code-size);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .detail-empty {

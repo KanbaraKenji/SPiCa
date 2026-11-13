@@ -118,12 +118,12 @@ describe('the panels around the conversation (shell/layout.ts counts on these)',
     expect(css).toContain(".icon-btn:hover:not(:disabled):not([aria-disabled='true'])");
   });
 
-  it('in the details: one line between groups; amounts and folders stand right; a file’s folder is cut before its name', () => {
+  it('in the details: one line between groups; amounts stand right; a file row is its name alone (its folder in the hover)', () => {
     expect(block('.detail-section + .detail-section')).toContain('border-top: 1px solid var(--spica-divider)');
     expect(block('.detail-facts dd.num')).toContain('text-align: right');
-    expect(block('.detail-file .detail-item-sub')).toContain('text-align: right');
-    expect(block('.detail-file .detail-item-sub')).toContain('flex: 1 1 0');
+    expect(css).not.toContain('.detail-file .detail-item-sub');
     expect(block('.detail-file-name')).toContain('flex: 0 1 auto');
+    expect(block('.detail-file-name')).toContain('text-overflow: ellipsis');
     expect(block('.detail-file')).toContain('width: calc(100% + 12px)');
   });
 });

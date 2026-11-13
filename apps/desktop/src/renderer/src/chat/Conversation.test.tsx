@@ -102,7 +102,7 @@ describe('DetailPanel', () => {
     expect(screen.queryByRole('button', { name: '最大化' })).toBeNull();
   });
 
-  it('its list of tool calls says how each stands in the first place; failed in English; nothing after the name but the time or the words', () => {
+  it('lists only the calls running now (each with its ring); the finished ones are 工具调用 N at the bottom', () => {
     const transcript = {
       items: [
         {
@@ -118,11 +118,15 @@ describe('DetailPanel', () => {
         },
       ],
     };
-    render(<DetailPanel {...props} transcript={transcript} session={session({ id: 'w', role: 'worker' })} parent={undefined} />);
+    const toggle = vi.fn();
+    render(<DetailPanel {...props} transcript={transcript} session={session({ id: 'w', role: 'worker' })} parent={undefined} history={{ open: false, toggle }} />);
     const rows = [...document.querySelectorAll('.detail-list .detail-item')];
-    expect(rows.map((r) => r.querySelector('.detail-item-icon svg')?.getAttribute('data-status'))).toEqual(['done', 'error', 'running', 'stopped']);
-    expect(rows.map((r) => r.querySelector('.detail-item-meta')?.textContent)).toEqual(['4s', 'Failed', '', '已超时']);
-    expect(rows.map((r) => r.querySelector('.detail-item-main')?.className)).toEqual(Array(4).fill('detail-item-main'));
+    expect(rows.map((r) => r.querySelector('.detail-item-icon svg')?.getAttribute('data-status'))).toEqual(['running']);
+    expect(rows[0]!.textContent).toContain('b.docx');
+    const more = screen.getByRole('button', { name: /工具调用/ });
+    expect(more.textContent).toBe('工具调用3');
+    fireEvent.click(more);
+    expect(toggle).toHaveBeenCalled();
   });
 
   it('still says what a deeper sub-task belongs to', () => {
