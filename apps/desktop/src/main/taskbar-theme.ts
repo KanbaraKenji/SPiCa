@@ -62,11 +62,28 @@ export interface TaskbarThemeDeps {
 }
 
 /**
- * Applies the icon once now (nativeTheme's answer, so the window has an icon at
- * once), checks the system's own value after the settle time, and returns the
- * handler for nativeTheme's 'updated': events in a burst become one check.
+ * While the window can be seen, how often the taskbar's colour is read anyway. 'updated' alone is not enough
+ * (inferred from Chromium's source, not measured): with a light or dark skin themeSource is fixed, and Chromium
+ * then does not report a system switch; nor does it report a change of the taskbar's colour alone (Windows mode in
+ * a custom setting). One read starts reg.exe: about 45 ms of wall time, measured; nothing stays running.
  */
-export function followTaskbarTheme(deps: TaskbarThemeDeps): { onUpdated(): void } {
+export const VISIBLE_POLL_MS = 20_000;
+
+export interface TaskbarFollower {
+  /** nativeTheme's 'updated': a check after the settle time (events in a burst become one). */
+  onUpdated(): void;
+  /** The window got the focus or was shown again: a check after the settle time. */
+  recheck(): void;
+  /** Whether the window can be seen: while it can, the colour is read every VISIBLE_POLL_MS; hidden (tray) or minimised, never. */
+  setVisible(visible: boolean): void;
+}
+
+/**
+ * Applies the icon once now (nativeTheme's answer, so the window has an icon at
+ * once), checks the system's own value after the settle time, and returns what
+ * the window calls on 'updated', on focus or show, and when it is hidden or shown.
+ */
+export function followTaskbarTheme(deps: TaskbarThemeDeps): TaskbarFollower {
   let shown = deps.nativeDark();
   deps.apply(shown);
   let timer: unknown;
@@ -89,5 +106,20 @@ export function followTaskbarTheme(deps: TaskbarThemeDeps): { onUpdated(): void 
   };
   // Startup: the skin's themeSource is set right after the window, which can sway nativeTheme for a moment.
   schedule();
-  return { onUpdated: schedule };
+  let poll: unknown;
+  const tick = () => {
+    poll = deps.setTimer(tick, VISIBLE_POLL_MS);
+    void check();
+  };
+  return {
+    onUpdated: schedule,
+    recheck: schedule,
+    setVisible: (visible) => {
+      if (visible && poll === undefined) poll = deps.setTimer(tick, VISIBLE_POLL_MS);
+      else if (!visible && poll !== undefined) {
+        deps.clearTimer(poll);
+        poll = undefined;
+      }
+    },
+  };
 }

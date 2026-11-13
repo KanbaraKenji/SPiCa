@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { CallDetail, callEnd, jsonLaidOut, layJson, lineChange, OUTPUT_LINES } from './CallDetail';
+import { cleanup, render, screen } from '@testing-library/react';
+import { CallDetail, callEnd, DRAWN_LINES, hunkLines, jsonLaidOut, layJson, lineChange } from './CallDetail';
 import { resultBody, type Block } from '../store/transcript';
 
 afterEach(cleanup);
@@ -76,13 +76,17 @@ describe('a call opened', () => {
     expect([...document.querySelectorAll('.tool-arg')].map((r) => r.textContent)).toEqual(['part_ids["DEMO-1001"]', 'detailtrue']);
   });
 
-  it('long output: its first lines, then 显示更多 and 收起', () => {
-    const text = Array.from({ length: OUTPUT_LINES + 10 }, (_, i) => `line ${i + 1}`).join('\n');
+  it('long output: all of it, no 显示更多 (the box is 20 lines high and scrolls); past the drawn limit, ⋯', () => {
+    const text = Array.from({ length: 45 }, (_, i) => `line ${i + 1}`).join('\n');
     render(<CallDetail block={call({ name: 'read_file', input: { path: 'a.md' }, result: text })} />);
-    expect(document.querySelector('.tool-output')?.textContent?.split('\n')).toHaveLength(OUTPUT_LINES);
-    fireEvent.click(screen.getByRole('button', { name: '显示更多' }));
-    expect(document.querySelector('.tool-output')?.textContent?.split('\n')).toHaveLength(OUTPUT_LINES + 10);
-    expect(screen.getByRole('button', { name: '收起' })).toBeTruthy();
+    expect(document.querySelector('.tool-output')?.textContent?.split('\n')).toHaveLength(45);
+    expect(screen.queryByRole('button', { name: '显示更多' })).toBeNull();
+    cleanup();
+    const huge = Array.from({ length: DRAWN_LINES + 5 }, (_, i) => `l${i}`).join('\n');
+    render(<CallDetail block={call({ name: 'read_file', input: { path: 'a.md' }, result: huge })} />);
+    const shown = document.querySelector('.tool-output')!.textContent!.split('\n');
+    expect(shown).toHaveLength(DRAWN_LINES + 1);
+    expect(shown.at(-1)).toBe('⋯');
   });
 
   it('a file created: its path, then every line numbered and green; no content: key and no result line', () => {
@@ -99,6 +103,53 @@ describe('a call opened', () => {
     ]);
     expect(document.querySelector('.tool-args')).toBeNull();
     expect(document.querySelector('.tool-output')).toBeNull();
+  });
+
+  it('an edit with the core’s change: numbered in one column (removed: the old file’s number, others the new one’s), three lines around, ⋯ between places', () => {
+    const change = {
+      hunks: [
+        { oldStart: 4, newStart: 4, lines: [' a', ' b', ' c', '-TOTAL = 0', '+TOTAL = 0.0', ' d', ' e', ' f'] },
+        { oldStart: 20, newStart: 20, lines: [' x', '+new', ' y'] },
+      ],
+    };
+    render(
+      <CallDetail
+        block={call({ name: 'edit_file', input: { path: 'a.py', old_string: 'TOTAL = 0', new_string: 'TOTAL = 0.0' }, result: 'Edited a.py: 1 replacement(s).' })}
+        card={{ path: 'D:\\a.py', name: 'a.py', kind: 'text', sizeBytes: 1, modifiedAt: '', extractedAt: '', read: {}, origin: 'modified', change }}
+      />,
+    );
+    expect([...document.querySelectorAll('.change-line')].map((l) => `${l.className.replace('change-line is-', '')}|${l.querySelector('.change-gutter')?.textContent}|${l.querySelector('.change-text')?.textContent}`)).toEqual([
+      'same|4|a',
+      'same|5|b',
+      'same|6|c',
+      'out|7|TOTAL = 0',
+      'in|7|TOTAL = 0.0',
+      'same|8|d',
+      'same|9|e',
+      'same|10|f',
+      'gap|⋯|',
+      'same|20|x',
+      'in|21|new',
+      'same|22|y',
+    ]);
+    expect(document.querySelector('.change-line.is-in .change-word')?.textContent).toBe('.0');
+    expect(hunkLines({ ...change, truncated: true }).at(-1)?.kind).toBe('gap');
+  });
+
+  it('a file written over, with the core’s change: the change, not the whole new content uncoloured', () => {
+    render(
+      <CallDetail
+        block={call({ name: 'write_file', input: { path: 'a.txt', content: 'one\nTWO\nthree' }, result: 'Overwrote a.txt (13 bytes).' })}
+        card={{ path: 'D:\\a.txt', name: 'a.txt', kind: 'text', sizeBytes: 13, modifiedAt: '', extractedAt: '', read: {}, origin: 'modified', change: { hunks: [{ oldStart: 1, newStart: 1, lines: [' one', '-two', '+TWO', ' three'] }] } }}
+      />,
+    );
+    expect([...document.querySelectorAll('.change-line')].map((l) => l.className.replace('change-line is-', '') + (l.querySelector('.change-gutter')?.textContent ?? ''))).toEqual(['same1', 'out2', 'in2', 'same3']);
+  });
+
+  it('a conversation from before (no change in the card): an edit is the two strings, marked − and +; a file written over, its lines numbered, uncoloured', () => {
+    render(<CallDetail block={call({ name: 'write_file', input: { path: 'a.txt', content: 'one\ntwo' }, result: 'Overwrote a.txt (7 bytes).' })} />);
+    expect([...document.querySelectorAll('.change-line')].map((l) => l.className.replace('change-line is-', '') + (l.querySelector('.change-gutter')?.textContent ?? ''))).toEqual(['same1', 'same2']);
+    cleanup();
   });
 
   it('an edit: the old lines red and the new ones green, marked − and + (where in the file is not known)', () => {

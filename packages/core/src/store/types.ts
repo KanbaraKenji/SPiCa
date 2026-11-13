@@ -1,7 +1,7 @@
 // Storage contract. The database is the source of truth for sessions,
 // messages, tool calls, pending questions, relays and traceable records.
 // Synchronous on purpose: the default backend is embedded SQLite.
-import type { AgentRole, MailItem, MemoryItem, MemoryTidyRun, Message, PendingItem, ProjectInfo, ProjectLogEntry, RequestRecord, SessionStatus, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { AgentRole, MailItem, MemoryEntry, MemoryItem, MemoryTidyRun, Message, PendingItem, ProjectInfo, ProjectLogEntry, RequestRecord, SessionStatus, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 
 export type SenderDecision = { decision: 'project'; projectId: string } | { decision: 'ignore' };
 
@@ -163,7 +163,12 @@ export interface Store {
    * Deletes items for good (设置 › 记忆: 删除, 全部清除): the rows go and nothing of their text stays in the file. The
    * messages they were saved from (sessionId#seq, no text) are kept per owner, so a tidy does not note them again.
    */
-  deleteMemories(owner: string, ids: number[]): void;
+  deleteMemories(owner: string, ids: number[], entries?: number[]): void;
+  /** Entries of the memory (their details are items with entryId). `id` 0 means a new one (numbered by the store). */
+  putMemoryEntry(e: MemoryEntry): MemoryEntry;
+  getMemoryEntry(id: number): MemoryEntry | undefined;
+  /** Oldest first. */
+  listMemoryEntries(owner: string): MemoryEntry[];
   /** The messages ("sessionId#seq") of items deleted for good. */
   deletedMemorySources(owner: string): string[];
   /** Tidies of the memory. `id` 0 means a new one (numbered by the store). */

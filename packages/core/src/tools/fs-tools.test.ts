@@ -123,6 +123,42 @@ describe('write_file / edit_file', () => {
   });
 });
 
+describe('write_file / edit_file: where the file changed, for the window only', () => {
+  const cardsOf = () => {
+    const cards: { type: string; file?: { change?: unknown; lines?: unknown } }[] = [];
+    ctx.emit = (e) => cards.push(e as never);
+    return cards;
+  };
+  const file = Array.from({ length: 12 }, (_, i) => `line ${i + 1}`).join('\n') + '\n';
+
+  it('an edit: its place in the file (line numbers) and three unchanged lines around it; the result text as before', async () => {
+    await writeFile(join(dir, 'f.txt'), file);
+    const cards = cardsOf();
+    const r = await editFileTool.execute({ path: 'f.txt', old_string: 'line 7', new_string: 'line seven\nline 7b' }, ctx);
+    expect(r).toEqual({ content: 'Edited f.txt: 1 replacement(s).' });
+    expect(cards[0]!.file!.lines).toEqual({ added: 2, removed: 1 });
+    expect(cards[0]!.file!.change).toEqual({
+      hunks: [{ oldStart: 4, newStart: 4, lines: [' line 4', ' line 5', ' line 6', '-line 7', '+line seven', '+line 7b', ' line 8', ' line 9', ' line 10'] }],
+    });
+  });
+
+  it('a file written over: the old content against the new, as hunks; a new file has none (its content is the change)', async () => {
+    await writeFile(join(dir, 'w.txt'), file);
+    const cards = cardsOf();
+    const r = await writeFileTool.execute({ path: 'w.txt', content: file.replace('line 1\n', 'first\n').replace('line 12\n', 'line 12\nline 13\n') }, ctx);
+    expect(r.content).toBe(`Overwrote w.txt (${Buffer.byteLength(file) - 6 + 5 + 8} bytes).`);
+    expect(cards[0]!.file!.change).toEqual({
+      hunks: [
+        { oldStart: 1, newStart: 1, lines: ['-line 1', '+first', ' line 2', ' line 3', ' line 4'] },
+        { oldStart: 10, newStart: 10, lines: [' line 10', ' line 11', ' line 12', '+line 13'] },
+      ],
+    });
+    await writeFileTool.execute({ path: 'brand-new.txt', content: 'a\nb\n' }, ctx);
+    expect(cards[1]!.file!.change).toBeUndefined();
+    expect(cards[1]!.file!.lines).toEqual({ added: 2, removed: 0 });
+  });
+});
+
 describe('list_dir / glob / grep', () => {
   it('lists folders first', async () => {
     const r = await listDirTool.execute({}, ctx);

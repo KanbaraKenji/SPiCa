@@ -3,7 +3,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
-import type { MailItem, MemoryItem, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, RequestRecord, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { MailItem, MemoryEntry, MemoryItem, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, RequestRecord, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, RequestFilter, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const SCHEMA_VERSION = 1;
@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS memories (
   id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, status TEXT NOT NULL, updated_at TEXT NOT NULL, data TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS memories_owner ON memories(owner, status);
+CREATE TABLE IF NOT EXISTS memory_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, updated_at TEXT NOT NULL, data TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS memory_tidies (
   id INTEGER PRIMARY KEY AUTOINCREMENT, started_at TEXT NOT NULL, data TEXT NOT NULL
 );
@@ -452,6 +455,28 @@ export class SqliteStore implements Store {
     const row = this.#q('SELECT data FROM memories WHERE id = ?').get(id) as Row | undefined;
     return row && parse<MemoryItem>(row.data);
   }
+  putMemoryEntry(e: MemoryEntry): MemoryEntry {
+    return this.#secure(() => {
+      if (!e.id) {
+        const r = this.#q('INSERT INTO memory_entries (owner, updated_at, data) VALUES (?, ?, ?)').run(e.owner, e.updatedAt, '{}');
+        const entry = { ...e, id: Number(r.lastInsertRowid) };
+        this.#q('UPDATE memory_entries SET data = ? WHERE id = ?').run(json(entry), entry.id);
+        return entry;
+      }
+      this.#q(
+        `INSERT INTO memory_entries (id, owner, updated_at, data) VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET owner = excluded.owner, updated_at = excluded.updated_at, data = excluded.data`,
+      ).run(e.id, e.owner, e.updatedAt, json(e));
+      return { ...e };
+    });
+  }
+  getMemoryEntry(id: number): MemoryEntry | undefined {
+    const row = this.#q('SELECT data FROM memory_entries WHERE id = ?').get(id) as Row | undefined;
+    return row && parse<MemoryEntry>(row.data);
+  }
+  listMemoryEntries(owner: string): MemoryEntry[] {
+    return (this.#q('SELECT data FROM memory_entries WHERE owner = ? ORDER BY id').all(owner) as Row[]).map((r) => parse<MemoryEntry>(r.data));
+  }
   putMemoryTidy(t: MemoryTidyRun): MemoryTidyRun {
     if (!t.id) {
       const r = this.#q('INSERT INTO memory_tidies (started_at, data) VALUES (?, ?)').run(t.startedAt, '{}');
@@ -476,8 +501,8 @@ export class SqliteStore implements Store {
   setMemoryCursor(owner: string, at: string): void {
     this.#q('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(`memory_cursor:${owner}`, at);
   }
-  deleteMemories(owner: string, ids: number[]): void {
-    if (ids.length === 0) return;
+  deleteMemories(owner: string, ids: number[], entries: number[] = []): void {
+    if (ids.length === 0 && entries.length === 0) return;
     const key = `memory_deleted:${owner}`;
     // the pages that held the rows are overwritten with zeros, and the write-ahead log is emptied after
     this.#secure(() => {
@@ -491,6 +516,7 @@ export class SqliteStore implements Store {
           if (m.sessionId && m.seq !== undefined) sources.add(`${m.sessionId}#${m.seq}`);
           this.#q('DELETE FROM memories WHERE id = ?').run(id);
         }
+        for (const id of entries) this.#q('DELETE FROM memory_entries WHERE id = ? AND owner = ?').run(id, owner);
         this.#q('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify([...sources]));
         this.#db.exec('COMMIT');
       } catch (err) {

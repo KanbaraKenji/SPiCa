@@ -21,11 +21,8 @@ const ACCENT_LOCK = '#39C5BB';
 export const BRAND_COLORS = Object.freeze({
   dark: Object.freeze<ThemeColors>({ ink: '#F1F5F9', accent: '#62A9FF', background: '#0F1522' }),
   light: Object.freeze<ThemeColors>({ ink: LIGHT_INK, accent: '#2F7DE1', background: '#F8FAFC' }),
-  /**
-   * 写死颜色的应用图标（安装程序、exe、卸载条目）：两色花，透明底。
-   * 三片长瓣 #39C5BB（与 accentLock 同值），六片短瓣和花心用浅色主题的墨色。
-   */
-  fixedIcon: Object.freeze({ ink: LIGHT_INK, accent: ACCENT_LOCK }),
+  /** The app icon with fixed colours (installer, exe, uninstall entry, shortcuts): a white flower with a dark rim, seen on light and dark grounds. */
+  fixedIcon: Object.freeze({ ink: '#F8FAFC', rim: LIGHT_INK }),
   /** accent lock：彩蛋解锁后长瓣常驻的颜色 */
   accentLock: ACCENT_LOCK,
 });

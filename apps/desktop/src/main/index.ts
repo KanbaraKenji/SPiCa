@@ -39,6 +39,7 @@ import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { pageAlive, pageRecovery } from './page-recovery';
 import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor } from './app-dialog';
 import { openDialogWindow } from './app-dialog-window';
+import { editMenu, type EditAction } from './edit-menu';
 import { watchFit } from './window-fit';
 import { lookAtPage, watchPage } from './page-watch';
 import { closeAsker, closeDialogSpec, closeFromDialog, closePrompt, dialogFromBox, onWindowClose, revealWindow, runningTracker, trayHint, wireTray } from './tray';
@@ -65,7 +66,7 @@ import { accountAtStart } from './user-account';
 import { SettingsStore } from './settings-store';
 import { captureOnce, runShots } from './shots';
 import { flatten, icoFromPngs, inkFor, TASKBAR_FRAME_SIZES } from './icon';
-import { followTaskbarTheme, readTaskbarDark } from './taskbar-theme';
+import { followTaskbarTheme, readTaskbarDark, type TaskbarFollower } from './taskbar-theme';
 import { PREVIEW_SCHEME, PreviewFiles, readPreview, readPreviewFile } from './preview';
 import { FLOW_SCHEME, flowFile } from './flow-scheme';
 import { AttachImages } from './images';
@@ -456,6 +457,9 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'addMemory',
   'editMemory',
   'forgetMemory',
+  'listMemoryEntries',
+  'editMemoryEntry',
+  'deleteMemoryEntry',
   'clearMemories',
   'undoMemory',
   'tidyMemories',
@@ -607,7 +611,7 @@ function taskbarIco(dark: boolean): Uint8Array | undefined {
 }
 
 let buttonRefresh: ReturnType<typeof setTimeout> | undefined;
-let taskbarTheme: { onUpdated(): void } | undefined;
+let taskbarTheme: TaskbarFollower | undefined;
 
 /**
  * Only an installed (or portable) build touches shortcuts, and not while it runs
@@ -852,8 +856,9 @@ function createMainWindow(): BrowserWindow {
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (!app.isPackaged && devUrl) void win.loadURL(devUrl);
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
-  // The icon follows the taskbar's colour (main/taskbar-theme.ts): now, and after each system switch.
-  taskbarTheme = followTaskbarTheme({
+  // The icon follows the taskbar's colour (main/taskbar-theme.ts): now, after each 'updated', when the window gets the
+  // focus or is shown again, and every so often while it can be seen ('updated' does not come for every switch).
+  const follower = followTaskbarTheme({
     readTaskbarDark,
     nativeDark: () => nativeTheme.shouldUseDarkColorsForSystemIntegratedUI,
     apply: (dark) => {
@@ -863,6 +868,18 @@ function createMainWindow(): BrowserWindow {
     setTimer: (fn, ms) => setTimeout(fn, ms),
     clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
   });
+  taskbarTheme = follower;
+  const seen = () => !win.isDestroyed() && win.isVisible() && !win.isMinimized();
+  const shownAgain = () => {
+    follower.recheck();
+    follower.setVisible(seen());
+  };
+  win.on('focus', () => follower.recheck());
+  win.on('show', shownAgain);
+  win.on('restore', shownAgain);
+  win.on('hide', () => follower.setVisible(false));
+  win.on('minimize', () => follower.setVisible(false));
+  win.on('closed', () => follower.setVisible(false));
   return win;
 }
 
@@ -1483,8 +1500,8 @@ ipcMain.on(DesktopChannel.Cover, (_e, what: unknown) => {
   if (mainWindow && !mainWindow.isDestroyed()) syncNativeChrome(mainWindow, settings.get());
 });
 
-// The right-click menu on words (renderer ui/TextMenu.tsx): the same commands as Ctrl+X / C / V / A, on the page
-// that asked.
+// The right-click 复制 on words selected in the page (renderer ui/TextMenu.tsx): the same command as Ctrl+C, on the
+// page that asked.
 const EDIT_COMMANDS = new Set(['cut', 'copy', 'paste', 'selectAll'] as const);
 ipcMain.on(DesktopChannel.Edit, (e, command: unknown) => {
   if (typeof command !== 'string' || !EDIT_COMMANDS.has(command as never)) return;
@@ -1493,6 +1510,32 @@ ipcMain.on(DesktopChannel.Edit, (e, command: unknown) => {
   else if (command === 'copy') page.copy();
   else if (command === 'paste') page.paste();
   else page.selectAll();
+});
+
+// Right click in a text box, in any window: Windows' own menu (main/edit-menu.ts). A hidden test window never pops
+// a menu onto the screen: the last one is kept on globalThis.__spicaEditMenu for the test script to read.
+app.on('web-contents-created', (_e, contents) => {
+  contents.on('context-menu', (_ev, params) => {
+    const entries = editMenu(params);
+    if (!entries) return;
+    if (hidden) {
+      (globalThis as { __spicaEditMenu?: unknown }).__spicaEditMenu = entries;
+      return;
+    }
+    const run: Record<EditAction, () => void> = {
+      undo: () => contents.undo(),
+      cut: () => contents.cut(),
+      copy: () => contents.copy(),
+      paste: () => contents.paste(),
+      delete: () => contents.delete(),
+      selectAll: () => contents.selectAll(),
+    };
+    const menu = Menu.buildFromTemplate(
+      entries.map((e) => (e === 'separator' ? { type: 'separator' as const } : { label: e.label, enabled: e.enabled, click: run[e.action] })),
+    );
+    const win = BrowserWindow.fromWebContents(contents);
+    menu.popup(win ? { window: win } : {});
+  });
 });
 
 ipcMain.on(DesktopChannel.Zoom, (_e, step: unknown) => {

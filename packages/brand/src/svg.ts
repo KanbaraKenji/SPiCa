@@ -2,7 +2,7 @@
  * 纯字符串版 SVG 构造器：给导出脚本、开机首帧、主进程窗口图标用。
  * React 组件另有 JSX 版，几何同源（geometry.ts / wordmark.ts）。
  */
-import { MARK_CENTER, MARK_GEOMETRY, MARK_VIEWBOX, TASKBAR_PARAMS, fmt, markGeometry, type MarkParams } from './geometry.ts';
+import { MARK_CENTER, MARK_GEOMETRY, MARK_PARAMS, MARK_VIEWBOX, TASKBAR_PARAMS, fmt, markGeometry, type MarkParams } from './geometry.ts';
 import { BRAND_COLORS } from './tokens.ts';
 import { WORDMARK, type Wordmark } from './wordmark.ts';
 
@@ -80,13 +80,25 @@ export function taskbarFrameSvg(size: number, colors: { ink: string; accent?: st
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MARK_VIEWBOX} ${MARK_VIEWBOX}" width="${size}" height="${size}" aria-hidden="true"><g transform="translate(${fmt(dx)} ${fmt(dy)})">${body}</g></svg>`;
 }
 
+/** The fixed icon's flower is drawn at 93%, leaving room in the frame for the rim. */
+export const FIXED_ICON_FIT = 0.93;
+
 /**
- * 写死颜色的应用图标：安装程序、资源管理器里的 exe、卸载条目这些不能随任务栏深浅换色的位置。
- * 花直接画在透明底上，不加底板、描边、阴影：长瓣用 accent，短瓣和花心用 ink（缺省 BRAND_COLORS.fixedIcon）。
- * 每个尺寸都用光学版几何按尺寸直接出图（同 taskbarFrameSvg）。
+ * The app icon with fixed colours, for the places that cannot follow the taskbar's light or dark (the installer,
+ * the exe in Explorer, the uninstall entry, shortcuts): a white flower with a thin dark rim on a transparent
+ * ground, so it shows on light and dark grounds alike. The rim is about 1 output pixel up to 48 px and grows in
+ * proportion above (size / 48); up to 48 px the optical geometry is used, from 64 px the original flower.
  */
-export function fixedIconSvg(size: number, colors: { ink: string; accent: string } = BRAND_COLORS.fixedIcon): string {
-  return taskbarFrameSvg(size, colors);
+export function fixedIconSvg(size: number): string {
+  const params = size <= 48 ? TASKBAR_PARAMS : MARK_PARAMS;
+  const { ink, rim } = BRAND_COLORS.fixedIcon;
+  const rimPx = Math.max(1, size / 48);
+  // Half the stroke is under the flower, hence × 2; divided by the flower's and the frame's scaling to get 64-frame units.
+  const width = (2 * rimPx * MARK_VIEWBOX) / size / (params.scale * FIXED_ICON_FIT);
+  const c = fmt(MARK_CENTER);
+  const rimLayer = `<g stroke="${rim}" stroke-width="${fmt(width)}" stroke-linejoin="round">${markBody({ ink: rim, accent: rim, params })}</g>`;
+  const flower = markBody({ ink, accent: ink, params });
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MARK_VIEWBOX} ${MARK_VIEWBOX}" width="${size}" height="${size}" aria-hidden="true"><g transform="translate(${c} ${c}) scale(${fmt(FIXED_ICON_FIT)}) translate(-${c} -${c})">${rimLayer}${flower}</g></svg>`;
 }
 
 /** 任务栏 / 窗口图标：无底、光学版几何 */

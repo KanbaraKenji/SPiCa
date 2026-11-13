@@ -7,13 +7,18 @@ import type { FileCardMeta } from '../types.ts';
 import type { Tool, ToolContext } from './types.ts';
 import { producedFileCard } from './file-card.ts';
 import { LINE_COUNT_MAX_BYTES, lineDelta, oldText } from './file-changes.ts';
+import { fileChange } from './line-diff.ts';
 
-/** The card for a file a write made: created or modified, with the lines added and removed when they were counted. */
+/**
+ * The card for a file a write made: created or modified, with the lines added and removed when they were counted,
+ * and, over a file whose old content was read, where it changed (for the window only: the result text is the same).
+ */
 async function emitWriteCard(ctx: ToolContext, abs: string, existed: boolean, before: string | undefined, after: string): Promise<void> {
   const card = await producedFileCard(abs, existed ? 'modified' : 'created');
   if (!card) return;
   const lines = existed ? (before !== undefined ? lineDelta(before, after) : undefined) : lineDelta('', after);
-  ctx.emit({ type: 'file.card', callId: ctx.callId, file: lines ? { ...card, lines } : card });
+  const change = existed && before !== undefined && Buffer.byteLength(after) <= LINE_COUNT_MAX_BYTES ? fileChange(before, after) : undefined;
+  ctx.emit({ type: 'file.card', callId: ctx.callId, file: { ...card, ...(lines ? { lines } : {}), ...(change ? { change } : {}) } });
 }
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '.hg', '.svn', 'dist', 'out', '.venv', '__pycache__']);

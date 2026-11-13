@@ -1,5 +1,5 @@
 // In-memory store (tests and ephemeral runs).
-import type { MailItem, MemoryItem, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, RequestRecord, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { MailItem, MemoryEntry, MemoryItem, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, RequestRecord, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, RequestFilter, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -55,7 +55,23 @@ export class MemoryStore implements Store {
     this.#cursors.set(owner, at);
   }
   readonly #deletedSources = new Map<string, Set<string>>();
-  deleteMemories(owner: string, ids: number[]): void {
+  readonly #entries = new Map<number, MemoryEntry>();
+  #entrySeq = 0;
+  putMemoryEntry(e: MemoryEntry): MemoryEntry {
+    const entry = e.id ? clone(e) : { ...clone(e), id: ++this.#entrySeq };
+    this.#entrySeq = Math.max(this.#entrySeq, entry.id);
+    this.#entries.set(entry.id, entry);
+    return clone(entry);
+  }
+  getMemoryEntry(id: number): MemoryEntry | undefined {
+    const e = this.#entries.get(id);
+    return e && clone(e);
+  }
+  listMemoryEntries(owner: string): MemoryEntry[] {
+    return [...this.#entries.values()].filter((e) => e.owner === owner).sort((a, b) => a.id - b.id).map(clone);
+  }
+  deleteMemories(owner: string, ids: number[], entries: number[] = []): void {
+    for (const id of entries) if (this.#entries.get(id)?.owner === owner) this.#entries.delete(id);
     const sources = this.#deletedSources.get(owner) ?? new Set<string>();
     for (const id of ids) {
       const m = this.#memories.get(id);

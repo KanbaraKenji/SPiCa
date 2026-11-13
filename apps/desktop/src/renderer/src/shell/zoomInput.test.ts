@@ -29,4 +29,16 @@ describe('zoom input', () => {
     expect(zoom.mock.calls).toEqual([['in'], ['out']]);
     off();
   });
+
+  it('leaves the editing keys to the page: Ctrl+C on words selected in the conversation copies them', () => {
+    const zoom = vi.fn();
+    const off = installZoomInput(zoom);
+    for (const [key, code] of [['c', 'KeyC'], ['x', 'KeyX'], ['v', 'KeyV'], ['a', 'KeyA'], ['z', 'KeyZ']]) {
+      const e = new KeyboardEvent('keydown', { key, code, ctrlKey: true, cancelable: true });
+      window.dispatchEvent(e);
+      expect(e.defaultPrevented).toBe(false);
+    }
+    expect(zoom).not.toHaveBeenCalled();
+    off();
+  });
 });

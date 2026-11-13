@@ -15,6 +15,8 @@ import type {
   MailItem,
   MailPollResult,
   MemoryCardMeta,
+  MemoryEntry,
+  MemoryEntryInput,
   MemoryItem,
   MemoryRefusal,
   MemoryTidyRun,
@@ -46,7 +48,7 @@ import type { AgentBackend } from './types';
 import { buildSeed, fakeCard } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
 import { isoAt } from './time';
-import { FakeMemory, type MemoryPlan } from './fake-memory';
+import { DEMO_MEMORIES, FakeMemory, guessEntry, type MemoryPlan } from './fake-memory';
 
 /** What the user typed in a message (its text blocks). */
 function textOf(m: Message | undefined): string {
@@ -58,6 +60,8 @@ export interface FakeBackendOptions {
   speed?: number;
   /** Start with the demo projects and history. Default true. */
   seed?: boolean;
+  /** The demo's own memory notes (default: with the seed). */
+  demoMemories?: boolean;
   /** Clock, for deterministic screenshots and tests. */
   now?: () => Date;
   /** Like the core's: the folder all conversations shared up to 0.1.0-rc.2; ones there choose a folder once, their files stay. */
@@ -227,6 +231,7 @@ export class FakeBackend implements AgentBackend {
     this.#memory = new FakeMemory(
       () => isoAt(this.#now()),
       (sid, body) => this.#emit(sid, body),
+      (options.demoMemories ?? options.seed ?? true) ? DEMO_MEMORIES : [],
     );
     this.#mail = new FakeMailbox(
       this.#now,
@@ -674,12 +679,24 @@ export class FakeBackend implements AgentBackend {
     return this.#memory.list(opts);
   }
 
-  async addMemory(text: string): Promise<MemoryCardMeta | MemoryRefusal> {
-    return this.#memory.addOwn(text);
+  async listMemoryEntries(): Promise<MemoryEntry[]> {
+    return this.#memory.entries();
+  }
+
+  async addMemory(text: string, entry?: number | MemoryEntryInput): Promise<MemoryCardMeta | MemoryRefusal> {
+    return this.#memory.addOwn(text, entry);
   }
 
   async editMemory(id: number, text: string): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
     return this.#memory.edit(id, text);
+  }
+
+  async editMemoryEntry(id: number, entry: MemoryEntryInput): Promise<MemoryCardMeta | MemoryRefusal | undefined> {
+    return this.#memory.editEntry(id, entry);
+  }
+
+  async deleteMemoryEntry(id: number): Promise<MemoryCardMeta | undefined> {
+    return this.#memory.deleteEntry(id);
   }
 
   async forgetMemory(id: number): Promise<MemoryCardMeta | undefined> {
@@ -899,13 +916,14 @@ export class FakeBackend implements AgentBackend {
     const userSeq = [...(this.#messages.get(sessionId) ?? [])].reverse().find((m) => m.role === 'user' && m.kind === 'user')?.seq;
     const quote = textOf(this.#messages.get(sessionId)?.find((m) => m.seq === userSeq));
     const name = plan.action === 'forget' ? 'forget' : 'remember';
-    const input = plan.action === 'forget' ? { id: plan.id, quote } : { text: plan.text, quote, ...(plan.action === 'replace' ? { replaces: plan.replaces } : {}) };
+    const entry = plan.action === 'save' ? guessEntry(plan.text) : undefined;
+    const input = plan.action === 'forget' ? { id: plan.id, quote } : { text: plan.text, quote, ...(entry ? { entry: entry.name, summary: entry.summary, category: entry.category } : {}), ...(plan.action === 'replace' ? { replaces: plan.replaces } : {}) };
     this.#emit(sessionId, { type: 'tool.call', callId, name });
     this.#emit(sessionId, { type: 'tool.start', callId, name, input, category: 'other' });
     const card =
       plan.action === 'forget'
         ? this.#memory.forget(plan.id, 'assistant', true)
-        : this.#memory.add({ text: plan.text, quote, by: 'assistant', sessionId, ...(userSeq !== undefined ? { seq: userSeq } : {}), ...(plan.action === 'replace' ? { replaces: plan.replaces } : {}) });
+        : this.#memory.add({ text: plan.text, quote, by: 'assistant', ...(entry ? { entry } : {}), sessionId, ...(userSeq !== undefined ? { seq: userSeq } : {}), ...(plan.action === 'replace' ? { replaces: plan.replaces } : {}) });
     if (card) this.#emit(sessionId, { type: 'memory.changed', callId, card });
     this.#callInfo.set(callId, { category: 'other', ...(card ? { memory: card } : {}) });
     const result = card?.item ? (card.action === 'forgotten' ? `Forgot [${card.item.id}].` : `Saved as [${card.item.id}].`) : 'Nothing changed.';
@@ -1051,11 +1069,12 @@ export class FakeBackend implements AgentBackend {
       // 「工具详情」: one of each kind of call, a line of the answer between them so each is a row of its own (for
       // pictures of what a call shows opened): a command that works, one that fails with its exit code, a plugin
       // tool answering JSON (fenced, as the core hands outside content to the model) and one failing, a long read,
-      // a file written, edited in one place and in several. Names and data are made up.
+      // a file written, edited in one place and in several, written over. Names and data are made up. The edits and
+      // the overwrite carry the change as the core works it out (tools/line-diff.ts: line numbers, three lines around).
       if (/工具详情/.test(text)) {
         const at = isoAt(this.#now());
-        const card = (path: string, origin: 'created' | 'modified', added: number, removed: number): FileCardMeta => ({
-          path: `D:\\工作\\样机评审\\${path}`, name: path.split('\\').pop() ?? path, kind: 'text', sizeBytes: 612, modifiedAt: at, extractedAt: at, read: {}, origin, lines: { added, removed },
+        const card = (path: string, origin: 'created' | 'modified', added: number, removed: number, change?: FileCardMeta['change']): FileCardMeta => ({
+          path: `D:\\工作\\样机评审\\${path}`, name: path.split('\\').pop() ?? path, kind: 'text', sizeBytes: 612, modifiedAt: at, extractedAt: at, read: {}, origin, lines: { added, removed }, ...(change ? { change } : {}),
         });
         const say = async (words: string) => {
           await this.#stream(sessionId, 'text', words, signal);
@@ -1097,13 +1116,36 @@ export class FakeBackend implements AgentBackend {
         await say('写一个汇总脚本。');
         blocks.push(...(await this.#tool(sessionId, run, 'write_file', { path: 'tools\\summary.py', content: SCRIPT }, 'Created tools\\summary.py (612 bytes).', 300, false, { category: 'write', cards: [card('tools\\summary.py', 'created', 18, 0)] })));
         await say('改一处。');
-        blocks.push(...(await this.#tool(sessionId, run, 'edit_file', { path: 'tools\\summary.py', old_string: 'TOTAL = 0', new_string: 'TOTAL = 0.0' }, 'Edited tools\\summary.py: 1 replacement(s).', 300, false, { category: 'write', cards: [card('tools\\summary.py', 'modified', 1, 1)] })));
+        const edit1 = { hunks: [{ oldStart: 1, newStart: 1, lines: [' import csv', ' from pathlib import Path', ' ', '-TOTAL = 0', '+TOTAL = 0.0', ' ', ' ', ' def read_quotes(folder: Path) -> list[dict]:'] }] };
+        blocks.push(...(await this.#tool(sessionId, run, 'edit_file', { path: 'tools\\summary.py', old_string: 'TOTAL = 0', new_string: 'TOTAL = 0.0' }, 'Edited tools\\summary.py: 1 replacement(s).', 300, false, { category: 'write', cards: [card('tools\\summary.py', 'modified', 1, 1, edit1)] })));
         await say('再改几处。');
         blocks.push(...(await this.#tool(sessionId, run, 'edit_file', {
           path: 'tools\\summary.py',
           old_string: 'if __name__ == "__main__":\n    quotes = read_quotes(Path("报价"))\n    print(len(quotes), "quotes")',
           new_string: 'if __name__ == "__main__":\n    folder = Path("报价")\n    quotes = read_quotes(folder)\n    total = sum(float(q["单价"]) for q in quotes)\n    print(len(quotes), "quotes, total", round(total, 2))',
-        }, 'Edited tools\\summary.py: 1 replacement(s).', 300, false, { category: 'write', cards: [card('tools\\summary.py', 'modified', 3, 2)] })));
+        }, 'Edited tools\\summary.py: 1 replacement(s).', 300, false, {
+          category: 'write',
+          cards: [
+            card('tools\\summary.py', 'modified', 4, 2, {
+              hunks: [{ oldStart: 14, newStart: 14, lines: [' ', ' ', ' if __name__ == "__main__":', '-    quotes = read_quotes(Path("报价"))', '-    print(len(quotes), "quotes")', '+    folder = Path("报价")', '+    quotes = read_quotes(folder)', '+    total = sum(float(q["单价"]) for q in quotes)', '+    print(len(quotes), "quotes, total", round(total, 2))'] }],
+            }),
+          ],
+        })));
+        await say('整份重写，输出改成 JSON。');
+        const rewritten = SCRIPT.replace('import csv\n', 'import csv\nimport json\n')
+          .replace('TOTAL = 0', 'TOTAL = 0.0')
+          .replace('    quotes = read_quotes(Path("报价"))\n    print(len(quotes), "quotes")', '    folder = Path("报价")\n    quotes = read_quotes(folder)\n    total = sum(float(q["单价"]) for q in quotes)\n    print(json.dumps({"quotes": len(quotes), "total": round(total, 2)}, ensure_ascii=False))');
+        blocks.push(...(await this.#tool(sessionId, run, 'write_file', { path: 'tools\\summary.py', content: rewritten }, `Overwrote tools\\summary.py (${new TextEncoder().encode(rewritten).length} bytes).`, 300, false, {
+          category: 'write',
+          cards: [
+            card('tools\\summary.py', 'modified', 2, 1, {
+              hunks: [
+                { oldStart: 1, newStart: 1, lines: [' import csv', '+import json', ' from pathlib import Path', ' ', ' TOTAL = 0.0'] },
+                { oldStart: 17, newStart: 18, lines: ['     folder = Path("报价")', '     quotes = read_quotes(folder)', '     total = sum(float(q["单价"]) for q in quotes)', '-    print(len(quotes), "quotes, total", round(total, 2))', '+    print(json.dumps({"quotes": len(quotes), "total": round(total, 2)}, ensure_ascii=False))'] },
+              ],
+            }),
+          ],
+        })));
         await say('都做完了。');
         this.#commitAssistant(sessionId, blocks);
         this.#charge(sessionId, 4200, 300);
