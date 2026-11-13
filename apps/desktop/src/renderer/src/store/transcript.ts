@@ -662,6 +662,10 @@ function applyPending(t: Transcript, p: PendingItem): void {
       lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'ask', callId: p.callId, question: p.question, options: p.options ?? [] });
     }
   } else {
+    // The call is stored with its message before it is asked about, with no result yet: it has not run. Waiting
+    // (as it shows live), not done; done comes with its result once it was allowed and ran.
+    const call = findBlock(t.items, 'tool', p.callId);
+    if (call && call.result === undefined) call.state = 'pending';
     if (!findBlock(t.items, 'confirm', p.callId)) {
       lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}), ...(p.irreversible ? { irreversible: true } : {}) });
     }

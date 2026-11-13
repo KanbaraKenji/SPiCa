@@ -1007,7 +1007,8 @@ export class FakeBackend implements AgentBackend {
     const blocks: ContentBlock[] = [];
     // The card the run waits on (a confirmation or a question): stopped while it waits, it is kept with a cancelled
     // result, as the core does.
-    let waiting: { id: string; name: string; input: unknown } | undefined;
+    // `stored`: its call is already in the history (with its message), as the core stores it before asking.
+    let waiting: { id: string; name: string; input: unknown; stored?: boolean } | undefined;
     let turn = 0;
     try {
       this.#setStatus(sessionId, 'thinking');
@@ -1238,16 +1239,18 @@ export class FakeBackend implements AgentBackend {
         const lead = '要清理旧报价，这条命令需要你确认。';
         await this.#stream(sessionId, 'text', lead, signal);
         blocks.push({ type: 'text', text: lead });
+        // As the core does: the call is stored with its message and asked about; it starts only once allowed.
         this.#emit(sessionId, { type: 'tool.call', callId, name: 'run_command' });
-        this.#emit(sessionId, { type: 'tool.start', callId, name: 'run_command', input, category: 'command', summary: input.description });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name: 'run_command', input }]);
         this.#addPending(sessionId, { kind: 'confirm', callId, toolName: 'run_command', input, reason: '运行命令', createdAt: isoAt(this.#now()) });
         this.#emit(sessionId, { type: 'confirm.request', callId, name: 'run_command', input, reason: '运行命令' });
         this.#setStatus(sessionId, 'awaiting_confirm', 'run_command');
-        waiting = { id: callId, name: 'run_command', input };
+        waiting = { id: callId, name: 'run_command', input, stored: true };
         const ok = (await this.#waitFor(run, callId)) === 'yes';
         waiting = undefined;
+        if (ok) this.#emit(sessionId, { type: 'tool.start', callId, name: 'run_command', input, category: 'command', summary: input.description });
         this.#emit(sessionId, { type: 'tool.end', callId, name: 'run_command', isError: !ok, preview: ok ? '已删除' : '用户拒绝了这条命令', durationMs: 300 });
-        blocks.push({ type: 'tool_use', id: callId, name: 'run_command', input }, { type: 'tool_result', toolUseId: callId, content: ok ? '已删除' : '用户拒绝了这条命令', isError: !ok });
+        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: ok ? '已删除' : '用户拒绝了这条命令', isError: !ok }]);
         this.#setStatus(sessionId, 'thinking');
         const after = ok ? '\n\n旧报价已清理。' : '\n\n好的，没有运行。';
         await this.#stream(sessionId, 'text', after, signal);
@@ -1259,16 +1262,17 @@ export class FakeBackend implements AgentBackend {
         await this.#stream(sessionId, 'text', lead, signal);
         blocks.push({ type: 'text', text: lead });
         this.#emit(sessionId, { type: 'tool.call', callId, name: 'send_email' });
-        this.#emit(sessionId, { type: 'tool.start', callId, name: 'send_email', input });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name: 'send_email', input }]);
         this.#addPending(sessionId, { kind: 'confirm', callId, toolName: 'send_email', input, reason: '发送邮件给「项目组」', createdAt: isoAt(this.#now()) });
         this.#emit(sessionId, { type: 'confirm.request', callId, name: 'send_email', input, reason: '发送邮件给「项目组」' });
         this.#setStatus(sessionId, 'awaiting_confirm', 'send_email');
-        waiting = { id: callId, name: 'send_email', input };
+        waiting = { id: callId, name: 'send_email', input, stored: true };
         const decision = await this.#waitFor(run, callId);
         waiting = undefined;
         const ok = decision === 'yes';
+        if (ok) this.#emit(sessionId, { type: 'tool.start', callId, name: 'send_email', input });
         this.#emit(sessionId, { type: 'tool.end', callId, name: 'send_email', isError: !ok, preview: ok ? '已发送' : '用户取消了发送', durationMs: 300 });
-        blocks.push({ type: 'tool_use', id: callId, name: 'send_email', input }, { type: 'tool_result', toolUseId: callId, content: ok ? '已发送' : '用户取消了发送', isError: !ok });
+        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: ok ? '已发送' : '用户取消了发送', isError: !ok }]);
         this.#setStatus(sessionId, 'thinking');
         const after = ok ? '\n\n邮件已经发出。' : '\n\n好的，这封邮件没有发。';
         await this.#stream(sessionId, 'text', after, signal);
@@ -1441,7 +1445,7 @@ export class FakeBackend implements AgentBackend {
     } catch (err) {
       if (err instanceof Aborted || signal.aborted) {
         // Keep what was already streamed, marked as interrupted.
-        if (waiting) blocks.push({ type: 'tool_use', id: waiting.id, name: waiting.name, input: waiting.input });
+        if (waiting && !waiting.stored) blocks.push({ type: 'tool_use', id: waiting.id, name: waiting.name, input: waiting.input });
         if (blocks.length) {
           const own = blocks.filter((b) => b.type !== 'tool_result');
           if (own.length) this.#append(sessionId, 'assistant', 'assistant', own, { interrupted: true });
