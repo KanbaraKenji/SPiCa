@@ -1087,7 +1087,38 @@ export class FakeBackend implements AgentBackend {
       this.#setStatus(sessionId, 'thinking');
       await this.#sleep(300, signal);
 
-      if (/画个图/.test(text)) {
+      const many = /(\d+)\s*次调用/.exec(text);
+      if (many) {
+        // For screenshots of a long run (the details panel): 「21 次调用 3 个文件」 makes that many calls in all (the
+        // two above count), some failing, writing that many files in all (the file read above counts); 「慢」 keeps the
+        // last two running together for 20 s.
+        const calls = Math.min(200, Number(many[1]));
+        const fileCount = Math.min(50, Number(/(\d+)\s*个文件/.exec(text)?.[1] ?? 0));
+        const at = isoAt(this.#now());
+        const written = (k: number): FileCardMeta => {
+          const path = `D:\\工作\\样机评审\\输出\\${['评审纪要', '报价对比', '测试汇总', '问题清单'][k % 4]}-${String(k + 1).padStart(2, '0')}.${['md', 'xlsx', 'csv', 'md'][k % 4]}`;
+          const name = path.split('\\').pop() ?? path;
+          return { path, name, kind: name.endsWith('.xlsx') ? 'xlsx' : name.endsWith('.csv') ? 'csv' : 'text', sizeBytes: 2048, modifiedAt: at, extractedAt: at, read: {}, origin: 'created' };
+        };
+        const step = (i: number): Promise<ContentBlock[]> => {
+          const late = slow && i >= calls - 4;
+          const ms = late ? 20_000 : 40;
+          const fileAt = i - (calls - 2 - Math.max(0, fileCount - 1));
+          if (fileAt >= 0) return this.#tool(sessionId, run, 'write_file', { path: written(fileAt).path }, '已写入', ms, false, { category: 'write', cards: [written(fileAt)] });
+          if (i % 9 === 4) return this.#tool(sessionId, run, 'run_command', { command: `python 校对.py --part ${i}`, description: `校对第 ${i} 部分` }, '[EXIT 1] 校对脚本报错：缺少第 3 列', ms, true);
+          if (i % 3 === 0) return this.#tool(sessionId, run, 'web_search', { query: `样机评审 第 ${i} 项` }, '找到 3 条结果', ms);
+          if (i % 3 === 1) return this.#tool(sessionId, run, 'run_command', { command: `python 核对.py --part ${i}`, description: `核对第 ${i} 部分` }, '核对完成，无差异', ms);
+          return this.#tool(sessionId, run, 'list_dir', { path: `资料\\第${i}组` }, '第1节.md\n第2节.md', ms);
+        };
+        const rest = Math.max(0, calls - 2);
+        // the last two together (both running at once while 「慢」)
+        for (let i = 0; i < rest - 2; i++) blocks.push(...(await step(i)));
+        for (const got of await Promise.all([step(rest - 2), step(rest - 1)].slice(rest >= 2 ? 0 : 2))) blocks.push(...got);
+        const done = `做完了：${calls} 次调用，写了 ${Math.max(0, fileCount - 1)} 个文件。`;
+        this.#setStatus(sessionId, 'thinking');
+        await this.#stream(sessionId, 'text', done, signal);
+        blocks.push({ type: 'text', text: done });
+      } else if (/画个图/.test(text)) {
         // A plugin tool that returns a picture: as the core does, it is saved and handed over as a card (produced).
         const path = this.#demoImage?.() ?? 'D:\\工作\\样机评审\\报价对比图.png';
         const at = isoAt(this.#now());

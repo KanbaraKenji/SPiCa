@@ -688,3 +688,17 @@ describe('the demo request log (设置 › 用量, the monitor)', () => {
     b.dispose();
   });
 });
+
+describe('a long run for screenshots (「21 次调用 3 个文件」)', () => {
+  it('makes that many calls in all, some failing, and writes the files (with the one read first, that many)', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '演示 21 次调用 3 个文件');
+    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    const starts = events.filter((e) => e.type === 'tool.start');
+    expect(starts).toHaveLength(21);
+    expect(events.filter((e) => e.type === 'tool.end' && e.isError).length).toBeGreaterThan(0);
+    expect(starts.filter((e) => e.type === 'tool.start' && e.name === 'write_file')).toHaveLength(2);
+  });
+});
