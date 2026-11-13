@@ -84,6 +84,8 @@ export interface UsageColumn {
   tokens: Record<string, number>;
   /** 429 answers per series key. */
   limited: Record<string, number>;
+  /** Per function module (the requests' initiator, UsageRow.byInitiator): requests, 429 answers, tokens. */
+  modules: Record<string, { requests: number; rateLimited: number; tokens: number }>;
   requestCount: number;
   rateLimited: number;
   kinds: TokenKinds;
@@ -145,7 +147,7 @@ export function usageView(s: UsageSummary, maxSeries: number): UsageView {
   for (let t = first; t <= to; t += step) {
     // a day bucket may be 23 or 25 hours at a clock change: snap to the local midnight after it
     const start = s.query.bucket === 'day' ? Math.round((t + off) / DAY) * DAY - off : t;
-    const col: UsageColumn = { start, noData: since === null || start + step <= since, requests: {}, tokens: {}, limited: {}, requestCount: 0, rateLimited: 0, kinds: noKinds() };
+    const col: UsageColumn = { start, noData: since === null || start + step <= since, requests: {}, tokens: {}, limited: {}, modules: {}, requestCount: 0, rateLimited: 0, kinds: noKinds() };
     columns.push(col);
     byStart.set(start, col);
   }
@@ -187,8 +189,37 @@ export function usageView(s: UsageSummary, maxSeries: number): UsageView {
     col.requestCount += r.requests;
     col.rateLimited += r.rateLimited;
     for (const t of TOKEN_KINDS) col.kinds[t.kind] += kinds[t.kind];
+    for (const [who, u] of Object.entries(r.byInitiator ?? {})) {
+      const m = (col.modules[moduleKey(who)] ??= { requests: 0, rateLimited: 0, tokens: 0 });
+      m.requests += u.requests;
+      m.rateLimited += u.rateLimited;
+      m.tokens += u.tokens;
+    }
   }
   return { columns, series: [...series.values()], totals, since: since !== null && since > from ? since : null, empty: since === null };
+}
+
+/**
+ * The function module of a request's initiator: a conversation, memory tidying, a test of the connection, a plugin
+ * (its model borrowing and its views: one module per plugin); anything else as it is.
+ */
+export function moduleKey(initiator: string): string {
+  if (initiator.startsWith('view:')) return `plugin:${initiator.slice(5)}`;
+  return initiator;
+}
+
+/** The module's name on the hover card. */
+export function moduleLabel(key: string): string {
+  if (key === 'model') return '对话';
+  if (key === 'runtime:memory-tidy') return '记忆整理';
+  if (key === 'runtime:probe') return '测试连接';
+  if (key.startsWith('plugin:')) return `插件 ${key.slice(7)}`;
+  return key || '其他';
+}
+
+/** The fixed order of the modules on the card: 对话, 记忆整理, the plugins, 测试连接, the rest. */
+export function moduleOrder(key: string): number {
+  return key === 'model' ? 0 : key === 'runtime:memory-tidy' ? 1 : key.startsWith('plugin:') ? 2 : key === 'runtime:probe' ? 3 : 4;
 }
 
 /** 1,234 · 12.3K · 4.5M · 1.2B: short counts for tiles and axes. */

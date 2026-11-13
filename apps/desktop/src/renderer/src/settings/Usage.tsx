@@ -6,7 +6,7 @@ import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { RequestRecord, UsageSummary, UsageQuery } from '@spica/protocol';
 import type { SaveCsvResult } from '../../../shared/bridge';
 import { Group, matches, SearchHit, SettingsSearchContext } from './Group';
-import { bucketLabel, dayLabel, modelChoices, niceTicks, onlyModel, queryFor, RANGES, shortCount, timeLabel, TOKEN_KINDS, usageCsvName, usageCsvRows, usageView, usd, type UsageColumn, type UsageRange, type UsageSeries, type UsageView } from './usage-data';
+import { bucketLabel, dayLabel, modelChoices, moduleLabel, moduleOrder, niceTicks, onlyModel, queryFor, RANGES, shortCount, timeLabel, TOKEN_KINDS, usageCsvName, usageCsvRows, usageView, usd, type UsageColumn, type UsageRange, type UsageSeries, type UsageView } from './usage-data';
 import { toCsv } from '../chat/table-data';
 import { SERIES_COUNT } from '../../../shared/skin';
 import { Select } from '../ui/Select';
@@ -397,7 +397,7 @@ function RequestChart({ view, bucket, provider, byModel }: { view: UsageView; bu
             <div className="usage-tip-grid">
               <TipRow mark={REQUESTS_COLOR} name="请求" value={hover.col.requestCount} />
               <TipRow mark="danger" name="429" value={hover.col.rateLimited} limitedRow />
-              {byModel ? <ModelRows view={view} col={hover.col} provider={provider} value={(c, k) => c.requests[k] ?? 0} limited /> : null}
+              {byModel ? <ModelRows view={view} col={hover.col} provider={provider} value={(c, k) => c.requests[k] ?? 0} limited /> : <ModuleRows col={hover.col} value={(m) => m.requests} limited />}
             </div>
           )}
         </div>
@@ -449,7 +449,7 @@ function TokenChart({ view, bucket, provider, byModel }: { view: UsageView; buck
               {TOKEN_KINDS.filter((k) => hover.col.kinds[k.kind] > 0).map((k) => (
                 <TipRow key={k.kind} mark={k.color} name={k.label} value={hover.col.kinds[k.kind]} />
               ))}
-              {byModel ? <ModelRows view={view} col={hover.col} provider={provider} value={(c, k) => c.tokens[k] ?? 0} /> : null}
+              {byModel ? <ModelRows view={view} col={hover.col} provider={provider} value={(c, k) => c.tokens[k] ?? 0} /> : <ModuleRows col={hover.col} value={(m) => m.tokens} />}
             </div>
           )}
         </div>
@@ -480,14 +480,42 @@ function ModelRows({ view, col, provider, value, limited }: { view: UsageView; c
 }
 
 /**
+ * One model picked: the hover card's lines per function module under 按功能模块 (对话, 记忆整理, 插件 …), the value
+ * and its 429 answers in red after it; the names at the card's left edge as the models' are.
+ */
+function ModuleRows({ col, value, limited }: { col: UsageColumn; value(m: UsageColumn['modules'][string]): number; limited?: boolean }) {
+  const rows = Object.entries(col.modules)
+    .map(([key, m]) => ({ key, v: value(m), l: m.rateLimited }))
+    .filter((r) => r.v > 0)
+    .sort((a, b) => moduleOrder(a.key) - moduleOrder(b.key) || a.key.localeCompare(b.key));
+  if (!rows.length) return null;
+  return (
+    <>
+      <div className="usage-tip-head">按功能模块</div>
+      {rows.map(({ key, v, l }) => (
+        <TipRow key={key} name={moduleLabel(key)} value={v} {...(limited && l ? { limited: l } : {})} />
+      ))}
+    </>
+  );
+}
+
+/**
  * One line of a hover card, in the card's columns: a colour mark, the name, the provider (quieter), the number
  * (right), and a model's 429 answers in red in their own column ((22)), so every number stands in one column.
+ * A line without a mark (the models', the modules') starts at the card's left edge: its name takes the mark's
+ * column too; without a provider it takes that column as well.
  */
 function TipRow({ mark, name, provider, value, limited, limitedRow }: { mark?: string; name: string; provider?: string; value: number; limited?: number; limitedRow?: boolean }) {
   return (
     <div className={limitedRow ? 'usage-tip-row is-limited' : 'usage-tip-row'}>
-      <span className="usage-tip-mark">{mark ? <span className={mark === 'danger' ? 'usage-swatch is-limited' : 'usage-swatch'} style={mark === 'danger' ? undefined : { background: mark }} /> : null}</span>
-      <span className={provider === undefined ? 'usage-tip-name is-wide' : 'usage-tip-name'}>{name}</span>
+      {mark ? (
+        <span className="usage-tip-mark">
+          <span className={mark === 'danger' ? 'usage-swatch is-limited' : 'usage-swatch'} style={mark === 'danger' ? undefined : { background: mark }} />
+        </span>
+      ) : null}
+      <span className={provider === undefined ? 'usage-tip-name is-wide' : 'usage-tip-name'} style={{ gridColumn: `span ${1 + (mark ? 0 : 1) + (provider === undefined ? 1 : 0)}` }}>
+        {name}
+      </span>
       {provider === undefined ? null : <span className="usage-tip-provider">{provider}</span>}
       <span className="usage-num">{value.toLocaleString('en-US')}</span>
       <span className="usage-limited-num">{limited ? `(${limited.toLocaleString('en-US')})` : ''}</span>

@@ -192,6 +192,37 @@ describe('one model or all', () => {
     expect(tile('请求')).toBe('4');
   });
 
+  it('one model picked: the hover card is by function module (对话, 记忆整理, 插件 …), not by model', async () => {
+    const recs = [
+      rec('2026-11-12T03:00:00Z'),
+      rec('2026-11-12T04:00:00Z', { initiator: 'runtime:memory-tidy', inputTokens: 500, outputTokens: 50 }),
+      rec('2026-11-12T05:00:00Z', { initiator: 'plugin:example-notes', httpStatus: 429, status: 'error', errorCode: 'gateway.rate_limited', inputTokens: 0, outputTokens: 0 }),
+      rec('2026-11-12T05:01:00Z', { initiator: 'view:example-notes' }),
+      rec('2026-11-12T06:00:00Z', { providerId: 'anthropic', model: 'claude-sonnet-4-5' }),
+    ];
+    const summary = vi.fn(async (q: UsageQuery): Promise<UsageSummary> => summarizeRequests(recs, q, '2026-11-12T02:00:00Z'));
+    render(<Usage api={{ summary, providerNames: async () => ({ deepseek: 'DeepSeek' }) }} now={now} />);
+    await screen.findByRole('img', { name: 'Token 用量' });
+    await pick('deepseek-chat · DeepSeek');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: '请求' }));
+    });
+    const cols = [...screen.getByRole('img', { name: '请求数' }).querySelectorAll('rect[fill="transparent"]')];
+    fireEvent.mouseEnter(cols[5]!);
+    const tip = document.querySelector('.usage-tip')!;
+    expect(tip.querySelector('.usage-tip-head')?.textContent).toBe('按功能模块');
+    const lines = [...tip.querySelectorAll('.usage-tip-row')].map((r) => r.textContent);
+    // the other model's request is not in it; a plugin's borrowing and its view are one module
+    expect(lines).toEqual(['请求4', '4291', '对话1', '记忆整理1', '插件 example-notes2(1)']);
+    // tokens: by module too
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: 'Token' }));
+    });
+    fireEvent.mouseEnter([...screen.getByRole('img', { name: 'Token 用量' }).querySelectorAll('rect[fill="transparent"]')][5]!);
+    const rows = [...document.querySelector('.usage-tip')!.querySelectorAll('.usage-tip-row')].map((r) => r.textContent);
+    expect(rows.slice(-3)).toEqual(['对话1,100', '记忆整理550', '插件 example-notes1,100']);
+  });
+
   it('a model picked stays picked in a range without it', async () => {
     const summary = vi.fn(async (q: UsageQuery): Promise<UsageSummary> => summarizeRequests(RECORDS, q, '2026-11-12T02:00:00Z'));
     render(<Usage api={{ summary }} now={now} />);
@@ -240,8 +271,14 @@ describe('the requests chart', () => {
     expect(lines).toContain('deepseek-chatdeepseek2(1)');
     // the model's 429 answers in their own column
     expect([...tip.querySelectorAll('.usage-limited-num')].map((n) => n.textContent).filter(Boolean)).toEqual(['(1)']);
-    // every line has the same five cells (the card's columns), the lines without a provider spanning two
-    expect([...tip.querySelectorAll('.usage-tip-row')].every((r) => r.children.length === 5 || r.querySelector('.usage-tip-name.is-wide'))).toBe(true);
+    // the models' lines have no mark: the name starts at the card's left edge (it takes the mark's column), as 按模型
+    const model = [...tip.querySelectorAll('.usage-tip-row')].find((r) => r.textContent?.startsWith('deepseek-chat'))!;
+    expect(model.querySelector('.usage-tip-mark')).toBeNull();
+    expect((model.querySelector('.usage-tip-name') as HTMLElement).style.gridColumn).toBe('span 2');
+    // the totals keep their mark; with no provider the name takes that column too
+    const total = [...tip.querySelectorAll('.usage-tip-row')][0]!;
+    expect(total.querySelector('.usage-tip-mark')).toBeTruthy();
+    expect((total.querySelector('.usage-tip-name') as HTMLElement).style.gridColumn).toBe('span 2');
   });
 
   it('the token bars are by kind, and the hover card says each kind', async () => {

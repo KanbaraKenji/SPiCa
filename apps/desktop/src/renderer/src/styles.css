@@ -7294,11 +7294,8 @@ section.plugins-part > .plugins-part-title {
   white-space: nowrap;
 }
 
-/* a line without a provider: the name takes the provider's column too */
-.usage-tip-name.is-wide {
-  grid-column: span 2;
-}
-
+/* a line without a mark or a provider: its name takes those columns too (the span is set on it, settings/Usage.tsx
+   TipRow), so the models' and the modules' names start at the card's left edge */
 .usage-tip-provider {
   color: var(--spica-muted);
   white-space: nowrap;

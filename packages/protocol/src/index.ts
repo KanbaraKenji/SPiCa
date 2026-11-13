@@ -1030,6 +1030,19 @@ export interface UsageRow {
   unpriced?: true;
   /** How many of them (0 when none). */
   unpricedRequests?: number;
+  /**
+   * The same split by who started the requests (RequestRecord.initiator: "model" a conversation,
+   * "runtime:memory-tidy", "runtime:probe", "plugin:<id>", ...): requests, 429 answers, and all their tokens
+   * (cache reads and writes, the rest of the input, output).
+   */
+  byInitiator?: Record<string, InitiatorUsage>;
+}
+
+/** One initiator's part of a UsageRow. */
+export interface InitiatorUsage {
+  requests: number;
+  rateLimited: number;
+  tokens: number;
 }
 
 export interface UsageQuery {
