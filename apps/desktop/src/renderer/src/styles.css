@@ -8075,6 +8075,19 @@ section.plugins-part > .plugins-part-title {
   font-family: var(--font-ui);
 }
 
+/* The names are longer in the other languages: wide enough for the longest (外掛程式 / 處理程序; Processes, Warning). */
+:root:lang(zh-TW) .monitor-source {
+  width: 4em;
+}
+
+:root:lang(en) .monitor-source {
+  width: 4.9em;
+}
+
+:root:lang(en) .monitor-level {
+  width: 3.7em;
+}
+
 .monitor-row.is-warn .monitor-level {
   color: var(--spica-warning);
 }
