@@ -5,5 +5,6 @@ import { merge } from './merge';
 import { ZH_TW_APPEARANCE } from './zh-TW/appearance';
 import { ZH_TW_WINDOW } from './zh-TW/window';
 import { ZH_TW_MAIN } from './zh-TW/main';
+import { ZH_TW_MODELS } from './zh-TW/models';
 
-export const ZH_TW: Catalog = merge([ZH_TW_APPEARANCE, ZH_TW_WINDOW, ZH_TW_MAIN]);
+export const ZH_TW: Catalog = merge([ZH_TW_APPEARANCE, ZH_TW_WINDOW, ZH_TW_MAIN, ZH_TW_MODELS]);

@@ -37,6 +37,7 @@ import type { PluginView as PageView } from '../../../shared/plugin-view';
 import { PluginPage, type PluginPageProps } from '../shell/PluginFrame';
 import { letterBadge } from '../ui/badge';
 import { formatClock } from '../chat/format';
+import { N_, t, tc } from '../../../shared/i18n';
 
 export interface PluginsApi {
   run(cmd: PluginsCommand): Promise<PluginsResult>;
@@ -68,11 +69,11 @@ function settingsTheme(page: PluginPageProps): PluginPageProps['theme'] {
 }
 
 const SERVER_STATUS: Record<string, string> = {
-  running: '运行中',
-  starting: '启动中',
-  restarting: '重启中',
-  stopped: '已停止',
-  failed: '错误',
+  running: N_('运行中'),
+  starting: N_('启动中'),
+  restarting: N_('重启中'),
+  stopped: N_('已停止'),
+  failed: N_('错误'),
 };
 
 export { Switch } from './Switch';
@@ -81,7 +82,7 @@ type Filter = 'all' | 'on' | 'update' | 'problem';
 
 /** What is wrong with a plugin, in words (its issues and servers that failed); empty when nothing. */
 export function pluginProblems(p: PluginView): string[] {
-  return [...p.issues, ...p.servers.filter((s) => s.status === 'failed').map((s) => s.lastError ?? `「${s.id}」启动失败`)];
+  return [...p.issues, ...p.servers.filter((s) => s.status === 'failed').map((s) => s.lastError ?? t('「{id}」启动失败', { id: s.id }))];
 }
 
 const matches = (p: PluginView, f: Filter) => (f === 'on' ? p.enabled : f === 'update' ? Boolean(p.update) : f === 'problem' ? pluginProblems(p).length > 0 : true);
@@ -93,7 +94,7 @@ function List({ label, items }: { label: string; items: string[] }) {
   return (
     <>
       <dt>{label}</dt>
-      <dd>{items.length ? items.join('、') : '—'}</dd>
+      <dd>{items.length ? items.join(t('、')) : '—'}</dd>
     </>
   );
 }
@@ -102,8 +103,8 @@ function List({ label, items }: { label: string; items: string[] }) {
 function ModelUse({ p, m, busy, run }: { p: PluginView; m: PluginModelView; busy: boolean; run(cmd: PluginsCommand): void }) {
   return (
     <div className="group-box plugin-model">
-      <Row title="使用模型" hint={`用途：${m.reason}`}>
-        <Switch on={m.allowed} label="使用模型" disabled={busy} onChange={(allowed) => run({ op: 'modelAllowed', name: p.name, allowed })} />
+      <Row title={t('使用模型')} hint={t('用途：{reason}', { reason: m.reason })}>
+        <Switch on={m.allowed} label={t('使用模型')} disabled={busy} onChange={(allowed) => run({ op: 'modelAllowed', name: p.name, allowed })} />
       </Row>
     </div>
   );
@@ -155,9 +156,9 @@ function PluginRow({ p, onPick }: { p: PluginView; onPick(): void }) {
           </span>
           {p.description ? <span className="settings-hint plugin-item-desc">{p.description}</span> : null}
         </span>
-        {p.update ? <span className="provider-default plugin-row-state is-newer">可更新</span> : null}
-        {problems.length ? <SpicaStatusIcon name="error" size={14} title={problems.join('；')} /> : null}
-        {p.enabled ? null : <span className="visually-hidden">已停用</span>}
+        {p.update ? <span className="provider-default plugin-row-state is-newer">{t('可更新')}</span> : null}
+        {problems.length ? <SpicaStatusIcon name="error" size={14} title={problems.join(t('；'))} /> : null}
+        {p.enabled ? null : <span className="visually-hidden">{t('已停用')}</span>}
         <Icon name="chevronRight" size={14} className="plugin-item-go" />
       </button>
     </li>
@@ -165,8 +166,8 @@ function PluginRow({ p, onPick }: { p: PluginView; onPick(): void }) {
 }
 
 /** 市场: 已安装 (this version is the one here), 可更新 (a newer one than here), nothing when it is not installed. */
-export function packageState(a: PluginPackage): '' | '已安装' | '可更新' {
-  return a.newer ? '可更新' : a.installed ? '已安装' : '';
+export function packageState(a: PluginPackage): '' | 'installed' | 'newer' {
+  return a.newer ? 'newer' : a.installed ? 'installed' : '';
 }
 
 /**
@@ -188,7 +189,7 @@ function PackageCard({ a, busy, running, onPick, onInstall }: { a: PluginPackage
           </span>
           {a.description ? <span className="settings-hint plugin-card-desc">{a.description}</span> : null}
           {/* Quiet words, as 默认 in 模型 and 官方 by a source: not a button. */}
-          {state ? <span className={state === '可更新' ? 'provider-default plugin-row-state is-newer' : 'provider-default plugin-row-state'}>{state}</span> : null}
+          {state ? <span className={state === 'newer' ? 'provider-default plugin-row-state is-newer' : 'provider-default plugin-row-state'}>{state === 'newer' ? t('可更新') : t('已安装')}</span> : null}
         </span>
       </button>
       {can ? (
@@ -223,7 +224,7 @@ function Progress({ run }: { run: Running }) {
     <div className={held ? 'plugin-progress is-held' : 'plugin-progress'} role="status">
       <span className="plugin-progress-line">
         <SpicaStatusIcon name="running" size={14} />
-        <span className="plugin-progress-text">{s ? stepText(s) : '正在安装'}</span>
+        <span className="plugin-progress-text">{s ? stepText(s) : t('正在安装')}</span>
         <span className="plugin-progress-time">{formatClock(now - run.startedAt)}</span>
       </span>
       {share !== null ? (
@@ -308,15 +309,15 @@ function PluginDetail({
         <div className="plugin-head-actions">
           {p.update && !running ? (
             <button type="button" className="btn btn-small btn-primary" disabled={busy} onClick={update}>
-              更新到 {p.update}
+              {t('更新到 {version}', { version: p.update })}
             </button>
           ) : null}
-          <Switch on={p.enabled} label={p.enabled ? `停用「${p.displayName}」` : `启用「${p.displayName}」`} disabled={busy} onChange={(on) => run({ op: on ? 'enable' : 'disable', name: p.name })} />
+          <Switch on={p.enabled} label={p.enabled ? t('停用「{name}」', { name: p.displayName }) : t('启用「{name}」', { name: p.displayName })} disabled={busy} onChange={(on) => run({ op: on ? 'enable' : 'disable', name: p.name })} />
           <button
             type="button"
             className="icon-btn"
-            aria-label="更多操作"
-            title="更多操作"
+            aria-label={t('更多操作')}
+            title={t('更多操作')}
             aria-haspopup="menu"
             disabled={busy}
             onClick={(e) => {
@@ -334,8 +335,8 @@ function PluginDetail({
           y={0}
           anchor={menu}
           items={[
-            ...(p.previousVersion ? [{ label: `回退到 ${p.previousVersion}`, onSelect: () => ask('rollback', p) }] : []),
-            { label: '删除', danger: true, onSelect: () => ask('uninstall', p) },
+            ...(p.previousVersion ? [{ label: t('回退到 {version}', { version: p.previousVersion }), onSelect: () => ask('rollback', p) }] : []),
+            { label: t('删除'), danger: true, onSelect: () => ask('uninstall', p) },
           ]}
           onClose={() => setMenu(null)}
         />
@@ -347,21 +348,21 @@ function PluginDetail({
       ) : null}
       {note}
       {pages.length ? (
-        <div className="tabs plugin-tabs" role="tablist" aria-label={`「${p.displayName}」`}>
-          {[{ id: '', label: '详情' }, ...pages.map((g) => ({ id: g.view.id, label: g.view.title.trim() || '设定' }))].map((t) => (
-            <button key={t.id || '-'} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'tab is-on' : 'tab'} onClick={() => pick(t.id)}>
-              {t.label}
+        <div className="tabs plugin-tabs" role="tablist" aria-label={t('「{name}」', { name: p.displayName })}>
+          {[{ id: '', label: t('详情') }, ...pages.map((g) => ({ id: g.view.id, label: g.view.title.trim() || t('设定') }))].map((x) => (
+            <button key={x.id || '-'} type="button" role="tab" aria-selected={tab === x.id} className={tab === x.id ? 'tab is-on' : 'tab'} onClick={() => pick(x.id)}>
+              {x.label}
             </button>
           ))}
         </div>
       ) : null}
       <div className="plugin-detail-body" hidden={tab !== ''}>
         {p.description ? <p className="plugin-desc">{p.description}</p> : null}
-        {p.enabled ? null : <p className="plugin-off">已停用</p>}
+        {p.enabled ? null : <p className="plugin-off">{t('已停用')}</p>}
         {problems.length ? (
           <p className="plugin-problem status-with-icon">
             <SpicaStatusIcon name="error" size={14} />
-            {problems.join('；')}
+            {problems.join(t('；'))}
           </p>
         ) : null}
         {mail ? (
@@ -371,12 +372,12 @@ function PluginDetail({
         ) : null}
         {p.model ? <ModelUse p={p} m={p.model} busy={busy} run={run} /> : null}
         <dl className="detail-facts plugin-facts">
-          <List label="工具" items={p.tools} />
-          <List label="技能" items={p.skills.map((s) => s.name)} />
-          <List label="命令" items={p.commands.map((c) => `/${c.id}`)} />
-          <List label="进程" items={p.servers.map((s) => `${s.id}（${SERVER_STATUS[s.status] ?? s.status}）`)} />
-          <dt>模拟模式</dt>
-          <dd>{p.mockSupported ? '支持' : '不支持'}</dd>
+          <List label={t('工具')} items={p.tools} />
+          <List label={t('技能')} items={p.skills.map((s) => s.name)} />
+          <List label={t('命令')} items={p.commands.map((c) => `/${c.id}`)} />
+          <List label={t('进程')} items={p.servers.map((s) => t('{id}（{status}）', { id: s.id, status: SERVER_STATUS[s.status] ? t(SERVER_STATUS[s.status]!) : s.status }))} />
+          <dt>{t('模拟模式')}</dt>
+          <dd>{p.mockSupported ? t('支持') : t('不支持')}</dd>
         </dl>
       </div>
       {pages
@@ -392,10 +393,10 @@ function PluginDetail({
 
 /** What 安装 says for a package: install, 更新到 a newer one, install again (the same version), or install that (older) version. */
 function installLabel(a: PluginPackage): string {
-  if (!a.installed) return '安装';
-  if (a.newer && a.version) return `更新到 ${a.version}`;
-  if (a.version === a.installed) return '重新安装';
-  return a.version ? `安装 ${a.version}` : '安装';
+  if (!a.installed) return t('安装');
+  if (a.newer && a.version) return t('更新到 {version}', { version: a.version });
+  if (a.version === a.installed) return t('重新安装');
+  return a.version ? t('安装 {version}', { version: a.version }) : t('安装');
 }
 
 /** A package's page: ← back, its name with where it is and its version, 安装 (with its progress) at the right, then what it says. */
@@ -418,9 +419,9 @@ function PackageDetail({ a, busy, running, install, onShow, back, note }: { a: P
         <div className="plugin-head-actions">
           {running ? null : here && onShow ? (
             <>
-              <span className="provider-default plugin-here">已安装</span>
+              <span className="provider-default plugin-here">{t('已安装')}</span>
               <button type="button" className="btn btn-small" onClick={onShow}>
-                在已安装中查看
+                {t('在已安装中查看')}
               </button>
             </>
           ) : (
@@ -440,48 +441,48 @@ function PackageDetail({ a, busy, running, install, onShow, back, note }: { a: P
       <dl className="detail-facts plugin-facts">
         {a.installed ? (
           <>
-            <dt>已安装</dt>
+            <dt>{t('已安装')}</dt>
             <dd>{a.installed}</dd>
           </>
         ) : null}
-        {a.skills ? <List label="技能" items={a.skills} /> : null}
-        {a.commands ? <List label="命令" items={a.commands} /> : null}
-        {a.pages ? <List label="页面" items={a.pages} /> : null}
+        {a.skills ? <List label={t('技能')} items={a.skills} /> : null}
+        {a.commands ? <List label={t('命令')} items={a.commands} /> : null}
+        {a.pages ? <List label={t('页面')} items={a.pages} /> : null}
       </dl>
     </section>
   );
 }
 
 /** What 模拟模式 does, on hover beside it. */
-export const MOCK_TIP = '插件改用演示数据，不连接真实系统。';
+export const MOCK_TIP = N_('插件改用演示数据，不连接真实系统。');
 
 /** 已安装: the plugins here, with their switches, updates and own pages. 市场: the sources and what they offer. */
 export type PluginsTab = 'installed' | 'market';
 
 const TABS: [PluginsTab, string][] = [
-  ['installed', '已安装'],
-  ['market', '市场'],
+  ['installed', N_('已安装')],
+  ['market', N_('市场')],
 ];
 
 /** 「上次读取 14:05 · 3 个插件」, 「连接失败」: how a source went the last time it was read. */
 export function sourceLine(s: PluginSourceView, now: Date = new Date()): string {
-  if (s.error) return '连接失败';
-  if (!s.readAt) return '尚未读取';
+  if (s.error) return t('连接失败');
+  if (!s.readAt) return t('尚未读取');
   const at = new Date(s.readAt);
   const sameDay = at.toDateString() === now.toDateString();
   const hm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
   const when = sameDay ? hm : `${at.getMonth() + 1}/${at.getDate()} ${hm}`;
-  return `上次读取 ${when}${s.count !== undefined ? ` · ${s.count} 个插件` : ''}`;
+  return s.count !== undefined ? t('上次读取 {when} · {n} 个插件', { when, n: s.count }) : t('上次读取 {when}', { when });
 }
 
 let jobs = 0;
 
 /** 已安装's filter (a menu under its button, as 使用日志's 项目). */
 const FILTERS: [Filter, string][] = [
-  ['all', '全部'],
-  ['on', '已启用'],
-  ['update', '有更新'],
-  ['problem', '有问题'],
+  ['all', N_('全部')],
+  ['on', N_('已启用')],
+  ['update', N_('有更新')],
+  ['problem', N_('有问题')],
 ];
 
 export interface PluginsProps {
@@ -566,7 +567,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
       try {
         const r = await api.run(cmd);
         setState(r.state);
-        setNote(r.message ? { tone: !r.ok ? 'bad' : r.info ? 'info' : 'ok', text: r.message } : r.ok ? null : { tone: 'bad', text: '操作失败，请重试。' });
+        setNote(r.message ? { tone: !r.ok ? 'bad' : r.info ? 'info' : 'ok', text: r.message } : r.ok ? null : { tone: 'bad', text: t('操作失败，请重试。') });
         return r;
       } catch (e) {
         setNote({ tone: 'bad', text: friendlyError(e) });
@@ -684,7 +685,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
     setPicked(key);
     setShowDetail(true);
   };
-  const back = { label: installedTab ? '已安装' : '市场', onBack: () => setShowDetail(false) };
+  const back = { label: installedTab ? t('已安装') : t('市场'), onBack: () => setShowDetail(false) };
   const pickFolder = api.pickFolder
     ? () =>
         void api.pickFolder?.().then((dir) => {
@@ -698,12 +699,12 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
   const settingsOf = (pl: PluginView): PluginPageProps[] =>
     pages ? pages.views.filter((x) => x.plugin === pl.name && x.placement === 'settings').map((v) => pages.props(v)) : [];
   const installPkg = (a: PluginPackage) => void install(a.name, (job) => ({ op: 'installAvailable', key: a.key, job }));
-  const filterLabel = FILTERS.find(([f]) => f === filter)![1];
+  const filterLabel = t(FILTERS.find(([f]) => f === filter)![1]);
 
   const resultLine =
     checking !== null ? (
       <p className="provider-result plugin-note" role="status">
-        正在检查更新…
+        {t('正在检查更新…')}
       </p>
     ) : note ? (
       <p className={note.tone === 'ok' ? 'provider-result is-ok plugin-note' : note.tone === 'bad' ? 'provider-result is-bad plugin-note' : 'provider-result plugin-note'} role="status">
@@ -743,7 +744,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
       {search?.query
         ? plugins
             .filter((pl) => search.sectionHit || searchMatches(search.query, pl.displayName, pl.name, pl.description))
-            .map((pl) => <SearchHit key={pl.name} title={`已安装 › ${pl.displayName}`} hint={pl.description} onGo={() => search.jumpPlugin?.(pl.name)} />)
+            .map((pl) => <SearchHit key={pl.name} title={t('已安装 › {name}', { name: pl.displayName })} hint={pl.description} onGo={() => search.jumpPlugin?.(pl.name)} />)
         : null}
 
       {detailShown && current ? (
@@ -777,21 +778,21 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
         <>
           {/* One row on top (as Claude's): 已安装 / 市场, the search, then what acts on every source. */}
           <div className="plugins-bar">
-            <div className="tabs plugins-tabs" role="tablist" aria-label="插件">
-              {TABS.map(([t, label]) => (
-                <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'tab is-on' : 'tab'} onClick={() => pickTab(t)}>
-                  {label}
-                  {t === 'installed' && plugins.length ? <span className="tab-count">{plugins.length}</span> : null}
+            <div className="tabs plugins-tabs" role="tablist" aria-label={tc('tabs', '插件')}>
+              {TABS.map(([id, label]) => (
+                <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'tab is-on' : 'tab'} onClick={() => pickTab(id)}>
+                  {t(label)}
+                  {id === 'installed' && plugins.length ? <span className="tab-count">{plugins.length}</span> : null}
                 </button>
               ))}
             </div>
-            <input className="input plugins-search" value={query} placeholder="搜索插件" aria-label="搜索插件" spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
+            <input className="input plugins-search" value={query} placeholder={t('搜索插件')} aria-label={t('搜索插件')} spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
             {installedTab ? (
               <button
                 type="button"
                 className={filter === 'all' ? 'btn btn-small' : 'btn btn-small is-on'}
                 aria-haspopup="menu"
-                aria-label={`筛选：${filterLabel}`}
+                aria-label={t('筛选：{filter}', { filter: filterLabel })}
                 onClick={(e) => {
                   const el = e.currentTarget;
                   setFilterMenu((m) => (m ? null : el));
@@ -803,7 +804,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
             ) : null}
             <button type="button" className="btn btn-small" disabled={busy || !sources.length} onClick={() => void check()}>
               {checking === '' ? <span className="spinner" aria-hidden /> : null}
-              全部检查更新
+              {t('全部检查更新')}
             </button>
             <button
               type="button"
@@ -816,7 +817,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
               }}
             >
               <Icon name="plus" size={14} />
-              添加来源
+              {t('添加来源')}
             </button>
           </div>
           {filterMenu ? (
@@ -824,7 +825,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
               x={0}
               y={0}
               anchor={filterMenu}
-              items={FILTERS.map(([f, label]) => ({ label: `${label} ${count(f)}`, checked: filter === f, onSelect: () => setFilter(f) }))}
+              items={FILTERS.map(([f, label]) => ({ label: `${t(label)} ${count(f)}`, checked: filter === f, onSelect: () => setFilter(f) }))}
               onClose={() => setFilterMenu(null)}
             />
           ) : null}
@@ -839,17 +840,17 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
                     void addSource(place);
                   }}
                 >
-                  <input className="input" value={place} placeholder="粘贴文件夹路径、.zip 或网址" aria-label="插件来源的位置" spellCheck={false} autoFocus onChange={(e) => setPlace(e.target.value)} />
+                  <input className="input" value={place} placeholder={t('粘贴文件夹路径、.zip 或网址')} aria-label={t('插件来源的位置')} spellCheck={false} autoFocus onChange={(e) => setPlace(e.target.value)} />
                   {pickFolder ? (
-                    <button type="button" className="btn btn-square" onClick={pickFolder} aria-label="选择文件夹" title="选择文件夹">
+                    <button type="button" className="btn btn-square" onClick={pickFolder} aria-label={t('选择文件夹')} title={t('选择文件夹')}>
                       <Icon name="folder" size={16} />
                     </button>
                   ) : null}
                   <button type="submit" className="btn btn-primary" disabled={busy || !isLocation(place)}>
-                    添加
+                    {t('添加')}
                   </button>
                 </form>
-                <p className="settings-hint">可添加：插件文件夹、.zip、带 index.json 的文件夹或网址</p>
+                <p className="settings-hint">{t('可添加：插件文件夹、.zip、带 index.json 的文件夹或网址')}</p>
               </Pane>
             </div>
           ) : null}
@@ -860,22 +861,22 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
             <>
               {mail && mailSources.length > 1 ? (
                 <div className="settings-group plugin-mail-shared">
-                  <MailSettings {...mail} extra={<Row title="来源" hint={mailSources.map((p) => p.displayName).join('、')} />} />
+                  <MailSettings {...mail} extra={<Row title={t('来源')} hint={mailSources.map((p) => p.displayName).join(t('、'))} />} />
                 </div>
               ) : null}
-              <nav className="plugins-list" aria-label="插件列表">
+              <nav className="plugins-list" aria-label={t('插件列表')}>
                 {state !== null && plugins.length === 0 ? (
-                  <p className="settings-hint plugins-empty">未安装插件</p>
+                  <p className="settings-hint plugins-empty">{t('未安装插件')}</p>
                 ) : shown.length === 0 && state !== null ? (
-                  <p className="settings-hint plugins-empty">{q ? '没有匹配的插件' : '没有符合条件的插件'}</p>
+                  <p className="settings-hint plugins-empty">{q ? t('没有匹配的插件') : t('没有符合条件的插件')}</p>
                 ) : (
                   <>
                     {installedPart(
-                      '已启用',
+                      t('已启用'),
                       shown.filter((p) => groupOf[p.name] ?? p.enabled),
                     )}
                     {installedPart(
-                      '已停用',
+                      t('已停用'),
                       shown.filter((p) => !(groupOf[p.name] ?? p.enabled)),
                     )}
                   </>
@@ -886,24 +887,24 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
                   <Row
                     title={
                       <>
-                        模拟模式
-                        <InfoTip text={MOCK_TIP} label="模拟模式" />
-                        {state.mock ? <span className="mock-tag">模拟数据</span> : null}
+                        {t('模拟模式')}
+                        <InfoTip text={t(MOCK_TIP)} label={t('模拟模式')} />
+                        {state.mock ? <span className="mock-tag">{t('模拟数据')}</span> : null}
                       </>
                     }
                   >
-                    <Switch on={state.mock} label="模拟模式" disabled={busy} onChange={(on) => void run({ op: 'mock', on })} />
+                    <Switch on={state.mock} label={t('模拟模式')} disabled={busy} onChange={(on) => void run({ op: 'mock', on })} />
                   </Row>
-                  <Row title="插件目录" hint={state.root} path={{ hint: state.root, open: () => void run({ op: 'openRoot' }) }} />
+                  <Row title={t('插件目录')} hint={state.root} path={{ hint: state.root, open: () => void run({ op: 'openRoot' }) }} />
                 </Group>
               ) : null}
             </>
           ) : (
-            <nav className="plugins-list" aria-label="插件列表">
-              {state !== null && sources.length === 0 && single.length === 0 ? <p className="settings-hint plugins-empty">没有插件来源</p> : null}
+            <nav className="plugins-list" aria-label={t('插件列表')}>
+              {state !== null && sources.length === 0 && single.length === 0 ? <p className="settings-hint plugins-empty">{t('没有插件来源')}</p> : null}
               {/* By source (the official ones first, as they are listed): its name, how it went, 检查更新 and 移除 on its
                   title line, then what it offers as cards. */}
-              <ul className="plugin-sources" aria-label="插件来源">
+              <ul className="plugin-sources" aria-label={t('插件来源')}>
                 {sources.map((s) => {
                   const list = offered.filter((a) => a.source === s.location);
                   const matching = list.filter(pkgHit);
@@ -915,7 +916,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
                           <h3 className="plugins-part-title" title={s.location}>
                             <span className="path-text">{s.label ?? s.location}</span>
                             {/* An official source (deploy.json): said in quiet words, as 默认 in 模型; it cannot be removed. */}
-                            {s.official ? <span className="provider-default source-official">官方</span> : null}
+                            {s.official ? <span className="provider-default source-official">{t('官方')}</span> : null}
                             {list.length ? <span className="tab-count">{list.length}</span> : null}
                           </h3>
                           <span className={s.error ? 'settings-hint source-failed' : 'settings-hint'} title={s.error}>
@@ -925,23 +926,23 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
                         <div className="plugins-part-actions">
                           <button type="button" className="btn btn-small" disabled={busy} onClick={() => void check(s.location)}>
                             {checking === s.location ? <span className="spinner" aria-hidden /> : null}
-                            检查更新
+                            {t('检查更新')}
                           </button>
                           {s.official ? null : (
-                            <button type="button" className="btn btn-small btn-quiet-danger btn-square" disabled={busy} onClick={() => setConfirm({ kind: 'removeSource', s })} aria-label="移除来源" title="移除来源">
+                            <button type="button" className="btn btn-small btn-quiet-danger btn-square" disabled={busy} onClick={() => setConfirm({ kind: 'removeSource', s })} aria-label={t('移除来源')} title={t('移除来源')}>
                               <Icon name="trash" size={14} />
                             </button>
                           )}
                         </div>
                       </div>
-                      {matching.length ? grid(matching) : s.error ? null : <p className="settings-hint plugins-none">这个来源里没有插件</p>}
+                      {matching.length ? grid(matching) : s.error ? null : <p className="settings-hint plugins-none">{t('这个来源里没有插件')}</p>}
                     </li>
                   );
                 })}
                 {single.filter(pkgHit).length ? (
                   <li className="plugins-part">
                     <div className="plugins-part-head">
-                      <h3 className="plugins-part-title">找到的插件</h3>
+                      <h3 className="plugins-part-title">{t('找到的插件')}</h3>
                     </div>
                     {grid(single.filter(pkgHit))}
                   </li>
@@ -956,13 +957,13 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
         <ConfirmDialog
           title={
             confirm.kind === 'removeSource'
-              ? `移除来源「${confirm.s.label ?? confirm.s.location}」？`
+              ? t('移除来源「{name}」？', { name: confirm.s.label ?? confirm.s.location })
               : confirm.kind === 'uninstall'
-                ? `删除插件「${confirm.p.displayName}」？`
-                : `将「${confirm.p.displayName}」回退到 ${confirm.p.previousVersion}？`
+                ? t('删除插件「{name}」？', { name: confirm.p.displayName })
+                : t('将「{name}」回退到 {version}？', { name: confirm.p.displayName, version: confirm.p.previousVersion ?? '' })
           }
-          {...(confirm.kind === 'uninstall' ? { detail: '该插件的工具和页面将不再可用。' } : {})}
-          confirmLabel={confirm.kind === 'removeSource' ? '移除' : confirm.kind === 'uninstall' ? '删除' : '回退'}
+          {...(confirm.kind === 'uninstall' ? { detail: t('该插件的工具和页面将不再可用。') } : {})}
+          confirmLabel={confirm.kind === 'removeSource' ? t('移除') : confirm.kind === 'uninstall' ? t('删除') : t('回退')}
           danger={confirm.kind !== 'rollback'}
           onConfirm={() => {
             const c = confirm;
