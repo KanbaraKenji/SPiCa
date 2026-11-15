@@ -125,7 +125,7 @@ export const ZH_TW_MAIN: Catalog = {
   // main/app-dialog.ts (the page crashed three times)
   界面出错: '介面出錯',
   '界面一分钟内连续出错，已停止自动重新加载。重新加载会回到刚才的对话；退出 {app} 会结束正在进行的任务。':
-    '介面在一分鐘內連續出錯，已停止自動重新載入。重新載入會回到剛才的對話；結束 {app} 會中止正在進行的工作。',
+    '介面在一分鐘內連續出錯，已停止自動重新載入。重新載入會回到剛才的對話；結束 {app} 會中止正在進行的任務。',
   '退出 {app}': '結束 {app}',
   重新加载: '重新載入',
   // main/local-paths.ts, main/preview.ts, main/office-preview.ts
