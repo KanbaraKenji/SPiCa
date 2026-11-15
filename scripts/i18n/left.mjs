@@ -7,7 +7,7 @@ import { join, relative } from 'node:path';
 import { scanSource } from '../../apps/desktop/src/shared/i18n/scan.ts';
 
 const DESKTOP = join(import.meta.dirname, '..', '..', 'apps', 'desktop', 'src');
-const SKIP_FILE = /(^|\/)(fake-seed|fake|fake-mail|shots)\.ts$|(^|\/)shared\/i18n\/|(^|\/)testing\//;
+const SKIP_FILE = /(^|\/)(fake[\w-]*|demo[\w-]*|shots)\.ts$|(^|\/)shared\/i18n\/|(^|\/)testing\//;
 const files = (dir) =>
   readdirSync(dir).flatMap((name) => {
     const p = join(dir, name);

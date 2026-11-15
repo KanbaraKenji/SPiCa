@@ -11,7 +11,7 @@ const I18N = join(DESKTOP, 'shared', 'i18n');
 /** Where the interface's words are: the three renderer pages, the main process, the code both share. */
 const ROOTS = ['renderer', 'main', 'shared', 'backend'].map((d) => join(DESKTOP, d));
 /** Demo data (sample mail, chats, plugins) and this folder are not interface wording. */
-const SKIP_FILE = /(^|\/)(fake-seed|fake|fake-mail|shots)\.ts$|(^|\/)shared\/i18n\/|(^|\/)testing\//;
+const SKIP_FILE = /(^|\/)(fake[\w-]*|demo[\w-]*|shots)\.ts$|(^|\/)shared\/i18n\/|(^|\/)testing\//;
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

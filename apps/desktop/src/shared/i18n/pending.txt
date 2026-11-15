@@ -56,10 +56,6 @@ renderer/src/ui/ImageViewer.tsx
 renderer/src/ui/InfoTip.tsx
 renderer/src/ui/MaxButton.tsx
 main/app-dialog.ts
-main/backend/demo-image.ts
-main/backend/fake-memory.ts
-main/backend/fake-monitor.ts
-main/backend/fake-usage.ts
 main/backend/process.ts
 main/dev-hooks.ts
 main/index.ts
