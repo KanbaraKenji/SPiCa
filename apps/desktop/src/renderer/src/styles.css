@@ -7242,7 +7242,7 @@ section.plugins-part > .plugins-part-title {
   align-items: center;
   gap: 6px;
   padding: 5px 5px 5px 12px;
-  border-radius: var(--composer-radius);
+  border-radius: var(--radius-l);
   border: 1px solid var(--spica-input-border);
   background: var(--spica-input);
   box-shadow: var(--spica-input-shadow);
@@ -7291,6 +7291,12 @@ section.plugins-part > .plugins-part-title {
 
 .memory-ask-result .memory-tidy-list {
   margin: 4px 0 0;
+}
+
+/* The lines start under the sentence, not indented as rows of a box. */
+.memory-ask-result .memory-tidy-change {
+  min-height: 34px;
+  padding: 4px 8px 4px 0;
 }
 
 .memory-ask-reply {
