@@ -819,8 +819,13 @@ export interface MemoryItem {
  */
 export interface MemoryTidyRun {
   id: number;
-  /** auto: started when the app was idle; user: 立即整理. */
-  by: 'auto' | 'user';
+  /** auto: started when the app was idle; user: 立即整理; ask: a sentence typed on an entry's (or a note's) page. */
+  by: 'auto' | 'user' | 'ask';
+  /**
+   * by 'ask': the entry (or the note in no entry) whose page it was typed on, the sentence, and what the model said
+   * back (shown as it is: why it could not, or what it did).
+   */
+  ask?: { entry?: number; item?: number; text: string; reply?: string };
   status: 'running' | 'done' | 'failed';
   startedAt: string;
   endedAt?: string;
@@ -836,7 +841,7 @@ export interface MemoryTidyRun {
    * Items not in an entry that this tidy put in one, existing or new (not changes: the items stay as they were; undoing
    * the whole tidy takes them out again).
    */
-  grouped?: { item: number; entry: number }[];
+  grouped?: { item: number; entry: number; from?: number }[];
   /** The entries this tidy made (no `before`) or whose summary it rewrote, as it left them (`at`) and as they were. */
   entries?: { entry: number; at: string; before?: MemoryEntryState }[];
   costUsd?: number;
@@ -1065,7 +1070,7 @@ export interface RequestRecord {
   /** Until the response ended (the whole stream for the attempt that answered). */
   durationMs: number;
   sessionId: string | null;
-  /** Who started the call: "model" (a conversation), "runtime:memory-tidy", "plugin:<id>", "probe". */
+  /** Who started the call: "model" (a conversation), "runtime:memory-tidy", "runtime:memory-ask" (a sentence on the memory page), "plugin:<id>", "probe". */
   initiator: string;
   providerId?: string;
   model?: string;
@@ -1117,7 +1122,7 @@ export interface UsageRow {
   unpricedRequests?: number;
   /**
    * The same split by who started the requests (RequestRecord.initiator: "model" a conversation,
-   * "runtime:memory-tidy", "runtime:probe", "plugin:<id>", ...): requests, 429 answers, and all their tokens
+   * "runtime:memory-tidy", "runtime:memory-ask", "runtime:probe", "plugin:<id>", ...): requests, 429 answers, and all their tokens
    * (cache reads and writes, the rest of the input, output).
    */
   byInitiator?: Record<string, InitiatorUsage>;
@@ -1274,6 +1279,17 @@ export interface AgentApi {
   listMemoryTidies?(limit?: number): Promise<MemoryTidyRun[]>;
   /** 撤销 a whole tidy, or one of its changes (index in changes); what still stands is taken back. */
   undoMemoryTidy?(id: number, change?: number): Promise<MemoryTidyRun | undefined>;
+  /**
+   * A sentence typed at the foot of an entry's page (or a note's in no entry): the default model changes that entry
+   * (its summary, name, category, details; moves a detail to another entry). Returns at once; memory.tidy events with
+   * by 'ask' follow (running, then done or failed). Refused while a tidy or another one runs, when memory is off, or with
+   * no default model.
+   */
+  askMemory?(target: { entry: number } | { item: number }, text: string): Promise<{ started: true; id: number } | { started: false; reason: 'running' | 'off' | 'no_model' | 'empty' }>;
+  /** Stops a tidy or an askMemory that runs (it ends as failed; nothing of it is applied). */
+  stopMemoryTidy?(id: number): Promise<boolean>;
+  /** The latest askMemory runs, newest first (a page shows the latest for its entry or note). */
+  listMemoryAsks?(limit?: number): Promise<MemoryTidyRun[]>;
   /**
    * A plugin's view (its iframe) calls one of that plugin's own tools: no model, nothing in any session's history.
    * Irreversible tools (and tools a hook wants confirmed) ask the user first: confirm.request with cause 'plugin_view'

@@ -138,6 +138,17 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async listMemoryTidies(limit) {
       return rt.memory.tidies(limit ?? 5);
     },
+    async askMemory(target, text) {
+      const t = target as { entry?: unknown; item?: unknown } | undefined;
+      const where = t && t.entry !== undefined ? { entry: Number(t.entry) } : { item: Number(t?.item) };
+      return rt.memory.ask(where, String(text ?? ''));
+    },
+    async stopMemoryTidy(id) {
+      return rt.memory.stop(Number(id));
+    },
+    async listMemoryAsks(limit) {
+      return rt.memory.asks(limit ?? 5);
+    },
     async undoMemoryTidy(id, change) {
       return rt.memory.undoTidy(Number(id), change === undefined || change === null ? undefined : Number(change));
     },

@@ -63,6 +63,9 @@ const API: Record<keyof AgentApi, true> = {
   tidyMemories: true,
   listMemoryTidies: true,
   undoMemoryTidy: true,
+  askMemory: true,
+  stopMemoryTidy: true,
+  listMemoryAsks: true,
 };
 
 describe('FakeBackend', () => {
@@ -162,6 +165,36 @@ describe('FakeBackend', () => {
     expect(after.stale).toBeUndefined();
     await b.undoMemoryTidy(run.run.id);
     expect((await b.listMemoryEntries()).find((e) => e.id === made.entry.id)).toMatchObject({ summary: '寄出前拍照，单号写进周报', stale: true });
+    b.dispose();
+  });
+
+  it('memory: a sentence on an entry page moves a detail (to a new entry too), is listed apart from the tidies, undone back; stopped, nothing happens', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { until } = collect(b);
+    const boss = (await b.listMemoryEntries()).find((e) => e.name === '王经理')!;
+    const report = (await b.listMemories()).find((m) => m.text === '周报发给王经理')!;
+    expect(await b.askMemory({ entry: boss.id }, ' ')).toEqual({ started: false, reason: 'empty' });
+    expect(await b.askMemory({ entry: boss.id }, '周报发给王经理这条挪到周报')).toMatchObject({ started: true });
+    const run = (await until((e) => e.type === 'memory.tidy' && e.run.status === 'done')) as Extract<CoreEvent, { type: 'memory.tidy' }>;
+    expect(run.run).toMatchObject({ by: 'ask', ask: { entry: boss.id, reply: '已把「周报发给王经理」移到「周报」。' } });
+    const to = (await b.listMemoryEntries()).find((e) => e.name === '周报')!;
+    expect((await b.listMemories()).find((m) => m.id === report.id)!.entryId).toBe(to.id);
+    expect(to.stale).toBe(true);
+    expect((await b.listMemoryTidies()).some((r) => r.id === run.run.id)).toBe(false);
+    expect((await b.listMemoryAsks())[0]!.id).toBe(run.run.id);
+    await b.undoMemoryTidy(run.run.id);
+    expect((await b.listMemories()).find((m) => m.id === report.id)!.entryId).toBe(boss.id);
+    // a sentence it does not understand: said so, nothing changed
+    await b.askMemory({ entry: boss.id }, '今天天气怎么样');
+    const none = (await until((e) => e.type === 'memory.tidy' && e.run.status === 'done' && e.run.id !== run.run.id)) as Extract<CoreEvent, { type: 'memory.tidy' }>;
+    expect(none.run).toMatchObject({ changes: [], ask: { reply: '没听懂要改什么，没有改动。' } });
+    // stopped while it runs
+    const slow = new FakeBackend({ speed: 1 });
+    const started = (await slow.askMemory({ entry: boss.id }, '周报发给王经理这条挪到周报')) as { id: number };
+    expect(await slow.stopMemoryTidy(started.id)).toBe(true);
+    await new Promise((r) => setTimeout(r, 1700));
+    expect((await slow.listMemories()).find((m) => m.id === report.id)!.entryId).toBe(boss.id);
+    slow.dispose();
     b.dispose();
   });
 

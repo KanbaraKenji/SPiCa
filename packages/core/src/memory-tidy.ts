@@ -207,18 +207,24 @@ export function lostDetails(old: string, text: string, said = ''): string[] {
 }
 
 /** The entry a note goes into: one there is, or a new one (made once per name in a tidy). */
-type EntryPlan = { id: number } | { name: string; summary: string; category?: MemoryCategory };
+export type EntryPlan = { id: number } | { name: string; summary: string; category?: MemoryCategory };
 
 type Plan =
-  | { action: 'added'; text: string; quote: string; from: Fed; entry?: EntryPlan }
-  | { action: 'rewritten'; prev: MemoryItem; text: string; quote: string; from: Fed }
+  | { action: 'added'; text: string; quote: string; from: Source; entry?: EntryPlan }
+  | { action: 'rewritten'; prev: MemoryItem; text: string; quote: string; from: Source }
   | { action: 'merged'; prev: MemoryItem[]; text: string }
-  | { action: 'forgotten'; prev: MemoryItem; quote: string; from: Fed };
+  | { action: 'forgotten'; prev: MemoryItem; quote: string; from: Source };
 
-/** Notes in no entry put into one, entries given a new summary, and 待整理 entries whose summary was given back as it is (not changes). */
+/** Where a change's words come from: a message the user typed (a tidy), or none (a sentence on the memory page). */
+type Source = { sessionId?: string; seq?: number };
+
+/**
+ * Notes put into an entry (in none yet, or moved from another: a sentence on the memory page), entries given a new
+ * summary (or name and category: the memory page), and 待整理 entries whose summary was given back as it is (not changes).
+ */
 interface Arrange {
   group: { items: MemoryItem[]; entry: EntryPlan }[];
-  summarize: { entry: MemoryEntry; summary: string }[];
+  summarize: { entry: MemoryEntry; summary?: string; name?: string; category?: MemoryCategory }[];
   confirm: MemoryEntry[];
 }
 
@@ -386,16 +392,17 @@ export function applyArrange(rt: Runtime, run: MemoryTidyRun, arrange: Arrange, 
     const entry = entryFor(rt, g.entry, made, owner, now);
     for (const m of g.items) {
       const cur = rt.store.getMemory(m.id);
-      if (!cur || cur.status !== 'active') continue;
+      if (!cur || cur.status !== 'active' || cur.entryId === entry.id) continue;
       rt.store.putMemory({ ...cur, entryId: entry.id });
-      grouped.push({ item: m.id, entry: entry.id });
+      // moved from another entry: the undo puts it back there
+      grouped.push({ item: m.id, entry: entry.id, ...(cur.entryId !== undefined && rt.store.getMemoryEntry(cur.entryId) ? { from: cur.entryId } : {}) });
     }
   }
-  for (const { entry, summary } of arrange.summarize) {
+  for (const { entry, summary, name, category } of arrange.summarize) {
     const cur = rt.store.getMemoryEntry(entry.id);
     if (!cur) continue;
     // a new summary: no longer 待整理 (the undo puts the mark back with the old one)
-    rt.store.putMemoryEntry({ ...unmarked(cur), summary, by: 'assistant', updatedAt: now });
+    rt.store.putMemoryEntry({ ...(summary ? unmarked(cur) : cur), ...(summary ? { summary } : {}), ...(name ? { name } : {}), ...(category ? { category } : {}), by: 'assistant', updatedAt: now });
     touched.push({ entry: cur.id, at: now, before: stateOf(cur) });
   }
   // confirmed as it is: only the mark goes, its time stays (not listed; the tidy's undo leaves it unmarked)
@@ -501,7 +508,8 @@ export function undoArrange(rt: Runtime, run: MemoryTidyRun): boolean {
     if (!cur || cur.status !== 'active' || cur.entryId !== g.entry) continue;
     const { entryId: _gone, ...rest } = cur;
     void _gone;
-    rt.store.putMemory(rest);
+    // back in the entry it was moved from (when that is still there), else in none
+    rt.store.putMemory(g.from !== undefined && rt.store.getMemoryEntry(g.from) ? { ...rest, entryId: g.from } : rest);
     any = true;
   }
   for (const t of run.entries ?? []) {
@@ -516,15 +524,22 @@ export function undoArrange(rt: Runtime, run: MemoryTidyRun): boolean {
 }
 
 /** One model call with the tidy's prompt: its text and what it cost (recorded like a conversation's call, traced on no conversation). */
-export async function ask(rt: Runtime, content: string, signal: AbortSignal): Promise<{ text: string; costUsd: number }> {
+export async function ask(
+  rt: Runtime,
+  content: string,
+  signal: AbortSignal,
+  opts: { system?: string; initiator?: string; maxTokens?: number } = {},
+): Promise<{ text: string; costUsd: number }> {
+  const initiator = opts.initiator ?? 'runtime:memory-tidy';
+  const maxTokens = opts.maxTokens ?? TIDY_LIMITS.maxTokens;
   const { providerId, model } = rt.defaults;
   if (!providerId || !model) throw new Error('no model is set');
   const provider = rt.provider(providerId);
   // held against the spending limits like a conversation's call (worst case until it is recorded)
-  const scope = { providerId, providerKind: provider.kind, model, sessionId: '', runId: `memory-tidy-${Date.now()}` };
-  const hold = rt.ledger.reserve(scope, Math.ceil((content.length + 2000) / 1.5), TIDY_LIMITS.maxTokens);
+  const scope = { providerId, providerKind: provider.kind, model, sessionId: '', runId: `${initiator.slice(8)}-${Date.now()}` };
+  const hold = rt.ledger.reserve(scope, Math.ceil((content.length + 2000) / 1.5), maxTokens);
   if (!hold.ok) throw new Error(hold.message);
-  const trace = rt.tracer.start({ kind: 'model', sessionId: null, parentChain: [], initiator: 'runtime:memory-tidy', target: provider.traceTarget, providerId, model });
+  const trace = rt.tracer.start({ kind: 'model', sessionId: null, parentChain: [], initiator, target: provider.traceTarget, providerId, model });
   const info = trace.watch({ attempts: 0 });
   let text = '';
   try {
@@ -532,10 +547,10 @@ export async function ask(rt: Runtime, content: string, signal: AbortSignal): Pr
     for await (const ev of provider.stream(
       {
         model,
-        system: system(),
+        system: opts.system ?? system(),
         messages: [{ id: 'memory-tidy', sessionId: '', seq: 1, role: 'user', kind: 'user', content: [{ type: 'text', text: content }], createdAt: isoNow() }],
         tools: [],
-        maxTokens: TIDY_LIMITS.maxTokens,
+        maxTokens,
       },
       { signal, info },
     )) {

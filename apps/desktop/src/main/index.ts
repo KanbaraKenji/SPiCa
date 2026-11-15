@@ -466,6 +466,9 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'tidyMemories',
   'listMemoryTidies',
   'undoMemoryTidy',
+  'askMemory',
+  'stopMemoryTidy',
+  'listMemoryAsks',
 ]);
 
 let mainWindow: BrowserWindow | undefined;

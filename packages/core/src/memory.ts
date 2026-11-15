@@ -34,6 +34,7 @@ import { MEMORY_CATEGORIES } from '@spica/protocol';
 import type { Tool, ToolContext, ToolEnv } from './tools/types.ts';
 import { isoNow } from './events.ts';
 import { redact } from './util.ts';
+import { ASK_LIMITS, askPrompt, askSystem, checkAsk, parseAsk, type AskTarget } from './memory-ask.ts';
 import { apply, applyArrange, ask, check, collect, loose, newConversations, parseChanges, TIDY_LIMITS, tidyPrompt, undoArrange, undoChange } from './memory-tidy.ts';
 
 export const MEMORY_LIMITS = {
@@ -368,9 +369,77 @@ export class MemoryBook {
     return { started: true, id: run.id };
   }
 
-  /** The latest tidies, newest first. */
+  /** The latest tidies, newest first (not the sentences typed on the memory page: asks()). */
   tidies(limit = 5): MemoryTidyRun[] {
-    return this.#rt.store.listMemoryTidies(limit);
+    return this.#rt.store
+      .listMemoryTidies(limit + 50)
+      .filter((r) => r.by !== 'ask')
+      .slice(0, limit);
+  }
+
+  /** The latest sentences typed on the memory page and what they changed, newest first. */
+  asks(limit = 5): MemoryTidyRun[] {
+    return this.#rt.store
+      .listMemoryTidies(limit + 50)
+      .filter((r) => r.by === 'ask')
+      .slice(0, limit);
+  }
+
+  /**
+   * A sentence typed at the foot of an entry's page (or a note's in no entry): the default model changes that entry
+   * (memory-ask.ts). Returns at once; memory.tidy events (by 'ask') follow. Refused like a tidy (one at a time, they
+   * share the lock), and when the sentence is empty.
+   */
+  ask(target: AskTarget, text: string, owner = USER_OWNER): { started: true; id: number } | { started: false; reason: 'running' | 'off' | 'no_model' | 'empty' } {
+    const said = text.trim().slice(0, ASK_LIMITS.textChars);
+    if (!said) return { started: false, reason: 'empty' };
+    if (this.#tidying) return { started: false, reason: 'running' };
+    if (!this.#enabled) return { started: false, reason: 'off' };
+    const { providerId, model } = this.#rt.defaults;
+    if (!providerId || !model) return { started: false, reason: 'no_model' };
+    const rt = this.#rt;
+    const where = 'entry' in target ? { entry: target.entry } : { item: target.item };
+    let run = rt.store.putMemoryTidy({ id: 0, by: 'ask', ask: { ...where, text: said }, status: 'running', startedAt: isoNow(), sessions: 0, messages: 0, changes: [], refused: 0 });
+    const abort = new AbortController();
+    this.#tidying = { id: run.id, abort };
+    const tell = () => rt.events.emit(rt.eventHost, { type: 'memory.tidy', run });
+    tell();
+    void (async () => {
+      await Promise.resolve();
+      try {
+        const prompt = askPrompt(rt, target, said, owner);
+        if (!prompt) throw new Error('the entry is gone');
+        const answer = await ask(rt, prompt, abort.signal, { system: askSystem(), initiator: 'runtime:memory-ask', maxTokens: ASK_LIMITS.maxTokens });
+        const { changes: proposed, reply } = parseAsk(answer.text);
+        // checked against the store as it is now (the user may have changed it meanwhile)
+        const checked = checkAsk(rt, target, proposed, said, owner);
+        const made = new Map<string, MemoryEntry>();
+        const changes = apply(rt, run, checked.plans, made, owner);
+        const arranged = applyArrange(rt, run, checked.arrange, made, owner);
+        for (const id of checked.stale) if (this.details(id, owner).length) this.#markStale(id);
+        const shown = reply ? rt.redact(reply) : undefined;
+        run = rt.store.putMemoryTidy({ ...run, status: 'done', endedAt: isoNow(), changes, refused: checked.refused, costUsd: answer.costUsd, ...arranged, ask: { ...where, text: said, ...(shown ? { reply: shown } : {}) } });
+        if (changes.length || arranged.grouped || arranged.entries || checked.stale.length || checked.arrange.confirm.length) rt.events.emit(rt.eventHost, { type: 'memory.changed', card: { action: 'tidied', count: changes.length } });
+      } catch (err) {
+        const failed: MemoryTidyRun = { ...run, status: 'failed', endedAt: isoNow(), error: rt.redact(err instanceof Error ? err.message : String(err)) };
+        try {
+          run = rt.store.putMemoryTidy(failed);
+        } catch {
+          run = failed; // the store closed with the app
+        }
+      } finally {
+        this.#tidying = undefined;
+        tell();
+      }
+    })();
+    return { started: true, id: run.id };
+  }
+
+  /** Stops a tidy or an ask that runs (it ends as failed; nothing of it is applied). Whether one was stopped. */
+  stop(id: number): boolean {
+    if (this.#tidying?.id !== id) return false;
+    this.#tidying.abort.abort();
+    return true;
   }
 
   /** 撤销 a tidy (every change that still stands) or one of its changes. */
@@ -406,7 +475,7 @@ export class MemoryBook {
   tidyIfDue(owner = USER_OWNER): void {
     if (!this.#autoTidy || !this.#enabled || this.#tidying) return;
     if (this.#rt.sessions().some((s) => ['queued', 'thinking', 'tool'].includes(s.info().status))) return;
-    const last = this.#rt.store.listMemoryTidies(1)[0];
+    const last = this.tidies(1)[0];
     if (last && Date.now() - Date.parse(last.startedAt) < TIDY_LIMITS.everyMs) return;
     if (newConversations(this.#rt, this.#rt.store.getMemoryCursor(owner)) < TIDY_LIMITS.newSessions) return;
     this.tidy('auto', owner);
