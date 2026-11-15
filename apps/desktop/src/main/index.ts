@@ -33,6 +33,7 @@ import { readFileSync } from 'node:fs';
 import { sameSource, type PluginsCommand } from '../shared/plugins';
 import { buildSources, channelFile, type BuildSources } from './update/channel';
 import { IDLE_POLL_MS, idleInstallDue, pluginUpdateCount, scheduleChecks } from './update/schedule';
+import { startupAction } from './update/startup';
 import { readResume, writeResume } from './update/resume';
 import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
@@ -40,7 +41,7 @@ import { writeDemoChart } from './backend/demo-image';
 import { ProcessBackend, type BackendStatus } from './backend/process';
 import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { pageAlive, pageRecovery } from './page-recovery';
-import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor } from './app-dialog';
+import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor, updateDialog, updateNowAnswer } from './app-dialog';
 import { openDialogWindow } from './app-dialog-window';
 import { editMenu, type EditAction } from './edit-menu';
 import { watchFit } from './window-fit';
@@ -1239,6 +1240,32 @@ const updates = new UpdateService({
   },
 });
 updates.onChange((s) => sendToWindow(DesktopChannel.UpdateChanged, s));
+// Soon after start (main/update/startup.ts): a downloaded update is asked about once; a version that must update
+// installs at once (the window shows its download). Later ones are the side bar's card.
+const appStartedAt = Date.now();
+let startupDone = false;
+updates.onChange((s) => {
+  const act = startupAction({ update: s, sinceStartMs: Date.now() - appStartedAt, busy: running.any(), shown: Boolean(mainWindow?.isVisible()), done: startupDone });
+  if (!act) return;
+  startupDone = true;
+  // A version that must update: its own step (installed at once); not asked.
+  if (act === 'force') return;
+  void askUpdateNow(s.available ?? '');
+});
+async function askUpdateNow(version: string): Promise<void> {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+  const s = settings.get();
+  const spec = updateDialog(version, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins), uiFontFamily(s.uiFont, app.getLocale())));
+  const box = messageBoxFor(spec, { type: 'info', appName: APP_NAME, cancel: 0 });
+  const answer = await askDialog({
+    open: () => openDialogWindow(win, spec, s.zoom),
+    fallback: () => dialog.showMessageBox(win, box.options).then((r) => box.answer(r.response, r.checkboxChecked)),
+    warn: (line) => console.warn(line),
+  });
+  // 稍后: the side bar's card stays.
+  if (updateNowAnswer(answer)) updates.install();
+}
 ipcMain.handle(DesktopChannel.Update, async (_e, op: unknown) => {
   if (op === 'check') return updates.check();
   if (op === 'install') updates.install();
