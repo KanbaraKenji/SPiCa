@@ -7,8 +7,8 @@ export const BALANCE_WORDS = 'API 余额不足';
 /** Turns a raw backend error into a sentence the user can act on. */
 export function humanError(raw: string): string {
   const m = raw.toLowerCase();
-  if (/\b401\b|unauthori[sz]ed|invalid api key|authentication/.test(m)) return '模型密钥无效或已失效，请检查模型设置。';
-  if (/\b403\b|forbidden/.test(m)) return '模型账号无权限，请检查模型设置。';
+  if (/\b401\b|unauthori[sz]ed|invalid api key|authentication/.test(m)) return '模型密钥无效或已失效，请检查 设置 › 模型。';
+  if (/\b403\b|forbidden/.test(m)) return '模型账号无权限，请检查 设置 › 模型。';
   if (/\b404\b|model_not_found|does not exist/.test(m)) return '找不到模型，请检查模型名称。';
   // before 429: some providers answer an empty account with 429 (insufficient_quota)
   if (/\b402\b|payment required|insufficient|balance|quota|credit|arrear|余额不足|欠费/.test(m)) return BALANCE_WORDS;

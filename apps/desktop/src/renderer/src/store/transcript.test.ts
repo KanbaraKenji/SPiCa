@@ -370,7 +370,7 @@ describe('model errors', () => {
 
   it('falls back to its own plain words otherwise', () => {
     const t = applyEvent({ items: [] }, { type: 'error', message: 'HTTP 401 unauthorized', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
-    expect(t.error).toBe('模型密钥无效或已失效，请检查模型设置。');
+    expect(t.error).toBe('模型密钥无效或已失效，请检查 设置 › 模型。');
   });
 
   // The core's retries and its final error both say retryable (the kind of error); the run's end tells them apart.
@@ -413,7 +413,7 @@ describe('model errors', () => {
 
   it('keeps an error already shown (a non-retryable one) at the end of the run', () => {
     const t = play([status(1, 'thinking'), { ...base, seq: 2, type: 'error', message: 'HTTP 401 unauthorized' } as CoreEvent, end(3, 'error', 'HTTP 401')]);
-    expect(t.error).toBe('模型密钥无效或已失效，请检查模型设置。');
+    expect(t.error).toBe('模型密钥无效或已失效，请检查 设置 › 模型。');
   });
 });
 
@@ -565,7 +565,7 @@ describe('a question or confirmation stopped while it waits', () => {
 });
 
 describe('a spending limit stops the run, or the provider’s account is out of money', () => {
-  it('one short line and the 模型设置 button, at the provider whose 花费上限 it was; gone when the next run starts', () => {
+  it('one short line and the 模型 button, at the provider whose 花费上限 it was; gone when the next run starts', () => {
     const at = '2026-11-12T10:00:00Z';
     const t = applyEvent({ items: [] }, { type: 'budget.stop', scope: 'p-1:global', spentUsd: 0.75, limitUsd: 1, nextUsd: 0.4, message: 'x', seq: 1, at, sessionId: 's', parentChain: [] } as CoreEvent);
     expect(t).toMatchObject({ error: '已达花费上限', errorAction: 'models', errorProvider: 'p-1' });

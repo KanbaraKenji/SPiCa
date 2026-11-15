@@ -54,7 +54,7 @@ export interface SidebarProps {
    */
   account?: string;
   /**
-   * The account opens a menu above it (as Claude's does): 设置 (the settings as they last were) and 模型设定
+   * The account opens a menu above it (as Claude's does): 设置 (the settings as they last were) and 模型
    * (设置 › 模型), each opening the settings there. Absent: the account opens the settings as the gear does.
    */
   onAccount?: (where: AccountMenuTo) => void;
@@ -72,7 +72,7 @@ export type AccountMenuTo = 'settings' | 'models';
 export function accountMenuItems(account: string, go: (where: AccountMenuTo) => void): MenuItem[] {
   return [
     { label: '设置', group: account, icon: 'settings', onSelect: () => go('settings') },
-    { label: '模型设定', group: account, icon: 'model', onSelect: () => go('models') },
+    { label: '模型', group: account, icon: 'model', onSelect: () => go('models') },
   ];
 }
 
