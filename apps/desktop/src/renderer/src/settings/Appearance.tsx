@@ -1,4 +1,4 @@
-// Settings > 外观: pick a skin, make your own (background + accent), zoom.
+// Settings > 外观: pick a skin, make your own (background + accent), the language, zoom.
 import { useRef, useState, type ReactNode } from 'react';
 import { BUILTIN_SKINS, DARK_SKIN, deriveTokens, LIGHT_SKIN, normalizeHex, type Skin, type SkinChoice } from '../../../shared/skin';
 import { DEFAULT_ZOOM, stepZoom, ZOOM_STEPS, zoomLabel } from '../../../shared/zoom';
@@ -9,36 +9,38 @@ import { Group, Pane, Row } from './Group';
 import { CodeThemes } from './CodeThemes';
 import { Icon } from '../ui/Icon';
 import { ColorPicker } from '../ui/ColorPicker';
+import { Select } from '../ui/Select';
+import { LANGUAGE_NAMES, LOCALES, N_, t, type LanguagePref } from '../../../shared/i18n';
 
 const TEXT_SIZES: { size: TextSize; label: string }[] = [
-  { size: 'sm', label: '小' },
-  { size: 'md', label: '中' },
-  { size: 'lg', label: '大' },
+  { size: 'sm', label: N_('小') },
+  { size: 'md', label: N_('中') },
+  { size: 'lg', label: N_('大') },
 ];
 
 /** 界面字体: all the interface's words (not code); shared/ui-font.ts. */
 const UI_FONTS: { mode: UiFontMode; label: string }[] = [
-  { mode: 'default', label: '默认' },
-  { mode: 'system', label: '跟随系统' },
+  { mode: 'default', label: N_('默认') },
+  { mode: 'system', label: N_('跟随系统') },
 ];
 
 const SPLASH_OPTIONS: { mode: SplashMode; label: string }[] = [
-  { mode: 'daily', label: '每天首次' },
-  { mode: 'always', label: '每次' },
-  { mode: 'never', label: '从不' },
+  { mode: 'daily', label: N_('每天首次') },
+  { mode: 'always', label: N_('每次') },
+  { mode: 'never', label: N_('从不') },
 ];
 
 const ACCENT_PRESETS = ['#2f7de1', '#39c5bb', '#7c5cff', '#e0559a', '#e8833a', '#3aa55c'];
 
 function SkinPreview({ skin }: { skin: Skin }) {
-  const t = deriveTokens(skin);
+  const k = deriveTokens(skin);
   return (
-    <span className="skin-preview" style={{ background: t['--spica-bg'], borderColor: t['--spica-border'] }} aria-hidden>
-      <span className="skin-preview-side" style={{ background: t['--spica-chrome'] }} />
+    <span className="skin-preview" style={{ background: k['--spica-bg'], borderColor: k['--spica-border'] }} aria-hidden>
+      <span className="skin-preview-side" style={{ background: k['--spica-chrome'] }} />
       <span className="skin-preview-lines">
-        <span style={{ background: t['--spica-ink'], width: '70%' }} />
-        <span style={{ background: t['--spica-muted'], width: '50%' }} />
-        <span style={{ background: t['--spica-accent'], width: '30%' }} />
+        <span style={{ background: k['--spica-ink'], width: '70%' }} />
+        <span style={{ background: k['--spica-muted'], width: '50%' }} />
+        <span style={{ background: k['--spica-accent'], width: '30%' }} />
       </span>
     </span>
   );
@@ -61,8 +63,8 @@ export function newSkinId(existing: readonly Skin[]): string {
 
 export function newSkinName(existing: readonly Skin[]): string {
   let n = 1;
-  while (existing.some((s) => s.name === `我的皮肤 ${n}`)) n++;
-  return `我的皮肤 ${n}`;
+  while (existing.some((s) => s.name === t('我的皮肤 {n}', { n }))) n++;
+  return t('我的皮肤 {n}', { n });
 }
 
 function ColorField({ label, value, onChange, presets }: { label: string; value: string; onChange(v: string): void; presets?: string[] }) {
@@ -86,7 +88,7 @@ function ColorField({ label, value, onChange, presets }: { label: string; value:
           className="input input-hex"
           value={draft}
           spellCheck={false}
-          aria-label={`${label}色值`}
+          aria-label={t('{label}色值', { label })}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
@@ -102,7 +104,7 @@ function ColorField({ label, value, onChange, presets }: { label: string; value:
                 className={p === value ? 'color-preset is-on' : 'color-preset'}
                 style={{ background: p }}
                 onClick={() => onChange(p)}
-                aria-label={`使用 ${p}`}
+                aria-label={t('使用 {color}', { color: p })}
                 title={p}
               />
             ))}
@@ -121,7 +123,7 @@ function NameField({ value, onCommit }: { value: string; onCommit(v: string): vo
       className="input"
       value={draft}
       maxLength={40}
-      aria-label="皮肤名称"
+      aria-label={t('皮肤名称')}
       onChange={(e) => {
         setDraft(e.target.value);
         if (e.target.value.trim()) onCommit(e.target.value.trim());
@@ -164,35 +166,35 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
   };
 
   const tiles: { id: SkinChoice; name: string; preview: ReactNode }[] = [
-    { id: 'system', name: '跟随系统', preview: <SystemPreview /> },
-    ...BUILTIN_SKINS.map((s) => ({ id: s.id, name: s.name, preview: <SkinPreview skin={s} /> })),
+    { id: 'system', name: t('跟随系统'), preview: <SystemPreview /> },
+    ...BUILTIN_SKINS.map((s) => ({ id: s.id, name: t(s.name), preview: <SkinPreview skin={s} /> })),
     ...custom.map((s) => ({ id: s.id, name: s.name, preview: <SkinPreview skin={s} /> })),
   ];
 
   const zoomIndex = ZOOM_STEPS.indexOf(settings.zoom as (typeof ZOOM_STEPS)[number]);
   return (
     <section className="settings-section">
-      <Group title="皮肤">
+      <Group title={t('皮肤')}>
         <Pane>
-        <div className="skin-grid" role="radiogroup" aria-label="皮肤">
-          {tiles.map((t) => (
+        <div className="skin-grid" role="radiogroup" aria-label={t('皮肤')}>
+          {tiles.map((tile) => (
             <button
-              key={t.id}
+              key={tile.id}
               type="button"
               role="radio"
-              aria-checked={settings.skin === t.id}
-              className={settings.skin === t.id ? 'skin-tile is-on' : 'skin-tile'}
-              onClick={() => choose(t.id)}
+              aria-checked={settings.skin === tile.id}
+              className={settings.skin === tile.id ? 'skin-tile is-on' : 'skin-tile'}
+              onClick={() => choose(tile.id)}
             >
-              {t.preview}
-              <span className="skin-name">{t.name}</span>
+              {tile.preview}
+              <span className="skin-name">{tile.name}</span>
             </button>
           ))}
           <button type="button" className="skin-tile skin-tile-new" onClick={create}>
             <span className="skin-preview skin-preview-new" aria-hidden>
               <Icon name="plus" size={18} />
             </span>
-            <span className="skin-name">新建皮肤</span>
+            <span className="skin-name">{t('新建皮肤')}</span>
           </button>
         </div>
         </Pane>
@@ -201,13 +203,13 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
           <Pane>
           <div className="skin-editor">
             <div className="field">
-              <span className="field-label">名称</span>
+              <span className="field-label">{t('名称')}</span>
               <NameField key={editing.id} value={editing.name} onCommit={(name) => edit({ name })} />
             </div>
-            <ColorField label="底色" value={editing.bg} onChange={(bg) => edit({ bg })} />
-            <ColorField label="强调色" value={editing.accent} onChange={(accent) => edit({ accent })} presets={ACCENT_PRESETS} />
+            <ColorField label={t('底色')} value={editing.bg} onChange={(bg) => edit({ bg })} />
+            <ColorField label={t('强调色')} value={editing.accent} onChange={(accent) => edit({ accent })} presets={ACCENT_PRESETS} />
             <div className="skin-editor-foot">
-              <button type="button" className="btn btn-quiet-danger btn-square" onClick={() => setDeleting(editing)} aria-label="删除皮肤" title="删除皮肤">
+              <button type="button" className="btn btn-quiet-danger btn-square" onClick={() => setDeleting(editing)} aria-label={t('删除皮肤')} title={t('删除皮肤')}>
                 <Icon name="trash" size={15} />
               </button>
             </div>
@@ -216,9 +218,18 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
         ) : null}
       </Group>
 
-      <Group title="显示">
-        <Row title="界面字体">
-        <div className="segmented" role="radiogroup" aria-label="界面字体">
+      <Group title={t('显示')}>
+        <Row title={t('语言')}>
+          <Select
+            className="language-pick"
+            label={t('语言')}
+            value={settings.language}
+            onChange={(v) => onChange({ language: v as LanguagePref })}
+            options={[{ value: 'system', label: t('跟随系统') }, ...LOCALES.map((l) => ({ value: l, label: LANGUAGE_NAMES[l] }))]}
+          />
+        </Row>
+        <Row title={t('界面字体')}>
+        <div className="segmented" role="radiogroup" aria-label={t('界面字体')}>
           {UI_FONTS.map((o) => (
             <button
               key={o.mode}
@@ -228,13 +239,13 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
               className={settings.uiFont === o.mode ? 'segment is-on' : 'segment'}
               onClick={() => onChange({ uiFont: o.mode })}
             >
-              {o.label}
+              {t(o.label)}
             </button>
           ))}
         </div>
         </Row>
-        <Row title="文字大小">
-        <div className="segmented" role="radiogroup" aria-label="文字大小">
+        <Row title={t('文字大小')}>
+        <div className="segmented" role="radiogroup" aria-label={t('文字大小')}>
           {TEXT_SIZES.map((o) => (
             <button
               key={o.size}
@@ -244,31 +255,31 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
               className={settings.textSize === o.size ? 'segment is-on' : 'segment'}
               onClick={() => onChange({ textSize: o.size })}
             >
-              {o.label}
+              {t(o.label)}
             </button>
           ))}
         </div>
         </Row>
-        <Row title="缩放">
+        <Row title={t('缩放')}>
         <div className="zoom-row">
-          <div className="stepper" role="group" aria-label="缩放">
-            <button type="button" className="icon-btn" onClick={() => onChange({ zoom: stepZoom(settings.zoom, 'out') })} disabled={zoomIndex <= 0} aria-label="缩小" title="缩小">
+          <div className="stepper" role="group" aria-label={t('缩放')}>
+            <button type="button" className="icon-btn" onClick={() => onChange({ zoom: stepZoom(settings.zoom, 'out') })} disabled={zoomIndex <= 0} aria-label={t('缩小')} title={t('缩小')}>
               <Icon name="minus" size={14} />
             </button>
             <span className="stepper-value num" aria-live="polite">
               {zoomLabel(settings.zoom)}
             </span>
-            <button type="button" className="icon-btn" onClick={() => onChange({ zoom: stepZoom(settings.zoom, 'in') })} disabled={zoomIndex >= ZOOM_STEPS.length - 1} aria-label="放大" title="放大">
+            <button type="button" className="icon-btn" onClick={() => onChange({ zoom: stepZoom(settings.zoom, 'in') })} disabled={zoomIndex >= ZOOM_STEPS.length - 1} aria-label={t('放大')} title={t('放大')}>
               <Icon name="plus" size={14} />
             </button>
           </div>
           <button type="button" className="btn" onClick={() => onChange({ zoom: DEFAULT_ZOOM })} disabled={settings.zoom === DEFAULT_ZOOM}>
-            恢复 100%
+            {t('恢复 100%')}
           </button>
         </div>
         </Row>
-        <Row title="开机动画">
-        <div className="segmented" role="radiogroup" aria-label="开机动画">
+        <Row title={t('开机动画')}>
+        <div className="segmented" role="radiogroup" aria-label={t('开机动画')}>
           {SPLASH_OPTIONS.map((o) => (
             <button
               key={o.mode}
@@ -278,18 +289,18 @@ export function Appearance({ settings, activeSkin, onChange }: AppearanceProps) 
               className={settings.splash === o.mode ? 'segment is-on' : 'segment'}
               onClick={() => onChange({ splash: o.mode })}
             >
-              {o.label}
+              {t(o.label)}
             </button>
           ))}
         </div>
         </Row>
       </Group>
 
-      <Group title="代码">
+      <Group title={t('代码')}>
         <CodeThemes value={settings.codeTheme} onChange={(codeTheme) => onChange({ codeTheme })} size={settings.codeSize} onSize={(codeSize) => onChange({ codeSize })} />
       </Group>
 
-      {deleting ? <ConfirmDialog title={`删除皮肤「${deleting.name}」？`} confirmLabel="删除" danger onConfirm={() => remove(deleting)} onCancel={() => setDeleting(null)} /> : null}
+      {deleting ? <ConfirmDialog title={t('删除皮肤「{name}」？', { name: deleting.name })} confirmLabel={t('删除')} danger onConfirm={() => remove(deleting)} onCancel={() => setDeleting(null)} /> : null}
     </section>
   );
 }

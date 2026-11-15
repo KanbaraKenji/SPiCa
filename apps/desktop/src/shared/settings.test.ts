@@ -6,6 +6,10 @@ describe('sanitizeSettings', () => {
     expect(sanitizeSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(sanitizeSettings({ zoom: 'big', skin: 42, panels: 'x', customSkins: 'no' })).toEqual(DEFAULT_SETTINGS);
   });
+  it('keeps a language it knows (跟随系统 by default and for anything else)', () => {
+    expect(DEFAULT_SETTINGS.language).toBe('system');
+    expect(['zh-CN', 'zh-TW', 'en', 'system', 'fr', 3].map((language) => sanitizeSettings({ language }).language)).toEqual(['zh-CN', 'zh-TW', 'en', 'system', 'system', 'system']);
+  });
   it('drops broken custom skins and a skin choice that no longer exists', () => {
     const s = sanitizeSettings({
       skin: 'custom-2',

@@ -5,6 +5,7 @@ import { sanitizePreviewers } from './previewers';
 import { clampZoom, DEFAULT_ZOOM } from './zoom';
 import { BUILTIN_SKINS, normalizeHex, type Skin, type SkinChoice } from './skin';
 import { parseNotices, type Notice } from './updates';
+import { isLanguagePref, type LanguagePref } from './i18n';
 
 export interface PanelPrefs {
   /** Left sidebar (projects and sessions) is open. */
@@ -128,6 +129,8 @@ export interface ShellSettings {
   textSize: TextSize;
   /** 外观 › 界面字体: 默认 (Segoe UI, Chinese in YaHei UI) or 跟随系统 (system-ui); all the interface's words, not code (shared/ui-font.ts). */
   uiFont: UiFontMode;
+  /** 外观 › 显示 › 语言: the interface's language, or Windows' (shared/i18n). Changes at once, no restart. */
+  language: LanguagePref;
   /** 常规 › 文件预览: the plugin preview page chosen per kind of file ({ ".docx": "<plugin>/<page id>" }); none: the app's own. */
   previewers: Record<string, string>;
   /** 常规 › 关闭窗口时: what the window's × does: ask each time (default), minimize to the tray, or quit. */
@@ -249,6 +252,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   codeSize: DEFAULT_CODE_SIZE,
   textSize: 'md',
   uiFont: 'default',
+  language: 'system',
   previewers: {},
   doneNews: [],
   closeWindow: 'ask',
@@ -354,11 +358,12 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const previewers = sanitizePreviewers(v.previewers);
   const textSize: TextSize = v.textSize === 'sm' || v.textSize === 'lg' ? v.textSize : 'md';
   const uiFont: UiFontMode = v.uiFont === 'system' ? 'system' : 'default';
+  const language: LanguagePref = isLanguagePref(v.language) ? v.language : 'system';
   // Before 关闭窗口时 there was a switch 关闭窗口后留在后台 (keepInBackground): on = minimize to the tray, off = ask.
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
+  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, language, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

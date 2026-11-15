@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SPLASH_INK } from '../shared/skin';
-import { UI_FONT_FACES, UI_FONT_FAMILY } from '../shared/ui-font';
+import { UI_FONT_FACES, UI_FONT_FAMILY, UI_FONT_FAMILY_TW } from '../shared/ui-font';
 import { FONT_UI } from '../shared/plugin-view';
 import { themeCss } from './plugin-views';
 import { COLUMN_GUTTER, COLUMN_WIDTH, RAIL_WIDTH } from '../renderer/src/shell/layout';
@@ -198,6 +198,9 @@ describe('words on the middle line of what they sit in: one fix, in the font (sh
   it('the window, the small dialog window and plugin pages all use it, word for word', () => {
     for (const sheet of [css, dialogCss]) for (const f of UI_FONT_FACES.split('\n')) expect(sheet).toContain(f);
     expect(css).toContain(`--font-ui: ${UI_FONT_FAMILY};`);
+    // 语言 繁體中文: the same stack with JhengHei UI first for Chinese
+    expect(css).toContain(`:root:lang(zh-TW) {
+  --font-ui: ${UI_FONT_FAMILY_TW};`);
     // the small dialog window: 外观 › 界面字体's stack when main passes one (shared/app-dialog.ts font), the default otherwise
     expect(dialogCss).toContain(`font-family: var(--font-ui, ${UI_FONT_FAMILY});`);
     expect(FONT_UI).toBe(UI_FONT_FAMILY);

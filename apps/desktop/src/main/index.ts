@@ -76,6 +76,8 @@ import { AttachImages } from './images';
 import { BRIDGE_JS, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
 import { pluginCallId, type PluginView, type PluginViewResult } from '../shared/plugin-view';
 import { uiFontFamily } from '../shared/ui-font';
+import { getLocale, resolveLocale, setLocale } from '../shared/i18n';
+import { systemLanguages } from './locale';
 import { readFile } from 'node:fs/promises';
 
 // Spica, or the name a company's deploy.json gave it when packaging.
@@ -212,7 +214,8 @@ function backendConfig(): DesktopBackendConfig {
       },
       cwd: workDir,
       legacyDefaultCwd,
-      locale: 'zh-CN',
+      // The interface language: what the model writes in before the user has written (the core's language rule).
+      locale: getLocale(),
       // What the models are told they work in (Spica, or deploy.json's name).
       appName: APP_NAME,
       // The company's preset model connections (deploy.json "models"; checked when packaging).
@@ -335,6 +338,8 @@ const backend: AgentBackend =
     : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd, demoImage: () => writeDemoChart(join(app.getPath('userData'), 'demo-media')) });
 console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own process)' : 'fake (demo data)'}`);
 const settings = new SettingsStore(app.getPath('userData'), { persist: !automated });
+// 外观 › 显示 › 语言: set before anything builds words (menus, the tray, the core's locale).
+setLocale(resolveLocale(settings.get().language, systemLanguages()));
 // The demo backend starts with 设置 › 记忆 › 启用记忆 and 模型 › 代理互发消息上限 as saved (the core gets them in backendConfig()).
 if (backend instanceof FakeBackend) {
   backend.setMemoryEnabled(settings.get().memory);
@@ -537,11 +542,13 @@ function trayImage(dark: boolean): Electron.NativeImage | string {
  * main/quit.ts. Not for screenshots or a SPICA_HIDDEN test window.
  */
 let tray: Tray | null = null;
+/** Builds the tray's menu again (语言 changed). */
+let relabelTray: () => void = () => undefined;
 function createTray(): void {
   if (automated || hidden || tray) return;
   try {
     const t = new Tray(trayImage(nativeTheme.shouldUseDarkColorsForSystemIntegratedUI));
-    wireTray({ tray: t, appName: APP_NAME, buildMenu: (items) => Menu.buildFromTemplate(items), open: () => showMainWindow(), quit: () => app.quit() });
+    relabelTray = wireTray({ tray: t, appName: APP_NAME, buildMenu: (items) => Menu.buildFromTemplate(items), open: () => showMainWindow(), quit: () => app.quit() });
     tray = t;
   } catch (err) {
     console.warn('[spica] tray:', err instanceof Error ? err.message : err);
@@ -926,7 +933,7 @@ function shellState(): ShellState {
   // Only the first page of this start opens on 新对话; a page loaded again goes back where it was (reopen).
   const newChat = newChatAtStart && !again;
   newChatAtStart = false;
-  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd, autostart, autoAccount, ...(newChat ? { startOnNewChat: true } : {}), ...(again ? { reopen: again } : {}) };
+  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, systemLanguages: systemLanguages(), demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd, autostart, autoAccount, ...(newChat ? { startOnNewChat: true } : {}), ...(again ? { reopen: again } : {}) };
 }
 
 ipcMain.handle(IpcChannel.AppInfo, (): AppInfo => ({ name: APP_NAME, version: app.getVersion() }));
@@ -1313,6 +1320,13 @@ function networkProblem(raw: string): string {
   return `网络设置错误：${raw}`;
 }
 settings.onChange((s) => {
+  const locale = resolveLocale(s.language, systemLanguages());
+  if (locale !== getLocale()) {
+    // New conversations take it (a conversation keeps the locale it was made with).
+    setLocale(locale);
+    relabelTray();
+    if (backend instanceof ProcessBackend) void backend.apply({ locale }).catch(() => undefined);
+  }
   if (s.memory !== lastMemory) {
     lastMemory = s.memory;
     if (backend instanceof ProcessBackend) void backend.apply({ memory: { enabled: s.memory } }).catch(() => undefined);

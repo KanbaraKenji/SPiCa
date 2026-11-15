@@ -51,6 +51,8 @@ export interface ShellState {
   autostart?: AutostartSupport;
   /** This start opens on 新对话, not the main conversation (main/autostart.ts startsOnNewChat). */
   startOnNewChat?: boolean;
+  /** Windows' languages, most preferred first (app.getPreferredSystemLanguages(); SPICA_SYSTEM_LOCALE in tests): what 语言 跟随系统 follows. */
+  systemLanguages?: string[];
   /** The account by the company rule, worked out at start (main/user-account.ts); '' when none. 账号 may replace it. */
   autoAccount?: string;
 }

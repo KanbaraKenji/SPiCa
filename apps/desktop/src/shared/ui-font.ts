@@ -34,6 +34,12 @@ export const UI_FONT_FACES = [
 export const UI_FONT_FAMILY =
   "'Spica UI', 'Spica UI Static', 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif";
 
+/**
+ * The same stack for Traditional Chinese (语言 繁體中文): JhengHei UI before YaHei, so Chinese draws in Taiwan's glyph
+ * forms. styles.css switches to it under :root:lang(zh-TW).
+ */
+export const UI_FONT_FAMILY_TW = UI_FONT_FAMILY.replace("'Microsoft YaHei UI'", "'Microsoft JhengHei UI', 'Microsoft JhengHei', 'Microsoft YaHei UI'");
+
 /** 外观 › 界面字体: 默认 (Segoe UI with YaHei UI for Chinese, corrected as above) or 跟随系统 (the system's own interface font). */
 export type UiFontMode = 'default' | 'system';
 

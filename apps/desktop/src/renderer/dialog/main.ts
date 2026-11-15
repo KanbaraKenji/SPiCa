@@ -5,6 +5,8 @@
 // nothing. The × comes last in the markup, so Tab reaches it after the buttons (as in CloseDialog).
 import './dialog.css';
 import { parseDialogSpec } from '../../shared/app-dialog';
+import { htmlLang, setLocale, t } from '../../shared/i18n';
+import { UI_FONT_FAMILY_TW } from '../../shared/ui-font';
 
 interface Bridge {
   ready(height: number): void;
@@ -18,7 +20,12 @@ if (bridge && spec) {
   root.dataset.scheme = spec.scheme;
   root.style.colorScheme = spec.scheme;
   for (const [name, value] of Object.entries(spec.tokens)) if (value) root.style.setProperty(name, value);
+  if (spec.locale) {
+    setLocale(spec.locale);
+    root.lang = htmlLang(spec.locale);
+  }
   if (spec.font) root.style.setProperty('--font-ui', spec.font);
+  else if (spec.locale === 'zh-TW') root.style.setProperty('--font-ui', UI_FONT_FAMILY_TW);
   document.title = spec.title;
 
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string) => {
@@ -92,8 +99,8 @@ if (bridge && spec) {
   if (spec.closeButton) {
     const x = el('button', 'icon-btn dialog-x');
     x.type = 'button';
-    x.setAttribute('aria-label', '关闭');
-    x.title = '关闭';
+    x.setAttribute('aria-label', t('关闭'));
+    x.title = t('关闭');
     // ui/Icon.tsx: the close icon, 16 px, stroke 1.4.
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns, 'svg');

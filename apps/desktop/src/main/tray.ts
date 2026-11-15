@@ -13,14 +13,15 @@
 import type { CloseWindow } from '../shared/settings';
 import { CLOSE_QUESTION, CLOSE_REMEMBER, CLOSE_RUNNING } from '../shared/close-words';
 import type { DialogAnswer, DialogSpec } from '../shared/app-dialog';
+import { t } from '../shared/i18n';
 
 export type TrayAction = 'open' | 'quit';
 
 /** The right-click menu, top to bottom. */
 export function trayMenuItems(appName: string): { label: string; action: TrayAction }[] {
   return [
-    { label: `打开 ${appName}`, action: 'open' },
-    { label: `退出 ${appName}`, action: 'quit' },
+    { label: t('打开 {app}', { app: appName }), action: 'open' },
+    { label: t('退出 {app}', { app: appName }), action: 'quit' },
   ];
 }
 
@@ -40,11 +41,14 @@ export interface TrayOptions {
   quit(): void;
 }
 
-export function wireTray(o: TrayOptions): void {
+/** Wires the tray; the function it returns builds the menu again (in the language now, after 语言 changed). */
+export function wireTray(o: TrayOptions): () => void {
   o.tray.setToolTip(o.appName);
   const run = (a: TrayAction) => (a === 'open' ? o.open() : o.quit());
-  o.tray.setContextMenu(o.buildMenu(trayMenuItems(o.appName).map((i) => ({ label: i.label, click: () => run(i.action) }))));
+  const menu = () => o.tray.setContextMenu(o.buildMenu(trayMenuItems(o.appName).map((i) => ({ label: i.label, click: () => run(i.action) }))));
+  menu();
   o.tray.on('click', () => o.open());
+  return menu;
 }
 
 /** The part of a BrowserWindow that bringing it back uses. */
@@ -110,12 +114,12 @@ export function runningTracker(): { seen(e: { type: string; sessionId?: string; 
  */
 export function closePrompt(appName: string, running = false): { message: string; detail?: string; buttons: string[]; defaultId: number; cancelId: number; checkboxLabel: string } {
   return {
-    message: CLOSE_QUESTION,
-    ...(running ? { detail: CLOSE_RUNNING } : {}),
-    buttons: ['最小化到托盘', `退出 ${appName}`, '取消'],
+    message: t(CLOSE_QUESTION),
+    ...(running ? { detail: t(CLOSE_RUNNING) } : {}),
+    buttons: [t('最小化到托盘'), t('退出 {app}', { app: appName }), t('取消')],
     defaultId: 0,
     cancelId: 2,
-    checkboxLabel: CLOSE_REMEMBER,
+    checkboxLabel: t(CLOSE_REMEMBER),
   };
 }
 
@@ -129,11 +133,11 @@ export type CloseAnswer = { choice: 'tray' | 'quit' | null; remember: boolean };
  */
 export function closeDialogSpec(appName: string, running: boolean, look: Pick<DialogSpec, 'scheme' | 'tokens'>): DialogSpec {
   return {
-    title: CLOSE_QUESTION,
-    detail: running ? [CLOSE_RUNNING] : [],
-    choices: { options: ['最小化到托盘', `退出 ${appName}`], selected: 0 },
-    buttons: [{ label: '确定', primary: true }],
-    check: CLOSE_REMEMBER,
+    title: t(CLOSE_QUESTION),
+    detail: running ? [t(CLOSE_RUNNING)] : [],
+    choices: { options: [t('最小化到托盘'), t('退出 {app}', { app: appName })], selected: 0 },
+    buttons: [{ label: t('确定'), primary: true }],
+    check: t(CLOSE_REMEMBER),
     checkInFoot: true,
     closeButton: true,
     width: 360,
@@ -212,7 +216,7 @@ export function closeAsker(o: AskerOptions): { ask(): Promise<CloseAnswer>; answ
 
 /** Said once, the first time the window is minimized to the tray. */
 export function trayHint(appName: string): { title: string; content: string } {
-  return { title: appName, content: `${appName} 已最小化到托盘，仍在运行。点托盘图标打开，右键图标可以退出。` };
+  return { title: appName, content: t('{app} 已最小化到托盘，仍在运行。点托盘图标打开，右键图标可以退出。', { app: appName }) };
 }
 
 export interface CloseOptions {
