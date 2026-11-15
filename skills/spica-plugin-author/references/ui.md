@@ -20,8 +20,9 @@
 | 成员 | 作用 |
 |---|---|
 | `callTool(工具, 参数)` | → `Promise<{ content, data?, isError }>`；结果是 JSON 时 `data` 是解析好的对象；失败时 `content` 以错误码开头（见 `errors.md`） |
-| `onEvent(fn)` | 收 `{ type: 'theme' }`、`{ type: 'plugin.changed' }`；返回取消函数 |
+| `onEvent(fn)` | 收 `{ type: 'theme' }`、`{ type: 'plugin.changed' }`、`{ type: 'locale', locale }`（用户切了界面语言）；返回取消函数 |
 | `theme` | `{ mode: 'light' \| 'dark' }` |
+| `locale` | 当前界面语言：`'zh-CN'`、`'zh-TW'` 或 `'en'`。页面自己的字按它显示，收到 `locale` 事件时换 |
 | `openFile(路径)` | 在 Spica 的预览栏打开文件（只限本插件目录里的，或这次会话里见过的） |
 | `notify(文字, { kind })` | 弹一条提示，`kind`：`info` / `error` |
 | `pickFolder({ title?, defaultPath? })` | 弹系统的选文件夹框 → `Promise<完整路径 \| null>`，`null` 是用户取消了 |

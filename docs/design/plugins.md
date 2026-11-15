@@ -44,6 +44,7 @@
 | `permissions.hooks` | 否 | 钩子模块允许挂哪几类：`inject`、`beforeRequest`、`afterResponse`、`beforeTool`、`afterTool`。没声明的一律不挂 |
 | `permissions.model` | 否 | 借用户配好的模型（MCP 取样）：`{ "reason": "一句为什么" }`。`reason` 必填（安装、启用时给用户看，第一次用不再确认）。没有每日花费上限（2026-11-13 去掉）：要限制调用次数由插件自己管，宿主不另加次数限制；旧清单里的 `max_usd_per_day` 照常能装，值读到后忽略。用户在插件页可以允许 / 禁止使用模型（默认允许，存在 state.json 记录的 `modelAllowed`）。起 server 时 manager 在 `connectMcp` 的配置里加 `sampling: { pluginId }`；用户禁止了或没声明就不传，server 拿不到 `capabilities.sampling`。用户改允许 / 禁止会重启这个插件的 server |
 | `mock` | 否 | `{ "supported": true, "description": "…" }` |
+| `i18n` | 否 | 给人看的字的别的语言版本（2026-11-16）：`{ "zh-CN" 或 "zh-TW" 或 "en": { display_name, description, model_reason, mock_description, views: { id: 标题 }, commands: { id: { description, argument_hint } }, skills: { id: 描述 } } }`，都可省。没写的显示原字段，繁体先退到简体那份（`i18n.ts` `pluginText`）。写错只给警告、不挡安装；`views` / `commands` / `skills` 里写了插件没有的 id 也是警告。`describe()`、`views()`、`commands()`、插件源的条目（加了 `displayName`）原样带上 `i18n`，外壳用 `localizeDescription` / `localizeView` / `localizeCommand` / `localizeOffer` 按当前语言挑，所以切语言不用重新读插件。只换给人看的字：模型看到的工具描述、技能正文、命令模板不变 |
 | `mail` | 否 | 这个插件是邮件来源：`{ "list_tool": "list_messages", "read_tool": "read_message" }`（server 里的原名）；可选 `server`（有多个 MCP server 时必填）、`list_args`、`fields`（列表结果字段名和内核默认不同时）。启用时插件包调 `runtime.mail.addSource({ id: 插件名, listTool: '<server名>__list_messages', … })`，停用时撤掉；部署配置里不用再写带前缀的工具名 |
 
 校验从不抛异常，返回问题列表：每条带「哪个文件 · 哪个字段」和一句中文人话（例：`manifest.json · version：版本号「1.0」不合格，应该像 1.2.3 这样三段数字。`）。有 error 就不装、不启用；warning 只展示。

@@ -61,6 +61,33 @@
 - 写错了（路径、类型、大小）插件装不上，提示里写清是哪一条。
 - 例子：`plugins/example-notes/icon-light.svg` 和 `icon-dark.svg`；脚手架 `scaffold.mjs` 生成的插件自带这样两款，换成自己的就行。
 
+### 多语言（可选）
+
+Spica 的界面有简体中文、繁體中文、English 三种（设置 › 外观 › 显示 › 语言）。插件的字段照常用一种语言写；要让别的语言的用户看到他们的语言，在清单里加 `i18n`，按语言各写一份**给人看的字**：
+
+```json
+"i18n": {
+  "zh-CN": {
+    "display_name": "待办",
+    "description": "在本机记待办事项。",
+    "model_reason": "给待办写摘要",
+    "mock_description": "用示例数据回答",
+    "views": { "main": "待办" },
+    "commands": { "add": { "description": "加一条待办", "argument_hint": "<内容>" } },
+    "skills": { "tidy": "怎样整理待办" }
+  },
+  "zh-TW": { "display_name": "待辦" },
+  "en": { "views": { "main": "To-do" } }
+}
+```
+
+- 语言只有 `zh-CN`、`zh-TW`、`en`。每个字段都可以不写；没写的显示插件原来写的那份，繁体没写时先用简体那份。
+- `views`、`commands`、`skills` 按 id（文件名）写；写了插件里没有的 id 会得到警告。
+- 只换显示给人看的字：设置 › 插件 的列表和详情、插件市场的卡片、侧栏和面板上页面的名字、输入框 `/` 命令的说明。模型看到的工具描述、技能正文、命令模板不变（模型按用户的语言回答，不用为它翻）。
+- 写错了（不是文字、不认识的语言、不认识的字段）只给警告，插件照常能装；没有 `i18n` 的旧插件不受影响。
+- 页面自己的字由页面自己翻：`window.spica.locale` 是当前界面语言（`zh-CN` / `zh-TW` / `en`），用户切语言时页面收到 `{ type: 'locale', locale }` 事件（`onEvent`），见 5b 节。
+- 例子：`plugins/example-notes`、`office-preview`、`outlook-mail` 的 `manifest.json`。
+
 ## 2. 写 MCP server（工具）
 
 声明 `todo/mcp/todo.json`：
@@ -432,8 +459,9 @@ if (r.isError) showError(r.content); else render(r.data ?? r.content);
 | `window.spica` | 作用 |
 |---|---|
 | `callTool(工具, 参数)` | → `{ content, data?, isError }`；结果是 JSON 时 `data` 是解析好的对象 |
-| `onEvent(fn)` | 收 `{ type: 'theme' }`（换了明暗）、`{ type: 'plugin.changed' }`；返回取消函数 |
+| `onEvent(fn)` | 收 `{ type: 'theme' }`（换了明暗）、`{ type: 'plugin.changed' }`、`{ type: 'locale', locale }`（切了界面语言）；返回取消函数 |
 | `theme` | `{ mode: 'light' \| 'dark' }` |
+| `locale` | 当前界面语言：`'zh-CN'`、`'zh-TW'` 或 `'en'`（见第 1 节「多语言」） |
 | `openFile(路径)` | 在 Spica 的预览栏打开文件（只限本插件目录里的，或这次会话里见过的） |
 | `notify(文字, { kind })` | 弹一条提示，`kind` 是 `info` 或 `error` |
 | `pickFolder({ title?, defaultPath? })` | 弹系统的选文件夹框 → 用户选的完整路径，取消时 `null` |

@@ -11,6 +11,7 @@ import type { Hooks, Tool } from '@spica/core';
 import type { HookModule, PluginContext } from './authoring.ts';
 import { expandCommand, hasErrors, insidePlugin, readPluginFolder, type CommandDef, type PluginFolder, type ServerDef, type ViewDef } from './folder.ts';
 import type { McpExit, McpHandle, McpLaunch, PluginHost } from './host.ts';
+import type { PluginI18n } from './i18n.ts';
 import { HOOK_KINDS, appNameOf, compareVersions, satisfies, type HookKind, type Issue, type PluginIcon, type PluginManifest } from './manifest.ts';
 
 export const SPICA_VERSION = '0.1.0';
@@ -103,6 +104,8 @@ export interface PluginDescription {
   mail?: { listTool: string; readTool: string };
   /** Present when the manifest asks to use the user's models (permissions.model). */
   model?: PluginModelUse;
+  /** The plugin's words in other languages (manifest.json · i18n); localizeDescription() picks one. */
+  i18n?: PluginI18n;
   issues: Issue[];
 }
 
@@ -140,6 +143,8 @@ export interface PluginView {
   irreversible: string[];
   /** placement preview: the file kinds it shows and the largest file it takes (bytes). */
   preview?: { extensions: string[]; maxBytes: number };
+  /** The plugin's words in other languages (manifest.json · i18n); localizeView() picks one. */
+  i18n?: PluginI18n;
 }
 
 export interface ViewCallResult {
@@ -1108,16 +1113,17 @@ export class PluginManager {
       ...(m?.icon ? { icon: m.icon } : {}),
       ...(a?.mail ? { mail: a.mail } : {}),
       ...(m?.permissions.model ? { model: this.#modelUse(name, m) } : {}),
+      ...(m?.i18n ? { i18n: m.i18n } : {}),
       issues: folder?.issues ?? [],
     };
   }
 
   /** Slash commands of enabled plugins, as `/<plugin>:<command>`. */
-  commands(): { name: string; plugin: string; description: string; argumentHint?: string }[] {
-    const out: { name: string; plugin: string; description: string; argumentHint?: string }[] = [];
+  commands(): { name: string; plugin: string; description: string; argumentHint?: string; i18n?: PluginI18n }[] {
+    const out: { name: string; plugin: string; description: string; argumentHint?: string; i18n?: PluginI18n }[] = [];
     for (const a of this.#active.values()) {
       for (const c of a.folder.commands) {
-        out.push({ name: `${a.manifest.name}:${c.id}`, plugin: a.manifest.name, description: c.description, ...(c.argumentHint ? { argumentHint: c.argumentHint } : {}) });
+        out.push({ name: `${a.manifest.name}:${c.id}`, plugin: a.manifest.name, description: c.description, ...(c.argumentHint ? { argumentHint: c.argumentHint } : {}), ...(a.manifest.i18n ? { i18n: a.manifest.i18n } : {}) });
       }
     }
     return out.sort((x, y) => x.name.localeCompare(y.name));
@@ -1168,6 +1174,7 @@ export class PluginManager {
           tools,
           irreversible: tools.filter((t) => a.manifest.permissions.irreversible.includes(t)),
           ...(v.preview ? { preview: v.preview } : {}),
+          ...(a.manifest.i18n ? { i18n: a.manifest.i18n } : {}),
         });
       }
     }
