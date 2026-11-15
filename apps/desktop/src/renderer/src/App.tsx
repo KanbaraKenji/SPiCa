@@ -443,6 +443,16 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               undo: (id: number, change?: number) => agent.undoMemoryTidy(id, change),
             }
           : undefined,
+        // The box at the bottom of an entry's page: a sentence for the model to change it.
+        ask: agent.hasMemoryAsk
+          ? {
+              runs: state.memoryAsks,
+              send: (target: { entry: number } | { item: number }, text: string) => agent.askMemory(target, text),
+              stop: (id: number) => agent.stopMemoryTidy(id),
+              undo: (id: number, change?: number) => agent.undoMemoryTidy(id, change),
+              noModel: modelReady === false && !shell.demo,
+            }
+          : undefined,
       }
     : undefined;
   const memoryLines = useMemo(() => ({ items: state.memories, undo: (id: number) => agent.undoMemory(id) }), [state.memories, agent]);

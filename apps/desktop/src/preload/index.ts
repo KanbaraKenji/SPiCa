@@ -61,6 +61,9 @@ const agent: AgentApi = {
   tidyMemories: call('tidyMemories'),
   listMemoryTidies: call('listMemoryTidies'),
   undoMemoryTidy: call('undoMemoryTidy'),
+  askMemory: call('askMemory'),
+  stopMemoryTidy: call('stopMemoryTidy'),
+  listMemoryAsks: call('listMemoryAsks'),
 };
 
 const bridge: DesktopBridge = {

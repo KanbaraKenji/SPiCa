@@ -8,7 +8,7 @@
 // the conversation it was saved in and the user's words. 添加 makes an entry with its first detail; 添加 under
 // 详情 adds a detail. Deleting and clearing are for good (the core drops the notes and their older versions).
 import { useEffect, useRef, useState } from 'react';
-import type { MemoryCardMeta, MemoryCategory, MemoryEntry, MemoryEntryInput, MemoryItem, MemoryRefusal, MemoryTidyChange, MemoryTidyRun } from '@spica/protocol';
+import type { MemoryCardMeta, MemoryCategory, MemoryEntry, MemoryEntryInput, MemoryItem, MemoryRefusal, MemoryTidyRun } from '@spica/protocol';
 import { MEMORY_CATEGORIES } from '@spica/protocol';
 import { Switch } from './Switch';
 import { Group, Pane, Row } from './Group';
@@ -17,8 +17,10 @@ import { ConfirmDialog } from '../ui/Dialog';
 import { fullTime, timeOf } from '../chat/format';
 import { useEscape } from '../ui/escape';
 
-/** A category's name on the page (its group's title, the entry's 类别). */
-export const CATEGORY_LABEL: Record<MemoryCategory, string> = { you: '你', areas: '领域', topics: '主题', people: '人物', projects: '项目' };
+import { CATEGORY_LABEL, changeStands, tidyChangeText } from './memory-tidy-text';
+import { askFor, AskResult, MemoryAskBox, type MemoryAsk } from './MemoryAsk';
+
+export { CATEGORY_LABEL, changeStands, tidyChangeText };
 
 /** The most characters in one detail, an entry's name and its summary (the core refuses longer ones). */
 export const MEMORY_CHARS = 200;
@@ -49,6 +51,8 @@ export interface MemoryProps {
   onOpenSession(id: string, seq?: number): void;
   /** 整理 (absent when the core does not tidy). */
   tidy?: MemoryTidy | undefined;
+  /** The box at the bottom of an entry's (or a note's) page (absent when the core has none). */
+  ask?: MemoryAsk | undefined;
 }
 
 export interface MemoryTidy {
@@ -61,14 +65,6 @@ export interface MemoryTidy {
   run(): Promise<string | null>;
   /** 撤销 one change (index) or the whole tidy. */
   undo(id: number, change?: number): Promise<unknown>;
-}
-
-const CHANGE_WORD: Record<MemoryTidyChange['action'], string> = { added: '新增', rewritten: '改写', merged: '合并', forgotten: '删除' };
-
-/** A change of a tidy in words: 新增 / 改写 / 合并 / 删除 and the note, what it replaced in brackets; 已撤销 once taken back. */
-export function tidyChangeText(c: MemoryTidyChange): string {
-  const was = c.previous?.length ? `（原${c.previous.map((p) => `「${p.text}」`).join('')}）` : '';
-  return c.undone ? `已撤销：${c.item.text}` : `${CHANGE_WORD[c.action]}：${c.item.text}${was}`;
 }
 
 const REFUSED: Record<MemoryRefusal['refused'], string> = {
@@ -148,33 +144,63 @@ type View =
 /** What the delete dialog is about. */
 type Deleting = { kind: 'item'; item: MemoryItem } | { kind: 'entry'; view: EntryView };
 
-export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpenSession, tidy }: MemoryProps) {
+export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpenSession, tidy, ask }: MemoryProps) {
   const { views, loose } = memoryViews(items, entries);
   const count = views.length + loose.length;
-  const [view, setView] = useState<View>({ page: 'list' });
+  const [chosen, setView] = useState<View>({ page: 'list' });
   const [deleting, setDeleting] = useState<Deleting | null>(null);
   const [clearing, setClearing] = useState(false);
   // Back on the list (or the entry's page): the line just left is brought into sight and focused.
   const [returnTo, setReturnTo] = useState<string | null>(null);
   const top = useRef<HTMLElement>(null);
+  // The page a sentence was sent from, kept until the user goes elsewhere.
+  const [asked, setAsked] = useState<{ entry: number } | { item: number } | null>(null);
+  const entryOf = (v: View) => (v.page === 'entry' || v.page === 'add' ? views.find((x) => x.entry.id === (v.page === 'entry' ? v.id : v.entry)) : undefined);
+  const itemOf = (v: View) => (v.page === 'item' ? shownMemories(items).find((m) => m.id === v.id) : undefined);
+  // A sentence that emptied its page (the last detail moved or deleted, a note put in an entry): its result stays in
+  // sight, on the entry it moved something into, else above 已记住.
+  const chosenItem = itemOf(chosen);
+  const gone =
+    (chosen.page === 'entry' && !entryOf(chosen)) ||
+    (chosen.page === 'item' && (!chosenItem || (asked !== null && 'item' in asked && asked.item === chosenItem.id && views.some((v) => v.entry.id === chosenItem.entryId))));
+  const finished =
+    gone && asked && ask ? (ask.runs ?? []).find((r) => r.status !== 'running' && ('entry' in asked ? r.ask?.entry === asked.entry : r.ask?.item === asked.item)) : undefined;
+  const followTo = finished ? (finished.grouped ?? []).map((g) => g.entry).find((id) => views.some((v) => v.entry.id === id)) : undefined;
+  const view: View = finished ? (followTo !== undefined ? { page: 'entry', id: followTo, editing: false } : { page: 'list' }) : chosen;
+  const leftoverRun = finished && followTo === undefined ? finished : undefined;
   // What a page shows, gone while it is open (deleted, merged by a tidy, forgotten in a conversation): the list.
-  const entryView = view.page === 'entry' || view.page === 'add' ? views.find((v) => v.entry.id === (view.page === 'entry' ? view.id : view.entry)) : undefined;
-  const item = view.page === 'item' ? shownMemories(items).find((m) => m.id === view.id) : undefined;
+  const entryView = entryOf(view);
+  const item = itemOf(view);
   const home = item?.entryId !== undefined ? views.find((v) => v.entry.id === item.entryId) : undefined;
   const page = (view.page === 'entry' || view.page === 'add') && !entryView ? 'list' : view.page === 'item' && !item ? 'list' : view.page;
+  const go = (v: View) => {
+    setAsked(null);
+    setView(v);
+  };
   const toList = (from?: string) => {
     setReturnTo(from ?? null);
-    setView({ page: 'list' });
+    go({ page: 'list' });
   };
   const openEntry = (id: number, editing = false, from?: string) => {
     setReturnTo(from ?? null);
-    setView({ page: 'entry', id, editing });
+    go({ page: 'entry', id, editing });
   };
-  const openItem = (id: number, editing = false) => setView({ page: 'item', id, editing });
+  const openItem = (id: number, editing = false) => go({ page: 'item', id, editing });
+  const offReason = !enabled ? '记忆已关闭' : ask?.noModel ? '还没有配置模型' : null;
+  const askHere = ask
+    ? {
+        ...ask,
+        send: (target: { entry: number } | { item: number }, text: string) => {
+          setAsked(target);
+          return ask.send(target, text);
+        },
+      }
+    : undefined;
   // A page opens at its top (the list may have been scrolled down to the line).
+  const viewKey = JSON.stringify(view);
   useEffect(() => {
     if (page !== 'list') top.current?.scrollIntoView?.({ block: 'start' });
-  }, [page, view]);
+  }, [page, viewKey]);
   const dialogs = (
     <>
       {deleting ? (
@@ -230,6 +256,9 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
           onSave={(text) => api.edit(item.id, text)}
           onDelete={() => setDeleting({ kind: 'item', item })}
         />
+        {askHere && !home && !(view.page === 'item' && view.editing) ? (
+          <MemoryAskBox ask={askHere} target={{ item: item.id }} off={offReason} items={items} entries={entries} shown={askFor(askHere.runs, { item: item.id })} />
+        ) : null}
         {dialogs}
       </section>
     );
@@ -248,8 +277,11 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
           onSave={(input) => api.editEntry(e.id, input)}
           onDelete={() => setDeleting({ kind: 'entry', view: entryView })}
           onOpenItem={(id) => openItem(id)}
-          onAdd={() => setView({ page: 'add', entry: e.id })}
+          onAdd={() => go({ page: 'add', entry: e.id })}
         />
+        {askHere && !view.editing ? (
+          <MemoryAskBox ask={askHere} target={{ entry: e.id }} off={offReason} items={items} entries={entries} shown={askFor(askHere.runs, { entry: e.id })} />
+        ) : null}
         {dialogs}
       </section>
     );
@@ -284,12 +316,17 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
         ) : null}
       </Group>
       {tidy ? <TidyGroup tidy={tidy} enabled={enabled} items={items} entries={entries} /> : null}
+      {leftoverRun && ask ? (
+        <div className="settings-group memory-ask-left">
+          <AskResult run={leftoverRun} ask={ask} items={items} entries={entries} />
+        </div>
+      ) : null}
       {/* 已记住 as a settings group (its title and buttons), a box per category under the category's name */}
       <div className="settings-group memory-known">
         <div className="group-head">
           <h3 className="settings-subheading">已记住</h3>
           <div className="group-actions">
-            <button type="button" className="btn btn-small" onClick={() => setView({ page: 'new' })}>
+            <button type="button" className="btn btn-small" onClick={() => go({ page: 'new' })}>
               <Icon name="plus" size={14} />
               添加
             </button>
@@ -318,6 +355,7 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
                       <MemoryRow
                         key={key}
                         name={line.view.entry.name}
+                        stale={line.view.entry.stale === true}
                         text={line.view.entry.summary}
                         at={line.view.at}
                         focus={returnTo === key}
@@ -358,17 +396,6 @@ function Back({ label, onBack }: { label: string; onBack(): void }) {
       {label}
     </button>
   );
-}
-
-/**
- * Whether a change of a tidy still stands (so 撤销 can take it back): the note it made is still in the memory, or
- * the note it forgot is still forgotten. Unknown items count as standing.
- */
-export function changeStands(c: MemoryTidyChange, run: MemoryTidyRun, items: MemoryItem[] | null): boolean {
-  if (c.undone) return false;
-  if (!items) return true;
-  const now = items.find((m) => m.id === c.item.id);
-  return c.action === 'forgotten' ? now?.status === 'forgotten' && !now.undone && now.tidyId === run.id : now?.status === 'active';
 }
 
 /** What a tidy did in words: its changes, and the notes it put into entries. */
@@ -488,9 +515,12 @@ function MemoryRow({
   onOpen,
   onEdit,
   onDelete,
+  stale = false,
 }: {
   name?: string;
   text: string;
+  /** The entry is marked 待整理: its summary may still say a detail that went. */
+  stale?: boolean;
   at: string;
   focus: boolean;
   onFocused(): void;
@@ -511,6 +541,7 @@ function MemoryRow({
       <button ref={ref} type="button" className="memory-open" title={whole} data-tip-clipped=".memory-text" onClick={onOpen}>
         {name ? <span className="memory-name">{name}</span> : null}
         <span className={name ? 'memory-text memory-summary' : 'memory-text'}>{text}</span>
+        {stale ? <span className="settings-hint memory-stale">待整理</span> : null}
         <span className="settings-hint memory-time">{timeOf(at)}</span>
       </button>
       <div className="memory-actions">
@@ -580,7 +611,10 @@ function EntryDetail({
         {!editing ? (
           <div className="memory-fact">
             <dt>摘要</dt>
-            <dd className="memory-quote">{e.summary}</dd>
+            <dd className="memory-quote">
+              {e.summary}
+              {e.stale ? <span className="settings-hint memory-stale">待整理</span> : null}
+            </dd>
           </div>
         ) : null}
         <div className="memory-fact">

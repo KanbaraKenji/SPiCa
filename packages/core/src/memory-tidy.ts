@@ -30,7 +30,7 @@ import type { SessionRecord } from './store/types.ts';
 import { ProviderError } from './providers/types.ts';
 import { isoNow } from './events.ts';
 import { MEMORY_CATEGORIES } from '@spica/protocol';
-import { CATEGORY_HINTS, categoryOf, entryProblem, fromOutside, hasMemory, MEMORY_LIMITS, normalize, noteProblem, outsideText, overlap, sameName, stateOf, typed, typedText, USER_OWNER } from './memory.ts';
+import { CATEGORY_HINTS, categoryOf, entryProblem, fromOutside, hasMemory, MEMORY_LIMITS, normalize, noteProblem, outsideText, overlap, sameName, stateOf, typed, typedText, unmarked, USER_OWNER } from './memory.ts';
 import { isAbortError } from './util.ts';
 
 export const TIDY_LIMITS = {
@@ -124,7 +124,8 @@ const system = () => [
   '- merged: two or more notes of the same entry (or all in no entry) say the same thing. Give their ids and one note built from their words, shorter than them together.',
   `- added: the user said something a later conversation will need and cannot see for itself (who they are, how they want the assistant to work and answer, standing facts about their work), and no note has it. Give the note, its entry (the name of an entry listed, or a new name with its summary and category), and the ref and exact words. At most ${TIDY_LIMITS.adds}.`,
   '- grouped: notes in no entry. Put each into an entry: give their ids and the entry (a listed name, or a new name with its summary and category). Do it for every such note you do not rewrite, merge or forget; one entry per thing, not one per note.',
-  "- summarized: an entry whose summary no longer says what its notes hold (after your changes too). Give its name and the new summary, made from its notes' words.",
+  "- summarized: an entry whose summary no longer says what its notes hold (after your changes too). Give its name and the new summary, made from its notes' words. " +
+    'An entry marked [summary may be out of date] had a note deleted or changed by the user, and its summary may still say what went: give a summarized for every such entry, its summary made only from what its notes say now (the same summary when it already says only that).',
   'Not for notes: the task at hand and its state, steps for a single job, what can be found again, passing moods, small talk; never passwords, keys, ID or account numbers; health, religion, politics only when the user asked to remember.',
   'When rewriting or merging, keep every detail of the old notes the user did not change (names, people, numbers, places, things): change only what their newer words change.',
   `A note has no subject (喜欢简短回答，先给结论, not 用户喜欢…), is in the user's language, at most ${MEMORY_LIMITS.itemChars} characters, and says only what the user said. An entry's name is short (at most ${MEMORY_LIMITS.nameChars} characters), its summary one line (at most ${MEMORY_LIMITS.summaryChars}) without a subject like the notes, in the user's language. Touch each note at most once. At most ${TIDY_LIMITS.changes} changes; when nothing needs changing, return no changes.`,
@@ -141,11 +142,13 @@ function prompt(entries: MemoryEntry[], items: MemoryItem[], fed: Fed[]): string
   const line = (m: MemoryItem) => `[${m.id}] ${m.text} (${m.updatedAt.slice(0, 10)})`;
   const live = entries.filter((e) => items.some((m) => m.entryId === e.id));
   const outside = items.filter((m) => loose(m, byId));
+  const stale = live.filter((e) => e.stale);
   return [
     'Entries now:',
     ...(live.length
-      ? live.flatMap((e) => [`## ${e.name} (${e.category ?? 'no category'}): ${e.summary}`, ...items.filter((m) => m.entryId === e.id).map(line)])
+      ? live.flatMap((e) => [`## ${e.name} (${e.category ?? 'no category'})${e.stale ? ' [summary may be out of date]' : ''}: ${e.summary}`, ...items.filter((m) => m.entryId === e.id).map(line)])
       : ['(none)']),
+    ...(stale.length ? ['', `Summaries to make again from their notes (summarized): ${stale.map((e) => e.name).join(', ')}`] : []),
     '',
     'Notes in no entry:',
     ...(outside.length ? outside.map(line) : ['(none)']),
@@ -204,18 +207,25 @@ export function lostDetails(old: string, text: string, said = ''): string[] {
 }
 
 /** The entry a note goes into: one there is, or a new one (made once per name in a tidy). */
-type EntryPlan = { id: number } | { name: string; summary: string; category?: MemoryCategory };
+export type EntryPlan = { id: number } | { name: string; summary: string; category?: MemoryCategory };
 
 type Plan =
-  | { action: 'added'; text: string; quote: string; from: Fed; entry?: EntryPlan }
-  | { action: 'rewritten'; prev: MemoryItem; text: string; quote: string; from: Fed }
+  | { action: 'added'; text: string; quote: string; from: Source; entry?: EntryPlan }
+  | { action: 'rewritten'; prev: MemoryItem; text: string; quote: string; from: Source }
   | { action: 'merged'; prev: MemoryItem[]; text: string }
-  | { action: 'forgotten'; prev: MemoryItem; quote: string; from: Fed };
+  | { action: 'forgotten'; prev: MemoryItem; quote: string; from: Source };
 
-/** Notes in no entry put into one, and entries given a new summary (not changes). */
+/** Where a change's words come from: a message the user typed (a tidy), or none (a sentence on the memory page). */
+type Source = { sessionId?: string; seq?: number };
+
+/**
+ * Notes put into an entry (in none yet, or moved from another: a sentence on the memory page), entries given a new
+ * summary (or name and category: the memory page), and 待整理 entries whose summary was given back as it is (not changes).
+ */
 interface Arrange {
   group: { items: MemoryItem[]; entry: EntryPlan }[];
-  summarize: { entry: MemoryEntry; summary: string }[];
+  summarize: { entry: MemoryEntry; summary?: string; name?: string; category?: MemoryCategory }[];
+  confirm: MemoryEntry[];
 }
 
 /** The proposed changes that pass the checks (see the top of this file), and how many did not. */
@@ -229,7 +239,7 @@ export function check(rt: Runtime, proposed: Record<string, unknown>[], fed: Fed
   const byRef = new Map(fed.map((f) => [f.ref, f]));
   const touched = new Set<number>();
   const plans: Plan[] = [];
-  const arrange: Arrange = { group: [], summarize: [] };
+  const arrange: Arrange = { group: [], summarize: [], confirm: [] };
   let refused = 0;
   let adds = 0;
   const secrets = (t: string) => rt.redact(t);
@@ -290,6 +300,11 @@ export function check(rt: Runtime, proposed: Record<string, unknown>[], fed: Fed
       const cur = entries.find((e) => sameName(e.name, String(c.entry ?? '')));
       const summary = String(c.summary ?? '').trim();
       const said = cur ? [...active.values()].filter((m) => m.entryId === cur.id).map((m) => m.quote).join(' ') : '';
+      // a 待整理 entry's summary given back as it is: it already says only what its details hold (the mark goes)
+      if (cur && said && cur.stale && summary === cur.summary) {
+        if (!arrange.confirm.some((e) => e.id === cur.id)) arrange.confirm.push(cur);
+        continue;
+      }
       if (!cur || !said || summary === cur.summary || entryProblem({ name: cur.name, summary }, said, secrets) || arrange.summarize.some((x) => x.entry.id === cur.id)) {
         refused++;
         continue;
@@ -377,16 +392,23 @@ export function applyArrange(rt: Runtime, run: MemoryTidyRun, arrange: Arrange, 
     const entry = entryFor(rt, g.entry, made, owner, now);
     for (const m of g.items) {
       const cur = rt.store.getMemory(m.id);
-      if (!cur || cur.status !== 'active') continue;
+      if (!cur || cur.status !== 'active' || cur.entryId === entry.id) continue;
       rt.store.putMemory({ ...cur, entryId: entry.id });
-      grouped.push({ item: m.id, entry: entry.id });
+      // moved from another entry: the undo puts it back there
+      grouped.push({ item: m.id, entry: entry.id, ...(cur.entryId !== undefined && rt.store.getMemoryEntry(cur.entryId) ? { from: cur.entryId } : {}) });
     }
   }
-  for (const { entry, summary } of arrange.summarize) {
+  for (const { entry, summary, name, category } of arrange.summarize) {
     const cur = rt.store.getMemoryEntry(entry.id);
     if (!cur) continue;
-    rt.store.putMemoryEntry({ ...cur, summary, by: 'assistant', updatedAt: now });
+    // a new summary: no longer 待整理 (the undo puts the mark back with the old one)
+    rt.store.putMemoryEntry({ ...(summary ? unmarked(cur) : cur), ...(summary ? { summary } : {}), ...(name ? { name } : {}), ...(category ? { category } : {}), by: 'assistant', updatedAt: now });
     touched.push({ entry: cur.id, at: now, before: stateOf(cur) });
+  }
+  // confirmed as it is: only the mark goes, its time stays (not listed; the tidy's undo leaves it unmarked)
+  for (const e of arrange.confirm) {
+    const cur = rt.store.getMemoryEntry(e.id);
+    if (cur?.stale) rt.store.putMemoryEntry(unmarked(cur));
   }
   for (const e of made.values()) touched.push({ entry: e.id, at: e.updatedAt });
   void run;
@@ -486,7 +508,8 @@ export function undoArrange(rt: Runtime, run: MemoryTidyRun): boolean {
     if (!cur || cur.status !== 'active' || cur.entryId !== g.entry) continue;
     const { entryId: _gone, ...rest } = cur;
     void _gone;
-    rt.store.putMemory(rest);
+    // back in the entry it was moved from (when that is still there), else in none
+    rt.store.putMemory(g.from !== undefined && rt.store.getMemoryEntry(g.from) ? { ...rest, entryId: g.from } : rest);
     any = true;
   }
   for (const t of run.entries ?? []) {
@@ -501,15 +524,22 @@ export function undoArrange(rt: Runtime, run: MemoryTidyRun): boolean {
 }
 
 /** One model call with the tidy's prompt: its text and what it cost (recorded like a conversation's call, traced on no conversation). */
-export async function ask(rt: Runtime, content: string, signal: AbortSignal): Promise<{ text: string; costUsd: number }> {
+export async function ask(
+  rt: Runtime,
+  content: string,
+  signal: AbortSignal,
+  opts: { system?: string; initiator?: string; maxTokens?: number } = {},
+): Promise<{ text: string; costUsd: number }> {
+  const initiator = opts.initiator ?? 'runtime:memory-tidy';
+  const maxTokens = opts.maxTokens ?? TIDY_LIMITS.maxTokens;
   const { providerId, model } = rt.defaults;
   if (!providerId || !model) throw new Error('no model is set');
   const provider = rt.provider(providerId);
   // held against the spending limits like a conversation's call (worst case until it is recorded)
-  const scope = { providerId, providerKind: provider.kind, model, sessionId: '', runId: `memory-tidy-${Date.now()}` };
-  const hold = rt.ledger.reserve(scope, Math.ceil((content.length + 2000) / 1.5), TIDY_LIMITS.maxTokens);
+  const scope = { providerId, providerKind: provider.kind, model, sessionId: '', runId: `${initiator.slice(8)}-${Date.now()}` };
+  const hold = rt.ledger.reserve(scope, Math.ceil((content.length + 2000) / 1.5), maxTokens);
   if (!hold.ok) throw new Error(hold.message);
-  const trace = rt.tracer.start({ kind: 'model', sessionId: null, parentChain: [], initiator: 'runtime:memory-tidy', target: provider.traceTarget, providerId, model });
+  const trace = rt.tracer.start({ kind: 'model', sessionId: null, parentChain: [], initiator, target: provider.traceTarget, providerId, model });
   const info = trace.watch({ attempts: 0 });
   let text = '';
   try {
@@ -517,10 +547,10 @@ export async function ask(rt: Runtime, content: string, signal: AbortSignal): Pr
     for await (const ev of provider.stream(
       {
         model,
-        system: system(),
+        system: opts.system ?? system(),
         messages: [{ id: 'memory-tidy', sessionId: '', seq: 1, role: 'user', kind: 'user', content: [{ type: 'text', text: content }], createdAt: isoNow() }],
         tools: [],
-        maxTokens: TIDY_LIMITS.maxTokens,
+        maxTokens,
       },
       { signal, info },
     )) {

@@ -118,7 +118,7 @@ export function fakeRequests(now: Date, days = 14): RequestRecord[] {
   return out.sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
 }
 
-/** Who started a made-up request: mostly conversations, some memory tidying, a plugin borrowing the model, a test. */
+/** Who started a made-up request: mostly conversations, some memory tidying and memory-page sentences, a plugin borrowing the model, a test. */
 function demoInitiator(r: number): string {
-  return r < 0.8 ? 'model' : r < 0.9 ? 'runtime:memory-tidy' : r < 0.98 ? 'plugin:notes' : 'runtime:probe';
+  return r < 0.8 ? 'model' : r < 0.88 ? 'runtime:memory-tidy' : r < 0.9 ? 'runtime:memory-ask' : r < 0.98 ? 'plugin:notes' : 'runtime:probe';
 }
