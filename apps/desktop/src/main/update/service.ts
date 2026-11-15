@@ -102,7 +102,7 @@ export class UpdateService {
   async check(): Promise<UpdateState> {
     let { source, fromDeploy } = this.#o.getSource();
     if (!source) {
-      this.#set({ status: 'off', message: '未设置更新源。' });
+      this.#set({ status: 'off', message: '这个版本不检查更新。' });
       return this.state;
     }
     if (this.#busy) return this.state;
