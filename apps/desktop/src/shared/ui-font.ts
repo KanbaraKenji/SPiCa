@@ -55,6 +55,7 @@ export const SYSTEM_FONT_SEGOE = "'Spica UI', 'Spica UI Static', system-ui, sans
 
 /** The interface font's stack for a mode and the display language (navigator.language, app.getLocale()). */
 export function uiFontFamily(mode: UiFontMode, lang: string): string {
-  if (mode !== 'system') return UI_FONT_FAMILY;
+  // 默认 under 语言 繁體中文 (lang zh-TW): JhengHei UI first, as the window does
+  if (mode !== 'system') return /^zh-(TW|HK|MO)\b|^zh-Hant\b/i.test(lang) ? UI_FONT_FAMILY_TW : UI_FONT_FAMILY;
   return /^(zh|ja|ko)\b/i.test(lang) ? SYSTEM_FONT_PLAIN : SYSTEM_FONT_SEGOE;
 }

@@ -50,7 +50,7 @@ import { useEscape } from './ui/escape';
 import { SpicaBanner } from '@spica/brand/react';
 import { sameFolder } from './store/relocate';
 import { APP_NAME } from '../../shared/app-identity';
-import { t, tx } from '../../shared/i18n';
+import { getLocale, t, tx } from '../../shared/i18n';
 import { useLocale } from './i18n';
 
 /** The sidebar's wordmark: 22 px high, smaller for a long app name. */
@@ -558,7 +558,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const openPluginView = view === 'plugin' ? sidebarPages.find((v) => viewKey(v) === openPlugin) : undefined;
   const panelPluginView = rightTab === 'detail' ? undefined : panelPages.find((v) => viewKey(v) === rightTab);
   const skinNow = shell.activeSkin();
-  const pluginTheme: PluginTheme = { mode: schemeOf(skinNow.bg), vars: pluginThemeVars(deriveTokens(skinNow), uiFontFor(settings.uiFont)) };
+  const pluginTheme: PluginTheme = { mode: schemeOf(skinNow.bg), vars: pluginThemeVars(deriveTokens(skinNow), uiFontFor(settings.uiFont, settings.uiFont === 'system' ? navigator.language : getLocale())) };
   const pluginProps = (v: PluginView) => ({
     view: v,
     theme: pluginTheme,

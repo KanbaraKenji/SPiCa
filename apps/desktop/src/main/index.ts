@@ -731,7 +731,7 @@ function createMainWindow(): BrowserWindow {
       const s = settings.get();
       const busy = running.any();
       return askDialog({
-        open: () => openDialogWindow(win, closeDialogSpec(APP_NAME, busy, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins), uiFontFamily(s.uiFont, app.getLocale()))), s.zoom),
+        open: () => openDialogWindow(win, closeDialogSpec(APP_NAME, busy, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins), uiFontFamily(s.uiFont, s.uiFont === 'system' ? app.getLocale() : getLocale()))), s.zoom),
         fallback: () =>
           dialog
             .showMessageBox(win, { type: 'question', title: APP_NAME, noLink: true, checkboxChecked: false, ...closePrompt(APP_NAME, busy) })
@@ -818,7 +818,7 @@ function createMainWindow(): BrowserWindow {
     // In the small dialog window (main/app-dialog-window.ts, its own page process); the message box only when that fails.
     ask: () => {
       const s = settings.get();
-      const spec = crashDialog(APP_NAME, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins), uiFontFamily(s.uiFont, app.getLocale())));
+      const spec = crashDialog(APP_NAME, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins), uiFontFamily(s.uiFont, s.uiFont === 'system' ? app.getLocale() : getLocale())));
       const box = messageBoxFor(spec, { type: 'error', appName: APP_NAME, cancel: 0 });
       return askDialog({
         open: () => openDialogWindow(win, spec, s.zoom),
@@ -1150,7 +1150,7 @@ function pluginTheme(): { css: string } {
   const s = settings.get();
   const skin = resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins);
   const mode = schemeOf(skin.bg);
-  return { css: themeCss(pluginThemeVars(deriveTokens(skin), uiFontFamily(s.uiFont, app.getLocale())), mode) };
+  return { css: themeCss(pluginThemeVars(deriveTokens(skin), uiFontFamily(s.uiFont, s.uiFont === 'system' ? app.getLocale() : getLocale())), mode) };
 }
 
 async function servePluginFile(url: string): Promise<Response> {
@@ -1268,7 +1268,7 @@ async function askUpdateNow(version: string): Promise<void> {
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
   const s = settings.get();
-  const spec = updateDialog(version, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins), uiFontFamily(s.uiFont, app.getLocale())));
+  const spec = updateDialog(version, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins), uiFontFamily(s.uiFont, s.uiFont === 'system' ? app.getLocale() : getLocale())));
   const box = messageBoxFor(spec, { type: 'info', appName: APP_NAME, cancel: 0 });
   const answer = await askDialog({
     open: () => openDialogWindow(win, spec, s.zoom),

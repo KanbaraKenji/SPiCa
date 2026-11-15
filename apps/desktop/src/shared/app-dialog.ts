@@ -4,11 +4,11 @@
 // ui/CloseDialog.tsx): the colors come from the skin, worked out in main and passed in with the text.
 // Shared by main, the dialog's preload (preload/dialog.ts) and its page (renderer/dialog/main.ts).
 
-import { SYSTEM_FONT_PLAIN, SYSTEM_FONT_SEGOE, UI_FONT_FAMILY } from './ui-font';
+import { SYSTEM_FONT_PLAIN, SYSTEM_FONT_SEGOE, UI_FONT_FAMILY, UI_FONT_FAMILY_TW } from './ui-font';
 import { isLocale, type Locale } from './i18n';
 
 /** The interface font stacks a dialog may be given (shared/ui-font.ts); anything else is dropped. */
-const UI_FONT_STACKS = [UI_FONT_FAMILY, SYSTEM_FONT_PLAIN, SYSTEM_FONT_SEGOE];
+const UI_FONT_STACKS = [UI_FONT_FAMILY, UI_FONT_FAMILY_TW, SYSTEM_FONT_PLAIN, SYSTEM_FONT_SEGOE];
 
 export const DialogChannel = {
   /** Page → main: drawn, with its height in CSS pixels; main sizes the window to it and shows it. */
