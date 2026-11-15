@@ -345,7 +345,7 @@ export class MemoryBook {
           // entries this tidy makes, by name: a change and the arranging may name the same new one
           const made = new Map<string, MemoryEntry>();
           changes = apply(rt, run, checked.plans, made, owner);
-          // a summary it made again clears the mark (applyArrange); one it left or that was refused stays 待整理
+          // a summary it made again, or gave back as it is, clears the mark (applyArrange); none or a refused one: still 待整理
           arranged = applyArrange(rt, run, checked.arrange, made, owner);
         }
         const until = fed.at(-1)?.at;

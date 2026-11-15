@@ -114,14 +114,20 @@ await tidy();
 show('after the tidy');
 
 // settings: an entry with two details its summary names, then 删除 on one of them: marked 待整理, a tidy
-// (nothing new to read) makes the summary again from the detail left
+// (nothing new to read) makes the summary again from the detail left; and one whose summary names only the
+// detail left: the tidy should give it back as it is (the mark goes, the summary stays)
 const made = rt.memory.addOwn('样品寄出前拍照', { name: '样品', summary: '寄出前拍照，单号写进周报', category: 'areas' });
 const sample = 'item' in made ? made : undefined;
 if (sample?.item && sample.entry) {
   rt.memory.addOwn('样品单号写进周报', sample.entry.id);
   show('an entry made in the settings');
   rt.memory.delete(sample.item.id);
-  show(`deleted [${sample.item.id}] 样品寄出前拍照 in the settings`);
+  const client = rt.memory.addOwn('客户名称写全称', { name: '客户', summary: '名称写全称', category: 'areas' });
+  if ('entry' in client && client.entry) {
+    const extra = rt.memory.addOwn('客户邮件开头不用客套话', client.entry.id);
+    if ('item' in extra && extra.item) rt.memory.delete(extra.item.id);
+  }
+  show(`deleted [${sample.item.id}] 样品寄出前拍照 and 客户邮件开头不用客套话 in the settings`);
   console.log(`\nsystem prompt block:\n${rt.memory.promptBlock()}`);
   await tidy();
   show('after the second tidy');

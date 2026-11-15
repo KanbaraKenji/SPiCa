@@ -339,6 +339,10 @@ describe('entries', () => {
     const b = rt.memory.add({ text: '周报发给王经理', quote: '周报发给王经理', entry: { id: boss.id }, by: 'user' }).item!;
     const c = rt.memory.add({ text: '报价单抄送王经理', quote: '报价单抄送王经理', entry: { id: boss.id }, by: 'user' }).item!;
     const q = rt.memory.add({ text: '报价写含税价', quote: '报价写含税价', entry: { id: quote.id }, by: 'user' }).item!;
+    const sample = entry(rt, '样品', '寄出前拍照', 'areas');
+    const s1 = rt.memory.add({ text: '样品寄出前拍照', quote: '样品寄出前拍照', entry: { id: sample.id }, by: 'user' }).item!;
+    rt.memory.add({ text: '样品单号写进周报', quote: '样品单号写进周报', entry: { id: sample.id }, by: 'user' });
+    rt.memory.delete(s1.id);
     const at = rt.memory.entry(boss.id)!.updatedAt;
     // the last detail of an entry takes it with it: nothing to mark
     expect(rt.memory.delete(c.id)).toMatchObject({ action: 'deleted', entry: { id: boss.id, stale: true } });
@@ -354,20 +358,32 @@ describe('entries', () => {
     gw.onRequest((req) => {
       if (!isTidy(req.body)) return { text: '好' };
       prompt = userText(req.body);
-      return { text: JSON.stringify({ changes: [{ action: 'summarized', entry: '王经理', summary: '直属上司，周报发给他' }] }) };
+      return {
+        text: JSON.stringify({
+          changes: [
+            { action: 'summarized', entry: '王经理', summary: '直属上司，周报发给他' },
+            // given back as it is: it was right
+            { action: 'summarized', entry: '报价', summary: '含税价' },
+          ],
+        }),
+      };
     });
     rt.memory.tidy('user');
     const run = await done(rt);
     // nothing typed, no note in no entry: asked because of the marks
     expect(prompt).toContain('## 王经理 (people) [summary may be out of date]: 直属上司，周报和报价单抄送他');
     expect(prompt).toContain('## 报价 (areas) [summary may be out of date]: 含税价');
-    expect(prompt).toContain('Summaries to make again from their notes (summarized): 王经理, 报价');
-    expect(run).toMatchObject({ status: 'done', changes: [] });
+    expect(prompt).toContain('Summaries to make again from their notes (summarized): ');
+    expect(run).toMatchObject({ status: 'done', changes: [], refused: 0 });
+    expect(run.entries?.map((e) => e.entry)).toEqual([boss.id]);
     expect(rt.memory.entry(boss.id)).toMatchObject({ summary: '直属上司，周报发给他', by: 'assistant' });
     expect(rt.memory.entry(boss.id)!.stale).toBeUndefined();
-    // one the model gave no new summary for stays 待整理
-    expect(rt.memory.entry(quote.id)).toMatchObject({ summary: '含税价', stale: true });
-    expect(rt.memory.promptBlock()).toContain('- 报价 (areas): 含税价 (summary may be out of date: recall it)');
+    // given back as it is: the mark goes, nothing else changes
+    expect(rt.memory.entry(quote.id)).toMatchObject({ summary: '含税价', updatedAt: quote.updatedAt });
+    expect(rt.memory.entry(quote.id)!.stale).toBeUndefined();
+    // one the model said nothing about stays 待整理
+    expect(rt.memory.entry(sample.id)).toMatchObject({ summary: '寄出前拍照', stale: true });
+    expect(rt.memory.promptBlock()).toContain('- 样品 (areas): 寄出前拍照 (summary may be out of date: recall it)');
     expect(rt.memory.promptBlock()).not.toContain('王经理 (people): 直属上司，周报发给他 (summary may be out of date');
     // the whole tidy's undo: the summary back, marked again
     rt.memory.undoTidy(run.id);

@@ -761,7 +761,9 @@ export interface MemoryEntry {
   by: 'assistant' | 'user';
   /**
    * A detail went out or changed (settings 删除 / 编辑) and the summary was not rewritten: it may still say what the
-   * details no longer hold (待整理). The next tidy is asked to make it again; any new summary (a tidy, the settings, remember, forget) clears it.
+   * details no longer hold (待整理). The next tidy is asked to make it again: a new summary, or the same one given back
+   * as right, clears it; so do saving the entry in the settings (the user saw the summary) and a new summary from remember
+   * or forget.
    * Setting it leaves updatedAt as it was.
    */
   stale?: boolean;
