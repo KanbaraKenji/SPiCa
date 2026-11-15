@@ -2,14 +2,15 @@
 // (one column per bucket, one series per model, the 429 answers apart, the tokens by kind), the model
 // picker's choices and the CSV. No React here.
 import type { UsageQuery, UsageRow, UsageSummary } from '@spica/protocol';
+import { intlLocale, N_, t } from '../../../shared/i18n';
 
 export type UsageRange = 'today' | '7d' | '30d' | '90d';
 
 export const RANGES: readonly [UsageRange, string][] = [
-  ['today', '今天'],
-  ['7d', '7 天'],
-  ['30d', '30 天'],
-  ['90d', '90 天'],
+  ['today', N_('今天')],
+  ['7d', N_('7 天')],
+  ['30d', N_('30 天')],
+  ['90d', N_('90 天')],
 ];
 
 const HOUR = 3_600_000;
@@ -48,12 +49,12 @@ export interface UsageSeries {
 /** The kinds of token the Token chart stacks, bottom up: its legend's words and colors. */
 export type TokenKind = 'cacheRead' | 'cacheWrite' | 'cacheMiss' | 'unreported' | 'output';
 export const TOKEN_KINDS: readonly { kind: TokenKind; label: string; color: string }[] = [
-  { kind: 'cacheRead', label: '缓存命中', color: 'var(--spica-series-1)' },
-  { kind: 'cacheWrite', label: '缓存写入', color: 'var(--spica-series-4)' },
-  { kind: 'cacheMiss', label: '缓存未命中', color: 'var(--spica-series-2)' },
+  { kind: 'cacheRead', label: N_('缓存命中'), color: 'var(--spica-series-1)' },
+  { kind: 'cacheWrite', label: N_('缓存写入'), color: 'var(--spica-series-4)' },
+  { kind: 'cacheMiss', label: N_('缓存未命中'), color: 'var(--spica-series-2)' },
   // the provider gave no cache numbers: hit or miss unknown, so not a series color
-  { kind: 'unreported', label: '输入（未报告缓存）', color: 'var(--spica-faint)' },
-  { kind: 'output', label: '输出', color: 'var(--spica-series-3)' },
+  { kind: 'unreported', label: N_('输入（未报告缓存）'), color: 'var(--spica-faint)' },
+  { kind: 'output', label: N_('输出'), color: 'var(--spica-series-3)' },
 ];
 
 export type TokenKinds = Record<TokenKind, number>;
@@ -140,7 +141,7 @@ export function usageView(s: UsageSummary, maxSeries: number): UsageView {
     const [providerId = '', model = ''] = k.split('\u0000');
     series.set(k, blank(k, providerId, model, `var(--spica-series-${i + 1})`));
   });
-  if (keys.length > shown.size) series.set(OTHER_KEY, blank(OTHER_KEY, '', '其他', 'var(--spica-faint)'));
+  if (keys.length > shown.size) series.set(OTHER_KEY, blank(OTHER_KEY, '', t('其他'), 'var(--spica-faint)'));
 
   const columns: UsageColumn[] = [];
   const byStart = new Map<number, UsageColumn>();
@@ -213,11 +214,11 @@ export function moduleKey(initiator: string): string {
  * not known (uninstalled since).
  */
 export function moduleLabel(key: string, pluginName: (id: string) => string | undefined = () => undefined): string {
-  if (key === 'model') return '对话';
-  if (key === 'runtime:memory-tidy') return '记忆整理';
-  if (key === 'runtime:probe') return '测试连接';
-  if (key.startsWith('plugin:')) return `插件 ${pluginName(key.slice(7)) || key.slice(7)}`;
-  return key || '其他';
+  if (key === 'model') return t('对话');
+  if (key === 'runtime:memory-tidy') return t('记忆整理');
+  if (key === 'runtime:probe') return t('测试连接');
+  if (key.startsWith('plugin:')) return t('插件 {name}', { name: pluginName(key.slice(7)) || key.slice(7) });
+  return key || t('其他');
 }
 
 /** The fixed order of the modules on the card: 对话, 记忆整理, the plugins, 测试连接, the rest. */
@@ -232,13 +233,13 @@ export function shortCount(n: number): string {
   if (a >= 1e9) return `${fix(n / 1e9)}B`;
   if (a >= 1e6) return `${fix(n / 1e6)}M`;
   if (a >= 1e4) return `${fix(n / 1e3)}K`;
-  return n.toLocaleString('en-US');
+  return n.toLocaleString(intlLocale());
 }
 
-/** US$0.0123 · US$1.23 · US$123: cost as the page writes it. */
+/** US$0.0123 · US$1.23 · US$123 (in English $0.0123 …): cost as the page writes it, in the interface's language. */
 export function usd(n: number): string {
-  if (n === 0) return 'US$0';
-  return `US$${n >= 100 ? n.toFixed(0) : n >= 1 ? n.toFixed(2) : n.toFixed(4)}`;
+  const digits = n === 0 || n >= 100 ? 0 : n >= 1 ? 2 : 4;
+  return new Intl.NumberFormat(intlLocale(), { style: 'currency', currency: 'USD', minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false }).format(n);
 }
 
 /** The label under a column: 14:00 for an hour, 11/13 for a day. */
@@ -275,7 +276,7 @@ export function niceTicks(max: number, count = 4): number[] {
 }
 
 /** The CSV's columns (the header row). */
-export const CSV_HEAD = ['时间', '服务商', '模型', '请求', '429', '失败', '输入', '输出', '缓存读', '缓存写', '花费（美元）'] as const;
+export const CSV_HEAD = [N_('时间'), N_('服务商'), N_('模型|single'), N_('请求'), '429', N_('失败'), N_('输入'), N_('输出'), N_('缓存读'), N_('缓存写'), N_('花费（美元）')] as const;
 
 /**
  * The summary as CSV rows, one per time bucket and model (header first): the bucket's start in local time
@@ -291,7 +292,7 @@ export function usageCsvRows(s: UsageSummary, provider: (id: string) => string):
   };
   const cost = (r: UsageRow) => (r.unpriced && !r.costUsd ? '' : String(Math.round(r.costUsd * 1e6) / 1e6));
   return [
-    [...CSV_HEAD],
+    CSV_HEAD.map((h) => t(h)),
     ...s.rows.map((r) => [time(r.bucket), r.providerId ? provider(r.providerId) : '', r.model, r.requests, r.rateLimited, r.failed, r.inputTokens, r.outputTokens, r.cacheReadTokens, r.cacheWriteTokens].map(String).concat(cost(r))),
   ];
 }
@@ -299,5 +300,6 @@ export function usageCsvRows(s: UsageSummary, provider: (id: string) => string):
 /** The file's name: 用量-20261107-20261113.csv, with the model when one is picked. */
 export function usageCsvName(s: UsageSummary, model: string | null): string {
   const day = (iso: string) => dayLabel(Date.parse(iso)).replaceAll('-', '');
-  return `用量-${day(s.query.from)}-${day(s.query.to)}${model ? `-${model}` : ''}.csv`;
+  const name = t('用量');
+  return `${name}-${day(s.query.from)}-${day(s.query.to)}${model ? `-${model}` : ''}.csv`;
 }

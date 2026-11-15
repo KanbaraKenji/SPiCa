@@ -12,10 +12,12 @@ import { DARK_SKIN, deriveTokens, LIGHT_SKIN } from "../../../shared/skin";
 import { highlightCode } from "../chat/highlight";
 import { Pane, Row } from "./Group";
 import { Select } from "../ui/Select";
+import { N_, t } from "../../../shared/i18n";
 
-const SAMPLE: { text: string; change?: "-" | "+" }[] = [
+// `note`: a comment in the interface's language, after `text`.
+const SAMPLE: { text: string; note?: string; change?: "-" | "+" }[] = [
   { text: "function total(items) {" },
-  { text: "  // 合计金额，保留两位小数" },
+  { text: "  // ", note: N_("合计金额，保留两位小数") },
   { text: "  const sum = sumPrices(items);" },
   { text: "  return sum;", change: "-" },
   { text: "  return Math.round(sum * 100) / 100;", change: "+" },
@@ -79,7 +81,7 @@ export function CodeThemePreview({
           }
         >
           <span className="preview-sign">{line.change ?? " "}</span>
-          {highlightCode("javascript", line.text) ?? line.text}
+          {highlightCode("javascript", line.note ? line.text + t(line.note) : line.text) ?? (line.note ? line.text + t(line.note) : line.text)}
         </div>
       ))}
     </pre>
@@ -97,12 +99,12 @@ export interface CodeThemesProps {
 export function CodeThemes({ value, onChange, size, onSize }: CodeThemesProps) {
   return (
     <>
-      <Row title="字号">
+      <Row title={t("字号")}>
         <Select
           className="code-size-pick"
           value={String(size)}
           onChange={(v) => onSize(Number(v))}
-          label="代码字号"
+          label={t("代码字号")}
           options={CODE_SIZES.map((px) => ({ value: String(px), label: `${px}px` }))}
         />
       </Row>
@@ -111,12 +113,12 @@ export function CodeThemes({ value, onChange, size, onSize }: CodeThemesProps) {
         {(["light", "dark"] as const).map((scheme) => (
           <div key={scheme} className="code-theme-row">
             <label className="code-theme-pick">
-              <span>{scheme === "light" ? "浅色" : "深色"}</span>
+              <span>{scheme === "light" ? t("浅色") : t("深色")}</span>
               <Select
                 value={value[scheme]}
                 onChange={(v) => onChange({ ...value, [scheme]: v })}
-                label={scheme === "light" ? "浅色代码配色" : "深色代码配色"}
-                options={codeThemesFor(scheme).map((t) => ({ value: t.id, label: codeThemeName(t, scheme) }))}
+                label={scheme === "light" ? t("浅色代码配色") : t("深色代码配色")}
+                options={codeThemesFor(scheme).map((theme) => ({ value: theme.id, label: codeThemeName(theme, scheme) }))}
               />
             </label>
             <CodeThemePreview id={value[scheme]} scheme={scheme} />

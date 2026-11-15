@@ -6,5 +6,6 @@ import { EN_APPEARANCE } from './en/appearance';
 import { EN_WINDOW } from './en/window';
 import { EN_MAIN } from './en/main';
 import { EN_MODELS } from './en/models';
+import { EN_SETTINGS } from './en/settings';
 
-export const EN: Catalog = merge([EN_APPEARANCE, EN_WINDOW, EN_MAIN, EN_MODELS]);
+export const EN: Catalog = merge([EN_APPEARANCE, EN_WINDOW, EN_MAIN, EN_MODELS, EN_SETTINGS]);

@@ -10,6 +10,8 @@ import { bucketLabel, dayLabel, modelChoices, moduleLabel, moduleOrder, niceTick
 import { toCsv } from '../chat/table-data';
 import { SERIES_COUNT } from '../../../shared/skin';
 import { Select } from '../ui/Select';
+import { intlLocale, N_, t, tc, tx } from '../../../shared/i18n';
+import { tn } from '../i18n';
 
 export interface UsageApi {
   summary(query: UsageQuery): Promise<UsageSummary | null>;
@@ -71,7 +73,7 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
   }, [api, searching]);
 
   // 搜索设置: the section has no rows; its name and what it shows find it
-  if (searching) return search && (search.sectionHit || matches(search.query, '用量', 'Token', '429', '请求数', '花费', 'CSV')) ? <SearchHit title="用量" onGo={() => search.jump('')} /> : null;
+  if (searching) return search && (search.sectionHit || matches(search.query, t('用量'), 'Token', '429', t('请求数'), t('花费'), 'CSV')) ? <SearchHit title={t('用量')} onGo={() => search.jump('')} /> : null;
   // the main process's names first (the connections', and the demo's for its made-up records)
   const provider = (id: string) => summary?.providerNames?.[id] ?? names[id] ?? id;
   const choices = summary ? modelChoices(summary) : [];
@@ -85,7 +87,7 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
 
   const exportCsv = async () => {
     if (!shown || !api.saveCsv) return;
-    const r = await api.saveCsv(usageCsvName(shown, picked?.model ?? null), toCsv(usageCsvRows(shown, provider))).catch(() => ({ error: '无法导出 CSV。' }));
+    const r = await api.saveCsv(usageCsvName(shown, picked?.model ?? null), toCsv(usageCsvRows(shown, provider))).catch(() => ({ error: N_('无法导出 CSV。') }));
     setExported(r ?? undefined);
   };
 
@@ -93,62 +95,63 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
     <>
       <div className="usage-bar">
         <div className="usage-bar-picks">
-          <div className="segmented" role="radiogroup" aria-label="时间">
+          <div className="segmented" role="radiogroup" aria-label={t('时间')}>
             {RANGES.map(([r, label]) => (
               <button key={r} type="button" role="radio" aria-checked={range === r} className={range === r ? 'segment is-on' : 'segment'} onClick={() => setRange(r)}>
-                {label}
+                {t(label)}
               </button>
             ))}
           </div>
           <Select
             className="usage-model"
-            label="模型"
+            label={tc('single', '模型')}
             value={model ?? ALL}
-            options={[{ value: ALL, label: '全部模型' }, ...choices.map((c) => ({ value: c.key, label: modelLabel(c) }))]}
+            options={[{ value: ALL, label: t('全部模型') }, ...choices.map((c) => ({ value: c.key, label: modelLabel(c) }))]}
             onChange={(v) => setModel(v === ALL ? null : v)}
           />
         </div>
         <div className="usage-bar-end">
           <span className="usage-since">
-            {view?.since ? `${dayLabel(view.since)} 起有记录 · ` : ''}
+            {view?.since ? t('{day} 起有记录', { day: dayLabel(view.since) }) + ' · ' : ''}
             {tzLabel(now())}
           </span>
           {api.saveCsv ? (
             <button type="button" className="btn btn-small" disabled={!shown?.rows.length} onClick={() => void exportCsv()}>
-              导出 CSV
+              {t('导出 CSV')}
             </button>
           ) : null}
         </div>
       </div>
-      {exported && 'error' in exported ? <p className="settings-hint usage-note is-bad">{exported.error}</p> : null}
+      {exported && 'error' in exported ? <p className="settings-hint usage-note is-bad">{tx(exported.error)}</p> : null}
       {exported && 'file' in exported ? (
         <p className="settings-hint usage-note">
-          已导出：
-          {api.showInFolder ? (
-            <button type="button" className="path-text path-link" title={`在文件夹中显示：${exported.file}`} onClick={() => api.showInFolder!(exported.file)}>
-              {exported.file}
-            </button>
-          ) : (
-            exported.file
-          )}
+          {tn('已导出：{file}', {
+            file: api.showInFolder ? (
+              <button type="button" className="path-text path-link" title={t('在文件夹中显示：{file}', { file: exported.file })} onClick={() => api.showInFolder!(exported.file)}>
+                {exported.file}
+              </button>
+            ) : (
+              exported.file
+            ),
+          })}
         </p>
       ) : null}
-      {summary === null ? <p className="settings-hint usage-empty">无法读取用量</p> : null}
+      {summary === null ? <p className="settings-hint usage-empty">{t('无法读取用量')}</p> : null}
       {view ? (
         <>
           <Tiles view={view} />
           <Group
-            title={metric === 'tokens' ? 'Token' : '请求'}
+            title={metric === 'tokens' ? 'Token' : t('请求')}
             actions={
-              <div className="segmented" role="radiogroup" aria-label="显示">
+              <div className="segmented" role="radiogroup" aria-label={tc('chart', '显示')}>
                 {(
                   [
                     ['tokens', 'Token'],
-                    ['requests', '请求'],
+                    ['requests', N_('请求')],
                   ] as const
                 ).map(([m, label]) => (
                   <button key={m} type="button" role="radio" aria-checked={metric === m} className={metric === m ? 'segment is-on' : 'segment'} onClick={() => setMetric(m)}>
-                    {label}
+                    {t(label)}
                   </button>
                 ))}
               </div>
@@ -162,7 +165,7 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
                     {TOKEN_KINDS.filter((k) => view.totals.kinds[k.kind] > 0).map((k) => (
                       <li key={k.kind}>
                         <span className="usage-swatch" style={{ background: k.color }} />
-                        {k.label}
+                        {t(k.label)}
                       </li>
                     ))}
                   </ul>
@@ -173,7 +176,7 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
                   <ul className="usage-legend">
                     <li>
                       <span className="usage-swatch" style={{ background: REQUESTS_COLOR }} />
-                      请求
+                      {t('请求')}
                     </li>
                     <li>
                       <span className="usage-swatch is-limited" />
@@ -187,7 +190,7 @@ export function Usage({ api, now = () => new Date() }: UsageProps) {
           <Group title="429">
             <LimitList records={shown!.rateLimited} total={view.totals.rateLimited} provider={provider} />
           </Group>
-          <Group title="模型">
+          <Group title={tc('single', '模型')}>
             <ModelTable series={view.series} provider={provider} />
           </Group>
         </>
@@ -206,19 +209,19 @@ export function tzLabel(d: Date): string {
 
 /** The totals: a name and a number each. Requests without a price say so on the cost's hover. */
 function Tiles({ view }: { view: UsageView }) {
-  const t = view.totals;
+  const totals = view.totals;
   const tiles: [string, string, string?][] = [
-    ['请求', shortCount(t.requests)],
-    ['Token', shortCount(t.tokens)],
-    ['429', shortCount(t.rateLimited)],
-    ['失败', shortCount(t.failed)],
-    ['花费', usd(t.costUsd), t.unpricedRequests ? `未计价请求 ${t.unpricedRequests.toLocaleString('en-US')}：没有价格的模型，不计入花费` : undefined],
+    [N_('请求'), shortCount(totals.requests)],
+    ['Token', shortCount(totals.tokens)],
+    ['429', shortCount(totals.rateLimited)],
+    [N_('失败'), shortCount(totals.failed)],
+    [N_('花费'), usd(totals.costUsd), totals.unpricedRequests ? t('未计价请求 {count}：没有价格的模型，不计入花费', { count: totals.unpricedRequests.toLocaleString(intlLocale()) }) : undefined],
   ];
   return (
     <div className="usage-tiles">
       {tiles.map(([label, value, tip]) => (
-        <div key={label} className={label === '429' && t.rateLimited > 0 ? 'usage-tile is-limited' : 'usage-tile'} title={tip}>
-          <span className="usage-tile-label">{label}</span>
+        <div key={label} className={label === '429' && totals.rateLimited > 0 ? 'usage-tile is-limited' : 'usage-tile'} title={tip}>
+          <span className="usage-tile-label">{t(label)}</span>
           <span className="usage-tile-value">{value}</span>
         </div>
       ))}
@@ -370,7 +373,7 @@ function RequestChart({ view, bucket, provider, byModel, pluginName }: ChartProp
   const runs = runsOf(cols);
   return (
     <div className="usage-chart" ref={ref} onMouseLeave={() => setHover(null)}>
-      <ChartFrame cols={cols} width={width} max={max} bucket={bucket} label="请求数" onHover={setHover}>
+      <ChartFrame cols={cols} width={width} max={max} bucket={bucket} label={t('请求数')} onHover={setHover}>
         {({ slot, plotH, y }) => {
           const x = (i: number) => AXIS_W + i * slot + slot / 2;
           // a smooth curve through the columns (his reference: curves, not straight segments)
@@ -407,13 +410,13 @@ function RequestChart({ view, bucket, provider, byModel, pluginName }: ChartProp
         <div className="usage-tip" style={tipSide(hover.x, width)} role="tooltip">
           <div className="usage-tip-title">
             <span>{tipTitle(hover.col, bucket)}</span>
-            {hover.col.noData ? null : <span className="usage-num">{hover.col.requestCount.toLocaleString('en-US')}</span>}
+            {hover.col.noData ? null : <span className="usage-num">{hover.col.requestCount.toLocaleString(intlLocale())}</span>}
           </div>
           {hover.col.noData ? (
-            <div className="usage-tip-empty">无记录</div>
+            <div className="usage-tip-empty">{t('无记录')}</div>
           ) : (
             <div className="usage-tip-grid">
-              <TipRow mark={REQUESTS_COLOR} name="请求" value={hover.col.requestCount} />
+              <TipRow mark={REQUESTS_COLOR} name={t('请求')} value={hover.col.requestCount} />
               <TipRow mark="danger" name="429" value={hover.col.rateLimited} limitedRow />
               {byModel ? <ModelRows view={view} col={hover.col} provider={provider} value={(c, k) => c.requests[k] ?? 0} limited /> : <ModuleRows col={hover.col} value={(m) => m.requests} pluginName={pluginName} limited />}
             </div>
@@ -433,7 +436,7 @@ function TokenChart({ view, bucket, provider, byModel, pluginName }: ChartProps)
   const max = Math.max(0, ...cols.map(total));
   return (
     <div className="usage-chart" ref={ref} onMouseLeave={() => setHover(null)}>
-      <ChartFrame cols={cols} width={width} max={max} bucket={bucket} label="Token 用量" onHover={setHover}>
+      <ChartFrame cols={cols} width={width} max={max} bucket={bucket} label={t('Token 用量')} onHover={setHover}>
         {({ slot, plotH, y }) => {
           const barW = Math.max(2, Math.min(28, slot - 4));
           return cols.map((c, i) => {
@@ -458,14 +461,14 @@ function TokenChart({ view, bucket, provider, byModel, pluginName }: ChartProps)
         <div className="usage-tip" style={tipSide(hover.x, width)} role="tooltip">
           <div className="usage-tip-title">
             <span>{tipTitle(hover.col, bucket)}</span>
-            {hover.col.noData ? null : <span className="usage-num">{total(hover.col).toLocaleString('en-US')}</span>}
+            {hover.col.noData ? null : <span className="usage-num">{total(hover.col).toLocaleString(intlLocale())}</span>}
           </div>
           {hover.col.noData ? (
-            <div className="usage-tip-empty">无记录</div>
+            <div className="usage-tip-empty">{t('无记录')}</div>
           ) : (
             <div className="usage-tip-grid">
               {TOKEN_KINDS.filter((k) => hover.col.kinds[k.kind] > 0).map((k) => (
-                <TipRow key={k.kind} mark={k.color} name={k.label} value={hover.col.kinds[k.kind]} />
+                <TipRow key={k.kind} mark={k.color} name={t(k.label)} value={hover.col.kinds[k.kind]} />
               ))}
               {byModel ? <ModelRows view={view} col={hover.col} provider={provider} value={(c, k) => c.tokens[k] ?? 0} /> : <ModuleRows col={hover.col} value={(m) => m.tokens} pluginName={pluginName} />}
             </div>
@@ -491,7 +494,7 @@ function ModelRows({ view, col, provider, value, limited }: { view: UsageView; c
   const twice = new Set(rows.map((r) => r.s.model).filter((m, i, all) => all.indexOf(m) !== i));
   return (
     <>
-      <div className="usage-tip-head">按模型</div>
+      <div className="usage-tip-head">{t('按模型')}</div>
       {rows.map(({ s, v, l }) => (
         <TipRow key={s.key} name={s.model} {...(twice.has(s.model) && s.providerId ? { provider: provider(s.providerId) } : {})} value={v} {...(limited && l ? { limited: l } : {})} />
       ))}
@@ -511,7 +514,7 @@ function ModuleRows({ col, value, pluginName, limited }: { col: UsageColumn; val
   if (!rows.length) return null;
   return (
     <>
-      <div className="usage-tip-head">按功能模块</div>
+      <div className="usage-tip-head">{t('按功能模块')}</div>
       {rows.map(({ key, v, l }) => (
         <TipRow key={key} name={moduleLabel(key, pluginName)} value={v} {...(limited && l ? { limited: l } : {})} />
       ))}
@@ -535,10 +538,10 @@ function TipRow({ mark, name, provider, value, limited, limitedRow }: { mark?: s
         {provider ? <span className="usage-tip-provider"> · {provider}</span> : null}
       </span>
       <span className="usage-num">
-        {value.toLocaleString('en-US')}
+        {value.toLocaleString(intlLocale())}
         {limited ? (
           <>
-            (<span className="usage-limited-num">{limited.toLocaleString('en-US')}</span>)
+            (<span className="usage-limited-num">{limited.toLocaleString(intlLocale())}</span>)
           </>
         ) : null}
       </span>
@@ -561,7 +564,7 @@ function NoDataLabels({ cols, slot, plotH }: { cols: UsageColumn[]; slot: number
         .filter(([a, b]) => (b - a) * slot >= 56)
         .map(([a, b]) => (
           <text key={a} className="usage-nodata-label" x={AXIS_W + ((a + b) / 2) * slot} y={plotH / 2} dy="0.32em" textAnchor="middle">
-            无记录
+            {t('无记录')}
           </text>
         ))}
     </>
@@ -586,35 +589,35 @@ export function tipSide(x: number, width: number): { left: number } | { right: n
 /** The 429 answers one by one, newest first: the first 8, then all on 全部. */
 function LimitList({ records, total, provider }: { records: RequestRecord[]; total: number; provider: (id: string) => string }) {
   const [all, setAll] = useState(false);
-  if (!records.length) return <p className="group-pane settings-hint">无记录</p>;
+  if (!records.length) return <p className="group-pane settings-hint">{t('无记录')}</p>;
   const shown = all ? records : records.slice(0, 8);
   return (
     <div className="group-pane usage-table-pane">
       <table className="usage-table">
         <thead>
           <tr>
-            <th>时间</th>
-            <th>模型</th>
-            <th>服务商</th>
-            <th className="is-num">第几次</th>
-            <th>重试</th>
+            <th>{t('时间')}</th>
+            <th>{tc('single', '模型')}</th>
+            <th>{t('服务商')}</th>
+            <th className="is-num">{t('第几次')}</th>
+            <th>{t('重试')}</th>
           </tr>
         </thead>
         <tbody>
           {shown.map((r) => (
             <tr key={r.id}>
-              <td data-label="时间" className="usage-num">{timeLabel(r.startedAt)}</td>
-              <td data-label="模型">{r.model ?? '—'}</td>
-              <td data-label="服务商">{r.providerId ? provider(r.providerId) : '—'}</td>
-              <td data-label="第几次" className="is-num usage-num">{r.attempt}</td>
-              <td data-label="重试">{r.retried ? '已重试' : '未重试'}</td>
+              <td data-label={t('时间')} className="usage-num">{timeLabel(r.startedAt)}</td>
+              <td data-label={tc('single', '模型')}>{r.model ?? '—'}</td>
+              <td data-label={t('服务商')}>{r.providerId ? provider(r.providerId) : '—'}</td>
+              <td data-label={t('第几次')} className="is-num usage-num">{r.attempt}</td>
+              <td data-label={t('重试')}>{r.retried ? t('已重试') : t('未重试')}</td>
             </tr>
           ))}
         </tbody>
       </table>
       {records.length > 8 ? (
         <button type="button" className="btn btn-small usage-more" onClick={() => setAll((v) => !v)}>
-          {all ? '收起' : `全部 ${Math.min(records.length, total)} 条`}
+          {all ? tc('more', '收起') : t('全部 {n} 条', { n: Math.min(records.length, total) })}
         </button>
       ) : null}
     </div>
@@ -622,39 +625,39 @@ function LimitList({ records, total, provider }: { records: RequestRecord[]; tot
 }
 
 function ModelTable({ series, provider }: { series: UsageSeries[]; provider: (id: string) => string }) {
-  if (!series.length) return <p className="group-pane settings-hint">无记录</p>;
+  if (!series.length) return <p className="group-pane settings-hint">{t('无记录')}</p>;
   const sorted = [...series].sort((a, b) => b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens));
   return (
     <div className="group-pane usage-table-pane">
       <table className="usage-table">
         <thead>
           <tr>
-            <th>模型</th>
-            <th>服务商</th>
-            <th className="is-num">请求</th>
+            <th>{tc('single', '模型')}</th>
+            <th>{t('服务商')}</th>
+            <th className="is-num">{t('请求')}</th>
             <th className="is-num">429</th>
-            <th className="is-num">失败</th>
-            <th className="is-num">输入</th>
-            <th className="is-num">输出</th>
-            <th className="is-num">缓存读</th>
-            <th className="is-num">缓存写</th>
-            <th className="is-num">花费</th>
+            <th className="is-num">{t('失败')}</th>
+            <th className="is-num">{t('输入')}</th>
+            <th className="is-num">{t('输出')}</th>
+            <th className="is-num">{t('缓存读')}</th>
+            <th className="is-num">{t('缓存写')}</th>
+            <th className="is-num">{t('花费')}</th>
           </tr>
         </thead>
         <tbody>
           {sorted.map((s) => (
             <tr key={s.key}>
-              <td data-label="模型">{s.model}</td>
-              <td data-label="服务商">{s.providerId ? provider(s.providerId) : '—'}</td>
-              <td data-label="请求" className="is-num usage-num">{s.requests.toLocaleString('en-US')}</td>
+              <td data-label={tc('single', '模型')}>{s.model}</td>
+              <td data-label={t('服务商')}>{s.providerId ? provider(s.providerId) : '—'}</td>
+              <td data-label={t('请求')} className="is-num usage-num">{s.requests.toLocaleString(intlLocale())}</td>
               <td data-label="429" className={s.rateLimited ? 'is-num usage-num is-limited' : 'is-num usage-num'}>{s.rateLimited}</td>
-              <td data-label="失败" className="is-num usage-num">{s.failed}</td>
-              <td data-label="输入" className="is-num usage-num">{shortCount(s.inputTokens)}</td>
-              <td data-label="输出" className="is-num usage-num">{shortCount(s.outputTokens)}</td>
-              <td data-label="缓存读" className="is-num usage-num">{s.cacheReadTokens ? shortCount(s.cacheReadTokens) : '—'}</td>
-              <td data-label="缓存写" className="is-num usage-num">{s.cacheWriteTokens ? shortCount(s.cacheWriteTokens) : '—'}</td>
-              <td data-label="花费" className="is-num usage-num" title={s.unpriced ? `未计价请求 ${s.unpricedRequests}：没有价格的模型，不计入花费` : undefined}>
-                {s.unpriced && !s.costUsd ? '未计价' : usd(s.costUsd)}
+              <td data-label={t('失败')} className="is-num usage-num">{s.failed}</td>
+              <td data-label={t('输入')} className="is-num usage-num">{shortCount(s.inputTokens)}</td>
+              <td data-label={t('输出')} className="is-num usage-num">{shortCount(s.outputTokens)}</td>
+              <td data-label={t('缓存读')} className="is-num usage-num">{s.cacheReadTokens ? shortCount(s.cacheReadTokens) : '—'}</td>
+              <td data-label={t('缓存写')} className="is-num usage-num">{s.cacheWriteTokens ? shortCount(s.cacheWriteTokens) : '—'}</td>
+              <td data-label={t('花费')} className="is-num usage-num" title={s.unpriced ? t('未计价请求 {count}：没有价格的模型，不计入花费', { count: s.unpricedRequests }) : undefined}>
+                {s.unpriced && !s.costUsd ? t('未计价') : usd(s.costUsd)}
               </td>
             </tr>
           ))}

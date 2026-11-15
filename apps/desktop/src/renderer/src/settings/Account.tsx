@@ -11,6 +11,7 @@ import { useContext, useState } from 'react';
 import { ACCOUNT_MAX, accountValue, CALL_NAME_MAX, callNameValue, defaultCallName, effectiveAccount, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
 import { letterBadge } from '../ui/badge';
 import { Group, Row, SettingsSearchContext } from './Group';
+import { t } from '../../../shared/i18n';
 
 export interface AccountProps {
   settings: ShellSettings;
@@ -42,7 +43,7 @@ function TypedRow(p: { title: string; saved: string; fallback: string; empty: st
   return (
     <Row title={p.title}>
       {p.saved ? (
-        <button type="button" className="btn" title={p.fallback ? `恢复为 ${p.fallback}` : undefined} onClick={() => p.onSave('')}>
+        <button type="button" className="btn" title={p.fallback ? t('恢复为 {value}', { value: p.fallback }) : undefined} onClick={() => p.onSave('')}>
           {p.back}
         </button>
       ) : null}
@@ -76,7 +77,7 @@ export function Account({ settings, onChange, autoAccount = '' }: AccountProps) 
           // laid out as a row, but not a setting: 搜索设置 does not list it
           <div className="setting-row">
             <div className="setting-text">
-              <span className="setting-title">{account || '未取到账号'}</span>
+              <span className="setting-title">{account || t('未取到账号')}</span>
             </div>
             {me ? (
               <span className="plugin-badge account-avatar" style={{ background: me.colour }} aria-hidden>
@@ -86,23 +87,23 @@ export function Account({ settings, onChange, autoAccount = '' }: AccountProps) 
           </div>
         )}
         <TypedRow
-          title="账号"
+          title={t('账号')}
           saved={settings.account}
           fallback={autoAccount}
-          empty="未取到"
+          empty={t('未取到')}
           max={ACCOUNT_MAX}
           clean={accountValue}
-          back="恢复自动"
+          back={t('恢复自动')}
           onSave={(account) => onChange({ account })}
         />
         <TypedRow
-          title="昵称"
+          title={t('昵称')}
           saved={settings.callName}
           fallback={fromAccount}
-          empty="不带昵称"
+          empty={t('不带昵称')}
           max={CALL_NAME_MAX}
           clean={callNameValue}
-          back="恢复默认"
+          back={t('恢复默认')}
           onSave={(callName) => onChange({ callName })}
         />
       </Group>

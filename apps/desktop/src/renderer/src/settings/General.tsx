@@ -14,6 +14,7 @@ import { Group, Pane, Row } from './Group';
 import { APP_NAME } from '../../../shared/app-identity';
 import type { PluginView } from '../../../shared/plugin-view';
 import { BUILT_IN, previewerId, previewKinds, previewPagesFor } from '../../../shared/previewers';
+import { intlLocale, N_, t, tc, tx } from '../../../shared/i18n';
 
 export interface WorkflowsApi {
   run(op: 'state' | 'open' | 'reload'): Promise<WorkflowsState>;
@@ -55,7 +56,7 @@ function FilePreviews({ settings, onChange, previewPages = [] }: GeneralProps) {
     onChange({ previewers: next });
   };
   return (
-    <Group title="文件预览">
+    <Group title={t('文件预览')}>
         {kinds.map((ext) => {
           const pages = previewPagesFor(ext, previewPages);
           const kept = settings.previewers[ext];
@@ -65,13 +66,13 @@ function FilePreviews({ settings, onChange, previewPages = [] }: GeneralProps) {
             <Row key={ext} title={<span className="preview-kind-ext">{ext}</span>}>
               <Select
                 className="preview-kind-pick"
-                label={`${ext} 文件预览`}
+                label={t('{ext} 文件预览', { ext })}
                 value={kept ?? BUILT_IN}
                 onChange={(v) => set(ext, v)}
                 options={[
-                  { value: BUILT_IN, label: '自带预览' },
-                  ...pages.map((v) => ({ value: previewerId(v), label: twice(v) ? `${v.title}（${v.pluginTitle}）` : v.title })),
-                  ...(gone ? [{ value: kept, label: '插件不可用', disabled: true }] : []),
+                  { value: BUILT_IN, label: t('自带预览') },
+                  ...pages.map((v) => ({ value: previewerId(v), label: twice(v) ? t('{title}（{plugin}）', { title: v.title, plugin: v.pluginTitle }) : v.title })),
+                  ...(gone ? [{ value: kept, label: t('插件不可用'), disabled: true }] : []),
                 ]}
               />
             </Row>
@@ -83,31 +84,31 @@ function FilePreviews({ settings, onChange, previewPages = [] }: GeneralProps) {
 
 /** Why 开机时启动 cannot be turned on in this copy (main/autostart.ts). */
 const AUTOSTART_UNAVAILABLE: Record<Exclude<AutostartSupport, 'ok'>, string> = {
-  dev: '开发版不能开机启动，只有安装版能用。',
-  portable: '便携版不能开机启动，只有安装版能用。',
-  unsupported: '只有 Windows 安装版能用。',
+  dev: N_('开发版不能开机启动，只有安装版能用。'),
+  portable: N_('便携版不能开机启动，只有安装版能用。'),
+  unsupported: N_('只有 Windows 安装版能用。'),
 };
 
 /** 关闭窗口时: the choices, in the order of the question the × asks (main/tray.ts). */
 const CLOSE_WINDOW: [CloseWindow, string][] = [
-  ['ask', '每次询问'],
-  ['tray', '最小化到托盘'],
-  ['quit', `退出 ${APP_NAME}`],
+  ['ask', N_('每次询问')],
+  ['tray', N_('最小化到托盘')],
+  ['quit', N_('退出 {app}')],
 ];
 
 /** 启动与托盘: starting with Windows, and what the window's × does. */
 function Startup({ settings, onChange, autostart = 'unsupported' }: GeneralProps) {
   const usable = autostart === 'ok';
   return (
-    <Group title="启动与托盘">
-      <Row title="开机时启动" hint={autostart === 'ok' ? '登录 Windows 后自动启动。' : AUTOSTART_UNAVAILABLE[autostart]}>
-        <Switch on={usable && settings.openAtLogin} label="开机时启动" disabled={!usable} onChange={(v) => onChange({ openAtLogin: v })} />
+    <Group title={t('启动与托盘')}>
+      <Row title={t('开机时启动')} hint={autostart === 'ok' ? t('登录 Windows 后自动启动。') : t(AUTOSTART_UNAVAILABLE[autostart])}>
+        <Switch on={usable && settings.openAtLogin} label={t('开机时启动')} disabled={!usable} onChange={(v) => onChange({ openAtLogin: v })} />
       </Row>
-      <Row title="关闭窗口时">
-        <div className="segmented" role="radiogroup" aria-label="关闭窗口时">
+      <Row title={t('关闭窗口时')}>
+        <div className="segmented" role="radiogroup" aria-label={t('关闭窗口时')}>
           {CLOSE_WINDOW.map(([value, label]) => (
             <button key={value} type="button" role="radio" aria-checked={settings.closeWindow === value} className={settings.closeWindow === value ? 'segment is-on' : 'segment'} onClick={() => onChange({ closeWindow: value })}>
-              {label}
+              {t(label, { app: APP_NAME })}
             </button>
           ))}
         </div>
@@ -124,26 +125,26 @@ function Developer({ settings, onChange, localConnect }: GeneralProps) {
   useEffect(() => {
     if (!localConnect) return;
     let alive = true;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       void localConnect()
         .then((i) => alive && setInfo(i))
         .catch(() => undefined);
     }, 300);
     return () => {
       alive = false;
-      clearTimeout(t);
+      clearTimeout(timer);
     };
   }, [localConnect, on]);
   const shown = on ? info : null;
   return (
-    <Group title="开发者">
-      <Row title={`允许本机脚本连接 ${APP_NAME}`} hint={`开启后，本机脚本可连接 ${APP_NAME} 并修改 设置 › 模型。`}>
-        <Switch on={on} label={`允许本机脚本连接 ${APP_NAME}`} onChange={(v) => onChange({ localConnect: v })} />
+    <Group title={t('开发者')}>
+      <Row title={t('允许本机脚本连接 {app}', { app: APP_NAME })} hint={t('开启后，本机脚本可连接 {app} 并修改 设置 › 模型。', { app: APP_NAME })}>
+        <Switch on={on} label={t('允许本机脚本连接 {app}', { app: APP_NAME })} onChange={(v) => onChange({ localConnect: v })} />
       </Row>
       {on ? (
         <Row
-          title={shown ? shown.url : '正在打开…'}
-          hint={shown?.tokenFile ? `令牌文件 ${shown.tokenFile}` : undefined}
+          title={shown ? shown.url : t('正在打开…')}
+          hint={shown?.tokenFile ? t('令牌文件 {file}', { file: shown.tokenFile }) : undefined}
           path={{ title: shown?.url ?? '', ...(shown?.tokenFile ? { hint: shown.tokenFile } : {}) }}
         >
           {shown ? (
@@ -151,8 +152,8 @@ function Developer({ settings, onChange, localConnect }: GeneralProps) {
               <button
                 type="button"
                 className="btn btn-square"
-                aria-label={copied ? '已复制' : '复制连接信息'}
-                title={copied ? '已复制' : '复制连接信息'}
+                aria-label={copied ? t('已复制') : t('复制连接信息')}
+                title={copied ? t('已复制') : t('复制连接信息')}
                 onClick={() =>
                   void navigator.clipboard
                     .writeText(JSON.stringify({ url: shown.url, tokenFile: shown.tokenFile }, null, 2))
@@ -187,48 +188,54 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
   useEffect(() => {
     if (!networkState) return;
     let alive = true;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       void networkState()
         .then((s) => alive && setState(s))
         .catch(() => undefined);
     }, 400);
     return () => {
       alive = false;
-      clearTimeout(t);
+      clearTimeout(timer);
     };
   }, [networkState, key]);
   return (
     <Group
-      title="网络"
+      title={t('网络')}
       after={
         <>
           {state ? (
             <p className="settings-hint group-note">
-              当前：{state.proxy ? `代理：${state.proxy}` : '直连'}
-              {state.noProxy.length ? ` · ${state.noProxy.length} 个例外地址` : ''}
-              {state.caFile ? ' · 已添加证书文件' : ''}
-              {state.useSystemCa ? ' · 使用 Windows 证书' : ''}
+              {t('当前：{status}', {
+                status: [
+                  state.proxy ? t('代理：{proxy}', { proxy: state.proxy }) : t('直连'),
+                  state.noProxy.length ? t('{n} 个例外地址', { n: state.noProxy.length }) : '',
+                  state.caFile ? t('已添加证书文件') : '',
+                  state.useSystemCa ? t('使用 Windows 证书') : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · '),
+              })}
             </p>
           ) : null}
           {state?.problems.map((p) => (
             <p key={p} className="provider-result is-bad group-note">
-              {p}
+              {tx(p)}
             </p>
           ))}
         </>
       }
     >
-      <Row title="代理" stack>
+      <Row title={tc('network', '代理')} stack>
       <div className="net-grid">
         <label className="form-field">
           <span className="field-label">
-            代理地址
-            <InfoTip text="留空则使用系统环境变量中的代理。" decorative />
+            {t('代理地址')}
+            <InfoTip text={t('留空则使用系统环境变量中的代理。')} decorative />
           </span>
-          <input className="input" spellCheck={false} value={proxy} placeholder="http://proxy.example.com:8080" onChange={(e) => setProxy(e.target.value)} aria-description="留空则使用系统环境变量中的代理。" />
+          <input className="input" spellCheck={false} value={proxy} placeholder="http://proxy.example.com:8080" onChange={(e) => setProxy(e.target.value)} aria-description={t('留空则使用系统环境变量中的代理。')} />
         </label>
         <label className="form-field">
-          <span className="field-label">不使用代理的地址</span>
+          <span className="field-label">{t('不使用代理的地址')}</span>
           <input className="input" spellCheck={false} value={noProxy} placeholder="localhost, 10.0.0.0/8, .corp.example.com" onChange={(e) => setNoProxy(e.target.value)} />
         </label>
       </div>
@@ -239,35 +246,35 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
             noProxyDone();
           }}
         >
-          保存
+          {t('保存')}
         </button>
-        {changed ? <span className="provider-unsaved">未保存</span> : null}
+        {changed ? <span className="provider-unsaved">{t('未保存')}</span> : null}
       </div>
       </Row>
-      <Row title="信任的证书文件" hint={saved.caFile || '无'} path={{ hint: saved.caFile }}>
+      <Row title={t('信任的证书文件')} hint={saved.caFile || t('无')} path={{ hint: saved.caFile }}>
           {pickFiles ? (
             <button
               type="button"
               className="btn btn-square"
               onClick={() =>
-                void pickFiles('选择证书文件（.pem / .crt）').then((files) => {
+                void pickFiles(t('选择证书文件（.pem / .crt）')).then((files) => {
                   if (files[0]) save({ caFile: files[0] });
                 })
               }
-              aria-label="选择文件"
-              title="选择文件"
+              aria-label={t('选择文件')}
+              title={t('选择文件')}
             >
               <Icon name="folder" size={16} />
             </button>
           ) : null}
           {saved.caFile ? (
-            <button type="button" className="btn btn-square" onClick={() => save({ caFile: '' })} aria-label="移除" title="移除">
+            <button type="button" className="btn btn-square" onClick={() => save({ caFile: '' })} aria-label={t('移除')} title={t('移除')}>
               <Icon name="close" size={14} />
             </button>
           ) : null}
       </Row>
-      <Row title="使用 Windows 证书存储">
-        <Switch on={saved.useSystemCa} label="使用 Windows 证书存储" onChange={(useSystemCa) => save({ useSystemCa })} />
+      <Row title={t('使用 Windows 证书存储')}>
+        <Switch on={saved.useSystemCa} label={t('使用 Windows 证书存储')} onChange={(useSystemCa) => save({ useSystemCa })} />
       </Row>
     </Group>
   );
@@ -276,10 +283,10 @@ function Network({ settings, onChange, networkState, pickFiles }: GeneralProps) 
 
 type Range = 'all' | 'today' | 'week' | 'month';
 const RANGES: [Range, string][] = [
-  ['all', '全部'],
-  ['today', '今天'],
-  ['week', '最近 7 天'],
-  ['month', '最近 30 天'],
+  ['all', N_('全部')],
+  ['today', N_('今天')],
+  ['week', N_('最近 7 天')],
+  ['month', N_('最近 30 天')],
 ];
 
 /** Start of the range (local midnight), as ISO; nothing for 全部. */
@@ -308,7 +315,7 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
     try {
       setResult(await exportUsageLog({ ...(project ? { projectId: project.id } : {}), ...(from ? { from } : {}) }));
     } catch {
-      setResult({ error: '导出失败，请重试。' });
+      setResult({ error: N_('导出失败，请重试。') });
     } finally {
       setBusy(false);
     }
@@ -316,16 +323,16 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
   return (
     <>
     <Group
-      title="使用日志"
+      title={t('使用日志')}
       actions={
         <button type="button" className="btn btn-small" disabled={busy} onClick={() => void run()}>
           {busy ? <span className="spinner" aria-hidden /> : null}
-          导出…
+          {t('导出…')}
         </button>
       }
     >
       {projects.length ? (
-        <Row title="项目">
+        <Row title={t('项目')}>
           <button
             type="button"
             className="btn"
@@ -336,27 +343,27 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
               setMenu((now) => (now ? null : el));
             }}
           >
-            {project?.name ?? '全部项目'}
+            {project?.name ?? t('全部项目')}
             <Icon name="chevronDown" size={12} />
           </button>
         </Row>
       ) : null}
-      <Row title="时间">
-        <div className="segmented" role="radiogroup" aria-label="时间">
+      <Row title={t('时间')}>
+        <div className="segmented" role="radiogroup" aria-label={t('时间')}>
           {RANGES.map(([r, label]) => (
             <button key={r} type="button" role="radio" aria-checked={range === r} className={range === r ? 'segment is-on' : 'segment'} onClick={() => setRange(r)}>
-              {label}
+              {t(label)}
             </button>
           ))}
         </div>
       </Row>
       {result && 'error' in result ? (
         <Pane>
-          <p className="provider-result is-bad">{result.error}</p>
+          <p className="provider-result is-bad">{tx(result.error)}</p>
         </Pane>
       ) : null}
       {result && 'file' in result ? (
-        <Row className="usage-result" title={result.records ? `已导出 ${result.records.toLocaleString('zh-CN')} 条记录` : '该时间段没有记录。'} hint={result.file} path={{ hint: result.file, open: () => showInFolder(result.file), openLabel: '在文件夹中显示' }} />
+        <Row className="usage-result" title={result.records ? t('已导出 {count} 条记录', { n: result.records, count: result.records.toLocaleString(intlLocale()) }) : t('该时间段没有记录。')} hint={result.file} path={{ hint: result.file, open: () => showInFolder(result.file), openLabel: t('在文件夹中显示') }} />
       ) : null}
     </Group>
       {menu ? (
@@ -364,7 +371,7 @@ function UsageLog({ projects, exportUsageLog, showInFolder, now }: GeneralProps)
           x={0}
           y={0}
           anchor={menu}
-          items={[{ id: '', name: '全部项目' }, ...projects].map((p) => ({ label: p.name, checked: p.id === projectId, onSelect: () => setProjectId(p.id) }))}
+          items={[{ id: '', name: t('全部项目') }, ...projects].map((p) => ({ label: p.name, checked: p.id === projectId, onSelect: () => setProjectId(p.id) }))}
           onClose={() => setMenu(null)}
         />
       ) : null}
@@ -393,21 +400,21 @@ function Workflows({ settings, onChange, workflows, pickFolder, onBackendRestart
     if (dir && dir !== settings.workflowsDir) onChange({ workflowsDir: dir });
   };
   return (
-    <Group title="工作流">
+    <Group title={t('工作流')}>
       <Row
         title={state?.dir || '—'}
         path={{ title: state?.dir ?? '', open: () => void refresh('open') }}
-        hint={state === null ? '' : state.names.length ? `已读取 ${state.names.length} 个：${state.names.join('、')}` : '文件夹中没有工作流文件（.json）。'}
+        hint={state === null ? '' : state.names.length ? t('已读取 {n} 个：{names}', { n: state.names.length, names: state.names.join(t('、')) }) : t('文件夹中没有工作流文件（.json）。')}
       >
-          <button type="button" className="btn btn-square" onClick={() => void choose()} aria-label="更改" title="更改">
+          <button type="button" className="btn btn-square" onClick={() => void choose()} aria-label={t('更改')} title={t('更改')}>
             <Icon name="pencil" size={16} />
           </button>
-          <button type="button" className="btn btn-square" onClick={() => void refresh('reload')} aria-label="重新读取" title="重新读取">
+          <button type="button" className="btn btn-square" onClick={() => void refresh('reload')} aria-label={t('重新读取')} title={t('重新读取')}>
             <Icon name="refresh" size={16} />
           </button>
           {settings.workflowsDir ? (
             <button type="button" className="btn" onClick={() => onChange({ workflowsDir: '' })}>
-              恢复默认
+              {t('恢复默认')}
             </button>
           ) : null}
       </Row>
@@ -417,12 +424,12 @@ function Workflows({ settings, onChange, workflows, pickFolder, onBackendRestart
             <ul className="workflow-problems">
               {state.problems.map((p) => (
                 <li key={p} className="provider-result is-bad">
-                  {p}
+                  {tx(p)}
                 </li>
               ))}
             </ul>
           ) : null}
-          {state.message ? <p className="provider-result is-bad">{state.message}</p> : null}
+          {state.message ? <p className="provider-result is-bad">{tx(state.message)}</p> : null}
         </Pane>
       ) : null}
     </Group>

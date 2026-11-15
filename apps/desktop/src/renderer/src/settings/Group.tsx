@@ -17,6 +17,7 @@
 // its section's list (a portal), so there is no second list of the settings to keep in step.
 import { Children, createContext, isValidElement, useContext, type ReactElement, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { t } from '../../../shared/i18n';
 
 /** What a section rendered for 搜索设置 is told: the words, where its results go, how to go to one. */
 export interface SettingsSearch {
@@ -119,7 +120,7 @@ function PathText({ className, text, children, open, openLabel }: { className: s
       </span>
     );
   }
-  const label = `${openLabel ?? '打开文件夹'}：${text}`;
+  const label = t('{label}：{path}', { label: openLabel ?? t('打开文件夹'), path: text });
   return (
     <button type="button" className={`${className} path-text path-link`} title={label} aria-label={label} onClick={open}>
       {children}
