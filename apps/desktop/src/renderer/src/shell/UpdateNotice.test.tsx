@@ -86,23 +86,23 @@ describe('updates in the column of icons (side bar closed or the window narrow)'
 });
 
 describe('plugins waiting for their settings (待设置)', () => {
-  it('said where plugin updates are, before them: one plugin by name, several by count; 查看 opens the plugins; closed, back only when more are missing', () => {
+  it('said where plugin updates are, before them: how many plugins; 查看 opens the plugins; closed, back only when more are missing', () => {
     const onOpenPlugins = vi.fn();
     const { rerender } = render(<Place update={{ ...base, status: 'latest', pluginUpdates: 2 }} waiting={[{ displayName: '工单查询', missing: 1 }]} onOpenPlugins={onOpenPlugins} />);
-    expect(screen.getByRole('status').textContent).toContain('「工单查询」有 1 项未填');
+    expect(screen.getByRole('status').textContent).toContain('1 个插件待设置');
     expect(screen.getByRole('status').className).toContain('is-warning');
     fireEvent.click(screen.getByRole('button', { name: '查看' }));
     expect(onOpenPlugins).toHaveBeenCalled();
     rerender(<Place update={{ ...base, status: 'latest' }} waiting={[{ displayName: '工单查询', missing: 1 }, { displayName: '日报', missing: 2 }]} onOpenPlugins={onOpenPlugins} />);
-    expect(screen.getByRole('status').textContent).toContain('2 个插件有未填的设置');
+    expect(screen.getByRole('status').textContent).toContain('2 个插件待设置');
     fireEvent.click(screen.getByRole('button', { name: '稍后' }));
     expect(screen.queryByRole('status')).toBeNull();
   });
 
-  it('in the column of icons: the settings icon with how many are not filled in, opening the plugins', () => {
+  it('in the column of icons: the settings icon with how many plugins wait, opening the plugins', () => {
     const onOpenPlugins = vi.fn();
     render(<Place compact update={{ ...base, status: 'latest' }} waiting={[{ displayName: '工单查询', missing: 3 }]} onOpenPlugins={onOpenPlugins} />);
-    fireEvent.click(screen.getByRole('button', { name: '「工单查询」有 3 项未填' }));
+    fireEvent.click(screen.getByRole('button', { name: '1 个插件待设置' }));
     expect(onOpenPlugins).toHaveBeenCalled();
   });
 });

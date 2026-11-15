@@ -26,9 +26,9 @@ export interface WaitingPlugin {
   missing: number;
 }
 
-/** 「工单查询 有 1 项未填」, or for several 「2 个插件有未填的设置」. */
+/** 「1 个插件待设置」, as 「2 个插件可更新」 (the card is narrow; the plugins page says which and what). */
 export function waitingText(waiting: readonly WaitingPlugin[]): string {
-  return waiting.length === 1 ? `「${waiting[0]!.displayName}」有 ${waiting[0]!.missing} 项未填` : `${waiting.length} 个插件有未填的设置`;
+  return `${waiting.length} 个插件待设置`;
 }
 
 /**
@@ -55,8 +55,9 @@ export function useUpdateNotice(update: UpdateState | null, unfilledPlugins: rea
     };
   }
   // Closed: shown again only when the count grows.
+  // closed, it comes back when more plugins wait or more fields are missing
   const unfilled = unfilledPlugins.reduce((sum, w) => sum + w.missing, 0);
-  if (unfilled > configClosed) return { kind: 'config', text: waitingText(unfilledPlugins), required: true, ready: false, count: unfilled, close: () => setConfigClosed(unfilled) };
+  if (unfilled > configClosed) return { kind: 'config', text: waitingText(unfilledPlugins), required: true, ready: false, count: unfilledPlugins.length, close: () => setConfigClosed(unfilled) };
   const n = update?.pluginUpdates ?? 0;
   if (n > pluginsClosed) return { kind: 'plugins', text: `${n} 个插件可更新`, required: false, ready: false, count: n, close: () => setPluginsClosed(n) };
   return null;
