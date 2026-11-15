@@ -6106,6 +6106,12 @@ section.plugins-part > .plugins-part-title {
   border-color: var(--spica-danger);
 }
 
+/* A write to be confirmed: its change, as the row shows it after, under the card's row. */
+.confirm-card > .file-change-wrap {
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--spica-border);
+}
+
 .confirm-card > .tool-command,
 .confirm-card > .tool-args {
   margin: 0;

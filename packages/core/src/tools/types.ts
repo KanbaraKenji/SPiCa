@@ -63,6 +63,11 @@ export interface Tool {
   targetUrl?(input: Record<string, unknown>): string | undefined;
   /** The file the call reads (read_file), for the credential-file check. */
   targetPath?(input: Record<string, unknown>): string | undefined;
+  /**
+   * What the call would change, worked out without changing anything (write_file, edit_file read the file): shown on
+   * its confirmation card before the user allows it. Undefined when there is nothing to show.
+   */
+  previewChange?(input: Record<string, unknown>, cwd: string): Promise<import('../types.ts').ChangePreview | undefined>;
   /** Hide the tool when this returns false (e.g. no search backend configured). */
   available?(env: ToolEnv): boolean;
   execute(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput>;

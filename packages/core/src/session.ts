@@ -1097,6 +1097,8 @@ export class Session {
       // approval mode auto passes only the default confirmation of irreversible tools, never the guard's or a hook's
       const autoApproved = !cause && decision.action === 'confirm' && decision.byDefault === true && cfg.approvalMode === 'auto';
       if ((decision.action === 'confirm' && !autoApproved) || cause) {
+        // what a write would change, for the card (the file is read, nothing written); a failure only leaves it out
+        const change = tool.previewChange ? await tool.previewChange((input ?? {}) as Record<string, unknown>, this.#record.config.cwd).catch(() => undefined) : undefined;
         const item: PendingItem = {
           kind: 'confirm',
           callId: call.id,
@@ -1105,6 +1107,7 @@ export class Session {
           reason: cause ? GUARD_REASON[cause] : ((decision.action === 'confirm' ? decision.reason : undefined) ?? 'needs confirmation'),
           ...(cause ? { cause } : {}),
           ...(decision.action === 'confirm' && decision.irreversible ? { irreversible: true } : {}),
+          ...(change ? { change } : {}),
           createdAt: isoNow(),
         };
         this.#rt.store.upsertToolCall({ ...rec, input, status: 'pending' });
@@ -1137,6 +1140,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
             reason: p.item.reason,
             ...(p.item.cause ? { cause: p.item.cause } : {}),
             ...(p.item.irreversible ? { irreversible: true } : {}),
+            ...(p.item.change ? { change: p.item.change } : {}),
           });
         }
       }

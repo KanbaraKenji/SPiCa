@@ -1,7 +1,10 @@
 // Confirmation of irreversible actions and ask_user cards.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FakeGateway } from './testing/fake-gateway.ts';
-import { captureEvents, makeRuntime, startGateway } from './testing/helpers.ts';
+import { writeFile, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { captureEvents, makeRuntime, startGateway, tempDir } from './testing/helpers.ts';
+import { editFileTool } from './tools/fs-tools.ts';
 import { askUserTool, suggestActionsTool } from './tools/agent-tools.ts';
 import type { Tool } from './tools/types.ts';
 
@@ -120,6 +123,25 @@ describe('confirmation', () => {
     expect((await p.send('mail').done).reason).toBe('awaiting_confirm');
     expect(p.pending()[0]).not.toHaveProperty('irreversible');
     expect(plainEvents.find((e) => e.type === 'confirm.request')).not.toHaveProperty('irreversible');
+  });
+
+  it('a write asked about carries what it would change (the card shows it before it is allowed); nothing is written yet', async () => {
+    const { dir, cleanup } = await tempDir();
+    try {
+      await writeFile(join(dir, 'a.txt'), 'one\ntwo\n');
+      gw.enqueue({ toolCalls: [{ id: 'e1', name: 'edit_file', args: { path: 'a.txt', old_string: 'two', new_string: 'TWO' } }] });
+      const rt = makeRuntime(gw, { tools: [editFileTool] });
+      const events = captureEvents(rt);
+      rt.hooks.register('cautious', { beforeTool: () => ({ action: 'confirm', reason: 'writes a file' }) });
+      const s = rt.createSession({ cwd: dir });
+      expect((await s.send('edit').done).reason).toBe('awaiting_confirm');
+      const change = { path: join(dir, 'a.txt'), created: false, change: { hunks: [{ oldStart: 1, newStart: 1, lines: [' one', '-two', '+TWO'] }] } };
+      expect(s.pending()[0]).toMatchObject({ kind: 'confirm', change });
+      expect(events.find((e) => e.type === 'confirm.request')).toMatchObject({ change });
+      expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('one\ntwo\n');
+    } finally {
+      await cleanup();
+    }
   });
 
   it('the mark only makes the card stand out: approval mode auto still asks for a marked confirmation', async () => {

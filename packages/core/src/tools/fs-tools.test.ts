@@ -195,3 +195,21 @@ describe('validateInput', () => {
     expect(validateInput(schema, { __invalid_json__: 'x' })).toMatch(/not valid JSON/);
   });
 });
+
+describe('what a write would change, before it is allowed (previewChange)', () => {
+  it('write_file: a new file is created; over a file, where it changes; nothing is written', async () => {
+    expect(await writeFileTool.previewChange!({ path: 'new.txt', content: 'x\n' }, dir)).toEqual({ path: join(dir, 'new.txt'), created: true });
+    const over = await writeFileTool.previewChange!({ path: 'notes.txt', content: 'alpha\nBETA\ngamma\n' }, dir);
+    expect(over).toMatchObject({ path: join(dir, 'notes.txt'), created: false });
+    expect(over!.change!.hunks[0]!.lines).toEqual([' alpha', '-beta', '+BETA', ' gamma']);
+    expect(await readFile(join(dir, 'notes.txt'), 'utf8')).toBe('alpha\nbeta\ngamma\n');
+  });
+
+  it('edit_file: where the replacement would change the file; nothing when it would not apply', async () => {
+    const p = await editFileTool.previewChange!({ path: 'notes.txt', old_string: 'gamma', new_string: 'delta' }, dir);
+    expect(p!.change!.hunks[0]!.lines).toEqual([' alpha', ' beta', '-gamma', '+delta']);
+    expect(await editFileTool.previewChange!({ path: 'notes.txt', old_string: 'nope', new_string: 'x' }, dir)).toBeUndefined();
+    expect(await editFileTool.previewChange!({ path: 'missing.txt', old_string: 'a', new_string: 'b' }, dir)).toBeUndefined();
+    expect(await readFile(join(dir, 'notes.txt'), 'utf8')).toBe('alpha\nbeta\ngamma\n');
+  });
+});

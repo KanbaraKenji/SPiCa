@@ -253,7 +253,7 @@ function markChanged(out: ChangeLine[]): ChangeLine[] {
 }
 
 /** The lines of a write or an edit, or null when the call is neither (or says nothing to draw). */
-export function callChange(block: ToolBlock, card?: FileCardMeta): { path: string; lines: ChangeLine[]; numbered: boolean } | null {
+export function callChange(block: ToolBlock, card?: Pick<FileCardMeta, 'path' | 'origin' | 'change'>): { path: string; lines: ChangeLine[]; numbered: boolean } | null {
   const path = card?.path ?? text(arg(block, 'path'));
   // Where the file changed, as the core worked it out (line numbers, three unchanged lines around each change).
   if ((block.name === 'write_file' || block.name === 'edit_file') && card?.change?.hunks.length) return { path, numbered: true, lines: hunkLines(card.change) };
