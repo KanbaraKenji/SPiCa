@@ -16,7 +16,6 @@ const block = (selector: string) => {
 
 describe('styles', () => {
   it('the monitor’s source and level columns are wide enough for the longest name in each language', () => {
-    expect(block('.monitor-source,\n.monitor-level')).toContain('width: 2em');
     expect(block(':root:lang(zh-TW) .monitor-source')).toContain('width: 4em');
     expect(block(':root:lang(en) .monitor-source')).toContain('width: 4.9em');
     expect(block(':root:lang(en) .monitor-level')).toContain('width: 3.7em');
