@@ -345,7 +345,7 @@ describe('Plugins', () => {
     expect(partOf('笔记')).toBe('已启用');
   });
 
-  it('市场 without an official source says so and where it is set', async () => {
+  it('市场 without an official source (deploy.json "pluginSources": []): only the added ones, nothing said about it', async () => {
     const svc = new FakePluginService('D:/Spica/plugins');
     const none: PluginsApi = {
       run: async (cmd) => {
@@ -355,7 +355,9 @@ describe('Plugins', () => {
       onChanged: () => () => {},
     };
     render(<Plugins api={none} tab="market" />);
-    expect(await screen.findByText('没有配置官方来源。官方来源在打包时写进 deploy.json 的 pluginSources。')).toBeTruthy();
+    const list = await screen.findByRole('list', { name: '插件来源' });
+    expect(list.querySelector('.source-official')).toBeNull();
+    expect(screen.queryByText(/没有配置官方来源/)).toBeNull();
   });
 
   it('a plugin’s page: 更新到, its switch and 「…」 at the top right; 回退到 and 删除 in the 「…」 menu', async () => {

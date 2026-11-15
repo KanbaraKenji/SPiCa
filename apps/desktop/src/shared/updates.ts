@@ -2,6 +2,7 @@
 // source": a shared folder (\\server\share\spica) or an http(s) address that
 // holds what `npm run dist` produced (latest.yml + the installer) and, when an
 // administrator wants to say something, announcements.json.
+import { compareVersions as semverCompare } from '@spica/plugins/version';
 
 export type UpdateStatus = 'off' | 'idle' | 'checking' | 'latest' | 'downloading' | 'ready' | 'manual' | 'error';
 
@@ -18,6 +19,10 @@ export interface UpdateState {
   sourceFromDeploy: boolean;
   /** Portable copy: cannot replace itself; the user downloads the new one. */
   portable: boolean;
+  /** The source's channel.json says this version must update: the prompt stays, and it installs when idle. */
+  required?: boolean;
+  /** Installed plugins with a newer version in their sources, as the last check found. */
+  pluginUpdates?: number;
 }
 
 export interface Notice {
@@ -69,22 +74,32 @@ export function activeNotices(all: readonly Notice[], dismissed: readonly string
   });
 }
 
-/** -1, 0 or 1; plain x.y.z (pre-release tags sort before the release). */
+/** -1, 0 or 1, as semver orders them (pre-release parts compared one by one, numbers as numbers: rc.10 after rc.9). */
 export function compareVersions(a: string, b: string): number {
-  const parse = (v: string) => {
-    const [core = '', pre = ''] = v.trim().replace(/^v/, '').split('-', 2);
-    return { nums: core.split('.').map((x) => Number.parseInt(x, 10) || 0), pre };
-  };
-  const x = parse(a);
-  const y = parse(b);
-  for (let i = 0; i < 3; i++) {
-    const d = (x.nums[i] ?? 0) - (y.nums[i] ?? 0);
-    if (d) return d > 0 ? 1 : -1;
-  }
-  if (x.pre === y.pre) return 0;
-  if (!x.pre) return 1;
-  if (!y.pre) return -1;
-  return x.pre > y.pre ? 1 : -1;
+  const bare = (v: string) => v.trim().replace(/^v/, '');
+  return semverCompare(bare(a), bare(b));
+}
+
+/** What a source's channel.json says (the publisher edits it by hand; every field may be absent). */
+export interface ChannelInfo {
+  /** Versions below this one must update. */
+  required?: string;
+  /** The channel moved: everything it held is read from here from now on (https only). */
+  movedTo?: string;
+}
+
+const SEMVERISH = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
+
+/**
+ * channel.json: { "required": "0.2.0", "movedTo": "https://…/" }; anything else is ignored, so a wrong file never
+ * forces an update or moves the channel.
+ */
+export function parseChannel(raw: unknown): ChannelInfo {
+  const v = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const required = typeof v.required === 'string' && SEMVERISH.test(v.required.trim()) ? v.required.trim().replace(/^v/, '') : undefined;
+  const moved = typeof v.movedTo === 'string' ? v.movedTo.trim() : '';
+  const movedTo = /^https:\/\//i.test(moved) && URL.canParse(moved) ? (moved.endsWith('/') ? moved : `${moved}/`) : undefined;
+  return { ...(required ? { required } : {}), ...(movedTo ? { movedTo } : {}) };
 }
 
 /** The fields the updater needs from electron-builder's latest.yml. */
@@ -103,6 +118,8 @@ export function parseLatestYml(text: string): LatestInfo | undefined {
   const version = get('version');
   const path = get('path');
   const sha512 = get('sha512');
-  if (!version || !path || !sha512 || /[\\/]|\.\./.test(path)) return undefined;
+  if (!version || !path || !sha512) return undefined;
+  // A file next to latest.yml, or (the official channel) the full https address of the release's installer.
+  if (/^https:\/\//i.test(path) ? !URL.canParse(path) : /[\\/]|\.\./.test(path)) return undefined;
   return { version, path, sha512 };
 }

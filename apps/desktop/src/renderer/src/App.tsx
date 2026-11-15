@@ -29,6 +29,7 @@ import { openProviderNext } from './settings/Models';
 import type { PluginsTab } from './settings/Plugins';
 import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
+import { UpdateCard, UpdateRailButton, useUpdateNotice } from './shell/UpdateNotice';
 import { InboxView, type InboxProject } from './shell/InboxView';
 import type { UsageApi } from './settings/Usage';
 import { MonitorView } from './shell/MonitorView';
@@ -101,6 +102,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [deletingProject, setDeletingProject] = useState<null | { id: string; name: string }>(null);
   const [deletingChat, setDeletingChat] = useState<null | { id: string; name: string }>(null);
   const update = useUpdateState(bridge);
+  const updateNotice = useUpdateNotice(update);
   const backendState = useBackendState(bridge, agent);
   const installUpdate = () => void bridge.updates.run('install');
   // Whether any model is configured; checked at start and whenever settings close.
@@ -868,12 +870,26 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // The open conversation's name in the title bar: a click edits it, a right-click opens its menu.
   const named = view === 'chat' ? session : undefined;
 
+  // A downloaded update or plugins that can update: a card above the account row, an icon in the column of icons.
+  const openPluginUpdates = () => {
+    openSettings('plugins', 'installed');
+    setFloating(null);
+  };
   const sidebarToggle = <SidebarToggle shown={leftShown} onToggle={() => toggle('left')} />;
 
   // The sidebar, full (docked or over the window) or as the column of icons left when it is closed.
   const sidebarEl = (compact: boolean) => (
     <Sidebar
       compact={compact}
+      notice={
+        updateNotice ? (
+          compact ? (
+            <UpdateRailButton notice={updateNotice} onOpenSidebar={() => toggle('left')} onOpenPlugins={openPluginUpdates} />
+          ) : (
+            <UpdateCard notice={updateNotice} onInstall={installUpdate} onOpenPlugins={openPluginUpdates} />
+          )
+        ) : null
+      }
       sessions={sessions}
       activeId={state.activeId}
       onOpen={openSession}
@@ -997,14 +1013,12 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           )}
           {named && titleMenu ? <ContextMenu x={titleMenu.x} y={titleMenu.y} items={rowMenuItems(named, rowActions, () => setTitleEditing(named.id))} onClose={() => setTitleMenu(null)} /> : null}
         </div>
-        {/* Updates, announcements and backend recovery live in the title bar's free
-            space: nothing in the window is covered and nothing moves. */}
+        {/* Announcements and backend recovery live in the title bar's free space: nothing in the window is
+            covered and nothing moves. Updates are in the side bar. */}
         <NoticeBar
           backend={backendState}
           onRetryBackend={() => bridge.backend.retry()}
-          update={update}
           settings={settings}
-          onInstall={installUpdate}
           onDismissNotice={(nid) => shell.update({ dismissedNotices: [...settings.dismissedNotices, nid] })}
         />
         <div className="titlebar-right">

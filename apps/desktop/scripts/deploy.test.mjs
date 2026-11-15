@@ -2,8 +2,9 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_APP, readDeploy } from './deploy.mjs';
-import { builderOverrides } from './dist.mjs';
+import { DEFAULT_APP, OFFICIAL_CHANNEL, readDeploy } from './deploy.mjs';
+import { builderOverrides, sourceLines } from './dist.mjs';
+import { OFFICIAL_APP_ID, OFFICIAL_CHANNEL as APP_CHANNEL } from '../src/main/update/channel';
 
 const dirWith = (json, files = {}) => {
   const dir = mkdtempSync(join(tmpdir(), 'spica-deploy-'));
@@ -25,6 +26,8 @@ describe('deploy.json', () => {
     const example = readFileSync(new URL('../deploy.example.json', import.meta.url), 'utf8');
     const d = readDeploy(dirWith(example));
     expect(d.app).toMatchObject({ ...DEFAULT_APP, icon: null, font: null });
+    expect(d.updateSource).toBeNull();
+    expect(d.pluginSources).toBeNull();
     expect(builderOverrides(d.app, '1.0.0')).toEqual([]);
     const filled = JSON.parse(example);
     filled.app = { ...filled.app, name: 'Nova Desk', id: 'com.example.nova' };
@@ -78,9 +81,10 @@ describe('deploy.json', () => {
     expect(message).toContain('第 2 个连接（gw）的第 1 个型号（m）：contextWindow 要写正整数');
   });
 
-  it('pluginSources: none means none; a place or { location, label }; a wrong one stops the packaging', () => {
-    expect(readDeploy(dirWith({})).pluginSources).toEqual([]);
-    expect(readDeploy(dirWith(undefined)).pluginSources).toEqual([]);
+  it('pluginSources: absent is null (the official channel), [] is none; a place or { location, label }; a wrong one stops the packaging', () => {
+    expect(readDeploy(dirWith({})).pluginSources).toBeNull();
+    expect(readDeploy(dirWith(undefined)).pluginSources).toBeNull();
+    expect(readDeploy(dirWith({ pluginSources: [] })).pluginSources).toEqual([]);
     expect(readDeploy(dirWith({ pluginSources: ['https://plugins.example.com/index.json', { location: ' \\\\server\\plugins ', label: ' 团队插件 ' }] })).pluginSources).toEqual([
       { location: 'https://plugins.example.com/index.json' },
       { location: '\\\\server\\plugins', label: '团队插件' },
@@ -89,5 +93,29 @@ describe('deploy.json', () => {
     expect(() => readDeploy(dirWith({ pluginSources: ['plugins'] }))).toThrow(/第 1 项「plugins」不能用/);
     expect(() => readDeploy(dirWith({ pluginSources: [{ label: 'x' }] }))).toThrow(/第 1 项要写地址/);
     expect(() => readDeploy(dirWith({ pluginSources: ['https://plugins.example.com/a-1.0.0.zip'] }))).toThrow(/单个插件包/);
+  });
+
+  it('updateSource: absent is null (the official channel), "" is no checks, a place as before; a wrong one stops the packaging', () => {
+    expect(readDeploy(dirWith({})).updateSource).toBeNull();
+    expect(readDeploy(dirWith(undefined)).updateSource).toBeNull();
+    expect(readDeploy(dirWith({ updateSource: '' })).updateSource).toBe('');
+    expect(readDeploy(dirWith({ updateSource: ' https://updates.example.com/nova/ ' })).updateSource).toBe('https://updates.example.com/nova/');
+    expect(() => readDeploy(dirWith({ updateSource: 'updates' }))).toThrow(/updateSource「updates」不能用/);
+    expect(() => readDeploy(dirWith({ updateSource: 3 }))).toThrow(/要写成地址/);
+  });
+
+  it('a renamed build cannot take updates from the official channel', () => {
+    const nova = { name: 'Nova Desk', id: 'com.example.nova' };
+    expect(() => readDeploy(dirWith({ app: nova, updateSource: OFFICIAL_CHANNEL }))).toThrow(/不能是 Spica 的官方地址/);
+    expect(() => readDeploy(dirWith({ app: nova, updateSource: OFFICIAL_CHANNEL.replace(/\/$/, '').toUpperCase() }))).toThrow(/官方地址/);
+    expect(readDeploy(dirWith({ app: nova, pluginSources: [`${OFFICIAL_CHANNEL}index.json`] })).pluginSources).toEqual([{ location: `${OFFICIAL_CHANNEL}index.json` }]);
+  });
+
+  it('the packaging says where the app will look; the address is the one the app uses', () => {
+    expect(OFFICIAL_CHANNEL).toBe(APP_CHANNEL);
+    expect(DEFAULT_APP.id).toBe(OFFICIAL_APP_ID);
+    expect(sourceLines(readDeploy(dirWith(undefined)))).toEqual([`updates: official channel ${OFFICIAL_CHANNEL}`, `official plugins: official channel ${OFFICIAL_CHANNEL}index.json`]);
+    expect(sourceLines(readDeploy(dirWith({ updateSource: '', pluginSources: [] })))).toEqual(['updates: none', 'official plugins: none']);
+    expect(sourceLines(readDeploy(dirWith({ app: { name: 'Nova Desk', id: 'com.example.nova' } })))).toEqual(['updates: none (not in deploy.json)', `official plugins: official channel ${OFFICIAL_CHANNEL}index.json`]);
   });
 });

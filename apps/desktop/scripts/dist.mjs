@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_APP, readDeploy } from './deploy.mjs';
+import { DEFAULT_APP, OFFICIAL_CHANNEL, readDeploy } from './deploy.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(join(root, 'package.json'));
@@ -38,6 +38,19 @@ function packageDir(name) {
   return dir;
 }
 
+/** Where the packaged app will look for updates and official plugins, as the app decides it (src/main/update/channel.ts). */
+export function sourceLines(deploy) {
+  const official = deploy.app.id === DEFAULT_APP.id;
+  const update = deploy.updateSource === null ? (official ? `official channel ${OFFICIAL_CHANNEL}` : 'none (not in deploy.json)') : deploy.updateSource || 'none';
+  const plugins =
+    deploy.pluginSources === null
+      ? `official channel ${OFFICIAL_CHANNEL}index.json`
+      : deploy.pluginSources.length
+        ? deploy.pluginSources.map((s) => s.location).join(', ')
+        : 'none';
+  return [`updates: ${update}`, `official plugins: ${plugins}`];
+}
+
 function run(cmd, args) {
   const r = spawnSync(process.execPath, [cmd, ...args], { cwd: root, stdio: 'inherit' });
   if (r.status !== 0) process.exit(r.status ?? 1);
@@ -54,6 +67,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   const extra = builderOverrides(deploy.app, version);
   console.log(`[dist] ${deploy.app.name} (${deploy.app.id})${deploy.file ? ' from deploy.json' : ''}`);
+  for (const line of sourceLines(deploy)) console.log(`[dist] ${line}`);
   run(join(packageDir('electron-vite'), 'bin', 'electron-vite.js'), ['build']);
   run(join(packageDir('electron-builder'), 'cli.js'), ['--win', '--publish', 'never', ...extra]);
 }

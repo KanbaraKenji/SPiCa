@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 const show = (update: UpdateState | null, onCheck = vi.fn()) => {
-  render(<About version="0.1.0" update={update} ownSource="" onSource={vi.fn()} onCheck={onCheck} onInstall={vi.fn()} />);
+  render(<About version="0.1.0" update={update} ownSource="" onSource={vi.fn()} onCheck={onCheck} onInstall={vi.fn()} whenIdle={false} onWhenIdle={vi.fn()} />);
   return onCheck;
 };
 const base = { current: '0.1.0', source: '', sourceFromDeploy: false, portable: false };
@@ -46,10 +46,24 @@ describe('关于 › 检查更新', () => {
   });
 });
 
+describe('关于 › 空闲时更新', () => {
+  it('a switch, off as given, that says when it is turned on; not in a portable copy', () => {
+    const onWhenIdle = vi.fn();
+    render(<About version="0.1.0" update={{ ...base, source: 'D:/更新', status: 'idle' }} ownSource="" onSource={vi.fn()} onCheck={vi.fn()} onInstall={vi.fn()} whenIdle={false} onWhenIdle={onWhenIdle} />);
+    const sw = screen.getByRole('switch', { name: '空闲时更新' });
+    expect(sw.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(sw);
+    expect(onWhenIdle).toHaveBeenCalledWith(true);
+    cleanup();
+    show({ ...base, source: 'D:/更新', status: 'idle', portable: true });
+    expect(screen.queryByRole('switch', { name: '空闲时更新' })).toBeNull();
+  });
+});
+
 describe('关于 › the version switches the 监控台', () => {
   const setup = (on: boolean) => {
     const onToggle = vi.fn();
-    render(<About version="0.1.0" update={null} ownSource="" onSource={vi.fn()} onCheck={vi.fn()} onInstall={vi.fn()} monitor={{ on, onToggle }} />);
+    render(<About version="0.1.0" update={null} ownSource="" onSource={vi.fn()} onCheck={vi.fn()} onInstall={vi.fn()} whenIdle={false} onWhenIdle={vi.fn()} monitor={{ on, onToggle }} />);
     return { onToggle, version: screen.getByText('Spica 0.1.0') };
   };
 

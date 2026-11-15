@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activeNotices, compareVersions, parseLatestYml, parseNotices } from './updates';
+import { activeNotices, compareVersions, parseChannel, parseLatestYml, parseNotices } from './updates';
 
 describe('compareVersions', () => {
   it('orders x.y.z and puts pre-releases first', () => {
@@ -8,6 +8,14 @@ describe('compareVersions', () => {
     expect(compareVersions('1.0.0', '1.0.0')).toBe(0);
     expect(compareVersions('1.0.0-beta.1', '1.0.0')).toBe(-1);
     expect(compareVersions('v1.2.3', '1.2.3')).toBe(0);
+  });
+
+  it('compares pre-release parts one by one, numbers as numbers', () => {
+    expect(compareVersions('0.2.0-rc.10', '0.2.0-rc.9')).toBe(1);
+    expect(compareVersions('0.2.0-rc.9', '0.2.0-rc.10')).toBe(-1);
+    expect(compareVersions('0.2.0-rc.3', '0.2.0-rc.3')).toBe(0);
+    expect(compareVersions('0.2.0-rc.3', '0.2.0')).toBe(-1);
+    expect(compareVersions('0.2.0-beta.2', '0.2.0-rc.1')).toBe(-1);
   });
 });
 
@@ -51,5 +59,28 @@ describe('notices', () => {
   it('shows what is in its time window and not closed', () => {
     const n = parseNotices(file);
     expect(activeNotices(n, ['b'], new Date('2026-11-09T12:00:00Z')).map((x) => x.id)).toEqual(['a', 'e']);
+  });
+});
+
+describe('parseChannel', () => {
+  it('reads "required" when it is a version; anything else is nothing', () => {
+    expect(parseChannel({ required: '0.2.0-rc.4' })).toEqual({ required: '0.2.0-rc.4' });
+    expect(parseChannel({ required: ' v1.0.0 ' })).toEqual({ required: '1.0.0' });
+    for (const bad of [null, [], 'x', {}, { required: null }, { required: 'soon' }, { required: 2 }]) expect(parseChannel(bad)).toEqual({});
+  });
+
+  it('reads "movedTo" only as an https address, with the slash at the end', () => {
+    expect(parseChannel({ movedTo: ' https://spica.example.com/channel ' })).toEqual({ movedTo: 'https://spica.example.com/channel/' });
+    expect(parseChannel({ movedTo: 'https://spica.example.com/channel/', required: '1.0.0' })).toEqual({ movedTo: 'https://spica.example.com/channel/', required: '1.0.0' });
+    for (const bad of ['http://spica.example.com/', '\\\\server\\share', 'D:/x', 'https://', '', 3]) expect(parseChannel({ movedTo: bad })).toEqual({});
+  });
+});
+
+describe('parseLatestYml with a full address', () => {
+  const yml = (path: string) => ['version: 1.0.0', `path: ${path}`, 'sha512: x'].join('\n');
+  it('takes an https address as the path, but no other kind of path', () => {
+    expect(parseLatestYml(yml('https://example.invalid/v1.0.0/Spica-Setup-1.0.0.exe'))?.path).toBe('https://example.invalid/v1.0.0/Spica-Setup-1.0.0.exe');
+    expect(parseLatestYml(yml('../Spica-Setup-1.0.0.exe'))).toBeUndefined();
+    expect(parseLatestYml(yml('http://example.invalid/a.exe'))).toBeUndefined();
   });
 });

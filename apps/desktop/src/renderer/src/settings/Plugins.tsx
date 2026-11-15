@@ -900,8 +900,6 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
             </>
           ) : (
             <nav className="plugins-list" aria-label="插件列表">
-              {/* No official source in this build: said, with where it is set, so an empty list does not look broken. */}
-              {state !== null && !sources.some((x) => x.official) ? <p className="settings-hint sources-no-official">没有配置官方来源。官方来源在打包时写进 deploy.json 的 pluginSources。</p> : null}
               {state !== null && sources.length === 0 && single.length === 0 ? <p className="settings-hint plugins-empty">没有插件来源</p> : null}
               {/* By source (the official ones first, as they are listed): its name, how it went, 检查更新 and 移除 on its
                   title line, then what it offers as cards. */}
