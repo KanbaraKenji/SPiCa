@@ -18,7 +18,7 @@ import { effectiveAccount, mailForCore, networkForCore, type ShellSettings } fro
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, SaveCsvResult, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import { APP_IDENTITY } from '../shared/app-identity';
-import { coreKind, devConnectionName, secretLabel, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderView } from '../shared/providers';
+import { coreKind, devConnectionName, secretLabel, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderSpendView, type ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
@@ -52,6 +52,7 @@ import {
   BUILTIN_CATALOG,
   DEFAULT_PRICES,
   effectiveCatalog,
+  periodBounds,
   type BudgetConfig,
   type CatalogPreset,
   type HostConnectionDraft,
@@ -348,33 +349,45 @@ const providers = new ProviderStore(
 );
 
 /**
- * Each saved provider's 花费上限 as the core takes it: what it may cost since its last 清零 (the core still counts from
- * the first call and leaves out `sinceUsd`, what it had cost then: ProviderStore.spendBase), and its name for the
- * stop's one sentence, so the stop, the monitor and the settings read the same numbers.
+ * Each saved provider's 花费上限 as the core takes it: the amount for a period (fixed periods of its days from when the
+ * limit was set; the core adds up what the provider spent in the current one from its request log), and its name for
+ * the stop's one sentence, so the stop, the monitor and the settings read the same numbers.
  */
 function providerBudget(): BudgetConfig {
-  const perProvider: Record<string, { globalUsd: number; sinceUsd: number; label: string }> = {};
-  for (const p of providers.list()) if (p.spendLimitUsd) perProvider[p.id] = { globalUsd: p.spendLimitUsd, sinceUsd: providers.spendBase(p.id), label: p.name };
+  const perProvider: Record<string, { globalUsd: number; period: { days: number; fromMs: number }; label: string }> = {};
+  for (const p of providers.list()) {
+    const l = providers.spendLimit(p.id);
+    if (l) perProvider[p.id] = { globalUsd: l.usd, period: { days: l.days, fromMs: l.fromMs }, label: p.name };
+  }
   return Object.keys(perProvider).length ? { perProvider } : {};
 }
 
-/** What each saved provider has cost in all (the core's records; the demo's own count). */
-async function providerTotals(): Promise<Record<string, number>> {
-  const ids = providers.list().map((p) => p.id);
-  if (backend instanceof ProcessBackend) return backend.providerSpend(ids).catch(() => ({}));
-  if (backend instanceof FakeBackend) {
-    const b = backend;
-    return Object.fromEntries(ids.map((id) => [id, b.spentUsd()]));
+/**
+ * What each saved provider with a 花费上限 spent in its current period, and its requests without a price there (not
+ * counted): added up from the request log, as the core does for the stop. The demo counts its own calls.
+ */
+async function providerSpend(): Promise<Record<string, ProviderSpendView>> {
+  const out: Record<string, ProviderSpendView> = {};
+  const now = Date.now();
+  for (const p of providers.list()) {
+    const l = providers.spendLimit(p.id);
+    if (!l) continue;
+    const { startMs, endMs } = periodBounds({ days: l.days, fromMs: l.fromMs }, now);
+    const query = { from: new Date(startMs).toISOString(), to: new Date(now).toISOString(), bucket: 'day' as const };
+    const summary = backend instanceof ProcessBackend || backend instanceof FakeBackend ? await backend.usageSummary(query).catch(() => null) : null;
+    // the demo's records are its own provider ('fake'): they stand for whichever provider is set up
+    const rows = summary?.rows.filter((r) => r.providerId === (backend instanceof FakeBackend ? 'fake' : p.id)) ?? [];
+    out[p.id] = { spentUsd: rows.reduce((a, r) => a + r.costUsd, 0), unpricedRequests: rows.reduce((a, r) => a + (r.unpricedRequests ?? 0), 0), startMs, endMs };
   }
-  return {};
+  return out;
 }
 
 /** The demo backend has one provider: the default one's 花费上限. */
 function applyDemoSpendLimit(): void {
   if (!(backend instanceof FakeBackend)) return;
   const id = providers.defaultRef()?.connectionId ?? null;
-  const p = id ? providers.list().find((x) => x.id === id) : undefined;
-  backend.setSpendLimit(id, p?.spendLimitUsd ?? null, p ? providers.spendBase(p.id) : 0, p?.name);
+  const l = id ? providers.spendLimit(id) : null;
+  backend.setSpendLimit(id, l, providers.list().find((x) => x.id === id)?.name);
 }
 applyDemoSpendLimit();
 // Screenshots and tests never touch the network; a normal run really calls the model.
@@ -1594,17 +1607,8 @@ ipcMain.handle(DesktopChannel.KnownContextWindow, async (_e, kind: ProviderKind,
   return fromCatalog ?? knownContextWindow(DEFAULT_PRICES, coreKind(kind), name);
 });
 ipcMain.handle(DesktopChannel.ModelCatalog, () => modelCatalog());
-// 已花: what each saved provider has cost since its last 清零
-ipcMain.handle(DesktopChannel.ProviderSpend, async (): Promise<Record<string, number>> => {
-  const totals = await providerTotals();
-  return Object.fromEntries(providers.list().map((p) => [p.id, Math.max(0, (totals[p.id] ?? 0) - providers.spendBase(p.id))]));
-});
-// 清零: 已花 counts from now; the limit the core gets moves with it
-ipcMain.handle(DesktopChannel.ResetProviderSpend, async (_e, id: string): Promise<void> => {
-  const totals = await providerTotals();
-  providers.resetSpend(String(id), totals[String(id)] ?? 0);
-  applyProviders();
-});
+// 本周期已花: what each provider with a 花费上限 spent in its current period
+ipcMain.handle(DesktopChannel.ProviderSpend, (): Promise<Record<string, ProviderSpendView>> => providerSpend());
 ipcMain.handle(DesktopChannel.MatchContextWindow, async (_e, kind: ProviderKind, model: string, catalogId?: string | null): Promise<WindowMatch | null> => {
   const name = String(model ?? '').trim();
   if (!name) return null;

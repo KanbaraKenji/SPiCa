@@ -279,7 +279,8 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
                   setSelected((s) => (s === e.seq ? null : e.seq));
                 }}
               >
-                <span className="monitor-time">{clockOf(e.at)}</span>
+                {/* to the second in the narrow panel; the milliseconds are in the line opened below */}
+                <span className="monitor-time">{clockOf(e.at).slice(0, 8)}</span>
                 <span className="monitor-source">{MONITOR_SOURCES.find(([s]) => s === e.source)?.[1]}</span>
                 <span className="monitor-level">{MONITOR_LEVELS.find(([l]) => l === e.level)?.[1]}</span>
                 <span className="monitor-text">{e.text}</span>

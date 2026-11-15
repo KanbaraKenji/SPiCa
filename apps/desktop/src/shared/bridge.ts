@@ -3,7 +3,7 @@
 import type { AgentApi, ContextBreakdown, CoreEvent, SpicaBridge, UsageQuery, UsageSummary } from '@spica/protocol';
 import type { WindowCover } from './skin';
 import type { AutostartSupport, SettingsPatch, ShellSettings } from './settings';
-import type { ModelRef, ProviderDraft, ProviderKind, ProviderView, TestResult } from './providers';
+import type { ModelRef, ProviderDraft, ProviderKind, ProviderSpendView, ProviderView, TestResult } from './providers';
 import type { ListModelsView, ModelCatalogView, WindowMatch } from './catalog';
 import type { PluginsCommand, PluginsProgress, PluginsResult } from './plugins';
 import type { UpdateState } from './updates';
@@ -227,10 +227,8 @@ export interface DesktopBridge extends SpicaBridge {
     listModels(draft: ProviderDraft): Promise<ListModelsView>;
     /** A model name matched to the catalog (for its 上下文上限), or null. */
     matchWindow(kind: ProviderKind, model: string, catalogId?: string | null): Promise<WindowMatch | null>;
-    /** 已花 of each saved provider (USD, since its last 清零). */
-    spend(): Promise<Record<string, number>>;
-    /** 清零 one provider's 已花. */
-    resetSpend(id: string): Promise<void>;
+    /** 本周期已花 of each provider with a 花费上限. */
+    spend(): Promise<Record<string, ProviderSpendView>>;
     /** The models changed somewhere else (a connected script through the MCP service). */
     onChanged(listener: () => void): () => void;
   };

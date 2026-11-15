@@ -44,6 +44,8 @@ export const DEMO_MODELS: readonly DemoModel[] = [
   { providerId: 'anthropic', model: 'claude-sonnet-4-5', daily: 18, price: [3, 15] },
   { providerId: 'anthropic', model: 'claude-haiku-4-5', daily: 9, price: [1, 5] },
   { providerId: 'gateway', model: 'gateway-model', daily: 7, price: null },
+  // the same model name through another provider (the hover card tells them apart)
+  { providerId: 'gateway', model: 'deepseek-chat', daily: 5, price: null },
 ];
 
 /** Days with a burst of 429 answers (days before `now`) and the model that got them. */
@@ -71,7 +73,7 @@ export function fakeRequests(now: Date, days = 14): RequestRecord[] {
         const t = dayStart + Math.min(DAY - 60_000, hour * 3_600_000 + rand() * 60_000);
         if (t > end) continue;
         const traceId = `tr_demo${++n}`;
-        const base = { traceId, sessionId: rand() < 0.85 ? 's_demo' : null, initiator: rand() < 0.9 ? 'model' : 'runtime:memory-tidy', providerId: m.providerId, model: m.model } as const;
+        const base = { traceId, sessionId: rand() < 0.85 ? 's_demo' : null, initiator: demoInitiator(rand()), providerId: m.providerId, model: m.model } as const;
         let at = t;
         let attempt = 1;
         // a burst: one to three 429 answers before it goes through (sometimes it never does)
@@ -114,4 +116,9 @@ export function fakeRequests(now: Date, days = 14): RequestRecord[] {
     }
   }
   return out.sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
+}
+
+/** Who started a made-up request: mostly conversations, some memory tidying, a plugin borrowing the model, a test. */
+function demoInitiator(r: number): string {
+  return r < 0.8 ? 'model' : r < 0.9 ? 'runtime:memory-tidy' : r < 0.98 ? 'plugin:notes' : 'runtime:probe';
 }

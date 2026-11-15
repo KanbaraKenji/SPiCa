@@ -567,29 +567,37 @@ describe('FakeBackend', () => {
 });
 
 describe('spending as the core counts it (a provider’s 花费上限, 未计价, 欠费)', () => {
-  it('no limit by default; a limit on all the provider has cost stops the next call once it is reached, over conversations; a model without a price never stops', async () => {
+  it('no limit by default; a limit for a period stops the next call once what was spent in it is reached, over conversations, and says when it starts again; a model without a price never stops', async () => {
     const b = new FakeBackend({ speed: 0, seed: false });
     const { events, until } = collect(b);
     const chat = await b.createSession({});
     await b.send(chat.id, '花费上限 试一下');
     await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
     expect(events.some((e) => e.type === 'budget.stop')).toBe(false);
-    const before = b.spentUsd();
+    const before = b.spentSince(0);
     expect(before).toBeGreaterThan(1);
 
-    // each call costs about 0.85: the first goes (under the limit), the second finds it reached
-    b.setSpendLimit('p-1', before + 0.5);
+    // a period set before those calls: they count; each call costs about 0.85, the first goes, the second finds it reached
+    const fromMs = Date.now() - 60_000;
+    b.setSpendLimit('p-1', { usd: before + 0.5, days: 7, fromMs }, 'DeepSeek');
     events.length = 0;
     const next = await b.createSession({});
     await b.send(next.id, '花费上限 再来');
     expect(await until((e) => e.type === 'run.end' && e.sessionId === next.id)).toMatchObject({ reason: 'budget' });
     const stop = events.find((e) => e.type === 'budget.stop');
-    expect(stop).toMatchObject({ scope: 'p-1:global', limitUsd: before + 0.5 });
+    expect(stop).toMatchObject({ scope: 'p-1:global', limitUsd: before + 0.5, periodDays: 7, resetAt: new Date(fromMs + 7 * 86_400_000).toISOString() });
     if (stop?.type !== 'budget.stop') throw new Error('no stop');
     expect(stop.spentUsd).toBeGreaterThanOrEqual(before + 0.5);
+    expect(stop.message).toMatch(/^spending limit reached: DeepSeek spent US\$[\d.]+ of US\$[\d.]+ in 7 days \(again from \d{4}-\d\d-\d\d \d\d:\d\d\)$/);
+    // a period that starts now: nothing spent in it yet
+    b.setSpendLimit('p-1', { usd: before + 0.5, days: 7, fromMs: Date.now() + 1 });
+    events.length = 0;
+    const third = await b.createSession({});
+    await b.send(third.id, '你好');
+    expect(await until((e) => e.type === 'run.end' && e.sessionId === third.id)).toMatchObject({ reason: 'completed' });
 
     events.length = 0;
-    b.setSpendLimit('p-1', 0.0001);
+    b.setSpendLimit('p-1', { usd: 0.0001, days: 30, fromMs: 0 });
     const gw = await b.createSession({});
     await b.send(gw.id, '未计价 公司网关');
     expect(await until((e) => e.type === 'run.end' && e.sessionId === gw.id)).toMatchObject({ reason: 'completed' });
@@ -710,5 +718,19 @@ describe('the demo request log (设置 › 用量, the monitor)', () => {
     expect(e.type === 'request' && e.record).toMatchObject({ sessionId: info.id, status: 'ok', providerId: 'fake', attempt: 1 });
     expect((await b.recentRequests(10)).length).toBeGreaterThan(0);
     b.dispose();
+  });
+});
+
+describe('a long run for screenshots (「21 次调用 3 个文件」)', () => {
+  it('makes that many calls in all, some failing, and writes the files (with the one read first, that many)', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const { events, until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '演示 21 次调用 3 个文件');
+    await until((e) => e.type === 'run.end' && e.sessionId === chat.id);
+    const starts = events.filter((e) => e.type === 'tool.start');
+    expect(starts).toHaveLength(21);
+    expect(events.filter((e) => e.type === 'tool.end' && e.isError).length).toBeGreaterThan(0);
+    expect(starts.filter((e) => e.type === 'tool.start' && e.name === 'write_file')).toHaveLength(2);
   });
 });

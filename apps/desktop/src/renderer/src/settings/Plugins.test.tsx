@@ -7,7 +7,7 @@ import type { PluginView as PageView } from '../../../shared/plugin-view';
 import { DEMO_READ_AT, FakePluginService } from '../../../main/plugins/fake';
 import { dropAllDrafts } from './drafts';
 import { DEFAULT_SETTINGS } from '../../../shared/settings';
-import type { PluginsProgress, PluginsState, PluginView } from '../../../shared/plugins';
+import type { PluginsCommand, PluginsProgress, PluginsState, PluginView } from '../../../shared/plugins';
 
 afterEach(() => {
   cleanup();
@@ -457,53 +457,26 @@ describe('Plugins', () => {
     await waitFor(() => expect(within(list()).queryByRole('button', { name: /笔记/ })).toBeNull());
   });
 
-  it('today’s spending says 未计价 for calls of a model without a price, never 0 (「+ 未计价」 beside what was counted)', async () => {
-    const unpriced = (spent: number) => apiWith((ps) => ps.map((p) => (p.model ? { ...p, model: { ...p.model, spentTodayUsd: spent, unpricedToday: true as const } } : p)));
-    render(<Plugins api={unpriced(0)} />);
-    let card = await open('笔记', '笔记（示例）');
-    expect(within(card).getByText(/今日 未计价$/)).toBeTruthy();
-    cleanup();
-    render(<Plugins api={unpriced(0.03)} />);
-    card = await open('笔记', '笔记（示例）');
-    expect(within(card).getByText(/今日 \$0\.03 \+ 未计价$/)).toBeTruthy();
-  });
-
-  it('a plugin that uses models says so, with its reason, today’s spending and a limit to lower', async () => {
-    render(<Plugins api={api()} />);
-    const card = await open('笔记', '笔记（示例）');
-    expect(within(card).getByText(/使用模型 · 每日上限 \$0\.20/)).toBeTruthy();
-    expect(within(card).getByText(/今日 \$0\.03/)).toBeTruthy();
-    expect(within(card).getByText('用途：把一篇长笔记缩成几句话时，要用模型。')).toBeTruthy();
-    const input = within(card).getByLabelText('「笔记（示例）」每日上限（美元）');
-    fireEvent.change(input, { target: { value: '0.5' } });
-    expect(within(card).getByText('不能高于 $0.20')).toBeTruthy();
-    expect((within(card).getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(input, { target: { value: '0.1' } });
-    fireEvent.click(within(card).getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(within(card).getByText(/使用模型 · 每日上限 \$0\.10/)).toBeTruthy());
-    fireEvent.click(within(card).getByRole('button', { name: '恢复默认（$0.20）' }));
-    await waitFor(() => expect(within(card).getByText(/使用模型 · 每日上限 \$0\.20/)).toBeTruthy());
-    fireEvent.click(within(card).getByRole('button', { name: '禁止使用模型' }));
-    await waitFor(() => expect(within(card).getByText('使用模型 · 已禁止')).toBeTruthy());
-  });
-});
-
-describe('daily limit typed but not saved', () => {
-  it('says 未保存, and is still there after leaving the page and coming back', async () => {
+  it('a plugin that uses models: one row 使用模型 with a switch and its reason; no daily limit, no spending', async () => {
     const a = api();
-    const first = render(<Plugins api={a} />);
-    await open('笔记', '笔记（示例）');
-    const input = screen.getByLabelText('「笔记（示例）」每日上限（美元）') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: '0.05' } });
-    expect(within(screen.getByRole('region', { name: '笔记（示例）' })).getByText('未保存')).toBeTruthy();
-    first.unmount();
+    const sent: PluginsCommand[] = [];
+    const run = a.run.bind(a);
+    a.run = (cmd) => (sent.push(cmd), run(cmd));
     render(<Plugins api={a} />);
-    await open('笔记', '笔记（示例）');
-    expect((screen.getByLabelText('「笔记（示例）」每日上限（美元）') as HTMLInputElement).value).toBe('0.05');
-    // Saved: the draft is gone, the field shows what is saved.
-    fireEvent.click(within(screen.getByRole('region', { name: '笔记（示例）' })).getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(screen.getByText(/使用模型 · 每日上限 \$0\.05/)).toBeTruthy());
-    expect(screen.queryByText('未保存')).toBeNull();
+    const card = await open('笔记', '笔记（示例）');
+    const row = card.querySelector('.plugin-model [data-setting="使用模型"]') as HTMLElement;
+    expect(row).toBeTruthy();
+    expect(within(row).getByText('用途：把一篇长笔记缩成几句话时，要用模型。')).toBeTruthy();
+    const sw = within(row).getByRole('switch', { name: '使用模型' });
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    expect(card.textContent).not.toMatch(/每日上限|今日|美元|恢复默认/);
+    expect(within(card).queryByRole('button', { name: '保存' })).toBeNull();
+    fireEvent.click(sw);
+    await waitFor(() => expect(within(row).getByRole('switch', { name: '使用模型' }).getAttribute('aria-checked')).toBe('false'));
+    expect(sent.at(-1)).toEqual({ op: 'modelAllowed', name: 'notes', allowed: false });
+    fireEvent.click(within(row).getByRole('switch', { name: '使用模型' }));
+    await waitFor(() => expect(within(row).getByRole('switch', { name: '使用模型' }).getAttribute('aria-checked')).toBe('true'));
+    expect(sent.at(-1)).toEqual({ op: 'modelAllowed', name: 'notes', allowed: true });
   });
 });
 

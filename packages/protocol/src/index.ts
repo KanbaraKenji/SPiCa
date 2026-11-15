@@ -628,7 +628,7 @@ export type CoreEventBody =
   /** Running totals; `warning` when a total passes the warning threshold of its limit. `unpriced`: calls without a known price were made in this total and are not in spentUsd. */
   | { type: 'cost'; scope: CostScopeName; spentUsd: number; limitUsd?: number; warning: boolean; unpriced?: true }
   /** A spending limit stopped the run: the next call (up to nextUsd at worst) was not started. */
-  | { type: 'budget.stop'; scope: string; spentUsd: number; limitUsd: number; nextUsd?: number; message: string }
+  | { type: 'budget.stop'; scope: string; spentUsd: number; limitUsd: number; nextUsd?: number; message: string; /** A provider's limit for a period: its length, and when the next one starts (ISO). */ periodDays?: number; resetAt?: string }
   /** A traceable external request finished. */
   | { type: 'trace'; record: TraceRecord }
   /** One HTTP request to a model finished (every attempt, retried ones included). Sent on the call's session, or '' for none. */
@@ -1095,11 +1095,31 @@ export interface UsageRow {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /**
+   * Prompt tokens not served from the cache, of the requests whose provider reported cache numbers (Anthropic's
+   * input_tokens; an OpenAI-style prompt_tokens less its cached part).
+   */
+  cacheMissTokens?: number;
+  /** Prompt tokens of the requests whose provider reported no cache numbers at all (hit or miss unknown). */
+  unreportedInputTokens?: number;
   costUsd: number;
   /** Requests of a model without a known price were made in it (not in costUsd). */
   unpriced?: true;
   /** How many of them (0 when none). */
   unpricedRequests?: number;
+  /**
+   * The same split by who started the requests (RequestRecord.initiator: "model" a conversation,
+   * "runtime:memory-tidy", "runtime:probe", "plugin:<id>", ...): requests, 429 answers, and all their tokens
+   * (cache reads and writes, the rest of the input, output).
+   */
+  byInitiator?: Record<string, InitiatorUsage>;
+}
+
+/** One initiator's part of a UsageRow. */
+export interface InitiatorUsage {
+  requests: number;
+  rateLimited: number;
+  tokens: number;
 }
 
 export interface UsageQuery {
@@ -1116,7 +1136,7 @@ export interface UsageSummary {
   since: string | null;
   query: UsageQuery;
   rows: UsageRow[];
-  /** The 429 answers in the range, newest first (at most 200). */
+  /** The 429 answers in the range, newest first (at most 200 of each model). */
   rateLimited: RequestRecord[];
   /** Names for the provider ids in it, when the one asking knows them (the desktop app: its connections' names). */
   providerNames?: Record<string, string>;

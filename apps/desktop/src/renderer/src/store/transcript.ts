@@ -889,7 +889,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       return t;
     }
     case 'budget.stop': {
-      t.error = budgetStopWords();
+      t.error = budgetStopWords(e.periodDays, e.resetAt);
       t.errorAction = 'models';
       // 「<providerId>:global」: that provider's 花费上限 (other scopes come from scripts' limits)
       const provider = e.scope.slice(0, e.scope.lastIndexOf(':'));
@@ -901,9 +901,15 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
   }
 }
 
-/** A spending limit stopped the run: one short line (the amounts are in 设置 › 模型), a button opens it. */
-export function budgetStopWords(): string {
-  return '已达花费上限';
+/**
+ * A spending limit stopped the run: one short line, which period it was and when calls go again (the amounts are in
+ * 设置 › 模型, a button opens it): 「已达 7 天花费上限，11/20 14:05 恢复」.
+ */
+export function budgetStopWords(periodDays?: number, resetAt?: string): string {
+  const at = resetAt ? new Date(resetAt) : null;
+  if (!periodDays || !at || Number.isNaN(at.getTime())) return '已达花费上限';
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `已达 ${periodDays} 天花费上限，${at.getMonth() + 1}/${at.getDate()} ${p(at.getHours())}:${p(at.getMinutes())} 恢复`;
 }
 
 /** An error as the conversation shows it; the provider's account out of money also gets the button to 设置 › 模型. */

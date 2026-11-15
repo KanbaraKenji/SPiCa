@@ -17,8 +17,8 @@ off and no `catalogUrl` in the data folder's `config.json`, `search_catalog` exp
 the service is not configured and suggests mock mode.
 
 `summarize_note` asks the model the user has set up in Spica for a summary (MCP sampling).
-The manifest asks for it in `permissions.model` with a reason and a daily limit of 0.1 USD;
-the plugin has no key of its own, and Spica refuses once the limit is reached.
+The manifest asks for it in `permissions.model` with a reason; the plugin has no key of its own
+and no dollar limit (a plugin that wants one limits its own calls). The user can forbid it on the plugin page.
 
 Try it: `npm run smoke:plugins -w @spica/plugins` installs this plugin, calls a tool,
 disables it and checks the tools are gone.

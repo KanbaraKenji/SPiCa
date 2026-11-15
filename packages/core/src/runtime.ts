@@ -325,6 +325,12 @@ export class Runtime implements RuntimeInternals {
     this.addRedactions(opts.redactions ?? []);
     this.tracer = new Tracer(this.store, this.events, (text) => redact(text, [...this.#secrets]));
     this.ledger = new CostLedger(opts.prices ?? DEFAULT_PRICES, opts.budget ?? {});
+    // a provider's limit for a period counts what it spent since the period started: from the request log
+    this.ledger.setSpendSource((providerId, fromMs) => {
+      let sum = 0;
+      for (const r of this.store.listRequests({ fromMs })) if (r.providerId === providerId && !r.unpriced) sum += r.costUsd ?? 0;
+      return sum;
+    });
     if (opts.catalogPresets) for (const w of this.setCatalog({ presets: opts.catalogPresets })) console.error(w);
     this.extractors = [...(opts.extractors ?? [])];
     for (const p of opts.providers) this.addProvider(p, opts.limits?.[p.id]);

@@ -32,9 +32,11 @@ export interface SelectProps {
   placeholder?: string;
   /** Sizes and places the box (as on the input it replaced). */
   className?: string;
+  /** Shown, greyed, cannot be opened. */
+  disabled?: boolean;
 }
 
-export function Select({ value, options, onChange, label, title, placeholder = '', className }: SelectProps) {
+export function Select({ value, options, onChange, label, title, placeholder = '', className, disabled = false }: SelectProps) {
   // The box while its list is open (the list sits under it).
   const [box, setBox] = useState<HTMLButtonElement | null>(null);
   const open = box !== null;
@@ -64,6 +66,7 @@ export function Select({ value, options, onChange, label, title, placeholder = '
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={label}
+        disabled={disabled}
         {...(title ? { title } : {})}
         onClick={(e) => (open ? setBox(null) : setBox(e.currentTarget))}
         onKeyDown={onKeyDown}

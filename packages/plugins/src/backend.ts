@@ -4,7 +4,7 @@
 // core does not depend on this package.
 import { stat, readFile } from 'node:fs/promises';
 import { runtimeHost, type RuntimeLike } from './host.ts';
-import { PluginManager, type PluginDescription } from './manager.ts';
+import { PluginError, PluginManager, type PluginDescription } from './manager.ts';
 import { installZip } from './sources.ts';
 
 /** Same shape as the core's MCP service tools. */
@@ -166,11 +166,12 @@ export function pluginMethods(pm: PluginManager): Record<string, (...params: unk
       ctl.abort();
       return true;
     },
-    // Plugins using the user's models: why, the limit in force and today's spend; and the user's own limit.
+    // Plugins asking to use the user's models: why, and whether the user lets them; allow or forbid one.
     pluginModelUsage: () => pm.modelUsage(),
-    pluginSetModelLimit: (req) => {
-      const r = (req ?? {}) as { plugin?: unknown; maxUsdPerDay?: unknown };
-      return pm.setModelLimit(String(r.plugin ?? ''), r.maxUsdPerDay === null || r.maxUsdPerDay === undefined ? null : Number(r.maxUsdPerDay));
+    pluginSetModelAllowed: (req) => {
+      const r = (req ?? {}) as { plugin?: unknown; allowed?: unknown };
+      if (typeof r.allowed !== 'boolean') throw new PluginError('allowed 须为 true 或 false。');
+      return pm.setModelAllowed(String(r.plugin ?? ''), r.allowed);
     },
   };
 }

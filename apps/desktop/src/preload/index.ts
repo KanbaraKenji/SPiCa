@@ -4,7 +4,7 @@ import { IpcChannel, type AgentApi, type AppInfo, type ContextBreakdown, type Co
 import type { MonitorEntry } from '../shared/monitor';
 import { DesktopChannel } from '../shared/ipc';
 import type { BackendState, DesktopBridge, LocalConnectInfo, NetworkState, PreviewFile, PreviewInfo, ProviderList, SaveCsvResult, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
-import type { ModelRef, ProviderDraft, ProviderKind, TestResult } from '../shared/providers';
+import type { ModelRef, ProviderDraft, ProviderKind, ProviderSpendView, TestResult } from '../shared/providers';
 import type { PluginsCommand, PluginsProgress, PluginsResult } from '../shared/plugins';
 import type { UpdateState } from '../shared/updates';
 import type { SettingsPatch, ShellSettings } from '../shared/settings';
@@ -161,8 +161,7 @@ const bridge: DesktopBridge = {
     catalog: () => ipcRenderer.invoke(DesktopChannel.ModelCatalog) as Promise<ModelCatalogView | null>,
     listModels: (draft: ProviderDraft) => ipcRenderer.invoke(DesktopChannel.ListProviderModels, draft) as Promise<ListModelsView>,
     matchWindow: (kind: ProviderKind, model: string, catalogId?: string | null) => ipcRenderer.invoke(DesktopChannel.MatchContextWindow, kind, model, catalogId ?? null) as Promise<WindowMatch | null>,
-    spend: () => ipcRenderer.invoke(DesktopChannel.ProviderSpend) as Promise<Record<string, number>>,
-    resetSpend: (id: string) => ipcRenderer.invoke(DesktopChannel.ResetProviderSpend, id) as Promise<void>,
+    spend: () => ipcRenderer.invoke(DesktopChannel.ProviderSpend) as Promise<Record<string, ProviderSpendView>>,
     onChanged: (listener: () => void) => subscribe<void>(DesktopChannel.ProvidersChanged, () => listener()),
   },
 };

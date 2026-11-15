@@ -180,7 +180,7 @@ function createMessage(params) {
 const REFUSALS = {
   no_model: 'No model is set up in Spica yet. Add one under Settings › Models.',
   model_not_configured: 'The model this plugin asked for is not set up in Spica.',
-  budget: "This plugin has used up today's model budget. Raise its limit on the plugin page, or try tomorrow.",
+  budget: 'The spending limit set in Spica is used up. Try again later.',
   rate_limited: 'Too many model requests at once. Try again in a minute.',
 };
 

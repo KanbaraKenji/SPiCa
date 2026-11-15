@@ -127,3 +127,14 @@ describe('账号 › 昵称', () => {
   });
 });
 
+describe('the 监控台 switch', () => {
+  it('is off unless saved on; the panel switch only when true', () => {
+    expect(DEFAULT_SETTINGS.monitor).toBe(false);
+    expect(sanitizeSettings({}).monitor).toBe(false);
+    expect(sanitizeSettings({ monitor: 'yes' }).monitor).toBe(false);
+    const s = sanitizeSettings({ monitor: true, panels: { left: true, right: false, monitor: true } });
+    expect(s.monitor).toBe(true);
+    expect(s.panels).toEqual({ left: true, right: false, monitor: true });
+    expect(sanitizeSettings({ panels: { left: true, right: true, monitor: 1 } }).panels).toEqual({ left: true, right: true });
+  });
+});

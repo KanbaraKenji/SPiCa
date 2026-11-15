@@ -1,5 +1,7 @@
 // Settings > 关于: version, where updates and announcements come from, and
-// checking for an update by hand.
+// checking for an update by hand. Nine clicks on the version switch the 监控台 on (its title bar button shows), nine
+// more switch it off; the version does not look clickable and nothing points at it.
+import { useRef, useState } from 'react';
 import { useKeptDraft } from './drafts';
 import type { UpdateState } from '../../../shared/updates';
 import { APP_NAME } from '../../../shared/app-identity';
@@ -15,9 +17,28 @@ export interface AboutProps {
   onSource(source: string): void;
   onCheck(): void;
   onInstall(): void;
+  /** The 监控台's switch (nine clicks on the version). */
+  monitor?: { on: boolean; onToggle(): void };
 }
 
-export function About({ version, update, ownSource, onSource, onCheck, onInstall }: AboutProps) {
+/** Clicks on the version that switch the 监控台 on or off. */
+export const MONITOR_CLICKS = 9;
+/** A longer pause between two clicks starts the count again. */
+export const MONITOR_CLICK_GAP_MS = 1500;
+
+export function About({ version, update, ownSource, onSource, onCheck, onInstall, monitor }: AboutProps) {
+  // the clicks so far (and when the last one was); leaving the page starts again
+  const taps = useRef({ n: 0, at: 0 });
+  const [switched, setSwitched] = useState<boolean | null>(null);
+  const tap = () => {
+    if (!monitor) return;
+    const now = Date.now();
+    taps.current = { n: now - taps.current.at > MONITOR_CLICK_GAP_MS ? 1 : taps.current.n + 1, at: now };
+    if (taps.current.n < MONITOR_CLICKS) return;
+    taps.current = { n: 0, at: 0 };
+    setSwitched(!monitor.on);
+    monitor.onToggle();
+  };
   const [draft, setDraft, draftDone] = useKeptDraft('about.updateSource', ownSource);
   const deploy = update?.sourceFromDeploy ? update.source : '';
   const busy = update?.status === 'checking' || update?.status === 'downloading';
@@ -30,13 +51,28 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
   return (
     <section className="settings-section">
       <Group>
-        <Row title={`${APP_NAME} ${version}`} hint={update?.portable ? '便携版' : undefined}>
+        <Row
+          title={
+            <span className="about-version" onClick={tap}>
+              {`${APP_NAME} ${version}`}
+            </span>
+          }
+          hint={update?.portable ? '便携版' : undefined}
+        >
           {update?.status === 'ready' ? (
             <button type="button" className="btn btn-primary" onClick={onInstall}>
               重启并更新
             </button>
           ) : null}
         </Row>
+        {switched !== null ? (
+          <Pane>
+            <p className="provider-result" role="status">
+              <SpicaStatusIcon name="done" size={15} />
+              {switched ? '监控台已开启' : '监控台已关闭'}
+            </p>
+          </Pane>
+        ) : null}
       </Group>
 
       <Group title="更新与公告">

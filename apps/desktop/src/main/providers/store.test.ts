@@ -145,24 +145,50 @@ describe('ProviderStore', () => {
     expect(again.find((m) => m.id === 'b')).not.toHaveProperty('maxOutput');
   });
 
-  it('a provider’s 花费上限 is kept as typed, four decimals at most (none when not an amount); 清零 keeps where 已花 starts, across a save and a reload', () => {
+  it('a provider’s 花费上限 is an amount for a period: kept as typed (four decimals at most), the period from when it was set, started again when either changes', () => {
     const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
-    const store = new ProviderStore(dir, box);
-    const first = store.save({ ...draft, spendLimitUsd: 0.015 });
-    expect(first.spendLimitUsd).toBe(0.015);
-    expect(store.save({ ...draft, id: first.id, spendLimitUsd: 0.012 }).spendLimitUsd).toBe(0.012);
-    // more than four decimals is refused (the form says so in red)
+    let now = 1_000_000;
+    const store = new ProviderStore(dir, box, () => [], () => now);
+    const first = store.save({ ...draft, spendLimitUsd: 0.015, spendPeriodDays: 7 });
+    expect(first).toMatchObject({ spendLimitUsd: 0.015, spendPeriodDays: 7 });
+    expect(first).not.toHaveProperty('spendFromMs');
+    expect(store.spendLimit(first.id)).toEqual({ usd: 0.015, days: 7, fromMs: 1_000_000 });
+    // saved again unchanged: the same period goes on
+    now = 2_000_000;
+    store.save({ ...draft, id: first.id, spendLimitUsd: 0.015, spendPeriodDays: 7 });
+    expect(store.spendLimit(first.id)?.fromMs).toBe(1_000_000);
+    // a new amount or period starts it again
+    now = 3_000_000;
+    store.save({ ...draft, id: first.id, spendLimitUsd: 0.015, spendPeriodDays: 30 });
+    expect(store.spendLimit(first.id)).toEqual({ usd: 0.015, days: 30, fromMs: 3_000_000 });
+    // more than four decimals is refused (the form says so in red); so is a period that is not 1..365 days
     expect(() => store.save({ ...draft, id: first.id, spendLimitUsd: 0.00015 })).toThrow(/最多四位小数/);
-    const saved = store.save({ ...draft, id: first.id, spendLimitUsd: 2.005 });
-    expect(saved.spendLimitUsd).toBe(2.005);
-    expect(store.spendBase(saved.id)).toBe(0);
-    store.resetSpend(saved.id, 1.5);
-    store.save({ ...draft, id: saved.id, spendLimitUsd: null });
+    expect(() => store.save({ ...draft, id: first.id, spendLimitUsd: 1, spendPeriodDays: 0 })).toThrow(/天数须为/);
+    store.save({ ...draft, id: first.id, spendLimitUsd: null });
     const again = new ProviderStore(dir, box);
-    expect(again.spendBase(saved.id)).toBe(1.5);
     expect(again.list()[0]!.spendLimitUsd).toBeNull();
-    expect(again.list()[0]).not.toHaveProperty('spendBaseUsd');
-    expect(() => new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box).save({ ...draft, spendLimitUsd: Number.NaN })).toThrow(/须为大于 0/);
+    expect(again.spendLimit(first.id)).toBeNull();
+    expect(() => new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box).save({ ...draft, spendLimitUsd: Number.NaN })).toThrow(/须为 0 到/);
+    // 0 is no limit too (as empty)
+    const zero = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box).save({ ...draft, spendLimitUsd: 0 });
+    expect(zero.spendLimitUsd).toBeNull();
+  });
+
+  it('a limit saved before it had a period (a total with a 清零 point) reads as 30 days from when it is read, and is written so at once', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
+    const first = new ProviderStore(dir, box).save(draft);
+    const file = join(dir, 'providers.json');
+    const raw = JSON.parse(readFileSync(file, 'utf8')) as { items: Record<string, unknown>[] };
+    raw.items[0]!.spendLimitUsd = 2.005;
+    raw.items[0]!.spendBaseUsd = 1.5;
+    delete raw.items[0]!.spendPeriodDays;
+    delete raw.items[0]!.spendFromMs;
+    writeFileSync(file, JSON.stringify(raw));
+    const again = new ProviderStore(dir, box, () => [], () => 5_000_000);
+    expect(again.spendLimit(first.id)).toEqual({ usd: 2.005, days: 30, fromMs: 5_000_000 });
+    const text = readFileSync(file, 'utf8');
+    expect(text).not.toMatch(/spendBaseUsd/);
+    expect(new ProviderStore(dir, box, () => [], () => 9_000_000).spendLimit(first.id)?.fromMs).toBe(5_000_000);
   });
 
   it('an unchecked model stays in the list (no 上下文上限 needed), is not offered, and the pointers leave it', () => {

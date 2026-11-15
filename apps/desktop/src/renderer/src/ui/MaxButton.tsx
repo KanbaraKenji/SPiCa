@@ -8,7 +8,8 @@ export interface MaxState {
   toggle(): void;
 }
 
-export function MaxButton({ max }: { max: MaxState }) {
+/** `hint`: the keys said on hover (the preview's by default; '' for none). */
+export function MaxButton({ max, hint = 'Ctrl+Shift+\\' }: { max: MaxState; hint?: string }) {
   return (
     <button
       type="button"
@@ -16,7 +17,7 @@ export function MaxButton({ max }: { max: MaxState }) {
       onClick={max.toggle}
       aria-label={max.on ? '还原' : '最大化'}
       aria-pressed={max.on}
-      title={max.on ? '还原（Ctrl+Shift+\\）' : '最大化（Ctrl+Shift+\\）'}
+      title={`${max.on ? '还原' : '最大化'}${hint ? `（${hint}）` : ''}`}
     >
       <Icon name={max.on ? 'restore' : 'maximize'} size={15} />
     </button>

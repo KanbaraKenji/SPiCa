@@ -15,6 +15,7 @@ import {
   enabledModels,
   legacyModelFields,
   modelsOfDraft,
+  spendPeriodDays,
   validateDraft,
   DEV_CONNECTION_NAMES,
   type ConnectionModel,
@@ -53,8 +54,10 @@ interface SavedConnection {
   requestsPerMinute: number | null;
   catalogId: string | null;
   spendLimitUsd: number | null;
-  /** What the provider had cost in all when 清零 was pressed: 已花 counts from here. Absent: never. */
-  spendBaseUsd?: number;
+  /** The limit's period in days. */
+  spendPeriodDays: number;
+  /** When the limit's first period started (set or changed then); present while there is a limit. */
+  spendFromMs?: number;
   models: ConnectionModel[];
   keys: SavedKey[];
 }
@@ -115,12 +118,13 @@ function baseFields(v: Record<string, unknown>) {
     requestsPerMinute: num(v.requestsPerMinute),
     catalogId: str(v.catalogId).trim() || null,
     spendLimitUsd: runLimit(v.spendLimitUsd),
+    spendPeriodDays: spendPeriodDays(v.spendPeriodDays),
   };
 }
 
-/** A saved 清零 point, when there is one. */
-function spendBase(v: unknown): { spendBaseUsd?: number } {
-  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? { spendBaseUsd: v } : {};
+/** When a saved limit's first period started (ms), when it is a time. */
+function spendFrom(v: unknown): { spendFromMs?: number } {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? { spendFromMs: v } : {};
 }
 
 export class ProviderStore {
@@ -130,7 +134,10 @@ export class ProviderStore {
   readonly #external: () => ExternalConnection[];
   #data: FileShape = { version: 2, items: [], default: null, strong: null };
 
-  constructor(dir: string, box: SecretBox, external: () => ExternalConnection[] = () => []) {
+  readonly #now: () => number;
+
+  constructor(dir: string, box: SecretBox, external: () => ExternalConnection[] = () => [], now: () => number = Date.now) {
+    this.#now = now;
     this.#file = join(dir, 'providers.json');
     this.#box = box;
     this.#external = external;
@@ -142,12 +149,15 @@ export class ProviderStore {
     }
     const list = Array.isArray(raw.items) ? (raw.items as unknown[]).filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === 'object' && typeof (x as { id?: unknown }).id === 'string') : [];
     if (raw.version === 2) {
+      // A limit saved before it had a period (a total since the start, with a 清零 point): read as 30 days from now,
+      // so nothing already spent counts against it; the 清零 point goes.
+      let migrated = false;
       this.#data = {
         version: 2,
         items: list.map((x) => ({
           ...baseFields(x),
           id: x.id as string,
-          ...spendBase(x.spendBaseUsd),
+          ...(runLimit(x.spendLimitUsd) === null ? {} : spendFrom(x.spendFromMs).spendFromMs ? spendFrom(x.spendFromMs) : ((migrated = true), { spendFromMs: this.#now() })),
           models: sanitizeModels(x.models),
           // Saved before the first characters were kept: worked out once from the key.
           keys: Array.isArray(x.keys) ? (x.keys as SavedKey[]).filter((k) => k && typeof k.sealed === 'string').map((k) => (typeof k.head === 'string' ? { sealed: k.sealed, tail: str(k.tail), head: k.head } : { sealed: k.sealed, ...this.#partsOfSealed(k.sealed, x.id as string) })) : [],
@@ -155,6 +165,7 @@ export class ProviderStore {
         default: sanitizeRef(raw.default),
         strong: sanitizeRef(raw.strong),
       };
+      if (migrated || list.some((x) => 'spendBaseUsd' in x)) this.#write();
       return;
     }
     // Version 1: one entry per model (plus a strong one); the default by entry.
@@ -267,10 +278,13 @@ export class ProviderStore {
       if (!this.#box.available()) throw new Error('无法加密保存密钥，未保存。');
       keys = [{ sealed: this.#box.encrypt(typed), ...keyMaskParts(typed) }];
     }
+    const fields = baseFields(draft as unknown as Record<string, unknown>);
+    // the first period starts when the limit is set; a new amount or period starts it again
+    const samePeriod = existing?.spendFromMs !== undefined && existing.spendLimitUsd === fields.spendLimitUsd && existing.spendPeriodDays === fields.spendPeriodDays;
     const saved: SavedConnection = {
-      ...baseFields(draft as unknown as Record<string, unknown>),
+      ...fields,
       id: existing?.id ?? `p-${randomUUID().slice(0, 8)}`,
-      ...spendBase(existing?.spendBaseUsd),
+      ...(fields.spendLimitUsd === null ? {} : { spendFromMs: samePeriod ? existing!.spendFromMs! : this.#now() }),
       models: modelsOfDraft(draft, existing?.models),
       keys,
     };
@@ -280,19 +294,10 @@ export class ProviderStore {
     return this.#view(saved);
   }
 
-  /** What the provider had cost in all at its last 清零 (0 when never): 已花 is the total less this. */
-  spendBase(id: string): number {
-    return this.#data.items.find((p) => p.id === id)?.spendBaseUsd ?? 0;
-  }
-
-  /** 清零: 已花 counts from `totalUsd`, what the provider has cost in all so far. */
-  resetSpend(id: string, totalUsd: number): void {
+  /** A provider's 花费上限 with its period (null: none): the amount, the days, when the first period started. */
+  spendLimit(id: string): { usd: number; days: number; fromMs: number } | null {
     const p = this.#data.items.find((x) => x.id === id);
-    if (!p) return;
-    const next: SavedConnection = { ...p, ...spendBase(totalUsd) };
-    if (!(totalUsd > 0)) delete next.spendBaseUsd;
-    this.#data.items = this.#data.items.map((x) => (x.id === id ? next : x));
-    this.#write();
+    return p?.spendLimitUsd && p.spendFromMs !== undefined ? { usd: p.spendLimitUsd, days: p.spendPeriodDays, fromMs: p.spendFromMs } : null;
   }
 
   remove(id: string): void {
@@ -381,8 +386,8 @@ export class ProviderStore {
   }
 
   #view(p: SavedConnection): ProviderView {
-    const { keys, spendBaseUsd: _base, ...fields } = p;
-    void _base;
+    const { keys, spendFromMs: _from, ...fields } = p;
+    void _from;
     return {
       ...fields,
       ...legacyModelFields(p.models),

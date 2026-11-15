@@ -7,13 +7,27 @@ import { Icon } from '../ui/Icon';
 import { InfoTip } from '../ui/InfoTip';
 import { FileGlyph } from '../ui/FileIcon';
 import { activityText } from './activity';
-import { fileFolder, fileName, formatDuration, formatUsd } from '../chat/format';
+import { useState } from 'react';
+import { fileName, formatUsd } from '../chat/format';
 import { spendText } from '../../../shared/spend';
-import { toolWords } from '../chat/tool-words';
-import { toolIcon } from '../chat/Blocks';
+import { runningWords, toolWords } from '../chat/tool-words';
 import { SpicaStatusIcon } from '@spica/brand/react';
 
-type ToolBlock = Extract<Block, { type: 'tool' }>;
+export type ToolBlock = Extract<Block, { type: 'tool' }>;
+
+/** Files listed before 显示更多. */
+export const FILES_SHOWN = 5;
+
+/**
+ * A call still going (its ring under 工具调用): only while the conversation's run goes on; a call left running by a
+ * run that was stopped (or a reopened conversation) is over (已中断 in the list beside).
+ */
+export const isRunning = (t: ToolBlock, live: boolean) => live && (t.state === 'running' || t.state === 'pending');
+
+/** The calls the details count: remember / forget are the 已记住 line in the conversation (listed here they would say it twice). */
+export function detailTools(transcript: Transcript): ToolBlock[] {
+  return transcript.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])).filter((b): b is ToolBlock => b.type === 'tool' && !MEMORY_TOOLS.has(b.name));
+}
 
 export interface DetailPanelProps {
   session: SessionInfo | undefined;
@@ -33,6 +47,8 @@ export interface DetailPanelProps {
   onClose?: () => void;
   /** A tab above already says 详情: leave out the heading (the close button stays). */
   hideHeading?: boolean;
+  /** 工具调用's heading: every call, shown where the preview goes. */
+  history?: { open: boolean; toggle(): void };
 }
 
 
@@ -44,20 +60,32 @@ function clock(iso: string): string {
 const ROLE_LABEL: Record<SessionInfo['role'], string> = { top: '对话', manager: '项目经理', worker: '子任务' };
 
 /** A call in the list: the conversation's words for it, the verb and then the object quieter. */
-function ToolListText({ t, card }: { t: Parameters<typeof toolWords>[0]; card?: FileCardMeta | undefined }) {
+export function ToolListText({ t, card, running = false }: { t: Parameters<typeof toolWords>[0]; card?: FileCardMeta | undefined; running?: boolean }) {
   const w = toolWords(t, card);
+  // while it runs, the verb as the conversation says it then (Writing, Running…)
+  const line = running ? runningWords(t) : '';
+  const verb = running && w.verb && line.endsWith(` ${w.object}`) ? line.slice(0, line.length - w.object.length - 1) : w.verb;
   return (
     <span className="detail-item-main" title={w.full}>
-      {w.verb || w.object}
-      {w.verb ? <span className="detail-item-sub"> {w.object}</span> : null}
+      {verb || w.object}
+      {verb ? <span className="detail-item-sub"> {w.object}</span> : null}
     </span>
   );
 }
 
-export function DetailPanel({ session, parent, transcript, globalCostUsd, globalUnpriced, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false }: DetailPanelProps) {
-  const blocks = transcript.items.flatMap((i) => (i.kind === 'response' ? i.blocks : []));
-  // remember / forget are the 已记住 line in the conversation; listed here they would say it twice.
-  const tools = blocks.filter((b): b is ToolBlock => b.type === 'tool' && !MEMORY_TOOLS.has(b.name));
+export function DetailPanel({ session, parent, transcript, globalCostUsd, globalUnpriced, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, history }: DetailPanelProps) {
+  const tools = detailTools(transcript);
+  const live = Boolean(transcript.run);
+  const running = tools.filter((t) => isRunning(t, live));
+  const [filesOpen, setFilesOpen] = useState(true);
+  const [allFiles, setAllFiles] = useState(false);
+  // another conversation: its files open again, the first five
+  const [shownFor, setShownFor] = useState(session?.id);
+  if (shownFor !== session?.id) {
+    setShownFor(session?.id);
+    setFilesOpen(true);
+    setAllFiles(false);
+  }
   // Per answer, so files named before the working-folder note are where it put them; each file once.
   const moves = changesAfter(transcript.items);
   const files = [
@@ -147,61 +175,71 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
           </section>
         ) : null}
 
-        <section className="detail-section">
-          <h3 className="detail-title">
-            工具调用<span className="detail-count">{tools.length || ''}</span>
-          </h3>
-          {tools.length ? (
+        {/* 工具调用: one group (his words: the running ones and the rest are the same thing). Its heading is a row
+            that opens every call beside, where the preview goes (how many in all, ›); under it only the calls running
+            now, each with its ring. */}
+        {tools.length ? (
+          <section className="detail-section">
+            <h3 className="detail-title">
+              {history ? (
+                <button type="button" className={history.open ? 'detail-fold detail-calls is-on' : 'detail-fold detail-calls'} aria-expanded={history.open} onClick={history.toggle}>
+                  工具调用
+                  <span className="detail-count">{tools.length}</span>
+                  <Icon name="chevronRight" size={12} className="detail-calls-chevron" />
+                </button>
+              ) : (
+                <>
+                  工具调用<span className="detail-count">{tools.length}</span>
+                </>
+              )}
+            </h3>
+            {running.length ? (
             <ul className="detail-list">
-              {tools.map((t) => (
-                // As in the conversation: how it stands in the first place, nothing after the name repeats it.
+              {running.map((t) => (
                 <li key={t.callId} className="detail-item">
-                  <span className="detail-item-icon">{toolIcon(t)}</span>
-                  <ToolListText t={t} card={transcript.fileCards?.[t.callId]} />
-                  <span className="detail-item-meta">
-                    {t.state === 'pending' ? (
-                      <SpicaStatusIcon name="running" size={14} title="进行中" />
-                    ) : t.state === 'error' ? (
-                      <span className="text-danger">Failed</span>
-                    ) : t.state === 'timeout' ? (
-                      '已超时'
-                    ) : t.state === 'unavailable' ? (
-                      '已停用，未执行'
-                    ) : t.state === 'repeated' ? (
-                      '重复，未执行'
-                    ) : t.state !== 'running' && t.durationMs !== undefined ? (
-                      formatDuration(t.durationMs)
-                    ) : (
-                      ''
-                    )}
+                  <span className="detail-item-icon">
+                    <SpicaStatusIcon name="running" size={14} title="进行中" />
                   </span>
+                  <ToolListText t={t} card={transcript.fileCards?.[t.callId]} running />
                 </li>
               ))}
             </ul>
-          ) : (
-            <p className="detail-empty">—</p>
-          )}
-        </section>
+            ) : null}
+          </section>
+        ) : null}
 
+        {/* As Claude's Outputs: the heading folds it (the count beside it while folded); five, then 显示更多. */}
         <section className="detail-section">
           <h3 className="detail-title">
-            文件<span className="detail-count">{files.length || ''}</span>
+            <button type="button" className="detail-fold" aria-expanded={filesOpen} onClick={() => setFilesOpen((o) => !o)}>
+              文件
+              <Icon name="chevronDown" size={12} className="detail-fold-chevron" />
+              {filesOpen ? null : <span className="detail-count">{files.length || ''}</span>}
+            </button>
           </h3>
-          {files.length ? (
-            <ul className="detail-list">
-              {files.map((f) => (
-                <li key={f.path}>
-                  <button type="button" className="detail-file" onClick={() => (onPreviewFile ?? onOpenFile)(f.path)} title={`查看 ${f.path}`}>
-                    <FileGlyph name={f.shown ?? f.path} />
-                    <span className="detail-file-name">{fileName(f.shown ?? f.path)}</span>
-                    {fileFolder(f.shown ?? f.path) ? <span className="detail-item-sub">{fileFolder(f.shown ?? f.path)}</span> : null}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="detail-empty">—</p>
-          )}
+          {filesOpen ? (
+            files.length ? (
+              <ul className="detail-list">
+                {(allFiles ? files : files.slice(0, FILES_SHOWN)).map((f) => (
+                  <li key={f.path}>
+                    <button type="button" className="detail-file" onClick={() => (onPreviewFile ?? onOpenFile)(f.path)} title={f.shown ?? f.path}>
+                      <FileGlyph name={f.shown ?? f.path} />
+                      <span className="detail-file-name">{fileName(f.shown ?? f.path)}</span>
+                    </button>
+                  </li>
+                ))}
+                {files.length > FILES_SHOWN ? (
+                  <li>
+                    <button type="button" className="detail-more" onClick={() => setAllFiles((a) => !a)}>
+                      {allFiles ? '收起' : '显示更多'}
+                    </button>
+                  </li>
+                ) : null}
+              </ul>
+            ) : (
+              <p className="detail-empty">—</p>
+            )
+          ) : null}
         </section>
 
         <section className="detail-section">

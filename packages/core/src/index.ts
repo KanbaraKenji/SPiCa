@@ -31,6 +31,8 @@ export {
   CostLedger,
   DEFAULT_PRICES,
   FALLBACK_PRICE,
+  periodBounds,
+  type SpendPeriod,
   type BudgetConfig,
   type BudgetCheck,
   type Limits,
