@@ -36,6 +36,7 @@ import { useGuard } from '../ui/guard';
 import { InfoTip } from '../ui/InfoTip';
 import { Select, type SelectOption } from '../ui/Select';
 import { PasteConfig } from './PasteConfig';
+import { CredentialsInField, headerRows, HeadersField } from './ProviderHeaders';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Group, Row } from './Group';
 import { AGENT_MESSAGES_MAX, moneyText } from '../../../shared/settings';
@@ -81,12 +82,12 @@ export function spendLine(v: ProviderSpendView): string {
 }
 
 function draftFrom(p: ProviderView): ProviderDraft {
-  const { hasSecret: _h, isDefault: _d, readOnly: _r, keyMask: _t, ...fields } = p;
+  const { hasSecret: _h, isDefault: _d, readOnly: _r, keyMask: _t, savedHeaders, ...fields } = p;
   void _h;
   void _d;
   void _r;
   void _t;
-  return { ...fields, models: p.models.map((m) => ({ ...m })) };
+  return { ...fields, credentialsIn: p.credentialsIn ?? null, models: p.models.map((m) => ({ ...m })), headers: headerRows(savedHeaders) };
 }
 
 /** Which 服务商 a draft is: its catalog entry, 公司网关（WSO2）, 中转站, or '' before one is picked. */
@@ -372,7 +373,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
     setFetched(null);
     setFetchError(null);
     setMatchedNames({});
-    const keep = { ...(draft.id ? { id: draft.id } : {}), ...(draft.secret ? { secret: draft.secret } : {}) };
+    const keep = { ...(draft.id ? { id: draft.id } : {}), ...(draft.secret ? { secret: draft.secret } : {}), ...(draft.headers ? { headers: draft.headers } : {}) };
     if (value === WSO2) return commit({ ...emptyDraft('wso2'), ...keep, models: [] });
     if (value === RELAY) return commit({ ...emptyDraft('openai'), ...keep, models: [] });
     const p = providers.find((x) => x.id === value);
@@ -490,7 +491,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
     const startFrom: ProviderDraft =
       kind === 'wso2' ? { ...emptyDraft('wso2'), models: [] } : known ? { ...emptyDraft(SHELL_KIND[known.kind]), name: freeName(known.name), baseUrl: known.baseUrl, catalogId: known.id, models: [] } : { ...emptyDraft(kind), models: [] };
     const { model, ...fields } = r.fields;
-    const next: ProviderDraft = { ...startFrom, ...(draft.id ? { id: draft.id } : {}), ...fields };
+    const next: ProviderDraft = { ...startFrom, ...(draft.id ? { id: draft.id } : {}), ...(draft.headers ? { headers: draft.headers } : {}), ...fields };
     commit(next);
     if (model) {
       const fromCatalog = known?.models.find((x) => x.id === model);
@@ -509,7 +510,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
     const otherNames = [...items.filter((p) => p.id !== draft.id).map((p) => p.name), ...DEV_CONNECTION_NAMES];
     const e = validateDraft({ ...draft, models: draft.models ?? [] }, hasSecret, { forTest, needsKey, otherNames });
     setErrors(e);
-    if ((e.maxConcurrent || e.requestsPerMinute || (e.baseUrl && provider)) && !advanced) setAdvanced(true);
+    if ((e.maxConcurrent || e.requestsPerMinute || e.headers || (e.baseUrl && provider)) && !advanced) setAdvanced(true);
     return Object.keys(e).length === 0;
   };
 
@@ -874,6 +875,8 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                     </>
                   ) : null}
                   {limits}
+                  <HeadersField rows={draft.headers ?? []} saved={current?.savedHeaders} onChange={(headers) => set({ headers })} error={errors.headers} />
+                  {isWso2 ? <CredentialsInField value={draft.credentialsIn ?? null} onChange={(credentialsIn) => set({ credentialsIn })} /> : null}
                 </>
               ) : null}
             </>

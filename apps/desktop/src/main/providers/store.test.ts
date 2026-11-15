@@ -298,3 +298,72 @@ describe('no two connections with one name', () => {
     expect(later.save({ ...draft, id: b.id, name: '测试网关 2', model: 'model-b' }).name).toBe('测试网关 2');
   });
 });
+
+describe('ProviderStore · 自定义请求头 and 凭据位置', () => {
+  const relay = { ...draft, secret: undefined, name: '中转', baseUrl: 'https://gateway.example.com/v1' };
+
+  it('seals each header value like a key, shows it masked, and gives it to the core', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-prov-'));
+    const store = new ProviderStore(dir, box);
+    const value = 'gw-key-0000000000000000000a1b2';
+    // the key goes in the gateway's own header: no API Key needed
+    const view = store.save({ ...relay, headers: [{ name: ' X-API-Key ', value }, { name: '' }] });
+    expect(view.savedHeaders).toEqual([{ name: 'X-API-Key', mask: keyMaskText(keyMaskParts(value)) }]);
+    expect(JSON.stringify(view)).not.toContain(value);
+    expect(readFileSync(join(dir, 'providers.json'), 'utf8')).not.toContain(value);
+    expect(store.resolved()[0]).toMatchObject({ secret: '', headerValues: { 'X-API-Key': value } });
+  });
+
+  it('an empty value keeps the saved one; a removed row is gone; a script change without headers keeps them', () => {
+    const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
+    const v = store.save({ ...draft, headers: [{ name: 'X-API-Key', value: 'one-0000000000' }, { name: 'X-Team', value: 'team-a' }] });
+    store.save({ ...draft, id: v.id, secret: undefined, headers: [{ name: 'x-api-key', saved: true }, { name: 'X-Team', value: 'team-b', saved: true }] });
+    expect(store.resolved()[0]?.headerValues).toEqual({ 'x-api-key': 'one-0000000000', 'X-Team': 'team-b' });
+    store.save({ ...draft, id: v.id, secret: undefined, model: 'model-b' });
+    expect(store.resolved()[0]?.headerValues).toEqual({ 'x-api-key': 'one-0000000000', 'X-Team': 'team-b' });
+    store.save({ ...draft, id: v.id, secret: undefined, headers: [{ name: 'X-Team', saved: true }] });
+    expect(store.resolved()[0]?.headerValues).toEqual({ 'X-Team': 'team-b' });
+    store.save({ ...draft, id: v.id, secret: undefined, headers: [] });
+    expect(store.resolved()[0]).not.toHaveProperty('headerValues');
+    expect(store.list()[0]).not.toHaveProperty('savedHeaders');
+  });
+
+  it('a header-only connection saved by a script change keeps working without an API Key', () => {
+    const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
+    const v = store.save({ ...relay, headers: [{ name: 'X-API-Key', value: 'k-0000000000' }] });
+    expect(() => store.save({ ...relay, id: v.id, model: 'model-b' })).not.toThrow();
+    expect(() => store.save({ ...relay, id: v.id, headers: [] })).toThrow('请填写 API Key');
+  });
+
+  it('headersFor: what 测试连接 and 获取模型列表 send — typed values, else the saved ones of that name', () => {
+    const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
+    const v = store.save({ ...draft, headers: [{ name: 'X-API-Key', value: 'saved-0000000000' }] });
+    expect(store.headersFor({ headers: [{ name: 'X-API-Key', saved: true }, { name: 'X-New', value: 'typed' }] }, v.id)).toEqual({ 'X-API-Key': 'saved-0000000000', 'X-New': 'typed' });
+    expect(store.headersFor({}, v.id)).toEqual({ 'X-API-Key': 'saved-0000000000' });
+    expect(store.headersFor({ headers: [{ name: 'X-API-Key', saved: true }] })).toEqual({});
+  });
+
+  it('凭据位置: 自动 unless set; a script change without it keeps it; older files stay 自动', () => {
+    const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
+    const gw = { ...emptyDraft('wso2'), name: 'gw', baseUrl: 'https://gateway.example.com/v1', tokenUrl: 'https://gateway.example.com/token', clientId: 'ck', model: 'm', contextWindow: 1000, secret: 's' };
+    const v = store.save(gw);
+    expect(store.list()[0]?.credentialsIn).toBeNull();
+    expect(store.resolved()[0]).not.toHaveProperty('credentialsIn');
+    store.save({ ...gw, id: v.id, credentialsIn: 'body' });
+    store.save({ ...gw, id: v.id, model: 'm2' });
+    expect(store.resolved()[0]?.credentialsIn).toBe('body');
+    store.save({ ...gw, id: v.id, credentialsIn: null });
+    expect(store.resolved()[0]).not.toHaveProperty('credentialsIn');
+  });
+
+  it('refuses header rows that cannot be sent, in plain words', () => {
+    const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
+    expect(() => store.save({ ...draft, headers: [{ name: 'X API Key', value: 'v' }] })).toThrow('请求头名称「X API Key」只能包含字母、数字和 - _ .');
+    expect(() => store.save({ ...draft, headers: [{ name: 'Content-Type', value: 'v' }] })).toThrow('请求头「Content-Type」由应用设置');
+    expect(() => store.save({ ...draft, headers: [{ name: 'X-A', value: 'v' }, { name: 'x-a', value: 'w' }] })).toThrow('请求头「x-a」重复');
+    expect(() => store.save({ ...draft, headers: [{ name: 'X-A' }] })).toThrow('请填写请求头「X-A」的值');
+    expect(() => store.save({ ...draft, headers: [{ name: 'X-A', value: 'a\nb' }] })).toThrow('请求头「X-A」的值不能换行');
+    // a WSO2 connection still needs its Consumer Secret
+    expect(() => store.save({ ...emptyDraft('wso2'), name: 'w', baseUrl: 'https://g/v1', tokenUrl: 'https://g/t', clientId: 'c', model: 'm', contextWindow: 1, headers: [{ name: 'X-A', value: 'v' }] })).toThrow('请填写 Consumer Secret');
+  });
+});

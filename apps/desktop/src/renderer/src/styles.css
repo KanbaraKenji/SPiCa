@@ -4466,6 +4466,34 @@ button.ctx-row:hover {
   color: var(--spica-muted);
 }
 
+/* 更多选项 › 自定义请求头: one row per header, name and value side by side, 删除 at the end. */
+.header-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.field .field-control .header-row .input {
+  min-width: 0;
+  max-width: none;
+}
+
+.header-row .header-name {
+  flex: 2 1 0;
+}
+
+.header-row .header-value {
+  flex: 3 1 0;
+}
+
 /* 未启用: one small button per model (a click turns it on), then 获取模型列表 and 手动输入模型. */
 .model-pills {
   display: flex;

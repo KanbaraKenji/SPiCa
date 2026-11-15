@@ -3,7 +3,13 @@ import type { PriceTable, ProviderConfig } from '@spica/core';
 import type { ConnectionModel, ProviderFields } from '../../shared/providers';
 
 /** A connection (or the form being tested) with its key: the connection's models when it has them. */
-export type ConfigSource = ProviderFields & { id: string; secret: string; models?: readonly ConnectionModel[] };
+export type ConfigSource = ProviderFields & {
+  id: string;
+  secret: string;
+  models?: readonly ConnectionModel[];
+  /** 自定义请求头 with their values (a saved connection's, or the form's resolved against what is saved). */
+  headerValues?: Record<string, string>;
+};
 
 /** Model name -> context window, for every ticked model that has one. */
 function windowsOf(p: ConfigSource): Record<string, number> {
@@ -31,18 +37,20 @@ export function toProviderConfig(p: ConfigSource): ProviderConfig {
     ...(Object.keys(windows).length ? { contextWindows: windows } : {}),
     ...(Object.keys(outputs).length ? { maxOutputs: outputs } : {}),
     ...(p.catalogId ? { catalogId: p.catalogId } : {}),
+    ...(p.headerValues && Object.keys(p.headerValues).length ? { headers: { ...p.headerValues } } : {}),
   };
   switch (p.kind) {
     case 'openai':
-      return { ...base, kind: 'openai-compatible', baseUrl: p.baseUrl, apiKey: p.secret };
+      // no API Key (a gateway that takes its key in its own request header): no Authorization header at all
+      return { ...base, kind: 'openai-compatible', baseUrl: p.baseUrl, ...(p.secret ? { apiKey: p.secret } : {}) };
     case 'anthropic':
-      return { ...base, kind: 'anthropic', apiKey: p.secret, ...(p.baseUrl ? { baseUrl: p.baseUrl } : {}) };
+      return { ...base, kind: 'anthropic', ...(p.secret ? { apiKey: p.secret } : {}), ...(p.baseUrl ? { baseUrl: p.baseUrl } : {}) };
     case 'wso2':
       return {
         ...base,
         kind: 'wso2',
         baseUrl: p.baseUrl,
-        oauth: { tokenUrl: p.tokenUrl, clientId: p.clientId, clientSecret: p.secret, ...(p.scope ? { scope: p.scope } : {}) },
+        oauth: { tokenUrl: p.tokenUrl, clientId: p.clientId, clientSecret: p.secret, ...(p.scope ? { scope: p.scope } : {}), ...(p.credentialsIn ? { credentialsIn: p.credentialsIn } : {}) },
       };
   }
 }

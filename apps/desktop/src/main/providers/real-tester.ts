@@ -57,12 +57,12 @@ function probeAdvice(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' | 'model'
 }
 
 export function createRealTester(probe: Probe): ConnectionTester {
-  return async (draft, savedSecret, _signal, needsKey) => {
+  return async (draft, savedSecret, _signal, needsKey, headerValues) => {
     const errors = validateDraft(draft, Boolean(savedSecret), { forTest: true, ...(needsKey === false ? { needsKey } : {}) });
     const first = Object.values(errors)[0];
     if (first) return { ok: false, message: first };
     const secret = draft.secret?.trim() || savedSecret || '';
-    const r = await probe(toProviderConfig({ ...draft, id: 'connection-test', secret }), draft.model.trim(), TIMEOUT_MS);
+    const r = await probe(toProviderConfig({ ...draft, id: 'connection-test', secret, ...(headerValues ? { headerValues } : {}) }), draft.model.trim(), TIMEOUT_MS);
     return { ok: r.ok, message: probeMessage(r, draft), ...(r.ok && r.suggestedBaseUrl ? { suggestedBaseUrl: r.suggestedBaseUrl } : {}) };
   };
 }

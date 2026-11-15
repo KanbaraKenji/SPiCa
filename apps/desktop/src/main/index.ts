@@ -1607,7 +1607,7 @@ ipcMain.handle(DesktopChannel.SetModelPointer, (_e, which: 'default' | 'strong',
   return providerList();
 });
 ipcMain.handle(DesktopChannel.TestProvider, async (_e, draft: ProviderDraft) =>
-  testConnection(draft, draft.id ? providers.secretOf(draft.id) : undefined, undefined, needsKeyFor(await modelCatalog(), draft.catalogId)),
+  testConnection(draft, draft.id ? providers.secretOf(draft.id) : undefined, undefined, needsKeyFor(await modelCatalog(), draft.catalogId), providers.headersFor(draft, draft.id)),
 );
 ipcMain.handle(DesktopChannel.KnownContextWindow, async (_e, kind: ProviderKind, model: string, catalogId?: string | null): Promise<number | null> => {
   const name = String(model ?? '').trim();
@@ -1629,7 +1629,7 @@ ipcMain.handle(DesktopChannel.MatchContextWindow, async (_e, kind: ProviderKind,
 });
 ipcMain.handle(DesktopChannel.ListProviderModels, async (_e, draft: ProviderDraft): Promise<ListModelsResult> => {
   const secret = draft.secret?.trim() || (draft.id ? providers.secretOf(draft.id) : undefined) || '';
-  const config = toProviderConfig({ ...draft, id: 'list-models', secret });
+  const config = toProviderConfig({ ...draft, id: 'list-models', secret, headerValues: providers.headersFor(draft, draft.id) });
   if (backend instanceof ProcessBackend) {
     return backend.listProviderModels(config).catch((err: unknown) => ({ ok: false, code: 'list.failed', message: err instanceof Error ? err.message : String(err), hint: '获取模型列表失败，请从列表选择或手动输入模型。' }));
   }

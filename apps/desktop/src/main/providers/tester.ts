@@ -4,8 +4,8 @@
 // behind the same function type.
 import { validateDraft, type ProviderDraft, type TestResult } from '../../shared/providers';
 
-/** needsKey false: a local provider (no key to check). */
-export type ConnectionTester = (draft: ProviderDraft, savedSecret: string | undefined, signal?: AbortSignal, needsKey?: boolean) => Promise<TestResult>;
+/** needsKey false: a local provider (no key to check). headerValues: the draft's 自定义请求头 with their values. */
+export type ConnectionTester = (draft: ProviderDraft, savedSecret: string | undefined, signal?: AbortSignal, needsKey?: boolean, headerValues?: Record<string, string>) => Promise<TestResult>;
 
 export interface FakeTesterOptions {
   /** Pretend network time in ms. Default 700. */
