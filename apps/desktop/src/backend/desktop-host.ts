@@ -12,11 +12,11 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { serveMcpHttp, type McpHttpServer, type Runtime } from '@spica/core';
-import { attachBackend as attachPlugins } from '@spica/plugins';
+import { attachBackend as attachPlugins, localizeView } from '@spica/plugins';
 import { RealPluginService } from '../main/plugins/service';
 import type { OfficialSource, PluginsCommand } from '../shared/plugins';
 import { APP_NAME } from '../shared/app-identity';
-import { isLocale, setLocale, type Locale } from '../shared/i18n';
+import { getLocale, isLocale, setLocale, type Locale } from '../shared/i18n';
 
 export interface DesktopHostOptions {
   pluginRoot: string;
@@ -94,6 +94,8 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
     warnings: plugins.warnings,
     methods: {
       ...plugins.methods,
+      // the pages' names in the interface language (manifest.json · i18n)
+      pluginViews: () => plugins.manager.views().map((v) => localizeView(v, getLocale())),
       plugins: (cmd: unknown) => page.run(cmd as PluginsCommand),
       workflows: () => ({ names: [...rt.workflows.values()].map((w) => w.name), errors: [...rt.workflowErrors] }),
       mcpHttpStart: () => startHttp(),

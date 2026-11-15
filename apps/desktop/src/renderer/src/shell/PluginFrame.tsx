@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { localDrivePath, pluginCallProblem, type PluginPickRequest, type PluginView, type PluginViewResult } from '../../../shared/plugin-view';
 import { t } from '../../../shared/i18n';
+import { useLocale } from '../i18n';
 
 export interface PluginTheme {
   mode: 'light' | 'dark';
@@ -190,6 +191,15 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
     };
   }, []);
 
+  // The interface language: a page that said it is ready is told when it changes (window.spica.locale).
+  const locale = useLocale();
+  const sentLocale = useRef(locale);
+  useEffect(() => {
+    if (!ready || sentLocale.current === locale) return;
+    sentLocale.current = locale;
+    post({ event: { type: 'locale', locale } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locale, ready]);
   // Theme and plugin changes are pushed to a page that said it is ready.
   const themeKey = JSON.stringify(theme);
   useEffect(() => {

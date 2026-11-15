@@ -14,6 +14,8 @@ import {
   installAvailable,
   installZip,
   listSource,
+  localizeDescription,
+  localizeOffer,
   MANIFEST_FILE,
   newest,
   readPluginFolder,
@@ -46,7 +48,7 @@ import {
   type PluginView,
 } from '../../shared/plugins';
 import type { PluginService } from './types';
-import { t, tx } from '../../shared/i18n';
+import { getLocale, t, tx } from '../../shared/i18n';
 
 export type { PluginService } from './types';
 
@@ -81,7 +83,11 @@ export interface RealServiceOptions {
   onProgress?: (p: PluginsProgress) => void;
 }
 
-function toView(d: PluginDescription, update?: string, icon?: PluginIconView): PluginView {
+/** A plugin's own words (manifest.json · i18n) in the interface language. */
+const localized = (d: PluginDescription): PluginDescription => localizeDescription(d, getLocale());
+
+function toView(raw: PluginDescription, update?: string, icon?: PluginIconView): PluginView {
+  const d = localized(raw);
   return {
     name: d.name,
     displayName: d.displayName || d.name,
@@ -163,12 +169,14 @@ function fromFolder(folder: PluginFolder, key: string, kind: PluginPackage['kind
   const light = m.icon ? iconFile(join(folder.root, m.icon.light)) : undefined;
   const dark = m.icon ? iconFile(join(folder.root, m.icon.dark)) : undefined;
   const icon = light && dark ? { light, dark } : undefined;
+  // the marketplace card in the interface language (manifest.json · i18n)
+  const words = localizeOffer({ name: m.name, displayName: m.displayName, description: m.description, ...(m.i18n ? { i18n: m.i18n } : {}) }, getLocale());
   return {
     key,
     name: m.name,
-    ...(m.displayName && m.displayName !== m.name ? { displayName: m.displayName } : {}),
+    ...(words.displayName && words.displayName !== m.name ? { displayName: words.displayName } : {}),
     version: m.version,
-    ...(m.description ? { description: m.description } : {}),
+    ...(words.description ? { description: words.description } : {}),
     ...(icon ? { icon } : {}),
     location,
     kind,
@@ -297,11 +305,14 @@ export class RealPluginService implements PluginService {
 
   #indexPackage(key: string, a: Available): PluginPackage {
     const installed = this.#o.manager.installedVersion(a.name);
+    // the card's words from the source's index, in the interface language
+    const words = localizeOffer(a, getLocale());
     return {
       key,
       name: a.name,
+      ...(words.displayName && words.displayName !== a.name ? { displayName: words.displayName } : {}),
       version: a.version,
-      ...(a.description ? { description: a.description } : {}),
+      ...(words.description ? { description: words.description } : {}),
       location: a.location,
       kind: a.source.kind,
       ...(installed ? { installed } : {}),
@@ -577,7 +588,7 @@ export class RealPluginService implements PluginService {
     if (items.length !== 1 || items[0]!.source) return t('找到 {n} 个插件。', { n: items.length });
     const d = await items[0]!.install(() => {});
     await this.#enableNew(d.name);
-    return withModelNotice(t('已安装「{name}」{version}。', { name: d.displayName || d.name, version: d.version }), this.#o.manager.describe(d.name));
+    return withModelNotice(t('已安装「{name}」{version}。', { name: localized(d).displayName || d.name, version: d.version }), this.#o.manager.describe(d.name));
   }
 
   async run(cmd: PluginsCommand): Promise<PluginsResult> {
@@ -666,7 +677,7 @@ export class RealPluginService implements PluginService {
           if (listed) this.#remember(listed.source);
           this.#updates.delete(d.name);
           await this.#enableNew(d.name, say);
-          message = withModelNotice(t('已安装「{name}」{version}。', { name: d.displayName || d.name, version: d.version }), manager.describe(d.name));
+          message = withModelNotice(t('已安装「{name}」{version}。', { name: localized(d).displayName || d.name, version: d.version }), manager.describe(d.name));
           break;
         }
         case 'checkUpdates':

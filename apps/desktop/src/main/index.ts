@@ -73,7 +73,7 @@ import { followTaskbarTheme, readTaskbarDark, type TaskbarFollower } from './tas
 import { PREVIEW_SCHEME, PreviewFiles, readPreview, readPreviewFile } from './preview';
 import { FLOW_SCHEME, flowFile } from './flow-scheme';
 import { AttachImages } from './images';
-import { BRIDGE_JS, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
+import { bridgeFor, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
 import { pluginCallId, type PluginView, type PluginViewResult } from '../shared/plugin-view';
 import { uiFontFamily } from '../shared/ui-font';
 import { getLocale, resolveLocale, setLocale, t } from '../shared/i18n';
@@ -1098,6 +1098,7 @@ const viewCallId = (v: unknown): { callId?: string } => {
 };
 ipcMain.handle(DesktopChannel.PluginViews, async (): Promise<PluginView[]> => {
   if (!(backend instanceof ProcessBackend)) return [];
+  // in the interface language already (backend/desktop-host.ts)
   return backend.pluginViews().catch(() => []);
 });
 ipcMain.handle(DesktopChannel.PluginViewCall, async (_e, plugin: unknown, view: unknown, tool: unknown, args: unknown, confirmed: unknown, callId: unknown): Promise<PluginViewResult> => {
@@ -1155,7 +1156,7 @@ async function servePluginFile(url: string): Promise<Response> {
   const notFound = () => new Response('', { status: 404 });
   const req = parsePluginUrl(url);
   if (!req) return notFound();
-  if (req.path === '__spica/bridge.js') return new Response(BRIDGE_JS, { headers: { 'content-type': 'text/javascript; charset=utf-8' } });
+  if (req.path === '__spica/bridge.js') return new Response(bridgeFor(getLocale()), { headers: { 'content-type': 'text/javascript; charset=utf-8' } });
   if (req.path === '__spica/theme.css') return new Response(pluginTheme().css, { headers: { 'content-type': 'text/css; charset=utf-8' } });
   if (!(backend instanceof ProcessBackend)) return notFound();
   const file = await backend.pluginViewFile({ plugin: req.plugin, path: req.path }).catch(() => null);
@@ -1322,12 +1323,14 @@ settings.onChange((s) => {
     // Words made when read (a connection's problem, a plugin source's error, the update's message): read again.
     updates.relabel();
     sendToWindow(DesktopChannel.ProvidersChanged);
-    sendToWindow(DesktopChannel.PluginsChanged);
     if (backend instanceof ProcessBackend) {
       void backend.apply({ locale }).catch(() => undefined);
-      // the plugin page's words are made in the core's process (backend/desktop-host.ts)
-      void backend.call('setLocale', locale).catch(() => undefined);
-    }
+      // the plugin page's words are made in the core's process (backend/desktop-host.ts): asked again once it switched
+      void backend
+        .call('setLocale', locale)
+        .catch(() => undefined)
+        .finally(() => sendToWindow(DesktopChannel.PluginsChanged));
+    } else sendToWindow(DesktopChannel.PluginsChanged);
   }
   if (s.memory !== lastMemory) {
     lastMemory = s.memory;
