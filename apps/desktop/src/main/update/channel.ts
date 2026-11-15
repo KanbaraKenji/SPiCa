@@ -12,8 +12,10 @@ export const OFFICIAL_APP_ID = 'dev.spica.desktop';
 export const OFFICIAL_PLUGINS_LABEL = '官方插件';
 
 export interface BuildSources {
-  /** Update and announcement source; '' when this build does not check. */
+  /** Update and announcement source (the first of its addresses); '' when this build does not check. */
   updateSource: string;
+  /** All its addresses in the order to try (deploy.json may list several; main/update/pick-source.ts). */
+  updateSources: string[];
   /** The official plugin sources (设置 › 插件 › 市场, listed first). */
   pluginSources: OfficialSource[];
 }
@@ -46,16 +48,19 @@ export function buildSources(input: BuildSourcesInput): BuildSources {
   const channel = input.channel ?? OFFICIAL_CHANNEL;
   const official = input.appId === OFFICIAL_APP_ID;
 
-  let updateSource: string;
-  if (raw.updateSource !== undefined && raw.updateSource !== null) updateSource = typeof raw.updateSource === 'string' ? raw.updateSource.trim() : '';
-  else updateSource = official && input.packaged ? channel : '';
+  let updateSources: string[];
+  if (raw.updateSource !== undefined && raw.updateSource !== null) {
+    const list = Array.isArray(raw.updateSource) ? raw.updateSource : [raw.updateSource];
+    updateSources = list.map((s) => (typeof s === 'string' ? s.trim() : '')).filter(Boolean);
+  } else updateSources = official && input.packaged ? [channel] : [];
+  const updateSource = updateSources[0] ?? '';
 
   let pluginSources: OfficialSource[];
   if (raw.pluginSources !== undefined && raw.pluginSources !== null) pluginSources = officialSources(raw.pluginSources);
   else if (!input.packaged) pluginSources = input.repoPlugins ? [{ location: input.repoPlugins, label: '官方插件（开发版：仓库的 plugins 文件夹）', exclude: NOT_SHIPPED_PLUGINS }] : [];
   else pluginSources = [{ location: channelFile(channel, 'index.json'), label: OFFICIAL_PLUGINS_LABEL }];
 
-  return { updateSource, pluginSources };
+  return { updateSource, updateSources, pluginSources };
 }
 
 /** A file in the channel folder. */

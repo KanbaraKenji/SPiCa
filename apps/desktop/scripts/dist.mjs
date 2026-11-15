@@ -44,12 +44,12 @@ function packageDir(name) {
 /** Where the packaged app will look for updates and official plugins, as the app decides it (src/main/update/channel.ts). */
 export function sourceLines(deploy) {
   const official = deploy.app.id === DEFAULT_APP.id;
-  const update = deploy.updateSource === null ? (official ? `official channel ${OFFICIAL_CHANNEL}` : 'none (not in deploy.json)') : deploy.updateSource || 'none';
+  const update = deploy.updateSource === null ? (official ? `official channel ${OFFICIAL_CHANNEL}` : 'none (not in deploy.json)') : (deploy.updateSources ?? []).join(' | ') || 'none';
   const plugins =
     deploy.pluginSources === null
       ? `official channel ${OFFICIAL_CHANNEL}index.json`
       : deploy.pluginSources.length
-        ? deploy.pluginSources.map((s) => s.location).join(', ')
+        ? deploy.pluginSources.map((s) => (s.mirrors ?? [s.location]).join(' | ')).join(', ')
         : 'none';
   return [`updates: ${update}`, `official plugins: ${plugins}`];
 }

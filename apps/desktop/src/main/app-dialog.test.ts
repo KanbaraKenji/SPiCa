@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor, runDialog, type DialogWindow } from './app-dialog';
+import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor, runDialog, updateDialog, updateNowAnswer, type DialogWindow } from './app-dialog';
 import { parseDialogSpec, type DialogAnswer } from '../shared/app-dialog';
 import { DARK_SKIN, LIGHT_SKIN } from '../shared/skin';
 
@@ -128,5 +128,20 @@ describe('the spec handed to the page', () => {
     expect(parseDialogSpec(null)).toBeNull();
     expect(parseDialogSpec('{')).toBeNull();
     expect(parseDialogSpec(JSON.stringify({ title: 'x', buttons: [] }))).toBeNull();
+  });
+});
+
+describe('the update dialog at start', () => {
+  it('names the version; 稍后 and 立即更新 (the main one last); only 立即更新 installs; the message box puts it first', () => {
+    const spec = updateDialog('0.2.1', dialogLook(DARK_SKIN));
+    expect(spec.title).toBe('新版本 0.2.1 已下载');
+    expect(spec.detail).toEqual([]);
+    expect(spec.buttons).toEqual([{ label: '稍后' }, { label: '立即更新', primary: true }]);
+    expect(updateNowAnswer({ button: 1, checked: false, choice: null })).toBe(true);
+    expect(updateNowAnswer({ button: 0, checked: false, choice: null })).toBe(false);
+    expect(updateNowAnswer({ button: null, checked: false, choice: null })).toBe(false);
+    const box = messageBoxFor(spec, { type: 'info', appName: 'Spica', cancel: 0 });
+    expect(box.options.buttons).toEqual(['立即更新', '稍后']);
+    expect(updateNowAnswer(box.answer(0, false))).toBe(true);
   });
 });

@@ -209,4 +209,19 @@ describe('starting with no model set up', () => {
     await new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) }).init();
     expect(getTopSession).toHaveBeenCalledTimes(1);
   });
+
+  it('a sentence typed on a memory page goes to memoryAsks, not to 整理; refusals come back in words', async () => {
+    const backend = new FakeBackend({ speed: 0, seed: false });
+    const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
+    await store.init();
+    await store.addMemory('周报每周五交', { name: '周报', summary: '每周五交周报' });
+    await store.refreshMemories();
+    const entryId = store.state.get().memoryEntries![0]!.id;
+    expect(await store.askMemory({ entry: entryId }, '摘要改成周五下午交')).toBeNull();
+    await vi.waitFor(() => expect(store.state.get().memoryAsks?.[0]).toMatchObject({ by: 'ask', status: 'done', ask: { entry: entryId, text: '摘要改成周五下午交' } }));
+    expect((store.state.get().tidies ?? []).some((t) => t.by === 'ask')).toBe(false);
+    backend.setMemoryEnabled(false);
+    expect(await store.askMemory({ entry: entryId }, '删掉')).toBe('记忆已关闭');
+  });
 });
+

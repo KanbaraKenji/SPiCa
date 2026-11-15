@@ -46,6 +46,7 @@ import {
   type PluginView,
 } from '../../shared/plugins';
 import type { PluginService } from './types';
+import { firstWorking } from '../update/pick-source';
 
 export type { PluginService } from './types';
 
@@ -316,6 +317,12 @@ export class RealPluginService implements PluginService {
     return (this.#o.official ?? []).map((o) => ({ kind: isUrl(o.location) ? 'http' : 'share', location: o.location, ...(o.label ? { label: o.label } : {}) }));
   }
 
+  /** An official source's addresses in the order to try (just its location when deploy.json gives one). */
+  #mirrorsOf(location: string): string[] {
+    const o = (this.#o.official ?? []).find((x) => sameSource(x.location, location));
+    return o?.mirrors?.length ? o.mirrors : [location];
+  }
+
   #isOfficial(location: string): boolean {
     return (this.#o.official ?? []).some((o) => sameSource(o.location, location));
   }
@@ -376,7 +383,13 @@ export class RealPluginService implements PluginService {
         const at = new Date().toISOString();
         for (const [k, a] of [...this.#fromSources]) if (a.source.location === src.location) this.#fromSources.delete(k);
         try {
-          const offered = await this.#listOne(src);
+          // An official source with several addresses: the first that can be read (main/update/pick-source.ts); what
+          // it offers is listed under the source as one, wherever it came from.
+          const mirrors = this.#mirrorsOf(src.location);
+          const offered =
+            mirrors.length > 1
+              ? (await firstWorking(mirrors, (p) => this.#listOne({ ...src, kind: isUrl(p) ? 'http' : 'share', location: p }))).value.map((a) => ({ ...a, source: src }))
+              : await this.#listOne(src);
           for (const a of offered) this.#fromSources.set(`${src.location}:${a.name}@${a.version}`, a);
           this.#read.set(src.location, { at, count: offered.length });
         } catch (err) {

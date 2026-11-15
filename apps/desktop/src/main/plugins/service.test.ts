@@ -311,7 +311,7 @@ describe('why an address did not answer, in words', () => {
 });
 
 describe('官方来源 (deploy.json pluginSources)', () => {
-  function rig(official: { location: string; label?: string }[] | undefined, user: { kind: 'share'; location: string }[] = []) {
+  function rig(official: { location: string; label?: string; mirrors?: string[] }[] | undefined, user: { kind: 'share'; location: string }[] = []) {
     const dir = mkdtempSync(join(tmpdir(), 'spica-plugin-official-'));
     dirs.push(dir);
     const m = { ...manager, appName: 'Spica', installedVersion: () => undefined } as unknown as PluginManager;
@@ -344,6 +344,19 @@ describe('官方来源 (deploy.json pluginSources)', () => {
     expect(no.state.sources?.[0]?.official).toBe(true);
     // 全部检查更新 reads it too.
     expect((await svc.run({ op: 'checkSources' })).message).toBe('已是最新版本。');
+  });
+
+  it('several addresses for it: the first that can be read is used, listed as the one source (the first address)', async () => {
+    const r0 = rig(undefined);
+    const far = r0.share('far');
+    const near = join(r0.dir, 'near-not-reached');
+    const svc = r0.svc([{ location: near, mirrors: [near, far], label: '公司插件' }]);
+    const r = await svc.run({ op: 'refreshSources' });
+    expect(r.state.sources?.map((s) => [s.location, s.official, s.count, s.error])).toEqual([[near, true, 1, undefined]]);
+    expect(r.state.available?.map((a) => [a.name, a.source])).toEqual([['p-far', near]]);
+    // none reached: the first one's reason
+    const none = await r0.svc([{ location: near, mirrors: [near, join(r0.dir, 'also-gone')] }]).run({ op: 'refreshSources' });
+    expect(none.state.sources?.[0]).toMatchObject({ official: true, error: expect.stringMatching(/找不到共享文件夹/) });
   });
 
   it('not configured: no official row at all, nothing made up', async () => {

@@ -68,13 +68,15 @@ export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url))
     const list = problems.map((x) => `- ${presetProblemText(x)}`).join('\n');
     throw new Error(`deploy.json 的 models 有 ${problems.length} 处要改：\n${list}`);
   }
-  const updateSource = updateSourceOf(raw.updateSource);
-  if (id !== DEFAULT_APP.id && updateSource && sameChannel(updateSource, OFFICIAL_CHANNEL)) {
+  const updateSources = updateSourceOf(raw.updateSource);
+  if (id !== DEFAULT_APP.id && (updateSources ?? []).some((s) => sameChannel(s, OFFICIAL_CHANNEL))) {
     throw new Error(`deploy.json 改了 app.id，updateSource 就不能是 Spica 的官方地址：装好的版本会被更新成 Spica。换成自己的地址，或写 "" 表示不检查更新。`);
   }
   return {
     file,
-    updateSource,
+    // the first address (null: not written, '': no update checks), and all of them in the order to try
+    updateSource: updateSources === null ? null : (updateSources[0] ?? ''),
+    updateSources,
     pluginConfig: pluginConfigOf(raw.pluginConfig),
     pluginSources: pluginSourcesOf(raw.pluginSources),
     app: { name, id, icon, font, copyright: copyright.trim() || null },
@@ -109,13 +111,20 @@ const PLACE = /^([a-z]:[\\/]|\\\\|\/\/|https?:\/\/)/i;
 
 const sameChannel = (a, b) => a.replace(/\/+$/, '').toLowerCase() === b.replace(/\/+$/, '').toLowerCase();
 
-/** updateSource: null when absent (Spica as published then uses the official channel), '' for no update checks. */
+/**
+ * updateSource: null when absent (Spica as published then uses the official channel); [] for "" or [] (no update
+ * checks); else its addresses in the order to try: one address, or a list of them (the same files on several
+ * servers; the app uses the first it can read, main/update/pick-source.ts).
+ */
 function updateSourceOf(v) {
   if (v === undefined || v === null) return null;
-  if (typeof v !== 'string') throw new Error('deploy.json 的 updateSource 要写成地址（字符串），或 "" 表示不检查更新。');
-  const s = v.trim();
-  if (s && !PLACE.test(s)) throw new Error(`deploy.json 的 updateSource「${s}」不能用：要写共享盘或本机文件夹（\\\\server\\share、D:\\…）或 http(s) 地址，或 "" 表示不检查更新。`);
-  return s;
+  const list = Array.isArray(v) ? v : [v];
+  if (list.some((s) => typeof s !== 'string')) throw new Error('deploy.json 的 updateSource 要写成地址（字符串）或地址的列表，或 "" 表示不检查更新。');
+  const out = list.map((s) => s.trim()).filter(Boolean);
+  for (const s of out) {
+    if (!PLACE.test(s)) throw new Error(`deploy.json 的 updateSource「${s}」不能用：要写共享盘或本机文件夹（\\\\server\\share、D:\\…）或 http(s) 地址，或 "" 表示不检查更新。`);
+  }
+  return out;
 }
 
 /**
@@ -129,13 +138,17 @@ function pluginSourcesOf(v) {
   return v.map((item, i) => {
     const at = `deploy.json 的 pluginSources 第 ${i + 1} 项`;
     const o = typeof item === 'string' ? { location: item } : item && typeof item === 'object' ? item : null;
-    if (!o || typeof o.location !== 'string' || !o.location.trim()) throw new Error(`${at}要写地址（字符串，或 { "location": 地址 }）。`);
-    const location = o.location.trim();
-    if (!PLACE.test(location)) throw new Error(`${at}「${location}」不能用：要写共享盘或本机文件夹（\\\\server\\share、D:\\…）或 http(s) 地址。`);
-    if (/^https?:/i.test(location) && /\.zip(\?|$)/i.test(location)) throw new Error(`${at}「${location}」是单个插件包，不能当来源：网址要指向 index.json。`);
+    // location: one address, or a list of them (the same plugins on several servers, tried in that order)
+    const places = o ? (Array.isArray(o.location) ? o.location : [o.location]) : [];
+    if (!o || !places.length || places.some((p) => typeof p !== 'string' || !p.trim())) throw new Error(`${at}要写地址（字符串，或 { "location": 地址或地址的列表 }）。`);
+    const all = places.map((p) => p.trim());
+    for (const location of all) {
+      if (!PLACE.test(location)) throw new Error(`${at}「${location}」不能用：要写共享盘或本机文件夹（\\\\server\\share、D:\\…）或 http(s) 地址。`);
+      if (/^https?:/i.test(location) && /\.zip(\?|$)/i.test(location)) throw new Error(`${at}「${location}」是单个插件包，不能当来源：网址要指向 index.json。`);
+    }
     if (o.label !== undefined && typeof o.label !== 'string') throw new Error(`${at}的 label 要写成文字。`);
     const label = typeof o.label === 'string' ? o.label.trim() : '';
-    return label ? { location, label } : { location };
+    return { location: all[0], ...(all.length > 1 ? { mirrors: all } : {}), ...(label ? { label } : {}) };
   });
 }
 

@@ -96,6 +96,21 @@ export function crashDialog(appName: string, look: Pick<DialogSpec, 'scheme' | '
   };
 }
 
+/** The dialog at start when a new version is downloaded: 稍后 or 立即更新 (labels only). */
+export function updateDialog(version: string, look: Pick<DialogSpec, 'scheme' | 'tokens'>): DialogSpec {
+  return {
+    title: `新版本 ${version} 已下载`,
+    detail: [],
+    buttons: [{ label: '稍后' }, { label: '立即更新', primary: true }],
+    ...look,
+  };
+}
+
+/** 立即更新 in updateDialog's answer; 稍后 or the dialog closed is not. */
+export function updateNowAnswer(a: DialogAnswer): boolean {
+  return a.button === 1;
+}
+
 /** 重新加载 in crashDialog's answer; any other button, or the dialog closed, is 退出 (as the message box's cancelId was). */
 export function crashAnswer(a: DialogAnswer): boolean {
   return a.button === 1;

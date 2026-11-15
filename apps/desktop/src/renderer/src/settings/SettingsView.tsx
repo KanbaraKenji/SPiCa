@@ -167,8 +167,6 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
       <About
         version={version}
         update={update}
-        ownSource={settings.updateSource}
-        onSource={(updateSource) => shell.update({ updateSource })}
         onCheck={onCheckUpdate}
         onInstall={onInstallUpdate}
         whenIdle={settings.updateWhenIdle}
