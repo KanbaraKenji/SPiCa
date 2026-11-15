@@ -376,7 +376,7 @@ function PluginDetail({
         {p.description ? <p className="plugin-desc">{p.description}</p> : null}
         {p.enabled ? null : <p className="plugin-off">已停用</p>}
         {p.config?.missing.length ? (
-          <button type="button" className="plugin-missing status-with-icon" onClick={() => goToField(p.name, p.config!.missing[0]!)}>
+          <button type="button" className="plugin-unfilled status-with-icon" onClick={() => goToField(p.name, p.config!.missing[0]!)}>
             <SpicaStatusIcon name="warning" size={14} />
             {p.waiting ? '待设置 · ' : ''}
             {p.config.missing.length} 项未填

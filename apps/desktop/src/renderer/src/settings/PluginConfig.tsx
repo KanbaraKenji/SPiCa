@@ -180,6 +180,13 @@ function ConfigRow({
         )}
       </span>
     );
+  } else if (f.locked) {
+    // set by the packaging: its value as text, nothing that looks like it can be typed into
+    control = (
+      <span className="config-locked" id={id} title={text || undefined} data-tip-clipped="">
+        {f.type === 'password' ? (f.set ? '••••••' : '—') : text || '—'}
+      </span>
+    );
   } else {
     control = (
       <input
@@ -189,8 +196,7 @@ function ConfigRow({
         inputMode={f.type === 'number' ? 'decimal' : f.type === 'url' ? 'url' : undefined}
         value={text}
         placeholder={f.type === 'password' && f.set ? '已保存（留空不修改）' : (f.placeholder ?? '')}
-        readOnly={!!f.locked}
-        disabled={disabled && !f.locked}
+        disabled={disabled}
         spellCheck={false}
         autoComplete="off"
         aria-label={f.title}

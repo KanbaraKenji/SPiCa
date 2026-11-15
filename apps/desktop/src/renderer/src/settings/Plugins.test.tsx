@@ -670,9 +670,9 @@ describe('a plugin’s settings form (user_config)', () => {
     expect(within(await screen.findByRole('navigation', { name: '插件列表' })).getByRole('button', { name: /工单查询/ }).textContent).toContain('1 项未填');
     const page = await open('工单查询', '工单查询（示例）');
     expect(within(page).getByRole('button', { name: /待设置 · 1 项未填/ })).toBeTruthy();
-    const url = within(page).getByRole('textbox', { name: '服务器地址' }) as HTMLInputElement;
-    expect(url.readOnly).toBe(true);
-    expect(url.value).toBe('https://tickets.example.com');
+    // set by the packaging: shown as text, nothing to type into
+    expect(within(page).queryByRole('textbox', { name: '服务器地址' })).toBeNull();
+    expect(within(page).getByText('https://tickets.example.com')).toBeTruthy();
     expect(within(page).getByText('由管理员设置')).toBeTruthy();
     expect((within(page).getByLabelText('密码') as HTMLInputElement).placeholder).toBe('');
     expect(within(page).getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true);

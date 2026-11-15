@@ -5338,7 +5338,8 @@ section.plugins-part > .plugins-part-title {
   max-width: 320px;
 }
 
-.config-path-text {
+.config-path-text,
+.config-locked {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -5356,7 +5357,7 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* 「N 项未填」 under the plugin's name: goes to the first field not filled in. */
-.plugin-missing {
+.plugin-unfilled {
   margin: 6px 0 0;
   padding: 0;
   font-size: var(--fs-footnote);
@@ -5365,7 +5366,7 @@ section.plugins-part > .plugins-part-title {
   cursor: pointer;
 }
 
-.plugin-missing:hover {
+.plugin-unfilled:hover {
   color: var(--spica-ink);
 }
 
