@@ -2,6 +2,7 @@
 // source": a shared folder (\\server\share\spica) or an http(s) address that
 // holds what `npm run dist` produced (latest.yml + the installer) and, when an
 // administrator wants to say something, announcements.json.
+import { compareVersions as semverCompare } from '@spica/plugins/version';
 
 export type UpdateStatus = 'off' | 'idle' | 'checking' | 'latest' | 'downloading' | 'ready' | 'manual' | 'error';
 
@@ -69,22 +70,10 @@ export function activeNotices(all: readonly Notice[], dismissed: readonly string
   });
 }
 
-/** -1, 0 or 1; plain x.y.z (pre-release tags sort before the release). */
+/** -1, 0 or 1, as semver orders them (pre-release parts compared one by one, numbers as numbers: rc.10 after rc.9). */
 export function compareVersions(a: string, b: string): number {
-  const parse = (v: string) => {
-    const [core = '', pre = ''] = v.trim().replace(/^v/, '').split('-', 2);
-    return { nums: core.split('.').map((x) => Number.parseInt(x, 10) || 0), pre };
-  };
-  const x = parse(a);
-  const y = parse(b);
-  for (let i = 0; i < 3; i++) {
-    const d = (x.nums[i] ?? 0) - (y.nums[i] ?? 0);
-    if (d) return d > 0 ? 1 : -1;
-  }
-  if (x.pre === y.pre) return 0;
-  if (!x.pre) return 1;
-  if (!y.pre) return -1;
-  return x.pre > y.pre ? 1 : -1;
+  const bare = (v: string) => v.trim().replace(/^v/, '');
+  return semverCompare(bare(a), bare(b));
 }
 
 /** The fields the updater needs from electron-builder's latest.yml. */

@@ -9,6 +9,14 @@ describe('compareVersions', () => {
     expect(compareVersions('1.0.0-beta.1', '1.0.0')).toBe(-1);
     expect(compareVersions('v1.2.3', '1.2.3')).toBe(0);
   });
+
+  it('compares pre-release parts one by one, numbers as numbers', () => {
+    expect(compareVersions('0.2.0-rc.10', '0.2.0-rc.9')).toBe(1);
+    expect(compareVersions('0.2.0-rc.9', '0.2.0-rc.10')).toBe(-1);
+    expect(compareVersions('0.2.0-rc.3', '0.2.0-rc.3')).toBe(0);
+    expect(compareVersions('0.2.0-rc.3', '0.2.0')).toBe(-1);
+    expect(compareVersions('0.2.0-beta.2', '0.2.0-rc.1')).toBe(-1);
+  });
 });
 
 describe('parseLatestYml', () => {
