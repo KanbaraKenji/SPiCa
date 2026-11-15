@@ -86,4 +86,4 @@ export function devSwitch(env: NodeJS.ProcessEnv, packaged: boolean, name: 'SPIC
  * user's profile, so the default would put the developer's user name into committed images; this neutral one,
  * like the demo data's D:\工作\… folders, is only shown (the demo backend reads no workflow files).
  */
-export const SHOTS_WORKFLOWS_DIR = 'D:\\工作\\Spica\\workflows';
+export const SHOTS_WORKFLOWS_DIR = 'D:\\工作\\Spica\\workflows'; // i18n-skip: a made-up path, as the demo data's

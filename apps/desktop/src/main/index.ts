@@ -11,7 +11,7 @@ import { seedDemoMonitor } from './backend/fake-monitor';
 import { DEMO_PROVIDER_NAMES } from './backend/fake-usage';
 import type { MonitorEntry } from '../shared/monitor';
 import { DesktopChannel } from '../shared/ipc';
-import { humanError } from '../shared/errors';
+import { knownError, netWords } from '../shared/errors';
 import { CAPTION_BACK, captionSymbol, deriveTokens, resolveSkin, schemeOf, type WindowCover } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
 import { effectiveAccount, mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
@@ -76,7 +76,7 @@ import { AttachImages } from './images';
 import { BRIDGE_JS, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
 import { pluginCallId, type PluginView, type PluginViewResult } from '../shared/plugin-view';
 import { uiFontFamily } from '../shared/ui-font';
-import { getLocale, resolveLocale, setLocale } from '../shared/i18n';
+import { getLocale, resolveLocale, setLocale, t } from '../shared/i18n';
 import { systemLanguages } from './locale';
 import { readFile } from 'node:fs/promises';
 
@@ -233,7 +233,7 @@ function backendConfig(): DesktopBackendConfig {
       extensions: [
         {
           module: '@spica/desktop-host',
-          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: buildDefaults.pluginSources, mcpInfoFile, mcpTokenFile, userAccount: userAccount() },
+          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: buildDefaults.pluginSources, mcpInfoFile, mcpTokenFile, userAccount: userAccount(), locale: getLocale() },
         },
       ],
     },
@@ -420,7 +420,7 @@ function providerList(): ProviderList {
   const saved = providers.list();
   // A key sealed elsewhere (another settings folder, e.g. SPICA_USER_DATA): the connection never reaches the core.
   const unreadable = new Set(providers.unreadableKeys());
-  const keyProblems = Object.fromEntries(saved.filter((p) => unreadable.has(p.id)).map((p) => [p.id, `${secretLabel(p.kind)} 无法读取，请重新输入并保存。`]));
+  const keyProblems = Object.fromEntries(saved.filter((p) => unreadable.has(p.id)).map((p) => [p.id, t('{secret} 无法读取，请重新输入并保存。', { secret: secretLabel(p.kind) })]));
   return { items: [...env, ...saved], problems: { ...keyProblems, ...providerProblems }, default: providers.defaultRef(), strong: providers.strongRef() };
 }
 
@@ -946,11 +946,11 @@ ipcMain.handle(DesktopChannel.UpdateSettings, (_e, patch: unknown) => {
 });
 ipcMain.handle(DesktopChannel.Agent, async (_e, method: unknown, args: unknown) => {
   if (typeof method !== 'string' || !AGENT_METHODS.has(method as keyof AgentApi)) {
-    throw new Error(`不支持的操作：${String(method)}`);
+    throw new Error(t('不支持的操作：{method}', { method: String(method) }));
   }
   const fn = backend[method as keyof AgentApi] as ((...a: unknown[]) => Promise<unknown>) | undefined;
   // Name the missing method, so a backend that lags behind the shell is easy to spot.
-  if (!fn) throw new Error(`当前版本不支持此操作（${method}）。`);
+  if (!fn) throw new Error(t('当前版本不支持此操作（{method}）。', { method }));
   return fn.apply(backend, Array.isArray(args) ? args : []);
 });
 
@@ -996,11 +996,11 @@ ipcMain.on(DesktopChannel.MonitorWatch, (_e, on: unknown) => {
   if (!monitorWatching) monitorBatch = [];
 });
 ipcMain.handle(DesktopChannel.MonitorExport, async (_e, text: unknown): Promise<SaveCsvResult> => {
-  if (typeof text !== 'string' || text.length > 50_000_000) return { error: '无法导出日志。' };
+  if (typeof text !== 'string' || text.length > 50_000_000) return { error: t('无法导出日志。') };
   const d = new Date();
   const p2 = (n: number) => String(n).padStart(2, '0');
   const stamp = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
-  const opts: Electron.SaveDialogOptions = { title: '导出日志', defaultPath: join(app.getPath('documents'), `spica-monitor-${stamp}.log`), filters: [{ name: '日志', extensions: ['log', 'txt'] }] };
+  const opts: Electron.SaveDialogOptions = { title: t('导出日志'), defaultPath: join(app.getPath('documents'), `spica-monitor-${stamp}.log`), filters: [{ name: t('日志'), extensions: ['log', 'txt'] }] };
   // SPICA_SAVE_TO=<folder> (development only): skip the dialog, so scripts never leave one open.
   const saveTo = app.isPackaged ? '' : (process.env.SPICA_SAVE_TO ?? '');
   const pick = saveTo ? { canceled: false, filePath: join(saveTo, basename(opts.defaultPath ?? 'spica-monitor.log')) } : mainWindow ? await dialog.showSaveDialog(mainWindow, opts) : await dialog.showSaveDialog(opts);
@@ -1010,7 +1010,7 @@ ipcMain.handle(DesktopChannel.MonitorExport, async (_e, text: unknown): Promise<
     writeFileSync(pick.filePath, scrub(text, monitorSecrets()), 'utf8');
     return { file: pick.filePath };
   } catch (err) {
-    return { error: `无法写入文件：${err instanceof Error ? err.message : String(err)}` };
+    return { error: t('无法写入文件：{error}', { error: err instanceof Error ? err.message : String(err) }) };
   }
 });
 
@@ -1081,7 +1081,7 @@ ipcMain.handle(DesktopChannel.LocalConnect, async (): Promise<LocalConnectInfo |
 ipcMain.handle(DesktopChannel.Network, async (): Promise<NetworkState | null> => {
   if (!(backend instanceof ProcessBackend)) return null;
   try {
-    return { ...(await backend.networkSettings()), problems: networkProblems };
+    return { ...(await backend.networkSettings()), problems: networkWarnings.map(networkProblem) };
   } catch {
     return null;
   }
@@ -1098,7 +1098,7 @@ ipcMain.handle(DesktopChannel.PluginViews, async (): Promise<PluginView[]> => {
   return backend.pluginViews().catch(() => []);
 });
 ipcMain.handle(DesktopChannel.PluginViewCall, async (_e, plugin: unknown, view: unknown, tool: unknown, args: unknown, confirmed: unknown, callId: unknown): Promise<PluginViewResult> => {
-  if (!(backend instanceof ProcessBackend)) return { content: '[UNSUPPORTED] 当前版本不支持插件页面。', isError: true };
+  if (!(backend instanceof ProcessBackend)) return { content: '[UNSUPPORTED] ' + t('当前版本不支持插件页面。'), isError: true };
   try {
     return await backend.pluginViewCall({ plugin: str(plugin), view: str(view), tool: str(tool), args: args ?? {}, confirmed: confirmed === true, ...viewCallId(callId) });
   } catch (err) {
@@ -1107,8 +1107,7 @@ ipcMain.handle(DesktopChannel.PluginViewCall, async (_e, plugin: unknown, view: 
     console.warn('[spica] plugin page call failed:', msg);
     if (/[一-鿿]/.test(msg)) return { content: msg, isError: true };
     // Known causes in words (e.g. no model configured yet), else the plugin's own message.
-    const human = humanError(msg);
-    return { content: human.startsWith('出错：') ? `插件调用失败：${msg.slice(0, 300)}` : human, isError: true };
+    return { content: knownError(msg) ?? t('插件调用失败：{error}', { error: msg.slice(0, 300) }), isError: true };
   }
 });
 // The page that made a call is gone (closed, reloaded, its plugin turned off): the call is stopped rather than
@@ -1169,12 +1168,12 @@ async function servePluginFile(url: string): Promise<Response> {
 }
 
 ipcMain.handle(DesktopChannel.OpenFile, async (_e, sessionId: unknown, path: unknown): Promise<string | null> => {
-  if (typeof sessionId !== 'string' || typeof path !== 'string' || !path) return '文件路径无效。';
+  if (typeof sessionId !== 'string' || typeof path !== 'string' || !path) return t('文件路径无效。');
   const session = await backend.getSession(sessionId);
   const full = isAbsolute(path) ? path : resolvePath(session?.cwd || app.getPath('home'), path);
-  if (!existsSync(full)) return `找不到文件：${full}`;
+  if (!existsSync(full)) return t('找不到文件：{path}', { path: full });
   const error = await shell.openPath(full);
-  return error ? `无法打开文件：${error}` : null;
+  return error ? t('无法打开文件：{error}', { error }) : null;
 });
 
 // Updates, announcements and the official plugins. The update source is the user's setting, else what
@@ -1312,12 +1311,13 @@ let lastMemory = settings.get().memory;
 let lastAutoTidy = settings.get().memoryAutoTidy;
 let lastAgentMessages = settings.get().agentMessageLimit;
 let lastAccount = userAccount();
-/** Problems the core reported for the network settings (e.g. a certificate file it cannot read), in words. */
-let networkProblems: string[] = [];
+/** Problems the core reported for the network settings (e.g. a certificate file it cannot read), as it wrote them. */
+let networkWarnings: string[] = [];
+/** One of them in words (in the language now: made when the settings page reads them). */
 function networkProblem(raw: string): string {
-  if (/ca|certificate|pem/i.test(raw)) return `无法读取证书文件：${settings.get().network.caFile || raw}`;
-  if (/proxy/i.test(raw)) return `代理地址无效：${settings.get().network.proxy || raw}`;
-  return `网络设置错误：${raw}`;
+  if (/ca|certificate|pem/i.test(raw)) return t('无法读取证书文件：{file}', { file: settings.get().network.caFile || raw });
+  if (/proxy/i.test(raw)) return t('代理地址无效：{proxy}', { proxy: settings.get().network.proxy || raw });
+  return t('网络设置错误：{error}', { error: raw });
 }
 settings.onChange((s) => {
   const locale = resolveLocale(s.language, systemLanguages());
@@ -1325,7 +1325,15 @@ settings.onChange((s) => {
     // New conversations take it (a conversation keeps the locale it was made with).
     setLocale(locale);
     relabelTray();
-    if (backend instanceof ProcessBackend) void backend.apply({ locale }).catch(() => undefined);
+    // Words made when read (a connection's problem, a plugin source's error, the update's message): read again.
+    updates.relabel();
+    sendToWindow(DesktopChannel.ProvidersChanged);
+    sendToWindow(DesktopChannel.PluginsChanged);
+    if (backend instanceof ProcessBackend) {
+      void backend.apply({ locale }).catch(() => undefined);
+      // the plugin page's words are made in the core's process (backend/desktop-host.ts)
+      void backend.call('setLocale', locale).catch(() => undefined);
+    }
   }
   if (s.memory !== lastMemory) {
     lastMemory = s.memory;
@@ -1364,7 +1372,7 @@ settings.onChange((s) => {
     void backend
       .apply({ network: networkForCore(s.network) })
       .then((r) => {
-        networkProblems = r.warnings.map(networkProblem);
+        networkWarnings = r.warnings;
       })
       .catch(() => undefined);
   }
@@ -1384,9 +1392,10 @@ ipcMain.handle(DesktopChannel.Workflows, async (_e, op: unknown): Promise<Workfl
   await workflowsApplied;
   if (op === 'open') {
     if (dir === defaultWorkflowsDir) mkdirSync(dir, { recursive: true });
-    const err = existsSync(dir) ? await shell.openPath(dir) : '文件夹不存在';
-    if (err) message = `无法打开文件夹：${err}`;
+    const err = existsSync(dir) ? await shell.openPath(dir) : t('文件夹不存在');
+    if (err) message = t('无法打开文件夹：{error}', { error: err });
   }
+  // i18n-skip: the demo's made-up workflow
   if (!(backend instanceof ProcessBackend)) return { dir, names: ['产品开发（示例）'], problems: [], ...(message ? { message } : {}) };
   try {
     const w = await backend.workflows();
@@ -1399,26 +1408,28 @@ ipcMain.handle(DesktopChannel.Workflows, async (_e, op: unknown): Promise<Workfl
 /** The core's workflow loading errors, in words. */
 function workflowProblem(raw: string): string {
   const folder = /^workflows folder (.+?): .*ENOENT/.exec(raw);
-  if (folder) return `找不到文件夹：${folder[1]}`;
+  if (folder) return t('找不到文件夹：{path}', { path: folder[1]! });
   const json = /^workflow (.+?): not valid JSON/.exec(raw);
-  if (json) return `${json[1]} 不是有效的 JSON，已跳过。`;
+  if (json) return t('{file} 不是有效的 JSON，已跳过。', { file: json[1]! });
   const dup = /^workflow (.+?): id "(.+?)" is already defined/.exec(raw);
-  if (dup) return `${dup[1]}：编号「${dup[2]}」与其他工作流重复，已跳过。`;
+  if (dup) return t('{file}：编号「{id}」与其他工作流重复，已跳过。', { file: dup[1]!, id: dup[2]! });
   const other = /^workflow (.+?): (.*)$/.exec(raw);
-  if (other) return `${other[1]} 读取失败：${other[2]}`;
+  if (other) return t('{file} 读取失败：{error}', { file: other[1]!, error: other[2]! });
   return raw;
 }
 
 function friendly(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
-  return /[\u4e00-\u9fff]/.test(msg) ? msg : '后台无响应，请稍后重试。';
+  // Words already: from the core (Chinese), or the backend process's own in the language now.
+  const own = [t('后台无响应，请稍后重试。'), t('后台正在恢复'), t('后台多次出错，已停止。')];
+  return /[\u4e00-\u9fff]/.test(msg) || own.includes(msg) ? msg : t('后台无响应，请稍后重试。');
 }
 
 ipcMain.handle(DesktopChannel.PickFolder, async (_e, title: unknown): Promise<string | null> => {
   // SPICA_PICK_FOLDER (development only): answered without the dialog, so test scripts never drive one.
   const picked = pickedFolder(process.env, app.isPackaged);
   if (picked) return picked;
-  const opts: Electron.OpenDialogOptions = { title: typeof title === 'string' && title ? title.slice(0, 60) : '选择文件夹', properties: ['openDirectory', 'createDirectory'] };
+  const opts: Electron.OpenDialogOptions = { title: typeof title === 'string' && title ? title.slice(0, 60) : t('选择文件夹'), properties: ['openDirectory', 'createDirectory'] };
   const r = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts);
   return r.canceled ? null : (r.filePaths[0] ?? null);
 });
@@ -1434,7 +1445,7 @@ ipcMain.handle(DesktopChannel.UsageLog, async (_e, raw: unknown): Promise<UsageL
   if (from) req.from = from;
   if (to) req.to = to;
   const day = new Date().toLocaleDateString('sv-SE').replaceAll('-', '');
-  const opts: Electron.SaveDialogOptions = { title: '导出使用日志', defaultPath: join(app.getPath('documents'), `使用日志-${day}.jsonl`), filters: [{ name: '使用日志', extensions: ['jsonl'] }] };
+  const opts: Electron.SaveDialogOptions = { title: t('导出使用日志'), defaultPath: join(app.getPath('documents'), t('使用日志-{day}.jsonl', { day })), filters: [{ name: t('使用日志'), extensions: ['jsonl'] }] };
   // SPICA_SAVE_TO=<folder> (development only): skip the dialog, so scripts never leave one open.
   const saveTo = app.isPackaged ? '' : (process.env.SPICA_SAVE_TO ?? '');
   const pick = saveTo
@@ -1447,12 +1458,13 @@ ipcMain.handle(DesktopChannel.UsageLog, async (_e, raw: unknown): Promise<UsageL
     if (backend instanceof ProcessBackend) return await backend.usageLog({ filter: req, file: pick.filePath });
     // Demo data: a header and two fictional records, so the page can be tried without the core.
     const header = { type: 'header', schema: 'spica.usage-log', version: 1, demo: true, filter: req };
+    // i18n-skip: demo records
     const rows = [{ type: 'session', id: 's-chat-1', title: '看一下样机评审资料' }, { type: 'message', sessionId: 's-chat-1', role: 'user', text: '帮我看看样机评审的资料' }];
     writeFileSync(pick.filePath, [header, ...rows].map((x) => JSON.stringify(x)).join('\n') + '\n', 'utf8');
     return { file: pick.filePath, records: rows.length };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (/EACCES|EPERM|EBUSY|EROFS|ENOENT/.test(msg)) return { error: '无法写入该位置，请选择其他文件夹。' };
+    if (/EACCES|EPERM|EBUSY|EROFS|ENOENT/.test(msg)) return { error: t('无法写入该位置，请选择其他文件夹。') };
     return { error: friendly(err) };
   }
 });
@@ -1483,16 +1495,16 @@ ipcMain.handle(DesktopChannel.OpenFolder, async (_e, path: unknown): Promise<str
     return null;
   }
   const error = await shell.openPath(r.path);
-  return error ? `无法打开文件夹：${error}` : null;
+  return error ? t('无法打开文件夹：{error}', { error }) : null;
 });
 
 ipcMain.handle(DesktopChannel.SaveCsv, async (_e, name: unknown, text: unknown): Promise<SaveCsvResult> => {
-  if (typeof text !== 'string' || text.length > 20_000_000) return { error: '无法导出该表格。' };
-  const opts: Electron.SaveDialogOptions = { title: '导出 CSV', defaultPath: join(app.getPath('documents'), csvFileName(name)), filters: [{ name: 'CSV', extensions: ['csv'] }] };
+  if (typeof text !== 'string' || text.length > 20_000_000) return { error: t('无法导出该表格。') };
+  const opts: Electron.SaveDialogOptions = { title: t('导出 CSV'), defaultPath: join(app.getPath('documents'), csvFileName(name)), filters: [{ name: 'CSV', extensions: ['csv'] }] };
   // SPICA_SAVE_TO=<folder> (development only): skip the dialog, so scripts never leave one open.
   const saveTo = app.isPackaged ? '' : (process.env.SPICA_SAVE_TO ?? '');
   const pick = saveTo
-    ? { canceled: false, filePath: join(saveTo, basename(opts.defaultPath ?? '表格.csv')) }
+    ? { canceled: false, filePath: join(saveTo, basename(opts.defaultPath ?? t('表格.csv'))) }
     : mainWindow
       ? await dialog.showSaveDialog(mainWindow, opts)
       : await dialog.showSaveDialog(opts);
@@ -1502,7 +1514,7 @@ ipcMain.handle(DesktopChannel.SaveCsv, async (_e, name: unknown, text: unknown):
     return { file: pick.filePath };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (/EACCES|EPERM|EBUSY|EROFS|ENOENT/.test(msg)) return { error: '无法写入该位置，请选择其他文件夹。' };
+    if (/EACCES|EPERM|EBUSY|EROFS|ENOENT/.test(msg)) return { error: t('无法写入该位置，请选择其他文件夹。') };
     return { error: friendly(err) };
   }
 });
@@ -1511,7 +1523,7 @@ ipcMain.handle(DesktopChannel.PickFiles, async (_e, title: unknown): Promise<str
   // SPICA_PICK_FILES (development only, ;-separated): answered without the dialog.
   const picked = pickedFiles(process.env, app.isPackaged);
   if (picked) return picked;
-  const opts: Electron.OpenDialogOptions = { title: typeof title === 'string' && title ? title.slice(0, 60) : '选择文件', properties: ['openFile', 'multiSelections'] };
+  const opts: Electron.OpenDialogOptions = { title: typeof title === 'string' && title ? title.slice(0, 60) : t('选择文件'), properties: ['openFile', 'multiSelections'] };
   const r = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts);
   return r.canceled ? [] : r.filePaths.slice(0, 20);
 });
@@ -1580,7 +1592,7 @@ const pluginService: PluginService =
           mkdirSync(pluginRoot, { recursive: true });
           const err = await shell.openPath(pluginRoot);
           const r = await backend.plugins({ op: 'state' });
-          return err ? { ...r, ok: false, message: `无法打开文件夹：${err}` } : r;
+          return err ? { ...r, ok: false, message: t('无法打开文件夹：{error}', { error: err }) } : r;
         },
       }
     : new FakePluginService(pluginRoot, { many: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'many', onProgress: (p) => sendToWindow(DesktopChannel.PluginsProgress, p), stepMs: 700 });
@@ -1645,11 +1657,14 @@ ipcMain.handle(DesktopChannel.ListProviderModels, async (_e, draft: ProviderDraf
   const secret = draft.secret?.trim() || (draft.id ? providers.secretOf(draft.id) : undefined) || '';
   const config = toProviderConfig({ ...draft, id: 'list-models', secret });
   if (backend instanceof ProcessBackend) {
-    return backend.listProviderModels(config).catch((err: unknown) => ({ ok: false, code: 'list.failed', message: err instanceof Error ? err.message : String(err), hint: '获取模型列表失败，请从列表选择或手动输入模型。' }));
+    const r = await backend.listProviderModels(config).catch((err: unknown): ListModelsResult => ({ ok: false, code: 'list.failed', message: err instanceof Error ? err.message : String(err), hint: t('获取模型列表失败，请从列表选择或手动输入模型。') }));
+    // The core's hint in the language now (by its code; words the shell does not know as sent).
+    if (r.ok || r.code === 'list.failed' || !r.hint) return r;
+    return { ...r, hint: netWords(r.code, r.hint) ?? r.hint };
   }
   // Demo data: the catalog's own list stands in for the provider's answer.
   const p = (await modelCatalog())?.providers.find((x) => x.id === draft.catalogId);
-  if (!p || p.listModels === 'none') return { ok: false, code: 'list.unsupported', message: 'demo', hint: '该服务商不支持获取模型列表，请从列表选择或手动输入模型。' };
+  if (!p || p.listModels === 'none') return { ok: false, code: 'list.unsupported', message: 'demo', hint: t('该服务商不支持获取模型列表，请从列表选择或手动输入模型。') };
   return { ok: true, models: p.models.map((m) => ({ id: m.id, ...(m.label ? { label: m.label } : {}), contextWindow: m.contextWindow, inCatalog: true, chat: true })) };
 });
 

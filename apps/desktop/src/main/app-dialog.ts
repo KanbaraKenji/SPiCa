@@ -4,6 +4,7 @@
 import type { DialogAnswer, DialogSpec } from '../shared/app-dialog';
 import { deriveTokens, schemeOf, type Skin } from '../shared/skin';
 import { dialogTokens } from '../shared/app-dialog';
+import { t } from '../shared/i18n';
 
 /** The small window drawn within this long, else the message box. */
 export const DIALOG_SHOW_MS = 5_000;
@@ -89,9 +90,9 @@ export function dialogLook(skin: Skin, font?: string): Pick<DialogSpec, 'scheme'
 /** 界面出错: the third loss of the page within a minute (main/page-recovery.ts). Button 1 (重新加载) is the main one. */
 export function crashDialog(appName: string, look: Pick<DialogSpec, 'scheme' | 'tokens'>): DialogSpec {
   return {
-    title: '界面出错',
-    detail: [`界面一分钟内连续出错，已停止自动重新加载。重新加载会回到刚才的对话；退出 ${appName} 会结束正在进行的任务。`],
-    buttons: [{ label: `退出 ${appName}` }, { label: '重新加载', primary: true }],
+    title: t('界面出错'),
+    detail: [t('界面一分钟内连续出错，已停止自动重新加载。重新加载会回到刚才的对话；退出 {app} 会结束正在进行的任务。', { app: appName })],
+    buttons: [{ label: t('退出 {app}', { app: appName }) }, { label: t('重新加载'), primary: true }],
     ...look,
   };
 }

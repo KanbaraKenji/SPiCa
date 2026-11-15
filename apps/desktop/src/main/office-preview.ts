@@ -4,6 +4,7 @@
 // and 用系统程序打开 is always there.
 import { extractFile } from '@spica/extract';
 import type { PreviewInfo } from '../shared/bridge';
+import { t } from '../shared/i18n';
 
 export const WORD = new Set(['.docx', '.docm']);
 export const EXCEL = new Set(['.xlsx', '.xlsm']);
@@ -65,6 +66,6 @@ export async function officePreview(path: string, name: string, size: number, ex
     const shown = sheets[sheet - 1];
     return { kind: 'sheet', name, path, size, sheets, sheet, ...grid, truncated: shown !== undefined && shown.rows > grid.rows.length };
   } catch {
-    return { kind: 'unsupported', name, path, size, message: '无法读取此文件。' };
+    return { kind: 'unsupported', name, path, size, message: t('无法读取此文件。') };
   }
 }

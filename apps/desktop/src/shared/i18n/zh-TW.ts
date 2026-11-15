@@ -4,5 +4,6 @@ import type { Catalog } from './index';
 import { merge } from './merge';
 import { ZH_TW_APPEARANCE } from './zh-TW/appearance';
 import { ZH_TW_WINDOW } from './zh-TW/window';
+import { ZH_TW_MAIN } from './zh-TW/main';
 
-export const ZH_TW: Catalog = merge([ZH_TW_APPEARANCE, ZH_TW_WINDOW]);
+export const ZH_TW: Catalog = merge([ZH_TW_APPEARANCE, ZH_TW_WINDOW, ZH_TW_MAIN]);

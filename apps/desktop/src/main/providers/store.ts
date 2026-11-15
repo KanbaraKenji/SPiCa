@@ -6,6 +6,7 @@
 //
 // File versions: 1 (until 2026-11-10) held one model per entry (model,
 // strongModel, contextWindow, secret, defaultId); it is read and rewritten as 2.
+import { t } from '../../shared/i18n';
 import { runLimit } from '../../shared/settings';
 import { keyMaskParts, keyMaskText } from '@spica/protocol';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -275,7 +276,7 @@ export class ProviderStore {
     let keys = existing?.keys ?? [];
     const typed = draft.secret?.trim();
     if (typed) {
-      if (!this.#box.available()) throw new Error('无法加密保存密钥，未保存。');
+      if (!this.#box.available()) throw new Error(t('无法加密保存密钥，未保存。'));
       keys = [{ sealed: this.#box.encrypt(typed), ...keyMaskParts(typed) }];
     }
     const fields = baseFields(draft as unknown as Record<string, unknown>);
@@ -309,20 +310,20 @@ export class ProviderStore {
   /** Makes this connection's first model the default (the one-model form's 「设为默认」). */
   setDefault(id: string): void {
     const c = this.#known().find((x) => x.id === id);
-    if (!c) throw new Error('找不到该模型配置。');
-    if (!c.models[0]) throw new Error('该服务商未选择模型。');
+    if (!c) throw new Error(t('找不到该模型配置。'));
+    if (!c.models[0]) throw new Error(t('该服务商未选择模型。'));
     this.setDefaultModel({ connectionId: id, model: c.models[0] });
   }
 
   setDefaultModel(ref: ModelRef): void {
-    if (!this.#valid(ref)) throw new Error('找不到该模型。');
+    if (!this.#valid(ref)) throw new Error(t('找不到该模型。'));
     this.#data.default = { ...ref };
     this.#write();
   }
 
   /** The model for heavy work; null: none. */
   setStrongModel(ref: ModelRef | null): void {
-    if (ref && !this.#valid(ref)) throw new Error('找不到该模型。');
+    if (ref && !this.#valid(ref)) throw new Error(t('找不到该模型。'));
     this.#data.strong = ref ? { ...ref } : null;
     this.#write();
   }

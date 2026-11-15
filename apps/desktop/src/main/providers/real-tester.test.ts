@@ -1,9 +1,13 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { setLocale } from '../../shared/i18n';
 import { emptyDraft } from '../../shared/providers';
 import { createProvider, probeProvider } from '@spica/core';
 import { createRealTester, probeMessage } from './real-tester';
+
+// The main area's English, also before en.ts takes it in (shared/i18n/en.ts merges the area files).
+vi.mock('../../shared/i18n/en', async (actual) => ({ EN: { ...(await actual<typeof import('../../shared/i18n/en')>()).EN, ...(await import('../../shared/i18n/en/main')).EN_MAIN } }));
 
 let server: Server;
 let base = '';
@@ -85,5 +89,28 @@ describe('probeMessage', () => {
     // A gateway's hint comes from the core with 网关地址 already; it is shown as it is (nothing swapped here).
     const missing = { ok: false, latencyMs: 5, errorCode: 'not_found' as const, code: 'gateway.not_found_version', hint: '模型调用失败：路径无效（HTTP 404），请检查「网关地址」是否需要以 /v1 结尾。' };
     expect(probeMessage(missing, wso2)).toBe('模型调用失败：路径无效（HTTP 404），请检查「网关地址」是否需要以 /v1 结尾。');
+  });
+});
+
+describe('probeMessage in English', () => {
+  const openai = { kind: 'openai' as const, model: 'm1' };
+  const wso2 = { kind: 'wso2' as const, model: 'm1' };
+
+  it('says the core’s hint by its code, after the failed step, and the field to check', () => {
+    setLocale('en');
+    try {
+      const auth = { ok: false, latencyMs: 5, errorCode: 'auth' as const, stage: 'model' as const, code: 'gateway.unauthorized', hint: '模型调用失败：凭据无效（HTTP 401），请检查 API Key。' };
+      expect(probeMessage(auth, openai)).toBe('Model call failed: Invalid credentials (HTTP 401). Check the API Key.');
+      const other = { ok: false, latencyMs: 5, errorCode: 'network' as const, stage: 'model' as const, code: 'net.other', hint: '模型调用失败：网络错误。' };
+      expect(probeMessage(other, openai)).toBe('Model call failed: Network error. Couldn’t connect. Check the network and “Base URL”.');
+      const added = { ok: true as const, latencyMs: 900, suggestedBaseUrl: 'https://gw.example.com/llm/v1', code: 'address.v1_added', hint: '已在「网关地址」末尾补上 /v1，连接成功。' };
+      expect(probeMessage(added, wso2)).toBe('Added /v1 to the end of “Gateway URL”. Connected.');
+      expect(probeMessage({ ok: true, latencyMs: 900, firstByteMs: 420, model: 'm1-2026' }, openai)).toBe('Connected: model “m1” (responded in 420 ms, server model: m1-2026).');
+      // words the shell does not know stay as the core wrote them
+      const odd = '模型调用失败：内核新写的一句话，请检查。';
+      expect(probeMessage({ ok: false, latencyMs: 5, errorCode: 'auth', stage: 'model', code: 'x.new', hint: odd }, openai)).toBe('Model call failed: 内核新写的一句话，请检查。');
+    } finally {
+      setLocale('zh-CN');
+    }
   });
 });

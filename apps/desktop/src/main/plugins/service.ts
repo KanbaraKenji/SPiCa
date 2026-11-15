@@ -46,17 +46,20 @@ import {
   type PluginView,
 } from '../../shared/plugins';
 import type { PluginService } from './types';
+import { t, tx } from '../../shared/i18n';
 
 export type { PluginService } from './types';
 
+/** Words kept in the page's state: made again each time the state is read, so they follow 语言. */
+type Words = () => string;
 
 /** Turns any thrown error into a sentence; @spica/plugins already throws Chinese. */
 export function pluginErrorText(err: unknown): string {
   const e = err as { message?: string; issues?: { message: string; severity: string }[] };
   const base = e?.message ?? String(err);
   const first = e?.issues?.find((i) => i.severity === 'error')?.message;
-  const text = first && !base.includes(first) ? `${base}（${first}）` : base;
-  return /[一-鿿]/.test(text) ? text : `操作失败：${text}`;
+  const text = first && !base.includes(first) ? t('{base}（{first}）', { base, first }) : base;
+  return /[一-鿿]/.test(text) ? text : t('操作失败：{text}', { text });
 }
 
 // ---------------------------------------------------------------------------
@@ -126,18 +129,20 @@ const shareRoot = (s: string) => {
 export function unreachableText(text: string): string {
   const why = /（([^（）]*)）。?$/.exec(text)?.[1] ?? '';
   const http = /HTTP (\d+)/.exec(why)?.[1];
-  if (http) return `服务器返回 HTTP ${http}。`;
-  if (/timeout|timed out|aborted/i.test(why)) return '连接超时。';
-  return '服务器没有响应。';
+  if (http) return t('服务器返回 HTTP {status}。', { status: http });
+  if (/timeout|timed out|aborted/i.test(why)) return t('连接超时。');
+  return t('服务器没有响应。');
 }
 
 /** Something that cannot be done, said plainly: the page shows it as a failure. `reason`: for a lookup, which kind. */
 class Refusal extends Error {
+  readonly words: Words;
   constructor(
-    message: string,
+    words: Words,
     readonly reason: NotFoundReason = 'unreadable',
   ) {
-    super(message);
+    super(words());
+    this.words = words;
   }
 }
 
@@ -188,9 +193,9 @@ export class RealPluginService implements PluginService {
   #fromSources = new Map<string, Available>();
   #sourceErrors: string[] = [];
   /** How each source went the last time it was read, by location. */
-  #read = new Map<string, { at: string; error?: string; count?: number }>();
+  #read = new Map<string, { at: string; error?: Words; count?: number }>();
   /** The latest lookup of a typed location. */
-  #found: { location: string; items: Map<string, Found>; error?: string; reason?: NotFoundReason } | undefined;
+  #found: { location: string; items: Map<string, Found>; error?: Words; reason?: NotFoundReason } | undefined;
   #updates = new Map<string, UpdateInfo>();
   /** Icons read so far: file path -> [modified time, data: URL]. */
   #icons = new Map<string, [number, string]>();
@@ -264,7 +269,7 @@ export class RealPluginService implements PluginService {
             void _was;
             return now ? { ...rest, installed: now } : rest;
           }),
-          ...(this.#found.error ? { error: this.#found.error } : {}),
+          ...(this.#found.error ? { error: this.#found.error() } : {}),
           ...(this.#found.reason ? { reason: this.#found.reason } : {}),
         }
       : undefined;
@@ -279,10 +284,10 @@ export class RealPluginService implements PluginService {
         return {
           location: src.location,
           kind: src.kind,
-          ...(src.label ? { label: src.label } : {}),
+          ...(src.label ? { label: tx(src.label) } : {}),
           ...(this.#isOfficial(src.location) ? { official: true } : {}),
           ...(r ? { readAt: r.at } : {}),
-          ...(r?.error ? { error: r.error } : {}),
+          ...(r?.error ? { error: r.error() } : {}),
           ...(r && r.count !== undefined ? { count: r.count } : {}),
         };
       }),
@@ -351,13 +356,13 @@ export class RealPluginService implements PluginService {
       if (info?.isFile() && /\.zip$/i.test(where)) {
         const v = await verifyPackage(await readFile(where));
         const m = v.folder.manifest;
-        if (!m || !v.ok) throw new Error(`插件包有错误：${v.folder.issues.find((i) => i.severity === 'error')?.message ?? ''}`);
+        if (!m || !v.ok) throw new Refusal(() => t('插件包有错误：{issue}', { issue: v.folder.issues.find((i) => i.severity === 'error')?.message ?? '' }));
         return [{ name: m.name, version: m.version, file: basename(where), sha256: v.sha256, ...(m.spica ? { spica: m.spica } : {}), ...(m.description ? { description: m.description } : {}), source: src, location: where, form: 'zip' }];
       }
       if (info?.isDirectory() && (await stat(join(where, MANIFEST_FILE)).then(() => true, () => false))) {
         const f = await readPluginFolder(where);
         const m = f.manifest;
-        if (!m || hasErrors(f.issues)) throw new Error(`插件有错误：${f.issues.find((i) => i.severity === 'error')?.message ?? ''}`);
+        if (!m || hasErrors(f.issues)) throw new Refusal(() => t('插件有错误：{issue}', { issue: f.issues.find((i) => i.severity === 'error')?.message ?? '' }));
         return [{ name: m.name, version: m.version, file: `${basename(where)}/`, ...(m.spica ? { spica: m.spica } : {}), ...(m.description ? { description: m.description } : {}), source: src, location: where, form: 'folder' }];
       }
     }
@@ -378,7 +383,7 @@ export class RealPluginService implements PluginService {
           for (const a of offered) this.#fromSources.set(`${src.location}:${a.name}@${a.version}`, a);
           this.#read.set(src.location, { at, count: offered.length });
         } catch (err) {
-          this.#read.set(src.location, { at, error: pluginErrorText(err) });
+          this.#read.set(src.location, { at, error: err instanceof Refusal ? err.words : () => pluginErrorText(err) });
         }
       }
       const kept = new Set(this.#sources().map((x) => x.location));
@@ -401,15 +406,18 @@ export class RealPluginService implements PluginService {
   /** 检查更新 (of one source, or of all): read them, then check the installed plugins; the result in words. */
   async #check(list: SourceConfig[]): Promise<PluginsResult> {
     // Nothing to check against: a notice, not a result.
-    if (list.length === 0) return { ok: true, info: true, message: '没有插件来源，无法检查更新。', state: this.#state() };
+    if (list.length === 0) return { ok: true, info: true, message: t('没有插件来源，无法检查更新。'), state: this.#state() };
     await this.#readSources(list);
     const failed = list.filter((x) => this.#read.get(x.location)?.error).length;
     const n = this.#findUpdates();
-    const found = n ? `${n} 个插件可更新` : '没有可用更新';
-    if (failed === list.length) return { ok: false, message: `${failed} 个插件来源连接失败，无法检查更新。`, state: this.#state() };
+    const found = n ? t('{n} 个插件可更新', { n }) : t('没有可用更新');
+    if (failed === list.length) return { ok: false, message: t('{n} 个插件来源连接失败，无法检查更新。', { n: failed }), state: this.#state() };
     // Some sources not reached: what the reached ones say, and how many failed; not "up to date".
-    if (failed) return { ok: true, info: true, message: `已检查 ${list.length - failed} 个插件来源：${found}；${failed} 个连接失败。`, state: this.#state() };
-    return { ok: true, message: n ? `${found}。` : '已是最新版本。', state: this.#state() };
+    if (failed) {
+      const checked = t('已检查 {n} 个插件来源', { n: list.length - failed });
+      return { ok: true, info: true, message: t('{checked}：{found}；{failed}。', { checked, found, failed: t('{n} 个连接失败', { n: failed }) }), state: this.#state() };
+    }
+    return { ok: true, message: n ? t('{text}。', { text: found }) : t('已是最新版本。'), state: this.#state() };
   }
 
   #sourceOpts() {
@@ -436,16 +444,16 @@ export class RealPluginService implements PluginService {
       if (seq !== this.#lookupSeq) return;
       const where = unquote(location);
       const items = new Map<string, Found>();
-      let error: string | undefined;
+      let error: Words | undefined;
       let reason: NotFoundReason | undefined;
       try {
         await this.#look(where, items);
         if (items.size === 0) {
-          error = '未找到可安装的插件。';
+          error = () => t('未找到可安装的插件。');
           reason = 'empty';
         }
       } catch (err) {
-        error = err instanceof Refusal ? err.message : pluginErrorText(err);
+        error = err instanceof Refusal ? err.words : () => pluginErrorText(err);
         reason = err instanceof Refusal ? err.reason : 'unreadable';
       }
       if (seq !== this.#lookupSeq) return;
@@ -480,8 +488,8 @@ export class RealPluginService implements PluginService {
       } catch (err) {
         // Not reached, or what came back is not an index.
         const text = pluginErrorText(err);
-        if (/无法连接/.test(text)) throw new Refusal(unreachableText(text), 'unreachable');
-        throw new Refusal(text, 'unreadable');
+        if (/无法连接/.test(text)) throw new Refusal(() => unreachableText(text), 'unreachable');
+        throw new Refusal(() => text, 'unreadable');
       }
       fromIndex(src, list);
       return;
@@ -493,20 +501,20 @@ export class RealPluginService implements PluginService {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === 'ENOENT' || code === 'ENOTDIR') {
         // A shared folder whose server does not answer looks the same as one that is not there; say which it may be.
-        if (isShare(where) && !(await stat(shareRoot(where)).then(() => true, () => false))) throw new Refusal(`无法连接共享文件夹 ${shareRoot(where)}。`, 'unreachable');
-        throw new Refusal('找不到该文件夹或文件。', 'missing');
+        if (isShare(where) && !(await stat(shareRoot(where)).then(() => true, () => false))) throw new Refusal(() => t('无法连接共享文件夹 {share}。', { share: shareRoot(where) }), 'unreachable');
+        throw new Refusal(() => t('找不到该文件夹或文件。'), 'missing');
       }
-      throw new Refusal(`无法打开（${code ?? (err as Error).message}）。`, isShare(where) ? 'unreachable' : 'unreadable');
+      throw new Refusal(() => t('无法打开（{why}）。', { why: code ?? (err as Error).message }), isShare(where) ? 'unreachable' : 'unreadable');
     }
     if (info.isFile()) {
-      if (!/\.zip$/i.test(where)) throw new Refusal('仅支持插件文件夹或 .zip 文件。', 'empty');
+      if (!/\.zip$/i.test(where)) throw new Refusal(() => t('仅支持插件文件夹或 .zip 文件。'), 'empty');
       const kind = isShare(where) ? 'share' : 'zip';
       const tmp = await mkdtemp(join(tmpdir(), 'spica-look-'));
       try {
         const folder = await unpackPlugin(await readFile(where), tmp, { appName: manager.appName }).catch((err: unknown) => {
-          throw new Refusal(pluginErrorText(err), 'unreadable');
+          throw new Refusal(() => pluginErrorText(err), 'unreadable');
         });
-        if (!folder.manifest || hasErrors(folder.issues)) throw new Refusal(`插件包有错误：${folder.issues.find((i) => i.severity === 'error')?.message ?? ''}`);
+        if (!folder.manifest || hasErrors(folder.issues)) throw new Refusal(() => t('插件包有错误：{issue}', { issue: folder.issues.find((i) => i.severity === 'error')?.message ?? '' }));
         const key = `found:${where}`;
         items.set(key, {
           pkg: fromFolder(folder, key, kind, where, installed(folder.manifest.name)),
@@ -523,7 +531,7 @@ export class RealPluginService implements PluginService {
     const has = async (f: string) => stat(join(where, f)).then(() => true, () => false);
     if (await has(MANIFEST_FILE)) {
       const folder = await manager.check(where);
-      if (!folder.manifest || hasErrors(folder.issues)) throw new Refusal(`插件有错误：${folder.issues.find((i) => i.severity === 'error')?.message ?? ''}`);
+      if (!folder.manifest || hasErrors(folder.issues)) throw new Refusal(() => t('插件有错误：{issue}', { issue: folder.issues.find((i) => i.severity === 'error')?.message ?? '' }));
       const kind = isShare(where) ? 'share' : 'folder';
       const key = `found:${where}`;
       items.set(key, { pkg: fromFolder(folder, key, kind, where, installed(folder.manifest.name)), install: (say) => manager.install(where, { kind, location: where }, { onProgress: say }) });
@@ -532,7 +540,7 @@ export class RealPluginService implements PluginService {
     const src: SourceConfig = { kind: 'share', location: where };
     if (await has(INDEX_FILE)) {
       fromIndex(src, await listSource(src, this.#sourceOpts()).catch((err: unknown) => {
-        throw new Refusal(pluginErrorText(err), 'unreadable');
+        throw new Refusal(() => pluginErrorText(err), 'unreadable');
       }));
       return;
     }
@@ -542,7 +550,7 @@ export class RealPluginService implements PluginService {
       fromIndex(src, scanned);
       return;
     }
-    throw new Refusal('该文件夹中没有插件（缺少 manifest.json 或 index.json）。', 'empty');
+    throw new Refusal(() => t('该文件夹中没有插件（缺少 manifest.json 或 index.json）。'), 'empty');
   }
 
   /** Installing means wanting to use it: turn it on unless it already is. */
@@ -566,10 +574,10 @@ export class RealPluginService implements PluginService {
     if (found?.error) throw new Refusal(found.error);
     const items = [...(found?.items.values() ?? [])];
     // A shared folder or address with an index: what is there is listed to pick from.
-    if (items.length !== 1 || items[0]!.source) return `找到 ${items.length} 个插件。`;
+    if (items.length !== 1 || items[0]!.source) return t('找到 {n} 个插件。', { n: items.length });
     const d = await items[0]!.install(() => {});
     await this.#enableNew(d.name);
-    return withModelNotice(`已安装「${d.displayName || d.name}」${d.version}。`, this.#o.manager.describe(d.name));
+    return withModelNotice(t('已安装「{name}」{version}。', { name: d.displayName || d.name, version: d.version }), this.#o.manager.describe(d.name));
   }
 
   async run(cmd: PluginsCommand): Promise<PluginsResult> {
@@ -589,22 +597,22 @@ export class RealPluginService implements PluginService {
           const where = unquote(cmd.location);
           await this.#find(where);
           const f = this.#found;
-          if (!f || f.location !== where) return { ok: false, message: '请重试。', state: this.#state() };
-          if (f.error) return { ok: false, message: f.error, state: this.#state() };
+          if (!f || f.location !== where) return { ok: false, message: t('请重试。'), state: this.#state() };
+          if (f.error) return { ok: false, message: f.error(), state: this.#state() };
           // An index or a folder of packages is the source itself; so is a plugin folder or a .zip on a drive.
           const src: SourceConfig | undefined = [...f.items.values()].find((i) => i.source)?.source ?? (isUrl(where) ? undefined : { kind: 'share', location: where });
-          if (!src) return { ok: true, info: true, message: '单个插件包的网址不能作为来源，可在下方安装。', state: this.#state() };
+          if (!src) return { ok: true, info: true, message: t('单个插件包的网址不能作为来源，可在下方安装。'), state: this.#state() };
           const added = this.#remember(src);
           // Already listed (an official one, or typed another way): that row is the one read.
           const listed = this.#sources().find((x) => sameSource(x.location, src.location)) ?? src;
           await this.#readSources([listed]);
           const r = this.#read.get(listed.location);
-          if (r?.error) return { ok: false, message: r.error, state: this.#state() };
-          message = `${added ? '已添加来源' : '该来源已在列表中'}：${r?.count ?? 0} 个插件。`;
+          if (r?.error) return { ok: false, message: r.error(), state: this.#state() };
+          message = added ? t('已添加来源：{n} 个插件。', { n: r?.count ?? 0 }) : t('该来源已在列表中：{n} 个插件。', { n: r?.count ?? 0 });
           break;
         }
         case 'removeSource': {
-          if (this.#isOfficial(cmd.location)) return { ok: false, message: '官方来源不能移除。', state: this.#state() };
+          if (this.#isOfficial(cmd.location)) return { ok: false, message: t('官方来源不能移除。'), state: this.#state() };
           const all = this.#userSources();
           if (!all.some((x) => x.location === cmd.location)) break;
           this.#writeSources(all.filter((x) => x.location !== cmd.location));
@@ -612,7 +620,7 @@ export class RealPluginService implements PluginService {
           this.#read.delete(cmd.location);
           this.#sourceErrors = this.#sourceErrors.filter((x) => x !== cmd.location);
           this.#findUpdates();
-          message = '已移除来源。';
+          message = t('已移除来源。');
           break;
         }
         case 'checkSources':
@@ -620,13 +628,14 @@ export class RealPluginService implements PluginService {
         case 'enable': {
           await manager.enable(cmd.name);
           const d = manager.describe(cmd.name);
-          if (d.model) message = withModelNotice('已启用。', d);
+          if (d.model) message = withModelNotice(t('已启用。'), d);
           break;
         }
         case 'modelAllowed': {
+          // i18n-skip: a call the page never makes (for whoever writes one)
           if (typeof cmd.allowed !== 'boolean') return { ok: false, message: 'allowed 须为 true 或 false。', state: this.#state() };
           await manager.setModelAllowed(cmd.name, cmd.allowed);
-          message = cmd.allowed ? '已允许使用模型。' : '已禁止使用模型。';
+          message = cmd.allowed ? t('已允许使用模型。') : t('已禁止使用模型。');
           break;
         }
         case 'disable':
@@ -638,7 +647,7 @@ export class RealPluginService implements PluginService {
           break;
         case 'rollback': {
           const d = await manager.rollback(cmd.name);
-          message = `已回退到 ${d.version}。`;
+          message = t('已回退到 {version}。', { version: d.version });
           break;
         }
         case 'mock':
@@ -651,13 +660,13 @@ export class RealPluginService implements PluginService {
           const say = this.#say(cmd.job) ?? (() => {});
           const found = this.#found?.items.get(cmd.key);
           const listed = cmd.key.startsWith('source:') ? [...this.#fromSources.values()].find((a) => `source:${a.source.location}:${a.name}@${a.version}` === cmd.key) : undefined;
-          if (!found && !listed) return { ok: false, message: '该项已不存在，请重新查找。', state: this.#state() };
+          if (!found && !listed) return { ok: false, message: t('该项已不存在，请重新查找。'), state: this.#state() };
           const d = found ? await found.install(say) : await installAvailable(manager, listed!, { ...this.#sourceOpts(), onProgress: say });
           if (found?.source) this.#remember(found.source);
           if (listed) this.#remember(listed.source);
           this.#updates.delete(d.name);
           await this.#enableNew(d.name, say);
-          message = withModelNotice(`已安装「${d.displayName || d.name}」${d.version}。`, manager.describe(d.name));
+          message = withModelNotice(t('已安装「{name}」{version}。', { name: d.displayName || d.name, version: d.version }), manager.describe(d.name));
           break;
         }
         case 'checkUpdates':
@@ -665,15 +674,15 @@ export class RealPluginService implements PluginService {
           return await this.#check(this.#sources());
         case 'update': {
           const u = this.#updates.get(cmd.name);
-          if (!u) return { ok: false, message: '请先检查更新。', state: this.#state() };
+          if (!u) return { ok: false, message: t('请先检查更新。'), state: this.#state() };
           const d = await installAvailable(manager, u.entry, { ...this.#sourceOpts(), ...(this.#say(cmd.job) ? { onProgress: this.#say(cmd.job)! } : {}) });
           this.#updates.delete(cmd.name);
-          message = `已更新到 ${d.version}。`;
+          message = t('已更新到 {version}。', { version: d.version });
           break;
         }
         case 'openRoot': {
           const err = await this.#o.openFolder(this.#o.root);
-          if (err) return { ok: false, message: `无法打开文件夹：${err}`, state: this.#state() };
+          if (err) return { ok: false, message: t('无法打开文件夹：{error}', { error: err }), state: this.#state() };
           break;
         }
       }

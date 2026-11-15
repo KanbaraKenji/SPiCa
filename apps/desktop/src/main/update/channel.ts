@@ -3,13 +3,15 @@
 // address that every release refreshes (see docs/design/desktop-shell.md
 // section 9). A build packaged under another app id never takes updates from
 // it, but lists its plugins unless told otherwise.
+import { N_ } from '../../shared/i18n';
 import { NOT_SHIPPED_PLUGINS, officialSources, type OfficialSource } from '../../shared/plugins';
 
 /** The official channel: latest.yml, index.json (official plugins), channel.json. */
 export const OFFICIAL_CHANNEL = 'https://github.com/KanbaraKenji/SPiCa/releases/download/channel/';
 /** The app id Spica is published under; only that build takes updates from the official channel. */
 export const OFFICIAL_APP_ID = 'dev.spica.desktop';
-export const OFFICIAL_PLUGINS_LABEL = '官方插件';
+/** Labels are keys: the plugin page shows them with tx() (a label from deploy.json as written). */
+export const OFFICIAL_PLUGINS_LABEL = N_('官方插件');
 
 export interface BuildSources {
   /** Update and announcement source; '' when this build does not check. */
@@ -52,7 +54,7 @@ export function buildSources(input: BuildSourcesInput): BuildSources {
 
   let pluginSources: OfficialSource[];
   if (raw.pluginSources !== undefined && raw.pluginSources !== null) pluginSources = officialSources(raw.pluginSources);
-  else if (!input.packaged) pluginSources = input.repoPlugins ? [{ location: input.repoPlugins, label: '官方插件（开发版：仓库的 plugins 文件夹）', exclude: NOT_SHIPPED_PLUGINS }] : [];
+  else if (!input.packaged) pluginSources = input.repoPlugins ? [{ location: input.repoPlugins, label: N_('官方插件（开发版：仓库的 plugins 文件夹）'), exclude: NOT_SHIPPED_PLUGINS }] : [];
   else pluginSources = [{ location: channelFile(channel, 'index.json'), label: OFFICIAL_PLUGINS_LABEL }];
 
   return { updateSource, pluginSources };

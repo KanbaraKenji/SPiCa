@@ -6,6 +6,7 @@
 
 import { localDrivePath, type PluginPickRequest } from '../shared/plugin-view';
 import { UI_FONT_FACES } from '../shared/ui-font';
+import { t } from '../shared/i18n';
 
 export const PLUGIN_SCHEME = 'spica-plugin';
 export { pluginThemeVars } from '../shared/plugin-view';
@@ -114,7 +115,7 @@ export function pickExtensions(v: unknown): string[] {
 export function pickDialogOptions(req: PluginPickRequest): PickDialogOptions {
   const own = typeof req.title === 'string' ? req.title.trim().slice(0, 60) : '';
   const plugin = String(req.plugin ?? '').trim().slice(0, 40);
-  const what = own || (req.kind === 'file' ? '选择文件' : '选择文件夹');
+  const what = own || (req.kind === 'file' ? t('选择文件') : t('选择文件夹'));
   const start = pickStartPath(req.defaultPath);
   const opts: PickDialogOptions = {
     title: plugin ? `${plugin} · ${what}` : what,

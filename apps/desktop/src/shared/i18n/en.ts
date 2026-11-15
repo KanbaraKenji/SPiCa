@@ -4,5 +4,6 @@ import type { Catalog } from './index';
 import { merge } from './merge';
 import { EN_APPEARANCE } from './en/appearance';
 import { EN_WINDOW } from './en/window';
+import { EN_MAIN } from './en/main';
 
-export const EN: Catalog = merge([EN_APPEARANCE, EN_WINDOW]);
+export const EN: Catalog = merge([EN_APPEARANCE, EN_WINDOW, EN_MAIN]);

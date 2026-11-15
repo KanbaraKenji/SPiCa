@@ -8,6 +8,7 @@
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { t } from '../../shared/i18n';
 import { compareVersions, parseChannel, parseLatestYml, parseNotices, type ChannelInfo, type Notice, type UpdateState } from '../../shared/updates';
 
 export type FetchLike = (url: string) => Promise<{ ok: boolean; status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
@@ -29,6 +30,16 @@ export interface UpdateServiceOptions {
   launchInstaller(path: string): void;
 }
 
+/** A message of the state, said again in the language now each time the state is read. */
+type Words = () => string;
+
+/** This service's own failure, in words (not wrapped in 无法连接更新源 again). */
+class Said extends Error {
+  constructor(readonly words: Words) {
+    super(words());
+  }
+}
+
 const isUrl = (s: string) => /^https?:\/\//i.test(s);
 
 const sameUrl = (a: string, b: string) => a.replace(/\/+$/, '').toLowerCase() === b.replace(/\/+$/, '').toLowerCase();
@@ -46,7 +57,9 @@ function urlFor(base: string, name: string): string {
 
 export class UpdateService {
   readonly #o: UpdateServiceOptions;
-  #state: UpdateState;
+  #state: Omit<UpdateState, 'message'>;
+  /** The state's message (made again when read, so it follows 语言). */
+  #words: Words | undefined;
   #ready: string | undefined;
   #busy = false;
   #listeners = new Set<(s: UpdateState) => void>();
@@ -58,7 +71,12 @@ export class UpdateService {
   }
 
   get state(): UpdateState {
-    return { ...this.#state };
+    return { ...this.#state, ...(this.#words ? { message: this.#words() } : {}) };
+  }
+
+  /** 语言 changed: the listeners get the state in the new language. */
+  relabel(): void {
+    if (this.#words) for (const l of this.#listeners) l(this.state);
   }
 
   onChange(listener: (s: UpdateState) => void): () => void {
@@ -66,10 +84,11 @@ export class UpdateService {
     return () => this.#listeners.delete(listener);
   }
 
-  #set(patch: Partial<UpdateState>): void {
+  /** `words`: the new message; none clears it, 'keep' keeps the one there is. */
+  #set(patch: Partial<Omit<UpdateState, 'message'>>, words?: Words | 'keep'): void {
     const { source, fromDeploy } = this.#o.getSource();
     this.#state = { ...this.#state, ...patch, source, sourceFromDeploy: fromDeploy };
-    if (!('message' in patch)) delete this.#state.message;
+    if (words !== 'keep') this.#words = words;
     for (const l of this.#listeners) l(this.state);
   }
 
@@ -77,7 +96,7 @@ export class UpdateService {
     if (isUrl(source)) {
       const res = await this.#o.fetch(urlFor(source, name));
       if (res.status === 404) return undefined;
-      if (!res.ok) throw new Error(`更新源返回 ${res.status}`);
+      if (!res.ok) throw new Said(() => t('更新源返回 {status}', { status: res.status }));
       return res.text();
     }
     try {
@@ -91,7 +110,7 @@ export class UpdateService {
   async #bytesTo(source: string, name: string, dest: string): Promise<void> {
     if (isUrl(name) || isUrl(source)) {
       const res = await this.#o.fetch(isUrl(name) ? name : urlFor(source, name));
-      if (!res.ok) throw new Error(`下载失败（${res.status}）`);
+      if (!res.ok) throw new Said(() => t('下载失败（{status}）', { status: res.status }));
       await writeFile(dest, Buffer.from(await res.arrayBuffer()));
     } else {
       await copyFile(join(source, name), dest);
@@ -102,7 +121,7 @@ export class UpdateService {
   async check(): Promise<UpdateState> {
     let { source, fromDeploy } = this.#o.getSource();
     if (!source) {
-      this.#set({ status: 'off', message: '未设置更新源。' });
+      this.#set({ status: 'off' }, () => t('未设置更新源。'));
       return this.state;
     }
     if (this.#busy) return this.state;
@@ -118,44 +137,44 @@ export class UpdateService {
       const required = channel.required ? compareVersions(this.#o.currentVersion, channel.required) < 0 : false;
       // Downloaded and waiting: only whether it must be installed may have changed (the mark can be taken back).
       if (this.#ready) {
-        if (required !== Boolean(this.#state.required)) this.#set({ required, ...(this.#state.message ? { message: this.#state.message } : {}) });
+        if (required !== Boolean(this.#state.required)) this.#set({ required }, 'keep');
         return this.state;
       }
       this.#set({ status: 'checking' });
       const yml = await this.#text(source, 'latest.yml');
       const latest = yml ? parseLatestYml(yml) : undefined;
       if (!latest) {
-        this.#set({ status: 'error', message: '更新源中缺少版本信息（latest.yml）。' });
+        this.#set({ status: 'error' }, () => t('更新源中缺少版本信息（latest.yml）。'));
         return this.state;
       }
       if (compareVersions(latest.version, this.#o.currentVersion) <= 0) {
-        this.#set({ status: 'latest', required: false, message: `已是最新版本（${this.#o.currentVersion}）。` });
+        this.#set({ status: 'latest', required: false }, () => t('已是最新版本（{version}）。', { version: this.#o.currentVersion }));
         return this.state;
       }
+      const version = latest.version;
       if (this.#o.portable || !this.#o.packaged) {
-        this.#set({
-          status: 'manual',
-          available: latest.version,
-          required,
-          message: this.#o.portable ? `有新版本 ${latest.version}。便携版不支持自动更新，请从更新源下载。` : `有新版本 ${latest.version}（开发版不自动安装）。`,
-        });
+        this.#set({ status: 'manual', available: version, required }, () =>
+          this.#o.portable ? t('有新版本 {version}。便携版不支持自动更新，请从更新源下载。', { version }) : t('有新版本 {version}（开发版不自动安装）。', { version }),
+        );
         return this.state;
       }
-      this.#set({ status: 'downloading', available: latest.version, required, message: `正在下载 ${latest.version}…` });
+      this.#set({ status: 'downloading', available: version, required }, () => t('正在下载 {version}…', { version }));
       await mkdir(this.#o.downloadsDir, { recursive: true });
       const dest = join(this.#o.downloadsDir, fileName(latest.path));
       await this.#bytesTo(source, latest.path, dest);
       const got = createHash('sha512').update(await readFile(dest)).digest('base64');
       if (got !== latest.sha512) {
-        this.#set({ status: 'error', message: '安装包校验失败，未安装。' });
+        this.#set({ status: 'error' }, () => t('安装包校验失败，未安装。'));
         return this.state;
       }
       this.#ready = dest;
-      this.#set({ status: 'ready', available: latest.version, required, message: `新版本 ${latest.version} 已下载，重启后更新。` });
+      this.#set({ status: 'ready', available: version, required }, () => t('新版本 {version} 已下载，重启后更新。', { version }));
       return this.state;
     } catch (err) {
       const msg = (err as Error).message ?? String(err);
-      this.#set({ status: 'error', message: /[一-鿿]/.test(msg) ? msg : `无法连接更新源：${msg}` });
+      // This service's own words, or words from elsewhere already in Chinese, as they are; else what failed.
+      const chinese = /[一-鿿]/.test(msg);
+      this.#set({ status: 'error' }, err instanceof Said ? err.words : chinese ? () => msg : () => t('无法连接更新源：{msg}', { msg }));
       return this.state;
     } finally {
       this.#busy = false;
@@ -210,7 +229,7 @@ export class UpdateService {
   /** The scheduled plugin check's count (shown with the app's own update, in the same words). */
   setPluginUpdates(n: number): void {
     if ((this.#state.pluginUpdates ?? 0) === n) return;
-    this.#set({ pluginUpdates: n, ...(this.#state.message ? { message: this.#state.message } : {}) });
+    this.#set({ pluginUpdates: n }, 'keep');
   }
 
   /** The source changed in settings: start over. */

@@ -3,7 +3,11 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { setLocale } from '../../shared/i18n';
 import { UpdateService } from './service';
+
+// The main area's English, also before en.ts takes it in (shared/i18n/en.ts merges the area files).
+vi.mock('../../shared/i18n/en', async (actual) => ({ EN: { ...(await actual<typeof import('../../shared/i18n/en')>()).EN, ...(await import('../../shared/i18n/en/main')).EN_MAIN } }));
 
 function sourceWith(version: string, opts: { badHash?: boolean; notices?: unknown; channel?: unknown } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'spica-src-'));
@@ -149,5 +153,23 @@ describe('UpdateService', () => {
     const http = sourceWith('0.1.0', { channel: { movedTo: 'http://new.example.invalid/spica/' } });
     expect((await service(http, { onMoved, getSource: () => ({ source: http, fromDeploy: true }) }).s.check()).status).toBe('latest');
     expect(onMoved).not.toHaveBeenCalled();
+  });
+});
+
+describe('UpdateService’s message and 语言', () => {
+  it('says the message in the language now, and tells the listeners again when it changes', async () => {
+    const { s } = service(sourceWith('0.1.0'));
+    const seen: (string | undefined)[] = [];
+    s.onChange((st) => seen.push(st.message));
+    await s.check();
+    expect(s.state.message).toBe('已是最新版本（0.1.0）。');
+    setLocale('en');
+    try {
+      s.relabel();
+      expect(seen.at(-1)).toBe('Up to date (0.1.0).');
+      expect(s.state.message).toBe('Up to date (0.1.0).');
+    } finally {
+      setLocale('zh-CN');
+    }
   });
 });
