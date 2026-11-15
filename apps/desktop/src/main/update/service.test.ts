@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { setLocale } from '../../shared/i18n';
-import { UpdateService } from './service';
+import { UPDATE_WORDS, UpdateService, updateErrorText } from './service';
 
 // The main area's English, also before en.ts takes it in (shared/i18n/en.ts merges the area files).
 vi.mock('../../shared/i18n/en', async (actual) => ({ EN: { ...(await actual<typeof import('../../shared/i18n/en')>()).EN, ...(await import('../../shared/i18n/en/main')).EN_MAIN } }));
@@ -52,7 +52,7 @@ describe('UpdateService', () => {
 
   it('refuses an installer whose checksum does not match', async () => {
     const { s, launchInstaller } = service(sourceWith('0.2.0', { badHash: true }));
-    expect(await s.check()).toMatchObject({ status: 'error', message: '安装包校验失败，未安装。' });
+    expect(await s.check()).toMatchObject({ status: 'error', message: '新版本文件校验不对，未安装，请稍后重试。' });
     expect(s.install()).toBe(false);
     expect(launchInstaller).not.toHaveBeenCalled();
   });
@@ -172,7 +172,7 @@ describe('UpdateService', () => {
   it('a forced download that fails keeps forcing with the reason, so it can be tried again', async () => {
     const { s, launchInstaller } = service(sourceWith('0.3.0', { badHash: true, channel: { required: '0.3.0' } }));
     s.forceInstall();
-    expect(await s.check()).toMatchObject({ status: 'error', forcing: true, message: '安装包校验失败，未安装。' });
+    expect(await s.check()).toMatchObject({ status: 'error', forcing: true, message: '新版本文件校验不对，未安装，请稍后重试。' });
     expect(launchInstaller).not.toHaveBeenCalled();
   });
 
@@ -239,3 +239,26 @@ describe('UpdateService’s message and 语言', () => {
     }
   });
 });
+describe('what a failed update says', () => {
+  it('which step and what to do, in plain words; the raw error only in the log', async () => {
+    expect(updateErrorText('connect', new TypeError('fetch failed'))).toBe('无法连接更新服务器，请检查网络后重试。');
+    expect(updateErrorText('download', new Error('the download answered 502'))).toBe('新版本下载中断，请检查网络后重试。');
+    expect(updateErrorText('write', new Error('x'))).toBe('新版本无法保存到这台电脑，请检查磁盘空间后重试。');
+    expect(updateErrorText('download', Object.assign(new Error('no space'), { code: 'ENOSPC' }))).toBe('新版本无法保存到这台电脑，请检查磁盘空间后重试。');
+    expect(UPDATE_WORDS.portable('0.3.0')).toBe('有新版本 0.3.0。便携版不能自动更新，请换用新版的便携版。');
+    const lines: string[] = [];
+    const s = new UpdateService({
+      currentVersion: '0.1.0',
+      packaged: true,
+      portable: false,
+      downloadsDir: mkdtempSync(join(tmpdir(), 'spica-dl-')),
+      getSource: () => ({ source: 'https://updates.example.invalid/spica/', fromDeploy: true }),
+      fetch: () => Promise.reject(new TypeError('fetch failed')),
+      launchInstaller: vi.fn(),
+      log: (l) => lines.push(l),
+    });
+    expect(await s.check()).toMatchObject({ status: 'error', message: '无法连接更新服务器，请检查网络后重试。' });
+    expect(lines.join('\n')).toContain('fetch failed');
+  });
+});
+

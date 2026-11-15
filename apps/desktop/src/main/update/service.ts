@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { t } from '../../shared/i18n';
+import { N_, t } from '../../shared/i18n';
 import { firstWorking } from './pick-source';
 import { compareVersions, parseChannel, parseLatestYml, parseNotices, type ChannelInfo, type Notice, type UpdateState } from '../../shared/updates';
 
@@ -38,17 +38,35 @@ export interface UpdateServiceOptions {
   fetch: FetchLike;
   /** Starts the installer and quits the app. */
   launchInstaller(path: string): void;
+  /** Where the raw error goes (the user sees updateErrorText's words). */
+  log?(line: string): void;
 }
 
 /** A message of the state, said again in the language now each time the state is read. */
 type Words = () => string;
 
-/** This service's own failure, in words (not wrapped in 无法连接更新源 again). */
-class Said extends Error {
-  constructor(readonly words: Words) {
-    super(words());
-  }
+/** Which step of an update check went wrong, for the words the user sees. */
+export type UpdateStep = 'connect' | 'download' | 'write';
+
+/**
+ * A failed update in words a user can act on (what went wrong, then what to do), as the app's other errors are said;
+ * the raw error goes to the log. A disk that cannot take the file is said as such, whatever the step. A key
+ * (shared/i18n): the state says it with t() when read.
+ */
+export function updateErrorText(step: UpdateStep, err: unknown): string {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code ?? '';
+  if (/^(ENOSPC|EACCES|EPERM|EBUSY|EROFS|EIO)$/.test(code)) return N_('新版本无法保存到这台电脑，请检查磁盘空间后重试。');
+  if (step === 'write') return N_('新版本无法保存到这台电脑，请检查磁盘空间后重试。');
+  if (step === 'download') return N_('新版本下载中断，请检查网络后重试。');
+  return N_('无法连接更新服务器，请检查网络后重试。');
 }
+
+/** Words for the cases that are not thrown errors (keys, but portable, which is said in the language now). */
+export const UPDATE_WORDS = {
+  noVersion: N_('更新服务器上没有版本信息，请稍后重试。'),
+  badFile: N_('新版本文件校验不对，未安装，请稍后重试。'),
+  portable: (v: string) => t('有新版本 {version}。便携版不能自动更新，请换用新版的便携版。', { version: v }),
+} as const;
 
 const isUrl = (s: string) => /^https?:\/\//i.test(s);
 
@@ -137,7 +155,7 @@ export class UpdateService {
     if (isUrl(source)) {
       const res = await this.#o.fetch(urlFor(source, name));
       if (res.status === 404) return undefined;
-      if (!res.ok) throw new Said(() => t('更新源返回 {status}', { status: res.status }));
+      if (!res.ok) throw new Error(`the update server answered ${res.status}`);
       return res.text();
     }
     try {
@@ -159,7 +177,7 @@ export class UpdateService {
     };
     if (isUrl(name) || isUrl(source)) {
       const res = await this.#o.fetch(isUrl(name) ? name : urlFor(source, name));
-      if (!res.ok) throw new Said(() => t('下载失败（{status}）', { status: res.status }));
+      if (!res.ok) throw new Error(`the download answered ${res.status}`);
       const total = Number(res.headers?.get('content-length') ?? 0) || 0;
       const reader = res.body?.getReader();
       if (!reader) {
@@ -206,6 +224,7 @@ export class UpdateService {
     }
     if (this.#busy) return this.state;
     this.#busy = true;
+    let step: UpdateStep = 'connect';
     try {
       source = await this.#pick();
       let channel = await this.#channel(source);
@@ -225,7 +244,7 @@ export class UpdateService {
       const yml = await this.#text(source, 'latest.yml');
       const latest = yml ? parseLatestYml(yml) : undefined;
       if (!latest) {
-        this.#set({ status: 'error' }, () => t('更新源中缺少版本信息（latest.yml）。'));
+        this.#set({ status: 'error' }, () => t(UPDATE_WORDS.noVersion));
         return this.state;
       }
       if (compareVersions(latest.version, this.#o.currentVersion) <= 0) {
@@ -235,17 +254,19 @@ export class UpdateService {
       const version = latest.version;
       if (this.#o.portable || !this.#o.packaged) {
         this.#set({ status: 'manual', available: version, required }, () =>
-          this.#o.portable ? t('有新版本 {version}。便携版不支持自动更新，请从更新源下载。', { version }) : t('有新版本 {version}（开发版不自动安装）。', { version }),
+          this.#o.portable ? UPDATE_WORDS.portable(version) : t('有新版本 {version}（开发版不自动安装）。', { version }),
         );
         return this.state;
       }
       this.#set({ status: 'downloading', available: version, required }, () => t('正在下载 {version}…', { version }));
+      step = 'write';
       await mkdir(this.#o.downloadsDir, { recursive: true });
       const dest = join(this.#o.downloadsDir, fileName(latest.path));
+      step = 'download';
       await this.#bytesTo(source, latest.path, dest);
       const got = createHash('sha512').update(await readFile(dest)).digest('base64');
       if (got !== latest.sha512) {
-        this.#set({ status: 'error' }, () => t('安装包校验失败，未安装。'));
+        this.#set({ status: 'error' }, () => t(UPDATE_WORDS.badFile));
         return this.state;
       }
       this.#ready = dest;
@@ -254,10 +275,9 @@ export class UpdateService {
       if (this.#forcing) this.install();
       return this.state;
     } catch (err) {
-      const msg = (err as Error).message ?? String(err);
-      // This service's own words, or words from elsewhere already in Chinese, as they are; else what failed.
-      const chinese = /[一-鿿]/.test(msg);
-      this.#set({ status: 'error', progress: undefined }, err instanceof Said ? err.words : chinese ? () => msg : () => t('无法连接更新源：{msg}', { msg }));
+      this.#o.log?.(`[spica] update (${step}): ${err instanceof Error ? err.message : String(err)}`);
+      const words = updateErrorText(step, err);
+      this.#set({ status: 'error', progress: undefined }, () => t(words));
       return this.state;
     } finally {
       this.#busy = false;

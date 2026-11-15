@@ -1239,6 +1239,7 @@ const updates = new UpdateService({
     settings.update({ channelMove: { from: deployDefault, to } });
   },
   fetch: (url) => net.fetch(url),
+  log: (line) => console.warn(line),
   launchInstaller: (path) => {
     // The new version opens the conversation that is open now (shellState's reopen).
     writeResume(resumeFile, { sessionId: activeSessionId });

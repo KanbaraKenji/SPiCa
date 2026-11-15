@@ -109,17 +109,11 @@ export const EN_MAIN: Catalog = {
   '密钥无效或已失效（401）。': 'The key is invalid or has expired (401).',
   '连接成功：模型「{model}」。': 'Connected: model “{model}”.',
   // main/update/service.ts
-  '更新源返回 {status}': 'The update source returned {status}',
-  '下载失败（{status}）': 'Download failed ({status})',
   '这个版本不检查更新。': 'This version doesn’t check for updates.',
-  '更新源中缺少版本信息（latest.yml）。': 'The update source has no version information (latest.yml).',
   '已是最新版本（{version}）。': 'Up to date ({version}).',
-  '有新版本 {version}。便携版不支持自动更新，请从更新源下载。': 'Version {version} is available. The portable version can’t update itself. Download it from the update source.',
   '有新版本 {version}（开发版不自动安装）。': 'Version {version} is available (development builds don’t install updates).',
   '正在下载 {version}…': 'Downloading {version}…',
-  '安装包校验失败，未安装。': 'The installer failed verification and wasn’t installed.',
   '新版本 {version} 已下载，重启后更新。': 'Version {version} has been downloaded. It will be installed when you restart.',
-  '无法连接更新源：{msg}': 'Couldn’t connect to the update source: {msg}',
   // main/backend/process.ts
   '后台启动失败：{error}': 'The backend failed to start: {error}',
   // main/app-dialog.ts (the page crashed three times)
@@ -202,4 +196,10 @@ export const EN_MAIN: Catalog = {
   '正在安装 {version}': 'Installing {version}',
   '正在更新到 {version}': 'Updating to {version}',
   '自动更新': 'Automatic updates',
+  '新版本无法保存到这台电脑，请检查磁盘空间后重试。': 'The new version couldn’t be saved on this computer. Check the disk space and try again.',
+  '新版本下载中断，请检查网络后重试。': 'The download of the new version was interrupted. Check the network and try again.',
+  '无法连接更新服务器，请检查网络后重试。': 'Can’t reach the update server. Check the network and try again.',
+  '更新服务器上没有版本信息，请稍后重试。': 'The update server has no version information. Try again later.',
+  '新版本文件校验不对，未安装，请稍后重试。': 'The new version’s file didn’t pass the check and wasn’t installed. Try again later.',
+  '有新版本 {version}。便携版不能自动更新，请换用新版的便携版。': 'Version {version} is available. The portable version can’t update itself; switch to the new portable version.',
 };

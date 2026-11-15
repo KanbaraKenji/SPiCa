@@ -29,9 +29,9 @@ describe('a version that must update, found at start', () => {
 
   it('failed: the reason, 重试 checks again, 稍后 lets the app be used', () => {
     const onRetry = vi.fn();
-    render(<ForcedUpdate update={{ ...base, status: 'error', message: '无法连接更新源：timeout' }} onRetry={onRetry} />);
+    render(<ForcedUpdate update={{ ...base, status: 'error', message: '无法连接更新服务器，请检查网络后重试。' }} onRetry={onRetry} />);
     expect(document.querySelector('.dialog-title')!.textContent).toBe('更新失败');
-    expect(document.querySelector('.dialog-detail')!.textContent).toBe('无法连接更新源：timeout');
+    expect(document.querySelector('.dialog-detail')!.textContent).toBe('无法连接更新服务器，请检查网络后重试。');
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
     expect(onRetry).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '稍后' }));
