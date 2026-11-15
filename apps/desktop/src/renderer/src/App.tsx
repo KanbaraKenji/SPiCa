@@ -30,6 +30,7 @@ import type { PluginsTab } from './settings/Plugins';
 import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
 import { UpdateCard, UpdateRailButton, useUpdateNotice } from './shell/UpdateNotice';
+import { ForcedUpdate } from './shell/ForcedUpdate';
 import { InboxView, type InboxProject } from './shell/InboxView';
 import type { UsageApi } from './settings/Usage';
 import { MonitorView } from './shell/MonitorView';
@@ -959,6 +960,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   return (
     <div className="app" data-left={layout.left} data-preview={view === 'chat' ? layout.preview : 'hidden'} data-info={view === 'chat' ? layout.info : 'hidden'}>
       <HoverTips />
+      <ForcedUpdate update={update} onRetry={() => void bridge.updates.run('check')} />
       {/* Sidebar closed: a column of icons stays. Resting on the toggle at its top opens the full
           sidebar over it for a moment, every row where its icon was; the icons themselves do not
           (a press on one goes straight to its page). */}

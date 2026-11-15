@@ -1248,8 +1248,11 @@ updates.onChange((s) => {
   const act = startupAction({ update: s, sinceStartMs: Date.now() - appStartedAt, busy: running.any(), shown: Boolean(mainWindow?.isVisible()), done: startupDone });
   if (!act) return;
   startupDone = true;
-  // A version that must update: its own step (installed at once); not asked.
-  if (act === 'force') return;
+  // A version that must update: installed as soon as it is downloaded, not asked (the window shows the download).
+  if (act === 'force') {
+    updates.forceInstall();
+    return;
+  }
   void askUpdateNow(s.available ?? '');
 });
 async function askUpdateNow(version: string): Promise<void> {

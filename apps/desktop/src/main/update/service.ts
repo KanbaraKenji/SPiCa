@@ -6,11 +6,20 @@
 // latest.yml from either kind of source, checks the installer's sha512, and
 // runs the per-user NSIS installer silently (no administrator rights).
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compareVersions, parseChannel, parseLatestYml, parseNotices, type ChannelInfo, type Notice, type UpdateState } from '../../shared/updates';
 
-export type FetchLike = (url: string) => Promise<{ ok: boolean; status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
+export type FetchLike = (url: string) => Promise<{
+  ok: boolean;
+  status: number;
+  text(): Promise<string>;
+  arrayBuffer(): Promise<ArrayBuffer>;
+  /** A real fetch's body, read in pieces so the download can say how far it is. */
+  body?: { getReader(): { read(): Promise<{ done: boolean; value?: Uint8Array }> } } | null;
+  headers?: { get(name: string): string | null };
+}>;
 
 export interface UpdateServiceOptions {
   currentVersion: string;
@@ -88,13 +97,52 @@ export class UpdateService {
     }
   }
 
+  /** Downloads (or copies) the installer, saying how far it is (state.progress) a few times a second at most. */
   async #bytesTo(source: string, name: string, dest: string): Promise<void> {
+    let last = 0;
+    const say = (done: number, total: number) => {
+      const now = Date.now();
+      if (!total || (now - last < 250 && done < total)) return;
+      last = now;
+      this.#set({ progress: Math.min(1, done / total), ...(this.#state.message ? { message: this.#state.message } : {}) });
+    };
     if (isUrl(name) || isUrl(source)) {
       const res = await this.#o.fetch(isUrl(name) ? name : urlFor(source, name));
       if (!res.ok) throw new Error(`下载失败（${res.status}）`);
-      await writeFile(dest, Buffer.from(await res.arrayBuffer()));
+      const total = Number(res.headers?.get('content-length') ?? 0) || 0;
+      const reader = res.body?.getReader();
+      if (!reader) {
+        await writeFile(dest, Buffer.from(await res.arrayBuffer()));
+        return;
+      }
+      const parts: Uint8Array[] = [];
+      let done = 0;
+      for (;;) {
+        const r = await reader.read();
+        if (r.done) break;
+        if (r.value) {
+          parts.push(r.value);
+          done += r.value.length;
+          say(done, total);
+        }
+      }
+      await writeFile(dest, Buffer.concat(parts));
     } else {
-      await copyFile(join(source, name), dest);
+      const from = join(source, name);
+      const total = (await stat(from)).size;
+      let done = 0;
+      await new Promise<void>((resolve, reject) => {
+        const rs = createReadStream(from);
+        const ws = createWriteStream(dest);
+        rs.on('data', (b) => {
+          done += b.length;
+          say(done, total);
+        });
+        rs.on('error', reject);
+        ws.on('error', reject);
+        ws.on('finish', () => resolve());
+        rs.pipe(ws);
+      });
     }
   }
 
@@ -151,11 +199,13 @@ export class UpdateService {
         return this.state;
       }
       this.#ready = dest;
-      this.#set({ status: 'ready', available: latest.version, required, message: `新版本 ${latest.version} 已下载，重启后更新。` });
+      this.#set({ status: 'ready', available: latest.version, required, progress: undefined, message: `新版本 ${latest.version} 已下载，重启后更新。` });
+      // Found at start and it must update: installed now, without asking.
+      if (this.#forcing) this.install();
       return this.state;
     } catch (err) {
       const msg = (err as Error).message ?? String(err);
-      this.#set({ status: 'error', message: /[一-鿿]/.test(msg) ? msg : `无法连接更新源：${msg}` });
+      this.#set({ status: 'error', progress: undefined, message: /[一-鿿]/.test(msg) ? msg : `无法连接更新源：${msg}` });
       return this.state;
     } finally {
       this.#busy = false;
@@ -173,6 +223,18 @@ export class UpdateService {
     } catch {
       return {};
     }
+  }
+
+  #forcing = false;
+
+  /**
+   * A version that must update, found at start: installs as soon as it is downloaded (now, when it already is). A
+   * download that fails leaves `forcing` on with the reason, so the window can offer 重试 (check again).
+   */
+  forceInstall(): void {
+    this.#forcing = true;
+    this.#set({ forcing: true, ...(this.#state.message ? { message: this.#state.message } : {}) });
+    if (this.#ready) this.install();
   }
 
   /** Runs the downloaded installer silently and quits; it starts the new version when done. */
