@@ -125,6 +125,8 @@ export interface PluginSourceView {
 /** An official plugin source as deploy.json gives it (scripts/deploy.mjs checks it when packaging). */
 export interface OfficialSource {
   location: string;
+  /** All its addresses in the order to try, when deploy.json gives more than one (location is the first). */
+  mirrors?: string[];
   label?: string;
   /** Folders in it that are not offered (the repository's plugins/ in a development run: the templates). */
   exclude?: string[];
@@ -142,11 +144,15 @@ export function officialSources(raw: unknown): OfficialSource[] {
   const out: OfficialSource[] = [];
   for (const item of raw) {
     const o = typeof item === 'string' ? { location: item } : item && typeof item === 'object' ? (item as { location?: unknown; label?: unknown }) : null;
-    const location = typeof o?.location === 'string' ? o.location.trim() : '';
-    if (!location || !isLocation(location) || (/^https?:/i.test(location) && /\.zip(\?|$)/i.test(location))) continue;
+    // one address, or a list of them (the same plugins on several servers, tried in that order)
+    const places = (Array.isArray(o?.location) ? o.location : [o?.location])
+      .map((p) => (typeof p === 'string' ? p.trim() : ''))
+      .filter((p) => p && isLocation(p) && !(/^https?:/i.test(p) && /\.zip(\?|$)/i.test(p)));
+    const location = places[0];
+    if (!location) continue;
     if (out.some((x) => sameSource(x.location, location))) continue;
     const label = typeof o?.label === 'string' ? o.label.trim() : '';
-    out.push(label ? { location, label } : { location });
+    out.push({ location, ...(places.length > 1 ? { mirrors: places } : {}), ...(label ? { label } : {}) });
   }
   return out;
 }

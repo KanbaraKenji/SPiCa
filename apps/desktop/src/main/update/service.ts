@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { firstWorking } from './pick-source';
 import { compareVersions, parseChannel, parseLatestYml, parseNotices, type ChannelInfo, type Notice, type UpdateState } from '../../shared/updates';
 
 export type FetchLike = (url: string) => Promise<{
@@ -30,7 +31,7 @@ export interface UpdateServiceOptions {
   /** Where downloaded installers are kept. */
   downloadsDir: string;
   /** The configured source and whether it came from the build (deploy.json or the official channel), not the user. */
-  getSource(): { source: string; fromDeploy: boolean };
+  getSource(): { source: string; fromDeploy: boolean; sources?: string[] };
   /** The build's source said it moved (channel.json "movedTo"): remember it; getSource gives the new one from now on. */
   onMoved?(from: string, to: string): void;
   fetch: FetchLike;
@@ -75,9 +76,40 @@ export class UpdateService {
     return () => this.#listeners.delete(listener);
   }
 
+  /** Of a source with several addresses, the one the last check could read (the others are not used until it fails). */
+  #chosen: string | undefined;
+
+  /** The address in use: the one chosen among several, else the source. */
+  #current(): string {
+    const { source, sources } = this.#o.getSource();
+    return this.#chosen && sources?.includes(this.#chosen) ? this.#chosen : source;
+  }
+
+  /**
+   * A source with several addresses: the first (in pick-source.ts's order) whose latest.yml can be read. None can:
+   * the first, so what is said is about the one meant first.
+   */
+  async #pick(): Promise<string> {
+    const { source, sources } = this.#o.getSource();
+    if (!sources || sources.length < 2) {
+      this.#chosen = undefined;
+      return source;
+    }
+    try {
+      const { place } = await firstWorking(sources, async (p) => {
+        if (!(await this.#text(p, 'latest.yml'))) throw new Error('no latest.yml');
+        return true;
+      });
+      this.#chosen = place;
+    } catch {
+      this.#chosen = undefined;
+    }
+    return this.#current();
+  }
+
   #set(patch: Partial<UpdateState>): void {
-    const { source, fromDeploy } = this.#o.getSource();
-    this.#state = { ...this.#state, ...patch, source, sourceFromDeploy: fromDeploy };
+    const { fromDeploy } = this.#o.getSource();
+    this.#state = { ...this.#state, ...patch, source: this.#current(), sourceFromDeploy: fromDeploy };
     if (!('message' in patch)) delete this.#state.message;
     for (const l of this.#listeners) l(this.state);
   }
@@ -156,6 +188,7 @@ export class UpdateService {
     if (this.#busy) return this.state;
     this.#busy = true;
     try {
+      source = await this.#pick();
       let channel = await this.#channel(source);
       // The build's own source moved: follow it once (a source the user typed is theirs and stays).
       if (channel.movedTo && fromDeploy && this.#o.onMoved && !sameUrl(channel.movedTo, source)) {
@@ -246,7 +279,7 @@ export class UpdateService {
 
   /** Announcements from the same source; none when the file is missing. */
   async notices(): Promise<Notice[] | undefined> {
-    const { source } = this.#o.getSource();
+    const source = this.#current();
     if (!source) return [];
     try {
       const text = await this.#text(source, 'announcements.json');
@@ -259,7 +292,7 @@ export class UpdateService {
 
   /** A newer model catalog from the same source (model-catalog.json); null when there is none, undefined when it could not be read. */
   async modelCatalog(): Promise<unknown | null | undefined> {
-    const { source } = this.#o.getSource();
+    const source = this.#current();
     if (!source) return null;
     try {
       const text = await this.#text(source, 'model-catalog.json');

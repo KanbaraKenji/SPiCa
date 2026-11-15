@@ -104,6 +104,18 @@ describe('deploy.json', () => {
     expect(() => readDeploy(dirWith({ updateSource: 3 }))).toThrow(/要写成地址/);
   });
 
+  it('several addresses (the same files on more than one server): a list for updateSource, a list for a plugin source\'s location', () => {
+    const d = readDeploy(dirWith({ updateSource: [' \\\\near\\spica ', 'https://far.example.com/spica/'], pluginSources: [{ location: ['\\\\near\\plugins', 'https://far.example.com/plugins/index.json'], label: '团队插件' }] }));
+    expect(d.updateSource).toBe('\\\\near\\spica');
+    expect(d.updateSources).toEqual(['\\\\near\\spica', 'https://far.example.com/spica/']);
+    expect(d.pluginSources).toEqual([{ location: '\\\\near\\plugins', mirrors: ['\\\\near\\plugins', 'https://far.example.com/plugins/index.json'], label: '团队插件' }]);
+    expect(sourceLines(d)).toEqual(['updates: \\\\near\\spica | https://far.example.com/spica/', 'official plugins: \\\\near\\plugins | https://far.example.com/plugins/index.json']);
+    expect(readDeploy(dirWith({ updateSource: [] })).updateSource).toBe('');
+    expect(() => readDeploy(dirWith({ updateSource: ['https://a.example.com/', 'nope'] }))).toThrow(/updateSource「nope」不能用/);
+    expect(() => readDeploy(dirWith({ pluginSources: [{ location: ['https://a.example.com/index.json', 'https://a.example.com/x-1.0.0.zip'] }] }))).toThrow(/单个插件包/);
+    expect(() => readDeploy(dirWith({ app: { name: 'Nova Desk', id: 'com.example.nova' }, updateSource: ['https://a.example.com/', OFFICIAL_CHANNEL] }))).toThrow(/官方地址/);
+  });
+
   it('a renamed build cannot take updates from the official channel', () => {
     const nova = { name: 'Nova Desk', id: 'com.example.nova' };
     expect(() => readDeploy(dirWith({ app: nova, updateSource: OFFICIAL_CHANNEL }))).toThrow(/不能是 Spica 的官方地址/);

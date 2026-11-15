@@ -1186,7 +1186,7 @@ function readDeployJson(): unknown {
 }
 const repoPlugins = resolvePath(app.getAppPath(), '..', '..', 'plugins');
 const buildDefaults: BuildSources = automated
-  ? { updateSource: '', pluginSources: [] }
+  ? { updateSource: '', updateSources: [], pluginSources: [] }
   : buildSources({ deploy: readDeployJson(), appId: APP_IDENTITY.id, packaged: app.isPackaged, ...(existsSync(repoPlugins) ? { repoPlugins } : {}) });
 const deployDefault = buildDefaults.updateSource;
 /** The build's source after a move its channel.json announced ("movedTo"); the build's own otherwise. */
@@ -1223,7 +1223,9 @@ const updates = new UpdateService({
   // nothing in the window sets it, and a source typed in an earlier version is not read.
   getSource: () => {
     const source = buildSource();
-    return { source, fromDeploy: Boolean(source) };
+    // the build's addresses in the order to try (deploy.json may list several); a channel that moved is its new one
+    const sources = source === deployDefault ? buildDefaults.updateSources : [source];
+    return { source, fromDeploy: Boolean(source), sources };
   },
   onMoved: (_from, to) => {
     // Kept against the build's own address, so a new build with another default is not moved by an old note.

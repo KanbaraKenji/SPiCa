@@ -205,5 +205,16 @@ describe('UpdateService', () => {
     expect(await http.s.check()).toMatchObject({ status: 'ready' });
     expect(web.at(-1)).toBe(1);
   });
+
+  it('a source with several addresses: the first that can be read is used for the update and said as the source', async () => {
+    const near = join(mkdtempSync(join(tmpdir(), 'spica-near-')), 'not-there');
+    const far = sourceWith('0.3.0', { notices: { announcements: [{ id: 'far', text: '从远处读的' }] } });
+    const { s } = service(near, { getSource: () => ({ source: near, fromDeploy: true, sources: [near, far] }) });
+    expect(await s.check()).toMatchObject({ status: 'ready', available: '0.3.0', source: far });
+    expect(await s.notices()).toEqual([{ id: 'far', text: '从远处读的', level: 'info' }]);
+    // none can be read: the first is the one said
+    const none = service(near, { getSource: () => ({ source: near, fromDeploy: true, sources: [near, `${near}-2`] }) });
+    expect(await none.s.check()).toMatchObject({ status: 'error', source: near });
+  });
 });
 

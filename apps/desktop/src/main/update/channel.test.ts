@@ -8,17 +8,17 @@ const officialIndex = `${OFFICIAL_CHANNEL}index.json`;
 describe('buildSources', () => {
   it('Spica as published, nothing in deploy.json: the official channel for both', () => {
     for (const deploy of [undefined, {}, { app: { name: '' } }, { updateSource: null, pluginSources: null }]) {
-      expect(buildSources({ ...spica, deploy })).toEqual({ updateSource: OFFICIAL_CHANNEL, pluginSources: [{ location: officialIndex, label: OFFICIAL_PLUGINS_LABEL }] });
+      expect(buildSources({ ...spica, deploy })).toMatchObject({ updateSource: OFFICIAL_CHANNEL, pluginSources: [{ location: officialIndex, label: OFFICIAL_PLUGINS_LABEL }] });
     }
   });
 
   it('"" and [] turn each off on its own', () => {
-    expect(buildSources({ ...spica, deploy: { updateSource: '' } })).toEqual({ updateSource: '', pluginSources: [{ location: officialIndex, label: OFFICIAL_PLUGINS_LABEL }] });
-    expect(buildSources({ ...spica, deploy: { pluginSources: [] } })).toEqual({ updateSource: OFFICIAL_CHANNEL, pluginSources: [] });
+    expect(buildSources({ ...spica, deploy: { updateSource: '' } })).toMatchObject({ updateSource: '', pluginSources: [{ location: officialIndex, label: OFFICIAL_PLUGINS_LABEL }] });
+    expect(buildSources({ ...spica, deploy: { pluginSources: [] } })).toMatchObject({ updateSource: OFFICIAL_CHANNEL, pluginSources: [] });
   });
 
   it('written ones replace the official channel', () => {
-    expect(buildSources({ ...spica, deploy: { updateSource: ' \\\\server\\spica ', pluginSources: ['https://plugins.example.com/index.json'] } })).toEqual({
+    expect(buildSources({ ...spica, deploy: { updateSource: ' \\\\server\\spica ', pluginSources: ['https://plugins.example.com/index.json'] } })).toMatchObject({
       updateSource: '\\\\server\\spica',
       pluginSources: [{ location: 'https://plugins.example.com/index.json' }],
     });
@@ -26,8 +26,8 @@ describe('buildSources', () => {
 
   it('a build with its own app id never takes updates from the official channel, but lists its plugins unless told otherwise', () => {
     const official = [{ location: officialIndex, label: OFFICIAL_PLUGINS_LABEL }];
-    expect(buildSources({ ...nova, deploy: undefined })).toEqual({ updateSource: '', pluginSources: official });
-    expect(buildSources({ ...nova, deploy: { app: { name: 'Nova Desk', id: 'com.example.nova' } } })).toEqual({ updateSource: '', pluginSources: official });
+    expect(buildSources({ ...nova, deploy: undefined })).toMatchObject({ updateSource: '', pluginSources: official });
+    expect(buildSources({ ...nova, deploy: { app: { name: 'Nova Desk', id: 'com.example.nova' } } })).toMatchObject({ updateSource: '', pluginSources: official });
     expect(buildSources({ ...nova, deploy: { updateSource: 'https://updates.example.com/nova/' } }).updateSource).toBe('https://updates.example.com/nova/');
     expect(buildSources({ ...nova, deploy: { pluginSources: [] } }).pluginSources).toEqual([]);
     expect(buildSources({ ...nova, deploy: { pluginSources: ['https://plugins.example.com/index.json'] } }).pluginSources).toEqual([{ location: 'https://plugins.example.com/index.json' }]);
@@ -38,13 +38,24 @@ describe('buildSources', () => {
     const r = buildSources({ ...dev, deploy: undefined });
     expect(r.updateSource).toBe('');
     expect(r.pluginSources).toEqual([{ location: 'K:\\repo\\plugins', label: '官方插件（开发版：仓库的 plugins 文件夹）', exclude: ['example-eval'] }]);
-    expect(buildSources({ ...dev, deploy: { updateSource: 'http://127.0.0.1:8765/', pluginSources: [] } })).toEqual({ updateSource: 'http://127.0.0.1:8765/', pluginSources: [] });
+    expect(buildSources({ ...dev, deploy: { updateSource: 'http://127.0.0.1:8765/', pluginSources: [] } })).toMatchObject({ updateSource: 'http://127.0.0.1:8765/', pluginSources: [] });
     expect(buildSources({ ...dev, repoPlugins: undefined, deploy: undefined }).pluginSources).toEqual([]);
   });
 
   it('a channel that moved is used for both', () => {
     const channel = 'https://spica.example.com/channel/';
-    expect(buildSources({ ...spica, deploy: undefined, channel })).toEqual({ updateSource: channel, pluginSources: [{ location: `${channel}index.json`, label: OFFICIAL_PLUGINS_LABEL }] });
+    expect(buildSources({ ...spica, deploy: undefined, channel })).toMatchObject({ updateSource: channel, pluginSources: [{ location: `${channel}index.json`, label: OFFICIAL_PLUGINS_LABEL }] });
+  });
+});
+
+describe('several addresses', () => {
+  it('updateSource and a plugin source\'s location may be lists: all kept in order, the first one as the source', () => {
+    const r = buildSources({ ...spica, deploy: { updateSource: ['\\\\near\\spica', 'https://far.example.com/spica/'], pluginSources: [{ location: ['\\\\near\\plugins', 'https://far.example.com/index.json'] }] } });
+    expect(r.updateSource).toBe('\\\\near\\spica');
+    expect(r.updateSources).toEqual(['\\\\near\\spica', 'https://far.example.com/spica/']);
+    expect(r.pluginSources).toEqual([{ location: '\\\\near\\plugins', mirrors: ['\\\\near\\plugins', 'https://far.example.com/index.json'] }]);
+    expect(buildSources({ ...spica, deploy: { updateSource: [] } }).updateSources).toEqual([]);
+    expect(buildSources({ ...spica, deploy: undefined }).updateSources).toEqual([OFFICIAL_CHANNEL]);
   });
 });
 
