@@ -534,8 +534,14 @@ function TipRow({ mark, name, provider, value, limited, limitedRow }: { mark?: s
         {name}
         {provider ? <span className="usage-tip-provider"> · {provider}</span> : null}
       </span>
-      <span className="usage-limited-num">{limited ? `(${limited.toLocaleString('en-US')})` : ''}</span>
-      <span className="usage-num">{value.toLocaleString('en-US')}</span>
+      <span className="usage-num">
+        {value.toLocaleString('en-US')}
+        {limited ? (
+          <>
+            (<span className="usage-limited-num">{limited.toLocaleString('en-US')}</span>)
+          </>
+        ) : null}
+      </span>
     </div>
   );
 }

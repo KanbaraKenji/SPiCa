@@ -7483,11 +7483,11 @@ section.plugins-part > .plugins-part-title {
   color: var(--spica-muted);
 }
 
-/* The card's lines in columns: a round mark, the name, a model's 429 answers (red), the number flush right. Every
-   line is a row of the grid (display: contents), so the numbers each line up at the card's right edge. */
+/* The card's lines in columns: a round mark, the name, the number flush right (a model's 429 answers right after it,
+   as 52(2)). Every line is a row of the grid (display: contents), so the numbers each end at the card's right edge. */
 .usage-tip-grid {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
   align-items: center;
   /* lines 22 apart, as his old design (the body line and 2 between) */
   row-gap: 2px;
@@ -7542,11 +7542,9 @@ section.plugins-part > .plugins-part-title {
   color: var(--spica-muted);
 }
 
-/* a model's or a module's 429 answers: red, just before its number (the numbers stay flush right) */
+/* a model's or a module's 429 answers: right after its number in brackets the number's colour, only the count red */
 .usage-limited-num {
   color: var(--spica-danger);
-  text-align: right;
-  white-space: nowrap;
 }
 
 .usage-swatch {

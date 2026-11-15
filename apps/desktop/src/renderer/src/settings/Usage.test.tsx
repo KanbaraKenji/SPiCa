@@ -215,7 +215,7 @@ describe('one model or all', () => {
     expect(tip.querySelector('.usage-tip-head')?.textContent).toBe('按功能模块');
     const lines = [...tip.querySelectorAll('.usage-tip-row')].map((r) => r.textContent);
     // the other model's request is not in it; a plugin's borrowing and its view are one module
-    expect(lines).toEqual(['请求5', '4291', '对话1', '记忆整理1', '插件 笔记（示例）(1)2', '插件 gone1']);
+    expect(lines).toEqual(['请求5', '4291', '对话1', '记忆整理1', '插件 笔记（示例）2(1)', '插件 gone1']);
     // tokens: by module too
     await act(async () => {
       fireEvent.click(screen.getByRole('radio', { name: 'Token' }));
@@ -272,10 +272,14 @@ describe('the requests chart', () => {
     const lines = [...tip.querySelectorAll('.usage-tip-row')].map((r) => r.textContent);
     expect(lines.slice(0, 2)).toEqual(['请求3', '4291']);
     expect(tip.querySelector('.usage-tip-head')?.textContent).toBe('按模型');
-    // no provider column; the model's 429 answers in red just before its number, which ends the line
-    expect(lines).toContain('deepseek-chat(1)2');
+    // no provider column; the model's 429 answers right after its number, no space, as 2(1): only the count red
+    expect(lines).toContain('deepseek-chat2(1)');
     const model = [...tip.querySelectorAll('.usage-tip-row')].find((r) => r.textContent?.startsWith('deepseek-chat'))!;
-    expect([...model.children].map((c) => c.className)).toEqual(['usage-tip-mark', 'usage-tip-name', 'usage-limited-num', 'usage-num']);
+    expect([...model.children].map((c) => c.className)).toEqual(['usage-tip-mark', 'usage-tip-name', 'usage-num']);
+    expect(model.querySelector('.usage-num .usage-limited-num')?.textContent).toBe('1');
+    // a line with no 429 has its number only: no brackets, no empty place
+    const plain = [...tip.querySelectorAll('.usage-tip-row')].find((r) => r.textContent?.startsWith('claude'));
+    if (plain) expect(plain.querySelector('.usage-num')?.textContent).toMatch(/^[\d,]+$/);
     expect(model.querySelector('.usage-tip-provider')).toBeNull();
     // every line has its mark, so every name starts in one place: the chart's series coloured, the models quiet
     expect(model.querySelector('.usage-swatch.is-plain')).toBeTruthy();
