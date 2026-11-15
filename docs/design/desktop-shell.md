@@ -273,7 +273,12 @@
 - **官方渠道**（2026-11-15，他选「放在 GitHub 上」）：一个固定地址 `https://github.com/KanbaraKenji/SPiCa/releases/download/channel/`（`main/update/channel.ts` 的 `OFFICIAL_CHANNEL`，`scripts/deploy.mjs` 有同一个，测试核对两处一样）。公开版的更新源默认是它，官方插件来源默认是它下面的 `index.json`。那里放哪几个文件、发版时谁更新，见 `.github/workflows/release.yml`。
 - **官方插件来源**（`deploy.json` 的 `pluginSources`）：一个列表，每项是一个地址（字符串），或 `{ "location": 地址, "label": "给人看的名字" }`；地址的写法和 市场 ›「添加来源」一样：共享盘或本机文件夹（有 index.json，或里面放着插件文件夹和 .zip）、`index.json` 的 http(s) 地址；单个 .zip 的网址不行。`npm run dist` 时 `scripts/deploy.mjs` 逐项检查，不对就停下说第几项错在哪，并打出这一版会去哪里查更新和插件（`[dist] updates: …`、`[dist] official plugins: …`）；程序启动时主进程再读一遍（`shared/plugins.ts` 的 `officialSources`，只留能用的、去重），经后台扩展的 options（`officialPluginSources`）交给插件页的后台。不写：公开版是官方渠道，改了名的版本没有；写 `[]`：没有官方来源。
   - 为什么不用 electron-updater：它的 generic 源只认 HTTP，公司常用共享盘。这里自己读 electron-builder 生成的同一份 `latest.yml`，校验 sha512，再静默运行按用户安装的安装包（`--updated /S --force-run`），装完自动打开新版本。
-  - 启动 10 秒后查一次，之后每 4 小时一次；有新版本就先下载校验，标题栏显示「新版本 x 已经下好 [重启并更新]」。便携版只提示「有新版本，请从更新源拿新的便携版」。
+  - **一个时间表**（2026-11-15，`main/update/schedule.ts`）：应用和已装插件一起查，启动 10 秒后一次，之后每 4 小时一次。应用有新版本就先下载校验，标题栏空白处出一行「新版本 x 已下载 [重启并更新] ✕」，✕ 是「稍后」，这一版不再出。插件只提示不自己装：「N 个插件可更新 [查看] ✕」，「查看」打开 设置 › 插件 › 已安装，✕ 之后要等可更新的个数变多才再出。应用的那一行排在插件前面。插件页里装了、更新了、读了来源，个数随之改。便携版不能自己换：只出「新版本 x」，没有按钮。开发版不查（见上面「用哪个」）。
+  - **空闲时更新**（设置 › 关于 › 更新与公告，开关默认关；便携版没有这一行）：开着时，新版下好后每分钟看一次，**电脑 10 分钟没有键盘鼠标输入**（Electron 的 `powerMonitor.getSystemIdleTime()`，整台电脑，不只是这个窗口）、**也没有对话在跑**（排队、思考、调用工具、等确认、等回答都算在跑，和关窗口时的「有任务正在运行」同一套）时，就自己重启装上。
+  - **强制更新**：更新源里的 `channel.json` 写 `{ "required": "x.y.z" }`，低于它的版本查到新版后那一行变成警告色、没有 ✕，一直在；空闲了就自己装，不看上一条的开关；照样不打断在跑的对话。删掉这个字段（或整个文件）就撤回：下好在等的版本下次检查时读到，那一行又能关、也不再自己装。文件读不了、写得不对都当没有，不会因为它强制什么。
+  - **装完回到原来的对话**：运行安装包前把当前打开的对话记进 `<userData>\update-resume.json`，新版本启动时读一次就删掉（一小时内的才用），窗口打开那个对话。点「重启并更新」也一样。
+  - 版本比较照 semver：预发布部分逐段比，数字按数字比（rc.10 在 rc.9 后面；用 `@spica/plugins/version` 的 `compareVersions`，和插件同一个）。
+  - `latest.yml` 的 `path` 可以是安装包的完整 https 地址（官方渠道就这样写），其他情况仍只认和 `latest.yml` 放在一起的文件名。
 - **公告**：`announcements.json` 形如 `{ "announcements": [ { "id": "…", "text": "…", "level": "info|warning", "link": "https://…", "start": "…", "end": "…" } ] }`。启动 3 秒后取一次、之后每 30 分钟一次；上次取到的存在设置里，下次一打开就先显示（不让人等）。显示在标题栏右侧的空白处，不遮挡、不挤动任何东西；点 ✕ 关掉的不再显示。
 - **Electron fuses**（2026-11-10）：打包时翻掉两个开关，装好的版本带 `--inspect` / `--inspect-brk` 不开调试口，也不读 `NODE_OPTIONS`（两者都能让启动它的人在主进程里跑代码）；run-as-node 保留，插件的 Node server 靠它起。实测：装好的测试副本带 `--inspect=9231` 和 `NODE_OPTIONS=--inspect=9232` 启动，两个端口都连不上；示例插件 notes 的 server 照常「运行中」。安装版的自动化测试只用 Chromium 的 `--remote-debugging-port`（只到渲染层）。
 - **子进程不弹窗**：外壳自己起的子进程（更新时运行安装包）一律 `windowsHide: true`；内核和插件的子进程由它们自己保证。

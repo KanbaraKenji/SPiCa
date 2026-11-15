@@ -96,6 +96,8 @@ export interface ShellSettings {
   splashShownOn: string | null;
   /** Update / announcement source set by the user (empty = the installer's default, if any). */
   updateSource: string;
+  /** 设置 › 关于 › 空闲时更新: a downloaded update installs itself when the computer is left alone (off by default). */
+  updateWhenIdle: boolean;
   /** Announcements the user closed. */
   dismissedNotices: string[];
   /** Last announcements fetched, so they show at once on the next launch. */
@@ -229,6 +231,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   splash: 'daily',
   splashShownOn: null,
   updateSource: '',
+  updateWhenIdle: false,
   dismissedNotices: [],
   noticesCache: [],
   mail: { enabled: false, consentedAt: null, intervalMinutes: 5, ignore: { from: [], subject: [] } },
@@ -340,6 +343,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const localConnect = v.localConnect === true;
   const memory = v.memory !== false;
   const memoryAutoTidy = v.memoryAutoTidy === true;
+  const updateWhenIdle = v.updateWhenIdle === true;
   const ct = (v.codeTheme && typeof v.codeTheme === 'object' ? v.codeTheme : {}) as Record<string, unknown>;
   const codeTheme = { light: codeThemeId(ct.light, 'light'), dark: codeThemeId(ct.dark, 'dark') };
   const previewers = sanitizePreviewers(v.previewers);
@@ -349,7 +353,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
+  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, updateWhenIdle, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

@@ -8,7 +8,7 @@
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { compareVersions, parseLatestYml, parseNotices, type Notice, type UpdateState } from '../../shared/updates';
+import { compareVersions, parseChannel, parseLatestYml, parseNotices, type Notice, type UpdateState } from '../../shared/updates';
 
 export type FetchLike = (url: string) => Promise<{ ok: boolean; status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
 
@@ -28,6 +28,13 @@ export interface UpdateServiceOptions {
 }
 
 const isUrl = (s: string) => /^https?:\/\//i.test(s);
+
+/** The installer's own name: latest.yml's path, or the last part of its address. */
+function fileName(path: string): string {
+  if (!isUrl(path)) return path;
+  const last = decodeURIComponent(new URL(path).pathname.split('/').pop() ?? '');
+  return last && !/[\\/]|\.\./.test(last) ? last : 'installer.exe';
+}
 
 function urlFor(base: string, name: string): string {
   return new URL(encodeURIComponent(name), base.endsWith('/') ? base : `${base}/`).toString();
@@ -78,8 +85,8 @@ export class UpdateService {
   }
 
   async #bytesTo(source: string, name: string, dest: string): Promise<void> {
-    if (isUrl(source)) {
-      const res = await this.#o.fetch(urlFor(source, name));
+    if (isUrl(name) || isUrl(source)) {
+      const res = await this.#o.fetch(isUrl(name) ? name : urlFor(source, name));
       if (!res.ok) throw new Error(`下载失败（${res.status}）`);
       await writeFile(dest, Buffer.from(await res.arrayBuffer()));
     } else {
@@ -95,9 +102,14 @@ export class UpdateService {
       return this.state;
     }
     if (this.#busy) return this.state;
-    if (this.#ready) return this.state;
     this.#busy = true;
     try {
+      // Downloaded and waiting: only whether it must be installed may have changed (the mark can be taken back).
+      if (this.#ready) {
+        const required = await this.#required(source);
+        if (required !== undefined && required !== Boolean(this.#state.required)) this.#set({ required, ...(this.#state.message ? { message: this.#state.message } : {}) });
+        return this.state;
+      }
       this.#set({ status: 'checking' });
       const yml = await this.#text(source, 'latest.yml');
       const latest = yml ? parseLatestYml(yml) : undefined;
@@ -106,20 +118,22 @@ export class UpdateService {
         return this.state;
       }
       if (compareVersions(latest.version, this.#o.currentVersion) <= 0) {
-        this.#set({ status: 'latest', message: `已是最新版本（${this.#o.currentVersion}）。` });
+        this.#set({ status: 'latest', required: false, message: `已是最新版本（${this.#o.currentVersion}）。` });
         return this.state;
       }
+      const required = (await this.#required(source)) ?? false;
       if (this.#o.portable || !this.#o.packaged) {
         this.#set({
           status: 'manual',
           available: latest.version,
+          required,
           message: this.#o.portable ? `有新版本 ${latest.version}。便携版不支持自动更新，请从更新源下载。` : `有新版本 ${latest.version}（开发版不自动安装）。`,
         });
         return this.state;
       }
-      this.#set({ status: 'downloading', available: latest.version, message: `正在下载 ${latest.version}…` });
+      this.#set({ status: 'downloading', available: latest.version, required, message: `正在下载 ${latest.version}…` });
       await mkdir(this.#o.downloadsDir, { recursive: true });
-      const dest = join(this.#o.downloadsDir, latest.path);
+      const dest = join(this.#o.downloadsDir, fileName(latest.path));
       await this.#bytesTo(source, latest.path, dest);
       const got = createHash('sha512').update(await readFile(dest)).digest('base64');
       if (got !== latest.sha512) {
@@ -127,7 +141,7 @@ export class UpdateService {
         return this.state;
       }
       this.#ready = dest;
-      this.#set({ status: 'ready', available: latest.version, message: `新版本 ${latest.version} 已下载，重启后更新。` });
+      this.#set({ status: 'ready', available: latest.version, required, message: `新版本 ${latest.version} 已下载，重启后更新。` });
       return this.state;
     } catch (err) {
       const msg = (err as Error).message ?? String(err);
@@ -135,6 +149,20 @@ export class UpdateService {
       return this.state;
     } finally {
       this.#busy = false;
+    }
+  }
+
+  /**
+   * Whether this version must update, from the source's channel.json ({ "required": "x.y.z" }): true when it is
+   * below that; false when the file is missing or says nothing; undefined when it could not be read (keep what was known).
+   */
+  async #required(source: string): Promise<boolean | undefined> {
+    try {
+      const text = await this.#text(source, 'channel.json');
+      const required = text ? parseChannel(JSON.parse(text)).required : undefined;
+      return required ? compareVersions(this.#o.currentVersion, required) < 0 : false;
+    } catch {
+      return undefined;
     }
   }
 
@@ -170,10 +198,16 @@ export class UpdateService {
     }
   }
 
+  /** The scheduled plugin check's count (shown with the app's own update, in the same words). */
+  setPluginUpdates(n: number): void {
+    if ((this.#state.pluginUpdates ?? 0) === n) return;
+    this.#set({ pluginUpdates: n, ...(this.#state.message ? { message: this.#state.message } : {}) });
+  }
+
   /** The source changed in settings: start over. */
   reset(): void {
     this.#ready = undefined;
     const { source } = this.#o.getSource();
-    this.#set({ status: source ? 'idle' : 'off', available: undefined });
+    this.#set({ status: source ? 'idle' : 'off', available: undefined, required: false });
   }
 }

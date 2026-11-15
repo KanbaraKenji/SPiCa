@@ -2,7 +2,7 @@
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, safeStorage, screen, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, screen, shell, Tray } from 'electron';
 import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo, type UsageSummary } from '@spica/protocol';
 import { usageQuery } from '../shared/usage';
@@ -32,6 +32,8 @@ import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { type PluginsCommand } from '../shared/plugins';
 import { buildSources, type BuildSources } from './update/channel';
+import { IDLE_POLL_MS, idleInstallDue, pluginUpdateCount, scheduleChecks } from './update/schedule';
+import { readResume, writeResume } from './update/resume';
 import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
 import { writeDemoChart } from './backend/demo-image';
@@ -902,7 +904,7 @@ ipcMain.on(DesktopChannel.CloseAnswer, (_e, answer: unknown) => closeAsk?.answer
 let newChatAtStart = !automated && startsOnNewChat(process.argv);
 
 /** Set when the window's page was lost and is loading again: the conversation that was open (read once). */
-let reopen: { sessionId: string | null } | null = null;
+let reopen: { sessionId: string | null } | null = automated ? null : readResume(join(app.getPath('userData'), 'update-resume.json'));
 let appQuitting = false;
 app.on('before-quit', () => {
   appQuitting = true;
@@ -1196,6 +1198,7 @@ function deployModels(): unknown[] {
 }
 const deployPresets = automated ? [] : deployModels();
 
+const resumeFile = join(app.getPath('userData'), 'update-resume.json');
 const updates = new UpdateService({
   currentVersion: app.getVersion(),
   packaged: app.isPackaged,
@@ -1207,6 +1210,8 @@ const updates = new UpdateService({
   },
   fetch: (url) => net.fetch(url),
   launchInstaller: (path) => {
+    // The new version opens the conversation that is open now (shellState's reopen).
+    writeResume(resumeFile, { sessionId: activeSessionId });
     // Per-user NSIS installer: silent, then it starts the new version itself.
     const child = spawn(path, ['--updated', '/S', '--force-run'], { detached: true, stdio: 'ignore', windowsHide: true });
     child.unref();
@@ -1550,6 +1555,8 @@ const pluginService: PluginService =
     : new FakePluginService(pluginRoot, { many: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'many', onProgress: (p) => sendToWindow(DesktopChannel.PluginsProgress, p), stepMs: 700 });
 ipcMain.handle(DesktopChannel.Plugins, async (_e, cmd: PluginsCommand) => {
   const r = await pluginService.run(cmd);
+  // What the page did (an update installed, sources read) changes how many plugins can update.
+  updates.setPluginUpdates(pluginUpdateCount(r.state));
   // The real core reports plugin changes itself; the demo's list says so here.
   if (pluginService instanceof FakePluginService && cmd.op !== 'state') sendToWindow(DesktopChannel.PluginsChanged);
   return r;
@@ -1673,13 +1680,20 @@ void app.whenReady().then(() => {
     // Problems show up per plugin on the plugin page.
   });
   if (!automated) {
-    // Announcements soon after start, then every 30 minutes; updates after 10 s, then every 4 hours.
+    // Announcements soon after start, then every 30 minutes.
     setTimeout(() => void refreshNotices(), 3_000);
     setInterval(() => void refreshNotices(), 30 * 60_000);
     setTimeout(() => void refreshCatalog(), 4_000);
     setInterval(() => void refreshCatalog(), 30 * 60_000);
-    setTimeout(() => void updates.check(), 10_000);
-    setInterval(() => void updates.check(), 4 * 60 * 60_000);
+    // The app and the plugins on one timetable (main/update/schedule.ts).
+    scheduleChecks({
+      checkApp: () => updates.check(),
+      checkPlugins: async () => updates.setPluginUpdates(pluginUpdateCount((await pluginService.run({ op: 'checkUpdates' })).state)),
+    });
+    // A downloaded update installs itself when idle: 空闲时更新 on, or a version that must update.
+    setInterval(() => {
+      if (idleInstallDue({ update: updates.state, whenIdle: settings.get().updateWhenIdle, busy: running.any(), idleSeconds: powerMonitor.getSystemIdleTime() })) updates.install();
+    }, IDLE_POLL_MS);
   }
   mainWindow = createMainWindow();
   syncNativeChrome(mainWindow, settings.get());

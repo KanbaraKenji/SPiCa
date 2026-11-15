@@ -1,5 +1,5 @@
 // One line at the top of the main pane: a downloaded update waiting for a
-// restart, or an administrator's announcement. It floats over the content
+// restart, plugins that can update, or an administrator's announcement. It floats over the content
 // (nothing below moves when it appears or goes away) and can be closed.
 import { useEffect, useState } from 'react';
 import type { BackendState, DesktopBridge } from '../../../shared/bridge';
@@ -56,12 +56,22 @@ export interface NoticeBarProps {
   update: UpdateState | null;
   settings: ShellSettings;
   onInstall(): void;
+  /** 设置 › 插件, where the plugins that can update are. */
+  onOpenPlugins?: () => void;
   onDismissNotice(id: string): void;
 }
 
-export function NoticeBar({ backend, onRetryBackend, update, settings, onInstall, onDismissNotice }: NoticeBarProps) {
+export function NoticeBar({ backend, onRetryBackend, update, settings, onInstall, onOpenPlugins, onDismissNotice }: NoticeBarProps) {
   const [updateClosed, setUpdateClosed] = useState<string | null>(null);
-  const showUpdate = update?.status === 'ready' && update.available && updateClosed !== update.available;
+  const [pluginsClosed, setPluginsClosed] = useState(0);
+  // A version that must update keeps its line until it is updated (no 稍后).
+  const required = Boolean(update?.required);
+  // Downloaded and waiting; a portable copy, which cannot install it, only hears of it.
+  const waiting = update?.status === 'ready' || (update?.status === 'manual' && update.portable);
+  const showUpdate = waiting && update?.available && (required || updateClosed !== update.available);
+  // Closed: shown again only when the count grows.
+  const pluginUpdates = update?.pluginUpdates ?? 0;
+  const showPlugins = pluginUpdates > pluginsClosed;
   const notice: Notice | undefined = activeNotices(settings.noticesCache, settings.dismissedNotices)[0];
 
   if (backend?.state === 'recovering') {
@@ -84,14 +94,35 @@ export function NoticeBar({ backend, onRetryBackend, update, settings, onInstall
     );
   }
   if (showUpdate && update?.available) {
+    const ready = update.status === 'ready';
+    return (
+      <div className={required ? 'notice-bar is-warning' : 'notice-bar'} role="status">
+        <SpicaStatusIcon name={required ? 'warning' : 'done'} size={15} className="notice-icon" />
+        <span className="notice-text">{ready ? `新版本 ${update.available} 已下载` : `新版本 ${update.available}`}</span>
+        {ready ? (
+          <button type="button" className="btn btn-small btn-primary" onClick={onInstall}>
+            重启并更新
+          </button>
+        ) : null}
+        {required ? null : (
+          <button type="button" className="icon-btn notice-close" onClick={() => setUpdateClosed(update.available ?? null)} aria-label="稍后" title="稍后">
+            <Icon name="close" size={14} />
+          </button>
+        )}
+      </div>
+    );
+  }
+  if (showPlugins) {
     return (
       <div className="notice-bar" role="status">
         <SpicaStatusIcon name="done" size={15} className="notice-icon" />
-        <span className="notice-text">新版本 {update.available} 已下载</span>
-        <button type="button" className="btn btn-small btn-primary" onClick={onInstall}>
-          重启并更新
-        </button>
-        <button type="button" className="icon-btn notice-close" onClick={() => setUpdateClosed(update.available ?? null)} aria-label="稍后" title="稍后">
+        <span className="notice-text">{pluginUpdates} 个插件可更新</span>
+        {onOpenPlugins ? (
+          <button type="button" className="btn btn-small" onClick={onOpenPlugins}>
+            查看
+          </button>
+        ) : null}
+        <button type="button" className="icon-btn notice-close" onClick={() => setPluginsClosed(pluginUpdates)} aria-label="稍后" title="稍后">
           <Icon name="close" size={14} />
         </button>
       </div>

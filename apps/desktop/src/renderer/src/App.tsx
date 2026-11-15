@@ -1005,6 +1005,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           update={update}
           settings={settings}
           onInstall={installUpdate}
+          onOpenPlugins={() => openSettings('plugins', 'installed')}
           onDismissNotice={(nid) => shell.update({ dismissedNotices: [...settings.dismissedNotices, nid] })}
         />
         <div className="titlebar-right">

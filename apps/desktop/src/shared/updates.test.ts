@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activeNotices, compareVersions, parseLatestYml, parseNotices } from './updates';
+import { activeNotices, compareVersions, parseChannel, parseLatestYml, parseNotices } from './updates';
 
 describe('compareVersions', () => {
   it('orders x.y.z and puts pre-releases first', () => {
@@ -59,5 +59,22 @@ describe('notices', () => {
   it('shows what is in its time window and not closed', () => {
     const n = parseNotices(file);
     expect(activeNotices(n, ['b'], new Date('2026-11-09T12:00:00Z')).map((x) => x.id)).toEqual(['a', 'e']);
+  });
+});
+
+describe('parseChannel', () => {
+  it('reads "required" when it is a version; anything else is nothing', () => {
+    expect(parseChannel({ required: '0.2.0-rc.4' })).toEqual({ required: '0.2.0-rc.4' });
+    expect(parseChannel({ required: ' v1.0.0 ' })).toEqual({ required: '1.0.0' });
+    for (const bad of [null, [], 'x', {}, { required: null }, { required: 'soon' }, { required: 2 }]) expect(parseChannel(bad)).toEqual({});
+  });
+});
+
+describe('parseLatestYml with a full address', () => {
+  const yml = (path: string) => ['version: 1.0.0', `path: ${path}`, 'sha512: x'].join('\n');
+  it('takes an https address as the path, but no other kind of path', () => {
+    expect(parseLatestYml(yml('https://example.invalid/v1.0.0/Spica-Setup-1.0.0.exe'))?.path).toBe('https://example.invalid/v1.0.0/Spica-Setup-1.0.0.exe');
+    expect(parseLatestYml(yml('../Spica-Setup-1.0.0.exe'))).toBeUndefined();
+    expect(parseLatestYml(yml('http://example.invalid/a.exe'))).toBeUndefined();
   });
 });
