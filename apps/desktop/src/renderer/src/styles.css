@@ -5688,6 +5688,78 @@ section.plugins-part > .plugins-part-title {
   height: 22px;
 }
 
+/* Updates (shell/UpdateNotice.tsx): a card in the side bar, right above the bottom row; the same look as the
+   title bar's line (raised, bordered, a warning tint when the version must update). */
+.update-card {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 8px 8px;
+  padding: 8px 4px 8px 12px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--spica-border);
+  background: var(--spica-raised);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+
+.update-card.is-warning {
+  border-color: color-mix(in srgb, var(--spica-warning) 60%, var(--spica-border));
+  background: var(--spica-warning-soft);
+}
+
+.update-card-head {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+}
+
+.update-card-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Under the words, where they start (past the icon). */
+.update-card-action {
+  margin-left: 23px;
+  height: 22px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+/* In the column of icons: one icon in the same place; a dot for a downloaded update, the whole icon in the
+   warning colour when the version must update. */
+.sidebar.is-rail .update-rail {
+  flex: none;
+  width: auto;
+  margin: 0 8px 6px;
+}
+
+.update-rail-dot {
+  position: absolute;
+  top: 6px;
+  left: 24px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--spica-accent);
+}
+
+.sidebar.is-rail .update-rail.is-warning svg {
+  color: var(--spica-warning);
+}
+
+.update-rail.is-warning .update-rail-dot {
+  background: var(--spica-warning);
+}
+
 .about-hint {
   margin: 8px 0 0;
 }

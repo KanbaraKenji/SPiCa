@@ -1,7 +1,7 @@
 // Left sidebar: conversations with the assistant, then each project, each with
 // the sub-agents it started (at any depth). Every row opens that session's
 // conversation; the arrow after its name only expands or collapses.
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { ContextMenu, type MenuItem } from '../ui/ContextMenu';
 import type { SessionInfo } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
@@ -47,6 +47,8 @@ export interface SidebarProps {
    * the same height in both. The lists (对话, 项目) are only in the full sidebar.
    */
   compact?: boolean;
+  /** Updates (shell/UpdateNotice.tsx): the card, or in the column of icons its icon; right above the bottom row. */
+  notice?: ReactNode;
   /**
    * The user's account (设置 › 账号): on the bottom row, its letter and the account, the gear for 设置 at the
    * right end. Empty or absent: the row is 设置 alone, as it was. Only the full sidebar shows it (the column of
@@ -230,6 +232,7 @@ export function Sidebar({
   onDeleteChat,
   pluginPages = [],
   compact = false,
+  notice = null,
   account = '',
   onAccount,
   elsewhere = false,
@@ -336,6 +339,7 @@ export function Sidebar({
             ))}
           </section>
         ) : null}
+        {notice}
         <div className="sidebar-bottom">
           <button type="button" className={settingsOpen ? 'side-action is-active' : 'side-action'} onClick={onSettings} aria-current={settingsOpen ? 'page' : undefined} aria-label="设置" title="设置">
             <Icon name="settings" />
@@ -417,6 +421,7 @@ export function Sidebar({
           onClose={() => setMenu(null)}
         />
       ) : null}
+      {notice}
       <div className={account ? 'sidebar-bottom has-account' : 'sidebar-bottom'}>
         {account ? (
           <>
