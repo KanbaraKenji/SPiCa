@@ -389,6 +389,9 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
       catalogId: p.id,
       maxConcurrent: p.maxConcurrent ?? null,
       requestsPerMinute: p.requestsPerMinute ?? null,
+      // a company preset names the headers each person fills in, and where WSO2 sends its credentials
+      ...(p.headers?.length ? { headers: p.headers.map((name) => ({ name })) } : {}),
+      ...(p.credentialsIn ? { credentialsIn: p.credentialsIn } : {}),
       models: first ? [{ id: first.id, contextWindow: first.contextWindow, contextFrom: 'catalog' }] : [],
     });
     clearErrors(['name', 'baseUrl', 'model', 'contextWindow']);
@@ -876,7 +879,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                   ) : null}
                   {limits}
                   <HeadersField rows={draft.headers ?? []} saved={current?.savedHeaders} onChange={(headers) => set({ headers })} error={errors.headers} />
-                  {isWso2 ? <CredentialsInField value={draft.credentialsIn ?? null} onChange={(credentialsIn) => set({ credentialsIn })} /> : null}
+                  {draft.kind === 'wso2' ? <CredentialsInField value={draft.credentialsIn ?? null} onChange={(credentialsIn) => set({ credentialsIn })} /> : null}
                 </>
               ) : null}
             </>

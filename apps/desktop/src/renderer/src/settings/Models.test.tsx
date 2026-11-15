@@ -618,3 +618,33 @@ describe('更多选项 › 自定义请求头 and 凭据位置', () => {
     expect(screen.getByRole('button', { name: '添加请求头' })).toBeTruthy();
   });
 });
+
+describe('a company preset with its key header', () => {
+  it('picking it puts the header row in place; the person types the value; WSO2 takes the preset’s 凭据位置', async () => {
+    const withPresets: ModelCatalogView = {
+      ...CATALOG,
+      providers: [
+        { id: 'acme', name: 'Acme 网关', group: 'company', kind: 'openai-compatible', baseUrl: 'https://gateway.example.com/v1', listModels: 'none', needsKey: true, headers: ['X-API-Key'], models: [{ id: 'acme-chat', contextWindow: 128_000, role: 'default' }] },
+        { id: 'acme-wso2', name: 'Acme WSO2', group: 'company', kind: 'wso2', baseUrl: 'https://gateway.example.com/llm/1.0', tokenUrl: 'https://gateway.example.com/token', credentialsIn: 'body', listModels: 'none', needsKey: true, models: [{ id: 'acme-pro', contextWindow: 200_000, role: 'default' }] },
+        ...CATALOG.providers,
+      ],
+    };
+    const api = fakeApi();
+    api.catalog = vi.fn(async () => withPresets);
+    await openNew(api);
+    choose('acme');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    // the row is there to fill, so 更多选项 opens on it
+    expect(screen.getByText('请填写请求头「X-API-Key」的值')).toBeTruthy();
+    expect((screen.getByLabelText('请求头名称') as HTMLInputElement).value).toBe('X-API-Key');
+    await act(async () => {});
+    fireEvent.change(screen.getByLabelText('X-API-Key 的值'), { target: { value: 'k-1' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ catalogId: 'acme', headers: [{ name: 'X-API-Key', value: 'k-1' }] })));
+    fireEvent.click(await screen.findByRole('button', { name: /添加服务商/ }));
+    choose('acme-wso2');
+    const more = screen.getByRole('button', { name: '更多选项' });
+    if (more.getAttribute('aria-expanded') !== 'true') fireEvent.click(more);
+    expect(within(screen.getByRole('radiogroup', { name: '凭据位置' })).getByRole('radio', { name: '表单' }).getAttribute('aria-checked')).toBe('true');
+  });
+});

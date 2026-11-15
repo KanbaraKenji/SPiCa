@@ -91,6 +91,23 @@ describe('deploy.json', () => {
     expect(message).toContain('第 2 个连接（gw）的第 1 个型号（m）：contextWindow 要写正整数');
   });
 
+  it('a preset may name its key header and WSO2 credentials place; a header value stops the packaging', () => {
+    const example = JSON.parse(readFileSync(new URL('../deploy.example.json', import.meta.url), 'utf8'))['// models'].replace(/^.*Example: /, '');
+    const preset = { ...JSON.parse(example), headers: ['X-API-Key'] };
+    expect(readDeploy(dirWith({ models: [preset] })).models[0].headers).toEqual(['X-API-Key']);
+    const messageOf = (models) => {
+      try {
+        readDeploy(dirWith({ models }));
+        return '';
+      } catch (e) {
+        return e.message;
+      }
+    };
+    expect(messageOf([{ ...preset, headers: { 'X-API-Key': 'k' } }])).toContain('第 1 个连接（acme-gateway）：headers 要写成请求头名称的列表');
+    expect(messageOf([{ ...preset, headers: ['Host'] }])).toContain('headers 里不能写 Host，它由应用设置');
+    expect(messageOf([{ ...preset, credentialsIn: 'body' }])).toContain('credentialsIn 只给 wso2 写，只能是 basic 或 body');
+  });
+
   it('pluginSources: absent is null (the official channel), [] is none; a place or { location, label }; a wrong one stops the packaging', () => {
     expect(readDeploy(dirWith({})).pluginSources).toBeNull();
     expect(readDeploy(dirWith(undefined)).pluginSources).toBeNull();

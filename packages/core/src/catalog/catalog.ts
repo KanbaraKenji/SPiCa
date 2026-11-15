@@ -59,6 +59,9 @@ export interface CatalogProvider {
   models: CatalogModel[];
   source?: string;
   checked?: string;
+  /** Presets: request headers each person fills in (names only, e.g. X-API-Key); where WSO2 sends its credentials. */
+  headers?: string[];
+  credentialsIn?: 'basic' | 'body';
   /** Presets: the one the form preselects; limits for the connection. */
   default?: boolean;
   maxConcurrent?: number;
@@ -83,6 +86,10 @@ export interface CatalogPreset {
   tokenUrl?: string;
   scope?: string;
   models: { id: string; label?: string; contextWindow: number; maxOutput?: number; role?: 'default' | 'strong' | 'cheap' }[];
+  /** Names of request headers each person fills in (a gateway's own key header such as X-API-Key); never their values. */
+  headers?: string[];
+  /** wso2: where the client credentials go when a token is fetched; absent: tried in turn. */
+  credentialsIn?: 'basic' | 'body';
   default?: boolean;
   maxConcurrent?: number;
   requestsPerMinute?: number;
@@ -92,6 +99,9 @@ const KINDS: CatalogKind[] = ['openai-compatible', 'anthropic', 'wso2'];
 const STYLES: ListStyle[] = ['openai', 'openai-chat', 'anthropic', 'ollama', 'lmstudio', 'none'];
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const URL_RE = /^https?:\/\/[^\s/]+/i;
+/** An HTTP header name (RFC 9110 token), and the ones the app sets itself (a preset cannot name them). */
+const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}$/;
+const RESERVED_HEADERS = new Set(['accept', 'content-type', 'content-length', 'host', 'connection', 'transfer-encoding']);
 const posInt = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v > 0;
 const text = (v: unknown) => typeof v === 'string' && v.trim().length > 0;
 
@@ -180,6 +190,15 @@ export function presetProblems(raw: unknown): string[] {
       if (!m || !posInt(m.contextWindow)) out.push(`${mt}: contextWindow must be a positive whole number`);
     }
     for (const k of ['maxConcurrent', 'requestsPerMinute'] as const) if (p[k] !== undefined && !posInt(p[k])) out.push(`${at}: ${k} must be a positive whole number`);
+    if (p.headers !== undefined) {
+      if (!Array.isArray(p.headers)) out.push(`${at}: headers must be a list of header names (values are typed by each person)`);
+      else
+        for (const h of p.headers as unknown[]) {
+          if (typeof h !== 'string' || !HEADER_NAME.test(h)) out.push(`${at}: headers: ${JSON.stringify(h)} is not a header name`);
+          else if (RESERVED_HEADERS.has(h.toLowerCase())) out.push(`${at}: headers: ${h} is set by the app`);
+        }
+    }
+    if (p.credentialsIn !== undefined && (p.kind !== 'wso2' || (p.credentialsIn !== 'basic' && p.credentialsIn !== 'body'))) out.push(`${at}: credentialsIn must be basic or body, for wso2 only`);
   }
   return out;
 }
@@ -204,6 +223,8 @@ export function effectiveCatalog(builtin: ModelCatalog, update?: ModelCatalog, p
     ...(p.default ? { default: true } : {}),
     ...(p.maxConcurrent ? { maxConcurrent: p.maxConcurrent } : {}),
     ...(p.requestsPerMinute ? { requestsPerMinute: p.requestsPerMinute } : {}),
+    ...(p.headers?.length ? { headers: [...p.headers] } : {}),
+    ...(p.credentialsIn ? { credentialsIn: p.credentialsIn } : {}),
   }));
   const taken = new Set(company.map((p) => p.id));
   return { ...base, providers: [...company, ...base.providers.filter((p) => !taken.has(p.id))] };

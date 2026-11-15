@@ -135,6 +135,10 @@ const PRESET_WORDS = [
   [/^models needs at least one model$/, 'models 里至少要有一个型号'],
   [/^contextWindow must be a positive whole number$/, 'contextWindow 要写正整数（这个型号一次最多能装多少 token）'],
   [/^(\w+) must be a positive whole number$/, (k) => `${k} 要写正整数`],
+  [/^headers must be a list of header names.*$/, 'headers 要写成请求头名称的列表，比如 ["X-API-Key"]；值由每个人自己填，不能放进安装包'],
+  [/^headers: (.*) is not a header name$/, (h) => `headers 里的 ${h} 不是请求头名称（只能有字母、数字和 - _ . 这类字符）`],
+  [/^headers: (.*) is set by the app$/, (h) => `headers 里不能写 ${h}，它由应用设置`],
+  [/^credentialsIn must be basic or body, for wso2 only$/, 'credentialsIn 只给 wso2 写，只能是 basic 或 body'],
 ];
 
 /** One of the core's English findings in plain Chinese, saying which entry (English kept when unknown). */
