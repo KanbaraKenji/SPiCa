@@ -84,15 +84,22 @@ export function compareVersions(a: string, b: string): number {
 export interface ChannelInfo {
   /** Versions below this one must update. */
   required?: string;
+  /** The channel moved: everything it held is read from here from now on (https only). */
+  movedTo?: string;
 }
 
 const SEMVERISH = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 
-/** channel.json: { "required": "0.2.0" }; anything else is ignored, so a wrong file never forces anything. */
+/**
+ * channel.json: { "required": "0.2.0", "movedTo": "https://…/" }; anything else is ignored, so a wrong file never
+ * forces an update or moves the channel.
+ */
 export function parseChannel(raw: unknown): ChannelInfo {
-  const v = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const v = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const required = typeof v.required === 'string' && SEMVERISH.test(v.required.trim()) ? v.required.trim().replace(/^v/, '') : undefined;
-  return required ? { required } : {};
+  const moved = typeof v.movedTo === 'string' ? v.movedTo.trim() : '';
+  const movedTo = /^https:\/\//i.test(moved) && URL.canParse(moved) ? (moved.endsWith('/') ? moved : `${moved}/`) : undefined;
+  return { ...(required ? { required } : {}), ...(movedTo ? { movedTo } : {}) };
 }
 
 /** The fields the updater needs from electron-builder's latest.yml. */

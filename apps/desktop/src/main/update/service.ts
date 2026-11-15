@@ -8,7 +8,7 @@
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { compareVersions, parseChannel, parseLatestYml, parseNotices, type Notice, type UpdateState } from '../../shared/updates';
+import { compareVersions, parseChannel, parseLatestYml, parseNotices, type ChannelInfo, type Notice, type UpdateState } from '../../shared/updates';
 
 export type FetchLike = (url: string) => Promise<{ ok: boolean; status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
 
@@ -20,14 +20,18 @@ export interface UpdateServiceOptions {
   portable: boolean;
   /** Where downloaded installers are kept. */
   downloadsDir: string;
-  /** The configured source and whether it came from deploy.json. */
+  /** The configured source and whether it came from the build (deploy.json or the official channel), not the user. */
   getSource(): { source: string; fromDeploy: boolean };
+  /** The build's source said it moved (channel.json "movedTo"): remember it; getSource gives the new one from now on. */
+  onMoved?(from: string, to: string): void;
   fetch: FetchLike;
   /** Starts the installer and quits the app. */
   launchInstaller(path: string): void;
 }
 
 const isUrl = (s: string) => /^https?:\/\//i.test(s);
+
+const sameUrl = (a: string, b: string) => a.replace(/\/+$/, '').toLowerCase() === b.replace(/\/+$/, '').toLowerCase();
 
 /** The installer's own name: latest.yml's path, or the last part of its address. */
 function fileName(path: string): string {
@@ -96,7 +100,7 @@ export class UpdateService {
 
   /** Looks for a newer version; downloads it when this copy can install it. */
   async check(): Promise<UpdateState> {
-    const { source } = this.#o.getSource();
+    let { source, fromDeploy } = this.#o.getSource();
     if (!source) {
       this.#set({ status: 'off', message: '未设置更新源。' });
       return this.state;
@@ -104,10 +108,17 @@ export class UpdateService {
     if (this.#busy) return this.state;
     this.#busy = true;
     try {
+      let channel = await this.#channel(source);
+      // The build's own source moved: follow it once (a source the user typed is theirs and stays).
+      if (channel.movedTo && fromDeploy && this.#o.onMoved && !sameUrl(channel.movedTo, source)) {
+        this.#o.onMoved(source, channel.movedTo);
+        ({ source, fromDeploy } = this.#o.getSource());
+        channel = await this.#channel(source);
+      }
+      const required = channel.required ? compareVersions(this.#o.currentVersion, channel.required) < 0 : false;
       // Downloaded and waiting: only whether it must be installed may have changed (the mark can be taken back).
       if (this.#ready) {
-        const required = await this.#required(source);
-        if (required !== undefined && required !== Boolean(this.#state.required)) this.#set({ required, ...(this.#state.message ? { message: this.#state.message } : {}) });
+        if (required !== Boolean(this.#state.required)) this.#set({ required, ...(this.#state.message ? { message: this.#state.message } : {}) });
         return this.state;
       }
       this.#set({ status: 'checking' });
@@ -121,7 +132,6 @@ export class UpdateService {
         this.#set({ status: 'latest', required: false, message: `已是最新版本（${this.#o.currentVersion}）。` });
         return this.state;
       }
-      const required = (await this.#required(source)) ?? false;
       if (this.#o.portable || !this.#o.packaged) {
         this.#set({
           status: 'manual',
@@ -153,16 +163,15 @@ export class UpdateService {
   }
 
   /**
-   * Whether this version must update, from the source's channel.json ({ "required": "x.y.z" }): true when it is
-   * below that; false when the file is missing or says nothing; undefined when it could not be read (keep what was known).
+   * The source's channel.json (whether this version must update, whether the channel moved). Missing, unreadable or
+   * wrong: no mark at all (nothing forced, nothing moved), and the update check goes on as usual.
    */
-  async #required(source: string): Promise<boolean | undefined> {
+  async #channel(source: string): Promise<ChannelInfo> {
     try {
       const text = await this.#text(source, 'channel.json');
-      const required = text ? parseChannel(JSON.parse(text)).required : undefined;
-      return required ? compareVersions(this.#o.currentVersion, required) < 0 : false;
+      return text ? parseChannel(JSON.parse(text)) : {};
     } catch {
-      return undefined;
+      return {};
     }
   }
 

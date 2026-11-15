@@ -94,8 +94,8 @@ function updateSourceOf(v) {
 
 /**
  * The official plugin sources (市场, listed first, marked 官方, not removable): each a place, as a string or
- * { "location": …, "label": … }; [] for none; null when absent (Spica as published then uses the official
- * channel). Wrong ones stop the packaging with a plain message.
+ * { "location": …, "label": … }; [] for none; null when absent (the app then lists the official channel's
+ * plugins, whatever its name). Wrong ones stop the packaging with a plain message.
  */
 function pluginSourcesOf(v) {
   if (v === undefined || v === null) return null;

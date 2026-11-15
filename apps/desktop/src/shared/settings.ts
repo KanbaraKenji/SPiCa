@@ -98,6 +98,8 @@ export interface ShellSettings {
   updateSource: string;
   /** 设置 › 关于 › 空闲时更新: a downloaded update installs itself when the computer is left alone (off by default). */
   updateWhenIdle: boolean;
+  /** The build's update source said it moved (channel.json "movedTo"): used instead of `from` from then on. */
+  channelMove: { from: string; to: string } | null;
   /** Announcements the user closed. */
   dismissedNotices: string[];
   /** Last announcements fetched, so they show at once on the next launch. */
@@ -232,6 +234,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   splashShownOn: null,
   updateSource: '',
   updateWhenIdle: false,
+  channelMove: null,
   dismissedNotices: [],
   noticesCache: [],
   mail: { enabled: false, consentedAt: null, intervalMinutes: 5, ignore: { from: [], subject: [] } },
@@ -344,6 +347,8 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const memory = v.memory !== false;
   const memoryAutoTidy = v.memoryAutoTidy === true;
   const updateWhenIdle = v.updateWhenIdle === true;
+  const cm = v.channelMove && typeof v.channelMove === 'object' ? (v.channelMove as { from?: unknown; to?: unknown }) : null;
+  const channelMove = cm && typeof cm.from === 'string' && cm.from && typeof cm.to === 'string' && /^https:\/\//i.test(cm.to) ? { from: cm.from, to: cm.to } : null;
   const ct = (v.codeTheme && typeof v.codeTheme === 'object' ? v.codeTheme : {}) as Record<string, unknown>;
   const codeTheme = { light: codeThemeId(ct.light, 'light'), dark: codeThemeId(ct.dark, 'dark') };
   const previewers = sanitizePreviewers(v.previewers);
@@ -353,7 +358,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, updateWhenIdle, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
+  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

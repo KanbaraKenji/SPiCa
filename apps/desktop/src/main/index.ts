@@ -30,8 +30,8 @@ import { FakePluginService } from './plugins/fake';
 import { UpdateService } from './update/service';
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { type PluginsCommand } from '../shared/plugins';
-import { buildSources, type BuildSources } from './update/channel';
+import { sameSource, type PluginsCommand } from '../shared/plugins';
+import { buildSources, channelFile, type BuildSources } from './update/channel';
 import { IDLE_POLL_MS, idleInstallDue, pluginUpdateCount, scheduleChecks } from './update/schedule';
 import { readResume, writeResume } from './update/resume';
 import { chooseBackend, type AgentBackend } from './backend';
@@ -1185,6 +1185,17 @@ const buildDefaults: BuildSources = automated
   ? { updateSource: '', pluginSources: [] }
   : buildSources({ deploy: readDeployJson(), appId: APP_IDENTITY.id, packaged: app.isPackaged, ...(existsSync(repoPlugins) ? { repoPlugins } : {}) });
 const deployDefault = buildDefaults.updateSource;
+/** The build's source after a move its channel.json announced ("movedTo"); the build's own otherwise. */
+function buildSource(): string {
+  const move = settings.get().channelMove;
+  return move && deployDefault && move.from === deployDefault ? move.to : deployDefault;
+}
+// The official plugins follow the same move (read at start, so from the next start on).
+const startMove = settings.get().channelMove;
+if (startMove && startMove.from === deployDefault) {
+  const from = channelFile(startMove.from, 'index.json');
+  buildDefaults.pluginSources = buildDefaults.pluginSources.map((s) => (sameSource(s.location, from) ? { ...s, location: channelFile(startMove.to, 'index.json') } : s));
+}
 
 /** The company's preset model connections from deploy.json ("models"); the packaging already checked them. */
 function deployModels(): unknown[] {
@@ -1206,7 +1217,13 @@ const updates = new UpdateService({
   downloadsDir: join(app.getPath('userData'), 'updates'),
   getSource: () => {
     const own = settings.get().updateSource;
-    return own ? { source: own, fromDeploy: false } : { source: deployDefault, fromDeploy: Boolean(deployDefault) };
+    if (own) return { source: own, fromDeploy: false };
+    const source = buildSource();
+    return { source, fromDeploy: Boolean(source) };
+  },
+  onMoved: (_from, to) => {
+    // Kept against the build's own address, so a new build with another default is not moved by an old note.
+    settings.update({ channelMove: { from: deployDefault, to } });
   },
   fetch: (url) => net.fetch(url),
   launchInstaller: (path) => {

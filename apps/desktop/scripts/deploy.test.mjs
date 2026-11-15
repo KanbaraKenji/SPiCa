@@ -116,6 +116,6 @@ describe('deploy.json', () => {
     expect(DEFAULT_APP.id).toBe(OFFICIAL_APP_ID);
     expect(sourceLines(readDeploy(dirWith(undefined)))).toEqual([`updates: official channel ${OFFICIAL_CHANNEL}`, `official plugins: official channel ${OFFICIAL_CHANNEL}index.json`]);
     expect(sourceLines(readDeploy(dirWith({ updateSource: '', pluginSources: [] })))).toEqual(['updates: none', 'official plugins: none']);
-    expect(sourceLines(readDeploy(dirWith({ app: { name: 'Nova Desk', id: 'com.example.nova' } })))).toEqual(['updates: none (not in deploy.json)', 'official plugins: none (not in deploy.json)']);
+    expect(sourceLines(readDeploy(dirWith({ app: { name: 'Nova Desk', id: 'com.example.nova' } })))).toEqual(['updates: none (not in deploy.json)', `official plugins: official channel ${OFFICIAL_CHANNEL}index.json`]);
   });
 });

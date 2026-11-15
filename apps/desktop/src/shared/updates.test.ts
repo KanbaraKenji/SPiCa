@@ -68,6 +68,12 @@ describe('parseChannel', () => {
     expect(parseChannel({ required: ' v1.0.0 ' })).toEqual({ required: '1.0.0' });
     for (const bad of [null, [], 'x', {}, { required: null }, { required: 'soon' }, { required: 2 }]) expect(parseChannel(bad)).toEqual({});
   });
+
+  it('reads "movedTo" only as an https address, with the slash at the end', () => {
+    expect(parseChannel({ movedTo: ' https://spica.example.com/channel ' })).toEqual({ movedTo: 'https://spica.example.com/channel/' });
+    expect(parseChannel({ movedTo: 'https://spica.example.com/channel/', required: '1.0.0' })).toEqual({ movedTo: 'https://spica.example.com/channel/', required: '1.0.0' });
+    for (const bad of ['http://spica.example.com/', '\\\\server\\share', 'D:/x', 'https://', '', 3]) expect(parseChannel({ movedTo: bad })).toEqual({});
+  });
 });
 
 describe('parseLatestYml with a full address', () => {
