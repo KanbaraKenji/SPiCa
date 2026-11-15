@@ -25,6 +25,8 @@ const dataDir = process.env.SPICA_PLUGIN_DATA || join(process.cwd(), '.data');
 const pluginDir = process.env.SPICA_PLUGIN_DIR || process.cwd();
 const mock = process.env.SPICA_MOCK === '1';
 const account = process.env.SPICA_USER_ACCOUNT || '';
+// the app's name as the person sees it (a company may package it under its own)
+const app = process.env.SPICA_APP_NAME || 'Spica';
 
 const tools = [
   {
@@ -55,7 +57,7 @@ const tools = [
   },
   {
     name: 'summarize_note',
-    description: 'Summarize one note in two or three sentences, using the model set up in Spica.',
+    description: `Summarize one note in two or three sentences, using the model set up in ${app}.`,
     inputSchema: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
     annotations: { readOnlyHint: true },
   },
@@ -110,7 +112,7 @@ async function searchCatalog(query) {
   const base = (await readConfig()).catalogUrl;
   if (!base) {
     return {
-      text: 'The catalog service is not configured on this computer (catalogUrl in config.json). Turn on mock mode in Spica to use the sample data.',
+      text: `The catalog service is not configured on this computer (catalogUrl in config.json). Turn on mock mode in ${app} to use the sample data.`,
       isError: true,
     };
   }
@@ -178,9 +180,9 @@ function createMessage(params) {
 }
 
 const REFUSALS = {
-  no_model: 'No model is set up in Spica yet. Add one under Settings › Models.',
-  model_not_configured: 'The model this plugin asked for is not set up in Spica.',
-  budget: 'The spending limit set in Spica is used up. Try again later.',
+  no_model: `No model is set up in ${app} yet. Add one under Settings › Models.`,
+  model_not_configured: `The model this plugin asked for is not set up in ${app}.`,
+  budget: `The spending limit set in ${app} is used up. Try again later.`,
   rate_limited: 'Too many model requests at once. Try again in a minute.',
 };
 
@@ -192,7 +194,7 @@ async function summarizeNote(title) {
     if (err.code === 'ENOENT') return { text: `No note titled "${title}".`, isError: true };
     throw err;
   }
-  if (!canSample) return { text: 'This Spica does not let the plugin use a model.', isError: true };
+  if (!canSample) return { text: `This ${app} does not let the plugin use a model.`, isError: true };
   try {
     const r = await createMessage({
       systemPrompt: 'You summarize notes. Answer with the summary only.',

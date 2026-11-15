@@ -84,4 +84,4 @@ export async function saveSettings({ baseUrl, token }) {
 
 ## 四、应用改了名
 
-公司可以把 Spica 打包成别的名字。改的只是显示的名字，插件这边什么都不用改：工具名前缀、`SPICA_` 环境变量、清单里的 `compatibility.spica`、`window.spica`、`--spica-*` 颜色变量、`.spicaignore` 全都照旧。装插件时用 `install.mjs --app <应用名>`，只开着一个改了名的应用时不加也行，见 `references/connect.md` 第一节第 4 条。
+公司可以把 Spica 打包成别的名字。改的只是显示的名字，插件这边什么都不用改：工具名前缀、`SPICA_` 环境变量、清单里的 `compatibility.spica`、`window.spica`、`--spica-*` 颜色变量、`.spicaignore` 全都照旧。给用户的报错和提示里要说出应用的名字时，读 `SPICA_APP_NAME`（没有时按 Spica 算），不要写死「Spica」。装插件时用 `install.mjs --app <应用名>`，只开着一个改了名的应用时不加也行，见 `references/connect.md` 第一节第 4 条。

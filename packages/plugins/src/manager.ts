@@ -967,6 +967,8 @@ export class PluginManager {
       SPICA_MOCK: this.#state.mock ? '1' : '0',
       // Set after baseEnv and the manifest's env: neither can put another account here.
       SPICA_USER_ACCOUNT: this.#account,
+      // the app's name as the person sees it (a company's packaging may rename it), for messages that name the app
+      SPICA_APP_NAME: this.#app,
     };
     const node = def.runtime === 'node';
     if (node) env.ELECTRON_RUN_AS_NODE = '1';
