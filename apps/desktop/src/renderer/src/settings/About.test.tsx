@@ -51,8 +51,8 @@ describe('关于 › 检查更新', () => {
     show({ ...base, source: 'D:/更新', status: 'manual', available: '0.2.0', message: '有新版本 0.2.0（开发版不自动安装）。' });
     expect(screen.getByRole('status').textContent).toContain('有新版本 0.2.0');
     cleanup();
-    show({ ...base, source: 'D:/更新', status: 'error', message: '无法连接更新源：timeout' });
-    expect(screen.getByRole('status').textContent).toBe('无法连接更新源：timeout');
+    show({ ...base, source: 'D:/更新', status: 'error', message: '无法连接更新服务器，请检查网络后重试。' });
+    expect(screen.getByRole('status').textContent).toBe('无法连接更新服务器，请检查网络后重试。');
   });
 });
 

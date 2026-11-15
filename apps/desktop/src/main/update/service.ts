@@ -37,7 +37,31 @@ export interface UpdateServiceOptions {
   fetch: FetchLike;
   /** Starts the installer and quits the app. */
   launchInstaller(path: string): void;
+  /** Where the raw error goes (the user sees updateErrorText's words). */
+  log?(line: string): void;
 }
+
+/** Which step of an update check went wrong, for the words the user sees. */
+export type UpdateStep = 'connect' | 'download' | 'write';
+
+/**
+ * A failed update in words a user can act on (what went wrong, then what to do), as the app's other errors are said;
+ * the raw error goes to the log. A disk that cannot take the file is said as such, whatever the step.
+ */
+export function updateErrorText(step: UpdateStep, err: unknown): string {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code ?? '';
+  if (/^(ENOSPC|EACCES|EPERM|EBUSY|EROFS|EIO)$/.test(code)) return '新版本无法保存到这台电脑，请检查磁盘空间后重试。';
+  if (step === 'write') return '新版本无法保存到这台电脑，请检查磁盘空间后重试。';
+  if (step === 'download') return '新版本下载中断，请检查网络后重试。';
+  return '无法连接更新服务器，请检查网络后重试。';
+}
+
+/** Words for the cases that are not thrown errors. */
+export const UPDATE_WORDS = {
+  noVersion: '更新服务器上没有版本信息，请稍后重试。',
+  badFile: '新版本文件校验不对，未安装，请稍后重试。',
+  portable: (v: string) => `有新版本 ${v}。便携版不能自动更新，请换用新版的便携版。`,
+} as const;
 
 const isUrl = (s: string) => /^https?:\/\//i.test(s);
 
@@ -118,7 +142,7 @@ export class UpdateService {
     if (isUrl(source)) {
       const res = await this.#o.fetch(urlFor(source, name));
       if (res.status === 404) return undefined;
-      if (!res.ok) throw new Error(`更新源返回 ${res.status}`);
+      if (!res.ok) throw new Error(`the update server answered ${res.status}`);
       return res.text();
     }
     try {
@@ -140,7 +164,7 @@ export class UpdateService {
     };
     if (isUrl(name) || isUrl(source)) {
       const res = await this.#o.fetch(isUrl(name) ? name : urlFor(source, name));
-      if (!res.ok) throw new Error(`下载失败（${res.status}）`);
+      if (!res.ok) throw new Error(`the download answered ${res.status}`);
       const total = Number(res.headers?.get('content-length') ?? 0) || 0;
       const reader = res.body?.getReader();
       if (!reader) {
@@ -187,6 +211,7 @@ export class UpdateService {
     }
     if (this.#busy) return this.state;
     this.#busy = true;
+    let step: UpdateStep = 'connect';
     try {
       source = await this.#pick();
       let channel = await this.#channel(source);
@@ -206,7 +231,7 @@ export class UpdateService {
       const yml = await this.#text(source, 'latest.yml');
       const latest = yml ? parseLatestYml(yml) : undefined;
       if (!latest) {
-        this.#set({ status: 'error', message: '更新源中缺少版本信息（latest.yml）。' });
+        this.#set({ status: 'error', message: UPDATE_WORDS.noVersion });
         return this.state;
       }
       if (compareVersions(latest.version, this.#o.currentVersion) <= 0) {
@@ -218,17 +243,19 @@ export class UpdateService {
           status: 'manual',
           available: latest.version,
           required,
-          message: this.#o.portable ? `有新版本 ${latest.version}。便携版不支持自动更新，请从更新源下载。` : `有新版本 ${latest.version}（开发版不自动安装）。`,
+          message: this.#o.portable ? UPDATE_WORDS.portable(latest.version) : `有新版本 ${latest.version}（开发版不自动安装）。`,
         });
         return this.state;
       }
       this.#set({ status: 'downloading', available: latest.version, required, message: `正在下载 ${latest.version}…` });
+      step = 'write';
       await mkdir(this.#o.downloadsDir, { recursive: true });
       const dest = join(this.#o.downloadsDir, fileName(latest.path));
+      step = 'download';
       await this.#bytesTo(source, latest.path, dest);
       const got = createHash('sha512').update(await readFile(dest)).digest('base64');
       if (got !== latest.sha512) {
-        this.#set({ status: 'error', message: '安装包校验失败，未安装。' });
+        this.#set({ status: 'error', message: UPDATE_WORDS.badFile });
         return this.state;
       }
       this.#ready = dest;
@@ -237,8 +264,8 @@ export class UpdateService {
       if (this.#forcing) this.install();
       return this.state;
     } catch (err) {
-      const msg = (err as Error).message ?? String(err);
-      this.#set({ status: 'error', progress: undefined, message: /[一-鿿]/.test(msg) ? msg : `无法连接更新源：${msg}` });
+      this.#o.log?.(`[spica] update (${step}): ${err instanceof Error ? err.message : String(err)}`);
+      this.#set({ status: 'error', progress: undefined, message: updateErrorText(step, err) });
       return this.state;
     } finally {
       this.#busy = false;
