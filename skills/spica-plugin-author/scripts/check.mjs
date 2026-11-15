@@ -22,6 +22,10 @@ import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PLUGIN_INHERIT_ENV, STAND_IN_ACCOUNT, StdioClient, pluginEnv } from './lib/mcp.mjs';
 import { packageFiles, sha256, stripBom, writeZip } from './lib/pack.mjs';
+import { configForServer, parseUserConfig } from './lib/user-config.mjs';
+
+/** What a password field holds while check.mjs starts the servers: seen in their stderr, it was written to a log. */
+const PASSWORD_MARK = 'spica-check-password-7f3a9c2e';
 
 const NAME = /^[a-z][a-z0-9-]{1,23}$/;
 const SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
@@ -109,6 +113,20 @@ export async function check(dir, opts = {}) {
   const hasServers = ['mcp', 'services'].some((d) => existsSync(join(root, d)));
   if (hasServers && m.mock?.supported === true && !existsSync(join(root, 'mock'))) warn('manifest.json', 'mock.supported 是 true，但没有 mock/ 文件夹');
   if (hasServers && m.mock?.supported !== true) warn('manifest.json', '没有支持模拟模式（mock.supported）：在家里或外网连不上服务时，插件就没法试');
+  // the settings form (user_config): the same rules as Spica (lib/user-config.mjs)
+  const configFields = parseUserConfig(
+    m.user_config,
+    (path, msg) => err(`manifest.json · ${path}`, msg.replace(/。$/, '')),
+    (path, msg) => warn(`manifest.json · ${path}`, msg.replace(/。$/, '')),
+  );
+  let mockConfig = {};
+  if (configFields.length && existsSync(join(root, 'mock', 'user-config.json'))) {
+    try {
+      mockConfig = JSON.parse(stripBom(await readFile(join(root, 'mock', 'user-config.json'), 'utf8')));
+    } catch (e) {
+      err('mock/user-config.json', `不是合法的 JSON（${e.message}）`);
+    }
+  }
 
   // ---- servers ----
   const servers = [];
@@ -207,6 +225,7 @@ export async function check(dir, opts = {}) {
     const text = await readFile(join(root, rel), 'utf8');
     for (const [re, what] of SECRET_PATTERNS) if (re.test(text)) err(rel, `里面有${what}。密钥不能进插件包：写进清单的 user_config 让用户填（见 references/user-config.md）`);
     if (!/\.(m?js|cjs|ts|py)$/i.test(rel) || /(^|\/)test\//.test(rel)) continue;
+    if (configFields.length) for (const w of configKeysRead(text, configFields)) warn(rel, w);
     for (const name of new Set([...text.matchAll(ENV_READS)].map((x) => x[1] ?? x[2] ?? x[3]))) {
       if (APP_SET_ENV.test(name) || inherited.has(name.toUpperCase()) || declaredEnv.has(name)) continue;
       if (SECRET_NAME.test(name)) warn(rel, `读环境变量 ${name}：装进 Spica 后读不到（只传白名单变量，带 KEY、TOKEN、SECRET 的一律不传）。要用户填的写进清单的 user_config，server 读 SPICA_USER_CONFIG，见 references/user-config.md`);
@@ -224,7 +243,19 @@ export async function check(dir, opts = {}) {
           command: s.runtime === 'node' ? process.execPath : s.entry,
           args: s.runtime === 'node' ? [s.entry, ...s.args] : s.args,
           cwd: root,
-          env: pluginEnv({ ...s.env, SPICA_MOCK: '1', SPICA_PLUGIN_NAME: m.name, SPICA_PLUGIN_VERSION: m.version, SPICA_PLUGIN_DIR: root, SPICA_PLUGIN_DATA: join(data, s.id), SPICA_USER_ACCOUNT: STAND_IN_ACCOUNT }),
+          env: pluginEnv({
+            ...s.env,
+            SPICA_MOCK: '1',
+            SPICA_PLUGIN_NAME: m.name,
+            SPICA_PLUGIN_VERSION: m.version,
+            SPICA_PLUGIN_DIR: root,
+            SPICA_PLUGIN_DATA: join(data, s.id),
+            SPICA_USER_ACCOUNT: STAND_IN_ACCOUNT,
+            // the made-up values of mock/user-config.json, every password a mark to look for in what the server writes
+            ...(configFields.length
+              ? { SPICA_USER_CONFIG: JSON.stringify(configForServer(configFields, { ...mockConfig, ...Object.fromEntries(configFields.filter((f) => f.type === 'password').map((f) => [f.key, PASSWORD_MARK])) })) }
+              : {}),
+          }),
           timeoutMs: 15_000,
         });
         try {
@@ -242,6 +273,8 @@ export async function check(dir, opts = {}) {
           err(`${s.kind}/${s.id}.json`, `模拟模式下起不来：${e.message}`);
         } finally {
           await client.close();
+          // everything it wrote while starting is in by now
+          if (configFields.length && client.stderrTail().includes(PASSWORD_MARK)) warn(`${s.kind}/${s.id}`, 'server 把密码写进了 stderr（插件日志）：check.mjs 给 password 项填了记号值，在输出里看到了它。日志里不要写设置的值');
         }
       }
     } finally {
@@ -279,6 +312,35 @@ export async function check(dir, opts = {}) {
   report.name = m.name;
   report.version = m.version;
   return report;
+}
+
+/**
+ * Settings the code reads that the manifest does not declare: config.serverUrl where server_url is declared.
+ * Only in files that read the settings (readConfig or SPICA_USER_CONFIG); each with its line.
+ */
+export function configKeysRead(text, fields) {
+  if (!/readConfig|SPICA_USER_CONFIG/.test(text)) return [];
+  const declared = new Set(fields.map((f) => f.key));
+  const list = fields.map((f) => f.key).join('、');
+  const out = [];
+  const lines = text.split('\n');
+  const seen = new Set();
+  const say = (i, how, key) => {
+    if (declared.has(key) || seen.has(`${i}:${key}`)) return;
+    seen.add(`${i}:${key}`);
+    out.push(`第 ${i + 1} 行：读了 ${how}，清单的 user_config 里没有这一项；声明过的有 ${list}`);
+  };
+  lines.forEach((line, i) => {
+    // (not part of a path or a longer name: './config.js', 'server/config.js', myconfig.x)
+    for (const mm of line.matchAll(/(?<![\w/.'"-])(config|cfg|conf|settings|userConfig)\??\.([A-Za-z_]\w*)/g)) if (!['get', 'set', 'has', 'json', 'js', 'mjs'].includes(mm[2])) say(i, `${mm[1]}.${mm[2]}`, mm[2]);
+    for (const mm of line.matchAll(/\breadConfig\(\)\??\.([A-Za-z_]\w*)/g)) say(i, `readConfig().${mm[1]}`, mm[1]);
+    const d = /\{([^{}]+)\}\s*=\s*(?:readConfig\(\)|config|cfg|conf|settings|userConfig)\b/.exec(line);
+    if (d) for (const part of d[1].split(',')) {
+      const key = part.split(/[:=]/)[0].trim();
+      if (/^[A-Za-z_]\w*$/.test(key)) say(i, `{ ${key} }`, key);
+    }
+  });
+  return out;
 }
 
 function runNodeTests(cwd) {

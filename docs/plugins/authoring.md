@@ -522,7 +522,7 @@ open.onclick = () => window.spica.openFolder(folder).catch((err) => showError(er
 - `defaultPath` 只认本机盘符开头的完整路径（`D:\…`），网络路径（`\\server\share`）和别的写法会被忽略，对话框从它自己的位置开始。
 - sidebar、panel 的页面也能用；预览页不能（它拿着用户的文件）。
 - `openFolder` 只是在资源管理器里打开，不读、不执行任何东西：只认本机盘符开头的文件夹，网络路径（`\\server\share`）直接报错，给的是文件或文件夹不存在时报「找不到文件夹：…」。预览页不能用。
-- 完整例子：`plugins/example-notes` 的 `views/settings.json`、`services/settings.json`、`server/settings.js`、`ui/settings.html`。
+- 完整例子：`plugins/example-notes` 的「测试连接」页：`views/connection-test.json`、`services/connection-test.json`、`server/connection-test.js`、`ui/connection-test.*`（笔记文件夹和目录地址在它的 `user_config` 里，见 2g 节）。
 
 ### 预览页（`placement: "preview"`）
 
@@ -554,7 +554,7 @@ window.spica.onEvent((e) => { if (e.type === 'preview.file') location.reload(); 
 - 15 秒内没调 `ready()`，或者页面出错、崩溃，Spica 也改用自带的预览。
 - 拿不到别的文件，写不回去，照样不能联网；库文件放进插件，别从网上加载。
 - 完整例子：`plugins/office-preview`（Word、Excel 原样预览，两个预览页，库在 `ui/vendor/`，来源和校验值在 `THIRD-PARTY.md`）。
-- 完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）、`views/quick-note.json`（panel）、`views/settings.json`（settings），页面在 `ui/`。
+- 完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）、`views/quick-note.json`（panel）、`views/connection-test.json`（settings），页面在 `ui/`。
 
 ## 6. 模拟模式
 

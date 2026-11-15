@@ -1,0 +1,6 @@
+{
+  "title": "测试连接",
+  "entry": "ui/connection-test.html",
+  "placement": "settings",
+  "permissions": { "tools": ["test_connection"] }
+}

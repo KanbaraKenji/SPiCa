@@ -314,3 +314,61 @@ describe('plugin-author skill', () => {
     expect(r.code, r.out).toBe(0);
   });
 });
+
+describe('plugin-author skill · settings form (user_config)', () => {
+  it('scaffold --with config: the form in the manifest, server/config.js, made-up values, a tool and a test; check passes; the package installs and waits for its settings', async () => {
+    const parent = await temp('spica-skill-cfg-');
+    expect((await script('scaffold.mjs', ['tix', '--dir', parent, '--with', 'config'])).code).toBe(0);
+    const root = join(parent, 'tix');
+    const m = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as { user_config: Record<string, { type: string }> };
+    expect(Object.entries(m.user_config).map(([k, f]) => `${k}:${f.type}`)).toEqual(['server_url:url', 'password:password', 'mode:select']);
+    const checked = await script('check.mjs', [root]);
+    expect(checked.code, checked.out).toBe(0);
+    expect(checked.out).toMatch(/模拟模式下启动了，5 个工具/);
+    expect(checked.out).toMatch(/测试全过/);
+    expect(checked.out).not.toMatch(/！/);
+    const r = await rig();
+    cleanups.push(() => r.cleanup());
+    const d = await installZip(r.pm, await readFile(join(root, 'dist', 'tix-0.1.0.zip')), { kind: 'zip', location: 'tix-0.1.0.zip' });
+    expect(d.config?.missing).toEqual(['server_url', 'password']);
+  });
+
+  it('check: a wrong type points to the field and lists every type; a key the code reads but does not declare, and a password written to stderr, are pointed out', async () => {
+    const parent = await temp('spica-skill-cfg-bad-');
+    await script('scaffold.mjs', ['tix', '--dir', parent, '--with', 'config']);
+    const root = join(parent, 'tix');
+    const file = join(root, 'manifest.json');
+    const good = await readFile(file, 'utf8');
+    await writeFile(file, good.replace('"type": "password"', '"type": "secret"'));
+    const bad = await script('check.mjs', [root, '--no-pack', '--no-tests']);
+    expect(bad.code).toBe(1);
+    expect(bad.out).toContain('manifest.json · user_config.password.type：没有 "secret" 这种类型，可以写 text、password、number、toggle、select、folder、file、url；密码写 password');
+    await writeFile(file, good);
+    const tools = join(root, 'server', 'tools.js');
+    await writeFile(tools, (await readFile(tools, 'utf8')).replace("import { readConfig } from './config.js';", "import { readConfig } from './config.js';\nconsole.error('connecting with', readConfig().password, readConfig().serverUrl);"));
+    const warned = await script('check.mjs', [root, '--no-pack', '--no-tests']);
+    expect(warned.code, warned.out).toBe(0);
+    expect(warned.out).toContain('server/tools.js：第 7 行：读了 readConfig().serverUrl，清单的 user_config 里没有这一项；声明过的有 server_url、password、mode');
+    expect(warned.out).toContain('server 把密码写进了 stderr（插件日志）');
+  });
+
+  it('the kit’s copy of the rules (lib/user-config.mjs) answers as the plugin system does', async () => {
+    const kit = (await import(pathToFileURL(join(SKILL, 'lib', 'user-config.mjs')).href)) as typeof import('./user-config.ts');
+    const host = await import('./user-config.ts');
+    const cases: unknown[] = [
+      { a: { type: 'url', title: 'A', required: true }, b: { type: 'string', title: 'B', sensitive: true }, c: { type: 'select', title: 'C', options: ['x', 'y'], default: 'y' } },
+      { api_key: { type: 'text', title: 'K' }, n: { type: 'number', title: 'N', min: 3, default: 1 }, p: { type: 'password', title: 'P', sensitive: false }, Bad: { type: 'text', title: 'x' } },
+      { t: { type: 'secret', title: 'T' }, o: { type: 'boolean', title: 'O', colour: 1 }, d: { type: 'directory', title: 'D', options: ['a'] } },
+      [],
+    ];
+    for (const raw of cases) {
+      const run = (lib: typeof host) => {
+        const said: string[] = [];
+        const fields = lib.parseUserConfig(raw, (p, m) => said.push(`E ${p} ${m}`), (p, m) => said.push(`W ${p} ${m}`));
+        return { fields, said, server: lib.configForServer(fields, { a: 'example.com', n: '7' }), missing: lib.missingConfig(fields, {}) };
+      };
+      expect(run(kit)).toEqual(run(host));
+    }
+    expect(kit.scrubSecrets('pin 1234 and secret-value', ['1234', 'secret-value'])).toBe(host.scrubSecrets('pin 1234 and secret-value', ['1234', 'secret-value']));
+  });
+});

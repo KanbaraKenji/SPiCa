@@ -1,6 +1,6 @@
 # 带界面的插件
 
-详见 Spica 仓库 `docs/plugins/authoring.md` 第 5b 节、`docs/design/plugins.md` 第 2 节「视图」。完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）、`views/quick-note.json`（panel）和 `views/settings.json`（settings），页面在 `ui/`；脚手架 `--with-ui [--placement panel|settings]` 生成的模板。
+详见 Spica 仓库 `docs/plugins/authoring.md` 第 5b 节、`docs/design/plugins.md` 第 2 节「视图」。完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）、`views/quick-note.json`（panel）和 `views/connection-test.json`（settings），页面在 `ui/`；脚手架 `--with-ui [--placement panel|settings]` 生成的模板。
 
 ## 声明 `views/<id>.json`
 

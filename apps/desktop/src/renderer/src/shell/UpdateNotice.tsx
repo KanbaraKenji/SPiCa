@@ -1,5 +1,5 @@
 // Updates in the side bar, above the account row: a downloaded app update (重启并更新; a version that must update
-// keeps its card, without 稍后) or plugins that can update (查看). When the side bar is only its column of icons
+// keeps its card, without 稍后), plugins waiting for settings to be filled in (查看), or plugins that can update (查看). When the side bar is only its column of icons
 // (closed, or the window too narrow), the same place holds one icon button, so nothing is lost with the side bar:
 // the app's update opens the side bar on its card, the plugins' opens them.
 import { useState } from 'react';
@@ -8,22 +8,37 @@ import type { UpdateState } from '../../../shared/updates';
 import { Icon } from '../ui/Icon';
 
 export interface UpdateNoticeView {
-  kind: 'app' | 'plugins';
+  kind: 'app' | 'plugins' | 'config';
   text: string;
   /** The version must update: warning colour, no 稍后. */
   required: boolean;
   /** 重启并更新 can be pressed (a portable copy only hears of it). */
   ready: boolean;
-  /** How many plugins (kind plugins). */
+  /** How many plugins (kind plugins), or settings not filled in (kind config). */
   count: number;
   /** 稍后; absent when it cannot be closed. */
   close?: () => void;
 }
 
-/** What to show now, the app's update before the plugins'; closing is kept here, for the card and the icon alike. */
-export function useUpdateNotice(update: UpdateState | null): UpdateNoticeView | null {
+/** A plugin turned on but waiting for required settings (待设置): its name and how many are not filled in. */
+export interface WaitingPlugin {
+  displayName: string;
+  missing: number;
+}
+
+/** 「工单查询 有 1 项未填」, or for several 「2 个插件有未填的设置」. */
+export function waitingText(waiting: readonly WaitingPlugin[]): string {
+  return waiting.length === 1 ? `「${waiting[0]!.displayName}」有 ${waiting[0]!.missing} 项未填` : `${waiting.length} 个插件有未填的设置`;
+}
+
+/**
+ * What to show now: the app's update, then plugins waiting for their settings, then plugins that can update;
+ * closing is kept here, for the card and the icon alike.
+ */
+export function useUpdateNotice(update: UpdateState | null, unfilledPlugins: readonly WaitingPlugin[] = []): UpdateNoticeView | null {
   const [appClosed, setAppClosed] = useState<string | null>(null);
   const [pluginsClosed, setPluginsClosed] = useState(0);
+  const [configClosed, setConfigClosed] = useState(0);
   const required = Boolean(update?.required);
   // Downloaded and waiting; a portable copy, which cannot install it, only hears of it.
   const waiting = update?.status === 'ready' || (update?.status === 'manual' && update.portable);
@@ -40,6 +55,8 @@ export function useUpdateNotice(update: UpdateState | null): UpdateNoticeView | 
     };
   }
   // Closed: shown again only when the count grows.
+  const unfilled = unfilledPlugins.reduce((sum, w) => sum + w.missing, 0);
+  if (unfilled > configClosed) return { kind: 'config', text: waitingText(unfilledPlugins), required: true, ready: false, count: unfilled, close: () => setConfigClosed(unfilled) };
   const n = update?.pluginUpdates ?? 0;
   if (n > pluginsClosed) return { kind: 'plugins', text: `${n} 个插件可更新`, required: false, ready: false, count: n, close: () => setPluginsClosed(n) };
   return null;
@@ -68,7 +85,7 @@ export function UpdateCard({ notice, onInstall, onOpenPlugins }: UpdateNoticePro
         <button type="button" className="btn btn-small btn-primary update-card-action" onClick={onInstall}>
           重启并更新
         </button>
-      ) : notice.kind === 'plugins' ? (
+      ) : notice.kind !== 'app' ? (
         <button type="button" className="btn btn-small update-card-action" onClick={onOpenPlugins}>
           查看
         </button>
@@ -88,7 +105,7 @@ export function UpdateRailButton({ notice, onOpenSidebar, onOpenPlugins }: { not
       aria-label={notice.text}
       title={notice.text}
     >
-      <Icon name={app ? 'download' : 'refresh'} />
+      <Icon name={app ? 'download' : notice.kind === 'config' ? 'settings' : 'refresh'} />
       {app ? <span className="update-rail-dot" aria-hidden /> : <span className="rail-badge">{notice.count}</span>}
     </button>
   );

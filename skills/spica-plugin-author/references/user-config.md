@@ -2,6 +2,8 @@
 
 在 `manifest.json` 里声明要用户填的项，Spica 替你画表单、替你存（密码加密存），启动 server 时把值交给它。你不用写设置页，也不用自己存文件。
 
+新插件直接生成：`scaffold.mjs <名字> --with config`，得到下面三项的声明、`server/config.js`、`mock/user-config.json`（自查、预览、测试时用的假值）、一个用到它的工具 `check_settings` 和一条测试。
+
 ## 完整例子（照抄改名字）
 
 `manifest.json` 里加：
@@ -18,12 +20,14 @@ server 里读（Node）：
 
 ```js
 // server/config.js
+import { readFileSync } from 'node:fs';
 let cached;
 /** The values the user filled in (Settings › Plugins › this plugin), by key; null when not filled in. */
 export function readConfig() {
   if (cached) return cached;
   const raw = process.env.SPICA_USER_CONFIG;
-  cached = raw ? JSON.parse(raw) : {};
+  // outside Spica (check.mjs, preview, node --test) the made-up values in mock/user-config.json stand in
+  cached = raw ? JSON.parse(raw) : JSON.parse(readFileSync(new URL('../mock/user-config.json', import.meta.url), 'utf8'));
   // read once, then out of the environment: processes this server starts do not inherit the password
   delete process.env.SPICA_USER_CONFIG;
   return cached;
@@ -67,6 +71,14 @@ if (!server_url || !password) return { text: '[NOT_CONFIGURED] 还没填服务�
 ## 用表单还是自己画设置页
 
 每一项对一下上面的类型表：对得上的写进 `user_config`；对不上的（「测试连接」按钮、能增删的列表、选了 A 才出现 B 的联动）才放进自己画的设置页（`views/<id>.json` 的 `placement: "settings"`，见 `ui.md`）。同一项只放一处。两种可以并存：表单在「详情」里，自己的页面是后面的页签，页签别再叫「设置」。
+
+## `check.mjs` 查什么
+
+- 清单里的 `user_config`：规则和 Spica 装插件时一样（见下面「报错长什么样」）。
+- 代码里读了清单没声明的键（`readConfig().serverUrl`、`config.serverUrl`、`const { serverUrl } = readConfig()`），提醒你是哪个文件哪一行、声明过的有哪些。键名就是清单里写的，不变形。
+- 启动 server 时，它拿 `mock/user-config.json` 的值当设置，每个 password 项换成一个记号值；server 的输出里出现这个记号，说明密码被写进了日志，会提醒你。
+
+这几条都是提醒，不拦你打包。
 
 ## 报错长什么样
 

@@ -25,8 +25,8 @@ afterEach(async () => {
 });
 
 const NOTES_TOOLS = ['notes__list_notes', 'notes__read_note', 'notes__write_note', 'notes__delete_note', 'notes__summarize_note', 'notes__search_catalog'];
-/** The example's settings service (services/settings.json): registered, but kept from the model; only its settings page calls them. */
-const NOTES_SETTINGS_TOOLS = ['notes-settings__get_settings', 'notes-settings__save_settings'];
+/** The example's connection-test service (services/connection-test.json): registered, but kept from the model; only its 测试连接 page calls it. */
+const NOTES_SETTINGS_TOOLS = ['notes-connection-test__test_connection'];
 
 describe('enable and disable', () => {
   it('J6: installed plugin tools appear, work, and disappear completely on disable', async () => {
@@ -42,7 +42,7 @@ describe('enable and disable', () => {
     expect(d.tools.sort()).toEqual(['notes__skill', ...NOTES_TOOLS].sort());
     expect(d.servers).toMatchObject([
       { id: 'notes', status: 'running' },
-      { id: 'settings', status: 'running' },
+      { id: 'connection-test', status: 'running' },
     ]);
 
     expect(await callTool(rt, 'notes__write_note', { title: 'plans', text: 'ship J6' })).toMatchObject({ content: expect.stringContaining('Saved') });
@@ -80,7 +80,7 @@ describe('enable and disable', () => {
       ],
       servers: [
         { id: 'notes', kind: 'mcp', runtime: 'node', status: 'running', restarts: 0 },
-        { id: 'settings', kind: 'service', runtime: 'node', status: 'running', restarts: 0 },
+        { id: 'connection-test', kind: 'service', runtime: 'node', status: 'running', restarts: 0 },
       ],
     });
     expect(r.pm.commands()).toEqual([{ name: 'notes:note', plugin: 'notes', description: 'Save something to the notebook', argumentHint: '<what to note>' }]);
@@ -214,15 +214,25 @@ describe('views (plugin pages)', () => {
     const { pm } = r;
     await pm.install(EXAMPLE_PLUGIN);
     expect(pm.describe('notes').views).toEqual([
+      { id: 'connection-test', title: '测试连接', placement: 'settings', entry: 'ui/connection-test.html', tools: ['test_connection'] },
       { id: 'notebook', title: 'Notebook', placement: 'sidebar', entry: 'ui/index.html', icon: 'ui/icon.svg', tools: ['list_notes', 'read_note', 'write_note', 'delete_note'] },
       { id: 'quick-note', title: 'Quick note', placement: 'panel', entry: 'ui/quick-note.html', icon: 'ui/icon.svg', tools: ['read_note', 'write_note'] },
-      { id: 'settings', title: '设定', placement: 'settings', entry: 'ui/settings.html', tools: ['get_settings', 'save_settings'] },
     ]);
     expect(pm.views()).toEqual([]);
     expect(await pm.resolveViewFile('notes', 'ui/index.html')).toBeUndefined();
 
     await pm.enable('notes');
     expect(pm.views()).toEqual([
+      {
+        plugin: 'notes',
+        pluginTitle: 'Notes (example)',
+        id: 'connection-test',
+        title: '测试连接',
+        placement: 'settings',
+        entry: 'ui/connection-test.html',
+        tools: ['test_connection'],
+        irreversible: [],
+      },
       {
         plugin: 'notes',
         pluginTitle: 'Notes (example)',
@@ -245,16 +255,6 @@ describe('views (plugin pages)', () => {
         tools: ['read_note', 'write_note'],
         irreversible: [],
       },
-      {
-        plugin: 'notes',
-        pluginTitle: 'Notes (example)',
-        id: 'settings',
-        title: '设定',
-        placement: 'settings',
-        entry: 'ui/settings.html',
-        tools: ['get_settings', 'save_settings'],
-        irreversible: [],
-      },
     ]);
     const root = join(pm.installDir('notes', '0.1.0'));
     expect(await pm.resolveViewFile('notes', 'ui/app.js')).toBe(join(root, 'ui', 'app.js'));
@@ -269,22 +269,34 @@ describe('views (plugin pages)', () => {
     expect(await pm.resolveViewFile('notes', 'ui/app.js')).toBeUndefined();
   });
 
-  it('the example settings page saves a notes folder through its service; the notes tools then use it', async () => {
+  it('the example: the notes folder from its settings form; its 测试连接 page only tries the address, and only it may', async () => {
     r = await rig();
     const { pm } = r;
     await pm.install(EXAMPLE_PLUGIN);
-    await pm.enable('notes');
+    expect(pm.describe('notes').config?.fields.map((f) => `${f.key}:${f.type}`)).toEqual(['notes_folder:folder', 'catalog_url:url']);
     const chosen = await mkdtemp(join(tmpdir(), 'spica-notes-folder-'));
     dirs.push(chosen);
-    const before = await pm.viewCall('notes', 'settings', 'get_settings');
-    expect(before).toMatchObject({ isError: false, data: { notesFolder: '', catalogUrl: '', defaultFolder: join(pm.dataDir('notes'), 'notes') } });
-    expect((await pm.viewCall('notes', 'settings', 'save_settings', { notesFolder: 'relative/x' })).content).toMatch(/full path/);
-    expect(await pm.viewCall('notes', 'settings', 'save_settings', { notesFolder: chosen, catalogUrl: '' })).toMatchObject({ isError: false, data: { notesFolder: chosen } });
+    await pm.setUserConfig('notes', { values: { notes_folder: chosen } });
+    await pm.enable('notes');
     expect(await pm.viewCall('notes', 'notebook', 'write_note', { title: 'there', text: 'in the chosen folder' })).toMatchObject({ isError: false });
     expect(await readFile(join(chosen, 'there.md'), 'utf8')).toContain('in the chosen folder');
-    // The settings tools are the page's own: not the model's, not the other pages'.
-    expect((await pm.viewCall('notes', 'notebook', 'save_settings', { notesFolder: '' })).content).toMatch(/^\[TOOL_NOT_ALLOWED\]/);
-    expect((await pm.viewCall('notes', 'settings', 'write_note', { title: 'x', text: 'y' })).content).toMatch(/^\[TOOL_NOT_ALLOWED\]/);
+    expect((await pm.viewCall('notes', 'connection-test', 'test_connection')).content).toMatch(/^\[NOT_CONFIGURED\] 还没填「样例目录地址」/);
+    // The page's tool is its own: not the model's, not the other pages'.
+    expect((await pm.viewCall('notes', 'notebook', 'test_connection')).content).toMatch(/^\[TOOL_NOT_ALLOWED\]/);
+    expect((await pm.viewCall('notes', 'connection-test', 'write_note', { title: 'x', text: 'y' })).content).toMatch(/^\[TOOL_NOT_ALLOWED\]/);
+  });
+
+  it('the example keeps a folder chosen on its older settings page (config.json) until the form says otherwise', async () => {
+    r = await rig();
+    const { pm } = r;
+    await pm.install(EXAMPLE_PLUGIN);
+    const older = await mkdtemp(join(tmpdir(), 'spica-notes-older-'));
+    dirs.push(older);
+    await mkdir(pm.dataDir('notes'), { recursive: true });
+    await writeFile(join(pm.dataDir('notes'), 'config.json'), JSON.stringify({ notesFolder: older }));
+    await pm.enable('notes');
+    expect(await pm.viewCall('notes', 'notebook', 'write_note', { title: 'kept', text: 'here' })).toMatchObject({ isError: false });
+    expect(await readFile(join(older, 'kept.md'), 'utf8')).toContain('here');
   });
 
   it('a page calls only its own declared tools; irreversible ones need confirmation', async () => {
@@ -598,6 +610,7 @@ describe('failures', () => {
       'manifest.json': manifest('broken', { permissions: { hooks: ['inject'] } }),
       'mcp/srv.json': { runtime: 'node', entry: 'srv.js' },
       'srv.js': await readFile(join(EXAMPLE_PLUGIN, 'server', 'index.js'), 'utf8'),
+      'config.js': await readFile(join(EXAMPLE_PLUGIN, 'server', 'config.js'), 'utf8'),
       'hooks/bad.js': 'throw new Error("boom at import");',
       'skills/s/SKILL.md': '---\ndescription: d\n---\nbody',
     });

@@ -50,7 +50,7 @@ export async function saveSettings({ baseUrl, token }) {
 
 给模型用的 server（`mcp/`）每次调工具时读同一个 `config.json`。还没填就返回 `[NOT_CONFIGURED] 还没填服务地址，打开插件的设置页填一下。`，不要崩溃。日志和错误文字里不写令牌。
 
-页面的写法（`window.spica.callTool`、主题变量）见 `references/ui.md`；能跑的页面例子在 `plugins/example-notes`（Notebook、Quick note 和设置页：`views/settings.json`、`services/settings.json`、`server/settings.js`、`ui/settings.*`）。
+页面的写法（`window.spica.callTool`、主题变量）见 `references/ui.md`；能跑的例子在 `plugins/example-notes`：`manifest.json` 的 `user_config`（笔记文件夹、目录地址）和 `server/config.js`；页面 Notebook、Quick note，和只做表单做不了的事的「测试连接」页（`views/connection-test.json`、`services/connection-test.json`、`server/connection-test.js`、`ui/connection-test.*`）。
 
 ## 二、证书和代理：Spica 代管，你不用写
 

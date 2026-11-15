@@ -7,12 +7,10 @@
 //   SPICA_PLUGIN_DIR   the installed plugin folder (read-only)
 //   SPICA_MOCK         "1" when global mock mode is on
 //   SPICA_USER_ACCOUNT the user's account (e.g. ALEX.CHEN): signs each entry. Read it, never work it out
-// Settings live in <SPICA_PLUGIN_DATA>/config.json (installed plugins get no
-// environment variables of their own):
-//   { "catalogUrl": "https://catalog.example.test/search" }  real catalog service (GET ?q=...)
-//   { "notesFolder": "D:\\Notes" }  where the notes are kept (chosen on the settings page)
-// The settings page (views/settings.json) saves this file through the plugin's
-// settings service (server/settings.js); it is read again on every call.
+//   SPICA_USER_CONFIG  what the user filled in (manifest.json · user_config): notes_folder
+//                      (where the notes are kept) and catalog_url (the real catalog service,
+//                      GET ?q=...); read once by server/config.js
+// The 测试连接 page (views/connection-test.json) tries catalog_url; it stores nothing.
 //
 // summarize_note uses the model the user has set up in Spica (MCP sampling,
 // manifest permissions.model): the plugin needs no key, and Spica counts the
@@ -20,6 +18,7 @@
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { readConfig } from './config.js';
 
 const dataDir = process.env.SPICA_PLUGIN_DATA || join(process.cwd(), '.data');
 const pluginDir = process.env.SPICA_PLUGIN_DIR || process.cwd();
@@ -69,11 +68,10 @@ const tools = [
   },
 ];
 
-const readConfig = () => readFile(join(dataDir, 'config.json'), 'utf8').then(JSON.parse, () => ({}));
 
-/** The folder the user chose on the settings page, else notes/ in the plugin's data folder. */
+/** The folder the user chose in the settings form, else notes/ in the plugin's data folder. */
 async function notesDir() {
-  const f = (await readConfig()).notesFolder;
+  const f = readConfig().notes_folder;
   return typeof f === 'string' && isAbsolute(f) ? f : join(dataDir, 'notes');
 }
 
@@ -109,10 +107,10 @@ async function searchCatalog(query) {
       : `No sample entries match "${query}".`;
     return { text: `[sample data — mock mode]\n${body}` };
   }
-  const base = (await readConfig()).catalogUrl;
+  const base = readConfig().catalog_url;
   if (!base) {
     return {
-      text: `The catalog service is not configured on this computer (catalogUrl in config.json). Turn on mock mode in ${app} to use the sample data.`,
+      text: `The catalog service is not configured on this computer (样例目录地址 under 设置 › 插件 › Notes). Turn on mock mode in ${app} to use the sample data.`,
       isError: true,
     };
   }

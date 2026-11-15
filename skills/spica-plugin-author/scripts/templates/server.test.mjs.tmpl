@@ -50,7 +50,7 @@ after(async () => {
 
 test('lists its tools, each with a description and an input schema', async () => {
   const { tools } = await request('tools/list');
-  assert.deepEqual(tools.map((t) => t.name).sort(), ['add_item', 'get_item', 'list_items', 'remove_item']);
+  assert.deepEqual(tools.map((t) => t.name).sort(), __TOOL_NAMES__);
   for (const t of tools) {
     assert.ok(t.description, `${t.name} needs a description`);
     assert.equal(t.inputSchema.type, 'object');
@@ -79,3 +79,4 @@ test('errors come back as "[CODE] message", not as a crash', async () => {
   const bad = await call('add_item', {});
   assert.match(text(bad), /^\[INVALID_ARGUMENT\] /);
 });
+__CONFIG_TEST__

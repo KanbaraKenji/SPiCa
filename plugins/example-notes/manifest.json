@@ -32,5 +32,16 @@
   "mock": {
     "supported": true,
     "description": "The catalog answers from bundled sample data instead of the catalog service."
+  },
+  "user_config": {
+    "notes_folder": {
+      "type": "folder",
+      "title": "笔记文件夹"
+    },
+    "catalog_url": {
+      "type": "url",
+      "title": "样例目录地址",
+      "placeholder": "https://catalog.example.test/search"
+    }
   }
 }
