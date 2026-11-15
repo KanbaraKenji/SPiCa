@@ -82,11 +82,25 @@ A hit fails with the file and line; the word itself is never printed.
 2. Pushing the tag (`git push origin main v0.2.0`) runs
    `.github/workflows/release.yml`, which builds the per-user installer and the portable
    exe on Windows, packs the official plugins in `plugins/` (`npm run pack:plugins`: zip,
-   `.sha256` and `index.json`) and publishes them all as a GitHub Release.
+   `.sha256` and `index.json`) and publishes them all as a GitHub Release. Last, it
+   replaces `latest.yml` and `index.json` on the release tagged `channel`: the official
+   channel whose address the app has built in, so installed copies find the update and
+   the new plugins there (`npm run release:channel` writes those two files, every package
+   named by its full address on the new release).
+3. Plugins alone: push a tag like `plugins-2026.11.20`. The workflow packs the official
+   plugins into a release of their own (never marked Latest) and replaces the channel's
+   `index.json`; the app is not built.
+
+The `channel` release is made by hand once, before the first release that uses it
+(`npm run release:channel -- --repo <owner/name> --tag <tag> --channel-json` writes its
+first files); a release stops when it is not there. Its `channel.json` is edited by hand
+only: `{ "required": "x.y.z" }` makes versions below it update (remove it to take it
+back), `"movedTo": "https://…"` sends the app to a new address. A file that cannot be read
+or parsed counts as no mark at all.
 
 To try the build without publishing anything, push a branch whose name starts with
-`ci/release-dryrun`: the same workflow runs and the packages are attached to the run as
-artifacts (kept for 7 days) instead of a Release.
+`ci/release-dryrun`: the same workflow runs and the packages and the channel files are
+attached to the run as artifacts (kept for 7 days) instead of a Release.
 
 ## License
 
