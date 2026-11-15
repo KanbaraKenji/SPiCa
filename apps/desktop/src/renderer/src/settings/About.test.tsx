@@ -33,8 +33,8 @@ describe('关于 › 检查更新', () => {
     fireEvent.click(button);
     expect(onCheck).not.toHaveBeenCalled();
     expect(screen.getByRole('status').textContent).toBe('这个版本不检查更新。');
-    // nothing would ever install itself: no 空闲时更新 (as a portable copy)
-    expect(screen.queryByRole('switch', { name: '空闲时更新' })).toBeNull();
+    // nothing would ever install itself: no 自动更新 (as a portable copy)
+    expect(screen.queryByRole('switch', { name: '自动更新' })).toBeNull();
   });
 
   it('with a source: a click checks; while it runs it says so; then the result', () => {
@@ -56,17 +56,17 @@ describe('关于 › 检查更新', () => {
   });
 });
 
-describe('关于 › 空闲时更新', () => {
+describe('关于 › 自动更新', () => {
   it('a switch, off as given, that says when it is turned on; not in a portable copy', () => {
     const onWhenIdle = vi.fn();
     render(<About version="0.1.0" update={{ ...base, source: 'D:/更新', status: 'idle' }} onCheck={vi.fn()} onInstall={vi.fn()} whenIdle={false} onWhenIdle={onWhenIdle} />);
-    const sw = screen.getByRole('switch', { name: '空闲时更新' });
+    const sw = screen.getByRole('switch', { name: '自动更新' });
     expect(sw.getAttribute('aria-checked')).toBe('false');
     fireEvent.click(sw);
     expect(onWhenIdle).toHaveBeenCalledWith(true);
     cleanup();
     show({ ...base, source: 'D:/更新', status: 'idle', portable: true });
-    expect(screen.queryByRole('switch', { name: '空闲时更新' })).toBeNull();
+    expect(screen.queryByRole('switch', { name: '自动更新' })).toBeNull();
   });
 });
 

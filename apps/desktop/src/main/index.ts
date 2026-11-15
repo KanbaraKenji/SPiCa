@@ -1701,7 +1701,7 @@ void app.whenReady().then(() => {
       checkApp: () => updates.check(),
       checkPlugins: async () => updates.setPluginUpdates(pluginUpdateCount((await pluginService.run({ op: 'checkUpdates' })).state)),
     });
-    // A downloaded update installs itself when idle: 空闲时更新 on, or a version that must update.
+    // A downloaded update installs itself when idle: 自动更新 on, or a version that must update.
     setInterval(() => {
       if (idleInstallDue({ update: updates.state, whenIdle: settings.get().updateWhenIdle, busy: running.any(), idleSeconds: powerMonitor.getSystemIdleTime() })) updates.install();
     }, IDLE_POLL_MS);

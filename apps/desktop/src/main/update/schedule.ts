@@ -1,7 +1,7 @@
 // One timetable for both kinds of update: the app's (UpdateService) and the installed plugins' (their sources),
 // checked together soon after start and then every few hours. A downloaded app update installs itself only
 // when the computer has been left alone for a while and no conversation is running: with 设置 › 关于 ›
-// 空闲时更新 on, or always when the source marks this version as one that must update.
+// 自动更新 on, or always when the source marks this version as one that must update.
 import type { UpdateState } from '../../shared/updates';
 
 /** The first check after start. */
@@ -34,7 +34,7 @@ export function scheduleChecks(o: ScheduleOptions): void {
 
 export interface IdleInstallInput {
   update: UpdateState;
-  /** 设置 › 关于 › 空闲时更新. */
+  /** 设置 › 关于 › 自动更新. */
   whenIdle: boolean;
   /** A conversation is running (or waits on a confirmation or an answer). */
   busy: boolean;

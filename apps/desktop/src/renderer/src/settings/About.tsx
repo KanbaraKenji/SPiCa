@@ -14,7 +14,7 @@ export interface AboutProps {
   update: UpdateState | null;
   onCheck(): void;
   onInstall(): void;
-  /** 空闲时更新: a downloaded update installs itself when the computer is left alone. */
+  /** 自动更新: a downloaded update installs itself when the computer is left alone. */
   whenIdle: boolean;
   onWhenIdle(on: boolean): void;
   /** The 监控台's switch (nine clicks on the version). */
@@ -87,8 +87,8 @@ export function About({ version, update, onCheck, onInstall, whenIdle, onWhenIdl
         </Row>
         {/* A portable copy cannot replace itself, and a build that checks for nothing gets nothing: no switch. */}
         {update?.portable || noSource ? null : (
-          <Row title="空闲时更新">
-            <Switch on={whenIdle} label="空闲时更新" onChange={onWhenIdle} />
+          <Row title="自动更新">
+            <Switch on={whenIdle} label="自动更新" onChange={onWhenIdle} />
           </Row>
         )}
         {update?.status === 'checking' ? (

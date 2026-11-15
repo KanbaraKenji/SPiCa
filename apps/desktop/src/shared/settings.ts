@@ -95,7 +95,7 @@ export interface ShellSettings {
   /** Local date (YYYY-MM-DD) the full animation last played. */
   splashShownOn: string | null;
   /**
-   * 设置 › 关于 › 空闲时更新: a downloaded update installs itself when the computer is left alone. On by default; off
+   * 设置 › 关于 › 自动更新: a downloaded update installs itself when the computer is left alone. On by default; off
    * only when the user switched it off (no released version saved it before it became on by default).
    */
   updateWhenIdle: boolean;
