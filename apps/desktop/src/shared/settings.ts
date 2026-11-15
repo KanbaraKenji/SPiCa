@@ -95,9 +95,10 @@ export interface ShellSettings {
   splash: SplashMode;
   /** Local date (YYYY-MM-DD) the full animation last played. */
   splashShownOn: string | null;
-  /** Update / announcement source set by the user (empty = the installer's default, if any). */
-  updateSource: string;
-  /** 设置 › 关于 › 空闲时更新: a downloaded update installs itself when the computer is left alone (off by default). */
+  /**
+   * 设置 › 关于 › 空闲时更新: a downloaded update installs itself when the computer is left alone. On by default; off
+   * only when the user switched it off (no released version saved it before it became on by default).
+   */
   updateWhenIdle: boolean;
   /** The build's update source said it moved (channel.json "movedTo"): used instead of `from` from then on. */
   channelMove: { from: string; to: string } | null;
@@ -235,8 +236,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   panelWidths: { left: PANEL_LIMITS.left.initial, right: PANEL_LIMITS.right.initial, preview: PANEL_LIMITS.preview.initial },
   splash: 'daily',
   splashShownOn: null,
-  updateSource: '',
-  updateWhenIdle: false,
+  updateWhenIdle: true,
   channelMove: null,
   dismissedNotices: [],
   noticesCache: [],
@@ -305,7 +305,6 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   };
   const splash: SplashMode = v.splash === 'always' || v.splash === 'never' ? v.splash : 'daily';
   const splashShownOn = typeof v.splashShownOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.splashShownOn) ? v.splashShownOn : null;
-  const updateSource = typeof v.updateSource === 'string' ? v.updateSource.trim().slice(0, 500) : '';
   const dismissedNotices = Array.isArray(v.dismissedNotices) ? v.dismissedNotices.filter((x): x is string => typeof x === 'string').slice(-200) : [];
   const noticesCache = parseNotices({ announcements: v.noticesCache });
   const m = v.mail && typeof v.mail === 'object' ? (v.mail as Record<string, unknown>) : {};
@@ -350,7 +349,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const localConnect = v.localConnect === true;
   const memory = v.memory !== false;
   const memoryAutoTidy = v.memoryAutoTidy === true;
-  const updateWhenIdle = v.updateWhenIdle === true;
+  const updateWhenIdle = v.updateWhenIdle !== false;
   const cm = v.channelMove && typeof v.channelMove === 'object' ? (v.channelMove as { from?: unknown; to?: unknown }) : null;
   const channelMove = cm && typeof cm.from === 'string' && cm.from && typeof cm.to === 'string' && /^https:\/\//i.test(cm.to) ? { from: cm.from, to: cm.to } : null;
   const ct = (v.codeTheme && typeof v.codeTheme === 'object' ? v.codeTheme : {}) as Record<string, unknown>;
@@ -363,7 +362,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, language, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateSource, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
+  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, language, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

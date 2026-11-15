@@ -144,9 +144,11 @@ describe('the 监控台 switch', () => {
 });
 
 describe('update settings', () => {
-  it('空闲时更新 is off unless set; a channel move keeps only an https address', () => {
-    expect(sanitizeSettings({}).updateWhenIdle).toBe(false);
-    expect(sanitizeSettings({ updateWhenIdle: true }).updateWhenIdle).toBe(true);
+  it('空闲时更新 is on unless switched off; an update source typed in an earlier version is not read; a channel move keeps only an https address', () => {
+    expect(sanitizeSettings({}).updateWhenIdle).toBe(true);
+    expect(sanitizeSettings({ updateWhenIdle: false }).updateWhenIdle).toBe(false);
+    expect(sanitizeSettings({ updateWhenIdle: 'no' }).updateWhenIdle).toBe(true);
+    expect(sanitizeSettings({ updateSource: 'D:/旧的更新源' })).not.toHaveProperty('updateSource');
     expect(sanitizeSettings({}).channelMove).toBeNull();
     const move = { from: 'https://old.example.invalid/channel/', to: 'https://new.example.invalid/spica/' };
     expect(sanitizeSettings({ channelMove: move }).channelMove).toEqual(move);

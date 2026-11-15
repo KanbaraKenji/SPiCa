@@ -216,14 +216,15 @@ export function moduleKey(initiator: string): string {
 export function moduleLabel(key: string, pluginName: (id: string) => string | undefined = () => undefined): string {
   if (key === 'model') return t('对话');
   if (key === 'runtime:memory-tidy') return t('记忆整理');
+  if (key === 'runtime:memory-ask') return t('记忆');
   if (key === 'runtime:probe') return t('测试连接');
   if (key.startsWith('plugin:')) return t('插件 {name}', { name: pluginName(key.slice(7)) || key.slice(7) });
   return key || t('其他');
 }
 
-/** The fixed order of the modules on the card: 对话, 记忆整理, the plugins, 测试连接, the rest. */
+/** The fixed order of the modules on the card: 对话, 记忆整理, 记忆 (sentences on the memory page), the plugins, 测试连接, the rest. */
 export function moduleOrder(key: string): number {
-  return key === 'model' ? 0 : key === 'runtime:memory-tidy' ? 1 : key.startsWith('plugin:') ? 2 : key === 'runtime:probe' ? 3 : 4;
+  return key === 'model' ? 0 : key === 'runtime:memory-tidy' ? 1 : key === 'runtime:memory-ask' ? 2 : key.startsWith('plugin:') ? 3 : key === 'runtime:probe' ? 4 : 5;
 }
 
 /** 1,234 · 12.3K · 4.5M · 1.2B: short counts for tiles and axes. */

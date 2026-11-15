@@ -7248,6 +7248,16 @@ section.plugins-part > .plugins-part-title {
   font-variant-numeric: tabular-nums;
 }
 
+/* 待整理: plain muted text after the summary (not a pill: it is not clickable). */
+.memory-stale {
+  flex: none;
+  white-space: nowrap;
+}
+
+.memory-quote .memory-stale {
+  margin-left: 8px;
+}
+
 .memory-actions {
   flex: none;
   display: flex;
@@ -7325,6 +7335,121 @@ section.plugins-part > .plugins-part-title {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* The box at the bottom of an entry's (or a note's) page: what the latest sentence did, then the box itself, drawn
+   as the conversation's input box (its border, background and round 发送 / 停止). */
+.memory-ask {
+  margin: 32px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* As Claude's memory pages: the box (with what the sentence did above it) is held at the bottom of the page; the
+   page fills the pane, so a short page leaves the space above the box, and a long one scrolls under it. */
+.settings-column:has(.memory-ask) {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+
+.settings-column:has(.memory-ask) > .settings-panel,
+.memory-detail:has(> .memory-ask) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* In the page's column the ← link keeps its own width. */
+.memory-detail:has(> .memory-ask) > .memory-back {
+  align-self: flex-start;
+}
+
+.memory-detail > .memory-ask {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: auto;
+  padding: 16px 0 20px;
+  background: var(--spica-settings-pane);
+}
+
+.memory-ask-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 5px 5px 12px;
+  border-radius: var(--radius-l);
+  border: 1px solid var(--spica-input-border);
+  background: var(--spica-input);
+  box-shadow: var(--spica-input-shadow);
+}
+
+.memory-ask-box .memory-ask-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.memory-ask-box .memory-ask-input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.memory-ask-off {
+  margin: 0;
+}
+
+.memory-ask-result {
+  padding: 8px 4px 8px 12px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--spica-border);
+  background: var(--spica-raised);
+}
+
+.memory-ask-said {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.memory-ask-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.memory-ask-result .memory-tidy-list {
+  margin: 4px 0 0;
+}
+
+/* The lines start under the sentence, not indented as rows of a box. */
+.memory-ask-result .memory-tidy-change {
+  min-height: 34px;
+  padding: 4px 8px 4px 0;
+}
+
+.memory-ask-reply {
+  margin: 6px 8px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.memory-ask-result .provider-result {
+  margin: 6px 0 0;
+}
+
+.memory-ask-left {
+  margin-bottom: 24px;
 }
 
 .memory-detail-line {

@@ -11,20 +11,30 @@ afterEach(() => {
 });
 
 const show = (update: UpdateState | null, onCheck = vi.fn()) => {
-  render(<About version="0.1.0" update={update} ownSource="" onSource={vi.fn()} onCheck={onCheck} onInstall={vi.fn()} whenIdle={false} onWhenIdle={vi.fn()} />);
+  render(<About version="0.1.0" update={update} onCheck={onCheck} onInstall={vi.fn()} whenIdle={false} onWhenIdle={vi.fn()} />);
   return onCheck;
 };
 const base = { current: '0.1.0', source: '', sourceFromDeploy: false, portable: false };
 
 describe('关于 › 检查更新', () => {
-  it('no update source: greyed, says to fill it in on hover, and a click does nothing', () => {
-    const onCheck = show({ ...base, status: 'off', message: '未设置更新源。' });
+  it('no update source is shown or asked for: 检查更新 is a row of its own', () => {
+    show({ ...base, source: 'https://example.invalid/channel/', sourceFromDeploy: true, status: 'idle' });
+    expect(screen.queryByText('更新源')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    const row = screen.getByRole('button', { name: '检查更新' }).closest('.setting-row')!;
+    expect(row.querySelector('.setting-title')?.textContent).toBe('检查更新');
+  });
+
+  it('a build that checks for nothing (renamed, no source): greyed, says so on hover and in the line under it; a click does nothing', () => {
+    const onCheck = show({ ...base, status: 'off', message: '这个版本不检查更新。' });
     const button = screen.getByRole('button', { name: '检查更新' });
     expect(button.getAttribute('aria-disabled')).toBe('true');
-    expect(button.getAttribute('title')).toBe('先填更新源');
+    expect(button.getAttribute('title')).toBe('这个版本不检查更新');
     fireEvent.click(button);
     expect(onCheck).not.toHaveBeenCalled();
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('这个版本不检查更新。');
+    // nothing would ever install itself: no 空闲时更新 (as a portable copy)
+    expect(screen.queryByRole('switch', { name: '空闲时更新' })).toBeNull();
   });
 
   it('with a source: a click checks; while it runs it says so; then the result', () => {
@@ -49,7 +59,7 @@ describe('关于 › 检查更新', () => {
 describe('关于 › 空闲时更新', () => {
   it('a switch, off as given, that says when it is turned on; not in a portable copy', () => {
     const onWhenIdle = vi.fn();
-    render(<About version="0.1.0" update={{ ...base, source: 'D:/更新', status: 'idle' }} ownSource="" onSource={vi.fn()} onCheck={vi.fn()} onInstall={vi.fn()} whenIdle={false} onWhenIdle={onWhenIdle} />);
+    render(<About version="0.1.0" update={{ ...base, source: 'D:/更新', status: 'idle' }} onCheck={vi.fn()} onInstall={vi.fn()} whenIdle={false} onWhenIdle={onWhenIdle} />);
     const sw = screen.getByRole('switch', { name: '空闲时更新' });
     expect(sw.getAttribute('aria-checked')).toBe('false');
     fireEvent.click(sw);
@@ -63,7 +73,7 @@ describe('关于 › 空闲时更新', () => {
 describe('关于 › the version switches the 监控台', () => {
   const setup = (on: boolean) => {
     const onToggle = vi.fn();
-    render(<About version="0.1.0" update={null} ownSource="" onSource={vi.fn()} onCheck={vi.fn()} onInstall={vi.fn()} whenIdle={false} onWhenIdle={vi.fn()} monitor={{ on, onToggle }} />);
+    render(<About version="0.1.0" update={null} onCheck={vi.fn()} onInstall={vi.fn()} whenIdle={false} onWhenIdle={vi.fn()} monitor={{ on, onToggle }} />);
     return { onToggle, version: screen.getByText('Spica 0.1.0') };
   };
 

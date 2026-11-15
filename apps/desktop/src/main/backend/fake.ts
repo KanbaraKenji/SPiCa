@@ -222,6 +222,8 @@ export class FakeBackend implements AgentBackend {
   readonly #mail: FakeMailbox;
   readonly #memory: FakeMemory;
   #tidying = false;
+  /** The ask that runs (its number), until it ends or is stopped. */
+  #asking: number | undefined;
 
   constructor(options: FakeBackendOptions = {}) {
     this.#speed = options.speed ?? 1;
@@ -714,7 +716,7 @@ export class FakeBackend implements AgentBackend {
   async tidyMemories(): Promise<{ started: true; id: number } | { started: false; reason: 'running' | 'off' | 'no_model' }> {
     if (this.#tidying) return { started: false, reason: 'running' };
     if (!this.#memory.enabled) return { started: false, reason: 'off' };
-    const id = (this.#memory.tidies(1)[0]?.id ?? 0) + 1;
+    const id = this.#memory.nextRunId();
     const at = isoAt(this.#now());
     this.#tidying = true;
     this.#emit('', { type: 'memory.tidy', run: { id, by: 'user', status: 'running', startedAt: at, sessions: 0, messages: 0, changes: [], refused: 0 } });
@@ -732,6 +734,39 @@ export class FakeBackend implements AgentBackend {
 
   async listMemoryTidies(limit?: number): Promise<MemoryTidyRun[]> {
     return this.#memory.tidies(limit);
+  }
+
+  async askMemory(target: { entry: number } | { item: number }, text: string): Promise<{ started: true; id: number } | { started: false; reason: 'running' | 'off' | 'no_model' | 'empty' }> {
+    const said = String(text ?? '').trim();
+    if (!said) return { started: false, reason: 'empty' };
+    if (this.#tidying) return { started: false, reason: 'running' };
+    if (!this.#memory.enabled) return { started: false, reason: 'off' };
+    const id = this.#memory.nextRunId();
+    const at = isoAt(this.#now());
+    const where = 'entry' in target ? { entry: target.entry } : { item: target.item };
+    this.#tidying = true;
+    this.#asking = id;
+    this.#emit('', { type: 'memory.tidy', run: { id, by: 'ask', ask: { ...where, text: said }, status: 'running', startedAt: at, sessions: 0, messages: 0, changes: [], refused: 0 } });
+    setTimeout(() => {
+      this.#tidying = false;
+      if (this.#asking !== id) return; // stopped
+      this.#asking = undefined;
+      this.#emit('', { type: 'memory.tidy', run: this.#memory.ask(target, said, id) });
+    }, 1500 * this.#speed);
+    return { started: true, id };
+  }
+
+  async stopMemoryTidy(id: number): Promise<boolean> {
+    if (this.#asking !== id) return false;
+    this.#asking = undefined;
+    this.#tidying = false;
+    const at = isoAt(this.#now());
+    this.#emit('', { type: 'memory.tidy', run: { id, by: 'ask', status: 'failed', startedAt: at, endedAt: at, sessions: 0, messages: 0, changes: [], refused: 0, error: 'stopped' } });
+    return true;
+  }
+
+  async listMemoryAsks(limit?: number): Promise<MemoryTidyRun[]> {
+    return this.#memory.asks(limit);
   }
 
   async undoMemoryTidy(id: number, change?: number): Promise<MemoryTidyRun | undefined> {

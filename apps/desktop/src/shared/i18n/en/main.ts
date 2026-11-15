@@ -111,7 +111,7 @@ export const EN_MAIN: Catalog = {
   // main/update/service.ts
   '更新源返回 {status}': 'The update source returned {status}',
   '下载失败（{status}）': 'Download failed ({status})',
-  '未设置更新源。': 'No update source is set.',
+  '这个版本不检查更新。': 'This version doesn’t check for updates.',
   '更新源中缺少版本信息（latest.yml）。': 'The update source has no version information (latest.yml).',
   '已是最新版本（{version}）。': 'Up to date ({version}).',
   '有新版本 {version}。便携版不支持自动更新，请从更新源下载。': 'Version {version} is available. The portable version can’t update itself. Download it from the update source.',

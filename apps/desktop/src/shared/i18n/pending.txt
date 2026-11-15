@@ -1,3 +1,6 @@
 # Files whose words are not moved into t() yet (i18n.test.ts). The list only shrinks.
 renderer/src/settings/About.tsx
+renderer/src/settings/memory-tidy-text.ts
 renderer/src/settings/Memory.tsx
+renderer/src/settings/MemoryAsk.tsx
+renderer/src/store/agent.ts

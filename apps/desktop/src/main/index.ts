@@ -473,6 +473,9 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'tidyMemories',
   'listMemoryTidies',
   'undoMemoryTidy',
+  'askMemory',
+  'stopMemoryTidy',
+  'listMemoryAsks',
 ]);
 
 let mainWindow: BrowserWindow | undefined;
@@ -1221,9 +1224,9 @@ const updates = new UpdateService({
   packaged: app.isPackaged,
   portable: Boolean(process.env.PORTABLE_EXECUTABLE_DIR),
   downloadsDir: join(app.getPath('userData'), 'updates'),
+  // Only the build decides where updates come from (deploy.json, else the official channel for the public build):
+  // nothing in the window sets it, and a source typed in an earlier version is not read.
   getSource: () => {
-    const own = settings.get().updateSource;
-    if (own) return { source: own, fromDeploy: false };
     const source = buildSource();
     return { source, fromDeploy: Boolean(source) };
   },
@@ -1292,15 +1295,6 @@ async function refreshNotices(): Promise<void> {
   const list = await updates.notices();
   if (list) settings.update({ noticesCache: list });
 }
-let lastSource = settings.get().updateSource;
-settings.onChange((s) => {
-  if (s.updateSource === lastSource) return;
-  lastSource = s.updateSource;
-  updates.reset();
-  void updates.check();
-  void refreshNotices();
-  void refreshCatalog();
-});
 
 // Mail and the workflow folder change in the running core (its configure): no restart.
 let lastMail = JSON.stringify(settings.get().mail);

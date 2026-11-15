@@ -31,6 +31,8 @@ export interface AgentView {
   memoryEntries: MemoryEntry[] | null;
   /** The latest tidies of the memory, newest first (the first may be running); null until loaded or when the core has none. */
   tidies: MemoryTidyRun[] | null;
+  /** The latest sentences typed on a memory page (askMemory), newest first; null until loaded or when the core has none. */
+  memoryAsks: MemoryTidyRun[] | null;
 }
 
 /** What the input box offers before a conversation exists. Empty = the core's defaults. */
@@ -98,7 +100,7 @@ export function cwdErrorText(r: Extract<SetCwdResult, { ok: false }>): string {
 }
 
 export class AgentStore {
-  readonly state = new Store<AgentView>({ sessions: [], loaded: false, activeId: null, transcripts: {}, globalCostUsd: 0, firstLines: {}, projects: [], activity: {}, topId: null, draft: { approvalMode: 'manual' }, memories: null, memoryEntries: null, tidies: null });
+  readonly state = new Store<AgentView>({ sessions: [], loaded: false, activeId: null, transcripts: {}, globalCostUsd: 0, firstLines: {}, projects: [], activity: {}, topId: null, draft: { approvalMode: 'manual' }, memories: null, memoryEntries: null, tidies: null, memoryAsks: null });
   readonly #api: AgentApi;
   #loading = new Set<string>();
 
@@ -512,7 +514,9 @@ export class AgentStore {
     if (e.type === 'memory.changed') void this.refreshMemories();
     if (e.type === 'memory.tidy') {
       const run = e.run;
-      this.state.set((v) => ({ ...v, tidies: [run, ...(v.tidies ?? []).filter((t) => t.id !== run.id)].sort((a, b) => b.id - a.id) }));
+      // A sentence typed on a memory page goes with its page, not with 整理.
+      const key = run.by === 'ask' ? 'memoryAsks' : 'tidies';
+      this.state.set((v) => ({ ...v, [key]: [run, ...(v[key] ?? []).filter((t) => t.id !== run.id)].sort((a, b) => b.id - a.id) }));
     }
   }
 
@@ -571,8 +575,8 @@ export class AgentStore {
   async #refreshTidies(): Promise<void> {
     if (!this.#api.listMemoryTidies) return;
     try {
-      const tidies = await this.#api.listMemoryTidies(5);
-      this.state.set((v) => ({ ...v, tidies }));
+      const [tidies, memoryAsks] = await Promise.all([this.#api.listMemoryTidies(5), this.#api.listMemoryAsks?.(20) ?? Promise.resolve(null)]);
+      this.state.set((v) => ({ ...v, tidies, memoryAsks }));
     } catch {
       // Keep what is shown.
     }
@@ -588,6 +592,35 @@ export class AgentStore {
     } catch (err) {
       return friendlyError(err);
     }
+  }
+
+  /**
+   * A sentence typed on an entry's (or a note's) page, for the model to change it: the run's events update
+   * `memoryAsks`; a refusal (one running, memory off, no model) comes back in words.
+   */
+  async askMemory(target: { entry: number } | { item: number }, text: string): Promise<string | null> {
+    if (!this.#api.askMemory) return null;
+    try {
+      const r = await this.#api.askMemory(target, text);
+      if (r.started) return null;
+      return r.reason === 'no_model' ? '还没有配置模型' : r.reason === 'off' ? '记忆已关闭' : r.reason === 'running' ? '记忆正在整理' : null;
+    } catch (err) {
+      return friendlyError(err);
+    }
+  }
+
+  /** Stops a tidy or a sentence's run (nothing of it is applied). */
+  async stopMemoryTidy(id: number): Promise<void> {
+    try {
+      await this.#api.stopMemoryTidy?.(id);
+    } catch {
+      // It ends by itself; its event says how.
+    }
+  }
+
+  /** Whether the core changes the memory from a sentence typed on its page. */
+  get hasMemoryAsk(): boolean {
+    return !!this.#api.askMemory;
   }
 
   /** 撤销 a tidy (`change` absent) or one of its changes. */

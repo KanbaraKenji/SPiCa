@@ -2,7 +2,6 @@
 // checking for an update by hand. Nine clicks on the version switch the 监控台 on (its title bar button shows), nine
 // more switch it off; the version does not look clickable and nothing points at it.
 import { useRef, useState } from 'react';
-import { useKeptDraft } from './drafts';
 import type { UpdateState } from '../../../shared/updates';
 import { APP_NAME } from '../../../shared/app-identity';
 import { SpicaStatusIcon } from '@spica/brand/react';
@@ -13,9 +12,6 @@ import { Switch } from './Switch';
 export interface AboutProps {
   version: string;
   update: UpdateState | null;
-  /** The source the user typed (empty when the installer's default is used). */
-  ownSource: string;
-  onSource(source: string): void;
   onCheck(): void;
   onInstall(): void;
   /** 空闲时更新: a downloaded update installs itself when the computer is left alone. */
@@ -30,7 +26,7 @@ export const MONITOR_CLICKS = 9;
 /** A longer pause between two clicks starts the count again. */
 export const MONITOR_CLICK_GAP_MS = 1500;
 
-export function About({ version, update, ownSource, onSource, onCheck, onInstall, whenIdle, onWhenIdle, monitor }: AboutProps) {
+export function About({ version, update, onCheck, onInstall, whenIdle, onWhenIdle, monitor }: AboutProps) {
   // the clicks so far (and when the last one was); leaving the page starts again
   const taps = useRef({ n: 0, at: 0 });
   const [switched, setSwitched] = useState<boolean | null>(null);
@@ -43,15 +39,9 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
     setSwitched(!monitor.on);
     monitor.onToggle();
   };
-  const [draft, setDraft, draftDone] = useKeptDraft('about.updateSource', ownSource);
-  const deploy = update?.sourceFromDeploy ? update.source : '';
   const busy = update?.status === 'checking' || update?.status === 'downloading';
-  // Nothing to check against until a source is given (here or by the installer).
+  // This build checks for no updates (a renamed build with no source in its deploy.json, or deploy.json said "").
   const noSource = update?.status === 'off';
-  const commit = () => {
-    if (draft.trim() !== ownSource) onSource(draft.trim());
-    draftDone();
-  };
   return (
     <section className="settings-section">
       <Group>
@@ -80,24 +70,9 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
       </Group>
 
       <Group title="更新与公告">
-        <Row title="更新源" stack>
-        <form
-          className="install-row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            commit();
-          }}
-        >
-          <input
-            className="input"
-            value={draft}
-            spellCheck={false}
-            aria-label="更新源"
-            placeholder={deploy ? `默认：${deploy}` : '共享盘文件夹或网址'}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
-          />
-          {/* No source yet: shown greyed (not disabled, so hovering still says why). */}
+        {/* Where updates come from is the build's (deploy.json, the official channel): not shown, not set here. */}
+        <Row title="检查更新">
+          {/* A build that checks for nothing: shown greyed (not disabled, so hovering still says why). */}
           <button
             type="button"
             className="btn btn-square"
@@ -105,14 +80,13 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
             aria-disabled={noSource || undefined}
             onClick={() => !noSource && onCheck()}
             aria-label="检查更新"
-            title={noSource ? '先填更新源' : '检查更新'}
+            title={noSource ? '这个版本不检查更新' : '检查更新'}
           >
             {busy ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={16} />}
           </button>
-        </form>
         </Row>
-        {/* A portable copy cannot replace itself: nothing to switch on. */}
-        {update?.portable ? null : (
+        {/* A portable copy cannot replace itself, and a build that checks for nothing gets nothing: no switch. */}
+        {update?.portable || noSource ? null : (
           <Row title="空闲时更新">
             <Switch on={whenIdle} label="空闲时更新" onChange={onWhenIdle} />
           </Row>
@@ -123,7 +97,7 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
               正在检查更新…
             </p>
           </Pane>
-        ) : update?.message && !noSource ? (
+        ) : update?.message ? (
           <Pane>
             <p className={update.status === 'error' ? 'provider-result is-bad' : 'provider-result'} role="status">
               {update.status === 'latest' || update.status === 'ready' ? <SpicaStatusIcon name="done" size={15} /> : update.status === 'error' ? <SpicaStatusIcon name="error" size={15} /> : null}

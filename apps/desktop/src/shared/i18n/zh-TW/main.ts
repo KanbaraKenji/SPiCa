@@ -111,7 +111,7 @@ export const ZH_TW_MAIN: Catalog = {
   // main/update/service.ts
   '更新源返回 {status}': '更新來源傳回 {status}',
   '下载失败（{status}）': '下載失敗（{status}）',
-  '未设置更新源。': '未設定更新來源。',
+  '这个版本不检查更新。': '這個版本不檢查更新。',
   '更新源中缺少版本信息（latest.yml）。': '更新來源缺少版本資訊（latest.yml）。',
   '已是最新版本（{version}）。': '已是最新版本（{version}）。',
   '有新版本 {version}。便携版不支持自动更新，请从更新源下载。': '有新版本 {version}。可攜版不支援自動更新，請從更新來源下載。',
