@@ -2,9 +2,10 @@
 // stream into what the conversation view draws. Pure functions, no React.
 import { relocate, shownPath } from './relocate';
 import type { ChangePreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
-import { BALANCE_WORDS, humanError } from '../../../shared/errors';
+import { humanError, isBalanceWords } from '../../../shared/errors';
 import { AGENT_MESSAGES_LIMIT_MARK, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
+import { N_, t, tx } from '../../../shared/i18n';
 
 export { humanError } from '../../../shared/errors';
 
@@ -101,12 +102,27 @@ function modelOf(v: unknown): string | undefined {
  * 0.1.0-rc.2 nothing moves: 「工作文件夹已选为 D:\报价，原来的文件留在 C:\…\文档\Spica」.
  */
 export function cwdNoteText(c: CwdChangeMeta): string {
-  if (typeof c.filesStayIn === 'string' && c.filesStayIn) return `工作文件夹已选为 ${c.to}，原来的文件留在 ${c.filesStayIn}`;
+  if (typeof c.filesStayIn === 'string' && c.filesStayIn) return t('工作文件夹已选为 {to}，原来的文件留在 {folder}', { to: c.to, folder: c.filesStayIn });
   const moved = Array.isArray(c.moved) ? c.moved.length : 0;
   const renamed = Array.isArray(c.renamed) ? c.renamed : [];
-  const files = moved ? `，移入 ${moved} 个文件` : '';
-  const names = renamed.length ? `，其中 ${renamed.length} 个改了名：${renamed.map((r) => `${r.from} → ${r.to}`).join('、')}` : '';
-  return `工作文件夹已选为 ${c.to}${files}${names}`;
+  const files = moved ? t('，移入 {n} 个文件', { n: moved }) : '';
+  const names = renamed.length ? t('，其中 {n} 个改了名：{names}', { n: renamed.length, names: renamed.map((r) => `${r.from} → ${r.to}`).join(t('、')) }) : '';
+  return t('工作文件夹已选为 {to}{files}{names}', { to: c.to, files, names });
+}
+
+/** What a sub-agent that wrote nothing shows (its note's text is this key; translated where it is shown). */
+export const NO_REPORT_WORDS = N_('无报告内容');
+
+/**
+ * A note's words in the current language: the notes the window words itself (a model switch, tools turned off,
+ * the working folder) are worded again from their data where they are shown, so they follow 语言; other notes
+ * are what was written. `text` keeps the words as they were when the note came.
+ */
+export function noteText(item: Extract<Item, { kind: 'note' }>): string {
+  if (item.toolsOff) return t('工具已停用：{tools}', { tools: item.toolsOff.map((n) => toolLabel(n)).join(t('、')) });
+  if (item.model) return item.model.from ? t('已切换模型：{from} → {to}', { from: item.model.from, to: item.model.to }) : t('已切换模型：{to}', { to: item.model.to });
+  if (item.cwd) return cwdNoteText(item.cwd);
+  return item.text === NO_REPORT_WORDS ? t(NO_REPORT_WORDS) : item.text;
 }
 
 /**
@@ -119,13 +135,19 @@ function noteItem(m: Message): Item | undefined {
   if (change && typeof change === 'object' && typeof change.action === 'string') return { kind: 'settings', id: m.id, change };
   // Tools this conversation used were turned off.
   const gone = m.meta?.toolsUnavailable;
-  if (Array.isArray(gone) && gone.length) return { kind: 'note', id: m.id, text: `工具已停用：${gone.map((n) => toolLabel(String(n))).join('、')}` };
+  if (Array.isArray(gone) && gone.length) {
+    const toolsOff = gone.map((n) => String(n));
+    return { kind: 'note', id: m.id, text: noteText({ kind: 'note', id: m.id, text: '', toolsOff }), toolsOff };
+  }
   // The user switched the conversation's model.
   const switched = m.meta?.modelChange as { from?: unknown; to?: unknown } | undefined;
   if (switched && typeof switched === 'object') {
     const from = modelOf(switched.from);
     const to = modelOf(switched.to);
-    if (to) return { kind: 'note', id: m.id, text: from ? `已切换模型：${from} → ${to}` : `已切换模型：${to}` };
+    if (to) {
+      const model = from ? { from, to } : { to };
+      return { kind: 'note', id: m.id, text: noteText({ kind: 'note', id: m.id, text: '', model }), model };
+    }
   }
   // The user chose the working folder; what the conversation had made moved there.
   const cwd = m.meta?.cwdChange;
@@ -133,7 +155,7 @@ function noteItem(m: Message): Item | undefined {
   const child = childNoteOf(m);
   if (child) {
     const empty = child.kind === 'report' && (child.text.trim() === '' || child.text === NO_REPORT);
-    return { kind: 'note', id: m.id, text: empty ? '无报告内容' : child.text, child: empty ? { ...child, text: '无报告内容' } : child };
+    return { kind: 'note', id: m.id, text: empty ? NO_REPORT_WORDS : child.text, child: empty ? { ...child, text: NO_REPORT_WORDS } : child };
   }
   if (m.meta?.author === 'runtime') return undefined;
   return { kind: 'note', id: m.id, text: textOf(m) };
@@ -187,7 +209,8 @@ export type Item =
   /** New mail for this project (the core's English instructions to the agent are not shown). */
   | { kind: 'mail'; id: string; mailIds: string[]; flagged?: string[] }
   /** `cwd`: the working-folder note; files named before it are looked for where they went (store/relocate.ts). */
-  | { kind: 'note'; id: string; text: string; child?: ChildNote; cwd?: CwdChangeMeta }
+  /** `toolsOff`, `model`: the tools turned off, the model switch (noteText words them in the current language). */
+  | { kind: 'note'; id: string; text: string; child?: ChildNote; cwd?: CwdChangeMeta; toolsOff?: string[]; model?: { from?: string; to: string } }
   /** A model setting a connected script changed (the card; meta.settingsChange). */
   | { kind: 'settings'; id: string; change: SettingsChangeMeta }
   /**
@@ -223,6 +246,8 @@ export interface Transcript {
   errorAction?: 'models';
   /** The provider whose 花费上限 stopped the run (from the budget.stop scope). */
   errorProvider?: string;
+  /** The error is a 花费上限 stop: its period and when calls go again (errorText words it in the current language). */
+  budget?: { periodDays?: number; resetAt?: string };
   /**
    * The last run stopped at a limit with the work not done (not an error): 'max_turns' (the turn limit; the desktop
    * app sets none since 2026-11-12, a script through the MCP service may). Shown as a note after the answer.
@@ -299,12 +324,12 @@ export function memoryLine(card: MemoryCardMeta, now: MemoryItem | null | undefi
   const item = card.item;
   if (!item) return undefined;
   const undone = card.action === 'forgotten' ? now?.status === 'active' : now?.undone === true;
-  if (undone) return { text: `已撤销：${item.text}`, undo: false };
+  if (undone) return { text: t('已撤销：{text}', { text: item.text }), undo: false };
   // null: deleted for good in the settings (the words stay, nothing to undo); undefined: the memory is not loaded yet
   const stands = now === undefined || (now !== null && (card.action === 'forgotten' ? now.status === 'forgotten' : now.status === 'active'));
-  if (card.action === 'replaced') return { text: `已更新：${item.text}${card.previous ? `（替换「${card.previous.text}」）` : ''}`, undo: stands };
-  if (card.action === 'forgotten') return { text: `已忘记：${item.text}`, undo: stands };
-  if (card.action === 'saved') return { text: `已记住：${item.text}`, undo: stands };
+  if (card.action === 'replaced') return { text: card.previous ? t('已更新：{text}（替换「{old}」）', { text: item.text, old: card.previous.text }) : t('已更新：{text}', { text: item.text }), undo: stands };
+  if (card.action === 'forgotten') return { text: t('已忘记：{text}', { text: item.text }), undo: stands };
+  if (card.action === 'saved') return { text: t('已记住：{text}', { text: item.text }), undo: stands };
   return undefined;
 }
 
@@ -839,6 +864,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         delete t.error;
         delete t.errorAction;
         delete t.errorProvider;
+        delete t.budget;
         delete t.stopped;
         delete t.lastFailure;
       } else if (t.run) {
@@ -890,6 +916,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     }
     case 'budget.stop': {
       t.error = budgetStopWords(e.periodDays, e.resetAt);
+      t.budget = { ...(e.periodDays !== undefined ? { periodDays: e.periodDays } : {}), ...(e.resetAt !== undefined ? { resetAt: e.resetAt } : {}) };
       t.errorAction = 'models';
       // 「<providerId>:global」: that provider's 花费上限 (other scopes come from scripts' limits)
       const provider = e.scope.slice(0, e.scope.lastIndexOf(':'));
@@ -907,15 +934,25 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
  */
 export function budgetStopWords(periodDays?: number, resetAt?: string): string {
   const at = resetAt ? new Date(resetAt) : null;
-  if (!periodDays || !at || Number.isNaN(at.getTime())) return '已达花费上限';
+  if (!periodDays || !at || Number.isNaN(at.getTime())) return t('已达花费上限');
   const p = (n: number) => String(n).padStart(2, '0');
-  return `已达 ${periodDays} 天花费上限，${at.getMonth() + 1}/${at.getDate()} ${p(at.getHours())}:${p(at.getMinutes())} 恢复`;
+  return t('已达 {n} 天花费上限，{time} 恢复', { n: periodDays, time: `${at.getMonth() + 1}/${at.getDate()} ${p(at.getHours())}:${p(at.getMinutes())}` });
+}
+
+/**
+ * The conversation's error in the current language: a 花费上限 stop is worded again from its data; other errors
+ * were worded when they came (in Simplified, or the hint's words) and are looked up as they are.
+ */
+export function errorText(tr: Transcript): string {
+  if (!tr.error) return '';
+  return tr.budget ? budgetStopWords(tr.budget.periodDays, tr.budget.resetAt) : tx(tr.error);
 }
 
 /** An error as the conversation shows it; the provider's account out of money also gets the button to 设置 › 模型. */
-function showError(t: Transcript, words: string): void {
-  t.error = words;
-  if (words === BALANCE_WORDS) t.errorAction = 'models';
+function showError(tr: Transcript, words: string): void {
+  tr.error = words;
+  delete tr.budget;
+  if (isBalanceWords(words)) tr.errorAction = 'models';
 }
 
 export interface FileRef {
@@ -985,7 +1022,7 @@ export function fileCardVerb(f: FileRef): string | null {
   return null;
 }
 
-const KIND_LABEL: Record<FileCardMeta['kind'], string> = { pdf: 'PDF', docx: 'Word', xlsx: 'Excel', csv: 'CSV', pptx: 'PPT', text: '文本', other: '文件' };
+const KIND_LABEL: Record<FileCardMeta['kind'], string> = { pdf: 'PDF', docx: 'Word', xlsx: 'Excel', csv: 'CSV', pptx: 'PPT', text: N_('文本'), other: N_('文件') };
 
 /** One line under the file name: what kind, how big, what was read, and anything to watch out for. */
 export function fileCardLine(card: FileCardMeta): string {
@@ -995,10 +1032,10 @@ export function fileCardLine(card: FileCardMeta): string {
 
 /** The two halves of fileCardLine: what the file is (PDF · 4 页) and what was read of it (Read pages 1-3). */
 export function fileCardParts(card: FileCardMeta): { kind: string; read: string } {
-  const kind: string[] = [KIND_LABEL[card.kind] ?? card.kind];
-  if (card.pageCount) kind.push(`${card.pageCount} 页`);
-  if (card.sheets?.length) kind.push(`${card.sheets.length} 个表`);
-  if (card.slideCount) kind.push(`${card.slideCount} 页幻灯片`);
+  const kind: string[] = [KIND_LABEL[card.kind] ? t(KIND_LABEL[card.kind]) : card.kind];
+  if (card.pageCount) kind.push(t('{n} 页', { n: card.pageCount }));
+  if (card.sheets?.length) kind.push(t('{n} 个表', { n: card.sheets.length }));
+  if (card.slideCount) kind.push(t('{n} 页幻灯片', { n: card.slideCount }));
   const parts: string[] = [];
   const r = card.read;
   const sheetsRead = r.sheet ? r.sheet.split(/,\s*/).filter(Boolean) : [];
@@ -1008,10 +1045,13 @@ export function fileCardParts(card: FileCardMeta): { kind: string; read: string 
   // What was done with it in English, like the tool lines (Read, Read pages 1-3); what the file is stays Chinese.
   if (wholeFile && !card.truncated) parts.push('Read');
   else if (r.pages) parts.push(/[-,]/.test(r.pages) ? `Read pages ${r.pages}` : `Read page ${r.pages}`);
-  else if (r.sheet) parts.push(`Read ${sheetsRead.map((n) => `「${n}」`).join(', ')}${r.range ? ` ${r.range}` : r.rows ? ` rows ${r.rows}` : ''}`);
+  else if (r.sheet) {
+    const names = sheetsRead.map((n) => t('「{name}」', { name: n })).join(', ');
+    parts.push(`Read ${names}${r.range ? ` ${r.range}` : r.rows ? ` rows ${r.rows}` : ''}`);
+  }
   else if (r.range) parts.push(`Read ${r.range}`);
   else if (r.rows) parts.push(`Read rows ${r.rows}`);
-  if (card.noTextLayer) parts.push('扫描件，无法读取文字');
+  if (card.noTextLayer) parts.push(t('扫描件，无法读取文字'));
   else if (card.truncated) parts.push('Partly read');
   return { kind: kind.join(' · '), read: parts.join(' · ') };
 }

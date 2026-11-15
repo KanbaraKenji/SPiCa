@@ -3,6 +3,7 @@
 // and the call running now (Running Get-ChildItem). The model's own one-line description of a step replaces the
 // object when it wrote one. The table follows ledger-briefs/core-output/接口.md, section 2.
 import type { FileCardMeta, ToolCategory } from '@spica/protocol';
+import { t } from '../../../shared/i18n';
 
 /** The parts of a tool call these words need. */
 export interface ToolCall {
@@ -29,7 +30,7 @@ const arg = (c: ToolCall, key: string): string => str((c.input as Record<string,
 const baseName = (p: string): string => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
 const cut = (s: string, n = 60): { object: string; full?: string } => (s.length > n ? { object: `${s.slice(0, n)}…`, full: s } : { object: s });
 const quoted = (s: string): string => `“${s.length > 40 ? `${s.slice(0, 40)}…` : s}”`;
-const named = (s: string): string => `「${s}」`;
+const named = (s: string): string => t('「{name}」', { name: s });
 
 /** The kind of step: the core's word when it gave one, else guessed from the tool's name (older conversations). */
 export function categoryOf(c: ToolCall): ToolCategory {

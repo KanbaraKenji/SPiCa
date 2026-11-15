@@ -3,7 +3,8 @@ import { RunNotices, type Notice } from './RunNotices';
 import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo } from '@spica/protocol';
 import { changesAfter } from '../store/relocate';
-import { filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
+import { errorText, filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, noteText, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
+import { N_, t } from '../../../shared/i18n';
 import { ImageGroup, ImageViewer, useImageGroup, type Picture } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
@@ -50,9 +51,9 @@ export interface ConversationActions {
 
 /** Why a picture was not sent, in words. */
 const IMAGE_CODE_TEXT: Record<NonNullable<Attachment['code']>, string> = {
-  'image.too_large': '图片过大，未发送',
-  'image.too_many': '图片数量超过上限，未发送',
-  'image.unreadable': '无法读取图片，未发送',
+  'image.too_large': N_('图片过大，未发送'),
+  'image.too_many': N_('图片数量超过上限，未发送'),
+  'image.unreadable': N_('无法读取图片，未发送'),
 };
 
 /** A sent picture under the message: a thumbnail, full size on a click (with the message's other pictures). */
@@ -71,7 +72,7 @@ function SentPicture({ a, url }: { a: Attachment; url?: (path: string) => Promis
   }, [path, url]);
   return (
     <>
-      <button type="button" className="turn-picture" ref={button} onClick={() => src && setOpen(group())} aria-label={`查看 ${a.name}`} title={a.name}>
+      <button type="button" className="turn-picture" ref={button} onClick={() => src && setOpen(group())} aria-label={t('查看 {name}', { name: a.name })} title={a.name}>
         {src ? <img src={src} alt="" /> : null}
       </button>
       {open ? <ImageViewer pictures={open.pictures} start={open.index} onClose={() => setOpen(null)} /> : null}
@@ -85,10 +86,10 @@ function MailNote({ ids, flagged = [], actions }: { ids: string[]; flagged?: str
     <div className="turn-mail">
       <p className="turn-mail-head">
         <Icon name="inbox" size={14} />
-        <span>收到 {ids.length} 封来信</span>
+        <span>{t('收到 {n} 封来信', { n: ids.length })}</span>
         {actions.openInbox ? (
           <button type="button" className="text-btn" onClick={actions.openInbox}>
-            打开收件箱
+            {t('打开收件箱')}
           </button>
         ) : null}
       </p>
@@ -97,7 +98,7 @@ function MailNote({ ids, flagged = [], actions }: { ids: string[]; flagged?: str
           {mails.map((m) => (
             <li key={m.id}>
               <span className="turn-mail-from">{m.fromName || m.fromAddress || '—'}</span>
-              <span className="turn-mail-subject">{m.subject || '（无主题）'}</span>
+              <span className="turn-mail-subject">{m.subject || t('（无主题）')}</span>
               {flagged.includes(m.id) ? <span className="guard-note">{GUARD_FLAG_TEXT.mail}</span> : null}
             </li>
           ))}
@@ -248,7 +249,7 @@ function Response({
       })}
       {live ? null : <AnswerSources sources={answerSources(blocks, sources)} />}
       {live ? null : <FileCards files={files} onOpen={actions.openFile} actions={fileActions(actions, cwd)} />}
-      {item.interrupted && newest ? <p className="turn-note is-stopped">（中断）</p> : null}
+      {item.interrupted && newest ? <p className="turn-note is-stopped">{t('（中断）')}</p> : null}
       {live ? null : (
         <MessageActions
           text={answerText(blocks)}
@@ -282,9 +283,9 @@ function EmptyState({ session, needsModel, onSetupModel, welcome }: { session: S
     return (
       <div className="empty-chat">
         <SpicaMark size={56} />
-        <p className="empty-chat-title">未配置模型</p>
+        <p className="empty-chat-title">{t('未配置模型')}</p>
         <button type="button" className="btn btn-primary" onClick={onSetupModel}>
-          设置模型
+          {t('设置模型')}
         </button>
       </div>
     );
@@ -298,8 +299,8 @@ function EmptyState({ session, needsModel, onSetupModel, welcome }: { session: S
   return (
     <div className="empty-chat">
       <SpicaMark size={56} />
-      <p className="empty-chat-title">{welcome ? greeting(welcome.now ?? opened, welcome.name) : ASK}</p>
-      {welcome ? <p className="empty-chat-line">{ASK}</p> : null}
+      <p className="empty-chat-title">{welcome ? greeting(welcome.now ?? opened, welcome.name) : t(ASK)}</p>
+      {welcome ? <p className="empty-chat-line">{t(ASK)}</p> : null}
     </div>
   );
 }
@@ -427,15 +428,15 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
   const resolveRef = (n: number) => historyRef(transcript, n);
   // Above the input box (RunNotices): each shown as long as it was in the conversation before.
   const notices: Notice[] = [];
-  if (session?.status === 'interrupted' && !running) notices.push({ key: 'interrupted', tone: 'warning', text: '上次运行已中断', action: { label: '继续', onClick: actions.resume } });
+  if (session?.status === 'interrupted' && !running) notices.push({ key: 'interrupted', tone: 'warning', text: t('上次运行已中断'), action: { label: t('继续'), onClick: actions.resume } });
   // the same call too many times in a row: not run; 继续 is the user writing, which starts the count again
-  if (transcript.stopped === 'repeated' && !running) notices.push({ key: 'repeated', tone: 'warning', text: `同一步重复了 ${transcript.repeatCount ?? 8} 次，要继续吗`, action: { label: '继续', onClick: () => actions.send('继续') } });
+  if (transcript.stopped === 'repeated' && !running) notices.push({ key: 'repeated', tone: 'warning', text: t('同一步重复了 {n} 次，要继续吗', { n: transcript.repeatCount ?? 8 }), action: { label: t('继续'), onClick: () => actions.send(t('继续')) } });
   // the last answer stopped at the most the model may write at once: 继续 asks for the rest
   const last = items[lastIndex];
-  if (last?.kind === 'response' && last.truncated && !last.interrupted && !running) notices.push({ key: 'truncated', tone: 'warning', text: '回答到达长度上限，没有写完', action: { label: '继续', onClick: () => actions.send('继续') } });
+  if (last?.kind === 'response' && last.truncated && !last.interrupted && !running) notices.push({ key: 'truncated', tone: 'warning', text: t('回答到达长度上限，没有写完'), action: { label: t('继续'), onClick: () => actions.send(t('继续')) } });
   if (transcript.error) {
     const toModels = transcript.errorAction === 'models' && actions.openModelSettings;
-    notices.push({ key: 'error', tone: 'error', text: transcript.error, ...(toModels ? { action: { label: '模型', onClick: () => actions.openModelSettings?.(transcript.errorProvider) } } : {}) });
+    notices.push({ key: 'error', tone: 'error', text: errorText(transcript), ...(toModels ? { action: { label: t('模型'), onClick: () => actions.openModelSettings?.(transcript.errorProvider) } } : {}) });
   }
   const mark = (id: string): Record<string, string> => (id === foundItem ? { 'data-item': id, 'data-found': '' } : { 'data-item': id });
   const answerTools = useMemo(
@@ -462,7 +463,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
             {found?.back ? (
               <button type="button" className="back-link history-back" onClick={found.back.onBack}>
                 <Icon name="arrowLeft" size={16} />
-                <span>返回「{found.back.title}」</span>
+                <span>{t('返回「{title}」', { title: found.back.title })}</span>
               </button>
             ) : null}
             {items.map((item, i) => {
@@ -470,7 +471,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                 return (
                   <div key={item.id} className="turn-mine">
                     <div className={item.steer ? 'turn-user is-steer' : 'turn-user'} {...mark(item.id)}>
-                      {item.steer ? <span className="turn-user-tag">补充</span> : null}
+                      {item.steer ? <span className="turn-user-tag">{t('补充')}</span> : null}
                       <p className="turn-user-text">{item.text}</p>
                     </div>
                     {item.attachments?.some((a) => a.image) ? (
@@ -490,8 +491,8 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                         <SpicaStatusIcon name="error" size={14} />
                         {item.attachments
                           .filter((a) => a.code)
-                          .map((a) => `${a.name}：${IMAGE_CODE_TEXT[a.code!]}`)
-                          .join('；')}
+                          .map((a) => t('{name}：{reason}', { name: a.name, reason: t(IMAGE_CODE_TEXT[a.code!]) }))
+                          .join(t('；'))}
                       </p>
                     ) : null}
                     {item.attachments?.some((a) => !a.image && !a.code) ? (
@@ -523,7 +524,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                   <ChildNoteCard key={item.id} note={item.child} onOpen={actions.openSession} />
                 ) : (
                   <p key={item.id} className="turn-note" {...mark(item.id)}>
-                    {item.text}
+                    {noteText(item)}
                   </p>
                 );
               return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} after={lastIndex - i} regen={regen && session?.role === 'top' ? { state: regen, last: item.anchorId === regen.anchorId || items[i - 1]?.id === regen.anchorId } : undefined} actions={actions} cards={transcript.fileCards} lists={transcript.fileCardLists} sources={transcript.sourceCards} memoryCards={transcript.memoryCards} moved={moves.get(item.id)} cwd={session?.cwd} at={mark(item.id)} />;
@@ -532,17 +533,17 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
             {waiting.map((w) => (
               <div key={w.id} className="resume-row waiting-row" role="status">
                 <span>
-                  「{w.title}」{w.status === 'awaiting_confirm' ? '等待确认' : '等待回答'}
+                  {w.status === 'awaiting_confirm' ? t('「{title}」等待确认', { title: w.title }) : t('「{title}」等待回答', { title: w.title })}
                 </span>
                 <button type="button" className="btn" onClick={() => actions.openSession(w.id)}>
-                  处理
+                  {t('处理')}
                 </button>
               </div>
             ))}
             {/* a run that ended at the turn limit (scripts through the MCP service; the app sets none) */}
-            {transcript.stopped === 'max_turns' && !running ? <p className="turn-note">（已达到轮数上限，还没做完）</p> : null}
+            {transcript.stopped === 'max_turns' && !running ? <p className="turn-note">{t('（已达到轮数上限，还没做完）')}</p> : null}
             {/* message_agent refused: the limit of messages to other agents since the user last wrote */}
-            {transcript.agentLimit ? <p className="turn-note">（代理之间互发的消息已达上限，没有再发；你说一句话后重新计数）</p> : null}
+            {transcript.agentLimit ? <p className="turn-note">{t('（代理之间互发的消息已达上限，没有再发；你说一句话后重新计数）')}</p> : null}
           </div>
         )}
         {/* The input area stays at the bottom of the scrolling box, over what scrolls under it: the scrollbar runs
@@ -552,7 +553,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
               whatever its height (several lines, queued messages, zoom). */}
           <div className="to-bottom-anchor">
             {away ? (
-              <button type="button" className="to-bottom" onClick={toBottom} aria-label="回到最新" title="回到最新">
+              <button type="button" className="to-bottom" onClick={toBottom} aria-label={t('回到最新')} title={t('回到最新')}>
                 <Icon name="chevronDown" size={16} />
               </button>
             ) : null}
@@ -561,7 +562,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
             <div className="queued" aria-live="polite">
               {transcript.queued.map((q) => (
                 <p key={q.id} className="queued-item">
-                  <span className="queued-tag">下一步生效</span>
+                  <span className="queued-tag">{t('下一步生效')}</span>
                   <span className="queued-text">{q.text}</span>
                 </p>
               ))}
@@ -569,7 +570,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
           ) : null}
           <RunNotices notices={notices} />
           <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
-          {demo ? <p className="composer-note">当前为演示数据</p> : null}
+          {demo ? <p className="composer-note">{t('当前为演示数据')}</p> : null}
         </div>
       </div>
     </div>

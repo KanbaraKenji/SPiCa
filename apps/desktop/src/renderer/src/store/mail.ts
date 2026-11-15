@@ -6,6 +6,7 @@ import type { AgentApi, CoreEvent, MailFeedback, MailItem } from '@spica/protoco
 import { Store } from './external';
 import { friendlyError } from './agent';
 import { flaggedMailIds } from './transcript';
+import { t } from '../../../shared/i18n';
 
 /** Template of the pipeline's own thread (it is a top-level session). */
 const TRIAGE_TEMPLATE = 'mail-triage';
@@ -148,7 +149,7 @@ export class MailStore {
       // New mail is stored before it is sorted; fetch it so it shows as 「正在分类」.
       if (e.added > 0) void this.reload();
     } else if (e.type === 'error' && e.sessionId === this.state.get().threadId && /^mail source /.test(e.message)) {
-      this.state.set((v) => ({ ...v, problem: '邮件检查失败：邮件插件无响应。' }));
+      this.state.set((v) => ({ ...v, problem: t('邮件检查失败：邮件插件无响应。') }));
     }
   }
 }

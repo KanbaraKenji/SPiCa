@@ -10,6 +10,7 @@ import { highlightCode } from './highlight';
 import { resultBody, type Block } from '../store/transcript';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
+import { t } from '../../../shared/i18n';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
 
@@ -75,17 +76,17 @@ export function callEnd(block: ToolBlock, raw: string): { status: string | null;
     const output = rest.trim() === '(no output)' ? '' : rest;
     const exit = /^exit code (\S+), [\d.]+ s$/.exec(first);
     if (exit) return { status: exit[1] === '0' ? null : `Exit code ${exit[1]}`, output };
-    if (/^timed out after/.test(first)) return { status: '已超时', output };
-    if (/^stopped: the user interrupted/.test(first)) return { status: '已中断', output };
+    if (/^timed out after/.test(first)) return { status: t('已超时'), output };
+    if (/^stopped: the user interrupted/.test(first)) return { status: t('已中断'), output };
   }
   const failed = block.state === 'error' || block.state === 'timeout' || block.state === 'unavailable' || block.state === 'repeated';
   if (!failed) return { status: null, output: body };
   const nl = body.indexOf('\n');
   const first = (nl < 0 ? body : body.slice(0, nl)).trim();
   const rest = nl < 0 ? '' : body.slice(nl + 1).replace(/^\n+/, '');
-  if (/declined|用户拒绝|已拒绝/i.test(first)) return { status: '已拒绝', output: rest };
-  if (/^(Aborted|Cancelled)\b|interrupted/i.test(first)) return { status: '已中断', output: rest };
-  if (block.state === 'timeout') return { status: '已超时', output: body };
+  if (/declined|用户拒绝|已拒绝/i.test(first)) return { status: t('已拒绝'), output: rest };
+  if (/^(Aborted|Cancelled)\b|interrupted/i.test(first)) return { status: t('已中断'), output: rest };
+  if (block.state === 'timeout') return { status: t('已超时'), output: body };
   return { status: first.replace(/^Tool failed:\s*/, '') || 'Failed', output: rest };
 }
 

@@ -43,6 +43,7 @@ export function pathLabel(path: string, others: readonly string[] = []): string 
 
 // Where a path written in plain text ends: whitespace, what Windows forbids in a path, and punctuation (Chinese
 // and ASCII; brackets too, though a file name may hold them: such a path is then left as it is).
+// i18n-skip: punctuation a path stops at (a pattern, not wording)
 const PLAIN_STOP = /[\s<>"|?*:，。；：、！？（）【】「」『』《》“”‘’,;!?()[\]{}]/;
 // A path is not taken from inside a word, a web address or another path.
 const PLAIN_BEFORE = /[A-Za-z0-9_\-.\\/:%@&=+~$#]/;

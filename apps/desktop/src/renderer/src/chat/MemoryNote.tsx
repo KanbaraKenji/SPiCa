@@ -3,6 +3,7 @@
 import { createContext, useContext, useState } from 'react';
 import type { MemoryCardMeta, MemoryItem } from '@spica/protocol';
 import { memoryLine } from '../store/transcript';
+import { t } from '../../../shared/i18n';
 
 export interface MemoryLines {
   /** The memory as it is now, with replaced and forgotten items; null until known. */
@@ -33,7 +34,7 @@ export function MemoryNote({ card }: { card: MemoryCardMeta }) {
             void undo(id).finally(() => setBusy(false));
           }}
         >
-          撤销
+          {t('撤销')}
         </button>
       ) : null}
     </p>

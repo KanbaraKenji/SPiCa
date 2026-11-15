@@ -4,6 +4,8 @@ import { useSyncExternalStore } from 'react';
 import type { AgentApi, ApprovalMode, CoreEvent, MemoryCardMeta, MemoryEntry, MemoryEntryInput, MemoryItem, MemoryRefusal, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, SessionInfo, SetCwdResult } from '@spica/protocol';
 import { Store } from './external';
 import { applyEvent, cancelCard, EMPTY_TRANSCRIPT, fromHistory, humanError, type Transcript } from './transcript';
+import { getLocale, N_, t, tx } from '../../../shared/i18n';
+import { knownError } from '../../../shared/errors';
 
 export interface AgentView {
   sessions: SessionInfo[];
@@ -44,7 +46,8 @@ export interface AgentSource {
   onAgentEvent(listener: (event: CoreEvent) => void): () => void;
 }
 
-export const NEW_CHAT_TITLE = '新对话';
+/** The backend's title for a conversation nobody named (matched as it is; shown through t). */
+export const NEW_CHAT_TITLE = N_('新对话');
 /** Titles the backend gives sessions nobody named yet. */
 const GENERIC_TITLES = new Set<string | null>([null, NEW_CHAT_TITLE, 'Top-level agent', 'Agent', '']);
 
@@ -52,7 +55,7 @@ const GENERIC_TITLES = new Set<string | null>([null, NEW_CHAT_TITLE, 'Top-level 
 export function displayTitle(s: SessionInfo, firstLines: Record<string, string>): string {
   if (s.title && !GENERIC_TITLES.has(s.title)) return s.title;
   const first = firstLines[s.id]?.replace(/\s+/g, ' ').trim();
-  return first ? (first.length > 24 ? `${first.slice(0, 24)}…` : first) : NEW_CHAT_TITLE;
+  return first ? (first.length > 24 ? `${first.slice(0, 24)}…` : first) : t(NEW_CHAT_TITLE);
 }
 
 function firstUserText(messages: Message[]): string | undefined {
@@ -65,9 +68,14 @@ export function friendlyError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   // Electron prefixes remote errors with "Error invoking remote method '...': Error: ".
   const msg = raw.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '').trim();
-  if (!msg) return '操作失败，请重试。';
-  // Messages the shell already wrote in Chinese pass through; backend English is translated.
-  return /[\u4e00-\u9fff]/.test(msg) ? msg : humanError(msg);
+  if (!msg) return t('操作失败，请重试。');
+  // Words the shell already wrote: ones the catalog knows (Simplified keys) in the language now, other Chinese as
+  // they are. Then a backend error the shell knows the cause of. In English the main process's own sentences have
+  // no Chinese in them: shown as they are, not as 出错：… (nor is an unknown English error).
+  const said = tx(msg);
+  if (said !== msg) return said;
+  if (/[一-鿿]/.test(msg)) return msg;
+  return knownError(msg) ?? (getLocale() === 'en' ? msg : humanError(msg));
 }
 
 /** What a refused 选择工作文件夹 means, in the window's words. */
@@ -75,18 +83,17 @@ export function cwdErrorText(r: Extract<SetCwdResult, { ok: false }>): string {
   const base = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
   switch (r.code) {
     case 'cwd.not_changeable':
-      return '工作文件夹已选定，不能更改。';
+      return t('工作文件夹已选定，不能更改。');
     case 'cwd.busy':
-      return '对话进行中，结束后再选择工作文件夹。';
+      return t('对话进行中，结束后再选择工作文件夹。');
     case 'cwd.bad_folder':
-      return '无法使用该文件夹，请选择其他文件夹。';
+      return t('无法使用该文件夹，请选择其他文件夹。');
     case 'cwd.move_failed': {
-      const which = r.file ? `「${base(r.file)}」` : '文件';
-      const left = r.notRestored?.length ? `；${r.notRestored.length} 个文件未能放回：${r.notRestored.map(base).join('、')}` : '';
-      return `移动${which}失败，已放回原处，工作文件夹未更改${left}。`;
+      const left = r.notRestored?.length ? t('；{n} 个文件未能放回：{files}', { n: r.notRestored.length, files: r.notRestored.map(base).join(t('、')) }) : '';
+      return r.file ? t('移动「{file}」失败，已放回原处，工作文件夹未更改{left}。', { file: base(r.file), left }) : t('移动文件失败，已放回原处，工作文件夹未更改{left}。', { left });
     }
     default:
-      return '无法选择工作文件夹。';
+      return t('无法选择工作文件夹。');
   }
 }
 
@@ -320,7 +327,7 @@ export class AgentStore {
 
   /** Creates a project (the core attaches its manager) and opens the manager's conversation. Resolves to a problem in words, or null. */
   async createProject(input: { name: string; folder?: string; brief?: string }, after?: (p: ProjectInfo) => Promise<void>): Promise<string | null> {
-    if (!this.#api.createProject) return '当前版本不支持创建项目。';
+    if (!this.#api.createProject) return t('当前版本不支持创建项目。');
     try {
       const p = await this.#api.createProject(input);
       this.state.set((v) => ({ ...v, projects: [p, ...v.projects.filter((x) => x.id !== p.id)] }));
@@ -335,7 +342,7 @@ export class AgentStore {
 
   /** Renames a project (its manager's conversation takes the name). Resolves to a problem in words, or null. */
   async renameProject(projectId: string, name: string): Promise<string | null> {
-    if (!this.#api.renameProject) return '当前版本不支持重命名项目。';
+    if (!this.#api.renameProject) return t('当前版本不支持重命名项目。');
     try {
       const p = await this.#api.renameProject(projectId, name);
       this.state.set((v) => ({
@@ -353,7 +360,7 @@ export class AgentStore {
 
   /** Deletes a project from Spica (its conversations; never its folder). The core's events take it off the list. */
   async deleteProject(projectId: string): Promise<string | null> {
-    if (!this.#api.deleteProject) return '当前版本不支持删除项目。';
+    if (!this.#api.deleteProject) return t('当前版本不支持删除项目。');
     try {
       await this.#api.deleteProject(projectId);
       await this.#refreshProjects();
@@ -368,7 +375,7 @@ export class AgentStore {
 
   /** Deletes a conversation (and its sub-agents) from Spica; the files it made stay. null when done, else what went wrong. */
   async deleteSession(sessionId: string): Promise<string | null> {
-    if (!this.#api.deleteSession) return '当前版本不支持删除对话。';
+    if (!this.#api.deleteSession) return t('当前版本不支持删除对话。');
     try {
       await this.#api.deleteSession(sessionId);
       return null;
@@ -381,7 +388,7 @@ export class AgentStore {
 
   /** Chooses the working folder of a conversation that has none yet (once); what it made moves there. Says what went wrong, else null. */
   async chooseCwd(sessionId: string, folder: string): Promise<string | null> {
-    if (!this.#api.setSessionCwd) return '当前版本不支持更改工作文件夹。';
+    if (!this.#api.setSessionCwd) return t('当前版本不支持更改工作文件夹。');
     try {
       const r = await this.#api.setSessionCwd(sessionId, folder);
       if (r.ok) {
@@ -577,7 +584,7 @@ export class AgentStore {
     try {
       const r = await this.#api.tidyMemories();
       if (r.started) return null;
-      return r.reason === 'no_model' ? '还没有配置模型' : r.reason === 'off' ? '记忆已关闭' : null;
+      return r.reason === 'no_model' ? t('还没有配置模型') : r.reason === 'off' ? t('记忆已关闭') : null;
     } catch (err) {
       return friendlyError(err);
     }
@@ -618,6 +625,7 @@ export class AgentStore {
         if (prev?.error) next.error = prev.error;
         if (prev?.errorAction) next.errorAction = prev.errorAction;
         if (prev?.errorProvider) next.errorProvider = prev.errorProvider;
+        if (prev?.budget) next.budget = prev.budget;
         if (prev?.stopped) next.stopped = prev.stopped;
         if (prev?.repeatCount) next.repeatCount = prev.repeatCount;
         if (prev?.agentLimit) next.agentLimit = true;
