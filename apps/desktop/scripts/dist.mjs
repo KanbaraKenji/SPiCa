@@ -44,9 +44,7 @@ export function sourceLines(deploy) {
   const update = deploy.updateSource === null ? (official ? `official channel ${OFFICIAL_CHANNEL}` : 'none (not in deploy.json)') : deploy.updateSource || 'none';
   const plugins =
     deploy.pluginSources === null
-      ? official
-        ? `official channel ${OFFICIAL_CHANNEL}index.json`
-        : 'none (not in deploy.json)'
+      ? `official channel ${OFFICIAL_CHANNEL}index.json`
       : deploy.pluginSources.length
         ? deploy.pluginSources.map((s) => s.location).join(', ')
         : 'none';

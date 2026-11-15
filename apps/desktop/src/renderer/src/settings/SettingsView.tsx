@@ -171,6 +171,8 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
         onSource={(updateSource) => shell.update({ updateSource })}
         onCheck={onCheckUpdate}
         onInstall={onInstallUpdate}
+        whenIdle={settings.updateWhenIdle}
+        onWhenIdle={(updateWhenIdle) => shell.update({ updateWhenIdle })}
         monitor={{
           on: settings.monitor,
           // on: the panel opens with it (closed again when switched off)

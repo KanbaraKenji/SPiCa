@@ -1,7 +1,7 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
-import { createContext, Fragment, memo, useContext, useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
-import type { FileCardMeta, HistoryCardMeta, SourceCardMeta, SourceRow } from '@spica/protocol';
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
+import type { ChangePreview, FileCardMeta, HistoryCardMeta, SourceCardMeta, SourceRow } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, fileCardParts, fileCardVerb, type Block, type ChildNote, type FileRef } from '../store/transcript';
@@ -19,7 +19,7 @@ import { blockLanguage, blockLanguageName, colourSplit, highlightCode } from './
 import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS } from './format';
 import { groupWords, runningGroup, runningWords, toolWords } from './tool-words';
 import { hostOf } from './sources';
-import { CallDetail, CommandBox } from './CallDetail';
+import { CallArgs, CallDetail, callChange, CommandBox, FileChange } from './CallDetail';
 
 /** Opens a conversation by id, at message number `seq` when given (rows and links from earlier conversations). */
 export const OpenSessionContext = createContext<((id: string, seq?: number) => void) | null>(null);
@@ -975,23 +975,23 @@ const ARG_LABEL: Record<string, string> = {
 
 /**
  * Exactly what a confirmation would let run, nothing cut: a command in its code box, other calls their
- * arguments in full. Not the model's description of the step: it may not match what would run.
+ * arguments in full, laid out as a call opened in the conversation (CallArgs: long text and lists under their
+ * name, JSON coloured, 20 lines then it scrolls) under names people read. Not the model's description of the step:
+ * it may not match what would run.
  */
-export function ConfirmTarget({ name, input, bare }: { name: string; input: unknown; bare?: boolean }) {
+export function ConfirmTarget({ name, input, bare, change }: { name: string; input: unknown; bare?: boolean; change?: ChangePreview | undefined }) {
   const v = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
   if (name === 'run_command' && typeof v.command === 'string') return <CommandBox command={v.command} marks={dangerSpans(v.command)} bare={bare} />;
+  // A write or an edit: what it would change, as its row shows it after (the core worked it out when it asked: the
+  // lines numbered, green in, red out; a new file all green). Without that (an older core) the arguments' own lines.
+  if (name === 'write_file' || name === 'edit_file') {
+    const card = change ? { path: change.path, origin: change.created ? ('created' as const) : ('modified' as const), ...(change.change ? { change: change.change } : {}) } : undefined;
+    const lines = callChange({ type: 'tool', callId: '', name, input, state: 'pending' }, card);
+    if (lines) return <FileChange {...lines} />;
+  }
   const rows = Object.entries(v).filter(([k, val]) => k !== 'description' && val !== undefined && val !== null && val !== '');
   if (!rows.length) return null;
-  return (
-    <dl className="confirm-args">
-      {rows.map(([k, val]) => (
-        <Fragment key={k}>
-          <dt>{ARG_LABEL[k] ?? k}</dt>
-          <dd>{typeof val === 'string' ? val : JSON.stringify(val, null, 2)}</dd>
-        </Fragment>
-      ))}
-    </dl>
-  );
+  return <CallArgs input={Object.fromEntries(rows)} labels={ARG_LABEL} bare={bare} />;
 }
 
 /**
@@ -1039,7 +1039,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
           </div>
         )}
       </header>
-      <ConfirmTarget name={block.name} input={block.input} bare />
+      <ConfirmTarget name={block.name} input={block.input} change={block.change} bare />
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
     </section>
   );

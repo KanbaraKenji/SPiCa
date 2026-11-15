@@ -1,5 +1,5 @@
-// One line at the top of the main pane: a downloaded update waiting for a
-// restart, or an administrator's announcement. It floats over the content
+// One line at the top of the main pane: the core recovering, or an administrator's announcement. Updates are in
+// the side bar (shell/UpdateNotice.tsx). It floats over the content
 // (nothing below moves when it appears or goes away) and can be closed.
 import { useEffect, useState } from 'react';
 import type { BackendState, DesktopBridge } from '../../../shared/bridge';
@@ -53,15 +53,11 @@ export function useBackendState(bridge: DesktopBridge, agent: AgentStore): Backe
 export interface NoticeBarProps {
   backend?: BackendState | null;
   onRetryBackend?: () => void;
-  update: UpdateState | null;
   settings: ShellSettings;
-  onInstall(): void;
   onDismissNotice(id: string): void;
 }
 
-export function NoticeBar({ backend, onRetryBackend, update, settings, onInstall, onDismissNotice }: NoticeBarProps) {
-  const [updateClosed, setUpdateClosed] = useState<string | null>(null);
-  const showUpdate = update?.status === 'ready' && update.available && updateClosed !== update.available;
+export function NoticeBar({ backend, onRetryBackend, settings, onDismissNotice }: NoticeBarProps) {
   const notice: Notice | undefined = activeNotices(settings.noticesCache, settings.dismissedNotices)[0];
 
   if (backend?.state === 'recovering') {
@@ -79,20 +75,6 @@ export function NoticeBar({ backend, onRetryBackend, update, settings, onInstall
         <span className="notice-text">{backend.message}</span>
         <button type="button" className="btn btn-small" onClick={onRetryBackend}>
           重试
-        </button>
-      </div>
-    );
-  }
-  if (showUpdate && update?.available) {
-    return (
-      <div className="notice-bar" role="status">
-        <SpicaStatusIcon name="done" size={15} className="notice-icon" />
-        <span className="notice-text">新版本 {update.available} 已下载</span>
-        <button type="button" className="btn btn-small btn-primary" onClick={onInstall}>
-          重启并更新
-        </button>
-        <button type="button" className="icon-btn notice-close" onClick={() => setUpdateClosed(update.available ?? null)} aria-label="稍后" title="稍后">
-          <Icon name="close" size={14} />
         </button>
       </div>
     );

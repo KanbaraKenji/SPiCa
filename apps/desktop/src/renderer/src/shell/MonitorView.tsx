@@ -13,6 +13,8 @@ import { Icon } from '../ui/Icon';
 import { clipboard } from '../ui/clipboard';
 import { ContextMenu } from '../ui/ContextMenu';
 import { useEscape } from '../ui/escape';
+import { CallDetail } from '../chat/CallDetail';
+import type { Block } from '../store/transcript';
 
 export interface MonitorApi {
   list(after: number): Promise<MonitorEntry[]>;
@@ -325,9 +327,49 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
               <Icon name="close" size={14} />
             </button>
           </div>
-          <pre className="monitor-detail-text">{selText}</pre>
+          <MonitorDetailText source={sel.source} level={sel.level} text={selText} />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+type ToolBlock = Extract<Block, { type: 'tool' }>;
+
+/**
+ * A tool's line read back as the call it is (main/monitor.ts writes them): `name ← summary\n{input}` when it starts,
+ * `name ok|failed 12ms →\nresult` when it ends. Null when the text is not one (shown as it is).
+ */
+export function monitorCall(text: string, failed: boolean): { what: string; block: ToolBlock } | null {
+  const start = /^(\S+) ← ([\s\S]*)$/.exec(text);
+  if (start) {
+    const name = start[1]!;
+    const rest = start[2]!;
+    const nl = rest.indexOf('\n');
+    for (const [summary, json] of [['', rest], ...(nl < 0 ? [] : [[rest.slice(0, nl), rest.slice(nl + 1)]])] as [string, string][]) {
+      try {
+        const input: unknown = JSON.parse(json);
+        if (input && typeof input === 'object') return { what: summary ? `${name} ← ${summary}` : `${name} ←`, block: { type: 'tool', callId: '', name, input, state: 'done' } };
+      } catch {
+        // not the input as JSON: try past the summary's line, else the text as it is
+      }
+    }
+    return null;
+  }
+  const end = /^(\S+) (ok|failed) (\d+ms) →[ \n]?([\s\S]*)$/.exec(text);
+  if (!end) return null;
+  const name = end[1]!;
+  return { what: `${name} ${end[2]} ${end[3]}`, block: { type: 'tool', callId: '', name, input: {}, state: failed ? 'error' : 'done', result: end[4]! } };
+}
+
+/** The picked line in full: a tool's call laid out as in the conversation (chat/CallDetail.tsx), anything else as text. */
+function MonitorDetailText({ source, level, text }: { source: MonitorSource; level: MonitorLevel; text: string }) {
+  const call = useMemo(() => (source === 'tool' ? monitorCall(text, level === 'error') : null), [source, level, text]);
+  if (!call) return <pre className="monitor-detail-text">{text}</pre>;
+  return (
+    <div className="monitor-detail-call">
+      <p className="monitor-detail-what">{call.what}</p>
+      <CallDetail block={call.block} />
     </div>
   );
 }

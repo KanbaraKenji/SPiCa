@@ -1,12 +1,13 @@
 // Where an installed Spica looks for app updates and the official plugins when
 // the packaging's deploy.json says nothing: the official channel, one fixed
 // address that every release refreshes (see docs/design/desktop-shell.md
-// section 9). A build packaged under another app id never uses it.
+// section 9). A build packaged under another app id never takes updates from
+// it, but lists its plugins unless told otherwise.
 import { NOT_SHIPPED_PLUGINS, officialSources, type OfficialSource } from '../../shared/plugins';
 
 /** The official channel: latest.yml, index.json (official plugins), channel.json. */
 export const OFFICIAL_CHANNEL = 'https://github.com/KanbaraKenji/SPiCa/releases/download/channel/';
-/** The app id Spica is published under; only that build uses the official channel. */
+/** The app id Spica is published under; only that build takes updates from the official channel. */
 export const OFFICIAL_APP_ID = 'dev.spica.desktop';
 export const OFFICIAL_PLUGINS_LABEL = '官方插件';
 
@@ -32,7 +33,8 @@ export interface BuildSourcesInput {
  * What this build checks for updates and lists as official plugins.
  *
  * deploy.json keys, each on its own:
- *   absent                    the official channel (Spica as published only; a renamed build: none)
+ *   absent                    the official channel; a build with another app id: no update checks,
+ *                             but the official plugins all the same
  *   "updateSource": ""        no update checks
  *   "pluginSources": []       no official plugin source
  *   any other value           that, as before
@@ -51,7 +53,7 @@ export function buildSources(input: BuildSourcesInput): BuildSources {
   let pluginSources: OfficialSource[];
   if (raw.pluginSources !== undefined && raw.pluginSources !== null) pluginSources = officialSources(raw.pluginSources);
   else if (!input.packaged) pluginSources = input.repoPlugins ? [{ location: input.repoPlugins, label: '官方插件（开发版：仓库的 plugins 文件夹）', exclude: NOT_SHIPPED_PLUGINS }] : [];
-  else pluginSources = official ? [{ location: channelFile(channel, 'index.json'), label: OFFICIAL_PLUGINS_LABEL }] : [];
+  else pluginSources = [{ location: channelFile(channel, 'index.json'), label: OFFICIAL_PLUGINS_LABEL }];
 
   return { updateSource, pluginSources };
 }

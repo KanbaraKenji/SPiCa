@@ -1343,6 +1343,35 @@ export class FakeBackend implements AgentBackend {
           '今年钢材涨价，报价普遍上调 5% 左右（[2026 年模具钢价格走势](https://example.org/steel-2026)）。';
         await this.#stream(sessionId, 'text', answer, signal);
         blocks.push({ type: 'text', text: answer });
+      } else if (/改文件/.test(text)) {
+        // An edit that needs confirming, carrying what it would change as the core works it out when it asks
+        // (tools/fs-tools.ts previewChange): the card shows the lines in red and green before it is allowed.
+        const callId = this.#id('call');
+        const input = { path: 'tools\\summary.py', old_string: 'TOTAL = 0', new_string: 'TOTAL = 0.0' };
+        const change = {
+          path: 'D:\\工作\\样机评审\\tools\\summary.py',
+          created: false,
+          change: { hunks: [{ oldStart: 1, newStart: 1, lines: [' import csv', ' from pathlib import Path', ' ', '-TOTAL = 0', '+TOTAL = 0.0', ' ', ' ', ' def read_quotes(folder: Path) -> list[dict]:'] }] },
+        };
+        const lead = '这一处修改需要你确认。';
+        await this.#stream(sessionId, 'text', lead, signal);
+        blocks.push({ type: 'text', text: lead });
+        this.#emit(sessionId, { type: 'tool.call', callId, name: 'edit_file' });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name: 'edit_file', input }]);
+        this.#addPending(sessionId, { kind: 'confirm', callId, toolName: 'edit_file', input, reason: '修改文件', change, createdAt: isoAt(this.#now()) });
+        this.#emit(sessionId, { type: 'confirm.request', callId, name: 'edit_file', input, reason: '修改文件', change });
+        this.#setStatus(sessionId, 'awaiting_confirm', 'edit_file');
+        waiting = { id: callId, name: 'edit_file', input, stored: true };
+        const ok = (await this.#waitFor(run, callId)) === 'yes';
+        waiting = undefined;
+        if (ok) this.#emit(sessionId, { type: 'tool.start', callId, name: 'edit_file', input, category: 'write' });
+        const result = ok ? 'Edited tools\\summary.py: 1 replacement(s).' : '用户拒绝了这处修改';
+        this.#emit(sessionId, { type: 'tool.end', callId, name: 'edit_file', isError: !ok, preview: result, durationMs: 300 });
+        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: result, isError: !ok }]);
+        this.#setStatus(sessionId, 'thinking');
+        const after = ok ? '\n\n改好了。' : '\n\n好的，没有改。';
+        await this.#stream(sessionId, 'text', after, signal);
+        blocks.push({ type: 'text', text: after });
       } else if (/删除/.test(text)) {
         // A command that needs confirming, long enough that a cut title would hide its end (and the model's
         // description says something milder than what it does).

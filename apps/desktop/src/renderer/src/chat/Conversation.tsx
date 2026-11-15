@@ -435,7 +435,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
   if (last?.kind === 'response' && last.truncated && !last.interrupted && !running) notices.push({ key: 'truncated', tone: 'warning', text: '回答到达长度上限，没有写完', action: { label: '继续', onClick: () => actions.send('继续') } });
   if (transcript.error) {
     const toModels = transcript.errorAction === 'models' && actions.openModelSettings;
-    notices.push({ key: 'error', tone: 'error', text: transcript.error, ...(toModels ? { action: { label: '模型设置', onClick: () => actions.openModelSettings?.(transcript.errorProvider) } } : {}) });
+    notices.push({ key: 'error', tone: 'error', text: transcript.error, ...(toModels ? { action: { label: '模型', onClick: () => actions.openModelSettings?.(transcript.errorProvider) } } : {}) });
   }
   const mark = (id: string): Record<string, string> => (id === foundItem ? { 'data-item': id, 'data-found': '' } : { 'data-item': id });
   const answerTools = useMemo(

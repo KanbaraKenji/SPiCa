@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../ui/Dialog';
 import { Group, Pane, Row } from './Group';
 import { CodeThemes } from './CodeThemes';
 import { Icon } from '../ui/Icon';
+import { ColorPicker } from '../ui/ColorPicker';
 
 const TEXT_SIZES: { size: TextSize; label: string }[] = [
   { size: 'sm', label: '小' },
@@ -80,7 +81,7 @@ function ColorField({ label, value, onChange, presets }: { label: string; value:
     <div className="field">
       <span className="field-label">{label}</span>
       <div className="color-field">
-        <input type="color" className="color-swatch" value={value} onChange={(e) => onChange(e.target.value)} aria-label={`${label}取色`} />
+        <ColorPicker label={label} value={value} onChange={onChange} />
         <input
           className="input input-hex"
           value={draft}

@@ -19,6 +19,10 @@ export interface UpdateState {
   sourceFromDeploy: boolean;
   /** Portable copy: cannot replace itself; the user downloads the new one. */
   portable: boolean;
+  /** The source's channel.json says this version must update: the prompt stays, and it installs when idle. */
+  required?: boolean;
+  /** Installed plugins with a newer version in their sources, as the last check found. */
+  pluginUpdates?: number;
 }
 
 export interface Notice {
@@ -76,6 +80,28 @@ export function compareVersions(a: string, b: string): number {
   return semverCompare(bare(a), bare(b));
 }
 
+/** What a source's channel.json says (the publisher edits it by hand; every field may be absent). */
+export interface ChannelInfo {
+  /** Versions below this one must update. */
+  required?: string;
+  /** The channel moved: everything it held is read from here from now on (https only). */
+  movedTo?: string;
+}
+
+const SEMVERISH = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
+
+/**
+ * channel.json: { "required": "0.2.0", "movedTo": "https://…/" }; anything else is ignored, so a wrong file never
+ * forces an update or moves the channel.
+ */
+export function parseChannel(raw: unknown): ChannelInfo {
+  const v = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const required = typeof v.required === 'string' && SEMVERISH.test(v.required.trim()) ? v.required.trim().replace(/^v/, '') : undefined;
+  const moved = typeof v.movedTo === 'string' ? v.movedTo.trim() : '';
+  const movedTo = /^https:\/\//i.test(moved) && URL.canParse(moved) ? (moved.endsWith('/') ? moved : `${moved}/`) : undefined;
+  return { ...(required ? { required } : {}), ...(movedTo ? { movedTo } : {}) };
+}
+
 /** The fields the updater needs from electron-builder's latest.yml. */
 export interface LatestInfo {
   version: string;
@@ -92,6 +118,8 @@ export function parseLatestYml(text: string): LatestInfo | undefined {
   const version = get('version');
   const path = get('path');
   const sha512 = get('sha512');
-  if (!version || !path || !sha512 || /[\\/]|\.\./.test(path)) return undefined;
+  if (!version || !path || !sha512) return undefined;
+  // A file next to latest.yml, or (the official channel) the full https address of the release's installer.
+  if (/^https:\/\//i.test(path) ? !URL.canParse(path) : /[\\/]|\.\./.test(path)) return undefined;
   return { version, path, sha512 };
 }

@@ -28,7 +28,8 @@
     "acceptance": "node scripts/acceptance.mjs",
     "dist": "npm run dist -w @spica/desktop",
     "release:prepare": "node scripts/release/prepare.mjs",
-    "pack:plugins": "node scripts/release/pack-plugins.mjs"
+    "pack:plugins": "node scripts/release/pack-plugins.mjs",
+    "release:channel": "node scripts/release/channel-files.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

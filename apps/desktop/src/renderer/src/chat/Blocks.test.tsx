@@ -176,10 +176,25 @@ describe('ConfirmCard', () => {
     expect(card.querySelector('.card-actions')).toBeNull();
   });
 
+  it('a write: what it would change, numbered, green in and red out, before it is allowed; a new file all green', () => {
+    const change = { path: 'D:/work/a.txt', created: false, change: { hunks: [{ oldStart: 1, newStart: 1, lines: [' one', '-two', '+TWO'] }] } };
+    const { unmount } = render(<ConfirmCard block={{ type: 'confirm', callId: 'w1', name: 'edit_file', input: { path: 'a.txt', old_string: 'two', new_string: 'TWO' }, reason: '修改文件', change }} onDecide={vi.fn()} />);
+    expect(document.querySelector('.confirm-card .file-change-path')?.textContent).toBe('D:/work/a.txt');
+    const lines = [...document.querySelectorAll('.confirm-card .change-line')].map((l) => [l.className.replace('change-line is-', ''), l.querySelector('.change-gutter')?.textContent, l.querySelector('.change-text')?.textContent]);
+    expect(lines).toEqual([
+      ['same', '1', 'one'],
+      ['out', '2', 'two'],
+      ['in', '2', 'TWO'],
+    ]);
+    unmount();
+    render(<ConfirmCard block={{ type: 'confirm', callId: 'w2', name: 'write_file', input: { path: 'b.txt', content: 'x\ny' }, reason: '写入文件', change: { path: 'D:/work/b.txt', created: true } }} onDecide={vi.fn()} />);
+    expect([...document.querySelectorAll('.confirm-card .change-line')].map((l) => l.className)).toEqual(['change-line is-in', 'change-line is-in']);
+  });
+
   it('other calls: their arguments in full, under names people read', () => {
     const body = '各位好，'.repeat(40);
     render(<ConfirmCard block={{ type: 'confirm', callId: 'c4', name: 'mail__send', input: { to: 'team@example.com', subject: '样机评审时间', body }, reason: '发送邮件' }} onDecide={vi.fn()} />);
-    const rows = [...document.querySelectorAll('.confirm-args dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
+    const rows = [...document.querySelectorAll('.confirm-card .tool-arg')].map((r) => [r.querySelector('.tool-arg-key')?.textContent, r.querySelector('.tool-arg-value, .tool-arg-block')?.textContent]);
     expect(rows).toEqual([
       ['收件人', 'team@example.com'],
       ['标题', '样机评审时间'],

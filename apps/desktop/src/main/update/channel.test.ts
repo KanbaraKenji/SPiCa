@@ -24,10 +24,13 @@ describe('buildSources', () => {
     });
   });
 
-  it('a build with its own app id never reads the official channel unless told to', () => {
-    expect(buildSources({ ...nova, deploy: undefined })).toEqual({ updateSource: '', pluginSources: [] });
-    expect(buildSources({ ...nova, deploy: { app: { name: 'Nova Desk', id: 'com.example.nova' } } })).toEqual({ updateSource: '', pluginSources: [] });
+  it('a build with its own app id never takes updates from the official channel, but lists its plugins unless told otherwise', () => {
+    const official = [{ location: officialIndex, label: OFFICIAL_PLUGINS_LABEL }];
+    expect(buildSources({ ...nova, deploy: undefined })).toEqual({ updateSource: '', pluginSources: official });
+    expect(buildSources({ ...nova, deploy: { app: { name: 'Nova Desk', id: 'com.example.nova' } } })).toEqual({ updateSource: '', pluginSources: official });
     expect(buildSources({ ...nova, deploy: { updateSource: 'https://updates.example.com/nova/' } }).updateSource).toBe('https://updates.example.com/nova/');
+    expect(buildSources({ ...nova, deploy: { pluginSources: [] } }).pluginSources).toEqual([]);
+    expect(buildSources({ ...nova, deploy: { pluginSources: ['https://plugins.example.com/index.json'] } }).pluginSources).toEqual([{ location: 'https://plugins.example.com/index.json' }]);
   });
 
   it('a development run: no update checks, the repository plugins folder, unless deploy.json says otherwise', () => {

@@ -138,3 +138,16 @@ describe('the 监控台 switch', () => {
     expect(sanitizeSettings({ panels: { left: true, right: true, monitor: 1 } }).panels).toEqual({ left: true, right: true });
   });
 });
+
+describe('update settings', () => {
+  it('空闲时更新 is off unless set; a channel move keeps only an https address', () => {
+    expect(sanitizeSettings({}).updateWhenIdle).toBe(false);
+    expect(sanitizeSettings({ updateWhenIdle: true }).updateWhenIdle).toBe(true);
+    expect(sanitizeSettings({}).channelMove).toBeNull();
+    const move = { from: 'https://old.example.invalid/channel/', to: 'https://new.example.invalid/spica/' };
+    expect(sanitizeSettings({ channelMove: move }).channelMove).toEqual(move);
+    for (const bad of [{ from: '', to: move.to }, { from: move.from, to: 'http://new.example.invalid/' }, { to: move.to }, 'x', null]) {
+      expect(sanitizeSettings({ channelMove: bad }).channelMove).toBeNull();
+    }
+  });
+});

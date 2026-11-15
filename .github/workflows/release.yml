@@ -1,14 +1,23 @@
 name: Release
 
-# Two ways in:
+# Three ways in:
 #   - Push a tag like v0.2.0: build the Windows packages and the official plugin
 #     zips (with SHA-256 files and index.json) and publish them as a GitHub Release. Prepare the tag locally with: npm run release:prepare -- 0.2.0
+#     Then the official channel (the release tagged "channel", whose address the
+#     app has built in) gets this version's latest.yml and the plugins' index.json.
+#   - Push a tag like plugins-2026.11.20: only the official plugins, as a release
+#     of their own (never marked Latest); the channel gets their index.json. The
+#     app is not built.
 #   - Push a branch named ci/release-dryrun*: the same build, but the packages
-#     are only uploaded as workflow artifacts. No Release, no tag.
+#     and the channel files are only uploaded as workflow artifacts. No Release, no tag.
+# The channel release is made by hand once (npm run release:channel -- --channel-json
+# writes its first files); a release stops when it is not there. Its channel.json
+# ("required", "movedTo") is edited by hand only and never uploaded from here.
 on:
   push:
     tags:
       - 'v*'
+      - 'plugins-*'
     branches:
       - 'ci/release-dryrun*'
 
@@ -34,11 +43,17 @@ jobs:
       # On a tag, the tag is the version: if package.json disagrees (tag pushed
       # without release:prepare), the packages still carry the tag's version.
       # On a dry-run branch, the version in apps/desktop/package.json is used.
+      # SPICA_KIND: app (a v* tag), plugins (a plugins-* tag) or dryrun.
       - name: Decide the version
         shell: bash
         run: |
           current="$(node -p "require('./apps/desktop/package.json').version")"
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+          case "$GITHUB_REF_NAME" in plugins-*) kind=plugins ;; *) if [ "$GITHUB_REF_TYPE" = "tag" ]; then kind=app; else kind=dryrun; fi ;; esac
+          echo "SPICA_KIND=$kind" >> "$GITHUB_ENV"
+          if [ "$kind" = "plugins" ]; then
+            version="$current"
+            echo "Plugin release $GITHUB_REF_NAME: the app is not built."
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
             version="${GITHUB_REF_NAME#v}"
             if [ "$current" != "$version" ]; then
               echo "::warning::apps/desktop/package.json says $current, tag says $version; building $version."
@@ -62,6 +77,7 @@ jobs:
       # Per-user NSIS installer (no administrator rights) + portable exe,
       # see apps/desktop/electron-builder.yml.
       - run: npm run dist
+        if: env.SPICA_KIND != 'plugins'
 
       # Official plugins: <name>-<version>.zip and .zip.sha256 for each folder in
       # plugins/, plus index.json, into out/plugins/ (scripts/release/pack-plugins.mjs).
@@ -71,15 +87,30 @@ jobs:
       - name: Check the packages
         shell: bash
         run: |
-          cd apps/desktop/release
-          ls -la
-          for f in "Spica-Setup-$SPICA_VERSION.exe" "Spica-Setup-$SPICA_VERSION.exe.blockmap" "Spica-Portable-$SPICA_VERSION.exe" latest.yml; do
-            [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
-          done
+          if [ "$SPICA_KIND" != "plugins" ]; then
+            cd apps/desktop/release
+            ls -la
+            for f in "Spica-Setup-$SPICA_VERSION.exe" "Spica-Setup-$SPICA_VERSION.exe.blockmap" "Spica-Portable-$SPICA_VERSION.exe" latest.yml; do
+              [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
+            done
+          fi
           cd "$GITHUB_WORKSPACE/out/plugins"
           ls -la
           [ -f index.json ] || { echo "::error::missing out/plugins/index.json"; exit 1; }
           sha256sum -c *.zip.sha256
+
+      # The official channel's latest.yml and index.json (scripts/release/channel-files.mjs):
+      # the same files with every package named by its full address on this release.
+      # A dry run names the release a v<version> tag would make.
+      - name: Write the channel files
+        shell: bash
+        run: |
+          case "$SPICA_KIND" in
+            plugins) npm run release:channel -- --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" --no-app ;;
+            app) npm run release:channel -- --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" ;;
+            *) npm run release:channel -- --repo "$GITHUB_REPOSITORY" --tag "v$SPICA_VERSION" ;;
+          esac
+          ls -la out/channel
 
       - name: Upload the packages (dry run)
         if: github.ref_type == 'branch'
@@ -94,11 +125,25 @@ jobs:
             out/plugins/*.zip
             out/plugins/*.zip.sha256
             out/plugins/index.json
+            out/channel/latest.yml
+            out/channel/index.json
           if-no-files-found: error
           retention-days: 7
 
-      - name: Publish the GitHub Release
+      # Before anything is published: the channel must be there (it is made by hand once).
+      - name: Check the channel release
         if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view channel --repo "$GITHUB_REPOSITORY" > /dev/null || {
+            echo "::error::No release tagged 'channel'. Make it once by hand (npm run release:channel -- --channel-json writes its first files), then run this again."
+            exit 1
+          }
+
+      - name: Publish the GitHub Release
+        if: env.SPICA_KIND == 'app'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -114,11 +159,12 @@ jobs:
             echo
             echo "## Official plugins"
             echo
-            echo "In Spica, open Settings › Plugins › Market (设置 › 插件 › 市场), press Add source (添加来源) and paste this address:"
+            echo "Spica lists them under Settings › Plugins › Market (设置 › 插件 › 市场), marked 官方, and checks each one's SHA-256 before installing."
+            echo "Builds up to 0.2.0-rc.3 do not have them built in: press Add source (添加来源) there and paste this address:"
             echo
-            echo "    https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/index.json"
+            echo "    https://github.com/$GITHUB_REPOSITORY/releases/download/channel/index.json"
             echo
-            echo "Spica lists the plugins below the sources and checks each one's SHA-256 before installing. You can also download a \`.zip\` and add its path the same way."
+            echo "You can also download a \`.zip\` and add its path the same way."
             echo
           } > "$notes"
           gh release create "$GITHUB_REF_NAME" \
@@ -133,3 +179,35 @@ jobs:
             --title "Spica $GITHUB_REF_NAME" \
             --notes-file "$notes" \
             --generate-notes $prerelease
+
+      - name: Publish the plugin release
+        if: env.SPICA_KIND == 'plugins'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          notes="$RUNNER_TEMP/plugin-notes.md"
+          {
+            echo "Official plugins only; the app is not part of this release."
+            echo
+            echo "Spica lists them under Settings › Plugins › Market (设置 › 插件 › 市场) and offers the update to those who have them."
+          } > "$notes"
+          gh release create "$GITHUB_REF_NAME" \
+            out/plugins/*.zip \
+            out/plugins/*.zip.sha256 \
+            out/plugins/index.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Spica plugins $GITHUB_REF_NAME" \
+            --notes-file "$notes" \
+            --latest=false
+
+      # Last, once the release it points at is there: the channel's two files are replaced.
+      - name: Update the channel
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          files="out/channel/index.json"
+          if [ "$SPICA_KIND" = "app" ]; then files="out/channel/latest.yml $files"; fi
+          gh release upload channel $files --clobber --repo "$GITHUB_REPOSITORY"

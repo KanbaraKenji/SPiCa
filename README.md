@@ -67,10 +67,10 @@ Each release also carries the official plugins as zips, each with a `.sha256` fi
   checks each package's SHA-256 before installing, and **Check for updates** (检查更新) looks
   for newer versions. The list comes from Spica's official channel, which every release refreshes.
 - **Builds up to 0.2.0-rc.3** do not have the official channel yet: press **Add source**
-  (添加来源), paste a release's `index.json` address and press **Add** (添加):
+  (添加来源), paste the official channel's `index.json` address and press **Add** (添加):
 
   ```
-  https://github.com/KanbaraKenji/SPiCa/releases/download/<tag>/index.json
+  https://github.com/KanbaraKenji/SPiCa/releases/download/channel/index.json
   ```
 
 - **One zip:** download for example `outlook-<version>.zip`, then under **Add source** paste
@@ -156,6 +156,7 @@ Design documents are in Chinese; start at [docs/README.md](docs/README.md).
 | `npm run acceptance` | Run the automated acceptance journeys and write a summary |
 | `npm run pack:plugins` | Pack the official plugins into zips with SHA-256 files and `index.json` (`out/plugins/`) |
 | `npm run release:prepare -- <version>` | Set the version, commit and tag a release (does not push) |
+| `npm run release:channel -- --repo <owner/name> --tag <tag>` | Write the official channel's `latest.yml` and `index.json` (`out/channel/`), packages named by their full address on that release |
 
 ## Acceptance journeys
 

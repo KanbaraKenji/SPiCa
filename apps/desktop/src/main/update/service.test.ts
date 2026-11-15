@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { UpdateService } from './service';
 
-function sourceWith(version: string, opts: { badHash?: boolean; notices?: unknown } = {}) {
+function sourceWith(version: string, opts: { badHash?: boolean; notices?: unknown; channel?: unknown } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'spica-src-'));
   const file = `Spica-Setup-${version}.exe`;
   const bytes = Buffer.from(`installer ${version}`);
@@ -13,6 +13,7 @@ function sourceWith(version: string, opts: { badHash?: boolean; notices?: unknow
   const sha = opts.badHash ? 'nope' : createHash('sha512').update(bytes).digest('base64');
   writeFileSync(join(dir, 'latest.yml'), `version: ${version}\nfiles:\n  - url: ${file}\n    sha512: ${sha}\npath: ${file}\nsha512: ${sha}\n`);
   if (opts.notices) writeFileSync(join(dir, 'announcements.json'), JSON.stringify(opts.notices));
+  if (opts.channel !== undefined) writeFileSync(join(dir, 'channel.json'), typeof opts.channel === 'string' ? opts.channel : JSON.stringify(opts.channel));
   return dir;
 }
 
@@ -73,6 +74,80 @@ describe('UpdateService', () => {
       },
     });
     expect((await s.check()).status).toBe('latest');
-    expect(calls).toEqual(['https://updates.example.invalid/spica/latest.yml']);
+    expect(calls).toEqual(['https://updates.example.invalid/spica/channel.json', 'https://updates.example.invalid/spica/latest.yml']);
+  });
+
+  it('channel.json marks versions below "required" as must-update; the mark can be taken back while it waits', async () => {
+    const dir = sourceWith('0.3.0', { channel: { required: '0.2.0' } });
+    const { s } = service(dir);
+    expect(await s.check()).toMatchObject({ status: 'ready', available: '0.3.0', required: true });
+    writeFileSync(join(dir, 'channel.json'), '{}');
+    expect(await s.check()).toMatchObject({ status: 'ready', required: false });
+    writeFileSync(join(dir, 'channel.json'), JSON.stringify({ required: 'v0.3.0' }));
+    expect(await s.check()).toMatchObject({ status: 'ready', required: true });
+  });
+
+  it('not required: at or above the mark, no channel.json, or one that cannot be read', async () => {
+    expect(await service(sourceWith('0.3.0', { channel: { required: '0.1.0' } })).s.check()).toMatchObject({ status: 'ready', required: false });
+    expect(await service(sourceWith('0.3.0')).s.check()).toMatchObject({ status: 'ready', required: false });
+    expect(await service(sourceWith('0.3.0', { channel: '{ nope' })).s.check()).toMatchObject({ status: 'ready', required: false });
+    expect(await service(sourceWith('0.3.0', { channel: { required: 'soon' } })).s.check()).toMatchObject({ status: 'ready', required: false });
+    expect(await service(sourceWith('0.3.0', { channel: { required: '0.2.0' } }), { portable: true }).s.check()).toMatchObject({ status: 'manual', required: true });
+  });
+
+  it('downloads the installer from the full address latest.yml gives (the official channel)', async () => {
+    const bytes = Buffer.from('installer 0.2.0-rc.10');
+    const sha = createHash('sha512').update(bytes).digest('base64');
+    const exe = 'https://downloads.example.invalid/v0.2.0-rc.10/Spica-Setup-0.2.0-rc.10.exe';
+    const calls: string[] = [];
+    const reply = (body: string | Buffer, status = 200) => ({ ok: status < 400, status, text: async () => String(body), arrayBuffer: async () => new Uint8Array(Buffer.from(body)).buffer });
+    const { s, launchInstaller } = service('https://channel.example.invalid/channel/', {
+      currentVersion: '0.2.0-rc.9',
+      fetch: async (url) => {
+        calls.push(url);
+        if (url.endsWith('/latest.yml')) return reply(`version: 0.2.0-rc.10\npath: ${exe}\nsha512: ${sha}\n`);
+        if (url === exe) return reply(bytes);
+        return reply('', 404);
+      },
+    });
+    expect(await s.check()).toMatchObject({ status: 'ready', available: '0.2.0-rc.10', required: false });
+    expect(calls).toEqual(['https://channel.example.invalid/channel/channel.json', 'https://channel.example.invalid/channel/latest.yml', exe]);
+    s.install();
+    expect(launchInstaller.mock.calls[0]?.[0]).toMatch(/Spica-Setup-0\.2\.0-rc\.10\.exe$/);
+  });
+
+  it('the channel the build came with moved (https only): followed once, remembered, and read from there in the same check', async () => {
+    const files: Record<string, string> = {
+      'https://old.example.invalid/channel/channel.json': JSON.stringify({ movedTo: 'https://new.example.invalid/spica' }),
+      'https://new.example.invalid/spica/channel.json': JSON.stringify({ required: '0.3.0' }),
+      'https://new.example.invalid/spica/latest.yml': 'version: 0.1.0\npath: a.exe\nsha512: x\n',
+    };
+    let source = 'https://old.example.invalid/channel/';
+    const moves: string[][] = [];
+    const calls: string[] = [];
+    const { s } = service(source, {
+      getSource: () => ({ source, fromDeploy: true }),
+      onMoved: (from, to) => {
+        moves.push([from, to]);
+        source = to;
+      },
+      fetch: async (url) => {
+        calls.push(url);
+        const body = files[url];
+        return { ok: body !== undefined, status: body === undefined ? 404 : 200, text: async () => body ?? '', arrayBuffer: async () => new ArrayBuffer(0) };
+      },
+    });
+    expect(await s.check()).toMatchObject({ status: 'latest', source: 'https://new.example.invalid/spica/' });
+    expect(moves).toEqual([['https://old.example.invalid/channel/', 'https://new.example.invalid/spica/']]);
+    expect(calls).toEqual(['https://old.example.invalid/channel/channel.json', 'https://new.example.invalid/spica/channel.json', 'https://new.example.invalid/spica/latest.yml']);
+  });
+
+  it('a move is not followed for a source the user typed, nor to an address that is not https', async () => {
+    const onMoved = vi.fn();
+    const own = sourceWith('0.1.0', { channel: { movedTo: 'https://new.example.invalid/spica/' } });
+    expect((await service(own, { onMoved }).s.check()).status).toBe('latest');
+    const http = sourceWith('0.1.0', { channel: { movedTo: 'http://new.example.invalid/spica/' } });
+    expect((await service(http, { onMoved, getSource: () => ({ source: http, fromDeploy: true }) }).s.check()).status).toBe('latest');
+    expect(onMoved).not.toHaveBeenCalled();
   });
 });

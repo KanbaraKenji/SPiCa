@@ -8,6 +8,7 @@ import { APP_NAME } from '../../../shared/app-identity';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
 import { Group, Pane, Row } from './Group';
+import { Switch } from './Switch';
 
 export interface AboutProps {
   version: string;
@@ -17,6 +18,9 @@ export interface AboutProps {
   onSource(source: string): void;
   onCheck(): void;
   onInstall(): void;
+  /** 空闲时更新: a downloaded update installs itself when the computer is left alone. */
+  whenIdle: boolean;
+  onWhenIdle(on: boolean): void;
   /** The 监控台's switch (nine clicks on the version). */
   monitor?: { on: boolean; onToggle(): void };
 }
@@ -26,7 +30,7 @@ export const MONITOR_CLICKS = 9;
 /** A longer pause between two clicks starts the count again. */
 export const MONITOR_CLICK_GAP_MS = 1500;
 
-export function About({ version, update, ownSource, onSource, onCheck, onInstall, monitor }: AboutProps) {
+export function About({ version, update, ownSource, onSource, onCheck, onInstall, whenIdle, onWhenIdle, monitor }: AboutProps) {
   // the clicks so far (and when the last one was); leaving the page starts again
   const taps = useRef({ n: 0, at: 0 });
   const [switched, setSwitched] = useState<boolean | null>(null);
@@ -107,6 +111,12 @@ export function About({ version, update, ownSource, onSource, onCheck, onInstall
           </button>
         </form>
         </Row>
+        {/* A portable copy cannot replace itself: nothing to switch on. */}
+        {update?.portable ? null : (
+          <Row title="空闲时更新">
+            <Switch on={whenIdle} label="空闲时更新" onChange={onWhenIdle} />
+          </Row>
+        )}
         {update?.status === 'checking' ? (
           <Pane>
             <p className="provider-result" role="status">

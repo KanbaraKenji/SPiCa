@@ -53,13 +53,13 @@ describe('messages to other agents past the limit', () => {
 });
 
 describe('a stop at a 花费上限, or the API out of money', () => {
-  it('one line and 模型设置, which opens 设置 › 模型 at the provider the stop named', () => {
+  it('one line and 模型, which opens 设置 › 模型 at the provider the stop named', () => {
     const openModelSettings = vi.fn();
     const actions = { openModelSettings } as unknown as ConversationActions;
     render(<Conversation session={session} transcript={{ items: [{ kind: 'user', id: 'u', text: '整理', steer: false }, answer], error: '已达花费上限', errorAction: 'models', errorProvider: 'p-1' }} actions={actions} />);
     expect(screen.getByText('已达花费上限')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '重置' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '模型设置' }));
+    fireEvent.click(screen.getByRole('button', { name: '模型' }));
     expect(openModelSettings).toHaveBeenCalledWith('p-1');
   });
 });
