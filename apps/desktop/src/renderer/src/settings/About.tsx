@@ -85,8 +85,8 @@ export function About({ version, update, onCheck, onInstall, whenIdle, onWhenIdl
             {busy ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={16} />}
           </button>
         </Row>
-        {/* A portable copy cannot replace itself: nothing to switch on. */}
-        {update?.portable ? null : (
+        {/* A portable copy cannot replace itself, and a build that checks for nothing gets nothing: no switch. */}
+        {update?.portable || noSource ? null : (
           <Row title="空闲时更新">
             <Switch on={whenIdle} label="空闲时更新" onChange={onWhenIdle} />
           </Row>

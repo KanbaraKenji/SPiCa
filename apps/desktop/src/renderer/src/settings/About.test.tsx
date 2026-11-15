@@ -33,6 +33,8 @@ describe('关于 › 检查更新', () => {
     fireEvent.click(button);
     expect(onCheck).not.toHaveBeenCalled();
     expect(screen.getByRole('status').textContent).toBe('这个版本不检查更新。');
+    // nothing would ever install itself: no 空闲时更新 (as a portable copy)
+    expect(screen.queryByRole('switch', { name: '空闲时更新' })).toBeNull();
   });
 
   it('with a source: a click checks; while it runs it says so; then the result', () => {
