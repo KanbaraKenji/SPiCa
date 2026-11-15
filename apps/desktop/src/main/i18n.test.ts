@@ -52,6 +52,15 @@ describe('t()', () => {
     expect(t('语言')).toBe('語言');
   });
 
+  it('drops only a context at the end of a key; a text from elsewhere keeps its bars', () => {
+    expect(t('甲 | 乙')).toBe('甲 | 乙');
+    expect(t('模型|single')).toBe('模型');
+    expect(tx('a | b')).toBe('a | b');
+    expect(tx('连接失败|retry')).toBe('连接失败|retry');
+    setLocale('en');
+    expect([t('甲 | 乙'), tx('a | b'), t('模型|single')]).toEqual(['甲 | 乙', 'a | b', 'Model']);
+  });
+
   it('leaves braces that name no variable as they are', () => {
     expect(fill('{a} 和 {b} 和 { c }', { a: 1 })).toBe('1 和 {b} 和 { c }');
   });

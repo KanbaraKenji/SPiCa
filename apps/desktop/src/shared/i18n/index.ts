@@ -80,13 +80,17 @@ function pick(entry: Entry, vars?: Vars): string {
   return vars?.n === 1 ? entry.one : entry.other;
 }
 
-/** The text of a key in a language, unfilled; the key itself (Simplified) when the catalog lacks it. */
-export function lookup(key: string, locale: Locale = current, vars?: Vars): string {
+/** A context at the end of a key ("打开|switch"): a bar and a short lowercase English word, nothing else. */
+const CONTEXT = /\|[a-z][a-z-]{0,23}$/;
+
+/**
+ * The text of a key in a language, unfilled; the key itself (Simplified) when the catalog lacks it, without a
+ * context it ends with. `plain`: a text from elsewhere (tx), whose bars are its own.
+ */
+export function lookup(key: string, locale: Locale = current, vars?: Vars, plain = false): string {
   const entry = CATALOGS[locale][key];
   if (entry !== undefined) return pick(entry, vars);
-  // A key with a context ("打开|开关") shows its text without the context in Simplified.
-  const bar = key.indexOf('|');
-  return bar < 0 ? key : key.slice(0, bar);
+  return plain ? key : key.replace(CONTEXT, '');
 }
 
 /** A phrase in the current language. The key is the Simplified text, written literally (a test reads them). */
@@ -112,7 +116,7 @@ export function N_(key: string): string {
  * word for word, shown as it is otherwise. The keys it can meet are listed with N_ where they are known.
  */
 export function tx(text: string): string {
-  return lookup(text);
+  return lookup(text, current, undefined, true);
 }
 
 /** The language for Intl (dates, numbers). */
