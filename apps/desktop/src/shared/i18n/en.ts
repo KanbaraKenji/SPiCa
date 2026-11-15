@@ -9,5 +9,6 @@ import { EN_MODELS } from './en/models';
 import { EN_SETTINGS } from './en/settings';
 import { EN_SHELL } from './en/shell';
 import { EN_CHAT } from './en/chat';
+import { EN_MEMORY } from './en/memory';
 
-export const EN: Catalog = merge([EN_APPEARANCE, EN_WINDOW, EN_MAIN, EN_MODELS, EN_SETTINGS, EN_SHELL, EN_CHAT]);
+export const EN: Catalog = merge([EN_APPEARANCE, EN_WINDOW, EN_MAIN, EN_MODELS, EN_SETTINGS, EN_SHELL, EN_CHAT, EN_MEMORY]);

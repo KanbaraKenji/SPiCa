@@ -603,7 +603,7 @@ export class AgentStore {
     try {
       const r = await this.#api.askMemory(target, text);
       if (r.started) return null;
-      return r.reason === 'no_model' ? '还没有配置模型' : r.reason === 'off' ? '记忆已关闭' : r.reason === 'running' ? '记忆正在整理' : null;
+      return r.reason === 'no_model' ? t('还没有配置模型') : r.reason === 'off' ? t('记忆已关闭') : r.reason === 'running' ? t('记忆正在整理') : null;
     } catch (err) {
       return friendlyError(err);
     }
