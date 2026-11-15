@@ -7342,6 +7342,36 @@ section.plugins-part > .plugins-part-title {
   gap: 8px;
 }
 
+/* As Claude's memory pages: the box (with what the sentence did above it) is held at the bottom of the page; the
+   page fills the pane, so a short page leaves the space above the box, and a long one scrolls under it. */
+.settings-column:has(.memory-ask) {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+
+.settings-column:has(.memory-ask) > .settings-panel,
+.memory-detail:has(> .memory-ask) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* In the page's column the ← link keeps its own width. */
+.memory-detail:has(> .memory-ask) > .memory-back {
+  align-self: flex-start;
+}
+
+.memory-detail > .memory-ask {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: auto;
+  padding: 16px 0 20px;
+  background: var(--spica-settings-pane);
+}
+
 .memory-ask-box {
   display: flex;
   align-items: center;
