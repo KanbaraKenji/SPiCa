@@ -198,7 +198,6 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
     if (!ready || sentLocale.current === locale) return;
     sentLocale.current = locale;
     post({ event: { type: 'locale', locale } });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locale, ready]);
   // Theme and plugin changes are pushed to a page that said it is ready.
   const themeKey = JSON.stringify(theme);
