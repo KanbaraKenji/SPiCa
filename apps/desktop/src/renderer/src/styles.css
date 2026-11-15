@@ -3218,8 +3218,6 @@ button.ctx-row:hover {
 
 .dialog-check > input {
   flex: none;
-  margin: 0;
-  accent-color: var(--spica-accent);
 }
 
 /* The close question (ui/CloseDialog.tsx): the title, a line only while a task runs, the two choices one under the
@@ -3741,23 +3739,75 @@ button.ctx-row:hover {
   gap: 8px;
 }
 
+/* The colour's swatch (ui/ColorPicker.tsx): pressing it opens the app's own picker under it. */
 .color-swatch {
+  flex: none;
   width: 32px;
   height: 32px;
-  padding: 0;
+  padding: 3px;
   border: 1px solid var(--spica-border-strong);
   border-radius: var(--radius-m);
   background: none;
   cursor: pointer;
 }
 
-.color-swatch::-webkit-color-swatch-wrapper {
-  padding: 3px;
+.color-swatch.is-open {
+  border-color: var(--spica-accent);
 }
 
-.color-swatch::-webkit-color-swatch {
-  border: 0;
+.color-swatch-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
   border-radius: 4px;
+}
+
+/* The picker's layer, a menu's look: the colour area (saturation across, brightness up), the hue bar, the hex. */
+.color-layer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.color-area {
+  position: relative;
+  width: 200px;
+  height: 130px;
+  border-radius: var(--radius-s);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.color-hue {
+  position: relative;
+  width: 200px;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.color-thumb {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.color-area:focus-visible,
+.color-hue:focus-visible {
+  outline: 2px solid var(--spica-accent);
+  outline-offset: 2px;
+}
+
+.color-layer .input-hex {
+  width: 100%;
 }
 
 .input-hex {
@@ -4318,8 +4368,6 @@ button.ctx-row:hover {
 
 .model-row-name > input {
   flex: none;
-  margin: 0;
-  accent-color: var(--spica-accent);
 }
 
 .model-row-id {
@@ -7891,4 +7939,74 @@ section.plugins-part > .plugins-part-title {
   white-space: pre-wrap;
   /* by words; only what has no place to break (a path, an address, JSON) is broken inside */
   overflow-wrap: anywhere;
+}
+
+/* Number boxes are plain boxes, as every other: no browser arrows (the keys and typing still work). */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+/* Every checkbox and radio is drawn by the app, not the browser: a small square (a round one for a radio) in the
+   boxes' edge colour; on, the square filled with the accent and a white tick, the round one a dot of the accent. */
+input[type='checkbox'],
+input[type='radio'] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: none;
+  display: inline-grid;
+  place-content: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid var(--spica-border-strong);
+  border-radius: 4px;
+  background: var(--spica-raised);
+  cursor: pointer;
+}
+
+input[type='radio'] {
+  border-radius: 50%;
+}
+
+input[type='checkbox']:checked {
+  border-color: var(--spica-accent);
+  background: var(--spica-accent);
+}
+
+input[type='checkbox']:checked::after {
+  content: '';
+  width: 9px;
+  height: 5px;
+  border-left: 2px solid var(--spica-on-accent);
+  border-bottom: 2px solid var(--spica-on-accent);
+  /* the tick's corner sits low in its box: drawn 2px higher so it looks centred */
+  margin-bottom: 2px;
+  transform: rotate(-45deg);
+}
+
+input[type='radio']:checked {
+  border-color: var(--spica-accent);
+}
+
+input[type='radio']:checked::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--spica-accent);
+}
+
+input[type='checkbox']:focus-visible,
+input[type='radio']:focus-visible {
+  outline: 2px solid var(--spica-accent);
+  outline-offset: 2px;
+}
+
+input[type='checkbox']:disabled,
+input[type='radio']:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
