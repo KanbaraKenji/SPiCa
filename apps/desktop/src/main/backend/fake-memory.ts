@@ -183,11 +183,24 @@ export class FakeMemory {
       this.#put({ ...m, entryId: entry.id });
       grouped.push({ item: m.id, entry: entry.id });
     }
+    // entries marked 待整理: the summary made again from the details (the core asks the model), the mark cleared
+    const entries: NonNullable<MemoryTidyRun['entries']> = [];
+    for (const e of this.#entries.filter((x) => x.stale)) {
+      const { stale: _s, ...rest } = e;
+      void _s;
+      const summary = this.list().filter((m) => m.entryId === e.id).map((m) => m.text).join('，').slice(0, SUMMARY_CHARS);
+      if (!summary || summary === e.summary) {
+        this.#putEntry(rest);
+        continue;
+      }
+      this.#putEntry({ ...rest, summary, by: 'assistant', updatedAt: now });
+      entries.push({ entry: e.id, at: now, before: { name: e.name, summary: e.summary, ...(e.category ? { category: e.category } : {}), stale: true, updatedAt: e.updatedAt } });
+    }
     const until = fresh.at(-1)?.at;
     if (until) this.#cursor = until;
-    const run: MemoryTidyRun = { id, by: 'user', status: 'done', startedAt: now, endedAt: now, sessions: new Set(fresh.map((m) => m.sessionId)).size, messages: fresh.length, changes, refused: 0, costUsd: 0.0004, ...(grouped.length ? { grouped } : {}), ...(until ? { until } : {}) };
+    const run: MemoryTidyRun = { id, by: 'user', status: 'done', startedAt: now, endedAt: now, sessions: new Set(fresh.map((m) => m.sessionId)).size, messages: fresh.length, changes, refused: 0, costUsd: 0.0004, ...(grouped.length ? { grouped } : {}), ...(entries.length ? { entries } : {}), ...(until ? { until } : {}) };
     this.#runs.unshift(run);
-    if (changes.length || grouped.length) this.#changed({ action: 'tidied', count: changes.length });
+    if (changes.length || grouped.length || entries.length) this.#changed({ action: 'tidied', count: changes.length });
     return structuredClone(run);
   }
 
@@ -224,6 +237,15 @@ export class FakeMemory {
         const { entryId: _e, ...rest } = cur;
         void _e;
         this.#put(rest);
+        any = true;
+      }
+      // and the summaries it made again
+      for (const t of run.entries ?? []) {
+        const cur = this.#entry(t.entry);
+        if (!cur || !t.before || cur.updatedAt !== t.at) continue;
+        const { category: _c, ...rest } = cur;
+        void _c;
+        this.#putEntry({ ...rest, ...t.before });
         any = true;
       }
     }
@@ -342,7 +364,11 @@ export class FakeMemory {
     const it = this.#get(id);
     if (!it || it.status !== 'active') return undefined;
     const t = text.trim();
-    return this.#refusal(t) ?? this.#changed({ action: 'edited', item: this.#put({ ...it, text: t, by: 'user', updatedAt: this.#now() }) });
+    const no = this.#refusal(t);
+    if (no) return no;
+    const item = this.#put({ ...it, text: t, by: 'user', updatedAt: this.#now() });
+    const entry = t !== it.text ? this.#markStale(it.entryId) : undefined;
+    return this.#changed({ action: 'edited', item, ...(entry ? { entry: structuredClone(entry) } : {}) });
   }
 
   editEntry(id: number, input: MemoryEntryInput): MemoryCardMeta | MemoryRefusal | undefined {
@@ -350,8 +376,9 @@ export class FakeMemory {
     if (!cur) return undefined;
     const no = this.#entryRefusal(input, id);
     if (no) return no;
-    const { category: _c, ...rest } = cur;
+    const { category: _c, stale: _s, ...rest } = cur;
     void _c;
+    void _s;
     const entry = this.#putEntry({ ...rest, name: input.name.trim(), summary: input.summary.trim(), ...(input.category ? { category: input.category } : {}), by: 'user', updatedAt: this.#now() });
     return this.#changed({ action: 'entry_edited', entry });
   }
@@ -379,8 +406,18 @@ export class FakeMemory {
     if (!it || it.status !== 'active') return undefined;
     const entry = it.entryId !== undefined ? this.#entry(it.entryId) : undefined;
     this.#drop(it.id);
-    if (entry && !this.#items.some((m) => m.entryId === entry.id && m.status === 'active')) this.#entries = this.#entries.filter((e) => e.id !== entry.id);
-    return this.#changed({ action: 'deleted', item: structuredClone(it), ...(entry ? { entry: structuredClone(entry) } : {}) });
+    const left = entry && this.#items.some((m) => m.entryId === entry.id && m.status === 'active');
+    if (entry && !left) this.#entries = this.#entries.filter((e) => e.id !== entry.id);
+    // the details left: the summary may still say what went
+    const now = left ? this.#markStale(entry.id) : entry;
+    return this.#changed({ action: 'deleted', item: structuredClone(it), ...(now ? { entry: structuredClone(now) } : {}) });
+  }
+
+  /** Marks an entry 待整理 (its time as it was). */
+  #markStale(id: number | undefined): MemoryEntry | undefined {
+    const cur = id !== undefined ? this.#entry(id) : undefined;
+    if (!cur || cur.stale) return cur;
+    return this.#putEntry({ ...cur, stale: true });
   }
 
   /** Settings 全部清除: every entry and active item go for good, as with delete. */

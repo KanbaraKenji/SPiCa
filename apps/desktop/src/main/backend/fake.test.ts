@@ -149,6 +149,22 @@ describe('FakeBackend', () => {
     b.dispose();
   });
 
+  it('memory: deleting a detail marks its entry 待整理; a tidy makes its summary again and clears it; the undo puts both back', async () => {
+    const b = new FakeBackend({ speed: 0 });
+    const { until } = collect(b);
+    const made = (await b.addMemory('样品寄出前拍照', { name: '样品', summary: '寄出前拍照，单号写进周报', category: 'areas' })) as { entry: { id: number }; item: { id: number } };
+    await b.addMemory('样品单号写进周报', made.entry.id);
+    expect(await b.forgetMemory(made.item.id)).toMatchObject({ action: 'deleted', entry: { stale: true } });
+    await b.tidyMemories();
+    const run = (await until((e) => e.type === 'memory.tidy' && e.run.status === 'done')) as Extract<CoreEvent, { type: 'memory.tidy' }>;
+    const after = (await b.listMemoryEntries()).find((e) => e.id === made.entry.id)!;
+    expect(after.summary).toBe('样品单号写进周报');
+    expect(after.stale).toBeUndefined();
+    await b.undoMemoryTidy(run.run.id);
+    expect((await b.listMemoryEntries()).find((e) => e.id === made.entry.id)).toMatchObject({ summary: '寄出前拍照，单号写进周报', stale: true });
+    b.dispose();
+  });
+
   it('memory: regenerating an answer that saved a note takes the note back first; the round can be regenerated', async () => {
     const b = new FakeBackend({ speed: 0, seed: false });
     const { events, until } = collect(b);

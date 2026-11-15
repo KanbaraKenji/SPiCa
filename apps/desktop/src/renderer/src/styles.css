@@ -7139,6 +7139,16 @@ section.plugins-part > .plugins-part-title {
   font-variant-numeric: tabular-nums;
 }
 
+/* 待整理: plain muted text after the summary (not a pill: it is not clickable). */
+.memory-stale {
+  flex: none;
+  white-space: nowrap;
+}
+
+.memory-quote .memory-stale {
+  margin-left: 8px;
+}
+
 .memory-actions {
   flex: none;
   display: flex;

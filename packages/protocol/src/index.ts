@@ -759,12 +759,18 @@ export interface MemoryEntry {
   category?: MemoryCategory;
   /** Who made the last change: the assistant (remember, a tidy) or the user (settings). */
   by: 'assistant' | 'user';
+  /**
+   * A detail went out or changed (settings 删除 / 编辑) and the summary was not rewritten: it may still say what the
+   * details no longer hold (待整理). The next tidy is asked to make it again; any new summary (a tidy, the settings, remember, forget) clears it.
+   * Setting it leaves updatedAt as it was.
+   */
+  stale?: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
 /** An entry's name, summary and category as they were (to put back on undo), with its time then. */
-export type MemoryEntryState = Pick<MemoryEntry, 'name' | 'summary' | 'category' | 'updatedAt'>;
+export type MemoryEntryState = Pick<MemoryEntry, 'name' | 'summary' | 'category' | 'stale' | 'updatedAt'>;
 
 /**
  * One detail of the user's memory: a short sentence, with the user's own words it rests on, in an entry (entryId) or

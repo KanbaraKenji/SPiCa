@@ -259,6 +259,18 @@ describe('设置 › 记忆', () => {
     expect(p.api.add).toHaveBeenCalledWith('周报每周五发', 1);
   });
 
+  it('an entry marked stale shows 待整理 after its summary, in the list and on its page', () => {
+    setup({
+      entries: [entry(1, { name: '王经理', summary: '直属上司', category: 'people', stale: true }), entry(2, { name: '报价', summary: '含税价', category: 'areas' })],
+      items: [item(1, { entryId: 1, text: '王经理是直属上司' }), item(2, { entryId: 2, text: '报价写含税价' })],
+    });
+    const marks = [...document.querySelectorAll('.memory-row')].map((r) => r.querySelector('.memory-stale')?.textContent ?? null);
+    expect(marks.sort()).toEqual(['待整理', null].sort());
+    const boss = [...document.querySelectorAll<HTMLElement>('.memory-row')].find((r) => r.querySelector('.memory-name')?.textContent === '王经理')!;
+    fireEvent.click(boss.querySelector('.memory-open')!);
+    expect(page()!.querySelector('.memory-quote')!.textContent).toBe('直属上司待整理');
+  });
+
   it('删除 on an entry asks first (its name and how many details), then deletes the whole entry', () => {
     const p = setup({
       entries: [entry(1, { name: '王经理', summary: '直属上司', category: 'people' })],

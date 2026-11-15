@@ -30,7 +30,7 @@ import type { SessionRecord } from './store/types.ts';
 import { ProviderError } from './providers/types.ts';
 import { isoNow } from './events.ts';
 import { MEMORY_CATEGORIES } from '@spica/protocol';
-import { CATEGORY_HINTS, categoryOf, entryProblem, fromOutside, hasMemory, MEMORY_LIMITS, normalize, noteProblem, outsideText, overlap, sameName, stateOf, typed, typedText, USER_OWNER } from './memory.ts';
+import { CATEGORY_HINTS, categoryOf, entryProblem, fromOutside, hasMemory, MEMORY_LIMITS, normalize, noteProblem, outsideText, overlap, sameName, stateOf, typed, typedText, unmarked, USER_OWNER } from './memory.ts';
 import { isAbortError } from './util.ts';
 
 export const TIDY_LIMITS = {
@@ -124,7 +124,8 @@ const system = () => [
   '- merged: two or more notes of the same entry (or all in no entry) say the same thing. Give their ids and one note built from their words, shorter than them together.',
   `- added: the user said something a later conversation will need and cannot see for itself (who they are, how they want the assistant to work and answer, standing facts about their work), and no note has it. Give the note, its entry (the name of an entry listed, or a new name with its summary and category), and the ref and exact words. At most ${TIDY_LIMITS.adds}.`,
   '- grouped: notes in no entry. Put each into an entry: give their ids and the entry (a listed name, or a new name with its summary and category). Do it for every such note you do not rewrite, merge or forget; one entry per thing, not one per note.',
-  "- summarized: an entry whose summary no longer says what its notes hold (after your changes too). Give its name and the new summary, made from its notes' words.",
+  "- summarized: an entry whose summary no longer says what its notes hold (after your changes too). Give its name and the new summary, made from its notes' words. " +
+    'An entry marked [summary may be out of date] had a note deleted or changed by the user, and its summary may still say what went: give a summarized for every such entry, its summary made only from what its notes say now.',
   'Not for notes: the task at hand and its state, steps for a single job, what can be found again, passing moods, small talk; never passwords, keys, ID or account numbers; health, religion, politics only when the user asked to remember.',
   'When rewriting or merging, keep every detail of the old notes the user did not change (names, people, numbers, places, things): change only what their newer words change.',
   `A note has no subject (喜欢简短回答，先给结论, not 用户喜欢…), is in the user's language, at most ${MEMORY_LIMITS.itemChars} characters, and says only what the user said. An entry's name is short (at most ${MEMORY_LIMITS.nameChars} characters), its summary one line (at most ${MEMORY_LIMITS.summaryChars}) without a subject like the notes, in the user's language. Touch each note at most once. At most ${TIDY_LIMITS.changes} changes; when nothing needs changing, return no changes.`,
@@ -141,11 +142,13 @@ function prompt(entries: MemoryEntry[], items: MemoryItem[], fed: Fed[]): string
   const line = (m: MemoryItem) => `[${m.id}] ${m.text} (${m.updatedAt.slice(0, 10)})`;
   const live = entries.filter((e) => items.some((m) => m.entryId === e.id));
   const outside = items.filter((m) => loose(m, byId));
+  const stale = live.filter((e) => e.stale);
   return [
     'Entries now:',
     ...(live.length
-      ? live.flatMap((e) => [`## ${e.name} (${e.category ?? 'no category'}): ${e.summary}`, ...items.filter((m) => m.entryId === e.id).map(line)])
+      ? live.flatMap((e) => [`## ${e.name} (${e.category ?? 'no category'})${e.stale ? ' [summary may be out of date]' : ''}: ${e.summary}`, ...items.filter((m) => m.entryId === e.id).map(line)])
       : ['(none)']),
+    ...(stale.length ? ['', `Summaries to make again from their notes (summarized): ${stale.map((e) => e.name).join(', ')}`] : []),
     '',
     'Notes in no entry:',
     ...(outside.length ? outside.map(line) : ['(none)']),
@@ -385,7 +388,8 @@ export function applyArrange(rt: Runtime, run: MemoryTidyRun, arrange: Arrange, 
   for (const { entry, summary } of arrange.summarize) {
     const cur = rt.store.getMemoryEntry(entry.id);
     if (!cur) continue;
-    rt.store.putMemoryEntry({ ...cur, summary, by: 'assistant', updatedAt: now });
+    // a new summary: no longer 待整理 (the undo puts the mark back with the old one)
+    rt.store.putMemoryEntry({ ...unmarked(cur), summary, by: 'assistant', updatedAt: now });
     touched.push({ entry: cur.id, at: now, before: stateOf(cur) });
   }
   for (const e of made.values()) touched.push({ entry: e.id, at: e.updatedAt });

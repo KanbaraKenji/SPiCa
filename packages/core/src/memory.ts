@@ -267,7 +267,14 @@ export function entryFromOutside(session: Session, text: string, known: string):
 export type EntryRef = { id: number; summary?: string; category?: MemoryCategory } | MemoryEntryInput;
 
 /** An entry's name, summary, category and time (what an undo puts back). */
-export const stateOf = (e: MemoryEntry): MemoryEntryState => ({ name: e.name, summary: e.summary, ...(e.category ? { category: e.category } : {}), updatedAt: e.updatedAt });
+export const stateOf = (e: MemoryEntry): MemoryEntryState => ({ name: e.name, summary: e.summary, ...(e.category ? { category: e.category } : {}), ...(e.stale ? { stale: true } : {}), updatedAt: e.updatedAt });
+
+/** The entry without its 待整理 mark (a new summary was written). */
+export const unmarked = (e: MemoryEntry): MemoryEntry => {
+  const { stale: _gone, ...rest } = e;
+  void _gone;
+  return rest;
+};
 
 /** The user's memory: what the tools, the system prompt and the settings page use. */
 export class MemoryBook {
@@ -325,8 +332,10 @@ export class MemoryBook {
         const items = this.list({ owner });
         const entries = rt.store.listMemoryEntries(owner);
         const byId = new Map(entries.map((e) => [e.id, e]));
-        // also with nothing new to read while notes saved before there were entries are in none
-        if (fed.length > 0 || items.some((m) => loose(m, byId))) {
+        // entries marked 待整理 (with a detail left): the model is asked to make their summaries again
+        const stale = entries.filter((e) => e.stale && items.some((m) => m.entryId === e.id));
+        // also with nothing new to read while notes saved before there were entries are in none, or a summary waits
+        if (fed.length > 0 || items.some((m) => loose(m, byId)) || stale.length > 0) {
           const answer = await ask(rt, tidyPrompt(entries, items, fed), abort.signal);
           costUsd = answer.costUsd;
           const proposed = parseChanges(answer.text);
@@ -336,6 +345,7 @@ export class MemoryBook {
           // entries this tidy makes, by name: a change and the arranging may name the same new one
           const made = new Map<string, MemoryEntry>();
           changes = apply(rt, run, checked.plans, made, owner);
+          // a summary it made again clears the mark (applyArrange); one it left or that was refused stays 待整理
           arranged = applyArrange(rt, run, checked.arrange, made, owner);
         }
         const until = fed.at(-1)?.at;
@@ -480,7 +490,7 @@ export class MemoryBook {
     const shownEntries: string[] = [];
     for (const { e, n, at } of live) {
       if (shownEntries.length >= MEMORY_LIMITS.promptEntries) break;
-      const line = `- ${e.name}${e.category ? ` (${e.category})` : ''}: ${e.summary} — ${n} detail${n === 1 ? '' : 's'}, ${at.slice(0, 10)}`;
+      const line = `- ${e.name}${e.category ? ` (${e.category})` : ''}: ${e.summary}${e.stale ? ' (summary may be out of date: recall it)' : ''} — ${n} detail${n === 1 ? '' : 's'}, ${at.slice(0, 10)}`;
       if (!fits(line)) break;
       shownEntries.push(line);
     }
@@ -521,7 +531,7 @@ export class MemoryBook {
     const e = this.entryNamed(name, owner);
     const list = e ? this.details(e.id, owner) : [];
     if (!e || list.length === 0) return undefined;
-    return [`${e.name}${e.category ? ` (${e.category})` : ''}: ${e.summary}`, ...list.map((it) => `[${it.id}] ${it.text} (${it.updatedAt.slice(0, 10)})`)].join('\n');
+    return [`${e.name}${e.category ? ` (${e.category})` : ''}: ${e.summary}${e.stale ? ' (summary may be out of date: the details below are what holds)' : ''}`, ...list.map((it) => `[${it.id}] ${it.text} (${it.updatedAt.slice(0, 10)})`)].join('\n');
   }
 
   #save(m: MemoryItem): MemoryItem {
@@ -544,7 +554,7 @@ export class MemoryBook {
       const summary = ref.summary?.trim();
       const changed = (summary && summary !== cur.summary) || (ref.category && ref.category !== cur.category);
       if (!changed) return { entry: cur };
-      const entry = this.#rt.store.putMemoryEntry({ ...cur, ...(summary ? { summary } : {}), ...(ref.category ? { category: ref.category } : {}), by, updatedAt: now });
+      const entry = this.#rt.store.putMemoryEntry({ ...(summary ? unmarked(cur) : cur), ...(summary ? { summary } : {}), ...(ref.category ? { category: ref.category } : {}), by, updatedAt: now });
       return { entry, change: { at: now, before: stateOf(cur) } };
     }
     const entry = this.#rt.store.putMemoryEntry({
@@ -625,7 +635,7 @@ export class MemoryBook {
     if (!cur || cur.owner !== owner) return undefined;
     const no = this.#entryRefusal(input, owner, id);
     if (no) return no;
-    const { category: _old, ...rest } = cur;
+    const { category: _old, ...rest } = unmarked(cur);
     void _old;
     const entry = this.#rt.store.putMemoryEntry({ ...rest, name: input.name.trim(), summary: input.summary.trim(), ...(input.category ? { category: input.category } : {}), by: 'user', updatedAt: isoNow() });
     const card: MemoryCardMeta = { action: 'entry_edited', entry };
@@ -685,7 +695,7 @@ export class MemoryBook {
     let entry = cur;
     let change: MemoryItem['entryChange'];
     if (cur && summary?.trim() && summary.trim() !== cur.summary) {
-      entry = this.#rt.store.putMemoryEntry({ ...cur, summary: summary.trim(), by, updatedAt: now });
+      entry = this.#rt.store.putMemoryEntry({ ...unmarked(cur), summary: summary.trim(), by, updatedAt: now });
       change = { at: now, before: stateOf(cur) };
     }
     const item = this.#save({ ...rest, ...(change ? { entryChange: change } : {}), status: 'forgotten', by, updatedAt: now });
@@ -701,7 +711,9 @@ export class MemoryBook {
     const t = text.trim();
     const no = this.#refusal(t);
     if (no) return no;
-    const card: MemoryCardMeta = { action: 'edited', item: this.#save({ ...it, text: t, by: 'user', updatedAt: isoNow() }) };
+    const item = this.#save({ ...it, text: t, by: 'user', updatedAt: isoNow() });
+    const entry = t !== it.text ? this.#markStale(it.entryId) : undefined;
+    const card: MemoryCardMeta = { action: 'edited', item, ...(entry ? { entry } : {}) };
     this.#emit(card);
     return card;
   }
@@ -738,11 +750,20 @@ export class MemoryBook {
       void _gone;
       previous = this.#save({ ...rest, status: 'active', updatedAt: now });
     }
-    // the entry's name, summary and category go back to what they were before this save, if nothing changed it since
-    const entry = this.#putBack(it);
+    // the entry's name, summary and category go back to what they were before this save, if nothing changed it since;
+    // when something did, its summary may still say what this save added
+    const changed = it.entryChange?.before !== undefined && this.entry(it.entryId ?? -1)?.updatedAt !== it.entryChange.at;
+    const entry = changed ? this.#markStale(it.entryId) : this.#putBack(it);
     const card: MemoryCardMeta = { action: 'undone', item, ...(previous ? { previous } : {}), ...(entry ? { entry } : {}) };
     this.#emit(card);
     return card;
+  }
+
+  /** Marks an entry 待整理 (MemoryEntry.stale), its time as it was; the entry as it is now. */
+  #markStale(id: number | undefined): MemoryEntry | undefined {
+    const cur = id !== undefined ? this.entry(id) : undefined;
+    if (!cur || cur.stale) return cur;
+    return this.#rt.store.putMemoryEntry({ ...cur, stale: true });
   }
 
   /** Puts an entry back as it was before `it` changed it (MemoryItem.entryChange), when it is still as `it` left it. */
@@ -766,7 +787,9 @@ export class MemoryBook {
     const entry = it.entryId !== undefined ? this.entry(it.entryId) : undefined;
     const last = entry !== undefined && this.details(entry.id, owner).every((m) => m.id === it.id);
     this.#rt.store.deleteMemories(owner, this.#lineage(it, this.list({ owner, all: true })), last ? [entry.id] : []);
-    const card: MemoryCardMeta = { action: 'deleted', item: it, ...(entry ? { entry } : {}) };
+    // the details left: the summary may still say what went
+    const now = last ? entry : this.#markStale(entry?.id);
+    const card: MemoryCardMeta = { action: 'deleted', item: it, ...(now ? { entry: now } : {}) };
     this.#emit(card);
     return card;
   }

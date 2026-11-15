@@ -331,6 +331,64 @@ describe('entries', () => {
     expect(rt.memory.entries().map((e) => e.name)).toEqual(['王经理']);
   });
 
+  it('a detail deleted or edited in the settings marks its entry 待整理: the model is told, a tidy makes the summary again (also with nothing else to do) and clears the mark; its undo marks it again', async () => {
+    const rt = makeRuntime(gw, { cwd: dir });
+    const boss = entry(rt, '王经理', '直属上司，周报和报价单抄送他', 'people');
+    const quote = entry(rt, '报价', '含税价', 'areas');
+    const a = rt.memory.add({ text: '王经理是直属上司', quote: '王经理是直属上司', entry: { id: boss.id }, by: 'user' }).item!;
+    const b = rt.memory.add({ text: '周报发给王经理', quote: '周报发给王经理', entry: { id: boss.id }, by: 'user' }).item!;
+    const c = rt.memory.add({ text: '报价单抄送王经理', quote: '报价单抄送王经理', entry: { id: boss.id }, by: 'user' }).item!;
+    const q = rt.memory.add({ text: '报价写含税价', quote: '报价写含税价', entry: { id: quote.id }, by: 'user' }).item!;
+    const at = rt.memory.entry(boss.id)!.updatedAt;
+    // the last detail of an entry takes it with it: nothing to mark
+    expect(rt.memory.delete(c.id)).toMatchObject({ action: 'deleted', entry: { id: boss.id, stale: true } });
+    expect(rt.memory.entry(boss.id)).toMatchObject({ stale: true, updatedAt: at });
+    expect(rt.memory.promptBlock()).toContain('- 王经理 (people): 直属上司，周报和报价单抄送他 (summary may be out of date: recall it) — 2 details');
+    expect(rt.memory.recallText('王经理')).toContain('(summary may be out of date');
+    // an edit that changes nothing does not mark; one that does, does
+    rt.memory.edit(q.id, '报价写含税价');
+    expect(rt.memory.entry(quote.id)!.stale).toBeUndefined();
+    rt.memory.edit(q.id, '报价写不含税价');
+    expect(rt.memory.entry(quote.id)!.stale).toBe(true);
+    let prompt = '';
+    gw.onRequest((req) => {
+      if (!isTidy(req.body)) return { text: '好' };
+      prompt = userText(req.body);
+      return { text: JSON.stringify({ changes: [{ action: 'summarized', entry: '王经理', summary: '直属上司，周报发给他' }] }) };
+    });
+    rt.memory.tidy('user');
+    const run = await done(rt);
+    // nothing typed, no note in no entry: asked because of the marks
+    expect(prompt).toContain('## 王经理 (people) [summary may be out of date]: 直属上司，周报和报价单抄送他');
+    expect(prompt).toContain('## 报价 (areas) [summary may be out of date]: 含税价');
+    expect(prompt).toContain('Summaries to make again from their notes (summarized): 王经理, 报价');
+    expect(run).toMatchObject({ status: 'done', changes: [] });
+    expect(rt.memory.entry(boss.id)).toMatchObject({ summary: '直属上司，周报发给他', by: 'assistant' });
+    expect(rt.memory.entry(boss.id)!.stale).toBeUndefined();
+    // one the model gave no new summary for stays 待整理
+    expect(rt.memory.entry(quote.id)).toMatchObject({ summary: '含税价', stale: true });
+    expect(rt.memory.promptBlock()).toContain('- 报价 (areas): 含税价 (summary may be out of date: recall it)');
+    expect(rt.memory.promptBlock()).not.toContain('王经理 (people): 直属上司，周报发给他 (summary may be out of date');
+    // the whole tidy's undo: the summary back, marked again
+    rt.memory.undoTidy(run.id);
+    expect(rt.memory.entry(boss.id)).toMatchObject({ summary: '直属上司，周报和报价单抄送他', stale: true, updatedAt: at });
+    // a summary written in the settings clears it
+    rt.memory.editEntry(boss.id, { name: '王经理', summary: '直属上司，周报发给他', category: 'people' });
+    expect(rt.memory.entry(boss.id)!.stale).toBeUndefined();
+    void a;
+    void b;
+  });
+
+  it('undoing a save whose summary change cannot be put back (the entry changed since) marks the entry 待整理', async () => {
+    const rt = makeRuntime(gw, { cwd: dir });
+    const boss = entry(rt, '王经理', '直属上司', 'people');
+    rt.memory.add({ text: '王经理是直属上司', quote: '王经理是直属上司', entry: { id: boss.id }, by: 'user' });
+    const saved = rt.memory.add({ text: '周报发给王经理', quote: '周报发给王经理', entry: { id: boss.id, summary: '直属上司，周报发给他' }, by: 'assistant' }).item!;
+    await pause();
+    rt.memory.editEntry(boss.id, { name: '王经理', summary: '直属上司，周报每周五发给他', category: 'people' });
+    expect(rt.memory.undo(saved.id)).toMatchObject({ action: 'undone', entry: { summary: '直属上司，周报每周五发给他', stale: true } });
+  });
+
   it("a tidy's added notes go into the entry it names (a new one made once); a rewrite stays in its entry; a merge across entries is refused", async () => {
     const rt = makeRuntime(gw, { cwd: dir });
     const work = entry(rt, '职责', '负责样品', 'areas');

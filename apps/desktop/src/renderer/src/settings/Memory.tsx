@@ -318,6 +318,7 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
                       <MemoryRow
                         key={key}
                         name={line.view.entry.name}
+                        stale={line.view.entry.stale === true}
                         text={line.view.entry.summary}
                         at={line.view.at}
                         focus={returnTo === key}
@@ -488,9 +489,12 @@ function MemoryRow({
   onOpen,
   onEdit,
   onDelete,
+  stale = false,
 }: {
   name?: string;
   text: string;
+  /** The entry is marked 待整理: its summary may still say a detail that went. */
+  stale?: boolean;
   at: string;
   focus: boolean;
   onFocused(): void;
@@ -511,6 +515,7 @@ function MemoryRow({
       <button ref={ref} type="button" className="memory-open" title={whole} data-tip-clipped=".memory-text" onClick={onOpen}>
         {name ? <span className="memory-name">{name}</span> : null}
         <span className={name ? 'memory-text memory-summary' : 'memory-text'}>{text}</span>
+        {stale ? <span className="settings-hint memory-stale">待整理</span> : null}
         <span className="settings-hint memory-time">{timeOf(at)}</span>
       </button>
       <div className="memory-actions">
@@ -580,7 +585,10 @@ function EntryDetail({
         {!editing ? (
           <div className="memory-fact">
             <dt>摘要</dt>
-            <dd className="memory-quote">{e.summary}</dd>
+            <dd className="memory-quote">
+              {e.summary}
+              {e.stale ? <span className="settings-hint memory-stale">待整理</span> : null}
+            </dd>
           </div>
         ) : null}
         <div className="memory-fact">

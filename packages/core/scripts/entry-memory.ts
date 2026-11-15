@@ -3,7 +3,9 @@
 // three of which belong to one entry; then a new conversation asks something
 // only an entry's details answer (does the model call recall?); then one detail
 // is forgotten (does the summary lose it too?); then two old
-// notes in no entry are tidied into entries. Prints every remember / recall
+// notes in no entry are tidied into entries; then a detail the summary names
+// is deleted in the settings (the entry is marked 待整理) and a second tidy
+// rewrites the summary and clears the mark. Prints every remember / recall
 // call with the runtime's reply, the entries and details after each step, and
 // the cost.
 //
@@ -44,7 +46,7 @@ const show = (title: string) => {
   console.log(`\n== ${title}`);
   const items = rt.memory.list();
   for (const e of rt.memory.entries()) {
-    console.log(`## ${e.name} (${e.category ?? '-'}): ${e.summary}`);
+    console.log(`## ${e.name} (${e.category ?? '-'})${e.stale ? ' [待整理]' : ''}: ${e.summary}`);
     for (const m of items.filter((x) => x.entryId === e.id)) console.log(`  [${m.id}] ${m.text}`);
   }
   const loose = items.filter((m) => m.entryId === undefined || !rt.memory.entry(m.entryId));
@@ -95,18 +97,35 @@ show('after forgetting one');
 rt.memory.addOwn('一般周三下午不开会');
 rt.memory.addOwn('出差报销找李老师审批');
 show('two notes in no entry');
-rt.memory.tidy('user');
-await new Promise<void>((resolve) => {
-  const off = rt.events.on((e) => {
-    if (e.type === 'memory.tidy' && e.run.status !== 'running') {
-      off();
-      const r = e.run;
-      console.log(`\ntidy: ${r.status} changes ${r.changes.length} refused ${r.refused} grouped ${JSON.stringify(r.grouped ?? [])} entries ${JSON.stringify(r.entries ?? [])} ${r.error ?? ''}`);
-      resolve();
-    }
+const tidy = () => {
+  rt.memory.tidy('user');
+  return new Promise<void>((resolve) => {
+    const off = rt.events.on((e) => {
+      if (e.type === 'memory.tidy' && e.run.status !== 'running') {
+        off();
+        const r = e.run;
+        console.log(`\ntidy: ${r.status} changes ${r.changes.length} refused ${r.refused} grouped ${JSON.stringify(r.grouped ?? [])} entries ${JSON.stringify(r.entries ?? [])} ${r.error ?? ''}`);
+        resolve();
+      }
+    });
   });
-});
+};
+await tidy();
 show('after the tidy');
+
+// settings: an entry with two details its summary names, then 删除 on one of them: marked 待整理, a tidy
+// (nothing new to read) makes the summary again from the detail left
+const made = rt.memory.addOwn('样品寄出前拍照', { name: '样品', summary: '寄出前拍照，单号写进周报', category: 'areas' });
+const sample = 'item' in made ? made : undefined;
+if (sample?.item && sample.entry) {
+  rt.memory.addOwn('样品单号写进周报', sample.entry.id);
+  show('an entry made in the settings');
+  rt.memory.delete(sample.item.id);
+  show(`deleted [${sample.item.id}] 样品寄出前拍照 in the settings`);
+  console.log(`\nsystem prompt block:\n${rt.memory.promptBlock()}`);
+  await tidy();
+  show('after the second tidy');
+}
 console.log(`\nsystem prompt block:\n${rt.memory.promptBlock()}`);
 console.log(`\ncost: $${costUsd.toFixed(4)}`);
 await rt.close();
