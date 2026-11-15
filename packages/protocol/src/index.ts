@@ -530,7 +530,7 @@ export interface PluginToolResult {
  * the tool in permissions.irreversible); the card shows 无法撤销 and the warning mark.
  */
 export type PendingItem =
-  | { kind: 'confirm'; callId: string; toolName: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; createdAt: string }
+  | { kind: 'confirm'; callId: string; toolName: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; createdAt: string }
   | { kind: 'ask'; callId: string; question: string; options?: string[]; createdAt: string };
 
 // ---------------------------------------------------------------------------
@@ -594,7 +594,7 @@ export type CoreEventBody =
       durationMs: number;
     }
   /** `irreversible`: as on a pending confirmation (the card shows 无法撤销). */
-  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean }
+  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview }
   /** Outside content (mail, web page, file, plugin tool) contained text that looks like instructions. */
   | { type: 'guard.flagged'; note: GuardNote; callId?: string }
   /** An irreversible call ran without asking because the session's approval mode is auto. */
@@ -947,6 +947,18 @@ export interface FileCardMeta {
  * new one; each line is ' ' (unchanged), '-' (removed) or '+' (added) followed by its text. Three unchanged lines
  * around each change; changes that close together share a hunk.
  */
+/**
+ * What a write_file or edit_file waiting to be confirmed would do to the file, worked out when it asks (the file is
+ * read, nothing is written): `created` when there is no file yet (every line new), else where it would change (as
+ * FileCardMeta.change). No `change` over a file it cannot read as text or past 2 MB. For the window only.
+ */
+export interface ChangePreview {
+  /** Absolute path. */
+  path: string;
+  created: boolean;
+  change?: FileChangeMeta;
+}
+
 export interface FileChangeMeta {
   hunks: { oldStart: number; newStart: number; lines: string[] }[];
   /** More lines than the limit (2000 in all): the hunk that crosses it is cut there, the ones after are left out. */

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { MonitorEntry } from '../../../shared/monitor';
 import { clipboard } from '../ui/clipboard';
-import { filterEntries, MonitorView, sourcesLabel, type MonitorApi } from './MonitorView';
+import { filterEntries, monitorCall, MonitorView, sourcesLabel, type MonitorApi } from './MonitorView';
 
 afterEach(cleanup);
 
@@ -78,11 +78,32 @@ describe('监控台', () => {
     void push;
     render(<MonitorView api={api} />);
     fireEvent.click(await screen.findByText('read_file ok 4ms → 开头…'));
-    await waitFor(() => expect(document.querySelector('.monitor-detail-text')!.textContent).toContain('最后一句'));
+    await waitFor(() => expect(document.querySelector('.monitor-detail-call .tool-output')!.textContent).toContain('最后一句'));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '复制' }));
     });
     expect(write.mock.calls.at(-1)![0]).toContain('最后一句');
+  });
+
+  it('a tool line opened is the call as in the conversation: the command in its box, how it failed, the output', async () => {
+    const start = monitorCall('run_command ← 列出文件\n{"command":"Get-ChildItem","description":"列出文件"}', false)!;
+    expect(start.what).toBe('run_command ← 列出文件');
+    expect(start.block.input).toEqual({ command: 'Get-ChildItem', description: '列出文件' });
+    expect(monitorCall('read_file ← {"path":"a.txt"}', false)!.block.input).toEqual({ path: 'a.txt' });
+    // the list's own line (cut, …) is not JSON: shown as it is until the whole comes
+    expect(monitorCall('read_file ← {"path":"a.tx…', false)).toBeNull();
+    expect(monitorCall('line 1', false)).toBeNull();
+    const api: MonitorApi = {
+      list: vi.fn(async () => [e(1, { source: 'tool', level: 'error', text: 'run_command failed 30ms → exit code 2, 0.1 s …' })]),
+      full: vi.fn(async () => 'run_command failed 30ms →\nexit code 2, 0.1 s\n找不到路径'),
+      watch: vi.fn(() => () => undefined),
+      export: vi.fn(async () => null),
+    };
+    render(<MonitorView api={api} />);
+    fireEvent.click(await screen.findByText('run_command failed 30ms → exit code 2, 0.1 s …'));
+    await waitFor(() => expect(document.querySelector('.monitor-detail-call .tool-status')?.textContent).toBe('Exit code 2'));
+    expect(document.querySelector('.monitor-detail-what')!.textContent).toBe('run_command failed 30ms');
+    expect(document.querySelector('.monitor-detail-call .tool-output')!.textContent).toBe('找不到路径');
   });
 
   it('picking a line stops following the end (继续 brings it back), so the line stays where it was', async () => {

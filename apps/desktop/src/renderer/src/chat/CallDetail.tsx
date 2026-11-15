@@ -124,20 +124,23 @@ export function CallOutput({ text: out }: { text: string }) {
 const scalar = (v: unknown): boolean =>
   v === null || ['number', 'boolean'].includes(typeof v) || (typeof v === 'string' ? !v.includes('\n') && v.length <= 80 : JSON.stringify(v).length <= 60);
 
-/** The arguments of a call that is not a command: short ones `key  value`, long text and lists laid out under their key. */
-export function CallArgs({ input }: { input: unknown }) {
+/**
+ * The arguments of a call that is not a command: short ones `key  value`, long text and lists laid out under their
+ * key. `labels`: names people read for the keys (a confirmation's); `bare`: no edge of its own (the card is the box).
+ */
+export function CallArgs({ input, labels, bare }: { input: unknown; labels?: Record<string, string>; bare?: boolean | undefined }) {
   if (!input || typeof input !== 'object' || !Object.keys(input).length) return null;
   return (
-    <div className="tool-args">
+    <div className={bare ? 'tool-args is-bare' : 'tool-args'}>
       {Object.entries(input as Record<string, unknown>).map(([k, v]) =>
         scalar(v) ? (
           <div key={k} className="tool-arg">
-            <span className="tool-arg-key">{k}</span>
+            <span className="tool-arg-key">{labels?.[k] ?? k}</span>
             <span className="tool-arg-value">{typeof v === 'string' ? v : JSON.stringify(v)}</span>
           </div>
         ) : (
           <div key={k} className="tool-arg is-block">
-            <span className="tool-arg-key">{k}</span>
+            <span className="tool-arg-key">{labels?.[k] ?? k}</span>
             <ArgBlock value={v} />
           </div>
         ),
@@ -250,7 +253,7 @@ function markChanged(out: ChangeLine[]): ChangeLine[] {
 }
 
 /** The lines of a write or an edit, or null when the call is neither (or says nothing to draw). */
-export function callChange(block: ToolBlock, card?: FileCardMeta): { path: string; lines: ChangeLine[]; numbered: boolean } | null {
+export function callChange(block: ToolBlock, card?: Pick<FileCardMeta, 'path' | 'origin' | 'change'>): { path: string; lines: ChangeLine[]; numbered: boolean } | null {
   const path = card?.path ?? text(arg(block, 'path'));
   // Where the file changed, as the core worked it out (line numbers, three unchanged lines around each change).
   if ((block.name === 'write_file' || block.name === 'edit_file') && card?.change?.hunks.length) return { path, numbered: true, lines: hunkLines(card.change) };

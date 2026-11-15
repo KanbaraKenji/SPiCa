@@ -20,7 +20,7 @@ describe('conversation names', () => {
 });
 
 describe('AgentStore', () => {
-  it('a stop at a provider’s 花费上限 keeps its words, its 模型设置 button and the provider after the conversation is read again; 未计价 reaches the list', async () => {
+  it('a stop at a provider’s 花费上限 keeps its words, its 模型 button and the provider after the conversation is read again; 未计价 reaches the list', async () => {
     const backend = new FakeBackend({ speed: 0, seed: false });
     const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
     await store.init();

@@ -208,7 +208,7 @@
 
 - 每个工具结果的第一行是 `[fetched at 2026-11-09T15:20:42.988+08:00]`（本地时间带时区），系统提示告诉模型旧结果可能过期；内核不缓存外部数据。
 - 工具输入先按 JSON schema 粗校验（必填、基本类型），不合格直接回错误结果。子会话默认继承父会话的工具白名单。
-- **确认与提问**：同一轮里要确认的调用挂起，其余照常执行，结果先存进 `tool_calls` 表；会话转 `awaiting_confirm` / `awaiting_answer`，发 `confirm.request` / `ask.request`，本次运行结束。用户 `confirm(callId, true/false)` 或 `answer(callId, 文字)`，全部挂起项都有了结果后，这一轮所有结果按调用顺序合成一条 `tool_results`，开新的运行。拒绝的动作不执行，结果是「用户拒绝了，别重试」，记录状态 `denied`。挂起状态全在存储里，重启后照样能答。
+- **确认与提问**：同一轮里要确认的调用挂起，其余照常执行，结果先存进 `tool_calls` 表；会话转 `awaiting_confirm` / `awaiting_answer`，发 `confirm.request` / `ask.request`，本次运行结束。用户 `confirm(callId, true/false)` 或 `answer(callId, 文字)`，全部挂起项都有了结果后，这一轮所有结果按调用顺序合成一条 `tool_results`，开新的运行。拒绝的动作不执行，结果是「用户拒绝了，别重试」，记录状态 `denied`。挂起状态全在存储里，重启后照样能答。**写文件、改文件要确认时带上会改成什么**（`PendingItem.change` 和 `confirm.request.change`，类型 `ChangePreview`：绝对路径、`created`、`change` 同文件卡的改动段）：问之前工具的 `previewChange(参数, 工作文件夹)` 读一遍文件、算出改动（`tools/line-diff.ts`），什么都不写；没有这个文件就是 `created`；改文件对不上 `old_string`、文件读不了或超过 2 MB 就不带改动段。只给界面画，给模型的东西不变。
 - **类别和一句说明**（`ToolCallInfo { category, summary?, title? }`，给界面拼「Ran 4 commands, created a file」这种概述）：
   - 每个内置工具声明 `Tool.category`：command、read、write、web、history、agent、message、ask、project、mail；插件注册的没写就是 plugin，不认识的是 other。工具被撤掉以后照样按注册来源算（`ToolRegistry.categoryOf`）。
   - `summary` 是模型写的「这一步在干什么」：工具用 `Tool.summaryParam` 指明哪个参数是它。现在只有 run_command 的 `description`，交付规则里要求每次都写；最长 200 字。插件工具不往参数表里加字段（可能和插件自己的参数撞名），用 `Tool.title`（MCP 的 title）。

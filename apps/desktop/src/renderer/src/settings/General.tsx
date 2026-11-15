@@ -137,7 +137,7 @@ function Developer({ settings, onChange, localConnect }: GeneralProps) {
   const shown = on ? info : null;
   return (
     <Group title="开发者">
-      <Row title={`允许本机脚本连接 ${APP_NAME}`} hint={`开启后，本机脚本可连接 ${APP_NAME} 并修改模型设置。`}>
+      <Row title={`允许本机脚本连接 ${APP_NAME}`} hint={`开启后，本机脚本可连接 ${APP_NAME} 并修改 设置 › 模型。`}>
         <Switch on={on} label={`允许本机脚本连接 ${APP_NAME}`} onChange={(v) => onChange({ localConnect: v })} />
       </Row>
       {on ? (

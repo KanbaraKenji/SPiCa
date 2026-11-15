@@ -51,12 +51,12 @@ export interface SidebarProps {
   notice?: ReactNode;
   /**
    * The user's account (设置 › 账号): on the bottom row, its letter and the account, the gear for 设置 at the
-   * right end. Empty or absent: the row is 设置 alone, as it was. Only the full sidebar shows it (the column of
-   * icons keeps only the gear: the account is there when the sidebar slides out).
+   * right end. Empty or absent: the row is 设置 alone, as it was. The column of icons has its letter just above the
+   * gear (the row's order; the gear stays where it was), opening the same menu.
    */
   account?: string;
   /**
-   * The account opens a menu above it (as Claude's does): 设置 (the settings as they last were) and 模型设定
+   * The account opens a menu above it (as Claude's does): 设置 (the settings as they last were) and 模型
    * (设置 › 模型), each opening the settings there. Absent: the account opens the settings as the gear does.
    */
   onAccount?: (where: AccountMenuTo) => void;
@@ -74,7 +74,7 @@ export type AccountMenuTo = 'settings' | 'models';
 export function accountMenuItems(account: string, go: (where: AccountMenuTo) => void): MenuItem[] {
   return [
     { label: '设置', group: account, icon: 'settings', onSelect: () => go('settings') },
-    { label: '模型设定', group: account, icon: 'model', onSelect: () => go('models') },
+    { label: '模型', group: account, icon: 'model', onSelect: () => go('models') },
   ];
 }
 
@@ -240,6 +240,40 @@ export function Sidebar({
   const me = account ? letterBadge(account, account) : null;
   /** The account's menu: the button it opens above, and how wide the bottom row is drawn (the menu is no narrower). */
   const [meMenu, setMeMenu] = useState<{ anchor: HTMLElement; width: number } | null>(null);
+  /**
+   * The account's button (its letter, as a plugin without an icon has; the account after it in the full sidebar)
+   * and the menu it opens above. In the column of icons the menu is as wide as its items.
+   */
+  const accountButton = (withName: boolean) =>
+    account ? (
+      <button
+          type="button"
+          className={meMenu ? 'side-action side-me is-active' : 'side-action side-me'}
+          onClick={(e) => {
+            if (!onAccount) return onSettings();
+            const b = e.currentTarget;
+            // from the account's left edge to the gear's right edge: the row as it is drawn
+            const end = withName ? (b.nextElementSibling?.getBoundingClientRect().right ?? b.getBoundingClientRect().right) : b.getBoundingClientRect().right;
+            setMeMenu((m) => (m ? null : { anchor: b, width: end - b.getBoundingClientRect().left }));
+          }}
+          aria-label={`账号 ${account}`}
+          aria-haspopup={onAccount ? 'menu' : undefined}
+          aria-expanded={onAccount ? !!meMenu : undefined}
+          title={account}
+          {...(withName ? { 'data-tip-clipped': '.side-action-text' } : {})}
+        >
+          <span className="plugin-badge side-avatar" style={{ background: me!.colour }} aria-hidden>
+            {me!.letter}
+          </span>
+          {withName ? <span className="side-action-text">{account}</span> : null}
+        </button>
+    ) : null;
+  const accountMenu =
+    meMenu && onAccount && account ? (
+      <div className="account-menu" style={{ '--account-menu-width': `${meMenu.width}px` } as CSSProperties}>
+        <ContextMenu x={0} y={0} side="above" anchor={meMenu.anchor} items={accountMenuItems(account, onAccount)} onClose={() => setMeMenu(null)} />
+      </div>
+    ) : null;
   const pinOrder = useMemo(() => new Map(pinned.map((id, i) => [id, i])), [pinned]);
   const { chats, projects, childrenOf } = useMemo(() => {
     const chats = sessions.filter((s) => s.role === 'top' && !s.parentId).sort(byRecent);
@@ -341,9 +375,11 @@ export function Sidebar({
         ) : null}
         {notice}
         <div className="sidebar-bottom">
+          {accountButton(false)}
           <button type="button" className={settingsOpen ? 'side-action is-active' : 'side-action'} onClick={onSettings} aria-current={settingsOpen ? 'page' : undefined} aria-label="设置" title="设置">
             <Icon name="settings" />
           </button>
+          {accountMenu}
         </div>
       </nav>
     );
@@ -425,28 +461,8 @@ export function Sidebar({
       <div className={account ? 'sidebar-bottom has-account' : 'sidebar-bottom'}>
         {account ? (
           <>
-            {/* The account (its letter, as a plugin without an icon has) opens its menu above; the gear the settings as before. */}
-            <button
-              type="button"
-              className={meMenu ? 'side-action side-me is-active' : 'side-action side-me'}
-              onClick={(e) => {
-                if (!onAccount) return onSettings();
-                const b = e.currentTarget;
-                // from the account's left edge to the gear's right edge: the row as it is drawn
-                const end = b.nextElementSibling?.getBoundingClientRect().right ?? b.getBoundingClientRect().right;
-                setMeMenu((m) => (m ? null : { anchor: b, width: end - b.getBoundingClientRect().left }));
-              }}
-              aria-label={`账号 ${account}`}
-              aria-haspopup={onAccount ? 'menu' : undefined}
-              aria-expanded={onAccount ? !!meMenu : undefined}
-              title={account}
-              data-tip-clipped=".side-action-text"
-            >
-              <span className="plugin-badge side-avatar" style={{ background: me!.colour }} aria-hidden>
-                {me!.letter}
-              </span>
-              <span className="side-action-text">{account}</span>
-            </button>
+            {/* The account opens its menu above; the gear the settings as before. */}
+            {accountButton(true)}
             <button
               type="button"
               className={['side-action', 'side-gear', SETTINGS_WORD ? 'has-word' : '', settingsOpen ? 'is-active' : ''].filter(Boolean).join(' ')}
@@ -458,11 +474,7 @@ export function Sidebar({
               <Icon name="settings" />
               {SETTINGS_WORD ? <span>设置</span> : null}
             </button>
-            {meMenu && onAccount ? (
-              <div className="account-menu" style={{ '--account-menu-width': `${meMenu.width}px` } as CSSProperties}>
-                <ContextMenu x={0} y={0} side="above" anchor={meMenu.anchor} items={accountMenuItems(account, onAccount)} onClose={() => setMeMenu(null)} />
-              </div>
-            ) : null}
+            {accountMenu}
           </>
         ) : (
           <button type="button" className={settingsOpen ? 'side-action is-active' : 'side-action'} onClick={onSettings} aria-current={settingsOpen ? 'page' : undefined}>

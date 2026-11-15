@@ -3,7 +3,7 @@ import { glob as fsGlob, mkdir, readFile, readdir, stat, writeFile } from 'node:
 import { extname, isAbsolute, join, relative, resolve, dirname } from 'node:path';
 import { basename } from 'node:path';
 import { isoNow } from '../events.ts';
-import type { FileCardMeta } from '../types.ts';
+import type { ChangePreview, FileCardMeta } from '../types.ts';
 import type { Tool, ToolContext } from './types.ts';
 import { producedFileCard } from './file-card.ts';
 import { LINE_COUNT_MAX_BYTES, lineDelta, oldText } from './file-changes.ts';
@@ -21,12 +21,36 @@ async function emitWriteCard(ctx: ToolContext, abs: string, existed: boolean, be
   ctx.emit({ type: 'file.card', callId: ctx.callId, file: { ...card, ...(lines ? { lines } : {}), ...(change ? { change } : {}) } });
 }
 
+/** Where a write would change a file, as its card after would say it; worked out before anything is written. */
+function preview(abs: string, before: string | undefined, after: string): ChangePreview {
+  const change = before !== undefined && Buffer.byteLength(after) <= LINE_COUNT_MAX_BYTES ? fileChange(before, after) : undefined;
+  return { path: abs, created: false, ...(change ? { change } : {}) };
+}
+
+type Replaced = { updated: string; count: number } | { error: 'empty' | 'same' | 'missing' | 'many'; count: number };
+
+/** edit_file's replacement (LF in the arguments matches a CRLF file), or why it would not apply. */
+function replaceIn(original: string, input: Record<string, unknown>): Replaced {
+  const oldS = String(input.old_string ?? '');
+  const newS = String(input.new_string ?? '');
+  if (oldS === '') return { error: 'empty', count: 0 };
+  if (oldS === newS) return { error: 'same', count: 0 };
+  // Files with CRLF line endings: accept LF in the arguments.
+  const crlf = original.includes('\r\n') && !oldS.includes('\r\n');
+  const target = crlf ? oldS.replace(/\n/g, '\r\n') : oldS;
+  const replacement = crlf ? newS.replace(/\n/g, '\r\n') : newS;
+  const count = original.split(target).length - 1;
+  if (count === 0) return { error: 'missing', count };
+  if (count > 1 && input.replace_all !== true) return { error: 'many', count };
+  return { updated: input.replace_all === true ? original.split(target).join(replacement) : original.replace(target, () => replacement), count };
+}
+
 const SKIP_DIRS = new Set(['node_modules', '.git', '.hg', '.svn', 'dist', 'out', '.venv', '__pycache__']);
 const MAX_READ_LINES = 2000;
 const MAX_READ_CHARS = 200_000;
 const MAX_LINE_CHARS = 2000;
 
-function resolvePath(ctx: ToolContext, p: unknown): string {
+function resolvePath(ctx: { cwd: string }, p: unknown): string {
   const s = String(p ?? '.');
   return isAbsolute(s) ? resolve(s) : resolve(ctx.cwd, s);
 }
@@ -164,6 +188,15 @@ export const writeFileTool: Tool = {
       required: ['path', 'content'],
     },
   },
+  async previewChange(input, cwd) {
+    const abs = resolvePath({ cwd }, input.path);
+    const existed = await stat(abs).then(
+      () => true,
+      () => false,
+    );
+    if (!existed) return { path: abs, created: true };
+    return preview(abs, await oldText(abs), String(input.content ?? ''));
+  },
   async execute(input, ctx) {
     const abs = resolvePath(ctx, input.path);
     const existed = await stat(abs).then(
@@ -199,27 +232,29 @@ export const editFileTool: Tool = {
       required: ['path', 'old_string', 'new_string'],
     },
   },
+  async previewChange(input, cwd) {
+    const abs = resolvePath({ cwd }, input.path);
+    const original = await readFile(abs, 'utf8').catch(() => undefined);
+    if (original === undefined) return undefined;
+    const r = replaceIn(original, input);
+    if ('error' in r) return undefined;
+    return preview(abs, Buffer.byteLength(original) <= LINE_COUNT_MAX_BYTES ? original : undefined, r.updated);
+  },
   async execute(input, ctx) {
     const abs = resolvePath(ctx, input.path);
     const original = await readFile(abs, 'utf8').catch(() => undefined);
     if (original === undefined) return { content: `File not found: ${display(ctx, abs)}`, isError: true };
-    const oldS = String(input.old_string ?? '');
-    const newS = String(input.new_string ?? '');
-    if (oldS === '') return { content: 'old_string must not be empty; use write_file to create a file.', isError: true };
-    if (oldS === newS) return { content: 'old_string and new_string are identical.', isError: true };
-    // Files with CRLF line endings: accept LF in the arguments.
-    const crlf = original.includes('\r\n') && !oldS.includes('\r\n');
-    const target = crlf ? oldS.replace(/\n/g, '\r\n') : oldS;
-    const replacement = crlf ? newS.replace(/\n/g, '\r\n') : newS;
-    const count = original.split(target).length - 1;
-    if (count === 0) return { content: `old_string not found in ${display(ctx, abs)}.`, isError: true };
-    if (count > 1 && input.replace_all !== true) {
+    const r = replaceIn(original, input);
+    if ('error' in r) {
+      if (r.error === 'empty') return { content: 'old_string must not be empty; use write_file to create a file.', isError: true };
+      if (r.error === 'same') return { content: 'old_string and new_string are identical.', isError: true };
+      if (r.error === 'missing') return { content: `old_string not found in ${display(ctx, abs)}.`, isError: true };
       return {
-        content: `old_string occurs ${count} times in ${display(ctx, abs)}; add more context to make it unique or set replace_all.`,
+        content: `old_string occurs ${r.count} times in ${display(ctx, abs)}; add more context to make it unique or set replace_all.`,
         isError: true,
       };
     }
-    const updated = input.replace_all === true ? original.split(target).join(replacement) : original.replace(target, () => replacement);
+    const { updated, count } = r;
     await writeFile(abs, updated, 'utf8');
     await emitWriteCard(ctx, abs, true, Buffer.byteLength(original) <= LINE_COUNT_MAX_BYTES ? original : undefined, updated);
     return { content: `Edited ${display(ctx, abs)}: ${input.replace_all === true ? count : 1} replacement(s).` };

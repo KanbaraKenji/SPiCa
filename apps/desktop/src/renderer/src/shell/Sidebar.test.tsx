@@ -397,7 +397,7 @@ describe('the account on the bottom row', () => {
     expect([...bottom.querySelectorAll('button')]).toEqual([me, gear]);
   });
 
-  it('a click on the account opens its menu above: the account in full, 设置 and 模型设定; a second click closes it', () => {
+  it('a click on the account opens its menu above: the account in full, 设置 and 模型; a second click closes it', () => {
     const onAccount = vi.fn();
     render(<Sidebar {...base} onSettings={vi.fn()} account="ALEX.CHEN" onAccount={onAccount} />);
     const me = screen.getByRole('button', { name: '账号 ALEX.CHEN' });
@@ -407,7 +407,7 @@ describe('the account on the bottom row', () => {
     expect(me.getAttribute('aria-expanded')).toBe('true');
     expect(menu.querySelector('.context-group')?.textContent).toBe('ALEX.CHEN');
     // no 监控台 here: it is switched on in 设置 › 关于
-    expect(screen.getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['设置', '模型设定']);
+    expect(screen.getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['设置', '模型']);
     // each with its settings page's icon
     expect(screen.getAllByRole('menuitem').map((b) => b.querySelectorAll('.context-item-label > .context-item-icon:first-child').length)).toEqual([1, 1]);
     expect(onAccount).not.toHaveBeenCalled();
@@ -415,12 +415,25 @@ describe('the account on the bottom row', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  it('the column of icons has the account too: its letter just above the gear, opening the same menu', () => {
+    const onAccount = vi.fn();
+    render(<Sidebar {...base} compact onSettings={vi.fn()} account="ALEX.CHEN" onAccount={onAccount} />);
+    const bottom = document.querySelector('.sidebar.is-rail .sidebar-bottom')!;
+    expect([...bottom.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual(['账号 ALEX.CHEN', '设置']);
+    const me = screen.getByRole('button', { name: '账号 ALEX.CHEN' });
+    expect(me.querySelector('.side-avatar')?.textContent).toBe('A');
+    expect(me.querySelector('.side-action-text')).toBeNull();
+    fireEvent.click(me);
+    fireEvent.click(screen.getByRole('menuitem', { name: '模型' }));
+    expect(onAccount).toHaveBeenLastCalledWith('models');
+  });
+
   it('each item opens the settings where it says and closes the menu', () => {
     const onAccount = vi.fn();
     render(<Sidebar {...base} onSettings={vi.fn()} account="ALEX.CHEN" onAccount={onAccount} />);
     const me = screen.getByRole('button', { name: '账号 ALEX.CHEN' });
     fireEvent.click(me);
-    fireEvent.click(screen.getByRole('menuitem', { name: '模型设定' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '模型' }));
     expect(onAccount).toHaveBeenLastCalledWith('models');
     expect(screen.queryByRole('menu')).toBeNull();
     fireEvent.click(me);
@@ -444,8 +457,8 @@ describe('the account on the bottom row', () => {
     expect(container.querySelector('.side-avatar')).toBeNull();
   });
 
-  it('the column of icons keeps only the gear', () => {
-    const { container } = render(<Sidebar {...base} onSettings={vi.fn()} account="ALEX.CHEN" compact />);
+  it('the column of icons with no account has the gear alone', () => {
+    const { container } = render(<Sidebar {...base} onSettings={vi.fn()} compact />);
     expect(screen.queryByRole('button', { name: /^账号/ })).toBeNull();
     expect(screen.getByRole('button', { name: '设置' })).toBeTruthy();
     expect(container.querySelector('.side-avatar')).toBeNull();
