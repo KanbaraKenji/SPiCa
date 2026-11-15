@@ -5,6 +5,7 @@ import { join, relative } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { catalogFor, fill, getLocale, LOCALES, N_, onLocaleChange, resolveLocale, setLocale, systemLocale, t, tc, tx, type Catalog, type Locale } from '../shared/i18n';
 import { scanSource, varsOf } from '../shared/i18n/scan';
+import { scanSourceAst } from '../shared/i18n/scan-ast';
 
 const DESKTOP = join(__dirname, '..');
 const I18N = join(DESKTOP, 'shared', 'i18n');
@@ -23,7 +24,8 @@ function files(dir: string): string[] {
 
 const rel = (p: string) => relative(DESKTOP, p).replace(/\\/g, '/');
 const sources = ROOTS.flatMap(files)
-  .map((p) => ({ path: rel(p), found: scanSource(readFileSync(p, 'utf8')) }))
+  // read by the TypeScript parser (a regex literal or a quote in JSX text cannot throw it off)
+  .map((p) => ({ path: rel(p), found: scanSourceAst(readFileSync(p, 'utf8'), p) }))
   .filter((s) => !SKIP_FILE.test(s.path));
 
 /** Files not moved over yet (one path per line in pending.txt); the list only shrinks. */
@@ -109,6 +111,14 @@ describe('跟随系统', () => {
 });
 
 describe('the source', () => {
+  it('the parser reads the same as the quick reader, and is not thrown off by a backquote in a regex', () => {
+    const src = ["const r = /`/;", "const a = '直接写的字';", "const b = t('语言');"].join('\n');
+    expect(scanSourceAst(src).map((f) => [f.line, f.key ?? null])).toEqual([
+      [2, null],
+      [3, '语言'],
+    ]);
+  });
+
   it('reads keys, contexts and words written straight in', () => {
     const src = [
       "const a = t('语言');",
