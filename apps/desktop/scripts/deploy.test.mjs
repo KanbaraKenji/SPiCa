@@ -25,7 +25,7 @@ describe('deploy.json', () => {
   it('deploy.example.json copied as is changes nothing; its example, filled in, renames', () => {
     const example = readFileSync(new URL('../deploy.example.json', import.meta.url), 'utf8');
     const d = readDeploy(dirWith(example));
-    expect(d.app).toMatchObject({ ...DEFAULT_APP, icon: null, font: null });
+    expect(d.app).toMatchObject({ ...DEFAULT_APP, icon: null, font: null, copyright: null });
     expect(d.updateSource).toBeNull();
     expect(d.pluginSources).toBeNull();
     expect(builderOverrides(d.app, '1.0.0')).toEqual([]);
@@ -43,7 +43,17 @@ describe('deploy.json', () => {
       '-c.nsis.shortcutName=Nova Desk',
       '-c.nsis.artifactName=Nova Desk-Setup-1.2.0.${ext}',
       '-c.portable.artifactName=Nova Desk-Portable-1.2.0.${ext}',
+      '-c.extraMetadata.description=Nova Desk',
     ]);
+    expect(d.app.copyright).toBeNull();
+  });
+
+  it('a copyright line of its own goes into the exe; not written, Spica’s stays; it must be one line', () => {
+    const d = readDeploy(dirWith({ app: { name: 'Nova Desk', id: 'com.example.nova', copyright: ' Copyright Example Corp ' } }));
+    expect(d.app.copyright).toBe('Copyright Example Corp');
+    expect(builderOverrides(d.app, '1.0.0')).toContain('-c.copyright=Copyright Example Corp');
+    expect(() => readDeploy(dirWith({ app: { name: 'Nova Desk', id: 'com.example.nova', copyright: 'a\nb' } }))).toThrow('app.copyright');
+    expect(() => readDeploy(dirWith({ app: { copyright: 3 } }))).toThrow('app.copyright');
   });
 
   it('an icon and a font are found next to deploy.json', () => {

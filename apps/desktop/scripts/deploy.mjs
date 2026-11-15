@@ -58,6 +58,9 @@ export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url))
   if (icon && !icon.toLowerCase().endsWith('.ico')) throw new Error('deploy.json 的 app.icon 要是 .ico 文件（安装包和 exe 只认 .ico）。');
   const font = path('font');
   if (font && !/\.(ttf|otf)$/i.test(font)) throw new Error('deploy.json 的 app.font 要是 .ttf 或 .otf 文件。');
+  // the exe's 版权 (file properties); not written: Spica's own line
+  const copyright = app.copyright === undefined || app.copyright === null ? '' : app.copyright;
+  if (typeof copyright !== 'string' || copyright.length > 200 || hasControl(copyright)) throw new Error('deploy.json 的 app.copyright 要写成一行文字（不超过 200 个字），比如 "Copyright Example Corp"。');
   // The company's preset model connections: checked by the core's own rules; any key or secret stops it.
   const models = raw.models === undefined ? [] : raw.models;
   const problems = presetProblems(models);
@@ -73,7 +76,7 @@ export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url))
     file,
     updateSource,
     pluginSources: pluginSourcesOf(raw.pluginSources),
-    app: { name, id, icon, font },
+    app: { name, id, icon, font, copyright: copyright.trim() || null },
     models,
   };
 }

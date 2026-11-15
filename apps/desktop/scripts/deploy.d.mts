@@ -3,6 +3,8 @@ export interface DeployApp {
   id: string;
   icon: string | null;
   font: string | null;
+  /** The exe's copyright line; null: Spica's own (electron-builder.yml). */
+  copyright: string | null;
 }
 export const DEFAULT_APP: Readonly<{ name: string; id: string }>;
 export const OFFICIAL_CHANNEL: string;

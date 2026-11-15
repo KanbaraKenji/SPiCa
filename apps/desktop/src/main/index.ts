@@ -993,7 +993,7 @@ ipcMain.handle(DesktopChannel.MonitorExport, async (_e, text: unknown): Promise<
   const d = new Date();
   const p2 = (n: number) => String(n).padStart(2, '0');
   const stamp = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
-  const opts: Electron.SaveDialogOptions = { title: '导出日志', defaultPath: join(app.getPath('documents'), `spica-monitor-${stamp}.log`), filters: [{ name: '日志', extensions: ['log', 'txt'] }] };
+  const opts: Electron.SaveDialogOptions = { title: '导出日志', defaultPath: join(app.getPath('documents'), `${APP_NAME.toLowerCase().replace(/\s+/g, '-')}-monitor-${stamp}.log`), filters: [{ name: '日志', extensions: ['log', 'txt'] }] };
   // SPICA_SAVE_TO=<folder> (development only): skip the dialog, so scripts never leave one open.
   const saveTo = app.isPackaged ? '' : (process.env.SPICA_SAVE_TO ?? '');
   const pick = saveTo ? { canceled: false, filePath: join(saveTo, basename(opts.defaultPath ?? 'spica-monitor.log')) } : mainWindow ? await dialog.showSaveDialog(mainWindow, opts) : await dialog.showSaveDialog(opts);

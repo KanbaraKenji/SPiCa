@@ -254,10 +254,10 @@
   - `latest.yml`：版本号、安装包文件名和 sha512，给更新用。预发布版本（如 `0.1.0-rc.1`）也写成这个文件名：配置里固定了 `channel: latest`，不固定的话 electron-builder 会按版本后缀写成 `rc.yml`，更新和发版流程都找不到。
 - **改名打包（公司版）**：`apps/desktop/deploy.json`（不受版本控制）的 `app` 一节是唯一来源：`{ "app": { "name": "名字", "id": "com.example.app", "icon": "相对路径.ico（可选）", "font": "相对路径.ttf/.otf（可选）" } }`。不写或写 Spica 就是现在的 Spica，一处不变。检出 tag、放这一个文件、`npm run dist`，出来的就是这个名字的安装包，受版本控制的文件一个都不改。
   - `scripts/deploy.mjs` 读和校验（名字会成为文件夹名，不能有 `<>:"/\|?*`；改了名就必须换 id，否则会和 Spica 的安装混在一起）；出错就停，报中文原因。
-  - `scripts/dist.mjs`（`npm run dist`）把 appId、productName、快捷方式名、安装包 / 便携版文件名（`名字-Setup-<版本>.exe`）、图标交给 electron-builder（命令行覆盖）。
+  - `scripts/dist.mjs`（`npm run dist`）把 appId、productName、快捷方式名、安装包 / 便携版文件名（`名字-Setup-<版本>.exe`）、图标交给 electron-builder（命令行覆盖）。exe 属性里的「文件说明」本来就取 productName；改了名时还把 package.json 的 description 换成名字（`-c.extraMetadata.description`，快捷方式的备注用它，原来是「Spica desktop shell (Electron).」）。`app.copyright`（可选，一行字）写进 exe 的「版权」（`-c.copyright`），不写是 electron-builder.yml 里 Spica 自己的那句（2026-11-16 补）。
   - `electron.vite.config.ts` 把 `{ name, id }` 编进主进程、预加载和界面（`__SPICA_APP__`，读法见 `src/shared/app-identity.ts`）；界面的字标由品牌的 `wordmarkForName(name, font?)` 在构建时生成（`__SPICA_WORDMARK__`，`src/renderer/src/app-wordmark.ts`），交给开机画面和侧栏横标；侧栏横标最宽 150px，名字长就整体缩小。自带的 Gelasio 只有拉丁字母，中文名要给 `font`。
-  - 跟着名字走的：窗口标题、任务栏 AppUserModelID（= id）、数据文件夹 `%APPDATA%\名字`、`文档\名字`、界面上的 Spica 字样（输入框提示、关于、本机脚本连接、邮件同意、模型表单、新建项目、删除项目）、`mcp-http.json` 里的 `appName`。自我介绍（内核）、插件提示（插件系统）各自接 `appName`。
-  - 不跟着变的：`@spica` 包名、`window.spica`、`spica_` 工具名、`--spica-*` 变量、`SPICA_` 环境变量、插件清单里的 spica 字段、`spica-file://`、`spica-plugin://`。
+  - 跟着名字走的：窗口标题、任务栏 AppUserModelID（= id）、数据文件夹 `%APPDATA%\名字`、`文档\名字`、界面上的 Spica 字样（输入框提示、关于、本机脚本连接、邮件同意、模型表单、新建项目、删除项目）、`mcp-http.json` 里的 `appName`、监控台「导出日志」的默认文件名（`<名字小写、空格换成 ->-monitor-<时间>.log`）。自我介绍（内核）、插件提示（插件系统）各自接 `appName`。
+  - 不跟着变的：`@spica` 包名、`window.spica`、`spica_` 工具名、`--spica-*` 变量、`SPICA_` 环境变量、插件清单里的 spica 字段、`spica-file://`、`spica-plugin://`（只在应用里用，不向系统注册）、内核连 MCP server 时报的客户端名 `spica`（协议里的标识，插件和别的 server 看到的都是它）、后端进程名 `spica-backend`。
   - 2026-11-10 用虚构名字「Nova Desk」走过：开发版标题、开机字标、侧栏横标、输入框、关于都换了；`npm run dist` 出 `Nova Desk-Setup-0.1.0-rc.1.exe`、`Nova Desk-Portable-…`、`Nova Desk.exe`。
 - **装完那一页和快捷方式**（`resources/installer/finish-options.nsh`，经 `electron-builder.yml` 的 `nsis.include` 加进 electron-builder 自己的完成页，「运行 Spica」下面）：只有一个框「开机时启动」。开始菜单和桌面快捷方式不做成框，安装时直接建（和 rc.2 一样，electron-builder 的 `createStartMenuShortcut` / `createDesktopShortcut`）。rc.3 曾经是三个框，不勾就删掉快捷方式，有人因此开始菜单里没了入口、搜不到程序，所以去掉了。
   - 第一次安装：两个快捷方式和开机启动的 Run 项都在安装时建好，「开机时启动」默认勾着，直接关掉这一页也照样保留；取消再点「完成」就撤掉。开机启动写的和程序里开关读写的是同一项（见第 6 节）。
