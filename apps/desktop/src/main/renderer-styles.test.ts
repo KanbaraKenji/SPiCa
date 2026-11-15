@@ -416,11 +416,11 @@ describe('the conversation’s sizes', () => {
     expect(css).toMatch(/\}\n\n\.md h3,\n\.md h4,\n\.md h5,\n\.md h6 \{\n {2}font-size: var\(--chat-text\);/);
   });
 
-  it('secondary lines 14 on 20: the steps under a group and what opens under a row, notes, a confirmation’s labels', () => {
+  it('secondary lines 14 on 20: the steps under a group and what opens under a row, notes', () => {
     expect(block(':root')).toContain('--chat-small: var(--fs-body);\n  --chat-small-line: var(--lh-body)');
-    for (const sel of ['.tool-item-head', '.fold-body', '.thinking-text', '.turn-note', '\n.confirm-args', '\n.conversation'])
+    for (const sel of ['.tool-item-head', '.fold-body', '.thinking-text', '.turn-note', '\n.conversation'])
       expect(block(sel), sel).toContain('font-size: var(--chat-small)');
-    for (const sel of ['\n.confirm-args', '\n.conversation']) expect(block(sel), sel).toContain('line-height: var(--chat-small-line)');
+    for (const sel of ['\n.conversation']) expect(block(sel), sel).toContain('line-height: var(--chat-small-line)');
   });
 
   it('rows on the compact line (14 on 19): a group’s steps, what opens under a row, notes; same space above and below', () => {
@@ -477,7 +477,7 @@ describe('the conversation’s sizes', () => {
   it('everything in the code font that shows code follows 外观 › 代码 › 字号, on lines in proportion to 13 on 19', () => {
     expect(block(':root')).toContain('--code-size: 13px');
     expect(block(':root')).toContain('--code-line: calc(var(--code-size) * 19 / 13)');
-    for (const sel of ['.md pre code', '.tool-command pre', '.tool-args', '.tool-output', '.file-change', '.confirm-args dd', '.preview-code', '.code-theme-preview'])
+    for (const sel of ['.md pre code', '.tool-command pre', '.tool-args', '.tool-output', '.file-change', '.preview-code', '.code-theme-preview'])
       expect(block(sel), sel).toContain('font-size: var(--code-size);\n  line-height: var(--code-line)');
   });
 

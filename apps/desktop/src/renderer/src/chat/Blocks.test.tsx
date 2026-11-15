@@ -179,7 +179,7 @@ describe('ConfirmCard', () => {
   it('other calls: their arguments in full, under names people read', () => {
     const body = '各位好，'.repeat(40);
     render(<ConfirmCard block={{ type: 'confirm', callId: 'c4', name: 'mail__send', input: { to: 'team@example.com', subject: '样机评审时间', body }, reason: '发送邮件' }} onDecide={vi.fn()} />);
-    const rows = [...document.querySelectorAll('.confirm-args dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
+    const rows = [...document.querySelectorAll('.confirm-card .tool-arg')].map((r) => [r.querySelector('.tool-arg-key')?.textContent, r.querySelector('.tool-arg-value, .tool-arg-block')?.textContent]);
     expect(rows).toEqual([
       ['收件人', 'team@example.com'],
       ['标题', '样机评审时间'],

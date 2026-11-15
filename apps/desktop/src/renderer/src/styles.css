@@ -6107,14 +6107,18 @@ section.plugins-part > .plugins-part-title {
 }
 
 .confirm-card > .tool-command,
-.confirm-card > .confirm-args {
+.confirm-card > .tool-args {
   margin: 0;
   border-top: 1px solid var(--spica-border);
 }
 
-.confirm-card > .confirm-args {
+/* On a card the card is the box (as a command's): the arguments in line with the card's title. */
+.tool-args.is-bare {
   padding: 8px 12px;
+  border: 0;
+  border-radius: 0;
 }
+
 
 /* On a card the card is the box: the label is the first line of the code area, in line with the command. */
 .tool-command.is-bare {
@@ -6153,31 +6157,6 @@ section.plugins-part > .plugins-part-title {
   color: var(--spica-muted);
 }
 
-.confirm-args {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 4px 12px;
-  margin: 0;
-  font-size: var(--chat-small);
-  line-height: var(--chat-small-line);
-}
-
-.confirm-args dt {
-  color: var(--spica-muted);
-  white-space: nowrap;
-}
-
-.confirm-args dd {
-  margin: 0;
-  max-height: 200px;
-  overflow: auto;
-  font-family: var(--font-mono);
-  font-size: var(--code-size);
-  line-height: var(--code-line);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 /* Asked to allow it, a long command wraps: its end is never off to the side. */
 .confirm-card .tool-command pre,
 .dialog-detail .tool-command pre {
@@ -6185,7 +6164,7 @@ section.plugins-part > .plugins-part-title {
   overflow-wrap: anywhere;
 }
 
-.dialog-detail .confirm-args,
+.dialog-detail .tool-args,
 .dialog-detail .tool-command {
   margin-top: 4px;
   color: var(--spica-ink);
@@ -7880,6 +7859,22 @@ section.plugins-part > .plugins-part-title {
 
 .monitor-detail-head .btn {
   margin-left: auto;
+}
+
+/* A tool's line opened: what the call was given or what came back, as a call opened in the conversation. */
+.monitor-detail-call {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.monitor-detail-what {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--code-size);
+  color: var(--spica-muted);
 }
 
 .monitor-detail-text {
