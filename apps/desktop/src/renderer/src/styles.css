@@ -4894,10 +4894,6 @@ button.ctx-row:hover {
   margin: 8px 0;
 }
 
-.sources-no-official {
-  margin: 0 0 16px;
-}
-
 /* A part of the list (已启用, 已停用, a source): its title with a count, then its rows or cards. */
 .plugins-list ul,
 .plugin-sources {

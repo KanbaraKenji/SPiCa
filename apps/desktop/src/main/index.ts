@@ -30,7 +30,8 @@ import { FakePluginService } from './plugins/fake';
 import { UpdateService } from './update/service';
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { NOT_SHIPPED_PLUGINS, officialSources, type OfficialSource, type PluginsCommand } from '../shared/plugins';
+import { type PluginsCommand } from '../shared/plugins';
+import { buildSources, type BuildSources } from './update/channel';
 import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
 import { writeDemoChart } from './backend/demo-image';
@@ -227,7 +228,7 @@ function backendConfig(): DesktopBackendConfig {
       extensions: [
         {
           module: '@spica/desktop-host',
-          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: automated ? [] : deployPluginSources(), mcpInfoFile, mcpTokenFile, userAccount: userAccount() },
+          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: buildDefaults.pluginSources, mcpInfoFile, mcpTokenFile, userAccount: userAccount() },
         },
       ],
     },
@@ -1167,18 +1168,21 @@ ipcMain.handle(DesktopChannel.OpenFile, async (_e, sessionId: unknown, path: unk
   return error ? `无法打开文件：${error}` : null;
 });
 
-// Updates and announcements. The source is the user's setting, else the
-// installer's deploy.json (a company sets it when packaging), else none.
-function deploySource(): string {
+// Updates, announcements and the official plugins. The update source is the user's setting, else what
+// this build was packaged with: deploy.json, else (Spica as published) the official channel (update/channel.ts).
+function readDeployJson(): unknown {
   const file = app.isPackaged ? join(process.resourcesPath, 'deploy.json') : join(app.getAppPath(), 'deploy.json');
   try {
-    const v = JSON.parse(readFileSync(file, 'utf8')) as { updateSource?: unknown };
-    return typeof v.updateSource === 'string' ? v.updateSource.trim() : '';
+    return JSON.parse(readFileSync(file, 'utf8')) as unknown;
   } catch {
-    return '';
+    return undefined;
   }
 }
-const deployDefault = automated ? '' : deploySource();
+const repoPlugins = resolvePath(app.getAppPath(), '..', '..', 'plugins');
+const buildDefaults: BuildSources = automated
+  ? { updateSource: '', pluginSources: [] }
+  : buildSources({ deploy: readDeployJson(), appId: APP_IDENTITY.id, packaged: app.isPackaged, ...(existsSync(repoPlugins) ? { repoPlugins } : {}) });
+const deployDefault = buildDefaults.updateSource;
 
 /** The company's preset model connections from deploy.json ("models"); the packaging already checked them. */
 function deployModels(): unknown[] {
@@ -1192,23 +1196,6 @@ function deployModels(): unknown[] {
 }
 const deployPresets = automated ? [] : deployModels();
 
-/**
- * The official plugin sources from deploy.json ("pluginSources"; 设置 › 插件 › 市场 lists them first). A development
- * run (npm run dev) without any uses the repository's plugins/ folder, the official plugins a release packs,
- * without the templates (the coordinator's call, 2026-11-12); an installed build only ever uses deploy.json.
- */
-function deployPluginSources(): OfficialSource[] {
-  const file = app.isPackaged ? join(process.resourcesPath, 'deploy.json') : join(app.getAppPath(), 'deploy.json');
-  let configured: OfficialSource[];
-  try {
-    configured = officialSources((JSON.parse(readFileSync(file, 'utf8')) as { pluginSources?: unknown }).pluginSources);
-  } catch {
-    configured = [];
-  }
-  if (configured.length || app.isPackaged) return configured;
-  const repoPlugins = resolvePath(app.getAppPath(), '..', '..', 'plugins');
-  return existsSync(repoPlugins) ? [{ location: repoPlugins, label: '官方插件（开发版：仓库的 plugins 文件夹）', exclude: NOT_SHIPPED_PLUGINS }] : [];
-}
 const updates = new UpdateService({
   currentVersion: app.getVersion(),
   packaged: app.isPackaged,

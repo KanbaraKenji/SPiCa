@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { presetProblems } from '@spica/core';
 
 export const DEFAULT_APP = Object.freeze({ name: 'Spica', id: 'dev.spica.desktop' });
+/** The official channel Spica as published checks (src/main/update/channel.ts has the same address). */
+export const OFFICIAL_CHANNEL = 'https://github.com/KanbaraKenji/SPiCa/releases/download/channel/';
 
 /** Characters Windows does not allow in a file or folder name (the name becomes both). */
 const BAD_NAME = /[<>:"/\\|?*]/;
@@ -21,7 +23,7 @@ const ID = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
  */
 export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url)), '..')) {
   const file = join(dir, 'deploy.json');
-  if (!existsSync(file)) return { file: null, updateSource: '', pluginSources: [], app: { ...DEFAULT_APP, icon: null, font: null }, models: [] };
+  if (!existsSync(file)) return { file: null, updateSource: null, pluginSources: null, app: { ...DEFAULT_APP, icon: null, font: null }, models: [] };
   let raw;
   try {
     raw = JSON.parse(readFileSync(file, 'utf8'));
@@ -63,9 +65,13 @@ export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url))
     const list = problems.map((x) => `- ${presetProblemText(x)}`).join('\n');
     throw new Error(`deploy.json 的 models 有 ${problems.length} 处要改：\n${list}`);
   }
+  const updateSource = updateSourceOf(raw.updateSource);
+  if (id !== DEFAULT_APP.id && updateSource && sameChannel(updateSource, OFFICIAL_CHANNEL)) {
+    throw new Error(`deploy.json 改了 app.id，updateSource 就不能是 Spica 的官方地址：装好的版本会被更新成 Spica。换成自己的地址，或写 "" 表示不检查更新。`);
+  }
   return {
     file,
-    updateSource: typeof raw.updateSource === 'string' ? raw.updateSource.trim() : '',
+    updateSource,
     pluginSources: pluginSourcesOf(raw.pluginSources),
     app: { name, id, icon, font },
     models,
@@ -75,12 +81,24 @@ export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url))
 /** A place 设置 › 插件 › 市场 can read: a drive or shared folder, or a web address (as 添加来源 takes them). */
 const PLACE = /^([a-z]:[\\/]|\\\\|\/\/|https?:\/\/)/i;
 
+const sameChannel = (a, b) => a.replace(/\/+$/, '').toLowerCase() === b.replace(/\/+$/, '').toLowerCase();
+
+/** updateSource: null when absent (Spica as published then uses the official channel), '' for no update checks. */
+function updateSourceOf(v) {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== 'string') throw new Error('deploy.json 的 updateSource 要写成地址（字符串），或 "" 表示不检查更新。');
+  const s = v.trim();
+  if (s && !PLACE.test(s)) throw new Error(`deploy.json 的 updateSource「${s}」不能用：要写共享盘或本机文件夹（\\\\server\\share、D:\\…）或 http(s) 地址，或 "" 表示不检查更新。`);
+  return s;
+}
+
 /**
  * The official plugin sources (市场, listed first, marked 官方, not removable): each a place, as a string or
- * { "location": …, "label": … }. Wrong ones stop the packaging with a plain message.
+ * { "location": …, "label": … }; [] for none; null when absent (Spica as published then uses the official
+ * channel). Wrong ones stop the packaging with a plain message.
  */
 function pluginSourcesOf(v) {
-  if (v === undefined || v === null || v === '') return [];
+  if (v === undefined || v === null) return null;
   if (!Array.isArray(v)) throw new Error('deploy.json 的 pluginSources 要写成一个列表，每一项是一个插件来源（地址，或 { "location": 地址, "label": 名字 }）。');
   return v.map((item, i) => {
     const at = `deploy.json 的 pluginSources 第 ${i + 1} 项`;
