@@ -33,6 +33,7 @@ import { readFileSync } from 'node:fs';
 import { sameSource, type PluginsCommand } from '../shared/plugins';
 import { buildSources, channelFile, type BuildSources } from './update/channel';
 import { IDLE_POLL_MS, idleInstallDue, pluginUpdateCount, scheduleChecks } from './update/schedule';
+import { startupAction } from './update/startup';
 import { readResume, writeResume } from './update/resume';
 import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
@@ -40,7 +41,7 @@ import { writeDemoChart } from './backend/demo-image';
 import { ProcessBackend, type BackendStatus } from './backend/process';
 import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { pageAlive, pageRecovery } from './page-recovery';
-import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor } from './app-dialog';
+import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor, updateDialog, updateNowAnswer } from './app-dialog';
 import { openDialogWindow } from './app-dialog-window';
 import { editMenu, type EditAction } from './edit-menu';
 import { watchFit } from './window-fit';
@@ -1192,7 +1193,7 @@ function readDeployJson(): unknown {
 }
 const repoPlugins = resolvePath(app.getAppPath(), '..', '..', 'plugins');
 const buildDefaults: BuildSources = automated
-  ? { updateSource: '', pluginSources: [] }
+  ? { updateSource: '', updateSources: [], pluginSources: [] }
   : buildSources({ deploy: readDeployJson(), appId: APP_IDENTITY.id, packaged: app.isPackaged, ...(existsSync(repoPlugins) ? { repoPlugins } : {}) });
 const deployDefault = buildDefaults.updateSource;
 /** The build's source after a move its channel.json announced ("movedTo"); the build's own otherwise. */
@@ -1229,7 +1230,9 @@ const updates = new UpdateService({
   // nothing in the window sets it, and a source typed in an earlier version is not read.
   getSource: () => {
     const source = buildSource();
-    return { source, fromDeploy: Boolean(source) };
+    // the build's addresses in the order to try (deploy.json may list several); a channel that moved is its new one
+    const sources = source === deployDefault ? buildDefaults.updateSources : [source];
+    return { source, fromDeploy: Boolean(source), sources };
   },
   onMoved: (_from, to) => {
     // Kept against the build's own address, so a new build with another default is not moved by an old note.
@@ -1246,6 +1249,35 @@ const updates = new UpdateService({
   },
 });
 updates.onChange((s) => sendToWindow(DesktopChannel.UpdateChanged, s));
+// Soon after start (main/update/startup.ts): a downloaded update is asked about once; a version that must update
+// installs at once (the window shows its download). Later ones are the side bar's card.
+const appStartedAt = Date.now();
+let startupDone = false;
+updates.onChange((s) => {
+  const act = startupAction({ update: s, sinceStartMs: Date.now() - appStartedAt, busy: running.any(), shown: Boolean(mainWindow?.isVisible()), done: startupDone });
+  if (!act) return;
+  startupDone = true;
+  // A version that must update: installed as soon as it is downloaded, not asked (the window shows the download).
+  if (act === 'force') {
+    updates.forceInstall();
+    return;
+  }
+  void askUpdateNow(s.available ?? '');
+});
+async function askUpdateNow(version: string): Promise<void> {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+  const s = settings.get();
+  const spec = updateDialog(version, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins), uiFontFamily(s.uiFont, app.getLocale())));
+  const box = messageBoxFor(spec, { type: 'info', appName: APP_NAME, cancel: 0 });
+  const answer = await askDialog({
+    open: () => openDialogWindow(win, spec, s.zoom),
+    fallback: () => dialog.showMessageBox(win, box.options).then((r) => box.answer(r.response, r.checkboxChecked)),
+    warn: (line) => console.warn(line),
+  });
+  // 稍后: the side bar's card stays.
+  if (updateNowAnswer(answer)) updates.install();
+}
 ipcMain.handle(DesktopChannel.Update, async (_e, op: unknown) => {
   if (op === 'check') return updates.check();
   if (op === 'install') updates.install();
@@ -1733,7 +1765,7 @@ void app.whenReady().then(() => {
       checkApp: () => updates.check(),
       checkPlugins: async () => updates.setPluginUpdates(pluginUpdateCount((await pluginService.run({ op: 'checkUpdates' })).state)),
     });
-    // A downloaded update installs itself when idle: 空闲时更新 on, or a version that must update.
+    // A downloaded update installs itself when idle: 自动更新 on, or a version that must update.
     setInterval(() => {
       if (idleInstallDue({ update: updates.state, whenIdle: settings.get().updateWhenIdle, busy: running.any(), idleSeconds: powerMonitor.getSystemIdleTime() })) updates.install();
     }, IDLE_POLL_MS);

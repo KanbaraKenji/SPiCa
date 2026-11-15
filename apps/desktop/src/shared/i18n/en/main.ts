@@ -197,4 +197,9 @@ export const EN_MAIN: Catalog = {
   '插件页面不存在。': 'The plugin page doesn’t exist.',
   '插件中没有该工具。': 'The plugin has no such tool.',
   '该页面无权使用此工具。': 'This page isn’t allowed to use this tool.',
+  '立即更新': 'Update now',
+  '更新失败': 'Update failed',
+  '正在安装 {version}': 'Installing {version}',
+  '正在更新到 {version}': 'Updating to {version}',
+  '自动更新': 'Automatic updates',
 };

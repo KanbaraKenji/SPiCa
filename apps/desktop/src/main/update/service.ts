@@ -6,12 +6,22 @@
 // latest.yml from either kind of source, checks the installer's sha512, and
 // runs the per-user NSIS installer silently (no administrator rights).
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { t } from '../../shared/i18n';
+import { firstWorking } from './pick-source';
 import { compareVersions, parseChannel, parseLatestYml, parseNotices, type ChannelInfo, type Notice, type UpdateState } from '../../shared/updates';
 
-export type FetchLike = (url: string) => Promise<{ ok: boolean; status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
+export type FetchLike = (url: string) => Promise<{
+  ok: boolean;
+  status: number;
+  text(): Promise<string>;
+  arrayBuffer(): Promise<ArrayBuffer>;
+  /** A real fetch's body, read in pieces so the download can say how far it is. */
+  body?: { getReader(): { read(): Promise<{ done: boolean; value?: Uint8Array }> } } | null;
+  headers?: { get(name: string): string | null };
+}>;
 
 export interface UpdateServiceOptions {
   currentVersion: string;
@@ -22,7 +32,7 @@ export interface UpdateServiceOptions {
   /** Where downloaded installers are kept. */
   downloadsDir: string;
   /** The configured source and whether it came from the build (deploy.json or the official channel), not the user. */
-  getSource(): { source: string; fromDeploy: boolean };
+  getSource(): { source: string; fromDeploy: boolean; sources?: string[] };
   /** The build's source said it moved (channel.json "movedTo"): remember it; getSource gives the new one from now on. */
   onMoved?(from: string, to: string): void;
   fetch: FetchLike;
@@ -84,10 +94,41 @@ export class UpdateService {
     return () => this.#listeners.delete(listener);
   }
 
+  /** Of a source with several addresses, the one the last check could read (the others are not used until it fails). */
+  #chosen: string | undefined;
+
+  /** The address in use: the one chosen among several, else the source. */
+  #current(): string {
+    const { source, sources } = this.#o.getSource();
+    return this.#chosen && sources?.includes(this.#chosen) ? this.#chosen : source;
+  }
+
+  /**
+   * A source with several addresses: the first (in pick-source.ts's order) whose latest.yml can be read. None can:
+   * the first, so what is said is about the one meant first.
+   */
+  async #pick(): Promise<string> {
+    const { source, sources } = this.#o.getSource();
+    if (!sources || sources.length < 2) {
+      this.#chosen = undefined;
+      return source;
+    }
+    try {
+      const { place } = await firstWorking(sources, async (p) => {
+        if (!(await this.#text(p, 'latest.yml'))) throw new Error('no latest.yml');
+        return true;
+      });
+      this.#chosen = place;
+    } catch {
+      this.#chosen = undefined;
+    }
+    return this.#current();
+  }
+
   /** `words`: the new message; none clears it, 'keep' keeps the one there is. */
   #set(patch: Partial<Omit<UpdateState, 'message'>>, words?: Words | 'keep'): void {
-    const { source, fromDeploy } = this.#o.getSource();
-    this.#state = { ...this.#state, ...patch, source, sourceFromDeploy: fromDeploy };
+    const { fromDeploy } = this.#o.getSource();
+    this.#state = { ...this.#state, ...patch, source: this.#current(), sourceFromDeploy: fromDeploy };
     if (words !== 'keep') this.#words = words;
     for (const l of this.#listeners) l(this.state);
   }
@@ -107,13 +148,52 @@ export class UpdateService {
     }
   }
 
+  /** Downloads (or copies) the installer, saying how far it is (state.progress) a few times a second at most. */
   async #bytesTo(source: string, name: string, dest: string): Promise<void> {
+    let last = 0;
+    const say = (done: number, total: number) => {
+      const now = Date.now();
+      if (!total || (now - last < 250 && done < total)) return;
+      last = now;
+      this.#set({ progress: Math.min(1, done / total) }, 'keep');
+    };
     if (isUrl(name) || isUrl(source)) {
       const res = await this.#o.fetch(isUrl(name) ? name : urlFor(source, name));
       if (!res.ok) throw new Said(() => t('下载失败（{status}）', { status: res.status }));
-      await writeFile(dest, Buffer.from(await res.arrayBuffer()));
+      const total = Number(res.headers?.get('content-length') ?? 0) || 0;
+      const reader = res.body?.getReader();
+      if (!reader) {
+        await writeFile(dest, Buffer.from(await res.arrayBuffer()));
+        return;
+      }
+      const parts: Uint8Array[] = [];
+      let done = 0;
+      for (;;) {
+        const r = await reader.read();
+        if (r.done) break;
+        if (r.value) {
+          parts.push(r.value);
+          done += r.value.length;
+          say(done, total);
+        }
+      }
+      await writeFile(dest, Buffer.concat(parts));
     } else {
-      await copyFile(join(source, name), dest);
+      const from = join(source, name);
+      const total = (await stat(from)).size;
+      let done = 0;
+      await new Promise<void>((resolve, reject) => {
+        const rs = createReadStream(from);
+        const ws = createWriteStream(dest);
+        rs.on('data', (b) => {
+          done += b.length;
+          say(done, total);
+        });
+        rs.on('error', reject);
+        ws.on('error', reject);
+        ws.on('finish', () => resolve());
+        rs.pipe(ws);
+      });
     }
   }
 
@@ -127,6 +207,7 @@ export class UpdateService {
     if (this.#busy) return this.state;
     this.#busy = true;
     try {
+      source = await this.#pick();
       let channel = await this.#channel(source);
       // The build's own source moved: follow it once (a source the user typed is theirs and stays).
       if (channel.movedTo && fromDeploy && this.#o.onMoved && !sameUrl(channel.movedTo, source)) {
@@ -168,13 +249,15 @@ export class UpdateService {
         return this.state;
       }
       this.#ready = dest;
-      this.#set({ status: 'ready', available: version, required }, () => t('新版本 {version} 已下载，重启后更新。', { version }));
+      this.#set({ status: 'ready', available: version, required, progress: undefined }, () => t('新版本 {version} 已下载，重启后更新。', { version }));
+      // Found at start and it must update: installed now, without asking.
+      if (this.#forcing) this.install();
       return this.state;
     } catch (err) {
       const msg = (err as Error).message ?? String(err);
       // This service's own words, or words from elsewhere already in Chinese, as they are; else what failed.
       const chinese = /[一-鿿]/.test(msg);
-      this.#set({ status: 'error' }, err instanceof Said ? err.words : chinese ? () => msg : () => t('无法连接更新源：{msg}', { msg }));
+      this.#set({ status: 'error', progress: undefined }, err instanceof Said ? err.words : chinese ? () => msg : () => t('无法连接更新源：{msg}', { msg }));
       return this.state;
     } finally {
       this.#busy = false;
@@ -194,6 +277,18 @@ export class UpdateService {
     }
   }
 
+  #forcing = false;
+
+  /**
+   * A version that must update, found at start: installs as soon as it is downloaded (now, when it already is). A
+   * download that fails leaves `forcing` on with the reason, so the window can offer 重试 (check again).
+   */
+  forceInstall(): void {
+    this.#forcing = true;
+    this.#set({ forcing: true }, 'keep');
+    if (this.#ready) this.install();
+  }
+
   /** Runs the downloaded installer silently and quits; it starts the new version when done. */
   install(): boolean {
     if (!this.#ready) return false;
@@ -203,7 +298,7 @@ export class UpdateService {
 
   /** Announcements from the same source; none when the file is missing. */
   async notices(): Promise<Notice[] | undefined> {
-    const { source } = this.#o.getSource();
+    const source = this.#current();
     if (!source) return [];
     try {
       const text = await this.#text(source, 'announcements.json');
@@ -216,7 +311,7 @@ export class UpdateService {
 
   /** A newer model catalog from the same source (model-catalog.json); null when there is none, undefined when it could not be read. */
   async modelCatalog(): Promise<unknown | null | undefined> {
-    const { source } = this.#o.getSource();
+    const source = this.#current();
     if (!source) return null;
     try {
       const text = await this.#text(source, 'model-catalog.json');

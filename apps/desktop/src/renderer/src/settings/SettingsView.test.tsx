@@ -86,11 +86,11 @@ describe('搜索设置', () => {
   it('lists the rows that match by section; one goes to its section and marks it; nothing found says so', async () => {
     const p = show({ tab: 'about' });
     const box = screen.getByLabelText('搜索设置');
-    fireEvent.change(box, { target: { value: '空闲' } });
+    fireEvent.change(box, { target: { value: '自动' } });
     expect(screen.getByRole('heading', { level: 3, name: '搜索结果' })).toBeTruthy();
     const about = screen.getByRole('region', { name: '关于' });
-    const hit = within(about).getByRole('button', { name: /空闲时更新/ });
-    expect(hit.textContent).toBe('更新与公告 › 空闲时更新');
+    const hit = within(about).getByRole('button', { name: /自动更新/ });
+    expect(hit.textContent).toBe('更新与公告 › 自动更新');
     // No section is picked while searching.
     expect(screen.getAllByRole('tab').every((t) => t.getAttribute('aria-selected') === 'false')).toBe(true);
     fireEvent.click(hit);

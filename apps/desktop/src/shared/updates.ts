@@ -21,6 +21,10 @@ export interface UpdateState {
   portable: boolean;
   /** The source's channel.json says this version must update: the prompt stays, and it installs when idle. */
   required?: boolean;
+  /** A version that must update, found at start: it installs as soon as it is downloaded (the window shows it). */
+  forcing?: boolean;
+  /** While downloading: how far, 0..1 (absent when the size is not known). */
+  progress?: number;
   /** Installed plugins with a newer version in their sources, as the last check found. */
   pluginUpdates?: number;
 }

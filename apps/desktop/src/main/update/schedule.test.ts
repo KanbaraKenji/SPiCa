@@ -24,7 +24,7 @@ describe('scheduleChecks', () => {
 
 describe('idleInstallDue', () => {
   const idle = IDLE_AFTER_S;
-  it('with 空闲时更新 on: a downloaded update, nothing running, the computer left alone long enough', () => {
+  it('with 自动更新 on: a downloaded update, nothing running, the computer left alone long enough', () => {
     expect(idleInstallDue({ update: ready, whenIdle: true, busy: false, idleSeconds: idle })).toBe(true);
     expect(idleInstallDue({ update: ready, whenIdle: true, busy: false, idleSeconds: idle - 1 })).toBe(false);
     expect(idleInstallDue({ update: ready, whenIdle: true, busy: true, idleSeconds: idle * 10 })).toBe(false);

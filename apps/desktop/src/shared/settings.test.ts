@@ -144,7 +144,7 @@ describe('the 监控台 switch', () => {
 });
 
 describe('update settings', () => {
-  it('空闲时更新 is on unless switched off; an update source typed in an earlier version is not read; a channel move keeps only an https address', () => {
+  it('自动更新 is on unless switched off; an update source typed in an earlier version is not read; a channel move keeps only an https address', () => {
     expect(sanitizeSettings({}).updateWhenIdle).toBe(true);
     expect(sanitizeSettings({ updateWhenIdle: false }).updateWhenIdle).toBe(false);
     expect(sanitizeSettings({ updateWhenIdle: 'no' }).updateWhenIdle).toBe(true);

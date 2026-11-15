@@ -5381,6 +5381,30 @@ section.plugins-part > .plugins-part-title {
   color: var(--spica-warning);
 }
 
+/* A version that must update, found at start (shell/ForcedUpdate.tsx): over everything, the settings too. */
+.scrim.forced-update {
+  z-index: 200;
+}
+
+/* A version that must update, found at start (shell/ForcedUpdate.tsx): the bar and the percentage on one line. */
+.forced-update-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.forced-update-progress .plugin-progress-bar {
+  flex: 1;
+}
+
+.forced-update-pct {
+  flex: none;
+  min-width: 3em;
+  text-align: right;
+  color: var(--spica-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .plugin-progress-bar {
   height: 3px;
   border-radius: 2px;

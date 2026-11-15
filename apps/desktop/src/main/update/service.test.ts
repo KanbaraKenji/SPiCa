@@ -154,6 +154,72 @@ describe('UpdateService', () => {
     expect((await service(http, { onMoved, getSource: () => ({ source: http, fromDeploy: true }) }).s.check()).status).toBe('latest');
     expect(onMoved).not.toHaveBeenCalled();
   });
+
+  it('a version that must update, found at start: installed as soon as it is downloaded, without asking', async () => {
+    const { s, launchInstaller } = service(sourceWith('0.3.0', { channel: { required: '0.3.0' } }));
+    s.forceInstall();
+    expect(s.state.forcing).toBe(true);
+    expect(await s.check()).toMatchObject({ status: 'ready', required: true, forcing: true });
+    expect(launchInstaller).toHaveBeenCalledTimes(1);
+    // already downloaded when it is found to be forced: at once
+    const again = service(sourceWith('0.3.0', { channel: { required: '0.3.0' } }));
+    await again.s.check();
+    expect(again.launchInstaller).not.toHaveBeenCalled();
+    again.s.forceInstall();
+    expect(again.launchInstaller).toHaveBeenCalledTimes(1);
+  });
+
+  it('a forced download that fails keeps forcing with the reason, so it can be tried again', async () => {
+    const { s, launchInstaller } = service(sourceWith('0.3.0', { badHash: true, channel: { required: '0.3.0' } }));
+    s.forceInstall();
+    expect(await s.check()).toMatchObject({ status: 'error', forcing: true, message: '安装包校验失败，未安装。' });
+    expect(launchInstaller).not.toHaveBeenCalled();
+  });
+
+  it('says how far the download is, from a folder and from an address that gives its size', async () => {
+    const seen: number[] = [];
+    const folder = service(sourceWith('0.3.0'));
+    folder.s.onChange((st) => st.progress !== undefined && seen.push(st.progress));
+    await folder.s.check();
+    expect(seen.at(-1)).toBe(1);
+    expect(folder.s.state.progress).toBeUndefined();
+
+    const bytes = Buffer.from('installer 0.3.0 over the web');
+    const sha = createHash('sha512').update(bytes).digest('base64');
+    const parts = [bytes.subarray(0, 10), bytes.subarray(10)];
+    const web: number[] = [];
+    const http = service('https://updates.example.invalid/spica/', {
+      fetch: async (url) => {
+        if (url.endsWith('/latest.yml')) return { ok: true, status: 200, text: async () => `version: 0.3.0\npath: a.exe\nsha512: ${sha}\n`, arrayBuffer: async () => new ArrayBuffer(0) };
+        if (url.endsWith('/a.exe')) {
+          let i = 0;
+          return {
+            ok: true,
+            status: 200,
+            text: async () => '',
+            arrayBuffer: async () => new ArrayBuffer(0),
+            headers: { get: (n: string) => (n === 'content-length' ? String(bytes.length) : null) },
+            body: { getReader: () => ({ read: async () => (i < parts.length ? { done: false, value: new Uint8Array(parts[i++]!) } : { done: true }) }) },
+          };
+        }
+        return { ok: false, status: 404, text: async () => '', arrayBuffer: async () => new ArrayBuffer(0) };
+      },
+    });
+    http.s.onChange((st) => st.progress !== undefined && web.push(st.progress));
+    expect(await http.s.check()).toMatchObject({ status: 'ready' });
+    expect(web.at(-1)).toBe(1);
+  });
+
+  it('a source with several addresses: the first that can be read is used for the update and said as the source', async () => {
+    const near = join(mkdtempSync(join(tmpdir(), 'spica-near-')), 'not-there');
+    const far = sourceWith('0.3.0', { notices: { announcements: [{ id: 'far', text: '从远处读的' }] } });
+    const { s } = service(near, { getSource: () => ({ source: near, fromDeploy: true, sources: [near, far] }) });
+    expect(await s.check()).toMatchObject({ status: 'ready', available: '0.3.0', source: far });
+    expect(await s.notices()).toEqual([{ id: 'far', text: '从远处读的', level: 'info' }]);
+    // none can be read: the first is the one said
+    const none = service(near, { getSource: () => ({ source: near, fromDeploy: true, sources: [near, `${near}-2`] }) });
+    expect(await none.s.check()).toMatchObject({ status: 'error', source: near });
+  });
 });
 
 describe('UpdateService’s message and 语言', () => {

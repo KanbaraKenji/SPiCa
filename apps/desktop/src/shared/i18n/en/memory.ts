@@ -92,6 +92,5 @@ export const EN_MEMORY: Catalog = {
   更新与公告: 'Updates and announcements',
   检查更新: 'Check for updates',
   这个版本不检查更新: 'This version doesn’t check for updates',
-  空闲时更新: 'Update when idle',
   '正在检查更新…': 'Checking for updates…',
 };
