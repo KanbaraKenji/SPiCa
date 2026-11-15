@@ -49,7 +49,14 @@ export function PluginConfig({ p, busy, save, pickPath }: PluginConfigProps) {
   const [form, setForm, done] = useKeptDraft<Form>(`plugin.config:${p.name}`, saved);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [result, setResult] = useState<'saved' | null>(null);
-  const dirty = JSON.stringify(form) !== JSON.stringify(saved);
+  // What is saved changed under the form (清除设置, a save elsewhere): an untouched form follows it.
+  const savedKey = JSON.stringify(saved);
+  const [lastSaved, setLastSaved] = useState(savedKey);
+  if (lastSaved !== savedKey) {
+    setLastSaved(savedKey);
+    if (JSON.stringify(form) === lastSaved) setForm(saved);
+  }
+  const dirty = JSON.stringify(form) !== savedKey;
   if (!fields.length) return null;
 
   const set = (key: string, v: FormValue) => {

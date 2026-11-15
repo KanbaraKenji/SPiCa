@@ -1601,6 +1601,11 @@ ipcMain.handle(DesktopChannel.Plugins, async (_e, cmd: PluginsCommand) => {
  */
 async function runPlugins(cmd: PluginsCommand): Promise<PluginsResult> {
   if (cmd.op === 'setConfig') return { ...(await pluginService.run({ op: 'state' })), ok: false, message: '不支持的操作。' };
+  if (cmd.op === 'clearConfig') {
+    pluginConfig.remove(cmd.name);
+    const r = await pluginService.run({ op: 'setConfig', name: cmd.name, input: pluginConfig.input(cmd.name, deployPluginSettings) });
+    return r.ok ? { ...r, message: '已清除设置。' } : r;
+  }
   if (cmd.op === 'config') {
     const before = await pluginService.run({ op: 'state' });
     const p = before.state.plugins.find((x) => x.name === cmd.name);

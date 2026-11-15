@@ -274,6 +274,8 @@ export type PluginsCommand =
   | { op: 'modelAllowed'; name: string; allowed: boolean }
   /** Save a plugin's settings form (the main process seals passwords, then hands them on as setConfig). */
   | { op: 'config'; name: string; values: PluginConfigValues }
+  /** Forget what the person filled into a plugin's settings form (the packaging's values stay). */
+  | { op: 'clearConfig'; name: string }
   /** Main process to the plugin host only: one plugin's stored settings in the clear (null: none). */
   | { op: 'setConfig'; name: string; input: { values: Record<string, UserConfigValue>; deploy?: string[]; locked?: string[]; source?: string } | null }
   | { op: 'openRoot' };
