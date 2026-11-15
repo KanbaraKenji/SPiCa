@@ -45,7 +45,7 @@ export function askLines(run: MemoryTidyRun, items: MemoryItem[] | null, entries
     const e = entries?.find((x) => x.id === t.entry && x.updatedAt === t.at);
     if (!e) continue;
     if (!t.before) {
-      lines.push({ text: `新建「${e.name}」：${e.summary}`, stands: true });
+      lines.push({ text: `新建「${e.name}」`, stands: true });
       continue;
     }
     if (t.before.name !== e.name) lines.push({ text: `名字改为「${e.name}」`, stands: true });
