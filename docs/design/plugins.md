@@ -8,7 +8,7 @@
 | 参照 | 拿了什么 | 没拿什么 |
 |---|---|---|
 | Claude Code / DeepSeek Harness 的插件文件夹 | 一个目录一个插件，`skills/`、`commands/`、MCP 声明、`hooks/` 按目录放；技能用 `SKILL.md`（frontmatter 写 description），命令是 Markdown 模板（`$ARGUMENTS`） | 钩子不是 shell 命令，而是进程内的 JS 模块（我们的钩子要改请求和响应，shell 钩子做不到，也会弹窗） |
-| Claude Desktop 的 MCPB | 清单文件叫 `manifest.json` 放根上；包就是 zip；Node 类 server 用宿主自带的 Node；依赖（node_modules）打进包里，用户什么都不用装 | 不用 `.mcpb` 扩展名、不做 `user_config` 表单（以后需要再加） |
+| Claude Desktop 的 MCPB | 清单文件叫 `manifest.json` 放根上；包就是 zip；Node 类 server 用宿主自带的 Node；依赖（node_modules）打进包里，用户什么都不用装 | 不用 `.mcpb` 扩展名。`user_config` 表单 2026-11-16 加上了（第 2 节「设置表单」），类型名用我们自己的八种，MCPB 的拼法当别名读 |
 
 ## 2. 目录格式
 
@@ -44,11 +44,78 @@
 | `permissions.hooks` | 否 | 钩子模块允许挂哪几类：`inject`、`beforeRequest`、`afterResponse`、`beforeTool`、`afterTool`。没声明的一律不挂 |
 | `permissions.model` | 否 | 借用户配好的模型（MCP 取样）：`{ "reason": "一句为什么" }`。`reason` 必填（安装、启用时给用户看，第一次用不再确认）。没有每日花费上限（2026-11-13 去掉）：要限制调用次数由插件自己管，宿主不另加次数限制；旧清单里的 `max_usd_per_day` 照常能装，值读到后忽略。用户在插件页可以允许 / 禁止使用模型（默认允许，存在 state.json 记录的 `modelAllowed`）。起 server 时 manager 在 `connectMcp` 的配置里加 `sampling: { pluginId }`；用户禁止了或没声明就不传，server 拿不到 `capabilities.sampling`。用户改允许 / 禁止会重启这个插件的 server |
 | `mock` | 否 | `{ "supported": true, "description": "…" }` |
+| `user_config` | 否 | 让用户填的设置，宿主画表单、存值、交给 server：见下面「设置表单」 |
 | `mail` | 否 | 这个插件是邮件来源：`{ "list_tool": "list_messages", "read_tool": "read_message" }`（server 里的原名）；可选 `server`（有多个 MCP server 时必填）、`list_args`、`fields`（列表结果字段名和内核默认不同时）。启用时插件包调 `runtime.mail.addSource({ id: 插件名, listTool: '<server名>__list_messages', … })`，停用时撤掉；部署配置里不用再写带前缀的工具名 |
 
 校验从不抛异常，返回问题列表：每条带「哪个文件 · 哪个字段」和一句中文人话（例：`manifest.json · version：版本号「1.0」不合格，应该像 1.2.3 这样三段数字。`）。有 error 就不装、不启用；warning 只展示。
 
-### MCP server / 常驻进程声明 `mcp/<id>.json`、`services/<id>.json`
+### 设置表单 `user_config`（2026-11-16）
+
+他 11-10 定过「统一不要单独设置，但是允许插件内部单独设置」，11-16 在审核页改成「做」：两种都有，统一表单是新加的，插件自己画的设置页照旧。设计经四个角色讨论（用插件的人、用弱模型写插件的 Agent、公司端维护者、框架维护者），结论放在账本简报里；下面是做成的样子。
+
+- **清单**：顶层 `user_config`，一项一个键，不嵌套。键名 `^[a-z][a-z0-9_]{0,31}# 插件系统设计（`@spica/plugins`）
+
+> 状态：首版完成（2026-11-09）。插件文件夹格式、启用 / 停用全撤销、Node 与自带可执行文件两种 MCP server、崩溃重启、模拟模式、打包校验、共享盘 / HTTP 分发与更新、回滚都已做通；示例插件 `plugins/example-notes` 跑通 J6。
+> 需求来源：立项书「硬规则」「Harness」「插件」「首版验收 J6」「硬环境约束」。内核侧接口见 `agent-core.md` 第 7 节（钩子）、第 8 节（工具与确认，含 MCP 客户端）。
+
+## 1. 对标与取舍
+
+| 参照 | 拿了什么 | 没拿什么 |
+|---|---|---|
+| Claude Code / DeepSeek Harness 的插件文件夹 | 一个目录一个插件，`skills/`、`commands/`、MCP 声明、`hooks/` 按目录放；技能用 `SKILL.md`（frontmatter 写 description），命令是 Markdown 模板（`$ARGUMENTS`） | 钩子不是 shell 命令，而是进程内的 JS 模块（我们的钩子要改请求和响应，shell 钩子做不到，也会弹窗） |
+| Claude Desktop 的 MCPB | 清单文件叫 `manifest.json` 放根上；包就是 zip；Node 类 server 用宿主自带的 Node；依赖（node_modules）打进包里，用户什么都不用装 | 不用 `.mcpb` 扩展名。`user_config` 表单 2026-11-16 加上了（第 2 节「设置表单」），类型名用我们自己的八种，MCPB 的拼法当别名读 |
+
+## 2. 目录格式
+
+```
+<插件>/
+  manifest.json             清单（必需）
+  skills/<id>/SKILL.md      技能：frontmatter 的 name、description + 正文
+  commands/<id>.md          命令：frontmatter 的 description、argument-hint + 正文模板
+  mcp/<id>.json             MCP server 声明（工具给模型用）
+  services/<id>.json        常驻进程声明（也是 MCP server，默认不把工具给模型）
+  hooks/*.js | *.mjs        代码钩子（ESM，默认导出钩子对象或工厂函数）
+  views/<id>.json           插件自带的页面（外壳在沙箱里渲染）
+  mock/…                    模拟数据（约定，宿主不读）
+  其余文件                  server 代码、可执行文件、node_modules 等
+```
+
+### 清单 `manifest.json`
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `manifest_version` | 是 | 现在只有 `1` |
+| `name` | 是 | 小写字母、数字、`-`，2–24 字符，以字母开头。也是工具名前缀 |
+| `version` | 是 | semver，如 `1.2.3` |
+| `description` | 是 | 一句话 |
+| `author` | 是 | `{ "name": … }` 或字符串 |
+| `display_name` | 否 | 界面上显示的名字，默认用 `name` |
+| `icon` | 否 | 插件自己的图标，设置 › 插件 的列表和详情里用；没有时外壳用名字的第一个字加色块。插件文件夹里的 `.svg` 相对路径，或浅色、深色皮肤各一款 `{ "light": …, "dark": … }`（只给一款时两种皮肤都用它），规矩同视图的 `icon`（不许 `..`、绝对路径，文件要存在），另加不大于 64 KB（`ICON_MAX_BYTES`）。写错是 error，不装。`describe()` 给 `{ light, dark }`，相对安装目录的路径（一款时两个一样）；外壳读成 `data:` 图片随列表送去，界面里只用 `<img>` 显示、按当前皮肤显示其中一款，换皮肤时跟着换，SVG 里的脚本不执行 |
+| `license` | 否（警告） | SPDX 写法 |
+| `compatibility.spica` | 否（警告） | 兼容范围：`>=0.1.0 <1.0.0`、`^0.1.0`、`~0.1.0`、`*` |
+| `permissions.network` | 否 | 插件进程会访问的主机名单；现在只展示给用户，不拦截 |
+| `permissions.workspace` | 否 | 对会话工作文件夹（项目文件夹）的访问：`none`（默认）/ `read` / `write`；现在只展示，第 7 节写了以后怎么拦 |
+| `permissions.irreversible` | 否 | 不可撤销的工具（写 server 里的原名，mcp/ 和 services/ 的都算），调用前一律要用户确认 |
+| `permissions.hooks` | 否 | 钩子模块允许挂哪几类：`inject`、`beforeRequest`、`afterResponse`、`beforeTool`、`afterTool`。没声明的一律不挂 |
+| `permissions.model` | 否 | 借用户配好的模型（MCP 取样）：`{ "reason": "一句为什么" }`。`reason` 必填（安装、启用时给用户看，第一次用不再确认）。没有每日花费上限（2026-11-13 去掉）：要限制调用次数由插件自己管，宿主不另加次数限制；旧清单里的 `max_usd_per_day` 照常能装，值读到后忽略。用户在插件页可以允许 / 禁止使用模型（默认允许，存在 state.json 记录的 `modelAllowed`）。起 server 时 manager 在 `connectMcp` 的配置里加 `sampling: { pluginId }`；用户禁止了或没声明就不传，server 拿不到 `capabilities.sampling`。用户改允许 / 禁止会重启这个插件的 server |
+| `mock` | 否 | `{ "supported": true, "description": "…" }` |
+| `user_config` | 否 | 让用户填的设置，宿主画表单、存值、交给 server：见下面「设置表单」 |
+| `mail` | 否 | 这个插件是邮件来源：`{ "list_tool": "list_messages", "read_tool": "read_message" }`（server 里的原名）；可选 `server`（有多个 MCP server 时必填）、`list_args`、`fields`（列表结果字段名和内核默认不同时）。启用时插件包调 `runtime.mail.addSource({ id: 插件名, listTool: '<server名>__list_messages', … })`，停用时撤掉；部署配置里不用再写带前缀的工具名 |
+
+校验从不抛异常，返回问题列表：每条带「哪个文件 · 哪个字段」和一句中文人话（例：`manifest.json · version：版本号「1.0」不合格，应该像 1.2.3 这样三段数字。`）。有 error 就不装、不启用；warning 只展示。
+
+。类型八种：`text`、`password`、`url`（只认 http/https，没写协议时补 `https://`）、`number`（`min` / `max`）、`toggle`、`select`（`options`：文字列表）、`folder`、`file`。属性：`title`（必填，≤40 字）、`placeholder`、`required`、`default`（按类型检查；密码不许有）、`description`（读进来放标签旁的悬停提示）。解析和值的检查在 `src/user-config.ts`（纯函数，外壳的表单用同一份，经 `@spica/plugins/user-config` 导入）。
+- **MCPB 的拼法**当别名读：先换成规范名（`string`→`text`、`boolean`→`toggle`、`directory`→`folder`），再只按规范名校验；`text` + `sensitive: true` 读成 `password`；`password` + `sensitive: false`、`sensitive` 出现在别的类型上是 error；用了别名照常读、给一条 warning 说规范写法。键名按下划线分段有 password / token / secret / key 一类而类型不是 password 时给 warning（永远不升成 error）；未知属性 warning；未知类型 error 并列出八种。
+- **值存在哪**：外壳主进程 `<userData>/plugin-config.json`（`main/plugins/config-store.ts`），按插件、按键；普通值明文，密码用 safeStorage（同模型 Key 的 `SecretBox`）加密，加密不可用时密码拒存、不退成明文。每个插件记下存值时它的来源（`sourceKey`：`<kind>:<location>`）；从别的来源装了同名的包，密码当没填，普通值保留。不进 `state.json`、不进插件数据文件夹。
+- **到后端**：启动时经扩展 options（`DesktopHostOptions.userConfig` → `PluginManagerOptions.userConfig`，`PluginConfigInput`：`values` 明文、`deploy`、`locked`、`source`），只在内存；页面保存走插件命令 `{ op: 'config', name, values }`：主进程先按字段校验、加密存，再发 `{ op: 'setConfig', name, input }` 给插件页后台（页面自己发 `setConfig` 会被拒），后台调 `PluginManager.setUserConfig`。protocol / AgentApi 没动。
+- **交给 server**：一个环境变量 `SPICA_USER_CONFIG`，内容是 `{ 键: 值 }` 的 JSON，**每个声明过的键都在**：存着且仍合这一项的类型和范围的用它，否则默认值，否则 `null`（`configForServer`）。在 `SPICA_` 系列里填，清单的 `env` 冒充不了。钩子的 `ctx.config` 留位置没做。
+- **待设置**：必填项没有可用的值时（`missingConfig`），`enable` 照常记成已启用，但这个插件什么都不挂（server、技能、命令、钩子），日志写「waiting for settings: …」；`describe()` 给 `enabled: true, waiting: true`。`setUserConfig` 之后：等着的填齐了就照正常顺序启用；在跑的缺了必填就停下等；其余只重启这个插件的 server。新版多了必填项时不算启用失败，不会触发自动退回旧版。
+- **describe()**：`config: { fields, missing }`，每个字段带 `set`、非密码的 `value`、`from`（`user` / `deploy`）、`locked`；密码只有 `set`，值永远不出主进程和插件子进程的环境（MCP 工具 `spica_plugin_describe` 用的也是它）。
+- **脱敏**：密码值经宿主的 `addRedactions` 交给内核（内核只收 6 位及以上）；插件日志（`#log`，落盘和送监控台是同一处）先 `scrubSecrets`：6 位及以上全文替换，更短的只在前后不是字母数字时替换。很短的密码抹不干净，作者文档如实写了。隔离说实话：能保证不交给别的插件、不落明文、不进日志和给模型的内容；钩子是后端进程里的代码，不是沙箱。
+- **公司预填**（`deploy.json` 的 `pluginConfig`：`{ 插件: { 键: { value, locked? } } }`）：打包时 `scripts/deploy.mjs` 只查形状（插件那时还不知道），键名像密码的停下；运行时主进程读它，锁定的盖过用户的值、标 `locked`，没锁的只在用户没填时补上，都标 `from: 'deploy'`。声明里没有的键、密码类型的键不用，启用时插件日志写一行。锁定的值不合新版的类型或范围时当没填，表单那一格写「请联系管理员」。
+- **卸载**：主进程删存的值，后端内存里的一起清。
+
+
 
 ```json
 {
@@ -110,7 +177,7 @@ export const priority = 100; // 可选，小的先跑
 
 **预览页**：预览栏打开一个文件时，外壳按用户的设置（外壳自己的 `settings.json` 里 `previewers`：扩展名 → `插件/页面`，没写的用自带预览）决定用不用插件页。外壳主进程读这个文件（超过 `maxBytes` 不读），经桥把文件名、大小、修改时间、扩展名和字节交给页面，不给路径；页面读不了别的文件、写不回去、不能联网。页面慢（15 秒）、出错、插件没装时退回自带预览。桥接口 `spica.preview.file() / ready() / fail()` 和设置的界面归外壳。
 
-**设置页**（2026-11-12，team2）：插件自己写的页面，外壳放在 设置 › 插件 › 这个插件的详情里：名字和操作那两行下面一行页签，「详情」之后每个设置页一个（页签文字是 `title`），点到时整块换成这个页面、占满剩下的高度、页面自己滚；只在插件启用时有页签；第一次点到才加载，切回「详情」时页面留着（只在内存里），换别的插件再回来从「详情」开始；页面里 `--spica-bg` 和 `--spica-surface` 对调（底是卡片色，按钮、输入框是窗口色）。规则和别的页面完全一样（沙箱、只能调本插件的工具、`permissions.tools` 生效、不写就是本插件全部工具）。读写设置的工具建议放 `services/`（模型看不到），示例插件 `views/settings.json` + `services/settings.json` 就是这么做的。它和第 11 节「故意没做的插件设置表单」不是一回事：那个是 MCPB 的 `user_config`——清单里声明字段，由宿主统一画表单、统一存值、启动时注入给 server；设置页是插件自己画、自己经工具存（`SPICA_PLUGIN_DATA/config.json`），宿主只给一块地方和桥。
+**设置页**（2026-11-12，team2）：插件自己写的页面，外壳放在 设置 › 插件 › 这个插件的详情里：名字和操作那两行下面一行页签，「详情」之后每个设置页一个（页签文字是 `title`），点到时整块换成这个页面、占满剩下的高度、页面自己滚；只在插件启用时有页签；第一次点到才加载，切回「详情」时页面留着（只在内存里），换别的插件再回来从「详情」开始；页面里 `--spica-bg` 和 `--spica-surface` 对调（底是卡片色，按钮、输入框是窗口色）。规则和别的页面完全一样（沙箱、只能调本插件的工具、`permissions.tools` 生效、不写就是本插件全部工具）。读写设置的工具建议放 `services/`（模型看不到），示例插件 `views/settings.json` + `services/settings.json` 就是这么做的。它和上面的「设置表单」（`user_config`）不是一回事：那个是清单里声明字段，由宿主画表单、存值、启动时交给 server；设置页是插件自己画、自己经工具存（`SPICA_PLUGIN_DATA/config.json`），宿主只给一块地方和桥。表单在「详情」里，设置页是后面的页签，两者可以并存。
 
 视图文件名（不含 `.json`）就是视图 id：小写字母、数字、`-`。
 
@@ -166,7 +233,7 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 ## 5. 外部进程（MCP server）
 
 - 统一是 stdio 的 MCP server，由内核的 MCP 客户端启动和通话（`spawn` 带 `windowsHide: true`，不用 `shell`）。插件包只负责拼启动参数、管重启和日志。
-- 环境变量（宿主填）：`SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION`、`SPICA_PLUGIN_DIR`（安装目录，只读）、`SPICA_PLUGIN_DATA`（可写）、`SPICA_MOCK`（`1` / `0`）、`SPICA_USER_ACCOUNT`（用户的账号，见下）、`SPICA_APP_NAME`（应用现在的名字，`PluginManagerOptions.appName`，公司改名打包后是它自己的名字；插件的报错和提示说出应用名时用它，2026-11-16）；Node 类再加 `ELECTRON_RUN_AS_NODE=1`。工作目录是插件安装目录。这些在 `baseEnv` 和清单的 `env` 之后填，同名的盖不过它们（清单的 `env` 写 `SPICA_` 开头的检查时就报错）；用户自己环境里同名的变量不在继承白名单里，也进不来。
+- 环境变量（宿主填）：`SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION`、`SPICA_PLUGIN_DIR`（安装目录，只读）、`SPICA_PLUGIN_DATA`（可写）、`SPICA_MOCK`（`1` / `0`）、`SPICA_USER_ACCOUNT`（用户的账号，见下）、`SPICA_USER_CONFIG`（声明了 `user_config` 时，见第 2 节「设置表单」）、`SPICA_APP_NAME`（应用现在的名字，`PluginManagerOptions.appName`，公司改名打包后是它自己的名字；插件的报错和提示说出应用名时用它，2026-11-16）；Node 类再加 `ELECTRON_RUN_AS_NODE=1`。工作目录是插件安装目录。这些在 `baseEnv` 和清单的 `env` 之后填，同名的盖不过它们（清单的 `env` 写 `SPICA_` 开头的检查时就报错）；用户自己环境里同名的变量不在继承白名单里，也进不来。
 - **用户的账号**（2026-11-12，公司定的规则）：Windows 用户文件夹名转大写（`C:\Users\alex.chen` → `ALEX.CHEN`）。文件夹向系统要（`path.win32.basename(os.userInfo().homedir)`，Windows 上是这个进程所属用户的配置文件目录，实测不受 `USERPROFILE` 影响；`os.homedir()` 先读 `USERPROFILE`，不用），不读 `USERPROFILE` / `HOMEPATH` / `USERNAME`，不用登录名，不另起进程。桌面端主进程启动时算一次（`apps/desktop/src/main/user-account.ts`），设置 › 账号 可以手动改（转大写、去首尾空格和控制字符，最长 64；填回自动的那个等于没填）；生效的那个随内核配置交给后端扩展（`DesktopHostOptions.userAccount` → `PluginManagerOptions.userAccount`），改了经扩展方法 `setUserAccount` 传过去：钩子下一次调用读到，在运行的 server 用 `restartServers()` 重启一遍（和网络设置变了一样）。manager 自己不取，没给就是空字符串。取不到（不是 Windows、系统没给、出错）时是空字符串，记一行日志，程序照常起。截图模式固定 `ALEX.CHEN`；开发版可以用 `SPICA_DEV_ACCOUNT` 试别的（`-` = 取不到）。
 - **Node 类：用 Electron 自带的 Node。** 启动命令是 `process.execPath`（Electron 主程序）+ `ELECTRON_RUN_AS_NODE=1`。理由：用户什么都不用装；和桌面端是同一个 Node 版本（Electron 45 = Node 24.22），作者在本机用 Node 24 开发即可；不另带一个 node.exe，安装包不变大。纯 Node 下（测试、冒烟脚本）这个变量无害，所以测试和真机走同一条路。依赖打进包里（MCPB 的做法），不在用户电脑上 `npm install`。
 - **Python 类，这一版：插件自带独立可执行文件**（PyInstaller / Nuitka 打成 `.exe`），清单写 `"runtime": "binary"`，宿主只负责启动。
@@ -235,6 +302,7 @@ server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes
 | `views()` → `PluginView[]`、`resolveViewFile(插件, 相对路径)`、`viewCall(插件, 视图, 工具, 参数, { confirmed })` | 插件页面：列表、取文件、调工具（见第 2 节「视图」） |
 | `describe(name).model`、`modelUsage()`、`setModelAllowed(name, true | false)` | 用模型的插件：理由（`reason`）、用户是否允许（`allowed`）；允许或禁止。旧记录里的 `modelMaxUsdPerDay`（以前用户设的每日上限）：0 读成禁止，别的值读成允许、数额不再起作用；`setModelAllowed` 写 `modelAllowed` 并删掉旧字段。同版本或新版本重装时保留用户的禁止 |
 | `restartServers()` | 网络设置变了：重启在运行的插件 server（后端扩展的 `networkChanged()` 调它） |
+| `describe(name).config` / `.waiting`、`setUserConfig(name, input \| null)` | 设置表单：字段、哪些已填（密码只说已填未填）、哪些必填没填；宿主存了新值后交给插件（见第 2 节「设置表单」） |
 | `on(listener)` → `PluginEvent` | `plugin.installed / uninstalled / enabled / disabled / error`、`server.status`、`hook.error`、`mock.changed` |
 
 所有面向用户的报错都是中文人话（`PluginError.message`，带 `issues` 明细）。
@@ -254,7 +322,8 @@ J6 经 MCP 服务自动跑：`npm run journey:j6 -w @spica/plugins`（真模型�
 
 ## 11. 故意没做的
 
-- 插件设置表单（MCPB 的 `user_config`：清单里声明字段、宿主统一画表单和存值）、包签名、工作文件夹 / 网络的强制拦截、宿主托管 Python：见上文「以后」。插件**自己写的**设置页（`placement: "settings"`）已经有了，见第 2 节「视图」；两者的区别也写在那里。
+- 包签名、工作文件夹 / 网络的强制拦截、宿主托管 Python：见上文「以后」。
+- 设置表单（`user_config`）留位置没做的：跨插件共用项（部署层定义、插件引用）、按语言的标签（等多语言合进来）、`pattern`、`renamed_from`、钩子的 `ctx.config`、自画设置页读声明的值（只给非密码项）、server 把旧 `config.json` 里的非密码值交回、不重新打包换预填值。
 - 外壳的插件页、模拟模式标记、来源设置：归桌面外壳，本包只给接口和事件。
 - 官方 Outlook 插件：另开话题。
 

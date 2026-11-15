@@ -12,7 +12,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { serveMcpHttp, type McpHttpServer, type Runtime } from '@spica/core';
-import { attachBackend as attachPlugins } from '@spica/plugins';
+import { attachBackend as attachPlugins, type PluginConfigInput } from '@spica/plugins';
 import { RealPluginService } from '../main/plugins/service';
 import type { OfficialSource, PluginsCommand } from '../shared/plugins';
 import { APP_NAME } from '../shared/app-identity';
@@ -28,6 +28,8 @@ export interface DesktopHostOptions {
   mcpTokenFile?: string;
   /** The user's account for every plugin, worked out by the main process (main/user-account.ts); '' when none. */
   userAccount?: string;
+  /** What people filled into plugins' settings forms, passwords opened by the main process (in memory only). */
+  userConfig?: Record<string, PluginConfigInput>;
 }
 
 /** Tried first, so scripts usually find the same address; any free port when it is taken. */
@@ -44,6 +46,7 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
     root: options.pluginRoot,
     appName: APP_NAME,
     userAccount: options.userAccount ?? '',
+    ...(options.userConfig ? { userConfig: options.userConfig } : {}),
     onLog: (plugin, line) => parent?.postMessage({ type: 'log', source: 'plugin', plugin, line }),
   });
   const page = new RealPluginService({

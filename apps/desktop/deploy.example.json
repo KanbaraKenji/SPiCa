@@ -10,6 +10,7 @@
     "font": "",
     "copyright": ""
   },
+  "// pluginConfig": "Values filled into plugins' settings forms (their manifest's user_config), by plugin and key: { \"tickets\": { \"server_url\": { \"value\": \"https://tickets.example.com\", \"locked\": true } } }. locked: shown read-only (由管理员设置); otherwise only filled in where the person has not. Never a password or token: each person types their own (a key named like one stops the packaging).",
   "// models": "Company preset model connections, listed first under 服务商 in Settings > Models. Each: id, name, kind (openai-compatible / anthropic / wso2), baseUrl, tokenUrl and scope for wso2, models [{ id, label, contextWindow, role default/strong/cheap }], optional default, maxConcurrent, requestsPerMinute, headers (names of request headers each person fills in, e.g. [\"X-API-Key\"] for a gateway that takes its key there; never their values), credentialsIn for wso2 (basic or body; not written: tried in turn). No keys or secrets: each person types their own (packaging stops if one is here). Example: {\"id\": \"acme-gateway\", \"name\": \"公司模型网关（示例）\", \"kind\": \"openai-compatible\", \"baseUrl\": \"https://llm.example.com/v1\", \"default\": true, \"models\": [{\"id\": \"acme-chat\", \"label\": \"Acme Chat\", \"contextWindow\": 128000, \"role\": \"default\"}, {\"id\": \"acme-pro\", \"label\": \"Acme Pro\", \"contextWindow\": 200000, \"role\": \"strong\"}]}",
   "models": []
 }

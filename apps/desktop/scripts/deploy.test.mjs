@@ -146,3 +146,14 @@ describe('deploy.json', () => {
     expect(sourceLines(readDeploy(dirWith({ app: { name: 'Nova Desk', id: 'com.example.nova' } })))).toEqual(['updates: none (not in deploy.json)', `official plugins: official channel ${OFFICIAL_CHANNEL}index.json`]);
   });
 });
+
+describe('deploy.json pluginConfig', () => {
+  it('values for plugins’ settings forms, some locked; absent is null; a wrong shape or a password stops the packaging', () => {
+    expect(readDeploy(dirWith({})).pluginConfig).toBeNull();
+    const pc = { tickets: { server_url: { value: 'https://tickets.example.com', locked: true }, page_size: { value: 50 } } };
+    expect(readDeploy(dirWith({ pluginConfig: pc })).pluginConfig).toEqual(pc);
+    expect(() => readDeploy(dirWith({ pluginConfig: [] }))).toThrow('deploy.json 的 pluginConfig 要写成');
+    expect(() => readDeploy(dirWith({ pluginConfig: { tickets: { server_url: 'https://x' } } }))).toThrow('deploy.json 的 pluginConfig.tickets.server_url 要写成 { "value"');
+    expect(() => readDeploy(dirWith({ pluginConfig: { tickets: { api_token: { value: 'x' } } } }))).toThrow('密码和令牌不能写进安装包');
+  });
+});

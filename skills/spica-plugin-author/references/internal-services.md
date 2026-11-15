@@ -4,16 +4,17 @@
 
 ## 一、地址和凭据放哪
 
-**不要写进代码，也不要从环境变量读。** 装进 Spica 后，插件进程只获得一份白名单里的环境变量（`PATH`、`TEMP`、`APPDATA` 这类），名字带 `KEY`、`TOKEN`、`SECRET` 的一律不传。你在开发机上设的 `EXAMPLE_API_TOKEN`，装进去后就读取不到了。`check.mjs` 看到代码读这种变量会提醒你。
+**不要写进代码，也不要读自己起名的环境变量。** 装进 Spica 后，插件进程只获得一份白名单里的环境变量（`PATH`、`TEMP`、`APPDATA` 这类）和 Spica 给的 `SPICA_` 变量，名字带 `KEY`、`TOKEN`、`SECRET` 的一律不传。你在开发机上设的 `EXAMPLE_API_TOKEN`，装进去后就读取不到了。`check.mjs` 看到代码读这种变量会提醒你。
 
 真能用的有两种：
 
 | 放什么 | 放哪 | 谁来填 |
 |---|---|---|
-| 服务地址、账号、令牌、个人偏好 | `SPICA_PLUGIN_DATA` 里的 `config.json`（每个用户本机一份，升级插件不会丢，也不进插件包） | 用户在插件**自己的设置页**里填 |
+| 服务地址、账号、密码、令牌、个人偏好 | 清单的 `user_config`：Spica 画表单、存值（密码加密），server 读 `SPICA_USER_CONFIG`。写法见 `user-config.md` | 用户在 设置 › 插件 › 这个插件 › 详情 里填；公司打包时可以替大家预填 |
+| 类型表表达不了的（测试连接、能增删的列表、联动的选项） | `SPICA_PLUGIN_DATA` 里的 `config.json`（每个用户本机一份，升级插件不会丢，也不进插件包） | 用户在插件**自己的设置页**里填 |
 | 不敏感、所有人都一样的固定值 | `mcp/<id>.json` 的 `env`（会进插件包） | 你，写死在包里 |
 
-Spica 不替插件生成设置表单，插件自己写设置页：一个 `placement` 为 `settings` 的页面，显示在 设置 › 插件 › 这个插件的详情里（侧栏不多出入口），页面通过 `services/` 里的工具读写 `config.json`。要用户选文件夹时，页面里调 `window.spica.pickFolder()`，见 `ui.md`「设置页」：
+`user_config` 表达不了的，插件自己写设置页：一个 `placement` 为 `settings` 的页面，显示在 设置 › 插件 › 这个插件的详情里（侧栏不多出入口），页面通过 `services/` 里的工具读写 `config.json`。要用户选文件夹时，页面里调 `window.spica.pickFolder()`，见 `ui.md`「设置页」：
 
 ```
 services/settings.json   { "runtime": "node", "entry": "server/settings.js" }

@@ -646,3 +646,54 @@ describe('plugin badges', () => {
     expect(pluginBadge({ name: 'notes', displayName: '笔记' }).colour).toMatch(/^#[0-9a-f]{6}$/);
   });
 });
+
+describe('a plugin’s settings form (user_config)', () => {
+  /** The demo with the plugin that has a form; a save goes as the main process sends it on (setConfig). */
+  function withForm() {
+    const svc = new FakePluginService('D:/plugins', { config: true });
+    const sent: PluginsCommand[] = [];
+    const a: PluginsApi = {
+      onChanged: () => () => {},
+      run: async (cmd) => {
+        sent.push(cmd);
+        if (cmd.op !== 'config') return svc.run(cmd);
+        const values = Object.fromEntries(Object.entries(cmd.values).filter(([, v]) => v !== null)) as Record<string, string | number | boolean>;
+        return svc.run({ op: 'setConfig', name: cmd.name, input: { values: { account: 'ALEX.CHEN', ...values } } });
+      },
+    };
+    return { api: a, sent };
+  }
+
+  it('the list says how many are not filled in; the page says it waits, the form is the first group, the locked field read-only', async () => {
+    const { api: a } = withForm();
+    render(<Plugins api={a} />);
+    expect(within(await screen.findByRole('navigation', { name: '插件列表' })).getByRole('button', { name: /工单查询/ }).textContent).toContain('1 项未填');
+    const page = await open('工单查询', '工单查询（示例）');
+    expect(within(page).getByRole('button', { name: /待设置 · 1 项未填/ })).toBeTruthy();
+    const url = within(page).getByRole('textbox', { name: '服务器地址' }) as HTMLInputElement;
+    expect(url.readOnly).toBe(true);
+    expect(url.value).toBe('https://tickets.example.com');
+    expect(within(page).getByText('由管理员设置')).toBeTruthy();
+    expect((within(page).getByLabelText('密码') as HTMLInputElement).placeholder).toBe('');
+    expect(within(page).getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('what is wrong is said under the field and nothing is sent; filled in and saved, it runs and the password reads as saved', async () => {
+    const { api: a, sent } = withForm();
+    render(<Plugins api={a} />);
+    const page = await open('工单查询', '工单查询（示例）');
+    fireEvent.change(within(page).getByRole('textbox', { name: '每页条数' }), { target: { value: 'abc' } });
+    expect(within(page).getByText('未保存')).toBeTruthy();
+    fireEvent.click(within(page).getByRole('button', { name: '保存' }));
+    expect(await within(page).findByText('请输入数字')).toBeTruthy();
+    expect(sent.some((c) => c.op === 'config')).toBe(false);
+    fireEvent.change(within(page).getByRole('textbox', { name: '每页条数' }), { target: { value: '30' } });
+    fireEvent.change(within(page).getByLabelText('密码'), { target: { value: 'pw-0001' } });
+    fireEvent.click(within(page).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(sent).toContainEqual(expect.objectContaining({ op: 'config', name: 'tickets', values: expect.objectContaining({ password: 'pw-0001', page_size: 30, account: 'ALEX.CHEN' }) })));
+    expect(sent.find((c) => c.op === 'config')).not.toHaveProperty('values.server_url');
+    expect(await within(page).findByText('已保存')).toBeTruthy();
+    expect(within(page).queryByRole('button', { name: /项未填/ })).toBeNull();
+    expect((within(page).getByLabelText('密码') as HTMLInputElement).placeholder).toBe('已保存（留空不修改）');
+  });
+});

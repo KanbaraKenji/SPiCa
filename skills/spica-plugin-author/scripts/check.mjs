@@ -205,11 +205,11 @@ export async function check(dir, opts = {}) {
   for (const rel of files) {
     if (/\.(png|jpe?g|gif|ico|exe|dll|node|zip|woff2?|ttf|pdf)$/i.test(rel) || statSync(join(root, rel)).size > 2_000_000) continue;
     const text = await readFile(join(root, rel), 'utf8');
-    for (const [re, what] of SECRET_PATTERNS) if (re.test(text)) err(rel, `里面有${what}。密钥不能进插件包：放进 SPICA_PLUGIN_DATA 里的配置文件，或做一个设置页让用户填（见 references/internal-services.md）`);
+    for (const [re, what] of SECRET_PATTERNS) if (re.test(text)) err(rel, `里面有${what}。密钥不能进插件包：写进清单的 user_config 让用户填（见 references/user-config.md）`);
     if (!/\.(m?js|cjs|ts|py)$/i.test(rel) || /(^|\/)test\//.test(rel)) continue;
     for (const name of new Set([...text.matchAll(ENV_READS)].map((x) => x[1] ?? x[2] ?? x[3]))) {
       if (APP_SET_ENV.test(name) || inherited.has(name.toUpperCase()) || declaredEnv.has(name)) continue;
-      if (SECRET_NAME.test(name)) warn(rel, `读环境变量 ${name}：装进 Spica 后读不到（只传白名单变量，带 KEY、TOKEN、SECRET 的一律不传）。凭据放 SPICA_PLUGIN_DATA 里的配置文件，或做设置页让用户填，见 references/internal-services.md`);
+      if (SECRET_NAME.test(name)) warn(rel, `读环境变量 ${name}：装进 Spica 后读不到（只传白名单变量，带 KEY、TOKEN、SECRET 的一律不传）。要用户填的写进清单的 user_config，server 读 SPICA_USER_CONFIG，见 references/user-config.md`);
       else warn(rel, `读环境变量 ${name}：装进 Spica 后读不到（只传白名单变量：PATH、TEMP、用户目录、COMPUTERNAME、USERNAME 这类，全表见作者指南第 2 节）。要用就写进 mcp/<id>.json 的 env，或改读 SPICA_PLUGIN_DATA 里的配置文件`);
     }
   }

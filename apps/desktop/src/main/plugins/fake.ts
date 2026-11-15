@@ -2,6 +2,46 @@
 // SPICA_BACKEND=fake. No Node imports, so renderer tests can use it.
 import { svgDataUrl, unquote, type InstallStepView, type PluginPackage, type PluginSourceView, type PluginsCommand, type PluginsFound, type PluginsProgress, type PluginsResult, type PluginsState, type PluginView } from '../../shared/plugins';
 import type { PluginService } from './types';
+import { checkConfigValue, missingConfig, type UserConfigField } from '@spica/plugins/user-config';
+
+/** The demo plugin with a settings form (SPICA_DEMO_PLUGINS=config): one field set by the packaging, the password not filled in yet. */
+const TICKET_FIELDS: UserConfigField[] = [
+  { key: 'server_url', type: 'url', title: '服务器地址', placeholder: 'https://tickets.example.com', required: true },
+  { key: 'account', type: 'text', title: '账号（工号）', placeholder: 'ALEX.CHEN', required: true },
+  { key: 'password', type: 'password', title: '密码', required: true },
+  { key: 'mode', type: 'select', title: '汇总方式', options: ['日报', '周报'], default: '日报', required: false },
+  { key: 'page_size', type: 'number', title: '每页条数', min: 1, max: 100, default: 20, required: false },
+  { key: 'weekly', type: 'toggle', title: '每周一发汇总', default: false, required: false },
+  { key: 'save_to', type: 'folder', title: '附件保存到', required: false },
+];
+
+function ticketDemo(): PluginView {
+  const values = { server_url: 'https://tickets.example.com', account: 'ALEX.CHEN' };
+  const missing = missingConfig(TICKET_FIELDS, values);
+  return {
+    ...asOtherDemo(structuredClone(EXAMPLE)),
+    name: 'tickets',
+    displayName: '工单查询（示例）',
+    description: '查公司工单系统里的工单和处理进度。',
+    version: '1.0.0',
+    previousVersion: undefined,
+    enabled: true,
+    waiting: true,
+    tools: [],
+    skills: [],
+    commands: [],
+    servers: [{ id: 'tickets', status: 'stopped', tools: [] }],
+    config: {
+      fields: TICKET_FIELDS.map((f) => ({
+        ...f,
+        set: Object.hasOwn(values, f.key),
+        ...(f.type === 'password' ? {} : { value: (values as Record<string, string>)[f.key] ?? null }),
+        ...(f.key === 'server_url' ? { from: 'deploy' as const, locked: true } : Object.hasOwn(values, f.key) ? { from: 'user' as const } : {}),
+      })),
+      missing,
+    },
+  } as PluginView;
+}
 
 /** plugins/example-notes/icon-light.svg and icon-dark.svg: the demo's example has its own icon, the others the letter badge. */
 const EXAMPLE_ICON = {
@@ -117,6 +157,8 @@ function demoSteps(kind: PluginPackage['kind']): InstallStepView[] {
 export interface FakePluginOptions {
   /** Twelve plugins instead of two (screenshots of a full page). */
   many?: boolean;
+  /** A third plugin with a settings form, waiting for its password (screenshots of the form). */
+  config?: boolean;
   /** Where the steps of a demo install go. */
   onProgress?: (p: PluginsProgress) => void;
   /** How long each demo install step takes (0: no wait, for tests). */
@@ -136,6 +178,7 @@ export class FakePluginService implements PluginService {
     this.#root = root;
     this.#opts = opts;
     if (opts.many) this.#plugins.push(...morePlugins());
+    if (opts.config) this.#plugins.push(ticketDemo());
   }
 
   onChange(): () => void {
@@ -213,8 +256,12 @@ export class FakePluginService implements PluginService {
       case 'disable':
         if (p) {
           p.enabled = cmd.op === 'enable';
-          p.tools = p.enabled ? p.servers.flatMap((s) => s.tools) : [];
-          for (const s of p.servers) s.status = p.enabled ? 'running' : 'stopped';
+          // a plugin with required settings not filled in waits (待设置) instead of running
+          const waits = p.enabled && !!p.config?.missing.length;
+          if (waits) p.waiting = true;
+          else delete p.waiting;
+          p.tools = p.enabled && !waits ? p.servers.flatMap((s) => s.tools) : [];
+          for (const s of p.servers) s.status = p.enabled && !waits ? 'running' : 'stopped';
           // The demo's mail plugin is a mail source only while it is on.
           if (p.name === 'mail-digest') p.mail = p.enabled;
         }
@@ -264,6 +311,27 @@ export class FakePluginService implements PluginService {
       }
       case 'modelAllowed':
         if (p?.model) p.model.allowed = cmd.allowed;
+        break;
+      case 'setConfig':
+        if (p?.config) {
+          // what the main process stored; the packaging's locked field stays as the demo has it
+          const values: Record<string, unknown> = { ...(cmd.input?.values ?? {}) };
+          for (const f of p.config.fields) if (f.locked) values[f.key] = f.value;
+          p.config.fields = p.config.fields.map((f) => {
+            const c = Object.hasOwn(values, f.key) ? checkConfigValue(f, values[f.key]) : null;
+            const v = c?.ok ? c.value : null;
+            const { value: _old, from: _from, ...rest } = f;
+            void _old;
+            void _from;
+            return { ...rest, set: v !== null, ...(f.type === 'password' ? {} : { value: v }), ...(v !== null ? { from: f.locked ? ('deploy' as const) : ('user' as const) } : {}) };
+          });
+          p.config.missing = missingConfig(p.config.fields, values);
+          const run = p.enabled && !p.config.missing.length;
+          p.waiting = p.enabled && !run;
+          if (!p.waiting) delete p.waiting;
+          p.tools = run ? ['find_ticket', 'list_open'] : [];
+          for (const s of p.servers) s.status = run ? 'running' : 'stopped';
+        }
         break;
       default:
         break;

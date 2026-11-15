@@ -2,6 +2,8 @@
 // PluginDescription, trimmed to what the page shows, so the renderer does not
 // import the plugin system itself.
 
+import type { UserConfigField, UserConfigValue } from '@spica/plugins/user-config';
+
 export type ServerState = 'stopped' | 'starting' | 'running' | 'crashed' | 'failed' | string;
 
 export interface PluginView {
@@ -29,7 +31,31 @@ export interface PluginView {
   model?: PluginModelView;
   /** The plugin's own icon as data: URLs (SVGs, shown only as pictures), for a light and a dark skin; absent: the letter badge. */
   icon?: PluginIconView;
+  /** The settings form the app draws for it (manifest user_config); passwords only say whether one is saved. */
+  config?: PluginConfigView;
+  /** Turned on, but waiting for required settings (待设置): nothing of it runs yet. */
+  waiting?: boolean;
 }
+
+/** One field of a plugin's settings form. */
+export interface PluginConfigFieldView extends UserConfigField {
+  /** Something usable is stored (a password: one is saved). */
+  set: boolean;
+  /** The stored value of a field that is not a password; null: none. */
+  value?: UserConfigValue | null;
+  from?: 'user' | 'deploy';
+  /** Set by the packaging (由管理员设置); read-only here. */
+  locked?: boolean;
+}
+
+export interface PluginConfigView {
+  fields: PluginConfigFieldView[];
+  /** Required fields with nothing usable, by key. */
+  missing: string[];
+}
+
+/** What a plugin's settings form sends: by key; a password left empty keeps the saved one, another field left empty is cleared. */
+export type PluginConfigValues = Record<string, UserConfigValue | null>;
 
 /** A plugin's use of the user's models: why, and whether the user lets it (no dollar limit). */
 export interface PluginModelView {
@@ -246,6 +272,10 @@ export type PluginsCommand =
   | { op: 'checkUpdates' }
   /** Let a plugin use the user's models, or forbid it. */
   | { op: 'modelAllowed'; name: string; allowed: boolean }
+  /** Save a plugin's settings form (the main process seals passwords, then hands them on as setConfig). */
+  | { op: 'config'; name: string; values: PluginConfigValues }
+  /** Main process to the plugin host only: one plugin's stored settings in the clear (null: none). */
+  | { op: 'setConfig'; name: string; input: { values: Record<string, UserConfigValue>; deploy?: string[]; locked?: string[]; source?: string } | null }
   | { op: 'openRoot' };
 
 export interface PluginsResult {
@@ -255,4 +285,6 @@ export interface PluginsResult {
   ok: boolean;
   /** The message is a notice, not a finished outcome (nothing to check against): shown plain, without the done mark. */
   info?: boolean;
+  /** A settings form that was not saved: what is wrong, by key. */
+  fieldErrors?: Record<string, string>;
 }

@@ -483,7 +483,15 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     }),
     [bridge],
   );
-  const pluginsApi = useMemo(() => ({ ...bridge.plugins, pickFolder: () => bridge.pickFolder('选择插件文件夹') }), [bridge]);
+  const pluginsApi = useMemo(
+    () => ({
+      ...bridge.plugins,
+      pickFolder: () => bridge.pickFolder('选择插件文件夹'),
+      // a folder or file field of a plugin's settings form
+      pickPath: async (kind: 'folder' | 'file', title: string) => (kind === 'folder' ? bridge.pickFolder(title) : ((await bridge.pickFiles(title))[0] ?? null)),
+    }),
+    [bridge],
+  );
   // 收件箱 shows only while a plugin that provides mail is on.
   const [mailSource, setMailSource] = useState(false);
   // 模拟模式 (设置 › 插件): the inbox says its mail is demo data.

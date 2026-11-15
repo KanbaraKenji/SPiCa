@@ -46,6 +46,10 @@ export {
   type PluginEvent,
   type PluginView,
   type PluginModelUse,
+  type PluginConfigView,
+  type PluginConfigFieldView,
+  type PluginConfigInput,
+  sourceKey,
   type ViewCallResult,
   type PluginSource,
   type InstalledRecord,
@@ -70,6 +74,18 @@ export {
   type UpdateInfo,
   type FetchLike,
 } from './sources.ts';
+export {
+  USER_CONFIG_TYPES,
+  parseUserConfig,
+  checkConfigValue,
+  configForServer,
+  missingConfig,
+  scrubSecrets,
+  type UserConfigType,
+  type UserConfigField,
+  type UserConfigValue,
+  type CheckedValue,
+} from './user-config.ts';
 export { readZip, writeZip, safeEntryName, ZipError, type ZipEntry } from './zip.ts';
 export type { PluginContext, PluginUser, HookModule } from './authoring.ts';
 export { attachBackend, pluginMcpTools, pluginMethods, type McpServiceTool, type PluginBackendOptions } from './backend.ts';

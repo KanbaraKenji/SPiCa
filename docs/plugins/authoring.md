@@ -80,13 +80,14 @@ Spica 启动 server 时会给这些环境变量：
 | `SPICA_MOCK` | `1` 表示用户开了模拟模式 |
 | `SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION` | 名字和版本 |
 | `SPICA_USER_ACCOUNT` | 当前用户的账号（工号），所有插件都有、不用声明权限。取法写死：Windows 用户文件夹名转大写（`C:\Users\alex.chen` → `ALEX.CHEN`）；用户在 设置 › 账号 里改过，就是改过的那个；取不到时是空字符串。用户改了账号，正在运行的 server 会自动重启一次 |
+| `SPICA_USER_CONFIG` | 用户在表单里填的设置（清单的 `user_config`），一个 JSON 对象：每个声明过的键都有，没填有默认值是默认值，都没有是 `null`。没声明 `user_config` 的插件没有这个变量。见下面「让用户填的设置」 |
 | `SPICA_APP_NAME` | 应用现在的名字（公司可以把 Spica 打包成别的名字）。报错、提示里要说出应用名时用它，不要写死「Spica」；不在应用里跑（自查、预览）时没有这个变量，按 Spica 算 |
 | `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`、`NODE_USE_ENV_PROXY` | 应用的代理设置（设置 › 常规 › 网络），没设代理时不给 |
 | `NODE_EXTRA_CA_CERTS`、`NODE_USE_SYSTEM_CA`、`SSL_CERT_FILE`、`REQUESTS_CA_BUNDLE`、`CURL_CA_BUNDLE` | 应用信任的证书（系统证书和「信任的证书文件」），Node 的 `fetch` / `https` 直接就用上了（这一行和上一行从 0.1.0-rc.2 起才有） |
 
 **要用户的账号，一律读 `SPICA_USER_ACCOUNT`（钩子里读 `ctx.user.account`，同一个值）**，不要自己从 `USERPROFILE`、`USERNAME`、`os.homedir()`、`os.userInfo()` 或登录名取：每个插件各取一遍容易不一致，用户在设置里改的也只有 Spica 给的这个会跟着变。
 
-其他环境变量只继承白名单：PATH、TEMP、用户目录、代理变量这类，外加 `COMPUTERNAME`（电脑名）和 `USERNAME`（用户名）；名字带 KEY、TOKEN、SECRET 的一律不传。取电脑名也可以用 Node 的 `os.hostname()`，不依赖环境变量。所以服务地址和凭据不要从环境变量读，放 `SPICA_PLUGIN_DATA` 里的配置文件，由插件自己的设置页经 `services/` 里的工具保存；证书和代理不要自己处理。用户改了网络设置，正在运行的插件 server 会自动重启一次。写法见 `skills/spica-plugin-author/references/internal-services.md`。
+其他环境变量只继承白名单：PATH、TEMP、用户目录、代理变量这类，外加 `COMPUTERNAME`（电脑名）和 `USERNAME`（用户名）；名字带 KEY、TOKEN、SECRET 的一律不传。取电脑名也可以用 Node 的 `os.hostname()`，不依赖环境变量。所以服务地址和凭据不要读自己起名的环境变量：写进清单的 `user_config`，Spica 画表单、存值，server 读 `SPICA_USER_CONFIG`（见下面「让用户填的设置」）；证书和代理不要自己处理。用户改了网络设置，正在运行的插件 server 会自动重启一次。写法见 `skills/spica-plugin-author/references/internal-services.md`。
 
 几条规矩：
 
@@ -375,6 +376,27 @@ description: How to break a goal into to-do items.
 
 模型平时只看到技能的 `description`，用到时才通过 `todo__skill` 取正文，所以 description 要写清楚「什么时候用」。
 
+## 2g. 让用户填的设置（`user_config`）
+
+服务地址、账号、密码、开关、选项、文件夹这类要用户填的项，在 `manifest.json` 里声明，Spica 在 设置 › 插件 › 这个插件 › 详情 里画表单、替你存（密码用 Windows 的用户密钥加密），启动 server 时交给它：
+
+```json
+"user_config": {
+  "server_url": { "type": "url", "title": "服务器地址", "placeholder": "https://tickets.example.com", "required": true },
+  "password":   { "type": "password", "title": "密码", "required": true },
+  "mode":       { "type": "select", "title": "汇总方式", "options": ["日报", "周报"], "default": "日报" }
+}
+```
+
+- 八种类型：`text`、`password`、`url`、`number`（可带 `min` / `max`）、`toggle`、`select`（`options`）、`folder`、`file`。每项写 `title`，可写 `placeholder`、`required`、`default`（密码不能有默认值）。
+- server 读环境变量 `SPICA_USER_CONFIG`：一个 JSON 对象，每个声明过的键都有，没填是默认值或 `null`。读完从 `process.env` 删掉，免得你起的辅助进程继承密码。
+- 必填项没填齐：插件算已启用，但 server、技能、命令、钩子都不起，列表和详情写「N 项未填」；填齐保存后自动起来。改了值并保存，这个插件的 server 重启一次。
+- 密码只显示「已保存」，插件日志里出现会换成 `[redacted]`（很短的密码只在前后不是字母数字时换得掉）。
+- 公司打包时可以在 `deploy.json` 的 `pluginConfig` 里替大家预填或锁定某几项（锁定的显示「由管理员设置」）；密码不能预填。
+- 类型表表达不了的（测试连接、能增删的列表、联动的选项）才自己画设置页（5b 节「设置页」）。同一项只放一处。
+
+完整写法、server 端的 `readConfig()` 和报错样子见 `skills/spica-plugin-author/references/user-config.md`。
+
 ## 4. 加一个命令
 
 `todo/commands/add.md`：
@@ -450,7 +472,7 @@ if (r.isError) showError(r.content); else render(r.data ?? r.content);
 
 ### 设置页（`placement: "settings"`）
 
-插件要用户填的东西（服务地址、令牌、保存到哪个文件夹）放在自己的设置页里：显示在 设置 › 插件 › 这个插件的详情里：名字和「更新 / 删除」那两行下面多一行页签，第一个是「详情」，后面每个设置页一个，页签文字是 `title`。点它，下面整块换成这个页面，占满右栏剩下的高度；侧栏不多出入口，插件停用时不显示。页面第一次点到它的页签才加载，切回「详情」再回来，填了一半的东西还在。
+服务地址、令牌、保存到哪个文件夹这类要用户填的项，先写进清单的 `user_config`（下面「让用户填的设置」）；它表达不了的（测试连接、能增删的列表、联动的选项）才放在自己的设置页里：显示在 设置 › 插件 › 这个插件的详情里：名字和「更新 / 删除」那两行下面多一行页签，第一个是「详情」，后面每个设置页一个，页签文字是 `title`。点它，下面整块换成这个页面，占满右栏剩下的高度；侧栏不多出入口，插件停用时不显示。页面第一次点到它的页签才加载，切回「详情」再回来，填了一半的东西还在。
 
 ```json
 {

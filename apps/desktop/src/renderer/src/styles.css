@@ -5312,6 +5312,63 @@ section.plugins-part > .plugins-part-title {
   margin-top: 12px;
 }
 
+/* 详情 › 设置: the form the app draws from the plugin's user_config (settings/PluginConfig.tsx). */
+.settings-group.plugin-config {
+  margin-top: 12px;
+}
+
+.plugin-config .config-input {
+  width: 240px;
+  max-width: 100%;
+}
+
+.plugin-config .config-select {
+  min-width: 140px;
+}
+
+.config-required {
+  color: var(--spica-muted);
+}
+
+.config-path {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 320px;
+}
+
+.config-path-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--spica-muted);
+}
+
+/* 保存 at the end of the form, 未保存 / 已保存 beside it. */
+.plugin-config-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+}
+
+/* 「N 项未填」 under the plugin's name: goes to the first field not filled in. */
+.plugin-missing {
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
+  color: var(--spica-warning);
+  cursor: pointer;
+}
+
+.plugin-missing:hover {
+  color: var(--spica-ink);
+}
+
 .plugin-mail-shared {
   margin-bottom: 20px;
 }

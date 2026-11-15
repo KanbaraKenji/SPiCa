@@ -75,10 +75,33 @@ export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url))
   return {
     file,
     updateSource,
+    pluginConfig: pluginConfigOf(raw.pluginConfig),
     pluginSources: pluginSourcesOf(raw.pluginSources),
     app: { name, id, icon, font, copyright: copyright.trim() || null },
     models,
   };
+}
+
+/**
+ * pluginConfig: values the packaging fills into plugins' settings forms, { "<plugin>": { "<key>": { "value": …,
+ * "locked": true } } }. Only the shape is checked here (the plugins are not known when packaging): a key a plugin
+ * does not declare, or a password, is left unused and said in the plugin's log at start. A key named like a
+ * password stops the packaging (it would sit in a plain file). null when absent.
+ */
+function pluginConfigOf(v) {
+  if (v === undefined || v === null) return null;
+  const isObj = (x) => typeof x === 'object' && x !== null && !Array.isArray(x);
+  if (!isObj(v)) throw new Error('deploy.json 的 pluginConfig 要写成 { "插件名": { "键名": { "value": 值, "locked": true } } }。');
+  for (const [plugin, keys] of Object.entries(v)) {
+    if (!isObj(keys)) throw new Error(`deploy.json 的 pluginConfig.${plugin} 要写成 { "键名": { "value": 值 } }。`);
+    for (const [k, p] of Object.entries(keys)) {
+      const at = `deploy.json 的 pluginConfig.${plugin}.${k}`;
+      if (!isObj(p) || !['string', 'number', 'boolean'].includes(typeof p.value)) throw new Error(`${at} 要写成 { "value": 文字、数字或 true / false }，可加 "locked": true。`);
+      if (p.locked !== undefined && typeof p.locked !== 'boolean') throw new Error(`${at}.locked 只能是 true 或 false。`);
+      if (k.split('_').some((s) => ['password', 'passwd', 'pwd', 'secret', 'token'].includes(s))) throw new Error(`${at}：密码和令牌不能写进安装包，由每个人自己填。`);
+    }
+  }
+  return v;
 }
 
 /** A place 设置 › 插件 › 市场 can read: a drive or shared folder, or a web address (as 添加来源 takes them). */

@@ -27,10 +27,12 @@ import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, mockFilesFolder, m
 import { checkLocalPath, csvFileName, csvFileText, type PathKind } from './local-paths';
 import { withErrorHint } from './error-hint';
 import { FakePluginService } from './plugins/fake';
+import { deployPluginConfig, PluginConfigError, PluginConfigStore, type DeployPluginConfig } from './plugins/config-store';
+import { sourceKey as pluginSourceKey } from '@spica/plugins';
 import { UpdateService } from './update/service';
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { sameSource, type PluginsCommand } from '../shared/plugins';
+import { sameSource, type PluginsCommand, type PluginsResult } from '../shared/plugins';
 import { buildSources, channelFile, type BuildSources } from './update/channel';
 import { IDLE_POLL_MS, idleInstallDue, pluginUpdateCount, scheduleChecks } from './update/schedule';
 import { readResume, writeResume } from './update/resume';
@@ -230,7 +232,7 @@ function backendConfig(): DesktopBackendConfig {
       extensions: [
         {
           module: '@spica/desktop-host',
-          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: buildDefaults.pluginSources, mcpInfoFile, mcpTokenFile, userAccount: userAccount() },
+          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: buildDefaults.pluginSources, mcpInfoFile, mcpTokenFile, userAccount: userAccount(), userConfig: pluginConfig.inputs(deployPluginSettings) },
         },
       ],
     },
@@ -350,6 +352,12 @@ const providers = new ProviderStore(
   },
   () => envProviders().map((p) => ({ id: p.id, models: p.models.map((m) => m.id) })),
 );
+// What people fill into plugins' settings forms (user_config); passwords sealed like model keys.
+const pluginConfig = new PluginConfigStore(app.getPath('userData'), {
+  available: () => safeStorage.isEncryptionAvailable(),
+  encrypt: (plain) => safeStorage.encryptString(plain).toString('base64'),
+  decrypt: (sealed) => safeStorage.decryptString(Buffer.from(sealed, 'base64')),
+});
 
 /**
  * Each saved provider's 花费上限 as the core takes it: the amount for a period (fixed periods of its days from when the
@@ -1197,17 +1205,24 @@ if (startMove && startMove.from === deployDefault) {
   buildDefaults.pluginSources = buildDefaults.pluginSources.map((s) => (sameSource(s.location, from) ? { ...s, location: channelFile(startMove.to, 'index.json') } : s));
 }
 
-/** The company's preset model connections from deploy.json ("models"); the packaging already checked them. */
-function deployModels(): unknown[] {
+/** One top-level entry of the packaging's deploy.json (undefined when there is none). */
+function deployField(key: string): unknown {
   const file = app.isPackaged ? join(process.resourcesPath, 'deploy.json') : join(app.getAppPath(), 'deploy.json');
   try {
-    const v = JSON.parse(readFileSync(file, 'utf8')) as { models?: unknown };
-    return Array.isArray(v.models) ? v.models : [];
+    return (JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>)[key];
   } catch {
-    return [];
+    return undefined;
   }
 }
+
+/** The company's preset model connections from deploy.json ("models"); the packaging already checked them. */
+function deployModels(): unknown[] {
+  const v = deployField('models');
+  return Array.isArray(v) ? v : [];
+}
 const deployPresets = automated ? [] : deployModels();
+/** deploy.json's pluginConfig: values the packaging fills into plugins' settings forms, some locked. */
+const deployPluginSettings: DeployPluginConfig = automated ? {} : deployPluginConfig(deployField('pluginConfig'));
 
 const resumeFile = join(app.getPath('userData'), 'update-resume.json');
 const updates = new UpdateService({
@@ -1569,15 +1584,41 @@ const pluginService: PluginService =
           return err ? { ...r, ok: false, message: `无法打开文件夹：${err}` } : r;
         },
       }
-    : new FakePluginService(pluginRoot, { many: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'many', onProgress: (p) => sendToWindow(DesktopChannel.PluginsProgress, p), stepMs: 700 });
+    : new FakePluginService(pluginRoot, { many: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'many', config: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'config', onProgress: (p) => sendToWindow(DesktopChannel.PluginsProgress, p), stepMs: 700 });
 ipcMain.handle(DesktopChannel.Plugins, async (_e, cmd: PluginsCommand) => {
-  const r = await pluginService.run(cmd);
+  const r = await runPlugins(cmd);
   // What the page did (an update installed, sources read) changes how many plugins can update.
   updates.setPluginUpdates(pluginUpdateCount(r.state));
   // The real core reports plugin changes itself; the demo's list says so here.
   if (pluginService instanceof FakePluginService && cmd.op !== 'state') sendToWindow(DesktopChannel.PluginsChanged);
   return r;
 });
+
+/**
+ * The page's plugin commands. A settings form (op config) is saved here, where passwords can be sealed, and the
+ * plugin host then gets the values in the clear (setConfig); the page never sends setConfig itself. An uninstall
+ * also forgets the plugin's settings.
+ */
+async function runPlugins(cmd: PluginsCommand): Promise<PluginsResult> {
+  if (cmd.op === 'setConfig') return { ...(await pluginService.run({ op: 'state' })), ok: false, message: '不支持的操作。' };
+  if (cmd.op === 'config') {
+    const before = await pluginService.run({ op: 'state' });
+    const p = before.state.plugins.find((x) => x.name === cmd.name);
+    if (!p?.config) return { ...before, ok: false, message: `「${cmd.name}」没有设置项。` };
+    try {
+      pluginConfig.save(cmd.name, pluginSourceKey(p.source), p.config.fields, cmd.values ?? {}, p.config.fields.filter((f) => f.locked).map((f) => f.key));
+    } catch (err) {
+      if (err instanceof PluginConfigError) return { ...before, ok: false, message: err.message, fieldErrors: err.fields };
+      return { ...before, ok: false, message: err instanceof Error ? err.message : String(err) };
+    }
+    const r = await pluginService.run({ op: 'setConfig', name: cmd.name, input: pluginConfig.input(cmd.name, deployPluginSettings) });
+    // 已保存 is said beside the form's own 保存, not again on top
+    return r;
+  }
+  const r = await pluginService.run(cmd);
+  if (cmd.op === 'uninstall' && r.ok && !r.state.plugins.some((x) => x.name === cmd.name)) pluginConfig.remove(cmd.name);
+  return r;
+}
 ipcMain.handle(DesktopChannel.BackendStatus, () => backendStatus);
 ipcMain.on(DesktopChannel.BackendRetry, () => {
   if (backend instanceof ProcessBackend) backend.retry();

@@ -22,7 +22,15 @@ import {
   type PluginSourceView,
   type PluginsState,
   type PluginView,
+  type PluginConfigValues,
 } from '../../../shared/plugins';
+
+/** 「N 项未填」: to the first field not filled in, its control focused. */
+function goToField(plugin: string, key: string): void {
+  const el = document.getElementById(configFieldId(plugin, key)) ?? document.querySelector<HTMLElement>(`.plugin-config [data-setting]`);
+  el?.scrollIntoView({ block: 'center' });
+  if (el instanceof HTMLInputElement) el.focus({ preventScroll: true });
+}
 import { friendlyError } from '../store/agent';
 import { ConfirmDialog } from '../ui/Dialog';
 import { ContextMenu } from '../ui/ContextMenu';
@@ -36,6 +44,7 @@ import { SpicaStatusIcon } from '@spica/brand/react';
 import type { PluginView as PageView } from '../../../shared/plugin-view';
 import { PluginPage, type PluginPageProps } from '../shell/PluginFrame';
 import { letterBadge } from '../ui/badge';
+import { configFieldId, PluginConfig } from './PluginConfig';
 import { formatClock } from '../chat/format';
 
 export interface PluginsApi {
@@ -45,6 +54,8 @@ export interface PluginsApi {
   onProgress?: (listener: (p: PluginsProgress) => void) => () => void;
   /** The system's folder picker: the folder goes into the box and is looked at. */
   pickFolder?: () => Promise<string | null>;
+  /** The system's picker for a folder or file field of a plugin's settings form. */
+  pickPath?: (kind: 'folder' | 'file', title: string) => Promise<string | null>;
 }
 
 /** The plugins' own settings pages (views with placement settings, of enabled plugins) and how to show one. */
@@ -156,6 +167,7 @@ function PluginRow({ p, onPick }: { p: PluginView; onPick(): void }) {
           {p.description ? <span className="settings-hint plugin-item-desc">{p.description}</span> : null}
         </span>
         {p.update ? <span className="provider-default plugin-row-state is-newer">可更新</span> : null}
+        {p.config?.missing.length ? <span className="provider-default plugin-row-state">{p.config.missing.length} 项未填</span> : null}
         {problems.length ? <SpicaStatusIcon name="error" size={14} title={problems.join('；')} /> : null}
         {p.enabled ? null : <span className="visually-hidden">已停用</span>}
         <Icon name="chevronRight" size={14} className="plugin-item-go" />
@@ -268,6 +280,8 @@ function PluginDetail({
   pages = [],
   back,
   note,
+  saveConfig,
+  pickPath,
 }: {
   p: PluginView;
   busy: boolean;
@@ -280,6 +294,9 @@ function PluginDetail({
   back: { label: string; onBack(): void };
   /** The result line (installed, updated, a failure), under the title line, where the progress was. */
   note?: ReactNode;
+  /** Save the plugin's settings form; resolves with what is wrong by key (empty: saved). */
+  saveConfig?: ((values: PluginConfigValues) => Promise<Record<string, string>>) | undefined;
+  pickPath?: PluginsApi['pickPath'];
 }) {
   const problems = pluginProblems(p);
   const [picked, setPicked] = useState('');
@@ -358,12 +375,20 @@ function PluginDetail({
       <div className="plugin-detail-body" hidden={tab !== ''}>
         {p.description ? <p className="plugin-desc">{p.description}</p> : null}
         {p.enabled ? null : <p className="plugin-off">已停用</p>}
+        {p.config?.missing.length ? (
+          <button type="button" className="plugin-missing status-with-icon" onClick={() => goToField(p.name, p.config!.missing[0]!)}>
+            <SpicaStatusIcon name="warning" size={14} />
+            {p.waiting ? '待设置 · ' : ''}
+            {p.config.missing.length} 项未填
+          </button>
+        ) : null}
         {problems.length ? (
           <p className="plugin-problem status-with-icon">
             <SpicaStatusIcon name="error" size={14} />
             {problems.join('；')}
           </p>
         ) : null}
+        {p.config && saveConfig ? <PluginConfig p={p} busy={busy} save={saveConfig} pickPath={pickPath} /> : null}
         {mail ? (
           <div className="plugin-mail">
             <MailSettings {...mail} />
@@ -759,6 +784,12 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
           pages={current.enabled ? settingsOf(current) : []}
           back={back}
           note={resultLine}
+          saveConfig={async (values) => {
+            const r = await run({ op: 'config', name: current.name, values });
+            if (!r) return { '': '保存失败' };
+            return r.fieldErrors ?? (r.ok ? {} : { '': r.message ?? '保存失败' });
+          }}
+          pickPath={api.pickPath}
         />
       ) : detailShown && currentPkg ? (
         <PackageDetail
