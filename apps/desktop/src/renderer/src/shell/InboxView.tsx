@@ -10,6 +10,7 @@ import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { GUARD_FLAG_TEXT } from '../chat/format';
 import { SpicaStatusIcon } from '@spica/brand/react';
+import { t, tx } from '../../../shared/i18n';
 
 export interface InboxProject {
   id: string;
@@ -44,18 +45,18 @@ function MailCard({ item, props, onMoveMenu }: { item: MailItem; props: InboxVie
   const reason = reasonOf(item);
   const sure = surenessOf(item);
   const open = needsYou(item);
-  const t = item.triage;
-  const others = props.projects.filter((p) => p.id !== t?.projectId);
-  const manager = item.routedTo ?? (t?.projectId ? props.projects.find((p) => p.id === t.projectId)?.managerSessionId : undefined);
+  const tri = item.triage;
+  const others = props.projects.filter((p) => p.id !== tri?.projectId);
+  const manager = item.routedTo ?? (tri?.projectId ? props.projects.find((p) => p.id === tri.projectId)?.managerSessionId : undefined);
   return (
-    <article className={open ? 'mail-card is-open' : 'mail-card'} aria-label={item.subject || '无主题'}>
+    <article className={open ? 'mail-card is-open' : 'mail-card'} aria-label={item.subject || t('无主题')}>
       <div className="mail-top">
         <span className="mail-from" title={item.fromAddress ?? ''}>
           {item.fromName || item.fromAddress || '—'}
         </span>
         <span className="mail-time">{mailTime(item.receivedAt ?? item.createdAt, props.now)}</span>
       </div>
-      <p className="mail-subject">{item.subject || '（无主题）'}</p>
+      <p className="mail-subject">{item.subject || t('（无主题）')}</p>
       {item.preview ? <p className="mail-preview">{item.preview}</p> : null}
       <div className="mail-verdict">
         <span className={`mail-tag is-${verdict.tone}`}>
@@ -74,19 +75,19 @@ function MailCard({ item, props, onMoveMenu }: { item: MailItem; props: InboxVie
               {verdict.handled}
             </span>
           ) : null}
-          {open && t?.decision === 'new' && props.onNewProject ? (
+          {open && tri?.decision === 'new' && props.onNewProject ? (
             <button type="button" className="btn btn-small" onClick={() => props.onNewProject?.(item)}>
-              新建项目
+              {t('新建项目')}
             </button>
           ) : null}
-          {open && t?.decision !== 'new' ? (
+          {open && tri?.decision !== 'new' ? (
             <button type="button" className="btn btn-small btn-primary" onClick={() => props.onAccept(item.id)}>
-              采纳
+              {t('采纳')}
             </button>
           ) : null}
-          {open && t?.decision !== 'ignore' ? (
+          {open && tri?.decision !== 'ignore' ? (
             <button type="button" className="btn btn-small" onClick={() => props.onIgnore(item.id)}>
-              忽略
+              {t('忽略')}
             </button>
           ) : null}
           {others.length ? (
@@ -96,13 +97,13 @@ function MailCard({ item, props, onMoveMenu }: { item: MailItem; props: InboxVie
               aria-haspopup="menu"
               onClick={(e) => onMoveMenu(item, e.currentTarget)}
             >
-              更改项目
+              {t('更改项目')}
               <Icon name="chevronDown" size={12} />
             </button>
           ) : null}
           {manager && item.status === 'routed' ? (
             <button type="button" className="btn btn-small btn-plain" onClick={() => props.onOpenSession(manager)}>
-              打开项目
+              {t('打开项目')}
               <Icon name="arrowRight" size={12} />
             </button>
           ) : null}
@@ -122,7 +123,11 @@ export function InboxView(props: InboxViewProps) {
 
   const status = !prefs.enabled
     ? null
-    : [`每 ${prefs.intervalMinutes < 60 ? `${prefs.intervalMinutes} 分钟` : `${prefs.intervalMinutes / 60} 小时`}检查`, mail.lastPolledAt ? `上次 ${mailTime(mail.lastPolledAt, props.now)}` : '', mail.lastAdded === null ? '' : mail.lastAdded ? `${mail.lastAdded} 封新邮件` : '没有新邮件']
+    : [
+        prefs.intervalMinutes < 60 ? t('每 {n} 分钟检查', { n: prefs.intervalMinutes }) : t('每 {n} 小时检查', { n: prefs.intervalMinutes / 60 }),
+        mail.lastPolledAt ? t('上次 {time}', { time: mailTime(mail.lastPolledAt, props.now) }) : '',
+        mail.lastAdded === null ? '' : mail.lastAdded ? t('{n} 封新邮件', { n: mail.lastAdded }) : t('没有新邮件'),
+      ]
         .filter(Boolean)
         .join(' · ');
 
@@ -130,31 +135,31 @@ export function InboxView(props: InboxViewProps) {
     <div className="inbox">
       <div className="inbox-column">
         <div className="inbox-head">
-          <div className="tabs inbox-tabs" role="tablist" aria-label="收件箱">
+          <div className="tabs inbox-tabs" role="tablist" aria-label={t('收件箱')}>
             <button type="button" role="tab" aria-selected={filter === 'todo'} className={filter === 'todo' ? 'tab is-on' : 'tab'} onClick={() => setFilter('todo')}>
-              待确认
+              {t('待确认')}
             </button>
             <button type="button" role="tab" aria-selected={filter === 'all'} className={filter === 'all' ? 'tab is-on' : 'tab'} onClick={() => setFilter('all')}>
-              全部
+              {t('全部')}
             </button>
           </div>
           <div className="inbox-status">
             {props.mock ? (
-              <span className="mock-tag" title="模拟模式已开启">
-                模拟数据
+              <span className="mock-tag" title={t('模拟模式已开启')}>
+                {t('模拟数据')}
               </span>
             ) : null}
             {prefs.enabled ? (
               <span className="settings-hint">{status}</span>
             ) : (
               <span className="settings-hint">
-                邮件分类已关闭
+                {t('邮件分类已关闭')}
                 <button type="button" className="text-btn" onClick={props.onOpenSettings}>
-                  开启
+                  {t('开启')}
                 </button>
               </span>
             )}
-            <button type="button" className="btn btn-square" disabled={mail.polling || !mail.supported} onClick={props.onPoll} aria-label="现在查收" title="现在查收">
+            <button type="button" className="btn btn-square" disabled={mail.polling || !mail.supported} onClick={props.onPoll} aria-label={t('现在查收')} title={t('现在查收')}>
               {mail.polling ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={16} />}
             </button>
           </div>
@@ -162,22 +167,22 @@ export function InboxView(props: InboxViewProps) {
 
         {mail.problem ? (
           <div className="inbox-problem" role="alert">
-            <span>{mail.problem}</span>
-            <button type="button" className="icon-btn" onClick={props.onDismissProblem} aria-label="关闭提示" title="关闭">
+            <span>{tx(mail.problem)}</span>
+            <button type="button" className="icon-btn" onClick={props.onDismissProblem} aria-label={t('关闭提示')} title={t('关闭')}>
               <Icon name="close" size={14} />
             </button>
           </div>
         ) : null}
 
         {!mail.supported ? (
-          <p className="inbox-empty">当前版本不支持邮件。</p>
+          <p className="inbox-empty">{t('当前版本不支持邮件。')}</p>
         ) : !mail.loaded ? null : sorted.length === 0 ? (
           <div className="inbox-empty">
-            <p className="inbox-empty-title">没有邮件</p>
+            <p className="inbox-empty-title">{t('没有邮件')}</p>
           </div>
         ) : shown.length === 0 ? (
           <div className="inbox-empty">
-            <p className="inbox-empty-title">全部已处理</p>
+            <p className="inbox-empty-title">{t('全部已处理')}</p>
           </div>
         ) : (
           <div className="mail-list">

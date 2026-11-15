@@ -4,6 +4,7 @@
 // to the one before or after (他: 「看图片也给我加上这个可以放大以后直接切换下一张」).
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Icon } from './Icon';
+import { t } from '../../../shared/i18n';
 import { useModal } from './useModal';
 
 export interface Picture {
@@ -157,13 +158,13 @@ export function ImageViewer({ pictures, start = 0, onClose }: { pictures: Pictur
       {count > 1 ? (
         // A click here moves between pictures; it does not close the viewer or start a drag.
         <div className="image-viewer-nav" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-          <button type="button" className="icon-btn" aria-label="上一张" title="上一张" disabled={at === 0} onClick={() => go(-1)}>
+          <button type="button" className="icon-btn" aria-label={t('上一张')} title={t('上一张')} disabled={at === 0} onClick={() => go(-1)}>
             <Icon name="chevronLeft" size={16} />
           </button>
           <span className="image-viewer-count" aria-live="polite">
             {at + 1} of {count}
           </span>
-          <button type="button" className="icon-btn" aria-label="下一张" title="下一张" disabled={at === count - 1} onClick={() => go(1)}>
+          <button type="button" className="icon-btn" aria-label={t('下一张')} title={t('下一张')} disabled={at === count - 1} onClick={() => go(1)}>
             <Icon name="chevronRight" size={16} />
           </button>
         </div>

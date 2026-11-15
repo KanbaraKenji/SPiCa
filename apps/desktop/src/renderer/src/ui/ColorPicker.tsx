@@ -5,6 +5,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { normalizeHex } from '../../../shared/skin';
 import { useEscape } from './escape';
+import { t } from '../../../shared/i18n';
 
 export interface Hsv {
   /** 0–360 */
@@ -51,7 +52,7 @@ export function ColorPicker({ label, value, onChange }: { label: string; value: 
       <button
         type="button"
         className={open ? 'color-swatch is-open' : 'color-swatch'}
-        aria-label={`${label}取色`}
+        aria-label={t('{label}取色', { label })}
         aria-haspopup="dialog"
         aria-expanded={open}
         title={value}
@@ -158,12 +159,12 @@ function ColorLayer({ label, value, onChange, anchor, onClose }: { label: string
 
   const hex = hsvToHex(hsv);
   return (
-    <div ref={ref} className="context-menu color-layer" role="dialog" aria-label={`${label}取色`} style={{ left: pos.left, top: pos.top }}>
+    <div ref={ref} className="context-menu color-layer" role="dialog" aria-label={t('{label}取色', { label })} style={{ left: pos.left, top: pos.top }}>
       <div
         className="color-area"
         role="slider"
         tabIndex={0}
-        aria-label={`${label}饱和度与亮度`}
+        aria-label={t('{label}饱和度与亮度', { label })}
         aria-valuetext={hex}
         aria-valuenow={Math.round(hsv.s * 100)}
         style={{ background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${hsv.h}, 100%, 50%))` }}
@@ -176,7 +177,7 @@ function ColorLayer({ label, value, onChange, anchor, onClose }: { label: string
         className="color-hue"
         role="slider"
         tabIndex={0}
-        aria-label={`${label}色相`}
+        aria-label={t('{label}色相', { label })}
         aria-valuemin={0}
         aria-valuemax={359}
         aria-valuenow={Math.round(hsv.h)}
@@ -189,7 +190,7 @@ function ColorLayer({ label, value, onChange, anchor, onClose }: { label: string
         className="input input-hex"
         value={draft}
         spellCheck={false}
-        aria-label="色值"
+        aria-label={t('色值')}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {

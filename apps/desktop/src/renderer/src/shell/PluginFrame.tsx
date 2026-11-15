@@ -5,6 +5,7 @@
 // whose frame sent it, never for one named in the message.
 import { useEffect, useRef, useState } from 'react';
 import { localDrivePath, pluginCallProblem, type PluginPickRequest, type PluginView, type PluginViewResult } from '../../../shared/plugin-view';
+import { t } from '../../../shared/i18n';
 
 export interface PluginTheme {
   mode: 'light' | 'dark';
@@ -110,7 +111,7 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
           l.preview?.loaded();
         } else if (c === 'previewFile' || c === 'previewReady' || c === 'previewFail' || c === 'previewError') {
           if (!l.preview) {
-            fail(`不支持的调用：${c}`);
+            fail(`不支持的调用：${c}`); // i18n-skip: an error for the plugin page's own code
           } else if (c === 'previewFile') {
             const f = await l.preview.file();
             reply(f, [f.bytes]);
@@ -128,7 +129,7 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
           let r = await run(tool, args.args ?? {}, false);
           if (r.isError && r.content.startsWith(CONFIRM)) {
             if (!(await l.confirm(tool, args.args ?? {}))) {
-              reply({ content: '用户已拒绝，未执行。', isError: true, declined: true });
+              reply({ content: '用户已拒绝，未执行。', isError: true, declined: true }); // i18n-skip: an error for the plugin page's own code
               return;
             }
             // The page went away while the question was open: nothing is run for it.
@@ -139,7 +140,7 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
           reply(problem ? { ...r, content: problem } : r);
         } else if (c === 'openFile') {
           if (l.preview) {
-            fail('预览页不能打开其他文件。');
+            fail('预览页不能打开其他文件。'); // i18n-skip: an error for the plugin page's own code
             return;
           }
           const problem = await l.openFile(String(args.path ?? ''));
@@ -148,7 +149,7 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
         } else if (c === 'pickFolder' || c === 'pickFile') {
           // A preview page holds the user's file and nothing else; others get the path the user picks.
           if (l.preview || !l.pick) {
-            fail(l.preview ? '预览页不能选择文件或文件夹。' : `不支持的调用：${c}`);
+            fail(l.preview ? '预览页不能选择文件或文件夹。' : `不支持的调用：${c}`); // i18n-skip: an error for the plugin page's own code
             return;
           }
           const req: PluginPickRequest = { kind: c === 'pickFile' ? 'file' : 'folder', plugin: l.view.pluginTitle };
@@ -159,12 +160,12 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
         } else if (c === 'openFolder') {
           // Only a folder on a local drive, opened in Explorer: not a network path, never a file (nothing runs).
           if (l.preview || !l.openFolder) {
-            fail(l.preview ? '预览页不能打开文件夹。' : `不支持的调用：${c}`);
+            fail(l.preview ? '预览页不能打开文件夹。' : `不支持的调用：${c}`); // i18n-skip: an error for the plugin page's own code
             return;
           }
           const path = localDrivePath(args.path);
           if (!path) {
-            fail('只能打开本机磁盘上的文件夹。');
+            fail('只能打开本机磁盘上的文件夹。'); // i18n-skip: an error for the plugin page's own code
             return;
           }
           const problem = await l.openFolder(path);
@@ -174,7 +175,7 @@ export function PluginFrame({ view, theme, changed, call, cancel, confirm, openF
           l.notify(String(args.text ?? '').slice(0, 300), args.kind === 'error' ? 'error' : 'info');
           reply(null);
         } else {
-          fail(`不支持的调用：${c}`);
+          fail(`不支持的调用：${c}`); // i18n-skip: an error for the plugin page's own code
         }
       } catch (err) {
         fail(err instanceof Error ? err.message : String(err));
@@ -243,8 +244,8 @@ export function PluginPage(props: PluginPageProps) {
   if (!state.ok) {
     return (
       <div className="plugin-page plugin-missing">
-        <p>无法打开「{view.pluginTitle}」的页面：找不到 {view.entry}</p>
-        <p className="settings-hint">插件不可用，请在 设置 › 插件 中查看状态。</p>
+        <p>{t('无法打开「{plugin}」的页面：找不到 {entry}', { plugin: view.pluginTitle, entry: view.entry })}</p>
+        <p className="settings-hint">{t('插件不可用，请在 设置 › 插件 中查看状态。')}</p>
       </div>
     );
   }

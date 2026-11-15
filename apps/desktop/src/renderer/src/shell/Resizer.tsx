@@ -4,6 +4,7 @@
 // the details panel has a fixed width and no edge.
 import { useRef } from 'react';
 import { clampPanelWidth, PANEL_LIMITS } from '../../../shared/settings';
+import { t } from '../../../shared/i18n';
 
 export interface ResizerProps {
   /** The sidebar (grows to the right) or the file preview (on the right, grows to the left). */
@@ -36,12 +37,12 @@ export function Resizer({ side, width, onPreview, onCommit, max }: ResizerProps)
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label={side === 'left' ? '调整侧栏宽度' : '调整预览宽度'}
+      aria-label={side === 'left' ? t('调整侧栏宽度') : t('调整预览宽度')}
       aria-valuenow={width}
       aria-valuemin={limits.min}
       aria-valuemax={top}
       tabIndex={0}
-      title="拖动调整宽度，双击恢复"
+      title={t('拖动调整宽度，双击恢复')}
       className={`panel-resizer is-${side === 'left' ? 'left' : 'right'}`}
       onPointerDown={(e) => {
         if (e.button !== 0) return;

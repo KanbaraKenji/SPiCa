@@ -12,6 +12,7 @@ import { fileName, formatUsd } from '../chat/format';
 import { spendText } from '../../../shared/spend';
 import { runningWords, toolWords } from '../chat/tool-words';
 import { SpicaStatusIcon } from '@spica/brand/react';
+import { N_, t, tc } from '../../../shared/i18n';
 
 export type ToolBlock = Extract<Block, { type: 'tool' }>;
 
@@ -57,7 +58,7 @@ function clock(iso: string): string {
   return Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-const ROLE_LABEL: Record<SessionInfo['role'], string> = { top: '对话', manager: '项目经理', worker: '子任务' };
+const ROLE_LABEL: Record<SessionInfo['role'], string> = { top: N_('对话'), manager: N_('项目经理'), worker: N_('子任务') };
 
 /** A call in the list: the conversation's words for it, the verb and then the object quieter. */
 export function ToolListText({ t, card, running = false }: { t: Parameters<typeof toolWords>[0]; card?: FileCardMeta | undefined; running?: boolean }) {
@@ -76,7 +77,7 @@ export function ToolListText({ t, card, running = false }: { t: Parameters<typeo
 export function DetailPanel({ session, parent, transcript, globalCostUsd, globalUnpriced, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, history }: DetailPanelProps) {
   const tools = detailTools(transcript);
   const live = Boolean(transcript.run);
-  const running = tools.filter((t) => isRunning(t, live));
+  const running = tools.filter((b) => isRunning(b, live));
   const [filesOpen, setFilesOpen] = useState(true);
   const [allFiles, setAllFiles] = useState(false);
   // another conversation: its files open again, the first five
@@ -92,12 +93,12 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
     ...new Map(transcript.items.flatMap((i) => (i.kind === 'response' ? filesOf(i.blocks, transcript.fileCards, moves.get(i.id), transcript.fileCardLists) : [])).map((f) => [f.path, f] as const)).values(),
   ];
   return (
-    <aside className="detail" aria-label="详情">
+    <aside className="detail" aria-label={t('详情')}>
       {hideHeading && !onClose ? null : (
       <header className="detail-head panel-head">
-        {hideHeading ? <span /> : <span className="detail-heading">详情</span>}
+        {hideHeading ? <span /> : <span className="detail-heading">{t('详情')}</span>}
         {onClose ? (
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="关闭详情" title="关闭详情">
+          <button type="button" className="icon-btn" onClick={onClose} aria-label={t('关闭详情')} title={t('关闭详情')}>
             <Icon name="close" size={14} />
           </button>
         ) : null}
@@ -109,12 +110,12 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
         {session ? (
           <section className="detail-section">
             <dl className="detail-facts">
-              <dt>类型</dt>
-              <dd>{ROLE_LABEL[session.role]}</dd>
+              <dt>{t('类型')}</dt>
+              <dd>{t(ROLE_LABEL[session.role])}</dd>
               {/* A project's sub-task belongs to its manager, who is the project: say it once, under 项目. */}
               {parent && !(project && project.managerSessionId === parent.id) ? (
                 <>
-                  <dt>所属</dt>
+                  <dt>{t('所属')}</dt>
                   <dd>
                     <button type="button" className="link-btn" onClick={() => onOpenSession(parent.id)}>
                       {parent.title}
@@ -124,7 +125,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
               ) : null}
               {project ? (
                 <>
-                  <dt>项目</dt>
+                  <dt>{t('项目')}</dt>
                   <dd>
                     {project.managerSessionId === session.id ? (
                       project.name
@@ -139,16 +140,16 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
               {project?.folder || session.cwd ? (
                 <>
                   <dt>
-                    文件夹
+                    {t('文件夹')}
                     {/* Chosen by the user for this conversation: once, for good. */}
-                    {!project && session.canChooseCwd === false && session.role === 'top' && !session.parentId ? <InfoTip text="选定后不能更改" label="文件夹" /> : null}
+                    {!project && session.canChooseCwd === false && session.role === 'top' && !session.parentId ? <InfoTip text={t('选定后不能更改')} label={t('文件夹')} /> : null}
                   </dt>
                   <dd className="detail-folder">
                     <span className="detail-path" title={project?.folder ?? session.cwd}>
                       {project?.folder ?? session.cwd}
                     </span>
                     <button type="button" className="link-btn" onClick={() => onOpenFile(project?.folder ?? session.cwd)}>
-                      打开
+                      {t('打开')}
                     </button>
                   </dd>
                 </>
@@ -159,7 +160,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
 
         {project ? (
           <section className="detail-section">
-            <h3 className="detail-title">项目动态</h3>
+            <h3 className="detail-title">{t('项目动态')}</h3>
             {activity.length ? (
               <ul className="detail-list">
                 {activity.slice(0, 12).map((a) => (
@@ -183,24 +184,24 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
             <h3 className="detail-title">
               {history ? (
                 <button type="button" className={history.open ? 'detail-fold detail-calls is-on' : 'detail-fold detail-calls'} aria-expanded={history.open} onClick={history.toggle}>
-                  工具调用
+                  {t('工具调用')}
                   <span className="detail-count">{tools.length}</span>
                   <Icon name="chevronRight" size={12} className="detail-calls-chevron" />
                 </button>
               ) : (
                 <>
-                  工具调用<span className="detail-count">{tools.length}</span>
+                  {t('工具调用')}<span className="detail-count">{tools.length}</span>
                 </>
               )}
             </h3>
             {running.length ? (
             <ul className="detail-list">
-              {running.map((t) => (
-                <li key={t.callId} className="detail-item">
+              {running.map((b) => (
+                <li key={b.callId} className="detail-item">
                   <span className="detail-item-icon">
-                    <SpicaStatusIcon name="running" size={14} title="进行中" />
+                    <SpicaStatusIcon name="running" size={14} title={t('进行中')} />
                   </span>
-                  <ToolListText t={t} card={transcript.fileCards?.[t.callId]} running />
+                  <ToolListText t={b} card={transcript.fileCards?.[b.callId]} running />
                 </li>
               ))}
             </ul>
@@ -212,7 +213,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
         <section className="detail-section">
           <h3 className="detail-title">
             <button type="button" className="detail-fold" aria-expanded={filesOpen} onClick={() => setFilesOpen((o) => !o)}>
-              文件
+              {tc('heading', '文件')}
               <Icon name="chevronDown" size={12} className="detail-fold-chevron" />
               {filesOpen ? null : <span className="detail-count">{files.length || ''}</span>}
             </button>
@@ -231,7 +232,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
                 {files.length > FILES_SHOWN ? (
                   <li>
                     <button type="button" className="detail-more" onClick={() => setAllFiles((a) => !a)}>
-                      {allFiles ? '收起' : '显示更多'}
+                      {allFiles ? t('收起') : t('显示更多')}
                     </button>
                   </li>
                 ) : null}
@@ -243,11 +244,11 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
         </section>
 
         <section className="detail-section">
-          <h3 className="detail-title">花费</h3>
+          <h3 className="detail-title">{t('花费')}</h3>
           <dl className="detail-facts">
-            <dt>本对话</dt>
+            <dt>{t('本对话')}</dt>
             <dd className="num">{session ? spendText(session.costUsd, session.unpriced, formatUsd) : '—'}</dd>
-            <dt>全部对话</dt>
+            <dt>{t('全部对话')}</dt>
             <dd className="num">{spendText(globalCostUsd, globalUnpriced, formatUsd)}</dd>
           </dl>
         </section>
