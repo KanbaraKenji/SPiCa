@@ -278,6 +278,7 @@
 
 ## 9. 打包、更新与公告
 
+- **随应用带的 uv**（2026-11-16）：`scripts/uv.mjs` 在 predev、prepreview、build、dist 前把固定版本的 uv（现在 0.13.8，`uv-x86_64-pc-windows-msvc.zip`，SHA-256 写死在脚本里）取到 `apps/desktop/uv/uv.exe`（不进版本控制），electron-builder 当 `extraResources` 放到 `resources/uv`。来源：GitHub 上的官方发布；连不上 github.com 的机器设 `SPICA_UV_ZIP` 指向同一个 zip 的副本。校验值不对或取不到：打一行警告，构建照常，这一份应用就没有 python_env（模型被告知没有 Python，照旧用 Node；不会出下载卡）。版本没变不重取。只做 Windows。升级：脚本里版本和 SHA-256 一起改。约 31 MB（未压缩）。CI 只跑测试不构建，不下载；发版流程的 `npm run dist` 会下载。
 - **随应用带的脚本库**（2026-11-16）：`scripts/node-libs.mjs` 把 exceljs、papaparse 各打成一个 CommonJS 文件写到 `apps/desktop/node-libs/<库名>/`（不叫 node_modules：electron-builder 复制资源时会丢掉这个名字的文件夹）（带 package.json、LICENSE，exceljs 另有 THIRD-PARTY.txt 列出打进去的每个依赖的版本和许可证），`predev`、`build`、`dist` 前都跑（每次重打，零点几秒，依赖变了不会漏）；electron-builder 当 `extraResources` 放到 `resources/node-libs`（不进 asar，任何 Node 都读得到），这个文件夹不进版本控制。后台从 `nodeLibsDir` 拿到路径（打包后 `process.resourcesPath`，开发时应用目录），给 Agent 的 run_command 用（`agent-core.md` 内置工具表）。exceljs 约 1.1 MB，papaparse 约 20 KB。
 - **出包**：`npm run dist -w @spica/desktop`（electron-builder，配置 `apps/desktop/electron-builder.yml`），出到 `apps/desktop/release/`：
   - `Spica-Setup-<版本>.exe`：按用户安装（`perMachine: false`、`allowElevation: false`、`requestedExecutionLevel: asInvoker`），装到 `%LOCALAPPDATA%\Programs\Spica`，卸载信息写在 HKCU，**不需要管理员权限**；
