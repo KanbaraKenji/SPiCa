@@ -3,6 +3,7 @@
 // (no scripts, nothing from the network), images. Anything else: a sentence
 // and the system program.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { PreviewInfo } from '../../../shared/bridge';
 import { MarkdownText } from '../chat/Blocks';
 import { HIGHLIGHT_MAX_CHARS, highlightLines, languageOf } from '../chat/highlight';
@@ -118,7 +119,8 @@ function Sheet({ info, onSheet, loadRows }: { info: SheetInfo; onSheet?: ((n: nu
   // read this time: read again, it starts over).
   const id = info.rows;
   const [added, setAdded] = useState<{ id: SheetInfo['rows']; rows: SheetInfo['rows']; more: boolean } | null>(null);
-  const [loading, setLoading] = useState(false);
+  // A page being asked for (a ref: two scroll events before the next render must not ask twice).
+  const loading = useRef(false);
   const [view, setView] = useState({ top: 0, height: 800 });
   // Row height, and each column's width (the row numbers first) from the rows seen so far (`upto` of them).
   const [measured, setMeasured] = useState<{ id: SheetInfo['rows']; row: number; widths: number[]; upto: number } | null>(null);
@@ -132,14 +134,22 @@ function Sheet({ info, onSheet, loadRows }: { info: SheetInfo; onSheet?: ((n: nu
   const last = Math.min(rows.length, Math.ceil((view.top + view.height) / rowH) + SHEET_OVERSCAN);
   const next = () => {
     const end = rows.at(-1);
-    if (!more || loading || !loadRows || !end) return;
-    setLoading(true);
+    if (!more || loading.current || !loadRows || !end) return;
+    loading.current = true;
     loadRows(end.n + 1)
       .then((page) => {
-        if (page.kind === 'sheet') setAdded((a) => ({ id, rows: [...(a?.id === id ? a.rows : []), ...page.rows], more: page.more }));
+        if (page.kind !== 'sheet') return;
+        setAdded((a) => {
+          const have = a?.id === id ? a.rows : [];
+          // Only rows after the last one there (a page that came twice adds nothing).
+          const after = (have.at(-1) ?? info.rows.at(-1))?.n ?? 0;
+          return { id, rows: [...have, ...page.rows.filter((r) => r.n > after)], more: page.more };
+        });
       })
       .catch(() => setAdded((a) => ({ id, rows: a?.id === id ? a.rows : [], more: false })))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        loading.current = false;
+      });
   };
   // The row height from the first row drawn; the widths from the rows added since last time (the longest cell
   // of each column measured), never narrower than before.
@@ -356,7 +366,8 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, loadRows,
               }
             }}
           />
-          {bigFor === id ? <ImageViewer pictures={[{ url: info.url, name: info.name }]} onClose={() => setBigFor(null)} wheelZooms /> : null}
+          {/* On the page itself: the panel (laid over the conversation, floating, 最大化) is a layer of its own. */}
+          {bigFor === id ? createPortal(<ImageViewer pictures={[{ url: info.url, name: info.name }]} onClose={() => setBigFor(null)} wheelZooms />, document.body) : null}
         </div>
       ) : info.kind === 'sheet' ? (
         <Sheet info={info} onSheet={onSheet} loadRows={loadRows} />

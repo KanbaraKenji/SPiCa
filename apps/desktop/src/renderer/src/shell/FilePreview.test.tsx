@@ -147,6 +147,17 @@ describe('the file’s place, from the preview head', () => {
     expect(document.querySelector('.image-viewer')).toBeNull();
   });
 
+  it('two scroll events before the page comes ask for it once; its rows are added once', async () => {
+    const page = (rows: number[], more: boolean) => ({ kind: 'sheet' as const, name: 'a.xlsx', path: 'D:/a.xlsx', size: 9, sheets: [{ name: 'a' }], sheet: 1, columns: ['A'], rows: rows.map((n) => ({ n, cells: [String(n)] })), more });
+    const loadRows = vi.fn(async () => page([3, 4], false));
+    render(<FilePreview info={page([1, 2], true)} loadRows={loadRows} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    const body = document.querySelector('.preview-sheet')!;
+    fireEvent.scroll(body);
+    fireEvent.scroll(body);
+    await waitFor(() => expect([...document.querySelectorAll('.preview-sheet tbody th')].map((t) => t.textContent)).toEqual(['1', '2', '3', '4']));
+    expect(loadRows).toHaveBeenCalledTimes(1);
+  });
+
   it('a CSV file is a table, and its own text behind 查看代码', () => {
     const info = { kind: 'sheet' as const, name: '销售.csv', path: 'D:/销售.csv', size: 20, sheets: [{ name: '销售' }], sheet: 1, columns: ['A', 'B'], rows: [{ n: 1, cells: ['门店', '金额'] }], more: false, text: '门店,金额' };
     render(<FilePreview info={info} onOpenExternal={vi.fn()} onClose={vi.fn()} />);

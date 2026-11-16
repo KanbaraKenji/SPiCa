@@ -23,6 +23,9 @@
         view.querySelector('.sheet-wrap').insertAdjacentHTML('beforeend', current.next());
       }
     };
+    // drawn again (the file changed): the last drawing's listener goes
+    if (root.spicaFill) root.removeEventListener('scroll', root.spicaFill);
+    root.spicaFill = fill;
     root.addEventListener('scroll', fill, { passive: true });
     var open = function (i) {
       var out = window.OfficeSheet.renderSheet(sheets[i], got.wb);
