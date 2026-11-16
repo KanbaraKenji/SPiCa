@@ -21,16 +21,12 @@
 // As the window narrows (or a panel is dragged wider), in order:
 //   1. the conversation is squeezed (its text wraps again) down to 440;
 //   2. the details go;
-//   3. the conversation is squeezed to 440 again, then the preview gives way: it gets narrower so the conversation
-//      keeps 440, down to PREVIEW_MIN (320) (previewBesideConversation; he chose it over the preview lying over the
-//      conversation at its own width);
-//   4. at 320 the preview lies over the conversation's right part (kept at its 440 layout, cut off) until 160 of it
-//      shows;
+//   3. the conversation is squeezed to 440 again, then the preview lies over its right part (kept at its 440
+//      layout, cut off) until 160 of it shows; dragging the preview stops there;
+//   4. the preview gets narrower, down to PREVIEW_MIN (320);
 //   5. the preview goes (his words: 「任何位置修改宽度不满足主页第"0"宽度时，预览最先被隐藏」; a file opened then floats
 //      it; it comes back when there is room);
 //   6. the sidebar shrinks, then goes (pressing its toggle floats it, as before).
-// The width the user dragged the preview to is kept (settings): the window or the sidebar giving back room gives
-// the preview back its width. Dragging it stops where the conversation keeps 440 (it is not dragged over it).
 // The details go only once the conversation is at 440, not before: the conversation takes whatever room is left, so
 // any earlier point would be a width picked out of nothing.
 //
@@ -106,14 +102,9 @@ function sidebarWidth(viewportWidth: number, wanted: number): number {
   return clamp(wanted, SIDEBAR_MIN, viewportWidth - MAIN_ROOM_WIDTH);
 }
 
-/**
- * The preview gives way to the conversation: its width in the room right of the sidebar (the sidebar's icon column)
- * is what was chosen, but never so wide that the conversation keeps less than MAIN_ROOM_WIDTH; it gives way down
- * to PREVIEW_MIN, and only then lies over the conversation, at most until MAIN_SHOWN_MIN of it shows. The one place
- * this rule is decided: the layout, the edge's drag limit and the content column all go by it.
- */
-export function previewBesideConversation(room: number, wanted: number): number {
-  return clamp(Math.min(wanted, room - MAIN_ROOM_WIDTH), PREVIEW_MIN, room - MAIN_SHOWN_MIN);
+/** The docked preview in the room right of the sidebar: as chosen, at most what leaves 160 of the conversation. */
+function previewWidth(room: number, wanted: number): number {
+  return clamp(wanted, PREVIEW_MIN, room - MAIN_SHOWN_MIN);
 }
 
 export function computeLayout(viewportWidth: number, open: Open, floating: Floating = null, wanted: Wanted = USUAL): Layout {
@@ -121,7 +112,7 @@ export function computeLayout(viewportWidth: number, open: Open, floating: Float
   const room = viewportWidth - (leftDocked ? sidebarWidth(viewportWidth, wanted.left) : RAIL_WIDTH);
   // The preview: at its narrowest with the least of the conversation showing, or it is the first to go.
   const previewDocked = open.preview && room >= PREVIEW_MIN + MAIN_SHOWN_MIN;
-  const preview = previewDocked ? previewBesideConversation(room, wanted.preview) : 0;
+  const preview = previewDocked ? previewWidth(room, wanted.preview) : 0;
   // The monitor, then the details: only beside the conversation at 440 and the preview at its width (the details
   // also beside the monitor); else not there at all.
   const monitorDocked = Boolean(open.monitor) && room - preview - MAIN_ROOM_WIDTH >= MONITOR_WIDTH;
@@ -162,7 +153,7 @@ export function panelWidths(viewportWidth: number, layout: Layout, wanted: Wante
   if (layout.left === 'floating') out.left = Math.max(SIDEBAR_MIN, Math.min(wanted.left, viewportWidth - FLOAT_GAP));
   if (layout.preview === 'docked') {
     const room = viewportWidth - (leftDocked ? out.left : RAIL_WIDTH);
-    out.preview = previewBesideConversation(room, wanted.preview);
+    out.preview = previewWidth(room, wanted.preview);
     // What the conversation would get beside it; under 440 it stays laid out at 440 and the preview covers the rest.
     out.cover = Math.max(0, MAIN_ROOM_WIDTH - (room - out.preview - besideWidth(layout)));
   }
@@ -170,12 +161,9 @@ export function panelWidths(viewportWidth: number, layout: Layout, wanted: Wante
   return out;
 }
 
-/**
- * The widest the preview can be dragged to now: until the conversation keeps 440 (the details go on the way); it
- * is not dragged over the conversation (previewBesideConversation). Never under PREVIEW_MIN.
- */
+/** The widest the preview can be dragged to now: until 160 of the conversation shows (the details go on the way). */
 export function previewMaxWidth(viewportWidth: number, layout: Layout, widths: Widths): number {
-  return Math.max(PREVIEW_MIN, viewportWidth - (layout.left === 'docked' ? widths.left : RAIL_WIDTH) - MAIN_ROOM_WIDTH);
+  return Math.max(PREVIEW_MIN, viewportWidth - (layout.left === 'docked' ? widths.left : RAIL_WIDTH) - MAIN_SHOWN_MIN);
 }
 
 /**

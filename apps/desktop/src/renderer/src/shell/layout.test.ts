@@ -44,8 +44,7 @@ describe('the numbers the table below is worked out from', () => {
 
 // Window width x what is open -> how each panel shows (on screen: sidebar, conversation, details, preview against
 // the right edge), how wide it is drawn, how much of the conversation shows, and how far the preview lies over it
-// (the conversation stays laid out at 440 under it). "-" for a panel not there. The preview gives way first (down
-// to 320) so the conversation keeps 440; it lies over it only at 320.
+// (the conversation stays laid out at 440 under it). "-" for a panel not there.
 type Row = [width: number, sidebar: boolean, preview: boolean, details: boolean, layout: [string, string, string], widths: [number | '-', number | '-', number | '-'], conversation: number, cover: number];
 const TABLE: Row[] = [
   //  width  left   prev   info    left prev info      left  prev  info   conv  cover
@@ -54,19 +53,12 @@ const TABLE: Row[] = [
   [700, true, true, true, [d, h, h], [260, '-', '-'], 440, 0],
   // 744: the preview at its narrowest, 160 of the conversation showing.
   [744, true, true, true, [d, d, h], [264, 320, '-'], 160, 280],
-  // 900: the preview at 320 is still too wide for 440 beside it: it lies over 124 of the conversation.
-  [900, true, true, true, [d, d, h], [264, 320, '-'], 316, 124],
+  [900, true, true, true, [d, d, h], [264, 476, '-'], 160, 280],
   // 900 without a preview: the sidebar fits with the conversation at 440 or more, the details do not.
   [900, true, false, true, [d, h, h], [264, '-', '-'], 636, 0],
   [900, false, false, true, [h, h, d], ['-', '-', 300], 548, 0],
-  // 1280: no room for the details beside the preview: they are not there; the preview gives way to 576 so the
-  // conversation keeps 440 (it used to lie over 64 of it at 640).
-  [1280, true, true, true, [d, d, h], [264, 576, '-'], 440, 0],
-  // 1132 and 1024: narrower still, the preview gives way to 428 and 320; nothing covered.
-  [1132, true, true, true, [d, d, h], [264, 428, '-'], 440, 0],
-  [1024, true, true, true, [d, d, h], [264, 320, '-'], 440, 0],
-  // 1023: at 320 there is no more giving way: the preview lies over the conversation.
-  [1023, true, true, true, [d, d, h], [264, 320, '-'], 439, 1],
+  // 1280: no room for the details beside the preview: they are not there; the preview covers a little.
+  [1280, true, true, true, [d, d, h], [264, 640, '-'], 376, 64],
   [1280, false, true, true, [h, d, h], ['-', 640, '-'], 588, 0],
   [1280, true, false, true, [d, h, d], [264, '-', 300], 716, 0],
   [1280, false, false, false, [h, h, h], ['-', '-', '-'], 1228, 0],
@@ -113,7 +105,7 @@ describe('sidebar, conversation, details, preview (against the right edge), by w
     }
   });
 
-  it('as the window narrows: squeezed to 440, the details go, the preview gives way to 320, covers down to 160, goes, then the sidebar', () => {
+  it('as the window narrows: squeezed to 440, the details go, squeezed and covered to 160, the preview at 320, the preview goes, then the sidebar', () => {
     const order: string[] = [];
     let before = computeLayout(2000, all);
     for (let width = 2000; width >= 480; width--) {
@@ -131,36 +123,22 @@ describe('sidebar, conversation, details, preview (against the right edge), by w
       const w = panelWidths(width, layout, wanted);
       return { conv: shown(width, layout, w), preview: w.preview };
     };
-    expect([at(1644).conv, at(1344).conv, at(1064).conv, at(1064).preview, at(1024).preview, at(900).conv, at(744).conv, at(744).preview]).toEqual([440, 440, 440, 360, 320, 316, 160, 320]);
+    expect([at(1644).conv, at(1344).conv, at(1064).conv, at(744).preview]).toEqual([440, 440, 160, 320]);
   });
 
-  it('dragging the preview wider: the details go once the conversation would have less than 440; it stops there, not over the conversation', () => {
+  it('dragging the preview wider: the details go once the conversation would have less than 440; it stops at 160', () => {
     // 1920 - 264 = 1656 right of the sidebar: 1656 - 440 - 300 = 916.
     expect(computeLayout(1920, all, null, { left: SIDEBAR_WIDTH, preview: 916 }).info).toBe(d);
     expect(computeLayout(1920, all, null, { left: SIDEBAR_WIDTH, preview: 917 }).info).toBe(h);
     const layout = computeLayout(1920, all, null, { left: SIDEBAR_WIDTH, preview: 3000 });
     const w = panelWidths(1920, layout, { left: SIDEBAR_WIDTH, preview: 3000 });
-    expect(w.preview).toBe(1920 - SIDEBAR_WIDTH - MAIN_ROOM_WIDTH);
+    expect(w.preview).toBe(1920 - SIDEBAR_WIDTH - MAIN_SHOWN_MIN);
     expect(previewMaxWidth(1920, layout, w)).toBe(w.preview);
-    expect(w.cover).toBe(0);
-    // Where even 320 leaves the conversation less than 440, the edge does not move past 320.
-    const tight = computeLayout(900, all);
-    expect(previewMaxWidth(900, tight, panelWidths(900, tight, wanted))).toBe(PREVIEW_MIN);
-  });
-
-  it('the width it was dragged to comes back: a narrower window, or the sidebar opened, takes it; giving the room back returns it', () => {
-    const at = (width: number, left: boolean) => {
-      const layout = computeLayout(width, open(left, true, false));
-      return panelWidths(width, layout, wanted).preview;
-    };
-    expect([at(1500, true), at(1132, true), at(1024, true), at(1132, true), at(1500, true)]).toEqual([640, 428, 320, 428, 640]);
-    // the sidebar closed (its icon column): more room, the preview back to 640
-    expect([at(1132, true), at(1132, false)]).toEqual([428, 640]);
+    expect(w.cover).toBe(MAIN_ROOM_WIDTH - MAIN_SHOWN_MIN);
   });
 
   it('dragging the sidebar wider: the preview gives way, and is the first to go', () => {
-    // 1000 - 440 = 560 right of the sidebar: the preview gives way to 320, its narrowest (and lies over 200).
-    expect(panelWidths(1000, computeLayout(1000, open(true, true, false), null, { left: 440, preview: 900 }), { left: 440, preview: 900 }).preview).toBe(320);
+    expect(panelWidths(1000, computeLayout(1000, open(true, true, false), null, { left: 440, preview: 900 }), { left: 440, preview: 900 }).preview).toBe(400);
     const tight = computeLayout(900, open(true, true, false), null, { left: 440, preview: 640 });
     expect([tight.left, tight.preview]).toEqual([d, h]);
   });
