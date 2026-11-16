@@ -97,7 +97,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [newProject, setNewProject] = useState<null | { name?: string; mailId?: string }>(null);
   /** The file shown in the right panel instead of the details, if any. */
   // A file to show in the right panel, or (inline) a page from an answer's HTML code block.
-  const [preview, setPreview] = useState<{ sessionId: string | null; path: string; sheet?: number; inline?: PreviewInfo } | null>(null);
+  // `opened`: when the file was asked for; asked for again (the same file pressed again), it is read again.
+  const [preview, setPreview] = useState<{ sessionId: string | null; path: string; sheet?: number; inline?: PreviewInfo; opened?: number } | null>(null);
   const [previewWay, setPreviewWay] = useState<{ key: string; id: string } | null>(null);
   const [previewFallback, setPreviewFallback] = useState<{ key: string; id: string; why: PreviewFallback } | null>(null);
   const [previewAttempt, setPreviewAttempt] = useState(0);
@@ -387,7 +388,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   useEffect(() => {
     if (window.__spicaShots)
       window.__spicaShots.preview = (path) => {
-        setPreview({ sessionId: null, path });
+        setPreview({ sessionId: null, path, opened: Date.now() });
         showPreview();
       };
   });
@@ -473,7 +474,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const memoryLines = useMemo(() => ({ items: state.memories, undo: (id: number) => agent.undoMemory(id) }), [state.memories, agent]);
   // Files open in the preview panel (read-only); 用系统程序打开 there hands them to Windows.
   const previewFile = (path: string) => {
-    setPreview({ sessionId: state.activeId, path });
+    setPreview({ sessionId: state.activeId, path, opened: Date.now() });
     setHistory(false);
     showPreview();
   };
@@ -577,7 +578,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     openFile: async (path: string) => {
       const abs = await bridge.pluginViews.file(v.plugin, path);
       if (!abs) return '仅能打开插件自身文件夹中的文件。'; // i18n-skip: an answer to the plugin page's own code
-      setPreview({ sessionId: null, path: abs });
+      setPreview({ sessionId: null, path: abs, opened: Date.now() });
       setView('chat');
       showPreview();
       return null;
@@ -1216,7 +1217,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             >
               {pagePreview ? (
                 <PluginPreview
-                  key={`${previewerId(pagePreview)}|${previewAttempt}`}
+                  key={`${previewerId(pagePreview)}|${previewAttempt}|${preview.opened ?? 0}`}
                   {...pluginProps(pagePreview)}
                   file={{ sessionId: preview.sessionId, path: preview.path }}
                   loadFile={bridge.previewFile}

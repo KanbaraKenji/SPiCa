@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { FilePreview } from './FilePreview';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { FilePreview, usePreview } from './FilePreview';
 import { clipboard } from '../ui/clipboard';
 import { optionLabels, pickValue, valueOf } from '../ui/select-testing';
 
@@ -182,5 +182,20 @@ describe('the file’s place, from the preview head', () => {
   it('no 预览方式 when only the app’s own can show the file', () => {
     render(<FilePreview info={{ kind: 'text', name: 'a.log', path: 'D:/a.log', size: 3, text: 'one', truncated: false }} onOpenExternal={vi.fn()} onClose={vi.fn()} source={{ options: [{ id: '', label: '自带预览' }], value: '', onChange: vi.fn() }} />);
     expect(screen.queryByRole('combobox', { name: '预览方式' })).toBeNull();
+  });
+});
+
+describe('usePreview', () => {
+  it('reads the file again when it is asked for again (rewritten since, it shows as it is now)', async () => {
+    let version = 1;
+    const load = vi.fn(async () => ({ kind: 'text' as const, name: 'a.txt', path: 'D:/a.txt', size: 3, text: `第 ${version} 版`, truncated: false }));
+    const { result, rerender } = renderHook(({ want }) => usePreview(load, want), { initialProps: { want: { sessionId: null, path: 'D:/a.txt', opened: 1 } } });
+    await waitFor(() => expect(result.current).toMatchObject({ text: '第 1 版' }));
+    version = 2;
+    rerender({ want: { sessionId: null, path: 'D:/a.txt', opened: 1 } });
+    expect(load).toHaveBeenCalledTimes(1);
+    rerender({ want: { sessionId: null, path: 'D:/a.txt', opened: 2 } });
+    await waitFor(() => expect(result.current).toMatchObject({ text: '第 2 版' }));
+    expect(load).toHaveBeenCalledTimes(2);
   });
 });

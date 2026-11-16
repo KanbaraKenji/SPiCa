@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -59,6 +59,10 @@ describe('file preview', () => {
     const pdf = await readPreview(join(dir, 'r.pdf'), files);
     expect(pdf.kind).toBe('pdf');
     expect(pdf.kind === 'pdf' ? files.pathOf(pdf.url) : '').toBe(join(dir, 'r.pdf'));
+    // Rewritten, the same file is a new URL (the viewer does not show the one it kept).
+    utimesSync(join(dir, 'r.pdf'), new Date(2026, 0, 1), new Date(2026, 0, 1));
+    const again = await readPreview(join(dir, 'r.pdf'), files);
+    expect(again.kind === 'pdf' ? [again.url === (pdf.kind === 'pdf' ? pdf.url : ''), files.pathOf(again.url)] : []).toEqual([false, join(dir, 'r.pdf')]);
     expect(files.pathOf('spica-file://f/not-a-token')).toBeUndefined();
     // A workbook that cannot be read (main/office-preview.ts reads the good ones).
     expect(await readPreview(join(dir, 'q.xlsx'), files)).toMatchObject({ kind: 'unsupported', message: '无法读取此文件。' });

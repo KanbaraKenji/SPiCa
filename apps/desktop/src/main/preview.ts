@@ -96,10 +96,12 @@ export class PreviewFiles {
 export async function readPreview(path: string, files: PreviewFiles, sheet?: number, from?: number): Promise<PreviewInfo> {
   const name = basename(path);
   let size: number;
+  let mtimeMs: number;
   try {
     const st = await stat(path);
     if (!st.isFile()) return { kind: 'unsupported', name, path, size: 0, message: t('不是文件') };
     size = st.size;
+    mtimeMs = st.mtimeMs;
   } catch (err) {
     return { ...unreadable(err), name, path, size: 0 };
   }
@@ -117,7 +119,8 @@ export async function readPreview(path: string, files: PreviewFiles, sheet?: num
     }
     // An SVG is text too: its source comes along for the panel's 代码 view.
     const svg = kind === 'image' && extname(path).toLowerCase() === '.svg' && size <= TEXT_LIMIT ? await readFile(path, 'utf8').catch(() => undefined) : undefined;
-    return { kind, name, path, size, url: files.urlFor(path), ...(svg !== undefined ? { text: svg } : {}) };
+    // The file's time in the URL: rewritten, it is a new URL, not the picture the viewer kept.
+    return { kind, name, path, size, url: `${files.urlFor(path)}?v=${Math.round(mtimeMs)}`, ...(svg !== undefined ? { text: svg } : {}) };
   }
   if (kind === 'unsupported') return { kind, name, path, size, message: t('不支持预览此类文件。') };
   let handle;

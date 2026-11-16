@@ -113,13 +113,14 @@ function roughLength(s: string): number {
  * of 500; each column is as wide as its longest cell so far (up to SHEET_COL_MAX), so it does not change as it scrolls.
  */
 function Sheet({ info, onSheet, loadRows }: { info: SheetInfo; onSheet?: ((n: number) => void) | undefined; loadRows?: ((from: number) => Promise<PreviewInfo>) | undefined }) {
-  // The pages added to the first one, the row height and column widths: this sheet of this file only.
-  const id = `${info.path}|${info.sheet}|${info.rows[0]?.n ?? 0}`;
-  const [added, setAdded] = useState<{ id: string; rows: SheetInfo['rows']; more: boolean } | null>(null);
+  // The pages added to the first one, the row height and column widths: this first page only (this sheet, as
+  // read this time: read again, it starts over).
+  const id = info.rows;
+  const [added, setAdded] = useState<{ id: SheetInfo['rows']; rows: SheetInfo['rows']; more: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState({ top: 0, height: 800 });
   // Row height, and each column's width (the row numbers first) from the rows seen so far (`upto` of them).
-  const [measured, setMeasured] = useState<{ id: string; row: number; widths: number[]; upto: number } | null>(null);
+  const [measured, setMeasured] = useState<{ id: SheetInfo['rows']; row: number; widths: number[]; upto: number } | null>(null);
   const body = useRef<HTMLDivElement>(null);
   const own = added?.id === id ? added : null;
   const rows = useMemo(() => (own ? [...info.rows, ...own.rows] : info.rows), [info.rows, own]);
@@ -357,10 +358,10 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, loadRows,
   );
 }
 
-/** Loads a preview whenever the requested file changes. */
-export function usePreview(load: (sessionId: string | null, path: string, sheet?: number) => Promise<PreviewInfo>, want: { sessionId: string | null; path: string; sheet?: number } | null): PreviewInfo | null {
+/** Loads a preview whenever the requested file changes, or is asked for again (`opened`: a file rewritten since shows as it is now). */
+export function usePreview(load: (sessionId: string | null, path: string, sheet?: number) => Promise<PreviewInfo>, want: { sessionId: string | null; path: string; sheet?: number; opened?: number } | null): PreviewInfo | null {
   const [state, setState] = useState<{ key: string; info: PreviewInfo } | null>(null);
-  const key = want ? `${want.sessionId ?? ''}|${want.path}|${want.sheet ?? ''}` : '';
+  const key = want ? `${want.sessionId ?? ''}|${want.path}|${want.sheet ?? ''}|${want.opened ?? ''}` : '';
   useEffect(() => {
     if (!want) return;
     let alive = true;
