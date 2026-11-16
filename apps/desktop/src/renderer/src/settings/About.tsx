@@ -1,5 +1,5 @@
-// Settings > 关于: version, where updates and announcements come from, and
-// checking for an update by hand. Nine clicks on the version switch the 监控台 on (its title bar button shows), nine
+// Settings > 关于: the version with its update state and button on the same row (he picked B: 「状态和按钮在版本号同一行
+// 右边」), and the 自动更新 switch. Nine clicks on the version switch the 监控台 on (its title bar button shows), nine
 // more switch it off; the version does not look clickable and nothing points at it.
 import { useRef, useState } from 'react';
 import type { UpdateState } from '../../../shared/updates';
@@ -43,10 +43,26 @@ export function About({ version, update, onCheck, onInstall, whenIdle, onWhenIdl
   const busy = update?.status === 'checking' || update?.status === 'downloading';
   // This build checks for no updates (a renamed build with no source in its deploy.json, or deploy.json said "").
   const noSource = update?.status === 'off';
+  const ready = update?.status === 'ready';
+  const failed = update?.status === 'error';
+  // The state in a few words, next to the button; the version is on the left already, so it is not said again.
+  const state =
+    update?.status === 'checking'
+      ? t('正在检查更新…')
+      : ready && update?.available
+        ? update.afterTasks
+          ? t('新版本 {version} 将在任务结束后更新', { version: update.available })
+          : t('新版本 {version} 已下载', { version: update.available })
+        : update?.status === 'latest'
+          ? t('已是最新版本')
+          : noSource
+            ? t('这个版本不检查更新')
+            : (update?.message ?? '');
   return (
     <section className="settings-section">
       <Group>
         <Row
+          className="about-row"
           title={
             <span className="about-version" onClick={tap}>
               {`${APP_NAME} ${version}`}
@@ -54,12 +70,42 @@ export function About({ version, update, onCheck, onInstall, whenIdle, onWhenIdl
           }
           hint={update?.portable ? t('便携版') : undefined}
         >
-          {update?.status === 'ready' ? (
-            <button type="button" className="btn btn-primary" onClick={onInstall}>
-              {t('立即更新')}
-            </button>
-          ) : null}
+          <span className="about-inline">
+            {/* What went wrong is a sentence: on a line of its own under the row, red. */}
+            {state && !failed ? (
+              <span className="about-state" role="status">
+                {update?.status === 'latest' ? <SpicaStatusIcon name="done" size={15} /> : null}
+                {state}
+              </span>
+            ) : null}
+            {ready ? (
+              <button type="button" className="btn btn-primary" onClick={onInstall}>
+                {t('立即更新')}
+              </button>
+            ) : (
+              /* A build that checks for nothing: shown greyed (not disabled, so hovering still says why). */
+              <button
+                type="button"
+                className="btn btn-square"
+                disabled={busy}
+                aria-disabled={noSource || undefined}
+                onClick={() => !noSource && onCheck()}
+                aria-label={t('检查更新')}
+                title={noSource ? t('这个版本不检查更新') : t('检查更新')}
+              >
+                {busy ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={16} />}
+              </button>
+            )}
+          </span>
         </Row>
+        {failed && state ? (
+          <Pane>
+            <p className="provider-result is-bad" role="status">
+              <SpicaStatusIcon name="error" size={15} />
+              {state}
+            </p>
+          </Pane>
+        ) : null}
         {switched !== null ? (
           <Pane>
             <p className="provider-result" role="status">
@@ -70,43 +116,15 @@ export function About({ version, update, onCheck, onInstall, whenIdle, onWhenIdl
         ) : null}
       </Group>
 
-      <Group title={t('更新与公告')}>
-        {/* Where updates come from is the build's (deploy.json, the official channel): not shown, not set here. */}
-        <Row title={t('检查更新')}>
-          {/* A build that checks for nothing: shown greyed (not disabled, so hovering still says why). */}
-          <button
-            type="button"
-            className="btn btn-square"
-            disabled={busy}
-            aria-disabled={noSource || undefined}
-            onClick={() => !noSource && onCheck()}
-            aria-label={t('检查更新')}
-            title={noSource ? t('这个版本不检查更新') : t('检查更新')}
-          >
-            {busy ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={16} />}
-          </button>
-        </Row>
-        {/* A portable copy cannot replace itself, and a build that checks for nothing gets nothing: no switch. */}
-        {update?.portable || noSource ? null : (
+      {/* A portable copy cannot replace itself, and a build that checks for nothing gets nothing: no switch. */}
+      {update?.portable || noSource ? null : (
+        <Group title={t('更新与公告')}>
+          {/* Where updates come from is the build's (deploy.json, the official channel): not shown, not set here. */}
           <Row title={t('自动更新')}>
             <Switch on={whenIdle} label={t('自动更新')} onChange={onWhenIdle} />
           </Row>
-        )}
-        {update?.status === 'checking' ? (
-          <Pane>
-            <p className="provider-result" role="status">
-              {t('正在检查更新…')}
-            </p>
-          </Pane>
-        ) : update?.message ? (
-          <Pane>
-            <p className={update.status === 'error' ? 'provider-result is-bad' : 'provider-result'} role="status">
-              {update.status === 'latest' || update.status === 'ready' ? <SpicaStatusIcon name="done" size={15} /> : update.status === 'error' ? <SpicaStatusIcon name="error" size={15} /> : null}
-              {update.message}
-            </p>
-          </Pane>
-        ) : null}
-      </Group>
+        </Group>
+      )}
     </section>
   );
 }

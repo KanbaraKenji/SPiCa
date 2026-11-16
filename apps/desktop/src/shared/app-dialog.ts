@@ -21,6 +21,8 @@ export interface DialogButton {
   label: string;
   /** The main button: the skin's accent, focused at first, Enter. One per dialog. */
   primary?: boolean;
+  /** A step that cannot be taken back (as the page's btn-danger): red, never the main button, never focused at first. */
+  danger?: boolean;
 }
 
 /** The skin's colors the dialog uses (the page's CSS variables of the same names). */
@@ -35,6 +37,7 @@ export const DIALOG_TOKENS = [
   '--spica-border-strong',
   '--spica-hover',
   '--spica-active',
+  '--spica-danger',
 ] as const;
 
 export interface DialogSpec {
@@ -88,7 +91,7 @@ export function parseDialogSpec(raw: string | null): DialogSpec | null {
     return {
       title: v.title,
       detail: Array.isArray(v.detail) ? v.detail.filter((d): d is string => typeof d === 'string') : [],
-      buttons: v.buttons.filter((b) => b && typeof b.label === 'string').map((b) => ({ label: b.label, ...(b.primary ? { primary: true } : {}) })),
+      buttons: v.buttons.filter((b) => b && typeof b.label === 'string').map((b) => ({ label: b.label, ...(b.primary ? { primary: true } : {}), ...(b.danger && !b.primary ? { danger: true } : {}) })),
       ...(typeof v.check === 'string' ? { check: v.check } : {}),
       ...(v.checkInFoot === true ? { checkInFoot: true } : {}),
       ...(v.choices && Array.isArray(v.choices.options) && v.choices.options.every((o) => typeof o === 'string') && v.choices.options.length > 0

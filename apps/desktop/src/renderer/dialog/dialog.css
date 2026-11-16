@@ -115,6 +115,18 @@ body {
   filter: brightness(1.08);
 }
 
+/* styles.css .btn-danger */
+.btn-danger {
+  background: var(--spica-danger);
+  border-color: var(--spica-danger);
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: var(--spica-danger);
+  filter: brightness(1.08);
+}
+
 /* styles.css .close-dialog / .close-dialog .dialog-title: the box holds the × (the title keeps clear of it) */
 .dialog.has-x {
   position: relative;

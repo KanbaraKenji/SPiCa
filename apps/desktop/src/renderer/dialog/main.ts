@@ -80,7 +80,7 @@ if (bridge && spec) {
   const actions = el('div', 'dialog-actions');
   let primary: HTMLButtonElement | null = null;
   spec.buttons.forEach((b, i) => {
-    const button = el('button', b.primary ? 'btn btn-primary' : 'btn', b.label);
+    const button = el('button', b.primary ? 'btn btn-primary' : b.danger ? 'btn btn-danger' : 'btn', b.label);
     button.type = 'button';
     button.addEventListener('click', () => answer(i));
     if (b.primary) primary = button;

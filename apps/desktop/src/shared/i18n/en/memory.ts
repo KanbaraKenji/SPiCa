@@ -93,4 +93,8 @@ export const EN_MEMORY: Catalog = {
   检查更新: 'Check for updates',
   这个版本不检查更新: 'This version doesn’t check for updates',
   '正在检查更新…': 'Checking for updates…',
+  // 设置 › 关于: the update state beside the version
+  '已是最新版本': 'Up to date',
+  '新版本 {version} 已下载': 'Version {version} downloaded',
+  '新版本 {version} 将在任务结束后更新': 'Version {version} will be installed when tasks finish',
 };

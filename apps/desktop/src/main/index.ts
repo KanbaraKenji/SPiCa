@@ -35,6 +35,7 @@ import { buildSources, channelFile, type BuildSources } from './update/channel';
 import { IDLE_POLL_MS, idleInstallDue, pluginUpdateCount, scheduleChecks } from './update/schedule';
 import { startupAction } from './update/startup';
 import { readResume, writeResume } from './update/resume';
+import { afterTasks } from './update/after-tasks';
 import { chooseBackend, type AgentBackend } from './backend';
 import { FakeBackend } from './backend/fake';
 import { writeDemoChart } from './backend/demo-image';
@@ -42,7 +43,8 @@ import { ProcessBackend, type BackendStatus } from './backend/process';
 import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { pageAlive, pageRecovery } from './page-recovery';
 import type { DialogSpec } from '../shared/app-dialog';
-import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor, updateBusyAnswer, updateBusyDialog, updateDialog, updateNowAnswer } from './app-dialog';
+import type { UpdateState } from '../shared/updates';
+import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor, updateBusyChoice, updateBusyDialog, updateDialog, updateNowAnswer } from './app-dialog';
 import { openDialogWindow } from './app-dialog-window';
 import { editMenu, type EditAction } from './edit-menu';
 import { watchFit } from './window-fit';
@@ -1250,7 +1252,7 @@ const updates = new UpdateService({
     app.quit();
   },
 });
-updates.onChange((s) => sendToWindow(DesktopChannel.UpdateChanged, s));
+updates.onChange((s) => sendToWindow(DesktopChannel.UpdateChanged, updateView(s)));
 // Soon after start (main/update/startup.ts): a downloaded update is asked about once; a version that must update
 // installs at once (the window shows its download). Later ones are the side bar's card.
 const appStartedAt = Date.now();
@@ -1294,14 +1296,23 @@ async function installWhenAsked(): Promise<void> {
   const win = mainWindow;
   if (ids.length && win && !win.isDestroyed()) {
     const names = await Promise.all(ids.map((id) => backend.getSession(id).then((x) => x?.title?.trim() || t('新对话'), () => t('新对话'))));
-    if (!updateBusyAnswer(await askInWindow(win, (look) => updateBusyDialog(names, look), 0))) return;
+    const choice = updateBusyChoice(await askInWindow(win, (look) => updateBusyDialog(names, look), 0));
+    if (choice === 'after') return waitForTasks.request();
+    if (choice !== 'now') return;
   }
   updates.install();
 }
+/** 任务结束后更新 (main/update/after-tasks.ts): installs once no conversation runs; meanwhile the window says it waits. */
+const waitForTasks = afterTasks({
+  busy: () => running.any(),
+  install: () => updates.install(),
+  changed: () => sendToWindow(DesktopChannel.UpdateChanged, updateView(updates.state)),
+});
+const updateView = (s: UpdateState): UpdateState => waitForTasks.view(s);
 ipcMain.handle(DesktopChannel.Update, async (_e, op: unknown) => {
   if (op === 'check') return updates.check();
   if (op === 'install') await installWhenAsked();
-  return updates.state;
+  return updateView(updates.state);
 });
 
 // The model catalog: the core's (built in, a newer one from the update source,
@@ -1725,7 +1736,11 @@ if (backend instanceof FakeBackend) {
   void b.recentRequests(500).then((r) => seedDemoMonitor(monitor, r, new Date()));
 }
 // Whether a conversation is running, for the close question's one line (「有任务正在运行，退出会中断它。」).
-backend.onEvent((event) => running.seen(event));
+backend.onEvent((event) => {
+  running.seen(event);
+  // 任务结束后更新: the last one may have finished.
+  waitForTasks.seen();
+});
 settings.onChange((s) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   syncNativeChrome(mainWindow, s);

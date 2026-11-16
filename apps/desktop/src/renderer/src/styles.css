@@ -5766,12 +5766,11 @@ section.plugins-part > .plugins-part-title {
 
 /* Updates (shell/UpdateNotice.tsx): a card in the side bar, right above the bottom row; the same look as the
    title bar's line (raised, bordered, a warning tint when the version must update). One row: the mark, the words
-   (cut short when narrow), the button, × at the end. */
+   (whole, wrapping beside the button), the button, × at the end. The card is the container the narrowest layout
+   asks about. */
 .update-card {
   flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  container: update-card / inline-size;
   margin: 0 8px 8px;
   padding: 6px 4px 6px 12px;
   border-radius: var(--radius-m);
@@ -5786,6 +5785,12 @@ section.plugins-part > .plugins-part-title {
   background: var(--spica-warning-soft);
 }
 
+.update-card-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .update-card .notice-icon {
   flex: none;
 }
@@ -5793,9 +5798,9 @@ section.plugins-part > .plugins-part-title {
 .update-card-text {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  /* Chinese wraps between words, not inside 已下载 */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 /* The button keeps its words whole; × right after it. */
@@ -5811,14 +5816,31 @@ section.plugins-part > .plugins-part-title {
   margin-left: -4px;
 }
 
-/* The narrowest side bar: the mark goes, so the words keep what room there is. */
-.update-card {
-  container-type: inline-size;
-}
-
-@container (max-width: 200px) {
+/* The narrowest side bar: no mark; the words and × on the first row, the words on one line; the button on a row of
+   its own under them. A longer translation that still does not fit is cut, whole on hover. */
+@container update-card (max-width: 200px) {
   .update-card .notice-icon {
     display: none;
+  }
+
+  .update-card-row {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .update-card-text {
+    flex: 1 1 calc(100% - 30px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .update-card .notice-close {
+    order: 1;
+  }
+
+  .update-card-action {
+    order: 2;
   }
 }
 
@@ -8255,4 +8277,36 @@ input[type='checkbox']:disabled,
 input[type='radio']:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Settings › About: the version on the left; its update state and the button together on the right. Narrow, the
+   state wraps (right-aligned) before the version is squeezed; the button keeps its words. */
+.about-row .setting-control {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.about-inline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+
+.about-inline > .btn {
+  flex: none;
+}
+
+.about-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--spica-muted);
+  text-align: right;
+}
+
+.about-state > svg {
+  flex: none;
 }
