@@ -40,6 +40,7 @@ export const EN_FORMS: Catalog = {
   清除: 'Clear',
   更多设置: 'More settings',
   '{n} 项未填': { one: '{n} field not filled in', other: '{n} fields not filled in' },
+  '{n} 项有误': { one: '{n} field needs fixing', other: '{n} fields need fixing' },
   '待设置 · {n} 项未填': { one: 'Needs setup · {n} field not filled in', other: 'Needs setup · {n} fields not filled in' },
   清除设置: 'Clear settings',
   '清除「{name}」的设置？': 'Clear the settings of “{name}”?',

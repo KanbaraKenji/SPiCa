@@ -688,7 +688,7 @@ describe('a plugin’s settings form (user_config)', () => {
     expect(pw.getAttribute('aria-invalid')).toBeNull();
     fireEvent.click(within(page).getByRole('button', { name: /待设置 · 1 项未填/ }));
     expect(pw.getAttribute('aria-invalid')).toBe('true');
-    expect(pw.closest('.config-control')?.textContent).toContain('请填写');
+    expect(pw.closest('.config-row')?.textContent).toContain('请填写');
     await waitFor(() => expect(document.activeElement).toBe(pw));
   });
 

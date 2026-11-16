@@ -5,6 +5,7 @@
 import { CREDENTIALS_IN, headerCellErrors, type AuthBy, type CredentialsIn, type HeaderDraft, type HeaderView } from '../../../shared/providers';
 import { Icon } from '../ui/Icon';
 import { N_, t } from '../../../shared/i18n';
+import { PROBLEM_LAYOUT } from './problem-layout';
 
 /** The rows the form starts from for a saved connection. */
 export function headerRows(saved: readonly HeaderView[] | undefined): HeaderDraft[] {
@@ -51,7 +52,11 @@ export function HeadersField({ rows, saved, onChange, showErrors }: { rows: read
     );
   return (
     <div className="field field-stack">
-      <span className="field-label">{t('请求头')}</span>
+      <span className="field-label">
+        {t('请求头')}
+        {/* beside-label: the first problem after the name; the boxes only turn red */}
+        {PROBLEM_LAYOUT === 'beside-label' && cells.length ? <span className="field-error problem-beside">{cells.map((c) => c.name ?? c.value).find(Boolean)}</span> : null}
+      </span>
       <span className="field-control">
         <span className="header-rows">
           {list.map((h, i) => {
@@ -59,7 +64,7 @@ export function HeadersField({ rows, saved, onChange, showErrors }: { rows: read
             const err = cells[i] ?? {};
             return (
               <span key={i} className="header-row">
-                <span className="header-cell header-name">
+                <span className={PROBLEM_LAYOUT === 'in-box' && err.name ? 'header-cell header-name has-problem-in-box' : 'header-cell header-name'}>
                   <input
                     className={err.name ? 'input is-invalid' : 'input'}
                     value={h.name}
@@ -70,9 +75,9 @@ export function HeadersField({ rows, saved, onChange, showErrors }: { rows: read
                     autoComplete="off"
                     onChange={(e) => edit(i, { name: e.target.value })}
                   />
-                  {err.name ? <span className="field-error">{err.name}</span> : null}
+                  {PROBLEM_LAYOUT === 'in-box' && err.name ? <span className="field-error problem-in-box">{err.name}</span> : null}
                 </span>
-                <span className="header-cell header-value">
+                <span className={PROBLEM_LAYOUT === 'in-box' && err.value ? 'header-cell header-value has-problem-in-box' : 'header-cell header-value'}>
                   <input
                     className={err.value ? 'input is-invalid' : 'input'}
                     type="password"
@@ -84,7 +89,7 @@ export function HeadersField({ rows, saved, onChange, showErrors }: { rows: read
                     autoComplete="off"
                     onChange={(e) => edit(i, { value: e.target.value })}
                   />
-                  {err.value ? <span className="field-error">{err.value}</span> : null}
+                  {PROBLEM_LAYOUT === 'in-box' && err.value ? <span className="field-error problem-in-box">{err.value}</span> : null}
                 </span>
                 {list.length > 1 ? (
                   <button type="button" className="icon-btn" onClick={() => onChange(list.filter((_, j) => j !== i))} aria-label={t('删除 {name}', { name: h.name.trim() || t('请求头') })} title={t('删除')}>

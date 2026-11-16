@@ -18,6 +18,7 @@ import { Group, Row } from './Group';
 import { Switch } from './Switch';
 import { N_, t } from '../../../shared/i18n';
 import { configProblemText } from '../../../shared/plugin-config-words';
+import { PROBLEM_LAYOUT } from './problem-layout';
 
 /** What a field's control holds: text for every box (numbers too, as typed), on / off for a switch. */
 type FormValue = string | boolean;
@@ -146,6 +147,12 @@ export function PluginConfig({ p, busy, save, pickPath, reveal }: PluginConfigPr
         <ConfigRow key={f.key} plugin={p.name} f={f} value={form[f.key] ?? ''} error={errors[f.key]} disabled={busy} onChange={(v) => set(f.key, v)} pickPath={pickPath} />
       ))}
       <div className="plugin-config-actions">
+        {/* in-box: the words in each box are short, so the row of 保存 says how many need looking at */}
+        {PROBLEM_LAYOUT === 'in-box' && Object.keys(errors).length ? (
+          <span className="field-error plugin-config-count" role="status">
+            {Object.values(errors).every((e) => e === t(MISSING)) ? t('{n} 项未填', { n: Object.keys(errors).length }) : t('{n} 项有误', { n: Object.keys(errors).length })}
+          </span>
+        ) : null}
         {result === 'saved' && !dirty ? (
           <span className="provider-result is-ok" role="status">
             <SpicaStatusIcon name="done" size={15} />
@@ -179,17 +186,20 @@ function ConfigRow({
   pickPath: PluginConfigProps['pickPath'];
 }) {
   const id = configFieldId(plugin, f.key);
+  // what is wrong, without moving the box (problem-layout.ts); a locked field gone bad says who to ask
+  const problem = error ?? (f.locked && !f.set ? t('请联系管理员') : undefined);
+  const text = typeof value === 'string' ? value : '';
+  // in-box needs a box to write in: a text field; the others say it beside their name
+  const inBox = PROBLEM_LAYOUT === 'in-box' && !f.locked && f.type !== 'toggle' && f.type !== 'select' && f.type !== 'folder' && f.type !== 'file';
   const title = (
     <>
       {f.title}
       {f.required ? <span className="config-required" aria-label={t('必填')}> *</span> : null}
       {f.description ? <InfoTip text={f.description} decorative /> : null}
       {f.locked ? <InfoTip icon="lock" text={t('由管理员设置')} /> : null}
+      {problem && !inBox ? <span className="field-error problem-beside">{problem}</span> : null}
     </>
   );
-  // what is wrong in red under the box; a locked field gone bad says who to ask
-  const problem = error ?? (f.locked && !f.set ? t('请联系管理员') : undefined);
-  const text = typeof value === 'string' ? value : '';
   let control;
   if (f.type === 'toggle') {
     control = <Switch on={value === true} label={f.title} disabled={disabled || !!f.locked} onChange={(on) => onChange(on)} />;
@@ -259,9 +269,13 @@ function ConfigRow({
   }
   return (
     <Row title={title} className={f.locked ? 'config-row is-locked' : 'config-row'}>
-      <span className="config-control" id={`${id}-cell`}>
+      <span className={inBox && problem ? 'config-control has-problem-in-box' : 'config-control'} id={`${id}-cell`}>
         {control}
-        {problem ? <span className="field-error">{problem}</span> : null}
+        {inBox && problem ? (
+          <span className="field-error problem-in-box" aria-hidden>
+            {problem}
+          </span>
+        ) : null}
       </span>
     </Row>
   );

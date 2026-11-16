@@ -39,6 +39,7 @@ import { InfoTip } from '../ui/InfoTip';
 import { Select, type SelectOption } from '../ui/Select';
 import { PasteConfig } from './PasteConfig';
 import { AuthByField, CredentialsInField, headerRows, HeadersField } from './ProviderHeaders';
+import { ProblemBeside, ProblemBox } from './Problem';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Group, Row } from './Group';
 import { AGENT_MESSAGES_MAX, moneyText } from '../../../shared/settings';
@@ -118,20 +119,22 @@ function Field({ label, value, onChange, error, placeholder, type = 'text', hint
       <span className="field-label">
         {label}
         {hint ? <InfoTip text={hint} decorative /> : null}
+        <ProblemBeside problem={error} />
       </span>
       <span className="field-control">
-        <input
-          className={error ? 'input is-invalid' : 'input'}
-          type={type}
-          value={value}
-          placeholder={placeholder}
-          spellCheck={false}
-          autoComplete="off"
-          aria-invalid={error ? true : undefined}
-          {...(hint ? { 'aria-description': hint } : {})}
-          onChange={(e) => onChange(e.target.value)}
-        />
-        {error ? <span className="field-error">{error}</span> : null}
+        <ProblemBox problem={error}>
+          <input
+            className={error ? 'input is-invalid' : 'input'}
+            type={type}
+            value={value}
+            placeholder={placeholder}
+            spellCheck={false}
+            autoComplete="off"
+            aria-invalid={error ? true : undefined}
+            {...(hint ? { 'aria-description': hint } : {})}
+            onChange={(e) => onChange(e.target.value)}
+          />
+        </ProblemBox>
       </span>
     </label>
   );
@@ -777,8 +780,10 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                   <span className="field-label">
                     {secretLabel(draft.kind)}
                     {isWso2 ? <InfoTip text={t('即 Client Secret，与 Consumer Key 位于同一位置。')} decorative /> : null}
+                    <ProblemBeside problem={errors.secret} />
                   </span>
                   <span className="field-control">
+                    <ProblemBox problem={errors.secret}>
                     <input
                       className={errors.secret ? 'input is-invalid' : 'input'}
                       type="password"
@@ -790,7 +795,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                       {...(isWso2 ? { 'aria-description': t('即 Client Secret，与 Consumer Key 位于同一位置。') } : {})}
                       onChange={(e) => set({ secret: e.target.value })}
                     />
-                    {errors.secret ? <span className="field-error">{errors.secret}</span> : null}
+                    </ProblemBox>
                     {provider?.docsUrl ? (
                       <a className="field-link" href={provider.docsUrl} target="_blank" rel="noreferrer">
                         {t('API 文档')}
@@ -806,6 +811,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                 <span className="field-label">
                   {t('模型')}
                   {isWso2 ? <InfoTip text={t('区分大小写，可包含斜杠。')} label={t('模型名称的写法')} /> : null}
+                  <ProblemBeside problem={errors.model ?? errors.contextWindow} always />
                 </span>
                 <span className="field-control">
                   <ModelPicker
@@ -827,14 +833,16 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                           ? t('已获取 {n} 个模型，新增 {added} 个', { n: fetchNote.got, added: fetchNote.added })
                           : t('已获取 {n} 个模型，没有新增', { n: fetchNote.got })
                     }
-                    error={errors.model ?? errors.contextWindow}
                   />
                 </span>
               </div>
 
               {/* 花费上限: what this provider may cost in a period (7 天 / 30 天 / 自定义); 本周期已花 under it once saved */}
               <div className="field field-stack">
-                <span className="field-label">{t('花费上限')}</span>
+                <span className="field-label">
+                  {t('花费上限')}
+                  <ProblemBeside problem={errors.spendLimitUsd ?? errors.spendPeriodDays} always />
+                </span>
                 <span className="field-control">
                   <span className="spend-limit">
                     <label className="run-limit">
@@ -880,7 +888,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                     ) : null}
                   </span>
                   {current && spent[current.id] ? <span className="spend-spent">{spendLine(spent[current.id]!)}</span> : null}
-                  {errors.spendLimitUsd || errors.spendPeriodDays ? <span className="field-error">{errors.spendLimitUsd ?? errors.spendPeriodDays}</span> : null}
+
                 </span>
               </div>
 

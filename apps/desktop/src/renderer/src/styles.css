@@ -5382,6 +5382,38 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* A field's control with what is wrong right under it. */
+/* A field's problem without moving its box (settings/problem-layout.ts): after its name on the same line, or
+   inside the box at its right end over a red edge. */
+.problem-beside {
+  margin-left: 8px;
+  font-weight: normal;
+}
+
+.has-problem-in-box {
+  position: relative;
+}
+
+/* a form field's box: the wrapper as wide as the box, so the words sit inside its right end */
+.field .field-control > .has-problem-in-box {
+  width: 100%;
+  max-width: 420px;
+}
+
+.problem-in-box {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  padding-left: 8px;
+  background: var(--spica-input);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.plugin-config-count {
+  margin-right: auto;
+}
+
 .config-control {
   display: flex;
   flex-direction: column;

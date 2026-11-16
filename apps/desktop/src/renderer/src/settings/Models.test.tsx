@@ -569,11 +569,11 @@ describe('认证方式 › 请求头, and 凭据位置', () => {
     expect(screen.getByRole('radio', { name: 'API Key' }).getAttribute('aria-checked')).toBe('true');
     fireEvent.click(screen.getByRole('radio', { name: '请求头' }));
     expect(screen.queryByText('API Key', { selector: '.field-label' })).toBeNull();
-    // nothing filled in: each cell says what it needs, right under it
+    // nothing filled in: both cells turn red, and what is missing is said without moving them (problem-layout.ts)
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     expect(screen.getByLabelText('请求头名称').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByLabelText('请求头 的值').getAttribute('aria-invalid')).toBe('true');
     expect(screen.getByText('请填写请求头名称')).toBeTruthy();
-    expect(screen.getByText('请填写值')).toBeTruthy();
     expect(api.save).not.toHaveBeenCalled();
     await act(async () => {});
     fireEvent.change(screen.getByLabelText('请求头名称'), { target: { value: 'X-API-Key' } });
