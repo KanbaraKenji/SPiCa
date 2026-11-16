@@ -6293,6 +6293,47 @@ section.plugins-part > .plugins-part-title {
   border-radius: 0;
 }
 
+/* A download for the app's Python (python_env): one row per item (name and version, where from, size), the
+   total last; in line with the card's title, as a call's arguments. */
+.confirm-card > .install-list {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr) max-content;
+  /* no column gap: the total's line runs across; the space is the cells' own */
+  row-gap: 2px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--spica-border);
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
+}
+
+.install-row {
+  display: contents;
+}
+
+.install-name {
+  overflow-wrap: anywhere;
+}
+
+.install-host {
+  min-width: 0;
+  padding: 0 16px;
+  overflow: hidden;
+  color: var(--spica-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.install-size {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.install-row.is-total > span {
+  padding-top: 4px;
+  border-top: 1px solid var(--spica-border);
+  margin-top: 2px;
+}
+
 
 /* On a card the card is the box: the label is the first line of the code area, in line with the command. */
 .tool-command.is-bare {

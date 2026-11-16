@@ -103,6 +103,11 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       }
       return { verb: 'Fetched', ...cut(shown), full: url };
     }
+    case 'python_env': {
+      const pk = (c.input as { packages?: unknown } | undefined)?.packages;
+      const names = Array.isArray(pk) ? pk.map(String).filter(Boolean) : [];
+      return { verb: 'Set up', object: names.length ? `Python with ${names.join(', ')}` : 'Python' };
+    }
     case 'web_search':
       return arg(c, 'query') ? { verb: 'Searched the web for', object: quoted(arg(c, 'query')) } : { verb: 'Searched', object: 'the web' };
     // The built-in browser (the right panel's web tabs).
@@ -226,6 +231,7 @@ export function runningWords(c: ToolCall): string {
     Saved: 'Saving',
     Deleted: 'Deleting',
     Recalled: 'Recalling',
+    'Set up': 'Setting up',
   };
   if (c.name === 'run_command' && !c.summary && w.object === 'a command') return 'Running a command';
   return `${w.verb ? (ing[w.verb] ?? w.verb) : 'Running'} ${w.object}`;
@@ -278,6 +284,8 @@ function phrase(c: ToolCall, card?: FileCardMeta): { key: string; say(n: number)
       return { key: 'typed', say: () => 'typed on the page' };
     case 'browser_press':
       return { key: 'pressed', say: () => 'pressed keys' };
+    case 'python_env':
+      return { key: 'python', say: () => 'set up Python' };
     case 'search_history':
       return { key: 'history', say: () => 'searched conversations' };
     case 'read_history':
