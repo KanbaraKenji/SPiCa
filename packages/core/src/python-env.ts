@@ -142,22 +142,47 @@ export interface PythonEnvStatus {
   /** Its Python version (from pyvenv.cfg). */
   version?: string;
   python?: string;
-  /** Bytes used under the root (interpreters, cache, environment). */
-  bytes: number;
 }
 
 /** What is there now, without running anything. */
 export function pythonEnvStatus(root: string): PythonEnvStatus {
   const py = envPython(root);
-  const bytes = folderBytes(root);
-  if (!existsSync(py)) return { ready: false, bytes };
+  if (!existsSync(py)) return { ready: false };
   let version: string | undefined;
   try {
     version = /^\s*version(?:_info)?\s*=\s*(\S+)/m.exec(readFileSync(join(pythonDirs(root).env, 'pyvenv.cfg'), 'utf8'))?.[1];
   } catch {
     // no pyvenv.cfg
   }
-  return { ready: true, ...(version ? { version } : {}), python: py, bytes };
+  return { ready: true, ...(version ? { version } : {}), python: py };
+}
+
+/**
+ * The packages in the environment, read from its site-packages (each *.dist-info folder is named
+ * <name>-<version>), without running anything: for the line the model is told at the start of a conversation.
+ */
+export function envPackagesOnDisk(root: string): PythonPackage[] {
+  const env = pythonDirs(root).env;
+  const sites = [join(env, 'Lib', 'site-packages')];
+  try {
+    for (const d of readdirSync(join(env, 'lib'))) sites.push(join(env, 'lib', d, 'site-packages'));
+  } catch {
+    // Windows layout
+  }
+  const out: PythonPackage[] = [];
+  for (const site of sites) {
+    let names: string[];
+    try {
+      names = readdirSync(site);
+    } catch {
+      continue;
+    }
+    for (const n of names) {
+      const m = /^(.+?)-([^-]+)\.dist-info$/.exec(n);
+      if (m) out.push({ name: m[1]!.replace(/_/g, '-').toLowerCase(), version: m[2]! });
+    }
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** The packages in the environment (uv pip list). */
@@ -380,7 +405,11 @@ export function clearPython(root: string): void {
   }
 }
 
-/** Total size of the files under a folder (0 when it is missing). */
+/**
+ * Total size of the files under a folder (0 when it is missing). Counts a hard-linked file once per link: uv links
+ * packages from its cache into the environment, so for the app's Python this is about 60 MB above what the disk
+ * holds (measured: 221.7 MB summed, 159 MB on disk). Nothing shows it now.
+ */
 export function folderBytes(dir: string): number {
   let total = 0;
   const stack = [dir];

@@ -1011,7 +1011,8 @@ export function installTitle(p: InstallPreview): string {
 
 /**
  * What a python_env confirmation would download, one row each: name and version, where from, size (— when the
- * source does not say), then the total of the sizes known.
+ * source does not say), then the total, only when every size is known (the first time, before there is a Python to
+ * resolve with, the packages have no version or size yet).
  */
 export function InstallList({ preview }: { preview: InstallPreview }) {
   const rows = [
@@ -1035,14 +1036,14 @@ export function InstallList({ preview }: { preview: InstallPreview }) {
           </span>
         </div>
       ))}
-      {rows.length > 1 && known.length ? (
+      {rows.length > 1 && known.length === rows.length ? (
         <div className="install-row is-total" role="row">
           <span className="install-name" role="cell">
             {t('合计')}
           </span>
           <span className="install-host" role="cell" />
           <span className="install-size" role="cell">
-            {known.length < rows.length ? `≥ ${formatBytes(total)}` : formatBytes(total)}
+            {formatBytes(total)}
           </span>
         </div>
       ) : null}

@@ -15,6 +15,7 @@ import { historyTools } from './tools/history-tools.ts';
 import { createMemoryTools, MemoryBook, memoryHook } from './memory.ts';
 import { createRunCommandTool } from './tools/command-tool.ts';
 import { createPythonTool, type PythonToolOptions } from './tools/python-tool.ts';
+import { envBinDir, envPackagesOnDisk, pythonEnvStatus } from './python-env.ts';
 import { createWebFetchTool, createWebSearchTool, type SearchBackend } from './tools/web-tools.ts';
 import { connectMcp, type McpServerConfig, type McpStdioClient } from './mcp/client.ts';
 import { fileTools } from './tools/fs-tools.ts';
@@ -331,14 +332,28 @@ export class Runtime implements RuntimeInternals {
   get runtimes(): Runtimes | undefined {
     return this.#runtimes;
   }
+
+  /** The probed runtimes plus the app's own Python (when python_env is offered): downloaded or not, what is in it. */
+  #withAppPython(r: Runtimes): Runtimes {
+    const p = this.#opts.python;
+    if (!p) return r;
+    const st = pythonEnvStatus(p.root);
+    const { appPython: _old, ...rest } = r;
+    void _old;
+    return {
+      ...rest,
+      pythonTool: true,
+      ...(st.ready ? { appPython: { version: st.version ?? '3', packages: envPackagesOnDisk(p.root), binDir: envBinDir(p.root) } } : {}),
+    };
+  }
   readonly #viewLimiters = new Map<string, RateLimiter>();
   /** The user's memory: list, edit, forget, restore, undo, clear, and the on / off switch. */
   readonly memory: MemoryBook;
 
   constructor(opts: RuntimeOptions) {
     this.#opts = opts;
-    if (opts.runtimes instanceof Promise) void opts.runtimes.then((r) => (this.#runtimes = r)).catch(() => undefined);
-    else this.#runtimes = opts.runtimes;
+    if (opts.runtimes instanceof Promise) void opts.runtimes.then((r) => (this.#runtimes = this.#withAppPython(r))).catch(() => undefined);
+    else this.#runtimes = opts.runtimes ? this.#withAppPython(opts.runtimes) : undefined;
     this.#workflows = loadWorkflows(opts.workflowsDir, opts.workflows ?? []);
     this.mail = new MailPipeline(this, opts.mail ?? {});
     this.store = opts.store ?? new MemoryStore();
@@ -357,14 +372,30 @@ export class Runtime implements RuntimeInternals {
     for (const p of opts.providers) this.addProvider(p, opts.limits?.[p.id]);
     const defaults = [
       ...fileTools,
-      createRunCommandTool({ ...(opts.spillDir ? { spillDir: opts.spillDir } : {}), ...(opts.nodeShimDir ? { nodeShimDir: opts.nodeShimDir } : {}), ...(opts.nodeLibsDir ? { nodeLibsDir: opts.nodeLibsDir } : {}) }),
+      createRunCommandTool({
+        ...(opts.spillDir ? { spillDir: opts.spillDir } : {}),
+        ...(opts.nodeShimDir ? { nodeShimDir: opts.nodeShimDir } : {}),
+        ...(opts.nodeLibsDir ? { nodeLibsDir: opts.nodeLibsDir } : {}),
+        runtimes: () => this.#runtimes,
+      }),
       createWebFetchTool({ userAgent: `${this.appName.replace(/[^A-Za-z0-9._-]+/g, '-') || 'Spica'}/0.1 (+agent web_fetch)` }),
       ...agentTools,
       ...projectTools,
       ...historyTools,
       ...createMemoryTools(this),
       triageMailTool,
-      ...(opts.python ? [createPythonTool(opts.python)] : []),
+      ...(opts.python
+        ? [
+            createPythonTool({
+              ...opts.python,
+              // conversations started after this are told about it; run_command finds it at once
+              onInstalled: (packages) => {
+                if (this.#runtimes) this.#runtimes = this.#withAppPython(this.#runtimes);
+                opts.python?.onInstalled?.(packages);
+              },
+            }),
+          ]
+        : []),
     ];
     for (const t of opts.tools ?? defaults) this.tools.register(t, 'core');
     if (opts.search && !opts.tools) this.setSearch(opts.search);

@@ -1344,20 +1344,14 @@ export class FakeBackend implements AgentBackend {
         await this.#stream(sessionId, 'text', answer, signal);
         blocks.push({ type: 'text', text: answer });
       } else if (/pandas/i.test(text)) {
-        // A download for the app's own Python, as the core asks it (tools/python-tool.ts previewInstall): what,
-        // from where, how big, before anything is fetched.
+        // A download for the app's own Python, as the core asks it (tools/python-tool.ts previewInstall), before
+        // anything is fetched.
         const callId = this.#id('call');
-        const input = { packages: ['pandas'] };
+        // The first time: there is no Python yet to work the packages out with, so only the names asked for.
+        const input = { packages: ['pandas', 'openpyxl'] };
         const install = {
-          python: { version: '3.12.16', host: 'releases.astral.sh', bytes: 31_043_210 },
-          packages: [
-            { name: 'pandas', version: '2.3.3', bytes: 11_034_112 },
-            { name: 'numpy', version: '2.3.4', bytes: 12_804_096 },
-            { name: 'python-dateutil', version: '2.9.0.post0', bytes: 229_889 },
-            { name: 'pytz', version: '2025.2', bytes: 509_225 },
-            { name: 'tzdata', version: '2025.2', bytes: 347_839 },
-            { name: 'six', version: '1.17.0', bytes: 11_050 },
-          ],
+          python: { version: '3.12.16', host: 'releases.astral.sh', bytes: 22_334_464 },
+          packages: [{ name: 'pandas' }, { name: 'openpyxl' }],
           packageHost: 'pypi.org',
         };
         const lead = '这台电脑上没有 Python，处理这张表要先下载。';

@@ -3,7 +3,7 @@
 // and installing, listing and clearing work.
 import { createServer, type Server } from 'node:http';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { configureNetwork } from './net.ts';
 import {
@@ -240,7 +240,6 @@ describe('installing, listing, clearing', () => {
     for (const c of calls()) expect(c.env.UV_PYTHON_INSTALL_DIR).toBe(join(opts.root, 'pythons'));
     const st = pythonEnvStatus(opts.root);
     expect(st).toMatchObject({ ready: true, version: '3.12.16', python: envPython(opts.root) });
-    expect(st.bytes).toBeGreaterThan(0);
     expect(envBinDir(opts.root)).toBe(join(opts.root, 'env', process.platform === 'win32' ? 'Scripts' : 'bin'));
   });
 
@@ -270,12 +269,12 @@ describe('installing, listing, clearing', () => {
   });
 
   it('nothing there: not ready, nothing used; clearing removes it all', async () => {
-    expect(pythonEnvStatus(opts.root)).toEqual({ ready: false, bytes: 0 });
+    expect(pythonEnvStatus(opts.root)).toEqual({ ready: false });
     expect(await listPackages(opts)).toEqual([]);
     await installPython(opts, ['pandas']);
     clearPython(opts.root);
     expect(existsSync(opts.root)).toBe(false);
-    expect(pythonEnvStatus(opts.root)).toEqual({ ready: false, bytes: 0 });
+    expect(pythonEnvStatus(opts.root)).toEqual({ ready: false });
   });
 });
 
@@ -345,6 +344,57 @@ describe('python_env in a conversation', () => {
       expect(events.some((e) => e.type === 'confirm.request')).toBe(false);
       expect(JSON.stringify(gw.requests.at(-1)!.body.messages)).toContain('not a package name');
       expect(calls()).toEqual([]);
+    } finally {
+      await gw.stop();
+    }
+  });
+});
+
+describe('whose Python, and what the model is told', () => {
+  const app = { version: '3.12.16', packages: [{ name: 'pandas', version: '3.1.1' }], binDir: 'APPBIN' };
+
+  it('the computer has Python: that one, and the app’s is not mentioned or put on PATH', async () => {
+    const { runtimesLine, withAppPython } = await import('./runtimes.ts');
+    const r = { node: { version: '24.1.0', source: 'bundled' as const }, python: { version: '3.11.9', command: 'python' }, appPython: app, pythonTool: true };
+    expect(runtimesLine(r)).toContain('Python 3.11.9 (`python`;');
+    expect(runtimesLine(r)).not.toContain("the app's own; `python`");
+    expect(withAppPython({ PATH: 'OTHER' }, r)).toEqual({ PATH: 'OTHER' });
+  });
+
+  it('none on the computer, the app’s downloaded: it, with its packages, first on PATH', async () => {
+    const { runtimesLine, withAppPython } = await import('./runtimes.ts');
+    const r = { node: { version: '24.1.0', source: 'bundled' as const }, appPython: app, pythonTool: true };
+    expect(runtimesLine(r)).toContain("Python 3.12.16 (the app's own; `python` works in run_command; packages: pandas 3.1.1; add packages with python_env, not pip)");
+    expect(withAppPython({ PATH: 'OTHER' }, r)).toEqual({ PATH: `APPBIN${delimiter}OTHER` });
+  });
+
+  it('none on the computer, none downloaded yet: python_env can get it; without the tool, Node as before', async () => {
+    const { runtimesLine } = await import('./runtimes.ts');
+    const node = { version: '24.1.0', source: 'bundled' as const };
+    expect(runtimesLine({ node, pythonTool: true })).toContain("no Python yet: python_env downloads the app's own with the packages a task needs, after the user confirms");
+    expect(runtimesLine({ node })).toContain('no Python (scripts for data work can be written for Node.js');
+  });
+
+  it('after an install: the runtimes have it at once, with the packages read from disk, and run_command puts it first', async () => {
+    const { startGateway, makeRuntime } = await import('./testing/helpers.ts');
+    const { createRunCommandTool } = await import('./tools/command-tool.ts');
+    const gw = await startGateway();
+    try {
+      const rt = makeRuntime(gw, { cwd: dir, runtimes: { node: { version: '24.1.0', source: 'bundled' } }, python: opts });
+      expect(rt.runtimes).toMatchObject({ pythonTool: true });
+      expect(rt.runtimes?.appPython).toBeUndefined();
+      const s = rt.createSession();
+      s.setApprovalMode('auto');
+      gw.enqueue({ toolCalls: [{ id: 'p1', name: 'python_env', args: { packages: ['pandas'] } }] }, { text: 'ok' });
+      await s.send('装').done;
+      await (await s.confirm('p1', true));
+      expect(rt.runtimes?.appPython).toEqual({ version: '3.12.16', packages: [{ name: 'numpy', version: '2.3.4' }, { name: 'pandas', version: '2.3.3' }], binDir: envBinDir(opts.root) });
+      if (process.platform === 'win32') {
+        const tool = createRunCommandTool({ runtimes: () => rt.runtimes });
+        const ctx = { cwd: dir, signal: new AbortController().signal, emit: () => {} } as unknown as import('./tools/types.ts').ToolContext;
+        const out = await tool.execute({ command: "Write-Output (($env:Path -split ';')[0])" }, ctx);
+        expect(out.content).toContain(envBinDir(opts.root));
+      }
     } finally {
       await gw.stop();
     }

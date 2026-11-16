@@ -48,6 +48,8 @@ if (cmd === 'python list') {
     process.stderr.write(`Resolved ${want.length} packages\nWould install ${want.length} packages\n${want.map((p) => ` + ${p.name}==${p.version}`).join('\n')}\n`);
   } else {
     writeFileSync(installed(python), JSON.stringify([...have, ...want]));
+    // as a real install leaves them: <name>-<version>.dist-info in site-packages
+    for (const p of want) mkdirSync(join(envDir(python), 'Lib', 'site-packages', `${p.name.replace(/-/g, '_')}-${p.version}.dist-info`), { recursive: true });
   }
 } else if (cmd === 'pip list') {
   const python = value('--python');

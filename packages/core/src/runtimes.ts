@@ -122,11 +122,27 @@ export function withNodeLibs(env: Record<string, string>, dir: string | undefine
   return { ...env, [key]: old ? `${old}${delimiter}${libs}` : libs };
 }
 
+/**
+ * A command's environment with the app's Python first on PATH (`python` is it), when there is one to use: the
+ * computer has no Python of its own (Runtimes.python) and the app's is downloaded. First, not last: on Windows a
+ * computer without Python still has the Store's python stand-in on PATH, which would answer otherwise.
+ */
+export function withAppPython(env: Record<string, string>, r: Runtimes | undefined): Record<string, string> {
+  if (!r || r.python || !r.appPython) return env;
+  const { key, value } = pathOf(env);
+  if (value.split(delimiter).includes(r.appPython.binDir)) return env;
+  return { ...env, [key]: value ? `${r.appPython.binDir}${delimiter}${value}` : r.appPython.binDir };
+}
+
 /** The runtimes the model is told about. */
 export interface Runtimes {
   node: { version: string; source: 'system' | 'bundled' };
   /** Libraries scripts can require whichever Node runs them (NODE_PATH; listNodeLibs). */
   nodeLibs?: NodeLib[];
+  /** The app's own Python, once downloaded (python-env.ts): its version, packages and the folder with python.exe. */
+  appPython?: { version: string; packages: { name: string; version: string }[]; binDir: string };
+  /** python_env is offered: the app's Python can be downloaded (after the user confirms). */
+  pythonTool?: boolean;
   /** undefined: none on PATH (a Windows Store stand-in that only offers to install it does not count). */
   python?: { version: string; command: string };
   /** Windows PowerShell / PowerShell version (Windows). */
@@ -183,9 +199,15 @@ export function runtimesLine(r: Runtimes): string {
     r.node.source === 'bundled'
       ? `Node.js ${r.node.version} (the app's own, without npm; \`node\` works in run_command${libs})`
       : `Node.js ${r.node.version} (installed on this computer${libs})`;
+  // Whose Python: the computer's when it has one; the app's only when it has none (no setting).
   const python = r.python
     ? `Python ${r.python.version} (\`${r.python.command}\`; which packages it has depends on this computer)`
-    : 'no Python (scripts for data work can be written for Node.js, which is always there)';
+    : r.appPython
+      ? `Python ${r.appPython.version} (the app's own; \`python\` works in run_command; packages: ${r.appPython.packages.map((p) => `${p.name} ${p.version}`).join(', ') || 'none'}; ` +
+        `${r.pythonTool ? 'add packages with python_env, not pip' : 'no pip'})`
+      : r.pythonTool
+        ? 'no Python yet: python_env downloads the app\'s own with the packages a task needs, after the user confirms (scripts for data work can also be written for Node.js, which is always there)'
+        : 'no Python (scripts for data work can be written for Node.js, which is always there)';
   const parts = [node, python, ...(r.powershell ? [`Windows PowerShell ${r.powershell}`] : [])];
   return `Runtimes on this computer for run_command: ${parts.join('; ')}.`;
 }
