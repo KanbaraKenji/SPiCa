@@ -138,6 +138,16 @@ describe('the file’s place, from the preview head', () => {
     expect(loadRows).toHaveBeenCalledTimes(2);
   });
 
+  it('a CSV file is a table, and its own text behind 查看代码', () => {
+    const info = { kind: 'sheet' as const, name: '销售.csv', path: 'D:/销售.csv', size: 20, sheets: [{ name: '销售' }], sheet: 1, columns: ['A', 'B'], rows: [{ n: 1, cells: ['门店', '金额'] }], more: false, text: '门店,金额' };
+    render(<FilePreview info={info} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect([...document.querySelectorAll('.preview-sheet tbody td')].map((td) => td.textContent)).toEqual(['门店', '金额']);
+    fireEvent.click(screen.getByRole('button', { name: '查看代码' }));
+    expect(document.querySelector('.preview-code')?.textContent).toContain('门店,金额');
+    expect(document.querySelector('.preview-sheet')).toBeNull();
+  });
+
   it('a Word document is shown as its text, says where it was cut, and has no 代码 view', () => {
     render(<FilePreview info={{ kind: 'markdown', name: '纪要.docx', path: 'D:/纪要.docx', size: 9000, text: '# 纪要', truncated: true, blocks: { shown: 120, total: 1350 } }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByRole('heading', { name: '纪要' })).toBeTruthy();

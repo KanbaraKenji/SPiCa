@@ -3,7 +3,7 @@
 // column letters. Neither shows fonts, colours or pictures: a plugin preview page can (设置 › 常规 › 文件预览),
 // and 用系统程序打开 is always there.
 import { stat, readFile } from 'node:fs/promises';
-import { colName, extractFile, SheetBook } from '@spica/extract';
+import { colName, csvGrid, extractFile, SheetBook, sniffDelimiter, type Grid } from '@spica/extract';
 import type { PreviewInfo } from '../shared/bridge';
 import { t } from '../shared/i18n';
 
@@ -18,18 +18,50 @@ const BOOKS = 2;
 /** A workbook bigger than this is not opened (as the model's reader). */
 const BOOK_MAX_BYTES = 200 * 1024 * 1024;
 
-const books = new Map<string, SheetBook>();
+/** A CSV file read whole and kept as a table, at most this big (a bigger one shows as text). */
+export const CSV_MAX_BYTES = 50 * 1024 * 1024;
+/** A CSV file's own text sent along for 查看代码, at most this many characters (as a text file). */
+const CSV_TEXT_CHARS = 512 * 1024;
 
-/** The workbook at `path` as it is now: kept while the file is unchanged (same size and modification time). */
-async function bookFor(path: string): Promise<SheetBook> {
+/** A workbook, or a CSV file as one: its sheets' names, and a sheet whole. */
+interface Book {
+  readonly sheets: readonly { name: string }[];
+  grid(index: number): Grid;
+  /** A CSV file's text (for 查看代码). */
+  readonly text?: string;
+}
+
+/** A CSV file as a workbook of one sheet, named as the file. */
+class CsvBook implements Book {
+  readonly sheets: readonly { name: string }[];
+  readonly text: string;
+  readonly #delim: string;
+  #grid: Grid | undefined;
+
+  constructor(text: string, name: string, tsv: boolean) {
+    this.text = text;
+    this.sheets = [{ name: name.replace(/\.[^.]+$/, '') }];
+    this.#delim = tsv ? '\t' : sniffDelimiter(text.slice(0, 64 * 1024));
+  }
+
+  grid(): Grid {
+    this.#grid ??= csvGrid(this.text, this.#delim, this.sheets[0]!.name, { from: 1, to: Number.MAX_SAFE_INTEGER, keepChars: SHEET_KEEP_CHARS });
+    return this.#grid;
+  }
+}
+
+const books = new Map<string, Book>();
+
+/** The book at `path` as it is now: kept while the file is unchanged (same size and modification time). */
+async function bookFor(path: string, maxBytes: number, make: (bytes: Uint8Array) => Book): Promise<Book> {
   const st = await stat(path);
   const key = `${path}|${st.size}|${st.mtimeMs}`;
   let book = books.get(key);
   if (book) books.delete(key);
   else {
-    if (st.size > BOOK_MAX_BYTES) throw new Error('too large');
+    if (st.size > maxBytes) throw new Error('too large');
     for (const k of books.keys()) if (k.startsWith(`${path}|`)) books.delete(k);
-    book = new SheetBook(new Uint8Array(await readFile(path)), SHEET_KEEP_CHARS);
+    book = make(new Uint8Array(await readFile(path)));
   }
   books.set(key, book);
   while (books.size > BOOKS) books.delete(books.keys().next().value as string);
@@ -84,14 +116,24 @@ export async function officePreview(path: string, name: string, size: number, ex
       const cut = shown < total || Boolean(r.truncated);
       return { kind: 'markdown', name, path, size, text: docxMarkdown(r.text), truncated: cut, ...(cut ? { blocks: { shown, total } } : {}) };
     }
-    return sheetPage(await bookFor(path), name, path, size, sheet, from);
+    return sheetPage(await bookFor(path, BOOK_MAX_BYTES, (bytes) => new SheetBook(bytes, SHEET_KEEP_CHARS)), name, path, size, sheet, from);
+  } catch (err) {
+    return { ...unreadable(err), name, path, size };
+  }
+}
+
+/** A CSV file as a table (`decode`: its bytes as text, as a text file is read); `from`: its rows from that row on. */
+export async function csvPreview(path: string, name: string, size: number, from: number, decode: (bytes: Uint8Array) => string): Promise<PreviewInfo> {
+  try {
+    const book = await bookFor(path, CSV_MAX_BYTES, (bytes) => new CsvBook(decode(bytes), name, /\.tsv$/i.test(name)));
+    return sheetPage(book, name, path, size, 1, from);
   } catch (err) {
     return { ...unreadable(err), name, path, size };
   }
 }
 
 /** One page of a sheet: up to ROWS rows with content from row `from` on, and whether more follow. */
-export function sheetPage(book: SheetBook, name: string, path: string, size: number, sheet: number, from: number): PreviewInfo {
+export function sheetPage(book: Book, name: string, path: string, size: number, sheet: number, from: number): PreviewInfo {
   const index = Math.min(Math.max(1, sheet), book.sheets.length) - 1;
   const g = book.grid(index);
   // The first row at or after `from` (the rows are sorted by number).
@@ -114,6 +156,8 @@ export function sheetPage(book: SheetBook, name: string, path: string, size: num
     columns,
     rows: page.map(([n, cells]) => ({ n, cells })),
     more: lo + ROWS < g.rows.length,
+    // A CSV file's text, with its first page only.
+    ...(book.text !== undefined && from <= 1 ? { text: book.text.slice(0, CSV_TEXT_CHARS) } : {}),
     // Rows never shown, however far it scrolls: the sheet was too big to keep whole.
     ...(g.clipped ? { left: { shown: g.rows.length, total: g.rowCount } } : {}),
   };

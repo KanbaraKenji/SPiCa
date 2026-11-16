@@ -82,6 +82,34 @@ export function sniffDelimiter(sample: string): string {
   return best;
 }
 
+/**
+ * A CSV table as a grid: rows are record numbers (1 = first line), empty records skipped; rows from..to kept
+ * up to about keepChars characters (`clipped` past it), the counts always for the whole table.
+ */
+export function csvGrid(text: string, delim: string, name: string, win: { from: number; to: number; keepChars: number }): Grid {
+  const grid: Grid = { name, rows: [], maxRow: 0, maxCol: 0, rowCount: 0 };
+  let kept = 0;
+  let n = 0;
+  for (const rec of csvRecords(text, delim)) {
+    n++;
+    const cells = rec.map(cleanCell);
+    if (!cells.some(Boolean)) continue;
+    grid.rowCount++;
+    grid.maxRow = n;
+    let w = cells.length;
+    while (w > 0 && !cells[w - 1]) w--;
+    grid.maxCol = Math.max(grid.maxCol, w);
+    if (n === 1 && win.from > 1) grid.header = [1, cells];
+    if (n >= win.from && n <= win.to) {
+      if (kept < win.keepChars) {
+        grid.rows.push([n, cells]);
+        kept += cells.reduce((a, c) => a + c.length + 1, 8);
+      } else grid.clipped = true;
+    }
+  }
+  return grid;
+}
+
 /** RFC 4180 records (quoted fields, doubled quotes, newlines inside quotes). */
 export function* csvRecords(text: string, delim: string): Generator<string[]> {
   let field = '';
@@ -133,26 +161,7 @@ export async function extractCsv(src: SourceFile, req: ExtractRequest, maxChars:
   }
   const from = Math.max(1, req.offset ?? 1);
   const to = req.limit ? from + req.limit - 1 : Number.MAX_SAFE_INTEGER;
-  const grid: Grid = { name: sheetName, rows: [], maxRow: 0, maxCol: 0, rowCount: 0 };
-  let kept = 0;
-  let n = 0;
-  for (const rec of csvRecords(text, delim)) {
-    n++;
-    const cells = rec.map(cleanCell);
-    if (!cells.some(Boolean)) continue;
-    grid.rowCount++;
-    grid.maxRow = n;
-    let w = cells.length;
-    while (w > 0 && !cells[w - 1]) w--;
-    grid.maxCol = Math.max(grid.maxCol, w);
-    if (n === 1 && from > 1) grid.header = [1, cells];
-    if (n >= from && n <= to) {
-      if (kept < maxChars) {
-        grid.rows.push([n, cells]);
-        kept += cells.reduce((a, c) => a + c.length + 1, 8);
-      } else grid.clipped = true;
-    }
-  }
+  const grid = csvGrid(text, delim, sheetName, { from, to, keepChars: maxChars });
   const delimName = delim === '\t' ? 'tab' : delim === ',' ? 'comma' : `"${delim}"`;
   const info = sheetInfo(grid);
   const head = `CSV table, ${grid.rowCount} rows with data, ${info.range ?? 'empty'}, ${delimName}-separated, encoding ${encoding}.`;

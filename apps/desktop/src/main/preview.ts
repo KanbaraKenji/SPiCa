@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { open, readFile, stat } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import { PREVIEW_PAGE_MAX_BYTES, type PreviewFile, type PreviewInfo } from '../shared/bridge';
-import { EXCEL, officePreview, unreadable, WORD } from './office-preview';
+import { CSV_MAX_BYTES, csvPreview, EXCEL, officePreview, unreadable, WORD } from './office-preview';
 import { t } from '../shared/i18n';
 
 export const PREVIEW_SCHEME = 'spica-file';
@@ -105,6 +105,8 @@ export async function readPreview(path: string, files: PreviewFiles, sheet?: num
   }
   const ext = extname(path).toLowerCase();
   if (WORD.has(ext) || EXCEL.has(ext)) return officePreview(path, name, size, ext, sheet, from);
+  // A table, read whole; a very big one shows as text (its first 512 KB).
+  if ((ext === '.csv' || ext === '.tsv') && size <= CSV_MAX_BYTES) return csvPreview(path, name, size, from ?? 1, decodeText);
   const kind = kindOf(path);
   if (kind === 'pdf' || kind === 'image') {
     // The viewer reads it later by its URL: a file that cannot be opened says so now instead of an empty viewer.

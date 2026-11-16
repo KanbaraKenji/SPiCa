@@ -250,9 +250,10 @@ function cutNote(info: { name: string; size: number; blocks?: { shown: number; t
   return t('仅显示前 512 KB（共 {size}）', { size: sizeText(info.size) });
 }
 
-/** What can be shown both ways in the panel: as a page or picture, and as its code (and the code's language). */
-function codeOf(info: PreviewInfo | null): { text: string; language: string } | null {
+/** What can be shown both ways in the panel: as a page, picture or table, and as its code (and the code's language). */
+function codeOf(info: PreviewInfo | null): { text: string; language: string | null } | null {
   if (!info) return null;
+  if (info.kind === 'sheet' && info.text !== undefined) return { text: info.text, language: null };
   if (info.kind === 'html') return { text: info.text, language: 'xml' };
   if (info.kind === 'markdown' && !WORD_NAME.test(info.name)) return { text: info.text, language: 'markdown' };
   if (info.kind === 'image' && info.text !== undefined) return { text: info.text, language: 'xml' };

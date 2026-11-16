@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { makeDocx, makeInventoryXlsx } from '../../../../packages/extract/src/testing/fixtures';
+import { encodeGbk, makeDocx, makeInventoryXlsx, SALES_CSV } from '../../../../packages/extract/src/testing/fixtures';
 import { docxMarkdown } from './office-preview';
 import { PreviewFiles, readPreview } from './preview';
 
@@ -88,6 +88,35 @@ describe('Word and Excel in the right panel', () => {
     expect(info.rows.map((r) => r.n)).toEqual([1, 3]);
     expect(info.more).toBe(false);
     expect(info).not.toHaveProperty('left');
+  });
+
+  it('a CSV file is a table of one sheet, quoted fields kept whole, with its own text for 查看代码; a TSV too', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-office-'));
+    writeFileSync(join(dir, '销售.csv'), encodeGbk(SALES_CSV));
+    const info = await readPreview(join(dir, '销售.csv'), new PreviewFiles());
+    if (info.kind !== 'sheet') throw new Error(info.kind);
+    expect(info.sheets).toEqual([{ name: '销售' }]);
+    expect(info.columns).toEqual(['A', 'B', 'C', 'D']);
+    expect(info.rows.map((r) => r.cells)).toEqual([
+      ['门店', '日期', '销售额（元）', '备注'],
+      ['一号店', '2026-11-01', '12800', '周末促销, 客流较多'],
+      ['二号店', '2026-11-01', '9650', ''],
+      ['三号店', '2026-11-01', '7420', '新店试营业'],
+    ]);
+    expect(info.text).toBe(SALES_CSV);
+    writeFileSync(join(dir, 'a.tsv'), '名称\t数量\n苹果\t3\n');
+    const tsv = await readPreview(join(dir, 'a.tsv'), new PreviewFiles());
+    expect(tsv.kind === 'sheet' ? tsv.rows.map((r) => r.cells) : []).toEqual([['名称', '数量'], ['苹果', '3']]);
+  });
+
+  it('a long CSV file comes a page at a time like a sheet, its text with the first page only', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-office-'));
+    writeFileSync(join(dir, 'big.csv'), `编号,金额\n${Array.from({ length: 1200 }, (_, i) => `${i + 1},${i * 3}`).join('\n')}\n`);
+    const files = new PreviewFiles();
+    const first = await readPreview(join(dir, 'big.csv'), files);
+    const third = await readPreview(join(dir, 'big.csv'), files, 1, 1001);
+    expect(first.kind === 'sheet' ? [first.rows.length, first.more, typeof first.text] : []).toEqual([500, true, 'string']);
+    expect(third.kind === 'sheet' ? [third.rows[0]!.n, third.rows.at(-1)!.n, third.more, third.text] : []).toEqual([1001, 1201, false, undefined]);
   });
 
   it('reads the extractor’s layout', () => {

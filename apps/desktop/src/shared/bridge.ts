@@ -67,8 +67,9 @@ export type PreviewInfo =
   /**
    * An Excel sheet (`sheet`, 1-based, of `sheets`): Excel's column letters and row numbers, a page of its rows with
    * content (`more`: the next page is there to ask for); `left`: a sheet too big to keep whole, rows never shown.
+   * A CSV file is one sheet, with its own `text` (the first 512 KB) for 查看代码.
    */
-  | { kind: 'sheet'; name: string; path: string; size: number; sheets: { name: string }[]; sheet: number; columns: string[]; rows: { n: number; cells: string[] }[]; more: boolean; left?: { shown: number; total: number } };
+  | { kind: 'sheet'; name: string; path: string; size: number; sheets: { name: string }[]; sheet: number; columns: string[]; rows: { n: number; cells: string[] }[]; more: boolean; left?: { shown: number; total: number }; text?: string };
 
 /**
  * A file for a plugin preview page: what the page gets (no folder, no path), or why not. `peek`: the size only,
