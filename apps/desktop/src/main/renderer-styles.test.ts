@@ -122,6 +122,17 @@ describe('the panels around the conversation (shell/layout.ts counts on these)',
     expect(css).not.toContain('.detail-head {');
   });
 
+  it('a picture a press shows big has the magnifier from one class (answer, flowchart, preview)', () => {
+    expect(css.match(/cursor: zoom-in/g)).toHaveLength(1);
+    expect(block('.zoomable')).toContain('cursor: zoom-in');
+  });
+
+  it('a long file scrolls inside the preview: the preview stays the panel’s height', () => {
+    // The right panel is a column: a flex item there is as tall as its content unless min-height says otherwise.
+    expect(block('.preview')).toContain('min-height: 0');
+    expect(block('.preview-body')).toContain('min-height: 0');
+  });
+
   it('a right panel has the conversation’s background: only the line on its left sets it apart', () => {
     expect(block('.panel-right')).toContain('background: var(--spica-bg)');
     expect(block('.main')).toContain('background: var(--spica-bg)');

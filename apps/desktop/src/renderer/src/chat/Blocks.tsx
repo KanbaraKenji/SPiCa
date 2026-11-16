@@ -183,7 +183,7 @@ function FlowFigure({ code, fallback }: { code: string; fallback: ReactNode }) {
           <code>{code}</code>
         </pre>
       ) : (
-        <button type="button" className="flow-image" onClick={() => setBig(true)} title={t('流程图')}>
+        <button type="button" className="flow-image zoomable" onClick={() => setBig(true)} title={t('流程图')}>
           <img src={url} alt={t('流程图')} />
         </button>
       )}
@@ -411,7 +411,7 @@ function MdImage({ src, alt }: { src?: string | undefined; alt?: string | undefi
   if (!url) return <span className="md-image-wait" />;
   return (
     <>
-      <button type="button" className="md-image" ref={button} onClick={() => setBig(group())} title={caption}>
+      <button type="button" className="md-image zoomable" ref={button} onClick={() => setBig(group())} title={caption}>
         <img src={url} alt={caption} onError={() => setFailed(true)} />
       </button>
       {big ? <ImageViewer pictures={big.pictures} start={big.index} onClose={() => setBig(null)} /> : null}

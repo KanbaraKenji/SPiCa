@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { FilePreview } from './FilePreview';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { FilePreview, usePreview } from './FilePreview';
 import { clipboard } from '../ui/clipboard';
 import { optionLabels, pickValue, valueOf } from '../ui/select-testing';
 
@@ -104,11 +104,12 @@ describe('the file’s place, from the preview head', () => {
       name: '库存.xlsx',
       path: 'D:/库存.xlsx',
       size: 9000,
-      sheets: [{ name: '库存', rows: 900, cols: 2 }, { name: '进货记录', rows: 3, cols: 4 }],
+      sheets: [{ name: '库存' }, { name: '进货记录' }],
       sheet: 1,
       columns: ['A', 'B'],
       rows: [{ n: 1, cells: ['品名', '数量'] }, { n: 2, cells: ['键盘', '150'] }],
-      truncated: true,
+      more: false,
+      left: { shown: 2, total: 900 },
     };
     render(<FilePreview info={info} onOpenExternal={vi.fn()} onSheet={onSheet} onClose={vi.fn()} />);
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['库存', '进货记录']);
@@ -121,10 +122,62 @@ describe('the file’s place, from the preview head', () => {
     expect(screen.queryByRole('button', { name: '查看代码' })).toBeNull();
   });
 
+  it('an Excel sheet scrolled near its end asks for the rows after the last one and adds them, to its last row', async () => {
+    const page = (rows: number[], more: boolean) => ({ kind: 'sheet' as const, name: '库存.xlsx', path: 'D:/库存.xlsx', size: 9, sheets: [{ name: '库存' }], sheet: 1, columns: ['A'], rows: rows.map((n) => ({ n, cells: [`第 ${n} 行`] })), more });
+    const loadRows = vi.fn(async (from: number) => (from === 3 ? page([3, 5], true) : page([6], false)));
+    render(<FilePreview info={page([1, 2], true)} loadRows={loadRows} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    const rowNumbers = () => [...document.querySelectorAll('.preview-sheet tbody th')].map((t) => t.textContent);
+    fireEvent.scroll(document.querySelector('.preview-sheet')!);
+    await waitFor(() => expect(rowNumbers()).toEqual(['1', '2', '3', '5']));
+    expect(loadRows).toHaveBeenLastCalledWith(3);
+    fireEvent.scroll(document.querySelector('.preview-sheet')!);
+    await waitFor(() => expect(rowNumbers()).toEqual(['1', '2', '3', '5', '6']));
+    expect(loadRows).toHaveBeenLastCalledWith(6);
+    // The last row is there: no more asking.
+    fireEvent.scroll(document.querySelector('.preview-sheet')!);
+    expect(loadRows).toHaveBeenCalledTimes(2);
+  });
+
+  it('a picture pressed shows over the window; Esc puts it back', () => {
+    render(<FilePreview info={{ kind: 'image', name: '横幅.png', path: 'D:/横幅.png', size: 9, url: 'spica-file://f/x?v=1' }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    expect(document.querySelector('.image-viewer')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '横幅.png' }));
+    expect(document.querySelector('.image-viewer img')?.getAttribute('src')).toBe('spica-file://f/x?v=1');
+    fireEvent.keyDown(document.querySelector('.image-viewer')!, { key: 'Escape' });
+    expect(document.querySelector('.image-viewer')).toBeNull();
+  });
+
+  it('two scroll events before the page comes ask for it once; its rows are added once', async () => {
+    const page = (rows: number[], more: boolean) => ({ kind: 'sheet' as const, name: 'a.xlsx', path: 'D:/a.xlsx', size: 9, sheets: [{ name: 'a' }], sheet: 1, columns: ['A'], rows: rows.map((n) => ({ n, cells: [String(n)] })), more });
+    const loadRows = vi.fn(async () => page([3, 4], false));
+    render(<FilePreview info={page([1, 2], true)} loadRows={loadRows} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    const body = document.querySelector('.preview-sheet')!;
+    fireEvent.scroll(body);
+    fireEvent.scroll(body);
+    await waitFor(() => expect([...document.querySelectorAll('.preview-sheet tbody th')].map((t) => t.textContent)).toEqual(['1', '2', '3', '4']));
+    expect(loadRows).toHaveBeenCalledTimes(1);
+  });
+
+  it('while the file is read, it says so', () => {
+    render(<FilePreview info={null} loadingPath={'D:\\工作\\库存.xlsx'} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByRole('status').textContent).toBe('正在打开…');
+    expect(document.querySelector('.preview-name')?.textContent).toBe('库存.xlsx');
+  });
+
+  it('a CSV file is a table, and its own text behind 查看代码', () => {
+    const info = { kind: 'sheet' as const, name: '销售.csv', path: 'D:/销售.csv', size: 20, sheets: [{ name: '销售' }], sheet: 1, columns: ['A', 'B'], rows: [{ n: 1, cells: ['门店', '金额'] }], more: false, text: '门店,金额' };
+    render(<FilePreview info={info} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect([...document.querySelectorAll('.preview-sheet tbody td')].map((td) => td.textContent)).toEqual(['门店', '金额']);
+    fireEvent.click(screen.getByRole('button', { name: '查看代码' }));
+    expect(document.querySelector('.preview-code')?.textContent).toContain('门店,金额');
+    expect(document.querySelector('.preview-sheet')).toBeNull();
+  });
+
   it('a Word document is shown as its text, says where it was cut, and has no 代码 view', () => {
-    render(<FilePreview info={{ kind: 'markdown', name: '纪要.docx', path: 'D:/纪要.docx', size: 9000, text: '# 纪要', truncated: true }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    render(<FilePreview info={{ kind: 'markdown', name: '纪要.docx', path: 'D:/纪要.docx', size: 9000, text: '# 纪要', truncated: true, blocks: { shown: 120, total: 1350 } }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByRole('heading', { name: '纪要' })).toBeTruthy();
-    expect(screen.getByText('仅显示前 500 段')).toBeTruthy();
+    expect(screen.getByText('仅显示前 120 段（共 1350 段）')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '查看代码' })).toBeNull();
   });
 
@@ -155,5 +208,20 @@ describe('the file’s place, from the preview head', () => {
   it('no 预览方式 when only the app’s own can show the file', () => {
     render(<FilePreview info={{ kind: 'text', name: 'a.log', path: 'D:/a.log', size: 3, text: 'one', truncated: false }} onOpenExternal={vi.fn()} onClose={vi.fn()} source={{ options: [{ id: '', label: '自带预览' }], value: '', onChange: vi.fn() }} />);
     expect(screen.queryByRole('combobox', { name: '预览方式' })).toBeNull();
+  });
+});
+
+describe('usePreview', () => {
+  it('reads the file again when it is asked for again (rewritten since, it shows as it is now)', async () => {
+    let version = 1;
+    const load = vi.fn(async () => ({ kind: 'text' as const, name: 'a.txt', path: 'D:/a.txt', size: 3, text: `第 ${version} 版`, truncated: false }));
+    const { result, rerender } = renderHook(({ want }) => usePreview(load, want), { initialProps: { want: { sessionId: null, path: 'D:/a.txt', opened: 1 } } });
+    await waitFor(() => expect(result.current).toMatchObject({ text: '第 1 版' }));
+    version = 2;
+    rerender({ want: { sessionId: null, path: 'D:/a.txt', opened: 1 } });
+    expect(load).toHaveBeenCalledTimes(1);
+    rerender({ want: { sessionId: null, path: 'D:/a.txt', opened: 2 } });
+    await waitFor(() => expect(result.current).toMatchObject({ text: '第 2 版' }));
+    expect(load).toHaveBeenCalledTimes(2);
   });
 });

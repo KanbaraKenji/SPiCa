@@ -9,6 +9,7 @@ import { ConfirmDialog } from './ui/Dialog';
 import { FilePreview, usePreview } from './shell/FilePreview';
 import { PluginPage, type PluginTheme } from './shell/PluginFrame';
 import { PluginPreview, type PreviewFallback } from './shell/PluginPreview';
+import { pressFile, type FilePress } from './shell/open-file';
 import { BUILT_IN, chosenPreviewPage, fileExtension, previewerId, previewPagesFor } from '../../shared/previewers';
 import { pluginThemeVars, type PluginView } from '../../shared/plugin-view';
 import { uiFontFor } from './theme';
@@ -101,7 +102,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [newProject, setNewProject] = useState<null | { name?: string; mailId?: string }>(null);
   /** The file shown in the right panel instead of the details, if any. */
   // A file to show in the right panel, or (inline) a page from an answer's HTML code block.
-  // The right panel's tabs: files and web pages side by side (shell/pane-tabs.ts). preview is the file shown.
+  // The right panel's tabs: files and web pages side by side (shell/pane-tabs.ts). `preview` is the file shown;
+  // its `opened`: when the file was asked for; asked for again (the same file pressed again), it is read again.
   const [pane, setPane] = useState<PaneTabsState>(NO_TABS);
   const shownTab = pane.open ? activeTab(pane) : undefined;
   const preview: FileRequest | null = shownTab?.kind === 'file' ? shownTab.req : null;
@@ -407,7 +409,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   useEffect(() => {
     if (window.__spicaShots)
       window.__spicaShots.preview = (path) => {
-        setPane((s) => openPaneFile(s, { sessionId: null, path }));
+        setPane((s) => openPaneFile(s, { sessionId: null, path, opened: Date.now() }));
         showPreview();
       };
   });
@@ -416,6 +418,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const lastPreview = lastTab ?? null;
   const closePreview = () => {
     setPane((s) => setPaneOpen(s, false));
+    // The workbooks kept for paging and going back to a sheet go with the panel.
+    bridge.previewClosed();
     if (floating === 'preview') setFloating(null);
   };
   /** A web page in a new tab of the panel ('' : an empty one). */
@@ -568,8 +572,15 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     : undefined;
   const memoryLines = useMemo(() => ({ items: state.memories, undo: (id: number) => agent.undoMemory(id) }), [state.memories, agent]);
   // Files open in the preview panel (read-only); 用系统程序打开 there hands them to Windows.
+  // A press on a file: the preview, or its system program for a kind the panel does not show (shell/open-file.ts).
+  const filePress = (sessionId: string | null): FilePress => ({
+    pages: pluginViews.filter((v) => v.placement === 'preview'),
+    open: (path) => bridge.openFile(sessionId, path),
+    preview: (path) => setPreview({ sessionId, path, opened: Date.now() }),
+    notice: (text) => agent.state.set((v) => ({ ...v, notice: text })),
+  });
   const previewFile = (path: string) => {
-    setPreview({ sessionId: state.activeId, path });
+    if (pressFile(path, filePress(state.activeId)) !== 'preview') return;
     setHistory(false);
     showPreview();
   };
@@ -717,7 +728,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     openFile: async (path: string) => {
       const abs = await bridge.pluginViews.file(v.plugin, path);
       if (!abs) return '仅能打开插件自身文件夹中的文件。'; // i18n-skip: an answer to the plugin page's own code
-      setPreview({ sessionId: null, path: abs });
+      if (pressFile(abs, filePress(null)) !== 'preview') return null;
       setView('chat');
       showPreview();
       return null;
@@ -1377,23 +1388,24 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               {...(htmlBlocked?.length ? { blocked: htmlBlocked } : {})}
               // A plugin page draws the file: the head still names it (and offers its buttons).
               info={pagePreview ? { kind: 'unsupported', name: preview.path.split(/[\\/]/).pop() ?? preview.path, path: preview.path, size: 0, message: '' } : previewInfo}
+              loadingPath={preview.path}
               {...(filePages.length
                 ? { source: { options: [{ id: BUILT_IN, label: t('自带预览') }, ...filePages.map((v) => ({ id: previewerId(v), label: v.title }))], value: fellBack ? BUILT_IN : wayId, onChange: chooseWay } }
                 : {})}
               note={fellBack?.why.text ? { text: fellBack.why.text, ...(fellBack.why.retry ? { onRetry: () => chooseWay(wayId) } : {}) } : null}
               onOpenExternal={(p) => {
-                if (preview.sessionId) {
-                  void bridge.openFile(preview.sessionId, p).then((err) => err && agent.state.set((v) => ({ ...v, notice: err })));
-                }
+                // A file from a plugin page has no conversation: its path is whole.
+                void bridge.openFile(preview.sessionId, p).then((err) => err && agent.state.set((v) => ({ ...v, notice: err })));
               }}
               onReveal={(p) => void bridge.showInFolder(p).then(showNotice, (err: unknown) => showNotice(friendlyError(err)))}
               onSheet={(n) => setPreview((p) => (p ? { ...p, sheet: n } : p))}
+              loadRows={(from) => bridge.preview(preview.sessionId, preview.path, previewInfo?.kind === 'sheet' ? previewInfo.sheet : preview.sheet, from)}
               onClose={closePreview}
               max={panelMax}
             >
               {pagePreview ? (
                 <PluginPreview
-                  key={`${previewerId(pagePreview)}|${previewAttempt}`}
+                  key={`${previewerId(pagePreview)}|${previewAttempt}|${preview.opened ?? 0}`}
                   {...pluginProps(pagePreview)}
                   file={{ sessionId: preview.sessionId, path: preview.path }}
                   loadFile={bridge.previewFile}
