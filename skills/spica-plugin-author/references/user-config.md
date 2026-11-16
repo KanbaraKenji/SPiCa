@@ -71,7 +71,7 @@ if (!server_url || !password) return { text: '[NOT_CONFIGURED] 还没填服务�
 
 ## 用表单还是自己画设置页
 
-每一项对一下上面的类型表：对得上的写进 `user_config`；对不上的（「测试连接」按钮、能增删的列表、选了 A 才出现 B 的联动）才放进自己画的设置页（`views/<id>.json` 的 `placement: "settings"`，见 `ui.md`）。同一项只放一处。两种可以并存：表单在「详情」里，自己的页面是后面的页签，页签别再叫「设置」。
+每一项对一下上面的类型表：类型表能表达的写进 `user_config`；表达不了的（「测试连接」按钮、能增删的列表、选了 A 才出现 B 的联动）才放进自己画的设置页（`views/<id>.json` 的 `placement: "settings"`，见 `ui.md`）。同一项只放一处。两种可以并存：表单在「详情」里，自己的页面是后面的页签，页签别再叫「设置」。
 
 ## `check.mjs` 查什么
 
