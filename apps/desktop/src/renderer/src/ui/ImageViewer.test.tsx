@@ -37,6 +37,14 @@ describe('the picture viewer', () => {
     window.removeEventListener('wheel', windowZoom);
   });
 
+  it('opened from the file preview, the wheel alone zooms too', () => {
+    render(<ImageViewer pictures={[{ url: 'data:image/png;base64,AA==', name: '图' }]} onClose={vi.fn()} wheelZooms />);
+    act(() => {
+      document.querySelector('.image-viewer')!.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true }));
+    });
+    expect((document.querySelector('.image-viewer img') as HTMLElement).style.transform).toContain('scale(1.15)');
+  });
+
   it('a click closes it; a drag moves the picture and does not', () => {
     const onClose = vi.fn();
     render(<ImageViewer pictures={[{ url: 'data:image/png;base64,AA==', name: '图' }]} onClose={onClose} />);

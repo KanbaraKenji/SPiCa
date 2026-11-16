@@ -8,6 +8,7 @@ import { MarkdownText } from '../chat/Blocks';
 import { HIGHLIGHT_MAX_CHARS, highlightLines, languageOf } from '../chat/highlight';
 import { Icon } from '../ui/Icon';
 import { FileGlyph } from '../ui/FileIcon';
+import { ImageViewer } from '../ui/ImageViewer';
 import { MaxButton, type MaxState } from '../ui/MaxButton';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
@@ -275,6 +276,9 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, loadRows,
       return next;
     });
   const hasFile = Boolean(info && info.kind !== 'missing' && info.path);
+  // A picture pressed: over the window, as pictures in the conversation (the wheel zooms, a drag moves it, a
+  // press or Esc puts it back).
+  const [bigFor, setBigFor] = useState<string | null>(null);
   return (
     <section className="preview" aria-label={info ? t('预览 {name}', { name: info.name }) : t('预览')}>
       <header className="preview-head panel-head">
@@ -331,7 +335,22 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, loadRows,
         <iframe className="preview-frame" src={info.url} title={info.name} />
       ) : info.kind === 'image' ? (
         <div className="preview-body preview-image-wrap">
-          <img className="preview-image" src={info.url} alt={info.name} />
+          <img
+            className="preview-image"
+            src={info.url}
+            alt={info.name}
+            title={t('放大')}
+            role="button"
+            tabIndex={0}
+            onClick={() => setBigFor(id)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setBigFor(id);
+              }
+            }}
+          />
+          {bigFor === id ? <ImageViewer pictures={[{ url: info.url, name: info.name }]} onClose={() => setBigFor(null)} wheelZooms /> : null}
         </div>
       ) : info.kind === 'sheet' ? (
         <Sheet info={info} onSheet={onSheet} loadRows={loadRows} />

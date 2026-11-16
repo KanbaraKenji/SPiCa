@@ -75,6 +75,7 @@ export const ZH_TW_SHELL: Catalog = {
   '仅显示前 {shown} 行（共 {total} 行）': '僅顯示前 {shown} 列（共 {total} 列）',
   此工作表为空: '此工作表是空的',
   '仅显示前 {shown} 段（共 {total} 段）': '僅顯示前 {shown} 段（共 {total} 段）',
+  放大: '放大',
   '仅显示前 512 KB（共 {size}）': '僅顯示前 512 KB（共 {size}）',
   '预览 {name}': '預覽 {name}',
   预览方式: '預覽方式',

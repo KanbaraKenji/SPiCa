@@ -6539,6 +6539,8 @@ section.plugins-part > .plugins-part-title {
 .preview-image {
   max-width: 100%;
   height: auto;
+  /* A press shows it over the window (ui/ImageViewer). */
+  cursor: zoom-in;
 }
 
 .preview-code {

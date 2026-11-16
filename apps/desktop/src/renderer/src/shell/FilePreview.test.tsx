@@ -138,6 +138,15 @@ describe('the file’s place, from the preview head', () => {
     expect(loadRows).toHaveBeenCalledTimes(2);
   });
 
+  it('a picture pressed shows over the window; Esc puts it back', () => {
+    render(<FilePreview info={{ kind: 'image', name: '横幅.png', path: 'D:/横幅.png', size: 9, url: 'spica-file://f/x?v=1' }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    expect(document.querySelector('.image-viewer')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '横幅.png' }));
+    expect(document.querySelector('.image-viewer img')?.getAttribute('src')).toBe('spica-file://f/x?v=1');
+    fireEvent.keyDown(document.querySelector('.image-viewer')!, { key: 'Escape' });
+    expect(document.querySelector('.image-viewer')).toBeNull();
+  });
+
   it('a CSV file is a table, and its own text behind 查看代码', () => {
     const info = { kind: 'sheet' as const, name: '销售.csv', path: 'D:/销售.csv', size: 20, sheets: [{ name: '销售' }], sheet: 1, columns: ['A', 'B'], rows: [{ n: 1, cells: ['门店', '金额'] }], more: false, text: '门店,金额' };
     render(<FilePreview info={info} onOpenExternal={vi.fn()} onClose={vi.fn()} />);

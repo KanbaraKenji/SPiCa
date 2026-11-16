@@ -74,9 +74,10 @@ const CLICK_SLOP = 4;
 
 /**
  * `pictures` and `start`: the group and the one opened first. Going past the first or the last stops there (the
- * button for that side is off), so N of M always says where one is.
+ * button for that side is off), so N of M always says where one is. `wheelZooms`: the wheel alone zooms too
+ * (opened from the file preview, where a press on the picture asks to see it bigger).
  */
-export function ImageViewer({ pictures, start = 0, onClose }: { pictures: Picture[]; start?: number; onClose(): void }) {
+export function ImageViewer({ pictures, start = 0, onClose, wheelZooms = false }: { pictures: Picture[]; start?: number; onClose(): void; wheelZooms?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState(Math.min(Math.max(0, start), Math.max(0, pictures.length - 1)));
   const [view, setView] = useState<ImageView>({ scale: 1, x: 0, y: 0 });
@@ -96,7 +97,7 @@ export function ImageViewer({ pictures, start = 0, onClose }: { pictures: Pictur
     const el = box.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey) return;
+      if (!e.ctrlKey && !wheelZooms) return;
       // The picture's zoom, not the window's (that listener is on the window, after this one).
       e.preventDefault();
       e.stopPropagation();
@@ -107,7 +108,7 @@ export function ImageViewer({ pictures, start = 0, onClose }: { pictures: Pictur
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, []);
+  }, [wheelZooms]);
   return (
     <div
       role="dialog"
