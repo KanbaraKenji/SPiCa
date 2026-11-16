@@ -84,8 +84,9 @@ export function blocksLocalRequest(request: string, top: string | undefined): bo
   // No page yet (the tab's first load): nothing outside is asking.
   if (!top) return false;
   const from = hostOf(top);
-  // The browser's own local files and empty pages count as local: a local HTML file may talk to a local server.
-  if (from === null) return !(top === 'about:blank' || top.startsWith(`${BROWSER_FILE_SCHEME}:`));
+  // An empty page counts as local. A local HTML file does not: it can read its folder, and must not hand what it
+  // read to a service on this machine or the local network.
+  if (from === null) return top !== 'about:blank';
   return !isLocalHost(from);
 }
 

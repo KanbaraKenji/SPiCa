@@ -58,7 +58,10 @@ describe('blocksLocalRequest: an outside page cannot reach this machine', () => 
   it('lets the person open a local address, and a local page use local addresses', () => {
     expect(blocksLocalRequest('http://127.0.0.1:5173/', undefined)).toBe(false);
     expect(blocksLocalRequest('http://127.0.0.1:5173/app.js', 'http://localhost:5173/')).toBe(false);
-    expect(blocksLocalRequest('http://127.0.0.1:5173/api', 'spica-page://tok/index.html')).toBe(false);
+  });
+  it('a local HTML file (it can read its folder) cannot reach this machine or the local network either', () => {
+    expect(blocksLocalRequest('http://127.0.0.1:5173/api', 'spica-page://tok/index.html')).toBe(true);
+    expect(blocksLocalRequest('http://192.168.1.5/', 'spica-page://tok/index.html')).toBe(true);
   });
   it('a first load with no page yet is not stopped', () => {
     expect(blocksLocalRequest('http://127.0.0.1:5173/', '')).toBe(false);
