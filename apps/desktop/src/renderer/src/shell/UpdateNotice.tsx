@@ -64,15 +64,11 @@ export interface UpdateNoticeProps {
  */
 export function UpdateCard({ notice, onInstall, onOpenPlugins }: UpdateNoticeProps) {
   return (
-    // His drawing (2026-11-16): the mark top left, on the first line's level; the words from beside it, wrapped lines
-    // from the card's left edge; × top right; the button bottom right, on the last line (a line of its own, on the
-    // right, when that line has no room). × and the button float right; the mark sits in the words' first line.
+    // His drawing (2026-11-16): × in a column of its own on the right, centred top to bottom; left of it the content:
+    // the mark top left, on the first line's level; the words from beside it, wrapped lines from the left edge; the
+    // button on the content's right (not under ×), on the last line, or a line of its own when that has no room.
+    // The button floats right; the mark sits in the words' first line. Without × the content takes the whole card.
     <div className={notice.required ? 'update-card is-warning' : 'update-card'} role="status">
-      {notice.close ? (
-        <button type="button" className="icon-btn notice-close" onClick={notice.close} aria-label={t('稍后')} title={t('稍后')}>
-          <Icon name="close" size={14} />
-        </button>
-      ) : null}
       <div className="update-card-body">
         <SpicaStatusIcon name={notice.required ? 'warning' : 'done'} size={15} className="notice-icon" />
         <span className="update-card-text">{notice.text}</span>
@@ -86,6 +82,11 @@ export function UpdateCard({ notice, onInstall, onOpenPlugins }: UpdateNoticePro
           </button>
         ) : null}
       </div>
+      {notice.close ? (
+        <button type="button" className="icon-btn notice-close" onClick={notice.close} aria-label={t('稍后')} title={t('稍后')}>
+          <Icon name="close" size={14} />
+        </button>
+      ) : null}
     </div>
   );
 }
