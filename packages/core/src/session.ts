@@ -36,6 +36,7 @@ import { IMAGE_LIMITS, imageTokens, prepareImage, REQUEST_IMAGE_LIMITS, sniffIma
 import { closeSync, openSync, readSync } from 'node:fs';
 import { dirname, isAbsolute, resolve as resolvePath } from 'node:path';
 import { inScope, pathsInText, realPath } from './write-scope.ts';
+import { commandOutside, tooWideToAllow } from './command-scope.ts';
 import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.ts';
 import { samePath } from './move-folder.ts';
 import { netHint } from './net.ts';
@@ -1511,13 +1512,21 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       return;
     }
     const cfg = this.#record.config;
-    if (cfg.writeFolders?.includes(folder)) return;
+    // a drive's root or the home folder is allowed this once only, never kept (it would let everything through)
+    if (cfg.writeFolders?.includes(folder) || tooWideToAllow(folder)) return;
     this.#record = { ...this.#record, config: { ...cfg, writeFolders: [...(cfg.writeFolders ?? []), folder] } };
     this.#rt.store.upsertSession(this.#record);
   }
 
   /** For a write outside the conversation's folders: the folder it writes in (as it will read on the card). */
   #outsideFolder(tool: Tool, input: Record<string, unknown>): string | undefined {
+    // a command, in Auto (Manual asks for every command): the fixed rules of command-scope.ts on its text
+    if (tool.spec.name === 'run_command' && this.#record.config.approvalMode === 'auto' && typeof input.command === 'string') {
+      const base = this.#record.config.cwd;
+      const named = typeof input.cwd === 'string' && input.cwd.trim() !== '';
+      const cwd = named ? (isAbsolute(input.cwd as string) ? resolvePath(input.cwd as string) : resolvePath(base, input.cwd as string)) : base;
+      return commandOutside(input.command, cwd, this.writeRoots(), named)?.folder;
+    }
     const p = tool.writePath?.(input);
     if (!p?.trim()) return undefined;
     const target = isAbsolute(p) ? resolvePath(p) : resolvePath(this.#record.config.cwd, p);

@@ -147,6 +147,21 @@ describe('ConfirmCard', () => {
       expect(c.onDecide.mock.calls).toEqual([[true]]);
     });
 
+    it('a command writing outside (Auto): the path marked in the command; run in a folder outside, that folder under it', () => {
+      const folder = 'D:\\共享资料\\纪要';
+      const cmd = { type: 'confirm' as const, callId: 'c10', name: 'run_command', input: { command: `Set-Content -Path '${folder}\\周会汇总.md' -Value x` }, reason: 'outside', cause: 'outside_folder' as const, outsideFolder: folder };
+      render(<ConfirmCard block={cmd} onDecide={vi.fn()} />);
+      // Set-Content overwrites: 无法撤销 too, as for any such command
+      expect([...document.querySelectorAll('.confirm-undo')].map((x) => x.textContent)).toContain('工作文件夹以外');
+      expect([...document.querySelectorAll('mark.cmd-danger')].map((m) => m.textContent)).toContain(`${folder}\\周会汇总.md`);
+      expect(document.querySelector('.card-why')).toBeNull();
+      expect(document.querySelector('.hold-allow')).not.toBeNull();
+      cleanup();
+      render(<ConfirmCard block={{ ...cmd, input: { command: "Set-Content a.md x", cwd: folder } }} onDecide={vi.fn()} />);
+      expect([...document.querySelectorAll('mark.cmd-danger')].map((m) => m.textContent)).not.toContain(folder);
+      expect(document.querySelector('.card-why')?.textContent).toBe(`起始文件夹：${folder}`);
+    });
+
     it('an ordinary confirmation keeps its blue 允许, no ring', () => {
       render(<ConfirmCard block={{ ...block, outsideFolder: undefined, cause: undefined }} onDecide={vi.fn()} />);
       expect(screen.getByRole('button', { name: '允许' }).className).toBe('btn btn-primary');

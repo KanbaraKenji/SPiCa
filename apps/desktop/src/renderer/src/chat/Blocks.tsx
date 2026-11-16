@@ -986,9 +986,24 @@ const argLabels = (): Record<string, string> => Object.fromEntries(Object.entrie
  * name, JSON coloured, 20 lines then it scrolls) under names people read. Not the model's description of the step:
  * it may not match what would run.
  */
-export function ConfirmTarget({ name, input, bare, change }: { name: string; input: unknown; bare?: boolean; change?: ChangePreview | undefined }) {
+export function ConfirmTarget({ name, input, bare, change, outsideFolder }: { name: string; input: unknown; bare?: boolean; change?: ChangePreview | undefined; outsideFolder?: string | undefined }) {
   const v = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
-  if (name === 'run_command' && typeof v.command === 'string') return <CommandBox command={v.command} marks={dangerSpans(v.command)} bare={bare} />;
+  if (name === 'run_command' && typeof v.command === 'string') {
+    // a command writing outside the conversation's folders: where, marked in the command; or the folder it runs in
+    const outside = outsideFolder ? outsideSpans(v.command, outsideFolder) : [];
+    const marks = [...dangerSpans(v.command), ...outside].sort((a, b) => a[0] - b[0]);
+    const runsIn = outsideFolder && !outside.length && typeof v.cwd === 'string' && v.cwd ? v.cwd : null;
+    return (
+      <>
+        <CommandBox command={v.command} marks={marks} bare={bare} />
+        {runsIn ? (
+          <p className="card-why">
+            {t('{label}：{path}', { label: t('起始文件夹'), path: runsIn })}
+          </p>
+        ) : null}
+      </>
+    );
+  }
   // A write or an edit: what it would change, as its row shows it after (the core worked it out when it asked: the
   // lines numbered, green in, red out; a new file all green). Without that (an older core) the arguments' own lines.
   if (name === 'write_file' || name === 'edit_file') {
@@ -999,6 +1014,20 @@ export function ConfirmTarget({ name, input, bare, change }: { name: string; inp
   const rows = Object.entries(v).filter(([k, val]) => k !== 'description' && val !== undefined && val !== null && val !== '');
   if (!rows.length) return null;
   return <CallArgs input={Object.fromEntries(rows)} labels={argLabels()} bare={bare} />;
+}
+
+/** Where a command names the folder (or something in it), in any case: up to the end of that path. */
+function outsideSpans(command: string, folder: string): [number, number][] {
+  const out: [number, number][] = [];
+  const low = command.toLowerCase();
+  const key = folder.toLowerCase().replace(/[\\/]+$/, '');
+  for (let at = low.indexOf(key); at >= 0 && key; at = low.indexOf(key, at + 1)) {
+    let end = at + key.length;
+    while (end < command.length && !/[\s'"`;|]/.test(command[end]!)) end++;
+    out.push([at, end]);
+    at = end - 1;
+  }
+  return out;
 }
 
 /**
@@ -1053,7 +1082,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
           </div>
         )}
       </header>
-      <ConfirmTarget name={block.name} input={block.input} change={block.change} bare />
+      <ConfirmTarget name={block.name} input={block.input} change={block.change} outsideFolder={block.outsideFolder} bare />
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
     </section>
   );

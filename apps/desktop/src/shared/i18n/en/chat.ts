@@ -60,6 +60,7 @@ export const EN_CHAT: Catalog = {
   无法撤销: 'Cannot be undone',
   工作文件夹以外: 'Outside working folder',
   始终允许: 'Always allow',
+  起始文件夹: 'Runs in',
   '按住：始终允许': 'Hold: always allow',
   已允许: 'Allowed',
   已拒绝: 'Denied',
