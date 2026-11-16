@@ -1042,7 +1042,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
           </p>
         ) : (
           <div className="card-actions">
-            <button type="button" className="btn" disabled={sent} onClick={() => decide(false)}>
+            <button type="button" className={block.outsideFolder && ALLOW_TONE === 'neutral' ? 'btn btn-edge' : 'btn'} disabled={sent} onClick={() => decide(false)}>
               {t('拒绝')}
             </button>
             {block.outsideFolder ? (
@@ -1063,22 +1063,21 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
 
 /**
  * 允许 for a write outside the conversation's folders: the button allows this once; its arrow opens a menu with
- * 始终允许此文件夹 (as Claude's own permission prompts do), so the card keeps two buttons. The menu opens toward
- * the inside of the card: its right edge on the arrow's right edge (he: 「像卡片内侧延展」).
+ * 始终允许 (as Claude's own permission prompts do), so the card keeps two buttons. The menu is the app's ordinary
+ * menu (he picked it), opening toward the inside of the card, exactly as wide as 允许 and its arrow so its edges
+ * line up with theirs (he turned down the joined looks for edges that did not).
  */
-// Three looks for the 允许 menu, for him to pick (TEMP until he does): a, the menu joined to the button (same
-// width, no gap, corners continued), on the card's ground with an accent edge; b, the same on the soft accent; c,
-// 允许 and its arrow as ordinary buttons and the menu as menus are (one piece by being the same colours).
-const ALLOW_MENU: 'a' | 'b' | 'c' = 'a';
+// How 允许 stands apart from 拒绝, two ways for him to pick (TEMP until he does): primary, 允许 and its arrow the
+// blue main button as before; neutral, no blue: 允许 a filled ordinary button, 拒绝 only its edge.
+export const ALLOW_TONE: 'primary' | 'neutral' = 'primary';
 
 function AllowSplit({ disabled, folder, onAllow }: { disabled: boolean; folder: string; onAllow(folder: boolean): void }) {
   const [menu, setMenu] = useState<HTMLElement | null>(null);
   // the whole button's width (允许 and its arrow): a joined menu is as wide
   const [width, setWidth] = useState(0);
-  const joined = ALLOW_MENU !== 'c';
-  const tone = ALLOW_MENU === 'c' ? 'btn' : 'btn btn-primary';
+  const tone = ALLOW_TONE === 'primary' ? 'btn btn-primary' : 'btn';
   return (
-    <span className={['btn-split', menu && joined ? 'is-open' : ''].filter(Boolean).join(' ')}>
+    <span className="btn-split">
       <button type="button" className={`${tone} btn-split-main`} disabled={disabled} onClick={() => onAllow(false)}>
         {t('允许')}
       </button>
@@ -1105,7 +1104,7 @@ function AllowSplit({ disabled, folder, onAllow }: { disabled: boolean; folder: 
               y={0}
               anchor={menu}
               align="end"
-              {...(joined ? { offset: 0, minWidth: width, className: `allow-menu allow-menu-${ALLOW_MENU}` } : {})}
+              minWidth={width}
               items={[{ label: t('始终允许'), title: folder, onSelect: () => onAllow(true) }]}
               onClose={() => setMenu(null)}
             />,

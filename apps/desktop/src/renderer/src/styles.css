@@ -467,24 +467,18 @@ a:hover {
   border-bottom-right-radius: 0;
 }
 
-/* Open, with a menu joined to it (the 允许 menu, looks a / b): the button's lower corners give way to the menu. */
-.btn-split.is-open > .btn {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
+/* The quieter of two ordinary buttons side by side (拒绝 next to a filled 允许): its edge only, no ground. */
+.btn.btn-edge {
+  background: transparent;
 }
 
-.context-menu.allow-menu {
-  border-radius: 0 0 var(--radius-m) var(--radius-m);
-  border: 1px solid var(--spica-accent);
-  border-top: none;
+/* The 允许 split's menu: the app's ordinary menu, as wide as the button (menu width is set from it). */
+.btn-split {
+  min-width: 112px;
 }
 
-.context-menu.allow-menu-a {
-  background: var(--spica-raised);
-}
-
-.context-menu.allow-menu-b {
-  background: var(--spica-accent-soft);
+.btn-split > .btn-split-main {
+  flex: 1;
 }
 
 .btn-split > .btn-split-more {
