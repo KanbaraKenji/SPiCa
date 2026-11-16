@@ -66,7 +66,7 @@
 | **定** 文字在它所在的框里上下居中；图标和旁边的字在同一条中线上 | 界面字体的度量：`shared/ui-font.ts`（默认的 `Spica UI` 修正过；跟随系统时中日韩的系统字体不修正，是 Segoe UI 时用同一套修正） | `renderer-styles.test.ts`「the interface font has its ascent and descent…」 |
 | **定** 不给文字或图标做手工的上下补偿（小幅 `translate`、`text-box` 裁边） | `styles.css` | 同文件「no small fixed nudges…」 |
 | **定** 跟在名字或标题后面的状态字（Failed、已超时、无法撤销…）、用时、计时，和名字同一档，只靠颜色区分。小一档的字各自在框里居中，底线会比旁边的字高 1.5px（225% 下 3 个像素），看着就是没居中。靠右的次要信息（详情栏文件行的文件夹、侧栏「收件箱」后的数字）不在这条里 | `.fold-meta`、`.detail-item-meta`、`.status-clock`、`.confirm-undo` 不自带字号和行高 | 同文件「what a row says after its words…」 |
-| **定** 对话内容那一列（最宽 760）平时放在侧栏右边到窗口右边这整块的中间，当右侧栏不存在；右侧栏没碰到它就不动，碰到了（留 24）就顶着它往左走，宽度不变；贴到对话区左边（留 24）后才变窄，到 440 之后预览先让、让到 320 才盖住 | `shell/layout.ts` 的 `centreShift`，结果是 `.main` 上的 `--centre-shift` | `layout.test.ts`「the content column…」、`renderer-styles.test.ts`「the content column…」 |
+| **定** 对话内容那一列（最宽 760）平时放在侧栏右边到窗口右边这整块的中间，当右侧栏不存在；右侧栏没碰到它就不动，碰到了（留 24）就顶着它往左走，宽度不变；贴到对话区左边（留 24）后才变窄，到 440 之后由预览盖住 | `shell/layout.ts` 的 `centreShift`，结果是 `.main` 上的 `--centre-shift` | `layout.test.ts`「the content column…」、`renderer-styles.test.ts`「the content column…」 |
 | **定** 输入框下面那一行两端和输入框圆角结束的位置对齐（文件夹在左，上下文环在右） | `chat/Composer.tsx` 的样式 | 同文件「corners of 12px…」 |
 
 度量值是在 125% 缩放的屏幕上量着选的；200% 下有二十来处偏 0.5 到 0.75px，属于已知。本机找不到 Segoe UI（可变版和静态版都没有）时，退回不修正的样子。两种界面字体在 125% 下各量了同样 75 处：默认超过 ±0.5px 的 11 处，跟随系统（微软雅黑）8 处，多数正好差一个物理像素（`out/settings-modal/13-centre-audit.md`）。换别的界面字体要按同样的办法重量，入口只有 `shared/ui-font.ts`。
@@ -125,7 +125,7 @@
 | **定** 从左到右：侧栏、对话、详情、预览。详情和预览各有一个标题栏按钮。空间不够时先挤对话，再让预览盖住，详情放不下直接收起（预览或监控台开着时详情让出位置，按钮出小卡，见下一条） | `shell/layout.ts` | `shell` 的测试 |
 | **定** 监控台是右侧栏里的一栏（他定的「右侧栏」），在详情和预览之间；平时没有入口，在 设置 › 关于 点版本号 9 次才出现标题栏按钮（他定的） | `shell/layout.ts`、`settings/About.tsx` | `layout.test.ts`、`About.test.tsx` |
 | **定** 监控台标题行有「最大化」和「关闭」；监控台或预览栏一打开，详情立刻让出位置，再按详情按钮就以小卡浮在对话区右上角（他 2026-11-13 下午定的，照 Claude 的 Files）。监控台宽度固定 380、放不下不显示；再点 9 次版本号关掉入口（暂定） | `App.tsx`（`infoBlocked`、`infoFloat`、`.info-float`） | 人工（隐藏窗口走查） |
-| **定** 对话有两个宽度：排版最窄 440，被预览盖住时至少露出 160。预览先让：放不下就变窄、给对话留够 440，最窄 320；到 320 还不够才盖住对话；拖预览的边最宽到对话还剩 440，拖不过去；窗口再变宽、侧栏收起，预览回到自己的宽度（他 2026-11-16 选的）。任何时候保不住 160，预览最先收起 | `shell/layout.ts` 的 `previewBesideConversation`、`MAIN_ROOM_WIDTH`、`MAIN_SHOWN_MIN`、`previewMaxWidth` | `layout.test.ts` |
+| **定** 对话有两个宽度：排版最窄 440，被预览盖住时至少露出 160。任何时候保不住，预览最先收起 | `shell/layout.ts` 的 `MAIN_ROOM_WIDTH`、`MAIN_SHOWN_MIN` | `shell` 的测试 |
 | **定** 详情栏放不下时直接不显示，不盖在别的上面、不浮出；它的按钮变灰，悬停说原因；有地方了自己回来 | `shell/layout.ts` | `shell` 的测试 |
 | **定** 插件的面板页是详情栏顶上的页签，宽度同详情栏，不能拖、不能最大化 | `shell/**` | 人工 |
 | **定** 详情栏不因调用多而变长：「工具调用」一组：标题是能点的「工具调用 N ›」，下面只列正在跑的调用（进度环），不钉在底下；点标题在预览那一栏里看全部调用，展开一条和对话里同一个写法（CallDetail）；「文件」先列 5 条加「显示更多」，标题能收起、收起时写数量（他定的，照 Claude 的 Outputs） | `shell/DetailPanel.tsx`、`shell/ToolHistory.tsx` | `shell/ToolHistory.test.tsx`、`chat/Conversation.test.tsx` |
