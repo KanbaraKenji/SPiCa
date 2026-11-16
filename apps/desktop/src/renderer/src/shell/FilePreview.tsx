@@ -374,7 +374,7 @@ export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onShe
             }}
           />
           {/* On the page itself: the panel (laid over the conversation, floating, 最大化) is a layer of its own. */}
-          {bigFor === id ? createPortal(<ImageViewer pictures={[{ url: info.url, name: info.name }]} onClose={() => setBigFor(null)} wheelZooms />, document.body) : null}
+          {bigFor === id ? createPortal(<ImageViewer pictures={[{ url: info.url, name: info.name }]} onClose={() => setBigFor(null)} />, document.body) : null}
         </div>
       ) : info.kind === 'sheet' ? (
         <Sheet info={info} onSheet={onSheet} loadRows={loadRows} />
