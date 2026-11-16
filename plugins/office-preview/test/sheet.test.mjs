@@ -79,13 +79,37 @@ describe('Excel workbook to a styled table', () => {
     await assert.rejects(Sheet.loadWorkbook(ExcelJS, JSZip, new TextEncoder().encode('not a zip')));
   });
 
-  it('a big sheet shows its first rows and columns and says so', () => {
+  it('a big sheet comes a page at a time, every column, to its last row; a merge across pages holds', () => {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('big');
-    ws.getCell(30, 12).value = 'far';
-    const out = Sheet.renderSheet(ws, wb, { rows: 10, cols: 5 });
-    assert.deepEqual(out.notes, ['只显示前 10 行。', '只显示前 5 列。']);
-    assert.ok(!out.html.includes('far'));
+    for (let r = 1; r <= 25; r++) ws.getCell(r, 1).value = `第 ${r} 行`;
+    ws.getCell(30, 300).value = 'far';
+    ws.mergeCells('B9:B12');
+    const out = Sheet.renderSheet(ws, wb, { page: 10 });
+    assert.deepEqual(out.notes, []);
+    // rows 1 to 10, and on to 12: the merge B9:B12 is not split
+    assert.ok(out.html.includes('<tr style="height:20px"><th>11</th><td>第 11 行</td><td></td>')); // B11 under the merge: left out
+    assert.ok(out.html.includes('>第 12 行</td>') && !out.html.includes('>第 13 行</td>'));
+    assert.ok(out.html.includes('<td rowspan="4"></td>'));
+    assert.ok(out.html.includes('<th>KN</th>')); // column 300
+    assert.equal(out.more(), true);
+    // the next page: a table of its own, the same columns, rows 13 to 22
+    const second = out.next();
+    assert.match(second, /^<table class="sheet" style="width:\d+px"><colgroup>/);
+    assert.ok(second.includes('<tr style="height:20px"><th>13</th><td>第 13 行</td>'));
+    assert.ok(second.includes('>第 22 行</td>') && !second.includes('>第 23 行</td>'));
+    assert.ok(out.next().includes('>far</td>')); // rows 23 to 30
+    assert.equal(out.more(), false);
+    assert.equal(out.next(), '');
+  });
+
+  it('a page is as many rows as fit the cells drawn at a time', () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('wide');
+    for (let r = 1; r <= 600; r++) ws.getCell(r, 1).value = r;
+    ws.getCell(1, 1000).value = 'x';
+    const html = Sheet.renderSheet(ws, wb).html;
+    assert.ok(html.includes('<th>20</th>') && !html.includes('<th>21</th>')); // 10 000 cells / 1 000 columns: the fewest
   });
 
   it('number formats: the common ones', () => {
