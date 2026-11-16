@@ -33,8 +33,13 @@ export function kindOf(path: string): Exclude<PreviewKind, 'missing' | 'sheet'> 
   return 'unsupported';
 }
 
-/** UTF-8, or GB18030 when UTF-8 does not fit (Chinese text files saved by older Windows tools). */
+/**
+ * UTF-16 by its byte order mark, or without one when every other byte is zero (PowerShell 5.1's `>` writes it);
+ * else UTF-8, or GB18030 when UTF-8 does not fit (Chinese text files saved by older Windows tools).
+ */
 export function decodeText(bytes: Uint8Array): string {
+  const utf16 = utf16Of(bytes);
+  if (utf16) return new TextDecoder(utf16).decode(bytes);
   const utf8 = new TextDecoder('utf-8').decode(bytes);
   const bad = (utf8.match(/�/g) ?? []).length;
   if (bad === 0 || bad < utf8.length / 200) return utf8;
@@ -43,6 +48,25 @@ export function decodeText(bytes: Uint8Array): string {
   } catch {
     return utf8;
   }
+}
+
+/** 'utf-16le' / 'utf-16be' when the bytes look like it (the decoder drops the mark). */
+function utf16Of(bytes: Uint8Array): 'utf-16le' | 'utf-16be' | undefined {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return 'utf-16le';
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return 'utf-16be';
+  // No mark: mostly Latin text, so one byte of each pair is zero. UTF-8 text has no zero bytes.
+  const n = Math.min(bytes.length, 4096) & ~1;
+  if (n < 4) return undefined;
+  let even = 0;
+  let odd = 0;
+  for (let i = 0; i < n; i += 2) {
+    if (bytes[i] === 0) even++;
+    if (bytes[i + 1] === 0) odd++;
+  }
+  const pairs = n / 2;
+  if (odd > pairs * 0.6 && even < pairs * 0.1) return 'utf-16le';
+  if (even > pairs * 0.6 && odd < pairs * 0.1) return 'utf-16be';
+  return undefined;
 }
 
 /** Paths given out as spica-file://<token>; a token only ever maps to the one file. */

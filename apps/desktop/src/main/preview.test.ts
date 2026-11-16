@@ -21,6 +21,15 @@ describe('file preview', () => {
     expect(decodeText(new Uint8Array([0xd1, 0xf9, 0xbb, 0xfa]))).toBe('样机');
   });
 
+  it('reads UTF-16 text, with its byte order mark or without (PowerShell 5.1 writes it)', () => {
+    const le = (s: string) => Array.from(Buffer.from(s, 'utf16le'));
+    expect(decodeText(new Uint8Array([0xff, 0xfe, ...le('样机 ok\r\n')]))).toBe('样机 ok\r\n');
+    expect(decodeText(new Uint8Array([0xfe, 0xff, 0x68, 0x37, 0x67, 0x3a]))).toBe('样机');
+    expect(decodeText(new Uint8Array(le('Name  Size\r\nreport.docx  12\r\n')))).toBe('Name  Size\r\nreport.docx  12\r\n');
+    // UTF-8 with a few zero bytes is not taken for UTF-16.
+    expect(decodeText(new TextEncoder().encode('a\u0000bcdefgh'))).toBe('a\u0000bcdefgh');
+  });
+
   it('gives text (capped), URLs only for the files asked for, and words for the rest', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'spica-preview-'));
     writeFileSync(join(dir, 'a.md'), '# 标题');
