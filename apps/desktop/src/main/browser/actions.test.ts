@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asFacts, fingerprint, judge, sensitiveField, type ElementFacts } from './actions';
+import { asFacts, fingerprint, judge, sensitiveField, shortSite, type ElementFacts } from './actions';
 
 const el = (over: Partial<ElementFacts> = {}): ElementFacts => ({ found: true, tag: 'button', type: 'button', role: '', name: 'Next', autocomplete: '', fieldName: '', editable: false, page: 'https://shop.example/cart', x: 1, y: 1, ...over });
 const form = { action: 'https://shop.example/order', method: 'post' };
@@ -57,4 +57,11 @@ it('asFacts: the shape only', () => {
   expect(asFacts(null)).toBeNull();
   expect(asFacts({ found: false, page: 'p' })).toMatchObject({ found: false, page: 'p' });
   expect(asFacts({ found: true, tag: 'a', href: 'h', download: true, x: '5' })).toMatchObject({ found: true, tag: 'a', href: 'h', download: true, x: 5 });
+});
+
+it('shortSite: a long host cut in the middle, so the button after it still shows', () => {
+  expect(shortSite('shop.example')).toBe('shop.example');
+  expect(shortSite('procurement-contracts-portal.example-manufacturing-group.com:47841')).toBe('procurement-cont…ng-group.com:47841');
+  const r = judge('browser_click', el({ type: 'submit', name: '确认提交', form: { action: 'https://procurement-contracts-portal.example-manufacturing-group.com/submit', method: 'post' } }));
+  expect(r.action === 'confirm' && r.reason).toBe('提交表单\nprocurement-cont…acturing-group.com · 「确认提交」');
 });

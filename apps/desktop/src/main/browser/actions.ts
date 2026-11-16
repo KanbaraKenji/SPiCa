@@ -113,7 +113,12 @@ function quoted(name: string): string {
  * one line, cut with … when long; chat/Blocks.tsx ConfirmCard).
  */
 function twoLines(what: string, site: string, on?: string): string {
-  return `${what}\n${on ? t('{site} · {on}', { site, on }) : site}`;
+  return `${what}\n${on ? t('{site} · {on}', { site: shortSite(site), on }) : site}`;
+}
+
+/** A long host cut in the middle (its start and its end kept), so what follows it (the button's words) still shows. */
+export function shortSite(site: string): string {
+  return site.length > 36 ? `${site.slice(0, 16)}…${site.slice(-18)}` : site;
 }
 
 /** Whether to do it, ask first, or leave it to the person. The question's words are the confirmation card's. */

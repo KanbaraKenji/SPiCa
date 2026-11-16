@@ -1034,16 +1034,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         {/* Only a dangerous one has a mark (the warning); an ordinary one's ringed i said nothing its 拒绝 / 允许
             do not (他在决策页 d26 选「只去掉普通确认卡的 i」). */}
         {danger ? <SpicaStatusIcon name="warning" size={16} /> : null}
-        {sub ? (
-          <span className="card-title-block">
-            <span className="card-title">{title}</span>
-            <span className="card-sub" title={sub}>
-              {sub}
-            </span>
-          </span>
-        ) : (
-          <span className="card-title">{title}</span>
-        )}
+        <span className="card-title">{title}</span>
         {danger ? <span className="confirm-undo">{t('无法撤销')}</span> : null}
         <span className="confirm-spacer" />
         {decided ? (
@@ -1062,6 +1053,12 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
           </div>
         )}
       </header>
+      {/* The reason's second line: under the head, lined up with the title, the card's whole width (whole on hover). */}
+      {sub ? (
+        <p className="card-sub" title={sub}>
+          {sub}
+        </p>
+      ) : null}
       <ConfirmTarget name={block.name} input={block.input} change={block.change} bare />
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
     </section>
