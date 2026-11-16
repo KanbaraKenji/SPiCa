@@ -5,6 +5,7 @@ import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, screen, session, shell, Tray } from 'electron';
 import { BROWSER_PARTITION } from './browser/policy';
 import { guardWebviews, setupBrowserSession } from './browser/session';
+import { applyBrowserNetwork, proxyLogin } from './browser/network';
 import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo, type UsageSummary } from '@spica/protocol';
 import { usageQuery } from '../shared/usage';
@@ -1363,6 +1364,18 @@ async function refreshNotices(): Promise<void> {
 let lastMail = JSON.stringify(settings.get().mail);
 let lastWorkflowsDir = workflowsDir();
 let lastNetwork = JSON.stringify(settings.get().network);
+/** The built-in browser on the same network settings as the core (main/browser/network.ts), whichever backend runs. */
+let browserNetwork = lastNetwork;
+function applyBrowserNetworkNow(): void {
+  if (!app.isReady()) return;
+  void applyBrowserNetwork(session.fromPartition(BROWSER_PARTITION), networkForCore(settings.get().network)).catch((err: unknown) => console.warn(`browser: network settings not applied (${String(err)})`));
+}
+settings.onChange((s) => {
+  const net = JSON.stringify(s.network);
+  if (net === browserNetwork) return;
+  browserNetwork = net;
+  applyBrowserNetworkNow();
+});
 let lastLocalConnect = settings.get().localConnect;
 let lastMemory = settings.get().memory;
 let lastAutoTidy = settings.get().memoryAutoTidy;
@@ -1762,6 +1775,15 @@ void app.whenReady().then(() => {
     });
   // The built-in browser's own session (its own cookies and storage; none of the app's schemes are registered on it).
   setupBrowserSession(session.fromPartition(BROWSER_PARTITION), { log: (line) => console.log(line) });
+  applyBrowserNetworkNow();
+  // A proxy that asks for its user name and password: the ones in 设置 › 网络's proxy address, for the browser's pages.
+  app.on('login', (e, contents, _details, authInfo, callback) => {
+    if (!authInfo.isProxy || contents?.session !== session.fromPartition(BROWSER_PARTITION)) return;
+    const login = proxyLogin(networkForCore(settings.get().network), { host: authInfo.host, port: authInfo.port });
+    if (!login) return;
+    e.preventDefault();
+    callback(login.username, login.password);
+  });
   protocol.handle(PLUGIN_SCHEME, (req) => servePluginFile(req.url));
   // The flowchart frame's files, with CORS (main/flow-scheme.ts).
   protocol.handle(FLOW_SCHEME, async (req) => {
