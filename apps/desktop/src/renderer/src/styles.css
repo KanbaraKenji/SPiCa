@@ -530,6 +530,12 @@ a:hover {
   color: var(--spica-placeholder);
 }
 
+/* A box saying what is wrong inside it (settings/Problem.tsx, the plugin form, 请求头): no example under the red
+   words; it is back once they go. */
+.has-problem-in-box .input::placeholder {
+  color: transparent;
+}
+
 /* A drop-down (ui/Select.tsx): the words on the left, the arrow as far from the right edge as they are from the
    left, both --control-pad-x in from the border. */
 .input.select-box {
