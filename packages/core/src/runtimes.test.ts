@@ -83,15 +83,15 @@ describe('node in run_command', () => {
 
 describe('the app’s libraries for scripts', () => {
   function fakeLib(root: string, name: string, version: string, body: string): void {
-    mkdirSync(join(root, 'node_modules', name), { recursive: true });
-    writeFileSync(join(root, 'node_modules', name, 'package.json'), JSON.stringify({ name, version, main: 'index.js' }));
-    writeFileSync(join(root, 'node_modules', name, 'index.js'), body);
+    mkdirSync(join(root, name), { recursive: true });
+    writeFileSync(join(root, name, 'package.json'), JSON.stringify({ name, version, main: 'index.js' }));
+    writeFileSync(join(root, name, 'index.js'), body);
   }
 
   it('are listed by name and version; a missing folder lists none', () => {
     fakeLib(dir, 'papaparse', '5.7.1', '');
     fakeLib(dir, 'exceljs', '4.4.0', '');
-    mkdirSync(join(dir, 'node_modules', 'not-a-lib'));
+    mkdirSync(join(dir, 'not-a-lib'));
     expect(listNodeLibs(dir)).toEqual([
       { name: 'exceljs', version: '4.4.0' },
       { name: 'papaparse', version: '5.7.1' },
@@ -102,7 +102,7 @@ describe('the app’s libraries for scripts', () => {
 
   it('go last on NODE_PATH, after the user’s own; nothing changes without the folder', () => {
     fakeLib(dir, 'x', '1.0.0', '');
-    const libs = join(dir, 'node_modules');
+    const libs = dir;
     expect(withNodeLibs({ PATH: 'p' }, dir)).toEqual({ PATH: 'p', NODE_PATH: libs });
     expect(withNodeLibs({ NODE_PATH: 'mine' }, dir)).toEqual({ NODE_PATH: `mine${delimiter}${libs}` });
     expect(withNodeLibs({ NODE_PATH: libs }, dir)).toEqual({ NODE_PATH: libs });

@@ -1,5 +1,5 @@
 // The libraries the Agent's scripts can require (exceljs for .xlsx, papaparse for CSV), each bundled into a
-// single CommonJS file with rolldown, into apps/desktop/node-libs/node_modules/<name>/ with its package.json
+// single CommonJS file with rolldown, into apps/desktop/node-libs/<name>/ with its package.json
 // (name, version, license) and licence text. electron-builder ships the folder as a resource (outside the
 // asar, so any Node can read it); the backend puts it last on run_command's NODE_PATH (core runtimes.ts).
 // Runs before dev, build and dist (a fraction of a second; always rebuilt, so a changed dependency is never
@@ -61,7 +61,7 @@ export async function buildNodeLibs(outDir = join(appDir, 'node-libs')) {
   for (const name of NODE_LIBS) {
     const src = packageDir(name);
     const pkg = JSON.parse(readFileSync(join(src, 'package.json'), 'utf8'));
-    const dest = join(outDir, 'node_modules', name);
+    const dest = join(outDir, name);
     const meta = join(dest, 'package.json');
     rmSync(dest, { recursive: true, force: true });
     mkdirSync(dest, { recursive: true });

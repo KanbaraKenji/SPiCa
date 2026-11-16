@@ -264,7 +264,7 @@
 
 ## 9. 打包、更新与公告
 
-- **随应用带的脚本库**（2026-11-16）：`scripts/node-libs.mjs` 把 exceljs、papaparse 各打成一个 CommonJS 文件写到 `apps/desktop/node-libs/node_modules/<库名>/`（带 package.json、LICENSE，exceljs 另有 THIRD-PARTY.txt 列出打进去的每个依赖的版本和许可证），`predev`、`build`、`dist` 前都跑（每次重打，零点几秒，依赖变了不会漏）；electron-builder 当 `extraResources` 放到 `resources/node-libs`（不进 asar，任何 Node 都读得到），这个文件夹不进版本控制。后台从 `nodeLibsDir` 拿到路径（打包后 `process.resourcesPath`，开发时应用目录），给 Agent 的 run_command 用（`agent-core.md` 内置工具表）。exceljs 约 1.1 MB，papaparse 约 20 KB。
+- **随应用带的脚本库**（2026-11-16）：`scripts/node-libs.mjs` 把 exceljs、papaparse 各打成一个 CommonJS 文件写到 `apps/desktop/node-libs/<库名>/`（不叫 node_modules：electron-builder 复制资源时会丢掉这个名字的文件夹）（带 package.json、LICENSE，exceljs 另有 THIRD-PARTY.txt 列出打进去的每个依赖的版本和许可证），`predev`、`build`、`dist` 前都跑（每次重打，零点几秒，依赖变了不会漏）；electron-builder 当 `extraResources` 放到 `resources/node-libs`（不进 asar，任何 Node 都读得到），这个文件夹不进版本控制。后台从 `nodeLibsDir` 拿到路径（打包后 `process.resourcesPath`，开发时应用目录），给 Agent 的 run_command 用（`agent-core.md` 内置工具表）。exceljs 约 1.1 MB，papaparse 约 20 KB。
 - **出包**：`npm run dist -w @spica/desktop`（electron-builder，配置 `apps/desktop/electron-builder.yml`），出到 `apps/desktop/release/`：
   - `Spica-Setup-<版本>.exe`：按用户安装（`perMachine: false`、`allowElevation: false`、`requestedExecutionLevel: asInvoker`），装到 `%LOCALAPPDATA%\Programs\Spica`，卸载信息写在 HKCU，**不需要管理员权限**；
   - `Spica-Portable-<版本>.exe`：便携版；

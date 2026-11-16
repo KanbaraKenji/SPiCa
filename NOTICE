@@ -25,12 +25,12 @@ Licensed under the MIT License (see plugins/office-preview/ui/vendor/LICENSE-exc
 
 Libraries the installed app carries for the Agent's scripts
 -----------------------------------------------------------
-resources/node-libs/node_modules/exceljs (exceljs 4.4.0, with its dependencies bundled into one file)
+resources/node-libs/exceljs (exceljs 4.4.0, with its dependencies bundled into one file)
 Copyright (c) 2014-2019 Guyon Roche
 Licensed under the MIT License. The dependencies are under MIT, ISC, BSD-3-Clause, Apache-2.0, Zlib or
 Unlicense terms (jszip, dual MIT / GPLv3, is used under the MIT license); each one's name, version and licence
 text is in THIRD-PARTY.txt next to the library. Written at build time by apps/desktop/scripts/node-libs.mjs.
 
-resources/node-libs/node_modules/papaparse (papaparse 5.7.1)
+resources/node-libs/papaparse (papaparse 5.7.1)
 Copyright (c) 2015 Matthew Holt
 Licensed under the MIT License (LICENSE next to the library).

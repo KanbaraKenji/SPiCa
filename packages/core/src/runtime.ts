@@ -94,7 +94,7 @@ export interface RuntimeOptions {
   spillDir?: string;
   /** Where run_command keeps the `node` stand-in for a computer without Node (runtimes.ts; default: a temp folder). */
   nodeShimDir?: string;
-  /** The libraries run_command's scripts can require (<dir>/node_modules; runtimes.ts). Default: none. */
+  /** The libraries run_command's scripts can require (<dir>/<name>; runtimes.ts). Default: none. */
   nodeLibsDir?: string;
   /**
    * The runtimes the model is told about (runtimesLine in the system prompt): the backend probes the computer

@@ -21,7 +21,7 @@ export interface CommandToolOptions {
   maxTimeoutMs?: number;
   /** Where the `node` stand-in goes when the command's PATH has no node (runtimes.ts). Default: a temp folder. */
   nodeShimDir?: string;
-  /** The libraries the app carries for scripts (<dir>/node_modules), last on NODE_PATH (runtimes.ts). */
+  /** The libraries the app carries for scripts (<dir>/<name>), last on NODE_PATH (runtimes.ts). */
   nodeLibsDir?: string;
 }
 

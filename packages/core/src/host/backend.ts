@@ -98,7 +98,7 @@ export interface BackendConfig {
   budget?: BudgetConfig;
   prices?: PriceTable;
   spillDir?: string;
-  /** The libraries the app carries for run_command's scripts (<dir>/node_modules/<name>; runtimes.ts). */
+  /** The libraries the app carries for run_command's scripts (<dir>/<name>; runtimes.ts). */
   nodeLibsDir?: string;
   /** Product name the models are told they work in (see RuntimeOptions.appName). Default 'Spica'. */
   appName?: string;

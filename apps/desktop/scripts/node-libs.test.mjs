@@ -18,12 +18,12 @@ describe('node-libs', () => {
     const w = await buildNodeLibs(out);
     expect(w.map((x) => x.name)).toEqual(NODE_LIBS);
     for (const name of NODE_LIBS) {
-      const pkg = JSON.parse(readFileSync(join(out, 'node_modules', name, 'package.json'), 'utf8'));
+      const pkg = JSON.parse(readFileSync(join(out, name, 'package.json'), 'utf8'));
       expect(pkg).toMatchObject({ name, main: 'index.js', license: 'MIT' });
-      expect(readFileSync(join(out, 'node_modules', name, 'LICENSE'), 'utf8')).toMatch(/MIT|Permission is hereby granted/);
+      expect(readFileSync(join(out, name, 'LICENSE'), 'utf8')).toMatch(/MIT|Permission is hereby granted/);
     }
     // exceljs's dependencies are listed with their licences; uuid is the fixed one, not the 8.x exceljs asks for
-    const third = readFileSync(join(out, 'node_modules', 'exceljs', 'THIRD-PARTY.txt'), 'utf8');
+    const third = readFileSync(join(out, 'exceljs', 'THIRD-PARTY.txt'), 'utf8');
     expect(third).toMatch(/^jszip 3\.10\.2 /m);
     expect(third).toMatch(/^uuid 14\.\d+\.\d+ \(MIT\)/m);
     expect(third).not.toMatch(/^uuid 8\./m);
@@ -59,7 +59,7 @@ describe('node-libs', () => {
         cwd: work,
         encoding: 'utf8',
         windowsHide: true,
-        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', NODE_PATH: join(out, 'node_modules') },
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', NODE_PATH: out },
       });
       expect(stdout).toContain('["甲",1.5]');
       expect(stdout).toContain('store,amount');

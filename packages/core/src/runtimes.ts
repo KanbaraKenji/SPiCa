@@ -6,7 +6,7 @@
 // PATH, so a Node the user installed always comes first and behaves as before; the app's only fills the gap.
 //
 // The app also carries a few libraries for data work (exceljs for .xlsx, papaparse for CSV), each bundled into one
-// file under <nodeLibsDir>/node_modules (apps/desktop/scripts/node-libs.mjs). run_command's NODE_PATH ends with
+// file under <nodeLibsDir>/<name> (apps/desktop/scripts/node-libs.mjs). run_command's NODE_PATH ends with
 // that folder, so a script's `require('exceljs')` finds them with whichever Node runs it; a script's own
 // node_modules and the user's NODE_PATH come first. NODE_PATH serves require only, not import: the model is told.
 //
@@ -88,10 +88,10 @@ export interface NodeLib {
   version: string;
 }
 
-/** The libraries in a node-libs folder (<dir>/node_modules/<name>/package.json); none when it is missing. */
+/** The libraries in a node-libs folder (<dir>/<name>/package.json); none when it is missing. */
 export function listNodeLibs(dir: string | undefined): NodeLib[] {
   if (!dir) return [];
-  const root = join(dir, 'node_modules');
+  const root = dir;
   let names: string[];
   try {
     names = readdirSync(root);
@@ -112,8 +112,10 @@ export function listNodeLibs(dir: string | undefined): NodeLib[] {
 
 /** A command's environment with the app's libraries last on NODE_PATH (unchanged without the folder). */
 export function withNodeLibs(env: Record<string, string>, dir: string | undefined): Record<string, string> {
-  if (!dir || !existsSync(join(dir, 'node_modules'))) return env;
-  const libs = join(dir, 'node_modules');
+  // NODE_PATH folders hold the packages themselves, under any name (not called node_modules: electron-builder
+  // leaves folders of that name out of resources)
+  if (!dir || !existsSync(dir)) return env;
+  const libs = dir;
   const key = Object.keys(env).find((k) => k.toUpperCase() === 'NODE_PATH') ?? 'NODE_PATH';
   const old = env[key] ?? '';
   if (old.split(delimiter).includes(libs)) return env;
