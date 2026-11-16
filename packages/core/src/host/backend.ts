@@ -15,6 +15,8 @@ import type { Provider } from '../providers/types.ts';
 import { Wso2Provider } from '../providers/wso2.ts';
 import { endsInVersion, joinUrl } from '../providers/http.ts';
 import { Runtime } from '../runtime.ts';
+import { probeRuntimes } from '../runtimes.ts';
+import { childEnv } from '../util.ts';
 import { SqliteStore } from '../store/sqlite.ts';
 import type { FileExtractor } from '../tools/types.ts';
 import { jsonSearchBackend, type JsonSearchBackendOptions } from '../tools/web-tools.ts';
@@ -416,6 +418,9 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
       mediaDir: join(dirname(cfg.dbPath), 'media'),
       // a conversation started without a folder gets its own one next to the database, not under Documents
       sessionFilesDir: join(dirname(cfg.dbPath), 'sessions'),
+      // run_command's \`node\` when the computer has none, and what the model is told it can run (runtimes.ts)
+      nodeShimDir: join(dirname(cfg.dbPath), 'node-shim'),
+      runtimes: probeRuntimes(childEnv('all')),
       ...(cfg.legacyDefaultCwd ? { legacyDefaultCwd: cfg.legacyDefaultCwd } : {}),
       ...(cfg.search ? { search: jsonSearchBackend(cfg.search) } : {}),
       ...(cfg.mail ? { mail: cfg.mail } : {}),

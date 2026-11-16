@@ -51,6 +51,7 @@ import { moveFolderContents, removeEmptyTree, samePath, within } from './move-fo
 import { newId, redact } from './util.ts';
 import { exportUsageLog, type UsageLogFilter } from './export.ts';
 import { BUILTIN_TEMPLATES, loadWorkflows, type RoleTemplate } from './projects.ts';
+import type { Runtimes } from './runtimes.ts';
 
 export interface RuntimeOptions {
   providers: Provider[];
@@ -91,6 +92,13 @@ export interface RuntimeOptions {
   cwd?: string;
   /** Where run_command saves outputs too long to return (default: a temp folder). */
   spillDir?: string;
+  /** Where run_command keeps the `node` stand-in for a computer without Node (runtimes.ts; default: a temp folder). */
+  nodeShimDir?: string;
+  /**
+   * The runtimes the model is told about (runtimesLine in the system prompt): the backend probes the computer
+   * at start (probeRuntimes). Without it nothing is said (tests, scripts).
+   */
+  runtimes?: Runtimes | Promise<Runtimes>;
   /** Search backend for web_search. Without one (and without hosted search) the tool is not offered. */
   search?: SearchBackend;
   /** Use the model's own hosted web search when the provider has it. Default true. */
@@ -142,6 +150,8 @@ export interface RuntimeInternals {
   ownFolder(sessionId: string): string | undefined;
   /** The shared folder of older versions a conversation may still work in (RuntimeOptions.legacyDefaultCwd). */
   readonly legacyDefaultCwd: string | undefined;
+  /** What run_command can run on this computer, once known (RuntimeOptions.runtimes); said in the system prompt. */
+  readonly runtimes: Runtimes | undefined;
   /** true / false when the catalog says whether the model takes images (or it refused them before); undefined: unknown, send them. */
   imagesAllowed(providerId: string, model: string): boolean | undefined;
   /** The provider refused images for this model: later requests to it leave the images out. */
@@ -312,12 +322,18 @@ export class Runtime implements RuntimeInternals {
    * conversations (settings.changed, a note with meta.settingsChange).
    */
   confirmSettingsChanges = false;
+  #runtimes: Runtimes | undefined;
+  get runtimes(): Runtimes | undefined {
+    return this.#runtimes;
+  }
   readonly #viewLimiters = new Map<string, RateLimiter>();
   /** The user's memory: list, edit, forget, restore, undo, clear, and the on / off switch. */
   readonly memory: MemoryBook;
 
   constructor(opts: RuntimeOptions) {
     this.#opts = opts;
+    if (opts.runtimes instanceof Promise) void opts.runtimes.then((r) => (this.#runtimes = r)).catch(() => undefined);
+    else this.#runtimes = opts.runtimes;
     this.#workflows = loadWorkflows(opts.workflowsDir, opts.workflows ?? []);
     this.mail = new MailPipeline(this, opts.mail ?? {});
     this.store = opts.store ?? new MemoryStore();
@@ -336,7 +352,7 @@ export class Runtime implements RuntimeInternals {
     for (const p of opts.providers) this.addProvider(p, opts.limits?.[p.id]);
     const defaults = [
       ...fileTools,
-      createRunCommandTool(opts.spillDir ? { spillDir: opts.spillDir } : {}),
+      createRunCommandTool({ ...(opts.spillDir ? { spillDir: opts.spillDir } : {}), ...(opts.nodeShimDir ? { nodeShimDir: opts.nodeShimDir } : {}) }),
       createWebFetchTool({ userAgent: `${this.appName.replace(/[^A-Za-z0-9._-]+/g, '-') || 'Spica'}/0.1 (+agent web_fetch)` }),
       ...agentTools,
       ...projectTools,
