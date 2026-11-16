@@ -4233,8 +4233,8 @@ button.ctx-row:hover {
 }
 
 /* The model form: one box of rows split by thin lines, as the plugin settings form (.group-box, settings/FormRow.tsx):
-   the name on the left, what you fill in on the right, every box as wide as the plugin form's (240); the model
-   list and 请求头 under their name, full width. */
+   the name on the left, what you fill in on the right, every one-line box as wide as the plugin form's (240; the
+   花费上限 amount 120); the model list and 请求头 under their name, as wide as the row. */
 .provider-editor {
   margin-top: 16px;
 }
@@ -4261,6 +4261,12 @@ button.ctx-row:hover {
 
 .provider-editor .form-row .spend-limit .run-limit .input {
   width: 120px;
+}
+
+/* the model list and 请求头: as wide as the row, their right edge on the boxes' */
+.provider-editor .form-row .model-picker,
+.provider-editor .form-row .header-rows {
+  max-width: none;
 }
 
 /* A problem after a name stays on its line (模型, 花费上限). */
@@ -4329,23 +4335,6 @@ button.ctx-row:hover {
 
 .input.is-invalid {
   border-color: var(--spica-danger);
-}
-
-/* 服务商 and 粘贴配置 on one line. */
-.provider-choice {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.field .provider-choice > .input {
-  flex: 1 1 220px;
-  max-width: 320px;
-}
-
-.provider-choice > .paste-config {
-  flex: 1 1 auto;
 }
 
 .provider-tail {

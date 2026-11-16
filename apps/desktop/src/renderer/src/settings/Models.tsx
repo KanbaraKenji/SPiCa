@@ -126,19 +126,19 @@ function Field({ label, value, onChange, error, placeholder, type = 'text', hint
         </>
       }
     >
-        <ProblemBox problem={error}>
-          <input
-            className={error ? 'input is-invalid' : 'input'}
-            type={type}
-            value={value}
-            placeholder={placeholder}
-            spellCheck={false}
-            autoComplete="off"
-            aria-invalid={error ? true : undefined}
-            {...(hint ? { 'aria-description': hint } : {})}
-            onChange={(e) => onChange(e.target.value)}
-          />
-        </ProblemBox>
+      <ProblemBox problem={error}>
+        <input
+          className={error ? 'input is-invalid' : 'input'}
+          type={type}
+          value={value}
+          placeholder={placeholder}
+          spellCheck={false}
+          autoComplete="off"
+          aria-invalid={error ? true : undefined}
+          {...(hint ? { 'aria-description': hint } : {})}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </ProblemBox>
     </FormRow>
   );
 }
@@ -755,18 +755,18 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
           }}
         >
           <FormRow title={t('服务商')} controlClassName="provider-choice">
-              <Select
-                value={choice}
-                label={t('服务商')}
-                placeholder={t('选择服务商')}
-                onChange={pick}
-                options={[
-                  ...GROUPS.flatMap((g) => providers.filter((p) => p.group === g.group).map((p) => ({ value: p.id, label: p.name, group: t(g.label) }))),
-                  { value: WSO2, label: t('公司网关（WSO2）'), group: t('其他') },
-                  { value: RELAY, label: t('中转站'), group: t('其他') },
-                ]}
-              />
-              <PasteConfig key={selected ?? ''} kind={draft.kind} onApply={applyPaste} />
+            <Select
+              value={choice}
+              label={t('服务商')}
+              placeholder={t('选择服务商')}
+              onChange={pick}
+              options={[
+                ...GROUPS.flatMap((g) => providers.filter((p) => p.group === g.group).map((p) => ({ value: p.id, label: p.name, group: t(g.label) }))),
+                { value: WSO2, label: t('公司网关（WSO2）'), group: t('其他') },
+                { value: RELAY, label: t('中转站'), group: t('其他') },
+              ]}
+            />
+            <PasteConfig key={selected ?? ''} kind={draft.kind} onApply={applyPaste} />
           </FormRow>
 
           {choice !== '' ? (
@@ -821,24 +821,24 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                     </>
                   }
                 >
-                    <ProblemBox problem={errors.secret}>
-                    <input
-                      className={errors.secret ? 'input is-invalid' : 'input'}
-                      type="password"
-                      value={draft.secret ?? ''}
-                      placeholder={hasSecret ? t('已保存（留空不修改）') : ''}
-                      spellCheck={false}
-                      autoComplete="off"
-                      aria-invalid={errors.secret ? true : undefined}
-                      {...(isWso2 ? { 'aria-description': t('即 Client Secret，与 Consumer Key 位于同一位置。') } : {})}
-                      onChange={(e) => set({ secret: e.target.value })}
-                    />
-                    </ProblemBox>
-                    {provider?.docsUrl ? (
-                      <a className="field-link" href={provider.docsUrl} target="_blank" rel="noreferrer">
-                        {t('API 文档')}
-                      </a>
-                    ) : null}
+                  <ProblemBox problem={errors.secret}>
+                  <input
+                    className={errors.secret ? 'input is-invalid' : 'input'}
+                    type="password"
+                    value={draft.secret ?? ''}
+                    placeholder={hasSecret ? t('已保存（留空不修改）') : ''}
+                    spellCheck={false}
+                    autoComplete="off"
+                    aria-invalid={errors.secret ? true : undefined}
+                    {...(isWso2 ? { 'aria-description': t('即 Client Secret，与 Consumer Key 位于同一位置。') } : {})}
+                    onChange={(e) => set({ secret: e.target.value })}
+                  />
+                  </ProblemBox>
+                  {provider?.docsUrl ? (
+                    <a className="field-link" href={provider.docsUrl} target="_blank" rel="noreferrer">
+                      {t('API 文档')}
+                    </a>
+                  ) : null}
                 </FormRow>
               ) : null}
 
@@ -854,26 +854,26 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                   </>
                 }
               >
-                  <ModelPicker
-                    catalog={provider?.models ?? []}
-                    fetched={fetched}
-                    selected={draft.models ?? []}
-                    matchedNames={matchedNames}
-                    onToggle={toggle}
-                    onRemove={(id) => set({ models: (draft.models ?? []).filter((x) => x.id !== id) })}
-                    onWindow={setWindow}
-                    onAdd={addTyped}
-                    onFetch={api.listModels ? () => void fetchRun(fetchModels) : undefined}
-                    fetching={fetching}
-                    fetchError={fetchError}
-                    fetchNote={
-                      fetchNote === null
-                        ? null
-                        : fetchNote.added
-                          ? t('已获取 {n} 个模型，新增 {added} 个', { n: fetchNote.got, added: fetchNote.added })
-                          : t('已获取 {n} 个模型，没有新增', { n: fetchNote.got })
-                    }
-                  />
+                <ModelPicker
+                  catalog={provider?.models ?? []}
+                  fetched={fetched}
+                  selected={draft.models ?? []}
+                  matchedNames={matchedNames}
+                  onToggle={toggle}
+                  onRemove={(id) => set({ models: (draft.models ?? []).filter((x) => x.id !== id) })}
+                  onWindow={setWindow}
+                  onAdd={addTyped}
+                  onFetch={api.listModels ? () => void fetchRun(fetchModels) : undefined}
+                  fetching={fetching}
+                  fetchError={fetchError}
+                  fetchNote={
+                    fetchNote === null
+                      ? null
+                      : fetchNote.added
+                        ? t('已获取 {n} 个模型，新增 {added} 个', { n: fetchNote.got, added: fetchNote.added })
+                        : t('已获取 {n} 个模型，没有新增', { n: fetchNote.got })
+                  }
+                />
               </FormRow>
 
               {/* 花费上限: what this provider may cost in a period (7 天 / 30 天 / 自定义); 本周期已花 under it once saved */}
@@ -885,50 +885,50 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                   </>
                 }
               >
-                  <span className="spend-limit">
-                    <label className="run-limit">
-                      <span aria-hidden="true">US$</span>
-                      <input
-                        className={errors.spendLimitUsd ? 'input is-invalid' : 'input'}
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={numText(draft.spendLimitUsd ?? null)}
-                        placeholder={t('不限')}
-                        autoComplete="off"
-                        aria-label={t('花费上限（美元）')}
-                        aria-invalid={errors.spendLimitUsd ? true : undefined}
-                        onChange={(e) => set({ spendLimitUsd: parseNum(e.target.value) })}
-                      />
-                    </label>
-                    <Select
-                      className="spend-period"
-                      label={t('周期')}
-                      value={customPeriod ? 'custom' : String(draft.spendPeriodDays ?? SPEND_PERIOD_DEFAULT)}
-                      options={[...SPEND_PERIODS.map((d) => ({ value: String(d), label: t('{n} 天', { n: d }) })), { value: 'custom', label: t('自定义') }]}
-                      onChange={(v) => {
-                        setCustomPeriod(v === 'custom');
-                        if (v !== 'custom') set({ spendPeriodDays: Number(v) });
-                      }}
+                <span className="spend-limit">
+                  <label className="run-limit">
+                    <span aria-hidden="true">US$</span>
+                    <input
+                      className={errors.spendLimitUsd ? 'input is-invalid' : 'input'}
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={numText(draft.spendLimitUsd ?? null)}
+                      placeholder={t('不限')}
+                      autoComplete="off"
+                      aria-label={t('花费上限（美元）')}
+                      aria-invalid={errors.spendLimitUsd ? true : undefined}
+                      onChange={(e) => set({ spendLimitUsd: parseNum(e.target.value) })}
                     />
-                    {customPeriod ? (
-                      <label className="run-limit">
-                        <input
-                          className={errors.spendPeriodDays ? 'input is-invalid' : 'input'}
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={draft.spendPeriodDays ?? ''}
-                          autoComplete="off"
-                          aria-label={t('周期天数')}
-                          aria-invalid={errors.spendPeriodDays ? true : undefined}
-                          onChange={(e) => set({ spendPeriodDays: e.target.value === '' ? Number.NaN : Number(e.target.value) })}
-                        />
-                        <span aria-hidden="true">{t('天')}</span>
-                      </label>
-                    ) : null}
-                  </span>
-                  {current && spent[current.id] ? <span className="spend-spent">{spendLine(spent[current.id]!)}</span> : null}
+                  </label>
+                  <Select
+                    className="spend-period"
+                    label={t('周期')}
+                    value={customPeriod ? 'custom' : String(draft.spendPeriodDays ?? SPEND_PERIOD_DEFAULT)}
+                    options={[...SPEND_PERIODS.map((d) => ({ value: String(d), label: t('{n} 天', { n: d }) })), { value: 'custom', label: t('自定义') }]}
+                    onChange={(v) => {
+                      setCustomPeriod(v === 'custom');
+                      if (v !== 'custom') set({ spendPeriodDays: Number(v) });
+                    }}
+                  />
+                  {customPeriod ? (
+                    <label className="run-limit">
+                      <input
+                        className={errors.spendPeriodDays ? 'input is-invalid' : 'input'}
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={draft.spendPeriodDays ?? ''}
+                        autoComplete="off"
+                        aria-label={t('周期天数')}
+                        aria-invalid={errors.spendPeriodDays ? true : undefined}
+                        onChange={(e) => set({ spendPeriodDays: e.target.value === '' ? Number.NaN : Number(e.target.value) })}
+                      />
+                      <span aria-hidden="true">{t('天')}</span>
+                    </label>
+                  ) : null}
+                </span>
+                {current && spent[current.id] ? <span className="spend-spent">{spendLine(spent[current.id]!)}</span> : null}
               </FormRow>
 
               <div className="provider-more">

@@ -51,54 +51,54 @@ export function HeadersField({ rows, saved, onChange, showErrors }: { rows: read
     );
   return (
     <FormRow stack title={t('请求头')}>
-        <span className="header-rows">
-          {list.map((h, i) => {
-            const mask = maskOf(h);
-            const err = cells[i] ?? {};
-            return (
-              <span key={i} className="header-row">
-                <span className={err.name ? 'header-cell header-name has-problem-in-box' : 'header-cell header-name'}>
-                  <input
-                    className={err.name ? 'input is-invalid' : 'input'}
-                    value={h.name}
-                    placeholder="X-API-Key"
-                    aria-label={t('请求头名称')}
-                    aria-invalid={err.name ? true : undefined}
-                    spellCheck={false}
-                    autoComplete="off"
-                    onChange={(e) => edit(i, { name: e.target.value })}
-                  />
-                  {err.name ? <span className="field-error problem-in-box">{err.name}</span> : null}
-                </span>
-                <span className={err.value ? 'header-cell header-value has-problem-in-box' : 'header-cell header-value'}>
-                  <input
-                    className={err.value ? 'input is-invalid' : 'input'}
-                    type="password"
-                    value={h.value ?? ''}
-                    placeholder={mask ? t('{mask}（留空不修改）', { mask }) : t('值')}
-                    aria-label={t('{name} 的值', { name: h.name.trim() || t('请求头') })}
-                    aria-invalid={err.value ? true : undefined}
-                    spellCheck={false}
-                    autoComplete="off"
-                    onChange={(e) => edit(i, { value: e.target.value })}
-                  />
-                  {err.value ? <span className="field-error problem-in-box">{err.value}</span> : null}
-                </span>
-                {list.length > 1 ? (
-                  <button type="button" className="icon-btn" onClick={() => onChange(list.filter((_, j) => j !== i))} aria-label={t('删除 {name}', { name: h.name.trim() || t('请求头') })} title={t('删除')}>
-                    <Icon name="trash" size={14} />
-                  </button>
-                ) : null}
+      <span className="header-rows">
+        {list.map((h, i) => {
+          const mask = maskOf(h);
+          const err = cells[i] ?? {};
+          return (
+            <span key={i} className="header-row">
+              <span className={err.name ? 'header-cell header-name has-problem-in-box' : 'header-cell header-name'}>
+                <input
+                  className={err.name ? 'input is-invalid' : 'input'}
+                  value={h.name}
+                  placeholder="X-API-Key"
+                  aria-label={t('请求头名称')}
+                  aria-invalid={err.name ? true : undefined}
+                  spellCheck={false}
+                  autoComplete="off"
+                  onChange={(e) => edit(i, { name: e.target.value })}
+                />
+                {err.name ? <span className="field-error problem-in-box">{err.name}</span> : null}
               </span>
-            );
-          })}
-        </span>
-        <span className="model-pills">
-          <button type="button" className="model-pill is-action" onClick={() => onChange([...list, { name: '' }])}>
-            <Icon name="plus" size={12} />
-            {t('添加')}
-          </button>
-        </span>
+              <span className={err.value ? 'header-cell header-value has-problem-in-box' : 'header-cell header-value'}>
+                <input
+                  className={err.value ? 'input is-invalid' : 'input'}
+                  type="password"
+                  value={h.value ?? ''}
+                  placeholder={mask ? t('{mask}（留空不修改）', { mask }) : t('值')}
+                  aria-label={t('{name} 的值', { name: h.name.trim() || t('请求头') })}
+                  aria-invalid={err.value ? true : undefined}
+                  spellCheck={false}
+                  autoComplete="off"
+                  onChange={(e) => edit(i, { value: e.target.value })}
+                />
+                {err.value ? <span className="field-error problem-in-box">{err.value}</span> : null}
+              </span>
+              {list.length > 1 ? (
+                <button type="button" className="icon-btn" onClick={() => onChange(list.filter((_, j) => j !== i))} aria-label={t('删除 {name}', { name: h.name.trim() || t('请求头') })} title={t('删除')}>
+                  <Icon name="trash" size={14} />
+                </button>
+              ) : null}
+            </span>
+          );
+        })}
+      </span>
+      <span className="model-pills">
+        <button type="button" className="model-pill is-action" onClick={() => onChange([...list, { name: '' }])}>
+          <Icon name="plus" size={12} />
+          {t('添加')}
+        </button>
+      </span>
     </FormRow>
   );
 }
