@@ -10,7 +10,10 @@ import { t } from '../../../shared/i18n';
 
 export interface UpdateNoticeView {
   kind: 'app' | 'plugins';
+  /** In full: the hover text, and what the icon in the column of icons says. */
   text: string;
+  /** On the card, next to its button (立即更新 already says it is downloaded). */
+  short: string;
   /** The version must update: warning colour, no 稍后. */
   required: boolean;
   /** 立即更新 can be pressed (a portable copy only hears of it). */
@@ -34,6 +37,7 @@ export function useUpdateNotice(update: UpdateState | null): UpdateNoticeView | 
     return {
       kind: 'app',
       text: ready ? t('新版本 {version} 已下载', { version: available }) : t('新版本 {version}', { version: available }),
+      short: t('新版本 {version}', { version: available }),
       required,
       ready,
       count: 0,
@@ -42,7 +46,10 @@ export function useUpdateNotice(update: UpdateState | null): UpdateNoticeView | 
   }
   // Closed: shown again only when the count grows.
   const n = update?.pluginUpdates ?? 0;
-  if (n > pluginsClosed) return { kind: 'plugins', text: t('{n} 个插件可更新', { n }), required: false, ready: false, count: n, close: () => setPluginsClosed(n) };
+  if (n > pluginsClosed) {
+    const text = t('{n} 个插件可更新', { n });
+    return { kind: 'plugins', text, short: text, required: false, ready: false, count: n, close: () => setPluginsClosed(n) };
+  }
   return null;
 }
 
@@ -60,8 +67,8 @@ export function UpdateCard({ notice, onInstall, onOpenPlugins }: UpdateNoticePro
   return (
     <div className={notice.required ? 'update-card is-warning' : 'update-card'} role="status">
       <SpicaStatusIcon name={notice.required ? 'warning' : 'done'} size={15} className="notice-icon" />
-      <span className="update-card-text" title={notice.text} data-tip-clipped="">
-        {notice.text}
+      <span className="update-card-text" title={notice.text}>
+        {notice.short}
       </span>
       {notice.kind === 'app' && notice.ready ? (
         <button type="button" className="btn btn-small btn-primary update-card-action" onClick={onInstall}>

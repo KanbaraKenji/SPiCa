@@ -5811,6 +5811,17 @@ section.plugins-part > .plugins-part-title {
   margin-left: -4px;
 }
 
+/* The narrowest side bar: the mark goes, so the words keep what room there is. */
+.update-card {
+  container-type: inline-size;
+}
+
+@container (max-width: 200px) {
+  .update-card .notice-icon {
+    display: none;
+  }
+}
+
 /* In the column of icons: one icon in the same place; a dot for a downloaded update, the whole icon in the
    warning colour when the version must update. */
 .sidebar.is-rail .update-rail {
