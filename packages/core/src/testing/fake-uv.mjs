@@ -1,6 +1,6 @@
 // A stand-in for uv in tests (python-env.test.ts), run as `node fake-uv.mjs <config.json> <uv arguments>`
-// (config: { log, fail, pythonUrl }): appends what it was asked (arguments and the UV_* / proxy variables) to
-// log, and acts out just enough of uv: listing a Python download, "installing" Python, making a virtual
+// (config: { log, fail, failText, pythonUrl }): appends what it was asked (arguments and the UV_* / proxy
+// variables) to log, and acts out just enough of uv: listing a Python download, "installing" Python, making a virtual
 // environment, resolving, dry runs, installing and listing packages. Exit 3 when config.fail names the command
 // (e.g. "pip install").
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -12,7 +12,7 @@ const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => /^(UV
 if (config.log) appendFileSync(config.log, JSON.stringify({ args, env }) + '\n');
 const cmd = args.slice(0, 2).join(' ');
 if (config.fail && cmd === config.fail) {
-  process.stderr.write('error: Failed to fetch: `https://pypi.example.com/simple/nope/`\n');
+  process.stderr.write(`${config.failText ?? 'error: Failed to fetch: https://pypi.example.com/simple/nope/'}\n`);
   process.exit(3);
 }
 const pinsFor = (names) =>

@@ -13,6 +13,7 @@ import {
   installPython,
   listPackages,
   normalizeName,
+  packageSpecProblem,
   packageBytes,
   parseDryRun,
   parsePins,
@@ -134,10 +135,44 @@ describe('uv’s environment keeps everything in the app’s folder', () => {
       const env = uvEnv({ uvExe: 'uv', root: dir, netDir: join(dir, 'net') });
       expect(env.HTTPS_PROXY).toBe('http://user:pw@proxy.example.com:8080/');
       expect(env.NO_PROXY).toContain('intra.example.com');
-      expect(env.UV_SYSTEM_CERTS).toBe('true');
+      // 信任系统证书 off: uv is not told to read the system store
+      expect(env.UV_SYSTEM_CERTS).toBeUndefined();
+      expect(env.SSL_CERT_FILE).toBeUndefined();
+      // on: the system's certificates reach uv, as one file with all the app trusts or through the store itself
+      configureNetwork({ proxy: null, caFile: null, useSystemCa: true });
+      const on = uvEnv({ uvExe: 'uv', root: dir, netDir: join(dir, 'net') });
+      expect(on.SSL_CERT_FILE ? existsSync(on.SSL_CERT_FILE) : on.UV_SYSTEM_CERTS === 'true').toBe(true);
     } finally {
       configureNetwork({ proxy: null, caFile: null, useSystemCa: false });
     }
+  });
+
+  it('the proxy’s password does not show in uv’s errors', async () => {
+    try {
+      configureNetwork({ proxy: { url: 'http://user:p%40ss@proxy.example.com:8080' }, caFile: null, useSystemCa: false });
+      writeFileSync(join(dir, 'fake.json'), JSON.stringify({ log, fail: 'pip install', failText: 'error: proxy http://user:p%40ss@proxy.example.com:8080 refused; p@ss' }));
+      await installPython(opts, []).catch(() => undefined);
+      const err = (await installPython(opts, ['pandas']).catch((e: unknown) => e)) as UvError;
+      expect(err).toBeInstanceOf(UvError);
+      expect(err.message + err.output).not.toMatch(/p@ss|p%40ss/);
+      expect(err.message).toContain('***');
+    } finally {
+      configureNetwork({ proxy: null, caFile: null, useSystemCa: false });
+    }
+  });
+});
+
+describe('package requests', () => {
+  it('names with optional extras and version conditions pass', () => {
+    for (const ok of ['pandas', 'pandas>=2.2,<3', 'requests[socks]==2.32.0', 'python-dateutil', 'Py_Thing.x ~= 1.4', 'numpy!=2.0.0']) expect(packageSpecProblem(ok), ok).toBeUndefined();
+  });
+
+  it('options, files, URLs and direct references are refused, and nothing runs', async () => {
+    const bad = ['--index-url=https://evil.example.com/simple', '-r requirements.txt', 'git+https://example.com/x.git', 'pkg @ https://example.com/x.whl', './local-folder', 'C:\\x\\y.whl', 'pandas; os.system("x")', '', 'a b'];
+    for (const b of bad) expect(packageSpecProblem(b), b).toBeDefined();
+    await expect(installPython(opts, ['pandas', '--index-url=https://evil.example.com/simple'])).rejects.toBeInstanceOf(UvError);
+    await expect(planPackages(opts, ['-r', 'req.txt'])).rejects.toBeInstanceOf(UvError);
+    expect(calls()).toEqual([]);
   });
 });
 
@@ -154,6 +189,11 @@ describe('before downloading: what and how big', () => {
     ]);
     expect(calls()[0]!.args).toEqual(['pip', 'compile', '-', '--python-version', '3.12', '--no-header', '--no-annotate', '--quiet']);
     expect(existsSync(opts.root)).toBe(false); // nothing downloaded or made
+  });
+
+  it('when uv cannot resolve before Python is there: the requested names, versions and sizes unknown', async () => {
+    writeConfig({ fail: 'pip compile' });
+    expect(await planPackages(opts, ['pandas>=2', 'openpyxl'])).toEqual([{ name: 'pandas' }, { name: 'openpyxl' }]);
   });
 
   it('packages after: only what is not there yet (dry run against the environment)', async () => {
@@ -210,6 +250,15 @@ describe('installing, listing, clearing', () => {
     await installPython(opts, ['openpyxl']);
     expect(calls().slice(before).map((c) => c.args.slice(0, 2).join(' '))).toEqual(['pip install', 'pip list']);
     expect(await listPackages(opts)).toEqual([{ name: 'openpyxl', version: '1.0.0' }]);
+  });
+
+  it('two installs into the same folder run one after the other', async () => {
+    await installPython(opts, []);
+    const before = calls().length;
+    await Promise.all([installPython(opts, ['openpyxl']), installPython(opts, ['xlrd'])]);
+    const order = calls().slice(before).map((c) => c.args.slice(0, 2).join(' '));
+    expect(order).toEqual(['pip install', 'pip list', 'pip install', 'pip list']);
+    expect((await listPackages(opts)).map((p) => p.name).sort()).toEqual(['openpyxl', 'xlrd']);
   });
 
   it('a failing download says what uv said', async () => {
