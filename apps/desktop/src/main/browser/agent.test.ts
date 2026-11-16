@@ -243,3 +243,36 @@ describe('acting on a page', () => {
     ]);
   });
 });
+describe('one conversation acts in line', () => {
+  it('two typings sent at once do not interleave (each clicks its field, then types)', async () => {
+    const s = setup();
+    await s.agent.open('s1', { url: 'https://site.example/' });
+    const p = s.pages.get(100)!;
+    p.state.facts = { found: true, tag: 'input', type: 'text', role: '', name: 'Name', autocomplete: '', fieldName: '', editable: true, page: 'https://site.example/', x: 10, y: 10 };
+    // each protocol command takes a moment, as in the window
+    const cdp = p.page.cdp;
+    p.page.cdp = async (m, a) => {
+      await new Promise((r) => setTimeout(r, 5));
+      return cdp(m, a);
+    };
+    await Promise.all([s.agent.type('s1', { ref: 1, text: '张三' }), s.agent.type('s1', { ref: 2, text: 'zhangsan@example.com' })]);
+    expect(p.sent.map(([m, a]) => (m === 'Input.insertText' ? `type ${String(a?.text)}` : String(a?.type)))).toEqual([
+      'mousePressed',
+      'mouseReleased',
+      'type 张三',
+      'mousePressed',
+      'mouseReleased',
+      'type zhangsan@example.com',
+    ]);
+  });
+
+  it('a failed step does not stop the next one', async () => {
+    const s = setup();
+    await s.agent.open('s1', { url: 'https://site.example/' });
+    const p = s.pages.get(100)!;
+    p.state.facts = { found: true, tag: 'button', type: 'button', role: '', name: 'Go', autocomplete: '', fieldName: '', editable: false, page: 'https://site.example/', x: 1, y: 1 };
+    const [bad, good] = await Promise.allSettled([s.agent.press('s1', { key: 'F13' }), s.agent.click('s1', { ref: 1 })]);
+    expect(bad.status).toBe('rejected');
+    expect(good.status).toBe('fulfilled');
+  });
+});

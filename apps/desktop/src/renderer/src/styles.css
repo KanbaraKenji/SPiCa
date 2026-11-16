@@ -6255,7 +6255,38 @@ section.plugins-part > .plugins-part-title {
   margin: 0 4px 0 0;
 }
 
-/* An answer of one's own may be long: it gives way (and wraps) before the question does. */
+/* A narrow card (the chat squeezed by the panel; ConfirmCard measures it): 拒绝 and 允许 (or what was decided) on a
+   row of their own under the words, at the right end, so the words keep the row's width instead of a column a few
+   characters wide. A wider card is as above. */
+.confirm-card.is-narrow > .card-head {
+  flex-wrap: wrap;
+}
+
+.confirm-card.is-narrow > .card-head > .card-title {
+  flex: 1 1 0;
+}
+
+.confirm-card.is-narrow > .card-head > .confirm-spacer {
+  display: none;
+}
+
+.confirm-card.is-narrow > .card-head > .card-actions,
+.confirm-card.is-narrow > .card-head > .card-answer {
+  flex: 1 0 100%;
+  justify-content: flex-end;
+}
+
+/* The answer at the question's right end, as wide as its words up to half the card: the question takes the rest
+   (it starts from nothing, so a long question no longer squeezes the answer into a column one character wide).
+   The spacer is not needed: the question fills the room up to the answer. */
+.ask-card > .card-head > .card-title {
+  flex: 1 1 0;
+}
+
+.ask-card > .card-head > .confirm-spacer {
+  display: none;
+}
+
 .ask-card > .card-head .card-answer {
   flex: 0 1 auto;
   min-width: 0;

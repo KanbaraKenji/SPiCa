@@ -1,6 +1,6 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
+import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
 import type { ChangePreview, InstallPreview, FileCardMeta, HistoryCardMeta, SourceCardMeta, SourceRow } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -1054,6 +1054,31 @@ export function InstallList({ preview }: { preview: InstallPreview }) {
   );
 }
 
+/** The room a confirmation card's words need on its one row (in characters of its size), else its buttons go under. */
+const CONFIRM_WORDS_ROOM = 9;
+
+/** Width of a head item as it is on one row: a row of things (the buttons, what was decided) as wide as they are. */
+function naturalWidth(el: Element): number {
+  const style = getComputedStyle(el);
+  const margins = (parseFloat(style.marginLeft) || 0) + (parseFloat(style.marginRight) || 0);
+  const kids = [...el.children];
+  if (!kids.length || !style.display.includes('flex')) return el.getBoundingClientRect().width + margins;
+  const gap = parseFloat(style.columnGap) || 0;
+  return kids.reduce((sum, k) => sum + k.getBoundingClientRect().width, 0) + gap * (kids.length - 1) + margins;
+}
+
+/** Whether the words would be narrower than CONFIRM_WORDS_ROOM characters with everything on one row. */
+function wordsSqueezed(head: HTMLElement): boolean {
+  const title = head.querySelector(':scope > .card-title');
+  if (!title) return false;
+  const style = getComputedStyle(head);
+  const kids = [...head.children];
+  const others = kids.filter((k) => k !== title && !k.classList.contains('confirm-spacer')).reduce((sum, k) => sum + naturalWidth(k), 0);
+  const gaps = (parseFloat(style.columnGap) || 0) * (kids.length - 1);
+  const room = head.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0) - others - gaps;
+  return room < (parseFloat(getComputedStyle(title).fontSize) || 14) * CONFIRM_WORDS_ROOM;
+}
+
 /**
  * A confirmation: the card is what would run. One slim row (what it will do, 无法撤销 when it cannot be taken
  * back, 拒绝 / 允许 or what was decided), then the command in full (copy at its top right) or the call's arguments.
@@ -1062,6 +1087,18 @@ export function InstallList({ preview }: { preview: InstallPreview }) {
 export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type: 'confirm' }>; onDecide(approved: boolean): void }) {
   const [sent, setSent] = useState(false);
   const decided = block.approved !== undefined || block.cancelled === true;
+  // A narrow card (the chat squeezed by the panel) whose words would be a column a few characters wide: 拒绝 / 允许
+  // (or what was decided) on a row under them. Measured here, not a container query: that would change how the card
+  // is painted at every width.
+  const head = useRef<HTMLElement>(null);
+  const [narrow, setNarrow] = useState(false);
+  useLayoutEffect(() => {
+    const el = head.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setNarrow(wordsSqueezed(el)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [decided]);
   const decide = (approved: boolean) => {
     if (sent) return;
     setSent(true);
@@ -1077,10 +1114,10 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
   const [reasonHead, ...reasonRest] = block.reason.split('\n');
   const sub = command === null && !block.install && reasonRest.length ? reasonRest.join(' ') : '';
   const title = block.install ? installTitle(block.install) : command === null ? confirmTitle(block.name, block.input, sub ? (reasonHead ?? '') : block.reason) : facts.length ? facts.map((f) => f.text).join(t('；')) : t('运行命令');
-  const cls = ['card', 'confirm-card', danger ? 'is-danger' : '', decided ? 'is-done' : ''].filter(Boolean).join(' ');
+  const cls = ['card', 'confirm-card', danger ? 'is-danger' : '', decided ? 'is-done' : '', narrow ? 'is-narrow' : ''].filter(Boolean).join(' ');
   return (
     <section className={cls} aria-label={t('确认')}>
-      <header className="card-head">
+      <header ref={head} className="card-head">
         {/* Only a dangerous one has a mark (the warning); an ordinary one's ringed i said nothing its 拒绝 / 允许
             do not (他在决策页 d26 选「只去掉普通确认卡的 i」). */}
         {danger ? <SpicaStatusIcon name="warning" size={16} /> : null}

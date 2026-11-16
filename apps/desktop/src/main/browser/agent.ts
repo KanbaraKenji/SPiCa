@@ -303,7 +303,39 @@ export class BrowserAgent {
     for (const type of ['mousePressed', 'mouseReleased']) await page.cdp('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
   }
 
-  async click(sessionId: string, args: { ref?: unknown; tab?: unknown; expect?: unknown; callId?: unknown }): Promise<TabResult> {
+  /**
+   * One conversation's acting steps run one after another: a click or typing moves the focus, so two at once (the
+   * model may send them in parallel) would type into each other's field. By conversation id.
+   */
+  readonly #lines = new Map<string, Promise<unknown>>();
+
+  #inLine<T>(sessionId: string, step: () => Promise<T>): Promise<T> {
+    const before = this.#lines.get(sessionId) ?? Promise.resolve();
+    const run = before.then(step, step);
+    const settled = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.#lines.set(sessionId, settled);
+    void settled.then(() => {
+      if (this.#lines.get(sessionId) === settled) this.#lines.delete(sessionId);
+    });
+    return run;
+  }
+
+  click(sessionId: string, args: { ref?: unknown; tab?: unknown; expect?: unknown; callId?: unknown }): Promise<TabResult> {
+    return this.#inLine(sessionId, () => this.#click(sessionId, args));
+  }
+
+  type(sessionId: string, args: { ref?: unknown; text?: unknown; submit?: unknown; tab?: unknown; expect?: unknown; callId?: unknown }): Promise<TabResult> {
+    return this.#inLine(sessionId, () => this.#type(sessionId, args));
+  }
+
+  press(sessionId: string, args: { key?: unknown; tab?: unknown; expect?: unknown; callId?: unknown }): Promise<TabResult> {
+    return this.#inLine(sessionId, () => this.#press(sessionId, args));
+  }
+
+  async #click(sessionId: string, args: { ref?: unknown; tab?: unknown; expect?: unknown; callId?: unknown }): Promise<TabResult> {
     const expect = this.#expectFor(args);
     const { info, page, number } = await this.#actPage(sessionId, args.tab);
     const f = this.#still(await this.#facts(page, 'browser_click', args.ref), expect);
@@ -312,7 +344,7 @@ export class BrowserAgent {
     return this.#after(page, number, `Clicked [${String(args.ref)}] ${f.name ? `"${f.name}"` : f.tag}.`);
   }
 
-  async type(sessionId: string, args: { ref?: unknown; text?: unknown; submit?: unknown; tab?: unknown; expect?: unknown; callId?: unknown }): Promise<TabResult> {
+  async #type(sessionId: string, args: { ref?: unknown; text?: unknown; submit?: unknown; tab?: unknown; expect?: unknown; callId?: unknown }): Promise<TabResult> {
     const expect = this.#expectFor(args);
     const { info, page, number } = await this.#actPage(sessionId, args.tab);
     const f = this.#still(await this.#facts(page, 'browser_type', args.ref), expect);
@@ -338,7 +370,7 @@ export class BrowserAgent {
     await page.cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: k.key, code: k.code, windowsVirtualKeyCode: k.keyCode });
   }
 
-  async press(sessionId: string, args: { key?: unknown; tab?: unknown; expect?: unknown; callId?: unknown }): Promise<TabResult> {
+  async #press(sessionId: string, args: { key?: unknown; tab?: unknown; expect?: unknown; callId?: unknown }): Promise<TabResult> {
     const expect = this.#expectFor(args);
     const { info, page, number } = await this.#actPage(sessionId, args.tab);
     if (expect) this.#still(await this.#facts(page, 'browser_press', undefined), expect);
