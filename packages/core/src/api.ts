@@ -40,12 +40,13 @@ export function createAgentApi(rt: Runtime): AgentApi {
     },
     async send(id, text, opts) {
       const s = get(id);
+      const picked = opts?.suggested ? { suggested: true } : {};
       if (!opts?.attachments?.length) {
-        const h = s.send(text);
+        const h = opts?.suggested ? s.send(text, { meta: picked }) : s.send(text);
         return { messageId: h.messageId, started: h.started };
       }
       const a = await s.readAttachments(opts.attachments);
-      const h = s.send(text, { content: a.content, meta: { attachments: a.attachments, ...(a.notes.length ? { untrusted: a.notes } : {}) } });
+      const h = s.send(text, { content: a.content, meta: { ...picked, attachments: a.attachments, ...(a.notes.length ? { untrusted: a.notes } : {}) } });
       return { messageId: h.messageId, started: h.started };
     },
     async setSessionModel(id, providerId, model) {
@@ -61,9 +62,9 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async answer(id, callId, answer) {
       get(id).answer(callId, answer);
     },
-    async confirm(id, callId, approved) {
+    async confirm(id, callId, approved, options) {
       if (rt.resolveViewConfirm(callId, approved)) return; // a plugin view's confirmation (any session id, also '')
-      await get(id).confirm(callId, approved);
+      await get(id).confirm(callId, approved, options);
     },
     async callPluginTool(pluginId, toolName, args, opts) {
       // opts.confirmed: the view already asked the user

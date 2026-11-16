@@ -331,6 +331,8 @@ export interface MessageMeta {
   guard?: Record<string, GuardNote>;
   /** User message: attached files (the cards); their text is in the content blocks listed. */
   attachments?: AttachmentMeta[];
+  /** User message: a suggested action the model wrote, picked by the user (paths in it do not widen where the agent may write). */
+  suggested?: true;
   /** tool_results: calls that ran without asking because the session's approval mode is auto. */
   autoApproved?: string[];
   /** Runtime note: the user chose the working folder; what was made before moved there. */
@@ -513,8 +515,14 @@ export interface GuardNote {
  * credential file after outside content.
  */
 /** settings_change: a script connected to Spica's MCP service asks to change the model settings (only the window can answer). */
-/** python_install: python_env would download Python or packages into the app's folder (asked in auto mode too; `install` says what). */
-export type GuardCause = 'untrusted_turn' | 'outside_link' | 'sensitive_file' | 'plugin_view' | 'settings_change' | 'python_install';
+/**
+ * outside_folder: write_file / edit_file to a file outside the conversation's working folder, its project's folder
+ * and the folders the user gave it (see `outsideFolder`), or a command that writes there in approval mode auto
+ * (command-scope.ts); asked in approval mode auto too.
+ * python_install: python_env would download Python or packages into the app's folder (asked in auto mode too;
+ * `install` says what).
+ */
+export type GuardCause = 'untrusted_turn' | 'outside_link' | 'sensitive_file' | 'plugin_view' | 'settings_change' | 'outside_folder' | 'python_install';
 
 /**
  * What a python_env install waiting to be confirmed would download, worked out when it asks (nothing downloaded):
@@ -554,7 +562,20 @@ export interface PluginToolResult {
  * the tool in permissions.irreversible); the card shows 无法撤销 and the warning mark.
  */
 export type PendingItem =
-  | { kind: 'confirm'; callId: string; toolName: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; install?: InstallPreview; createdAt: string }
+  | {
+      kind: 'confirm';
+      callId: string;
+      toolName: string;
+      input: unknown;
+      reason: string;
+      cause?: GuardCause;
+      irreversible?: boolean;
+      change?: ChangePreview;
+      /** The write goes outside the conversation's folders: the folder it writes in (the card says so, and offers to allow it). */
+      outsideFolder?: string;
+      install?: InstallPreview;
+      createdAt: string;
+    }
   | { kind: 'ask'; callId: string; question: string; options?: string[]; createdAt: string };
 
 // ---------------------------------------------------------------------------
@@ -618,7 +639,7 @@ export type CoreEventBody =
       durationMs: number;
     }
   /** `irreversible`: as on a pending confirmation (the card shows 无法撤销). */
-  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; install?: InstallPreview }
+  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; install?: InstallPreview }
   /** Outside content (mail, web page, file, plugin tool) contained text that looks like instructions. */
   | { type: 'guard.flagged'; note: GuardNote; callId?: string }
   /** A python_env download the user allowed failed: why, for a line on its card (sent before the tool's tool.end). */
@@ -1201,6 +1222,8 @@ export type SteerMode = 'next' | 'interrupt';
 
 export interface SendOptions {
   attachments?: { path: string }[];
+  /** The text is a suggested action the model wrote (suggest_actions) and the user picked: kept as MessageMeta.suggested. */
+  suggested?: boolean;
 }
 
 export interface CreateSessionRequest {
@@ -1265,7 +1288,11 @@ export interface AgentApi {
    * Returns at once; refused (nothing changed) when SessionInfo.regenerate is not ok.
    */
   regenerate?(sessionId: string, messageId?: string): Promise<RegenerateResult>;
-  confirm(sessionId: string, callId: string, approved: boolean): Promise<void>;
+  /**
+   * `allowFolder` (with approved, on a confirmation with `outsideFolder`): the conversation may write in that folder
+   * from now on without asking (kept with the conversation; its sub-agents too).
+   */
+  confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean }): Promise<void>;
   abort(sessionId: string): Promise<void>;
   /** Traceable records as JSON Lines. */
   exportTraces(filter?: { sessionId?: string }): Promise<string>;

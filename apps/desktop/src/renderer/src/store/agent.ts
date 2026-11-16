@@ -183,7 +183,8 @@ export class AgentStore {
     this.state.set((v) => ({ ...v, activeId: null }));
   }
 
-  async send(id: string | null, text: string, attachments: string[] = []): Promise<void> {
+  /** `suggested`: a suggested action the model wrote, picked by the user (MessageMeta.suggested). */
+  async send(id: string | null, text: string, attachments: string[] = [], suggested = false): Promise<void> {
     await this.#guard(async () => {
       let target = id;
       if (!target) {
@@ -210,7 +211,8 @@ export class AgentStore {
         }
         this.state.set((v) => ({ ...v, draft: { approvalMode: v.draft.approvalMode } }));
       }
-      const result = await this.#api.send(target, text, attachments.length ? { attachments: attachments.map((path) => ({ path })) } : undefined);
+      const opts = { ...(attachments.length ? { attachments: attachments.map((path) => ({ path })) } : {}), ...(suggested ? { suggested: true } : {}) };
+      const result = await this.#api.send(target, text, Object.keys(opts).length ? opts : undefined);
       if (!result.started) {
         // Queued into a running session: keep it visible until the agent takes it in.
         const sid = target;
@@ -309,8 +311,9 @@ export class AgentStore {
     await this.#card(id, callId, () => this.#api.answer(id, callId, answer));
   }
 
-  async confirm(id: string, callId: string, approved: boolean): Promise<void> {
-    await this.#card(id, callId, () => this.#api.confirm(id, callId, approved));
+  /** `allowFolder`: a write outside the conversation's folders, allowed for that folder from now on. */
+  async confirm(id: string, callId: string, approved: boolean, allowFolder = false): Promise<void> {
+    await this.#card(id, callId, () => (allowFolder ? this.#api.confirm(id, callId, approved, { allowFolder: true }) : this.#api.confirm(id, callId, approved)));
   }
 
   /** Answering a card the core no longer waits on (no pending ask / confirm): the card is marked cancelled, no notice. */

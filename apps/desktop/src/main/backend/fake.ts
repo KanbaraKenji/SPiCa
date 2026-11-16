@@ -208,6 +208,8 @@ export class FakeBackend implements AgentBackend {
   #superseded = new Map<string, Message[]>();
   /** Confirmations the user declined: nothing ran. */
   #declined = new Set<string>();
+  /** Folders a conversation was allowed to write in on a card (始终允许此文件夹), by session. */
+  #writeFolders = new Map<string, Set<string>>();
   #pending = new Map<string, PendingItem[]>();
   #runs = new Map<string, Run>();
   #globalCost = 0;
@@ -516,7 +518,13 @@ export class FakeBackend implements AgentBackend {
     this.#emit(sessionId, { type: 'ask.resolved', callId, answer });
   }
 
-  async confirm(sessionId: string, callId: string, approved: boolean): Promise<void> {
+  async confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean }): Promise<void> {
+    const item = this.#pending.get(sessionId)?.find((p) => p.callId === callId);
+    if (approved && options?.allowFolder && item?.kind === 'confirm' && item.outsideFolder) {
+      const set = this.#writeFolders.get(sessionId) ?? new Set<string>();
+      set.add(item.outsideFolder);
+      this.#writeFolders.set(sessionId, set);
+    }
     this.#resolvePending(sessionId, callId, approved ? 'yes' : 'no', 'confirm');
     if (!approved) this.#declined.add(callId);
     this.#emit(sessionId, { type: 'confirm.resolved', callId, approved });
@@ -1416,6 +1424,94 @@ export class FakeBackend implements AgentBackend {
         this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: result, isError: !ok }]);
         this.#setStatus(sessionId, 'thinking');
         const after = ok ? '\n\n改好了。' : '\n\n好的，没有改。';
+        await this.#stream(sessionId, 'text', after, signal);
+        blocks.push({ type: 'text', text: after });
+      } else if (/提交表单/.test(text)) {
+        // The built-in browser about to submit a form (main/browser/actions.ts): asked, the reason on two lines,
+        // what, then where and on what (the card's grey second line).
+        const callId = this.#id('call');
+        const input = { ref: 12 };
+        const reason = '提交表单\nforms.example.com · 「提交报名」';
+        this.#emit(sessionId, { type: 'tool.call', callId, name: 'browser_click' });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name: 'browser_click', input }]);
+        this.#addPending(sessionId, { kind: 'confirm', callId, toolName: 'browser_click', input, reason, createdAt: isoAt(this.#now()) });
+        this.#emit(sessionId, { type: 'confirm.request', callId, name: 'browser_click', input, reason });
+        this.#setStatus(sessionId, 'awaiting_confirm', 'browser_click');
+        waiting = { id: callId, name: 'browser_click', input, stored: true };
+        const ok = (await this.#waitFor(run, callId)) === 'yes';
+        waiting = undefined;
+        this.#emit(sessionId, { type: 'tool.end', callId, name: 'browser_click', isError: !ok, preview: ok ? '已提交' : '用户拒绝了', durationMs: 200 });
+        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: ok ? '已提交' : '用户拒绝了', isError: !ok }]);
+        this.#setStatus(sessionId, 'thinking');
+        const after = ok ? '已提交。' : '好的，没有提交。';
+        await this.#stream(sessionId, 'text', after, signal);
+        blocks.push({ type: 'text', text: after });
+      } else if (/两张卡/.test(text)) {
+        // Two cards waiting at once (screenshots of an ordinary card and one outside the folders in one answer): an
+        // email, and a write outside the folders (「命令」: as a command); answered in that order.
+        const folder = 'D:\\共享资料\\纪要';
+        const cards = [
+          { id: this.#id('call'), name: 'send_email', input: { to: '项目组', subject: '样机评审时间', body: '各位好，样机评审定在周四下午两点。' } as Record<string, unknown>, reason: '发送邮件给「项目组」' },
+          /命令/.test(text)
+            ? { id: this.#id('call'), name: 'run_command', input: { command: `Set-Content -Path '${folder}\\周会汇总.md' -Value '样品改用 B 方案'`, description: '把周会汇总写到纪要文件夹' } as Record<string, unknown>, reason: 'writes a file outside the folders of this conversation', outside: true }
+            : { id: this.#id('call'), name: 'edit_file', input: { path: `${folder}\\会议纪要.md`, old_string: '（待补）', new_string: '样品改用 B 方案；交期延后一周。' } as Record<string, unknown>, reason: 'writes a file outside the folders of this conversation', outside: true, change: { path: `${folder}\\会议纪要.md`, created: false, change: { hunks: [{ oldStart: 3, newStart: 3, lines: [' ## 决定', '-（待补）', '+样品改用 B 方案；交期延后一周。', ' '] }] } } },
+        ];
+        for (const c of cards) this.#emit(sessionId, { type: 'tool.call', callId: c.id, name: c.name });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), ...cards.map((c) => ({ type: 'tool_use' as const, id: c.id, name: c.name, input: c.input }))]);
+        for (const c of cards) {
+          const extra = 'outside' in c ? { cause: 'outside_folder' as const, outsideFolder: folder, ...('change' in c ? { change: c.change } : {}) } : {};
+          this.#addPending(sessionId, { kind: 'confirm', callId: c.id, toolName: c.name, input: c.input, reason: c.reason, ...extra, createdAt: isoAt(this.#now()) });
+          this.#emit(sessionId, { type: 'confirm.request', callId: c.id, name: c.name, input: c.input, reason: c.reason, ...extra });
+        }
+        this.#setStatus(sessionId, 'awaiting_confirm', cards[0]!.name);
+        for (const c of cards) {
+          waiting = { id: c.id, name: c.name, input: c.input, stored: true };
+          const ok = (await this.#waitFor(run, c.id)) === 'yes';
+          waiting = undefined;
+          this.#emit(sessionId, { type: 'tool.end', callId: c.id, name: c.name, isError: !ok, preview: ok ? '完成' : '用户拒绝了', durationMs: 200 });
+          this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: c.id, content: ok ? '完成' : '用户拒绝了', isError: !ok }]);
+        }
+        this.#setStatus(sessionId, 'thinking');
+        await this.#stream(sessionId, 'text', '好的。', signal);
+        blocks.push({ type: 'text', text: '好的。' });
+      } else if (/文件夹以外/.test(text)) {
+        // A write outside the conversation's folders (core: GuardCause outside_folder): asked in either approval
+        // mode, with 工作文件夹以外 and 始终允许此文件夹; once that folder is allowed, the next write there just runs.
+        const callId = this.#id('call');
+        const folder = 'D:\\共享资料\\纪要';
+        const newFile = /新建/.test(text);
+        // 「用命令」: the same write as a command (approval mode Auto asks for it by the core's fixed rules,
+        // command-scope.ts); 「起始文件夹」: a command run in that folder
+        const byCommand = /命令/.test(text);
+        const name = byCommand ? 'run_command' : newFile ? 'write_file' : 'edit_file';
+        const input: Record<string, unknown> = byCommand
+          ? /起始文件夹/.test(text)
+            ? { command: "Set-Content -Path '周会汇总.md' -Value '样品改用 B 方案'", cwd: folder, description: '在纪要文件夹里写周会汇总' }
+            : { command: `Set-Content -Path '${folder}\\周会汇总.md' -Value '样品改用 B 方案'`, description: '把周会汇总写到纪要文件夹' }
+          : newFile
+            ? { path: `${folder}\\周会汇总.md`, content: '# 周会汇总\n\n- 样品改用 B 方案\n- 交期延后一周\n' }
+            : { path: `${folder}\\会议纪要.md`, old_string: '（待补）', new_string: '样品改用 B 方案；交期延后一周。' };
+        const change = byCommand ? undefined : newFile
+          ? { path: String(input.path), created: true, change: { hunks: [{ oldStart: 0, newStart: 1, lines: ['+# 周会汇总', '+', '+- 样品改用 B 方案', '+- 交期延后一周'] }] } }
+          : { path: String(input.path), created: false, change: { hunks: [{ oldStart: 3, newStart: 3, lines: [' ## 决定', '-（待补）', '+样品改用 B 方案；交期延后一周。', ' '] }] } };
+        const allowed = this.#writeFolders.get(sessionId)?.has(folder) === true;
+        this.#emit(sessionId, { type: 'tool.call', callId, name });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name, input }]);
+        let ok = true;
+        if (!allowed) {
+          this.#addPending(sessionId, { kind: 'confirm', callId, toolName: name, input, reason: 'writes a file outside the folders of this conversation', cause: 'outside_folder', ...(change ? { change } : {}), outsideFolder: folder, createdAt: isoAt(this.#now()) });
+          this.#emit(sessionId, { type: 'confirm.request', callId, name, input, reason: 'writes a file outside the folders of this conversation', cause: 'outside_folder', ...(change ? { change } : {}), outsideFolder: folder });
+          this.#setStatus(sessionId, 'awaiting_confirm', name);
+          waiting = { id: callId, name, input, stored: true };
+          ok = (await this.#waitFor(run, callId)) === 'yes';
+          waiting = undefined;
+        }
+        if (ok) this.#emit(sessionId, { type: 'tool.start', callId, name, input, category: byCommand ? 'command' : 'write' });
+        const result = ok ? (byCommand ? 'exit code 0' : `${newFile ? 'Created' : 'Edited'} ${String(input.path)}`) : '用户没有允许写到工作文件夹以外';
+        this.#emit(sessionId, { type: 'tool.end', callId, name, isError: !ok, preview: result, durationMs: 300 });
+        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: result, isError: !ok }]);
+        this.#setStatus(sessionId, 'thinking');
+        const after = ok ? '已写好。' : '好的，没有写。';
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
       } else if (/删除/.test(text)) {

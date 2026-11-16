@@ -986,9 +986,24 @@ const argLabels = (): Record<string, string> => Object.fromEntries(Object.entrie
  * name, JSON coloured, 20 lines then it scrolls) under names people read. Not the model's description of the step:
  * it may not match what would run.
  */
-export function ConfirmTarget({ name, input, bare, change }: { name: string; input: unknown; bare?: boolean; change?: ChangePreview | undefined }) {
+export function ConfirmTarget({ name, input, bare, change, outsideFolder }: { name: string; input: unknown; bare?: boolean; change?: ChangePreview | undefined; outsideFolder?: string | undefined }) {
   const v = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
-  if (name === 'run_command' && typeof v.command === 'string') return <CommandBox command={v.command} marks={dangerSpans(v.command)} bare={bare} />;
+  if (name === 'run_command' && typeof v.command === 'string') {
+    // a command writing outside the conversation's folders: where, marked in the command; or the folder it runs in
+    const outside = outsideFolder ? outsideSpans(v.command, outsideFolder) : [];
+    const marks = [...dangerSpans(v.command), ...outside].sort((a, b) => a[0] - b[0]);
+    const runsIn = outsideFolder && !outside.length && typeof v.cwd === 'string' && v.cwd ? v.cwd : null;
+    return (
+      <>
+        <CommandBox command={v.command} marks={marks} bare={bare} />
+        {runsIn ? (
+          <p className="card-why">
+            {t('{label}：{path}', { label: t('起始文件夹'), path: runsIn })}
+          </p>
+        ) : null}
+      </>
+    );
+  }
   // The built-in browser: the title already says which site and what (the button's words, the box and what goes in);
   // the element's number is the agent's, nothing a person reads.
   if (name === 'browser_click' || name === 'browser_type' || name === 'browser_press') return null;
@@ -1002,6 +1017,20 @@ export function ConfirmTarget({ name, input, bare, change }: { name: string; inp
   const rows = Object.entries(v).filter(([k, val]) => k !== 'description' && val !== undefined && val !== null && val !== '');
   if (!rows.length) return null;
   return <CallArgs input={Object.fromEntries(rows)} labels={argLabels()} bare={bare} />;
+}
+
+/** Where a command names the folder (or something in it), in any case: up to the end of that path. */
+function outsideSpans(command: string, folder: string): [number, number][] {
+  const out: [number, number][] = [];
+  const low = command.toLowerCase();
+  const key = folder.toLowerCase().replace(/[\\/]+$/, '');
+  for (let at = low.indexOf(key); at >= 0 && key; at = low.indexOf(key, at + 1)) {
+    let end = at + key.length;
+    while (end < command.length && !/[\s'"`;|]/.test(command[end]!)) end++;
+    out.push([at, end]);
+    at = end - 1;
+  }
+  return out;
 }
 
 /** The title of a python_env confirmation: what it downloads (Python, packages, or both). */
@@ -1084,7 +1113,7 @@ function wordsSqueezed(head: HTMLElement): boolean {
  * back, 拒绝 / 允许 or what was decided), then the command in full (copy at its top right) or the call's arguments.
  * For a command, the title is the app's own reading of it (运行命令 when it cannot tell), not the model's words.
  */
-export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type: 'confirm' }>; onDecide(approved: boolean): void }) {
+export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type: 'confirm' }>; onDecide(approved: boolean, allowFolder?: boolean): void }) {
   const [sent, setSent] = useState(false);
   const decided = block.approved !== undefined || block.cancelled === true;
   // A narrow card (the chat squeezed by the panel) whose words would be a column a few characters wide: 拒绝 / 允许
@@ -1099,10 +1128,11 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
     ro.observe(el);
     return () => ro.disconnect();
   }, [decided]);
-  const decide = (approved: boolean) => {
+  const decide = (approved: boolean, allowFolder = false) => {
     if (sent) return;
     setSent(true);
-    onDecide(approved);
+    if (allowFolder) onDecide(approved, true);
+    else onDecide(approved);
   };
   const input = block.input && typeof block.input === 'object' ? (block.input as Record<string, unknown>) : {};
   const command = block.name === 'run_command' && typeof input.command === 'string' ? input.command : null;
@@ -1121,8 +1151,10 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         {/* Only a dangerous one has a mark (the warning); an ordinary one's ringed i said nothing its 拒绝 / 允许
             do not (他在决策页 d26 选「只去掉普通确认卡的 i」). */}
         {danger ? <SpicaStatusIcon name="warning" size={16} /> : null}
-        <span className="card-title">{title}</span>
+        <span className="card-title" title={title} data-tip-clipped="">{title}</span>
         {danger ? <span className="confirm-undo">{t('无法撤销')}</span> : null}
+        {/* a write outside the conversation's folders: said as a tag, as 无法撤销 is (the path is in the change below) */}
+        {block.outsideFolder ? <span className="confirm-undo">{t('工作文件夹以外')}</span> : null}
         <span className="confirm-spacer" />
         {decided ? (
           <p className={block.cancelled === true && block.approved === undefined ? 'card-answer is-stopped' : 'card-answer'}>
@@ -1134,9 +1166,13 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
             <button type="button" className="btn" disabled={sent} onClick={() => decide(false)}>
               {t('拒绝')}
             </button>
-            <button type="button" className="btn btn-primary" disabled={sent} onClick={() => decide(true)}>
-              {t('允许')}
-            </button>
+            {block.outsideFolder ? (
+              <HoldToAllow disabled={sent} folder={block.outsideFolder} onAllow={(folder) => decide(true, folder)} />
+            ) : (
+              <button type="button" className="btn btn-primary" disabled={sent} onClick={() => decide(true)}>
+                {t('允许')}
+              </button>
+            )}
           </div>
         )}
       </header>
@@ -1146,9 +1182,112 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
           {sub}
         </p>
       ) : null}
-      {block.install ? <InstallList preview={block.install} /> : <ConfirmTarget name={block.name} input={block.input} change={block.change} bare />}
+      {block.install ? <InstallList preview={block.install} /> : <ConfirmTarget name={block.name} input={block.input} change={block.change} outsideFolder={block.outsideFolder} bare />}
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
     </section>
+  );
+}
+
+/** How long 允许 is held for 始终允许 (from the press; the ring shows only after HOLD_SHOW, so a click never flashes it). */
+export const HOLD_MS = 1000;
+const HOLD_SHOW = 150;
+
+/**
+ * 允许 for a write outside the conversation's folders (he picked 「按住」 from five): pressed and let go, it allows this
+ * once; held until its ring has gone round (HOLD_MS), 始终允许 that folder. While held the button reads 始终允许 and
+ * the ring fills in the accent colour; let go before the end, it is 允许. Its width is the wider of the two words,
+ * so nothing moves. The empty ring is always on the button (the hint that it can be held), and the hover says so.
+ * Keys: Enter or Space let go at once is 允许, held as long is 始终允许 (key repeat is ignored); assistive tech
+ * clicking it (no pointer, no key) allows once, and its description says how to hold.
+ */
+function HoldToAllow({ disabled, folder, onAllow }: { disabled: boolean; folder: string; onAllow(always: boolean): void }) {
+  // 0..1 while held and shown; null when not held (or held under HOLD_SHOW)
+  const [shown, setShown] = useState<number | null>(null);
+  const hold = useRef<{ start: number; frame: number; done: boolean } | null>(null);
+  const stop = () => {
+    if (hold.current) cancelAnimationFrame(hold.current.frame);
+    hold.current = null;
+    setShown(null);
+  };
+  useEffect(() => () => {
+    if (hold.current) cancelAnimationFrame(hold.current.frame);
+  }, []);
+  const begin = () => {
+    if (disabled || hold.current) return;
+    const h = { start: performance.now(), frame: 0, done: false };
+    hold.current = h;
+    const tick = (now: number) => {
+      if (hold.current !== h) return;
+      const held = now - h.start;
+      if (held >= HOLD_MS) {
+        h.done = true;
+        setShown(1);
+        onAllow(true);
+        return;
+      }
+      if (held >= HOLD_SHOW) setShown((held - HOLD_SHOW) / (HOLD_MS - HOLD_SHOW));
+      h.frame = requestAnimationFrame(tick);
+    };
+    h.frame = requestAnimationFrame(tick);
+  };
+  // let go: before the ring went round it is 允许 (this once); after, 始终允许 has already been sent
+  const end = () => {
+    const h = hold.current;
+    if (!h) return;
+    const done = h.done;
+    stop();
+    if (!done) onAllow(false);
+  };
+  const tip = `${t('按住：始终允许')}\n${folder}`;
+  const always = shown !== null;
+  const r = 6;
+  const round = 2 * Math.PI * r;
+  return (
+    <button
+      type="button"
+      className={always ? 'btn btn-primary hold-allow is-holding' : 'btn btn-primary hold-allow'}
+      disabled={disabled}
+      title={tip}
+      aria-description={tip}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        // let go anywhere still ends the hold here (a pointer already gone cannot be held: it just starts)
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* no such pointer */
+        }
+        begin();
+      }}
+      onPointerUp={end}
+      onPointerCancel={stop}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        // the browser's own click (Enter on press, Space on release) is not used: the hold decides
+        e.preventDefault();
+        if (!e.repeat) begin();
+      }}
+      onKeyUp={(e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        end();
+      }}
+      onBlur={stop}
+      onClick={(e) => {
+        // a click with no pointer or key behind it (assistive tech, a script): this once
+        if (e.detail === 0 && !hold.current) onAllow(false);
+      }}
+    >
+      {/* both words in one cell: the button is as wide as the wider one */}
+      <span className="hold-allow-words">
+        <span aria-hidden={always ? true : undefined}>{t('允许')}</span>
+        <span aria-hidden={always ? undefined : true}>{t('始终允许')}</span>
+      </span>
+      <svg className="hold-allow-ring" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+        <circle className="hold-allow-track" cx="8" cy="8" r={r} />
+        {always ? <circle className="hold-allow-fill" cx="8" cy="8" r={r} strokeDasharray={round} strokeDashoffset={round * (1 - (shown ?? 0))} /> : null}
+      </svg>
+    </button>
   );
 }
 

@@ -63,6 +63,8 @@ export interface Tool {
   targetUrl?(input: Record<string, unknown>): string | undefined;
   /** The file the call reads (read_file), for the credential-file check. */
   targetPath?(input: Record<string, unknown>): string | undefined;
+  /** The file this call writes, as given (absolute or relative to the working folder): checked against the conversation's folders (write-scope.ts). */
+  writePath?(input: Record<string, unknown>): string | undefined;
   /**
    * What the call would change, worked out without changing anything (write_file, edit_file read the file): shown on
    * its confirmation card before the user allows it. Undefined when there is nothing to show.

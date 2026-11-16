@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import type { HistoryCardMeta } from '@spica/protocol';
 import { OpenSessionContext, HistoryCardsContext, HistoryRefContext, MarkdownText, AskCard, ConfirmCard, FileCards, RoundDoneContext, SuggestCard, ToolGroup } from './Blocks';
 
@@ -64,6 +64,111 @@ describe('AskCard', () => {
 });
 
 describe('ConfirmCard', () => {
+  describe('a write outside the conversation’s folders', () => {
+    const block = { type: 'confirm' as const, callId: 'c9', name: 'edit_file', input: { path: 'D:\\共享资料\\纪要\\会议纪要.md', old_string: 'a', new_string: 'b' }, reason: 'outside', cause: 'outside_folder' as const, outsideFolder: 'D:\\共享资料\\纪要' };
+    const card = () => {
+      const onDecide = vi.fn();
+      render(<ConfirmCard block={block} onDecide={onDecide} />);
+      return { onDecide, allow: screen.getByRole('button', { name: '允许' }) };
+    };
+    const hold = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
+    afterEach(() => vi.useRealTimers());
+
+    it('工作文件夹以外 as a tag; two buttons as on any confirmation (拒绝, the blue 允许) with an empty ring in 允许, the hover saying it can be held', () => {
+      const { allow } = card();
+      expect(document.querySelector('.confirm-undo')?.textContent).toBe('工作文件夹以外');
+      expect(document.querySelector('.confirm-card.is-danger')).toBeNull();
+      expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['拒绝', '允许始终允许']);
+      expect(screen.getByRole('button', { name: '拒绝' }).className).toBe('btn');
+      expect(allow.className).toBe('btn btn-primary hold-allow');
+      expect(allow.querySelector('.hold-allow-track')).not.toBeNull();
+      expect(allow.querySelector('.hold-allow-fill')).toBeNull();
+      expect(allow.getAttribute('title')).toBe('按住：始终允许\nD:\\共享资料\\纪要');
+      expect(allow.getAttribute('aria-description')).toBe(allow.getAttribute('title'));
+    });
+
+    it('a press let go at once: 允许, this once; no ring, no 始终允许 shown', () => {
+      vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+      const { onDecide, allow } = card();
+      fireEvent.pointerDown(allow, { button: 0, pointerId: 1 });
+      hold(100);
+      expect(allow.className).toBe('btn btn-primary hold-allow');
+      fireEvent.pointerUp(allow, { pointerId: 1 });
+      fireEvent.click(allow, { detail: 1 });
+      expect(onDecide.mock.calls).toEqual([[true]]);
+    });
+
+    it('held until the ring has gone round: 始终允许, without waiting for the release', () => {
+      vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+      const { onDecide, allow } = card();
+      fireEvent.pointerDown(allow, { button: 0, pointerId: 1 });
+      hold(500);
+      // half way: the words read 始终允许 (the name too), the ring part filled
+      expect(allow.className).toBe('btn btn-primary hold-allow is-holding');
+      expect(screen.getByRole('button', { name: '始终允许' })).toBe(allow);
+      const fill = allow.querySelector('.hold-allow-fill')!;
+      const round = Number(fill.getAttribute('stroke-dasharray'));
+      const left = Number(fill.getAttribute('stroke-dashoffset'));
+      expect(left).toBeGreaterThan(0);
+      expect(left).toBeLessThan(round);
+      expect(onDecide).not.toHaveBeenCalled();
+      hold(600);
+      expect(onDecide.mock.calls).toEqual([[true, true]]);
+      fireEvent.pointerUp(allow, { pointerId: 1 });
+      expect(onDecide).toHaveBeenCalledTimes(1);
+    });
+
+    it('let go half way: 允许, this once', () => {
+      vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+      const { onDecide, allow } = card();
+      fireEvent.pointerDown(allow, { button: 0, pointerId: 1 });
+      hold(600);
+      fireEvent.pointerUp(allow, { pointerId: 1 });
+      hold(1000);
+      expect(onDecide.mock.calls).toEqual([[true]]);
+    });
+
+    it('keys: Enter or Space let go at once is 允许, held is 始终允许; a click with nothing behind it (assistive tech) allows once', () => {
+      vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+      let c = card();
+      fireEvent.keyDown(c.allow, { key: 'Enter' });
+      fireEvent.keyUp(c.allow, { key: 'Enter' });
+      expect(c.onDecide.mock.calls).toEqual([[true]]);
+      cleanup();
+      c = card();
+      fireEvent.keyDown(c.allow, { key: ' ' });
+      hold(400);
+      fireEvent.keyDown(c.allow, { key: ' ', repeat: true });
+      hold(700);
+      expect(c.onDecide.mock.calls).toEqual([[true, true]]);
+      cleanup();
+      c = card();
+      fireEvent.click(c.allow);
+      expect(c.onDecide.mock.calls).toEqual([[true]]);
+    });
+
+    it('a command writing outside (Auto): the path marked in the command; run in a folder outside, that folder under it', () => {
+      const folder = 'D:\\共享资料\\纪要';
+      const cmd = { type: 'confirm' as const, callId: 'c10', name: 'run_command', input: { command: `Set-Content -Path '${folder}\\周会汇总.md' -Value x` }, reason: 'outside', cause: 'outside_folder' as const, outsideFolder: folder };
+      render(<ConfirmCard block={cmd} onDecide={vi.fn()} />);
+      // Set-Content overwrites: 无法撤销 too, as for any such command
+      expect([...document.querySelectorAll('.confirm-undo')].map((x) => x.textContent)).toContain('工作文件夹以外');
+      expect([...document.querySelectorAll('mark.cmd-danger')].map((m) => m.textContent)).toContain(`${folder}\\周会汇总.md`);
+      expect(document.querySelector('.card-why')).toBeNull();
+      expect(document.querySelector('.hold-allow')).not.toBeNull();
+      cleanup();
+      render(<ConfirmCard block={{ ...cmd, input: { command: "Set-Content a.md x", cwd: folder } }} onDecide={vi.fn()} />);
+      expect([...document.querySelectorAll('mark.cmd-danger')].map((m) => m.textContent)).not.toContain(folder);
+      expect(document.querySelector('.card-why')?.textContent).toBe(`起始文件夹：${folder}`);
+    });
+
+    it('an ordinary confirmation keeps its blue 允许, no ring', () => {
+      render(<ConfirmCard block={{ ...block, outsideFolder: undefined, cause: undefined }} onDecide={vi.fn()} />);
+      expect(screen.getByRole('button', { name: '允许' }).className).toBe('btn btn-primary');
+      expect(document.querySelector('.hold-allow')).toBeNull();
+    });
+  });
+
   it('a download for the app’s Python: what, from where, how big, and the total; — where the size is not known, and then no total', () => {
     const install = {
       python: { version: '3.12.16', host: 'releases.astral.sh', bytes: 31 * 1024 * 1024 },

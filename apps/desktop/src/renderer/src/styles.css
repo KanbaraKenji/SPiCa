@@ -6290,6 +6290,53 @@ section.plugins-part > .plugins-part-title {
   color: var(--spica-accent-text);
 }
 
+/* 允许 that can be held for 始终允许 (chat/Blocks.tsx HoldToAllow): the blue main button as on every confirmation,
+   its words in one cell so it is as wide as the wider, a ring after them in the button's own text colour; held, the
+   ring's track steps back and the part gone round is drawn solid (white on the blue: 4.1:1 light, 2.4:1 dark, as the
+   button's words). */
+.hold-allow {
+  touch-action: none;
+  user-select: none;
+}
+
+.hold-allow-words {
+  display: inline-grid;
+}
+
+.hold-allow-words > span {
+  grid-area: 1 / 1;
+  text-align: center;
+}
+
+.hold-allow-words > span[aria-hidden='true'] {
+  visibility: hidden;
+}
+
+.hold-allow-ring {
+  flex: none;
+  transform: rotate(-90deg);
+}
+
+.hold-allow-ring > circle {
+  fill: none;
+  stroke-width: 1.5;
+}
+
+.hold-allow-track {
+  stroke: currentColor;
+}
+
+/* held: the track steps back so the part gone round reads */
+.hold-allow.is-holding .hold-allow-track {
+  stroke: color-mix(in srgb, currentColor 40%, transparent);
+}
+
+.hold-allow-fill {
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
 /* A text-only button inside a sentence: accent color, no underline. */
 .text-btn {
   margin-left: 6px;
@@ -6447,6 +6494,19 @@ section.plugins-part > .plugins-part-title {
   gap: 8px;
   min-height: 44px;
   padding: 6px 8px 6px 12px;
+}
+
+/* The title gives way first: as wide as its words when there is room (无法撤销 and the other tags right after it),
+   cut at its end when there is not, the tags staying on its line. When it would be cut too short the card is
+   narrow (ConfirmCard measures it) and the buttons go to a row of their own, below. */
+.confirm-card > .card-head > .card-title {
+  /* it takes the room before the spacer does (up to its words), so the tags follow it and the spacer the rest */
+  flex: 1000 1 0;
+  max-width: max-content;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .confirm-card > .card-head > svg {

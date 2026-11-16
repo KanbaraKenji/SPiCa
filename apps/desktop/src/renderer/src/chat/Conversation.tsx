@@ -20,10 +20,11 @@ import { SettingsChangeCard } from './SettingsChangeCard';
 import { MemoryLinesContext, MemoryNote, type MemoryLines } from './MemoryNote';
 
 export interface ConversationActions {
-  send(text: string, attachments?: string[]): void;
+  /** `suggested`: the text is a suggested action the user picked. */
+  send(text: string, attachments?: string[], suggested?: boolean): void;
   stop(): void;
   answer(callId: string, answer: string): void;
-  confirm(callId: string, approved: boolean): void;
+  confirm(callId: string, approved: boolean, allowFolder?: boolean): void;
   openFile(path: string): void;
   /** A folder path clicked in an answer: opened in Explorer. */
   openFolder?: (path: string) => void;
@@ -241,10 +242,10 @@ function Response({
           case 'ask':
             return <AskCard key={b.callId} block={b} onAnswer={(a) => actions.answer(b.callId, a)} />;
           case 'confirm':
-            return <ConfirmCard key={b.callId} block={b} onDecide={(ok) => actions.confirm(b.callId, ok)} />;
+            return <ConfirmCard key={b.callId} block={b} onDecide={(ok, folder) => actions.confirm(b.callId, ok, folder)} />;
           case 'suggest':
             // Not on an older answer: the next message always follows the newest one.
-            return live || !newest ? null : <SuggestCard key={b.callId} block={b} onPick={actions.send} />;
+            return live || !newest ? null : <SuggestCard key={b.callId} block={b} onPick={(prompt) => actions.send(prompt, undefined, true)} />;
           default:
             return null;
         }

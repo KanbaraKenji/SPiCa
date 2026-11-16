@@ -47,6 +47,8 @@ export interface SessionConfig {
   /** Default manual. */
   approvalMode?: import('../types.ts').ApprovalMode;
   memoryId?: string;
+  /** Folders the user allowed on a card to write in without asking (write-scope.ts), as written on the card. */
+  writeFolders?: string[];
 }
 
 export interface ToolCallCards {

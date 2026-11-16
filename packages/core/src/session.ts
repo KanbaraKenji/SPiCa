@@ -35,7 +35,9 @@ import type { RuntimeInternals } from './runtime.ts';
 import { estimateTokens, isAbortError, newId, truncate, withAppName } from './util.ts';
 import { IMAGE_LIMITS, imageTokens, prepareImage, REQUEST_IMAGE_LIMITS, sniffImage } from './images.ts';
 import { closeSync, openSync, readSync } from 'node:fs';
-import { resolve as resolvePath } from 'node:path';
+import { dirname, isAbsolute, resolve as resolvePath } from 'node:path';
+import { inScope, pathsInText, realPath } from './write-scope.ts';
+import { commandOutside, tooWideToAllow } from './command-scope.ts';
 import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.ts';
 import { samePath } from './move-folder.ts';
 import { netHint } from './net.ts';
@@ -417,14 +419,20 @@ export class Session {
   }
 
   /** Approve or decline an action that needed confirmation. */
-  async confirm(callId: string, approved: boolean): Promise<Promise<RunResult> | undefined> {
+  async confirm(callId: string, approved: boolean, options: { allowFolder?: boolean } = {}): Promise<Promise<RunResult> | undefined> {
     const p = this.#findPending(callId, 'confirm');
     this.#emit({ type: 'confirm.resolved', callId, approved });
+    const outside = p.item.kind === 'confirm' ? p.item.outsideFolder : undefined;
     if (!approved) {
-      this.#resolveCall(p, 'The user declined this action. Do not retry it unless the user asks.', true, 'denied');
+      const text = outside
+        ? `The user did not allow writing in ${outside}, which is outside the folders of this conversation. Do not retry it. ` +
+          'If the change is needed there, tell the user and ask them to allow that folder (they can, on the confirmation).'
+        : 'The user declined this action. Do not retry it unless the user asks.';
+      this.#resolveCall(p, text, true, 'denied');
       return this.#maybeResume();
     }
     if (p.item.kind !== 'confirm') throw new Error('not a confirmation');
+    if (outside && options.allowFolder) this.allowWriteFolder(outside);
     // Mark as no longer pending before running so a crash does not re-ask.
     this.#rt.store.deletePending(this.id, callId);
     const tool = this.#rt.tools.get(p.item.toolName);
@@ -1100,7 +1108,8 @@ export class Session {
         ? await tool.previewInstall((input ?? {}) as Record<string, unknown>).catch((): InstallPreview => ({ packages: [], packageHost: '' }))
         : undefined;
       // outside content in play: the user confirms, whatever hooks or plugin settings say
-      const cause = install ? 'python_install' : this.#guardCause(tool, (input ?? {}) as Record<string, unknown>, guard);
+      const outsideFolder = install ? undefined : this.#outsideFolder(tool, (input ?? {}) as Record<string, unknown>);
+      const cause = install ? 'python_install' : (this.#guardCause(tool, (input ?? {}) as Record<string, unknown>, guard) ?? (outsideFolder ? 'outside_folder' : undefined));
       // approval mode auto passes only the default confirmation of irreversible tools, never the guard's or a hook's
       const autoApproved = !cause && decision.action === 'confirm' && decision.byDefault === true && cfg.approvalMode === 'auto';
       if ((decision.action === 'confirm' && !autoApproved) || cause) {
@@ -1115,6 +1124,7 @@ export class Session {
           ...(cause ? { cause } : {}),
           ...(decision.action === 'confirm' && decision.irreversible ? { irreversible: true } : {}),
           ...(change ? { change } : {}),
+          ...(outsideFolder ? { outsideFolder } : {}),
           ...(install ? { install } : {}),
           createdAt: isoNow(),
         };
@@ -1149,6 +1159,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
             ...(p.item.cause ? { cause: p.item.cause } : {}),
             ...(p.item.irreversible ? { irreversible: true } : {}),
             ...(p.item.change ? { change: p.item.change } : {}),
+            ...(p.item.outsideFolder ? { outsideFolder: p.item.outsideFolder } : {}),
             ...(p.item.install ? { install: p.item.install } : {}),
           });
         }
@@ -1475,6 +1486,63 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     return { tainted, ...(kind ? { kind } : {}), outsideHosts, userHosts };
   }
 
+  /**
+   * Where this conversation may write without asking (write-scope.ts): its working folder, its project's folder,
+   * the absolute paths the user typed in their own messages, the files they attached, the folders they allowed
+   * on a card; and all of its parent's (a sub-agent works within the conversation that started it). Paths in
+   * tool results, outside content or the model's own words do not count.
+   */
+  writeRoots(): string[] {
+    const cfg = this.#record.config;
+    const roots = [cfg.cwd, ...(cfg.writeFolders ?? [])];
+    const project = cfg.projectId ? this.#rt.store.getProject(cfg.projectId) : undefined;
+    if (project?.folder) roots.push(project.folder);
+    for (const m of this.#messages) {
+      if (m.role !== 'user' || (m.kind !== 'user' && m.kind !== 'steer') || (m.meta?.author ?? 'user') !== 'user') continue;
+      // the user's own words (the first block; attached files' text follows it), not a suggestion the model wrote
+      const first = m.content[0];
+      if (first?.type === 'text' && !m.meta?.suggested) roots.push(...pathsInText(first.text));
+      for (const a of m.meta?.attachments ?? []) roots.push(isAbsolute(a.path) ? a.path : resolvePath(cfg.cwd, a.path));
+    }
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    if (parent) roots.push(...parent.writeRoots());
+    return roots;
+  }
+
+  /**
+   * The user allowed writing in `folder` on a card: no more asking for it in this conversation and every
+   * sub-agent of it. Kept with the conversation the user started (the top of the chain), so the parent and
+   * later sub-agents share it, and it is there after the app starts again.
+   */
+  allowWriteFolder(folder: string): void {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    if (parent) {
+      parent.allowWriteFolder(folder);
+      return;
+    }
+    const cfg = this.#record.config;
+    // a drive's root or the home folder is allowed this once only, never kept (it would let everything through)
+    if (cfg.writeFolders?.includes(folder) || tooWideToAllow(folder)) return;
+    this.#record = { ...this.#record, config: { ...cfg, writeFolders: [...(cfg.writeFolders ?? []), folder] } };
+    this.#rt.store.upsertSession(this.#record);
+  }
+
+  /** For a write outside the conversation's folders: the folder it writes in (as it will read on the card). */
+  #outsideFolder(tool: Tool, input: Record<string, unknown>): string | undefined {
+    // a command, in Auto (Manual asks for every command): the fixed rules of command-scope.ts on its text
+    if (tool.spec.name === 'run_command' && this.#record.config.approvalMode === 'auto' && typeof input.command === 'string') {
+      const base = this.#record.config.cwd;
+      const named = typeof input.cwd === 'string' && input.cwd.trim() !== '';
+      const cwd = named ? (isAbsolute(input.cwd as string) ? resolvePath(input.cwd as string) : resolvePath(base, input.cwd as string)) : base;
+      return commandOutside(input.command, cwd, this.writeRoots(), named)?.folder;
+    }
+    const p = tool.writePath?.(input);
+    if (!p?.trim()) return undefined;
+    const target = isAbsolute(p) ? resolvePath(p) : resolvePath(this.#record.config.cwd, p);
+    // the folder it really writes in (through a junction: where it points), as the card shows it and the user allows it
+    return inScope(target, this.writeRoots()) ? undefined : dirname(realPath(target));
+  }
+
   #guardCause(tool: Tool, input: Record<string, unknown>, g: GuardState): GuardCause | undefined {
     if (g.tainted && tool.irreversible) return 'untrusted_turn';
     const url = tool.targetUrl?.(input);
@@ -1602,6 +1670,7 @@ const GUARD_REASON: Record<GuardCause, string> = {
   sensitive_file: 'reading a credential file while acting on outside content',
   plugin_view: 'a plugin view asks to run an irreversible action',
   settings_change: 'a script connected to the app asks to change the settings',
+  outside_folder: 'writes a file outside the folders of this conversation',
   python_install: "downloads Python or packages into the app's folder",
 };
 
