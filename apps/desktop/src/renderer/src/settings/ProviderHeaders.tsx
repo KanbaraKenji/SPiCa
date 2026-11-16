@@ -4,6 +4,7 @@
 // only masked, and an empty value keeps it.
 import { CREDENTIALS_IN, headerCellErrors, type AuthBy, type CredentialsIn, type HeaderDraft, type HeaderView } from '../../../shared/providers';
 import { Icon } from '../ui/Icon';
+import { FormRow } from './FormRow';
 import { N_, t } from '../../../shared/i18n';
 
 /** The rows the form starts from for a saved connection. */
@@ -18,8 +19,7 @@ const AUTH_CHOICES: readonly { value: AuthBy; label: string }[] = [
 
 export function AuthByField({ value, onChange }: { value: AuthBy; onChange(v: AuthBy): void }) {
   return (
-    <div className="field field-stack">
-      <span className="field-label">{t('认证方式')}</span>
+    <FormRow title={t('认证方式')}>
       <div className="segmented" role="radiogroup" aria-label={t('认证方式')}>
         {AUTH_CHOICES.map((c) => (
           <button key={c.value} type="button" role="radio" aria-checked={value === c.value} className={value === c.value ? 'segment is-on' : 'segment'} onClick={() => onChange(c.value)}>
@@ -27,7 +27,7 @@ export function AuthByField({ value, onChange }: { value: AuthBy; onChange(v: Au
           </button>
         ))}
       </div>
-    </div>
+    </FormRow>
   );
 }
 
@@ -50,11 +50,7 @@ export function HeadersField({ rows, saved, onChange, showErrors }: { rows: read
       }),
     );
   return (
-    <div className="field field-stack">
-      <span className="field-label">
-        {t('请求头')}
-      </span>
-      <span className="field-control">
+    <FormRow stack title={t('请求头')}>
         <span className="header-rows">
           {list.map((h, i) => {
             const mask = maskOf(h);
@@ -103,15 +99,13 @@ export function HeadersField({ rows, saved, onChange, showErrors }: { rows: read
             {t('添加')}
           </button>
         </span>
-      </span>
-    </div>
+    </FormRow>
   );
 }
 
 export function CredentialsInField({ value, onChange }: { value: CredentialsIn | null; onChange(v: CredentialsIn | null): void }) {
   return (
-    <div className="field field-stack">
-      <span className="field-label">{t('凭据位置')}</span>
+    <FormRow title={t('凭据位置')}>
       <div className="segmented" role="radiogroup" aria-label={t('凭据位置')}>
         {CREDENTIALS_IN.map((c) => (
           <button key={c.label} type="button" role="radio" aria-checked={value === c.value} className={value === c.value ? 'segment is-on' : 'segment'} onClick={() => onChange(c.value)}>
@@ -119,6 +113,6 @@ export function CredentialsInField({ value, onChange }: { value: CredentialsIn |
           </button>
         ))}
       </div>
-    </div>
+    </FormRow>
   );
 }

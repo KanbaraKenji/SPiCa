@@ -39,6 +39,7 @@ import { InfoTip } from '../ui/InfoTip';
 import { Select, type SelectOption } from '../ui/Select';
 import { PasteConfig } from './PasteConfig';
 import { AuthByField, CredentialsInField, headerRows, HeadersField } from './ProviderHeaders';
+import { FormRow } from './FormRow';
 import { ProblemBeside, ProblemBox } from './Problem';
 import { SaveRow } from './save-layout';
 import { SpicaStatusIcon } from '@spica/brand/react';
@@ -116,12 +117,15 @@ interface FieldProps {
 
 function Field({ label, value, onChange, error, placeholder, type = 'text', hint }: FieldProps) {
   return (
-    <label className="field field-stack">
-      <span className="field-label">
-        {label}
-        {hint ? <InfoTip text={hint} decorative /> : null}
-      </span>
-      <span className="field-control">
+    <FormRow
+      label
+      title={
+        <>
+          {label}
+          {hint ? <InfoTip text={hint} decorative /> : null}
+        </>
+      }
+    >
         <ProblemBox problem={error}>
           <input
             className={error ? 'input is-invalid' : 'input'}
@@ -135,8 +139,7 @@ function Field({ label, value, onChange, error, placeholder, type = 'text', hint
             onChange={(e) => onChange(e.target.value)}
           />
         </ProblemBox>
-      </span>
-    </label>
+    </FormRow>
   );
 }
 
@@ -639,10 +642,10 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
   const inHeaders = keyInHeaders({ kind: draft.kind, authBy });
   const showAuthBy = !isWso2 && (isRelay || Boolean(provider?.headers?.length) || inHeaders);
   const limits = (
-    <div className="field-pair">
+    <>
       <Field label={t('同时请求')} type="number" value={numText(draft.maxConcurrent)} onChange={(v) => set({ maxConcurrent: parseNum(v) })} error={errors.maxConcurrent} placeholder={t('不限')} />
       <Field label={t('每分钟请求')} type="number" value={numText(draft.requestsPerMinute)} onChange={(v) => set({ requestsPerMinute: parseNum(v) })} error={errors.requestsPerMinute} placeholder={t('不限')} />
-    </div>
+    </>
   );
 
   // 保存, 测试连接 and the rest: the bar at the bottom of the settings pane (save-layout.tsx)
@@ -742,7 +745,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
       {editing ? (
         <form
           id="provider-editor"
-          className="provider-editor"
+          className="provider-editor group-box"
           // the form says what is wrong itself (red words in the field): never the browser's own bubble, which
           // also kept 保存 from saving a 花费上限 like 0.015 (step 0.01)
           noValidate
@@ -751,9 +754,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
             void run(save);
           }}
         >
-          <div className="field field-stack">
-            <span className="field-label">{t('服务商')}</span>
-            <span className="field-control provider-choice">
+          <FormRow title={t('服务商')} controlClassName="provider-choice">
               <Select
                 value={choice}
                 label={t('服务商')}
@@ -766,8 +767,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                 ]}
               />
               <PasteConfig key={selected ?? ''} kind={draft.kind} onApply={applyPaste} />
-            </span>
-          </div>
+          </FormRow>
 
           {choice !== '' ? (
             <>
@@ -785,8 +785,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
               {isRelay ? (
                 <>
                   <Field label={t('接口地址')} value={draft.baseUrl} onChange={(baseUrl) => set({ baseUrl })} error={errors.baseUrl} placeholder="https://relay.example.com/v1" />
-                  <div className="field field-stack">
-                    <span className="field-label">{t('协议')}</span>
+                  <FormRow title={t('协议')}>
                     <div className="segmented" role="radiogroup" aria-label={t('协议')}>
                       {PROVIDER_KINDS.filter((k) => k.kind !== 'wso2').map((k) => (
                         <button key={k.kind} type="button" role="radio" aria-checked={draft.kind === k.kind} className={draft.kind === k.kind ? 'segment is-on' : 'segment'} onClick={() => set({ kind: k.kind })}>
@@ -794,7 +793,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                         </button>
                       ))}
                     </div>
-                  </div>
+                  </FormRow>
                 </>
               ) : null}
 
@@ -813,12 +812,15 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
               {inHeaders ? <HeadersField rows={draft.headers ?? []} saved={current?.savedHeaders} onChange={(headers) => set({ headers })} showErrors={Boolean(errors.headers)} /> : null}
 
               {needsKey && !inHeaders ? (
-                <label className="field field-stack">
-                  <span className="field-label">
-                    {secretLabel(draft.kind)}
-                    {isWso2 ? <InfoTip text={t('即 Client Secret，与 Consumer Key 位于同一位置。')} decorative /> : null}
-                  </span>
-                  <span className="field-control">
+                <FormRow
+                  label
+                  title={
+                    <>
+                      {secretLabel(draft.kind)}
+                      {isWso2 ? <InfoTip text={t('即 Client Secret，与 Consumer Key 位于同一位置。')} decorative /> : null}
+                    </>
+                  }
+                >
                     <ProblemBox problem={errors.secret}>
                     <input
                       className={errors.secret ? 'input is-invalid' : 'input'}
@@ -837,19 +839,21 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                         {t('API 文档')}
                       </a>
                     ) : null}
-                  </span>
-                </label>
+                </FormRow>
               ) : null}
 
               {isWso2 ? <Field label="Scope" value={draft.scope} onChange={(scope) => set({ scope })} hint={t('可选')} /> : null}
 
-              <div className="field field-stack">
-                <span className="field-label">
-                  {t('模型')}
-                  {isWso2 ? <InfoTip text={t('区分大小写，可包含斜杠。')} label={t('模型名称的写法')} /> : null}
-                  <ProblemBeside problem={errors.model ?? errors.contextWindow} />
-                </span>
-                <span className="field-control">
+              <FormRow
+                stack
+                title={
+                  <>
+                    {t('模型')}
+                    {isWso2 ? <InfoTip text={t('区分大小写，可包含斜杠。')} label={t('模型名称的写法')} /> : null}
+                    <ProblemBeside problem={errors.model ?? errors.contextWindow} />
+                  </>
+                }
+              >
                   <ModelPicker
                     catalog={provider?.models ?? []}
                     fetched={fetched}
@@ -870,16 +874,17 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                           : t('已获取 {n} 个模型，没有新增', { n: fetchNote.got })
                     }
                   />
-                </span>
-              </div>
+              </FormRow>
 
               {/* 花费上限: what this provider may cost in a period (7 天 / 30 天 / 自定义); 本周期已花 under it once saved */}
-              <div className="field field-stack">
-                <span className="field-label">
-                  {t('花费上限')}
-                  <ProblemBeside problem={errors.spendLimitUsd ?? errors.spendPeriodDays} />
-                </span>
-                <span className="field-control">
+              <FormRow
+                title={
+                  <>
+                    {t('花费上限')}
+                    <ProblemBeside problem={errors.spendLimitUsd ?? errors.spendPeriodDays} />
+                  </>
+                }
+              >
                   <span className="spend-limit">
                     <label className="run-limit">
                       <span aria-hidden="true">US$</span>
@@ -924,9 +929,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                     ) : null}
                   </span>
                   {current && spent[current.id] ? <span className="spend-spent">{spendLine(spent[current.id]!)}</span> : null}
-
-                </span>
-              </div>
+              </FormRow>
 
               <div className="provider-more">
                 <button type="button" className="fold-head" aria-expanded={advanced} onClick={() => setAdvanced((a) => !a)}>
@@ -938,8 +941,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                 <>
                   {provider ? (
                     <>
-                      <div className="field field-stack">
-                        <span className="field-label">{t('类型')}</span>
+                      <FormRow title={t('类型')}>
                         <div className="segmented" role="radiogroup" aria-label={t('类型')}>
                           {PROVIDER_KINDS.map((k) => (
                             <button key={k.kind} type="button" role="radio" aria-checked={draft.kind === k.kind} className={draft.kind === k.kind ? 'segment is-on' : 'segment'} onClick={() => set({ kind: k.kind })}>
@@ -947,7 +949,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                             </button>
                           ))}
                         </div>
-                      </div>
+                      </FormRow>
                       <Field label={t('接口地址')} value={draft.baseUrl} onChange={(baseUrl) => set({ baseUrl })} error={errors.baseUrl} />
                     </>
                   ) : null}
