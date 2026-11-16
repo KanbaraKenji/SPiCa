@@ -989,6 +989,9 @@ const argLabels = (): Record<string, string> => Object.fromEntries(Object.entrie
 export function ConfirmTarget({ name, input, bare, change }: { name: string; input: unknown; bare?: boolean; change?: ChangePreview | undefined }) {
   const v = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
   if (name === 'run_command' && typeof v.command === 'string') return <CommandBox command={v.command} marks={dangerSpans(v.command)} bare={bare} />;
+  // The built-in browser: the title already says which site and what (the button's words, the box and what goes in);
+  // the element's number is the agent's, nothing a person reads.
+  if (name === 'browser_click' || name === 'browser_type' || name === 'browser_press') return null;
   // A write or an edit: what it would change, as its row shows it after (the core worked it out when it asked: the
   // lines numbered, green in, red out; a new file all green). Without that (an older core) the arguments' own lines.
   if (name === 'write_file' || name === 'edit_file') {

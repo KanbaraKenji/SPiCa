@@ -120,4 +120,8 @@ export const DesktopChannel = {
   BrowserGiveBack: 'spica:browserGiveBack',
   /** invoke: the page's WebContents id -> null; 接手: the agent leaves that page until it is given back */
   BrowserTakeOverPage: 'spica:browserTakeOverPage',
+  /** main -> renderer: { page, host } — a local page's request to that host was stopped (page: its address's token) */
+  BrowserBlocked: 'spica:browserBlocked',
+  /** main -> renderer: a web address a local page went to; asked where to open it, as a link in the app */
+  BrowserLocalLink: 'spica:browserLocalLink',
 } as const;

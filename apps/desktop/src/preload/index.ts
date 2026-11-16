@@ -151,6 +151,8 @@ const bridge: DesktopBridge = {
     onTakeOver: (listener) => subscribe(DesktopChannel.BrowserTakeOver, listener),
     giveBack: (tabId) => ipcRenderer.invoke(DesktopChannel.BrowserGiveBack, tabId) as Promise<null>,
     takeOver: (wcId) => ipcRenderer.invoke(DesktopChannel.BrowserTakeOverPage, wcId) as Promise<null>,
+    onBlocked: (listener) => subscribe(DesktopChannel.BrowserBlocked, listener),
+    onLocalLink: (listener) => subscribe(DesktopChannel.BrowserLocalLink, listener),
   },
   saveCsv: (name, text) => ipcRenderer.invoke(DesktopChannel.SaveCsv, name, text) as Promise<SaveCsvResult>,
   monitor: {

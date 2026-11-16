@@ -3,7 +3,10 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, screen, session, shell, Tray, webContents } from 'electron';
-import { BROWSER_FILE_SCHEME, BROWSER_PARTITION } from './browser/policy';
+import { BROWSER_FILE_SCHEME, BROWSER_PARTITION, localPageHostsFrom, type LocalPageHosts } from './browser/policy';
+
+/** What local pages may load from the web (deploy.json "localPageHosts", else the public CDNs; read once). */
+let localHosts: LocalPageHosts | undefined;
 import { LocalPages, realInside } from './browser/local-pages';
 import { flushBrowserSession, guardWebviews, setupBrowserSession } from './browser/session';
 import { applyBrowserNetwork, proxyLogin } from './browser/network';
@@ -877,6 +880,8 @@ function createMainWindow(): BrowserWindow {
   // The built-in browser's pages: locked settings, new windows become tabs, no way into local files or this machine.
   guardWebviews(win.webContents, {
     openTab: (url) => sendToWindow(DesktopChannel.BrowserOpenTab, url),
+    // a local page going to the web: asked where, as a link in the app is
+    localLink: (url) => sendToWindow(DesktopChannel.BrowserLocalLink, url),
     log: (line) => console.log(line),
   });
   // The page process gone (killed, crashed, out of memory): load it again, back on the open conversation;
@@ -1881,7 +1886,19 @@ void app.whenReady().then(() => {
     session.fromPartition(BROWSER_PARTITION).protocol.handle('https', answer);
   }
   // The built-in browser's own session (its own cookies and storage; none of the app's schemes are registered on it).
-  setupBrowserSession(session.fromPartition(BROWSER_PARTITION), { log: (line) => console.log(line), stopSubmit: (wcId) => (submitGuard.get(wcId) ?? 0) > Date.now() });
+  setupBrowserSession(session.fromPartition(BROWSER_PARTITION), {
+    log: (line) => console.log(line),
+    stopSubmit: (wcId) => (submitGuard.get(wcId) ?? 0) > Date.now(),
+    // local pages on the web: the public CDNs and Google Fonts only, or deploy.json's own lists
+    localPageHosts: () => (localHosts ??= localPageHostsFrom(readDeployJson())),
+    onLocalBlocked: (_wcId, page, url) => {
+      try {
+        sendToWindow(DesktopChannel.BrowserBlocked, { page: new URL(page).host, host: new URL(url).host || new URL(url).protocol });
+      } catch {
+        // not an address: nothing to show
+      }
+    },
+  });
   session.fromPartition(BROWSER_PARTITION).protocol.handle(BROWSER_FILE_SCHEME, async (req) => {
     const s = localPages.resolve(req.url, req.method);
     if (s.kind === 'text') return new Response(s.text, { headers: { 'content-type': 'text/html; charset=utf-8' } });

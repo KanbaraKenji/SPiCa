@@ -203,6 +203,10 @@ export interface DesktopBridge extends SpicaBridge {
     giveBack(tabId: string): Promise<null>;
     /** 接手: the agent leaves this page (its WebContents id) until it is given back. */
     takeOver(wcId: number): Promise<null>;
+    /** A local page's request was stopped (page: the token in its address; host: where it went). */
+    onBlocked(listener: (b: { page: string; host: string }) => void): () => void;
+    /** A local page went to a web address: open it as a link in the app is (asked, or as set). */
+    onLocalLink(listener: (url: string) => void): () => void;
   };
   /** 监控台: the back end's lines (kept in the main process, secrets removed there). */
   monitor: {

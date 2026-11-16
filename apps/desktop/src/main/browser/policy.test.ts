@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BROWSER_PARTITION, blocksLocalRequest, isLocalHost, LOCKED, lockWebview, navigable, permits } from './policy';
+import { BROWSER_PARTITION, blocksLocalRequest, isLocalHost, isLocalPage, LOCAL_PAGE_HOSTS, localPageAllows, localPageHostsFrom, LOCKED, lockWebview, navigable, permits } from './policy';
 
 describe('navigable: where a tab may go', () => {
   it.each([
@@ -108,4 +108,47 @@ describe('lockWebview: whatever a <webview> asks for, it gets the locked setting
 
 it('permits: every permission is refused', () => {
   for (const p of ['media', 'geolocation', 'notifications', 'clipboard-read', 'midi', 'hid', 'serial', 'usb', 'fullscreen', 'openExternal']) expect(permits(p)).toBe(false);
+});
+
+describe('local pages on the network (as Claude artifacts)', () => {
+  const H = LOCAL_PAGE_HOSTS;
+  const ok = (url: string, resourceType: string, method = 'GET') => localPageAllows({ url, resourceType, method }, H);
+  it('scripts from the five CDNs (jsDelivr /npm/ only); nothing else as a script', () => {
+    for (const u of ['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js', 'https://cdn.jsdelivr.net/npm/chart.js@4', 'https://cdn.tailwindcss.com/3.4.1', 'https://code.jquery.com/jquery-3.7.1.min.js', 'https://unpkg.com/react@18/umd/react.production.min.js'])
+      expect(ok(u, 'script')).toBe(true);
+    expect(ok('https://cdn.jsdelivr.net/gh/user/repo/x.js', 'script')).toBe(false);
+    expect(ok('https://evil.example/x.js', 'script')).toBe(false);
+    expect(ok('http://cdnjs.cloudflare.com/x.js', 'script')).toBe(false);
+    expect(ok('https://cdnjs.cloudflare.com.evil.example/x.js', 'script')).toBe(false);
+  });
+  it('fonts and their style sheets from Google Fonts only; fetch / XHR to Google Fonts only', () => {
+    expect(ok('https://fonts.googleapis.com/css2?family=Inter', 'stylesheet')).toBe(true);
+    expect(ok('https://fonts.gstatic.com/s/inter/v1/a.woff2', 'font')).toBe(true);
+    expect(ok('https://cdnjs.cloudflare.com/x.css', 'stylesheet')).toBe(false);
+    expect(ok('https://fonts.example/a.woff2', 'font')).toBe(false);
+    expect(ok('https://api.example/data', 'xhr')).toBe(false);
+  });
+  it('no pictures, frames, sockets, media, pings or forms from the web', () => {
+    for (const [u, type] of [['https://img.example/a.png', 'image'], ['https://example.com/', 'subFrame'], ['wss://example.com/s', 'webSocket'], ['https://cdnjs.cloudflare.com/a.mp4', 'media'], ['https://example.com/p', 'ping']])
+      expect(ok(u!, type!)).toBe(false);
+    expect(ok('https://cdnjs.cloudflare.com/x.js', 'script', 'POST')).toBe(false);
+  });
+  it('its own folder, data and blob always', () => {
+    expect(ok('spica-page://tok/app.js', 'script')).toBe(true);
+    expect(ok('data:image/png;base64,AA', 'image')).toBe(true);
+    expect(ok('blob:spica-page://tok/123', 'xhr')).toBe(true);
+  });
+  it('deploy.json may replace either list', () => {
+    expect(localPageHostsFrom(undefined)).toEqual(LOCAL_PAGE_HOSTS);
+    expect(localPageHostsFrom({ localPageHosts: { scripts: ['libs.corp.example', 'static.corp.example/js/'] } })).toEqual({ scripts: ['libs.corp.example', 'static.corp.example/js/'], fonts: LOCAL_PAGE_HOSTS.fonts });
+    const corp = localPageHostsFrom({ localPageHosts: { scripts: ['static.corp.example/js/'], fonts: [] } });
+    expect(localPageAllows({ url: 'https://static.corp.example/js/chart.js', resourceType: 'script' }, corp)).toBe(true);
+    expect(localPageAllows({ url: 'https://static.corp.example/other.js', resourceType: 'script' }, corp)).toBe(false);
+    expect(localPageAllows({ url: 'https://fonts.gstatic.com/a.woff2', resourceType: 'font' }, corp)).toBe(false);
+  });
+  it('isLocalPage', () => {
+    expect(isLocalPage('spica-page://tok/a.html')).toBe(true);
+    expect(isLocalPage('https://example.com/')).toBe(false);
+    expect(isLocalPage(undefined)).toBe(false);
+  });
 });

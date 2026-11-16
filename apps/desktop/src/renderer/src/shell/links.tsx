@@ -30,12 +30,23 @@ export interface LinkRouterProps {
   open(url: string, place: LinkPlace): void;
   /** 记住我的选择 ticked: the answer becomes the setting. */
   remember(place: LinkPlace): void;
+  /** Addresses that come from elsewhere (a local page going to the web): routed as a plain click is. */
+  incoming?: (listener: (url: string) => void) => () => void;
 }
 
 /** Mounted once in the app: takes link clicks and right clicks, and asks when the setting says to. */
-export function LinkRouter({ setting, open, remember }: LinkRouterProps) {
+export function LinkRouter({ setting, open, remember, incoming }: LinkRouterProps) {
   const [asking, setAsking] = useState<{ n: number; url: string } | null>(null);
   const [menu, setMenu] = useState<{ n: number; x: number; y: number; url: string } | null>(null);
+  useEffect(() => {
+    if (!incoming) return;
+    return incoming((url) => {
+      if (!/^https?:\/\//i.test(url)) return;
+      const place = placeFor(setting, { ctrlKey: false, metaKey: false, shiftKey: false });
+      if (place) open(url, place);
+      else setAsking((a) => ({ n: (a?.n ?? 0) + 1, url }));
+    });
+  }, [incoming, setting, open]);
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (e.button !== 0 || e.defaultPrevented) return;

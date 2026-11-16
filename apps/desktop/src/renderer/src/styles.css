@@ -8500,3 +8500,15 @@ input[type='radio']:disabled {
 .pane-tab-list.is-more-left.is-more-right {
   mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent);
 }
+/* What a local page tried to load from the web and was stopped (FilePreview's `blocked`): a quiet mark with the
+   number, the hosts on hover; not a button. */
+.preview-blocked {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  height: var(--control-h);
+  color: var(--spica-muted);
+  font-variant-numeric: tabular-nums;
+}

@@ -109,7 +109,7 @@ function quoted(name: string): string {
 }
 
 /** Whether to do it, ask first, or leave it to the person. The question's words are the confirmation card's. */
-export function judge(tool: ActionTool, f: ElementFacts | null, input: { key?: unknown; submit?: unknown } = {}): ActionVerdict {
+export function judge(tool: ActionTool, f: ElementFacts | null, input: { key?: unknown; submit?: unknown; text?: unknown } = {}): ActionVerdict {
   if (tool === 'browser_press') {
     // Enter in a form's field sends the form
     if (String(input.key ?? '').toLowerCase() === 'enter' && f?.found && f.form) return { action: 'confirm', reason: t('提交表单（{site}）', { site: host(f.form.action) }) };
@@ -118,7 +118,10 @@ export function judge(tool: ActionTool, f: ElementFacts | null, input: { key?: u
   if (!f || !f.found) return { action: 'allow' }; // the tool says it is not there
   if (tool === 'browser_type') {
     if (sensitiveField(f)) return { action: 'deny', reason: 'password, card number or one-time code field: the person types this themselves in the panel; ask them to do it' };
-    if (input.submit === true) return { action: 'confirm', reason: f.form ? t('输入后提交表单（{site}）', { site: host(f.form.action) }) : t('输入后按回车（{site}）', { site: host(f.page) }) };
+    if (input.submit === true) {
+      const text = String(input.text ?? '');
+      return { action: 'confirm', reason: t('在{field}填入{text}并提交（{site}）', { field: quoted(f.name), text: quoted(text), site: host(f.form?.action ?? f.page) }) };
+    }
     return { action: 'allow' };
   }
   // a click

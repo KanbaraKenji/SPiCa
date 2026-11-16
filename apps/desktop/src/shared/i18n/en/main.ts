@@ -213,8 +213,7 @@ export const EN_MAIN: Catalog = {
   '无法打开此网址。': 'Cannot open this address.',
   // main/browser/actions.ts (the confirmation card when an agent acts in a page)
   '提交表单（{site}）': 'Submit a form ({site})',
-  '输入后提交表单（{site}）': 'Type and submit a form ({site})',
-  '输入后按回车（{site}）': 'Type and press Enter ({site})',
+  '在{field}填入{text}并提交（{site}）': 'Fill {field} with {text} and submit ({site})',
   '提交表单（{site}）：{button}': 'Submit a form ({site}): {button}',
   '下载（{site}）：{link}': 'Download ({site}): {link}',
   '{site} 上的按钮{button}': 'Button {button} on {site}',

@@ -160,3 +160,42 @@ describe('guardWebviews', () => {
     expect(stopped(redirect, 'spica-file://token')).toBe(true);
   });
 });
+
+describe('local pages: the lists, and going to the web', () => {
+  const hosts = () => ({ scripts: ['cdnjs.cloudflare.com'], fonts: ['fonts.gstatic.com'] });
+  it('a local page (its workers and frames too) loads only what the lists allow; each stop is reported', () => {
+    const { ses, h } = fakeSession();
+    const stopped: string[] = [];
+    setupBrowserSession(ses, { localPageHosts: hosts, onLocalBlocked: (_id, page, url) => stopped.push(`${page} ${url}`) });
+    const before = h.before as (d: Record<string, unknown>, cb: (r: { cancel: boolean }) => void) => void;
+    const ask = (url: string, resourceType: string, top: string, method = 'GET') => {
+      let cancel: boolean | undefined;
+      before({ url, resourceType, method, webContentsId: 7, webContents: { getURL: () => top } }, (r) => (cancel = r.cancel));
+      return cancel;
+    };
+    const page = 'spica-page://tok/report.html';
+    expect(ask('https://cdnjs.cloudflare.com/lib.js', 'script', page)).toBe(false);
+    expect(ask('spica-page://tok/app.js', 'script', page)).toBe(false);
+    expect(ask('https://evil.example/x.js', 'script', page)).toBe(true);
+    expect(ask('https://img.example/a.png', 'image', page)).toBe(true);
+    expect(ask('https://api.example/send', 'xhr', page)).toBe(true);
+    // the same requests from a web page the person opened: not this rule
+    expect(ask('https://img.example/a.png', 'image', 'https://news.example/')).toBe(false);
+    expect(stopped).toEqual([`${page} https://evil.example/x.js`, `${page} https://img.example/a.png`, `${page} https://api.example/send`]);
+  });
+
+  it("a local page's own navigation or new window to the web is not done in the page; it is asked about", () => {
+    const { host, h } = fakeHost();
+    const asked: string[] = [];
+    const tabs: string[] = [];
+    guardWebviews(host, { openTab: (u) => tabs.push(u), localLink: (u) => asked.push(u) });
+    const g = fakeGuest('spica-page://tok/report.html');
+    (h['did-attach-webview'] as (e: unknown, g: GuestLike) => void)({}, g.guest);
+    let prevented = false;
+    (g.h['will-navigate'] as (e: { preventDefault(): void }, url: string) => void)({ preventDefault: () => (prevented = true) }, 'https://evil.example/?d=secret');
+    (g.h.open as (d: { url: string }) => unknown)({ url: 'https://docs.example/' });
+    expect(prevented).toBe(true);
+    expect(asked).toEqual(['https://evil.example/?d=secret', 'https://docs.example/']);
+    expect(tabs).toEqual([]);
+  });
+});

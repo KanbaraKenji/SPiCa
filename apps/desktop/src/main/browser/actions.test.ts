@@ -15,7 +15,7 @@ describe('judge: the confirmation table', () => {
   it('submitting a form: asked, naming the site it goes to and the button as the page words it', () => {
     expect(judge('browser_click', el({ type: 'submit', name: 'Place order', form }))).toEqual({ action: 'confirm', reason: '提交表单（shop.example）：「Place order」' });
     expect(judge('browser_click', el({ tag: 'input', type: 'submit', name: 'Go' }))).toMatchObject({ action: 'confirm' });
-    expect(judge('browser_type', el({ tag: 'input', type: 'text', editable: true, form }), { submit: true })).toEqual({ action: 'confirm', reason: '输入后提交表单（shop.example）' });
+    expect(judge('browser_type', el({ tag: 'input', type: 'text', name: '收货人', editable: true, form }), { submit: true, text: '张三' })).toEqual({ action: 'confirm', reason: '在「收货人」填入「张三」并提交（shop.example）' });
     expect(judge('browser_press', el({ tag: 'input', form }), { key: 'Enter' })).toEqual({ action: 'confirm', reason: '提交表单（shop.example）' });
   });
 

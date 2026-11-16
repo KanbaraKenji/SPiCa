@@ -278,4 +278,6 @@ export const ZH_TW_SHELL: Catalog = {
   已接手: '已接手',
   接手: '接手',
   交还: '交還',
+  // shell/FilePreview.tsx (a local page's stopped requests)
+  '已拦截：{hosts}': '已攔截：{hosts}',
 };

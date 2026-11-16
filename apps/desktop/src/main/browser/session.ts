@@ -1,7 +1,7 @@
 // The built-in browser's session and its <webview>s: browser/policy.ts's rules applied where Electron asks.
 // Typed against the few members used, so tests can pass plain objects.
 import type { WebContents } from 'electron';
-import { blocksLocalRequest, lockWebview, navigable, permits } from './policy';
+import { blocksLocalRequest, isLocalPage, localPageAllows, lockWebview, navigable, permits, type LocalPageHosts } from './policy';
 
 interface RequestDetails {
   url: string;
@@ -38,6 +38,10 @@ export interface BrowserSessionOptions {
   flushAfterMs?: number;
   /** Whether a page's form sending is stopped now (an agent's unconfirmed click or key a moment ago; agent.ts). */
   stopSubmit?: (wcId: number) => boolean;
+  /** What local pages may load from the web (deploy.json can change it); absent: no limit. */
+  localPageHosts?: () => LocalPageHosts;
+  /** A local page's request was stopped: the panel shows how many and from where. */
+  onLocalBlocked?: (wcId: number, page: string, url: string) => void;
 }
 
 function shortUrl(url: string): string {
@@ -65,6 +69,15 @@ export function setupBrowserSession(ses: BrowserSessionLike, o: BrowserSessionOp
     const top = details.resourceType === 'mainFrame' ? undefined : details.webContents?.getURL();
     if (blocksLocalRequest(details.url, top)) {
       o.log?.(`browser: request to a local address stopped (${shortUrl(details.url)} from ${shortUrl(top ?? '')})`);
+      callback({ cancel: true });
+      return;
+    }
+    // A local page (an HTML file, a page drawn from an answer; its workers and frames too): only what the lists allow
+    // (policy.ts localPageAllows, as Claude's artifacts). Its own navigations to the web are handled in wireGuest.
+    const page = details.webContents?.getURL();
+    if (details.resourceType !== 'mainFrame' && o.localPageHosts && isLocalPage(page) && !localPageAllows(details, o.localPageHosts())) {
+      o.log?.(`browser: a local page's request stopped (${details.resourceType} ${shortUrl(details.url)})`);
+      if (details.webContentsId !== undefined) o.onLocalBlocked?.(details.webContentsId, page!, details.url);
       callback({ cancel: true });
       return;
     }
@@ -105,6 +118,11 @@ export type GuestLike = Pick<WebContents, 'getURL' | 'setWindowOpenHandler' | 'o
 export interface WebviewOptions {
   /** A page asked for a new window (a link with target=_blank, window.open): it opens as a new tab instead. */
   openTab(url: string, opener: GuestLike): void;
+  /**
+   * A local page goes to the web (a link, a script, a new window): not in the page itself; asked where to open it,
+   * as a link in the app is (shell/links.tsx). Absent: such navigations are allowed as any page's.
+   */
+  localLink?: (url: string) => void;
   log?: (line: string) => void;
 }
 
@@ -120,12 +138,20 @@ export function guardWebviews(host: Pick<WebContents, 'on'>, o: WebviewOptions):
 }
 
 export function wireGuest(guest: GuestLike, o: WebviewOptions): void {
+  const toWeb = (url: string) => /^https?:/i.test(url) && isLocalPage(guest.getURL()) && !!o.localLink;
   guest.setWindowOpenHandler(({ url }) => {
-    if (navigable(url) && url !== 'about:blank') o.openTab(url, guest);
+    if (toWeb(url)) o.localLink!(url);
+    else if (navigable(url) && url !== 'about:blank') o.openTab(url, guest);
     return { action: 'deny' };
   });
   // Navigations the page starts (links, scripts, forms); an address the person types is loaded, not navigated here.
   const check = (e: { preventDefault(): void }, url: string) => {
+    if (toWeb(url)) {
+      o.log?.(`browser: a local page going to the web is asked about (${shortUrl(url)})`);
+      e.preventDefault();
+      o.localLink!(url);
+      return;
+    }
     if (!navigable(url) || blocksLocalRequest(url, guest.getURL() || undefined)) {
       o.log?.(`browser: navigation stopped (${shortUrl(url)})`);
       e.preventDefault();

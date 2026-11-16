@@ -278,4 +278,6 @@ export const EN_SHELL: Catalog = {
   已接手: 'Taken over',
   接手: 'Take over',
   交还: 'Hand back',
+  // shell/FilePreview.tsx (a local page's stopped requests)
+  '已拦截：{hosts}': 'Blocked: {hosts}',
 };

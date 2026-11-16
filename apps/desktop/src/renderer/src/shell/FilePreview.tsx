@@ -39,6 +39,8 @@ export interface FilePreviewProps {
   tabs?: ReactNode;
   /** An HTML file's address in the built-in browser: its 预览 face runs its scripts there (shell/BrowserPane.tsx). */
   page?: string | null;
+  /** Hosts the page tried to load from and was stopped (not on the allowed lists): a mark with their number. */
+  blocked?: string[];
 }
 
 function sizeText(n: number): string {
@@ -148,7 +150,7 @@ function codeOf(info: PreviewInfo | null): { text: string; language: string } | 
   return null;
 }
 
-export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, max, source, note, children, tabs, page }: FilePreviewProps) {
+export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, max, source, note, children, tabs, page, blocked }: FilePreviewProps) {
   // 预览 / 代码: per file, kept while the panel is open (another file opens as its preview; back to this one, as left).
   const id = info ? `${info.kind}|${info.path}|${info.name}` : '';
   const [codeFor, setCodeFor] = useState<ReadonlySet<string>>(() => new Set());
@@ -179,6 +181,13 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
         )}
         {info && hasFile ? <CopyButton className="icon-btn" label={t('复制路径')} copy={() => clipboard.write(info.path)} /> : null}
         <span className="preview-head-gap" />
+        {/* What the page tried to load from the web and was stopped: a mark, not a button (the hosts on hover). */}
+        {blocked?.length && !asCode ? (
+          <span className="preview-blocked" role="status" title={t('已拦截：{hosts}', { hosts: blocked.join(t('、')) })} aria-label={t('已拦截：{hosts}', { hosts: blocked.join(t('、')) })}>
+            <Icon name="shield" size={14} />
+            {blocked.length}
+          </span>
+        ) : null}
         {source && source.options.length > 1 ? (
           <Select className="preview-source" label={t('预览方式')} title={t('预览方式')} value={source.value} onChange={source.onChange} options={source.options.map((o) => ({ value: o.id, label: o.label }))} />
         ) : null}

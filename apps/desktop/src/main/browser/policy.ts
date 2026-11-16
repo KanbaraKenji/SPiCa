@@ -90,6 +90,70 @@ export function blocksLocalRequest(request: string, top: string | undefined): bo
   return !isLocalHost(from);
 }
 
+/**
+ * What a local page (an HTML file, or a page drawn from an answer: spica-page) may load from the network, as Claude's
+ * artifacts do (code.claude.com/docs/en/artifacts, checked 2026-11-16): scripts from five public CDNs (jsDelivr's
+ * /npm/ path only), fonts and their style sheets from Google Fonts; nothing else — no other style sheets or pictures,
+ * no fetch / XHR / WebSocket beyond Google Fonts, no form sent, no frame from the web. Each entry is a host, or a
+ * host and the start of the path. deploy.json's "localPageHosts" replaces either list (a company's own script store).
+ */
+export interface LocalPageHosts {
+  scripts: string[];
+  fonts: string[];
+}
+
+export const LOCAL_PAGE_HOSTS: LocalPageHosts = {
+  scripts: ['cdnjs.cloudflare.com', 'cdn.jsdelivr.net/npm/', 'cdn.tailwindcss.com', 'code.jquery.com', 'unpkg.com'],
+  fonts: ['fonts.googleapis.com', 'fonts.gstatic.com'],
+};
+
+/** deploy.json's "localPageHosts": { "scripts": [...], "fonts": [...] }, each list replacing the default when given. */
+export function localPageHostsFrom(deploy: unknown): LocalPageHosts {
+  const raw = deploy && typeof deploy === 'object' ? (deploy as Record<string, unknown>).localPageHosts : undefined;
+  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const list = (v: unknown, fallback: string[]) => (Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string' && s.trim() !== '').map((s) => s.trim().toLowerCase()) : fallback);
+  return { scripts: list(o.scripts, LOCAL_PAGE_HOSTS.scripts), fonts: list(o.fonts, LOCAL_PAGE_HOSTS.fonts) };
+}
+
+/** Whether an address is on a list (host, or host and the start of the path). https only. */
+function listed(url: URL, entries: string[]): boolean {
+  if (url.protocol !== 'https:') return false;
+  const host = url.hostname.toLowerCase();
+  return entries.some((e) => {
+    const at = e.indexOf('/');
+    if (at < 0) return host === e;
+    return host === e.slice(0, at) && url.pathname.startsWith(e.slice(at));
+  });
+}
+
+/** Whether the page is a local page (its address in the browser's own scheme). */
+export function isLocalPage(url: string | undefined): boolean {
+  return !!url && url.startsWith(`${BROWSER_FILE_SCHEME}:`);
+}
+
+/** Whether a local page may make this request (its own folder, data and blob always; the web as the lists say). */
+export function localPageAllows(request: { url: string; resourceType: string; method?: string }, hosts: LocalPageHosts): boolean {
+  let u: URL;
+  try {
+    u = new URL(request.url);
+  } catch {
+    return false;
+  }
+  if (u.protocol === `${BROWSER_FILE_SCHEME}:` || u.protocol === 'data:' || u.protocol === 'blob:') return true;
+  const method = (request.method ?? 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') return false;
+  switch (request.resourceType) {
+    case 'script':
+      return listed(u, hosts.scripts);
+    case 'stylesheet':
+    case 'font':
+    case 'xhr':
+      return listed(u, hosts.fonts);
+    default:
+      return false;
+  }
+}
+
 /** The settings every <webview> in the app window gets, whatever the page asked for. */
 export interface LockedPreferences {
   partition: string;
