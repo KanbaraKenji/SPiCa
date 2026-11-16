@@ -40,6 +40,7 @@ import { Select, type SelectOption } from '../ui/Select';
 import { PasteConfig } from './PasteConfig';
 import { AuthByField, CredentialsInField, headerRows, HeadersField } from './ProviderHeaders';
 import { ProblemBeside, ProblemBox } from './Problem';
+import { SAVE_LAYOUT, SaveRow } from './save-layout';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Group, Row } from './Group';
 import { AGENT_MESSAGES_MAX, moneyText } from '../../../shared/settings';
@@ -644,6 +645,42 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
     </div>
   );
 
+  // 保存, 测试连接 and the rest (save-layout.tsx says where they sit)
+  const formActions = (
+    <>
+            {current ? (
+              <button type="button" className="btn btn-quiet-danger btn-square" onClick={() => setDeleting(current)} aria-label={t('删除')} title={t('删除')}>
+                <Icon name="trash" size={15} />
+              </button>
+            ) : null}
+            <span className="provider-actions-gap" />
+            {result ? (
+              <span className={result.ok ? 'provider-result is-ok' : 'provider-result is-bad'} role="status">
+                <SpicaStatusIcon name={result.ok ? 'done' : 'error'} size={15} />
+                {result.message}
+              </span>
+            ) : null}
+            {/* Saved or not, beside 保存, where the change is made. */}
+            {dirty ? <span className="provider-unsaved">{t('未保存')}</span> : null}
+            {dirty ? (
+              <button type="button" className="btn" onClick={discard} disabled={busy !== null}>
+                {t('取消')}
+              </button>
+            ) : null}
+            {choice !== '' ? (
+              <>
+                <button type="button" className="btn" onClick={() => void run(test)} disabled={busy !== null}>
+                  {busy === 'test' ? <span className="spinner" aria-hidden /> : null}
+                  {t('测试连接')}
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={busy !== null}>
+                  {t('保存')}
+                </button>
+              </>
+            ) : null}
+    </>
+  );
+
   return (
     <section className="settings-section">
       {list && groups.length ? (
@@ -704,8 +741,9 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
 
       {editing ? (
         <form
+          id="provider-editor"
           className="provider-editor"
-          // the form says what is wrong itself (red words under the field): never the browser's own bubble, which
+          // the form says what is wrong itself (red words in the field): never the browser's own bubble, which
           // also kept 保存 from saving a 花费上限 like 0.015 (step 0.01)
           noValidate
           onSubmit={(e) => {
@@ -713,6 +751,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
             void run(save);
           }}
         >
+          {SAVE_LAYOUT === 'head' ? <div className="provider-actions save-head">{formActions}</div> : null}
           <div className="field field-stack">
             <span className="field-label">{t('服务商')}</span>
             <span className="field-control provider-choice">
@@ -926,38 +965,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
               {pointerNote}
             </p>
           ) : null}
-          <div className="provider-actions">
-            {current ? (
-              <button type="button" className="btn btn-quiet-danger btn-square" onClick={() => setDeleting(current)} aria-label={t('删除')} title={t('删除')}>
-                <Icon name="trash" size={15} />
-              </button>
-            ) : null}
-            <span className="provider-actions-gap" />
-            {result ? (
-              <span className={result.ok ? 'provider-result is-ok' : 'provider-result is-bad'} role="status">
-                <SpicaStatusIcon name={result.ok ? 'done' : 'error'} size={15} />
-                {result.message}
-              </span>
-            ) : null}
-            {/* Saved or not, beside 保存, where the change is made. */}
-            {dirty ? <span className="provider-unsaved">{t('未保存')}</span> : null}
-            {dirty ? (
-              <button type="button" className="btn" onClick={discard} disabled={busy !== null}>
-                {t('取消')}
-              </button>
-            ) : null}
-            {choice !== '' ? (
-              <>
-                <button type="button" className="btn" onClick={() => void run(test)} disabled={busy !== null}>
-                  {busy === 'test' ? <span className="spinner" aria-hidden /> : null}
-                  {t('测试连接')}
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={busy !== null}>
-                  {t('保存')}
-                </button>
-              </>
-            ) : null}
-          </div>
+          {SAVE_LAYOUT === 'head' ? null : <SaveRow className="provider-actions">{formActions}</SaveRow>}
         </form>
       ) : null}
 
