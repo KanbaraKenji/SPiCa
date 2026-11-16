@@ -255,5 +255,4 @@ export const EN_SHELL: Catalog = {
   还原: 'Restore',
   最大化: 'Maximize',
   '{name}（{keys}）': '{name} ({keys})',
-  '新版本 {version} 将在任务结束后更新': 'Version {version} will be installed when tasks finish',
 };

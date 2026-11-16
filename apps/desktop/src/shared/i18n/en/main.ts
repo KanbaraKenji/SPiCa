@@ -209,5 +209,4 @@ export const EN_MAIN: Catalog = {
   '继续更新': 'Update anyway',
   '取消': 'Cancel',
   '新对话': 'New conversation',
-  '任务结束后更新': 'Update when tasks finish',
 };

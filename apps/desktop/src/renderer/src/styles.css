@@ -5765,12 +5765,13 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* Updates (shell/UpdateNotice.tsx): a card in the side bar, right above the bottom row; the same look as the
-   title bar's line (raised, bordered, a warning tint when the version must update). One row: the mark, the words
-   (whole, wrapping beside the button), the button, × at the end. The card is the container the narrowest layout
-   asks about. */
+   title bar's line (raised, bordered, a warning tint when the version must update). Laid out as he drew it: the mark
+   in the first line, the words flowing from beside it and wrapping to the card's left edge, × floating top right,
+   the button floating right after the words, so it sits on the last line or, without room there, on a line of its
+   own on the right. The words are always whole, at every width. × and the button (22 high) sit 1px above the line
+   (20 high), so they centre on it. */
 .update-card {
   flex: none;
-  container: update-card / inline-size;
   margin: 0 8px 8px;
   padding: 6px 4px 6px 12px;
   border-radius: var(--radius-m);
@@ -5785,63 +5786,38 @@ section.plugins-part > .plugins-part-title {
   background: var(--spica-warning-soft);
 }
 
-.update-card-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.update-card .notice-close {
+  float: right;
+  /* no deeper than the first line, so the line under it reaches the right edge (the button there sits under ×) */
+  margin: -1px 0 -1px 4px;
 }
 
-.update-card .notice-icon {
-  flex: none;
-}
-
-.update-card-text {
-  flex: 1;
-  min-width: 0;
+.update-card-body {
   /* Chinese wraps between words, not inside 已下载 */
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
 
-/* The button keeps its words whole; × right after it. */
+.update-card .notice-icon {
+  margin-right: 8px;
+  vertical-align: -3px;
+}
+
+/* The button keeps its words whole. */
 .update-card-action {
-  flex: none;
+  float: right;
+  margin: -1px 0 0 8px;
   height: 22px;
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
+  white-space: nowrap;
 }
 
-.update-card .notice-close {
-  flex: none;
-  margin-left: -4px;
-}
-
-/* The narrowest side bar: no mark; the words and × on the first row, the words on one line; the button on a row of
-   its own under them. A longer translation that still does not fit is cut, whole on hover. */
-@container update-card (max-width: 200px) {
-  .update-card .notice-icon {
-    display: none;
-  }
-
-  .update-card-row {
-    flex-wrap: wrap;
-    row-gap: 6px;
-  }
-
-  .update-card-text {
-    flex: 1 1 calc(100% - 30px);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .update-card .notice-close {
-    order: 1;
-  }
-
-  .update-card-action {
-    order: 2;
-  }
+/* The card's floats stay inside it. */
+.update-card::after {
+  content: '';
+  display: block;
+  clear: both;
 }
 
 /* In the column of icons: one icon in the same place; a dot for a downloaded update, the whole icon in the

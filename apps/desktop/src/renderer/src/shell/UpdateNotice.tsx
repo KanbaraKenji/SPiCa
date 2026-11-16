@@ -35,9 +35,7 @@ export function useUpdateNotice(update: UpdateState | null): UpdateNoticeView | 
     return {
       kind: 'app',
       text: ready
-        ? update.afterTasks
-          ? t('新版本 {version} 将在任务结束后更新', { version: available })
-          : t('新版本 {version} 已下载', { version: available })
+        ? t('新版本 {version} 已下载', { version: available })
         : t('新版本 {version}', { version: available }),
       required,
       ready,
@@ -66,12 +64,18 @@ export interface UpdateNoticeProps {
  */
 export function UpdateCard({ notice, onInstall, onOpenPlugins }: UpdateNoticeProps) {
   return (
+    // His drawing (2026-11-16): the mark top left, on the first line's level; the words from beside it, wrapped lines
+    // from the card's left edge; × top right; the button bottom right, on the last line (a line of its own, on the
+    // right, when that line has no room). × and the button float right; the mark sits in the words' first line.
     <div className={notice.required ? 'update-card is-warning' : 'update-card'} role="status">
-      <div className="update-card-row">
+      {notice.close ? (
+        <button type="button" className="icon-btn notice-close" onClick={notice.close} aria-label={t('稍后')} title={t('稍后')}>
+          <Icon name="close" size={14} />
+        </button>
+      ) : null}
+      <div className="update-card-body">
         <SpicaStatusIcon name={notice.required ? 'warning' : 'done'} size={15} className="notice-icon" />
-        <span className="update-card-text" title={notice.text}>
-          {notice.text}
-        </span>
+        <span className="update-card-text">{notice.text}</span>
         {notice.kind === 'app' && notice.ready ? (
           <button type="button" className="btn btn-small btn-primary update-card-action" onClick={onInstall}>
             {t('立即更新')}
@@ -79,11 +83,6 @@ export function UpdateCard({ notice, onInstall, onOpenPlugins }: UpdateNoticePro
         ) : notice.kind === 'plugins' ? (
           <button type="button" className="btn btn-small update-card-action" onClick={onOpenPlugins}>
             {t('查看')}
-          </button>
-        ) : null}
-        {notice.close ? (
-          <button type="button" className="icon-btn notice-close" onClick={notice.close} aria-label={t('稍后')} title={t('稍后')}>
-            <Icon name="close" size={14} />
           </button>
         ) : null}
       </div>

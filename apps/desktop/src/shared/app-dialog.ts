@@ -19,7 +19,7 @@ export const DialogChannel = {
 
 export interface DialogButton {
   label: string;
-  /** The main button: the skin's accent, focused at first, Enter. One per dialog. */
+  /** The main button: the skin's accent, focused at first, Enter. One per dialog at most; with none, the first plain button is focused. */
   primary?: boolean;
   /** A step that cannot be taken back (as the page's btn-danger): red, never the main button, never focused at first. */
   danger?: boolean;

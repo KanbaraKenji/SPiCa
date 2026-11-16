@@ -27,11 +27,6 @@ describe('updates in the side bar › the card', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
-  it('任务结束后更新 chosen: the card says it waits for the tasks', () => {
-    render(<Place update={{ ...base, status: 'ready', available: '0.2.1', afterTasks: true }} />);
-    expect(screen.getByRole('status').textContent).toContain('新版本 0.2.1 将在任务结束后更新');
-  });
-
   it('a version that must update: the card stays (no 稍后), marked as a warning', () => {
     render(<Place update={{ ...base, status: 'ready', available: '0.2.1', required: true }} />);
     expect(screen.getByRole('status').className).toContain('is-warning');

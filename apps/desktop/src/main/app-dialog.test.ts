@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor, runDialog, updateBusyChoice, updateBusyDialog, updateDialog, updateNowAnswer, type DialogWindow } from './app-dialog';
+import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor, runDialog, updateBusyAnswer, updateBusyDialog, updateDialog, updateNowAnswer, type DialogWindow } from './app-dialog';
 import { parseDialogSpec, type DialogAnswer } from '../shared/app-dialog';
 import { DARK_SKIN, LIGHT_SKIN } from '../shared/skin';
 
@@ -155,22 +155,21 @@ describe('立即更新 while conversations run', () => {
     expect(updateBusyDialog(['a', 'b', 'c', 'd', 'e'], dialogLook(DARK_SKIN)).detail).toEqual(['「a」', '「b」', '「c」', '还有 2 个']);
   });
 
-  it('waiting is the main button (last, focused); 继续更新 is the danger one; 取消 and × change nothing', () => {
+  it('two buttons and no main one: 取消 plain, 继续更新 the danger one; 取消 and × change nothing', () => {
     const spec = updateBusyDialog(['整理报价'], dialogLook(DARK_SKIN));
-    expect(spec.buttons).toEqual([{ label: '取消' }, { label: '继续更新', danger: true }, { label: '任务结束后更新', primary: true }]);
+    expect(spec.buttons).toEqual([{ label: '取消' }, { label: '继续更新', danger: true }]);
     expect(spec.tokens['--spica-danger']).toBeTruthy();
-    expect(updateBusyChoice({ button: 2, checked: false, choice: null })).toBe('after');
-    expect(updateBusyChoice({ button: 1, checked: false, choice: null })).toBe('now');
-    expect(updateBusyChoice({ button: 0, checked: false, choice: null })).toBeNull();
-    expect(updateBusyChoice({ button: null, checked: false, choice: null })).toBeNull();
+    expect(updateBusyAnswer({ button: 1, checked: false, choice: null })).toBe(true);
+    expect(updateBusyAnswer({ button: 0, checked: false, choice: null })).toBe(false);
+    expect(updateBusyAnswer({ button: null, checked: false, choice: null })).toBe(false);
     // the danger style survives the page's reading of the spec; a main button is never the danger one
     expect(parseDialogSpec(JSON.stringify(spec))?.buttons[1]).toEqual({ label: '继续更新', danger: true });
     expect(parseDialogSpec(JSON.stringify({ ...spec, buttons: [{ label: 'x', primary: true, danger: true }] }))?.buttons[0]).toEqual({ label: 'x', primary: true });
-    // the Windows message box (fallback): the main button first, closing it is 取消
+    // the Windows message box (fallback): 取消 first (its default), closing it is 取消
     const box = messageBoxFor(spec, { type: 'info', appName: 'Spica', cancel: 0 });
-    expect(box.options.buttons).toEqual(['任务结束后更新', '取消', '继续更新']);
-    expect(updateBusyChoice(box.answer(0, false))).toBe('after');
-    expect(updateBusyChoice(box.answer(2, false))).toBe('now');
-    expect(updateBusyChoice(box.answer(1, false))).toBeNull();
+    expect(box.options.buttons).toEqual(['取消', '继续更新']);
+    expect(box.options.cancelId).toBe(0);
+    expect(updateBusyAnswer(box.answer(1, false))).toBe(true);
+    expect(updateBusyAnswer(box.answer(0, false))).toBe(false);
   });
 });

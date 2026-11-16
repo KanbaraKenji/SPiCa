@@ -255,5 +255,4 @@ export const ZH_TW_SHELL: Catalog = {
   还原: '還原',
   最大化: '最大化',
   '{name}（{keys}）': '{name}（{keys}）',
-  '新版本 {version} 将在任务结束后更新': '新版本 {version} 將在任務結束後更新',
 };

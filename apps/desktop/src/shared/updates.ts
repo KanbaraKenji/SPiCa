@@ -13,8 +13,6 @@ export interface UpdateState {
   available?: string;
   /** Plain-language line for the settings page. */
   message?: string;
-  /** 任务结束后更新 was chosen: the downloaded version installs as soon as no conversation runs. */
-  afterTasks?: boolean;
   /** Where updates come from, as configured (empty = not set). */
   source: string;
   /** The source came from the installer's deploy.json, not from the user. */

@@ -71,9 +71,6 @@ describe('关于 › the version, its update state and button on one row (B)', (
     expect(screen.queryByRole('button', { name: '检查更新' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '立即更新' }));
     expect(onInstall).toHaveBeenCalled();
-    cleanup();
-    show({ ...base, source: 'D:/更新', status: 'ready', available: '0.2.1', afterTasks: true });
-    expect(screen.getByRole('status').textContent).toBe('新版本 0.2.1 将在任务结束后更新');
   });
 });
 

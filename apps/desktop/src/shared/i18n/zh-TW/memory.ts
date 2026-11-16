@@ -96,5 +96,4 @@ export const ZH_TW_MEMORY: Catalog = {
   // 设置 › 关于: the update state beside the version
   '已是最新版本': '已是最新版本',
   '新版本 {version} 已下载': '新版本 {version} 已下載',
-  '新版本 {version} 将在任务结束后更新': '新版本 {version} 將在任務結束後更新',
 };

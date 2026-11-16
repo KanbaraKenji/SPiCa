@@ -50,9 +50,7 @@ export function About({ version, update, onCheck, onInstall, whenIdle, onWhenIdl
     update?.status === 'checking'
       ? t('正在检查更新…')
       : ready && update?.available
-        ? update.afterTasks
-          ? t('新版本 {version} 将在任务结束后更新', { version: update.available })
-          : t('新版本 {version} 已下载', { version: update.available })
+        ? t('新版本 {version} 已下载', { version: update.available })
         : update?.status === 'latest'
           ? t('已是最新版本')
           : noSource
