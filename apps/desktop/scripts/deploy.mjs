@@ -100,7 +100,7 @@ function pluginConfigOf(v) {
       const at = `deploy.json 的 pluginConfig.${plugin}.${k}`;
       if (!isObj(p) || !['string', 'number', 'boolean'].includes(typeof p.value)) throw new Error(`${at} 要写成 { "value": 文字、数字或 true / false }，可加 "locked": true。`);
       if (p.locked !== undefined && typeof p.locked !== 'boolean') throw new Error(`${at}.locked 只能是 true 或 false。`);
-      if (k.split('_').some((s) => ['password', 'passwd', 'pwd', 'secret', 'token'].includes(s))) throw new Error(`${at}：密码和令牌不能写进安装包，由每个人自己填。`);
+      if (k.split('_').some((s) => ['password', 'passwd', 'pwd', 'secret', 'token'].includes(s))) throw new Error(`${at}：密码和令牌不能写进安装包，由用户在设置中填写。`);
     }
   }
   return v;
@@ -167,11 +167,11 @@ const PRESET_WORDS = [
   [/^kind must be one of .*$/, 'kind 只能是 openai-compatible、anthropic 或 wso2'],
   [/^baseUrl must be an http\(s\) address$/, 'baseUrl 要以 http:// 或 https:// 开头'],
   [/^tokenUrl .* is needed for wso2$/, 'wso2 要写 tokenUrl（以 http:// 或 https:// 开头）'],
-  [/^(\w+) must not be in the packaging.*$/, (k) => `不能写 ${k}：Key 和凭据由每个人自己填，不能放进安装包`],
+  [/^(\w+) must not be in the packaging.*$/, (k) => `不能写 ${k}：Key 和凭据不能写进安装包，由用户在设置中填写`],
   [/^models needs at least one model$/, 'models 里至少要有一个型号'],
   [/^contextWindow must be a positive whole number$/, 'contextWindow 要写正整数（这个型号一次最多能装多少 token）'],
   [/^(\w+) must be a positive whole number$/, (k) => `${k} 要写正整数`],
-  [/^headers must be a list of header names.*$/, 'headers 要写成请求头名称的列表，比如 ["X-API-Key"]；值由每个人自己填，不能放进安装包'],
+  [/^headers must be a list of header names.*$/, 'headers 要写成请求头名称的列表，比如 ["X-API-Key"]；值不能写进安装包，由用户在设置中填写'],
   [/^headers: (.*) is not a header name$/, (h) => `headers 里的 ${h} 不是请求头名称（只能有字母、数字和 - _ . 这类字符）`],
   [/^headers: (.*) is set by the app$/, (h) => `headers 里不能写 ${h}，它由应用设置`],
   [/^credentialsIn must be basic or body, for wso2 only$/, 'credentialsIn 只给 wso2 写，只能是 basic 或 body'],

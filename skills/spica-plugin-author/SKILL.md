@@ -97,7 +97,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 
 包公司内部服务的插件，先读 `references/internal-services.md`。要点：
 
-- **地址和凭据**写进清单的 `user_config`：Spica 在插件详情里画表单、存值（密码加密），启动 server 时交给它（`SPICA_USER_CONFIG`）。类型表对不上的（测试连接、能增删的列表、联动）才自己画设置页，见 `references/user-config.md` 末尾。
+- **地址和凭据**写进清单的 `user_config`：Spica 在插件详情里画表单、存值（密码加密），启动 server 时交给它（`SPICA_USER_CONFIG`）。类型表表达不了的（测试连接、能增删的列表、联动）才自己画设置页，见 `references/user-config.md` 末尾。
 - **证书和代理由 Spica 代管**（Spica 0.1.0-rc.2 起；rc.1 和更早的版本不代管，插件连公司内网会报证书错误）：插件进程获得的代理和信任名单和 Spica 自己的一样，Node 里直接用 `fetch` / `https`。用户改了网络设置，插件 server 会自动重启一次，之后的请求就按新设置走。
 - **工具按用户要办的事设计**，不是一个接口一个工具，一个插件十个以内。
 - **应用改了名**：插件不用改，`install.mjs` 加 `--app <应用名>`。
