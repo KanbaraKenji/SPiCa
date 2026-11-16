@@ -359,7 +359,7 @@ export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onShe
       ) : info.kind === 'image' ? (
         <div className="preview-body preview-image-wrap">
           <img
-            className="preview-image"
+            className="preview-image zoomable"
             src={info.url}
             alt={info.name}
             title={t('放大')}

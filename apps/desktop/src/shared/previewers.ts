@@ -29,9 +29,6 @@ export function previewPagesFor(ext: string, views: readonly PluginView[]): Plug
  */
 export const SYSTEM_PROGRAM_KINDS: ReadonlySet<string> = new Set(['.pptx', '.pptm', '.ppt', '.ppsx', '.pps', '.potx', '.doc', '.xls']);
 
-/** Pictures: a press shows them big over the window (ui/ImageViewer), not in the panel (他：「图片一律用悬浮不进右侧栏」). */
-export const PICTURE_KINDS: ReadonlySet<string> = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico']);
-
 /** Whether a press on this file opens it in its system program: one of SYSTEM_PROGRAM_KINDS, and no preview page shows it. */
 export function opensInSystemProgram(path: string, views: readonly PluginView[]): boolean {
   const ext = fileExtension(path);

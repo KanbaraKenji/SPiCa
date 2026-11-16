@@ -1745,7 +1745,6 @@ pre .hl-punctuation {
   padding: 0;
   border-radius: var(--radius-m);
   overflow: hidden;
-  cursor: zoom-in;
 }
 
 .md .md-image img {
@@ -2420,7 +2419,6 @@ pre .hl-punctuation {
   display: block;
   width: 100%;
   padding: 6px 14px 14px;
-  cursor: zoom-in;
 }
 
 .flow-figure .flow-image img {
@@ -6552,8 +6550,6 @@ section.plugins-part > .plugins-part-title {
 .preview-image {
   max-width: 100%;
   height: auto;
-  /* A press shows it over the window (ui/ImageViewer). */
-  cursor: zoom-in;
 }
 
 .preview-code {
@@ -6939,6 +6935,11 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* A picture at full size over the window. */
+/* A picture a press shows big (ui/ImageViewer): in an answer, a flowchart, the preview. One class for the three. */
+.zoomable {
+  cursor: zoom-in;
+}
+
 .image-viewer {
   position: fixed;
   inset: 0;
