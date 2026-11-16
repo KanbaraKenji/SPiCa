@@ -1066,29 +1066,49 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
  * 始终允许此文件夹 (as Claude's own permission prompts do), so the card keeps two buttons. The menu opens toward
  * the inside of the card: its right edge on the arrow's right edge (he: 「像卡片内侧延展」).
  */
+// Three looks for the 允许 menu, for him to pick (TEMP until he does): a, the menu joined to the button (same
+// width, no gap, corners continued), on the card's ground with an accent edge; b, the same on the soft accent; c,
+// 允许 and its arrow as ordinary buttons and the menu as menus are (one piece by being the same colours).
+const ALLOW_MENU: 'a' | 'b' | 'c' = 'a';
+
 function AllowSplit({ disabled, folder, onAllow }: { disabled: boolean; folder: string; onAllow(folder: boolean): void }) {
   const [menu, setMenu] = useState<HTMLElement | null>(null);
+  // the whole button's width (允许 and its arrow): a joined menu is as wide
+  const [width, setWidth] = useState(0);
+  const joined = ALLOW_MENU !== 'c';
+  const tone = ALLOW_MENU === 'c' ? 'btn' : 'btn btn-primary';
   return (
-    <span className="btn-split">
-      <button type="button" className="btn btn-primary btn-split-main" disabled={disabled} onClick={() => onAllow(false)}>
+    <span className={['btn-split', menu && joined ? 'is-open' : ''].filter(Boolean).join(' ')}>
+      <button type="button" className={`${tone} btn-split-main`} disabled={disabled} onClick={() => onAllow(false)}>
         {t('允许')}
       </button>
       <button
         type="button"
-        className="btn btn-primary btn-split-more"
+        className={`${tone} btn-split-more`}
         disabled={disabled}
         aria-label={t('更多允许方式')}
         title={t('更多允许方式')}
         aria-haspopup="menu"
         aria-expanded={menu !== null}
-        onClick={(e) => setMenu(menu ? null : e.currentTarget)}
+        onClick={(e) => {
+          setWidth(e.currentTarget.parentElement?.offsetWidth ?? 0);
+          setMenu(menu ? null : e.currentTarget);
+        }}
       >
         <Icon name="chevronDown" size={14} />
       </button>
       {/* on the page itself: inside the conversation a card's own styles would carry the menu off its button */}
       {menu
         ? createPortal(
-            <ContextMenu x={0} y={0} anchor={menu} align="end" items={[{ label: t('始终允许此文件夹'), title: folder, onSelect: () => onAllow(true) }]} onClose={() => setMenu(null)} />,
+            <ContextMenu
+              x={0}
+              y={0}
+              anchor={menu}
+              align="end"
+              {...(joined ? { offset: 0, minWidth: width, className: `allow-menu allow-menu-${ALLOW_MENU}` } : {})}
+              items={[{ label: t('始终允许'), title: folder, onSelect: () => onAllow(true) }]}
+              onClose={() => setMenu(null)}
+            />,
             document.body,
           )
         : null}

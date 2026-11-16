@@ -467,6 +467,26 @@ a:hover {
   border-bottom-right-radius: 0;
 }
 
+/* Open, with a menu joined to it (the 允许 menu, looks a / b): the button's lower corners give way to the menu. */
+.btn-split.is-open > .btn {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.context-menu.allow-menu {
+  border-radius: 0 0 var(--radius-m) var(--radius-m);
+  border: 1px solid var(--spica-accent);
+  border-top: none;
+}
+
+.context-menu.allow-menu-a {
+  background: var(--spica-raised);
+}
+
+.context-menu.allow-menu-b {
+  background: var(--spica-accent-soft);
+}
+
 .btn-split > .btn-split-more {
   padding: 0 6px;
   border-top-left-radius: 0;

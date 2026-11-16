@@ -54,6 +54,8 @@ export function ContextMenu({
   minWidth,
   focusChecked = false,
   align = 'start',
+  offset = 4,
+  className,
 }: {
   x: number;
   y: number;
@@ -67,6 +69,10 @@ export function ContextMenu({
   focusChecked?: boolean;
   /** Which edges of the menu and its button line up: left (start) or right (end). */
   align?: 'start' | 'end';
+  /** How far from its button (px). 0: it touches the button (a menu that reads as part of it). */
+  offset?: number;
+  /** Another look for this menu (styles.css). */
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
@@ -87,8 +93,8 @@ export function ContextMenu({
     if (anchor) {
       const a = anchor.getBoundingClientRect();
       left = align === 'end' ? a.right - r.width : a.left;
-      const below = a.bottom + 4;
-      const above = a.top - 4 - r.height;
+      const below = a.bottom + offset;
+      const above = a.top - offset - r.height;
       const fitsBelow = below + r.height <= window.innerHeight - 4;
       const fitsAbove = above >= 4;
       top = side === 'above' ? (fitsAbove || !fitsBelow ? above : below) : fitsBelow ? below : above;
@@ -97,7 +103,7 @@ export function ContextMenu({
     const first = (focusChecked && el.querySelector<HTMLButtonElement>('button[aria-checked="true"]:not([aria-disabled="true"])')) || el.querySelector<HTMLButtonElement>('button:not([aria-disabled="true"])');
     first?.focus({ preventScroll: true });
     first?.scrollIntoView?.({ block: 'nearest' });
-  }, [x, y, anchor, side, focusChecked, align]);
+  }, [x, y, anchor, side, focusChecked, align, offset]);
 
   useEffect(() => {
     const close = () => onClose();
@@ -146,7 +152,7 @@ export function ContextMenu({
     // take the focus back to the items, and hover stops lighting them until the pointer moves.
     <div
       ref={ref}
-      className={keys ? 'context-menu is-keys' : 'context-menu'}
+      className={['context-menu', keys ? 'is-keys' : '', className ?? ''].filter(Boolean).join(' ')}
       role="menu"
       tabIndex={-1}
       style={{ left: pos.left, top: pos.top, ...(minWidth ? { minWidth } : {}) }}

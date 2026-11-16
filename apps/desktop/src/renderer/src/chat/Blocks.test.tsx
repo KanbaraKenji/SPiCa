@@ -71,11 +71,11 @@ describe('ConfirmCard', () => {
     expect(document.querySelector('.confirm-undo')?.textContent).toBe('工作文件夹以外');
     expect(document.querySelector('.confirm-card.is-danger')).toBeNull();
     // two buttons on the card: 拒绝 and 允许 (with its arrow); 始终允许此文件夹 is in the arrow's menu
-    expect(screen.queryByRole('button', { name: '始终允许此文件夹' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '始终允许' })).toBeNull();
     const arrow = screen.getByRole('button', { name: '更多允许方式' });
     expect(arrow.getAttribute('aria-haspopup')).toBe('menu');
     fireEvent.click(arrow);
-    const always = screen.getByRole('menuitem', { name: '始终允许此文件夹' });
+    const always = screen.getByRole('menuitem', { name: '始终允许' });
     expect(always.getAttribute('title')).toBe('D:\\共享资料\\纪要');
     fireEvent.click(always);
     expect(onDecide).toHaveBeenCalledWith(true, true);
