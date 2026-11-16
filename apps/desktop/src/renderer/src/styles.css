@@ -5765,13 +5765,16 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* Updates (shell/UpdateNotice.tsx): a card in the side bar, right above the bottom row; the same look as the
-   title bar's line (raised, bordered, a warning tint when the version must update). Laid out as he drew it: the mark
-   in the first line, the words flowing from beside it and wrapping to the card's left edge, × floating top right,
-   the button floating right after the words, so it sits on the last line or, without room there, on a line of its
-   own on the right. The words are always whole, at every width. × and the button (22 high) sit 1px above the line
-   (20 high), so they centre on it. */
+   title bar's line (raised, bordered, a warning tint when the version must update). Laid out as he drew it: × in a
+   column of its own on the right, centred top to bottom; left of it the content: the mark in the first line, the
+   words flowing from beside it and wrapping to the left edge, the button floating right after the words, so it sits
+   on the last line or, without room there, on a line of its own, right-aligned to the content (never under ×).
+   Without × (a version that must update) the content reaches the card's right edge. The words are always whole. */
 .update-card {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   margin: 0 8px 8px;
   padding: 6px 4px 6px 12px;
   border-radius: var(--radius-m);
@@ -5786,13 +5789,16 @@ section.plugins-part > .plugins-part-title {
   background: var(--spica-warning-soft);
 }
 
-.update-card .notice-close {
-  float: right;
-  /* no deeper than the first line, so the line under it reaches the right edge (the button there sits under ×) */
-  margin: -1px 0 -1px 4px;
+/* Without × the button keeps the same distance from the edge as the words on the left. */
+.update-card:not(:has(.notice-close)) {
+  padding-right: 8px;
 }
 
 .update-card-body {
+  flex: 1;
+  min-width: 0;
+  /* the button's float stays inside */
+  display: flow-root;
   /* Chinese wraps between words, not inside 已下载 */
   word-break: keep-all;
   overflow-wrap: anywhere;
@@ -5803,21 +5809,18 @@ section.plugins-part > .plugins-part-title {
   vertical-align: -3px;
 }
 
-/* The button keeps its words whole. */
+/* The button keeps its words whole; 22 high, 1px above the 20-high line so it centres on it. */
 .update-card-action {
   float: right;
-  margin: -1px 0 0 8px;
+  margin: -1px 0 -1px 8px;
   height: 22px;
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
   white-space: nowrap;
 }
 
-/* The card's floats stay inside it. */
-.update-card::after {
-  content: '';
-  display: block;
-  clear: both;
+.update-card .notice-close {
+  flex: none;
 }
 
 /* In the column of icons: one icon in the same place; a dot for a downloaded update, the whole icon in the
