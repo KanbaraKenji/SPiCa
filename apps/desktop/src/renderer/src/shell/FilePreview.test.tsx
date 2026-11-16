@@ -118,14 +118,14 @@ describe('the file’s place, from the preview head', () => {
     expect([...document.querySelectorAll('.preview-sheet tbody tr')].map((r) => r.textContent)).toEqual(['1品名数量', '2键盘150']);
     expect(screen.getByText('仅显示前 2 行（共 900 行）')).toBeTruthy();
     // Not a file with code of its own.
-    expect(screen.queryByRole('radiogroup', { name: '显示方式' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '查看代码' })).toBeNull();
   });
 
   it('a Word document is shown as its text, says where it was cut, and has no 代码 view', () => {
     render(<FilePreview info={{ kind: 'markdown', name: '纪要.docx', path: 'D:/纪要.docx', size: 9000, text: '# 纪要', truncated: true }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByRole('heading', { name: '纪要' })).toBeTruthy();
     expect(screen.getByText('仅显示前 500 段')).toBeTruthy();
-    expect(screen.queryByRole('radiogroup', { name: '显示方式' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '查看代码' })).toBeNull();
   });
 
   it('预览方式: the app’s own or a plugin page, for this file; a plugin page fills the body; a line says why the app’s own is back, with 重试', () => {

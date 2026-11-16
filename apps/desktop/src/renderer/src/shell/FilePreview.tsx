@@ -160,7 +160,7 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
         <FileGlyph name={info?.name ?? ''} />
         {/* The name opens the file's folder (its hover note says so, with the full path); 复制路径 right after it. */}
         {info && hasFile && onReveal ? (
-          <button type="button" className="preview-name is-button" onClick={() => onReveal(info.path)} title={`${t('打开所在文件夹')}\n${info.path}`}>
+          <button type="button" className="preview-name is-button" onClick={() => onReveal(info.path)} title={[t('打开所在文件夹'), info.path].join('\n')}>
             {info.name}
           </button>
         ) : (
@@ -174,18 +174,10 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
           <Select className="preview-source" label={t('预览方式')} title={t('预览方式')} value={source.value} onChange={source.onChange} options={source.options.map((o) => ({ value: o.id, label: o.label }))} />
         ) : null}
         {code !== null ? (
-          <div className="segmented preview-mode" role="radiogroup" aria-label={t('显示方式')}>
-            {(
-              [
-                [false, t('预览')],
-                [true, t('代码')],
-              ] as const
-            ).map(([on, label]) => (
-              <button key={label} type="button" role="radio" aria-checked={asCode === on} className={asCode === on ? 'segment is-on' : 'segment'} onClick={() => showAs(on)}>
-                {label}
-              </button>
-            ))}
-          </div>
+          // One button: its icon and its note say the face a press goes to (预览 shows the code icon, 代码 the eye).
+          <button type="button" className="icon-btn" onClick={() => showAs(!asCode)} aria-label={asCode ? t('查看预览') : t('查看代码')} title={asCode ? t('查看预览') : t('查看代码')}>
+            <Icon name={asCode ? 'eye' : 'code'} size={15} />
+          </button>
         ) : null}
         {max ? <MaxButton max={max} /> : null}
         {/* The file's own buttons: not for a page drawn from an answer (it has no file). */}

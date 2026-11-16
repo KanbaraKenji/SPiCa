@@ -6507,20 +6507,6 @@ section.plugins-part > .plugins-part-title {
   min-width: 4px;
 }
 
-/* 预览 / 代码 in the head: the segmented choice, as tall as the head's buttons, in the smaller size of 预览方式
-   beside it, so the head still fits at the panel's narrowest (320) in English. */
-.preview-mode {
-  flex: none;
-  flex-wrap: nowrap;
-  margin-right: 2px;
-}
-
-.preview-mode .segment {
-  padding: 0 8px;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-}
-
 .preview-body {
   flex: 1;
   min-height: 0;

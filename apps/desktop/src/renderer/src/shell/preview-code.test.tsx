@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The right panel shows a page, Markdown or SVG either as itself or as its code; code files in colour.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { FilePreview } from './FilePreview';
 import { HIGHLIGHT_MAX_CHARS, highlightLines } from '../chat/highlight';
 
@@ -11,22 +11,30 @@ afterEach(() => {
 });
 
 const page = '<!doctype html>\n<title>样机评审通知</title>\n<h2>通知</h2>\n<script>alert(1)</script>';
-const choice = () => screen.queryByRole('radiogroup', { name: '显示方式' });
-const pick = (label: string) => fireEvent.click(within(choice()!).getByRole('radio', { name: label }));
-const picked = () => within(choice()!).getAllByRole('radio').map((r) => `${r.textContent}:${r.getAttribute('aria-checked')}`);
+// One button in the head; its name (and note) is the face a press goes to.
+const choice = () => screen.queryByRole('button', { name: /^查看(代码|预览)$/ });
+const pick = (face: '代码' | '预览') => fireEvent.click(screen.getByRole('button', { name: `查看${face}` }));
+const next = () => choice()?.getAttribute('aria-label');
 
 describe('the right panel: 预览 / 代码', () => {
   const html = { kind: 'html' as const, name: '样机评审通知', path: '', size: page.length, text: page, truncated: false };
 
-  it('an HTML page: 预览 / 代码 side by side in the head, 预览 first and picked; its code in colour; back again', () => {
+  it('an HTML page: one button in the head, the preview first and the button offering its code; its code in colour; back again', () => {
     render(<FilePreview info={html} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
     // A page from an answer has no file: no name to press, no file buttons.
     expect(document.querySelector('.preview-head button.preview-name')).toBeNull();
-    expect([...document.querySelectorAll('.preview-head > button')].map((b) => b.getAttribute('aria-label'))).toEqual(['关闭预览']);
-    expect(picked()).toEqual(['预览:true', '代码:false']);
+    expect([...document.querySelectorAll('.preview-head > button')].map((b) => b.getAttribute('aria-label'))).toEqual(['查看代码', '关闭预览']);
+    expect(next()).toBe('查看代码');
+    expect(choice()?.getAttribute('title')).toBe('查看代码');
+    expect(choice()?.querySelector('svg')).toBeTruthy();
+    expect(choice()?.textContent).toBe('');
     expect(document.querySelector('iframe.preview-html')?.getAttribute('sandbox')).toBe('');
+    const before = choice()!.innerHTML;
     pick('代码');
-    expect(picked()).toEqual(['预览:false', '代码:true']);
+    expect(next()).toBe('查看预览');
+    expect(choice()?.getAttribute('title')).toBe('查看预览');
+    // The icon changes with the face.
+    expect(choice()!.innerHTML).not.toBe(before);
     expect(document.querySelector('iframe')).toBeNull();
     expect([...document.querySelectorAll('.preview-lt')].map((l) => l.textContent)).toEqual(page.split('\n'));
     // The code in a pre (the code colours are set there), coloured as HTML.
@@ -49,7 +57,7 @@ describe('the right panel: 预览 / 代码', () => {
     pick('预览');
     // Back to the Markdown file: its code, as it was left.
     rerender(<FilePreview info={md} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
-    expect(picked()).toEqual(['预览:false', '代码:true']);
+    expect(next()).toBe('查看预览');
     rerender(<FilePreview info={{ kind: 'text', name: 'a.log', path: 'D:/a.log', size: 3, text: 'one', truncated: false }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
     expect(choice()).toBeNull();
     rerender(<FilePreview info={{ kind: 'image', name: 'a.png', path: 'D:/a.png', size: 3, url: 'spica-file://f/y' }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
