@@ -135,7 +135,8 @@ export interface DesktopBridge extends SpicaBridge {
   /** The window's own editing command on what is selected or focused (the right-click menu on words). */
   edit(command: 'cut' | 'copy' | 'paste' | 'selectAll'): void;
   /** Opens a file a session referenced (relative to its working folder). Resolves to an error text, or null on success. */
-  openFile(sessionId: string, path: string): Promise<string | null>;
+  /** In its system program; `sessionId` null: `path` is whole (a file from a plugin page). */
+  openFile(sessionId: string | null, path: string): Promise<string | null>;
   /** Windows' own folder picker, with `title` on it. Resolves to the chosen path, or null when cancelled. */
   pickFolder(title?: string): Promise<string | null>;
   /** Windows' file picker for attachments: the chosen paths, empty when cancelled. */

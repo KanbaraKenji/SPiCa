@@ -23,6 +23,15 @@ export function previewPagesFor(ext: string, views: readonly PluginView[]): Plug
   return ext ? views.filter((v) => v.placement === 'preview' && v.preview?.extensions.includes(ext)) : [];
 }
 
+/** Kinds of file a press opens in their system program, not in the panel (PowerPoint: no preview of its own). */
+export const SYSTEM_PROGRAM_KINDS: ReadonlySet<string> = new Set(['.pptx', '.pptm', '.ppt', '.ppsx', '.pps', '.potx']);
+
+/** Whether a press on this file opens it in its system program: one of SYSTEM_PROGRAM_KINDS, and no preview page shows it. */
+export function opensInSystemProgram(path: string, views: readonly PluginView[]): boolean {
+  const ext = fileExtension(path);
+  return SYSTEM_PROGRAM_KINDS.has(ext) && previewPagesFor(ext, views).length === 0;
+}
+
 /** The page chosen for this kind of file, if it is still there; else null (the app's own). */
 export function chosenPreviewPage(previewers: Record<string, string>, ext: string, views: readonly PluginView[]): PluginView | null {
   const id = previewers[ext];

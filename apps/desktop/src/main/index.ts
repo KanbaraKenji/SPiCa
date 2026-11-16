@@ -1175,8 +1175,10 @@ async function servePluginFile(url: string): Promise<Response> {
 }
 
 ipcMain.handle(DesktopChannel.OpenFile, async (_e, sessionId: unknown, path: unknown): Promise<string | null> => {
-  if (typeof sessionId !== 'string' || typeof path !== 'string' || !path) return t('文件路径无效。');
-  const session = await backend.getSession(sessionId);
+  if ((sessionId !== null && typeof sessionId !== 'string') || typeof path !== 'string' || !path) return t('文件路径无效。');
+  // No conversation (a file from a plugin page): the path is whole, else it is not opened.
+  if (sessionId === null && !isAbsolute(path)) return t('文件路径无效。');
+  const session = typeof sessionId === 'string' ? await backend.getSession(sessionId) : undefined;
   const full = isAbsolute(path) ? path : resolvePath(session?.cwd || app.getPath('home'), path);
   if (!existsSync(full)) return t('找不到文件：{path}', { path: full });
   const error = await shell.openPath(full);
