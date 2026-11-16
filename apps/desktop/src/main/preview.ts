@@ -107,6 +107,12 @@ export async function readPreview(path: string, files: PreviewFiles, sheet?: num
   if (WORD.has(ext) || EXCEL.has(ext)) return officePreview(path, name, size, ext, sheet);
   const kind = kindOf(path);
   if (kind === 'pdf' || kind === 'image') {
+    // The viewer reads it later by its URL: a file that cannot be opened says so now instead of an empty viewer.
+    try {
+      await (await open(path, 'r')).close();
+    } catch (err) {
+      return { ...unreadable(err), name, path, size };
+    }
     // An SVG is text too: its source comes along for the panel's 代码 view.
     const svg = kind === 'image' && extname(path).toLowerCase() === '.svg' && size <= TEXT_LIMIT ? await readFile(path, 'utf8').catch(() => undefined) : undefined;
     return { kind, name, path, size, url: files.urlFor(path), ...(svg !== undefined ? { text: svg } : {}) };

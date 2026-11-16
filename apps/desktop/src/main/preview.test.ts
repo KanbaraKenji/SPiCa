@@ -39,6 +39,13 @@ describe('file preview', () => {
     expect(unreadable(err('EBUSY')).message).toBe('无法读取此文件。');
   });
 
+  it.runIf(process.platform === 'win32')('a system file Windows keeps to itself is not called missing, and gets no viewer', async () => {
+    // Every Windows has it; nobody may read it while Windows runs (refused, or in use for an administrator).
+    const info = await readPreview('C:/Windows/System32/config/SAM', new PreviewFiles());
+    expect(info.kind).toBe('unsupported');
+    expect(['没有权限读取此文件。', '无法读取此文件。']).toContain('message' in info ? info.message : '');
+  });
+
   it('gives text (capped), URLs only for the files asked for, and words for the rest', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'spica-preview-'));
     writeFileSync(join(dir, 'a.md'), '# 标题');
