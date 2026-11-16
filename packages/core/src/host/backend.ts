@@ -15,6 +15,20 @@ import type { Provider } from '../providers/types.ts';
 import { Wso2Provider } from '../providers/wso2.ts';
 import { endsInVersion, joinUrl } from '../providers/http.ts';
 import { Runtime } from '../runtime.ts';
+import { probeRuntimes } from '../runtimes.ts';
+import type { PythonToolOptions } from '../tools/python-tool.ts';
+
+function pythonOptions(p: NonNullable<BackendConfig['python']>, dataDir: string): PythonToolOptions {
+  return {
+    uvExe: p.uvExe!,
+    root: p.root,
+    netDir: join(dataDir, 'net'),
+    ...(p.pythonVersion ? { pythonVersion: p.pythonVersion } : {}),
+    ...(p.pythonMirror ? { pythonMirror: p.pythonMirror } : {}),
+    ...(p.packageIndex ? { packageIndex: p.packageIndex } : {}),
+  };
+}
+import { childEnv } from '../util.ts';
 import { SqliteStore } from '../store/sqlite.ts';
 import type { FileExtractor } from '../tools/types.ts';
 import { jsonSearchBackend, type JsonSearchBackendOptions } from '../tools/web-tools.ts';
@@ -96,6 +110,13 @@ export interface BackendConfig {
   budget?: BudgetConfig;
   prices?: PriceTable;
   spillDir?: string;
+  /** The libraries the app carries for run_command's scripts (<dir>/<name>; runtimes.ts). */
+  nodeLibsDir?: string;
+  /**
+   * The app's own Python (python-env.ts): its folder, and the uv the app carries (without one, no python_env tool;
+   * nothing to offer). Absent: switched off (deploy.json).
+   */
+  python?: { root: string; uvExe?: string; pythonVersion?: string; pythonMirror?: string; packageIndex?: string };
   /** Product name the models are told they work in (see RuntimeOptions.appName). Default 'Spica'. */
   appName?: string;
   /** A company's model connections from the packaging's deploy.json (CatalogPreset[]; no keys). */
@@ -416,6 +437,11 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
       mediaDir: join(dirname(cfg.dbPath), 'media'),
       // a conversation started without a folder gets its own one next to the database, not under Documents
       sessionFilesDir: join(dirname(cfg.dbPath), 'sessions'),
+      // run_command's \`node\` when the computer has none, and what the model is told it can run (runtimes.ts)
+      nodeShimDir: join(dirname(cfg.dbPath), 'node-shim'),
+      ...(cfg.nodeLibsDir ? { nodeLibsDir: cfg.nodeLibsDir } : {}),
+      ...(cfg.python?.uvExe ? { python: pythonOptions(cfg.python, dirname(cfg.dbPath)) } : {}),
+      runtimes: probeRuntimes(childEnv('all'), undefined, cfg.nodeLibsDir ? { nodeLibsDir: cfg.nodeLibsDir } : {}),
       ...(cfg.legacyDefaultCwd ? { legacyDefaultCwd: cfg.legacyDefaultCwd } : {}),
       ...(cfg.search ? { search: jsonSearchBackend(cfg.search) } : {}),
       ...(cfg.mail ? { mail: cfg.mail } : {}),

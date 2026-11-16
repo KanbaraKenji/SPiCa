@@ -71,6 +71,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const extra = builderOverrides(deploy.app, version);
   console.log(`[dist] ${deploy.app.name} (${deploy.app.id})${deploy.file ? ' from deploy.json' : ''}`);
   for (const line of sourceLines(deploy)) console.log(`[dist] ${line}`);
+  run(join(dirname(fileURLToPath(import.meta.url)), 'node-libs.mjs'), []);
+  run(join(dirname(fileURLToPath(import.meta.url)), 'uv.mjs'), []);
   run(join(packageDir('electron-vite'), 'bin', 'electron-vite.js'), ['build']);
   run(join(packageDir('electron-builder'), 'cli.js'), ['--win', '--publish', 'never', ...extra]);
 }

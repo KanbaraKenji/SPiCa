@@ -1343,6 +1343,36 @@ export class FakeBackend implements AgentBackend {
           '今年钢材涨价，报价普遍上调 5% 左右（[2026 年模具钢价格走势](https://example.org/steel-2026)）。';
         await this.#stream(sessionId, 'text', answer, signal);
         blocks.push({ type: 'text', text: answer });
+      } else if (/pandas/i.test(text)) {
+        // A download for the app's own Python, as the core asks it (tools/python-tool.ts previewInstall), before
+        // anything is fetched.
+        const callId = this.#id('call');
+        // The first time: there is no Python yet to work the packages out with, so only the names asked for.
+        const input = { packages: ['pandas', 'openpyxl'] };
+        const install = {
+          python: { version: '3.12.16', host: 'releases.astral.sh', bytes: 22_334_464 },
+          packages: [{ name: 'pandas' }, { name: 'openpyxl' }],
+          packageHost: 'pypi.org',
+        };
+        const lead = '这台电脑上没有 Python，处理这张表要先下载。';
+        await this.#stream(sessionId, 'text', lead, signal);
+        blocks.push({ type: 'text', text: lead });
+        this.#emit(sessionId, { type: 'tool.call', callId, name: 'python_env' });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name: 'python_env', input }]);
+        this.#addPending(sessionId, { kind: 'confirm', callId, toolName: 'python_env', input, reason: '', cause: 'python_install', install, createdAt: isoAt(this.#now()) });
+        this.#emit(sessionId, { type: 'confirm.request', callId, name: 'python_env', input, reason: '', cause: 'python_install', install });
+        this.#setStatus(sessionId, 'awaiting_confirm', 'python_env');
+        waiting = { id: callId, name: 'python_env', input, stored: true };
+        const ok = (await this.#waitFor(run, callId)) === 'yes';
+        waiting = undefined;
+        if (ok) this.#emit(sessionId, { type: 'tool.start', callId, name: 'python_env', input, category: 'command' });
+        const result = ok ? "The app's Python 3.12.16 is ready." : '用户拒绝了下载';
+        this.#emit(sessionId, { type: 'tool.end', callId, name: 'python_env', isError: !ok, preview: result, durationMs: 300 });
+        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: result, isError: !ok }]);
+        this.#setStatus(sessionId, 'thinking');
+        const after = ok ? '\n\n装好了。' : '\n\n好的，没有下载。';
+        await this.#stream(sessionId, 'text', after, signal);
+        blocks.push({ type: 'text', text: after });
       } else if (/改文件/.test(text)) {
         // An edit that needs confirming, carrying what it would change as the core works it out when it asks
         // (tools/fs-tools.ts previewChange): the card shows the lines in red and green before it is allowed.

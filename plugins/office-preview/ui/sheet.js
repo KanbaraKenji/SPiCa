@@ -9,8 +9,11 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  /** What a sheet shows at most (a bigger one says so). */
-  var LIMITS = { rows: 2000, cols: 200 };
+  /**
+   * Cells drawn at a time: the rows of a page are as many as fit (between 20 and 500), all its columns; the
+   * page asks for the next page as it scrolls down (`next`), to the sheet's last row.
+   */
+  var PAGE = { cells: 10000, minRows: 20, maxRows: 500 };
 
   /**
    * Read the file. ExcelJS fails on some files with pictures (written by
@@ -82,7 +85,8 @@
     if (f.strike) deco.push('line-through');
     if (deco.length) css.push('text-decoration:' + deco.join(' '));
     if (f.size) css.push('font-size:' + f.size + 'pt');
-    if (f.name) css.push('font-family:"' + esc(f.name) + '",var(--spica-font, sans-serif)');
+    // single quotes: the style sits in style="…", where a double quote would end it (and drop what follows)
+    if (f.name) css.push("font-family:'" + String(f.name).replace(/['"\\<>&;]/g, '') + "',var(--spica-font, sans-serif)");
     var fc = color(f.color);
     if (fc) css.push('color:' + fc);
     else if (f.color && f.color.theme !== undefined) notes.theme = true;
@@ -172,25 +176,31 @@
 
   /**
    * One sheet as HTML: a table (with column widths and row heights) and the
-   * pictures placed over it. `notes` gathers what could not be shown.
+   * pictures placed over it. `notes` gathers what could not be shown. The
+   * table has the first page of rows; `next()` gives the page after as a table
+   * of its own ('' at the end), the same columns, to add under the others in
+   * .sheet-wrap (a new page does not lay out the ones before again); `more()`
+   * whether there is one. A page never splits a merged range. `page`: rows per
+   * page (tests; else as many as PAGE.cells allows).
    */
-  function renderSheet(ws, wb, limits) {
-    limits = limits || LIMITS;
+  function renderSheet(ws, wb, opts) {
+    opts = opts || {};
     var notes = [];
     var flags = {};
-    var rowCount = Math.min(ws.rowCount || 0, limits.rows);
-    var colCount = Math.min(ws.columnCount || 0, limits.cols);
-    if ((ws.rowCount || 0) > limits.rows) notes.push('只显示前 ' + limits.rows + ' 行。');
-    if ((ws.columnCount || 0) > limits.cols) notes.push('只显示前 ' + limits.cols + ' 列。');
+    var rowCount = ws.rowCount || 0;
+    var colCount = ws.columnCount || 0;
+    var page = opts.page || Math.max(PAGE.minRows, Math.min(PAGE.maxRows, Math.floor(PAGE.cells / Math.max(1, colCount))));
     // merged ranges: the top-left cell spans, the others are left out
     var span = {};
     var covered = {};
+    var mergeEnd = {};
     (ws.model && ws.model.merges ? ws.model.merges : []).forEach(function (range) {
       var ends = String(range).split(':').map(parseRef);
       if (!ends[0] || !ends[1]) return;
       var r0 = Math.min(ends[0].row, ends[1].row), r1 = Math.max(ends[0].row, ends[1].row);
       var c0 = Math.min(ends[0].col, ends[1].col), c1 = Math.max(ends[0].col, ends[1].col);
       span[r0 + ':' + c0] = { rows: r1 - r0 + 1, cols: c1 - c0 + 1 };
+      mergeEnd[r0] = Math.max(mergeEnd[r0] || 0, r1);
       for (var r = r0; r <= r1; r++) for (var c = c0; c <= c1; c++) if (r !== r0 || c !== c0) covered[r + ':' + c] = true;
     });
     var widths = [];
@@ -202,32 +212,49 @@
       cols += '<col style="width:' + w + 'px">';
     }
     cols += '</colgroup>';
-    var head = '<tr class="colhead"><th></th>';
+    // every page a table of the same width, so they line up
+    var tableWidth = widths.reduce(function (a, x) { return a + x; }, 40);
+    var tableOpen = '<table class="sheet" style="width:' + tableWidth + 'px">';
+    var head = '<thead><tr class="colhead"><th></th>';
     for (var hc = 1; hc <= colCount; hc++) head += widths[hc - 1] ? '<th>' + colLetters(hc) + '</th>' : '<th class="hidden"></th>';
-    head += '</tr>';
+    head += '</tr></thead>';
+    // every row's height (for the pictures, wherever they sit), without making rows that are not there
     var heights = [];
-    var body = '';
-    for (var r = 1; r <= rowCount; r++) {
-      var row = ws.getRow(r);
-      var hpx = row.hidden ? 0 : Math.round((row.height || 15) * 4 / 3);
-      heights.push(hpx);
-      if (row.hidden) continue;
-      body += '<tr style="height:' + hpx + 'px"><th>' + r + '</th>';
-      for (var cc = 1; cc <= colCount; cc++) {
-        if (covered[r + ':' + cc]) continue;
-        if (!widths[cc - 1]) { body += '<td class="hidden"></td>'; continue; }
-        var cell = row.getCell(cc);
-        var v = cell.value;
-        var shown = v && typeof v === 'object' && 'result' in v ? v.result : v;
-        var numeric = typeof shown === 'number' || shown instanceof Date;
-        var text = formatValue(v, cell.numFmt);
-        var sp = span[r + ':' + cc];
-        var attrs = sp ? (sp.rows > 1 ? ' rowspan="' + sp.rows + '"' : '') + (sp.cols > 1 ? ' colspan="' + sp.cols + '"' : '') : '';
-        var css = cellCss(cell, numeric, flags);
-        body += '<td' + attrs + (css ? ' style="' + css + '"' : '') + '>' + esc(text) + '</td>';
-      }
-      body += '</tr>';
+    for (var hr = 1; hr <= rowCount; hr++) {
+      var found = typeof ws.findRow === 'function' ? ws.findRow(hr) : ws.getRow(hr);
+      heights.push(found && found.hidden ? 0 : Math.round(((found && found.height) || 15) * 4 / 3));
     }
+    var nextRow = 1;
+    var rows = function () {
+      var end = Math.min(rowCount, nextRow + page - 1);
+      // a merged range started on this page ends on it
+      for (var m = nextRow; m <= end; m++) if (mergeEnd[m] > end) end = Math.min(rowCount, mergeEnd[m]);
+      var body = '';
+      for (var r = nextRow; r <= end; r++) {
+        if (!heights[r - 1]) continue;
+        var row = typeof ws.findRow === 'function' ? ws.findRow(r) : ws.getRow(r);
+        body += '<tr style="height:' + heights[r - 1] + 'px"><th>' + r + '</th>';
+        for (var cc = 1; cc <= colCount; cc++) {
+          if (covered[r + ':' + cc]) continue;
+          if (!widths[cc - 1]) { body += '<td class="hidden"></td>'; continue; }
+          // a cell with nothing in it is not made (ExcelJS makes one when asked for it)
+          var cell = !row ? undefined : typeof row.findCell === 'function' ? row.findCell(cc) : row.getCell(cc);
+          if (!cell) { body += '<td></td>'; continue; }
+          var v = cell.value;
+          var shown = v && typeof v === 'object' && 'result' in v ? v.result : v;
+          var numeric = typeof shown === 'number' || shown instanceof Date;
+          var text = formatValue(v, cell.numFmt);
+          var sp = span[r + ':' + cc];
+          var attrs = sp ? (sp.rows > 1 ? ' rowspan="' + sp.rows + '"' : '') + (sp.cols > 1 ? ' colspan="' + sp.cols + '"' : '') : '';
+          var css = cellCss(cell, numeric, flags);
+          body += '<td' + attrs + (css ? ' style="' + css + '"' : '') + '>' + esc(text) + '</td>';
+        }
+        body += '</tr>';
+      }
+      nextRow = end + 1;
+      return body;
+    };
+    var first = rows();
     // pictures, placed by their top-left cell (and offset within it)
     var pics = '';
     var images = typeof ws.getImages === 'function' ? ws.getImages() : [];
@@ -254,8 +281,13 @@
       pics += '<img class="pic" alt="" src="data:image/' + esc(type) + ';base64,' + data + '" style="left:' + Math.round(left) + 'px;top:' + Math.round(top) + 'px;width:' + Math.round(w) + 'px;height:' + Math.round(h) + 'px">';
     });
     if (flags.theme) notes.push('用了主题色的格子按默认色显示。');
-    var html = '<div class="sheet-wrap"><table class="sheet">' + cols + head + body + '</table>' + pics + '</div>';
-    return { html: html, notes: notes };
+    var html = '<div class="sheet-wrap">' + pics + tableOpen + cols + head + '<tbody>' + first + '</tbody></table></div>';
+    return {
+      html: html,
+      notes: notes,
+      more: function () { return nextRow <= rowCount; },
+      next: function () { return nextRow <= rowCount ? tableOpen + cols + '<tbody>' + rows() + '</tbody></table>' : ''; },
+    };
   }
 
   /** The sheets a reader sees (hidden ones left out), in order. */
@@ -263,5 +295,5 @@
     return wb.worksheets.filter(function (ws) { return ws.state !== 'hidden' && ws.state !== 'veryHidden'; });
   }
 
-  return { LIMITS: LIMITS, loadWorkbook: loadWorkbook, withoutDrawings: withoutDrawings, renderSheet: renderSheet, visibleSheets: visibleSheets, formatValue: formatValue, color: color };
+  return { PAGE: PAGE, loadWorkbook: loadWorkbook, withoutDrawings: withoutDrawings, renderSheet: renderSheet, visibleSheets: visibleSheets, formatValue: formatValue, color: color };
 });

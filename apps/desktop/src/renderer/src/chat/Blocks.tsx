@@ -1,7 +1,7 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
-import type { ChangePreview, FileCardMeta, HistoryCardMeta, SourceCardMeta, SourceRow } from '@spica/protocol';
+import type { ChangePreview, InstallPreview, FileCardMeta, HistoryCardMeta, SourceCardMeta, SourceRow } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, fileCardParts, fileCardVerb, NO_REPORT_WORDS, type Block, type ChildNote, type FileRef } from '../store/transcript';
@@ -18,7 +18,7 @@ import { commandFacts, dangerSpans } from './command-plain';
 import { fullPath, openablePathKind, pathLabel, remarkLocalPaths } from './local-path';
 import { tableRows, toCsv, toHtml, toTsv } from './table-data';
 import { blockLanguage, blockLanguageName, colourSplit, highlightCode } from './highlight';
-import { confirmTitle, fileFolder, fileName, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS } from './format';
+import { confirmTitle, fileFolder, fileName, formatBytes, formatClock, formatDuration, GUARD_CAUSE_TEXT, HISTORY_TOOLS } from './format';
 import { groupWords, runningGroup, runningWords, toolWords } from './tool-words';
 import { hostOf } from './sources';
 import { CallArgs, CallDetail, callChange, CommandBox, FileChange } from './CallDetail';
@@ -183,7 +183,7 @@ function FlowFigure({ code, fallback }: { code: string; fallback: ReactNode }) {
           <code>{code}</code>
         </pre>
       ) : (
-        <button type="button" className="flow-image" onClick={() => setBig(true)} title={t('流程图')}>
+        <button type="button" className="flow-image zoomable" onClick={() => setBig(true)} title={t('流程图')}>
           <img src={url} alt={t('流程图')} />
         </button>
       )}
@@ -411,7 +411,7 @@ function MdImage({ src, alt }: { src?: string | undefined; alt?: string | undefi
   if (!url) return <span className="md-image-wait" />;
   return (
     <>
-      <button type="button" className="md-image" ref={button} onClick={() => setBig(group())} title={caption}>
+      <button type="button" className="md-image zoomable" ref={button} onClick={() => setBig(group())} title={caption}>
         <img src={url} alt={caption} onError={() => setFailed(true)} />
       </button>
       {big ? <ImageViewer pictures={big.pictures} start={big.index} onClose={() => setBig(null)} /> : null}
@@ -1001,6 +1001,56 @@ export function ConfirmTarget({ name, input, bare, change }: { name: string; inp
   return <CallArgs input={Object.fromEntries(rows)} labels={argLabels()} bare={bare} />;
 }
 
+/** The title of a python_env confirmation: what it downloads (Python, packages, or both). */
+export function installTitle(p: InstallPreview): string {
+  const n = p.packages.length;
+  if (p.python && n) return t('下载 Python {version} 和 {n} 个库', { version: p.python.version, n });
+  if (p.python) return t('下载 Python {version}', { version: p.python.version });
+  return t('安装 {n} 个库', { n });
+}
+
+/**
+ * What a python_env confirmation would download, one row each: name and version, where from, size (— when the
+ * source does not say), then the total, only when every size is known (the first time, before there is a Python to
+ * resolve with, the packages have no version or size yet).
+ */
+export function InstallList({ preview }: { preview: InstallPreview }) {
+  const rows = [
+    ...(preview.python ? [{ key: 'python', name: `Python ${preview.python.version}`, host: preview.python.host, bytes: preview.python.bytes }] : []),
+    ...preview.packages.map((p) => ({ key: p.name, name: p.version ? `${p.name} ${p.version}` : p.name, host: preview.packageHost, bytes: p.bytes })),
+  ];
+  const known = rows.filter((r) => typeof r.bytes === 'number');
+  const total = known.reduce((sum, r) => sum + (r.bytes ?? 0), 0);
+  return (
+    <div className="install-list" role="table" aria-label={t('下载内容')}>
+      {rows.map((r) => (
+        <div key={r.key} className="install-row" role="row">
+          <span className="install-name" role="cell">
+            {r.name}
+          </span>
+          <span className="install-host" role="cell">
+            {r.host}
+          </span>
+          <span className="install-size" role="cell">
+            {typeof r.bytes === 'number' ? formatBytes(r.bytes) : '—'}
+          </span>
+        </div>
+      ))}
+      {rows.length > 1 && known.length === rows.length ? (
+        <div className="install-row is-total" role="row">
+          <span className="install-name" role="cell">
+            {t('合计')}
+          </span>
+          <span className="install-host" role="cell" />
+          <span className="install-size" role="cell">
+            {formatBytes(total)}
+          </span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * A confirmation: the card is what would run. One slim row (what it will do, 无法撤销 when it cannot be taken
  * back, 拒绝 / 允许 or what was decided), then the command in full (copy at its top right) or the call's arguments.
@@ -1019,7 +1069,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
   const facts = command !== null ? commandFacts(command) : [];
   // 无法撤销 and the warning: a dangerous command, or a step a plugin marked irreversible (its hook, or its manifest).
   const danger = facts.some((f) => f.danger) || block.irreversible === true;
-  const title = command === null ? confirmTitle(block.name, block.input, block.reason) : facts.length ? facts.map((f) => f.text).join(t('；')) : t('运行命令');
+  const title = block.install ? installTitle(block.install) : command === null ? confirmTitle(block.name, block.input, block.reason) : facts.length ? facts.map((f) => f.text).join(t('；')) : t('运行命令');
   const cls = ['card', 'confirm-card', danger ? 'is-danger' : '', decided ? 'is-done' : ''].filter(Boolean).join(' ');
   return (
     <section className={cls} aria-label={t('确认')}>
@@ -1046,7 +1096,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
           </div>
         )}
       </header>
-      <ConfirmTarget name={block.name} input={block.input} change={block.change} bare />
+      {block.install ? <InstallList preview={block.install} /> : <ConfirmTarget name={block.name} input={block.input} change={block.change} bare />}
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
     </section>
   );

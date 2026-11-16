@@ -7,10 +7,10 @@
   "license": "Apache-2.0",
   "main": "./out/main/index.js",
   "scripts": {
-    "predev": "install-electron",
+    "predev": "install-electron && node scripts/node-libs.mjs && node scripts/uv.mjs",
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
-    "prepreview": "install-electron",
+    "build": "node scripts/node-libs.mjs && node scripts/uv.mjs && electron-vite build",
+    "prepreview": "install-electron && node scripts/node-libs.mjs && node scripts/uv.mjs",
     "preview": "electron-vite preview",
     "preshots": "install-electron",
     "shots": "node scripts/shots.mjs",
@@ -33,14 +33,18 @@
     "electron": "45.2.3",
     "electron-builder": "26.18.0",
     "electron-vite": "6.0.0",
+    "exceljs": "4.4.0",
     "highlight.js": "11.11.2",
     "jsdom": "31.0.0",
     "lowlight": "3.3.0",
     "mermaid": "12.2.0",
+    "papaparse": "5.7.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1",
+    "rolldown": "1.2.16",
+    "uuid": "14.0.3",
     "vite": "8.3.6"
   }
 }

@@ -21,19 +21,21 @@ describe('zooming a picture around the pointer', () => {
 });
 
 describe('the picture viewer', () => {
-  it('Ctrl+wheel zooms the picture, not the window', () => {
+  it('the wheel zooms the picture, with Ctrl or without, not the window', () => {
     const windowZoom = vi.fn();
     window.addEventListener('wheel', windowZoom);
     render(<ImageViewer pictures={[{ url: 'data:image/png;base64,AA==', name: '图' }]} onClose={vi.fn()} />);
     const viewer = document.querySelector('.image-viewer')!;
+    const scale = () => (document.querySelector('.image-viewer img') as HTMLElement).style.transform;
     act(() => {
       viewer.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, bubbles: true, cancelable: true }));
     });
+    expect(scale()).toContain('scale(1.15)');
+    act(() => {
+      viewer.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
+    });
+    expect(scale()).toContain('scale(1)');
     expect(windowZoom).not.toHaveBeenCalled();
-    expect((document.querySelector('.image-viewer img') as HTMLElement).style.transform).toContain('scale(1.15)');
-    // Without Ctrl the wheel is left alone.
-    viewer.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true }));
-    expect(windowZoom).toHaveBeenCalledTimes(1);
     window.removeEventListener('wheel', windowZoom);
   });
 

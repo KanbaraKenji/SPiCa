@@ -2,8 +2,8 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { makeDocx, makeInventoryXlsx } from '../../../../packages/extract/src/testing/fixtures';
-import { docxMarkdown, sheetGrid } from './office-preview';
+import { encodeGbk, makeDocx, makeInventoryXlsx, SALES_CSV } from '../../../../packages/extract/src/testing/fixtures';
+import { docxMarkdown } from './office-preview';
 import { PreviewFiles, readPreview } from './preview';
 
 describe('Word and Excel in the right panel', () => {
@@ -27,6 +27,22 @@ describe('Word and Excel in the right panel', () => {
     expect(text).not.toMatch(/^\[\d+\]/m);
   });
 
+  it('a Word document cut short says how many of its paragraphs show: past 500 of them, or at the size limit', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-office-'));
+    // 1 351 short paragraphs: the 500 stop, not the size limit.
+    writeFileSync(join(dir, '长.docx'), await makeDocx({ title: '汇编', sections: Array.from({ length: 150 }, (_, s) => ({ heading: `第 ${s + 1} 章`, paragraphs: Array.from({ length: 8 }, (_, k) => `第 ${k + 1} 段`) })) }));
+    expect(await readPreview(join(dir, '长.docx'), new PreviewFiles())).toMatchObject({ truncated: true, blocks: { shown: 500, total: 1351 } });
+    // 133 long paragraphs: the size limit stops it well before 500.
+    const long = '较长的示例正文，用来把文档撑到字数上限。'.repeat(25);
+    writeFileSync(join(dir, '密.docx'), await makeDocx({ title: '说明', sections: Array.from({ length: 12 }, (_, s) => ({ heading: `第 ${s + 1} 节`, paragraphs: Array.from({ length: 10 }, () => long) })) }));
+    const dense = await readPreview(join(dir, '密.docx'), new PreviewFiles());
+    expect(dense).toMatchObject({ truncated: true, blocks: { total: 133 } });
+    expect(dense.kind === 'markdown' ? dense.blocks!.shown : 0).toBeLessThan(133);
+    // A short one: nothing said.
+    writeFileSync(join(dir, '短.docx'), await makeDocx({ title: '短', sections: [{ heading: '一', paragraphs: ['正文'] }] }));
+    expect(await readPreview(join(dir, '短.docx'), new PreviewFiles())).not.toHaveProperty('blocks');
+  });
+
   it('an Excel workbook: the sheet asked for as a grid with column letters and row numbers, and every sheet’s name', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'spica-office-'));
     const path = join(dir, '库存.xlsx');
@@ -41,22 +57,69 @@ describe('Word and Excel in the right panel', () => {
     expect(first.rows[0]).toMatchObject({ n: 1 });
     expect(first.rows[0]!.cells[0]).toBe('品名');
     expect(first.rows.some((r) => r.cells[0] === '便携显示器')).toBe(true);
-    expect(first.truncated).toBe(false);
+    expect(first.more).toBe(false);
+    expect(first).not.toHaveProperty('left');
     const second = await readPreview(path, files, 2);
     expect(second.kind === 'sheet' ? [second.sheet, second.rows[0]?.cells[1]] : []).toEqual([2, '供应商']);
   });
 
-  it('a long sheet stops at 500 rows and says so', async () => {
+  it('a long sheet comes 500 rows at a time, the next page from the row after the last, to its end', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'spica-office-'));
     const path = join(dir, '库存.xlsx');
     writeFileSync(path, await makeInventoryXlsx(800));
-    const info = await readPreview(path, new PreviewFiles());
-    expect(info.kind === 'sheet' ? [info.rows.length, info.truncated] : []).toEqual([500, true]);
+    const files = new PreviewFiles();
+    const first = await readPreview(path, files);
+    if (first.kind !== 'sheet') throw new Error(first.kind);
+    expect([first.rows.length, first.rows[0]!.n, first.rows.at(-1)!.n, first.more]).toEqual([500, 1, 500, true]);
+    const second = await readPreview(path, files, 1, 501);
+    if (second.kind !== 'sheet') throw new Error(second.kind);
+    // 1 header + 5 items + 800 + 合计 = 807 rows.
+    expect([second.rows[0]!.n, second.rows.at(-1)!.n, second.rows.at(-1)!.cells[0], second.more]).toEqual([501, 807, '合计', false]);
+    expect(second.columns).toEqual(first.columns);
+  });
+
+  it('a sheet with empty rows in it, all shown, does not say rows were left out', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-office-'));
+    const path = join(dir, '空行.xlsx');
+    writeFileSync(path, await makeInventoryXlsx());
+    // 说明: a line, an empty row, a line.
+    const info = await readPreview(path, new PreviewFiles(), 4);
+    if (info.kind !== 'sheet') throw new Error(info.kind);
+    expect(info.rows.map((r) => r.n)).toEqual([1, 3]);
+    expect(info.more).toBe(false);
+    expect(info).not.toHaveProperty('left');
+  });
+
+  it('a CSV file is a table of one sheet, quoted fields kept whole, with its own text for 查看代码; a TSV too', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-office-'));
+    writeFileSync(join(dir, '销售.csv'), encodeGbk(SALES_CSV));
+    const info = await readPreview(join(dir, '销售.csv'), new PreviewFiles());
+    if (info.kind !== 'sheet') throw new Error(info.kind);
+    expect(info.sheets).toEqual([{ name: '销售' }]);
+    expect(info.columns).toEqual(['A', 'B', 'C', 'D']);
+    expect(info.rows.map((r) => r.cells)).toEqual([
+      ['门店', '日期', '销售额（元）', '备注'],
+      ['一号店', '2026-11-01', '12800', '周末促销, 客流较多'],
+      ['二号店', '2026-11-01', '9650', ''],
+      ['三号店', '2026-11-01', '7420', '新店试营业'],
+    ]);
+    expect(info.text).toBe(SALES_CSV);
+    writeFileSync(join(dir, 'a.tsv'), '名称\t数量\n苹果\t3\n');
+    const tsv = await readPreview(join(dir, 'a.tsv'), new PreviewFiles());
+    expect(tsv.kind === 'sheet' ? tsv.rows.map((r) => r.cells) : []).toEqual([['名称', '数量'], ['苹果', '3']]);
+  });
+
+  it('a long CSV file comes a page at a time like a sheet, its text with the first page only', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-office-'));
+    writeFileSync(join(dir, 'big.csv'), `编号,金额\n${Array.from({ length: 1200 }, (_, i) => `${i + 1},${i * 3}`).join('\n')}\n`);
+    const files = new PreviewFiles();
+    const first = await readPreview(join(dir, 'big.csv'), files);
+    const third = await readPreview(join(dir, 'big.csv'), files, 1, 1001);
+    expect(first.kind === 'sheet' ? [first.rows.length, first.more, typeof first.text] : []).toEqual([500, true, 'string']);
+    expect(third.kind === 'sheet' ? [third.rows[0]!.n, third.rows.at(-1)!.n, third.more, third.text] : []).toEqual([1001, 1201, false, undefined]);
   });
 
   it('reads the extractor’s layout', () => {
     expect(docxMarkdown('Word document\n\n[1] # 标题\n[2] 正文\n[3] - 一\n[4] - 二\n[5] Table 1 (2×2):\n    | a | b |\n    | 1 | 2 |')).toBe('# 标题\n\n正文\n\n- 一\n- 二\n\n| a | b |\n| 1 | 2 |');
-    expect(sheetGrid('Sheet "库存"\nrow\tA\tB\n(header) 1\t品名\t数量\n2\t键盘\t150\n\nmore')).toEqual({ columns: ['A', 'B'], rows: [{ n: 1, cells: ['品名', '数量'] }, { n: 2, cells: ['键盘', '150'] }] });
-    expect(sheetGrid('nothing')).toEqual({ columns: [], rows: [] });
   });
 });
