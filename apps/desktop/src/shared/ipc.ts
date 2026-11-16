@@ -99,4 +99,30 @@ export const DesktopChannel = {
   OpenFolder: 'spica:openFolder',
   /** invoke: (suggested name, CSV text) -> SaveCsvResult (asks where to save first) */
   SaveCsv: 'spica:saveCsv',
+  /** main -> renderer: a web address a page in the built-in browser opened as a new window; it opens as a new tab */
+  BrowserOpenTab: 'spica:browserOpenTab',
+  /** invoke: a web address (http/https) -> null, opened in the system's browser; or what to show */
+  BrowserExternal: 'spica:browserExternal',
+  /** invoke: -> null; the built-in browser's cookies, storage and cache cleared (设置 › 常规 › 浏览器) */
+  BrowserClearData: 'spica:browserClearData',
+  /** invoke: (sessionId, path) -> the address of a local HTML file in the built-in browser (its folder readable), or null */
+  BrowserLocalPage: 'spica:browserLocalPage',
+  /** invoke: (name, html) -> the address of a page drawn from an answer, in the built-in browser */
+  BrowserLocalText: 'spica:browserLocalText',
+  /** invoke: address -> null; a local page's address stops working (its page was closed) */
+  BrowserRelease: 'spica:browserRelease',
+  /** main -> renderer: { id, op: 'open' | 'show' | 'tabs', args } — the browser's agent tools ask the window (main/browser/agent.ts) */
+  BrowserAgentAsk: 'spica:browserAgentAsk',
+  /** invoke: (id, { ok, value?, error? }) -> null; the window's answer */
+  BrowserAgentReply: 'spica:browserAgentReply',
+  /** main -> renderer: { tabId, taken } — the person took over an agent's tab (pressed in its page), or gave it back */
+  BrowserTakeOver: 'spica:browserTakeOver',
+  /** invoke: tabId -> null; 交还: the agent may act in that tab again */
+  BrowserGiveBack: 'spica:browserGiveBack',
+  /** invoke: the page's WebContents id -> null; 接手: the agent leaves that page until it is given back */
+  BrowserTakeOverPage: 'spica:browserTakeOverPage',
+  /** main -> renderer: { page, host } — a local page's request to that host was stopped (page: its address's token) */
+  BrowserBlocked: 'spica:browserBlocked',
+  /** main -> renderer: a web address a local page went to; asked where to open it, as a link in the app */
+  BrowserLocalLink: 'spica:browserLocalLink',
 } as const;

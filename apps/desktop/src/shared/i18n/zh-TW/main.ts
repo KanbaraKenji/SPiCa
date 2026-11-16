@@ -210,4 +210,12 @@ export const ZH_TW_MAIN: Catalog = {
   '继续更新': '繼續更新',
   '取消': '取消',
   '新对话': '新對話',
+  // shell/PaneTabs.tsx, shell/BrowserPane.tsx (the built-in browser)
+  '无法打开此网址。': '無法開啟此網址。',
+  // main/browser/actions.ts (the confirmation card when an agent acts in a page: what, then where and on what)
+  提交表单: '提交表單',
+  填入并提交: '填入並提交',
+  下载: '下載',
+  点击按钮: '點選按鈕',
+  '{field}：{text}': '{field}：{text}',
 };
