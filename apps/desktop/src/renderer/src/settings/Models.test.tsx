@@ -246,7 +246,7 @@ describe('Models', () => {
     fireEvent.click(screen.getByRole('button', { name: '获取模型列表' }));
     await screen.findByRole('status');
     // a catalog model ticked from the list keeps the list's number
-    fireEvent.click(screen.getByRole('button', { name: '启用 deepseek-v4-pro' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /deepseek-v4-pro/ }));
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await screen.findByText('已保存');
     const models = vi.mocked(api.save).mock.calls[0]![0].models!;
@@ -333,17 +333,19 @@ describe('Models', () => {
     const api = fakeApi([saved({ name: 'DeepSeek', catalogId: 'deepseek', models: [{ id: 'deepseek-flash', contextWindow: 128_000, contextFrom: 'catalog' }, { id: 'my-model', contextWindow: 64_000, contextFrom: 'user' }] })]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /DeepSeek/ }));
-    // Unchecked: it moves down to 未启用, where a click turns it on again.
+    // Unchecked: it stays where it is in the one list, its box empty; a click ticks it again.
+    const rowsBefore = Array.from(document.querySelectorAll('.model-row-id')).map((x) => x.textContent);
     fireEvent.click(screen.getByRole('checkbox', { name: /my-model/ }));
-    expect(screen.queryByRole('checkbox', { name: /my-model/ })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '启用 my-model' }));
+    expect((screen.getByRole('checkbox', { name: /my-model/ }) as HTMLInputElement).checked).toBe(false);
+    expect(Array.from(document.querySelectorAll('.model-row-id')).map((x) => x.textContent)).toEqual(rowsBefore);
+    fireEvent.click(screen.getByRole('checkbox', { name: /my-model/ }));
     expect((screen.getByRole('checkbox', { name: /my-model/ }) as HTMLInputElement).checked).toBe(true);
     expect(screen.queryByRole('button', { name: '删除 deepseek-flash' })).toBeNull();
     fireEvent.click(screen.getByRole('checkbox', { name: /my-model/ }));
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ models: [expect.objectContaining({ id: 'deepseek-flash' }), expect.objectContaining({ id: 'my-model', enabled: false })] })));
     fireEvent.click(screen.getByRole('button', { name: '删除 my-model' }));
-    expect(screen.queryByRole('button', { name: '启用 my-model' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: /my-model/ })).toBeNull();
   });
 
   it('beside 保存: 未保存 while there are changes, and 取消 goes back to what is saved', async () => {

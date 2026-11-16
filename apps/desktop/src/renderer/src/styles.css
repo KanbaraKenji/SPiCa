@@ -4326,13 +4326,6 @@ button.ctx-row:hover {
   height: var(--control-h);
 }
 
-.model-picker-sect {
-  padding-top: 2px;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-  color: var(--spica-faint);
-}
-
 .model-picker-list {
   margin: 0;
   padding: 0;
