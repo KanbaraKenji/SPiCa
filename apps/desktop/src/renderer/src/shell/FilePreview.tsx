@@ -86,8 +86,8 @@ type SheetInfo = Extract<PreviewInfo, { kind: 'sheet' }>;
 const SHEET_OVERSCAN = 150;
 /** A column no wider than this; a longer cell is cut, its whole text on hover. */
 const SHEET_COL_MAX = 480;
-/** A cell's padding and line, beside its text (styles.css .preview-sheet td). */
-const SHEET_CELL_EXTRA = 21;
+/** A cell's padding and line, beside its text (styles.css .preview-sheet td), and a little room. */
+const SHEET_CELL_EXTRA = 21 + 4;
 
 let measureCanvas: HTMLCanvasElement | null = null;
 
@@ -159,12 +159,18 @@ function Sheet({ info, onSheet, loadRows }: { info: SheetInfo; onSheet?: ((n: nu
     const from = sized?.upto ?? 0;
     fit(0, String(rows.at(-1)?.n ?? ''));
     info.columns.forEach((c, k) => {
-      let longest = sized ? '' : c;
-      for (let r = from; r < rows.length; r++) {
+      // The longest cells by length, all measured (the same length is not the same width: 2026-11-01, 2026-11-02).
+      let most = sized ? 0 : roughLength(c);
+      for (let r = from; r < rows.length; r++) most = Math.max(most, roughLength(rows[r]!.cells[k] ?? ''));
+      let measuredCells = 0;
+      if (!sized) fit(k + 1, c);
+      for (let r = from; r < rows.length && measuredCells < 50; r++) {
         const cell = rows[r]!.cells[k] ?? '';
-        if (roughLength(cell) > roughLength(longest)) longest = cell;
+        if (cell && roughLength(cell) >= most - 1) {
+          fit(k + 1, cell);
+          measuredCells++;
+        }
       }
-      fit(k + 1, longest);
     });
     if (widths.every((w) => w > SHEET_CELL_EXTRA)) setMeasured({ id, row, widths, upto: rows.length });
   }, [sized, rows, info.columns, id]);
