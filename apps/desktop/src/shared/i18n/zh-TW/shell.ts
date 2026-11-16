@@ -259,4 +259,27 @@ export const ZH_TW_SHELL: Catalog = {
   还原: '還原',
   最大化: '最大化',
   '{name}（{keys}）': '{name}（{keys}）',
+  // shell/PaneTabs.tsx, shell/BrowserPane.tsx (the built-in browser)
+  新标签页: '新分頁',
+  '关闭 {name}': '關閉 {name}',
+  网页: '網頁',
+  后退: '上一頁',
+  前进: '下一頁',
+  刷新: '重新整理',
+  地址: '網址',
+  输入网址: '輸入網址',
+  用系统浏览器打开: '以系統瀏覽器開啟',
+  // shell/links.tsx (where web addresses open)
+  '在哪里打开网址？': '要在哪裡開啟網址？',
+  应用内: '應用程式內',
+  系统浏览器: '系統瀏覽器',
+  记住我的选择: '記住我的選擇',
+  在应用内打开: '在應用程式內開啟',
+  // shell/BrowserPane.tsx (an agent in the page)
+  'Agent 正在操作': 'Agent 正在操作',
+  已接手: '已接手',
+  接手: '接手',
+  交还: '交還',
+  // shell/FilePreview.tsx (a local page's stopped requests)
+  '已拦截：{hosts}': '已攔截：{hosts}',
 };

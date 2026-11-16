@@ -1410,6 +1410,26 @@ export class FakeBackend implements AgentBackend {
         const after = ok ? '\n\n改好了。' : '\n\n好的，没有改。';
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
+      } else if (/提交表单/.test(text)) {
+        // The built-in browser about to submit a form (main/browser/actions.ts): asked, the reason on two lines,
+        // what, then where and on what (the card's grey second line).
+        const callId = this.#id('call');
+        const input = { ref: 12 };
+        const reason = '提交表单\nforms.example.com · 「提交报名」';
+        this.#emit(sessionId, { type: 'tool.call', callId, name: 'browser_click' });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name: 'browser_click', input }]);
+        this.#addPending(sessionId, { kind: 'confirm', callId, toolName: 'browser_click', input, reason, createdAt: isoAt(this.#now()) });
+        this.#emit(sessionId, { type: 'confirm.request', callId, name: 'browser_click', input, reason });
+        this.#setStatus(sessionId, 'awaiting_confirm', 'browser_click');
+        waiting = { id: callId, name: 'browser_click', input, stored: true };
+        const ok = (await this.#waitFor(run, callId)) === 'yes';
+        waiting = undefined;
+        this.#emit(sessionId, { type: 'tool.end', callId, name: 'browser_click', isError: !ok, preview: ok ? '已提交' : '用户拒绝了', durationMs: 200 });
+        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: ok ? '已提交' : '用户拒绝了', isError: !ok }]);
+        this.#setStatus(sessionId, 'thinking');
+        const after = ok ? '已提交。' : '好的，没有提交。';
+        await this.#stream(sessionId, 'text', after, signal);
+        blocks.push({ type: 'text', text: after });
       } else if (/两张卡/.test(text)) {
         // Two cards waiting at once (screenshots of an ordinary card and one outside the folders in one answer): an
         // email, and a write outside the folders (「命令」: as a command); answered in that order.

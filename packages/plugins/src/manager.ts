@@ -11,6 +11,7 @@ import type { Hooks, Tool } from '@spica/core';
 import type { HookModule, PluginContext } from './authoring.ts';
 import { expandCommand, hasErrors, insidePlugin, readPluginFolder, type CommandDef, type PluginFolder, type ServerDef, type ViewDef } from './folder.ts';
 import type { McpExit, McpHandle, McpLaunch, PluginHost } from './host.ts';
+import { checkConfigValue, configForServer, missingConfig, scrubSecrets, type UserConfigField, type UserConfigValue } from './user-config.ts';
 import type { PluginI18n } from './i18n.ts';
 import { HOOK_KINDS, appNameOf, compareVersions, satisfies, type HookKind, type Issue, type PluginIcon, type PluginManifest } from './manifest.ts';
 
@@ -104,9 +105,53 @@ export interface PluginDescription {
   mail?: { listTool: string; readTool: string };
   /** Present when the manifest asks to use the user's models (permissions.model). */
   model?: PluginModelUse;
+  /** Present when the manifest declares user_config: the form, what is filled in (passwords: only whether), what is missing. */
+  config?: PluginConfigView;
+  /**
+   * Enabled, but waiting for required user_config fields (待设置): nothing of the plugin is running (no
+   * servers, skills, commands or hooks) until they are filled in.
+   */
+  waiting?: boolean;
   /** The plugin's words in other languages (manifest.json · i18n); localizeDescription() picks one. */
   i18n?: PluginI18n;
   issues: Issue[];
+}
+
+/** One field of a plugin's settings form, as the plugin page shows it. Never a password's value. */
+export interface PluginConfigFieldView extends UserConfigField {
+  /** Something usable is stored (a password: whether one is saved). */
+  set: boolean;
+  /** The stored value of a field that is not a password; null: none. */
+  value?: UserConfigValue | null;
+  /** Where the stored value came from: the person, or the packaging (deploy.json). */
+  from?: 'user' | 'deploy';
+  /** Set by the packaging and not changeable here. */
+  locked?: boolean;
+}
+
+export interface PluginConfigView {
+  fields: PluginConfigFieldView[];
+  /** Required fields with nothing usable (keys, in form order). */
+  missing: string[];
+}
+
+/**
+ * What the host stores for one plugin's user_config, handed to the manager (the desktop app seals passwords in
+ * its main process and passes them here in the clear, in memory only).
+ */
+export interface PluginConfigInput {
+  /** By key; anything not declared is kept by the host but not given to the plugin. */
+  values: Record<string, UserConfigValue>;
+  /** Keys whose value came from the packaging; `locked` ones cannot be changed by the person. */
+  deploy?: string[];
+  locked?: string[];
+  /** sourceKey() of the plugin when the values were saved: a plugin from another source does not get the passwords. */
+  source?: string;
+}
+
+/** A plugin's source as one string (stored with its settings; another source means another publisher). */
+export function sourceKey(src: PluginSource | undefined): string {
+  return src ? `${src.kind}:${src.location}` : '';
 }
 
 /** A plugin's use of the user's models, for the plugin page. */
@@ -181,6 +226,8 @@ export interface PluginManagerOptions {
   userAccount?: string;
   /** Every line written to a plugin's log (its servers' stderr, installs, starts), as it is written. */
   onLog?: (plugin: string, line: string) => void;
+  /** What the host stores for each plugin's user_config (setUserConfig changes one). */
+  userConfig?: Record<string, PluginConfigInput>;
 }
 
 /** Thrown with a message meant for the user. */
@@ -284,6 +331,93 @@ export class PluginManager {
     this.#inheritEnv = [...(opts.inheritEnv ?? PLUGIN_INHERIT_ENV)];
     this.#endTree = opts.endTree ?? false;
     this.#account = opts.userAccount ?? '';
+    for (const [name, input] of Object.entries(opts.userConfig ?? {})) this.#config.set(name, input);
+  }
+
+  // ---------- user_config ----------
+
+  /** What the host stores for each plugin's settings form. */
+  readonly #config = new Map<string, PluginConfigInput>();
+
+  /** The stored values a plugin may have now: a plugin from another source than when they were saved gets no passwords. */
+  #storedConfig(name: string, fields: readonly UserConfigField[]): Record<string, UserConfigValue> {
+    const input = this.#config.get(name);
+    if (!input) return {};
+    const sameSource = input.source === undefined || input.source === sourceKey(this.#state.plugins[name]?.source);
+    const out: Record<string, UserConfigValue> = {};
+    for (const [k, v] of Object.entries(input.values)) {
+      const f = fields.find((x) => x.key === k);
+      if (f?.type === 'password' && !sameSource) continue;
+      // a password from the packaging would sit in a plain file: never used
+      if (f?.type === 'password' && input.deploy?.includes(k)) continue;
+      out[k] = v;
+    }
+    return out;
+  }
+
+  /** Required user_config fields with nothing usable: the plugin waits for them (待设置). */
+  #missingConfig(name: string, m: PluginManifest | undefined): string[] {
+    const fields = m?.userConfig ?? [];
+    return fields.length ? missingConfig(fields, this.#storedConfig(name, fields)) : [];
+  }
+
+  /** The plugin's password values (taken out of its log and of what the core shows). */
+  #secretsOf(name: string): string[] {
+    const fields = this.#folders.get(name)?.manifest?.userConfig ?? [];
+    const stored = this.#storedConfig(name, fields);
+    return fields.filter((f) => f.type === 'password' && typeof stored[f.key] === 'string').map((f) => stored[f.key] as string);
+  }
+
+  #configView(name: string, m: PluginManifest): PluginConfigView | undefined {
+    const fields = m.userConfig ?? [];
+    if (!fields.length) return undefined;
+    const input = this.#config.get(name);
+    const stored = this.#storedConfig(name, fields);
+    const view: PluginConfigFieldView[] = fields.map((f) => {
+      const c = Object.hasOwn(stored, f.key) ? checkConfigValue(f, stored[f.key]) : null;
+      const value = c?.ok ? c.value : null;
+      const deploy = input?.deploy?.includes(f.key) && value !== null;
+      return {
+        ...f,
+        set: value !== null,
+        ...(f.type === 'password' ? {} : { value }),
+        ...(value !== null ? { from: deploy ? ('deploy' as const) : ('user' as const) } : {}),
+        ...(input?.locked?.includes(f.key) ? { locked: true } : {}),
+      };
+    });
+    return { fields: view, missing: missingConfig(fields, stored) };
+  }
+
+  /**
+   * The host saved a plugin's settings (null: cleared). Its passwords go to the core's redactions; then, by what
+   * the plugin needs now: a waiting plugin with everything filled in starts, a running one that now misses a
+   * required field stops and waits, and a running one restarts its servers so they read the new values.
+   */
+  setUserConfig(name: string, input: PluginConfigInput | null): Promise<PluginDescription> {
+    return this.#serial(async () => {
+      const rec = this.#require(name);
+      if (input) this.#config.set(name, input);
+      else this.#config.delete(name);
+      this.#host.addRedactions?.(this.#secretsOf(name).filter((s) => s.length >= 6));
+      const m = this.#folders.get(name)?.manifest;
+      const missing = this.#missingConfig(name, m);
+      const a = this.#active.get(name);
+      if (a && missing.length) {
+        await this.#log(name, `settings changed: waiting for ${missing.join(', ')}`);
+        await this.#disable(name);
+      } else if (a) {
+        if (a.servers.length) void this.#log(name, 'restarting servers: settings changed');
+        for (const run of a.servers) {
+          await this.#stopServer(a, run);
+          run.restarts = [];
+          await this.#startServer(a, run).catch(() => undefined);
+        }
+      } else if (rec.enabled && !missing.length && m) {
+        // (a plugin that cannot start says so in its own error event; the settings are saved either way)
+        await this.#enable(name).catch(() => undefined);
+      }
+      return this.#describe(name);
+    });
   }
 
   /** The user's account plugins get (SPICA_USER_ACCOUNT, ctx.user.account). */
@@ -352,7 +486,9 @@ export class PluginManager {
     await rename(tmp, join(this.#root, 'state.json'));
   }
 
-  async #log(name: string, line: string): Promise<void> {
+  async #log(name: string, raw: string): Promise<void> {
+    // the plugin's passwords never reach its log file or the monitor (both go through here)
+    const line = scrubSecrets(raw, this.#secretsOf(name));
     try {
       this.#onLog?.(name, line);
     } catch {
@@ -571,6 +707,8 @@ export class PluginManager {
         }
       }
       delete this.#state.plugins[name];
+      // its settings in this process go too (the host deletes what it stores)
+      this.#config.delete(name);
       this.#folders.delete(name);
       // Record first: a folder left aside without a record is only removed at the next start.
       await this.#saveState();
@@ -739,6 +877,16 @@ export class PluginManager {
       throw new PluginError(msg, issues);
     }
     const manifest = folder.manifest;
+    // 待设置: required settings not filled in yet. It counts as enabled and starts once they are (setUserConfig);
+    // nothing of it runs meanwhile, so the model never sees skills about tools that are not there.
+    const declared = new Set((manifest.userConfig ?? []).map((f) => f.key));
+    const strayDeploy = (this.#config.get(name)?.deploy ?? []).filter((k) => !declared.has(k) || manifest.userConfig?.find((f) => f.key === k)?.type === 'password');
+    if (strayDeploy.length) await this.#log(name, `deploy.json pluginConfig: not used (not declared, or a password): ${strayDeploy.join(', ')}`);
+    const missing = this.#missingConfig(name, manifest);
+    if (missing.length) {
+      await this.#log(name, `waiting for settings: ${missing.join(', ')}`);
+      return;
+    }
     const a: Active = { folder, manifest, source: `plugin:${name}`, undo: [], servers: [], hookKinds: [] };
     this.#active.set(name, a);
     try {
@@ -972,7 +1120,12 @@ export class PluginManager {
       SPICA_MOCK: this.#state.mock ? '1' : '0',
       // Set after baseEnv and the manifest's env: neither can put another account here.
       SPICA_USER_ACCOUNT: this.#account,
+      // the app's name as the person sees it (a company's packaging may rename it), for messages that name the app
+      SPICA_APP_NAME: this.#app,
     };
+    // user_config: every declared key, its value, default or null, as one JSON object
+    const fields = a.manifest.userConfig ?? [];
+    if (fields.length) env.SPICA_USER_CONFIG = JSON.stringify(configForServer(fields, this.#storedConfig(name, fields)));
     const node = def.runtime === 'node';
     if (node) env.ELECTRON_RUN_AS_NODE = '1';
     return {
@@ -1081,6 +1234,9 @@ export class PluginManager {
     const folder = this.#folders.get(name);
     const m = folder?.manifest;
     const a = this.#active.get(name);
+    const config = m ? this.#configView(name, m) : undefined;
+    // enabled, but not running until its required settings are filled in
+    const waiting = !a && rec.enabled && !!config?.missing.length;
     return {
       name,
       displayName: m?.displayName ?? name,
@@ -1089,7 +1245,8 @@ export class PluginManager {
       ...(rec.previous ? { previousVersion: rec.previous } : {}),
       author: m?.author.name ?? '',
       license: m?.license ?? '',
-      enabled: !!a,
+      enabled: !!a || waiting,
+      ...(waiting ? { waiting: true } : {}),
       ...(rec.source ? { source: rec.source } : {}),
       permissions: m?.permissions ?? { network: [], workspace: 'none', irreversible: [], hooks: [] },
       mockSupported: m?.mock.supported ?? false,
@@ -1113,6 +1270,7 @@ export class PluginManager {
       ...(m?.icon ? { icon: m.icon } : {}),
       ...(a?.mail ? { mail: a.mail } : {}),
       ...(m?.permissions.model ? { model: this.#modelUse(name, m) } : {}),
+      ...(config ? { config } : {}),
       ...(m?.i18n ? { i18n: m.i18n } : {}),
       issues: folder?.issues ?? [],
     };

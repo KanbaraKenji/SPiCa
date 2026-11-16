@@ -136,6 +136,8 @@ export interface ShellSettings {
   previewers: Record<string, string>;
   /** 常规 › 关闭窗口时: what the window's × does: ask each time (default), minimize to the tray, or quit. */
   closeWindow: CloseWindow;
+  /** 设置 › 常规 › 浏览器 › 打开网址: where a web address clicked in the app opens (ask: the question, with 记住我的选择). */
+  linkOpen: LinkOpen;
   /** 常规 › 开机时启动: Windows starts the app at sign-in, for this user (installed copies only). Off by default. */
   openAtLogin: boolean;
   /** The one notification about being minimized to the tray was shown. */
@@ -225,6 +227,9 @@ export function moneyText(n: number): string {
 /** 关闭窗口时: 每次询问 / 最小化到托盘 / 退出. */
 export type CloseWindow = 'ask' | 'tray' | 'quit';
 
+/** Where a web address clicked in the app opens: asked each time, the built-in browser (the right panel), the system's browser. */
+export type LinkOpen = 'ask' | 'panel' | 'system';
+
 /** Whether 开机时启动 can be used in this copy: an installed one; not a development run, a portable copy or another system. */
 export type AutostartSupport = 'ok' | 'dev' | 'portable' | 'unsupported';
 
@@ -256,6 +261,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   previewers: {},
   doneNews: [],
   closeWindow: 'ask',
+  linkOpen: 'ask',
   openAtLogin: false,
   backgroundHintShown: false,
   agentMessageLimit: 10,
@@ -362,7 +368,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, language, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
+  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, linkOpen: v.linkOpen === 'panel' || v.linkOpen === 'system' ? v.linkOpen : 'ask', openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, language, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OpenAICompatibleProvider, Runtime } from '@spica/core';
 import { runtimeHost } from '../host.ts';
-import { PluginManager, type PluginEvent } from '../manager.ts';
+import { PluginManager, type PluginEvent, type PluginManagerOptions } from '../manager.ts';
 
 export const OUTLOOK_PLUGIN = fileURLToPath(new URL('../../../../plugins/outlook-mail', import.meta.url));
 export const EXAMPLE_PLUGIN = fileURLToPath(new URL('../../../../plugins/example-notes', import.meta.url));
@@ -29,7 +29,7 @@ export interface Rig {
 }
 
 /** `endTree`: stopping a server also ends what it started (off unless asked: each stop lists the machine's processes). */
-export async function rig(rt = makeRuntime(), opts: { endTree?: boolean; baseEnv?: Record<string, string>; userAccount?: string; onLog?: (plugin: string, line: string) => void } = {}): Promise<Rig> {
+export async function rig(rt = makeRuntime(), opts: { endTree?: boolean; baseEnv?: Record<string, string>; userAccount?: string; appName?: string; userConfig?: PluginManagerOptions['userConfig']; onLog?: (plugin: string, line: string) => void } = {}): Promise<Rig> {
   const root = await mkdtemp(join(tmpdir(), 'spica-plugins-'));
   const pm = new PluginManager({
     host: runtimeHost(rt),
@@ -37,6 +37,8 @@ export async function rig(rt = makeRuntime(), opts: { endTree?: boolean; baseEnv
     ...(opts.endTree ? { endTree: true } : {}),
     ...(opts.baseEnv ? { baseEnv: opts.baseEnv } : {}),
     ...(opts.userAccount !== undefined ? { userAccount: opts.userAccount } : {}),
+    ...(opts.appName ? { appName: opts.appName } : {}),
+    ...(opts.userConfig ? { userConfig: opts.userConfig } : {}),
     ...(opts.onLog ? { onLog: opts.onLog } : {}),
   });
   const events: PluginEvent[] = [];

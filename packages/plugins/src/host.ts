@@ -62,6 +62,8 @@ export interface PluginHost {
    * traced, confirmed: true means the page already asked the user. Absent on older cores.
    */
   callPluginTool?(plugin: string, tool: string, args: Record<string, unknown>, opts: { confirmed?: boolean; signal?: AbortSignal }): Promise<PluginToolCallResult>;
+  /** Values the core takes out of anything it shows or stores (a plugin's passwords from user_config). Absent on older cores. */
+  addRedactions?(values: readonly string[]): void;
 }
 
 /** Mirrors @spica/core's PluginToolResult. */
@@ -94,6 +96,7 @@ export interface RuntimeLike {
   mail?: { addSource(src: MailSourceSpec): () => void };
   invokeTool?(name: string, input: Record<string, unknown>): Promise<{ content: string; isError: boolean }>;
   callPluginTool?(plugin: string, tool: string, args: Record<string, unknown>, opts?: { confirmed?: boolean; signal?: AbortSignal }): Promise<PluginToolCallResult>;
+  addRedactions?(values: readonly (string | undefined)[]): void;
 }
 
 export function runtimeHost(rt: RuntimeLike): PluginHost {
@@ -112,6 +115,7 @@ export function runtimeHost(rt: RuntimeLike): PluginHost {
     toolNames: () => rt.tools.list({ providerId: '', serverWebSearch: true }).map((t) => t.spec.name),
     ...(rt.mail ? { addMailSource: (src: MailSourceSpec) => rt.mail!.addSource(src) } : {}),
     ...(rt.invokeTool ? { invokeTool: (name: string, input: Record<string, unknown>) => rt.invokeTool!(name, input) } : {}),
+    ...(rt.addRedactions ? { addRedactions: (values: readonly string[]) => rt.addRedactions!(values) } : {}),
     ...(rt.callPluginTool
       ? { callPluginTool: (plugin: string, tool: string, args: Record<string, unknown>, opts: { confirmed?: boolean; signal?: AbortSignal }) => rt.callPluginTool!(plugin, tool, args, opts) }
       : {}),

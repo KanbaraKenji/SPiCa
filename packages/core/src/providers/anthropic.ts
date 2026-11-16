@@ -105,7 +105,8 @@ export class AnthropicProvider implements Provider {
       signal: ctx.signal,
       timeoutMs: this.#opts.timeoutMs ?? 120_000,
       retry: this.#opts.retry ?? DEFAULT_RETRY,
-      secrets: this.#opts.apiKey ? [this.#opts.apiKey] : [],
+      // a request header may carry the key (a gateway's own X-API-Key): its value is kept out of errors too
+      secrets: [...(this.#opts.apiKey ? [this.#opts.apiKey] : []), ...Object.values(this.#opts.headers ?? {})],
       ...(ctx.info ? { info: ctx.info } : {}),
       ...(ctx.onRetry ? { onRetry: ctx.onRetry } : {}),
       ...(this.#opts.fetchImpl ? { fetchImpl: this.#opts.fetchImpl } : {}),

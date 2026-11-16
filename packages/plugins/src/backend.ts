@@ -4,7 +4,7 @@
 // core does not depend on this package.
 import { stat, readFile } from 'node:fs/promises';
 import { runtimeHost, type RuntimeLike } from './host.ts';
-import { PluginError, PluginManager, type PluginDescription } from './manager.ts';
+import { PluginError, PluginManager, type PluginConfigInput, type PluginDescription } from './manager.ts';
 import { installZip } from './sources.ts';
 
 /** Same shape as the core's MCP service tools. */
@@ -30,6 +30,8 @@ export interface PluginBackendOptions {
   userAccount?: string;
   /** Every line of the plugins' logs as it is written (PluginManagerOptions.onLog). */
   onLog?: (plugin: string, line: string) => void;
+  /** What the host stores for each plugin's user_config, passwords in the clear (PluginManagerOptions.userConfig). */
+  userConfig?: Record<string, PluginConfigInput>;
 }
 
 const str = { type: 'string' } as const;
@@ -192,6 +194,8 @@ export async function attachBackend(
   networkChanged(): Promise<void>;
   /** The user changed the account (设置 › 账号): hooks see it at once, plugin servers restart with it. */
   setUserAccount(account: string): Promise<void>;
+  /** The host saved (or, null, cleared) one plugin's user_config: the plugin starts, waits or restarts as it needs. */
+  setPluginConfig(name: string, input: PluginConfigInput | null): Promise<PluginDescription>;
   close(): Promise<void>;
 }> {
   if (!options?.root) throw new Error('plugins extension needs options.root');
@@ -203,6 +207,7 @@ export async function attachBackend(
     ...(options.inheritEnv ? { inheritEnv: options.inheritEnv } : {}),
     ...(options.userAccount ? { userAccount: options.userAccount } : {}),
     ...(options.onLog ? { onLog: options.onLog } : {}),
+    ...(options.userConfig ? { userConfig: options.userConfig } : {}),
     endTree: options.endTree ?? true,
   });
   const loaded = await pm.load();
@@ -214,6 +219,7 @@ export async function attachBackend(
     warnings: loaded.failed.map((f) => `plugin ${f.name} was not enabled: ${f.message}`),
     networkChanged: () => pm.restartServers('network settings changed'),
     setUserAccount: (account: string) => pm.setUserAccount(account),
+    setPluginConfig: (name: string, input: PluginConfigInput | null) => pm.setUserConfig(name, input),
     close: () => pm.shutdown(),
   };
 }

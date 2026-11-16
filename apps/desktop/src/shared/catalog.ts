@@ -39,6 +39,9 @@ export interface CatalogProviderView {
   default?: boolean;
   maxConcurrent?: number;
   requestsPerMinute?: number;
+  /** A company preset: request headers each person fills in (names only); where WSO2 sends its credentials. */
+  headers?: string[];
+  credentialsIn?: 'basic' | 'body';
 }
 
 export interface ModelCatalogView {

@@ -5,12 +5,16 @@
 //
 //   node scaffold.mjs <name> [--dir <parent folder>] [--display "Title"]
 //                     [--description "..."] [--author "..."]
-//                     [--with skill,command,hook,ui] [--with-ui]
+//                     [--with skill,command,hook,ui,config] [--with-ui]
 //                     [--placement sidebar|panel|settings] [--force]
 //
 // The page (ui) goes in the sidebar by default; --placement panel puts it in
 // a panel beside the conversation instead, --placement settings in the
 // plugin's own detail under 设置 › 插件 (a settings page, no sidebar entry).
+//
+// --with config adds a settings form (manifest user_config: an address, a
+// password, a choice), server/config.js that reads it, made-up values in
+// mock/user-config.json, a tool that uses them and a test.
 //
 // <name>: lowercase letters, digits and "-", 2–24 characters; it becomes the
 // tool prefix (<name>__list_items) and should not change later.
@@ -18,10 +22,11 @@ import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as parts from './templates/config-parts.mjs';
 
 const TEMPLATES = join(dirname(fileURLToPath(import.meta.url)), 'templates');
 const NAME = /^[a-z][a-z0-9-]{1,23}$/;
-const EXTRAS = ['skill', 'command', 'hook', 'ui'];
+const EXTRAS = ['skill', 'command', 'hook', 'ui', 'config'];
 
 function parse(argv) {
   const o = { with: new Set(), force: false };
@@ -61,6 +66,7 @@ export async function scaffold(opts) {
   const author = opts.author ?? 'Your Name';
   const withs = new Set(opts.with ?? []);
   const hooks = withs.has('hook') ? '"inject"' : '';
+  const config = withs.has('config');
   const placement = opts.placement ?? 'sidebar';
   if (!['sidebar', 'panel', 'settings'].includes(placement)) throw new Error('--placement 只能是 sidebar（侧栏）、panel（对话旁边的面板）或 settings（设置 › 插件 里这个插件的设置页）。');
   if (opts.placement && !withs.has('ui')) withs.add('ui');
@@ -73,7 +79,13 @@ export async function scaffold(opts) {
       .replaceAll('__DESCRIPTION__', v(description))
       .replaceAll('__AUTHOR__', v(author))
       .replaceAll('__HOOKS__', hooks)
-      .replaceAll('__PLACEMENT__', placement);
+      .replaceAll('__PLACEMENT__', placement)
+      .replaceAll('__USER_CONFIG__', config ? parts.USER_CONFIG : '')
+      .replaceAll('__CONFIG_IMPORT__', config ? parts.CONFIG_IMPORT : '')
+      .replaceAll('__CONFIG_TOOL__', config ? parts.CONFIG_TOOL : '')
+      .replaceAll('__CONFIG_CASE__', config ? parts.CONFIG_CASE : '')
+      .replaceAll('__CONFIG_TEST__', config ? parts.CONFIG_TEST : '')
+      .replaceAll('__TOOL_NAMES__', parts.TOOL_NAMES(config));
   };
 
   const files = [
@@ -94,6 +106,7 @@ export async function scaffold(opts) {
   if (withs.has('skill')) files.push(['extras/SKILL.md.tmpl', `skills/${name}-basics/SKILL.md`]);
   if (withs.has('command')) files.push(['extras/command.md.tmpl', 'commands/add.md']);
   if (withs.has('hook')) files.push(['extras/hook.js.tmpl', 'hooks/hint.js']);
+  if (config) files.push(['server/config.js.tmpl', 'server/config.js'], ['user-config.json.tmpl', 'mock/user-config.json']);
   if (withs.has('ui')) {
     files.push(
       ['ui/view.json.tmpl', 'views/main.json'],
@@ -117,7 +130,7 @@ const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(imp
 if (isMain) {
   const o = parse(process.argv.slice(2));
   if (o.help || !o.name) {
-    console.log('用法：node scaffold.mjs <插件名> [--dir 上级文件夹] [--display "显示名"] [--description "..."] [--with skill,command,hook,ui] [--with-ui] [--placement sidebar|panel] [--force]');
+    console.log('用法：node scaffold.mjs <插件名> [--dir 上级文件夹] [--display "显示名"] [--description "..."] [--with skill,command,hook,ui,config] [--with-ui] [--placement sidebar|panel|settings] [--force]');
     process.exit(o.help ? 0 : 2);
   }
   try {

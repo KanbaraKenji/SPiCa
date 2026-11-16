@@ -246,7 +246,7 @@ describe('Models', () => {
     fireEvent.click(screen.getByRole('button', { name: '获取模型列表' }));
     await screen.findByRole('status');
     // a catalog model ticked from the list keeps the list's number
-    fireEvent.click(screen.getByRole('button', { name: '启用 deepseek-v4-pro' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /deepseek-v4-pro/ }));
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await screen.findByText('已保存');
     const models = vi.mocked(api.save).mock.calls[0]![0].models!;
@@ -333,17 +333,19 @@ describe('Models', () => {
     const api = fakeApi([saved({ name: 'DeepSeek', catalogId: 'deepseek', models: [{ id: 'deepseek-flash', contextWindow: 128_000, contextFrom: 'catalog' }, { id: 'my-model', contextWindow: 64_000, contextFrom: 'user' }] })]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /DeepSeek/ }));
-    // Unchecked: it moves down to 未启用, where a click turns it on again.
+    // Unchecked: it stays where it is in the one list, its box empty; a click ticks it again.
+    const rowsBefore = Array.from(document.querySelectorAll('.model-row-id')).map((x) => x.textContent);
     fireEvent.click(screen.getByRole('checkbox', { name: /my-model/ }));
-    expect(screen.queryByRole('checkbox', { name: /my-model/ })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '启用 my-model' }));
+    expect((screen.getByRole('checkbox', { name: /my-model/ }) as HTMLInputElement).checked).toBe(false);
+    expect(Array.from(document.querySelectorAll('.model-row-id')).map((x) => x.textContent)).toEqual(rowsBefore);
+    fireEvent.click(screen.getByRole('checkbox', { name: /my-model/ }));
     expect((screen.getByRole('checkbox', { name: /my-model/ }) as HTMLInputElement).checked).toBe(true);
     expect(screen.queryByRole('button', { name: '删除 deepseek-flash' })).toBeNull();
     fireEvent.click(screen.getByRole('checkbox', { name: /my-model/ }));
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ models: [expect.objectContaining({ id: 'deepseek-flash' }), expect.objectContaining({ id: 'my-model', enabled: false })] })));
     fireEvent.click(screen.getByRole('button', { name: '删除 my-model' }));
-    expect(screen.queryByRole('button', { name: '启用 my-model' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: /my-model/ })).toBeNull();
   });
 
   it('beside 保存: 未保存 while there are changes, and 取消 goes back to what is saved', async () => {
@@ -550,5 +552,126 @@ describe('代理互发消息上限', () => {
     render(<Models api={fakeApi()} agentMessages={{ value: 10, onChange: () => undefined }} />);
     expect(screen.getByRole('heading', { name: '上限' })).toBeTruthy();
     expect(screen.getByRole('textbox', { name: '代理互发消息上限（条）' })).toBeTruthy();
+  });
+});
+
+describe('认证方式 › 请求头, and 凭据位置', () => {
+  it('a gateway that takes its key in its own header: 请求头 in place of the API Key, both cells needed', async () => {
+    const api = await openNew();
+    choose('#relay');
+    type('名称', '网关');
+    type('接口地址', 'https://gateway.example.com/v1');
+    fireEvent.click(screen.getByRole('button', { name: '手动输入模型' }));
+    type('手动输入模型', 'm');
+    fireEvent.click(screen.getByRole('button', { name: '添加' }));
+    fireEvent.change(screen.getByLabelText('m 上下文上限'), { target: { value: '64000' } });
+    // API Key until 请求头 is picked; then the API Key is gone and one empty row is there
+    expect(screen.getByRole('radio', { name: 'API Key' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByRole('radio', { name: '请求头' }));
+    expect(screen.queryByText('API Key', { selector: '.field-label' })).toBeNull();
+    // nothing filled in: both cells turn red, and what is missing is said without moving them (problem-layout.ts)
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(screen.getByLabelText('请求头名称').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByLabelText('请求头 的值').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByText('请填写请求头名称')).toBeTruthy();
+    expect(api.save).not.toHaveBeenCalled();
+    await act(async () => {});
+    fireEvent.change(screen.getByLabelText('请求头名称'), { target: { value: 'X-API-Key' } });
+    fireEvent.change(screen.getByLabelText('X-API-Key 的值'), { target: { value: 'gw-key-1' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ authBy: 'header', headers: [{ name: 'X-API-Key', value: 'gw-key-1' }] })));
+    expect(api.save).toHaveBeenCalledWith(expect.not.objectContaining({ secret: expect.anything() }));
+  });
+
+  it('a saved header shows its value masked; left empty it is kept', async () => {
+    const api = fakeApi([saved({ hasSecret: false, savedHeaders: [{ name: 'X-API-Key', mask: '****a1b2' }] })]);
+    render(<Models api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
+    expect(screen.getByRole('radio', { name: '请求头' }).getAttribute('aria-checked')).toBe('true');
+    expect((screen.getByLabelText('请求头名称') as HTMLInputElement).value).toBe('X-API-Key');
+    expect((screen.getByLabelText('X-API-Key 的值') as HTMLInputElement).placeholder).toBe('****a1b2（留空不修改）');
+    type('名称', '旧网关 A');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.save).toHaveBeenLastCalledWith(expect.objectContaining({ authBy: 'header', headers: [{ name: 'X-API-Key', saved: true }] })));
+  });
+
+  it('back to API Key: the key is asked for again and the headers go when saved', async () => {
+    const api = fakeApi([saved({ hasSecret: false, savedHeaders: [{ name: 'X-API-Key', mask: '****a1b2' }] })]);
+    render(<Models api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
+    fireEvent.click(screen.getByRole('radio', { name: 'API Key' }));
+    expect(screen.queryByLabelText('请求头名称')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(screen.getByText('请填写 API Key')).toBeTruthy();
+    expect(api.save).not.toHaveBeenCalled();
+  });
+
+  it('a second row can be added and removed; one row has no 删除', async () => {
+    await openNew();
+    choose('#relay');
+    fireEvent.click(screen.getByRole('radio', { name: '请求头' }));
+    expect(screen.queryByRole('button', { name: /^删除 / })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '添加' }));
+    expect(screen.getAllByLabelText('请求头名称')).toHaveLength(2);
+    fireEvent.click(screen.getAllByRole('button', { name: '删除 请求头' })[1]!);
+    expect(screen.getAllByLabelText('请求头名称')).toHaveLength(1);
+  });
+
+  it('a catalog provider (DeepSeek and the like) has no 认证方式: only the API Key', async () => {
+    await openNew();
+    choose('deepseek');
+    expect(screen.queryByRole('radiogroup', { name: '认证方式' })).toBeNull();
+  });
+
+  it('公司网关（WSO2）: 凭据位置 is 自动 until another is picked', async () => {
+    const api = fakeApi([saved({ kind: 'wso2', tokenUrl: 'https://gateway.example.com/token', clientId: 'ck', credentialsIn: null })]);
+    render(<Models api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
+    fireEvent.click(screen.getByRole('button', { name: '更多选项' }));
+    const group = screen.getByRole('radiogroup', { name: '凭据位置' });
+    expect(within(group).getByRole('radio', { name: '自动' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(within(group).getByRole('radio', { name: '表单' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ credentialsIn: 'body' })));
+  });
+
+  it('凭据位置 is only for 公司网关（WSO2）, which has no 认证方式', async () => {
+    render(<Models api={fakeApi([saved()])} />);
+    fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
+    fireEvent.click(screen.getByRole('button', { name: '更多选项' }));
+    expect(screen.queryByRole('radiogroup', { name: '凭据位置' })).toBeNull();
+    expect(screen.getByRole('radiogroup', { name: '认证方式' })).toBeTruthy();
+  });
+});
+
+describe('a company preset with its key header', () => {
+  it('picking it puts the header row in place; the person types the value; WSO2 takes the preset’s 凭据位置', async () => {
+    const withPresets: ModelCatalogView = {
+      ...CATALOG,
+      providers: [
+        { id: 'acme', name: 'Acme 网关', group: 'company', kind: 'openai-compatible', baseUrl: 'https://gateway.example.com/v1', listModels: 'none', needsKey: true, headers: ['X-API-Key'], models: [{ id: 'acme-chat', contextWindow: 128_000, role: 'default' }] },
+        { id: 'acme-wso2', name: 'Acme WSO2', group: 'company', kind: 'wso2', baseUrl: 'https://gateway.example.com/llm/1.0', tokenUrl: 'https://gateway.example.com/token', credentialsIn: 'body', listModels: 'none', needsKey: true, models: [{ id: 'acme-pro', contextWindow: 200_000, role: 'default' }] },
+        ...CATALOG.providers,
+      ],
+    };
+    const api = fakeApi();
+    api.catalog = vi.fn(async () => withPresets);
+    await openNew(api);
+    choose('acme');
+    // 请求头 already picked, its name filled in: only the value is left
+    expect(screen.getByRole('radio', { name: '请求头' }).getAttribute('aria-checked')).toBe('true');
+    expect((screen.getByLabelText('请求头名称') as HTMLInputElement).value).toBe('X-API-Key');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(screen.getByText('请填写值')).toBeTruthy();
+    expect(screen.queryByText('请填写请求头名称')).toBeNull();
+    await act(async () => {});
+    fireEvent.change(screen.getByLabelText('X-API-Key 的值'), { target: { value: 'k-1' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ catalogId: 'acme', headers: [{ name: 'X-API-Key', value: 'k-1' }], authBy: 'header' })));
+    fireEvent.click(await screen.findByRole('button', { name: /添加服务商/ }));
+    choose('acme-wso2');
+    const more = screen.getByRole('button', { name: '更多选项' });
+    if (more.getAttribute('aria-expanded') !== 'true') fireEvent.click(more);
+    expect(within(screen.getByRole('radiogroup', { name: '凭据位置' })).getByRole('radio', { name: '表单' }).getAttribute('aria-checked')).toBe('true');
   });
 });

@@ -7,12 +7,10 @@
 //   SPICA_PLUGIN_DIR   the installed plugin folder (read-only)
 //   SPICA_MOCK         "1" when global mock mode is on
 //   SPICA_USER_ACCOUNT the user's account (e.g. ALEX.CHEN): signs each entry. Read it, never work it out
-// Settings live in <SPICA_PLUGIN_DATA>/config.json (installed plugins get no
-// environment variables of their own):
-//   { "catalogUrl": "https://catalog.example.test/search" }  real catalog service (GET ?q=...)
-//   { "notesFolder": "D:\\Notes" }  where the notes are kept (chosen on the settings page)
-// The settings page (views/settings.json) saves this file through the plugin's
-// settings service (server/settings.js); it is read again on every call.
+//   SPICA_USER_CONFIG  what the user filled in (manifest.json · user_config): notes_folder
+//                      (where the notes are kept) and catalog_url (the real catalog service,
+//                      GET ?q=...); read once by server/config.js
+// The 测试连接 page (views/connection-test.json) tries catalog_url; it stores nothing.
 //
 // summarize_note uses the model the user has set up in Spica (MCP sampling,
 // manifest permissions.model): the plugin needs no key, and Spica counts the
@@ -20,11 +18,14 @@
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { readConfig } from './config.js';
 
 const dataDir = process.env.SPICA_PLUGIN_DATA || join(process.cwd(), '.data');
 const pluginDir = process.env.SPICA_PLUGIN_DIR || process.cwd();
 const mock = process.env.SPICA_MOCK === '1';
 const account = process.env.SPICA_USER_ACCOUNT || '';
+// the app's name as the person sees it (a company may package it under its own)
+const app = process.env.SPICA_APP_NAME || 'Spica';
 
 const tools = [
   {
@@ -55,7 +56,7 @@ const tools = [
   },
   {
     name: 'summarize_note',
-    description: 'Summarize one note in two or three sentences, using the model set up in Spica.',
+    description: `Summarize one note in two or three sentences, using the model set up in ${app}.`,
     inputSchema: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
     annotations: { readOnlyHint: true },
   },
@@ -67,11 +68,10 @@ const tools = [
   },
 ];
 
-const readConfig = () => readFile(join(dataDir, 'config.json'), 'utf8').then(JSON.parse, () => ({}));
 
-/** The folder the user chose on the settings page, else notes/ in the plugin's data folder. */
+/** The folder the user chose in the settings form, else notes/ in the plugin's data folder. */
 async function notesDir() {
-  const f = (await readConfig()).notesFolder;
+  const f = readConfig().notes_folder;
   return typeof f === 'string' && isAbsolute(f) ? f : join(dataDir, 'notes');
 }
 
@@ -107,10 +107,10 @@ async function searchCatalog(query) {
       : `No sample entries match "${query}".`;
     return { text: `[sample data — mock mode]\n${body}` };
   }
-  const base = (await readConfig()).catalogUrl;
+  const base = readConfig().catalog_url;
   if (!base) {
     return {
-      text: 'The catalog service is not configured on this computer (catalogUrl in config.json). Turn on mock mode in Spica to use the sample data.',
+      text: `The catalog service is not configured on this computer (样例目录地址 under 设置 › 插件 › Notes). Turn on mock mode in ${app} to use the sample data.`,
       isError: true,
     };
   }
@@ -178,9 +178,9 @@ function createMessage(params) {
 }
 
 const REFUSALS = {
-  no_model: 'No model is set up in Spica yet. Add one under Settings › Models.',
-  model_not_configured: 'The model this plugin asked for is not set up in Spica.',
-  budget: 'The spending limit set in Spica is used up. Try again later.',
+  no_model: `No model is set up in ${app} yet. Add one under Settings › Models.`,
+  model_not_configured: `The model this plugin asked for is not set up in ${app}.`,
+  budget: `The spending limit set in ${app} is used up. Try again later.`,
   rate_limited: 'Too many model requests at once. Try again in a minute.',
 };
 
@@ -192,7 +192,7 @@ async function summarizeNote(title) {
     if (err.code === 'ENOENT') return { text: `No note titled "${title}".`, isError: true };
     throw err;
   }
-  if (!canSample) return { text: 'This Spica does not let the plugin use a model.', isError: true };
+  if (!canSample) return { text: `This ${app} does not let the plugin use a model.`, isError: true };
   try {
     const r = await createMessage({
       systemPrompt: 'You summarize notes. Answer with the summary only.',

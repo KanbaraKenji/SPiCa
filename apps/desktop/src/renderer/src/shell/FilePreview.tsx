@@ -16,6 +16,7 @@ import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
 import { Select } from '../ui/Select';
 import { N_, t, tx } from '../../../shared/i18n';
+import { POPUPS } from './BrowserPane';
 
 export interface FilePreviewProps {
   /** null while loading. */
@@ -38,6 +39,15 @@ export interface FilePreviewProps {
   note?: { text: string; onRetry?: () => void } | null;
   /** Shown instead of the app's own preview (a plugin's preview page). */
   children?: ReactNode;
+  /**
+   * The panel's tab row (shell/PaneTabs.tsx), above the file's own row. The tab names the file, so the row shows its
+   * full path instead; 最大化 and 关闭 are in the tab row.
+   */
+  tabs?: ReactNode;
+  /** An HTML file's address in the built-in browser: its 预览 face runs its scripts there (shell/BrowserPane.tsx). */
+  page?: string | null;
+  /** Hosts the page tried to load from and was stopped (not on the allowed lists): a mark with their number. */
+  blocked?: string[];
 }
 
 /**
@@ -275,7 +285,7 @@ function codeOf(info: PreviewInfo | null): { text: string; language: string | nu
   return null;
 }
 
-export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onSheet, loadRows, onClose, max, source, note, children }: FilePreviewProps) {
+export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onSheet, loadRows, onClose, max, source, note, children, tabs, page, blocked }: FilePreviewProps) {
   // 预览 / 代码: per file, kept while the panel is open (another file opens as its preview; back to this one, as left).
   const id = info ? `${info.kind}|${info.path}|${info.name}` : '';
   const [codeFor, setCodeFor] = useState<ReadonlySet<string>>(() => new Set());
@@ -295,20 +305,28 @@ export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onShe
   const [bigFor, setBigFor] = useState<string | null>(null);
   return (
     <section className="preview" aria-label={info ? t('预览 {name}', { name: info.name }) : t('预览')}>
+      {tabs}
       <header className="preview-head panel-head">
-        <FileGlyph name={info?.name ?? loadingName ?? ''} />
+        {tabs ? null : <FileGlyph name={info?.name ?? loadingName ?? ''} />}
         {/* The name opens the file's folder (its hover note says so, with the full path); 复制路径 right after it. */}
         {info && hasFile && onReveal ? (
-          <button type="button" className="preview-name is-button" onClick={() => onReveal(info.path)} title={[t('打开所在文件夹'), info.path].join('\n')}>
-            {info.name}
+          <button type="button" className={tabs ? 'preview-name preview-path is-button' : 'preview-name is-button'} onClick={() => onReveal(info.path)} title={[t('打开所在文件夹'), info.path].join('\n')}>
+            {tabs ? info.path : info.name}
           </button>
         ) : (
-          <span className="preview-name" title={info?.path ?? loadingPath ?? ''}>
-            {info?.name ?? loadingName ?? ''}
+          <span className={tabs ? 'preview-name preview-path' : 'preview-name'} title={info?.path ?? loadingPath ?? ''}>
+            {tabs ? (info?.path ?? loadingPath ?? '') : (info?.name ?? loadingName ?? '')}
           </span>
         )}
         {info && hasFile ? <CopyButton className="icon-btn" label={t('复制路径')} copy={() => clipboard.write(info.path)} /> : null}
         <span className="preview-head-gap" />
+        {/* What the page tried to load from the web and was stopped: a mark, not a button (the hosts on hover). */}
+        {blocked?.length && !asCode ? (
+          <span className="preview-blocked" role="status" title={t('已拦截：{hosts}', { hosts: blocked.join(t('、')) })} aria-label={t('已拦截：{hosts}', { hosts: blocked.join(t('、')) })}>
+            <Icon name="shield" size={14} />
+            {blocked.length}
+          </span>
+        ) : null}
         {source && source.options.length > 1 ? (
           <Select className="preview-source" label={t('预览方式')} title={t('预览方式')} value={source.value} onChange={source.onChange} options={source.options.map((o) => ({ value: o.id, label: o.label }))} />
         ) : null}
@@ -318,16 +336,18 @@ export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onShe
             <Icon name={asCode ? 'eye' : 'code'} size={15} />
           </button>
         ) : null}
-        {max ? <MaxButton max={max} /> : null}
+        {max && !tabs ? <MaxButton max={max} /> : null}
         {/* The file's own buttons: not for a page drawn from an answer (it has no file). */}
         {info && hasFile ? (
           <button type="button" className="icon-btn" onClick={() => onOpenExternal(info.path)} aria-label={t('用系统程序打开')} title={t('用系统程序打开')}>
             <Icon name="external" size={15} />
           </button>
         ) : null}
-        <button type="button" className="icon-btn" onClick={onClose} aria-label={t('关闭预览')} title={t('关闭预览')}>
-          <Icon name="close" size={14} />
-        </button>
+        {tabs ? null : (
+          <button type="button" className="icon-btn" onClick={onClose} aria-label={t('关闭预览')} title={t('关闭预览')}>
+            <Icon name="close" size={14} />
+          </button>
+        )}
       </header>
       {note ? (
         <p className="preview-note preview-fallback">
@@ -351,6 +371,11 @@ export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onShe
         <Lines key={`${id}|code`} text={code.text} language={code.language} />
       ) : info.kind === 'pdf' ? (
         <iframe className="preview-frame" src={info.url} title={info.name} />
+      ) : info.kind === 'audio' || info.kind === 'video' ? (
+        // Chromium's own player: play, pause, seek, volume, full screen (video).
+        <div className={`preview-body preview-media is-${info.kind}`}>
+          {info.kind === 'video' ? <video key={info.url} src={info.url} controls preload="metadata" aria-label={info.name} /> : <audio key={info.url} src={info.url} controls preload="metadata" aria-label={info.name} />}
+        </div>
       ) : info.kind === 'image' ? (
         <div className="preview-body preview-image-wrap">
           <img
@@ -380,8 +405,11 @@ export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onShe
             <div className="preview-body preview-md">
               <MarkdownText text={info.text} />
             </div>
+          ) : info.kind === 'html' && page ? (
+            // In the built-in browser, scripts and all (its own process and storage; main/browser/local-pages.ts).
+            <webview className="preview-frame preview-html" src={page} title={info.name} {...POPUPS} />
           ) : info.kind === 'html' ? (
-            // sandbox with no permissions: no scripts, no forms, no navigation; only the page itself.
+            // Until its address is there (or without one): sandbox with no permissions, no scripts; only the page itself.
             <iframe className="preview-frame preview-html" sandbox="" srcDoc={info.text} title={info.name} />
           ) : (
             <Lines key={info.path} text={info.text} language={languageOf(info.name)} />

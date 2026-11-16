@@ -11,7 +11,8 @@
 //       "mock_description": "Sample notes",
 //       "views": { "notebook": "Notebook" },
 //       "commands": { "summarize": { "description": "Summarize a note", "argument_hint": "<note>" } },
-//       "skills": { "tidy-notes": "Tidies the notes folder" }
+//       "skills": { "tidy-notes": "Tidies the notes folder" },
+//       "user_config": { "notes_folder": { "title": "Notes folder", "placeholder": "…", "description": "…" } }
 //     }
 //   }
 
@@ -33,6 +34,8 @@ export interface PluginTexts {
   commands?: Record<string, { description?: string; argumentHint?: string }>;
   /** Skill id → its description. */
   skills?: Record<string, string>;
+  /** user_config key → the words of its row in the settings form. */
+  config?: Record<string, { title?: string; description?: string; placeholder?: string }>;
 }
 
 export type PluginI18n = Partial<Record<PluginLocale, PluginTexts>>;
@@ -97,8 +100,21 @@ export function parseI18n(raw: unknown, warn: (path: string, message: string) =>
         }
       }
     }
+    const uc = v.user_config;
+    if (uc !== undefined) {
+      if (!isObj(uc) || Object.values(uc).some((c) => !isObj(c))) warn(`i18n.${lang}.user_config`, '「user_config」须为 { "键": { "title": "…", "description": "…", "placeholder": "…" } }，已忽略。');
+      else {
+        t.config = {};
+        for (const [key, c] of Object.entries(uc as Record<string, Json>)) {
+          const title = text(c.title);
+          const d = text(c.description);
+          const ph = text(c.placeholder);
+          t.config[key] = { ...(title ? { title } : {}), ...(d ? { description: d } : {}), ...(ph ? { placeholder: ph } : {}) };
+        }
+      }
+    }
     for (const k of Object.keys(v)) {
-      if (!['display_name', 'description', 'model_reason', 'mock_description', 'views', 'commands', 'skills'].includes(k)) warn(`i18n.${lang}.${k}`, `未知字段「${k}」，已忽略。`);
+      if (!['display_name', 'description', 'model_reason', 'mock_description', 'views', 'commands', 'skills', 'user_config'].includes(k)) warn(`i18n.${lang}.${k}`, `未知字段「${k}」，已忽略。`);
     }
     out[lang as PluginLocale] = t;
   }
@@ -143,6 +159,8 @@ export interface Localizable {
   commands: { id: string; description: string; argumentHint?: string }[];
   views: { id: string; title: string }[];
   model?: { reason: string };
+  /** The settings form (user_config), when the plugin has one. */
+  config?: { fields: { key: string; title: string; description?: string; placeholder?: string }[] };
   i18n?: PluginI18n;
 }
 
@@ -161,6 +179,19 @@ export function localizeDescription<T extends Localizable>(d: T, locale: PluginL
     }),
     views: d.views.map((v) => ({ ...v, title: pluginText(i, locale, (t) => t.views?.[v.id], v.title) })),
     ...(d.model ? { model: { ...d.model, reason: pluginText(i, locale, (t) => t.modelReason, d.model.reason) } } : {}),
+    ...(d.config
+      ? {
+          config: {
+            ...d.config,
+            fields: d.config.fields.map((f) => ({
+              ...f,
+              title: pluginText(i, locale, (t) => t.config?.[f.key]?.title, f.title),
+              ...(f.description ? { description: pluginText(i, locale, (t) => t.config?.[f.key]?.description, f.description) } : {}),
+              ...(f.placeholder ? { placeholder: pluginText(i, locale, (t) => t.config?.[f.key]?.placeholder, f.placeholder) } : {}),
+            })),
+          },
+        }
+      : {}),
   };
 }
 

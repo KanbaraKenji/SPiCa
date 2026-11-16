@@ -210,4 +210,12 @@ export const EN_MAIN: Catalog = {
   '继续更新': 'Update anyway',
   '取消': 'Cancel',
   '新对话': 'New conversation',
+  // shell/PaneTabs.tsx, shell/BrowserPane.tsx (the built-in browser)
+  '无法打开此网址。': 'Cannot open this address.',
+  // main/browser/actions.ts (the confirmation card when an agent acts in a page: what, then where and on what)
+  提交表单: 'Submit a form',
+  填入并提交: 'Fill in and submit',
+  下载: 'Download',
+  点击按钮: 'Click a button',
+  '{field}：{text}': '{field}: {text}',
 };

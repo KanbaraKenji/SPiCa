@@ -12,6 +12,11 @@ describe('file preview', () => {
     expect(kindOf('README.md')).toBe('markdown');
     expect(kindOf('page.htm')).toBe('html');
     expect(kindOf('main.py')).toBe('text');
+    expect(kindOf('会议录音.MP3')).toBe('audio');
+    expect(kindOf('a.wav')).toBe('audio');
+    expect(kindOf('演示.mp4')).toBe('video');
+    expect(kindOf('clip.webm')).toBe('video');
+    expect(kindOf('clip.mkv')).toBe('unsupported');
     expect(kindOf('LICENSE')).toBe('text');
     expect(kindOf('表.xlsx')).toBe('unsupported');
   });
@@ -79,5 +84,19 @@ describe('file preview', () => {
     const files = new PreviewFiles();
     expect(await readPreview(join(dir, 'a.svg'), files)).toMatchObject({ kind: 'image', text: '<svg xmlns="http://www.w3.org/2000/svg"/>' });
     expect(await readPreview(join(dir, 'b.png'), files)).not.toHaveProperty('text');
+  });
+});
+
+describe('sound and video', () => {
+  it('played in the panel through spica-file, the file time in the address', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-media-'));
+    const file = join(dir, '会议录音.mp3');
+    writeFileSync(file, Buffer.from([0xff, 0xfb, 0x90, 0x00]));
+    const files = new PreviewFiles();
+    const info = await readPreview(file, files);
+    expect(info).toMatchObject({ kind: 'audio', name: '会议录音.mp3', size: 4 });
+    expect(info.kind === 'audio' && info.url).toMatch(/^spica-file:\/\/.+\?v=\d+$/);
+    const video = await readPreview(join(dir, 'missing.mp4'), files);
+    expect(video.kind).toBe('missing');
   });
 });

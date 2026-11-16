@@ -33,6 +33,17 @@
     "supported": true,
     "description": "The catalog answers from bundled sample data instead of the catalog service."
   },
+  "user_config": {
+    "notes_folder": {
+      "type": "folder",
+      "title": "Notes folder"
+    },
+    "catalog_url": {
+      "type": "url",
+      "title": "Sample catalog URL",
+      "placeholder": "https://catalog.example.test/search"
+    }
+  },
   "i18n": {
     "zh-CN": {
       "display_name": "笔记（示例）",
@@ -42,7 +53,7 @@
       "views": {
         "notebook": "笔记本",
         "quick-note": "快速笔记",
-        "settings": "设置"
+        "connection-test": "测试连接"
       },
       "commands": {
         "note": {
@@ -52,6 +63,10 @@
       },
       "skills": {
         "note-taking": "怎样在本机笔记本里整齐地记笔记（标题、日期、一条笔记一个主题）。"
+      },
+      "user_config": {
+        "notes_folder": { "title": "笔记文件夹" },
+        "catalog_url": { "title": "样例目录地址" }
       }
     },
     "zh-TW": {
@@ -62,7 +77,7 @@
       "views": {
         "notebook": "筆記本",
         "quick-note": "快速筆記",
-        "settings": "設定"
+        "connection-test": "測試連線"
       },
       "commands": {
         "note": {
@@ -72,11 +87,10 @@
       },
       "skills": {
         "note-taking": "如何在本機筆記本裡整齊地記筆記（標題、日期、一則筆記一個主題）。"
-      }
-    },
-    "en": {
-      "views": {
-        "settings": "Settings"
+      },
+      "user_config": {
+        "notes_folder": { "title": "筆記資料夾" },
+        "catalog_url": { "title": "範例目錄位址" }
       }
     }
   }
