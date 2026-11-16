@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { open, readFile, stat } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import { PREVIEW_PAGE_MAX_BYTES, type PreviewFile, type PreviewInfo } from '../shared/bridge';
-import { EXCEL, officePreview, WORD } from './office-preview';
+import { EXCEL, officePreview, unreadable, WORD } from './office-preview';
 import { t } from '../shared/i18n';
 
 export const PREVIEW_SCHEME = 'spica-file';
@@ -100,8 +100,8 @@ export async function readPreview(path: string, files: PreviewFiles, sheet?: num
     const st = await stat(path);
     if (!st.isFile()) return { kind: 'unsupported', name, path, size: 0, message: t('不是文件') };
     size = st.size;
-  } catch {
-    return { kind: 'missing', name, path, size: 0, message: t('找不到文件，可能已被移动或删除。') };
+  } catch (err) {
+    return { ...unreadable(err), name, path, size: 0 };
   }
   const ext = extname(path).toLowerCase();
   if (WORD.has(ext) || EXCEL.has(ext)) return officePreview(path, name, size, ext, sheet);
@@ -112,12 +112,19 @@ export async function readPreview(path: string, files: PreviewFiles, sheet?: num
     return { kind, name, path, size, url: files.urlFor(path), ...(svg !== undefined ? { text: svg } : {}) };
   }
   if (kind === 'unsupported') return { kind, name, path, size, message: t('不支持预览此类文件。') };
-  const handle = await open(path, 'r');
+  let handle;
+  try {
+    handle = await open(path, 'r');
+  } catch (err) {
+    return { ...unreadable(err), name, path, size };
+  }
   try {
     const length = Math.min(size, TEXT_LIMIT);
     const buf = new Uint8Array(length);
     await handle.read(buf, 0, length, 0);
     return { kind, name, path, size, text: decodeText(buf), truncated: size > TEXT_LIMIT };
+  } catch (err) {
+    return { ...unreadable(err), name, path, size };
   } finally {
     await handle.close();
   }
@@ -132,8 +139,8 @@ export async function readPreviewFile(path: string, maxBytes: number, peek: bool
     if (!st.isFile()) return { ok: false, problem: 'missing' };
     size = st.size;
     modifiedAt = st.mtime.toISOString();
-  } catch {
-    return { ok: false, problem: 'missing' };
+  } catch (err) {
+    return { ok: false, problem: unreadable(err).kind === 'missing' ? 'missing' : 'unreadable' };
   }
   const cap = Math.min(Number.isFinite(maxBytes) && maxBytes > 0 ? maxBytes : 0, PREVIEW_PAGE_MAX_BYTES);
   if (size > cap) return { ok: false, problem: 'too-large', size };

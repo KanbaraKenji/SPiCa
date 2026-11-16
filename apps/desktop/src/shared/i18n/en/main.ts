@@ -129,6 +129,7 @@ export const EN_MAIN: Catalog = {
   '找不到文件，可能已被移动或删除。': 'File not found. It may have been moved or deleted.',
   '不支持预览此类文件。': 'Preview isn’t available for this type of file.',
   '无法读取此文件。': 'Couldn’t read this file.',
+  '没有权限读取此文件。': 'You don’t have permission to read this file.',
   // shared/errors.ts
   'API 余额不足': 'Insufficient API balance',
   '模型密钥无效或已失效，请检查 设置 › 模型。': 'The model key is invalid or has expired. Check Settings › Models.',

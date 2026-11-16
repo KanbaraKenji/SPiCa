@@ -2,6 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { unreadable } from './office-preview';
 import { decodeText, kindOf, PreviewFiles, readPreview, TEXT_LIMIT } from './preview';
 
 describe('file preview', () => {
@@ -28,6 +29,14 @@ describe('file preview', () => {
     expect(decodeText(new Uint8Array(le('Name  Size\r\nreport.docx  12\r\n')))).toBe('Name  Size\r\nreport.docx  12\r\n');
     // UTF-8 with a few zero bytes is not taken for UTF-16.
     expect(decodeText(new TextEncoder().encode('a\u0000bcdefgh'))).toBe('a\u0000bcdefgh');
+  });
+
+  it('a file it may not read says so, not that it is gone', () => {
+    const err = (code: string) => Object.assign(new Error(code), { code });
+    expect(unreadable(err('ENOENT'))).toEqual({ kind: 'missing', message: '找不到文件，可能已被移动或删除。' });
+    expect(unreadable(err('EPERM'))).toEqual({ kind: 'unsupported', message: '没有权限读取此文件。' });
+    expect(unreadable(err('EACCES')).message).toBe('没有权限读取此文件。');
+    expect(unreadable(err('EBUSY')).message).toBe('无法读取此文件。');
   });
 
   it('gives text (capped), URLs only for the files asked for, and words for the rest', async () => {

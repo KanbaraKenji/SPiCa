@@ -11,6 +11,14 @@ export const EXCEL = new Set(['.xlsx', '.xlsm']);
 /** Rows of a sheet and blocks of a document shown at most. */
 const ROWS = 500;
 
+/** What the panel says for a file it cannot read (the error from stat, open or the extractor; here as preview.ts needs it too). */
+export function unreadable(err: unknown): { kind: 'missing' | 'unsupported'; message: string } {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code;
+  if (code === 'ENOENT' || code === 'ENOTDIR') return { kind: 'missing', message: t('找不到文件，可能已被移动或删除。') };
+  if (code === 'EACCES' || code === 'EPERM') return { kind: 'unsupported', message: t('没有权限读取此文件。') };
+  return { kind: 'unsupported', message: t('无法读取此文件。') };
+}
+
 /** The extractor's numbered blocks ("[3] text", tables indented under "[8] Table 1 (…):") as plain Markdown. */
 export function docxMarkdown(text: string): string {
   const out: string[] = [];
@@ -65,7 +73,7 @@ export async function officePreview(path: string, name: string, size: number, ex
     const grid = sheetGrid(r.text);
     const shown = sheets[sheet - 1];
     return { kind: 'sheet', name, path, size, sheets, sheet, ...grid, truncated: shown !== undefined && shown.rows > grid.rows.length };
-  } catch {
-    return { kind: 'unsupported', name, path, size, message: t('无法读取此文件。') };
+  } catch (err) {
+    return { ...unreadable(err), name, path, size };
   }
 }
