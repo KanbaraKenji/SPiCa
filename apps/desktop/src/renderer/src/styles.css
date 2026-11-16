@@ -3584,6 +3584,33 @@ button.ctx-row:hover {
   border-bottom-right-radius: var(--radius-l);
 }
 
+/* Light skins: no fill (a grey block on the white pane read as heavy; he picked 乙), an accent bar on the row's left
+   edge instead. In the first or last row of a box the bar starts / stops where the box's rounded corner ends, so it
+   neither pokes into the curve nor shows a square corner there. Dark skins keep the fill above. */
+:root[data-scheme='light'] .setting-row.is-found {
+  position: relative;
+  background: transparent;
+}
+
+:root[data-scheme='light'] .setting-row.is-found::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--spica-accent);
+  pointer-events: none;
+}
+
+:root[data-scheme='light'] .group-box > .setting-row.is-found:first-child::before {
+  top: var(--radius-l);
+}
+
+:root[data-scheme='light'] .group-box > .setting-row.is-found:last-child::before {
+  bottom: var(--radius-l);
+}
+
 .settings-column.is-fill {
   height: 100%;
   min-height: 400px;
