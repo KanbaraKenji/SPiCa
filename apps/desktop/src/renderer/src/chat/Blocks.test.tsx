@@ -64,20 +64,31 @@ describe('AskCard', () => {
 });
 
 describe('ConfirmCard', () => {
-  it('a write outside the conversation’s folders: 工作文件夹以外 as a tag, and 始终允许此文件夹 beside 允许', () => {
+  it('a write outside the conversation’s folders: 工作文件夹以外 as a tag; 允许 once, or 始终允许此文件夹 from its arrow', () => {
     const onDecide = vi.fn();
     const block = { type: 'confirm' as const, callId: 'c9', name: 'edit_file', input: { path: 'D:\\共享资料\\纪要\\会议纪要.md', old_string: 'a', new_string: 'b' }, reason: 'outside', cause: 'outside_folder' as const, outsideFolder: 'D:\\共享资料\\纪要' };
     render(<ConfirmCard block={block} onDecide={onDecide} />);
     expect(document.querySelector('.confirm-undo')?.textContent).toBe('工作文件夹以外');
     expect(document.querySelector('.confirm-card.is-danger')).toBeNull();
-    const always = screen.getByRole('button', { name: '始终允许此文件夹' });
+    // two buttons on the card: 拒绝 and 允许 (with its arrow); 始终允许此文件夹 is in the arrow's menu
+    expect(screen.queryByRole('button', { name: '始终允许此文件夹' })).toBeNull();
+    const arrow = screen.getByRole('button', { name: '更多允许方式' });
+    expect(arrow.getAttribute('aria-haspopup')).toBe('menu');
+    fireEvent.click(arrow);
+    const always = screen.getByRole('menuitem', { name: '始终允许此文件夹' });
     expect(always.getAttribute('title')).toBe('D:\\共享资料\\纪要');
     fireEvent.click(always);
     expect(onDecide).toHaveBeenCalledWith(true, true);
     cleanup();
-    // an ordinary confirmation has no such button
+    // 允许 itself allows this once
+    const once = vi.fn();
+    render(<ConfirmCard block={block} onDecide={once} />);
+    fireEvent.click(screen.getByRole('button', { name: '允许' }));
+    expect(once).toHaveBeenCalledWith(true);
+    cleanup();
+    // an ordinary confirmation has no arrow
     render(<ConfirmCard block={{ ...block, outsideFolder: undefined, cause: undefined }} onDecide={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: '始终允许此文件夹' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '更多允许方式' })).toBeNull();
   });
 
   it('an ordinary one has no mark before its title, in every state; a dangerous one keeps the warning and 无法撤销', () => {

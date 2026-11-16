@@ -8,6 +8,8 @@ import { fileCardLine, fileCardParts, fileCardVerb, NO_REPORT_WORDS, type Block,
 import { N_, t } from '../../../shared/i18n';
 import { useLocale } from '../i18n';
 import { Icon } from '../ui/Icon';
+import { ContextMenu } from '../ui/ContextMenu';
+import { createPortal } from 'react-dom';
 import { FileBadge, FileGlyph } from '../ui/FileIcon';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
@@ -1044,19 +1046,52 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
               {t('拒绝')}
             </button>
             {block.outsideFolder ? (
-              <button type="button" className="btn" disabled={sent} onClick={() => decide(true, true)} title={block.outsideFolder}>
-                {t('始终允许此文件夹')}
+              <AllowSplit disabled={sent} folder={block.outsideFolder} onAllow={(folder) => decide(true, folder)} />
+            ) : (
+              <button type="button" className="btn btn-primary" disabled={sent} onClick={() => decide(true)}>
+                {t('允许')}
               </button>
-            ) : null}
-            <button type="button" className="btn btn-primary" disabled={sent} onClick={() => decide(true)}>
-              {t('允许')}
-            </button>
+            )}
           </div>
         )}
       </header>
       <ConfirmTarget name={block.name} input={block.input} change={block.change} bare />
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
     </section>
+  );
+}
+
+/**
+ * 允许 for a write outside the conversation's folders: the button allows this once; its arrow opens a menu with
+ * 始终允许此文件夹 (as Claude's own permission prompts do), so the card keeps two buttons.
+ */
+function AllowSplit({ disabled, folder, onAllow }: { disabled: boolean; folder: string; onAllow(folder: boolean): void }) {
+  const [menu, setMenu] = useState<HTMLElement | null>(null);
+  return (
+    <span className="btn-split">
+      <button type="button" className="btn btn-primary btn-split-main" disabled={disabled} onClick={() => onAllow(false)}>
+        {t('允许')}
+      </button>
+      <button
+        type="button"
+        className="btn btn-primary btn-split-more"
+        disabled={disabled}
+        aria-label={t('更多允许方式')}
+        title={t('更多允许方式')}
+        aria-haspopup="menu"
+        aria-expanded={menu !== null}
+        onClick={(e) => setMenu(menu ? null : e.currentTarget)}
+      >
+        <Icon name="chevronDown" size={14} />
+      </button>
+      {/* on the page itself: inside the conversation a card's own styles would carry the menu off its button */}
+      {menu
+        ? createPortal(
+            <ContextMenu x={0} y={0} anchor={menu} items={[{ label: t('始终允许此文件夹'), title: folder, onSelect: () => onAllow(true) }]} onClose={() => setMenu(null)} />,
+            document.body,
+          )
+        : null}
+    </span>
   );
 }
 

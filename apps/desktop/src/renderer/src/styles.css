@@ -456,6 +456,24 @@ a:hover {
   color: var(--spica-on-accent);
 }
 
+/* A button with a few other ways of doing it behind its arrow (允许 ▾ on a confirmation): one piece, a thin line
+   between the two parts. */
+.btn-split {
+  display: inline-flex;
+}
+
+.btn-split > .btn-split-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.btn-split > .btn-split-more {
+  padding: 0 6px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left-color: color-mix(in srgb, var(--spica-on-accent) 35%, transparent);
+}
+
 .btn-primary:hover:not(:disabled) {
   background: var(--spica-accent);
   filter: brightness(1.08);
