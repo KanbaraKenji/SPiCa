@@ -76,7 +76,9 @@ export async function officePreview(path: string, name: string, size: number, ex
     const sheets = (r.meta.sheets ?? []).map((s) => ({ name: s.name, rows: s.rows, cols: s.cols }));
     const grid = sheetGrid(r.text);
     const shown = sheets[sheet - 1];
-    return { kind: 'sheet', name, path, size, sheets, sheet, ...grid, truncated: shown !== undefined && shown.rows > grid.rows.length };
+    // Rows left out: the sheet goes on past the last row shown (empty rows in between are not left out).
+    const last = grid.rows.at(-1)?.n ?? 0;
+    return { kind: 'sheet', name, path, size, sheets, sheet, ...grid, truncated: shown !== undefined && shown.rows > last };
   } catch (err) {
     return { ...unreadable(err), name, path, size };
   }

@@ -70,6 +70,17 @@ describe('Word and Excel in the right panel', () => {
     expect(info.kind === 'sheet' ? [info.rows.length, info.truncated] : []).toEqual([500, true]);
   });
 
+  it('a sheet with empty rows in it, all shown, does not say rows were left out', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-office-'));
+    const path = join(dir, '空行.xlsx');
+    writeFileSync(path, await makeInventoryXlsx());
+    // 说明: a line, an empty row, a line.
+    const info = await readPreview(path, new PreviewFiles(), 4);
+    if (info.kind !== 'sheet') throw new Error(info.kind);
+    expect(info.rows.map((r) => r.n)).toEqual([1, 3]);
+    expect(info.truncated).toBe(false);
+  });
+
   it('reads the extractor’s layout', () => {
     expect(docxMarkdown('Word document\n\n[1] # 标题\n[2] 正文\n[3] - 一\n[4] - 二\n[5] Table 1 (2×2):\n    | a | b |\n    | 1 | 2 |')).toBe('# 标题\n\n正文\n\n- 一\n- 二\n\n| a | b |\n| 1 | 2 |');
     expect(sheetGrid('Sheet "库存"\nrow\tA\tB\n(header) 1\t品名\t数量\n2\t键盘\t150\n\nmore')).toEqual({ columns: ['A', 'B'], rows: [{ n: 1, cells: ['品名', '数量'] }, { n: 2, cells: ['键盘', '150'] }] });
