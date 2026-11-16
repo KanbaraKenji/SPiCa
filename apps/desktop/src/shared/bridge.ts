@@ -194,6 +194,9 @@ export interface DesktopBridge extends SpicaBridge {
     localText(name: string, html: string): Promise<string | null>;
     /** The page is closed: its address stops working. */
     release(url: string): Promise<null>;
+    /** The agent's browser tools ask the window something (open a tab, show one, list a conversation's tabs). */
+    onAgentAsk(listener: (ask: { id: number; op: 'open' | 'show' | 'tabs'; args: Record<string, unknown> }) => void): () => void;
+    agentReply(id: number, answer: { ok: boolean; value?: unknown; error?: string }): Promise<null>;
   };
   /** 监控台: the back end's lines (kept in the main process, secrets removed there). */
   monitor: {

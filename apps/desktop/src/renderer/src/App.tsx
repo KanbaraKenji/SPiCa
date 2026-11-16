@@ -415,7 +415,58 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     showPreview();
   };
   useEffect(() => bridge.browser.onOpenTab((url) => openWebTab(url)));
-  // The screenshot script hook: a web page in a new tab of the panel.
+  // The agent's browser tools (main/browser/agent.ts) ask the window: open a tab for a conversation, show one, list a
+  // conversation's tabs with their pages' ids. Kept in refs: the answer is given after React has drawn the change.
+  const pagesRef = useRef(new Map<string, number>());
+  const paneRef = useRef(pane);
+  const viewRef = useRef(view);
+  const historyRef = useRef(history);
+  useEffect(() => {
+    paneRef.current = pane;
+    viewRef.current = view;
+    historyRef.current = history;
+  });
+  useEffect(
+    () =>
+      bridge.browser.onAgentAsk(({ id, op, args }) => {
+        const reply = (answer: { ok: boolean; value?: unknown; error?: string }) => void bridge.browser.agentReply(id, answer);
+        const sessionId = typeof args.sessionId === 'string' ? args.sessionId : '';
+        const info = (tab: PaneTab) => ({ tabId: tab.id, wcId: pagesRef.current.get(tab.id) ?? null, url: tab.kind === 'web' ? tab.url : '', title: tab.kind === 'web' ? tab.title : '' });
+        // on screen: the panel open and drawn (the conversation view, not 工具调用 over it), the tab in front
+        const onScreen = (tabId: string) => viewRef.current === 'chat' && !historyRef.current && paneRef.current.open && paneRef.current.active === tabId;
+        const afterDraw = (f: () => void) => requestAnimationFrame(() => requestAnimationFrame(f));
+        if (op === 'tabs') {
+          reply({ ok: true, value: paneRef.current.tabs.filter((x) => x.kind === 'web' && x.agent === sessionId).map(info) });
+        } else if (op === 'show') {
+          const tabId = String(args.tabId ?? '');
+          setPane((s) => activatePane(s, tabId));
+          setHistory(false);
+          showPreview();
+          afterDraw(() => reply({ ok: true, value: onScreen(tabId) }));
+        } else if (op === 'open') {
+          if (viewRef.current !== 'chat') {
+            reply({ ok: false, error: 'the person is on another page of the app (not a conversation); the browser panel is not there now' });
+            return;
+          }
+          const url = String(args.url ?? '');
+          const tabId = `t${paneRef.current.next}`;
+          setPane((s) => openPaneWeb(s, url, sessionId));
+          setHistory(false);
+          showPreview();
+          // the page exists once it reports its id
+          const started = Date.now();
+          const check = () => {
+            const tab = paneRef.current.tabs.find((x) => x.id === tabId);
+            if (tab && pagesRef.current.has(tabId)) reply({ ok: true, value: info(tab) });
+            else if (Date.now() - started > 15_000) reply({ ok: false, error: 'the page did not start' });
+            else setTimeout(check, 100);
+          };
+          afterDraw(check);
+        } else reply({ ok: false, error: `unknown request ${String(op)}` });
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bridge],
+  );  // The screenshot script hook: a web page in a new tab of the panel.
   useEffect(() => {
     if (window.__spicaShots) window.__spicaShots.browse = (url) => openWebTab(url);
   });
@@ -581,7 +632,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const previewInfo = preview?.inline ?? loadedPreview;
   // An HTML file, or a page drawn from an answer, runs its scripts in the built-in browser: its address there, asked
   // for while it is shown and given back after (main/browser/local-pages.ts).
-  const htmlKey = previewInfo?.kind === 'html' && shownTab ? `|` : '';
+  const htmlKey = previewInfo?.kind === 'html' && shownTab ? `${shownTab.id}|${fileKey}` : '';
   const [htmlPage, setHtmlPage] = useState<{ key: string; url: string } | null>(null);
   useEffect(() => {
     if (!htmlKey || !preview) return;
@@ -1297,6 +1348,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 strip={shownTab.kind === 'web' ? paneStrip : null}
                 onChange={(tabId, patch) => setPane((s) => updatePaneWeb(s, tabId, patch))}
                 onOpenExternal={(url) => void bridge.browser.openExternal(url).then(showNotice)}
+                onPage={(tabId, wcId) => {
+                  if (wcId === null) pagesRef.current.delete(tabId);
+                  else pagesRef.current.set(tabId, wcId);
+                }}
               />
             ) : null}
           </div>

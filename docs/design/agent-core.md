@@ -205,6 +205,7 @@
 | `create_project` / `list_projects` / `open_project` | 顶层 | 见第 15 节 |
 | `project_status` / `set_stage` / `add_work_object` / `list_work_objects` | 项目里的会话 | 见第 15 节 |
 | `triage_mail` | 分拣线程 | 见第 16 节 |
+| `browser_open` / `browser_read` / `browser_screenshot` / `browser_scroll` / `browser_wait` / `browser_tabs` | 桌面版、邮件分拣以外的会话 | 不是内核自带的：桌面外壳的后端扩展（`apps/desktop/src/backend/browser-tools.ts`）注册，经 `settingsBridge.host('browser.*')` 请主进程操作右边预览栏里的网页（见 `desktop-shell.md`「内置浏览器」）。每段对话只看得见、动得了它自己开的标签；结果按外来内容（`web`）围起来，`browser_open` 的地址走 outside_link 检查；截图经 `keepMedia`（这次从内核导出）存进对话的媒体文件夹，按 MCP 图片的规矩跟在结果后面给模型。都标只读，不要确认；点、输入在下一笔 |
 
 - 每个工具结果的第一行是 `[fetched at 2026-11-09T15:20:42.988+08:00]`（本地时间带时区），系统提示告诉模型旧结果可能过期；内核不缓存外部数据。
 - 工具输入先按 JSON schema 粗校验（必填、基本类型），不合格直接回错误结果。子会话默认继承父会话的工具白名单。

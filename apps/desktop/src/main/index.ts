@@ -2,11 +2,44 @@
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, screen, session, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, screen, session, shell, Tray, webContents } from 'electron';
 import { BROWSER_FILE_SCHEME, BROWSER_PARTITION } from './browser/policy';
 import { LocalPages, realInside } from './browser/local-pages';
 import { flushBrowserSession, guardWebviews, setupBrowserSession } from './browser/session';
 import { applyBrowserNetwork, proxyLogin } from './browser/network';
+import { BrowserAgent, type AgentPage, type AgentTabInfo } from './browser/agent';
+
+// The window answers for the browser's agent tools (App.tsx): open a tab, show one, list a conversation's tabs.
+const agentAsks = new Map<number, (answer: { ok: boolean; value?: unknown; error?: string }) => void>();
+let agentAskId = 0;
+function askWindow(op: 'open' | 'show' | 'tabs', args: Record<string, unknown>, timeoutMs = 20_000): Promise<unknown> {
+  const id = ++agentAskId;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      agentAsks.delete(id);
+      reject(new Error('the app window did not answer (it may be closed or reloading)'));
+    }, timeoutMs);
+    agentAsks.set(id, (a) => {
+      clearTimeout(timer);
+      agentAsks.delete(id);
+      if (a.ok) resolve(a.value);
+      else reject(new Error(a.error || 'the app window could not do it'));
+    });
+    sendToWindow(DesktopChannel.BrowserAgentAsk, { id, op, args });
+  });
+}
+ipcMain.handle(DesktopChannel.BrowserAgentReply, (_e, id: unknown, answer: unknown) => {
+  if (typeof id === 'number' && answer && typeof answer === 'object') agentAsks.get(id)?.(answer as { ok: boolean; value?: unknown; error?: string });
+  return null;
+});
+const browserAgent = new BrowserAgent({
+  window: {
+    open: (sessionId, url) => askWindow('open', { sessionId, url }) as Promise<AgentTabInfo>,
+    show: async (tabId) => (await askWindow('show', { tabId })) === true,
+    tabs: async (sessionId) => ((await askWindow('tabs', { sessionId })) as AgentTabInfo[] | null) ?? [],
+  },
+  page: (wcId) => (webContents.fromId(wcId) as AgentPage | undefined) ?? undefined,
+});
 import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo, type UsageSummary } from '@spica/protocol';
 import { usageQuery } from '../shared/usage';
@@ -149,7 +182,8 @@ if (forcedTheme === 'dark' || forcedTheme === 'light') nativeTheme.themeSource =
 // Development model settings: the repository's .env.local, read here and nowhere else.
 // Screenshots never read it, so no local model shows up in committed images.
 //   SPICA_DEV_MODELS=0       ignore .env.local (see the app as a first-time user would)
-const modelEnv = app.isPackaged || automated || process.env.SPICA_DEV_MODELS === '0' ? {} : readModelEnv(resolvePath(app.getAppPath(), '../../.env.local'));
+//   SPICA_ENV_FILE=<file>    read the models from that file instead (a working copy reads the main checkout's by path)
+const modelEnv = app.isPackaged || automated || process.env.SPICA_DEV_MODELS === '0' ? {} : readModelEnv(process.env.SPICA_ENV_FILE || resolvePath(app.getAppPath(), '../../.env.local'));
 const backendKind = chooseBackend({ requested: devSwitch(process.env, app.isPackaged, 'SPICA_BACKEND'), automated });
 // A conversation without a folder gets its own in the core's data folder (none is picked by default);
 // this is only the core's fallback, and nothing for it is made under 文档.
@@ -329,6 +363,13 @@ const backend: AgentBackend =
           },
           // The conversation open in the window: the core writes its settings-change card there too.
           'ui.activeSession': () => activeSessionId,
+          // The built-in browser for agents (backend/browser-tools.ts, main/browser/agent.ts).
+          'browser.open': (sessionId: string, args: Record<string, unknown>) => browserAgent.open(sessionId, args),
+          'browser.read': (sessionId: string, args: Record<string, unknown>) => browserAgent.read(sessionId, args),
+          'browser.screenshot': (sessionId: string, args: Record<string, unknown>) => browserAgent.screenshot(sessionId, args),
+          'browser.scroll': (sessionId: string, args: Record<string, unknown>) => browserAgent.scroll(sessionId, args),
+          'browser.wait': (sessionId: string, args: Record<string, unknown>) => browserAgent.wait(sessionId, args),
+          'browser.tabs': (sessionId: string, args: Record<string, unknown>) => browserAgent.tabs(sessionId, args),
           'models.setDefault': (ref: ModelRef) => {
             providers.setDefaultModel({ connectionId: String(ref?.connectionId ?? ''), model: String(ref?.model ?? '') });
             applyProviders();

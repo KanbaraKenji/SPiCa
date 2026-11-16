@@ -146,6 +146,8 @@ const bridge: DesktopBridge = {
     localPage: (sessionId, path) => ipcRenderer.invoke(DesktopChannel.BrowserLocalPage, sessionId, path) as Promise<string | null>,
     localText: (name, html) => ipcRenderer.invoke(DesktopChannel.BrowserLocalText, name, html) as Promise<string | null>,
     release: (url) => ipcRenderer.invoke(DesktopChannel.BrowserRelease, url) as Promise<null>,
+    onAgentAsk: (listener) => subscribe(DesktopChannel.BrowserAgentAsk, listener),
+    agentReply: (id, answer) => ipcRenderer.invoke(DesktopChannel.BrowserAgentReply, id, answer) as Promise<null>,
   },
   saveCsv: (name, text) => ipcRenderer.invoke(DesktopChannel.SaveCsv, name, text) as Promise<SaveCsvResult>,
   monitor: {

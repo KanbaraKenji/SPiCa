@@ -21,6 +21,7 @@ interface WebviewElement extends HTMLElement {
   goForward(): void;
   reload(): void;
   stop(): void;
+  getWebContentsId(): number;
 }
 
 export interface BrowserPaneProps {
@@ -33,6 +34,8 @@ export interface BrowserPaneProps {
   /** A page went somewhere or got its title. */
   onChange(id: string, patch: { url?: string; title?: string }): void;
   onOpenExternal(url: string): void;
+  /** A page's WebContents id once it is there (null: gone), for the agent's browser tools (main/browser/agent.ts). */
+  onPage?: (tabId: string, wcId: number | null) => void;
 }
 
 interface PageState {
@@ -42,7 +45,7 @@ interface PageState {
 }
 
 /** One page: mounted once with its first address, then driven through the element (a new src would reload it). */
-function Page({ tab, shown, onChange, onState, register }: { tab: WebTab; shown: boolean; onChange: BrowserPaneProps['onChange']; onState(s: PageState): void; register(el: WebviewElement | null): void }) {
+function Page({ tab, shown, onChange, onState, register, onPage }: { tab: WebTab; shown: boolean; onChange: BrowserPaneProps['onChange']; onState(s: PageState): void; register(el: WebviewElement | null): void; onPage?: BrowserPaneProps['onPage'] }) {
   const ref = useRef<WebviewElement | null>(null);
   const [first] = useState(tab.url || 'about:blank');
   useEffect(() => {
@@ -56,6 +59,7 @@ function Page({ tab, shown, onChange, onState, register }: { tab: WebTab; shown:
     const onReady = () => {
       ready = true;
       state(false);
+      onPage?.(tab.id, el.getWebContentsId());
     };
     const onNav = (e: Event) => {
       const url = (e as Event & { url: string; isMainFrame?: boolean }).url;
@@ -74,6 +78,7 @@ function Page({ tab, shown, onChange, onState, register }: { tab: WebTab; shown:
     el.addEventListener('did-stop-loading', onStop);
     return () => {
       register(null);
+      onPage?.(tab.id, null);
       el.removeEventListener('dom-ready', onReady);
       el.removeEventListener('did-navigate', onNav);
       el.removeEventListener('did-navigate-in-page', onNav);
@@ -90,7 +95,7 @@ function Page({ tab, shown, onChange, onState, register }: { tab: WebTab; shown:
   return <webview ref={ref as unknown as Ref<HTMLWebViewElement>} src={first} {...POPUPS} className={shown ? 'browser-page' : 'browser-page is-hidden'} data-tab={tab.id} />;
 }
 
-export function BrowserPane({ tabs, active, strip, onChange, onOpenExternal }: BrowserPaneProps) {
+export function BrowserPane({ tabs, active, strip, onChange, onOpenExternal, onPage }: BrowserPaneProps) {
   const pages = useRef(new Map<string, WebviewElement>());
   const [states, setStates] = useState<Record<string, PageState>>({});
   const tab = tabs.find((x) => x.id === active);
@@ -159,6 +164,7 @@ export function BrowserPane({ tabs, active, strip, onChange, onOpenExternal }: B
             tab={x}
             shown={x.id === active}
             onChange={onChange}
+            onPage={onPage}
             onState={(s) => setStates((m) => ({ ...m, [x.id]: s }))}
             register={(el) => {
               if (el) pages.current.set(x.id, el);

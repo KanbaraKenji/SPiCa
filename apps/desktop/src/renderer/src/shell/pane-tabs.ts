@@ -12,7 +12,8 @@ export interface FileRequest {
   opened?: number;
 }
 
-export type PaneTab = { id: string; kind: 'file'; req: FileRequest } | { id: string; kind: 'web'; url: string; title: string };
+/** A web tab's gent: the conversation whose agent opened it (its browser tools work only in its own tabs). */
+export type PaneTab = { id: string; kind: 'file'; req: FileRequest } | { id: string; kind: 'web'; url: string; title: string; agent?: string };
 
 export interface PaneTabs {
   tabs: PaneTab[];
@@ -46,8 +47,8 @@ export function openFile(s: PaneTabs, req: FileRequest): PaneTabs {
 }
 
 /** Opens a web page in a new tab ('' : an empty one, to type an address in). */
-export function openWeb(s: PaneTabs, url: string): PaneTabs {
-  return insert(s, { id: `t${s.next}`, kind: 'web', url, title: '' });
+export function openWeb(s: PaneTabs, url: string, agent?: string): PaneTabs {
+  return insert(s, { id: `t${s.next}`, kind: 'web', url, title: '', ...(agent ? { agent } : {}) });
 }
 
 export function activate(s: PaneTabs, id: string): PaneTabs {

@@ -110,4 +110,8 @@ export const DesktopChannel = {
   BrowserLocalText: 'spica:browserLocalText',
   /** invoke: address -> null; a local page's address stops working (its page was closed) */
   BrowserRelease: 'spica:browserRelease',
+  /** main -> renderer: { id, op: 'open' | 'show' | 'tabs', args } — the browser's agent tools ask the window (main/browser/agent.ts) */
+  BrowserAgentAsk: 'spica:browserAgentAsk',
+  /** invoke: (id, { ok, value?, error? }) -> null; the window's answer */
+  BrowserAgentReply: 'spica:browserAgentReply',
 } as const;
