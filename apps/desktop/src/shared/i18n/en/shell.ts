@@ -79,6 +79,7 @@ export const EN_SHELL: Catalog = {
   '预览 {name}': 'Preview {name}',
   预览方式: 'Preview with',
   代码: 'Code',
+  显示方式: 'View',
   打开所在文件夹: 'Open containing folder',
   复制路径: 'Copy path',
   用系统程序打开: 'Open in default app',

@@ -30,6 +30,17 @@ import yaml from 'highlight.js/lib/languages/yaml';
 
 const lowlight = createLowlight({ bash, c, cpp, csharp, css, diff, dos, go, ini, java, javascript, json, markdown, plaintext, powershell, python, rust, shell, sql, typescript, vbnet, xml, yaml });
 
+/** Code files' languages by their extension: a written or edited file's change, a file in the preview panel. */
+const LANGUAGES: Record<string, string> = {
+  py: 'python', pyw: 'python', js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+  mts: 'typescript', cts: 'typescript', json: 'json', jsonc: 'json', md: 'markdown', css: 'css', html: 'xml', htm: 'xml', xml: 'xml', svg: 'xml',
+  xaml: 'xml', csproj: 'xml', ps1: 'powershell', psm1: 'powershell', psd1: 'powershell', sh: 'bash', bash: 'bash', zsh: 'bash', sql: 'sql',
+  yaml: 'yaml', yml: 'yaml', ini: 'ini', toml: 'ini', cfg: 'ini', conf: 'ini', c: 'c', h: 'c', cpp: 'cpp', hpp: 'cpp', cc: 'cpp', cs: 'csharp',
+  go: 'go', rs: 'rust', java: 'java', bat: 'dos', cmd: 'dos', vb: 'vbnet', diff: 'diff', patch: 'diff',
+};
+/** The language of a file by its name's extension; null when not one coloured here. */
+export const languageOf = (path: string): string | null => LANGUAGES[path.split('.').pop()?.toLowerCase() ?? ''] ?? null;
+
 /** Above this a block stays plain: colouring it would hold up the page (measured: see the test). */
 export const HIGHLIGHT_MAX_CHARS = 100_000;
 
@@ -100,6 +111,35 @@ function toReact(nodes: HNode[] | undefined, key: string): ReactNode[] {
     if (n.type === 'element') return createElement('span', { key: `${key}.${i}`, className: classOf(n.properties?.className) }, ...toReact(n.children, `${key}.${i}`));
     return null;
   });
+}
+
+/**
+ * A whole file coloured line by line (the preview panel numbers its lines): coloured as one, so a string or a
+ * comment over several lines keeps its colour, then cut at each line break (a part over a break is in each line).
+ * Up to this many characters; the panel reads at most 512 KB of a file. Null when it stays plain.
+ */
+export const LINES_MAX_CHARS = 600_000;
+export function highlightLines(language: string, code: string): ReactNode[][] | null {
+  if (code.length > LINES_MAX_CHARS || !lowlight.registered(language)) return null;
+  const lines: ReactNode[][] = [[]];
+  let key = 0;
+  const walk = (nodes: HNode[] | undefined, classes: string[]) => {
+    for (const n of nodes ?? []) {
+      if (n.type === 'element') {
+        const own = classOf(n.properties?.className);
+        walk(n.children, own ? [...classes, own] : classes);
+      } else if (n.type === 'text') {
+        (n.value ?? '').split('\n').forEach((part, i) => {
+          if (i > 0) lines.push([]);
+          if (!part) return;
+          const k = key++;
+          lines[lines.length - 1]!.push(classes.reduceRight<ReactNode>((inner, c, j) => createElement('span', j === 0 ? { key: k, className: c } : { className: c }, inner), part));
+        });
+      }
+    }
+  };
+  walk(lowlight.highlight(language, code).children as HNode[], []);
+  return lines;
 }
 
 /** The code coloured, as React nodes; null when it stays plain (not a registered language, or too long). */

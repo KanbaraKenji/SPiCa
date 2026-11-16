@@ -6477,15 +6477,48 @@ section.plugins-part > .plugins-part-title {
   margin-right: 6px;
 }
 
+/* The name as long as it is (cut short when the head is narrow), 复制路径 right after it, then the panel's buttons. */
 .preview-name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 40px;
-  margin-right: 6px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--spica-ink);
   font-weight: 500;
+}
+
+/* A name that opens the file's folder: the text colour (a title, not a link), a block of colour on hover as the
+   head's icon buttons; it reaches a little left so the name stays where it was. */
+.preview-name.is-button {
+  height: var(--control-h);
+  margin-left: -4px;
+  padding: 0 4px;
+  border-radius: var(--radius-s);
+  text-align: left;
+}
+
+.preview-name.is-button:hover {
+  background: var(--spica-hover);
+}
+
+.preview-head-gap {
+  flex: 1;
+  min-width: 4px;
+}
+
+/* 预览 / 代码 in the head: the segmented choice, as tall as the head's buttons, in the smaller size of 预览方式
+   beside it, so the head still fits at the panel's narrowest (320) in English. */
+.preview-mode {
+  flex: none;
+  flex-wrap: nowrap;
+  margin-right: 2px;
+}
+
+.preview-mode .segment {
+  padding: 0 8px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
 }
 
 .preview-body {
@@ -6523,6 +6556,7 @@ section.plugins-part > .plugins-part-title {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  margin: 0;
   padding: 8px 0;
   font-family: var(--font-mono);
   font-size: var(--code-size);
