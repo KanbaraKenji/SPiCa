@@ -44,6 +44,7 @@
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1",
     "rolldown": "1.2.16",
+    "uuid": "14.0.3",
     "vite": "8.3.6"
   }
 }

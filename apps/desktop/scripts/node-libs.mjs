@@ -2,9 +2,15 @@
 // single CommonJS file with rolldown, into apps/desktop/node-libs/node_modules/<name>/ with its package.json
 // (name, version, license) and licence text. electron-builder ships the folder as a resource (outside the
 // asar, so any Node can read it); the backend puts it last on run_command's NODE_PATH (core runtimes.ts).
-// Runs before dev, build and dist; skips work when the output is newer than the installed package.
+// Runs before dev, build and dist (a fraction of a second; always rebuilt, so a changed dependency is never
+// missed).
+//
+// uuid: exceljs 4.4.0 asks for uuid 8.x, which has a moderate advisory (GHSA-w5hq-g745-h8pq: v3/v5/v6 given a
+// buffer). exceljs only calls v4() without arguments, so it cannot reach that code; still, the bundle takes the
+// fixed uuid (apps/desktop's own devDependency, see REPLACE) rather than the one under exceljs. An npm
+// "overrides" entry does not hold in this workspace (npm resolves exceljs's uuid back to 8.x).
 //   node scripts/node-libs.mjs [outDir]
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, copyFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync, copyFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -15,6 +21,9 @@ const require = createRequire(join(appDir, 'package.json'));
 
 /** The libraries, by npm name (also the name scripts require). Versions come from apps/desktop/package.json. */
 export const NODE_LIBS = ['exceljs', 'papaparse'];
+
+/** Dependencies bundled from apps/desktop's own copy instead of the one the library asks for. */
+export const REPLACE = ['uuid'];
 
 function packageDir(name) {
   return dirname(require.resolve(`${name}/package.json`));
@@ -54,17 +63,14 @@ export async function buildNodeLibs(outDir = join(appDir, 'node-libs')) {
     const pkg = JSON.parse(readFileSync(join(src, 'package.json'), 'utf8'));
     const dest = join(outDir, 'node_modules', name);
     const meta = join(dest, 'package.json');
-    if (existsSync(meta) && JSON.parse(readFileSync(meta, 'utf8')).version === pkg.version && statSync(meta).mtimeMs >= statSync(join(src, 'package.json')).mtimeMs) {
-      written.push({ name, version: pkg.version, skipped: true });
-      continue;
-    }
     rmSync(dest, { recursive: true, force: true });
     mkdirSync(dest, { recursive: true });
     // the entry sits in apps/desktop, so `name` resolves to the installed package (with its own nested
     // dependencies), never to the output folder
     const entry = join(appDir, `.node-libs-${name}.cjs`);
     writeFileSync(entry, `module.exports = require(${JSON.stringify(name)});\n`);
-    const bundle = await rolldown({ input: entry, platform: 'node', logLevel: 'silent' });
+    const alias = Object.fromEntries(REPLACE.map((r) => [r, require.resolve(r)]));
+    const bundle = await rolldown({ input: entry, platform: 'node', resolve: { alias }, logLevel: 'silent' });
     const { output } = await bundle.write({ file: join(dest, 'index.js'), format: 'cjs', minify: true });
     await bundle.close();
     rmSync(entry);
@@ -81,5 +87,5 @@ export async function buildNodeLibs(outDir = join(appDir, 'node-libs')) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const out = process.argv[2] ? resolve(process.argv[2]) : undefined;
-  for (const w of await buildNodeLibs(out)) console.log(`[node-libs] ${w.name} ${w.version}${w.skipped ? ' (up to date)' : ` ${Math.round(w.bytes / 1024)} KB`}`);
+  for (const w of await buildNodeLibs(out)) console.log(`[node-libs] ${w.name} ${w.version} ${Math.round(w.bytes / 1024)} KB`);
 }

@@ -22,8 +22,11 @@ describe('node-libs', () => {
       expect(pkg).toMatchObject({ name, main: 'index.js', license: 'MIT' });
       expect(readFileSync(join(out, 'node_modules', name, 'LICENSE'), 'utf8')).toMatch(/MIT|Permission is hereby granted/);
     }
-    // a second run with nothing changed writes nothing
-    expect((await buildNodeLibs(out)).every((x) => x.skipped)).toBe(true);
+    // exceljs's dependencies are listed with their licences; uuid is the fixed one, not the 8.x exceljs asks for
+    const third = readFileSync(join(out, 'node_modules', 'exceljs', 'THIRD-PARTY.txt'), 'utf8');
+    expect(third).toMatch(/^jszip 3\.10\.2 /m);
+    expect(third).toMatch(/^uuid 14\.\d+\.\d+ \(MIT\)/m);
+    expect(third).not.toMatch(/^uuid 8\./m);
   });
 
   it('a script far from any node_modules reads and writes .xlsx and CSV through NODE_PATH, on Electron as Node', async () => {
