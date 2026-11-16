@@ -67,6 +67,15 @@
 - **窗口和任务栏**（`src/main/window-fit.ts`）：只记日志，不改窗口。第一次显示时记一行基线「window fits the work area (first show, …)」；之后在最大化、还原、最大化状态下大小变化、进入全屏、显示器变化（`display-metrics-changed` / `display-added` / `display-removed`）时，窗口（`getBounds`）有一边超出所在显示器的工作区（屏幕扣掉任务栏）超过 10 DIP，记一行「window past the work area (事件): window …, display …, work area …, scale …, 状态 (maximized …, full screen …); past it by left … top … right … bottom …」，同样的画面连续只记一次。10 DIP 是正常最大化时 Windows 让窗口边框伸出工作区的那一圈（125% 下量得 getBounds 为 -7,-7 2064x1120，工作区 0,0 2048x1104）加取整余量；任务栏约 48 DIP。起因：有一台电脑上最大化后窗口底部落在任务栏后面，在另一台上复现不出来，先记下来看是哪一步变的。
 - 截图和测试用假后端（`src/main/backend/fake.ts`），`SPICA_BACKEND=fake|core` 可强制。
 
+### 内置浏览器（2026-11-16，进行中；方案在 `ledger-briefs/builtin-browser/方案.md`）
+
+- 网页用界面里的 `<webview>` 显示，不用主进程的 `WebContentsView`：后者画在整个页面上面，菜单和对话框盖不住它，隐藏窗口里单独截它会卡住主进程；`<webview>` 是页面里的一个元素，宽度、让位、最大化照预览栏，截图里也有它。
+- 主窗口开了 `webviewTag`。每个 `<webview>` 挂上之前（`will-attach-webview`）设置一律改成固定的一套（`main/browser/policy.ts` 的 `LOCKED`）：没有 preload、沙箱、上下文隔离、不给 Node、只能用 `persist:spica-browser` 这个存储分区；页面写在标签上的 `preload`、`nodeintegration`、`partition`、`webpreferences` 都不算数。开头的地址不是 http(s)、`about:blank` 或浏览器自己的本机文件协议（`spica-page`）的，不让挂上。
+- 浏览器的分区（`main/browser/session.ts`）：摄像头、麦克风、定位、通知、剪贴板、设备这类请求一律拒；应用自己的协议（`spica-file`、`spica-plugin`、`spica-flow`）只注册在主窗口的会话上，页面摸不到；从外面网站来的页面访问本机或局域网地址（`127.0.0.1`、`localhost`、`::1`、`10.*`、`192.168.*` 等）的请求和跳转都拦掉，人自己打开的本机地址页面不受影响；下载不预设保存位置，每次由 Electron 问存到哪里。
+- 页面开新窗口一律不开窗；以后改成在面板里开新标签（面板做好之前只记一行日志）。页面自己发起的跳转只许去 http(s)、`about:blank`、`spica-page`。
+- 拦下的请求、跳转、权限请求都在日志里记一行（`browser: …`）。
+- 在隐藏窗口里实测过：页面里 `window.spica`、`require`、`process` 都没有；访问本机端口、`file://`、`spica-file://`、`spica-plugin://` 都失败，本机服务一次请求都没收到；通知、定位被拒；页面跳本机地址、`file://` 都停在原页。
+
 ## 3. 事件到界面的映射
 
 | 事件 | 界面 |

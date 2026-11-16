@@ -2,7 +2,9 @@
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, screen, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, screen, session, shell, Tray } from 'electron';
+import { BROWSER_PARTITION } from './browser/policy';
+import { guardWebviews, setupBrowserSession } from './browser/session';
 import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo, type UsageSummary } from '@spica/protocol';
 import { usageQuery } from '../shared/usage';
@@ -705,6 +707,8 @@ function createMainWindow(): BrowserWindow {
       spellcheck: false,
       // The built-in PDF viewer, for previews in the right panel.
       plugins: true,
+      // The built-in browser's pages: every <webview> is locked before it attaches (main/browser/session.ts).
+      webviewTag: true,
       // SPICA_HIDDEN: a window never shown would otherwise be throttled (timers slowed down) as if in the background.
       ...(hidden ? { backgroundThrottling: false } : {}),
     },
@@ -804,6 +808,12 @@ function createMainWindow(): BrowserWindow {
   });
   win.webContents.on('will-navigate', (e, url) => {
     if (url !== win.webContents.getURL()) e.preventDefault();
+  });
+  // The built-in browser's pages: locked settings, new windows become tabs, no way into local files or this machine.
+  guardWebviews(win.webContents, {
+    // The panel that takes new tabs comes with the browser panel itself; until then a page's new window is refused.
+    openTab: (url) => console.log(`browser: new window refused (${new URL(url).host})`),
+    log: (line) => console.log(line),
   });
   // The page process gone (killed, crashed, out of memory): load it again, back on the open conversation;
   // the third time within a minute, ask first (main/page-recovery.ts).
@@ -1731,6 +1741,8 @@ void app.whenReady().then(() => {
       const u = new URL(req.url);
       return u.host === 'example.com' ? net.fetch(pathToFileURL(join(mockWeb, basename(u.pathname))).toString()) : new Response('', { status: 404 });
     });
+  // The built-in browser's own session (its own cookies and storage; none of the app's schemes are registered on it).
+  setupBrowserSession(session.fromPartition(BROWSER_PARTITION), { log: (line) => console.log(line) });
   protocol.handle(PLUGIN_SCHEME, (req) => servePluginFile(req.url));
   // The flowchart frame's files, with CORS (main/flow-scheme.ts).
   protocol.handle(FLOW_SCHEME, async (req) => {
