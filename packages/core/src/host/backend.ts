@@ -98,6 +98,8 @@ export interface BackendConfig {
   budget?: BudgetConfig;
   prices?: PriceTable;
   spillDir?: string;
+  /** The libraries the app carries for run_command's scripts (<dir>/node_modules/<name>; runtimes.ts). */
+  nodeLibsDir?: string;
   /** Product name the models are told they work in (see RuntimeOptions.appName). Default 'Spica'. */
   appName?: string;
   /** A company's model connections from the packaging's deploy.json (CatalogPreset[]; no keys). */
@@ -420,7 +422,8 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
       sessionFilesDir: join(dirname(cfg.dbPath), 'sessions'),
       // run_command's \`node\` when the computer has none, and what the model is told it can run (runtimes.ts)
       nodeShimDir: join(dirname(cfg.dbPath), 'node-shim'),
-      runtimes: probeRuntimes(childEnv('all')),
+      ...(cfg.nodeLibsDir ? { nodeLibsDir: cfg.nodeLibsDir } : {}),
+      runtimes: probeRuntimes(childEnv('all'), undefined, cfg.nodeLibsDir ? { nodeLibsDir: cfg.nodeLibsDir } : {}),
       ...(cfg.legacyDefaultCwd ? { legacyDefaultCwd: cfg.legacyDefaultCwd } : {}),
       ...(cfg.search ? { search: jsonSearchBackend(cfg.search) } : {}),
       ...(cfg.mail ? { mail: cfg.mail } : {}),

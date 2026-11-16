@@ -8,7 +8,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Tool } from './types.ts';
 import { changeCards, changeLine, folderChanges, notTrackedLine, snapshotFolder } from './file-changes.ts';
 import { childEnv } from '../util.ts';
-import { withNode } from '../runtimes.ts';
+import { withNode, withNodeLibs } from '../runtimes.ts';
 
 export interface CommandToolOptions {
   /** Default: powershell on Windows, sh elsewhere. */
@@ -21,6 +21,8 @@ export interface CommandToolOptions {
   maxTimeoutMs?: number;
   /** Where the `node` stand-in goes when the command's PATH has no node (runtimes.ts). Default: a temp folder. */
   nodeShimDir?: string;
+  /** The libraries the app carries for scripts (<dir>/node_modules), last on NODE_PATH (runtimes.ts). */
+  nodeLibsDir?: string;
 }
 
 const MAX_CAPTURE_BYTES = 20_000_000;
@@ -67,8 +69,8 @@ export function createRunCommandTool(opts: CommandToolOptions = {}): Tool {
       const before = await snapshotFolder(cwd);
       const t0 = performance.now();
       // The user's environment, minus model keys and other secret-looking variables; `node` always works (the
-      // computer's own first, else the app's: runtimes.ts).
-      const child = spawn(file, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: withNode(childEnv('all'), shimDir).env });
+      // computer's own first, else the app's), and scripts can require the app's libraries (runtimes.ts).
+      const child = spawn(file, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: withNodeLibs(withNode(childEnv('all'), shimDir).env, opts.nodeLibsDir) });
       const chunks: Buffer[] = [];
       let captured = 0;
       let dropped = 0;

@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { delimiter, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { bundledNode, findOnPath, pathOf, probeRuntimes, runtimesLine, withNode, writeNodeShim } from './runtimes.ts';
+import { bundledNode, findOnPath, listNodeLibs, pathOf, probeRuntimes, runtimesLine, withNode, withNodeLibs, writeNodeShim } from './runtimes.ts';
 import { createRunCommandTool } from './tools/command-tool.ts';
 import { tempDir } from './testing/helpers.ts';
 import type { ToolContext } from './tools/types.ts';
@@ -78,6 +78,64 @@ describe('node in run_command', () => {
     const b = writeNodeShim(join(dir, 's'), { exe: 'C:\\B\\app.exe', asNode: true, version: '1' });
     expect(a).toBe(b);
     expect(execFileSync(win ? 'cmd.exe' : 'cat', win ? ['/d', '/c', 'type', join(b, 'node.cmd')] : [join(b, 'node')], { encoding: 'utf8' })).toContain('B');
+  });
+});
+
+describe('the app’s libraries for scripts', () => {
+  function fakeLib(root: string, name: string, version: string, body: string): void {
+    mkdirSync(join(root, 'node_modules', name), { recursive: true });
+    writeFileSync(join(root, 'node_modules', name, 'package.json'), JSON.stringify({ name, version, main: 'index.js' }));
+    writeFileSync(join(root, 'node_modules', name, 'index.js'), body);
+  }
+
+  it('are listed by name and version; a missing folder lists none', () => {
+    fakeLib(dir, 'papaparse', '5.7.1', '');
+    fakeLib(dir, 'exceljs', '4.4.0', '');
+    mkdirSync(join(dir, 'node_modules', 'not-a-lib'));
+    expect(listNodeLibs(dir)).toEqual([
+      { name: 'exceljs', version: '4.4.0' },
+      { name: 'papaparse', version: '5.7.1' },
+    ]);
+    expect(listNodeLibs(join(dir, 'missing'))).toEqual([]);
+    expect(listNodeLibs(undefined)).toEqual([]);
+  });
+
+  it('go last on NODE_PATH, after the user’s own; nothing changes without the folder', () => {
+    fakeLib(dir, 'x', '1.0.0', '');
+    const libs = join(dir, 'node_modules');
+    expect(withNodeLibs({ PATH: 'p' }, dir)).toEqual({ PATH: 'p', NODE_PATH: libs });
+    expect(withNodeLibs({ NODE_PATH: 'mine' }, dir)).toEqual({ NODE_PATH: `mine${delimiter}${libs}` });
+    expect(withNodeLibs({ NODE_PATH: libs }, dir)).toEqual({ NODE_PATH: libs });
+    expect(withNodeLibs({ PATH: 'p' }, join(dir, 'missing'))).toEqual({ PATH: 'p' });
+  });
+
+  it('a script run by run_command requires one, with no node_modules next to it', async () => {
+    const libs = join(dir, 'libs');
+    fakeLib(libs, 'spica-test-lib', '1.0.0', 'module.exports = (a, b) => a * b;');
+    const work = join(dir, 'work');
+    mkdirSync(work);
+    writeFileSync(join(work, 'go.js'), "console.log('product=' + require('spica-test-lib')(6, 7));");
+    const tool = createRunCommandTool({ nodeShimDir: join(dir, 'shim'), nodeLibsDir: libs });
+    const ctx = { cwd: work, signal: new AbortController().signal, emit: () => {} } as unknown as ToolContext;
+    const out = await tool.execute({ command: 'node go.js' }, ctx);
+    expect(out.content).toContain('product=42');
+  });
+
+  it('the model is told it can require them (not import), and that the app’s Node has no npm', () => {
+    const libs = [
+      { name: 'exceljs', version: '4.4.0' },
+      { name: 'papaparse', version: '5.7.1' },
+    ];
+    expect(runtimesLine({ node: { version: '24.1.0', source: 'bundled' }, nodeLibs: libs })).toContain(
+      "Node.js 24.1.0 (the app's own, without npm; `node` works in run_command; scripts can `require` (not import) `exceljs` 4.4.0 for .xlsx, `papaparse` 5.7.1 for CSV, which the app provides)",
+    );
+    expect(runtimesLine({ node: { version: '22.0.0', source: 'system' }, nodeLibs: libs })).toContain('(installed on this computer; scripts can `require`');
+  });
+
+  it('are found when the runtimes are probed', async () => {
+    fakeLib(dir, 'exceljs', '4.4.0', '');
+    const r = await probeRuntimes(process.env, bundledNode(), { nodeLibsDir: dir });
+    expect(r.nodeLibs).toEqual([{ name: 'exceljs', version: '4.4.0' }]);
   });
 });
 

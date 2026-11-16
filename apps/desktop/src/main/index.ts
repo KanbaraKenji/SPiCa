@@ -230,6 +230,8 @@ function backendConfig(): DesktopBackendConfig {
       memory: { enabled: settings.get().memory, autoTidy: settings.get().memoryAutoTidy },
       // Each provider's 花费上限 (none by default): what it may cost in all; no other limit.
       budget: providerBudget(),
+      // Libraries run_command's scripts can require (exceljs, papaparse; scripts/node-libs.mjs writes them).
+      nodeLibsDir: app.isPackaged ? join(process.resourcesPath, 'node-libs') : join(app.getAppPath(), 'node-libs'),
       // Linked into the backend entry; named here as the core expects.
       extractorModules: ['@spica/extract'],
       extensions: [

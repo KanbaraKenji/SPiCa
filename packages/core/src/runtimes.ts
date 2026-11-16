@@ -5,10 +5,15 @@
 // gets `node` from it when the command's PATH has no node: a small node.cmd (sh script elsewhere) at the END of
 // PATH, so a Node the user installed always comes first and behaves as before; the app's only fills the gap.
 //
+// The app also carries a few libraries for data work (exceljs for .xlsx, papaparse for CSV), each bundled into one
+// file under <nodeLibsDir>/node_modules (apps/desktop/scripts/node-libs.mjs). run_command's NODE_PATH ends with
+// that folder, so a script's `require('exceljs')` finds them with whichever Node runs it; a script's own
+// node_modules and the user's NODE_PATH come first. NODE_PATH serves require only, not import: the model is told.
+//
 // The model is told, once per conversation (it is part of the system prompt), which runtimes there are: Node
-// (always), Python (if any, which version) and PowerShell (Windows), as facts.
+// (always, with the libraries), Python (if any, which version) and PowerShell (Windows), as facts.
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, chmodSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, chmodSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 
 /** The Node the app carries: its executable, and whether it needs ELECTRON_RUN_AS_NODE=1 to act as Node. */
@@ -77,9 +82,49 @@ export function withNode(env: Record<string, string>, shimDir: string, node: Bun
   return { env: { ...env, [key]: value ? `${value}${delimiter}${dir}` : dir }, bundled: true };
 }
 
+/** One library the app carries for scripts (its folder name is what require takes). */
+export interface NodeLib {
+  name: string;
+  version: string;
+}
+
+/** The libraries in a node-libs folder (<dir>/node_modules/<name>/package.json); none when it is missing. */
+export function listNodeLibs(dir: string | undefined): NodeLib[] {
+  if (!dir) return [];
+  const root = join(dir, 'node_modules');
+  let names: string[];
+  try {
+    names = readdirSync(root);
+  } catch {
+    return [];
+  }
+  const out: NodeLib[] = [];
+  for (const name of names.sort()) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(root, name, 'package.json'), 'utf8')) as { version?: string };
+      out.push({ name, version: String(pkg.version ?? '') });
+    } catch {
+      // not a library
+    }
+  }
+  return out;
+}
+
+/** A command's environment with the app's libraries last on NODE_PATH (unchanged without the folder). */
+export function withNodeLibs(env: Record<string, string>, dir: string | undefined): Record<string, string> {
+  if (!dir || !existsSync(join(dir, 'node_modules'))) return env;
+  const libs = join(dir, 'node_modules');
+  const key = Object.keys(env).find((k) => k.toUpperCase() === 'NODE_PATH') ?? 'NODE_PATH';
+  const old = env[key] ?? '';
+  if (old.split(delimiter).includes(libs)) return env;
+  return { ...env, [key]: old ? `${old}${delimiter}${libs}` : libs };
+}
+
 /** The runtimes the model is told about. */
 export interface Runtimes {
   node: { version: string; source: 'system' | 'bundled' };
+  /** Libraries scripts can require whichever Node runs them (NODE_PATH; listNodeLibs). */
+  nodeLibs?: NodeLib[];
   /** undefined: none on PATH (a Windows Store stand-in that only offers to install it does not count). */
   python?: { version: string; command: string };
   /** Windows PowerShell / PowerShell version (Windows). */
@@ -98,10 +143,16 @@ function run(file: string, args: string[], timeoutMs = 8000): Promise<{ ok: bool
 }
 
 /** Ask the computer once (a few seconds at most). `env`: the environment commands run in. */
-export async function probeRuntimes(env: Record<string, string | undefined> = process.env, node: BundledNode = bundledNode()): Promise<Runtimes> {
+export async function probeRuntimes(
+  env: Record<string, string | undefined> = process.env,
+  node: BundledNode = bundledNode(),
+  opts: { nodeLibsDir?: string } = {},
+): Promise<Runtimes> {
   const sysNode = findOnPath('node', env);
   const nodeVersion = sysNode ? /v?(\d+\.\d+\.\d+)/.exec((await run(sysNode, ['--version'])).out)?.[1] : undefined;
   const out: Runtimes = { node: nodeVersion ? { version: nodeVersion, source: 'system' } : { version: node.version, source: 'bundled' } };
+  const libs = listNodeLibs(opts.nodeLibsDir);
+  if (libs.length) out.nodeLibs = libs;
   for (const cmd of process.platform === 'win32' ? ['python', 'py', 'python3'] : ['python3', 'python']) {
     const exe = findOnPath(cmd, env);
     if (!exe) continue;
@@ -122,10 +173,14 @@ export async function probeRuntimes(env: Record<string, string | undefined> = pr
 
 /** The facts for the system prompt (English: it is for the model). */
 export function runtimesLine(r: Runtimes): string {
+  const what: Record<string, string> = { exceljs: '.xlsx', papaparse: 'CSV' };
+  const libs = r.nodeLibs?.length
+    ? `; scripts can \`require\` (not import) ${r.nodeLibs.map((l) => `\`${l.name}\` ${l.version}${what[l.name] ? ` for ${what[l.name]}` : ''}`).join(', ')}, which the app provides`
+    : '';
   const node =
     r.node.source === 'bundled'
-      ? `Node.js ${r.node.version} (the app's own; \`node\` works in run_command)`
-      : `Node.js ${r.node.version} (installed on this computer)`;
+      ? `Node.js ${r.node.version} (the app's own, without npm; \`node\` works in run_command${libs})`
+      : `Node.js ${r.node.version} (installed on this computer${libs})`;
   const python = r.python
     ? `Python ${r.python.version} (\`${r.python.command}\`; which packages it has depends on this computer)`
     : 'no Python (scripts for data work can be written for Node.js, which is always there)';

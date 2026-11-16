@@ -22,6 +22,11 @@ extraResources:
   - from: deploy.json
     to: deploy.json
     filter: ["**/*"]
+  # Libraries the Agent's scripts can require (exceljs, papaparse), one bundled file each; written by
+  # scripts/node-libs.mjs before every build. Outside the asar so any Node reads them.
+  - from: node-libs
+    to: node-libs
+    filter: ["**/*"]
 asar: true
 # Electron fuses, flipped in the packaged exe: an installed Spica does not open a
 # debugger on --inspect / --inspect-brk, nor read NODE_OPTIONS (either would let

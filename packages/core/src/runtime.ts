@@ -94,6 +94,8 @@ export interface RuntimeOptions {
   spillDir?: string;
   /** Where run_command keeps the `node` stand-in for a computer without Node (runtimes.ts; default: a temp folder). */
   nodeShimDir?: string;
+  /** The libraries run_command's scripts can require (<dir>/node_modules; runtimes.ts). Default: none. */
+  nodeLibsDir?: string;
   /**
    * The runtimes the model is told about (runtimesLine in the system prompt): the backend probes the computer
    * at start (probeRuntimes). Without it nothing is said (tests, scripts).
@@ -352,7 +354,7 @@ export class Runtime implements RuntimeInternals {
     for (const p of opts.providers) this.addProvider(p, opts.limits?.[p.id]);
     const defaults = [
       ...fileTools,
-      createRunCommandTool({ ...(opts.spillDir ? { spillDir: opts.spillDir } : {}), ...(opts.nodeShimDir ? { nodeShimDir: opts.nodeShimDir } : {}) }),
+      createRunCommandTool({ ...(opts.spillDir ? { spillDir: opts.spillDir } : {}), ...(opts.nodeShimDir ? { nodeShimDir: opts.nodeShimDir } : {}), ...(opts.nodeLibsDir ? { nodeLibsDir: opts.nodeLibsDir } : {}) }),
       createWebFetchTool({ userAgent: `${this.appName.replace(/[^A-Za-z0-9._-]+/g, '-') || 'Spica'}/0.1 (+agent web_fetch)` }),
       ...agentTools,
       ...projectTools,
