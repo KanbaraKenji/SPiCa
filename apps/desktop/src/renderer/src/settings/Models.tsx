@@ -139,8 +139,6 @@ function Field({ label, value, onChange, error, placeholder, type = 'text', hint
 
 // Which connection was open and what was typed into each one, kept while you look elsewhere.
 const SELECTED = 'models.selected';
-// Which of the two 认证方式 layouts the form shows until one is picked (1: every connection with a key, 2: 中转站 and presets with headers).
-const AUTH_LAYOUT: 1 | 2 = 2;
 
 /** The next time 设置 › 模型 opens, it opens this connection (a stop at its 花费上限 points to it). */
 export function openProviderNext(id: string): void {
@@ -636,7 +634,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
   // 认证方式: for 中转站, a company preset that names request headers, and a connection already using them.
   const authBy = draft.authBy ?? 'key';
   const inHeaders = keyInHeaders({ kind: draft.kind, authBy });
-  const showAuthBy = !isWso2 && (AUTH_LAYOUT === 1 ? needsKey : isRelay || Boolean(provider?.headers?.length) || inHeaders);
+  const showAuthBy = !isWso2 && (isRelay || Boolean(provider?.headers?.length) || inHeaders);
   const limits = (
     <div className="field-pair">
       <Field label={t('同时请求')} type="number" value={numText(draft.maxConcurrent)} onChange={(v) => set({ maxConcurrent: parseNum(v) })} error={errors.maxConcurrent} placeholder={t('不限')} />

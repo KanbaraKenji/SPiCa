@@ -112,7 +112,9 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
     <div className="model-picker">
       {all.length > 10 ? <input className="input model-picker-search" value={query} placeholder={t('搜索模型')} aria-label={t('搜索模型')} onChange={(e) => setQuery(e.target.value)} /> : null}
       {fetchError ? <p className="field-error model-picker-note">{fetchError}</p> : null}
-      <span className="model-picker-sect">{t('已启用')}</span>
+      {/* a heading only over models: none in use (or none left to turn on), no heading */}
+      {onRows.length ? <span className="model-picker-sect">{t('已启用')}</span> : null}
+      {onRows.length ? (
       <ul className="model-picker-list">
         {onRows.map(({ model, price, vision }) => {
           const on = isOn(model.id)!;
@@ -171,7 +173,8 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
           );
         })}
       </ul>
-      <span className="model-picker-sect">{t('未启用')}</span>
+      ) : null}
+      {offRows.length ? <span className="model-picker-sect">{t('未启用')}</span> : null}
       <div className="model-pills">
         {offRows.map(({ model, price, vision }) => (
           <span key={model.id} className="model-pill">

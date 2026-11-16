@@ -37,3 +37,25 @@ describe('ModelPicker: 支持图片', () => {
     expect(rowOf('mystery').querySelector('.image-mark')).toBeNull();
   });
 });
+
+describe('ModelPicker: the headings 已启用 and 未启用', () => {
+  const picker = (catalog: { id: string; contextWindow: number }[], selected: { id: string; contextWindow: number; contextFrom: 'catalog' }[]) =>
+    render(<ModelPicker catalog={catalog} fetched={null} selected={selected} matchedNames={{}} onToggle={vi.fn()} onWindow={vi.fn()} onAdd={vi.fn()} fetching={false} fetchError={null} />);
+
+  it('a heading only over models: none in use, no 已启用; none left, no 未启用', () => {
+    picker([{ id: 'a', contextWindow: 1000 }], []);
+    expect(screen.queryByText('已启用')).toBeNull();
+    expect(screen.getByText('未启用')).toBeTruthy();
+    cleanup();
+    picker([{ id: 'a', contextWindow: 1000 }], [{ id: 'a', contextWindow: 1000, contextFrom: 'catalog' }]);
+    expect(screen.getByText('已启用')).toBeTruthy();
+    expect(screen.queryByText('未启用')).toBeNull();
+  });
+
+  it('no models at all: no headings, only 手动输入模型', () => {
+    picker([], []);
+    expect(screen.queryByText('已启用')).toBeNull();
+    expect(screen.queryByText('未启用')).toBeNull();
+    expect(screen.getByRole('button', { name: '手动输入模型' })).toBeTruthy();
+  });
+});
