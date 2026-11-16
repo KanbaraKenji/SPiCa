@@ -273,4 +273,9 @@ export const EN_SHELL: Catalog = {
   系统浏览器: 'System browser',
   记住我的选择: 'Remember my choice',
   用内置浏览器打开: 'Open in built-in browser',
+  // shell/BrowserPane.tsx (an agent in the page)
+  'Agent 正在操作': 'Agent is working',
+  已接手: 'Taken over',
+  接手: 'Take over',
+  交还: 'Hand back',
 };

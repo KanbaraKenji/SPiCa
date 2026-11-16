@@ -36,6 +36,11 @@ export interface BrowserPaneProps {
   onOpenExternal(url: string): void;
   /** A page's WebContents id once it is there (null: gone), for the agent's browser tools (main/browser/agent.ts). */
   onPage?: (tabId: string, wcId: number | null) => void;
+  /**
+   * An agent's tab while its conversation runs (acting) or after the person took it over (taken): a line under the
+   * address row and a frame round the page. 接手 / 停止 while acting, 交还 when taken. Absent: nothing.
+   */
+  agent?: { mode: 'acting' | 'taken'; onTakeOver(): void; onStop(): void; onGiveBack(): void } | null;
 }
 
 interface PageState {
@@ -95,7 +100,7 @@ function Page({ tab, shown, onChange, onState, register, onPage }: { tab: WebTab
   return <webview ref={ref as unknown as Ref<HTMLWebViewElement>} src={first} {...POPUPS} className={shown ? 'browser-page' : 'browser-page is-hidden'} data-tab={tab.id} />;
 }
 
-export function BrowserPane({ tabs, active, strip, onChange, onOpenExternal, onPage }: BrowserPaneProps) {
+export function BrowserPane({ tabs, active, strip, onChange, onOpenExternal, onPage, agent }: BrowserPaneProps) {
   const pages = useRef(new Map<string, WebviewElement>());
   const [states, setStates] = useState<Record<string, PageState>>({});
   const tab = tabs.find((x) => x.id === active);
@@ -157,7 +162,27 @@ export function BrowserPane({ tabs, active, strip, onChange, onOpenExternal, onP
           </button>
         </header>
       ) : null}
-      <div className="browser-pages">
+      {tab && agent ? (
+        <div className={`browser-agent is-${agent.mode}`} role="status">
+          <span className="browser-agent-dot" aria-hidden />
+          <span className="browser-agent-text">{agent.mode === 'acting' ? t('Agent 正在操作') : t('已接手')}</span>
+          {agent.mode === 'acting' ? (
+            <>
+              <button type="button" className="btn btn-small" onClick={agent.onTakeOver}>
+                {t('接手')}
+              </button>
+              <button type="button" className="btn btn-small" onClick={agent.onStop}>
+                {t('停止')}
+              </button>
+            </>
+          ) : (
+            <button type="button" className="btn btn-small" onClick={agent.onGiveBack}>
+              {t('交还')}
+            </button>
+          )}
+        </div>
+      ) : null}
+      <div className={tab && agent?.mode === 'acting' ? 'browser-pages is-agent' : 'browser-pages'}>
         {tabs.map((x) => (
           <Page
             key={x.id}

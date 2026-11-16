@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BrowserAgent, type AgentPage, type AgentTabInfo } from './agent';
 import { asSnapshot, formatSnapshot, type PageSnapshot } from './snapshot';
+import { asFacts, fingerprint } from './actions';
 
 const snap = (over: Partial<PageSnapshot> = {}): PageSnapshot => ({
   url: 'https://example.com/a',
@@ -39,8 +40,9 @@ describe('asSnapshot', () => {
   });
 });
 
-function fakePage(state: { url: string; loading?: boolean; visible?: boolean; snapshot?: unknown }) {
+function fakePage(state: { url: string; loading?: boolean; visible?: boolean; snapshot?: unknown; facts?: unknown }) {
   const loaded: string[] = [];
+  const sent: [string, Record<string, unknown> | undefined][] = [];
   const page: AgentPage = {
     isDestroyed: () => false,
     isLoading: () => state.loading === true,
@@ -52,11 +54,15 @@ function fakePage(state: { url: string; loading?: boolean; visible?: boolean; sn
     },
     once: () => undefined,
     removeListener: () => undefined,
-    executeJavaScriptInIsolatedWorld: async () => state.snapshot ?? snap({ url: state.url }),
+    executeJavaScriptInIsolatedWorld: async (_w, [s]) => (/__spicaRefs \|\| \[\]\)\[|document\.activeElement;\n {2}if/.test(s!.code) ? state.facts : /activeElement; if/.test(s!.code) ? undefined : (state.snapshot ?? snap({ url: state.url }))),
     executeJavaScript: async () => (state.visible === false ? 'hidden' : 'visible'),
     capturePage: async () => ({ toPNG: () => Buffer.from('png'), isEmpty: () => false }),
+    cdp: async (method, params) => {
+      sent.push([method, params]);
+      return {};
+    },
   };
-  return { page, loaded };
+  return { page, loaded, sent, state };
 }
 
 function setup() {
@@ -134,5 +140,106 @@ describe('BrowserAgent', () => {
     await s.agent.open('s1', { url: 'https://example.com/a' });
     s.pages.get(100)!.page.executeJavaScriptInIsolatedWorld = async () => 'nonsense';
     await expect(s.agent.read('s1', {})).rejects.toThrow(/could not be read/);
+  });
+});
+
+const button = (over: Record<string, unknown> = {}) => ({ found: true, tag: 'button', type: 'button', role: '', name: 'Next', autocomplete: '', fieldName: '', editable: false, page: 'https://shop.example/cart', x: 120, y: 40, ...over });
+
+describe('acting on a page', () => {
+  it('click: the element brought into view and clicked through the protocol; then the page is read', async () => {
+    const s = setup();
+    await s.agent.open('s1', { url: 'https://shop.example/cart' });
+    const p = s.pages.get(100)!;
+    p.state.facts = button();
+    const r = await s.agent.click('s1', { ref: 3 });
+    expect(r.text.split('\n')[0]).toBe('Clicked [3] "Next".');
+    expect(p.sent.map(([m, a]) => [m, a?.type, a?.x, a?.y])).toEqual([
+      ['Input.dispatchMouseEvent', 'mousePressed', 120, 40],
+      ['Input.dispatchMouseEvent', 'mouseReleased', 120, 40],
+    ]);
+  });
+
+  it('a confirmed click is not done when the element changed in between', async () => {
+    const s = setup();
+    await s.agent.open('s1', { url: 'https://shop.example/cart' });
+    const p = s.pages.get(100)!;
+    p.state.facts = button({ type: 'submit', name: 'Place order', form: { action: 'https://shop.example/order', method: 'post' } });
+    const asked = await s.agent.inspect('s1', { tool: 'browser_click', ref: 3, callId: 'c1' });
+    expect(asked.verdict).toEqual({ action: 'confirm', reason: '提交表单（shop.example）：「Place order」' });
+    p.state.facts = button({ type: 'submit', name: 'Delete account', form: { action: 'https://shop.example/delete', method: 'post' } });
+    await expect(s.agent.click('s1', { ref: 3, callId: 'c1' })).rejects.toThrow(/page changed/);
+    expect(p.sent).toEqual([]);
+    // asked again and allowed: done (what was asked is used once)
+    p.state.facts = button({ type: 'submit', name: 'Place order', form: { action: 'https://shop.example/order', method: 'post' } });
+    await s.agent.inspect('s1', { tool: 'browser_click', ref: 3, callId: 'c2' });
+    await s.agent.click('s1', { ref: 3, callId: 'c2' });
+    expect(p.sent).toHaveLength(2);
+  });
+
+  it('an unconfirmed click arms the form stop; a confirmed one does not', async () => {
+    const guarded: number[] = [];
+    const s = setup();
+    // reach into the options through a new agent with the same window
+    const agent = new (s.agent.constructor as typeof import('./agent').BrowserAgent)({
+      window: { open: async () => ({ tabId: 't1', wcId: 100, url: '', title: '' }), show: async () => true, tabs: async () => [{ tabId: 't1', wcId: 100, url: '', title: '' }] },
+      page: () => s.pages.get(100)?.page,
+      wait: async () => undefined,
+      guardSubmit: (id) => guarded.push(id),
+    });
+    s.pages.set(100, fakePage({ url: 'https://shop.example/' }));
+    s.pages.get(100)!.state.facts = button();
+    await agent.click('s1', { ref: 1 });
+    await agent.click('s1', { ref: 1, expect: fingerprint(asFacts(button())!) });
+    expect(guarded).toEqual([100]);
+  });
+
+  it('type: into a text box, replacing it; never into a password field', async () => {
+    const s = setup();
+    await s.agent.open('s1', { url: 'https://site.example/' });
+    const p = s.pages.get(100)!;
+    p.state.facts = button({ tag: 'input', type: 'text', name: 'Search', editable: true });
+    await s.agent.type('s1', { ref: 2, text: '你好' });
+    expect(p.sent.at(-1)).toEqual(['Input.insertText', { text: '你好' }]);
+    p.state.facts = button({ tag: 'input', type: 'password', name: 'Password', editable: true });
+    await expect(s.agent.type('s1', { ref: 2, text: 'x' })).rejects.toThrow(/types it themselves/);
+    p.state.facts = button({ tag: 'button', name: 'Go' });
+    await expect(s.agent.type('s1', { ref: 2, text: 'x' })).rejects.toThrow(/not a text box/);
+  });
+
+  it('press: a known key down and up', async () => {
+    const s = setup();
+    await s.agent.open('s1', { url: 'https://site.example/' });
+    const p = s.pages.get(100)!;
+    await s.agent.press('s1', { key: 'Tab' });
+    expect(p.sent.map(([m, a]) => [m, a?.type, a?.key])).toEqual([
+      ['Input.dispatchKeyEvent', 'keyDown', 'Tab'],
+      ['Input.dispatchKeyEvent', 'keyUp', 'Tab'],
+    ]);
+    await expect(s.agent.press('s1', { key: 'F13' })).rejects.toThrow(/unknown key/);
+  });
+
+  it('taken over: the person pressed in the tab; the agent leaves it until it is given back', async () => {
+    const changes: [string, boolean][] = [];
+    const s = setup();
+    const agent = new (s.agent.constructor as typeof import('./agent').BrowserAgent)({
+      window: { open: async () => ({ tabId: 't1', wcId: 100, url: '', title: '' }), show: async () => true, tabs: async () => [{ tabId: 't1', wcId: 100, url: '', title: '' }] },
+      page: () => s.pages.get(100)?.page,
+      wait: async () => undefined,
+      onTakeOver: (tabId, taken) => changes.push([tabId, taken]),
+    });
+    s.pages.set(100, fakePage({ url: 'https://site.example/' }));
+    s.pages.get(100)!.state.facts = button();
+    await agent.click('s1', { ref: 1 });
+    agent.humanInput(100);
+    expect(agent.isTaken('t1')).toBe(true);
+    await expect(agent.click('s1', { ref: 1 })).rejects.toThrow(/taken over/);
+    // reading is still allowed
+    await expect(agent.read('s1', {})).resolves.toBeTruthy();
+    agent.giveBack('t1');
+    await agent.click('s1', { ref: 1 });
+    expect(changes).toEqual([
+      ['t1', true],
+      ['t1', false],
+    ]);
   });
 });

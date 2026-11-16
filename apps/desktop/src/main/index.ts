@@ -7,7 +7,8 @@ import { BROWSER_FILE_SCHEME, BROWSER_PARTITION } from './browser/policy';
 import { LocalPages, realInside } from './browser/local-pages';
 import { flushBrowserSession, guardWebviews, setupBrowserSession } from './browser/session';
 import { applyBrowserNetwork, proxyLogin } from './browser/network';
-import { BrowserAgent, type AgentPage, type AgentTabInfo } from './browser/agent';
+import { BrowserAgent, type AgentTabInfo } from './browser/agent';
+import { agentPage } from './browser/page-input';
 
 // The window answers for the browser's agent tools (App.tsx): open a tab, show one, list a conversation's tabs.
 const agentAsks = new Map<number, (answer: { ok: boolean; value?: unknown; error?: string }) => void>();
@@ -32,13 +33,29 @@ ipcMain.handle(DesktopChannel.BrowserAgentReply, (_e, id: unknown, answer: unkno
   if (typeof id === 'number' && answer && typeof answer === 'object') agentAsks.get(id)?.(answer as { ok: boolean; value?: unknown; error?: string });
   return null;
 });
-const browserAgent = new BrowserAgent({
+// For a moment after an agent's unconfirmed click or key, a form the page sends is stopped (browser/session.ts).
+const submitGuard = new Map<number, number>();
+const browserAgent: BrowserAgent = new BrowserAgent({
   window: {
     open: (sessionId, url) => askWindow('open', { sessionId, url }) as Promise<AgentTabInfo>,
     show: async (tabId) => (await askWindow('show', { tabId })) === true,
     tabs: async (sessionId) => ((await askWindow('tabs', { sessionId })) as AgentTabInfo[] | null) ?? [],
   },
-  page: (wcId) => (webContents.fromId(wcId) as AgentPage | undefined) ?? undefined,
+  page: (wcId) => {
+    const wc = webContents.fromId(wcId);
+    return wc ? agentPage(wc, (id) => browserAgent.humanInput(id)) : undefined;
+  },
+  guardSubmit: (wcId, ms) => submitGuard.set(wcId, Date.now() + ms),
+  // the panel shows 已接手 and 交还 on that tab
+  onTakeOver: (tabId, taken) => sendToWindow(DesktopChannel.BrowserTakeOver, { tabId, taken }),
+});
+ipcMain.handle(DesktopChannel.BrowserGiveBack, (_e, tabId: unknown) => {
+  if (typeof tabId === 'string') browserAgent.giveBack(tabId);
+  return null;
+});
+ipcMain.handle(DesktopChannel.BrowserTakeOverPage, (_e, wcId: unknown) => {
+  if (typeof wcId === 'number') browserAgent.humanInput(wcId);
+  return null;
 });
 import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo, type UsageSummary } from '@spica/protocol';
@@ -370,6 +387,10 @@ const backend: AgentBackend =
           'browser.scroll': (sessionId: string, args: Record<string, unknown>) => browserAgent.scroll(sessionId, args),
           'browser.wait': (sessionId: string, args: Record<string, unknown>) => browserAgent.wait(sessionId, args),
           'browser.tabs': (sessionId: string, args: Record<string, unknown>) => browserAgent.tabs(sessionId, args),
+          'browser.inspect': (sessionId: string, args: Record<string, unknown>) => browserAgent.inspect(sessionId, args),
+          'browser.click': (sessionId: string, args: Record<string, unknown>) => browserAgent.click(sessionId, args),
+          'browser.type': (sessionId: string, args: Record<string, unknown>) => browserAgent.type(sessionId, args),
+          'browser.press': (sessionId: string, args: Record<string, unknown>) => browserAgent.press(sessionId, args),
           'models.setDefault': (ref: ModelRef) => {
             providers.setDefaultModel({ connectionId: String(ref?.connectionId ?? ''), model: String(ref?.model ?? '') });
             applyProviders();
@@ -1860,7 +1881,7 @@ void app.whenReady().then(() => {
     session.fromPartition(BROWSER_PARTITION).protocol.handle('https', answer);
   }
   // The built-in browser's own session (its own cookies and storage; none of the app's schemes are registered on it).
-  setupBrowserSession(session.fromPartition(BROWSER_PARTITION), { log: (line) => console.log(line) });
+  setupBrowserSession(session.fromPartition(BROWSER_PARTITION), { log: (line) => console.log(line), stopSubmit: (wcId) => (submitGuard.get(wcId) ?? 0) > Date.now() });
   session.fromPartition(BROWSER_PARTITION).protocol.handle(BROWSER_FILE_SCHEME, async (req) => {
     const s = localPages.resolve(req.url, req.method);
     if (s.kind === 'text') return new Response(s.text, { headers: { 'content-type': 'text/html; charset=utf-8' } });

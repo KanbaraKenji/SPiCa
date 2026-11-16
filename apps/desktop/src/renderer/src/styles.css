@@ -8431,3 +8431,47 @@ input[type='radio']:disabled {
   visibility: hidden;
   pointer-events: none;
 }
+/* An agent acting in the page shown (shell/BrowserPane.tsx): a line under the address row and a frame round the page;
+   taken over by the person, the line says so and offers 交还. */
+.browser-agent {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 8px 0 16px;
+  background: var(--spica-accent-soft);
+  color: var(--spica-ink);
+}
+
+.browser-agent.is-taken {
+  background: var(--spica-hover);
+}
+
+.browser-agent-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--spica-accent);
+}
+
+.browser-agent.is-taken .browser-agent-dot {
+  background: var(--spica-muted);
+}
+
+.browser-agent-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.browser-pages.is-agent::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 0 2px var(--spica-accent);
+  pointer-events: none;
+}

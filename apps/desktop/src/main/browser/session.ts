@@ -6,6 +6,8 @@ import { blocksLocalRequest, lockWebview, navigable, permits } from './policy';
 interface RequestDetails {
   url: string;
   resourceType: string;
+  method?: string;
+  webContentsId?: number | undefined;
   webContents?: { getURL(): string } | undefined;
 }
 
@@ -34,6 +36,8 @@ export interface BrowserSessionOptions {
   log?: (line: string) => void;
   /** How long after a sign-in changes it is written to disk (default 1 s). */
   flushAfterMs?: number;
+  /** Whether a page's form sending is stopped now (an agent's unconfirmed click or key a moment ago; agent.ts). */
+  stopSubmit?: (wcId: number) => boolean;
 }
 
 function shortUrl(url: string): string {
@@ -59,9 +63,21 @@ export function setupBrowserSession(ses: BrowserSessionLike, o: BrowserSessionOp
   ses.setDevicePermissionHandler(() => false);
   ses.webRequest.onBeforeRequest((details, callback) => {
     const top = details.resourceType === 'mainFrame' ? undefined : details.webContents?.getURL();
-    const cancel = blocksLocalRequest(details.url, top);
-    if (cancel) o.log?.(`browser: request to a local address stopped (${shortUrl(details.url)} from ${shortUrl(top ?? '')})`);
-    callback({ cancel });
+    if (blocksLocalRequest(details.url, top)) {
+      o.log?.(`browser: request to a local address stopped (${shortUrl(details.url)} from ${shortUrl(top ?? '')})`);
+      callback({ cancel: true });
+      return;
+    }
+    // A page sending a form (not GET) right after an agent's click or key nobody confirmed: stopped. Only form
+    // navigations: a page's own fetch / XHR cannot be told apart from its ordinary work and is not stopped here.
+    const method = (details.method ?? 'GET').toUpperCase();
+    const frame = details.resourceType === 'mainFrame' || details.resourceType === 'subFrame';
+    if (frame && method !== 'GET' && method !== 'HEAD' && details.webContentsId !== undefined && o.stopSubmit?.(details.webContentsId)) {
+      o.log?.(`browser: a form sent after an unconfirmed agent action was stopped (${method} ${shortUrl(details.url)})`);
+      callback({ cancel: true });
+      return;
+    }
+    callback({ cancel: false });
   });
   ses.on('will-download', (_e, item) => {
     o.log?.(`browser: download asked (${item.getFilename()}, ${item.getTotalBytes()} bytes, ${shortUrl(item.getURL())})`);

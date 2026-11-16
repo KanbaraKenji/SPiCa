@@ -3,6 +3,7 @@
 // it cannot see or touch the person's tabs. Pages are read in an isolated world (browser/snapshot.ts). A screenshot
 // is taken only of a page on screen: capturing a page out of sight stops the main process (tried).
 import { asSnapshot, AGENT_WORLD, formatSnapshot, SNAPSHOT_SCRIPT, type PageSnapshot } from './snapshot';
+import { asFacts, fingerprint, inspectScript, judge, KEYS, type ActionTool, type ElementFacts } from './actions';
 
 /** A conversation's tab as the window reports it. */
 export interface AgentTabInfo {
@@ -35,6 +36,8 @@ export interface AgentPage {
   executeJavaScriptInIsolatedWorld(worldId: number, scripts: { code: string }[]): Promise<unknown>;
   executeJavaScript(code: string): Promise<unknown>;
   capturePage(): Promise<{ toPNG(): Buffer; isEmpty(): boolean }>;
+  /** A DevTools protocol command (input that works without the window having focus); see page-input.ts. */
+  cdp(method: string, params?: Record<string, unknown>): Promise<unknown>;
 }
 
 export interface BrowserAgentOptions {
@@ -43,6 +46,10 @@ export interface BrowserAgentOptions {
   /** How long to wait for a page to load (ms). */
   loadTimeoutMs?: number;
   wait?: (ms: number) => Promise<void>;
+  /** For a moment after an unconfirmed click or key: a form sent by the page is stopped (browser/session.ts). */
+  guardSubmit?: (wcId: number, ms: number) => void;
+  /** The person took over a tab (they pressed in its page), or gave it back. */
+  onTakeOver?: (tabId: string, taken: boolean) => void;
 }
 
 export interface TabResult {
@@ -51,6 +58,17 @@ export interface TabResult {
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** The element that has the focus (a key goes there), described as inspectScript describes one. */
+const FOCUSED_SCRIPT = `(() => {
+  const el = document.activeElement;
+  if (!el || el === document.body) return { found: false, page: location.href };
+  const form = el.form || el.closest('form');
+  const tag = el.tagName.toLowerCase();
+  return { found: true, tag, type: String(el.getAttribute('type') || '').toLowerCase(), role: el.getAttribute('role') || '', name: String(el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').slice(0, 80),
+    ...(form ? { form: { action: form.action || location.href, method: (form.getAttribute('method') || 'get').toLowerCase() } } : {}),
+    autocomplete: String(el.getAttribute('autocomplete') || ''), fieldName: String((el.getAttribute('name') || '') + ' ' + (el.id || '')), editable: true, page: location.href, x: 0, y: 0 };
+})()`;
 
 /** Only web addresses: http and https. */
 function webAddress(url: unknown): string {
@@ -186,6 +204,147 @@ export class BrowserAgent {
       await wait(500);
     }
     return { tab: number, text: `Tab ${number}: the text did not appear within ${limit / 1000} s.` };
+  }
+
+  // ---- acting on a page: click, type, press (browser/actions.ts judges each first) ----
+
+  /** Pages the person took over (pressed in): the agent leaves them until they are given back. By WebContents id. */
+  readonly #taken = new Set<number>();
+  /** WebContents id → tab, as last seen. */
+  readonly #tabOf = new Map<number, string>();
+
+  /** The person pressed in a page while the agent was not acting there: if it is an agent's tab, it is theirs now. */
+  humanInput(wcId: number): void {
+    const tabId = this.#tabOf.get(wcId);
+    if (!tabId || this.#taken.has(wcId)) return;
+    this.#taken.add(wcId);
+    this.#o.onTakeOver?.(tabId, true);
+  }
+
+  /** 交还: the agent may act in this tab again. */
+  giveBack(tabId: string): void {
+    for (const [wcId, t] of this.#tabOf) {
+      if (t !== tabId || !this.#taken.delete(wcId)) continue;
+      this.#o.onTakeOver?.(tabId, false);
+    }
+  }
+
+  isTaken(tabId: string): boolean {
+    for (const [wcId, t] of this.#tabOf) if (t === tabId && this.#taken.has(wcId)) return true;
+    return false;
+  }
+
+  async #actPage(sessionId: string, tab: unknown): Promise<{ info: AgentTabInfo; number: number; page: AgentPage }> {
+    const picked = await this.#pick(sessionId, tab);
+    if (picked.info.wcId !== null) {
+      this.#tabOf.set(picked.info.wcId, picked.info.tabId);
+      if (this.#taken.has(picked.info.wcId)) throw new Error(`the person has taken over tab ${picked.number} (they are using it); wait until they give it back, or ask them`);
+    }
+    return picked;
+  }
+
+  async #facts(page: AgentPage, tool: ActionTool, ref: unknown): Promise<ElementFacts | null> {
+    if (tool === 'browser_press') {
+      const v = await page.executeJavaScriptInIsolatedWorld(AGENT_WORLD, [{ code: FOCUSED_SCRIPT }]).catch(() => null);
+      return asFacts(v);
+    }
+    const n = Number(ref);
+    if (!Number.isInteger(n) || n < 1) throw new Error('ref must be an element number from browser_read');
+    return asFacts(await page.executeJavaScriptInIsolatedWorld(AGENT_WORLD, [{ code: inspectScript(n) }]).catch(() => null));
+  }
+
+  /**
+   * Before the call (a hook in the core): whether to do it, ask first (with what to say and what the element is now),
+   * or leave it to the person. Nothing is done here.
+   */
+  async inspect(sessionId: string, args: { tool?: unknown; ref?: unknown; tab?: unknown; key?: unknown; submit?: unknown; callId?: unknown }): Promise<{ verdict: ReturnType<typeof judge> }> {
+    const tool = String(args.tool) as ActionTool;
+    if (tool !== 'browser_click' && tool !== 'browser_type' && tool !== 'browser_press') return { verdict: { action: 'allow' } };
+    let page: AgentPage;
+    try {
+      ({ page } = await this.#actPage(sessionId, args.tab));
+    } catch {
+      return { verdict: { action: 'allow' } }; // the tool itself says what is wrong
+    }
+    const f = await this.#facts(page, tool, args.ref).catch(() => null);
+    const verdict = judge(tool, f, args);
+    // what the person is asked about, kept for the call itself (by its id): changed by then, nothing is done
+    if (verdict.action === 'confirm' && f?.found && typeof args.callId === 'string') this.#asked.set(args.callId, fingerprint(f));
+    return { verdict };
+  }
+
+  /** What each confirmed action was asked about, by call id (taken when the call runs). */
+  readonly #asked = new Map<string, string>();
+
+  /** The fingerprint asked about for this call, if it was asked about (once). */
+  #expectFor(args: { callId?: unknown; expect?: unknown }): string | undefined {
+    if (typeof args.expect === 'string' && args.expect) return args.expect;
+    if (typeof args.callId !== 'string') return undefined;
+    const f = this.#asked.get(args.callId);
+    this.#asked.delete(args.callId);
+    return f;
+  }
+
+  /** After an action: let the page react, then read it. */
+  async #after(page: AgentPage, number: number, note: string): Promise<TabResult> {
+    await (this.#o.wait ?? sleep)(500);
+    await this.#loaded(page);
+    return { tab: number, text: `${note}\n\n${formatSnapshot(number, await this.#snapshot(page))}` };
+  }
+
+  /** Same element as when it was confirmed (or nothing was asked): else nothing is done. */
+  #still(f: ElementFacts | null, expect: unknown): ElementFacts {
+    if (!f || !f.found) throw new Error('that element is not on the page any more; read the page again (browser_read)');
+    if (typeof expect === 'string' && expect && fingerprint(f) !== expect) throw new Error('the page changed after you asked, so nothing was done; read it again and ask again');
+    return f;
+  }
+
+  async #mouse(page: AgentPage, x: number, y: number): Promise<void> {
+    for (const type of ['mousePressed', 'mouseReleased']) await page.cdp('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  }
+
+  async click(sessionId: string, args: { ref?: unknown; tab?: unknown; expect?: unknown; callId?: unknown }): Promise<TabResult> {
+    const expect = this.#expectFor(args);
+    const { info, page, number } = await this.#actPage(sessionId, args.tab);
+    const f = this.#still(await this.#facts(page, 'browser_click', args.ref), expect);
+    if (!expect && info.wcId !== null) this.#o.guardSubmit?.(info.wcId, 3000);
+    await this.#mouse(page, f.x, f.y);
+    return this.#after(page, number, `Clicked [${String(args.ref)}] ${f.name ? `"${f.name}"` : f.tag}.`);
+  }
+
+  async type(sessionId: string, args: { ref?: unknown; text?: unknown; submit?: unknown; tab?: unknown; expect?: unknown; callId?: unknown }): Promise<TabResult> {
+    const expect = this.#expectFor(args);
+    const { info, page, number } = await this.#actPage(sessionId, args.tab);
+    const f = this.#still(await this.#facts(page, 'browser_type', args.ref), expect);
+    if (judge('browser_type', f).action === 'deny') throw new Error('that is a password, card number or code field: the person types it themselves');
+    if (!f.editable) throw new Error(`[${String(args.ref)}] is not a text box`);
+    if (typeof args.text !== 'string') throw new Error('text is required');
+    // into the field (clicked, so it has the focus), what was there replaced
+    await this.#mouse(page, f.x, f.y);
+    await page.executeJavaScriptInIsolatedWorld(AGENT_WORLD, [{ code: `(() => { const el = document.activeElement; if (el && 'select' in el) el.select(); else document.execCommand('selectAll'); })()` }]).catch(() => undefined);
+    await page.cdp('Input.insertText', { text: args.text });
+    if (args.submit === true) {
+      if (!expect && info.wcId !== null) this.#o.guardSubmit?.(info.wcId, 3000);
+      await this.#key(page, 'enter');
+    }
+    return this.#after(page, number, `Typed into [${String(args.ref)}]${args.submit === true ? ' and pressed Enter' : ''}.`);
+  }
+
+  async #key(page: AgentPage, name: string): Promise<void> {
+    const k = KEYS[name.toLowerCase()];
+    if (!k) throw new Error(`unknown key "${name}" (known: ${Object.keys(KEYS).join(', ')})`);
+    const text = k.key === 'Enter' ? '\r' : k.key === ' ' ? ' ' : undefined;
+    await page.cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: k.key, code: k.code, windowsVirtualKeyCode: k.keyCode, ...(text ? { text } : {}) });
+    await page.cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: k.key, code: k.code, windowsVirtualKeyCode: k.keyCode });
+  }
+
+  async press(sessionId: string, args: { key?: unknown; tab?: unknown; expect?: unknown; callId?: unknown }): Promise<TabResult> {
+    const expect = this.#expectFor(args);
+    const { info, page, number } = await this.#actPage(sessionId, args.tab);
+    if (expect) this.#still(await this.#facts(page, 'browser_press', undefined), expect);
+    else if (info.wcId !== null) this.#o.guardSubmit?.(info.wcId, 3000);
+    await this.#key(page, String(args.key ?? ''));
+    return this.#after(page, number, `Pressed ${String(args.key)}.`);
   }
 
   /** This conversation's tabs; with switch_to, that one becomes the current tab. */

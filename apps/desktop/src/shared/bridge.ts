@@ -197,6 +197,12 @@ export interface DesktopBridge extends SpicaBridge {
     /** The agent's browser tools ask the window something (open a tab, show one, list a conversation's tabs). */
     onAgentAsk(listener: (ask: { id: number; op: 'open' | 'show' | 'tabs'; args: Record<string, unknown> }) => void): () => void;
     agentReply(id: number, answer: { ok: boolean; value?: unknown; error?: string }): Promise<null>;
+    /** The person took over an agent's tab (pressed in its page), or gave it back. */
+    onTakeOver(listener: (change: { tabId: string; taken: boolean }) => void): () => void;
+    /** 交还: the agent may act in that tab again. */
+    giveBack(tabId: string): Promise<null>;
+    /** 接手: the agent leaves this page (its WebContents id) until it is given back. */
+    takeOver(wcId: number): Promise<null>;
   };
   /** 监控台: the back end's lines (kept in the main process, secrets removed there). */
   monitor: {

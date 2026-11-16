@@ -17,7 +17,7 @@ import { attachBackend as attachPlugins, localizeView } from '@spica/plugins';
 import { RealPluginService } from '../main/plugins/service';
 import type { OfficialSource, PluginsCommand } from '../shared/plugins';
 import { APP_NAME } from '../shared/app-identity';
-import { browserTools } from './browser-tools';
+import { browserHook, browserTools } from './browser-tools';
 import { getLocale, isLocale, setLocale, type Locale } from '../shared/i18n';
 
 export interface DesktopHostOptions {
@@ -67,7 +67,9 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
   page.onChange(() => parent?.postMessage({ type: 'plugins.changed' }));
   // The built-in browser's tools: they ask the main process (host methods browser.*, main/browser/agent.ts).
   const bridge = rt.settingsBridge;
-  const unregisterBrowser = bridge ? browserTools((method, params) => bridge.host(method, params)).map((tool) => rt.tools.register(tool, 'desktop')) : [];
+  const unregisterBrowser = bridge
+    ? [...browserTools((method, params) => bridge.host(method, params)).map((tool) => rt.tools.register(tool, 'desktop')), rt.hooks.register('desktop-browser', browserHook((method, params) => bridge.host(method, params)))]
+    : [];
 
   let http: McpHttpServer | undefined;
   const httpState = () => (http ? { url: http.url, port: http.port, tokenFile: options.mcpTokenFile ?? null } : null);

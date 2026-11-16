@@ -273,4 +273,9 @@ export const ZH_TW_SHELL: Catalog = {
   系统浏览器: '系統瀏覽器',
   记住我的选择: '記住我的選擇',
   用内置浏览器打开: '以內建瀏覽器開啟',
+  // shell/BrowserPane.tsx (an agent in the page)
+  'Agent 正在操作': 'Agent 正在操作',
+  已接手: '已接手',
+  接手: '接手',
+  交还: '交還',
 };

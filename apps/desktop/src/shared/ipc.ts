@@ -114,4 +114,10 @@ export const DesktopChannel = {
   BrowserAgentAsk: 'spica:browserAgentAsk',
   /** invoke: (id, { ok, value?, error? }) -> null; the window's answer */
   BrowserAgentReply: 'spica:browserAgentReply',
+  /** main -> renderer: { tabId, taken } — the person took over an agent's tab (pressed in its page), or gave it back */
+  BrowserTakeOver: 'spica:browserTakeOver',
+  /** invoke: tabId -> null; 交还: the agent may act in that tab again */
+  BrowserGiveBack: 'spica:browserGiveBack',
+  /** invoke: the page's WebContents id -> null; 接手: the agent leaves that page until it is given back */
+  BrowserTakeOverPage: 'spica:browserTakeOverPage',
 } as const;

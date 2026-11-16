@@ -418,6 +418,20 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // The agent's browser tools (main/browser/agent.ts) ask the window: open a tab for a conversation, show one, list a
   // conversation's tabs with their pages' ids. Kept in refs: the answer is given after React has drawn the change.
   const pagesRef = useRef(new Map<string, number>());
+  // Agent tabs the person took over (pressed in the page, or 接手): the main process says so (main/browser/agent.ts).
+  const [takenTabs, setTakenTabs] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(
+    () =>
+      bridge.browser.onTakeOver(({ tabId, taken }) =>
+        setTakenTabs((s) => {
+          const next = new Set(s);
+          if (taken) next.add(tabId);
+          else next.delete(tabId);
+          return next;
+        }),
+      ),
+    [bridge],
+  );
   const paneRef = useRef(pane);
   const viewRef = useRef(view);
   const historyRef = useRef(history);
@@ -938,6 +952,25 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   if (rightMax && !rightCanMax) setRightMax(false);
   const panelMax = { on: rightMax, toggle: () => setRightMax((v) => !v) };
   const webTabs = pane.tabs.filter((x): x is Extract<PaneTab, { kind: 'web' }> => x.kind === 'web');
+  // An agent's tab shown while its conversation runs (acting), or after the person took it over (taken).
+  const agentTab = shownTab?.kind === 'web' && shownTab.agent ? shownTab : null;
+  const agentStatus = agentTab ? state.sessions.find((s) => s.id === agentTab.agent)?.status : undefined;
+  const agentActing = agentStatus === 'queued' || agentStatus === 'thinking' || agentStatus === 'tool' || agentStatus === 'awaiting_confirm';
+  const agentBar = agentTab
+    ? takenTabs.has(agentTab.id)
+      ? { mode: 'taken' as const, onTakeOver: () => undefined, onStop: () => undefined, onGiveBack: () => void bridge.browser.giveBack(agentTab.id) }
+      : agentActing
+        ? {
+            mode: 'acting' as const,
+            onTakeOver: () => {
+              const wcId = pagesRef.current.get(agentTab.id);
+              if (wcId !== undefined) void bridge.browser.takeOver(wcId);
+            },
+            onStop: () => void agent.stop(agentTab.agent!),
+            onGiveBack: () => undefined,
+          }
+        : null
+    : null;
   const paneStrip = (
     <PaneTabs
       tabs={pane.tabs}
@@ -1348,6 +1381,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 strip={shownTab.kind === 'web' ? paneStrip : null}
                 onChange={(tabId, patch) => setPane((s) => updatePaneWeb(s, tabId, patch))}
                 onOpenExternal={(url) => void bridge.browser.openExternal(url).then(showNotice)}
+                agent={agentBar}
                 onPage={(tabId, wcId) => {
                   if (wcId === null) pagesRef.current.delete(tabId);
                   else pagesRef.current.set(tabId, wcId);

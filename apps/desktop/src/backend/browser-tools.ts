@@ -2,7 +2,35 @@
 // process to act (host methods 'browser.*', main/browser/agent.ts). What they bring back is outside content: it
 // reaches the model fenced as web data, and the turn counts as acting on outside content from then on.
 // Not for sessions that run with nobody at the window (mail sorting), and only where the desktop window answers.
-import { keepMedia, type Tool, type ToolContext, type ToolOutput } from '@spica/core';
+import { keepMedia, type Hooks, type Tool, type ToolContext, type ToolOutput } from '@spica/core';
+
+const ACTIONS = new Set(['browser_click', 'browser_type', 'browser_press']);
+const ACTING = new Set(['click', 'type', 'press']);
+
+/**
+ * Before a click, typing or key: the main process looks at what it would touch (browser.inspect; nothing is done
+ * there) and says whether to go ahead, ask the person (a hook's question: asked in either approval mode, marked
+ * 无法撤销), or leave it to them. Asked and allowed, the call carries what the element was (`expect`): if the page
+ * changed in between, the main process does nothing.
+ */
+export function browserHook(host: HostCall): Hooks {
+  return {
+    async beforeTool(call, ctx) {
+      if (!ACTIONS.has(call.name)) return;
+      const input = (call.input && typeof call.input === 'object' ? call.input : {}) as Record<string, unknown>;
+      let r: { verdict?: { action?: string; reason?: string }; expect?: string };
+      try {
+        // the main process keeps what the element is now under this call's id (nothing added to what the card shows)
+        r = (await host('browser.inspect', [ctx.session.id, { ...input, tool: call.name, callId: call.callId }])) as typeof r;
+      } catch {
+        return; // the tool itself will say what is wrong
+      }
+      const v = r?.verdict;
+      if (v?.action === 'deny') return { action: 'deny', reason: v.reason ?? 'left to the person' };
+      if (v?.action === 'confirm') return { action: 'confirm', reason: v.reason ?? call.name, irreversible: true };
+    },
+  };
+}
 
 export type HostCall = (method: string, params: unknown[]) => Promise<unknown>;
 
@@ -31,8 +59,9 @@ const UNWATCHED = new Set(['mail-triage']);
 const tabParam = { tab: { type: 'integer', description: 'Tab number (from browser_tabs); default: the current tab.' } };
 
 export function browserTools(host: HostCall): Tool[] {
+  // the call's id goes along: an action asked about before is checked against what was asked (agent.ts)
   const call = async (method: string, ctx: ToolContext, input: Record<string, unknown>): Promise<Record<string, unknown>> =>
-    (await untilAborted(host(`browser.${method}`, [ctx.sessionId, input]), ctx.signal)) as Record<string, unknown>;
+    (await untilAborted(host(`browser.${method}`, [ctx.sessionId, ACTING.has(method) ? { ...input, callId: ctx.callId } : input]), ctx.signal)) as Record<string, unknown>;
   const text = async (method: string, input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput> => {
     try {
       const r = await call(method, ctx, input);
@@ -106,6 +135,41 @@ export function browserTools(host: HostCall): Tool[] {
         inputSchema: { type: 'object', properties: { text: { type: 'string' }, seconds: { type: 'number' }, ...tabParam } },
       },
       execute: (input, ctx) => text('wait', { ...input, seconds: Math.min(20, Number(input.seconds) || 0) || undefined }, ctx),
+    },
+    // Acting on the page. Not read-only (a round with them cannot be regenerated). Each is judged first by the hook
+    // below: submitting a form, downloading and buttons that pay, order, send or delete are asked first; password,
+    // card and code fields are left to the person.
+    {
+      ...base,
+      readOnly: false,
+      spec: {
+        name: 'browser_click',
+        description: 'Click an element of the page (its number from browser_read / browser_open). Returns the page after the click.',
+        inputSchema: { type: 'object', properties: { ref: { type: 'integer' }, ...tabParam }, required: ['ref'] },
+      },
+      execute: (input, ctx) => text('click', input, ctx),
+    },
+    {
+      ...base,
+      readOnly: false,
+      spec: {
+        name: 'browser_type',
+        description:
+          'Type text into a text box of the page (its number), replacing what is there; submit: true presses Enter after. ' +
+          'Password, card number and one-time code fields are not typed into: ask the user to fill them in the panel.',
+        inputSchema: { type: 'object', properties: { ref: { type: 'integer' }, text: { type: 'string' }, submit: { type: 'boolean' }, ...tabParam }, required: ['ref', 'text'] },
+      },
+      execute: (input, ctx) => text('type', input, ctx),
+    },
+    {
+      ...base,
+      readOnly: false,
+      spec: {
+        name: 'browser_press',
+        description: 'Press a key in the page (Enter, Tab, Escape, Backspace, ArrowUp/Down/Left/Right, PageUp/Down, Space).',
+        inputSchema: { type: 'object', properties: { key: { type: 'string' }, ...tabParam }, required: ['key'] },
+      },
+      execute: (input, ctx) => text('press', input, ctx),
     },
     {
       ...base,

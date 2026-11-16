@@ -148,6 +148,9 @@ const bridge: DesktopBridge = {
     release: (url) => ipcRenderer.invoke(DesktopChannel.BrowserRelease, url) as Promise<null>,
     onAgentAsk: (listener) => subscribe(DesktopChannel.BrowserAgentAsk, listener),
     agentReply: (id, answer) => ipcRenderer.invoke(DesktopChannel.BrowserAgentReply, id, answer) as Promise<null>,
+    onTakeOver: (listener) => subscribe(DesktopChannel.BrowserTakeOver, listener),
+    giveBack: (tabId) => ipcRenderer.invoke(DesktopChannel.BrowserGiveBack, tabId) as Promise<null>,
+    takeOver: (wcId) => ipcRenderer.invoke(DesktopChannel.BrowserTakeOverPage, wcId) as Promise<null>,
   },
   saveCsv: (name, text) => ipcRenderer.invoke(DesktopChannel.SaveCsv, name, text) as Promise<SaveCsvResult>,
   monitor: {

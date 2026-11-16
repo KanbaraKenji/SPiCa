@@ -128,6 +128,12 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       return arg(c, 'text') ? { verb: 'Waited for', object: quoted(arg(c, 'text')) } : { verb: 'Waited', object: 'for the page' };
     case 'browser_tabs':
       return { verb: 'Listed', object: 'browser tabs' };
+    case 'browser_click':
+      return { verb: 'Clicked', object: arg(c, 'ref') ? `element ${arg(c, 'ref')}` : 'on the page' };
+    case 'browser_type':
+      return arg(c, 'text') ? { verb: 'Typed', object: quoted(arg(c, 'text')) } : { verb: 'Typed', object: 'on the page' };
+    case 'browser_press':
+      return { verb: 'Pressed', object: arg(c, 'key') || 'a key' };
     case 'search_history':
       return arg(c, 'query') ? { verb: 'Searched conversations for', object: quoted(arg(c, 'query')) } : { verb: 'Searched', object: 'conversations' };
     case 'read_history':
@@ -198,6 +204,13 @@ export function runningWords(c: ToolCall): string {
     Created: 'Writing',
     Edited: 'Editing',
     Fetched: 'Fetching',
+    Opened: 'Opening',
+    Took: 'Taking',
+    Scrolled: 'Scrolling',
+    Waited: 'Waiting',
+    Clicked: 'Clicking',
+    Typed: 'Typing',
+    Pressed: 'Pressing',
     'Searched the web for': 'Searching the web for',
     'Searched conversations for': 'Searching conversations for',
     Started: 'Starting',
@@ -259,6 +272,12 @@ function phrase(c: ToolCall, card?: FileCardMeta): { key: string; say(n: number)
       return { key: 'waited-page', say: () => 'waited for the page' };
     case 'browser_tabs':
       return { key: 'tabs', say: () => 'listed browser tabs' };
+    case 'browser_click':
+      return { key: 'clicked', say: (n) => (n === 1 ? 'clicked on the page' : `clicked ${n} times`) };
+    case 'browser_type':
+      return { key: 'typed', say: () => 'typed on the page' };
+    case 'browser_press':
+      return { key: 'pressed', say: () => 'pressed keys' };
     case 'search_history':
       return { key: 'history', say: () => 'searched conversations' };
     case 'read_history':
