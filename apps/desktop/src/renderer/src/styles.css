@@ -456,38 +456,6 @@ a:hover {
   color: var(--spica-on-accent);
 }
 
-/* A button with a few other ways of doing it behind its arrow (允许 ▾ on a confirmation): one piece, a thin line
-   between the two parts. */
-.btn-split {
-  display: inline-flex;
-}
-
-.btn-split > .btn-split-main {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-}
-
-/* The quieter of two ordinary buttons side by side (拒绝 next to a filled 允许): its edge only, no ground. */
-.btn.btn-edge {
-  background: transparent;
-}
-
-/* The 允许 split's menu: the app's ordinary menu, as wide as the button (menu width is set from it). */
-.btn-split {
-  min-width: 112px;
-}
-
-.btn-split > .btn-split-main {
-  flex: 1;
-}
-
-.btn-split > .btn-split-more {
-  padding: 0 6px;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-  border-left-color: color-mix(in srgb, var(--spica-on-accent) 35%, transparent);
-}
-
 .btn-primary:hover:not(:disabled) {
   background: var(--spica-accent);
   filter: brightness(1.08);
@@ -6090,6 +6058,57 @@ section.plugins-part > .plugins-part-title {
   border-color: transparent;
   background: transparent;
   color: var(--spica-accent-text);
+}
+
+/* 拒绝 beside a held 允许 (a write outside the folders): the plain button (no edge, no ground) in the text's own colour,
+   so the blue is only the ring going round. */
+.btn.btn-plain.btn-refuse {
+  color: var(--spica-muted);
+}
+
+/* 允许 that can be held for 始终允许 (chat/Blocks.tsx HoldToAllow): the ordinary button, its words in one cell so it
+   is as wide as the wider, an empty ring after them; held, the ring fills in the accent colour. */
+.hold-allow {
+  touch-action: none;
+  user-select: none;
+}
+
+.hold-allow-words {
+  display: inline-grid;
+}
+
+.hold-allow-words > span {
+  grid-area: 1 / 1;
+  text-align: center;
+}
+
+.hold-allow-words > span[aria-hidden='true'] {
+  visibility: hidden;
+}
+
+.hold-allow-ring {
+  flex: none;
+  transform: rotate(-90deg);
+}
+
+.hold-allow-ring > circle {
+  fill: none;
+  stroke-width: 1.5;
+}
+
+.hold-allow-track {
+  stroke: var(--spica-muted);
+}
+
+/* held: the track steps back so the part gone round reads */
+.hold-allow.is-holding .hold-allow-track {
+  stroke: var(--spica-border-strong);
+}
+
+.hold-allow-fill {
+  stroke: var(--spica-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
 }
 
 /* A text-only button inside a sentence: accent color, no underline. */

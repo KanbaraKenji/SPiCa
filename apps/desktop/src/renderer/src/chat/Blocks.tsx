@@ -8,8 +8,6 @@ import { fileCardLine, fileCardParts, fileCardVerb, NO_REPORT_WORDS, type Block,
 import { N_, t } from '../../../shared/i18n';
 import { useLocale } from '../i18n';
 import { Icon } from '../ui/Icon';
-import { ContextMenu } from '../ui/ContextMenu';
-import { createPortal } from 'react-dom';
 import { FileBadge, FileGlyph } from '../ui/FileIcon';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
@@ -1042,11 +1040,11 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
           </p>
         ) : (
           <div className="card-actions">
-            <button type="button" className={block.outsideFolder && ALLOW_TONE === 'neutral' ? 'btn btn-edge' : 'btn'} disabled={sent} onClick={() => decide(false)}>
+            <button type="button" className={block.outsideFolder ? 'btn btn-plain btn-refuse' : 'btn'} disabled={sent} onClick={() => decide(false)}>
               {t('拒绝')}
             </button>
             {block.outsideFolder ? (
-              <AllowSplit disabled={sent} folder={block.outsideFolder} onAllow={(folder) => decide(true, folder)} />
+              <HoldToAllow disabled={sent} folder={block.outsideFolder} onAllow={(folder) => decide(true, folder)} />
             ) : (
               <button type="button" className="btn btn-primary" disabled={sent} onClick={() => decide(true)}>
                 {t('允许')}
@@ -1061,57 +1059,106 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
   );
 }
 
-/**
- * 允许 for a write outside the conversation's folders: the button allows this once; its arrow opens a menu with
- * 始终允许 (as Claude's own permission prompts do), so the card keeps two buttons. The menu is the app's ordinary
- * menu (he picked it), opening toward the inside of the card, exactly as wide as 允许 and its arrow so its edges
- * line up with theirs (he turned down the joined looks for edges that did not).
- */
-// How 允许 stands apart from 拒绝, two ways for him to pick (TEMP until he does): primary, 允许 and its arrow the
-// blue main button as before; neutral, no blue: 允许 a filled ordinary button, 拒绝 only its edge.
-export const ALLOW_TONE: 'primary' | 'neutral' = 'primary';
+/** How long 允许 is held for 始终允许 (from the press; the ring shows only after HOLD_SHOW, so a click never flashes it). */
+export const HOLD_MS = 1000;
+const HOLD_SHOW = 150;
 
-function AllowSplit({ disabled, folder, onAllow }: { disabled: boolean; folder: string; onAllow(folder: boolean): void }) {
-  const [menu, setMenu] = useState<HTMLElement | null>(null);
-  // the whole button's width (允许 and its arrow): a joined menu is as wide
-  const [width, setWidth] = useState(0);
-  const tone = ALLOW_TONE === 'primary' ? 'btn btn-primary' : 'btn';
+/**
+ * 允许 for a write outside the conversation's folders (he picked 「按住」 from five): pressed and let go, it allows this
+ * once; held until its ring has gone round (HOLD_MS), 始终允许 that folder. While held the button reads 始终允许 and
+ * the ring fills in the accent colour; let go before the end, it is 允许. Its width is the wider of the two words,
+ * so nothing moves. The empty ring is always on the button (the hint that it can be held), and the hover says so.
+ * Keys: Enter or Space let go at once is 允许, held as long is 始终允许 (key repeat is ignored); assistive tech
+ * clicking it (no pointer, no key) allows once, and its description says how to hold.
+ */
+function HoldToAllow({ disabled, folder, onAllow }: { disabled: boolean; folder: string; onAllow(always: boolean): void }) {
+  // 0..1 while held and shown; null when not held (or held under HOLD_SHOW)
+  const [shown, setShown] = useState<number | null>(null);
+  const hold = useRef<{ start: number; frame: number; done: boolean } | null>(null);
+  const stop = () => {
+    if (hold.current) cancelAnimationFrame(hold.current.frame);
+    hold.current = null;
+    setShown(null);
+  };
+  useEffect(() => () => {
+    if (hold.current) cancelAnimationFrame(hold.current.frame);
+  }, []);
+  const begin = () => {
+    if (disabled || hold.current) return;
+    const h = { start: performance.now(), frame: 0, done: false };
+    hold.current = h;
+    const tick = (now: number) => {
+      if (hold.current !== h) return;
+      const held = now - h.start;
+      if (held >= HOLD_MS) {
+        h.done = true;
+        setShown(1);
+        onAllow(true);
+        return;
+      }
+      if (held >= HOLD_SHOW) setShown((held - HOLD_SHOW) / (HOLD_MS - HOLD_SHOW));
+      h.frame = requestAnimationFrame(tick);
+    };
+    h.frame = requestAnimationFrame(tick);
+  };
+  // let go: before the ring went round it is 允许 (this once); after, 始终允许 has already been sent
+  const end = () => {
+    const h = hold.current;
+    if (!h) return;
+    const done = h.done;
+    stop();
+    if (!done) onAllow(false);
+  };
+  const tip = `${t('按住：始终允许')}\n${folder}`;
+  const always = shown !== null;
+  const r = 6;
+  const round = 2 * Math.PI * r;
   return (
-    <span className="btn-split">
-      <button type="button" className={`${tone} btn-split-main`} disabled={disabled} onClick={() => onAllow(false)}>
-        {t('允许')}
-      </button>
-      <button
-        type="button"
-        className={`${tone} btn-split-more`}
-        disabled={disabled}
-        aria-label={t('更多允许方式')}
-        title={t('更多允许方式')}
-        aria-haspopup="menu"
-        aria-expanded={menu !== null}
-        onClick={(e) => {
-          setWidth(e.currentTarget.parentElement?.offsetWidth ?? 0);
-          setMenu(menu ? null : e.currentTarget);
-        }}
-      >
-        <Icon name="chevronDown" size={14} />
-      </button>
-      {/* on the page itself: inside the conversation a card's own styles would carry the menu off its button */}
-      {menu
-        ? createPortal(
-            <ContextMenu
-              x={0}
-              y={0}
-              anchor={menu}
-              align="end"
-              minWidth={width}
-              items={[{ label: t('始终允许'), title: folder, onSelect: () => onAllow(true) }]}
-              onClose={() => setMenu(null)}
-            />,
-            document.body,
-          )
-        : null}
-    </span>
+    <button
+      type="button"
+      className={always ? 'btn hold-allow is-holding' : 'btn hold-allow'}
+      disabled={disabled}
+      title={tip}
+      aria-description={tip}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        // let go anywhere still ends the hold here (a pointer already gone cannot be held: it just starts)
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* no such pointer */
+        }
+        begin();
+      }}
+      onPointerUp={end}
+      onPointerCancel={stop}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        // the browser's own click (Enter on press, Space on release) is not used: the hold decides
+        e.preventDefault();
+        if (!e.repeat) begin();
+      }}
+      onKeyUp={(e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        end();
+      }}
+      onBlur={stop}
+      onClick={(e) => {
+        // a click with no pointer or key behind it (assistive tech, a script): this once
+        if (e.detail === 0 && !hold.current) onAllow(false);
+      }}
+    >
+      {/* both words in one cell: the button is as wide as the wider one */}
+      <span className="hold-allow-words">
+        <span aria-hidden={always ? true : undefined}>{t('允许')}</span>
+        <span aria-hidden={always ? undefined : true}>{t('始终允许')}</span>
+      </span>
+      <svg className="hold-allow-ring" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+        <circle className="hold-allow-track" cx="8" cy="8" r={r} />
+        {always ? <circle className="hold-allow-fill" cx="8" cy="8" r={r} strokeDasharray={round} strokeDashoffset={round * (1 - (shown ?? 0))} /> : null}
+      </svg>
+    </button>
   );
 }
 
