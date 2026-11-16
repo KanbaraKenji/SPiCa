@@ -6058,14 +6058,10 @@ section.plugins-part > .plugins-part-title {
   color: var(--spica-accent-text);
 }
 
-/* 拒绝 beside a held 允许 (a write outside the folders): the plain button (no edge, no ground) in the text's own colour,
-   so the blue is only the ring going round. */
-.btn.btn-plain.btn-refuse {
-  color: var(--spica-muted);
-}
-
-/* 允许 that can be held for 始终允许 (chat/Blocks.tsx HoldToAllow): the ordinary button, its words in one cell so it
-   is as wide as the wider, an empty ring after them; held, the ring fills in the accent colour. */
+/* 允许 that can be held for 始终允许 (chat/Blocks.tsx HoldToAllow): the blue main button as on every confirmation,
+   its words in one cell so it is as wide as the wider, a ring after them in the button's own text colour; held, the
+   ring's track steps back and the part gone round is drawn solid (white on the blue: 4.1:1 light, 2.4:1 dark, as the
+   button's words). */
 .hold-allow {
   touch-action: none;
   user-select: none;
@@ -6095,16 +6091,16 @@ section.plugins-part > .plugins-part-title {
 }
 
 .hold-allow-track {
-  stroke: var(--spica-muted);
+  stroke: currentColor;
 }
 
 /* held: the track steps back so the part gone round reads */
 .hold-allow.is-holding .hold-allow-track {
-  stroke: var(--spica-border-strong);
+  stroke: color-mix(in srgb, currentColor 40%, transparent);
 }
 
 .hold-allow-fill {
-  stroke: var(--spica-accent);
+  stroke: currentColor;
   stroke-width: 2;
   stroke-linecap: round;
 }

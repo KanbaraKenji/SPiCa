@@ -74,13 +74,13 @@ describe('ConfirmCard', () => {
     const hold = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
     afterEach(() => vi.useRealTimers());
 
-    it('工作文件夹以外 as a tag; two buttons, 拒绝 plain, 允许 with its empty ring, the hover saying it can be held', () => {
+    it('工作文件夹以外 as a tag; two buttons as on any confirmation (拒绝, the blue 允许) with an empty ring in 允许, the hover saying it can be held', () => {
       const { allow } = card();
       expect(document.querySelector('.confirm-undo')?.textContent).toBe('工作文件夹以外');
       expect(document.querySelector('.confirm-card.is-danger')).toBeNull();
       expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['拒绝', '允许始终允许']);
-      expect(screen.getByRole('button', { name: '拒绝' }).className).toBe('btn btn-plain btn-refuse');
-      expect(allow.className).toBe('btn hold-allow');
+      expect(screen.getByRole('button', { name: '拒绝' }).className).toBe('btn');
+      expect(allow.className).toBe('btn btn-primary hold-allow');
       expect(allow.querySelector('.hold-allow-track')).not.toBeNull();
       expect(allow.querySelector('.hold-allow-fill')).toBeNull();
       expect(allow.getAttribute('title')).toBe('按住：始终允许\nD:\\共享资料\\纪要');
@@ -92,7 +92,7 @@ describe('ConfirmCard', () => {
       const { onDecide, allow } = card();
       fireEvent.pointerDown(allow, { button: 0, pointerId: 1 });
       hold(100);
-      expect(allow.className).toBe('btn hold-allow');
+      expect(allow.className).toBe('btn btn-primary hold-allow');
       fireEvent.pointerUp(allow, { pointerId: 1 });
       fireEvent.click(allow, { detail: 1 });
       expect(onDecide.mock.calls).toEqual([[true]]);
@@ -104,7 +104,7 @@ describe('ConfirmCard', () => {
       fireEvent.pointerDown(allow, { button: 0, pointerId: 1 });
       hold(500);
       // half way: the words read 始终允许 (the name too), the ring part filled
-      expect(allow.className).toBe('btn hold-allow is-holding');
+      expect(allow.className).toBe('btn btn-primary hold-allow is-holding');
       expect(screen.getByRole('button', { name: '始终允许' })).toBe(allow);
       const fill = allow.querySelector('.hold-allow-fill')!;
       const round = Number(fill.getAttribute('stroke-dasharray'));

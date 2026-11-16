@@ -1119,7 +1119,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
           </p>
         ) : (
           <div className="card-actions">
-            <button type="button" className={block.outsideFolder ? 'btn btn-plain btn-refuse' : 'btn'} disabled={sent} onClick={() => decide(false)}>
+            <button type="button" className="btn" disabled={sent} onClick={() => decide(false)}>
               {t('拒绝')}
             </button>
             {block.outsideFolder ? (
@@ -1195,7 +1195,7 @@ function HoldToAllow({ disabled, folder, onAllow }: { disabled: boolean; folder:
   return (
     <button
       type="button"
-      className={always ? 'btn hold-allow is-holding' : 'btn hold-allow'}
+      className={always ? 'btn btn-primary hold-allow is-holding' : 'btn btn-primary hold-allow'}
       disabled={disabled}
       title={tip}
       aria-description={tip}
