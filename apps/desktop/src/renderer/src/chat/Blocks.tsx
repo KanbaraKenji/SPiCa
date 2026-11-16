@@ -1107,7 +1107,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         {/* Only a dangerous one has a mark (the warning); an ordinary one's ringed i said nothing its 拒绝 / 允许
             do not (他在决策页 d26 选「只去掉普通确认卡的 i」). */}
         {danger ? <SpicaStatusIcon name="warning" size={16} /> : null}
-        <span className="card-title">{title}</span>
+        <span className="card-title" title={title} data-tip-clipped="">{title}</span>
         {danger ? <span className="confirm-undo">{t('无法撤销')}</span> : null}
         {/* a write outside the conversation's folders: said as a tag, as 无法撤销 is (the path is in the change below) */}
         {block.outsideFolder ? <span className="confirm-undo">{t('工作文件夹以外')}</span> : null}

@@ -6270,10 +6270,15 @@ section.plugins-part > .plugins-part-title {
   padding: 6px 8px 6px 12px;
 }
 
-/* Narrow (or three buttons, as a write outside the folders has): the buttons go to a line of their own, on the
-   right, before the title gets squeezed. */
+/* The title gives way first: as wide as its words when there is room (無法撤销 and the other tags right after it),
+   cut at its end when there is not, so the tags stay on its line and the buttons go to a line of their own. */
 .confirm-card > .card-head > .card-title {
-  min-width: min(14em, 100%);
+  flex: 1 1 0;
+  max-width: max-content;
+  min-width: min(4em, 100%);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .confirm-card > .card-head > svg {
@@ -6295,10 +6300,15 @@ section.plugins-part > .plugins-part-title {
   margin: 0 0 0 auto;
 }
 
+/* the title alone grows (up to its words); the buttons, or what was decided, keep to the right by their margin */
+.confirm-card > .card-head > .confirm-spacer {
+  flex: none;
+}
+
 .ask-card > .card-head .card-answer,
 .confirm-card > .card-head .card-answer {
   flex: none;
-  margin: 0 4px 0 0;
+  margin: 0 4px 0 auto;
 }
 
 /* An answer of one's own may be long: it gives way (and wraps) before the question does. */

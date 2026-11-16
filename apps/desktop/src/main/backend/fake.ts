@@ -1410,6 +1410,34 @@ export class FakeBackend implements AgentBackend {
         const after = ok ? '\n\n改好了。' : '\n\n好的，没有改。';
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
+      } else if (/两张卡/.test(text)) {
+        // Two cards waiting at once (screenshots of an ordinary card and one outside the folders in one answer): an
+        // email, and a write outside the folders (「命令」: as a command); answered in that order.
+        const folder = 'D:\\共享资料\\纪要';
+        const cards = [
+          { id: this.#id('call'), name: 'send_email', input: { to: '项目组', subject: '样机评审时间', body: '各位好，样机评审定在周四下午两点。' } as Record<string, unknown>, reason: '发送邮件给「项目组」' },
+          /命令/.test(text)
+            ? { id: this.#id('call'), name: 'run_command', input: { command: `Set-Content -Path '${folder}\\周会汇总.md' -Value '样品改用 B 方案'`, description: '把周会汇总写到纪要文件夹' } as Record<string, unknown>, reason: 'writes a file outside the folders of this conversation', outside: true }
+            : { id: this.#id('call'), name: 'edit_file', input: { path: `${folder}\\会议纪要.md`, old_string: '（待补）', new_string: '样品改用 B 方案；交期延后一周。' } as Record<string, unknown>, reason: 'writes a file outside the folders of this conversation', outside: true, change: { path: `${folder}\\会议纪要.md`, created: false, change: { hunks: [{ oldStart: 3, newStart: 3, lines: [' ## 决定', '-（待补）', '+样品改用 B 方案；交期延后一周。', ' '] }] } } },
+        ];
+        for (const c of cards) this.#emit(sessionId, { type: 'tool.call', callId: c.id, name: c.name });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), ...cards.map((c) => ({ type: 'tool_use' as const, id: c.id, name: c.name, input: c.input }))]);
+        for (const c of cards) {
+          const extra = 'outside' in c ? { cause: 'outside_folder' as const, outsideFolder: folder, ...('change' in c ? { change: c.change } : {}) } : {};
+          this.#addPending(sessionId, { kind: 'confirm', callId: c.id, toolName: c.name, input: c.input, reason: c.reason, ...extra, createdAt: isoAt(this.#now()) });
+          this.#emit(sessionId, { type: 'confirm.request', callId: c.id, name: c.name, input: c.input, reason: c.reason, ...extra });
+        }
+        this.#setStatus(sessionId, 'awaiting_confirm', cards[0]!.name);
+        for (const c of cards) {
+          waiting = { id: c.id, name: c.name, input: c.input, stored: true };
+          const ok = (await this.#waitFor(run, c.id)) === 'yes';
+          waiting = undefined;
+          this.#emit(sessionId, { type: 'tool.end', callId: c.id, name: c.name, isError: !ok, preview: ok ? '完成' : '用户拒绝了', durationMs: 200 });
+          this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: c.id, content: ok ? '完成' : '用户拒绝了', isError: !ok }]);
+        }
+        this.#setStatus(sessionId, 'thinking');
+        await this.#stream(sessionId, 'text', '好的。', signal);
+        blocks.push({ type: 'text', text: '好的。' });
       } else if (/文件夹以外/.test(text)) {
         // A write outside the conversation's folders (core: GuardCause outside_folder): asked in either approval
         // mode, with 工作文件夹以外 and 始终允许此文件夹; once that folder is allowed, the next write there just runs.
