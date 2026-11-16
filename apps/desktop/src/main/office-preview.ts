@@ -52,6 +52,11 @@ class CsvBook implements Book {
 
 const books = new Map<string, Book>();
 
+/** The preview panel was closed: no workbook kept. */
+export function forgetBooks(): void {
+  books.clear();
+}
+
 /** The book at `path` as it is now: kept while the file is unchanged (same size and modification time). */
 async function bookFor(path: string, maxBytes: number, make: (bytes: Uint8Array) => Book): Promise<Book> {
   const st = await stat(path);

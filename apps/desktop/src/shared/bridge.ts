@@ -166,6 +166,8 @@ export interface DesktopBridge extends SpicaBridge {
   /** `sheet`: which sheet of an Excel workbook (1-based; the first when absent). */
   /** `sheet`, `from`: an Excel workbook's sheet (1-based) and its rows from that row number on. */
   preview(sessionId: string | null, path: string, sheet?: number, from?: number): Promise<PreviewInfo>;
+  /** The preview panel was closed: what was kept for it (the workbooks) is let go. */
+  previewClosed(): void;
   /** The same file for a plugin preview page, refused above `maxBytes` (and above PREVIEW_PAGE_MAX_BYTES) without reading it. */
   previewFile(sessionId: string | null, path: string, maxBytes: number, peek: boolean): Promise<PreviewFile>;
   network(): Promise<NetworkState | null>;

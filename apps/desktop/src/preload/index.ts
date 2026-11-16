@@ -97,6 +97,7 @@ const bridge: DesktopBridge = {
     pick: (req) => ipcRenderer.invoke(DesktopChannel.PluginPick, req) as Promise<string | null>,
   },
   preview: (sessionId, path, sheet, from) => ipcRenderer.invoke(DesktopChannel.Preview, sessionId, path, sheet, from) as Promise<PreviewInfo>,
+  previewClosed: () => ipcRenderer.send(DesktopChannel.PreviewClosed),
   previewFile: (sessionId, path, maxBytes, peek) => ipcRenderer.invoke(DesktopChannel.PreviewFile, sessionId, path, maxBytes, peek) as Promise<PreviewFile>,
   pickFiles: (title) => ipcRenderer.invoke(DesktopChannel.PickFiles, title) as Promise<string[]>,
   reportActiveSession: (id: string | null) => ipcRenderer.send(DesktopChannel.ActiveSession, id),

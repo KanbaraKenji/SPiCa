@@ -73,6 +73,7 @@ import { captureOnce, runShots } from './shots';
 import { flatten, icoFromPngs, inkFor, TASKBAR_FRAME_SIZES } from './icon';
 import { followTaskbarTheme, readTaskbarDark, type TaskbarFollower } from './taskbar-theme';
 import { PREVIEW_SCHEME, PreviewFiles, readPreview, readPreviewFile } from './preview';
+import { forgetBooks } from './office-preview';
 import { FLOW_SCHEME, flowFile } from './flow-scheme';
 import { AttachImages } from './images';
 import { bridgeFor, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
@@ -1061,6 +1062,8 @@ const mockFiles = mockFilesFolder(process.env, app.isPackaged);
 function previewPath(full: string): string {
   return mockFiles && !existsSync(full) ? join(mockFiles, basename(full)) : full;
 }
+
+ipcMain.on(DesktopChannel.PreviewClosed, () => forgetBooks());
 
 ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unknown, sheet: unknown, from: unknown) => {
   const raw = typeof path === 'string' ? path : '';
