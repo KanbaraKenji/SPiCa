@@ -8,6 +8,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Tool } from './types.ts';
 import { changeCards, changeLine, folderChanges, notTrackedLine, snapshotFolder } from './file-changes.ts';
 import { childEnv } from '../util.ts';
+import { withAppPython, withNode, withNodeLibs, type Runtimes } from '../runtimes.ts';
 
 export interface CommandToolOptions {
   /** Default: powershell on Windows, sh elsewhere. */
@@ -18,6 +19,12 @@ export interface CommandToolOptions {
   maxOutputChars?: number;
   defaultTimeoutMs?: number;
   maxTimeoutMs?: number;
+  /** Where the `node` stand-in goes when the command's PATH has no node (runtimes.ts). Default: a temp folder. */
+  nodeShimDir?: string;
+  /** The libraries the app carries for scripts (<dir>/<name>), last on NODE_PATH (runtimes.ts). */
+  nodeLibsDir?: string;
+  /** What the computer can run now (the app's Python goes first on PATH when the computer has none; runtimes.ts). */
+  runtimes?(): Runtimes | undefined;
 }
 
 const MAX_CAPTURE_BYTES = 20_000_000;
@@ -28,6 +35,7 @@ export function createRunCommandTool(opts: CommandToolOptions = {}): Tool {
   const maxChars = opts.maxOutputChars ?? 30_000;
   const defTimeout = opts.defaultTimeoutMs ?? 120_000;
   const maxTimeout = opts.maxTimeoutMs ?? 600_000;
+  const shimDir = opts.nodeShimDir ?? join(tmpdir(), 'spica', 'node-shim');
   return {
     category: 'command',
     summaryParam: 'description',
@@ -62,8 +70,9 @@ export function createRunCommandTool(opts: CommandToolOptions = {}): Tool {
       // what changes in the folder while it runs becomes file cards (not when the folder is too big to walk quickly)
       const before = await snapshotFolder(cwd);
       const t0 = performance.now();
-      // The user's environment, minus model keys and other secret-looking variables.
-      const child = spawn(file, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: childEnv('all') });
+      // The user's environment, minus model keys and other secret-looking variables; `node` always works (the
+      // computer's own first, else the app's), and scripts can require the app's libraries (runtimes.ts).
+      const child = spawn(file, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: withAppPython(withNodeLibs(withNode(childEnv('all'), shimDir).env, opts.nodeLibsDir), opts.runtimes?.()) });
       const chunks: Buffer[] = [];
       let captured = 0;
       let dropped = 0;

@@ -11,6 +11,8 @@ export default tseslint.config(
       '**/out/**',
       '**/dist/**',
       'apps/*/release/**',
+      // libraries bundled for the Agent's scripts (apps/desktop/scripts/node-libs.mjs)
+      'apps/*/node-libs/**',
       'branding/**',
       '.venv/**',
       '.idea/**',

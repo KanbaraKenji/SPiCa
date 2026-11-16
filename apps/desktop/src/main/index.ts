@@ -112,6 +112,16 @@ const capturePath = devSwitch(process.env, app.isPackaged, 'SPICA_CAPTURE');
 const shotsDir = devSwitch(process.env, app.isPackaged, 'SPICA_SHOTS');
 const automated = Boolean(capturePath || shotsDir);
 const hidden = process.env.SPICA_HIDDEN === '1' && !app.isPackaged;
+/** The uv the app carries (resources/uv; a development run: apps/desktop/uv, when fetched). */
+const UV_EXE = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'uv', process.platform === 'win32' ? 'uv.exe' : 'uv');
+/**
+ * Where the app's own Python goes. An installed copy on Windows: %LOCALAPPDATA%\<name>\python, on this computer only
+ * (the settings folder is in the roaming profile, which would carry hundreds of MB from one computer to the next);
+ * the uninstaller removes that folder (resources/installer/finish-options.nsh). Elsewhere: in the settings folder.
+ */
+const PYTHON_ROOT =
+  app.isPackaged && process.platform === 'win32' && process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, APP_NAME, 'python') : join(app.getPath('userData'), 'python');
+
 // A hidden test window is kept painting (Windows would report it as covered and Chromium would stop drawing it).
 if (hidden) app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
@@ -231,6 +241,11 @@ function backendConfig(): DesktopBackendConfig {
       memory: { enabled: settings.get().memory, autoTidy: settings.get().memoryAutoTidy },
       // Each provider's 花费上限 (none by default): what it may cost in all; no other limit.
       budget: providerBudget(),
+      // Libraries run_command's scripts can require (exceljs, papaparse; scripts/node-libs.mjs writes them).
+      nodeLibsDir: app.isPackaged ? join(process.resourcesPath, 'node-libs') : join(app.getAppPath(), 'node-libs'),
+      // The app's own Python, downloaded by the uv it carries after the user confirms (no setting: the computer's
+      // own Python first, the app's when there is none).
+      python: { root: PYTHON_ROOT, ...(existsSync(UV_EXE) ? { uvExe: UV_EXE } : {}) },
       // Linked into the backend entry; named here as the core expects.
       extractorModules: ['@spica/extract'],
       extensions: [
