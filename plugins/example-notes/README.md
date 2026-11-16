@@ -11,9 +11,11 @@ An example Spica plugin that shows every part of the plugin format:
 | Hook | `hooks/notes-hint.js` | Injects one line after the system prompt |
 | Hook | `hooks/replace-confirm.js` | Asks before `write_note` overwrites a note (`replace: true`); the confirmation is marked `irreversible`, so the card shows 无法撤销 |
 | Mock data | `mock/catalog.json` | A fictional book catalog used when mock mode is on |
+| Settings form | `manifest.json` · `user_config` → `server/config.js` | 笔记文件夹 (a folder) and 样例目录地址 (an address): Spica draws the form under 设置 › 插件 › Notes › 详情, stores the values and hands them to the servers as `SPICA_USER_CONFIG` |
+| Page of its own | `views/connection-test.json` → `ui/connection-test.*`, `services/connection-test.json` → `server/connection-test.js` | 测试连接, a tab after 详情: tries the catalog address once. What a form cannot do; it stores nothing |
 
 Notes are stored in the plugin's data folder, which survives updates. With mock mode
-off and no `catalogUrl` in the data folder's `config.json`, `search_catalog` explains that
+off and no 样例目录地址 in the settings form, `search_catalog` explains that
 the service is not configured and suggests mock mode.
 
 `summarize_note` asks the model the user has set up in Spica for a summary (MCP sampling).

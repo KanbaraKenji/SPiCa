@@ -142,6 +142,20 @@ describe('prices and context windows come from the catalog', () => {
     expect(presetProblems({})).toEqual(['models must be a list of model connections']);
     expect(presetProblems(PRESETS)).toEqual([]);
   });
+
+  it('presets may name the request headers each person fills in, and where WSO2 sends its credentials; never header values', () => {
+    const relay = { id: 'r', name: 'R', kind: 'openai-compatible', baseUrl: 'https://gateway.example.com/v1', models: [{ id: 'm', contextWindow: 1000 }] };
+    const ok = { ...relay, headers: ['X-API-Key'] };
+    expect(presetProblems([ok])).toEqual([]);
+    expect(effectiveCatalog(BUILTIN_CATALOG, undefined, [ok as CatalogPreset]).providers[0]).toMatchObject({ id: 'r', headers: ['X-API-Key'] });
+    expect(effectiveCatalog(BUILTIN_CATALOG, undefined, [relay as CatalogPreset]).providers[0]).not.toHaveProperty('headers');
+    expect(presetProblems([{ ...relay, headers: { 'X-API-Key': 'secret' } }])).toEqual(['models[0] (r): headers must be a list of header names (values are typed by each person)']);
+    expect(presetProblems([{ ...relay, headers: ['X API Key', 'Content-Type'] }])).toEqual(['models[0] (r): headers: "X API Key" is not a header name', 'models[0] (r): headers: Content-Type is set by the app']);
+    const gw = { ...relay, kind: 'wso2', tokenUrl: 'https://gateway.example.com/token' };
+    expect(presetProblems([{ ...gw, credentialsIn: 'body' }])).toEqual([]);
+    expect(effectiveCatalog(BUILTIN_CATALOG, undefined, [{ ...gw, credentialsIn: 'body' } as CatalogPreset]).providers[0]).toMatchObject({ credentialsIn: 'body' });
+    expect(presetProblems([{ ...gw, credentialsIn: 'post' }, { ...relay, credentialsIn: 'basic' }])).toEqual(['models[0] (r): credentialsIn must be basic or body, for wso2 only', 'models[1] (r): id used twice', 'models[1] (r): credentialsIn must be basic or body, for wso2 only']);
+  });
 });
 
 describe('get the models from the provider', () => {

@@ -112,6 +112,8 @@ function toView(raw: PluginDescription, update?: string, icon?: PluginIconView):
           model: { reason: d.model.reason, allowed: d.model.allowed },
         }
       : {}),
+    ...(d.config ? { config: d.config } : {}),
+    ...(d.waiting ? { waiting: true } : {}),
   };
 }
 
@@ -655,6 +657,9 @@ export class RealPluginService implements PluginService {
           if (d.model) message = withModelNotice(t('已启用。'), d);
           break;
         }
+        case 'setConfig':
+          await manager.setUserConfig(cmd.name, cmd.input);
+          break;
         case 'modelAllowed': {
           // i18n-skip: a call the page never makes (for whoever writes one)
           if (typeof cmd.allowed !== 'boolean') return { ok: false, message: 'allowed 须为 true 或 false。', state: this.#state() };

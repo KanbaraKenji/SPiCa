@@ -91,6 +91,31 @@ describe('picking a language', () => {
     expect(localizeDescription(plain, 'en')).toBe(plain);
   });
 
+  it('the settings form: each field’s title, description and placeholder; a key it does not have is a warning', async () => {
+    const { manifest, issues } = validateManifest({
+      ...BASE,
+      user_config: { folder: { type: 'folder', title: 'Notes folder', description: 'Where notes go' }, url: { type: 'url', title: 'Catalog URL', placeholder: 'https://…' } },
+      i18n: { 'zh-CN': { user_config: { folder: { title: '笔记文件夹' }, url: { title: '目录地址', placeholder: '网址' } } } },
+    });
+    expect(issues).toEqual([]);
+    const d = localizeDescription(
+      { displayName: 'Notes', description: '', skills: [], commands: [], views: [], config: { fields: [{ key: 'folder', title: 'Notes folder', description: 'Where notes go' }, { key: 'url', title: 'Catalog URL', placeholder: 'https://…' }] }, i18n: manifest!.i18n! },
+      'zh-TW',
+    );
+    expect(d.config?.fields).toEqual([
+      { key: 'folder', title: '笔记文件夹', description: 'Where notes go' },
+      { key: 'url', title: '目录地址', placeholder: '网址' },
+    ]);
+    const dir = await mkdtemp(join(tmpdir(), 'spica-i18n-'));
+    try {
+      await writeFile(join(dir, 'manifest.json'), JSON.stringify({ ...BASE, user_config: { folder: { type: 'folder', title: 'Notes folder' } }, i18n: { en: { user_config: { fodler: { title: 'Typo' } } } } }));
+      const f = await readPluginFolder(dir);
+      expect(f.issues.map((i) => [i.where, i.severity])).toEqual([['manifest.json · i18n.en.user_config.fodler', 'warning']]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('a card read from someone else’s index keeps only text', () => {
     expect(offerTexts({ en: { displayName: 'Notes', description: 4, views: { a: 'b' } }, fr: { displayName: 'x' }, 'zh-TW': 'bad' })).toEqual({ en: { displayName: 'Notes' } });
     expect(offerTexts('x')).toBeUndefined();

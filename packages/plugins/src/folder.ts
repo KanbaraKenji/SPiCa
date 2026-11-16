@@ -315,13 +315,17 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
     }
   }
 
-  // i18n names views, commands and skills by id: one the plugin does not have is a typo (a warning, the rest is used).
+  // i18n names views, commands, skills and user_config keys by id: one the plugin does not have is a typo (a warning, the rest is used).
   for (const [lang, t] of Object.entries(out.manifest?.i18n ?? {})) {
     const known = { views: out.views.map((v) => v.id), commands: out.commands.map((c) => c.id), skills: out.skills.map((s) => s.id) };
     for (const key of ['views', 'commands', 'skills'] as const) {
       for (const id of Object.keys(t[key] ?? {})) {
         if (!known[key].includes(id)) issue(`manifest.json · i18n.${lang}.${key}.${id}`, `插件里没有${key === 'views' ? '视图' : key === 'commands' ? '命令' : '技能'}「${id}」。`, 'warning');
       }
+    }
+    const keys = (out.manifest?.userConfig ?? []).map((f) => f.key);
+    for (const key of Object.keys(t.config ?? {})) {
+      if (!keys.includes(key)) issue(`manifest.json · i18n.${lang}.user_config.${key}`, `user_config 里没有「${key}」。`, 'warning');
     }
   }
 

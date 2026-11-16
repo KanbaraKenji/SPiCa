@@ -30,7 +30,7 @@ import { openProviderNext } from './settings/Models';
 import type { PluginsTab } from './settings/Plugins';
 import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
-import { UpdateCard, UpdateRailButton, useUpdateNotice } from './shell/UpdateNotice';
+import { UpdateCard, UpdateRailButton, useUpdateNotice, type WaitingPlugin } from './shell/UpdateNotice';
 import { ForcedUpdate } from './shell/ForcedUpdate';
 import { InboxView, type InboxProject } from './shell/InboxView';
 import type { UsageApi } from './settings/Usage';
@@ -107,7 +107,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [deletingProject, setDeletingProject] = useState<null | { id: string; name: string }>(null);
   const [deletingChat, setDeletingChat] = useState<null | { id: string; name: string }>(null);
   const update = useUpdateState(bridge);
-  const updateNotice = useUpdateNotice(update);
+  // plugins turned on but waiting for required settings (待设置): said where plugin updates are
+  const [pluginsWaiting, setPluginsWaiting] = useState<WaitingPlugin[]>([]);
+  const updateNotice = useUpdateNotice(update, pluginsWaiting);
   const backendState = useBackendState(bridge, agent);
   const installUpdate = () => void bridge.updates.run('install');
   // Whether any model is configured; checked at start and whenever settings close.
@@ -519,7 +521,15 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     }),
     [bridge],
   );
-  const pluginsApi = useMemo(() => ({ ...bridge.plugins, pickFolder: () => bridge.pickFolder(t('选择插件文件夹')) }), [bridge]);
+  const pluginsApi = useMemo(
+    () => ({
+      ...bridge.plugins,
+      pickFolder: () => bridge.pickFolder(t('选择插件文件夹')),
+      // a folder or file field of a plugin's settings form
+      pickPath: async (kind: 'folder' | 'file', title: string) => (kind === 'folder' ? bridge.pickFolder(title) : ((await bridge.pickFiles(title))[0] ?? null)),
+    }),
+    [bridge],
+  );
   // 收件箱 shows only while a plugin that provides mail is on.
   const [mailSource, setMailSource] = useState(false);
   // 模拟模式 (设置 › 插件): the inbox says its mail is demo data.
@@ -537,6 +547,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           if (!alive) return;
           setMailSource(r.state.plugins.some((p) => p.mail));
           setPluginMock(r.state.mock);
+          setPluginsWaiting(r.state.plugins.filter((p) => p.waiting && p.config?.missing.length).map((p) => ({ displayName: p.displayName, missing: p.config!.missing.length })));
         })
         .catch(() => undefined);
     };

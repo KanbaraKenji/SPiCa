@@ -67,6 +67,108 @@ export interface ProviderFields {
   spendLimitUsd?: number | null;
   /** How long the period is, in days: 7, 30, or any 1..SPEND_PERIOD_MAX_DAYS (自定义). Absent: 30. */
   spendPeriodDays?: number;
+  /**
+   * WSO2: where the Consumer Key and Secret go when a token is fetched. null / absent: 自动 (the core tries
+   * HTTP Basic, then the form body, and keeps the one that worked). Absent in a draft: keep what is saved.
+   */
+  credentialsIn?: CredentialsIn | null;
+}
+
+/** WSO2 token request: the client credentials in an HTTP Basic header or in the form body. */
+export type CredentialsIn = 'basic' | 'body';
+
+export const CREDENTIALS_IN: readonly { value: CredentialsIn | null; label: string }[] = [
+  { value: null, label: N_('自动') },
+  { value: 'basic', label: 'HTTP Basic' },
+  { value: 'body', label: N_('表单') },
+];
+
+/** A saved credentialsIn: 'basic' or 'body', else null (自动). */
+export function credentialsIn(v: unknown): CredentialsIn | null {
+  return v === 'basic' || v === 'body' ? v : null;
+}
+
+/**
+ * 自定义请求头 as the form edits it: a name and, when typed, a value. Values are treated as secrets (a gateway's
+ * own key header such as X-API-Key): saved sealed like the key, never sent back to the page. `saved`: the row
+ * came from the saved connection, so an empty value keeps the saved one.
+ */
+export interface HeaderDraft {
+  name: string;
+  value?: string;
+  saved?: boolean;
+}
+
+/** A saved request header as the page sees it: its name and its value masked (keyMaskText). */
+export interface HeaderView {
+  name: string;
+  mask: string;
+}
+
+/** Headers the app sets itself on every model request; a connection cannot set them. */
+const RESERVED_HEADERS = new Set(['accept', 'content-type', 'content-length', 'host', 'connection', 'transfer-encoding']);
+/** An HTTP header name (RFC 9110 token). */
+const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}$/;
+/** A value that fits in one header line. */
+const HEADER_VALUE = /^[^\r\n\0]{1,4000}$/;
+
+/** The rows that name a header (blank rows are ignored), names trimmed. */
+export function namedHeaders(rows: readonly HeaderDraft[] | undefined): HeaderDraft[] {
+  // (rows come over IPC too: anything not shaped like a row is dropped)
+  return (Array.isArray(rows) ? rows : [])
+    .filter((h): h is HeaderDraft => Boolean(h) && typeof h.name === 'string' && h.name.trim() !== '' && (h.value === undefined || typeof h.value === 'string'))
+    .map((h) => ({ name: h.name.trim(), ...(h.value !== undefined ? { value: h.value } : {}), ...(h.saved ? { saved: true } : {}) }));
+}
+
+/** What is wrong with the 自定义请求头 rows, or null. */
+export function headerProblem(rows: readonly HeaderDraft[] | undefined): string | null {
+  const seen = new Set<string>();
+  for (const h of namedHeaders(rows)) {
+    const key = h.name.toLowerCase();
+    if (!HEADER_NAME.test(h.name)) return t('请求头名称「{name}」只能包含字母、数字和 - _ .', { name: h.name });
+    if (RESERVED_HEADERS.has(key)) return t('请求头「{name}」由应用设置', { name: h.name });
+    if (seen.has(key)) return t('请求头「{name}」重复', { name: h.name });
+    seen.add(key);
+    const v = h.value?.trim() ?? '';
+    if (!v && !h.saved) return t('请填写请求头「{name}」的值', { name: h.name });
+    if (v && !HEADER_VALUE.test(v)) return t('请求头「{name}」的值不能换行', { name: h.name });
+  }
+  return null;
+}
+
+/** One header row's problems, by cell: shown beside the 名称 or 值 that is wrong. */
+export interface HeaderCellError {
+  name?: string;
+  value?: string;
+}
+
+/**
+ * The problems of each row when the key goes in request headers (认证方式 请求头): every row needs a name and
+ * a value (a saved one counts), and at least one row. Indexed like `rows`; empty when all is well.
+ */
+export function headerCellErrors(rows: readonly HeaderDraft[] | undefined): HeaderCellError[] {
+  const list = Array.isArray(rows) && rows.length ? rows : [{ name: '' }];
+  const seen = new Set<string>();
+  const out = list.map((h): HeaderCellError => {
+    const e: HeaderCellError = {};
+    const name = (h?.name ?? '').trim();
+    const key = name.toLowerCase();
+    if (!name) e.name = t('请填写请求头名称');
+    else if (!HEADER_NAME.test(name)) e.name = t('只能包含字母、数字和 - _ .');
+    else if (RESERVED_HEADERS.has(key)) e.name = t('由应用设置，不能填写');
+    else if (seen.has(key)) e.name = t('名称重复');
+    if (name) seen.add(key);
+    const v = h?.value?.trim() ?? '';
+    if (!v && !h?.saved) e.value = t('请填写值');
+    else if (v && !HEADER_VALUE.test(v)) e.value = t('值不能换行');
+    return e;
+  });
+  return out.some((e) => e.name || e.value) ? out : [];
+}
+
+/** Whether a header carries a value (typed now or saved): it can stand in for the API Key (a gateway's own key header). */
+function hasHeaderValue(rows: readonly HeaderDraft[] | undefined): boolean {
+  return namedHeaders(rows).some((h) => h.saved || h.value?.trim());
 }
 
 /** What a provider with a 花费上限 spent in its current period (priced calls), and its requests without a price there. */
@@ -137,6 +239,8 @@ export interface ProviderView extends ProviderFields {
   models: ConnectionModel[];
   /** Holds the model new conversations use. */
   isDefault: boolean;
+  /** 自定义请求头 as saved, values masked (the form edits them as `headers`). */
+  savedHeaders?: HeaderView[];
   /** Comes from the developer's .env.local and cannot be edited here. */
   readOnly?: boolean;
 }
@@ -150,6 +254,26 @@ export interface ProviderDraft extends ProviderFields {
   id?: string;
   secret?: string;
   models?: ConnectionModel[];
+  /** 自定义请求头, the whole list; absent: keep the saved ones (a connected script's change). */
+  headers?: HeaderDraft[];
+  /**
+   * 认证方式 picked in the form: the API Key, or keys in request headers. The two are exclusive: saving one
+   * drops what was saved for the other. Absent (a connected script's change): both kept as saved.
+   */
+  authBy?: AuthBy;
+}
+
+/** 认证方式: the API Key (Authorization), or a gateway's own request headers (X-API-Key…). */
+export type AuthBy = 'key' | 'header';
+
+/** The 认证方式 a saved connection reads as: request headers when it has them and no key. */
+export function authByOf(p: { kind: ProviderKind; hasSecret: boolean; savedHeaders?: readonly HeaderView[] | undefined }): AuthBy {
+  return p.kind !== 'wso2' && !p.hasSecret && (p.savedHeaders?.length ?? 0) > 0 ? 'header' : 'key';
+}
+
+/** Whether a draft sends its key in request headers (not for 公司网关（WSO2）, which fetches a token). */
+export function keyInHeaders(d: Pick<ProviderDraft, 'kind' | 'authBy'>): boolean {
+  return d.kind !== 'wso2' && d.authBy === 'header';
 }
 
 /** A connection with its key, for building the real connection (main process only). */
@@ -157,6 +281,8 @@ export interface ResolvedProvider extends ProviderFields {
   id: string;
   secret: string;
   models: ConnectionModel[];
+  /** 自定义请求头 with their values (main process only). */
+  headerValues?: Record<string, string>;
 }
 
 /**
@@ -224,7 +350,7 @@ export function secretLabel(kind: ProviderKind): string {
  */
 export const WSO2_KEY_LABEL = 'Consumer Key';
 
-export type FieldErrors = Partial<Record<keyof ProviderFields | 'secret', string>>;
+export type FieldErrors = Partial<Record<keyof ProviderFields | 'secret' | 'headers', string>>;
 
 function isUrl(v: string): boolean {
   return /^https?:\/\/[^\s/]+/i.test(v.trim());
@@ -266,8 +392,20 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: {
     if (!d.clientId.trim()) e.clientId = t('请填写 Consumer Key');
   }
   const secret = d.secret?.trim();
-  // Local providers (Ollama, LM Studio) need no key.
-  if (!secret && !hasSavedSecret && opts.needsKey !== false) e.secret = t('请填写 {field}', { field: secretLabel(d.kind) });
+  if (keyInHeaders(d)) {
+    // 认证方式 请求头: the rows stand in for the API Key; each needs a name and a value.
+    const cell = headerCellErrors(d.headers).find((c) => c.name || c.value);
+    if (cell) e.headers = (cell.name ?? cell.value)!;
+  } else if (d.authBy === 'key') {
+    // 认证方式 API Key: request headers are not sent (and not kept when saved).
+    if (!secret && !hasSavedSecret && opts.needsKey !== false) e.secret = t('请填写 {field}', { field: secretLabel(d.kind) });
+  } else {
+    // A connected script's change (no 认证方式): as saved; a header with a value stands in for the key.
+    const keyInHeader = d.kind !== 'wso2' && hasHeaderValue(d.headers);
+    if (!secret && !hasSavedSecret && opts.needsKey !== false && !keyInHeader) e.secret = t('请填写 {field}', { field: secretLabel(d.kind) });
+    const headers = headerProblem(d.headers);
+    if (headers) e.headers = headers;
+  }
   if (!opts.forTest && list) {
     const missing = list.find((m) => m.contextWindow === null || !Number.isInteger(m.contextWindow) || m.contextWindow < 1);
     if (missing) e.contextWindow = t('请填写「{model}」的上下文上限', { model: missing.id });

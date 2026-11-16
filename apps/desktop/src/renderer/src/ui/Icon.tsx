@@ -19,6 +19,7 @@ const PATHS = {
   plugin: 'M2.5 2.5h4.5v4.5h-4.5z M9 2.5h4.5v4.5H9z M2.5 9h4.5v4.5h-4.5z M9 9h4.5v4.5H9z',
   // A confirmation (something needs your permission).
   shield: 'M8 1.8l5 1.9v4.1c0 3.1-2.1 5.3-5 6.4-2.9-1.1-5-3.3-5-6.4V3.7z',
+  lock: 'M4 7.5h8v6H4z M5.8 7.5V5.3a2.2 2.2 0 0 1 4.4 0v2.2',
   chevronRight: 'M6 4l4 4-4 4',
   chevronLeft: 'M10 4L6 8l4 4',
   chevronDown: 'M4 6l4 4 4-4',

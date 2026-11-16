@@ -42,6 +42,7 @@
 | `permissions.model` | 否 | 借用户在 Spica 里配好的模型：`{ "reason": "一句为什么" }`，没有每日花费上限，用户可以在插件页允许或禁止；旧的 `max_usd_per_day` 能读，不再起作用。见 `model.md`（rc.2 之后的版本才有） |
 | `mock` | 否 | `{ "supported": true, "description": "模拟时会怎样" }` |
 | `mail` | 否 | 邮件来源声明，见 `mail.md` |
+| `user_config` | 否 | 让用户填的设置（地址、账号、密码、开关、选项、文件夹……）：Spica 画表单、存值，server 读 `SPICA_USER_CONFIG`。见 `user-config.md` |
 
 ## 插件图标
 
@@ -77,14 +78,15 @@ Spica 的界面有简体、繁体、英语三种。字段照常写一种语言�
     "mock_description": "Answers from sample data",
     "views": { "main": "To-do" },
     "commands": { "add": { "description": "Add a to-do", "argument_hint": "<text>" } },
-    "skills": { "tidy": "How to tidy the list" }
+    "skills": { "tidy": "How to tidy the list" },
+    "user_config": { "api_url": { "title": "Service URL", "placeholder": "https://…" } }
   },
   "zh-TW": { "display_name": "待辦" }
 }
 ```
 
-- 语言只有 `zh-CN`、`zh-TW`、`en`；每个字段都可以不写，没写的显示原字段，繁体没写先用简体那份。`views` / `commands` / `skills` 按 id 写。
-- 只换给人看的字（插件页、市场卡片、页面名字、`/` 命令说明）；模型看到的工具描述、技能正文不变。
+- 语言只有 `zh-CN`、`zh-TW`、`en`；每个字段都可以不写，没写的显示原字段，繁体没写先用简体那份。`views` / `commands` / `skills` 按 id 写，`user_config` 按设置表单的键写（`title`、`description`、`placeholder`）。
+- 只换给人看的字（插件页和设置表单、市场卡片、页面名字、`/` 命令说明）；模型看到的工具描述、技能正文不变。
 - 写错了只给警告，不挡安装。页面里 `window.spica.locale` 是当前界面语言，切换时收到 `{ type: 'locale', locale }`（见 `ui.md`）。
 
 ## `mcp/<id>.json` / `services/<id>.json`
@@ -100,7 +102,7 @@ Spica 的界面有简体、繁体、英语三种。字段照常写一种语言�
 - `concurrency`：同时最多处理几个工具调用（1 或更大的整数，不写就不限）。操作只有一个的东西（一个程序的窗口、一个串口）时写 `1`，多出来的调用排队，排队时间不算超时。好几份 Spica 同时开着时，跨应用的独占要插件自己用系统的锁，写法见作者指南 2e 节。
 - 插件只有一个 `mcp/` server 时，工具名是 `<插件名>__<工具>`；有多个时是 `<插件名>-<id>__<工具>`。
 
-Spica 启动 server 时给的环境变量：`SPICA_PLUGIN_DATA`（插件自己的数据文件夹，升级、回滚都保留；除了它只写用户在对话里点名的文件夹，见 `hooks-permissions.md`「写文件」）、`SPICA_PLUGIN_DIR`（安装目录，只读）、`SPICA_MOCK`（`1` = 模拟模式）、`SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION`、`SPICA_USER_ACCOUNT`（用户的账号：Windows 用户文件夹名转大写，`C:\Users\alex.chen` → `ALEX.CHEN`，用户在设置里改过就是改过的；取不到时为空。要账号一律读它，不要自己从 `USERPROFILE`、`USERNAME`、`os.userInfo()` 取）。另外给应用的网络设置：代理（`HTTPS_PROXY` 等，加 `NODE_USE_ENV_PROXY=1`）和信任的证书（`NODE_EXTRA_CA_CERTS`、`SSL_CERT_FILE` 等），见 `internal-services.md`。其他环境变量只继承白名单（PATH、TEMP、用户目录、`COMPUTERNAME`、`USERNAME` 这类；取电脑名也可以用 `os.hostname()`），像密钥的名字一律不传，所以凭据不要从环境变量读。
+Spica 启动 server 时给的环境变量：`SPICA_PLUGIN_DATA`（插件自己的数据文件夹，升级、回滚都保留；除了它只写用户在对话里点名的文件夹，见 `hooks-permissions.md`「写文件」）、`SPICA_PLUGIN_DIR`（安装目录，只读）、`SPICA_MOCK`（`1` = 模拟模式）、`SPICA_PLUGIN_NAME`、`SPICA_PLUGIN_VERSION`、`SPICA_USER_ACCOUNT`（用户的账号：Windows 用户文件夹名转大写，`C:\Users\alex.chen` → `ALEX.CHEN`，用户在设置里改过就是改过的；取不到时为空。要账号一律读它，不要自己从 `USERPROFILE`、`USERNAME`、`os.userInfo()` 取）、`SPICA_APP_NAME`（应用现在的名字，公司可能改过；提示里要说应用名时用它，没有时按 Spica 算）。另外给应用的网络设置：代理（`HTTPS_PROXY` 等，加 `NODE_USE_ENV_PROXY=1`）和信任的证书（`NODE_EXTRA_CA_CERTS`、`SSL_CERT_FILE` 等），见 `internal-services.md`。其他环境变量只继承白名单（PATH、TEMP、用户目录、`COMPUTERNAME`、`USERNAME` 这类；取电脑名也可以用 `os.hostname()`），像密钥的名字一律不传，所以凭据不要读自己起名的环境变量；用户填的设置在 `SPICA_USER_CONFIG` 里（`user-config.md`）。
 
 ### 要跑很久的工具
 

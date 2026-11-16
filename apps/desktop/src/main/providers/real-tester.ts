@@ -5,7 +5,7 @@ import type { ProviderConfig } from '@spica/core';
 import type { ProbeResult } from '@spica/protocol';
 import { netWords } from '../../shared/errors';
 import { t } from '../../shared/i18n';
-import { secretLabel, validateDraft, type ProviderDraft } from '../../shared/providers';
+import { keyInHeaders, secretLabel, validateDraft, type ProviderDraft } from '../../shared/providers';
 import { toProviderConfig } from '../backend/to-config';
 import type { ConnectionTester } from './tester';
 
@@ -52,7 +52,7 @@ function probeAdvice(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' | 'model'
   }
   switch (r.errorCode) {
     case 'auth':
-      return draft.kind === 'wso2' ? t('获取 token 失败，请检查 Consumer Key、Consumer Secret 和「取 token 地址」。') : t('密钥无效或已失效，请检查 {secret}。', { secret: secretLabel(draft.kind) });
+      return draft.kind === 'wso2' ? t('获取 token 失败，请检查 Consumer Key、Consumer Secret 和「取 token 地址」。') : keyInHeaders(draft) ? t('密钥无效或已失效，请检查请求头的值。') : t('密钥无效或已失效，请检查 {secret}。', { secret: secretLabel(draft.kind) });
     case 'not_found':
       return t('找不到模型「{model}」或地址无效，请检查模型和{url}。', { model, url });
     case 'bad_request':
@@ -73,12 +73,12 @@ function probeAdvice(r: ProbeResult, draft: Pick<ProviderDraft, 'kind' | 'model'
 }
 
 export function createRealTester(probe: Probe): ConnectionTester {
-  return async (draft, savedSecret, _signal, needsKey) => {
+  return async (draft, savedSecret, _signal, needsKey, headerValues) => {
     const errors = validateDraft(draft, Boolean(savedSecret), { forTest: true, ...(needsKey === false ? { needsKey } : {}) });
     const first = Object.values(errors)[0];
     if (first) return { ok: false, message: first };
-    const secret = draft.secret?.trim() || savedSecret || '';
-    const r = await probe(toProviderConfig({ ...draft, id: 'connection-test', secret }), draft.model.trim(), TIMEOUT_MS);
+    const secret = keyInHeaders(draft) ? '' : draft.secret?.trim() || savedSecret || '';
+    const r = await probe(toProviderConfig({ ...draft, id: 'connection-test', secret, ...(headerValues ? { headerValues } : {}) }), draft.model.trim(), TIMEOUT_MS);
     return { ok: r.ok, message: probeMessage(r, draft), ...(r.ok && r.suggestedBaseUrl ? { suggestedBaseUrl: r.suggestedBaseUrl } : {}) };
   };
 }

@@ -104,6 +104,17 @@ describe('搜索设置', () => {
     expect(document.querySelectorAll('.search-hit')).toHaveLength(0);
   });
 
+  it('a field of a plugin’s settings form is found by its title, and goes to the plugin', async () => {
+    const withForm = new FakePluginService('D:/Spica/plugins', { config: true });
+    const p = show({ tab: 'about', plugins: { run: (cmd) => withForm.run(cmd), onChanged: () => () => {} } });
+    fireEvent.change(screen.getByLabelText('搜索设置'), { target: { value: '汇总方式' } });
+    const plugins = screen.getByRole('region', { name: '插件' });
+    const hit = await within(plugins).findByRole('button', { name: /汇总方式/ });
+    expect(hit.querySelector('.search-hit-title')?.textContent).toBe('插件 › 工单查询（示例） › 汇总方式');
+    fireEvent.click(hit);
+    expect(p.onTab).toHaveBeenCalledWith('plugins');
+  });
+
   it('a section’s name finds all of it', () => {
     show({ tab: 'about' });
     fireEvent.change(screen.getByLabelText('搜索设置'), { target: { value: '账号' } });

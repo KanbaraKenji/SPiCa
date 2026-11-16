@@ -530,6 +530,12 @@ a:hover {
   color: var(--spica-placeholder);
 }
 
+/* A box saying what is wrong inside it (settings/Problem.tsx, the plugin form, 请求头): no example under the red
+   words; it is back once they go. */
+.has-problem-in-box .input::placeholder {
+  color: transparent;
+}
+
 /* A drop-down (ui/Select.tsx): the words on the left, the arrow as far from the right edge as they are from the
    left, both --control-pad-x in from the border. */
 .input.select-box {
@@ -4230,25 +4236,87 @@ button.ctx-row:hover {
   margin: 12px 0 0;
 }
 
+/* The model form: one box of rows split by thin lines, as the plugin settings form (.group-box, settings/FormRow.tsx):
+   the name on the left, what you fill in on the right, every one-line box as wide as the plugin form's (240; the
+   花费上限 amount 120); the model list and 请求头 under their name, as wide as the row. */
 .provider-editor {
   margin-top: 16px;
-  padding: 16px;
-  border-radius: var(--radius-l);
-  border: 1px solid var(--spica-border);
-  background: var(--spica-surface);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
-.field-stack {
-  /* Room for 「Consumer Secret」 and 「取 token 地址」 on one line. */
-  grid-template-columns: 116px 1fr;
-  align-items: start;
+.provider-editor .form-row > .field-control > .input,
+.provider-editor .form-row > .field-control > .has-problem-in-box {
+  width: 240px;
+  max-width: 100%;
 }
 
-.field-stack > .field-label {
-  padding-top: 6px;
+.provider-editor .form-row > .field-control > .has-problem-in-box > .input {
+  width: 100%;
+  max-width: none;
+}
+
+/* 「API 文档」 under the key and 本周期已花 under 花费上限: at the right, under the box. */
+.provider-editor .form-row .field-link {
+  align-self: flex-end;
+}
+
+.provider-editor .form-row .spend-limit {
+  justify-content: flex-end;
+}
+
+.provider-editor .form-row .spend-limit .run-limit .input {
+  width: 120px;
+}
+
+/* the model list and 请求头: as wide as the row, their right edge on the boxes' */
+.provider-editor .form-row .model-picker,
+.provider-editor .form-row .header-rows {
+  max-width: none;
+}
+
+/* A problem after a name stays on its line (模型, 花费上限). */
+.provider-editor .form-row .problem-beside {
+  white-space: nowrap;
+}
+
+/* 服务商: the drop-down and 粘贴配置 at the right of the row as the other boxes (together 240 wide); the pasting
+   box, and what was filled in from it, on a line of their own under the row, full width, the drop-down left
+   where it was. */
+.provider-editor .form-row > .field-control.provider-choice,
+.provider-editor .form-row > .field-control.provider-choice > .paste-config {
+  display: contents;
+}
+
+.provider-editor .form-row > .field-control.provider-choice > .input {
+  flex: none;
+  width: 200px;
+}
+
+/* the box open hides the button: the drop-down keeps its place */
+.provider-editor .form-row > .field-control.provider-choice:has(.paste-config-box) > .input {
+  margin-right: calc(var(--control-h) + 8px);
+}
+
+.provider-editor .provider-choice .paste-config > .btn {
+  flex: none;
+  margin-left: -8px;
+}
+
+.provider-editor .provider-choice .paste-config-box,
+.provider-editor .provider-choice .paste-config-result {
+  flex: 1 0 100%;
+}
+
+.provider-editor .form-row .provider-choice .paste-config-input {
+  max-width: none;
+}
+
+/* 更多选项 and the note on what saving does: in the box, lined up with the names. */
+.provider-editor > .provider-more {
+  padding: 8px;
+}
+
+.provider-editor > .provider-pointer-note {
+  padding: 12px 16px;
 }
 
 .field-control {
@@ -4271,23 +4339,6 @@ button.ctx-row:hover {
 
 .input.is-invalid {
   border-color: var(--spica-danger);
-}
-
-/* 服务商 and 粘贴配置 on one line. */
-.provider-choice {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.field .provider-choice > .input {
-  flex: 1 1 220px;
-  max-width: 320px;
-}
-
-.provider-choice > .paste-config {
-  flex: 1 1 auto;
 }
 
 .provider-tail {
@@ -4322,13 +4373,6 @@ button.ctx-row:hover {
 .field .model-picker > .model-picker-search {
   max-width: none;
   height: var(--control-h);
-}
-
-.model-picker-sect {
-  padding-top: 2px;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-  color: var(--spica-faint);
 }
 
 .model-picker-list {
@@ -4468,6 +4512,41 @@ button.ctx-row:hover {
   color: var(--spica-muted);
 }
 
+/* 认证方式 请求头: one row per header, 名称 and 值 side by side (each with its message under it), 删除 at the end. */
+.header-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.header-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.header-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field .field-control .header-row .input {
+  min-width: 0;
+  max-width: none;
+}
+
+.header-row .header-name {
+  flex: 2 1 0;
+}
+
+.header-row .header-value {
+  flex: 3 1 0;
+}
+
 /* 未启用: one small button per model (a click turns it on), then 获取模型列表 and 手动输入模型. */
 .model-pills {
   display: flex;
@@ -4547,17 +4626,13 @@ button.ctx-row:hover {
 }
 
 @media (max-width: 640px) {
-  .model-pointer,
-  .field-stack {
+  .model-pointer {
     grid-template-columns: 1fr;
     gap: 4px;
   }
 
-  .field-stack > .field-label {
-    padding-top: 0;
-  }
-
-  .provider-editor {
+  .provider-actions {
+    margin: 4px -12px -12px;
     padding: 12px;
   }
 }
@@ -4618,11 +4693,6 @@ button.ctx-row:hover {
   overflow-wrap: anywhere;
 }
 
-/* 更多选项: lines up with the field labels above it. */
-.provider-more {
-  margin-left: -8px;
-}
-
 .provider-unsaved {
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
@@ -4631,16 +4701,6 @@ button.ctx-row:hover {
 
 .provider-add .provider-unsaved {
   margin-left: 8px;
-}
-
-.field-pair {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 12px;
-}
-
-.field-pair .field .field-control .input {
-  max-width: 120px;
 }
 
 /* One value of a few (关闭窗口时, 文字大小), and 对话 / 项目 across the sidebar: as Claude's Normal / Thinking /
@@ -4679,12 +4739,19 @@ button.ctx-row:hover {
   color: var(--spica-ink);
 }
 
+/* 保存 and 测试连接 at the end of the form, kept in sight at the bottom while the form scrolls (as a plugin's). */
 .provider-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 4px;
+  margin: 4px -16px -16px;
+  padding: 12px 16px 16px;
+  border-radius: 0 0 var(--radius-l) var(--radius-l);
+  background: var(--spica-surface);
 }
 
 .provider-actions-gap {
@@ -5284,6 +5351,142 @@ section.plugins-part > .plugins-part-title {
    the list when two or more plugins provide mail (with a 来源 row). */
 .plugin-mail {
   margin-top: 12px;
+}
+
+/* 详情 › 设置: the form the app draws from the plugin's user_config (settings/PluginConfig.tsx). */
+.settings-group.plugin-config {
+  margin-top: 12px;
+}
+
+.plugin-config .config-input {
+  width: 240px;
+  max-width: 100%;
+}
+
+.plugin-config .config-select {
+  min-width: 140px;
+}
+
+.config-required {
+  color: var(--spica-muted);
+}
+
+.config-path {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 320px;
+}
+
+.config-path-text,
+.config-locked {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--spica-muted);
+}
+
+/* 保存 at the end of the form, 未保存 / 已保存 beside it; kept in sight at the bottom while the form scrolls. */
+.plugin-config-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 0 0 var(--radius-l) var(--radius-l);
+  background: var(--spica-surface);
+}
+
+.settings-dialog .plugin-config-actions {
+  background: var(--spica-settings-pane);
+}
+
+/* A field's control with what is wrong right under it. */
+/* The 保存 row of a settings form (save-layout.tsx; he picked it): a bar at the bottom of the settings pane, apart
+   from the content by a line, there however short the form. */
+.save-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+  padding: 10px var(--settings-pad, 20px);
+  border-top: 1px solid var(--spica-divider);
+  border-radius: 0;
+  background: var(--spica-settings-pane);
+}
+
+.settings-main:has(> .save-bar) > .settings {
+  padding-bottom: 56px;
+}
+
+/* A field's problem without moving its box (settings/problem-layout.ts): after its name on the same line, or
+   inside the box at its right end over a red edge. */
+.problem-beside {
+  margin-left: 8px;
+  font-weight: normal;
+}
+
+.has-problem-in-box {
+  position: relative;
+}
+
+/* a form field's box: the wrapper as wide as the box, so the words sit inside its right end */
+.field .field-control > .has-problem-in-box {
+  width: 100%;
+  max-width: 420px;
+}
+
+.problem-in-box {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  padding-left: 8px;
+  background: var(--spica-input);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.plugin-config-count {
+  margin-right: auto;
+}
+
+.config-control {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.config-path.is-invalid .btn {
+  border-color: var(--spica-danger);
+}
+
+/* 「N 项未填」 under the plugin's name: goes to the first field not filled in. */
+.plugin-unfilled {
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
+  color: var(--spica-warning);
+  cursor: pointer;
+}
+
+.plugin-unfilled:hover {
+  color: var(--spica-ink);
 }
 
 .plugin-mail-shared {

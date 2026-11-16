@@ -10,7 +10,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./types": "./src/authoring.ts",
-    "./version": "./src/manifest.ts"
+    "./version": "./src/manifest.ts",
+    "./user-config": "./src/user-config.ts"
   },
   "engines": {
     "node": ">=24"

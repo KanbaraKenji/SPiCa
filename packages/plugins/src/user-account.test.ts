@@ -23,7 +23,7 @@ createInterface({ input: process.stdin }).on('line', (l) => {
   const m = JSON.parse(l);
   if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'a' } } });
   if (m.method === 'tools/list') send({ id: m.id, result: { tools: [{ name: '${tool}', inputSchema: { type: 'object' } }] } });
-  if (m.method === 'tools/call') send({ id: m.id, result: { content: [{ type: 'text', text: JSON.stringify({ account: process.env.SPICA_USER_ACCOUNT ?? null, pid: process.pid }) }] } });
+  if (m.method === 'tools/call') send({ id: m.id, result: { content: [{ type: 'text', text: JSON.stringify({ account: process.env.SPICA_USER_ACCOUNT ?? null, app: process.env.SPICA_APP_NAME ?? null, pid: process.pid }) }] } });
 });`;
 
 async function accountPlugin() {
@@ -41,7 +41,7 @@ async function accountPlugin() {
   return dir;
 }
 
-const who = async (tool: string) => JSON.parse((await callTool(r!.rt, tool, {})).content) as { account: string | null; pid: number };
+const who = async (tool: string) => JSON.parse((await callTool(r!.rt, tool, {})).content) as { account: string | null; app: string | null; pid: number };
 const hookSays = async () => (await r!.rt.hooks.injections(hookCtx)).map((i) => i.text).find((t) => t.startsWith('account='));
 
 describe('the user account plugins get', () => {
@@ -61,6 +61,14 @@ describe('the user account plugins get', () => {
       if (before === undefined) delete process.env.SPICA_USER_ACCOUNT;
       else process.env.SPICA_USER_ACCOUNT = before;
     }
+  });
+
+  it('servers also get the app name (a renamed build has its own)', async () => {
+    r = await rig(undefined, { appName: 'Orbit Notes' });
+    await r.pm.install(await accountPlugin());
+    await r.pm.enable('acct');
+    expect((await who('acct__who')).app).toBe('Orbit Notes');
+    expect((await who('acct-svc__svc_who')).app).toBe('Orbit Notes');
   });
 
   it('a change reaches hooks at their next call and restarts the servers with it; the same value again restarts nothing', async () => {

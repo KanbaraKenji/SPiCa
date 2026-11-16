@@ -22,7 +22,19 @@ import {
   type PluginSourceView,
   type PluginsState,
   type PluginView,
+  type PluginConfigValues,
 } from '../../../shared/plugins';
+
+/**
+ * A page of the plugin's own, as its tab reads. Next to the settings form the app draws (in 详情), a page called
+ * 设置 or 设定 (in any of the interface's languages) would read as the same thing: it reads 更多设置 then.
+ */
+const SETTINGS_WORDS = new Set(['设置', '设定', '設定', 'settings']); // i18n-skip
+export function pageTabLabel(title: string, hasForm: boolean): string {
+  const label = title.trim() || t('设定');
+  return hasForm && (SETTINGS_WORDS.has(label.toLowerCase()) || label === t('设置') || label === t('设定')) ? t('更多设置') : label;
+}
+
 import { friendlyError } from '../store/agent';
 import { ConfirmDialog } from '../ui/Dialog';
 import { ContextMenu } from '../ui/ContextMenu';
@@ -36,6 +48,7 @@ import { SpicaStatusIcon } from '@spica/brand/react';
 import type { PluginView as PageView } from '../../../shared/plugin-view';
 import { PluginPage, type PluginPageProps } from '../shell/PluginFrame';
 import { letterBadge } from '../ui/badge';
+import { PluginConfig } from './PluginConfig';
 import { formatClock } from '../chat/format';
 import { N_, t, tc } from '../../../shared/i18n';
 
@@ -46,6 +59,8 @@ export interface PluginsApi {
   onProgress?: (listener: (p: PluginsProgress) => void) => () => void;
   /** The system's folder picker: the folder goes into the box and is looked at. */
   pickFolder?: () => Promise<string | null>;
+  /** The system's picker for a folder or file field of a plugin's settings form. */
+  pickPath?: (kind: 'folder' | 'file', title: string) => Promise<string | null>;
 }
 
 /** The plugins' own settings pages (views with placement settings, of enabled plugins) and how to show one. */
@@ -157,6 +172,7 @@ function PluginRow({ p, onPick }: { p: PluginView; onPick(): void }) {
           {p.description ? <span className="settings-hint plugin-item-desc">{p.description}</span> : null}
         </span>
         {p.update ? <span className="provider-default plugin-row-state is-newer">{t('可更新')}</span> : null}
+        {p.config?.missing.length ? <span className="provider-default plugin-row-state">{t('{n} 项未填', { n: p.config.missing.length })}</span> : null}
         {problems.length ? <SpicaStatusIcon name="error" size={14} title={problems.join(t('；'))} /> : null}
         {p.enabled ? null : <span className="visually-hidden">{t('已停用')}</span>}
         <Icon name="chevronRight" size={14} className="plugin-item-go" />
@@ -269,23 +285,30 @@ function PluginDetail({
   pages = [],
   back,
   note,
+  saveConfig,
+  pickPath,
 }: {
   p: PluginView;
   busy: boolean;
   running: Running | undefined;
   run(cmd: PluginsCommand): void;
   update(): void;
-  ask(kind: 'uninstall' | 'rollback', p: PluginView): void;
+  ask(kind: 'uninstall' | 'rollback' | 'clearConfig', p: PluginView): void;
   mail?: MailSettingsProps | undefined;
   pages?: PluginPageProps[] | undefined;
   back: { label: string; onBack(): void };
   /** The result line (installed, updated, a failure), under the title line, where the progress was. */
   note?: ReactNode;
+  /** Save the plugin's settings form; resolves with what is wrong by key (empty: saved). */
+  saveConfig?: ((values: PluginConfigValues) => Promise<Record<string, string>>) | undefined;
+  pickPath?: PluginsApi['pickPath'];
 }) {
   const problems = pluginProblems(p);
   const [picked, setPicked] = useState('');
   const [opened, setOpened] = useState<string[]>([]);
   const [menu, setMenu] = useState<HTMLElement | null>(null);
+  // 「N 项未填」 clicked: the form marks what is empty and goes to the first one
+  const [reveal, setReveal] = useState(0);
   // A page gone (the plugin turned off, updated without it): back on 详情.
   const tab = pages.some((g) => g.view.id === picked) ? picked : '';
   const pick = (id: string) => {
@@ -336,6 +359,8 @@ function PluginDetail({
           anchor={menu}
           items={[
             ...(p.previousVersion ? [{ label: t('回退到 {version}', { version: p.previousVersion }), onSelect: () => ask('rollback', p) }] : []),
+            // what the person filled into its settings form (the packaging's values stay)
+            ...(p.config?.fields.some((f) => f.set && f.from === 'user') ? [{ label: t('清除设置'), danger: true, onSelect: () => ask('clearConfig', p) }] : []),
             { label: t('删除'), danger: true, onSelect: () => ask('uninstall', p) },
           ]}
           onClose={() => setMenu(null)}
@@ -349,7 +374,7 @@ function PluginDetail({
       {note}
       {pages.length ? (
         <div className="tabs plugin-tabs" role="tablist" aria-label={t('「{name}」', { name: p.displayName })}>
-          {[{ id: '', label: t('详情') }, ...pages.map((g) => ({ id: g.view.id, label: g.view.title.trim() || t('设定') }))].map((x) => (
+          {[{ id: '', label: t('详情') }, ...pages.map((g) => ({ id: g.view.id, label: pageTabLabel(g.view.title, Boolean(p.config)) }))].map((x) => (
             <button key={x.id || '-'} type="button" role="tab" aria-selected={tab === x.id} className={tab === x.id ? 'tab is-on' : 'tab'} onClick={() => pick(x.id)}>
               {x.label}
             </button>
@@ -359,12 +384,26 @@ function PluginDetail({
       <div className="plugin-detail-body" hidden={tab !== ''}>
         {p.description ? <p className="plugin-desc">{p.description}</p> : null}
         {p.enabled ? null : <p className="plugin-off">{t('已停用')}</p>}
+        {p.config?.missing.length ? (
+          <button
+            type="button"
+            className="plugin-unfilled status-with-icon"
+            onClick={() => {
+              pick('');
+              setReveal((n) => n + 1);
+            }}
+          >
+            <SpicaStatusIcon name="warning" size={14} />
+            {p.waiting ? t('待设置 · {n} 项未填', { n: p.config.missing.length }) : t('{n} 项未填', { n: p.config.missing.length })}
+          </button>
+        ) : null}
         {problems.length ? (
           <p className="plugin-problem status-with-icon">
             <SpicaStatusIcon name="error" size={14} />
             {problems.join(t('；'))}
           </p>
         ) : null}
+        {p.config && saveConfig ? <PluginConfig p={p} busy={busy} save={saveConfig} pickPath={pickPath} reveal={reveal} /> : null}
         {mail ? (
           <div className="plugin-mail">
             <MailSettings {...mail} />
@@ -503,7 +542,7 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
   const [note, setNote] = useState<{ tone: 'ok' | 'bad' | 'info'; text: string } | null>(null);
   // 检查更新 running (all sources, or one by its location): said beside it until it ends.
   const [checking, setChecking] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ kind: 'uninstall' | 'rollback'; p: PluginView } | { kind: 'removeSource'; s: PluginSourceView } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: 'uninstall' | 'rollback' | 'clearConfig'; p: PluginView } | { kind: 'removeSource'; s: PluginSourceView } | null>(null);
   const [ownTab, setOwnTab] = useKeptDraft('plugins.tab', 'installed');
   const search = useContext(SettingsSearchContext);
   const tab: PluginsTab = tabProp ?? (ownTab === 'market' ? 'market' : 'installed');
@@ -740,11 +779,17 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
 
   return (
     <section className={narrow ? 'settings-section plugins-page is-narrow' : 'settings-section plugins-page'} ref={root}>
-      {/* 搜索设置: an installed plugin by its name or what it does (its own settings page cannot be searched). */}
+      {/* 搜索设置: an installed plugin by its name or what it does, and a field of its settings form by its title (its
+          own settings page cannot be searched). */}
       {search?.query
-        ? plugins
-            .filter((pl) => search.sectionHit || searchMatches(search.query, pl.displayName, pl.name, pl.description))
-            .map((pl) => <SearchHit key={pl.name} title={t('已安装 › {name}', { name: pl.displayName })} hint={pl.description} onGo={() => search.jumpPlugin?.(pl.name)} />)
+        ? plugins.flatMap((pl) => [
+            ...(search.sectionHit || searchMatches(search.query, pl.displayName, pl.name, pl.description)
+              ? [<SearchHit key={pl.name} title={t('已安装 › {name}', { name: pl.displayName })} hint={pl.description} onGo={() => search.jumpPlugin?.(pl.name)} />]
+              : []),
+            ...(pl.config?.fields ?? [])
+              .filter((f) => searchMatches(search.query, f.title, f.description ?? ''))
+              .map((f) => <SearchHit key={`${pl.name}:${f.key}`} title={t('插件 › {name} › {field}', { name: pl.displayName, field: f.title })} onGo={() => search.jumpPlugin?.(pl.name)} />),
+          ])
         : null}
 
       {detailShown && current ? (
@@ -760,6 +805,12 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
           pages={current.enabled ? settingsOf(current) : []}
           back={back}
           note={resultLine}
+          saveConfig={async (values) => {
+            const r = await run({ op: 'config', name: current.name, values });
+            if (!r) return { '': t('保存失败') };
+            return r.fieldErrors ?? (r.ok ? {} : { '': r.message ?? t('保存失败') });
+          }}
+          pickPath={api.pickPath}
         />
       ) : detailShown && currentPkg ? (
         <PackageDetail
@@ -960,10 +1011,12 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
               ? t('移除来源「{name}」？', { name: confirm.s.label ?? confirm.s.location })
               : confirm.kind === 'uninstall'
                 ? t('删除插件「{name}」？', { name: confirm.p.displayName })
-                : t('将「{name}」回退到 {version}？', { name: confirm.p.displayName, version: confirm.p.previousVersion ?? '' })
+                : confirm.kind === 'clearConfig'
+                  ? t('清除「{name}」的设置？', { name: confirm.p.displayName })
+                  : t('将「{name}」回退到 {version}？', { name: confirm.p.displayName, version: confirm.p.previousVersion ?? '' })
           }
           {...(confirm.kind === 'uninstall' ? { detail: t('该插件的工具和页面将不再可用。') } : {})}
-          confirmLabel={confirm.kind === 'removeSource' ? t('移除') : confirm.kind === 'uninstall' ? t('删除') : t('回退')}
+          confirmLabel={confirm.kind === 'removeSource' ? t('移除') : confirm.kind === 'uninstall' ? t('删除') : confirm.kind === 'clearConfig' ? t('清除') : t('回退')}
           danger={confirm.kind !== 'rollback'}
           onConfirm={() => {
             const c = confirm;

@@ -13,6 +13,8 @@ import {
   PROVIDER_KINDS,
   secretLabel,
   validateDraft,
+  authByOf,
+  keyInHeaders,
   DEV_CONNECTION_NAMES,
   WSO2_KEY_LABEL,
   type ConnectionModel,
@@ -36,6 +38,10 @@ import { useGuard } from '../ui/guard';
 import { InfoTip } from '../ui/InfoTip';
 import { Select, type SelectOption } from '../ui/Select';
 import { PasteConfig } from './PasteConfig';
+import { AuthByField, CredentialsInField, headerRows, HeadersField } from './ProviderHeaders';
+import { FormRow } from './FormRow';
+import { ProblemBeside, ProblemBox } from './Problem';
+import { SaveRow } from './save-layout';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Group, Row } from './Group';
 import { AGENT_MESSAGES_MAX, moneyText } from '../../../shared/settings';
@@ -82,12 +88,12 @@ export function spendLine(v: ProviderSpendView): string {
 }
 
 function draftFrom(p: ProviderView): ProviderDraft {
-  const { hasSecret: _h, isDefault: _d, readOnly: _r, keyMask: _t, ...fields } = p;
+  const { hasSecret: _h, isDefault: _d, readOnly: _r, keyMask: _t, savedHeaders, ...fields } = p;
   void _h;
   void _d;
   void _r;
   void _t;
-  return { ...fields, models: p.models.map((m) => ({ ...m })) };
+  return { ...fields, credentialsIn: p.credentialsIn ?? null, models: p.models.map((m) => ({ ...m })), headers: headerRows(savedHeaders), authBy: authByOf(p) };
 }
 
 /** Which 服务商 a draft is: its catalog entry, 公司网关（WSO2）, 中转站, or '' before one is picked. */
@@ -111,12 +117,16 @@ interface FieldProps {
 
 function Field({ label, value, onChange, error, placeholder, type = 'text', hint }: FieldProps) {
   return (
-    <label className="field field-stack">
-      <span className="field-label">
-        {label}
-        {hint ? <InfoTip text={hint} decorative /> : null}
-      </span>
-      <span className="field-control">
+    <FormRow
+      label
+      title={
+        <>
+          {label}
+          {hint ? <InfoTip text={hint} decorative /> : null}
+        </>
+      }
+    >
+      <ProblemBox problem={error}>
         <input
           className={error ? 'input is-invalid' : 'input'}
           type={type}
@@ -128,9 +138,8 @@ function Field({ label, value, onChange, error, placeholder, type = 'text', hint
           {...(hint ? { 'aria-description': hint } : {})}
           onChange={(e) => onChange(e.target.value)}
         />
-        {error ? <span className="field-error">{error}</span> : null}
-      </span>
-    </label>
+      </ProblemBox>
+    </FormRow>
   );
 }
 
@@ -374,9 +383,10 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
     setFetched(null);
     setFetchError(null);
     setMatchedNames({});
-    const keep = { ...(draft.id ? { id: draft.id } : {}), ...(draft.secret ? { secret: draft.secret } : {}) };
-    if (value === WSO2) return commit({ ...emptyDraft('wso2'), ...keep, models: [] });
-    if (value === RELAY) return commit({ ...emptyDraft('openai'), ...keep, models: [] });
+    clearErrors(['name', 'baseUrl', 'model', 'contextWindow', 'secret', 'headers']);
+    const keep = { ...(draft.id ? { id: draft.id } : {}), ...(draft.secret ? { secret: draft.secret } : {}), ...(draft.headers ? { headers: draft.headers } : {}) };
+    if (value === WSO2) return commit({ ...emptyDraft('wso2'), ...keep, authBy: 'key', models: [] });
+    if (value === RELAY) return commit({ ...emptyDraft('openai'), ...keep, authBy: draft.authBy ?? 'key', models: [] });
     const p = providers.find((x) => x.id === value);
     if (!p) return;
     const first = p.models.find((m) => m.role === 'default') ?? p.models[0];
@@ -390,9 +400,11 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
       catalogId: p.id,
       maxConcurrent: p.maxConcurrent ?? null,
       requestsPerMinute: p.requestsPerMinute ?? null,
+      // a company preset names the headers each person fills in (认证方式 请求头), and where WSO2 sends its credentials
+      ...(p.headers?.length ? { headers: p.headers.map((name) => ({ name })), authBy: 'header' as const } : { authBy: 'key' as const }),
+      ...(p.credentialsIn ? { credentialsIn: p.credentialsIn } : {}),
       models: first ? [{ id: first.id, contextWindow: first.contextWindow, contextFrom: 'catalog' }] : [],
     });
-    clearErrors(['name', 'baseUrl', 'model', 'contextWindow']);
   };
 
   /** A model's 上下文上限 matched by name in the catalog, filled in unless typed by hand meanwhile. */
@@ -492,7 +504,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
     const startFrom: ProviderDraft =
       kind === 'wso2' ? { ...emptyDraft('wso2'), models: [] } : known ? { ...emptyDraft(SHELL_KIND[known.kind]), name: freeName(known.name), baseUrl: known.baseUrl, catalogId: known.id, models: [] } : { ...emptyDraft(kind), models: [] };
     const { model, ...fields } = r.fields;
-    const next: ProviderDraft = { ...startFrom, ...(draft.id ? { id: draft.id } : {}), ...fields };
+    const next: ProviderDraft = { ...startFrom, ...(draft.id ? { id: draft.id } : {}), ...(draft.headers ? { headers: draft.headers } : {}), authBy: kind === 'wso2' ? 'key' : (draft.authBy ?? 'key'), ...fields };
     commit(next);
     if (model) {
       const fromCatalog = known?.models.find((x) => x.id === model);
@@ -625,11 +637,51 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
   const editing = selected !== null && !current?.readOnly;
   const isWso2 = choice === WSO2;
   const isRelay = choice === RELAY;
+  // 认证方式: for 中转站, a company preset that names request headers, and a connection already using them.
+  const authBy = draft.authBy ?? 'key';
+  const inHeaders = keyInHeaders({ kind: draft.kind, authBy });
+  const showAuthBy = !isWso2 && (isRelay || Boolean(provider?.headers?.length) || inHeaders);
   const limits = (
-    <div className="field-pair">
+    <>
       <Field label={t('同时请求')} type="number" value={numText(draft.maxConcurrent)} onChange={(v) => set({ maxConcurrent: parseNum(v) })} error={errors.maxConcurrent} placeholder={t('不限')} />
       <Field label={t('每分钟请求')} type="number" value={numText(draft.requestsPerMinute)} onChange={(v) => set({ requestsPerMinute: parseNum(v) })} error={errors.requestsPerMinute} placeholder={t('不限')} />
-    </div>
+    </>
+  );
+
+  // 保存, 测试连接 and the rest: the bar at the bottom of the settings pane (save-layout.tsx)
+  const formActions = (
+    <>
+            {current ? (
+              <button type="button" className="btn btn-quiet-danger btn-square" onClick={() => setDeleting(current)} aria-label={t('删除')} title={t('删除')}>
+                <Icon name="trash" size={15} />
+              </button>
+            ) : null}
+            <span className="provider-actions-gap" />
+            {result ? (
+              <span className={result.ok ? 'provider-result is-ok' : 'provider-result is-bad'} role="status">
+                <SpicaStatusIcon name={result.ok ? 'done' : 'error'} size={15} />
+                {result.message}
+              </span>
+            ) : null}
+            {/* Saved or not, beside 保存, where the change is made. */}
+            {dirty ? <span className="provider-unsaved">{t('未保存')}</span> : null}
+            {dirty ? (
+              <button type="button" className="btn" onClick={discard} disabled={busy !== null}>
+                {t('取消')}
+              </button>
+            ) : null}
+            {choice !== '' ? (
+              <>
+                <button type="button" className="btn" onClick={() => void run(test)} disabled={busy !== null}>
+                  {busy === 'test' ? <span className="spinner" aria-hidden /> : null}
+                  {t('测试连接')}
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={busy !== null}>
+                  {t('保存')}
+                </button>
+              </>
+            ) : null}
+    </>
   );
 
   return (
@@ -692,8 +744,9 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
 
       {editing ? (
         <form
-          className="provider-editor"
-          // the form says what is wrong itself (red words under the field): never the browser's own bubble, which
+          id="provider-editor"
+          className="provider-editor group-box"
+          // the form says what is wrong itself (red words in the field): never the browser's own bubble, which
           // also kept 保存 from saving a 花费上限 like 0.015 (step 0.01)
           noValidate
           onSubmit={(e) => {
@@ -701,23 +754,20 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
             void run(save);
           }}
         >
-          <div className="field field-stack">
-            <span className="field-label">{t('服务商')}</span>
-            <span className="field-control provider-choice">
-              <Select
-                value={choice}
-                label={t('服务商')}
-                placeholder={t('选择服务商')}
-                onChange={pick}
-                options={[
-                  ...GROUPS.flatMap((g) => providers.filter((p) => p.group === g.group).map((p) => ({ value: p.id, label: p.name, group: t(g.label) }))),
-                  { value: WSO2, label: t('公司网关（WSO2）'), group: t('其他') },
-                  { value: RELAY, label: t('中转站'), group: t('其他') },
-                ]}
-              />
-              <PasteConfig key={selected ?? ''} kind={draft.kind} onApply={applyPaste} />
-            </span>
-          </div>
+          <FormRow title={t('服务商')} controlClassName="provider-choice">
+            <Select
+              value={choice}
+              label={t('服务商')}
+              placeholder={t('选择服务商')}
+              onChange={pick}
+              options={[
+                ...GROUPS.flatMap((g) => providers.filter((p) => p.group === g.group).map((p) => ({ value: p.id, label: p.name, group: t(g.label) }))),
+                { value: WSO2, label: t('公司网关（WSO2）'), group: t('其他') },
+                { value: RELAY, label: t('中转站'), group: t('其他') },
+              ]}
+            />
+            <PasteConfig key={selected ?? ''} kind={draft.kind} onApply={applyPaste} />
+          </FormRow>
 
           {choice !== '' ? (
             <>
@@ -735,8 +785,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
               {isRelay ? (
                 <>
                   <Field label={t('接口地址')} value={draft.baseUrl} onChange={(baseUrl) => set({ baseUrl })} error={errors.baseUrl} placeholder="https://relay.example.com/v1" />
-                  <div className="field field-stack">
-                    <span className="field-label">{t('协议')}</span>
+                  <FormRow title={t('协议')}>
                     <div className="segmented" role="radiogroup" aria-label={t('协议')}>
                       {PROVIDER_KINDS.filter((k) => k.kind !== 'wso2').map((k) => (
                         <button key={k.kind} type="button" role="radio" aria-checked={draft.kind === k.kind} className={draft.kind === k.kind ? 'segment is-on' : 'segment'} onClick={() => set({ kind: k.kind })}>
@@ -744,121 +793,143 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                         </button>
                       ))}
                     </div>
-                  </div>
+                  </FormRow>
                 </>
               ) : null}
 
-              {needsKey ? (
-                <label className="field field-stack">
-                  <span className="field-label">
-                    {secretLabel(draft.kind)}
-                    {isWso2 ? <InfoTip text={t('即 Client Secret，与 Consumer Key 位于同一位置。')} decorative /> : null}
-                  </span>
-                  <span className="field-control">
-                    <input
-                      className={errors.secret ? 'input is-invalid' : 'input'}
-                      type="password"
-                      value={draft.secret ?? ''}
-                      placeholder={hasSecret ? t('已保存（留空不修改）') : ''}
-                      spellCheck={false}
-                      autoComplete="off"
-                      aria-invalid={errors.secret ? true : undefined}
-                      {...(isWso2 ? { 'aria-description': t('即 Client Secret，与 Consumer Key 位于同一位置。') } : {})}
-                      onChange={(e) => set({ secret: e.target.value })}
-                    />
-                    {errors.secret ? <span className="field-error">{errors.secret}</span> : null}
-                    {provider?.docsUrl ? (
-                      <a className="field-link" href={provider.docsUrl} target="_blank" rel="noreferrer">
-                        {t('API 文档')}
-                      </a>
-                    ) : null}
-                  </span>
-                </label>
+              {showAuthBy ? (
+                <AuthByField
+                  value={authBy}
+                  onChange={(v) => {
+                    // the API Key typed so far is not sent with 请求头 (nor kept)
+                    const { secret: _s, ...rest } = draft;
+                    void _s;
+                    commit({ ...(v === 'header' ? rest : draft), authBy: v });
+                    clearErrors(['secret', 'headers']);
+                  }}
+                />
+              ) : null}
+              {inHeaders ? <HeadersField rows={draft.headers ?? []} saved={current?.savedHeaders} onChange={(headers) => set({ headers })} showErrors={Boolean(errors.headers)} /> : null}
+
+              {needsKey && !inHeaders ? (
+                <FormRow
+                  label
+                  title={
+                    <>
+                      {secretLabel(draft.kind)}
+                      {isWso2 ? <InfoTip text={t('即 Client Secret，与 Consumer Key 位于同一位置。')} decorative /> : null}
+                    </>
+                  }
+                >
+                  <ProblemBox problem={errors.secret}>
+                  <input
+                    className={errors.secret ? 'input is-invalid' : 'input'}
+                    type="password"
+                    value={draft.secret ?? ''}
+                    placeholder={hasSecret ? t('已保存（留空不修改）') : ''}
+                    spellCheck={false}
+                    autoComplete="off"
+                    aria-invalid={errors.secret ? true : undefined}
+                    {...(isWso2 ? { 'aria-description': t('即 Client Secret，与 Consumer Key 位于同一位置。') } : {})}
+                    onChange={(e) => set({ secret: e.target.value })}
+                  />
+                  </ProblemBox>
+                  {provider?.docsUrl ? (
+                    <a className="field-link" href={provider.docsUrl} target="_blank" rel="noreferrer">
+                      {t('API 文档')}
+                    </a>
+                  ) : null}
+                </FormRow>
               ) : null}
 
               {isWso2 ? <Field label="Scope" value={draft.scope} onChange={(scope) => set({ scope })} hint={t('可选')} /> : null}
 
-              <div className="field field-stack">
-                <span className="field-label">
-                  {t('模型')}
-                  {isWso2 ? <InfoTip text={t('区分大小写，可包含斜杠。')} label={t('模型名称的写法')} /> : null}
-                </span>
-                <span className="field-control">
-                  <ModelPicker
-                    catalog={provider?.models ?? []}
-                    fetched={fetched}
-                    selected={draft.models ?? []}
-                    matchedNames={matchedNames}
-                    onToggle={toggle}
-                    onRemove={(id) => set({ models: (draft.models ?? []).filter((x) => x.id !== id) })}
-                    onWindow={setWindow}
-                    onAdd={addTyped}
-                    onFetch={api.listModels ? () => void fetchRun(fetchModels) : undefined}
-                    fetching={fetching}
-                    fetchError={fetchError}
-                    fetchNote={
-                      fetchNote === null
-                        ? null
-                        : fetchNote.added
-                          ? t('已获取 {n} 个模型，新增 {added} 个', { n: fetchNote.got, added: fetchNote.added })
-                          : t('已获取 {n} 个模型，没有新增', { n: fetchNote.got })
-                    }
-                    error={errors.model ?? errors.contextWindow}
-                  />
-                </span>
-              </div>
+              <FormRow
+                stack
+                title={
+                  <>
+                    {t('模型')}
+                    {isWso2 ? <InfoTip text={t('区分大小写，可包含斜杠。')} label={t('模型名称的写法')} /> : null}
+                    <ProblemBeside problem={errors.model ?? errors.contextWindow} />
+                  </>
+                }
+              >
+                <ModelPicker
+                  catalog={provider?.models ?? []}
+                  fetched={fetched}
+                  selected={draft.models ?? []}
+                  matchedNames={matchedNames}
+                  onToggle={toggle}
+                  onRemove={(id) => set({ models: (draft.models ?? []).filter((x) => x.id !== id) })}
+                  onWindow={setWindow}
+                  onAdd={addTyped}
+                  onFetch={api.listModels ? () => void fetchRun(fetchModels) : undefined}
+                  fetching={fetching}
+                  fetchError={fetchError}
+                  fetchNote={
+                    fetchNote === null
+                      ? null
+                      : fetchNote.added
+                        ? t('已获取 {n} 个模型，新增 {added} 个', { n: fetchNote.got, added: fetchNote.added })
+                        : t('已获取 {n} 个模型，没有新增', { n: fetchNote.got })
+                  }
+                />
+              </FormRow>
 
               {/* 花费上限: what this provider may cost in a period (7 天 / 30 天 / 自定义); 本周期已花 under it once saved */}
-              <div className="field field-stack">
-                <span className="field-label">{t('花费上限')}</span>
-                <span className="field-control">
-                  <span className="spend-limit">
-                    <label className="run-limit">
-                      <span aria-hidden="true">US$</span>
-                      <input
-                        className={errors.spendLimitUsd ? 'input is-invalid' : 'input'}
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={numText(draft.spendLimitUsd ?? null)}
-                        placeholder={t('不限')}
-                        autoComplete="off"
-                        aria-label={t('花费上限（美元）')}
-                        aria-invalid={errors.spendLimitUsd ? true : undefined}
-                        onChange={(e) => set({ spendLimitUsd: parseNum(e.target.value) })}
-                      />
-                    </label>
-                    <Select
-                      className="spend-period"
-                      label={t('周期')}
-                      value={customPeriod ? 'custom' : String(draft.spendPeriodDays ?? SPEND_PERIOD_DEFAULT)}
-                      options={[...SPEND_PERIODS.map((d) => ({ value: String(d), label: t('{n} 天', { n: d }) })), { value: 'custom', label: t('自定义') }]}
-                      onChange={(v) => {
-                        setCustomPeriod(v === 'custom');
-                        if (v !== 'custom') set({ spendPeriodDays: Number(v) });
-                      }}
+              <FormRow
+                title={
+                  <>
+                    {t('花费上限')}
+                    <ProblemBeside problem={errors.spendLimitUsd ?? errors.spendPeriodDays} />
+                  </>
+                }
+              >
+                <span className="spend-limit">
+                  <label className="run-limit">
+                    <span aria-hidden="true">US$</span>
+                    <input
+                      className={errors.spendLimitUsd ? 'input is-invalid' : 'input'}
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={numText(draft.spendLimitUsd ?? null)}
+                      placeholder={t('不限')}
+                      autoComplete="off"
+                      aria-label={t('花费上限（美元）')}
+                      aria-invalid={errors.spendLimitUsd ? true : undefined}
+                      onChange={(e) => set({ spendLimitUsd: parseNum(e.target.value) })}
                     />
-                    {customPeriod ? (
-                      <label className="run-limit">
-                        <input
-                          className={errors.spendPeriodDays ? 'input is-invalid' : 'input'}
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={draft.spendPeriodDays ?? ''}
-                          autoComplete="off"
-                          aria-label={t('周期天数')}
-                          aria-invalid={errors.spendPeriodDays ? true : undefined}
-                          onChange={(e) => set({ spendPeriodDays: e.target.value === '' ? Number.NaN : Number(e.target.value) })}
-                        />
-                        <span aria-hidden="true">{t('天')}</span>
-                      </label>
-                    ) : null}
-                  </span>
-                  {current && spent[current.id] ? <span className="spend-spent">{spendLine(spent[current.id]!)}</span> : null}
-                  {errors.spendLimitUsd || errors.spendPeriodDays ? <span className="field-error">{errors.spendLimitUsd ?? errors.spendPeriodDays}</span> : null}
+                  </label>
+                  <Select
+                    className="spend-period"
+                    label={t('周期')}
+                    value={customPeriod ? 'custom' : String(draft.spendPeriodDays ?? SPEND_PERIOD_DEFAULT)}
+                    options={[...SPEND_PERIODS.map((d) => ({ value: String(d), label: t('{n} 天', { n: d }) })), { value: 'custom', label: t('自定义') }]}
+                    onChange={(v) => {
+                      setCustomPeriod(v === 'custom');
+                      if (v !== 'custom') set({ spendPeriodDays: Number(v) });
+                    }}
+                  />
+                  {customPeriod ? (
+                    <label className="run-limit">
+                      <input
+                        className={errors.spendPeriodDays ? 'input is-invalid' : 'input'}
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={draft.spendPeriodDays ?? ''}
+                        autoComplete="off"
+                        aria-label={t('周期天数')}
+                        aria-invalid={errors.spendPeriodDays ? true : undefined}
+                        onChange={(e) => set({ spendPeriodDays: e.target.value === '' ? Number.NaN : Number(e.target.value) })}
+                      />
+                      <span aria-hidden="true">{t('天')}</span>
+                    </label>
+                  ) : null}
                 </span>
-              </div>
+                {current && spent[current.id] ? <span className="spend-spent">{spendLine(spent[current.id]!)}</span> : null}
+              </FormRow>
 
               <div className="provider-more">
                 <button type="button" className="fold-head" aria-expanded={advanced} onClick={() => setAdvanced((a) => !a)}>
@@ -870,8 +941,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                 <>
                   {provider ? (
                     <>
-                      <div className="field field-stack">
-                        <span className="field-label">{t('类型')}</span>
+                      <FormRow title={t('类型')}>
                         <div className="segmented" role="radiogroup" aria-label={t('类型')}>
                           {PROVIDER_KINDS.map((k) => (
                             <button key={k.kind} type="button" role="radio" aria-checked={draft.kind === k.kind} className={draft.kind === k.kind ? 'segment is-on' : 'segment'} onClick={() => set({ kind: k.kind })}>
@@ -879,11 +949,12 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                             </button>
                           ))}
                         </div>
-                      </div>
+                      </FormRow>
                       <Field label={t('接口地址')} value={draft.baseUrl} onChange={(baseUrl) => set({ baseUrl })} error={errors.baseUrl} />
                     </>
                   ) : null}
                   {limits}
+                  {draft.kind === 'wso2' ? <CredentialsInField value={draft.credentialsIn ?? null} onChange={(credentialsIn) => set({ credentialsIn })} /> : null}
                 </>
               ) : null}
             </>
@@ -895,38 +966,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
               {pointerNote}
             </p>
           ) : null}
-          <div className="provider-actions">
-            {current ? (
-              <button type="button" className="btn btn-quiet-danger btn-square" onClick={() => setDeleting(current)} aria-label={t('删除')} title={t('删除')}>
-                <Icon name="trash" size={15} />
-              </button>
-            ) : null}
-            <span className="provider-actions-gap" />
-            {result ? (
-              <span className={result.ok ? 'provider-result is-ok' : 'provider-result is-bad'} role="status">
-                <SpicaStatusIcon name={result.ok ? 'done' : 'error'} size={15} />
-                {result.message}
-              </span>
-            ) : null}
-            {/* Saved or not, beside 保存, where the change is made. */}
-            {dirty ? <span className="provider-unsaved">{t('未保存')}</span> : null}
-            {dirty ? (
-              <button type="button" className="btn" onClick={discard} disabled={busy !== null}>
-                {t('取消')}
-              </button>
-            ) : null}
-            {choice !== '' ? (
-              <>
-                <button type="button" className="btn" onClick={() => void run(test)} disabled={busy !== null}>
-                  {busy === 'test' ? <span className="spinner" aria-hidden /> : null}
-                  {t('测试连接')}
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={busy !== null}>
-                  {t('保存')}
-                </button>
-              </>
-            ) : null}
-          </div>
+          <SaveRow className="provider-actions">{formActions}</SaveRow>
         </form>
       ) : null}
 

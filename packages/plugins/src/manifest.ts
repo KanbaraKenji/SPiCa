@@ -1,3 +1,4 @@
+import { parseUserConfig, type UserConfigField } from './user-config.ts';
 // Plugin manifest (`manifest.json` at the plugin root): types and validation.
 // The shape follows the MCPB manifest where the two overlap (name, version,
 // author, license, compatibility) and adds Spica's permission and mock fields.
@@ -62,6 +63,8 @@ export interface PluginManifest {
    * skin and one for a dark skin. Written as one path (both skins) or { "light": …, "dark": … }.
    */
   icon?: PluginIcon;
+  /** user_config: the settings form the app draws and stores for the plugin, in the order written. */
+  userConfig?: UserConfigField[];
   /** The words people read in other languages (manifest.json · i18n, optional; ./i18n.ts). */
   i18n?: PluginI18n;
 }
@@ -307,6 +310,9 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
     }
   }
 
+  // the settings form the app draws for the plugin (user_config.ts)
+  const userConfig = parseUserConfig(raw.user_config, err, warn);
+
   let mail: MailDeclaration | undefined;
   if (raw.mail !== undefined) {
     const m = raw.mail;
@@ -357,6 +363,7 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
     ...(mail ? { mail } : {}),
     ...(homepage ? { homepage } : {}),
     ...(icon ? { icon } : {}),
+    ...(userConfig.length ? { userConfig } : {}),
     ...(i18n ? { i18n } : {}),
   };
   return { manifest, issues };

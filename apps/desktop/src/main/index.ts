@@ -18,7 +18,7 @@ import { effectiveAccount, mailForCore, networkForCore, type ShellSettings } fro
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, SaveCsvResult, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import { APP_IDENTITY } from '../shared/app-identity';
-import { coreKind, devConnectionName, secretLabel, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderSpendView, type ProviderView } from '../shared/providers';
+import { coreKind, devConnectionName, keyInHeaders, secretLabel, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderSpendView, type ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
@@ -27,10 +27,12 @@ import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, mockFilesFolder, m
 import { checkLocalPath, csvFileName, csvFileText, type PathKind } from './local-paths';
 import { withErrorHint } from './error-hint';
 import { FakePluginService } from './plugins/fake';
+import { deployPluginConfig, PluginConfigError, PluginConfigStore, type DeployPluginConfig } from './plugins/config-store';
+import { sourceKey as pluginSourceKey } from '@spica/plugins';
 import { UpdateService } from './update/service';
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { sameSource, type PluginsCommand } from '../shared/plugins';
+import { sameSource, type PluginsCommand, type PluginsResult } from '../shared/plugins';
 import { buildSources, channelFile, type BuildSources } from './update/channel';
 import { IDLE_POLL_MS, idleInstallDue, pluginUpdateCount, scheduleChecks } from './update/schedule';
 import { startupAction } from './update/startup';
@@ -251,7 +253,7 @@ function backendConfig(): DesktopBackendConfig {
       extensions: [
         {
           module: '@spica/desktop-host',
-          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: buildDefaults.pluginSources, mcpInfoFile, mcpTokenFile, userAccount: userAccount(), locale: getLocale() },
+          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: buildDefaults.pluginSources, mcpInfoFile, mcpTokenFile, userAccount: userAccount(), userConfig: pluginConfig.inputs(deployPluginSettings), locale: getLocale() },
         },
       ],
     },
@@ -373,6 +375,12 @@ const providers = new ProviderStore(
   },
   () => envProviders().map((p) => ({ id: p.id, models: p.models.map((m) => m.id) })),
 );
+// What people fill into plugins' settings forms (user_config); passwords sealed like model keys.
+const pluginConfig = new PluginConfigStore(app.getPath('userData'), {
+  available: () => safeStorage.isEncryptionAvailable(),
+  encrypt: (plain) => safeStorage.encryptString(plain).toString('base64'),
+  decrypt: (sealed) => safeStorage.decryptString(Buffer.from(sealed, 'base64')),
+});
 
 /**
  * Each saved provider's 花费上限 as the core takes it: the amount for a period (fixed periods of its days from when the
@@ -1021,7 +1029,7 @@ ipcMain.handle(DesktopChannel.MonitorExport, async (_e, text: unknown): Promise<
   const d = new Date();
   const p2 = (n: number) => String(n).padStart(2, '0');
   const stamp = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
-  const opts: Electron.SaveDialogOptions = { title: t('导出日志'), defaultPath: join(app.getPath('documents'), `spica-monitor-${stamp}.log`), filters: [{ name: t('日志'), extensions: ['log', 'txt'] }] };
+  const opts: Electron.SaveDialogOptions = { title: t('导出日志'), defaultPath: join(app.getPath('documents'), `${APP_NAME.toLowerCase().replace(/\s+/g, '-')}-monitor-${stamp}.log`), filters: [{ name: t('日志'), extensions: ['log', 'txt'] }] };
   // SPICA_SAVE_TO=<folder> (development only): skip the dialog, so scripts never leave one open.
   const saveTo = app.isPackaged ? '' : (process.env.SPICA_SAVE_TO ?? '');
   const pick = saveTo ? { canceled: false, filePath: join(saveTo, basename(opts.defaultPath ?? 'spica-monitor.log')) } : mainWindow ? await dialog.showSaveDialog(mainWindow, opts) : await dialog.showSaveDialog(opts);
@@ -1230,17 +1238,24 @@ if (startMove && startMove.from === deployDefault) {
   buildDefaults.pluginSources = buildDefaults.pluginSources.map((s) => (sameSource(s.location, from) ? { ...s, location: channelFile(startMove.to, 'index.json') } : s));
 }
 
-/** The company's preset model connections from deploy.json ("models"); the packaging already checked them. */
-function deployModels(): unknown[] {
+/** One top-level entry of the packaging's deploy.json (undefined when there is none). */
+function deployField(key: string): unknown {
   const file = app.isPackaged ? join(process.resourcesPath, 'deploy.json') : join(app.getAppPath(), 'deploy.json');
   try {
-    const v = JSON.parse(readFileSync(file, 'utf8')) as { models?: unknown };
-    return Array.isArray(v.models) ? v.models : [];
+    return (JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>)[key];
   } catch {
-    return [];
+    return undefined;
   }
 }
+
+/** The company's preset model connections from deploy.json ("models"); the packaging already checked them. */
+function deployModels(): unknown[] {
+  const v = deployField('models');
+  return Array.isArray(v) ? v : [];
+}
 const deployPresets = automated ? [] : deployModels();
+/** deploy.json's pluginConfig: values the packaging fills into plugins' settings forms, some locked. */
+const deployPluginSettings: DeployPluginConfig = automated ? {} : deployPluginConfig(deployField('pluginConfig'));
 
 const resumeFile = join(app.getPath('userData'), 'update-resume.json');
 const updates = new UpdateService({
@@ -1665,15 +1680,46 @@ const pluginService: PluginService =
           return err ? { ...r, ok: false, message: t('无法打开文件夹：{error}', { error: err }) } : r;
         },
       }
-    : new FakePluginService(pluginRoot, { many: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'many', onProgress: (p) => sendToWindow(DesktopChannel.PluginsProgress, p), stepMs: 700 });
+    : new FakePluginService(pluginRoot, { many: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'many', config: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'config', onProgress: (p) => sendToWindow(DesktopChannel.PluginsProgress, p), stepMs: 700 });
 ipcMain.handle(DesktopChannel.Plugins, async (_e, cmd: PluginsCommand) => {
-  const r = await pluginService.run(cmd);
+  const r = await runPlugins(cmd);
   // What the page did (an update installed, sources read) changes how many plugins can update.
   updates.setPluginUpdates(pluginUpdateCount(r.state));
   // The real core reports plugin changes itself; the demo's list says so here.
   if (pluginService instanceof FakePluginService && cmd.op !== 'state') sendToWindow(DesktopChannel.PluginsChanged);
   return r;
 });
+
+/**
+ * The page's plugin commands. A settings form (op config) is saved here, where passwords can be sealed, and the
+ * plugin host then gets the values in the clear (setConfig); the page never sends setConfig itself. An uninstall
+ * also forgets the plugin's settings.
+ */
+async function runPlugins(cmd: PluginsCommand): Promise<PluginsResult> {
+  if (cmd.op === 'setConfig') return { ...(await pluginService.run({ op: 'state' })), ok: false, message: t('不支持的操作。') };
+  if (cmd.op === 'clearConfig') {
+    pluginConfig.remove(cmd.name);
+    const r = await pluginService.run({ op: 'setConfig', name: cmd.name, input: pluginConfig.input(cmd.name, deployPluginSettings) });
+    return r.ok ? { ...r, message: t('已清除设置。') } : r;
+  }
+  if (cmd.op === 'config') {
+    const before = await pluginService.run({ op: 'state' });
+    const p = before.state.plugins.find((x) => x.name === cmd.name);
+    if (!p?.config) return { ...before, ok: false, message: t('「{name}」没有设置项。', { name: cmd.name }) };
+    try {
+      pluginConfig.save(cmd.name, pluginSourceKey(p.source), p.config.fields, cmd.values ?? {}, p.config.fields.filter((f) => f.locked).map((f) => f.key));
+    } catch (err) {
+      if (err instanceof PluginConfigError) return { ...before, ok: false, message: err.message, fieldErrors: err.fields };
+      return { ...before, ok: false, message: err instanceof Error ? err.message : String(err) };
+    }
+    const r = await pluginService.run({ op: 'setConfig', name: cmd.name, input: pluginConfig.input(cmd.name, deployPluginSettings) });
+    // 已保存 is said beside the form's own 保存, not again on top
+    return r;
+  }
+  const r = await pluginService.run(cmd);
+  if (cmd.op === 'uninstall' && r.ok && !r.state.plugins.some((x) => x.name === cmd.name)) pluginConfig.remove(cmd.name);
+  return r;
+}
 ipcMain.handle(DesktopChannel.BackendStatus, () => backendStatus);
 ipcMain.on(DesktopChannel.BackendRetry, () => {
   if (backend instanceof ProcessBackend) backend.retry();
@@ -1703,7 +1749,7 @@ ipcMain.handle(DesktopChannel.SetModelPointer, (_e, which: 'default' | 'strong',
   return providerList();
 });
 ipcMain.handle(DesktopChannel.TestProvider, async (_e, draft: ProviderDraft) =>
-  testConnection(draft, draft.id ? providers.secretOf(draft.id) : undefined, undefined, needsKeyFor(await modelCatalog(), draft.catalogId)),
+  testConnection(draft, providers.keyFor(draft), undefined, needsKeyFor(await modelCatalog(), draft.catalogId), providers.headersFor(draft, draft.id)),
 );
 ipcMain.handle(DesktopChannel.KnownContextWindow, async (_e, kind: ProviderKind, model: string, catalogId?: string | null): Promise<number | null> => {
   const name = String(model ?? '').trim();
@@ -1724,8 +1770,8 @@ ipcMain.handle(DesktopChannel.MatchContextWindow, async (_e, kind: ProviderKind,
   return matchWindowIn(DEFAULT_PRICES, coreKind(kind), name, cid);
 });
 ipcMain.handle(DesktopChannel.ListProviderModels, async (_e, draft: ProviderDraft): Promise<ListModelsResult> => {
-  const secret = draft.secret?.trim() || (draft.id ? providers.secretOf(draft.id) : undefined) || '';
-  const config = toProviderConfig({ ...draft, id: 'list-models', secret });
+  const secret = (keyInHeaders(draft) ? '' : draft.secret?.trim()) || providers.keyFor(draft) || '';
+  const config = toProviderConfig({ ...draft, id: 'list-models', secret, headerValues: providers.headersFor(draft, draft.id) });
   if (backend instanceof ProcessBackend) {
     const r = await backend.listProviderModels(config).catch((err: unknown): ListModelsResult => ({ ok: false, code: 'list.failed', message: err instanceof Error ? err.message : String(err), hint: t('获取模型列表失败，请从列表选择或手动输入模型。') }));
     // The core's hint in the language now (by its code; words the shell does not know as sent).

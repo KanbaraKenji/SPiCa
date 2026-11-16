@@ -13,11 +13,17 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
+  credentialsIn,
+  namedHeaders,
+  type CredentialsIn,
+  type HeaderDraft,
+  type HeaderView,
   enabledModels,
   legacyModelFields,
   modelsOfDraft,
   spendPeriodDays,
   validateDraft,
+  keyInHeaders,
   DEV_CONNECTION_NAMES,
   type ConnectionModel,
   type ContextFrom,
@@ -61,6 +67,18 @@ interface SavedConnection {
   spendFromMs?: number;
   models: ConnectionModel[];
   keys: SavedKey[];
+  /** WSO2: where the client credentials go when a token is fetched; absent: 自动. */
+  credentialsIn?: CredentialsIn;
+  /** 自定义请求头: each value sealed like a key (it may be one, e.g. X-API-Key). */
+  headers?: SavedHeader[];
+}
+
+/** A request header as saved: its name, its value sealed, and the characters of the value that may be shown. */
+interface SavedHeader {
+  name: string;
+  sealed: string;
+  tail: string;
+  head?: string;
 }
 
 interface FileShape {
@@ -123,6 +141,27 @@ function baseFields(v: Record<string, unknown>) {
   };
 }
 
+/** Saved request headers as read from the file: named, sealed, one per name. */
+function sanitizeHeaders(v: unknown): SavedHeader[] {
+  if (!Array.isArray(v)) return [];
+  const seen = new Set<string>();
+  const out: SavedHeader[] = [];
+  for (const h of v) {
+    if (!h || typeof h !== 'object') continue;
+    const r = h as Record<string, unknown>;
+    const name = str(r.name).trim();
+    if (!name || typeof r.sealed !== 'string' || !r.sealed || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    out.push({ name, sealed: r.sealed, tail: str(r.tail), ...(typeof r.head === 'string' ? { head: r.head } : {}) });
+  }
+  return out;
+}
+
+/** The WSO2 credentials place and headers of a saved connection, only when set (older files stay as they were). */
+function extras(credsIn: CredentialsIn | null, headers: SavedHeader[]): Pick<SavedConnection, 'credentialsIn' | 'headers'> {
+  return { ...(credsIn ? { credentialsIn: credsIn } : {}), ...(headers.length ? { headers } : {}) };
+}
+
 /** When a saved limit's first period started (ms), when it is a time. */
 function spendFrom(v: unknown): { spendFromMs?: number } {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? { spendFromMs: v } : {};
@@ -160,6 +199,7 @@ export class ProviderStore {
           id: x.id as string,
           ...(runLimit(x.spendLimitUsd) === null ? {} : spendFrom(x.spendFromMs).spendFromMs ? spendFrom(x.spendFromMs) : ((migrated = true), { spendFromMs: this.#now() })),
           models: sanitizeModels(x.models),
+          ...extras(credentialsIn(x.credentialsIn), sanitizeHeaders(x.headers)),
           // Saved before the first characters were kept: worked out once from the key.
           keys: Array.isArray(x.keys) ? (x.keys as SavedKey[]).filter((k) => k && typeof k.sealed === 'string').map((k) => (typeof k.head === 'string' ? { sealed: k.sealed, tail: str(k.tail), head: k.head } : { sealed: k.sealed, ...this.#partsOfSealed(k.sealed, x.id as string) })) : [],
         })),
@@ -270,15 +310,23 @@ export class ProviderStore {
     const existing = draft.id ? this.#data.items.find((p) => p.id === draft.id) : undefined;
     // The name must not be another connection's (saved here, or one of those read from .env.local).
     const otherNames = [...this.#data.items.filter((p) => p.id !== draft.id).map((p) => p.name), ...DEV_CONNECTION_NAMES];
-    const errors = validateDraft(draft, existing ? existing.keys.length > 0 : false, { ...opts, otherNames });
+    // a saved key, or (a script's change that leaves the headers as they are) a saved header standing in for it
+    const savedKey = Boolean(existing && (existing.keys.length > 0 || (draft.authBy === undefined && draft.headers === undefined && existing.kind !== 'wso2' && (existing.headers?.length ?? 0) > 0)));
+    const errors = validateDraft(draft, savedKey, { ...opts, otherNames });
     const first = Object.values(errors)[0];
     if (first) throw new Error(first);
     let keys = existing?.keys ?? [];
     const typed = draft.secret?.trim();
-    if (typed) {
+    // 认证方式 请求头 drops a saved key (only the headers are sent); API Key drops saved headers.
+    const inHeaders = keyInHeaders(draft);
+    if (inHeaders) keys = [];
+    else if (typed) {
       if (!this.#box.available()) throw new Error(t('无法加密保存密钥，未保存。'));
       keys = [{ sealed: this.#box.encrypt(typed), ...keyMaskParts(typed) }];
     }
+    const headers = draft.authBy === 'key' ? [] : draft.headers === undefined ? (existing?.headers ?? []) : this.#sealHeaders(draft.headers, existing?.headers ?? []);
+    // absent in the draft (a connected script's change): keep what is saved
+    const credsIn = 'credentialsIn' in draft ? credentialsIn(draft.credentialsIn) : (existing?.credentialsIn ?? null);
     const fields = baseFields(draft as unknown as Record<string, unknown>);
     // the first period starts when the limit is set; a new amount or period starts it again
     const samePeriod = existing?.spendFromMs !== undefined && existing.spendLimitUsd === fields.spendLimitUsd && existing.spendPeriodDays === fields.spendPeriodDays;
@@ -288,11 +336,58 @@ export class ProviderStore {
       ...(fields.spendLimitUsd === null ? {} : { spendFromMs: samePeriod ? existing!.spendFromMs! : this.#now() }),
       models: modelsOfDraft(draft, existing?.models),
       keys,
+      ...extras(credsIn, headers),
     };
     this.#data.items = existing ? this.#data.items.map((p) => (p.id === saved.id ? saved : p)) : [...this.#data.items, saved];
     this.#repoint();
     this.#write();
     return this.#view(saved);
+  }
+
+  /** The form's header rows as saved: a typed value sealed; an empty one keeps the saved value of that name. */
+  #sealHeaders(rows: readonly HeaderDraft[], saved: readonly SavedHeader[]): SavedHeader[] {
+    const out: SavedHeader[] = [];
+    for (const h of namedHeaders(rows)) {
+      const typed = h.value?.trim();
+      if (typed) {
+        if (!this.#box.available()) throw new Error(t('无法加密保存请求头，未保存。'));
+        out.push({ name: h.name, sealed: this.#box.encrypt(typed), ...keyMaskParts(typed) });
+        continue;
+      }
+      const old = saved.find((s) => s.name.toLowerCase() === h.name.toLowerCase());
+      if (old) out.push({ ...old, name: h.name });
+    }
+    return out;
+  }
+
+  /**
+   * The header values a draft stands for (测试连接, 获取模型列表 before saving): typed ones, else the saved
+   * value of that name on connection `id`. Undecryptable ones are left out.
+   */
+  headersFor(draft: Pick<ProviderDraft, 'headers' | 'authBy'>, id?: string): Record<string, string> {
+    if (draft.authBy === 'key') return {};
+    const saved = (id ? this.#data.items.find((p) => p.id === id)?.headers : undefined) ?? [];
+    const rows = draft.headers ?? saved.map((s) => ({ name: s.name, saved: true }));
+    const out: Record<string, string> = {};
+    for (const h of namedHeaders(rows)) {
+      const typed = h.value?.trim();
+      if (typed) {
+        out[h.name] = typed;
+        continue;
+      }
+      const old = saved.find((s) => s.name.toLowerCase() === h.name.toLowerCase());
+      const value = old ? this.#open(old.sealed) : undefined;
+      if (value) out[h.name] = value;
+    }
+    return out;
+  }
+
+  #open(sealed: string): string | undefined {
+    try {
+      return this.#box.decrypt(sealed);
+    } catch {
+      return undefined;
+    }
   }
 
   /** A provider's 花费上限 with its period (null: none): the amount, the days, when the first period started. */
@@ -351,6 +446,11 @@ export class ProviderStore {
     }
   }
 
+  /** The saved key a form's 测试连接 or 获取模型列表 uses: none when its 认证方式 is 请求头. */
+  keyFor(draft: Pick<ProviderDraft, 'id' | 'kind' | 'authBy'>): string | undefined {
+    return draft.id && !keyInHeaders(draft) ? this.secretOf(draft.id) : undefined;
+  }
+
   /** The key of a saved connection, decrypted (main process only). */
   secretOf(id: string): string | undefined {
     const p = this.#data.items.find((x) => x.id === id);
@@ -377,20 +477,33 @@ export class ProviderStore {
     const out: ResolvedProvider[] = [];
     for (const p of this.#data.items) {
       const secret = this.secretOf(p.id);
-      if (!secret && needsKey(p.catalogId)) continue;
-      const { keys: _keys, ...fields } = p;
+      const headers = this.headersFor({}, p.id);
+      // a gateway whose key goes in its own request header has no API Key
+      if (!secret && !(p.kind !== 'wso2' && Object.keys(headers).length) && needsKey(p.catalogId)) continue;
+      const { keys: _keys, headers: _sealed, credentialsIn: credsIn, ...fields } = p;
       void _keys;
+      void _sealed;
       // The core gets only the models in use.
-      out.push({ ...fields, models: enabledModels(p.models), ...legacyModelFields(p.models), secret: secret ?? '' });
+      out.push({
+        ...fields,
+        models: enabledModels(p.models),
+        ...legacyModelFields(p.models),
+        secret: secret ?? '',
+        ...(credsIn ? { credentialsIn: credsIn } : {}),
+        ...(Object.keys(headers).length ? { headerValues: headers } : {}),
+      });
     }
     return out;
   }
 
   #view(p: SavedConnection): ProviderView {
-    const { keys, spendFromMs: _from, ...fields } = p;
+    const { keys, spendFromMs: _from, headers: sealed, credentialsIn: credsIn, ...fields } = p;
     void _from;
+    const headers: HeaderView[] = (sealed ?? []).map((h) => ({ name: h.name, mask: keyMaskText({ head: h.head ?? '', tail: h.tail }) }));
     return {
       ...fields,
+      credentialsIn: credsIn ?? null,
+      ...(headers.length ? { savedHeaders: headers } : {}),
       ...legacyModelFields(p.models),
       hasSecret: keys.length > 0,
       keyMask: keys[0] ? keyMaskText({ head: keys[0].head ?? '', tail: keys[0].tail }) : null,

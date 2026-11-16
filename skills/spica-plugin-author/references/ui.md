@@ -1,6 +1,6 @@
 # 带界面的插件
 
-详见 Spica 仓库 `docs/plugins/authoring.md` 第 5b 节、`docs/design/plugins.md` 第 2 节「视图」。完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）、`views/quick-note.json`（panel）和 `views/settings.json`（settings），页面在 `ui/`；脚手架 `--with-ui [--placement panel|settings]` 生成的模板。
+详见 Spica 仓库 `docs/plugins/authoring.md` 第 5b 节、`docs/design/plugins.md` 第 2 节「视图」。完整例子：`plugins/example-notes` 的 `views/notebook.json`（sidebar）、`views/quick-note.json`（panel）和 `views/connection-test.json`（settings），页面在 `ui/`；脚手架 `--with-ui [--placement panel|settings]` 生成的模板。
 
 ## 声明 `views/<id>.json`
 
@@ -65,7 +65,7 @@
 
 ## 设置页（placement: settings）
 
-插件要用户填的东西（服务地址、令牌、导出到哪个文件夹）放在这里：页面显示在 设置 › 插件 › 这个插件的详情里：名字和「更新 / 删除」那两行下面多一行页签，第一个是「详情」，后面每个设置页一个，页签文字是 `title`。点它，下面整块换成这个页面，占满右栏剩下的高度；侧栏不多出入口。插件停用时不显示。第一次点到页签才加载，切回「详情」再回来，填了一半的东西还在。
+服务地址、令牌、导出到哪个文件夹这类要用户填的项，先写进清单的 `user_config`（Spica 画表单，见 `user-config.md`）；它表达不了的（测试连接、能增删的列表、联动）才放这里。页面显示在 设置 › 插件 › 这个插件的详情里：名字和「更新 / 删除」那两行下面多一行页签，第一个是「详情」，后面每个设置页一个，页签文字是 `title`。点它，下面整块换成这个页面，占满右栏剩下的高度；侧栏不多出入口。插件停用时不显示。第一次点到页签才加载，切回「详情」再回来，填了一半的东西还在。
 
 ```json
 { "title": "设定", "entry": "ui/settings.html", "placement": "settings", "permissions": { "tools": ["get_settings", "save_settings"] } }

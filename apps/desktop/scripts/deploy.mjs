@@ -58,6 +58,9 @@ export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url))
   if (icon && !icon.toLowerCase().endsWith('.ico')) throw new Error('deploy.json 的 app.icon 要是 .ico 文件（安装包和 exe 只认 .ico）。');
   const font = path('font');
   if (font && !/\.(ttf|otf)$/i.test(font)) throw new Error('deploy.json 的 app.font 要是 .ttf 或 .otf 文件。');
+  // the exe's 版权 (file properties); not written: Spica's own line
+  const copyright = app.copyright === undefined || app.copyright === null ? '' : app.copyright;
+  if (typeof copyright !== 'string' || copyright.length > 200 || hasControl(copyright)) throw new Error('deploy.json 的 app.copyright 要写成一行文字（不超过 200 个字），比如 "Copyright Example Corp"。');
   // The company's preset model connections: checked by the core's own rules; any key or secret stops it.
   const models = raw.models === undefined ? [] : raw.models;
   const problems = presetProblems(models);
@@ -74,10 +77,33 @@ export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url))
     // the first address (null: not written, '': no update checks), and all of them in the order to try
     updateSource: updateSources === null ? null : (updateSources[0] ?? ''),
     updateSources,
+    pluginConfig: pluginConfigOf(raw.pluginConfig),
     pluginSources: pluginSourcesOf(raw.pluginSources),
-    app: { name, id, icon, font },
+    app: { name, id, icon, font, copyright: copyright.trim() || null },
     models,
   };
+}
+
+/**
+ * pluginConfig: values the packaging fills into plugins' settings forms, { "<plugin>": { "<key>": { "value": …,
+ * "locked": true } } }. Only the shape is checked here (the plugins are not known when packaging): a key a plugin
+ * does not declare, or a password, is left unused and said in the plugin's log at start. A key named like a
+ * password stops the packaging (it would sit in a plain file). null when absent.
+ */
+function pluginConfigOf(v) {
+  if (v === undefined || v === null) return null;
+  const isObj = (x) => typeof x === 'object' && x !== null && !Array.isArray(x);
+  if (!isObj(v)) throw new Error('deploy.json 的 pluginConfig 要写成 { "插件名": { "键名": { "value": 值, "locked": true } } }。');
+  for (const [plugin, keys] of Object.entries(v)) {
+    if (!isObj(keys)) throw new Error(`deploy.json 的 pluginConfig.${plugin} 要写成 { "键名": { "value": 值 } }。`);
+    for (const [k, p] of Object.entries(keys)) {
+      const at = `deploy.json 的 pluginConfig.${plugin}.${k}`;
+      if (!isObj(p) || !['string', 'number', 'boolean'].includes(typeof p.value)) throw new Error(`${at} 要写成 { "value": 文字、数字或 true / false }，可加 "locked": true。`);
+      if (p.locked !== undefined && typeof p.locked !== 'boolean') throw new Error(`${at}.locked 只能是 true 或 false。`);
+      if (k.split('_').some((s) => ['password', 'passwd', 'pwd', 'secret', 'token'].includes(s))) throw new Error(`${at}：密码和令牌不能写进安装包，由每个人自己填。`);
+    }
+  }
+  return v;
 }
 
 /** A place 设置 › 插件 › 市场 can read: a drive or shared folder, or a web address (as 添加来源 takes them). */
@@ -145,6 +171,10 @@ const PRESET_WORDS = [
   [/^models needs at least one model$/, 'models 里至少要有一个型号'],
   [/^contextWindow must be a positive whole number$/, 'contextWindow 要写正整数（这个型号一次最多能装多少 token）'],
   [/^(\w+) must be a positive whole number$/, (k) => `${k} 要写正整数`],
+  [/^headers must be a list of header names.*$/, 'headers 要写成请求头名称的列表，比如 ["X-API-Key"]；值由每个人自己填，不能放进安装包'],
+  [/^headers: (.*) is not a header name$/, (h) => `headers 里的 ${h} 不是请求头名称（只能有字母、数字和 - _ . 这类字符）`],
+  [/^headers: (.*) is set by the app$/, (h) => `headers 里不能写 ${h}，它由应用设置`],
+  [/^credentialsIn must be basic or body, for wso2 only$/, 'credentialsIn 只给 wso2 写，只能是 basic 或 body'],
 ];
 
 /** One of the core's English findings in plain Chinese, saying which entry (English kept when unknown). */

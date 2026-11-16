@@ -2,9 +2,12 @@
 // an error result whose first line is "[CODE] 一句中文人话"; the model and
 // the user both read it. Messages never contain mail content.
 
+/** The app's name as the person sees it (a company may package it under its own). */
+const app = process.env.SPICA_APP_NAME || 'Spica';
+
 /** code → what the user is told. */
 export const MESSAGES = {
-  NOT_WINDOWS: '只能在 Windows 上读本机 Outlook。可以在 Spica 里打开模拟模式，用样例邮件试。',
+  NOT_WINDOWS: `只能在 Windows 上读本机 Outlook。可以在 ${app} 里打开模拟模式，用样例邮件试。`,
   OUTLOOK_NOT_INSTALLED: '这台电脑上没有装 Outlook。本插件需要经典版 Outlook（Office 里带的那个）；也可以打开模拟模式用样例邮件试。',
   OUTLOOK_NEW_ONLY: '这台电脑上只有新版 Outlook。新版 Outlook 不支持本地自动化，需要经典版 Outlook（开始菜单里叫「Outlook (classic)」）。',
   OUTLOOK_NO_PROFILE: '经典版 Outlook 已经装了，但还没有配置邮箱账号。请先打开「Outlook (classic)」登录一次邮箱，再让我试。',

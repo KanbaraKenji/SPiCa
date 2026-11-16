@@ -70,7 +70,7 @@ describe('plugin folder', () => {
     expect(f.commands.map((c) => c.id)).toEqual(['note']);
     expect(f.servers).toMatchObject([
       { id: 'notes', kind: 'mcp', runtime: 'node', exposeTools: true },
-      { id: 'settings', kind: 'service', runtime: 'node', exposeTools: false },
+      { id: 'connection-test', kind: 'service', runtime: 'node', exposeTools: false },
     ]);
     expect(f.hooks.map((h) => h.id)).toEqual(['notes-hint.js', 'replace-confirm.js']);
   });

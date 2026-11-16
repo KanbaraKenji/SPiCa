@@ -14,7 +14,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 1. **读需求**，写下三件事给用户确认：插件名（小写字母、数字、`-`，以后不能改，它是工具名前缀）；要哪些工具；哪些工具会删数据、发东西、写外部系统（这些是**不可逆**的）。要界面就加上「页面放侧栏还是对话旁的面板」。
 2. **生成骨架**：
    ```
-   node <skill>/scripts/scaffold.mjs <插件名> --dir <放插件的文件夹> [--with skill,command,hook] [--with-ui]
+   node <skill>/scripts/scaffold.mjs <插件名> --dir <放插件的文件夹> [--with skill,command,hook,config] [--with-ui]
    ```
    生成的插件已经能跑：4 个示例工具、错误码、模拟数据、测试，`--with-ui` 再带一个页面。
 3. **实现工具**：改 `server/tools.js`（工具清单和参数）、`server/backend.js`（数据从哪来）、`server/errors.js`（错误码）。每个工具都要写清：
@@ -45,8 +45,8 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 
 ## 交付前自查
 
-- [ ] **没有密钥**：插件包里没有 API key、令牌、密码、私钥、`.env`（`check.mjs` 会查常见格式，但它不是全部）。需要凭据时，从 `SPICA_PLUGIN_DATA` 里的配置文件读，由插件自己的设置页通过 `services/` 里的工具保存，见 `references/internal-services.md`。**不要从环境变量读**：装进 Spica 后只传白名单变量，名字带 KEY、TOKEN、SECRET 的一律不传，`check.mjs` 看到会提醒。
-- [ ] **没有写死公司专属的东西**：服务地址、部门名、项目代号不写进代码，放 `SPICA_PLUGIN_DATA` 里的配置文件；示例和模拟数据全是虚构的。
+- [ ] **没有密钥**：插件包里没有 API key、令牌、密码、私钥、`.env`（`check.mjs` 会查常见格式，但它不是全部）。需要用户填的地址、账号、密码，写进清单的 `user_config`（Spica 画表单、加密存密码，server 读 `SPICA_USER_CONFIG`），见 `references/user-config.md`。**自己起名的环境变量读不到**：装进 Spica 后只传白名单变量和 Spica 给的 `SPICA_` 变量，名字带 KEY、TOKEN、SECRET 的一律不传，`check.mjs` 看到会提醒。
+- [ ] **没有写死公司专属的东西**：服务地址、部门名、项目代号不写进代码，让用户在 `user_config` 里填（公司可以在打包时替大家预填）；示例和模拟数据全是虚构的。
 - [ ] **证书和代理没自己处理**：没有 `rejectUnauthorized: false`，没有打进包里的证书，也没自己读代理设置。这些由 Spica 代管（0.1.0-rc.2 起）。
 - [ ] **用模型的写了 `permissions.model`**：理由一句话；没有模型能力时工具会给提示，不会崩溃。
 - [ ] **权限最小**：`permissions.workspace` 用得到才写 `read` / `write`；`permissions.hooks` 只写真用到的钩子类型；页面的 `permissions.tools` 只列页面要用的工具。
@@ -71,7 +71,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 | `panel` | 对话旁边的右栏，一个标签 | 边聊边用的小工具：速记、状态、快捷操作；按 320px 宽设计 |
 | `settings` | 设置 › 插件 › 这个插件详情的一个页签（「详情」后面），不进侧栏 | 插件自己的设置：服务地址、令牌、保存到哪个文件夹（页面里可以 `window.spica.pickFolder()` 弹系统的选文件夹框） |
 
-生成面板：`scaffold.mjs <名字> --with-ui --placement panel`（设置页：`--placement settings`）。一个插件可以有多个页面（`views/` 里每个 `.json` 一个），例子：`plugins/example-notes` 的 Notebook（sidebar）、Quick note（panel）和设定（settings）。
+生成面板：`scaffold.mjs <名字> --with-ui --placement panel`（设置页：`--placement settings`）。一个插件可以有多个页面（`views/` 里每个 `.json` 一个），例子：`plugins/example-notes` 的 Notebook（sidebar）、Quick note（panel）和测试连接（settings）。
 
 页面跑在 Spica 的沙箱里：
 
@@ -97,7 +97,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 
 包公司内部服务的插件，先读 `references/internal-services.md`。要点：
 
-- **地址和凭据**放 `SPICA_PLUGIN_DATA/config.json`。用户在插件**自己的页面**里填，页面经 `services/` 里的工具保存（模型看不到这些工具）。Spica 没有统一的插件设置表单。
+- **地址和凭据**写进清单的 `user_config`：Spica 在插件详情里画表单、存值（密码加密），启动 server 时交给它（`SPICA_USER_CONFIG`）。类型表对不上的（测试连接、能增删的列表、联动）才自己画设置页，见 `references/user-config.md` 末尾。
 - **证书和代理由 Spica 代管**（Spica 0.1.0-rc.2 起；rc.1 和更早的版本不代管，插件连公司内网会报证书错误）：插件进程获得的代理和信任名单和 Spica 自己的一样，Node 里直接用 `fetch` / `https`。用户改了网络设置，插件 server 会自动重启一次，之后的请求就按新设置走。
 - **工具按用户要办的事设计**，不是一个接口一个工具，一个插件十个以内。
 - **应用改了名**：插件不用改，`install.mjs` 加 `--app <应用名>`。
@@ -114,6 +114,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 | `references/ui.md` | 页面：声明、`window.spica`、主题变量、沙箱、预览 |
 | `references/connect.md` | 怎么连上 Spica（桌面版开关、HTTP + 令牌 / stdio、改了名的应用），装不上时怎么办 |
 | `references/model.md` | 借用 Spica 里配好的模型：申请、调用、选模型、被拒绝时怎么说 |
+| `references/user-config.md` | 让用户填的设置：清单里声明、类型表、server 怎么读、和自己画的设置页怎么分 |
 | `references/internal-services.md` | 连内部接口：地址和凭据放哪、设置页写法、证书和代理、工具怎么设计 |
 | `references/processes.md` | 插件拉起的进程：Spica 怎么结束 server，辅助进程怎么退出，替用户打开的程序怎么交给 Windows 打开，重的辅助进程空闲就退 |
 
