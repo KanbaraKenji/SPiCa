@@ -6,8 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { captureEvents, makeRuntime, startGateway, tempDir } from './testing/helpers.ts';
 import { editFileTool, writeFileTool } from './tools/fs-tools.ts';
-import { canonicalPath, inScope, pathsInText } from './write-scope.ts';
-import { MemoryStore } from './store/memory.ts';
+import { canonicalPath, inScope, pathsInText, realPath } from './write-scope.ts';
+import { SqliteStore } from './store/sqlite.ts';
+import type { Store } from './store/types.ts';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
@@ -33,7 +34,7 @@ afterEach(async () => {
 
 type Call = { name: string; args: Record<string, unknown> };
 
-function setup(opts: { approvalMode?: 'manual' | 'auto'; store?: MemoryStore } = {}) {
+function setup(opts: { approvalMode?: 'manual' | 'auto'; store?: Store } = {}) {
   const rt = makeRuntime(gw, { tools: [writeFileTool, editFileTool], ...(opts.store ? { store: opts.store } : {}) });
   const events = captureEvents(rt);
   const s = rt.createSession({ cwd: work, approvalMode: opts.approvalMode ?? 'manual' });
@@ -73,7 +74,8 @@ describe('outside: the card, in either approval mode', () => {
   it('a junction inside the folder pointing out counts as out', async () => {
     await symlink(outside, join(work, 'link'), 'junction');
     const r = await run({ name: 'write_file', args: { path: 'link/through.txt', content: 'y' } });
-    expect(r.req).toMatchObject({ cause: 'outside_folder' });
+    // the card names where it really writes, not the junction
+    expect(r.req).toMatchObject({ cause: 'outside_folder', outsideFolder: realPath(outside) });
   });
 
   it('approval mode auto asks too', async () => {
@@ -104,7 +106,9 @@ describe('the answer', () => {
   });
 
   it('allowed for the folder: written, and the next write there is not asked, even after the app starts again', async () => {
-    const store = new MemoryStore();
+    // the app's own store (a file): what was allowed is read back from it
+    const file = join(root, 'spica.db');
+    const store = new SqliteStore(file);
     gw.enqueue({ toolCalls: [{ id: 'w1', name: 'write_file', args: { path: join(outside, 'a.txt'), content: 'a' } }] });
     const { s } = setup({ store });
     await s.send('go').done;
@@ -112,7 +116,9 @@ describe('the answer', () => {
     await (await s.confirm('w1', true, { allowFolder: true }))!;
     expect(await readFile(join(outside, 'a.txt'), 'utf8')).toBe('a');
     // the same conversation, read back from the store by a new runtime
-    const again = makeRuntime(gw, { tools: [writeFileTool, editFileTool], store });
+    store.close();
+    const reopened = new SqliteStore(file);
+    const again = makeRuntime(gw, { tools: [writeFileTool, editFileTool], store: reopened });
     again.restore();
     const events = captureEvents(again);
     const s2 = again.session(s.id)!;
@@ -120,6 +126,24 @@ describe('the answer', () => {
     expect((await s2.send('more').done).reason).toBe('completed');
     expect(events.some((e) => e.type === 'confirm.request')).toBe(false);
     expect(await readFile(join(outside, 'sub', 'b.txt'), 'utf8')).toBe('b');
+    await again.close();
+    reopened.close();
+  });
+
+  it('a card waiting when the app closes still says outside and still offers the folder after it starts again', async () => {
+    const file = join(root, 'spica.db');
+    const store = new SqliteStore(file);
+    gw.enqueue({ toolCalls: [{ id: 'w1', name: 'write_file', args: { path: join(outside, 'a.txt'), content: 'a' } }] });
+    const { rt, s } = setup({ store });
+    await s.send('go').done;
+    await rt.close();
+    store.close();
+    const reopened = new SqliteStore(file);
+    const again = makeRuntime(gw, { tools: [writeFileTool, editFileTool], store: reopened });
+    again.restore();
+    expect(again.session(s.id)!.pending()[0]).toMatchObject({ cause: 'outside_folder', outsideFolder: outside });
+    await again.close();
+    reopened.close();
   });
 
   it('allowed once (not for the folder): written, and the next write there is asked again', async () => {
@@ -154,6 +178,13 @@ describe('what the user gave the conversation', () => {
     expect(s.writeRoots()).toContain(join(root, 'project'));
   });
 
+  it('a suggested action the model wrote does not, even when the user picks it', async () => {
+    gw.enqueue({ toolCalls: [{ id: 'w1', name: 'write_file', args: { path: join(outside, 's.txt'), content: 's' } }] });
+    const { events, s } = setup();
+    await s.send(`save it to ${outside}`, { meta: { suggested: true } }).done;
+    expect(events.find((e) => e.type === 'confirm.request')).toMatchObject({ cause: 'outside_folder' });
+  });
+
   it('a path that only appears in a tool result does not', async () => {
     // the model reads a file naming the outside folder, then writes there
     await writeFile(join(work, 'pointer.md'), `the decisions live in ${outside}`);
@@ -164,6 +195,17 @@ describe('what the user gave the conversation', () => {
     const s = rt.createSession({ cwd: work });
     await s.send('tidy').done;
     expect(events.find((e) => e.type === 'confirm.request')).toMatchObject({ cause: 'outside_folder' });
+  });
+
+  it('a folder allowed on a sub-agent’s card is allowed for the whole conversation (parent, other sub-agents)', async () => {
+    const { rt, s } = setup();
+    const child = rt.createSession({ parentId: s.id, cwd: work });
+    gw.enqueue({ toolCalls: [{ id: 'w1', name: 'write_file', args: { path: join(outside, 'c.txt'), content: 'c' } }] });
+    await child.send('write it').done;
+    gw.enqueue({ text: 'ok' });
+    await (await child.confirm('w1', true, { allowFolder: true }))!;
+    const sibling = rt.createSession({ parentId: s.id, cwd: work });
+    for (const x of [s, child, sibling]) expect(x.writeRoots()).toContain(outside);
   });
 
   it('a sub-agent works within its parent’s folders (the folder the user gave the parent too)', async () => {
@@ -179,6 +221,11 @@ describe('paths', () => {
   it('reads absolute paths out of the user’s words, not relative ones', () => {
     expect(pathsInText('整理 D:\\资料\\周报，然后放到 "E:\\共享 文件\\out" 里，别动 notes/a.md')).toEqual(['E:\\共享 文件\\out', 'D:\\资料\\周报']);
     expect(pathsInText('see \\\\server\\share\\docs.')).toEqual(['\\\\server\\share\\docs']);
+  });
+
+  it('a network path is compared as written (no lookup that could hang)', () => {
+    expect(realPath('\\\\nas.example\\share\\docs\\')).toBe('\\\\nas.example\\share\\docs');
+    expect(inScope('\\\\NAS.example\\share\\docs\\a.md', ['\\\\nas.example\\share\\docs'])).toBe(process.platform === 'win32');
   });
 
   it('case and .. do not change the answer', () => {

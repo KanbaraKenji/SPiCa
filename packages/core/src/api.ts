@@ -40,12 +40,13 @@ export function createAgentApi(rt: Runtime): AgentApi {
     },
     async send(id, text, opts) {
       const s = get(id);
+      const picked = opts?.suggested ? { suggested: true } : {};
       if (!opts?.attachments?.length) {
-        const h = s.send(text);
+        const h = opts?.suggested ? s.send(text, { meta: picked }) : s.send(text);
         return { messageId: h.messageId, started: h.started };
       }
       const a = await s.readAttachments(opts.attachments);
-      const h = s.send(text, { content: a.content, meta: { attachments: a.attachments, ...(a.notes.length ? { untrusted: a.notes } : {}) } });
+      const h = s.send(text, { content: a.content, meta: { ...picked, attachments: a.attachments, ...(a.notes.length ? { untrusted: a.notes } : {}) } });
       return { messageId: h.messageId, started: h.started };
     },
     async setSessionModel(id, providerId, model) {

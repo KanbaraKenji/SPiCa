@@ -183,7 +183,8 @@ export class AgentStore {
     this.state.set((v) => ({ ...v, activeId: null }));
   }
 
-  async send(id: string | null, text: string, attachments: string[] = []): Promise<void> {
+  /** `suggested`: a suggested action the model wrote, picked by the user (MessageMeta.suggested). */
+  async send(id: string | null, text: string, attachments: string[] = [], suggested = false): Promise<void> {
     await this.#guard(async () => {
       let target = id;
       if (!target) {
@@ -210,7 +211,8 @@ export class AgentStore {
         }
         this.state.set((v) => ({ ...v, draft: { approvalMode: v.draft.approvalMode } }));
       }
-      const result = await this.#api.send(target, text, attachments.length ? { attachments: attachments.map((path) => ({ path })) } : undefined);
+      const opts = { ...(attachments.length ? { attachments: attachments.map((path) => ({ path })) } : {}), ...(suggested ? { suggested: true } : {}) };
+      const result = await this.#api.send(target, text, Object.keys(opts).length ? opts : undefined);
       if (!result.started) {
         // Queued into a running session: keep it visible until the agent takes it in.
         const sid = target;

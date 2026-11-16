@@ -12,28 +12,38 @@ const FOLD_CASE = process.platform === 'win32' || process.platform === 'darwin';
 
 /**
  * The real path of `p` (absolute), as far as it exists: the nearest existing ancestor is resolved through
- * links and short names, the rest (not made yet) appended. Case-folded where the file system ignores case.
+ * links and short names, the rest (not made yet) appended. A network path is taken as written (looking it up
+ * could hang on a server that does not answer).
  */
-export function canonicalPath(p: string): string {
-  let head = resolve(p);
+export function realPath(p: string): string {
+  const abs = resolve(p);
+  if (/^[\\/]{2}[^\\/]/.test(abs)) return trimSep(abs);
+  let head = abs;
   const tail: string[] = [];
   for (;;) {
     try {
       const real = realpathSync.native(head);
-      const out = tail.length ? join(real, ...tail.reverse()) : real;
-      return fold(out);
+      return trimSep(tail.length ? join(real, ...tail.reverse()) : real);
     } catch {
       const up = dirname(head);
-      if (up === head) return fold(resolve(p));
+      if (up === head) return trimSep(abs);
       tail.push(basename(head));
       head = up;
     }
   }
 }
 
+/** realPath, case-folded where the file system ignores case: what two paths are compared by. */
+export function canonicalPath(p: string): string {
+  return fold(realPath(p));
+}
+
+function trimSep(p: string): string {
+  return p.length > 3 && p.endsWith(sep) ? p.slice(0, -1) : p;
+}
+
 function fold(p: string): string {
-  const trimmed = p.length > 3 && p.endsWith(sep) ? p.slice(0, -1) : p;
-  return FOLD_CASE ? trimmed.toLowerCase() : trimmed;
+  return FOLD_CASE ? p.toLowerCase() : p;
 }
 
 /** `p` is `root` or inside it (both canonical). */

@@ -35,7 +35,7 @@ import { estimateTokens, isAbortError, newId, truncate, withAppName } from './ut
 import { IMAGE_LIMITS, imageTokens, prepareImage, REQUEST_IMAGE_LIMITS, sniffImage } from './images.ts';
 import { closeSync, openSync, readSync } from 'node:fs';
 import { dirname, isAbsolute, resolve as resolvePath } from 'node:path';
-import { inScope, pathsInText } from './write-scope.ts';
+import { inScope, pathsInText, realPath } from './write-scope.ts';
 import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.ts';
 import { samePath } from './move-folder.ts';
 import { netHint } from './net.ts';
@@ -1489,11 +1489,9 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     if (project?.folder) roots.push(project.folder);
     for (const m of this.#messages) {
       if (m.role !== 'user' || (m.kind !== 'user' && m.kind !== 'steer') || (m.meta?.author ?? 'user') !== 'user') continue;
-      const attached = new Set((m.meta?.attachments ?? []).map((a) => a.block));
-      m.content.forEach((b, i) => {
-        // the user's own words; an attached file's text is not
-        if (b.type === 'text' && !attached.has(i)) roots.push(...pathsInText(b.text));
-      });
+      // the user's own words (the first block; attached files' text follows it), not a suggestion the model wrote
+      const first = m.content[0];
+      if (first?.type === 'text' && !m.meta?.suggested) roots.push(...pathsInText(first.text));
       for (const a of m.meta?.attachments ?? []) roots.push(isAbsolute(a.path) ? a.path : resolvePath(cfg.cwd, a.path));
     }
     const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
@@ -1501,8 +1499,17 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     return roots;
   }
 
-  /** The user allowed writing in `folder` on a card: no more asking for it in this conversation (and its sub-agents). */
+  /**
+   * The user allowed writing in `folder` on a card: no more asking for it in this conversation and every
+   * sub-agent of it. Kept with the conversation the user started (the top of the chain), so the parent and
+   * later sub-agents share it, and it is there after the app starts again.
+   */
   allowWriteFolder(folder: string): void {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    if (parent) {
+      parent.allowWriteFolder(folder);
+      return;
+    }
     const cfg = this.#record.config;
     if (cfg.writeFolders?.includes(folder)) return;
     this.#record = { ...this.#record, config: { ...cfg, writeFolders: [...(cfg.writeFolders ?? []), folder] } };
@@ -1514,7 +1521,8 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     const p = tool.writePath?.(input);
     if (!p?.trim()) return undefined;
     const target = isAbsolute(p) ? resolvePath(p) : resolvePath(this.#record.config.cwd, p);
-    return inScope(target, this.writeRoots()) ? undefined : dirname(target);
+    // the folder it really writes in (through a junction: where it points), as the card shows it and the user allows it
+    return inScope(target, this.writeRoots()) ? undefined : dirname(realPath(target));
   }
 
   #guardCause(tool: Tool, input: Record<string, unknown>, g: GuardState): GuardCause | undefined {

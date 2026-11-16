@@ -6201,9 +6201,17 @@ section.plugins-part > .plugins-part-title {
 .ask-card > .card-head,
 .confirm-card > .card-head {
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+  row-gap: 6px;
   min-height: 44px;
   padding: 6px 8px 6px 12px;
+}
+
+/* Narrow (or three buttons, as a write outside the folders has): the buttons go to a line of their own, on the
+   right, before the title gets squeezed. */
+.confirm-card > .card-head > .card-title {
+  min-width: min(14em, 100%);
 }
 
 .confirm-card > .card-head > svg {
@@ -6222,7 +6230,7 @@ section.plugins-part > .plugins-part-title {
 
 .confirm-card > .card-head .card-actions {
   flex: none;
-  margin: 0;
+  margin: 0 0 0 auto;
 }
 
 .ask-card > .card-head .card-answer,

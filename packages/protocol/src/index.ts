@@ -331,6 +331,8 @@ export interface MessageMeta {
   guard?: Record<string, GuardNote>;
   /** User message: attached files (the cards); their text is in the content blocks listed. */
   attachments?: AttachmentMeta[];
+  /** User message: a suggested action the model wrote, picked by the user (paths in it do not widen where the agent may write). */
+  suggested?: true;
   /** tool_results: calls that ran without asking because the session's approval mode is auto. */
   autoApproved?: string[];
   /** Runtime note: the user chose the working folder; what was made before moved there. */
@@ -1191,6 +1193,8 @@ export type SteerMode = 'next' | 'interrupt';
 
 export interface SendOptions {
   attachments?: { path: string }[];
+  /** The text is a suggested action the model wrote (suggest_actions) and the user picked: kept as MessageMeta.suggested. */
+  suggested?: boolean;
 }
 
 export interface CreateSessionRequest {
