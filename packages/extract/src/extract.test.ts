@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ExtractError, createExtractors, extractFile } from './index.ts';
+import { ExtractError, SheetBook, createExtractors, extractFile } from './index.ts';
 import { decodeText, csvRecords, sniffDelimiter } from './text.ts';
 import {
   MINUTES,
@@ -331,5 +331,24 @@ describe('helpers', () => {
     const exts = createExtractors().flatMap((e) => e.extensions);
     expect(new Set(exts).size).toBe(exts.length);
     for (const e of ['.pdf', '.docx', '.xlsx', '.xlsm', '.pptx', '.csv', '.tsv', '.txt', '.md']) expect(exts).toContain(e);
+  });
+});
+
+describe('SheetBook (a workbook kept open for the app’s preview)', () => {
+  it('reads a sheet whole the first time and keeps it; the sheets are named without reading them', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const book = new SheetBook(new Uint8Array(await readFile(f('big.xlsx'))));
+    expect(book.sheets).toEqual([{ name: '月份1', hidden: false }, { name: '月份2', hidden: false }]);
+    const g = book.grid(1);
+    expect([g.rows.length, g.rows[0]![0], g.rows.at(-1)![0], g.rows.at(-1)![1][1], g.maxCol, g.clipped]).toEqual([5001, 1, 5001, '示例商品 2-5000', 4, undefined]);
+    expect(book.grid(1)).toBe(g);
+  });
+
+  it('keeps no more of a sheet than it is told, and says so', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const g = new SheetBook(new Uint8Array(await readFile(f('big.xlsx'))), 10_000).grid(0);
+    expect(g.clipped).toBe(true);
+    expect(g.rows.length).toBeLessThan(5001);
+    expect(g.rowCount).toBe(5001);
   });
 });

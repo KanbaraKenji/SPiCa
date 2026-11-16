@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { open, readFile, stat } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import { PREVIEW_PAGE_MAX_BYTES, type PreviewFile, type PreviewInfo } from '../shared/bridge';
-import { EXCEL, officePreview, WORD } from './office-preview';
+import { CSV_MAX_BYTES, csvPreview, EXCEL, officePreview, unreadable, WORD } from './office-preview';
 import { t } from '../shared/i18n';
 
 export const PREVIEW_SCHEME = 'spica-file';
@@ -33,8 +33,13 @@ export function kindOf(path: string): Exclude<PreviewKind, 'missing' | 'sheet'> 
   return 'unsupported';
 }
 
-/** UTF-8, or GB18030 when UTF-8 does not fit (Chinese text files saved by older Windows tools). */
+/**
+ * UTF-16 by its byte order mark, or without one when every other byte is zero (PowerShell 5.1's `>` writes it);
+ * else UTF-8, or GB18030 when UTF-8 does not fit (Chinese text files saved by older Windows tools).
+ */
 export function decodeText(bytes: Uint8Array): string {
+  const utf16 = utf16Of(bytes);
+  if (utf16) return new TextDecoder(utf16).decode(bytes);
   const utf8 = new TextDecoder('utf-8').decode(bytes);
   const bad = (utf8.match(/�/g) ?? []).length;
   if (bad === 0 || bad < utf8.length / 200) return utf8;
@@ -43,6 +48,25 @@ export function decodeText(bytes: Uint8Array): string {
   } catch {
     return utf8;
   }
+}
+
+/** 'utf-16le' / 'utf-16be' when the bytes look like it (the decoder drops the mark). */
+function utf16Of(bytes: Uint8Array): 'utf-16le' | 'utf-16be' | undefined {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return 'utf-16le';
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return 'utf-16be';
+  // No mark: mostly Latin text, so one byte of each pair is zero. UTF-8 text has no zero bytes.
+  const n = Math.min(bytes.length, 4096) & ~1;
+  if (n < 4) return undefined;
+  let even = 0;
+  let odd = 0;
+  for (let i = 0; i < n; i += 2) {
+    if (bytes[i] === 0) even++;
+    if (bytes[i + 1] === 0) odd++;
+  }
+  const pairs = n / 2;
+  if (odd > pairs * 0.6 && even < pairs * 0.1) return 'utf-16le';
+  if (even > pairs * 0.6 && odd < pairs * 0.1) return 'utf-16be';
+  return undefined;
 }
 
 /** Paths given out as spica-file://<token>; a token only ever maps to the one file. */
@@ -68,32 +92,50 @@ export class PreviewFiles {
   }
 }
 
-/** `sheet`: which sheet of an Excel workbook (1-based; the first when absent). */
-export async function readPreview(path: string, files: PreviewFiles, sheet?: number): Promise<PreviewInfo> {
+/** `sheet`, `from`: which sheet of an Excel workbook (1-based; the first when absent), its rows from that row on. */
+export async function readPreview(path: string, files: PreviewFiles, sheet?: number, from?: number): Promise<PreviewInfo> {
   const name = basename(path);
   let size: number;
+  let mtimeMs: number;
   try {
     const st = await stat(path);
     if (!st.isFile()) return { kind: 'unsupported', name, path, size: 0, message: t('不是文件') };
     size = st.size;
-  } catch {
-    return { kind: 'missing', name, path, size: 0, message: t('找不到文件，可能已被移动或删除。') };
+    mtimeMs = st.mtimeMs;
+  } catch (err) {
+    return { ...unreadable(err), name, path, size: 0 };
   }
   const ext = extname(path).toLowerCase();
-  if (WORD.has(ext) || EXCEL.has(ext)) return officePreview(path, name, size, ext, sheet);
+  if (WORD.has(ext) || EXCEL.has(ext)) return officePreview(path, name, size, ext, sheet, from);
+  // A table, read whole; a very big one shows as text (its first 512 KB).
+  if ((ext === '.csv' || ext === '.tsv') && size <= CSV_MAX_BYTES) return csvPreview(path, name, size, from ?? 1, decodeText);
   const kind = kindOf(path);
   if (kind === 'pdf' || kind === 'image') {
+    // The viewer reads it later by its URL: a file that cannot be opened says so now instead of an empty viewer.
+    try {
+      await (await open(path, 'r')).close();
+    } catch (err) {
+      return { ...unreadable(err), name, path, size };
+    }
     // An SVG is text too: its source comes along for the panel's 代码 view.
     const svg = kind === 'image' && extname(path).toLowerCase() === '.svg' && size <= TEXT_LIMIT ? await readFile(path, 'utf8').catch(() => undefined) : undefined;
-    return { kind, name, path, size, url: files.urlFor(path), ...(svg !== undefined ? { text: svg } : {}) };
+    // The file's time in the URL: rewritten, it is a new URL, not the picture the viewer kept.
+    return { kind, name, path, size, url: `${files.urlFor(path)}?v=${Math.round(mtimeMs)}`, ...(svg !== undefined ? { text: svg } : {}) };
   }
   if (kind === 'unsupported') return { kind, name, path, size, message: t('不支持预览此类文件。') };
-  const handle = await open(path, 'r');
+  let handle;
+  try {
+    handle = await open(path, 'r');
+  } catch (err) {
+    return { ...unreadable(err), name, path, size };
+  }
   try {
     const length = Math.min(size, TEXT_LIMIT);
     const buf = new Uint8Array(length);
     await handle.read(buf, 0, length, 0);
     return { kind, name, path, size, text: decodeText(buf), truncated: size > TEXT_LIMIT };
+  } catch (err) {
+    return { ...unreadable(err), name, path, size };
   } finally {
     await handle.close();
   }
@@ -108,8 +150,8 @@ export async function readPreviewFile(path: string, maxBytes: number, peek: bool
     if (!st.isFile()) return { ok: false, problem: 'missing' };
     size = st.size;
     modifiedAt = st.mtime.toISOString();
-  } catch {
-    return { ok: false, problem: 'missing' };
+  } catch (err) {
+    return { ok: false, problem: unreadable(err).kind === 'missing' ? 'missing' : 'unreadable' };
   }
   const cap = Math.min(Number.isFinite(maxBytes) && maxBytes > 0 ? maxBytes : 0, PREVIEW_PAGE_MAX_BYTES);
   if (size > cap) return { ok: false, problem: 'too-large', size };

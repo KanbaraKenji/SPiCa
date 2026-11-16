@@ -73,6 +73,7 @@ import { captureOnce, runShots } from './shots';
 import { flatten, icoFromPngs, inkFor, TASKBAR_FRAME_SIZES } from './icon';
 import { followTaskbarTheme, readTaskbarDark, type TaskbarFollower } from './taskbar-theme';
 import { PREVIEW_SCHEME, PreviewFiles, readPreview, readPreviewFile } from './preview';
+import { forgetBooks } from './office-preview';
 import { FLOW_SCHEME, flowFile } from './flow-scheme';
 import { AttachImages } from './images';
 import { bridgeFor, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
@@ -1062,11 +1063,14 @@ function previewPath(full: string): string {
   return mockFiles && !existsSync(full) ? join(mockFiles, basename(full)) : full;
 }
 
-ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unknown, sheet: unknown) => {
+ipcMain.on(DesktopChannel.PreviewClosed, () => forgetBooks());
+
+ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unknown, sheet: unknown, from: unknown) => {
   const raw = typeof path === 'string' ? path : '';
   const session = typeof sessionId === 'string' && sessionId ? await backend.getSession(sessionId).catch(() => undefined) : undefined;
   const full = previewPath(isAbsolute(raw) ? raw : resolvePath(session?.cwd || app.getPath('home'), raw));
-  return readPreview(full, previewFiles, typeof sheet === 'number' && Number.isInteger(sheet) && sheet > 0 ? sheet : undefined);
+  const whole = (n: unknown) => (typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : undefined);
+  return readPreview(full, previewFiles, whole(sheet), whole(from));
 });
 
 ipcMain.handle(DesktopChannel.PreviewFile, async (_e, sessionId: unknown, path: unknown, maxBytes: unknown, peek: unknown) => {
@@ -1174,8 +1178,10 @@ async function servePluginFile(url: string): Promise<Response> {
 }
 
 ipcMain.handle(DesktopChannel.OpenFile, async (_e, sessionId: unknown, path: unknown): Promise<string | null> => {
-  if (typeof sessionId !== 'string' || typeof path !== 'string' || !path) return t('文件路径无效。');
-  const session = await backend.getSession(sessionId);
+  if ((sessionId !== null && typeof sessionId !== 'string') || typeof path !== 'string' || !path) return t('文件路径无效。');
+  // No conversation (a file from a plugin page): the path is whole, else it is not opened.
+  if (sessionId === null && !isAbsolute(path)) return t('文件路径无效。');
+  const session = typeof sessionId === 'string' ? await backend.getSession(sessionId) : undefined;
   const full = isAbsolute(path) ? path : resolvePath(session?.cwd || app.getPath('home'), path);
   if (!existsSync(full)) return t('找不到文件：{path}', { path: full });
   const error = await shell.openPath(full);
