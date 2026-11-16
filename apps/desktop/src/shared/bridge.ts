@@ -188,6 +188,12 @@ export interface DesktopBridge extends SpicaBridge {
     openExternal(url: string): Promise<string | null>;
     /** Clears the built-in browser's sign-ins, storage and cache (its own; the system's browser is not touched). */
     clearData(): Promise<null>;
+    /** A local HTML file shown with its scripts: its address in the browser (its folder can be read), or null. */
+    localPage(sessionId: string | null, path: string): Promise<string | null>;
+    /** A page drawn from an answer shown with its scripts: its address. */
+    localText(name: string, html: string): Promise<string | null>;
+    /** The page is closed: its address stops working. */
+    release(url: string): Promise<null>;
   };
   /** 监控台: the back end's lines (kept in the main process, secrets removed there). */
   monitor: {

@@ -3,7 +3,8 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, screen, session, shell, Tray } from 'electron';
-import { BROWSER_PARTITION } from './browser/policy';
+import { BROWSER_FILE_SCHEME, BROWSER_PARTITION } from './browser/policy';
+import { LocalPages, realInside } from './browser/local-pages';
 import { flushBrowserSession, guardWebviews, setupBrowserSession } from './browser/session';
 import { applyBrowserNetwork, proxyLogin } from './browser/network';
 import { pathToFileURL } from 'node:url';
@@ -978,7 +979,10 @@ protocol.registerSchemesAsPrivileged([
   { scheme: PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   { scheme: PLUGIN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   { scheme: FLOW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+  // Local HTML in the built-in browser (main/browser/local-pages.ts): handled only on the browser's session.
+  { scheme: BROWSER_FILE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
+const localPages = new LocalPages();
 const previewFiles = new PreviewFiles();
 
 ipcMain.handle(DesktopChannel.ProjectRead, async (_e, projectId: unknown) => {
@@ -1560,6 +1564,21 @@ ipcMain.handle(DesktopChannel.BrowserExternal, async (_e, url: unknown): Promise
   return null;
 });
 
+// Local HTML shown in the built-in browser with its scripts: a file from a conversation (its folder readable), or a
+// page drawn from an answer (its own text). Addresses are given back when the page is closed.
+ipcMain.handle(DesktopChannel.BrowserLocalPage, async (_e, sessionId: unknown, path: unknown): Promise<string | null> => {
+  const raw = typeof path === 'string' ? path : '';
+  if (!raw) return null;
+  const session = typeof sessionId === 'string' && sessionId ? await backend.getSession(sessionId).catch(() => undefined) : undefined;
+  const full = previewPath(isAbsolute(raw) ? raw : resolvePath(session?.cwd || app.getPath('home'), raw));
+  return existsSync(full) && statSync(full).isFile() ? localPages.addFile(full) : null;
+});
+ipcMain.handle(DesktopChannel.BrowserLocalText, (_e, name: unknown, text: unknown): string | null => (typeof text === 'string' ? localPages.addText(typeof name === 'string' ? name : '', text) : null));
+ipcMain.handle(DesktopChannel.BrowserRelease, (_e, url: unknown): null => {
+  if (typeof url === 'string') localPages.release(url);
+  return null;
+});
+
 // 设置 › 常规 › 浏览器 › 清除: the browser's own partition only.
 ipcMain.handle(DesktopChannel.BrowserClearData, async (): Promise<null> => {
   const ses = session.fromPartition(BROWSER_PARTITION);
@@ -1801,6 +1820,12 @@ void app.whenReady().then(() => {
   }
   // The built-in browser's own session (its own cookies and storage; none of the app's schemes are registered on it).
   setupBrowserSession(session.fromPartition(BROWSER_PARTITION), { log: (line) => console.log(line) });
+  session.fromPartition(BROWSER_PARTITION).protocol.handle(BROWSER_FILE_SCHEME, async (req) => {
+    const s = localPages.resolve(req.url, req.method);
+    if (s.kind === 'text') return new Response(s.text, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    if (s.kind === 'none' || !(await realInside(s.path, s.root))) return new Response('', { status: 404 });
+    return net.fetch(pathToFileURL(s.path).toString());
+  });
   applyBrowserNetworkNow();
   // A proxy that asks for its user name and password: the ones in 设置 › 网络's proxy address, for the browser's pages.
   app.on('login', (e, contents, _details, authInfo, callback) => {

@@ -13,6 +13,7 @@ import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
 import { Select } from '../ui/Select';
 import { N_, t, tx } from '../../../shared/i18n';
+import { POPUPS } from './BrowserPane';
 
 export interface FilePreviewProps {
   /** null while loading. */
@@ -36,6 +37,8 @@ export interface FilePreviewProps {
    * full path instead; 最大化 and 关闭 are in the tab row.
    */
   tabs?: ReactNode;
+  /** An HTML file's address in the built-in browser: its 预览 face runs its scripts there (shell/BrowserPane.tsx). */
+  page?: string | null;
 }
 
 function sizeText(n: number): string {
@@ -145,7 +148,7 @@ function codeOf(info: PreviewInfo | null): { text: string; language: string } | 
   return null;
 }
 
-export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, max, source, note, children, tabs }: FilePreviewProps) {
+export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, max, source, note, children, tabs, page }: FilePreviewProps) {
   // 预览 / 代码: per file, kept while the panel is open (another file opens as its preview; back to this one, as left).
   const id = info ? `${info.kind}|${info.path}|${info.name}` : '';
   const [codeFor, setCodeFor] = useState<ReadonlySet<string>>(() => new Set());
@@ -229,8 +232,11 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
             <div className="preview-body preview-md">
               <MarkdownText text={info.text} />
             </div>
+          ) : info.kind === 'html' && page ? (
+            // In the built-in browser, scripts and all (its own process and storage; main/browser/local-pages.ts).
+            <webview className="preview-frame preview-html" src={page} title={info.name} {...POPUPS} />
           ) : info.kind === 'html' ? (
-            // sandbox with no permissions: no scripts, no forms, no navigation; only the page itself.
+            // Until its address is there (or without one): sandbox with no permissions, no scripts; only the page itself.
             <iframe className="preview-frame preview-html" sandbox="" srcDoc={info.text} title={info.name} />
           ) : (
             <Lines key={info.path} text={info.text} language={languageOf(info.name)} />

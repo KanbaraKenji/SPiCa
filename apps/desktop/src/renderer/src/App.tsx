@@ -579,6 +579,33 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const pagePreview = wayPage && !fellBack ? wayPage : null;
   const loadedPreview = usePreview(bridge.preview, preview && !preview.inline && !pagePreview ? preview : null);
   const previewInfo = preview?.inline ?? loadedPreview;
+  // An HTML file, or a page drawn from an answer, runs its scripts in the built-in browser: its address there, asked
+  // for while it is shown and given back after (main/browser/local-pages.ts).
+  const htmlKey = previewInfo?.kind === 'html' && shownTab ? `|` : '';
+  const [htmlPage, setHtmlPage] = useState<{ key: string; url: string } | null>(null);
+  useEffect(() => {
+    if (!htmlKey || !preview) return;
+    let alive = true;
+    let got: string | null = null;
+    const inline = preview.inline?.kind === 'html' ? preview.inline : null;
+    const ask = inline ? bridge.browser.localText(inline.name, inline.text) : bridge.browser.localPage(preview.sessionId, preview.path);
+    void ask.then((url) => {
+      if (!url) return;
+      if (!alive) {
+        void bridge.browser.release(url);
+        return;
+      }
+      got = url;
+      setHtmlPage({ key: htmlKey, url });
+    });
+    return () => {
+      alive = false;
+      if (got) void bridge.browser.release(got);
+    };
+    // asked again only for another page
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [htmlKey]);
+  const htmlUrl = htmlPage && htmlPage.key === htmlKey ? htmlPage.url : null;
   const chooseWay = (id: string) => {
     setPreviewWay({ key: fileKey, id });
     setPreviewFallback(null);
@@ -1235,6 +1262,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             {preview ? (
             <FilePreview
               tabs={paneStrip}
+              page={htmlUrl}
               // A plugin page draws the file: the head still names it (and offers its buttons).
               info={pagePreview ? { kind: 'unsupported', name: preview.path.split(/[\\/]/).pop() ?? preview.path, path: preview.path, size: 0, message: '' } : previewInfo}
               {...(filePages.length

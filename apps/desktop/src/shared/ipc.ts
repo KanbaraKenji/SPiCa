@@ -104,4 +104,10 @@ export const DesktopChannel = {
   BrowserExternal: 'spica:browserExternal',
   /** invoke: -> null; the built-in browser's cookies, storage and cache cleared (设置 › 常规 › 浏览器) */
   BrowserClearData: 'spica:browserClearData',
+  /** invoke: (sessionId, path) -> the address of a local HTML file in the built-in browser (its folder readable), or null */
+  BrowserLocalPage: 'spica:browserLocalPage',
+  /** invoke: (name, html) -> the address of a page drawn from an answer, in the built-in browser */
+  BrowserLocalText: 'spica:browserLocalText',
+  /** invoke: address -> null; a local page's address stops working (its page was closed) */
+  BrowserRelease: 'spica:browserRelease',
 } as const;

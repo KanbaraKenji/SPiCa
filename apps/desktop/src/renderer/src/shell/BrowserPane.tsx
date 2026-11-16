@@ -9,7 +9,7 @@ import { addressOf, type PaneTab } from './pane-tabs';
 type WebTab = Extract<PaneTab, { kind: 'web' }>;
 
 /** The allowpopups attribute as a string: React drops a boolean true on an attribute it does not know. */
-const POPUPS = { allowpopups: 'true' } as object;
+export const POPUPS = { allowpopups: 'true' } as object;
 
 /** The parts of Electron's <webview> element used here. */
 interface WebviewElement extends HTMLElement {
