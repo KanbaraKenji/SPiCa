@@ -94,7 +94,7 @@ const AUTOSTART_UNAVAILABLE: Record<Exclude<AutostartSupport, 'ok'>, string> = {
 /** 浏览器 › 打开网址: where a web address clicked in the app opens (shell/links.tsx). */
 const LINK_OPEN: [LinkOpen, string][] = [
   ['ask', N_('每次询问')],
-  ['panel', N_('内置浏览器')],
+  ['panel', N_('应用内')],
   ['system', N_('系统浏览器')],
 ];
 

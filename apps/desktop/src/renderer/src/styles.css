@@ -8318,17 +8318,30 @@ input[type='radio']:disabled {
 }
 
 .pane-tab-list {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 2px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.pane-tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* + right after the tabs, then the room up to 最大化 and 关闭 */
+.pane-tabs-gap {
+  flex: 1;
+  min-width: 4px;
 }
 
 .pane-tab {
-  flex: 0 1 180px;
-  min-width: 72px;
+  /* as wide as 160, narrowed down to 128 when many (still a few words of the name); past that the row scrolls */
+  flex: 0 1 160px;
+  min-width: 128px;
   height: var(--control-h);
   display: flex;
   align-items: center;
@@ -8474,4 +8487,16 @@ input[type='radio']:disabled {
   inset: 0;
   box-shadow: inset 0 0 0 2px var(--spica-accent);
   pointer-events: none;
+}
+/* More tabs past an end of the row: that end fades out (the row scrolls; the wheel scrolls it too). */
+.pane-tab-list.is-more-right {
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+}
+
+.pane-tab-list.is-more-left {
+  mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent);
+}
+
+.pane-tab-list.is-more-left.is-more-right {
+  mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent);
 }

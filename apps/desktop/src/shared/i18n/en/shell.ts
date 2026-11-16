@@ -269,10 +269,10 @@ export const EN_SHELL: Catalog = {
   用系统浏览器打开: 'Open in system browser',
   // shell/links.tsx (where web addresses open)
   '在哪里打开网址？': 'Where should the address open?',
-  内置浏览器: 'Built-in browser',
+  应用内: 'In the app',
   系统浏览器: 'System browser',
   记住我的选择: 'Remember my choice',
-  用内置浏览器打开: 'Open in built-in browser',
+  在应用内打开: 'Open in the app',
   // shell/BrowserPane.tsx (an agent in the page)
   'Agent 正在操作': 'Agent is working',
   已接手: 'Taken over',

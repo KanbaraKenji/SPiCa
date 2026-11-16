@@ -52,7 +52,7 @@ describe('LinkRouter', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('每次询问: the question, 内置浏览器 first; 确定 opens there; not kept unless ticked', () => {
+  it('每次询问: the question, 应用内 first; 确定 opens there; not kept unless ticked', () => {
     const s = setup('ask');
     fireEvent.click(s.link);
     const dialog = screen.getByRole('dialog');

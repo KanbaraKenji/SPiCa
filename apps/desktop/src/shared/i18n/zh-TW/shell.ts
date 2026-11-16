@@ -269,10 +269,10 @@ export const ZH_TW_SHELL: Catalog = {
   用系统浏览器打开: '以系統瀏覽器開啟',
   // shell/links.tsx (where web addresses open)
   '在哪里打开网址？': '要在哪裡開啟網址？',
-  内置浏览器: '內建瀏覽器',
+  应用内: '應用程式內',
   系统浏览器: '系統瀏覽器',
   记住我的选择: '記住我的選擇',
-  用内置浏览器打开: '以內建瀏覽器開啟',
+  在应用内打开: '在應用程式內開啟',
   // shell/BrowserPane.tsx (an agent in the page)
   'Agent 正在操作': 'Agent 正在操作',
   已接手: '已接手',

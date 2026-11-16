@@ -1,6 +1,6 @@
 // Web addresses clicked anywhere in the app window (an answer's links, a setting's help link): where they open.
-// 设置 › 常规 › 浏览器 › 打开网址 decides: 每次询问 (default) asks with the shared choice question — 内置浏览器 or 系统浏览器,
-// and 记住我的选择, which sets that setting — 内置浏览器 opens a tab in the right panel, 系统浏览器 hands it to Windows.
+// 设置 › 常规 › 浏览器 › 打开网址 decides: 每次询问 (default) asks with the shared choice question — 应用内 (the right panel) or 系统浏览器,
+// and 记住我的选择, which sets that setting — 应用内 opens a tab in the right panel, 系统浏览器 hands it to Windows.
 // Ctrl+click always goes to the system's browser. A right click on a link offers both, whatever the setting.
 // Pages inside the built-in browser are other documents: their links never come here.
 import { useEffect, useState } from 'react';
@@ -68,7 +68,7 @@ export function LinkRouter({ setting, open, remember }: LinkRouterProps) {
           title={t('在哪里打开网址？')}
           detail={asking.url}
           choices={[
-            ['panel', t('内置浏览器')],
+            ['panel', t('应用内')],
             ['system', t('系统浏览器')],
           ]}
           rememberLabel={t('记住我的选择')}
@@ -89,7 +89,7 @@ export function LinkRouter({ setting, open, remember }: LinkRouterProps) {
             y={menu.y}
             onClose={() => setMenu(null)}
             items={[
-              { label: t('用内置浏览器打开'), onSelect: () => open(menu.url, 'panel') },
+              { label: t('在应用内打开'), onSelect: () => open(menu.url, 'panel') },
               { label: t('用系统浏览器打开'), onSelect: () => open(menu.url, 'system') },
             ]}
           />

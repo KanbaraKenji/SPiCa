@@ -1395,7 +1395,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       </div>
 
 
-      {/* Web addresses clicked in the window: 设置 › 常规 › 浏览器 › 打开网址 (the question, 内置浏览器 or 系统浏览器). */}
+      {/* Web addresses clicked in the window: 设置 › 常规 › 浏览器 › 打开网址 (the question, 应用内 or 系统浏览器). */}
       <LinkRouter
         setting={settings.linkOpen}
         open={(url, place) => {
