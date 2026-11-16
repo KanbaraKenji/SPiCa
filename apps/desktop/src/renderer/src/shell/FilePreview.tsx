@@ -126,9 +126,10 @@ function Sheet({ info, onSheet }: { info: Extract<PreviewInfo, { kind: 'sheet' }
 /** A Word document: shown as the text read from it (main/office-preview.ts), not a file with code of its own. */
 const WORD_NAME = /\.doc[xm]$/i;
 
-/** What a cut-off preview says: a Word document stops after 500 paragraphs, text after 512 KB. */
-function cutNote(info: { name: string; size: number }): string {
-  return WORD_NAME.test(info.name) ? t('仅显示前 500 段') : t('仅显示前 512 KB（共 {size}）', { size: sizeText(info.size) });
+/** What a cut-off preview says: how much of a Word document (main/office-preview.ts), or of text after 512 KB. */
+function cutNote(info: { name: string; size: number; blocks?: { shown: number; total: number } }): string {
+  if (info.blocks) return t('仅显示前 {shown} 段（共 {total} 段）', info.blocks);
+  return t('仅显示前 512 KB（共 {size}）', { size: sizeText(info.size) });
 }
 
 /** What can be shown both ways in the panel: as a page or picture, and as its code (and the code's language). */

@@ -27,6 +27,22 @@ describe('Word and Excel in the right panel', () => {
     expect(text).not.toMatch(/^\[\d+\]/m);
   });
 
+  it('a Word document cut short says how many of its paragraphs show: past 500 of them, or at the size limit', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-office-'));
+    // 1 351 short paragraphs: the 500 stop, not the size limit.
+    writeFileSync(join(dir, '长.docx'), await makeDocx({ title: '汇编', sections: Array.from({ length: 150 }, (_, s) => ({ heading: `第 ${s + 1} 章`, paragraphs: Array.from({ length: 8 }, (_, k) => `第 ${k + 1} 段`) })) }));
+    expect(await readPreview(join(dir, '长.docx'), new PreviewFiles())).toMatchObject({ truncated: true, blocks: { shown: 500, total: 1351 } });
+    // 133 long paragraphs: the size limit stops it well before 500.
+    const long = '较长的示例正文，用来把文档撑到字数上限。'.repeat(25);
+    writeFileSync(join(dir, '密.docx'), await makeDocx({ title: '说明', sections: Array.from({ length: 12 }, (_, s) => ({ heading: `第 ${s + 1} 节`, paragraphs: Array.from({ length: 10 }, () => long) })) }));
+    const dense = await readPreview(join(dir, '密.docx'), new PreviewFiles());
+    expect(dense).toMatchObject({ truncated: true, blocks: { total: 133 } });
+    expect(dense.kind === 'markdown' ? dense.blocks!.shown : 0).toBeLessThan(133);
+    // A short one: nothing said.
+    writeFileSync(join(dir, '短.docx'), await makeDocx({ title: '短', sections: [{ heading: '一', paragraphs: ['正文'] }] }));
+    expect(await readPreview(join(dir, '短.docx'), new PreviewFiles())).not.toHaveProperty('blocks');
+  });
+
   it('an Excel workbook: the sheet asked for as a grid with column letters and row numbers, and every sheet’s name', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'spica-office-'));
     const path = join(dir, '库存.xlsx');

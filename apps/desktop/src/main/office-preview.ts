@@ -66,7 +66,11 @@ export async function officePreview(path: string, name: string, size: number, ex
   try {
     if (WORD.has(ext)) {
       const r = await extractFile(path, { limit: ROWS });
-      return { kind: 'markdown', name, path, size, text: docxMarkdown(r.text), truncated: Boolean(r.truncated) };
+      // The extractor stops at ROWS blocks or at its size limit, whichever comes first; it reports which it showed.
+      const total = r.meta.blockCount ?? 0;
+      const shown = Number(/-(\d+)$/.exec(r.meta.read?.blocks ?? '')?.[1] ?? total);
+      const cut = shown < total || Boolean(r.truncated);
+      return { kind: 'markdown', name, path, size, text: docxMarkdown(r.text), truncated: cut, ...(cut ? { blocks: { shown, total } } : {}) };
     }
     const r = await extractFile(path, { sheet: String(sheet), limit: ROWS });
     const sheets = (r.meta.sheets ?? []).map((s) => ({ name: s.name, rows: s.rows, cols: s.cols }));

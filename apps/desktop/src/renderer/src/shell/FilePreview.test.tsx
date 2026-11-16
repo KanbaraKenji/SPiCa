@@ -122,9 +122,9 @@ describe('the file’s place, from the preview head', () => {
   });
 
   it('a Word document is shown as its text, says where it was cut, and has no 代码 view', () => {
-    render(<FilePreview info={{ kind: 'markdown', name: '纪要.docx', path: 'D:/纪要.docx', size: 9000, text: '# 纪要', truncated: true }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    render(<FilePreview info={{ kind: 'markdown', name: '纪要.docx', path: 'D:/纪要.docx', size: 9000, text: '# 纪要', truncated: true, blocks: { shown: 120, total: 1350 } }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByRole('heading', { name: '纪要' })).toBeTruthy();
-    expect(screen.getByText('仅显示前 500 段')).toBeTruthy();
+    expect(screen.getByText('仅显示前 120 段（共 1350 段）')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '查看代码' })).toBeNull();
   });
 

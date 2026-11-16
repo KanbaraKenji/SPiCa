@@ -61,7 +61,8 @@ export interface ShellState {
 export type PreviewInfo =
   /** `text`: an SVG's source, so the panel can show it as code too. */
   | { kind: 'pdf' | 'image'; name: string; path: string; size: number; url: string; text?: string }
-  | { kind: 'markdown' | 'text' | 'html'; name: string; path: string; size: number; text: string; truncated: boolean }
+  /** `blocks`: a Word document cut short, how many of its paragraphs and tables are shown. */
+  | { kind: 'markdown' | 'text' | 'html'; name: string; path: string; size: number; text: string; truncated: boolean; blocks?: { shown: number; total: number } }
   | { kind: 'unsupported' | 'missing'; name: string; path: string; size: number; message: string }
   /** An Excel sheet (`sheet`, 1-based, of `sheets`): Excel's column letters and row numbers, at most 500 rows. */
   | { kind: 'sheet'; name: string; path: string; size: number; sheets: { name: string; rows: number; cols: number }[]; sheet: number; columns: string[]; rows: { n: number; cells: string[] }[]; truncated: boolean };
