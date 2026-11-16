@@ -18,7 +18,6 @@ import { Group, Row } from './Group';
 import { Switch } from './Switch';
 import { N_, t } from '../../../shared/i18n';
 import { configProblemText } from '../../../shared/plugin-config-words';
-import { PROBLEM_LAYOUT } from './problem-layout';
 
 /** What a field's control holds: text for every box (numbers too, as typed), on / off for a switch. */
 type FormValue = string | boolean;
@@ -147,8 +146,8 @@ export function PluginConfig({ p, busy, save, pickPath, reveal }: PluginConfigPr
         <ConfigRow key={f.key} plugin={p.name} f={f} value={form[f.key] ?? ''} error={errors[f.key]} disabled={busy} onChange={(v) => set(f.key, v)} pickPath={pickPath} />
       ))}
       <div className="plugin-config-actions">
-        {/* in-box: the words in each box are short, so the row of 保存 says how many need looking at */}
-        {PROBLEM_LAYOUT === 'in-box' && Object.keys(errors).length ? (
+        {/* the words in each box are short, so the row of 保存 says how many need looking at */}
+        {Object.keys(errors).length ? (
           <span className="field-error plugin-config-count" role="status">
             {Object.values(errors).every((e) => e === t(MISSING)) ? t('{n} 项未填', { n: Object.keys(errors).length }) : t('{n} 项有误', { n: Object.keys(errors).length })}
           </span>
@@ -189,8 +188,8 @@ function ConfigRow({
   // what is wrong, without moving the box (problem-layout.ts); a locked field gone bad says who to ask
   const problem = error ?? (f.locked && !f.set ? t('请联系管理员') : undefined);
   const text = typeof value === 'string' ? value : '';
-  // in-box needs a box to write in: a text field; the others say it beside their name
-  const inBox = PROBLEM_LAYOUT === 'in-box' && !f.locked && f.type !== 'toggle' && f.type !== 'select' && f.type !== 'folder' && f.type !== 'file';
+  // the problem sits inside a text field's box; the others (switch, list, folder, a locked one) say it beside their name
+  const inBox = !f.locked && f.type !== 'toggle' && f.type !== 'select' && f.type !== 'folder' && f.type !== 'file';
   const title = (
     <>
       {f.title}

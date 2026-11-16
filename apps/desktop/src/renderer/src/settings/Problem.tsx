@@ -1,16 +1,17 @@
-// A field's problem said without moving its box (problem-layout.ts): beside the field's name, or inside the box.
+// A field's problem said without moving its box (he found red text under a box moved it; he picked this way):
+// the box turns red and the words sit inside it, at its right end. A field with no single box to write in (the
+// model list, 花费上限, a switch, a list to pick from) says it after its name, on its line.
 import type { ReactNode } from 'react';
-import { PROBLEM_LAYOUT } from './problem-layout';
 
-/** After the field's name. `always`: also in the in-box layout (a field with no single box to write in). */
-export function ProblemBeside({ problem, always = false }: { problem: string | null | undefined; always?: boolean }) {
-  if (!problem || (PROBLEM_LAYOUT !== 'beside-label' && !always)) return null;
+/** After the field's name, on its line (fields with no single box). */
+export function ProblemBeside({ problem }: { problem: string | null | undefined }) {
+  if (!problem) return null;
   return <span className="field-error problem-beside">{problem}</span>;
 }
 
-/** Around a box: in the in-box layout the problem sits inside it, at its right end. */
+/** Around a box: the problem inside it, at its right end. */
 export function ProblemBox({ problem, children }: { problem: string | null | undefined; children: ReactNode }) {
-  if (!problem || PROBLEM_LAYOUT !== 'in-box') return <>{children}</>;
+  if (!problem) return <>{children}</>;
   return (
     <span className="has-problem-in-box">
       {children}

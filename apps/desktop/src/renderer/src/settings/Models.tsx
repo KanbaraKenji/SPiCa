@@ -119,7 +119,6 @@ function Field({ label, value, onChange, error, placeholder, type = 'text', hint
       <span className="field-label">
         {label}
         {hint ? <InfoTip text={hint} decorative /> : null}
-        <ProblemBeside problem={error} />
       </span>
       <span className="field-control">
         <ProblemBox problem={error}>
@@ -780,7 +779,6 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                   <span className="field-label">
                     {secretLabel(draft.kind)}
                     {isWso2 ? <InfoTip text={t('即 Client Secret，与 Consumer Key 位于同一位置。')} decorative /> : null}
-                    <ProblemBeside problem={errors.secret} />
                   </span>
                   <span className="field-control">
                     <ProblemBox problem={errors.secret}>
@@ -811,7 +809,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                 <span className="field-label">
                   {t('模型')}
                   {isWso2 ? <InfoTip text={t('区分大小写，可包含斜杠。')} label={t('模型名称的写法')} /> : null}
-                  <ProblemBeside problem={errors.model ?? errors.contextWindow} always />
+                  <ProblemBeside problem={errors.model ?? errors.contextWindow} />
                 </span>
                 <span className="field-control">
                   <ModelPicker
@@ -841,7 +839,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
               <div className="field field-stack">
                 <span className="field-label">
                   {t('花费上限')}
-                  <ProblemBeside problem={errors.spendLimitUsd ?? errors.spendPeriodDays} always />
+                  <ProblemBeside problem={errors.spendLimitUsd ?? errors.spendPeriodDays} />
                 </span>
                 <span className="field-control">
                   <span className="spend-limit">
