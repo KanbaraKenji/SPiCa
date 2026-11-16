@@ -46,7 +46,7 @@ describe('the expand button in the preview head', () => {
     const toggle = vi.fn();
     const { rerender } = render(<FilePreview info={info} onOpenExternal={vi.fn()} onClose={vi.fn()} max={{ on: false, toggle }} />);
     const head = document.querySelector('.preview-head') as HTMLElement;
-    expect([...head.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual(['最大化', '复制路径', '用系统程序打开', '关闭预览']);
+    expect([...head.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual(['复制路径', '最大化', '用系统程序打开', '关闭预览']);
     const max = screen.getByRole('button', { name: '最大化' });
     expect(max.getAttribute('aria-pressed')).toBe('false');
     expect(max.getAttribute('title')).toBe('最大化（Ctrl+Shift+\\）');
@@ -63,15 +63,34 @@ describe('the expand button in the preview head', () => {
 
 describe('the file’s place, from the preview head', () => {
   const info = { kind: 'text' as const, name: '报价汇总.csv', path: 'D:\\工作\\报价汇总.csv', size: 7, text: 'a', truncated: false };
-  it('打开所在文件夹 and 复制路径 before 用系统程序打开, with the full path', async () => {
+  it('the name opens the file’s folder (its hover note says so, with the full path); 复制路径 right after it; no folder button', async () => {
     const write = vi.spyOn(clipboard, 'write').mockResolvedValue();
     const onReveal = vi.fn();
     render(<FilePreview info={info} onOpenExternal={vi.fn()} onReveal={onReveal} onClose={vi.fn()} />);
-    expect([...document.querySelectorAll('.preview-head button')].map((b) => b.getAttribute('aria-label'))).toEqual(['打开所在文件夹', '复制路径', '用系统程序打开', '关闭预览']);
-    fireEvent.click(screen.getByRole('button', { name: '打开所在文件夹' }));
+    const head = document.querySelector('.preview-head') as HTMLElement;
+    // In order: the name (a button read by its name), 复制路径, then the panel's own buttons after a gap.
+    expect([...head.querySelectorAll('button')].map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['报价汇总.csv', '复制路径', '用系统程序打开', '关闭预览']);
+    expect([...head.children].slice(1).map((c) => c.getAttribute('class'))).toEqual(['preview-name is-button', 'icon-btn', 'preview-head-gap', 'icon-btn', 'icon-btn']);
+    expect(screen.queryByRole('button', { name: '打开所在文件夹' })).toBeNull();
+    const name = screen.getByRole('button', { name: '报价汇总.csv' });
+    expect(name.getAttribute('title')).toBe('打开所在文件夹\nD:\\工作\\报价汇总.csv');
+    fireEvent.click(name);
     expect(onReveal).toHaveBeenCalledWith('D:\\工作\\报价汇总.csv');
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '复制路径' })));
     expect(write).toHaveBeenCalledWith('D:\\工作\\报价汇总.csv');
+  });
+  it('the keyboard reaches the name: a real button in the tab order', () => {
+    const onReveal = vi.fn();
+    render(<FilePreview info={info} onOpenExternal={vi.fn()} onReveal={onReveal} onClose={vi.fn()} />);
+    const name = screen.getByRole('button', { name: '报价汇总.csv' });
+    expect(name.tagName).toBe('BUTTON');
+    expect(name.getAttribute('type')).toBe('button');
+    expect(name.tabIndex).toBe(0);
+  });
+  it('without a way to open folders the name is only its name', () => {
+    render(<FilePreview info={info} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: '报价汇总.csv' })).toBeNull();
+    expect(document.querySelector('span.preview-name')?.getAttribute('title')).toBe('D:\\工作\\报价汇总.csv');
   });
   it('not for a file that is not there', () => {
     render(<FilePreview info={{ kind: 'missing', name: 'x.txt', path: 'D:/x.txt', size: 0, message: '找不到文件。' }} onOpenExternal={vi.fn()} onReveal={vi.fn()} onClose={vi.fn()} />);
@@ -99,14 +118,14 @@ describe('the file’s place, from the preview head', () => {
     expect([...document.querySelectorAll('.preview-sheet tbody tr')].map((r) => r.textContent)).toEqual(['1品名数量', '2键盘150']);
     expect(screen.getByText('仅显示前 2 行（共 900 行）')).toBeTruthy();
     // Not a file with code of its own.
-    expect(screen.queryByRole('button', { name: '代码' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '查看代码' })).toBeNull();
   });
 
   it('a Word document is shown as its text, says where it was cut, and has no 代码 view', () => {
     render(<FilePreview info={{ kind: 'markdown', name: '纪要.docx', path: 'D:/纪要.docx', size: 9000, text: '# 纪要', truncated: true }} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByRole('heading', { name: '纪要' })).toBeTruthy();
     expect(screen.getByText('仅显示前 500 段')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '代码' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '查看代码' })).toBeNull();
   });
 
   it('预览方式: the app’s own or a plugin page, for this file; a plugin page fills the body; a line says why the app’s own is back, with 重试', () => {

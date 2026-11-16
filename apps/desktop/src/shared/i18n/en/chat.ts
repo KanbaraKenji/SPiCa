@@ -17,6 +17,8 @@ export const EN_CHAT: Catalog = {
   流程图: 'Flowchart',
   预览: 'Preview',
   代码: 'Code',
+  查看代码: 'View code',
+  查看预览: 'View preview',
   'HTML · {n} 行': { one: 'HTML · {n} line', other: 'HTML · {n} lines' },
   '打开文件夹 {path}': 'Open folder {path}',
   '预览 {path}': 'Preview {path}',

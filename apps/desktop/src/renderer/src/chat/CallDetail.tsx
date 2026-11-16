@@ -6,7 +6,7 @@
 // Plain text only: nothing in a result is rendered as HTML or Markdown.
 import { useMemo, type ReactNode } from 'react';
 import type { FileCardMeta, FileChangeMeta } from '@spica/protocol';
-import { highlightCode } from './highlight';
+import { highlightCode, languageOf } from './highlight';
 import { resultBody, type Block } from '../store/transcript';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
@@ -158,13 +158,6 @@ function ArgBlock({ value }: { value: unknown }) {
 
 // ---- A file written or edited, as a change (green in, red out) ----
 
-const LANGUAGES: Record<string, string> = {
-  py: 'python', js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', json: 'json',
-  md: 'markdown', css: 'css', html: 'xml', htm: 'xml', xml: 'xml', svg: 'xml', ps1: 'powershell', psm1: 'powershell', sh: 'bash', bash: 'bash',
-  sql: 'sql', yaml: 'yaml', yml: 'yaml', ini: 'ini', toml: 'ini', cfg: 'ini', c: 'c', h: 'c', cpp: 'cpp', hpp: 'cpp', cs: 'csharp', go: 'go',
-  rs: 'rust', java: 'java', bat: 'dos', cmd: 'dos', vb: 'vbnet',
-};
-export const languageOf = (path: string): string | null => LANGUAGES[path.split('.').pop()?.toLowerCase() ?? ''] ?? null;
 
 export interface ChangeLine {
   /** `gap`: lines left out between two places that changed (or past the last one drawn): ⋯. */

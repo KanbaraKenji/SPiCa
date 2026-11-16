@@ -129,6 +129,7 @@ describe('what the window’s close button does', () => {
     r.seen({ type: 'status', sessionId: 'b', status: 'awaiting_answer' });
     r.seen({ type: 'text.delta', sessionId: 'a' });
     expect(r.any()).toBe(true);
+    expect(r.ids()).toEqual(['a', 'b']);
     r.seen({ type: 'status', sessionId: 'a', status: 'idle' });
     expect(r.any()).toBe(true);
     r.seen({ type: 'status', sessionId: 'b', status: 'aborted' });

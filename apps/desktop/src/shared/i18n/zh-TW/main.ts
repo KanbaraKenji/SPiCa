@@ -113,7 +113,7 @@ export const ZH_TW_MAIN: Catalog = {
   '已是最新版本（{version}）。': '已是最新版本（{version}）。',
   '有新版本 {version}（开发版不自动安装）。': '有新版本 {version}（開發版不自動安裝）。',
   '正在下载 {version}…': '正在下載 {version}…',
-  '新版本 {version} 已下载，重启后更新。': '新版本 {version} 已下載，重新啟動後更新。',
+  '新版本 {version} 已下载。': '新版本 {version} 已下載。',
   // main/backend/process.ts
   '后台启动失败：{error}': '後台啟動失敗：{error}',
   // main/app-dialog.ts (the page crashed three times)
@@ -202,4 +202,11 @@ export const ZH_TW_MAIN: Catalog = {
   '更新服务器上没有版本信息，请稍后重试。': '更新伺服器上沒有版本資訊，請稍後重試。',
   '新版本文件校验不对，未安装，请稍后重试。': '新版本檔案驗證不符，未安裝，請稍後重試。',
   '有新版本 {version}。便携版不能自动更新，请换用新版的便携版。': '有新版本 {version}。可攜版無法自動更新，請改用新版的可攜版。',
+  // 立即更新 while conversations run (app-dialog updateBusyDialog)
+  '有任务正在运行，更新会中断它。': '有任務正在執行，更新會中斷它。',
+  '「{name}」': '「{name}」',
+  '还有 {n} 个': '還有 {n} 個',
+  '继续更新': '繼續更新',
+  '取消': '取消',
+  '新对话': '新對話',
 };

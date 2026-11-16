@@ -96,7 +96,7 @@ export { CLOSE_QUESTION };
 const RUNNING = new Set(['queued', 'thinking', 'tool', 'awaiting_confirm', 'awaiting_answer']);
 
 /** Follows the core's status events: whether any conversation is running now (for CLOSE_RUNNING). */
-export function runningTracker(): { seen(e: { type: string; sessionId?: string; status?: string }): void; any(): boolean } {
+export function runningTracker(): { seen(e: { type: string; sessionId?: string; status?: string }): void; any(): boolean; ids(): string[] } {
   const going = new Set<string>();
   return {
     seen(e) {
@@ -105,6 +105,7 @@ export function runningTracker(): { seen(e: { type: string; sessionId?: string; 
       else going.delete(e.sessionId);
     },
     any: () => going.size > 0,
+    ids: () => [...going],
   };
 }
 

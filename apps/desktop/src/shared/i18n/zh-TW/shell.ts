@@ -79,6 +79,8 @@ export const ZH_TW_SHELL: Catalog = {
   '预览 {name}': '預覽 {name}',
   预览方式: '預覽方式',
   代码: '程式碼',
+  查看代码: '檢視程式碼',
+  查看预览: '檢視預覽',
   打开所在文件夹: '開啟所在資料夾',
   复制路径: '複製路徑',
   用系统程序打开: '以系統程式開啟',
@@ -151,7 +153,7 @@ export const ZH_TW_SHELL: Catalog = {
   '新版本 {version}': '新版本 {version}',
   '{n} 个插件可更新': '{n} 個外掛程式可更新',
   稍后: '稍後',
-  重启并更新: '重新啟動並更新',
+  '立即更新': '立即更新',
 
   // shell/PluginFrame.tsx, shell/PluginPreview.tsx
   '无法打开「{plugin}」的页面：找不到 {entry}': '無法開啟「{plugin}」的頁面：找不到 {entry}',

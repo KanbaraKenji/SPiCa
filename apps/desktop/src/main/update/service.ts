@@ -270,7 +270,7 @@ export class UpdateService {
         return this.state;
       }
       this.#ready = dest;
-      this.#set({ status: 'ready', available: version, required, progress: undefined }, () => t('新版本 {version} 已下载，重启后更新。', { version }));
+      this.#set({ status: 'ready', available: version, required, progress: undefined }, () => t('新版本 {version} 已下载。', { version }));
       // Found at start and it must update: installed now, without asking.
       if (this.#forcing) this.install();
       return this.state;

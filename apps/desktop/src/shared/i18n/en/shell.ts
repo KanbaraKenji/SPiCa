@@ -79,6 +79,8 @@ export const EN_SHELL: Catalog = {
   '预览 {name}': 'Preview {name}',
   预览方式: 'Preview with',
   代码: 'Code',
+  查看代码: 'View code',
+  查看预览: 'View preview',
   打开所在文件夹: 'Open containing folder',
   复制路径: 'Copy path',
   用系统程序打开: 'Open in default app',
@@ -151,7 +153,7 @@ export const EN_SHELL: Catalog = {
   '新版本 {version}': 'Version {version} available',
   '{n} 个插件可更新': { one: '{n} plugin update available', other: '{n} plugin updates available' },
   稍后: 'Later',
-  重启并更新: 'Restart and update',
+  '立即更新': 'Update now',
 
   // shell/PluginFrame.tsx, shell/PluginPreview.tsx
   '无法打开「{plugin}」的页面：找不到 {entry}': 'Can’t open the “{plugin}” page: {entry} not found',
