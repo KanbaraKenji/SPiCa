@@ -98,4 +98,8 @@ export const DesktopChannel = {
   OpenFolder: 'spica:openFolder',
   /** invoke: (suggested name, CSV text) -> SaveCsvResult (asks where to save first) */
   SaveCsv: 'spica:saveCsv',
+  /** main -> renderer: a web address a page in the built-in browser opened as a new window; it opens as a new tab */
+  BrowserOpenTab: 'spica:browserOpenTab',
+  /** invoke: a web address (http/https) -> null, opened in the system's browser; or what to show */
+  BrowserExternal: 'spica:browserExternal',
 } as const;

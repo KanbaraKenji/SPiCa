@@ -1,6 +1,6 @@
 // The window: title bar, left sidebar, main pane (conversation, inbox or a plugin page), right panels; settings as a dialog over it.
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import type { DesktopBridge, PreviewInfo } from '../../shared/bridge';
+import type { DesktopBridge } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
 import { centreShift, computeLayout, infoFits, monitorFits, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
@@ -35,6 +35,9 @@ import { InboxView, type InboxProject } from './shell/InboxView';
 import type { UsageApi } from './settings/Usage';
 import { MonitorView } from './shell/MonitorView';
 import { ToolHistory } from './shell/ToolHistory';
+import { PaneTabs } from './shell/PaneTabs';
+import { BrowserPane } from './shell/BrowserPane';
+import { activate as activatePane, activeTab, closeTab as closePaneTab, NO_TABS, openFile as openPaneFile, openWeb as openPaneWeb, setOpen as setPaneOpen, tabName, updateActiveFile, updateWeb as updatePaneWeb, type FileRequest, type PaneTab, type PaneTabs as PaneTabsState } from './shell/pane-tabs';
 import { MaxButton } from './ui/MaxButton';
 import { MailStore, useMail } from './store/mail';
 import { needsYou } from '../../shared/mail';
@@ -97,7 +100,13 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [newProject, setNewProject] = useState<null | { name?: string; mailId?: string }>(null);
   /** The file shown in the right panel instead of the details, if any. */
   // A file to show in the right panel, or (inline) a page from an answer's HTML code block.
-  const [preview, setPreview] = useState<{ sessionId: string | null; path: string; sheet?: number; inline?: PreviewInfo } | null>(null);
+  // The right panel's tabs: files and web pages side by side (shell/pane-tabs.ts). preview is the file shown.
+  const [pane, setPane] = useState<PaneTabsState>(NO_TABS);
+  const shownTab = pane.open ? activeTab(pane) : undefined;
+  const preview: FileRequest | null = shownTab?.kind === 'file' ? shownTab.req : null;
+  /** A file to show (its tab, or a new one); null closes the panel; a function changes the file shown (another sheet). */
+  const setPreview = (v: FileRequest | null | ((r: FileRequest) => FileRequest)) =>
+    setPane((s) => (v === null ? setPaneOpen(s, false) : typeof v === 'function' ? updateActiveFile(s, v) : openPaneFile(s, v)));
   const [previewWay, setPreviewWay] = useState<{ key: string; id: string } | null>(null);
   const [previewFallback, setPreviewFallback] = useState<{ key: string; id: string; why: PreviewFallback } | null>(null);
   const [previewAttempt, setPreviewAttempt] = useState(0);
@@ -156,7 +165,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // (panels.monitor).
   // The preview's place also shows 工具调用 X (the details' last row): the finished calls of this conversation.
   const [history, setHistory] = useState(false);
-  const previewOpen = preview !== null || history;
+  const previewOpen = pane.open || history;
   const monitorOpen = settings.monitor ? Boolean(settings.panels.monitor) : undefined;
   // As Claude's Files: while the monitor or the preview is open the details give way at once (not docked); their
   // button then shows them as a small card over the conversation's top right (infoFloat). Their saved switch stays:
@@ -387,27 +396,38 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   useEffect(() => {
     if (window.__spicaShots)
       window.__spicaShots.preview = (path) => {
-        setPreview({ sessionId: null, path });
+        setPane((s) => openPaneFile(s, { sessionId: null, path }));
         showPreview();
       };
   });
-  // The file last closed in the preview: the title bar's preview button opens it again.
-  const [lastPreview, setLastPreview] = useState<typeof preview>(null);
+  // Closed, the panel keeps its tabs: the title bar's preview button opens it again on the tab last shown.
+  const lastTab = pane.open ? undefined : activeTab(pane);
+  const lastPreview = lastTab ?? null;
   const closePreview = () => {
-    if (preview) setLastPreview(preview);
-    setPreview(null);
+    setPane((s) => setPaneOpen(s, false));
     if (floating === 'preview') setFloating(null);
   };
+  /** A web page in a new tab of the panel ('' : an empty one). */
+  const openWebTab = (url: string) => {
+    setPane((s) => openPaneWeb(s, url));
+    setHistory(false);
+    showPreview();
+  };
+  useEffect(() => bridge.browser.onOpenTab((url) => openWebTab(url)));
+  // The screenshot script hook: a web page in a new tab of the panel.
+  useEffect(() => {
+    if (window.__spicaShots) window.__spicaShots.browse = (url) => openWebTab(url);
+  });
   /**
    * The title bar's preview button: closes what is in the preview's place (the file, and 工具调用 if it is over it), or
    * opens again the file last shown there.
    */
   const togglePreview = () => {
-    if (history || preview) {
+    if (history || pane.open) {
       setHistory(false);
       closePreview();
     } else if (lastPreview) {
-      setPreview(lastPreview);
+      setPane((s) => setPaneOpen(s, true));
       showPreview();
     }
   };
@@ -792,8 +812,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // pressed; its hover says why. Their switch is kept: they come back when there is room. Given way to the monitor or
   // the preview, the button shows the small card instead.
   const infoRoom = infoBlocked || infoFits(width, open, wantedWidths);
-  const lastName = lastPreview ? (lastPreview.inline?.name ?? lastPreview.path.split(/[\\/]/).pop() ?? lastPreview.path) : '';
-  const previewTip = preview ? t('预览') : lastPreview ? t('预览：{name}', { name: lastName }) : t('没有打开的预览：点对话里的文件打开');
+  const lastName = lastTab ? tabName(lastTab) || t('新标签页') : '';
+  const previewTip = pane.open ? t('预览') : lastPreview ? t('预览：{name}', { name: lastName }) : t('没有打开的预览：点对话里的文件打开');
   // A preview floating over a narrow window takes no room: there the window is what is too narrow.
   const infoTip = infoRoom ? t('详情（Ctrl+Alt+B）') : t('窗口太窄，放不下详情');
   // The 监控台 (switched on in 设置 › 关于): as the details, no room means not shown and a button that says why.
@@ -829,7 +849,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const toggleHistory = () => {
     if (history) {
       setHistory(false);
-      if (!preview && floating === 'preview') setFloating(null);
+      if (!pane.open && floating === 'preview') setFloating(null);
       return;
     }
     setHistory(true);
@@ -838,6 +858,21 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   if (canMax !== rightCanMax) setCanMax(rightCanMax);
   if (rightMax && !rightCanMax) setRightMax(false);
   const panelMax = { on: rightMax, toggle: () => setRightMax((v) => !v) };
+  const webTabs = pane.tabs.filter((x): x is Extract<PaneTab, { kind: 'web' }> => x.kind === 'web');
+  const paneStrip = (
+    <PaneTabs
+      tabs={pane.tabs}
+      active={pane.active}
+      onPick={(tabId) => setPane((s) => activatePane(s, tabId))}
+      onClose={(tabId) => {
+        setPane((s) => closePaneTab(s, tabId));
+        if (pane.tabs.length === 1 && floating === 'preview') setFloating(null);
+      }}
+      onNew={() => openWebTab('')}
+      max={panelMax}
+      onClosePanel={closePreview}
+    />
+  );
   // The preview over the whole conversation is a layer of Esc too (back beside it).
   useEscape(rightMax, () => setRightMax(false));
   const title = view === 'inbox' ? t('收件箱') : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
@@ -1081,11 +1116,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               <button
                 type="button"
                 data-panel-toggle
-                className={preview || history ? 'icon-btn is-on' : 'icon-btn'}
+                className={pane.open || history ? 'icon-btn is-on' : 'icon-btn'}
                 onClick={togglePreview}
-                aria-label={preview || history ? t('收起预览') : t('展开预览')}
-                aria-pressed={preview !== null || history}
-                {...(preview || lastPreview ? {} : { 'aria-disabled': true })}
+                aria-label={pane.open || history ? t('收起预览') : t('展开预览')}
+                aria-pressed={pane.open || history}
+                {...(pane.open || lastPreview ? {} : { 'aria-disabled': true })}
                 title={previewTip}
               >
                 <Icon name="detail" />
@@ -1189,14 +1224,16 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           </div>
         ) : null}
 
-        {previewShown && view === 'chat' && preview && !history ? (
+        {previewShown && view === 'chat' && shownTab && !history ? (
           <div
             className={`panel panel-right panel-preview is-${layout.preview}${rightMax ? ' is-max' : ''}${widths.cover && layout.preview === 'docked' ? ' is-cover' : ''}`}
             style={rightMax ? undefined : { width: widths.preview, ...(widths.cover && layout.preview === 'docked' ? { marginLeft: -widths.cover } : {}) }}
           >
             {/* Wider than what is beside it allows, it lies over the details, then over the conversation's right part (kept at its 440 layout): pulled left by `cover`. */}
             {rightMax ? null : resizer('preview')}
+            {preview ? (
             <FilePreview
+              tabs={paneStrip}
               // A plugin page draws the file: the head still names it (and offers its buttons).
               info={pagePreview ? { kind: 'unsupported', name: preview.path.split(/[\\/]/).pop() ?? preview.path, path: preview.path, size: 0, message: '' } : previewInfo}
               {...(filePages.length
@@ -1223,6 +1260,16 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 />
               ) : null}
             </FilePreview>
+            ) : null}
+            {webTabs.length ? (
+              <BrowserPane
+                tabs={webTabs}
+                active={shownTab.kind === 'web' ? shownTab.id : null}
+                strip={shownTab.kind === 'web' ? paneStrip : null}
+                onChange={(tabId, patch) => setPane((s) => updatePaneWeb(s, tabId, patch))}
+                onOpenExternal={(url) => void bridge.browser.openExternal(url).then(showNotice)}
+              />
+            ) : null}
           </div>
         ) : null}
 

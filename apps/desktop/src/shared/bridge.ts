@@ -180,6 +180,13 @@ export interface DesktopBridge extends SpicaBridge {
   showInFolder(path: string): Promise<string | null>;
   /** Opens a folder in Explorer. An absolute path; resolves to what to show when it is not a folder that is there. */
   openFolder(path: string): Promise<string | null>;
+  /** The built-in browser in the right panel. */
+  browser: {
+    /** A page asked for a new window (a link with target=_blank, window.open): open the address as a new tab. */
+    onOpenTab(listener: (url: string) => void): () => void;
+    /** Opens a web address (http/https) in the system's browser; resolves to what to show when it cannot. */
+    openExternal(url: string): Promise<string | null>;
+  };
   /** 监控台: the back end's lines (kept in the main process, secrets removed there). */
   monitor: {
     /** The lines kept, oldest first; those after `after` (a seq) when given. */

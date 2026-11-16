@@ -257,4 +257,14 @@ export const EN_SHELL: Catalog = {
   还原: 'Restore',
   最大化: 'Maximize',
   '{name}（{keys}）': '{name} ({keys})',
+  // shell/PaneTabs.tsx, shell/BrowserPane.tsx (the built-in browser)
+  新标签页: 'New tab',
+  '关闭 {name}': 'Close {name}',
+  网页: 'Web page',
+  后退: 'Back',
+  前进: 'Forward',
+  刷新: 'Reload',
+  地址: 'Address',
+  输入网址: 'Enter an address',
+  用系统浏览器打开: 'Open in system browser',
 };

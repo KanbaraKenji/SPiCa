@@ -257,4 +257,14 @@ export const ZH_TW_SHELL: Catalog = {
   还原: '還原',
   最大化: '最大化',
   '{name}（{keys}）': '{name}（{keys}）',
+  // shell/PaneTabs.tsx, shell/BrowserPane.tsx (the built-in browser)
+  新标签页: '新分頁',
+  '关闭 {name}': '關閉 {name}',
+  网页: '網頁',
+  后退: '上一頁',
+  前进: '下一頁',
+  刷新: '重新整理',
+  地址: '網址',
+  输入网址: '輸入網址',
+  用系统浏览器打开: '以系統瀏覽器開啟',
 };

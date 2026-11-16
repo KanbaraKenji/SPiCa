@@ -209,4 +209,6 @@ export const EN_MAIN: Catalog = {
   '继续更新': 'Update anyway',
   '取消': 'Cancel',
   '新对话': 'New conversation',
+  // shell/PaneTabs.tsx, shell/BrowserPane.tsx (the built-in browser)
+  '无法打开此网址。': 'Cannot open this address.',
 };

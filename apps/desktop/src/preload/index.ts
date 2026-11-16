@@ -139,6 +139,10 @@ const bridge: DesktopBridge = {
   exportUsageLog: (req) => ipcRenderer.invoke(DesktopChannel.UsageLog, req) as Promise<UsageLogResult>,
   showInFolder: (path) => ipcRenderer.invoke(DesktopChannel.ShowInFolder, path) as Promise<string | null>,
   openFolder: (path) => ipcRenderer.invoke(DesktopChannel.OpenFolder, path) as Promise<string | null>,
+  browser: {
+    onOpenTab: (listener) => subscribe<string>(DesktopChannel.BrowserOpenTab, listener),
+    openExternal: (url) => ipcRenderer.invoke(DesktopChannel.BrowserExternal, url) as Promise<string | null>,
+  },
   saveCsv: (name, text) => ipcRenderer.invoke(DesktopChannel.SaveCsv, name, text) as Promise<SaveCsvResult>,
   monitor: {
     list: (after: number) => ipcRenderer.invoke(DesktopChannel.MonitorList, after) as Promise<MonitorEntry[]>,

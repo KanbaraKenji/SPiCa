@@ -8309,3 +8309,125 @@ input[type='radio']:disabled {
 .about-state > svg {
   flex: none;
 }
+
+/* ---------- The right panel's tabs and the built-in browser (shell/PaneTabs.tsx, shell/BrowserPane.tsx) ---------- */
+
+/* The tab row: files and web pages side by side, + for an empty page, then 最大化 and 关闭 as in the file's head. */
+.pane-tabs {
+  padding-left: 8px;
+}
+
+.pane-tab-list {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.pane-tab {
+  flex: 0 1 180px;
+  min-width: 72px;
+  height: var(--control-h);
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-s);
+  color: var(--spica-muted);
+}
+
+.pane-tab:hover {
+  background: var(--spica-hover);
+}
+
+.pane-tab.is-on {
+  background: var(--spica-active);
+  color: var(--spica-ink);
+}
+
+.pane-tab-main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px 0 8px;
+  color: inherit;
+  text-align: left;
+}
+
+.pane-tab-main > svg {
+  flex: none;
+}
+
+.pane-tab-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pane-tab-close {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-s);
+  color: var(--spica-muted);
+}
+
+.pane-tab-close:hover {
+  background: var(--spica-control-hover);
+  color: var(--spica-ink);
+}
+
+/* Under the tabs, the file's own row shows its full path where the name was (the tab names it). */
+.preview-name.preview-path {
+  font-weight: 400;
+  color: var(--spica-muted);
+}
+
+/* A web page: the address row, then the page. Pages not shown stay where they are, out of sight (not display:none:
+   a hidden <webview> loses its size). */
+.preview.browser.is-hidden {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.browser-bar {
+  padding-left: 8px;
+}
+
+.browser-address-form {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  margin: 0 4px;
+}
+
+.browser-address {
+  flex: 1;
+}
+
+.browser-pages {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.browser-page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  background: #ffffff;
+}
+
+.browser-page.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}

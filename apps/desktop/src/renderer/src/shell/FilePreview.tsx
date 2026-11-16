@@ -31,6 +31,11 @@ export interface FilePreviewProps {
   note?: { text: string; onRetry?: () => void } | null;
   /** Shown instead of the app's own preview (a plugin's preview page). */
   children?: ReactNode;
+  /**
+   * The panel's tab row (shell/PaneTabs.tsx), above the file's own row. The tab names the file, so the row shows its
+   * full path instead; 最大化 and 关闭 are in the tab row.
+   */
+  tabs?: ReactNode;
 }
 
 function sizeText(n: number): string {
@@ -140,7 +145,7 @@ function codeOf(info: PreviewInfo | null): { text: string; language: string } | 
   return null;
 }
 
-export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, max, source, note, children }: FilePreviewProps) {
+export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, max, source, note, children, tabs }: FilePreviewProps) {
   // 预览 / 代码: per file, kept while the panel is open (another file opens as its preview; back to this one, as left).
   const id = info ? `${info.kind}|${info.path}|${info.name}` : '';
   const [codeFor, setCodeFor] = useState<ReadonlySet<string>>(() => new Set());
@@ -156,16 +161,17 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
   const hasFile = Boolean(info && info.kind !== 'missing' && info.path);
   return (
     <section className="preview" aria-label={info ? t('预览 {name}', { name: info.name }) : t('预览')}>
+      {tabs}
       <header className="preview-head panel-head">
-        <FileGlyph name={info?.name ?? ''} />
+        {tabs ? null : <FileGlyph name={info?.name ?? ''} />}
         {/* The name opens the file's folder (its hover note says so, with the full path); 复制路径 right after it. */}
         {info && hasFile && onReveal ? (
-          <button type="button" className="preview-name is-button" onClick={() => onReveal(info.path)} title={[t('打开所在文件夹'), info.path].join('\n')}>
-            {info.name}
+          <button type="button" className={tabs ? 'preview-name preview-path is-button' : 'preview-name is-button'} onClick={() => onReveal(info.path)} title={[t('打开所在文件夹'), info.path].join('\n')}>
+            {tabs ? info.path : info.name}
           </button>
         ) : (
-          <span className="preview-name" title={info?.path ?? ''}>
-            {info?.name ?? ''}
+          <span className={tabs ? 'preview-name preview-path' : 'preview-name'} title={info?.path ?? ''}>
+            {tabs ? (info?.path ?? '') : (info?.name ?? '')}
           </span>
         )}
         {info && hasFile ? <CopyButton className="icon-btn" label={t('复制路径')} copy={() => clipboard.write(info.path)} /> : null}
@@ -179,16 +185,18 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
             <Icon name={asCode ? 'eye' : 'code'} size={15} />
           </button>
         ) : null}
-        {max ? <MaxButton max={max} /> : null}
+        {max && !tabs ? <MaxButton max={max} /> : null}
         {/* The file's own buttons: not for a page drawn from an answer (it has no file). */}
         {info && hasFile ? (
           <button type="button" className="icon-btn" onClick={() => onOpenExternal(info.path)} aria-label={t('用系统程序打开')} title={t('用系统程序打开')}>
             <Icon name="external" size={15} />
           </button>
         ) : null}
-        <button type="button" className="icon-btn" onClick={onClose} aria-label={t('关闭预览')} title={t('关闭预览')}>
-          <Icon name="close" size={14} />
-        </button>
+        {tabs ? null : (
+          <button type="button" className="icon-btn" onClick={onClose} aria-label={t('关闭预览')} title={t('关闭预览')}>
+            <Icon name="close" size={14} />
+          </button>
+        )}
       </header>
       {note ? (
         <p className="preview-note preview-fallback">

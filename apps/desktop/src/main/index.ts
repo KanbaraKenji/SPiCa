@@ -813,8 +813,7 @@ function createMainWindow(): BrowserWindow {
   });
   // The built-in browser's pages: locked settings, new windows become tabs, no way into local files or this machine.
   guardWebviews(win.webContents, {
-    // The panel that takes new tabs comes with the browser panel itself; until then a page's new window is refused.
-    openTab: (url) => console.log(`browser: new window refused (${new URL(url).host})`),
+    openTab: (url) => sendToWindow(DesktopChannel.BrowserOpenTab, url),
     log: (line) => console.log(line),
   });
   // The page process gone (killed, crashed, out of memory): load it again, back on the open conversation;
@@ -1552,6 +1551,13 @@ const pathKind = (p: string): PathKind => {
     return null;
   }
 };
+// 用系统浏览器打开 (the built-in browser's address row): web addresses only.
+ipcMain.handle(DesktopChannel.BrowserExternal, async (_e, url: unknown): Promise<string | null> => {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return t('无法打开此网址。');
+  await shell.openExternal(url);
+  return null;
+});
+
 ipcMain.handle(DesktopChannel.ShowInFolder, (_e, path: unknown): string | null => {
   const r = checkLocalPath(path, 'any', pathKind);
   if (!r.ok) return r.error;
@@ -1768,11 +1774,15 @@ void app.whenReady().then(() => {
   // SPICA_MOCK_WEB=<folder> (development only; screenshots of pictures on the web): https://example.com/<name> is
   // answered from that folder and any other https request gets a 404, so nothing leaves the machine.
   const mockWeb = mockWebFolder(process.env, app.isPackaged);
-  if (mockWeb)
-    protocol.handle('https', (req) => {
+  if (mockWeb) {
+    const answer = (req: Request) => {
       const u = new URL(req.url);
       return u.host === 'example.com' ? net.fetch(pathToFileURL(join(mockWeb, basename(u.pathname))).toString()) : new Response('', { status: 404 });
-    });
+    };
+    protocol.handle('https', answer);
+    // the built-in browser's pages too (its own session)
+    session.fromPartition(BROWSER_PARTITION).protocol.handle('https', answer);
+  }
   // The built-in browser's own session (its own cookies and storage; none of the app's schemes are registered on it).
   setupBrowserSession(session.fromPartition(BROWSER_PARTITION), { log: (line) => console.log(line) });
   applyBrowserNetworkNow();
