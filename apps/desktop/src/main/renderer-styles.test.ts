@@ -127,6 +127,15 @@ describe('the panels around the conversation (shell/layout.ts counts on these)',
     expect(block('.zoomable')).toContain('cursor: zoom-in');
   });
 
+  it('a picture file fits the preview whole (no scroll bars), a small one keeps its size in the middle', () => {
+    const wrap = block('.preview-image-wrap');
+    for (const rule of ['align-items: center', 'justify-content: center', 'overflow: hidden']) expect(wrap).toContain(rule);
+    const img = block('.preview-image');
+    for (const rule of ['max-width: 100%', 'max-height: 100%', 'object-fit: contain']) expect(img).toContain(rule);
+    // never bigger than its own size
+    expect(img).not.toMatch(/(^|[^-])(width|height): 100%/);
+  });
+
   it('a long file scrolls inside the preview: the preview stays the panel’s height', () => {
     // The right panel is a column: a flex item there is as tall as its content unless min-height says otherwise.
     expect(block('.preview')).toContain('min-height: 0');

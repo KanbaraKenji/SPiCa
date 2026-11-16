@@ -6625,16 +6625,20 @@ section.plugins-part > .plugins-part-title {
   user-select: text;
 }
 
+/* A picture file: a bigger one shrinks to fit the panel whole (no scroll bars), a smaller one keeps its own size,
+   in the middle; a press shows it big (ui/ImageViewer). */
 .preview-image-wrap {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   padding: 16px;
+  overflow: hidden;
 }
 
 .preview-image {
   max-width: 100%;
-  height: auto;
+  max-height: 100%;
+  object-fit: contain;
 }
 
 .preview-code {

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import type { DesktopBridge } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
-import { centreShift, computeLayout, infoFits, monitorFits, panelWidths, PREVIEW_MIN, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
+import { centreShift, computeLayout, infoFits, monitorFits, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
 import { Resizer } from './shell/Resizer';
 import { ConfirmDialog } from './ui/Dialog';
 import { FilePreview, usePreview } from './shell/FilePreview';
@@ -182,19 +182,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const savedWidths = { ...DEFAULT_SETTINGS.panelWidths, ...settings.panelWidths };
   // While an edge is dragged, everything follows the pointer: the conversation squeezed, the details gone, the
   // preview over the conversation, exactly as it will stay when the button is let go (nothing jumps then).
-  const draggedWidths = dragging ? { ...savedWidths, [dragging.side]: dragging.width } : savedWidths;
-  // The open conversation waits for the person (a confirmation, a question): the preview does not lie over the
-  // conversation then, so the card's buttons can be reached; it is narrowed to what leaves the conversation its
-  // 440 (not below its own narrowest; the saved width is kept and comes back after).
-  const waitsOnPerson = view === 'chat' && !dragging && (() => {
-    const st = state.sessions.find((s) => s.id === state.activeId)?.status;
-    return st === 'awaiting_confirm' || st === 'awaiting_answer';
-  })();
-  const firstLayout = computeLayout(width, open, floating, draggedWidths);
-  const firstWidths = panelWidths(width, firstLayout, draggedWidths);
-  const wantedWidths = waitsOnPerson && firstWidths.cover > 0 ? { ...draggedWidths, preview: Math.max(PREVIEW_MIN, firstWidths.preview - firstWidths.cover) } : draggedWidths;
-  const layout = wantedWidths === draggedWidths ? firstLayout : computeLayout(width, open, floating, wantedWidths);
-  const widths = wantedWidths === draggedWidths ? firstWidths : panelWidths(width, layout, wantedWidths);
+  const wantedWidths = dragging ? { ...savedWidths, [dragging.side]: dragging.width } : savedWidths;
+  const layout = computeLayout(width, open, floating, wantedWidths);
+  const widths = panelWidths(width, layout, wantedWidths);
   // The content column: at rest as if nothing were docked on the right, pushed left by a right panel (styles.css:
   // --centre-shift).
   const shift = centreShift(width, layout, widths, view === 'chat');
