@@ -173,7 +173,7 @@ function FlowFigure({ code, fallback }: { code: string; fallback: ReactNode }) {
     <div className="code-block flow-figure">
       <div className="code-head">
         <span className="code-lang">{t('流程图')}</span>
-        <button type="button" className="icon-btn md-tool" aria-pressed={asCode} aria-label={asCode ? t('预览') : t('代码')} title={asCode ? t('预览') : t('代码')} onClick={() => setAsCode((v) => !v)}>
+        <button type="button" className="icon-btn md-tool" aria-label={asCode ? t('查看预览') : t('查看代码')} title={asCode ? t('查看预览') : t('查看代码')} onClick={() => setAsCode((v) => !v)}>
           <Icon name={asCode ? 'eye' : 'code'} size={14} />
         </button>
         <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(code)} />

@@ -19,9 +19,8 @@ describe('updates in the side bar › the card', () => {
   it('a downloaded update: 立即更新, and 稍后 closes it', () => {
     const onInstall = vi.fn();
     render(<Place update={{ ...base, status: 'ready', available: '0.2.1' }} onInstall={onInstall} />);
-    // one row: the version next to its button; the sentence in full on hover
-    expect(screen.getByRole('status').textContent).toContain('新版本 0.2.1');
-    expect(screen.getByTitle('新版本 0.2.1 已下载')).toBeTruthy();
+    // the words whole (they wrap when narrow), the button beside them
+    expect(screen.getByRole('status').textContent).toContain('新版本 0.2.1 已下载');
     fireEvent.click(screen.getByRole('button', { name: '立即更新' }));
     expect(onInstall).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '稍后' }));

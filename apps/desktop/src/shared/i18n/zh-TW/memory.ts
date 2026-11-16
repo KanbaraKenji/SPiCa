@@ -93,4 +93,7 @@ export const ZH_TW_MEMORY: Catalog = {
   检查更新: '檢查更新',
   这个版本不检查更新: '這個版本不檢查更新',
   '正在检查更新…': '正在檢查更新…',
+  // 设置 › 关于: the update state beside the version
+  '已是最新版本': '已是最新版本',
+  '新版本 {version} 已下载': '新版本 {version} 已下載',
 };

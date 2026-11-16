@@ -5918,13 +5918,16 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* Updates (shell/UpdateNotice.tsx): a card in the side bar, right above the bottom row; the same look as the
-   title bar's line (raised, bordered, a warning tint when the version must update). One row: the mark, the words
-   (cut short when narrow), the button, × at the end. */
+   title bar's line (raised, bordered, a warning tint when the version must update). Laid out as he drew it: × in a
+   column of its own on the right, centred top to bottom; left of it the content: the mark in the first line, the
+   words flowing from beside it and wrapping to the left edge, the button floating right after the words, so it sits
+   on the last line or, without room there, on a line of its own, right-aligned to the content (never under ×).
+   Without × (a version that must update) the content reaches the card's right edge. The words are always whole. */
 .update-card {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   margin: 0 8px 8px;
   padding: 6px 4px 6px 12px;
   border-radius: var(--radius-m);
@@ -5939,40 +5942,38 @@ section.plugins-part > .plugins-part-title {
   background: var(--spica-warning-soft);
 }
 
-.update-card .notice-icon {
-  flex: none;
+/* Without × the button keeps the same distance from the edge as the words on the left. */
+.update-card:not(:has(.notice-close)) {
+  padding-right: 8px;
 }
 
-.update-card-text {
+.update-card-body {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  /* the button's float stays inside */
+  display: flow-root;
+  /* Chinese wraps between words, not inside 已下载 */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
-/* The button keeps its words whole; × right after it. */
+.update-card .notice-icon {
+  margin-right: 8px;
+  vertical-align: -3px;
+}
+
+/* The button keeps its words whole; 22 high, 1px above the 20-high line so it centres on it. */
 .update-card-action {
-  flex: none;
+  float: right;
+  margin: -1px 0 -1px 8px;
   height: 22px;
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
+  white-space: nowrap;
 }
 
 .update-card .notice-close {
   flex: none;
-  margin-left: -4px;
-}
-
-/* The narrowest side bar: the mark goes, so the words keep what room there is. */
-.update-card {
-  container-type: inline-size;
-}
-
-@container (max-width: 200px) {
-  .update-card .notice-icon {
-    display: none;
-  }
 }
 
 /* In the column of icons: one icon in the same place; a dot for a downloaded update, the whole icon in the
@@ -6642,15 +6643,34 @@ section.plugins-part > .plugins-part-title {
   margin-right: 6px;
 }
 
+/* The name as long as it is (cut short when the head is narrow), 复制路径 right after it, then the panel's buttons. */
 .preview-name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 40px;
-  margin-right: 6px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--spica-ink);
   font-weight: 500;
+}
+
+/* A name that opens the file's folder: the text colour (a title, not a link), a block of colour on hover as the
+   head's icon buttons; it reaches a little left so the name stays where it was. */
+.preview-name.is-button {
+  height: var(--control-h);
+  margin-left: -4px;
+  padding: 0 4px;
+  border-radius: var(--radius-s);
+  text-align: left;
+}
+
+.preview-name.is-button:hover {
+  background: var(--spica-hover);
+}
+
+.preview-head-gap {
+  flex: 1;
+  min-width: 4px;
 }
 
 .preview-body {
@@ -6688,6 +6708,7 @@ section.plugins-part > .plugins-part-title {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  margin: 0;
   padding: 8px 0;
   font-family: var(--font-mono);
   font-size: var(--code-size);
@@ -8408,4 +8429,36 @@ input[type='checkbox']:disabled,
 input[type='radio']:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Settings › About: the version on the left; its update state and the button together on the right. Narrow, the
+   state wraps (right-aligned) before the version is squeezed; the button keeps its words. */
+.about-row .setting-control {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.about-inline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+
+.about-inline > .btn {
+  flex: none;
+}
+
+.about-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--spica-muted);
+  text-align: right;
+}
+
+.about-state > svg {
+  flex: none;
 }

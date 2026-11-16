@@ -147,19 +147,29 @@ describe('the update dialog at start', () => {
 });
 
 describe('立即更新 while conversations run', () => {
-  it('says the update stops them, names up to three (one a line) and how many more; 取消 or 继续更新, × is 取消', () => {
+  it('says the update stops them, names up to three (one a line) and how many more', () => {
     const spec = updateBusyDialog(['整理报价', '起草纪要'], dialogLook(DARK_SKIN));
     expect(spec.title).toBe('有任务正在运行，更新会中断它。');
     expect(spec.detail).toEqual(['「整理报价」', '「起草纪要」']);
-    expect(spec.buttons).toEqual([{ label: '取消' }, { label: '继续更新', primary: true }]);
     expect(spec.closeButton).toBe(true);
     expect(updateBusyDialog(['a', 'b', 'c', 'd', 'e'], dialogLook(DARK_SKIN)).detail).toEqual(['「a」', '「b」', '「c」', '还有 2 个']);
+  });
+
+  it('two buttons and no main one: 取消 plain, 继续更新 the danger one; 取消 and × change nothing', () => {
+    const spec = updateBusyDialog(['整理报价'], dialogLook(DARK_SKIN));
+    expect(spec.buttons).toEqual([{ label: '取消' }, { label: '继续更新', danger: true }]);
+    expect(spec.tokens['--spica-danger']).toBeTruthy();
     expect(updateBusyAnswer({ button: 1, checked: false, choice: null })).toBe(true);
     expect(updateBusyAnswer({ button: 0, checked: false, choice: null })).toBe(false);
     expect(updateBusyAnswer({ button: null, checked: false, choice: null })).toBe(false);
-    // the Windows message box (fallback): 继续更新 first, closing it is 取消
+    // the danger style survives the page's reading of the spec; a main button is never the danger one
+    expect(parseDialogSpec(JSON.stringify(spec))?.buttons[1]).toEqual({ label: '继续更新', danger: true });
+    expect(parseDialogSpec(JSON.stringify({ ...spec, buttons: [{ label: 'x', primary: true, danger: true }] }))?.buttons[0]).toEqual({ label: 'x', primary: true });
+    // the Windows message box (fallback): 取消 first (its default), closing it is 取消
     const box = messageBoxFor(spec, { type: 'info', appName: 'Spica', cancel: 0 });
-    expect(box.options.buttons).toEqual(['继续更新', '取消']);
-    expect(updateBusyAnswer(box.answer(1, false))).toBe(false);
+    expect(box.options.buttons).toEqual(['取消', '继续更新']);
+    expect(box.options.cancelId).toBe(0);
+    expect(updateBusyAnswer(box.answer(1, false))).toBe(true);
+    expect(updateBusyAnswer(box.answer(0, false))).toBe(false);
   });
 });
