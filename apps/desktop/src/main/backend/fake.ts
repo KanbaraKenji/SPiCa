@@ -45,7 +45,6 @@ import { periodBounds } from '@spica/core/src/period.ts';
 import { fakeRequests } from './fake-usage';
 import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import type { AgentBackend } from './types';
-import type { PythonState } from '../../shared/bridge';
 import { buildSeed, fakeCard } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
 import { isoAt } from './time';
@@ -514,18 +513,6 @@ export class FakeBackend implements AgentBackend {
   async answer(sessionId: string, callId: string, answer: string): Promise<void> {
     this.#resolvePending(sessionId, callId, answer, 'ask');
     this.#emit(sessionId, { type: 'ask.resolved', callId, answer });
-  }
-
-  /** The demo's own Python (设置 › 常规): downloaded, until 清除. */
-  #python: PythonState = { ready: true, version: '3.12.16', bytes: 312 * 1024 * 1024 };
-
-  async pythonState(): Promise<PythonState | null> {
-    return { ...this.#python };
-  }
-
-  async pythonClear(): Promise<PythonState | null> {
-    this.#python = { ready: false, bytes: 0 };
-    return { ...this.#python };
   }
 
   async confirm(sessionId: string, callId: string, approved: boolean): Promise<void> {

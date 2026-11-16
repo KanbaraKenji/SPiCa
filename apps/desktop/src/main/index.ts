@@ -15,7 +15,7 @@ import { knownError, netWords } from '../shared/errors';
 import { CAPTION_BACK, captionSymbol, deriveTokens, resolveSkin, schemeOf, type WindowCover } from '../shared/skin';
 import { clampZoom, DEFAULT_ZOOM, stepZoom } from '../shared/zoom';
 import { effectiveAccount, mailForCore, networkForCore, type ShellSettings } from '../shared/settings';
-import type { LocalConnectInfo, NetworkState, PythonState } from '../shared/bridge';
+import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, SaveCsvResult, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import { APP_IDENTITY } from '../shared/app-identity';
 import { coreKind, devConnectionName, secretLabel, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderSpendView, type ProviderView } from '../shared/providers';
@@ -113,6 +113,13 @@ const automated = Boolean(capturePath || shotsDir);
 const hidden = process.env.SPICA_HIDDEN === '1' && !app.isPackaged;
 /** The uv the app carries (resources/uv; a development run: apps/desktop/uv, when fetched). */
 const UV_EXE = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'uv', process.platform === 'win32' ? 'uv.exe' : 'uv');
+/**
+ * Where the app's own Python goes. An installed copy on Windows: %LOCALAPPDATA%\<name>\python, on this computer only
+ * (the settings folder is in the roaming profile, which would carry hundreds of MB from one computer to the next);
+ * the uninstaller removes that folder (resources/installer/finish-options.nsh). Elsewhere: in the settings folder.
+ */
+const PYTHON_ROOT =
+  app.isPackaged && process.platform === 'win32' && process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, APP_NAME, 'python') : join(app.getPath('userData'), 'python');
 
 // A hidden test window is kept painting (Windows would report it as covered and Chromium would stop drawing it).
 if (hidden) app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
@@ -235,8 +242,9 @@ function backendConfig(): DesktopBackendConfig {
       budget: providerBudget(),
       // Libraries run_command's scripts can require (exceljs, papaparse; scripts/node-libs.mjs writes them).
       nodeLibsDir: app.isPackaged ? join(process.resourcesPath, 'node-libs') : join(app.getAppPath(), 'node-libs'),
-      // The app's own Python, downloaded by the uv it carries after the user confirms (设置 › 常规 › Python).
-      python: { root: join(app.getPath('userData'), 'python'), ...(existsSync(UV_EXE) ? { uvExe: UV_EXE } : {}) },
+      // The app's own Python, downloaded by the uv it carries after the user confirms (no setting: the computer's
+      // own Python first, the app's when there is none).
+      python: { root: PYTHON_ROOT, ...(existsSync(UV_EXE) ? { uvExe: UV_EXE } : {}) },
       // Linked into the backend entry; named here as the core expects.
       extractorModules: ['@spica/extract'],
       extensions: [
@@ -1089,10 +1097,6 @@ ipcMain.handle(DesktopChannel.LocalConnect, async (): Promise<LocalConnectInfo |
   await localConnectApplied;
   return backend.localConnectState().catch(() => null);
 });
-
-// 设置 › 常规 › Python: the core's state of it (the demo backend has its own).
-ipcMain.handle(DesktopChannel.Python, async (): Promise<PythonState | null> => (backend.pythonState ? backend.pythonState().catch(() => null) : null));
-ipcMain.handle(DesktopChannel.PythonClear, async (): Promise<PythonState | null> => (backend.pythonClear ? backend.pythonClear() : null));
 
 ipcMain.handle(DesktopChannel.Network, async (): Promise<NetworkState | null> => {
   if (!(backend instanceof ProcessBackend)) return null;

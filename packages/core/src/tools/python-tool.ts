@@ -46,7 +46,8 @@ export function createPythonTool(opts: PythonToolOptions): Tool {
       description:
         "Get the app's own Python (a standalone Python the app manages, separate from any Python on this computer) and install packages " +
         'into it, e.g. pandas or openpyxl. The user confirms each download first. Returns the python executable to run scripts with in ' +
-        'run_command. Packages are plain names with optional version conditions (pandas, numpy>=2).',
+        'run_command. For a computer without Python of its own: when this computer has Python, use that one. Packages are plain ' +
+        'names with optional version conditions (pandas, numpy>=2).',
       inputSchema: {
         type: 'object',
         properties: {

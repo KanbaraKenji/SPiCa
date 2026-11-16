@@ -81,10 +81,6 @@ export const DesktopChannel = {
   Network: 'spica:network',
   /** invoke: -> LocalConnectInfo | null */
   LocalConnect: 'spica:localConnect',
-  /** invoke: -> PythonState | null (the app's own Python; null: switched off) */
-  Python: 'spica:python',
-  /** invoke: -> PythonState | null, after removing it */
-  PythonClear: 'spica:pythonClear',
   /** invoke: -> PluginView[] (pages of enabled plugins) */
   PluginViews: 'spica:pluginViews',
   /** invoke: (plugin, view, tool, args, confirmed) -> PluginViewResult */

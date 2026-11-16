@@ -77,13 +77,6 @@ export type PreviewFile =
 /** The largest file a preview page is given, whatever it says it takes (the plugin system's limit). */
 export const PREVIEW_PAGE_MAX_BYTES = 100 * 1024 * 1024;
 
-/** 设置 › 常规 › Python: the app's own Python (core python-env.ts). `bytes`: what its folder takes. */
-export interface PythonState {
-  ready: boolean;
-  version?: string;
-  bytes: number;
-}
-
 /** 设置 › 常规 › 网络: what the core uses now (proxy password hidden) and problems, in words. */
 export interface NetworkState {
   proxy: string | null;
@@ -171,11 +164,6 @@ export interface DesktopBridge extends SpicaBridge {
   network(): Promise<NetworkState | null>;
   /** Whether local scripts can connect now, and where; null when off (or not possible). */
   localConnect(): Promise<LocalConnectInfo | null>;
-  /** The app's own Python (设置 › 常规): its state, and removing it; null when switched off (deploy.json). */
-  python: {
-    state(): Promise<PythonState | null>;
-    clear(): Promise<PythonState | null>;
-  };
   /** Plugin pages (views/<id>.json of enabled plugins). */
   pluginViews: {
     list(): Promise<PluginView[]>;

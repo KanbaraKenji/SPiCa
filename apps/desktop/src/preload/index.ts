@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'ele
 import { IpcChannel, type AgentApi, type AppInfo, type ContextBreakdown, type CoreEvent, type UsageQuery, type UsageSummary } from '@spica/protocol';
 import type { MonitorEntry } from '../shared/monitor';
 import { DesktopChannel } from '../shared/ipc';
-import type { BackendState, DesktopBridge, LocalConnectInfo, NetworkState, PythonState, PreviewFile, PreviewInfo, ProviderList, SaveCsvResult, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
+import type { BackendState, DesktopBridge, LocalConnectInfo, NetworkState, PreviewFile, PreviewInfo, ProviderList, SaveCsvResult, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import type { ModelRef, ProviderDraft, ProviderKind, ProviderSpendView, TestResult } from '../shared/providers';
 import type { PluginsCommand, PluginsProgress, PluginsResult } from '../shared/plugins';
 import type { UpdateState } from '../shared/updates';
@@ -89,10 +89,6 @@ const bridge: DesktopBridge = {
   pickFolder: (title) => ipcRenderer.invoke(DesktopChannel.PickFolder, title) as Promise<string | null>,
   network: () => ipcRenderer.invoke(DesktopChannel.Network) as Promise<NetworkState | null>,
   localConnect: () => ipcRenderer.invoke(DesktopChannel.LocalConnect) as Promise<LocalConnectInfo | null>,
-  python: {
-    state: () => ipcRenderer.invoke(DesktopChannel.Python) as Promise<PythonState | null>,
-    clear: () => ipcRenderer.invoke(DesktopChannel.PythonClear) as Promise<PythonState | null>,
-  },
   pluginViews: {
     list: () => ipcRenderer.invoke(DesktopChannel.PluginViews) as Promise<PluginView[]>,
     call: (plugin, view, tool, args, confirmed, callId) => ipcRenderer.invoke(DesktopChannel.PluginViewCall, plugin, view, tool, args, confirmed, callId) as Promise<PluginViewResult>,

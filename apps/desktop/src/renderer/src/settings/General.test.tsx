@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { DEFAULT_SETTINGS } from '../../../shared/settings';
 import type { PluginView } from '../../../shared/plugin-view';
 import { General, rangeStart, type GeneralProps } from './General';
@@ -202,36 +201,5 @@ describe('工作流', () => {
     expect(p.workflows.run).toHaveBeenCalledWith('open');
     expect(screen.getByRole('button', { name: '更改' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '重新读取' })).toBeTruthy();
-  });
-});
-
-describe('Python', () => {
-  it('not there when switched off (or without the backend’s answer)', async () => {
-    setup({ python: { state: vi.fn(async () => null), clear: vi.fn() } });
-    await waitFor(() => expect(screen.queryByText('应用的 Python')).toBeNull());
-    cleanup();
-    setup();
-    expect(screen.queryByText('优先使用应用的 Python')).toBeNull();
-  });
-
-  it('not downloaded yet: says so, nothing to clear; the switch is saved', async () => {
-    const props = setup({ python: { state: vi.fn(async () => ({ ready: false, bytes: 0 })), clear: vi.fn() } });
-    expect(await screen.findByText('未下载')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '清除' })).toBeNull();
-    await userEvent.click(screen.getByRole('switch', { name: '优先使用应用的 Python' }));
-    expect(props.onChange).toHaveBeenCalledWith({ pythonFirst: true });
-  });
-
-  it('downloaded: version and size; 清除 asks first, then shows it gone', async () => {
-    const clear = vi.fn(async () => ({ ready: false, bytes: 0 }));
-    setup({ python: { state: vi.fn(async () => ({ ready: true, version: '3.12.16', bytes: 312 * 1024 * 1024 })), clear } });
-    expect(await screen.findByText('3.12.16 · 312 MB')).toBeTruthy();
-    await userEvent.click(screen.getByRole('button', { name: '清除' }));
-    const box = screen.getByRole('alertdialog');
-    expect(within(box).getByText('清除应用的 Python？')).toBeTruthy();
-    expect(clear).not.toHaveBeenCalled();
-    await userEvent.click(within(box).getByRole('button', { name: '清除' }));
-    expect(clear).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText('未下载')).toBeTruthy();
   });
 });
