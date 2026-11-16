@@ -8550,3 +8550,22 @@ input[type='radio']:disabled {
   color: var(--spica-muted);
   font-variant-numeric: tabular-nums;
 }
+/* Sound and video in the preview (FilePreview): Chromium's own player, video as wide as the panel. */
+.preview-media {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+}
+
+.preview-media video {
+  max-width: 100%;
+  max-height: 100%;
+  background: #000000;
+  border-radius: var(--radius-m);
+}
+
+.preview-media.is-audio audio {
+  width: 100%;
+  max-width: 560px;
+}

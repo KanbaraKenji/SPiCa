@@ -14,6 +14,9 @@ export const TEXT_LIMIT = 512 * 1024;
 
 const IMAGE = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico']);
 const MARKDOWN = new Set(['.md', '.markdown']);
+/** What Chromium plays (Electron's build has the common codecs: H.264, AAC, MP3). */
+const AUDIO = new Set(['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.oga', '.opus', '.flac', '.weba']);
+const VIDEO = new Set(['.mp4', '.m4v', '.webm', '.ogv', '.mov']);
 const HTML = new Set(['.html', '.htm']);
 const TEXT = new Set([
   '.txt', '.log', '.csv', '.tsv', '.json', '.jsonl', '.xml', '.yaml', '.yml', '.ini', '.cfg', '.conf', '.toml', '.env.example',
@@ -27,6 +30,8 @@ export function kindOf(path: string): Exclude<PreviewKind, 'missing' | 'sheet'> 
   const ext = extname(path).toLowerCase();
   if (ext === '.pdf') return 'pdf';
   if (IMAGE.has(ext)) return 'image';
+  if (AUDIO.has(ext)) return 'audio';
+  if (VIDEO.has(ext)) return 'video';
   if (MARKDOWN.has(ext)) return 'markdown';
   if (HTML.has(ext)) return 'html';
   if (TEXT.has(ext) || ext === '') return 'text';
@@ -110,6 +115,14 @@ export async function readPreview(path: string, files: PreviewFiles, sheet?: num
   // A table, read whole; a very big one shows as text (its first 512 KB).
   if ((ext === '.csv' || ext === '.tsv') && size <= CSV_MAX_BYTES) return csvPreview(path, name, size, from ?? 1, decodeText);
   const kind = kindOf(path);
+  if (kind === 'audio' || kind === 'video') {
+    try {
+      await (await open(path, 'r')).close();
+    } catch (err) {
+      return { ...unreadable(err), name, path, size };
+    }
+    return { kind, name, path, size, url: `${files.urlFor(path)}?v=${Math.round(mtimeMs)}` };
+  }
   if (kind === 'pdf' || kind === 'image') {
     // The viewer reads it later by its URL: a file that cannot be opened says so now instead of an empty viewer.
     try {

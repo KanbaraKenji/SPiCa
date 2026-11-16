@@ -376,6 +376,11 @@ export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onShe
         <Lines key={`${id}|code`} text={code.text} language={code.language} />
       ) : info.kind === 'pdf' ? (
         <iframe className="preview-frame" src={info.url} title={info.name} />
+      ) : info.kind === 'audio' || info.kind === 'video' ? (
+        // Chromium's own player: play, pause, seek, volume, full screen (video).
+        <div className={`preview-body preview-media is-${info.kind}`}>
+          {info.kind === 'video' ? <video key={info.url} src={info.url} controls preload="metadata" aria-label={info.name} /> : <audio key={info.url} src={info.url} controls preload="metadata" aria-label={info.name} />}
+        </div>
       ) : info.kind === 'image' ? (
         <div className="preview-body preview-image-wrap">
           <img

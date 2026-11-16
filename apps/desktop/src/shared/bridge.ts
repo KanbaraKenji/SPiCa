@@ -61,6 +61,8 @@ export interface ShellState {
 export type PreviewInfo =
   /** `text`: an SVG's source, so the panel can show it as code too. */
   | { kind: 'pdf' | 'image'; name: string; path: string; size: number; url: string; text?: string }
+  /** Sound and video, played in the panel with Chromium's own controls (the file through spica-file, as a PDF). */
+  | { kind: 'audio' | 'video'; name: string; path: string; size: number; url: string }
   /** `blocks`: a Word document cut short, how many of its paragraphs and tables are shown. */
   | { kind: 'markdown' | 'text' | 'html'; name: string; path: string; size: number; text: string; truncated: boolean; blocks?: { shown: number; total: number } }
   | { kind: 'unsupported' | 'missing'; name: string; path: string; size: number; message: string }
