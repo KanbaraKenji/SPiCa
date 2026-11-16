@@ -61,14 +61,14 @@ describe('outside: the card, in either approval mode', () => {
   it('an absolute path outside: asked, with the folder; nothing written yet', async () => {
     const r = await run({ name: 'edit_file', args: { path: join(outside, 'decisions.md'), old_string: 'old', new_string: 'new' } });
     expect(r.reason).toBe('awaiting_confirm');
-    expect(r.req).toMatchObject({ cause: 'outside_folder', outsideFolder: outside, change: { path: join(outside, 'decisions.md') } });
-    expect(r.s.pending()[0]).toMatchObject({ cause: 'outside_folder', outsideFolder: outside });
+    expect(r.req).toMatchObject({ cause: 'outside_folder', outsideFolder: realPath(outside), change: { path: join(outside, 'decisions.md') } });
+    expect(r.s.pending()[0]).toMatchObject({ cause: 'outside_folder', outsideFolder: realPath(outside) });
     expect(await readFile(join(outside, 'decisions.md'), 'utf8')).toBe('old\n');
   });
 
   it('a relative path climbing out with ..', async () => {
     const r = await run({ name: 'write_file', args: { path: '../elsewhere/made.txt', content: 'x' } });
-    expect(r.req).toMatchObject({ cause: 'outside_folder', outsideFolder: outside });
+    expect(r.req).toMatchObject({ cause: 'outside_folder', outsideFolder: realPath(outside) });
   });
 
   it('a junction inside the folder pointing out counts as out', async () => {
@@ -141,7 +141,7 @@ describe('the answer', () => {
     const reopened = new SqliteStore(file);
     const again = makeRuntime(gw, { tools: [writeFileTool, editFileTool], store: reopened });
     again.restore();
-    expect(again.session(s.id)!.pending()[0]).toMatchObject({ cause: 'outside_folder', outsideFolder: outside });
+    expect(again.session(s.id)!.pending()[0]).toMatchObject({ cause: 'outside_folder', outsideFolder: realPath(outside) });
     await again.close();
     reopened.close();
   });
@@ -205,7 +205,7 @@ describe('what the user gave the conversation', () => {
     gw.enqueue({ text: 'ok' });
     await (await child.confirm('w1', true, { allowFolder: true }))!;
     const sibling = rt.createSession({ parentId: s.id, cwd: work });
-    for (const x of [s, child, sibling]) expect(x.writeRoots()).toContain(outside);
+    for (const x of [s, child, sibling]) expect(x.writeRoots()).toContain(realPath(outside));
   });
 
   it('a sub-agent works within its parent’s folders (the folder the user gave the parent too)', async () => {

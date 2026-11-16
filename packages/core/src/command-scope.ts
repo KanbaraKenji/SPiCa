@@ -18,7 +18,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, parse, resolve } from 'node:path';
-import { inScope, realPath } from './write-scope.ts';
+import { canonicalPath, inScope, realPath } from './write-scope.ts';
 
 export interface CommandOutside {
   /** The folder it writes in (as the card shows it and 始终允许 keeps it). */
@@ -136,8 +136,9 @@ function folderOf(target: string): string {
 }
 
 function isRootOrHome(p: string): boolean {
-  const r = resolve(p);
-  return parse(r).root === r || r.toLowerCase() === resolve(homedir()).toLowerCase();
+  // as the scope compares paths (write-scope.ts canonicalPath): a short name, a link or another case is the same folder
+  const r = canonicalPath(p);
+  return parse(r).root.toLowerCase() === r.toLowerCase() || r === canonicalPath(homedir());
 }
 
 /** A folder never kept as allowed on a card: a drive's root, the home folder. */
@@ -165,7 +166,7 @@ export function commandOutside(command: string, cwd: string, roots: readonly str
     if (DELETE.has(verb) && args.some((a) => /^(-r|-rf|-fr|-recurse|\/s)$/i.test(a))) {
       for (const a of args) {
         const t = pathOf(a.replace(/[\\/]\*?$/, '') || a, at);
-        if (t && isRootOrHome(t)) return { folder: resolve(t), path: a, rule: 'sweep' };
+        if (t && isRootOrHome(t)) return { folder: realPath(t), path: a, rule: 'sweep' };
       }
     }
     const targets: { word: string; path: string }[] = [];
