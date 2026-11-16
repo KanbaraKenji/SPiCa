@@ -1,4 +1,4 @@
-// Updates in the side bar, above the account row: a downloaded app update (重启并更新; a version that must update
+// Updates in the side bar, above the account row: a downloaded app update (立即更新; a version that must update
 // keeps its card, without 稍后) or plugins that can update (查看). When the side bar is only its column of icons
 // (closed, or the window too narrow), the same place holds one icon button, so nothing is lost with the side bar:
 // the app's update opens the side bar on its card, the plugins' opens them.
@@ -10,10 +10,11 @@ import { t } from '../../../shared/i18n';
 
 export interface UpdateNoticeView {
   kind: 'app' | 'plugins';
+  /** In full, on the card (it wraps when narrow) and on the icon in the column of icons. */
   text: string;
   /** The version must update: warning colour, no 稍后. */
   required: boolean;
-  /** 重启并更新 can be pressed (a portable copy only hears of it). */
+  /** 立即更新 can be pressed (a portable copy only hears of it). */
   ready: boolean;
   /** How many plugins (kind plugins). */
   count: number;
@@ -33,7 +34,9 @@ export function useUpdateNotice(update: UpdateState | null): UpdateNoticeView | 
     const available = update.available;
     return {
       kind: 'app',
-      text: ready ? t('新版本 {version} 已下载', { version: available }) : t('新版本 {version}', { version: available }),
+      text: ready
+        ? t('新版本 {version} 已下载', { version: available })
+        : t('新版本 {version}', { version: available }),
       required,
       ready,
       count: 0,
@@ -42,7 +45,9 @@ export function useUpdateNotice(update: UpdateState | null): UpdateNoticeView | 
   }
   // Closed: shown again only when the count grows.
   const n = update?.pluginUpdates ?? 0;
-  if (n > pluginsClosed) return { kind: 'plugins', text: t('{n} 个插件可更新', { n }), required: false, ready: false, count: n, close: () => setPluginsClosed(n) };
+  if (n > pluginsClosed) {
+    return { kind: 'plugins', text: t('{n} 个插件可更新', { n }), required: false, ready: false, count: n, close: () => setPluginsClosed(n) };
+  }
   return null;
 }
 
@@ -52,28 +57,35 @@ export interface UpdateNoticeProps {
   onOpenPlugins(): void;
 }
 
-/** The card in the full side bar. */
+/**
+ * The card in the full side bar: one row, the mark, the words, the button, then × (稍后). The words are always whole
+ * (he: 「如果文字显示不全允许换行，不允许换行的情况是按钮单独一行的情况」): with the button beside them they wrap; in
+ * the narrowest side bar the button goes on a row of its own under them, and then they stay on one line.
+ */
 export function UpdateCard({ notice, onInstall, onOpenPlugins }: UpdateNoticeProps) {
   return (
+    // His drawing (2026-11-16): the mark top left, on the first line's level; the words from beside it, wrapped lines
+    // from the card's left edge; × top right; the button bottom right, on the last line (a line of its own, on the
+    // right, when that line has no room). × and the button float right; the mark sits in the words' first line.
     <div className={notice.required ? 'update-card is-warning' : 'update-card'} role="status">
-      <div className="update-card-head">
+      {notice.close ? (
+        <button type="button" className="icon-btn notice-close" onClick={notice.close} aria-label={t('稍后')} title={t('稍后')}>
+          <Icon name="close" size={14} />
+        </button>
+      ) : null}
+      <div className="update-card-body">
         <SpicaStatusIcon name={notice.required ? 'warning' : 'done'} size={15} className="notice-icon" />
         <span className="update-card-text">{notice.text}</span>
-        {notice.close ? (
-          <button type="button" className="icon-btn notice-close" onClick={notice.close} aria-label={t('稍后')} title={t('稍后')}>
-            <Icon name="close" size={14} />
+        {notice.kind === 'app' && notice.ready ? (
+          <button type="button" className="btn btn-small btn-primary update-card-action" onClick={onInstall}>
+            {t('立即更新')}
+          </button>
+        ) : notice.kind === 'plugins' ? (
+          <button type="button" className="btn btn-small update-card-action" onClick={onOpenPlugins}>
+            {t('查看')}
           </button>
         ) : null}
       </div>
-      {notice.kind === 'app' && notice.ready ? (
-        <button type="button" className="btn btn-small btn-primary update-card-action" onClick={onInstall}>
-          {t('重启并更新')}
-        </button>
-      ) : notice.kind === 'plugins' ? (
-        <button type="button" className="btn btn-small update-card-action" onClick={onOpenPlugins}>
-          {t('查看')}
-        </button>
-      ) : null}
     </div>
   );
 }

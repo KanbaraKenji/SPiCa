@@ -86,11 +86,14 @@ export const EN_MEMORY: Catalog = {
   没有改动: 'No changes',
   // 关于
   便携版: 'Portable version',
-  重启并更新: 'Restart and update',
+  '立即更新': 'Update now',
   监控台已开启: 'Monitor on',
   监控台已关闭: 'Monitor off',
   更新与公告: 'Updates and announcements',
   检查更新: 'Check for updates',
   这个版本不检查更新: 'This version doesn’t check for updates',
   '正在检查更新…': 'Checking for updates…',
+  // 设置 › 关于: the update state beside the version
+  '已是最新版本': 'Up to date',
+  '新版本 {version} 已下载': 'Version {version} downloaded',
 };

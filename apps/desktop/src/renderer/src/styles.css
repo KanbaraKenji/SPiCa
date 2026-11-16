@@ -5765,15 +5765,15 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* Updates (shell/UpdateNotice.tsx): a card in the side bar, right above the bottom row; the same look as the
-   title bar's line (raised, bordered, a warning tint when the version must update). */
+   title bar's line (raised, bordered, a warning tint when the version must update). Laid out as he drew it: the mark
+   in the first line, the words flowing from beside it and wrapping to the card's left edge, × floating top right,
+   the button floating right after the words, so it sits on the last line or, without room there, on a line of its
+   own on the right. The words are always whole, at every width. × and the button (22 high) sit 1px above the line
+   (20 high), so they centre on it. */
 .update-card {
   flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
   margin: 0 8px 8px;
-  padding: 8px 4px 8px 12px;
+  padding: 6px 4px 6px 12px;
   border-radius: var(--radius-m);
   border: 1px solid var(--spica-border);
   background: var(--spica-raised);
@@ -5786,28 +5786,38 @@ section.plugins-part > .plugins-part-title {
   background: var(--spica-warning-soft);
 }
 
-.update-card-head {
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 22px;
+.update-card .notice-close {
+  float: right;
+  /* no deeper than the first line, so the line under it reaches the right edge (the button there sits under ×) */
+  margin: -1px 0 -1px 4px;
 }
 
-.update-card-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+.update-card-body {
+  /* Chinese wraps between words, not inside 已下载 */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
-/* Under the words, where they start (past the icon). */
+.update-card .notice-icon {
+  margin-right: 8px;
+  vertical-align: -3px;
+}
+
+/* The button keeps its words whole. */
 .update-card-action {
-  margin-left: 23px;
+  float: right;
+  margin: -1px 0 0 8px;
   height: 22px;
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
+  white-space: nowrap;
+}
+
+/* The card's floats stay inside it. */
+.update-card::after {
+  content: '';
+  display: block;
+  clear: both;
 }
 
 /* In the column of icons: one icon in the same place; a dot for a downloaded update, the whole icon in the
@@ -8263,4 +8273,36 @@ input[type='checkbox']:disabled,
 input[type='radio']:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Settings › About: the version on the left; its update state and the button together on the right. Narrow, the
+   state wraps (right-aligned) before the version is squeezed; the button keeps its words. */
+.about-row .setting-control {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.about-inline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+
+.about-inline > .btn {
+  flex: none;
+}
+
+.about-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--spica-muted);
+  text-align: right;
+}
+
+.about-state > svg {
+  flex: none;
 }
