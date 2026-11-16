@@ -61,6 +61,8 @@ export interface ShellState {
 export type PreviewInfo =
   /** `text`: an SVG's source, so the panel can show it as code too. */
   | { kind: 'pdf' | 'image'; name: string; path: string; size: number; url: string; text?: string }
+  /** Sound and video, played in the panel with Chromium's own controls (the file through spica-file, as a PDF). */
+  | { kind: 'audio' | 'video'; name: string; path: string; size: number; url: string }
   /** `blocks`: a Word document cut short, how many of its paragraphs and tables are shown. */
   | { kind: 'markdown' | 'text' | 'html'; name: string; path: string; size: number; text: string; truncated: boolean; blocks?: { shown: number; total: number } }
   | { kind: 'unsupported' | 'missing'; name: string; path: string; size: number; message: string }
@@ -189,6 +191,34 @@ export interface DesktopBridge extends SpicaBridge {
   showInFolder(path: string): Promise<string | null>;
   /** Opens a folder in Explorer. An absolute path; resolves to what to show when it is not a folder that is there. */
   openFolder(path: string): Promise<string | null>;
+  /** The built-in browser in the right panel. */
+  browser: {
+    /** A page asked for a new window (a link with target=_blank, window.open): open the address as a new tab. */
+    onOpenTab(listener: (url: string) => void): () => void;
+    /** Opens a web address (http/https) in the system's browser; resolves to what to show when it cannot. */
+    openExternal(url: string): Promise<string | null>;
+    /** Clears the built-in browser's sign-ins, storage and cache (its own; the system's browser is not touched). */
+    clearData(): Promise<null>;
+    /** A local HTML file shown with its scripts: its address in the browser (its folder can be read), or null. */
+    localPage(sessionId: string | null, path: string): Promise<string | null>;
+    /** A page drawn from an answer shown with its scripts: its address. */
+    localText(name: string, html: string): Promise<string | null>;
+    /** The page is closed: its address stops working. */
+    release(url: string): Promise<null>;
+    /** The agent's browser tools ask the window something (open a tab, show one, list a conversation's tabs). */
+    onAgentAsk(listener: (ask: { id: number; op: 'open' | 'show' | 'tabs'; args: Record<string, unknown> }) => void): () => void;
+    agentReply(id: number, answer: { ok: boolean; value?: unknown; error?: string }): Promise<null>;
+    /** The person took over an agent's tab (pressed in its page), or gave it back. */
+    onTakeOver(listener: (change: { tabId: string; taken: boolean }) => void): () => void;
+    /** 交还: the agent may act in that tab again. */
+    giveBack(tabId: string): Promise<null>;
+    /** 接手: the agent leaves this page (its WebContents id) until it is given back. */
+    takeOver(wcId: number): Promise<null>;
+    /** A local page's request was stopped (page: the token in its address; host: where it went). */
+    onBlocked(listener: (b: { page: string; host: string }) => void): () => void;
+    /** A local page went to a web address: open it as a link in the app is (asked, or as set). */
+    onLocalLink(listener: (url: string) => void): () => void;
+  };
   /** 监控台: the back end's lines (kept in the main process, secrets removed there). */
   monitor: {
     /** The lines kept, oldest first; those after `after` (a seq) when given. */

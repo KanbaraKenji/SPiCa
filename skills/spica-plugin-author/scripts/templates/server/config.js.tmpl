@@ -1,0 +1,29 @@
+// The settings the user filled in for __NAME__ (manifest.json · user_config):
+// Spica draws the form under 设置 › 插件 › __DISPLAY__ and hands the values to
+// this server in SPICA_USER_CONFIG, one JSON object with every declared key
+// (null when not filled in). Outside Spica (node --test, check.mjs, preview)
+// there is no such variable: the made-up values in mock/user-config.json stand in.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+let cached;
+
+/** The values by key, the same object on every call (the variable is read once, then removed). */
+export function readConfig() {
+  if (cached) return cached;
+  const raw = process.env.SPICA_USER_CONFIG;
+  if (raw) {
+    cached = JSON.parse(raw);
+    // out of the environment: processes this server starts do not inherit the password
+    delete process.env.SPICA_USER_CONFIG;
+  } else {
+    const file = join(fileURLToPath(new URL('..', import.meta.url)), 'mock', 'user-config.json');
+    try {
+      cached = JSON.parse(readFileSync(file, 'utf8'));
+    } catch {
+      cached = {};
+    }
+  }
+  return cached;
+}

@@ -21,8 +21,11 @@ export function builderOverrides(app, version) {
       `-c.nsis.shortcutName=${app.name}`,
       `-c.nsis.artifactName=${app.name}-Setup-${version}.\${ext}`,
       `-c.portable.artifactName=${app.name}-Portable-${version}.\${ext}`,
+      // package.json's description is the shortcuts' comment: the app's own name, not "Spica desktop shell"
+      `-c.extraMetadata.description=${app.name}`,
     );
   }
+  if (app.copyright) out.push(`-c.copyright=${app.copyright}`);
   if (app.icon) out.push(`-c.win.icon=${app.icon}`);
   return out;
 }

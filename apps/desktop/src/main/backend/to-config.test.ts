@@ -38,3 +38,18 @@ describe('catalogId', () => {
   });
 });
 });
+
+describe('自定义请求头 and 凭据位置', () => {
+  it('headers go to the core; without an API Key there is no apiKey (no Authorization header)', () => {
+    const relay = { ...emptyDraft('openai'), id: 'r', name: 'r', baseUrl: 'https://gateway.example.com/v1', model: 'm', secret: '' };
+    const c = toProviderConfig({ ...relay, headerValues: { 'X-API-Key': 'k' } });
+    expect(c).toMatchObject({ kind: 'openai-compatible', headers: { 'X-API-Key': 'k' } });
+    expect(c).not.toHaveProperty('apiKey');
+    expect(toProviderConfig({ ...relay, secret: 'sk', headerValues: {} })).not.toHaveProperty('headers');
+  });
+
+  it('WSO2 credentialsIn only when set (自动 leaves it to the core)', () => {
+    expect(toProviderConfig({ ...saved, credentialsIn: 'body' }).oauth?.credentialsIn).toBe('body');
+    expect(toProviderConfig({ ...saved, credentialsIn: null }).oauth).not.toHaveProperty('credentialsIn');
+  });
+});

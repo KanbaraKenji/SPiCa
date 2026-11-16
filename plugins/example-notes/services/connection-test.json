@@ -1,0 +1,6 @@
+{
+  "runtime": "node",
+  "entry": "server/connection-test.js",
+  "description": "Tries the catalog address from the settings form for the 测试连接 page; not offered to the model.",
+  "timeout_seconds": 15
+}

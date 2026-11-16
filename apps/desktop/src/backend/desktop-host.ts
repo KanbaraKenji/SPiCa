@@ -5,6 +5,7 @@
 //   plugins(cmd)                    the plugin page, incl. shared-folder / web sources and updates
 //   workflows()                     what the core read from the workflow folder
 //   usageLog({ filter, file })      the core's usage log written to a file (设置 › 常规)
+//   browser_* tools                  the built-in browser for agents (they ask the main process; backend/browser-tools.ts)
 //   mcpHttpStart / Stop / State     Spica's MCP service over HTTP for scripts on this machine
 //                                   (设置 › 常规 › 开发者; loopback only, token in a file)
 // Models, mail and the workflow folder change through the core's own
@@ -12,10 +13,11 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { serveMcpHttp, type McpHttpServer, type Runtime } from '@spica/core';
-import { attachBackend as attachPlugins, localizeView } from '@spica/plugins';
+import { attachBackend as attachPlugins, localizeView, type PluginConfigInput } from '@spica/plugins';
 import { RealPluginService } from '../main/plugins/service';
 import type { OfficialSource, PluginsCommand } from '../shared/plugins';
 import { APP_NAME } from '../shared/app-identity';
+import { browserHook, browserTools } from './browser-tools';
 import { getLocale, isLocale, setLocale, type Locale } from '../shared/i18n';
 
 export interface DesktopHostOptions {
@@ -29,6 +31,8 @@ export interface DesktopHostOptions {
   mcpTokenFile?: string;
   /** The user's account for every plugin, worked out by the main process (main/user-account.ts); '' when none. */
   userAccount?: string;
+  /** What people filled into plugins' settings forms, passwords opened by the main process (in memory only). */
+  userConfig?: Record<string, PluginConfigInput>;
   /** The interface language when the core started (shared/i18n); the words of the plugin page follow it, and setLocale after. */
   locale?: Locale;
 }
@@ -49,6 +53,7 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
     root: options.pluginRoot,
     appName: APP_NAME,
     userAccount: options.userAccount ?? '',
+    ...(options.userConfig ? { userConfig: options.userConfig } : {}),
     onLog: (plugin, line) => parent?.postMessage({ type: 'log', source: 'plugin', plugin, line }),
   });
   const page = new RealPluginService({
@@ -63,6 +68,11 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
   });
   // Tell the main process when plugins change on their own (a server crashed, ...).
   page.onChange(() => parent?.postMessage({ type: 'plugins.changed' }));
+  // The built-in browser's tools: they ask the main process (host methods browser.*, main/browser/agent.ts).
+  const bridge = rt.settingsBridge;
+  const unregisterBrowser = bridge
+    ? [...browserTools((method, params) => bridge.host(method, params)).map((tool) => rt.tools.register(tool, 'desktop')), rt.hooks.register('desktop-browser', browserHook((method, params) => bridge.host(method, params)))]
+    : [];
 
   let http: McpHttpServer | undefined;
   const httpState = () => (http ? { url: http.url, port: http.port, tokenFile: options.mcpTokenFile ?? null } : null);
@@ -125,6 +135,7 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
     // The app's network settings changed (the core calls this): plugin servers restart to use them.
     networkChanged: () => plugins.networkChanged(),
     close: async () => {
+      for (const off of unregisterBrowser) off();
       await stopHttp();
       await plugins.close();
     },

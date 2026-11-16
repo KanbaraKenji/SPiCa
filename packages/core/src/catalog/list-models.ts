@@ -67,7 +67,7 @@ export async function listProviderModels(req: ListModelsRequest, catalog: ModelC
   const provider: CatalogProvider | undefined = req.catalogId ? catalog.providers.find((p) => p.id === req.catalogId) : undefined;
   const style: ListStyle = provider?.listModels ?? (req.kind === 'anthropic' ? 'anthropic' : 'none');
   const base = (req.baseUrl || provider?.baseUrl || (req.kind === 'anthropic' ? 'https://api.anthropic.com/v1' : '')).replace(/\/+$/, '');
-  const secrets = [req.apiKey, req.oauth?.clientSecret, req.oauth?.clientId].filter((s): s is string => !!s);
+  const secrets = [req.apiKey, req.oauth?.clientSecret, req.oauth?.clientId, ...Object.values(req.headers ?? {})].filter((s): s is string => !!s);
   const fail = (code: string, message: string, httpStatus?: number): ListModelsResult => ({
     ok: false,
     code,

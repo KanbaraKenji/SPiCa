@@ -108,4 +108,6 @@ export { runUtilityEntry } from './host/utility-entry.ts';
 export { electronPort, nodePort, type PortLike, type WireMessage, type WireRequest, type WireResponse, type WireEvent, type WireReady } from './host/wire.ts';
 export { serveMcp, spicaMcpTools, mcpDispatcher, type McpTool, type McpServeOptions } from './mcp/server.ts';
 export { serveMcpHttp, newMcpToken, type McpHttpOptions, type McpHttpServer } from './mcp/http.ts';
+// Images a tool brings back (the desktop's browser screenshot), kept in the conversation's media folder like an MCP tool's.
+export { keepMedia, type KeptMedia } from './mcp/media.ts';
 export { MailPipeline, triageMailTool, parseToolJson, type MailConfig, type MailSource } from './mail.ts';

@@ -646,3 +646,112 @@ describe('plugin badges', () => {
     expect(pluginBadge({ name: 'notes', displayName: '笔记' }).colour).toMatch(/^#[0-9a-f]{6}$/);
   });
 });
+
+describe('a plugin’s settings form (user_config)', () => {
+  /** The demo with the plugin that has a form; a save goes as the main process sends it on (setConfig). */
+  function withForm() {
+    const svc = new FakePluginService('D:/plugins', { config: true });
+    const sent: PluginsCommand[] = [];
+    const a: PluginsApi = {
+      onChanged: () => () => {},
+      run: async (cmd) => {
+        sent.push(cmd);
+        if (cmd.op !== 'config') return svc.run(cmd);
+        const values = Object.fromEntries(Object.entries(cmd.values).filter(([, v]) => v !== null)) as Record<string, string | number | boolean>;
+        return svc.run({ op: 'setConfig', name: cmd.name, input: { values: { account: 'ALEX.CHEN', ...values } } });
+      },
+    };
+    return { api: a, sent };
+  }
+
+  it('the list says how many are not filled in; the page says it waits, the form is the first group, the locked field read-only', async () => {
+    const { api: a } = withForm();
+    render(<Plugins api={a} />);
+    expect(within(await screen.findByRole('navigation', { name: '插件列表' })).getByRole('button', { name: /工单查询/ }).textContent).toContain('1 项未填');
+    const page = await open('工单查询', '工单查询（示例）');
+    expect(within(page).getByRole('button', { name: /待设置 · 1 项未填/ })).toBeTruthy();
+    // set by the packaging: shown as text, nothing to type into
+    expect(within(page).queryByRole('textbox', { name: '服务器地址' })).toBeNull();
+    expect(within(page).getByText('https://tickets.example.com')).toBeTruthy();
+    // who set it is a lock beside the name, its words on hover, not a line of text
+    expect(within(page).queryByText('由管理员设置')).toBeNull();
+    expect(within(page).getByRole('img', { name: '由管理员设置' }).getAttribute('data-tip')).toBe('由管理员设置');
+    expect((within(page).getByLabelText('密码') as HTMLInputElement).placeholder).toBe('');
+    expect(within(page).getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('「N 项未填」 marks the empty fields, the message under each, and puts the cursor in the first', async () => {
+    const { api: a } = withForm();
+    render(<Plugins api={a} />);
+    const page = await open('工单查询', '工单查询（示例）');
+    const pw = within(page).getByLabelText('密码') as HTMLInputElement;
+    expect(pw.getAttribute('aria-invalid')).toBeNull();
+    fireEvent.click(within(page).getByRole('button', { name: /待设置 · 1 项未填/ }));
+    expect(pw.getAttribute('aria-invalid')).toBe('true');
+    expect(pw.closest('.config-row')?.textContent).toContain('请填写');
+    await waitFor(() => expect(document.activeElement).toBe(pw));
+  });
+
+  it('saved with a required field still empty: what is filled in is saved, the empty one is marked', async () => {
+    const { api: a, sent } = withForm();
+    render(<Plugins api={a} />);
+    const page = await open('工单查询', '工单查询（示例）');
+    fireEvent.change(within(page).getByRole('textbox', { name: '每页条数' }), { target: { value: '30' } });
+    fireEvent.click(within(page).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(sent).toContainEqual(expect.objectContaining({ op: 'config', values: expect.objectContaining({ page_size: 30 }) })));
+    expect(await within(page).findByText('已保存')).toBeTruthy();
+    expect(within(page).getByLabelText('密码').getAttribute('aria-invalid')).toBe('true');
+    expect(within(page).getByText('请填写')).toBeTruthy();
+  });
+
+  it('what is wrong is said under the field and nothing is sent; filled in and saved, it runs and the password reads as saved', async () => {
+    const { api: a, sent } = withForm();
+    render(<Plugins api={a} />);
+    const page = await open('工单查询', '工单查询（示例）');
+    fireEvent.change(within(page).getByRole('textbox', { name: '每页条数' }), { target: { value: 'abc' } });
+    expect(within(page).getByText('未保存')).toBeTruthy();
+    fireEvent.click(within(page).getByRole('button', { name: '保存' }));
+    expect(await within(page).findByText('请输入数字')).toBeTruthy();
+    expect(sent.some((c) => c.op === 'config')).toBe(false);
+    fireEvent.change(within(page).getByRole('textbox', { name: '每页条数' }), { target: { value: '30' } });
+    fireEvent.change(within(page).getByLabelText('密码'), { target: { value: 'pw-0001' } });
+    fireEvent.click(within(page).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(sent).toContainEqual(expect.objectContaining({ op: 'config', name: 'tickets', values: expect.objectContaining({ password: 'pw-0001', page_size: 30, account: 'ALEX.CHEN' }) })));
+    expect(sent.find((c) => c.op === 'config')).not.toHaveProperty('values.server_url');
+    expect(await within(page).findByText('已保存')).toBeTruthy();
+    expect(within(page).queryByRole('button', { name: /项未填/ })).toBeNull();
+    expect((within(page).getByLabelText('密码') as HTMLInputElement).placeholder).toBe('已保存（留空不修改）');
+  });
+});
+
+describe('a plugin’s settings form · clear, search, tab names', () => {
+  it('清除设置 in the … menu asks first; then the form shows nothing saved and the plugin waits again', async () => {
+    const svc = new FakePluginService('D:/plugins', { config: true });
+    const a: PluginsApi = {
+      onChanged: () => () => {},
+      run: async (cmd) => {
+        if (cmd.op === 'config') return svc.run({ op: 'setConfig', name: cmd.name, input: { values: Object.fromEntries(Object.entries(cmd.values).filter(([, v]) => v !== null)) as Record<string, string> } });
+        if (cmd.op === 'clearConfig') return svc.run({ op: 'setConfig', name: cmd.name, input: null });
+        return svc.run(cmd);
+      },
+    };
+    render(<Plugins api={a} />);
+    const page = await open('工单查询', '工单查询（示例）');
+    fireEvent.click(within(page).getByRole('button', { name: '更多操作' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: '清除设置' }));
+    expect(await screen.findByText('清除「工单查询（示例）」的设置？')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '清除' }));
+    await waitFor(() => expect((within(page).getByRole('textbox', { name: '账号（工号）' }) as HTMLInputElement).value).toBe(''));
+    expect(within(page).getByRole('button', { name: /待设置 · 2 项未填/ })).toBeTruthy();
+    expect(within(page).queryByText('未保存')).toBeNull();
+  });
+
+  it('a page of the plugin’s own called 设置 or 设定 reads 更多设置 next to a form; otherwise as it is', async () => {
+    const { pageTabLabel } = await import('./Plugins');
+    expect(pageTabLabel('设定', true)).toBe('更多设置');
+    expect(pageTabLabel(' 设置 ', true)).toBe('更多设置');
+    expect(pageTabLabel('设定', false)).toBe('设定');
+    expect(pageTabLabel('测试连接', true)).toBe('测试连接');
+    expect(pageTabLabel('', false)).toBe('设定');
+  });
+});

@@ -26,7 +26,7 @@ describe('deploy.json', () => {
   it('deploy.example.json copied as is changes nothing; its example, filled in, renames', () => {
     const example = readFileSync(new URL('../deploy.example.json', import.meta.url), 'utf8');
     const d = readDeploy(dirWith(example));
-    expect(d.app).toMatchObject({ ...DEFAULT_APP, icon: null, font: null });
+    expect(d.app).toMatchObject({ ...DEFAULT_APP, icon: null, font: null, copyright: null });
     expect(d.updateSource).toBeNull();
     expect(d.pluginSources).toBeNull();
     expect(builderOverrides(d.app, '1.0.0')).toEqual([]);
@@ -44,7 +44,17 @@ describe('deploy.json', () => {
       '-c.nsis.shortcutName=Nova Desk',
       '-c.nsis.artifactName=Nova Desk-Setup-1.2.0.${ext}',
       '-c.portable.artifactName=Nova Desk-Portable-1.2.0.${ext}',
+      '-c.extraMetadata.description=Nova Desk',
     ]);
+    expect(d.app.copyright).toBeNull();
+  });
+
+  it('a copyright line of its own goes into the exe; not written, Spica’s stays; it must be one line', () => {
+    const d = readDeploy(dirWith({ app: { name: 'Nova Desk', id: 'com.example.nova', copyright: ' Copyright Example Corp ' } }));
+    expect(d.app.copyright).toBe('Copyright Example Corp');
+    expect(builderOverrides(d.app, '1.0.0')).toContain('-c.copyright=Copyright Example Corp');
+    expect(() => readDeploy(dirWith({ app: { name: 'Nova Desk', id: 'com.example.nova', copyright: 'a\nb' } }))).toThrow('app.copyright');
+    expect(() => readDeploy(dirWith({ app: { copyright: 3 } }))).toThrow('app.copyright');
   });
 
   it('an icon and a font are found next to deploy.json', () => {
@@ -80,6 +90,23 @@ describe('deploy.json', () => {
     expect(message).toContain('第 1 个连接（acme-gateway）：不能写 apiKey');
     expect(message).toContain('第 2 个连接（gw）：wso2 要写 tokenUrl');
     expect(message).toContain('第 2 个连接（gw）的第 1 个型号（m）：contextWindow 要写正整数');
+  });
+
+  it('a preset may name its key header and WSO2 credentials place; a header value stops the packaging', () => {
+    const example = JSON.parse(readFileSync(new URL('../deploy.example.json', import.meta.url), 'utf8'))['// models'].replace(/^.*Example: /, '');
+    const preset = { ...JSON.parse(example), headers: ['X-API-Key'] };
+    expect(readDeploy(dirWith({ models: [preset] })).models[0].headers).toEqual(['X-API-Key']);
+    const messageOf = (models) => {
+      try {
+        readDeploy(dirWith({ models }));
+        return '';
+      } catch (e) {
+        return e.message;
+      }
+    };
+    expect(messageOf([{ ...preset, headers: { 'X-API-Key': 'k' } }])).toContain('第 1 个连接（acme-gateway）：headers 要写成请求头名称的列表');
+    expect(messageOf([{ ...preset, headers: ['Host'] }])).toContain('headers 里不能写 Host，它由应用设置');
+    expect(messageOf([{ ...preset, credentialsIn: 'body' }])).toContain('credentialsIn 只给 wso2 写，只能是 basic 或 body');
   });
 
   it('pluginSources: absent is null (the official channel), [] is none; a place or { location, label }; a wrong one stops the packaging', () => {
@@ -146,5 +173,16 @@ describe('deploy.json "python"', () => {
     expect(() => readDeploy(dirWith({ python: { enabled: 'no', packageIndex: 'https://me:pw@pypi.example.com/simple' } }))).toThrow(
       /deploy\.json 的 python 有 2 处要改：\n- python\.enabled 要写 true 或 false。\n- python\.packageIndex 里不要写账号密码/,
     );
+  });
+});
+
+describe('deploy.json pluginConfig', () => {
+  it('values for plugins’ settings forms, some locked; absent is null; a wrong shape or a password stops the packaging', () => {
+    expect(readDeploy(dirWith({})).pluginConfig).toBeNull();
+    const pc = { tickets: { server_url: { value: 'https://tickets.example.com', locked: true }, page_size: { value: 50 } } };
+    expect(readDeploy(dirWith({ pluginConfig: pc })).pluginConfig).toEqual(pc);
+    expect(() => readDeploy(dirWith({ pluginConfig: [] }))).toThrow('deploy.json 的 pluginConfig 要写成');
+    expect(() => readDeploy(dirWith({ pluginConfig: { tickets: { server_url: 'https://x' } } }))).toThrow('deploy.json 的 pluginConfig.tickets.server_url 要写成 { "value"');
+    expect(() => readDeploy(dirWith({ pluginConfig: { tickets: { api_token: { value: 'x' } } } }))).toThrow('密码和令牌不能写进安装包');
   });
 });

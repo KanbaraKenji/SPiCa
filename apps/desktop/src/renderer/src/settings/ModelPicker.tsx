@@ -1,7 +1,9 @@
 // The models of one connection: the catalog's list for the provider, what
-// 获取模型列表 returned, and any typed in. In use (已启用) on top, one row each
-// with its 上下文上限; the rest (未启用) folded into a line of small buttons
-// that turn one on, with 获取模型列表 and 手动输入模型 at its end.
+// 获取模型列表 returned, and any typed in. One list, a box per model: ticked is
+// in use (with its 上下文上限), unticked is not; no headings (he: the tick says
+// it). Ticked ones first as the form opens; ticking does not move a row. Long
+// lists scroll inside the box, and a search box shows past 10 models.
+// 获取模型列表 and 手动输入模型 under it.
 import { useState } from 'react';
 import type { CatalogModelView, CatalogPriceView } from '../../../shared/catalog';
 import type { ConnectionModel } from '../../../shared/providers';
@@ -96,8 +98,15 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
   const inList = (id: string) => selected.some((m) => m.id === id);
   const fromCatalog = new Set(catalog.map((m) => m.id));
   const removable = (id: string) => Boolean(onRemove) && inList(id) && !fromCatalog.has(id);
-  const onRows = shown.filter((r) => isOn(r.model.id));
-  const offRows = shown.filter((r) => !isOn(r.model.id));
+  // Where each model sits: ticked ones first when they are first seen, then left where they are (a tick does not
+  // make the row jump); models that come later (获取模型列表, typed in) go after them.
+  const [order, setOrder] = useState<string[]>([]);
+  const ids = all.map((r) => r.model.id);
+  const kept = order.filter((id) => ids.includes(id));
+  const fresh = ids.filter((id) => !kept.includes(id));
+  const nextOrder = [...kept, ...fresh.filter((id) => isOn(id)), ...fresh.filter((id) => !isOn(id))];
+  if (nextOrder.length !== order.length || nextOrder.some((id, i) => id !== order[i])) setOrder(nextOrder);
+  const rows = [...shown].sort((a, b) => nextOrder.indexOf(a.model.id) - nextOrder.indexOf(b.model.id));
   const name = (m: ListedModel) => (m.label ? `${m.label} · ${m.id}` : m.id);
 
   const add = () => {
@@ -112,81 +121,67 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
     <div className="model-picker">
       {all.length > 10 ? <input className="input model-picker-search" value={query} placeholder={t('搜索模型')} aria-label={t('搜索模型')} onChange={(e) => setQuery(e.target.value)} /> : null}
       {fetchError ? <p className="field-error model-picker-note">{fetchError}</p> : null}
-      <span className="model-picker-sect">{t('已启用')}</span>
-      <ul className="model-picker-list">
-        {onRows.map(({ model, price, vision }) => {
-          const on = isOn(model.id)!;
-          const source = SOURCE[on.contextFrom];
-          const matched = on.contextFrom === 'name-match' ? matchedNames[model.id] : undefined;
-          const missing = on.contextWindow === null || Number.isNaN(on.contextWindow);
-          const edit = missing || editing === model.id;
-          return (
-            <li key={model.id} className="model-row">
-              <label className="model-row-name">
-                <input type="checkbox" checked onChange={() => onToggle(model, false)} />
-                <span className="model-row-id">{name(model)}</span>
-                {vision ? <ImageMark /> : null}
-              </label>
-              {price ? <InfoTip text={priceText(price)} label={t('{model} 官方价', { model: model.id })} /> : null}
-              {edit ? (
-                <span className="model-row-window">
-                  {on.contextWindow === null ? (
-                    <span className="model-row-warn">
-                      <SpicaStatusIcon name="warning" size={13} />
-                      {t('缺少上下文上限')}
-                    </span>
-                  ) : null}
-                  <input
-                    className={missing ? 'input is-invalid' : 'input'}
-                    type="number"
-                    value={on.contextWindow === null || Number.isNaN(on.contextWindow) ? '' : String(on.contextWindow)}
-                    placeholder={t('上下文上限')}
+      {rows.length ? (
+        <ul className="model-picker-list">
+          {rows.map(({ model, price, vision }) => {
+            const on = isOn(model.id);
+            const source = on ? SOURCE[on.contextFrom] : '';
+            const matched = on?.contextFrom === 'name-match' ? matchedNames[model.id] : undefined;
+            const missing = on ? on.contextWindow === null || Number.isNaN(on.contextWindow) : false;
+            const edit = on ? missing || editing === model.id : false;
+            return (
+              <li key={model.id} className={on ? 'model-row' : 'model-row is-off'}>
+                <label className="model-row-name" title={on ? undefined : price ? t('启用 · {price}', { price: priceText(price) }) : undefined}>
+                  <input type="checkbox" checked={!!on} onChange={() => onToggle(model, !on)} />
+                  <span className="model-row-id">{name(model)}</span>
+                  {vision ? <ImageMark /> : null}
+                </label>
+                {on && price ? <InfoTip text={priceText(price)} label={t('{model} 官方价', { model: model.id })} /> : null}
+                {!on ? null : edit ? (
+                  <span className="model-row-window">
+                    {on.contextWindow === null ? (
+                      <span className="model-row-warn">
+                        <SpicaStatusIcon name="warning" size={13} />
+                        {t('缺少上下文上限')}
+                      </span>
+                    ) : null}
+                    <input
+                      className={missing ? 'input is-invalid' : 'input'}
+                      type="number"
+                      value={on.contextWindow === null || Number.isNaN(on.contextWindow) ? '' : String(on.contextWindow)}
+                      placeholder={t('上下文上限')}
+                      aria-label={t('{model} 上下文上限', { model: model.id })}
+                      title={t('上下文上限（token）')}
+                      autoFocus={editing === model.id}
+                      onChange={(e) => onWindow(model.id, parseWindow(e.target.value))}
+                      onBlur={() => setEditing(null)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') setEditing(null);
+                      }}
+                    />
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="model-row-size"
                     aria-label={t('{model} 上下文上限', { model: model.id })}
-                    title={t('上下文上限（token）')}
-                    autoFocus={editing === model.id}
-                    onChange={(e) => onWindow(model.id, parseWindow(e.target.value))}
-                    onBlur={() => setEditing(null)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') setEditing(null);
-                    }}
-                  />
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  className="model-row-size"
-                  aria-label={t('{model} 上下文上限', { model: model.id })}
-                  title={windowTitle(on.contextWindow!, source, matched)}
-                  onClick={() => setEditing(model.id)}
-                >
-                  {windowText(on.contextWindow!)}
-                </button>
-              )}
-              {removable(model.id) ? (
-                <button type="button" className="icon-btn model-row-remove" onClick={() => onRemove!(model.id)} aria-label={t('删除 {model}', { model: model.id })} title={t('删除')}>
-                  <Icon name="trash" size={14} />
-                </button>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
-      <span className="model-picker-sect">{t('未启用')}</span>
+                    title={windowTitle(on.contextWindow!, source, matched)}
+                    onClick={() => setEditing(model.id)}
+                  >
+                    {windowText(on.contextWindow!)}
+                  </button>
+                )}
+                {removable(model.id) ? (
+                  <button type="button" className="icon-btn model-row-remove" onClick={() => onRemove!(model.id)} aria-label={t('删除 {model}', { model: model.id })} title={t('删除')}>
+                    <Icon name="trash" size={14} />
+                  </button>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
       <div className="model-pills">
-        {offRows.map(({ model, price, vision }) => (
-          <span key={model.id} className="model-pill">
-            <button type="button" className="model-pill-on" onClick={() => onToggle(model, true)} aria-label={t('启用 {model}', { model: model.id })} title={price ? t('启用 · {price}', { price: priceText(price) }) : t('启用')}>
-              <span className="model-pill-text">{name(model)}</span>
-              {vision ? <ImageMark size={12} /> : null}
-              <Icon name="plus" size={12} />
-            </button>
-            {removable(model.id) ? (
-              <button type="button" className="model-pill-remove" onClick={() => onRemove!(model.id)} aria-label={t('删除 {model}', { model: model.id })} title={t('删除')}>
-                <Icon name="trash" size={12} />
-              </button>
-            ) : null}
-          </span>
-        ))}
         {onFetch ? (
           <button type="button" className="model-pill is-action" disabled={fetching} onClick={onFetch}>
             {fetching ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={12} />}

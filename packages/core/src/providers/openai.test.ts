@@ -87,6 +87,22 @@ describe('OpenAICompatibleProvider', () => {
     expect(gw.requests).toHaveLength(1);
   });
 
+  it('a key in a custom header (X-API-Key): sent as is, no Authorization header, its value kept out of errors', async () => {
+    const own = await startGateway({});
+    try {
+      const p = new OpenAICompatibleProvider({ id: 'hdr', baseUrl: `${own.baseUrl}/v1`, headers: { 'X-API-Key': 'gw-key-0000000000' }, retry: FAST_RETRY });
+      own.enqueue({ text: 'ok' }, { status: 400, errorBody: 'no access for gw-key-0000000000' });
+      await run(p, req());
+      expect(own.requests[0]?.headers['x-api-key']).toBe('gw-key-0000000000');
+      expect(own.requests[0]?.headers.authorization).toBeUndefined();
+      const err = await run(p, req()).catch((e: unknown) => e as Error);
+      expect(String(err)).toContain('[redacted]');
+      expect(String(err)).not.toContain('gw-key-0000000000');
+    } finally {
+      await own.stop();
+    }
+  });
+
   it('gives up after maxAttempts', async () => {
     gw.enqueue({ status: 500 }, { status: 500 }, { status: 500 }, { text: 'never' });
     await expect(run(openaiProvider(gw), req())).rejects.toThrow(/HTTP 500/);

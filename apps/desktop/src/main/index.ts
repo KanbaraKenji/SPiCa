@@ -2,7 +2,64 @@
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, screen, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, screen, session, shell, Tray, webContents } from 'electron';
+import { BROWSER_FILE_SCHEME, BROWSER_PARTITION, localPageHostsFrom, type LocalPageHosts } from './browser/policy';
+
+/** What local pages may load from the web (deploy.json "localPageHosts", else the public CDNs; read once). */
+let localHosts: LocalPageHosts | undefined;
+import { LocalPages, realInside } from './browser/local-pages';
+import { flushBrowserSession, guardWebviews, setupBrowserSession } from './browser/session';
+import { applyBrowserNetwork, proxyLogin } from './browser/network';
+import { BrowserAgent, type AgentTabInfo } from './browser/agent';
+import { agentPage } from './browser/page-input';
+
+// The window answers for the browser's agent tools (App.tsx): open a tab, show one, list a conversation's tabs.
+const agentAsks = new Map<number, (answer: { ok: boolean; value?: unknown; error?: string }) => void>();
+let agentAskId = 0;
+function askWindow(op: 'open' | 'show' | 'tabs', args: Record<string, unknown>, timeoutMs = 20_000): Promise<unknown> {
+  const id = ++agentAskId;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      agentAsks.delete(id);
+      reject(new Error('the app window did not answer (it may be closed or reloading)'));
+    }, timeoutMs);
+    agentAsks.set(id, (a) => {
+      clearTimeout(timer);
+      agentAsks.delete(id);
+      if (a.ok) resolve(a.value);
+      else reject(new Error(a.error || 'the app window could not do it'));
+    });
+    sendToWindow(DesktopChannel.BrowserAgentAsk, { id, op, args });
+  });
+}
+ipcMain.handle(DesktopChannel.BrowserAgentReply, (_e, id: unknown, answer: unknown) => {
+  if (typeof id === 'number' && answer && typeof answer === 'object') agentAsks.get(id)?.(answer as { ok: boolean; value?: unknown; error?: string });
+  return null;
+});
+// For a moment after an agent's unconfirmed click or key, a form the page sends is stopped (browser/session.ts).
+const submitGuard = new Map<number, number>();
+const browserAgent: BrowserAgent = new BrowserAgent({
+  window: {
+    open: (sessionId, url) => askWindow('open', { sessionId, url }) as Promise<AgentTabInfo>,
+    show: async (tabId) => (await askWindow('show', { tabId })) === true,
+    tabs: async (sessionId) => ((await askWindow('tabs', { sessionId })) as AgentTabInfo[] | null) ?? [],
+  },
+  page: (wcId) => {
+    const wc = webContents.fromId(wcId);
+    return wc ? agentPage(wc, (id) => browserAgent.humanInput(id)) : undefined;
+  },
+  guardSubmit: (wcId, ms) => submitGuard.set(wcId, Date.now() + ms),
+  // the panel shows 已接手 and 交还 on that tab
+  onTakeOver: (tabId, taken) => sendToWindow(DesktopChannel.BrowserTakeOver, { tabId, taken }),
+});
+ipcMain.handle(DesktopChannel.BrowserGiveBack, (_e, tabId: unknown) => {
+  if (typeof tabId === 'string') browserAgent.giveBack(tabId);
+  return null;
+});
+ipcMain.handle(DesktopChannel.BrowserTakeOverPage, (_e, wcId: unknown) => {
+  if (typeof wcId === 'number') browserAgent.humanInput(wcId);
+  return null;
+});
 import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo, type UsageSummary } from '@spica/protocol';
 import { usageQuery } from '../shared/usage';
@@ -18,7 +75,7 @@ import { effectiveAccount, mailForCore, networkForCore, type ShellSettings } fro
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, SaveCsvResult, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import { APP_IDENTITY } from '../shared/app-identity';
-import { coreKind, devConnectionName, secretLabel, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderSpendView, type ProviderView } from '../shared/providers';
+import { coreKind, devConnectionName, keyInHeaders, secretLabel, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderSpendView, type ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
@@ -27,10 +84,12 @@ import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, mockFilesFolder, m
 import { checkLocalPath, csvFileName, csvFileText, type PathKind } from './local-paths';
 import { withErrorHint } from './error-hint';
 import { FakePluginService } from './plugins/fake';
+import { deployPluginConfig, PluginConfigError, PluginConfigStore, type DeployPluginConfig } from './plugins/config-store';
+import { sourceKey as pluginSourceKey } from '@spica/plugins';
 import { UpdateService } from './update/service';
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { sameSource, type PluginsCommand } from '../shared/plugins';
+import { sameSource, type PluginsCommand, type PluginsResult } from '../shared/plugins';
 import { buildSources, channelFile, type BuildSources } from './update/channel';
 import { IDLE_POLL_MS, idleInstallDue, pluginUpdateCount, scheduleChecks } from './update/schedule';
 import { startupAction } from './update/startup';
@@ -159,7 +218,8 @@ if (forcedTheme === 'dark' || forcedTheme === 'light') nativeTheme.themeSource =
 // Development model settings: the repository's .env.local, read here and nowhere else.
 // Screenshots never read it, so no local model shows up in committed images.
 //   SPICA_DEV_MODELS=0       ignore .env.local (see the app as a first-time user would)
-const modelEnv = app.isPackaged || automated || process.env.SPICA_DEV_MODELS === '0' ? {} : readModelEnv(resolvePath(app.getAppPath(), '../../.env.local'));
+//   SPICA_ENV_FILE=<file>    read the models from that file instead (a working copy reads the main checkout's by path)
+const modelEnv = app.isPackaged || automated || process.env.SPICA_DEV_MODELS === '0' ? {} : readModelEnv(process.env.SPICA_ENV_FILE || resolvePath(app.getAppPath(), '../../.env.local'));
 const backendKind = chooseBackend({ requested: devSwitch(process.env, app.isPackaged, 'SPICA_BACKEND'), automated });
 // A conversation without a folder gets its own in the core's data folder (none is picked by default);
 // this is only the core's fallback, and nothing for it is made under 文档.
@@ -264,7 +324,7 @@ function backendConfig(): DesktopBackendConfig {
       extensions: [
         {
           module: '@spica/desktop-host',
-          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: buildDefaults.pluginSources, mcpInfoFile, mcpTokenFile, userAccount: userAccount(), locale: getLocale() },
+          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: buildDefaults.pluginSources, mcpInfoFile, mcpTokenFile, userAccount: userAccount(), userConfig: pluginConfig.inputs(deployPluginSettings), locale: getLocale() },
         },
       ],
     },
@@ -354,6 +414,17 @@ const backend: AgentBackend =
           },
           // The conversation open in the window: the core writes its settings-change card there too.
           'ui.activeSession': () => activeSessionId,
+          // The built-in browser for agents (backend/browser-tools.ts, main/browser/agent.ts).
+          'browser.open': (sessionId: string, args: Record<string, unknown>) => browserAgent.open(sessionId, args),
+          'browser.read': (sessionId: string, args: Record<string, unknown>) => browserAgent.read(sessionId, args),
+          'browser.screenshot': (sessionId: string, args: Record<string, unknown>) => browserAgent.screenshot(sessionId, args),
+          'browser.scroll': (sessionId: string, args: Record<string, unknown>) => browserAgent.scroll(sessionId, args),
+          'browser.wait': (sessionId: string, args: Record<string, unknown>) => browserAgent.wait(sessionId, args),
+          'browser.tabs': (sessionId: string, args: Record<string, unknown>) => browserAgent.tabs(sessionId, args),
+          'browser.inspect': (sessionId: string, args: Record<string, unknown>) => browserAgent.inspect(sessionId, args),
+          'browser.click': (sessionId: string, args: Record<string, unknown>) => browserAgent.click(sessionId, args),
+          'browser.type': (sessionId: string, args: Record<string, unknown>) => browserAgent.type(sessionId, args),
+          'browser.press': (sessionId: string, args: Record<string, unknown>) => browserAgent.press(sessionId, args),
           'models.setDefault': (ref: ModelRef) => {
             providers.setDefaultModel({ connectionId: String(ref?.connectionId ?? ''), model: String(ref?.model ?? '') });
             applyProviders();
@@ -386,6 +457,12 @@ const providers = new ProviderStore(
   },
   () => envProviders().map((p) => ({ id: p.id, models: p.models.map((m) => m.id) })),
 );
+// What people fill into plugins' settings forms (user_config); passwords sealed like model keys.
+const pluginConfig = new PluginConfigStore(app.getPath('userData'), {
+  available: () => safeStorage.isEncryptionAvailable(),
+  encrypt: (plain) => safeStorage.encryptString(plain).toString('base64'),
+  decrypt: (sealed) => safeStorage.decryptString(Buffer.from(sealed, 'base64')),
+});
 
 /**
  * Each saved provider's 花费上限 as the core takes it: the amount for a period (fixed periods of its days from when the
@@ -735,6 +812,8 @@ function createMainWindow(): BrowserWindow {
       spellcheck: false,
       // The built-in PDF viewer, for previews in the right panel.
       plugins: true,
+      // The built-in browser's pages: every <webview> is locked before it attaches (main/browser/session.ts).
+      webviewTag: true,
       // SPICA_HIDDEN: a window never shown would otherwise be throttled (timers slowed down) as if in the background.
       ...(hidden ? { backgroundThrottling: false } : {}),
     },
@@ -834,6 +913,13 @@ function createMainWindow(): BrowserWindow {
   });
   win.webContents.on('will-navigate', (e, url) => {
     if (url !== win.webContents.getURL()) e.preventDefault();
+  });
+  // The built-in browser's pages: locked settings, new windows become tabs, no way into local files or this machine.
+  guardWebviews(win.webContents, {
+    openTab: (url) => sendToWindow(DesktopChannel.BrowserOpenTab, url),
+    // a local page going to the web: asked where, as a link in the app is
+    localLink: (url) => sendToWindow(DesktopChannel.BrowserLocalLink, url),
+    log: (line) => console.log(line),
   });
   // The page process gone (killed, crashed, out of memory): load it again, back on the open conversation;
   // the third time within a minute, ask first (main/page-recovery.ts).
@@ -948,6 +1034,8 @@ let newChatAtStart = !automated && startsOnNewChat(process.argv);
 let reopen: { sessionId: string | null } | null = automated ? null : readResume(join(app.getPath('userData'), 'update-resume.json'));
 let appQuitting = false;
 app.on('before-quit', () => {
+  // the built-in browser's sign-ins and page storage on disk before the session goes
+  if (app.isReady()) flushBrowserSession(session.fromPartition(BROWSER_PARTITION));
   appQuitting = true;
   // The icon goes with the window: nothing to click while the core closes.
   tray?.destroy();
@@ -995,7 +1083,10 @@ protocol.registerSchemesAsPrivileged([
   { scheme: PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   { scheme: PLUGIN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   { scheme: FLOW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+  // Local HTML in the built-in browser (main/browser/local-pages.ts): handled only on the browser's session.
+  { scheme: BROWSER_FILE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
+const localPages = new LocalPages();
 const previewFiles = new PreviewFiles();
 
 ipcMain.handle(DesktopChannel.ProjectRead, async (_e, projectId: unknown) => {
@@ -1034,7 +1125,7 @@ ipcMain.handle(DesktopChannel.MonitorExport, async (_e, text: unknown): Promise<
   const d = new Date();
   const p2 = (n: number) => String(n).padStart(2, '0');
   const stamp = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
-  const opts: Electron.SaveDialogOptions = { title: t('导出日志'), defaultPath: join(app.getPath('documents'), `spica-monitor-${stamp}.log`), filters: [{ name: t('日志'), extensions: ['log', 'txt'] }] };
+  const opts: Electron.SaveDialogOptions = { title: t('导出日志'), defaultPath: join(app.getPath('documents'), `${APP_NAME.toLowerCase().replace(/\s+/g, '-')}-monitor-${stamp}.log`), filters: [{ name: t('日志'), extensions: ['log', 'txt'] }] };
   // SPICA_SAVE_TO=<folder> (development only): skip the dialog, so scripts never leave one open.
   const saveTo = app.isPackaged ? '' : (process.env.SPICA_SAVE_TO ?? '');
   const pick = saveTo ? { canceled: false, filePath: join(saveTo, basename(opts.defaultPath ?? 'spica-monitor.log')) } : mainWindow ? await dialog.showSaveDialog(mainWindow, opts) : await dialog.showSaveDialog(opts);
@@ -1243,17 +1334,24 @@ if (startMove && startMove.from === deployDefault) {
   buildDefaults.pluginSources = buildDefaults.pluginSources.map((s) => (sameSource(s.location, from) ? { ...s, location: channelFile(startMove.to, 'index.json') } : s));
 }
 
-/** The company's preset model connections from deploy.json ("models"); the packaging already checked them. */
-function deployModels(): unknown[] {
+/** One top-level entry of the packaging's deploy.json (undefined when there is none). */
+function deployField(key: string): unknown {
   const file = app.isPackaged ? join(process.resourcesPath, 'deploy.json') : join(app.getAppPath(), 'deploy.json');
   try {
-    const v = JSON.parse(readFileSync(file, 'utf8')) as { models?: unknown };
-    return Array.isArray(v.models) ? v.models : [];
+    return (JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>)[key];
   } catch {
-    return [];
+    return undefined;
   }
 }
+
+/** The company's preset model connections from deploy.json ("models"); the packaging already checked them. */
+function deployModels(): unknown[] {
+  const v = deployField('models');
+  return Array.isArray(v) ? v : [];
+}
 const deployPresets = automated ? [] : deployModels();
+/** deploy.json's pluginConfig: values the packaging fills into plugins' settings forms, some locked. */
+const deployPluginSettings: DeployPluginConfig = automated ? {} : deployPluginConfig(deployField('pluginConfig'));
 
 const resumeFile = join(app.getPath('userData'), 'update-resume.json');
 const updates = new UpdateService({
@@ -1387,6 +1485,18 @@ async function refreshNotices(): Promise<void> {
 let lastMail = JSON.stringify(settings.get().mail);
 let lastWorkflowsDir = workflowsDir();
 let lastNetwork = JSON.stringify(settings.get().network);
+/** The built-in browser on the same network settings as the core (main/browser/network.ts), whichever backend runs. */
+let browserNetwork = lastNetwork;
+function applyBrowserNetworkNow(): void {
+  if (!app.isReady()) return;
+  void applyBrowserNetwork(session.fromPartition(BROWSER_PARTITION), networkForCore(settings.get().network)).catch((err: unknown) => console.warn(`browser: network settings not applied (${String(err)})`));
+}
+settings.onChange((s) => {
+  const net = JSON.stringify(s.network);
+  if (net === browserNetwork) return;
+  browserNetwork = net;
+  applyBrowserNetworkNow();
+});
 let lastLocalConnect = settings.get().localConnect;
 let lastMemory = settings.get().memory;
 let lastAutoTidy = settings.get().memoryAutoTidy;
@@ -1563,6 +1673,38 @@ const pathKind = (p: string): PathKind => {
     return null;
   }
 };
+// 用系统浏览器打开 (the built-in browser's address row): web addresses only.
+ipcMain.handle(DesktopChannel.BrowserExternal, async (_e, url: unknown): Promise<string | null> => {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return t('无法打开此网址。');
+  await shell.openExternal(url);
+  return null;
+});
+
+// Local HTML shown in the built-in browser with its scripts: a file from a conversation (its folder readable), or a
+// page drawn from an answer (its own text). Addresses are given back when the page is closed.
+ipcMain.handle(DesktopChannel.BrowserLocalPage, async (_e, sessionId: unknown, path: unknown): Promise<string | null> => {
+  const raw = typeof path === 'string' ? path : '';
+  if (!raw) return null;
+  const session = typeof sessionId === 'string' && sessionId ? await backend.getSession(sessionId).catch(() => undefined) : undefined;
+  const full = previewPath(isAbsolute(raw) ? raw : resolvePath(session?.cwd || app.getPath('home'), raw));
+  return existsSync(full) && statSync(full).isFile() ? localPages.addFile(full) : null;
+});
+ipcMain.handle(DesktopChannel.BrowserLocalText, (_e, name: unknown, text: unknown): string | null => (typeof text === 'string' ? localPages.addText(typeof name === 'string' ? name : '', text) : null));
+ipcMain.handle(DesktopChannel.BrowserRelease, (_e, url: unknown): null => {
+  if (typeof url === 'string') localPages.release(url);
+  return null;
+});
+
+// 设置 › 常规 › 浏览器 › 清除: the browser's own partition only.
+ipcMain.handle(DesktopChannel.BrowserClearData, async (): Promise<null> => {
+  const ses = session.fromPartition(BROWSER_PARTITION);
+  await ses.clearStorageData();
+  await ses.clearCache();
+  await ses.clearAuthCache();
+  console.log('browser: browsing data cleared');
+  return null;
+});
+
 ipcMain.handle(DesktopChannel.ShowInFolder, (_e, path: unknown): string | null => {
   const r = checkLocalPath(path, 'any', pathKind);
   if (!r.ok) return r.error;
@@ -1678,15 +1820,46 @@ const pluginService: PluginService =
           return err ? { ...r, ok: false, message: t('无法打开文件夹：{error}', { error: err }) } : r;
         },
       }
-    : new FakePluginService(pluginRoot, { many: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'many', onProgress: (p) => sendToWindow(DesktopChannel.PluginsProgress, p), stepMs: 700 });
+    : new FakePluginService(pluginRoot, { many: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'many', config: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'config', onProgress: (p) => sendToWindow(DesktopChannel.PluginsProgress, p), stepMs: 700 });
 ipcMain.handle(DesktopChannel.Plugins, async (_e, cmd: PluginsCommand) => {
-  const r = await pluginService.run(cmd);
+  const r = await runPlugins(cmd);
   // What the page did (an update installed, sources read) changes how many plugins can update.
   updates.setPluginUpdates(pluginUpdateCount(r.state));
   // The real core reports plugin changes itself; the demo's list says so here.
   if (pluginService instanceof FakePluginService && cmd.op !== 'state') sendToWindow(DesktopChannel.PluginsChanged);
   return r;
 });
+
+/**
+ * The page's plugin commands. A settings form (op config) is saved here, where passwords can be sealed, and the
+ * plugin host then gets the values in the clear (setConfig); the page never sends setConfig itself. An uninstall
+ * also forgets the plugin's settings.
+ */
+async function runPlugins(cmd: PluginsCommand): Promise<PluginsResult> {
+  if (cmd.op === 'setConfig') return { ...(await pluginService.run({ op: 'state' })), ok: false, message: t('不支持的操作。') };
+  if (cmd.op === 'clearConfig') {
+    pluginConfig.remove(cmd.name);
+    const r = await pluginService.run({ op: 'setConfig', name: cmd.name, input: pluginConfig.input(cmd.name, deployPluginSettings) });
+    return r.ok ? { ...r, message: t('已清除设置。') } : r;
+  }
+  if (cmd.op === 'config') {
+    const before = await pluginService.run({ op: 'state' });
+    const p = before.state.plugins.find((x) => x.name === cmd.name);
+    if (!p?.config) return { ...before, ok: false, message: t('「{name}」没有设置项。', { name: cmd.name }) };
+    try {
+      pluginConfig.save(cmd.name, pluginSourceKey(p.source), p.config.fields, cmd.values ?? {}, p.config.fields.filter((f) => f.locked).map((f) => f.key));
+    } catch (err) {
+      if (err instanceof PluginConfigError) return { ...before, ok: false, message: err.message, fieldErrors: err.fields };
+      return { ...before, ok: false, message: err instanceof Error ? err.message : String(err) };
+    }
+    const r = await pluginService.run({ op: 'setConfig', name: cmd.name, input: pluginConfig.input(cmd.name, deployPluginSettings) });
+    // 已保存 is said beside the form's own 保存, not again on top
+    return r;
+  }
+  const r = await pluginService.run(cmd);
+  if (cmd.op === 'uninstall' && r.ok && !r.state.plugins.some((x) => x.name === cmd.name)) pluginConfig.remove(cmd.name);
+  return r;
+}
 ipcMain.handle(DesktopChannel.BackendStatus, () => backendStatus);
 ipcMain.on(DesktopChannel.BackendRetry, () => {
   if (backend instanceof ProcessBackend) backend.retry();
@@ -1716,7 +1889,7 @@ ipcMain.handle(DesktopChannel.SetModelPointer, (_e, which: 'default' | 'strong',
   return providerList();
 });
 ipcMain.handle(DesktopChannel.TestProvider, async (_e, draft: ProviderDraft) =>
-  testConnection(draft, draft.id ? providers.secretOf(draft.id) : undefined, undefined, needsKeyFor(await modelCatalog(), draft.catalogId)),
+  testConnection(draft, providers.keyFor(draft), undefined, needsKeyFor(await modelCatalog(), draft.catalogId), providers.headersFor(draft, draft.id)),
 );
 ipcMain.handle(DesktopChannel.KnownContextWindow, async (_e, kind: ProviderKind, model: string, catalogId?: string | null): Promise<number | null> => {
   const name = String(model ?? '').trim();
@@ -1737,8 +1910,8 @@ ipcMain.handle(DesktopChannel.MatchContextWindow, async (_e, kind: ProviderKind,
   return matchWindowIn(DEFAULT_PRICES, coreKind(kind), name, cid);
 });
 ipcMain.handle(DesktopChannel.ListProviderModels, async (_e, draft: ProviderDraft): Promise<ListModelsResult> => {
-  const secret = draft.secret?.trim() || (draft.id ? providers.secretOf(draft.id) : undefined) || '';
-  const config = toProviderConfig({ ...draft, id: 'list-models', secret });
+  const secret = (keyInHeaders(draft) ? '' : draft.secret?.trim()) || providers.keyFor(draft) || '';
+  const config = toProviderConfig({ ...draft, id: 'list-models', secret, headerValues: providers.headersFor(draft, draft.id) });
   if (backend instanceof ProcessBackend) {
     const r = await backend.listProviderModels(config).catch((err: unknown): ListModelsResult => ({ ok: false, code: 'list.failed', message: err instanceof Error ? err.message : String(err), hint: t('获取模型列表失败，请从列表选择或手动输入模型。') }));
     // The core's hint in the language now (by its code; words the shell does not know as sent).
@@ -1779,11 +1952,48 @@ void app.whenReady().then(() => {
   // SPICA_MOCK_WEB=<folder> (development only; screenshots of pictures on the web): https://example.com/<name> is
   // answered from that folder and any other https request gets a 404, so nothing leaves the machine.
   const mockWeb = mockWebFolder(process.env, app.isPackaged);
-  if (mockWeb)
-    protocol.handle('https', (req) => {
+  if (mockWeb) {
+    const answer = async (req: Request) => {
       const u = new URL(req.url);
-      return u.host === 'example.com' ? net.fetch(pathToFileURL(join(mockWeb, basename(u.pathname))).toString()) : new Response('', { status: 404 });
-    });
+      if (u.host !== 'example.com') return new Response('', { status: 404 });
+      const name = basename(u.pathname);
+      const res = await net.fetch(pathToFileURL(join(mockWeb, name)).toString());
+      // a page address without an extension (/mold/price-guide): a web page
+      return name.includes('.') ? res : new Response(res.body, { status: res.status, headers: { 'content-type': 'text/html; charset=utf-8' } });
+    };
+    protocol.handle('https', answer);
+    // the built-in browser's pages too (its own session)
+    session.fromPartition(BROWSER_PARTITION).protocol.handle('https', answer);
+  }
+  // The built-in browser's own session (its own cookies and storage; none of the app's schemes are registered on it).
+  setupBrowserSession(session.fromPartition(BROWSER_PARTITION), {
+    log: (line) => console.log(line),
+    stopSubmit: (wcId) => (submitGuard.get(wcId) ?? 0) > Date.now(),
+    // local pages on the web: the public CDNs and Google Fonts only, or deploy.json's own lists
+    localPageHosts: () => (localHosts ??= localPageHostsFrom(readDeployJson())),
+    onLocalBlocked: (_wcId, page, url) => {
+      try {
+        sendToWindow(DesktopChannel.BrowserBlocked, { page: new URL(page).host, host: new URL(url).host || new URL(url).protocol });
+      } catch {
+        // not an address: nothing to show
+      }
+    },
+  });
+  session.fromPartition(BROWSER_PARTITION).protocol.handle(BROWSER_FILE_SCHEME, async (req) => {
+    const s = localPages.resolve(req.url, req.method);
+    if (s.kind === 'text') return new Response(s.text, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    if (s.kind === 'none' || !(await realInside(s.path, s.root))) return new Response('', { status: 404 });
+    return net.fetch(pathToFileURL(s.path).toString());
+  });
+  applyBrowserNetworkNow();
+  // A proxy that asks for its user name and password: the ones in 设置 › 网络's proxy address, for the browser's pages.
+  app.on('login', (e, contents, _details, authInfo, callback) => {
+    if (!authInfo.isProxy || contents?.session !== session.fromPartition(BROWSER_PARTITION)) return;
+    const login = proxyLogin(networkForCore(settings.get().network), { host: authInfo.host, port: authInfo.port });
+    if (!login) return;
+    e.preventDefault();
+    callback(login.username, login.password);
+  });
   protocol.handle(PLUGIN_SCHEME, (req) => servePluginFile(req.url));
   // The flowchart frame's files, with CORS (main/flow-scheme.ts).
   protocol.handle(FLOW_SCHEME, async (req) => {

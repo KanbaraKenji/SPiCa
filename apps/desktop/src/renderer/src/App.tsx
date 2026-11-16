@@ -1,6 +1,6 @@
 // The window: title bar, left sidebar, main pane (conversation, inbox or a plugin page), right panels; settings as a dialog over it.
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import type { DesktopBridge, PreviewInfo } from '../../shared/bridge';
+import type { DesktopBridge } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
 import { centreShift, computeLayout, infoFits, monitorFits, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
@@ -30,12 +30,16 @@ import { openProviderNext } from './settings/Models';
 import type { PluginsTab } from './settings/Plugins';
 import { NewProjectDialog } from './shell/NewProjectDialog';
 import { NoticeBar, useBackendState, useUpdateState } from './shell/NoticeBar';
-import { UpdateCard, UpdateRailButton, useUpdateNotice } from './shell/UpdateNotice';
+import { UpdateCard, UpdateRailButton, useUpdateNotice, type WaitingPlugin } from './shell/UpdateNotice';
 import { ForcedUpdate } from './shell/ForcedUpdate';
 import { InboxView, type InboxProject } from './shell/InboxView';
 import type { UsageApi } from './settings/Usage';
 import { MonitorView } from './shell/MonitorView';
 import { ToolHistory } from './shell/ToolHistory';
+import { PaneTabs } from './shell/PaneTabs';
+import { BrowserPane } from './shell/BrowserPane';
+import { LinkRouter } from './shell/links';
+import { activate as activatePane, activeTab, closeTab as closePaneTab, NO_TABS, openFile as openPaneFile, openWeb as openPaneWeb, setOpen as setPaneOpen, tabName, updateActiveFile, updateWeb as updatePaneWeb, type FileRequest, type PaneTab, type PaneTabs as PaneTabsState } from './shell/pane-tabs';
 import { MaxButton } from './ui/MaxButton';
 import { MailStore, useMail } from './store/mail';
 import { needsYou } from '../../shared/mail';
@@ -100,8 +104,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [newProject, setNewProject] = useState<null | { name?: string; mailId?: string }>(null);
   /** The file shown in the right panel instead of the details, if any. */
   // A file to show in the right panel, or (inline) a page from an answer's HTML code block.
-  // `opened`: when the file was asked for; asked for again (the same file pressed again), it is read again.
-  const [preview, setPreview] = useState<{ sessionId: string | null; path: string; sheet?: number; inline?: PreviewInfo; opened?: number } | null>(null);
+  // The right panel's tabs: files and web pages side by side (shell/pane-tabs.ts). `preview` is the file shown;
+  // its `opened`: when the file was asked for; asked for again (the same file pressed again), it is read again.
+  const [pane, setPane] = useState<PaneTabsState>(NO_TABS);
+  const shownTab = pane.open ? activeTab(pane) : undefined;
+  const preview: FileRequest | null = shownTab?.kind === 'file' ? shownTab.req : null;
+  /** A file to show (its tab, or a new one); null closes the panel; a function changes the file shown (another sheet). */
+  const setPreview = (v: FileRequest | null | ((r: FileRequest) => FileRequest)) =>
+    setPane((s) => (v === null ? setPaneOpen(s, false) : typeof v === 'function' ? updateActiveFile(s, v) : openPaneFile(s, v)));
   const [previewWay, setPreviewWay] = useState<{ key: string; id: string } | null>(null);
   const [previewFallback, setPreviewFallback] = useState<{ key: string; id: string; why: PreviewFallback } | null>(null);
   const [previewAttempt, setPreviewAttempt] = useState(0);
@@ -109,7 +119,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [deletingProject, setDeletingProject] = useState<null | { id: string; name: string }>(null);
   const [deletingChat, setDeletingChat] = useState<null | { id: string; name: string }>(null);
   const update = useUpdateState(bridge);
-  const updateNotice = useUpdateNotice(update);
+  // plugins turned on but waiting for required settings (待设置): said where plugin updates are
+  const [pluginsWaiting, setPluginsWaiting] = useState<WaitingPlugin[]>([]);
+  const updateNotice = useUpdateNotice(update, pluginsWaiting);
   const backendState = useBackendState(bridge, agent);
   const installUpdate = () => void bridge.updates.run('install');
   // Whether any model is configured; checked at start and whenever settings close.
@@ -160,7 +172,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // (panels.monitor).
   // The preview's place also shows 工具调用 X (the details' last row): the finished calls of this conversation.
   const [history, setHistory] = useState(false);
-  const previewOpen = preview !== null || history;
+  const previewOpen = pane.open || history;
   const monitorOpen = settings.monitor ? Boolean(settings.panels.monitor) : undefined;
   // As Claude's Files: while the monitor or the preview is open the details give way at once (not docked); their
   // button then shows them as a small card over the conversation's top right (infoFloat). Their saved switch stays:
@@ -391,29 +403,105 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   useEffect(() => {
     if (window.__spicaShots)
       window.__spicaShots.preview = (path) => {
-        setPreview({ sessionId: null, path, opened: Date.now() });
+        setPane((s) => openPaneFile(s, { sessionId: null, path, opened: Date.now() }));
         showPreview();
       };
   });
-  // The file last closed in the preview: the title bar's preview button opens it again.
-  const [lastPreview, setLastPreview] = useState<typeof preview>(null);
+  // Closed, the panel keeps its tabs: the title bar's preview button opens it again on the tab last shown.
+  const lastTab = pane.open ? undefined : activeTab(pane);
+  const lastPreview = lastTab ?? null;
   const closePreview = () => {
-    if (preview) setLastPreview(preview);
-    setPreview(null);
+    setPane((s) => setPaneOpen(s, false));
     // The workbooks kept for paging and going back to a sheet go with the panel.
     bridge.previewClosed();
     if (floating === 'preview') setFloating(null);
   };
+  /** A web page in a new tab of the panel ('' : an empty one). */
+  const openWebTab = (url: string) => {
+    setPane((s) => openPaneWeb(s, url));
+    setHistory(false);
+    showPreview();
+  };
+  useEffect(() => bridge.browser.onOpenTab((url) => openWebTab(url)));
+  // The agent's browser tools (main/browser/agent.ts) ask the window: open a tab for a conversation, show one, list a
+  // conversation's tabs with their pages' ids. Kept in refs: the answer is given after React has drawn the change.
+  const pagesRef = useRef(new Map<string, number>());
+  // Agent tabs the person took over (pressed in the page, or 接手): the main process says so (main/browser/agent.ts).
+  const [takenTabs, setTakenTabs] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(
+    () =>
+      bridge.browser.onTakeOver(({ tabId, taken }) =>
+        setTakenTabs((s) => {
+          const next = new Set(s);
+          if (taken) next.add(tabId);
+          else next.delete(tabId);
+          return next;
+        }),
+      ),
+    [bridge],
+  );
+  const paneRef = useRef(pane);
+  const viewRef = useRef(view);
+  const historyRef = useRef(history);
+  useEffect(() => {
+    paneRef.current = pane;
+    viewRef.current = view;
+    historyRef.current = history;
+  });
+  useEffect(
+    () =>
+      bridge.browser.onAgentAsk(({ id, op, args }) => {
+        const reply = (answer: { ok: boolean; value?: unknown; error?: string }) => void bridge.browser.agentReply(id, answer);
+        const sessionId = typeof args.sessionId === 'string' ? args.sessionId : '';
+        const info = (tab: PaneTab) => ({ tabId: tab.id, wcId: pagesRef.current.get(tab.id) ?? null, url: tab.kind === 'web' ? tab.url : '', title: tab.kind === 'web' ? tab.title : '' });
+        // on screen: the panel open and drawn (the conversation view, not 工具调用 over it), the tab in front
+        const onScreen = (tabId: string) => viewRef.current === 'chat' && !historyRef.current && paneRef.current.open && paneRef.current.active === tabId;
+        const afterDraw = (f: () => void) => requestAnimationFrame(() => requestAnimationFrame(f));
+        if (op === 'tabs') {
+          reply({ ok: true, value: paneRef.current.tabs.filter((x) => x.kind === 'web' && x.agent === sessionId).map(info) });
+        } else if (op === 'show') {
+          const tabId = String(args.tabId ?? '');
+          setPane((s) => activatePane(s, tabId));
+          setHistory(false);
+          showPreview();
+          afterDraw(() => reply({ ok: true, value: onScreen(tabId) }));
+        } else if (op === 'open') {
+          if (viewRef.current !== 'chat') {
+            reply({ ok: false, error: 'the person is on another page of the app (not a conversation); the browser panel is not there now' });
+            return;
+          }
+          const url = String(args.url ?? '');
+          const tabId = `t${paneRef.current.next}`;
+          setPane((s) => openPaneWeb(s, url, sessionId));
+          setHistory(false);
+          showPreview();
+          // the page exists once it reports its id
+          const started = Date.now();
+          const check = () => {
+            const tab = paneRef.current.tabs.find((x) => x.id === tabId);
+            if (tab && pagesRef.current.has(tabId)) reply({ ok: true, value: info(tab) });
+            else if (Date.now() - started > 15_000) reply({ ok: false, error: 'the page did not start' });
+            else setTimeout(check, 100);
+          };
+          afterDraw(check);
+        } else reply({ ok: false, error: `unknown request ${String(op)}` });
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bridge],
+  );  // The screenshot script hook: a web page in a new tab of the panel.
+  useEffect(() => {
+    if (window.__spicaShots) window.__spicaShots.browse = (url) => openWebTab(url);
+  });
   /**
    * The title bar's preview button: closes what is in the preview's place (the file, and 工具调用 if it is over it), or
    * opens again the file last shown there.
    */
   const togglePreview = () => {
-    if (history || preview) {
+    if (history || pane.open) {
       setHistory(false);
       closePreview();
     } else if (lastPreview) {
-      setPreview(lastPreview);
+      setPane((s) => setPaneOpen(s, true));
       showPreview();
     }
   };
@@ -521,7 +609,15 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     }),
     [bridge],
   );
-  const pluginsApi = useMemo(() => ({ ...bridge.plugins, pickFolder: () => bridge.pickFolder(t('选择插件文件夹')) }), [bridge]);
+  const pluginsApi = useMemo(
+    () => ({
+      ...bridge.plugins,
+      pickFolder: () => bridge.pickFolder(t('选择插件文件夹')),
+      // a folder or file field of a plugin's settings form
+      pickPath: async (kind: 'folder' | 'file', title: string) => (kind === 'folder' ? bridge.pickFolder(title) : ((await bridge.pickFiles(title))[0] ?? null)),
+    }),
+    [bridge],
+  );
   // 收件箱 shows only while a plugin that provides mail is on.
   const [mailSource, setMailSource] = useState(false);
   // 模拟模式 (设置 › 插件): the inbox says its mail is demo data.
@@ -539,6 +635,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           if (!alive) return;
           setMailSource(r.state.plugins.some((p) => p.mail));
           setPluginMock(r.state.mock);
+          setPluginsWaiting(r.state.plugins.filter((p) => p.waiting && p.config?.missing.length).map((p) => ({ displayName: p.displayName, missing: p.config!.missing.length })));
         })
         .catch(() => undefined);
     };
@@ -571,6 +668,50 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const pagePreview = wayPage && !fellBack ? wayPage : null;
   const loadedPreview = usePreview(bridge.preview, preview && !preview.inline && !pagePreview ? preview : null);
   const previewInfo = preview?.inline ?? loadedPreview;
+  // An HTML file, or a page drawn from an answer, runs its scripts in the built-in browser: its address there, asked
+  // for while it is shown and given back after (main/browser/local-pages.ts).
+  const htmlKey = previewInfo?.kind === 'html' && shownTab ? `${shownTab.id}|${fileKey}` : '';
+  const [htmlPage, setHtmlPage] = useState<{ key: string; url: string } | null>(null);
+  useEffect(() => {
+    if (!htmlKey || !preview) return;
+    let alive = true;
+    let got: string | null = null;
+    const inline = preview.inline?.kind === 'html' ? preview.inline : null;
+    const ask = inline ? bridge.browser.localText(inline.name, inline.text) : bridge.browser.localPage(preview.sessionId, preview.path);
+    void ask.then((url) => {
+      if (!url) return;
+      if (!alive) {
+        void bridge.browser.release(url);
+        return;
+      }
+      got = url;
+      setHtmlPage({ key: htmlKey, url });
+    });
+    return () => {
+      alive = false;
+      if (got) void bridge.browser.release(got);
+    };
+    // asked again only for another page
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [htmlKey]);
+  const htmlUrl = htmlPage && htmlPage.key === htmlKey ? htmlPage.url : null;
+  // What local pages tried to load from the web and were stopped, by the token in their address (shown in the file's row).
+  const [blockedHosts, setBlockedHosts] = useState<Record<string, string[]>>({});
+  useEffect(
+    () =>
+      bridge.browser.onBlocked(({ page, host }) =>
+        setBlockedHosts((m) => (m[page]?.includes(host) ? m : { ...m, [page]: [...(m[page] ?? []), host] })),
+      ),
+    [bridge],
+  );
+  const htmlBlocked = (() => {
+    if (!htmlUrl) return undefined;
+    try {
+      return blockedHosts[new URL(htmlUrl).host];
+    } catch {
+      return undefined;
+    }
+  })();
   const chooseWay = (id: string) => {
     setPreviewWay({ key: fileKey, id });
     setPreviewFallback(null);
@@ -809,8 +950,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // pressed; its hover says why. Their switch is kept: they come back when there is room. Given way to the monitor or
   // the preview, the button shows the small card instead.
   const infoRoom = infoBlocked || infoFits(width, open, wantedWidths);
-  const lastName = lastPreview ? (lastPreview.inline?.name ?? lastPreview.path.split(/[\\/]/).pop() ?? lastPreview.path) : '';
-  const previewTip = preview ? t('预览') : lastPreview ? t('预览：{name}', { name: lastName }) : t('没有打开的预览：点对话里的文件打开');
+  const lastName = lastTab ? tabName(lastTab) || t('新标签页') : '';
+  const previewTip = pane.open ? t('预览') : lastPreview ? t('预览：{name}', { name: lastName }) : t('没有打开的预览：点对话里的文件打开');
   // A preview floating over a narrow window takes no room: there the window is what is too narrow.
   const infoTip = infoRoom ? t('详情（Ctrl+Alt+B）') : t('窗口太窄，放不下详情');
   // The 监控台 (switched on in 设置 › 关于): as the details, no room means not shown and a button that says why.
@@ -846,7 +987,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const toggleHistory = () => {
     if (history) {
       setHistory(false);
-      if (!preview && floating === 'preview') setFloating(null);
+      if (!pane.open && floating === 'preview') setFloating(null);
       return;
     }
     setHistory(true);
@@ -855,6 +996,40 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   if (canMax !== rightCanMax) setCanMax(rightCanMax);
   if (rightMax && !rightCanMax) setRightMax(false);
   const panelMax = { on: rightMax, toggle: () => setRightMax((v) => !v) };
+  const webTabs = pane.tabs.filter((x): x is Extract<PaneTab, { kind: 'web' }> => x.kind === 'web');
+  // An agent's tab shown while its conversation runs (acting), or after the person took it over (taken).
+  const agentTab = shownTab?.kind === 'web' && shownTab.agent ? shownTab : null;
+  const agentStatus = agentTab ? state.sessions.find((s) => s.id === agentTab.agent)?.status : undefined;
+  const agentActing = agentStatus === 'queued' || agentStatus === 'thinking' || agentStatus === 'tool' || agentStatus === 'awaiting_confirm';
+  const agentBar = agentTab
+    ? takenTabs.has(agentTab.id)
+      ? { mode: 'taken' as const, onTakeOver: () => undefined, onStop: () => undefined, onGiveBack: () => void bridge.browser.giveBack(agentTab.id) }
+      : agentActing
+        ? {
+            mode: 'acting' as const,
+            onTakeOver: () => {
+              const wcId = pagesRef.current.get(agentTab.id);
+              if (wcId !== undefined) void bridge.browser.takeOver(wcId);
+            },
+            onStop: () => void agent.stop(agentTab.agent!),
+            onGiveBack: () => undefined,
+          }
+        : null
+    : null;
+  const paneStrip = (
+    <PaneTabs
+      tabs={pane.tabs}
+      active={pane.active}
+      onPick={(tabId) => setPane((s) => activatePane(s, tabId))}
+      onClose={(tabId) => {
+        setPane((s) => closePaneTab(s, tabId));
+        if (pane.tabs.length === 1 && floating === 'preview') setFloating(null);
+      }}
+      onNew={() => openWebTab('')}
+      max={panelMax}
+      onClosePanel={closePreview}
+    />
+  );
   // The preview over the whole conversation is a layer of Esc too (back beside it).
   useEscape(rightMax, () => setRightMax(false));
   const title = view === 'inbox' ? t('收件箱') : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
@@ -1098,11 +1273,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               <button
                 type="button"
                 data-panel-toggle
-                className={preview || history ? 'icon-btn is-on' : 'icon-btn'}
+                className={pane.open || history ? 'icon-btn is-on' : 'icon-btn'}
                 onClick={togglePreview}
-                aria-label={preview || history ? t('收起预览') : t('展开预览')}
-                aria-pressed={preview !== null || history}
-                {...(preview || lastPreview ? {} : { 'aria-disabled': true })}
+                aria-label={pane.open || history ? t('收起预览') : t('展开预览')}
+                aria-pressed={pane.open || history}
+                {...(pane.open || lastPreview ? {} : { 'aria-disabled': true })}
                 title={previewTip}
               >
                 <Icon name="detail" />
@@ -1206,14 +1381,18 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           </div>
         ) : null}
 
-        {previewShown && view === 'chat' && preview && !history ? (
+        {previewShown && view === 'chat' && shownTab && !history ? (
           <div
             className={`panel panel-right panel-preview is-${layout.preview}${rightMax ? ' is-max' : ''}${widths.cover && layout.preview === 'docked' ? ' is-cover' : ''}`}
             style={rightMax ? undefined : { width: widths.preview, ...(widths.cover && layout.preview === 'docked' ? { marginLeft: -widths.cover } : {}) }}
           >
             {/* Wider than what is beside it allows, it lies over the details, then over the conversation's right part (kept at its 440 layout): pulled left by `cover`. */}
             {rightMax ? null : resizer('preview')}
+            {preview ? (
             <FilePreview
+              tabs={paneStrip}
+              page={htmlUrl}
+              {...(htmlBlocked?.length ? { blocked: htmlBlocked } : {})}
               // A plugin page draws the file: the head still names it (and offers its buttons).
               info={pagePreview ? { kind: 'unsupported', name: preview.path.split(/[\\/]/).pop() ?? preview.path, path: preview.path, size: 0, message: '' } : previewInfo}
               loadingPath={preview.path}
@@ -1241,6 +1420,21 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 />
               ) : null}
             </FilePreview>
+            ) : null}
+            {webTabs.length ? (
+              <BrowserPane
+                tabs={webTabs}
+                active={shownTab.kind === 'web' ? shownTab.id : null}
+                strip={shownTab.kind === 'web' ? paneStrip : null}
+                onChange={(tabId, patch) => setPane((s) => updatePaneWeb(s, tabId, patch))}
+                onOpenExternal={(url) => void bridge.browser.openExternal(url).then(showNotice)}
+                agent={agentBar}
+                onPage={(tabId, wcId) => {
+                  if (wcId === null) pagesRef.current.delete(tabId);
+                  else pagesRef.current.set(tabId, wcId);
+                }}
+              />
+            ) : null}
           </div>
         ) : null}
 
@@ -1248,6 +1442,21 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       </div>
 
 
+      {/* Web addresses clicked in the window: 设置 › 常规 › 浏览器 › 打开网址 (the question, 应用内 or 系统浏览器). */}
+      <LinkRouter
+        setting={settings.linkOpen}
+        open={(url, place) => {
+          if (place === 'system') {
+            void bridge.browser.openExternal(url).then(showNotice);
+            return;
+          }
+          setSettingsOpen(false);
+          setView('chat');
+          openWebTab(url);
+        }}
+        remember={(place) => shell.update({ linkOpen: place })}
+        incoming={bridge.browser.onLocalLink}
+      />
       {pluginAsk ? (
         <ConfirmDialog
           title={t('「{plugin}」将执行「{tool}」，此操作不可撤销。', { plugin: pluginAsk.plugin, tool: pluginAsk.tool })}
@@ -1358,6 +1567,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           projects={inboxProjects}
           exportUsageLog={bridge.exportUsageLog}
           showInFolder={bridge.showInFolder}
+          clearBrowsingData={bridge.browser.clearData}
           mailModel={mailModelLabel}
           networkState={bridge.network}
           {...(settingsReveal ? { reveal: settingsReveal } : {})}
