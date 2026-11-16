@@ -28,6 +28,18 @@ describe('LocalPages', () => {
       expect(p.resolve(url)).toEqual({ kind: 'none' });
   });
 
+  it('nor through a drive, a network share or a second encoding (what a worker tried in the window)', () => {
+    const p = new LocalPages(tokens());
+    p.addFile(join(folder, 'index.html'));
+    for (const url of ['spica-page://tok1/C:%5CWindows%5Cwin.ini', 'spica-page://tok1/C:%2FWindows%2Fwin.ini', 'spica-page://tok1/%5C%5C127.0.0.1%5Cc$%5CWindows%5Cwin.ini'])
+      expect(p.resolve(url)).toEqual({ kind: 'none' });
+    // leading slashes are dropped: //server/share/x.txt is a path inside the folder
+    expect(p.resolve('spica-page://tok1/%2F%2Fserver%2Fshare%2Fx.txt')).toEqual({ kind: 'file', path: join(folder, 'server', 'share', 'x.txt'), root: folder });
+    // encoded twice: decoded once, it is a strange file name inside the folder, not a way out
+    const twice = p.resolve('spica-page://tok1/%252E%252E%252Fsecret.txt');
+    expect(twice.kind === 'file' && twice.path.startsWith(folder)).toBe(true);
+  });
+
   it('read only: GET (and HEAD), nothing else', () => {
     const p = new LocalPages(tokens());
     const url = p.addFile(join(folder, 'index.html'));
