@@ -6282,7 +6282,7 @@ section.plugins-part > .plugins-part-title {
 
 /* A download for the app's Python (python_env): one row per item (name and version, where from, size), the
    total last; in line with the card's title, as a call's arguments. */
-.confirm-card > .install-list {
+.confirm-card > .download-list {
   display: grid;
   grid-template-columns: minmax(0, max-content) minmax(0, 1fr) max-content;
   /* no column gap: the total's line runs across; the space is the cells' own */
@@ -6293,15 +6293,15 @@ section.plugins-part > .plugins-part-title {
   line-height: var(--lh-footnote);
 }
 
-.install-row {
+.download-row {
   display: contents;
 }
 
-.install-name {
+.download-name {
   overflow-wrap: anywhere;
 }
 
-.install-host {
+.download-host {
   min-width: 0;
   padding: 0 16px;
   overflow: hidden;
@@ -6310,12 +6310,12 @@ section.plugins-part > .plugins-part-title {
   white-space: nowrap;
 }
 
-.install-size {
+.download-size {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-.install-row.is-total > span {
+.download-row.is-total > span {
   padding-top: 4px;
   border-top: 1px solid var(--spica-border);
   margin-top: 2px;

@@ -76,7 +76,7 @@ describe('ConfirmCard', () => {
     const block = { type: 'confirm' as const, callId: 'p1', name: 'python_env', input: { packages: ['pandas'] }, reason: '', cause: 'python_install' as const, install };
     render(<ConfirmCard block={block} onDecide={vi.fn()} />);
     expect(document.querySelector('.card-title')?.textContent).toBe('下载 Python 3.12.16 和 2 个库');
-    const rows = [...document.querySelectorAll('.install-row')].map((r) => [...r.children].map((c) => c.textContent));
+    const rows = [...document.querySelectorAll('.download-row')].map((r) => [...r.children].map((c) => c.textContent));
     expect(rows).toEqual([
       ['Python 3.12.16', 'releases.astral.sh', '31 MB'],
       ['pandas 2.3.3', 'pypi.org', '11 MB'],
@@ -91,7 +91,7 @@ describe('ConfirmCard', () => {
     cleanup();
     render(<ConfirmCard block={{ ...block, install: { python: install.python, packages: [{ name: 'pandas' }, { name: 'openpyxl' }], packageHost: 'pypi.org' } }} onDecide={vi.fn()} />);
     expect(document.querySelector('.card-title')?.textContent).toBe('下载 Python 3.12.16 和 2 个库');
-    expect([...document.querySelectorAll('.install-row')].map((r) => [...r.children].map((c) => c.textContent))).toEqual([
+    expect([...document.querySelectorAll('.download-row')].map((r) => [...r.children].map((c) => c.textContent))).toEqual([
       ['Python 3.12.16', 'releases.astral.sh', '31 MB'],
       ['pandas', 'pypi.org', '—'],
       ['openpyxl', 'pypi.org', '—'],
@@ -100,7 +100,7 @@ describe('ConfirmCard', () => {
     // later: packages only; one size unknown
     render(<ConfirmCard block={{ ...block, install: { packages: [{ name: 'openpyxl', version: '3.1.5', bytes: 250 * 1024 }, { name: 'et-xmlfile' }], packageHost: 'pypi.example.com' } }} onDecide={vi.fn()} />);
     expect(document.querySelector('.card-title')?.textContent).toBe('安装 2 个库');
-    const later = [...document.querySelectorAll('.install-row')].map((r) => [...r.children].map((c) => c.textContent));
+    const later = [...document.querySelectorAll('.download-row')].map((r) => [...r.children].map((c) => c.textContent));
     expect(later).toEqual([
       ['openpyxl 3.1.5', 'pypi.example.com', '250 KB'],
       ['et-xmlfile', 'pypi.example.com', '—'],

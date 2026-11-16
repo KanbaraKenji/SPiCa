@@ -15,6 +15,13 @@ const block = (selector: string) => {
 };
 
 describe('styles', () => {
+  it('插件 › 市场 › 添加来源 keeps its row: .install-row is declared once (the download card’s rows have their own name)', () => {
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => m[1]!.replace(/\/\*[\s\S]*?\*\//g, '').trim());
+    expect(rules.filter((sel) => sel === '.install-row')).toHaveLength(1);
+    expect(block('.install-row')).toContain('display: flex');
+    expect(block('.download-row')).toContain('display: contents');
+  });
+
   it('the monitor’s source and level columns are wide enough for the longest name in each language', () => {
     expect(block(':root:lang(zh-TW) .monitor-source')).toContain('width: 4em');
     expect(block(':root:lang(en) .monitor-source')).toContain('width: 4.9em');

@@ -1022,27 +1022,27 @@ export function InstallList({ preview }: { preview: InstallPreview }) {
   const known = rows.filter((r) => typeof r.bytes === 'number');
   const total = known.reduce((sum, r) => sum + (r.bytes ?? 0), 0);
   return (
-    <div className="install-list" role="table" aria-label={t('下载内容')}>
+    <div className="download-list" role="table" aria-label={t('下载内容')}>
       {rows.map((r) => (
-        <div key={r.key} className="install-row" role="row">
-          <span className="install-name" role="cell">
+        <div key={r.key} className="download-row" role="row">
+          <span className="download-name" role="cell">
             {r.name}
           </span>
-          <span className="install-host" role="cell">
+          <span className="download-host" role="cell">
             {r.host}
           </span>
-          <span className="install-size" role="cell">
+          <span className="download-size" role="cell">
             {typeof r.bytes === 'number' ? formatBytes(r.bytes) : '—'}
           </span>
         </div>
       ))}
       {rows.length > 1 && known.length === rows.length ? (
-        <div className="install-row is-total" role="row">
-          <span className="install-name" role="cell">
+        <div className="download-row is-total" role="row">
+          <span className="download-name" role="cell">
             {t('合计')}
           </span>
-          <span className="install-host" role="cell" />
-          <span className="install-size" role="cell">
+          <span className="download-host" role="cell" />
+          <span className="download-size" role="cell">
             {formatBytes(total)}
           </span>
         </div>
