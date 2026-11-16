@@ -38,6 +38,7 @@ import { resolve as resolvePath } from 'node:path';
 import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.ts';
 import { samePath } from './move-folder.ts';
 import { netHint } from './net.ts';
+import { runtimesLine } from './runtimes.ts';
 import { REGENERATE_HINTS } from '@spica/protocol';
 import { comparableResult, repeatLimits, repeatReminder, repeatsBefore, repeatStopResult } from './repeat-guard.ts';
 
@@ -1516,6 +1517,8 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
             present: tools.some((t) => t.spec.name === 'present_files'),
           })
         : '',
+      // what run_command can run here (the backend probes it at start)
+      this.#rt.runtimes && tools.some((t) => t.spec.name === 'run_command') ? runtimesLine(this.#rt.runtimes) : '',
       this.#leadsOthers() ? TEAM_RULE : '',
     ].filter(Boolean);
   }
