@@ -16,6 +16,8 @@ import { Select } from '../ui/Select';
 import { useKeptDraft } from './drafts';
 import { Group, Row } from './Group';
 import { Switch } from './Switch';
+import { N_, t } from '../../../shared/i18n';
+import { configProblemText } from '../../../shared/plugin-config-words';
 
 /** What a field's control holds: text for every box (numbers too, as typed), on / off for a switch. */
 type FormValue = string | boolean;
@@ -57,7 +59,7 @@ export function missingFields(fields: readonly PluginConfigFieldView[], form: Fo
   });
 }
 
-const MISSING = '请填写';
+const MISSING = N_('请填写');
 
 export interface PluginConfigProps {
   p: PluginView;
@@ -88,7 +90,7 @@ export function PluginConfig({ p, busy, save, pickPath, reveal }: PluginConfigPr
   const [seenReveal, setSeenReveal] = useState(0);
   if ((reveal ?? 0) !== seenReveal) {
     setSeenReveal(reveal ?? 0);
-    if (reveal) setErrors({ ...Object.fromEntries(missingFields(fields, form).map((f) => [f.key, MISSING])), ...errors });
+    if (reveal) setErrors({ ...Object.fromEntries(missingFields(fields, form).map((f) => [f.key, t(MISSING)])), ...errors });
   }
   useEffect(() => {
     const first = reveal ? missingFields(fields, form)[0] : undefined;
@@ -120,7 +122,7 @@ export function PluginConfig({ p, busy, save, pickPath, reveal }: PluginConfigPr
         continue;
       }
       const c = checkConfigValue(f, typeof v === 'string' && v.trim() === '' ? null : v);
-      if (!c.ok) found[f.key] = c.message;
+      if (!c.ok) found[f.key] = configProblemText(c.message, f.options);
       else values[f.key] = c.value;
     }
     setErrors(found);
@@ -134,12 +136,12 @@ export function PluginConfig({ p, busy, save, pickPath, reveal }: PluginConfigPr
       setResult('saved');
       // what is filled in is saved; a required field still empty is marked where it is
       const empty = missingFields(fields, form);
-      if (empty.length) setErrors(Object.fromEntries(empty.map((f) => [f.key, MISSING])));
+      if (empty.length) setErrors(Object.fromEntries(empty.map((f) => [f.key, t(MISSING)])));
     }
   };
 
   return (
-    <Group title="设置" className="plugin-config">
+    <Group title={t('设置')} className="plugin-config">
       {fields.map((f) => (
         <ConfigRow key={f.key} plugin={p.name} f={f} value={form[f.key] ?? ''} error={errors[f.key]} disabled={busy} onChange={(v) => set(f.key, v)} pickPath={pickPath} />
       ))}
@@ -147,12 +149,12 @@ export function PluginConfig({ p, busy, save, pickPath, reveal }: PluginConfigPr
         {result === 'saved' && !dirty ? (
           <span className="provider-result is-ok" role="status">
             <SpicaStatusIcon name="done" size={15} />
-            已保存
+            {t('已保存')}
           </span>
         ) : null}
-        {dirty ? <span className="provider-unsaved">未保存</span> : null}
+        {dirty ? <span className="provider-unsaved">{t('未保存')}</span> : null}
         <button type="button" className="btn btn-small btn-primary" disabled={busy || !dirty} onClick={() => void submit()}>
-          保存
+          {t('保存')}
         </button>
       </div>
     </Group>
@@ -180,13 +182,13 @@ function ConfigRow({
   const title = (
     <>
       {f.title}
-      {f.required ? <span className="config-required" aria-label="必填"> *</span> : null}
+      {f.required ? <span className="config-required" aria-label={t('必填')}> *</span> : null}
       {f.description ? <InfoTip text={f.description} decorative /> : null}
-      {f.locked ? <InfoTip icon="lock" text="由管理员设置" /> : null}
+      {f.locked ? <InfoTip icon="lock" text={t('由管理员设置')} /> : null}
     </>
   );
   // what is wrong in red under the box; a locked field gone bad says who to ask
-  const problem = error ?? (f.locked && !f.set ? '请联系管理员' : undefined);
+  const problem = error ?? (f.locked && !f.set ? t('请联系管理员') : undefined);
   const text = typeof value === 'string' ? value : '';
   let control;
   if (f.type === 'toggle') {
@@ -197,7 +199,7 @@ function ConfigRow({
         className={error ? 'config-select is-invalid' : 'config-select'}
         value={text}
         label={f.title}
-        placeholder="选择"
+        placeholder={t('选择')}
         disabled={disabled || !!f.locked}
         options={[...(f.required || f.default !== undefined ? [] : [{ value: '', label: '—' }]), ...(f.options ?? []).map((o) => ({ value: o, label: o }))]}
         onChange={(v) => onChange(v)}
@@ -215,14 +217,14 @@ function ConfigRow({
               type="button"
               className="btn btn-square"
               disabled={disabled || !pickPath}
-              aria-label={`选择${f.title}`}
-              title="选择"
+              aria-label={t('选择{name}', { name: f.title })}
+              title={t('选择')}
               onClick={() => void pickPath?.(f.type === 'folder' ? 'folder' : 'file', f.title).then((path) => path && onChange(path))}
             >
               <Icon name="pencil" size={16} />
             </button>
             {text && !f.required ? (
-              <button type="button" className="btn btn-square" disabled={disabled} aria-label={`清除${f.title}`} title="清除" onClick={() => onChange('')}>
+              <button type="button" className="btn btn-square" disabled={disabled} aria-label={t('清除{name}', { name: f.title })} title={t('清除')} onClick={() => onChange('')}>
                 <Icon name="close" size={14} />
               </button>
             ) : null}
@@ -245,7 +247,7 @@ function ConfigRow({
         type={f.type === 'password' ? 'password' : 'text'}
         inputMode={f.type === 'number' ? 'decimal' : f.type === 'url' ? 'url' : undefined}
         value={text}
-        placeholder={f.type === 'password' && f.set ? '已保存（留空不修改）' : (f.placeholder ?? '')}
+        placeholder={f.type === 'password' && f.set ? t('已保存（留空不修改）') : (f.placeholder ?? '')}
         disabled={disabled}
         spellCheck={false}
         autoComplete="off"

@@ -14,6 +14,7 @@ import type { AgentBackend } from './types';
 import type { PluginView, PluginViewResult } from '../../shared/plugin-view';
 import type { LocalConnectInfo } from '../../shared/bridge';
 import { CORE_KILL_MS } from '../quit';
+import { t } from '../../shared/i18n';
 import type { MonitorHub } from '../monitor';
 
 export type BackendStatus = { state: 'starting' | 'ready' | 'recovering' } | { state: 'failed'; message: string };
@@ -105,7 +106,7 @@ export class ProcessBackend implements AgentBackend {
           resolve();
         } else if (m?.type === 'failed') {
           mon?.add('process', 'error', `core failed to start: ${m.message ?? ''}`);
-          this.#o.onStatus({ state: 'failed', message: `后台启动失败：${m.message ?? ''}` });
+          this.#o.onStatus({ state: 'failed', message: t('后台启动失败：{error}', { error: m.message ?? '' }) });
           resolve();
         } else if (m?.type === 'plugins.changed') {
           this.#o.onPluginsChanged();
@@ -127,15 +128,15 @@ export class ProcessBackend implements AgentBackend {
     if (this.#child !== child) return;
     this.#child = undefined;
     this.#client = undefined;
-    client.fail('后台正在恢复');
+    client.fail(t('后台正在恢复'));
     if (this.#stopping) return;
     this.#newReady();
     const now = Date.now();
     this.#restarts = this.#restarts.filter((t) => now - t < 60_000);
     if (this.#restarts.length >= MAX_RESTARTS_PER_MINUTE) {
       this.#o.monitor?.add('process', 'error', `core stopped: ${MAX_RESTARTS_PER_MINUTE} restarts within a minute`);
-      this.#rejectReady(new Error('后台多次出错，已停止。'));
-      this.#o.onStatus({ state: 'failed', message: '后台多次出错，已停止。' });
+      this.#rejectReady(new Error(t('后台多次出错，已停止。')));
+      this.#o.onStatus({ state: 'failed', message: t('后台多次出错，已停止。') });
       return;
     }
     const delay = BACKOFF_MS[Math.min(this.#restarts.length, BACKOFF_MS.length - 1)] ?? 5000;
@@ -161,7 +162,7 @@ export class ProcessBackend implements AgentBackend {
       this.#client ??
       (await Promise.race([
         this.#ready,
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('后台无响应，请稍后重试。')), CALL_WAIT_MS)),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error(t('后台无响应，请稍后重试。'))), CALL_WAIT_MS)),
       ]));
     return client.call<T>(method, ...params);
   }

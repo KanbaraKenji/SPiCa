@@ -5,6 +5,7 @@ import { useModal } from "../ui/useModal";
 import { useGuard } from "../ui/guard";
 import { Icon } from "../ui/Icon";
 import { APP_NAME } from "../../../shared/app-identity";
+import { N_, t, tx } from "../../../shared/i18n";
 
 export interface NewProjectInput {
   name: string;
@@ -50,7 +51,7 @@ export function NewProjectDialog({
   const submit = () =>
     run(async () => {
       if (!name.trim()) {
-        setError("请填写项目名称");
+        setError(N_("请填写项目名称"));
         nameRef.current?.focus();
         return;
       }
@@ -82,62 +83,62 @@ export function NewProjectDialog({
         }}
       >
         <p className="dialog-title" id={id}>
-          新项目
+          {t("新项目")}
         </p>
         <label className="form-field">
-          <span className="field-label">名称</span>
+          <span className="field-label">{t("名称")}</span>
           <input
             ref={nameRef}
             className="input"
             value={name}
             maxLength={60}
             onChange={(e) => setName(e.target.value)}
-            placeholder="样机评审"
+            placeholder={t("样机评审")}
           />
         </label>
         <label className="form-field">
-          <span className="field-label">文件夹</span>
+          <span className="field-label">{t("文件夹")}</span>
           <span className="form-inline">
             <input
               className="input"
               value={folder}
               spellCheck={false}
               onChange={(e) => setFolder(e.target.value)}
-              placeholder={`默认：文档\\${APP_NAME}`}
+              placeholder={t("默认：文档\\{app}", { app: APP_NAME })}
             />
             <button
               type="button"
               className="btn btn-square"
               onClick={() => void pick()}
-              aria-label="选择文件夹"
-              title="选择文件夹"
+              aria-label={t("选择文件夹")}
+              title={t("选择文件夹")}
             >
               <Icon name="folder" size={16} />
             </button>
           </span>
         </label>
         <label className="form-field">
-          <span className="field-label">首个任务（可选）</span>
+          <span className="field-label">{t("首个任务（可选）")}</span>
           <textarea
             className="input textarea"
             rows={3}
             value={brief}
             onChange={(e) => setBrief(e.target.value)}
-            placeholder="首个任务"
+            placeholder={t("首个任务")}
           />
         </label>
         {error ? (
           <p className="field-error" role="alert">
-            {error}
+            {tx(error)}
           </p>
         ) : null}
         <div className="dialog-actions">
           <button type="button" className="btn" onClick={onClose}>
-            取消
+            {t("取消")}
           </button>
           <button type="submit" className="btn btn-primary" disabled={busy}>
             {busy ? <span className="spinner" aria-hidden /> : null}
-            创建
+            {t("创建")}
           </button>
         </div>
       </form>

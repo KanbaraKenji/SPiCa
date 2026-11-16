@@ -4,6 +4,7 @@ import type { DesktopBridge, ShellState } from '../../../shared/bridge';
 import { applyPatch, type AutostartSupport, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
 import { resolveSkin, schemeOf, type Skin } from '../../../shared/skin';
 import { Store } from './external';
+import { applyLanguage } from '../i18n';
 import { applyCodeSize, applyCodeTheme, applySkin, applyTextSize, applyUiFont } from '../theme';
 
 export interface ShellView {
@@ -22,6 +23,8 @@ export class ShellStore {
   readonly autostart: AutostartSupport;
   /** The automatic account (ShellState.autoAccount); the one in force is effectiveAccount(settings, this). */
   readonly autoAccount: string;
+  /** Windows' languages (ShellState.systemLanguages), for 语言 跟随系统. */
+  readonly systemLanguages: readonly string[];
 
   constructor(bridge: DesktopBridge, initial: ShellState) {
     this.#bridge = bridge;
@@ -29,6 +32,9 @@ export class ShellStore {
     this.legacyDefaultCwd = initial.legacyDefaultCwd;
     this.autostart = initial.autostart ?? 'unsupported';
     this.autoAccount = initial.autoAccount ?? '';
+    this.systemLanguages = initial.systemLanguages ?? [];
+    // The language first: the first paint is already in it.
+    applyLanguage(initial.settings.language, this.systemLanguages);
     const media = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)').matches : initial.systemDark;
     this.state = new Store<ShellView>({ settings: initial.settings, systemDark: media });
     bridge.onSettingsChanged((settings) => this.#replace(settings));
@@ -53,6 +59,8 @@ export class ShellStore {
   }
 
   update(patch: SettingsPatch): void {
+    // Switched before the redraw the state change causes, so every t() in it reads the new language.
+    if (patch.language) applyLanguage(patch.language, this.systemLanguages);
     this.state.set((v) => ({ ...v, settings: applyPatch(v.settings, patch) }));
     this.#paint();
     void this.#bridge.updateSettings(patch).catch(() => {
@@ -61,6 +69,7 @@ export class ShellStore {
   }
 
   #replace(settings: ShellSettings): void {
+    applyLanguage(settings.language, this.systemLanguages);
     this.state.set((v) => ({ ...v, settings }));
     this.#paint();
   }

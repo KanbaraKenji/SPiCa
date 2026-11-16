@@ -16,6 +16,7 @@ import { Icon } from '../ui/Icon';
 import { ConfirmDialog } from '../ui/Dialog';
 import { fullTime, timeOf } from '../chat/format';
 import { useEscape } from '../ui/escape';
+import { N_, t } from '../../../shared/i18n';
 
 import { CATEGORY_LABEL, changeStands, tidyChangeText } from './memory-tidy-text';
 import { askFor, AskResult, MemoryAskBox, type MemoryAsk } from './MemoryAsk';
@@ -67,19 +68,33 @@ export interface MemoryTidy {
   undo(id: number, change?: number): Promise<unknown>;
 }
 
-const REFUSED: Record<MemoryRefusal['refused'], string> = {
-  empty: '内容为空，未保存',
-  too_long: `超过 ${MEMORY_CHARS} 字，未保存`,
-  secret: '疑似密码、密钥或证件号码，未保存',
-  name_taken: '名字已被使用，未保存',
+/** Why a save was refused: its key and the limit it names, put in words where it shows (so it follows the language). */
+type Refused = { key: string; max?: number };
+
+const REFUSED: Record<MemoryRefusal['refused'], Refused> = {
+  empty: { key: N_('内容为空，未保存') },
+  too_long: { key: N_('超过 {max} 字，未保存'), max: MEMORY_CHARS },
+  secret: { key: N_('疑似密码、密钥或证件号码，未保存') },
+  name_taken: { key: N_('名字已被使用，未保存') },
 };
 
-const FIELD_REFUSED: Record<'name' | 'summary', Record<MemoryRefusal['refused'], string>> = {
-  name: { empty: '名字为空，未保存', too_long: `名字超过 ${NAME_CHARS} 字，未保存`, secret: '名字疑似密码、密钥或证件号码，未保存', name_taken: '名字已被使用，未保存' },
-  summary: { empty: '摘要为空，未保存', too_long: `摘要超过 ${SUMMARY_CHARS} 字，未保存`, secret: '摘要疑似密码、密钥或证件号码，未保存', name_taken: '名字已被使用，未保存' },
+const FIELD_REFUSED: Record<'name' | 'summary', Record<MemoryRefusal['refused'], Refused>> = {
+  name: {
+    empty: { key: N_('名字为空，未保存') },
+    too_long: { key: N_('名字超过 {max} 字，未保存'), max: NAME_CHARS },
+    secret: { key: N_('名字疑似密码、密钥或证件号码，未保存') },
+    name_taken: { key: N_('名字已被使用，未保存') },
+  },
+  summary: {
+    empty: { key: N_('摘要为空，未保存') },
+    too_long: { key: N_('摘要超过 {max} 字，未保存'), max: SUMMARY_CHARS },
+    secret: { key: N_('摘要疑似密码、密钥或证件号码，未保存') },
+    name_taken: { key: N_('名字已被使用，未保存') },
+  },
 };
 
-const refusal = (r: MemoryCardMeta | MemoryRefusal | undefined): string | null => (r && 'refused' in r ? (r.field ? FIELD_REFUSED[r.field][r.refused] : REFUSED[r.refused]) : null);
+const refusal = (r: MemoryCardMeta | MemoryRefusal | undefined): Refused | null => (r && 'refused' in r ? (r.field ? FIELD_REFUSED[r.field][r.refused] : REFUSED[r.refused]) : null);
+const refusedText = (r: Refused) => t(r.key, r.max !== undefined ? { max: r.max } : undefined);
 
 /** The active items, the newest saved first. */
 export function shownMemories(items: MemoryItem[] | null): MemoryItem[] {
@@ -186,7 +201,7 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
     go({ page: 'entry', id, editing });
   };
   const openItem = (id: number, editing = false) => go({ page: 'item', id, editing });
-  const offReason = !enabled ? '记忆已关闭' : ask?.noModel ? '还没有配置模型' : null;
+  const offReason = !enabled ? t('记忆已关闭') : ask?.noModel ? t('还没有配置模型') : null;
   const askHere = ask
     ? {
         ...ask,
@@ -205,9 +220,9 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
     <>
       {deleting ? (
         <ConfirmDialog
-          title={deleting.kind === 'entry' ? `删除「${deleting.view.entry.name}」？` : '删除这条记忆？'}
-          detail={deleting.kind === 'entry' ? `${deleting.view.details.length} 条详情` : deleting.item.text}
-          confirmLabel="删除"
+          title={deleting.kind === 'entry' ? t('删除「{name}」？', { name: deleting.view.entry.name }) : t('删除这条记忆？')}
+          detail={deleting.kind === 'entry' ? t('{n} 条详情', { n: deleting.view.details.length }) : deleting.item.text}
+          confirmLabel={t('删除')}
           danger
           onCancel={() => setDeleting(null)}
           onConfirm={() => {
@@ -230,8 +245,8 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
       ) : null}
       {clearing ? (
         <ConfirmDialog
-          title={`清除全部 ${count} 条记忆？`}
-          confirmLabel="全部清除"
+          title={t('清除全部 {n} 条记忆？', { n: count })}
+          confirmLabel={t('全部清除')}
           danger
           onCancel={() => setClearing(false)}
           onConfirm={() => {
@@ -245,8 +260,8 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
   if (page === 'item' && item) {
     const back = home ? () => openEntry(home.entry.id, false, `item-${item.id}`) : () => toList(`note-${item.id}`);
     return (
-      <section ref={top} className="settings-section memory-detail" aria-label="记忆">
-        <Back label={home ? home.entry.name : '记忆'} onBack={back} />
+      <section ref={top} className="settings-section memory-detail" aria-label={t('记忆')}>
+        <Back label={home ? home.entry.name : t('记忆')} onBack={back} />
         <MemoryDetail
           item={item}
           editing={view.page === 'item' && view.editing}
@@ -267,7 +282,7 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
     const e = entryView.entry;
     return (
       <section ref={top} className="settings-section memory-detail" aria-label={e.name}>
-        <Back label="记忆" onBack={() => toList(`entry-${e.id}`)} />
+        <Back label={t('记忆')} onBack={() => toList(`entry-${e.id}`)} />
         <EntryDetail
           view={entryView}
           editing={view.editing}
@@ -289,7 +304,7 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
   if (page === 'add' && entryView) {
     const e = entryView.entry;
     return (
-      <section ref={top} className="settings-section memory-detail" aria-label="添加详情">
+      <section ref={top} className="settings-section memory-detail" aria-label={t('添加详情')}>
         <Back label={e.name} onBack={() => openEntry(e.id)} />
         <DetailForm initial="" onCancel={() => openEntry(e.id)} onSave={(text) => api.add(text, e.id)} />
       </section>
@@ -297,8 +312,8 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
   }
   if (page === 'new') {
     return (
-      <section ref={top} className="settings-section memory-detail" aria-label="添加记忆">
-        <Back label="记忆" onBack={() => toList()} />
+      <section ref={top} className="settings-section memory-detail" aria-label={t('添加记忆')}>
+        <Back label={t('记忆')} onBack={() => toList()} />
         <EntryForm onCancel={() => toList()} onSave={(input, text) => api.add(text ?? '', input)} />
       </section>
     );
@@ -306,12 +321,12 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
   return (
     <section className="settings-section memory-page">
       <Group>
-        <Row title="启用记忆">
-          <Switch on={enabled} label="启用记忆" onChange={onEnabled} />
+        <Row title={t('启用记忆')}>
+          <Switch on={enabled} label={t('启用记忆')} onChange={onEnabled} />
         </Row>
         {tidy ? (
-          <Row title="自动整理">
-            <Switch on={tidy.auto} label="自动整理" disabled={!enabled} onChange={tidy.onAuto} />
+          <Row title={t('自动整理')}>
+            <Switch on={tidy.auto} label={t('自动整理')} disabled={!enabled} onChange={tidy.onAuto} />
           </Row>
         ) : null}
       </Group>
@@ -324,15 +339,15 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
       {/* 已记住 as a settings group (its title and buttons), a box per category under the category's name */}
       <div className="settings-group memory-known">
         <div className="group-head">
-          <h3 className="settings-subheading">已记住</h3>
+          <h3 className="settings-subheading">{t('已记住')}</h3>
           <div className="group-actions">
             <button type="button" className="btn btn-small" onClick={() => go({ page: 'new' })}>
               <Icon name="plus" size={14} />
-              添加
+              {t('添加')}
             </button>
             {count ? (
               <button type="button" className="btn btn-small btn-quiet-danger" onClick={() => setClearing(true)}>
-                全部清除
+                {t('全部清除')}
               </button>
             ) : null}
           </div>
@@ -340,13 +355,13 @@ export function Memory({ items, entries, enabled, onEnabled, api, titleOf, onOpe
         {count === 0 ? (
           <div className="group-box">
             <Pane>
-              <p className="settings-hint memory-empty">暂无记忆</p>
+              <p className="settings-hint memory-empty">{t('暂无记忆')}</p>
             </Pane>
           </div>
         ) : (
           memoryGroups(views, loose).map((g) => (
-            <section key={g.category ?? 'none'} className="memory-section" {...(g.category ? { 'aria-label': CATEGORY_LABEL[g.category] } : {})}>
-              {g.category ? <h4 className="memory-cat">{CATEGORY_LABEL[g.category]}</h4> : null}
+            <section key={g.category ?? 'none'} className="memory-section" {...(g.category ? { 'aria-label': t(CATEGORY_LABEL[g.category]) } : {})}>
+              {g.category ? <h4 className="memory-cat">{t(CATEGORY_LABEL[g.category])}</h4> : null}
               <div className="group-box">
                 <ul className="memory-list group-list">
                   {g.lines.map((line) => {
@@ -400,10 +415,14 @@ function Back({ label, onBack }: { label: string; onBack(): void }) {
 
 /** What a tidy did in words: its changes, and the notes it put into entries. */
 const summary = (r: MemoryTidyRun) => {
-  if (r.status === 'failed') return '整理失败';
+  if (r.status === 'failed') return t('整理失败');
   const summaries = (r.entries ?? []).filter((e) => e.before).length;
-  const parts = [...(r.changes.length ? [`${r.changes.length} 条改动`] : []), ...(r.grouped?.length ? [`归入 ${r.grouped.length} 条`] : []), ...(summaries ? [`更新摘要 ${summaries} 个`] : [])];
-  return parts.length ? parts.join('，') : '无改动';
+  const parts = [
+    ...(r.changes.length ? [t('{n} 条改动', { n: r.changes.length })] : []),
+    ...(r.grouped?.length ? [t('归入 {n} 条', { n: r.grouped.length })] : []),
+    ...(summaries ? [t('更新摘要 {n} 个', { n: summaries })] : []),
+  ];
+  return parts.length ? parts.join(t('，')) : t('无改动');
 };
 
 /** The notes a tidy put into entries that are still there: the note and the entry's name (one gone since is left out). */
@@ -434,13 +453,13 @@ function TidyGroup({ tidy, enabled, items, entries }: { tidy: MemoryTidy; enable
   const open = shown ? shown.changes.some((c) => changeStands(c, shown, items)) || grouped.length > 0 || summarized.length > 0 : false;
   return (
     <Group
-      title="整理"
+      title={t('整理')}
       after={problem ? <p className="provider-result is-bad group-note" role="alert">{problem}</p> : null}
       actions={
         <>
           {open && shown ? (
             <button type="button" className="btn btn-small" onClick={() => void tidy.undo(shown.id)}>
-              全部撤销
+              {t('全部撤销')}
             </button>
           ) : null}
           <button
@@ -452,18 +471,18 @@ function TidyGroup({ tidy, enabled, items, entries }: { tidy: MemoryTidy; enable
               void tidy.run().then(setProblem);
             }}
           >
-            {running ? '整理中' : '立即整理'}
+            {running ? t('整理中') : t('立即整理')}
           </button>
         </>
       }
     >
       {/* the latest tidy as a row of the box: its name, when and what it changed in grey (as every row's grey line) */}
       <Row
-        title="最近一次"
+        title={t('最近一次')}
         className="memory-tidy-last"
         hint={
           <>
-            {last && last.status !== 'running' ? `${timeOf(last.endedAt ?? last.startedAt)} · ${summary(last)}` : last ? '整理中' : '—'}
+            {last && last.status !== 'running' ? `${timeOf(last.endedAt ?? last.startedAt)} · ${summary(last)}` : last ? t('整理中') : '—'}
             {shown && shown !== last ? <span className="memory-tidy-shown">{`${timeOf(shown.endedAt ?? shown.startedAt)} · ${summary(shown)}`}</span> : null}
           </>
         }
@@ -477,22 +496,22 @@ function TidyGroup({ tidy, enabled, items, entries }: { tidy: MemoryTidy; enable
               </span>
               {changeStands(c, shown, items) ? (
                 <button type="button" className="btn btn-small memory-undo" onClick={() => void tidy.undo(shown.id, i)}>
-                  撤销
+                  {t('撤销')}
                 </button>
               ) : null}
             </li>
           ))}
           {summarized.map((g, i) => (
             <li key={`${shown.id}-s${i}`} className="setting-row memory-tidy-change">
-              <span className="memory-text" title={`更新摘要「${g.name}」：${g.summary}`} data-tip-clipped="">
-                {`更新摘要「${g.name}」：${g.summary}`}
+              <span className="memory-text" title={t('更新摘要「{name}」：{summary}', { name: g.name, summary: g.summary })} data-tip-clipped="">
+                {t('更新摘要「{name}」：{summary}', { name: g.name, summary: g.summary })}
               </span>
             </li>
           ))}
           {grouped.map((g, i) => (
             <li key={`${shown.id}-g${i}`} className="setting-row memory-tidy-change">
-              <span className="memory-text" title={`归入「${g.name}」：${g.text}`} data-tip-clipped="">
-                {`归入「${g.name}」：${g.text}`}
+              <span className="memory-text" title={t('归入「{name}」：{text}', { name: g.name, text: g.text })} data-tip-clipped="">
+                {t('归入「{name}」：{text}', { name: g.name, text: g.text })}
               </span>
             </li>
           ))}
@@ -535,20 +554,20 @@ function MemoryRow({
     ref.current?.scrollIntoView?.({ block: 'nearest' });
     onFocused();
   }, [focus, onFocused]);
-  const whole = name ? `${name}：${text}` : text;
+  const whole = name ? t('{name}：{text}', { name, text }) : text;
   return (
     <li className="setting-row memory-row">
       <button ref={ref} type="button" className="memory-open" title={whole} data-tip-clipped=".memory-text" onClick={onOpen}>
         {name ? <span className="memory-name">{name}</span> : null}
         <span className={name ? 'memory-text memory-summary' : 'memory-text'}>{text}</span>
-        {stale ? <span className="settings-hint memory-stale">待整理</span> : null}
+        {stale ? <span className="settings-hint memory-stale">{t('待整理')}</span> : null}
         <span className="settings-hint memory-time">{timeOf(at)}</span>
       </button>
       <div className="memory-actions">
-        <button type="button" className="icon-btn" aria-label="编辑" title="编辑" onClick={onEdit}>
+        <button type="button" className="icon-btn" aria-label={t('编辑')} title={t('编辑')} onClick={onEdit}>
           <Icon name="pencil" size={16} />
         </button>
-        <button type="button" className="icon-btn" aria-label="删除" title="删除" onClick={onDelete}>
+        <button type="button" className="icon-btn" aria-label={t('删除')} title={t('删除')} onClick={onDelete}>
           <Icon name="trash" size={16} />
         </button>
       </div>
@@ -589,10 +608,10 @@ function EntryDetail({
           <h3 className="memory-detail-text">{e.name}</h3>
           <div className="memory-detail-actions">
             <button type="button" className="btn btn-small" onClick={() => onEdit(true)}>
-              编辑
+              {t('编辑')}
             </button>
             <button type="button" className="btn btn-small btn-quiet-danger" onClick={onDelete}>
-              删除
+              {t('删除')}
             </button>
           </div>
         </header>
@@ -600,29 +619,29 @@ function EntryDetail({
       <dl className="memory-facts">
         {e.category && !editing ? (
           <div className="memory-fact">
-            <dt>类别</dt>
-            <dd>{CATEGORY_LABEL[e.category]}</dd>
+            <dt>{t('类别')}</dt>
+            <dd>{t(CATEGORY_LABEL[e.category])}</dd>
           </div>
         ) : null}
         <div className="memory-fact">
-          <dt>最后修改</dt>
+          <dt>{t('最后修改')}</dt>
           <dd>{fullTime(view.at)}</dd>
         </div>
         {!editing ? (
           <div className="memory-fact">
-            <dt>摘要</dt>
+            <dt>{t('摘要')}</dt>
             <dd className="memory-quote">
               {e.summary}
-              {e.stale ? <span className="settings-hint memory-stale">待整理</span> : null}
+              {e.stale ? <span className="settings-hint memory-stale">{t('待整理')}</span> : null}
             </dd>
           </div>
         ) : null}
         <div className="memory-fact">
           <dt className="memory-fact-head">
-            详情
+            {t('详情')}
             <button type="button" className="btn btn-small" onClick={onAdd}>
               <Icon name="plus" size={14} />
-              添加
+              {t('添加')}
             </button>
           </dt>
           <dd>
@@ -684,24 +703,24 @@ function MemoryDetail({
           <h3 className="memory-detail-text">{item.text}</h3>
           <div className="memory-detail-actions">
             <button type="button" className="btn btn-small" onClick={() => onEdit(true)}>
-              编辑
+              {t('编辑')}
             </button>
             <button type="button" className="btn btn-small btn-quiet-danger" onClick={onDelete}>
-              删除
+              {t('删除')}
             </button>
           </div>
         </header>
       )}
       <dl className="memory-facts">
         <div className="memory-fact">
-          <dt>最后修改</dt>
+          <dt>{t('最后修改')}</dt>
           <dd>{fullTime(item.updatedAt)}</dd>
         </div>
         {item.sessionId && title !== undefined ? (
           <div className="memory-fact">
-            <dt>出处</dt>
+            <dt>{t('出处')}</dt>
             <dd>
-              <button type="button" className="text-btn history-link" title="打开对话" onClick={() => onOpenSession(item.sessionId!, item.seq)}>
+              <button type="button" className="text-btn history-link" title={t('打开对话')} onClick={() => onOpenSession(item.sessionId!, item.seq)}>
                 {title}
               </button>
             </dd>
@@ -709,7 +728,7 @@ function MemoryDetail({
         ) : null}
         {item.sessionId && item.quote ? (
           <div className="memory-fact">
-            <dt>原话</dt>
+            <dt>{t('原话')}</dt>
             <dd className="memory-quote">{item.quote}</dd>
           </div>
         ) : null}
@@ -720,7 +739,7 @@ function MemoryDetail({
 
 /** Saving a form: the result, or the problem in words. */
 function useSave(onDone: () => void) {
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<Refused | null>(null);
   const [busy, setBusy] = useState(false);
   const run = (go: () => Promise<MemoryCardMeta | MemoryRefusal | undefined>) => {
     if (busy) return;
@@ -752,7 +771,7 @@ function DetailForm({ initial, onCancel, onSave }: { initial: string; onCancel()
     <div className="memory-edit">
       <textarea
         className="input textarea memory-input"
-        aria-label="详情"
+        aria-label={t('详情')}
         rows={3}
         value={text}
         autoFocus
@@ -768,7 +787,7 @@ function DetailForm({ initial, onCancel, onSave }: { initial: string; onCancel()
           }
         }}
       />
-      {shown ? <span className="field-error" role="alert">{shown}</span> : null}
+      {shown ? <span className="field-error" role="alert">{refusedText(shown)}</span> : null}
       <FormActions ok={ok} onCancel={onCancel} onSave={save} />
     </div>
   );
@@ -814,30 +833,30 @@ function EntryForm({
   return (
     <div className="memory-edit memory-entry-form">
       <label className="memory-field">
-        <span className="memory-pick-label">名字</span>
-        <input className="input" aria-label="名字" value={name} autoFocus spellCheck={false} onChange={edit(setName)} onKeyDown={enter} />
+        <span className="memory-pick-label">{t('名字')}</span>
+        <input className="input" aria-label={t('名字')} value={name} autoFocus spellCheck={false} onChange={edit(setName)} onKeyDown={enter} />
       </label>
       <label className="memory-field">
-        <span className="memory-pick-label">摘要</span>
-        <input className="input" aria-label="摘要" value={summary} spellCheck={false} onChange={edit(setSummary)} onKeyDown={enter} />
+        <span className="memory-pick-label">{t('摘要')}</span>
+        <input className="input" aria-label={t('摘要')} value={summary} spellCheck={false} onChange={edit(setSummary)} onKeyDown={enter} />
       </label>
       <div className="memory-pick">
-        <span className="memory-pick-label">类别</span>
-        <div className="segmented" role="radiogroup" aria-label="类别">
+        <span className="memory-pick-label">{t('类别')}</span>
+        <div className="segmented" role="radiogroup" aria-label={t('类别')}>
           {MEMORY_CATEGORIES.map((c) => (
             <button key={c} type="button" role="radio" aria-checked={category === c} className={category === c ? 'segment is-on' : 'segment'} onClick={() => setCategory(c)}>
-              {CATEGORY_LABEL[c]}
+              {t(CATEGORY_LABEL[c])}
             </button>
           ))}
         </div>
       </div>
       {initial ? null : (
         <label className="memory-field">
-          <span className="memory-pick-label">详情</span>
-          <textarea className="input textarea memory-input" aria-label="详情" rows={3} value={text} spellCheck={false} onChange={edit(setText)} onKeyDown={enter} />
+          <span className="memory-pick-label">{t('详情')}</span>
+          <textarea className="input textarea memory-input" aria-label={t('详情')} rows={3} value={text} spellCheck={false} onChange={edit(setText)} onKeyDown={enter} />
         </label>
       )}
-      {shown ? <span className="field-error" role="alert">{shown}</span> : null}
+      {shown ? <span className="field-error" role="alert">{refusedText(shown)}</span> : null}
       <FormActions ok={ok} onCancel={onCancel} onSave={save} />
     </div>
   );
@@ -847,10 +866,10 @@ function FormActions({ ok, onCancel, onSave }: { ok: boolean; onCancel(): void; 
   return (
     <div className="memory-edit-actions">
       <button type="button" className="btn btn-small" onClick={onCancel}>
-        取消
+        {t('取消')}
       </button>
       <button type="button" className="btn btn-small btn-primary" disabled={!ok} onClick={onSave}>
-        保存
+        {t('保存')}
       </button>
     </div>
   );

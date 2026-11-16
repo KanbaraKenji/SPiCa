@@ -7,6 +7,7 @@ import type { AgentStore } from '../store/agent';
 import { activeNotices, type Notice, type UpdateState } from '../../../shared/updates';
 import type { ShellSettings } from '../../../shared/settings';
 import { Icon } from '../ui/Icon';
+import { t, tx } from '../../../shared/i18n';
 import { SpicaStatusIcon } from '@spica/brand/react';
 
 export function useUpdateState(bridge: DesktopBridge): UpdateState | null {
@@ -64,7 +65,7 @@ export function NoticeBar({ backend, onRetryBackend, settings, onDismissNotice }
     return (
       <div className="notice-bar is-warning" role="status">
         <SpicaStatusIcon name="running" size={15} className="notice-icon" />
-        <span className="notice-text">后台正在恢复…</span>
+        <span className="notice-text">{t('后台正在恢复…')}</span>
       </div>
     );
   }
@@ -72,9 +73,9 @@ export function NoticeBar({ backend, onRetryBackend, settings, onDismissNotice }
     return (
       <div className="notice-bar is-warning" role="alert">
         <SpicaStatusIcon name="error" size={15} className="notice-icon" />
-        <span className="notice-text">{backend.message}</span>
+        <span className="notice-text">{tx(backend.message)}</span>
         <button type="button" className="btn btn-small" onClick={onRetryBackend}>
-          重试
+          {t('重试')}
         </button>
       </div>
     );
@@ -87,10 +88,10 @@ export function NoticeBar({ backend, onRetryBackend, settings, onDismissNotice }
       </span>
       {notice.link ? (
         <a className="notice-link" href={notice.link} target="_blank" rel="noreferrer">
-          查看
+          {t('查看')}
         </a>
       ) : null}
-      <button type="button" className="icon-btn notice-close" onClick={() => onDismissNotice(notice.id)} aria-label="关闭公告" title="关闭">
+      <button type="button" className="icon-btn notice-close" onClick={() => onDismissNotice(notice.id)} aria-label={t('关闭公告')} title={t('关闭')}>
         <Icon name="close" size={14} />
       </button>
     </div>

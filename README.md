@@ -42,7 +42,7 @@ Around that team:
 
 ## Quick start
 
-The interface is in Chinese for now; menu names are given in both languages below.
+The interface is in Simplified Chinese, Traditional Chinese or English (Settings › Appearance › Display › Language; it follows Windows by default). Menu names are given in Chinese and English below.
 
 ### Install from a release
 

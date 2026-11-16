@@ -15,6 +15,8 @@ import { ContextMenu } from '../ui/ContextMenu';
 import { useEscape } from '../ui/escape';
 import { CallDetail } from '../chat/CallDetail';
 import type { Block } from '../store/transcript';
+import { N_, t, tx } from '../../../shared/i18n';
+import { tn } from '../i18n';
 
 export interface MonitorApi {
   list(after: number): Promise<MonitorEntry[]>;
@@ -48,10 +50,16 @@ export function filterEntries(entries: readonly MonitorEntry[], sources: Readonl
 
 /** The source button's words: 全部来源, the one or two picked, or how many. */
 export function sourcesLabel(sources: ReadonlySet<MonitorSource>): string {
-  if (sources.size === MONITOR_SOURCES.length) return '全部来源';
-  if (sources.size === 0) return '无来源';
-  const names = MONITOR_SOURCES.filter(([s]) => sources.has(s)).map(([, l]) => l);
-  return names.length <= 2 ? names.join('、') : `${names.length} 个来源`;
+  if (sources.size === MONITOR_SOURCES.length) return t('全部来源');
+  if (sources.size === 0) return t('无来源');
+  const names = MONITOR_SOURCES.filter(([s]) => sources.has(s)).map(([, l]) => t(l));
+  if (names.length === 2) return t('{a}、{b}', { a: names[0]!, b: names[1]! });
+  return names.length === 1 ? names[0]! : t('{n} 个来源', { n: names.length });
+}
+
+/** A source's or a level's name (shared/monitor.ts) in the current language. */
+function tLabel(label: string | undefined): string | undefined {
+  return label === undefined ? undefined : t(label);
 }
 
 /** 14:05:09.123 in local time. */
@@ -177,7 +185,7 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
   }, []);
 
   const doExport = async () => {
-    const r = await api.export(shown.map(monitorLine).join('\n') + '\n').catch(() => ({ error: '无法导出日志。' }));
+    const r = await api.export(shown.map(monitorLine).join('\n') + '\n').catch(() => ({ error: N_('无法导出日志。') }));
     setExported(r ?? undefined);
   };
 
@@ -229,12 +237,12 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
           {sourcesLabel(sources)}
           <Icon name="chevronDown" size={12} />
         </button>
-        <div className="segmented" role="radiogroup" aria-label="级别">
+        <div className="segmented" role="radiogroup" aria-label={t('级别')}>
           {(
             [
-              ['all', '全部'],
-              ['warn', MONITOR_LEVELS[1]![1]],
-              ['error', MONITOR_LEVELS[2]![1]],
+              ['all', t('全部')],
+              ['warn', t(MONITOR_LEVELS[1]![1])],
+              ['error', t(MONITOR_LEVELS[2]![1])],
             ] as const
           ).map(([l, label]) => (
             <button key={l} type="button" role="radio" aria-checked={level === l} className={level === l ? 'segment is-on' : 'segment'} onClick={() => setLevel(l)}>
@@ -244,30 +252,31 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
         </div>
         <div className="monitor-search">
           <Icon name="search" size={14} className="monitor-search-icon" />
-          <input className="input" type="search" value={query} placeholder="搜索" aria-label="搜索" spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
+          <input className="input" type="search" value={query} placeholder={t('搜索')} aria-label={t('搜索')} spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
         </div>
-        <span className="monitor-count">{`${shown.length.toLocaleString('en-US')} 条`}</span>
+        <span className="monitor-count">{t('{count} 条', { n: shown.length, count: shown.length.toLocaleString('en-US') })}</span>
         <button type="button" className="btn btn-small" onClick={paused ? resume : pause}>
-          {paused ? (unseen ? `继续（${unseen} 条新）` : '继续') : '暂停滚动'}
+          {paused ? (unseen ? t('继续（{n} 条新）', { n: unseen }) : t('继续')) : t('暂停滚动')}
         </button>
         <button type="button" className="btn btn-small" onClick={() => void doExport()} disabled={!shown.length}>
-          导出…
+          {t('导出…')}
         </button>
       </div>
-      {exported && 'error' in exported ? <p className="monitor-note is-bad">{exported.error}</p> : null}
+      {exported && 'error' in exported ? <p className="monitor-note is-bad">{tx(exported.error)}</p> : null}
       {exported && 'file' in exported ? (
         <p className="monitor-note">
-          已导出：
-          {showInFolder ? (
-            <button type="button" className="path-text path-link monitor-path" title={`在文件夹中显示：${exported.file}`} onClick={() => showInFolder(exported.file)}>
-              {exported.file}
-            </button>
-          ) : (
-            exported.file
-          )}
+          {tn('已导出：{file}', {
+            file: showInFolder ? (
+              <button type="button" className="path-text path-link monitor-path" title={t('在文件夹中显示：{file}', { file: exported.file })} onClick={() => showInFolder(exported.file)}>
+                {exported.file}
+              </button>
+            ) : (
+              exported.file
+            ),
+          })}
         </p>
       ) : null}
-      <div className="monitor-list" ref={list} onScroll={onScroll} role="log" aria-live="off" aria-label="日志">
+      <div className="monitor-list" ref={list} onScroll={onScroll} role="log" aria-live="off" aria-label={t('日志')}>
         {shown.length ? (
           <div className="monitor-rows" style={{ height: shown.length * ROW_H }}>
             {rows.map((e, i) => (
@@ -283,14 +292,14 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
               >
                 {/* to the second in the narrow panel; the milliseconds are in the line opened below */}
                 <span className="monitor-time">{clockOf(e.at).slice(0, 8)}</span>
-                <span className="monitor-source">{MONITOR_SOURCES.find(([s]) => s === e.source)?.[1]}</span>
-                <span className="monitor-level">{MONITOR_LEVELS.find(([l]) => l === e.level)?.[1]}</span>
+                <span className="monitor-source">{tLabel(MONITOR_SOURCES.find(([s]) => s === e.source)?.[1])}</span>
+                <span className="monitor-level">{tLabel(MONITOR_LEVELS.find(([l]) => l === e.level)?.[1])}</span>
                 <span className="monitor-text">{e.text}</span>
                 <button
                   type="button"
                   className="icon-btn monitor-copy"
-                  aria-label="复制这一行"
-                  title={copied === e.seq ? '已复制' : '复制这一行'}
+                  aria-label={t('复制这一行')}
+                  title={copied === e.seq ? t('已复制') : t('复制这一行')}
                   onClick={(ev) => {
                     ev.stopPropagation();
                     copy(e);
@@ -302,7 +311,7 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
             ))}
           </div>
         ) : (
-          <p className="monitor-empty">{entries.length ? '没有符合条件的日志' : '暂无日志'}</p>
+          <p className="monitor-empty">{entries.length ? t('没有符合条件的日志') : t('暂无日志')}</p>
         )}
       </div>
       {menu ? (
@@ -310,7 +319,7 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
           x={0}
           y={0}
           anchor={menu}
-          items={MONITOR_SOURCES.map(([s, label]) => ({ label, checked: sources.has(s), onSelect: () => toggleSource(s) }))}
+          items={MONITOR_SOURCES.map(([s, label]) => ({ label: t(label), checked: sources.has(s), onSelect: () => toggleSource(s) }))}
           onClose={() => setMenu(null)}
         />
       ) : null}
@@ -318,12 +327,12 @@ export function MonitorView({ api, showInFolder }: MonitorViewProps) {
         <div className="monitor-detail">
           <div className="monitor-detail-head">
             <span className="monitor-time">{`${sel.at.slice(0, 10)} ${clockOf(sel.at)}`}</span>
-            <span className="monitor-source">{MONITOR_SOURCES.find(([s]) => s === sel.source)?.[1]}</span>
-            <span className="monitor-level">{MONITOR_LEVELS.find(([l]) => l === sel.level)?.[1]}</span>
+            <span className="monitor-source">{tLabel(MONITOR_SOURCES.find(([s]) => s === sel.source)?.[1])}</span>
+            <span className="monitor-level">{tLabel(MONITOR_LEVELS.find(([l]) => l === sel.level)?.[1])}</span>
             <button type="button" className="btn btn-small" onClick={() => copy({ ...sel, text: selText })}>
-              {copied === sel.seq ? '已复制' : '复制'}
+              {copied === sel.seq ? t('已复制') : t('复制')}
             </button>
-            <button type="button" className="icon-btn" aria-label="关闭" title="关闭" onClick={() => setSelected(null)}>
+            <button type="button" className="icon-btn" aria-label={t('关闭')} title={t('关闭')} onClick={() => setSelected(null)}>
               <Icon name="close" size={14} />
             </button>
           </div>

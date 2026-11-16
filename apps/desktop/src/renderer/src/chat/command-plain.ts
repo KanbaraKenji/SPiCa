@@ -1,6 +1,7 @@
 // What a command will do, said by the app from the command itself (not by the model, whose description may not
 // match): the common kinds of change a confirmation is about. Only what is recognised is said; anything else
 // falls back to 运行命令, and the command itself is always shown in full.
+import { t } from '../../../shared/i18n';
 
 export type FactKind = 'delete' | 'move' | 'copy' | 'write' | 'net' | 'install' | 'process' | 'registry';
 
@@ -28,17 +29,21 @@ const VERBS: { kind: FactKind; re: RegExp; say: (target: string, args: string) =
   {
     kind: 'delete',
     re: verb('Remove-Item|rm|del|erase|rmdir|rd|ri'),
-    say: (t, a) => `删除 ${t || '文件'}${new RegExp(RECURSE.source, 'i').test(a) ? '（含其中所有内容）' : ''}`,
+    say: (x, a) => {
+      const all = new RegExp(RECURSE.source, 'i').test(a);
+      if (!x) return all ? t('删除 文件（含其中所有内容）') : t('删除 文件');
+      return all ? t('删除 {target}（含其中所有内容）', { target: x }) : t('删除 {target}', { target: x });
+    },
     danger: true,
   },
-  { kind: 'move', re: verb('Move-Item|mv|move|Rename-Item|ren'), say: (t) => `移动或改名 ${t || '文件'}`, danger: false },
-  { kind: 'copy', re: verb('Copy-Item|cp|copy|xcopy|robocopy'), say: (t) => `复制 ${t || '文件'}`, danger: false },
-  { kind: 'write', re: verb('Set-Content|Out-File|Clear-Content'), say: (t) => `覆盖 ${t || '文件'}`, danger: true },
-  { kind: 'write', re: verb('Add-Content'), say: (t) => `写入 ${t || '文件'}`, danger: false },
-  { kind: 'net', re: verb('Invoke-WebRequest|Invoke-RestMethod|iwr|irm|curl|wget|Start-BitsTransfer'), say: (t) => `访问网络 ${t}`.trim(), danger: false },
-  { kind: 'install', re: verb(String.raw`npm\s+(?:i|install)|pip\s+install|winget\s+install|choco\s+install|Install-Module|Install-Package`), say: (t) => `安装 ${t}`.trim(), danger: false },
-  { kind: 'process', re: verb('Stop-Process|taskkill|kill'), say: (t) => `结束程序 ${t}`.trim(), danger: true },
-  { kind: 'registry', re: verb(String.raw`reg\s+(?:add|delete)|Set-ItemProperty|New-ItemProperty|Remove-ItemProperty`), say: () => '修改注册表', danger: true },
+  { kind: 'move', re: verb('Move-Item|mv|move|Rename-Item|ren'), say: (x) => (x ? t('移动或改名 {target}', { target: x }) : t('移动或改名 文件')), danger: false },
+  { kind: 'copy', re: verb('Copy-Item|cp|copy|xcopy|robocopy'), say: (x) => (x ? t('复制 {target}', { target: x }) : t('复制 文件')), danger: false },
+  { kind: 'write', re: verb('Set-Content|Out-File|Clear-Content'), say: (x) => (x ? t('覆盖 {target}', { target: x }) : t('覆盖 文件')), danger: true },
+  { kind: 'write', re: verb('Add-Content'), say: (x) => (x ? t('写入 {target}', { target: x }) : t('写入 文件')), danger: false },
+  { kind: 'net', re: verb('Invoke-WebRequest|Invoke-RestMethod|iwr|irm|curl|wget|Start-BitsTransfer'), say: (x) => (x ? t('访问网络 {target}', { target: x }) : t('访问网络')), danger: false },
+  { kind: 'install', re: verb(String.raw`npm\s+(?:i|install)|pip\s+install|winget\s+install|choco\s+install|Install-Module|Install-Package`), say: (x) => (x ? t('安装 {target}', { target: x }) : t('安装')), danger: false },
+  { kind: 'process', re: verb('Stop-Process|taskkill|kill'), say: (x) => (x ? t('结束程序 {target}', { target: x }) : t('结束程序')), danger: true },
+  { kind: 'registry', re: verb(String.raw`reg\s+(?:add|delete)|Set-ItemProperty|New-ItemProperty|Remove-ItemProperty`), say: () => t('修改注册表'), danger: true },
 ];
 
 /** > and >> into a file (not 2>&1, not into $null). */
@@ -49,8 +54,8 @@ function targetOf(args: string): string {
   const words = args.match(/'[^']*'|"[^"]*"|\S+/g) ?? [];
   for (const w of words) {
     if (/^-|^\//.test(w) && !/^\/[\w.-]+\//.test(w)) continue;
-    const t = w.replace(/^['"]|['"]$/g, '');
-    if (t) return t;
+    const bare = w.replace(/^['"]|['"]$/g, '');
+    if (bare) return bare;
   }
   return '';
 }
@@ -88,7 +93,7 @@ function scan(command: string): Found[] {
     const overwrite = m[2] === '>';
     found.push({
       at,
-      fact: { kind: 'write', text: `${overwrite ? '覆盖' : '写入'} ${target}`, danger: overwrite },
+      fact: { kind: 'write', text: overwrite ? t('覆盖 {target}', { target }) : t('写入 {target}', { target }), danger: overwrite },
       marks: overwrite ? [[at, at + 1]] : [],
     });
   }

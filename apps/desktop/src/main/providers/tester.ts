@@ -2,6 +2,7 @@
 // form and answers like a gateway would, without sending anything anywhere;
 // a real tester (one tiny model call through @spica/core) replaces it later
 // behind the same function type.
+import { t } from '../../shared/i18n';
 import { validateDraft, type ProviderDraft, type TestResult } from '../../shared/providers';
 
 /** needsKey false: a local provider (no key to check). headerValues: the draft's 自定义请求头 with their values. */
@@ -20,8 +21,8 @@ export function createFakeTester({ delayMs = 700 }: FakeTesterOptions = {}): Con
     if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
     const secret = draft.secret?.trim() || savedSecret || '';
     // A few recognisable failures so the error path can be seen without a real gateway.
-    if (/bad|wrong|invalid/i.test(secret)) return { ok: false, message: draft.kind === 'wso2' ? '获取 token 失败，请检查 Consumer Key 和 Consumer Secret。' : '密钥无效或已失效（401）。' };
-    if (/\.invalid(\/|$)|localhost:1\b/i.test(draft.baseUrl)) return { ok: false, message: '连接失败，请检查网络和「接口地址」。' };
-    return { ok: true, message: `连接成功：模型「${draft.model.trim()}」。` };
+    if (/bad|wrong|invalid/i.test(secret)) return { ok: false, message: draft.kind === 'wso2' ? t('获取 token 失败，请检查 Consumer Key 和 Consumer Secret。') : t('密钥无效或已失效（401）。') };
+    if (/\.invalid(\/|$)|localhost:1\b/i.test(draft.baseUrl)) return { ok: false, message: t('连接失败，请检查网络和{url}。', { url: t('「接口地址」') }) };
+    return { ok: true, message: t('连接成功：模型「{model}」。', { model: draft.model.trim() }) };
   };
 }

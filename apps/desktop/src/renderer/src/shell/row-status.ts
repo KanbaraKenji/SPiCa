@@ -1,17 +1,18 @@
 // A sidebar row's one status place: what it shows, and which finished sub-tasks still count as news.
 import type { SessionInfo, SessionStatus } from '@spica/protocol';
+import { N_, t } from '../../../shared/i18n';
 
 export const STATUS_LABEL: Record<SessionStatus, string> = {
-  idle: '空闲',
-  queued: '排队中',
-  thinking: '思考中',
-  tool: '调用工具中',
-  awaiting_confirm: '等待确认',
-  awaiting_answer: '等待回答',
-  done: '已完成',
-  error: '出错',
-  aborted: '已停止',
-  interrupted: '已中断',
+  idle: N_('空闲'),
+  queued: N_('排队中'),
+  thinking: N_('思考中'),
+  tool: N_('调用工具中'),
+  awaiting_confirm: N_('等待确认'),
+  awaiting_answer: N_('等待回答'),
+  done: N_('已完成'),
+  error: N_('出错'),
+  aborted: N_('已停止'),
+  interrupted: N_('已中断'),
 };
 
 /**
@@ -29,17 +30,20 @@ export interface Slot {
   text: string;
 }
 
-const DONE = STATUS_LABEL.done;
+/** A status's words in the current language. */
+export function statusLabel(status: SessionStatus): string {
+  return t(STATUS_LABEL[status]);
+}
 
 /** Everything one row has to say; `topSlot` picks the one that is drawn. */
 export function slotsOf(s: SessionInfo, o: { active: boolean; unseenDone: boolean }): Slot[] {
   const out: Slot[] = [];
-  if (s.status === 'awaiting_answer' || s.status === 'awaiting_confirm') out.push({ kind: 'waiting', text: STATUS_LABEL[s.status] });
-  if (s.status === 'error' || s.status === 'interrupted') out.push({ kind: 'error', text: STATUS_LABEL[s.status] });
-  if (s.status === 'thinking' || s.status === 'tool') out.push({ kind: 'running', text: STATUS_LABEL[s.status] });
-  if (s.status === 'done' && !o.active && o.unseenDone) out.push({ kind: 'news', text: DONE });
-  if (s.status === 'queued') out.push({ kind: 'queued', text: STATUS_LABEL.queued });
-  if (s.status === 'aborted') out.push({ kind: 'stopped', text: STATUS_LABEL.aborted });
+  if (s.status === 'awaiting_answer' || s.status === 'awaiting_confirm') out.push({ kind: 'waiting', text: statusLabel(s.status) });
+  if (s.status === 'error' || s.status === 'interrupted') out.push({ kind: 'error', text: statusLabel(s.status) });
+  if (s.status === 'thinking' || s.status === 'tool') out.push({ kind: 'running', text: statusLabel(s.status) });
+  if (s.status === 'done' && !o.active && o.unseenDone) out.push({ kind: 'news', text: statusLabel('done') });
+  if (s.status === 'queued') out.push({ kind: 'queued', text: statusLabel('queued') });
+  if (s.status === 'aborted') out.push({ kind: 'stopped', text: statusLabel('aborted') });
   return out;
 }
 
@@ -54,14 +58,14 @@ export function topSlot(slots: readonly Slot[]): Slot | null {
 /** A collapsed row's hover text: counts over it and everything below it (only those not zero). */
 export function rollupText(slots: readonly Slot[]): string {
   const count = (k: SlotKind) => slots.filter((x) => x.kind === k).length;
-  const done = slots.filter((x) => x.kind === 'news' && x.text === DONE).length;
+  const done = slots.filter((x) => x.kind === 'news' && x.text === statusLabel('done')).length;
   const parts: string[] = [];
-  if (count('waiting')) parts.push(`${count('waiting')} 个待处理`);
-  if (count('error')) parts.push(`${count('error')} 个出错`);
-  if (count('running')) parts.push(`${count('running')} 个运行中`);
-  if (done) parts.push(`${done} 个已完成`);
-  if (count('queued')) parts.push(`${count('queued')} 个排队中`);
-  if (count('stopped')) parts.push(`${count('stopped')} 个已停止`);
+  if (count('waiting')) parts.push(t('{n} 个待处理', { n: count('waiting') }));
+  if (count('error')) parts.push(t('{n} 个出错', { n: count('error') }));
+  if (count('running')) parts.push(t('{n} 个运行中', { n: count('running') }));
+  if (done) parts.push(t('{n} 个已完成', { n: done }));
+  if (count('queued')) parts.push(t('{n} 个排队中', { n: count('queued') }));
+  if (count('stopped')) parts.push(t('{n} 个已停止', { n: count('stopped') }));
   return parts.join(' · ');
 }
 

@@ -9,5 +9,25 @@
   "license": "Apache-2.0",
   "compatibility": { "spica": ">=0.1.0" },
   "permissions": { "network": [], "workspace": "none", "irreversible": [], "hooks": [] },
-  "mock": { "supported": true, "description": "不连任何服务，模拟模式下照常工作。" }
+  "mock": { "supported": true, "description": "不连任何服务，模拟模式下照常工作。" },
+  "i18n": {
+    "zh-TW": {
+      "display_name": "Office 原樣預覽",
+      "description": "Word 和 Excel 檔案按原樣預覽：字型、色彩、表格、合併儲存格、圖片、頁首頁尾。在 設定 裡選用它預覽 .docx / .xlsx。",
+      "mock_description": "不連線任何服務，模擬模式下照常運作。",
+      "views": {
+        "docx": "Word 原樣預覽",
+        "xlsx": "Excel 原樣預覽"
+      }
+    },
+    "en": {
+      "display_name": "Office preview",
+      "description": "Previews Word and Excel files as they are: fonts, colors, tables, merged cells, images, headers and footers. Choose it in Settings to preview .docx and .xlsx files.",
+      "mock_description": "Connects to no service; works the same in mock mode.",
+      "views": {
+        "docx": "Word preview",
+        "xlsx": "Excel preview"
+      }
+    }
+  }
 }

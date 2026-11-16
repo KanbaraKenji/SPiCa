@@ -1,10 +1,11 @@
 // The sidebar's open / close button (Ctrl+B), and the rows it sits in.
 import type { ReactNode } from 'react';
 import { Icon } from '../ui/Icon';
+import { t } from '../../../shared/i18n';
 
 export function SidebarToggle({ shown, onToggle }: { shown: boolean; onToggle(): void }) {
   return (
-    <button type="button" data-panel-toggle className={shown ? 'icon-btn is-on' : 'icon-btn'} onClick={onToggle} aria-label={shown ? '收起侧栏' : '展开侧栏'} aria-pressed={shown} title="侧栏（Ctrl+B）">
+    <button type="button" data-panel-toggle className={shown ? 'icon-btn is-on' : 'icon-btn'} onClick={onToggle} aria-label={shown ? t('收起侧栏') : t('展开侧栏')} aria-pressed={shown} title={t('侧栏（Ctrl+B）')}>
       <Icon name="sidebar" />
     </button>
   );

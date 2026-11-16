@@ -50,6 +50,8 @@ import { useEscape } from './ui/escape';
 import { SpicaBanner } from '@spica/brand/react';
 import { sameFolder } from './store/relocate';
 import { APP_NAME } from '../../shared/app-identity';
+import { getLocale, t, tx } from '../../shared/i18n';
+import { useLocale } from './i18n';
 
 /** The sidebar's wordmark: 22 px high, smaller for a long app name. */
 const BANNER_HEIGHT = sidebarBannerHeight();
@@ -313,6 +315,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     };
   }, []);
 
+  // Memos holding words (a conversation's name when it has none) are made again in a new language.
+  const locale = useLocale();
   // A project manager is shown under its project's name.
   const sessions = useMemo(() => {
     const byManager = new Map(state.projects.map((p) => [p.managerSessionId, p.name]));
@@ -320,7 +324,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       ...s,
       title: byManager.get(s.id) ?? displayTitle(s, state.firstLines),
     }));
-  }, [state.sessions, state.firstLines, state.projects, mail.threadId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.sessions, state.firstLines, state.projects, mail.threadId, locale]);
   // Sub-agents under the open conversation that wait for the user: said under the status line,
   // so a parent that "waits for its sub-tasks" does not look stuck.
   const waiting = useMemo<WaitingChild[]>(() => {
@@ -328,8 +333,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     if (!id) return [];
     return sessions
       .filter((s) => s.parentChain.includes(id) && (s.status === 'awaiting_confirm' || s.status === 'awaiting_answer'))
-      .map((s) => ({ id: s.id, title: s.title ?? '子任务', status: s.status as WaitingChild['status'] }));
-  }, [sessions, state.activeId]);
+      .map((s) => ({ id: s.id, title: s.title ?? t('子任务'), status: s.status as WaitingChild['status'] }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, state.activeId, locale]);
   // Projects for the inbox: the core's list, plus any project manager it did not list (demo data).
   const inboxProjects = useMemo<InboxProject[]>(() => {
     const out: InboxProject[] = state.projects.filter((p) => p.status === 'active').map((p) => ({ id: p.id, name: p.name, managerSessionId: p.managerSessionId }));
@@ -431,7 +437,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         },
         titleOf: (id: string) => {
           const s = sessions.find((x) => x.id === id);
-          return s ? s.title || '新对话' : undefined;
+          return s ? s.title || t('新对话') : undefined;
         },
         onOpenSession: (id: string, seq?: number) => {
           setFound({ sessionId: id, ...(seq !== undefined ? { seq } : {}), from: null, reached: false });
@@ -483,7 +489,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [pluginsChanged, setPluginsChanged] = useState(0);
   const [openPlugin, setOpenPlugin] = useState<string | null>(null);
   const [rightTab, setRightTab] = useState<string>('detail');
-  const [pluginAsk, setPluginAsk] = useState<{ title: string; tool: string; args: unknown; resolve(ok: boolean): void } | null>(null);
+  const [pluginAsk, setPluginAsk] = useState<{ plugin: string; tool: string; args: unknown; resolve(ok: boolean): void } | null>(null);
   // 设置 › 插件: the plugin commands, and the system folder picker for 插件位置.
   // 设置 › 用量: the core's request log summed up, the saved connections' names beside it.
   const usageApi = useMemo<UsageApi>(
@@ -499,7 +505,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const pluginsApi = useMemo(
     () => ({
       ...bridge.plugins,
-      pickFolder: () => bridge.pickFolder('选择插件文件夹'),
+      pickFolder: () => bridge.pickFolder(t('选择插件文件夹')),
       // a folder or file field of a plugin's settings form
       pickPath: async (kind: 'folder' | 'file', title: string) => (kind === 'folder' ? bridge.pickFolder(title) : ((await bridge.pickFiles(title))[0] ?? null)),
     }),
@@ -563,23 +569,23 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const openPluginView = view === 'plugin' ? sidebarPages.find((v) => viewKey(v) === openPlugin) : undefined;
   const panelPluginView = rightTab === 'detail' ? undefined : panelPages.find((v) => viewKey(v) === rightTab);
   const skinNow = shell.activeSkin();
-  const pluginTheme: PluginTheme = { mode: schemeOf(skinNow.bg), vars: pluginThemeVars(deriveTokens(skinNow), uiFontFor(settings.uiFont)) };
+  const pluginTheme: PluginTheme = { mode: schemeOf(skinNow.bg), vars: pluginThemeVars(deriveTokens(skinNow), uiFontFor(settings.uiFont, settings.uiFont === 'system' ? navigator.language : getLocale())) };
   const pluginProps = (v: PluginView) => ({
     view: v,
     theme: pluginTheme,
     changed: pluginsChanged,
     call: (tool: string, args: unknown, confirmed: boolean, callId: string) => bridge.pluginViews.call(v.plugin, v.id, tool, args, confirmed, callId),
     cancel: (callId: string) => bridge.pluginViews.cancel(callId),
-    confirm: (tool: string, args: unknown) => new Promise<boolean>((resolve) => setPluginAsk({ title: `「${v.pluginTitle}」将执行「${tool}」，此操作不可撤销。`, tool, args, resolve })),
+    confirm: (tool: string, args: unknown) => new Promise<boolean>((resolve) => setPluginAsk({ plugin: v.pluginTitle, tool, args, resolve })),
     openFile: async (path: string) => {
       const abs = await bridge.pluginViews.file(v.plugin, path);
-      if (!abs) return '仅能打开插件自身文件夹中的文件。';
+      if (!abs) return '仅能打开插件自身文件夹中的文件。'; // i18n-skip: an answer to the plugin page's own code
       setPreview({ sessionId: null, path: abs });
       setView('chat');
       showPreview();
       return null;
     },
-    notify: (text: string) => agent.state.set((s) => ({ ...s, notice: `${v.pluginTitle}：${text}` })),
+    notify: (text: string) => agent.state.set((s) => ({ ...s, notice: t('{plugin}：{text}', { plugin: v.pluginTitle, text }) })),
     pick: bridge.pluginViews.pick,
     openFolder: bridge.openFolder,
     exists: async (plugin: string, path: string) => (await bridge.pluginViews.file(plugin, path)) !== null,
@@ -607,7 +613,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const isRef = (r: ModelRef | null, providerId: string, model: string) => Boolean(r && r.connectionId === providerId && r.model === model);
   const modelOptions = models.flatMap((p) =>
     enabledModels(p.models).map((m) => {
-      const marks = [isRef(pointers.default, p.id, m.id) ? '默认' : '', isRef(pointers.strong, p.id, m.id) ? '强模型' : ''].filter(Boolean).join(' · ');
+      const marks = [isRef(pointers.default, p.id, m.id) ? t('默认') : '', isRef(pointers.strong, p.id, m.id) ? t('强模型') : ''].filter(Boolean).join(' · ');
       return { providerId: p.id, model: m.id, group: `${p.name}${p.keyMask ? ` · ${p.keyMask}` : ''}`, label: m.id, marks };
     }),
   );
@@ -670,7 +676,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         name: '',
         busy,
         onPick: () =>
-          void bridge.pickFolder('选择工作文件夹').then((dir) => {
+          void bridge.pickFolder(t('选择工作文件夹')).then((dir) => {
             if (!dir) return;
             if (transcript.items.length) setCwdAsk({ sessionId: s.id, dir, stay: sameFolder(s.cwd, shell.legacyDefaultCwd) });
             else void agent.chooseCwd(s.id, dir);
@@ -679,7 +685,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     };
   };
   const composerTools: ComposerTools = {
-    pickFiles: () => bridge.pickFiles('添加附件'),
+    pickFiles: () => bridge.pickFiles(t('添加附件')),
     pathForFile: bridge.pathForFile,
     images: {
       fromPaste: bridge.images.fromPaste,
@@ -694,7 +700,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             path: draft.cwd ?? '',
             name: draft.cwd ? (draft.cwd.split(/[\\/]/).filter(Boolean).pop() ?? draft.cwd) : '',
             onPick: () =>
-              void bridge.pickFolder('选择工作文件夹').then((dir) => {
+              void bridge.pickFolder(t('选择工作文件夹')).then((dir) => {
                 if (dir) agent.setDraft({ cwd: dir });
               }),
           },
@@ -706,7 +712,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       ? {
           model: {
             label: shown.model,
-            ...(shownGone ? { note: '（已移除）' } : shownProvider ? { provider: shownProvider } : {}),
+            ...(shownGone ? { note: t('（已移除）') } : shownProvider ? { provider: shownProvider } : {}),
             ...(hasPictures ? { hasPictures } : {}),
             options: modelOptions.map((o) => ({
               label: o.label,
@@ -769,7 +775,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       ...(from && from.id !== f.sessionId
         ? {
             back: {
-              title: from.title || '新对话',
+              title: from.title || t('新对话'),
               onBack: () => {
                 setFound(null);
                 openSession(from.id);
@@ -790,13 +796,13 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // the preview, the button shows the small card instead.
   const infoRoom = infoBlocked || infoFits(width, open, wantedWidths);
   const lastName = lastPreview ? (lastPreview.inline?.name ?? lastPreview.path.split(/[\\/]/).pop() ?? lastPreview.path) : '';
-  const previewTip = preview ? '预览' : lastPreview ? `预览：${lastName}` : '没有打开的预览：点对话里的文件打开';
+  const previewTip = preview ? t('预览') : lastPreview ? t('预览：{name}', { name: lastName }) : t('没有打开的预览：点对话里的文件打开');
   // A preview floating over a narrow window takes no room: there the window is what is too narrow.
-  const infoTip = infoRoom ? '详情（Ctrl+Alt+B）' : '窗口太窄，放不下详情';
+  const infoTip = infoRoom ? t('详情（Ctrl+Alt+B）') : t('窗口太窄，放不下详情');
   // The 监控台 (switched on in 设置 › 关于): as the details, no room means not shown and a button that says why.
   const monitorShown = layout.monitor === 'docked';
   const monitorRoom = monitorOpen === undefined ? false : monitorFits(width, open, wantedWidths);
-  const monitorTip = monitorRoom ? '监控台' : layout.preview === 'docked' ? '放不下监控台：把预览拖窄或关掉，或把窗口拉宽' : '窗口太窄，放不下监控台';
+  const monitorTip = monitorRoom ? t('监控台') : layout.preview === 'docked' ? t('放不下监控台：把预览拖窄或关掉，或把窗口拉宽') : t('窗口太窄，放不下监控台');
   const toggleMonitor = () => {
     if (!monitorRoom) return;
     shell.update({ panels: { ...settings.panels, monitor: !settings.panels.monitor } });
@@ -837,16 +843,16 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const panelMax = { on: rightMax, toggle: () => setRightMax((v) => !v) };
   // The preview over the whole conversation is a layer of Esc too (back beside it).
   useEscape(rightMax, () => setRightMax(false));
-  const title = view === 'inbox' ? '收件箱' : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
+  const title = view === 'inbox' ? t('收件箱') : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
 
   // The details' content: docked beside the conversation, or in the small card over it (infoFloat).
   const detailsBody = (
     <>
       {panelPages.length ? (
         <div className="right-head panel-head">
-        <div className="tabs right-tabs" role="tablist" aria-label="右栏">
+        <div className="tabs right-tabs" role="tablist" aria-label={t('右栏')}>
           <button type="button" role="tab" aria-selected={!panelPluginView} className={!panelPluginView ? 'tab is-on' : 'tab'} onClick={() => setRightTab('detail')}>
-            详情
+            {t('详情')}
           </button>
           {panelPages.map((v) => (
             <button key={viewKey(v)} type="button" role="tab" aria-selected={rightTab === viewKey(v)} className={rightTab === viewKey(v) ? 'tab is-on' : 'tab'} onClick={() => setRightTab(viewKey(v))} title={v.pluginTitle}>
@@ -887,7 +893,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     },
     ...(bridge.agent.renameProject ? { onRenameProject: (pid: string, name: string) => void agent.renameProject(pid, name) } : {}),
     ...(bridge.agent.deleteProject ? { onDeleteProject: (pid: string, name: string) => setDeletingProject({ id: pid, name }) } : {}),
-    ...(bridge.agent.deleteSession ? { onDeleteChat: (s: SessionInfo) => setDeletingChat({ id: s.id, name: s.title || '新对话' }) } : {}),
+    ...(bridge.agent.deleteSession ? { onDeleteChat: (s: SessionInfo) => setDeletingChat({ id: s.id, name: s.title || t('新对话') }) } : {}),
   };
   // The open conversation's name in the title bar: a click edits it, a right-click opens its menu.
   const named = view === 'chat' ? session : undefined;
@@ -1010,7 +1016,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         <div className="titlebar-title">
           {view === 'chat' && parent ? (
             <>
-              <button type="button" className="crumb" onClick={() => openSession(parent.id)} title={`返回 ${parent.title}`}>
+              <button type="button" className="crumb" onClick={() => openSession(parent.id)} title={t('返回 {title}', { title: parent.title ?? '' })}>
                 {parent.title}
               </button>
               <Icon name="chevronRight" size={12} className="crumb-sep" />
@@ -1054,7 +1060,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 data-panel-toggle
                 className={infoShown ? 'icon-btn is-on' : 'icon-btn'}
                 onClick={() => toggle('info')}
-                aria-label={infoShown ? '收起详情' : '展开详情'}
+                aria-label={infoShown ? t('收起详情') : t('展开详情')}
                 aria-pressed={infoShown}
                 {...(infoRoom ? {} : { 'aria-disabled': true })}
                 title={infoTip}
@@ -1067,7 +1073,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                   data-panel-toggle
                   className={monitorShown ? 'icon-btn is-on' : 'icon-btn'}
                   onClick={toggleMonitor}
-                  aria-label={monitorShown ? '收起监控台' : '展开监控台'}
+                  aria-label={monitorShown ? t('收起监控台') : t('展开监控台')}
                   aria-pressed={monitorShown}
                   {...(monitorRoom ? {} : { 'aria-disabled': true })}
                   title={monitorTip}
@@ -1080,7 +1086,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 data-panel-toggle
                 className={preview || history ? 'icon-btn is-on' : 'icon-btn'}
                 onClick={togglePreview}
-                aria-label={preview || history ? '收起预览' : '展开预览'}
+                aria-label={preview || history ? t('收起预览') : t('展开预览')}
                 aria-pressed={preview !== null || history}
                 {...(preview || lastPreview ? {} : { 'aria-disabled': true })}
                 title={previewTip}
@@ -1098,7 +1104,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               <PluginPage key={viewKey(openPluginView)} {...pluginProps(openPluginView)} />
             ) : (
               <div className="plugin-page plugin-missing">
-                <p>插件页面不可用（插件已停用或已卸载）。</p>
+                <p>{t('插件页面不可用（插件已停用或已卸载）。')}</p>
               </div>
             )
           ) : view === 'inbox' ? (
@@ -1136,14 +1142,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             <div className="conversation" />
           )}
           {infoFloat && view === 'chat' ? (
-            <div className="info-float" role="dialog" aria-label="详情">
+            <div className="info-float" role="dialog" aria-label={t('详情')}>
               {detailsBody}
             </div>
           ) : null}
           {state.notice ? (
             <div className="toast" role="alert">
-              <span>{state.notice}</span>
-              <button type="button" className="icon-btn" onClick={() => agent.dismissNotice()} aria-label="关闭提示" title="关闭">
+              <span>{tx(state.notice)}</span>
+              <button type="button" className="icon-btn" onClick={() => agent.dismissNotice()} aria-label={t('关闭提示')} title={t('关闭')}>
                 <Icon name="close" size={14} />
               </button>
             </div>
@@ -1164,9 +1170,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           <div className={`panel panel-right panel-monitor is-docked${monitorMax ? ' is-max' : ''}`} style={monitorMax ? undefined : { width: widths.monitor }}>
             {/* as the preview's head (and Claude's Files): 最大化 and 关闭 at its end */}
             <header className="panel-head monitor-head">
-              <span className="detail-heading">监控台</span>
+              <span className="detail-heading">{t('监控台')}</span>
               <MaxButton max={{ on: monitorMax, toggle: () => setMonitorMax((v) => !v) }} hint="" />
-              <button type="button" className="icon-btn" onClick={() => { setMonitorMax(false); shell.update({ panels: { ...settings.panels, monitor: false } }); }} aria-label="关闭监控台" title="关闭监控台">
+              <button type="button" className="icon-btn" onClick={() => { setMonitorMax(false); shell.update({ panels: { ...settings.panels, monitor: false } }); }} aria-label={t('关闭监控台')} title={t('关闭监控台')}>
                 <Icon name="close" size={14} />
               </button>
             </header>
@@ -1197,7 +1203,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               // A plugin page draws the file: the head still names it (and offers its buttons).
               info={pagePreview ? { kind: 'unsupported', name: preview.path.split(/[\\/]/).pop() ?? preview.path, path: preview.path, size: 0, message: '' } : previewInfo}
               {...(filePages.length
-                ? { source: { options: [{ id: BUILT_IN, label: '自带预览' }, ...filePages.map((v) => ({ id: previewerId(v), label: v.title }))], value: fellBack ? BUILT_IN : wayId, onChange: chooseWay } }
+                ? { source: { options: [{ id: BUILT_IN, label: t('自带预览') }, ...filePages.map((v) => ({ id: previewerId(v), label: v.title }))], value: fellBack ? BUILT_IN : wayId, onChange: chooseWay } }
                 : {})}
               note={fellBack?.why.text ? { text: fellBack.why.text, ...(fellBack.why.retry ? { onRetry: () => chooseWay(wayId) } : {}) } : null}
               onOpenExternal={(p) => {
@@ -1229,9 +1235,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
 
       {pluginAsk ? (
         <ConfirmDialog
-          title={pluginAsk.title}
+          title={t('「{plugin}」将执行「{tool}」，此操作不可撤销。', { plugin: pluginAsk.plugin, tool: pluginAsk.tool })}
           detail={<ConfirmTarget name={pluginAsk.tool} input={pluginAsk.args} />}
-          confirmLabel="继续"
+          confirmLabel={t('继续')}
           danger
           onCancel={() => {
             pluginAsk.resolve(false);
@@ -1246,9 +1252,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
 
       {deletingChat ? (
         <ConfirmDialog
-          title={`删除对话「${deletingChat.name}」？`}
-          detail="将删除这条对话的记录，助理以后查不到它；它产出的文件不会删除。"
-          confirmLabel="删除"
+          title={t('删除对话「{name}」？', { name: deletingChat.name })}
+          detail={t('将删除这条对话的记录，助理以后查不到它；它产出的文件不会删除。')}
+          confirmLabel={t('删除')}
           danger
           onCancel={() => setDeletingChat(null)}
           onConfirm={() => {
@@ -1269,9 +1275,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       ) : null}
       {cwdAsk ? (
         <ConfirmDialog
-          title={`将工作文件夹设为「${folderName(cwdAsk.dir)}」？`}
-          detail={cwdAsk.stay ? `选定后不能更改；原来的文件留在「文档\\${APP_NAME}」。` : '选定后不能更改；这条对话已产生的文件会移到该文件夹。'}
-          confirmLabel="选定"
+          title={t('将工作文件夹设为「{name}」？', { name: folderName(cwdAsk.dir) })}
+          detail={cwdAsk.stay ? t('选定后不能更改；原来的文件留在「文档\\{app}」。', { app: APP_NAME }) : t('选定后不能更改；这条对话已产生的文件会移到该文件夹。')}
+          confirmLabel={t('选定')}
           onCancel={() => setCwdAsk(null)}
           onConfirm={() => {
             const ask = cwdAsk;
@@ -1282,9 +1288,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       ) : null}
       {deletingProject ? (
         <ConfirmDialog
-          title={`删除项目「${deletingProject.name}」？`}
-          detail={`将删除该项目及其对话记录，不会删除项目文件夹中的文件。`}
-          confirmLabel="删除"
+          title={t('删除项目「{name}」？', { name: deletingProject.name })}
+          detail={t('将删除该项目及其对话记录，不会删除项目文件夹中的文件。')}
+          confirmLabel={t('删除')}
           danger
           onCancel={() => setDeletingProject(null)}
           onConfirm={() => {
@@ -1302,7 +1308,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       {newProject ? (
         <NewProjectDialog
           {...(newProject.name ? { initialName: newProject.name } : {})}
-          onPickFolder={() => bridge.pickFolder('选择项目文件夹')}
+          onPickFolder={() => bridge.pickFolder(t('选择项目文件夹'))}
           onCreate={async (input) => {
             const mailId = newProject.mailId;
             // A project started from a mail: the mail moves into it (its manager gets it).
@@ -1332,7 +1338,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           onPluginsTab={setPluginsTab}
           onClose={() => setSettingsOpen(false)}
           workflows={bridge.workflows}
-          pickFolder={() => bridge.pickFolder('选择工作流文件夹')}
+          pickFolder={() => bridge.pickFolder(t('选择工作流文件夹'))}
           onBackendRestarted={bridge.backend.onRestarted}
           projects={inboxProjects}
           exportUsageLog={bridge.exportUsageLog}

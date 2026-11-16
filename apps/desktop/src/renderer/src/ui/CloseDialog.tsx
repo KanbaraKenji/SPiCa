@@ -13,11 +13,14 @@ import { APP_NAME } from '../../../shared/app-identity';
 import { useModal } from './useModal';
 import { Icon } from './Icon';
 import { CLOSE_QUESTION, CLOSE_REMEMBER, CLOSE_RUNNING } from '../../../shared/close-words';
+import { t } from '../../../shared/i18n';
+import { useLocale } from '../i18n';
 
-const CHOICES = [
-  ['tray', '最小化到托盘'],
-  ['quit', `退出 ${APP_NAME}`],
-] as const;
+const choices = () =>
+  [
+    ['tray', t('最小化到托盘')],
+    ['quit', t('退出 {app}', { app: APP_NAME })],
+  ] as const;
 
 type Answer = { choice: 'tray' | 'quit' | null; remember: boolean };
 
@@ -28,6 +31,8 @@ export interface CloseDialogProps {
 }
 
 export function CloseDialog({ onAnswer, running = false }: CloseDialogProps) {
+  // Mounted beside App, not under it: redraws itself when the language changes.
+  useLocale();
   const id = useId();
   const box = useRef<HTMLDivElement>(null);
   const okRef = useRef<HTMLButtonElement>(null);
@@ -56,11 +61,11 @@ export function CloseDialog({ onAnswer, running = false }: CloseDialogProps) {
         }}
       >
         <p className="dialog-title" id={id}>
-          {CLOSE_QUESTION}
+          {t(CLOSE_QUESTION)}
         </p>
-        {running ? <p className="dialog-detail">{CLOSE_RUNNING}</p> : null}
+        {running ? <p className="dialog-detail">{t(CLOSE_RUNNING)}</p> : null}
         <div className="close-dialog-choices" role="radiogroup" aria-labelledby={id}>
-          {CHOICES.map(([value, label]) => (
+          {choices().map(([value, label]) => (
             <label key={value} className="dialog-check">
               <input type="radio" name={`${id}-choice`} checked={choice === value} onChange={() => setChoice(value)} />
               {label}
@@ -70,13 +75,13 @@ export function CloseDialog({ onAnswer, running = false }: CloseDialogProps) {
         <div className="close-dialog-foot">
           <label className="dialog-check">
             <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-            {CLOSE_REMEMBER}
+            {t(CLOSE_REMEMBER)}
           </label>
           <button type="button" ref={okRef} className="btn btn-primary" onClick={() => answer(choice)}>
-            确定
+            {t('确定')}
           </button>
         </div>
-        <button type="button" className="icon-btn close-dialog-x" aria-label="关闭" title="关闭（Esc）" onClick={() => answer(null)}>
+        <button type="button" className="icon-btn close-dialog-x" aria-label={t('关闭')} title={t('关闭（Esc）')} onClick={() => answer(null)}>
           <Icon name="close" size={16} />
         </button>
       </div>

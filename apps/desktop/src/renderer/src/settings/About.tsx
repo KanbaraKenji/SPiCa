@@ -8,6 +8,7 @@ import { SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
 import { Group, Pane, Row } from './Group';
 import { Switch } from './Switch';
+import { t } from '../../../shared/i18n';
 
 export interface AboutProps {
   version: string;
@@ -51,11 +52,11 @@ export function About({ version, update, onCheck, onInstall, whenIdle, onWhenIdl
               {`${APP_NAME} ${version}`}
             </span>
           }
-          hint={update?.portable ? '便携版' : undefined}
+          hint={update?.portable ? t('便携版') : undefined}
         >
           {update?.status === 'ready' ? (
             <button type="button" className="btn btn-primary" onClick={onInstall}>
-              重启并更新
+              {t('重启并更新')}
             </button>
           ) : null}
         </Row>
@@ -63,15 +64,15 @@ export function About({ version, update, onCheck, onInstall, whenIdle, onWhenIdl
           <Pane>
             <p className="provider-result" role="status">
               <SpicaStatusIcon name="done" size={15} />
-              {switched ? '监控台已开启' : '监控台已关闭'}
+              {switched ? t('监控台已开启') : t('监控台已关闭')}
             </p>
           </Pane>
         ) : null}
       </Group>
 
-      <Group title="更新与公告">
+      <Group title={t('更新与公告')}>
         {/* Where updates come from is the build's (deploy.json, the official channel): not shown, not set here. */}
-        <Row title="检查更新">
+        <Row title={t('检查更新')}>
           {/* A build that checks for nothing: shown greyed (not disabled, so hovering still says why). */}
           <button
             type="button"
@@ -79,22 +80,22 @@ export function About({ version, update, onCheck, onInstall, whenIdle, onWhenIdl
             disabled={busy}
             aria-disabled={noSource || undefined}
             onClick={() => !noSource && onCheck()}
-            aria-label="检查更新"
-            title={noSource ? '这个版本不检查更新' : '检查更新'}
+            aria-label={t('检查更新')}
+            title={noSource ? t('这个版本不检查更新') : t('检查更新')}
           >
             {busy ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={16} />}
           </button>
         </Row>
         {/* A portable copy cannot replace itself, and a build that checks for nothing gets nothing: no switch. */}
         {update?.portable || noSource ? null : (
-          <Row title="自动更新">
-            <Switch on={whenIdle} label="自动更新" onChange={onWhenIdle} />
+          <Row title={t('自动更新')}>
+            <Switch on={whenIdle} label={t('自动更新')} onChange={onWhenIdle} />
           </Row>
         )}
         {update?.status === 'checking' ? (
           <Pane>
             <p className="provider-result" role="status">
-              正在检查更新…
+              {t('正在检查更新…')}
             </p>
           </Pane>
         ) : update?.message ? (

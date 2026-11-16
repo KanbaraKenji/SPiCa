@@ -4,6 +4,7 @@
 // left alone).
 import { useId, useState } from 'react';
 import type { UpdateState } from '../../../shared/updates';
+import { t } from '../../../shared/i18n';
 
 export function ForcedUpdate({ update, onRetry }: { update: UpdateState | null; onRetry(): void }) {
   const id = useId();
@@ -16,7 +17,7 @@ export function ForcedUpdate({ update, onRetry }: { update: UpdateState | null; 
     <div className="scrim forced-update">
       <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby={id}>
         <p className="dialog-title" id={id}>
-          {failed ? '更新失败' : update.status === 'ready' ? `正在安装 ${version}` : `正在更新到 ${version}`}
+          {failed ? t('更新失败') : update.status === 'ready' ? t('正在安装 {version}', { version }) : t('正在更新到 {version}', { version })}
         </p>
         {failed ? (
           <p className="dialog-detail">{update.message}</p>
@@ -31,10 +32,10 @@ export function ForcedUpdate({ update, onRetry }: { update: UpdateState | null; 
         {failed ? (
           <div className="dialog-actions">
             <button type="button" className="btn" onClick={() => setLater(true)}>
-              稍后
+              {t('稍后')}
             </button>
             <button type="button" className="btn btn-primary" onClick={onRetry}>
-              重试
+              {t('重试')}
             </button>
           </div>
         ) : null}

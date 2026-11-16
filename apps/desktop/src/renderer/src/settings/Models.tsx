@@ -42,6 +42,7 @@ import { AuthByField, CredentialsInField, headerRows, HeadersField } from './Pro
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Group, Row } from './Group';
 import { AGENT_MESSAGES_MAX, moneyText } from '../../../shared/settings';
+import { N_, t, tc } from '../../../shared/i18n';
 
 export interface ProvidersApi {
   list(): Promise<ProviderList>;
@@ -65,10 +66,10 @@ export interface ProvidersApi {
 
 const SHELL_KIND: Record<CatalogProviderView['kind'], ProviderKind> = { 'openai-compatible': 'openai', anthropic: 'anthropic', wso2: 'wso2' };
 const GROUPS: { group: CatalogProviderView['group']; label: string }[] = [
-  { group: 'company', label: '公司预置' },
-  { group: 'cn', label: '国内' },
-  { group: 'intl', label: '国际' },
-  { group: 'local', label: '本机' },
+  { group: 'company', label: N_('公司预置') },
+  { group: 'cn', label: N_('国内') },
+  { group: 'intl', label: N_('国际') },
+  { group: 'local', label: N_('本机') },
 ];
 /** The two choices that are not in the catalog. */
 const WSO2 = '#wso2';
@@ -78,8 +79,8 @@ const RELAY = '#relay';
 export function spendLine(v: ProviderSpendView): string {
   const d = new Date(v.endMs);
   const p = (n: number) => String(n).padStart(2, '0');
-  const parts = [`本周期已花 ${moneyText(v.spentUsd)}`, `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())} 结束`];
-  if (v.unpricedRequests) parts.push(`未计价请求 ${v.unpricedRequests}`);
+  const parts = [t('本周期已花 {money}', { money: moneyText(v.spentUsd) }), t('{time} 结束', { time: `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}` })];
+  if (v.unpricedRequests) parts.push(t('未计价请求 {n}', { n: v.unpricedRequests }));
   return parts.join(' · ');
 }
 
@@ -156,9 +157,9 @@ const parseRefKey = (k: string): ModelRef | null => {
 
 const numText = (v: number | null) => (v === null ? '' : String(v));
 function parseNum(v: string): number | null {
-  const t = v.trim();
-  if (!t) return null;
-  const n = Number(t);
+  const s = v.trim();
+  if (!s) return null;
+  const n = Number(s);
   return Number.isFinite(n) ? n : Number.NaN;
 }
 
@@ -183,9 +184,9 @@ export function AgentMessagesRow({ value, onChange }: RunLimitProps) {
     shown.current = value;
     setText(value === null ? '' : String(value));
   }, [value]);
-  const valid = (t: string) => /^\d+$/.test(t) && Number(t) >= 1 && Number(t) <= AGENT_MESSAGES_MAX;
-  const t = text.trim();
-  const problem = t === '' || valid(t) ? null : `须为 1 到 ${AGENT_MESSAGES_MAX} 的整数`;
+  const valid = (s: string) => /^\d+$/.test(s) && Number(s) >= 1 && Number(s) <= AGENT_MESSAGES_MAX;
+  const typed = text.trim();
+  const problem = typed === '' || valid(typed) ? null : t('须为 1 到 {max} 的整数', { max: AGENT_MESSAGES_MAX });
   const change = (v: string) => {
     setText(v);
     const x = v.trim();
@@ -196,12 +197,12 @@ export function AgentMessagesRow({ value, onChange }: RunLimitProps) {
   };
   return (
     <Row
-      title="代理互发消息上限"
+      title={t('代理互发消息上限')}
       hint={
         touched && problem ? (
           <span className="field-error">{problem}</span>
         ) : (
-          '你说一句话之后，一个对话最多给别的代理发这么多条消息；到了就停下，等你说下一句再重新计数。留空为不限。'
+          t('你说一句话之后，一个对话最多给别的代理发这么多条消息；到了就停下，等你说下一句再重新计数。留空为不限。')
         )
       }
     >
@@ -210,15 +211,15 @@ export function AgentMessagesRow({ value, onChange }: RunLimitProps) {
           className={touched && problem ? 'input is-invalid' : 'input'}
           inputMode="numeric"
           value={text}
-          placeholder="不限"
+          placeholder={t('不限')}
           spellCheck={false}
           autoComplete="off"
-          aria-label="代理互发消息上限（条）"
+          aria-label={t('代理互发消息上限（条）')}
           aria-invalid={touched && problem ? true : undefined}
           onChange={(e) => change(e.target.value)}
           onBlur={() => setTouched(true)}
         />
-        <span aria-hidden="true">条</span>
+        <span aria-hidden="true">{t('条')}</span>
       </label>
     </Row>
   );
@@ -258,7 +259,8 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
   const [deleting, setDeleting] = useState<ProviderView | null>(null);
   const [fetched, setFetched] = useState<ListedModel[] | null>(null);
   // What the last 获取模型列表 found, beside the button, until the next change (like 已保存).
-  const [fetchNote, setFetchNote] = useState<string | null>(null);
+  // (kept as counts: worded when shown)
+  const [fetchNote, setFetchNote] = useState<{ got: number; added: number } | null>(null);
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [matchedNames, setMatchedNames] = useState<Record<string, string>>({});
@@ -474,8 +476,8 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
         const models = draft.models ?? [];
         if (models.some((x) => outOf.has(x.id) && x.maxOutput !== outOf.get(x.id))) set({ models: models.map((x) => (outOf.has(x.id) ? { ...x, maxOutput: outOf.get(x.id) } : x)) });
         const added = got.filter((m) => !known.has(m.id)).length;
-        setFetchNote(`已获取 ${got.length} 个模型，${added ? `新增 ${added} 个` : '没有新增'}`);
-      } else setFetchError(r.hint || '获取模型列表失败，请从列表选择或手动输入模型。');
+        setFetchNote({ got: got.length, added });
+      } else setFetchError(r.hint || t('获取模型列表失败，请从列表选择或手动输入模型。'));
     } catch (e) {
       setFetchError(friendlyError(e));
     } finally {
@@ -552,7 +554,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
         setDraft(draftFrom(saved));
         latest.current = { draft: draftFrom(saved), selected: saved.id };
       }
-      setResult({ ok: true, message: '已保存' });
+      setResult({ ok: true, message: t('已保存') });
       loadSpent();
     } catch (e) {
       setResult({ ok: false, message: friendlyError(e) });
@@ -594,16 +596,18 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
   const pointerNote = (() => {
     if (!current || !list) return '';
     const on = enabledModels(draft.models ?? []).map((m) => m.id);
-    const notes: string[] = [];
     const def = list.default;
+    let defTo: string | null = null;
     if (def?.connectionId === current.id && !on.includes(def.model)) {
       const other = items.find((p) => p.id !== current.id && enabledModels(p.models).length);
-      const to = on[0] ? `${draft.name || current.name} · ${on[0]}` : other ? `${other.name} · ${enabledModels(other.models)[0]!.id}` : '无';
-      notes.push(`默认模型将改为「${to}」`);
+      defTo = on[0] ? `${draft.name || current.name} · ${on[0]}` : other ? `${other.name} · ${enabledModels(other.models)[0]!.id}` : t('无');
     }
     const strong = list.strong;
-    if (strong?.connectionId === current.id && !on.includes(strong.model)) notes.push(`强模型将改为「${on[0] ? `${draft.name || current.name} · ${on[0]}` : '无'}」`);
-    return notes.length ? `保存后，${notes.join('，')}。` : '';
+    const strongTo = strong?.connectionId === current.id && !on.includes(strong.model) ? (on[0] ? `${draft.name || current.name} · ${on[0]}` : t('无')) : null;
+    if (defTo !== null && strongTo !== null) return t('保存后，默认模型将改为「{default}」，强模型将改为「{strong}」。', { default: defTo, strong: strongTo });
+    if (defTo !== null) return t('保存后，默认模型将改为「{default}」。', { default: defTo });
+    if (strongTo !== null) return t('保存后，强模型将改为「{strong}」。', { strong: strongTo });
+    return '';
   })();
   const pointerOptions: SelectOption[] = groups.flatMap((g) => g.options.map((o) => ({ value: o.key, label: o.model, group: g.label, groupKey: g.id })));
   const point = async (which: 'default' | 'strong', key: string) => {
@@ -635,8 +639,8 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
   const showAuthBy = !isWso2 && (AUTH_LAYOUT === 1 ? needsKey : isRelay || Boolean(provider?.headers?.length) || inHeaders);
   const limits = (
     <div className="field-pair">
-      <Field label="同时请求" type="number" value={numText(draft.maxConcurrent)} onChange={(v) => set({ maxConcurrent: parseNum(v) })} error={errors.maxConcurrent} placeholder="不限" />
-      <Field label="每分钟请求" type="number" value={numText(draft.requestsPerMinute)} onChange={(v) => set({ requestsPerMinute: parseNum(v) })} error={errors.requestsPerMinute} placeholder="不限" />
+      <Field label={t('同时请求')} type="number" value={numText(draft.maxConcurrent)} onChange={(v) => set({ maxConcurrent: parseNum(v) })} error={errors.maxConcurrent} placeholder={t('不限')} />
+      <Field label={t('每分钟请求')} type="number" value={numText(draft.requestsPerMinute)} onChange={(v) => set({ requestsPerMinute: parseNum(v) })} error={errors.requestsPerMinute} placeholder={t('不限')} />
     </div>
   );
 
@@ -644,25 +648,25 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
     <section className="settings-section">
       {list && groups.length ? (
         <Group className="model-pointers">
-          <Row title="默认模型">
-            <Select className="model-pointer" value={refKey(list.default ?? null)} onChange={(v) => void run(() => point('default', v))} label="默认模型" options={pointerOptions} />
+          <Row title={t('默认模型')}>
+            <Select className="model-pointer" value={refKey(list.default ?? null)} onChange={(v) => void run(() => point('default', v))} label={t('默认模型')} options={pointerOptions} />
           </Row>
-          <Row title="强模型">
-            <Select className="model-pointer" value={refKey(list.strong ?? null)} onChange={(v) => void run(() => point('strong', v))} label="强模型" options={[{ value: '', label: '无' }, ...pointerOptions]} />
+          <Row title={t('强模型')}>
+            <Select className="model-pointer" value={refKey(list.strong ?? null)} onChange={(v) => void run(() => point('strong', v))} label={t('强模型')} options={[{ value: '', label: t('无') }, ...pointerOptions]} />
           </Row>
         </Group>
       ) : null}
 
       {/* 花费上限 is on each provider (its form below) */}
       {agentMessages ? (
-        <Group title="上限">
+        <Group title={t('上限')}>
           <AgentMessagesRow {...agentMessages} />
         </Group>
       ) : null}
 
-      <Group title="服务商">
+      <Group title={tc('group', '服务商')}>
       <div className="provider-list group-list" role="list">
-        {list && items.length === 0 ? <p className="settings-hint provider-none">未配置模型</p> : null}
+        {list && items.length === 0 ? <p className="settings-hint provider-none">{t('未配置模型')}</p> : null}
         {items.map((p) => (
           <div key={p.id} role="listitem" className={selected === p.id ? 'provider-row is-on' : 'provider-row'}>
             <button type="button" className="provider-open" onClick={() => open(p)} aria-current={selected === p.id ? 'true' : undefined}>
@@ -671,7 +675,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                 {p.keyMask ? <span className="provider-tail">{p.keyMask}</span> : null}
               </span>
               <span className="provider-sub" title={kindLabel(p.kind)}>
-                {enabledModels(p.models).map((m) => m.id).join('、') || '—'}
+                {enabledModels(p.models).map((m) => m.id).join(t('、')) || '—'}
               </span>
               {list?.problems[p.id] ? (
                 <span className="provider-problem status-with-icon">
@@ -681,22 +685,22 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
               ) : null}
               {!p.readOnly && enabledModels(p.models).some((m) => m.contextWindow === null) ? <span className="provider-problem status-with-icon is-warning">
                   <SpicaStatusIcon name="warning" size={14} />
-                  缺少上下文上限
+                  {t('缺少上下文上限')}
                 </span> : null}
-              {keptDraft(draftKey(p.id)) ? <span className="provider-unsaved">未保存</span> : null}
+              {keptDraft(draftKey(p.id)) ? <span className="provider-unsaved">{t('未保存')}</span> : null}
             </button>
-            {p.isDefault ? <span className="provider-default">默认</span> : null}
+            {p.isDefault ? <span className="provider-default">{t('默认')}</span> : null}
           </div>
         ))}
         <button type="button" className={selected === 'new' ? 'provider-add is-on' : 'provider-add'} onClick={() => open('new')}>
           <Icon name="plus" size={14} />
-          添加服务商
-          {keptDraft(draftKey('new')) ? <span className="provider-unsaved">未保存</span> : null}
+          {t('添加服务商')}
+          {keptDraft(draftKey('new')) ? <span className="provider-unsaved">{t('未保存')}</span> : null}
         </button>
       </div>
       </Group>
 
-      {current?.readOnly ? <p className="settings-hint provider-readonly">此项来自开发配置文件，无法修改。</p> : null}
+      {current?.readOnly ? <p className="settings-hint provider-readonly">{t('此项来自开发配置文件，无法修改。')}</p> : null}
 
       {editing ? (
         <form
@@ -710,17 +714,17 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
           }}
         >
           <div className="field field-stack">
-            <span className="field-label">服务商</span>
+            <span className="field-label">{t('服务商')}</span>
             <span className="field-control provider-choice">
               <Select
                 value={choice}
-                label="服务商"
-                placeholder="选择服务商"
+                label={t('服务商')}
+                placeholder={t('选择服务商')}
                 onChange={pick}
                 options={[
-                  ...GROUPS.flatMap((g) => providers.filter((p) => p.group === g.group).map((p) => ({ value: p.id, label: p.name, group: g.label }))),
-                  { value: WSO2, label: '公司网关（WSO2）', group: '其他' },
-                  { value: RELAY, label: '中转站', group: '其他' },
+                  ...GROUPS.flatMap((g) => providers.filter((p) => p.group === g.group).map((p) => ({ value: p.id, label: p.name, group: t(g.label) }))),
+                  { value: WSO2, label: t('公司网关（WSO2）'), group: t('其他') },
+                  { value: RELAY, label: t('中转站'), group: t('其他') },
                 ]}
               />
               <PasteConfig key={selected ?? ''} kind={draft.kind} onApply={applyPaste} />
@@ -730,25 +734,25 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
           {choice !== '' ? (
             <>
               {/* The example is the preset picked (none for 中转站 / 公司网关). */}
-              <Field label="名称" value={draft.name} onChange={(name) => set({ name })} error={errors.name} {...(provider?.name ? { placeholder: provider.name } : {})} />
+              <Field label={t('名称')} value={draft.name} onChange={(name) => set({ name })} error={errors.name} {...(provider?.name ? { placeholder: provider.name } : {})} />
 
               {isWso2 ? (
                 <>
-                  <Field label="网关地址" value={draft.baseUrl} onChange={(baseUrl) => set({ baseUrl })} error={errors.baseUrl} placeholder="https://gateway.example.com/llm/v1" hint="模型接口地址，通常以 /v1 结尾，不含 /chat/completions。" />
-                  <Field label="取 token 地址" value={draft.tokenUrl} onChange={(tokenUrl) => set({ tokenUrl })} error={errors.tokenUrl} placeholder="https://gateway.example.com/oauth2/token" hint="通常以 /token 或 /oauth2/token 结尾。" />
-                  <Field label={WSO2_KEY_LABEL} value={draft.clientId} onChange={(clientId) => set({ clientId })} error={errors.clientId} hint="即 Client ID，位于 WSO2 开发者门户中应用的 Production Keys。" />
+                  <Field label={t('网关地址')} value={draft.baseUrl} onChange={(baseUrl) => set({ baseUrl })} error={errors.baseUrl} placeholder="https://gateway.example.com/llm/v1" hint={t('模型接口地址，通常以 /v1 结尾，不含 /chat/completions。')} />
+                  <Field label={t('取 token 地址')} value={draft.tokenUrl} onChange={(tokenUrl) => set({ tokenUrl })} error={errors.tokenUrl} placeholder="https://gateway.example.com/oauth2/token" hint={t('通常以 /token 或 /oauth2/token 结尾。')} />
+                  <Field label={WSO2_KEY_LABEL} value={draft.clientId} onChange={(clientId) => set({ clientId })} error={errors.clientId} hint={t('即 Client ID，位于 WSO2 开发者门户中应用的 Production Keys。')} />
                 </>
               ) : null}
 
               {isRelay ? (
                 <>
-                  <Field label="接口地址" value={draft.baseUrl} onChange={(baseUrl) => set({ baseUrl })} error={errors.baseUrl} placeholder="https://relay.example.com/v1" />
+                  <Field label={t('接口地址')} value={draft.baseUrl} onChange={(baseUrl) => set({ baseUrl })} error={errors.baseUrl} placeholder="https://relay.example.com/v1" />
                   <div className="field field-stack">
-                    <span className="field-label">协议</span>
-                    <div className="segmented" role="radiogroup" aria-label="协议">
+                    <span className="field-label">{t('协议')}</span>
+                    <div className="segmented" role="radiogroup" aria-label={t('协议')}>
                       {PROVIDER_KINDS.filter((k) => k.kind !== 'wso2').map((k) => (
                         <button key={k.kind} type="button" role="radio" aria-checked={draft.kind === k.kind} className={draft.kind === k.kind ? 'segment is-on' : 'segment'} onClick={() => set({ kind: k.kind })}>
-                          {k.label}
+                          {t(k.label)}
                         </button>
                       ))}
                     </div>
@@ -774,36 +778,36 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                 <label className="field field-stack">
                   <span className="field-label">
                     {secretLabel(draft.kind)}
-                    {isWso2 ? <InfoTip text="即 Client Secret，与 Consumer Key 位于同一位置。" decorative /> : null}
+                    {isWso2 ? <InfoTip text={t('即 Client Secret，与 Consumer Key 位于同一位置。')} decorative /> : null}
                   </span>
                   <span className="field-control">
                     <input
                       className={errors.secret ? 'input is-invalid' : 'input'}
                       type="password"
                       value={draft.secret ?? ''}
-                      placeholder={hasSecret ? '已保存（留空不修改）' : ''}
+                      placeholder={hasSecret ? t('已保存（留空不修改）') : ''}
                       spellCheck={false}
                       autoComplete="off"
                       aria-invalid={errors.secret ? true : undefined}
-                      {...(isWso2 ? { 'aria-description': '即 Client Secret，与 Consumer Key 位于同一位置。' } : {})}
+                      {...(isWso2 ? { 'aria-description': t('即 Client Secret，与 Consumer Key 位于同一位置。') } : {})}
                       onChange={(e) => set({ secret: e.target.value })}
                     />
                     {errors.secret ? <span className="field-error">{errors.secret}</span> : null}
                     {provider?.docsUrl ? (
                       <a className="field-link" href={provider.docsUrl} target="_blank" rel="noreferrer">
-                        API 文档
+                        {t('API 文档')}
                       </a>
                     ) : null}
                   </span>
                 </label>
               ) : null}
 
-              {isWso2 ? <Field label="Scope" value={draft.scope} onChange={(scope) => set({ scope })} hint="可选" /> : null}
+              {isWso2 ? <Field label="Scope" value={draft.scope} onChange={(scope) => set({ scope })} hint={t('可选')} /> : null}
 
               <div className="field field-stack">
                 <span className="field-label">
-                  模型
-                  {isWso2 ? <InfoTip text="区分大小写，可包含斜杠。" label="模型名称的写法" /> : null}
+                  {t('模型')}
+                  {isWso2 ? <InfoTip text={t('区分大小写，可包含斜杠。')} label={t('模型名称的写法')} /> : null}
                 </span>
                 <span className="field-control">
                   <ModelPicker
@@ -818,7 +822,13 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                     onFetch={api.listModels ? () => void fetchRun(fetchModels) : undefined}
                     fetching={fetching}
                     fetchError={fetchError}
-                    fetchNote={fetchNote}
+                    fetchNote={
+                      fetchNote === null
+                        ? null
+                        : fetchNote.added
+                          ? t('已获取 {n} 个模型，新增 {added} 个', { n: fetchNote.got, added: fetchNote.added })
+                          : t('已获取 {n} 个模型，没有新增', { n: fetchNote.got })
+                    }
                     error={errors.model ?? errors.contextWindow}
                   />
                 </span>
@@ -826,7 +836,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
 
               {/* 花费上限: what this provider may cost in a period (7 天 / 30 天 / 自定义); 本周期已花 under it once saved */}
               <div className="field field-stack">
-                <span className="field-label">花费上限</span>
+                <span className="field-label">{t('花费上限')}</span>
                 <span className="field-control">
                   <span className="spend-limit">
                     <label className="run-limit">
@@ -837,18 +847,18 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                         min="0"
                         step="any"
                         value={numText(draft.spendLimitUsd ?? null)}
-                        placeholder="不限"
+                        placeholder={t('不限')}
                         autoComplete="off"
-                        aria-label="花费上限（美元）"
+                        aria-label={t('花费上限（美元）')}
                         aria-invalid={errors.spendLimitUsd ? true : undefined}
                         onChange={(e) => set({ spendLimitUsd: parseNum(e.target.value) })}
                       />
                     </label>
                     <Select
                       className="spend-period"
-                      label="周期"
+                      label={t('周期')}
                       value={customPeriod ? 'custom' : String(draft.spendPeriodDays ?? SPEND_PERIOD_DEFAULT)}
-                      options={[...SPEND_PERIODS.map((d) => ({ value: String(d), label: `${d} 天` })), { value: 'custom', label: '自定义' }]}
+                      options={[...SPEND_PERIODS.map((d) => ({ value: String(d), label: t('{n} 天', { n: d }) })), { value: 'custom', label: t('自定义') }]}
                       onChange={(v) => {
                         setCustomPeriod(v === 'custom');
                         if (v !== 'custom') set({ spendPeriodDays: Number(v) });
@@ -863,11 +873,11 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                           step="1"
                           value={draft.spendPeriodDays ?? ''}
                           autoComplete="off"
-                          aria-label="周期天数"
+                          aria-label={t('周期天数')}
                           aria-invalid={errors.spendPeriodDays ? true : undefined}
                           onChange={(e) => set({ spendPeriodDays: e.target.value === '' ? Number.NaN : Number(e.target.value) })}
                         />
-                        <span aria-hidden="true">天</span>
+                        <span aria-hidden="true">{t('天')}</span>
                       </label>
                     ) : null}
                   </span>
@@ -878,7 +888,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
 
               <div className="provider-more">
                 <button type="button" className="fold-head" aria-expanded={advanced} onClick={() => setAdvanced((a) => !a)}>
-                  <span className="fold-label">更多选项</span>
+                  <span className="fold-label">{t('更多选项')}</span>
                   <Icon name="chevronRight" size={14} className="fold-chevron" />
                 </button>
               </div>
@@ -887,16 +897,16 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                   {provider ? (
                     <>
                       <div className="field field-stack">
-                        <span className="field-label">类型</span>
-                        <div className="segmented" role="radiogroup" aria-label="类型">
+                        <span className="field-label">{t('类型')}</span>
+                        <div className="segmented" role="radiogroup" aria-label={t('类型')}>
                           {PROVIDER_KINDS.map((k) => (
                             <button key={k.kind} type="button" role="radio" aria-checked={draft.kind === k.kind} className={draft.kind === k.kind ? 'segment is-on' : 'segment'} onClick={() => set({ kind: k.kind })}>
-                              {k.label}
+                              {t(k.label)}
                             </button>
                           ))}
                         </div>
                       </div>
-                      <Field label="接口地址" value={draft.baseUrl} onChange={(baseUrl) => set({ baseUrl })} error={errors.baseUrl} />
+                      <Field label={t('接口地址')} value={draft.baseUrl} onChange={(baseUrl) => set({ baseUrl })} error={errors.baseUrl} />
                     </>
                   ) : null}
                   {limits}
@@ -914,7 +924,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
           ) : null}
           <div className="provider-actions">
             {current ? (
-              <button type="button" className="btn btn-quiet-danger btn-square" onClick={() => setDeleting(current)} aria-label="删除" title="删除">
+              <button type="button" className="btn btn-quiet-danger btn-square" onClick={() => setDeleting(current)} aria-label={t('删除')} title={t('删除')}>
                 <Icon name="trash" size={15} />
               </button>
             ) : null}
@@ -926,20 +936,20 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
               </span>
             ) : null}
             {/* Saved or not, beside 保存, where the change is made. */}
-            {dirty ? <span className="provider-unsaved">未保存</span> : null}
+            {dirty ? <span className="provider-unsaved">{t('未保存')}</span> : null}
             {dirty ? (
               <button type="button" className="btn" onClick={discard} disabled={busy !== null}>
-                取消
+                {t('取消')}
               </button>
             ) : null}
             {choice !== '' ? (
               <>
                 <button type="button" className="btn" onClick={() => void run(test)} disabled={busy !== null}>
                   {busy === 'test' ? <span className="spinner" aria-hidden /> : null}
-                  测试连接
+                  {t('测试连接')}
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={busy !== null}>
-                  保存
+                  {t('保存')}
                 </button>
               </>
             ) : null}
@@ -947,7 +957,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
         </form>
       ) : null}
 
-      {deleting ? <ConfirmDialog title={`删除服务商「${deleting.name}」？`} detail="使用该服务商的对话，下次发消息时需重新选择模型；已保存的 Key 一并删除。" confirmLabel="删除" danger onConfirm={() => void run(() => remove(deleting))} onCancel={() => setDeleting(null)} /> : null}
+      {deleting ? <ConfirmDialog title={t('删除服务商「{name}」？', { name: deleting.name })} detail={t('使用该服务商的对话，下次发消息时需重新选择模型；已保存的 Key 一并删除。')} confirmLabel={t('删除')} danger onConfirm={() => void run(() => remove(deleting))} onCancel={() => setDeleting(null)} /> : null}
     </section>
   );
 }

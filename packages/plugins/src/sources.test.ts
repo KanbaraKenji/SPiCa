@@ -79,7 +79,8 @@ describe('zip and packages', () => {
     const target = await temp();
     const folder = await unpackPlugin(writeZip(entries), target);
     expect(folder.manifest?.name).toBe('notes');
-    expect(folder.issues).toEqual([]);
+    // only some of the example's files: its i18n names views and commands this zip leaves out (warnings)
+    expect(folder.issues.filter((i) => !i.where.includes('· i18n.'))).toEqual([]);
   });
 
   it('.spicaignore leaves development files out of the package', async () => {

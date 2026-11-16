@@ -33,6 +33,19 @@ export {
   VIEW_PLACEMENTS,
   ICON_MAX_BYTES,
 } from './folder.ts';
+export {
+  PLUGIN_LOCALES,
+  parseI18n,
+  pluginText,
+  localizeDescription,
+  localizeView,
+  localizeCommand,
+  localizeOffer,
+  offerTexts,
+  type PluginLocale,
+  type PluginTexts,
+  type PluginI18n,
+} from './i18n.ts';
 export { runtimeHost, type PluginHost, type McpLaunch, type McpExit, type McpHandle, type RuntimeLike, type MailSourceSpec, type PluginToolCallResult } from './host.ts';
 export {
   PluginManager,

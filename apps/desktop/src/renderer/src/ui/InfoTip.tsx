@@ -1,4 +1,5 @@
 import { Icon, type IconName } from './Icon';
+import { t } from '../../../shared/i18n';
 
 /**
  * An info icon whose note shows on hover (the app's one hover bubble, HoverTips):
@@ -13,7 +14,7 @@ export function InfoTip({ text, label, decorative, icon = 'info' }: { text: stri
       <Icon name={icon} size={14} />
     </span>
   ) : (
-    <span className="info-tip" role="img" aria-label={label ? `${label}：${text}` : text} data-tip={text} tabIndex={0}>
+    <span className="info-tip" role="img" aria-label={label ? t('{label}：{text}', { label, text }) : text} data-tip={text} tabIndex={0}>
       <Icon name={icon} size={14} />
     </span>
   );

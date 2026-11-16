@@ -67,6 +67,10 @@
   --font-ui: 'Spica UI', 'Spica UI Static', 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
   --font-mono: 'Cascadia Mono', Consolas, 'Microsoft YaHei UI', monospace;
 }
+/* 语言 繁體中文: Chinese in JhengHei UI, Taiwan's glyph forms (shared/ui-font.ts UI_FONT_FAMILY_TW). */
+:root:lang(zh-TW) {
+  --font-ui: 'Spica UI', 'Spica UI Static', 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft JhengHei UI', 'Microsoft JhengHei', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
+}
 
 * {
   box-sizing: border-box;
@@ -8197,6 +8201,19 @@ section.plugins-part > .plugins-part-title {
 .monitor-level {
   width: 2em;
   font-family: var(--font-ui);
+}
+
+/* The names are longer in the other languages: wide enough for the longest (外掛程式 / 處理程序; Processes, Warning). */
+:root:lang(zh-TW) .monitor-source {
+  width: 4em;
+}
+
+:root:lang(en) .monitor-source {
+  width: 4.9em;
+}
+
+:root:lang(en) .monitor-level {
+  width: 3.7em;
 }
 
 .monitor-row.is-warn .monitor-level {

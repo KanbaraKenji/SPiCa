@@ -6,6 +6,7 @@ import { open, readFile, stat } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import { PREVIEW_PAGE_MAX_BYTES, type PreviewFile, type PreviewInfo } from '../shared/bridge';
 import { EXCEL, officePreview, WORD } from './office-preview';
+import { t } from '../shared/i18n';
 
 export const PREVIEW_SCHEME = 'spica-file';
 /** Text beyond this is not shown (the panel says so and offers the system program). */
@@ -73,10 +74,10 @@ export async function readPreview(path: string, files: PreviewFiles, sheet?: num
   let size: number;
   try {
     const st = await stat(path);
-    if (!st.isFile()) return { kind: 'unsupported', name, path, size: 0, message: '不是文件' };
+    if (!st.isFile()) return { kind: 'unsupported', name, path, size: 0, message: t('不是文件') };
     size = st.size;
   } catch {
-    return { kind: 'missing', name, path, size: 0, message: '找不到文件，可能已被移动或删除。' };
+    return { kind: 'missing', name, path, size: 0, message: t('找不到文件，可能已被移动或删除。') };
   }
   const ext = extname(path).toLowerCase();
   if (WORD.has(ext) || EXCEL.has(ext)) return officePreview(path, name, size, ext, sheet);
@@ -86,7 +87,7 @@ export async function readPreview(path: string, files: PreviewFiles, sheet?: num
     const svg = kind === 'image' && extname(path).toLowerCase() === '.svg' && size <= TEXT_LIMIT ? await readFile(path, 'utf8').catch(() => undefined) : undefined;
     return { kind, name, path, size, url: files.urlFor(path), ...(svg !== undefined ? { text: svg } : {}) };
   }
-  if (kind === 'unsupported') return { kind, name, path, size, message: '不支持预览此类文件。' };
+  if (kind === 'unsupported') return { kind, name, path, size, message: t('不支持预览此类文件。') };
   const handle = await open(path, 'r');
   try {
     const length = Math.min(size, TEXT_LIMIT);

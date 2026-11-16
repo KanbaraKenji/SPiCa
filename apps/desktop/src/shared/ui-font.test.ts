@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { SYSTEM_FONT_PLAIN, SYSTEM_FONT_SEGOE, UI_FONT_FAMILY, uiFontFamily } from './ui-font';
+import { SYSTEM_FONT_PLAIN, SYSTEM_FONT_SEGOE, UI_FONT_FAMILY, UI_FONT_FAMILY_TW, uiFontFamily } from './ui-font';
 import { parseDialogSpec } from './app-dialog';
 
 describe('外观 › 界面字体', () => {
   it('默认 is Segoe UI with YaHei UI for Chinese, whatever the language', () => {
     for (const lang of ['zh-CN', 'en-US', 'ja', '']) expect(uiFontFamily('default', lang)).toBe(UI_FONT_FAMILY);
+    // 语言 繁體中文: JhengHei UI first (plugin pages, the small dialog window)
+    for (const lang of ['zh-TW', 'zh-HK', 'zh-Hant']) expect(uiFontFamily('default', lang)).toBe(UI_FONT_FAMILY_TW);
   });
 
   it('跟随系统 is system-ui; uncorrected where it is a Chinese, Japanese or Korean font, Segoe’s corrected faces elsewhere', () => {

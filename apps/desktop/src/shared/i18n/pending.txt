@@ -1,0 +1,1 @@
+# Files whose words are not moved into t() yet (i18n.test.ts). The list only shrinks.

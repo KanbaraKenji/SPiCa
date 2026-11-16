@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import type { MemoryEntry, MemoryItem, MemoryTidyRun } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
+import { t } from '../../../shared/i18n';
 import { CATEGORY_LABEL, changeStands, tidyChangeText } from './memory-tidy-text';
 
 export interface MemoryAsk {
@@ -41,21 +42,21 @@ export function askLines(run: MemoryTidyRun, items: MemoryItem[] | null, entries
     const still = changeStands(c, run, items);
     lines.push({ text: tidyChangeText(c), stands: still, ...(still ? { change: i } : {}) });
   });
-  for (const t of run.entries ?? []) {
-    const e = entries?.find((x) => x.id === t.entry && x.updatedAt === t.at);
+  for (const done of run.entries ?? []) {
+    const e = entries?.find((x) => x.id === done.entry && x.updatedAt === done.at);
     if (!e) continue;
-    if (!t.before) {
-      lines.push({ text: `新建「${e.name}」`, stands: true });
+    if (!done.before) {
+      lines.push({ text: t('新建「{name}」', { name: e.name }), stands: true });
       continue;
     }
-    if (t.before.name !== e.name) lines.push({ text: `名字改为「${e.name}」`, stands: true });
-    if (t.before.category !== e.category && e.category) lines.push({ text: `类别改为「${CATEGORY_LABEL[e.category]}」`, stands: true });
-    if (t.before.summary !== e.summary) lines.push({ text: `更新摘要「${e.name}」：${e.summary}`, stands: true });
+    if (done.before.name !== e.name) lines.push({ text: t('名字改为「{name}」', { name: e.name }), stands: true });
+    if (done.before.category !== e.category && e.category) lines.push({ text: t('类别改为「{category}」', { category: t(CATEGORY_LABEL[e.category]) }), stands: true });
+    if (done.before.summary !== e.summary) lines.push({ text: t('更新摘要「{name}」：{summary}', { name: e.name, summary: e.summary }), stands: true });
   }
   for (const g of run.grouped ?? []) {
     const it = items?.find((m) => m.id === g.item && m.status === 'active' && m.entryId === g.entry);
     const e = entries?.find((x) => x.id === g.entry);
-    if (it && e) lines.push({ text: `${g.from !== undefined ? '移到' : '归入'}「${e.name}」：${it.text}`, stands: true });
+    if (it && e) lines.push({ text: g.from !== undefined ? t('移到「{name}」：{text}', { name: e.name, text: it.text }) : t('归入「{name}」：{text}', { name: e.name, text: it.text }), stands: true });
   }
   return lines;
 }
@@ -82,10 +83,10 @@ export function MemoryAskBox({
   const running = shown?.status === 'running' ? shown : (ask.runs ?? []).find((r) => r.status === 'running');
   const mine = running && shown && running.id === shown.id;
   const send = () => {
-    const t = text.trim();
-    if (!t || off || running) return;
+    const said = text.trim();
+    if (!said || off || running) return;
     setProblem(null);
-    void ask.send(target, t).then((p) => {
+    void ask.send(target, said).then((p) => {
       if (p) setProblem(p);
       else setText('');
     });
@@ -109,17 +110,17 @@ export function MemoryAskBox({
           className="input memory-ask-input"
           value={text}
           disabled={Boolean(off)}
-          placeholder="要改什么"
-          aria-label="要改什么"
+          placeholder={t('要改什么')}
+          aria-label={t('要改什么')}
           spellCheck={false}
           onChange={(e) => setText(e.target.value)}
         />
         {mine ? (
-          <button type="button" className="icon-btn composer-stop memory-ask-send" onClick={() => void ask.stop(running.id)} aria-label="停止" title="停止">
+          <button type="button" className="icon-btn composer-stop memory-ask-send" onClick={() => void ask.stop(running.id)} aria-label={t('停止')} title={t('停止')}>
             <Icon name="stop" size={14} />
           </button>
         ) : (
-          <button type="submit" className="icon-btn composer-send memory-ask-send" disabled={Boolean(off) || !text.trim() || Boolean(running)} aria-label="发送" title="发送">
+          <button type="submit" className="icon-btn composer-send memory-ask-send" disabled={Boolean(off) || !text.trim() || Boolean(running)} aria-label={t('发送')} title={t('发送')}>
             <Icon name="send" size={16} />
           </button>
         )}
@@ -138,14 +139,14 @@ export function AskResult({ run, ask, items, entries }: { run: MemoryTidyRun; as
         <span className="settings-hint memory-ask-text" title={run.ask?.text} data-tip-clipped="">
           {run.ask?.text}
         </span>
-        {run.status === 'running' ? <span className="settings-hint">修改中</span> : null}
+        {run.status === 'running' ? <span className="settings-hint">{t('修改中')}</span> : null}
         {lines.some((l) => l.stands) ? (
           <button type="button" className="btn btn-small memory-undo" onClick={() => void ask.undo(run.id)}>
-            全部撤销
+            {t('全部撤销')}
           </button>
         ) : null}
       </div>
-      {run.status === 'failed' ? <p className="provider-result is-bad">{run.error || '修改失败'}</p> : null}
+      {run.status === 'failed' ? <p className="provider-result is-bad">{run.error || t('修改失败')}</p> : null}
       {lines.length ? (
         <ul className="memory-list memory-tidy-list group-list">
           {lines.map((l, i) => (
@@ -155,7 +156,7 @@ export function AskResult({ run, ask, items, entries }: { run: MemoryTidyRun; as
               </span>
               {l.change !== undefined ? (
                 <button type="button" className="btn btn-small memory-undo" onClick={() => void ask.undo(run.id, l.change)}>
-                  撤销
+                  {t('撤销')}
                 </button>
               ) : null}
             </li>
@@ -163,7 +164,7 @@ export function AskResult({ run, ask, items, entries }: { run: MemoryTidyRun; as
         </ul>
       ) : null}
       {reply ? <p className="memory-ask-reply">{reply}</p> : null}
-      {run.status === 'done' && !lines.length && !reply ? <p className="settings-hint memory-ask-reply">没有改动</p> : null}
+      {run.status === 'done' && !lines.length && !reply ? <p className="settings-hint memory-ask-reply">{t('没有改动')}</p> : null}
     </div>
   );
 }

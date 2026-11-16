@@ -5,6 +5,7 @@
 // selection, a row with a menu of its own) nothing is added.
 import { useEffect, useState } from 'react';
 import { ContextMenu, type MenuItem } from './ContextMenu';
+import { t } from '../../../shared/i18n';
 
 export type EditCommand = 'cut' | 'copy' | 'paste' | 'selectAll';
 
@@ -29,7 +30,7 @@ function menuFor(e: MouseEvent, edit: (c: EditCommand) => void): MenuItem[] | nu
   const ranges = Array.from({ length: sel.rangeCount }, (_, i) => sel.getRangeAt(i).cloneRange());
   return [
     {
-      label: '复制',
+      label: t('复制'),
       onSelect: () => {
         const now = window.getSelection();
         now?.removeAllRanges();

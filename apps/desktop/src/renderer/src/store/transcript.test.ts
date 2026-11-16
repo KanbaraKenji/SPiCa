@@ -77,10 +77,10 @@ describe('notes the core writes for the model', () => {
       content: [{ type: 'text', text: '[The user switched this conversation from deepseek-flash to deepseek-v4-pro. Carry on as before.]' }],
       meta: { author: 'runtime', decision: true, modelChange: { from: { providerId: 'p1', model: 'deepseek-flash' }, to: { providerId: 'p1', model: 'deepseek-v4-pro' } } },
     };
-    expect(fromHistory([m]).items).toEqual([{ kind: 'note', id: 'm1', text: '已切换模型：deepseek-flash → deepseek-v4-pro' }]);
+    expect(fromHistory([m]).items).toEqual([{ kind: 'note', id: 'm1', text: '已切换模型：deepseek-flash → deepseek-v4-pro', model: { from: 'deepseek-flash', to: 'deepseek-v4-pro' } }]);
     // The same live, when the note arrives as a message event.
     const live = applyEvent({ items: [] }, { type: 'message', message: m } as unknown as CoreEvent);
-    expect(live.items).toEqual([{ kind: 'note', id: 'm1', text: '已切换模型：deepseek-flash → deepseek-v4-pro' }]);
+    expect(live.items).toEqual([{ kind: 'note', id: 'm1', text: '已切换模型：deepseek-flash → deepseek-v4-pro', model: { from: 'deepseek-flash', to: 'deepseek-v4-pro' } }]);
   });
   it('a sub-agent that wrote no report: 无报告内容, not the English placeholder', () => {
     const m: Message = {
@@ -161,7 +161,7 @@ describe('tools that were turned off', () => {
       content: [{ type: 'tool_result', toolUseId: 'c1', isError: true, content: 'Tool "notes__add_note" is no longer available (it was turned off or removed). Nothing was run.' }],
     });
     const t = fromHistory([note, call, result]);
-    expect(t.items[0]).toEqual({ kind: 'note', id: 'n', text: '工具已停用：notes__add_note、读取文件' });
+    expect(t.items[0]).toEqual({ kind: 'note', id: 'n', text: '工具已停用：notes__add_note、读取文件', toolsOff: ['notes__add_note', 'read_file'] });
     const r = t.items[1];
     expect(r?.kind === 'response' && r.blocks[0]?.type === 'tool' ? r.blocks[0].state : '').toBe('unavailable');
     // Live: the same from tool.end.

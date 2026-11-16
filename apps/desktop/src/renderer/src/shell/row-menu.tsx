@@ -5,6 +5,7 @@ import { useState } from 'react';
 import type { SessionInfo } from '@spica/protocol';
 import type { MenuItem } from '../ui/ContextMenu';
 import { useEscape } from '../ui/escape';
+import { t } from '../../../shared/i18n';
 
 /** The actions the app offers; an absent one is not offered anywhere. */
 export interface RowActions {
@@ -38,16 +39,16 @@ export function canRename(s: SessionInfo, a: RowActions): boolean {
 export function rowMenuItems(s: SessionInfo, a: RowActions, startRename: () => void): MenuItem[] {
   if (s.role !== 'manager') {
     const del = a.onDeleteChat;
-    return [...(a.onRename ? [{ label: '重命名', onSelect: startRename }] : []), ...(del && isOwnChat(s) ? [{ label: '删除', danger: true, onSelect: () => del(s) }] : [])];
+    return [...(a.onRename ? [{ label: t('重命名'), onSelect: startRename }] : []), ...(del && isOwnChat(s) ? [{ label: t('删除'), danger: true, onSelect: () => del(s) }] : [])];
   }
   const pid = s.projectId;
   if (!pid) return [];
   const { onPin, onDeleteProject } = a;
   const isPinned = a.pinned.includes(pid);
   return [
-    ...(a.onRenameProject ? [{ label: '重命名', onSelect: startRename }] : []),
-    ...(onPin ? [{ label: isPinned ? '取消置顶' : '置顶', onSelect: () => onPin(pid, !isPinned) }] : []),
-    ...(onDeleteProject ? [{ label: '删除', danger: true, onSelect: () => onDeleteProject(pid, s.title ?? '') }] : []),
+    ...(a.onRenameProject ? [{ label: t('重命名'), onSelect: startRename }] : []),
+    ...(onPin ? [{ label: isPinned ? t('取消置顶') : t('置顶'), onSelect: () => onPin(pid, !isPinned) }] : []),
+    ...(onDeleteProject ? [{ label: t('删除'), danger: true, onSelect: () => onDeleteProject(pid, s.title ?? '') }] : []),
   ];
 }
 
@@ -78,7 +79,7 @@ export function RenameField({ initial, onDone, className = 'input tree-rename' }
       className={className}
       value={value}
       maxLength={60}
-      aria-label="名称"
+      aria-label={t('名称')}
       autoFocus
       onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => setValue(e.target.value)}

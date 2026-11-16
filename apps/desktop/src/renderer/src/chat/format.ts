@@ -1,45 +1,47 @@
 // What the user sees for a tool call (a plain-language verb and its target),
 // plus small formatting helpers shared by the conversation and the detail panel.
+import { intlLocale, N_, t, tx } from '../../../shared/i18n';
 const LABELS: Record<string, string> = {
-  read_file: '读取文件',
-  write_file: '写入文件',
-  edit_file: '修改文件',
-  list_dir: '查看文件夹',
-  glob: '查找文件',
-  grep: '搜索内容',
-  run_command: '运行命令',
-  web_fetch: '打开网页',
-  web_search: '网页搜索',
-  send_email: '发送邮件',
-  ask_user: '提问',
-  spawn_agent: '创建子任务',
-  message_agent: '发消息给子任务',
-  wait_agents: '等待子任务',
-  record_decision: '记录决定',
-  suggest_actions: '给出建议',
-  create_project: '创建项目',
-  list_projects: '查看项目',
-  open_project: '打开项目',
-  project_status: '查看项目进度',
-  set_stage: '推进阶段',
-  add_work_object: '添加工作对象',
-  list_work_objects: '查看工作对象',
+  read_file: N_('读取文件'),
+  write_file: N_('写入文件'),
+  edit_file: N_('修改文件'),
+  list_dir: N_('查看文件夹'),
+  glob: N_('查找文件'),
+  grep: N_('搜索内容'),
+  run_command: N_('运行命令'),
+  web_fetch: N_('打开网页'),
+  web_search: N_('网页搜索'),
+  send_email: N_('发送邮件'),
+  ask_user: N_('提问'),
+  spawn_agent: N_('创建子任务'),
+  message_agent: N_('发消息给子任务'),
+  wait_agents: N_('等待子任务'),
+  record_decision: N_('记录决定'),
+  suggest_actions: N_('给出建议'),
+  create_project: N_('创建项目'),
+  list_projects: N_('查看项目'),
+  open_project: N_('打开项目'),
+  project_status: N_('查看项目进度'),
+  set_stage: N_('推进阶段'),
+  add_work_object: N_('添加工作对象'),
+  list_work_objects: N_('查看工作对象'),
   // The assistant looking through earlier conversations.
-  search_history: '查找对话记录',
-  read_history: '读取对话记录',
-  find_history_files: '查找对话中的文件',
+  search_history: N_('查找对话记录'),
+  read_history: N_('读取对话记录'),
+  find_history_files: N_('查找对话中的文件'),
   // The files a task made, handed over to the user (they show as cards under the answer).
-  present_files: '交付文件',
+  present_files: N_('交付文件'),
   // The user's memory (shown as the 已记住 line in the conversation).
-  remember: '保存记忆',
-  forget: '删除记忆',
+  remember: N_('保存记忆'),
+  forget: N_('删除记忆'),
 };
 
 /** Tools that read other conversations: their results name them as ses_…#n, shown as links. */
 export const HISTORY_TOOLS = new Set(['search_history', 'read_history', 'find_history_files']);
 
 export function toolLabel(name: string): string {
-  return LABELS[name] ?? name;
+  const label = LABELS[name];
+  return label ? t(label) : name;
 }
 
 /** The one argument worth showing on a collapsed row (path, query, command, URL...). */
@@ -48,7 +50,7 @@ export function toolTarget(input: unknown): string {
   const v = input as Record<string, unknown>;
   for (const key of ['path', 'pattern', 'query', 'command', 'url', 'to', 'subject', 'title', 'name', 'stage', 'decision', 'text', 'session_id']) {
     const value = v[key];
-    if (typeof value === 'string' && value) return value === '.' ? '工作文件夹' : value.length > 60 ? `${value.slice(0, 60)}…` : value;
+    if (typeof value === 'string' && value) return value === '.' ? t('工作文件夹') : value.length > 60 ? `${value.slice(0, 60)}…` : value;
   }
   return '';
 }
@@ -56,7 +58,7 @@ export function toolTarget(input: unknown): string {
 /** A moment as month/day hour:minute (a settings-change card, an item in 设置 › 记忆); '' when not a date. */
 export function timeOf(at: string): string {
   const d = new Date(at);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(intlLocale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 /**
@@ -94,7 +96,8 @@ export function relativeTime(at: string, now: number): string {
 export function fullTime(at: string): string {
   const d = new Date(at);
   if (Number.isNaN(d.getTime())) return '';
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return t('{y}年{m}月{d}日 {time}', { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate(), time });
 }
 
 /**
@@ -134,22 +137,38 @@ export function formatUsd(usd: number): string {
 /** What a confirmation is about, in the user's words: the backend's reason when it is already plain Chinese, else verb + target. */
 export function confirmTitle(name: string, input: unknown, reason: string): string {
   // A reason in Chinese, or one that starts with a plugin's name in 「」 (a plugin's declared irreversible tool).
-  if (/[一-鿿]/.test(reason) || reason.startsWith('「')) return reason;
+  if (/[一-鿿]/.test(reason) || reason.startsWith('「')) return tx(reason); // i18n-skip: reads the reason (shown as the catalog has it, else as written)
   const target = toolTarget(input);
-  return target ? `${toolLabel(name)}：${target}` : toolLabel(name);
+  return target ? t('{tool}：{target}', { tool: toolLabel(name), target }) : toolLabel(name);
 }
 
 /** Why the core asks for a confirmation it would not ask otherwise (outside content was involved). */
 export const GUARD_CAUSE_TEXT: Record<string, string> = {
-  untrusted_turn: '处理外部内容后的不可逆操作，需要确认。',
-  outside_link: '链接来自外部内容，需要确认。',
-  sensitive_file: '将读取密钥类文件，需要确认。',
+  // getters: the words in the language when they are shown
+  get untrusted_turn() {
+    return t('处理外部内容后的不可逆操作，需要确认。');
+  },
+  get outside_link() {
+    return t('链接来自外部内容，需要确认。');
+  },
+  get sensitive_file() {
+    return t('将读取密钥类文件，需要确认。');
+  },
 };
 
 /** Outside content that carried instructions; they were ignored, not followed. */
 export const GUARD_FLAG_TEXT: Record<string, string> = {
-  mail: '邮件中含有指令，已忽略',
-  web: '网页中含有指令，已忽略',
-  file: '文件中含有指令，已忽略',
-  mcp: '插件返回内容中含有指令，已忽略',
+  // getters: the words in the language when they are shown
+  get mail() {
+    return t('邮件中含有指令，已忽略');
+  },
+  get web() {
+    return t('网页中含有指令，已忽略');
+  },
+  get file() {
+    return t('文件中含有指令，已忽略');
+  },
+  get mcp() {
+    return t('插件返回内容中含有指令，已忽略');
+  },
 };

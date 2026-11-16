@@ -1,5 +1,5 @@
 {
-  "title": "测试连接",
+  "title": "Test connection",
   "entry": "ui/connection-test.html",
   "placement": "settings",
   "permissions": { "tools": ["test_connection"] }

@@ -83,7 +83,7 @@ describe('enable and disable', () => {
         { id: 'connection-test', kind: 'service', runtime: 'node', status: 'running', restarts: 0 },
       ],
     });
-    expect(r.pm.commands()).toEqual([{ name: 'notes:note', plugin: 'notes', description: 'Save something to the notebook', argumentHint: '<what to note>' }]);
+    expect(r.pm.commands()).toEqual([{ name: 'notes:note', plugin: 'notes', description: 'Save something to the notebook', argumentHint: '<what to note>', i18n: expect.objectContaining({ 'zh-CN': expect.any(Object) }) }]);
     expect(r.pm.expandCommand('/notes:note', 'buy milk')).toBe('Save this to my notebook, following the note-taking skill: buy milk');
   });
 
@@ -214,7 +214,7 @@ describe('views (plugin pages)', () => {
     const { pm } = r;
     await pm.install(EXAMPLE_PLUGIN);
     expect(pm.describe('notes').views).toEqual([
-      { id: 'connection-test', title: '测试连接', placement: 'settings', entry: 'ui/connection-test.html', tools: ['test_connection'] },
+      { id: 'connection-test', title: 'Test connection', placement: 'settings', entry: 'ui/connection-test.html', tools: ['test_connection'] },
       { id: 'notebook', title: 'Notebook', placement: 'sidebar', entry: 'ui/index.html', icon: 'ui/icon.svg', tools: ['list_notes', 'read_note', 'write_note', 'delete_note'] },
       { id: 'quick-note', title: 'Quick note', placement: 'panel', entry: 'ui/quick-note.html', icon: 'ui/icon.svg', tools: ['read_note', 'write_note'] },
     ]);
@@ -227,11 +227,12 @@ describe('views (plugin pages)', () => {
         plugin: 'notes',
         pluginTitle: 'Notes (example)',
         id: 'connection-test',
-        title: '测试连接',
+        title: 'Test connection',
         placement: 'settings',
         entry: 'ui/connection-test.html',
         tools: ['test_connection'],
         irreversible: [],
+        i18n: expect.any(Object),
       },
       {
         plugin: 'notes',
@@ -243,6 +244,7 @@ describe('views (plugin pages)', () => {
         icon: 'ui/icon.svg',
         tools: ['list_notes', 'read_note', 'write_note', 'delete_note'],
         irreversible: ['delete_note'],
+        i18n: expect.any(Object),
       },
       {
         plugin: 'notes',
@@ -254,6 +256,7 @@ describe('views (plugin pages)', () => {
         icon: 'ui/icon.svg',
         tools: ['read_note', 'write_note'],
         irreversible: [],
+        i18n: expect.any(Object),
       },
     ]);
     const root = join(pm.installDir('notes', '0.1.0'));

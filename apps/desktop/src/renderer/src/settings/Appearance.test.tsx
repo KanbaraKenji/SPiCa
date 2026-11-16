@@ -6,8 +6,13 @@ import { Appearance } from './Appearance';
 import { applyPatch, DEFAULT_SETTINGS, sanitizeSettings, type ShellSettings } from '../../../shared/settings';
 import { applyTextSize, applyUiFont } from '../theme';
 import { resolveSkin } from '../../../shared/skin';
+import { setLocale } from '../../../shared/i18n';
+import { applyLanguage } from '../i18n';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  setLocale('zh-CN');
+});
 
 let latest: ShellSettings = DEFAULT_SETTINGS;
 
@@ -18,6 +23,8 @@ function Harness() {
       settings={settings}
       activeSkin={resolveSkin(settings.skin, false, settings.customSkins)}
       onChange={(p) => {
+        // as ShellStore.update: the language switches before the redraw
+        if (p.language) applyLanguage(p.language, ['zh-CN']);
         latest = applyPatch(latest, p);
         setSettings(latest);
       }}
@@ -28,6 +35,28 @@ function Harness() {
 describe('Appearance', () => {
   beforeEach(() => {
     latest = DEFAULT_SETTINGS;
+  });
+
+  it('语言 switches the page at once, each language named in itself; 跟随系统 goes back to Windows’ language', () => {
+    render(<Harness />);
+    const pick = screen.getByRole('combobox', { name: '语言' });
+    expect(pick.textContent).toBe('跟随系统');
+    fireEvent.click(pick);
+    expect(screen.getAllByRole('menuitemradio').map((o) => o.textContent)).toEqual(['跟随系统', '简体中文', '繁體中文', 'English']);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'English' }));
+    expect(latest.language).toBe('en');
+    expect(screen.getByRole('combobox', { name: 'Language' }).textContent).toBe('English');
+    expect(screen.getByRole('radio', { name: /Dark/ })).toBeTruthy();
+    expect(document.documentElement.lang).toBe('en');
+    fireEvent.click(screen.getByRole('combobox', { name: 'Language' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: '繁體中文' }));
+    expect(screen.getByRole('radio', { name: /深色/ })).toBeTruthy();
+    expect(screen.getByText('介面字型')).toBeTruthy();
+    expect(document.documentElement.lang).toBe('zh-TW');
+    fireEvent.click(screen.getByRole('combobox', { name: '語言' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: '跟隨系統' }));
+    expect(latest.language).toBe('system');
+    expect(screen.getByText('界面字体')).toBeTruthy();
   });
 
   it('switches skins', () => {

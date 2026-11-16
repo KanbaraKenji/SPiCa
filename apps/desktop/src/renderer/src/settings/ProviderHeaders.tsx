@@ -4,6 +4,7 @@
 // only masked, and an empty value keeps it.
 import { CREDENTIALS_IN, headerCellErrors, type AuthBy, type CredentialsIn, type HeaderDraft, type HeaderView } from '../../../shared/providers';
 import { Icon } from '../ui/Icon';
+import { N_, t } from '../../../shared/i18n';
 
 /** The rows the form starts from for a saved connection. */
 export function headerRows(saved: readonly HeaderView[] | undefined): HeaderDraft[] {
@@ -12,17 +13,17 @@ export function headerRows(saved: readonly HeaderView[] | undefined): HeaderDraf
 
 const AUTH_CHOICES: readonly { value: AuthBy; label: string }[] = [
   { value: 'key', label: 'API Key' },
-  { value: 'header', label: '请求头' },
+  { value: 'header', label: N_('请求头') },
 ];
 
 export function AuthByField({ value, onChange }: { value: AuthBy; onChange(v: AuthBy): void }) {
   return (
     <div className="field field-stack">
-      <span className="field-label">认证方式</span>
-      <div className="segmented" role="radiogroup" aria-label="认证方式">
+      <span className="field-label">{t('认证方式')}</span>
+      <div className="segmented" role="radiogroup" aria-label={t('认证方式')}>
         {AUTH_CHOICES.map((c) => (
           <button key={c.value} type="button" role="radio" aria-checked={value === c.value} className={value === c.value ? 'segment is-on' : 'segment'} onClick={() => onChange(c.value)}>
-            {c.label}
+            {t(c.label)}
           </button>
         ))}
       </div>
@@ -50,7 +51,7 @@ export function HeadersField({ rows, saved, onChange, showErrors }: { rows: read
     );
   return (
     <div className="field field-stack">
-      <span className="field-label">请求头</span>
+      <span className="field-label">{t('请求头')}</span>
       <span className="field-control">
         <span className="header-rows">
           {list.map((h, i) => {
@@ -63,7 +64,7 @@ export function HeadersField({ rows, saved, onChange, showErrors }: { rows: read
                     className={err.name ? 'input is-invalid' : 'input'}
                     value={h.name}
                     placeholder="X-API-Key"
-                    aria-label="请求头名称"
+                    aria-label={t('请求头名称')}
                     aria-invalid={err.name ? true : undefined}
                     spellCheck={false}
                     autoComplete="off"
@@ -76,8 +77,8 @@ export function HeadersField({ rows, saved, onChange, showErrors }: { rows: read
                     className={err.value ? 'input is-invalid' : 'input'}
                     type="password"
                     value={h.value ?? ''}
-                    placeholder={mask ? `${mask}（留空不修改）` : '值'}
-                    aria-label={`${h.name.trim() || '请求头'} 的值`}
+                    placeholder={mask ? t('{mask}（留空不修改）', { mask }) : t('值')}
+                    aria-label={t('{name} 的值', { name: h.name.trim() || t('请求头') })}
                     aria-invalid={err.value ? true : undefined}
                     spellCheck={false}
                     autoComplete="off"
@@ -86,7 +87,7 @@ export function HeadersField({ rows, saved, onChange, showErrors }: { rows: read
                   {err.value ? <span className="field-error">{err.value}</span> : null}
                 </span>
                 {list.length > 1 ? (
-                  <button type="button" className="icon-btn" onClick={() => onChange(list.filter((_, j) => j !== i))} aria-label={`删除 ${h.name.trim() || '请求头'}`} title="删除">
+                  <button type="button" className="icon-btn" onClick={() => onChange(list.filter((_, j) => j !== i))} aria-label={t('删除 {name}', { name: h.name.trim() || t('请求头') })} title={t('删除')}>
                     <Icon name="trash" size={14} />
                   </button>
                 ) : null}
@@ -97,7 +98,7 @@ export function HeadersField({ rows, saved, onChange, showErrors }: { rows: read
         <span className="model-pills">
           <button type="button" className="model-pill is-action" onClick={() => onChange([...list, { name: '' }])}>
             <Icon name="plus" size={12} />
-            添加
+            {t('添加')}
           </button>
         </span>
       </span>
@@ -108,11 +109,11 @@ export function HeadersField({ rows, saved, onChange, showErrors }: { rows: read
 export function CredentialsInField({ value, onChange }: { value: CredentialsIn | null; onChange(v: CredentialsIn | null): void }) {
   return (
     <div className="field field-stack">
-      <span className="field-label">凭据位置</span>
-      <div className="segmented" role="radiogroup" aria-label="凭据位置">
+      <span className="field-label">{t('凭据位置')}</span>
+      <div className="segmented" role="radiogroup" aria-label={t('凭据位置')}>
         {CREDENTIALS_IN.map((c) => (
           <button key={c.label} type="button" role="radio" aria-checked={value === c.value} className={value === c.value ? 'segment is-on' : 'segment'} onClick={() => onChange(c.value)}>
-            {c.label}
+            {t(c.label)}
           </button>
         ))}
       </div>

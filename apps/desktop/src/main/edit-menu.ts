@@ -12,6 +12,8 @@ export interface EditMenuItem {
   enabled: boolean;
 }
 
+import { t } from '../shared/i18n';
+
 export type EditMenuEntry = EditMenuItem | 'separator';
 
 /** The part of Electron's context-menu params this needs. */
@@ -25,13 +27,13 @@ export function editMenu(params: EditMenuParams): EditMenuEntry[] | null {
   if (!params.isEditable) return null;
   const f = params.editFlags;
   return [
-    { label: '撤消(&U)', action: 'undo', enabled: f.canUndo },
+    { label: t('撤消(&U)'), action: 'undo', enabled: f.canUndo },
     'separator',
-    { label: '剪切(&T)', action: 'cut', enabled: f.canCut },
-    { label: '复制(&C)', action: 'copy', enabled: f.canCopy },
-    { label: '粘贴(&P)', action: 'paste', enabled: f.canPaste },
-    { label: '删除(&D)', action: 'delete', enabled: f.canDelete },
+    { label: t('剪切(&T)'), action: 'cut', enabled: f.canCut },
+    { label: t('复制(&C)'), action: 'copy', enabled: f.canCopy },
+    { label: t('粘贴(&P)'), action: 'paste', enabled: f.canPaste },
+    { label: t('删除(&D)'), action: 'delete', enabled: f.canDelete },
     'separator',
-    { label: '全选(&A)', action: 'selectAll', enabled: f.canSelectAll },
+    { label: t('全选(&A)'), action: 'selectAll', enabled: f.canSelectAll },
   ];
 }

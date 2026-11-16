@@ -36,12 +36,62 @@
   "user_config": {
     "notes_folder": {
       "type": "folder",
-      "title": "笔记文件夹"
+      "title": "Notes folder"
     },
     "catalog_url": {
       "type": "url",
-      "title": "样例目录地址",
+      "title": "Sample catalog URL",
       "placeholder": "https://catalog.example.test/search"
+    }
+  },
+  "i18n": {
+    "zh-CN": {
+      "display_name": "笔记（示例）",
+      "description": "在本机笔记本里记笔记，并在一份虚构的示例目录里查资料。展示 Spica 插件的每个部分。",
+      "model_reason": "在你要求时为一条笔记写摘要（summarize_note）。",
+      "mock_description": "目录用自带的示例数据回答，不连目录服务。",
+      "views": {
+        "notebook": "笔记本",
+        "quick-note": "快速笔记",
+        "connection-test": "测试连接"
+      },
+      "commands": {
+        "note": {
+          "description": "把内容存进笔记本",
+          "argument_hint": "<要记的内容>"
+        }
+      },
+      "skills": {
+        "note-taking": "怎样在本机笔记本里整齐地记笔记（标题、日期、一条笔记一个主题）。"
+      },
+      "user_config": {
+        "notes_folder": { "title": "笔记文件夹" },
+        "catalog_url": { "title": "样例目录地址" }
+      }
+    },
+    "zh-TW": {
+      "display_name": "筆記（範例）",
+      "description": "在本機筆記本裡記筆記，並在一份虛構的範例目錄裡查資料。展示 Spica 外掛程式的每個部分。",
+      "model_reason": "在你要求時為一則筆記寫摘要（summarize_note）。",
+      "mock_description": "目錄以內建的範例資料回答，不連線目錄服務。",
+      "views": {
+        "notebook": "筆記本",
+        "quick-note": "快速筆記",
+        "connection-test": "測試連線"
+      },
+      "commands": {
+        "note": {
+          "description": "把內容存入筆記本",
+          "argument_hint": "<要記的內容>"
+        }
+      },
+      "skills": {
+        "note-taking": "如何在本機筆記本裡整齊地記筆記（標題、日期、一則筆記一個主題）。"
+      },
+      "user_config": {
+        "notes_folder": { "title": "筆記資料夾" },
+        "catalog_url": { "title": "範例目錄位址" }
+      }
     }
   }
 }

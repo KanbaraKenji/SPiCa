@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { MEMORY_TOOLS, type Transcript } from '../store/transcript';
 import { SpicaMark } from '@spica/brand/react';
 import { formatClock, formatDuration, toolLabel } from './format';
+import { t } from '../../../shared/i18n';
 
 export const DONE_LINGER_MS = 1400;
 
@@ -21,24 +22,24 @@ function runningTool(t: Transcript): string | undefined {
   return t.run?.detail;
 }
 
-export function phaseOf(t: Transcript): { mark: MarkState; text: string } | null {
-  const run = t.run;
+export function phaseOf(tr: Transcript): { mark: MarkState; text: string } | null {
+  const run = tr.run;
   if (!run) return null;
   switch (run.status) {
     case 'queued':
-      return { mark: 'await', text: run.queuePosition ? `排队中（前面 ${Math.max(0, run.queuePosition - 1)} 个）` : '排队中' };
+      return { mark: 'await', text: run.queuePosition ? t('排队中（前面 {n} 个）', { n: Math.max(0, run.queuePosition - 1) }) : t('排队中') };
     case 'tool': {
-      const name = runningTool(t);
-      return { mark: 'tool', text: name ? `正在${toolLabel(name)}` : '正在调用工具' };
+      const name = runningTool(tr);
+      return { mark: 'tool', text: name ? t('正在{tool}', { tool: toolLabel(name) }) : t('正在调用工具') };
     }
     case 'awaiting_confirm':
-      return { mark: 'await', text: '等待确认' };
+      return { mark: 'await', text: t('等待确认') };
     case 'awaiting_answer':
-      return { mark: 'await', text: '等待回答' };
+      return { mark: 'await', text: t('等待回答') };
     default: {
-      const last = t.items[t.items.length - 1];
+      const last = tr.items[tr.items.length - 1];
       const block = last?.kind === 'response' ? last.blocks[last.blocks.length - 1] : undefined;
-      return block?.type === 'text' ? { mark: 'busy', text: '正在回复' } : { mark: 'think', text: '思考中' };
+      return block?.type === 'text' ? { mark: 'busy', text: t('正在回复') } : { mark: 'think', text: t('思考中') };
     }
   }
 }
@@ -101,7 +102,7 @@ export function StatusLine({ transcript }: { transcript: Transcript }) {
     return (
       <div className="status-line is-finished" role="status">
         <SpicaMark size={18} state="done" />
-        <span className="status-text">已完成 · 用时 {formatDuration(last.durationMs)}</span>
+        <span className="status-text">{t('已完成 · 用时 {time}', { time: formatDuration(last.durationMs) })}</span>
       </div>
     );
   }

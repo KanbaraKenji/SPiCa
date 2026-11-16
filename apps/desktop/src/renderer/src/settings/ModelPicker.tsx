@@ -9,6 +9,7 @@ import { Icon } from '../ui/Icon';
 import { InfoTip } from '../ui/InfoTip';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { ImageMark } from '../ui/ImageMark';
+import { N_, t } from '../../../shared/i18n';
 
 export interface ListedModel {
   id: string;
@@ -40,12 +41,12 @@ export interface ModelPickerProps {
   error?: string | undefined;
 }
 
-const SOURCE: Record<ConnectionModel['contextFrom'], string> = { user: '', catalog: '来自目录', provider: '服务商提供', 'name-match': '按名称匹配' };
+const SOURCE: Record<ConnectionModel['contextFrom'], string> = { user: '', catalog: N_('来自目录'), provider: N_('服务商提供'), 'name-match': N_('按名称匹配') };
 
 /** Official list price per million tokens, in its own currency. */
 export function priceText(p: CatalogPriceView): string {
   const c = p.currency === 'CNY' ? '¥' : '$';
-  return `输入 ${c}${p.input} / 输出 ${c}${p.output}（每百万 token）`;
+  return t('输入 {input} / 输出 {output}（每百万 token）', { input: `${c}${p.input}`, output: `${c}${p.output}` });
 }
 
 /** A context window in short: the same abbreviation as the ring and the context card (chat/tokens). */
@@ -53,10 +54,17 @@ export { tokenText as windowText } from '../chat/tokens';
 import { tokenText as windowText } from '../chat/tokens';
 import { useEscape } from '../ui/escape';
 
+/** A known 上下文上限 on hover: its size, where it came from (a SOURCE key) and the catalog model a name matched. */
+function windowTitle(size: number, source: string, matched: string | undefined): string {
+  const vars = { size: size.toLocaleString('en-US'), source: source ? t(source) : '', matched: matched ?? '' };
+  if (!source) return t('上下文上限 {size} token', vars);
+  return matched ? t('上下文上限 {size} token（{source}：{matched}）', vars) : t('上下文上限 {size} token（{source}）', vars);
+}
+
 function parseWindow(v: string): number | null {
-  const t = v.trim();
-  if (!t) return null;
-  const n = Number(t);
+  const s = v.trim();
+  if (!s) return null;
+  const n = Number(s);
   return Number.isFinite(n) ? n : Number.NaN;
 }
 
@@ -102,9 +110,9 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
 
   return (
     <div className="model-picker">
-      {all.length > 10 ? <input className="input model-picker-search" value={query} placeholder="搜索模型" aria-label="搜索模型" onChange={(e) => setQuery(e.target.value)} /> : null}
+      {all.length > 10 ? <input className="input model-picker-search" value={query} placeholder={t('搜索模型')} aria-label={t('搜索模型')} onChange={(e) => setQuery(e.target.value)} /> : null}
       {fetchError ? <p className="field-error model-picker-note">{fetchError}</p> : null}
-      <span className="model-picker-sect">已启用</span>
+      <span className="model-picker-sect">{t('已启用')}</span>
       <ul className="model-picker-list">
         {onRows.map(({ model, price, vision }) => {
           const on = isOn(model.id)!;
@@ -119,22 +127,22 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
                 <span className="model-row-id">{name(model)}</span>
                 {vision ? <ImageMark /> : null}
               </label>
-              {price ? <InfoTip text={priceText(price)} label={`${model.id} 官方价`} /> : null}
+              {price ? <InfoTip text={priceText(price)} label={t('{model} 官方价', { model: model.id })} /> : null}
               {edit ? (
                 <span className="model-row-window">
                   {on.contextWindow === null ? (
                     <span className="model-row-warn">
                       <SpicaStatusIcon name="warning" size={13} />
-                      缺少上下文上限
+                      {t('缺少上下文上限')}
                     </span>
                   ) : null}
                   <input
                     className={missing ? 'input is-invalid' : 'input'}
                     type="number"
                     value={on.contextWindow === null || Number.isNaN(on.contextWindow) ? '' : String(on.contextWindow)}
-                    placeholder="上下文上限"
-                    aria-label={`${model.id} 上下文上限`}
-                    title="上下文上限（token）"
+                    placeholder={t('上下文上限')}
+                    aria-label={t('{model} 上下文上限', { model: model.id })}
+                    title={t('上下文上限（token）')}
                     autoFocus={editing === model.id}
                     onChange={(e) => onWindow(model.id, parseWindow(e.target.value))}
                     onBlur={() => setEditing(null)}
@@ -147,15 +155,15 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
                 <button
                   type="button"
                   className="model-row-size"
-                  aria-label={`${model.id} 上下文上限`}
-                  title={`上下文上限 ${on.contextWindow!.toLocaleString('en-US')} token${source ? `（${source}${matched ? `：${matched}` : ''}）` : ''}`}
+                  aria-label={t('{model} 上下文上限', { model: model.id })}
+                  title={windowTitle(on.contextWindow!, source, matched)}
                   onClick={() => setEditing(model.id)}
                 >
                   {windowText(on.contextWindow!)}
                 </button>
               )}
               {removable(model.id) ? (
-                <button type="button" className="icon-btn model-row-remove" onClick={() => onRemove!(model.id)} aria-label={`删除 ${model.id}`} title="删除">
+                <button type="button" className="icon-btn model-row-remove" onClick={() => onRemove!(model.id)} aria-label={t('删除 {model}', { model: model.id })} title={t('删除')}>
                   <Icon name="trash" size={14} />
                 </button>
               ) : null}
@@ -163,17 +171,17 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
           );
         })}
       </ul>
-      <span className="model-picker-sect">未启用</span>
+      <span className="model-picker-sect">{t('未启用')}</span>
       <div className="model-pills">
         {offRows.map(({ model, price, vision }) => (
           <span key={model.id} className="model-pill">
-            <button type="button" className="model-pill-on" onClick={() => onToggle(model, true)} aria-label={`启用 ${model.id}`} title={price ? `启用 · ${priceText(price)}` : '启用'}>
+            <button type="button" className="model-pill-on" onClick={() => onToggle(model, true)} aria-label={t('启用 {model}', { model: model.id })} title={price ? t('启用 · {price}', { price: priceText(price) }) : t('启用')}>
               <span className="model-pill-text">{name(model)}</span>
               {vision ? <ImageMark size={12} /> : null}
               <Icon name="plus" size={12} />
             </button>
             {removable(model.id) ? (
-              <button type="button" className="model-pill-remove" onClick={() => onRemove!(model.id)} aria-label={`删除 ${model.id}`} title="删除">
+              <button type="button" className="model-pill-remove" onClick={() => onRemove!(model.id)} aria-label={t('删除 {model}', { model: model.id })} title={t('删除')}>
                 <Icon name="trash" size={12} />
               </button>
             ) : null}
@@ -182,7 +190,7 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
         {onFetch ? (
           <button type="button" className="model-pill is-action" disabled={fetching} onClick={onFetch}>
             {fetching ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={12} />}
-            获取模型列表
+            {t('获取模型列表')}
           </button>
         ) : null}
         {typing ? (
@@ -190,8 +198,8 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
             <input
               className="input"
               value={typed}
-              placeholder="模型名称"
-              aria-label="手动输入模型"
+              placeholder={t('模型名称')}
+              aria-label={t('手动输入模型')}
               spellCheck={false}
               autoFocus
               onChange={(e) => setTyped(e.target.value)}
@@ -206,13 +214,13 @@ export function ModelPicker({ catalog, fetched, selected, matchedNames, onToggle
               }}
             />
             <button type="button" className="btn btn-small" disabled={!typed.trim()} onClick={add}>
-              添加
+              {t('添加')}
             </button>
           </span>
         ) : (
           <button type="button" className="model-pill is-action" onClick={() => setTyping(true)}>
             <Icon name="plus" size={12} />
-            手动输入模型
+            {t('手动输入模型')}
           </button>
         )}
         {onFetch && fetchNote ? (

@@ -4,7 +4,9 @@ import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, 
 import type { ChangePreview, FileCardMeta, HistoryCardMeta, SourceCardMeta, SourceRow } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { fileCardLine, fileCardParts, fileCardVerb, type Block, type ChildNote, type FileRef } from '../store/transcript';
+import { fileCardLine, fileCardParts, fileCardVerb, NO_REPORT_WORDS, type Block, type ChildNote, type FileRef } from '../store/transcript';
+import { N_, t } from '../../../shared/i18n';
+import { useLocale } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { FileBadge, FileGlyph } from '../ui/FileIcon';
 import { clipboard } from '../ui/clipboard';
@@ -33,25 +35,25 @@ export const HistoryCardsContext = createContext<Record<string, HistoryCardMeta>
  */
 export const RoundDoneContext = createContext(false);
 
-const HISTORY_COLUMN: Record<HistoryCardMeta['tool'], string> = { search_history: '匹配内容', read_history: '内容', find_history_files: '文件' };
+const HISTORY_COLUMN: Record<HistoryCardMeta['tool'], string> = { search_history: N_('匹配内容'), read_history: N_('内容'), find_history_files: N_('文件') };
 
 /** What a history tool found, as a two-column table: the conversation, and the matching text (or the file).
  *  A row opens that conversation at the message. The text given to the model is not shown. */
 function HistoryTable({ card }: { card: HistoryCardMeta }) {
   const open = useContext(OpenSessionContext);
-  if (!card.rows.length) return <p className="tool-empty">没有找到</p>;
+  if (!card.rows.length) return <p className="tool-empty">{t('没有找到')}</p>;
   return (
     <div className="history-table">
       <div className="history-head" aria-hidden>
-        <span>对话</span>
-        <span>{HISTORY_COLUMN[card.tool]}</span>
+        <span>{t('对话')}</span>
+        <span>{t(HISTORY_COLUMN[card.tool])}</span>
       </div>
       {card.rows.map((r) => {
-        const name = r.name ?? '未命名对话';
+        const name = r.name ?? t('未命名对话');
         const project = r.projectName && r.projectName !== name ? r.projectName : '';
         const right = card.tool === 'find_history_files' ? (r.path ?? r.text) : r.text;
         return (
-          <button key={`${r.ref}|${r.sessionId}|${r.seq ?? 0}`} type="button" className="history-row" onClick={() => open?.(r.sessionId, r.seq)} aria-label={`打开「${name}」`}>
+          <button key={`${r.ref}|${r.sessionId}|${r.seq ?? 0}`} type="button" className="history-row" onClick={() => open?.(r.sessionId, r.seq)} aria-label={t('打开「{name}」', { name })}>
             <span className="history-name">
               {name}
               {project ? <span className="history-project">{project}</span> : null}
@@ -60,7 +62,7 @@ function HistoryTable({ card }: { card: HistoryCardMeta }) {
           </button>
         );
       })}
-      {card.total > card.rows.length ? <p className="history-more">共 {card.total} 条，显示最近 {card.rows.length} 条</p> : null}
+      {card.total > card.rows.length ? <p className="history-more">{t('共 {total} 条，显示最近 {n} 条', { total: card.total, n: card.rows.length })}</p> : null}
     </div>
   );
 }
@@ -73,7 +75,7 @@ function HistoryLink({ href, children }: { href: string; children: ReactNode }) 
   const to = /^\d+$/.test(digits) ? resolve?.(Number(digits)) : undefined;
   if (!to || !open) return <>{children}</>;
   return (
-    <button type="button" className="text-btn history-link" title="打开对话" onClick={() => open(to.sessionId, to.seq)}>
+    <button type="button" className="text-btn history-link" title={t('打开对话')} onClick={() => open(to.sessionId, to.seq)}>
       {children}
     </button>
   );
@@ -126,7 +128,7 @@ function CodeBlock({ node, source, children }: { node?: PreNode | undefined; sou
   if (tools?.previewHtml && /^html?$/i.test(name)) {
     const raw = code?.children?.map((t) => (t.type === 'text' ? (t.value ?? '') : '')).join('') ?? '';
     const end = node?.position?.end?.offset;
-    const closed = end !== undefined && /(?:`{3,}|~{3,})[ \t]*$/.test(source.slice(0, end));
+    const closed = end !== undefined && /(?:\x60{3,}|~{3,})[ \t]*$/.test(source.slice(0, end));
     return <HtmlCard html={raw.replace(/\n$/, '')} closed={closed} open={tools.previewHtml} />;
   }
   const body = (
@@ -137,7 +139,7 @@ function CodeBlock({ node, source, children }: { node?: PreNode | undefined; sou
   if (/^mermaid$/i.test(name)) {
     const raw = code?.children?.map((t) => (t.type === 'text' ? (t.value ?? '') : '')).join('') ?? '';
     const end = node?.position?.end?.offset;
-    const closed = end !== undefined && /(?:`{3,}|~{3,})[ \t]*$/.test(source.slice(0, end));
+    const closed = end !== undefined && /(?:\x60{3,}|~{3,})[ \t]*$/.test(source.slice(0, end));
     // Drawn once written; until then, and if it cannot be drawn, the code as it is.
     if (closed) return <FlowFigure code={raw.replace(/\n$/, '')} fallback={body} />;
   }
@@ -170,8 +172,8 @@ function FlowFigure({ code, fallback }: { code: string; fallback: ReactNode }) {
   return (
     <div className="code-block flow-figure">
       <div className="code-head">
-        <span className="code-lang">流程图</span>
-        <button type="button" className="icon-btn md-tool" aria-pressed={asCode} aria-label={asCode ? '预览' : '代码'} title={asCode ? '预览' : '代码'} onClick={() => setAsCode((v) => !v)}>
+        <span className="code-lang">{t('流程图')}</span>
+        <button type="button" className="icon-btn md-tool" aria-pressed={asCode} aria-label={asCode ? t('预览') : t('代码')} title={asCode ? t('预览') : t('代码')} onClick={() => setAsCode((v) => !v)}>
           <Icon name={asCode ? 'eye' : 'code'} size={14} />
         </button>
         <CopyButton className="icon-btn md-tool" copy={() => clipboard.write(code)} />
@@ -181,11 +183,11 @@ function FlowFigure({ code, fallback }: { code: string; fallback: ReactNode }) {
           <code>{code}</code>
         </pre>
       ) : (
-        <button type="button" className="flow-image" onClick={() => setBig(true)} title="流程图">
-          <img src={url} alt="流程图" />
+        <button type="button" className="flow-image" onClick={() => setBig(true)} title={t('流程图')}>
+          <img src={url} alt={t('流程图')} />
         </button>
       )}
-      {big ? <ImageViewer pictures={[{ url, name: '流程图' }]} onClose={() => setBig(false)} /> : null}
+      {big ? <ImageViewer pictures={[{ url, name: t('流程图') }]} onClose={() => setBig(false)} /> : null}
     </div>
   );
 }
@@ -210,7 +212,7 @@ function HtmlCard({ html, closed, open }: { html: string; closed: boolean; open(
         type="button"
         className="file-card-main"
         aria-disabled={closed ? undefined : 'true'}
-        title={closed ? '预览' : undefined}
+        title={closed ? t('预览') : undefined}
         onClick={() => {
           if (closed) open(title, html);
         }}
@@ -218,7 +220,7 @@ function HtmlCard({ html, closed, open }: { html: string; closed: boolean; open(
         <FileBadge name="page.html" />
         <span className="file-card-text">
           <span className="file-card-name">{title}</span>
-          <span className="file-card-sub">HTML · {lines} 行</span>
+          <span className="file-card-sub">{t('HTML · {n} 行', { n: lines })}</span>
         </span>
       </button>
       <span className="file-card-tools">
@@ -233,7 +235,7 @@ function CodeBlockBody({ node, source, code, name, children }: { node?: PreNode 
   const language = blockLanguage(code?.properties?.className);
   const raw = code?.children?.map((t) => (t.type === 'text' ? (t.value ?? '') : '')).join('') ?? '';
   const end = node?.position?.end?.offset;
-  const closed = end !== undefined && /(?:`{3,}|~{3,})[ \t]*$/.test(source.slice(0, end));
+  const closed = end !== undefined && /(?:\x60{3,}|~{3,})[ \t]*$/.test(source.slice(0, end));
   // The code's text always ends with a line break; while the block is open, its last line is finished only when
   // the answer's text so far ends with one.
   const upto = end !== undefined ? source.slice(0, end) : source;
@@ -295,7 +297,7 @@ function InlineCode({ className, plain, children }: { className?: string | undef
       tabIndex={0}
       data-path={text}
       aria-label={text}
-      title={`${kind === 'folder' ? '打开文件夹' : '预览'} ${text}`}
+      title={kind === 'folder' ? t('打开文件夹 {path}', { path: text }) : t('预览 {path}', { path: text })}
       onClick={open}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -350,7 +352,7 @@ function SaveCsvButton({ save, rows }: { save(text: string): Promise<boolean>; r
   const [done, setDone] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
-  const shown = done ? '已导出' : '导出 CSV';
+  const shown = done ? t('已导出') : t('导出 CSV');
   return (
     <button
       type="button"
@@ -385,7 +387,7 @@ function MdImage({ src, alt }: { src?: string | undefined; alt?: string | undefi
   // Opened full size: with the other pictures of this answer (ImageGroup in Conversation), this one first.
   const [big, setBig] = useState<{ pictures: Picture[]; index: number } | null>(null);
   const button = useRef<HTMLButtonElement>(null);
-  const caption = alt || '图片';
+  const caption = alt || t('图片');
   const group = useImageGroup(button, url, caption);
   const localPath = source.kind === 'local' ? source.path : '';
   const toUrl = tools?.imageUrl;
@@ -402,7 +404,7 @@ function MdImage({ src, alt }: { src?: string | undefined; alt?: string | undefi
     return (
       <button type="button" className="md-image-ask" title={source.url} onClick={() => setUrl(source.url)}>
         <Icon name="eye" size={14} />
-        <span>显示图片</span>
+        <span>{t('显示图片')}</span>
         <span className="md-image-host">{source.host}</span>
       </button>
     );
@@ -418,6 +420,8 @@ function MdImage({ src, alt }: { src?: string | undefined; alt?: string | undefi
 }
 
 export const MarkdownText = memo(function MarkdownText({ text }: { text: string }) {
+  // Kept in a memo: redrawn when the language changes too (the words of its cards and buttons).
+  useLocale();
   // Every path of the answer, filled in as Markdown reads it (before any part of it is drawn).
   const paths = useMemo<string[]>(() => [], []);
   const plugins = useMemo(() => [remarkGfm, remarkLocalPaths(paths)], [paths]);
@@ -504,7 +508,7 @@ export function ThinkingBlock({ text, live, since }: { text: string; live: boole
       open={open}
       onToggle={() => setOpen((o) => !o)}
       icon={now ? <SpicaMark size={LIVE_MARK_SIZE} state="think" className="fold-mark" /> : <Icon name="thinking" size={14} />}
-      label={live ? '正在思考' : '思考过程'}
+      label={live ? t('正在思考') : t('思考过程')}
       tail={now ? <RunClock since={since} /> : undefined}
     >
       <p className="thinking-text">{text}</p>
@@ -520,7 +524,7 @@ export function ThinkingBlock({ text, live, since }: { text: string; live: boole
 export function toolIcon(b: ToolBlock): ReactNode {
   switch (b.state) {
     case 'running':
-      return <SpicaStatusIcon name="running" size={14} title="进行中" />;
+      return <SpicaStatusIcon name="running" size={14} title={t('进行中')} />;
     case 'done':
       return <SpicaStatusIcon name="done" size={14} />;
     case 'error':
@@ -571,14 +575,14 @@ export function AnswerSources({ sources }: { sources: SourceRow[] }) {
   const fold = sources.length > SOURCES_SHOWN + 1;
   const shown = fold && !all ? sources.slice(0, SOURCES_SHOWN) : sources;
   return (
-    <section className="answer-sources" aria-label="来源">
-      <span className="answer-sources-label">来源</span>
+    <section className="answer-sources" aria-label={t('来源')}>
+      <span className="answer-sources-label">{t('来源')}</span>
       {shown.map((r) => (
         <SourceLink key={r.url} row={r} className="source-chip" />
       ))}
       {fold ? (
         <button type="button" className="btn file-cards-more" aria-expanded={all} onClick={() => setAll((v) => !v)}>
-          {all ? '收起' : `全部 ${sources.length} 个`}
+          {all ? t('收起') : t('全部 {n} 个', { n: sources.length })}
         </button>
       ) : null}
     </section>
@@ -590,11 +594,11 @@ export const ToolCardsContext = createContext<Record<string, FileCardMeta> | und
 
 /** What a call's own line says after its words: how it ended (Failed, stopped), or how long it took. */
 function toolMeta(block: ToolBlock, done = false): ReactNode {
-  if (block.state === 'pending') return <SpicaStatusIcon name="running" size={14} title="进行中" />;
+  if (block.state === 'pending') return <SpicaStatusIcon name="running" size={14} title={t('进行中')} />;
   if (block.state === 'error') return <span className="text-danger">Failed</span>;
-  if (block.state === 'unavailable') return '已停用，未执行';
-  if (block.state === 'repeated') return '重复，未执行';
-  if (block.state === 'timeout') return '已超时';
+  if (block.state === 'unavailable') return t('已停用，未执行');
+  if (block.state === 'repeated') return t('重复，未执行');
+  if (block.state === 'timeout') return t('已超时');
   if (block.state === 'running') return null;
   if (block.durationMs !== undefined && !done) return block.autoApproved ? `Auto · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs);
   return block.autoApproved ? 'Auto' : null;
@@ -670,7 +674,7 @@ function ThinkingItem({ text }: { text: string }) {
           <Icon name="thinking" size={14} />
         </span>
         <span className="tool-text">
-          <span className="tool-verb">思考过程</span>
+          <span className="tool-verb">{t('思考过程')}</span>
         </span>
         <Icon name="chevronRight" size={14} className="fold-chevron" />
       </button>
@@ -729,7 +733,7 @@ export function ToolGroup({ blocks, steps = blocks, since }: { blocks: ToolBlock
   const failed = blocks.filter((b) => b.state === 'error').length;
   const total = blocks.reduce((n, b) => n + (b.durationMs ?? 0), 0);
   const label = now ? runningText(running) : busy ? runningWords(running[0] ?? blocks.find((b) => b.state === 'pending')!) : groupWords(blocks.map((b) => ({ call: b, card: cards?.[b.callId] })));
-  const meta = busy ? (now ? null : <SpicaStatusIcon name="running" size={14} title="进行中" />) : failed ? <span className="text-danger">{failed} failed</span> : total && !done ? formatDuration(total) : null;
+  const meta = busy ? (now ? null : <SpicaStatusIcon name="running" size={14} title={t('进行中')} />) : failed ? <span className="text-danger">{failed} failed</span> : total && !done ? formatDuration(total) : null;
   return (
     <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={now ? LIVE_MARK : <Icon name="tool" size={14} />} label={label} meta={meta} tail={now ? <RunClock since={since} /> : undefined}>
       <div className="tool-list">
@@ -795,10 +799,10 @@ function FileDid({ f, className }: { f: FileRef; className: string }) {
 function FileTools({ full, actions }: { full: string; actions: FileCardActions }) {
   return (
     <span className="file-card-tools">
-      <button type="button" className="icon-btn md-tool" aria-label="打开所在文件夹" title="打开所在文件夹" onClick={() => actions.reveal(full)}>
+      <button type="button" className="icon-btn md-tool" aria-label={t('打开所在文件夹')} title={t('打开所在文件夹')} onClick={() => actions.reveal(full)}>
         <Icon name="folder" size={14} />
       </button>
-      <CopyButton className="icon-btn md-tool" label="复制路径" copy={() => clipboard.write(full)} />
+      <CopyButton className="icon-btn md-tool" label={t('复制路径')} copy={() => clipboard.write(full)} />
     </span>
   );
 }
@@ -814,14 +818,14 @@ function FileList({ files, onOpen, actions }: { files: FileRef[]; onOpen(path: s
   const shownFiles = fold && !all ? files.slice(0, FILE_LIST_SHOWN) : files;
   return (
     <>
-      <ul className="file-list" aria-label={`${files.length} 个文件`}>
+      <ul className="file-list" aria-label={t('{n} 个文件', { n: files.length })}>
         {shownFiles.map((f) => {
           const shown = f.shown ?? f.path;
           const name = f.card?.name ?? fileName(shown);
           const full = fullPath(f.path, actions?.cwd);
           return (
             <li key={f.path} className="file-row">
-              <button type="button" className="file-row-main" onClick={() => onOpen(f.path)} title={`打开 ${full}`}>
+              <button type="button" className="file-row-main" onClick={() => onOpen(f.path)} title={t('打开 {path}', { path: full })}>
                 <span className="file-row-name">
                   <FileGlyph name={name} />
                   <span className="file-row-text">{name}</span>
@@ -836,7 +840,7 @@ function FileList({ files, onOpen, actions }: { files: FileRef[]; onOpen(path: s
       </ul>
       {fold ? (
         <button type="button" className="btn file-cards-more" aria-expanded={all} onClick={() => setAll((v) => !v)}>
-          {all ? '收起' : `全部 ${files.length} 个`}
+          {all ? t('收起') : t('全部 {n} 个', { n: files.length })}
         </button>
       ) : null}
     </>
@@ -868,7 +872,7 @@ export function FileCards({ files, onOpen, actions }: { files: FileRef[]; onOpen
         const full = fullPath(f.path, actions?.cwd);
         return (
           <div key={f.path} className="card file-card">
-            <button type="button" className="file-card-main" onClick={() => onOpen(f.path)} title={`打开 ${full}`}>
+            <button type="button" className="file-card-main" onClick={() => onOpen(f.path)} title={t('打开 {path}', { path: full })}>
               {actions?.imageUrl && PICTURE.test(f.card?.name ?? shown) ? (
                 <CardPicture path={full} name={f.card?.name ?? fileName(shown)} url={actions.imageUrl} />
               ) : (
@@ -903,7 +907,7 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
     onAnswer(v);
   };
   return (
-    <section className={closed ? 'card ask-card is-done' : 'card ask-card'} aria-label="提问">
+    <section className={closed ? 'card ask-card is-done' : 'card ask-card'} aria-label={t('提问')}>
       {/* One row as on a confirmation card: the question (no mark before it: 他问「为什么要有问号」, it says
           nothing the question and its options do not), and once closed the answer (or 已中断) at its right end;
           the options and the box below, in a part of their own. */}
@@ -913,7 +917,7 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
         {closed ? (
           <p className={answered ? 'card-answer' : 'card-answer is-stopped'}>
             <SpicaStatusIcon name={answered ? 'done' : 'stopped'} size={15} />
-            <span>{answered ? block.answer : CARD_STOPPED}</span>
+            <span>{answered ? block.answer : t(CARD_STOPPED)}</span>
           </p>
         ) : null}
       </header>
@@ -938,13 +942,13 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
             <input
               className="input"
               value={draft}
-              placeholder={block.options.length ? '或输入回答' : '输入回答'}
+              placeholder={block.options.length ? t('或输入回答') : t('输入回答')}
               onChange={(e) => setDraft(e.target.value)}
-              aria-label="回答"
+              aria-label={t('回答')}
               disabled={sent}
             />
             <button type="submit" className="btn btn-primary" disabled={sent || !draft.trim()}>
-              回答
+              {t('回答')}
             </button>
           </form>
         </div>
@@ -955,23 +959,26 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
 
 /** What a question or confirmation says when the run was stopped while it waited; red, as the answer's own
  * （中断） is. The user's own 已拒绝 stays grey. */
-const CARD_STOPPED = '已中断';
+const CARD_STOPPED = N_('已中断');
 
 /** Names for the arguments people see when asked to confirm (what is not here shows by its own name). */
 const ARG_LABEL: Record<string, string> = {
-  path: '路径',
-  url: '网址',
-  to: '收件人',
-  cc: '抄送',
-  bcc: '密送',
-  subject: '标题',
-  body: '正文',
-  content: '内容',
-  text: '内容',
-  query: '搜索词',
-  title: '标题',
-  task: '任务',
+  path: N_('路径'),
+  url: N_('网址'),
+  to: N_('收件人'),
+  cc: N_('抄送'),
+  bcc: N_('密送'),
+  subject: N_('标题|mail'),
+  body: N_('正文'),
+  content: N_('内容'),
+  text: N_('内容'),
+  query: N_('搜索词'),
+  title: N_('标题'),
+  task: N_('任务'),
 };
+
+/** ARG_LABEL in the current language. */
+const argLabels = (): Record<string, string> => Object.fromEntries(Object.entries(ARG_LABEL).map(([k, v]) => [k, t(v)]));
 
 /**
  * Exactly what a confirmation would let run, nothing cut: a command in its code box, other calls their
@@ -991,7 +998,7 @@ export function ConfirmTarget({ name, input, bare, change }: { name: string; inp
   }
   const rows = Object.entries(v).filter(([k, val]) => k !== 'description' && val !== undefined && val !== null && val !== '');
   if (!rows.length) return null;
-  return <CallArgs input={Object.fromEntries(rows)} labels={ARG_LABEL} bare={bare} />;
+  return <CallArgs input={Object.fromEntries(rows)} labels={argLabels()} bare={bare} />;
 }
 
 /**
@@ -1012,29 +1019,29 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
   const facts = command !== null ? commandFacts(command) : [];
   // 无法撤销 and the warning: a dangerous command, or a step a plugin marked irreversible (its hook, or its manifest).
   const danger = facts.some((f) => f.danger) || block.irreversible === true;
-  const title = command === null ? confirmTitle(block.name, block.input, block.reason) : facts.length ? facts.map((f) => f.text).join('；') : '运行命令';
+  const title = command === null ? confirmTitle(block.name, block.input, block.reason) : facts.length ? facts.map((f) => f.text).join(t('；')) : t('运行命令');
   const cls = ['card', 'confirm-card', danger ? 'is-danger' : '', decided ? 'is-done' : ''].filter(Boolean).join(' ');
   return (
-    <section className={cls} aria-label="确认">
+    <section className={cls} aria-label={t('确认')}>
       <header className="card-head">
         {/* Only a dangerous one has a mark (the warning); an ordinary one's ringed i said nothing its 拒绝 / 允许
             do not (他在决策页 d26 选「只去掉普通确认卡的 i」). */}
         {danger ? <SpicaStatusIcon name="warning" size={16} /> : null}
         <span className="card-title">{title}</span>
-        {danger ? <span className="confirm-undo">无法撤销</span> : null}
+        {danger ? <span className="confirm-undo">{t('无法撤销')}</span> : null}
         <span className="confirm-spacer" />
         {decided ? (
           <p className={block.cancelled === true && block.approved === undefined ? 'card-answer is-stopped' : 'card-answer'}>
             <SpicaStatusIcon name={block.approved ? 'done' : 'stopped'} size={15} />
-            <span>{block.approved ? '已允许' : block.approved === false ? '已拒绝' : CARD_STOPPED}</span>
+            <span>{block.approved ? t('已允许') : block.approved === false ? t('已拒绝') : t(CARD_STOPPED)}</span>
           </p>
         ) : (
           <div className="card-actions">
             <button type="button" className="btn" disabled={sent} onClick={() => decide(false)}>
-              拒绝
+              {t('拒绝')}
             </button>
             <button type="button" className="btn btn-primary" disabled={sent} onClick={() => decide(true)}>
-              允许
+              {t('允许')}
             </button>
           </div>
         )}
@@ -1048,7 +1055,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
 export function SuggestCard({ block, onPick }: { block: Extract<Block, { type: 'suggest' }>; onPick(prompt: string): void }) {
   if (block.actions.length === 0) return null;
   return (
-    <section className="card suggest-card" aria-label="操作建议">
+    <section className="card suggest-card" aria-label={t('操作建议')}>
       {block.title ? <header className="suggest-title">{block.title}</header> : null}
       <div className="suggest-list">
         {block.actions.map((a) => (
@@ -1063,24 +1070,26 @@ export function SuggestCard({ block, onPick }: { block: Extract<Block, { type: '
 }
 
 const NOTE_HEAD: Record<ChildNote['kind'], string> = {
-  report: '已完成',
-  relay: '你的回复',
-  decision: '已决定',
+  report: N_('已完成'),
+  relay: N_('你的回复'),
+  decision: N_('已决定'),
 };
 
 /** A sub-agent's report, something the user said in a sub-session, or a decision made there. */
 export function ChildNoteCard({ note, onOpen }: { note: ChildNote; onOpen(id: string): void }) {
-  const from = note.fromTitle ?? '子任务';
-  const head = NOTE_HEAD[note.kind];
+  const from = note.fromTitle ?? t('子任务');
+  const head = t(NOTE_HEAD[note.kind]);
+  // A report with nothing written: the window's own words, in the current language.
+  const text = note.text === NO_REPORT_WORDS ? t(NO_REPORT_WORDS) : note.text;
   return (
-    <section className={`card note-card note-${note.kind}`} aria-label={`${from}：${head}`}>
+    <section className={`card note-card note-${note.kind}`} aria-label={t('{from}：{kind}', { from, kind: head })}>
       <header className="note-head">
-        <button type="button" className="note-from" onClick={() => onOpen(note.fromSessionId)} title={`打开「${from}」`}>
+        <button type="button" className="note-from" onClick={() => onOpen(note.fromSessionId)} title={t('打开「{name}」', { name: from })}>
           {from}
         </button>
         <span className="note-kind">{head}</span>
       </header>
-      {note.kind === 'report' ? <MarkdownText text={note.text} /> : <p className="note-text">{note.text}</p>}
+      {note.kind === 'report' ? <MarkdownText text={text} /> : <p className="note-text">{text}</p>}
     </section>
   );
 }

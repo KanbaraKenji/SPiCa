@@ -9,6 +9,8 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { checkConfigValue, type UserConfigField, type UserConfigValue } from '@spica/plugins/user-config';
 import type { SecretBox } from '../providers/store';
+import { t } from '../../shared/i18n';
+import { configProblemText } from '../../shared/plugin-config-words';
 
 /** What deploy.json sets for a plugin: by key, a value and whether people may change it. Never a password (refused when read). */
 export type DeployPluginConfig = Record<string, Record<string, { value: UserConfigValue; locked?: boolean }>>;
@@ -41,7 +43,7 @@ const isValue = (v: unknown): v is UserConfigValue => typeof v === 'string' || t
 export class PluginConfigError extends Error {
   readonly fields: Record<string, string>;
   constructor(fields: Record<string, string>) {
-    super(Object.values(fields)[0] ?? '设置有误');
+    super(Object.values(fields)[0] ?? t('设置有误'));
     this.name = 'PluginConfigError';
     this.fields = fields;
   }
@@ -88,18 +90,18 @@ export class PluginConfigStore {
       if (f.type === 'password') {
         if (raw === undefined || raw === null || raw === '') continue;
         if (typeof raw !== 'string') {
-          errors[f.key] = '请输入文字';
+          errors[f.key] = t('请输入文字');
           continue;
         }
         if (!this.#box.available()) {
-          errors[f.key] = '无法加密保存密码，未保存。';
+          errors[f.key] = t('无法加密保存密码，未保存。');
           continue;
         }
         values[f.key] = { sealed: this.#box.encrypt(raw) };
         continue;
       }
       const c = checkConfigValue(f, raw);
-      if (!c.ok) errors[f.key] = c.message;
+      if (!c.ok) errors[f.key] = configProblemText(c.message, f.options);
       else if (c.value === null) delete values[f.key];
       else values[f.key] = { v: c.value };
     }
