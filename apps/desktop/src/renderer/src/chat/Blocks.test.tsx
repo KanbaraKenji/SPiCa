@@ -169,6 +169,49 @@ describe('ConfirmCard', () => {
     });
   });
 
+  it('a download for the app’s Python: what, from where, how big, and the total; — where the size is not known, and then no total', () => {
+    const install = {
+      python: { version: '3.12.16', host: 'releases.astral.sh', bytes: 31 * 1024 * 1024 },
+      packages: [
+        { name: 'pandas', version: '2.3.3', bytes: 11 * 1024 * 1024 },
+        { name: 'numpy', version: '2.3.4', bytes: 12.8 * 1024 * 1024 },
+      ],
+      packageHost: 'pypi.org',
+    };
+    const block = { type: 'confirm' as const, callId: 'p1', name: 'python_env', input: { packages: ['pandas'] }, reason: '', cause: 'python_install' as const, install };
+    render(<ConfirmCard block={block} onDecide={vi.fn()} />);
+    expect(document.querySelector('.card-title')?.textContent).toBe('下载 Python 3.12.16 和 2 个库');
+    const rows = [...document.querySelectorAll('.install-row')].map((r) => [...r.children].map((c) => c.textContent));
+    expect(rows).toEqual([
+      ['Python 3.12.16', 'releases.astral.sh', '31 MB'],
+      ['pandas 2.3.3', 'pypi.org', '11 MB'],
+      ['numpy 2.3.4', 'pypi.org', '12.8 MB'],
+      ['合计', '', '54.8 MB'],
+    ]);
+    // no arguments box, no explanation line
+    expect(document.querySelector('.tool-args')).toBeNull();
+    expect(document.querySelector('.card-why')).toBeNull();
+    cleanup();
+    // the first time: Python known, the packages asked for by name only; no total
+    cleanup();
+    render(<ConfirmCard block={{ ...block, install: { python: install.python, packages: [{ name: 'pandas' }, { name: 'openpyxl' }], packageHost: 'pypi.org' } }} onDecide={vi.fn()} />);
+    expect(document.querySelector('.card-title')?.textContent).toBe('下载 Python 3.12.16 和 2 个库');
+    expect([...document.querySelectorAll('.install-row')].map((r) => [...r.children].map((c) => c.textContent))).toEqual([
+      ['Python 3.12.16', 'releases.astral.sh', '31 MB'],
+      ['pandas', 'pypi.org', '—'],
+      ['openpyxl', 'pypi.org', '—'],
+    ]);
+    cleanup();
+    // later: packages only; one size unknown
+    render(<ConfirmCard block={{ ...block, install: { packages: [{ name: 'openpyxl', version: '3.1.5', bytes: 250 * 1024 }, { name: 'et-xmlfile' }], packageHost: 'pypi.example.com' } }} onDecide={vi.fn()} />);
+    expect(document.querySelector('.card-title')?.textContent).toBe('安装 2 个库');
+    const later = [...document.querySelectorAll('.install-row')].map((r) => [...r.children].map((c) => c.textContent));
+    expect(later).toEqual([
+      ['openpyxl 3.1.5', 'pypi.example.com', '250 KB'],
+      ['et-xmlfile', 'pypi.example.com', '—'],
+    ]);
+  });
+
   it('an ordinary one has no mark before its title, in every state; a dangerous one keeps the warning and 无法撤销', () => {
     const mail = { type: 'confirm' as const, callId: 'c5', name: 'send_email', input: {}, reason: '发送邮件给「项目组」' };
     for (const state of [{}, { approved: true }, { approved: false }, { cancelled: true }]) {

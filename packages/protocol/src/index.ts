@@ -517,9 +517,24 @@ export interface GuardNote {
 /** settings_change: a script connected to Spica's MCP service asks to change the model settings (only the window can answer). */
 /**
  * outside_folder: write_file / edit_file to a file outside the conversation's working folder, its project's folder
- * and the folders the user gave it (see `outsideFolder`); asked in approval mode auto too.
+ * and the folders the user gave it (see `outsideFolder`), or a command that writes there in approval mode auto
+ * (command-scope.ts); asked in approval mode auto too.
+ * python_install: python_env would download Python or packages into the app's folder (asked in auto mode too;
+ * `install` says what).
  */
-export type GuardCause = 'untrusted_turn' | 'outside_link' | 'sensitive_file' | 'plugin_view' | 'settings_change' | 'outside_folder';
+export type GuardCause = 'untrusted_turn' | 'outside_link' | 'sensitive_file' | 'plugin_view' | 'settings_change' | 'outside_folder' | 'python_install';
+
+/**
+ * What a python_env install waiting to be confirmed would download, worked out when it asks (nothing downloaded):
+ * the Python when there is none yet, and each package to be installed (dependencies too) with its version and file
+ * size where they could be worked out. Hosts are where the files come from (a company mirror or index when
+ * deploy.json names one).
+ */
+export interface InstallPreview {
+  python?: { version: string; host: string; bytes?: number };
+  packages: { name: string; version?: string; bytes?: number }[];
+  packageHost: string;
+}
 
 /** What a plugin's own view gets back from callPluginTool (the tool's text as is). */
 export interface PluginToolResult {
@@ -547,6 +562,7 @@ export type PendingItem =
       change?: ChangePreview;
       /** The write goes outside the conversation's folders: the folder it writes in (the card says so, and offers to allow it). */
       outsideFolder?: string;
+      install?: InstallPreview;
       createdAt: string;
     }
   | { kind: 'ask'; callId: string; question: string; options?: string[]; createdAt: string };
@@ -612,7 +628,7 @@ export type CoreEventBody =
       durationMs: number;
     }
   /** `irreversible`: as on a pending confirmation (the card shows 无法撤销). */
-  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string }
+  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; install?: InstallPreview }
   /** Outside content (mail, web page, file, plugin tool) contained text that looks like instructions. */
   | { type: 'guard.flagged'; note: GuardNote; callId?: string }
   /** An irreversible call ran without asking because the session's approval mode is auto. */

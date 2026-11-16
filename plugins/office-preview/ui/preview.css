@@ -74,6 +74,10 @@ table.sheet {
   font-family: Calibri, 'Microsoft YaHei', sans-serif;
   font-size: 11pt;
 }
+/* every page of rows a table of its own (sheet.js): one line between them, not two */
+table.sheet + table.sheet {
+  margin-top: -1px;
+}
 table.sheet td {
   border: 1px solid #e1e1e1;
   padding: 0 3px;

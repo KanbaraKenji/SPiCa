@@ -9,6 +9,7 @@ const LABELS: Record<string, string> = {
   glob: N_('查找文件'),
   grep: N_('搜索内容'),
   run_command: N_('运行命令'),
+  python_env: N_('配置 Python'),
   web_fetch: N_('打开网页'),
   web_search: N_('网页搜索'),
   send_email: N_('发送邮件'),
@@ -172,3 +173,11 @@ export const GUARD_FLAG_TEXT: Record<string, string> = {
     return t('插件返回内容中含有指令，已忽略');
   },
 };
+
+/** A file size: 512 B, 37 KB, 1.4 MB, 2.1 GB (powers of 1024). */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1).replace(/\.0$/, '')} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(1).replace(/\.0$/, '')} GB`;
+}

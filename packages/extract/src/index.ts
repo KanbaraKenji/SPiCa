@@ -10,7 +10,10 @@ import type { ExtractRequest, ExtractResult, FileKind } from './types.ts';
 import { extractXlsx } from './xlsx.ts';
 
 export { ExtractError, type ExtractRequest, type ExtractResult, type FileCardMeta, type FileKind, type ReadLocation, type SheetInfo } from './types.ts';
-export { decodeText } from './text.ts';
+export { csvGrid, decodeText, sniffDelimiter } from './text.ts';
+export { SheetBook } from './xlsx.ts';
+export type { Grid } from './grid.ts';
+export { colName } from './util.ts';
 
 export interface ExtractOptions {
   /** Cap on characters returned by one read (the kernel's own cap applies too). Default 60 000. */

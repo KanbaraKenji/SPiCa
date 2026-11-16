@@ -4,6 +4,11 @@ dist/
 out/
 # Packaged installers (electron-builder output); not scripts/release/
 apps/*/release/
+# Bundled libraries for the Agent's scripts (apps/desktop/scripts/node-libs.mjs)
+apps/*/node-libs/
+# uv, fetched at build time (apps/desktop/scripts/uv.mjs)
+apps/*/uv/
+apps/*/.node-libs-*.cjs
 coverage/
 *.tsbuildinfo
 .vite/

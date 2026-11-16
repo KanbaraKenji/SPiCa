@@ -20,6 +20,7 @@ import type {
   MessageKind,
   MemoryCardMeta,
   MessageMeta,
+  InstallPreview,
   PendingItem,
   RegenerateCode,
   RegenerateResult,
@@ -40,6 +41,7 @@ import { commandOutside, tooWideToAllow } from './command-scope.ts';
 import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.ts';
 import { samePath } from './move-folder.ts';
 import { netHint } from './net.ts';
+import { runtimesLine } from './runtimes.ts';
 import { REGENERATE_HINTS } from '@spica/protocol';
 import { comparableResult, repeatLimits, repeatReminder, repeatsBefore, repeatStopResult } from './repeat-guard.ts';
 
@@ -1100,9 +1102,14 @@ export class Session {
         pending.push({ sessionId: this.id, callId: call.id, messageId: assistant.id, item });
         return;
       }
+      // a download into the app's own Python (python_env): the user confirms what and how big, in auto mode too;
+      // nothing to download, nothing to ask. A preview that fails still asks, with what is known.
+      const install = tool.previewInstall
+        ? await tool.previewInstall((input ?? {}) as Record<string, unknown>).catch((): InstallPreview => ({ packages: [], packageHost: '' }))
+        : undefined;
       // outside content in play: the user confirms, whatever hooks or plugin settings say
-      const outsideFolder = this.#outsideFolder(tool, (input ?? {}) as Record<string, unknown>);
-      const cause = this.#guardCause(tool, (input ?? {}) as Record<string, unknown>, guard) ?? (outsideFolder ? 'outside_folder' : undefined);
+      const outsideFolder = install ? undefined : this.#outsideFolder(tool, (input ?? {}) as Record<string, unknown>);
+      const cause = install ? 'python_install' : (this.#guardCause(tool, (input ?? {}) as Record<string, unknown>, guard) ?? (outsideFolder ? 'outside_folder' : undefined));
       // approval mode auto passes only the default confirmation of irreversible tools, never the guard's or a hook's
       const autoApproved = !cause && decision.action === 'confirm' && decision.byDefault === true && cfg.approvalMode === 'auto';
       if ((decision.action === 'confirm' && !autoApproved) || cause) {
@@ -1118,6 +1125,7 @@ export class Session {
           ...(decision.action === 'confirm' && decision.irreversible ? { irreversible: true } : {}),
           ...(change ? { change } : {}),
           ...(outsideFolder ? { outsideFolder } : {}),
+          ...(install ? { install } : {}),
           createdAt: isoNow(),
         };
         this.#rt.store.upsertToolCall({ ...rec, input, status: 'pending' });
@@ -1152,6 +1160,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
             ...(p.item.irreversible ? { irreversible: true } : {}),
             ...(p.item.change ? { change: p.item.change } : {}),
             ...(p.item.outsideFolder ? { outsideFolder: p.item.outsideFolder } : {}),
+            ...(p.item.install ? { install: p.item.install } : {}),
           });
         }
       }
@@ -1584,6 +1593,8 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
             present: tools.some((t) => t.spec.name === 'present_files'),
           })
         : '',
+      // what run_command can run here (the backend probes it at start)
+      this.#rt.runtimes && tools.some((t) => t.spec.name === 'run_command') ? runtimesLine(this.#rt.runtimes) : '',
       this.#leadsOthers() ? TEAM_RULE : '',
     ].filter(Boolean);
   }
@@ -1660,6 +1671,7 @@ const GUARD_REASON: Record<GuardCause, string> = {
   plugin_view: 'a plugin view asks to run an irreversible action',
   settings_change: 'a script connected to the app asks to change the settings',
   outside_folder: 'writes a file outside the folders of this conversation',
+  python_install: "downloads Python or packages into the app's folder",
 };
 
 export const TEAM_RULE =

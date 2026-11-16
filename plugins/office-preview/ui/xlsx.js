@@ -16,8 +16,21 @@
     var view = document.createElement('div');
     view.className = 'view';
     root.append(tabs, notes, view);
+    // The sheet shown: its rows come a page at a time, the next one added as it scrolls near the end.
+    var current = null;
+    var fill = function () {
+      while (current && current.more() && root.scrollTop + root.clientHeight > root.scrollHeight - 800) {
+        view.querySelector('.sheet-wrap').insertAdjacentHTML('beforeend', current.next());
+      }
+    };
+    // drawn again (the file changed): the last drawing's listener goes
+    if (root.spicaFill) root.removeEventListener('scroll', root.spicaFill);
+    root.spicaFill = fill;
+    root.addEventListener('scroll', fill, { passive: true });
     var open = function (i) {
       var out = window.OfficeSheet.renderSheet(sheets[i], got.wb);
+      current = out;
+      root.scrollTop = 0;
       view.innerHTML = out.html;
       var all = got.notes.concat(out.notes);
       notes.textContent = all.join(' ');
@@ -25,6 +38,7 @@
       Array.prototype.forEach.call(tabs.children, function (b, j) {
         b.setAttribute('aria-selected', String(i === j));
       });
+      fill();
     };
     sheets.forEach(function (ws, i) {
       var b = document.createElement('button');

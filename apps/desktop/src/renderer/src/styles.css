@@ -1745,7 +1745,6 @@ pre .hl-punctuation {
   padding: 0;
   border-radius: var(--radius-m);
   overflow: hidden;
-  cursor: zoom-in;
 }
 
 .md .md-image img {
@@ -2420,7 +2419,6 @@ pre .hl-punctuation {
   display: block;
   width: 100%;
   padding: 6px 14px 14px;
-  cursor: zoom-in;
 }
 
 .flow-figure .flow-image img {
@@ -6341,6 +6339,47 @@ section.plugins-part > .plugins-part-title {
   border-radius: 0;
 }
 
+/* A download for the app's Python (python_env): one row per item (name and version, where from, size), the
+   total last; in line with the card's title, as a call's arguments. */
+.confirm-card > .install-list {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr) max-content;
+  /* no column gap: the total's line runs across; the space is the cells' own */
+  row-gap: 2px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--spica-border);
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
+}
+
+.install-row {
+  display: contents;
+}
+
+.install-name {
+  overflow-wrap: anywhere;
+}
+
+.install-host {
+  min-width: 0;
+  padding: 0 16px;
+  overflow: hidden;
+  color: var(--spica-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.install-size {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.install-row.is-total > span {
+  padding-top: 4px;
+  border-top: 1px solid var(--spica-border);
+  margin-top: 2px;
+}
+
 
 /* On a card the card is the box: the label is the first line of the code area, in line with the command. */
 .tool-command.is-bare {
@@ -6531,9 +6570,12 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* File preview in the right panel (read-only). */
+/* min-height 0: the panel is a column, so without it a long file makes the preview as tall as the file and
+   nothing inside scrolls. */
 .preview {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--spica-bg);
@@ -6669,6 +6711,23 @@ section.plugins-part > .plugins-part-title {
   text-align: left;
 }
 
+/* The columns at the widths FilePreview.tsx Sheet gives them (its longest cell, up to a limit): a longer cell is cut. */
+.preview-sheet table.is-fixed {
+  table-layout: fixed;
+}
+
+.preview-sheet table.is-fixed td,
+.preview-sheet table.is-fixed tbody th {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The rows not drawn: empty space of their height. */
+.preview-sheet tr.preview-gap > td {
+  padding: 0;
+  border: 0;
+}
+
 .preview-sheet thead th {
   position: sticky;
   top: 0;
@@ -6734,6 +6793,21 @@ section.plugins-part > .plugins-part-title {
   padding: 24px;
   color: var(--spica-muted);
   text-align: center;
+}
+
+/* A file being read: shown only when it takes a moment (a small file opens without it flashing). */
+.preview-loading {
+  gap: 8px;
+  animation: preview-loading-in 0s linear 0.2s both;
+}
+
+@keyframes preview-loading-in {
+  from {
+    visibility: hidden;
+  }
+  to {
+    visibility: visible;
+  }
 }
 
 /* Plugin pages: a sandboxed frame filling its place. */
@@ -6961,6 +7035,11 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* A picture at full size over the window. */
+/* A picture a press shows big (ui/ImageViewer): in an answer, a flowchart, the preview. One class for the three. */
+.zoomable {
+  cursor: zoom-in;
+}
+
 .image-viewer {
   position: fixed;
   inset: 0;
