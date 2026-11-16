@@ -316,3 +316,32 @@ export async function extractXlsx(src: SourceFile, req: ExtractRequest, maxChars
     meta: { ...src.metaBase('xlsx'), sheets: infos, read, ...(truncated ? { truncated } : {}) },
   };
 }
+
+/**
+ * A workbook opened once for a viewer (the app's preview panel), not for the model: each sheet is read whole
+ * the first time it is asked for and kept, so paging through it or going back to it reads nothing again.
+ * `keepChars` bounds what one sheet keeps (its Grid says `clipped` past it).
+ */
+export class SheetBook {
+  readonly sheets: readonly { name: string; hidden: boolean }[];
+  readonly #wb: Workbook;
+  readonly #grids = new Map<number, Grid>();
+  readonly #keepChars: number;
+
+  constructor(bytes: Uint8Array, keepChars = 20_000_000) {
+    this.#wb = readWorkbook(bytes);
+    if (this.#wb.sheets.length === 0) throw new ExtractError(`Not a readable ${WHAT} (it lists no sheets).`);
+    this.sheets = this.#wb.sheets.map((s) => ({ name: s.name, hidden: s.hidden }));
+    this.#keepChars = keepChars;
+  }
+
+  /** Sheet `index` (0-based), whole: its rows with content, sorted, each cells[0] = column A. */
+  grid(index: number): Grid {
+    let g = this.#grids.get(index);
+    if (!g) {
+      g = parseSheet(this.#wb, index, { from: 1, to: Number.MAX_SAFE_INTEGER, keepChars: this.#keepChars });
+      this.#grids.set(index, g);
+    }
+    return g;
+  }
+}

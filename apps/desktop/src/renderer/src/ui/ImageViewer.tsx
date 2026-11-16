@@ -1,5 +1,5 @@
 // A picture at full size over the window; Esc or a click closes it, and the keyboard stays with it while it is
-// open (useModal). Ctrl+wheel zooms it around the pointer (not the window); dragging moves it. With other
+// open (useModal). The wheel (with Ctrl or without) zooms it around the pointer (not the window); dragging moves it. With other
 // pictures of its group (one message, one answer, the input box's), ‹ N of M › under it and the arrow keys go
 // to the one before or after (他: 「看图片也给我加上这个可以放大以后直接切换下一张」).
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
@@ -96,7 +96,6 @@ export function ImageViewer({ pictures, start = 0, onClose }: { pictures: Pictur
     const el = box.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey) return;
       // The picture's zoom, not the window's (that listener is on the window, after this one).
       e.preventDefault();
       e.stopPropagation();
