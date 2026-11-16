@@ -10,6 +10,8 @@ export interface Notice {
   key: string;
   tone: 'error' | 'warning';
   text: string;
+  /** Shown on hover over the text (e.g. the program's own words behind a short line). */
+  title?: string;
   action?: { label: string; onClick(): void };
 }
 
@@ -20,7 +22,9 @@ export function RunNotices({ notices }: { notices: readonly Notice[] }) {
       {notices.map((n) => (
         <div key={n.key} className={`run-notice is-${n.tone}`} role={n.tone === 'error' ? 'alert' : 'status'}>
           <SpicaStatusIcon name={n.tone} size={15} />
-          <span className="run-notice-text">{n.text}</span>
+          <span className="run-notice-text" {...(n.title ? { title: n.title } : {})}>
+            {n.text}
+          </span>
           {n.action ? (
             <button type="button" className="btn btn-small" onClick={n.action.onClick}>
               {n.action.label}

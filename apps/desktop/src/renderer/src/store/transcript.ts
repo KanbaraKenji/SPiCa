@@ -1,7 +1,7 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
 import { relocate, shownPath } from './relocate';
-import type { ChangePreview, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
+import type { ChangePreview, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { humanError, isBalanceWords } from '../../../shared/errors';
 import { AGENT_MESSAGES_LIMIT_MARK, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
@@ -244,6 +244,8 @@ export interface Transcript {
    * money); a button beside it opens it, at `errorProvider` when the stop said which.
    */
   errorAction?: 'models';
+  /** A python_env download the user allowed failed in the last run: why (a notice above the input box). */
+  installFailure?: InstallFailure;
   /** The provider whose 花费上限 stopped the run (from the budget.stop scope). */
   errorProvider?: string;
   /** The error is a 花费上限 stop: its period and when calls go again (errorText words it in the current language). */
@@ -841,6 +843,11 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       if (c) c.approved = e.approved;
       return t;
     }
+    case 'install.failed': {
+      // a download the user allowed failed: why, above the input box until the next run starts (not kept in history)
+      t.installFailure = e.failure;
+      return t;
+    }
     case 'ask.request': {
       const existing = findBlock(items, 'ask', e.callId);
       if (existing) {
@@ -859,6 +866,8 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     }
     case 'status': {
       if (isRunning(e.status)) {
+        // a new run (not the next step of this one): a failed download from the last one is old news
+        if (!t.run) delete t.installFailure;
         const startedAt = t.run?.startedAt ?? now;
         t.run = { startedAt, status: e.status, ...(e.detail ? { detail: e.detail } : {}) };
         delete t.error;

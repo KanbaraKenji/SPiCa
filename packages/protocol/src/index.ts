@@ -522,6 +522,17 @@ export type GuardCause = 'untrusted_turn' | 'outside_link' | 'sensitive_file' | 
  * size where they could be worked out. Hosts are where the files come from (a company mirror or index when
  * deploy.json names one).
  */
+/**
+ * Why a python_env download failed, sorted (core python-env.ts installFailure): connect (the host could not be
+ * reached), certificate (its certificate is not trusted), proxy (the proxy could not be reached or refused),
+ * proxy_auth (it wants a login, 407), disk (no space), other. `host`: the one that failed. `detail`: uv's own words.
+ */
+export interface InstallFailure {
+  reason: 'connect' | 'certificate' | 'proxy' | 'proxy_auth' | 'disk' | 'other';
+  host?: string;
+  detail: string;
+}
+
 export interface InstallPreview {
   python?: { version: string; host: string; bytes?: number };
   packages: { name: string; version?: string; bytes?: number }[];
@@ -610,6 +621,8 @@ export type CoreEventBody =
   | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; install?: InstallPreview }
   /** Outside content (mail, web page, file, plugin tool) contained text that looks like instructions. */
   | { type: 'guard.flagged'; note: GuardNote; callId?: string }
+  /** A python_env download the user allowed failed: why, for a line on its card (sent before the tool's tool.end). */
+  | { type: 'install.failed'; callId: string; failure: InstallFailure }
   /** An irreversible call ran without asking because the session's approval mode is auto. */
   | { type: 'confirm.auto'; callId: string; name: string; input: unknown }
   /** The model settings were changed from outside the window (also written as a note into the conversations). */

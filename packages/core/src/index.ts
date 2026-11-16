@@ -5,6 +5,7 @@ export { Runtime, DEFAULT_SYSTEM_PROMPT, type RuntimeOptions } from './runtime.t
 export { exportUsageLog, usageLogLines, USAGE_LOG_SCHEMA, USAGE_LOG_VERSION } from './export.ts';
 export { redact, redactDeep, SECRET_ENV } from './util.ts';
 export { deployPython, deployPythonProblems, type DeployPython } from './python-deploy.ts';
+export { INSTALL_FAILURE_WORDS, installFailureWords } from './tools/python-tool.ts';
 export { configureNetwork, netFetch, networkStatus, proxyFor, NET_HINTS, netErrorCode, gatewayFaultCode, listenFetchable, FETCH_BLOCKED_PORTS, type NetworkConfig } from './net.ts';
 export { Session, type RunResult, type SendHandle } from './session.ts';
 export { createAgentApi } from './api.ts';

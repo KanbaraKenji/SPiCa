@@ -21,6 +21,7 @@ import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs
 import { join } from 'node:path';
 import { childEnv } from './util.ts';
 import { netFetch, networkSecrets, networkStatus, withNetworkEnv } from './net.ts';
+import type { InstallFailure } from './types.ts';
 
 export interface PythonEnvOptions {
   /** The uv executable the app carries. */
@@ -93,6 +94,8 @@ export function uvEnv(opts: PythonEnvOptions): Record<string, string> {
 export class UvError extends Error {
   /** What uv printed (stdout and stderr). */
   readonly output: string;
+  /** The install step it failed at (installPython). */
+  step?: InstallStep;
   constructor(message: string, output: string) {
     super(message);
     this.output = output;
@@ -381,18 +384,52 @@ const installing = new Map<string, Promise<unknown>>();
 async function installNow(opts: PythonEnvOptions, specs: string[], hooks: { signal?: AbortSignal; onStep?: (step: InstallStep) => void }): Promise<PythonPackage[]> {
   const version = opts.pythonVersion ?? DEFAULT_PYTHON;
   const sig = hooks.signal ? { signal: hooks.signal } : {};
+  // a failure says which step it was, for the host it names when uv's words name none
+  const step = async (s: InstallStep, args: string[]) => {
+    hooks.onStep?.(s);
+    try {
+      await uvCall(opts, args, sig);
+    } catch (e) {
+      if (e instanceof UvError) e.step = s;
+      throw e;
+    }
+  };
   if (!existsSync(envPython(opts.root))) {
-    hooks.onStep?.('python');
-    await uvCall(opts, ['python', 'install', version, '--no-bin', '--no-registry'], sig);
-    hooks.onStep?.('env');
+    await step('python', ['python', 'install', version, '--no-bin', '--no-registry']);
     // no --seed: the environment has no pip; packages come through this module
-    await uvCall(opts, ['venv', '--python', version, '--no-project', pythonDirs(opts.root).env], sig);
+    await step('env', ['venv', '--python', version, '--no-project', pythonDirs(opts.root).env]);
   }
-  if (specs.length) {
-    hooks.onStep?.('packages');
-    await uvCall(opts, ['pip', 'install', '--python', envPython(opts.root), ...specs], sig);
-  }
+  if (specs.length) await step('packages', ['pip', 'install', '--python', envPython(opts.root), ...specs]);
   return listPackages(opts, hooks.signal);
+}
+
+/**
+ * Why a download failed, sorted for the words the card and the Agent get (InstallFailure), from what uv printed:
+ * the connection (a host could not be reached), its certificate, the proxy (unreachable, or wants a login), the
+ * disk, or something else. `host`: the one uv named, else where that step downloads from (a company mirror or
+ * index when deploy.json names one).
+ */
+export function installFailure(err: UvError, opts: Pick<PythonEnvOptions, 'pythonMirror' | 'packageIndex'>): InstallFailure {
+  const out = `${err.output}\n${err.message}`;
+  const m = out.toLowerCase();
+  const detail = err.message.replace(/^uv [^:]*failed: /, '');
+  const named = /https?:\/\/([^/\s`'"<>)]+)/i.exec(out)?.[1];
+  const fallback = err.step === 'packages' ? (opts.packageIndex ?? PYPI_SIMPLE) : (opts.pythonMirror ?? 'https://releases.astral.sh');
+  let host = named;
+  if (!host) {
+    try {
+      host = new URL(fallback).host || undefined;
+    } catch {
+      host = undefined;
+    }
+  }
+  const withHost = (reason: InstallFailure['reason']): InstallFailure => ({ reason, ...(host ? { host } : {}), detail });
+  if (/not enough space|no space left|os error 112\b|os error 28\b|disk full|disk quota/.test(m)) return { reason: 'disk', detail };
+  if (/\b407\b|proxy authentication required/.test(m)) return { reason: 'proxy_auth', detail };
+  if (/proxy/.test(m) && /(connect|tunnel|refused|unreachable|timed out|error)/.test(m)) return { reason: 'proxy', detail };
+  if (/certificate|unknownissuer|invalid peer|self[- ]signed|tls handshake|ssl/.test(m)) return withHost('certificate');
+  if (/dns error|failed to lookup|no such host|name or service not known|connection refused|connection reset|timed out|timeout|error sending request|tcp connect|network is unreachable|failed to fetch|failed to download|request failed after/.test(m)) return withHost('connect');
+  return withHost('other');
 }
 
 /** Remove everything under the root (interpreters, cache, environment). The next use asks to download again. */

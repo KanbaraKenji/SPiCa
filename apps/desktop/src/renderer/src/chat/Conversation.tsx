@@ -15,7 +15,7 @@ import { answerSources } from './sources';
 import { WEB_IMAGES, webImagesFor } from './answer-image';
 import { StatusLine } from './StatusLine';
 import { ASK, greeting } from './welcome';
-import { GUARD_FLAG_TEXT } from './format';
+import { GUARD_FLAG_TEXT, installFailureText, NETWORK_FAILURES } from './format';
 import { SettingsChangeCard } from './SettingsChangeCard';
 import { MemoryLinesContext, MemoryNote, type MemoryLines } from './MemoryNote';
 
@@ -43,6 +43,8 @@ export interface ConversationActions {
   /** 设置 › 模型 (from a settings-change card). */
   /** Opens 设置 › 模型 (at that provider when given). */
   openModelSettings?: (providerId?: string) => void;
+  /** 设置 › 常规 › 网络 (a failed download's 网络 button). */
+  openNetworkSettings?: () => void;
   /** A URL to show a sent picture. */
   imageUrl?: (path: string) => Promise<string>;
   /** 重新生成 the last answer (`messageId`: the answer it was clicked under). */
@@ -434,6 +436,17 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
   // the last answer stopped at the most the model may write at once: 继续 asks for the rest
   const last = items[lastIndex];
   if (last?.kind === 'response' && last.truncated && !last.interrupted && !running) notices.push({ key: 'truncated', tone: 'warning', text: t('回答到达长度上限，没有写完'), action: { label: t('继续'), onClick: () => actions.send(t('继续')) } });
+  // a download the user allowed failed: why, and 网络 where the network settings can help
+  if (transcript.installFailure && !running) {
+    const f = transcript.installFailure;
+    notices.push({
+      key: 'install',
+      tone: 'error',
+      text: installFailureText(f),
+      title: f.detail,
+      ...(actions.openNetworkSettings && NETWORK_FAILURES.has(f.reason) ? { action: { label: t('网络'), onClick: actions.openNetworkSettings } } : {}),
+    });
+  }
   if (transcript.error) {
     const toModels = transcript.errorAction === 'models' && actions.openModelSettings;
     notices.push({ key: 'error', tone: 'error', text: errorText(transcript), ...(toModels ? { action: { label: t('模型'), onClick: () => actions.openModelSettings?.(transcript.errorProvider) } } : {}) });

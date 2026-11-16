@@ -691,3 +691,19 @@ describe('a call waiting for 允许, rebuilt from what is stored', () => {
     expect(done?.kind === 'response' && done.blocks[0]?.type === 'tool' ? done.blocks[0].state : '').toBe('done');
   });
 });
+
+describe('a failed download for the app’s Python', () => {
+  const ev = (body: Record<string, unknown>, seq: number) => ({ sessionId: 's', parentChain: [], at: '2026-11-16T10:00:00+08:00', seq, ...body }) as unknown as CoreEvent;
+  it('kept for the rest of its run and after it; gone when the next run starts', () => {
+    let t: Transcript = { items: [] };
+    t = applyEvent(t, ev({ type: 'status', status: 'thinking' }, 1));
+    t = applyEvent(t, ev({ type: 'install.failed', callId: 'p1', failure: { reason: 'connect', host: 'pypi.org', detail: 'x' } }, 2));
+    t = applyEvent(t, ev({ type: 'status', status: 'thinking' }, 3));
+    expect(t.installFailure).toEqual({ reason: 'connect', host: 'pypi.org', detail: 'x' });
+    t = applyEvent(t, ev({ type: 'run.end', reason: 'completed' }, 4));
+    t = applyEvent(t, ev({ type: 'status', status: 'idle' }, 4));
+    expect(t.installFailure?.reason).toBe('connect');
+    t = applyEvent(t, ev({ type: 'status', status: 'thinking' }, 5));
+    expect(t.installFailure).toBeUndefined();
+  });
+});
