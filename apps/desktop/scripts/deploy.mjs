@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { presetProblems } from '@spica/core';
+import { deployPython, deployPythonProblems, presetProblems } from '@spica/core';
 
 export const DEFAULT_APP = Object.freeze({ name: 'Spica', id: 'dev.spica.desktop' });
 /** The official channel Spica as published checks (src/main/update/channel.ts has the same address). */
@@ -23,7 +23,7 @@ const ID = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
  */
 export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url)), '..')) {
   const file = join(dir, 'deploy.json');
-  if (!existsSync(file)) return { file: null, updateSource: null, pluginSources: null, app: { ...DEFAULT_APP, icon: null, font: null }, models: [] };
+  if (!existsSync(file)) return { file: null, updateSource: null, pluginSources: null, app: { ...DEFAULT_APP, icon: null, font: null }, models: [], python: { enabled: true } };
   let raw;
   try {
     raw = JSON.parse(readFileSync(file, 'utf8'));
@@ -68,6 +68,9 @@ export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url))
     const list = problems.map((x) => `- ${presetProblemText(x)}`).join('\n');
     throw new Error(`deploy.json 的 models 有 ${problems.length} 处要改：\n${list}`);
   }
+  // The app's own Python: on / off, a company mirror and package index (core python-deploy.ts).
+  const pythonProblems = deployPythonProblems(raw.python);
+  if (pythonProblems.length) throw new Error(`deploy.json 的 python 有 ${pythonProblems.length} 处要改：\n${pythonProblems.map((x) => `- ${x}`).join('\n')}`);
   const updateSources = updateSourceOf(raw.updateSource);
   if (id !== DEFAULT_APP.id && (updateSources ?? []).some((s) => sameChannel(s, OFFICIAL_CHANNEL))) {
     throw new Error(`deploy.json 改了 app.id，updateSource 就不能是 Spica 的官方地址：装好的版本会被更新成 Spica。换成自己的地址，或写 "" 表示不检查更新。`);
@@ -81,6 +84,7 @@ export function readDeploy(dir = resolve(dirname(fileURLToPath(import.meta.url))
     pluginSources: pluginSourcesOf(raw.pluginSources),
     app: { name, id, icon, font, copyright: copyright.trim() || null },
     models,
+    python: deployPython(raw),
   };
 }
 

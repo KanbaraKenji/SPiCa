@@ -15,6 +15,25 @@ const block = (selector: string) => {
 };
 
 describe('styles', () => {
+  it('a row a settings search went to: in light skins an accent bar on its left, no grey fill; clear of a box’s rounded corners', () => {
+    const light = block(":root[data-scheme='light'] .setting-row.is-found");
+    expect(light).toContain('background: transparent');
+    const bar = block(":root[data-scheme='light'] .setting-row.is-found::before");
+    expect(bar).toContain('background: var(--spica-accent)');
+    expect(bar).toContain('width: 3px');
+    expect(block(":root[data-scheme='light'] .group-box > .setting-row.is-found:first-child::before")).toContain('top: var(--radius-l)');
+    expect(block(":root[data-scheme='light'] .group-box > .setting-row.is-found:last-child::before")).toContain('bottom: var(--radius-l)');
+    // dark skins keep their fill
+    expect(block('.setting-row.is-found')).toContain('background: var(--spica-active)');
+  });
+
+  it('插件 › 市场 › 添加来源 keeps its row: .install-row is declared once (the download card’s rows have their own name)', () => {
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => m[1]!.replace(/\/\*[\s\S]*?\*\//g, '').trim());
+    expect(rules.filter((sel) => sel === '.install-row')).toHaveLength(1);
+    expect(block('.install-row')).toContain('display: flex');
+    expect(block('.download-row')).toContain('display: contents');
+  });
+
   it('the monitor’s source and level columns are wide enough for the longest name in each language', () => {
     expect(block(':root:lang(zh-TW) .monitor-source')).toContain('width: 4em');
     expect(block(':root:lang(en) .monitor-source')).toContain('width: 4.9em');

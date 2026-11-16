@@ -8,6 +8,9 @@
 // When it cannot be had (no network, a different file): a warning, and the build goes on without it. The app then
 // offers no python_env: the model is told there is no Python (Node scripts as before), and nothing asks to download.
 //
+// deploy.json "python": { "enabled": false } (core python-deploy.ts): nothing is fetched and a uv left from an
+// earlier build is removed, so the package carries none.
+//
 // To update uv: change UV.version and UV.sha256 (from the release's .sha256 file) together.
 //   node scripts/uv.mjs
 import { createHash } from 'node:crypto';
@@ -16,6 +19,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deployPython } from '@spica/core';
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -79,8 +83,22 @@ export async function fetchUv(outDir = join(appDir, 'uv'), opts = {}) {
   }
 }
 
+/** Whether deploy.json (next to the package) switched the app's Python off. */
+export function pythonSwitchedOff(dir = appDir) {
+  let raw;
+  try {
+    raw = JSON.parse(readFileSync(join(dir, 'deploy.json'), 'utf8'));
+  } catch {
+    return false;
+  }
+  return !deployPython(raw).enabled;
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  if (process.platform !== 'win32') {
+  if (pythonSwitchedOff()) {
+    rmSync(join(appDir, 'uv'), { recursive: true, force: true });
+    console.log("[uv] deploy.json switches the app's Python off: no uv");
+  } else if (process.platform !== 'win32') {
     console.log('[uv] not Windows: skipped (the app offers no python_env)');
   } else {
     const r = await fetchUv();

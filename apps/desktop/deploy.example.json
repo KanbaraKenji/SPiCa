@@ -12,5 +12,11 @@
   },
   "// pluginConfig": "Values filled into plugins' settings forms (their manifest's user_config), by plugin and key: { \"tickets\": { \"server_url\": { \"value\": \"https://tickets.example.com\", \"locked\": true } } }. locked: shown read-only, a lock beside its name (由管理员设置 on hover); otherwise only filled in where the person has not. Never a password or token: each person types their own (a key named like one stops the packaging).",
   "// models": "Company preset model connections, listed first under 服务商 in Settings > Models. Each: id, name, kind (openai-compatible / anthropic / wso2), baseUrl, tokenUrl and scope for wso2, models [{ id, label, contextWindow, role default/strong/cheap }], optional default, maxConcurrent, requestsPerMinute, headers (names of request headers each person fills in, e.g. [\"X-API-Key\"] for a gateway that takes its key there; never their values), credentialsIn for wso2 (basic or body; not written: tried in turn). No keys or secrets: each person types their own (packaging stops if one is here). Example: {\"id\": \"acme-gateway\", \"name\": \"公司模型网关（示例）\", \"kind\": \"openai-compatible\", \"baseUrl\": \"https://llm.example.com/v1\", \"default\": true, \"models\": [{\"id\": \"acme-chat\", \"label\": \"Acme Chat\", \"contextWindow\": 128000, \"role\": \"default\"}, {\"id\": \"acme-pro\", \"label\": \"Acme Pro\", \"contextWindow\": 200000, \"role\": \"strong\"}]}",
-  "models": []
+  "models": [],
+  "// python": "The app's own Python, downloaded by the uv the app carries after the user confirms, for a computer without Python (one with Python uses its own). enabled: false switches it off (no download, no uv in the package). pythonMirror: where Python comes from instead of releases.astral.sh: an http(s) address or a file:/// folder laid out like python-build-standalone's releases (uv's UV_PYTHON_INSTALL_MIRROR). packageIndex: the package index instead of PyPI, its simple address (uv's UV_DEFAULT_INDEX). No logins in the addresses (the installer carries this file); a proxy login goes in 设置 › 常规 › 网络. Example: { \"enabled\": true, \"pythonMirror\": \"https://mirror.example.com/python-build-standalone\", \"packageIndex\": \"https://pypi.example.com/simple\" }. Not written: on, with the public sources (a build with its own app.id too).",
+  "python": {
+    "enabled": true,
+    "pythonMirror": "",
+    "packageIndex": ""
+  }
 }

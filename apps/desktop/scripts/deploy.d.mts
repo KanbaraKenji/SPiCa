@@ -14,5 +14,5 @@ export interface DeployPluginSource {
   mirrors?: string[];
   label?: string;
 }
-export function readDeploy(dir?: string): { file: string | null; updateSource: string | null; updateSources: string[] | null; pluginConfig: Record<string, Record<string, { value: string | number | boolean; locked?: boolean }>> | null; pluginSources: DeployPluginSource[] | null; app: DeployApp; models: unknown[] };
+export function readDeploy(dir?: string): { file: string | null; updateSource: string | null; updateSources: string[] | null; pluginConfig: Record<string, Record<string, { value: string | number | boolean; locked?: boolean }>> | null; pluginSources: DeployPluginSource[] | null; app: DeployApp; models: unknown[]; python: { enabled: boolean; pythonMirror?: string; packageIndex?: string } };
 export function presetProblemText(line: string): string;

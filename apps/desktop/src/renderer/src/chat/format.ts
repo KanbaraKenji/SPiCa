@@ -1,6 +1,7 @@
 // What the user sees for a tool call (a plain-language verb and its target),
 // plus small formatting helpers shared by the conversation and the detail panel.
 import { intlLocale, N_, t, tx } from '../../../shared/i18n';
+import type { InstallFailure } from '@spica/protocol';
 const LABELS: Record<string, string> = {
   read_file: N_('读取文件'),
   write_file: N_('写入文件'),
@@ -190,3 +191,24 @@ export function formatBytes(n: number): string {
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1).replace(/\.0$/, '')} MB`;
   return `${(n / 1024 / 1024 / 1024).toFixed(1).replace(/\.0$/, '')} GB`;
 }
+
+/**
+ * A failed python_env download as one short line (the core says the same to the Agent: python-tool.ts
+ * INSTALL_FAILURE_WORDS; a test keeps them equal). Without a host, the generic line.
+ */
+const INSTALL_FAILURE: Record<InstallFailure['reason'], string> = {
+  connect: N_('无法连接 {host}'),
+  certificate: N_('{host} 的证书不受信任'),
+  proxy: N_('无法连接代理'),
+  proxy_auth: N_('代理需要身份验证（HTTP 407）'),
+  disk: N_('磁盘空间不足'),
+  other: N_('下载失败'),
+};
+
+export function installFailureText(f: InstallFailure): string {
+  const key = f.host || !INSTALL_FAILURE[f.reason].includes('{host}') ? f.reason : 'other';
+  return t(INSTALL_FAILURE[key], { host: f.host ?? '' });
+}
+
+/** Failures the network settings can do something about (proxy, certificates): their line has a 网络 button. */
+export const NETWORK_FAILURES: ReadonlySet<InstallFailure['reason']> = new Set(['connect', 'certificate', 'proxy', 'proxy_auth']);

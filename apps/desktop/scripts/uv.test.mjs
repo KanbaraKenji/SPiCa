@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { fetchUv, UV, uvUrl } from './uv.mjs';
+import { fetchUv, pythonSwitchedOff, UV, uvUrl } from './uv.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'spica-uv-test-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -49,5 +49,19 @@ describe.runIf(process.platform === 'win32')('uv at build time', () => {
     expect(offline).toMatchObject({ ok: false });
     expect(offline.why).toContain('ENOTFOUND');
     expect(existsSync(join(out, 'uv.exe'))).toBe(false);
+  });
+});
+
+describe('deploy.json switching the app’s Python off', () => {
+  it('only python.enabled false counts; no file, or a file that does not say, does not', () => {
+    const at = (json) => {
+      const d = mkdtempSync(join(dir, 'deploy-'));
+      if (json !== undefined) writeFileSync(join(d, 'deploy.json'), JSON.stringify(json));
+      return d;
+    };
+    expect(pythonSwitchedOff(at(undefined))).toBe(false);
+    expect(pythonSwitchedOff(at({ models: [] }))).toBe(false);
+    expect(pythonSwitchedOff(at({ python: { enabled: true } }))).toBe(false);
+    expect(pythonSwitchedOff(at({ python: { enabled: false } }))).toBe(true);
   });
 });

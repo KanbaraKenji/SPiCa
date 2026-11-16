@@ -55,7 +55,7 @@ import { useEscape } from './ui/escape';
 import { SpicaBanner } from '@spica/brand/react';
 import { sameFolder } from './store/relocate';
 import { APP_NAME } from '../../shared/app-identity';
-import { getLocale, t, tx } from '../../shared/i18n';
+import { getLocale, t, tc, tx } from '../../shared/i18n';
 import { useLocale } from './i18n';
 
 /** The sidebar's wordmark: 22 px high, smaller for a long app name. */
@@ -93,6 +93,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   const [pluginsTab, setPluginsTab] = useState<PluginsTab>('installed');
+  /** A settings row to bring into sight when the settings open (设置 › 常规 › 网络 from a failed download). */
+  const [settingsReveal, setSettingsReveal] = useState<{ title: string; at: number } | undefined>(undefined);
   const openSettings = useCallback((tab?: SettingsTab, plugins?: PluginsTab) => {
     if (tab) setSettingsTab(tab);
     if (plugins) setPluginsTab(plugins);
@@ -905,6 +907,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     regenerate: (messageId) => id && void agent.regenerate(id, messageId),
     ...(mail.supported ? { mailById, openInbox: () => setView('inbox') } : {}),
     // at the provider a stop named (a card's button passes its click event: no provider)
+    openNetworkSettings: () => {
+      openSettings('general');
+      setSettingsReveal((prev) => ({ title: tc('network', '代理'), at: (prev?.at ?? 0) + 1 }));
+    },
     openModelSettings: (providerId?: unknown) => {
       if (typeof providerId === 'string' && providerId) openProviderNext(providerId);
       openSettings('models');
@@ -1564,6 +1570,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           clearBrowsingData={bridge.browser.clearData}
           mailModel={mailModelLabel}
           networkState={bridge.network}
+          {...(settingsReveal ? { reveal: settingsReveal } : {})}
           pickFiles={bridge.pickFiles}
           {...(shell.demo ? {} : { localConnect: bridge.localConnect })}
           previewPages={previewPages}

@@ -20,6 +20,7 @@ describe('deploy.json', () => {
     expect(d.app).toMatchObject(DEFAULT_APP);
     expect(d.updateSource).toBe('\\\\server\\share');
     expect(builderOverrides(d.app, '1.0.0')).toEqual([]);
+    expect(d.python).toEqual({ enabled: true });
   });
 
   it('deploy.example.json copied as is changes nothing; its example, filled in, renames', () => {
@@ -136,7 +137,7 @@ describe('deploy.json', () => {
     expect(d.updateSource).toBe('\\\\near\\spica');
     expect(d.updateSources).toEqual(['\\\\near\\spica', 'https://far.example.com/spica/']);
     expect(d.pluginSources).toEqual([{ location: '\\\\near\\plugins', mirrors: ['\\\\near\\plugins', 'https://far.example.com/plugins/index.json'], label: '团队插件' }]);
-    expect(sourceLines(d)).toEqual(['updates: \\\\near\\spica | https://far.example.com/spica/', 'official plugins: \\\\near\\plugins | https://far.example.com/plugins/index.json']);
+    expect(sourceLines(d).slice(0, 2)).toEqual(['updates: \\\\near\\spica | https://far.example.com/spica/', 'official plugins: \\\\near\\plugins | https://far.example.com/plugins/index.json']);
     expect(readDeploy(dirWith({ updateSource: [] })).updateSource).toBe('');
     expect(() => readDeploy(dirWith({ updateSource: ['https://a.example.com/', 'nope'] }))).toThrow(/updateSource「nope」不能用/);
     expect(() => readDeploy(dirWith({ pluginSources: [{ location: ['https://a.example.com/index.json', 'https://a.example.com/x-1.0.0.zip'] }] }))).toThrow(/单个插件包/);
@@ -153,9 +154,25 @@ describe('deploy.json', () => {
   it('the packaging says where the app will look; the address is the one the app uses', () => {
     expect(OFFICIAL_CHANNEL).toBe(APP_CHANNEL);
     expect(DEFAULT_APP.id).toBe(OFFICIAL_APP_ID);
-    expect(sourceLines(readDeploy(dirWith(undefined)))).toEqual([`updates: official channel ${OFFICIAL_CHANNEL}`, `official plugins: official channel ${OFFICIAL_CHANNEL}index.json`]);
-    expect(sourceLines(readDeploy(dirWith({ updateSource: '', pluginSources: [] })))).toEqual(['updates: none', 'official plugins: none']);
-    expect(sourceLines(readDeploy(dirWith({ app: { name: 'Nova Desk', id: 'com.example.nova' } })))).toEqual(['updates: none (not in deploy.json)', `official plugins: official channel ${OFFICIAL_CHANNEL}index.json`]);
+    expect(sourceLines(readDeploy(dirWith(undefined)))).toEqual([`updates: official channel ${OFFICIAL_CHANNEL}`, `official plugins: official channel ${OFFICIAL_CHANNEL}index.json`, "app's Python: Python from releases.astral.sh, packages from pypi.org"]);
+    expect(sourceLines(readDeploy(dirWith({ updateSource: '', pluginSources: [] }))).slice(0, 2)).toEqual(['updates: none', 'official plugins: none']);
+    expect(sourceLines(readDeploy(dirWith({ app: { name: 'Nova Desk', id: 'com.example.nova' } }))).slice(0, 2)).toEqual(['updates: none (not in deploy.json)', `official plugins: official channel ${OFFICIAL_CHANNEL}index.json`]);
+  });
+});
+
+describe('deploy.json "python"', () => {
+  it('off, or a company mirror and index: read, and printed when packaging', () => {
+    const off = readDeploy(dirWith({ python: { enabled: false } }));
+    expect(off.python).toEqual({ enabled: false });
+    expect(sourceLines(off).at(-1)).toBe("app's Python: off");
+    const own = readDeploy(dirWith({ python: { pythonMirror: 'https://mirror.example.com/pbs', packageIndex: 'https://pypi.example.com/simple' } }));
+    expect(sourceLines(own).at(-1)).toBe("app's Python: Python from https://mirror.example.com/pbs, packages from https://pypi.example.com/simple");
+  });
+
+  it('a wrong one stops packaging, each problem on its line', () => {
+    expect(() => readDeploy(dirWith({ python: { enabled: 'no', packageIndex: 'https://me:pw@pypi.example.com/simple' } }))).toThrow(
+      /deploy\.json 的 python 有 2 处要改：\n- python\.enabled 要写 true 或 false。\n- python\.packageIndex 里不要写账号密码/,
+    );
   });
 });
 

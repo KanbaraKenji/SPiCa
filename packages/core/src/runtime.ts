@@ -388,6 +388,7 @@ export class Runtime implements RuntimeInternals {
         ? [
             createPythonTool({
               ...opts.python,
+              locale: () => this.#opts.locale,
               // conversations started after this are told about it; run_command finds it at once
               onInstalled: (packages) => {
                 if (this.#runtimes) this.#runtimes = this.#withAppPython(this.#runtimes);

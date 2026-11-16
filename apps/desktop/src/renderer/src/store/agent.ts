@@ -658,6 +658,7 @@ export class AgentStore {
         if (prev?.error) next.error = prev.error;
         if (prev?.errorAction) next.errorAction = prev.errorAction;
         if (prev?.errorProvider) next.errorProvider = prev.errorProvider;
+        if (prev?.installFailure) next.installFailure = prev.installFailure;
         if (prev?.budget) next.budget = prev.budget;
         if (prev?.stopped) next.stopped = prev.stopped;
         if (prev?.repeatCount) next.repeatCount = prev.repeatCount;

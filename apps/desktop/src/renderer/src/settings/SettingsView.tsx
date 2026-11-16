@@ -55,6 +55,8 @@ const NAV_ICON: Record<SettingsTab, IconName> = {
 const labelOf = (id: SettingsTab) => t(TABS.find((tab) => tab.id === id)?.label ?? '');
 
 export interface SettingsViewProps {
+  /** A row to bring into sight and mark when the view opens on its section (`at` makes each ask a new one). */
+  reveal?: { title: string; at: number };
   shell: ShellStore;
   providers: ProvidersApi;
   plugins: PluginsApi;
@@ -89,7 +91,7 @@ export interface SettingsViewProps {
   usage?: UsageApi;
 }
 
-export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, pluginsTab, onPluginsTab, onClose, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, clearBrowsingData, pluginPages, memory, usage }: SettingsViewProps) {
+export function SettingsView({ reveal, shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, pluginsTab, onPluginsTab, onClose, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, clearBrowsingData, pluginPages, memory, usage }: SettingsViewProps) {
   const { settings } = useShell(shell);
   const tabs = TABS.filter((tab) => (tab.id !== 'memory' || memory) && (tab.id !== 'usage' || usage));
   const box = useRef<HTMLDivElement>(null);
@@ -116,15 +118,17 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
   };
   // The row gone to: brought into sight and marked until the next press anywhere.
   useEffect(() => {
-    if (!found || searching) return;
-    const row = [...(panel.current?.querySelectorAll<HTMLElement>('[data-setting]') ?? [])].find((r) => r.dataset.setting === found.title);
+    // a search result picked, else a row asked for from outside (a failed download's 网络 button)
+    const goal = found ?? reveal;
+    if (!goal || searching) return;
+    const row = [...(panel.current?.querySelectorAll<HTMLElement>('[data-setting]') ?? [])].find((r) => r.dataset.setting === goal.title);
     if (!row) return;
     row.scrollIntoView?.({ block: 'center' });
     row.classList.add('is-found');
     const clear = () => row.classList.remove('is-found');
     window.addEventListener('pointerdown', clear, { once: true, capture: true });
     return () => window.removeEventListener('pointerdown', clear, { capture: true });
-  }, [found, searching, tab]);
+  }, [found, reveal, searching, tab]);
 
   const sectionFor = (id: SettingsTab) =>
     id === 'general' ? (

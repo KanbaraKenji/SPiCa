@@ -103,3 +103,26 @@ describe('the notices sit just above the input box (RunNotices)', () => {
     expect(container.querySelector('.run-notices')).toBeNull();
   });
 });
+
+describe('a download for the app’s Python that failed', () => {
+  const user = { kind: 'user' as const, id: 'u', text: '用 pandas 汇总', steer: false };
+  const notice = (failure: NonNullable<Parameters<typeof Conversation>[0]['transcript']['installFailure']>, net = vi.fn()) => {
+    cleanup();
+    render(<Conversation session={session} transcript={{ items: [user, answer], installFailure: failure }} actions={{ openNetworkSettings: net } as unknown as ConversationActions} />);
+    const n = document.querySelector('.run-notice.is-error');
+    return n ? { text: n.querySelector('.run-notice-text')!.textContent, title: n.querySelector('.run-notice-text')!.getAttribute('title'), button: n.querySelector('button')?.textContent ?? null } : null;
+  };
+
+  it('one line above the input box: what failed and where, uv’s own words on hover, 网络 only where the network settings help', () => {
+    expect(notice({ reason: 'connect', host: 'pypi.example.com', detail: 'dns error' })).toEqual({ text: '无法连接 pypi.example.com', title: 'dns error', button: '网络' });
+    expect(notice({ reason: 'certificate', host: 'releases.astral.sh', detail: 'UnknownIssuer' })).toMatchObject({ text: 'releases.astral.sh 的证书不受信任', button: '网络' });
+    expect(notice({ reason: 'proxy', detail: 'tunnel' })).toMatchObject({ text: '无法连接代理', button: '网络' });
+    expect(notice({ reason: 'proxy_auth', detail: '407' })).toMatchObject({ text: '代理需要身份验证（HTTP 407）', button: '网络' });
+    expect(notice({ reason: 'disk', detail: 'os error 112' })).toMatchObject({ text: '磁盘空间不足', button: null });
+    expect(notice({ reason: 'other', host: 'pypi.example.com', detail: 'No solution found' })).toMatchObject({ text: '下载失败', button: null });
+    const net = vi.fn();
+    notice({ reason: 'connect', host: 'pypi.example.com', detail: 'x' }, net);
+    fireEvent.click(screen.getByRole('button', { name: '网络' }));
+    expect(net).toHaveBeenCalledTimes(1);
+  });
+});

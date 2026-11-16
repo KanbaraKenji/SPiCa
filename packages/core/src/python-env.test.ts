@@ -25,7 +25,11 @@ import {
   type PythonEnvOptions,
 } from './python-env.ts';
 import { tempDir } from './testing/helpers.ts';
+import { runFakeUv } from './testing/fake-uv-run.mjs';
 
+// The stand-in for uv runs in this process (opts.runUv): no program start per uv call. The two tests that start
+// real programs (the stand-in as a program, PowerShell) have their own longer time limit, for a busy machine.
+const STARTS_PROGRAMS = 30_000;
 const fakeUv = join(import.meta.dirname, 'testing', 'fake-uv.mjs');
 
 let server: Server;
@@ -71,13 +75,25 @@ beforeEach(async () => {
   ({ dir, cleanup } = await tempDir());
   log = join(dir, 'uv.log');
   writeConfig({});
-  opts = { uvExe: process.execPath, uvPrefixArgs: [fakeUv, join(dir, 'fake.json')], root: join(dir, 'python'), packageIndex: `${base}/simple`, netDir: join(dir, 'net') };
+  // the stand-in runs in this process (no Node start-up per uv call); `spawned` starts it as a real program
+  opts = { uvExe: process.execPath, root: join(dir, 'python'), packageIndex: `${base}/simple`, netDir: join(dir, 'net'), runUv: inProcess };
 });
 afterEach(async () => {
   await cleanup();
 });
 
-function writeConfig(extra: { fail?: string }): void {
+/** The stand-in, run here with the environment uv would get, reading the test's fake.json at each call. */
+const inProcess: NonNullable<PythonEnvOptions['runUv']> = async (args, o) =>
+  runFakeUv({ config: JSON.parse(readFileSync(join(dir, 'fake.json'), 'utf8')) as object, args, env: o.env, input: o.input ?? '' });
+
+/** The same options with the stand-in started as a real program: what reaches a child process. */
+function spawned(): PythonEnvOptions {
+  const { runUv: _inProcess, ...rest } = opts;
+  void _inProcess;
+  return { ...rest, uvPrefixArgs: [fakeUv, join(dir, 'fake.json')] };
+}
+
+function writeConfig(extra: { fail?: string; failText?: string }): void {
   writeFileSync(join(dir, 'fake.json'), JSON.stringify({ log, pythonUrl: `${base}/python.tar.gz`, ...extra }));
 }
 
@@ -225,7 +241,8 @@ describe('before downloading: what and how big', () => {
 describe('installing, listing, clearing', () => {
   it('first time: Python, then an environment without pip, then the packages', async () => {
     const steps: string[] = [];
-    const pkgs = await installPython(opts, ['pandas'], { onStep: (s) => steps.push(s) });
+    // the stand-in as a real program here: the variables below are what reached a child process
+    const pkgs = await installPython(spawned(), ['pandas'], { onStep: (s) => steps.push(s) });
     expect(steps).toEqual(['python', 'env', 'packages']);
     expect(pkgs).toEqual([
       { name: 'pandas', version: '2.3.3' },
@@ -241,7 +258,7 @@ describe('installing, listing, clearing', () => {
     const st = pythonEnvStatus(opts.root);
     expect(st).toMatchObject({ ready: true, version: '3.12.16', python: envPython(opts.root) });
     expect(envBinDir(opts.root)).toBe(join(opts.root, 'env', process.platform === 'win32' ? 'Scripts' : 'bin'));
-  });
+  }, STARTS_PROGRAMS);
 
   it('later: only the packages', async () => {
     await installPython(opts, []);
@@ -395,6 +412,56 @@ describe('whose Python, and what the model is told', () => {
         const out = await tool.execute({ command: "Write-Output (($env:Path -split ';')[0])" }, ctx);
         expect(out.content).toContain(envBinDir(opts.root));
       }
+    } finally {
+      await gw.stop();
+    }
+  }, STARTS_PROGRAMS);
+});
+
+describe('when a download fails', () => {
+  const err = (output: string, step?: 'python' | 'packages') => {
+    const e = new UvError(`uv pip install failed: ${output.split('\n').filter(Boolean).pop()}`, output);
+    if (step) e.step = step;
+    return e;
+  };
+
+  it('sorted by what uv said, with the host it named, else where that step downloads from', async () => {
+    const { installFailure } = await import('./python-env.ts');
+    const dns = err('error: Failed to fetch: `https://pypi.example.com/simple/pandas/`\n  Caused by: dns error: No such host is known. (os error 11001)', 'packages');
+    expect(installFailure(dns, {})).toMatchObject({ reason: 'connect', host: 'pypi.example.com' });
+    const tls = err('error: Request failed after 3 retries\n  Caused by: invalid peer certificate: UnknownIssuer', 'python');
+    expect(installFailure(tls, {})).toMatchObject({ reason: 'certificate', host: 'releases.astral.sh' });
+    expect(installFailure(tls, { pythonMirror: 'https://mirror.example.com/pbs' })).toMatchObject({ host: 'mirror.example.com' });
+    expect(installFailure(err('error: 407 Proxy Authentication Required'), {})).toMatchObject({ reason: 'proxy_auth' });
+    expect(installFailure(err('Caused by: error trying to connect: proxy: tunnel error: refused'), {})).toMatchObject({ reason: 'proxy' });
+    expect(installFailure(err('error: failed to write: There is not enough space on the disk. (os error 112)'), {})).toEqual({ reason: 'disk', detail: 'error: failed to write: There is not enough space on the disk. (os error 112)' });
+    expect(installFailure(err('error: No solution found when resolving dependencies: nope was not found', 'packages'), { packageIndex: 'https://pypi.example.com/simple' })).toMatchObject({ reason: 'other', host: 'pypi.example.com' });
+  });
+
+  it('the line, in the app’s three languages; without a host, the generic one', async () => {
+    const { installFailureWords } = await import('./tools/python-tool.ts');
+    const f = { reason: 'connect' as const, host: 'pypi.org', detail: 'x' };
+    expect(installFailureWords(f)).toBe('无法连接 pypi.org');
+    expect(installFailureWords(f, 'zh-TW')).toBe('無法連線 pypi.org');
+    expect(installFailureWords(f, 'en')).toBe('Couldn’t connect to pypi.org');
+    expect(installFailureWords({ reason: 'connect', detail: 'x' })).toBe('下载失败');
+    expect(installFailureWords({ reason: 'disk', detail: 'x' }, 'en')).toBe('Not enough disk space');
+  });
+
+  it('in a conversation: the card gets why (install.failed), the Agent the same line and uv’s words; stopping says nothing on the card', async () => {
+    const { startGateway, makeRuntime, captureEvents } = await import('./testing/helpers.ts');
+    writeConfig({ fail: 'python install', failText: 'error: Failed to download `https://mirror.example.com/pbs/cpython.tar.gz`\n  Caused by: tcp connect error: connection refused' });
+    const gw = await startGateway();
+    try {
+      const rt = makeRuntime(gw, { cwd: dir, python: { ...opts, pythonMirror: 'https://mirror.example.com/pbs' }, locale: 'zh-CN' });
+      const events = captureEvents(rt);
+      const s = rt.createSession();
+      gw.enqueue({ toolCalls: [{ id: 'p1', name: 'python_env', args: { packages: ['pandas'] } }] }, { text: 'ok' });
+      await s.send('装').done;
+      await (await s.confirm('p1', true));
+      expect(events.find((e) => e.type === 'install.failed')).toMatchObject({ callId: 'p1', failure: { reason: 'connect', host: 'mirror.example.com' } });
+      const sent = JSON.stringify(gw.requests.at(-1)!.body.messages);
+      expect(sent).toContain('无法连接 mirror.example.com (uv: ');
     } finally {
       await gw.stop();
     }

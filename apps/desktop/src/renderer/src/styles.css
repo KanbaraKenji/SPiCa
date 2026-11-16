@@ -3592,6 +3592,33 @@ button.ctx-row:hover {
   border-bottom-right-radius: var(--radius-l);
 }
 
+/* Light skins: no fill (a grey block on the white pane read as heavy; he picked 乙), an accent bar on the row's left
+   edge instead. In the first or last row of a box the bar starts / stops where the box's rounded corner ends, so it
+   neither pokes into the curve nor shows a square corner there. Dark skins keep the fill above. */
+:root[data-scheme='light'] .setting-row.is-found {
+  position: relative;
+  background: transparent;
+}
+
+:root[data-scheme='light'] .setting-row.is-found::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--spica-accent);
+  pointer-events: none;
+}
+
+:root[data-scheme='light'] .group-box > .setting-row.is-found:first-child::before {
+  top: var(--radius-l);
+}
+
+:root[data-scheme='light'] .group-box > .setting-row.is-found:last-child::before {
+  bottom: var(--radius-l);
+}
+
 .settings-column.is-fill {
   height: 100%;
   min-height: 400px;
@@ -6529,7 +6556,7 @@ section.plugins-part > .plugins-part-title {
 
 /* A download for the app's Python (python_env): one row per item (name and version, where from, size), the
    total last; in line with the card's title, as a call's arguments. */
-.confirm-card > .install-list {
+.confirm-card > .download-list {
   display: grid;
   grid-template-columns: minmax(0, max-content) minmax(0, 1fr) max-content;
   /* no column gap: the total's line runs across; the space is the cells' own */
@@ -6540,15 +6567,15 @@ section.plugins-part > .plugins-part-title {
   line-height: var(--lh-footnote);
 }
 
-.install-row {
+.download-row {
   display: contents;
 }
 
-.install-name {
+.download-name {
   overflow-wrap: anywhere;
 }
 
-.install-host {
+.download-host {
   min-width: 0;
   padding: 0 16px;
   overflow: hidden;
@@ -6557,12 +6584,12 @@ section.plugins-part > .plugins-part-title {
   white-space: nowrap;
 }
 
-.install-size {
+.download-size {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-.install-row.is-total > span {
+.download-row.is-total > span {
   padding-top: 4px;
   border-top: 1px solid var(--spica-border);
   margin-top: 2px;

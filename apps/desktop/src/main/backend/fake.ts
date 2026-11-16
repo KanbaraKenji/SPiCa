@@ -4,6 +4,7 @@
 // It never touches the network or the disk.
 import type {
   AgentRole,
+  InstallFailure,
   ContentBlock,
   ContextBreakdown,
   CoreEvent,
@@ -1366,11 +1367,26 @@ export class FakeBackend implements AgentBackend {
         const ok = (await this.#waitFor(run, callId)) === 'yes';
         waiting = undefined;
         if (ok) this.#emit(sessionId, { type: 'tool.start', callId, name: 'python_env', input, category: 'command' });
-        const result = ok ? "The app's Python 3.12.16 is ready." : '用户拒绝了下载';
-        this.#emit(sessionId, { type: 'tool.end', callId, name: 'python_env', isError: !ok, preview: result, durationMs: 300 });
-        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: result, isError: !ok }]);
+        // A download that fails, as the core reports it (install.failed before tool.end): 连不上 / 证书 / 代理 / 磁盘
+        // in the message picks which.
+        const failure: InstallFailure | undefined = !ok
+          ? undefined
+          : /证书/.test(text)
+            ? { reason: 'certificate', host: 'releases.astral.sh', detail: 'invalid peer certificate: UnknownIssuer' }
+            : /代理/.test(text)
+              ? { reason: 'proxy_auth', detail: '407 Proxy Authentication Required' }
+              : /磁盘/.test(text)
+                ? { reason: 'disk', detail: 'There is not enough space on the disk. (os error 112)' }
+                : /连不上/.test(text)
+                  ? { reason: 'connect', host: 'releases.astral.sh', detail: 'dns error: No such host is known. (os error 11001)' }
+                  : undefined;
+        if (failure) this.#emit(sessionId, { type: 'install.failed', callId, failure });
+        const failed = !ok || Boolean(failure);
+        const result = !ok ? '用户拒绝了下载' : failure ? `Download failed (uv: ${failure.detail})` : "The app's Python 3.12.16 is ready.";
+        this.#emit(sessionId, { type: 'tool.end', callId, name: 'python_env', isError: failed, preview: result, durationMs: 300 });
+        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: result, isError: failed }]);
         this.#setStatus(sessionId, 'thinking');
-        const after = ok ? '\n\n装好了。' : '\n\n好的，没有下载。';
+        const after = !ok ? '\n\n好的，没有下载。' : failure ? '\n\n下载没有成功。' : '\n\n装好了。';
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
       } else if (/改文件/.test(text)) {

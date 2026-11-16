@@ -51,7 +51,9 @@ export function sourceLines(deploy) {
       : deploy.pluginSources.length
         ? deploy.pluginSources.map((s) => (s.mirrors ?? [s.location]).join(' | ')).join(', ')
         : 'none';
-  return [`updates: ${update}`, `official plugins: ${plugins}`];
+  const py = deploy.python ?? { enabled: true };
+  const python = !py.enabled ? 'off' : `Python from ${py.pythonMirror ?? 'releases.astral.sh'}, packages from ${py.packageIndex ?? 'pypi.org'}`;
+  return [`updates: ${update}`, `official plugins: ${plugins}`, `app's Python: ${python}`];
 }
 
 function run(cmd, args) {
