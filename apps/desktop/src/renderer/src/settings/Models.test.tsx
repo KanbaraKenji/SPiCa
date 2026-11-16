@@ -553,8 +553,8 @@ describe('代理互发消息上限', () => {
   });
 });
 
-describe('更多选项 › 自定义请求头 and 凭据位置', () => {
-  it('a gateway that takes its key in its own header: saved with the header, no API Key needed', async () => {
+describe('认证方式 › 请求头, and 凭据位置', () => {
+  it('a gateway that takes its key in its own header: 请求头 in place of the API Key, both cells needed', async () => {
     const api = await openNew();
     choose('#relay');
     type('名称', '网关');
@@ -563,39 +563,62 @@ describe('更多选项 › 自定义请求头 and 凭据位置', () => {
     type('手动输入模型', 'm');
     fireEvent.click(screen.getByRole('button', { name: '添加' }));
     fireEvent.change(screen.getByLabelText('m 上下文上限'), { target: { value: '64000' } });
-    fireEvent.click(screen.getByRole('button', { name: '更多选项' }));
-    fireEvent.click(screen.getByRole('button', { name: '添加请求头' }));
-    fireEvent.change(screen.getByLabelText('请求头名称'), { target: { value: 'X-API-Key' } });
-    // a name with no value is said, and 更多选项 stays open
+    // API Key until 请求头 is picked; then the API Key is gone and one empty row is there
+    expect(screen.getByRole('radio', { name: 'API Key' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByRole('radio', { name: '请求头' }));
+    expect(screen.queryByText('API Key', { selector: '.field-label' })).toBeNull();
+    // nothing filled in: each cell says what it needs, right under it
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    expect(screen.getByText('请填写请求头「X-API-Key」的值')).toBeTruthy();
+    expect(screen.getByLabelText('请求头名称').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByText('请填写请求头名称')).toBeTruthy();
+    expect(screen.getByText('请填写值')).toBeTruthy();
+    expect(api.save).not.toHaveBeenCalled();
     await act(async () => {});
+    fireEvent.change(screen.getByLabelText('请求头名称'), { target: { value: 'X-API-Key' } });
     fireEvent.change(screen.getByLabelText('X-API-Key 的值'), { target: { value: 'gw-key-1' } });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ headers: [{ name: 'X-API-Key', value: 'gw-key-1' }] })));
-    expect(screen.queryByText('请填写 API Key')).toBeNull();
+    await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ authBy: 'header', headers: [{ name: 'X-API-Key', value: 'gw-key-1' }] })));
+    expect(api.save).toHaveBeenCalledWith(expect.not.objectContaining({ secret: expect.anything() }));
   });
 
   it('a saved header shows its value masked; left empty it is kept', async () => {
-    const api = fakeApi([saved({ savedHeaders: [{ name: 'X-API-Key', mask: '****a1b2' }] })]);
+    const api = fakeApi([saved({ hasSecret: false, savedHeaders: [{ name: 'X-API-Key', mask: '****a1b2' }] })]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
-    fireEvent.click(screen.getByRole('button', { name: '更多选项' }));
+    expect(screen.getByRole('radio', { name: '请求头' }).getAttribute('aria-checked')).toBe('true');
     expect((screen.getByLabelText('请求头名称') as HTMLInputElement).value).toBe('X-API-Key');
     expect((screen.getByLabelText('X-API-Key 的值') as HTMLInputElement).placeholder).toBe('****a1b2（留空不修改）');
     type('名称', '旧网关 A');
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(api.save).toHaveBeenLastCalledWith(expect.objectContaining({ headers: [{ name: 'X-API-Key', saved: true }] })));
+    await waitFor(() => expect(api.save).toHaveBeenLastCalledWith(expect.objectContaining({ authBy: 'header', headers: [{ name: 'X-API-Key', saved: true }] })));
   });
 
-  it('a saved header removed is gone when saved', async () => {
-    const api = fakeApi([saved({ savedHeaders: [{ name: 'X-API-Key', mask: '****a1b2' }] })]);
+  it('back to API Key: the key is asked for again and the headers go when saved', async () => {
+    const api = fakeApi([saved({ hasSecret: false, savedHeaders: [{ name: 'X-API-Key', mask: '****a1b2' }] })]);
     render(<Models api={api} />);
     fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
-    fireEvent.click(screen.getByRole('button', { name: '更多选项' }));
-    fireEvent.click(screen.getByRole('button', { name: '删除 X-API-Key' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'API Key' }));
+    expect(screen.queryByLabelText('请求头名称')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(api.save).toHaveBeenLastCalledWith(expect.objectContaining({ headers: [] })));
+    expect(screen.getByText('请填写 API Key')).toBeTruthy();
+    expect(api.save).not.toHaveBeenCalled();
+  });
+
+  it('a second row can be added and removed; one row has no 删除', async () => {
+    await openNew();
+    choose('#relay');
+    fireEvent.click(screen.getByRole('radio', { name: '请求头' }));
+    expect(screen.queryByRole('button', { name: /^删除 / })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '添加' }));
+    expect(screen.getAllByLabelText('请求头名称')).toHaveLength(2);
+    fireEvent.click(screen.getAllByRole('button', { name: '删除 请求头' })[1]!);
+    expect(screen.getAllByLabelText('请求头名称')).toHaveLength(1);
+  });
+
+  it('a catalog provider (DeepSeek and the like) has no 认证方式: only the API Key', async () => {
+    await openNew();
+    choose('deepseek');
+    expect(screen.queryByRole('radiogroup', { name: '认证方式' })).toBeNull();
   });
 
   it('公司网关（WSO2）: 凭据位置 is 自动 until another is picked', async () => {
@@ -610,12 +633,12 @@ describe('更多选项 › 自定义请求头 and 凭据位置', () => {
     await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ credentialsIn: 'body' })));
   });
 
-  it('凭据位置 is only for 公司网关（WSO2）', async () => {
+  it('凭据位置 is only for 公司网关（WSO2）, which has no 认证方式', async () => {
     render(<Models api={fakeApi([saved()])} />);
     fireEvent.click(await screen.findByRole('button', { name: /旧网关/ }));
     fireEvent.click(screen.getByRole('button', { name: '更多选项' }));
     expect(screen.queryByRole('radiogroup', { name: '凭据位置' })).toBeNull();
-    expect(screen.getByRole('button', { name: '添加请求头' })).toBeTruthy();
+    expect(screen.getByRole('radiogroup', { name: '认证方式' })).toBeTruthy();
   });
 });
 
@@ -633,14 +656,16 @@ describe('a company preset with its key header', () => {
     api.catalog = vi.fn(async () => withPresets);
     await openNew(api);
     choose('acme');
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    // the row is there to fill, so 更多选项 opens on it
-    expect(screen.getByText('请填写请求头「X-API-Key」的值')).toBeTruthy();
+    // 请求头 already picked, its name filled in: only the value is left
+    expect(screen.getByRole('radio', { name: '请求头' }).getAttribute('aria-checked')).toBe('true');
     expect((screen.getByLabelText('请求头名称') as HTMLInputElement).value).toBe('X-API-Key');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(screen.getByText('请填写值')).toBeTruthy();
+    expect(screen.queryByText('请填写请求头名称')).toBeNull();
     await act(async () => {});
     fireEvent.change(screen.getByLabelText('X-API-Key 的值'), { target: { value: 'k-1' } });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ catalogId: 'acme', headers: [{ name: 'X-API-Key', value: 'k-1' }] })));
+    await waitFor(() => expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ catalogId: 'acme', headers: [{ name: 'X-API-Key', value: 'k-1' }], authBy: 'header' })));
     fireEvent.click(await screen.findByRole('button', { name: /添加服务商/ }));
     choose('acme-wso2');
     const more = screen.getByRole('button', { name: '更多选项' });

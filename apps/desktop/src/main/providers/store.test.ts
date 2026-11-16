@@ -356,6 +356,32 @@ describe('ProviderStore · 自定义请求头 and 凭据位置', () => {
     expect(store.resolved()[0]).not.toHaveProperty('credentialsIn');
   });
 
+  it('认证方式 请求头 drops a saved API Key; back to API Key drops the headers; a script change keeps both', () => {
+    const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
+    const v = store.save({ ...draft, secret: 'sk-key-0000000000', authBy: 'key' });
+    expect(store.keyFor({ id: v.id, kind: 'openai', authBy: 'key' })).toBe('sk-key-0000000000');
+    // 请求头: the key is gone, only the header is sent; 测试连接 sends no saved key
+    const h = store.save({ ...draft, id: v.id, secret: undefined, authBy: 'header', headers: [{ name: 'X-API-Key', value: 'gw-0000000000' }] });
+    expect(h.hasSecret).toBe(false);
+    expect(store.resolved()[0]).toMatchObject({ secret: '', headerValues: { 'X-API-Key': 'gw-0000000000' } });
+    expect(store.keyFor({ id: v.id, kind: 'openai', authBy: 'header' })).toBeUndefined();
+    // a script change (no 认证方式) leaves it as it is
+    store.save({ ...draft, id: v.id, secret: undefined, model: 'model-b' });
+    expect(store.resolved()[0]?.headerValues).toEqual({ 'X-API-Key': 'gw-0000000000' });
+    // back to API Key: a key is needed again, and the headers go when it is saved
+    expect(() => store.save({ ...draft, id: v.id, secret: undefined, authBy: 'key' })).toThrow('请填写 API Key');
+    store.save({ ...draft, id: v.id, secret: 'sk-new-0000000000', authBy: 'key' });
+    expect(store.resolved()[0]).not.toHaveProperty('headerValues');
+    expect(store.headersFor({ authBy: 'key', headers: [{ name: 'X-A', value: 'v' }] }, v.id)).toEqual({});
+  });
+
+  it('认证方式 请求头: each row needs a name and a value; at least one row', () => {
+    const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
+    expect(() => store.save({ ...relay, authBy: 'header', headers: [] })).toThrow('请填写请求头名称');
+    expect(() => store.save({ ...relay, authBy: 'header', headers: [{ name: 'X-API-Key' }] })).toThrow('请填写值');
+    expect(() => store.save({ ...relay, authBy: 'header', headers: [{ name: '', value: 'v' }] })).toThrow('请填写请求头名称');
+  });
+
   it('refuses header rows that cannot be sent, in plain words', () => {
     const store = new ProviderStore(mkdtempSync(join(tmpdir(), 'spica-prov-')), box);
     expect(() => store.save({ ...draft, headers: [{ name: 'X API Key', value: 'v' }] })).toThrow('请求头名称「X API Key」只能包含字母、数字和 - _ .');

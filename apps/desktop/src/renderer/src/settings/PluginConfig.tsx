@@ -2,9 +2,11 @@
 // group of the detail, shown whether the plugin is on or off (it may have to be filled in before it can run).
 // Rows as everywhere in 设置: the field's title, the control on the right, what is wrong in the grey line.
 // A password is never sent back: its box stays empty with 「已保存（留空不修改）」. A field the packaging set and
-// locked shows its value, read-only, with 由管理员设置. One 保存 for the whole form; 未保存 beside it while what
-// is typed differs from what is saved, and it stays (in memory) when you look elsewhere.
-import { useState } from 'react';
+// locked shows its value, read-only, a lock beside its name (由管理员设置 on hover). One 保存 for the whole form,
+// kept in sight at the bottom of the group while it scrolls; 未保存 beside it while what is typed differs from what
+// is saved, and it stays (in memory) when you look elsewhere. A required field left empty is marked (red box,
+// 请填写 under it) after 保存 and when 「N 项未填」 leads here.
+import { useEffect, useState } from 'react';
 import { checkConfigValue } from '@spica/plugins/user-config';
 import type { PluginConfigFieldView, PluginConfigValues, PluginView } from '../../../shared/plugins';
 import { SpicaStatusIcon } from '@spica/brand/react';
@@ -34,8 +36,33 @@ export function savedForm(fields: readonly PluginConfigFieldView[]): Form {
 /** The DOM id of a field's control (「N 项未填」 goes to the first one). */
 export const configFieldId = (plugin: string, key: string) => `plugin-config-${plugin}-${key}`;
 
+/** Scroll a field into the middle of the view and put the cursor in it (a box), else its pick button. */
+export function focusField(plugin: string, key: string): void {
+  const id = configFieldId(plugin, key);
+  const el = document.getElementById(id) ?? document.getElementById(`${id}-cell`);
+  if (!el) return;
+  el.scrollIntoView?.({ block: 'center' });
+  const target = el instanceof HTMLInputElement ? el : (document.getElementById(`${id}-cell`)?.querySelector<HTMLElement>('input, button:not(:disabled)') ?? null);
+  target?.focus({ preventScroll: true });
+}
+
+/** The required fields a form leaves empty (a saved password counts as filled; a locked field is not the user's). */
+export function missingFields(fields: readonly PluginConfigFieldView[], form: Form): PluginConfigFieldView[] {
+  return fields.filter((f) => {
+    if (!f.required || f.locked) return false;
+    const v = form[f.key];
+    if (f.type === 'password') return !f.set && !(typeof v === 'string' && v);
+    if (f.type === 'toggle') return false;
+    return typeof v !== 'string' || v.trim() === '';
+  });
+}
+
+const MISSING = '请填写';
+
 export interface PluginConfigProps {
   p: PluginView;
+  /** Bumped when 「N 项未填」 leads here: the empty required fields are marked and the first one focused. */
+  reveal?: number;
   busy: boolean;
   /** Save: what the form sends; resolves with what is wrong by key (empty: saved). */
   save(values: PluginConfigValues): Promise<Record<string, string>>;
@@ -43,7 +70,7 @@ export interface PluginConfigProps {
   pickPath?: ((kind: 'folder' | 'file', title: string) => Promise<string | null>) | undefined;
 }
 
-export function PluginConfig({ p, busy, save, pickPath }: PluginConfigProps) {
+export function PluginConfig({ p, busy, save, pickPath, reveal }: PluginConfigProps) {
   const fields = p.config?.fields ?? [];
   const saved = savedForm(fields);
   const [form, setForm, done] = useKeptDraft<Form>(`plugin.config:${p.name}`, saved);
@@ -57,6 +84,18 @@ export function PluginConfig({ p, busy, save, pickPath }: PluginConfigProps) {
     if (JSON.stringify(form) === lastSaved) setForm(saved);
   }
   const dirty = JSON.stringify(form) !== savedKey;
+  // 「N 项未填」: mark what is empty (here, as the form draws), then go to the first one
+  const [seenReveal, setSeenReveal] = useState(0);
+  if ((reveal ?? 0) !== seenReveal) {
+    setSeenReveal(reveal ?? 0);
+    if (reveal) setErrors({ ...Object.fromEntries(missingFields(fields, form).map((f) => [f.key, MISSING])), ...errors });
+  }
+  useEffect(() => {
+    const first = reveal ? missingFields(fields, form)[0] : undefined;
+    if (first) requestAnimationFrame(() => focusField(p.name, first.key));
+    // only when asked again, not on every keystroke
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal]);
   if (!fields.length) return null;
 
   const set = (key: string, v: FormValue) => {
@@ -93,6 +132,9 @@ export function PluginConfig({ p, busy, save, pickPath }: PluginConfigProps) {
       setForm(Object.fromEntries(Object.entries(form).map(([k, v]) => [k, fields.find((f) => f.key === k)?.type === 'password' ? '' : v])));
       done();
       setResult('saved');
+      // what is filled in is saved; a required field still empty is marked where it is
+      const empty = missingFields(fields, form);
+      if (empty.length) setErrors(Object.fromEntries(empty.map((f) => [f.key, MISSING])));
     }
   };
 
@@ -140,10 +182,11 @@ function ConfigRow({
       {f.title}
       {f.required ? <span className="config-required" aria-label="必填"> *</span> : null}
       {f.description ? <InfoTip text={f.description} decorative /> : null}
+      {f.locked ? <InfoTip icon="lock" text="由管理员设置" /> : null}
     </>
   );
-  // what is wrong in red where the grey line goes; a locked field says who set it, a locked one gone bad who to ask
-  const hint = error ? <span className="field-error">{error}</span> : f.locked ? (f.set ? '由管理员设置' : <span className="field-error">请联系管理员</span>) : undefined;
+  // what is wrong in red under the box; a locked field gone bad says who to ask
+  const problem = error ?? (f.locked && !f.set ? '请联系管理员' : undefined);
   const text = typeof value === 'string' ? value : '';
   let control;
   if (f.type === 'toggle') {
@@ -151,7 +194,7 @@ function ConfigRow({
   } else if (f.type === 'select') {
     control = (
       <Select
-        className="config-select"
+        className={error ? 'config-select is-invalid' : 'config-select'}
         value={text}
         label={f.title}
         placeholder="选择"
@@ -162,7 +205,7 @@ function ConfigRow({
     );
   } else if (f.type === 'folder' || f.type === 'file') {
     control = (
-      <span className="config-path">
+      <span className={error ? 'config-path is-invalid' : 'config-path'}>
         <span className="config-path-text" id={id} title={text || undefined} data-tip-clipped="">
           {text || '—'}
         </span>
@@ -213,8 +256,11 @@ function ConfigRow({
     );
   }
   return (
-    <Row title={title} hint={hint} className={f.locked ? 'config-row is-locked' : 'config-row'}>
-      {control}
+    <Row title={title} className={f.locked ? 'config-row is-locked' : 'config-row'}>
+      <span className="config-control" id={`${id}-cell`}>
+        {control}
+        {problem ? <span className="field-error">{problem}</span> : null}
+      </span>
     </Row>
   );
 }

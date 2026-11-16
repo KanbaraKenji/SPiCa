@@ -124,6 +124,36 @@ export function headerProblem(rows: readonly HeaderDraft[] | undefined): string 
   return null;
 }
 
+/** One header row's problems, by cell: shown beside the 名称 or 值 that is wrong. */
+export interface HeaderCellError {
+  name?: string;
+  value?: string;
+}
+
+/**
+ * The problems of each row when the key goes in request headers (认证方式 请求头): every row needs a name and
+ * a value (a saved one counts), and at least one row. Indexed like `rows`; empty when all is well.
+ */
+export function headerCellErrors(rows: readonly HeaderDraft[] | undefined): HeaderCellError[] {
+  const list = Array.isArray(rows) && rows.length ? rows : [{ name: '' }];
+  const seen = new Set<string>();
+  const out = list.map((h): HeaderCellError => {
+    const e: HeaderCellError = {};
+    const name = (h?.name ?? '').trim();
+    const key = name.toLowerCase();
+    if (!name) e.name = '请填写请求头名称';
+    else if (!HEADER_NAME.test(name)) e.name = '只能包含字母、数字和 - _ .';
+    else if (RESERVED_HEADERS.has(key)) e.name = '由应用设置，不能填写';
+    else if (seen.has(key)) e.name = '名称重复';
+    if (name) seen.add(key);
+    const v = h?.value?.trim() ?? '';
+    if (!v && !h?.saved) e.value = '请填写值';
+    else if (v && !HEADER_VALUE.test(v)) e.value = '值不能换行';
+    return e;
+  });
+  return out.some((e) => e.name || e.value) ? out : [];
+}
+
 /** Whether a header carries a value (typed now or saved): it can stand in for the API Key (a gateway's own key header). */
 function hasHeaderValue(rows: readonly HeaderDraft[] | undefined): boolean {
   return namedHeaders(rows).some((h) => h.saved || h.value?.trim());
@@ -214,6 +244,24 @@ export interface ProviderDraft extends ProviderFields {
   models?: ConnectionModel[];
   /** 自定义请求头, the whole list; absent: keep the saved ones (a connected script's change). */
   headers?: HeaderDraft[];
+  /**
+   * 认证方式 picked in the form: the API Key, or keys in request headers. The two are exclusive: saving one
+   * drops what was saved for the other. Absent (a connected script's change): both kept as saved.
+   */
+  authBy?: AuthBy;
+}
+
+/** 认证方式: the API Key (Authorization), or a gateway's own request headers (X-API-Key…). */
+export type AuthBy = 'key' | 'header';
+
+/** The 认证方式 a saved connection reads as: request headers when it has them and no key. */
+export function authByOf(p: { kind: ProviderKind; hasSecret: boolean; savedHeaders?: readonly HeaderView[] | undefined }): AuthBy {
+  return p.kind !== 'wso2' && !p.hasSecret && (p.savedHeaders?.length ?? 0) > 0 ? 'header' : 'key';
+}
+
+/** Whether a draft sends its key in request headers (not for 公司网关（WSO2）, which fetches a token). */
+export function keyInHeaders(d: Pick<ProviderDraft, 'kind' | 'authBy'>): boolean {
+  return d.kind !== 'wso2' && d.authBy === 'header';
 }
 
 /** A connection with its key, for building the real connection (main process only). */
@@ -327,11 +375,20 @@ export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: {
     if (!d.clientId.trim()) e.clientId = '请填写 Consumer Key';
   }
   const secret = d.secret?.trim();
-  // Local providers (Ollama, LM Studio) need no key; nor does a gateway whose key goes in its own request header.
-  const keyInHeader = d.kind !== 'wso2' && hasHeaderValue(d.headers);
-  if (!secret && !hasSavedSecret && opts.needsKey !== false && !keyInHeader) e.secret = `请填写 ${secretLabel(d.kind)}`;
-  const headers = headerProblem(d.headers);
-  if (headers) e.headers = headers;
+  if (keyInHeaders(d)) {
+    // 认证方式 请求头: the rows stand in for the API Key; each needs a name and a value.
+    const cell = headerCellErrors(d.headers).find((c) => c.name || c.value);
+    if (cell) e.headers = (cell.name ?? cell.value)!;
+  } else if (d.authBy === 'key') {
+    // 认证方式 API Key: request headers are not sent (and not kept when saved).
+    if (!secret && !hasSavedSecret && opts.needsKey !== false) e.secret = `请填写 ${secretLabel(d.kind)}`;
+  } else {
+    // A connected script's change (no 认证方式): as saved; a header with a value stands in for the key.
+    const keyInHeader = d.kind !== 'wso2' && hasHeaderValue(d.headers);
+    if (!secret && !hasSavedSecret && opts.needsKey !== false && !keyInHeader) e.secret = `请填写 ${secretLabel(d.kind)}`;
+    const headers = headerProblem(d.headers);
+    if (headers) e.headers = headers;
+  }
   if (!opts.forTest && list) {
     const missing = list.find((m) => m.contextWindow === null || !Number.isInteger(m.contextWindow) || m.contextWindow < 1);
     if (missing) e.contextWindow = `请填写「${missing.id}」的上下文上限`;

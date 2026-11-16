@@ -22,6 +22,7 @@ import {
   modelsOfDraft,
   spendPeriodDays,
   validateDraft,
+  keyInHeaders,
   DEV_CONNECTION_NAMES,
   type ConnectionModel,
   type ContextFrom,
@@ -308,18 +309,21 @@ export class ProviderStore {
     const existing = draft.id ? this.#data.items.find((p) => p.id === draft.id) : undefined;
     // The name must not be another connection's (saved here, or one of those read from .env.local).
     const otherNames = [...this.#data.items.filter((p) => p.id !== draft.id).map((p) => p.name), ...DEV_CONNECTION_NAMES];
-    // a saved key, or (when the change leaves the headers as they are) a saved header standing in for it
-    const savedKey = Boolean(existing && (existing.keys.length > 0 || (draft.headers === undefined && existing.kind !== 'wso2' && (existing.headers?.length ?? 0) > 0)));
+    // a saved key, or (a script's change that leaves the headers as they are) a saved header standing in for it
+    const savedKey = Boolean(existing && (existing.keys.length > 0 || (draft.authBy === undefined && draft.headers === undefined && existing.kind !== 'wso2' && (existing.headers?.length ?? 0) > 0)));
     const errors = validateDraft(draft, savedKey, { ...opts, otherNames });
     const first = Object.values(errors)[0];
     if (first) throw new Error(first);
     let keys = existing?.keys ?? [];
     const typed = draft.secret?.trim();
-    if (typed) {
+    // 认证方式 请求头 drops a saved key (only the headers are sent); API Key drops saved headers.
+    const inHeaders = keyInHeaders(draft);
+    if (inHeaders) keys = [];
+    else if (typed) {
       if (!this.#box.available()) throw new Error('无法加密保存密钥，未保存。');
       keys = [{ sealed: this.#box.encrypt(typed), ...keyMaskParts(typed) }];
     }
-    const headers = draft.headers === undefined ? (existing?.headers ?? []) : this.#sealHeaders(draft.headers, existing?.headers ?? []);
+    const headers = draft.authBy === 'key' ? [] : draft.headers === undefined ? (existing?.headers ?? []) : this.#sealHeaders(draft.headers, existing?.headers ?? []);
     // absent in the draft (a connected script's change): keep what is saved
     const credsIn = 'credentialsIn' in draft ? credentialsIn(draft.credentialsIn) : (existing?.credentialsIn ?? null);
     const fields = baseFields(draft as unknown as Record<string, unknown>);
@@ -359,7 +363,8 @@ export class ProviderStore {
    * The header values a draft stands for (测试连接, 获取模型列表 before saving): typed ones, else the saved
    * value of that name on connection `id`. Undecryptable ones are left out.
    */
-  headersFor(draft: Pick<ProviderDraft, 'headers'>, id?: string): Record<string, string> {
+  headersFor(draft: Pick<ProviderDraft, 'headers' | 'authBy'>, id?: string): Record<string, string> {
+    if (draft.authBy === 'key') return {};
     const saved = (id ? this.#data.items.find((p) => p.id === id)?.headers : undefined) ?? [];
     const rows = draft.headers ?? saved.map((s) => ({ name: s.name, saved: true }));
     const out: Record<string, string> = {};
@@ -438,6 +443,11 @@ export class ProviderStore {
       const first = known.find((c) => c.models.length);
       if (first) this.#data.default = { connectionId: first.id, model: first.models[0]! };
     }
+  }
+
+  /** The saved key a form's 测试连接 or 获取模型列表 uses: none when its 认证方式 is 请求头. */
+  keyFor(draft: Pick<ProviderDraft, 'id' | 'kind' | 'authBy'>): string | undefined {
+    return draft.id && !keyInHeaders(draft) ? this.secretOf(draft.id) : undefined;
   }
 
   /** The key of a saved connection, decrypted (main process only). */

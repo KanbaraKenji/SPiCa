@@ -13,6 +13,8 @@ import {
   PROVIDER_KINDS,
   secretLabel,
   validateDraft,
+  authByOf,
+  keyInHeaders,
   DEV_CONNECTION_NAMES,
   WSO2_KEY_LABEL,
   type ConnectionModel,
@@ -36,7 +38,7 @@ import { useGuard } from '../ui/guard';
 import { InfoTip } from '../ui/InfoTip';
 import { Select, type SelectOption } from '../ui/Select';
 import { PasteConfig } from './PasteConfig';
-import { CredentialsInField, headerRows, HeadersField } from './ProviderHeaders';
+import { AuthByField, CredentialsInField, headerRows, HeadersField } from './ProviderHeaders';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Group, Row } from './Group';
 import { AGENT_MESSAGES_MAX, moneyText } from '../../../shared/settings';
@@ -87,7 +89,7 @@ function draftFrom(p: ProviderView): ProviderDraft {
   void _d;
   void _r;
   void _t;
-  return { ...fields, credentialsIn: p.credentialsIn ?? null, models: p.models.map((m) => ({ ...m })), headers: headerRows(savedHeaders) };
+  return { ...fields, credentialsIn: p.credentialsIn ?? null, models: p.models.map((m) => ({ ...m })), headers: headerRows(savedHeaders), authBy: authByOf(p) };
 }
 
 /** Which 服务商 a draft is: its catalog entry, 公司网关（WSO2）, 中转站, or '' before one is picked. */
@@ -136,6 +138,8 @@ function Field({ label, value, onChange, error, placeholder, type = 'text', hint
 
 // Which connection was open and what was typed into each one, kept while you look elsewhere.
 const SELECTED = 'models.selected';
+// Which of the two 认证方式 layouts the form shows until one is picked (1: every connection with a key, 2: 中转站 and presets with headers).
+const AUTH_LAYOUT: 1 | 2 = 2;
 
 /** The next time 设置 › 模型 opens, it opens this connection (a stop at its 花费上限 points to it). */
 export function openProviderNext(id: string): void {
@@ -373,9 +377,10 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
     setFetched(null);
     setFetchError(null);
     setMatchedNames({});
+    clearErrors(['name', 'baseUrl', 'model', 'contextWindow', 'secret', 'headers']);
     const keep = { ...(draft.id ? { id: draft.id } : {}), ...(draft.secret ? { secret: draft.secret } : {}), ...(draft.headers ? { headers: draft.headers } : {}) };
-    if (value === WSO2) return commit({ ...emptyDraft('wso2'), ...keep, models: [] });
-    if (value === RELAY) return commit({ ...emptyDraft('openai'), ...keep, models: [] });
+    if (value === WSO2) return commit({ ...emptyDraft('wso2'), ...keep, authBy: 'key', models: [] });
+    if (value === RELAY) return commit({ ...emptyDraft('openai'), ...keep, authBy: draft.authBy ?? 'key', models: [] });
     const p = providers.find((x) => x.id === value);
     if (!p) return;
     const first = p.models.find((m) => m.role === 'default') ?? p.models[0];
@@ -389,12 +394,11 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
       catalogId: p.id,
       maxConcurrent: p.maxConcurrent ?? null,
       requestsPerMinute: p.requestsPerMinute ?? null,
-      // a company preset names the headers each person fills in, and where WSO2 sends its credentials
-      ...(p.headers?.length ? { headers: p.headers.map((name) => ({ name })) } : {}),
+      // a company preset names the headers each person fills in (认证方式 请求头), and where WSO2 sends its credentials
+      ...(p.headers?.length ? { headers: p.headers.map((name) => ({ name })), authBy: 'header' as const } : { authBy: 'key' as const }),
       ...(p.credentialsIn ? { credentialsIn: p.credentialsIn } : {}),
       models: first ? [{ id: first.id, contextWindow: first.contextWindow, contextFrom: 'catalog' }] : [],
     });
-    clearErrors(['name', 'baseUrl', 'model', 'contextWindow']);
   };
 
   /** A model's 上下文上限 matched by name in the catalog, filled in unless typed by hand meanwhile. */
@@ -494,7 +498,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
     const startFrom: ProviderDraft =
       kind === 'wso2' ? { ...emptyDraft('wso2'), models: [] } : known ? { ...emptyDraft(SHELL_KIND[known.kind]), name: freeName(known.name), baseUrl: known.baseUrl, catalogId: known.id, models: [] } : { ...emptyDraft(kind), models: [] };
     const { model, ...fields } = r.fields;
-    const next: ProviderDraft = { ...startFrom, ...(draft.id ? { id: draft.id } : {}), ...(draft.headers ? { headers: draft.headers } : {}), ...fields };
+    const next: ProviderDraft = { ...startFrom, ...(draft.id ? { id: draft.id } : {}), ...(draft.headers ? { headers: draft.headers } : {}), authBy: kind === 'wso2' ? 'key' : (draft.authBy ?? 'key'), ...fields };
     commit(next);
     if (model) {
       const fromCatalog = known?.models.find((x) => x.id === model);
@@ -513,7 +517,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
     const otherNames = [...items.filter((p) => p.id !== draft.id).map((p) => p.name), ...DEV_CONNECTION_NAMES];
     const e = validateDraft({ ...draft, models: draft.models ?? [] }, hasSecret, { forTest, needsKey, otherNames });
     setErrors(e);
-    if ((e.maxConcurrent || e.requestsPerMinute || e.headers || (e.baseUrl && provider)) && !advanced) setAdvanced(true);
+    if ((e.maxConcurrent || e.requestsPerMinute || (e.baseUrl && provider)) && !advanced) setAdvanced(true);
     return Object.keys(e).length === 0;
   };
 
@@ -625,6 +629,10 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
   const editing = selected !== null && !current?.readOnly;
   const isWso2 = choice === WSO2;
   const isRelay = choice === RELAY;
+  // 认证方式: for 中转站, a company preset that names request headers, and a connection already using them.
+  const authBy = draft.authBy ?? 'key';
+  const inHeaders = keyInHeaders({ kind: draft.kind, authBy });
+  const showAuthBy = !isWso2 && (AUTH_LAYOUT === 1 ? needsKey : isRelay || Boolean(provider?.headers?.length) || inHeaders);
   const limits = (
     <div className="field-pair">
       <Field label="同时请求" type="number" value={numText(draft.maxConcurrent)} onChange={(v) => set({ maxConcurrent: parseNum(v) })} error={errors.maxConcurrent} placeholder="不限" />
@@ -748,7 +756,21 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                 </>
               ) : null}
 
-              {needsKey ? (
+              {showAuthBy ? (
+                <AuthByField
+                  value={authBy}
+                  onChange={(v) => {
+                    // the API Key typed so far is not sent with 请求头 (nor kept)
+                    const { secret: _s, ...rest } = draft;
+                    void _s;
+                    commit({ ...(v === 'header' ? rest : draft), authBy: v });
+                    clearErrors(['secret', 'headers']);
+                  }}
+                />
+              ) : null}
+              {inHeaders ? <HeadersField rows={draft.headers ?? []} saved={current?.savedHeaders} onChange={(headers) => set({ headers })} showErrors={Boolean(errors.headers)} /> : null}
+
+              {needsKey && !inHeaders ? (
                 <label className="field field-stack">
                   <span className="field-label">
                     {secretLabel(draft.kind)}
@@ -878,7 +900,6 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
                     </>
                   ) : null}
                   {limits}
-                  <HeadersField rows={draft.headers ?? []} saved={current?.savedHeaders} onChange={(headers) => set({ headers })} error={errors.headers} />
                   {draft.kind === 'wso2' ? <CredentialsInField value={draft.credentialsIn ?? null} onChange={(credentialsIn) => set({ credentialsIn })} /> : null}
                 </>
               ) : null}

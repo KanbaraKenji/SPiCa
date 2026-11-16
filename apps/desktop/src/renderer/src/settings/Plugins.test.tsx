@@ -673,9 +673,35 @@ describe('a plugin’s settings form (user_config)', () => {
     // set by the packaging: shown as text, nothing to type into
     expect(within(page).queryByRole('textbox', { name: '服务器地址' })).toBeNull();
     expect(within(page).getByText('https://tickets.example.com')).toBeTruthy();
-    expect(within(page).getByText('由管理员设置')).toBeTruthy();
+    // who set it is a lock beside the name, its words on hover, not a line of text
+    expect(within(page).queryByText('由管理员设置')).toBeNull();
+    expect(within(page).getByRole('img', { name: '由管理员设置' }).getAttribute('data-tip')).toBe('由管理员设置');
     expect((within(page).getByLabelText('密码') as HTMLInputElement).placeholder).toBe('');
     expect(within(page).getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('「N 项未填」 marks the empty fields, the message under each, and puts the cursor in the first', async () => {
+    const { api: a } = withForm();
+    render(<Plugins api={a} />);
+    const page = await open('工单查询', '工单查询（示例）');
+    const pw = within(page).getByLabelText('密码') as HTMLInputElement;
+    expect(pw.getAttribute('aria-invalid')).toBeNull();
+    fireEvent.click(within(page).getByRole('button', { name: /待设置 · 1 项未填/ }));
+    expect(pw.getAttribute('aria-invalid')).toBe('true');
+    expect(pw.closest('.config-control')?.textContent).toContain('请填写');
+    await waitFor(() => expect(document.activeElement).toBe(pw));
+  });
+
+  it('saved with a required field still empty: what is filled in is saved, the empty one is marked', async () => {
+    const { api: a, sent } = withForm();
+    render(<Plugins api={a} />);
+    const page = await open('工单查询', '工单查询（示例）');
+    fireEvent.change(within(page).getByRole('textbox', { name: '每页条数' }), { target: { value: '30' } });
+    fireEvent.click(within(page).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(sent).toContainEqual(expect.objectContaining({ op: 'config', values: expect.objectContaining({ page_size: 30 }) })));
+    expect(await within(page).findByText('已保存')).toBeTruthy();
+    expect(within(page).getByLabelText('密码').getAttribute('aria-invalid')).toBe('true');
+    expect(within(page).getByText('请填写')).toBeTruthy();
   });
 
   it('what is wrong is said under the field and nothing is sent; filled in and saved, it runs and the password reads as saved', async () => {

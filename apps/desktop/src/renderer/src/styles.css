@@ -4466,7 +4466,7 @@ button.ctx-row:hover {
   color: var(--spica-muted);
 }
 
-/* 更多选项 › 自定义请求头: one row per header, name and value side by side, 删除 at the end. */
+/* 认证方式 请求头: one row per header, 名称 and 值 side by side (each with its message under it), 删除 at the end. */
 .header-rows {
   display: flex;
   flex-direction: column;
@@ -4476,8 +4476,15 @@ button.ctx-row:hover {
 
 .header-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  min-width: 0;
+}
+
+.header-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -4584,6 +4591,11 @@ button.ctx-row:hover {
   }
 
   .provider-editor {
+    padding: 12px;
+  }
+
+  .provider-actions {
+    margin: 4px -12px -12px;
     padding: 12px;
   }
 }
@@ -4705,12 +4717,19 @@ button.ctx-row:hover {
   color: var(--spica-ink);
 }
 
+/* 保存 and 测试连接 at the end of the form, kept in sight at the bottom while the form scrolls (as a plugin's). */
 .provider-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 4px;
+  margin: 4px -16px -16px;
+  padding: 12px 16px 16px;
+  border-radius: 0 0 var(--radius-l) var(--radius-l);
+  background: var(--spica-surface);
 }
 
 .provider-actions-gap {
@@ -5347,13 +5366,36 @@ section.plugins-part > .plugins-part-title {
   color: var(--spica-muted);
 }
 
-/* 保存 at the end of the form, 未保存 / 已保存 beside it. */
+/* 保存 at the end of the form, 未保存 / 已保存 beside it; kept in sight at the bottom while the form scrolls. */
 .plugin-config-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
   padding: 10px 16px;
+  border-radius: 0 0 var(--radius-l) var(--radius-l);
+  background: var(--spica-surface);
+}
+
+.settings-dialog .plugin-config-actions {
+  background: var(--spica-settings-pane);
+}
+
+/* A field's control with what is wrong right under it. */
+.config-control {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.config-path.is-invalid .btn {
+  border-color: var(--spica-danger);
 }
 
 /* 「N 项未填」 under the plugin's name: goes to the first field not filled in. */

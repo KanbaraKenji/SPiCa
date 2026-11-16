@@ -34,12 +34,6 @@ export function pageTabLabel(title: string, hasForm: boolean): string {
   return hasForm && (t === '设置' || t === '设定') ? '更多设置' : t;
 }
 
-/** 「N 项未填」: to the first field not filled in, its control focused. */
-function goToField(plugin: string, key: string): void {
-  const el = document.getElementById(configFieldId(plugin, key)) ?? document.querySelector<HTMLElement>(`.plugin-config [data-setting]`);
-  el?.scrollIntoView({ block: 'center' });
-  if (el instanceof HTMLInputElement) el.focus({ preventScroll: true });
-}
 import { friendlyError } from '../store/agent';
 import { ConfirmDialog } from '../ui/Dialog';
 import { ContextMenu } from '../ui/ContextMenu';
@@ -53,7 +47,7 @@ import { SpicaStatusIcon } from '@spica/brand/react';
 import type { PluginView as PageView } from '../../../shared/plugin-view';
 import { PluginPage, type PluginPageProps } from '../shell/PluginFrame';
 import { letterBadge } from '../ui/badge';
-import { configFieldId, PluginConfig } from './PluginConfig';
+import { PluginConfig } from './PluginConfig';
 import { formatClock } from '../chat/format';
 
 export interface PluginsApi {
@@ -311,6 +305,8 @@ function PluginDetail({
   const [picked, setPicked] = useState('');
   const [opened, setOpened] = useState<string[]>([]);
   const [menu, setMenu] = useState<HTMLElement | null>(null);
+  // 「N 项未填」 clicked: the form marks what is empty and goes to the first one
+  const [reveal, setReveal] = useState(0);
   // A page gone (the plugin turned off, updated without it): back on 详情.
   const tab = pages.some((g) => g.view.id === picked) ? picked : '';
   const pick = (id: string) => {
@@ -387,7 +383,11 @@ function PluginDetail({
         {p.description ? <p className="plugin-desc">{p.description}</p> : null}
         {p.enabled ? null : <p className="plugin-off">已停用</p>}
         {p.config?.missing.length ? (
-          <button type="button" className="plugin-unfilled status-with-icon" onClick={() => goToField(p.name, p.config!.missing[0]!)}>
+          <button type="button" className="plugin-unfilled status-with-icon" onClick={() => {
+              pick('');
+              setReveal((n) => n + 1);
+            }}
+          >
             <SpicaStatusIcon name="warning" size={14} />
             {p.waiting ? '待设置 · ' : ''}
             {p.config.missing.length} 项未填
@@ -399,7 +399,7 @@ function PluginDetail({
             {problems.join('；')}
           </p>
         ) : null}
-        {p.config && saveConfig ? <PluginConfig p={p} busy={busy} save={saveConfig} pickPath={pickPath} /> : null}
+        {p.config && saveConfig ? <PluginConfig p={p} busy={busy} save={saveConfig} pickPath={pickPath} reveal={reveal} /> : null}
         {mail ? (
           <div className="plugin-mail">
             <MailSettings {...mail} />

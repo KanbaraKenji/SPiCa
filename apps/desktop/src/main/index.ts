@@ -18,7 +18,7 @@ import { effectiveAccount, mailForCore, networkForCore, type ShellSettings } fro
 import type { LocalConnectInfo, NetworkState } from '../shared/bridge';
 import type { ProviderList, SaveCsvResult, ShellState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import { APP_IDENTITY } from '../shared/app-identity';
-import { coreKind, devConnectionName, secretLabel, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderSpendView, type ProviderView } from '../shared/providers';
+import { coreKind, devConnectionName, keyInHeaders, secretLabel, type ConnectionModel, type ModelRef, type ProviderDraft, type ProviderKind, type ProviderSpendView, type ProviderView } from '../shared/providers';
 import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
@@ -1680,7 +1680,7 @@ ipcMain.handle(DesktopChannel.SetModelPointer, (_e, which: 'default' | 'strong',
   return providerList();
 });
 ipcMain.handle(DesktopChannel.TestProvider, async (_e, draft: ProviderDraft) =>
-  testConnection(draft, draft.id ? providers.secretOf(draft.id) : undefined, undefined, needsKeyFor(await modelCatalog(), draft.catalogId), providers.headersFor(draft, draft.id)),
+  testConnection(draft, providers.keyFor(draft), undefined, needsKeyFor(await modelCatalog(), draft.catalogId), providers.headersFor(draft, draft.id)),
 );
 ipcMain.handle(DesktopChannel.KnownContextWindow, async (_e, kind: ProviderKind, model: string, catalogId?: string | null): Promise<number | null> => {
   const name = String(model ?? '').trim();
@@ -1701,7 +1701,7 @@ ipcMain.handle(DesktopChannel.MatchContextWindow, async (_e, kind: ProviderKind,
   return matchWindowIn(DEFAULT_PRICES, coreKind(kind), name, cid);
 });
 ipcMain.handle(DesktopChannel.ListProviderModels, async (_e, draft: ProviderDraft): Promise<ListModelsResult> => {
-  const secret = draft.secret?.trim() || (draft.id ? providers.secretOf(draft.id) : undefined) || '';
+  const secret = (keyInHeaders(draft) ? '' : draft.secret?.trim()) || providers.keyFor(draft) || '';
   const config = toProviderConfig({ ...draft, id: 'list-models', secret, headerValues: providers.headersFor(draft, draft.id) });
   if (backend instanceof ProcessBackend) {
     return backend.listProviderModels(config).catch((err: unknown) => ({ ok: false, code: 'list.failed', message: err instanceof Error ? err.message : String(err), hint: '获取模型列表失败，请从列表选择或手动输入模型。' }));

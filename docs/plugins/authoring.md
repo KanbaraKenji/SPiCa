@@ -392,7 +392,7 @@ description: How to break a goal into to-do items.
 - server 读环境变量 `SPICA_USER_CONFIG`：一个 JSON 对象，每个声明过的键都有，没填是默认值或 `null`。读完从 `process.env` 删掉，免得你起的辅助进程继承密码。
 - 必填项没填齐：插件算已启用，但 server、技能、命令、钩子都不起，列表和详情写「N 项未填」；填齐保存后自动起来。改了值并保存，这个插件的 server 重启一次。
 - 密码只显示「已保存」，插件日志里出现会换成 `[redacted]`（很短的密码只在前后不是字母数字时换得掉）。
-- 公司打包时可以在 `deploy.json` 的 `pluginConfig` 里替大家预填或锁定某几项（锁定的显示「由管理员设置」）；密码不能预填。
+- 公司打包时可以在 `deploy.json` 的 `pluginConfig` 里替大家预填或锁定某几项（锁定的名称旁有一把锁，悬停显示「由管理员设置」）；密码不能预填。
 - 类型表表达不了的（测试连接、能增删的列表、联动的选项）才自己画设置页（5b 节「设置页」）。同一项只放一处。
 
 完整写法、server 端的 `readConfig()` 和报错样子见 `skills/spica-plugin-author/references/user-config.md`。
