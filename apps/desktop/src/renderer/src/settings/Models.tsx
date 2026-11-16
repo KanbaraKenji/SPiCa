@@ -40,7 +40,7 @@ import { Select, type SelectOption } from '../ui/Select';
 import { PasteConfig } from './PasteConfig';
 import { AuthByField, CredentialsInField, headerRows, HeadersField } from './ProviderHeaders';
 import { ProblemBeside, ProblemBox } from './Problem';
-import { SAVE_LAYOUT, SaveRow } from './save-layout';
+import { SaveRow } from './save-layout';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Group, Row } from './Group';
 import { AGENT_MESSAGES_MAX, moneyText } from '../../../shared/settings';
@@ -645,7 +645,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
     </div>
   );
 
-  // 保存, 测试连接 and the rest (save-layout.tsx says where they sit)
+  // 保存, 测试连接 and the rest: the bar at the bottom of the settings pane (save-layout.tsx)
   const formActions = (
     <>
             {current ? (
@@ -751,7 +751,6 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
             void run(save);
           }}
         >
-          {SAVE_LAYOUT === 'head' ? <div className="provider-actions save-head">{formActions}</div> : null}
           <div className="field field-stack">
             <span className="field-label">{t('服务商')}</span>
             <span className="field-control provider-choice">
@@ -965,7 +964,7 @@ export function Models({ api, agentMessages }: { api: ProvidersApi; agentMessage
               {pointerNote}
             </p>
           ) : null}
-          {SAVE_LAYOUT === 'head' ? null : <SaveRow className="provider-actions">{formActions}</SaveRow>}
+          <SaveRow className="provider-actions">{formActions}</SaveRow>
         </form>
       ) : null}
 

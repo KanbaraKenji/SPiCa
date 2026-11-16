@@ -18,7 +18,7 @@ import { Group, Row } from './Group';
 import { Switch } from './Switch';
 import { N_, t } from '../../../shared/i18n';
 import { configProblemText } from '../../../shared/plugin-config-words';
-import { SAVE_LAYOUT, SaveRow } from './save-layout';
+import { SaveRow } from './save-layout';
 
 /** What a field's control holds: text for every box (numbers too, as typed), on / off for a switch. */
 type FormValue = string | boolean;
@@ -163,11 +163,11 @@ export function PluginConfig({ p, busy, save, pickPath, reveal }: PluginConfigPr
   );
 
   return (
-    <Group title={t('设置')} className={SAVE_LAYOUT === 'head' ? 'plugin-config is-save-head' : 'plugin-config'} {...(SAVE_LAYOUT === 'head' ? { actions: <div className="plugin-config-actions save-head">{actions}</div> } : {})}>
+    <Group title={t('设置')} className="plugin-config">
       {fields.map((f) => (
         <ConfigRow key={f.key} plugin={p.name} f={f} value={form[f.key] ?? ''} error={errors[f.key]} disabled={busy} onChange={(v) => set(f.key, v)} pickPath={pickPath} />
       ))}
-      {SAVE_LAYOUT === 'head' ? null : <SaveRow className="plugin-config-actions">{actions}</SaveRow>}
+      <SaveRow className="plugin-config-actions">{actions}</SaveRow>
     </Group>
   );
 }
