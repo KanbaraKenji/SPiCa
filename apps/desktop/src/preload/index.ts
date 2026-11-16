@@ -142,6 +142,7 @@ const bridge: DesktopBridge = {
   browser: {
     onOpenTab: (listener) => subscribe<string>(DesktopChannel.BrowserOpenTab, listener),
     openExternal: (url) => ipcRenderer.invoke(DesktopChannel.BrowserExternal, url) as Promise<string | null>,
+    clearData: () => ipcRenderer.invoke(DesktopChannel.BrowserClearData) as Promise<null>,
   },
   saveCsv: (name, text) => ipcRenderer.invoke(DesktopChannel.SaveCsv, name, text) as Promise<SaveCsvResult>,
   monitor: {

@@ -1,7 +1,7 @@
 // Settings > 常规: starting with Windows and what closing the window does, the folder workflow files are read from, the network,
 // exporting the usage log. Mail sorting is with the mail plugin (设置 › 插件).
 import { useCallback, useEffect, useState } from 'react';
-import { DEFAULT_NETWORK, type AutostartSupport, type CloseWindow, type NetworkPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
+import { DEFAULT_NETWORK, type AutostartSupport, type CloseWindow, type LinkOpen, type NetworkPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
 import type { LocalConnectInfo, NetworkState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Select } from '../ui/Select';
@@ -43,6 +43,8 @@ export interface GeneralProps {
   previewPages?: PluginView[];
   /** Whether 开机时启动 works in this copy (an installed one); absent: shown disabled. */
   autostart?: AutostartSupport;
+  /** 浏览器 › 浏览数据: clears the built-in browser's sign-ins, storage and cache. Absent: no such row. */
+  clearBrowsingData?: () => Promise<unknown>;
 }
 
 /** 文件预览: per kind of file a plugin page can show, the app's own preview or that page. Not shown without any. */
@@ -88,6 +90,45 @@ const AUTOSTART_UNAVAILABLE: Record<Exclude<AutostartSupport, 'ok'>, string> = {
   portable: N_('便携版不能开机启动，只有安装版能用。'),
   unsupported: N_('只有 Windows 安装版能用。'),
 };
+
+/** 浏览器 › 打开网址: where a web address clicked in the app opens (shell/links.tsx). */
+const LINK_OPEN: [LinkOpen, string][] = [
+  ['ask', N_('每次询问')],
+  ['panel', N_('内置浏览器')],
+  ['system', N_('系统浏览器')],
+];
+
+/** 浏览器: where web addresses open, and the built-in browser's own sign-ins and storage (kept until cleared here). */
+function Browser({ settings, onChange, clearBrowsingData }: GeneralProps) {
+  const [cleared, setCleared] = useState(false);
+  return (
+    <Group title={t('浏览器')}>
+      <Row title={t('打开网址')}>
+        <div className="segmented" role="radiogroup" aria-label={t('打开网址')}>
+          {LINK_OPEN.map(([value, label]) => (
+            <button key={value} type="button" role="radio" aria-checked={settings.linkOpen === value} className={settings.linkOpen === value ? 'segment is-on' : 'segment'} onClick={() => onChange({ linkOpen: value })}>
+              {t(label)}
+            </button>
+          ))}
+        </div>
+      </Row>
+      {clearBrowsingData ? (
+        <Row title={t('浏览数据')}>
+          <button
+            type="button"
+            className="btn"
+            disabled={cleared}
+            onClick={() => {
+              void clearBrowsingData().then(() => setCleared(true));
+            }}
+          >
+            {cleared ? t('已清除') : t('清除')}
+          </button>
+        </Row>
+      ) : null}
+    </Group>
+  );
+}
 
 /** 关闭窗口时: the choices, in the order of the question the × asks (main/tray.ts). */
 const CLOSE_WINDOW: [CloseWindow, string][] = [
@@ -441,6 +482,7 @@ export function General(props: GeneralProps) {
     <section className="settings-section">
       <Startup {...props} />
       <FilePreviews {...props} />
+      <Browser {...props} />
       <Workflows {...props} />
       <Network {...props} />
       <UsageLog {...props} />

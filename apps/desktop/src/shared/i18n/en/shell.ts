@@ -267,4 +267,10 @@ export const EN_SHELL: Catalog = {
   地址: 'Address',
   输入网址: 'Enter an address',
   用系统浏览器打开: 'Open in system browser',
+  // shell/links.tsx (where web addresses open)
+  '在哪里打开网址？': 'Where should the address open?',
+  内置浏览器: 'Built-in browser',
+  系统浏览器: 'System browser',
+  记住我的选择: 'Remember my choice',
+  用内置浏览器打开: 'Open in built-in browser',
 };

@@ -146,4 +146,10 @@ export const EN_SETTINGS: Catalog = {
   信息: 'Info',
   警告: 'Warning',
   错误: 'Error',
+  // 常规 › 浏览器
+  浏览器: 'Browser',
+  打开网址: 'Open web addresses in',
+  浏览数据: 'Browsing data',
+  已清除: 'Cleared',
+  清除: 'Clear',
 };

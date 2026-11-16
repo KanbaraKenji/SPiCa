@@ -18,6 +18,8 @@ export interface BrowserSessionLike {
     onBeforeRequest(listener: (details: RequestDetails, callback: (r: { cancel: boolean }) => void) => void): void;
   };
   on(event: 'will-download', listener: (e: unknown, item: DownloadItemLike) => void): unknown;
+  cookies: { on(event: 'changed', listener: () => void): unknown; flushStore(): Promise<void> };
+  flushStorageData(): void;
 }
 
 export interface DownloadItemLike {
@@ -30,6 +32,8 @@ export interface DownloadItemLike {
 export interface BrowserSessionOptions {
   /** One line for the app's log (requests stopped, downloads). */
   log?: (line: string) => void;
+  /** How long after a sign-in changes it is written to disk (default 1 s). */
+  flushAfterMs?: number;
 }
 
 function shortUrl(url: string): string {
@@ -62,6 +66,22 @@ export function setupBrowserSession(ses: BrowserSessionLike, o: BrowserSessionOp
   ses.on('will-download', (_e, item) => {
     o.log?.(`browser: download asked (${item.getFilename()}, ${item.getTotalBytes()} bytes, ${shortUrl(item.getURL())})`);
   });
+  // Sign-ins are kept until cleared (设置 › 常规 › 浏览器): written to disk soon after they change, so a crash or a
+  // forced end of the app does not lose them (Chromium on its own writes them only now and then).
+  let flush: ReturnType<typeof setTimeout> | undefined;
+  ses.cookies.on('changed', () => {
+    if (flush) return;
+    flush = setTimeout(() => {
+      flush = undefined;
+      flushBrowserSession(ses);
+    }, o.flushAfterMs ?? 1000);
+  });
+}
+
+/** Writes the browser's sign-ins and page storage to disk now (also when the app quits). */
+export function flushBrowserSession(ses: Pick<BrowserSessionLike, 'cookies' | 'flushStorageData'>): void {
+  void ses.cookies.flushStore().catch(() => undefined);
+  ses.flushStorageData();
 }
 
 /** A guest page (a <webview>'s WebContents): the parts the browser wires. */

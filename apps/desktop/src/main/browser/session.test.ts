@@ -1,23 +1,43 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { WebContents } from 'electron';
 import { guardWebviews, setupBrowserSession, type BrowserSessionLike, type GuestLike } from './session';
+import { BROWSER_PARTITION } from './policy';
 
 type HostLike = Pick<WebContents, 'on'>;
-import { BROWSER_PARTITION } from './policy';
 
 function fakeSession() {
   const h: Record<string, (...a: never[]) => unknown> = {};
+  const flushed: string[] = [];
   const ses: BrowserSessionLike = {
     setPermissionRequestHandler: (f) => void (h.request = f as never),
     setPermissionCheckHandler: (f) => void (h.check = f as never),
     setDevicePermissionHandler: (f) => void (h.device = f as never),
     webRequest: { onBeforeRequest: (f) => void (h.before = f as never) },
     on: (_e, f) => void (h.download = f as never),
+    cookies: { on: (_e, f) => void (h.cookies = f as never), flushStore: async () => void flushed.push('cookies') },
+    flushStorageData: () => void flushed.push('storage'),
   };
-  return { ses, h };
+  return { ses, h, flushed };
 }
 
 describe('setupBrowserSession', () => {
+  it('writes sign-ins to disk a moment after they change, once for a burst of changes', () => {
+    vi.useFakeTimers();
+    try {
+      const { ses, h, flushed } = fakeSession();
+      setupBrowserSession(ses);
+      for (let i = 0; i < 5; i++) (h.cookies as () => void)();
+      expect(flushed).toEqual([]);
+      vi.advanceTimersByTime(1000);
+      expect(flushed).toEqual(['cookies', 'storage']);
+      (h.cookies as () => void)();
+      vi.advanceTimersByTime(1000);
+      expect(flushed).toHaveLength(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('refuses permission requests and checks, and logs the request', () => {
     const { ses, h } = fakeSession();
     const lines: string[] = [];

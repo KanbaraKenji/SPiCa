@@ -80,6 +80,7 @@ export interface SettingsViewProps {
   pickFiles?: GeneralProps['pickFiles'];
   localConnect?: GeneralProps['localConnect'];
   previewPages?: GeneralProps['previewPages'];
+  clearBrowsingData?: GeneralProps['clearBrowsingData'];
   /** The plugins' own settings pages, shown in their detail under 插件. */
   pluginPages?: SettingsPages;
   /** 记忆 (absent when the core keeps none: no section). The switch is a shell setting. */
@@ -88,7 +89,7 @@ export interface SettingsViewProps {
   usage?: UsageApi;
 }
 
-export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, pluginsTab, onPluginsTab, onClose, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, pluginPages, memory, usage }: SettingsViewProps) {
+export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, pluginsTab, onPluginsTab, onClose, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, clearBrowsingData, pluginPages, memory, usage }: SettingsViewProps) {
   const { settings } = useShell(shell);
   const tabs = TABS.filter((tab) => (tab.id !== 'memory' || memory) && (tab.id !== 'usage' || usage));
   const box = useRef<HTMLDivElement>(null);
@@ -140,6 +141,7 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
         {...(pickFiles ? { pickFiles } : {})}
         {...(localConnect ? { localConnect } : {})}
         {...(previewPages ? { previewPages } : {})}
+        {...(clearBrowsingData ? { clearBrowsingData } : {})}
         autostart={shell.autostart}
       />
     ) : id === 'account' ? (

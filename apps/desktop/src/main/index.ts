@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, screen, session, shell, Tray } from 'electron';
 import { BROWSER_PARTITION } from './browser/policy';
-import { guardWebviews, setupBrowserSession } from './browser/session';
+import { flushBrowserSession, guardWebviews, setupBrowserSession } from './browser/session';
 import { applyBrowserNetwork, proxyLogin } from './browser/network';
 import { pathToFileURL } from 'node:url';
 import { IpcChannel, type AgentApi, type AppInfo, type UsageSummary } from '@spica/protocol';
@@ -929,6 +929,8 @@ let newChatAtStart = !automated && startsOnNewChat(process.argv);
 let reopen: { sessionId: string | null } | null = automated ? null : readResume(join(app.getPath('userData'), 'update-resume.json'));
 let appQuitting = false;
 app.on('before-quit', () => {
+  // the built-in browser's sign-ins and page storage on disk before the session goes
+  if (app.isReady()) flushBrowserSession(session.fromPartition(BROWSER_PARTITION));
   appQuitting = true;
   // The icon goes with the window: nothing to click while the core closes.
   tray?.destroy();
@@ -1558,6 +1560,16 @@ ipcMain.handle(DesktopChannel.BrowserExternal, async (_e, url: unknown): Promise
   return null;
 });
 
+// 设置 › 常规 › 浏览器 › 清除: the browser's own partition only.
+ipcMain.handle(DesktopChannel.BrowserClearData, async (): Promise<null> => {
+  const ses = session.fromPartition(BROWSER_PARTITION);
+  await ses.clearStorageData();
+  await ses.clearCache();
+  await ses.clearAuthCache();
+  console.log('browser: browsing data cleared');
+  return null;
+});
+
 ipcMain.handle(DesktopChannel.ShowInFolder, (_e, path: unknown): string | null => {
   const r = checkLocalPath(path, 'any', pathKind);
   if (!r.ok) return r.error;
@@ -1775,9 +1787,13 @@ void app.whenReady().then(() => {
   // answered from that folder and any other https request gets a 404, so nothing leaves the machine.
   const mockWeb = mockWebFolder(process.env, app.isPackaged);
   if (mockWeb) {
-    const answer = (req: Request) => {
+    const answer = async (req: Request) => {
       const u = new URL(req.url);
-      return u.host === 'example.com' ? net.fetch(pathToFileURL(join(mockWeb, basename(u.pathname))).toString()) : new Response('', { status: 404 });
+      if (u.host !== 'example.com') return new Response('', { status: 404 });
+      const name = basename(u.pathname);
+      const res = await net.fetch(pathToFileURL(join(mockWeb, name)).toString());
+      // a page address without an extension (/mold/price-guide): a web page
+      return name.includes('.') ? res : new Response(res.body, { status: res.status, headers: { 'content-type': 'text/html; charset=utf-8' } });
     };
     protocol.handle('https', answer);
     // the built-in browser's pages too (its own session)

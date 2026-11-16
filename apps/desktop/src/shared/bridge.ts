@@ -186,6 +186,8 @@ export interface DesktopBridge extends SpicaBridge {
     onOpenTab(listener: (url: string) => void): () => void;
     /** Opens a web address (http/https) in the system's browser; resolves to what to show when it cannot. */
     openExternal(url: string): Promise<string | null>;
+    /** Clears the built-in browser's sign-ins, storage and cache (its own; the system's browser is not touched). */
+    clearData(): Promise<null>;
   };
   /** 监控台: the back end's lines (kept in the main process, secrets removed there). */
   monitor: {

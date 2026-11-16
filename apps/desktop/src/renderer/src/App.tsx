@@ -37,6 +37,7 @@ import { MonitorView } from './shell/MonitorView';
 import { ToolHistory } from './shell/ToolHistory';
 import { PaneTabs } from './shell/PaneTabs';
 import { BrowserPane } from './shell/BrowserPane';
+import { LinkRouter } from './shell/links';
 import { activate as activatePane, activeTab, closeTab as closePaneTab, NO_TABS, openFile as openPaneFile, openWeb as openPaneWeb, setOpen as setPaneOpen, tabName, updateActiveFile, updateWeb as updatePaneWeb, type FileRequest, type PaneTab, type PaneTabs as PaneTabsState } from './shell/pane-tabs';
 import { MaxButton } from './ui/MaxButton';
 import { MailStore, useMail } from './store/mail';
@@ -1277,6 +1278,20 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       </div>
 
 
+      {/* Web addresses clicked in the window: 设置 › 常规 › 浏览器 › 打开网址 (the question, 内置浏览器 or 系统浏览器). */}
+      <LinkRouter
+        setting={settings.linkOpen}
+        open={(url, place) => {
+          if (place === 'system') {
+            void bridge.browser.openExternal(url).then(showNotice);
+            return;
+          }
+          setSettingsOpen(false);
+          setView('chat');
+          openWebTab(url);
+        }}
+        remember={(place) => shell.update({ linkOpen: place })}
+      />
       {pluginAsk ? (
         <ConfirmDialog
           title={t('「{plugin}」将执行「{tool}」，此操作不可撤销。', { plugin: pluginAsk.plugin, tool: pluginAsk.tool })}
@@ -1387,6 +1402,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           projects={inboxProjects}
           exportUsageLog={bridge.exportUsageLog}
           showInFolder={bridge.showInFolder}
+          clearBrowsingData={bridge.browser.clearData}
           mailModel={mailModelLabel}
           networkState={bridge.network}
           pickFiles={bridge.pickFiles}

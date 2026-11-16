@@ -102,4 +102,6 @@ export const DesktopChannel = {
   BrowserOpenTab: 'spica:browserOpenTab',
   /** invoke: a web address (http/https) -> null, opened in the system's browser; or what to show */
   BrowserExternal: 'spica:browserExternal',
+  /** invoke: -> null; the built-in browser's cookies, storage and cache cleared (设置 › 常规 › 浏览器) */
+  BrowserClearData: 'spica:browserClearData',
 } as const;
