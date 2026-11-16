@@ -57,6 +57,18 @@ describe('Excel workbook to a styled table', () => {
     assert.ok(html.includes('>2469</td>')); // a formula shows its result
   });
 
+  it('a cell with a font name keeps its fill, colour and borders (the name does not end the style)', () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('a');
+    const c = ws.getCell('A1');
+    c.value = '有字体名';
+    c.font = { name: 'Calibri', size: 11, color: { argb: 'FFC00000' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
+    c.border = { bottom: { style: 'thin', color: { argb: 'FF000000' } } };
+    const { html } = Sheet.renderSheet(ws, wb);
+    assert.match(html, /<td style="font-size:11pt;font-family:'Calibri',var\(--spica-font, sans-serif\);color:#c00000;background:#fff2cc;border-bottom:1px solid #000000">有字体名<\/td>/);
+  });
+
   it('places pictures over the sheet', async () => {
     const { wb } = await Sheet.loadWorkbook(ExcelJS, JSZip, await sample({ picture: true }));
     const { html } = Sheet.renderSheet(Sheet.visibleSheets(wb)[0], wb);

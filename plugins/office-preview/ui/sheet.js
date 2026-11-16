@@ -85,7 +85,8 @@
     if (f.strike) deco.push('line-through');
     if (deco.length) css.push('text-decoration:' + deco.join(' '));
     if (f.size) css.push('font-size:' + f.size + 'pt');
-    if (f.name) css.push('font-family:"' + esc(f.name) + '",var(--spica-font, sans-serif)');
+    // single quotes: the style sits in style="…", where a double quote would end it (and drop what follows)
+    if (f.name) css.push("font-family:'" + String(f.name).replace(/['"\\<>&;]/g, '') + "',var(--spica-font, sans-serif)");
     var fc = color(f.color);
     if (fc) css.push('color:' + fc);
     else if (f.color && f.color.theme !== undefined) notes.theme = true;
