@@ -19,6 +19,8 @@ import { N_, t, tx } from '../../../shared/i18n';
 export interface FilePreviewProps {
   /** null while loading. */
   info: PreviewInfo | null;
+  /** The file being read (while `info` is null): its name in the head already. */
+  loadingPath?: string;
   onOpenExternal(path: string): void;
   /** 打开所在文件夹 (the file selected in Explorer), by a press on the file's name; absent: the name is only its name. */
   onReveal?: (path: string) => void;
@@ -278,7 +280,7 @@ function codeOf(info: PreviewInfo | null): { text: string; language: string | nu
   return null;
 }
 
-export function FilePreview({ info, onOpenExternal, onReveal, onSheet, loadRows, onClose, max, source, note, children }: FilePreviewProps) {
+export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onSheet, loadRows, onClose, max, source, note, children }: FilePreviewProps) {
   // 预览 / 代码: per file, kept while the panel is open (another file opens as its preview; back to this one, as left).
   const id = info ? `${info.kind}|${info.path}|${info.name}` : '';
   const [codeFor, setCodeFor] = useState<ReadonlySet<string>>(() => new Set());
@@ -292,21 +294,22 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, loadRows,
       return next;
     });
   const hasFile = Boolean(info && info.kind !== 'missing' && info.path);
+  const loadingName = !info && loadingPath ? loadingPath.split(/[\\/]/).pop() : undefined;
   // A picture pressed: over the window, as pictures in the conversation (the wheel zooms, a drag moves it, a
   // press or Esc puts it back).
   const [bigFor, setBigFor] = useState<string | null>(null);
   return (
     <section className="preview" aria-label={info ? t('预览 {name}', { name: info.name }) : t('预览')}>
       <header className="preview-head panel-head">
-        <FileGlyph name={info?.name ?? ''} />
+        <FileGlyph name={info?.name ?? loadingName ?? ''} />
         {/* The name opens the file's folder (its hover note says so, with the full path); 复制路径 right after it. */}
         {info && hasFile && onReveal ? (
           <button type="button" className="preview-name is-button" onClick={() => onReveal(info.path)} title={[t('打开所在文件夹'), info.path].join('\n')}>
             {info.name}
           </button>
         ) : (
-          <span className="preview-name" title={info?.path ?? ''}>
-            {info?.name ?? ''}
+          <span className="preview-name" title={info?.path ?? loadingPath ?? ''}>
+            {info?.name ?? loadingName ?? ''}
           </span>
         )}
         {info && hasFile ? <CopyButton className="icon-btn" label={t('复制路径')} copy={() => clipboard.write(info.path)} /> : null}
@@ -344,7 +347,11 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, loadRows,
       {children ? (
         children
       ) : !info ? (
-        <div className="preview-body" />
+        // Being read (a big workbook takes a few seconds; another sheet too): said, after a moment.
+        <div className="preview-body preview-empty preview-loading" role="status">
+          <span className="spinner" aria-hidden />
+          <span>{t('正在打开…')}</span>
+        </div>
       ) : asCode ? (
         <Lines key={`${id}|code`} text={code.text} language={code.language} />
       ) : info.kind === 'pdf' ? (

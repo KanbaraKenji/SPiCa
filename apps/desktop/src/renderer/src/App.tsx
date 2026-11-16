@@ -1208,6 +1208,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             <FilePreview
               // A plugin page draws the file: the head still names it (and offers its buttons).
               info={pagePreview ? { kind: 'unsupported', name: preview.path.split(/[\\/]/).pop() ?? preview.path, path: preview.path, size: 0, message: '' } : previewInfo}
+              loadingPath={preview.path}
               {...(filePages.length
                 ? { source: { options: [{ id: BUILT_IN, label: t('自带预览') }, ...filePages.map((v) => ({ id: previewerId(v), label: v.title }))], value: fellBack ? BUILT_IN : wayId, onChange: chooseWay } }
                 : {})}

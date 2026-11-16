@@ -158,6 +158,12 @@ describe('the file’s place, from the preview head', () => {
     expect(loadRows).toHaveBeenCalledTimes(1);
   });
 
+  it('while the file is read, it says so', () => {
+    render(<FilePreview info={null} loadingPath={'D:\\工作\\库存.xlsx'} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByRole('status').textContent).toBe('正在打开…');
+    expect(document.querySelector('.preview-name')?.textContent).toBe('库存.xlsx');
+  });
+
   it('a CSV file is a table, and its own text behind 查看代码', () => {
     const info = { kind: 'sheet' as const, name: '销售.csv', path: 'D:/销售.csv', size: 20, sheets: [{ name: '销售' }], sheet: 1, columns: ['A', 'B'], rows: [{ n: 1, cells: ['门店', '金额'] }], more: false, text: '门店,金额' };
     render(<FilePreview info={info} onOpenExternal={vi.fn()} onClose={vi.fn()} />);

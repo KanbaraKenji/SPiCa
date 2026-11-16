@@ -6699,6 +6699,21 @@ section.plugins-part > .plugins-part-title {
   text-align: center;
 }
 
+/* A file being read: shown only when it takes a moment (a small file opens without it flashing). */
+.preview-loading {
+  gap: 8px;
+  animation: preview-loading-in 0s linear 0.2s both;
+}
+
+@keyframes preview-loading-in {
+  from {
+    visibility: hidden;
+  }
+  to {
+    visibility: visible;
+  }
+}
+
 /* Plugin pages: a sandboxed frame filling its place. */
 .plugin-page {
   flex: 1;

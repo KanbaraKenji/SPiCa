@@ -76,6 +76,7 @@ export const EN_SHELL: Catalog = {
   此工作表为空: 'This sheet is empty',
   '仅显示前 {shown} 段（共 {total} 段）': 'Showing the first {shown} of {total} paragraphs',
   放大: 'Zoom in',
+  '正在打开…': 'Opening…',
   '仅显示前 512 KB（共 {size}）': 'Showing the first 512 KB of {size}',
   '预览 {name}': 'Preview {name}',
   预览方式: 'Preview with',
