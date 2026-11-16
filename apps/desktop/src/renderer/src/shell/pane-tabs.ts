@@ -8,6 +8,8 @@ export interface FileRequest {
   path: string;
   sheet?: number;
   inline?: PreviewInfo;
+  /** When the file was asked for: asked for again (the same file pressed again), it is read again. */
+  opened?: number;
 }
 
 export type PaneTab = { id: string; kind: 'file'; req: FileRequest } | { id: string; kind: 'web'; url: string; title: string };
