@@ -16,6 +16,25 @@ import { Wso2Provider } from '../providers/wso2.ts';
 import { endsInVersion, joinUrl } from '../providers/http.ts';
 import { Runtime } from '../runtime.ts';
 import { probeRuntimes } from '../runtimes.ts';
+import { clearPython, pythonEnvStatus } from '../python-env.ts';
+import type { PythonToolOptions } from '../tools/python-tool.ts';
+
+/** What 设置 shows about the app's own Python. */
+function pythonState(root: string): { ready: boolean; version?: string; bytes: number } {
+  const st = pythonEnvStatus(root);
+  return { ready: st.ready, ...(st.version ? { version: st.version } : {}), bytes: st.bytes };
+}
+
+function pythonOptions(p: NonNullable<BackendConfig['python']>, dataDir: string): PythonToolOptions {
+  return {
+    uvExe: p.uvExe!,
+    root: p.root,
+    netDir: join(dataDir, 'net'),
+    ...(p.pythonVersion ? { pythonVersion: p.pythonVersion } : {}),
+    ...(p.pythonMirror ? { pythonMirror: p.pythonMirror } : {}),
+    ...(p.packageIndex ? { packageIndex: p.packageIndex } : {}),
+  };
+}
 import { childEnv } from '../util.ts';
 import { SqliteStore } from '../store/sqlite.ts';
 import type { FileExtractor } from '../tools/types.ts';
@@ -100,6 +119,11 @@ export interface BackendConfig {
   spillDir?: string;
   /** The libraries the app carries for run_command's scripts (<dir>/<name>; runtimes.ts). */
   nodeLibsDir?: string;
+  /**
+   * The app's own Python (python-env.ts): its folder, and the uv the app carries (without one, no python_env tool;
+   * the folder is still shown and can be cleared). Absent: switched off (deploy.json).
+   */
+  python?: { root: string; uvExe?: string; pythonVersion?: string; pythonMirror?: string; packageIndex?: string };
   /** Product name the models are told they work in (see RuntimeOptions.appName). Default 'Spica'. */
   appName?: string;
   /** A company's model connections from the packaging's deploy.json (CatalogPreset[]; no keys). */
@@ -423,6 +447,7 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
       // run_command's \`node\` when the computer has none, and what the model is told it can run (runtimes.ts)
       nodeShimDir: join(dirname(cfg.dbPath), 'node-shim'),
       ...(cfg.nodeLibsDir ? { nodeLibsDir: cfg.nodeLibsDir } : {}),
+      ...(cfg.python?.uvExe ? { python: pythonOptions(cfg.python, dirname(cfg.dbPath)) } : {}),
       runtimes: probeRuntimes(childEnv('all'), undefined, cfg.nodeLibsDir ? { nodeLibsDir: cfg.nodeLibsDir } : {}),
       ...(cfg.legacyDefaultCwd ? { legacyDefaultCwd: cfg.legacyDefaultCwd } : {}),
       ...(cfg.search ? { search: jsonSearchBackend(cfg.search) } : {}),
@@ -494,6 +519,14 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
         mcpHttp: () => (mcpHttp ? { url: mcpHttp.url, tokenFile: cfg.mcpHttp?.tokenFile ?? null } : null),
         /** Proxy and certificates in force (no password). */
         networkSettings: () => networkStatus(),
+        /** The app's own Python: there or not, its version, what its folder takes; null when switched off. */
+        pythonState: () => (cfg.python ? pythonState(cfg.python.root) : null),
+        /** Remove the app's own Python (interpreters, cache, environment); its state after. */
+        pythonClear: () => {
+          if (!cfg.python) return null;
+          clearPython(cfg.python.root);
+          return pythonState(cfg.python.root);
+        },
         /** Current mail settings and whether polling runs. */
         mailSettings: () => ({ ...runtime.mail.settings, running: runtime.mail.running, sources: runtime.mail.activeSources.map((s) => s.id) }),
         /** Test connection with a provider config from the settings form. */

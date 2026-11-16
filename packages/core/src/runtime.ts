@@ -14,6 +14,7 @@ import { projectTools } from './tools/project-tools.ts';
 import { historyTools } from './tools/history-tools.ts';
 import { createMemoryTools, MemoryBook, memoryHook } from './memory.ts';
 import { createRunCommandTool } from './tools/command-tool.ts';
+import { createPythonTool, type PythonToolOptions } from './tools/python-tool.ts';
 import { createWebFetchTool, createWebSearchTool, type SearchBackend } from './tools/web-tools.ts';
 import { connectMcp, type McpServerConfig, type McpStdioClient } from './mcp/client.ts';
 import { fileTools } from './tools/fs-tools.ts';
@@ -96,6 +97,8 @@ export interface RuntimeOptions {
   nodeShimDir?: string;
   /** The libraries run_command's scripts can require (<dir>/<name>; runtimes.ts). Default: none. */
   nodeLibsDir?: string;
+  /** The app's own Python (python-env.ts): with it, the python_env tool is offered. Default: none. */
+  python?: PythonToolOptions;
   /**
    * The runtimes the model is told about (runtimesLine in the system prompt): the backend probes the computer
    * at start (probeRuntimes). Without it nothing is said (tests, scripts).
@@ -361,6 +364,7 @@ export class Runtime implements RuntimeInternals {
       ...historyTools,
       ...createMemoryTools(this),
       triageMailTool,
+      ...(opts.python ? [createPythonTool(opts.python)] : []),
     ];
     for (const t of opts.tools ?? defaults) this.tools.register(t, 'core');
     if (opts.search && !opts.tools) this.setSearch(opts.search);

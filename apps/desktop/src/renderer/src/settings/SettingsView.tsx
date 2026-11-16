@@ -77,6 +77,7 @@ export interface SettingsViewProps {
   showInFolder: GeneralProps['showInFolder'];
   mailModel?: string;
   networkState?: GeneralProps['networkState'];
+  python?: GeneralProps['python'];
   pickFiles?: GeneralProps['pickFiles'];
   localConnect?: GeneralProps['localConnect'];
   previewPages?: GeneralProps['previewPages'];
@@ -88,7 +89,7 @@ export interface SettingsViewProps {
   usage?: UsageApi;
 }
 
-export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, pluginsTab, onPluginsTab, onClose, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, pluginPages, memory, usage }: SettingsViewProps) {
+export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, pluginsTab, onPluginsTab, onClose, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, python, pickFiles, localConnect, previewPages, pluginPages, memory, usage }: SettingsViewProps) {
   const { settings } = useShell(shell);
   const tabs = TABS.filter((tab) => (tab.id !== 'memory' || memory) && (tab.id !== 'usage' || usage));
   const box = useRef<HTMLDivElement>(null);
@@ -137,6 +138,7 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
         exportUsageLog={exportUsageLog}
         showInFolder={showInFolder}
         {...(networkState ? { networkState } : {})}
+        {...(python ? { python } : {})}
         {...(pickFiles ? { pickFiles } : {})}
         {...(localConnect ? { localConnect } : {})}
         {...(previewPages ? { previewPages } : {})}

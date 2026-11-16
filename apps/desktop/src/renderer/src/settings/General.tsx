@@ -2,7 +2,9 @@
 // exporting the usage log. Mail sorting is with the mail plugin (设置 › 插件).
 import { useCallback, useEffect, useState } from 'react';
 import { DEFAULT_NETWORK, type AutostartSupport, type CloseWindow, type NetworkPrefs, type SettingsPatch, type ShellSettings } from '../../../shared/settings';
-import type { LocalConnectInfo, NetworkState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
+import type { LocalConnectInfo, NetworkState, PythonState, UsageLogRequest, UsageLogResult, WorkflowsState } from '../../../shared/bridge';
+import { ConfirmDialog } from '../ui/Dialog';
+import { formatBytes } from '../chat/format';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Select } from '../ui/Select';
 import { Icon } from '../ui/Icon';
@@ -43,6 +45,8 @@ export interface GeneralProps {
   previewPages?: PluginView[];
   /** Whether 开机时启动 works in this copy (an installed one); absent: shown disabled. */
   autostart?: AutostartSupport;
+  /** The app's own Python (its state, and removing it). Absent, or a state of null (switched off): no Python group. */
+  python?: { state(): Promise<PythonState | null>; clear(): Promise<PythonState | null> };
 }
 
 /** 文件预览: per kind of file a plugin page can show, the app's own preview or that page. Not shown without any. */
@@ -436,6 +440,50 @@ function Workflows({ settings, onChange, workflows, pickFolder, onBackendRestart
   );
 }
 
+/** Python: the app's own (version and what its folder takes, 清除), and whether commands use it first. */
+function Python({ settings, onChange, python, onBackendRestarted }: GeneralProps) {
+  const [state, setState] = useState<PythonState | null | undefined>(undefined);
+  const [asking, setAsking] = useState(false);
+  useEffect(() => {
+    if (!python) return;
+    let live = true;
+    const load = () => void python.state().then((s) => live && setState(s), () => live && setState(null));
+    load();
+    const off = onBackendRestarted(load);
+    return () => {
+      live = false;
+      off();
+    };
+  }, [python, onBackendRestarted]);
+  if (!python || state === null) return null;
+  return (
+    <Group title="Python">
+      <Row title={t('应用的 Python')} hint={state === undefined ? '' : state.ready ? `${state.version ?? ''} · ${formatBytes(state.bytes)}` : t('未下载')}>
+        {state?.ready || (state && state.bytes > 0) ? (
+          <button type="button" className="btn btn-square" onClick={() => setAsking(true)} aria-label={t('清除')} title={t('清除')}>
+            <Icon name="trash" size={14} />
+          </button>
+        ) : null}
+      </Row>
+      <Row title={t('优先使用应用的 Python')}>
+        <Switch on={settings.pythonFirst} label={t('优先使用应用的 Python')} onChange={(v) => onChange({ pythonFirst: v })} />
+      </Row>
+      {asking ? (
+        <ConfirmDialog
+          title={t('清除应用的 Python？')}
+          confirmLabel={t('清除')}
+          danger
+          onCancel={() => setAsking(false)}
+          onConfirm={() => {
+            setAsking(false);
+            void python.clear().then((s) => setState(s), () => undefined);
+          }}
+        />
+      ) : null}
+    </Group>
+  );
+}
+
 export function General(props: GeneralProps) {
   return (
     <section className="settings-section">
@@ -443,6 +491,7 @@ export function General(props: GeneralProps) {
       <FilePreviews {...props} />
       <Workflows {...props} />
       <Network {...props} />
+      {props.python ? <Python {...props} /> : null}
       <UsageLog {...props} />
       {props.localConnect ? <Developer {...props} /> : null}
     </section>

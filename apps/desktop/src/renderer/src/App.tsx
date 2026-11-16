@@ -1342,6 +1342,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           showInFolder={bridge.showInFolder}
           mailModel={mailModelLabel}
           networkState={bridge.network}
+          python={bridge.python}
           pickFiles={bridge.pickFiles}
           {...(shell.demo ? {} : { localConnect: bridge.localConnect })}
           previewPages={previewPages}

@@ -20,6 +20,7 @@ import type {
   MessageKind,
   MemoryCardMeta,
   MessageMeta,
+  InstallPreview,
   PendingItem,
   RegenerateCode,
   RegenerateResult,
@@ -1093,8 +1094,13 @@ export class Session {
         pending.push({ sessionId: this.id, callId: call.id, messageId: assistant.id, item });
         return;
       }
+      // a download into the app's own Python (python_env): the user confirms what and how big, in auto mode too;
+      // nothing to download, nothing to ask. A preview that fails still asks, with what is known.
+      const install = tool.previewInstall
+        ? await tool.previewInstall((input ?? {}) as Record<string, unknown>).catch((): InstallPreview => ({ packages: [], packageHost: '' }))
+        : undefined;
       // outside content in play: the user confirms, whatever hooks or plugin settings say
-      const cause = this.#guardCause(tool, (input ?? {}) as Record<string, unknown>, guard);
+      const cause = install ? 'python_install' : this.#guardCause(tool, (input ?? {}) as Record<string, unknown>, guard);
       // approval mode auto passes only the default confirmation of irreversible tools, never the guard's or a hook's
       const autoApproved = !cause && decision.action === 'confirm' && decision.byDefault === true && cfg.approvalMode === 'auto';
       if ((decision.action === 'confirm' && !autoApproved) || cause) {
@@ -1109,6 +1115,7 @@ export class Session {
           ...(cause ? { cause } : {}),
           ...(decision.action === 'confirm' && decision.irreversible ? { irreversible: true } : {}),
           ...(change ? { change } : {}),
+          ...(install ? { install } : {}),
           createdAt: isoNow(),
         };
         this.#rt.store.upsertToolCall({ ...rec, input, status: 'pending' });
@@ -1142,6 +1149,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
             ...(p.item.cause ? { cause: p.item.cause } : {}),
             ...(p.item.irreversible ? { irreversible: true } : {}),
             ...(p.item.change ? { change: p.item.change } : {}),
+            ...(p.item.install ? { install: p.item.install } : {}),
           });
         }
       }
@@ -1594,6 +1602,7 @@ const GUARD_REASON: Record<GuardCause, string> = {
   sensitive_file: 'reading a credential file while acting on outside content',
   plugin_view: 'a plugin view asks to run an irreversible action',
   settings_change: 'a script connected to the app asks to change the settings',
+  python_install: "downloads Python or packages into the app's folder",
 };
 
 export const TEAM_RULE =

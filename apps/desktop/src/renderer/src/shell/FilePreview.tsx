@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { PreviewInfo } from '../../../shared/bridge';
 import { MarkdownText } from '../chat/Blocks';
+import { formatBytes } from '../chat/format';
 import { HIGHLIGHT_MAX_CHARS, highlightLines, languageOf } from '../chat/highlight';
 import { Icon } from '../ui/Icon';
 import { FileGlyph } from '../ui/FileIcon';
@@ -31,12 +32,6 @@ export interface FilePreviewProps {
   note?: { text: string; onRetry?: () => void } | null;
   /** Shown instead of the app's own preview (a plugin's preview page). */
   children?: ReactNode;
-}
-
-function sizeText(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1).replace(/\.0$/, '')} MB`;
 }
 
 /**
@@ -128,7 +123,7 @@ const WORD_NAME = /\.doc[xm]$/i;
 
 /** What a cut-off preview says: a Word document stops after 500 paragraphs, text after 512 KB. */
 function cutNote(info: { name: string; size: number }): string {
-  return WORD_NAME.test(info.name) ? t('仅显示前 500 段') : t('仅显示前 512 KB（共 {size}）', { size: sizeText(info.size) });
+  return WORD_NAME.test(info.name) ? t('仅显示前 500 段') : t('仅显示前 512 KB（共 {size}）', { size: formatBytes(info.size) });
 }
 
 /** What can be shown both ways in the panel: as a page or picture, and as its code (and the code's language). */

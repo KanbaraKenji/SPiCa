@@ -118,6 +118,8 @@ export interface ShellSettings {
   network: NetworkPrefs;
   /** 允许本机脚本连接 Spica（开发者）: MCP over HTTP on 127.0.0.1 with a token file. Off by default. */
   localConnect: boolean;
+  /** 设置 › 常规 › Python › 优先使用应用的 Python: run_command's python is the app's own even when the computer has one. Off by default. */
+  pythonFirst: boolean;
   /** 设置 › 记忆 › 启用记忆: the assistant's conversations read and save the user's memory. On by default. */
   memory: boolean;
   /** 设置 › 记忆 › 自动整理: tidy the memory when the app is idle. Off by default. */
@@ -246,6 +248,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   monitor: false,
   network: DEFAULT_NETWORK,
   localConnect: false,
+  pythonFirst: false,
   memory: true,
   memoryAutoTidy: false,
   codeTheme: { light: SKIN_CODE_THEME, dark: SKIN_CODE_THEME },
@@ -347,6 +350,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
     useSystemCa: typeof nw.useSystemCa === 'boolean' ? nw.useSystemCa : true,
   };
   const localConnect = v.localConnect === true;
+  const pythonFirst = v.pythonFirst === true;
   const memory = v.memory !== false;
   const memoryAutoTidy = v.memoryAutoTidy === true;
   const updateWhenIdle = v.updateWhenIdle !== false;
@@ -362,7 +366,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, language, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
+  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, language, previewers, localConnect, pythonFirst, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

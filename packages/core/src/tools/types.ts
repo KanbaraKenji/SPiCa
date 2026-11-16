@@ -68,6 +68,11 @@ export interface Tool {
    * its confirmation card before the user allows it. Undefined when there is nothing to show.
    */
   previewChange?(input: Record<string, unknown>, cwd: string): Promise<import('../types.ts').ChangePreview | undefined>;
+  /**
+   * What the call would download into the app's own Python (python_env), worked out without downloading: when it
+   * returns one, the user confirms it first (cause python_install, in auto mode too); undefined: nothing to fetch.
+   */
+  previewInstall?(input: Record<string, unknown>): Promise<import('../types.ts').InstallPreview | undefined>;
   /** Hide the tool when this returns false (e.g. no search backend configured). */
   available?(env: ToolEnv): boolean;
   execute(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput>;

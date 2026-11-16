@@ -12,7 +12,7 @@ import type { WindowMatch } from '../../shared/catalog';
 import type { DesktopBackendConfig } from '../../backend/config';
 import type { AgentBackend } from './types';
 import type { PluginView, PluginViewResult } from '../../shared/plugin-view';
-import type { LocalConnectInfo } from '../../shared/bridge';
+import type { LocalConnectInfo, PythonState } from '../../shared/bridge';
 import { CORE_KILL_MS } from '../quit';
 import { t } from '../../shared/i18n';
 import type { MonitorHub } from '../monitor';
@@ -300,6 +300,16 @@ export class ProcessBackend implements AgentBackend {
   /** Network settings in force now (no proxy password). */
   networkSettings(): Promise<{ proxy: string | null; noProxy: string[]; caFile: string | null; useSystemCa: boolean }> {
     return this.call('networkSettings');
+  }
+
+  /** The app's own Python (null: switched off). */
+  pythonState(): Promise<PythonState | null> {
+    return this.call('pythonState');
+  }
+
+  /** Remove the app's own Python; its state after. */
+  pythonClear(): Promise<PythonState | null> {
+    return this.call('pythonClear');
   }
 
   /** Plugin pages (the plugin manager's methods, in the core's process). */

