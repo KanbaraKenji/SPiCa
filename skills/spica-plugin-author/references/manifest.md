@@ -32,6 +32,7 @@
 | `author` | 是 | `{ "name": "…" }` |
 | `display_name` | 否 | 界面上的名字 |
 | `icon` | 否 | 插件自己的图标：插件文件夹里的 `.svg`，不大于 64 KB；浅色和深色皮肤各一款时写 `{ "light": …, "dark": … }`。见下面「插件图标」 |
+| `i18n` | 否 | 给人看的字的别的语言版本（`zh-CN` / `zh-TW` / `en`）。见下面「多语言」 |
 | `license` | 否 | 如 `Apache-2.0` |
 | `compatibility.spica` | 否 | 如 `>=0.1.0` |
 | `permissions.network` | 否 | 会访问的主机名单（现在只展示） |
@@ -62,6 +63,29 @@
 - 只当图片显示：脚本、事件属性、外部链接都不生效，`check.mjs` 会提醒删掉。
 - 颜色写死，不跟随明暗（`currentColor` 是黑色）。只给一款时深浅两种皮肤上都要看得清，带底色的方块最稳；分开给就各按各的底色画。页面的 `icon` 跟随主题，两者不同。
 - `scaffold.mjs` 生成的插件自带浅色、深色两款（`icon-light.svg`、`icon-dark.svg`）；例子见 `plugins/example-notes` 的这两个文件。
+
+## 多语言（可选）
+
+Spica 的界面有简体、繁体、英语三种。字段照常写一种语言；要让别的语言的用户看到他们的语言，加 `i18n`：
+
+```json
+"i18n": {
+  "en": {
+    "display_name": "To-do",
+    "description": "Keeps a to-do list on this computer.",
+    "model_reason": "Summarizes to-dos",
+    "mock_description": "Answers from sample data",
+    "views": { "main": "To-do" },
+    "commands": { "add": { "description": "Add a to-do", "argument_hint": "<text>" } },
+    "skills": { "tidy": "How to tidy the list" }
+  },
+  "zh-TW": { "display_name": "待辦" }
+}
+```
+
+- 语言只有 `zh-CN`、`zh-TW`、`en`；每个字段都可以不写，没写的显示原字段，繁体没写先用简体那份。`views` / `commands` / `skills` 按 id 写。
+- 只换给人看的字（插件页、市场卡片、页面名字、`/` 命令说明）；模型看到的工具描述、技能正文不变。
+- 写错了只给警告，不挡安装。页面里 `window.spica.locale` 是当前界面语言，切换时收到 `{ type: 'locale', locale }`（见 `ui.md`）。
 
 ## `mcp/<id>.json` / `services/<id>.json`
 

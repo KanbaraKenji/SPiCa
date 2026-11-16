@@ -1,21 +1,22 @@
 // 监控台: what the back end is doing, as lines the page lists (kept in the main process, main/monitor.ts).
+import { N_, t } from './i18n';
 
 /** Where a line comes from. */
 export type MonitorSource = 'core' | 'request' | 'tool' | 'plugin' | 'process';
 export type MonitorLevel = 'info' | 'warn' | 'error';
 
 export const MONITOR_SOURCES: readonly [MonitorSource, string][] = [
-  ['core', '内核'],
-  ['request', '请求'],
-  ['tool', '工具'],
-  ['plugin', '插件'],
-  ['process', '进程'],
+  ['core', N_('内核')],
+  ['request', N_('请求')],
+  ['tool', N_('工具')],
+  ['plugin', N_('插件')],
+  ['process', N_('进程')],
 ];
 
 export const MONITOR_LEVELS: readonly [MonitorLevel, string][] = [
-  ['info', '信息'],
-  ['warn', '警告'],
-  ['error', '错误'],
+  ['info', N_('信息')],
+  ['warn', N_('警告')],
+  ['error', N_('错误')],
 ];
 
 export interface MonitorEntry {
@@ -33,7 +34,7 @@ export interface MonitorEntry {
 
 /** One line as copied or exported: time, source, level, text. */
 export function monitorLine(e: MonitorEntry): string {
-  const src = MONITOR_SOURCES.find(([s]) => s === e.source)?.[1] ?? e.source;
-  const lvl = MONITOR_LEVELS.find(([l]) => l === e.level)?.[1] ?? e.level;
+  const src = t(MONITOR_SOURCES.find(([s]) => s === e.source)?.[1] ?? e.source);
+  const lvl = t(MONITOR_LEVELS.find(([l]) => l === e.level)?.[1] ?? e.level);
   return `${e.at}\t${src}\t${lvl}\t${e.text}`;
 }

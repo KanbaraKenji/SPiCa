@@ -11,6 +11,7 @@ import { MaxButton, type MaxState } from '../ui/MaxButton';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
 import { Select } from '../ui/Select';
+import { N_, t, tx } from '../../../shared/i18n';
 
 export interface FilePreviewProps {
   /** null while loading. */
@@ -66,7 +67,7 @@ function Sheet({ info, onSheet }: { info: Extract<PreviewInfo, { kind: 'sheet' }
   return (
     <>
       {info.sheets.length > 1 ? (
-        <div className="tabs preview-sheets" role="tablist" aria-label="工作表">
+        <div className="tabs preview-sheets" role="tablist" aria-label={t('工作表')}>
           {info.sheets.map((s, i) => (
             <button key={`${i}|${s.name}`} type="button" role="tab" aria-selected={info.sheet === i + 1} className={info.sheet === i + 1 ? 'tab is-on' : 'tab'} onClick={() => onSheet?.(i + 1)}>
               {s.name}
@@ -74,7 +75,7 @@ function Sheet({ info, onSheet }: { info: Extract<PreviewInfo, { kind: 'sheet' }
           ))}
         </div>
       ) : null}
-      {info.truncated ? <p className="preview-note">仅显示前 {info.rows.length} 行（共 {info.sheets[info.sheet - 1]?.rows ?? info.rows.length} 行）</p> : null}
+      {info.truncated ? <p className="preview-note">{t('仅显示前 {shown} 行（共 {total} 行）', { shown: info.rows.length, total: info.sheets[info.sheet - 1]?.rows ?? info.rows.length })}</p> : null}
       {info.rows.length ? (
         <div className="preview-body preview-sheet">
           <table>
@@ -100,7 +101,7 @@ function Sheet({ info, onSheet }: { info: Extract<PreviewInfo, { kind: 'sheet' }
         </div>
       ) : (
         <div className="preview-body preview-empty">
-          <p>此工作表为空</p>
+          <p>{t('此工作表为空')}</p>
         </div>
       )}
     </>
@@ -112,7 +113,7 @@ const WORD_NAME = /\.doc[xm]$/i;
 
 /** What a cut-off preview says: a Word document stops after 500 paragraphs, text after 512 KB. */
 function cutNote(info: { name: string; size: number }): string {
-  return WORD_NAME.test(info.name) ? '仅显示前 500 段' : `仅显示前 512 KB（共 ${sizeText(info.size)}）`;
+  return WORD_NAME.test(info.name) ? t('仅显示前 500 段') : t('仅显示前 512 KB（共 {size}）', { size: sizeText(info.size) });
 }
 
 /** What can be shown both ways in the panel: as a page or picture, and as its code. */
@@ -130,34 +131,34 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
   const code = children ? null : codeOf(info);
   const asCode = code !== null && codeFor === id;
   return (
-    <section className="preview" aria-label={info ? `预览 ${info.name}` : '预览'}>
+    <section className="preview" aria-label={info ? t('预览 {name}', { name: info.name }) : t('预览')}>
       <header className="preview-head panel-head">
         <FileGlyph name={info?.name ?? ''} />
         <span className="preview-name" title={info?.path ?? ''}>
           {info?.name ?? ''}
         </span>
         {source && source.options.length > 1 ? (
-          <Select className="preview-source" label="预览方式" title="预览方式" value={source.value} onChange={source.onChange} options={source.options.map((o) => ({ value: o.id, label: o.label }))} />
+          <Select className="preview-source" label={t('预览方式')} title={t('预览方式')} value={source.value} onChange={source.onChange} options={source.options.map((o) => ({ value: o.id, label: o.label }))} />
         ) : null}
         {code !== null ? (
-          <button type="button" className="icon-btn" aria-pressed={asCode} onClick={() => setCodeFor(asCode ? null : id)} aria-label={asCode ? '预览' : '代码'} title={asCode ? '预览' : '代码'}>
+          <button type="button" className="icon-btn" aria-pressed={asCode} onClick={() => setCodeFor(asCode ? null : id)} aria-label={asCode ? t('预览') : t('代码')} title={asCode ? t('预览') : t('代码')}>
             <Icon name={asCode ? 'eye' : 'code'} size={15} />
           </button>
         ) : null}
         {max ? <MaxButton max={max} /> : null}
         {/* The file's own buttons: not for a page drawn from an answer (it has no file). */}
         {info && info.kind !== 'missing' && info.path && onReveal ? (
-          <button type="button" className="icon-btn" onClick={() => onReveal(info.path)} aria-label="打开所在文件夹" title="打开所在文件夹">
+          <button type="button" className="icon-btn" onClick={() => onReveal(info.path)} aria-label={t('打开所在文件夹')} title={t('打开所在文件夹')}>
             <Icon name="folder" size={15} />
           </button>
         ) : null}
-        {info && info.kind !== 'missing' && info.path ? <CopyButton className="icon-btn" label="复制路径" copy={() => clipboard.write(info.path)} /> : null}
+        {info && info.kind !== 'missing' && info.path ? <CopyButton className="icon-btn" label={t('复制路径')} copy={() => clipboard.write(info.path)} /> : null}
         {info && info.kind !== 'missing' && info.path ? (
-          <button type="button" className="icon-btn" onClick={() => onOpenExternal(info.path)} aria-label="用系统程序打开" title="用系统程序打开">
+          <button type="button" className="icon-btn" onClick={() => onOpenExternal(info.path)} aria-label={t('用系统程序打开')} title={t('用系统程序打开')}>
             <Icon name="external" size={15} />
           </button>
         ) : null}
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="关闭预览" title="关闭预览">
+        <button type="button" className="icon-btn" onClick={onClose} aria-label={t('关闭预览')} title={t('关闭预览')}>
           <Icon name="close" size={14} />
         </button>
       </header>
@@ -166,7 +167,7 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
           <span>{note.text}</span>
           {note.onRetry ? (
             <button type="button" className="btn btn-small" onClick={note.onRetry}>
-              重试
+              {t('重试')}
             </button>
           ) : null}
         </p>
@@ -201,7 +202,7 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
         </>
       ) : (
         <div className="preview-body preview-empty">
-          <p>{'message' in info ? info.message : ''}</p>
+          <p>{'message' in info ? tx(info.message) : ''}</p>
         </div>
       )}
     </section>
@@ -217,7 +218,7 @@ export function usePreview(load: (sessionId: string | null, path: string, sheet?
     let alive = true;
     load(want.sessionId, want.path, want.sheet)
       .then((info) => alive && setState({ key, info }))
-      .catch(() => alive && setState({ key, info: { kind: 'missing', name: want.path.split(/[\\/]/).pop() ?? want.path, path: want.path, size: 0, message: '无法读取文件。' } }));
+      .catch(() => alive && setState({ key, info: { kind: 'missing', name: want.path.split(/[\\/]/).pop() ?? want.path, path: want.path, size: 0, message: N_('无法读取文件。') } }));
     return () => {
       alive = false;
     };

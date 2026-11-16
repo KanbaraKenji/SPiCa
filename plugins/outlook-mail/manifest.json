@@ -17,5 +17,35 @@
   "mock": {
     "supported": true,
     "description": "Answers from a fictional sample mailbox of 30 messages instead of Outlook; marks, moves and drafts last until the plugin restarts."
+  },
+  "i18n": {
+    "zh-CN": {
+      "display_name": "Outlook 邮件",
+      "description": "读取本机经典版 Outlook 桌面应用里的邮件，帮你分拣并起草回复。从不发送邮件。",
+      "mock_description": "用一个有 30 封邮件的虚构示例邮箱回答，不连 Outlook；标记、移动和草稿在插件重启前有效。",
+      "commands": {
+        "triage": {
+          "description": "分拣我未读的 Outlook 邮件并给出建议",
+          "argument_hint": "[文件夹或补充说明]"
+        }
+      },
+      "skills": {
+        "triage": "怎样处理未读的 Outlook 邮件：判断每封归哪个项目或待办，并用按钮给出下一步。"
+      }
+    },
+    "zh-TW": {
+      "display_name": "Outlook 郵件",
+      "description": "讀取本機傳統版 Outlook 桌面應用程式裡的郵件，幫你分類並起草回覆。從不寄出郵件。",
+      "mock_description": "以一個有 30 封郵件的虛構範例信箱回答，不連線 Outlook；標記、移動和草稿在外掛程式重新啟動前有效。",
+      "commands": {
+        "triage": {
+          "description": "分類我未讀的 Outlook 郵件並提供建議",
+          "argument_hint": "[資料夾或補充說明]"
+        }
+      },
+      "skills": {
+        "triage": "如何處理未讀的 Outlook 郵件：判斷每封屬於哪個專案或待辦事項，並以按鈕提供下一步。"
+      }
+    }
   }
 }

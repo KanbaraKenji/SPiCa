@@ -4,6 +4,8 @@
 // Validation never throws: it returns issues with a plain-language message
 // (Chinese, shown to the user as-is) and the JSON path that is wrong.
 
+import { parseI18n, type PluginI18n } from './i18n.ts';
+
 export const MANIFEST_FILE = 'manifest.json';
 export const MANIFEST_VERSION = 1;
 /** Name shown to users in messages; a branded build passes its own (only text changes, never identifiers). */
@@ -60,6 +62,8 @@ export interface PluginManifest {
    * skin and one for a dark skin. Written as one path (both skins) or { "light": …, "dark": … }.
    */
   icon?: PluginIcon;
+  /** The words people read in other languages (manifest.json · i18n, optional; ./i18n.ts). */
+  i18n?: PluginI18n;
 }
 
 export interface PluginIcon {
@@ -336,6 +340,8 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
     }
   }
 
+  const i18n = parseI18n(raw.i18n, warn);
+
   if (issues.some((i) => i.severity === 'error')) return { issues };
   const manifest: PluginManifest = {
     manifestVersion: MANIFEST_VERSION,
@@ -351,6 +357,7 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
     ...(mail ? { mail } : {}),
     ...(homepage ? { homepage } : {}),
     ...(icon ? { icon } : {}),
+    ...(i18n ? { i18n } : {}),
   };
   return { manifest, issues };
 }

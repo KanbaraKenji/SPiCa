@@ -2,6 +2,7 @@
 // Under messages, on code blocks, tables and file cards.
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
+import { t } from '../../../shared/i18n';
 
 export interface CopyButtonProps {
   /** Puts the text on the clipboard. */
@@ -11,11 +12,11 @@ export interface CopyButtonProps {
   className?: string;
 }
 
-export function CopyButton({ copy, label = '复制', className = 'icon-btn msg-action' }: CopyButtonProps) {
+export function CopyButton({ copy, label = t('复制'), className = 'icon-btn msg-action' }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
-  const shown = copied ? '已复制' : label;
+  const shown = copied ? t('已复制') : label;
   return (
     <button
       type="button"

@@ -2,26 +2,38 @@
 // client secret) only travel renderer -> main when the user types a new one;
 // main never sends them back, only `hasSecret`.
 import { moneyPrecise, RUN_LIMIT_MAX_USD } from './settings';
+import { fill, LOCALES, lookup, N_, t, type Locale, type Vars } from './i18n';
 
 export type ProviderKind = 'openai' | 'anthropic' | 'wso2';
 
+/** The kinds; `label` is a key (shown with t(), or kindLabel). */
 export const PROVIDER_KINDS: readonly { kind: ProviderKind; label: string }[] = [
-  { kind: 'openai', label: 'OpenAI 兼容' },
+  { kind: 'openai', label: N_('OpenAI 兼容') },
   { kind: 'anthropic', label: 'Anthropic' },
-  { kind: 'wso2', label: '公司网关（WSO2）' },
+  { kind: 'wso2', label: N_('公司网关（WSO2）') },
 ];
+
+const DEV_NAME = N_('开发用模型（.env.local）');
+const DEV_NAME_OF_KIND = N_('开发用模型（{kind}）');
 
 /**
  * The name of a connection read from .env.local (development builds). With both an OpenAI compatible and an
  * Anthropic one configured, each says which it is instead, in the words the form uses for the kind (kept as
  * short as the plain name: the model's name comes after it under the message box).
  */
-export function devConnectionName(kind: ProviderKind, both: boolean): string {
-  return both ? `开发用模型（${kindLabel(kind)}）` : '开发用模型（.env.local）';
+export function devConnectionName(kind: ProviderKind, both: boolean, locale?: Locale): string {
+  // `locale`: in that language rather than the current one (DEV_CONNECTION_NAMES lists every language's)
+  const say = (key: string, vars?: Vars) => (locale ? fill(lookup(key, locale), vars) : t(key, vars));
+  return both ? say(DEV_NAME_OF_KIND, { kind: say(kindKey(kind)) }) : say(DEV_NAME);
 }
 
-export function kindLabel(kind: ProviderKind): string {
+function kindKey(kind: ProviderKind): string {
   return PROVIDER_KINDS.find((k) => k.kind === kind)?.label ?? kind;
+}
+
+/** The kind's name in the interface language. */
+export function kindLabel(kind: ProviderKind): string {
+  return t(kindKey(kind));
 }
 
 /** Fields shared by every kind; unused ones stay empty. */
@@ -228,44 +240,49 @@ export function sameNameAs(name: string, others: readonly string[]): boolean {
   return others.some((o) => key(o) === key(name));
 }
 
-/** Every name a connection from .env.local can carry: taken, so a saved connection can never read the same. */
-export const DEV_CONNECTION_NAMES: readonly string[] = [devConnectionName('openai', false), devConnectionName('openai', true), devConnectionName('anthropic', true)];
+/**
+ * Every name a connection from .env.local can carry, in every interface language: taken, so a saved connection can
+ * never read the same in any of them.
+ */
+export const DEV_CONNECTION_NAMES: readonly string[] = [
+  ...new Set(LOCALES.flatMap((l) => [devConnectionName('openai', false, l), devConnectionName('openai', true, l), devConnectionName('anthropic', true, l)])),
+];
 
 export function validateDraft(d: ProviderDraft, hasSavedSecret: boolean, opts: { forTest?: boolean; needsKey?: boolean; otherNames?: readonly string[] } = {}): FieldErrors {
   const e: FieldErrors = {};
-  if (!d.name.trim()) e.name = '请填写名称';
+  if (!d.name.trim()) e.name = t('请填写名称');
   // No two connections with one name (`otherNames`: every other connection's, the ones from .env.local too).
   // Only when saving: a name does not matter for testing the connection.
-  else if (!opts.forTest && sameNameAs(d.name, opts.otherNames ?? [])) e.name = '名称已存在';
+  else if (!opts.forTest && sameNameAs(d.name, opts.otherNames ?? [])) e.name = t('名称已存在');
   // A whole ticked list (a connection with several models), or the one-model form.
   const list = d.models?.filter((m) => m.id.trim() && isEnabled(m));
-  if (list ? list.length === 0 : !d.model.trim()) e.model = list ? '请至少选择一个模型' : '请填写模型';
+  if (list ? list.length === 0 : !d.model.trim()) e.model = list ? t('请至少选择一个模型') : t('请填写模型');
   const needsUrl = d.kind !== 'anthropic';
-  if (needsUrl && !d.baseUrl.trim()) e.baseUrl = d.kind === 'wso2' ? '请填写网关地址' : '请填写接口地址';
-  else if (d.baseUrl.trim() && !isUrl(d.baseUrl)) e.baseUrl = '地址须以 http:// 或 https:// 开头';
+  if (needsUrl && !d.baseUrl.trim()) e.baseUrl = d.kind === 'wso2' ? t('请填写网关地址') : t('请填写接口地址');
+  else if (d.baseUrl.trim() && !isUrl(d.baseUrl)) e.baseUrl = t('地址须以 http:// 或 https:// 开头');
   if (d.kind === 'wso2') {
-    if (!d.tokenUrl.trim()) e.tokenUrl = '请填写取 token 地址';
-    else if (!isUrl(d.tokenUrl)) e.tokenUrl = '地址须以 http:// 或 https:// 开头';
-    if (!d.clientId.trim()) e.clientId = '请填写 Consumer Key';
+    if (!d.tokenUrl.trim()) e.tokenUrl = t('请填写取 token 地址');
+    else if (!isUrl(d.tokenUrl)) e.tokenUrl = t('地址须以 http:// 或 https:// 开头');
+    if (!d.clientId.trim()) e.clientId = t('请填写 Consumer Key');
   }
   const secret = d.secret?.trim();
   // Local providers (Ollama, LM Studio) need no key.
-  if (!secret && !hasSavedSecret && opts.needsKey !== false) e.secret = `请填写 ${secretLabel(d.kind)}`;
+  if (!secret && !hasSavedSecret && opts.needsKey !== false) e.secret = t('请填写 {field}', { field: secretLabel(d.kind) });
   if (!opts.forTest && list) {
     const missing = list.find((m) => m.contextWindow === null || !Number.isInteger(m.contextWindow) || m.contextWindow < 1);
-    if (missing) e.contextWindow = `请填写「${missing.id}」的上下文上限`;
+    if (missing) e.contextWindow = t('请填写「{model}」的上下文上限', { model: missing.id });
   } else if (!opts.forTest) {
-    if (d.contextWindow === null) e.contextWindow = '请填写上下文上限';
-    else if (!Number.isInteger(d.contextWindow) || d.contextWindow < 1) e.contextWindow = '上下文上限须为正整数';
+    if (d.contextWindow === null) e.contextWindow = t('请填写上下文上限');
+    else if (!Number.isInteger(d.contextWindow) || d.contextWindow < 1) e.contextWindow = t('上下文上限须为正整数');
   }
   const limit = d.spendLimitUsd;
-  if (limit !== null && limit !== undefined && !(Number.isFinite(limit) && limit >= 0 && limit <= RUN_LIMIT_MAX_USD)) e.spendLimitUsd = `须为 0 到 US$${RUN_LIMIT_MAX_USD.toLocaleString('en-US')} 的金额，空着或 0 为不限`;
-  else if (limit !== null && limit !== undefined && !moneyPrecise(limit)) e.spendLimitUsd = '最多四位小数';
+  if (limit !== null && limit !== undefined && !(Number.isFinite(limit) && limit >= 0 && limit <= RUN_LIMIT_MAX_USD)) e.spendLimitUsd = t('须为 0 到 {max} 的金额，空着或 0 为不限', { max: `US$${RUN_LIMIT_MAX_USD.toLocaleString('en-US')}` });
+  else if (limit !== null && limit !== undefined && !moneyPrecise(limit)) e.spendLimitUsd = t('最多四位小数');
   const days = d.spendPeriodDays;
-  if (days !== undefined && !(Number.isInteger(days) && days >= 1 && days <= SPEND_PERIOD_MAX_DAYS)) e.spendPeriodDays = `天数须为 1 到 ${SPEND_PERIOD_MAX_DAYS} 的整数`;
+  if (days !== undefined && !(Number.isInteger(days) && days >= 1 && days <= SPEND_PERIOD_MAX_DAYS)) e.spendPeriodDays = t('天数须为 1 到 {max} 的整数', { max: SPEND_PERIOD_MAX_DAYS });
   for (const k of ['maxConcurrent', 'requestsPerMinute'] as const) {
     const v = d[k];
-    if (v !== null && (!Number.isInteger(v) || v < 1)) e[k] = '须为正整数或留空';
+    if (v !== null && (!Number.isInteger(v) || v < 1)) e[k] = t('须为正整数或留空');
   }
   return e;
 }

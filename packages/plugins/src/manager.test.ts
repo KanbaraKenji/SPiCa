@@ -83,7 +83,7 @@ describe('enable and disable', () => {
         { id: 'settings', kind: 'service', runtime: 'node', status: 'running', restarts: 0 },
       ],
     });
-    expect(r.pm.commands()).toEqual([{ name: 'notes:note', plugin: 'notes', description: 'Save something to the notebook', argumentHint: '<what to note>' }]);
+    expect(r.pm.commands()).toEqual([{ name: 'notes:note', plugin: 'notes', description: 'Save something to the notebook', argumentHint: '<what to note>', i18n: expect.objectContaining({ 'zh-CN': expect.any(Object) }) }]);
     expect(r.pm.expandCommand('/notes:note', 'buy milk')).toBe('Save this to my notebook, following the note-taking skill: buy milk');
   });
 
@@ -233,6 +233,7 @@ describe('views (plugin pages)', () => {
         icon: 'ui/icon.svg',
         tools: ['list_notes', 'read_note', 'write_note', 'delete_note'],
         irreversible: ['delete_note'],
+        i18n: expect.any(Object),
       },
       {
         plugin: 'notes',
@@ -244,6 +245,7 @@ describe('views (plugin pages)', () => {
         icon: 'ui/icon.svg',
         tools: ['read_note', 'write_note'],
         irreversible: [],
+        i18n: expect.any(Object),
       },
       {
         plugin: 'notes',
@@ -254,6 +256,7 @@ describe('views (plugin pages)', () => {
         entry: 'ui/settings.html',
         tools: ['get_settings', 'save_settings'],
         irreversible: [],
+        i18n: expect.any(Object),
       },
     ]);
     const root = join(pm.installDir('notes', '0.1.0'));

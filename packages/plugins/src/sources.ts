@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { hasErrors, readPluginFolder } from './folder.ts';
 import { compareVersions, satisfies, stripBom } from './manifest.ts';
+import { offerTexts, type PluginI18n } from './i18n.ts';
 import type { InstallStep, PluginDescription, PluginManager, PluginSource } from './manager.ts';
 import { sha256, unpackPlugin, verifyPackage } from './pack.ts';
 
@@ -31,6 +32,10 @@ export interface IndexEntry {
   /** Compatible Spica range, copied from the manifest so it can be checked before download. */
   spica?: string;
   description?: string;
+  /** The manifest's display_name, for the marketplace card (index_version 1 files without it show the name). */
+  displayName?: string;
+  /** The manifest's i18n (the card's name and description in other languages; ./i18n.ts localizeOffer). */
+  i18n?: PluginI18n;
 }
 
 export interface IndexFile {
@@ -150,6 +155,12 @@ export async function downloadPackage(url: string, opts: SourceOptions = {}): Pr
   }
 }
 
+/** A manifest's words for its marketplace card: the display name, and the name and description in other languages. */
+function offerOf(m: { name: string; displayName: string; i18n?: PluginI18n }): Pick<IndexEntry, 'displayName' | 'i18n'> {
+  const i18n = offerTexts(m.i18n);
+  return { ...(m.displayName !== m.name ? { displayName: m.displayName } : {}), ...(i18n ? { i18n } : {}) };
+}
+
 function parseIndex(text: string, where: string): IndexFile {
   let raw: unknown;
   try {
@@ -163,6 +174,13 @@ function parseIndex(text: string, where: string): IndexFile {
     if (typeof p?.name !== 'string' || typeof p.version !== 'string' || typeof p.file !== 'string') {
       throw new Error(`${where} 中有一条缺少 name / version / file。`);
     }
+  }
+  // A card's words from someone else's file: only text is kept.
+  for (const p of idx.plugins) {
+    if (typeof p.displayName !== 'string') delete p.displayName;
+    const i18n = offerTexts(p.i18n);
+    if (i18n) p.i18n = i18n;
+    else delete p.i18n;
   }
   return idx as IndexFile;
 }
@@ -198,12 +216,12 @@ export async function listSource(src: SourceConfig, opts: SourceOptions = {}): P
     const abs = join(root, e.name);
     if (e.isDirectory()) {
       const f = await readPluginFolder(abs, opts);
-      if (f.manifest) out.push({ name: f.manifest.name, version: f.manifest.version, file: `${e.name}/`, spica: f.manifest.spica, description: f.manifest.description, source: src, location: abs, form: 'folder' });
+      if (f.manifest) out.push({ name: f.manifest.name, version: f.manifest.version, file: `${e.name}/`, spica: f.manifest.spica, description: f.manifest.description, ...offerOf(f.manifest), source: src, location: abs, form: 'folder' });
     } else if (e.isFile() && e.name.endsWith('.zip')) {
       const buf = await readFile(abs);
       const v = await verifyPackage(buf, undefined, opts).catch(() => undefined);
       const m = v?.folder.manifest;
-      if (m) out.push({ name: m.name, version: m.version, file: e.name, sha256: v.sha256, spica: m.spica, description: m.description, source: src, location: abs, form: 'zip' });
+      if (m) out.push({ name: m.name, version: m.version, file: e.name, sha256: v.sha256, spica: m.spica, description: m.description, ...offerOf(m), source: src, location: abs, form: 'zip' });
     }
   }
   return out;
@@ -290,7 +308,7 @@ export async function writeIndex(dir: string): Promise<IndexFile> {
     const v = await verifyPackage(buf);
     const m = v.folder.manifest;
     if (!m || !v.ok) continue;
-    plugins.push({ name: m.name, version: m.version, file: e.name, sha256: v.sha256, spica: m.spica, description: m.description });
+    plugins.push({ name: m.name, version: m.version, file: e.name, sha256: v.sha256, spica: m.spica, description: m.description, ...offerOf(m) });
   }
   plugins.sort((a, b) => a.name.localeCompare(b.name) || compareVersions(a.version, b.version));
   const idx: IndexFile = { index_version: 1, plugins };

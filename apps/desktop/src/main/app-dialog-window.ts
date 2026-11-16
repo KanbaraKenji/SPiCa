@@ -6,6 +6,7 @@ import { BrowserWindow, app, screen } from 'electron';
 import { join } from 'node:path';
 import { DialogChannel, type DialogAnswer, type DialogSpec } from '../shared/app-dialog';
 import { runDialog, type DialogWindow } from './app-dialog';
+import { getLocale } from '../shared/i18n';
 
 /** The page dialog's width (styles.css .dialog: min(400px, 100%)), in CSS pixels, when the spec gives none. */
 const WIDTH = 400;
@@ -71,7 +72,7 @@ export function openDialogWindow(parent: BrowserWindow, spec: DialogSpec, zoom: 
     },
   };
   const answer = runDialog(handle, showMs);
-  const query = { spec: JSON.stringify(spec) };
+  const query = { spec: JSON.stringify({ locale: getLocale(), ...spec }) };
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (!app.isPackaged && devUrl) win.loadURL(`${devUrl}/dialog.html?${new URLSearchParams(query).toString()}`).catch(() => undefined);
   else win.loadFile(join(__dirname, '../renderer/dialog.html'), { query }).catch(() => undefined);

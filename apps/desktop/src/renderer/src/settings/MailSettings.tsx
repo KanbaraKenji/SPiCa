@@ -9,6 +9,7 @@ import { useKeptDraft } from './drafts';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Switch } from './Switch';
 import { Row } from './Group';
+import { t } from '../../../shared/i18n';
 
 export interface MailSettingsProps {
   prefs: MailPrefs;
@@ -38,25 +39,25 @@ function IgnoreRules({ prefs, onSave, saved, onEdit }: { prefs: MailPrefs; onSav
     onEdit();
   };
   return (
-    <Row title="忽略规则" stack className="mail-rules">
+    <Row title={t('忽略规则')} stack className="mail-rules">
       <div className="rule-grid">
         <label className="form-field">
-          <span className="field-label">发件人包含</span>
-          <textarea className="input rule-input" rows={3} spellCheck={false} value={from} placeholder="每行一条，支持 /正则/" onChange={(e) => editFrom(e.target.value)} />
+          <span className="field-label">{t('发件人包含')}</span>
+          <textarea className="input rule-input" rows={3} spellCheck={false} value={from} placeholder={t('每行一条，支持 /正则/')} onChange={(e) => editFrom(e.target.value)} />
         </label>
         <label className="form-field">
-          <span className="field-label">主题包含</span>
-          <textarea className="input rule-input" rows={3} spellCheck={false} value={subject} placeholder="每行一条，支持 /正则/" onChange={(e) => editSubject(e.target.value)} />
+          <span className="field-label">{t('主题包含')}</span>
+          <textarea className="input rule-input" rows={3} spellCheck={false} value={subject} placeholder={t('每行一条，支持 /正则/')} onChange={(e) => editSubject(e.target.value)} />
         </label>
       </div>
       <div className="rule-actions">
         {saved && !changed ? (
           <span className="provider-result is-ok" role="status">
             <SpicaStatusIcon name="done" size={15} />
-            已保存
+            {t('已保存')}
           </span>
         ) : null}
-        {changed ? <span className="provider-unsaved">未保存</span> : null}
+        {changed ? <span className="provider-unsaved">{t('未保存')}</span> : null}
         <button
           type="button"
           className="btn btn-small"
@@ -67,7 +68,7 @@ function IgnoreRules({ prefs, onSave, saved, onEdit }: { prefs: MailPrefs; onSav
             subjectDone();
           }}
         >
-          保存
+          {t('保存')}
         </button>
       </div>
     </Row>
@@ -81,11 +82,11 @@ export function MailSettings({ prefs, onChange, model = '', extra }: MailSetting
   return (
     <>
     <div className="group-box mail-settings">
-      <Row title="邮件分类">
-        <Switch on={prefs.enabled} label="邮件分类" onChange={(enabled) => (enabled ? setAsking(true) : onChange({ enabled: false }))} />
+      <Row title={t('邮件分类')}>
+        <Switch on={prefs.enabled} label={t('邮件分类')} onChange={(enabled) => (enabled ? setAsking(true) : onChange({ enabled: false }))} />
       </Row>
-      <Row title="检查间隔">
-        <div className="segmented" role="radiogroup" aria-label="检查间隔">
+      <Row title={t('检查间隔')}>
+        <div className="segmented" role="radiogroup" aria-label={t('检查间隔')}>
           {MAIL_INTERVALS.map((m) => (
             <button
               key={m}
@@ -96,7 +97,7 @@ export function MailSettings({ prefs, onChange, model = '', extra }: MailSetting
               className={prefs.intervalMinutes === m ? 'segment is-on' : 'segment'}
               onClick={() => onChange({ intervalMinutes: m })}
             >
-              {m < 60 ? `${m} 分钟` : '1 小时'}
+              {m < 60 ? t('{n} 分钟', { n: m }) : t('1 小时')}
             </button>
           ))}
         </div>
@@ -115,9 +116,9 @@ export function MailSettings({ prefs, onChange, model = '', extra }: MailSetting
     </div>
       {asking ? (
         <ConfirmDialog
-          title="开启邮件分类？"
-          detail={`新邮件的发件人、主题和正文开头将发送给${model ? `「${model}」` : '默认模型'}进行分类。`}
-          confirmLabel="开启"
+          title={t('开启邮件分类？')}
+          detail={model ? t('新邮件的发件人、主题和正文开头将发送给「{model}」进行分类。', { model }) : t('新邮件的发件人、主题和正文开头将发送给默认模型进行分类。')}
+          confirmLabel={t('开启')}
           onCancel={() => setAsking(false)}
           onConfirm={() => {
             setAsking(false);

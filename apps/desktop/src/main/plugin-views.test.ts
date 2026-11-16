@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createContext, runInContext, runInNewContext } from 'node:vm';
-import { BRIDGE_JS, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, pickDialogOptions, pickStartPath, pluginThemeVars, themeCss, type PickDialogOptions } from './plugin-views';
+import { BRIDGE_JS, bridgeFor, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, pickDialogOptions, pickStartPath, pluginThemeVars, themeCss, type PickDialogOptions } from './plugin-views';
 import { pluginCallId, pluginCallProblem } from '../shared/plugin-view';
 import { DARK_SKIN, LIGHT_SKIN, deriveTokens, type Skin } from '../shared/skin';
 import { readFileSync } from 'node:fs';
@@ -136,6 +136,33 @@ describe('a preview page’s script failing before it is drawn (window.spica in 
     void p.spica.preview.ready();
     p.fire('x is not defined');
     expect(p.posted.filter((m) => m.call === 'previewError')).toEqual([]);
+  });
+});
+
+describe('window.spica.locale (the interface language)', () => {
+  function page(js: string) {
+    const listeners: Record<string, ((e: unknown) => void)[]> = {};
+    const parent = { postMessage: () => undefined };
+    const win: Record<string, unknown> = { parent, addEventListener: (type: string, fn: (e: unknown) => void) => (listeners[type] ??= []).push(fn) };
+    runInNewContext(js, { window: win, document: { documentElement: { dataset: {}, style: {} } }, console });
+    const spica = win.spica as { locale: string; onEvent(fn: (e: { type: string; locale?: string }) => void): () => void };
+    const send = (event: object) => listeners.message?.forEach((fn) => fn({ source: parent, data: { __spica: 1, event } }));
+    return { spica, send };
+  }
+
+  it('is the language in force when the page loads, Simplified by default', () => {
+    expect(page(BRIDGE_JS).spica.locale).toBe('zh-CN');
+    expect(page(bridgeFor('en')).spica.locale).toBe('en');
+  });
+
+  it('follows a locale event, which the page hears too; an unknown language is ignored', () => {
+    const p = page(bridgeFor('zh-CN'));
+    const heard: (string | undefined)[] = [];
+    p.spica.onEvent((e) => e.type === 'locale' && heard.push(e.locale));
+    p.send({ type: 'locale', locale: 'zh-TW' });
+    p.send({ type: 'locale', locale: 'fr' });
+    expect(p.spica.locale).toBe('zh-TW');
+    expect(heard).toEqual(['zh-TW']);
   });
 });
 

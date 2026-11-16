@@ -2,6 +2,7 @@
 // The keyboard stays inside it (useModal); confirming fires once.
 import { useId, useRef, type ReactNode } from 'react';
 import { useModal } from './useModal';
+import { t } from '../../../shared/i18n';
 
 export interface ConfirmDialogProps {
   title: string;
@@ -28,7 +29,7 @@ export function ConfirmDialog({ title, detail, confirmLabel, danger, onConfirm, 
         {detail ? typeof detail === 'string' ? <p className="dialog-detail">{detail}</p> : <div className="dialog-detail">{detail}</div> : null}
         <div className="dialog-actions">
           <button type="button" className="btn" onClick={onCancel}>
-            取消
+            {t('取消')}
           </button>
           <button
             type="button"

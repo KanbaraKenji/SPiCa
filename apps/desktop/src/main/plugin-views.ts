@@ -6,6 +6,7 @@
 
 import { localDrivePath, type PluginPickRequest } from '../shared/plugin-view';
 import { UI_FONT_FACES } from '../shared/ui-font';
+import { t } from '../shared/i18n';
 
 export const PLUGIN_SCHEME = 'spica-plugin';
 export { pluginThemeVars } from '../shared/plugin-view';
@@ -114,7 +115,7 @@ export function pickExtensions(v: unknown): string[] {
 export function pickDialogOptions(req: PluginPickRequest): PickDialogOptions {
   const own = typeof req.title === 'string' ? req.title.trim().slice(0, 60) : '';
   const plugin = String(req.plugin ?? '').trim().slice(0, 40);
-  const what = own || (req.kind === 'file' ? '选择文件' : '选择文件夹');
+  const what = own || (req.kind === 'file' ? t('选择文件') : t('选择文件夹'));
   const start = pickStartPath(req.defaultPath);
   const opts: PickDialogOptions = {
     title: plugin ? `${plugin} · ${what}` : what,
@@ -180,6 +181,8 @@ export const BRIDGE_JS = `(() => {
     return o;
   };
   const theme = { mode: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light' };
+  // The interface language (bridgeFor puts the one in force here; a locale event changes it).
+  let locale = 'zh-CN';
   const applyTheme = (ev) => {
     const root = document.documentElement;
     for (const k of Object.keys(ev.vars || {})) root.style.setProperty(k, ev.vars[k]);
@@ -199,6 +202,11 @@ export const BRIDGE_JS = `(() => {
       else p.resolve(d.result);
     } else if (d.event) {
       if (d.event.type === 'theme') applyTheme(d.event);
+      if (d.event.type === 'locale') {
+        if (d.event.locale !== 'zh-CN' && d.event.locale !== 'zh-TW' && d.event.locale !== 'en') return;
+        if (d.event.locale === locale) return;
+        locale = d.event.locale;
+      }
       for (const fn of listeners) {
         try {
           fn(d.event);
@@ -211,6 +219,9 @@ export const BRIDGE_JS = `(() => {
   const spica = {
     get theme() {
       return { mode: theme.mode };
+    },
+    get locale() {
+      return locale;
     },
     callTool: (tool, args) => call('callTool', { tool: String(tool), args: args || {} }),
     onEvent: (fn) => {
@@ -255,3 +266,8 @@ export const BRIDGE_JS = `(() => {
   post({ call: 'ready', id: 0 });
 })();
 `;
+
+/** The bridge as served to a page: with the interface language in force (shared/i18n Locale). */
+export function bridgeFor(locale: 'zh-CN' | 'zh-TW' | 'en'): string {
+  return BRIDGE_JS.replace("let locale = 'zh-CN';", `let locale = ${JSON.stringify(locale)};`);
+}

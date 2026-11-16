@@ -10,6 +10,7 @@ import { StatusSlot } from '../ui/StatusMark';
 import { isRunning } from '../store/transcript';
 import { rollupText, slotsOf, topSlot } from './row-status';
 import { canRename, commitRename, hasRowMenu, RenameField, rowMenuItems, type RowActions } from './row-menu';
+import { t, tc } from '../../../shared/i18n';
 
 export interface SidebarProps {
   sessions: SessionInfo[];
@@ -73,8 +74,8 @@ export type AccountMenuTo = 'settings' | 'models';
  */
 export function accountMenuItems(account: string, go: (where: AccountMenuTo) => void): MenuItem[] {
   return [
-    { label: '设置', group: account, icon: 'settings', onSelect: () => go('settings') },
-    { label: '模型', group: account, icon: 'model', onSelect: () => go('models') },
+    { label: t('设置'), group: account, icon: 'settings', onSelect: () => go('settings') },
+    { label: t('模型'), group: account, icon: 'model', onSelect: () => go('models') },
   ];
 }
 
@@ -191,12 +192,12 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
               <span className="tree-title">{name}</span>
             </button>
             {kids.length ? (
-              <button type="button" className="tree-twisty" aria-label={open ? `收起 ${name}` : `展开 ${name}`} title={open ? '收起' : '展开'} aria-expanded={open} onClick={toggle}>
+              <button type="button" className="tree-twisty" aria-label={open ? t('收起 {name}', { name }) : t('展开 {name}', { name })} title={open ? tc('tree', '收起') : tc('tree', '展开')} aria-expanded={open} onClick={toggle}>
                 <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} />
               </button>
             ) : null}
             {s.projectId && tree.pinned.has(s.projectId) ? (
-              <span className="tree-pin" title="已置顶" onClick={() => tree.onOpen(s.id)}>
+              <span className="tree-pin" title={t('已置顶')} onClick={() => tree.onOpen(s.id)}>
                 <Icon name="pin" size={12} />
               </span>
             ) : null}
@@ -204,7 +205,7 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
           </>
         )}
         {more ? (
-          <button type="button" className="tree-more" aria-label="更多" title="更多" aria-haspopup="menu" aria-expanded={menuOpen} onClick={(e) => more(s, e.currentTarget)}>
+          <button type="button" className="tree-more" aria-label={t('更多')} title={t('更多')} aria-haspopup="menu" aria-expanded={menuOpen} onClick={(e) => more(s, e.currentTarget)}>
             <Icon name="more" size={16} />
           </button>
         ) : null}
@@ -256,7 +257,7 @@ export function Sidebar({
             const end = withName ? (b.nextElementSibling?.getBoundingClientRect().right ?? b.getBoundingClientRect().right) : b.getBoundingClientRect().right;
             setMeMenu((m) => (m ? null : { anchor: b, width: end - b.getBoundingClientRect().left }));
           }}
-          aria-label={`账号 ${account}`}
+          aria-label={t('账号 {account}', { account })}
           aria-haspopup={onAccount ? 'menu' : undefined}
           aria-expanded={onAccount ? !!meMenu : undefined}
           title={account}
@@ -344,17 +345,17 @@ export function Sidebar({
   if (compact) {
     // Only actions here; the lists (对话, 项目) come with the full sidebar, slid out by resting on this column.
     return (
-      <nav className="sidebar is-rail" aria-label="对话">
+      <nav className="sidebar is-rail" aria-label={tc('tab', '对话')}>
         {/* As tall as the tabs of the full sidebar, so the icons below sit where their rows do. */}
         <div className="side-tabs-space" aria-hidden />
         {/* In the scrolling part, like the full sidebar's rows: a window too short for all of them scrolls them away. */}
         <div className="sidebar-scroll">
         <div className="sidebar-top">
-          <button type="button" className="side-action" onClick={onNewChat} aria-label="新对话" title="新对话">
+          <button type="button" className="side-action" onClick={onNewChat} aria-label={t('新对话')} title={t('新对话')}>
             <Icon name="newChat" />
           </button>
           {inbox ? (
-            <button type="button" className={inbox.open ? 'side-action is-active' : 'side-action'} onClick={inbox.onOpen} aria-current={inbox.open ? 'page' : undefined} aria-label={inbox.count ? `收件箱，${inbox.count} 封待确认` : '收件箱'} title="收件箱">
+            <button type="button" className={inbox.open ? 'side-action is-active' : 'side-action'} onClick={inbox.onOpen} aria-current={inbox.open ? 'page' : undefined} aria-label={inbox.count ? t('收件箱，{n} 封待确认', { n: inbox.count }) : t('收件箱')} title={t('收件箱')}>
               <Icon name="inbox" />
               {inbox.count ? <span className="rail-badge">{inbox.count}</span> : null}
             </button>
@@ -362,9 +363,9 @@ export function Sidebar({
         </div>
         </div>
         {pluginPages.length ? (
-          <section className="tree-section side-plugins" aria-label="插件">
+          <section className="tree-section side-plugins" aria-label={t('插件')}>
             <h2 className="tree-heading rail-sep" aria-hidden>
-              插件
+              {t('插件')}
             </h2>
             {pluginPages.map((p) => (
               <button key={p.key} type="button" className={p.open ? 'side-action is-active' : 'side-action'} onClick={p.onOpen} aria-current={p.open ? 'page' : undefined} aria-label={p.title} title={p.title}>
@@ -376,7 +377,7 @@ export function Sidebar({
         {notice}
         <div className="sidebar-bottom">
           {accountButton(false)}
-          <button type="button" className={settingsOpen ? 'side-action is-active' : 'side-action'} onClick={onSettings} aria-current={settingsOpen ? 'page' : undefined} aria-label="设置" title="设置">
+          <button type="button" className={settingsOpen ? 'side-action is-active' : 'side-action'} onClick={onSettings} aria-current={settingsOpen ? 'page' : undefined} aria-label={t('设置')} title={t('设置')}>
             <Icon name="settings" />
           </button>
           {accountMenu}
@@ -386,12 +387,12 @@ export function Sidebar({
   }
 
   return (
-    <nav className="sidebar" aria-label="对话">
+    <nav className="sidebar" aria-label={tc('tab', '对话')}>
       {/* 对话 and 项目 as two tabs right under the brand row, each half the width. */}
-      <div className="tabs side-tabs" role="tablist" aria-label="列表">
-        {(['chats', 'projects'] as const).map((t) => (
-          <button key={t} type="button" role="tab" aria-selected={listTab === t} className={listTab === t ? 'tab is-on' : 'tab'} onClick={() => setListTab(t)}>
-            {t === 'chats' ? '对话' : '项目'}
+      <div className="tabs side-tabs" role="tablist" aria-label={t('列表')}>
+        {(['chats', 'projects'] as const).map((tab) => (
+          <button key={tab} type="button" role="tab" aria-selected={listTab === tab} className={listTab === tab ? 'tab is-on' : 'tab'} onClick={() => setListTab(tab)}>
+            {tab === 'chats' ? tc('tab', '对话') : tc('tab', '项目')}
           </button>
         ))}
       </div>
@@ -400,14 +401,14 @@ export function Sidebar({
       <div className="sidebar-top">
         <button type="button" className="side-action" onClick={onNewChat}>
           <Icon name="newChat" />
-          <span>新对话</span>
+          <span>{t('新对话')}</span>
         </button>
         {inbox ? (
           <button type="button" className={inbox.open ? 'side-action is-active' : 'side-action'} onClick={inbox.onOpen} aria-current={inbox.open ? 'page' : undefined}>
             <Icon name="inbox" />
-            <span>收件箱</span>
+            <span>{t('收件箱')}</span>
             {inbox.count ? (
-              <span className="side-count" aria-label={`${inbox.count} 封待确认`} title={`${inbox.count} 封待确认`}>
+              <span className="side-count" aria-label={t('{n} 封待确认', { n: inbox.count })} title={t('{n} 封待确认', { n: inbox.count })}>
                 {inbox.count}
               </span>
             ) : null}
@@ -430,7 +431,7 @@ export function Sidebar({
             {onNewProject ? (
               <button type="button" className="side-action side-new-project" onClick={onNewProject}>
                 <Icon name="plus" />
-                <span>新项目</span>
+                <span>{t('新项目')}</span>
               </button>
             ) : null}
           </section>
@@ -438,8 +439,8 @@ export function Sidebar({
       </div>
       </div>
       {pluginPages.length ? (
-        <section className="tree-section side-plugins" aria-label="插件">
-          <h2 className="tree-heading">插件</h2>
+        <section className="tree-section side-plugins" aria-label={t('插件')}>
+          <h2 className="tree-heading">{t('插件')}</h2>
           {pluginPages.map((p) => (
             <button key={p.key} type="button" className={p.open ? 'side-action is-active' : 'side-action'} onClick={p.onOpen} aria-current={p.open ? 'page' : undefined} title={p.title} data-tip-clipped=".side-action-text">
               {p.icon ? <img className="side-plugin-icon" src={p.icon} alt="" /> : <Icon name="plugin" />}
@@ -468,18 +469,18 @@ export function Sidebar({
               className={['side-action', 'side-gear', SETTINGS_WORD ? 'has-word' : '', settingsOpen ? 'is-active' : ''].filter(Boolean).join(' ')}
               onClick={onSettings}
               aria-current={settingsOpen ? 'page' : undefined}
-              aria-label="设置"
-              title="设置"
+              aria-label={t('设置')}
+              title={t('设置')}
             >
               <Icon name="settings" />
-              {SETTINGS_WORD ? <span>设置</span> : null}
+              {SETTINGS_WORD ? <span>{t('设置')}</span> : null}
             </button>
             {accountMenu}
           </>
         ) : (
           <button type="button" className={settingsOpen ? 'side-action is-active' : 'side-action'} onClick={onSettings} aria-current={settingsOpen ? 'page' : undefined}>
             <Icon name="settings" />
-            <span>设置</span>
+            <span>{t('设置')}</span>
           </button>
         )}
       </div>

@@ -2,6 +2,7 @@
 // variables a page gets (names fixed with the plugin system).
 
 import { UI_FONT_FAMILY } from './ui-font';
+import { t } from './i18n';
 
 /** One page of an enabled plugin (pluginViews()). */
 export interface PluginView {
@@ -63,30 +64,30 @@ export const FONT_UI = UI_FONT_FAMILY;
 
 /** The variables a plugin page can use (fixed with the plugin system). */
 export function pluginThemeVars(tokens: Record<string, string>, fontUi: string): Record<string, string> {
-  const t = (k: string, fallback: string) => tokens[k] ?? fallback;
+  const tok = (k: string, fallback: string) => tokens[k] ?? fallback;
   return {
-    '--spica-bg': t('--spica-bg', '#ffffff'),
-    '--spica-surface': t('--spica-surface', '#ffffff'),
-    '--spica-fg': t('--spica-ink', '#111827'),
-    '--spica-muted': t('--spica-muted', '#6b7280'),
-    '--spica-border': t('--spica-border', '#e5e7eb'),
-    '--spica-accent': t('--spica-accent', '#2f7de1'),
-    '--spica-danger': t('--spica-danger', '#dc2626'),
+    '--spica-bg': tok('--spica-bg', '#ffffff'),
+    '--spica-surface': tok('--spica-surface', '#ffffff'),
+    '--spica-fg': tok('--spica-ink', '#111827'),
+    '--spica-muted': tok('--spica-muted', '#6b7280'),
+    '--spica-border': tok('--spica-border', '#e5e7eb'),
+    '--spica-accent': tok('--spica-accent', '#2f7de1'),
+    '--spica-danger': tok('--spica-danger', '#dc2626'),
     '--spica-font': fontUi,
     '--spica-radius': '8px',
     // The controls as Spica's own (.btn, .input in styles.css), so a page's buttons and fields match the
     // window's: a button's fill and its hover, a field's fill, their edge, a field's grey hint, the text on a
     // main (accent) button, and how tall they are.
-    '--spica-control': t('--spica-control', '#f2f2f2'),
-    '--spica-control-hover': t('--spica-control-hover', '#e5e5e5'),
-    '--spica-input': t('--spica-input', '#ffffff'),
-    '--spica-border-strong': t('--spica-border-strong', '#cecece'),
-    '--spica-placeholder': t('--spica-placeholder', '#878787'),
-    '--spica-on-accent': t('--spica-on-accent', '#ffffff'),
+    '--spica-control': tok('--spica-control', '#f2f2f2'),
+    '--spica-control-hover': tok('--spica-control-hover', '#e5e5e5'),
+    '--spica-input': tok('--spica-input', '#ffffff'),
+    '--spica-border-strong': tok('--spica-border-strong', '#cecece'),
+    '--spica-placeholder': tok('--spica-placeholder', '#878787'),
+    '--spica-on-accent': tok('--spica-on-accent', '#ffffff'),
     '--spica-control-h': '28px',
     // A link (a path the page can open) as in Spica's answers, and the soft block under it on hover.
-    '--spica-accent-text': t('--spica-accent-text', '#2f7de1'),
-    '--spica-accent-soft': t('--spica-accent-soft', '#e6effb'),
+    '--spica-accent-text': tok('--spica-accent-text', '#2f7de1'),
+    '--spica-accent-soft': tok('--spica-accent-soft', '#e6effb'),
   };
 }
 
@@ -95,15 +96,15 @@ export function pluginCallProblem(content: string): string | null {
   const code = /^\[([A-Z_]+)\]/.exec(content)?.[1];
   switch (code) {
     case 'PLUGIN_DISABLED':
-      return '插件已停用。';
+      return t('插件已停用。');
     case 'VIEW_NOT_FOUND':
-      return '插件页面不存在。';
+      return t('插件页面不存在。');
     case 'TOOL_NOT_FOUND':
-      return '插件中没有该工具。';
+      return t('插件中没有该工具。');
     case 'TOOL_NOT_ALLOWED':
-      return '该页面无权使用此工具。';
+      return t('该页面无权使用此工具。');
     case 'UNSUPPORTED':
-      return '当前版本不支持插件页面。';
+      return t('当前版本不支持插件页面。');
     default:
       return null;
   }

@@ -1,6 +1,7 @@
 // What the settings page sees about plugins. Mirrors @spica/plugins'
 // PluginDescription, trimmed to what the page shows, so the renderer does not
 // import the plugin system itself.
+import { t } from './i18n';
 
 export type ServerState = 'stopped' | 'starting' | 'running' | 'crashed' | 'failed' | string;
 
@@ -52,8 +53,8 @@ export interface PluginIconView {
 
 /** What to tell someone installing or turning on a plugin that uses models. */
 export function modelUseNotice(m: PluginModelView): string {
-  if (!m.allowed) return '使用模型 · 已禁止';
-  return `使用模型 · 用途：${m.reason}`;
+  if (!m.allowed) return t('使用模型 · 已禁止');
+  return t('使用模型 · 用途：{reason}', { reason: m.reason });
 }
 
 /**
@@ -201,21 +202,21 @@ export function sizeText(n: number): string {
 export function stepText(p: InstallStepView): string {
   switch (p.step) {
     case 'download':
-      return p.total ? `正在下载 ${sizeText(p.received)} / ${sizeText(p.total)}` : `正在下载 ${sizeText(p.received)}`;
+      return p.total ? t('正在下载 {received} / {total}', { received: sizeText(p.received), total: sizeText(p.total) }) : t('正在下载 {received}', { received: sizeText(p.received) });
     case 'read':
-      return '正在读取';
+      return t('正在读取');
     case 'verify':
-      return '正在校验';
+      return t('正在校验');
     case 'unpack':
-      return '正在解压';
+      return t('正在解压');
     case 'copy':
-      return '正在复制文件';
+      return t('正在复制文件');
     case 'stop':
-      return '正在停止旧版本';
+      return t('正在停止旧版本');
     case 'replace':
-      return p.busyMs !== undefined ? '安装文件夹被占用，正在重试' : '正在替换文件';
+      return p.busyMs !== undefined ? t('安装文件夹被占用，正在重试') : t('正在替换文件');
     case 'start':
-      return '正在启动';
+      return t('正在启动');
   }
 }
 
@@ -226,8 +227,8 @@ export function unquote(text: string): string {
 
 /** A typed text that is a place to look for packages (a drive path, a shared folder, a web address), not a search term. */
 export function isLocation(text: string): boolean {
-  const t = unquote(text);
-  return /^[a-z]:[\\/]/i.test(t) || t.startsWith('\\\\') || t.startsWith('//') || /^https?:\/\//i.test(t);
+  const s = unquote(text);
+  return /^[a-z]:[\\/]/i.test(s) || s.startsWith('\\\\') || s.startsWith('//') || /^https?:\/\//i.test(s);
 }
 
 export type PluginsCommand =

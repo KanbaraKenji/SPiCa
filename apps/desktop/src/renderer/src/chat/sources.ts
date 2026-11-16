@@ -17,7 +17,7 @@ export function hostOf(url: string): string {
 function linked(text: string): Set<string> {
   const out = new Set<string>();
   // An address ends at a space, a bracket or quote, or Chinese punctuation (…/guide。还有).
-  for (const m of text.matchAll(/https?:\/\/[^\s)<>\]"'。，；：！？、（）「」《》]+/g)) out.add(norm(m[0]));
+  for (const m of text.matchAll(/https?:\/\/[^\s)<>\]"'。，；：！？、（）「」《》]+/g)) out.add(norm(m[0])); // i18n-skip: punctuation a match stops at
   return out;
 }
 

@@ -2,6 +2,7 @@
 // palette for the highlight classes the page uses (chat/highlight.ts, styles.css .hl-*), set as CSS variables;
 // 跟随皮肤 sets none, so the code takes the skin's own colours. A theme without a light (or dark) version is only
 // offered for the other.
+import { N_, t } from './i18n';
 
 export interface CodePalette {
   /** Absent: the skin's own code background. */
@@ -65,8 +66,8 @@ function claude(c: typeof CLAUDE_DARK): CodePalette {
 }
 
 export const CODE_THEMES: readonly CodeTheme[] = [
-  { id: SKIN_CODE_THEME, name: '跟随皮肤' },
-  { id: 'claude', name: 'Claude 风格', light: claude(CLAUDE_LIGHT), dark: claude(CLAUDE_DARK) },
+  { id: SKIN_CODE_THEME, name: N_('跟随皮肤') },
+  { id: 'claude', name: N_('Claude 风格'), light: claude(CLAUDE_LIGHT), dark: claude(CLAUDE_DARK) },
   {
     id: 'github',
     name: 'GitHub',
@@ -112,7 +113,7 @@ export function codeThemesFor(scheme: 'light' | 'dark'): CodeTheme[] {
 
 /** The name shown in the list for that scheme. */
 export function codeThemeName(theme: CodeTheme, scheme: 'light' | 'dark'): string {
-  return theme.names?.[scheme] ?? theme.name;
+  return t(theme.names?.[scheme] ?? theme.name);
 }
 
 /** A theme id that can be used for that scheme, else 跟随皮肤. */

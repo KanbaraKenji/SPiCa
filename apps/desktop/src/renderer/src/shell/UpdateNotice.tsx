@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import type { UpdateState } from '../../../shared/updates';
 import { Icon } from '../ui/Icon';
+import { t } from '../../../shared/i18n';
 
 export interface UpdateNoticeView {
   kind: 'app' | 'plugins';
@@ -32,7 +33,7 @@ export function useUpdateNotice(update: UpdateState | null): UpdateNoticeView | 
     const available = update.available;
     return {
       kind: 'app',
-      text: ready ? `新版本 ${available} 已下载` : `新版本 ${available}`,
+      text: ready ? t('新版本 {version} 已下载', { version: available }) : t('新版本 {version}', { version: available }),
       required,
       ready,
       count: 0,
@@ -41,7 +42,7 @@ export function useUpdateNotice(update: UpdateState | null): UpdateNoticeView | 
   }
   // Closed: shown again only when the count grows.
   const n = update?.pluginUpdates ?? 0;
-  if (n > pluginsClosed) return { kind: 'plugins', text: `${n} 个插件可更新`, required: false, ready: false, count: n, close: () => setPluginsClosed(n) };
+  if (n > pluginsClosed) return { kind: 'plugins', text: t('{n} 个插件可更新', { n }), required: false, ready: false, count: n, close: () => setPluginsClosed(n) };
   return null;
 }
 
@@ -59,18 +60,18 @@ export function UpdateCard({ notice, onInstall, onOpenPlugins }: UpdateNoticePro
         <SpicaStatusIcon name={notice.required ? 'warning' : 'done'} size={15} className="notice-icon" />
         <span className="update-card-text">{notice.text}</span>
         {notice.close ? (
-          <button type="button" className="icon-btn notice-close" onClick={notice.close} aria-label="稍后" title="稍后">
+          <button type="button" className="icon-btn notice-close" onClick={notice.close} aria-label={t('稍后')} title={t('稍后')}>
             <Icon name="close" size={14} />
           </button>
         ) : null}
       </div>
       {notice.kind === 'app' && notice.ready ? (
         <button type="button" className="btn btn-small btn-primary update-card-action" onClick={onInstall}>
-          重启并更新
+          {t('重启并更新')}
         </button>
       ) : notice.kind === 'plugins' ? (
         <button type="button" className="btn btn-small update-card-action" onClick={onOpenPlugins}>
-          查看
+          {t('查看')}
         </button>
       ) : null}
     </div>

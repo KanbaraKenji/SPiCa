@@ -3,7 +3,7 @@
 // plugin's MCP servers (mock mode by default), serves the plugin folder on
 // 127.0.0.1 and injects a stand-in window.spica with the same rules as Spica
 // (own tools only, only the view's permissions.tools, irreversible tools ask
-// first). Colours follow ?theme=light|dark. For development only.
+// first). Colours follow ?theme=light|dark, the interface language ?lang=zh-CN|zh-TW|en (window.spica.locale). For development only.
 //
 //   node preview.mjs <plugin folder> [--view <id>] [--port 4700] [--real] [--pick <path>]
 //
@@ -64,7 +64,7 @@ export async function startPreview(dir, opts = {}) {
   const allowed = view.permissions?.tools ?? [...tools.keys()];
   const irreversible = m.permissions?.irreversible ?? [];
 
-  const bridge = (mode) => `<script>
+  const bridge = (mode, locale) => `<script>
 (() => {
   const vars = ${JSON.stringify(THEMES[mode])};
   const root = document.documentElement;
@@ -93,6 +93,7 @@ export async function startPreview(dir, opts = {}) {
   const post = (body) => fetch('/__spica/call', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.json());
   window.spica = {
     theme: { mode: '${mode}' },
+    locale: '${locale}',
     async callTool(tool, args) {
       let r = await post({ tool, args });
       if (r.isError && r.content.startsWith('[CONFIRM_REQUIRED]')) {
@@ -149,7 +150,9 @@ export async function startPreview(dir, opts = {}) {
       const type = TYPES[extname(abs).toLowerCase()] ?? 'application/octet-stream';
       if (type === 'text/html') {
         const mode = url.searchParams.get('theme') === 'dark' ? 'dark' : 'light';
-        body = body.toString('utf8').replace(/<head([^>]*)>/i, (h) => `${h}\n${bridge(mode)}`);
+        const lang = url.searchParams.get('lang');
+        const locale = lang === 'zh-TW' || lang === 'en' ? lang : 'zh-CN';
+        body = body.toString('utf8').replace(/<head([^>]*)>/i, (h) => `${h}\n${bridge(mode, locale)}`);
       }
       res.writeHead(200, {
         'content-type': `${type}; charset=utf-8`,
@@ -185,7 +188,7 @@ if (isMain) {
   }
   try {
     const p = await startPreview(dir, { view: opt('--view'), port: opt('--port') ? Number(opt('--port')) : undefined, real: args.includes('--real'), pick: opt('--pick') });
-    console.log(`预览：${p.url}（暗色加 ?theme=dark）`);
+    console.log(`预览：${p.url}（暗色加 ?theme=dark，界面语言加 ?lang=en 或 ?lang=zh-TW）`);
     console.log(`页面能调的工具：${p.tools.join('、')}`);
     console.log(opt('--pick') ? `选文件夹 / 选文件：直接回 ${opt('--pick')}（--pick）` : '选文件夹 / 选文件：浏览器里输入路径；自动化里弹不出来，就当用户取消（回 null）。要固定回一个路径，加 --pick <完整路径>。');
     console.log(`用户账号（SPICA_USER_ACCOUNT）：${STAND_IN_ACCOUNT}（虚构的；装进 Spica 后是用户自己的）`);

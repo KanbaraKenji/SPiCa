@@ -18,18 +18,19 @@ import { Memory, type MemoryProps } from './Memory';
 import { Usage, type UsageApi } from './Usage';
 import { matches, SettingsSearchContext } from './Group';
 import type { UpdateState } from '../../../shared/updates';
+import { N_, t } from '../../../shared/i18n';
 
 export type SettingsTab = 'general' | 'account' | 'appearance' | 'models' | 'usage' | 'memory' | 'plugins' | 'about';
 
 const TABS: { id: SettingsTab; label: string }[] = [
-  { id: 'general', label: '常规' },
-  { id: 'account', label: '账号' },
-  { id: 'appearance', label: '外观' },
-  { id: 'models', label: '模型' },
-  { id: 'usage', label: '用量' },
-  { id: 'memory', label: '记忆' },
-  { id: 'plugins', label: '插件' },
-  { id: 'about', label: '关于' },
+  { id: 'general', label: N_('常规') },
+  { id: 'account', label: N_('账号') },
+  { id: 'appearance', label: N_('外观') },
+  { id: 'models', label: N_('模型') },
+  { id: 'usage', label: N_('用量') },
+  { id: 'memory', label: N_('记忆') },
+  { id: 'plugins', label: N_('插件') },
+  { id: 'about', label: N_('关于') },
 ];
 
 /**
@@ -51,7 +52,7 @@ const NAV_ICON: Record<SettingsTab, IconName> = {
   about: 'info',
 };
 
-const labelOf = (id: SettingsTab) => TABS.find((t) => t.id === id)?.label ?? '';
+const labelOf = (id: SettingsTab) => t(TABS.find((tab) => tab.id === id)?.label ?? '');
 
 export interface SettingsViewProps {
   shell: ShellStore;
@@ -89,7 +90,7 @@ export interface SettingsViewProps {
 
 export function SettingsView({ shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, pluginsTab, onPluginsTab, onClose, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, pluginPages, memory, usage }: SettingsViewProps) {
   const { settings } = useShell(shell);
-  const tabs = TABS.filter((t) => (t.id !== 'memory' || memory) && (t.id !== 'usage' || usage));
+  const tabs = TABS.filter((tab) => (tab.id !== 'memory' || memory) && (tab.id !== 'usage' || usage));
   const box = useRef<HTMLDivElement>(null);
   // The keyboard starts in the dialog (no ring on a section until Tab is pressed) and stays in it. Esc closes it
   // once what was opened inside (a confirm box, a menu, a field being edited) is closed (ui/escape.ts).
@@ -185,21 +186,21 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
         {/* A title bar across the dialog: 设置 and the close button, a line under it. */}
         <header className="settings-titlebar">
           <h2 className="settings-title" id="settings-title">
-            设置
+            {t('设置')}
           </h2>
-          <button type="button" className="icon-btn settings-close" aria-label="关闭设置" title="关闭（Esc）" onClick={onClose}>
+          <button type="button" className="icon-btn settings-close" aria-label={t('关闭设置')} title={t('关闭（Esc）')} onClick={onClose}>
             <Icon name="close" size={16} />
           </button>
         </header>
         <div className="settings-body">
-        <nav className="settings-nav" aria-label="分区">
+        <nav className="settings-nav" aria-label={t('分区')}>
           <div className="settings-search">
             <Icon name="search" size={14} className="settings-search-icon" />
-            <input className="input" type="search" value={query} placeholder="搜索设置" aria-label="搜索设置" spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
+            <input className="input" type="search" value={query} placeholder={t('搜索设置')} aria-label={t('搜索设置')} spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
           </div>
-          <div className="settings-nav-list" role="tablist" aria-label="分区" aria-orientation="vertical">
+          <div className="settings-nav-list" role="tablist" aria-label={t('分区')} aria-orientation="vertical">
             {NAV_GROUPS.map((g, i) => {
-              const items = g.filter((id) => tabs.some((t) => t.id === id));
+              const items = g.filter((id) => tabs.some((tab) => tab.id === id));
               return items.length ? (
                 <div key={i} className="settings-nav-group" role="presentation">
                   {items.map((id) => (
@@ -229,14 +230,14 @@ export function SettingsView({ shell, providers, plugins, version, update, onChe
           {searching ? (
             <div className="settings">
               <div className="settings-column search-results">
-                <h3 className="settings-page-title">搜索结果</h3>
+                <h3 className="settings-page-title">{t('搜索结果')}</h3>
                 {/* Every section, out of sight: its rows that match put themselves into its list above it. */}
-                {tabs.map((t) => (
-                  <SearchSection key={t.id} label={t.label} query={query} onGo={(title) => go(t.id, title)} onPlugin={goPlugin}>
-                    {sectionFor(t.id)}
+                {tabs.map((tab) => (
+                  <SearchSection key={tab.id} label={t(tab.label)} query={query} onGo={(title) => go(tab.id, title)} onPlugin={goPlugin}>
+                    {sectionFor(tab.id)}
                   </SearchSection>
                 ))}
-                <p className="settings-hint search-empty">没有找到相关设置</p>
+                <p className="settings-hint search-empty">{t('没有找到相关设置')}</p>
               </div>
             </div>
           ) : (

@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PreviewFile } from '../../../shared/bridge';
 import type { PluginView } from '../../../shared/plugin-view';
 import { PluginFrame, type PluginFrameProps, type PreviewPayload } from './PluginFrame';
+import { t } from '../../../shared/i18n';
 
 export const PREVIEW_TIMEOUT_MS = 15_000;
 
@@ -35,7 +36,7 @@ function sizeMb(bytes: number): string {
 
 /** What the panel says when a file is not given to the page. */
 export function refusedText(r: Extract<PreviewFile, { ok: false }>, view: PluginView): string | null {
-  if (r.problem === 'too-large') return `文件超过 ${sizeMb(view.preview?.maxBytes ?? 0)} MB`;
+  if (r.problem === 'too-large') return t('文件超过 {size} MB', { size: sizeMb(view.preview?.maxBytes ?? 0) });
   return null;
 }
 
@@ -78,7 +79,7 @@ export function PluginPreview({ view, file, loadFile, exists, onFallback, timeou
   };
   const startTimer = () => {
     stopTimer();
-    timer.current = setTimeout(() => fallBack({ text: `「${view.title}」打开超时`, retry: true }), timeoutMs);
+    timer.current = setTimeout(() => fallBack({ text: t('「{title}」打开超时', { title: view.title }), retry: true }), timeoutMs);
   };
   useEffect(() => {
     if (open) startTimer();
@@ -92,6 +93,7 @@ export function PluginPreview({ view, file, loadFile, exists, onFallback, timeou
       <PluginFrame
         {...frame}
         view={view}
+        // i18n-skip: an answer to the plugin page's own code
         openFile={async () => '预览页不能打开其他文件。'}
         preview={{
           fileKey,
@@ -100,7 +102,7 @@ export function PluginPreview({ view, file, loadFile, exists, onFallback, timeou
             const r = await loadFile(f.sessionId, f.path, maxBytes, false);
             if (!r.ok || !r.bytes) {
               fallBack({ text: r.ok ? null : refusedText(r, view), retry: false });
-              throw new Error('无法读取文件。');
+              throw new Error('无法读取文件。'); // i18n-skip: an answer to the plugin page's own code
             }
             const bytes = r.bytes.buffer.slice(r.bytes.byteOffset, r.bytes.byteOffset + r.bytes.byteLength) as ArrayBuffer;
             return { name: r.name, size: r.size, modifiedAt: r.modifiedAt, extension: r.extension, bytes };
@@ -108,12 +110,12 @@ export function PluginPreview({ view, file, loadFile, exists, onFallback, timeou
           ready: stopTimer,
           fail: (text) => {
             stopTimer();
-            fallBack({ text: `「${view.title}」：${text.trim() || '无法打开此文件'}`, retry: true });
+            fallBack({ text: t('「{title}」：{text}', { title: view.title, text: text.trim() || t('无法打开此文件') }), retry: true });
           },
           // The page's script failed before it drew the file (its words are hidden from the window: "Script error.").
           error: () => {
             stopTimer();
-            fallBack({ text: `「${view.title}」出错`, retry: true });
+            fallBack({ text: t('「{title}」出错', { title: view.title }), retry: true });
           },
           loaded: startTimer,
         }}

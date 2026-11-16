@@ -2,6 +2,8 @@
 // user skin only needs a background and an accent. Shared by main (window
 // background, title bar overlay) and renderer (CSS variables).
 
+import { N_ } from './i18n';
+
 export type Scheme = 'light' | 'dark';
 
 export interface Skin {
@@ -23,7 +25,7 @@ export interface Skin {
 // Both built-in skins take the reference's measured greys (neutral: red, green and blue equal).
 export const LIGHT_SKIN: Skin = {
   id: 'light',
-  name: '浅色',
+  name: N_('浅色'),
   bg: '#ffffff',
   accent: '#2f7de1',
   fixed: {
@@ -54,7 +56,7 @@ export const LIGHT_SKIN: Skin = {
 };
 export const DARK_SKIN: Skin = {
   id: 'dark',
-  name: '深色',
+  name: N_('深色'),
   bg: '#191919',
   accent: '#62a9ff',
   fixed: {

@@ -11,6 +11,7 @@ import { FileGlyph } from '../ui/FileIcon';
 import { ImageViewer } from '../ui/ImageViewer';
 import { ImageMark } from '../ui/ImageMark';
 import { APP_NAME } from '../../../shared/app-identity';
+import { N_, t } from '../../../shared/i18n';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import type { ContextBreakdown } from '@spica/protocol';
 import { tokenText } from './tokens';
@@ -117,14 +118,14 @@ function ContextRing({ tokens, window, detail }: { tokens: number; window: numbe
   );
   if (!detail) {
     return (
-      <span className={cls} role="img" aria-label={`上下文占用 ${text}`} data-tip={text} tabIndex={0}>
+      <span className={cls} role="img" aria-label={t('上下文占用 {text}', { text })} data-tip={text} tabIndex={0}>
         {ring}
       </span>
     );
   }
   return (
     <span className="composer-context-wrap" ref={wrap}>
-      <button type="button" className={cls} aria-label={`上下文占用 ${text}`} aria-expanded={open} {...(open ? {} : { 'data-tip': text })} onClick={() => setOpen(!open)}>
+      <button type="button" className={cls} aria-label={t('上下文占用 {text}', { text })} aria-expanded={open} {...(open ? {} : { 'data-tip': text })} onClick={() => setOpen(!open)}>
         {ring}
       </button>
       {open && data ? (
@@ -138,8 +139,9 @@ function ContextRing({ tokens, window, detail }: { tokens: number; window: numbe
 
 const APPROVAL_TEXT: Record<ApprovalMode, string> = { manual: 'Manual', auto: 'Auto' };
 // The same sentences on hover and under each item in the menu.
-const APPROVAL_DETAIL: Record<ApprovalMode, string> = { manual: '不可逆操作先确认', auto: '不可逆操作直接执行；处理外部内容后的操作仍需确认' };
-const APPROVAL_HINT = `Manual：${APPROVAL_DETAIL.manual}\nAuto：${APPROVAL_DETAIL.auto}`;
+const APPROVAL_DETAIL: Record<ApprovalMode, string> = { manual: N_('不可逆操作先确认'), auto: N_('不可逆操作直接执行；处理外部内容后的操作仍需确认') };
+/** The hover over the approval chip: both modes and what they do, in the current language. */
+const approvalHint = (): string => [t('Manual：{text}', { text: t(APPROVAL_DETAIL.manual) }), t('Auto：{text}', { text: t(APPROVAL_DETAIL.auto) })].join('\n');
 
 type ModelTool = NonNullable<ComposerTools['model']>;
 
@@ -175,7 +177,7 @@ function ModelChip({ model, pictures, buttonRef, onOpen }: { model: ModelTool; p
       className="composer-chip composer-model"
       aria-haspopup="menu"
       aria-label={full}
-      title={`${full}（切换模型，下一步生效）`}
+      title={t('{model}（切换模型，下一步生效）', { model: full })}
       onClick={(e) =>
         onOpen(
           e.currentTarget,
@@ -192,7 +194,7 @@ function ModelChip({ model, pictures, buttonRef, onOpen }: { model: ModelTool; p
               ...(o.groupKey ? { groupKey: o.groupKey } : {}),
               ...(hint ? { hint } : {}),
               ...(o.images === true ? { after: <ImageMark /> } : {}),
-              ...(noImages ? { disabled: true, title: '不支持图片' } : {}),
+              ...(noImages ? { disabled: true, title: t('不支持图片') } : {}),
               onSelect: o.onPick,
             };
           }),
@@ -255,10 +257,10 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
       return next;
     });
 
-  const t = tools ?? {};
+  const kit = tools ?? {};
   const pictures = files.filter((p) => thumbs.has(p));
   const shownPictures = pictures.map((p) => ({ url: thumbs.get(p)!, name: baseName(p) }));
-  const blocked = pictures.length > 0 && t.images?.accepted === false;
+  const blocked = pictures.length > 0 && kit.images?.accepted === false;
   const send = () => {
     const value = text.trim();
     if ((!value && !files.length) || blocked) return;
@@ -271,7 +273,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
   const addPaths = async (paths: string[]) => {
     const out: string[] = [];
     for (const p of paths) {
-      const r = t.images ? await t.images.prepare(p).catch(() => null) : null;
+      const r = kit.images ? await kit.images.prepare(p).catch(() => null) : null;
       if (r) thumbs.set(r.path, r.url);
       out.push(r?.path ?? p);
     }
@@ -280,7 +282,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
 
   // Ctrl+V with a picture (and no text) on the clipboard: it is attached. Only at the paste.
   const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
-    const img = t.images;
+    const img = kit.images;
     if (!img) return;
     const items = [...e.clipboardData.items];
     const pics = items.filter((i) => i.kind === 'file' && i.type.startsWith('image/'));
@@ -320,22 +322,22 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
   const hasDraft = text.trim().length > 0 || files.length > 0;
   const canSend = hasDraft && !blocked;
   const left: ReactNode[] = [];
-  if (t.pickFiles) {
-    const pick = t.pickFiles;
+  if (kit.pickFiles) {
+    const pick = kit.pickFiles;
     left.push(
-      <button key="attach" type="button" className="icon-btn" aria-label="添加附件" title="添加附件" onClick={() => void pick().then((p) => p.length && void addPaths(p))}>
+      <button key="attach" type="button" className="icon-btn" aria-label={t('添加附件')} title={t('添加附件')} onClick={() => void pick().then((p) => p.length && void addPaths(p))}>
         <Icon name="plus" size={16} />
       </button>,
     );
   }
   const below: ReactNode[] = [];
-  if (t.folder) {
-    const f = t.folder;
+  if (kit.folder) {
+    const f = kit.folder;
     below.push(
       // Picked but still open to change (before the first message): its name to click.
       // None picked: 选择工作文件夹 (greyed while the conversation runs).
       f.path ? (
-        <button key="folder" type="button" className="composer-chip" title={`工作文件夹：${f.path}`} onClick={f.onPick}>
+        <button key="folder" type="button" className="composer-chip" title={t('工作文件夹：{path}', { path: f.path })} onClick={f.onPick}>
           <Icon name="folder" size={14} />
           <span className="composer-chip-text">{f.name}</span>
         </button>
@@ -345,11 +347,11 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
           type="button"
           className="composer-chip"
           aria-disabled={f.busy || undefined}
-          title={f.busy ? '对话进行中，结束后可选择' : '选择工作文件夹'}
+          title={f.busy ? t('对话进行中，结束后可选择') : t('选择工作文件夹')}
           onClick={() => !f.busy && f.onPick()}
         >
           <Icon name="folder" size={14} />
-          <span className="composer-chip-text">选择工作文件夹</span>
+          <span className="composer-chip-text">{t('选择工作文件夹')}</span>
         </button>
       ),
     );
@@ -363,11 +365,11 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
         <p className="composer-strip" role="status">
           <span className="status-with-icon">
             <SpicaStatusIcon name="warning" size={15} />
-            当前模型不支持图片
+            {t('当前模型不支持图片')}
           </span>
-          {t.model && t.model.options.length > 1 ? (
+          {kit.model && kit.model.options.length > 1 ? (
             <button type="button" className="text-btn" onClick={() => modelBtn.current?.click()}>
-              切换模型
+              {t('切换模型')}
             </button>
           ) : null}
         </p>
@@ -375,11 +377,11 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
       <div
         className="composer"
         onDragOver={(e) => {
-          if (t.pathForFile && e.dataTransfer.types.includes('Files')) e.preventDefault();
+          if (kit.pathForFile && e.dataTransfer.types.includes('Files')) e.preventDefault();
         }}
         onDrop={(e) => {
-          if (!t.pathForFile) return;
-          const paths = [...e.dataTransfer.files].map((f) => t.pathForFile!(f)).filter(Boolean);
+          if (!kit.pathForFile) return;
+          const paths = [...e.dataTransfer.files].map((f) => kit.pathForFile!(f)).filter(Boolean);
           if (!paths.length) return;
           e.preventDefault();
           void addPaths(paths);
@@ -389,10 +391,10 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
           <div className="composer-thumbs">
             {pictures.map((p) => (
               <span key={p} className="composer-thumb">
-                <button type="button" className="composer-thumb-open" onClick={() => setViewing(shownPictures.findIndex((x) => x.url === thumbs.get(p)))} aria-label={`查看 ${baseName(p)}`} title={baseName(p)}>
+                <button type="button" className="composer-thumb-open" onClick={() => setViewing(shownPictures.findIndex((x) => x.url === thumbs.get(p)))} aria-label={t('查看 {name}', { name: baseName(p) })} title={baseName(p)}>
                   <img src={thumbs.get(p)} alt="" />
                 </button>
-                <button type="button" className="composer-thumb-remove" aria-label={`移除 ${baseName(p)}`} title="移除" onClick={() => removeAttached(p)}>
+                <button type="button" className="composer-thumb-remove" aria-label={t('移除 {name}', { name: baseName(p) })} title={t('移除')} onClick={() => removeAttached(p)}>
                   <Icon name="close" size={12} />
                 </button>
               </span>
@@ -405,7 +407,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
               <span key={p} className="composer-file" title={p}>
                 <FileGlyph name={p} />
                 <span className="composer-chip-text">{baseName(p)}</span>
-                <button type="button" className="composer-file-remove" aria-label={`移除 ${baseName(p)}`} title="移除" onClick={() => removeAttached(p)}>
+                <button type="button" className="composer-file-remove" aria-label={t('移除 {name}', { name: baseName(p) })} title={t('移除')} onClick={() => removeAttached(p)}>
                   <Icon name="close" size={12} />
                 </button>
               </span>
@@ -419,8 +421,8 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
             className="composer-input"
             rows={1}
             value={text}
-            placeholder={running ? '补充说明（下一步生效）' : `给 ${APP_NAME} 发消息`}
-            aria-label="消息"
+            placeholder={running ? t('补充说明（下一步生效）') : t('给 {app} 发消息', { app: APP_NAME })}
+            aria-label={t('消息')}
             onChange={(e) => update(e.target.value)}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
@@ -429,40 +431,40 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
             {/* One button, as in the Claude app: while a run goes on and nothing is typed, 停止 stands where 发送 is;
                 typing something (补充说明) brings 发送 back, and Esc still stops. */}
             {running && !hasDraft ? (
-              <button type="button" className="icon-btn composer-stop" onClick={onStop} aria-label="停止" title="停止（Esc）">
+              <button type="button" className="icon-btn composer-stop" onClick={onStop} aria-label={t('停止')} title={t('停止（Esc）')}>
                 <Icon name="stop" size={14} />
               </button>
             ) : (
-              <button type="button" className="icon-btn composer-send" onClick={send} disabled={!canSend} aria-label="发送" title="发送（Enter）">
+              <button type="button" className="icon-btn composer-send" onClick={send} disabled={!canSend} aria-label={t('发送')} title={t('发送（Enter）')}>
                 <Icon name="send" size={16} />
               </button>
             )}
           </div>
         </div>
       </div>
-      {below.length || t.model || t.approval || t.context ? (
+      {below.length || kit.model || kit.approval || kit.context ? (
         <div className="composer-below">
           <div className="composer-below-left">{below}</div>
           <div className="composer-below-right">
-            {t.model ? <ModelChip model={t.model} pictures={pictures.length > 0} buttonRef={modelBtn} onOpen={openMenu} /> : null}
-            {t.approval ? (
+            {kit.model ? <ModelChip model={kit.model} pictures={pictures.length > 0} buttonRef={modelBtn} onOpen={openMenu} /> : null}
+            {kit.approval ? (
               <button
                 type="button"
                 className="composer-chip"
                 aria-haspopup="menu"
-                title={APPROVAL_HINT}
+                title={approvalHint()}
                 onClick={(e) => {
-                  const a = t.approval!;
+                  const a = kit.approval!;
                   openMenu(e.currentTarget, [
-                    { label: APPROVAL_TEXT.manual, detail: APPROVAL_DETAIL.manual, checked: a.mode === 'manual', onSelect: () => a.onChange('manual') },
-                    { label: APPROVAL_TEXT.auto, detail: APPROVAL_DETAIL.auto, checked: a.mode === 'auto', onSelect: () => a.onChange('auto') },
+                    { label: APPROVAL_TEXT.manual, detail: t(APPROVAL_DETAIL.manual), checked: a.mode === 'manual', onSelect: () => a.onChange('manual') },
+                    { label: APPROVAL_TEXT.auto, detail: t(APPROVAL_DETAIL.auto), checked: a.mode === 'auto', onSelect: () => a.onChange('auto') },
                   ]);
                 }}
               >
-                <span className="composer-chip-text">{APPROVAL_TEXT[t.approval.mode]}</span>
+                <span className="composer-chip-text">{APPROVAL_TEXT[kit.approval.mode]}</span>
               </button>
             ) : null}
-            {t.context ? <ContextRing key={sessionKey} tokens={t.context.tokens} window={t.context.window} {...(t.context.detail ? { detail: t.context.detail } : {})} /> : null}
+            {kit.context ? <ContextRing key={sessionKey} tokens={kit.context.tokens} window={kit.context.window} {...(kit.context.detail ? { detail: kit.context.detail } : {})} /> : null}
           </div>
         </div>
       ) : null}

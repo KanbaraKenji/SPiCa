@@ -4,6 +4,7 @@
 // What it cannot place is listed so the user can put it in by hand. The text
 // stays in the window's memory: nothing here writes or logs it.
 import type { ProviderDraft, ProviderKind } from './providers';
+import { N_ } from './i18n';
 
 export type PastedField = 'baseUrl' | 'tokenUrl' | 'clientId' | 'secret' | 'model' | 'scope';
 
@@ -13,7 +14,7 @@ export interface PasteResult {
   kind?: ProviderKind;
   /** Lines with a value it could not place (as pasted). */
   unknown: string[];
-  /** Small fixes it made, in plain words. */
+  /** Small fixes it made, in plain words (keys: shown with t()). */
   notes: string[];
 }
 
@@ -50,7 +51,7 @@ function splitLine(raw: string): { key: string; value: string } | { value: strin
   let line = raw.trim();
   if (!line || /^(#|\/\/|;|--|rem\s)/i.test(line) || /^\[.*\]$/.test(line) || line === '{' || line === '}') return null;
   line = line.replace(/^(export|set|setx)\s+/i, '').replace(/^\$env:/i, '');
-  // Any key (Chinese ones too) before =, : (not the one in https://) or the full-width ：.
+  // Any key (Chinese ones too) before =, : (not the one in https://) or the full-width ：. i18n-skip (reads what is pasted)
   const m = /^["']?([^"'=:：\s][^"'=:：]*?)["']?\s*(?:=|:(?!\/\/)|：)\s*(.*)$/.exec(line);
   if (!m) return isUrl(unquote(line)) ? { value: unquote(line) } : null;
   return { key: m[1]!.trim(), value: unquote(m[2]!) };
@@ -109,7 +110,7 @@ export function parsePastedConfig(text: string): PasteResult {
   const base = result.fields.baseUrl;
   if (base && /\/chat\/completions\/?$/i.test(base)) {
     result.fields.baseUrl = base.replace(/\/chat\/completions\/?$/i, '');
-    result.notes.push('已移除地址末尾的 /chat/completions');
+    result.notes.push(N_('已移除地址末尾的 /chat/completions'));
   }
   if (result.fields.tokenUrl || result.fields.clientId) result.kind = 'wso2';
   else if (base && /anthropic\.com/i.test(base)) result.kind = 'anthropic';

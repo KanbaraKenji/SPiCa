@@ -8,18 +8,23 @@ import type { ContextBreakdown } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
 import { tokenText } from './tokens';
 import { contextColours } from './context-palette';
+import { N_, t } from '../../../shared/i18n';
+
+/** A part's name in the current language (a key the card does not know as it is). */
+const nameOf = (key: string): string => (NAMES[key] ? t(NAMES[key]) : key);
 
 const NAMES: Record<string, string> = {
-  system: '系统提示',
-  'system.base': '角色提示',
-  'system.rules': '规则',
-  tools: '工具',
-  messages: '对话',
-  'messages.user': '你的消息',
-  'messages.assistant': '回答',
-  'messages.tool_results': '工具结果',
-  'messages.notes': '备注',
-  'messages.images': '图片',
+  system: N_('系统提示'),
+  'system.base': N_('角色提示'),
+  'system.rules': N_('规则'),
+  tools: N_('工具'),
+  messages: N_('对话'),
+  'messages.user': N_('你的消息'),
+  // the model's answers as a part of the context (not the 回答 of a question card)
+  'messages.assistant': N_('回答|context'),
+  'messages.tool_results': N_('工具结果'),
+  'messages.notes': N_('备注'),
+  'messages.images': N_('图片'),
 };
 
 /** One decimal of the window: 「17.6%」. */
@@ -70,11 +75,11 @@ export function ContextCard({ data }: { data: ContextBreakdown }) {
     </>
   );
   return (
-    <div className="ctx-card" role="dialog" aria-label="上下文占用" style={{ ...colourVars }}>
+    <div className="ctx-card" role="dialog" aria-label={t('上下文占用')} style={{ ...colourVars }}>
       <button type="button" className="ctx-head" aria-expanded={open} onClick={toggle}>
-        <span className="ctx-title">上下文占用</span>
+        <span className="ctx-title">{t('上下文占用')}</span>
         <span className="ctx-sum">
-          <span className="ctx-tag">{data.measured ? '实测' : '预估'}</span>
+          <span className="ctx-tag">{data.measured ? t('实测') : t('预估')}</span>
           {w ? `${tokenText(data.total)} / ${tokenText(w)} (${shareText(data.total, w)})` : tokenText(data.total)}
           <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
         </span>
@@ -96,7 +101,7 @@ export function ContextCard({ data }: { data: ContextBreakdown }) {
                   <button type="button" className="ctx-row" aria-expanded={rowOpen} onClick={() => toggleRow(p.key)}>
                     <span className="ctx-name">
                       <span className="ctx-sw" style={swatch(p.key)} />
-                      {NAMES[p.key] ?? p.key}
+                      {nameOf(p.key)}
                       <Icon name={rowOpen ? 'chevronDown' : 'chevronRight'} size={12} />
                     </span>
                     {num(p.tokens)}
@@ -105,7 +110,7 @@ export function ContextCard({ data }: { data: ContextBreakdown }) {
                   <div className="ctx-row">
                     <span className="ctx-name">
                       <span className="ctx-sw" style={swatch(p.key)} />
-                      {NAMES[p.key] ?? p.key}
+                      {nameOf(p.key)}
                     </span>
                     {num(p.tokens)}
                   </div>
@@ -115,7 +120,7 @@ export function ContextCard({ data }: { data: ContextBreakdown }) {
                       <div key={c.key} className="ctx-row is-child">
                         <span className="ctx-name">
                           <span className="ctx-sw" style={swatch(p.key, i)} />
-                          {NAMES[c.key] ?? c.key}
+                          {nameOf(c.key)}
                         </span>
                         {num(c.tokens)}
                       </div>
@@ -129,7 +134,7 @@ export function ContextCard({ data }: { data: ContextBreakdown }) {
               <div className="ctx-row is-dim" role="listitem">
                 <span className="ctx-name">
                   <span className="ctx-sw ctx-reserve" />
-                  输出预留
+                  {t('输出预留')}
                 </span>
                 {num(data.outputReserve)}
               </div>
@@ -137,7 +142,7 @@ export function ContextCard({ data }: { data: ContextBreakdown }) {
                 <div className="ctx-row is-dim" role="listitem">
                   <span className="ctx-name">
                     <span className="ctx-sw ctx-free" />
-                    空余
+                    {t('空余')}
                   </span>
                   {num(data.free)}
                 </div>
