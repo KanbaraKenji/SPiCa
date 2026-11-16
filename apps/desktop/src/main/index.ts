@@ -64,6 +64,7 @@ import {
   type ListModelsResult,
   type ModelCatalog,
   type ProviderConfig,
+  deployPython,
 } from '@spica/core';
 import type { DesktopBackendConfig } from '../backend/config';
 import { readModelEnv } from './backend/model-env';
@@ -121,6 +122,8 @@ const UV_EXE = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), '
  */
 const PYTHON_ROOT =
   app.isPackaged && process.platform === 'win32' && process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, APP_NAME, 'python') : join(app.getPath('userData'), 'python');
+/** deploy.json "python" (core python-deploy.ts): on unless the company switched it off. */
+const deployedPython = deployPython(readDeployJson());
 
 // A hidden test window is kept painting (Windows would report it as covered and Chromium would stop drawing it).
 if (hidden) app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
@@ -245,7 +248,17 @@ function backendConfig(): DesktopBackendConfig {
       nodeLibsDir: app.isPackaged ? join(process.resourcesPath, 'node-libs') : join(app.getAppPath(), 'node-libs'),
       // The app's own Python, downloaded by the uv it carries after the user confirms (no setting: the computer's
       // own Python first, the app's when there is none).
-      python: { root: PYTHON_ROOT, ...(existsSync(UV_EXE) ? { uvExe: UV_EXE } : {}) },
+      // deploy.json "python" can switch it off or point it at a company mirror and package index.
+      ...(deployedPython.enabled
+        ? {
+            python: {
+              root: PYTHON_ROOT,
+              ...(existsSync(UV_EXE) ? { uvExe: UV_EXE } : {}),
+              ...(deployedPython.pythonMirror ? { pythonMirror: deployedPython.pythonMirror } : {}),
+              ...(deployedPython.packageIndex ? { packageIndex: deployedPython.packageIndex } : {}),
+            },
+          }
+        : {}),
       // Linked into the backend entry; named here as the core expects.
       extractorModules: ['@spica/extract'],
       extensions: [
