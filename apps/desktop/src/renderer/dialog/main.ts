@@ -1,7 +1,8 @@
 // The small dialog window's page (main/app-dialog-window.ts): title, lines, optional radio choices, an optional
 // checkbox, buttons and an optional × at the top right, from the spec in the query. Built like the page's dialogs
 // (ui/Dialog.tsx, ui/CloseDialog.tsx): the main button last and focused, Enter clicks the focused button (the main one
-// unless Tab moved on; on a choice or the checkbox it is the main one). No Esc. The × and closing the window answer
+// unless Tab moved on; on a choice or the checkbox it is the main one). With no main button the first plain one stands
+// in for it. No Esc. The × and closing the window answer
 // nothing. The × comes last in the markup, so Tab reaches it after the buttons (as in CloseDialog).
 import './dialog.css';
 import { parseDialogSpec } from '../../shared/app-dialog';
@@ -79,13 +80,17 @@ if (bridge && spec) {
   };
   const actions = el('div', 'dialog-actions');
   let primary: HTMLButtonElement | null = null;
+  let firstPlain: HTMLButtonElement | null = null;
   spec.buttons.forEach((b, i) => {
-    const button = el('button', b.primary ? 'btn btn-primary' : 'btn', b.label);
+    const button = el('button', b.primary ? 'btn btn-primary' : b.danger ? 'btn btn-danger' : 'btn', b.label);
     button.type = 'button';
     button.addEventListener('click', () => answer(i));
     if (b.primary) primary = button;
+    else if (!b.danger && !firstPlain) firstPlain = button;
     actions.append(button);
   });
+  // No main button (updateBusyDialog): the first plain one (取消) is focused and is what Enter clicks; a danger one never.
+  primary ??= firstPlain;
 
   if (checkRow && spec.checkInFoot) {
     const foot = el('div', 'dialog-foot');

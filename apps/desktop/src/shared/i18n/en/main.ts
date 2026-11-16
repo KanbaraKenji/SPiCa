@@ -113,7 +113,7 @@ export const EN_MAIN: Catalog = {
   '已是最新版本（{version}）。': 'Up to date ({version}).',
   '有新版本 {version}（开发版不自动安装）。': 'Version {version} is available (development builds don’t install updates).',
   '正在下载 {version}…': 'Downloading {version}…',
-  '新版本 {version} 已下载，重启后更新。': 'Version {version} has been downloaded. It will be installed when you restart.',
+  '新版本 {version} 已下载。': 'Version {version} downloaded.',
   // main/backend/process.ts
   '后台启动失败：{error}': 'The backend failed to start: {error}',
   // main/app-dialog.ts (the page crashed three times)
@@ -203,4 +203,11 @@ export const EN_MAIN: Catalog = {
   '更新服务器上没有版本信息，请稍后重试。': 'The update server has no version information. Try again later.',
   '新版本文件校验不对，未安装，请稍后重试。': 'The new version’s file didn’t pass the check and wasn’t installed. Try again later.',
   '有新版本 {version}。便携版不能自动更新，请换用新版的便携版。': 'Version {version} is available. The portable version can’t update itself; switch to the new portable version.',
+  // 立即更新 while conversations run (app-dialog updateBusyDialog)
+  '有任务正在运行，更新会中断它。': 'A task is running. Updating will stop it.',
+  '「{name}」': '“{name}”',
+  '还有 {n} 个': '{n} more',
+  '继续更新': 'Update anyway',
+  '取消': 'Cancel',
+  '新对话': 'New conversation',
 };

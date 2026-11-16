@@ -154,7 +154,7 @@ export const EN_SHELL: Catalog = {
   '新版本 {version}': 'Version {version} available',
   '{n} 个插件可更新': { one: '{n} plugin update available', other: '{n} plugin updates available' },
   稍后: 'Later',
-  重启并更新: 'Restart and update',
+  '立即更新': 'Update now',
 
   // shell/PluginFrame.tsx, shell/PluginPreview.tsx
   '无法打开「{plugin}」的页面：找不到 {entry}': 'Can’t open the “{plugin}” page: {entry} not found',
