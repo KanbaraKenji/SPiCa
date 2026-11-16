@@ -2,7 +2,7 @@
 // Markdown rendered, text and code with line numbers (code in colour), HTML in a sandbox
 // (no scripts, nothing from the network), images. Anything else: a sentence
 // and the system program.
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { PreviewInfo } from '../../../shared/bridge';
 import { MarkdownText } from '../chat/Blocks';
 import { HIGHLIGHT_MAX_CHARS, highlightLines, languageOf } from '../chat/highlight';
@@ -23,6 +23,8 @@ export interface FilePreviewProps {
   onClose(): void;
   /** An Excel workbook: show its sheet number n (1-based). */
   onSheet?: (n: number) => void;
+  /** An Excel sheet: its rows from row number `from` on (the next page as it scrolls). */
+  loadRows?: (from: number) => Promise<PreviewInfo>;
   /** The preview over the whole conversation: whether it is, and the button's press. Absent: no such button. */
   max?: MaxState;
   /** 预览方式: the app's own or a plugin's preview page, for this file only. Absent: no choice. */
@@ -77,8 +79,97 @@ function Lines({ text, language }: { text: string; language: string | null }) {
   );
 }
 
-/** An Excel sheet: its sheets as tabs above, the grid with Excel's column letters and row numbers. */
-function Sheet({ info, onSheet }: { info: Extract<PreviewInfo, { kind: 'sheet' }>; onSheet?: ((n: number) => void) | undefined }) {
+type SheetInfo = Extract<PreviewInfo, { kind: 'sheet' }>;
+
+/** Rows drawn above and below the ones in view; the rest of a long sheet is empty space of the same height. */
+const SHEET_OVERSCAN = 150;
+/** A column no wider than this; a longer cell is cut, its whole text on hover. */
+const SHEET_COL_MAX = 480;
+/** A cell's padding and line, beside its text (styles.css .preview-sheet td). */
+const SHEET_CELL_EXTRA = 21;
+
+let measureCanvas: HTMLCanvasElement | null = null;
+
+/** How wide `text` is in `font`, by a canvas (no layout). */
+function textWidth(font: string, text: string): number {
+  measureCanvas ??= document.createElement('canvas');
+  const ctx = measureCanvas.getContext('2d');
+  if (!ctx) return 0;
+  ctx.font = font;
+  return ctx.measureText(text).width;
+}
+
+/** A rough length to pick the longest cell of a column by (a Chinese character counts two). */
+function roughLength(s: string): number {
+  let n = s.length;
+  for (const ch of s) if (ch.charCodeAt(0) > 0x2e80) n++;
+  return n;
+}
+
+/**
+ * An Excel sheet: its sheets as tabs above, the grid with Excel's column letters and row numbers. Its rows come
+ * a page at a time: near the bottom the next page is asked for (`loadRows`) and added, to the sheet's last row.
+ * Only the rows near the view are drawn (every row is one line high), so a sheet of 50 000 rows scrolls as one
+ * of 500; each column is as wide as its longest cell so far (up to SHEET_COL_MAX), so it does not change as it scrolls.
+ */
+function Sheet({ info, onSheet, loadRows }: { info: SheetInfo; onSheet?: ((n: number) => void) | undefined; loadRows?: ((from: number) => Promise<PreviewInfo>) | undefined }) {
+  // The pages added to the first one, the row height and column widths: this sheet of this file only.
+  const id = `${info.path}|${info.sheet}|${info.rows[0]?.n ?? 0}`;
+  const [added, setAdded] = useState<{ id: string; rows: SheetInfo['rows']; more: boolean } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [view, setView] = useState({ top: 0, height: 800 });
+  // Row height, and each column's width (the row numbers first) from the rows seen so far (`upto` of them).
+  const [measured, setMeasured] = useState<{ id: string; row: number; widths: number[]; upto: number } | null>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const own = added?.id === id ? added : null;
+  const rows = useMemo(() => (own ? [...info.rows, ...own.rows] : info.rows), [info.rows, own]);
+  const more = own ? own.more : info.more;
+  const sized = measured?.id === id ? measured : null;
+  const rowH = sized?.row ?? 29;
+  const first = Math.max(0, Math.floor(view.top / rowH) - SHEET_OVERSCAN);
+  const last = Math.min(rows.length, Math.ceil((view.top + view.height) / rowH) + SHEET_OVERSCAN);
+  const next = () => {
+    const end = rows.at(-1);
+    if (!more || loading || !loadRows || !end) return;
+    setLoading(true);
+    loadRows(end.n + 1)
+      .then((page) => {
+        if (page.kind === 'sheet') setAdded((a) => ({ id, rows: [...(a?.id === id ? a.rows : []), ...page.rows], more: page.more }));
+      })
+      .catch(() => setAdded((a) => ({ id, rows: a?.id === id ? a.rows : [], more: false })))
+      .finally(() => setLoading(false));
+  };
+  // The row height from the first row drawn; the widths from the rows added since last time (the longest cell
+  // of each column measured), never narrower than before.
+  useLayoutEffect(() => {
+    const el = body.current;
+    if (!el || (sized && sized.upto === rows.length)) return;
+    const row = sized?.row ?? el.querySelector<HTMLElement>('tbody tr:not(.preview-gap)')?.getBoundingClientRect().height ?? 0;
+    const table = el.querySelector('table');
+    if (row <= 0 || !table) return;
+    const style = getComputedStyle(table);
+    const font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const widths = sized ? [...sized.widths] : [];
+    const fit = (i: number, text: string) => {
+      const w = Math.min(SHEET_COL_MAX, Math.ceil(textWidth(font, text)) + SHEET_CELL_EXTRA);
+      if (!(widths[i]! >= w)) widths[i] = w;
+    };
+    const from = sized?.upto ?? 0;
+    fit(0, String(rows.at(-1)?.n ?? ''));
+    info.columns.forEach((c, k) => {
+      let longest = sized ? '' : c;
+      for (let r = from; r < rows.length; r++) {
+        const cell = rows[r]!.cells[k] ?? '';
+        if (roughLength(cell) > roughLength(longest)) longest = cell;
+      }
+      fit(k + 1, longest);
+    });
+    if (widths.every((w) => w > SHEET_CELL_EXTRA)) setMeasured({ id, row, widths, upto: rows.length });
+  }, [sized, rows, info.columns, id]);
+  useEffect(() => {
+    const el = body.current;
+    if (el) setView({ top: el.scrollTop, height: el.clientHeight || 800 });
+  }, [id]);
   return (
     <>
       {info.sheets.length > 1 ? (
@@ -90,10 +181,25 @@ function Sheet({ info, onSheet }: { info: Extract<PreviewInfo, { kind: 'sheet' }
           ))}
         </div>
       ) : null}
-      {info.truncated ? <p className="preview-note">{t('仅显示前 {shown} 行（共 {total} 行）', { shown: info.rows.length, total: info.sheets[info.sheet - 1]?.rows ?? info.rows.length })}</p> : null}
-      {info.rows.length ? (
-        <div className="preview-body preview-sheet">
-          <table>
+      {info.left ? <p className="preview-note">{t('仅显示前 {shown} 行（共 {total} 行）', info.left)}</p> : null}
+      {rows.length ? (
+        <div
+          ref={body}
+          className="preview-body preview-sheet"
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            setView({ top: el.scrollTop, height: el.clientHeight || 800 });
+            if (el.scrollTop + el.clientHeight > el.scrollHeight - 600) next();
+          }}
+        >
+          <table className={sized ? 'is-fixed' : undefined} style={sized ? { width: sized.widths.reduce((a, w) => a + w, 0) } : undefined}>
+            {sized ? (
+              <colgroup>
+                {sized.widths.map((w, i) => (
+                  <col key={i} style={{ width: w }} />
+                ))}
+              </colgroup>
+            ) : null}
             <thead>
               <tr>
                 <th aria-hidden />
@@ -103,14 +209,26 @@ function Sheet({ info, onSheet }: { info: Extract<PreviewInfo, { kind: 'sheet' }
               </tr>
             </thead>
             <tbody>
-              {info.rows.map((r) => (
+              {first > 0 ? (
+                <tr className="preview-gap" aria-hidden>
+                  <td colSpan={info.columns.length + 1} style={{ height: first * rowH }} />
+                </tr>
+              ) : null}
+              {rows.slice(first, last).map((r) => (
                 <tr key={r.n}>
                   <th>{r.n}</th>
                   {info.columns.map((c, i) => (
-                    <td key={c}>{r.cells[i] ?? ''}</td>
+                    <td key={c} title={(r.cells[i]?.length ?? 0) > 30 ? r.cells[i] : undefined}>
+                      {r.cells[i] ?? ''}
+                    </td>
                   ))}
                 </tr>
               ))}
+              {last < rows.length ? (
+                <tr className="preview-gap" aria-hidden>
+                  <td colSpan={info.columns.length + 1} style={{ height: (rows.length - last) * rowH }} />
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -141,7 +259,7 @@ function codeOf(info: PreviewInfo | null): { text: string; language: string } | 
   return null;
 }
 
-export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, max, source, note, children }: FilePreviewProps) {
+export function FilePreview({ info, onOpenExternal, onReveal, onSheet, loadRows, onClose, max, source, note, children }: FilePreviewProps) {
   // 预览 / 代码: per file, kept while the panel is open (another file opens as its preview; back to this one, as left).
   const id = info ? `${info.kind}|${info.path}|${info.name}` : '';
   const [codeFor, setCodeFor] = useState<ReadonlySet<string>>(() => new Set());
@@ -214,7 +332,7 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
           <img className="preview-image" src={info.url} alt={info.name} />
         </div>
       ) : info.kind === 'sheet' ? (
-        <Sheet info={info} onSheet={onSheet} />
+        <Sheet info={info} onSheet={onSheet} loadRows={loadRows} />
       ) : info.kind === 'markdown' || info.kind === 'text' || info.kind === 'html' ? (
         <>
           {info.truncated ? <p className="preview-note">{cutNote(info)}</p> : null}

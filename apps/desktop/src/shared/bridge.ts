@@ -64,8 +64,11 @@ export type PreviewInfo =
   /** `blocks`: a Word document cut short, how many of its paragraphs and tables are shown. */
   | { kind: 'markdown' | 'text' | 'html'; name: string; path: string; size: number; text: string; truncated: boolean; blocks?: { shown: number; total: number } }
   | { kind: 'unsupported' | 'missing'; name: string; path: string; size: number; message: string }
-  /** An Excel sheet (`sheet`, 1-based, of `sheets`): Excel's column letters and row numbers, at most 500 rows. */
-  | { kind: 'sheet'; name: string; path: string; size: number; sheets: { name: string; rows: number; cols: number }[]; sheet: number; columns: string[]; rows: { n: number; cells: string[] }[]; truncated: boolean };
+  /**
+   * An Excel sheet (`sheet`, 1-based, of `sheets`): Excel's column letters and row numbers, a page of its rows with
+   * content (`more`: the next page is there to ask for); `left`: a sheet too big to keep whole, rows never shown.
+   */
+  | { kind: 'sheet'; name: string; path: string; size: number; sheets: { name: string }[]; sheet: number; columns: string[]; rows: { n: number; cells: string[] }[]; more: boolean; left?: { shown: number; total: number } };
 
 /**
  * A file for a plugin preview page: what the page gets (no folder, no path), or why not. `peek`: the size only,
@@ -159,7 +162,8 @@ export interface DesktopBridge extends SpicaBridge {
   exportUsageLog(req: UsageLogRequest): Promise<UsageLogResult>;
   /** A file of this session (relative paths are in its folder), ready for the right panel. */
   /** `sheet`: which sheet of an Excel workbook (1-based; the first when absent). */
-  preview(sessionId: string | null, path: string, sheet?: number): Promise<PreviewInfo>;
+  /** `sheet`, `from`: an Excel workbook's sheet (1-based) and its rows from that row number on. */
+  preview(sessionId: string | null, path: string, sheet?: number, from?: number): Promise<PreviewInfo>;
   /** The same file for a plugin preview page, refused above `maxBytes` (and above PREVIEW_PAGE_MAX_BYTES) without reading it. */
   previewFile(sessionId: string | null, path: string, maxBytes: number, peek: boolean): Promise<PreviewFile>;
   network(): Promise<NetworkState | null>;

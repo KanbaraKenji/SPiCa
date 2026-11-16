@@ -1061,11 +1061,12 @@ function previewPath(full: string): string {
   return mockFiles && !existsSync(full) ? join(mockFiles, basename(full)) : full;
 }
 
-ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unknown, sheet: unknown) => {
+ipcMain.handle(DesktopChannel.Preview, async (_e, sessionId: unknown, path: unknown, sheet: unknown, from: unknown) => {
   const raw = typeof path === 'string' ? path : '';
   const session = typeof sessionId === 'string' && sessionId ? await backend.getSession(sessionId).catch(() => undefined) : undefined;
   const full = previewPath(isAbsolute(raw) ? raw : resolvePath(session?.cwd || app.getPath('home'), raw));
-  return readPreview(full, previewFiles, typeof sheet === 'number' && Number.isInteger(sheet) && sheet > 0 ? sheet : undefined);
+  const whole = (n: unknown) => (typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : undefined);
+  return readPreview(full, previewFiles, whole(sheet), whole(from));
 });
 
 ipcMain.handle(DesktopChannel.PreviewFile, async (_e, sessionId: unknown, path: unknown, maxBytes: unknown, peek: unknown) => {

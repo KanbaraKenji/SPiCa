@@ -92,8 +92,8 @@ export class PreviewFiles {
   }
 }
 
-/** `sheet`: which sheet of an Excel workbook (1-based; the first when absent). */
-export async function readPreview(path: string, files: PreviewFiles, sheet?: number): Promise<PreviewInfo> {
+/** `sheet`, `from`: which sheet of an Excel workbook (1-based; the first when absent), its rows from that row on. */
+export async function readPreview(path: string, files: PreviewFiles, sheet?: number, from?: number): Promise<PreviewInfo> {
   const name = basename(path);
   let size: number;
   try {
@@ -104,7 +104,7 @@ export async function readPreview(path: string, files: PreviewFiles, sheet?: num
     return { ...unreadable(err), name, path, size: 0 };
   }
   const ext = extname(path).toLowerCase();
-  if (WORD.has(ext) || EXCEL.has(ext)) return officePreview(path, name, size, ext, sheet);
+  if (WORD.has(ext) || EXCEL.has(ext)) return officePreview(path, name, size, ext, sheet, from);
   const kind = kindOf(path);
   if (kind === 'pdf' || kind === 'image') {
     // The viewer reads it later by its URL: a file that cannot be opened says so now instead of an empty viewer.

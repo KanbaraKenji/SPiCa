@@ -6600,6 +6600,23 @@ section.plugins-part > .plugins-part-title {
   text-align: left;
 }
 
+/* The columns at the widths FilePreview.tsx Sheet gives them (its longest cell, up to a limit): a longer cell is cut. */
+.preview-sheet table.is-fixed {
+  table-layout: fixed;
+}
+
+.preview-sheet table.is-fixed td,
+.preview-sheet table.is-fixed tbody th {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The rows not drawn: empty space of their height. */
+.preview-sheet tr.preview-gap > td {
+  padding: 0;
+  border: 0;
+}
+
 .preview-sheet thead th {
   position: sticky;
   top: 0;

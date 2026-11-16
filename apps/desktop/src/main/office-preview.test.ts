@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { makeDocx, makeInventoryXlsx } from '../../../../packages/extract/src/testing/fixtures';
-import { docxMarkdown, sheetGrid } from './office-preview';
+import { docxMarkdown } from './office-preview';
 import { PreviewFiles, readPreview } from './preview';
 
 describe('Word and Excel in the right panel', () => {
@@ -57,17 +57,25 @@ describe('Word and Excel in the right panel', () => {
     expect(first.rows[0]).toMatchObject({ n: 1 });
     expect(first.rows[0]!.cells[0]).toBe('品名');
     expect(first.rows.some((r) => r.cells[0] === '便携显示器')).toBe(true);
-    expect(first.truncated).toBe(false);
+    expect(first.more).toBe(false);
+    expect(first).not.toHaveProperty('left');
     const second = await readPreview(path, files, 2);
     expect(second.kind === 'sheet' ? [second.sheet, second.rows[0]?.cells[1]] : []).toEqual([2, '供应商']);
   });
 
-  it('a long sheet stops at 500 rows and says so', async () => {
+  it('a long sheet comes 500 rows at a time, the next page from the row after the last, to its end', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'spica-office-'));
     const path = join(dir, '库存.xlsx');
     writeFileSync(path, await makeInventoryXlsx(800));
-    const info = await readPreview(path, new PreviewFiles());
-    expect(info.kind === 'sheet' ? [info.rows.length, info.truncated] : []).toEqual([500, true]);
+    const files = new PreviewFiles();
+    const first = await readPreview(path, files);
+    if (first.kind !== 'sheet') throw new Error(first.kind);
+    expect([first.rows.length, first.rows[0]!.n, first.rows.at(-1)!.n, first.more]).toEqual([500, 1, 500, true]);
+    const second = await readPreview(path, files, 1, 501);
+    if (second.kind !== 'sheet') throw new Error(second.kind);
+    // 1 header + 5 items + 800 + 合计 = 807 rows.
+    expect([second.rows[0]!.n, second.rows.at(-1)!.n, second.rows.at(-1)!.cells[0], second.more]).toEqual([501, 807, '合计', false]);
+    expect(second.columns).toEqual(first.columns);
   });
 
   it('a sheet with empty rows in it, all shown, does not say rows were left out', async () => {
@@ -78,12 +86,11 @@ describe('Word and Excel in the right panel', () => {
     const info = await readPreview(path, new PreviewFiles(), 4);
     if (info.kind !== 'sheet') throw new Error(info.kind);
     expect(info.rows.map((r) => r.n)).toEqual([1, 3]);
-    expect(info.truncated).toBe(false);
+    expect(info.more).toBe(false);
+    expect(info).not.toHaveProperty('left');
   });
 
   it('reads the extractor’s layout', () => {
     expect(docxMarkdown('Word document\n\n[1] # 标题\n[2] 正文\n[3] - 一\n[4] - 二\n[5] Table 1 (2×2):\n    | a | b |\n    | 1 | 2 |')).toBe('# 标题\n\n正文\n\n- 一\n- 二\n\n| a | b |\n| 1 | 2 |');
-    expect(sheetGrid('Sheet "库存"\nrow\tA\tB\n(header) 1\t品名\t数量\n2\t键盘\t150\n\nmore')).toEqual({ columns: ['A', 'B'], rows: [{ n: 1, cells: ['品名', '数量'] }, { n: 2, cells: ['键盘', '150'] }] });
-    expect(sheetGrid('nothing')).toEqual({ columns: [], rows: [] });
   });
 });

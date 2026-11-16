@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { FilePreview } from './FilePreview';
 import { clipboard } from '../ui/clipboard';
 import { optionLabels, pickValue, valueOf } from '../ui/select-testing';
@@ -104,11 +104,12 @@ describe('the file’s place, from the preview head', () => {
       name: '库存.xlsx',
       path: 'D:/库存.xlsx',
       size: 9000,
-      sheets: [{ name: '库存', rows: 900, cols: 2 }, { name: '进货记录', rows: 3, cols: 4 }],
+      sheets: [{ name: '库存' }, { name: '进货记录' }],
       sheet: 1,
       columns: ['A', 'B'],
       rows: [{ n: 1, cells: ['品名', '数量'] }, { n: 2, cells: ['键盘', '150'] }],
-      truncated: true,
+      more: false,
+      left: { shown: 2, total: 900 },
     };
     render(<FilePreview info={info} onOpenExternal={vi.fn()} onSheet={onSheet} onClose={vi.fn()} />);
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['库存', '进货记录']);
@@ -119,6 +120,22 @@ describe('the file’s place, from the preview head', () => {
     expect(screen.getByText('仅显示前 2 行（共 900 行）')).toBeTruthy();
     // Not a file with code of its own.
     expect(screen.queryByRole('button', { name: '查看代码' })).toBeNull();
+  });
+
+  it('an Excel sheet scrolled near its end asks for the rows after the last one and adds them, to its last row', async () => {
+    const page = (rows: number[], more: boolean) => ({ kind: 'sheet' as const, name: '库存.xlsx', path: 'D:/库存.xlsx', size: 9, sheets: [{ name: '库存' }], sheet: 1, columns: ['A'], rows: rows.map((n) => ({ n, cells: [`第 ${n} 行`] })), more });
+    const loadRows = vi.fn(async (from: number) => (from === 3 ? page([3, 5], true) : page([6], false)));
+    render(<FilePreview info={page([1, 2], true)} loadRows={loadRows} onOpenExternal={vi.fn()} onClose={vi.fn()} />);
+    const rowNumbers = () => [...document.querySelectorAll('.preview-sheet tbody th')].map((t) => t.textContent);
+    fireEvent.scroll(document.querySelector('.preview-sheet')!);
+    await waitFor(() => expect(rowNumbers()).toEqual(['1', '2', '3', '5']));
+    expect(loadRows).toHaveBeenLastCalledWith(3);
+    fireEvent.scroll(document.querySelector('.preview-sheet')!);
+    await waitFor(() => expect(rowNumbers()).toEqual(['1', '2', '3', '5', '6']));
+    expect(loadRows).toHaveBeenLastCalledWith(6);
+    // The last row is there: no more asking.
+    fireEvent.scroll(document.querySelector('.preview-sheet')!);
+    expect(loadRows).toHaveBeenCalledTimes(2);
   });
 
   it('a Word document is shown as its text, says where it was cut, and has no 代码 view', () => {

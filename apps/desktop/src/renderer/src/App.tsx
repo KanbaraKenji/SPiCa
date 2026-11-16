@@ -1210,6 +1210,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               }}
               onReveal={(p) => void bridge.showInFolder(p).then(showNotice, (err: unknown) => showNotice(friendlyError(err)))}
               onSheet={(n) => setPreview((p) => (p ? { ...p, sheet: n } : p))}
+              loadRows={(from) => bridge.preview(preview.sessionId, preview.path, previewInfo?.kind === 'sheet' ? previewInfo.sheet : preview.sheet, from)}
               onClose={closePreview}
               max={panelMax}
             >
