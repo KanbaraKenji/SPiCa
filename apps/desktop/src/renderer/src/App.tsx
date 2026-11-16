@@ -724,7 +724,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     send: (text, files) => void agent.send(id, text, files ?? []),
     stop: () => id && void agent.stop(id),
     answer: (callId, a) => id && void agent.answer(id, callId, a),
-    confirm: (callId, ok) => id && void agent.confirm(id, callId, ok),
+    confirm: (callId, ok, folder) => id && void agent.confirm(id, callId, ok, folder === true),
     openFile: previewFile,
     openFolder: (path) => void bridge.openFolder(path).then(showNotice, (err: unknown) => showNotice(friendlyError(err))),
     revealFile: (path) => void bridge.showInFolder(path).then(showNotice, (err: unknown) => showNotice(friendlyError(err))),

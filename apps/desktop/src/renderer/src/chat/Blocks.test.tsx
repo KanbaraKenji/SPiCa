@@ -64,6 +64,22 @@ describe('AskCard', () => {
 });
 
 describe('ConfirmCard', () => {
+  it('a write outside the conversation’s folders: 工作文件夹以外 as a tag, and 始终允许此文件夹 beside 允许', () => {
+    const onDecide = vi.fn();
+    const block = { type: 'confirm' as const, callId: 'c9', name: 'edit_file', input: { path: 'D:\\共享资料\\纪要\\会议纪要.md', old_string: 'a', new_string: 'b' }, reason: 'outside', cause: 'outside_folder' as const, outsideFolder: 'D:\\共享资料\\纪要' };
+    render(<ConfirmCard block={block} onDecide={onDecide} />);
+    expect(document.querySelector('.confirm-undo')?.textContent).toBe('工作文件夹以外');
+    expect(document.querySelector('.confirm-card.is-danger')).toBeNull();
+    const always = screen.getByRole('button', { name: '始终允许此文件夹' });
+    expect(always.getAttribute('title')).toBe('D:\\共享资料\\纪要');
+    fireEvent.click(always);
+    expect(onDecide).toHaveBeenCalledWith(true, true);
+    cleanup();
+    // an ordinary confirmation has no such button
+    render(<ConfirmCard block={{ ...block, outsideFolder: undefined, cause: undefined }} onDecide={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: '始终允许此文件夹' })).toBeNull();
+  });
+
   it('an ordinary one has no mark before its title, in every state; a dangerous one keeps the warning and 无法撤销', () => {
     const mail = { type: 'confirm' as const, callId: 'c5', name: 'send_email', input: {}, reason: '发送邮件给「项目组」' };
     for (const state of [{}, { approved: true }, { approved: false }, { cancelled: true }]) {

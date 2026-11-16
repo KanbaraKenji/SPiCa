@@ -56,6 +56,8 @@ export const EN_CHAT: Catalog = {
   运行命令: 'Run command',
   确认: 'Confirmation',
   无法撤销: 'Cannot be undone',
+  工作文件夹以外: 'Outside working folder',
+  始终允许此文件夹: 'Always allow this folder',
   已允许: 'Allowed',
   已拒绝: 'Denied',
   拒绝: 'Deny',

@@ -61,9 +61,9 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async answer(id, callId, answer) {
       get(id).answer(callId, answer);
     },
-    async confirm(id, callId, approved) {
+    async confirm(id, callId, approved, options) {
       if (rt.resolveViewConfirm(callId, approved)) return; // a plugin view's confirmation (any session id, also '')
-      await get(id).confirm(callId, approved);
+      await get(id).confirm(callId, approved, options);
     },
     async callPluginTool(pluginId, toolName, args, opts) {
       // opts.confirmed: the view already asked the user

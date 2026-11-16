@@ -309,8 +309,9 @@ export class AgentStore {
     await this.#card(id, callId, () => this.#api.answer(id, callId, answer));
   }
 
-  async confirm(id: string, callId: string, approved: boolean): Promise<void> {
-    await this.#card(id, callId, () => this.#api.confirm(id, callId, approved));
+  /** `allowFolder`: a write outside the conversation's folders, allowed for that folder from now on. */
+  async confirm(id: string, callId: string, approved: boolean, allowFolder = false): Promise<void> {
+    await this.#card(id, callId, () => (allowFolder ? this.#api.confirm(id, callId, approved, { allowFolder: true }) : this.#api.confirm(id, callId, approved)));
   }
 
   /** Answering a card the core no longer waits on (no pending ask / confirm): the card is marked cancelled, no notice. */

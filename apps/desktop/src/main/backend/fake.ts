@@ -207,6 +207,8 @@ export class FakeBackend implements AgentBackend {
   #superseded = new Map<string, Message[]>();
   /** Confirmations the user declined: nothing ran. */
   #declined = new Set<string>();
+  /** Folders a conversation was allowed to write in on a card (始终允许此文件夹), by session. */
+  #writeFolders = new Map<string, Set<string>>();
   #pending = new Map<string, PendingItem[]>();
   #runs = new Map<string, Run>();
   #globalCost = 0;
@@ -515,7 +517,13 @@ export class FakeBackend implements AgentBackend {
     this.#emit(sessionId, { type: 'ask.resolved', callId, answer });
   }
 
-  async confirm(sessionId: string, callId: string, approved: boolean): Promise<void> {
+  async confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean }): Promise<void> {
+    const item = this.#pending.get(sessionId)?.find((p) => p.callId === callId);
+    if (approved && options?.allowFolder && item?.kind === 'confirm' && item.outsideFolder) {
+      const set = this.#writeFolders.get(sessionId) ?? new Set<string>();
+      set.add(item.outsideFolder);
+      this.#writeFolders.set(sessionId, set);
+    }
     this.#resolvePending(sessionId, callId, approved ? 'yes' : 'no', 'confirm');
     if (!approved) this.#declined.add(callId);
     this.#emit(sessionId, { type: 'confirm.resolved', callId, approved });
@@ -1370,6 +1378,39 @@ export class FakeBackend implements AgentBackend {
         this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: result, isError: !ok }]);
         this.#setStatus(sessionId, 'thinking');
         const after = ok ? '\n\n改好了。' : '\n\n好的，没有改。';
+        await this.#stream(sessionId, 'text', after, signal);
+        blocks.push({ type: 'text', text: after });
+      } else if (/文件夹以外/.test(text)) {
+        // A write outside the conversation's folders (core: GuardCause outside_folder): asked in either approval
+        // mode, with 工作文件夹以外 and 始终允许此文件夹; once that folder is allowed, the next write there just runs.
+        const callId = this.#id('call');
+        const folder = 'D:\\共享资料\\纪要';
+        const newFile = /新建/.test(text);
+        const name = newFile ? 'write_file' : 'edit_file';
+        const input = newFile
+          ? { path: `${folder}\\周会汇总.md`, content: '# 周会汇总\n\n- 样品改用 B 方案\n- 交期延后一周\n' }
+          : { path: `${folder}\\会议纪要.md`, old_string: '（待补）', new_string: '样品改用 B 方案；交期延后一周。' };
+        const change = newFile
+          ? { path: input.path, created: true, change: { hunks: [{ oldStart: 0, newStart: 1, lines: ['+# 周会汇总', '+', '+- 样品改用 B 方案', '+- 交期延后一周'] }] } }
+          : { path: input.path, created: false, change: { hunks: [{ oldStart: 3, newStart: 3, lines: [' ## 决定', '-（待补）', '+样品改用 B 方案；交期延后一周。', ' '] }] } };
+        const allowed = this.#writeFolders.get(sessionId)?.has(folder) === true;
+        this.#emit(sessionId, { type: 'tool.call', callId, name });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name, input }]);
+        let ok = true;
+        if (!allowed) {
+          this.#addPending(sessionId, { kind: 'confirm', callId, toolName: name, input, reason: 'writes a file outside the folders of this conversation', cause: 'outside_folder', change, outsideFolder: folder, createdAt: isoAt(this.#now()) });
+          this.#emit(sessionId, { type: 'confirm.request', callId, name, input, reason: 'writes a file outside the folders of this conversation', cause: 'outside_folder', change, outsideFolder: folder });
+          this.#setStatus(sessionId, 'awaiting_confirm', name);
+          waiting = { id: callId, name, input, stored: true };
+          ok = (await this.#waitFor(run, callId)) === 'yes';
+          waiting = undefined;
+        }
+        if (ok) this.#emit(sessionId, { type: 'tool.start', callId, name, input, category: 'write' });
+        const result = ok ? `${newFile ? 'Created' : 'Edited'} ${input.path}` : '用户没有允许写到工作文件夹以外';
+        this.#emit(sessionId, { type: 'tool.end', callId, name, isError: !ok, preview: result, durationMs: 300 });
+        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: result, isError: !ok }]);
+        this.#setStatus(sessionId, 'thinking');
+        const after = ok ? '已写好。' : '好的，没有写。';
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
       } else if (/删除/.test(text)) {

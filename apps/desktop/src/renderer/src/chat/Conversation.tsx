@@ -23,7 +23,7 @@ export interface ConversationActions {
   send(text: string, attachments?: string[]): void;
   stop(): void;
   answer(callId: string, answer: string): void;
-  confirm(callId: string, approved: boolean): void;
+  confirm(callId: string, approved: boolean, allowFolder?: boolean): void;
   openFile(path: string): void;
   /** A folder path clicked in an answer: opened in Explorer. */
   openFolder?: (path: string) => void;
@@ -239,7 +239,7 @@ function Response({
           case 'ask':
             return <AskCard key={b.callId} block={b} onAnswer={(a) => actions.answer(b.callId, a)} />;
           case 'confirm':
-            return <ConfirmCard key={b.callId} block={b} onDecide={(ok) => actions.confirm(b.callId, ok)} />;
+            return <ConfirmCard key={b.callId} block={b} onDecide={(ok, folder) => actions.confirm(b.callId, ok, folder)} />;
           case 'suggest':
             // Not on an older answer: the next message always follows the newest one.
             return live || !newest ? null : <SuggestCard key={b.callId} block={b} onPick={actions.send} />;

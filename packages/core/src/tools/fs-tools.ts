@@ -174,8 +174,11 @@ export const readFileTool: Tool = {
   },
 };
 
+const writePath = (input: Record<string, unknown>) => (typeof input.path === 'string' ? input.path : undefined);
+
 export const writeFileTool: Tool = {
   category: 'write',
+  writePath,
   spec: {
     name: 'write_file',
     description: 'Create or overwrite a text file with the given content. Parent folders are created as needed.',
@@ -216,6 +219,7 @@ export const writeFileTool: Tool = {
 
 export const editFileTool: Tool = {
   category: 'write',
+  writePath,
   spec: {
     name: 'edit_file',
     description:

@@ -1006,13 +1006,14 @@ export function ConfirmTarget({ name, input, bare, change }: { name: string; inp
  * back, 拒绝 / 允许 or what was decided), then the command in full (copy at its top right) or the call's arguments.
  * For a command, the title is the app's own reading of it (运行命令 when it cannot tell), not the model's words.
  */
-export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type: 'confirm' }>; onDecide(approved: boolean): void }) {
+export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type: 'confirm' }>; onDecide(approved: boolean, allowFolder?: boolean): void }) {
   const [sent, setSent] = useState(false);
   const decided = block.approved !== undefined || block.cancelled === true;
-  const decide = (approved: boolean) => {
+  const decide = (approved: boolean, allowFolder = false) => {
     if (sent) return;
     setSent(true);
-    onDecide(approved);
+    if (allowFolder) onDecide(approved, true);
+    else onDecide(approved);
   };
   const input = block.input && typeof block.input === 'object' ? (block.input as Record<string, unknown>) : {};
   const command = block.name === 'run_command' && typeof input.command === 'string' ? input.command : null;
@@ -1029,6 +1030,8 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         {danger ? <SpicaStatusIcon name="warning" size={16} /> : null}
         <span className="card-title">{title}</span>
         {danger ? <span className="confirm-undo">{t('无法撤销')}</span> : null}
+        {/* a write outside the conversation's folders: said as a tag, as 无法撤销 is (the path is in the change below) */}
+        {block.outsideFolder ? <span className="confirm-undo">{t('工作文件夹以外')}</span> : null}
         <span className="confirm-spacer" />
         {decided ? (
           <p className={block.cancelled === true && block.approved === undefined ? 'card-answer is-stopped' : 'card-answer'}>
@@ -1040,6 +1043,11 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
             <button type="button" className="btn" disabled={sent} onClick={() => decide(false)}>
               {t('拒绝')}
             </button>
+            {block.outsideFolder ? (
+              <button type="button" className="btn" disabled={sent} onClick={() => decide(true, true)} title={block.outsideFolder}>
+                {t('始终允许此文件夹')}
+              </button>
+            ) : null}
             <button type="button" className="btn btn-primary" disabled={sent} onClick={() => decide(true)}>
               {t('允许')}
             </button>
